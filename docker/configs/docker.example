@@ -1,6 +1,9 @@
 # ========================================
-# Docker Compose 环境配置
+# Docker Compose 环境配置（示例）
 # ========================================
+# 复制此文件为 docker.yaml 并填入真实配置值
+# cp docker.example docker.yaml
+#
 # 服务间通过容器名通信，不使用 localhost
 # 此文件会被挂载到后端容器中，通过 --config docker 加载
 
@@ -18,8 +21,8 @@ redis:
 # MinIO
 minio:
   endpoint: minio:9005
-  access_key: admin123
-  secret_key: admin123
+  access_key: your-minio-access-key
+  secret_key: your-minio-secret-key
   secure: false
 
 # Elasticsearch
@@ -27,14 +30,14 @@ elasticsearch:
   hosts:
     - "http://elasticsearch:9200"
   username: elastic
-  password: QA41kZI8pGpEHmiJlCTT
+  password: your-es-password
 
 # MySQL
 database:
   host: mysql
   port: 3306
   user: root
-  password: "139790"
+  password: "your-db-password"
   database: novamind_db
 
 # 日志
