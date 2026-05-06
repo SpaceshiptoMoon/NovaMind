@@ -1,0 +1,143 @@
+# ========================================
+# 智能知识库系统 - 一键部署 Docker Compose
+# ========================================
+# 使用方式:
+#   启动所有服务: docker compose up -d
+#   查看日志:     docker compose logs -f
+#   停止所有服务: docker compose down
+#   重新构建:     docker compose up -d --build
+#
+# 前端 + 后端部署在同一个容器中，通过 Nginx 统一对外
+# 数据库等服务为独立容器
+
+services:
+  # ================================
+  # 应用服务 (前端 + 后端 + Nginx)
+  # ================================
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: intelligent-app
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/configs/docker.yaml:/app/src/setting/yaml_config/yaml/docker.yaml:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - app-network
+
+  # ================================
+  # MySQL 8.0
+  # ================================
+  mysql:
+    image: mysql:8.0
+    container_name: intelligent-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: "139790"
+      MYSQL_DATABASE: intelligent_system_db
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p139790"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    volumes:
+      - mysql-data:/var/lib/mysql
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # ================================
+  # Redis 7
+  # ================================
+  redis:
+    image: redis:7-alpine
+    container_name: intelligent-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # ================================
+  # MinIO 对象存储
+  # ================================
+  minio:
+    image: minio/minio
+    container_name: intelligent-minio
+    ports:
+      - "9005:9005"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: admin123
+      MINIO_ROOT_PASSWORD: admin123
+    command: server /data --address ":9005" --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # ================================
+  # Elasticsearch 8.15
+  # ================================
+  elasticsearch:
+    image: elasticsearch:8.15.0
+    container_name: intelligent-elasticsearch
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    restart: unless-stopped
+    networks:
+      - app-network
+
+# ================================
+# 持久化卷
+# ================================
+volumes:
+  mysql-data:
+  redis-data:
+  minio-data:
+  es-data:
+
+# ================================
+# 网络
+# ================================
+networks:
+  app-network:
+    driver: bridge
