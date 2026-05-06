@@ -1,0 +1,63 @@
+<svg viewBox="-2 0 52 58" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="u-horn" x1="34" y1="0" x2="36" y2="10" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4285F4" />
+      <stop offset="1" stop-color="#F48FB1" />
+    </linearGradient>
+    <linearGradient id="u-tail" x1="0" y1="24" x2="0" y2="48" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EA4335" />
+      <stop offset="0.5" stop-color="#F48FB1" />
+      <stop offset="1" stop-color="#4285F4" />
+    </linearGradient>
+    <linearGradient id="u-mane" x1="34" y1="6" x2="22" y2="28" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EA4335" />
+      <stop offset="0.5" stop-color="#F48FB1" />
+      <stop offset="1" stop-color="#4285F4" />
+    </linearGradient>
+  </defs>
+
+  <!-- TAIL -->
+  <path d="M8 26 C2 30 0 36 2 42 C4 46 6 44 5 38 C4 32 6 28 10 26" stroke="url(#u-tail)" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M10 28 C4 32 2 38 4 44 C6 48 8 46 7 40 C6 34 8 30 12 28" stroke="#F48FB1" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.5"/>
+
+  <!-- BACK LEGS -->
+  <path d="M22 34 L20 48 L24 48 L24 34Z" fill="#f5f5f5"/>
+  <path d="M28 34 L28 48 L32 48 L30 34Z" fill="#f0f0f0"/>
+  <rect x="19" y="47" width="6" height="3" rx="1.5" fill="#EA4335"/>
+  <rect x="27" y="47" width="6" height="3" rx="1.5" fill="#EA4335"/>
+
+  <!-- BODY -->
+  <ellipse cx="20" cy="30" rx="14" ry="7" fill="white"/>
+
+  <!-- FRONT LEGS -->
+  <path d="M10 34 L8 48 L12 48 L12 34Z" fill="white"/>
+  <path d="M16 34 L16 48 L20 48 L18 34Z" fill="#f8f8f8"/>
+  <rect x="7" y="47" width="6" height="3" rx="1.5" fill="#EA4335"/>
+  <rect x="15" y="47" width="6" height="3" rx="1.5" fill="#EA4335"/>
+
+  <!-- NECK -->
+  <path d="M24 28 Q28 20 34 12 L40 14 Q36 22 32 26Z" fill="white"/>
+
+  <!-- HEAD -->
+  <ellipse cx="36" cy="12" rx="8" ry="6" fill="white"/>
+
+  <!-- HORN -->
+  <path d="M34 0L36 10H32L34 0Z" fill="url(#u-horn)"/>
+  <path d="M33 3L35 9" stroke="white" stroke-width="0.5" opacity="0.4"/>
+  <path d="M32.5 6L34.5 10" stroke="white" stroke-width="0.3" opacity="0.3"/>
+
+  <!-- EAR -->
+  <path d="M42 5L46 0L40 8Z" fill="#F48FB1"/>
+  <path d="M42 6L44 2L41 8Z" fill="#F8BBD0" opacity="0.5"/>
+
+  <!-- Eye -->
+  <circle cx="40" cy="11" r="2" fill="#4285F4"/>
+  <circle cx="40.7" cy="10.3" r="0.8" fill="white"/>
+
+  <!-- Nostril -->
+  <ellipse cx="44" cy="15" rx="0.7" ry="0.5" fill="#EA4335" opacity="0.4"/>
+
+  <!-- MANE -->
+  <path d="M34 6 C30 10 26 16 24 24" stroke="url(#u-mane)" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  <path d="M36 8 C32 12 28 18 26 26" stroke="#F48FB1" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.5"/>
+</svg>

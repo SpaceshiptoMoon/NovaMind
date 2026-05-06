@@ -1,0 +1,252 @@
+@import './base.css';
+
+#app {
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* ========================================
+   Element Plus Theme Overrides
+   ======================================== */
+:root {
+  --el-color-primary: #4285F4;
+  --el-color-primary-light-3: #6ea4f7;
+  --el-color-primary-light-5: #98bef9;
+  --el-color-primary-light-7: #c1d8fb;
+  --el-color-primary-light-9: #ebf2fe;
+  --el-color-primary-dark-2: #2D6BE0;
+
+  --el-font-family: var(--font-body);
+  --el-border-radius-base: var(--radius-md);
+  --el-border-radius-small: var(--radius-sm);
+
+  --el-bg-color: var(--color-bg-card);
+  --el-bg-color-page: var(--color-bg);
+  --el-fill-color-light: var(--color-bg-card-elevated);
+  --el-border-color: var(--color-border);
+  --el-border-color-light: var(--color-border-light);
+  --el-text-color-primary: var(--color-text);
+  --el-text-color-regular: var(--color-text-secondary);
+  --el-text-color-secondary: var(--color-text-muted);
+  --el-text-color-placeholder: var(--color-text-faint);
+}
+
+/* ========================================
+   Buttons
+   ======================================== */
+.el-button {
+  font-family: var(--font-body);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-base);
+}
+
+.el-button--primary {
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-wide);
+}
+
+.el-button--primary:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.el-button--primary:active {
+  transform: translateY(0);
+}
+
+.el-button--default:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-muted);
+}
+
+.el-button--default:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* ========================================
+   Input & Select
+   ======================================== */
+.el-input__wrapper {
+  background: var(--color-bg-input) !important;
+  border: 1px solid var(--color-border-light) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: none !important;
+  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+}
+
+.el-input__wrapper:hover {
+  border-color: var(--color-border) !important;
+}
+
+.el-input__wrapper.is-focus {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 3px var(--color-primary-muted) !important;
+}
+
+.el-textarea__inner {
+  border-radius: var(--radius-md) !important;
+  background: var(--color-bg-input);
+  border-color: var(--color-border-light);
+  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+}
+
+.el-textarea__inner:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-muted);
+}
+
+/* ========================================
+   Cards
+   ======================================== */
+.el-card {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-light);
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow var(--transition-base), border-color var(--transition-base);
+}
+
+.el-card:hover {
+  box-shadow: var(--shadow-sm);
+}
+
+/* ========================================
+   Tables
+   ======================================== */
+.el-table {
+  --el-table-border-color: var(--color-border-light);
+  --el-table-header-bg-color: var(--color-bg-card-elevated);
+}
+
+.el-table th.el-table__cell {
+  font-family: var(--font-display);
+  font-weight: var(--weight-medium);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  letter-spacing: var(--tracking-wide);
+}
+
+/* ========================================
+   Menu / Sidebar
+   ======================================== */
+.el-menu {
+  border-right: none !important;
+}
+
+/* ========================================
+   Dropdowns
+   ======================================== */
+.el-dropdown-menu {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-2);
+}
+
+.el-dropdown-menu__item {
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3);
+  transition: background var(--transition-fast);
+}
+
+/* ========================================
+   Dialogs
+   ======================================== */
+.el-dialog {
+  border-radius: var(--radius-xl) !important;
+  box-shadow: var(--shadow-xl) !important;
+}
+
+.el-message-box {
+  border-radius: var(--radius-xl);
+}
+
+/* ========================================
+   Tags
+   ======================================== */
+.el-tag {
+  border-radius: var(--radius-sm);
+  font-weight: var(--weight-medium);
+}
+
+/* ========================================
+   Breadcrumb
+   ======================================== */
+.el-breadcrumb__separator {
+  color: var(--color-text-faint);
+}
+
+/* ========================================
+   Utility: Staggered List Animation
+   ======================================== */
+@keyframes fadeSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stagger-children > * {
+  opacity: 0;
+  animation: fadeSlideUp 0.4s ease forwards;
+}
+
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 60ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 120ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 180ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 240ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 300ms; }
+.stagger-children > *:nth-child(7) { animation-delay: 360ms; }
+.stagger-children > *:nth-child(8) { animation-delay: 420ms; }
+
+/* ========================================
+   Utility: Skeleton Loading
+   ======================================== */
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg,
+    var(--color-bg-card-elevated) 25%,
+    var(--color-bg-hover) 50%,
+    var(--color-bg-card-elevated) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-md);
+}
+
+/* ========================================
+   Utility: Full Width (replaces inline styles)
+   ======================================== */
+.full-width {
+  width: 100%;
+}
+
+/* ========================================
+   Typing Indicator (Chat)
+   ======================================== */
+@keyframes bounceDot {
+  0%, 60%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-4px); }
+}
+
+.typing-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+  animation: bounceDot 1.4s infinite;
+}
+
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
