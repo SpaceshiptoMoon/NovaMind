@@ -7,6 +7,13 @@
 
 NovaMind 是一个开源的智能知识库管理系统。基于 FastAPI + Vue 3 构建，支持文档管理、向量检索、多模型智能问答、深度研究和知识库测评。
 
+<p align="center">
+  <img src="./assets/home.png" alt="NovaMind Home" width="720">
+</p>
+<p align="center">
+  <img src="./assets/features.png" alt="NovaMind Features" width="720">
+</p>
+
 ## 目录
 
 - [核心特性](#核心特性)
