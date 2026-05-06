@@ -1,5 +1,5 @@
 # ========================================
-# 智能知识库系统 - 一键部署 Docker Compose
+# novamind - 一键部署 Docker Compose
 # ========================================
 # 使用方式:
 #   启动所有服务: docker compose up -d
@@ -18,7 +18,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: intelligent-app
+    container_name: novamind-app
     ports:
       - "80:80"
     volumes:
@@ -39,12 +39,12 @@ services:
   # ================================
   mysql:
     image: mysql:8.0
-    container_name: intelligent-mysql
+    container_name: novamind-mysql
     ports:
       - "3306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: "***REMOVED***"
-      MYSQL_DATABASE: intelligent_system_db
+      MYSQL_DATABASE: novamind_db
       MYSQL_CHARSET: utf8mb4
       MYSQL_COLLATION: utf8mb4_unicode_ci
     command: >
@@ -68,7 +68,7 @@ services:
   # ================================
   redis:
     image: redis:7-alpine
-    container_name: intelligent-redis
+    container_name: novamind-redis
     ports:
       - "6379:6379"
     healthcheck:
@@ -87,7 +87,7 @@ services:
   # ================================
   minio:
     image: minio/minio
-    container_name: intelligent-minio
+    container_name: novamind-minio
     ports:
       - "9005:9005"
       - "9001:9001"
@@ -106,7 +106,7 @@ services:
   # ================================
   elasticsearch:
     image: elasticsearch:8.15.0
-    container_name: intelligent-elasticsearch
+    container_name: novamind-elasticsearch
     ports:
       - "9200:9200"
     environment:

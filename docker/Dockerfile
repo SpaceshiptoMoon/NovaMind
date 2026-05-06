@@ -32,7 +32,6 @@ WORKDIR /app
 # 安装 Python 依赖
 COPY backend/pyproject.toml backend/README.md ./
 RUN mkdir -p src && touch src/__init__.py && \
-    printf '[build-system]\nrequires = ["setuptools>=68.0"]\nbuild-backend = "setuptools.build_meta"\n' >> pyproject.toml && \
     pip install --no-cache-dir . && \
     rm -rf src/__init__.py
 
