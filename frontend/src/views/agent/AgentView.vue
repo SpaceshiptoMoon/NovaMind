@@ -80,8 +80,12 @@
               <div class="config-value">{{ currentAgent?.llm_model || '默认' }}</div>
             </div>
             <div class="config-card">
-              <div class="config-label">最大 Token</div>
+              <div class="config-label">最大生成 Token</div>
               <div class="config-value">{{ currentAgent?.max_tokens ?? '-' }}</div>
+            </div>
+            <div class="config-card">
+              <div class="config-label">上下文窗口</div>
+              <div class="config-value">{{ currentAgent?.context_window ?? '-' }}</div>
             </div>
             <div class="config-card">
               <div class="config-label">Temperature</div>
@@ -92,10 +96,10 @@
               <div class="config-value">{{ currentAgent?.top_p ?? '-' }}</div>
             </div>
             <div class="config-card">
-              <div class="config-label">技能</div>
+              <div class="config-label">工具</div>
               <div class="config-value">
-                <template v-if="currentAgent?.enabled_skills?.length">
-                  <span v-for="s in currentAgent.enabled_skills" :key="s" class="tag">{{ s }}</span>
+                <template v-if="currentAgent?.enabled_tools?.length">
+                  <span v-for="s in currentAgent.enabled_tools" :key="s" class="tag">{{ s }}</span>
                 </template>
                 <template v-else>未启用</template>
               </div>
@@ -146,17 +150,20 @@
         <el-form-item label="Top P">
           <el-slider v-model="form.top_p" :min="0" :max="1" :step="0.1" show-input />
         </el-form-item>
-        <el-form-item label="最大 Token">
+        <el-form-item label="最大生成 Token">
           <el-input-number v-model="form.max_tokens" :min="1" :max="32768" :step="256" />
+        </el-form-item>
+        <el-form-item label="上下文窗口">
+          <el-input-number v-model="form.context_window" :min="2048" :max="1048576" :step="4096" />
         </el-form-item>
         <el-form-item label="最大工具调用">
           <el-input-number v-model="form.max_tool_calls_per_turn" :min="1" :max="50" />
         </el-form-item>
-        <el-form-item label="启用技能">
-          <el-select v-model="form.enabled_skills" multiple placeholder="选择要启用的技能" style="width: 100%">
-            <el-option v-for="skill in agentStore.skills" :key="skill.name" :label="skill.name" :value="skill.name">
-              <span>{{ skill.name }}</span>
-              <span style="color: var(--color-text-muted); font-size: 12px; margin-left: 8px">{{ skill.description }}</span>
+        <el-form-item label="启用工具">
+          <el-select v-model="form.enabled_tools" multiple placeholder="选择要启用的工具" style="width: 100%">
+            <el-option v-for="tool in agentStore.tools" :key="tool.name" :label="tool.name" :value="tool.name">
+              <span>{{ tool.name }}</span>
+              <span style="color: var(--color-text-muted); font-size: 12px; margin-left: 8px">{{ tool.description }}</span>
             </el-option>
           </el-select>
         </el-form-item>
@@ -258,8 +265,9 @@ const form = reactive<CreateAgentRequest & { temperature: number; top_p: number;
   temperature: 0.7,
   top_p: 0.8,
   max_tokens: 4096,
+  context_window: 32768,
   max_tool_calls_per_turn: 10,
-  enabled_skills: [],
+  enabled_tools: [],
   enabled_mcp_servers: [],
 })
 
@@ -276,8 +284,9 @@ function resetForm() {
   form.temperature = 0.7
   form.top_p = 0.8
   form.max_tokens = 4096
+  form.context_window = 32768
   form.max_tool_calls_per_turn = 10
-  form.enabled_skills = []
+  form.enabled_tools = []
   form.enabled_mcp_servers = []
 }
 
@@ -298,8 +307,9 @@ function openEditDialog(agent: Agent) {
   form.temperature = agent.temperature
   form.top_p = agent.top_p
   form.max_tokens = agent.max_tokens
+  form.context_window = agent.context_window || 32768
   form.max_tool_calls_per_turn = agent.max_tool_calls_per_turn
-  form.enabled_skills = agent.enabled_skills || []
+  form.enabled_tools = agent.enabled_tools || []
   form.enabled_mcp_servers = agent.enabled_mcp_servers || []
   dialogVisible.value = true
 }
@@ -318,8 +328,9 @@ async function handleSubmit() {
       temperature: form.temperature,
       top_p: form.top_p,
       max_tokens: form.max_tokens,
+      context_window: form.context_window,
       max_tool_calls_per_turn: form.max_tool_calls_per_turn,
-      enabled_skills: form.enabled_skills?.length ? form.enabled_skills : undefined,
+      enabled_tools: form.enabled_tools?.length ? form.enabled_tools : undefined,
       enabled_mcp_servers: form.enabled_mcp_servers?.length ? form.enabled_mcp_servers : undefined,
     }
 
@@ -513,7 +524,7 @@ watch(() => route.query.action, (action) => {
 onMounted(async () => {
   await Promise.all([
     agentStore.fetchAgents(),
-    agentStore.fetchSkills(),
+    agentStore.fetchTools(),
     agentStore.fetchMcpServers(),
     fetchModels(),
   ])
@@ -522,8 +533,9 @@ onMounted(async () => {
 
 <style scoped>
 .agent-view {
+  position: absolute;
+  inset: 0;
   display: flex;
-  height: 100%;
   background: var(--color-bg);
   overflow: hidden;
 }

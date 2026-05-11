@@ -12,6 +12,7 @@ export const chatApi = {
     data: ChatRequest,
     callbacks: {
       onUserMessage?: (msg: { id: number; content: string; role: string; session_id: string }) => void
+      onReasoning?: (text: string) => void
       onContent?: (content: string) => void
       onDone?: (msg: { id: number; content: string; role: string; session_id: string }) => void
       onError?: (err: { code: string; message: string }) => void
@@ -24,6 +25,9 @@ export const chatApi = {
         switch (e.type) {
           case 'user_message':
             callbacks.onUserMessage?.(e.data as Parameters<typeof callbacks.onUserMessage>[0])
+            break
+          case 'reasoning':
+            callbacks.onReasoning?.((e.data as { content: string }).content)
             break
           case 'content':
             callbacks.onContent?.((e.data as { content: string }).content)

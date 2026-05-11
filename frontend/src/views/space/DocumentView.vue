@@ -90,16 +90,36 @@
           {{ formatDate(row.created_at) }}
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column label="操作" width="240" fixed="right">
         <template #default="{ row }">
           <el-button
-            v-if="row.status === 'uploaded' || row.status === 'failed' || row.status === 'completed' || row.status === 0 || row.status === 3 || row.status === 2"
+            v-if="isProcessing(row.status)"
+            type="warning"
+            link
+            size="small"
+            :loading="cancelLoadingId === row.id"
+            @click="handleCancel(row)"
+          >
+            取消处理
+          </el-button>
+          <el-button
+            v-if="canProcess(row.status)"
             type="primary"
             link
             size="small"
             @click="handleSingleProcess(row)"
           >
             {{ (row.status === 'completed' || row.status === 2) ? '重新解析' : '处理' }}
+          </el-button>
+          <el-button
+            v-if="isFailed(row.status)"
+            type="warning"
+            link
+            size="small"
+            :loading="retryLoadingId === row.id"
+            @click="handleRetry(row)"
+          >
+            重试
           </el-button>
           <el-button type="primary" link size="small" @click="goToDetail(row.id)">
             详情
@@ -326,6 +346,21 @@ async function handleUpload() {
 
 // === 处理 ===
 
+const cancelLoadingId = ref<number | null>(null)
+const retryLoadingId = ref<number | null>(null)
+
+function isProcessing(status: string | number): boolean {
+  return status === 'processing' || status === 1
+}
+
+function isFailed(status: string | number): boolean {
+  return status === 'failed' || status === 3
+}
+
+function canProcess(status: string | number): boolean {
+  return status === 'uploaded' || status === 'completed' || status === 0 || status === 2
+}
+
 function showProcessDialog(ids: number[]) {
   processTargetIds.value = ids
   processForm.enable_question_generation = false
@@ -377,6 +412,46 @@ async function handleSingleProcess(row: DocType) {
     }
   } else {
     showProcessDialog([row.id])
+  }
+}
+
+async function handleCancel(row: DocType) {
+  try {
+    await ElMessageBox.confirm(
+      `确定要取消文档 "${row.filename}" 的处理吗？`,
+      '取消处理',
+      { confirmButtonText: '确定取消', cancelButtonText: '返回', type: 'warning' },
+    )
+    cancelLoadingId.value = row.id
+    await documentApi.cancelDocument(spaceId.value, kbId.value, row.id)
+    ElMessage.success('取消请求已发送')
+    fetchDocuments()
+  } catch (error: unknown) {
+    if ((error as string) !== 'cancel') {
+      // Error already shown by response interceptor
+    }
+  } finally {
+    cancelLoadingId.value = null
+  }
+}
+
+async function handleRetry(row: DocType) {
+  try {
+    await ElMessageBox.confirm(
+      `确定要重试文档 "${row.filename}" 的处理吗？将清除旧的分块数据并重新解析。`,
+      '重试处理',
+      { confirmButtonText: '确定重试', cancelButtonText: '取消', type: 'info' },
+    )
+    retryLoadingId.value = row.id
+    await documentApi.retryDocument(spaceId.value, kbId.value, row.id)
+    ElMessage.success('已提交重试任务')
+    fetchDocuments()
+  } catch (error: unknown) {
+    if ((error as string) !== 'cancel') {
+      // Error already shown by response interceptor
+    }
+  } finally {
+    retryLoadingId.value = null
   }
 }
 

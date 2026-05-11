@@ -35,11 +35,8 @@
       <!-- 空状态：欢迎屏幕 -->
       <div v-if="chatStore.messages.length === 0 && !chatStore.loading" class="welcome-screen">
         <div class="welcome-inner">
-          <div class="welcome-icon">
-            <UnicornIcon :size="48" />
-          </div>
-          <h2 class="welcome-title">你好，有什么可以帮你？</h2>
-          <p class="welcome-subtitle">我是你的 AI 助手，可以回答问题、分析文档、编写代码</p>
+          <h2 class="welcome-title">今天想聊点什么？</h2>
+          <p class="welcome-subtitle">我可以帮你回答问题、分析文档、编写代码，或从知识库中搜索资料</p>
           <div class="welcome-prompts">
             <button
               v-for="(prompt, i) in quickPrompts"
@@ -64,11 +61,20 @@
             :class="msg.role"
           >
             <div class="message-body">
-              <MarkdownRenderer
-                v-if="msg.role === 'assistant'"
-                :content="msg.content"
-                class="message-text"
-              />
+              <template v-if="msg.role === 'assistant'">
+                <div v-if="msg.reasoning" class="reasoning-section">
+                  <div class="reasoning-header" @click="toggleReasoning(msg.id)">
+                    <span class="reasoning-label">思考过程</span>
+                    <el-icon :size="12" class="expand-icon" :class="{ expanded: expandedReasoning.has(msg.id) }">
+                      <ArrowDown />
+                    </el-icon>
+                  </div>
+                  <div v-if="expandedReasoning.has(msg.id)" class="reasoning-body">
+                    <MarkdownRenderer :content="msg.reasoning" />
+                  </div>
+                </div>
+                <MarkdownRenderer :content="msg.content" class="message-text" />
+              </template>
               <div v-else class="message-text">{{ msg.content }}</div>
               <div class="message-actions">
                 <button class="msg-copy-btn" @click="handleCopyMessage(msg.content, $event)">
@@ -91,65 +97,74 @@
         </div>
       </div>
 
-      <!-- 输入区域 -->
+      <!-- 输入区域：药丸形 -->
       <div class="input-area">
-        <div class="input-container">
-          <div class="input-wrapper">
-            <textarea
-              ref="textareaRef"
-              v-model="inputText"
-              class="chat-textarea"
-              placeholder="输入你的问题..."
-              :rows="1"
-              :disabled="chatStore.isStreaming || chatStore.loading"
-              @keydown="handleKeydown"
-              @input="autoResize"
-            />
-            <button
-              v-if="chatStore.isStreaming"
-              class="send-btn stop-btn"
-              @click="handleCancelStream"
-            >
-              <el-icon :size="16"><VideoPause /></el-icon>
-            </button>
-            <button
-              v-else
-              class="send-btn"
-              :class="{ active: inputText.trim() }"
-              :disabled="!inputText.trim() || chatStore.loading"
-              @click="handleSend"
-            >
-              <el-icon :size="16"><Promotion /></el-icon>
-            </button>
-          </div>
-          <div class="input-footer">
-            <div class="input-left">
-              <label class="stream-toggle">
-                <el-switch v-model="useStream" size="small" />
-                <span>流式输出</span>
+        <div class="input-pill">
+          <el-popover trigger="click" :width="180" placement="top-start">
+            <template #reference>
+              <button class="input-action-btn">
+                <el-icon :size="16"><Setting /></el-icon>
+              </button>
+            </template>
+            <div class="settings-popover">
+              <label class="setting-item">
+                <span>深度思考</span>
+                <el-switch v-model="enableThinking" size="small" />
               </label>
-              <el-select
-                v-model="selectedModel"
-                :placeholder="defaultModelName ? `默认: ${defaultModelName}` : '默认模型'"
-                clearable
-                size="small"
-                class="model-select"
-              >
-                <el-option v-for="(_, name) in availableModels" :key="name" :label="name" :value="name" />
-              </el-select>
-            </div>
-            <div class="input-right">
+              <label class="setting-item">
+                <span>流式输出</span>
+                <el-switch v-model="useStream" size="small" />
+              </label>
+              <div class="setting-item">
+                <span>模型</span>
+                <el-select
+                  v-model="selectedModel"
+                  :placeholder="defaultModelName || '默认'"
+                  clearable
+                  size="small"
+                  style="width: 120px"
+                >
+                  <el-option v-for="(_, name) in availableModels" :key="name" :label="name" :value="name" />
+                </el-select>
+              </div>
               <button
                 v-if="chatStore.currentSessionId"
-                class="config-btn"
+                class="setting-item clickable"
                 @click="handleOpenConfig(chatStore.currentSessionId)"
               >
-                <el-icon :size="14"><Setting /></el-icon>
                 <span>会话设置</span>
+                <el-icon :size="12"><ArrowRight /></el-icon>
               </button>
             </div>
-          </div>
+          </el-popover>
+          <textarea
+            ref="textareaRef"
+            v-model="inputText"
+            class="chat-textarea"
+            placeholder="输入你的问题..."
+            :rows="1"
+            :disabled="chatStore.isStreaming || chatStore.loading"
+            @keydown="handleKeydown"
+            @input="autoResize"
+          />
+          <button
+            v-if="chatStore.isStreaming"
+            class="send-btn stop-btn"
+            @click="handleCancelStream"
+          >
+            <el-icon :size="16"><VideoPause /></el-icon>
+          </button>
+          <button
+            v-else
+            class="send-btn"
+            :class="{ active: inputText.trim() }"
+            :disabled="!inputText.trim() || chatStore.loading"
+            @click="handleSend"
+          >
+            <el-icon :size="16"><Promotion /></el-icon>
+          </button>
         </div>
+        <div class="input-hint">按 Enter 发送，Shift + Enter 换行</div>
       </div>
     </div>
 
@@ -224,17 +239,18 @@
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick, onMounted, watch, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete, Setting, Promotion, VideoPause, DocumentCopy } from '@element-plus/icons-vue'
+import { Plus, Delete, Setting, Promotion, VideoPause, DocumentCopy, ArrowRight, ArrowDown } from '@element-plus/icons-vue'
 import { useChatStore } from '@/stores/chat'
 import { chatApi } from '@/api/chat'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
-import UnicornIcon from '@/components/common/UnicornIcon.vue'
 
 const chatStore = useChatStore()
 const isInWorkspace = inject('isInWorkspace', false)
 
 const inputText = ref('')
 const useStream = ref(true)
+const enableThinking = ref(false)
+const expandedReasoning = ref(new Set<number>())
 const messagesRef = ref<HTMLElement>()
 const textareaRef = ref<HTMLTextAreaElement>()
 
@@ -244,6 +260,14 @@ const quickPrompts = [
   { icon: '🔍', text: '帮我从知识库中搜索相关资料' },
   { icon: '🛠️', text: '如何优化数据库查询性能？' },
 ]
+
+function toggleReasoning(msgId: number) {
+  if (expandedReasoning.value.has(msgId)) {
+    expandedReasoning.value.delete(msgId)
+  } else {
+    expandedReasoning.value.add(msgId)
+  }
+}
 
 function scrollToBottom() {
   nextTick(() => {
@@ -264,6 +288,7 @@ function autoResize() {
 
 watch(() => chatStore.messages.length, () => scrollToBottom())
 watch(() => chatStore.streamingContent, () => scrollToBottom())
+watch(() => chatStore.loading, () => scrollToBottom())
 
 function handleQuickPrompt(text: string) {
   inputText.value = text
@@ -310,10 +335,12 @@ async function handleSend() {
     if (useStream.value) {
       await chatStore.sendMessageStream(content, {
         llm_model: selectedModel.value || undefined,
+        enable_thinking: enableThinking.value,
       })
     } else {
       await chatStore.sendMessage(content, {
         llm_model: selectedModel.value || undefined,
+        enable_thinking: enableThinking.value,
       })
     }
   } catch {
@@ -425,9 +452,10 @@ onMounted(() => {
    Layout
    ======================================== */
 .chat-view {
+  position: absolute;
+  inset: 0;
   display: flex;
-  height: 100%;
-  background: var(--color-bg);
+  background: #FFFFFF;
   overflow: hidden;
 }
 
@@ -446,6 +474,8 @@ onMounted(() => {
 .sidebar-top {
   padding: var(--space-4);
   border-bottom: 1px solid var(--color-border-light);
+  display: flex;
+  align-items: center;
 }
 
 .new-chat-btn {
@@ -565,7 +595,9 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: var(--color-bg);
+  min-height: 0;
+  overflow: hidden;
+  background: #FFFFFF;
 }
 
 /* ========================================
@@ -583,29 +615,18 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  max-width: 640px;
+  max-width: 720px;
   width: 100%;
-}
-
-.welcome-icon {
-  width: 72px;
-  height: 72px;
-  border-radius: var(--radius-xl);
-  background: linear-gradient(135deg, #E8F0FE 0%, #FEF1EE 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: var(--space-6);
-  box-shadow: 0 4px 16px rgba(66, 133, 244, 0.12);
 }
 
 .welcome-title {
   font-family: var(--font-display);
-  font-size: var(--text-3xl);
+  font-size: 32px;
   font-weight: var(--weight-bold);
   color: var(--color-text);
   margin-bottom: var(--space-3);
   letter-spacing: var(--tracking-tight);
+  text-align: center;
 }
 
 .welcome-subtitle {
@@ -613,6 +634,7 @@ onMounted(() => {
   color: var(--color-text-muted);
   margin-bottom: var(--space-8);
   text-align: center;
+  line-height: var(--leading-relaxed);
 }
 
 .welcome-prompts {
@@ -626,10 +648,10 @@ onMounted(() => {
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
-  padding: var(--space-4);
-  border: 1px solid var(--color-border-light);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid transparent;
   border-radius: var(--radius-lg);
-  background: var(--color-bg-card);
+  background: transparent;
   cursor: pointer;
   transition: all var(--transition-base);
   text-align: left;
@@ -637,9 +659,13 @@ onMounted(() => {
 }
 
 .prompt-card:hover {
-  border-color: var(--color-primary);
-  background: var(--color-primary-muted);
+  border-color: var(--color-border);
+  background: var(--color-bg-card);
   box-shadow: var(--shadow-sm);
+}
+
+.prompt-card:hover .prompt-text {
+  color: var(--color-text);
 }
 
 .prompt-icon {
@@ -650,12 +676,9 @@ onMounted(() => {
 
 .prompt-text {
   font-size: var(--text-sm);
-  color: var(--color-text-secondary);
+  color: var(--color-text-muted);
   line-height: var(--leading-normal);
-}
-
-.prompt-card:hover .prompt-text {
-  color: var(--color-text);
+  transition: color var(--transition-fast);
 }
 
 /* ========================================
@@ -663,12 +686,13 @@ onMounted(() => {
    ======================================== */
 .messages-container {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   scroll-behavior: smooth;
 }
 
 .messages-inner {
-  max-width: 800px;
+  max-width: 860px;
   margin: 0 auto;
   padding: var(--space-6) var(--space-6) var(--space-4);
 }
@@ -676,7 +700,7 @@ onMounted(() => {
 .message-row {
   display: flex;
   gap: var(--space-4);
-  margin-bottom: var(--space-6);
+  margin-bottom: 28px;
   animation: messageIn 0.35s ease forwards;
 }
 
@@ -690,7 +714,7 @@ onMounted(() => {
 }
 
 .message-body {
-  max-width: 70%;
+  max-width: 75%;
   min-width: 0;
 }
 
@@ -703,7 +727,7 @@ onMounted(() => {
 /* User message */
 .message-row.user .message-text {
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-2xl) var(--radius-2xl) 4px var(--radius-2xl);
+  border-radius: 18px 18px 4px 18px;
   background: var(--color-primary);
   color: #FFFFFF;
   white-space: pre-wrap;
@@ -712,23 +736,50 @@ onMounted(() => {
 
 /* AI message */
 .message-row.assistant .message-text {
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-2xl) var(--radius-2xl) var(--radius-2xl) 4px;
+  padding: var(--space-4) var(--space-5);
+  border-radius: 18px 18px 18px 4px;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
-  position: relative;
 }
 
-.message-row.assistant .message-text::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
-  border-radius: 1px;
-  background: linear-gradient(180deg, var(--color-primary), var(--color-accent));
-  opacity: 0.3;
+/* Reasoning section */
+.reasoning-section {
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  overflow: hidden;
+}
+.reasoning-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+.reasoning-header:hover {
+  background: #f1f3f5;
+}
+.reasoning-label {
+  font-weight: 500;
+}
+.expand-icon {
+  transition: transform 0.2s;
+}
+.expand-icon.expanded {
+  transform: rotate(180deg);
+}
+.reasoning-body {
+  padding: 8px 12px 12px;
+  border-top: 1px solid #e9ecef;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 /* Message actions bar */
@@ -772,7 +823,7 @@ onMounted(() => {
 .typing-row {
   display: flex;
   gap: var(--space-4);
-  margin-bottom: var(--space-6);
+  margin-bottom: 28px;
   animation: messageIn 0.35s ease forwards;
 }
 
@@ -783,51 +834,55 @@ onMounted(() => {
   padding: var(--space-3) var(--space-4);
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-2xl) var(--radius-2xl) var(--radius-2xl) 4px;
-  position: relative;
-}
-
-.typing-bubble::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
-  border-radius: 1px;
-  background: linear-gradient(180deg, var(--color-primary), var(--color-accent));
-  opacity: 0.3;
+  border-radius: 18px 18px 18px 4px;
 }
 
 /* ========================================
-   Input Area
+   Input Area — Pill Shape
    ======================================== */
 .input-area {
+  flex-shrink: 0;
   padding: 0 var(--space-6) var(--space-5);
-  background: var(--color-bg);
+  background: #FFFFFF;
 }
 
-.input-container {
-  max-width: 800px;
+.input-pill {
+  max-width: 860px;
   margin: 0 auto;
+  display: flex;
+  align-items: flex-end;
+  padding: 8px 8px 8px 4px;
+  gap: var(--space-2);
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-xl);
+  border-radius: 24px;
   box-shadow: var(--shadow-sm);
-  overflow: hidden;
   transition: border-color var(--transition-base), box-shadow var(--transition-base);
 }
 
-.input-container:focus-within {
+.input-pill:focus-within {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-primary-muted), var(--shadow-sm);
 }
 
-.input-wrapper {
+.input-action-btn {
   display: flex;
-  align-items: flex-end;
-  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
-  gap: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.input-action-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
 }
 
 .chat-textarea {
@@ -840,7 +895,7 @@ onMounted(() => {
   line-height: var(--leading-normal);
   color: var(--color-text);
   background: transparent;
-  padding: var(--space-1) 0;
+  padding: var(--space-2) var(--space-2);
   max-height: 160px;
   overflow-y: auto;
 }
@@ -890,54 +945,43 @@ onMounted(() => {
   background: var(--color-accent);
 }
 
-.input-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: var(--space-1) var(--space-4) var(--space-2);
-}
-
-.input-left {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-}
-
-.stream-toggle {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+.input-hint {
+  max-width: 860px;
+  margin: 8px auto 0;
+  text-align: center;
   font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  cursor: pointer;
+  color: var(--color-text-faint);
 }
 
-.model-select {
-  width: 140px;
+/* ========================================
+   Settings Popover
+   ======================================== */
+.settings-popover {
+  display: flex;
+  flex-direction: column;
 }
 
-.config-btn {
+.setting-item {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  cursor: default;
+}
+
+.setting-item.clickable {
+  cursor: pointer;
   border: none;
   background: transparent;
   font-family: var(--font-body);
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
-  transition: all var(--transition-fast);
+  width: 100%;
+  transition: color var(--transition-fast);
 }
 
-.config-btn:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-secondary);
-}
-
-.input-right {
-  display: flex;
-  align-items: center;
+.setting-item.clickable:hover {
+  color: var(--color-primary);
 }
 </style>

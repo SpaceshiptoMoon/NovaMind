@@ -8,7 +8,7 @@ import type {
   AgentConversation,
   AgentMessage,
   McpServer,
-  Skill,
+  ToolProvider,
   ToolCallRecord,
 } from '@/api/types'
 
@@ -34,13 +34,14 @@ export const useAgentStore = defineStore('agent', () => {
   // SSE 流式
   const isStreaming = ref(false)
   const streamingContent = ref('')
+  const streamingReasoning = ref('')
   const toolCalls = ref<ToolCallRecord[]>([])
   const abortController = ref<AbortController | null>(null)
   const loading = ref(false)
 
-  // MCP & 技能（全局共享）
+  // MCP & 工具（全局共享）
   const mcpServers = ref<McpServer[]>([])
-  const skills = ref<Skill[]>([])
+  const tools = ref<ToolProvider[]>([])
   const error = ref<string | null>(null)
 
   // ===================== Agent CRUD =====================
@@ -135,7 +136,7 @@ export const useAgentStore = defineStore('agent', () => {
 
   // ===================== SSE 流式对话 =====================
 
-  async function sendMessageStream(agentId: number, content: string, options?: { llm_model?: string }) {
+  async function sendMessageStream(agentId: number, content: string, options?: { llm_model?: string; enable_thinking?: boolean }) {
     if (!content.trim()) return
 
     // 添加用户消息
@@ -153,6 +154,7 @@ export const useAgentStore = defineStore('agent', () => {
 
     isStreaming.value = true
     streamingContent.value = ''
+    streamingReasoning.value = ''
     toolCalls.value = []
     error.value = null
 
@@ -184,6 +186,7 @@ export const useAgentStore = defineStore('agent', () => {
         content,
         session_id: currentSessionId.value || null,
         llm_model: options?.llm_model || null,
+        enable_thinking: options?.enable_thinking,
       }, {
         signal: controller.signal,
         onSession(d) {
@@ -224,11 +227,9 @@ export const useAgentStore = defineStore('agent', () => {
           }
 
           if (assistantIndex >= 0) {
-            // assistant 已存在，插入到它前面
             messages.value.splice(assistantIndex, 0, toolMsg)
             assistantIndex++
           } else {
-            // assistant 还没创建，直接追加
             messages.value.push(toolMsg)
           }
         },
@@ -244,6 +245,11 @@ export const useAgentStore = defineStore('agent', () => {
           if (toolMsg) {
             toolMsg.content = d.result
           }
+        },
+        onReasoning(text) {
+          streamingReasoning.value += text || ''
+          ensureAssistant()
+          assistantMsg!.reasoning = streamingReasoning.value
         },
         onContent(text) {
           streamingContent.value += text || ''
@@ -277,13 +283,14 @@ export const useAgentStore = defineStore('agent', () => {
     } finally {
       isStreaming.value = false
       streamingContent.value = ''
+      streamingReasoning.value = ''
       abortController.value = null
     }
   }
 
   // ===================== 非流式对话 =====================
 
-  async function sendMessage(agentId: number, content: string, options?: { llm_model?: string }) {
+  async function sendMessage(agentId: number, content: string, options?: { llm_model?: string; enable_thinking?: boolean }) {
     if (!content.trim()) return
 
     const userMsg: AgentMessage = {
@@ -307,12 +314,14 @@ export const useAgentStore = defineStore('agent', () => {
 
     try {
       let collectedContent = ''
+      let collectedReasoning = ''
       const collectedToolCalls: ToolCallRecord[] = []
 
       await agentApi.chatStream(agentId, {
         content,
         session_id: currentSessionId.value || null,
         llm_model: options?.llm_model || null,
+        enable_thinking: options?.enable_thinking,
       }, {
         signal: controller2.signal,
         onSession(d) {
@@ -348,6 +357,9 @@ export const useAgentStore = defineStore('agent', () => {
             call.durationMs = d.duration_ms
           }
         },
+        onReasoning(text) {
+          collectedReasoning += text || ''
+        },
         onContent(text) {
           collectedContent += text || ''
         },
@@ -378,6 +390,7 @@ export const useAgentStore = defineStore('agent', () => {
             tool_name: null,
             token_count: null,
             created_at: new Date().toISOString(),
+            reasoning: collectedReasoning || undefined,
           }
           messages.value.push(aiMsg)
           controller2.abort()
@@ -405,6 +418,7 @@ export const useAgentStore = defineStore('agent', () => {
     messages.value = []
     toolCalls.value = []
     streamingContent.value = ''
+    streamingReasoning.value = ''
     error.value = null
   }
 
@@ -452,13 +466,13 @@ export const useAgentStore = defineStore('agent', () => {
     return await agentApi.refreshMcpTools(serverId)
   }
 
-  // ===================== 技能 =====================
+  // ===================== 工具 =====================
 
-  async function fetchSkills() {
+  async function fetchTools() {
     try {
-      skills.value = await agentApi.listSkills()
+      tools.value = await agentApi.listTools()
     } catch {
-      skills.value = []
+      tools.value = []
     }
   }
 
@@ -483,11 +497,12 @@ export const useAgentStore = defineStore('agent', () => {
     messagesLoading,
     isStreaming,
     streamingContent,
+    streamingReasoning,
     toolCalls,
     abortController,
     loading,
     mcpServers,
-    skills,
+    tools,
     error,
     // Actions
     fetchAgents,
@@ -509,7 +524,7 @@ export const useAgentStore = defineStore('agent', () => {
     connectMcpServer,
     disconnectMcpServer,
     refreshMcpTools,
-    fetchSkills,
+    fetchTools,
     initForAgent,
   }
 })

@@ -428,7 +428,7 @@ Authorization: Bearer <access_token>
 | defaults | object | 否 | 默认配置（JSON 序列化后不超过 10KB） |
 | limits | object | 否 | 限制配置（JSON 序列化后不超过 10KB） |
 
-**请求示例 1 — 修改描述和标签**
+**请求示例 1 -- 修改描述和标签**
 ```json
 {
   "description": "新的空间描述",
@@ -436,7 +436,7 @@ Authorization: Bearer <access_token>
 }
 ```
 
-**请求示例 2 — 设置 Embedding 模型**（dimension 自动回填，无需传入）
+**请求示例 2 -- 设置 Embedding 模型**（dimension 自动回填，无需传入）
 ```json
 {
   "embedding": {
@@ -445,7 +445,7 @@ Authorization: Bearer <access_token>
 }
 ```
 
-**请求示例 3 — 仅修改 batch_size**（深度合并，不会覆盖 model 和 dimension）
+**请求示例 3 -- 仅修改 batch_size**（深度合并，不会覆盖 model 和 dimension）
 ```json
 {
   "embedding": {
@@ -517,6 +517,7 @@ Authorization: Bearer <access_token>
 | items[].stats.uploaded_documents | integer | 待处理文档数 |
 | items[].stats.completed_documents | integer | 已完成文档数 |
 | items[].stats.failed_documents | integer | 失败文档数 |
+| items[].stats.processing_documents | integer | 处理中文档数 |
 | items[].created_at | string | 创建时间 |
 | items[].updated_at | string | 更新时间 |
 | total | integer | 总数 |
@@ -1007,6 +1008,13 @@ Authorization: Bearer <access_token>
 | kb_id | integer | 是 | 知识库 ID（> 0） |
 | document_id | integer | 是 | 文档 ID（> 0） |
 
+**查询参数**
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| skip | integer | 否 | 跳过的记录数（默认 0，>= 0） |
+| limit | integer | 否 | 返回的最大记录数（默认 10，1-1000） |
+
 **响应参数**：返回 `ChunkResponse[]` 数组，结构同 3.3 中 `chunks[]` 对象。
 
 ---
@@ -1206,6 +1214,125 @@ Authorization: Bearer <access_token>
 
 ---
 
+### 3.10 取消文档处理
+
+**请求**
+- 方法：`POST`
+- URL：`/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/cancel`
+- 权限要求：编辑者（EDITOR）及以上
+- 状态码：`200 OK`
+
+> 取消正在处理的文档。通过 Redis 取消标记通知 pipeline 在下一个检查点终止，同时尝试通过 arq abort 取消排队中的任务。
+>
+> 取消后文档状态会变为 FAILED（错误信息为 `[用户取消]`），可通过 3.11 重试接口重新处理。
+>
+> pipeline 内置 4 个取消检查点：文档解析后、向量化后、问题生成后、ES 索引前。取消信号会在下一个检查点生效。
+
+**路径参数**
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| space_id | integer | 是 | 空间 ID（> 0） |
+| kb_id | integer | 是 | 知识库 ID（> 0） |
+| document_id | integer | 是 | 文档 ID（> 0） |
+
+**请求参数**
+
+无（不需要请求体）
+
+**响应参数**
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| document_id | integer | 文档 ID |
+| status | string | 状态（固定值 "cancelling"） |
+| message | string | 消息（固定值 "取消请求已发送"） |
+
+**响应示例**
+```json
+{
+  "document_id": 1,
+  "status": "cancelling",
+  "message": "取消请求已发送"
+}
+```
+
+**错误码**
+
+| 错误码 | HTTP 状态码 | 说明 |
+|--------|------------|------|
+| DOCUMENT_NOT_FOUND | 404 | 文档不存在 |
+| INVALID_PARAMETER | 400 | 文档不在处理中状态（只能取消 PROCESSING 状态的文档） |
+
+---
+
+### 3.11 重试文档处理
+
+**请求**
+- 方法：`POST`
+- URL：`/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/retry`
+- Content-Type：`application/json`
+- 权限要求：编辑者（EDITOR）及以上
+- 状态码：`202 Accepted`
+
+> 重试失败或已完成的文档处理。会先删除 ES 中的旧分块数据保证唯一性，再重新入队处理。
+>
+> 支持的文档状态：
+> - **FAILED**：处理失败或被取消的文档
+> - **COMPLETED**：已处理完成的文档（重新解析，用于更新切分策略后的重新索引）
+>
+> 对于 PROCESSING 状态的文档，应先使用 3.10 取消接口。
+
+**路径参数**
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| space_id | integer | 是 | 空间 ID（> 0） |
+| kb_id | integer | 是 | 知识库 ID（> 0） |
+| document_id | integer | 是 | 文档 ID（> 0） |
+
+**请求参数**
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| enable_question_generation | boolean | 否 | 是否为分块生成假设问题（默认 false） |
+| question_count | integer | 否 | 每个分块生成的问题数量（1-10，默认 5） |
+
+**请求示例**
+```json
+{
+  "enable_question_generation": true,
+  "question_count": 5
+}
+```
+
+**响应参数**
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| document_id | integer | 文档 ID |
+| status | string | 状态（固定值 "processing"） |
+| message | string | 消息（固定值 "文档重试已开始处理"） |
+
+**响应示例**
+```json
+{
+  "document_id": 1,
+  "status": "processing",
+  "message": "文档重试已开始处理"
+}
+```
+
+**错误码**
+
+| 错误码 | HTTP 状态码 | 说明 |
+|--------|------------|------|
+| DOCUMENT_NOT_FOUND | 404 | 文档不存在 |
+| DOCUMENT_ALREADY_PROCESSING | 409 | 文档正在处理中（应先取消） |
+| INVALID_PARAMETER | 400 | 文档状态不允许重试（只能重试 FAILED 或 COMPLETED 状态的文档） |
+
+---
+
 ## 四、成员管理
 
 路由前缀：`/api/v1/spaces/{space_id}/members`
@@ -1275,13 +1402,13 @@ Authorization: Bearer <access_token>
 | items[].space_id | integer | 空间 ID |
 | items[].user_id | integer | 用户 ID |
 | items[].role | integer | 角色（0/1/2） |
-| items[].custom_permissions | object | 细粒度权限 |
+| items[].custom_permissions | object \| null | 细粒度权限 |
 | items[].status | integer | 成员状态 |
-| items[].invited_by | integer | 邀请人 ID |
+| items[].invited_by | integer \| null | 邀请人 ID |
 | items[].joined_at | string | 加入时间 |
 | items[].created_at | string | 创建时间 |
-| items[].username | string | 用户名（关联查询 users 表获取） |
-| items[].email | string | 用户邮箱（关联查询 users 表获取） |
+| items[].username | string \| null | 用户名（关联查询 users 表获取） |
+| items[].email | string \| null | 用户邮箱（关联查询 users 表获取） |
 | total | integer | 总数 |
 | skip | integer | 跳过数量 |
 | limit | integer | 返回数量 |
@@ -1362,7 +1489,7 @@ Authorization: Bearer <access_token>
 |--------|------|------|
 | member_id | integer | 成员记录 ID |
 | invite_token | string | 邀请令牌（仅显示前 8 位 + "..."） |
-| invite_expires_at | string | 邀请过期时间 |
+| invite_expires_at | string \| null | 邀请过期时间 |
 | message | string | 消息 |
 
 **响应示例**
@@ -1691,22 +1818,22 @@ Authorization: Bearer <access_token>
 | results[].kb_id | integer | 知识库 ID |
 | results[].content | string | 检索到的内容 |
 | results[].score | float | 融合分数 |
-| results[].chunk_index | integer | 分块索引 |
+| results[].chunk_index | integer \| null | 分块索引 |
 | results[].questions | string[] \| null | 该分块预生成的假设性问题列表（分块有预生成问题时返回，无问题时为 null，由前端决定是否展示） |
-| results[].metadata | object | 分块元数据 |
-| results[].file_info | object | 文件信息 |
+| results[].metadata | object \| null | 分块元数据 |
+| results[].file_info | object \| null | 文件信息 |
 | total | integer | 结果总数 |
 | query | string | 原始查询文本 |
 | search_mode | string | 实际使用的检索模式 |
-| original_mode | string | 原始请求模式（降级时有值） |
+| original_mode | string \| null | 原始请求模式（降级时有值） |
 | mode_fallback | boolean | 是否发生了模式降级 |
 | top_k | integer | 请求的返回数量 |
-| vector_weight | float | 向量检索权重 |
-| bm25_weight | float | BM25 检索权重 |
-| answer | string | LLM 生成的回答（启用时返回） |
-| answer_model | string | 生成回答使用的模型 |
-| answer_elapsed_ms | float | LLM 回答耗时（毫秒） |
-| elapsed_ms | float | 检索耗时（毫秒） |
+| vector_weight | float \| null | 向量检索权重 |
+| bm25_weight | float \| null | BM25 检索权重 |
+| answer | string \| null | LLM 生成的回答（启用时返回） |
+| answer_model | string \| null | 生成回答使用的模型 |
+| answer_elapsed_ms | float \| null | LLM 回答耗时（毫秒） |
+| elapsed_ms | float \| null | 检索耗时（毫秒） |
 | cached | boolean | 是否来自缓存 |
 | rewritten_queries | string[] \| null | 查询改写后的问题列表（启用 query_rewrite 时返回，hyde 时为假设性文档，sub_query 时为子问题列表） |
 
@@ -1891,10 +2018,10 @@ Authorization: Bearer <access_token>
 
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
-| embedding_model | string | 空间配置的 Embedding 模型名称 |
-| embedding_dimension | integer | 空间配置的向量维度 |
-| default_llm_model | string | 默认 LLM 模型名称 |
-| default_rerank_model | string | 默认 Rerank 模型名称 |
+| embedding_model | string \| null | 空间配置的 Embedding 模型名称 |
+| embedding_dimension | integer \| null | 空间配置的向量维度 |
+| default_llm_model | string \| null | 默认 LLM 模型名称 |
+| default_rerank_model | string \| null | 默认 Rerank 模型名称 |
 | available_embedding_models | string[] | 用户可用的 Embedding 模型列表 |
 | available_llm_models | string[] | 用户可用的 LLM 模型列表 |
 | available_rerank_models | string[] | 用户可用的 Rerank 模型列表 |
@@ -1943,6 +2070,8 @@ Authorization: Bearer <access_token>
 | 3.7 | POST | `.../knowledge-bases/{kb_id}/documents/{document_id}/process` | 触发文档拆分解析 | EDITOR |
 | 3.8 | POST | `.../knowledge-bases/{kb_id}/documents/process` | 批量触发拆分解析 | EDITOR |
 | 3.9 | POST | `.../knowledge-bases/{kb_id}/documents/{document_id}/reprocess` | 重新解析文档 | EDITOR |
+| 3.10 | POST | `.../knowledge-bases/{kb_id}/documents/{document_id}/cancel` | 取消文档处理 | EDITOR |
+| 3.11 | POST | `.../knowledge-bases/{kb_id}/documents/{document_id}/retry` | 重试文档处理（FAILED/COMPLETED） | EDITOR |
 | 4.1 | GET | `/api/v1/spaces/{space_id}/members` | 获取成员列表 | 空间成员 |
 | 4.2 | POST | `/api/v1/spaces/{space_id}/members` | 邀请成员 | ADMIN |
 | 4.3 | POST | `/api/v1/spaces/{space_id}/members/join` | 加入空间 | 登录用户 |

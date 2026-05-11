@@ -574,6 +574,7 @@ export interface ChatMessage {
   kb_id: number | null
   extra: Record<string, unknown> | null
   created_at: string
+  reasoning?: string
 }
 
 export interface SessionItem {
@@ -596,6 +597,7 @@ export interface ChatRequest {
   temperature?: number
   top_p?: number
   system_prompt?: string
+  enable_thinking?: boolean
 }
 
 export interface ChatResponse {
@@ -712,9 +714,6 @@ export interface ResearchStats {
   internal_searches: number
   external_searches: number
   total_results: number
-  tasks_completed: number
-  report_length: number
-  sources_count: number
 }
 
 export interface Research {
@@ -926,16 +925,17 @@ export interface TaskProgressResponse {
 
 export interface Agent {
   id: number
-  user_id: number
+  user_id: number | null
   name: string
   description: string | null
   system_prompt: string
   llm_model: string | null
   max_tokens: number
+  context_window: number
   temperature: number
   top_p: number
   max_tool_calls_per_turn: number
-  enabled_skills: string[] | null
+  enabled_tools: string[] | null
   enabled_mcp_servers: number[] | null
   created_at: string
   updated_at: string
@@ -947,10 +947,11 @@ export interface CreateAgentRequest {
   system_prompt: string
   llm_model?: string
   max_tokens?: number
+  context_window?: number
   temperature?: number
   top_p?: number
   max_tool_calls_per_turn?: number
-  enabled_skills?: string[]
+  enabled_tools?: string[]
   enabled_mcp_servers?: number[]
 }
 
@@ -992,6 +993,7 @@ export interface AgentMessage {
   tool_name: string | null
   token_count: number | null
   created_at: string
+  reasoning?: string
 }
 
 export interface AgentMessageListResponse {
@@ -1030,16 +1032,16 @@ export interface CreateMcpServerRequest {
 
 export type UpdateMcpServerRequest = Partial<CreateMcpServerRequest>
 
-export interface SkillTool {
+export interface ToolFunction {
   name: string
   description: string
   parameters: Record<string, unknown>
 }
 
-export interface Skill {
+export interface ToolProvider {
   name: string
   description: string
-  tools: SkillTool[]
+  tools: ToolFunction[]
   system_prompt_fragment: string
 }
 
@@ -1058,4 +1060,126 @@ export interface ToolCallRecord {
   status: 'pending' | 'running' | 'completed' | 'failed'
   result?: string
   durationMs?: number
+}
+
+// ==================== 技能广场 ====================
+
+export interface SkillReviewRules {
+  passed: boolean
+  matches: string[]
+}
+
+export interface SkillReviewLlm {
+  level: string | null
+  reason: string | null
+}
+
+export interface SkillReviewResult {
+  rules: SkillReviewRules
+  llm: SkillReviewLlm
+  admin_reason?: string
+}
+
+export interface SkillDefinition {
+  id: number
+  user_id: number | null
+  name: string
+  display_name: string
+  description: string
+  license: string | null
+  allowed_tools: string[] | null
+  frontmatter_raw: string | null
+  body_markdown: string
+  category: string | null
+  tags: string[] | null
+  icon: string | null
+  version: number
+  version_note: string | null
+  skill_source: 'builtin' | 'custom'
+  visibility: number
+  status: number
+  install_count: number
+  rating_avg: number
+  rating_count: number
+  review_status: number // 0=PENDING 1=APPROVED 2=SUSPICIOUS 3=REJECTED
+  review_result: SkillReviewResult | null
+  reviewed_at: string | null
+  author_name: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface SkillListItem {
+  id: number
+  name: string
+  display_name: string
+  description: string
+  category: string | null
+  tags: string[] | null
+  icon: string | null
+  version: number
+  skill_source: 'builtin' | 'custom'
+  install_count: number
+  rating_avg: number
+  rating_count: number
+  author_name: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface SkillMarketplaceListResponse {
+  items: SkillListItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface SkillReviewItem {
+  id: number
+  skill_id: number
+  user_id: number
+  rating: number
+  content: string | null
+  user_name: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface SkillReviewListResponse {
+  items: SkillReviewItem[]
+  total: number
+}
+
+export interface SkillInstallationItem {
+  id: number
+  skill_id: number
+  agent_id: number
+  created_at: string | null
+}
+
+export interface SkillValidateResponse {
+  valid: boolean
+  errors: string[]
+  parsed: Record<string, unknown> | null
+}
+
+// ==================== 技能广场 — 管理员 ====================
+
+export interface SkillAdminSettingsResponse {
+  llm_review_enabled: boolean
+  llm_review_model: string | null
+}
+
+export interface SkillAdminSettingsUpdate {
+  llm_review_enabled: boolean
+  llm_review_model?: string | null
+}
+
+export interface SkillAdminReviewAction {
+  reason?: string
+}
+
+export interface SkillPendingReviewListResponse {
+  items: SkillListItem[]
+  total: number
 }

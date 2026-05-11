@@ -47,7 +47,10 @@ const isInWorkspace = computed(() => route.path.startsWith('/home/workspace'))
 
 .main-content.workspace-mode {
   padding: 0;
+  min-height: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .fade-enter-active {

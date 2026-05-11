@@ -1,10 +1,6 @@
 <template>
   <div class="document-detail-view">
     <div class="back-row">
-      <el-button size="small" @click="goBackToDocuments">
-        <el-icon><ArrowLeft /></el-icon>
-        返回文档列表
-      </el-button>
       <BreadcrumbNav :doc-name="document?.filename" />
     </div>
 
@@ -14,6 +10,26 @@
         <div class="card-header">
           <span>文档信息</span>
           <div class="header-actions">
+            <el-button
+              v-if="isProcessing"
+              type="warning"
+              size="small"
+              :loading="cancelLoading"
+              @click="handleCancel"
+            >
+              <el-icon><Close /></el-icon>
+              取消处理
+            </el-button>
+            <el-button
+              v-if="isFailed"
+              type="warning"
+              size="small"
+              :loading="retryLoading"
+              @click="handleRetry"
+            >
+              <el-icon><RefreshRight /></el-icon>
+              重试
+            </el-button>
             <el-button
               v-if="canReprocess"
               type="warning"
@@ -122,7 +138,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Download, Delete, Refresh, ArrowLeft } from '@element-plus/icons-vue'
+import { Download, Delete, Refresh, RefreshRight, Close } from '@element-plus/icons-vue'
 import { documentApi } from '@/api/document'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -138,6 +154,8 @@ const kbId = computed(() => Number(route.query.kbId) || 0)
 
 const loading = ref(false)
 const reprocessLoading = ref(false)
+const cancelLoading = ref(false)
+const retryLoading = ref(false)
 const document = ref<DocumentDetail | null>(null)
 const chunks = ref<Chunk[]>([])
 const totalChunks = ref(0)
@@ -174,12 +192,18 @@ function formatDate(date?: string | null): string {
 
 const canReprocess = computed(() => {
   const s = document.value?.status
-  return s === 'failed' || s === 'completed' || s === 3 || s === 2
+  return s === 'completed' || s === 2
 })
 
-function goBackToDocuments() {
-  router.push(`/home/spaces/${spaceId.value}/knowledge-bases/${kbId.value}/documents`)
-}
+const isProcessing = computed(() => {
+  const s = document.value?.status
+  return s === 'processing' || s === 1
+})
+
+const isFailed = computed(() => {
+  const s = document.value?.status
+  return s === 'failed' || s === 3
+})
 
 async function fetchDocument() {
   loading.value = true
@@ -249,6 +273,48 @@ async function handleReprocess() {
     }
   } finally {
     reprocessLoading.value = false
+  }
+}
+
+async function handleCancel() {
+  try {
+    await ElMessageBox.confirm(
+      '确定要取消该文档的处理吗？',
+      '取消处理',
+      { confirmButtonText: '确定取消', cancelButtonText: '返回', type: 'warning' },
+    )
+    cancelLoading.value = true
+    await documentApi.cancelDocument(spaceId.value, kbId.value, docId.value)
+    ElMessage.success('取消请求已发送')
+    fetchDocument()
+  } catch (error: unknown) {
+    if ((error as string) !== 'cancel') {
+      const err = error as { response?: { data?: { error?: { message?: string } } } }
+      ElMessage.error(err.response?.data?.error?.message || '取消失败')
+    }
+  } finally {
+    cancelLoading.value = false
+  }
+}
+
+async function handleRetry() {
+  try {
+    await ElMessageBox.confirm(
+      '确定要重试该文档的处理吗？将清除旧的分块数据并重新解析。',
+      '重试处理',
+      { confirmButtonText: '确定重试', cancelButtonText: '取消', type: 'info' },
+    )
+    retryLoading.value = true
+    await documentApi.retryDocument(spaceId.value, kbId.value, docId.value)
+    ElMessage.success('已提交重试任务')
+    fetchDocument()
+  } catch (error: unknown) {
+    if ((error as string) !== 'cancel') {
+      const err = error as { response?: { data?: { error?: { message?: string } } } }
+      ElMessage.error(err.response?.data?.error?.message || '重试失败')
+    }
+  } finally {
+    retryLoading.value = false
   }
 }
 
