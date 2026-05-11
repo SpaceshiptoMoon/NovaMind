@@ -115,12 +115,14 @@ export const useResearchStore = defineStore('research', () => {
             const msg = messages.value[assistantMsgIdx]
             msg.content = finalContent || msg.content
             msg.stats = d.stats as ResearchStats || null
+            msg.sources = (d as { sources?: string[] }).sources || []
           } else {
             messages.value.push({
               id: nextMsgId(),
               role: 'assistant',
               content: finalContent,
               stats: d.stats as ResearchStats || null,
+              sources: (d as { sources?: string[] }).sources || [],
             })
           }
           // update sources from currentResearch

@@ -13,7 +13,7 @@ import type {
   McpTool,
   CreateMcpServerRequest,
   UpdateMcpServerRequest,
-  Skill,
+  ToolProvider,
   ToolCallRecord,
 } from './types'
 
@@ -44,11 +44,12 @@ export const agentApi = {
 
   chatStream(
     agentId: number,
-    data: { content: string; session_id?: string | null; llm_model?: string | null },
+    data: { content: string; session_id?: string | null; llm_model?: string | null; enable_thinking?: boolean },
     callbacks: {
       onSession?: (d: { session_id: string; agent_id: number }) => void
       onToolCall?: (d: { tool_name: string; arguments: Record<string, unknown>; call_id: string }) => void
       onToolResult?: (d: { tool_name: string; result: string; duration_ms: number; status: string; call_id: string }) => void
+      onReasoning?: (text: string) => void
       onContent?: (content: string) => void
       onDone?: (d: AgentChatDoneData) => void
       onError?: (err: { content: string }) => void
@@ -67,6 +68,9 @@ export const agentApi = {
             break
           case 'tool_result':
             callbacks.onToolResult?.(e.data as Parameters<typeof callbacks.onToolResult>[0])
+            break
+          case 'reasoning':
+            callbacks.onReasoning?.((e.data as { content: string }).content)
             break
           case 'content':
             callbacks.onContent?.((e.data as { content: string }).content)
@@ -123,7 +127,7 @@ export const agentApi = {
   },
 
   disconnectMcpServer(serverId: number) {
-    return request.post<void>(`/agent/mcp-servers/${serverId}/disconnect`)
+    return request.post<McpServer>(`/agent/mcp-servers/${serverId}/disconnect`)
   },
 
   refreshMcpTools(serverId: number) {
@@ -134,13 +138,13 @@ export const agentApi = {
     return request.post<{ success: boolean; tools: McpTool[] }>('/agent/mcp-servers/test-connection', data)
   },
 
-  // ===================== 技能 =====================
+  // ===================== 工具 =====================
 
-  listSkills() {
-    return request.get<Skill[]>('/agent/skills')
+  listTools() {
+    return request.get<ToolProvider[]>('/agent/tools')
   },
 
-  getSkill(skillName: string) {
-    return request.get<Skill>(`/agent/skills/${skillName}`)
+  getTool(toolName: string) {
+    return request.get<ToolProvider>(`/agent/tools/${toolName}`)
   },
 }

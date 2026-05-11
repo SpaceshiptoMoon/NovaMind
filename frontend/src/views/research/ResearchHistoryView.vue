@@ -56,7 +56,7 @@
       </el-table-column>
       <el-table-column label="来源数" width="90" align="center">
         <template #default="{ row }">
-          {{ row.stats?.sources_count || '-' }}
+          {{ row.stats?.total_results || '-' }}
         </template>
       </el-table-column>
       <el-table-column prop="created_at" label="创建时间" width="160">

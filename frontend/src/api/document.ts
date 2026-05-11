@@ -78,4 +78,17 @@ export const documentApi = {
       data ?? {}
     )
   },
+
+  cancelDocument(spaceId: number, kbId: number, docId: number) {
+    return request.post<{ document_id: number; status: string; message: string }>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/cancel`
+    )
+  },
+
+  retryDocument(spaceId: number, kbId: number, docId: number, data?: { enable_question_generation?: boolean; question_count?: number }) {
+    return request.post<ProcessDocumentResponse>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/retry`,
+      data ?? {}
+    )
+  },
 }

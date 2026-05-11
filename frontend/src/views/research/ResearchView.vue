@@ -42,9 +42,6 @@
       <!-- 空状态：欢迎屏幕 -->
       <div v-if="researchStore.messages.length === 0 && !researchStore.isResearching" class="welcome-screen">
         <div class="welcome-inner">
-          <div class="welcome-icon">
-            <el-icon :size="40" color="var(--color-primary)"><Search /></el-icon>
-          </div>
           <h2 class="welcome-title">深度研究</h2>
           <p class="welcome-subtitle">输入研究问题，AI 将自动搜索、分析并生成研究报告</p>
           <div class="welcome-prompts">
@@ -99,7 +96,7 @@
                   <span><el-icon :size="12"><Timer /></el-icon> {{ msg.stats.elapsed_seconds }}s</span>
                   <span><el-icon :size="12"><FolderOpened /></el-icon> 内部 {{ msg.stats.internal_searches }} 次</span>
                   <span><el-icon :size="12"><Link /></el-icon> 外部 {{ msg.stats.external_searches }} 次</span>
-                  <span><el-icon :size="12"><Document /></el-icon> {{ msg.stats.sources_count }} 来源</span>
+                  <span><el-icon :size="12"><Document /></el-icon> {{ msg.stats.total_results }} 来源</span>
                 </div>
                 <!-- 来源标签 -->
                 <div v-if="msg.sources?.length" class="report-sources">
@@ -128,77 +125,91 @@
         </div>
       </div>
 
-      <!-- 输入区域 -->
+      <!-- 输入区域：药丸形 -->
       <div class="input-area">
-        <div class="input-container">
-          <div class="input-wrapper">
-            <textarea
-              ref="textareaRef"
-              v-model="inputText"
-              class="chat-textarea"
-              :placeholder="spaceId ? '输入研究问题...' : '请先在左侧选择一个知识空间'"
-              :rows="1"
-              :disabled="researchStore.isResearching || !spaceId"
-              @keydown="handleKeydown"
-              @input="autoResize"
-            />
-            <button
-              v-if="researchStore.isResearching"
-              class="send-btn stop-btn"
-              @click="handleCancel"
-            >
-              <el-icon :size="16"><VideoPause /></el-icon>
-            </button>
-            <button
-              v-else
-              class="send-btn"
-              :class="{ active: inputText.trim() && spaceId }"
-              :disabled="!inputText.trim() || !spaceId"
-              @click="handleSend"
-            >
-              <el-icon :size="16"><Promotion /></el-icon>
-            </button>
-          </div>
-          <div class="input-footer">
-            <div class="input-left">
-              <el-select v-model="researchMode" size="small" style="width: 100px" :disabled="researchStore.isResearching">
-                <el-option label="快速" value="quick" />
-                <el-option label="标准" value="standard" />
-                <el-option label="深度" value="deep" />
-              </el-select>
-              <el-select v-model="searchSource" size="small" style="width: 120px" :disabled="researchStore.isResearching">
-                <el-option label="混合搜索" value="hybrid" />
-                <el-option label="仅知识库" value="internal" />
-                <el-option label="仅网络" value="external" />
-              </el-select>
-              <el-select
-                v-model="selectedModel"
-                :placeholder="defaultModelName ? `默认: ${defaultModelName}` : '默认模型'"
-                clearable
-                size="small"
-                class="model-select"
-                :disabled="researchStore.isResearching"
-              >
-                <el-option
-                  v-for="m in llmModels"
-                  :key="m.model"
-                  :label="m.model"
-                  :value="m.model"
-                />
-              </el-select>
-              <button class="config-btn" @click="advancedDialogVisible = true">
-                <el-icon :size="14"><Setting /></el-icon>
-                <span>高级</span>
+        <div class="input-pill">
+          <el-popover trigger="click" :width="220" placement="top-start">
+            <template #reference>
+              <button class="input-action-btn" :disabled="researchStore.isResearching">
+                <el-icon :size="16"><Setting /></el-icon>
               </button>
-            </div>
-            <div class="input-right">
-              <router-link v-if="spaceId" :to="`/home/workspace/research/${spaceId}/history`" class="config-btn">
-                <el-icon :size="14"><Clock /></el-icon>
+            </template>
+            <div class="settings-popover">
+              <div class="setting-item">
+                <span>研究模式</span>
+                <el-select v-model="researchMode" size="small" style="width: 90px">
+                  <el-option label="快速" value="quick" />
+                  <el-option label="标准" value="standard" />
+                  <el-option label="深度" value="deep" />
+                </el-select>
+              </div>
+              <div class="setting-item">
+                <span>搜索源</span>
+                <el-select v-model="searchSource" size="small" style="width: 110px">
+                  <el-option label="混合搜索" value="hybrid" />
+                  <el-option label="仅知识库" value="internal" />
+                  <el-option label="仅网络" value="external" />
+                </el-select>
+              </div>
+              <div class="setting-item">
+                <span>模型</span>
+                <el-select
+                  v-model="selectedModel"
+                  :placeholder="defaultModelName || '默认'"
+                  clearable
+                  size="small"
+                  style="width: 120px"
+                >
+                  <el-option
+                    v-for="m in llmModels"
+                    :key="m.model"
+                    :label="m.model"
+                    :value="m.model"
+                  />
+                </el-select>
+              </div>
+              <button class="setting-item clickable" @click="advancedDialogVisible = true">
+                <span>高级设置</span>
+                <el-icon :size="12"><ArrowRight /></el-icon>
+              </button>
+              <router-link
+                v-if="spaceId"
+                :to="`/home/workspace/research/${spaceId}/history`"
+                class="setting-item clickable"
+              >
                 <span>历史记录</span>
+                <el-icon :size="12"><ArrowRight /></el-icon>
               </router-link>
             </div>
-          </div>
+          </el-popover>
+          <textarea
+            ref="textareaRef"
+            v-model="inputText"
+            class="chat-textarea"
+            :placeholder="spaceId ? '输入研究问题...' : '请先在左侧选择一个知识空间'"
+            :rows="1"
+            :disabled="researchStore.isResearching || !spaceId"
+            @keydown="handleKeydown"
+            @input="autoResize"
+          />
+          <button
+            v-if="researchStore.isResearching"
+            class="send-btn stop-btn"
+            @click="handleCancel"
+          >
+            <el-icon :size="16"><VideoPause /></el-icon>
+          </button>
+          <button
+            v-else
+            class="send-btn"
+            :class="{ active: inputText.trim() && spaceId }"
+            :disabled="!inputText.trim() || !spaceId"
+            @click="handleSend"
+          >
+            <el-icon :size="16"><Promotion /></el-icon>
+          </button>
         </div>
+        <div class="input-hint">按 Enter 发送，Shift + Enter 换行</div>
       </div>
     </div>
 
@@ -238,10 +249,10 @@ import {
   Link,
   Document,
   Setting,
-  Clock,
   CircleCheck,
   Fold,
   Expand,
+  ArrowRight,
 } from '@element-plus/icons-vue'
 import { useResearchStore } from '@/stores/research'
 import { researchApi } from '@/api/research'
@@ -320,7 +331,6 @@ async function handleViewHistory(item: Research) {
 
   currentSessionId.value = item.session_id
 
-  // always fetch detail to get full report
   let research: Research
   try {
     research = await researchApi.getResearchDetail(spaceId.value, item.session_id)
@@ -330,13 +340,11 @@ async function handleViewHistory(item: Research) {
   }
 
   researchStore.clearMessages()
-  // push user message
   researchStore.messages.push({
     id: `hist_user_${research.session_id}`,
     role: 'user',
     content: research.query,
   })
-  // push assistant message with report
   researchStore.messages.push({
     id: `hist_report_${research.session_id}`,
     role: 'assistant',
@@ -370,7 +378,8 @@ function autoResize() {
 }
 
 watch(() => researchStore.messages.length, () => scrollToBottom())
-watch(() => researchStore.messages.map((m) => m.content).join(''), () => scrollToBottom())
+watch(() => researchStore.isResearching, () => scrollToBottom())
+watch(() => researchStore.loading, () => scrollToBottom())
 
 function handleQuickPrompt(text: string) {
   inputText.value = text
@@ -456,14 +465,15 @@ watch(spaceId, () => {
 
 <style scoped>
 .research-chat {
+  position: absolute;
+  inset: 0;
   display: flex;
-  background: var(--color-bg);
+  background: #FFFFFF;
   overflow: hidden;
-  height: 100%;
 }
 
 /* ========================================
-   Sidebar (Left Panel)
+   Sidebar
    ======================================== */
 .chat-sidebar {
   width: 260px;
@@ -475,7 +485,7 @@ watch(spaceId, () => {
 }
 
 .sidebar-top {
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-4);
   border-bottom: 1px solid var(--color-border-light);
   display: flex;
   gap: var(--space-2);
@@ -488,15 +498,15 @@ watch(spaceId, () => {
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  padding: var(--space-2);
+  padding: var(--space-3);
   border: 1px dashed var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: transparent;
   color: var(--color-text-secondary);
   font-family: var(--font-body);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-base);
 }
 
 .new-research-btn:hover {
@@ -572,6 +582,11 @@ watch(spaceId, () => {
   background: var(--color-primary-muted);
 }
 
+.conv-item.active .conv-title {
+  color: var(--color-primary);
+  font-weight: var(--weight-medium);
+}
+
 .conv-item.active::before {
   content: '';
   position: absolute;
@@ -620,7 +635,7 @@ watch(spaceId, () => {
 }
 
 /* ========================================
-   Chat Main (Right Panel)
+   Main Chat Area
    ======================================== */
 .chat-main {
   flex: 1;
@@ -629,7 +644,7 @@ watch(spaceId, () => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--color-bg);
+  background: #FFFFFF;
 }
 
 /* ========================================
@@ -647,29 +662,18 @@ watch(spaceId, () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  max-width: 640px;
+  max-width: 720px;
   width: 100%;
-}
-
-.welcome-icon {
-  width: 72px;
-  height: 72px;
-  border-radius: var(--radius-xl);
-  background: linear-gradient(135deg, #E8F0FE 0%, #FEF1EE 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: var(--space-6);
-  box-shadow: 0 4px 16px rgba(66, 133, 244, 0.12);
 }
 
 .welcome-title {
   font-family: var(--font-display);
-  font-size: var(--text-3xl);
+  font-size: 32px;
   font-weight: var(--weight-bold);
   color: var(--color-text);
   margin-bottom: var(--space-3);
   letter-spacing: var(--tracking-tight);
+  text-align: center;
 }
 
 .welcome-subtitle {
@@ -677,6 +681,7 @@ watch(spaceId, () => {
   color: var(--color-text-muted);
   margin-bottom: var(--space-8);
   text-align: center;
+  line-height: var(--leading-relaxed);
 }
 
 .welcome-prompts {
@@ -690,10 +695,10 @@ watch(spaceId, () => {
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
-  padding: var(--space-4);
-  border: 1px solid var(--color-border-light);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid transparent;
   border-radius: var(--radius-lg);
-  background: var(--color-bg-card);
+  background: transparent;
   cursor: pointer;
   transition: all var(--transition-base);
   text-align: left;
@@ -701,9 +706,13 @@ watch(spaceId, () => {
 }
 
 .prompt-card:hover {
-  border-color: var(--color-primary);
-  background: var(--color-primary-muted);
+  border-color: var(--color-border);
+  background: var(--color-bg-card);
   box-shadow: var(--shadow-sm);
+}
+
+.prompt-card:hover .prompt-text {
+  color: var(--color-text);
 }
 
 .prompt-icon {
@@ -714,12 +723,9 @@ watch(spaceId, () => {
 
 .prompt-text {
   font-size: var(--text-sm);
-  color: var(--color-text-secondary);
+  color: var(--color-text-muted);
   line-height: var(--leading-normal);
-}
-
-.prompt-card:hover .prompt-text {
-  color: var(--color-text);
+  transition: color var(--transition-fast);
 }
 
 /* ========================================
@@ -727,20 +733,20 @@ watch(spaceId, () => {
    ======================================== */
 .messages-container {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   scroll-behavior: smooth;
 }
 
 .messages-inner {
-  max-width: 800px;
+  max-width: 860px;
   margin: 0 auto;
   padding: var(--space-6) var(--space-6) var(--space-4);
 }
 
 .message-row {
   display: flex;
-  gap: var(--space-4);
-  margin-bottom: var(--space-6);
+  margin-bottom: 28px;
   animation: messageIn 0.35s ease forwards;
 }
 
@@ -754,7 +760,7 @@ watch(spaceId, () => {
 }
 
 .message-body {
-  max-width: 70%;
+  max-width: 75%;
   min-width: 0;
 }
 
@@ -767,7 +773,7 @@ watch(spaceId, () => {
 /* User message */
 .message-row.user .message-text {
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-2xl) var(--radius-2xl) 4px var(--radius-2xl);
+  border-radius: 18px 18px 4px 18px;
   background: var(--color-primary);
   color: #FFFFFF;
   white-space: pre-wrap;
@@ -776,52 +782,25 @@ watch(spaceId, () => {
 
 /* Assistant message */
 .message-row.assistant .message-text {
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-2xl) var(--radius-2xl) var(--radius-2xl) 4px;
+  padding: var(--space-4) var(--space-5);
+  border-radius: 18px 18px 18px 4px;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
-  position: relative;
-}
-
-.message-row.assistant .message-text::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
-  border-radius: 1px;
-  background: linear-gradient(180deg, var(--color-primary), var(--color-accent));
-  opacity: 0.3;
 }
 
 /* Progress message */
 .progress-card {
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-2xl) var(--radius-2xl) var(--radius-2xl) 4px;
+  border-radius: 18px 18px 18px 4px;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
-  position: relative;
   min-width: 240px;
-}
-
-.progress-card::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
-  border-radius: 1px;
-  background: linear-gradient(180deg, var(--color-primary), var(--color-accent));
-  opacity: 0.3;
 }
 
 .progress-header {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: var(--space-2);
 }
 
 .progress-text {
@@ -901,34 +880,51 @@ watch(spaceId, () => {
 }
 
 /* ========================================
-   Input Area
+   Input Area — Pill Shape
    ======================================== */
 .input-area {
+  flex-shrink: 0;
   padding: 0 var(--space-6) var(--space-5);
-  background: var(--color-bg);
+  background: #FFFFFF;
 }
 
-.input-container {
-  max-width: 800px;
+.input-pill {
+  max-width: 860px;
   margin: 0 auto;
+  display: flex;
+  align-items: flex-end;
+  padding: 8px 8px 8px 4px;
+  gap: var(--space-2);
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-xl);
+  border-radius: 24px;
   box-shadow: var(--shadow-sm);
-  overflow: hidden;
   transition: border-color var(--transition-base), box-shadow var(--transition-base);
 }
 
-.input-container:focus-within {
+.input-pill:focus-within {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-primary-muted), var(--shadow-sm);
 }
 
-.input-wrapper {
+.input-action-btn {
   display: flex;
-  align-items: flex-end;
-  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
-  gap: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.input-action-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
 }
 
 .chat-textarea {
@@ -941,7 +937,7 @@ watch(spaceId, () => {
   line-height: var(--leading-normal);
   color: var(--color-text);
   background: transparent;
-  padding: var(--space-1) 0;
+  padding: var(--space-2) var(--space-2);
   max-height: 160px;
   overflow-y: auto;
 }
@@ -991,49 +987,44 @@ watch(spaceId, () => {
   background: var(--color-accent);
 }
 
-.input-footer {
+.input-hint {
+  max-width: 860px;
+  margin: 8px auto 0;
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+}
+
+/* ========================================
+   Settings Popover
+   ======================================== */
+.settings-popover {
   display: flex;
+  flex-direction: column;
+}
+
+.setting-item {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  padding: var(--space-1) var(--space-4) var(--space-2);
-}
-
-.input-left {
-  display: flex;
-  align-items: center;
   gap: var(--space-3);
+  padding: var(--space-2) 0;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  cursor: default;
 }
 
-.model-select {
-  width: 140px;
-}
-
-.config-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
+.setting-item.clickable {
+  cursor: pointer;
   border: none;
   background: transparent;
   font-family: var(--font-body);
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
-  transition: all var(--transition-fast);
-}
-
-.config-btn:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-secondary);
-}
-
-.input-right {
-  display: flex;
-  align-items: center;
-}
-
-.input-right .config-btn {
+  width: 100%;
+  transition: color var(--transition-fast);
   text-decoration: none;
+}
+
+.setting-item.clickable:hover {
+  color: var(--color-primary);
 }
 </style>

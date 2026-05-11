@@ -10,6 +10,7 @@ export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
   const isStreaming = ref(false)
   const streamingContent = ref('')
+  const streamingReasoning = ref('')
   const loading = ref(false)
   const error = ref<string | null>(null)
   const sessionConfig = ref<SessionConfigResponse | null>(null)
@@ -62,8 +63,15 @@ export const useChatStore = defineStore('chat', () => {
     max_tokens?: number
     temperature?: number
     top_p?: number
+    enable_thinking?: boolean
   }) {
     if (!content.trim()) return
+
+    // 防止重复发送
+    const lastMsg = messages.value[messages.value.length - 1]
+    if (lastMsg?.role === 'user' && lastMsg.content === content && loading.value) {
+      return
+    }
 
     const userMessage: ChatMessage = {
       id: Date.now(),
@@ -89,6 +97,7 @@ export const useChatStore = defineStore('chat', () => {
         max_tokens: options?.max_tokens,
         temperature: options?.temperature,
         top_p: options?.top_p,
+        enable_thinking: options?.enable_thinking,
       })
 
       if (!currentSessionId.value) {
@@ -120,8 +129,15 @@ export const useChatStore = defineStore('chat', () => {
     max_tokens?: number
     temperature?: number
     top_p?: number
+    enable_thinking?: boolean
   }) {
     if (!content.trim()) return
+
+    // 防止重复发送：如果最后一条消息内容相同且还在流式中，跳过
+    const lastMsg = messages.value[messages.value.length - 1]
+    if (lastMsg?.role === 'user' && lastMsg.content === content && isStreaming.value) {
+      return
+    }
 
     const userMessage: ChatMessage = {
       id: Date.now(),
@@ -151,6 +167,7 @@ export const useChatStore = defineStore('chat', () => {
 
     isStreaming.value = true
     streamingContent.value = ''
+    streamingReasoning.value = ''
     error.value = null
 
     const controller = new AbortController()
@@ -165,15 +182,33 @@ export const useChatStore = defineStore('chat', () => {
         max_tokens: options?.max_tokens,
         temperature: options?.temperature,
         top_p: options?.top_p,
+        enable_thinking: options?.enable_thinking,
       }, {
         signal: controller.signal,
         onUserMessage(d) {
+          // 用服务端返回的消息替换本地临时用户消息，保持 ID 一致
+          const localUserMsg = messages.value.find(
+            (m) => m.role === 'user' && m.content === content && typeof m.id === 'number' && m.id > 1000000000000
+          )
+          if (localUserMsg) {
+            localUserMsg.id = d.id
+            localUserMsg.session_id = d.session_id
+            localUserMsg.created_at = d.created_at
+          }
+
           if (d.session_id && !currentSessionId.value) {
             currentSessionId.value = d.session_id
             sessions.value.unshift({
               session_id: d.session_id,
               preview: content.slice(0, 30),
             })
+          }
+        },
+        onReasoning(text) {
+          streamingReasoning.value += text || ''
+          const lastMsg = messages.value[messages.value.length - 1]
+          if (lastMsg?.role === 'assistant') {
+            lastMsg.reasoning = streamingReasoning.value
           }
         },
         onContent(text) {
@@ -213,6 +248,7 @@ export const useChatStore = defineStore('chat', () => {
     } finally {
       isStreaming.value = false
       streamingContent.value = ''
+      streamingReasoning.value = ''
       abortController.value = null
     }
   }
@@ -262,6 +298,7 @@ export const useChatStore = defineStore('chat', () => {
     messages,
     isStreaming,
     streamingContent,
+    streamingReasoning,
     loading,
     error,
     sessionConfig,

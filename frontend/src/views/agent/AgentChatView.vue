@@ -99,6 +99,17 @@
             <!-- AI 消息 -->
             <div v-else-if="msg.role === 'assistant' && msg.content" class="message-row assistant">
               <div class="message-body">
+                <div v-if="msg.reasoning" class="reasoning-section">
+                  <div class="reasoning-header" @click="toggleReasoning(msg.id)">
+                    <span class="reasoning-label">思考过程</span>
+                    <el-icon :size="12" class="expand-icon" :class="{ expanded: expandedReasoning.has(msg.id) }">
+                      <ArrowDown />
+                    </el-icon>
+                  </div>
+                  <div v-if="expandedReasoning.has(msg.id)" class="reasoning-body">
+                    <MarkdownRenderer :content="msg.reasoning" />
+                  </div>
+                </div>
                 <MarkdownRenderer :content="msg.content" class="message-text" />
                 <div class="message-actions">
                   <button class="msg-copy-btn" @click="handleCopyMessage(msg.content!, $event)">
@@ -133,53 +144,66 @@
         </div>
       </div>
 
-      <!-- 输入区域 -->
+      <!-- 输入区域：药丸形 -->
       <div class="input-area">
-        <div class="input-container">
-          <div class="input-wrapper">
-            <textarea
-              ref="textareaRef"
-              v-model="inputText"
-              class="chat-textarea"
-              placeholder="输入消息..."
-              :rows="1"
-              :disabled="agentStore.isStreaming || agentStore.loading"
-              @keydown="handleKeydown"
-              @input="autoResize"
-            />
-            <button
-              v-if="agentStore.isStreaming"
-              class="send-btn stop-btn"
-              @click="handleCancelStream"
-            >
-              <el-icon :size="16"><VideoPause /></el-icon>
-            </button>
-            <button
-              v-else
-              class="send-btn"
-              :class="{ active: inputText.trim() }"
-              :disabled="!inputText.trim() || agentStore.loading"
-              @click="handleSend"
-            >
-              <el-icon :size="16"><Promotion /></el-icon>
-            </button>
-          </div>
-        </div>
-        <div class="input-footer">
-          <label class="stream-toggle">
-            <el-switch v-model="useStream" size="small" />
-            <span>流式输出</span>
-          </label>
-          <el-select
-            v-model="selectedModel"
-            :placeholder="defaultModelName ? `默认: ${defaultModelName}` : '默认模型'"
-            clearable
-            size="small"
-            class="model-select"
+        <div class="input-pill">
+          <el-popover trigger="click" :width="180" placement="top-start">
+            <template #reference>
+              <button class="input-action-btn">
+                <el-icon :size="16"><Setting /></el-icon>
+              </button>
+            </template>
+            <div class="settings-popover">
+              <label class="setting-item">
+                <span>深度思考</span>
+                <el-switch v-model="enableThinking" size="small" />
+              </label>
+              <label class="setting-item">
+                <span>流式输出</span>
+                <el-switch v-model="useStream" size="small" />
+              </label>
+              <div class="setting-item">
+                <span>模型</span>
+                <el-select
+                  v-model="selectedModel"
+                  :placeholder="defaultModelName || '默认'"
+                  clearable
+                  size="small"
+                  style="width: 120px"
+                >
+                  <el-option v-for="(_, name) in availableModels" :key="name" :label="name" :value="name" />
+                </el-select>
+              </div>
+            </div>
+          </el-popover>
+          <textarea
+            ref="textareaRef"
+            v-model="inputText"
+            class="chat-textarea"
+            placeholder="输入消息..."
+            :rows="1"
+            :disabled="agentStore.isStreaming || agentStore.loading"
+            @keydown="handleKeydown"
+            @input="autoResize"
+          />
+          <button
+            v-if="agentStore.isStreaming"
+            class="send-btn stop-btn"
+            @click="handleCancelStream"
           >
-            <el-option v-for="(_, name) in availableModels" :key="name" :label="name" :value="name" />
-          </el-select>
+            <el-icon :size="16"><VideoPause /></el-icon>
+          </button>
+          <button
+            v-else
+            class="send-btn"
+            :class="{ active: inputText.trim() }"
+            :disabled="!inputText.trim() || agentStore.loading"
+            @click="handleSend"
+          >
+            <el-icon :size="16"><Promotion /></el-icon>
+          </button>
         </div>
+        <div class="input-hint">按 Enter 发送，Shift + Enter 换行</div>
       </div>
     </div>
   </div>
@@ -189,7 +213,7 @@
 import { ref, computed, nextTick, onMounted, watch, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete, ArrowLeft, ArrowDown, SetUp, Promotion, VideoPause, DocumentCopy } from '@element-plus/icons-vue'
+import { Plus, Delete, ArrowLeft, ArrowDown, SetUp, Setting, Promotion, VideoPause, DocumentCopy } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { chatApi } from '@/api/chat'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
@@ -204,6 +228,8 @@ const agentName = computed(() => agentStore.currentAgent?.name || '智能体')
 
 const inputText = ref('')
 const useStream = ref(true)
+const enableThinking = ref(false)
+const expandedReasoning = ref(new Set<number>())
 const messagesRef = ref<HTMLElement>()
 
 // 模型选择
@@ -288,6 +314,14 @@ function handleQuickPrompt(text: string) {
   handleSend()
 }
 
+function toggleReasoning(msgId: number) {
+  if (expandedReasoning.value.has(msgId)) {
+    expandedReasoning.value.delete(msgId)
+  } else {
+    expandedReasoning.value.add(msgId)
+  }
+}
+
 async function handleSend() {
   const content = inputText.value.trim()
   if (!content) return
@@ -300,7 +334,10 @@ async function handleSend() {
   })
 
   try {
-    const opts = selectedModel.value ? { llm_model: selectedModel.value } : undefined
+    const opts = {
+      ...(selectedModel.value ? { llm_model: selectedModel.value } : {}),
+      enable_thinking: enableThinking.value,
+    }
     if (useStream.value) {
       await agentStore.sendMessageStream(agentId.value, content, opts)
     } else {
@@ -390,15 +427,11 @@ onMounted(async () => {
 
 <style scoped>
 .agent-chat-view {
-  display: flex;
-  background: var(--color-bg);
-  overflow: hidden;
-  height: 100%;
-}
-
-.agent-chat-view:not(.in-workspace) {
   position: absolute;
   inset: 0;
+  display: flex;
+  background: #FFFFFF;
+  overflow: hidden;
   z-index: 1;
 }
 
@@ -419,10 +452,11 @@ onMounted(async () => {
 }
 
 .sidebar-top {
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-4);
   border-bottom: 1px solid var(--color-border-light);
   display: flex;
   gap: var(--space-2);
+  align-items: center;
 }
 
 .back-btn {
@@ -431,13 +465,13 @@ onMounted(async () => {
   gap: 4px;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: transparent;
   color: var(--color-text-secondary);
   font-family: var(--font-body);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-base);
 }
 
 .back-btn:hover {
@@ -451,15 +485,15 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  padding: var(--space-2);
+  padding: var(--space-3);
   border: 1px dashed var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: transparent;
   color: var(--color-text-secondary);
   font-family: var(--font-body);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all var(--transition-base);
 }
 
 .new-chat-btn:hover {
@@ -478,7 +512,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3);
+  padding: var(--space-3) var(--space-3);
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: background var(--transition-fast);
@@ -492,6 +526,11 @@ onMounted(async () => {
 
 .conv-item.active {
   background: var(--color-primary-muted);
+}
+
+.conv-item.active .conv-title {
+  color: var(--color-primary);
+  font-weight: var(--weight-medium);
 }
 
 .conv-item.active::before {
@@ -512,6 +551,7 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: var(--leading-normal);
 }
 
 .conv-delete {
@@ -556,7 +596,9 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: var(--color-bg);
+  min-height: 0;
+  overflow: hidden;
+  background: #FFFFFF;
 }
 
 /* ========================================
@@ -574,7 +616,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  max-width: 540px;
+  max-width: 720px;
   width: 100%;
 }
 
@@ -620,9 +662,9 @@ onMounted(async () => {
   display: flex;
   align-items: flex-start;
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-border-light);
+  border: 1px solid transparent;
   border-radius: var(--radius-lg);
-  background: var(--color-bg-card);
+  background: transparent;
   cursor: pointer;
   transition: all var(--transition-base);
   text-align: left;
@@ -630,14 +672,16 @@ onMounted(async () => {
 }
 
 .prompt-card:hover {
-  border-color: var(--color-primary);
-  background: var(--color-primary-muted);
+  border-color: var(--color-border);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-sm);
 }
 
 .prompt-text {
   font-size: var(--text-sm);
-  color: var(--color-text-secondary);
+  color: var(--color-text-muted);
   line-height: var(--leading-normal);
+  transition: color var(--transition-fast);
 }
 
 .prompt-card:hover .prompt-text {
@@ -649,19 +693,20 @@ onMounted(async () => {
    ======================================== */
 .messages-container {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   scroll-behavior: smooth;
 }
 
 .messages-inner {
-  max-width: 800px;
+  max-width: 860px;
   margin: 0 auto;
   padding: var(--space-6) var(--space-6) var(--space-4);
 }
 
 .message-row {
   display: flex;
-  margin-bottom: var(--space-5);
+  margin-bottom: 28px;
   animation: messageIn 0.35s ease forwards;
 }
 
@@ -675,7 +720,7 @@ onMounted(async () => {
 }
 
 .message-body {
-  max-width: 70%;
+  max-width: 75%;
   min-width: 0;
 }
 
@@ -688,7 +733,7 @@ onMounted(async () => {
 /* User message */
 .message-row.user .message-text {
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-2xl) var(--radius-2xl) 4px var(--radius-2xl);
+  border-radius: 18px 18px 4px 18px;
   background: var(--color-primary);
   color: #FFFFFF;
   white-space: pre-wrap;
@@ -697,23 +742,50 @@ onMounted(async () => {
 
 /* AI message */
 .message-row.assistant .message-text {
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-2xl) var(--radius-2xl) var(--radius-2xl) 4px;
+  padding: var(--space-4) var(--space-5);
+  border-radius: 18px 18px 18px 4px;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
-  position: relative;
 }
 
-.message-row.assistant .message-text::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
-  border-radius: 1px;
-  background: linear-gradient(180deg, var(--color-primary), var(--color-accent));
-  opacity: 0.3;
+/* Reasoning section */
+.reasoning-section {
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  overflow: hidden;
+}
+.reasoning-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+.reasoning-header:hover {
+  background: #f1f3f5;
+}
+.reasoning-label {
+  font-weight: 500;
+}
+.expand-icon {
+  transition: transform 0.2s;
+}
+.expand-icon.expanded {
+  transform: rotate(180deg);
+}
+.reasoning-body {
+  padding: 8px 12px 12px;
+  border-top: 1px solid #e9ecef;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 /* Message actions */
@@ -875,7 +947,7 @@ onMounted(async () => {
    ======================================== */
 .typing-row {
   display: flex;
-  margin-bottom: var(--space-5);
+  margin-bottom: 28px;
   animation: messageIn 0.35s ease forwards;
 }
 
@@ -886,20 +958,7 @@ onMounted(async () => {
   padding: var(--space-3) var(--space-4);
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-2xl) var(--radius-2xl) var(--radius-2xl) 4px;
-  position: relative;
-}
-
-.typing-bubble::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
-  border-radius: 1px;
-  background: linear-gradient(180deg, var(--color-primary), var(--color-accent));
-  opacity: 0.3;
+  border-radius: 18px 18px 18px 4px;
 }
 
 .typing-dot {
@@ -919,34 +978,51 @@ onMounted(async () => {
 }
 
 /* ========================================
-   Input Area
+   Input Area — Pill Shape
    ======================================== */
 .input-area {
+  flex-shrink: 0;
   padding: 0 var(--space-6) var(--space-5);
-  background: var(--color-bg);
+  background: #FFFFFF;
 }
 
-.input-container {
-  max-width: 800px;
+.input-pill {
+  max-width: 860px;
   margin: 0 auto;
+  display: flex;
+  align-items: flex-end;
+  padding: 8px 8px 8px 4px;
+  gap: var(--space-2);
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-xl);
+  border-radius: 24px;
   box-shadow: var(--shadow-sm);
-  overflow: hidden;
   transition: border-color var(--transition-base), box-shadow var(--transition-base);
 }
 
-.input-container:focus-within {
+.input-pill:focus-within {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-primary-muted), var(--shadow-sm);
 }
 
-.input-wrapper {
+.input-action-btn {
   display: flex;
-  align-items: flex-end;
-  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
-  gap: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.input-action-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
 }
 
 .chat-textarea {
@@ -959,7 +1035,7 @@ onMounted(async () => {
   line-height: var(--leading-normal);
   color: var(--color-text);
   background: transparent;
-  padding: var(--space-1) 0;
+  padding: var(--space-2) var(--space-2);
   max-height: 160px;
   overflow-y: auto;
 }
@@ -1009,33 +1085,30 @@ onMounted(async () => {
   background: var(--color-accent);
 }
 
-/* ========================================
-   Input Footer & Stream Toggle
-   ======================================== */
-.input-footer {
-  max-width: 800px;
-  margin: var(--space-2) auto 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  padding: 0 var(--space-2);
-}
-
-.stream-toggle {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+.input-hint {
+  max-width: 860px;
+  margin: 8px auto 0;
+  text-align: center;
   font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  user-select: none;
+  color: var(--color-text-faint);
 }
 
-.stream-toggle span {
-  line-height: 1;
+/* ========================================
+   Settings Popover
+   ======================================== */
+.settings-popover {
+  display: flex;
+  flex-direction: column;
 }
 
-.model-select {
-  width: 150px;
+.setting-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  cursor: default;
 }
 </style>

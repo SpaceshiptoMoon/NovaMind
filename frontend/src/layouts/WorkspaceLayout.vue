@@ -19,9 +19,32 @@
 
       <!-- Channel-specific content -->
       <div class="sidebar-body">
-        <!-- Chat channel -->
+        <!-- Chat channel: session list -->
         <template v-if="activeChannel === 'chat'">
-          <div class="list-empty">选择对话或开始新对话</div>
+          <div class="sidebar-action">
+            <button class="action-btn" @click="handleNewChat">
+              <el-icon :size="14"><Plus /></el-icon>
+              <span>开启新对话</span>
+            </button>
+          </div>
+          <div class="list-area">
+            <div
+              v-for="session in chatStore.sessions"
+              :key="session.session_id"
+              class="list-item"
+              :class="{ active: chatStore.currentSessionId === session.session_id }"
+              @click="handleSelectChatSession(session.session_id)"
+            >
+              <span class="item-title">{{ session.preview || '新对话' }}</span>
+              <button
+                class="item-delete"
+                @click.stop="handleDeleteChatSession(session.session_id)"
+              >
+                <el-icon :size="12"><Delete /></el-icon>
+              </button>
+            </div>
+            <div v-if="chatStore.sessions.length === 0" class="list-empty">暂无对话记录</div>
+          </div>
         </template>
 
         <!-- Agent channel: agent list -->
@@ -74,6 +97,19 @@
             </div>
           </div>
         </template>
+
+        <!-- Skills channel -->
+        <template v-else-if="activeChannel === 'skills'">
+          <div class="sidebar-action">
+            <button class="action-btn" @click="router.push('/home/workspace/skills')">
+              <el-icon :size="14"><Search /></el-icon>
+              <span>浏览广场</span>
+            </button>
+          </div>
+          <div class="research-info">
+            <p class="info-text">发现、上传和分享 AI 技能，安装到你的智能体中。</p>
+          </div>
+        </template>
       </div>
     </aside>
 
@@ -88,9 +124,10 @@
 import { ref, computed, onMounted, provide, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Plus, ArrowLeft } from '@element-plus/icons-vue'
+import { Plus, ArrowLeft, Search, Delete } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { useSpaceStore } from '@/stores/space'
+import { useChatStore } from '@/stores/chat'
 import NavIcon from '@/components/common/NavIcon.vue'
 import type { Agent } from '@/api/types'
 
@@ -98,6 +135,7 @@ const route = useRoute()
 const router = useRouter()
 const agentStore = useAgentStore()
 const spaceStore = useSpaceStore()
+const chatStore = useChatStore()
 
 provide('isInWorkspace', true)
 
@@ -107,6 +145,7 @@ const channels = [
   { key: 'chat', label: 'AI 对话', icon: 'chat' },
   { key: 'agents', label: '智能体', icon: 'agents' },
   { key: 'research', label: '深度研究', icon: 'research' },
+  { key: 'skills', label: '技能广场', icon: 'skills' },
 ]
 
 const activeChannel = computed(() => {
@@ -114,6 +153,7 @@ const activeChannel = computed(() => {
   if (path.includes('/workspace/chat')) return 'chat'
   if (path.includes('/workspace/agents')) return 'agents'
   if (path.includes('/workspace/research')) return 'research'
+  if (path.includes('/workspace/skills')) return 'skills'
   return 'chat'
 })
 
@@ -125,8 +165,30 @@ function switchChannel(key: string) {
     chat: '/home/workspace/chat',
     agents: '/home/workspace/agents',
     research: '/home/workspace/research',
+    skills: '/home/workspace/skills',
   }
   router.push(map[key] || map.chat)
+}
+
+// ===================== Chat =====================
+
+function handleNewChat() {
+  chatStore.clearMessages()
+  router.push('/home/workspace/chat')
+}
+
+async function handleSelectChatSession(sessionId: string) {
+  await chatStore.fetchMessages(sessionId)
+  chatStore.fetchSessionConfig(sessionId)
+  router.push('/home/workspace/chat')
+}
+
+async function handleDeleteChatSession(sessionId: string) {
+  try {
+    await chatStore.deleteSession(sessionId)
+  } catch {
+    ElMessage.error('删除对话失败')
+  }
 }
 
 // ===================== Agents =====================
@@ -164,7 +226,7 @@ function handleSelectResearchSpace(spaceId: number) {
 watch(activeChannel, (channel) => {
   if (channel === 'agents' && agentStore.agents.length === 0) {
     agentStore.fetchAgents()
-    agentStore.fetchSkills()
+    agentStore.fetchTools()
     agentStore.fetchMcpServers()
   }
 })
@@ -172,9 +234,10 @@ watch(activeChannel, (channel) => {
 onMounted(async () => {
   await Promise.all([
     agentStore.fetchAgents(),
-    agentStore.fetchSkills(),
+    agentStore.fetchTools(),
     agentStore.fetchMcpServers(),
     spaceStore.spaces.length === 0 ? spaceStore.fetchSpaces() : Promise.resolve(),
+    chatStore.fetchSessions(),
   ])
 })
 </script>
@@ -182,7 +245,8 @@ onMounted(async () => {
 <style scoped>
 .workspace-layout {
   display: flex;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   background: var(--color-bg);
   overflow: hidden;
 }
@@ -413,9 +477,9 @@ onMounted(async () => {
    ======================================== */
 .workspace-main {
   flex: 1;
-  display: flex;
-  flex-direction: column;
+  position: relative;
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 </style>
