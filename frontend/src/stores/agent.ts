@@ -10,6 +10,7 @@ import type {
   McpServer,
   ToolProvider,
   ToolCallRecord,
+  ChatAttachment,
 } from '@/api/types'
 
 export const useAgentStore = defineStore('agent', () => {
@@ -38,6 +39,7 @@ export const useAgentStore = defineStore('agent', () => {
   const toolCalls = ref<ToolCallRecord[]>([])
   const abortController = ref<AbortController | null>(null)
   const loading = ref(false)
+  const pendingAttachments = ref<ChatAttachment[]>([])
 
   // MCP & 工具（全局共享）
   const mcpServers = ref<McpServer[]>([])
@@ -136,8 +138,8 @@ export const useAgentStore = defineStore('agent', () => {
 
   // ===================== SSE 流式对话 =====================
 
-  async function sendMessageStream(agentId: number, content: string, options?: { llm_model?: string; enable_thinking?: boolean }) {
-    if (!content.trim()) return
+  async function sendMessageStream(agentId: number, content: string, options?: { llm_model?: string; enable_thinking?: boolean; attachmentIds?: number[] }) {
+    if (!content.trim() && (!options?.attachmentIds?.length)) return
 
     // 添加用户消息
     const userMsg: AgentMessage = {
@@ -149,6 +151,9 @@ export const useAgentStore = defineStore('agent', () => {
       tool_name: null,
       token_count: null,
       created_at: new Date().toISOString(),
+      extra: options?.attachmentIds?.length
+        ? { attachments: pendingAttachments.value.filter(a => options.attachmentIds!.includes(a.id)) }
+        : null,
     }
     messages.value.push(userMsg)
 
@@ -187,6 +192,7 @@ export const useAgentStore = defineStore('agent', () => {
         session_id: currentSessionId.value || null,
         llm_model: options?.llm_model || null,
         enable_thinking: options?.enable_thinking,
+        attachment_ids: options?.attachmentIds,
       }, {
         signal: controller.signal,
         onSession(d) {
@@ -285,13 +291,14 @@ export const useAgentStore = defineStore('agent', () => {
       streamingContent.value = ''
       streamingReasoning.value = ''
       abortController.value = null
+      if (options?.attachmentIds?.length) clearPendingAttachments()
     }
   }
 
   // ===================== 非流式对话 =====================
 
-  async function sendMessage(agentId: number, content: string, options?: { llm_model?: string; enable_thinking?: boolean }) {
-    if (!content.trim()) return
+  async function sendMessage(agentId: number, content: string, options?: { llm_model?: string; enable_thinking?: boolean; attachmentIds?: number[] }) {
+    if (!content.trim() && (!options?.attachmentIds?.length)) return
 
     const userMsg: AgentMessage = {
       id: Date.now(),
@@ -302,6 +309,9 @@ export const useAgentStore = defineStore('agent', () => {
       tool_name: null,
       token_count: null,
       created_at: new Date().toISOString(),
+      extra: options?.attachmentIds?.length
+        ? { attachments: pendingAttachments.value.filter(a => options.attachmentIds!.includes(a.id)) }
+        : null,
     }
     messages.value.push(userMsg)
 
@@ -322,6 +332,7 @@ export const useAgentStore = defineStore('agent', () => {
         session_id: currentSessionId.value || null,
         llm_model: options?.llm_model || null,
         enable_thinking: options?.enable_thinking,
+        attachment_ids: options?.attachmentIds,
       }, {
         signal: controller2.signal,
         onSession(d) {
@@ -420,6 +431,30 @@ export const useAgentStore = defineStore('agent', () => {
     streamingContent.value = ''
     streamingReasoning.value = ''
     error.value = null
+    pendingAttachments.value = []
+  }
+
+  // ========== 附件管理 ==========
+
+  async function uploadAttachment(file: File, onProgress?: (percent: number) => void): Promise<ChatAttachment> {
+    const { chatApi } = await import('@/api/chat')
+    const result = await chatApi.uploadAttachment(file, onProgress)
+    const attachment: ChatAttachment = {
+      id: result.attachment_id,
+      filename: result.filename,
+      file_type: result.file_type,
+      file_size: result.file_size,
+    }
+    pendingAttachments.value.push(attachment)
+    return attachment
+  }
+
+  function removePendingAttachment(attachmentId: number) {
+    pendingAttachments.value = pendingAttachments.value.filter(a => a.id !== attachmentId)
+  }
+
+  function clearPendingAttachments() {
+    pendingAttachments.value = []
   }
 
   // ===================== MCP 服务器 =====================
@@ -504,6 +539,7 @@ export const useAgentStore = defineStore('agent', () => {
     mcpServers,
     tools,
     error,
+    pendingAttachments,
     // Actions
     fetchAgents,
     fetchAgent,
@@ -526,5 +562,8 @@ export const useAgentStore = defineStore('agent', () => {
     refreshMcpTools,
     fetchTools,
     initForAgent,
+    uploadAttachment,
+    removePendingAttachment,
+    clearPendingAttachments,
   }
 })

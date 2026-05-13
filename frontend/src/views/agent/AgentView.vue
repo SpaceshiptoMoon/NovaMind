@@ -621,7 +621,7 @@ onMounted(async () => {
   width: 36px;
   height: 36px;
   border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, #E8F0FE 0%, #FEF1EE 100%);
+  background: var(--color-primary-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -720,12 +720,12 @@ onMounted(async () => {
   width: 72px;
   height: 72px;
   border-radius: var(--radius-xl);
-  background: linear-gradient(135deg, #E8F0FE 0%, #FEF1EE 100%);
+  background: var(--color-primary-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: var(--space-6);
-  box-shadow: 0 4px 16px rgba(66, 133, 244, 0.12);
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.12);
 }
 
 .empty-title {
@@ -791,7 +791,7 @@ onMounted(async () => {
   width: 52px;
   height: 52px;
   border-radius: var(--radius-xl);
-  background: linear-gradient(135deg, #E8F0FE 0%, #FEF1EE 100%);
+  background: var(--color-primary-subtle);
   display: flex;
   align-items: center;
   justify-content: center;

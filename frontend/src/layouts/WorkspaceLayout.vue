@@ -1,32 +1,38 @@
 <template>
   <div class="workspace-layout">
-    <aside class="workspace-sidebar">
-      <!-- Channel tabs -->
-      <div class="channel-tabs">
-        <button
-          v-for="ch in channels"
-          :key="ch.key"
-          class="channel-tab"
-          :class="{ active: activeChannel === ch.key }"
-          @click="switchChannel(ch.key)"
+    <!-- Collapsible Sidebar -->
+    <aside class="workspace-sidebar" :class="{ collapsed: sidebarCollapsed }">
+      <!-- Header: channel switcher + new button -->
+      <div class="sidebar-header">
+        <el-select
+          v-model="activeChannelKey"
+          class="channel-select"
+          @change="handleChannelChange"
         >
-          <NavIcon :name="ch.icon" :size="16" />
-          <span>{{ ch.label }}</span>
+          <el-option
+            v-for="ch in channels"
+            :key="ch.key"
+            :label="ch.label"
+            :value="ch.key"
+          >
+            <div class="channel-option">
+              <NavIcon :name="ch.icon" :size="16" />
+              <span>{{ ch.label }}</span>
+            </div>
+          </el-option>
+          <template #prefix>
+            <NavIcon :name="activeChannel.icon" :size="16" />
+          </template>
+        </el-select>
+        <button class="new-btn" @click="handleNew">
+          <el-icon :size="14"><Plus /></el-icon>
         </button>
       </div>
 
-      <div class="sidebar-divider" />
-
-      <!-- Channel-specific content -->
+      <!-- Sidebar content -->
       <div class="sidebar-body">
-        <!-- Chat channel: session list -->
-        <template v-if="activeChannel === 'chat'">
-          <div class="sidebar-action">
-            <button class="action-btn" @click="handleNewChat">
-              <el-icon :size="14"><Plus /></el-icon>
-              <span>开启新对话</span>
-            </button>
-          </div>
+        <!-- Chat: session list -->
+        <template v-if="activeChannelKey === 'chat'">
           <div class="list-area">
             <div
               v-for="session in chatStore.sessions"
@@ -36,10 +42,7 @@
               @click="handleSelectChatSession(session.session_id)"
             >
               <span class="item-title">{{ session.preview || '新对话' }}</span>
-              <button
-                class="item-delete"
-                @click.stop="handleDeleteChatSession(session.session_id)"
-              >
+              <button class="item-delete" @click.stop="handleDeleteChatSession(session.session_id)">
                 <el-icon :size="12"><Delete /></el-icon>
               </button>
             </div>
@@ -47,14 +50,8 @@
           </div>
         </template>
 
-        <!-- Agent channel: agent list -->
-        <template v-else-if="activeChannel === 'agents'">
-          <div class="sidebar-action">
-            <button class="action-btn" @click="openCreateAgentDialog">
-              <el-icon :size="14"><Plus /></el-icon>
-              <span>创建智能体</span>
-            </button>
-          </div>
+        <!-- Agents: agent list -->
+        <template v-else-if="activeChannelKey === 'agents'">
           <div class="list-area">
             <div
               v-for="agent in agentStore.agents"
@@ -73,19 +70,9 @@
           </div>
         </template>
 
-        <!-- Research channel -->
-        <template v-else-if="activeChannel === 'research'">
-          <div class="sidebar-action">
-            <button class="action-btn" @click="handleNewResearch">
-              <el-icon :size="14"><Plus /></el-icon>
-              <span>新研究</span>
-            </button>
-          </div>
-          <div class="research-info">
-            <p class="info-text">对特定主题进行深度研究，自动搜索并生成报告。</p>
-          </div>
-          <div v-if="researchSpaces.length" class="list-area">
-            <div class="section-label">知识空间</div>
+        <!-- Research: space list -->
+        <template v-else-if="activeChannelKey === 'research'">
+          <div class="list-area">
             <div
               v-for="space in researchSpaces"
               :key="space.id"
@@ -95,23 +82,26 @@
             >
               <span class="item-title">{{ space.name }}</span>
             </div>
+            <div v-if="researchSpaces.length === 0" class="list-empty">暂无知识空间</div>
           </div>
         </template>
 
-        <!-- Skills channel -->
-        <template v-else-if="activeChannel === 'skills'">
-          <div class="sidebar-action">
-            <button class="action-btn" @click="router.push('/home/workspace/skills')">
-              <el-icon :size="14"><Search /></el-icon>
-              <span>浏览广场</span>
-            </button>
-          </div>
-          <div class="research-info">
+        <!-- Skills -->
+        <template v-else-if="activeChannelKey === 'skills'">
+          <div class="sidebar-info">
             <p class="info-text">发现、上传和分享 AI 技能，安装到你的智能体中。</p>
           </div>
         </template>
       </div>
     </aside>
+
+    <!-- Collapse toggle -->
+    <button class="sidebar-toggle" :class="{ 'is-collapsed': sidebarCollapsed }" @click="sidebarCollapsed = !sidebarCollapsed">
+      <el-icon :size="14">
+        <DArrowLeft v-if="!sidebarCollapsed" />
+        <DArrowRight v-else />
+      </el-icon>
+    </button>
 
     <!-- Main content -->
     <main class="workspace-main">
@@ -121,10 +111,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, provide, watch } from 'vue'
+import { ref, computed, onMounted, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Plus, ArrowLeft, Search, Delete } from '@element-plus/icons-vue'
+import { Plus, Delete, DArrowLeft, DArrowRight } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { useSpaceStore } from '@/stores/space'
 import { useChatStore } from '@/stores/chat'
@@ -139,28 +129,35 @@ const chatStore = useChatStore()
 
 provide('isInWorkspace', true)
 
+const sidebarCollapsed = ref(false)
 const selectedAgentId = ref<number | null>(null)
 
 const channels = [
   { key: 'chat', label: 'AI 对话', icon: 'chat' },
   { key: 'agents', label: '智能体', icon: 'agents' },
   { key: 'research', label: '深度研究', icon: 'research' },
-  { key: 'skills', label: '技能广场', icon: 'skills' },
+  { key: 'skills', label: '技能广场', icon: 'apps' },
 ]
 
-const activeChannel = computed(() => {
-  const path = route.path
-  if (path.includes('/workspace/chat')) return 'chat'
-  if (path.includes('/workspace/agents')) return 'agents'
-  if (path.includes('/workspace/research')) return 'research'
-  if (path.includes('/workspace/skills')) return 'skills'
-  return 'chat'
-})
+const activeChannelKey = ref('chat')
+
+const activeChannel = computed(() =>
+  channels.find(c => c.key === activeChannelKey.value) || channels[0],
+)
 
 const currentResearchSpaceId = computed(() => String(route.params.spaceId ?? ''))
 const researchSpaces = computed(() => spaceStore.spaces)
 
-function switchChannel(key: string) {
+// Sync activeChannelKey with route
+function syncChannelFromRoute() {
+  const path = route.path
+  if (path.includes('/workspace/chat')) activeChannelKey.value = 'chat'
+  else if (path.includes('/workspace/agents')) activeChannelKey.value = 'agents'
+  else if (path.includes('/workspace/research')) activeChannelKey.value = 'research'
+  else if (path.includes('/workspace/skills')) activeChannelKey.value = 'skills'
+}
+
+function handleChannelChange(key: string) {
   const map: Record<string, string> = {
     chat: '/home/workspace/chat',
     agents: '/home/workspace/agents',
@@ -170,12 +167,25 @@ function switchChannel(key: string) {
   router.push(map[key] || map.chat)
 }
 
-// ===================== Chat =====================
-
-function handleNewChat() {
-  chatStore.clearMessages()
-  router.push('/home/workspace/chat')
+function handleNew() {
+  switch (activeChannelKey.value) {
+    case 'chat':
+      chatStore.clearMessages()
+      router.push('/home/workspace/chat')
+      break
+    case 'agents':
+      router.push({ path: '/home/workspace/agents', query: { action: 'create' } })
+      break
+    case 'research':
+      router.push('/home/workspace/research')
+      break
+    case 'skills':
+      router.push('/home/workspace/skills')
+      break
+  }
 }
+
+// ===================== Chat =====================
 
 async function handleSelectChatSession(sessionId: string) {
   await chatStore.fetchMessages(sessionId)
@@ -193,11 +203,6 @@ async function handleDeleteChatSession(sessionId: string) {
 
 // ===================== Agents =====================
 
-function openCreateAgentDialog() {
-  // Emit event to AgentView via route query
-  router.push({ path: '/home/workspace/agents', query: { action: 'create' } })
-}
-
 function handleSelectAgent(agent: Agent) {
   selectedAgentId.value = agent.id
   agentStore.currentAgent = agent
@@ -205,17 +210,7 @@ function handleSelectAgent(agent: Agent) {
   router.push({ name: 'WorkspaceAgents' })
 }
 
-function goBackToAgents() {
-  selectedAgentId.value = null
-  agentStore.currentAgent = null
-  router.push('/home/workspace/agents')
-}
-
 // ===================== Research =====================
-
-function handleNewResearch() {
-  router.push('/home/workspace/research')
-}
 
 function handleSelectResearchSpace(spaceId: number) {
   router.push(`/home/workspace/research/${spaceId}`)
@@ -223,15 +218,8 @@ function handleSelectResearchSpace(spaceId: number) {
 
 // ===================== Init =====================
 
-watch(activeChannel, (channel) => {
-  if (channel === 'agents' && agentStore.agents.length === 0) {
-    agentStore.fetchAgents()
-    agentStore.fetchTools()
-    agentStore.fetchMcpServers()
-  }
-})
-
 onMounted(async () => {
+  syncChannelFromRoute()
   await Promise.all([
     agentStore.fetchAgents(),
     agentStore.fetchTools(),
@@ -249,60 +237,74 @@ onMounted(async () => {
   min-height: 0;
   background: var(--color-bg);
   overflow: hidden;
+  position: relative;
 }
 
 /* ========================================
    Sidebar
    ======================================== */
 .workspace-sidebar {
-  width: 280px;
+  width: 260px;
   border-right: 1px solid var(--color-border-light);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   background: var(--color-bg-card);
+  overflow: hidden;
+  transition: width 250ms ease, border-color 250ms ease;
 }
 
-.channel-tabs {
-  display: flex;
-  gap: 2px;
-  padding: var(--space-3) var(--space-3) 0;
+.workspace-sidebar.collapsed {
+  width: 0;
+  border-right-color: transparent;
 }
 
-.channel-tab {
-  flex: 1;
+.sidebar-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-2);
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-family: var(--font-body);
-  font-size: var(--text-xs);
-  cursor: pointer;
-  transition: all var(--transition-fast);
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border-light);
+  flex-shrink: 0;
 }
 
-.channel-tab:hover {
-  background: var(--color-bg-hover);
+.channel-select {
+  flex: 1;
+}
+
+.channel-select :deep(.el-input__wrapper) {
+  border-radius: var(--radius-lg);
+}
+
+.channel-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   color: var(--color-text);
 }
 
-.channel-tab.active {
-  background: var(--color-primary-subtle);
+.new-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.new-btn:hover {
+  border-color: var(--color-primary);
   color: var(--color-primary);
-  font-weight: var(--weight-medium);
+  background: var(--color-primary-muted);
 }
 
-.sidebar-divider {
-  height: 1px;
-  background: var(--color-border-light);
-  margin: var(--space-3);
-}
-
+/* Sidebar body */
 .sidebar-body {
   flex: 1;
   display: flex;
@@ -311,41 +313,10 @@ onMounted(async () => {
   overflow: hidden;
 }
 
-/* Action button */
-.sidebar-action {
-  padding: 0 var(--space-3) var(--space-2);
-  display: flex;
-  gap: var(--space-2);
-}
-
-.action-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-1);
-  padding: var(--space-2);
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-family: var(--font-body);
-  font-size: var(--text-xs);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.action-btn:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  background: var(--color-primary-muted);
-}
-
-/* List area */
 .list-area {
   flex: 1;
   overflow-y: auto;
-  padding: 0 var(--space-2) var(--space-2);
+  padding: var(--space-2);
 }
 
 .list-item {
@@ -441,7 +412,7 @@ onMounted(async () => {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, #E8F0FE 0%, #FEF1EE 100%);
+  background: var(--color-primary-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -452,9 +423,8 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 
-/* Research */
-.research-info {
-  padding: var(--space-3);
+.sidebar-info {
+  padding: var(--space-4);
 }
 
 .info-text {
@@ -464,12 +434,36 @@ onMounted(async () => {
   line-height: var(--leading-relaxed);
 }
 
-.section-label {
-  font-size: var(--text-xs);
+/* ========================================
+   Sidebar Toggle
+   ======================================== */
+.sidebar-toggle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 20px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border-light);
+  border-left: none;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--color-bg-card);
   color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: var(--space-2) var(--space-3) var(--space-1);
+  cursor: pointer;
+  transition: left 250ms ease;
+  left: 260px;
+}
+
+.sidebar-toggle:hover {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-hover);
+}
+
+.sidebar-toggle.is-collapsed {
+  left: 0;
 }
 
 /* ========================================

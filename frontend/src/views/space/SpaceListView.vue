@@ -1,86 +1,125 @@
 <template>
   <div class="space-list-view">
-    <!-- 顶部栏：系统标识 + 空间选择 -->
-    <div v-if="!kbId" class="top-bar">
-      <div class="top-bar-left">
-        <UnicornIcon :size="38" @click="router.push('/home/spaces')" title="返回空间列表" />
-        <el-select
-          v-model="selectedSpaceId"
-          placeholder="请选择知识空间"
-          class="space-select"
-          filterable
-          @change="handleSpaceChange"
-        >
-          <el-option-group label="我的空间">
-            <el-option
-              v-for="space in spaceStore.spaces"
-              :key="space.id"
-              :label="space.name"
-              :value="space.id"
-            />
-          </el-option-group>
-          <el-option-group
-            v-if="spaceStore.publicSpaces.length > 0"
-            label="公开空间"
-          >
-            <el-option
-              v-for="space in spaceStore.publicSpaces"
-              :key="space.id"
-              :label="space.name"
-              :value="space.id"
-            />
-          </el-option-group>
-        </el-select>
-        <el-tag
-          v-if="currentSpace"
-          :type="getVisibilityType(currentSpace.visibility)"
-          size="small"
-        >
-          {{ getVisibilityText(currentSpace.visibility) }}
-        </el-tag>
-        <span v-if="currentSpace" class="space-desc-inline">
-          {{ currentSpace.config?.description || '' }}
-        </span>
-      </div>
-      <div class="top-bar-right">
-        <el-button type="primary" size="small" @click="showCreateSpaceDialog">
+    <!-- 左侧边栏 -->
+    <aside class="sidebar">
+      <!-- 侧边栏头部 -->
+      <div class="sidebar-header">
+        <h3 class="sidebar-title">知识空间</h3>
+        <el-button type="primary" size="small" circle @click="showCreateSpaceDialog">
           <el-icon><Plus /></el-icon>
-          空间
         </el-button>
-        <el-button size="small" @click="showManageSpacesDialog">
+      </div>
+
+      <!-- 搜索框 -->
+      <div class="sidebar-search">
+        <el-input
+          v-model="searchQuery"
+          placeholder="搜索空间..."
+          prefix-icon="Search"
+          size="small"
+          clearable
+        />
+      </div>
+
+      <!-- 空间列表 -->
+      <div class="sidebar-body">
+        <!-- 我的空间 -->
+        <div class="sidebar-section">
+          <div class="section-label">我的空间</div>
+          <div
+            v-for="space in filteredMySpaces"
+            :key="space.id"
+            class="space-item"
+            :class="{ active: selectedSpaceId === space.id }"
+            @click="handleSpaceClick(space.id)"
+          >
+            <div class="space-item-icon">
+              <el-icon :size="16"><Collection /></el-icon>
+            </div>
+            <div class="space-item-info">
+              <span class="space-item-name">{{ space.name }}</span>
+              <el-tag
+                :type="getVisibilityType(space.visibility)"
+                size="small"
+                class="space-item-vis"
+              >
+                {{ getVisibilityText(space.visibility) }}
+              </el-tag>
+            </div>
+          </div>
+          <div v-if="filteredMySpaces.length === 0" class="section-empty">
+            {{ searchQuery ? '无匹配空间' : '暂无空间' }}
+          </div>
+        </div>
+
+        <!-- 公开空间 -->
+        <div v-if="filteredPublicSpaces.length > 0" class="sidebar-section">
+          <div class="section-label">公开空间</div>
+          <div
+            v-for="space in filteredPublicSpaces"
+            :key="space.id"
+            class="space-item"
+            :class="{ active: selectedSpaceId === space.id }"
+            @click="handleSpaceClick(space.id)"
+          >
+            <div class="space-item-icon public">
+              <el-icon :size="16"><Collection /></el-icon>
+            </div>
+            <div class="space-item-info">
+              <span class="space-item-name">{{ space.name }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 侧边栏底部 -->
+      <div class="sidebar-footer">
+        <el-button size="small" text @click="showManageSpacesDialog">
+          <el-icon><Setting /></el-icon>
           管理空间
         </el-button>
-        <el-button
-          v-if="selectedSpaceId"
-          size="small"
-          circle
-          class="settings-icon-btn"
-          @click="switchTab('settings')"
-        >
-          <el-icon color="#5C5C5C"><Setting /></el-icon>
-        </el-button>
       </div>
-    </div>
+    </aside>
 
-    <!-- 知识库快捷操作（仅知识库视图显示） -->
-    <div v-if="selectedSpaceId && activeTab === 'knowledge-bases' && !kbId" class="kb-toolbar">
-      <el-button size="small" @click="showCreateKbDialog">
-        <el-icon><Plus /></el-icon>
-        新建知识库
-      </el-button>
-      <span class="member-count">{{ memberCount }} 成员</span>
-    </div>
+    <!-- 右侧主内容区 -->
+    <main class="main-content">
+      <!-- 内容头部（面包屑 + 操作） -->
+      <div v-if="selectedSpaceId" class="content-header">
+        <BreadcrumbNav />
+        <div class="header-actions">
+          <el-button
+            v-if="activeTab === 'knowledge-bases'"
+            size="small"
+            @click="showCreateKbDialog"
+          >
+            <el-icon><Plus /></el-icon>
+            新建知识库
+          </el-button>
+          <el-button
+            size="small"
+            circle
+            class="settings-btn"
+            @click="switchTab('settings')"
+          >
+            <el-icon><Setting /></el-icon>
+          </el-button>
+        </div>
+      </div>
 
-    <!-- 子路由内容 -->
-    <div v-if="selectedSpaceId" class="space-content">
-      <router-view :key="`${route.params.id || ''}-${kbRefreshKey}`" />
-    </div>
+      <!-- 子路由内容 -->
+      <div v-if="selectedSpaceId" class="content-body">
+        <router-view :key="`${route.params.id || ''}-${kbRefreshKey}`" />
+      </div>
 
-    <!-- 未选择空间时的空状态 -->
-    <el-empty
-      v-if="!selectedSpaceId && !loading"
-      description="请选择或创建一个知识空间"
-    />
+      <!-- 未选择空间时的欢迎页 -->
+      <div v-if="!selectedSpaceId && !loading" class="welcome-state">
+        <EmptyState
+          variant="default"
+          title="选择知识空间"
+          description="从左侧选择或创建一个知识空间，开始管理知识库"
+        />
+      </div>
+    </main>
 
     <!-- 创建空间弹窗 -->
     <el-dialog
@@ -256,14 +295,15 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Plus,
   Setting,
+  Collection,
 } from '@element-plus/icons-vue'
 import { useSpaceStore } from '@/stores/space'
-import { memberApi } from '@/api/member'
 import { knowledgeBaseApi } from '@/api/knowledgeBase'
 import { userApi } from '@/api/user'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { Space, AvailableModelItem } from '@/api/types'
-import UnicornIcon from '@/components/common/UnicornIcon.vue'
+import BreadcrumbNav from '@/components/common/BreadcrumbNav.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -271,11 +311,9 @@ const spaceStore = useSpaceStore()
 
 const loading = ref(false)
 const selectedSpaceId = ref<number | null>(null)
-const memberCount = ref(0)
 const activeTab = ref('knowledge-bases')
 const kbRefreshKey = ref(0)
-
-const currentSpace = computed(() => spaceStore.currentSpace)
+const searchQuery = ref('')
 
 // 可见性映射
 const visibilityMap: Record<number, { text: string; type: string }> = {
@@ -294,21 +332,24 @@ function getVisibilityType(visibility?: number): string {
   return visibilityMap[visibility]?.type || 'info'
 }
 
+// === 搜索过滤 ===
+
+const filteredMySpaces = computed(() => {
+  const q = searchQuery.value.toLowerCase().trim()
+  if (!q) return spaceStore.spaces
+  return spaceStore.spaces.filter((s) => s.name.toLowerCase().includes(q))
+})
+
+const filteredPublicSpaces = computed(() => {
+  const q = searchQuery.value.toLowerCase().trim()
+  if (!q) return spaceStore.publicSpaces
+  return spaceStore.publicSpaces.filter((s) => s.name.toLowerCase().includes(q))
+})
+
 // === 空间选择 ===
 
-function handleSpaceChange(spaceId: number) {
+function handleSpaceClick(spaceId: number) {
   router.push(`/home/spaces/${spaceId}/${activeTab.value}`)
-}
-
-async function fetchSpaceDetails() {
-  if (!selectedSpaceId.value) return
-  try {
-    await spaceStore.fetchSpace(selectedSpaceId.value)
-    const data = await memberApi.getMembers(selectedSpaceId.value)
-    memberCount.value = data.total || 0
-  } catch {
-    // ignore
-  }
 }
 
 // === Tab 导航 ===
@@ -529,7 +570,6 @@ async function handleCreateKb() {
       })
       ElMessage.success('知识库创建成功')
       createKbDialogVisible.value = false
-      // Force child component re-mount to refresh KB list
       kbRefreshKey.value++
     } catch {
       // Error already shown by response interceptor
@@ -546,7 +586,7 @@ watch(
   (id) => {
     if (id) {
       selectedSpaceId.value = Number(id)
-      fetchSpaceDetails()
+      spaceStore.fetchSpace(Number(id))
     }
   },
   { immediate: true },
@@ -590,53 +630,197 @@ onMounted(() => {
 
 <style scoped>
 .space-list-view {
-  padding: var(--space-5);
-}
-
-.top-bar {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--space-4);
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--color-border-light);
+  height: 100%;
 }
 
-.top-bar-left {
+/* ===== Sidebar ===== */
+
+.sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--color-bg-sidebar);
+  border-right: 1px solid var(--color-border-light);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-4) var(--space-3);
+}
+
+.sidebar-title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+  font-family: var(--font-display);
+}
+
+.sidebar-search {
+  padding: 0 var(--space-4) var(--space-3);
+}
+
+.sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 var(--space-2);
+}
+
+.sidebar-section {
+  margin-bottom: var(--space-4);
+}
+
+.section-label {
+  padding: var(--space-1) var(--space-3) var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.space-item {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  position: relative;
+  margin-bottom: 2px;
 }
 
-.top-bar-right {
+.space-item:hover {
+  background: var(--color-bg-hover);
+}
+
+.space-item.active {
+  background: var(--color-primary-muted);
+}
+
+.space-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  border-radius: 0 2px 2px 0;
+  background: var(--color-primary);
+}
+
+.space-item-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
   display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.space-item-icon.public {
+  background: var(--color-success-subtle);
+  color: var(--color-success);
+}
+
+.space-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
   gap: var(--space-2);
 }
 
-.space-select {
-  width: 280px;
-}
-
-.space-desc-inline {
+.space-item-name {
   font-size: var(--text-sm);
-  color: var(--color-text-muted);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.kb-toolbar {
+.space-item.active .space-item-name {
+  color: var(--color-primary);
+}
+
+.space-item-vis {
+  flex-shrink: 0;
+}
+
+.section-empty {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+  font-style: italic;
+}
+
+.sidebar-footer {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border-light);
+}
+
+/* ===== Main Content ===== */
+
+.main-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  background: var(--color-bg);
+}
+
+.content-header {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-6);
+  background: var(--color-bg-card);
+  border-bottom: 1px solid var(--color-border-light);
+  flex-shrink: 0;
 }
 
-.member-count {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
-.space-content {
-  min-height: 400px;
+.settings-btn {
+  border: none !important;
+  background: transparent !important;
+  transition: background-color var(--transition-base);
 }
+
+.settings-btn:hover {
+  background: var(--color-bg-hover) !important;
+}
+
+.content-body {
+  flex: 1;
+  padding: var(--space-5) var(--space-6);
+  overflow-y: auto;
+}
+
+.welcome-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ===== Dialog shared ===== */
 
 .batch-bar {
   display: flex;
@@ -646,26 +830,12 @@ onMounted(() => {
   padding: var(--space-3) var(--space-4);
   background: var(--color-danger-subtle);
   border-radius: var(--radius-lg);
-  border: 1px solid rgba(212, 64, 64, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
 .batch-count {
   font-size: var(--text-sm);
   color: var(--color-danger);
   font-weight: var(--weight-medium);
-}
-
-.settings-icon-btn {
-  border: none !important;
-  background: transparent !important;
-  transition: background-color var(--transition-base);
-}
-
-.settings-icon-btn:hover {
-  background: var(--color-bg-hover) !important;
-}
-
-.settings-icon-btn:hover .el-icon {
-  color: var(--color-primary) !important;
 }
 </style>

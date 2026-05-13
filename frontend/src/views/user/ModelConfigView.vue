@@ -48,7 +48,6 @@
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="showEditDialog(row)">编辑</el-button>
-            <el-button link type="primary" size="small" @click="handleTest(row)">测试连接</el-button>
             <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -213,21 +212,6 @@ async function handleSubmit() {
     fetchAvailable()
   } finally {
     submitLoading.value = false
-  }
-}
-
-async function handleTest(row: ModelConfig) {
-  try {
-    const result = await userApi.testModelConfig({
-      model_type: row.model_type,
-      protocol: row.protocol,
-      model: row.model,
-      base_url: row.base_url || undefined,
-      api_key: row.api_key || '',
-    })
-    showTestResult(result)
-  } catch (e) {
-    showTestResult({ success: false, message: e instanceof Error ? e.message : '测试失败', latency_ms: null, detected_dimension: null })
   }
 }
 

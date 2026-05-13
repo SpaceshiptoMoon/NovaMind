@@ -1,49 +1,50 @@
 /* ========================================
-   Design Tokens — Warm Editorial
+   Design Tokens — Clean Modern AI
+   (参考 Dify / Coze / Linear 风格)
    ======================================== */
 :root {
-  /* Primary */
-  --color-primary: #4285F4;
-  --color-primary-hover: #2D6BE0;
-  --color-primary-subtle: #E8F0FE;
-  --color-primary-muted: rgba(66, 133, 244, 0.08);
+  /* Primary — 科技蓝 */
+  --color-primary: #2563EB;
+  --color-primary-hover: #1D4ED8;
+  --color-primary-subtle: #EFF6FF;
+  --color-primary-muted: rgba(37, 99, 235, 0.06);
 
-  /* Accent */
-  --color-accent: #E05A3A;
-  --color-accent-hover: #C94E30;
-  --color-accent-subtle: #FEF1EE;
+  /* Accent — 紫 */
+  --color-accent: #7C3AED;
+  --color-accent-hover: #6D28D9;
+  --color-accent-subtle: #F5F3FF;
 
-  /* Text — warm */
-  --color-text: #1A1A1A;
-  --color-text-secondary: #5C5C5C;
-  --color-text-muted: #8C8C8C;
-  --color-text-faint: #B0B0B0;
+  /* Text — 冷色 */
+  --color-text: #111827;
+  --color-text-secondary: #4B5563;
+  --color-text-muted: #9CA3AF;
+  --color-text-faint: #D1D5DB;
 
-  /* Background — warm stone */
-  --color-bg: #F5F3F0;
+  /* Background — 纯净白底 */
+  --color-bg: #F3F4F6;
   --color-bg-card: #FFFFFF;
-  --color-bg-card-elevated: #FAFAF8;
-  --color-bg-hover: #F0EDEA;
-  --color-bg-sidebar: #FAF9F7;
-  --color-bg-input: #FAFAF8;
+  --color-bg-card-elevated: #F9FAFB;
+  --color-bg-hover: #F3F4F6;
+  --color-bg-sidebar: #F9FAFB;
+  --color-bg-input: #F9FAFB;
 
-  /* Border — warm */
-  --color-border: #E5E2DE;
-  --color-border-light: #F0EDEA;
-  --color-border-focus: #4285F4;
+  /* Border — 冷灰 */
+  --color-border: #E5E7EB;
+  --color-border-light: #F3F4F6;
+  --color-border-focus: #2563EB;
 
   /* Semantic */
-  --color-success: #2D9D5A;
-  --color-success-subtle: #EEFBF3;
-  --color-warning: #C4882F;
-  --color-warning-subtle: #FFF8EB;
-  --color-danger: #D44040;
-  --color-danger-subtle: #FEF1EE;
-  --color-info: #5B8FB9;
-  --color-info-subtle: #EEF5FB;
+  --color-success: #10B981;
+  --color-success-subtle: #ECFDF5;
+  --color-warning: #F59E0B;
+  --color-warning-subtle: #FFFBEB;
+  --color-danger: #EF4444;
+  --color-danger-subtle: #FEF2F2;
+  --color-info: #3B82F6;
+  --color-info-subtle: #EFF6FF;
 
   /* Typography */
-  --font-display: 'DM Sans', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --font-mono: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
 
@@ -80,7 +81,7 @@
   --space-8: 32px;
   --space-10: 40px;
 
-  /* Radius — tighter */
+  /* Radius */
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 10px;
@@ -88,13 +89,13 @@
   --radius-2xl: 18px;
   --radius-full: 9999px;
 
-  /* Shadow — warm rgba */
-  --shadow-xs: 0 1px 2px rgba(30, 25, 20, 0.04);
-  --shadow-sm: 0 1px 3px rgba(30, 25, 20, 0.05), 0 1px 2px rgba(30, 25, 20, 0.03);
-  --shadow-md: 0 4px 12px rgba(30, 25, 20, 0.06), 0 1px 3px rgba(30, 25, 20, 0.04);
-  --shadow-lg: 0 8px 24px rgba(30, 25, 20, 0.08), 0 2px 6px rgba(30, 25, 20, 0.04);
-  --shadow-xl: 0 16px 48px rgba(30, 25, 20, 0.10), 0 4px 12px rgba(30, 25, 20, 0.05);
-  --shadow-inner: inset 0 1px 4px rgba(30, 25, 20, 0.05);
+  /* Shadow — 冷灰 */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.09), 0 2px 6px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-inner: inset 0 1px 4px rgba(0, 0, 0, 0.05);
 
   /* Transition */
   --transition-fast: 120ms ease;

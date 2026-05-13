@@ -5,7 +5,7 @@
         <div class="auth-logo">
           <UnicornIcon :size="72" />
         </div>
-        <h1 class="auth-title"><span>Intelligent</span></h1>
+        <h1 class="auth-title"><span>NovaMind</span></h1>
         <p class="auth-subtitle">智能知识管理平台</p>
       </div>
       <div class="auth-content">

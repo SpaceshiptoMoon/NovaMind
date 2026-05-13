@@ -468,7 +468,7 @@ watch(spaceId, () => {
   position: absolute;
   inset: 0;
   display: flex;
-  background: #FFFFFF;
+  background: var(--color-bg-card);
   overflow: hidden;
 }
 
@@ -644,7 +644,7 @@ watch(spaceId, () => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: #FFFFFF;
+  background: var(--color-bg-card);
 }
 
 /* ========================================
@@ -777,7 +777,7 @@ watch(spaceId, () => {
   background: var(--color-primary);
   color: #FFFFFF;
   white-space: pre-wrap;
-  box-shadow: 0 1px 4px rgba(66, 133, 244, 0.15);
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.15);
 }
 
 /* Assistant message */
@@ -885,7 +885,7 @@ watch(spaceId, () => {
 .input-area {
   flex-shrink: 0;
   padding: 0 var(--space-6) var(--space-5);
-  background: #FFFFFF;
+  background: var(--color-bg-card);
 }
 
 .input-pill {
@@ -969,7 +969,7 @@ watch(spaceId, () => {
   background: var(--color-primary);
   color: #FFFFFF;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(66, 133, 244, 0.25);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
 }
 
 .send-btn.active:hover {

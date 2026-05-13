@@ -575,6 +575,23 @@ export interface ChatMessage {
   extra: Record<string, unknown> | null
   created_at: string
   reasoning?: string
+  attachments?: ChatAttachment[]
+}
+
+export interface ChatAttachment {
+  id: number
+  filename: string
+  file_type: string
+  file_size: number
+}
+
+export interface UploadChatAttachmentResponse {
+  attachment_id: number
+  filename: string
+  file_type: string
+  file_size: number
+  status: string
+  message: string
 }
 
 export interface SessionItem {
@@ -598,6 +615,7 @@ export interface ChatRequest {
   top_p?: number
   system_prompt?: string
   enable_thinking?: boolean
+  attachment_ids?: number[]
 }
 
 export interface ChatResponse {
@@ -992,6 +1010,7 @@ export interface AgentMessage {
   tool_call_id: string | null
   tool_name: string | null
   token_count: number | null
+  extra?: Record<string, any> | null
   created_at: string
   reasoning?: string
 }

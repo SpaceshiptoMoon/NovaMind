@@ -4,7 +4,7 @@ import { tokenManager } from '@/api'
 export function setupRouterGuards(router: Router) {
   router.beforeEach((to, _from) => {
     const title = to.meta.title
-    document.title = title ? `${title} - Intelligent` : 'Intelligent'
+    document.title = title ? `${title} - NovaMind` : 'NovaMind'
 
     const token = tokenManager.getToken()
     const requiresAuth = to.meta.requiresAuth !== false

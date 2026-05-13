@@ -193,7 +193,7 @@ async function handleUpload(file: File) {
   display: flex;
   gap: 4px;
   margin-bottom: 20px;
-  border-bottom: 1px solid var(--color-border-light, #e4e7ed);
+  border-bottom: 1px solid var(--color-border-light);
   padding-bottom: 0;
 }
 
@@ -203,7 +203,7 @@ async function handleUpload(file: File) {
   background: transparent;
   font-family: var(--font-body);
   font-size: 14px;
-  color: var(--color-text-secondary, #909399);
+  color: var(--color-text-secondary);
   cursor: pointer;
   border-bottom: 2px solid transparent;
   transition: all 0.2s;
@@ -211,12 +211,12 @@ async function handleUpload(file: File) {
 }
 
 .tab-btn:hover {
-  color: var(--color-primary, #4285F4);
+  color: var(--color-primary);
 }
 
 .tab-btn.active {
-  color: var(--color-primary, #4285F4);
-  border-bottom-color: var(--color-primary, #4285F4);
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
   font-weight: 500;
 }
 
@@ -235,16 +235,16 @@ async function handleUpload(file: File) {
 }
 
 .skill-card {
-  background: var(--color-bg-elevated, #fff);
-  border: 1px solid var(--color-border, #e4e7ed);
-  border-radius: var(--radius-lg, 8px);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 20px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .skill-card:hover {
-  box-shadow: var(--shadow-md, 0 4px 12px rgba(0,0,0,0.1));
+  box-shadow: var(--shadow-md);
   transform: translateY(-2px);
 }
 
@@ -267,7 +267,7 @@ async function handleUpload(file: File) {
 
 .card-desc {
   font-size: 13px;
-  color: var(--text-secondary, #909399);
+  color: var(--color-text-secondary);
   line-height: 1.5;
   margin: 0 0 16px;
   display: -webkit-box;
@@ -292,7 +292,7 @@ async function handleUpload(file: File) {
   align-items: center;
   gap: 4px;
   font-size: 13px;
-  color: var(--text-secondary, #909399);
+  color: var(--color-text-secondary);
 }
 
 .card-tags {
@@ -303,7 +303,7 @@ async function handleUpload(file: File) {
 .card-author {
   margin-top: 10px;
   font-size: 12px;
-  color: var(--color-text-faint, #c0c4cc);
+  color: var(--color-text-faint);
 }
 
 .pagination-area {
