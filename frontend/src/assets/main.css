@@ -6,15 +6,15 @@
 }
 
 /* ========================================
-   Element Plus Theme Overrides
+   Element Plus Theme Overrides — Clean Modern
    ======================================== */
 :root {
-  --el-color-primary: #4285F4;
-  --el-color-primary-light-3: #6ea4f7;
-  --el-color-primary-light-5: #98bef9;
-  --el-color-primary-light-7: #c1d8fb;
-  --el-color-primary-light-9: #ebf2fe;
-  --el-color-primary-dark-2: #2D6BE0;
+  --el-color-primary: #2563EB;
+  --el-color-primary-light-3: #5B8DEF;
+  --el-color-primary-light-5: #93B4F5;
+  --el-color-primary-light-7: #BAD1FA;
+  --el-color-primary-light-9: #E2EDFD;
+  --el-color-primary-dark-2: #1D4ED8;
 
   --el-font-family: var(--font-body);
   --el-border-radius-base: var(--radius-md);

@@ -237,7 +237,7 @@ onMounted(() => {
   align-items: center;
   margin-bottom: 20px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #F0EDEA;
+  border-bottom: 1px solid var(--color-border-light);
 }
 
 .page-header-left {
@@ -250,7 +250,7 @@ onMounted(() => {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: #1A1A1A;
+  color: var(--color-text);
 }
 
 .filter-bar {
@@ -266,7 +266,7 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #1A1A1A;
+  color: var(--color-text);
 }
 
 .detail-meta {
@@ -274,19 +274,19 @@ onMounted(() => {
   gap: 24px;
   margin-bottom: 16px;
   font-size: 13px;
-  color: #8C8C8C;
+  color: var(--color-text-muted);
 }
 
 .detail-sources {
   margin-bottom: 16px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #F0EDEA;
+  border-bottom: 1px solid var(--color-border-light);
 }
 
 .detail-sources h4 {
   margin: 0 0 8px;
   font-size: 14px;
-  color: #1A1A1A;
+  color: var(--color-text);
 }
 
 .detail-sources .el-tag {
@@ -297,7 +297,7 @@ onMounted(() => {
 .detail-report h4 {
   margin: 0 0 12px;
   font-size: 14px;
-  color: #1A1A1A;
+  color: var(--color-text);
 }
 
 .report-text {
@@ -307,10 +307,10 @@ onMounted(() => {
   max-height: 500px;
   overflow-y: auto;
   padding: 16px;
-  background: #F0EDEA;
-  border-radius: 8px;
-  border: 1px solid #F0EDEA;
+  background: var(--color-bg-card-elevated);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-light);
   font-size: 14px;
-  color: #1A1A1A;
+  color: var(--color-text);
 }
 </style>

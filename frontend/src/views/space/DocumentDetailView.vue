@@ -1,123 +1,118 @@
 <template>
   <div class="document-detail-view">
-    <div class="back-row">
-      <BreadcrumbNav :doc-name="document?.filename" />
-    </div>
-
     <!-- 文档信息 -->
-    <el-card v-loading="loading" class="info-card">
-      <template #header>
-        <div class="card-header">
-          <span>文档信息</span>
-          <div class="header-actions">
-            <el-button
-              v-if="isProcessing"
-              type="warning"
-              size="small"
-              :loading="cancelLoading"
-              @click="handleCancel"
-            >
-              <el-icon><Close /></el-icon>
-              取消处理
-            </el-button>
-            <el-button
-              v-if="isFailed"
-              type="warning"
-              size="small"
-              :loading="retryLoading"
-              @click="handleRetry"
-            >
-              <el-icon><RefreshRight /></el-icon>
-              重试
-            </el-button>
-            <el-button
-              v-if="canReprocess"
-              type="warning"
-              size="small"
-              :loading="reprocessLoading"
-              @click="handleReprocess"
-            >
-              <el-icon><Refresh /></el-icon>
-              重新解析
-            </el-button>
-            <el-button type="primary" size="small" @click="handleDownload">
-              <el-icon><Download /></el-icon>
-              下载
-            </el-button>
-            <el-button type="danger" size="small" @click="handleDelete">
-              <el-icon><Delete /></el-icon>
-              删除
-            </el-button>
+    <div v-loading="loading" class="info-section">
+      <div class="info-header">
+        <div class="info-title-row">
+          <div class="file-type-badge" :style="{ background: getFileTypeStyle(document?.file_type || '').bg, color: getFileTypeStyle(document?.file_type || '').color }">
+            {{ (document?.file_type || 'FILE').toUpperCase().slice(0, 3) }}
+          </div>
+          <div class="info-title-text">
+            <h3 class="doc-filename">{{ document?.filename || '加载中...' }}</h3>
+            <StatusTag v-if="document" :status="String(document.status)" :status-map="docStatusMap" size="small" />
           </div>
         </div>
-      </template>
+        <div class="header-actions">
+          <el-button
+            v-if="isProcessing"
+            type="warning"
+            size="small"
+            :loading="cancelLoading"
+            @click="handleCancel"
+          >
+            取消处理
+          </el-button>
+          <el-button
+            v-if="isFailed"
+            type="warning"
+            size="small"
+            :loading="retryLoading"
+            @click="handleRetry"
+          >
+            重试
+          </el-button>
+          <el-button
+            v-if="canReprocess"
+            size="small"
+            :loading="reprocessLoading"
+            @click="handleReprocess"
+          >
+            重新解析
+          </el-button>
+          <el-button type="primary" size="small" @click="handleDownload">
+            下载
+          </el-button>
+          <el-button type="danger" size="small" @click="handleDelete">
+            删除
+          </el-button>
+        </div>
+      </div>
 
-      <el-descriptions :column="3" border>
-        <el-descriptions-item label="文件名">
-          {{ document?.filename || '-' }}
-        </el-descriptions-item>
-        <el-descriptions-item label="文件类型">
-          <el-tag size="small">{{ document?.file_type?.toUpperCase() || '-' }}</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="文件大小">
-          {{ formatFileSize(document?.file_size || 0) }}
-        </el-descriptions-item>
-        <el-descriptions-item label="状态">
-          <StatusTag :status="String(document?.status ?? '')" :status-map="docStatusMap" size="small" />
-        </el-descriptions-item>
-        <el-descriptions-item label="分块数">
-          {{ document?.chunk_count || 0 }}
-        </el-descriptions-item>
-        <el-descriptions-item label="Token数">
-          {{ document?.token_count || 0 }}
-        </el-descriptions-item>
-        <el-descriptions-item label="上传时间">
-          {{ formatDate(document?.created_at) }}
-        </el-descriptions-item>
-        <el-descriptions-item label="更新时间">
-          {{ formatDate(document?.updated_at) }}
-        </el-descriptions-item>
-      </el-descriptions>
-    </el-card>
+      <!-- Meta grid -->
+      <div v-if="document" class="meta-grid">
+        <div class="meta-item">
+          <span class="meta-label">文件类型</span>
+          <span class="meta-value">{{ document.file_type?.toUpperCase() || '-' }}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">文件大小</span>
+          <span class="meta-value">{{ formatFileSize(document.file_size || 0) }}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">分块数</span>
+          <span class="meta-value">{{ document.chunk_count || 0 }}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Token 数</span>
+          <span class="meta-value">{{ document.token_count || 0 }}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">上传时间</span>
+          <span class="meta-value">{{ formatDate(document.created_at) }}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">更新时间</span>
+          <span class="meta-value">{{ formatDate(document.updated_at) }}</span>
+        </div>
+      </div>
+    </div>
 
     <!-- 分块列表 -->
-    <el-card class="chunks-card">
-      <template #header>
-        <div class="card-header">
-          <span>文档分块 ({{ document?.chunk_count || 0 }})</span>
-        </div>
-      </template>
+    <div class="chunks-section">
+      <div class="section-header">
+        <h4>文档分块</h4>
+        <span class="chunk-count">{{ document?.chunk_count || 0 }} 个分块</span>
+      </div>
 
       <div v-if="chunks.length > 0" class="chunks-list">
-        <el-card
+        <div
           v-for="chunk in chunks"
           :key="chunk.chunk_id"
           class="chunk-card"
-          shadow="hover"
         >
           <div class="chunk-header">
-            <span class="chunk-index">分块 {{ chunk.chunk_index + 1 }}</span>
-            <span class="chunk-meta">
-              <span v-if="(chunk.metadata as Record<string, unknown>)?.page">页码: {{ (chunk.metadata as Record<string, unknown>).page }}</span>
-              <span v-if="(chunk.metadata as Record<string, unknown>)?.section_title">章节: {{ (chunk.metadata as Record<string, unknown>).section_title }}</span>
-              <span v-if="chunk.has_embedding">已向量化</span>
-            </span>
+            <span class="chunk-index-badge">{{ chunk.chunk_index + 1 }}</span>
+            <div class="chunk-meta">
+              <span v-if="(chunk.metadata as Record<string, unknown>)?.page" class="meta-tag">第 {{ (chunk.metadata as Record<string, unknown>).page }} 页</span>
+              <span v-if="(chunk.metadata as Record<string, unknown>)?.section_title" class="meta-tag">{{ (chunk.metadata as Record<string, unknown>).section_title }}</span>
+              <span v-if="chunk.has_embedding" class="meta-tag embedded">已向量化</span>
+            </div>
           </div>
           <div class="chunk-content">
             {{ chunk.content }}
           </div>
           <div v-if="chunk.questions?.length > 0" class="chunk-questions">
-            <span class="questions-label">相关问题:</span>
             <el-tag
               v-for="q in chunk.questions"
               :key="q"
               size="small"
-              type="info"
+              effect="plain"
+              round
             >
               {{ q }}
             </el-tag>
           </div>
-        </el-card>
+        </div>
       </div>
       <EmptyState v-else description="暂无分块数据" />
 
@@ -130,7 +125,7 @@
           @current-change="fetchChunks"
         />
       </div>
-    </el-card>
+    </div>
   </div>
 </template>
 
@@ -138,11 +133,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Download, Delete, Refresh, RefreshRight, Close } from '@element-plus/icons-vue'
 import { documentApi } from '@/api/document'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import BreadcrumbNav from '@/components/common/BreadcrumbNav.vue'
 import type { DocumentDetail, Chunk } from '@/api/types'
 
 const route = useRoute()
@@ -162,7 +155,6 @@ const totalChunks = ref(0)
 const chunkCurrentPage = ref(1)
 const chunkPageSize = 10
 
-// 状态映射
 const docStatusMap: Record<string, { text: string; type: 'success' | 'warning' | 'danger' | 'info' | 'primary' }> = {
   uploaded: { text: '待处理', type: 'info' },
   processing: { text: '处理中', type: 'warning' },
@@ -172,6 +164,19 @@ const docStatusMap: Record<string, { text: string; type: 'success' | 'warning' |
   '1': { text: '处理中', type: 'warning' },
   '2': { text: '已完成', type: 'success' },
   '3': { text: '失败', type: 'danger' },
+}
+
+const fileTypeStyles: Record<string, { bg: string; color: string }> = {
+  pdf: { bg: '#FEF2F2', color: '#EF4444' },
+  docx: { bg: '#EFF6FF', color: '#2563EB' },
+  txt: { bg: '#F3F4F6', color: '#6B7280' },
+  md: { bg: '#F0F9FF', color: '#0EA5E9' },
+  xlsx: { bg: '#ECFDF5', color: '#10B981' },
+  pptx: { bg: '#FFFBEB', color: '#F59E0B' },
+}
+
+function getFileTypeStyle(type: string): { bg: string; color: string } {
+  return fileTypeStyles[type.toLowerCase()] || { bg: '#F3F4F6', color: '#6B7280' }
 }
 
 function formatFileSize(bytes: number): string {
@@ -352,39 +357,118 @@ onMounted(() => {
 
 <style scoped>
 .document-detail-view {
-  padding: var(--space-5);
+  padding-top: var(--space-2);
 }
 
-.back-row {
+/* ===== Info Section ===== */
+
+.info-section {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  margin-bottom: var(--space-5);
+}
+
+.info-header {
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
+  justify-content: space-between;
+  align-items: flex-start;
   margin-bottom: var(--space-4);
 }
 
-.breadcrumb-nav {
-  display: block;
-}
-
-.info-card {
-  margin-bottom: var(--space-5);
-  border-radius: var(--radius-xl);
-}
-
-.card-header {
+.info-title-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: var(--space-3);
+}
+
+.file-type-badge {
+  width: 44px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.5px;
+  flex-shrink: 0;
+}
+
+.info-title-text {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.doc-filename {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+  font-family: var(--font-display);
 }
 
 .header-actions {
   display: flex;
   gap: var(--space-2);
+  flex-shrink: 0;
 }
 
-.chunks-card {
-  margin-bottom: var(--space-5);
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-3);
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-card-elevated);
+  border-radius: var(--radius-md);
+}
+
+.meta-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.meta-value {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+/* ===== Chunks Section ===== */
+
+.chunks-section {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
   border-radius: var(--radius-xl);
+  padding: var(--space-5);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.section-header h4 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+  font-family: var(--font-display);
+}
+
+.chunk-count {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
 }
 
 .chunks-list {
@@ -394,38 +478,66 @@ onMounted(() => {
 }
 
 .chunk-card {
-  cursor: default;
+  background: var(--color-bg-card-elevated);
+  border: 1px solid var(--color-border-light);
   border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  transition: all var(--transition-fast);
+}
+
+.chunk-card:hover {
+  border-color: var(--color-border);
 }
 
 .chunk-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--space-2);
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
 }
 
-.chunk-index {
-  font-weight: var(--weight-semibold);
+.chunk-index-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-subtle);
   color: var(--color-primary);
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  flex-shrink: 0;
 }
 
 .chunk-meta {
   display: flex;
-  gap: var(--space-4);
-  font-size: var(--text-sm);
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.meta-tag {
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
+  background: var(--color-bg-hover);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.meta-tag.embedded {
+  color: var(--color-success);
+  background: var(--color-success-subtle);
 }
 
 .chunk-content {
-  font-size: var(--text-base);
-  line-height: 1.6;
+  font-size: var(--text-sm);
+  line-height: 1.7;
   color: var(--color-text);
+  font-family: var(--font-mono);
   white-space: pre-wrap;
   word-break: break-word;
   background: var(--color-bg-hover);
-  padding: 14px;
+  padding: var(--space-3);
   border-radius: var(--radius-md);
   max-height: 200px;
   overflow-y: auto;
@@ -435,16 +547,10 @@ onMounted(() => {
 .chunk-questions {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: var(--space-2);
   margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px solid var(--color-border-light);
-}
-
-.questions-label {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
 }
 
 .chunks-pagination {

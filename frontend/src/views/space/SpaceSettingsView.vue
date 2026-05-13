@@ -1,14 +1,8 @@
 <template>
   <div class="space-settings-view">
-    <div class="settings-header">
-      <button class="back-btn" @click="router.push(`/home/spaces/${spaceId}/knowledge-bases`)">
-        <el-icon><ArrowLeft /></el-icon>
-        返回知识库
-      </button>
-    </div>
     <div v-if="loading" style="text-align: center; padding: 60px">
       <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-      <p style="margin-top: 12px; color: #8C8C8C">加载中...</p>
+      <p style="margin-top: 12px; color: var(--color-text-muted)">加载中...</p>
     </div>
 
     <template v-else>
@@ -266,7 +260,7 @@
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Loading, Plus, ArrowLeft } from '@element-plus/icons-vue'
+import { Loading, Plus } from '@element-plus/icons-vue'
 import { spaceApi } from '@/api/space'
 import { userApi } from '@/api/user'
 import { memberApi } from '@/api/member'
@@ -589,31 +583,7 @@ onMounted(() => {
 
 <style scoped>
 .space-settings-view {
-  padding: var(--space-6);
-  height: 100%;
-}
-
-.settings-header {
-  margin-bottom: var(--space-4);
-}
-
-.back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: transparent;
-  border: none;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  font-size: 13px;
-  padding: 6px var(--space-3);
-  border-radius: var(--radius-md);
-  transition: all var(--transition-fast);
-}
-
-.back-btn:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text);
+  padding-top: var(--space-2);
 }
 
 .settings-tabs {
@@ -624,52 +594,60 @@ onMounted(() => {
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: var(--space-4);
-  margin-bottom: var(--space-8);
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
 }
 
 .stat-card {
-  background: var(--color-bg-card-elevated);
-  border: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
   border-radius: var(--radius-lg);
-  padding: var(--space-5) var(--space-4);
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1);
+  transition: all var(--transition-fast);
+}
+
+.stat-card:hover {
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-xs);
 }
 
 .stat-value {
-  font-size: 24px;
+  font-size: var(--text-2xl);
   font-weight: var(--weight-bold);
   color: var(--color-text);
+  font-family: var(--font-display);
 }
 
 .stat-label {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
 
 /* 设置区块 */
 .settings-section {
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-6);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
   margin-bottom: var(--space-5);
 }
 
 .section-title {
-  font-size: var(--text-lg);
+  font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   color: var(--color-text);
   margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
 }
 
 .section-desc {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
-  margin: 0 0 var(--space-5);
+  margin: 0 0 var(--space-4);
 }
 
 .tags-editor {
@@ -680,7 +658,7 @@ onMounted(() => {
 }
 
 .dimension-display {
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
 

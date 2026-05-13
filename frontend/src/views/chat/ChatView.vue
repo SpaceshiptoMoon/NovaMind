@@ -75,7 +75,23 @@
                 </div>
                 <MarkdownRenderer :content="msg.content" class="message-text" />
               </template>
-              <div v-else class="message-text">{{ msg.content }}</div>
+              <template v-else>
+                <div class="message-text">{{ msg.content }}</div>
+                <div v-if="getMessageAttachments(msg).length" class="message-attachments">
+                  <div v-for="att in getMessageAttachments(msg)" :key="att.filename" class="file-card" @click="handleDownloadAttachment(att)">
+                    <div class="file-icon-box" :class="getFileIconClass(att.file_type)">
+                      <span class="file-ext-label">{{ getFileExt(att.filename) }}</span>
+                    </div>
+                    <div class="file-info">
+                      <div class="file-name">{{ att.filename }}</div>
+                      <div class="file-meta">{{ getFileExt(att.filename) }} · {{ formatFileSize(att.file_size) }}</div>
+                    </div>
+                    <div class="file-download-btn" title="下载">
+                      <el-icon :size="16"><Download /></el-icon>
+                    </div>
+                  </div>
+                </div>
+              </template>
               <div class="message-actions">
                 <button class="msg-copy-btn" @click="handleCopyMessage(msg.content, $event)">
                   <el-icon :size="13"><DocumentCopy /></el-icon>
@@ -100,43 +116,21 @@
       <!-- 输入区域：药丸形 -->
       <div class="input-area">
         <div class="input-pill">
-          <el-popover trigger="click" :width="180" placement="top-start">
-            <template #reference>
-              <button class="input-action-btn">
-                <el-icon :size="16"><Setting /></el-icon>
-              </button>
-            </template>
-            <div class="settings-popover">
-              <label class="setting-item">
-                <span>深度思考</span>
-                <el-switch v-model="enableThinking" size="small" />
-              </label>
-              <label class="setting-item">
-                <span>流式输出</span>
-                <el-switch v-model="useStream" size="small" />
-              </label>
-              <div class="setting-item">
-                <span>模型</span>
-                <el-select
-                  v-model="selectedModel"
-                  :placeholder="defaultModelName || '默认'"
-                  clearable
-                  size="small"
-                  style="width: 120px"
-                >
-                  <el-option v-for="(_, name) in availableModels" :key="name" :label="name" :value="name" />
-                </el-select>
-              </div>
-              <button
-                v-if="chatStore.currentSessionId"
-                class="setting-item clickable"
-                @click="handleOpenConfig(chatStore.currentSessionId)"
-              >
-                <span>会话设置</span>
-                <el-icon :size="12"><ArrowRight /></el-icon>
-              </button>
-            </div>
-          </el-popover>
+          <button
+            class="attach-btn"
+            :disabled="chatStore.isStreaming || chatStore.loading || uploadingFiles"
+            @click="triggerFileSelect"
+            title="上传文档"
+          >
+            <el-icon :size="16"><Paperclip /></el-icon>
+          </button>
+          <input
+            ref="fileInputRef"
+            type="file"
+            accept=".pdf,.docx,.txt,.md"
+            style="display: none"
+            @change="handleFileSelected"
+          />
           <textarea
             ref="textareaRef"
             v-model="inputText"
@@ -157,14 +151,71 @@
           <button
             v-else
             class="send-btn"
-            :class="{ active: inputText.trim() }"
-            :disabled="!inputText.trim() || chatStore.loading"
+            :class="{ active: inputText.trim() || chatStore.pendingAttachments.length > 0 }"
+            :disabled="(!inputText.trim() && chatStore.pendingAttachments.length === 0) || chatStore.loading"
             @click="handleSend"
           >
             <el-icon :size="16"><Promotion /></el-icon>
           </button>
         </div>
-        <div class="input-hint">按 Enter 发送，Shift + Enter 换行</div>
+        <!-- 文件预览 -->
+        <div v-if="chatStore.pendingAttachments.length > 0" class="attachment-preview-bar">
+          <div
+            v-for="att in chatStore.pendingAttachments"
+            :key="att.id"
+            class="attachment-chip"
+          >
+            <span class="att-type-badge">{{ getFileIcon(att.file_type) }}</span>
+            <span class="att-name">{{ att.filename }}</span>
+            <span class="att-size">{{ formatFileSize(att.file_size) }}</span>
+            <button class="att-remove" @click="chatStore.removePendingAttachment(att.id)">
+              <el-icon :size="10"><Close /></el-icon>
+            </button>
+          </div>
+        </div>
+        <!-- 折叠设置栏 -->
+        <div class="input-footer">
+          <button class="settings-toggle" @click="settingsExpanded = !settingsExpanded">
+            <el-icon :size="12"><Setting /></el-icon>
+            <span>{{ settingsSummary }}</span>
+            <el-icon :size="10" class="toggle-arrow" :class="{ expanded: settingsExpanded }"><ArrowDown /></el-icon>
+          </button>
+          <div class="input-hint-inline">Enter 发送 · Shift+Enter 换行</div>
+        </div>
+        <transition name="settings-slide">
+          <div v-if="settingsExpanded" class="settings-bar">
+            <div class="settings-bar-inner">
+              <div class="setting-group">
+                <span class="setting-label">模型</span>
+                <el-select
+                  v-model="selectedModel"
+                  :placeholder="defaultModelName || '默认'"
+                  clearable
+                  size="small"
+                  style="width: 180px"
+                >
+                  <el-option v-for="(_, name) in availableModels" :key="name" :label="name" :value="name" />
+                </el-select>
+              </div>
+              <div class="setting-group">
+                <span class="setting-label">深度思考</span>
+                <el-switch v-model="enableThinking" size="small" />
+              </div>
+              <div class="setting-group">
+                <span class="setting-label">流式输出</span>
+                <el-switch v-model="useStream" size="small" />
+              </div>
+              <button
+                v-if="chatStore.currentSessionId"
+                class="setting-group clickable"
+                @click="handleOpenConfig(chatStore.currentSessionId)"
+              >
+                <span class="setting-label">会话设置</span>
+                <el-icon :size="12"><ArrowRight /></el-icon>
+              </button>
+            </div>
+          </div>
+        </transition>
       </div>
     </div>
 
@@ -239,7 +290,8 @@
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick, onMounted, watch, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete, Setting, Promotion, VideoPause, DocumentCopy, ArrowRight, ArrowDown } from '@element-plus/icons-vue'
+import { Plus, Delete, Setting, Promotion, VideoPause, DocumentCopy, ArrowRight, ArrowDown, Paperclip, Close, Document, Download } from '@element-plus/icons-vue'
+// Note: Setting is still used in settings toggle button
 import { useChatStore } from '@/stores/chat'
 import { chatApi } from '@/api/chat'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
@@ -250,9 +302,12 @@ const isInWorkspace = inject('isInWorkspace', false)
 const inputText = ref('')
 const useStream = ref(true)
 const enableThinking = ref(false)
+const settingsExpanded = ref(false)
 const expandedReasoning = ref(new Set<number>())
 const messagesRef = ref<HTMLElement>()
 const textareaRef = ref<HTMLTextAreaElement>()
+const fileInputRef = ref<HTMLInputElement>()
+const uploadingFiles = ref(false)
 
 const quickPrompts = [
   { icon: '💡', text: '帮我分析一下这段代码的逻辑' },
@@ -322,8 +377,10 @@ async function handleDeleteSession(sessionId: string) {
 
 async function handleSend() {
   const content = inputText.value.trim()
-  if (!content) return
+  const hasAttachments = chatStore.pendingAttachments.length > 0
+  if (!content && !hasAttachments) return
 
+  const sendContent = content || (hasAttachments ? '请分析上传的文档' : '')
   inputText.value = ''
   nextTick(() => {
     if (textareaRef.value) {
@@ -331,17 +388,18 @@ async function handleSend() {
     }
   })
 
+  const attachmentIds = chatStore.pendingAttachments.map(a => a.id)
+  const opts = {
+    llm_model: selectedModel.value || undefined,
+    enable_thinking: enableThinking.value,
+    attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
+  }
+
   try {
     if (useStream.value) {
-      await chatStore.sendMessageStream(content, {
-        llm_model: selectedModel.value || undefined,
-        enable_thinking: enableThinking.value,
-      })
+      await chatStore.sendMessageStream(sendContent, opts)
     } else {
-      await chatStore.sendMessage(content, {
-        llm_model: selectedModel.value || undefined,
-        enable_thinking: enableThinking.value,
-      })
+      await chatStore.sendMessage(sendContent, opts)
     }
   } catch {
     ElMessage.error('发送失败，请重试')
@@ -376,6 +434,87 @@ function handleKeydown(e: KeyboardEvent) {
 const selectedModel = ref('')
 const availableModels = ref<Record<string, { max_tokens: number; temperature: number; top_p: number }>>({})
 const defaultModelName = computed(() => Object.keys(availableModels.value)[0] || '')
+
+const settingsSummary = computed(() => {
+  const model = selectedModel.value || defaultModelName.value || '默认'
+  const parts = [model]
+  if (enableThinking.value) parts.push('深度思考')
+  return parts.join(' · ')
+})
+
+function triggerFileSelect() {
+  fileInputRef.value?.click()
+}
+
+async function handleFileSelected(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (!input.files?.length) return
+
+  const maxSize = 20 * 1024 * 1024
+  const allowedTypes = ['pdf', 'docx', 'txt', 'md']
+
+  for (const file of Array.from(input.files)) {
+    const ext = file.name.split('.').pop()?.toLowerCase() || ''
+    if (!allowedTypes.includes(ext)) {
+      ElMessage.warning(`不支持的文件类型: .${ext}`)
+      continue
+    }
+    if (file.size > maxSize) {
+      ElMessage.warning(`文件过大: ${file.name}（最大 20MB）`)
+      continue
+    }
+    try {
+      uploadingFiles.value = true
+      await chatStore.uploadAttachment(file)
+    } catch {
+      ElMessage.error(`上传失败: ${file.name}`)
+    } finally {
+      uploadingFiles.value = false
+    }
+  }
+  input.value = ''
+}
+
+function getFileIcon(type: string): string {
+  const map: Record<string, string> = { pdf: 'PDF', docx: 'DOC', txt: 'TXT', md: 'MD' }
+  return map[type] || 'FILE'
+}
+
+function getMessageAttachments(msg: ChatMessage): Array<{ id?: number; filename: string; file_type?: string; file_size?: number; storage_path?: string }> {
+  if (msg.attachments?.length) return msg.attachments
+  return (msg.extra as Record<string, any>)?.attachments ?? []
+}
+
+function getFileIconClass(type?: string): string {
+  if (!type) return 'file-default'
+  const t = type.toLowerCase()
+  if (t === 'pdf') return 'file-pdf'
+  if (t === 'docx' || t === 'doc') return 'file-doc'
+  if (t === 'txt') return 'file-txt'
+  if (t === 'md') return 'file-md'
+  return 'file-default'
+}
+
+function getFileExt(filename?: string): string {
+  if (!filename) return 'FILE'
+  const ext = filename.split('.').pop()?.toUpperCase() || 'FILE'
+  return ext
+}
+
+async function handleDownloadAttachment(att: { id?: number; filename: string }) {
+  if (!att.id) return
+  try {
+    await chatApi.downloadAttachmentFile(att.id, att.filename)
+  } catch {
+    ElMessage.error('下载失败')
+  }
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
 
 async function fetchModels() {
   try {
@@ -455,7 +594,7 @@ onMounted(() => {
   position: absolute;
   inset: 0;
   display: flex;
-  background: #FFFFFF;
+  background: var(--color-bg-card);
   overflow: hidden;
 }
 
@@ -597,7 +736,7 @@ onMounted(() => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: #FFFFFF;
+  background: var(--color-bg-card);
 }
 
 /* ========================================
@@ -728,10 +867,9 @@ onMounted(() => {
 .message-row.user .message-text {
   padding: var(--space-3) var(--space-4);
   border-radius: 18px 18px 4px 18px;
-  background: var(--color-primary);
-  color: #FFFFFF;
+  background: #dbeafe;
+  color: #1e3a5f;
   white-space: pre-wrap;
-  box-shadow: 0 1px 4px rgba(66, 133, 244, 0.15);
 }
 
 /* AI message */
@@ -746,8 +884,8 @@ onMounted(() => {
 .reasoning-section {
   margin-bottom: 8px;
   border-radius: 10px;
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
+  background: var(--color-bg-card-elevated);
+  border: 1px solid var(--color-border-light);
   overflow: hidden;
 }
 .reasoning-header {
@@ -761,7 +899,7 @@ onMounted(() => {
   color: var(--color-text-secondary);
 }
 .reasoning-header:hover {
-  background: #f1f3f5;
+  background: var(--color-bg-hover);
 }
 .reasoning-label {
   font-weight: 500;
@@ -774,7 +912,7 @@ onMounted(() => {
 }
 .reasoning-body {
   padding: 8px 12px 12px;
-  border-top: 1px solid #e9ecef;
+  border-top: 1px solid var(--color-border-light);
   font-size: 13px;
   color: var(--color-text-secondary);
   line-height: 1.6;
@@ -843,7 +981,7 @@ onMounted(() => {
 .input-area {
   flex-shrink: 0;
   padding: 0 var(--space-6) var(--space-5);
-  background: #FFFFFF;
+  background: var(--color-bg-card);
 }
 
 .input-pill {
@@ -851,7 +989,7 @@ onMounted(() => {
   margin: 0 auto;
   display: flex;
   align-items: flex-end;
-  padding: 8px 8px 8px 4px;
+  padding: 8px 12px;
   gap: var(--space-2);
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
@@ -863,26 +1001,6 @@ onMounted(() => {
 .input-pill:focus-within {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-primary-muted), var(--shadow-sm);
-}
-
-.input-action-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.input-action-btn:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-secondary);
 }
 
 .chat-textarea {
@@ -927,7 +1045,7 @@ onMounted(() => {
   background: var(--color-primary);
   color: #FFFFFF;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(66, 133, 244, 0.25);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
 }
 
 .send-btn.active:hover {
@@ -945,43 +1063,302 @@ onMounted(() => {
   background: var(--color-accent);
 }
 
-.input-hint {
+/* ========================================
+   Input Footer — Settings Toggle
+   ======================================== */
+.input-footer {
   max-width: 860px;
-  margin: 8px auto 0;
-  text-align: center;
+  margin: 6px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+
+.settings-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.settings-toggle:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+}
+
+.toggle-arrow {
+  transition: transform var(--transition-fast);
+}
+
+.toggle-arrow.expanded {
+  transform: rotate(180deg);
+}
+
+.input-hint-inline {
   font-size: var(--text-xs);
   color: var(--color-text-faint);
 }
 
 /* ========================================
-   Settings Popover
+   Settings Bar (Collapsible)
    ======================================== */
-.settings-popover {
-  display: flex;
-  flex-direction: column;
+.settings-slide-enter-active,
+.settings-slide-leave-active {
+  transition: all var(--transition-base);
+  overflow: hidden;
 }
 
-.setting-item {
+.settings-slide-enter-from,
+.settings-slide-leave-to {
+  opacity: 0;
+  max-height: 0;
+  margin-top: 0;
+}
+
+.settings-slide-enter-to,
+.settings-slide-leave-from {
+  opacity: 1;
+  max-height: 60px;
+  margin-top: 6px;
+}
+
+.settings-bar {
+  max-width: 860px;
+  margin: 6px auto 0;
+  padding: 8px 12px;
+  background: var(--color-bg-card-elevated);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+}
+
+.settings-bar-inner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-2) 0;
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  cursor: default;
+  gap: var(--space-4);
+  flex-wrap: wrap;
 }
 
-.setting-item.clickable {
-  cursor: pointer;
+.setting-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.setting-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.setting-group.clickable {
   border: none;
   background: transparent;
   font-family: var(--font-body);
-  width: 100%;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
   transition: color var(--transition-fast);
 }
 
-.setting-item.clickable:hover {
+.setting-group.clickable:hover {
   color: var(--color-primary);
+}
+
+/* ========================================
+   Attachment Button
+   ======================================== */
+.attach-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.attach-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  color: var(--color-primary);
+}
+
+.attach-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ========================================
+   Attachment Preview Bar
+   ======================================== */
+.attachment-preview-bar {
+  max-width: 860px;
+  margin: 6px auto 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 4px;
+  background: var(--color-bg-card-elevated);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-xs);
+  max-width: 240px;
+}
+
+.att-type-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-muted);
+  color: var(--color-primary);
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.att-name {
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.att-size {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.att-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.att-remove:hover {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+
+/* ========================================
+   Message Attachments — File Card
+   ======================================== */
+.message-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.file-card {
+  display: flex;
+  align-items: center;
+  width: 260px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.55);
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.file-card:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.file-card .file-icon-box {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+.file-icon-box .file-ext-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.3px;
+}
+
+.file-icon-box.file-pdf  { background: #ef4444; }
+.file-icon-box.file-doc  { background: #3b82f6; }
+.file-icon-box.file-txt  { background: #8b5cf6; }
+.file-icon-box.file-md   { background: #06b6d4; }
+.file-icon-box.file-default { background: #6b7280; }
+
+.file-card .file-info {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.file-card .file-name {
+  font-size: 13px;
+  color: #1e3a5f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-card .file-meta {
+  font-size: 11px;
+  color: #5b7a9d;
+  margin-top: 2px;
+}
+
+.file-card .file-download-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: #5b7a9d;
+  flex-shrink: 0;
+  margin-left: 4px;
+  transition: all 0.15s;
+}
+
+.file-card:hover .file-download-btn {
+  color: #1e3a5f;
+  background: rgba(0, 0, 0, 0.06);
 }
 </style>

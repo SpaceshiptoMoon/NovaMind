@@ -35,6 +35,8 @@ NovaMind 是一个开源的智能知识库管理系统。基于 FastAPI + Vue 3 
 - **深度研究** — 多源搜索（Tavily / SerpAPI / DuckDuckGo），自动生成研究报告
 - **知识库测评** — 测试集管理、自动化批量测评、人工评分
 - **Agent 智能体** — MCP Server 扩展、代码沙箱执行、多轮工具调用
+- **技能广场** — 技能包上传/审核/安装、市场发现、Agent 能力扩展
+- **应用中心** — AI 应用入口，已实现简历挖掘等场景化工具
 - **DDD 架构** — 领域驱动设计，模块解耦，易于扩展
 
 ## 技术栈
@@ -132,6 +134,14 @@ novamind/
 │   ├── src/
 │   │   ├── core/              # 核心基础设施（认证、数据库、中间件）
 │   │   ├── features/          # 业务模块（DDD 架构）
+│   │   │   ├── user/          # 用户管理
+│   │   │   ├── knowledge_space/ # 知识空间
+│   │   │   ├── qa/            # 智能问答
+│   │   │   ├── deep_research/ # 深度研究
+│   │   │   ├── evaluation/    # 知识库测评
+│   │   │   ├── agent/         # Agent 智能体
+│   │   │   ├── skill/         # 技能广场
+│   │   │   └── app/           # 应用中心
 │   │   ├── shared/            # 跨模块共享组件
 │   │   └── setting/           # 多环境配置管理
 │   ├── main.py                # 后端入口
@@ -193,6 +203,8 @@ src/features/{module}/
 | 深度研究 | `/api/v1/spaces/{id}/deep-research` | 多源搜索、研究报告生成 |
 | 知识库测评 | `/api/v1/spaces/{id}/knowledge-bases/{kb_id}/evaluation` | 测试集管理、自动化测评 |
 | Agent 智能体 | `/api/v1/agent` | MCP Server 扩展、代码沙箱 |
+| 技能广场 | `/api/v1/skills` | 技能上传、审核、安装、市场浏览 |
+| 应用中心 | `/api/v1/apps` | 简历挖掘等 AI 应用 |
 
 ## 推荐模型
 

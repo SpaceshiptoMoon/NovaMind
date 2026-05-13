@@ -11,63 +11,71 @@
 
     <!-- 知识库卡片网格 -->
     <div v-loading="loading" class="kb-grid">
-      <el-card
-        v-for="kb in knowledgeBases"
+      <div
+        v-for="(kb, index) in knowledgeBases"
         :key="kb.id"
         class="kb-card"
         :class="{ selected: selectedIds.includes(kb.id) }"
-        shadow="hover"
       >
-        <div class="kb-card-header">
-          <el-checkbox
-            :model-value="selectedIds.includes(kb.id)"
-            @change="(val: boolean) => toggleSelect(kb.id, val)"
-            @click.stop
-          />
-          <el-tag :type="kb.status === 1 ? 'success' : 'info'" size="small">
-            {{ kb.status === 1 ? '活跃' : '已归档' }}
-          </el-tag>
-        </div>
-        <h4 class="kb-name" @click="goToDocuments(kb.id)">
-          <el-icon class="kb-icon"><Collection /></el-icon>
-          {{ kb.name }}
-        </h4>
-        <p class="kb-desc">{{ kb.config?.description || '暂无描述' }}</p>
-        <div class="kb-meta">
-          <span class="meta-item">
-            <el-icon><Document /></el-icon>
-            {{ kb.stats?.document_count ?? 0 }} 文档
-          </span>
-        </div>
-        <div class="kb-actions">
-          <el-button size="small" @click="showEditDialog(kb)">
-            编辑
-          </el-button>
-          <el-button size="small" @click="showConfigDialog(kb)">
-            配置
-          </el-button>
-          <el-button
-            v-if="kb.status === 1"
-            type="warning"
-            size="small"
-            plain
-            @click="handleArchive(kb)"
-          >
-            归档
-          </el-button>
-          <el-button
-            v-else
-            type="success"
-            size="small"
-            plain
-            @click="handleUnarchive(kb)"
-          >
-            激活
-          </el-button>
-        </div>
-      </el-card>
+        <!-- 顶部彩色条 -->
+        <div class="kb-card-accent" :style="{ background: getColor(index) }" />
 
-      <el-empty v-if="!loading && knowledgeBases.length === 0" description="暂无知识库" />
+        <div class="kb-card-body" @click="goToDocuments(kb.id)">
+          <!-- 头部：名称 + 状态 -->
+          <div class="kb-card-header">
+            <div class="kb-card-title-row">
+              <div class="kb-color-dot" :style="{ background: getColor(index) }" />
+              <h4 class="kb-name">{{ kb.name }}</h4>
+            </div>
+            <el-tag :type="kb.status === 1 ? 'success' : 'info'" size="small" class="kb-status-tag">
+              {{ kb.status === 1 ? '活跃' : '已归档' }}
+            </el-tag>
+          </div>
+
+          <!-- 描述 -->
+          <p class="kb-desc">{{ kb.config?.description || '暂无描述' }}</p>
+
+          <!-- 元信息 -->
+          <div class="kb-meta">
+            <span class="meta-item">
+              <el-icon :size="14"><Document /></el-icon>
+              {{ kb.stats?.document_count ?? 0 }} 文档
+            </span>
+          </div>
+        </div>
+
+        <!-- 操作按钮（hover 显示） -->
+        <div class="kb-actions">
+          <el-tooltip content="编辑" placement="top">
+            <el-button size="small" circle @click.stop="showEditDialog(kb)">
+              <el-icon><Edit /></el-icon>
+            </el-button>
+          </el-tooltip>
+          <el-tooltip content="配置" placement="top">
+            <el-button size="small" circle @click.stop="showConfigDialog(kb)">
+              <el-icon><Setting /></el-icon>
+            </el-button>
+          </el-tooltip>
+          <el-tooltip v-if="kb.status === 1" content="归档" placement="top">
+            <el-button size="small" circle type="warning" plain @click.stop="handleArchive(kb)">
+              <el-icon><FolderOpened /></el-icon>
+            </el-button>
+          </el-tooltip>
+          <el-tooltip v-else content="激活" placement="top">
+            <el-button size="small" circle type="success" plain @click.stop="handleUnarchive(kb)">
+              <el-icon><FolderAdd /></el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
+      </div>
+
+      <!-- 空状态 -->
+      <EmptyState
+        v-if="!loading && knowledgeBases.length === 0"
+        variant="default"
+        title="暂无知识库"
+        description="点击右上角「新建知识库」创建第一个知识库"
+      />
     </div>
 
     <!-- 编辑知识库弹窗 -->
@@ -112,10 +120,30 @@
           <el-divider content-position="left">分块配置</el-divider>
           <el-form-item label="切分策略">
             <el-select v-model="configForm.splittingStrategy" style="width: 100%">
-              <el-option label="递归字符切分" value="recursive" />
-              <el-option label="固定大小切分" value="fixed_size" />
-              <el-option label="Markdown 结构切分" value="markdown" />
-              <el-option label="语义切分" value="semantic" />
+              <el-option label="递归字符切分" value="recursive">
+                <span>递归字符切分</span>
+                <span style="float: right; color: var(--el-text-color-secondary); font-size: 12px">
+                  按段落 → 句号 → 换行 → 空格逐级切分
+                </span>
+              </el-option>
+              <el-option label="固定大小切分" value="fixed_size">
+                <span>固定大小切分</span>
+                <span style="float: right; color: var(--el-text-color-secondary); font-size: 12px">
+                  按固定字符数截断
+                </span>
+              </el-option>
+              <el-option label="Markdown 结构切分" value="markdown">
+                <span>Markdown 结构切分</span>
+                <span style="float: right; color: var(--el-text-color-secondary); font-size: 12px">
+                  按 # ~ ###### 标题层级切分
+                </span>
+              </el-option>
+              <el-option label="语义切分" value="semantic">
+                <span>语义切分</span>
+                <span style="float: right; color: var(--el-text-color-secondary); font-size: 12px">
+                  基于向量相似度识别语义边界
+                </span>
+              </el-option>
             </el-select>
           </el-form-item>
 
@@ -124,7 +152,7 @@
             <el-form-item label="分块大小">
               <el-input-number
                 v-model="configForm.splittingChunkSize"
-                :min="50"
+                :min="500"
                 :max="4000"
                 style="width: 100%"
               />
@@ -134,6 +162,14 @@
                 v-model="configForm.splittingChunkOverlap"
                 :min="0"
                 :max="500"
+                style="width: 100%"
+              />
+            </el-form-item>
+            <el-form-item label="最小分块大小">
+              <el-input-number
+                v-model="configForm.splittingMinChunkSize"
+                :min="0"
+                :max="2000"
                 style="width: 100%"
               />
             </el-form-item>
@@ -318,11 +354,12 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Collection, Document } from '@element-plus/icons-vue'
+import { Document, Edit, Setting, FolderOpened, FolderAdd } from '@element-plus/icons-vue'
 import { knowledgeBaseApi } from '@/api/knowledgeBase'
 import { userApi } from '@/api/user'
 import type { KnowledgeBase, SplittingConfig, AvailableModelItem } from '@/api/types'
 import type { FormInstance, FormRules } from 'element-plus'
+import EmptyState from '@/components/common/EmptyState.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -349,6 +386,23 @@ const formRules: FormRules = {
   ],
 }
 
+// === 色板 ===
+
+const colorPalette = [
+  '#2563EB', // 蓝
+  '#10B981', // 翠绿
+  '#EF4444', // 红
+  '#7C3AED', // 紫
+  '#F59E0B', // 琥珀
+  '#0EA5E9', // 天蓝
+  '#F97316', // 橘橙
+  '#14B8A6', // 青
+]
+
+function getColor(index: number): string {
+  return colorPalette[index % colorPalette.length]
+}
+
 // === 配置弹窗 ===
 
 const configDialogVisible = ref(false)
@@ -357,21 +411,18 @@ const configSaving = ref(false)
 const configKbId = ref<number | null>(null)
 
 const configForm = reactive({
-  // splitting
   splittingStrategy: 'recursive' as string,
-  splittingChunkSize: 1000,
+  splittingChunkSize: 2000,
   splittingChunkOverlap: 100,
   splittingMaxChunkSize: 2000,
-  splittingMinChunkSize: 100,
+  splittingMinChunkSize: 500,
   splittingSimilarityThreshold: 0.7,
   splittingBatchSize: 20,
-  // parsing
   parsingExtractImages: false,
   parsingExtractTables: true,
   parsingOcrEnabled: false,
   parsingPreserveStructure: true,
   parsingEncoding: 'utf-8',
-  // question generation
   qgEnabled: false,
   qgLlmModel: '',
   qgLlmProtocol: '',
@@ -382,7 +433,6 @@ const configForm = reactive({
   qgPromptTemplate: '',
 })
 
-// 可用模型列表
 const llmModels = ref<AvailableModelItem[]>([])
 const llmProtocols = ref<string[]>([])
 
@@ -408,7 +458,6 @@ async function showConfigDialog(kb: KnowledgeBase) {
     ])
     const cfg = data.config
 
-    // splitting
     const sp = cfg?.splitting
     configForm.splittingStrategy = sp?.strategy || 'recursive'
     configForm.splittingChunkSize = (sp as { chunk_size?: number })?.chunk_size ?? 1000
@@ -418,7 +467,6 @@ async function showConfigDialog(kb: KnowledgeBase) {
     configForm.splittingSimilarityThreshold = (sp as { similarity_threshold?: number })?.similarity_threshold ?? 0.7
     configForm.splittingBatchSize = (sp as { batch_size?: number })?.batch_size ?? 20
 
-    // parsing
     const ps = cfg?.parsing
     configForm.parsingExtractImages = ps?.extract_images ?? false
     configForm.parsingExtractTables = ps?.extract_tables ?? true
@@ -426,7 +474,6 @@ async function showConfigDialog(kb: KnowledgeBase) {
     configForm.parsingPreserveStructure = ps?.preserve_structure ?? true
     configForm.parsingEncoding = ps?.encoding || 'utf-8'
 
-    // question generation
     const qg = cfg?.question_generation
     configForm.qgEnabled = qg?.enabled ?? false
     configForm.qgLlmModel = qg?.llm?.model || ''
@@ -447,7 +494,7 @@ async function showConfigDialog(kb: KnowledgeBase) {
 function buildSplittingConfig(): SplittingConfig {
   const s = configForm.splittingStrategy
   if (s === 'recursive') {
-    return { strategy: 'recursive', chunk_size: configForm.splittingChunkSize, chunk_overlap: configForm.splittingChunkOverlap }
+    return { strategy: 'recursive', chunk_size: configForm.splittingChunkSize, chunk_overlap: configForm.splittingChunkOverlap, min_chunk_size: configForm.splittingMinChunkSize }
   }
   if (s === 'fixed_size') {
     return { strategy: 'fixed_size', chunk_size: configForm.splittingChunkSize, chunk_overlap: configForm.splittingChunkOverlap }
@@ -638,14 +685,6 @@ function goToDocuments(kbId: number) {
   router.push(`/home/spaces/${spaceId.value}/knowledge-bases/${kbId}/documents`)
 }
 
-function goToSearch(kbId: number) {
-  router.push(`/home/spaces/${spaceId.value}/search?kbId=${kbId}`)
-}
-
-function goToEvaluation(kbId: number) {
-  router.push(`/home/spaces/${spaceId.value}/knowledge-bases/${kbId}/evaluation`)
-}
-
 onMounted(() => {
   fetchKnowledgeBases()
 })
@@ -653,7 +692,7 @@ onMounted(() => {
 
 <style scoped>
 .knowledge-base-view {
-  padding-top: var(--space-5);
+  padding-top: var(--space-2);
 }
 
 .batch-bar {
@@ -662,31 +701,37 @@ onMounted(() => {
   gap: var(--space-3);
   margin-bottom: var(--space-4);
   padding: var(--space-3) var(--space-4);
-  background: var(--color-warning-subtle);
+  background: var(--color-danger-subtle);
   border-radius: var(--radius-lg);
-  border: 1px solid rgba(196, 136, 47, 0.25);
+  border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
 .batch-count {
   font-size: var(--text-sm);
-  color: var(--color-warning);
+  color: var(--color-danger);
   font-weight: var(--weight-medium);
 }
 
 .kb-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: var(--space-5);
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
 }
 
 .kb-card {
-  transition: transform var(--transition-base), box-shadow var(--transition-base);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
   border-radius: var(--radius-xl);
+  overflow: hidden;
+  transition: all var(--transition-base);
+  display: flex;
+  flex-direction: column;
 }
 
 .kb-card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow-lg);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-2px);
 }
 
 .kb-card.selected {
@@ -694,36 +739,58 @@ onMounted(() => {
   box-shadow: 0 0 0 2px var(--color-primary-muted);
 }
 
+.kb-card-accent {
+  height: 3px;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.kb-card-body {
+  padding: var(--space-4);
+  cursor: pointer;
+  flex: 1;
+}
+
 .kb-card-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: var(--space-3);
 }
 
-.kb-name {
+.kb-card-title-row {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin: 0 0 var(--space-2);
+  min-width: 0;
+  flex: 1;
+}
+
+.kb-color-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.kb-name {
+  margin: 0;
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   color: var(--color-text);
-  cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   transition: color var(--transition-fast);
 }
 
-.kb-name:hover {
+.kb-card:hover .kb-name {
   color: var(--color-primary);
 }
 
-.kb-icon {
-  font-size: 20px;
-  color: var(--color-primary);
+.kb-status-tag {
   flex-shrink: 0;
+  margin-left: var(--space-2);
 }
 
 .kb-desc {
@@ -741,7 +808,6 @@ onMounted(() => {
 .kb-meta {
   display: flex;
   gap: var(--space-4);
-  margin-bottom: var(--space-3);
   font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
@@ -754,9 +820,14 @@ onMounted(() => {
 
 .kb-actions {
   display: flex;
-  flex-wrap: wrap;
   gap: var(--space-2);
-  padding-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--color-border-light);
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+.kb-card:hover .kb-actions {
+  opacity: 1;
 }
 </style>

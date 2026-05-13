@@ -1,6 +1,6 @@
 <template>
   <div class="kb-evaluation-view">
-    <!-- 页面导航 -->
+    <!-- 子导航标签 -->
     <div class="page-nav">
       <div class="nav-tabs">
         <router-link
@@ -22,7 +22,6 @@
           评测
         </router-link>
       </div>
-      <BreadcrumbNav />
     </div>
 
     <!-- Tab 切换 -->
@@ -538,7 +537,7 @@ import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload, Download, Loading } from '@element-plus/icons-vue'
-import BreadcrumbNav from '@/components/common/BreadcrumbNav.vue'
+
 import { evaluationApi } from '@/api/evaluation'
 import { userApi } from '@/api/user'
 import type {
@@ -1000,13 +999,10 @@ onUnmounted(() => {
 
 <style scoped>
 .kb-evaluation-view {
-  padding: var(--space-5);
+  padding-top: var(--space-2);
 }
 
 .page-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   margin-bottom: var(--space-4);
 }
 
@@ -1045,8 +1041,8 @@ onUnmounted(() => {
 
 /* 汇总指标 */
 .report-summary {
-  background: var(--color-bg-hover);
-  border-radius: var(--radius-lg);
+  background: var(--color-bg-card);
+  border-radius: var(--radius-xl);
   padding: var(--space-5);
   margin-bottom: var(--space-5);
   border: 1px solid var(--color-border-light);
@@ -1093,11 +1089,17 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: var(--space-2) 14px;
-  background: var(--color-bg-card);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
-  min-width: 80px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-card-elevated);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-light);
+  min-width: 90px;
+  transition: all var(--transition-fast);
+}
+
+.score-item:hover {
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-xs);
 }
 
 .score-item-highlight {

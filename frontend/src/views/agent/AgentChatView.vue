@@ -93,6 +93,20 @@
             <div v-else-if="msg.role === 'user'" class="message-row user">
               <div class="message-body">
                 <div class="message-text">{{ msg.content }}</div>
+                <div v-if="getMessageAttachments(msg).length" class="message-attachments">
+                  <div v-for="att in getMessageAttachments(msg)" :key="att.filename" class="file-card" @click="handleDownloadAttachment(att)">
+                    <div class="file-icon-box" :class="getFileIconClass(att.file_type)">
+                      <span class="file-ext-label">{{ getFileExt(att.filename) }}</span>
+                    </div>
+                    <div class="file-info">
+                      <div class="file-name">{{ att.filename }}</div>
+                      <div class="file-meta">{{ getFileExt(att.filename) }} · {{ formatFileSize(att.file_size) }}</div>
+                    </div>
+                    <div class="file-download-btn" title="下载">
+                      <el-icon :size="16"><Download /></el-icon>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -147,35 +161,21 @@
       <!-- 输入区域：药丸形 -->
       <div class="input-area">
         <div class="input-pill">
-          <el-popover trigger="click" :width="180" placement="top-start">
-            <template #reference>
-              <button class="input-action-btn">
-                <el-icon :size="16"><Setting /></el-icon>
-              </button>
-            </template>
-            <div class="settings-popover">
-              <label class="setting-item">
-                <span>深度思考</span>
-                <el-switch v-model="enableThinking" size="small" />
-              </label>
-              <label class="setting-item">
-                <span>流式输出</span>
-                <el-switch v-model="useStream" size="small" />
-              </label>
-              <div class="setting-item">
-                <span>模型</span>
-                <el-select
-                  v-model="selectedModel"
-                  :placeholder="defaultModelName || '默认'"
-                  clearable
-                  size="small"
-                  style="width: 120px"
-                >
-                  <el-option v-for="(_, name) in availableModels" :key="name" :label="name" :value="name" />
-                </el-select>
-              </div>
-            </div>
-          </el-popover>
+          <button
+            class="attach-btn"
+            :disabled="agentStore.isStreaming || agentStore.loading || uploadingFiles"
+            @click="triggerFileSelect"
+            title="上传文档"
+          >
+            <el-icon :size="16"><Paperclip /></el-icon>
+          </button>
+          <input
+            ref="fileInputRef"
+            type="file"
+            accept=".pdf,.docx,.txt,.md"
+            style="display: none"
+            @change="handleFileSelected"
+          />
           <textarea
             ref="textareaRef"
             v-model="inputText"
@@ -196,14 +196,63 @@
           <button
             v-else
             class="send-btn"
-            :class="{ active: inputText.trim() }"
-            :disabled="!inputText.trim() || agentStore.loading"
+            :class="{ active: inputText.trim() || agentStore.pendingAttachments.length > 0 }"
+            :disabled="(!inputText.trim() && agentStore.pendingAttachments.length === 0) || agentStore.loading"
             @click="handleSend"
           >
             <el-icon :size="16"><Promotion /></el-icon>
           </button>
         </div>
-        <div class="input-hint">按 Enter 发送，Shift + Enter 换行</div>
+        <!-- 文件预览 -->
+        <div v-if="agentStore.pendingAttachments.length > 0" class="attachment-preview-bar">
+          <div
+            v-for="att in agentStore.pendingAttachments"
+            :key="att.id"
+            class="attachment-chip"
+          >
+            <span class="att-type-badge">{{ getFileIcon(att.file_type) }}</span>
+            <span class="att-name">{{ att.filename }}</span>
+            <span class="att-size">{{ formatFileSize(att.file_size) }}</span>
+            <button class="att-remove" @click="agentStore.removePendingAttachment(att.id)">
+              <el-icon :size="10"><Close /></el-icon>
+            </button>
+          </div>
+        </div>
+        <!-- 折叠设置栏 -->
+        <div class="input-footer">
+          <button class="settings-toggle" @click="settingsExpanded = !settingsExpanded">
+            <el-icon :size="12"><Setting /></el-icon>
+            <span>{{ settingsSummary }}</span>
+            <el-icon :size="10" class="toggle-arrow" :class="{ expanded: settingsExpanded }"><ArrowDown /></el-icon>
+          </button>
+          <div class="input-hint-inline">Enter 发送 · Shift+Enter 换行</div>
+        </div>
+        <transition name="settings-slide">
+          <div v-if="settingsExpanded" class="settings-bar">
+            <div class="settings-bar-inner">
+              <div class="setting-group">
+                <span class="setting-label">模型</span>
+                <el-select
+                  v-model="selectedModel"
+                  :placeholder="defaultModelName || '默认'"
+                  clearable
+                  size="small"
+                  style="width: 180px"
+                >
+                  <el-option v-for="(_, name) in availableModels" :key="name" :label="name" :value="name" />
+                </el-select>
+              </div>
+              <div class="setting-group">
+                <span class="setting-label">深度思考</span>
+                <el-switch v-model="enableThinking" size="small" />
+              </div>
+              <div class="setting-group">
+                <span class="setting-label">流式输出</span>
+                <el-switch v-model="useStream" size="small" />
+              </div>
+            </div>
+          </div>
+        </transition>
       </div>
     </div>
   </div>
@@ -213,9 +262,11 @@
 import { ref, computed, nextTick, onMounted, watch, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete, ArrowLeft, ArrowDown, SetUp, Setting, Promotion, VideoPause, DocumentCopy } from '@element-plus/icons-vue'
+import { Plus, Delete, ArrowLeft, ArrowDown, SetUp, Setting, Promotion, VideoPause, DocumentCopy, Paperclip, Close, Document, Download } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
+import { agentApi } from '@/api/agent'
 import { chatApi } from '@/api/chat'
+import type { AgentMessage } from '@/api/types'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 
 const route = useRoute()
@@ -229,13 +280,93 @@ const agentName = computed(() => agentStore.currentAgent?.name || '智能体')
 const inputText = ref('')
 const useStream = ref(true)
 const enableThinking = ref(false)
+const settingsExpanded = ref(false)
 const expandedReasoning = ref(new Set<number>())
 const messagesRef = ref<HTMLElement>()
+const fileInputRef = ref<HTMLInputElement>()
+const uploadingFiles = ref(false)
 
 // 模型选择
 const selectedModel = ref('')
 const availableModels = ref<Record<string, { max_tokens: number; temperature: number; top_p: number }>>({})
 const defaultModelName = computed(() => Object.keys(availableModels.value)[0] || '')
+
+const settingsSummary = computed(() => {
+  const model = selectedModel.value || defaultModelName.value || '默认'
+  const parts = [model]
+  if (enableThinking.value) parts.push('深度思考')
+  return parts.join(' · ')
+})
+
+function triggerFileSelect() {
+  fileInputRef.value?.click()
+}
+
+async function handleFileSelected(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (!input.files?.length) return
+  const maxSize = 20 * 1024 * 1024
+  const allowedTypes = ['pdf', 'docx', 'txt', 'md']
+  for (const file of Array.from(input.files)) {
+    const ext = file.name.split('.').pop()?.toLowerCase() || ''
+    if (!allowedTypes.includes(ext)) {
+      ElMessage.warning(`不支持的文件类型: .${ext}`)
+      continue
+    }
+    if (file.size > maxSize) {
+      ElMessage.warning(`文件过大: ${file.name}（最大 20MB）`)
+      continue
+    }
+    try {
+      uploadingFiles.value = true
+      await agentStore.uploadAttachment(file)
+    } catch {
+      ElMessage.error(`上传失败: ${file.name}`)
+    } finally {
+      uploadingFiles.value = false
+    }
+  }
+  input.value = ''
+}
+
+function getFileIcon(type: string): string {
+  const map: Record<string, string> = { pdf: 'PDF', docx: 'DOC', txt: 'TXT', md: 'MD' }
+  return map[type] || 'FILE'
+}
+
+function getMessageAttachments(msg: AgentMessage): Array<{ id?: number; filename: string; file_type?: string; file_size?: number; storage_path?: string }> {
+  return (msg.extra as Record<string, any>)?.attachments ?? []
+}
+
+function getFileIconClass(type?: string): string {
+  if (!type) return 'file-default'
+  const t = type.toLowerCase()
+  if (t === 'pdf') return 'file-pdf'
+  if (t === 'docx' || t === 'doc') return 'file-doc'
+  if (t === 'txt') return 'file-txt'
+  if (t === 'md') return 'file-md'
+  return 'file-default'
+}
+
+function getFileExt(filename?: string): string {
+  if (!filename) return 'FILE'
+  return filename.split('.').pop()?.toUpperCase() || 'FILE'
+}
+
+async function handleDownloadAttachment(att: { id?: number; filename: string }) {
+  if (!att.id) return
+  try {
+    await agentApi.downloadAttachmentFile(att.id, att.filename)
+  } catch {
+    ElMessage.error('下载失败')
+  }
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
 
 async function fetchModels() {
   try {
@@ -324,8 +455,10 @@ function toggleReasoning(msgId: number) {
 
 async function handleSend() {
   const content = inputText.value.trim()
-  if (!content) return
+  const hasAttachments = agentStore.pendingAttachments.length > 0
+  if (!content && !hasAttachments) return
 
+  const sendContent = content || (hasAttachments ? '请分析上传的文档' : '')
   inputText.value = ''
   nextTick(() => {
     if (textareaRef.value) {
@@ -334,14 +467,16 @@ async function handleSend() {
   })
 
   try {
+    const attachmentIds = agentStore.pendingAttachments.map(a => a.id)
     const opts = {
       ...(selectedModel.value ? { llm_model: selectedModel.value } : {}),
       enable_thinking: enableThinking.value,
+      attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
     }
     if (useStream.value) {
-      await agentStore.sendMessageStream(agentId.value, content, opts)
+      await agentStore.sendMessageStream(agentId.value, sendContent, opts)
     } else {
-      await agentStore.sendMessage(agentId.value, content, opts)
+      await agentStore.sendMessage(agentId.value, sendContent, opts)
     }
   } catch {
     ElMessage.error('发送失败，请重试')
@@ -430,7 +565,7 @@ onMounted(async () => {
   position: absolute;
   inset: 0;
   display: flex;
-  background: #FFFFFF;
+  background: var(--color-bg-card);
   overflow: hidden;
   z-index: 1;
 }
@@ -598,7 +733,7 @@ onMounted(async () => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: #FFFFFF;
+  background: var(--color-bg-card);
 }
 
 /* ========================================
@@ -624,7 +759,7 @@ onMounted(async () => {
   width: 64px;
   height: 64px;
   border-radius: var(--radius-xl);
-  background: linear-gradient(135deg, #E8F0FE 0%, #FEF1EE 100%);
+  background: var(--color-primary-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -633,7 +768,7 @@ onMounted(async () => {
   font-weight: var(--weight-bold);
   color: var(--color-primary);
   margin-bottom: var(--space-5);
-  box-shadow: 0 4px 16px rgba(66, 133, 244, 0.12);
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.12);
 }
 
 .welcome-title {
@@ -734,10 +869,99 @@ onMounted(async () => {
 .message-row.user .message-text {
   padding: var(--space-3) var(--space-4);
   border-radius: 18px 18px 4px 18px;
-  background: var(--color-primary);
-  color: #FFFFFF;
+  background: #dbeafe;
+  color: #1e3a5f;
   white-space: pre-wrap;
-  box-shadow: 0 1px 4px rgba(66, 133, 244, 0.15);
+}
+
+/* ========================================
+   Message Attachments — File Card
+   ======================================== */
+.message-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.file-card {
+  display: flex;
+  align-items: center;
+  width: 260px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.55);
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.file-card:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.file-card .file-icon-box {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+.file-icon-box .file-ext-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.3px;
+}
+
+.file-icon-box.file-pdf  { background: #ef4444; }
+.file-icon-box.file-doc  { background: #3b82f6; }
+.file-icon-box.file-txt  { background: #8b5cf6; }
+.file-icon-box.file-md   { background: #06b6d4; }
+.file-icon-box.file-default { background: #6b7280; }
+
+.file-card .file-info {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.file-card .file-name {
+  font-size: 13px;
+  color: #1e3a5f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-card .file-meta {
+  font-size: 11px;
+  color: #5b7a9d;
+  margin-top: 2px;
+}
+
+.file-card .file-download-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: #5b7a9d;
+  flex-shrink: 0;
+  margin-left: 4px;
+  transition: all 0.15s;
+}
+
+.file-card:hover .file-download-btn {
+  color: #1e3a5f;
+  background: rgba(0, 0, 0, 0.06);
 }
 
 /* AI message */
@@ -752,8 +976,8 @@ onMounted(async () => {
 .reasoning-section {
   margin-bottom: 8px;
   border-radius: 10px;
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
+  background: var(--color-bg-card-elevated);
+  border: 1px solid var(--color-border-light);
   overflow: hidden;
 }
 .reasoning-header {
@@ -767,7 +991,7 @@ onMounted(async () => {
   color: var(--color-text-secondary);
 }
 .reasoning-header:hover {
-  background: #f1f3f5;
+  background: var(--color-bg-hover);
 }
 .reasoning-label {
   font-weight: 500;
@@ -780,7 +1004,7 @@ onMounted(async () => {
 }
 .reasoning-body {
   padding: 8px 12px 12px;
-  border-top: 1px solid #e9ecef;
+  border-top: 1px solid var(--color-border-light);
   font-size: 13px;
   color: var(--color-text-secondary);
   line-height: 1.6;
@@ -983,7 +1207,7 @@ onMounted(async () => {
 .input-area {
   flex-shrink: 0;
   padding: 0 var(--space-6) var(--space-5);
-  background: #FFFFFF;
+  background: var(--color-bg-card);
 }
 
 .input-pill {
@@ -991,7 +1215,7 @@ onMounted(async () => {
   margin: 0 auto;
   display: flex;
   align-items: flex-end;
-  padding: 8px 8px 8px 4px;
+  padding: 8px 12px;
   gap: var(--space-2);
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
@@ -1067,7 +1291,7 @@ onMounted(async () => {
   background: var(--color-primary);
   color: #FFFFFF;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(66, 133, 244, 0.25);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
 }
 
 .send-btn.active:hover {
@@ -1094,21 +1318,193 @@ onMounted(async () => {
 }
 
 /* ========================================
-   Settings Popover
+   Input Footer — Settings Toggle
    ======================================== */
-.settings-popover {
-  display: flex;
-  flex-direction: column;
-}
-
-.setting-item {
+.input-footer {
+  max-width: 860px;
+  margin: 6px auto 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-2) 0;
-  font-size: var(--text-sm);
+  padding: 0 4px;
+}
+
+.settings-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.settings-toggle:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+}
+
+.toggle-arrow {
+  transition: transform var(--transition-fast);
+}
+
+.toggle-arrow.expanded {
+  transform: rotate(180deg);
+}
+
+.input-hint-inline {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+}
+
+/* ========================================
+   Settings Bar (Collapsible)
+   ======================================== */
+.settings-slide-enter-active,
+.settings-slide-leave-active {
+  transition: all var(--transition-base);
+  overflow: hidden;
+}
+
+.settings-slide-enter-from,
+.settings-slide-leave-to {
+  opacity: 0;
+  max-height: 0;
+  margin-top: 0;
+}
+
+.settings-slide-enter-to,
+.settings-slide-leave-from {
+  opacity: 1;
+  max-height: 60px;
+  margin-top: 6px;
+}
+
+.settings-bar {
+  max-width: 860px;
+  margin: 6px auto 0;
+  padding: 8px 12px;
+  background: var(--color-bg-card-elevated);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+}
+
+.settings-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.setting-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.setting-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* ========================================
+   Attachment Button & Preview
+   ======================================== */
+.attach-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.attach-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  color: var(--color-primary);
+}
+
+.attach-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.attachment-preview-bar {
+  max-width: 860px;
+  margin: 6px auto 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 4px;
+  background: var(--color-bg-card-elevated);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-xs);
+  max-width: 240px;
+}
+
+.att-type-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-muted);
+  color: var(--color-primary);
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.att-name {
   color: var(--color-text);
-  cursor: default;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.att-size {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.att-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.att-remove:hover {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
 }
 </style>

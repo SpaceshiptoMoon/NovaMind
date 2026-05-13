@@ -3,7 +3,7 @@
     <nav class="header-nav">
       <div class="brand" @click="router.push('/home')">
         <UnicornIcon :size="36" />
-        <span class="brand-name">Intelligent</span>
+        <span class="brand-name">NovaMind</span>
       </div>
       <div class="nav-links">
         <span

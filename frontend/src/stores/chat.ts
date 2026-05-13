@@ -2,7 +2,7 @@ import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { chatApi } from '@/api/chat'
 import { sessionApi } from '@/api/session'
-import type { ChatMessage, SessionItem, SessionConfigResponse, CompressionConfig } from '@/api/types'
+import type { ChatMessage, ChatAttachment, SessionItem, SessionConfigResponse, CompressionConfig } from '@/api/types'
 
 export const useChatStore = defineStore('chat', () => {
   const sessions = ref<SessionItem[]>([])
@@ -16,6 +16,7 @@ export const useChatStore = defineStore('chat', () => {
   const sessionConfig = ref<SessionConfigResponse | null>(null)
   const sessionsTotal = ref(0)
   const abortController = ref<AbortController | null>(null)
+  const pendingAttachments = ref<ChatAttachment[]>([])
 
   const hasSession = computed(() => !!currentSessionId.value)
 
@@ -64,8 +65,9 @@ export const useChatStore = defineStore('chat', () => {
     temperature?: number
     top_p?: number
     enable_thinking?: boolean
+    attachmentIds?: number[]
   }) {
-    if (!content.trim()) return
+    if (!content.trim() && (!options?.attachmentIds?.length)) return
 
     // 防止重复发送
     const lastMsg = messages.value[messages.value.length - 1]
@@ -73,6 +75,9 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
+    const attachmentList = options?.attachmentIds?.length
+      ? pendingAttachments.value.filter(a => options.attachmentIds!.includes(a.id))
+      : undefined
     const userMessage: ChatMessage = {
       id: Date.now(),
       session_id: currentSessionId.value || '',
@@ -81,8 +86,9 @@ export const useChatStore = defineStore('chat', () => {
       user_id: 0,
       space_id: null,
       kb_id: null,
-      extra: null,
+      extra: attachmentList?.length ? { attachments: attachmentList } : null,
       created_at: new Date().toISOString(),
+      attachments: attachmentList,
     }
     messages.value.push(userMessage)
 
@@ -98,6 +104,7 @@ export const useChatStore = defineStore('chat', () => {
         temperature: options?.temperature,
         top_p: options?.top_p,
         enable_thinking: options?.enable_thinking,
+        attachment_ids: options?.attachmentIds,
       })
 
       if (!currentSessionId.value) {
@@ -110,9 +117,18 @@ export const useChatStore = defineStore('chat', () => {
 
       const lastIdx = messages.value.length - 1
       if (lastIdx >= 0) {
+        const localExtra = messages.value[lastIdx].extra
+        const localAttachments = messages.value[lastIdx].attachments
         messages.value[lastIdx] = data.user_message
+        if (localAttachments?.length && !messages.value[lastIdx].attachments?.length) {
+          messages.value[lastIdx].attachments = localAttachments
+        }
+        if (localExtra?.attachments && !messages.value[lastIdx].extra?.attachments) {
+          messages.value[lastIdx].extra = localExtra
+        }
       }
       messages.value.push(data.ai_message)
+      if (options?.attachmentIds?.length) clearPendingAttachments()
       return data
     } catch (e) {
       messages.value.pop()
@@ -130,8 +146,9 @@ export const useChatStore = defineStore('chat', () => {
     temperature?: number
     top_p?: number
     enable_thinking?: boolean
+    attachmentIds?: number[]
   }) {
-    if (!content.trim()) return
+    if (!content.trim() && (!options?.attachmentIds?.length)) return
 
     // 防止重复发送：如果最后一条消息内容相同且还在流式中，跳过
     const lastMsg = messages.value[messages.value.length - 1]
@@ -139,6 +156,9 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
+    const attachmentList = options?.attachmentIds?.length
+      ? pendingAttachments.value.filter(a => options.attachmentIds!.includes(a.id))
+      : undefined
     const userMessage: ChatMessage = {
       id: Date.now(),
       session_id: currentSessionId.value || '',
@@ -147,8 +167,9 @@ export const useChatStore = defineStore('chat', () => {
       user_id: 0,
       space_id: null,
       kb_id: null,
-      extra: null,
+      extra: attachmentList?.length ? { attachments: attachmentList } : null,
       created_at: new Date().toISOString(),
+      attachments: attachmentList,
     }
     messages.value.push(userMessage)
 
@@ -183,6 +204,7 @@ export const useChatStore = defineStore('chat', () => {
         temperature: options?.temperature,
         top_p: options?.top_p,
         enable_thinking: options?.enable_thinking,
+        attachment_ids: options?.attachmentIds,
       }, {
         signal: controller.signal,
         onUserMessage(d) {
@@ -194,6 +216,9 @@ export const useChatStore = defineStore('chat', () => {
             localUserMsg.id = d.id
             localUserMsg.session_id = d.session_id
             localUserMsg.created_at = d.created_at
+            if ((d as { attachments?: ChatAttachment[] }).attachments) {
+              localUserMsg.attachments = (d as { attachments?: ChatAttachment[] }).attachments
+            }
           }
 
           if (d.session_id && !currentSessionId.value) {
@@ -250,7 +275,30 @@ export const useChatStore = defineStore('chat', () => {
       streamingContent.value = ''
       streamingReasoning.value = ''
       abortController.value = null
+      if (options?.attachmentIds?.length) clearPendingAttachments()
     }
+  }
+
+  // ========== 附件管理 ==========
+
+  async function uploadAttachment(file: File, onProgress?: (percent: number) => void): Promise<ChatAttachment> {
+    const result = await chatApi.uploadAttachment(file, onProgress)
+    const attachment: ChatAttachment = {
+      id: result.attachment_id,
+      filename: result.filename,
+      file_type: result.file_type,
+      file_size: result.file_size,
+    }
+    pendingAttachments.value.push(attachment)
+    return attachment
+  }
+
+  function removePendingAttachment(attachmentId: number) {
+    pendingAttachments.value = pendingAttachments.value.filter(a => a.id !== attachmentId)
+  }
+
+  function clearPendingAttachments() {
+    pendingAttachments.value = []
   }
 
   function cancelStream() {
@@ -303,6 +351,7 @@ export const useChatStore = defineStore('chat', () => {
     error,
     sessionConfig,
     sessionsTotal,
+    pendingAttachments,
     hasSession,
     fetchSessions,
     fetchMessages,
@@ -315,5 +364,8 @@ export const useChatStore = defineStore('chat', () => {
     fetchSessionConfig,
     saveSessionConfig,
     deleteSessionConfig,
+    uploadAttachment,
+    removePendingAttachment,
+    clearPendingAttachments,
   }
 })

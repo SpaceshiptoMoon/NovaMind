@@ -1,11 +1,35 @@
-import { request, createSSEStream } from './index'
-import type { ChatRequest, ChatResponse, ChatHistoryResponse, HealthCheckResponse, ModelsResponse } from './types'
+import { request, createSSEStream, tokenManager } from './index'
+import type { ChatRequest, ChatResponse, ChatHistoryResponse, HealthCheckResponse, ModelsResponse, UploadChatAttachmentResponse } from './types'
 
 const BASE_URL = '/ai-chat'
 
 export const chatApi = {
   chat(data: ChatRequest) {
     return request.post<ChatResponse>(`${BASE_URL}/chat`, data)
+  },
+
+  uploadAttachment(file: File, onProgress?: (percent: number) => void) {
+    return request.upload<UploadChatAttachmentResponse>(`${BASE_URL}/chat-attachments`, file, onProgress)
+  },
+
+  downloadAttachment(attachmentId: number) {
+    return `${BASE_URL}/chat-attachments/${attachmentId}/download`
+  },
+
+  async downloadAttachmentFile(attachmentId: number, filename: string) {
+    const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+    const token = tokenManager.getToken()
+    const res = await fetch(`${baseURL}${BASE_URL}/chat-attachments/${attachmentId}/download`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!res.ok) throw new Error('下载失败')
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
   },
 
   chatStream(

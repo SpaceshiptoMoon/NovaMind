@@ -330,9 +330,9 @@ async function handleInstall() {
 }
 
 .detail-meta {
-  background: var(--color-bg-elevated, #fff);
-  border: 1px solid var(--color-border, #e4e7ed);
-  border-radius: var(--radius-lg, 8px);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 24px;
   margin-bottom: 24px;
 }
@@ -362,18 +362,18 @@ async function handleInstall() {
 
 .meta-stat {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
 }
 
 .skill-description {
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   margin: 0 0 16px;
   line-height: 1.6;
 }
 
 .review-notice {
-  background: var(--color-bg, #f5f7fa);
-  border-radius: 6px;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
   padding: 12px 16px;
   margin-bottom: 16px;
   font-size: 13px;
@@ -390,7 +390,7 @@ async function handleInstall() {
 
 .review-label {
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
 }
 
 .meta-actions {
@@ -403,7 +403,7 @@ async function handleInstall() {
   display: flex;
   gap: 16px;
   font-size: 14px;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
 }
 
 .meta-stats span {
@@ -418,9 +418,9 @@ async function handleInstall() {
 }
 
 .detail-section {
-  background: var(--color-bg-elevated, #fff);
-  border: 1px solid var(--color-border, #e4e7ed);
-  border-radius: var(--radius-lg, 8px);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 20px;
   margin-bottom: 16px;
 }
@@ -437,8 +437,8 @@ async function handleInstall() {
 }
 
 .markdown-preview {
-  background: var(--color-bg, #f5f7fa);
-  border-radius: var(--radius-md, 6px);
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
   padding: 16px;
   overflow-x: auto;
 }
@@ -456,12 +456,12 @@ async function handleInstall() {
   gap: 8px;
   margin-bottom: 16px;
   padding-bottom: 16px;
-  border-bottom: 1px solid var(--color-border, #e4e7ed);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .review-item {
   padding: 12px 0;
-  border-bottom: 1px solid var(--color-border, #ebeef5);
+  border-bottom: 1px solid var(--color-border-light);
 }
 
 .review-item:last-child {
@@ -481,7 +481,7 @@ async function handleInstall() {
 
 .review-content {
   font-size: 14px;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   margin: 4px 0 0;
 }
 
@@ -497,8 +497,8 @@ async function handleInstall() {
   align-items: center;
   gap: 12px;
   padding: 12px;
-  border: 1px solid var(--color-border-light, #e4e7ed);
-  border-radius: 8px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
   margin-bottom: 8px;
   cursor: pointer;
   transition: all 0.15s;
@@ -506,19 +506,19 @@ async function handleInstall() {
 
 .agent-select-item:hover {
   border-color: var(--color-primary);
-  background: var(--color-primary-muted, rgba(66, 133, 244, 0.05));
+  background: var(--color-primary-muted);
 }
 
 .agent-select-item.selected {
   border-color: var(--color-primary);
-  background: var(--color-primary-muted, rgba(66, 133, 244, 0.08));
+  background: var(--color-primary-muted);
 }
 
 .agent-avatar-sm {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #E8F0FE 0%, #FEF1EE 100%);
+  border-radius: var(--radius-lg);
+  background: var(--color-primary-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -544,7 +544,7 @@ async function handleInstall() {
 .agent-desc {
   display: block;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

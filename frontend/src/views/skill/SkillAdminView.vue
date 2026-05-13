@@ -154,9 +154,9 @@ function handlePageChange(page: number) {
 }
 
 .settings-card {
-  background: var(--color-bg-elevated, #fff);
-  border: 1px solid var(--color-border, #e4e7ed);
-  border-radius: var(--radius-lg, 8px);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 20px;
   margin-top: 20px;
 }
@@ -176,7 +176,7 @@ function handlePageChange(page: number) {
 
 .loading-hint {
   font-size: 13px;
-  color: var(--color-text-faint, #c0c4cc);
+  color: var(--color-text-faint);
   margin-top: 8px;
 }
 
@@ -191,9 +191,9 @@ function handlePageChange(page: number) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: var(--color-bg-elevated, #fff);
-  border: 1px solid var(--color-border, #e4e7ed);
-  border-radius: var(--radius-lg, 8px);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 16px 20px;
 }
 
@@ -222,7 +222,7 @@ function handlePageChange(page: number) {
 .review-info p {
   margin: 0 0 6px;
   font-size: 13px;
-  color: var(--color-text-secondary, #909399);
+  color: var(--color-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -230,7 +230,7 @@ function handlePageChange(page: number) {
 
 .review-meta {
   font-size: 12px;
-  color: var(--color-text-faint, #c0c4cc);
+  color: var(--color-text-faint);
 }
 
 .review-actions {

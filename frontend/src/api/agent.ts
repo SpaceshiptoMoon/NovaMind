@@ -1,4 +1,4 @@
-import { request, createSSEStream } from './index'
+import { request, createSSEStream, tokenManager } from './index'
 import type {
   Agent,
   CreateAgentRequest,
@@ -44,7 +44,7 @@ export const agentApi = {
 
   chatStream(
     agentId: number,
-    data: { content: string; session_id?: string | null; llm_model?: string | null; enable_thinking?: boolean },
+    data: { content: string; session_id?: string | null; llm_model?: string | null; enable_thinking?: boolean; attachment_ids?: number[] },
     callbacks: {
       onSession?: (d: { session_id: string; agent_id: number }) => void
       onToolCall?: (d: { tool_name: string; arguments: Record<string, unknown>; call_id: string }) => void
@@ -146,5 +146,25 @@ export const agentApi = {
 
   getTool(toolName: string) {
     return request.get<ToolProvider>(`/agent/tools/${toolName}`)
+  },
+
+  downloadAttachment(attachmentId: number) {
+    return `/ai-chat/chat-attachments/${attachmentId}/download`
+  },
+
+  async downloadAttachmentFile(attachmentId: number, filename: string) {
+    const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+    const token = tokenManager.getToken()
+    const res = await fetch(`${baseURL}/ai-chat/chat-attachments/${attachmentId}/download`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!res.ok) throw new Error('下载失败')
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
   },
 }

@@ -5,7 +5,7 @@
       <div class="landing-nav">
         <div class="landing-brand" @click="scrollToTop">
           <UnicornIcon :size="32" />
-          <span class="landing-brand-name">Intelligent</span>
+          <span class="landing-brand-name">NovaMind</span>
         </div>
         <div class="landing-nav-right">
           <router-link v-if="!hasToken" to="/login" class="nav-link">登录</router-link>
@@ -94,9 +94,9 @@
       <div class="footer-inner">
         <div class="footer-brand">
           <UnicornIcon :size="24" />
-          <span>Intelligent</span>
+          <span>NovaMind</span>
         </div>
-        <p class="footer-copy">&copy; {{ new Date().getFullYear() }} Intelligent Knowledge Space</p>
+        <p class="footer-copy">&copy; {{ new Date().getFullYear() }} NovaMind</p>
       </div>
     </footer>
   </div>

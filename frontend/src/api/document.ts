@@ -58,24 +58,22 @@ export const documentApi = {
     )
   },
 
-  processDocument(spaceId: number, kbId: number, docId: number, data?: { enable_question_generation?: boolean; question_count?: number }) {
+  processDocument(spaceId: number, kbId: number, docId: number) {
     return request.post<ProcessDocumentResponse>(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/process`,
-      data ?? {}
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/process`
     )
   },
 
-  batchProcessDocuments(spaceId: number, kbId: number, data?: { document_ids?: number[]; enable_question_generation?: boolean; question_count?: number }) {
+  batchProcessDocuments(spaceId: number, kbId: number, data?: { document_ids?: number[] }) {
     return request.post<BatchProcessResponse>(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/process`,
       data
     )
   },
 
-  reprocessDocument(spaceId: number, kbId: number, docId: number, data?: { enable_question_generation?: boolean; question_count?: number }) {
+  reprocessDocument(spaceId: number, kbId: number, docId: number) {
     return request.post<ProcessDocumentResponse>(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/reprocess`,
-      data ?? {}
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/reprocess`
     )
   },
 
@@ -85,10 +83,9 @@ export const documentApi = {
     )
   },
 
-  retryDocument(spaceId: number, kbId: number, docId: number, data?: { enable_question_generation?: boolean; question_count?: number }) {
+  retryDocument(spaceId: number, kbId: number, docId: number) {
     return request.post<ProcessDocumentResponse>(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/retry`,
-      data ?? {}
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/retry`
     )
   },
 }

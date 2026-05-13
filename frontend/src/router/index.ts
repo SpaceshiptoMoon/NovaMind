@@ -14,7 +14,7 @@ const router = createRouter({
       path: '/',
       name: 'Landing',
       component: () => import('@/views/LandingView.vue'),
-      meta: { requiresAuth: false, title: 'Intelligent — 问而知，知而行' },
+      meta: { requiresAuth: false, title: 'NovaMind — 问而知，知而行' },
     },
 
     // 认证相关路由（使用 AuthLayout）
@@ -130,6 +130,24 @@ const router = createRouter({
           name: 'Apps',
           component: () => import('@/views/app/AppView.vue'),
           meta: { title: '应用中心' },
+        },
+        {
+          path: 'apps/resume',
+          name: 'ResumeMining',
+          component: () => import('@/views/app/resume/ResumeApp.vue'),
+          meta: { title: '简历挖掘' },
+        },
+        {
+          path: 'apps/resume/history',
+          name: 'ResumeHistory',
+          component: () => import('@/views/app/resume/ResumeHistory.vue'),
+          meta: { title: '简历挖掘历史' },
+        },
+        {
+          path: 'apps/resume/session/:sessionId',
+          name: 'ResumeMiningSession',
+          component: () => import('@/views/app/resume/ResumeApp.vue'),
+          meta: { title: '简历挖掘' },
         },
         // 统一工作台
         {
