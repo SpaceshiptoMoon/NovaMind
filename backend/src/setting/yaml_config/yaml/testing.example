@@ -1,0 +1,27 @@
+# ========================================
+# 测试环境配置（示例）
+# ========================================
+# 复制此文件为 testing.yaml 并填入真实配置值
+# cp testing.example testing.yaml
+#
+# 只需覆盖需要改变的部分，其他配置继承自 default.yaml
+
+environment: testing
+debug: false
+
+minio:
+  endpoint: localhost:9000
+  access_key: minioadmin
+  secret_key: minioadmin
+  secure: false
+
+elasticsearch:
+  hosts:
+    - "http://localhost:9200"
+
+database:
+  database: novamind_test
+
+logging:
+  level: DEBUG
+  format: console

@@ -1,0 +1,65 @@
+[project]
+name = "novamind"
+version = "0.1.0"
+description = "novamind - 智能知识库管理系统"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiomysql>=0.3.2",
+    "argon2-cffi>=25.1.0",
+    "bs4>=0.0.2",
+    "fastapi>=0.128.0",
+    "modelscope>=1.33.0",
+    "openai>=2.14.0",
+    "pdfplumber>=0.11.9",
+    "pydantic[email]>=2.12.5",
+    "pydantic-settings>=2.12.0",
+    "pyjwt>=2.10.1",
+    "redis[asyncio]>=5.2.0",
+    "pypdf2>=3.0.1",
+    "python-docx>=1.2.0",
+    "python-multipart>=0.0.21",
+    "scikit-learn>=1.8.0",
+    "sqlalchemy>=2.0",
+    "structlog>=24.0.0",
+    "uvicorn>=0.40.0",
+    "pyyaml>=6.0.3",
+    "jieba>=0.42.1",
+    "tiktoken>=0.12.0",
+    "elasticsearch>=9.3.0",
+    "minio>=7.2.20",
+    "slowapi>=0.1.9",
+    "aiofiles>=25.1.0",
+    "aiohttp>=3.13.4",
+    "tenacity>=8.2.0",
+    "zai-sdk>=0.2.2",
+    "docker>=7.0.0",
+    "mcp[cli]>=1.6.0",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "arq>=0.26",
+]
+
+[project.optional-dependencies]
+anthropic = [
+    "anthropic>=0.40.0",
+]
+transformers = [
+    "transformers>=4.40.0",
+    "torch>=2.0.0",
+    "sentence-transformers>=3.0.0",
+]
+dev = [
+    "pip-audit>=2.7.0",
+    "safety>=3.0.0",
+    "ruff>=0.4.0",
+]
+test = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.28.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"

@@ -1,0 +1,55 @@
+# ========================================
+# 生产环境配置（示例）
+# ========================================
+# 复制此文件为 production.yaml 并填入真实配置值
+# cp production.example production.yaml
+#
+# 只需覆盖需要改变的部分，其他配置继承自 default.yaml
+
+environment: production
+debug: false
+
+minio:
+  endpoint: your-minio-endpoint
+  access_key: your-minio-access-key
+  secret_key: your-minio-secret-key
+  secure: true
+  region: us-east-1
+  bucket_name: knowledge-base
+
+elasticsearch:
+  hosts:
+    - "http://your-es-host:9200"
+  username: your-es-username
+  password: your-es-password
+
+database:
+  host: your-db-host
+  port: 3306
+  user: your-db-user
+  password: your-db-password
+  database: your-db-name
+  pool_size: 20
+  max_overflow: 40
+
+redis:
+  enabled: true
+  host: your-redis-host
+  port: 6379
+  password: your-redis-password
+
+llm:
+  api_key: your-llm-api-key
+
+embedding:
+  api_key: your-embedding-api-key
+
+security:
+  secret_key: your-secret-key
+
+logging:
+  level: INFO
+  format: json
+
+cache:
+  search_result_ttl: 7200

@@ -43,6 +43,11 @@ coverage/
 .vscode/
 *.swp
 *.swo
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
 # ========================================
 # Claude Code
@@ -55,6 +60,7 @@ coverage/
 .DS_Store
 Thumbs.db
 ehthumbs.db
+Desktop.ini
 
 # ========================================
 # 构建产物
@@ -68,3 +74,17 @@ ehthumbs.db
 logs/
 data/
 uploads/
+
+# ========================================
+# Docker
+# ========================================
+docker-compose.override.yml
+
+# ========================================
+# 临时文件
+# ========================================
+*.tmp
+*.temp
+*.bak
+*.pid
+*.seed
