@@ -1,0 +1,11 @@
+question,expected_answer
+"FastAPI 的核心优势有哪些？","极高的性能，与 NodeJS 和 Go 相当。开发效率高，减少约 40% 的人为错误。优秀的编辑器支持，自动补全无处不在。基于 Python 类型注解的自动数据验证和 API 文档生成。支持异步编程，原生 async/await。"
+"FastAPI 支持哪些 HTTP 方法？","FastAPI 支持常见的 HTTP 方法：GET、POST、PUT、DELETE、PATCH、HEAD、OPTIONS、TRACE。可以通过装饰器如 @app.get()、@app.post() 等来定义路由。"
+"如何在 FastAPI 中进行参数验证？","FastAPI 使用 Pydantic 模型进行请求体验证，使用 Python 类型注解进行路径参数和查询参数验证。可以通过 Field、Query、Path 等函数添加约束条件，如最小值、最大值、正则表达式等。验证失败会自动返回 422 错误及详细的错误信息。"
+"FastAPI 的依赖注入系统如何工作？","FastAPI 的依赖注入通过 Depends 实现。可以在路径操作函数的参数中使用 Depends() 声明依赖，支持函数依赖和类依赖。依赖可以嵌套，支持异步函数。常用于数据库连接、认证、权限校验等场景。"
+"FastAPI 如何处理异步和同步操作？","FastAPI 同时支持 async def 和普通 def 定义的路径操作函数。对于 async def 函数，FastAPI 在事件循环中直接执行；对于普通 def 函数，FastAPI 会在线程池中执行以避免阻塞事件循环。推荐 I/O 密集型操作使用 async def，CPU 密集型操作使用普通 def。"
+"FastAPI 中间件的执行顺序是怎样的？","中间件按照添加顺序依次执行请求阶段，响应阶段则按相反顺序返回。即先添加的中间件最先处理请求，最后处理响应。可以使用 @app.middleware 装饰器或 add_middleware 方法注册中间件。"
+"FastAPI 如何实现文件上传功能？","使用 UploadFile 和 File 类型声明文件参数。UploadFile 提供了 filename、content_type、file 等属性，支持异步读写。可以使用 File(...) 标记必填文件参数，也可以设置默认值使其可选。支持多文件上传，通过 List[UploadFile] 接收。"
+"FastAPI 如何配置 CORS 跨域？","通过添加 CORSMiddleware 中间件配置 CORS。使用 app.add_middleware(CORSMiddleware, ...) 设置允许的源列表 allow_origins、允许的 HTTP 方法 allow_methods、允许的请求头 allow_headers、是否允许携带凭证 allow_credentials 等参数。"
+"FastAPI 的自动文档生成支持哪些格式？","FastAPI 自动生成两种 API 文档：Swagger UI（默认路径 /docs）和 ReDoc（默认路径 /redoc）。基于 OpenAPI 3.0 规范生成，支持自定义文档标题、描述、版本号等信息。可以通过 openapi_url 参数自定义 OpenAPI schema 的访问路径。"
+"FastAPI 如何进行数据库集成？","FastAPI 本身不内置 ORM，但可以与 SQLAlchemy、Tortoise ORM、MongoDB 的 Motor 等数据库工具配合使用。通常通过依赖注入在请求中获取数据库会话，推荐使用异步版本的驱动如 aiomysql、asyncpg 等。"

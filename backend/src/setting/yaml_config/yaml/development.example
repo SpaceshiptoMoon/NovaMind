@@ -1,0 +1,36 @@
+# ========================================
+# 开发环境配置（示例）
+# ========================================
+# 复制此文件为 development.yaml 并填入真实配置值
+# cp development.example development.yaml
+#
+# 只需覆盖需要改变的部分，其他配置继承自 default.yaml
+
+environment: development
+debug: true
+
+redis:
+  enabled: true
+  host: localhost
+  port: 6379
+  db: 0
+  password: null
+
+minio:
+  endpoint: localhost:9005
+  access_key: your-access-key
+  secret_key: your-secret-key
+  secure: false
+
+elasticsearch:
+  hosts:
+    - "http://localhost:9200"
+  username: elastic
+  password: your-es-password
+
+database:
+  password: "your-db-password"
+
+logging:
+  level: DEBUG
+  format: console

@@ -1,0 +1,132 @@
+# NovaMind 智能知识库系统 - 开发环境 Docker Compose
+# 使用方式: docker compose up -d
+
+services:
+  # ================================
+  # FastAPI 应用
+  # ================================
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: novamind-app
+    ports:
+      - "8100:8100"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - dev-network
+
+  # ================================
+  # MySQL 8.0
+  # ================================
+  mysql:
+    image: mysql:8.0
+    container_name: novamind-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: "***REMOVED***"
+      MYSQL_DATABASE: novamind_db
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p***REMOVED***"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    volumes:
+      - mysql-data:/var/lib/mysql
+    restart: unless-stopped
+    networks:
+      - dev-network
+
+  # ================================
+  # Redis 7
+  # ================================
+  redis:
+    image: redis:7-alpine
+    container_name: novamind-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - dev-network
+
+  # ================================
+  # MinIO 对象存储
+  # ================================
+  minio:
+    image: minio/minio
+    container_name: novamind-minio
+    ports:
+      - "9005:9005"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ***REMOVED***
+      MINIO_ROOT_PASSWORD: ***REMOVED***
+    command: server /data --address ":9005" --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    restart: unless-stopped
+    networks:
+      - dev-network
+
+  # ================================
+  # Elasticsearch 8.15
+  # ================================
+  elasticsearch:
+    image: elasticsearch:8.15.0
+    container_name: novamind-elasticsearch
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    restart: unless-stopped
+    networks:
+      - dev-network
+
+# ================================
+# 持久化卷
+# ================================
+volumes:
+  mysql-data:
+  redis-data:
+  minio-data:
+  es-data:
+
+# ================================
+# 网络
+# ================================
+networks:
+  dev-network:
+    driver: bridge

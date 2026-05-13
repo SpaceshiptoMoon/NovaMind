@@ -1,0 +1,39 @@
+# ========================================
+# 开发环境配置
+# ========================================
+# 只需覆盖需要改变的部分，其他配置继承自 default.yaml
+
+environment: development
+debug: true
+
+# 启用 Redis 缓存
+redis:
+  enabled: true
+  host: localhost
+  port: 6379
+  db: 0
+  password: null
+
+# MinIO 配置（开发环境）
+minio:
+  endpoint: localhost:9005
+  access_key: ***REMOVED***
+  secret_key: ***REMOVED***
+  secure: false
+
+# Elasticsearch 配置（开发环境）
+elasticsearch:
+  hosts:
+    - "http://localhost:9200"
+  username: elastic
+  password: ***REMOVED***
+
+# 数据库配置
+database:
+  host: localhost
+  password: "***REMOVED***"
+
+# 日志级别覆盖
+logging:
+  level: DEBUG
+  format: console

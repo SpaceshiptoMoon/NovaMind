@@ -1,0 +1,43 @@
+# 版本控制
+.git/
+.gitignore
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 环境变量文件
+.env
+.env.*
+
+# Claude Code
+.claude/
+
+# 文档
+docs/
+*.md
+!README.md
+
+# Docker 文件本身
+docker-compose*.yml
+Dockerfile
+
+# 测试和临时文件
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+*.tmp
