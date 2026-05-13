@@ -30,11 +30,16 @@ htmlcov/
 coverage/
 
 # ========================================
-# 环境变量（含敏感信息）
+# 环境变量与配置（含敏感信息）
 # ========================================
 .env
 .env.*
 !.env.example
+backend/src/setting/yaml_config/yaml/default.yaml
+backend/src/setting/yaml_config/yaml/development.yaml
+backend/src/setting/yaml_config/yaml/production.yaml
+backend/src/setting/yaml_config/yaml/testing.yaml
+!*.example
 
 # ========================================
 # IDE
