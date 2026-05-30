@@ -102,19 +102,19 @@ function handleForgotPassword() {
 .login-form {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .form-options {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 
 .forgot-link {
-  font-size: 13px;
-  color: #4285F4;
+  font-size: var(--text-sm);
+  color: var(--color-primary);
   text-decoration: none;
   cursor: pointer;
 }
@@ -126,6 +126,6 @@ function handleForgotPassword() {
 .login-btn {
   width: 100%;
   height: 44px;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 </style>

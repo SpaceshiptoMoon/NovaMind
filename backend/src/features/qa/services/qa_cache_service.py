@@ -347,12 +347,3 @@ class QACacheService:
 
         return False
 
-    # ========== 缓存统计 ==========
-
-    def get_cache_stats(self) -> Dict[str, Any]:
-        """获取缓存统计信息"""
-        return {
-            "config_cache": session_config_cache.stats,
-            "summary_cache": session_summary_cache.stats,
-            "messages_cache": session_messages_cache.stats,
-        }

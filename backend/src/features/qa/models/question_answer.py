@@ -59,62 +59,7 @@ class QuestionAnswer(BaseModel):
         """获取扩展信息"""
         return self.extra or {}
 
-    def get_feedback(self) -> dict:
-        """获取反馈信息"""
-        return self.get_extra().get("feedback", {})
-
-    def get_usage(self) -> dict:
-        """获取Token统计"""
-        return self.get_extra().get("usage", {})
-
-    def get_references(self) -> list:
-        """获取引用来源"""
-        return self.get_extra().get("references", [])
-
-    def set_feedback(self, rating: Optional[int] = None, comment: Optional[str] = None, helpful: Optional[bool] = None) -> None:
-        """设置反馈"""
-        extra = self.get_extra()
-        if "feedback" not in extra:
-            extra["feedback"] = {}
-        if rating is not None:
-            extra["feedback"]["rating"] = rating
-        if comment is not None:
-            extra["feedback"]["comment"] = comment
-        if helpful is not None:
-            extra["feedback"]["helpful"] = helpful
-        self.extra = extra
-
-    def set_usage(self, input_tokens: int, output_tokens: int, model: Optional[str] = None) -> None:
-        """设置Token统计"""
-        extra = self.get_extra()
-        extra["usage"] = {
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens
-        }
-        if model:
-            extra["usage"]["model"] = model
-        self.extra = extra
-
-    def set_references(self, references: list) -> None:
-        """设置引用来源"""
-        extra = self.get_extra()
-        extra["references"] = references
-        self.extra = extra
-
-    def get_input_tokens(self) -> int:
-        """获取输入Token数"""
-        return self.get_usage().get("input_tokens", 0)
-
-    def get_output_tokens(self) -> int:
-        """获取输出Token数"""
-        return self.get_usage().get("output_tokens", 0)
-
     def get_attachments(self) -> list:
         """获取附件信息"""
         return self.get_extra().get("attachments", [])
 
-    def set_attachments(self, attachments: list) -> None:
-        """设置附件信息"""
-        extra = self.get_extra()
-        extra["attachments"] = attachments
-        self.extra = extra

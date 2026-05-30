@@ -2,10 +2,12 @@
 长期记忆管理器
 
 对话结束时从消息中提取关键信息（偏好/事实/过程/洞察），
-去重后持久化到 agent_memories 表。
+去重后持久化到 agent_memories 表，并索引到 ES。
 对话开始时搜索相关记忆注入上下文。
+
+搜索路径：ES hybrid（向量+BM25）→ ES BM25 fallback → MySQL LIKE fallback
 """
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from src.features.agent.core.memory.interfaces import (
     ILongTermMemory,
@@ -13,6 +15,7 @@ from src.features.agent.core.memory.interfaces import (
     MemoryMessage,
 )
 from src.features.agent.repository.memory_repository import MemoryRepository
+from src.shared.prompts import PromptTemplate, PromptManager
 from src.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -27,20 +30,24 @@ class LongTermMemory(ILongTermMemory):
     2. 使用 LLM 提取结构化记忆
     3. 与已有记忆去重比对
     4. 存入 agent_memories 表
+    5. 生成 embedding → ES 索引
 
     记忆检索流程（search）：
-    1. 根据 query 关键词搜索
-    2. 返回最相关的 top_k 条记忆
-    3. 可按 category 过滤
+    1. 优先 ES hybrid search（向量 + BM25）
+    2. ES 不可用时降级到 MySQL LIKE
     """
 
     def __init__(
         self,
         memory_repository: MemoryRepository,
         llm_client_factory: Callable,
+        memory_search_repo: Optional[Any] = None,
+        embedding_factory: Optional[Callable] = None,
     ):
         self._repo = memory_repository
         self._llm_factory = llm_client_factory
+        self._search_repo = memory_search_repo
+        self._embedding_factory = embedding_factory
 
     async def store(
         self,
@@ -49,14 +56,36 @@ class LongTermMemory(ILongTermMemory):
         category: str,
         content: str,
         source_conversation_id: Optional[int] = None,
+        source_type: str = "consolidate",
     ) -> LongTermMemoryEntry:
-        """存储一条长期记忆"""
+        """存储一条长期记忆 → MySQL + ES"""
+        # 安全扫描
+        from src.features.agent.core.memory.security import scan_memory_content
+        scan = scan_memory_content(content)
+        if not scan:
+            logger.warning("记忆写入被安全扫描拦截", threats=scan.threats, category=category)
+            raise ValueError(f"记忆内容未通过安全检查: {scan.threats}")
+
         memory = await self._repo.create(
             agent_id=agent_id,
             user_id=user_id,
             category=category,
             content=content,
             source_conversation_id=source_conversation_id,
+            source_type=source_type,
+        )
+        entry = LongTermMemoryEntry(
+            id=memory.id,
+            agent_id=memory.agent_id,
+            user_id=memory.user_id,
+            category=memory.category,
+            content=memory.content,
+            source_type=memory.source_type or "consolidate",
+            relevance_score=memory.relevance_score,
+            access_count=memory.access_count,
+            source_conversation_id=memory.source_conversation_id,
+            created_at=memory.created_at,
+            updated_at=memory.updated_at,
         )
         logger.info(
             "长期记忆已存储",
@@ -64,18 +93,74 @@ class LongTermMemory(ILongTermMemory):
             category=category,
             memory_id=memory.id,
         )
-        return LongTermMemoryEntry(
-            id=memory.id,
-            agent_id=memory.agent_id,
-            user_id=memory.user_id,
-            category=memory.category,
-            content=memory.content,
-            relevance_score=memory.relevance_score,
-            access_count=memory.access_count,
-            source_conversation_id=memory.source_conversation_id,
-            created_at=memory.created_at,
-            updated_at=memory.updated_at,
+
+        # 异步索引到 ES
+        await self._index_to_es(agent_id, entry, source_type)
+
+        return entry
+
+    async def replace(
+        self,
+        agent_id: int,
+        user_id: int,
+        category: str,
+        old_content: str,
+        new_content: str,
+    ) -> Dict[str, Any]:
+        """替换记忆内容（子串匹配）"""
+        from src.features.agent.core.memory.security import scan_memory_content
+
+        scan = scan_memory_content(new_content)
+        if not scan:
+            return {"error": f"新内容未通过安全检查: {scan.threats}"}
+
+        from src.features.agent.models.memory import AgentMemory
+        from sqlalchemy import select
+
+        stmt = select(AgentMemory).where(
+            AgentMemory.agent_id == agent_id,
+            AgentMemory.user_id == user_id,
+            AgentMemory.content.contains(old_content),
         )
+        result = await self._repo.session.execute(stmt)
+        memory = result.scalar_one_or_none()
+        if not memory:
+            return {"error": "未找到匹配的记忆"}
+
+        await self._repo.update(memory.id, content=new_content)
+        await self._repo.session.flush()
+        return {"message": "记忆已更新", "id": memory.id}
+
+    async def remove(
+        self,
+        agent_id: int,
+        user_id: int,
+        old_content: str,
+    ) -> Dict[str, Any]:
+        """移除记忆（子串匹配）"""
+        from src.features.agent.models.memory import AgentMemory
+        from sqlalchemy import select
+
+        stmt = select(AgentMemory).where(
+            AgentMemory.agent_id == agent_id,
+            AgentMemory.user_id == user_id,
+            AgentMemory.content.contains(old_content),
+        )
+        result = await self._repo.session.execute(stmt)
+        memory = result.scalar_one_or_none()
+        if not memory:
+            return {"error": "未找到匹配的记忆"}
+
+        await self._repo.delete(memory.id)
+        await self._repo.session.flush()
+
+        try:
+            if self._search_repo:
+                await self._search_repo.delete_memory(agent_id, memory.id)
+        except Exception as e:
+            logger.warning("ES 记忆删除失败", error=str(e))
+
+        return {"message": "记忆已移除", "id": memory.id}
 
     async def search(
         self,
@@ -85,32 +170,17 @@ class LongTermMemory(ILongTermMemory):
         top_k: int = 5,
         categories: Optional[List[str]] = None,
     ) -> List[LongTermMemoryEntry]:
-        """根据查询搜索相关的长期记忆"""
-        memories = await self._repo.search_by_keywords(
-            agent_id=agent_id,
-            user_id=user_id,
-            query=query,
-            top_k=top_k,
-            categories=categories,
-        )
-        entries = []
-        for m in memories:
-            await self._repo.increment_access_count(m.id)
-            entries.append(
-                LongTermMemoryEntry(
-                    id=m.id,
-                    agent_id=m.agent_id,
-                    user_id=m.user_id,
-                    category=m.category,
-                    content=m.content,
-                    relevance_score=m.relevance_score,
-                    access_count=m.access_count,
-                    source_conversation_id=m.source_conversation_id,
-                    created_at=m.created_at,
-                    updated_at=m.updated_at,
-                )
+        """根据查询搜索相关的长期记忆：ES hybrid → MySQL LIKE"""
+        # 优先 ES 搜索
+        if self._search_repo and self._embedding_factory:
+            es_results = await self._search_es(
+                agent_id, user_id, query, top_k, categories
             )
-        return entries
+            if es_results:
+                return es_results
+
+        # 降级到 MySQL LIKE
+        return await self._search_mysql(agent_id, user_id, query, top_k, categories)
 
     async def consolidate(
         self,
@@ -119,6 +189,7 @@ class LongTermMemory(ILongTermMemory):
         conversation_id: int,
         messages: List[MemoryMessage],
         min_turns: int = 5,
+        max_recent_turns: int = 10,
     ) -> int:
         """
         从对话消息中提取并存储有价值的长期记忆
@@ -145,10 +216,10 @@ class LongTermMemory(ILongTermMemory):
             return 0
 
         extraction_prompt = self._build_extraction_prompt(
-            messages, max_recent_turns=10, max_prompt_tokens=3000
+            messages, max_recent_turns=max_recent_turns, max_prompt_tokens=3000
         )
         try:
-            llm = self._llm_factory()
+            llm = await self._llm_factory()
             result = await llm.generate_text(
                 prompt=extraction_prompt,
                 max_tokens=1024,
@@ -166,14 +237,19 @@ class LongTermMemory(ILongTermMemory):
                     content=item["content"],
                 )
                 if not existing:
-                    await self.store(
-                        agent_id=agent_id,
-                        user_id=user_id,
-                        category=item["category"],
-                        content=item["content"],
-                        source_conversation_id=conversation_id,
-                    )
-                    stored_count += 1
+                    try:
+                        await self.store(
+                            agent_id=agent_id,
+                            user_id=user_id,
+                            category=item["category"],
+                            content=item["content"],
+                            source_conversation_id=conversation_id,
+                            source_type="consolidate",
+                        )
+                        stored_count += 1
+                    except ValueError:
+                        # 安全扫描拦截，跳过该条
+                        continue
 
             logger.info(
                 "记忆巩固完成",
@@ -188,20 +264,128 @@ class LongTermMemory(ILongTermMemory):
             logger.warning("记忆巩固失败", error=str(e))
             return 0
 
+    # ==================== ES 操作 ====================
+
+    async def _index_to_es(
+        self, agent_id: int, entry: LongTermMemoryEntry, source_type: str
+    ) -> None:
+        """生成 embedding 并索引到 ES"""
+        if not self._search_repo or not self._embedding_factory:
+            return
+        try:
+            embedding_client = await self._embedding_factory()
+            embedding = await embedding_client.generate_embedding(entry.content)
+            if not embedding:
+                return
+            await self._search_repo.index_memory(
+                agent_id=agent_id,
+                memory_id=entry.id,
+                user_id=entry.user_id,
+                category=entry.category,
+                content=entry.content,
+                embedding=embedding,
+                source_type=source_type,
+                source_conversation_id=entry.source_conversation_id,
+                created_at=entry.created_at,
+            )
+        except Exception as e:
+            logger.warning("ES 记忆索引失败", memory_id=entry.id, error=str(e))
+
+    async def _search_es(
+        self,
+        agent_id: int,
+        user_id: int,
+        query: str,
+        top_k: int,
+        categories: Optional[List[str]],
+    ) -> List[LongTermMemoryEntry]:
+        """ES hybrid 搜索 → 回填 MySQL 完整数据"""
+        try:
+            embedding_client = await self._embedding_factory()
+            query_vector = await embedding_client.generate_embedding(query)
+            if not query_vector:
+                return []
+
+            results = await self._search_repo.search(
+                agent_id=agent_id,
+                query_vector=query_vector,
+                query_text=query,
+                top_k=top_k,
+                user_id=user_id,
+                categories=categories,
+            )
+            if not results:
+                return []
+
+            # 从 MySQL 回填完整数据 + 递增访问计数
+            entries: List[LongTermMemoryEntry] = []
+            for r in results:
+                memory = await self._repo.get_by_id(r["memory_id"])
+                if memory:
+                    await self._repo.increment_access_count(memory.id)
+                    entries.append(
+                        LongTermMemoryEntry(
+                            id=memory.id,
+                            agent_id=memory.agent_id,
+                            user_id=memory.user_id,
+                            category=memory.category,
+                            content=memory.content,
+                            relevance_score=r.get("score", 0.0),
+                            access_count=memory.access_count,
+                            source_conversation_id=memory.source_conversation_id,
+                            created_at=memory.created_at,
+                            updated_at=memory.updated_at,
+                        )
+                    )
+            return entries
+        except Exception as e:
+            logger.warning("ES 搜索失败，降级到 MySQL", error=str(e))
+            return []
+
+    async def _search_mysql(
+        self,
+        agent_id: int,
+        user_id: int,
+        query: str,
+        top_k: int,
+        categories: Optional[List[str]],
+    ) -> List[LongTermMemoryEntry]:
+        """MySQL LIKE fallback"""
+        memories = await self._repo.search_by_keywords(
+            agent_id=agent_id,
+            user_id=user_id,
+            query=query,
+            top_k=top_k,
+            categories=categories,
+        )
+        entries = []
+        for m in memories:
+            await self._repo.increment_access_count(m.id)
+            entries.append(
+                LongTermMemoryEntry(
+                    id=m.id,
+                    agent_id=m.agent_id,
+                    user_id=m.user_id,
+                    category=m.category,
+                    content=m.content,
+                    relevance_score=m.relevance_score,
+                    access_count=m.access_count,
+                    source_conversation_id=m.source_conversation_id,
+                    created_at=m.created_at,
+                    updated_at=m.updated_at,
+                )
+            )
+        return entries
+
+    # ==================== Prompt 构建 ====================
+
     def _build_extraction_prompt(
         self,
         messages: List[MemoryMessage],
         max_recent_turns: int = 10,
         max_prompt_tokens: int = 3000,
     ) -> str:
-        """
-        构建记忆提取 prompt
-
-        成本控制：
-        1. 预筛选：只取最近 max_recent_turns 条非 system 消息
-        2. Token 上限：拼接后超过 max_prompt_tokens 则从头部截断
-        """
-        # 预筛选：只保留非 system 消息，取最近 N 条
+        """构建记忆提取 prompt（含 Token 上限保护）"""
         filtered = [m for m in messages if m.role != "system"]
         filtered = filtered[-max_recent_turns:]
 
@@ -218,25 +402,14 @@ class LongTermMemory(ILongTermMemory):
                 text = m.content[:200] + ("..." if len(m.content) > 200 else "")
                 conversation_text += f"[工具{m.tool_name}]: {text}\n"
 
-        # Token 上限保护：粗略按 1 token ≈ 1.5 中文字符估算
+        # Token 上限保护
         max_chars = max_prompt_tokens * 2
         if len(conversation_text) > max_chars:
             conversation_text = "..." + conversation_text[-max_chars:]
 
-        return (
-            "你是一个信息提取专家。请从以下对话中提取值得长期记住的关键信息。\n\n"
-            "提取规则：\n"
-            "1. 只提取明确的、有价值的信息，忽略寒暄和无关内容\n"
-            "2. 每条信息归入以下类别之一：\n"
-            "   - preference: 用户明确表达的偏好（如'我喜欢简洁的回答'）\n"
-            "   - fact: 事实性信息（如'我的项目使用 Python 3.12'）\n"
-            "   - procedure: 操作流程或步骤（如'部署流程是...'）\n"
-            "   - insight: 有价值的洞察或结论\n"
-            "3. 每条信息独立、完整、自包含\n"
-            "4. 如果没有值得记住的信息，返回空数组\n\n"
-            f"对话内容：\n{conversation_text}\n"
-            "请以 JSON 数组格式返回，每项包含 category 和 content 两个字段：\n"
-            '[{"category": "fact", "content": "..."}, ...]'
+        return PromptManager.format_prompt(
+            PromptTemplate.AGENT_LONG_TERM_MEMORY.value,
+            conversation_text=conversation_text,
         )
 
     def _parse_extraction_result(self, result: str) -> List[dict]:
@@ -246,14 +419,12 @@ class LongTermMemory(ILongTermMemory):
 
         valid_categories = {"preference", "fact", "procedure", "insight"}
 
-        # 尝试提取 JSON（可能被 markdown 代码块包裹）
         json_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", result)
         if json_match:
             json_str = json_match.group(1).strip()
         else:
             json_str = result.strip()
 
-        # 尝试提取数组部分
         array_match = re.search(r"\[[\s\S]*\]", json_str)
         if array_match:
             json_str = array_match.group(0)
@@ -267,7 +438,6 @@ class LongTermMemory(ILongTermMemory):
         if not isinstance(parsed, list):
             return []
 
-        # 过滤有效条目
         valid_items = []
         for item in parsed:
             if not isinstance(item, dict):

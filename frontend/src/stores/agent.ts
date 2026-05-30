@@ -156,6 +156,7 @@ export const useAgentStore = defineStore('agent', () => {
         : null,
     }
     messages.value.push(userMsg)
+    if (options?.attachmentIds?.length) clearPendingAttachments()
 
     isStreaming.value = true
     streamingContent.value = ''
@@ -192,6 +193,7 @@ export const useAgentStore = defineStore('agent', () => {
         session_id: currentSessionId.value || null,
         llm_model: options?.llm_model || null,
         enable_thinking: options?.enable_thinking,
+        stream: true,
         attachment_ids: options?.attachmentIds,
       }, {
         signal: controller.signal,
@@ -291,7 +293,6 @@ export const useAgentStore = defineStore('agent', () => {
       streamingContent.value = ''
       streamingReasoning.value = ''
       abortController.value = null
-      if (options?.attachmentIds?.length) clearPendingAttachments()
     }
   }
 
@@ -314,6 +315,7 @@ export const useAgentStore = defineStore('agent', () => {
         : null,
     }
     messages.value.push(userMsg)
+    if (options?.attachmentIds?.length) clearPendingAttachments()
 
     loading.value = true
     toolCalls.value = []
@@ -332,6 +334,7 @@ export const useAgentStore = defineStore('agent', () => {
         session_id: currentSessionId.value || null,
         llm_model: options?.llm_model || null,
         enable_thinking: options?.enable_thinking,
+        stream: false,
         attachment_ids: options?.attachmentIds,
       }, {
         signal: controller2.signal,

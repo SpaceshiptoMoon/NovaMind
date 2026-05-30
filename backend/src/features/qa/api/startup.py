@@ -15,6 +15,7 @@ from src.features.qa.api.exceptions import (
     SessionManagementError,
     SessionConfigNotFoundError,
     SessionConfigAlreadyExistsError,
+    ChatAttachmentNotFoundError,
     QAError,
 )
 from src.features.qa.api.exceptions import DatabaseOperationError
@@ -33,6 +34,7 @@ def setup_qa_exception_handlers(app: FastAPI) -> None:
         SessionManagementError: 400,
         SessionConfigNotFoundError: 404,
         SessionConfigAlreadyExistsError: 409,
+        ChatAttachmentNotFoundError: 404,
         QAError: 400,
     })
     # LLM 服务异常需要特殊处理（包含原始错误信息）

@@ -33,27 +33,18 @@
 
     <!-- 右侧：对话区域 -->
     <div class="chat-main">
-      <!-- 空状态 -->
-      <div v-if="agentStore.messages.length === 0 && !agentStore.messagesLoading" class="welcome-screen">
-        <div class="welcome-inner">
-          <div class="welcome-avatar">{{ agentName.charAt(0) }}</div>
-          <h2 class="welcome-title">{{ agentName }}</h2>
-          <p class="welcome-desc">{{ agentStore.currentAgent?.description || '智能体对话' }}</p>
-          <div class="welcome-prompts">
-            <button
-              v-for="(prompt, i) in quickPrompts"
-              :key="i"
-              class="prompt-card"
-              @click="handleQuickPrompt(prompt)"
-            >
-              <span class="prompt-text">{{ prompt }}</span>
-            </button>
+      <!-- 浮动头部 -->
+      <header class="chat-header" :class="{ 'is-welcome': isWelcomeMode }">
+        <div class="header-left">
+          <div v-if="!isWelcomeMode" class="header-agent-badge">
+            <div class="badge-avatar">{{ agentName.charAt(0) }}</div>
+            <span class="header-title">{{ agentName }}</span>
           </div>
         </div>
-      </div>
+      </header>
 
-      <!-- 消息列表 -->
-      <div v-else ref="messagesRef" class="messages-container">
+      <!-- 消息列表 (仅对话模式) -->
+      <div v-if="!isWelcomeMode" ref="messagesRef" class="messages-container">
         <div class="messages-inner">
           <template v-for="msg in agentStore.messages" :key="msg.id">
             <!-- tool 消息：显示为工具调用卡片 -->
@@ -94,18 +85,33 @@
               <div class="message-body">
                 <div class="message-text">{{ msg.content }}</div>
                 <div v-if="getMessageAttachments(msg).length" class="message-attachments">
-                  <div v-for="att in getMessageAttachments(msg)" :key="att.filename" class="file-card" @click="handleDownloadAttachment(att)">
-                    <div class="file-icon-box" :class="getFileIconClass(att.file_type)">
-                      <span class="file-ext-label">{{ getFileExt(att.filename) }}</span>
+                  <template v-for="att in getMessageAttachments(msg)" :key="att.filename">
+                    <div v-if="isImageFile(att.file_type) && att.id" class="image-card" @click="handleDownloadAttachment(att)">
+                      <img
+                        v-if="getImagePreviewUrl(att)"
+                        :src="getImagePreviewUrl(att)"
+                        class="image-thumb"
+                        loading="lazy"
+                      />
+                      <div v-else class="image-thumb image-thumb-loading">加载中...</div>
+                      <div class="image-info">
+                        <span class="image-name">{{ att.filename }}</span>
+                        <span class="image-size">{{ formatFileSize(att.file_size) }}</span>
+                      </div>
                     </div>
-                    <div class="file-info">
-                      <div class="file-name">{{ att.filename }}</div>
-                      <div class="file-meta">{{ getFileExt(att.filename) }} · {{ formatFileSize(att.file_size) }}</div>
+                    <div v-else class="file-card" @click="handleDownloadAttachment(att)">
+                      <div class="file-icon-box" :class="getFileIconClass(att.file_type)">
+                        <span class="file-ext-label">{{ getFileExt(att.filename) }}</span>
+                      </div>
+                      <div class="file-info">
+                        <div class="file-name">{{ att.filename }}</div>
+                        <div class="file-meta">{{ getFileExt(att.filename) }} · {{ formatFileSize(att.file_size) }}</div>
+                      </div>
+                      <div class="file-download-btn" title="下载">
+                        <el-icon :size="16"><Download /></el-icon>
+                      </div>
                     </div>
-                    <div class="file-download-btn" title="下载">
-                      <el-icon :size="16"><Download /></el-icon>
-                    </div>
-                  </div>
+                  </template>
                 </div>
               </div>
             </div>
@@ -158,9 +164,27 @@
         </div>
       </div>
 
-      <!-- 输入区域：药丸形 -->
-      <div class="input-area">
-        <div class="input-pill">
+      <!-- 输入区域 -->
+      <div class="input-area" :class="{ 'is-welcome': isWelcomeMode }">
+        <div class="input-area-inner" :class="{ 'welcome-center': isWelcomeMode }">
+          <!-- 欢迎问候 (仅欢迎模式) -->
+          <div v-if="isWelcomeMode" class="welcome-greeting">
+            <div class="welcome-avatar">{{ agentName.charAt(0) }}</div>
+            <h2 class="welcome-title">{{ agentName }}</h2>
+            <p class="welcome-desc">{{ agentStore.currentAgent?.description || '智能体对话' }}</p>
+            <div class="welcome-prompts">
+              <button
+                v-for="(prompt, i) in quickPrompts"
+                :key="i"
+                class="prompt-card"
+                @click="handleQuickPrompt(prompt)"
+              >
+                <span class="prompt-text">{{ prompt }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="input-pill">
           <button
             class="attach-btn"
             :disabled="agentStore.isStreaming || agentStore.loading || uploadingFiles"
@@ -172,7 +196,7 @@
           <input
             ref="fileInputRef"
             type="file"
-            accept=".pdf,.docx,.txt,.md"
+            accept=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.gif,.webp"
             style="display: none"
             @change="handleFileSelected"
           />
@@ -185,6 +209,11 @@
             :disabled="agentStore.isStreaming || agentStore.loading"
             @keydown="handleKeydown"
             @input="autoResize"
+          />
+          <ModelFanSelector
+            v-model="selectedModel"
+            :models="availableModels"
+            :default-model-name="defaultModelName"
           />
           <button
             v-if="agentStore.isStreaming"
@@ -210,7 +239,8 @@
             :key="att.id"
             class="attachment-chip"
           >
-            <span class="att-type-badge">{{ getFileIcon(att.file_type) }}</span>
+            <img v-if="isImageFile(att.file_type) && getImagePreviewUrl(att)" :src="getImagePreviewUrl(att)" class="att-thumb-img" />
+            <span v-else class="att-type-badge">{{ getFileIcon(att.file_type) }}</span>
             <span class="att-name">{{ att.filename }}</span>
             <span class="att-size">{{ formatFileSize(att.file_size) }}</span>
             <button class="att-remove" @click="agentStore.removePendingAttachment(att.id)">
@@ -231,18 +261,6 @@
           <div v-if="settingsExpanded" class="settings-bar">
             <div class="settings-bar-inner">
               <div class="setting-group">
-                <span class="setting-label">模型</span>
-                <el-select
-                  v-model="selectedModel"
-                  :placeholder="defaultModelName || '默认'"
-                  clearable
-                  size="small"
-                  style="width: 180px"
-                >
-                  <el-option v-for="(_, name) in availableModels" :key="name" :label="name" :value="name" />
-                </el-select>
-              </div>
-              <div class="setting-group">
                 <span class="setting-label">深度思考</span>
                 <el-switch v-model="enableThinking" size="small" />
               </div>
@@ -253,13 +271,14 @@
             </div>
           </div>
         </transition>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, watch, inject } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete, ArrowLeft, ArrowDown, SetUp, Setting, Promotion, VideoPause, DocumentCopy, Paperclip, Close, Document, Download } from '@element-plus/icons-vue'
@@ -268,6 +287,7 @@ import { agentApi } from '@/api/agent'
 import { chatApi } from '@/api/chat'
 import type { AgentMessage } from '@/api/types'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
+import ModelFanSelector from '@/components/common/ModelFanSelector.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -276,6 +296,7 @@ const isInWorkspace = inject('isInWorkspace', false)
 
 const agentId = computed(() => Number(route.params.agentId))
 const agentName = computed(() => agentStore.currentAgent?.name || '智能体')
+const isWelcomeMode = computed(() => agentStore.messages.length === 0 && !agentStore.messagesLoading)
 
 const inputText = ref('')
 const useStream = ref(true)
@@ -288,7 +309,7 @@ const uploadingFiles = ref(false)
 
 // 模型选择
 const selectedModel = ref('')
-const availableModels = ref<Record<string, { max_tokens: number; temperature: number; top_p: number }>>({})
+const availableModels = ref<Record<string, { max_tokens: number; temperature: number; top_p: number; model_type: string }>>({})
 const defaultModelName = computed(() => Object.keys(availableModels.value)[0] || '')
 
 const settingsSummary = computed(() => {
@@ -306,7 +327,8 @@ async function handleFileSelected(e: Event) {
   const input = e.target as HTMLInputElement
   if (!input.files?.length) return
   const maxSize = 20 * 1024 * 1024
-  const allowedTypes = ['pdf', 'docx', 'txt', 'md']
+  const allowedTypes = ['pdf', 'docx', 'txt', 'md', 'jpg', 'jpeg', 'png', 'gif', 'webp']
+  const validFiles: File[] = []
   for (const file of Array.from(input.files)) {
     const ext = file.name.split('.').pop()?.toLowerCase() || ''
     if (!allowedTypes.includes(ext)) {
@@ -317,20 +339,24 @@ async function handleFileSelected(e: Event) {
       ElMessage.warning(`文件过大: ${file.name}（最大 20MB）`)
       continue
     }
-    try {
-      uploadingFiles.value = true
-      await agentStore.uploadAttachment(file)
-    } catch {
-      ElMessage.error(`上传失败: ${file.name}`)
-    } finally {
-      uploadingFiles.value = false
+    validFiles.push(file)
+  }
+
+  if (validFiles.length) {
+    uploadingFiles.value = true
+    const results = await Promise.allSettled(validFiles.map(f => agentStore.uploadAttachment(f)))
+    for (let i = 0; i < results.length; i++) {
+      if (results[i].status === 'rejected') {
+        ElMessage.error(`上传失败: ${validFiles[i].name}`)
+      }
     }
+    uploadingFiles.value = false
   }
   input.value = ''
 }
 
 function getFileIcon(type: string): string {
-  const map: Record<string, string> = { pdf: 'PDF', docx: 'DOC', txt: 'TXT', md: 'MD' }
+  const map: Record<string, string> = { pdf: 'PDF', docx: 'DOC', txt: 'TXT', md: 'MD', jpg: 'IMG', jpeg: 'IMG', png: 'IMG', gif: 'IMG', webp: 'IMG' }
   return map[type] || 'FILE'
 }
 
@@ -345,7 +371,37 @@ function getFileIconClass(type?: string): string {
   if (t === 'docx' || t === 'doc') return 'file-doc'
   if (t === 'txt') return 'file-txt'
   if (t === 'md') return 'file-md'
+  if (isImageFile(t)) return 'file-image'
   return 'file-default'
+}
+
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp'])
+function isImageFile(type?: string): boolean {
+  return !!type && IMAGE_EXTENSIONS.has(type.toLowerCase())
+}
+
+const imageBlobCache = new Map<number, string>()
+const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+
+async function loadAttachmentImage(attId: number) {
+  if (imageBlobCache.has(attId)) return
+  try {
+    const token = localStorage.getItem('access_token')
+    const res = await fetch(`${baseURL}/ai-chat/chat-attachments/${attId}/download`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!res.ok) return
+    const blob = await res.blob()
+    imageBlobCache.set(attId, URL.createObjectURL(blob))
+  } catch {
+    // ignore
+  }
+}
+
+function getImagePreviewUrl(att: { id?: number; preview_url?: string }): string {
+  if (att.preview_url) return att.preview_url
+  if (att.id) return imageBlobCache.get(att.id) || ''
+  return ''
 }
 
 function getFileExt(filename?: string): string {
@@ -404,9 +460,18 @@ function autoResize() {
   })
 }
 
-watch(() => agentStore.messages.length, () => scrollToBottom())
+watch(() => agentStore.messages.length, () => {
+  scrollToBottom()
+})
 watch(() => agentStore.streamingContent, () => scrollToBottom())
 watch(() => agentStore.loading, () => scrollToBottom())
+watch(() => agentStore.pendingAttachments.length, () => {
+  for (const att of agentStore.pendingAttachments) {
+    if (isImageFile(att.file_type) && att.id && !imageBlobCache.has(att.id)) {
+      loadAttachmentImage(att.id)
+    }
+  }
+})
 
 function goBack() {
   if (isInWorkspace) {
@@ -557,6 +622,13 @@ onMounted(async () => {
     agentStore.initForAgent(agentId.value),
     fetchModels(),
   ])
+})
+
+onBeforeUnmount(() => {
+  for (const url of imageBlobCache.values()) {
+    URL.revokeObjectURL(url)
+  }
+  imageBlobCache.clear()
 })
 </script>
 
@@ -728,6 +800,7 @@ onMounted(async () => {
    ======================================== */
 .chat-main {
   flex: 1;
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -737,21 +810,70 @@ onMounted(async () => {
 }
 
 /* ========================================
-   Welcome Screen
+   Floating Chat Header
    ======================================== */
-.welcome-screen {
-  flex: 1;
+.chat-header {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 3;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-5);
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-xs);
+  transition: all var(--transition-base);
+}
+
+.chat-header.is-welcome {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+
+.header-agent-badge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.badge-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-8);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  color: var(--color-primary);
+}
+
+.header-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+/* ========================================
+   Welcome Greeting (inside input-area)
+   ======================================== */
+.welcome-greeting {
+  text-align: center;
+  margin-bottom: var(--space-6);
 }
 
 .welcome-inner {
   display: flex;
   flex-direction: column;
   align-items: center;
-  max-width: 720px;
+  max-width: var(--container-width-sm);
   width: 100%;
 }
 
@@ -768,7 +890,7 @@ onMounted(async () => {
   font-weight: var(--weight-bold);
   color: var(--color-primary);
   margin-bottom: var(--space-5);
-  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.12);
+  box-shadow: var(--shadow-md);
 }
 
 .welcome-title {
@@ -831,10 +953,11 @@ onMounted(async () => {
   min-height: 0;
   overflow-y: auto;
   scroll-behavior: smooth;
+  padding-top: 48px;
 }
 
 .messages-inner {
-  max-width: 860px;
+  max-width: var(--container-width-md);
   margin: 0 auto;
   padding: var(--space-6) var(--space-6) var(--space-4);
 }
@@ -869,8 +992,8 @@ onMounted(async () => {
 .message-row.user .message-text {
   padding: var(--space-3) var(--space-4);
   border-radius: 18px 18px 4px 18px;
-  background: #dbeafe;
-  color: #1e3a5f;
+  background: var(--color-user-bubble);
+  color: var(--color-user-bubble-text);
   white-space: pre-wrap;
 }
 
@@ -880,49 +1003,50 @@ onMounted(async () => {
 .message-attachments {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 
 .file-card {
   display: flex;
   align-items: center;
   width: 260px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.55);
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
   box-sizing: border-box;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--transition-fast);
 }
 
 .file-card:hover {
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--color-bg-hover);
 }
 
 .file-card .file-icon-box {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 10px;
+  margin-right: var(--space-3);
   flex-shrink: 0;
 }
 
 .file-icon-box .file-ext-label {
   font-size: 11px;
-  font-weight: 700;
+  font-weight: var(--weight-bold);
   color: #fff;
   letter-spacing: 0.3px;
 }
 
-.file-icon-box.file-pdf  { background: #ef4444; }
-.file-icon-box.file-doc  { background: #3b82f6; }
-.file-icon-box.file-txt  { background: #8b5cf6; }
-.file-icon-box.file-md   { background: #06b6d4; }
-.file-icon-box.file-default { background: #6b7280; }
+.file-icon-box.file-pdf  { background: var(--color-file-pdf); }
+.file-icon-box.file-doc  { background: var(--color-file-doc); }
+.file-icon-box.file-txt  { background: var(--color-file-txt); }
+.file-icon-box.file-md   { background: var(--color-file-md); }
+.file-icon-box.file-default { background: var(--color-file-other); }
 
 .file-card .file-info {
   flex: 1;
@@ -933,17 +1057,17 @@ onMounted(async () => {
 }
 
 .file-card .file-name {
-  font-size: 13px;
-  color: #1e3a5f;
+  font-size: var(--text-sm);
+  color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .file-card .file-meta {
-  font-size: 11px;
-  color: #5b7a9d;
-  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-top: var(--space-1);
 }
 
 .file-card .file-download-btn {
@@ -952,16 +1076,16 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  color: #5b7a9d;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
   flex-shrink: 0;
-  margin-left: 4px;
-  transition: all 0.15s;
+  margin-left: var(--space-1);
+  transition: all var(--transition-fast);
 }
 
 .file-card:hover .file-download-btn {
-  color: #1e3a5f;
-  background: rgba(0, 0, 0, 0.06);
+  color: var(--color-text);
+  background: var(--color-bg-hover);
 }
 
 /* AI message */
@@ -974,8 +1098,8 @@ onMounted(async () => {
 
 /* Reasoning section */
 .reasoning-section {
-  margin-bottom: 8px;
-  border-radius: 10px;
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-lg);
   background: var(--color-bg-card-elevated);
   border: 1px solid var(--color-border-light);
   overflow: hidden;
@@ -984,30 +1108,30 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   cursor: pointer;
   user-select: none;
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
 .reasoning-header:hover {
   background: var(--color-bg-hover);
 }
 .reasoning-label {
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 .expand-icon {
-  transition: transform 0.2s;
+  transition: transform var(--transition-fast);
 }
 .expand-icon.expanded {
   transform: rotate(180deg);
 }
 .reasoning-body {
-  padding: 8px 12px 12px;
+  padding: var(--space-2) var(--space-3) var(--space-3);
   border-top: 1px solid var(--color-border-light);
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
-  line-height: 1.6;
+  line-height: var(--leading-relaxed);
   max-height: 400px;
   overflow-y: auto;
 }
@@ -1208,16 +1332,37 @@ onMounted(async () => {
   flex-shrink: 0;
   padding: 0 var(--space-6) var(--space-5);
   background: var(--color-bg-card);
+  position: relative;
+}
+
+.input-area.is-welcome {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  padding: 0 var(--space-4);
+  background: transparent;
+}
+
+.input-area-inner {
+  max-width: var(--container-width-md);
+  margin: 0 auto;
+}
+
+.input-area-inner.welcome-center {
+  max-width: var(--container-width-sm);
+  transform: translateY(calc(-50vh + 96px));
 }
 
 .input-pill {
-  max-width: 860px;
-  margin: 0 auto;
   display: flex;
   align-items: flex-end;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   gap: var(--space-2);
-  background: var(--color-bg-card);
+  background: var(--color-bg-input-bar);
+  backdrop-filter: blur(var(--blur-input));
+  -webkit-backdrop-filter: blur(var(--blur-input));
   border: 1px solid var(--color-border-light);
   border-radius: 24px;
   box-shadow: var(--shadow-sm);
@@ -1310,7 +1455,6 @@ onMounted(async () => {
 }
 
 .input-hint {
-  max-width: 860px;
   margin: 8px auto 0;
   text-align: center;
   font-size: var(--text-xs);
@@ -1321,7 +1465,6 @@ onMounted(async () => {
    Input Footer — Settings Toggle
    ======================================== */
 .input-footer {
-  max-width: 860px;
   margin: 6px auto 0;
   display: flex;
   align-items: center;
@@ -1386,7 +1529,6 @@ onMounted(async () => {
 }
 
 .settings-bar {
-  max-width: 860px;
   margin: 6px auto 0;
   padding: 8px 12px;
   background: var(--color-bg-card-elevated);
@@ -1442,7 +1584,6 @@ onMounted(async () => {
 }
 
 .attachment-preview-bar {
-  max-width: 860px;
   margin: 6px auto 0;
   display: flex;
   flex-wrap: wrap;
@@ -1506,5 +1647,67 @@ onMounted(async () => {
 .att-remove:hover {
   background: var(--color-danger-subtle);
   color: var(--color-danger);
+}
+
+/* ===== Image card in messages ===== */
+.image-card {
+  display: inline-flex;
+  flex-direction: column;
+  cursor: pointer;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--color-border-light);
+  max-width: 200px;
+  transition: border-color 0.15s;
+}
+.image-card:hover {
+  border-color: var(--color-primary);
+}
+.image-thumb {
+  width: 100%;
+  max-height: 150px;
+  object-fit: cover;
+  display: block;
+}
+.image-thumb-loading {
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-hover);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+.image-info {
+  padding: 4px 8px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  background: var(--color-bg-card);
+}
+.image-name {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.image-size {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.att-thumb-img {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.file-image {
+  background: linear-gradient(135deg, #43e97b, #38f9d7);
+  color: #fff;
 }
 </style>

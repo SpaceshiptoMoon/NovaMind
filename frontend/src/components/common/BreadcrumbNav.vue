@@ -58,34 +58,34 @@ onMounted(async () => {
 
 <style scoped>
 .breadcrumb-nav {
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1;
 }
 
 :deep(.el-breadcrumb__inner) {
-  font-size: 13px;
-  color: var(--color-text-muted, #8C8C8C);
-  transition: color 0.2s;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  transition: color var(--transition-fast);
 }
 
 :deep(.el-breadcrumb__inner.is-link) {
-  font-weight: 400;
-  color: var(--color-text-muted, #8C8C8C);
+  font-weight: var(--weight-normal);
+  color: var(--color-text-muted);
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--space-1);
 }
 
 :deep(.el-breadcrumb__inner.is-link:hover) {
-  color: var(--color-primary, #4285F4);
+  color: var(--color-primary);
 }
 
 :deep(.el-breadcrumb__item:last-child .el-breadcrumb__inner) {
-  color: var(--color-text, #1A1A1A);
-  font-weight: 500;
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
 }
 
 :deep(.el-breadcrumb__separator) {
-  color: var(--color-text-muted, #C0C4CC);
+  color: var(--color-text-muted);
 }
 </style>

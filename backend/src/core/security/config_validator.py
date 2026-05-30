@@ -281,40 +281,6 @@ class SecurityConfigValidator:
                     field_path=f"env.{var_name}",
                 ))
 
-    def get_report(self) -> str:
-        """获取安全报告"""
-        if not self.issues:
-            return "✅ 安全配置检查通过"
-
-        lines = ["🔒 安全配置检查报告", "=" * 50]
-
-        # 按严重程度分组
-        critical = [i for i in self.issues if i.level == "CRITICAL"]
-        warning = [i for i in self.issues if i.level == "WARNING"]
-        info = [i for i in self.issues if i.level == "INFO"]
-
-        if critical:
-            lines.append(f"\n🔴 严重问题 ({len(critical)})")
-            for issue in critical:
-                lines.append(f"  [{issue.category}] {issue.message}")
-                lines.append(f"    → {issue.recommendation}")
-
-        if warning:
-            lines.append(f"\n🟡 警告 ({len(warning)})")
-            for issue in warning:
-                lines.append(f"  [{issue.category}] {issue.message}")
-                lines.append(f"    → {issue.recommendation}")
-
-        if info:
-            lines.append(f"\n🔵 提示 ({len(info)})")
-            for issue in info:
-                lines.append(f"  [{issue.category}] {issue.message}")
-
-        return "\n".join(lines)
-
-    def has_critical_issues(self) -> bool:
-        """是否存在严重问题"""
-        return any(i.level == "CRITICAL" for i in self.issues)
 
 
 def validate_security_config(config) -> Tuple[bool, List[SecurityIssue]]:

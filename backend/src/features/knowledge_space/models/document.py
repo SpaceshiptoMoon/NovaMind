@@ -97,21 +97,9 @@ class Document(BaseModel):
         """获取存储信息"""
         return self.storage or {}
 
-    def get_original_filename(self) -> Optional[str]:
-        """获取原始文件名"""
-        return self.get_storage_info().get("original_filename")
-
     def get_minio_bucket(self) -> Optional[str]:
         """获取 MinIO 桶名"""
         return self.get_storage_info().get("minio_bucket")
-
-    def get_minio_object_name(self) -> Optional[str]:
-        """获取 MinIO 对象名"""
-        return self.get_storage_info().get("minio_object_name")
-
-    def get_minio_etag(self) -> Optional[str]:
-        """获取 MinIO ETag"""
-        return self.get_storage_info().get("minio_etag")
 
     def set_minio_info(
         self,
@@ -128,18 +116,6 @@ class Document(BaseModel):
         }
 
     # ========== 状态信息访问方法 ==========
-
-    def get_status_info(self) -> dict:
-        """获取状态详情"""
-        return self.status_info or {}
-
-    def get_error_message(self) -> Optional[str]:
-        """获取错误信息"""
-        return self.get_status_info().get("error_message")
-
-    def get_retry_count(self) -> int:
-        """获取重试次数"""
-        return self.get_status_info().get("retry_count", 0)
 
     def set_error(self, error_message: str) -> None:
         """设置错误信息"""
@@ -158,14 +134,6 @@ class Document(BaseModel):
 
     # ========== 元数据访问方法 ==========
 
-    def get_metadata_value(self, key: str, default: Any = None) -> Any:
-        """获取元数据字段"""
-        return (self.doc_metadata or {}).get(key, default)
-
-    def set_metadata(self, key: str, value: Any) -> None:
-        """设置元数据字段"""
-        self.doc_metadata = {**(self.doc_metadata or {}), key: value}
-
     # ========== 版本信息访问方法 ==========
 
     def get_version_info(self) -> dict:
@@ -176,36 +144,7 @@ class Document(BaseModel):
         """获取版本号"""
         return self.get_version_info().get("number", 1)
 
-    def get_parent_id(self) -> Optional[int]:
-        """获取父文档ID"""
-        return self.get_version_info().get("parent_id")
-
-    def create_new_version(self, parent_id: Optional[int] = None, comment: str = "") -> None:
-        """创建新版本"""
-        current_version = self.get_version_number()
-        self.version_info = {
-            "number": current_version + 1,
-            "parent_id": parent_id or self.id,
-            "comment": comment
-        }
-
     # ========== 状态检查方法 ==========
-
-    def is_processing(self) -> bool:
-        """检查文档是否正在处理中"""
-        return self.status == DocumentStatus.PROCESSING
-
-    def is_completed(self) -> bool:
-        """检查文档是否处理完成"""
-        return self.status == DocumentStatus.COMPLETED
-
-    def is_failed(self) -> bool:
-        """检查文档是否处理失败"""
-        return self.status == DocumentStatus.FAILED
-
-    def is_uploaded(self) -> bool:
-        """检查文档是否已上传（待处理）"""
-        return self.status == DocumentStatus.UPLOADED
 
     # ========== 状态变更方法 ==========
 
@@ -233,26 +172,7 @@ class Document(BaseModel):
         self.processed_at = now_china()
         self.set_error(error_message)
 
-    def get_processing_duration_seconds(self) -> Optional[float]:
-        """获取处理耗时（秒）"""
-        if self.processing_started_at and self.processed_at:
-            delta = self.processed_at - self.processing_started_at
-            return delta.total_seconds()
-        return None
-
     # ========== 软删除方法 ==========
-
-    def is_deleted(self) -> bool:
-        """检查文档是否已删除"""
-        return self.deleted_at is not None
-
-    def soft_delete(self) -> None:
-        """软删除文档"""
-        self.deleted_at = now_china()
-
-    def restore(self) -> None:
-        """恢复已删除的文档"""
-        self.deleted_at = None
 
     def revive(self, uploader_id: int, filename: str) -> None:
         """复活已软删除的文档（用于同文件重新上传）

@@ -89,6 +89,46 @@
   --radius-2xl: 18px;
   --radius-full: 9999px;
 
+  /* Chat */
+  --color-user-bubble: var(--color-bg-card-elevated);
+  --color-user-bubble-text: var(--color-text);
+  --color-chat-bg: #FFFFFF;
+  --color-bg-input-bar: rgba(255, 255, 255, 0.85);
+  --blur-input: 4px;
+
+  /* File type colors */
+  --color-file-pdf-bg: var(--color-danger-subtle);
+  --color-file-pdf: var(--color-danger);
+  --color-file-doc-bg: var(--color-info-subtle);
+  --color-file-doc: var(--color-primary);
+  --color-file-txt-bg: var(--color-bg-hover);
+  --color-file-txt: var(--color-text-muted);
+  --color-file-md-bg: var(--color-info-subtle);
+  --color-file-md: var(--color-info);
+  --color-file-xlsx-bg: var(--color-success-subtle);
+  --color-file-xlsx: var(--color-success);
+  --color-file-pptx-bg: var(--color-warning-subtle);
+  --color-file-pptx: var(--color-warning);
+  --color-file-other-bg: var(--color-accent-subtle);
+  --color-file-other: var(--color-accent);
+
+  /* Layout */
+  --header-height: 56px;
+  --sidebar-width: 260px;
+  --sidebar-width-collapsed: 48px;
+
+  /* Container widths */
+  --container-width-sm: 576px;
+  --container-width-md: 816px;
+
+  /* Glass effect */
+  --blur-header: 12px;
+  --color-bg-header: rgba(255, 255, 255, 0.85);
+
+  /* Auth gradient */
+  --color-gradient-start: var(--color-primary);
+  --color-gradient-end: var(--color-danger);
+
   /* Shadow — 冷灰 */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);

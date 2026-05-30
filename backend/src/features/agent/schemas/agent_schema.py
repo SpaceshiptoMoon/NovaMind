@@ -141,23 +141,6 @@ class MessageListResponse(BaseModel):
     total: int
 
 
-# ==================== 工具调用 ====================
-
-class ToolCallResponse(BaseModel):
-    """工具调用响应"""
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    message_id: int
-    tool_name: str
-    tool_source: str
-    arguments: Dict[str, Any]
-    result: Optional[str] = None
-    status: str = "pending"
-    error_message: Optional[str] = None
-    duration_ms: Optional[int] = None
-    created_at: Optional[datetime] = None
-
 
 # ==================== Agent 对话 ====================
 
@@ -167,6 +150,7 @@ class AgentChatRequest(BaseModel):
     session_id: Optional[str] = Field(None, description="会话 ID，不传则创建新会话")
     llm_model: Optional[str] = Field(None, description="覆盖 Agent 的 LLM 模型")
     enable_thinking: bool = Field(default=False, description="是否开启深度思考模式")
+    stream: bool = Field(default=True, description="是否流式输出")
     attachment_ids: Optional[List[int]] = Field(default=None, description="附件ID列表")
 
 
@@ -243,3 +227,36 @@ class McpToolsRefreshResponse(BaseModel):
     """MCP 工具刷新响应"""
     success: bool
     tools: List[Dict[str, Any]]
+
+
+# ==================== 记忆管理 ====================
+
+class MemoryResponse(BaseModel):
+    """记忆条目响应"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    agent_id: int
+    user_id: int
+    category: str
+    content: str
+    source_type: str = "consolidate"
+    source_conversation_id: Optional[int] = None
+    access_count: int = 0
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class MemoryListResponse(BaseModel):
+    """记忆列表响应"""
+    items: List[MemoryResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class MemoryStatsResponse(BaseModel):
+    """记忆统计响应"""
+    total_memories: int
+    by_category: Dict[str, int]
+    recently_created: List[MemoryResponse] = Field(default_factory=list)

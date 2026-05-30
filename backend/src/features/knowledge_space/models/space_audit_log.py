@@ -5,7 +5,7 @@
 """
 
 from enum import Enum
-from typing import Optional, Dict, Any
+from typing import Optional
 from sqlalchemy import Column, BigInteger, Integer, String, Text, DateTime, JSON, ForeignKey
 
 from src.core.database.base import BaseModel
@@ -84,85 +84,8 @@ class SpaceAuditLog(BaseModel):
         """获取资源信息"""
         return self.resource or {}
 
-    def get_resource_type(self) -> Optional[str]:
-        """获取资源类型"""
-        return self.get_resource().get("type")
-
-    def get_resource_id(self) -> Optional[int]:
-        """获取资源ID"""
-        return self.get_resource().get("id")
-
-    def get_resource_name(self) -> Optional[str]:
-        """获取资源名称"""
-        return self.get_resource().get("name")
-
-    def set_resource(self, resource_type: str, resource_id: int, resource_name: str = None) -> None:
-        """设置资源信息"""
-        self.resource = {
-            "type": resource_type,
-            "id": resource_id
-        }
-        if resource_name:
-            self.resource["name"] = resource_name
 
     # ========== Context 访问方法 ==========
-
-    def get_context(self) -> dict:
-        """获取请求上下文"""
-        return self.context or {}
-
-    def get_ip_address(self) -> Optional[str]:
-        """获取 IP 地址"""
-        return self.ip_address
-
-    def get_user_agent(self) -> Optional[str]:
-        """获取用户代理"""
-        return self.user_agent
-
-    def get_request_id(self) -> Optional[str]:
-        """获取请求ID"""
-        return self.get_context().get("request_id")
-
-    def set_context(
-        self,
-        ip_address: str = None,
-        user_agent: str = None,
-        request_id: str = None
-    ) -> None:
-        """设置请求上下文（ip_address 和 user_agent 由独立字段存储，此处仅存 request_id）"""
-        if not self.context:
-            self.context = {}
-        if request_id:
-            self.context["request_id"] = request_id
-
-    # ========== Details 访问方法 ==========
-
-    def get_details(self) -> dict:
-        """获取操作详情"""
-        return self.details or {}
-
-    def set_details(self, details: Dict[str, Any]) -> None:
-        """设置操作详情"""
-        self.details = details
-
-    def add_detail(self, key: str, value: Any) -> None:
-        """添加操作详情"""
-        if not self.details:
-            self.details = {}
-        self.details[key] = value
-
-    # ========== Changes 访问方法 ==========
-
-    def get_changes(self) -> dict:
-        """获取变更内容"""
-        return self.changes or {}
-
-    def set_changes(self, before: Any = None, after: Any = None) -> None:
-        """设置变更内容"""
-        self.changes = {
-            "before": before,
-            "after": after
-        }
 
     @staticmethod
     def create_from_request(
@@ -211,14 +134,18 @@ class SpaceAuditLog(BaseModel):
 
         # 设置资源信息
         if resource_type and resource_id:
-            log.set_resource(resource_type, resource_id, resource_name)
+            log.resource = {
+                "type": resource_type,
+                "id": resource_id,
+                "name": resource_name,
+            }
 
-        # 设置上下文（保留兼容性）
-        log.set_context(
-            ip_address=ip_address,
-            user_agent=user_agent,
-            request_id=getattr(request.state, "request_id", None)
-        )
+        # 设置上下文
+        log.context = {
+            "ip_address": ip_address,
+            "user_agent": user_agent,
+            "request_id": getattr(request.state, "request_id", None),
+        }
 
         return log
 

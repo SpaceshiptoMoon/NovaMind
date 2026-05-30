@@ -30,6 +30,9 @@ class AgentMemory(BaseModel):
         String(50), nullable=False, comment="分类：preference/fact/procedure/insight"
     )
     content = Column(Text, nullable=False, comment="记忆内容")
+    source_type = Column(
+        String(20), default="consolidate", comment="来源类型：consolidate（自动提取）/ manual（模型主动写入）"
+    )
     source_conversation_id = Column(
         BigInteger,
         ForeignKey("agent_sessions.id"),

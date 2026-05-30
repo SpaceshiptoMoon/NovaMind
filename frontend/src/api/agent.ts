@@ -44,7 +44,7 @@ export const agentApi = {
 
   chatStream(
     agentId: number,
-    data: { content: string; session_id?: string | null; llm_model?: string | null; enable_thinking?: boolean; attachment_ids?: number[] },
+    data: { content: string; session_id?: string | null; llm_model?: string | null; enable_thinking?: boolean; stream?: boolean; attachment_ids?: number[] },
     callbacks: {
       onSession?: (d: { session_id: string; agent_id: number }) => void
       onToolCall?: (d: { tool_name: string; arguments: Record<string, unknown>; call_id: string }) => void
@@ -58,7 +58,7 @@ export const agentApi = {
   ) {
     return createSSEStream(`/agent/agents/${agentId}/chat-stream`, data, {
       onMessage(event) {
-        const e = event as unknown as { type: string; data: unknown }
+        const e = event
         switch (e.type) {
           case 'session':
             callbacks.onSession?.(e.data as Parameters<typeof callbacks.onSession>[0])

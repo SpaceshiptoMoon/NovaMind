@@ -19,7 +19,7 @@ export const researchApi = {
   ) {
     return createSSEStream(`/spaces/${spaceId}/deep-research/stream`, data, {
       onMessage(event) {
-        const e = event as { type: string; data: unknown }
+        const e = event
         switch (e.type) {
           case 'progress':
             callbacks.onProgress?.(e.data as Parameters<typeof callbacks.onProgress>[0])

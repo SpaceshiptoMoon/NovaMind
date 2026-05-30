@@ -2,13 +2,15 @@
   <div class="model-config-view">
     <div class="page-header">
       <h2>模型配置</h2>
-      <p class="desc">管理您的私有 LLM、Embedding、Rerank 模型配置</p>
+      <p class="desc">管理您的私有 LLM、Embedding、Rerank、VLM、多模态嵌入模型配置</p>
     </div>
 
     <el-tabs v-model="activeTab" @tab-change="handleTabChange">
       <el-tab-pane label="LLM 模型" name="llm" />
       <el-tab-pane label="Embedding 模型" name="embedding" />
       <el-tab-pane label="Rerank 模型" name="rerank" />
+      <el-tab-pane label="VLM 视觉模型" name="vlm" />
+      <el-tab-pane label="多模态嵌入" name="multimodal_embedding" />
     </el-tabs>
 
     <div class="toolbar">
@@ -63,6 +65,8 @@
             <el-option label="Anthropic" value="anthropic" />
             <el-option label="Ollama" value="ollama" />
             <el-option label="Transformers" value="transformers" />
+            <el-option label="DashScope 多模态" value="dashscope_multimodal" />
+            <el-option label="OpenAI 多模态" value="multimodal_openai" />
           </el-select>
         </el-form-item>
         <el-form-item label="模型名称" prop="model">
@@ -106,7 +110,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { userApi } from '@/api/user'
 import type { ModelConfig, ModelConfigTestResponse, AvailableModelItem } from '@/api/types'
 
-const activeTab = ref<'llm' | 'embedding' | 'rerank'>('llm')
+const activeTab = ref<'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding'>('llm')
 const loading = ref(false)
 const submitLoading = ref(false)
 const testLoading = ref(false)
@@ -115,8 +119,8 @@ const testResultVisible = ref(false)
 const isEditing = ref(false)
 const editingId = ref<number | null>(null)
 
-const availableDetail = ref<{ llm: AvailableModelItem[]; embedding: AvailableModelItem[]; rerank: AvailableModelItem[] }>({
-  llm: [], embedding: [], rerank: [],
+const availableDetail = ref<{ llm: AvailableModelItem[]; embedding: AvailableModelItem[]; rerank: AvailableModelItem[]; vlm: AvailableModelItem[]; multimodal_embedding: AvailableModelItem[] }>({
+  llm: [], embedding: [], rerank: [], vlm: [], multimodal_embedding: [],
 })
 const userConfigList = ref<ModelConfig[]>([])
 
@@ -136,12 +140,14 @@ const formRules: FormRules = {
   api_key: [{ required: true, message: '请输入 API Key', trigger: 'blur' }],
 }
 
-const systemConfigs = computed(() => availableDetail.value[activeTab.value].filter((c) => c.is_system))
+const systemConfigs = computed(() => (availableDetail.value[activeTab.value] || []).filter((c) => c.is_system))
 const userConfigs = computed(() => userConfigList.value.filter((c) => c.model_type === activeTab.value))
 
 async function fetchAvailable() {
   try {
-    availableDetail.value = await userApi.getAvailableModelDetails()
+    const data = await userApi.getAvailableModelDetails()
+    const defaults = { llm: [], embedding: [], rerank: [], vlm: [], multimodal_embedding: [] } as Record<string, AvailableModelItem[]>
+    availableDetail.value = { ...defaults, ...data } as typeof availableDetail.value
   } catch {
     // ignore
   }
@@ -150,7 +156,7 @@ async function fetchAvailable() {
 async function fetchConfigs() {
   loading.value = true
   try {
-    const data = await userApi.getModelConfigs(activeTab.value)
+    const data = await userApi.getModelConfigs()
     userConfigList.value = data.items
   } catch {
     userConfigList.value = []
@@ -160,7 +166,7 @@ async function fetchConfigs() {
 }
 
 function handleTabChange() {
-  fetchConfigs()
+  // 全量已缓存，无需重新请求
 }
 
 function showCreateDialog() {
@@ -264,31 +270,31 @@ onMounted(() => {
 }
 
 .page-header {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 
 .page-header h2 {
-  margin: 0 0 4px;
-  font-size: 20px;
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-xl);
 }
 
 .page-header .desc {
   color: var(--color-text-muted);
-  font-size: 14px;
+  font-size: var(--text-base);
   margin: 0;
 }
 
 .toolbar {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .config-section {
-  margin-bottom: 24px;
+  margin-bottom: var(--space-6);
 }
 
 .config-section h3 {
-  font-size: 15px;
-  margin: 0 0 12px;
+  font-size: var(--text-md);
+  margin: 0 0 var(--space-3);
   color: var(--color-text-secondary);
 }
 

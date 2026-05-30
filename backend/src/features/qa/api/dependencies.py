@@ -14,6 +14,14 @@ from src.shared.clients import get_minio_client
 logger = get_logger(__name__)
 
 
+async def get_minio_client_for_presign():
+    """获取 MinIO 客户端（路由层附件预签名用）"""
+    try:
+        return await get_minio_client()
+    except Exception:
+        return None
+
+
 async def get_qa_repository(db: AsyncSession = Depends(get_db)):
     """获取QARepository实例"""
     return QuestionAnswerRepository(db)

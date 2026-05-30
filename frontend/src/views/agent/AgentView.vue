@@ -141,7 +141,12 @@
         </el-form-item>
         <el-form-item label="LLM 模型">
           <el-select v-model="form.llm_model" placeholder="留空使用默认模型" clearable style="width: 100%">
-            <el-option v-for="(_, name) in availableModels" :key="name" :label="name" :value="name" />
+            <el-option-group v-if="llmModelNames.length" label="LLM 文本模型">
+              <el-option v-for="name in llmModelNames" :key="name" :label="name" :value="name" />
+            </el-option-group>
+            <el-option-group v-if="vlmModelNames.length" label="VLM 视觉模型">
+              <el-option v-for="name in vlmModelNames" :key="name" :label="name" :value="name" />
+            </el-option-group>
           </el-select>
         </el-form-item>
         <el-form-item label="Temperature">
@@ -239,7 +244,18 @@ const isChatRoute = computed(() => route.name === 'AgentChat')
 const selectedAgentId = ref<number | null>(null)
 const currentAgent = computed(() => agentStore.agents.find((a) => a.id === selectedAgentId.value) || agentStore.currentAgent)
 
-const availableModels = ref<Record<string, { max_tokens: number; temperature: number; top_p: number }>>({})
+const availableModels = ref<Record<string, { max_tokens: number; temperature: number; top_p: number; model_type: string }>>({})
+
+const llmModelNames = computed(() =>
+  Object.entries(availableModels.value)
+    .filter(([, v]) => v.model_type !== 'vlm')
+    .map(([name]) => name),
+)
+const vlmModelNames = computed(() =>
+  Object.entries(availableModels.value)
+    .filter(([, v]) => v.model_type === 'vlm')
+    .map(([name]) => name),
+)
 
 async function fetchModels() {
   try {
@@ -725,7 +741,7 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   margin-bottom: var(--space-6);
-  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.12);
+  box-shadow: var(--shadow-md);
 }
 
 .empty-title {

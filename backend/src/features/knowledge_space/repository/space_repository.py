@@ -6,19 +6,7 @@
 """
 
 from typing import Optional, List, Dict, Any
-from datetime import datetime
 from src.shared.utils.time_utils import now_china
-
-
-def _deserialize_datetime_fields(data: dict, fields: list[str]) -> dict:
-    """将缓存中的 ISO 字符串转回 datetime 对象"""
-    for field in fields:
-        if field in data and isinstance(data[field], str):
-            try:
-                data[field] = datetime.fromisoformat(data[field])
-            except (ValueError, TypeError):
-                pass
-    return data
 
 from sqlalchemy import select, update, delete, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession

@@ -61,7 +61,7 @@ export interface UpdateUserRequest {
 export interface ModelConfig {
   id: number
   user_id: number | null
-  model_type: 'llm' | 'embedding' | 'rerank'
+  model_type: 'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding'
   protocol: string
   model: string
   base_url: string | null
@@ -73,7 +73,7 @@ export interface ModelConfig {
 }
 
 export interface CreateModelConfigRequest {
-  model_type: 'llm' | 'embedding' | 'rerank'
+  model_type: 'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding'
   protocol: string
   model: string
   base_url?: string
@@ -90,7 +90,7 @@ export interface UpdateModelConfigRequest {
 }
 
 export interface ModelConfigTestRequest {
-  model_type: 'llm' | 'embedding' | 'rerank'
+  model_type: 'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding'
   protocol?: string
   model: string
   base_url?: string
@@ -114,12 +114,16 @@ export interface AvailableModelsResponse {
   llm: string[]
   embedding: string[]
   rerank: string[]
+  vlm: string[]
+  multimodal_embedding: string[]
 }
 
 export interface AvailableModelDetail {
   llm: AvailableModelItem[]
   embedding: AvailableModelItem[]
   rerank: AvailableModelItem[]
+  vlm: AvailableModelItem[]
+  multimodal_embedding: AvailableModelItem[]
 }
 
 export interface ModelConfigListResponse {
@@ -142,10 +146,17 @@ export interface SpaceConfigEmbeddingUpdate {
   normalize?: boolean
 }
 
+export interface SpaceMultimodalEmbeddingConfig {
+  model?: string
+  dimension?: number
+}
+
 export interface SpaceConfig {
+  space_type?: 'text' | 'multimodal'
   description?: string
   tags?: string[]
   embedding?: SpaceConfigEmbedding
+  multimodal_embedding?: SpaceMultimodalEmbeddingConfig
   storage?: Record<string, unknown>
   ui?: Record<string, unknown>
   defaults?: Record<string, unknown>
@@ -198,9 +209,11 @@ export interface SpaceConfigResponse {
 }
 
 export interface SpaceConfigUpdateRequest {
+  space_type?: 'text' | 'multimodal'
   description?: string
   tags?: string[]
   embedding?: SpaceConfigEmbeddingUpdate
+  multimodal_embedding?: SpaceMultimodalEmbeddingConfig
   defaults?: Record<string, unknown>
   limits?: Record<string, unknown>
 }
@@ -503,6 +516,8 @@ export interface SearchResultItem {
   questions: string[] | null
   metadata: Record<string, unknown>
   file_info: Record<string, unknown>
+  image_url?: string
+  chunk_type?: string
 }
 
 export interface SearchResponse {
@@ -583,6 +598,7 @@ export interface ChatAttachment {
   filename: string
   file_type: string
   file_size: number
+  preview_url?: string
 }
 
 export interface UploadChatAttachmentResponse {
@@ -636,7 +652,7 @@ export interface HealthCheckResponse {
 }
 
 export interface ModelsResponse {
-  models: Record<string, { max_tokens: number; temperature: number; top_p: number }>
+  models: Record<string, { max_tokens: number; temperature: number; top_p: number; model_type: string }>
 }
 
 // ===================== 会话配置相关 =====================

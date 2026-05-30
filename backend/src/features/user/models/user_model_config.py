@@ -18,9 +18,11 @@ from src.core.database.base import BaseModel
 
 class ModelType(IntEnum):
     """模型类型枚举"""
-    LLM = 1       # 大语言模型
-    EMBEDDING = 2  # 向量化模型
-    RERANK = 3     # 重排序模型
+    LLM = 1                  # 大语言模型
+    EMBEDDING = 2             # 向量化模型
+    RERANK = 3               # 重排序模型
+    VLM = 4                  # 视觉语言模型
+    MULTIMODAL_EMBEDDING = 5  # 多模态嵌入模型
 
 
 class UserModelConfig(BaseModel):
@@ -74,12 +76,6 @@ class UserModelConfig(BaseModel):
         if self.extra_config is None:
             return default
         return self.extra_config.get(key, default)
-
-    def set_extra(self, key: str, value: Any) -> None:
-        """设置扩展配置中的值"""
-        if self.extra_config is None:
-            self.extra_config = {}
-        self.extra_config = {**self.extra_config, key: value}
 
     @property
     def is_system_config(self) -> bool:

@@ -40,28 +40,48 @@
             :value="kb.id"
           />
         </el-select>
-        <el-input
-          v-model="searchForm.query"
-          placeholder="输入查询内容，按 Enter 检索..."
-          class="search-input"
-          maxlength="2000"
-          @keyup.enter="handleSearch"
-        >
-          <template #prefix>
-            <el-icon><Search /></el-icon>
-          </template>
-        </el-input>
+        <template v-if="spaceType !== 'multimodal'">
+          <el-input
+            v-model="searchForm.query"
+            placeholder="输入查询内容，按 Enter 检索..."
+            class="search-input"
+            maxlength="2000"
+            @keyup.enter="handleSearch"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+          <el-button
+            type="primary"
+            :loading="searching"
+            :disabled="!searchForm.kb_id || !searchForm.query"
+            @click="handleSearch"
+            class="search-btn"
+          >
+            检索
+          </el-button>
+        </template>
         <el-button
-          type="primary"
-          :loading="searching"
-          :disabled="!searchForm.kb_id || !searchForm.query"
-          @click="handleSearch"
+          v-if="spaceType === 'multimodal'"
+          :loading="imageSearching"
+          :disabled="!searchForm.kb_id"
+          @click="triggerImageSearch"
           class="search-btn"
+          title="以图搜图"
         >
-          检索
+          <el-icon><Upload /></el-icon>
+          以图搜图
         </el-button>
+        <input
+          ref="imageInput"
+          type="file"
+          accept=".jpg,.jpeg,.png,.gif,.webp"
+          style="display: none"
+          @change="handleImageFileChange"
+        />
       </div>
-      <div class="search-meta-row">
+      <div v-if="spaceType !== 'multimodal'" class="search-meta-row">
         <el-select
           v-model="searchForm.search_mode"
           placeholder="检索模式"
@@ -290,7 +310,13 @@
             <span class="result-doc">{{ (result.file_info as Record<string, string>)?.filename || `文档 #${result.document_id}` }}</span>
           </div>
           <div class="result-content">
-            {{ result.content }}
+            <img
+              v-if="result.image_url && result.chunk_type === 'image'"
+              :src="result.image_url"
+              class="result-thumbnail"
+              loading="lazy"
+            />
+            <template v-else>{{ result.content }}</template>
           </div>
           <div class="result-footer">
             <span v-if="(result.metadata as Record<string, unknown>)?.page" class="result-page">
@@ -327,8 +353,9 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Search, ArrowDown } from '@element-plus/icons-vue'
+import { Search, ArrowDown, Upload } from '@element-plus/icons-vue'
 import { searchApi } from '@/api/search'
+import { spaceApi } from '@/api/space'
 import { knowledgeBaseApi } from '@/api/knowledgeBase'
 import type { KnowledgeBase, SearchMode, SearchResultItem } from '@/api/types'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -338,6 +365,7 @@ const route = useRoute()
 const spaceId = computed(() => Number(route.params.id))
 const currentKbId = computed(() => route.query.kbId || '')
 
+const spaceType = ref<'text' | 'multimodal'>('text')
 const searching = ref(false)
 const hasSearched = ref(false)
 const showAdvanced = ref(false)
@@ -357,6 +385,10 @@ const llmAnswer = ref<string | null>(null)
 const answerModel = ref<string | null>(null)
 const answerElapsedMs = ref<number | null>(null)
 const originalMode = ref<string | null>(null)
+
+// 图片搜索
+const imageSearching = ref(false)
+const imageInput = ref<HTMLInputElement | null>(null)
 
 // 默认检索参数
 const defaultSearchForm = {
@@ -529,8 +561,52 @@ async function handleSearch() {
   }
 }
 
-onMounted(() => {
+function triggerImageSearch() {
+  imageInput.value?.click()
+}
+
+async function handleImageFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file || !searchForm.kb_id) return
+
+  imageSearching.value = true
+  hasSearched.value = true
+
+  try {
+    const data = await searchApi.searchByImage(spaceId.value, searchForm.kb_id, file, {
+      top_k: searchForm.top_k,
+      score_threshold: searchForm.score_threshold,
+    })
+    searchResults.value = data.results || []
+    totalResults.value = data.total || 0
+    elapsedMs.value = data.elapsed_ms || 0
+    cached.value = data.cached || false
+    modeFallback.value = false
+    rewrittenQueries.value = null
+    llmAnswer.value = null
+    answerModel.value = null
+    answerElapsedMs.value = null
+    originalMode.value = null
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { error?: { message?: string } } } }
+    ElMessage.error(err.response?.data?.error?.message || '图片搜索失败')
+    searchResults.value = []
+  } finally {
+    imageSearching.value = false
+    input.value = ''
+  }
+}
+
+onMounted(async () => {
   fetchKnowledgeBases()
+  // 加载空间类型
+  try {
+    const space = await spaceApi.getSpace(spaceId.value)
+    spaceType.value = space.config?.space_type || 'text'
+  } catch {
+    // 默认 text
+  }
 })
 </script>
 
@@ -539,33 +615,44 @@ onMounted(() => {
   padding-top: var(--space-2);
 }
 
+/* ===== Sub Navigation ===== */
 .page-nav {
   margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border-light);
 }
 
 .nav-tabs {
   display: flex;
-  gap: var(--space-2);
+  gap: 0;
 }
 
 .nav-tab {
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-md);
-  font-size: var(--text-base);
-  color: var(--color-text-secondary);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
   text-decoration: none;
   transition: all var(--transition-fast);
+  position: relative;
+  font-weight: var(--weight-medium);
 }
 
 .nav-tab:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text);
+  color: var(--color-text-secondary);
 }
 
 .nav-tab.active {
-  background: var(--color-primary-subtle);
   color: var(--color-primary);
-  font-weight: var(--weight-medium);
+}
+
+.nav-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--color-primary);
+  border-radius: 2px 2px 0 0;
 }
 
 /* ===== Search Hero ===== */
@@ -574,7 +661,7 @@ onMounted(() => {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-xl);
-  padding: var(--space-5);
+  padding: var(--space-6);
   margin-bottom: var(--space-4);
 }
 
@@ -595,7 +682,7 @@ onMounted(() => {
 
 .search-input :deep(.el-input__wrapper) {
   height: 44px;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xs);
 }
 
@@ -603,7 +690,7 @@ onMounted(() => {
   flex-shrink: 0;
   height: 44px;
   padding: 0 var(--space-6);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   font-weight: var(--weight-medium);
 }
 
@@ -654,7 +741,7 @@ onMounted(() => {
   border-radius: var(--radius-xl);
   padding: var(--space-5);
   margin-bottom: var(--space-4);
-  animation: slideDown 0.2s ease;
+  animation: slideDown 0.25s ease;
 }
 
 @keyframes slideDown {
@@ -672,7 +759,9 @@ onMounted(() => {
   color: var(--color-text-secondary);
   margin-bottom: var(--space-3);
   padding-bottom: var(--space-2);
+  padding-left: var(--space-3);
   border-bottom: 1px solid var(--color-border-light);
+  border-left: 3px solid var(--color-primary);
 }
 
 .advanced-footer {
@@ -725,7 +814,7 @@ onMounted(() => {
 
 .result-card:hover {
   border-color: var(--color-border);
-  box-shadow: var(--shadow-xs);
+  box-shadow: var(--shadow-sm);
 }
 
 .result-header {
@@ -750,10 +839,10 @@ onMounted(() => {
 }
 
 .result-score {
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   padding: 2px 8px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
 }
 
 .score-high {
@@ -767,8 +856,8 @@ onMounted(() => {
 }
 
 .score-low {
-  color: var(--color-danger);
-  background: var(--color-danger-subtle);
+  color: var(--color-text-faint);
+  background: var(--color-bg-hover);
 }
 
 .result-doc {
@@ -779,12 +868,20 @@ onMounted(() => {
 
 .result-content {
   font-size: var(--text-sm);
-  line-height: 1.7;
+  line-height: var(--leading-relaxed);
   color: var(--color-text);
   display: -webkit-box;
   -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.result-thumbnail {
+  max-width: 240px;
+  max-height: 180px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+  border: 1px solid var(--color-border-light);
 }
 
 .result-footer {
@@ -827,10 +924,10 @@ onMounted(() => {
 
 .llm-answer {
   margin-bottom: var(--space-4);
-  padding: var(--space-4);
-  background: linear-gradient(135deg, var(--color-primary-subtle), rgba(37, 99, 235, 0.03));
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-primary-subtle);
   border-radius: var(--radius-lg);
-  border-left: 4px solid var(--color-primary);
+  border-left: 3px solid var(--color-primary);
 }
 
 .llm-answer-header {
@@ -856,7 +953,7 @@ onMounted(() => {
 
 .llm-answer-content {
   font-size: var(--text-sm);
-  line-height: 1.8;
+  line-height: var(--leading-relaxed);
   color: var(--color-text);
   white-space: pre-wrap;
   word-break: break-word;

@@ -104,19 +104,3 @@ class TokenCounter:
 
         return total
 
-    def estimate_messages_tokens(self, message_count: int) -> int:
-        """
-        快速估算消息列表 token 数（不编码）
-
-        Args:
-            message_count: 消息数量
-
-        Returns:
-            估算的 token 数
-        """
-        # 每条消息平均约 100 个 token
-        return message_count * 100
-
-    def get_encoder(self) -> tiktoken.Encoding:
-        """获取编码器实例"""
-        return self.encoder

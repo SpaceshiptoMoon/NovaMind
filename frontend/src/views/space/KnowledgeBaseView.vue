@@ -389,14 +389,14 @@ const formRules: FormRules = {
 // === 色板 ===
 
 const colorPalette = [
-  '#2563EB', // 蓝
-  '#10B981', // 翠绿
-  '#EF4444', // 红
-  '#7C3AED', // 紫
-  '#F59E0B', // 琥珀
-  '#0EA5E9', // 天蓝
-  '#F97316', // 橘橙
-  '#14B8A6', // 青
+  '#2563EB',
+  '#10B981',
+  '#EF4444',
+  '#7C3AED',
+  '#F59E0B',
+  '#0EA5E9',
+  '#F97316',
+  '#14B8A6',
 ]
 
 function getColor(index: number): string {
@@ -703,7 +703,7 @@ onMounted(() => {
   padding: var(--space-3) var(--space-4);
   background: var(--color-danger-subtle);
   border-radius: var(--radius-lg);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  border: 1px solid var(--color-danger-subtle);
 }
 
 .batch-count {
@@ -725,30 +725,30 @@ onMounted(() => {
   overflow: hidden;
   transition: all var(--transition-base);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
 }
 
 .kb-card:hover {
   border-color: var(--color-border);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
   transform: translateY(-2px);
 }
 
 .kb-card.selected {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px var(--color-primary-muted);
+  background: var(--color-primary-muted);
 }
 
 .kb-card-accent {
-  height: 3px;
-  width: 100%;
+  width: 3px;
   flex-shrink: 0;
 }
 
 .kb-card-body {
-  padding: var(--space-4);
+  padding: var(--space-4) var(--space-5);
   cursor: pointer;
   flex: 1;
+  min-width: 0;
 }
 
 .kb-card-header {
@@ -795,14 +795,14 @@ onMounted(() => {
 
 .kb-desc {
   margin: 0 0 var(--space-3);
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-  line-height: 1.5;
+  line-height: var(--leading-relaxed);
 }
 
 .kb-meta {
@@ -820,8 +820,9 @@ onMounted(() => {
 
 .kb-actions {
   display: flex;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--color-border-light);
   opacity: 0;
   transition: opacity var(--transition-base);

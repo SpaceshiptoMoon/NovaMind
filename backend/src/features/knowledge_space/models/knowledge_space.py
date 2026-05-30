@@ -85,25 +85,9 @@ class KnowledgeSpace(BaseModel):
         """获取描述"""
         return self.get_config().get("description", "")
 
-    def get_tags(self) -> list:
-        """获取标签"""
-        return self.get_config().get("tags", [])
-
-    def get_ui_config(self) -> dict:
-        """获取 UI 配置"""
-        return self.get_config().get("ui", {})
-
     def get_storage_config(self) -> dict:
         """获取存储配置"""
         return self.get_config().get("storage", {})
-
-    def get_minio_bucket(self) -> Optional[str]:
-        """获取 MinIO 桶名"""
-        return self.get_storage_config().get("minio_bucket")
-
-    def get_minio_prefix(self) -> Optional[str]:
-        """获取 MinIO 路径前缀"""
-        return self.get_storage_config().get("minio_prefix")
 
     # ========== Embedding 配置 ==========
 
@@ -124,6 +108,16 @@ class KnowledgeSpace(BaseModel):
         emb = self.embedding_config
         return emb.get("dimension") if emb else None
 
+    @property
+    def space_type(self) -> str:
+        """获取空间类型（默认 text）"""
+        return self.get_config().get("space_type", "text")
+
+    @property
+    def multimodal_embedding_config(self) -> Optional[dict]:
+        """获取空间级别的多模态嵌入配置"""
+        return self.get_config().get("multimodal_embedding")
+
     def get_defaults_config(self) -> dict:
         """获取默认配置"""
         return self.get_config().get("defaults", {})
@@ -131,14 +125,6 @@ class KnowledgeSpace(BaseModel):
     def get_limits_config(self) -> dict:
         """获取限制配置"""
         return self.get_config().get("limits", {})
-
-    def get_max_documents(self) -> int:
-        """获取最大文档数"""
-        return self.get_limits_config().get("max_documents", 1000)
-
-    def get_max_storage_mb(self) -> int:
-        """获取最大存储空间"""
-        return self.get_limits_config().get("max_storage_mb", 10240)
 
     def get_default_splitting_config(self) -> dict:
         """获取默认切分配置"""
@@ -158,34 +144,9 @@ class KnowledgeSpace(BaseModel):
         """检查空间是否可用"""
         return self.status == SpaceStatus.ACTIVE and self.deleted_at is None
 
-    def is_archived(self) -> bool:
-        """检查空间是否已归档"""
-        return self.status == SpaceStatus.ARCHIVED
-
-    def is_private(self) -> bool:
-        """检查是否是私有空间"""
-        return self.visibility == SpaceVisibility.PRIVATE
-
-    def is_team_visible(self) -> bool:
-        """检查是否对团队可见"""
-        return self.visibility == SpaceVisibility.TEAM
-
     def is_public(self) -> bool:
         """检查是否是公开空间"""
         return self.visibility == SpaceVisibility.PUBLIC
 
     # ========== 状态变更方法 ==========
 
-    def archive(self) -> None:
-        """归档空间"""
-        self.status = SpaceStatus.ARCHIVED
-
-    def soft_delete(self) -> None:
-        """软删除空间"""
-        self.status = SpaceStatus.DELETED
-        self.deleted_at = now_china()
-
-    def restore(self) -> None:
-        """恢复空间"""
-        self.status = SpaceStatus.ACTIVE
-        self.deleted_at = None

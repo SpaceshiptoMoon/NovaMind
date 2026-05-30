@@ -73,25 +73,6 @@ class SessionConfig(BaseModel):
     def custom_summary_prompt(self) -> Optional[str]:
         return self.get_compression_config().get("custom_prompt")
 
-    def set_compression_config(
-        self,
-        enable_compression: bool = True,
-        strategy: str = "summary",
-        threshold: int = 3000,
-        target_tokens: int = 500,
-        keep_recent: int = 2,
-        custom_prompt: Optional[str] = None,
-    ) -> None:
-        """设置压缩配置"""
-        self.compression_config = {
-            "enable_compression": enable_compression,
-            "strategy": strategy,
-            "threshold": threshold,
-            "target_tokens": target_tokens,
-            "keep_recent": keep_recent,
-            "custom_prompt": custom_prompt,
-        }
-
     def to_dict(self) -> dict:
         """转换为字典"""
         return {

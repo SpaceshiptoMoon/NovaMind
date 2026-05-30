@@ -90,23 +90,29 @@
             </el-form>
           </div>
 
-          <!-- Embedding 配置 -->
+          <!-- Embedding 配置（统一） -->
           <div class="settings-section">
             <h3 class="section-title">Embedding 模型配置</h3>
             <p class="section-desc">
-              空间级别的 Embedding 模型，所有知识库共享此配置。修改模型时，空间中不能有已处理的文档。向量维度由后端根据模型自动检测。
+              空间类型的 Embedding 模型配置。修改模型或类型时，空间中不能有已处理的文档。向量维度由后端根据模型自动检测。
             </p>
             <el-form label-width="120px" style="max-width: 600px">
+              <el-form-item label="空间类型">
+                <el-radio-group v-model="embeddingForm.spaceType">
+                  <el-radio value="text">文本空间</el-radio>
+                  <el-radio value="multimodal">多模态空间（图片）</el-radio>
+                </el-radio-group>
+              </el-form-item>
               <el-form-item label="Embedding 模型">
                 <el-select
                   v-model="embeddingForm.model"
-                  placeholder="选择模型"
+                  :placeholder="embeddingForm.spaceType === 'multimodal' ? '选择多模态嵌入模型' : '选择文本嵌入模型'"
                   clearable
                   filterable
                   style="width: 100%"
                 >
                   <el-option
-                    v-for="m in embeddingModels"
+                    v-for="m in currentModels"
                     :key="m.model"
                     :label="m.model"
                     :value="m.model"
@@ -296,6 +302,7 @@ const infoSaving = ref(false)
 // === Embedding ===
 
 const embeddingForm = reactive({
+  spaceType: 'text' as 'text' | 'multimodal',
   model: '',
   dimension: 1024,
   batch_size: 32,
@@ -303,6 +310,11 @@ const embeddingForm = reactive({
 })
 const embeddingSaving = ref(false)
 const embeddingModels = ref<AvailableModelItem[]>([])
+const mmModels = ref<AvailableModelItem[]>([])
+
+const currentModels = computed(() =>
+  embeddingForm.spaceType === 'multimodal' ? mmModels.value : embeddingModels.value
+)
 
 // === 标签 ===
 
@@ -508,6 +520,7 @@ async function fetchConfig() {
     configData.value = config
     stats.value = config.stats
     embeddingModels.value = modelData.embedding || []
+    mmModels.value = modelData.multimodal_embedding || []
 
     // 填充基本信息
     infoForm.name = config.name
@@ -516,6 +529,7 @@ async function fetchConfig() {
 
     // 填充 Embedding
     const emb = config.config?.embedding
+    embeddingForm.spaceType = config.config?.space_type || 'text'
     embeddingForm.model = emb?.model || ''
     embeddingForm.dimension = emb?.dimension ?? 1024
     embeddingForm.batch_size = emb?.batch_size ?? 32
@@ -562,6 +576,7 @@ async function handleSaveEmbedding() {
   embeddingSaving.value = true
   try {
     await spaceApi.updateConfig(spaceId.value, {
+      space_type: embeddingForm.spaceType,
       embedding: {
         model: embeddingForm.model || undefined,
         batch_size: embeddingForm.batch_size,

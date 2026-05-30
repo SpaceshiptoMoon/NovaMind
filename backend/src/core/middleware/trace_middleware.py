@@ -170,19 +170,6 @@ class TraceIDMiddleware:
         return True
 
 
-def get_trace_id(request) -> str:
-    """
-    从请求中获取 trace_id
-
-    Args:
-        request: HTTP 请求对象
-
-    Returns:
-        trace_id 字符串
-    """
-    return getattr(request.state, "trace_id", "no-trace")
-
-
 def bind_user_context(user_id: str | int | None = None) -> None:
     """
     绑定用户上下文到日志

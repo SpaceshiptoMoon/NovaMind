@@ -64,13 +64,13 @@ function handleBack() {
 .back-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1);
   background: transparent;
   border: none;
   color: var(--color-text-secondary);
   cursor: pointer;
   font-size: var(--text-sm);
-  padding: 6px 10px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-md);
   transition: all var(--transition-fast);
   font-family: var(--font-body);

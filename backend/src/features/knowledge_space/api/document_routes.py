@@ -10,7 +10,7 @@ import io
 import os
 from typing import Annotated, List, Optional, Union
 from urllib.parse import quote
-from fastapi import APIRouter, Depends, Request, UploadFile, File, Query, Form, Path, Body, HTTPException
+from fastapi import APIRouter, Depends, Request, UploadFile, File, Query, Form, Path, Body
 from fastapi.responses import StreamingResponse
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,7 +56,7 @@ from src.features.knowledge_space.services.audit_service import AuditService
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB
 
 # 允许上传的文件类型白名单
-ALLOWED_FILE_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md", ".csv", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".json"}
+ALLOWED_FILE_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md", ".csv", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".json", ".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
 # 批量上传最大文件数
 MAX_BATCH_FILE_COUNT = 20
@@ -262,8 +262,8 @@ async def get_documents(
         try:
             status_filter = DocumentStatus[status.upper()]
         except KeyError:
-            from fastapi import HTTPException as _HE
-            raise _HE(status_code=422, detail=f"无效的文档状态: {status}")
+            from src.features.knowledge_space.api.exceptions import InvalidDocumentStatusError
+            raise InvalidDocumentStatusError(status)
 
     documents = await document_service.get_kb_documents(
         kb_id=kb_id,

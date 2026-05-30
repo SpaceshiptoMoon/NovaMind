@@ -128,8 +128,8 @@ class QuestionLLMConfig(BaseModel):
 # ========== 问题生成配置 ==========
 
 
-# 默认问题生成提示词模板
-DEFAULT_QUESTION_PROMPT = """请严格根据以下文档内容，生成 {{count}} 个用户可能会问的问题。
+# 默认问题生成提示词模板（使用单花括号，与 PromptManager.format_prompt 兼容）
+DEFAULT_QUESTION_PROMPT = """请严格根据以下文档内容，生成 {count} 个用户可能会问的问题。
 
 要求：
 1. 问题必须且只能基于下方「文档内容」中实际出现的文字信息，禁止使用文档内容之外的人名、地名、机构名等实体
@@ -139,14 +139,14 @@ DEFAULT_QUESTION_PROMPT = """请严格根据以下文档内容，生成 {{count}
 5. 只输出 JSON 数组，不要输出任何其他文字、标记或解释
 
 输出格式：
-[{"question": "问题内容", "category": "factual"}]
+[{{"question": "问题内容", "category": "factual"}}]
 
 category 可选值: factual(事实性), conceptual(概念性), procedural(操作性)
 
 文档内容：
-{{content}}
+{content}
 
-请生成 {{count}} 个问题："""
+请生成 {count} 个问题："""
 
 
 class QuestionGenerationConfig(BaseModel):

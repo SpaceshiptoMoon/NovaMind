@@ -24,10 +24,11 @@ class ShortTermMemory(IShortTermMemory):
     短期记忆管理器
 
     核心流程：
-    1. 从数据库加载消息和工具调用记录
-    2. 转换为统一的 MemoryMessage 列表
-    3. 计算 token 数，超预算时触发压缩
-    4. 组装 MemorySnapshot 输出给 AgentEngine
+    1. 从 agent_context_summaries 查询最新摘要
+    2. 从数据库加载摘要之后的消息和工具调用记录
+    3. 转换为统一的 MemoryMessage 列表
+    4. 计算 token 数，超预算时触发压缩
+    5. 组装 MemorySnapshot 输出给 AgentEngine
     """
 
     def __init__(
@@ -37,12 +38,14 @@ class ShortTermMemory(IShortTermMemory):
         session_repository: Any,  # SessionRepository
         token_budget: TokenBudget,
         compression_strategy: ICompressionStrategy,
+        summary_repository: Any = None,  # ContextSummaryRepository
     ):
         self._msg_repo = message_repository
         self._tc_repo = tool_call_repository
         self._session_repo = session_repository
         self._token_budget = token_budget
         self._compression = compression_strategy
+        self._summary_repo = summary_repository
 
     async def build_context(
         self,
@@ -65,14 +68,54 @@ class ShortTermMemory(IShortTermMemory):
         4. 超出预算 → 压缩策略
         5. 组装 OpenAI 格式 messages
         """
-        # 1. 从数据库加载
-        db_messages, _ = await self._msg_repo.list_by_conversation(
-            conversation_id, limit=200
-        )
+        # 1. 查询最新摘要
+        summary_msg = None
+        summary_cutoff = None
+        if self._summary_repo:
+            try:
+                latest_summary = await self._summary_repo.get_latest(conversation_id)
+                if latest_summary:
+                    summary_msg = MemoryMessage(
+                        role="system",
+                        content=latest_summary.summary_text,
+                    )
+                    summary_cutoff = latest_summary.created_at
+            except Exception as e:
+                logger.warning("摘要查询失败，加载全部消息", error=str(e))
+
+        # 2. 从数据库加载消息
+        if summary_cutoff:
+            from sqlalchemy import select
+            from src.features.agent.models.message import AgentMessage
+            stmt = (
+                select(AgentMessage)
+                .where(
+                    AgentMessage.conversation_id == conversation_id,
+                    AgentMessage.created_at > summary_cutoff,
+                )
+                .order_by(AgentMessage.created_at.asc())
+                .limit(200)
+            )
+            result = await self._session_repo.session.execute(stmt) if hasattr(self._session_repo, 'session') else None
+            if result:
+                db_messages = list(result.scalars().all())
+            else:
+                db_messages, _ = await self._msg_repo.list_by_conversation(
+                    conversation_id, limit=200
+                )
+        else:
+            db_messages, _ = await self._msg_repo.list_by_conversation(
+                conversation_id, limit=200
+            )
+
         db_tool_calls = await self._tc_repo.list_by_conversation(conversation_id)
 
         # 2. 转换为内部消息模型
         memory_messages = self._convert_db_messages(db_messages, db_tool_calls)
+
+        # 3. 如果有摘要，前置到消息列表
+        if summary_msg:
+            memory_messages = [summary_msg] + memory_messages
 
         # 3. 计算 token 预算
         available_tokens = max_tokens - reserve_tokens
@@ -90,6 +133,7 @@ class ShortTermMemory(IShortTermMemory):
                     messages=memory_messages,
                     available_tokens=available_tokens - system_tokens,
                     token_budget=self._token_budget,
+                    conversation_id=conversation_id,
                 )
             )
             messages_tokens = self._token_budget.count_messages_tokens(

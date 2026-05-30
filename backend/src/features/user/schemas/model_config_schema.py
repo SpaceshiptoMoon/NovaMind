@@ -52,7 +52,7 @@ class ModelConfigBase(BaseModel):
     @classmethod
     def validate_model_type(cls, v: str) -> str:
         """验证模型类型"""
-        allowed = {"llm", "embedding", "rerank"}
+        allowed = {"llm", "embedding", "rerank", "vlm", "multimodal_embedding"}
         if v.lower() not in allowed:
             raise ValueError(f"不支持的模型类型: {v}，支持的类型: {allowed}")
         return v.lower()
@@ -131,7 +131,7 @@ class ModelTestRequest(BaseModel):
     @field_validator('model_type')
     @classmethod
     def validate_model_type(cls, v: str) -> str:
-        allowed = {"llm", "embedding", "rerank"}
+        allowed = {"llm", "embedding", "rerank", "vlm", "multimodal_embedding"}
         if v.lower() not in allowed:
             raise ValueError(f"不支持的模型类型: {v}")
         return v.lower()
@@ -154,6 +154,8 @@ class AvailableModelsResponse(BaseModel):
     llm: List[str] = Field(default_factory=list, description="可用的 LLM 模型名称")
     embedding: List[str] = Field(default_factory=list, description="可用的 Embedding 模型名称")
     rerank: List[str] = Field(default_factory=list, description="可用的 Rerank 模型名称")
+    vlm: List[str] = Field(default_factory=list, description="可用的 VLM 视觉模型名称")
+    multimodal_embedding: List[str] = Field(default_factory=list, description="可用的多模态嵌入模型名称")
 
 
 class ModelInfo(BaseModel):
@@ -170,3 +172,5 @@ class AvailableModelsWithInfoResponse(BaseModel):
     llm: List[ModelInfo] = Field(default_factory=list, description="LLM 模型列表")
     embedding: List[ModelInfo] = Field(default_factory=list, description="Embedding 模型列表")
     rerank: List[ModelInfo] = Field(default_factory=list, description="Rerank 模型列表")
+    vlm: List[ModelInfo] = Field(default_factory=list, description="VLM 视觉模型列表")
+    multimodal_embedding: List[ModelInfo] = Field(default_factory=list, description="多模态嵌入模型列表")

@@ -9,6 +9,9 @@ from src.shared.ai_models.base_model import BaseEmbedding
 from src.shared.ai_models.embedding.openai_compatible import OpenAICompatibleEmbedding
 from src.shared.ai_models.embedding.ollama_embedding import OllamaEmbedding
 from src.shared.ai_models.embedding.transformers_embedding import TransformersEmbedding
+from src.shared.ai_models.embedding.multimodal_embedding import BaseMultimodalEmbedding
+from src.shared.ai_models.embedding.openai_compatible_multimodal import OpenAICompatibleMultimodalEmbedding
+from src.shared.ai_models.embedding.dashscope_multimodal import DashScopeMultimodalEmbedding
 
 
 def create_embedding_client(
@@ -57,13 +60,20 @@ def create_embedding_client(
         return OllamaEmbedding(**common_kwargs, **kwargs)
     elif protocol == "transformers":
         return TransformersEmbedding(**common_kwargs, **kwargs)
+    elif protocol == "multimodal_openai":
+        return OpenAICompatibleMultimodalEmbedding(**common_kwargs, **kwargs)
+    elif protocol == "dashscope_multimodal":
+        return DashScopeMultimodalEmbedding(**common_kwargs, **kwargs)
 
     raise ValueError(f"不支持的 Embedding 协议: {protocol}")
 
 
 __all__ = [
     "BaseEmbedding",
+    "BaseMultimodalEmbedding",
     "OpenAICompatibleEmbedding",
+    "OpenAICompatibleMultimodalEmbedding",
+    "DashScopeMultimodalEmbedding",
     "OllamaEmbedding",
     "TransformersEmbedding",
     "create_embedding_client",

@@ -29,6 +29,7 @@ class MemoryRepository:
         category: str,
         content: str,
         source_conversation_id: Optional[int] = None,
+        source_type: Optional[str] = None,
         extra_data: Optional[dict] = None,
     ) -> AgentMemory:
         """创建长期记忆条目"""
@@ -38,6 +39,7 @@ class MemoryRepository:
             category=category,
             content=content,
             source_conversation_id=source_conversation_id,
+            source_type=source_type or "consolidate",
             extra_data=extra_data,
         )
         self.session.add(memory)
@@ -107,13 +109,20 @@ class MemoryRepository:
         await self.session.flush()
 
     async def list_by_agent(
-        self, agent_id: int, user_id: int, limit: int = 50, offset: int = 0,
+        self,
+        agent_id: int,
+        user_id: int,
+        category: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
     ) -> Tuple[List[AgentMemory], int]:
         """列出 Agent 的所有记忆"""
         base = select(AgentMemory).where(
             AgentMemory.agent_id == agent_id,
             AgentMemory.user_id == user_id,
         )
+        if category:
+            base = base.where(AgentMemory.category == category)
         count_result = await self.session.execute(
             select(func.count()).select_from(base.subquery())
         )
@@ -123,6 +132,18 @@ class MemoryRepository:
             base.order_by(AgentMemory.updated_at.desc()).offset(offset).limit(limit)
         )
         return result.scalars().all(), total
+
+    async def update(self, memory_id: int, **kwargs) -> Optional[AgentMemory]:
+        """更新记忆字段"""
+        allowed = {f for f in self._UPDATABLE_FIELDS if f in kwargs}
+        if not allowed:
+            return await self.get_by_id(memory_id)
+        values = {k: kwargs[k] for k in allowed}
+        await self.session.execute(
+            update(AgentMemory).where(AgentMemory.id == memory_id).values(**values)
+        )
+        await self.session.flush()
+        return await self.get_by_id(memory_id)
 
     async def delete(self, memory_id: int) -> bool:
         from sqlalchemy import delete

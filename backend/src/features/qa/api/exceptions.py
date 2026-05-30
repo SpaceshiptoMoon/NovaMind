@@ -90,3 +90,15 @@ class SessionConfigAlreadyExistsError(QAError):
     def __init__(self, session_id: str):
         super().__init__(f"会话 {session_id} 的配置已存在", "SESSION_CONFIG_ALREADY_EXISTS")
         self.session_id = session_id
+
+
+class ChatAttachmentNotFoundError(QAError):
+    """聊天附件不存在"""
+    _serializable_attrs: ClassVar[List[str]] = ["attachment_id"]
+
+    def __init__(self, attachment_id: int):
+        super().__init__(
+            f"附件 {attachment_id} 不存在",
+            "CHAT_ATTACHMENT_NOT_FOUND",
+        )
+        self.attachment_id = attachment_id

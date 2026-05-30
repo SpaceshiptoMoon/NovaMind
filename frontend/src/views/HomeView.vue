@@ -101,7 +101,7 @@ function goToResearch() {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: calc(100vh - 120px);
+  min-height: calc(100vh - var(--header-height) - var(--space-5) * 2);
   padding: var(--space-6);
 }
 
@@ -115,7 +115,7 @@ function goToResearch() {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -126,28 +126,28 @@ function goToResearch() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-10);
 }
 
 .brand-logo {
   width: 64px;
   height: 64px;
   border-radius: var(--radius-xl);
-  background: linear-gradient(135deg, #E8F0FE, #FEF1EE);
+  background: var(--color-primary-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: var(--space-5);
-  box-shadow: 0 4px 16px rgba(66, 133, 244, 0.1);
+  box-shadow: var(--shadow-lg);
 }
 
 .greeting {
   font-family: var(--font-display);
-  font-size: 32px;
+  font-size: var(--text-4xl);
   font-weight: var(--weight-bold);
   color: var(--color-text);
   margin: 0 0 var(--space-2);
-  letter-spacing: 0.04em;
+  letter-spacing: var(--tracking-tight);
 }
 
 .greeting-sub {
@@ -155,7 +155,7 @@ function goToResearch() {
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   color: var(--color-text-faint);
-  letter-spacing: 0.18em;
+  letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   margin: 0;
 }
@@ -168,7 +168,7 @@ function goToResearch() {
   grid-template-columns: 1fr 1fr;
   gap: var(--space-3);
   width: 100%;
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-10);
 }
 
 .suggest-card {
@@ -177,7 +177,7 @@ function goToResearch() {
   gap: var(--space-3);
   padding: var(--space-4);
   border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   background: var(--color-bg-card);
   cursor: pointer;
   transition: all var(--transition-base);
@@ -187,11 +187,12 @@ function goToResearch() {
 
 .suggest-card:hover {
   border-color: var(--color-border);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
 }
 
 .suggest-icon {
-  font-size: 18px;
+  font-size: var(--text-xl);
   flex-shrink: 0;
 }
 
@@ -199,6 +200,7 @@ function goToResearch() {
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
   line-height: var(--leading-normal);
+  transition: color var(--transition-fast);
 }
 
 .suggest-card:hover .suggest-text {
@@ -210,7 +212,7 @@ function goToResearch() {
    ======================================== */
 .home-input-area {
   width: 100%;
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-8);
 }
 
 .home-input-box {
@@ -241,12 +243,12 @@ function goToResearch() {
   height: 32px;
   border-radius: var(--radius-full);
   background: var(--color-primary);
-  color: #FFFFFF;
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 2px 6px rgba(66, 133, 244, 0.2);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
 }
 
 /* ========================================
@@ -285,7 +287,7 @@ function goToResearch() {
    ======================================== */
 @media (max-width: 600px) {
   .greeting {
-    font-size: 24px;
+    font-size: var(--text-3xl);
   }
 
   .suggest-grid {

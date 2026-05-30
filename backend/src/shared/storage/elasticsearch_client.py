@@ -111,6 +111,7 @@ class ElasticsearchClient:
         space_id: int,
         embedding_dim: Optional[int] = None,
         analyzer: Optional[str] = None,
+        multimodal_dim: Optional[int] = None,
     ) -> bool:
         """创建空间索引（幂等：索引已存在时直接返回成功）"""
         index_name = self.generate_index_name(space_id)
@@ -120,63 +121,75 @@ class ElasticsearchClient:
         is_ik = _analyzer.startswith("ik_")
         search_analyzer = "ik_smart" if is_ik else "standard"
 
+        properties = {
+            "space_id": {"type": "long"},
+            "kb_id": {"type": "long"},
+            "document_id": {"type": "long"},
+            "chunk_id": {"type": "keyword"},
+            "chunk_index": {"type": "integer"},
+            "content": {
+                "type": "text",
+                "analyzer": _analyzer,
+                "search_analyzer": search_analyzer,
+            },
+            "embedding": {
+                "type": "dense_vector",
+                "dims": dim,
+                "index": True,
+                "similarity": "cosine",
+            },
+            "questions": {
+                "type": "text",
+                "analyzer": _analyzer,
+                "search_analyzer": search_analyzer,
+            },
+            "question_embeddings": {
+                "type": "nested",
+                "properties": {
+                    "vector": {
+                        "type": "dense_vector",
+                        "dims": dim,
+                        "index": True,
+                        "similarity": "cosine",
+                    }
+                },
+            },
+            "chunk_type": {"type": "keyword"},
+            "image_url": {"type": "keyword"},
+            "metadata": {
+                "properties": {
+                    "page_number": {"type": "integer"},
+                    "section_title": {"type": "text"},
+                    "char_start": {"type": "integer"},
+                    "char_end": {"type": "integer"},
+                    "content_hash": {"type": "keyword"},
+                }
+            },
+            "file_info": {
+                "properties": {
+                    "filename": {"type": "keyword"},
+                    "file_type": {"type": "keyword"},
+                }
+            },
+            "created_at": {"type": "date"},
+            "updated_at": {"type": "date"},
+        }
+
+        if multimodal_dim:
+            properties["image_embedding"] = {
+                "type": "dense_vector",
+                "dims": multimodal_dim,
+                "index": True,
+                "similarity": "cosine",
+            }
+
         mappings = {
             "settings": {
                 "number_of_shards": 1,
                 "number_of_replicas": 0,
             },
             "mappings": {
-                "properties": {
-                    "space_id": {"type": "long"},
-                    "kb_id": {"type": "long"},
-                    "document_id": {"type": "long"},
-                    "chunk_id": {"type": "keyword"},
-                    "chunk_index": {"type": "integer"},
-                    "content": {
-                        "type": "text",
-                        "analyzer": _analyzer,
-                        "search_analyzer": search_analyzer,
-                    },
-                    "embedding": {
-                        "type": "dense_vector",
-                        "dims": dim,
-                        "index": True,
-                        "similarity": "cosine",
-                    },
-                    "questions": {
-                        "type": "text",
-                        "analyzer": _analyzer,
-                        "search_analyzer": search_analyzer,
-                    },
-                    "question_embeddings": {
-                        "type": "nested",
-                        "properties": {
-                            "vector": {
-                                "type": "dense_vector",
-                                "dims": dim,
-                                "index": True,
-                                "similarity": "cosine",
-                            }
-                        },
-                    },
-                    "metadata": {
-                        "properties": {
-                            "page_number": {"type": "integer"},
-                            "section_title": {"type": "text"},
-                            "char_start": {"type": "integer"},
-                            "char_end": {"type": "integer"},
-                            "content_hash": {"type": "keyword"},
-                        }
-                    },
-                    "file_info": {
-                        "properties": {
-                            "filename": {"type": "keyword"},
-                            "file_type": {"type": "keyword"},
-                        }
-                    },
-                    "created_at": {"type": "date"},
-                    "updated_at": {"type": "date"},
-                }
+                "properties": properties,
             },
         }
 
@@ -197,12 +210,12 @@ class ElasticsearchClient:
             raise
 
     async def ensure_index_exists(
-        self, space_id: int, embedding_dim: Optional[int] = None
+        self, space_id: int, embedding_dim: Optional[int] = None, multimodal_dim: Optional[int] = None
     ) -> str:
         """确保索引存在"""
         index_name = self.generate_index_name(space_id)
         if not await self.index_exists(space_id):
-            await self.create_index(space_id, embedding_dim)
+            await self.create_index(space_id, embedding_dim, multimodal_dim=multimodal_dim)
         return index_name
 
     async def delete_index(self, space_id: int) -> bool:
@@ -254,12 +267,15 @@ class ElasticsearchClient:
         space_id: int,
         chunks: List[Dict[str, Any]],
         embedding_dim: Optional[int] = None,
+        multimodal_dim: Optional[int] = None,
     ) -> int:
         """批量索引分块"""
         if not chunks:
             return 0
 
-        index_name = await self.ensure_index_exists(space_id, embedding_dim=embedding_dim)
+        index_name = await self.ensure_index_exists(
+            space_id, embedding_dim=embedding_dim, multimodal_dim=multimodal_dim
+        )
         actions = []
         for chunk in chunks:
             actions.append({"index": {"_index": index_name, "_id": chunk["chunk_id"]}})
@@ -292,6 +308,56 @@ class ElasticsearchClient:
         except Exception as e:
             logger.error("批量索引分块失败", index=index_name, error=str(e))
             return 0
+
+    async def image_vector_search(
+        self,
+        space_id: int,
+        query_vector: List[float],
+        top_k: int = 10,
+        kb_id: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """在 image_embedding 字段上做 KNN 搜索（以图搜图）"""
+        index_name = self.generate_index_name(space_id)
+
+        filters = [{"term": {"chunk_type": "image"}}]
+        if kb_id:
+            filters.append({"term": {"kb_id": kb_id}})
+
+        body = {
+            "query": {
+                "bool": {
+                    "filter": filters,
+                    "must": [
+                        {
+                            "knn": {
+                                "field": "image_embedding",
+                                "query_vector": query_vector,
+                                "k": top_k,
+                                "num_candidates": top_k * 10,
+                            }
+                        }
+                    ],
+                }
+            },
+            "size": top_k,
+            "_source": [
+                "chunk_id", "document_id", "kb_id", "content",
+                "image_url", "chunk_type", "file_info", "metadata",
+            ],
+        }
+
+        try:
+            result = await self.es_client.search(index=index_name, body=body)
+            hits = result.get("hits", {}).get("hits", [])
+            search_results = []
+            for hit in hits:
+                source = hit.get("_source", {})
+                source["_score"] = hit.get("_score", 0)
+                search_results.append(source)
+            return search_results
+        except Exception as e:
+            logger.error("图片向量搜索失败", index=index_name, error=str(e))
+            return []
 
     async def get_chunk(self, space_id: int, chunk_id: str) -> Optional[Dict[str, Any]]:
         """获取分块"""

@@ -7,6 +7,7 @@ AI对话服务层
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any, AsyncGenerator, TYPE_CHECKING
 from uuid import uuid4
+import base64
 import json
 import tempfile
 import os
@@ -99,9 +100,15 @@ class AIChatService:
                 llm_model = await self.model_config_service.get_default_model_name("llm")
 
             if llm_model:
-                return await self.model_config_service.get_llm_client_by_model(
-                    user_id, llm_model
-                )
+                # 优先按 LLM 查找，找不到再按 VLM 查找
+                try:
+                    return await self.model_config_service.get_llm_client_by_model(
+                        user_id, llm_model
+                    )
+                except Exception:
+                    return await self.model_config_service.get_vlm_client_by_model(
+                        user_id, llm_model
+                    )
 
         raise LLMServiceError("未配置 LLM 模型，请在模型配置中添加")
 
@@ -162,7 +169,8 @@ class AIChatService:
         # 动态注入附件文本到上下文（扫描所有带 extra.attachments 的消息）
         # 用 try/except 包裹，注入失败不应阻塞对话
         try:
-            context = await self._inject_attachments_to_context(session_id, context, user_id)
+            is_vlm = await self._is_vlm_model(llm_model, user_id)
+            context = await self._inject_attachments_to_context(session_id, context, user_id, is_vlm)
         except Exception as inject_err:
             self.logger.warning("附件文本注入失败，跳过注入", error=str(inject_err))
 
@@ -529,7 +537,8 @@ class AIChatService:
     # ========== 附件相关方法 ==========
 
     # 允许的文件类型及扩展名
-    ALLOWED_FILE_TYPES = {"pdf", "docx", "txt", "md", "markdown"}
+    ALLOWED_FILE_TYPES = {"pdf", "docx", "txt", "md", "markdown", "jpg", "jpeg", "png", "gif", "webp"}
+    IMAGE_FILE_TYPES = {"jpg", "jpeg", "png", "gif", "webp"}
     MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
     MAX_EXTRACTED_TEXT_LENGTH = 50000  # 50000 字符
 
@@ -570,14 +579,15 @@ class AIChatService:
         await self.minio_client.upload_file(storage_path, file_data, content_type)
         self.logger.info("附件已上传到 MinIO", user_id=user_id, path=storage_path, size=len(file_data))
 
-        # 提取文本
+        # 提取文本（图片类型跳过）
         extracted_text = None
-        try:
-            extracted_text = await self._extract_text_from_bytes(file_data, ext)
-            if extracted_text and len(extracted_text) > self.MAX_EXTRACTED_TEXT_LENGTH:
-                extracted_text = extracted_text[:self.MAX_EXTRACTED_TEXT_LENGTH] + "\n\n[... 文档内容已截断 ...]"
-        except Exception as e:
-            self.logger.warning("提取文档文本失败", filename=filename, error=str(e))
+        if ext not in self.IMAGE_FILE_TYPES:
+            try:
+                extracted_text = await self._extract_text_from_bytes(file_data, ext)
+                if extracted_text and len(extracted_text) > self.MAX_EXTRACTED_TEXT_LENGTH:
+                    extracted_text = extracted_text[:self.MAX_EXTRACTED_TEXT_LENGTH] + "\n\n[... 文档内容已截断 ...]"
+            except Exception as e:
+                self.logger.warning("提取文档文本失败", filename=filename, error=str(e))
 
         # 创建数据库记录
         attachment = await self.attachment_repo.create(
@@ -644,16 +654,15 @@ class AIChatService:
         return "<documents>\n" + "\n".join(docs) + "\n</documents>"
 
     async def _inject_attachments_to_context(
-        self, session_id: str, context: list, user_id: Optional[int] = None
+        self, session_id: str, context: list, user_id: Optional[int] = None, is_vlm: bool = False
     ) -> list:
-        """扫描上下文中所有消息，为有附件的用户消息动态注入 XML 文档文本"""
+        """扫描上下文中所有消息，为有附件的用户消息动态注入文档文本或图片"""
         if not self.attachment_repo or not self.db:
             return context
 
         from sqlalchemy import select
         from src.features.qa.models.question_answer import QuestionAnswer
 
-        # 查询该会话中所有带附件的用户消息
         stmt = select(QuestionAnswer).where(
             QuestionAnswer.session_id == session_id,
             QuestionAnswer.role == "user",
@@ -665,11 +674,8 @@ class AIChatService:
         if not messages_with_extra:
             return context
 
-        self.logger.debug("找到带 extra 的用户消息", count=len(messages_with_extra), session_id=session_id)
-
-        # 收集所有附件 ID，一次性查询
         all_att_ids = []
-        msg_att_map = {}  # message_id -> [attachment_id, ...]
+        msg_att_map = {}
         for msg_id, msg in messages_with_extra.items():
             atts = msg.get_attachments() or []
             if atts:
@@ -684,9 +690,7 @@ class AIChatService:
         att_records = await self.attachment_repo.get_by_ids_and_user(all_att_ids, user_id) if user_id else await self.attachment_repo.get_by_ids(all_att_ids)
         att_by_id = {a.id: a for a in att_records}
 
-        self.logger.debug("查到附件记录", att_ids=all_att_ids, found=len(att_records))
-
-        # 注入 XML 到 context 中对应的用户消息
+        IMAGE_TYPES = {"jpg", "jpeg", "png", "gif", "webp"}
         injected = 0
         for item in context:
             if item.get("role") != "user":
@@ -695,15 +699,73 @@ class AIChatService:
             if msg_id not in msg_att_map:
                 continue
             records = [att_by_id[aid] for aid in msg_att_map[msg_id] if aid in att_by_id]
-            if records:
-                xml = self._format_attachments_prompt(records)
-                item["content"] = f"{xml}\n\n用户问题：{item['content']}"
-                injected += 1
+            if not records:
+                continue
+
+            doc_records = [r for r in records if r.file_type not in IMAGE_TYPES]
+            img_records = [r for r in records if r.file_type in IMAGE_TYPES]
+
+            parts: list = []
+            original_content = item.get("content", "")
+
+            # 文档 → XML
+            if doc_records:
+                xml = self._format_attachments_prompt(doc_records)
+                parts.append({"type": "text", "text": xml})
+
+            # 图片 → multimodal（仅 VLM）
+            if img_records and is_vlm and self.minio_client:
+                for img in img_records:
+                    try:
+                        b64_data = await self._download_attachment_as_base64(img)
+                        if b64_data:
+                            mime = f"image/{img.file_type}"
+                            parts.append({"type": "text", "text": f"[图片: {img.filename}]"})
+                            parts.append({
+                                "type": "image_url",
+                                "image_url": {"url": f"data:{mime};base64,{b64_data}"},
+                            })
+                    except Exception as e:
+                        self.logger.warning("图片下载失败", filename=img.filename, error=str(e))
+                        parts.append({"type": "text", "text": f"[图片: {img.filename}（加载失败）]"})
+            elif img_records and not is_vlm:
+                for img in img_records:
+                    parts.append({"type": "text", "text": f"[图片: {img.filename}（当前模型不支持视觉）]"})
+
+            if parts:
+                parts.append({"type": "text", "text": f"\n\n用户问题：{original_content}"})
+                item["content"] = parts
+            elif doc_records:
+                xml = self._format_attachments_prompt(doc_records)
+                item["content"] = f"{xml}\n\n用户问题：{original_content}"
+            injected += 1
 
         if injected:
             self.logger.info("附件文本已注入上下文", session_id=session_id, injected_count=injected)
 
         return context
+
+    async def _is_vlm_model(self, model_name: str, user_id: int) -> bool:
+        """判断模型是否为 VLM 视觉模型"""
+        if not self.model_config_service or not model_name:
+            return False
+        try:
+            vlm_models = await self.model_config_service.list_available_models(user_id, "vlm")
+            return model_name in vlm_models
+        except Exception:
+            return False
+
+    async def _download_attachment_as_base64(self, attachment) -> Optional[str]:
+        """从 MinIO 下载附件并转为 base64"""
+        if not self.minio_client:
+            return None
+        try:
+            bucket = self.minio_client.default_bucket
+            data = await self.minio_client.download_document(bucket, attachment.storage_path)
+            return base64.b64encode(data).decode()
+        except Exception as e:
+            self.logger.warning("MinIO 下载失败", path=attachment.storage_path, error=str(e))
+            return None
 
     # ========== SSE 格式化 ==========
 

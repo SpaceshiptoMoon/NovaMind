@@ -149,7 +149,7 @@
             :on-change="handleFileChange"
             :on-remove="handleFileRemove"
             :on-exceed="handleExceed"
-            accept=".pdf,.docx,.doc,.txt,.md,.csv,.xlsx,.xls,.pptx,.ppt,.html,.json"
+            :accept="uploadAccept"
             drag
             class="upload-area"
           >
@@ -194,6 +194,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload, UploadFilled, Refresh, RefreshRight, CircleClose, View, Delete } from '@element-plus/icons-vue'
 import { documentApi } from '@/api/document'
+import { spaceApi } from '@/api/space'
 import StatusTag from '@/components/common/StatusTag.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import type { Document as DocType, BatchUploadResponse } from '@/api/types'
@@ -207,6 +208,13 @@ const kbId = computed(() => Number(route.params.kbId))
 
 const loading = ref(false)
 const uploadLoading = ref(false)
+const spaceType = ref<'text' | 'multimodal'>('text')
+
+const TEXT_ACCEPT = '.pdf,.docx,.doc,.txt,.md,.csv,.xlsx,.xls,.pptx,.ppt,.html,.json'
+const IMAGE_ACCEPT = '.jpg,.jpeg,.png,.gif,.webp'
+const uploadAccept = computed(() =>
+  spaceType.value === 'multimodal' ? IMAGE_ACCEPT : TEXT_ACCEPT
+)
 const uploadDialogVisible = ref(false)
 const statusFilter = ref<string>('')
 const documents = ref<DocType[]>([])
@@ -237,22 +245,22 @@ const docStatusMap: Record<string, { text: string; type: 'success' | 'warning' |
 // === 文件类型样式 ===
 
 const fileTypeStyles: Record<string, { bg: string; color: string }> = {
-  pdf: { bg: '#FEF2F2', color: '#EF4444' },
-  docx: { bg: '#EFF6FF', color: '#2563EB' },
-  doc: { bg: '#EFF6FF', color: '#2563EB' },
-  txt: { bg: '#F3F4F6', color: '#6B7280' },
-  md: { bg: '#F0F9FF', color: '#0EA5E9' },
-  xlsx: { bg: '#ECFDF5', color: '#10B981' },
-  xls: { bg: '#ECFDF5', color: '#10B981' },
-  csv: { bg: '#ECFDF5', color: '#10B981' },
-  pptx: { bg: '#FFFBEB', color: '#F59E0B' },
-  ppt: { bg: '#FFFBEB', color: '#F59E0B' },
-  html: { bg: '#F5F3FF', color: '#7C3AED' },
-  json: { bg: '#F5F3FF', color: '#7C3AED' },
+  pdf: { bg: 'var(--color-file-pdf-bg)', color: 'var(--color-file-pdf)' },
+  docx: { bg: 'var(--color-file-doc-bg)', color: 'var(--color-file-doc)' },
+  doc: { bg: 'var(--color-file-doc-bg)', color: 'var(--color-file-doc)' },
+  txt: { bg: 'var(--color-file-txt-bg)', color: 'var(--color-file-txt)' },
+  md: { bg: 'var(--color-file-md-bg)', color: 'var(--color-file-md)' },
+  xlsx: { bg: 'var(--color-file-xlsx-bg)', color: 'var(--color-file-xlsx)' },
+  xls: { bg: 'var(--color-file-xlsx-bg)', color: 'var(--color-file-xlsx)' },
+  csv: { bg: 'var(--color-file-xlsx-bg)', color: 'var(--color-file-xlsx)' },
+  pptx: { bg: 'var(--color-file-pptx-bg)', color: 'var(--color-file-pptx)' },
+  ppt: { bg: 'var(--color-file-pptx-bg)', color: 'var(--color-file-pptx)' },
+  html: { bg: 'var(--color-file-other-bg)', color: 'var(--color-file-other)' },
+  json: { bg: 'var(--color-file-other-bg)', color: 'var(--color-file-other)' },
 }
 
 function getFileTypeStyle(type: string): { bg: string; color: string } {
-  return fileTypeStyles[type.toLowerCase()] || { bg: '#F3F4F6', color: '#6B7280' }
+  return fileTypeStyles[type.toLowerCase()] || { bg: 'var(--color-file-txt-bg)', color: 'var(--color-file-txt)' }
 }
 
 function formatFileSize(bytes: number): string {
@@ -486,8 +494,14 @@ async function handleDelete(doc: DocType) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   fetchDocuments()
+  try {
+    const space = await spaceApi.getSpace(spaceId.value)
+    spaceType.value = space.config?.space_type || 'text'
+  } catch {
+    // 默认 text
+  }
 })
 </script>
 
@@ -496,33 +510,44 @@ onMounted(() => {
   padding-top: var(--space-2);
 }
 
+/* ===== Sub Navigation ===== */
 .page-nav {
   margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border-light);
 }
 
 .nav-tabs {
   display: flex;
-  gap: var(--space-2);
+  gap: 0;
 }
 
 .nav-tab {
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-md);
-  font-size: var(--text-base);
-  color: var(--color-text-secondary);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
   text-decoration: none;
   transition: all var(--transition-fast);
+  position: relative;
+  font-weight: var(--weight-medium);
 }
 
 .nav-tab:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text);
+  color: var(--color-text-secondary);
 }
 
 .nav-tab.active {
-  background: var(--color-primary-subtle);
   color: var(--color-primary);
-  font-weight: var(--weight-medium);
+}
+
+.nav-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--color-primary);
+  border-radius: 2px 2px 0 0;
 }
 
 .action-bar {
@@ -553,7 +578,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: var(--weight-bold);
   flex-shrink: 0;
   letter-spacing: -0.5px;
@@ -595,8 +620,8 @@ onMounted(() => {
 
 /* 上传区域 */
 .upload-area :deep(.el-upload-dragger) {
-  padding: var(--space-8) var(--space-6);
-  border-radius: var(--radius-lg);
+  padding: var(--space-10) var(--space-6);
+  border-radius: var(--radius-xl);
   border: 2px dashed var(--color-border);
   background: var(--color-bg-card-elevated);
   transition: all var(--transition-base);
@@ -615,7 +640,7 @@ onMounted(() => {
 }
 
 .upload-icon {
-  font-size: 40px;
+  font-size: var(--text-4xl);
   color: var(--color-text-faint);
 }
 
@@ -644,12 +669,23 @@ onMounted(() => {
   margin: 0 0 var(--space-4);
   font-size: var(--text-base);
   color: var(--color-text-secondary);
-  line-height: 1.5;
+  line-height: var(--leading-relaxed);
 }
 
 .doc-table-wrap :deep(.el-table) {
   border-radius: var(--radius-lg);
   overflow: hidden;
+}
+
+.doc-table-wrap :deep(.el-table th.el-table__cell) {
+  background: var(--color-bg-card-elevated);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-weight: var(--weight-medium);
+}
+
+.doc-table-wrap :deep(.el-table tr:hover > td) {
+  background: var(--color-bg-hover) !important;
 }
 
 .document-view :deep(.el-upload-list) {

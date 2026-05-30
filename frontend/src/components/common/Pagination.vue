@@ -60,6 +60,6 @@ const handleCurrentChange = (page: number) => {
 .pagination-wrapper {
   display: flex;
   justify-content: flex-end;
-  padding: 16px 0;
+  padding: var(--space-4) 0;
 }
 </style>

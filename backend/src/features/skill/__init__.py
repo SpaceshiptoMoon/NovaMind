@@ -21,12 +21,10 @@ from src.features.skill.schemas import (
     SkillReviewResponse,
     SkillReviewListResponse,
     SkillInstallationResponse,
-    SkillVersionResponse,
     SkillValidateResponse,
     SkillInstallRequest,
     SkillReviewCreate,
     SkillValidateRequest,
-    SkillMarketplaceQuery,
 )
 
 from src.features.skill.services import (
@@ -48,8 +46,8 @@ __all__ = [
     # Schema
     "SkillResponse", "SkillListItemResponse", "SkillMarketplaceListResponse",
     "SkillReviewResponse", "SkillReviewListResponse", "SkillInstallationResponse",
-    "SkillVersionResponse", "SkillValidateResponse",
-    "SkillInstallRequest", "SkillReviewCreate", "SkillValidateRequest", "SkillMarketplaceQuery",
+    "SkillValidateResponse",
+    "SkillInstallRequest", "SkillReviewCreate", "SkillValidateRequest",
     # 服务层
     "SkillMarketplaceService", "SkillSecurityChecker",
     # 仓储层

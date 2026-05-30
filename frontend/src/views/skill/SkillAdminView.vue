@@ -14,13 +14,13 @@
         <span>LLM 安全审查</span>
         <el-switch v-model="llmReviewEnabled" @change="handleSaveSettings" />
       </div>
-      <div class="setting-row" style="margin-top: 12px">
+      <div class="setting-row setting-model">
         <span>审查模型</span>
         <el-select
           v-model="llmReviewModel"
           placeholder="使用系统默认模型"
           clearable
-          style="width: 260px"
+          class="model-select"
           @change="handleSaveSettings"
         >
           <el-option v-for="m in availableModels" :key="m" :label="m" :value="m" />
@@ -31,7 +31,7 @@
     </div>
 
     <!-- 待审核列表 -->
-    <h3 class="section-title" style="margin-top: 24px">待审核技能</h3>
+    <h3 class="section-title section-spacing">待审核技能</h3>
     <div v-loading="skillStore.marketplaceLoading" class="review-list">
       <div v-for="skill in skillStore.pendingReviews" :key="skill.id" class="review-card">
         <div class="review-main">
@@ -149,41 +149,55 @@ function handlePageChange(page: number) {
 .skill-admin {
   position: absolute;
   inset: 0;
-  padding: 24px;
+  padding: var(--space-6);
   overflow-y: auto;
 }
 
 .settings-card {
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 20px;
-  margin-top: 20px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  margin-top: var(--space-5);
 }
 
 .section-title {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0 0 16px;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+  margin: 0 0 var(--space-4);
+}
+
+.section-spacing {
+  margin-top: var(--space-6);
 }
 
 .setting-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 14px;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.setting-model {
+  margin-top: var(--space-3);
+}
+
+.model-select {
+  width: 260px;
 }
 
 .loading-hint {
-  font-size: 13px;
+  font-size: var(--text-sm);
   color: var(--color-text-faint);
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 
 .review-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   min-height: 200px;
 }
 
@@ -192,21 +206,27 @@ function handlePageChange(page: number) {
   justify-content: space-between;
   align-items: center;
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-light);
   border-radius: var(--radius-lg);
-  padding: 16px 20px;
+  padding: var(--space-4) var(--space-5);
+  transition: all var(--transition-fast);
+}
+
+.review-card:hover {
+  border-color: var(--color-border);
+  background: var(--color-bg-hover);
 }
 
 .review-main {
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
   align-items: flex-start;
   flex: 1;
   min-width: 0;
 }
 
 .review-icon {
-  font-size: 28px;
+  font-size: var(--text-3xl);
   flex-shrink: 0;
 }
 
@@ -215,34 +235,35 @@ function handlePageChange(page: number) {
 }
 
 .review-info h4 {
-  margin: 0 0 4px;
-  font-size: 15px;
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
 }
 
 .review-info p {
-  margin: 0 0 6px;
-  font-size: 13px;
-  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .review-meta {
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--color-text-faint);
 }
 
 .review-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-shrink: 0;
-  margin-left: 16px;
+  margin-left: var(--space-4);
 }
 
 .pagination-area {
   display: flex;
   justify-content: center;
-  margin-top: 24px;
+  margin-top: var(--space-6);
 }
 </style>

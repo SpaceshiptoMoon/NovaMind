@@ -414,10 +414,10 @@ function scrollToFeatures() {
   margin-bottom: var(--space-4);
 }
 
-.feature-icon-blue { background: #E8F0FE; color: #4285F4; }
-.feature-icon-coral { background: #FEF1EE; color: #EA4335; }
-.feature-icon-violet { background: #EDE9FE; color: #7C3AED; }
-.feature-icon-teal { background: #E6F9EE; color: #2D9D5A; }
+.feature-icon-blue { background: var(--color-info-subtle); color: var(--color-info); }
+.feature-icon-coral { background: var(--color-danger-subtle); color: var(--color-danger); }
+.feature-icon-violet { background: var(--color-accent-subtle); color: var(--color-accent); }
+.feature-icon-teal { background: var(--color-success-subtle); color: var(--color-success); }
 
 .feature-card h3 {
   font-family: var(--font-display);

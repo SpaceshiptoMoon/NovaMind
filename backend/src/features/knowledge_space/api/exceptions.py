@@ -379,6 +379,16 @@ class InvalidParameterError(KnowledgeSpaceError):
         self.field = field
 
 
+class InvalidDocumentStatusError(KnowledgeSpaceError):
+    """无效的文档状态参数"""
+
+    def __init__(self, status: str):
+        super().__init__(
+            message=f"无效的文档状态: {status}",
+            code="INVALID_DOCUMENT_STATUS",
+        )
+
+
 __all__ = [
     "KnowledgeSpaceError",
     "SpaceNotFoundError",
@@ -410,4 +420,5 @@ __all__ = [
     "QuestionGenerationError",
     "UserNotFoundError",
     "InvalidParameterError",
+    "InvalidDocumentStatusError",
 ]

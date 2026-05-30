@@ -25,8 +25,8 @@ import UnicornIcon from '@/components/common/UnicornIcon.vue'
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(160deg, #F5F3F0 0%, #E8ECF4 50%, #FAF0ED 100%);
-  padding: 24px;
+  background: linear-gradient(160deg, var(--color-bg) 0%, var(--color-bg-card-elevated) 50%, var(--color-bg) 100%);
+  padding: var(--space-6);
 }
 
 .auth-container {
@@ -36,13 +36,13 @@ import UnicornIcon from '@/components/common/UnicornIcon.vue'
 
 .auth-header {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: var(--space-8);
 }
 
 .auth-logo {
   display: flex;
   justify-content: center;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .auth-title {
@@ -55,7 +55,7 @@ import UnicornIcon from '@/components/common/UnicornIcon.vue'
 }
 
 .auth-title span {
-  background: linear-gradient(135deg, #4285F4, #EA4335);
+  background: linear-gradient(135deg, var(--color-gradient-start), var(--color-gradient-end));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

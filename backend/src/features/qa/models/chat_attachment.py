@@ -23,7 +23,7 @@ class ChatAttachment(BaseModel):
 
     # 文件信息
     filename = Column(String(500), nullable=False, comment="原始文件名")
-    file_type = Column(String(20), nullable=False, comment="文件类型（pdf/docx/txt/md）")
+    file_type = Column(String(20), nullable=False, comment="文件类型（pdf/docx/txt/md/jpg/png/gif/webp）")
     file_size = Column(BigInteger, nullable=False, comment="文件大小（字节）")
 
     # 存储

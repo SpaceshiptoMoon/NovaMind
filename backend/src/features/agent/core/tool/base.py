@@ -43,19 +43,6 @@ class ToolContext:
         d.update(self._extra)
         return d
 
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ToolContext":
-        ctx = cls(
-            db_session=data["db_session"],
-            user_id=data["user_id"],
-            agent_id=data["agent_id"],
-            session_id=data["session_id"],
-        )
-        for k, v in data.items():
-            if k not in ("db_session", "user_id", "agent_id", "session_id"):
-                ctx.set(k, v)
-        return ctx
-
 
 class BaseTool(ABC):
     """工具基类"""

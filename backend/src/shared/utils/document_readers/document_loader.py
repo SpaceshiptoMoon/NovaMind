@@ -271,24 +271,6 @@ class DocumentProcessor:
         return all_documents
 
 
-# 定义一个示例装饰器使用方式的注释：
-"""
-# 使用装饰器注册新读取器的示例:
-@DocumentRegistry.register_reader('xml')
-class XMLReader(BaseReader):
-    async def load_data(self, file_path: str) -> List[Dict[str, str]]:
-        # 实现XML读取逻辑
-        pass
-
-# 使用装饰器注册新切分器的示例:
-@DocumentRegistry.register_splitter('sentence')
-class SentenceSplitter(BaseSplitter):
-    async def split(self, documents: List[Dict[str, str]]) -> List[Dict[str, str]]:
-        # 实现句子切分逻辑
-        pass
-"""
-
-
 # 初始化默认的读取器和切分器注册
 DocumentRegistry.register_reader('pdf', PDFReader)
 DocumentRegistry.register_reader('docx', DocxReader)

@@ -394,23 +394,3 @@ class DockerSandbox:
         self._started = False
 
         logger.info("沙箱容器清理完成")
-
-    def get_status(self) -> Dict[str, Any]:
-        """获取沙箱状态信息"""
-        status = {
-            "started": self._started,
-            "containers": {},
-        }
-        for language, container in self._containers.items():
-            try:
-                container.reload()
-                status["containers"][language] = {
-                    "id": container.id[:12],
-                    "status": container.status,
-                    "image": container.image.tags[0] if container.image.tags else "unknown",
-                    "exec_count": self._exec_counts.get(language, 0),
-                }
-            except Exception as e:
-                logger.warning("获取容器状态失败", error=str(e))
-                status["containers"][language] = {"status": "error"}
-        return status

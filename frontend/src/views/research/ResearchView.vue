@@ -39,27 +39,14 @@
       <button v-if="spaceId && !sidebarVisible" class="open-sidebar-btn" @click="sidebarVisible = true">
         <el-icon :size="16"><Expand /></el-icon>
       </button>
-      <!-- 空状态：欢迎屏幕 -->
-      <div v-if="researchStore.messages.length === 0 && !researchStore.isResearching" class="welcome-screen">
-        <div class="welcome-inner">
-          <h2 class="welcome-title">深度研究</h2>
-          <p class="welcome-subtitle">输入研究问题，AI 将自动搜索、分析并生成研究报告</p>
-          <div class="welcome-prompts">
-            <button
-              v-for="(prompt, i) in quickPrompts"
-              :key="i"
-              class="prompt-card"
-              @click="handleQuickPrompt(prompt.text)"
-            >
-              <span class="prompt-icon">{{ prompt.icon }}</span>
-              <span class="prompt-text">{{ prompt.text }}</span>
-            </button>
-          </div>
-        </div>
-      </div>
 
-      <!-- 消息列表 -->
-      <div v-else ref="messagesRef" class="messages-container">
+      <!-- 浮动头部 -->
+      <header class="chat-header" :class="{ 'is-welcome': isWelcomeMode }">
+        <span v-if="!isWelcomeMode" class="header-title">深度研究</span>
+      </header>
+
+      <!-- 消息列表 (仅对话模式) -->
+      <div v-if="!isWelcomeMode" ref="messagesRef" class="messages-container">
         <div class="messages-inner">
           <template v-for="msg in researchStore.messages" :key="msg.id">
             <!-- 用户消息 -->
@@ -125,9 +112,27 @@
         </div>
       </div>
 
-      <!-- 输入区域：药丸形 -->
-      <div class="input-area">
-        <div class="input-pill">
+      <!-- 输入区域 -->
+      <div class="input-area" :class="{ 'is-welcome': isWelcomeMode }">
+        <div class="input-area-inner" :class="{ 'welcome-center': isWelcomeMode }">
+          <!-- 欢迎问候 (仅欢迎模式) -->
+          <div v-if="isWelcomeMode" class="welcome-greeting">
+            <h2 class="welcome-title">深度研究</h2>
+            <p class="welcome-subtitle">输入研究问题，AI 将自动搜索、分析并生成研究报告</p>
+            <div class="welcome-prompts">
+              <button
+                v-for="(prompt, i) in quickPrompts"
+                :key="i"
+                class="prompt-card"
+                @click="handleQuickPrompt(prompt.text)"
+              >
+                <span class="prompt-icon">{{ prompt.icon }}</span>
+                <span class="prompt-text">{{ prompt.text }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="input-pill">
           <el-popover trigger="click" :width="220" placement="top-start">
             <template #reference>
               <button class="input-action-btn" :disabled="researchStore.isResearching">
@@ -210,6 +215,7 @@
           </button>
         </div>
         <div class="input-hint">按 Enter 发送，Shift + Enter 换行</div>
+        </div>
       </div>
     </div>
 
@@ -270,6 +276,7 @@ const spaceId = computed(() => {
 
 // 输入状态
 const inputText = ref('')
+const isWelcomeMode = computed(() => researchStore.messages.length === 0 && !researchStore.isResearching)
 const sidebarVisible = ref(true)
 const researchMode = ref<'quick' | 'standard' | 'deep'>('standard')
 const searchSource = ref<'internal' | 'external' | 'hybrid'>('hybrid')
@@ -639,6 +646,7 @@ watch(spaceId, () => {
    ======================================== */
 .chat-main {
   flex: 1;
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -648,27 +656,57 @@ watch(spaceId, () => {
 }
 
 /* ========================================
-   Welcome Screen
+   Floating Chat Header
    ======================================== */
-.welcome-screen {
-  flex: 1;
+.chat-header {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 3;
+  height: 48px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: var(--space-8);
+  padding: 0 var(--space-5);
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-xs);
+  transition: all var(--transition-base);
+}
+
+.chat-header.is-welcome {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+
+.header-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+/* ========================================
+   Welcome Greeting (inside input-area)
+   ======================================== */
+.welcome-greeting {
+  text-align: center;
+  margin-bottom: var(--space-6);
 }
 
 .welcome-inner {
   display: flex;
   flex-direction: column;
   align-items: center;
-  max-width: 720px;
+  max-width: var(--container-width-sm);
   width: 100%;
 }
 
 .welcome-title {
   font-family: var(--font-display);
-  font-size: 32px;
+  font-size: var(--text-4xl);
   font-weight: var(--weight-bold);
   color: var(--color-text);
   margin-bottom: var(--space-3);
@@ -716,7 +754,7 @@ watch(spaceId, () => {
 }
 
 .prompt-icon {
-  font-size: 18px;
+  font-size: var(--text-xl);
   flex-shrink: 0;
   margin-top: 1px;
 }
@@ -736,10 +774,11 @@ watch(spaceId, () => {
   min-height: 0;
   overflow-y: auto;
   scroll-behavior: smooth;
+  padding-top: 48px;
 }
 
 .messages-inner {
-  max-width: 860px;
+  max-width: var(--container-width-md);
   margin: 0 auto;
   padding: var(--space-6) var(--space-6) var(--space-4);
 }
@@ -774,10 +813,9 @@ watch(spaceId, () => {
 .message-row.user .message-text {
   padding: var(--space-3) var(--space-4);
   border-radius: 18px 18px 4px 18px;
-  background: var(--color-primary);
-  color: #FFFFFF;
+  background: var(--color-user-bubble);
+  color: var(--color-user-bubble-text);
   white-space: pre-wrap;
-  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.15);
 }
 
 /* Assistant message */
@@ -886,16 +924,37 @@ watch(spaceId, () => {
   flex-shrink: 0;
   padding: 0 var(--space-6) var(--space-5);
   background: var(--color-bg-card);
+  position: relative;
+}
+
+.input-area.is-welcome {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  padding: 0 var(--space-4);
+  background: transparent;
+}
+
+.input-area-inner {
+  max-width: var(--container-width-md);
+  margin: 0 auto;
+}
+
+.input-area-inner.welcome-center {
+  max-width: var(--container-width-sm);
+  transform: translateY(calc(-50vh + 96px));
 }
 
 .input-pill {
-  max-width: 860px;
-  margin: 0 auto;
   display: flex;
   align-items: flex-end;
   padding: 8px 8px 8px 4px;
   gap: var(--space-2);
-  background: var(--color-bg-card);
+  background: var(--color-bg-input-bar);
+  backdrop-filter: blur(var(--blur-input));
+  -webkit-backdrop-filter: blur(var(--blur-input));
   border: 1px solid var(--color-border-light);
   border-radius: 24px;
   box-shadow: var(--shadow-sm);
@@ -988,7 +1047,6 @@ watch(spaceId, () => {
 }
 
 .input-hint {
-  max-width: 860px;
   margin: 8px auto 0;
   text-align: center;
   font-size: var(--text-xs);

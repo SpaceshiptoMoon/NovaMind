@@ -544,11 +544,11 @@ onMounted(() => {
 
 <style scoped>
 .user-manage-view {
-  padding: 20px;
+  padding: var(--space-5);
 }
 
 .manage-card {
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
 }
 
 .card-header {
@@ -559,23 +559,23 @@ onMounted(() => {
 
 .search-bar {
   display: flex;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 
 .pagination-wrapper {
   display: flex;
   justify-content: flex-end;
-  margin-top: 16px;
+  margin-top: var(--space-4);
 }
 
 .detail-content {
-  padding: 0 16px;
+  padding: 0 var(--space-4);
 }
 
 .reset-tip {
-  margin: 0 0 16px;
-  font-size: 14px;
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-base);
   color: var(--color-text-secondary);
 }
 

@@ -7,7 +7,7 @@ from fastapi.responses import Response
 from typing import Annotated, List
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.qa.api.dependencies import get_qa_service
+from src.features.qa.api.dependencies import get_qa_service, get_minio_client_for_presign
 from src.features.user.api.auth import get_current_user
 from src.features.qa.services.qa_service import QAService
 from src.features.qa.schemas.qa import QARequest, QAResponse, QAUpdateRequest, SessionPreviewResponse, SessionListResponse, ConversationContextResponse
@@ -15,6 +15,7 @@ from src.features.qa.api.exceptions import MessageNotFoundError
 from src.features.knowledge_space.api.dependencies import validate_space_access
 from src.core.database.database import get_db
 from src.core.middleware.structured_logging import get_logger
+from src.shared.storage.minio_client import enrich_attachments_with_presigned_urls
 
 logger = get_logger(__name__)
 
@@ -59,9 +60,14 @@ async def get_session_messages(
     session_id: Annotated[str, Path(min_length=1, description="会话ID")],
     qa_service: QAService = Depends(get_qa_service),
     current_user: dict = Depends(get_current_user),
+    minio_client=Depends(get_minio_client_for_presign),
 ):
     """获取用户特定会话的所有消息"""
-    return await qa_service.get_session_messages(session_id, current_user["id"])
+    messages = await qa_service.get_session_messages(session_id, current_user["id"])
+    if minio_client:
+        for msg in messages:
+            await enrich_attachments_with_presigned_urls(msg.extra, minio_client)
+    return messages
 
 
 @router.get(

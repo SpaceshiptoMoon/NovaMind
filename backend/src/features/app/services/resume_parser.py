@@ -15,6 +15,7 @@ from typing import Optional
 
 from src.core.middleware.structured_logging import get_logger
 from src.shared.ai_models.llm import BaseLLM
+from src.shared.prompts import PromptTemplate, PromptManager
 from src.shared.utils.document_readers.pdf_reader import PDFReader
 from src.shared.utils.document_readers.docx_reader import DocxReader
 from src.features.app.schemas.resume_schema import StructuredResume
@@ -45,257 +46,6 @@ def _extract_json(text: str) -> str:
         return text[start:]
     raise ValueError(f"无法从 LLM 输出中提取 JSON: {text[:200]}")
 
-# ==================== Prompt 模板 ====================
-
-SECTION_SPLIT_PROMPT = """你是一个简历结构分析器。请识别以下简历文本（带行号）的章节边界。
-
-章节类型只能是以下之一：
-- personal_info（个人信息）
-- education（教育经历）
-- work_experience（工作经历）
-- project_experience（项目经历）
-- skills（技能）
-- publications（论文/专利）
-- certifications（证书/资质）
-- awards（获奖经历）
-- other（其他）
-
-请严格按以下 JSON 格式输出每个章节的起止行号：
-{{
-  "sections": [
-    {{ "type": "personal_info", "start_line": 1, "end_line": 5 }},
-    {{ "type": "work_experience", "start_line": 6, "end_line": 20 }},
-    ...
-  ]
-}}
-
-注意：
-1. 行号对应下面带行号的文本中 [数字] 后的内容
-2. 如果某章节不存在则不输出
-3. 只输出 JSON，不要输出其他内容
-
-带行号的简历内容：
-{numbered_text}
-"""
-
-PARSE_PERSONAL_INFO_PROMPT = """从以下个人信息内容中提取结构化数据。
-
-请严格按以下 JSON 格式输出：
-{{
-  "name": "姓名",
-  "phone": "电话",
-  "email": "邮箱",
-  "location": "所在地",
-  "age": null,
-  "gender": "性别",
-  "summary": "个人简介/求职意向",
-  "job_intention": {{
-    "target_position": "目标职位",
-    "target_salary": "期望薪资",
-    "current_status": "当前状态"
-  }},
-  "social_links": [
-    {{ "platform": "GitHub", "url": "..." }}
-  ]
-}}
-
-字段缺失时用空字符串或 null。只输出 JSON。
-
-内容：
-{content}
-"""
-
-PARSE_WORK_EXPERIENCE_PROMPT = """从以下工作经历内容中提取结构化数据。输出 JSON 数组，每段工作经历一个对象。
-
-每个工作经历对象格式：
-{{
-  "company": "公司名称",
-  "company_brief": "公司简介（一句话）",
-  "position": "职位",
-  "department": "部门",
-  "level": "职级",
-  "employment_type": "fulltime/intern/parttime",
-  "start_date": "YYYY.MM",
-  "end_date": "YYYY.MM 或 至今",
-  "duration_months": 0,
-  "is_current": false,
-  "team_context": "团队规模和职责范围描述",
-  "responsibilities": ["职责1", "职责2"],
-  "key_projects": [
-    {{ "name": "项目名", "role": "角色", "brief": "简介" }}
-  ],
-  "achievements": [
-    {{ "description": "成果描述", "metric": "量化指标", "impact": "high/medium/low" }}
-  ],
-  "tech_stack": ["技术1", "技术2"],
-  "promotion_history": [
-    {{ "date": "YYYY.MM", "from_level": "", "to_level": "", "reason": "" }}
-  ],
-  "leave_reason": ""
-}}
-
-注意：
-1. 尽量从描述中提取量化数据（百分比、倍数、具体数值）
-2. 日期统一为 YYYY.MM 格式，"至今"保持原文
-3. duration_months 需要计算
-4. 只输出 JSON 数组
-
-内容：
-{content}
-"""
-
-PARSE_PROJECT_EXPERIENCE_PROMPT = """从以下项目经历内容中提取结构化数据。输出 JSON 数组，每个项目一个对象。
-
-每个项目对象格式：
-{{
-  "name": "项目名称",
-  "source": "work/personal/education/open_source",
-  "associated_company": "关联公司（如果是工作项目）",
-  "role": "担任角色",
-  "team_size": 0,
-  "my_contribution_ratio": "贡献占比",
-  "start_date": "YYYY.MM",
-  "end_date": "YYYY.MM",
-  "duration_months": 0,
-  "background": "项目背景和目标",
-  "tech_stack": {{
-    "languages": [],
-    "frameworks": [],
-    "middleware": [],
-    "infrastructure": [],
-    "tools": []
-  }},
-  "architecture": "架构描述",
-  "responsibilities": ["负责内容1"],
-  "challenges": [
-    {{
-      "challenge": "遇到的挑战",
-      "solution": "解决方案",
-      "result": "结果"
-    }}
-  ],
-  "achievements": [
-    {{ "description": "成果描述", "metric": "量化指标", "impact": "high/medium/low" }}
-  ],
-  "highlights": ["可追问的亮点"],
-  "probing_directions": ["建议追问方向1", "建议追问方向2"]
-}}
-
-注意：
-1. 技术栈要分层归类到对应数组中
-2. 挑战和成果尽量提取量化数据
-3. probing_directions 是面试官可以追问的方向（生成 3-5 个）
-4. 只输出 JSON 数组
-
-内容：
-{content}
-"""
-
-PARSE_EDUCATION_PROMPT = """从以下教育经历内容中提取结构化数据。输出 JSON 数组。
-
-格式：
-{{
-  "school": "学校",
-  "major": "专业",
-  "degree": "bachelor/master/phd/associate",
-  "start_date": "YYYY.MM",
-  "end_date": "YYYY.MM",
-  "gpa": "GPA",
-  "gpa_ranking": "排名",
-  "thesis_title": "论文题目",
-  "thesis_advisor": "导师",
-  "core_courses": ["课程1"],
-  "highlights": ["奖学金/竞赛等"],
-  "research_direction": "研究方向"
-}}
-
-字段缺失留空字符串或空数组。只输出 JSON 数组。
-
-内容：
-{content}
-"""
-
-PARSE_SKILLS_PROMPT = """从以下技能相关内容中提取结构化数据。
-
-格式：
-{{
-  "skill_groups": [
-    {{
-      "category": "programming_languages",
-      "label": "编程语言",
-      "items": [
-        {{ "name": "Python", "proficiency": "expert/proficient/familiar", "years": 5, "source_projects": ["项目A"] }}
-      ]
-    }}
-  ],
-  "certifications": [
-    {{ "name": "证书名", "date": "YYYY.MM" }}
-  ],
-  "languages": [
-    {{ "language": "英语", "proficiency": "流利", "certificate": "CET-6 580" }}
-  ]
-}}
-
-skill_groups 的 category 可选值：programming_languages, frameworks, middleware, infrastructure, databases, devops, soft_skills, other
-proficiency 根据"精通/熟练/了解"等词判断，没有描述则留空。
-source_projects 如果能从上下文推断则填写。
-只输出 JSON。
-
-内容：
-{content}
-"""
-
-PARSE_PUBLICATIONS_PROMPT = """从以下论文/专利/技术写作相关内容中提取结构化数据。
-
-格式：
-{{
-  "papers": [
-    {{
-      "title": "论文标题",
-      "authors": ["作者1", "作者2"],
-      "author_rank": 1,
-      "is_first_author": true,
-      "venue": "发表场所",
-      "venue_level": "CCF-A/B/C 或空",
-      "publication_date": "YYYY.MM",
-      "paper_type": "conference/journal/preprint",
-      "citations": 0,
-      "abstract": "摘要",
-      "keywords": ["关键词"],
-      "my_contribution": "个人贡献描述",
-      "related_project": "关联项目名"
-    }}
-  ],
-  "patents": [
-    {{
-      "title": "专利标题",
-      "patent_type": "invention/utility/design",
-      "patent_number": "",
-      "status": "pending/granted",
-      "filing_date": "YYYY.MM",
-      "inventors": ["发明人1"],
-      "inventor_rank": 1,
-      "brief": "简介"
-    }}
-  ],
-  "technical_writings": [
-    {{
-      "title": "文章标题",
-      "platform": "平台",
-      "url": "",
-      "publish_date": "YYYY.MM",
-      "views": 0,
-      "likes": 0
-    }}
-  ]
-}}
-
-没有的字段留空或空数组。只输出 JSON。
-
-内容：
-{content}
-"""
-
 
 class ResumeParser:
     """简历结构化解析器"""
@@ -322,12 +72,12 @@ class ResumeParser:
 
         # S3: 并行深度解析
         results = await asyncio.gather(
-            self._parse_section("personal_info", personal_info_content, PARSE_PERSONAL_INFO_PROMPT),
-            self._parse_section("work_experience", sections.get("work_experience", ""), PARSE_WORK_EXPERIENCE_PROMPT),
-            self._parse_section("project_experience", sections.get("project_experience", ""), PARSE_PROJECT_EXPERIENCE_PROMPT),
-            self._parse_section("education", sections.get("education", ""), PARSE_EDUCATION_PROMPT),
-            self._parse_section("skills", sections.get("skills", ""), PARSE_SKILLS_PROMPT),
-            self._parse_section("publications", sections.get("publications", ""), PARSE_PUBLICATIONS_PROMPT),
+            self._parse_section("personal_info", personal_info_content, PromptTemplate.RESUME_PARSE_PERSONAL_INFO.value),
+            self._parse_section("work_experience", sections.get("work_experience", ""), PromptTemplate.RESUME_PARSE_WORK_EXPERIENCE.value),
+            self._parse_section("project_experience", sections.get("project_experience", ""), PromptTemplate.RESUME_PARSE_PROJECT_EXPERIENCE.value),
+            self._parse_section("education", sections.get("education", ""), PromptTemplate.RESUME_PARSE_EDUCATION.value),
+            self._parse_section("skills", sections.get("skills", ""), PromptTemplate.RESUME_PARSE_SKILLS.value),
+            self._parse_section("publications", sections.get("publications", ""), PromptTemplate.RESUME_PARSE_PUBLICATIONS.value),
             return_exceptions=True,
         )
 
@@ -410,7 +160,7 @@ class ResumeParser:
         lines = raw_text.split("\n")
         numbered_text = "\n".join(f"[{i+1}] {lines[i]}" for i in range(len(lines)))
 
-        prompt = SECTION_SPLIT_PROMPT.format(numbered_text=numbered_text)
+        prompt = PromptManager.format_prompt(PromptTemplate.RESUME_SECTION_SPLIT.value, numbered_text=numbered_text)
         response = await self.llm.generate_text(
             prompt=prompt,
             temperature=0.1,
@@ -429,11 +179,11 @@ class ResumeParser:
 
     # ==================== S3: 并行深度解析 ====================
 
-    async def _parse_section(self, section_type: str, content: str, prompt_template: str) -> dict | list:
+    async def _parse_section(self, section_type: str, content: str, template_name: str) -> dict | list:
         if not content.strip():
             return {} if section_type in ("personal_info", "skills", "publications") else []
 
-        prompt = prompt_template.format(content=content)
+        prompt = PromptManager.format_prompt(template_name, content=content)
         try:
             response = await self.llm.generate_text(
                 prompt=prompt,

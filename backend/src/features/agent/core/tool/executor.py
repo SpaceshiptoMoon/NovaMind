@@ -1,19 +1,23 @@
 """
-增强版工具执行器
+工具执行器
 
-相比现有 ToolExecutor 增加：
-1. 统一的 ToolDefinition 管理
+统一的工具执行入口，支持：
+1. 内置工具 + MCP 工具路由
 2. 生命周期钩子链（before/after）
 3. 结构化结果 ToolResult
-4. 向后兼容现有 BaseTool 接口
+4. ToolDefinition 类型化工具定义
+5. 超时保护（基于 ToolDefinition.timeout_ms）
+6. 钩子异常隔离
 """
+import asyncio
 import time
+from collections import OrderedDict
 from typing import Any, Dict, List, Optional
 
 from src.features.agent.core.tool.definition import ToolDefinition, ToolSource
 from src.features.agent.core.tool.result import ToolResult, ToolResultStatus
 from src.features.agent.core.tool.hooks import ToolHook
-from src.features.agent.tools.registry import ToolRegistry
+from src.features.agent.core.tool.registry import ToolRegistry
 from src.features.agent.mcp.client import McpClientManager
 from src.core.middleware.structured_logging import get_logger
 
@@ -22,9 +26,9 @@ logger = get_logger(__name__)
 MCP_PREFIX = "mcp__"
 
 
-class ToolExecutorV2:
+class ToolExecutor:
     """
-    增强版工具执行器
+    工具执行器
 
     执行流程：
     1. 查找工具定义 → ToolDefinition
@@ -44,7 +48,12 @@ class ToolExecutorV2:
         self._tool_registry = tool_registry
         self._mcp_manager = mcp_client_manager
         self._hooks = hooks or []
-        self._tool_defs: Dict[str, ToolDefinition] = {}
+        self._tool_defs: OrderedDict[str, ToolDefinition] = OrderedDict()
+        self._tool_defs_max = 256
+
+    @property
+    def tool_registry(self) -> ToolRegistry:
+        return self._tool_registry
 
     async def execute(
         self,
@@ -52,29 +61,31 @@ class ToolExecutorV2:
         arguments: Dict[str, Any],
         context: Dict[str, Any],
     ) -> ToolResult:
-        """
-        执行工具调用
-
-        流程：查找定义 → before hooks → 路由执行 → 包装结果 → after hooks
-        """
+        """执行工具调用（含超时保护 + 钩子异常隔离）"""
         tool_def = self._resolve_tool_definition(tool_name)
+        timeout_sec = tool_def.timeout_ms / 1000.0 if tool_def.timeout_ms else 30.0
 
-        # before hooks
-        for hook in self._hooks:
-            modified_args = await hook.before_execute(
-                tool_def, arguments, context
-            )
-            if modified_args is not None:
-                arguments = modified_args
-
-        # 执行
         start = time.time()
         try:
-            raw_result = await self._route_and_execute(
-                tool_def, arguments, context
+            # before hooks（在 try 内，异常不逃逸）
+            for hook in self._hooks:
+                modified_args = await hook.before_execute(
+                    tool_def, arguments, context
+                )
+                if modified_args is not None:
+                    arguments = modified_args
+
+            # 执行（含超时保护）
+            raw_result = await asyncio.wait_for(
+                self._route_and_execute(tool_def, arguments, context),
+                timeout=timeout_sec,
             )
             status = ToolResultStatus.SUCCESS
             error_message = None
+        except asyncio.TimeoutError:
+            raw_result = f"工具执行超时（{timeout_sec:.1f}s）"
+            status = ToolResultStatus.TIMEOUT
+            error_message = raw_result
         except Exception as e:
             raw_result = str(e)
             status = ToolResultStatus.ERROR
@@ -90,11 +101,14 @@ class ToolExecutorV2:
             error_message=error_message,
         )
 
-        # after hooks
+        # after hooks（异常不逃逸）
         for hook in self._hooks:
-            result = await hook.after_execute(
-                tool_def, arguments, result, context
-            )
+            try:
+                result = await hook.after_execute(
+                    tool_def, arguments, result, context
+                )
+            except Exception as e:
+                logger.warning("after_hook 执行失败", hook=type(hook).__name__, error=str(e))
 
         return result
 
@@ -115,8 +129,8 @@ class ToolExecutorV2:
                         func = raw_tool.get("function", {})
                         name = func.get("name", "")
                         if name not in self._tool_defs:
-                            self._tool_defs[name] = self._raw_to_definition(
-                                raw_tool, ToolSource.BUILTIN
+                            self._cache_tool_def(
+                                name, self._raw_to_definition(raw_tool, ToolSource.BUILTIN)
                             )
                         tools.append(self._tool_defs[name])
 
@@ -129,8 +143,8 @@ class ToolExecutorV2:
                     func = raw_tool.get("function", {})
                     name = func.get("name", "")
                     if name not in self._tool_defs:
-                        self._tool_defs[name] = self._raw_to_definition(
-                            raw_tool, ToolSource.MCP
+                        self._cache_tool_def(
+                            name, self._raw_to_definition(raw_tool, ToolSource.MCP)
                         )
                     tools.append(self._tool_defs[name])
 
@@ -141,15 +155,24 @@ class ToolExecutorV2:
         enabled_tools: List[str],
         enabled_mcp_server_ids: List[int],
     ) -> List[Dict[str, Any]]:
-        """向后兼容：返回 OpenAI function calling 格式"""
+        """返回 OpenAI function calling 格式"""
         tools = self.resolve_tools(enabled_tools, enabled_mcp_server_ids)
         return [t.to_openai_format() for t in tools]
+
+    def _cache_tool_def(self, name: str, tool_def: ToolDefinition) -> ToolDefinition:
+        """缓存工具定义（LRU 淘汰）"""
+        if name in self._tool_defs:
+            self._tool_defs.move_to_end(name)
+        else:
+            self._tool_defs[name] = tool_def
+            if len(self._tool_defs) > self._tool_defs_max:
+                self._tool_defs.popitem(last=False)
+        return tool_def
 
     def _resolve_tool_definition(self, tool_name: str) -> ToolDefinition:
         """查找或推断工具定义"""
         if tool_name in self._tool_defs:
             return self._tool_defs[tool_name]
-        # 兜底：构造最小定义
         return ToolDefinition(
             name=tool_name,
             description="",
@@ -191,7 +214,7 @@ class ToolExecutorV2:
         arguments: Dict[str, Any],
         context: Dict[str, Any],
     ) -> str:
-        """执行内置工具（适配现有 BaseTool 接口）"""
+        """执行内置工具"""
         tool = self._tool_registry.find_tool_provider(tool_name)
         if not tool:
             raise ValueError(f"未找到工具 '{tool_name}'")

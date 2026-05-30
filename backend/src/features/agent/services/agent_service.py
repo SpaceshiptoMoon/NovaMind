@@ -3,7 +3,7 @@ Agent 管理服务
 
 负责 Agent 定义和会话的 CRUD。
 """
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -13,6 +13,7 @@ from src.features.agent.repository.agent_repository import (
     SessionRepository,
     MessageRepository,
 )
+from src.features.agent.repository.memory_repository import MemoryRepository
 from src.features.agent.models.agent import AgentDefinition
 from src.features.agent.models.session import AgentSession
 from src.features.agent.models.message import AgentMessage
@@ -26,10 +27,14 @@ from src.features.agent.schemas.agent_schema import (
     SessionListResponse,
     MessageResponse,
     MessageListResponse,
+    MemoryResponse,
+    MemoryListResponse,
+    MemoryStatsResponse,
 )
 from src.features.agent.api.exceptions import (
     AgentNotFoundError,
     SessionNotFoundError,
+    MemoryNotFoundError,
 )
 from src.core.middleware.structured_logging import get_logger
 
@@ -44,6 +49,7 @@ class AgentService:
         self.agent_repo = AgentRepository(db)
         self.session_repo = SessionRepository(db)
         self.msg_repo = MessageRepository(db)
+        self.memory_repo = MemoryRepository(db)
 
     # ==================== Agent CRUD ====================
 
@@ -232,4 +238,69 @@ class AgentService:
             conversation_id,
             message_count=conv.message_count + 1,
             total_tokens_used=conv.total_tokens_used + tokens,
+        )
+
+    # ==================== 记忆管理 ====================
+
+    async def list_memories(
+        self,
+        user_id: int,
+        agent_id: int,
+        category: Optional[str] = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> MemoryListResponse:
+        """列出 Agent 的长期记忆"""
+        await self._get_agent_or_fail(user_id, agent_id)
+        memories, total = await self.memory_repo.list_by_agent(
+            agent_id, user_id, category=category, limit=limit, offset=offset,
+        )
+        return MemoryListResponse(
+            items=[MemoryResponse.model_validate(m) for m in memories],
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
+
+    async def delete_memory(
+        self, user_id: int, agent_id: int, memory_id: int
+    ) -> None:
+        """删除指定记忆（MySQL + ES）"""
+        await self._get_agent_or_fail(user_id, agent_id)
+        memory = await self.memory_repo.get_by_id(memory_id)
+        if not memory or memory.agent_id != agent_id or memory.user_id != user_id:
+            raise MemoryNotFoundError(memory_id)
+
+        # 尝试从 ES 删除
+        try:
+            from src.features.agent.repository.memory_search_repository import MemorySearchRepository
+            from src.shared.clients import ClientFactory
+            es_wrapper = await ClientFactory.get_elasticsearch_client()
+            search_repo = MemorySearchRepository(es_client=es_wrapper.es_client)
+            await search_repo.delete_memory(agent_id, memory_id)
+        except Exception as e:
+            logger.warning("ES 记忆删除失败，仅删除 MySQL", error=str(e))
+
+        await self.memory_repo.delete(memory_id)
+        await self.db.commit()
+
+    async def get_memory_stats(
+        self, user_id: int, agent_id: int
+    ) -> MemoryStatsResponse:
+        """获取记忆统计"""
+        await self._get_agent_or_fail(user_id, agent_id)
+        memories, total = await self.memory_repo.list_by_agent(
+            agent_id, user_id, limit=1000,
+        )
+
+        by_category: Dict[str, int] = {}
+        for m in memories:
+            by_category[m.category] = by_category.get(m.category, 0) + 1
+
+        recent = sorted(memories, key=lambda m: m.created_at, reverse=True)[:5]
+
+        return MemoryStatsResponse(
+            total_memories=total,
+            by_category=by_category,
+            recently_created=[MemoryResponse.model_validate(m) for m in recent],
         )

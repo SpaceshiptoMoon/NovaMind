@@ -249,6 +249,7 @@ class StructuredResume(BaseModel):
     publications: PublicationsData = Field(default_factory=PublicationsData)
     metadata: Optional[ResumeMetadata] = None
     validation_warnings: list[ValidationWarning] = []
+    resume_summary: str = ""
 
 
 # ==================== JD 分析模型 ====================
@@ -288,6 +289,7 @@ class KnowledgePoint(BaseModel):
     category: str = ""
     module: str = ""
     source: str = ""
+    context: str = ""
     jd_relevance: float = 0.5
     resume_depth: float = 0.0
     probing_weight: float = 0.0
@@ -352,11 +354,6 @@ class PrefixKnowledge(BaseModel):
 
 
 # ==================== 请求/响应 ====================
-
-class ResumeUploadRequest(BaseModel):
-    jd_text: str = ""
-    config: dict = {}
-
 
 class ResumeSessionResponse(BaseModel):
     id: str

@@ -1,20 +1,21 @@
 """
 Agent 模块异常定义
 """
-from typing import List
+from typing import ClassVar, List
+
+from src.core.middleware.base_exception_handler import BaseAPIError
 
 
-class AgentError(Exception):
+class AgentError(BaseAPIError):
     """Agent 模块基础异常"""
 
     def __init__(self, message: str, code: str = "AGENT_ERROR"):
-        self.message = message
-        self.code = code
-        super().__init__(self.message)
+        super().__init__(message=message, code=code)
 
 
 class AgentNotFoundError(AgentError):
     """Agent 不存在"""
+    _serializable_attrs: ClassVar[tuple[str, ...]] = ("agent_id",)
 
     def __init__(self, agent_id: int):
         super().__init__(
@@ -26,6 +27,7 @@ class AgentNotFoundError(AgentError):
 
 class SessionNotFoundError(AgentError):
     """会话不存在"""
+    _serializable_attrs: ClassVar[tuple[str, ...]] = ("session_id",)
 
     def __init__(self, session_id: str):
         super().__init__(
@@ -44,6 +46,7 @@ class McpServerError(AgentError):
 
 class McpServerNotFoundError(McpServerError):
     """MCP 服务器不存在"""
+    _serializable_attrs: ClassVar[tuple[str, ...]] = ("server_id",)
 
     def __init__(self, server_id: int):
         super().__init__(
@@ -79,6 +82,7 @@ class SandboxNotAvailableError(SandboxError):
 
 class SandboxTimeoutError(SandboxError):
     """代码执行超时"""
+    _serializable_attrs: ClassVar[tuple[str, ...]] = ("timeout", "language")
 
     def __init__(self, timeout: int, language: str):
         super().__init__(
@@ -101,6 +105,7 @@ class SandboxExecutionError(SandboxError):
 
 class UnsupportedLanguageError(SandboxError):
     """不支持的语言"""
+    _serializable_attrs: ClassVar[tuple[str, ...]] = ("language", "supported")
 
     def __init__(self, language: str, supported: List[str]):
         super().__init__(
@@ -113,6 +118,7 @@ class UnsupportedLanguageError(SandboxError):
 
 class ToolExecutionError(AgentError):
     """工具执行异常"""
+    _serializable_attrs: ClassVar[tuple[str, ...]] = ("tool_name",)
 
     def __init__(self, tool_name: str, message: str):
         super().__init__(
@@ -124,6 +130,7 @@ class ToolExecutionError(AgentError):
 
 class ToolNotFoundError(AgentError):
     """工具不存在"""
+    _serializable_attrs: ClassVar[tuple[str, ...]] = ("tool_name",)
 
     def __init__(self, tool_name: str):
         super().__init__(
@@ -135,6 +142,7 @@ class ToolNotFoundError(AgentError):
 
 class AgentMaxIterationsError(AgentError):
     """达到最大迭代次数"""
+    _serializable_attrs: ClassVar[tuple[str, ...]] = ("max_iterations",)
 
     def __init__(self, max_iterations: int):
         super().__init__(
@@ -142,3 +150,15 @@ class AgentMaxIterationsError(AgentError):
             code="AGENT_MAX_ITERATIONS",
         )
         self.max_iterations = max_iterations
+
+
+class MemoryNotFoundError(AgentError):
+    """记忆不存在"""
+    _serializable_attrs: ClassVar[tuple[str, ...]] = ("memory_id",)
+
+    def __init__(self, memory_id: int):
+        super().__init__(
+            message=f"记忆 {memory_id} 不存在",
+            code="MEMORY_NOT_FOUND",
+        )
+        self.memory_id = memory_id

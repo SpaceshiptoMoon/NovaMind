@@ -292,6 +292,10 @@ class SearchResult(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(None, description="分块元数据")
     file_info: Optional[Dict[str, Any]] = Field(None, description="文件信息")
 
+    # 图片搜索
+    image_url: Optional[str] = Field(None, description="图片预览 URL（图片类型结果）")
+    chunk_type: Optional[str] = Field(None, description="分块类型: text/image")
+
 
 class SearchResponse(BaseModel):
     """检索响应"""

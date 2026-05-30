@@ -104,10 +104,6 @@ class KnowledgeBase(BaseModel):
         """获取解析配置"""
         return (self.config or {}).get("parsing", {})
 
-    def get_retrieval_config(self) -> dict:
-        """获取检索配置"""
-        return (self.config or {}).get("retrieval", {})
-
     def get_question_generation_config(self) -> dict:
         """获取假设问题生成配置"""
         return (self.config or {}).get("question_generation", {})
@@ -133,27 +129,9 @@ class KnowledgeBase(BaseModel):
             # 未启用问题生成，仅内容模式可用
             return content_modes
 
-    def enable_question_generation(self, max_questions: int = 5) -> None:
-        """启用问题生成功能"""
-        self.config = {
-            **(self.config or {}),
-            "question_generation": {
-                "enabled": True,
-                "max_questions_per_chunk": max_questions,
-            },
-        }
-
     def get_description(self) -> Optional[str]:
         """获取描述"""
         return (self.config or {}).get("description")
-
-    def get_es_index_name(self) -> Optional[str]:
-        """获取 ES 索引名"""
-        return (self.storage or {}).get("es_index_name") if self.storage else None
-
-    def get_minio_prefix(self) -> Optional[str]:
-        """获取 MinIO 路径前缀"""
-        return (self.storage or {}).get("minio_prefix") if self.storage else None
 
     def is_active(self) -> bool:
         """检查知识库是否可用"""
@@ -179,9 +157,6 @@ class KnowledgeBase(BaseModel):
         self.status = KnowledgeBaseStatus.ACTIVE
         self.deleted_at = None
 
-    def archive(self) -> None:
-        """归档知识库"""
-        self.status = KnowledgeBaseStatus.ARCHIVED
 
 
 # ========== 默认配置模板 ==========

@@ -137,14 +137,18 @@ const handleCommand = async (command: string) => {
 
 <style scoped>
 .app-header {
-  height: 56px;
+  height: var(--header-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--space-6);
-  background: var(--color-bg-card);
+  background: var(--color-bg-header);
+  backdrop-filter: blur(var(--blur-header));
+  -webkit-backdrop-filter: blur(var(--blur-header));
   border-bottom: 1px solid var(--color-border-light);
   box-shadow: var(--shadow-xs);
+  position: relative;
+  z-index: var(--z-sticky);
 }
 
 .header-nav {
@@ -164,7 +168,7 @@ const handleCommand = async (command: string) => {
 .brand-name {
   font-family: var(--font-display);
   font-size: var(--text-lg);
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-bold);
   color: var(--color-text);
   letter-spacing: var(--tracking-tight);
 }
@@ -172,11 +176,11 @@ const handleCommand = async (command: string) => {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-1);
 }
 
 .nav-item {
-  padding: 6px 14px;
+  padding: var(--space-2) var(--space-4);
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -184,8 +188,9 @@ const handleCommand = async (command: string) => {
   transition: color var(--transition-fast), background var(--transition-fast);
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   user-select: none;
+  position: relative;
 }
 
 .nav-item:hover {
@@ -195,7 +200,7 @@ const handleCommand = async (command: string) => {
 
 .nav-item.active {
   color: var(--color-primary);
-  background: var(--color-primary-subtle);
+  background: var(--color-primary-muted);
   font-weight: var(--weight-medium);
 }
 
@@ -208,7 +213,7 @@ const handleCommand = async (command: string) => {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: 6px var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-lg);
   cursor: pointer;
   transition: background var(--transition-fast);
@@ -219,8 +224,8 @@ const handleCommand = async (command: string) => {
 }
 
 .user-avatar {
-  background: linear-gradient(135deg, #4285F4, #EA4335);
-  color: #fff;
+  background: var(--color-primary);
+  color: var(--color-user-bubble-text);
   font-size: var(--text-sm);
 }
 

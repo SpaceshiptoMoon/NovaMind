@@ -91,6 +91,7 @@ export const useChatStore = defineStore('chat', () => {
       attachments: attachmentList,
     }
     messages.value.push(userMessage)
+    if (options?.attachmentIds?.length) clearPendingAttachments()
 
     loading.value = true
     error.value = null
@@ -128,7 +129,6 @@ export const useChatStore = defineStore('chat', () => {
         }
       }
       messages.value.push(data.ai_message)
-      if (options?.attachmentIds?.length) clearPendingAttachments()
       return data
     } catch (e) {
       messages.value.pop()
@@ -172,6 +172,7 @@ export const useChatStore = defineStore('chat', () => {
       attachments: attachmentList,
     }
     messages.value.push(userMessage)
+    if (options?.attachmentIds?.length) clearPendingAttachments()
 
     const aiMessage: ChatMessage = {
       id: Date.now() + 1,
@@ -275,7 +276,6 @@ export const useChatStore = defineStore('chat', () => {
       streamingContent.value = ''
       streamingReasoning.value = ''
       abortController.value = null
-      if (options?.attachmentIds?.length) clearPendingAttachments()
     }
   }
 

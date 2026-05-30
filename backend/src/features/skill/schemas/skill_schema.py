@@ -25,16 +25,6 @@ class SkillValidateRequest(BaseModel):
     content: str = Field(..., min_length=1, description="完整 SKILL.md 内容")
 
 
-class SkillMarketplaceQuery(BaseModel):
-    """广场查询参数"""
-    keyword: Optional[str] = Field(None, max_length=200, description="搜索关键词")
-    category: Optional[str] = Field(None, max_length=50, description="分类过滤")
-    tags: Optional[str] = Field(None, description="逗号分隔标签")
-    sort: str = Field("newest", pattern="^(popular|rating|newest|name)$", description="排序方式")
-    limit: int = Field(20, ge=1, le=100, description="每页数量")
-    offset: int = Field(0, ge=0, description="偏移量")
-
-
 # ==================== 响应模型 ====================
 
 class SkillResponse(BaseModel):
@@ -135,38 +125,11 @@ class SkillInstallationResponse(BaseModel):
     created_at: Optional[datetime] = None
 
 
-class SkillVersionResponse(BaseModel):
-    """版本响应"""
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    skill_id: int
-    version: int
-    version_note: Optional[str] = None
-    resource_manifest: Optional[List[Dict[str, Any]]] = None
-    created_at: Optional[datetime] = None
-
-
 class SkillValidateResponse(BaseModel):
     """验证结果"""
     valid: bool
     errors: List[str] = []
     parsed: Optional[Dict[str, Any]] = None
-
-
-class SkillUploadPreviewResponse(BaseModel):
-    """上传预览结果"""
-    name: str
-    display_name: str
-    description: str
-    license: Optional[str] = None
-    allowed_tools: Optional[List[str]] = None
-    body_markdown: str
-    category: Optional[str] = None
-    tags: Optional[List[str]] = None
-    resource_manifest: Optional[List[Dict[str, Any]]] = None
-    review_status: int = 0
-    review_result: Optional[Dict[str, Any]] = None
 
 
 # ==================== 管理员设置 ====================

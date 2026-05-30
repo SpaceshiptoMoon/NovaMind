@@ -13,6 +13,7 @@ from typing import Optional
 
 from src.core.middleware.structured_logging import get_logger
 from src.shared.ai_models.llm import BaseLLM
+from src.shared.prompts import PromptTemplate, PromptManager
 from src.features.app.services.resume_parser import _extract_json
 from src.features.app.schemas.resume_schema import (
     StructuredResume, JDAnalysis, JDSkill,
@@ -21,133 +22,6 @@ from src.features.app.schemas.resume_schema import (
 
 logger = get_logger(__name__)
 
-# ==================== Prompt 模板 ====================
-
-JD_ANALYSIS_PROMPT = """你是一个岗位需求分析器。请从以下岗位描述中提取结构化的技术需求。
-
-格式：
-{{
-  "position_title": "职位名称",
-  "company": "公司名",
-  "seniority_level": "junior/mid/senior/lead",
-  "required_years": 0,
-  "required_skills": [
-    {{ "name": "技能名", "category": "language/framework/middleware/concept/domain", "importance": "required", "level": "精通/熟练/了解", "context": "JD中的原文描述" }}
-  ],
-  "preferred_skills": [
-    {{ "name": "", "category": "", "importance": "preferred", "level": "", "context": "" }}
-  ],
-  "required_experience": ["经验要求1"],
-  "domain_knowledge": ["领域知识1"],
-  "soft_skills": ["软技能1"],
-  "responsibilities": ["职责1"]
-}}
-
-注意：
-1. importance 只有 required/preferred/plus 三种
-2. 技能名称要标准化（如 "Go" 不要写成 "Golang"）
-3. 只输出 JSON
-
-JD 内容：
-{jd_text}
-"""
-
-PROBING_STRATEGY_PROMPT = """你是一个面试追问策略设计器。根据以下信息生成追问计划。
-
-## 目标岗位 JD 技术图谱
-{jd_info}
-
-## 候选人简历概要
-{resume_summary}
-
-## 已计算的知识点权重
-{knowledge_points_json}
-
-## 配置
-- 广度（每个知识点的衍生主题数，1=仅核心，5=全部衍生）: {breadth}
-- 深度（每个知识点的追问轮数，1=浅层，5=深层）: {depth}
-
-## 追问模式（按知识点类别区分）
-
-### 类别 project（项目深挖）—— 最高优先级
-针对项目整体进行追问，必须覆盖以下维度：
-1. **架构与选型**：项目整体架构是什么样的？为什么选择这个架构/技术栈？考虑过哪些替代方案？
-2. **问题与挑战**：遇到的最大技术挑战是什么？具体场景是怎样的？
-3. **方案与方法**：用什么技术/方法解决的？为什么选这个方案？
-4. **指标与验证**：简历中提到的指标（性能提升XX%、延迟降低XXms）是怎么测出来的？测试环境和工具是什么？测试流程是怎样的？有对比基线吗？数据是怎么采集的？
-5. **反思与改进**：如果重新设计会怎么做？有哪些遗憾或可以改进的地方？
-
-### 类别 tech_in_project（项目中的技术追问）—— 中优先级
-针对项目中使用的具体技术，必须关联项目实际场景：
-1. 你在XX项目中用YY技术做了什么？解决什么场景的问题？
-2. 为什么在这个场景选择YY而不是ZZ？（对比权衡）
-3. 使用过程中遇到过什么坑或难点？怎么解决的？
-4. 如果请求量翻10倍，这个技术方案还能撑住吗？怎么优化？
-
-### 类别 fundamental（基础扎实度）—— 基础必问
-验证候选人对核心技术的底层理解：
-1. 核心原理/底层机制是什么？
-2. 常见的使用场景和最佳实践？
-3. 和同类技术对比的优劣势？
-4. 生产环境中的注意事项和常见踩坑？
-
-输出 JSON 格式：
-{{
-  "updated_points": [
-    {{
-      "id": "知识点ID",
-      "probing_chain": [
-        "第1轮问题",
-        "第2轮问题",
-        ...
-      ]
-    }}
-  ]
-}}
-
-注意：
-1. 每个知识点生成 depth 个追问问题（depth即allocated_rounds）
-2. 严格按照上面的类别模式设计问题
-3. （有JD时）问题要结合JD中的具体场景和要求
-4. 问题要自然，像真实面试对话
-5. 只输出 JSON
-"""
-
-PREFIX_KNOWLEDGE_PROMPT = """你是一个面试前缀知识生成器。为以下技术点生成面试准备知识卡片，每个考点和问题必须附带简明答案。
-
-技术点列表：
-{tech_list}
-
-对于每个技术点，生成：
-
-{{
-  "items": [
-    {{
-      "tech_name": "技术名",
-      "category": "分类",
-      "core_concepts": ["核心概念1", "核心概念2", "核心概念3"],
-      "common_interview_topics": [
-        {{"topic": "考点名称", "answer": "简明答案（2-3句话，包含关键要点）"}}
-      ],
-      "key_questions": [
-        {{"question": "经典面试问题", "answer": "参考答案（3-5句话，包含核心原理和要点）"}}
-      ],
-      "quick_reference": "一段话快速回顾（100字以内）",
-      "pitfalls": ["常见踩坑1", "常见踩坑2"],
-      "comparison": [
-        {{ "name": "替代方案名", "pros": "相比该技术的优势", "cons": "相比该技术的劣势" }}
-      ]
-    }}
-  ]
-}}
-
-注意：
-1. common_interview_topics 每条必须有 answer，不能只有考点名
-2. key_questions 每条必须有 answer，给出面试能拿高分的参考回答
-3. 答案要精炼、准确、有深度，不要空泛
-4. 只输出 JSON
-"""
-
 
 class ResumeAnalyzer:
     """简历分析 + 报告生成器"""
@@ -155,16 +29,35 @@ class ResumeAnalyzer:
     def __init__(self, llm_client: BaseLLM):
         self.llm = llm_client
 
+    async def _generate_resume_summary(self, resume: StructuredResume) -> str:
+        """S4.5: 调用 LLM 生成简历概述"""
+        resume_data = self._make_resume_summary(resume)
+        prompt = PromptManager.format_prompt(PromptTemplate.RESUME_SUMMARY.value, resume_data=resume_data)
+        try:
+            response = await self.llm.generate_text(
+                prompt=prompt,
+                temperature=0.3,
+            )
+            summary = response.strip()
+            logger.info("简历摘要生成完成", summary_len=len(summary))
+            return summary
+        except Exception as e:
+            logger.warning("简历摘要生成失败，跳过", error=str(e))
+            return ""
+
     async def analyze(
         self,
         resume: StructuredResume,
         jd_text: Optional[str] = None,
         config: Optional[dict] = None,
     ) -> dict:
-        """完整分析流程 S5 → S9"""
+        """完整分析流程 S4.5 → S9"""
         cfg = config or {}
         breadth = cfg.get("breadth", 3)
         depth = cfg.get("depth", 3)
+
+        # S4.5: 生成简历摘要
+        resume.resume_summary = await self._generate_resume_summary(resume)
 
         # S5: JD 技术图谱（可选）
         jd_analysis = None
@@ -201,7 +94,7 @@ class ResumeAnalyzer:
     # ==================== S5: JD 技术图谱 ====================
 
     async def _extract_jd_analysis(self, jd_text: str) -> JDAnalysis:
-        prompt = JD_ANALYSIS_PROMPT.format(jd_text=jd_text)
+        prompt = PromptManager.format_prompt(PromptTemplate.RESUME_JD_ANALYSIS.value, jd_text=jd_text)
         response = await self.llm.generate_text(
             prompt=prompt,
             temperature=0.1,
@@ -211,6 +104,25 @@ class ResumeAnalyzer:
         return JDAnalysis(**data)
 
     # ==================== S6: 交叉映射 ====================
+
+    def _build_project_context(self, proj) -> str:
+        """从项目对象构建完整上下文，供知识点追问使用"""
+        parts = []
+        if proj.background:
+            parts.append(f"项目背景: {proj.background}")
+        if proj.architecture:
+            parts.append(f"架构: {proj.architecture}")
+        if proj.responsibilities:
+            parts.append("职责: " + "；".join(proj.responsibilities))
+        if proj.challenges:
+            for c in proj.challenges:
+                parts.append(f"挑战: {c.challenge} → 方案: {c.solution}" + (f" → 结果: {c.result}" if c.result else ""))
+        if proj.achievements:
+            for a in proj.achievements:
+                parts.append(f"成果: {a.description}" + (f"（{a.metric}）" if a.metric else ""))
+        if proj.highlights:
+            parts.append("亮点: " + "；".join(proj.highlights))
+        return "\n".join(parts)
 
     def _cross_mapping(
         self, resume: StructuredResume, jd_analysis: Optional[JDAnalysis], breadth: int = 3,
@@ -231,6 +143,7 @@ class ResumeAnalyzer:
                 category="project",
                 module="project_experience",
                 source=proj.name,
+                context=self._build_project_context(proj),
                 jd_relevance=proj_jd_rel,
                 resume_depth=proj_depth,
                 probing_weight=proj_weight,
@@ -254,25 +167,24 @@ class ResumeAnalyzer:
                 depth = self._calc_resume_depth(proj)
                 weight = self._calc_weight(jd_rel, depth, jd_analysis is not None)
 
-                derivatives = self._get_derivatives(tech, breadth)
-
                 points.append(KnowledgePoint(
                     id=f"tech_{idx}",
                     name=f"{tech}（{proj.name}）",
                     category="tech_in_project",
                     module="project_experience",
                     source=proj.name,
+                    context=self._build_project_context(proj),
                     jd_relevance=jd_rel,
                     resume_depth=depth,
                     probing_weight=weight,
-                    derivatives=derivatives,
                 ))
 
         # ===== Tier 3: 基础扎实度（基础权重） =====
-        all_skill_names = set()
+        # 建立 skill_name -> (group, item) 的映射，用于查找技能上下文
+        skill_map = {}
         for group in (resume.skills.skill_groups if resume.skills else []):
             for item in group.items:
-                all_skill_names.add(item.name)
+                skill_map[item.name] = (group, item)
 
         # 排除 Tier 2 已覆盖的技术
         covered = set()
@@ -281,19 +193,28 @@ class ResumeAnalyzer:
             for t in ts.languages + ts.frameworks + ts.middleware:
                 covered.add(t.lower())
 
-        for skill in all_skill_names:
-            if skill.lower() in covered:
+        for skill_name, (group, item) in skill_map.items():
+            if skill_name.lower() in covered:
                 continue
             idx += 1
-            jd_rel = self._calc_jd_relevance(skill, jd_analysis)
+            jd_rel = self._calc_jd_relevance(skill_name, jd_analysis)
             weight = self._calc_weight(jd_rel, 0.4, jd_analysis is not None)
+
+            parts = [f"技能分类: {group.label}"]
+            if item.proficiency:
+                parts.append(f"熟练度: {item.proficiency}")
+            if item.years:
+                parts.append(f"使用年限: {item.years}年")
+            if item.source_projects:
+                parts.append(f"来源项目: {', '.join(item.source_projects)}")
 
             points.append(KnowledgePoint(
                 id=f"fundamental_{idx}",
-                name=skill,
+                name=skill_name,
                 category="fundamental",
                 module="skills",
                 source="技能列表",
+                context="，".join(parts),
                 jd_relevance=jd_rel,
                 resume_depth=0.4,
                 probing_weight=weight,
@@ -302,12 +223,21 @@ class ResumeAnalyzer:
         # 从论文中提取知识点
         for paper in resume.publications.papers:
             idx += 1
+            paper_parts = []
+            if paper.abstract:
+                paper_parts.append(f"摘要: {paper.abstract}")
+            if paper.keywords:
+                paper_parts.append(f"关键词: {', '.join(paper.keywords)}")
+            if paper.my_contribution:
+                paper_parts.append(f"个人贡献: {paper.my_contribution}")
+
             points.append(KnowledgePoint(
                 id=f"paper_{idx}",
                 name=paper.title,
                 category="paper",
                 module="papers",
                 source=paper.title,
+                context="\n".join(paper_parts),
                 jd_relevance=0.3 if jd_analysis else 0.5,
                 resume_depth=0.7 if paper.abstract else 0.3,
                 probing_weight=0.4,
@@ -316,12 +246,19 @@ class ResumeAnalyzer:
         # 从专利中提取知识点
         for patent in resume.publications.patents:
             idx += 1
+            patent_parts = []
+            if patent.brief:
+                patent_parts.append(f"简介: {patent.brief}")
+            if patent.patent_type:
+                patent_parts.append(f"类型: {patent.patent_type}")
+
             points.append(KnowledgePoint(
                 id=f"patent_{idx}",
                 name=patent.title,
                 category="patent",
                 module="patents",
                 source=patent.title,
+                context="\n".join(patent_parts),
                 jd_relevance=0.3 if jd_analysis else 0.5,
                 resume_depth=0.5,
                 probing_weight=0.3,
@@ -384,25 +321,6 @@ class ResumeAnalyzer:
             base *= 1.5
         return min(base, 1.0)
 
-    def _get_derivatives(self, tech: str, breadth: int = 3) -> list[str]:
-        deriv_map = {
-            "redis": ["Redis数据结构", "持久化(RDB/AOF)", "高可用(Sentinel/Cluster)", "缓存策略(穿透/击穿/雪崩)", "分布式锁"],
-            "kafka": ["分区策略", "消费者组", "消息可靠性", "Exactly-Once语义", "性能调优"],
-            "mysql": ["索引优化", "事务隔离级别", "锁机制", "主从复制", "分库分表"],
-            "elasticsearch": ["倒排索引", "分词器", "相关性算分", "聚合查询", "集群架构"],
-            "kubernetes": ["Pod/Deployment", "Service/Ingress", "存储卷", "HPA自动扩缩", "网络策略"],
-            "docker": ["镜像构建", "容器网络", "数据卷", "Docker Compose", "多阶段构建"],
-            "go": ["协程(Goroutine)", "Channel", "内存模型", "错误处理", "性能调优"],
-            "python": ["GIL", "异步编程", "装饰器", "内存管理", "类型系统"],
-            "mongodb": ["文档模型", "聚合管道", "索引策略", "分片集群", "副本集"],
-            "rabbitmq": ["交换机类型", "消息确认", "死信队列", "延迟队列", "集群模式"],
-        }
-        all_derivs = deriv_map.get(tech.lower(), [])
-        # breadth 1=无衍生, 2=1个, 3=2个, 4=3个, 5=全部
-        if breadth <= 1:
-            return []
-        return all_derivs[:breadth - 1]
-
     # ==================== S7: 追问策略 ====================
 
     async def _generate_probing_strategy(
@@ -421,11 +339,11 @@ class ResumeAnalyzer:
             p.allocated_rounds = depth
 
         # LLM 生成问题链
-        resume_summary = self._make_resume_summary(resume)
+        resume_summary = resume.resume_summary or self._make_resume_summary(resume)
         jd_info = jd_analysis.model_dump_json(indent=2) if jd_analysis else "无目标岗位"
-        kp_json = json.dumps([{"id": p.id, "name": p.name, "weight": p.probing_weight, "rounds": p.allocated_rounds} for p in sorted_points], ensure_ascii=False, indent=2)
+        kp_json = json.dumps([{"id": p.id, "name": p.name, "category": p.category, "context": p.context, "weight": p.probing_weight, "rounds": p.allocated_rounds} for p in sorted_points], ensure_ascii=False, indent=2)
 
-        prompt = PROBING_STRATEGY_PROMPT.format(
+        prompt = PromptManager.format_prompt(PromptTemplate.RESUME_PROBING_STRATEGY.value,
             jd_info=jd_info,
             resume_summary=resume_summary,
             knowledge_points_json=kp_json,
@@ -497,7 +415,7 @@ class ResumeAnalyzer:
         # 逐个技术点生成前缀知识，避免单次 prompt 过大导致超时
         results: list[PrefixKnowledge] = []
         for tech_name in tech_list:
-            prompt = PREFIX_KNOWLEDGE_PROMPT.format(tech_list=json.dumps([tech_name], ensure_ascii=False))
+            prompt = PromptManager.format_prompt(PromptTemplate.RESUME_PREFIX_KNOWLEDGE.value, tech_list=json.dumps([tech_name], ensure_ascii=False))
             try:
                 response = await self.llm.generate_text(
                     prompt=prompt,

@@ -113,18 +113,38 @@ async def get_db_session():
     """
     获取数据库会话（自动提交/回滚的上下文管理器）
 
-    适用于启动脚本、后台任务等场景。
     正常退出时自动提交，异常时自动回滚。
+
+    SSE 流式场景下客户端断开连接触发 CancelledError，
+    此时 MySQL 连接已失效，commit/rollback 都会失败，
+    需静默处理以避免未捕获异常污染日志。
     """
     import asyncio
+    from sqlalchemy.exc import InterfaceError
 
     async with get_session_factory()() as session:
+        # ── 异常路径：回滚并继续向上抛出 ──
         try:
             yield session
-            await session.commit()
-        except (Exception, asyncio.CancelledError):
-            await session.rollback()
+        except asyncio.CancelledError:
+            try:
+                await session.rollback()
+            except Exception:
+                pass
             raise
+        except Exception:
+            try:
+                await session.rollback()
+            except Exception:
+                pass
+            raise
+
+        # ── 正常路径：提交事务 ──
+        try:
+            await session.commit()
+        except (InterfaceError, asyncio.CancelledError):
+            # 连接已断开（SSE 客户端断开、网络中断等），无法提交，静默跳过
+            pass
 
 
 async def get_db():

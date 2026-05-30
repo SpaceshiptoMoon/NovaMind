@@ -23,6 +23,7 @@ from src.features.knowledge_space.models.knowledge_space import KnowledgeSpace
 from src.features.knowledge_space.repository.document_repository import DocumentRepository
 from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
 from src.features.knowledge_space.repository.member_repository import MemberRepository
+from src.features.knowledge_space.repository.space_repository import SpaceRepository
 from src.features.knowledge_space.services.permission_service import PermissionService
 from src.features.knowledge_space.api.exceptions import (
     KnowledgeBaseNotFoundError,
@@ -84,7 +85,10 @@ class DocumentService:
     MAX_FILE_SIZE = 100 * 1024 * 1024
 
     # 支持的文件类型
-    SUPPORTED_FILE_TYPES = ["pdf", "docx", "doc", "txt", "md", "csv", "xlsx", "xls", "pptx", "ppt", "html", "json"]
+    SUPPORTED_FILE_TYPES = ["pdf", "docx", "doc", "txt", "md", "csv", "xlsx", "xls", "pptx", "ppt", "html", "json", "jpg", "jpeg", "png", "gif", "webp"]
+
+    # 图片文件类型
+    IMAGE_FILE_TYPES = frozenset({"jpg", "jpeg", "png", "gif", "webp"})
 
     def __init__(
         self,
@@ -95,6 +99,7 @@ class DocumentService:
         self.session = session
         self.doc_repo = DocumentRepository(session)
         self.kb_repo = KnowledgeBaseRepository(session)
+        self.space_repo = SpaceRepository(session)
         self.minio_client = minio_client
         self.es_client = es_client
         self.logger = get_logger(__name__)
@@ -173,6 +178,20 @@ class DocumentService:
             )
             raise DocumentInvalidTypeError(
                 f"{file_info.extension}: {file_info.validation_message}"
+            )
+
+        # 5.5 根据空间类型校验文件类型
+        file_type = file_info.extension
+        space = await self.space_repo.get_by_id(kb.space_id)
+        space_type = space.space_type if space else "text"
+
+        if space_type == "text" and file_type in self.IMAGE_FILE_TYPES:
+            raise DocumentInvalidTypeError(
+                f"{file_type}: 该空间为文本类型，只能上传文本文档。请在空间设置中将类型切换为多模态"
+            )
+        if space_type == "multimodal" and file_type not in self.IMAGE_FILE_TYPES:
+            raise DocumentInvalidTypeError(
+                f"{file_type}: 该空间为多模态类型，只能上传图片文件。"
             )
 
         # 6. 检查文件大小
@@ -346,6 +365,16 @@ class DocumentService:
         if not kb:
             return
 
+        # ===== 图片文档分支 =====
+        file_ext = document.file_type.lower() if document.file_type else ""
+
+        if file_ext in DocumentService.IMAGE_FILE_TYPES:
+            await _process_image_document_static(
+                document, file_content, session, _logger
+            )
+            return
+
+        # ===== 文本文档分支（现有逻辑）=====
         # 获取 DocumentProcessor
         processor = await _get_document_processor_static(session)
         splitting_config = kb.get_splitting_config()
@@ -480,6 +509,7 @@ class DocumentService:
             document_id=document_id,
             chunk_count=len(chunks),
         )
+
 
     async def delete_document(
         self,
@@ -1049,6 +1079,110 @@ class DocumentService:
 # ========== 模块级静态辅助函数 ==========
 
 
+async def _process_image_document_static(
+    document: Document,
+    file_content: bytes,
+    session,
+    _logger,
+):
+    """处理图片类型文档：生成多模态嵌入向量并索引到 ES"""
+    from src.shared.ai_models.embedding import BaseMultimodalEmbedding
+
+    # 1. 读取空间配置（多模态空间用 config.embedding，旧空间兼容 config.multimodal_embedding）
+    space = await session.get(KnowledgeSpace, document.space_id)
+    if not space:
+        return
+    space_config = space.get_config()
+    space_type = space_config.get("space_type", "text")
+
+    if space_type == "multimodal":
+        model_name = (space_config.get("embedding") or {}).get("model")
+        mm_dim = (space_config.get("embedding") or {}).get("dimension")
+    else:
+        mm_config = space_config.get("multimodal_embedding")
+        model_name = mm_config.get("model") if mm_config else None
+        mm_dim = mm_config.get("dimension") if mm_config else None
+
+    if not model_name:
+        raise DocumentProcessingError(
+            document_id=document.id,
+            error_message="该空间未配置多模态嵌入模型，无法处理图片文件",
+        )
+
+    # 2. 获取多模态嵌入客户端
+    from src.features.user.services.model_config_service import ModelConfigService
+    mcs = ModelConfigService(session)
+    client = await mcs.get_multimodal_embedding_client_by_model(document.uploader_id, model_name)
+
+    if not isinstance(client, BaseMultimodalEmbedding):
+        raise DocumentProcessingError(
+            document_id=document.id,
+            error_message=f"模型 {model_name} 不支持图片嵌入",
+        )
+
+    # 3. 生成图片嵌入向量
+    image_vector = await client.generate_image_embedding(file_content)
+
+    # 4. 构建图片 ES chunk
+    storage_info = document.storage or {}
+    storage_path = storage_info.get("object_name", "")
+    image_url = storage_path
+
+    es_chunk = {
+        "space_id": document.space_id,
+        "kb_id": document.kb_id,
+        "document_id": document.id,
+        "chunk_id": f"{document.id}_0",
+        "chunk_index": 0,
+        "content": document.filename,
+        "chunk_type": "image",
+        "embedding": [],
+        "image_embedding": image_vector,
+        "image_url": image_url,
+        "questions": [],
+        "question_embeddings": [],
+        "file_info": {
+            "filename": document.filename,
+            "file_type": document.file_type,
+        },
+        "metadata": {
+            "content_hash": document.file_hash,
+        },
+    }
+
+    # 5. 索引到 ES
+    es_client = await _get_es_client_static()
+    indexed_count = await es_client.bulk_index_chunks(
+        space_id=document.space_id,
+        chunks=[es_chunk],
+        embedding_dim=mm_dim,
+        multimodal_dim=mm_dim,
+    )
+
+    if indexed_count == 0:
+        raise DocumentProcessingError(
+            document_id=document.id,
+            error_message="ES 索引写入失败",
+        )
+
+    # 6. 标记文档完成
+    document.mark_completed()
+    document.doc_metadata = {
+        **(document.doc_metadata or {}),
+        "chunk_count": 1,
+        "indexed_at": now_china().isoformat(),
+        "chunk_type": "image",
+    }
+    await session.commit()
+
+    _logger.info(
+        "图片文档处理完成",
+        document_id=document.id,
+        model=model_name,
+        vector_dim=len(image_vector),
+    )
+
+
 def _prepare_es_chunks_static(document: Document, chunks: List[str]) -> List[Dict[str, Any]]:
     """
     将文本分块列表转换为 ES 索引格式的字典列表
@@ -1069,6 +1203,7 @@ def _prepare_es_chunks_static(document: Document, chunks: List[str]) -> List[Dic
             "chunk_id": f"{document.id}_{i}",
             "chunk_index": i,
             "content": chunk_text,
+            "chunk_type": "text",
             "questions": [],
             "question_embeddings": [],
         }

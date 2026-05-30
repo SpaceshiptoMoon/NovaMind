@@ -78,18 +78,33 @@
               <template v-else>
                 <div class="message-text">{{ msg.content }}</div>
                 <div v-if="getMessageAttachments(msg).length" class="message-attachments">
-                  <div v-for="att in getMessageAttachments(msg)" :key="att.filename" class="file-card" @click="handleDownloadAttachment(att)">
-                    <div class="file-icon-box" :class="getFileIconClass(att.file_type)">
-                      <span class="file-ext-label">{{ getFileExt(att.filename) }}</span>
+                  <template v-for="att in getMessageAttachments(msg)" :key="att.filename">
+                    <div v-if="isImageFile(att.file_type) && att.id" class="image-card" @click="handleDownloadAttachment(att)">
+                      <img
+                        v-if="getImagePreviewUrl(att)"
+                        :src="getImagePreviewUrl(att)"
+                        class="image-thumb"
+                        loading="lazy"
+                      />
+                      <div v-else class="image-thumb image-thumb-loading">加载中...</div>
+                      <div class="image-info">
+                        <span class="image-name">{{ att.filename }}</span>
+                        <span class="image-size">{{ formatFileSize(att.file_size) }}</span>
+                      </div>
                     </div>
-                    <div class="file-info">
-                      <div class="file-name">{{ att.filename }}</div>
-                      <div class="file-meta">{{ getFileExt(att.filename) }} · {{ formatFileSize(att.file_size) }}</div>
+                    <div v-else class="file-card" @click="handleDownloadAttachment(att)">
+                      <div class="file-icon-box" :class="getFileIconClass(att.file_type)">
+                        <span class="file-ext-label">{{ getFileExt(att.filename) }}</span>
+                      </div>
+                      <div class="file-info">
+                        <div class="file-name">{{ att.filename }}</div>
+                        <div class="file-meta">{{ getFileExt(att.filename) }} · {{ formatFileSize(att.file_size) }}</div>
+                      </div>
+                      <div class="file-download-btn" title="下载">
+                        <el-icon :size="16"><Download /></el-icon>
+                      </div>
                     </div>
-                    <div class="file-download-btn" title="下载">
-                      <el-icon :size="16"><Download /></el-icon>
-                    </div>
-                  </div>
+                  </template>
                 </div>
               </template>
               <div class="message-actions">
@@ -127,7 +142,7 @@
           <input
             ref="fileInputRef"
             type="file"
-            accept=".pdf,.docx,.txt,.md"
+            accept=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.gif,.webp"
             style="display: none"
             @change="handleFileSelected"
           />
@@ -140,6 +155,11 @@
             :disabled="chatStore.isStreaming || chatStore.loading"
             @keydown="handleKeydown"
             @input="autoResize"
+          />
+          <ModelFanSelector
+            v-model="selectedModel"
+            :models="availableModels"
+            :default-model-name="defaultModelName"
           />
           <button
             v-if="chatStore.isStreaming"
@@ -165,7 +185,8 @@
             :key="att.id"
             class="attachment-chip"
           >
-            <span class="att-type-badge">{{ getFileIcon(att.file_type) }}</span>
+            <img v-if="isImageFile(att.file_type) && getImagePreviewUrl(att)" :src="getImagePreviewUrl(att)" class="att-thumb-img" />
+            <span v-else class="att-type-badge">{{ getFileIcon(att.file_type) }}</span>
             <span class="att-name">{{ att.filename }}</span>
             <span class="att-size">{{ formatFileSize(att.file_size) }}</span>
             <button class="att-remove" @click="chatStore.removePendingAttachment(att.id)">
@@ -185,18 +206,6 @@
         <transition name="settings-slide">
           <div v-if="settingsExpanded" class="settings-bar">
             <div class="settings-bar-inner">
-              <div class="setting-group">
-                <span class="setting-label">模型</span>
-                <el-select
-                  v-model="selectedModel"
-                  :placeholder="defaultModelName || '默认'"
-                  clearable
-                  size="small"
-                  style="width: 180px"
-                >
-                  <el-option v-for="(_, name) in availableModels" :key="name" :label="name" :value="name" />
-                </el-select>
-              </div>
               <div class="setting-group">
                 <span class="setting-label">深度思考</span>
                 <el-switch v-model="enableThinking" size="small" />
@@ -288,13 +297,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick, onMounted, watch, inject } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount, watch, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete, Setting, Promotion, VideoPause, DocumentCopy, ArrowRight, ArrowDown, Paperclip, Close, Document, Download } from '@element-plus/icons-vue'
 // Note: Setting is still used in settings toggle button
 import { useChatStore } from '@/stores/chat'
 import { chatApi } from '@/api/chat'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
+import ModelFanSelector from '@/components/common/ModelFanSelector.vue'
 
 const chatStore = useChatStore()
 const isInWorkspace = inject('isInWorkspace', false)
@@ -341,9 +351,18 @@ function autoResize() {
   })
 }
 
-watch(() => chatStore.messages.length, () => scrollToBottom())
+watch(() => chatStore.messages.length, () => {
+  scrollToBottom()
+})
 watch(() => chatStore.streamingContent, () => scrollToBottom())
 watch(() => chatStore.loading, () => scrollToBottom())
+watch(() => chatStore.pendingAttachments.length, () => {
+  for (const att of chatStore.pendingAttachments) {
+    if (isImageFile(att.file_type) && att.id && !imageBlobCache.has(att.id)) {
+      loadAttachmentImage(att.id)
+    }
+  }
+})
 
 function handleQuickPrompt(text: string) {
   inputText.value = text
@@ -432,8 +451,19 @@ function handleKeydown(e: KeyboardEvent) {
 
 // 模型选择
 const selectedModel = ref('')
-const availableModels = ref<Record<string, { max_tokens: number; temperature: number; top_p: number }>>({})
+const availableModels = ref<Record<string, { max_tokens: number; temperature: number; top_p: number; model_type: string }>>({})
 const defaultModelName = computed(() => Object.keys(availableModels.value)[0] || '')
+
+const llmModelNames = computed(() =>
+  Object.entries(availableModels.value)
+    .filter(([, v]) => v.model_type !== 'vlm')
+    .map(([name]) => name),
+)
+const vlmModelNames = computed(() =>
+  Object.entries(availableModels.value)
+    .filter(([, v]) => v.model_type === 'vlm')
+    .map(([name]) => name),
+)
 
 const settingsSummary = computed(() => {
   const model = selectedModel.value || defaultModelName.value || '默认'
@@ -451,8 +481,9 @@ async function handleFileSelected(e: Event) {
   if (!input.files?.length) return
 
   const maxSize = 20 * 1024 * 1024
-  const allowedTypes = ['pdf', 'docx', 'txt', 'md']
+  const allowedTypes = ['pdf', 'docx', 'txt', 'md', 'jpg', 'jpeg', 'png', 'gif', 'webp']
 
+  const validFiles: File[] = []
   for (const file of Array.from(input.files)) {
     const ext = file.name.split('.').pop()?.toLowerCase() || ''
     if (!allowedTypes.includes(ext)) {
@@ -463,20 +494,24 @@ async function handleFileSelected(e: Event) {
       ElMessage.warning(`文件过大: ${file.name}（最大 20MB）`)
       continue
     }
-    try {
-      uploadingFiles.value = true
-      await chatStore.uploadAttachment(file)
-    } catch {
-      ElMessage.error(`上传失败: ${file.name}`)
-    } finally {
-      uploadingFiles.value = false
+    validFiles.push(file)
+  }
+
+  if (validFiles.length) {
+    uploadingFiles.value = true
+    const results = await Promise.allSettled(validFiles.map(f => chatStore.uploadAttachment(f)))
+    for (let i = 0; i < results.length; i++) {
+      if (results[i].status === 'rejected') {
+        ElMessage.error(`上传失败: ${validFiles[i].name}`)
+      }
     }
+    uploadingFiles.value = false
   }
   input.value = ''
 }
 
 function getFileIcon(type: string): string {
-  const map: Record<string, string> = { pdf: 'PDF', docx: 'DOC', txt: 'TXT', md: 'MD' }
+  const map: Record<string, string> = { pdf: 'PDF', docx: 'DOC', txt: 'TXT', md: 'MD', jpg: 'IMG', jpeg: 'IMG', png: 'IMG', gif: 'IMG', webp: 'IMG' }
   return map[type] || 'FILE'
 }
 
@@ -492,7 +527,38 @@ function getFileIconClass(type?: string): string {
   if (t === 'docx' || t === 'doc') return 'file-doc'
   if (t === 'txt') return 'file-txt'
   if (t === 'md') return 'file-md'
+  if (isImageFile(t)) return 'file-image'
   return 'file-default'
+}
+
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp'])
+function isImageFile(type?: string): boolean {
+  return !!type && IMAGE_EXTENSIONS.has(type.toLowerCase())
+}
+
+// 图片 blob URL 缓存
+const imageBlobCache = new Map<number, string>()
+const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+
+async function loadAttachmentImage(attId: number) {
+  if (imageBlobCache.has(attId)) return
+  try {
+    const token = localStorage.getItem('access_token')
+    const res = await fetch(`${baseURL}/ai-chat/chat-attachments/${attId}/download`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!res.ok) return
+    const blob = await res.blob()
+    imageBlobCache.set(attId, URL.createObjectURL(blob))
+  } catch {
+    // ignore
+  }
+}
+
+function getImagePreviewUrl(att: { id?: number; preview_url?: string }): string {
+  if (att.preview_url) return att.preview_url
+  if (att.id) return imageBlobCache.get(att.id) || ''
+  return ''
 }
 
 function getFileExt(filename?: string): string {
@@ -583,6 +649,13 @@ async function handleSaveConfig() {
 onMounted(() => {
   chatStore.fetchSessions()
   fetchModels()
+})
+
+onBeforeUnmount(() => {
+  for (const url of imageBlobCache.values()) {
+    URL.revokeObjectURL(url)
+  }
+  imageBlobCache.clear()
 })
 </script>
 
@@ -1360,5 +1433,69 @@ onMounted(() => {
 .file-card:hover .file-download-btn {
   color: #1e3a5f;
   background: rgba(0, 0, 0, 0.06);
+}
+
+/* ===== Image card in messages ===== */
+.image-card {
+  display: inline-flex;
+  flex-direction: column;
+  cursor: pointer;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--color-border-light);
+  max-width: 200px;
+  transition: border-color 0.15s;
+}
+.image-card:hover {
+  border-color: var(--color-primary);
+}
+.image-thumb {
+  width: 100%;
+  max-height: 150px;
+  object-fit: cover;
+  display: block;
+}
+.image-thumb-loading {
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-hover);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+.image-info {
+  padding: 4px 8px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  background: var(--color-bg-card);
+}
+.image-name {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.image-size {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+/* ===== Pending attachment image thumb ===== */
+.att-thumb-img {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+/* ===== Image file icon ===== */
+.file-image {
+  background: linear-gradient(135deg, #43e97b, #38f9d7);
+  color: #fff;
 }
 </style>
