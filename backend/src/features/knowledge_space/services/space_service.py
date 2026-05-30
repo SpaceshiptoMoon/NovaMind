@@ -63,17 +63,16 @@ class SpaceService:
         model_name: str,
         owner_id: int,
         fallback: Optional[int] = None,
+        model_type: str = "embedding",
     ) -> Optional[int]:
         """
         从数据库模型配置表读取 Embedding 模型的检测维度
-
-        启动时 _detect_embedding_dimension 已检测真实维度并存储到
-        user_model_configs.extra_config.dimension。
 
         Args:
             model_name: Embedding 模型名称
             owner_id: 空间创建者 ID
             fallback: 兜底维度
+            model_type: 模型类型 (embedding / multimodal_embedding)
 
         Returns:
             模型维度，失败时返回 fallback
@@ -87,7 +86,7 @@ class SpaceService:
 
         try:
             credentials = await self.model_config_service.get_credentials_by_model(
-                owner_id, "embedding", model_name
+                owner_id, model_type, model_name
             )
             if credentials and credentials.extra_config:
                 dimension = credentials.extra_config.get("dimension")
@@ -159,10 +158,12 @@ class SpaceService:
             )
 
         # 3. 自动填充默认 Embedding 模型（如果用户未指定）
+        space_type = (config or {}).get("space_type", "text")
         embedding_model_name = space.embedding_model
         if not embedding_model_name and self.model_config_service:
+            model_type = "multimodal_embedding" if space_type == "multimodal" else "embedding"
             available_models = await self.model_config_service.list_available_models(
-                owner_id, "embedding",
+                owner_id, model_type,
             )
             if available_models:
                 default_model = available_models[0]
@@ -178,6 +179,7 @@ class SpaceService:
                 self.logger.info(
                     "自动填充默认 Embedding 模型",
                     model=default_model,
+                    space_type=space_type,
                     owner_id=owner_id,
                 )
                 await self.session.flush()
@@ -652,20 +654,29 @@ class SpaceService:
 
         current_config = space.get_config()
 
-        # 1. 校验 embedding 变更
+        # 1. 校验 space_type 变更（有文档时拒绝）
+        new_space_type = config_updates.get("space_type")
+        current_space_type = current_config.get("space_type", "text")
+        if new_space_type and new_space_type != current_space_type:
+            await self._check_embedding_change_allowed(space_id)
+
+        # 2. 校验 embedding 变更
         if self._is_embedding_changed(config_updates, current_config):
             await self._check_embedding_change_allowed(space_id)
 
-        # 2. 深度合并
+        # 3. 深度合并
         merged_config = self._deep_merge(current_config, config_updates)
 
-        # 2.1 embedding 模型变更时，自动从模型配置表回填维度
+        # 3.1 embedding 模型变更时，自动从模型配置表回填维度
         embedding_update = config_updates.get("embedding")
         new_model = embedding_update.get("model") if isinstance(embedding_update, dict) else None
         if new_model:
+            resolved_type = merged_config.get("space_type", "text")
+            model_type = "multimodal_embedding" if resolved_type == "multimodal" else "embedding"
             auto_dim = await self._get_embedding_dimension(
                 model_name=new_model,
                 owner_id=space.owner_id,
+                model_type=model_type,
             )
             if auto_dim:
                 if not merged_config.get("embedding"):

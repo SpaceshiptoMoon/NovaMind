@@ -3,21 +3,37 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import { renderMarkdown } from '@/utils/markdown'
 
 const props = defineProps<{
   content: string
 }>()
 
-const rendered = computed(() => renderMarkdown(props.content))
+const rendered = ref(props.content ? renderMarkdown(props.content) : '')
+
+let rafId: number | null = null
+let latestContent = props.content
+
+watch(() => props.content, (newVal) => {
+  latestContent = newVal
+  if (rafId !== null) return
+  rafId = requestAnimationFrame(() => {
+    rendered.value = renderMarkdown(latestContent)
+    rafId = null
+  })
+}, { flush: 'sync' })
+
+onUnmounted(() => {
+  if (rafId !== null) cancelAnimationFrame(rafId)
+})
 </script>
 
 <style>
 .markdown-body {
   font-family: var(--font-body);
-  font-size: 14px;
-  line-height: 1.7;
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
   color: var(--color-text);
 }
 
@@ -25,29 +41,29 @@ const rendered = computed(() => renderMarkdown(props.content))
 .markdown-body h2,
 .markdown-body h3,
 .markdown-body h4 {
-  margin: 12px 0 8px;
+  margin: var(--space-3) 0 var(--space-2);
   font-family: var(--font-display);
   font-weight: var(--weight-semibold);
   color: var(--color-text);
 }
 
-.markdown-body h1 { font-size: 20px; }
-.markdown-body h2 { font-size: 18px; }
-.markdown-body h3 { font-size: 16px; }
+.markdown-body h1 { font-size: var(--text-xl); }
+.markdown-body h2 { font-size: var(--text-xl); }
+.markdown-body h3 { font-size: var(--text-lg); }
 
-.markdown-body p { margin: 6px 0; }
+.markdown-body p { margin: var(--space-1) 0; }
 
 .markdown-body ul,
 .markdown-body ol {
-  padding-left: 20px;
-  margin: 6px 0;
+  padding-left: var(--space-5);
+  margin: var(--space-1) 0;
 }
 
-.markdown-body li { margin: 2px 0; }
+.markdown-body li { margin: var(--space-1) 0; }
 
 .markdown-body blockquote {
-  margin: 8px 0;
-  padding: 4px 12px;
+  margin: var(--space-2) 0;
+  padding: var(--space-1) var(--space-3);
   border-left: 3px solid var(--color-border);
   background: var(--color-bg-card-elevated);
   color: var(--color-text-secondary);
@@ -57,26 +73,25 @@ const rendered = computed(() => renderMarkdown(props.content))
 /* Inline code */
 .markdown-body code {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .markdown-body :not(pre) > code {
-  padding: 2px 6px;
+  padding: 2px var(--space-1);
   border-radius: var(--radius-sm);
   background: var(--color-bg-hover);
   color: var(--color-accent);
 }
 
-/* Code block wrapper — warm light theme */
+/* Code block wrapper */
 .markdown-body .code-block {
-  margin: 10px 0;
+  margin: var(--space-2) 0;
   border-radius: var(--radius-lg);
-  background: #F7F5F2;
+  background: var(--color-bg-card-elevated);
   overflow: hidden;
   border: 1px solid var(--color-border-light);
 }
 
-/* Override hljs github theme bg to match our warm tone */
 .markdown-body .code-block .hljs {
   background: transparent;
 }
@@ -85,14 +100,14 @@ const rendered = computed(() => renderMarkdown(props.content))
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 14px;
+  padding: var(--space-1) var(--space-3);
   background: var(--color-bg-hover);
   border-bottom: 1px solid var(--color-border-light);
 }
 
 .markdown-body .code-block .code-lang {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -100,15 +115,15 @@ const rendered = computed(() => renderMarkdown(props.content))
 
 .markdown-body .code-block .code-copy-btn {
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
   background: transparent;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  padding: 2px 10px;
+  padding: 2px var(--space-2);
   cursor: pointer;
-  transition: all 150ms ease;
-  line-height: 1.6;
+  transition: all var(--transition-fast);
+  line-height: var(--leading-normal);
 }
 
 .markdown-body .code-block .code-copy-btn:hover {
@@ -124,44 +139,44 @@ const rendered = computed(() => renderMarkdown(props.content))
 
 .markdown-body .code-block pre {
   margin: 0;
-  padding: 14px;
+  padding: var(--space-3);
   background: transparent;
   overflow-x: auto;
 }
 
 .markdown-body .code-block pre code {
   font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
   background: transparent;
 }
 
 /* Legacy standalone pre (fallback for non-wrapped code) */
 .markdown-body > pre {
-  margin: 8px 0;
-  padding: 12px;
+  margin: var(--space-2) 0;
+  padding: var(--space-3);
   border-radius: var(--radius-md);
-  background: #F7F5F2;
+  background: var(--color-bg-card-elevated);
   border: 1px solid var(--color-border-light);
   overflow-x: auto;
 }
 
 .markdown-body > pre code {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--text-sm);
   background: transparent;
 }
 
 .markdown-body table {
   border-collapse: collapse;
-  margin: 8px 0;
+  margin: var(--space-2) 0;
   width: 100%;
 }
 
 .markdown-body th,
 .markdown-body td {
   border: 1px solid var(--color-border-light);
-  padding: 6px 12px;
+  padding: var(--space-1) var(--space-3);
   text-align: left;
 }
 
@@ -183,6 +198,6 @@ const rendered = computed(() => renderMarkdown(props.content))
 .markdown-body hr {
   border: none;
   border-top: 1px solid var(--color-border-light);
-  margin: 12px 0;
+  margin: var(--space-3) 0;
 }
 </style>

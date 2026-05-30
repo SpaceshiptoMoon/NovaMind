@@ -65,6 +65,7 @@ class ModelInfoResponse(BaseModel):
     max_tokens: int = Field(..., description="最大生成token数")
     temperature: float = Field(..., description="默认温度参数")
     top_p: float = Field(..., description="默认Top-P参数")
+    model_type: str = Field(default="llm", description="模型类型: llm/vlm")
 
 
 class AvailableModelsResponse(BaseModel):

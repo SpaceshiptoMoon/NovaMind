@@ -190,7 +190,7 @@ export async function createSSEStream(
   url: string,
   body: unknown,
   callbacks: {
-    onMessage: (event: { event_type: string; data: unknown }) => void
+    onMessage: (event: { type: string; data: unknown }) => void
     onError?: (error: string) => void
     signal?: AbortSignal
   },
@@ -226,25 +226,37 @@ export async function createSSEStream(
   let currentEventType = ''
   let currentData = ''
 
-  function flushEvent() {
+  let yieldScheduled = false
+  function yieldToMain() {
+    if (yieldScheduled) return
+    yieldScheduled = true
+    queueMicrotask(() => { yieldScheduled = false })
+  }
+
+  function flushEvent(): boolean {
     if (!currentData) {
       currentEventType = ''
-      return
+      return false
     }
+    let dispatched = false
     try {
       const parsed = JSON.parse(currentData)
       if (parsed.type !== undefined) {
-        callbacks.onMessage(parsed)
+        callbacks.onMessage({ type: parsed.type, data: parsed.data ?? parsed })
+        dispatched = true
       } else if (parsed.event_type !== undefined) {
         callbacks.onMessage({ type: parsed.event_type, data: parsed.data })
+        dispatched = true
       } else if (currentEventType) {
         callbacks.onMessage({ type: currentEventType, data: parsed })
+        dispatched = true
       }
     } catch {
       // skip malformed data
     }
     currentEventType = ''
     currentData = ''
+    return dispatched
   }
 
   while (true) {
@@ -265,14 +277,19 @@ export async function createSSEStream(
       const trimmed = line.trim()
 
       if (!trimmed) {
-        flushEvent()
+        if (flushEvent()) {
+          // 让出执行权，允许 Vue 刷新响应式更新并渲染 DOM
+          await new Promise(r => setTimeout(r, 0))
+        }
         continue
       }
 
       if (trimmed.startsWith(':')) continue
 
       if (trimmed.startsWith('event:')) {
-        if (currentData) flushEvent()
+        if (flushEvent()) {
+          await new Promise(r => setTimeout(r, 0))
+        }
         currentEventType = trimmed.slice(6).trim()
       } else if (trimmed.startsWith('data:')) {
         currentData += trimmed.slice(5).trimStart()

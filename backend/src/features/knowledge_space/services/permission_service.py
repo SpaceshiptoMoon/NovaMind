@@ -86,24 +86,6 @@ class PermissionService:
             return False
         return member.role >= min_role
 
-    def is_space_owner_or_admin(self, member: Optional[SpaceMember]) -> bool:
-        """检查成员是否是空间所有者或管理员"""
-        return self._role_at_least(member, SpaceRole.ADMIN)
-
-    def can_delete_space(self, member: Optional[SpaceMember]) -> bool:
-        """检查成员是否可以删除空间（需要 ADMIN 权限）"""
-        return self._check_permission_with_override(
-            member, "spaces", "delete",
-            self._role_at_least(member, SpaceRole.ADMIN),
-        )
-
-    def can_update_space(self, member: Optional[SpaceMember]) -> bool:
-        """检查成员是否可以更新空间（需要 ADMIN 权限）"""
-        return self._check_permission_with_override(
-            member, "spaces", "update",
-            self._role_at_least(member, SpaceRole.ADMIN),
-        )
-
     def can_manage_knowledge_base(self, member: Optional[SpaceMember]) -> bool:
         """检查成员是否可以管理知识库（需要 EDITOR 及以上）"""
         return self._check_permission_with_override(
@@ -124,10 +106,6 @@ class PermissionService:
             member, "documents", "delete",
             self._role_at_least(member, SpaceRole.EDITOR),
         )
-
-    def can_delete_own_document(self, member: Optional[SpaceMember]) -> bool:
-        """检查成员是否可以删除自己上传的文档（需要 EDITOR 及以上）"""
-        return self.can_delete_document(member)
 
     def can_delete_any_document(self, member: Optional[SpaceMember]) -> bool:
         """检查成员是否可以删除任意文档（需要 ADMIN 权限）"""

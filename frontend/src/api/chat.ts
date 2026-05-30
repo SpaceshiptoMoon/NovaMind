@@ -59,9 +59,14 @@ export const chatApi = {
           case 'done':
             callbacks.onDone?.(e.data as Parameters<typeof callbacks.onDone>[0])
             break
-          case 'error':
-            callbacks.onError?.(e.data as { code: string; message: string })
+          case 'error': {
+            const err = e.data as Record<string, unknown>
+            callbacks.onError?.({
+              code: (err.code as string) || 'ERROR',
+              message: (err.message as string) || (err.content as string) || '未知错误',
+            })
             break
+          }
         }
       },
       onError: callbacks.onError ? (msg) => callbacks.onError!({ code: 'STREAM_ERROR', message: msg }) : undefined,

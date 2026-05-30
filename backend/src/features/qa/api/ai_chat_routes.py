@@ -9,7 +9,7 @@ from urllib.parse import quote
 import io
 
 from src.features.user.api.auth import get_current_user
-from src.features.qa.api.dependencies import get_aichat_service, get_qa_service, get_model_config_service
+from src.features.qa.api.dependencies import get_aichat_service, get_qa_service, get_model_config_service, get_minio_client_for_presign
 from src.features.qa.services.ai_chat_service import AIChatService
 from src.features.qa.services.qa_service import QAService
 from src.features.qa.schemas.ai_chat import (
@@ -21,6 +21,7 @@ from src.features.qa.schemas.ai_chat import (
     UploadChatAttachmentResponse,
 )
 from src.features.user.services.model_config_service import ModelConfigService
+from src.shared.storage.minio_client import enrich_attachments_with_presigned_urls
 
 router = APIRouter()
 
@@ -145,11 +146,16 @@ async def get_chat_history(
     session_id: Annotated[str, Query(min_length=1, description="会话ID")],
     qa_service: QAService = Depends(get_qa_service),
     current_user: dict = Depends(get_current_user),
+    minio_client=Depends(get_minio_client_for_presign),
 ):
     """获取聊天历史"""
     messages = await qa_service.get_session_messages(
         session_id, current_user["id"]
     )
+
+    if minio_client:
+        for msg in messages:
+            await enrich_attachments_with_presigned_urls(msg.extra, minio_client)
 
     return ChatHistoryResponse(
         session_id=session_id,
@@ -217,8 +223,8 @@ async def download_chat_attachment(
     """下载聊天附件"""
     attachment = await ai_chat_service.attachment_repo.get_by_id(attachment_id)
     if not attachment or attachment.user_id != current_user["id"]:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail="附件不存在")
+        from src.features.qa.api.exceptions import ChatAttachmentNotFoundError
+        raise ChatAttachmentNotFoundError(attachment_id)
 
     file_content = await ai_chat_service.minio_client.download_document(
         ai_chat_service.minio_client.default_bucket,
@@ -262,15 +268,27 @@ async def get_available_models(
     """获取可用模型列表（需要认证）"""
     user_id = current_user["id"]
 
-    # 从 ModelConfigService 获取用户可用的 LLM 模型
-    available_models = await model_config_service.list_available_models(user_id, "llm")
+    models: dict[str, dict] = {}
 
-    models = {}
-    for model_name in available_models:
+    # LLM 模型
+    llm_models = await model_config_service.list_available_models(user_id, "llm")
+    for model_name in llm_models:
         models[model_name] = {
             "max_tokens": 2048,
             "temperature": 0.7,
             "top_p": 0.8,
+            "model_type": "llm",
         }
+
+    # VLM 视觉模型
+    vlm_models = await model_config_service.list_available_models(user_id, "vlm")
+    for model_name in vlm_models:
+        if model_name not in models:
+            models[model_name] = {
+                "max_tokens": 2048,
+                "temperature": 0.7,
+                "top_p": 0.8,
+                "model_type": "vlm",
+            }
 
     return AvailableModelsResponse(models=models)

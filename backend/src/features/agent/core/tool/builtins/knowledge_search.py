@@ -7,7 +7,8 @@
 import json
 from typing import Any, Dict, List
 
-from src.features.agent.tools.base import BaseTool
+from src.features.agent.core.tool.base import BaseTool
+from src.shared.prompts import PromptManager, PromptTemplate
 from src.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -30,7 +31,11 @@ class KnowledgeSearchTool(BaseTool):
                 "type": "function",
                 "function": {
                     "name": "list_spaces",
-                    "description": "列出当前用户可访问的所有知识空间，返回空间ID、名称和描述。当你需要了解用户有哪些知识空间时调用此工具。",
+                    "description": (
+                        "List all knowledge spaces the user can access. "
+                        "Returns space ID, name, and description. "
+                        "Call this first when you need to discover what knowledge resources are available."
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -42,13 +47,17 @@ class KnowledgeSearchTool(BaseTool):
                 "type": "function",
                 "function": {
                     "name": "list_knowledge_bases",
-                    "description": "列出指定知识空间下的所有知识库，返回知识库ID、名称、描述。当你需要查看某个空间下有哪些知识库时使用。",
+                    "description": (
+                        "List all knowledge bases under a specific space. "
+                        "Returns KB ID, name, and description. "
+                        "Use after list_spaces to find relevant knowledge bases for the user's query."
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "space_id": {
                                 "type": "integer",
-                                "description": "知识空间ID",
+                                "description": "Knowledge space ID (from list_spaces)",
                             },
                         },
                         "required": ["space_id"],
@@ -59,7 +68,11 @@ class KnowledgeSearchTool(BaseTool):
                 "type": "function",
                 "function": {
                     "name": "list_all_knowledge_bases",
-                    "description": "列出用户所有可访问的知识库（跨空间），返回知识库ID、名称、描述和所属空间ID。当你不确定目标知识库在哪个空间时，使用此工具一次性查看所有知识库。",
+                    "description": (
+                        "List ALL knowledge bases across ALL spaces in one call. "
+                        "Use this when you're unsure which space contains the relevant KB, "
+                        "or when you want a quick overview without browsing spaces first."
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -71,30 +84,41 @@ class KnowledgeSearchTool(BaseTool):
                 "type": "function",
                 "function": {
                     "name": "knowledge_search",
-                    "description": "在指定知识空间中搜索文档内容。支持多种检索模式：向量检索、全文检索、混合检索。返回最相关的文档片段。",
+                    "description": (
+                        "Search document content within a knowledge space. "
+                        "Returns the most relevant text chunks with scores.\n\n"
+                        "USAGE:\n"
+                        "- Always provide space_id and query\n"
+                        "- Provide kb_id for precise results within a specific knowledge base\n"
+                        "- Omit kb_id to search across all KBs in the space (top 3 KBs)\n"
+                        "- Default search_mode 'content_hybrid' (vector + BM25) works well for most cases\n"
+                        "- Try different keywords if initial results aren't relevant\n\n"
+                        "TIP: Use kb_id when you know which KB is relevant. "
+                        "Without kb_id, results may be diluted across unrelated KBs."
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "space_id": {
                                 "type": "integer",
-                                "description": "知识空间 ID",
+                                "description": "Knowledge space ID",
                             },
                             "query": {
                                 "type": "string",
-                                "description": "搜索查询文本",
+                                "description": "Search query text",
                             },
                             "kb_id": {
                                 "type": "integer",
-                                "description": "知识库 ID（可选，不传则搜索整个空间）",
+                                "description": "Knowledge base ID (optional, narrows search to a specific KB)",
                             },
                             "top_k": {
                                 "type": "integer",
-                                "description": "返回结果数量，默认 5",
+                                "description": "Number of results to return (default 5)",
                                 "default": 5,
                             },
                             "search_mode": {
                                 "type": "string",
-                                "description": "检索模式：content_vector（向量）、content_bm25（全文）、content_hybrid（混合），默认 content_hybrid",
+                                "description": "Search mode: content_vector (semantic), content_bm25 (keyword), content_hybrid (both, recommended)",
                                 "default": "content_hybrid",
                             },
                         },
@@ -106,26 +130,30 @@ class KnowledgeSearchTool(BaseTool):
                 "type": "function",
                 "function": {
                     "name": "document_list",
-                    "description": "列出指定知识库中的文档",
+                    "description": (
+                        "List documents in a knowledge base. "
+                        "Returns document ID, filename, status, and chunk count. "
+                        "Useful to understand what content is available before searching."
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "space_id": {
                                 "type": "integer",
-                                "description": "知识空间 ID",
+                                "description": "Knowledge space ID",
                             },
                             "kb_id": {
                                 "type": "integer",
-                                "description": "知识库 ID",
+                                "description": "Knowledge base ID",
                             },
                             "page": {
                                 "type": "integer",
-                                "description": "页码，默认 1",
+                                "description": "Page number (default 1)",
                                 "default": 1,
                             },
                             "page_size": {
                                 "type": "integer",
-                                "description": "每页数量，默认 20",
+                                "description": "Results per page (default 20)",
                                 "default": 20,
                             },
                         },
@@ -466,31 +494,14 @@ class KnowledgeSearchTool(BaseTool):
 
     def get_system_prompt_fragment(self) -> str:
         return (
-            "你拥有以下知识库工具，请按流程使用它们来帮助用户检索知识：\n"
-            "\n"
-            "## 可用工具\n"
-            "- list_spaces：列出用户可访问的所有知识空间\n"
-            "- list_knowledge_bases(space_id)：列出指定空间下的知识库\n"
-            "- list_all_knowledge_bases：一次性列出所有知识库（跨空间）\n"
-            "- knowledge_search(space_id, query, kb_id?)：搜索知识库内容\n"
-            "- document_list(space_id, kb_id)：列出知识库中的文档\n"
-            "\n"
-            "## 使用流程\n"
-            "\n"
-            "### 路径 A：逐层发现（推荐）\n"
-            "1. 调用 list_spaces → 获取用户可访问的知识空间列表\n"
-            "2. 根据用户需求选择合适的空间，调用 list_knowledge_bases(space_id) → 获取该空间下的知识库\n"
-            "3. 根据知识库的名称和描述选择最匹配的知识库，调用 knowledge_search(space_id, kb_id, query) → 搜索内容\n"
-            "\n"
-            "### 路径 B：快速定位\n"
-            "1. 调用 list_all_knowledge_bases → 一次性获取所有知识库\n"
-            "2. 根据知识库名称和描述选择目标，调用 knowledge_search(space_id, kb_id, query) → 搜索内容\n"
-            "\n"
-            "## 使用原则\n"
-            "- 首次对话或用户的问题涉及特定领域时，先调用 list_spaces 或 list_all_knowledge_bases 了解可用资源\n"
-            "- 根据知识库的描述（description）判断哪个知识库最匹配用户的问题\n"
-            "- 搜索时优先指定 kb_id，结果更精准；不确定时可省略 kb_id 搜索整个空间\n"
-            "- 检索模式默认使用 content_hybrid（混合检索），适合大多数场景\n"
-            "- 如果搜索结果不够相关，可以尝试换一个知识库或调整搜索词\n"
-            "- 不要在用户没有问及知识库时主动调用这些工具"
+            "## Knowledge Search\n"
+            "When the user's question relates to their stored documents:\n"
+            "1. Discover: use list_spaces or list_all_knowledge_bases to find available resources\n"
+            "2. Select: identify the most relevant knowledge base for the query\n"
+            "3. Search: use knowledge_search with a clear, specific query\n"
+            "4. If results are poor, try different keywords or search a different KB\n\n"
+            "Guidelines:\n"
+            "- Matching the right KB to the query matters more than search_mode tuning\n"
+            "- Do NOT call these tools unless the question actually relates to stored documents\n"
+            "- If search returns no results, try rephrasing the query before concluding the info is absent"
         )

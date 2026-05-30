@@ -1,7 +1,7 @@
 """
 Agent 模块 API 路由
 """
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Query, Path
 from fastapi.responses import StreamingResponse
@@ -12,11 +12,13 @@ from src.features.agent.api.dependencies import (
     get_agent_chat_service,
     get_mcp_server_service,
     get_tool_registry,
+    get_minio_client_for_presign,
 )
 from src.features.agent.services.agent_service import AgentService
 from src.features.agent.services.chat_service import AgentChatService
 from src.features.agent.services.mcp_server_service import McpServerService
-from src.features.agent.tools.registry import ToolRegistry
+from src.features.agent.core.tool.registry import ToolRegistry
+from src.shared.storage.minio_client import enrich_attachments_with_presigned_urls
 from src.features.agent.schemas.agent_schema import (
     AgentCreate,
     AgentUpdate,
@@ -34,6 +36,8 @@ from src.features.agent.schemas.agent_schema import (
     ToolFunctionResponse,
     ActionResponse,
     McpToolsRefreshResponse,
+    MemoryListResponse,
+    MemoryStatsResponse,
 )
 
 router = APIRouter()
@@ -93,7 +97,7 @@ async def get_agent(
 ):
     return await service.get_agent(user_id, agent_id)
 
-
+ 
 @router.put(
     "/agents/{agent_id}",
     response_model=AgentDetailResponse,
@@ -145,6 +149,7 @@ async def chat_stream(
             session_id=data.session_id,
             llm_model=data.llm_model,
             enable_thinking=data.enable_thinking,
+            stream=data.stream,
             attachment_ids=data.attachment_ids,
         ),
         media_type="text/event-stream",
@@ -214,8 +219,13 @@ async def get_messages(
     offset: Annotated[int, Query(ge=0, description="偏移量")] = 0,
     user_id: int = Depends(get_current_user_id),
     service: AgentService = Depends(get_agent_service),
+    minio_client=Depends(get_minio_client_for_presign),
 ):
-    return await service.get_messages(user_id, session_id, limit, offset)
+    result = await service.get_messages(user_id, session_id, limit, offset)
+    if minio_client:
+        for msg in result.items:
+            await enrich_attachments_with_presigned_urls(msg.extra, minio_client)
+    return result
 
 
 # ==================== MCP 服务器管理 ====================
@@ -400,3 +410,52 @@ async def get_tool(
         ],
         system_prompt_fragment=tool.get_system_prompt_fragment(),
     )
+
+
+# ==================== 记忆管理 ====================
+
+@router.get(
+    "/agents/{agent_id}/memories",
+    response_model=MemoryListResponse,
+    summary="列出记忆",
+    description="获取指定 Agent 的长期记忆列表，支持按类别过滤和分页",
+)
+async def list_memories(
+    agent_id: Annotated[int, Path(gt=0, description="Agent ID")],
+    category: Optional[str] = Query(None, description="按类别过滤"),
+    limit: Annotated[int, Query(ge=1, le=100, description="每页数量")] = 20,
+    offset: Annotated[int, Query(ge=0, description="偏移量")] = 0,
+    user_id: int = Depends(get_current_user_id),
+    service: AgentService = Depends(get_agent_service),
+):
+    return await service.list_memories(user_id, agent_id, category, limit, offset)
+
+
+@router.delete(
+    "/agents/{agent_id}/memories/{memory_id}",
+    response_model=ActionResponse,
+    summary="删除记忆",
+    description="删除指定的长期记忆",
+)
+async def delete_memory(
+    agent_id: Annotated[int, Path(gt=0, description="Agent ID")],
+    memory_id: Annotated[int, Path(gt=0, description="记忆 ID")],
+    user_id: int = Depends(get_current_user_id),
+    service: AgentService = Depends(get_agent_service),
+):
+    await service.delete_memory(user_id, agent_id, memory_id)
+    return {"success": True, "message": "记忆已删除"}
+
+
+@router.get(
+    "/agents/{agent_id}/memories/stats",
+    response_model=MemoryStatsResponse,
+    summary="记忆统计",
+    description="获取指定 Agent 的记忆统计信息",
+)
+async def get_memory_stats(
+    agent_id: Annotated[int, Path(gt=0, description="Agent ID")],
+    user_id: int = Depends(get_current_user_id),
+    service: AgentService = Depends(get_agent_service),
+):
+    return await service.get_memory_stats(user_id, agent_id)

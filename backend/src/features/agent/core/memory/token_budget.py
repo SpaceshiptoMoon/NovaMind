@@ -22,13 +22,12 @@ class TokenBudget:
 
     def __init__(self, model_name: str = "gpt-4"):
         self._model_name = model_name
+        from src.shared.utils.text_processing.token_counter import TokenCounter
+        self._counter = TokenCounter(model_name)
 
     def count_text_tokens(self, text: str) -> int:
         """计算文本 token 数"""
-        from src.shared.utils.text_processing.token_counter import TokenCounter
-
-        counter = TokenCounter(self._model_name)
-        return counter.count_tokens(text)
+        return self._counter.count_tokens(text)
 
     def count_messages_tokens(
         self, messages: List[MemoryMessage]
@@ -37,35 +36,26 @@ class TokenBudget:
         计算消息列表的 token 数
 
         每条消息包含约 4 个 token 的角色标记开销，
-        tool_calls 的 JSON 额外计入。
+        tool_calls / tool_call_id / tool_name 的额外开销也计入。
         """
         total = 0
         for msg in messages:
             total += 4  # 角色标记开销
             if msg.content:
-                total += self.count_text_tokens(msg.content)
+                if isinstance(msg.content, str):
+                    total += self.count_text_tokens(msg.content)
+                elif isinstance(msg.content, list):
+                    for part in msg.content:
+                        if isinstance(part, dict) and part.get("type") == "text":
+                            total += self.count_text_tokens(part.get("text", ""))
+                        elif isinstance(part, dict) and part.get("type") == "image_url":
+                            total += 85  # approximate image token cost
             if msg.tool_calls:
                 total += self.count_text_tokens(
                     json.dumps(msg.tool_calls, ensure_ascii=False)
                 )
+            if msg.tool_call_id:
+                total += 6  # tool_call_id 格式开销
+            if msg.tool_name:
+                total += 3  # tool_name 格式开销
         return total
-
-    def get_available_budget(
-        self,
-        model_context_window: int,
-        system_prompt_tokens: int,
-        tools_tokens: int,
-        reserve_for_generation: int = 1024,
-    ) -> int:
-        """
-        计算可用于历史消息的 token 预算
-
-        公式：context_window - system_prompt - tools - reserve
-        """
-        available = (
-            model_context_window
-            - system_prompt_tokens
-            - tools_tokens
-            - reserve_for_generation
-        )
-        return max(available, 0)

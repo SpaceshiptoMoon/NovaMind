@@ -1,15 +1,14 @@
 """
 记忆系统抽象接口和数据模型
 
-定义三层记忆的统一契约：
+定义记忆的统一契约：
 - IShortTermMemory: 短期记忆（对话上下文）
 - ILongTermMemory: 长期记忆（跨会话知识）
-- IWorkingMemory: 工作记忆（任务中间状态）
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 
 # ==================== 数据模型 ====================
@@ -19,7 +18,7 @@ class MemoryMessage:
     """统一的内部消息模型"""
 
     role: str  # user / assistant / system / tool
-    content: str
+    content: Union[str, List[Dict[str, Any]]]
     tool_call_id: Optional[str] = None
     tool_name: Optional[str] = None
     tool_calls: Optional[List[Dict[str, Any]]] = None
@@ -51,6 +50,7 @@ class LongTermMemoryEntry:
     user_id: int
     category: str  # preference / fact / procedure / insight
     content: str
+    source_type: str = "consolidate"
     relevance_score: float = 0.0
     access_count: int = 0
     source_conversation_id: Optional[int] = None
@@ -155,45 +155,3 @@ class ILongTermMemory(ABC):
         """
         ...
 
-
-class IWorkingMemory(ABC):
-    """
-    工作记忆接口：当前任务的中间状态
-
-    典型用途：
-    1. 多步骤任务中保存中间结果
-    2. 工具调用链的上下文传递
-    3. Agent 的当前意图/计划
-
-    特点：纯内存级，不持久化，TTL 自动过期
-    """
-
-    @abstractmethod
-    async def get_state(
-        self, conversation_id: int, key: str
-    ) -> Optional[Any]:
-        """获取工作记忆中的某个状态"""
-        ...
-
-    @abstractmethod
-    async def set_state(
-        self,
-        conversation_id: int,
-        key: str,
-        value: Any,
-        ttl: Optional[int] = None,
-    ) -> None:
-        """设置工作记忆中的状态，支持可选 TTL"""
-        ...
-
-    @abstractmethod
-    async def get_all_states(
-        self, conversation_id: int
-    ) -> Dict[str, Any]:
-        """获取当前任务的所有中间状态"""
-        ...
-
-    @abstractmethod
-    async def clear(self, conversation_id: int) -> None:
-        """清除指定任务的工作记忆"""
-        ...

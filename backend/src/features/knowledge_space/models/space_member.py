@@ -91,45 +91,6 @@ class SpaceMember(BaseModel):
         """获取自定义权限"""
         return self.custom_permissions or {}
 
-    def set_custom_permission(self, resource: str, action: str, allowed: bool) -> None:
-        """
-        设置自定义权限
-
-        Args:
-            resource: 资源类型（spaces, knowledge_bases, documents 等）
-            action: 操作类型（create, read, update, delete 等）
-            allowed: 是否允许
-        """
-        perms = {**(self.custom_permissions or {})}
-        if resource not in perms:
-            perms[resource] = {}
-        else:
-            perms[resource] = {**perms[resource]}
-        perms[resource][action] = allowed
-        self.custom_permissions = perms
-
-    def remove_custom_permission(self, resource: str, action: str = None) -> None:
-        """
-        移除自定义权限
-
-        Args:
-            resource: 资源类型
-            action: 操作类型（如果为 None，移除整个资源的权限）
-        """
-        if not self.custom_permissions:
-            return
-        perms = {**self.custom_permissions}
-        if resource in perms:
-            if action is None:
-                del perms[resource]
-            else:
-                perms[resource] = {**perms[resource]}
-                perms[resource].pop(action, None)
-        self.custom_permissions = perms
-
-    def clear_custom_permissions(self) -> None:
-        """清除所有自定义权限"""
-        self.custom_permissions = None
 
     # ========== 状态检查方法 ==========
 
@@ -141,9 +102,6 @@ class SpaceMember(BaseModel):
         """检查是否待接受邀请"""
         return self.status == MemberStatus.PENDING
 
-    def is_suspended(self) -> bool:
-        """检查是否已暂停"""
-        return self.status == MemberStatus.SUSPENDED
 
     # ========== 角色检查方法 ==========
 
@@ -155,9 +113,6 @@ class SpaceMember(BaseModel):
         """检查是否是编辑或更高权限"""
         return self.role in (SpaceRole.ADMIN, SpaceRole.EDITOR)
 
-    def is_viewer_or_above(self) -> bool:
-        """检查是否是查看者或更高权限"""
-        return self.role in (SpaceRole.ADMIN, SpaceRole.EDITOR, SpaceRole.VIEWER)
 
     # ========== 状态变更方法 ==========
 
@@ -180,17 +135,6 @@ class SpaceMember(BaseModel):
         """设置角色"""
         self.role = role
 
-    def promote_to_editor(self) -> None:
-        """晋升为编辑"""
-        self.role = SpaceRole.EDITOR
-
-    def promote_to_admin(self) -> None:
-        """晋升为管理员"""
-        self.role = SpaceRole.ADMIN
-
-    def demote_to_viewer(self) -> None:
-        """降级为查看者"""
-        self.role = SpaceRole.VIEWER
 
     # ========== 邀请方法 ==========
 

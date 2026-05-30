@@ -329,17 +329,6 @@ class FileValidator:
 
         return info
 
-    def calculate_hash(self, content: bytes) -> str:
-        """
-        计算文件 SHA256 哈希值
-
-        Args:
-            content: 文件内容
-
-        Returns:
-            十六进制哈希字符串
-        """
-        return hashlib.sha256(content).hexdigest()
 
 
 # 全局验证器实例

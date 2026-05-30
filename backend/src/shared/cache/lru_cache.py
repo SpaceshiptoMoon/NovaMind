@@ -137,35 +137,6 @@ class LRUCache(Generic[T]):
                 return True
             return False
 
-    def clear(self) -> None:
-        """清空缓存"""
-        with self._lock:
-            self._cache.clear()
-            self._hits = 0
-            self._misses = 0
-
-    def cleanup_expired(self) -> int:
-        """
-        清理过期缓存
-
-        Returns:
-            清理的条目数
-        """
-        with self._lock:
-            now = time.time()
-            expired_keys = [
-                key for key, entry in self._cache.items()
-                if now > entry.expires_at
-            ]
-
-            for key in expired_keys:
-                del self._cache[key]
-
-            if expired_keys:
-                logger.debug("清理过期缓存", count=len(expired_keys))
-
-            return len(expired_keys)
-
     @property
     def stats(self) -> Dict[str, Any]:
         """获取缓存统计信息"""

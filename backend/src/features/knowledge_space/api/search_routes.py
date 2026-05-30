@@ -6,7 +6,7 @@
 """
 
 from typing import Annotated
-from fastapi import APIRouter, Depends, Request, Body, Path
+from fastapi import APIRouter, Depends, Request, Body, Path, UploadFile, File, Query
 
 from src.core.database.database import get_db
 from src.setting.yaml_config import get_config
@@ -144,6 +144,37 @@ async def search(
         answer_model=result.get("answer_model"),
         answer_elapsed_ms=result.get("answer_elapsed_ms"),
         rewritten_queries=result.get("rewritten_queries"),
+    )
+
+
+@router.post(
+    "/image",
+    response_model=SearchResponse,
+    summary="以图搜图",
+    description="上传图片搜索相似图片（需要空间配置多模态嵌入模型）",
+)
+async def image_search(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    image: UploadFile = File(..., description="查询图片"),
+    top_k: Annotated[int, Query(ge=1, le=100)] = 10,
+    score_threshold: Annotated[float, Query(ge=0, le=1)] = 0.0,
+    user_id: int = Depends(get_current_user_id),
+    validated: tuple = Depends(validate_space_access),
+    search_service: SearchService = Depends(get_search_service),
+):
+    """以图搜图"""
+    image_data = await image.read()
+    if not image_data:
+        raise ValueError("图片文件为空")
+
+    return await search_service.image_search(
+        space_id=space_id,
+        kb_id=kb_id,
+        user_id=user_id,
+        image_data=image_data,
+        top_k=top_k,
+        score_threshold=score_threshold,
     )
 
 

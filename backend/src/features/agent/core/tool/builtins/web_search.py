@@ -6,7 +6,7 @@
 import json
 from typing import Any, Dict, List
 
-from src.features.agent.tools.base import BaseTool
+from src.features.agent.core.tool.base import BaseTool
 from src.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -29,17 +29,27 @@ class WebSearchTool(BaseTool):
                 "type": "function",
                 "function": {
                     "name": "web_search",
-                    "description": "使用搜索引擎搜索互联网信息，返回相关网页标题、链接和摘要。",
+                    "description": (
+                        "Search the web using a search engine. Returns page titles, URLs, and snippets.\n\n"
+                        "WHEN TO USE:\n"
+                        "- User asks about current events, news, or recent information\n"
+                        "- You need to verify a fact or find up-to-date data\n"
+                        "- User explicitly asks you to search the internet\n\n"
+                        "TIPS:\n"
+                        "- Use specific, targeted queries for better results\n"
+                        "- If the first search doesn't find what you need, try different keywords\n"
+                        "- You can search multiple times with different queries for comprehensive coverage"
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": "搜索查询文本",
+                                "description": "Search query text",
                             },
                             "max_results": {
                                 "type": "integer",
-                                "description": "最大返回结果数量，默认 5",
+                                "description": "Maximum number of results to return (default 5)",
                                 "default": 5,
                             },
                         },
@@ -96,4 +106,18 @@ class WebSearchTool(BaseTool):
             return json.dumps({"error": f"搜索失败：{str(e)}"}, ensure_ascii=False)
 
     def get_system_prompt_fragment(self) -> str:
-        return "你可以使用 web_search 工具搜索互联网信息。当用户的问题需要最新的网络信息时使用此工具。"
+        return (
+            "## Web Search\n"
+            "Use web_search when:\n"
+            "- User asks about current events, news, or recent information\n"
+            "- You need facts that may have changed since your training data\n"
+            "- User explicitly asks you to search the internet\n"
+            "- You need to verify a claim about current versions, prices, or status\n\n"
+            "Do NOT search for things you already know with high confidence.\n\n"
+            "Search strategy:\n"
+            "- Craft specific, targeted queries for better results\n"
+            "- If the first search returns poor results, refine keywords and retry\n"
+            "- For complex questions, search multiple times with different queries\n"
+            "- Cross-reference results when accuracy matters\n\n"
+            "Always cite your sources when presenting search results to the user."
+        )

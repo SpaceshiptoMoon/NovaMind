@@ -34,3 +34,35 @@ class ResumeParseError(AppError):
             message=f"简历解析失败: {detail}",
             code="PARSE_ERROR",
         )
+
+
+class InvalidFileTypeError(AppError):
+    """不支持的文件格式"""
+    _serializable_attrs: ClassVar[tuple[str, ...]] = ("file_type",)
+
+    def __init__(self, file_type: str, allowed: str):
+        super().__init__(
+            message=f"不支持的文件格式: {file_type}，仅支持 {allowed}",
+            code="INVALID_FILE_TYPE",
+        )
+        self.file_type = file_type
+
+
+class InvalidConfigError(AppError):
+    """配置参数校验失败"""
+
+    def __init__(self, detail: str):
+        super().__init__(
+            message=detail,
+            code="INVALID_CONFIG",
+        )
+
+
+class FileSizeExceededError(AppError):
+    """文件大小超限"""
+
+    def __init__(self, max_size_mb: int):
+        super().__init__(
+            message=f"文件大小超过限制 ({max_size_mb}MB)",
+            code="FILE_SIZE_EXCEEDED",
+        )

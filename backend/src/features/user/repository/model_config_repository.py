@@ -23,6 +23,8 @@ MODEL_TYPE_MAP = {
     "llm": ModelType.LLM,
     "embedding": ModelType.EMBEDDING,
     "rerank": ModelType.RERANK,
+    "vlm": ModelType.VLM,
+    "multimodal_embedding": ModelType.MULTIMODAL_EMBEDDING,
 }
 
 # 模型类型枚举到字符串的映射
@@ -30,6 +32,8 @@ MODEL_TYPE_STR = {
     ModelType.LLM: "llm",
     ModelType.EMBEDDING: "embedding",
     ModelType.RERANK: "rerank",
+    ModelType.VLM: "vlm",
+    ModelType.MULTIMODAL_EMBEDDING: "multimodal_embedding",
 }
 
 

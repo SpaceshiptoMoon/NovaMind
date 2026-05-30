@@ -28,6 +28,7 @@ from src.shared.ai_models.rerank import BaseRerank, create_rerank_client
 from src.shared.cache.redis_client import get_redis_client
 from src.core.middleware.structured_logging import get_logger
 from src.features.knowledge_space.api.exceptions import (
+    SpaceNotFoundError,
     KnowledgeBaseNotFoundError,
     KnowledgeBaseAccessDeniedError,
     SpaceAccessDeniedError,
@@ -40,10 +41,12 @@ from src.features.knowledge_space.api.exceptions import (
 from src.features.knowledge_space.schemas.search_schema import (
     SEARCH_MODE_FALLBACK,
     SearchRequest,
+    SearchResponse,
+    SearchResult,
     LLMConfig,
     QueryRewriteConfig,
 )
-from src.features.knowledge_space.models.knowledge_space import SpaceVisibility
+from src.features.knowledge_space.models.knowledge_space import SpaceVisibility, KnowledgeSpace
 
 
 # 默认配置常量
@@ -220,14 +223,12 @@ class SearchService:
             context = "\n\n".join(context_parts)
 
             # 构建提示词
-            prompt = f"""请基于以下检索到的文档内容回答用户问题。
-
-文档内容：
-{context}
-
-用户问题：{query}
-
-请用中文给出准确、简洁的回答，回答时请标注引用的文档编号。"""
+            from src.shared.prompts.templates import PromptTemplate, PromptManager
+            prompt = PromptManager.format_prompt(
+                PromptTemplate.SEARCH_ANSWER.value,
+                context=context,
+                query=query,
+            )
 
             # 调用 LLM 生成回答
             answer = await llm_client.generate_text(
@@ -1088,3 +1089,100 @@ class SearchService:
 
         # 返回知识库配置的可用模式
         return kb.get_available_search_modes()
+
+    async def image_search(
+        self,
+        space_id: int,
+        kb_id: int,
+        user_id: int,
+        image_data: bytes,
+        top_k: int = 10,
+        score_threshold: float = 0.0,
+    ):
+        """以图搜图：使用图片向量搜索相似图片"""
+        from src.shared.ai_models.embedding import BaseMultimodalEmbedding
+
+        # 1. 验证空间和知识库
+        space = await self.session.get(KnowledgeSpace, space_id)
+        if not space:
+            raise SpaceNotFoundError(space_id)
+        kb = await self.kb_repo.get_by_id(kb_id)
+        if not kb or kb.space_id != space_id:
+            raise KnowledgeBaseNotFoundError(kb_id)
+
+        # 2. 获取多模态嵌入配置（多模态空间从 config.embedding 读取，旧空间兼容 config.multimodal_embedding）
+        space_config = space.get_config()
+        space_type = space_config.get("space_type", "text")
+
+        if space_type == "multimodal":
+            model_name = (space_config.get("embedding") or {}).get("model")
+        else:
+            mm_config = space_config.get("multimodal_embedding")
+            model_name = mm_config.get("model") if mm_config else None
+
+        if not model_name:
+            raise ValueError("该空间未配置多模态嵌入模型，无法进行图片搜索")
+
+        # 3. 获取多模态嵌入客户端
+        client = await self.model_config_service.get_multimodal_embedding_client_by_model(
+            user_id, model_name
+        )
+        if not isinstance(client, BaseMultimodalEmbedding):
+            raise ValueError(f"模型 {model_name} 不支持图片嵌入")
+
+        # 4. 生成查询向量
+        query_vector = await client.generate_image_embedding(image_data)
+
+        # 5. ES 图片向量搜索
+        raw_results = await self.es_client.image_vector_search(
+            space_id=space_id,
+            query_vector=query_vector,
+            top_k=top_k,
+            kb_id=kb_id,
+        )
+
+        # 6. 构建搜索结果
+        results = []
+        for hit in raw_results:
+            score = hit.get("_score", 0)
+            if score_threshold > 0 and score < score_threshold:
+                continue
+
+            # 为图片生成 presigned URL
+            image_url = hit.get("image_url", "")
+            if image_url:
+                try:
+                    minio_client = await self._get_minio_client()
+                    image_url = await minio_client.get_file_url(
+                        minio_client.default_bucket, image_url, 3600
+                    )
+                except Exception:
+                    pass
+
+            results.append(SearchResult(
+                chunk_id=hit.get("chunk_id", ""),
+                document_id=hit.get("document_id", 0),
+                kb_id=hit.get("kb_id", kb_id),
+                content=hit.get("content", ""),
+                score=score,
+                chunk_index=0,
+                metadata=hit.get("metadata"),
+                file_info=hit.get("file_info"),
+                image_url=image_url,
+                chunk_type=hit.get("chunk_type", "image"),
+            ))
+
+        return SearchResponse(
+            results=results,
+            total=len(results),
+            query="[图片搜索]",
+            search_mode="image_vector",
+            original_mode="image_vector",
+            top_k=top_k,
+            elapsed_ms=0,
+        )
+
+    async def _get_minio_client(self):
+        """获取 MinIO 客户端"""
+        from src.shared.clients import ClientFactory
+        return await ClientFactory.get_minio_client()

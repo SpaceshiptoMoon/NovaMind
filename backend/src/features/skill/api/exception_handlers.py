@@ -14,6 +14,7 @@ from src.features.skill.exceptions import (
     SkillNotInstalledError,
     InvalidSkillFormatError,
     SkillReviewRejectedError,
+    SkillFileSizeExceededError,
 )
 
 
@@ -28,5 +29,6 @@ def setup_skill_exception_handlers(app: FastAPI) -> None:
         SkillNotInstalledError: 404,
         InvalidSkillFormatError: 422,
         SkillReviewRejectedError: 422,
+        SkillFileSizeExceededError: 413,
         SkillError: 500,
     })

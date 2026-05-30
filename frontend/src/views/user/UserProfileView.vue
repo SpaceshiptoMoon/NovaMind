@@ -276,27 +276,27 @@ async function handlePasswordSubmit() {
 
 <style scoped>
 .user-profile-view {
-  padding: 20px;
+  padding: var(--space-5);
   max-width: 800px;
   margin: 0 auto;
 }
 
 .profile-card {
-  border-radius: 10px;
+  border-radius: var(--radius-xl);
 }
 
 .profile-content {
-  padding: 10px 0;
+  padding: var(--space-3) 0;
 }
 
 .info-section {
-  margin-bottom: 24px;
+  margin-bottom: var(--space-6);
 }
 
 .info-row {
   display: flex;
   align-items: center;
-  padding: 12px 0;
+  padding: var(--space-3) 0;
   border-bottom: 1px solid var(--color-border-light);
 }
 
@@ -306,20 +306,20 @@ async function handlePasswordSubmit() {
 
 .info-label {
   width: 100px;
-  color: #5C5C5C;
-  font-size: 14px;
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
 }
 
 .info-value {
   flex: 1;
-  color: #1A1A1A;
-  font-size: 14px;
+  color: var(--color-text);
+  font-size: var(--text-base);
 }
 
 .action-buttons {
   display: flex;
-  gap: 12px;
-  padding-top: 16px;
-  border-top: 1px solid #E5E2DE;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border-light);
 }
 </style>

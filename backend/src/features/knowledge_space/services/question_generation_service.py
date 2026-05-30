@@ -14,11 +14,11 @@ import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.shared.ai_models.llm import BaseLLM
+from src.shared.prompts import PromptTemplate, PromptManager
 from src.features.user.services.model_config_service import ModelConfigService
 from src.features.knowledge_space.schemas.knowledge_base_schema import (
     QuestionGenerationConfig,
     QuestionLLMConfig,
-    DEFAULT_QUESTION_PROMPT,
 )
 from src.core.middleware.structured_logging import get_logger
 from src.features.knowledge_space.api.exceptions import (
@@ -450,12 +450,17 @@ category 可选值: factual(事实性), conceptual(概念性), procedural(操作
         Returns:
             构建好的提示词
         """
-        # 获取模板
-        template = self.config.prompt_template or DEFAULT_QUESTION_PROMPT
-
-        # 替换变量
-        prompt = template.replace("{{content}}", chunk_content[:3000])
-        prompt = prompt.replace("{{count}}", str(self.config.max_questions_per_chunk))
+        # 获取模板（用户自定义模板使用 .format()，默认模板使用 PromptManager）
+        if self.config.prompt_template:
+            template = self.config.prompt_template
+            prompt = template.replace("{{content}}", chunk_content[:3000])
+            prompt = prompt.replace("{{count}}", str(self.config.max_questions_per_chunk))
+        else:
+            prompt = PromptManager.format_prompt(
+                PromptTemplate.KB_DEFAULT_QUESTION.value,
+                content=chunk_content[:3000],
+                count=str(self.config.max_questions_per_chunk),
+            )
 
         # 注意：不再注入文档标题到提示词中
         # 原因：文档标题可能包含人名等实体信息（如"***REMOVED***_简历"），

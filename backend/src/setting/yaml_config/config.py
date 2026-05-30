@@ -162,6 +162,8 @@ class ModelConfigs:
     llm: List[ModelConfigItem] = field(default_factory=list)
     embedding: List[ModelConfigItem] = field(default_factory=list)
     rerank: List[ModelConfigItem] = field(default_factory=list)
+    vlm: List[ModelConfigItem] = field(default_factory=list)
+    multimodal_embedding: List[ModelConfigItem] = field(default_factory=list)
 
 
 @dataclass
@@ -291,6 +293,10 @@ class AgentConfig:
     default_temperature: float = 0.7
     max_context_tokens: int = 8000
     mcp_connection_timeout: int = 30
+    tool_result_max_chars: int = 50_000
+    tool_result_preview_threshold: int = 10_000
+    tool_result_preview_chars: int = 1_500
+    tool_result_turn_budget: int = 100_000
 
 
 @dataclass

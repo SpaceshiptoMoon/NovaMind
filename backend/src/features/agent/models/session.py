@@ -1,7 +1,7 @@
 """
 Agent 会话模型
 """
-from sqlalchemy import Column, BigInteger, String, Text, Integer, ForeignKey, Index
+from sqlalchemy import Column, BigInteger, String, Integer, ForeignKey, Index
 
 from src.core.database.base import BaseModel
 
@@ -15,7 +15,6 @@ class AgentSession(BaseModel):
     agent_id = Column(BigInteger, ForeignKey("agent_definitions.id"), nullable=False, comment="Agent ID")
     session_id = Column(String(36), nullable=False, unique=True, comment="会话 UUID")
     title = Column(String(500), nullable=True, comment="会话标题")
-    summary = Column(Text, nullable=True, comment="会话摘要（上下文压缩用）")
     status = Column(String(20), default="active", comment="状态：active/archived/deleted")
     message_count = Column(Integer, default=0, comment="消息数量")
     total_tokens_used = Column(Integer, default=0, comment="总 token 使用量")

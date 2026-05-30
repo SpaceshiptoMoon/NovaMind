@@ -103,8 +103,8 @@
 
     <!-- 安装对话框 -->
     <el-dialog v-model="installDialogVisible" title="安装到 Agent" width="460px">
-      <p style="margin-bottom: 16px">选择要安装此技能的 Agent：</p>
-      <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 16px">
+      <p class="install-hint">选择要安装此技能的 Agent：</p>
+      <p class="install-desc">
         安装后，技能的指令和声明的工具将自动注入 Agent 的 enabled_tools 中。
       </p>
       <div v-loading="agentsLoading" class="agent-select-list">
@@ -321,67 +321,68 @@ async function handleInstall() {
 .skill-detail {
   position: absolute;
   inset: 0;
-  padding: 24px;
+  padding: var(--space-6);
   overflow-y: auto;
 }
 
 .detail-header {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .detail-meta {
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 24px;
-  margin-bottom: 24px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
 }
 
 .meta-top {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 12px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
 .skill-icon {
-  font-size: 40px;
+  font-size: var(--text-4xl);
 }
 
 .meta-info h1 {
-  font-size: 22px;
-  margin: 0 0 8px;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  margin: 0 0 var(--space-2);
 }
 
 .meta-tags {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   align-items: center;
   flex-wrap: wrap;
 }
 
 .meta-stat {
-  font-size: 12px;
-  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
 }
 
 .skill-description {
   color: var(--color-text-secondary);
-  margin: 0 0 16px;
-  line-height: 1.6;
+  margin: 0 0 var(--space-4);
+  line-height: var(--leading-relaxed);
 }
 
 .review-notice {
-  background: var(--color-bg);
+  background: var(--color-bg-card-elevated);
   border-radius: var(--radius-md);
-  padding: 12px 16px;
-  margin-bottom: 16px;
-  font-size: 13px;
-  line-height: 1.6;
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
 }
 
 .review-line {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .review-line:last-child {
@@ -389,7 +390,7 @@ async function handleInstall() {
 }
 
 .review-label {
-  font-weight: 500;
+  font-weight: var(--weight-medium);
   color: var(--color-text-secondary);
 }
 
@@ -401,66 +402,73 @@ async function handleInstall() {
 
 .meta-stats {
   display: flex;
-  gap: 16px;
-  font-size: 14px;
-  color: var(--color-text-secondary);
+  gap: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
 }
 
 .meta-stats span {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .action-buttons {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
+/* ===== Detail Sections ===== */
 .detail-section {
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 20px;
-  margin-bottom: 16px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
+  margin-bottom: var(--space-4);
 }
 
 .detail-section h3 {
-  font-size: 16px;
-  margin: 0 0 12px;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--color-primary);
 }
 
 .tool-list {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .markdown-preview {
-  background: var(--color-bg);
+  background: var(--color-bg-card-elevated);
   border-radius: var(--radius-md);
-  padding: 16px;
+  padding: var(--space-4);
   overflow-x: auto;
 }
 
 .markdown-preview pre {
   white-space: pre-wrap;
-  font-size: 13px;
-  line-height: 1.6;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
   margin: 0;
 }
 
+/* ===== Reviews ===== */
 .review-form {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--color-border);
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border-light);
 }
 
 .review-item {
-  padding: 12px 0;
+  padding: var(--space-3) 0;
   border-bottom: 1px solid var(--color-border-light);
 }
 
@@ -472,20 +480,32 @@ async function handleInstall() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .review-user {
-  font-weight: 500;
+  font-weight: var(--weight-medium);
+  font-size: var(--text-sm);
 }
 
 .review-content {
-  font-size: 14px;
-  color: var(--color-text-secondary);
-  margin: 4px 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  margin: var(--space-1) 0 0;
 }
 
-/* ==================== Agent 选择列表 ==================== */
+/* ===== Install Dialog ===== */
+.install-hint {
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.install-desc {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-4);
+}
 
 .agent-select-list {
   max-height: 320px;
@@ -495,13 +515,13 @@ async function handleInstall() {
 .agent-select-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
+  gap: var(--space-3);
+  padding: var(--space-3);
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-lg);
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--transition-fast);
 }
 
 .agent-select-item:hover {
@@ -522,7 +542,8 @@ async function handleInstall() {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
   color: var(--color-primary);
   flex-shrink: 0;
 }
@@ -534,8 +555,8 @@ async function handleInstall() {
 
 .agent-name {
   display: block;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -543,8 +564,8 @@ async function handleInstall() {
 
 .agent-desc {
   display: block;
-  font-size: 12px;
-  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -552,7 +573,7 @@ async function handleInstall() {
 
 .check-icon {
   color: var(--color-primary);
-  font-size: 18px;
+  font-size: var(--text-lg);
   flex-shrink: 0;
 }
 </style>

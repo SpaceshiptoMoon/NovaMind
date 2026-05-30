@@ -30,12 +30,21 @@ class SpaceEmbeddingConfig(BaseModel):
     normalize: bool = Field(default=True, description="是否归一化")
 
 
+class SpaceMultimodalEmbeddingConfig(BaseModel):
+    """空间级多模态嵌入配置（用于以图搜图）"""
+    model: Optional[str] = Field(default=None, description="多模态嵌入模型名称")
+    dimension: Optional[int] = Field(default=None, ge=1, description="向量维度（后端自动检测）")
+
+
 class SpaceConfig(BaseModel):
     """空间配置（对应模型中的 config JSON 字段）"""
+    space_type: str = Field(default="text", pattern="^(text|multimodal)$", description="空间类型: text-文本, multimodal-多模态(图片)")
     description: Optional[str] = Field(default="", max_length=2000, description="空间描述")
     tags: List[str] = Field(default_factory=list, max_length=20, description="标签（最多20个）")
     # Embedding 配置（空间级别，所有知识库共享）
     embedding: Optional[SpaceEmbeddingConfig] = Field(default=None, description="Embedding 配置")
+    # 多模态嵌入配置（用于以图搜图，旧空间兼容保留）
+    multimodal_embedding: Optional[SpaceMultimodalEmbeddingConfig] = Field(default=None, description="多模态嵌入配置")
     # 存储配置
     storage: Optional[Dict[str, Any]] = Field(None, description="存储配置")
     # UI 配置
@@ -117,9 +126,11 @@ class SpaceListResponse(BaseModel):
 
 class SpaceConfigUpdate(BaseModel):
     """空间配置部分更新请求（深度合并，只传要改的字段）"""
+    space_type: Optional[str] = Field(None, pattern="^(text|multimodal)$", description="空间类型")
     description: Optional[str] = Field(None, max_length=2000, description="空间描述")
     tags: Optional[List[str]] = Field(None, max_length=20, description="标签")
     embedding: Optional[SpaceEmbeddingConfig] = Field(None, description="Embedding 配置")
+    multimodal_embedding: Optional[SpaceMultimodalEmbeddingConfig] = Field(None, description="多模态嵌入配置")
     defaults: Optional[Dict[str, Any]] = Field(None, description="默认配置")
     limits: Optional[Dict[str, Any]] = Field(None, description="限制配置")
 

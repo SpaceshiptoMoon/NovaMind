@@ -1,36 +1,58 @@
 <template>
   <div class="workspace-layout">
-    <!-- Collapsible Sidebar -->
-    <aside class="workspace-sidebar" :class="{ collapsed: sidebarCollapsed }">
-      <!-- Header: channel switcher + new button -->
+    <a href="#workspace-main" class="skip-link">跳到主内容</a>
+
+    <!-- Gap div: 在文档流中占位，防止 fixed 侧边栏遮挡主内容 -->
+    <div class="sidebar-gap" :class="{ collapsed: sidebarCollapsed }"></div>
+
+    <!-- Fixed sidebar -->
+    <aside class="workspace-sidebar" :class="{ collapsed: sidebarCollapsed }" role="navigation" aria-label="工作台侧边栏">
       <div class="sidebar-header">
-        <el-select
-          v-model="activeChannelKey"
-          class="channel-select"
-          @change="handleChannelChange"
-        >
-          <el-option
-            v-for="ch in channels"
-            :key="ch.key"
-            :label="ch.label"
-            :value="ch.key"
+        <!-- 展开模式：频道下拉 + 新建按钮 -->
+        <template v-if="!sidebarCollapsed">
+          <el-select
+            v-model="activeChannelKey"
+            class="channel-select"
+            @change="handleChannelChange"
           >
-            <div class="channel-option">
-              <NavIcon :name="ch.icon" :size="16" />
-              <span>{{ ch.label }}</span>
-            </div>
-          </el-option>
-          <template #prefix>
-            <NavIcon :name="activeChannel.icon" :size="16" />
-          </template>
-        </el-select>
-        <button class="new-btn" @click="handleNew">
-          <el-icon :size="14"><Plus /></el-icon>
-        </button>
+            <el-option
+              v-for="ch in channels"
+              :key="ch.key"
+              :label="ch.label"
+              :value="ch.key"
+            >
+              <div class="channel-option">
+                <NavIcon :name="ch.icon" :size="16" />
+                <span>{{ ch.label }}</span>
+              </div>
+            </el-option>
+            <template #prefix>
+              <NavIcon :name="activeChannel.icon" :size="16" />
+            </template>
+          </el-select>
+          <button class="new-btn" @click="handleNew">
+            <el-icon :size="14"><Plus /></el-icon>
+          </button>
+        </template>
+        <!-- 折叠模式：频道 icon 列表 -->
+        <template v-else>
+          <div class="channel-icons">
+            <button
+              v-for="ch in channels"
+              :key="ch.key"
+              class="channel-icon-btn"
+              :class="{ active: activeChannelKey === ch.key }"
+              :title="ch.label"
+              @click="switchChannel(ch.key)"
+            >
+              <NavIcon :name="ch.icon" :size="20" />
+            </button>
+          </div>
+        </template>
       </div>
 
       <!-- Sidebar content -->
-      <div class="sidebar-body">
+      <div class="sidebar-body" v-show="!sidebarCollapsed">
         <!-- Chat: session list -->
         <template v-if="activeChannelKey === 'chat'">
           <div class="list-area">
@@ -96,7 +118,13 @@
     </aside>
 
     <!-- Collapse toggle -->
-    <button class="sidebar-toggle" :class="{ 'is-collapsed': sidebarCollapsed }" @click="sidebarCollapsed = !sidebarCollapsed">
+    <button
+      class="sidebar-toggle"
+      :class="{ 'is-collapsed': sidebarCollapsed }"
+      @click="sidebarCollapsed = !sidebarCollapsed"
+      :aria-label="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+      :aria-expanded="!sidebarCollapsed"
+    >
       <el-icon :size="14">
         <DArrowLeft v-if="!sidebarCollapsed" />
         <DArrowRight v-else />
@@ -104,7 +132,7 @@
     </button>
 
     <!-- Main content -->
-    <main class="workspace-main">
+    <main class="workspace-main" id="workspace-main" role="main">
       <router-view />
     </main>
   </div>
@@ -147,6 +175,11 @@ const activeChannel = computed(() =>
 
 const currentResearchSpaceId = computed(() => String(route.params.spaceId ?? ''))
 const researchSpaces = computed(() => spaceStore.spaces)
+
+function switchChannel(key: string) {
+  activeChannelKey.value = key
+  handleChannelChange(key)
+}
 
 // Sync activeChannelKey with route
 function syncChannelFromRoute() {
@@ -241,21 +274,38 @@ onMounted(async () => {
 }
 
 /* ========================================
-   Sidebar
+   Sidebar Gap — 在文档流中占位
+   ======================================== */
+.sidebar-gap {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  transition: width var(--transition-slow);
+}
+
+.sidebar-gap.collapsed {
+  width: var(--sidebar-width-collapsed);
+}
+
+/* ========================================
+   Sidebar — fixed 覆盖层
    ======================================== */
 .workspace-sidebar {
-  width: 260px;
+  position: fixed;
+  top: var(--header-height);
+  left: 0;
+  bottom: 0;
+  width: var(--sidebar-width);
+  z-index: var(--z-raised);
+  background: var(--color-bg-sidebar);
   border-right: 1px solid var(--color-border-light);
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
-  background: var(--color-bg-card);
   overflow: hidden;
-  transition: width 250ms ease, border-color 250ms ease;
+  transition: width var(--transition-slow);
 }
 
 .workspace-sidebar.collapsed {
-  width: 0;
+  width: var(--sidebar-width-collapsed);
   border-right-color: transparent;
 }
 
@@ -304,6 +354,42 @@ onMounted(async () => {
   background: var(--color-primary-muted);
 }
 
+/* ========================================
+   Channel Icon Buttons (collapsed mode)
+   ======================================== */
+.channel-icons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  width: 100%;
+}
+
+.channel-icon-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.channel-icon-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.channel-icon-btn.active {
+  background: var(--color-primary-muted);
+  color: var(--color-primary);
+}
+
 /* Sidebar body */
 .sidebar-body {
   flex: 1;
@@ -327,7 +413,7 @@ onMounted(async () => {
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: background var(--transition-fast);
-  margin-bottom: 2px;
+  margin-bottom: var(--space-1);
   position: relative;
 }
 
@@ -343,10 +429,10 @@ onMounted(async () => {
   content: '';
   position: absolute;
   left: 0;
-  top: 6px;
-  bottom: 6px;
+  top: var(--space-1);
+  bottom: var(--space-1);
   width: 3px;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   background: var(--color-primary);
 }
 
@@ -435,13 +521,13 @@ onMounted(async () => {
 }
 
 /* ========================================
-   Sidebar Toggle
+   Sidebar Toggle — fixed 定位
    ======================================== */
 .sidebar-toggle {
-  position: absolute;
+  position: fixed;
   top: 50%;
   transform: translateY(-50%);
-  z-index: 10;
+  z-index: var(--z-raised);
   width: 20px;
   height: 40px;
   display: flex;
@@ -453,8 +539,8 @@ onMounted(async () => {
   background: var(--color-bg-card);
   color: var(--color-text-muted);
   cursor: pointer;
-  transition: left 250ms ease;
-  left: 260px;
+  transition: left var(--transition-slow);
+  left: var(--sidebar-width);
 }
 
 .sidebar-toggle:hover {
@@ -463,7 +549,7 @@ onMounted(async () => {
 }
 
 .sidebar-toggle.is-collapsed {
-  left: 0;
+  left: var(--sidebar-width-collapsed);
 }
 
 /* ========================================
@@ -475,5 +561,47 @@ onMounted(async () => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+/* Skip link */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-primary);
+  color: #FFFFFF;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  z-index: var(--z-toast);
+  text-decoration: none;
+  transition: top var(--transition-fast);
+}
+
+.skip-link:focus {
+  top: var(--space-2);
+}
+
+/* Responsive: auto-collapse sidebar below 900px */
+@media (max-width: 900px) {
+  .sidebar-gap {
+    display: none;
+  }
+
+  .workspace-sidebar {
+    box-shadow: var(--shadow-lg);
+  }
+
+  .workspace-sidebar.collapsed {
+    box-shadow: none;
+  }
+
+  .sidebar-toggle {
+    left: 0;
+  }
+
+  .sidebar-toggle.is-collapsed {
+    left: 0;
+  }
 }
 </style>

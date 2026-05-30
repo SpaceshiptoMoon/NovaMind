@@ -15,6 +15,7 @@ from typing import Optional
 
 from src.core.middleware.structured_logging import get_logger
 from src.shared.ai_models.llm import BaseLLM
+from src.shared.prompts import PromptTemplate, PromptManager
 from src.features.app.schemas.resume_schema import (
     StructuredResume, ProbingPlan, KnowledgePoint, JDAnalysis,
 )
@@ -27,120 +28,6 @@ logger = get_logger(__name__)
 MAX_RETRIES = 3              # 主模型最大重试次数
 RETRY_BASE_DELAY = 2         # 指数退避基础延迟（秒）
 FALLBACK_MAX_RETRIES = 1     # 降级模型每个最多重试次数
-
-# ==================== Prompt 模板 ====================
-
-# 第一轮：基于知识点和简历背景提出初始问题
-FIRST_ROUND_PROMPT = """你同时扮演面试官和候选人两个角色，围绕候选人的「{kp_name}」经验提出第一个问题并回答。
-
-## 候选人简历摘要
-{resume_summary}
-
-## 当前知识点
-- 名称: {kp_name}
-- 类别: {kp_category}
-- 来源: {kp_source}
-{probing_chain_section}
-{jd_context_section}
-
-## 提问策略（按类别）
-
-### 如果类别是 project（项目深挖）
-围绕项目整体，从以下维度切入：
-- 架构与选型：为什么选择这个架构/技术栈？考虑过哪些替代方案？
-- 问题与挑战：遇到的最大技术挑战是什么？
-- 方案与方法：用什么技术解决了什么问题？为什么选这个技术？
-- 指标与验证：简历中的量化指标是怎么测出来的？用的什么测试工具？测试环境和流程是怎样的？有对比基线吗？数据采集方式是什么？
-- 反思与改进：如果重新设计会怎么做？
-
-### 如果类别是 tech_in_project（项目中的技术追问）
-围绕项目中使用的具体技术，必须关联项目实际场景：
-- 你在这个项目中用这个技术做了什么？解决什么问题？
-- 为什么选这个技术而不是其他方案？（对比权衡）
-- 使用过程中遇到什么坑？怎么解决的？
-- 如果业务量翻倍，这个技术方案还能撑住吗？
-
-### 如果类别是 fundamental（基础扎实度）
-验证底层理解：
-- 核心原理是什么？底层机制是怎样的？
-- 常见使用场景和最佳实践
-- 和同类技术的对比优劣势
-- 生产环境中的注意事项
-
-## 通用规则
-1. 面试官基于简历中该技术/项目的实际描述提出问题
-2. 候选人基于简历中描述的实际经验回答（不编造不夸大，没有涉及的内容如实说明）
-3. quality_score 表示回答深度（0-1）：纯理论回答 0.3-0.5，有项目经验佐证 0.6-0.8，有量化数据和深度分析 0.8-1.0
-4. 只输出 JSON
-
-输出 JSON 格式：
-{{
-  "question": "面试官的问题",
-  "answer": "候选人的回答",
-  "quality_score": 0.7
-}}
-"""
-
-# 后续轮：基于上一轮的回答进行追问深挖
-FOLLOW_UP_PROMPT = """你同时扮演面试官和候选人两个角色。基于上一轮候选人的回答，提出一个更深入的追问并回答。
-
-## 当前知识点
-- 名称: {kp_name}
-- 类别: {kp_category}
-
-## 上一轮 Q&A
-**Q**: {prev_question}
-**A**: {prev_answer}
-**评分**: {prev_score}
-
-## 追问规则
-1. 面试官必须针对上一轮回答中的具体内容进行追问，不要泛泛而问
-2. 追问方向（任选其一，选择最能深入挖掘的方向）：
-   - 回答中提到的技术细节：追问底层原理或实现机制
-   - 回答中提到的方案选择：追问为什么这样选，有没有考虑过其他方案
-   - 回答中提到的指标/数据：追问是怎么测的，对比基线是什么，测试方法论
-   - 回答中提到的挑战：追问具体怎么解决的，踩了什么坑
-   - 回答中的薄弱点：候选人回答模糊或浅显的地方，进一步追问
-3. 候选人基于简历中的实际经验回答（不编造不夸大）
-4. 如果上一轮回答已经很深入（score >= 0.8），追问可以转向相关联的延伸话题
-5. quality_score 表示本轮回答深度（0-1）：纯理论回答 0.3-0.5，有项目经验佐证 0.6-0.8，有量化数据和深度分析 0.8-1.0
-6. 只输出 JSON
-
-输出 JSON 格式：
-{{
-  "question": "面试官的追问",
-  "answer": "候选人的回答",
-  "quality_score": 0.7
-}}
-"""
-
-EVALUATION_PROMPT = """你是一个面试准备顾问。根据以下自动追问的 Q&A 记录，生成一份面向候选人的面试准备建议报告。
-
-## 候选人
-{name}
-
-## 追问记录摘要
-{qa_summary}
-
-请输出 Markdown 格式的报告，包含以下章节：
-
-## 面试准备建议
-
-### 项目经验准备
-（针对每个项目的追问表现，给出具体的准备建议：哪些问题回答得好可以重点展示，哪些问题需要补充准备）
-
-### 技术深度补充
-（追问中暴露的技术薄弱点，给出需要重点复习的知识点和学习建议）
-
-### 基础知识巩固
-（基础扎实度测试中表现不足的地方，给出需要巩固的方向）
-
-### 高频考点预测
-（基于简历和追问情况，预测面试中最可能被问到的问题 Top 5）
-
-### 表达建议
-（如何更好地用 STAR 法则描述项目经验，如何量化成果）
-"""
 
 
 class AutoProbingEngine:
@@ -265,7 +152,7 @@ class AutoProbingEngine:
         """对所有 KP 并行执行自问自答"""
         kps = sorted(probing_plan.knowledge_points, key=lambda k: k.probing_weight, reverse=True)
 
-        resume_summary = self._make_resume_summary(structured_resume)
+        resume_summary = structured_resume.resume_summary or self._make_resume_summary(structured_resume)
 
         async def _probe_one(kp: KnowledgePoint) -> dict:
             async with self._semaphore:
@@ -318,10 +205,12 @@ class AutoProbingEngine:
 
         try:
             # 第一轮：基于知识点和简历背景提出初始问题
-            first_prompt = FIRST_ROUND_PROMPT.format(
+            first_prompt = PromptManager.format_prompt(
+                PromptTemplate.RESUME_PROBE_FIRST_ROUND.value,
                 kp_name=kp.name,
                 kp_category=kp.category,
                 kp_source=kp.source,
+                kp_context=kp.context or "（无具体上下文）",
                 resume_summary=resume_summary,
                 probing_chain_section=probing_chain_section,
                 jd_context_section=jd_context_section,
@@ -343,7 +232,8 @@ class AutoProbingEngine:
             # 后续轮：逐轮基于上一轮回答追问
             for round_num in range(2, depth + 1):
                 prev = qa_pairs[-1]
-                follow_prompt = FOLLOW_UP_PROMPT.format(
+                follow_prompt = PromptManager.format_prompt(
+                    PromptTemplate.RESUME_PROBE_FOLLOW_UP.value,
                     kp_name=kp.name,
                     kp_category=kp.category,
                     prev_question=prev["question"],
@@ -402,7 +292,8 @@ class AutoProbingEngine:
 
         qa_summary = "\n".join(qa_summary_parts)
 
-        prompt = EVALUATION_PROMPT.format(
+        prompt = PromptManager.format_prompt(
+            PromptTemplate.RESUME_PROBE_EVALUATION.value,
             name=structured_resume.personal_info.name or "候选人",
             qa_summary=qa_summary,
         )

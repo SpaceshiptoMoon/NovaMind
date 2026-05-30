@@ -120,16 +120,15 @@ class ResultTruncationHook(ToolHook):
         return result
 
 
-class TimeoutHook(ToolHook):
-    """
-    超时控制钩子
+class ResultBudgetHook(ToolHook):
+    """结果预算钩子 — 标记超大结果，生成预览供 SSE/DB 使用
 
-    将工具定义中的 timeout_ms 注入上下文，
-    由执行器读取并设置 asyncio.wait_for 超时。
+    不截断 ToolResult.content（Layer 1 已处理），只在 metadata 中标记。
     """
 
-    def __init__(self, default_timeout_ms: int = 30000):
-        self._default_timeout = default_timeout_ms
+    def __init__(self, preview_threshold: int = 10_000, preview_chars: int = 1_500):
+        self._preview_threshold = preview_threshold
+        self._preview_chars = preview_chars
 
     async def before_execute(
         self,
@@ -137,7 +136,6 @@ class TimeoutHook(ToolHook):
         arguments: Dict[str, Any],
         context: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
-        context["_timeout_ms"] = tool.timeout_ms or self._default_timeout
         return None
 
     async def after_execute(
@@ -147,4 +145,14 @@ class TimeoutHook(ToolHook):
         result: ToolResult,
         context: Dict[str, Any],
     ) -> ToolResult:
+        if len(result.content) > self._preview_threshold:
+            preview = result.content[:self._preview_chars]
+            last_nl = preview.rfind("\n")
+            if last_nl > self._preview_chars // 2:
+                preview = preview[:last_nl + 1]
+            result.metadata["_oversized"] = True
+            result.metadata["_preview"] = preview
+            result.metadata["_original_length"] = len(result.content)
+        else:
+            result.metadata["_oversized"] = False
         return result

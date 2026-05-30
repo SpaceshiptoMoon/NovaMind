@@ -3,7 +3,7 @@
 """
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Query, Path, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, Query, Path, UploadFile, File
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +35,7 @@ from src.features.skill.schemas.skill_schema import (
 from src.features.skill.exceptions import (
     SkillNotFoundError,
     InvalidSkillFormatError,
+    SkillFileSizeExceededError,
 )
 
 router = APIRouter()
@@ -65,7 +66,7 @@ async def upload_skill(
 
     zip_bytes = await file.read()
     if len(zip_bytes) > MAX_ZIP_SIZE:
-        raise HTTPException(status_code=413, detail=f"ZIP 文件大小超过限制 ({MAX_ZIP_SIZE // 1024 // 1024}MB)")
+        raise SkillFileSizeExceededError(MAX_ZIP_SIZE // 1024 // 1024)
     return await service.upload_skill(user_id, zip_bytes)
 
 
@@ -86,7 +87,7 @@ async def update_skill_version(
 
     zip_bytes = await file.read()
     if len(zip_bytes) > MAX_ZIP_SIZE:
-        raise HTTPException(status_code=413, detail=f"ZIP 文件大小超过限制 ({MAX_ZIP_SIZE // 1024 // 1024}MB)")
+        raise SkillFileSizeExceededError(MAX_ZIP_SIZE // 1024 // 1024)
     return await service.update_skill_version(user_id, skill_id, zip_bytes)
 
 

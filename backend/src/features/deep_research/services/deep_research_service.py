@@ -40,6 +40,7 @@ from src.features.knowledge_space.schemas.search_schema import (
 from src.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
 from src.core.middleware.structured_logging import get_logger
 from src.shared.utils.heartbeat import stream_with_heartbeat
+from src.shared.prompts import PromptTemplate, PromptManager
 from src.features.deep_research.exceptions import (
     DeepResearchError,
     ResearchNotFoundError,
@@ -596,19 +597,10 @@ class DeepResearchService:
     async def _analyze_query(self, query: str, user_id: int = None, llm_model: str = None) -> str:
         """分析查询，提取研究主题"""
         safe_query = _sanitize_user_input(query)
-        prompt = f"""你是一个专业的研究主题分析师。请分析以下用户查询，提取一个简洁的研究主题。
-
-要求：
-1. 用一句话（不超过50字）概括研究主题
-2. 主题应准确反映查询的核心意图
-3. 使用正式、专业的表述
-4. 直接输出主题，不要其他解释
-
----用户查询开始---
-{safe_query}
----用户查询结束---
-
-研究主题："""
+        prompt = PromptManager.format_prompt(
+            PromptTemplate.RESEARCH_ANALYZE_QUERY.value,
+            query=safe_query,
+        )
 
         llm = await self._get_llm_client(user_id, llm_model)
         result = await llm.generate_text(
@@ -631,26 +623,12 @@ class DeepResearchService:
         """分解研究任务"""
         safe_query = _sanitize_user_input(query)
         safe_topic = _sanitize_user_input(research_topic)
-        prompt = f"""你是一个专业的研究任务规划师。请将以下研究主题分解为 {depth} 个具体的子任务。
-
-要求：
-1. 每个任务应可独立研究
-2. 任务之间应有逻辑顺序（先基础后深入）
-3. 返回 JSON 格式
-
-JSON 格式（直接输出 JSON，不要其他内容）：
-[
-  {{"task_id": "task_1", "description": "任务描述1", "priority": 1}},
-  {{"task_id": "task_2", "description": "任务描述2", "priority": 2}}
-]
-
-研究主题：{safe_topic}
----用户查询开始---
-{safe_query}
----用户查询结束---
-任务数量：{depth}
-
-请返回任务列表（JSON）："""
+        prompt = PromptManager.format_prompt(
+            PromptTemplate.RESEARCH_DECOMPOSE_TASKS.value,
+            research_topic=safe_topic,
+            query=safe_query,
+            depth=depth,
+        )
 
         llm = await self._get_llm_client(user_id, llm_model)
         result = await llm.generate_text(
@@ -1145,30 +1123,14 @@ JSON 格式（直接输出 JSON，不要其他内容）：
 
         safe_query = _sanitize_user_input(query)
         safe_topic = _sanitize_user_input(research_topic)
-        prompt = f"""你是一个专业的研究报告撰写专家。请基于以下信息，撰写一份深入、全面的研究报告。
-
----用户查询开始---
-{safe_query}
----用户查询结束---
-研究主题：{safe_topic}
-
-检索到的信息来源：
-{context}
-
-关键来源：
-{chr(10).join(f"- {s}" for s in key_sources) if key_sources else "无外部来源"}报告要求：
-1. 结构清晰，包含以下章节：
-   - 执行摘要（概述研究目的和主要发现）
-   - 背景介绍（研究背景和重要性）
-   - 主体内容（详细分析和发现，分点论述）
-   - 结论与建议（总结核心观点，提供实用建议）
-2. 严格基于检索到的信息，不编造内容
-3. 引用来源时标注（如 [来源1]、[来源2]）
-4. 使用正式、客观的学术语言
-5. 长度控制在 2000-3000 字
-6. 如信息不足，明确说明局限
-
-请撰写研究报告："""
+        key_sources_str = chr(10).join(f"- {s}" for s in key_sources) if key_sources else "无外部来源"
+        prompt = PromptManager.format_prompt(
+            PromptTemplate.RESEARCH_SYNTHESIZE_REPORT.value,
+            query=safe_query,
+            research_topic=safe_topic,
+            context=context,
+            key_sources=key_sources_str,
+        )
 
         llm = await self._get_llm_client(user_id, llm_model)
         report = await llm.generate_text(
@@ -1206,31 +1168,13 @@ JSON 格式（直接输出 JSON，不要其他内容）：
             self.logger.warning("research_topic sanitize 失败，使用原始值", topic=research_topic)
             safe_topic = research_topic or ""
         key_sources_str = chr(10).join(f"- {s}" for s in key_sources) if key_sources else "无外部来源"
-        prompt = f"""你是一个专业的研究报告撰写专家。请基于以下信息，撰写一份深入、全面的研究报告。
-
----用户查询开始---
-{safe_query}
----用户查询结束---
-研究主题：{safe_topic}
-
-检索到的信息来源：
-{context}
-
-关键来源：
-{key_sources_str}
-报告要求：
-1. 结构清晰，包含以下章节：
-   - 执行摘要（概述研究目的和主要发现）
-   - 背景介绍（研究背景和重要性）
-   - 主体内容（详细分析和发现，分点论述）
-   - 结论与建议（总结核心观点，提供实用建议）
-2. 严格基于检索到的信息，不编造内容
-3. 引用来源时标注（如 [来源1]、[来源2]）
-4. 使用正式、客观的学术语言
-5. 长度控制在 2000-3000 字
-6. 如信息不足，明确说明局限
-
-请撰写研究报告："""
+        prompt = PromptManager.format_prompt(
+            PromptTemplate.RESEARCH_SYNTHESIZE_REPORT_STREAM.value,
+            query=safe_query,
+            research_topic=safe_topic,
+            context=context,
+            key_sources=key_sources_str,
+        )
 
         llm = await self._get_llm_client(user_id, llm_model)
         async for chunk in llm.generate_text_stream(

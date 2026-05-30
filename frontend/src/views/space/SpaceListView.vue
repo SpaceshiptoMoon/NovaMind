@@ -830,7 +830,7 @@ onMounted(() => {
   padding: var(--space-3) var(--space-4);
   background: var(--color-danger-subtle);
   border-radius: var(--radius-lg);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  border: 1px solid var(--color-danger-subtle);
 }
 
 .batch-count {

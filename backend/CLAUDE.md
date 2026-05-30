@@ -1,343 +1,145 @@
-# CLAUDE.md
+# CLAUDE.md — Backend
 
-本文件为 Claude Code 提供项目指导。
+## 一、功能模块
 
----
+NovaMind 后端采用 DDD 分层架构，每个功能模块位于 `src/features/{module}/`，统一遵循 `api → services → repository → models → schemas` 结构。
 
-## 项目背景
+| 模块 | 路由前缀 | 功能 | 关键文件 |
+|------|---------|------|---------|
+| **user** | `/api/v1/user` | JWT 认证、Argon2 密码、角色管理、模型凭证 (AES-256 加密) | `user_routes.py`, `model_config_routes.py`, `auth_service.py` |
+| **knowledge_space** | `/api/v1/spaces` | Space→KB→Document 三级层次、RBAC (VIEWER/EDITOR/ADMIN)、文档处理管道、9种搜索 (BM25/向量/混合)、Rerank、假设问题生成 | `space_router.py`, `document_routes.py`, `search_routes.py`, `search_service.py` |
+| **qa** | `/api/v1/ai-chat`, `/api/v1/qa` | 多模型 SSE 流式对话、会话压缩 (summary/sliding_window/truncate)、多级缓存 (L1 LRU + L2 Redis)、文件附件 | `ai_chat_routes.py`, `ai_chat_service.py`, `qa_service.py` |
+| **deep_research** | `/api/v1/spaces/{id}/deep-research` | 查询分析→任务分解→多源搜索 (Tavily/SerpAPI/DuckDuckGo)→报告综合 | `routes.py`, `deep_research_service.py` |
+| **evaluation** | `/api/v1/spaces/{id}/knowledge-bases/{kb_id}/evaluation` | 测试集管理、异步批量评估 (检索+生成+端到端)、人工评分、JSON/CSV 导出 | `routes.py`, `evaluation_service.py`, `generation_evaluator.py` |
+| **agent** | `/api/v1/agent` | ReAct 循环引擎、三层记忆 (短期+长期+工作)、MCP 协议外部工具、Docker 沙盒代码执行、工具注册中心 | `routes.py`, `core/engine.py`, `services/chat_service.py` |
+| **skill** | `/api/v1/skills` | 技能上传/发布/安装、规则+LLM 双重安全审查、评分系统 | `routes.py`, `skill_marketplace_service.py`, `skill_checker.py` |
+| **app** | `/api/v1/apps` | 简历挖掘 S1-S12 管道 (解析→分析→追问→评估) | `routes.py`, `resume_parser.py`, `resume_analyzer.py`, `resume_probing.py` |
 
-- 当前处于**开发阶段**，数据库尚未正式建立
-- 不存在生产数据，不需要数据库迁移脚本
-- ORM 模型变更直接修改代码即可，无需 Alembic 迁移
-- 无需考虑数据兼容性、ID 跳号等生产环境问题
+> 每个模块的完整 API 端点清单见根目录 [项目结构导航.md](../项目结构导航.md)。
 
----
+## 二、结构导航
 
-## 开发流程
-
-严格遵守以下流程，**不可跳步，不可省略任何环节**：
-
-### 第一步：需求分析
-
-- 收到用户需求后，**禁止直接写代码**
-- 仔细分析需求的背景、目标和约束条件
-- 如有不清楚的地方，主动向用户提问确认，不要猜测
-- 确认需求的边界：哪些要做、哪些不做、优先级如何
-
-### 第二步：制定开发计划
-
-- 基于需求分析，编写详细的开发计划
-- 计划内容必须包括：
-  - **需求概述**：用简明的语言复述需求目标
-  - **实现方案**：具体的技术方案和设计思路
-  - **涉及文件**：列出需要新增或修改的文件清单
-  - **开发步骤**：按顺序列出每一步要做什么，步骤要细化到具体的代码改动
-  - **风险评估**：可能遇到的问题和应对方案（如有）
-- 使用 Plan 模式编写计划，生成计划文档供用户审阅
-
-### 第三步：提交审阅
-
-- 计划完成后，提交给用户审阅
-- **等待用户明确反馈**，不要催促，不要自行推进
-
-### 第四步：修改计划（循环）
-
-- 用户反馈"不对"或提出修改意见 → 根据意见修改计划 → 再次提交审阅
-- 用户反馈"部分可以" → 保留认可的部分，修改有问题的部分 → 再次提交审阅
-- **此步骤会循环多次，直到用户完全认可为止**
-- 每次修改后都必须重新提交完整的计划文档，不要只发修改片段
-
-### 第五步：用户确认后开始开发
-
-- **只有当用户明确说"同意按照计划文档开发"或同等含义的确认话语后，才能开始写代码**
-- 没有用户确认 = 不写一行代码
-- 开发过程中严格按照计划执行，不擅自添加计划之外的功能
-- 如开发中发现计划有问题，**停下来向用户说明情况**，等待用户指示
-
-### 第六步：开发完成后的核对
-
-- 开发完成后，**主动核对**实现是否满足原始需求
-- 逐项检查计划中的每个步骤是否都已落实
-- 如有遗漏或偏差，主动修复，不要等用户指出
-
----
-
-## 语言规范
-
-**标准开发语言：中文**
-
-- 所有注释、文档、提交信息、代码说明使用中文
-- 变量名、函数名、类名使用英文（遵循 Python 命名规范）
-- API 文档和接口说明使用中文
-
----
-
-## 项目概述
-
-基于 FastAPI 构建的智能知识库后端系统，采用领域驱动设计（DDD）架构。
-
-| 功能模块 | 路由前缀 | 描述 |
-|---------|---------|------|
-| 用户管理 | `/api/v1/user` | JWT 认证、角色权限控制 |
-| 発识空间 | `/api/v1/spaces` | 文档管理、向量检索、多策略搜索 |
-| 智能问答 | `/api/v1/qa` | 多模型对话、会话管理 |
-| AI 聊天 | `/api/v1/ai-chat` | 实时 AI 对话 |
-| 深度研究 | `/api/v1/deep-research` | 多源搜索、研究报告生成 |
-| 会话配置 | `/api/v1/qa/session-configs` | 会话配置管理 |
-| 知识库管理 | `/api/v1/spaces/{space_id}/knowledge-bases` | 琜索知识库文档 |
- `/api/v1/spaces/{space_id}/search` | 搜索接口（含 kb_id 校验) |
-| 文档管理 | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents` | 文档上传下载 |
-| 成员管理 | `/api/v1/spaces/{space_id}/members` | 琜索接口(含 kb_id 校验) |
-| 知识库测评 | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation` | 测试集管理、自动化测评、人工评分 |
-| Agent 智能体 | `/api/v1/agent` | MCP Server 扩展、代码沙箱、多轮工具调用 |
-| 技能广场 | `/api/v1/skills` | 技能上传、审核、安装、市场浏览 |
-| 应用中心 | `/api/v1/apps` | AI 应用（简历挖掘等） |
-
----
-
-## 技术栈
-
-| 类别 | 技术 |
-|-----|------|
-| **框架** | FastAPI 0.128+, Python 3.12+ |
-| **ORM** | SQLAlchemy 2.0 (async) |
-| **数据库** | MySQL/MariaDB (aiomysql) |
-| **缓存** | Redis (支持哨兵/集群模式) |
-| **搜索** | Elasticsearch |
-| **存储** | MinIO |
-| **向量存储** | Elasticsearch (向量检索) |
-| **LLM** | OpenAI 兼容接口（智谱AI、阿里云等） |
-| **认证** | JWT + Argon2 密码哈希 |
-| **日志** | structlog |
-| **验证** | Pydantic v2 |
-
----
-
-## 项目结构
+### 目录结构
 
 ```
 src/
-├── core/                    # 核心基础设施
-│   ├── auth/               # 认证与安全
-│   ├── database/           # 数据库配置
-│   ├── middleware/         # 中间件、应用工厂、异常处理
-│   └── security/           # 安全配置验证
+├── core/                          # 核心基础设施
+│   ├── middleware/
+│   │   ├── app_factory.py         # create_app() 组装中间件、路由、限流
+│   │   ├── router_manager.py      # 所有 Router 懒加载注册到 /api/v1
+│   │   ├── startup_manager.py     # 生命周期: Redis→建表→模块初始化→arq Worker
+│   │   ├── base_exception_handler.py  # BaseAPIError + 自动 HTTP 状态码映射
+│   │   ├── trace_middleware.py     # ASGI 中间件, 每请求 trace_id
+│   │   ├── rate_limit.py          # slowapi 限流 (登录5/min、注册3/min 等)
+│   │   └── health_check.py        # /health 系列端点
+│   ├── database/
+│   │   ├── base.py                # BaseModel (id/created_at/updated_at)
+│   │   └── database.py            # get_db() 异步会话管理
+│   ├── auth/hashing.py            # Argon2 密码哈希
+│   └── security/config_validator.py  # 生产环境安全检查
 │
-├── features/               # 业务领域模块（DDD）
-│   ├── user/               # 用户管理
-│   ├── knowledge_space/    # 知识空间
-│   ├── qa/                 # 智能问答
-│   ├── deep_research/      # 深度研究
-│   ├── evaluation/         # 知识库测评
-│   ├── agent/              # Agent 智能体
-│   ├── skill/              # 技能广场
-│   └── app/                # 应用中心
+├── features/{module}/             # 8 个业务模块 (DDD 分层)
+│   ├── api/
+│   │   ├── routes.py              # FastAPI 路由端点
+│   │   ├── dependencies.py        # Depends() 服务工厂注入
+│   │   ├── exceptions.py          # 异常类 (继承 BaseAPIError)
+│   │   ├── exception_handlers.py  # (可选) 自定义异常处理器
+│   │   └── startup.py             # 模块初始化 + 异常注册
+│   ├── models/                    # SQLAlchemy ORM (继承 BaseModel)
+│   ├── schemas/                   # Pydantic v2 (*Base → *Create/*Update → *Response)
+│   ├── services/                  # 业务逻辑
+│   └── repository/                # 数据访问 (SQLAlchemy async)
 │
-├── setting/                # 配置管理
-│   └── yaml_config/        # YAML 多环境配置
+├── setting/yaml_config/
+│   ├── config.py                  # 27 个 dataclass: AppConfig 聚合所有子配置
+│   └── loader.py                  # YAML 多层叠加 + ${ENV_VAR} 替换 + get_config() 单例
 │
-└── shared/                 # 跨领域共享组件
-    ├── ai_models/          # LLM/Embedding 客户端
-    ├── cache/              # Redis 缓存服务
-    ├── clients/            # 客户端单例工厂
-    ├── prompts/            # LLM 提示词模板
-    ├── storage/            # MinIO、Elasticsearch 客户端
-    └── utils/              # 文档处理、BM25 等工具
+└── shared/
+    ├── ai_models/                 # BaseLLM / BaseEmbedding / BaseRerank 抽象
+    │   ├── llm/                   # OpenAI / Anthropic / Ollama / Transformers
+    │   ├── embedding/             # OpenAI / Ollama / Transformers
+    │   └── rerank/                # OpenAI / Transformers
+    ├── cache/                     # Redis + LRU + 装饰器
+    ├── storage/                   # Elasticsearch (9种搜索+RRF) + MinIO
+    ├── mq/                        # arq Worker 文档处理 + 任务追踪
+    ├── prompts/templates.py       # PromptTemplate 枚举 45+ 模板
+    └── utils/
+        ├── document_readers/      # 5 种 Reader + 4 种 Splitter
+        ├── text_processing/       # 文本压缩 + Token 计数
+        ├── crypto.py              # AES-256-CBC API Key 加密
+        ├── file_validator.py      # Magic Number + MIME + 危险扩展名
+        ├── heartbeat.py           # SSE 心跳保活
+        └── time_utils.py          # 中国时区 now_china()
 ```
 
-### 模块内部结构（DDD 分层）
+### 数据流
 
 ```
-src/features/{module}/
-├── api/
-│   ├── routes.py           # API 路由
-│   ├── dependencies.py     # 依赖注入
-│   ├── exceptions.py       # 异常类定义 ⚠️ 必须在此
-│   ├── exception_handlers.py  # 异常处理器
-│   └── startup.py          # 模块启动初始化
-├── services/               # 业务逻辑层
-├── repository/             # 数据访问层
-├── models/                 # SQLAlchemy ORM 模型
-└── schemas/                # Pydantic 数据模型
+Route → Depends(service_factory) → Service → Repository → DB (get_db())
+                                                         → ES (搜索)
+                                                         → MinIO (文件)
+                                                         → Redis (缓存)
+                                                         → LLM (AI调用)
 ```
 
----
+### 关键约定
 
-## 代码规范
+- **路由注册:** 新路由必须在 `router_manager.py` 手动注册
+- **模块初始化:** 新模块必须在 `startup_manager.py` 注册 `register_feature_initializer`
+- **异常处理:** 所有业务异常继承 `BaseAPIError`，在 `startup.py` 注册
+- **数据库写入:** Repository 写操作用 `begin_nested()` (SAVEPOINT)
+- **配置文件:** `*.yaml` 已 gitignore，只提交 `*.example`
 
-### 命名规范
+## 三、测试步骤
 
-```python
-# 类名：大驼峰
-class UserService:
-
-# 函数/方法：蛇形命名
-async def get_user_by_id(user_id: int) -> User:
-
-# 常量：全大写蛇形
-MAX_RETRY_COUNT = 3
-
-# 私有方法：单下划线前缀
-def _validate_token(token: str) -> bool:
-```
-
-### 异步规范
-
-```python
-# 所有 I/O 操作必须使用 async/await
-async def get_user(user_id: int) -> User:
-    async with session.begin():
-        user = await repository.find_by_id(user_id)
-    return user
-```
-
-### 类型注解（必须）
-
-```python
-from typing import Optional, List
-
-async def create_user(
-    username: str,
-    email: str,
-    role: Optional[str] = None
-) -> User:
-    pass
-```
-
-### 异常处理
-
-**异常类必须定义在 `api/exceptions.py` 中**：
-
-```python
-# api/exceptions.py
-
-class ModuleError(Exception):
-    """模块基础异常"""
-    def __init__(self, message: str, code: str = "UNKNOWN_ERROR"):
-        self.message = message
-        self.code = code
-        super().__init__(self.message)
-
-
-class ResourceNotFoundError(ModuleError):
-    """资源不存在"""
-    def __init__(self, resource_id: int):
-        super().__init__(
-            message=f"资源 {resource_id} 不存在",
-            code="RESOURCE_NOT_FOUND",
-        )
-        self.resource_id = resource_id
-```
-
-**异常命名规范**：
-
-| 类型 | 格式 | 示例 |
-|-----|------|------|
-| 资源不存在 | `{Resource}NotFoundError` | `SpaceNotFoundError` |
-| 资源已存在 | `{Resource}AlreadyExistsError` | `DocumentAlreadyExistsError` |
-| 访问被拒绝 | `{Resource}AccessDeniedError` | `SpaceAccessDeniedError` |
-| 操作无效 | `Cannot{Action}Error` | `CannotRemoveLastAdminError` |
-
-### 日志规范
-
-```python
-from src.core.middleware.structured_logging import get_logger
-
-logger = get_logger(__name__)
-
-# 结构化日志
-logger.info("用户登录成功", user_id=user.id, username=user.username)
-logger.error("数据库连接失败", error=str(e))
-```
-
----
-
-## 配置管理
-
-### 环境配置
-
-配置文件位于 `src/setting/yaml_config/yaml/`：
-
-- `default.yaml` - 默认配置（硬编码默认值，便于开发）
-- `development.yaml` - 开发环境（硬编码覆盖）
-- `production.yaml` - 生产环境（使用环境变量占位符）
-- `testing.yaml` - 测试环境（硬编码覆盖）
-
-### YAML 配置规范
-
-**⚠️ 所有 YAML 配置文件（default/development/testing/production）中的值必须硬编码，严禁使用 `${VAR}` 环境变量占位符。**
-
-- 所有配置值直接写在 YAML 文件中，不依赖 `.env` 或环境变量：
-  ```yaml
-  # ✅ 正确：硬编码
-  api_key: "sk-xxxxx"
-  password: "***REMOVED***"
-  host: localhost
-
-  # ❌ 错误：环境变量占位符
-  api_key: "${LLM_API_KEY}"
-  password: "${DB_PASSWORD}"
-  host: "${DB_HOST:localhost}"
-  ```
-- 新增配置项时，必须在 `default.yaml` 中提供硬编码默认值
-- 不同环境的差异通过对应环境文件覆盖（如 `development.yaml` 覆盖 `default.yaml`）
-
-### 启动方式
+### 环境准备
 
 ```bash
-# 开发环境（默认）
+cd backend
+source .venv/bin/activate                # Windows: .venv\Scripts\activate
+```
+
+### 单元测试
+
+```bash
+pytest tests/ -m unit
+```
+
+### 集成测试（接口测试）
+
+集成测试对实际运行的 API 端点发送 HTTP 请求，验证状态码、返回结构和业务逻辑。**需要先启动后端服务** (`python main.py`)。
+
+```bash
+pytest tests/ -m integration
+```
+
+| 测试文件 | 测试模块 | 验证内容 |
+|---------|---------|---------|
+| `tests/test_user_api.py` | user | 登录、注册、CRUD、Token 刷新、状态切换 |
+| `tests/test_knowledge_space_api.py` | knowledge_space | 空间/知识库/文档 CRUD、上传、搜索 |
+| `tests/test_qa_api.py` | qa | 消息 CRUD、会话管理 |
+| `tests/test_ai_chat_db.py` | qa (AI 对话) | 对话流程、附件处理 |
+| `tests/test_deep_research_api.py` | deep_research | 研究流程、历史查询 |
+| `tests/test_evaluation_api.py` | evaluation | 测试集上传、评估任务、报告 |
+| `tests/test_rag_pipeline.py` | knowledge_space (RAG) | 文档处理→切片→向量化→检索全链路 |
+
+### 开发中的快速验证
+
+```bash
+# 启动后端
 python main.py
 
-# 指定环境
-python main.py --config production
+# 健康检查 (确认所有依赖正常)
+curl http://localhost:8100/health/detailed
 
-# 完整参数
-python main.py --config development --host 0.0.0.0 --port 8100 --reload
+# Swagger 文档 (手动测试接口)
+# 浏览器打开 http://localhost:8100/docs
 ```
 
----
+### 新增功能的测试检查项
 
-## 依赖注入
-
-### 客户端单例工厂
-
-```python
-from src.shared.clients import (
-    get_minio_client,
-    get_elasticsearch_client,
-    get_redis_client_async,
-    get_embedding_client,
-)
-
-# 使用示例
-minio = get_minio_client()
-es = get_elasticsearch_client()
-redis = await get_redis_client_async()
-embedding = get_embedding_client()
-```
-
-### 服务层依赖注入
-
-```python
-# api/dependencies.py
-from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.core.database import get_db
-from src.features.knowledge_space.services.space_service import SpaceService
-
-async def get_space_service(
-    db: AsyncSession = Depends(get_db)
-) -> SpaceService:
-    return SpaceService(db)
-```
-
----
-
-## 安全规范
-
-- 密码使用 Argon2 哈希
-- JWT Token 有效期 30 分钟
-- Token 黑名单存储在 Redis（支持多实例）
-- 生产环境 MinIO 强制 SSL
-- 所有用户输入必须通过 Pydantic 验证
+1. 新路由已注册到 `router_manager.py`
+2. 新异常已在 `startup.py` 注册
+3. `pytest tests/ -m integration` 通过
+4. Swagger 文档中接口可正常调用
+5. 响应格式符合 `{"error": {"code": "...", "message": "..."}, "timestamp": "...", "request_id": "..."}`

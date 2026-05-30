@@ -129,17 +129,9 @@ class ResearchSession(BaseModel):
         """获取研究配置"""
         return self.config or {}
 
-    def get_max_iterations(self) -> int:
-        """获取最大迭代次数"""
-        return self.get_config().get("max_iterations", 5)
-
     def get_search_depth(self) -> int:
         """获取搜索深度"""
         return self.get_config().get("search_depth", 3)
-
-    def get_llm_model(self) -> str:
-        """获取 LLM 模型"""
-        return self.get_config().get("llm_model", "glm-4")
 
     # ========== Status Info 访问方法 ==========
 
@@ -150,22 +142,6 @@ class ResearchSession(BaseModel):
     def get_error_message(self) -> Optional[str]:
         """获取错误信息"""
         return self.get_status_info().get("error_message")
-
-    def get_started_at(self) -> Optional[str]:
-        """获取开始时间"""
-        return self.get_status_info().get("started_at")
-
-    def get_completed_at(self) -> Optional[str]:
-        """获取完成时间"""
-        return self.get_status_info().get("completed_at")
-
-    def get_cancelled_at(self) -> Optional[str]:
-        """获取取消时间"""
-        return self.get_status_info().get("cancelled_at")
-
-    def get_cancel_reason(self) -> Optional[str]:
-        """获取取消原因"""
-        return self.get_status_info().get("cancel_reason")
 
     def set_started(self) -> None:
         """标记为开始研究"""
@@ -198,22 +174,6 @@ class ResearchSession(BaseModel):
         """获取研究结果"""
         return self.result or {}
 
-    def get_answer(self) -> Optional[str]:
-        """获取研究答案"""
-        return self.get_result().get("answer")
-
-    def get_sources(self) -> list:
-        """获取来源列表"""
-        return self.get_result().get("sources", [])
-
-    def get_reasoning_steps(self) -> list:
-        """获取推理步骤"""
-        return self.get_result().get("reasoning_steps", [])
-
-    def get_confidence(self) -> float:
-        """获取置信度"""
-        return self.get_result().get("confidence", 0.0)
-
     def set_result(
         self,
         answer: str = None,
@@ -237,36 +197,15 @@ class ResearchSession(BaseModel):
 
     # ========== Stats 访问方法 ==========
 
-    def get_stats(self) -> dict:
-        """获取统计信息"""
-        return self.stats or {}
-
-    def set_stats(self, stats: Dict[str, Any]) -> None:
-        """设置统计信息"""
-        self.stats = stats
-        flag_modified(self, "stats")
-
     # ========== 状态变更方法 ==========
-
-    def is_pending(self) -> bool:
-        """检查是否待开始"""
-        return self.status == ResearchStatus.PENDING
 
     def is_running(self) -> bool:
         """检查是否运行中"""
         return self.status == ResearchStatus.RUNNING
 
-    def is_completed(self) -> bool:
-        """检查是否已完成"""
-        return self.status == ResearchStatus.COMPLETED
-
     def is_failed(self) -> bool:
         """检查是否失败"""
         return self.status == ResearchStatus.FAILED
-
-    def is_cancelled(self) -> bool:
-        """检查是否已取消"""
-        return self.status == ResearchStatus.CANCELLED
 
     def mark_started(self) -> None:
         """标记为开始研究"""

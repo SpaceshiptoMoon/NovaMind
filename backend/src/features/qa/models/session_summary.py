@@ -48,17 +48,9 @@ class SessionSummary(BaseModel):
 
     # ========== Stats 访问方法 ==========
 
-    def get_stats(self) -> dict:
-        """获取统计信息"""
-        return self.stats or {}
-
     def get_summary_tokens(self) -> int:
         """获取摘要 token 数"""
         return self.summary_tokens or 0
-
-    def get_compressed_count(self) -> int:
-        """获取被压缩的消息数量"""
-        return self.compressed_message_count or 0
 
     def get_original_tokens(self) -> int:
         """获取压缩前的 token 数"""
@@ -72,7 +64,3 @@ class SessionSummary(BaseModel):
             return summary / original
         return 1.0
 
-    def increment_version(self) -> int:
-        """增加版本号"""
-        self.version = (self.version or 1) + 1
-        return self.version

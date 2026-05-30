@@ -22,6 +22,7 @@ class McpClientManager:
         self._exit_stacks: Dict[int, AsyncExitStack] = {}
         self._tools_cache: Dict[int, List[Dict]] = {}
         self._server_names: Dict[int, str] = {}  # server_id -> name
+        self._server_configs: Dict[int, McpConnectionConfig] = {}  # server_id -> config（用于重连）
         self._lock = asyncio.Lock()
 
     async def connect_server(
@@ -54,6 +55,7 @@ class McpClientManager:
                 self._sessions[server_id] = session
                 self._exit_stacks[server_id] = exit_stack
                 self._server_names[server_id] = server_name
+                self._server_configs[server_id] = config
 
                 # 发现工具
                 tools = await self._discover_tools(server_id, server_name, session)
@@ -163,6 +165,7 @@ class McpClientManager:
         self._exit_stacks.pop(server_id, None)
         self._tools_cache.pop(server_id, None)
         self._server_names.pop(server_id, None)
+        # 注意：保留 _server_configs 用于自动重连
         logger.info("MCP 服务器已断开", server_id=server_id)
 
     async def call_tool(
@@ -184,25 +187,69 @@ class McpClientManager:
             raise ValueError(f"MCP 服务器 {server_id} 未连接")
 
         try:
-            result = await session.call_tool(tool_name, arguments=arguments)
-            # 提取文本内容
-            texts = []
-            for content in result.content:
-                if hasattr(content, "text"):
-                    texts.append(content.text)
-                elif hasattr(content, "data"):
-                    texts.append(str(content.data))
-
-            return "\n".join(texts) if texts else str(result)
-
+            return await self._do_call_tool(session, server_id, tool_name, arguments)
         except Exception as e:
-            logger.error(
-                "MCP 工具调用失败",
-                server_id=server_id,
-                tool_name=tool_name,
-                error=str(e),
-            )
+            # 连接类错误：尝试自动重连一次
+            if self._is_connection_error(e) and server_id in self._server_configs:
+                logger.warning(
+                    "MCP 连接异常，尝试自动重连",
+                    server_id=server_id,
+                    tool_name=tool_name,
+                    error=str(e)[:200],
+                )
+                try:
+                    await self._reconnect_server(server_id)
+                    session = self._sessions.get(server_id)
+                    if session:
+                        return await self._do_call_tool(session, server_id, tool_name, arguments)
+                except Exception as reconnect_err:
+                    logger.error(
+                        "MCP 自动重连后调用仍失败",
+                        server_id=server_id,
+                        tool_name=tool_name,
+                        error=str(reconnect_err)[:200],
+                    )
+                    raise reconnect_err from e
             raise
+
+    async def _do_call_tool(
+        self, session, server_id: int, tool_name: str, arguments: dict
+    ) -> str:
+        """执行单次 MCP 工具调用"""
+        result = await asyncio.wait_for(
+            session.call_tool(tool_name, arguments=arguments),
+            timeout=30.0,
+        )
+        texts = []
+        for content in result.content:
+            if hasattr(content, "text"):
+                texts.append(content.text)
+            elif hasattr(content, "data"):
+                texts.append(str(content.data))
+
+        return "\n".join(texts) if texts else str(result)
+
+    @staticmethod
+    def _is_connection_error(exc: Exception) -> bool:
+        """判断是否为连接类错误（可重连恢复）"""
+        exc_name = type(exc).__name__.lower()
+        msg = str(exc).lower()
+        return any(kw in exc_name for kw in (
+            "connection", "connect", "broken", "reset", "closed", "eof",
+        )) or any(kw in msg for kw in (
+            "connection reset", "broken pipe", "connection closed",
+            "session closed", "not connected", "transport closed",
+        ))
+
+    async def _reconnect_server(self, server_id: int) -> None:
+        """使用存储的配置重新连接 MCP 服务器"""
+        config = self._server_configs.get(server_id)
+        server_name = self._server_names.get(server_id, f"server_{server_id}")
+        if not config:
+            raise ValueError(f"MCP 服务器 {server_id} 无存储配置，无法重连")
+
+        logger.info("MCP 自动重连中", server_id=server_id, server_name=server_name)
+        await self.connect_server(server_id, server_name, config)
 
     def get_server_id_by_name(self, server_name: str) -> Optional[int]:
         """根据服务器名称查找已连接的 server_id"""
@@ -210,14 +257,6 @@ class McpClientManager:
             if name == server_name:
                 return sid
         return None
-
-    def get_mcp_tools(self, server_id: int) -> List[Dict]:
-        """获取指定 MCP 服务器的工具列表"""
-        return self._tools_cache.get(server_id, [])
-
-    def get_all_mcp_tools(self) -> Dict[int, List[Dict]]:
-        """获取所有已连接 MCP 服务器的工具列表"""
-        return dict(self._tools_cache)
 
     def get_tools_for_servers(self, server_ids: List[int]) -> List[Dict]:
         """获取指定服务器 ID 列表的工具"""

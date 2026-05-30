@@ -721,72 +721,72 @@ onUnmounted(() => {
 .report-aside {
   width: 260px;
   flex-shrink: 0;
-  padding: 24px 16px;
-  border-right: 1px solid #F0EDEA;
+  padding: var(--space-6) var(--space-4);
+  border-right: 1px solid var(--color-border-light);
   overflow-y: auto;
   max-height: calc(100vh - 120px);
   position: sticky;
   top: 60px;
-  background: #FAFAF8;
+  background: var(--color-bg-card-elevated);
 }
 
 .candidate-card {
   text-align: center;
-  padding-bottom: 20px;
-  margin-bottom: 20px;
-  border-bottom: 1px solid #F0EDEA;
+  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-5);
+  border-bottom: 1px solid var(--color-border-light);
 }
 
 .candidate-avatar {
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #E8F0FE, #D2E3FC);
+  background: var(--color-primary-subtle);
   color: var(--color-primary);
   font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 700;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 12px;
-  box-shadow: 0 2px 8px rgba(66,133,244,0.15);
+  margin: 0 auto var(--space-3);
+  box-shadow: var(--shadow-sm);
 }
 
 .candidate-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: #111;
-  margin-bottom: 4px;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+  margin-bottom: var(--space-1);
 }
 
 .candidate-email,
 .candidate-phone {
-  font-size: 12px;
-  color: #8C8C8C;
-  line-height: 1.6;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: var(--leading-relaxed);
 }
 
 .candidate-summary {
-  font-size: 12px;
-  color: #5C5C5C;
-  line-height: 1.6;
-  margin-top: 8px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: var(--leading-relaxed);
+  margin-top: var(--space-2);
   text-align: left;
-  background: #F5F3F0;
-  padding: 8px 10px;
-  border-radius: 6px;
+  background: var(--color-bg-hover);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
 }
 
 .aside-section {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 
 .aside-section h4 {
-  margin: 0 0 10px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #8C8C8C;
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -794,8 +794,8 @@ onUnmounted(() => {
 /* 时间线 */
 .timeline-item {
   display: flex;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
   position: relative;
 }
 
@@ -814,44 +814,44 @@ onUnmounted(() => {
 }
 
 .timeline-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: #333;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
 }
 
 .timeline-sub {
-  font-size: 12px;
-  color: #666;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
 }
 
 .timeline-date {
-  font-size: 11px;
-  color: #AAA;
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
 }
 
 .timeline-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
 }
 
 .skill-cloud {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 /* 中栏：报告 */
 .report-main {
   flex: 1;
   min-width: 0;
-  padding: 32px 48px;
+  padding: var(--space-8) var(--space-10);
   max-height: calc(100vh - 120px);
   overflow-y: auto;
   position: sticky;
   top: 60px;
-  background: #FFFFFF;
+  background: var(--color-bg-card);
 }
 
 .report-content {
@@ -863,20 +863,20 @@ onUnmounted(() => {
 .report-toc {
   width: 200px;
   flex-shrink: 0;
-  padding: 24px 12px;
-  border-left: 1px solid #F0EDEA;
+  padding: var(--space-6) var(--space-3);
+  border-left: 1px solid var(--color-border-light);
   max-height: calc(100vh - 120px);
   overflow-y: auto;
   position: sticky;
   top: 60px;
-  background: #FAFAF8;
+  background: var(--color-bg-card-elevated);
 }
 
 .report-toc h4 {
-  margin: 0 0 12px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #8C8C8C;
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -889,29 +889,29 @@ onUnmounted(() => {
 
 .toc-link {
   display: block;
-  font-size: 12px;
-  color: #8C8C8C;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
   text-decoration: none;
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
   border-left: 2px solid transparent;
-  transition: all 0.15s;
+  transition: all var(--transition-fast);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  line-height: 1.5;
+  line-height: var(--leading-normal);
 }
 
 .toc-link:hover {
-  color: #333;
-  background: #F0EDEA;
+  color: var(--color-text);
+  background: var(--color-bg-hover);
 }
 
 .toc-link.is-active {
   color: var(--color-primary);
   border-left-color: var(--color-primary);
-  background: rgba(66,133,244,0.06);
-  font-weight: 500;
+  background: var(--color-primary-muted);
+  font-weight: var(--weight-medium);
 }
 
 .toc-link.toc-h3 {
@@ -922,70 +922,70 @@ onUnmounted(() => {
 /* ========== Markdown 渲染样式 ========== */
 .markdown-body {
   font-family: var(--font-body);
-  font-size: 15px;
-  line-height: 1.85;
-  color: #2C2C2C;
+  font-size: var(--text-md);
+  line-height: var(--leading-loose);
+  color: var(--color-text);
   word-break: break-word;
 }
 
 /* ---------- 标题层级 ---------- */
 .markdown-body :deep(h1) {
   font-family: var(--font-display);
-  font-size: 28px;
-  font-weight: 700;
-  margin: 0 0 8px;
-  letter-spacing: -0.02em;
-  color: #111;
-  line-height: 1.3;
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  margin: 0 0 var(--space-2);
+  letter-spacing: var(--tracking-tight);
+  color: var(--color-text);
+  line-height: var(--leading-tight);
 }
 
 .markdown-body :deep(h2) {
   font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 700;
-  margin: 40px 0 16px;
-  padding-bottom: 8px;
-  padding-left: 12px;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  margin: var(--space-10) 0 var(--space-4);
+  padding-bottom: var(--space-2);
+  padding-left: var(--space-3);
   border-left: 3px solid var(--color-primary);
-  border-bottom: 1px solid #E8E5E1;
-  color: #111;
-  line-height: 1.4;
+  border-bottom: 1px solid var(--color-border-light);
+  color: var(--color-text);
+  line-height: var(--leading-snug);
 }
 
 .markdown-body :deep(h3) {
   font-family: var(--font-display);
-  font-size: 17px;
-  font-weight: 600;
-  margin: 32px 0 12px;
-  color: #222;
-  line-height: 1.4;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  margin: var(--space-8) 0 var(--space-3);
+  color: var(--color-text);
+  line-height: var(--leading-snug);
 }
 
 .markdown-body :deep(h4) {
-  font-size: 15px;
-  font-weight: 600;
-  margin: 24px 0 8px;
-  color: #444;
-  line-height: 1.5;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  margin: var(--space-6) 0 var(--space-2);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-normal);
 }
 
 .markdown-body :deep(h5) {
-  font-size: 14px;
-  font-weight: 600;
-  margin: 20px 0 6px;
-  color: #555;
-  line-height: 1.5;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  margin: var(--space-5) 0 var(--space-2);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-normal);
 }
 
 /* ---------- 段落 ---------- */
 .markdown-body :deep(p) {
-  margin: 8px 0;
+  margin: var(--space-2) 0;
 }
 
 /* ---------- 加粗 / 斜体 ---------- */
 .markdown-body :deep(strong) {
-  color: #111;
-  font-weight: 600;
+  color: var(--color-text);
+  font-weight: var(--weight-semibold);
 }
 
 .markdown-body :deep(em) {
@@ -995,34 +995,34 @@ onUnmounted(() => {
 
 /* ---------- Q&A 对话样式 ---------- */
 .markdown-body :deep(.qa-question) {
-  background: linear-gradient(135deg, #EEF3FF, #E8F0FE);
+  background: var(--color-primary-subtle);
   border-left: 3px solid var(--color-primary);
-  border-radius: 0 8px 8px 0;
-  padding: 12px 16px;
-  margin: 14px 0 6px;
-  font-size: 14px;
-  line-height: 1.7;
-  color: #1A1A1A;
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  color: var(--color-text);
 }
 
 .markdown-body :deep(.qa-answer) {
-  background: #F8F7F5;
-  border-left: 3px solid #D5D0CB;
-  border-radius: 0 8px 8px 0;
-  padding: 12px 16px;
-  margin: 0 0 6px;
-  font-size: 14px;
-  line-height: 1.7;
-  color: #333;
+  background: var(--color-bg-hover);
+  border-left: 3px solid var(--color-border);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  padding: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  color: var(--color-text);
 }
 
 .markdown-body :deep(.qa-tag) {
   display: inline-block;
-  font-weight: 700;
-  font-size: 12px;
-  padding: 1px 8px;
-  border-radius: 4px;
-  margin-right: 8px;
+  font-weight: var(--weight-bold);
+  font-size: var(--text-xs);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  margin-right: var(--space-2);
   vertical-align: baseline;
 }
 
@@ -1032,43 +1032,41 @@ onUnmounted(() => {
 }
 
 .markdown-body :deep(.qa-tag-a) {
-  background: #D5D0CB;
-  color: #555;
+  background: var(--color-border);
+  color: var(--color-text-secondary);
 }
 
 .markdown-body :deep(.qa-score) {
-  margin: 0 0 16px;
-  padding-left: 16px;
-  font-size: 12px;
-  color: #AAA;
+  margin: 0 0 var(--space-4);
+  padding-left: var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
   font-style: italic;
-  border-left: 2px solid #EEE;
+  border-left: 2px solid var(--color-border-light);
 }
-
-/* 深度评分旧格式兜底 */
 
 /* ---------- 分隔线 ---------- */
 .markdown-body :deep(hr) {
   border: none;
   height: 1px;
-  background: linear-gradient(90deg, transparent, #D5D0CB, transparent);
-  margin: 36px 0;
+  background: linear-gradient(90deg, transparent, var(--color-border), transparent);
+  margin: var(--space-8) 0;
 }
 
 /* ---------- 列表 ---------- */
 .markdown-body :deep(ul) {
-  padding-left: 20px;
-  margin: 8px 0;
+  padding-left: var(--space-5);
+  margin: var(--space-2) 0;
 }
 
 .markdown-body :deep(ol) {
-  padding-left: 20px;
-  margin: 8px 0;
+  padding-left: var(--space-5);
+  margin: var(--space-2) 0;
 }
 
 .markdown-body :deep(li) {
-  margin: 4px 0;
-  line-height: 1.75;
+  margin: var(--space-1) 0;
+  line-height: var(--leading-relaxed);
 }
 
 .markdown-body :deep(li::marker) {
@@ -1078,16 +1076,16 @@ onUnmounted(() => {
 /* ---------- 引用块 (callout) ---------- */
 .markdown-body :deep(blockquote) {
   border-left: 3px solid var(--color-primary);
-  padding: 12px 16px;
-  margin: 16px 0;
-  background: linear-gradient(135deg, rgba(66,133,244,0.04), rgba(66,133,244,0.02));
-  border-radius: 0 8px 8px 0;
-  color: #444;
-  font-size: 14px;
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-4) 0;
+  background: var(--color-primary-subtle);
+  border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-base);
 }
 
 .markdown-body :deep(blockquote p) {
-  margin: 4px 0;
+  margin: var(--space-1) 0;
 }
 
 /* ---------- 表格 ---------- */
@@ -1095,29 +1093,29 @@ onUnmounted(() => {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  margin: 16px 0;
-  font-size: 14px;
-  border: 1px solid #E8E5E1;
-  border-radius: 8px;
+  margin: var(--space-4) 0;
+  font-size: var(--text-base);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
 .markdown-body :deep(th) {
-  background: #F8F6F3;
-  font-weight: 600;
-  color: #444;
-  padding: 10px 14px;
+  background: var(--color-bg-card-elevated);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-secondary);
+  padding: var(--space-3) var(--space-4);
   text-align: left;
-  border-bottom: 2px solid #E8E5E1;
-  font-size: 13px;
+  border-bottom: 2px solid var(--color-border-light);
+  font-size: var(--text-sm);
   letter-spacing: 0.02em;
 }
 
 .markdown-body :deep(td) {
-  padding: 10px 14px;
+  padding: var(--space-3) var(--space-4);
   text-align: left;
-  border-bottom: 1px solid #F0EDEA;
-  color: #333;
+  border-bottom: 1px solid var(--color-border-light);
+  color: var(--color-text);
 }
 
 .markdown-body :deep(tr:last-child td) {
@@ -1125,24 +1123,24 @@ onUnmounted(() => {
 }
 
 .markdown-body :deep(tr:hover td) {
-  background: #FAFAF8;
+  background: var(--color-bg-hover);
 }
 
 /* ---------- 行内代码 ---------- */
 .markdown-body :deep(code) {
   font-family: var(--font-mono);
-  font-size: 13px;
-  background: #F0EDEA;
-  padding: 2px 6px;
-  border-radius: 4px;
+  font-size: var(--text-sm);
+  background: var(--color-bg-hover);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
   color: #C7254E;
 }
 
 .markdown-body :deep(pre) {
   background: #1E1E1E;
-  border-radius: 8px;
-  padding: 16px;
-  margin: 16px 0;
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  margin: var(--space-4) 0;
   overflow-x: auto;
 }
 
@@ -1157,7 +1155,7 @@ onUnmounted(() => {
   color: var(--color-primary);
   text-decoration: underline;
   text-underline-offset: 2px;
-  transition: color 0.15s;
+  transition: color var(--transition-fast);
 }
 
 .markdown-body :deep(a:hover) {
@@ -1167,7 +1165,7 @@ onUnmounted(() => {
 /* ---------- 图片 ---------- */
 .markdown-body :deep(img) {
   max-width: 100%;
-  border-radius: 8px;
-  margin: 12px 0;
+  border-radius: var(--radius-lg);
+  margin: var(--space-3) 0;
 }
 </style>

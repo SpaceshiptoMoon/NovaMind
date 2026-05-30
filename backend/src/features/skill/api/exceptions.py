@@ -12,4 +12,5 @@ from src.features.skill.exceptions import (  # noqa: F401
     SkillNotInstalledError,
     InvalidSkillFormatError,
     SkillReviewRejectedError,
+    SkillFileSizeExceededError,
 )

@@ -84,10 +84,6 @@ class User(BaseModel):
         """检查用户是否可用（仅 status 为 ACTIVE）"""
         return self.status == UserStatus.ACTIVE
 
-    def is_banned(self) -> bool:
-        """检查用户是否被封禁"""
-        return self.status == UserStatus.BANNED
-
     def is_deleted(self) -> bool:
         """检查用户是否已删除"""
         return self.status == UserStatus.DELETED
@@ -98,31 +94,9 @@ class User(BaseModel):
         profile = self.profile or {}
         return profile.get(key, default)
 
-    def set_profile_value(self, key: str, value: Any) -> None:
-        """设置 profile 中的值"""
-        if self.profile is None:
-            self.profile = {}
-        self.profile = {**self.profile, key: value}
-
-    def get_nickname(self) -> Optional[str]:
-        """获取昵称"""
-        return self.get_profile_value("nickname")
-
-    def get_avatar(self) -> Optional[str]:
-        """获取头像 URL"""
-        return self.get_profile_value("avatar")
-
-    def get_preferences(self) -> Dict[str, Any]:
-        """获取用户偏好设置"""
-        return self.get_profile_value("preferences", {})
-
     def get_security_info(self) -> Dict[str, Any]:
         """获取安全信息"""
         return self.get_profile_value("security", {})
-
-    def get_login_count(self) -> int:
-        """获取登录次数"""
-        return self.get_security_info().get("login_count", 0)
 
     # ========== 登录更新 ==========
     def update_login_info(self, ip_address: str) -> None:

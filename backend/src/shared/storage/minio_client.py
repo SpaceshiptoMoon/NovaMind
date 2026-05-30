@@ -846,33 +846,6 @@ class MinioClient:
         }
         return content_types.get(ext, "application/octet-stream")
 
-    # ========== 存储路径查询方法 ==========
-
-    @staticmethod
-    def get_document_path_pattern(space_id: int, kb_id: int, document_id: int) -> str:
-        """获取文档路径模式"""
-        return f"spaces/{space_id}/kbs/{kb_id}/documents/{document_id}/"
-
-    @staticmethod
-    def get_kb_path_pattern(space_id: int, kb_id: int) -> str:
-        """获取知识库路径模式"""
-        return f"spaces/{space_id}/kbs/{kb_id}/"
-
-    @staticmethod
-    def get_space_path_pattern(space_id: int) -> str:
-        """获取空间路径模式"""
-        return f"spaces/{space_id}/"
-
-    @staticmethod
-    def get_avatar_path(user_id: int, extension: str = "jpg") -> str:
-        """获取头像路径"""
-        return f"avatars/{user_id}/avatar.{extension}"
-
-    @staticmethod
-    def get_temp_path(session_id: str, filename: str) -> str:
-        """获取临时文件路径"""
-        return f"temp/{session_id}/{filename}"
-
     # ========== 通用文件上传 ==========
 
     def _upload_file(self, object_name: str, file_data: bytes, content_type: str = "application/octet-stream") -> str:
@@ -894,3 +867,32 @@ class MinioClient:
         except S3Error as e:
             logger.error("上传文件失败", object=object_name, error=str(e))
             raise
+
+
+# ========== 模块级工具函数 ==========
+
+IMAGE_FILE_TYPES = frozenset({"jpg", "jpeg", "png", "gif", "webp"})
+
+
+async def enrich_attachments_with_presigned_urls(
+    extra: dict | None,
+    minio_client: MinioClient,
+    bucket: str | None = None,
+    expires: int = 3600,
+) -> None:
+    """为 extra["attachments"] 中的图片附件注入 preview_url（MinIO presigned URL）"""
+    if not extra or "attachments" not in extra:
+        return
+    bucket = bucket or minio_client.default_bucket
+    for att in extra["attachments"]:
+        if (
+            att.get("file_type", "").lower() in IMAGE_FILE_TYPES
+            and "storage_path" in att
+            and "preview_url" not in att
+        ):
+            try:
+                att["preview_url"] = await minio_client.get_file_url(
+                    bucket, att["storage_path"], expires
+                )
+            except Exception:
+                pass

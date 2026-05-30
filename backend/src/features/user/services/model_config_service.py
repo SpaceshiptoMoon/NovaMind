@@ -448,6 +448,45 @@ class ModelConfigService:
             ),
         )
 
+    async def get_vlm_client_by_model(
+        self,
+        user_id: int,
+        model: str
+    ) -> BaseLLM:
+        """根据模型名称获取 VLM 客户端（复用 LLM 工厂）"""
+        return await self._get_client_by_model(
+            user_id, model, "vlm",
+            create_from_credentials=lambda c: create_llm_client(
+                protocol=c.protocol,
+                api_key=c.api_key or "",
+                base_url=c.base_url or "",
+                model_name=c.model,
+                timeout=(c.extra_config or {}).get("timeout", 120),
+                max_retries=(c.extra_config or {}).get("max_retries", 3),
+                max_concurrent=(c.extra_config or {}).get("max_concurrent", 5),
+            ),
+        )
+
+    async def get_multimodal_embedding_client_by_model(
+        self,
+        user_id: int,
+        model: str
+    ) -> "BaseMultimodalEmbedding":
+        """根据模型名称获取多模态嵌入客户端（通过工厂路由，与 embedding 一致）"""
+        return await self._get_client_by_model(
+            user_id, model, "multimodal_embedding",
+            create_from_credentials=lambda c: create_embedding_client(
+                protocol=c.protocol,
+                api_key=c.api_key or "",
+                base_url=c.base_url or "",
+                model_name=c.model,
+                expected_dimension=(c.extra_config or {}).get("dimension"),
+                timeout=(c.extra_config or {}).get("timeout", 60),
+                max_retries=(c.extra_config or {}).get("max_retries", 3),
+                max_concurrent=(c.extra_config or {}).get("max_concurrent", 5),
+            ),
+        )
+
     async def get_embedding_client_by_model(
         self,
         user_id: int,
@@ -504,6 +543,10 @@ class ModelConfigService:
                 detected_dimension = await self._test_embedding(request)
             elif request.model_type == "rerank":
                 await self._test_rerank(request)
+            elif request.model_type == "vlm":
+                await self._test_llm(request)
+            elif request.model_type == "multimodal_embedding":
+                detected_dimension = await self._test_multimodal_embedding(request)
 
             latency = (time.time() - start_time) * 1000
 
@@ -556,6 +599,19 @@ class ModelConfigService:
             model_name=request.model,
         )
         embedding = await client.generate_embedding("Hello")
+        return len(embedding)
+
+    async def _test_multimodal_embedding(self, request: ModelTestRequest) -> int:
+        """测试多模态嵌入连接，返回检测到的维度（通过工厂路由，与 embedding 一致）"""
+        client = create_embedding_client(
+            protocol=request.protocol,
+            api_key=request.api_key,
+            base_url=request.base_url or "",
+            model_name=request.model,
+        )
+        embedding = await client.generate_embedding("Hello")
+        if hasattr(client, 'close'):
+            await client.close()
         return len(embedding)
 
     async def _detect_embedding_dimension(
@@ -631,7 +687,7 @@ class ModelConfigService:
         result = {}
         yaml_models = {}  # 记录 YAML 中出现的所有系统模型
 
-        for model_type in ["llm", "embedding", "rerank"]:
+        for model_type in ["llm", "embedding", "rerank", "vlm", "multimodal_embedding"]:
             configs = getattr(model_configs, model_type, [])
             if not configs:
                 continue
@@ -768,7 +824,7 @@ class ModelConfigService:
 
         result = AvailableModelsWithInfoResponse()
 
-        for model_type in ["llm", "embedding", "rerank"]:
+        for model_type in ["llm", "embedding", "rerank", "vlm", "multimodal_embedding"]:
             configs = await self.repo.list_available_configs(user_id, model_type)
             seen = set()
             infos = []

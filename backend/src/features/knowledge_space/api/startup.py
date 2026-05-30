@@ -45,6 +45,7 @@ from src.features.knowledge_space.api.exceptions import (
     # 通用
     UserNotFoundError,
     InvalidParameterError,
+    InvalidDocumentStatusError,
 )
 
 
@@ -101,6 +102,7 @@ def setup_knowledge_space_exception_handlers(app: FastAPI) -> None:
         # 通用
         UserNotFoundError: 404,
         InvalidParameterError: 400,
+        InvalidDocumentStatusError: 422,
         # 兜底
         KnowledgeSpaceError: 500,
     })

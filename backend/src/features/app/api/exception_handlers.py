@@ -8,6 +8,9 @@ from src.features.app.api.exceptions import (
     AppError,
     ResumeSessionNotFoundError,
     ResumeParseError,
+    InvalidFileTypeError,
+    InvalidConfigError,
+    FileSizeExceededError,
 )
 
 
@@ -16,5 +19,8 @@ def setup_app_exception_handlers(app: FastAPI) -> None:
     register_module_exceptions(app, status_map={
         ResumeSessionNotFoundError: 404,
         ResumeParseError: 422,
+        InvalidFileTypeError: 400,
+        InvalidConfigError: 400,
+        FileSizeExceededError: 413,
         AppError: 400,
     })

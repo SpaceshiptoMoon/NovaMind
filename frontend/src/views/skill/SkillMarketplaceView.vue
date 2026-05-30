@@ -185,65 +185,76 @@ async function handleUpload(file: File) {
 .skill-marketplace {
   position: absolute;
   inset: 0;
-  padding: 24px;
+  padding: var(--space-6);
   overflow-y: auto;
 }
 
+/* ===== Tab Bar ===== */
 .tab-bar {
   display: flex;
-  gap: 4px;
-  margin-bottom: 20px;
+  gap: 0;
+  margin-bottom: var(--space-5);
   border-bottom: 1px solid var(--color-border-light);
-  padding-bottom: 0;
 }
 
 .tab-btn {
-  padding: 8px 20px;
+  padding: var(--space-2) var(--space-5);
   border: none;
   background: transparent;
   font-family: var(--font-body);
-  font-size: 14px;
-  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
   cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.2s;
-  margin-bottom: -1px;
+  transition: all var(--transition-fast);
+  position: relative;
+  font-weight: var(--weight-medium);
 }
 
 .tab-btn:hover {
-  color: var(--color-primary);
+  color: var(--color-text-secondary);
 }
 
 .tab-btn.active {
   color: var(--color-primary);
-  border-bottom-color: var(--color-primary);
-  font-weight: 500;
+}
+
+.tab-btn.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--color-primary);
+  border-radius: 2px 2px 0 0;
 }
 
 .filter-bar {
   display: flex;
-  gap: 12px;
-  margin-bottom: 24px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
   align-items: center;
 }
 
+/* ===== Card Grid ===== */
 .skill-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
   min-height: 200px;
 }
 
 .skill-card {
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 20px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--transition-base);
 }
 
 .skill-card:hover {
+  border-color: var(--color-border);
   box-shadow: var(--shadow-md);
   transform: translateY(-2px);
 }
@@ -252,24 +263,25 @@ async function handleUpload(file: File) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
 
 .card-icon {
-  font-size: 28px;
+  font-size: var(--text-3xl);
 }
 
 .card-title {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0 0 8px;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  margin: 0 0 var(--space-2);
+  color: var(--color-text);
 }
 
 .card-desc {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-  margin: 0 0 16px;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  line-height: var(--leading-normal);
+  margin: 0 0 var(--space-4);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -280,35 +292,43 @@ async function handleUpload(file: File) {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-2);
 }
 
 .card-stats {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
+  flex-shrink: 0;
 }
 
 .stat {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  color: var(--color-text-secondary);
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
 }
 
 .card-tags {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.card-tags .el-tag {
+  flex-shrink: 0;
 }
 
 .card-author {
-  margin-top: 10px;
-  font-size: 12px;
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
   color: var(--color-text-faint);
 }
 
 .pagination-area {
   display: flex;
   justify-content: center;
-  margin-top: 24px;
+  margin-top: var(--space-6);
 }
 </style>

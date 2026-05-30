@@ -23,14 +23,14 @@ const router = useRouter()
 }
 
 .forbidden h1 {
-  font-size: 120px;
+  font-size: 7.5rem;
   margin: 0;
   color: var(--color-warning);
 }
 
 .forbidden p {
-  font-size: 24px;
+  font-size: var(--text-2xl);
   color: var(--color-text-muted);
-  margin: 20px 0 30px;
+  margin: var(--space-5) 0 var(--space-8);
 }
 </style>

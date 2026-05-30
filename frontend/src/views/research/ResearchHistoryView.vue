@@ -20,7 +20,7 @@
 
     <!-- 筛选 -->
     <div class="filter-bar">
-      <el-select v-model="statusFilter" placeholder="状态筛选" clearable style="width: 140px" @change="fetchData">
+      <el-select v-model="statusFilter" placeholder="状态筛选" clearable class="status-filter-select" @change="fetchData">
         <el-option label="全部" value="" />
         <el-option label="进行中" value="running" />
         <el-option label="已完成" value="completed" />
@@ -226,7 +226,7 @@ onMounted(() => {
 
 <style scoped>
 .research-history-view {
-  padding: 20px;
+  padding: var(--space-5);
   max-width: 1100px;
   margin: 0 auto;
 }
@@ -235,26 +235,30 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  padding-bottom: 16px;
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--color-border-light);
 }
 
 .page-header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .page-header h2 {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
   color: var(--color-text);
 }
 
 .filter-bar {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
+}
+
+.status-filter-select {
+  width: 140px;
 }
 
 .query-cell {
@@ -271,46 +275,46 @@ onMounted(() => {
 
 .detail-meta {
   display: flex;
-  gap: 24px;
-  margin-bottom: 16px;
-  font-size: 13px;
+  gap: var(--space-6);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
 
 .detail-sources {
-  margin-bottom: 16px;
-  padding-bottom: 16px;
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--color-border-light);
 }
 
 .detail-sources h4 {
-  margin: 0 0 8px;
-  font-size: 14px;
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-base);
   color: var(--color-text);
 }
 
 .detail-sources .el-tag {
-  margin-right: 6px;
-  margin-bottom: 4px;
+  margin-right: var(--space-2);
+  margin-bottom: var(--space-1);
 }
 
 .detail-report h4 {
-  margin: 0 0 12px;
-  font-size: 14px;
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-base);
   color: var(--color-text);
 }
 
 .report-text {
   white-space: pre-wrap;
   word-break: break-word;
-  line-height: 1.8;
+  line-height: var(--leading-loose);
   max-height: 500px;
   overflow-y: auto;
-  padding: 16px;
+  padding: var(--space-4);
   background: var(--color-bg-card-elevated);
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light);
-  font-size: 14px;
+  font-size: var(--text-base);
   color: var(--color-text);
 }
 </style>

@@ -7,14 +7,14 @@ import os
 from typing import Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, UploadFile, File, Form, Query, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, Form, Query
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.features.knowledge_space.api.dependencies import get_current_user_id
 from src.core.database.database import get_db, get_db_session
 from src.features.app.api.dependencies import _get_model_config_service
-from src.features.app.api.exceptions import ResumeSessionNotFoundError, ResumeParseError
+from src.features.app.api.exceptions import ResumeSessionNotFoundError, ResumeParseError, InvalidFileTypeError, InvalidConfigError, FileSizeExceededError
 from src.features.app.models.resume import ResumeSessionStatus
 from src.features.app.repository.resume_repository import ResumeSessionRepository
 from src.features.app.schemas.resume_schema import (
@@ -56,35 +56,29 @@ async def upload_resume(
     # 文件类型校验
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in ALLOWED_RESUME_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"不支持的文件格式: {ext}，仅支持 {', '.join(sorted(ALLOWED_RESUME_EXTENSIONS))}",
-        )
+        raise InvalidFileTypeError(ext, ", ".join(sorted(ALLOWED_RESUME_EXTENSIONS)))
 
     # 解析并校验 config 参数
     try:
         cfg = json.loads(config) if config else {}
     except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="config 参数不是合法的 JSON")
+        raise InvalidConfigError("config 参数不是合法的 JSON")
     if not isinstance(cfg, dict):
-        raise HTTPException(status_code=400, detail="config 参数必须是 JSON 对象")
+        raise InvalidConfigError("config 参数必须是 JSON 对象")
     # 基本字段类型校验
     if "breadth" in cfg and not isinstance(cfg["breadth"], int):
-        raise HTTPException(status_code=400, detail="config.breadth 必须是整数")
+        raise InvalidConfigError("config.breadth 必须是整数")
     if "depth" in cfg and not isinstance(cfg["depth"], int):
-        raise HTTPException(status_code=400, detail="config.depth 必须是整数")
+        raise InvalidConfigError("config.depth 必须是整数")
     if "llm_model" in cfg and not isinstance(cfg["llm_model"], str):
-        raise HTTPException(status_code=400, detail="config.llm_model 必须是字符串")
+        raise InvalidConfigError("config.llm_model 必须是字符串")
     if llm_model:
         cfg["llm_model"] = llm_model
 
     # 读取文件内容（在请求上下文内完成）
     file_bytes = await file.read()
     if len(file_bytes) > MAX_RESUME_SIZE:
-        raise HTTPException(
-            status_code=413,
-            detail=f"文件大小超过限制 ({MAX_RESUME_SIZE // 1024 // 1024}MB)",
-        )
+        raise FileSizeExceededError(MAX_RESUME_SIZE // 1024 // 1024)
     filename = file.filename or "unknown"
 
     session_repo = ResumeSessionRepository(db)

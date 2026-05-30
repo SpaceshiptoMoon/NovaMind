@@ -113,3 +113,13 @@ class SkillReviewRejectedError(SkillError):
             code="SKILL_REVIEW_REJECTED",
         )
         self.reason = reason
+
+
+class SkillFileSizeExceededError(SkillError):
+    """技能 ZIP 文件大小超限"""
+
+    def __init__(self, max_size_mb: int):
+        super().__init__(
+            message=f"ZIP 文件大小超过限制 ({max_size_mb}MB)",
+            code="SKILL_FILE_SIZE_EXCEEDED",
+        )

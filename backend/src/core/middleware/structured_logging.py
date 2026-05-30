@@ -97,7 +97,7 @@ def _setup_stdlib_logging(logs_dir: Path) -> None:
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.error").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
-    logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.pool").setLevel(logging.CRITICAL)
     logging.getLogger("openai").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -151,11 +151,6 @@ class LoggingMiddleware:
             **kwargs: 要绑定的上下文变量
         """
         structlog.contextvars.bind_contextvars(**kwargs)
-
-    @staticmethod
-    def clear_context() -> None:
-        """清除当前日志上下文"""
-        structlog.contextvars.clear_contextvars()
 
     @staticmethod
     def unbind_context(*keys: str) -> None:

@@ -6,7 +6,7 @@
 import json
 from typing import Any, Dict, List, Optional
 
-from src.features.agent.tools.base import BaseTool
+from src.features.agent.core.tool.base import BaseTool
 from src.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -39,25 +39,38 @@ class CodeExecutionTool(BaseTool):
                 "function": {
                     "name": "run_code",
                     "description": (
-                        "在隔离的沙箱环境中执行代码并返回运行结果。"
-                        "支持 python、javascript、shell 三种语言。"
-                        "代码在 Docker 容器中运行，无法访问网络和外部文件系统。"
+                        "Execute code in an isolated Docker sandbox and return the results. "
+                        "Supports python, javascript, and shell.\n\n"
+                        "WHEN TO USE:\n"
+                        "- Data analysis, math calculations, or numerical computations\n"
+                        "- Code verification, testing snippets, or debugging\n"
+                        "- Text processing, data transformation, or format conversion\n"
+                        "- Generating charts, tables, or structured output from data\n\n"
+                        "CONSTRAINTS:\n"
+                        "- Runs in an isolated container with NO network access\n"
+                        "- Cannot access the host filesystem or external services\n"
+                        "- Default timeout is 30 seconds (configurable)\n"
+                        "- Output includes stdout, stderr, and exit_code\n\n"
+                        "TIPS:\n"
+                        "- For data analysis, include print() statements to see results\n"
+                        "- For multi-step logic, write a complete script rather than snippets\n"
+                        "- Handle errors gracefully in your code rather than relying on try/except in the caller"
                     ),
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "code": {
                                 "type": "string",
-                                "description": "要执行的代码",
+                                "description": "The code to execute",
                             },
                             "language": {
                                 "type": "string",
                                 "enum": ["python", "javascript", "shell"],
-                                "description": "编程语言",
+                                "description": "Programming language",
                             },
                             "timeout": {
                                 "type": "integer",
-                                "description": "执行超时时间（秒），默认 30",
+                                "description": "Execution timeout in seconds (default 30)",
                                 "default": 30,
                             },
                         },
@@ -123,9 +136,15 @@ class CodeExecutionTool(BaseTool):
 
     def get_system_prompt_fragment(self) -> str:
         return (
-            "你可以使用 run_code 工具在沙箱环境中执行代码。"
-            "支持的语言：python、javascript、shell。"
-            "当需要数据分析、数学计算、代码验证、文本处理时使用此工具。"
-            "代码在隔离的 Docker 容器中运行，无法访问网络和外部文件系统。"
-            "执行结果包含 stdout（标准输出）、stderr（标准错误）和 exit_code（退出码）。"
+            "## Code Execution\n"
+            "ALWAYS use code_execution for:\n"
+            "- Calculations, math, numerical computations (never compute mentally)\n"
+            "- Data analysis, text processing, format conversion\n"
+            "- Verifying code correctness or testing snippets\n\n"
+            "Rules:\n"
+            "- Always include print() statements to see results\n"
+            "- The sandbox has NO network access — never attempt API calls or web requests\n"
+            "- Keep code focused and minimal — write only what's needed\n"
+            "- If code fails, read the error, fix it, and retry — don't guess at fixes\n"
+            "- For multi-step logic, write a complete script rather than fragments"
         )

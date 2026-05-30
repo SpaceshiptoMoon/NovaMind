@@ -3,7 +3,7 @@
     <!-- Main Container -->
     <div class="main-container">
       <AppHeader />
-      <main class="main-content" :class="{ 'workspace-mode': isInWorkspace }">
+      <main class="main-content" :class="{ 'workspace-mode': isInWorkspace }" id="main-content" role="main" tabindex="-1">
         <router-view v-slot="{ Component }">
           <transition name="fade" mode="out-in">
             <component :is="Component" />
@@ -63,7 +63,7 @@ const isInWorkspace = computed(() => route.path.startsWith('/home/workspace'))
 
 .fade-enter-from {
   opacity: 0;
-  transform: translateY(4px);
+  transform: translateY(8px);
 }
 
 .fade-leave-to {

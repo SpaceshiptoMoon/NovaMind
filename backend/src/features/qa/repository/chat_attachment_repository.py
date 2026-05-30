@@ -46,11 +46,10 @@ class ChatAttachmentRepository:
         attachment_ids: List[int],
         user_id: int,
     ) -> List[ChatAttachment]:
-        """根据 ID 列表查询附件（校验用户归属，仅返回已提取文本的）"""
+        """根据 ID 列表查询附件（校验用户归属，包含图片附件）"""
         stmt = select(ChatAttachment).where(
             ChatAttachment.id.in_(attachment_ids),
             ChatAttachment.user_id == user_id,
-            ChatAttachment.extracted_text.isnot(None),
         ).order_by(ChatAttachment.id)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -60,10 +59,9 @@ class ChatAttachmentRepository:
         attachment_ids: List[int],
         user_id: Optional[int] = None,
     ) -> List[ChatAttachment]:
-        """根据 ID 列表查询附件（仅返回已提取文本的，可选校验 user_id）"""
+        """根据 ID 列表查询附件（包含图片附件，可选校验 user_id）"""
         conditions = [
             ChatAttachment.id.in_(attachment_ids),
-            ChatAttachment.extracted_text.isnot(None),
         ]
         if user_id is not None:
             conditions.append(ChatAttachment.user_id == user_id)
