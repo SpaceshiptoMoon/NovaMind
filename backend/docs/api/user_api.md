@@ -642,6 +642,7 @@ GET /api/v1/user/model-configs/available
 | llm | string[] | 可用的 LLM 模型名称列表 |
 | embedding | string[] | 可用的 Embedding 模型名称列表 |
 | rerank | string[] | 可用的 Rerank 模型名称列表 |
+| vlm | string[] | 可用的 VLM（视觉语言模型）名称列表 |
 
 **响应示例**
 
@@ -649,7 +650,8 @@ GET /api/v1/user/model-configs/available
 {
   "llm": ["gpt-4o", "glm-4", "qwen-plus"],
   "embedding": ["text-embedding-3-small", "embedding-3"],
-  "rerank": ["bge-reranker-v2-m3"]
+  "rerank": ["bge-reranker-v2-m3"],
+  "vlm": ["qwen-vl-max"]
 }
 ```
 

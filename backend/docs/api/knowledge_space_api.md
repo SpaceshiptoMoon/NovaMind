@@ -792,7 +792,7 @@ Authorization: Bearer <access_token>
 
 路由前缀：`/api/v1/spaces/{space_id}/knowledge-bases`
 
-**允许上传的文件类型**：`.pdf`, `.docx`, `.doc`, `.txt`, `.md`, `.csv`, `.xlsx`, `.xls`, `.pptx`, `.ppt`, `.html`, `.json`
+**允许上传的文件类型**：`.pdf`, `.docx`, `.doc`, `.txt`, `.md`, `.csv`, `.xlsx`, `.xls`, `.pptx`, `.ppt`, `.html`, `.json`, `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`
 
 **文件大小限制**：最大 100MB
 
@@ -804,7 +804,7 @@ Authorization: Bearer <access_token>
 - Content-Type：`multipart/form-data`
 - 权限要求：编辑者（EDITOR）及以上
 
-> 仅存储到 MinIO，不触发解析。需要通过 3.7 接口触发解析。
+> 仅存储到 MinIO，不触发解析。需要通过 3.8 接口触发解析。
 > 支持单文件和多文件批量上传（最多 20 个文件）。
 >
 > **文档复活**：如果上传的文件与同知识库内某个已删除文档内容完全相同（SHA256 一致），系统会自动"复活"该文档记录，复用原有的文档 ID。复活时会更新上传人、文件名等信息，并重新上传 MinIO 文件。返回的 `document_id` 与之前删除的文档相同。
@@ -985,6 +985,8 @@ Authorization: Bearer <access_token>
 | file_info | object | 文件信息 |
 | questions | string[] | 假设性问题列表 |
 | created_at | string | 创建时间 |
+| chunk_type | string \| null | 分块类型：`"text"`（文本）/ `"image"`（图片） |
+| image_url | string \| null | 图片预签名 URL（仅 `chunk_type="image"` 时有值） |
 
 **错误码**
 
@@ -1015,7 +1017,7 @@ Authorization: Bearer <access_token>
 | skip | integer | 否 | 跳过的记录数（默认 0，>= 0） |
 | limit | integer | 否 | 返回的最大记录数（默认 10，1-1000） |
 
-**响应参数**：返回 `ChunkResponse[]` 数组，结构同 3.3 中 `chunks[]` 对象。
+**响应参数**：返回 `ChunkResponse[]` 数组，结构同 3.3 中 `chunks[]` 对象（含 `chunk_type` 和 `image_url` 字段）。
 
 ---
 
@@ -1046,7 +1048,38 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 3.6 删除文档
+### 3.6 获取文档图片
+
+> 代理返回文档中的图片文件，用于多模态搜索结果渲染。后端从 MinIO 读取图片字节流直接返回给前端。
+
+**请求**
+- 方法：`GET`
+- URL：`/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/image`
+- 权限要求：空间成员（VIEWER）及以上
+
+**路径参数**
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| space_id | integer | 是 | 空间 ID（> 0） |
+| kb_id | integer | 是 | 知识库 ID（> 0） |
+| document_id | integer | 是 | 文档 ID（> 0） |
+
+**响应**
+- Content-Type：根据文件扩展名自动推断（如 `image/jpeg`、`image/png` 等），无法识别时为 `application/octet-stream`
+- Content-Disposition：`inline; filename="<encoded_filename>"`
+- Cache-Control：`private, max-age=3600`
+- 返回图片二进制流（StreamingResponse）
+
+**错误码**
+
+| 错误码 | HTTP 状态码 | 说明 |
+|--------|------------|------|
+| DOCUMENT_NOT_FOUND | 404 | 文档不存在 |
+
+---
+
+### 3.7 删除文档
 
 > **软删除**：文档删除后记录仍保留在数据库中（`deleted_at` 不为空），MinIO 文件和 ES 分块会被清理。之后如果重新上传同一文件，系统会自动复活该记录（见 3.1 文档复活说明）。
 
@@ -1083,7 +1116,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 3.7 触发文档拆分解析
+### 3.8 触发文档拆分解析
 
 **请求**
 - 方法：`POST`
@@ -1134,7 +1167,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 3.8 批量触发文档拆分解析
+### 3.9 批量触发文档拆分解析
 
 **请求**
 - 方法：`POST`
@@ -1178,7 +1211,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 3.9 重新解析文档
+### 3.10 重新解析文档
 
 **请求**
 - 方法：`POST`
@@ -1214,7 +1247,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 3.10 取消文档处理
+### 3.11 取消文档处理
 
 **请求**
 - 方法：`POST`
@@ -1224,7 +1257,7 @@ Authorization: Bearer <access_token>
 
 > 取消正在处理的文档。通过 Redis 取消标记通知 pipeline 在下一个检查点终止，同时尝试通过 arq abort 取消排队中的任务。
 >
-> 取消后文档状态会变为 FAILED（错误信息为 `[用户取消]`），可通过 3.11 重试接口重新处理。
+> 取消后文档状态会变为 FAILED（错误信息为 `[用户取消]`），可通过 3.12 重试接口重新处理。
 >
 > pipeline 内置 4 个取消检查点：文档解析后、向量化后、问题生成后、ES 索引前。取消信号会在下一个检查点生效。
 
@@ -1266,7 +1299,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 3.11 重试文档处理
+### 3.12 重试文档处理
 
 **请求**
 - 方法：`POST`
@@ -1281,7 +1314,7 @@ Authorization: Bearer <access_token>
 > - **FAILED**：处理失败或被取消的文档
 > - **COMPLETED**：已处理完成的文档（重新解析，用于更新切分策略后的重新索引）
 >
-> 对于 PROCESSING 状态的文档，应先使用 3.10 取消接口。
+> 对于 PROCESSING 状态的文档，应先使用 3.11 取消接口。
 
 **路径参数**
 
@@ -1822,6 +1855,8 @@ Authorization: Bearer <access_token>
 | results[].questions | string[] \| null | 该分块预生成的假设性问题列表（分块有预生成问题时返回，无问题时为 null，由前端决定是否展示） |
 | results[].metadata | object \| null | 分块元数据 |
 | results[].file_info | object \| null | 文件信息 |
+| results[].chunk_type | string \| null | 分块类型：`"text"`（文本）/ `"image"`（图片） |
+| results[].image_url | string \| null | 图片预签名 URL（仅 `chunk_type="image"` 时有值） |
 | total | integer | 结果总数 |
 | query | string | 原始查询文本 |
 | search_mode | string | 实际使用的检索模式 |
@@ -1946,7 +1981,129 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 5.2 获取可用检索模式
+### 5.2 多模态检索
+
+> 统一多模态检索接口，支持以文搜图和以图搜图两种模式。适用于多模态类型空间（`space_type="multimodal"`）。
+
+**请求**
+- 方法：`POST`
+- URL：`/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/search/multimodal-search`
+- Content-Type：`application/json`
+
+**路径参数**
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| space_id | integer | 是 | 空间 ID（> 0） |
+| kb_id | integer | 是 | 知识库 ID（> 0） |
+
+**请求参数**
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| query | string | 否 | 文本查询（`text_to_image` 模式必填，1-2000 字符） |
+| image_base64 | string | 否 | Base64 编码的图片数据（`image_to_image` 模式必填） |
+| search_mode | string | 否 | 检索模式：`text_to_image`（以文搜图，默认）/ `image_to_image`（以图搜图） |
+| top_k | integer | 否 | 返回结果数量（1-100，默认 10） |
+| score_threshold | float | 否 | 相似度阈值（0.0-1.0，默认 0.0，归一化后） |
+
+> **校验规则**：`text_to_image` 模式必须提供 `query`，`image_to_image` 模式必须提供 `image_base64`。
+
+**请求示例 1 -- 以文搜图**
+```json
+{
+  "query": "系统架构图",
+  "search_mode": "text_to_image",
+  "top_k": 5
+}
+```
+
+**请求示例 2 -- 以图搜图**
+```json
+{
+  "image_base64": "data:image/png;base64,iVBORw0KGgo...",
+  "search_mode": "image_to_image",
+  "top_k": 5
+}
+```
+
+**响应参数**
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| results | array | 检索结果列表 |
+| results[].chunk_id | string | 分块 ID |
+| results[].document_id | integer | 文档 ID |
+| results[].kb_id | integer | 知识库 ID |
+| results[].content | string | 检索到的内容 |
+| results[].score | float | 融合分数 |
+| results[].chunk_index | integer \| null | 分块索引 |
+| results[].questions | string[] \| null | 假设性问题列表 |
+| results[].metadata | object \| null | 分块元数据 |
+| results[].file_info | object \| null | 文件信息 |
+| results[].chunk_type | string \| null | 分块类型：`"image"` |
+| results[].image_url | string \| null | 图片预签名 URL（MinIO 预签名，有效期 1 小时） |
+| total | integer | 结果总数 |
+| query | string | 原始查询文本 |
+| search_mode | string | 实际使用的检索模式 |
+| original_mode | string \| null | 原始请求的检索模式（发生降级时有值） |
+| mode_fallback | boolean | 是否发生了模式降级 |
+| top_k | integer | 请求的返回数量 |
+| vector_weight | float \| null | 向量检索权重 |
+| bm25_weight | float \| null | BM25 检索权重 |
+| answer | string \| null | LLM 生成的回答 |
+| answer_model | string \| null | 生成回答使用的模型名称 |
+| answer_elapsed_ms | float \| null | LLM 回答耗时（毫秒） |
+| elapsed_ms | float \| null | 检索耗时（毫秒） |
+| cached | boolean | 是否来自缓存 |
+| rewritten_queries | string[] \| null | 查询改写后的问题列表 |
+
+**响应示例**
+```json
+{
+  "results": [
+    {
+      "chunk_id": "chunk_img_001",
+      "document_id": 5,
+      "kb_id": 2,
+      "content": "",
+      "score": 0.89,
+      "chunk_index": 3,
+      "questions": null,
+      "metadata": { "page": 2 },
+      "file_info": { "filename": "architecture.png" },
+      "chunk_type": "image",
+      "image_url": "http://minio:9000/documents/architecture.png?X-Amz-Expires=3600&..."
+    }
+  ],
+  "total": 1,
+  "query": "系统架构图",
+  "search_mode": "text_to_image",
+  "original_mode": null,
+  "mode_fallback": false,
+  "top_k": 5,
+  "vector_weight": null,
+  "bm25_weight": null,
+  "answer": null,
+  "answer_model": null,
+  "answer_elapsed_ms": null,
+  "elapsed_ms": 210.5,
+  "cached": false,
+  "rewritten_queries": null
+}
+```
+
+**错误码**
+
+| 错误码 | HTTP 状态码 | 说明 |
+|--------|------------|------|
+| KNOWLEDGE_BASE_NOT_FOUND | 404 | 知识库不存在或不属于该空间 |
+| INVALID_PARAMETER | 400 | 参数校验失败（如 text_to_image 模式缺少 query） |
+| EMBEDDING_ERROR | 400 | 向量化失败 |
+
+---
+
+### 5.3 获取可用检索模式
 
 **请求**
 - 方法：`GET`
@@ -1999,7 +2156,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 5.3 获取模型配置
+### 5.4 获取模型配置
 
 **请求**
 - 方法：`GET`
@@ -2066,12 +2223,13 @@ Authorization: Bearer <access_token>
 | 3.3 | GET | `.../knowledge-bases/{kb_id}/documents/{document_id}` | 获取文档详情 | VIEWER |
 | 3.4 | GET | `.../knowledge-bases/{kb_id}/documents/{document_id}/chunks` | 获取文档分块 | VIEWER |
 | 3.5 | GET | `.../knowledge-bases/{kb_id}/documents/{document_id}/download` | 下载文档 | VIEWER |
-| 3.6 | DELETE | `.../knowledge-bases/{kb_id}/documents/{document_id}` | 删除文档 | EDITOR |
-| 3.7 | POST | `.../knowledge-bases/{kb_id}/documents/{document_id}/process` | 触发文档拆分解析 | EDITOR |
-| 3.8 | POST | `.../knowledge-bases/{kb_id}/documents/process` | 批量触发拆分解析 | EDITOR |
-| 3.9 | POST | `.../knowledge-bases/{kb_id}/documents/{document_id}/reprocess` | 重新解析文档 | EDITOR |
-| 3.10 | POST | `.../knowledge-bases/{kb_id}/documents/{document_id}/cancel` | 取消文档处理 | EDITOR |
-| 3.11 | POST | `.../knowledge-bases/{kb_id}/documents/{document_id}/retry` | 重试文档处理（FAILED/COMPLETED） | EDITOR |
+| 3.6 | GET | `.../knowledge-bases/{kb_id}/documents/{document_id}/image` | 获取文档图片 | VIEWER |
+| 3.7 | DELETE | `.../knowledge-bases/{kb_id}/documents/{document_id}` | 删除文档 | EDITOR |
+| 3.8 | POST | `.../knowledge-bases/{kb_id}/documents/{document_id}/process` | 触发文档拆分解析 | EDITOR |
+| 3.9 | POST | `.../knowledge-bases/{kb_id}/documents/process` | 批量触发拆分解析 | EDITOR |
+| 3.10 | POST | `.../knowledge-bases/{kb_id}/documents/{document_id}/reprocess` | 重新解析文档 | EDITOR |
+| 3.11 | POST | `.../knowledge-bases/{kb_id}/documents/{document_id}/cancel` | 取消文档处理 | EDITOR |
+| 3.12 | POST | `.../knowledge-bases/{kb_id}/documents/{document_id}/retry` | 重试文档处理（FAILED/COMPLETED） | EDITOR |
 | 4.1 | GET | `/api/v1/spaces/{space_id}/members` | 获取成员列表 | 空间成员 |
 | 4.2 | POST | `/api/v1/spaces/{space_id}/members` | 邀请成员 | ADMIN |
 | 4.3 | POST | `/api/v1/spaces/{space_id}/members/join` | 加入空间 | 登录用户 |
@@ -2080,8 +2238,9 @@ Authorization: Bearer <access_token>
 | 4.6 | DELETE | `/api/v1/spaces/{space_id}/members/{target_user_id}` | 移除成员 | ADMIN |
 | 4.7 | POST | `/api/v1/spaces/{space_id}/members/leave` | 离开空间 | 空间成员 |
 | 5.1 | POST | `.../knowledge-bases/{kb_id}/search` | 统一检索 | 空间成员 |
-| 5.2 | GET | `.../knowledge-bases/{kb_id}/search/modes` | 获取可用检索模式 | 空间成员 |
-| 5.3 | GET | `.../knowledge-bases/{kb_id}/search/model-config` | 获取模型配置 | 空间成员 |
+| 5.2 | POST | `.../knowledge-bases/{kb_id}/search/multimodal-search` | 多模态检索（以文搜图/以图搜图） | 空间成员 |
+| 5.3 | GET | `.../knowledge-bases/{kb_id}/search/modes` | 获取可用检索模式 | 空间成员 |
+| 5.4 | GET | `.../knowledge-bases/{kb_id}/search/model-config` | 获取模型配置 | 空间成员 |
 
 ---
 

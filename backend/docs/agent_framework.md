@@ -2,9 +2,9 @@
 
 ## 概述
 
-本文档描述 Agent 模块三个核心子系统的框架设计：**记忆系统**、**工具系统**、**LLM 交互层**。
+本文档描述 Agent 模块的核心框架实现，包含三个子系统：**记忆系统**、**工具系统**、**LLM 交互层**，以及 **ReAct 引擎**。
 
-所有新代码位于 `src/features/agent/core/` 下的独立子目录，现有代码不做任何修改，新框架并行存在，后续逐步迁移。
+核心代码位于 `src/features/agent/core/`，分为 `memory/`、`tool/`、`llm/` 三个子目录和 `engine.py` 引擎入口。
 
 ---
 
@@ -12,29 +12,60 @@
 
 ```
 src/features/agent/core/
-├── memory/                     # 记忆系统
+├── engine.py                    # AgentEngine — ReAct 循环引擎
+├── prompt_builder.py            # SystemPromptBuilder — 分层 prompt 组装
+├── retry.py                     # LLM 调用重试逻辑
+│
+├── memory/                      # 记忆系统（两层：短期 + 长期）
+│   ├── __init__.py              # 仅导出 MemoryManager
+│   ├── interfaces.py            # 抽象接口 + 数据类（MemoryMessage、MemorySnapshot 等）
+│   ├── token_budget.py          # Token 预算管理
+│   ├── memory_manager.py        # MemoryManager — 统一门面（冻结快照 + 预取 + 上下文构建）
+│   ├── short_term.py            # ShortTermMemory — 对话上下文管理
+│   ├── long_term.py             # LongTermMemory — 跨会话知识（ES 混合搜索 + MySQL 回退）
+│   ├── compress.py              # ICompressionStrategy 接口
+│   ├── context_compressor.py    # ContextCompressor — 五阶段结构化压缩
+│   ├── context_scrubber.py      # StreamingContextScrubber — SSE 输出标签清理
+│   ├── security.py              # 记忆安全扫描（注入/泄露/Unicode 检测）
+│   └── todo_store.py            # TodoStore — 跨压缩任务状态追踪
+│
+├── tool/                        # 工具系统
 │   ├── __init__.py
-│   ├── interfaces.py           # 抽象接口 + 数据类
-│   ├── token_budget.py         # Token 预算管理
-│   ├── working.py              # 工作记忆（内存级）
-│   ├── compress.py             # 压缩策略
-│   ├── short_term.py           # 短期记忆（对话上下文）
-│   └── long_term.py            # 长期记忆（跨会话知识）
-├── tool/                       # 工具系统
-│   ├── __init__.py
-│   ├── definition.py           # 统一工具定义
-│   ├── result.py               # 结构化工具结果
-│   ├── hooks.py                # 生命周期钩子
-│   └── executor.py             # 增强版执行器
-└── llm/                        # LLM 交互层
+│   ├── definition.py            # ToolDefinition — 统一工具定义
+│   ├── result.py                # ToolResult + ToolResultStatus（SUCCESS/ERROR/TIMEOUT）
+│   ├── hooks.py                 # 生命周期钩子（Logging / Truncation / ResultBudget）
+│   ├── executor.py              # ToolExecutor — 路由 + 钩子 + 超时
+│   ├── registry.py              # ToolRegistry — 工具注册中心
+│   ├── base.py                  # BaseTool — 工具基类
+│   └── builtins/                # 内置工具
+│       ├── knowledge_search.py  # 知识库搜索
+│       ├── web_search.py        # 网络搜索
+│       ├── code_execution.py    # Docker 沙盒代码执行
+│       ├── memory.py            # 记忆管理（add/replace/remove）
+│       ├── todo.py              # 任务追踪
+│       └── read_tool_result.py  # 工具结果读取
+│
+└── llm/                         # LLM 交互层
     ├── __init__.py
-    ├── agent_llm.py            # AgentLLM 封装
-    └── stream_handler.py       # 流式响应处理器
+    └── agent_llm.py             # AgentLLM — 组合 BaseLLM，流式/非流式 + 工具调用
 
-# 配套
+# 配套文件
 src/features/agent/
-├── models/memory.py            # 长期记忆 ORM 模型
-└── repository/memory_repository.py  # 长期记忆仓储
+├── agent_prompts.py             # Prompt 模板常量
+├── models/
+│   ├── memory.py                # AgentMemory ORM
+│   ├── context_summary.py       # AgentContextSummary ORM（追加写入压缩摘要）
+│   └── session.py               # AgentSession ORM
+├── repository/
+│   ├── memory_repository.py     # 长期记忆 CRUD
+│   ├── memory_search_repository.py  # ES 混合搜索记忆
+│   └── context_summary_repository.py  # 压缩摘要仓储
+├── mcp/                         # MCP 协议支持
+│   ├── client.py                # McpClientManager
+│   └── config.py                # MCP 连接配置
+└── sandbox/                     # 代码沙盒
+    ├── docker_sandbox.py        # Docker 隔离执行
+    └── config.py                # 沙盒配置
 ```
 
 ---
@@ -43,7 +74,7 @@ src/features/agent/
 
 ### 1.1 架构设计
 
-三层记忆架构，每层有独立的接口和生命周期：
+两层记忆架构，通过 `MemoryManager` 统一管理：
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -51,27 +82,89 @@ src/features/agent/
 │                     ▲                            │
 │                     │ MemorySnapshot              │
 │          ┌──────────┴──────────┐                 │
-│          │   短期记忆 (STM)     │                 │
-│          │  当前对话上下文       │                 │
-│          │  Token 预算管理      │                 │
-│          │  自动压缩触发        │                 │
+│          │   MemoryManager      │                 │
+│          │   统一门面            │                 │
 │          └──┬───────┬───────┬──┘                 │
 │             │       │       │                    │
 │    ┌────────┴──┐ ┌──┴────┐ ┌┴──────────┐        │
-│    │长期记忆(LTM)│ │工作记忆│ │Token 预算 │        │
-│    │跨会话知识   │ │任务状态│ │Token 计数 │        │
-│    │偏好/事实    │ │内存TTL │ │预算计算   │        │
+│    │短期记忆(STM)│ │长期记忆│ │ContextCompressor│   │
+│    │对话上下文   │ │LTM    │ │五阶段压缩    │    │
+│    │Token 预算  │ │ES搜索 │ │摘要持久化    │    │
 │    └───────────┘ └───────┘ └───────────┘        │
+│                                                   │
+│    TodoStore ── 跨压缩任务状态（内存）              │
+│    Security  ── 记忆安全扫描                       │
 └─────────────────────────────────────────────────┘
 ```
 
 | 层级 | 接口 | 实现 | 存储 | 生命周期 |
 |------|------|------|------|---------|
 | 短期记忆 | `IShortTermMemory` | `ShortTermMemory` | 数据库 | 每次请求构建 |
-| 长期记忆 | `ILongTermMemory` | `LongTermMemory` | 数据库 `agent_memories` 表 | 永久，对话结束时巩固 |
-| 工作记忆 | `IWorkingMemory` | `WorkingMemory` | 进程内存 | TTL 自动过期（默认 1 小时） |
+| 长期记忆 | `ILongTermMemory` | `LongTermMemory` | MySQL + ES | 永久，对话结束时巩固 |
 
-### 1.2 数据模型
+> **设计变更说明**：原设计中的第三层"工作记忆"（WorkingMemory）未实现。跨压缩的任务状态由 `TodoStore`（进程内存）承担。
+
+### 1.2 核心组件
+
+#### MemoryManager — 统一门面
+
+```python
+class MemoryManager:
+    """记忆系统统一入口"""
+
+    @classmethod
+    async def create(cls, agent_id, user_id, session_id, db, ...) -> "MemoryManager"
+    # 工厂方法，初始化所有子组件
+
+    async def build_frozen_snapshot(self, system_prompt, max_tokens) -> MemorySnapshot
+    # 构建冻结快照（含长期记忆预取），带缓存避免重复构建
+
+    async def prefetch(self, user_message) -> None
+    # 根据用户消息动态预取相关长期记忆
+
+    async def build_context(self, system_prompt, max_tokens) -> MemorySnapshot
+    # 完整上下文构建：DB消息 → Token计算 → 超限压缩 → OpenAI格式
+```
+
+#### ContextCompressor — 五阶段结构化压缩
+
+当对话历史超出 Token 预算时触发：
+
+```
+Phase 1: 工具结果裁剪 — 截断过长的 tool_result
+Phase 2: 尾部保护 — 保留最近的对话（不压缩）
+Phase 3: LLM 摘要 — 使用辅助模型生成 13 节结构化摘要
+Phase 4: 迭代合并 — 如果仍然超限，继续压缩
+Phase 5: 工具配对清理 — 移除已失去上下文的工具调用/结果对
+```
+
+特性：
+- **防抖动**：cooldown 机制避免频繁压缩
+- **摘要持久化**：压缩结果写入 `agent_context_summaries` 表（追加写入）
+- **降级策略**：辅助模型不可用时降级到主模型
+- **脱敏**：压缩前通过 `redact.py` 清理敏感信息
+
+#### LongTermMemory — 长期记忆
+
+```python
+class LongTermMemory(ILongTermMemory):
+    async def store(agent_id, user_id, category, content, ...)  # 存储
+    async def search(agent_id, user_id, query, top_k=5)         # ES 混合搜索
+    async def consolidate(agent_id, user_id, conversation_id, messages)  # 对话结束时提取
+    async def replace(memory_id, content)   # 替换记忆内容
+    async def remove(memory_id)             # 删除记忆
+```
+
+搜索策略：ES 混合搜索（BM25 + 向量）→ MySQL LIKE 回退。
+
+#### Security — 记忆安全扫描
+
+```python
+async def scan_memory_content(content: str) -> SecurityScanResult
+# 检测：注入攻击、数据泄露、Unicode 欺骗、系统前缀注入、外泄网络等
+```
+
+### 1.3 数据模型
 
 #### MemoryMessage — 统一内部消息模型
 
@@ -80,14 +173,12 @@ src/features/agent/
 class MemoryMessage:
     role: str                                  # user / assistant / system / tool
     content: str
-    tool_call_id: Optional[str] = None         # tool 消息关联的调用 ID
-    tool_name: Optional[str] = None            # 产生此消息的工具名
-    tool_calls: Optional[List[Dict]] = None    # assistant 消息携带的工具调用
+    tool_call_id: Optional[str] = None
+    tool_name: Optional[str] = None
+    tool_calls: Optional[List[Dict]] = None
     token_count: Optional[int] = None
-    metadata: Dict[str, Any]                   # 扩展字段
+    metadata: Dict[str, Any]
 ```
-
-所有内部消息流转使用此模型，避免直接依赖 ORM 对象。
 
 #### MemorySnapshot — 记忆快照
 
@@ -95,12 +186,10 @@ class MemoryMessage:
 @dataclass
 class MemorySnapshot:
     messages: List[Dict[str, Any]]    # OpenAI 格式消息列表
-    total_tokens: int                 # 预估 token 总数
-    compressed: bool = False          # 是否经过压缩
-    compression_ratio: float = 1.0    # 压缩比率
+    total_tokens: int
+    compressed: bool = False
+    compression_ratio: float = 1.0
 ```
-
-`ShortTermMemory.build_context()` 的输出，`AgentEngine` 只消费这个快照。
 
 #### LongTermMemoryEntry — 长期记忆条目
 
@@ -110,203 +199,64 @@ class LongTermMemoryEntry:
     id: int
     agent_id: int
     user_id: int
-    category: str                      # preference / fact / procedure / insight
+    category: str          # preference / fact / procedure / insight
     content: str
     relevance_score: float
     access_count: int
     source_conversation_id: Optional[int]
 ```
 
-四种记忆类别：
-
-| 类别 | 说明 | 示例 |
-|------|------|------|
-| `preference` | 用户偏好 | "用户喜欢简洁的回答" |
-| `fact` | 事实信息 | "用户的项目使用 Python 3.12" |
-| `procedure` | 操作流程 | "部署流程：先测试→构建→推送" |
-| `insight` | 有价值的洞察 | "用户团队使用 GitFlow 分支策略" |
-
-### 1.3 接口定义
-
-#### IShortTermMemory — 短期记忆
-
-```python
-class IShortTermMemory(ABC):
-    async def build_context(
-        self,
-        system_prompt: str,           # 系统提示词
-        conversation_id: int,         # 会话 ID
-        max_tokens: int,              # 模型上下文窗口上限
-        reserve_tokens: int = 1024,   # 为 LLM 生成预留的 token 数
-    ) -> MemorySnapshot
-    # 核心流程：DB消息 → Token计算 → 超限压缩 → OpenAI格式消息
-
-    async def add_message(self, conversation_id: int, message: MemoryMessage) -> None
-    async def get_token_count(self, conversation_id: int) -> int
-```
-
-#### ILongTermMemory — 长期记忆
-
-```python
-class ILongTermMemory(ABC):
-    async def store(
-        self, agent_id, user_id, category, content,
-        source_conversation_id=None,
-    ) -> LongTermMemoryEntry
-    # 存储一条长期记忆
-
-    async def search(
-        self, agent_id, user_id, query, top_k=5, categories=None,
-    ) -> List[LongTermMemoryEntry]
-    # 根据查询搜索相关的长期记忆
-
-    async def consolidate(
-        self, agent_id, user_id, conversation_id, messages: List[MemoryMessage],
-    ) -> int
-    # 对话结束时从消息中提取有价值信息并存储，返回新存储条目数
-```
-
-#### IWorkingMemory — 工作记忆
-
-```python
-class IWorkingMemory(ABC):
-    async def get_state(self, conversation_id: int, key: str) -> Optional[Any]
-    async def set_state(self, conversation_id: int, key: str, value: Any, ttl=None) -> None
-    async def get_all_states(self, conversation_id: int) -> Dict[str, Any]
-    async def clear(self, conversation_id: int) -> None
-```
-
-### 1.4 组件实现
-
-#### TokenBudget — Token 预算管理器
-
-```python
-class TokenBudget:
-    def __init__(self, model_name: str = "gpt-4")
-
-    def count_text_tokens(self, text: str) -> int
-    # 底层复用 src/shared/utils/text_processing/token_counter.py
-
-    def count_messages_tokens(self, messages: List[MemoryMessage]) -> int
-    # 每条消息额外加 4 token 的角色标记开销
-    # tool_calls 的 JSON 额外计入
-
-    def get_available_budget(
-        self, model_context_window, system_prompt_tokens, tools_tokens, reserve_for_generation=1024,
-    ) -> int
-    # 公式：context_window - system_prompt - tools - reserve
-```
-
-#### WorkingMemory — 工作记忆（已完整实现）
-
-```python
-class WorkingMemory(IWorkingMemory):
-    def __init__(self, default_ttl: int = 3600)
-
-    # 存储结构：{conversation_id: {key: (value, expires_at)}}
-    # 过期策略：惰性清理（get_state 时检查过期）
-    # 典型用途：
-    #   - 多步骤任务的中间结果：set_state(conv_id, "step_1_result", data)
-    #   - 工具调用链上下文：set_state(conv_id, "tool_result_xxx", result)
-    #   - Agent 当前意图：set_state(conv_id, "current_plan", plan_text)
-```
-
-#### ICompressionStrategy — 压缩策略
-
-```python
-class ICompressionStrategy(ABC):
-    async def compress(
-        self, messages: List[MemoryMessage], available_tokens: int, token_budget: TokenBudget,
-    ) -> Tuple[List[MemoryMessage], bool, float]
-    # 返回：(压缩后消息, 是否压缩了, 压缩比率)
-```
-
-两个实现方向：
-
-| 策略 | 说明 |
-|------|------|
-| `SlidingWindowCompression` | 保留最近 N 条消息 + 摘要替换早期消息。需要 LLM 生成摘要。 |
-| `PriorityBasedCompression` | 按优先级裁剪：工具结果 < 旧对话 < 新对话。不需要 LLM 调用。 |
-
-#### ShortTermMemory — 短期记忆管理器
-
-```
-build_context() 核心流程：
-
-1. 从数据库加载消息 + 工具调用记录
-   ├─ msg_repo.list_by_conversation(conversation_id, limit=200)
-   └─ tc_repo.list_by_conversation(conversation_id)
-
-2. 转换为 MemoryMessage 列表
-   └─ _convert_db_messages(db_messages, db_tool_calls)
-
-3. 计算 Token 预算
-   ├─ available_tokens = max_tokens - reserve_tokens
-   ├─ system_tokens = token_budget.count_text_tokens(system_prompt)
-   └─ messages_tokens = token_budget.count_messages_tokens(messages)
-
-4. 超出预算？→ compression_strategy.compress()
-   └─ 摘要写入 AgentSession.summary 字段
-
-5. 组装 OpenAI 格式消息
-   └─ _build_openai_messages(system_prompt, memory_messages)
-
-6. 返回 MemorySnapshot
-```
-
-#### LongTermMemory — 长期记忆管理器
-
-```
-consolidate() 巩固流程（对话结束时调用）：
-
-1. 筛选有价值的对话消息
-2. 构建 extraction prompt，要求 LLM 提取结构化记忆
-3. 调用 LLM 返回 JSON 数组 [{category, content}, ...]
-4. 解析提取结果
-5. 逐条去重（与已有记忆比对）
-6. 存入 agent_memories 表
-
-search() 检索流程（对话开始时调用）：
-
-1. 根据用户当前消息搜索相关记忆
-2. 返回 top_k 条最相关记忆
-3. 递增访问计数
-```
-
-### 1.5 数据库表
+### 1.4 数据库表
 
 ```sql
--- agent_memories: 长期记忆表
+-- agent_memories: 长期记忆
 CREATE TABLE agent_memories (
     id          BIGINT PRIMARY KEY AUTO_INCREMENT,
-    agent_id    BIGINT NOT NULL,          -- 关联 Agent
-    user_id     BIGINT NOT NULL,          -- 关联用户
+    agent_id    BIGINT NOT NULL,
+    user_id     BIGINT NOT NULL,
     category    VARCHAR(50) NOT NULL,     -- preference/fact/procedure/insight
-    content     TEXT NOT NULL,            -- 记忆内容
-    source_conversation_id BIGINT,        -- 来源会话
-    access_count INT DEFAULT 0,           -- 访问次数
-    relevance_score FLOAT DEFAULT 0.0,    -- 相关性分数
-    extra_data  JSON,                     -- 扩展元数据
+    content     TEXT NOT NULL,
+    source_conversation_id BIGINT,
+    access_count INT DEFAULT 0,
+    relevance_score FLOAT DEFAULT 0.0,
+    extra_data  JSON,
     created_at  DATETIME NOT NULL,
     updated_at  DATETIME NOT NULL,
-
     INDEX idx_agent_user (agent_id, user_id),
     INDEX idx_category (category)
 );
+
+-- agent_context_summaries: 压缩摘要（追加写入）
+CREATE TABLE agent_context_summaries (
+    id                 BIGINT PRIMARY KEY AUTO_INCREMENT,
+    conversation_id    BIGINT NOT NULL,
+    summary_text       TEXT NOT NULL,
+    compressed_count   INT DEFAULT 0,
+    compression_ratio  FLOAT DEFAULT 0.0,
+    token_count        INT DEFAULT 0,
+    created_at         DATETIME NOT NULL,
+    INDEX idx_conversation (conversation_id)
+);
 ```
 
-### 1.6 数据流
+### 1.5 数据流
 
 ```
 用户消息进入
       │
       ▼
-ShortTermMemory.build_context()
-      ├─ DB 加载消息 + 工具调用记录
+MemoryManager.build_context()
+      ├─ MemoryManager.prefetch() → ES 搜索相关长期记忆
+      ├─ ShortTermMemory: DB 加载消息 + 工具调用
       ├─ TokenBudget 计算 token 数
-      ├─ 超限？→ CompressionStrategy.compress()
-      ├─ WorkingMemory.get_all_states() → 附加当前任务状态
-      └─ LongTermMemory.search() → 注入相关的长期记忆片段
+      ├─ 超限？→ ContextCompressor 五阶段压缩
+      │         ├─ Phase 1: 工具结果裁剪
+      │         ├─ Phase 2: 尾部保护
+      │         ├─ Phase 3: LLM 结构化摘要 → agent_context_summaries
+      │         ├─ Phase 4: 迭代合并
+      │         └─ Phase 5: 工具配对清理
+      ├─ 长期记忆片段注入到 user message
+      └─ StreamingContextScrubber 清理内部标签
       │
       ▼
 MemorySnapshot { messages, total_tokens, compressed }
@@ -316,7 +266,8 @@ AgentEngine.run(snapshot.messages, ...)
       │
       ▼
 对话结束 → LongTermMemory.consolidate()
-              └─ LLM 提取 → agent_memories 表
+            └─ LLM 提取 → agent_memories 表
+              └─ Security.scan_memory_content() → 安全检查
 ```
 
 ---
@@ -330,17 +281,17 @@ AgentEngine.run(snapshot.messages, ...)
 │                    AgentEngine                      │
 │                        │                            │
 │                        ▼                            │
-│               ToolExecutorV2                        │
+│                 ToolExecutor                        │
 │              ┌────┴────┐                            │
 │              │ 钩子链   │                            │
 │              │ Logging  │                            │
 │              │ Truncate │                            │
-│              │ Timeout  │                            │
+│              │ Budget   │                            │
 │              └────┬────┘                            │
 │           ┌───────┼───────┐                         │
 │           ▼       ▼       ▼                         │
-│      内置技能   MCP工具  自定义工具                  │
-│      (BaseSkill) (MCP)    (待扩展)                  │
+│      内置工具   MCP工具   记忆工具                    │
+│      BaseTool   MCPClient MemoryTool               │
 └────────────────────────────────────────────────────┘
 ```
 
@@ -350,31 +301,22 @@ AgentEngine.run(snapshot.messages, ...)
 
 ```python
 class ToolSource(str, Enum):
-    BUILTIN = "builtin"    # 内置技能
-    MCP = "mcp"            # MCP 远程工具
-    CUSTOM = "custom"      # 用户自定义工具（预留）
-
-class ToolParameter(BaseModel):
-    type: str = "string"
-    description: str = ""
-    enum: Optional[List[str]] = None
-    default: Optional[Any] = None
+    BUILTIN = "builtin"
+    MCP = "mcp"
+    CUSTOM = "custom"
 
 class ToolDefinition(BaseModel):
-    name: str                              # 工具全局唯一名称
+    name: str
     description: str
-    parameters: Dict[str, ToolParameter]   # 参数定义
-    required: List[str]                    # 必填参数
-    source: ToolSource                     # 来源
-    source_ref: Optional[str]              # 来源标识（如 MCP server_name）
-    timeout_ms: int = 30000                # 执行超时
-    dangerous: bool = False                # 是否需要用户确认
+    parameters: Dict[str, ToolParameter]
+    required: List[str]
+    source: ToolSource
+    source_ref: Optional[str]
+    timeout_ms: int = 30000
+    dangerous: bool = False
 
     def to_openai_format(self) -> Dict[str, Any]
-    # 转换为 OpenAI function calling 格式
 ```
-
-所有工具（内置/MCP/自定义）统一为 `ToolDefinition`，通过 `to_openai_format()` 输出 LLM 需要的格式。
 
 #### ToolResult — 结构化执行结果
 
@@ -383,38 +325,24 @@ class ToolResultStatus(str, Enum):
     SUCCESS = "success"
     ERROR = "error"
     TIMEOUT = "timeout"
-    PERMISSION_DENIED = "permission_denized"
 
 class ToolResult(BaseModel):
     status: ToolResultStatus = SUCCESS
-    content: str = ""                      # 文本结果
-    data: Optional[Dict] = None            # 结构化数据（如搜索结果）
-    duration_ms: int = 0                   # 执行耗时
-    error_message: Optional[str] = None    # 错误信息
-    metadata: Dict[str, Any] = {}          # 扩展元数据（如截断标记）
+    content: str = ""
+    data: Optional[Dict] = None
+    duration_ms: int = 0
+    error_message: Optional[str] = None
+    metadata: Dict[str, Any] = {}
 
     def to_llm_content(self) -> str
-    # 转换为 LLM 可消费的文本
-    #   ERROR → "工具执行失败：{error}"
-    #   有 data → JSON 格式化输出
-    #   否则 → content 原文
 ```
-
-替代现有 `execute_tool()` 返回裸 `str` 的模式，支持状态码、结构化数据和元数据。
 
 ### 2.3 生命周期钩子
 
 ```python
 class ToolHook(ABC):
-    async def before_execute(
-        self, tool: ToolDefinition, arguments: Dict, context: Dict,
-    ) -> Optional[Dict]
-    # 返回修改后的 arguments，或 None 不修改。抛异常可阻止执行。
-
-    async def after_execute(
-        self, tool: ToolDefinition, arguments: Dict, result: ToolResult, context: Dict,
-    ) -> ToolResult
-    # 可修改结果后返回（如脱敏、截断等）
+    async def before_execute(self, tool, arguments, context) -> Optional[Dict]
+    async def after_execute(self, tool, arguments, result, context) -> ToolResult
 ```
 
 内置钩子：
@@ -423,35 +351,36 @@ class ToolHook(ABC):
 |------|--------|-------|------|
 | `LoggingHook` | 记录工具名和来源 | 记录状态和耗时 | 结构化日志输出 |
 | `ResultTruncationHook` | — | 截断超长 content | 默认上限 8000 字符 |
-| `TimeoutHook` | 注入 timeout_ms 到 context | — | 由执行器读取设置超时 |
+| `ResultBudgetHook` | — | 控制累计工具结果 Token 预算 | 防止单次对话工具结果过大 |
 
-### 2.4 ToolExecutorV2 — 增强版执行器
+### 2.4 ToolExecutor — 工具执行器
 
 ```
 execute(tool_name, arguments, context) → ToolResult
 
 执行流程：
 
-1. 查找工具定义 → ToolDefinition
-2. 运行 before_hooks（可修改参数或阻止执行）
+1. 查找工具定义 → ToolDefinition（LRU 缓存）
+2. 运行 before_hooks
 3. 路由到实际执行器：
-   ├─ mcp__ 前缀 → _execute_mcp_tool()
-   │   解析 mcp__{server_name}__{tool_name}
-   │   → McpClientManager.call_tool()
-   └─ 其他 → _execute_skill_tool()
-       → SkillRegistry.find_skill_for_tool()
-       → skill.execute_tool()（适配现有 BaseSkill 接口）
-4. 包装为 ToolResult
-5. 运行 after_hooks（可修改结果）
-6. 返回最终 ToolResult
+   ├─ mcp__ 前缀 → McpClientManager.call_tool()
+   └─ 其他 → 内置工具 execute()
+4. asyncio.wait_for() 超时控制
+5. 包装为 ToolResult
+6. 运行 after_hooks
+7. 返回最终 ToolResult
 ```
 
-与现有 BaseSkill 的兼容方式：`_execute_skill_tool()` 内部调用 `skill.execute_tool()`，现有技能代码无需修改。
+### 2.5 内置工具
 
-```
-resolve_tools(enabled_skills, enabled_mcp_ids) → List[ToolDefinition]
-resolve_tools_openai_format(...) → List[Dict]  # 向后兼容
-```
+| 工具名 | 文件 | 功能 |
+|--------|------|------|
+| `knowledge_search` | `builtins/knowledge_search.py` | 知识库语义搜索 |
+| `web_search` | `builtins/web_search.py` | 网络搜索（Tavily/SerpAPI/DuckDuckGo） |
+| `code_execution` | `builtins/code_execution.py` | Docker 沙盒代码执行 |
+| `memory` | `builtins/memory.py` | 记忆管理（add/replace/remove），限制 50 条/用户/Agent |
+| `todo` | `builtins/todo.py` | 任务追踪（跨压缩持久） |
+| `read_tool_result` | `builtins/read_tool_result.py` | 读取之前工具调用的完整结果 |
 
 ---
 
@@ -462,7 +391,7 @@ resolve_tools_openai_format(...) → List[Dict]  # 向后兼容
 **组合优于继承**：`AgentLLM` 持有 `BaseLLM` 实例，不继承它。
 
 ```
-AgentLLM (新类，feature 层)
+AgentLLM (feature 层)
   ├── 持有 BaseLLM 实例（shared 层）
   ├── 增加流式工具调用处理
   ├── 增加 token 统计聚合
@@ -475,10 +404,6 @@ BaseLLM (不变)
   └── TransformersLLM
 ```
 
-理由：
-- `BaseLLM` 被 QA、深度研究等多个 feature 使用，修改接口影响面大
-- Agent 的流式工具调用是 Agent 领域特有的需求，不应泄漏到 shared 层
-
 ### 3.2 数据模型
 
 #### StreamChunk — 流式输出块
@@ -486,33 +411,13 @@ BaseLLM (不变)
 ```python
 @dataclass
 class StreamChunk:
-    type: str  # 流式块类型
+    type: str  # content / tool_call_start / tool_call_args / tool_call_end / done
     content: str = ""
     tool_call_id: Optional[str] = None
     tool_name: Optional[str] = None
     tool_arguments_delta: str = ""
     usage: Optional[Dict[str, int]] = None
     finish_reason: Optional[str] = None
-```
-
-流式块类型说明：
-
-| type | 含义 | 携带数据 |
-|------|------|---------|
-| `content` | 文本内容增量 | `content` |
-| `tool_call_start` | 工具调用开始 | `tool_call_id`, `tool_name` |
-| `tool_call_args` | 工具参数增量 | `tool_call_id`, `tool_arguments_delta` |
-| `tool_call_end` | 工具调用完成 | `tool_call_id`, `tool_name`, `tool_arguments_delta`(完整参数) |
-| `done` | 全部完成 | `usage`, `finish_reason` |
-
-#### CollectedToolCall — 完整的工具调用
-
-```python
-@dataclass
-class CollectedToolCall:
-    id: str
-    name: str
-    arguments: str    # 完整的 JSON 字符串
 ```
 
 #### AgentLLMResponse — 非流式完整响应
@@ -533,65 +438,48 @@ class AgentLLM:
     def __init__(self, base_llm: BaseLLM)
 
     async def generate(
-        self, messages, tools=None, max_tokens=4096,
-        temperature=0.7, top_p=0.8, tool_choice="auto",
+        self, messages, tools=None, max_tokens=4096, ...
     ) -> AgentLLMResponse
-    # 非流式生成，委托给 base_llm.generate_with_tools()
+    # 非流式生成
 
     async def generate_stream(
-        self, messages, tools=None, max_tokens=4096,
-        temperature=0.7, top_p=0.8, tool_choice="auto",
+        self, messages, tools=None, max_tokens=4096, ...
     ) -> AsyncGenerator[StreamChunk, None]
-    # 流式生成
-    # OpenAI SDK → stream=True + tools，逐 chunk 解析
-    # 其他 LLM → 降级为非流式
+    # 流式生成，支持原生 OpenAI 流式 + 非 OpenAI 降级
 ```
-
-流式降级策略：
-
-```
-generate_stream() 内部：
-
-if isinstance(base_llm, OpenAICompatibleLLM) and tools:
-    → 原生流式：stream=True + tools 参数
-    → 逐 chunk 解析 content 和 tool_calls 增量
-    → yield StreamChunk
-else:
-    → 降级非流式：调用 generate() 一次性返回
-    → yield 完整的 content + tool_call_end + done
-```
-
-### 3.4 StreamEventHandler — SSE 转换器
-
-```python
-class StreamEventHandler:
-    def __init__(self, conversation_id: int)
-
-    async def handle_chunk(
-        self, chunk: StreamChunk, user_msg: AgentMessage,
-        tc_repo: ToolCallRepository, context: Dict,
-    ) -> Optional[str]
-    # 将 StreamChunk 转换为 SSE 格式字符串
-    # 同时创建/更新工具调用记录（DB 持久化）
-
-    def get_full_content(self) -> str       # 拼接后的完整文本
-    def get_total_tokens(self) -> int       # 总 token 使用量
-    def get_tool_call_db_id(call_id) -> int # call_id → DB 记录 ID
-```
-
-SSE 事件映射：
-
-| StreamChunk.type | SSE event | 说明 |
-|------------------|-----------|------|
-| `content` | `event: content` | 文本增量 `{"content": "..."}` |
-| `tool_call_start` | `event: tool_call` | 工具开始 `{"tool_name", "call_id", "status": "running"}` |
-| `tool_call_args` | `event: tool_call_args` | 参数增量 `{"call_id", "delta"}` |
-| `tool_call_end` | 由引擎层处理 | 工具执行后发送 `tool_result` |
-| `done` | 由引擎层处理 | 发送 `done` |
 
 ---
 
-## 四、组件交互总图
+## 四、ReAct 引擎
+
+### 4.1 AgentEngine
+
+```python
+class AgentEngine:
+    """ReAct 循环引擎"""
+
+    async def run(self, messages, tools, ...) -> AsyncGenerator[dict, None]
+    # ReAct 循环：LLM 生成 → 工具调用 → 结果注入 → 再次 LLM，直到无工具调用
+```
+
+引擎负责：
+1. 组装 system prompt（通过 `SystemPromptBuilder` 分层构建）
+2. 将 `MemorySnapshot` 中的消息传给 `AgentLLM`
+3. 流式产出 SSE 事件（session / content / tool_call / tool_result / done / error）
+4. 工具调用通过 `ToolExecutor` 执行
+5. LLM 重试通过 `retry.py` 处理
+
+### 4.2 PromptBuilder
+
+```python
+class SystemPromptBuilder:
+    """分层 prompt 组装"""
+    # 层级：基础指令 → Agent 个性 → 记忆上下文 → 工具说明
+```
+
+---
+
+## 五、组件交互总图
 
 ```
                     API Route (POST /agents/{id}/chat-stream)
@@ -608,42 +496,26 @@ SSE 事件映射：
                    ┌────────────┘     │
                    ▼                  ▼
             ┌──────────────┐   ┌──────────────┐
-            │  记忆系统     │   │  AgentLLM    │──→ BaseLLM (shared)
+            │  MemoryManager│   │  AgentLLM    │──→ BaseLLM (shared)
             │  STM + LTM   │   │  流式/非流式  │     │
-            │  + WM        │   │  工具调用收集  │     │
+            │  Compressor   │   │  工具调用收集  │     │
             └──────┬───────┘   └──────┬───────┘     │
                    │                  │              ▼
                    ▼                  ▼         StreamChunk 流
-            MemorySnapshot    ToolExecutorV2         │
-                   │          ┌────┼────┐            ▼
-                   │          ▼    ▼    ▼     StreamEventHandler
-                   │       [钩子] [路由] [结果]       │
-                   │          │    │    │             ▼
-                   │          ▼    ▼    ▼          SSE 事件
-                   │       Logging Skill ToolResult  │
-                   │       Truncate MCP              ▼
-                   │       Timeout              前端 EventSource
+            MemorySnapshot    ToolExecutor            │
+                   │          ┌────┼────┐             ▼
+                   │          ▼    ▼    ▼      chat_service
+                   │       [钩子] [路由] [结果]   直接产出 SSE
+                   │          │    │    │              │
+                   │       Logging Tool Result         ▼
+                   │       Truncate MCP           前端 EventSource
+                   │       Budget
                    ▼
             DB: agent_messages
                 agent_tool_calls
                 agent_memories
+                agent_context_summaries
 ```
-
----
-
-## 五、与现有代码的关系
-
-| 现有文件 | 状态 | 新文件对应 | 关系 |
-|---------|------|-----------|------|
-| `core/memory.py` (ConversationMemory) | 保留不动 | `core/memory/short_term.py` | 新版短期记忆替代 |
-| `core/executor.py` (ToolExecutor) | 保留不动 | `core/tool/executor.py` | V2 增强版替代 |
-| `core/engine.py` (AgentEngine) | 保留不动 | 后续重构 | 将使用新组件 |
-| `services/chat_service.py` | 保留不动 | 后续适配 | 注入新依赖 |
-| `skills/base.py` (BaseSkill) | **完全兼容** | — | V2 执行器通过适配层调用 |
-| `skills/builtins/*` | **完全兼容** | — | 无需修改 |
-| `mcp/client.py` (McpClientManager) | **完全兼容** | — | V2 执行器直接使用 |
-
-迁移策略：新框架并行存在，后续逐个 API 端点迁移到新组件，不破坏现有功能。
 
 ---
 
@@ -651,16 +523,27 @@ SSE 事件映射：
 
 | 组件 | 状态 | 说明 |
 |------|------|------|
-| 记忆系统接口 (`interfaces.py`) | ✅ 完成 | 全部抽象接口和数据类 |
+| 记忆接口 + 数据类 (`interfaces.py`) | ✅ 完成 | MemoryMessage、MemorySnapshot 等 |
 | Token 预算 (`token_budget.py`) | ✅ 完成 | 已集成 TokenCounter |
-| 工作记忆 (`working.py`) | ✅ 完成 | 已完整实现 |
-| 压缩策略 (`compress.py`) | 🔨 骨架 | 接口已定义，两种策略待实现 |
-| 短期记忆 (`short_term.py`) | 🔨 骨架 | 核心流程已编写，消息转换待完善 |
-| 长期记忆 ORM + 仓储 | ✅ 完成 | 表结构和完整 CRUD |
-| 长期记忆 (`long_term.py`) | 🔨 骨架 | 提取/存储/搜索流程已编写，prompt 模板待完善 |
+| MemoryManager (`memory_manager.py`) | ✅ 完成 | 统一门面、冻结快照、预取 |
+| 短期记忆 (`short_term.py`) | ✅ 完成 | DB 加载、消息转换、Token 计算 |
+| 长期记忆 (`long_term.py`) | ✅ 完成 | ES 混合搜索 + MySQL 回退、巩固/替换/删除 |
+| 长期记忆 ORM + 仓储 | ✅ 完成 | agent_memories 表 + MemoryRepository |
+| ES 记忆搜索仓储 | ✅ 完成 | memory_search_repository.py |
+| 五阶段压缩 (`context_compressor.py`) | ✅ 完成 | 全部 5 阶段 + 防抖动 + 摘要持久化 |
+| 压缩摘要 ORM + 仓储 | ✅ 完成 | agent_context_summaries 表 |
+| 上下文清理 (`context_scrubber.py`) | ✅ 完成 | SSE 输出内部标签清理 |
+| 记忆安全扫描 (`security.py`) | ✅ 完成 | 注入/泄露/Unicode 等多模式检测 |
+| TodoStore (`todo_store.py`) | ✅ 完成 | 跨压缩任务状态追踪 |
 | 工具定义 (`definition.py`) | ✅ 完成 | ToolDefinition + to_openai_format() |
-| 工具结果 (`result.py`) | ✅ 完成 | ToolResult + to_llm_content() |
-| 工具钩子 (`hooks.py`) | ✅ 完成 | 三个内置钩子已实现 |
-| 增强版执行器 (`executor.py`) | 🔨 骨架 | 路由和钩子流程已编写 |
-| AgentLLM (`agent_llm.py`) | 🔨 骨架 | 非流式已完成，原生流式待实现 |
-| 流式处理器 (`stream_handler.py`) | ✅ 完成 | SSE 转换和状态持久化 |
+| 工具结果 (`result.py`) | ✅ 完成 | ToolResult（SUCCESS/ERROR/TIMEOUT） |
+| 工具钩子 (`hooks.py`) | ✅ 完成 | Logging + Truncation + ResultBudget |
+| 工具执行器 (`executor.py`) | ✅ 完成 | 路由 + 钩子 + 超时 + LRU 缓存 |
+| 工具注册 (`registry.py`) | ✅ 完成 | ToolRegistry |
+| 工具基类 (`base.py`) | ✅ 完成 | BaseTool |
+| 6 个内置工具 (`builtins/`) | ✅ 完成 | knowledge/web/code/memory/todo/read |
+| AgentLLM (`agent_llm.py`) | ✅ 完成 | 流式 + 非流式 + 降级 |
+| AgentEngine (`engine.py`) | ✅ 完成 | ReAct 循环 |
+| PromptBuilder (`prompt_builder.py`) | ✅ 完成 | 分层 prompt 组装 |
+| 记忆管理 API | ✅ 完成 | GET/DELETE memories, GET stats |
+| 记忆内置工具 (`builtins/memory.py`) | ✅ 完成 | add/replace/remove 操作 |
