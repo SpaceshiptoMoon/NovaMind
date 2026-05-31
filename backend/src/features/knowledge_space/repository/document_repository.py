@@ -125,31 +125,8 @@ class DocumentRepository:
         skip: int = 0,
         limit: int = 100,
     ) -> List[Document]:
-        """
-        获取知识库内的文档列表
-
-        Args:
-            kb_id: 知识库 ID
-            status: 状态过滤
-            skip: 跳过数量
-            limit: 返回数量
-
-        Returns:
-            文档列表
-        """
-        query = select(Document).where(
-            Document.kb_id == kb_id,
-            Document.deleted_at.is_(None),
-        )
-
-        if status is not None:
-            query = query.where(Document.status == status)
-
-        query = query.order_by(Document.created_at.desc())
-        query = query.offset(skip).limit(limit)
-
-        result = await self.session.execute(query)
-        return list(result.scalars().all())
+        """获取知识库内的文档列表"""
+        return await self._list_by_parent(Document.kb_id, kb_id, status, skip, limit)
 
     async def get_by_space(
         self,
@@ -158,31 +135,8 @@ class DocumentRepository:
         skip: int = 0,
         limit: int = 100,
     ) -> List[Document]:
-        """
-        获取空间内的文档列表
-
-        Args:
-            space_id: 空间 ID
-            status: 状态过滤
-            skip: 跳过数量
-            limit: 返回数量
-
-        Returns:
-            文档列表
-        """
-        query = select(Document).where(
-            Document.space_id == space_id,
-            Document.deleted_at.is_(None),
-        )
-
-        if status is not None:
-            query = query.where(Document.status == status)
-
-        query = query.order_by(Document.created_at.desc())
-        query = query.offset(skip).limit(limit)
-
-        result = await self.session.execute(query)
-        return list(result.scalars().all())
+        """获取空间内的文档列表"""
+        return await self._list_by_parent(Document.space_id, space_id, status, skip, limit)
 
     async def get_by_hash(
         self,
@@ -325,13 +279,19 @@ class DocumentRepository:
             )
 
         # 软删除：设置 deleted_at 和 status，修改 file_hash 以解除唯一约束
+        # file_hash 是 varchar(64)，SHA-256 恰好 64 字符，不能直接 concat
+        # 截断前缀 + 短后缀，确保总长度 ≤ 64: prefix(48) + "_del_"(5) + id(≤11) = 64
+        deleted_hash = func.concat(
+            func.substring(Document.file_hash, 1, 48),
+            f"_del_{document_id}",
+        )
         result = await self.session.execute(
             update(Document)
             .where(Document.id == document_id)
             .values(
                 deleted_at=now_china(),
                 status=DocumentStatus.DELETED,
-                file_hash=Document.file_hash + f"_deleted_{document_id}",
+                file_hash=deleted_hash,
             )
         )
         success = result.rowcount > 0
@@ -408,66 +368,23 @@ class DocumentRepository:
 
     async def get_kb_realtime_stats(self, kb_id: int) -> Dict[str, Any]:
         """实时统计知识库信息（排除软删除文档）"""
-        result = await self.session.execute(
-            select(
-                func.count(Document.id).label("document_count"),
-                func.coalesce(func.sum(
-                    cast(func.json_extract(Document.doc_metadata, "$.chunk_count"), Integer)
-                ), 0).label("chunk_count"),
-                func.coalesce(func.sum(Document.file_size), 0).label("total_size_bytes"),
-                func.coalesce(func.sum(case((Document.status == DocumentStatus.UPLOADED, 1), else_=0)), 0).label("uploaded"),
-                func.coalesce(func.sum(case((Document.status == DocumentStatus.COMPLETED, 1), else_=0)), 0).label("completed"),
-                func.coalesce(func.sum(case((Document.status == DocumentStatus.FAILED, 1), else_=0)), 0).label("failed"),
-                func.coalesce(func.sum(case((Document.status == DocumentStatus.PROCESSING, 1), else_=0)), 0).label("processing"),
-            ).where(
-                Document.kb_id == kb_id,
-                Document.deleted_at.is_(None),
-            )
+        stmt = self._build_stats_select().where(
+            Document.kb_id == kb_id,
+            Document.deleted_at.is_(None),
         )
-        row = result.one()
-        return {
-            "document_count": row.document_count,
-            "chunk_count": row.chunk_count,
-            "total_size_mb": round(row.total_size_bytes / (1024 * 1024), 2),
-            "uploaded_documents": row.uploaded,
-            "completed_documents": row.completed,
-            "failed_documents": row.failed,
-            "processing_documents": row.processing,
-        }
+        row = (await self.session.execute(stmt)).one()
+        return self._row_to_stats_dict(row)
 
     async def batch_get_kb_stats(self, kb_ids: List[int]) -> Dict[int, Dict[str, Any]]:
         """批量统计多个知识库信息（单条 SQL，解决 N+1 问题）"""
         if not kb_ids:
             return {}
-        result = await self.session.execute(
-            select(
-                Document.kb_id,
-                func.count(Document.id).label("document_count"),
-                func.coalesce(func.sum(
-                    cast(func.json_extract(Document.doc_metadata, "$.chunk_count"), Integer)
-                ), 0).label("chunk_count"),
-                func.coalesce(func.sum(Document.file_size), 0).label("total_size_bytes"),
-                func.coalesce(func.sum(case((Document.status == DocumentStatus.UPLOADED, 1), else_=0)), 0).label("uploaded"),
-                func.coalesce(func.sum(case((Document.status == DocumentStatus.COMPLETED, 1), else_=0)), 0).label("completed"),
-                func.coalesce(func.sum(case((Document.status == DocumentStatus.FAILED, 1), else_=0)), 0).label("failed"),
-                func.coalesce(func.sum(case((Document.status == DocumentStatus.PROCESSING, 1), else_=0)), 0).label("processing"),
-            ).where(
-                Document.kb_id.in_(kb_ids),
-                Document.deleted_at.is_(None),
-            ).group_by(Document.kb_id)
-        )
-        stats_map = {}
-        for row in result.all():
-            stats_map[row.kb_id] = {
-                "document_count": row.document_count,
-                "chunk_count": row.chunk_count,
-                "total_size_mb": round(row.total_size_bytes / (1024 * 1024), 2),
-                "uploaded_documents": row.uploaded,
-                "completed_documents": row.completed,
-                "failed_documents": row.failed,
-                "processing_documents": row.processing,
-            }
-        return stats_map
+        stmt = self._build_stats_select(with_kb_id=True).where(
+            Document.kb_id.in_(kb_ids),
+            Document.deleted_at.is_(None),
+        ).group_by(Document.kb_id)
+        result = await self.session.execute(stmt)
+        return {row.kb_id: self._row_to_stats_dict(row) for row in result.all()}
 
     async def get_space_realtime_stats(self, space_id: int) -> Dict[str, Any]:
         """实时统计空间内文档信息（排除软删除文档）"""
@@ -528,44 +445,78 @@ class DocumentRepository:
         self,
         limit: int = 100,
     ) -> List[Document]:
-        """
-        获取正在处理中的文档（用于后台任务）
-
-        Args:
-            limit: 返回数量
-
-        Returns:
-            处理中的文档列表
-        """
-        query = select(Document).where(
-            Document.status == DocumentStatus.PROCESSING,
-            Document.deleted_at.is_(None),
-        )
-
-        query = query.order_by(Document.created_at.asc()).limit(limit)
-
-        result = await self.session.execute(query)
-        return list(result.scalars().all())
+        """获取正在处理中的文档（用于后台任务）"""
+        return await self._get_by_status(DocumentStatus.PROCESSING, limit)
 
     async def get_uploaded_documents(
         self,
         limit: int = 100,
     ) -> List[Document]:
-        """
-        获取已上传的文档（用于拆分解析触发）
+        """获取已上传的文档（用于拆分解析触发）"""
+        return await self._get_by_status(DocumentStatus.UPLOADED, limit)
 
-        Args:
-            limit: 返回数量
+    # ---------- 共享私有方法 ----------
 
-        Returns:
-            已上传的文档列表
-        """
+    async def _list_by_parent(
+        self,
+        column,
+        parent_id: int,
+        status: Optional[DocumentStatus] = None,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> List[Document]:
+        """按父级字段（kb_id 或 space_id）查询文档列表"""
         query = select(Document).where(
-            Document.status == DocumentStatus.UPLOADED,
+            column == parent_id,
             Document.deleted_at.is_(None),
         )
-
-        query = query.order_by(Document.created_at.asc()).limit(limit)
-
+        if status is not None:
+            query = query.where(Document.status == status)
+        query = query.order_by(Document.created_at.desc()).offset(skip).limit(limit)
         result = await self.session.execute(query)
         return list(result.scalars().all())
+
+    async def _get_by_status(
+        self,
+        status: DocumentStatus,
+        limit: int = 100,
+    ) -> List[Document]:
+        """按状态查询文档列表"""
+        query = select(Document).where(
+            Document.status == status,
+            Document.deleted_at.is_(None),
+        ).order_by(Document.created_at.asc()).limit(limit)
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
+    @staticmethod
+    def _build_stats_select(with_kb_id: bool = False):
+        """构建统计查询的 select 子句"""
+        columns = []
+        if with_kb_id:
+            columns.append(Document.kb_id)
+        columns.extend([
+            func.count(Document.id).label("document_count"),
+            func.coalesce(func.sum(
+                cast(func.json_extract(Document.doc_metadata, "$.chunk_count"), Integer)
+            ), 0).label("chunk_count"),
+            func.coalesce(func.sum(Document.file_size), 0).label("total_size_bytes"),
+            func.coalesce(func.sum(case((Document.status == DocumentStatus.UPLOADED, 1), else_=0)), 0).label("uploaded"),
+            func.coalesce(func.sum(case((Document.status == DocumentStatus.COMPLETED, 1), else_=0)), 0).label("completed"),
+            func.coalesce(func.sum(case((Document.status == DocumentStatus.FAILED, 1), else_=0)), 0).label("failed"),
+            func.coalesce(func.sum(case((Document.status == DocumentStatus.PROCESSING, 1), else_=0)), 0).label("processing"),
+        ])
+        return select(*columns)
+
+    @staticmethod
+    def _row_to_stats_dict(row) -> Dict[str, Any]:
+        """将统计查询结果行转为字典"""
+        return {
+            "document_count": row.document_count,
+            "chunk_count": row.chunk_count,
+            "total_size_mb": round(row.total_size_bytes / (1024 * 1024), 2),
+            "uploaded_documents": row.uploaded,
+            "completed_documents": row.completed,
+            "failed_documents": row.failed,
+            "processing_documents": row.processing,
+        }

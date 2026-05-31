@@ -73,7 +73,8 @@ export const documentApi = {
 
   reprocessDocument(spaceId: number, kbId: number, docId: number) {
     return request.post<ProcessDocumentResponse>(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/reprocess`
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/reprocess`,
+      {}
     )
   },
 
@@ -87,5 +88,12 @@ export const documentApi = {
     return request.post<ProcessDocumentResponse>(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/retry`
     )
+  },
+
+  async getDocumentImage(spaceId: number, kbId: number, docId: number): Promise<string> {
+    const blob = await request.download(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/image`
+    )
+    return window.URL.createObjectURL(blob)
   },
 }

@@ -575,14 +575,21 @@ async function handleSaveInfo() {
 async function handleSaveEmbedding() {
   embeddingSaving.value = true
   try {
-    await spaceApi.updateConfig(spaceId.value, {
+    const payload: Record<string, any> = {
       space_type: embeddingForm.spaceType,
       embedding: {
         model: embeddingForm.model || undefined,
         batch_size: embeddingForm.batch_size,
         normalize: embeddingForm.normalize,
       },
-    })
+    }
+    // 多模态空间需额外发送 multimodal_embedding 配置
+    if (embeddingForm.spaceType === 'multimodal') {
+      payload.multimodal_embedding = {
+        model: embeddingForm.model || undefined,
+      }
+    }
+    await spaceApi.updateConfig(spaceId.value, payload)
     ElMessage.success('Embedding 配置已保存')
   } catch {
     // handled by interceptor

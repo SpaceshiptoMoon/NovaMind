@@ -126,7 +126,7 @@ async def process_document_task(
             # 用户主动取消
             logger.info("文档处理被用户取消", document_id=document_id, job_id=job_id)
             await session.rollback()
-            await _handle_cancellation(document_id)
+            await _handle_cancellation(document_id, space_id)
             await unbind_job(document_id)
 
         except Exception as e:
@@ -136,21 +136,86 @@ async def process_document_task(
                 job_id=job_id,
                 error=str(e),
             )
-            # 回滚当前 session 的变更（mark_processing），让 arq 重试
-            await session.rollback()
 
             # 判断是否为最后一次重试
             job_try = ctx.get("job_try", 1)
             max_tries = ctx.get("max_tries", 3)
             if job_try >= max_tries:
-                # 最终失败：执行事务补偿（使用独立 session）
-                await _handle_final_failure(
-                    session, doc_repo, document_id, str(e),
-                )
+                # 最终失败：先回滚 pipeline 残留变更，再标记 FAILED
+                await session.rollback()
+
+                # 强制标记 FAILED（优先用独立 session，兜底用 raw SQL）
+                await _ensure_mark_failed(document_id, str(e))
+
+                # 清理 ES 残留数据（非关键，失败不影响状态）
+                try:
+                    from src.shared.clients import ClientFactory
+                    es_client = await ClientFactory.get_elasticsearch_client()
+                    await es_client.delete_document_chunks(
+                        space_id=space_id,
+                        document_id=document_id,
+                    )
+                except Exception as cleanup_err:
+                    logger.warning("清理 ES 数据失败", document_id=document_id, error=str(cleanup_err))
+
                 await unbind_job(document_id)
                 # 最终失败不再 raise，避免 arq 尝试无效重试
             else:
+                # 非最终重试：回滚让 arq 重试
+                await session.rollback()
                 raise
+
+
+async def _ensure_mark_failed(document_id: int, error_message: str) -> None:
+    """
+    强制将文档标记为 FAILED，三层兜底确保状态一定更新
+
+    1. 尝试用 ORM 独立 session 更新
+    2. ORM 失败则用 raw SQL 更新
+    3. 都失败则记录严重告警（等待 recover_orphan_documents 在下次启动时处理）
+    """
+    failed_msg = f"[已重试最大次数] {error_message}"
+
+    # 第 1 层：ORM 独立 session
+    try:
+        from src.core.database.database import get_db_session
+        from src.features.knowledge_space.repository.document_repository import DocumentRepository
+
+        async with get_db_session() as independent_session:
+            repo = DocumentRepository(independent_session)
+            document = await repo.get_by_id(document_id)
+            if document:
+                document.mark_failed(failed_msg)
+                await independent_session.commit()
+                logger.info("文档已标记 FAILED（ORM）", document_id=document_id)
+                return
+    except Exception as e:
+        logger.warning("ORM 标记 FAILED 失败，尝试 raw SQL", document_id=document_id, error=str(e))
+
+    # 第 2 层：Raw SQL
+    try:
+        from src.core.database.database import async_engine
+        from sqlalchemy import text
+
+        async with async_engine.connect() as conn:
+            await conn.execute(
+                text(
+                    "UPDATE documents SET status=3, error_message=:msg, "
+                    "updated_at=NOW() WHERE id=:id AND status=1"
+                ),
+                {"msg": failed_msg[:500], "id": document_id},
+            )
+            await conn.commit()
+            logger.info("文档已标记 FAILED（raw SQL）", document_id=document_id)
+            return
+    except Exception as e:
+        logger.error("raw SQL 标记 FAILED 也失败", document_id=document_id, error=str(e))
+
+    # 第 3 层：记录严重告警，等待启动时 recover_orphan_documents 处理
+    logger.critical(
+        "文档状态更新全部失败，文档将卡在 PROCESSING 直到服务重启",
+        document_id=document_id,
+    )
 
 
 async def _handle_final_failure(
@@ -211,51 +276,28 @@ async def _handle_final_failure(
             logger.error("事务补偿失败", document_id=document_id, error=str(e))
 
 
-async def _handle_cancellation(document_id: int) -> None:
+async def _handle_cancellation(document_id: int, space_id: int) -> None:
     """
     用户取消文档处理后的事务补偿
-
-    使用独立 DB session，标记文档为 FAILED，清理 ES 中的部分数据。
     """
-    from src.core.database.database import get_db_session
-    from src.features.knowledge_space.repository.document_repository import DocumentRepository
-    from src.shared.clients import ClientFactory
     from src.shared.mq.task_tracker import clear_cancel_flag
 
     # 清除取消标记
     await clear_cancel_flag(document_id)
 
-    async with get_db_session() as independent_session:
-        try:
-            independent_repo = DocumentRepository(independent_session)
-            document = await independent_repo.get_by_id(document_id)
-            if not document:
-                return
+    # 强制标记 FAILED
+    await _ensure_mark_failed(document_id, "[用户取消] 文档处理已被用户取消")
 
-            # 清理 ES 中的部分数据
-            try:
-                es_client = await ClientFactory.get_elasticsearch_client()
-                await es_client.delete_document_chunks(
-                    space_id=document.space_id,
-                    document_id=document.id,
-                )
-            except Exception as e:
-                logger.warning("取消后清理 ES 数据失败", document_id=document.id, error=str(e))
-
-            document.mark_failed("[用户取消] 文档处理已被用户取消")
-            await independent_session.commit()
-
-            # 事务提交成功后失效搜索缓存
-            try:
-                from src.shared.cache.redis_client import get_redis_client
-                cache = await get_redis_client()
-                await cache.delete_by_pattern(f"search:{document.kb_id}:*", batch_size=100)
-            except Exception as cache_err:
-                logger.warning("搜索缓存失效失败", kb_id=document.kb_id, error=str(cache_err))
-
-            logger.info("文档取消补偿完成", document_id=document_id, status="cancelled")
-        except Exception as e:
-            logger.error("取消补偿失败", document_id=document_id, error=str(e))
+    # 清理 ES 残留数据（非关键）
+    try:
+        from src.shared.clients import ClientFactory
+        es_client = await ClientFactory.get_elasticsearch_client()
+        await es_client.delete_document_chunks(
+            space_id=space_id,
+            document_id=document_id,
+        )
+    except Exception as e:
+        logger.warning("取消后清理 ES 数据失败", document_id=document_id, error=str(e))
 
 
 class WorkerSettings:

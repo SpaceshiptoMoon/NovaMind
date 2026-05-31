@@ -45,6 +45,14 @@
               >
                 {{ getVisibilityText(space.visibility) }}
               </el-tag>
+              <el-tag
+                v-if="space.config?.space_type === 'multimodal'"
+                size="small"
+                type="primary"
+                class="space-item-vis"
+              >
+                图片
+              </el-tag>
             </div>
           </div>
           <div v-if="filteredMySpaces.length === 0" class="section-empty">
@@ -67,6 +75,14 @@
             </div>
             <div class="space-item-info">
               <span class="space-item-name">{{ space.name }}</span>
+              <el-tag
+                v-if="space.config?.space_type === 'multimodal'"
+                size="small"
+                type="primary"
+                class="space-item-vis"
+              >
+                图片
+              </el-tag>
             </div>
           </div>
         </div>
@@ -148,6 +164,12 @@
             <el-radio :value="2">公开</el-radio>
           </el-radio-group>
         </el-form-item>
+        <el-form-item label="空间类型">
+          <el-radio-group v-model="createSpaceForm.space_type" @change="createSpaceForm.embedding_model = ''">
+            <el-radio value="text">文本空间</el-radio>
+            <el-radio value="multimodal">图片空间</el-radio>
+          </el-radio-group>
+        </el-form-item>
         <el-form-item label="描述" prop="description">
           <el-input
             v-model="createSpaceForm.description"
@@ -157,17 +179,19 @@
             maxlength="2000"
           />
         </el-form-item>
-        <el-divider content-position="left">Embedding 模型</el-divider>
+        <el-divider content-position="left">
+          {{ createSpaceForm.space_type === 'multimodal' ? '多模态 Embedding 模型' : 'Embedding 模型' }}
+        </el-divider>
         <el-form-item label="模型">
           <el-select
             v-model="createSpaceForm.embedding_model"
-            placeholder="选择模型（可选，也可后续配置）"
+            :placeholder="createSpaceForm.space_type === 'multimodal' ? '选择多模态模型（可选）' : '选择模型（可选，也可后续配置）'"
             clearable
             filterable
             style="width: 100%"
           >
             <el-option
-              v-for="m in embeddingModels"
+              v-for="m in currentCreateModels"
               :key="m.model"
               :label="m.model"
               :value="m.model"
@@ -377,12 +401,17 @@ const createSpaceFormRef = ref<FormInstance>()
 const createSpaceForm = reactive({
   name: '',
   visibility: 0,
+  space_type: 'text' as 'text' | 'multimodal',
   description: '',
   embedding_model: '',
   embedding_batch_size: 32,
   embedding_normalize: true,
 })
 const embeddingModels = ref<AvailableModelItem[]>([])
+const mmEmbeddingModels = ref<AvailableModelItem[]>([])
+const currentCreateModels = computed(() =>
+  createSpaceForm.space_type === 'multimodal' ? mmEmbeddingModels.value : embeddingModels.value
+)
 
 const spaceFormRules: FormRules = {
   name: [
@@ -394,6 +423,7 @@ const spaceFormRules: FormRules = {
 function showCreateSpaceDialog() {
   createSpaceForm.name = ''
   createSpaceForm.visibility = 0
+  createSpaceForm.space_type = 'text'
   createSpaceForm.description = ''
   createSpaceForm.embedding_model = ''
   createSpaceForm.embedding_batch_size = 32
@@ -406,6 +436,7 @@ async function fetchEmbeddingModels() {
   try {
     const data = await userApi.getAvailableModelDetails()
     embeddingModels.value = data.embedding || []
+    mmEmbeddingModels.value = data.multimodal_embedding || []
   } catch {
     // ignore
   }
@@ -419,19 +450,24 @@ async function handleCreateSpace() {
 
     createSpaceLoading.value = true
     try {
+      const config: Record<string, any> = {
+        space_type: createSpaceForm.space_type,
+        description: createSpaceForm.description || undefined,
+        embedding: createSpaceForm.embedding_model
+          ? {
+              model: createSpaceForm.embedding_model,
+              batch_size: createSpaceForm.embedding_batch_size,
+              normalize: createSpaceForm.embedding_normalize,
+            }
+          : undefined,
+      }
+      if (createSpaceForm.space_type === 'multimodal' && createSpaceForm.embedding_model) {
+        config.multimodal_embedding = { model: createSpaceForm.embedding_model }
+      }
       const space = await spaceStore.createSpace({
         name: createSpaceForm.name,
         visibility: createSpaceForm.visibility,
-        config: {
-          description: createSpaceForm.description || undefined,
-          embedding: createSpaceForm.embedding_model
-            ? {
-                model: createSpaceForm.embedding_model,
-                batch_size: createSpaceForm.embedding_batch_size,
-                normalize: createSpaceForm.embedding_normalize,
-              }
-            : undefined,
-        },
+        config,
       })
       ElMessage.success('空间创建成功')
       createSpaceDialogVisible.value = false

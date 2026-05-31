@@ -236,6 +236,38 @@ class ModelConfigService:
         if existing:
             raise ModelConfigAlreadyExistsError(data.model)
 
+        # 强制连接验证 —— 验证失败直接抛异常，不存 DB
+        if data.api_key:
+            await self._verify_model_connection(data)
+            logger.info(
+                "模型连接验证通过",
+                model_type=data.model_type,
+                model=data.model,
+            )
+
+        # embedding/multimodal_embedding 类型：自动探测向量维度（需要明文 api_key）
+        if data.model_type in ("embedding", "multimodal_embedding") and data.api_key:
+            detected_dim = await self._detect_embedding_dimension(
+                protocol=data.protocol,
+                api_key=data.api_key,
+                base_url=data.base_url,
+                model_name=data.model,
+            )
+            if detected_dim is None:
+                raise ModelConfigTestFailedError(
+                    data.model_type,
+                    f"无法检测模型 {data.model} 的向量维度，请检查模型配置",
+                )
+            extra_config = dict(data.extra_config or {})
+            extra_config["dimension"] = detected_dim
+            data = data.model_copy(update={"extra_config": extra_config})
+            logger.info(
+                "自动探测到向量维度",
+                model_type=data.model_type,
+                model=data.model,
+                dimension=detected_dim,
+            )
+
         # AES 加密 API Key 后存储（避免修改原始 Schema 对象）
         if data.api_key:
             data = data.model_copy(update={"api_key": await encrypt_api_key_async(data.api_key)})
@@ -278,6 +310,58 @@ class ModelConfigService:
                 raise ModelConfigAlreadyExistsError(data.model)
 
         old_model = config.model
+
+        # 如果关键连接字段变更，强制重新验证连接
+        if self._connection_fields_changed(data, config):
+            effective_api_key = (
+                data.api_key if data.api_key
+                else await decrypt_api_key_async(config.api_key) if config.api_key
+                else ""
+            )
+            verify_data = ModelConfigCreate(
+                model_type=self._model_type_str(config.model_type),
+                protocol=data.protocol or config.protocol,
+                model=data.model or config.model,
+                base_url=data.base_url if data.base_url is not None else config.base_url,
+                api_key=effective_api_key,
+            )
+            await self._verify_model_connection(verify_data)
+            logger.info(
+                "更新时模型连接验证通过",
+                model=verify_data.model,
+            )
+
+        # embedding/multimodal_embedding 类型：model 或 base_url 变更时重新检测维度
+        if ModelType(config.model_type) in (ModelType.EMBEDDING, ModelType.MULTIMODAL_EMBEDDING):
+            model_changed = data.model is not None and data.model != config.model
+            url_changed = data.base_url is not None and data.base_url != config.base_url
+            if model_changed or url_changed:
+                # 解密后的明文 api_key 用于调用 embedding API 检测维度
+                raw_api_key = data.api_key if data.api_key else await decrypt_api_key_async(config.api_key)
+                effective_url = data.base_url or config.base_url
+                effective_model = data.model or config.model
+                try:
+                    detected_dim = await self._detect_embedding_dimension(
+                        protocol=config.protocol,
+                        api_key=raw_api_key,
+                        base_url=effective_url,
+                        model_name=effective_model,
+                    )
+                    if detected_dim is not None:
+                        extra_config = dict(data.extra_config or config.extra_config or {})
+                        extra_config["dimension"] = detected_dim
+                        data = data.model_copy(update={"extra_config": extra_config})
+                        logger.info(
+                            "更新时重新检测到向量维度",
+                            model=effective_model,
+                            dimension=detected_dim,
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "更新时维度检测失败，保留原值",
+                        model=effective_model,
+                        error=str(e),
+                    )
 
         # AES 加密 API Key（如果更新了 api_key，避免修改原始 Schema 对象）
         if data.api_key is not None:
@@ -525,7 +609,54 @@ class ModelConfigService:
             ),
         )
 
-    # ========== 连接测试 ==========
+    # ========== 连接验证 & 测试 ==========
+
+    async def _verify_model_connection(self, data: ModelConfigCreate) -> None:
+        """
+        创建/更新前强制验证模型连接，失败则抛 ModelConfigTestFailedError
+
+        复用已有的 _test_llm / _test_embedding / _test_multimodal_embedding / _test_rerank 方法。
+        """
+        request = ModelTestRequest(
+            model_type=data.model_type,
+            protocol=data.protocol,
+            model=data.model,
+            base_url=data.base_url,
+            api_key=data.api_key,
+        )
+
+        try:
+            if data.model_type in ("llm", "vlm"):
+                await self._test_llm(request)
+            elif data.model_type == "embedding":
+                await self._test_embedding(request)
+            elif data.model_type == "multimodal_embedding":
+                await self._test_multimodal_embedding(request)
+            elif data.model_type == "rerank":
+                await self._test_rerank(request)
+        except Exception as e:
+            raise ModelConfigTestFailedError(data.model_type, str(e)) from e
+
+    @staticmethod
+    def _connection_fields_changed(data: ModelConfigUpdate, config: "UserModelConfig") -> bool:
+        """检查是否有关键连接字段（model/base_url/api_key/protocol）变更"""
+        key_changed = data.api_key is not None
+        model_changed = data.model is not None and data.model != config.model
+        url_changed = data.base_url is not None and data.base_url != config.base_url
+        protocol_changed = data.protocol is not None and data.protocol != config.protocol
+        return key_changed or model_changed or url_changed or protocol_changed
+
+    @staticmethod
+    def _model_type_str(model_type_int: int) -> str:
+        """ModelType 整数 → 字符串"""
+        mapping = {
+            ModelType.LLM: "llm",
+            ModelType.EMBEDDING: "embedding",
+            ModelType.RERANK: "rerank",
+            ModelType.VLM: "vlm",
+            ModelType.MULTIMODAL_EMBEDDING: "multimodal_embedding",
+        }
+        return mapping.get(model_type_int, "llm")
 
     async def test_connection(
         self,
@@ -602,17 +733,37 @@ class ModelConfigService:
         return len(embedding)
 
     async def _test_multimodal_embedding(self, request: ModelTestRequest) -> int:
-        """测试多模态嵌入连接，返回检测到的维度（通过工厂路由，与 embedding 一致）"""
+        """测试多模态嵌入连接，返回检测到的维度（同时验证文本和图片嵌入能力）"""
+        from src.shared.ai_models.embedding import BaseMultimodalEmbedding
+
         client = create_embedding_client(
             protocol=request.protocol,
             api_key=request.api_key,
             base_url=request.base_url or "",
             model_name=request.model,
         )
-        embedding = await client.generate_embedding("Hello")
+        if not isinstance(client, BaseMultimodalEmbedding):
+            if hasattr(client, 'close'):
+                await client.close()
+            raise ValueError(f"协议 {request.protocol} 不支持图片嵌入，请选择多模态协议")
+
+        # 先测文本嵌入（确保基本可用），同时用返回维度作为检测结果
+        text_embedding = await client.generate_embedding("Hello")
+        detected_dim = len(text_embedding)
+
+        # 再测图片嵌入（核心能力验证，使用 4x4 红色 PNG）
+        # 注：1x1 PNG 会被某些模型（如 DashScope）拒绝解码，4x4 确保兼容
+        test_image = (
+            b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x04'
+            b'\x00\x00\x00\x04\x08\x02\x00\x00\x00&\x93\t)\x00\x00'
+            b'\x00\x10IDATx\x9cc\xf8\xcf\xc0\x00G\x0c\xc4q\x00\xae'
+            b'\x93\x0f\xf1\xd0_#\x9e\x00\x00\x00\x00IEND\xaeB`\x82'
+        )
+        await client.generate_image_embedding(test_image)
+
         if hasattr(client, 'close'):
             await client.close()
-        return len(embedding)
+        return detected_dim
 
     async def _detect_embedding_dimension(
         self,

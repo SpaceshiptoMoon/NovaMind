@@ -84,6 +84,45 @@ async def get_active_document_count() -> int:
     return count or 0
 
 
+async def is_document_actively_processing(document_id: int) -> bool:
+    """
+    检查文档是否真的还在处理中（验证 job 是否存活）
+
+    仅检查映射存在不够 — 映射可能残留（任务已完成但 unbind_job 未执行）。
+    此方法会同时验证 arq job 是否还存在。
+
+    Args:
+        document_id: 文档 ID
+
+    Returns:
+        True = 任务确实在运行中，False = 任务已结束（残留映射会自动清理）
+    """
+    job_id = await get_job_id_for_document(document_id)
+    if not job_id:
+        return False
+
+    # 验证 arq job 是否还活着
+    try:
+        from src.shared.mq import get_arq_pool
+        pool = await get_arq_pool()
+        job_info = await pool._get_job(job_id)
+        if job_info is None:
+            # job 已不存在 → 残留映射，清理掉
+            await unbind_job(document_id)
+            logger.info("清理残留任务映射", document_id=document_id, job_id=job_id)
+            return False
+        return True
+    except Exception as e:
+        # 查询失败时保守处理：认为仍在处理
+        logger.warning(
+            "无法验证任务状态，保守认为仍在处理",
+            document_id=document_id,
+            job_id=job_id,
+            error=str(e),
+        )
+        return True
+
+
 # ========== 文档取消信号 ==========
 
 CANCEL_KEY_PREFIX = "doc_cancel:"

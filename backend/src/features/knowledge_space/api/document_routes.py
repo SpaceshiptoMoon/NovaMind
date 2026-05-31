@@ -7,6 +7,7 @@
 路由前缀: /api/v1/spaces/{space_id}/knowledge-bases
 """
 import io
+import mimetypes
 import os
 from typing import Annotated, List, Optional, Union
 from urllib.parse import quote
@@ -78,6 +79,39 @@ async def _read_upload_file(file: UploadFile) -> bytes:
                 limit=MAX_UPLOAD_SIZE,
             )
     return bytes(file_content)
+
+
+async def _build_chunk_response(c: dict) -> ChunkResponse:
+    """从 ES 分块字典构建 ChunkResponse（去掉 embedding 大向量）"""
+    # 图片分块：生成 MinIO 预签名 URL
+    image_url = None
+    chunk_type = c.get("chunk_type")
+    storage_path = c.get("image_url", "")
+
+    if chunk_type == "image" and storage_path:
+        try:
+            from src.shared.clients import ClientFactory
+            minio_client = await ClientFactory.get_minio_client()
+            image_url = await minio_client.get_file_url(
+                minio_client.default_bucket, storage_path, 3600
+            )
+        except Exception:
+            image_url = None
+
+    return ChunkResponse(
+        chunk_id=c.get("chunk_id", ""),
+        document_id=c.get("document_id", 0),
+        chunk_index=c.get("chunk_index", 0),
+        content=c.get("content", ""),
+        score=c.get("score"),
+        has_embedding=c.get("embedding") is not None,
+        metadata=c.get("metadata"),
+        file_info=c.get("file_info"),
+        questions=c.get("questions"),
+        created_at=c.get("created_at"),
+        chunk_type=chunk_type,
+        image_url=image_url,
+    )
 
 
 @router.post(
@@ -308,21 +342,7 @@ async def get_document(
 
     # 从 ES 获取分块列表
     chunks_raw = await document_service.get_document_chunks(space_id, document_id)
-    chunks = [
-        ChunkResponse(
-            chunk_id=c.get("chunk_id", ""),
-            document_id=c.get("document_id", 0),
-            chunk_index=c.get("chunk_index", 0),
-            content=c.get("content", ""),
-            score=c.get("score"),
-            has_embedding=c.get("embedding") is not None,
-            metadata=c.get("metadata"),
-            file_info=c.get("file_info"),
-            questions=c.get("questions"),
-            created_at=c.get("created_at"),
-        )
-        for c in chunks_raw
-    ]
+    chunks = [await _build_chunk_response(c) for c in chunks_raw]
 
     response = DocumentDetailResponse.model_validate(document)
     response.chunks = chunks
@@ -355,22 +375,7 @@ async def get_document_chunks(
         raise DocumentNotFoundError(document_id)
 
     chunks = await document_service.get_document_chunks(space_id, document_id, skip=skip, limit=limit)
-    result = []
-    for c in chunks:
-        # ES 返回的数据转成 ChunkResponse（去掉 embedding 大向量）
-        result.append(ChunkResponse(
-            chunk_id=c.get("chunk_id", ""),
-            document_id=c.get("document_id", 0),
-            chunk_index=c.get("chunk_index", 0),
-            content=c.get("content", ""),
-            score=c.get("score"),
-            has_embedding=c.get("embedding") is not None,
-            metadata=c.get("metadata"),
-            file_info=c.get("file_info"),
-            questions=c.get("questions"),
-            created_at=c.get("created_at"),
-        ))
-    return result
+    return [await _build_chunk_response(c) for c in chunks]
 
 
 @router.get(
@@ -539,7 +544,6 @@ async def reprocess_document(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
     document_id: Annotated[int, Path(gt=0, description="文档ID")],
-    body: Annotated[DocumentProcessRequest, Body(...)],
     user_id: int = Depends(get_current_user_id),
     member: SpaceMember = Depends(validate_space_editor),
     document_service: DocumentService = Depends(get_document_service),
@@ -602,4 +606,52 @@ async def retry_document_processing(
         document_id=document.id,
         status="processing",
         message="文档重试已开始处理",
+    )
+
+
+# ========== 图片代理路由 ==========
+
+
+@router.get(
+    "/{kb_id}/documents/{document_id}/image",
+    summary="获取文档图片",
+    description="代理返回文档图片，用于多模态搜索结果渲染。后端从MinIO读取图片字节流直接返回给前端。",
+)
+async def get_document_image(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    document_service: DocumentService = Depends(get_document_service),
+    db: AsyncSession = Depends(get_db),
+):
+    """代理获取文档图片（后端从 MinIO 读取并直接返回字节流）"""
+    await validate_kb_access(kb_id, space_id, db)
+
+    document = await document_service.get_document(document_id)
+    if not document or document.kb_id != kb_id:
+        raise DocumentNotFoundError(document_id)
+
+    storage = document.storage or {}
+    object_name = storage.get("minio_object_name", "")
+    if not object_name:
+        raise DocumentNotFoundError(document_id)
+
+    # 从 MinIO 下载文件
+    file_content = await document_service.download_document(document_id=document_id)
+
+    # 根据文件扩展名推断 Content-Type
+    content_type, _ = mimetypes.guess_type(document.filename)
+    if not content_type or not content_type.startswith("image/"):
+        content_type = "application/octet-stream"
+
+    encoded_filename = quote(document.filename)
+
+    return StreamingResponse(
+        content=io.BytesIO(file_content),
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{encoded_filename}"',
+            "Cache-Control": "private, max-age=3600",
+        },
     )

@@ -159,7 +159,10 @@
                 拖拽文件到此处，或 <em>点击上传</em>
               </div>
               <div class="upload-tip">
-                支持 PDF、Word、TXT、Markdown、Excel、PPT、HTML、JSON，单个最大 100MB，最多 20 个
+                {{ spaceType === 'multimodal'
+                  ? '支持 JPG、PNG、GIF、WebP 图片，单个最大 100MB，最多 20 个'
+                  : '支持 PDF、Word、TXT、Markdown、Excel、PPT、HTML、JSON，单个最大 100MB，最多 20 个'
+                }}
               </div>
             </div>
           </el-upload>
@@ -199,6 +202,8 @@ import StatusTag from '@/components/common/StatusTag.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import type { Document as DocType, BatchUploadResponse } from '@/api/types'
 import type { UploadFile } from 'element-plus'
+import { docStatusMap, getFileTypeStyle } from '@/utils/document'
+import { formatFileSize, formatDate } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -230,53 +235,6 @@ const processDialogVisible = ref(false)
 const processLoading = ref(false)
 const processTargetIds = ref<number[]>([])
 
-
-const docStatusMap: Record<string, { text: string; type: 'success' | 'warning' | 'danger' | 'info' | 'primary' }> = {
-  uploaded: { text: '待处理', type: 'info' },
-  processing: { text: '处理中', type: 'warning' },
-  completed: { text: '已完成', type: 'success' },
-  failed: { text: '失败', type: 'danger' },
-  '0': { text: '待处理', type: 'info' },
-  '1': { text: '处理中', type: 'warning' },
-  '2': { text: '已完成', type: 'success' },
-  '3': { text: '失败', type: 'danger' },
-}
-
-// === 文件类型样式 ===
-
-const fileTypeStyles: Record<string, { bg: string; color: string }> = {
-  pdf: { bg: 'var(--color-file-pdf-bg)', color: 'var(--color-file-pdf)' },
-  docx: { bg: 'var(--color-file-doc-bg)', color: 'var(--color-file-doc)' },
-  doc: { bg: 'var(--color-file-doc-bg)', color: 'var(--color-file-doc)' },
-  txt: { bg: 'var(--color-file-txt-bg)', color: 'var(--color-file-txt)' },
-  md: { bg: 'var(--color-file-md-bg)', color: 'var(--color-file-md)' },
-  xlsx: { bg: 'var(--color-file-xlsx-bg)', color: 'var(--color-file-xlsx)' },
-  xls: { bg: 'var(--color-file-xlsx-bg)', color: 'var(--color-file-xlsx)' },
-  csv: { bg: 'var(--color-file-xlsx-bg)', color: 'var(--color-file-xlsx)' },
-  pptx: { bg: 'var(--color-file-pptx-bg)', color: 'var(--color-file-pptx)' },
-  ppt: { bg: 'var(--color-file-pptx-bg)', color: 'var(--color-file-pptx)' },
-  html: { bg: 'var(--color-file-other-bg)', color: 'var(--color-file-other)' },
-  json: { bg: 'var(--color-file-other-bg)', color: 'var(--color-file-other)' },
-}
-
-function getFileTypeStyle(type: string): { bg: string; color: string } {
-  return fileTypeStyles[type.toLowerCase()] || { bg: 'var(--color-file-txt-bg)', color: 'var(--color-file-txt)' }
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function formatDate(date: string): string {
-  try {
-    return new Date(date).toLocaleDateString('zh-CN') + ' ' +
-      new Date(date).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  } catch {
-    return '-'
-  }
-}
 
 function handleSelectionChange(rows: DocType[]) {
   selectedIds.value = rows.map((r) => r.id)

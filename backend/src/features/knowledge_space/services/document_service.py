@@ -375,8 +375,12 @@ class DocumentService:
             return
 
         # ===== 文本文档分支（现有逻辑）=====
-        # 获取 DocumentProcessor
-        processor = await _get_document_processor_static(session)
+        # 获取空间配置（提前获取，语义切分和向量化都依赖）
+        space = await session.get(KnowledgeSpace, document.space_id)
+        embedding_model_name = space.embedding_model if space else None
+
+        # 获取 DocumentProcessor（传入空间配置的嵌入模型，确保语义切分使用正确模型）
+        processor = await _get_document_processor_static(session, model_name=embedding_model_name)
         splitting_config = kb.get_splitting_config()
         strategy = splitting_config.get("strategy", "recursive")
 
@@ -407,7 +411,6 @@ class DocumentService:
         es_chunks = _prepare_es_chunks_static(document, chunks)
 
         # 3. 向量化并索引到 ES（Embedding 配置从空间级别读取）
-        space = await session.get(KnowledgeSpace, document.space_id)
         embedding_config = space.embedding_config if space and space.embedding_config else {}
         embeddings = await _generate_embeddings_static(
             [c["content"] for c in es_chunks],
@@ -859,13 +862,7 @@ class DocumentService:
             DocumentAlreadyProcessingError: 文档正在处理中
             KnowledgeBaseNotFoundError: 知识库不存在
         """
-        document = await self.doc_repo.get_by_id(document_id)
-        if not document:
-            raise DocumentNotFoundError(document_id)
-
-        # 并发防护
-        if document.status == DocumentStatus.PROCESSING:
-            raise DocumentAlreadyProcessingError(document_id)
+        document = await self._validate_document_not_processing(document_id)
 
         # COMPLETED 文档需要走 reprocess 流程
         if document.status == DocumentStatus.COMPLETED:
@@ -882,21 +879,7 @@ class DocumentService:
         if not kb.is_active():
             raise KnowledgeBaseNotFoundError(document.kb_id)
 
-        # 防止重复入队：检查是否已有 arq 任务
-        from src.shared.mq.task_tracker import get_job_id_for_document
-        existing_job = await get_job_id_for_document(document_id)
-        if existing_job:
-            raise DocumentAlreadyProcessingError(document_id)
-
-        # 入队到 arq
-        from src.shared.mq import enqueue_process_document
-        await enqueue_process_document(
-            document_id=document_id,
-            kb_id=document.kb_id,
-            space_id=document.space_id,
-        )
-
-        self.logger.info("文档处理已入队", document_id=document_id)
+        await self._enqueue_document_processing(document, "处理")
         return document
 
     async def process_kb_documents(
@@ -968,40 +951,12 @@ class DocumentService:
             DocumentNotFoundError: 文档不存在
             DocumentAlreadyProcessingError: 文档正在处理中
         """
-        document = await self.doc_repo.get_by_id(document_id)
-        if not document:
-            raise DocumentNotFoundError(document_id)
+        document = await self._validate_document_not_processing(document_id)
 
-        if document.status == DocumentStatus.PROCESSING:
-            raise DocumentAlreadyProcessingError(document_id)
+        # 清除 ES 旧分块 + 重置状态
+        await self._reset_document_to_uploaded(document, "重新解析")
 
-        # 清除 ES 中的旧 chunk
-        await self.es_client.delete_document_chunks(
-            space_id=document.space_id,
-            document_id=document.id,
-        )
-        self.logger.info("已清除旧 chunk", document_id=document_id)
-
-        # 重置状态为 UPLOADED，让 worker 接受任务
-        document.status = DocumentStatus.UPLOADED
-        document.status_info = {}
-        await self.session.commit()
-
-        # 防止重复入队：检查是否已有 arq 任务
-        from src.shared.mq.task_tracker import get_job_id_for_document
-        existing_job = await get_job_id_for_document(document_id)
-        if existing_job:
-            raise DocumentAlreadyProcessingError(document_id)
-
-        # 入队到 arq
-        from src.shared.mq import enqueue_process_document
-        await enqueue_process_document(
-            document_id=document_id,
-            kb_id=document.kb_id,
-            space_id=document.space_id,
-        )
-
-        self.logger.info("文档重新解析已入队", document_id=document_id)
+        await self._enqueue_document_processing(document, "重新解析")
         return document
 
     async def retry_document(
@@ -1025,12 +980,7 @@ class DocumentService:
             DocumentAlreadyProcessingError: 文档正在处理中
             InvalidParameterError: 文档状态不允许重试
         """
-        document = await self.doc_repo.get_by_id(document_id)
-        if not document:
-            raise DocumentNotFoundError(document_id)
-
-        if document.status == DocumentStatus.PROCESSING:
-            raise DocumentAlreadyProcessingError(document_id)
+        document = await self._validate_document_not_processing(document_id)
 
         if document.status not in (DocumentStatus.FAILED, DocumentStatus.COMPLETED):
             raise InvalidParameterError(
@@ -1038,35 +988,9 @@ class DocumentService:
                 field="document_id",
             )
 
-        # 先删除 ES 中的旧分块数据，保证唯一性
-        try:
-            await self.es_client.delete_document_chunks(
-                space_id=document.space_id,
-                document_id=document.id,
-            )
-            self.logger.info("重试前已清除 ES 旧分块", document_id=document_id)
-        except Exception as e:
-            self.logger.warning("清除 ES 旧分块失败", document_id=document_id, error=str(e))
-
-        # 重置状态为 UPLOADED，让 worker 接受任务
         previous_status = document.status
-        document.status = DocumentStatus.UPLOADED
-        document.status_info = {}
-        await self.session.commit()
-
-        # 防止重复入队
-        from src.shared.mq.task_tracker import get_job_id_for_document
-        existing_job = await get_job_id_for_document(document_id)
-        if existing_job:
-            raise DocumentAlreadyProcessingError(document_id)
-
-        # 重新入队
-        from src.shared.mq import enqueue_process_document
-        await enqueue_process_document(
-            document_id=document_id,
-            kb_id=document.kb_id,
-            space_id=document.space_id,
-        )
+        await self._reset_document_to_uploaded(document, "重试")
+        await self._enqueue_document_processing(document, "重试")
 
         self.logger.info(
             "文档重试已入队",
@@ -1074,6 +998,46 @@ class DocumentService:
             previous_status=previous_status,
         )
         return document
+
+    # ---------- 文档处理共享辅助方法 ----------
+
+    async def _validate_document_not_processing(self, document_id: int) -> Document:
+        """获取文档并验证不在处理中"""
+        document = await self.doc_repo.get_by_id(document_id)
+        if not document:
+            raise DocumentNotFoundError(document_id)
+        if document.status == DocumentStatus.PROCESSING:
+            raise DocumentAlreadyProcessingError(document_id)
+        return document
+
+    async def _enqueue_document_processing(self, document: Document, log_label: str = "处理"):
+        """检查活跃任务并入队文档处理"""
+        from src.shared.mq.task_tracker import is_document_actively_processing
+        if await is_document_actively_processing(document.id):
+            raise DocumentAlreadyProcessingError(document.id)
+
+        from src.shared.mq import enqueue_process_document
+        await enqueue_process_document(
+            document_id=document.id,
+            kb_id=document.kb_id,
+            space_id=document.space_id,
+        )
+        self.logger.info(f"文档{log_label}已入队", document_id=document.id)
+
+    async def _reset_document_to_uploaded(self, document: Document, log_label: str = "重置"):
+        """清除 ES 旧分块并重置文档状态为 UPLOADED"""
+        try:
+            await self.es_client.delete_document_chunks(
+                space_id=document.space_id,
+                document_id=document.id,
+            )
+            self.logger.info(f"{log_label}前已清除 ES 旧分块", document_id=document.id)
+        except Exception as e:
+            self.logger.warning("清除 ES 旧分块失败", document_id=document.id, error=str(e))
+
+        document.status = DocumentStatus.UPLOADED
+        document.status_info = {}
+        await self.session.commit()
 
 
 # ========== 模块级静态辅助函数 ==========
@@ -1088,26 +1052,23 @@ async def _process_image_document_static(
     """处理图片类型文档：生成多模态嵌入向量并索引到 ES"""
     from src.shared.ai_models.embedding import BaseMultimodalEmbedding
 
-    # 1. 读取空间配置（多模态空间用 config.embedding，旧空间兼容 config.multimodal_embedding）
+    # 1. 读取空间配置（统一从 config.embedding 读取）
     space = await session.get(KnowledgeSpace, document.space_id)
     if not space:
         return
     space_config = space.get_config()
-    space_type = space_config.get("space_type", "text")
-
-    if space_type == "multimodal":
-        model_name = (space_config.get("embedding") or {}).get("model")
-        mm_dim = (space_config.get("embedding") or {}).get("dimension")
-    else:
-        mm_config = space_config.get("multimodal_embedding")
-        model_name = mm_config.get("model") if mm_config else None
-        mm_dim = mm_config.get("dimension") if mm_config else None
+    embedding_config = space_config.get("embedding") or {}
+    model_name = embedding_config.get("model")
+    mm_dim = embedding_config.get("dimension")
 
     if not model_name:
         raise DocumentProcessingError(
             document_id=document.id,
-            error_message="该空间未配置多模态嵌入模型，无法处理图片文件",
+            error_message="该空间未配置嵌入模型，无法处理图片文件",
         )
+
+    # 检查点 0：配置读取后
+    await _check_document_cancelled(document.id)
 
     # 2. 获取多模态嵌入客户端
     from src.features.user.services.model_config_service import ModelConfigService
@@ -1123,10 +1084,12 @@ async def _process_image_document_static(
     # 3. 生成图片嵌入向量
     image_vector = await client.generate_image_embedding(file_content)
 
-    # 4. 构建图片 ES chunk
+    # 检查点 1：向量化完成后
+    await _check_document_cancelled(document.id)
+
+    # 4. 构建 ES chunk
     storage_info = document.storage or {}
-    storage_path = storage_info.get("object_name", "")
-    image_url = storage_path
+    storage_path = storage_info.get("minio_object_name", "")
 
     es_chunk = {
         "space_id": document.space_id,
@@ -1136,11 +1099,8 @@ async def _process_image_document_static(
         "chunk_index": 0,
         "content": document.filename,
         "chunk_type": "image",
-        "embedding": [],
         "image_embedding": image_vector,
-        "image_url": image_url,
-        "questions": [],
-        "question_embeddings": [],
+        "image_url": storage_path,
         "file_info": {
             "filename": document.filename,
             "file_type": document.file_type,
@@ -1149,6 +1109,9 @@ async def _process_image_document_static(
             "content_hash": document.file_hash,
         },
     }
+
+    # 检查点 2：ES 写入前
+    await _check_document_cancelled(document.id)
 
     # 5. 索引到 ES
     es_client = await _get_es_client_static()

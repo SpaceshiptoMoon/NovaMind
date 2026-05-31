@@ -279,6 +279,41 @@ class JDAnalysis(BaseModel):
     responsibilities: list[str] = []
 
 
+# ==================== 工作-项目合并单元 ====================
+
+class WorkProjectUnit(BaseModel):
+    """工作-项目合并单元：以公司+岗位为维度的整体追问上下文"""
+    model_config = ConfigDict(extra="ignore")
+
+    # 公司维度
+    id: str = ""
+    company: str = ""
+    company_brief: str = ""
+    position: str = ""
+    department: str = ""
+    employment_type: str = ""              # fulltime / intern / parttime
+    work_period: str = ""                  # 2023.06 ~ 2024.03
+    work_responsibilities: list[str] = []
+    work_tech_stack: list[str] = []
+
+    # 公司/岗位背景补充（搜索引擎 + LLM 生成）
+    company_industry: str = ""             # 公司所在行业
+    company_scale: str = ""                # 公司规模（如适用）
+    position_context: str = ""             # 岗位定位描述
+    industry_context: str = ""             # 行业背景（技术特点和关注点）
+
+    # 关联项目
+    projects: list[ProjectExperience] = []
+
+    # 复杂度评估
+    complexity_score: float = 0.0          # 综合复杂度分数 0-1
+    complexity_reasoning: str = ""         # 复杂度评估理由
+    allocated_rounds: int = 3              # 自动分配的追问轮数
+
+    # 综合追问上下文（合并后自动构建）
+    full_context: str = ""
+
+
 # ==================== 追问计划模型 ====================
 
 class KnowledgePoint(BaseModel):
@@ -286,7 +321,7 @@ class KnowledgePoint(BaseModel):
 
     id: str = ""
     name: str = ""
-    category: str = ""
+    category: str = ""                     # project / tech_in_project / fundamental / paper / patent
     module: str = ""
     source: str = ""
     context: str = ""
@@ -296,6 +331,10 @@ class KnowledgePoint(BaseModel):
     allocated_rounds: int = 1
     derivatives: list[str] = []
     probing_chain: list[str] = []
+    # 新增：关联工作单元
+    work_unit_id: str = ""                 # 所属 WorkProjectUnit 的 ID
+    complexity_score: float = 0.0          # 项目复杂度分数
+    complexity_reasoning: str = ""         # 复杂度评估理由
 
 
 class ProjectPriority(BaseModel):
@@ -310,6 +349,7 @@ class ProbingPlan(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     knowledge_points: list[KnowledgePoint] = []
+    work_units: list[WorkProjectUnit] = []     # 新增：工作-项目合并单元
     project_priorities: list[ProjectPriority] = []
     total_rounds: int = 30
     rounds_distribution: dict = {}
@@ -348,6 +388,7 @@ class PrefixKnowledge(BaseModel):
     core_concepts: list[str] = []
     common_interview_topics: list[TopicWithAnswer] = []
     key_questions: list[QuestionWithAnswer] = []
+    learning_qa: list[QuestionWithAnswer] = []     # 新增：学习导向的 Q&A 对（从基础到进阶）
     quick_reference: str = ""
     pitfalls: list[str] = []
     comparison: list[ComparisonItem] = []
