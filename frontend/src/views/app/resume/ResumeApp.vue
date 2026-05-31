@@ -227,6 +227,9 @@ function enhanceReportHtml(html: string): string {
     // 匹配 **Q1:** question → qa-question
     .replace(/<p><strong>(Q\d+:)<\/strong>(.*?)<\/p>/gi,
       '<div class="qa-question"><span class="qa-tag qa-tag-q">$1</span>$2</div>')
+    // 匹配 **A1:** answer → qa-answer (学习 Q&A 格式)
+    .replace(/<p><strong>(A\d+:)<\/strong>(.*?)<\/p>/gi,
+      '<div class="qa-answer"><span class="qa-tag qa-tag-a">$1</span>$2</div>')
     // 匹配 **A:** answer → qa-answer
     .replace(/<p><strong>(A:)<\/strong>(.*?)<\/p>/gi,
       '<div class="qa-answer"><span class="qa-tag qa-tag-a">$1</span>$2</div>')
