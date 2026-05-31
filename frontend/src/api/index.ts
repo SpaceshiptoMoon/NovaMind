@@ -8,6 +8,20 @@ const instance: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  transformRequest: [
+    (data, headers) => {
+      // FormData 时让浏览器自动设置 Content-Type（含 boundary）
+      if (data instanceof FormData) {
+        delete headers['Content-Type']
+        return data
+      }
+      // 默认 JSON 序列化
+      if (typeof data === 'object' && data !== null) {
+        return JSON.stringify(data)
+      }
+      return data
+    },
+  ],
 })
 
 // Token 管理

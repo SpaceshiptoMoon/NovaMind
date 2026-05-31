@@ -95,6 +95,11 @@ class PromptTemplate(Enum):
     RESUME_PROBE_FOLLOW_UP = "resume_probe_follow_up"
     RESUME_PROBE_EVALUATION = "resume_probe_evaluation"
 
+    # ==================== 简历挖掘扩展（V2 新增） ====================
+    RESUME_WORK_CONTEXT_ENRICHMENT = "resume_work_context_enrichment"
+    RESUME_OPTIMIZATION_ADVICE = "resume_optimization_advice"
+    RESUME_COMPLEXITY_ASSESSMENT = "resume_complexity_assessment"
+
     # ==================== Agent 相关 ====================
     AGENT_SYSTEM_PROMPT = "agent_system_prompt"
     AGENT_LONG_TERM_MEMORY = "agent_long_term_memory"

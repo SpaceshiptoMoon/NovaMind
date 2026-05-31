@@ -45,6 +45,8 @@ from src.features.knowledge_space.schemas.search_schema import (
     SearchResult,
     LLMConfig,
     QueryRewriteConfig,
+    MultimodalSearchRequest,
+    MultimodalSearchMode,
 )
 from src.features.knowledge_space.models.knowledge_space import SpaceVisibility, KnowledgeSpace
 
@@ -102,9 +104,9 @@ class SearchService:
         model: str
     ) -> BaseEmbedding:
         """
-        获取 Embedding 客户端
+        获取文本 Embedding 客户端
 
-        通过 ModelConfigService 从数据库解析凭证，无配置时抛异常
+        通过 ModelConfigService 从数据库解析凭证，无配置时抛异常。
 
         Args:
             user_id: 用户 ID
@@ -117,9 +119,12 @@ class SearchService:
             EmbeddingError: 未找到模型配置
         """
         if self.model_config_service and model:
-            return await self.model_config_service.get_embedding_client_by_model(
-                user_id, model
-            )
+            try:
+                return await self.model_config_service.get_embedding_client_by_model(
+                    user_id, model
+                )
+            except Exception as e:
+                raise EmbeddingError(f"获取 Embedding 客户端失败: {e}")
 
         # model 为 None 时，尝试获取默认模型
         if self.model_config_service:
@@ -413,6 +418,7 @@ class SearchService:
         question_weight: float = 0.4,
         rrf_k: int = 60,
         merge_mode: str = "rrf",
+        embedding_client: Optional[Any] = None,
     ) -> List[Dict[str, Any]]:
         """
         Sub Query 多路检索并合并结果
@@ -424,27 +430,40 @@ class SearchService:
             kb_id: 知识库 ID
             search_mode: 检索模式
             sub_queries: 子问题列表
-            query_vector: 原始查询向量（用于向量检索）
+            query_vector: 原始查询向量（作为回退）
             top_k: 每个子问题的返回数量
             vector_weight/bm25_weight/content_weight/question_weight/rrf_k: 权重参数
             merge_mode: 合并方式 - rrf(加权融合) / score(分数取最大)
+            embedding_client: 嵌入客户端（为每个子问题独立生成向量）
 
         Returns:
             合并后的检索结果列表
         """
         import asyncio
 
-        # 为每个子问题生成向量
         per_query_top_k = max(top_k, 5)  # 每个子问题至少返回 5 个
+        needs_vector = "vector" in search_mode or "hybrid" in search_mode
 
         # 并行执行所有子问题的检索
         async def search_one(sub_query: str) -> List[Dict[str, Any]]:
+            # 为每个子问题独立生成向量，提升向量检索精度
+            sub_vector = query_vector
+            if needs_vector and embedding_client:
+                try:
+                    sub_vector = await embedding_client.generate_embedding(sub_query)
+                except Exception as e:
+                    self.logger.warning(
+                        "子问题向量生成失败，使用原始查询向量",
+                        sub_query=sub_query[:50],
+                        error=str(e),
+                    )
+
             return await self.es_client.search_by_mode(
                 space_id=space_id,
                 kb_id=kb_id,
                 mode=search_mode,
                 query=sub_query,
-                query_vector=query_vector,
+                query_vector=sub_vector,
                 top_k=per_query_top_k,
                 vector_weight=vector_weight,
                 bm25_weight=bm25_weight,
@@ -768,6 +787,7 @@ class SearchService:
             effective_query = rewrite_info["search_query"]
 
         query_vector = None
+        embedding_client = None
         if "vector" in search_mode or "hybrid" in search_mode:
             try:
                 # 从空间获取 Embedding 模型（空间级别统一管理）
@@ -775,7 +795,6 @@ class SearchService:
                 embedding_model = space.embedding_model if space else None
 
                 embedding_client = await self._get_embedding_client(user_id, embedding_model)
-
                 query_vector = await embedding_client.generate_embedding(effective_query)
 
                 self.logger.debug(
@@ -806,6 +825,7 @@ class SearchService:
                 question_weight=question_weight,
                 rrf_k=rrf_k,
                 merge_mode=request.query_rewrite.sub_query_merge_mode,
+                embedding_client=embedding_client,
             )
         else:
             # 普通模式或 HyDE 模式：单次检索
@@ -1090,27 +1110,103 @@ class SearchService:
         # 返回知识库配置的可用模式
         return kb.get_available_search_modes()
 
-    async def image_search(
+    async def _get_minio_client(self):
+        """获取 MinIO 客户端"""
+        from src.shared.clients import ClientFactory
+        return await ClientFactory.get_minio_client()
+
+    async def multimodal_search(
         self,
         space_id: int,
         kb_id: int,
         user_id: int,
-        image_data: bytes,
-        top_k: int = 10,
-        score_threshold: float = 0.0,
-    ):
-        """以图搜图：使用图片向量搜索相似图片"""
-        from src.shared.ai_models.embedding import BaseMultimodalEmbedding
+        request: MultimodalSearchRequest,
+    ) -> SearchResponse:
+        """
+        统一多模态检索
 
-        # 1. 验证空间和知识库
+        合并以文搜图和以图搜图为单一方法，支持 score 归一化。
+        """
+        import base64
+
+        start_time = time.time()
+
+        # 1. 校验空间和知识库
+        space = await self._validate_space_and_kb(space_id, kb_id)
+
+        # 2. 验证空间类型为 multimodal
+        space_type = space.get_config().get("space_type", "text") if space else "text"
+        if space_type != "multimodal":
+            raise SearchError("多模态检索仅适用于多模态空间，请使用通用检索接口")
+
+        # 3. 获取多模态嵌入客户端
+        error_msg = "该空间未配置多模态嵌入模型，无法进行多模态检索"
+        client, _ = await self._get_multimodal_client(space, user_id, error_msg)
+
+        # 4. 生成查询向量
+        if request.search_mode == MultimodalSearchMode.IMAGE_TO_IMAGE:
+            image_bytes = base64.b64decode(request.image_base64)
+            query_vector = await client.generate_image_embedding(image_bytes)
+            effective_query = "[图片搜索]"
+        else:
+            query_vector = await client.generate_embedding(request.query)
+            effective_query = request.query
+
+        # 5. ES 检索
+        raw_results = await self.es_client.image_vector_search(
+            space_id=space_id,
+            query_vector=query_vector,
+            top_k=request.top_k,
+            kb_id=kb_id,
+        )
+
+        # 6. 构建结果（threshold=0.0，过滤在归一化后）
+        results = await self._build_image_search_results(raw_results, kb_id, 0.0)
+
+        # 7. Score 归一化（Min-Max → 0~1）
+        result_dicts = [
+            {"score": r.score, "chunk_id": r.chunk_id, "content": r.content}
+            for r in results
+        ]
+        self._normalize_scores(result_dicts)
+        for r, d in zip(results, result_dicts):
+            r.score = d["score"]
+
+        # 8. 按 score_threshold 过滤（归一化后的分数）
+        if request.score_threshold > 0:
+            results = [r for r in results if r.score >= request.score_threshold]
+
+        mode_str = "image_vector" if request.search_mode == MultimodalSearchMode.IMAGE_TO_IMAGE else "text_to_image"
+
+        return SearchResponse(
+            results=results,
+            total=len(results),
+            query=effective_query,
+            search_mode=mode_str,
+            original_mode=mode_str,
+            top_k=request.top_k,
+            elapsed_ms=round((time.time() - start_time) * 1000, 2),
+        )
+
+    # ---------- 图片搜索共享辅助方法 ----------
+
+    async def _validate_space_and_kb(self, space_id: int, kb_id: int):
+        """验证空间和知识库存在且关联，返回 space 对象"""
         space = await self.session.get(KnowledgeSpace, space_id)
         if not space:
             raise SpaceNotFoundError(space_id)
         kb = await self.kb_repo.get_by_id(kb_id)
         if not kb or kb.space_id != space_id:
             raise KnowledgeBaseNotFoundError(kb_id)
+        return space
 
-        # 2. 获取多模态嵌入配置（多模态空间从 config.embedding 读取，旧空间兼容 config.multimodal_embedding）
+    async def _get_multimodal_client(self, space, user_id: int, error_msg: str):
+        """解析空间多模态嵌入配置，返回 (client, model_name)
+
+        多模态空间从 config.embedding 读取，旧空间兼容 config.multimodal_embedding。
+        """
+        from src.shared.ai_models.embedding import BaseMultimodalEmbedding
+
         space_config = space.get_config()
         space_type = space_config.get("space_type", "text")
 
@@ -1121,68 +1217,51 @@ class SearchService:
             model_name = mm_config.get("model") if mm_config else None
 
         if not model_name:
-            raise ValueError("该空间未配置多模态嵌入模型，无法进行图片搜索")
+            raise EmbeddingError(error_msg)
 
-        # 3. 获取多模态嵌入客户端
         client = await self.model_config_service.get_multimodal_embedding_client_by_model(
             user_id, model_name
         )
         if not isinstance(client, BaseMultimodalEmbedding):
             raise ValueError(f"模型 {model_name} 不支持图片嵌入")
 
-        # 4. 生成查询向量
-        query_vector = await client.generate_image_embedding(image_data)
+        return client, model_name
 
-        # 5. ES 图片向量搜索
-        raw_results = await self.es_client.image_vector_search(
-            space_id=space_id,
-            query_vector=query_vector,
-            top_k=top_k,
-            kb_id=kb_id,
-        )
-
-        # 6. 构建搜索结果
+    async def _build_image_search_results(self, raw_results, kb_id: int, score_threshold: float):
+        """从 ES 原始结果构建图片搜索结果列表"""
         results = []
         for hit in raw_results:
-            score = hit.get("_score", 0)
+            # vector_search 返回 {"chunk_id": ..., "score": ..., "source": {...}}
+            source = hit.get("source", {})
+            score = hit.get("score", 0)
             if score_threshold > 0 and score < score_threshold:
                 continue
 
-            # 为图片生成 presigned URL
-            image_url = hit.get("image_url", "")
+            image_url = source.get("image_url", "")
             if image_url:
                 try:
                     minio_client = await self._get_minio_client()
                     image_url = await minio_client.get_file_url(
                         minio_client.default_bucket, image_url, 3600
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    self.logger.warning(
+                        "图片 presigned URL 生成失败",
+                        image_url=image_url,
+                        error=str(e),
+                    )
+                    image_url = ""
 
             results.append(SearchResult(
                 chunk_id=hit.get("chunk_id", ""),
-                document_id=hit.get("document_id", 0),
-                kb_id=hit.get("kb_id", kb_id),
-                content=hit.get("content", ""),
+                document_id=source.get("document_id", 0),
+                kb_id=source.get("kb_id", kb_id),
+                content=source.get("content", ""),
                 score=score,
-                chunk_index=0,
-                metadata=hit.get("metadata"),
-                file_info=hit.get("file_info"),
+                chunk_index=source.get("chunk_index", 0),
+                metadata=source.get("metadata"),
+                file_info=source.get("file_info"),
                 image_url=image_url,
-                chunk_type=hit.get("chunk_type", "image"),
+                chunk_type=source.get("chunk_type", "image"),
             ))
-
-        return SearchResponse(
-            results=results,
-            total=len(results),
-            query="[图片搜索]",
-            search_mode="image_vector",
-            original_mode="image_vector",
-            top_k=top_k,
-            elapsed_ms=0,
-        )
-
-    async def _get_minio_client(self):
-        """获取 MinIO 客户端"""
-        from src.shared.clients import ClientFactory
-        return await ClientFactory.get_minio_client()
+        return results

@@ -365,6 +365,8 @@ export interface Chunk {
   file_info: Record<string, unknown>
   questions: string[]
   created_at: string
+  chunk_type?: string
+  image_url?: string
 }
 
 export interface DocumentDetail extends Document {
@@ -504,6 +506,16 @@ export interface SearchRequest {
   fallback_on_unavailable?: boolean
   filters?: Record<string, unknown>
   use_cache?: boolean
+}
+
+export type MultimodalSearchMode = 'text_to_image' | 'image_to_image'
+
+export interface MultimodalSearchRequest {
+  query?: string
+  image_base64?: string
+  search_mode: MultimodalSearchMode
+  top_k?: number
+  score_threshold?: number
 }
 
 export interface SearchResultItem {

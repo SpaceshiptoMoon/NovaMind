@@ -252,7 +252,9 @@ class ElasticsearchClient:
 
     async def index_chunk(self, space_id: int, chunk_data: Dict[str, Any]) -> bool:
         """索引单个分块"""
-        index_name = await self.ensure_index_exists(space_id)
+        index_name = await self.ensure_index_exists(
+            space_id, embedding_dim=chunk_data.get("embedding_dim")
+        )
         try:
             await self.es_client.index(
                 index=index_name, id=chunk_data["chunk_id"], document=chunk_data
@@ -316,48 +318,15 @@ class ElasticsearchClient:
         top_k: int = 10,
         kb_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """在 image_embedding 字段上做 KNN 搜索（以图搜图）"""
-        index_name = self.generate_index_name(space_id)
-
-        filters = [{"term": {"chunk_type": "image"}}]
-        if kb_id:
-            filters.append({"term": {"kb_id": kb_id}})
-
-        body = {
-            "query": {
-                "bool": {
-                    "filter": filters,
-                    "must": [
-                        {
-                            "knn": {
-                                "field": "image_embedding",
-                                "query_vector": query_vector,
-                                "k": top_k,
-                                "num_candidates": top_k * 10,
-                            }
-                        }
-                    ],
-                }
-            },
-            "size": top_k,
-            "_source": [
-                "chunk_id", "document_id", "kb_id", "content",
-                "image_url", "chunk_type", "file_info", "metadata",
-            ],
-        }
-
-        try:
-            result = await self.es_client.search(index=index_name, body=body)
-            hits = result.get("hits", {}).get("hits", [])
-            search_results = []
-            for hit in hits:
-                source = hit.get("_source", {})
-                source["_score"] = hit.get("_score", 0)
-                search_results.append(source)
-            return search_results
-        except Exception as e:
-            logger.error("图片向量搜索失败", index=index_name, error=str(e))
-            return []
+        """在 image_embedding 字段上做 KNN 搜索（以图搜图 / 以文搜图）"""
+        return await self.vector_search(
+            space_id=space_id,
+            query_vector=query_vector,
+            top_k=top_k,
+            kb_id=kb_id,
+            field="image_embedding",
+            chunk_type_filter="image",
+        )
 
     async def get_chunk(self, space_id: int, chunk_id: str) -> Optional[Dict[str, Any]]:
         """获取分块"""
@@ -427,15 +396,19 @@ class ElasticsearchClient:
     async def vector_search(
         self, space_id: int, query_vector: List[float], top_k: int = 5,
         kb_id: Optional[int] = None,
+        field: str = "embedding",
+        chunk_type_filter: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """向量相似度搜索"""
+        """向量相似度搜索（统一入口，支持 embedding / image_embedding 字段）"""
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
         filters = self._build_kb_filter(kb_id)
+        if chunk_type_filter:
+            filters.append({"term": {"chunk_type": chunk_type_filter}})
 
         try:
             knn_query = {
-                "field": "embedding",
+                "field": field,
                 "query_vector": query_vector,
                 "k": top_k,
                 "num_candidates": top_k * 3,
@@ -474,9 +447,10 @@ class ElasticsearchClient:
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
         filters = self._build_kb_filter(kb_id)
+        safe_query = self._escape_query(query)
 
         try:
-            search_query = {"match": {"content": query}}
+            search_query = {"match": {"content": safe_query}}
             if filters:
                 body = {
                     "query": {

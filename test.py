@@ -11,7 +11,7 @@ image = "https://dashscope.oss-cn-beijing.aliyuncs.com/images/256_1.png"
 input = [{'image': image}]
 resp = dashscope.MultiModalEmbedding.call(
     # 若没有配置环境变量，请用百炼API Key将下行替换为：api_key="sk-xxx",
-    api_key=os.getenv('DASHSCOPE_API_KEY'),
+    api_key="sk-4fd381820c2b4168932af0b7ac6273ad",
     model="tongyi-embedding-vision-plus",
     input=input
 )

@@ -1,35 +1,24 @@
 """
 DashScope 原生多模态 Embedding 客户端
 
-调用阿里云 DashScope 多模态嵌入 API，支持文本和图片嵌入。
+通过 dashscope SDK 调用阿里百炼多模态嵌入 API，支持文本和图片嵌入。
 适用于 tongyi-embedding-vision-flash / tongyi-embedding-vision-plus 等模型。
 
-API 文档：
-  POST https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding
-
-文本输入: {"text": "content"}
-图片输入: {"image": "data:image/jpeg;base64,..."}
+SDK 使用方式：
+  文本: AioMultiModalEmbedding.call(model=..., input=[{'text': '...'}], api_key=...)
+  图片: AioMultiModalEmbedding.call(model=..., input=[{'image': 'url'}], api_key=...)
 """
 
 import asyncio
 import base64
+import tempfile
 from typing import Optional
-
-import httpx
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_exponential,
-    retry_if_exception_type,
-)
 
 from src.shared.ai_models.embedding.multimodal_embedding import BaseMultimodalEmbedding
 from src.shared.ai_models.embedding.openai_compatible import EmbeddingDimensionError
 from src.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
-
-_DASHSCOPE_ENDPOINT = "https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding"
 
 
 def _detect_image_mime(data: bytes) -> str:
@@ -45,8 +34,15 @@ def _detect_image_mime(data: bytes) -> str:
     return "image/jpeg"
 
 
+def _get_extension(mime_type: str) -> str:
+    """MIME 类型 → 扩展名"""
+    return {"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp"}.get(
+        mime_type, ".png"
+    )
+
+
 class DashScopeMultimodalEmbedding(BaseMultimodalEmbedding):
-    """DashScope 原生多模态 Embedding 客户端"""
+    """DashScope 原生多模态 Embedding 客户端（基于 dashscope SDK）"""
 
     def __init__(
         self,
@@ -61,26 +57,13 @@ class DashScopeMultimodalEmbedding(BaseMultimodalEmbedding):
     ):
         super().__init__(
             api_key=api_key,
-            base_url=base_url or _DASHSCOPE_ENDPOINT,
+            base_url=base_url,
             model_name=model_name,
             expected_dimension=expected_dimension,
             timeout=timeout,
             max_retries=max_retries,
             max_concurrent=max_concurrent,
         )
-        self._http_client: Optional[httpx.AsyncClient] = None
-
-    def _get_http_client(self) -> httpx.AsyncClient:
-        """延迟创建 httpx 客户端"""
-        if self._http_client is None or self._http_client.is_closed:
-            self._http_client = httpx.AsyncClient(
-                timeout=httpx.Timeout(self.timeout, connect=10.0),
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-            )
-        return self._http_client
 
     def _validate_dimension(self, embedding: list[float]) -> None:
         if self.expected_dimension is not None and len(embedding) != self.expected_dimension:
@@ -90,22 +73,19 @@ class DashScopeMultimodalEmbedding(BaseMultimodalEmbedding):
                 model=self.model,
             )
 
-    def _build_parameters(self) -> dict:
-        """构建请求参数（包含 dimension）"""
-        params = {}
-        if self.expected_dimension is not None:
-            params["dimension"] = self.expected_dimension
-        return params
-
-    def _parse_response(self, data: dict, context: str = "") -> list[float]:
-        """解析 DashScope 响应，提取嵌入向量"""
-        # 错误响应: {"code": "InvalidApiKey", "message": "..."}
-        if "code" in data:
+    @staticmethod
+    def _parse_response(resp, context: str = "") -> list[float]:
+        """解析 DashScope SDK 响应，提取嵌入向量"""
+        if resp.status_code != 200:
             raise RuntimeError(
-                f"DashScope API 错误 [{data.get('code')}]: {data.get('message', '未知错误')}"
+                f"DashScope API 错误 [{resp.status_code}] "
+                f"{getattr(resp, 'code', '')}: {getattr(resp, 'message', '未知错误')}"
             )
 
-        output = data.get("output", {})
+        output = getattr(resp, "output", None)
+        if not output:
+            raise RuntimeError(f"DashScope 返回空输出{context}")
+
         embeddings = output.get("embeddings", [])
         if not embeddings:
             raise RuntimeError(f"DashScope 返回空嵌入{context}")
@@ -118,26 +98,37 @@ class DashScopeMultimodalEmbedding(BaseMultimodalEmbedding):
 
     # ---- 文本嵌入 ----
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.ConnectError, httpx.TimeoutException, ConnectionError, TimeoutError, OSError)),
-        reraise=True,
-    )
     async def generate_embedding(self, text: str) -> list[float]:
         async with self._get_semaphore():
-            client = self._get_http_client()
-            payload = {
-                "model": self.model,
-                "input": {"contents": [{"text": text}]},
-                "parameters": self._build_parameters(),
-            }
-            resp = await client.post(_DASHSCOPE_ENDPOINT, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-            embedding = self._parse_response(data, "(文本)")
-            self._validate_dimension(embedding)
-            return embedding
+            for attempt in range(self.max_retries):
+                try:
+                    import dashscope
+
+                    loop = asyncio.get_running_loop()
+                    resp = await loop.run_in_executor(
+                        None,
+                        lambda: dashscope.MultiModalEmbedding.call(
+                            model=self.model,
+                            input=[{"text": text}],
+                            api_key=self.api_key,
+                        ),
+                    )
+                    embedding = self._parse_response(resp, "(文本)")
+                    self._validate_dimension(embedding)
+                    return embedding
+                except EmbeddingDimensionError:
+                    raise
+                except Exception as e:
+                    if attempt == self.max_retries - 1:
+                        raise RuntimeError(
+                            f"DashScope 文本嵌入失败（重试 {self.max_retries} 次后）: {e}"
+                        ) from e
+                    logger.debug(
+                        "DashScope 文本嵌入重试",
+                        attempt=attempt + 1,
+                        error=str(e),
+                    )
+                    await asyncio.sleep(min(2 ** attempt, 10))
 
     async def generate_embeddings_batch(
         self, texts: list[str], batch_size: int = 10
@@ -154,32 +145,44 @@ class DashScopeMultimodalEmbedding(BaseMultimodalEmbedding):
 
     # ---- 图片嵌入 ----
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.ConnectError, httpx.TimeoutException, ConnectionError, TimeoutError, OSError)),
-        reraise=True,
-    )
     async def generate_image_embedding(self, image_data: bytes) -> list[float]:
-        """从图片二进制数据生成嵌入向量"""
-        mime_type = _detect_image_mime(image_data)
-        b64 = base64.b64encode(image_data).decode("utf-8")
-        data_url = f"data:{mime_type};base64,{b64}"
-
+        """从图片二进制数据生成嵌入向量（通过 SDK 上传文件）"""
         async with self._get_semaphore():
-            client = self._get_http_client()
-            payload = {
-                "model": self.model,
-                "input": {"contents": [{"image": data_url}]},
-                "parameters": self._build_parameters(),
-            }
-            resp = await client.post(_DASHSCOPE_ENDPOINT, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-            embedding = self._parse_response(data, "(图片)")
-            self._validate_dimension(embedding)
-            return embedding
+            for attempt in range(self.max_retries):
+                try:
+                    import dashscope
+
+                    # SDK 支持 data URI 格式的 base64 图片
+                    mime_type = _detect_image_mime(image_data)
+                    b64 = base64.b64encode(image_data).decode("utf-8")
+                    data_url = f"data:{mime_type};base64,{b64}"
+
+                    loop = asyncio.get_running_loop()
+                    resp = await loop.run_in_executor(
+                        None,
+                        lambda: dashscope.MultiModalEmbedding.call(
+                            model=self.model,
+                            input=[{"image": data_url}],
+                            api_key=self.api_key,
+                        ),
+                    )
+                    embedding = self._parse_response(resp, "(图片)")
+                    self._validate_dimension(embedding)
+                    return embedding
+                except EmbeddingDimensionError:
+                    raise
+                except Exception as e:
+                    if attempt == self.max_retries - 1:
+                        raise RuntimeError(
+                            f"DashScope 图片嵌入失败（重试 {self.max_retries} 次后）: {e}"
+                        ) from e
+                    logger.debug(
+                        "DashScope 图片嵌入重试",
+                        attempt=attempt + 1,
+                        error=str(e),
+                    )
+                    await asyncio.sleep(min(2 ** attempt, 10))
 
     async def close(self) -> None:
-        if self._http_client and not self._http_client.is_closed:
-            await self._http_client.aclose()
+        """SDK 无需手动关闭资源"""
+        pass

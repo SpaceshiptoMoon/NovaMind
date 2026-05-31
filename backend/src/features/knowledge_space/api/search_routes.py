@@ -6,7 +6,7 @@
 """
 
 from typing import Annotated
-from fastapi import APIRouter, Depends, Request, Body, Path, UploadFile, File, Query
+from fastapi import APIRouter, Depends, Request, Body, Path, Query
 
 from src.core.database.database import get_db
 from src.setting.yaml_config import get_config
@@ -15,6 +15,7 @@ from src.features.knowledge_space.schemas.search_schema import (
     SearchResponse,
     SearchModesResponse,
     KnowledgeBaseModelConfigResponse,
+    MultimodalSearchRequest,
     SEARCH_MODES,
 )
 from src.features.knowledge_space.api.dependencies import (
@@ -33,6 +34,14 @@ from src.features.user.services.model_config_service import ModelConfigService
 from src.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
 
 router = APIRouter(tags=["知识检索"])
+
+
+async def _validate_active_kb(kb_id: int, space_id: int, search_service: SearchService):
+    """验证知识库属于指定空间且状态为活跃"""
+    kb = await search_service.get_knowledge_base(kb_id)
+    if not kb or kb.space_id != space_id or kb.status != KnowledgeBaseStatus.ACTIVE:
+        raise KnowledgeBaseNotFoundError(kb_id)
+    return kb
 
 
 # TODO: 未来考虑将 kb_id 从请求体参数移到 URL 路径参数（如 /search/{kb_id}），
@@ -104,9 +113,7 @@ async def search(
     space, _ = validated
 
     # 验证 kb_id 属于当前空间
-    kb = await search_service.get_knowledge_base(kb_id)
-    if not kb or kb.space_id != space_id or kb.status != KnowledgeBaseStatus.ACTIVE:
-        raise KnowledgeBaseNotFoundError(kb_id)
+    await _validate_active_kb(kb_id, space_id, search_service)
 
     result = await search_service.search(
         space_id=space_id,
@@ -148,34 +155,37 @@ async def search(
 
 
 @router.post(
-    "/image",
+    "/multimodal-search",
     response_model=SearchResponse,
-    summary="以图搜图",
-    description="上传图片搜索相似图片（需要空间配置多模态嵌入模型）",
+    summary="多模态检索",
+    description="""
+统一多模态检索接口，支持以文搜图和以图搜图两种模式。
+
+**search_mode**:
+- `text_to_image`（默认）: 使用文本查询搜索相关图片，需提供 `query` 字段
+- `image_to_image`: 使用图片搜索相似图片，需提供 `image_base64` 字段（Base64 编码）
+""",
 )
-async def image_search(
+async def multimodal_search(
+    request: Request,
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
-    image: UploadFile = File(..., description="查询图片"),
-    top_k: Annotated[int, Query(ge=1, le=100)] = 10,
-    score_threshold: Annotated[float, Query(ge=0, le=1)] = 0.0,
+    data: Annotated[MultimodalSearchRequest, Body(...)],
     user_id: int = Depends(get_current_user_id),
     validated: tuple = Depends(validate_space_access),
     search_service: SearchService = Depends(get_search_service),
 ):
-    """以图搜图"""
-    image_data = await image.read()
-    if not image_data:
-        raise ValueError("图片文件为空")
+    """多模态检索"""
+    await _validate_active_kb(kb_id, space_id, search_service)
 
-    return await search_service.image_search(
+    result = await search_service.multimodal_search(
         space_id=space_id,
         kb_id=kb_id,
         user_id=user_id,
-        image_data=image_data,
-        top_k=top_k,
-        score_threshold=score_threshold,
+        request=data,
     )
+
+    return result
 
 
 @router.get(
@@ -199,10 +209,23 @@ async def get_search_modes(
     space, _ = validated
 
     # 验证 kb_id 属于当前空间
-    kb = await search_service.get_knowledge_base(kb_id)
-    if not kb or kb.space_id != space_id or kb.status != KnowledgeBaseStatus.ACTIVE:
-        raise KnowledgeBaseNotFoundError(kb_id)
+    await _validate_active_kb(kb_id, space_id, search_service)
 
+    # 多模态空间：返回多模态检索模式
+    space_config = space.get_config() if hasattr(space, "get_config") else {}
+    space_type = space_config.get("space_type", "text") if space_config else "text"
+
+    if space_type == "multimodal":
+        multimodal_modes = [
+            m for m in SEARCH_MODES
+            if m["mode"] in ("text_to_image", "image_vector")
+        ]
+        return {
+            "modes": multimodal_modes,
+            "total": len(multimodal_modes),
+        }
+
+    # 文本空间：返回文本检索模式
     available_modes = await search_service.get_available_modes(
         kb_id=kb_id,
     )
@@ -248,9 +271,7 @@ async def get_model_config(
     space, _ = validated
 
     # 验证 kb_id 属于当前空间
-    kb = await search_service.get_knowledge_base(kb_id)
-    if not kb or kb.space_id != space_id or kb.status != KnowledgeBaseStatus.ACTIVE:
-        raise KnowledgeBaseNotFoundError(kb_id)
+    await _validate_active_kb(kb_id, space_id, search_service)
 
     # 获取全局配置
     config = get_config()

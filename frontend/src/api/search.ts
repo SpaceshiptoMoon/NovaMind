@@ -1,5 +1,5 @@
 import { request } from './index'
-import type { SearchRequest, SearchResponse, SearchModeListResponse, SearchModelConfigResponse } from './types'
+import type { SearchRequest, SearchResponse, SearchModeListResponse, SearchModelConfigResponse, MultimodalSearchRequest } from './types'
 
 export const searchApi = {
   search(spaceId: number, kbId: number, data: SearchRequest) {
@@ -10,15 +10,12 @@ export const searchApi = {
     )
   },
 
-  searchByImage(spaceId: number, kbId: number, file: File, params?: { top_k?: number; score_threshold?: number }) {
-    const formData = new FormData()
-    formData.append('image', file)
-    const query = new URLSearchParams()
-    if (params?.top_k) query.set('top_k', String(params.top_k))
-    if (params?.score_threshold) query.set('score_threshold', String(params.score_threshold))
-    const qs = query.toString()
-    const url = `/spaces/${spaceId}/knowledge-bases/${kbId}/search/image${qs ? `?${qs}` : ''}`
-    return request.post<SearchResponse>(url, formData, 120000)
+  multimodalSearch(spaceId: number, kbId: number, data: MultimodalSearchRequest) {
+    return request.post<SearchResponse>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/search/multimodal-search`,
+      data,
+      120000,
+    )
   },
 
   getSearchModes(spaceId: number, kbId: number) {

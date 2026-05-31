@@ -99,7 +99,15 @@
             </div>
           </div>
           <div class="chunk-content">
-            {{ chunk.content }}
+            <img
+              v-if="chunk.chunk_type === 'image' && chunk.image_url"
+              :src="chunk.image_url"
+              :alt="chunk.content"
+              loading="lazy"
+              class="chunk-image"
+              @click="previewUrl = chunk.image_url!; previewVisible = true"
+            />
+            <template v-else>{{ chunk.content }}</template>
           </div>
           <div v-if="chunk.questions?.length > 0" class="chunk-questions">
             <el-tag
@@ -126,6 +134,17 @@
         />
       </div>
     </div>
+
+    <!-- 图片预览弹窗 -->
+    <el-dialog
+      v-model="previewVisible"
+      :show-close="true"
+      width="auto"
+      class="image-preview-dialog"
+      destroy-on-close
+    >
+      <img :src="previewUrl" style="max-width: 90vw; max-height: 80vh; object-fit: contain; display: block; margin: auto" />
+    </el-dialog>
   </div>
 </template>
 
@@ -137,6 +156,8 @@ import { documentApi } from '@/api/document'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import type { DocumentDetail, Chunk } from '@/api/types'
+import { docStatusMap, getFileTypeStyle } from '@/utils/document'
+import { formatFileSize, formatDate } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -154,46 +175,8 @@ const chunks = ref<Chunk[]>([])
 const totalChunks = ref(0)
 const chunkCurrentPage = ref(1)
 const chunkPageSize = 10
-
-const docStatusMap: Record<string, { text: string; type: 'success' | 'warning' | 'danger' | 'info' | 'primary' }> = {
-  uploaded: { text: '待处理', type: 'info' },
-  processing: { text: '处理中', type: 'warning' },
-  completed: { text: '已完成', type: 'success' },
-  failed: { text: '失败', type: 'danger' },
-  '0': { text: '待处理', type: 'info' },
-  '1': { text: '处理中', type: 'warning' },
-  '2': { text: '已完成', type: 'success' },
-  '3': { text: '失败', type: 'danger' },
-}
-
-const fileTypeStyles: Record<string, { bg: string; color: string }> = {
-  pdf: { bg: '#FEF2F2', color: '#EF4444' },
-  docx: { bg: '#EFF6FF', color: '#2563EB' },
-  txt: { bg: '#F3F4F6', color: '#6B7280' },
-  md: { bg: '#F0F9FF', color: '#0EA5E9' },
-  xlsx: { bg: '#ECFDF5', color: '#10B981' },
-  pptx: { bg: '#FFFBEB', color: '#F59E0B' },
-}
-
-function getFileTypeStyle(type: string): { bg: string; color: string } {
-  return fileTypeStyles[type.toLowerCase()] || { bg: '#F3F4F6', color: '#6B7280' }
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function formatDate(date?: string | null): string {
-  if (!date) return '-'
-  try {
-    return new Date(date).toLocaleDateString('zh-CN') + ' ' +
-      new Date(date).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  } catch {
-    return '-'
-  }
-}
+const previewVisible = ref(false)
+const previewUrl = ref('')
 
 const canReprocess = computed(() => {
   const s = document.value?.status
@@ -542,6 +525,23 @@ onMounted(() => {
   max-height: 200px;
   overflow-y: auto;
   border: 1px solid var(--color-border-light);
+}
+
+.chunk-image {
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: var(--radius-md);
+  object-fit: contain;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.chunk-image:hover {
+  opacity: 0.9;
+}
+
+.image-preview-dialog :deep(.el-dialog__body) {
+  padding: 0;
 }
 
 .chunk-questions {
