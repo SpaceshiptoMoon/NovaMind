@@ -385,6 +385,8 @@ Authorization: Bearer <token>
 | temperature | float | 否 | body | 温度参数（0.0-2.0），默认 0.7 |
 | top_p | float | 否 | body | Top-P 采样参数（0.0-1.0），默认 0.8 |
 | system_prompt | string | 否 | body | 系统提示词（最大4000字符），默认 `"You are a helpful assistant."` |
+| enable_thinking | boolean | 否 | body | 是否开启深度思考模式（Qwen 等模型支持），默认 `false` |
+| attachment_ids | array\<integer\> | 否 | body | 附件ID列表（通过上传附件接口获取） |
 
 **请求示例**
 
@@ -396,7 +398,9 @@ Authorization: Bearer <token>
   "max_tokens": 1024,
   "temperature": 0.5,
   "top_p": 0.9,
-  "system_prompt": "你是一个专业的技术顾问，请用通俗易懂的语言回答问题。"
+  "system_prompt": "你是一个专业的技术顾问，请用通俗易懂的语言回答问题。",
+  "enable_thinking": false,
+  "attachment_ids": [1, 2]
 }
 ```
 
@@ -485,7 +489,9 @@ Authorization: Bearer <token>
   "max_tokens": 1024,
   "temperature": 0.5,
   "top_p": 0.9,
-  "system_prompt": "你是一个专业的技术顾问。"
+  "system_prompt": "你是一个专业的技术顾问。",
+  "enable_thinking": false,
+  "attachment_ids": [1]
 }
 ```
 
@@ -704,7 +710,85 @@ while (true) {
 
 ---
 
-### 13. 获取可用模型列表
+### 13. 上传聊天附件
+
+上传文档附件，用于在后续 AI 对话中附带文件。返回附件 ID，供 `chat` / `chat-stream` 接口的 `attachment_ids` 字段引用。
+
+**请求**
+- 方法：POST
+- URL：`/api/v1/ai-chat/chat-attachments`
+- Content-Type：multipart/form-data
+
+**请求参数**
+
+| 参数名 | 类型 | 必填 | 位置 | 说明 |
+|--------|------|------|------|------|
+| files | file | 是 | form | 文档文件（支持 pdf/docx/txt/md，最大 20MB） |
+
+**响应参数**
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| attachment_id | integer | 附件唯一ID，用于对话请求中的 `attachment_ids` |
+| filename | string | 原始文件名 |
+| file_type | string | 文件类型 |
+| file_size | integer | 文件大小（字节） |
+| message | string | 提示信息 |
+
+**响应示例**
+
+```json
+{
+  "attachment_id": 10,
+  "filename": "report.pdf",
+  "file_type": "pdf",
+  "file_size": 1048576,
+  "message": ""
+}
+```
+
+**错误码**
+
+| 错误码 | HTTP 状态码 | 说明 |
+|--------|-----------|------|
+| `VALIDATION_ERROR` | 422 | 请求参数验证失败（文件为空、类型不支持等） |
+| `INTERNAL_ERROR` | 500 | 文件上传失败 |
+
+---
+
+### 14. 下载聊天附件
+
+根据附件ID下载已上传的文件。仅允许下载属于当前用户的附件。
+
+**请求**
+- 方法：GET
+- URL：`/api/v1/ai-chat/chat-attachments/{attachment_id}/download`
+
+**请求参数**
+
+| 参数名 | 类型 | 必填 | 位置 | 说明 |
+|--------|------|------|------|------|
+| attachment_id | integer | 是 | path | 附件ID（必须大于0） |
+
+**响应**
+
+返回 `Content-Type: application/octet-stream` 的文件流（StreamingResponse）。
+
+响应头：
+```
+Content-Type: application/octet-stream
+Content-Disposition: attachment; filename="download"; filename*=UTF-8''<encoded_filename>
+```
+
+**错误码**
+
+| 错误码 | HTTP 状态码 | 说明 |
+|--------|-----------|------|
+| `CHAT_ATTACHMENT_NOT_FOUND` | 404 | 附件不存在或不属于当前用户 |
+
+---
+
+### 15. 获取可用模型列表
 
 **请求**
 - 方法：GET
@@ -722,6 +806,9 @@ while (true) {
 | models.`{model_name}`.max_tokens | integer | 默认最大生成 token 数 |
 | models.`{model_name}`.temperature | float | 默认温度参数 |
 | models.`{model_name}`.top_p | float | 默认 Top-P 参数 |
+| models.`{model_name}`.model_type | string | 模型类型：`llm`（语言模型）或 `vlm`（视觉语言模型） |
+
+> **注意**：响应中可能同时包含 `llm`（语言模型）和 `vlm`（视觉语言模型）类型的模型。`vlm` 模型支持图片输入等多模态能力。
 
 **响应示例**
 
@@ -731,12 +818,20 @@ while (true) {
     "gpt-4o": {
       "max_tokens": 2048,
       "temperature": 0.7,
-      "top_p": 0.8
+      "top_p": 0.8,
+      "model_type": "llm"
     },
     "glm-4": {
       "max_tokens": 2048,
       "temperature": 0.7,
-      "top_p": 0.8
+      "top_p": 0.8,
+      "model_type": "llm"
+    },
+    "qwen-vl-max": {
+      "max_tokens": 2048,
+      "temperature": 0.7,
+      "top_p": 0.8,
+      "model_type": "vlm"
     }
   }
 }
@@ -746,7 +841,7 @@ while (true) {
 
 ## 三、会话配置接口（`/api/v1/sessions/{session_id}/config`）
 
-### 14. 创建会话配置
+### 16. 创建会话配置
 
 为指定会话创建压缩配置。**压缩配置创建后不可修改，请谨慎设置。**
 
@@ -834,7 +929,7 @@ while (true) {
 
 ---
 
-### 15. 获取会话配置
+### 17. 获取会话配置
 
 **请求**
 - 方法：GET
@@ -848,7 +943,7 @@ while (true) {
 
 **响应参数**
 
-与 [14. 创建会话配置](#14-创建会话配置) 的响应参数一致。
+与 [16. 创建会话配置](#16-创建会话配置) 的响应参数一致。
 
 **响应示例**
 
@@ -879,7 +974,7 @@ while (true) {
 
 ---
 
-### 16. 删除会话配置
+### 18. 删除会话配置
 
 **请求**
 - 方法：DELETE
@@ -921,6 +1016,7 @@ while (true) {
 | `UNAUTHORIZED_ACCESS` | 403 | 无权访问该资源 |
 | `SESSION_CONFIG_NOT_FOUND` | 404 | 会话配置不存在 |
 | `SESSION_CONFIG_ALREADY_EXISTS` | 409 | 会话配置已存在 |
+| `CHAT_ATTACHMENT_NOT_FOUND` | 404 | 聊天附件不存在或不属于当前用户 |
 
 ### 全局错误码
 
@@ -947,7 +1043,9 @@ while (true) {
 | 10 | GET | `/api/v1/ai-chat/chat-history` | 获取聊天历史 | 是 |
 | 11 | DELETE | `/api/v1/ai-chat/clear-chat` | 清除聊天历史 | 是 |
 | 12 | GET | `/api/v1/ai-chat/health` | 健康检查 | 否 |
-| 13 | GET | `/api/v1/ai-chat/models` | 获取可用模型列表 | 是 |
-| 14 | POST | `/api/v1/sessions/{session_id}/config` | 创建会话配置（201） | 是 |
-| 15 | GET | `/api/v1/sessions/{session_id}/config` | 获取会话配置 | 是 |
-| 16 | DELETE | `/api/v1/sessions/{session_id}/config` | 删除会话配置 | 是 |
+| 13 | POST | `/api/v1/ai-chat/chat-attachments` | 上传聊天附件 | 是 |
+| 14 | GET | `/api/v1/ai-chat/chat-attachments/{attachment_id}/download` | 下载聊天附件 | 是 |
+| 15 | GET | `/api/v1/ai-chat/models` | 获取可用模型列表 | 是 |
+| 16 | POST | `/api/v1/sessions/{session_id}/config` | 创建会话配置（201） | 是 |
+| 17 | GET | `/api/v1/sessions/{session_id}/config` | 获取会话配置 | 是 |
+| 18 | DELETE | `/api/v1/sessions/{session_id}/config` | 删除会话配置 | 是 |

@@ -716,6 +716,18 @@ if is_model_not_found and self.summary_model != self.main_model:
 
 ## 十二、分阶段开发计划
 
+> **实现状态总览**（更新于 2026-05）
+>
+> | 阶段 | 状态 | 备注 |
+> |------|------|------|
+> | 阶段一：MemoryManager 统一门面 + 清理 Legacy | ✅ 已完成 | MemoryManager 已实现，legacy 已清理 |
+> | 阶段二：ES 语义记忆检索 | ✅ 已完成 | memory_search_repository.py 已实现 |
+> | 阶段三：冻结快照 + 动态注入 + 上下文围栏 | ✅ 已完成 | build_frozen_snapshot() + StreamingContextScrubber |
+> | 阶段四：五阶段结构化压缩 | ✅ 已完成 | context_compressor.py 全部 5 阶段 |
+> | 阶段五：工作记忆实际使用 | ❌ 未实现 | WorkingMemory 已从架构中移除，TodoStore 部分替代 |
+> | 阶段六：记忆管理 API | ✅ 已完成 | 3 个端点已实现 |
+> | 阶段七：记忆安全扫描 + 模型主动记忆工具 | ✅ 已完成 | security.py + memory.py builtin tool |
+
 ### 阶段一：MemoryManager 统一门面 + 清理 Legacy
 
 **目标**：将 chat_service 中分散的记忆逻辑统一到 MemoryManager。
@@ -726,25 +738,25 @@ if is_model_not_found and self.summary_model != self.main_model:
 
 MemoryManager 类，核心方法：
 
-| 方法 | 职责 |
-|------|------|
-| `create(...)` | 工厂方法，创建完整配置的 MemoryManager |
-| `build_frozen_snapshot(agent_id, user_id) -> str` | 首次从 MySQL 加载 → 缓存到内存 → 会话期间不再查询 DB |
-| `prefetch(query, agent_id, user_id, top_k) -> List[LongTermMemoryEntry]` | ES 语义搜索相关记忆 |
-| `build_context(system_prompt, conversation_id, max_tokens) -> MemorySnapshot` | 委托 ShortTermMemory |
-| `store_working_state(conv_id, key, value, ttl)` | 委托 WorkingMemory |
-| `get_all_working_states(conv_id) -> dict` | 委托 WorkingMemory |
-| `consolidate(agent_id, user_id, conversation_id, messages) -> int` | 安全扫描 + LLM 提取 + MySQL + ES |
-| `write_memory(agent_id, user_id, action, category, content, old_content) -> dict` | 安全扫描 + MySQL + ES（模型主动写入） |
+| 方法 | 职责 | 状态 |
+|------|------|------|
+| `create(...)` | 工厂方法，创建完整配置的 MemoryManager | ✅ |
+| `build_frozen_snapshot(agent_id, user_id) -> str` | 首次从 MySQL 加载 → 缓存到内存 → 会话期间不再查询 DB | ✅ |
+| `prefetch(query, agent_id, user_id, top_k) -> List[LongTermMemoryEntry]` | ES 语义搜索相关记忆 | ✅ |
+| `build_context(system_prompt, conversation_id, max_tokens) -> MemorySnapshot` | 委托 ShortTermMemory | ✅ |
+| `store_working_state(conv_id, key, value, ttl)` | 委托 WorkingMemory | ❌ 未实现（WorkingMemory 已移除） |
+| `get_all_working_states(conv_id) -> dict` | 委托 WorkingMemory | ❌ 未实现（WorkingMemory 已移除） |
+| `consolidate(agent_id, user_id, conversation_id, messages) -> int` | 安全扫描 + LLM 提取 + MySQL + ES | ✅ |
+| `write_memory(agent_id, user_id, action, category, content, old_content) -> dict` | 安全扫描 + MySQL + ES（模型主动写入） | ❌ 不在 MemoryManager 中；memory builtin tool 直接调用 Repository |
 
-构造参数：
+构造参数（实际）：
 ```python
 def __init__(
     self,
     short_term: ShortTermMemory,
     long_term: LongTermMemory,
-    working_memory: WorkingMemory,
     memory_repository: MemoryRepository,
+    # 注意：working_memory 参数已移除
 ):
     self._frozen_snapshot_cache: Dict[str, str] = {}
 ```
@@ -982,34 +994,45 @@ memory 内置工具：
 
 ## 十四、文件变更清单
 
+> **实现状态**：✅ 已创建/修改 | ❌ 未创建 | 🔸 部分实现
+
 ### 新建（6 个）
+
+| 文件 | 说明 | 状态 |
+|------|------|------|
+| `core/memory/memory_manager.py` | 统一门面（含冻结快照缓存） | ✅ 已创建 |
+| `core/memory/context_compressor.py` | 五阶段结构化压缩（含工具对清理、反抖动、模型降级、冷却） | ✅ 已创建 |
+| `core/memory/security.py` | 记忆安全扫描 + 敏感数据脱敏 | ✅ 已创建（模式比设计更多） |
+| `repository/memory_search_repository.py` | ES 向量检索 | ✅ 已创建 |
+| `tools/builtins/memory.py` | 模型主动记忆工具 | ✅ 已创建（直接调用 Repository，不经 MemoryManager.write_memory()） |
+| `shared/utils/redact.py` | 通用敏感数据脱敏工具 | ✅ 已创建 |
+
+### 额外新建（设计中未列出但实际需要）
 
 | 文件 | 说明 |
 |------|------|
-| `core/memory/memory_manager.py` | 统一门面（含冻结快照缓存） |
-| `core/memory/context_compressor.py` | 五阶段结构化压缩（含工具对清理、反抖动、模型降级、冷却） |
-| `core/memory/security.py` | 记忆安全扫描 + 敏感数据脱敏 |
-| `repository/memory_search_repository.py` | ES 向量检索 |
-| `tools/builtins/memory.py` | 模型主动记忆工具 |
-| `shared/utils/redact.py` | 通用敏感数据脱敏工具 |
+| `core/memory/context_scrubber.py` | SSE 输出内部标签清理（`<memory-context>` 围栏剥离） |
+| `core/memory/todo_store.py` | 跨压缩任务状态追踪（部分替代 WorkingMemory） |
+| `models/context_summary.py` | AgentContextSummary ORM（append-only 压缩摘要） |
+| `repository/context_summary_repository.py` | 压缩摘要仓储 |
 
 ### 修改（13 个）
 
-| 文件 | 说明 |
-|------|------|
-| `core/memory/__init__.py` | 更新导出，移除 legacy |
-| `core/memory/long_term.py` | 新增 ES 检索 + embedding 索引 + 安全扫描 |
-| `core/memory/compress.py` | 标记旧策略 deprecated |
-| `services/chat_service.py` | 用 MemoryManager 重构，冻结快照 + 动态注入 + 上下文围栏 + memory 工具路由 |
-| `api/dependencies.py` | 新增工厂，更新注入 |
-| `api/routes.py` | 新增 3 个记忆管理端点 |
-| `api/exceptions.py` | 新增 MemoryNotFoundError |
-| `api/exception_handlers.py` | 注册 404 |
-| `schemas/agent_schema.py` | 新增记忆相关 Schema |
-| `services/agent_service.py` | 新增记忆 CRUD 方法 |
-| `shared/prompts/templates.py` | 新增结构化摘要模板（13 章节）+ 融合模板 |
-| `tools/registry` | 注册 memory 工具 |
-| `models/session.py` | 删除 summary 字段 |
+| 文件 | 说明 | 状态 |
+|------|------|------|
+| `core/memory/__init__.py` | 更新导出，移除 legacy | ✅ 仅导出 MemoryManager |
+| `core/memory/long_term.py` | 新增 ES 检索 + embedding 索引 + 安全扫描 | ✅ 已完成 |
+| `core/memory/compress.py` | 标记旧策略 deprecated | ✅ 仅保留接口 |
+| `services/chat_service.py` | 用 MemoryManager 重构，冻结快照 + 动态注入 + 上下文围栏 + memory 工具路由 | ✅ 已完成 |
+| `api/dependencies.py` | 新增工厂，更新注入 | ✅ 已完成 |
+| `api/routes.py` | 新增 3 个记忆管理端点 | ✅ 已完成 |
+| `api/exceptions.py` | 新增 MemoryNotFoundError | ✅ 已完成 |
+| `api/exception_handlers.py` | 注册 404 | ✅ 已完成 |
+| `schemas/agent_schema.py` | 新增记忆相关 Schema | ✅ 已完成 |
+| `services/agent_service.py` | 新增记忆 CRUD 方法 | ✅ 已完成 |
+| `shared/prompts/templates.py` | 新增结构化摘要模板（13 章节）+ 融合模板 | ✅ 已完成 |
+| `tools/registry` | 注册 memory 工具 | ✅ 已完成 |
+| `models/session.py` | 删除 summary 字段 | ✅ 已完成（summary 字段已移除） |
 
 ### 新建表（1 个）
 

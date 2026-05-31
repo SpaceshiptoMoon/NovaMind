@@ -4,7 +4,9 @@
 
 ### 索引命名
 
-每个知识空间对应一个 ES 索引：`knowledge_space_{space_id}`
+每个知识空间对应一个 ES 索引：`space_{space_id}`
+
+> **注意**：索引名前缀是 `space_`，不是 `knowledge_space_`。由 `ElasticsearchClient.generate_index_name()` 生成。
 
 ### 知识库隔离
 
@@ -18,6 +20,8 @@
 
 ## Document JSON 示例
 
+### 标准文档（文本空间）
+
 ```json
 {
   "space_id": 1,
@@ -25,6 +29,7 @@
   "document_id": 42,
   "chunk_id": "doc_42_chunk_5",
   "chunk_index": 5,
+  "chunk_type": "text",
   "content": "FastAPI 是一个高性能的 Python Web 框架，支持异步编程...",
   "embedding": [0.0123, -0.0456, 0.0789, ...],
   "questions": [
@@ -51,9 +56,34 @@
 }
 ```
 
+### 多模态文档（含图片的空间）
+
+```json
+{
+  "space_id": 1,
+  "kb_id": 3,
+  "document_id": 42,
+  "chunk_id": "doc_42_chunk_8",
+  "chunk_index": 8,
+  "chunk_type": "image",
+  "image_url": "minio://buckets/docs/doc_42/img_8.png",
+  "image_embedding": [0.0234, -0.0567, 0.0891, ...],
+  "content": "",
+  "embedding": [],
+  "questions": [],
+  "question_embeddings": [],
+  "metadata": { ... },
+  "file_info": { "filename": "presentation.pptx", "file_type": ".pptx" },
+  "created_at": "2026-04-22T10:30:00",
+  "updated_at": "2026-04-22T10:30:00"
+}
+```
+
 ---
 
 ## 索引 Mapping
+
+### 基础 Mapping（所有空间共有）
 
 ```json
 {
@@ -68,28 +98,30 @@
       "document_id": { "type": "long" },
       "chunk_id": { "type": "keyword" },
       "chunk_index": { "type": "integer" },
+      "chunk_type": { "type": "keyword" },
+      "image_url": { "type": "keyword" },
       "content": {
         "type": "text",
-        "analyzer": "ik_max_word",
-        "search_analyzer": "ik_smart"
+        "analyzer": "<动态>",
+        "search_analyzer": "<动态>"
       },
       "embedding": {
         "type": "dense_vector",
-        "dims": 1024,
+        "dims": "<动态>",
         "index": true,
         "similarity": "cosine"
       },
       "questions": {
         "type": "text",
-        "analyzer": "ik_max_word",
-        "search_analyzer": "ik_smart"
+        "analyzer": "<动态>",
+        "search_analyzer": "<动态>"
       },
       "question_embeddings": {
         "type": "nested",
         "properties": {
           "vector": {
             "type": "dense_vector",
-            "dims": 1024,
+            "dims": "<动态>",
             "index": true,
             "similarity": "cosine"
           }
@@ -117,7 +149,27 @@
 }
 ```
 
-> `dims` 和 `analyzer` 的实际值由空间 Embedding 配置和用户配置决定。
+### 多模态扩展字段（仅多模态空间）
+
+创建索引时传入 `multimodal_dim` 参数，额外添加：
+
+```json
+{
+  "image_embedding": {
+    "type": "dense_vector",
+    "dims": "<multimodal_dim>",
+    "index": true,
+    "similarity": "cosine"
+  }
+}
+```
+
+### 动态参数说明
+
+| 参数 | 决定方式 | 默认值 |
+|------|---------|-------|
+| `dims`（embedding 维度） | 空间 Embedding 模型配置 | 1024 |
+| `analyzer`（分词器） | `create_index()` 的 `analyzer` 参数，若以 `ik_` 开头则 search_analyzer 为 `ik_smart`，否则为 `standard` | `standard` |
 
 ---
 
@@ -130,8 +182,11 @@
 | `document_id` | long | 所属文档 ID |
 | `chunk_id` | keyword | 分块唯一标识（格式：`doc_{document_id}_chunk_{index}`） |
 | `chunk_index` | integer | 分块序号（从 0 开始） |
+| `chunk_type` | keyword | 分块类型：`"text"`（文本）或 `"image"`（图片），用于多模态区分 |
+| `image_url` | keyword | 图片 URL（MinIO 路径），仅图片分块有值 |
 | `content` | text | 分块原文，用于 BM25 全文检索 |
 | `embedding` | dense_vector | 内容向量，用于向量检索 |
+| `image_embedding` | dense_vector | 图片向量，用于以图搜图/以文搜图（仅多模态空间） |
 | `questions` | text | 假设性问题列表，用于问题全文检索 |
 | `question_embeddings` | nested → dense_vector | 问题向量列表，用于问题向量检索 |
 | `metadata` | object | 元数据（页码、章节标题、字符位置、内容哈希） |
@@ -147,10 +202,14 @@
 |---------|---------|------|
 | `content_bm25` | `content` | 内容全文检索 |
 | `content_vector` | `embedding` | 内容向量检索 |
-| `content_hybrid` | `content` + `embedding` | 内容混合检索（BM25 + 向量） |
+| `content_hybrid` | `content` + `embedding` | 内容混合检索（BM25 + 向量 + RRF 融合） |
 | `question_bm25` | `questions` | 问题全文检索 |
 | `question_vector` | `question_embeddings.vector` | 问题向量检索 |
 | `question_hybrid` | `questions` + `question_embeddings.vector` | 问题混合检索 |
 | `all_bm25` | `content` + `questions` | 全字段全文检索 |
 | `all_vector` | `embedding` + `question_embeddings.vector` | 全字段向量检索 |
 | `all_hybrid` | 全部 | 全字段全算法融合 |
+| `image_vector` | `image_embedding` | 图片向量检索（以图搜图 / 以文搜图），仅多模态空间可用 |
+
+> 混合检索实现：并行执行 BM25 和向量查询，通过加权 RRF（Reciprocal Rank Fusion）合并结果。
+> `image_vector` 模式额外添加 `chunk_type_filter="image"` 确保只返回图片分块。

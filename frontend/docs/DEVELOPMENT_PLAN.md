@@ -2,7 +2,33 @@
 
 ## 现有代码审计结果
 
+> **更新 (2026-05)**：以下 8 个严重问题和 6 个缺失功能已全部修复/实现，状态标注如下。
+
 ### 严重问题（会导致运行时崩溃）
+
+| # | 问题 | 状态 |
+|---|------|------|
+| 1 | 响应拦截器假设后端返回 `{code, message, data}` 包装，但后端实际直接返回裸数据 | ✅ 已修复 — `api/index.ts` 直接返回 `response.data` |
+| 2 | 搜索 API 路径完全错误，后端用 `/spaces/{id}/knowledge-bases/{kbId}/search`，前端用 `/spaces/{id}/search?kb_id=` | ✅ 已修复 — `api/search.ts` 使用正确路径 |
+| 3 | `clearChatHistory` 用 POST 请求，后端要求 DELETE | ✅ 已修复 — 使用 `request.delete()` |
+| 4 | `updateSystemPrompt` 调用不存在的接口 | ✅ 已修复 — 函数已移除 |
+| 5 | `ResearchRequest` 请求体结构错误，后端需要嵌套对象（`internal_search`/`external_search`/`llm`），前端发扁平字段 | ✅ 已修复 — `types.ts` 使用嵌套结构 |
+| 6 | `SearchRequest` 同样的嵌套结构错误 | ✅ 已修复 — `types.ts` 使用嵌套 `weights`/`rerank`/`llm`/`query_rewrite` |
+| 7 | SSE 流式响应的 error 事件被内部 catch 吞掉，用户永远看不到错误 | ✅ 已修复 — Store 明确设置 `error.value` |
+| 8 | `SessionConfig` 类型结构与后端不匹配（扁平 vs 嵌套 `compression_config`） | ✅ 已修复 — 使用嵌套 `compression` 对象 |
+
+### 缺失的功能
+
+| # | 缺失内容 | 状态 |
+|---|---------|------|
+| 1 | 用户模型配置管理（LLM/Embedding/Rerank 私有配置 CRUD + 连接测试） | ✅ 已实现 — `api/user.ts` 全部 9 个方法 |
+| 2 | QA 消息/会话 CRUD（添加消息、获取消息列表、获取会话列表、更新/删除消息、删除会话、获取上下文） | ✅ 已实现 — `api/session.ts` 全部 7 个方法 |
+| 3 | 会话配置管理（创建/获取/删除压缩配置） | ✅ 已实现 — `api/session.ts` 3 个方法 |
+| 4 | 路由缺少 `/403` 页面（守卫已重定向但无路由） | ✅ 已实现 — 路由和 `ForbiddenView.vue` 均存在 |
+| 5 | 无 Token 自动刷新机制（30 分钟强制登出） | ✅ 已实现 — `api/index.ts` 401 自动刷新 + 请求队列 |
+| 6 | SSE 流无 AbortController（无法取消进行中的流） | ✅ 已实现 — `createSSEStream` 接受 `signal`，Store 使用 AbortController |
+
+### 代码质量问题
 
 | # | 问题 | 文件 | 影响 |
 |---|------|------|------|
