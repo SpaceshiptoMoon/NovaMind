@@ -62,18 +62,33 @@ git clone git@github.com:SpaceshiptoMoon/NovaMind.git
 cd NovaMind
 
 # 2. 一键部署（自动创建配置、生成随机密码、启动服务）
+# Linux / macOS / Git Bash:
 bash deploy.sh
+# Windows PowerShell:
+.\deploy.ps1
 ```
 
 脚本会自动完成：
+- 前置检查（Docker 环境、端口占用）
 - 从模板创建 `.env`（自动生成随机密码）
 - 创建 `docker.yaml`（Docker 环境配置）
 - 创建 `default.yaml`（后端基础配置）
 - 构建并启动所有 Docker 服务
+- 健康检查确认服务就绪
 
 > 部署完成后管理员密码在 `.env` 文件的 `ADMIN_PASSWORD` 中查看。
 
 **环境要求：** Docker 20.10+、Docker Compose V2+、内存 >= 4GB
+
+**部署管理命令：**
+
+```bash
+bash deploy.sh status    # 查看服务状态
+bash deploy.sh update    # 更新应用（重新构建 app 容器）
+bash deploy.sh logs      # 跟踪应用日志
+bash deploy.sh stop      # 停止服务（保留数据）
+bash deploy.sh clean     # 停止并清除所有数据卷
+```
 
 ### 方式二：Docker 手动部署
 
@@ -106,7 +121,6 @@ docker compose up -d --build
 |------|------|
 | `MYSQL_ROOT_PASSWORD` | MySQL root 密码 |
 | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | MinIO 凭据 |
-| `ES_PASSWORD` | Elasticsearch 密码 |
 | `SECRET_KEY` | JWT 签名密钥 |
 | `ENCRYPTION_KEY` | AES-256 数据加密密钥 |
 | `ADMIN_PASSWORD` | 管理员初始密码 |
@@ -155,11 +169,16 @@ npm run dev
 **常用 Docker 命令：**
 
 ```bash
-docker compose ps                    # 查看服务状态
-docker compose logs -f app           # 查看应用日志
-docker compose down                  # 停止（保留数据）
-docker compose down -v               # 停止并清除数据卷
-docker compose up -d --build app     # 仅重建应用容器
+bash deploy.sh status                # 查看服务状态（推荐）
+bash deploy.sh logs                  # 查看应用日志
+bash deploy.sh stop                  # 停止（保留数据）
+bash deploy.sh clean                 # 停止并清除数据卷
+bash deploy.sh update                # 仅重建应用容器
+
+# 或直接使用 docker compose
+docker compose ps
+docker compose logs -f app
+docker compose down
 ```
 
 ## 项目结构
@@ -197,7 +216,8 @@ novamind/
 │   └── configs/
 │       └── docker.example     # Docker 环境配置模板
 ├── docker-compose.yml          # 一键部署
-├── deploy.sh                   # 一键部署脚本
+├── deploy.sh                   # 一键部署脚本 (Linux/macOS/Git Bash)
+├── deploy.ps1                  # 一键部署脚本 (Windows PowerShell)
 ├── .env.example                # 环境变量模板
 └── README.md
 ```

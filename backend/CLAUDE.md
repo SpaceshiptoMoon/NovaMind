@@ -11,7 +11,7 @@ NovaMind 后端采用 DDD 分层架构，每个功能模块位于 `src/features/
 | **qa** | `/api/v1/ai-chat`, `/api/v1/qa` | 多模型 SSE 流式对话、会话压缩 (summary/sliding_window/truncate)、多级缓存 (L1 LRU + L2 Redis)、文件附件 | `ai_chat_routes.py`, `ai_chat_service.py`, `qa_service.py` |
 | **deep_research** | `/api/v1/spaces/{id}/deep-research` | 查询分析→任务分解→多源搜索 (Tavily/SerpAPI/DuckDuckGo)→报告综合 | `routes.py`, `deep_research_service.py` |
 | **evaluation** | `/api/v1/spaces/{id}/knowledge-bases/{kb_id}/evaluation` | 测试集管理、异步批量评估 (检索+生成+端到端)、人工评分、JSON/CSV 导出 | `routes.py`, `evaluation_service.py`, `generation_evaluator.py` |
-| **agent** | `/api/v1/agent` | ReAct 循环引擎、三层记忆 (短期+长期+工作)、MCP 协议外部工具、Docker 沙盒代码执行、工具注册中心 | `routes.py`, `core/engine.py`, `services/chat_service.py` |
+| **agent** | `/api/v1/agent` | ReAct 循环引擎、两层记忆 (短期+长期)、MCP 协议外部工具、Docker 沙盒代码执行、工具注册中心、五阶段上下文压缩 | `routes.py`, `core/engine.py`, `services/chat_service.py` |
 | **skill** | `/api/v1/skills` | 技能上传/发布/安装、规则+LLM 双重安全审查、评分系统 | `routes.py`, `skill_marketplace_service.py`, `skill_checker.py` |
 | **app** | `/api/v1/apps` | 简历挖掘 S1-S12 管道 (解析→分析→追问→评估) | `routes.py`, `resume_parser.py`, `resume_analyzer.py`, `resume_probing.py` |
 
@@ -44,7 +44,7 @@ src/
 │   │   ├── dependencies.py        # Depends() 服务工厂注入
 │   │   ├── exceptions.py          # 异常类 (继承 BaseAPIError)
 │   │   ├── exception_handlers.py  # (可选) 自定义异常处理器
-│   │   └── startup.py             # 模块初始化 + 异常注册
+│   │   └── startup.py             # 模块初始化 + 异常注册（仅 user/knowledge_space/qa/agent 需要）
 │   ├── models/                    # SQLAlchemy ORM (继承 BaseModel)
 │   ├── schemas/                   # Pydantic v2 (*Base → *Create/*Update → *Response)
 │   ├── services/                  # 业务逻辑
@@ -62,13 +62,14 @@ src/
     ├── cache/                     # Redis + LRU + 装饰器
     ├── storage/                   # Elasticsearch (9种搜索+RRF) + MinIO
     ├── mq/                        # arq Worker 文档处理 + 任务追踪
-    ├── prompts/templates.py       # PromptTemplate 枚举 45+ 模板
+    ├── prompts/templates.py       # PromptTemplate 枚举 50+ 模板
     └── utils/
         ├── document_readers/      # 5 种 Reader + 4 种 Splitter
         ├── text_processing/       # 文本压缩 + Token 计数
         ├── crypto.py              # AES-256-CBC API Key 加密
         ├── file_validator.py      # Magic Number + MIME + 危险扩展名
         ├── heartbeat.py           # SSE 心跳保活
+        ├── redact.py              # 敏感数据脱敏（压缩前清理）
         └── time_utils.py          # 中国时区 now_china()
 ```
 

@@ -1106,6 +1106,105 @@ curl -X POST "http://localhost:8100/api/v1/skills/upload" \
 
 ---
 
+### 6.4 获取可用审查模型
+
+获取管理员配置的 LLM 模型名称列表，用于选择 LLM 安全审查所使用的模型。
+
+**请求**
+- 方法：`GET`
+- URL：`/api/v1/skills/admin/models`
+- 认证：管理员（`require_admin`）
+
+**响应**
+
+`List[str]` — 模型名称列表。
+
+**响应示例**
+
+```json
+["qwen3.5-plus", "glm-4"]
+```
+
+---
+
+### 6.5 批准技能
+
+管理员批准被标记为可疑（SUSPICIOUS）的技能，使其通过安全审查。
+
+**请求**
+- 方法：`POST`
+- URL：`/api/v1/skills/admin/reviews/{skill_id}/approve`
+- 认证：管理员（`require_admin`）
+
+**路径参数**
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| skill_id | int | 是 | 技能 ID |
+
+**响应参数（SkillReviewActionResultResponse）**
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| success | bool | 是否操作成功 |
+| review_status | int | 操作后的审查状态值 |
+
+**响应示例**
+
+```json
+{
+  "success": true,
+  "review_status": 1
+}
+```
+
+---
+
+### 6.6 拒绝技能
+
+管理员拒绝可疑技能，可附上拒绝原因。
+
+**请求**
+- 方法：`POST`
+- URL：`/api/v1/skills/admin/reviews/{skill_id}/reject`
+- Content-Type：`application/json`
+- 认证：管理员（`require_admin`）
+
+**路径参数**
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| skill_id | int | 是 | 技能 ID |
+
+**请求参数（Body — SkillAdminReviewAction）**
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| reason | string \| null | 否 | 拒绝原因 |
+
+**请求示例**
+
+```json
+{
+  "reason": "技能包含不安全的代码执行逻辑"
+}
+```
+
+**响应参数**
+
+同 6.5 响应参数（SkillReviewActionResultResponse）。
+
+**响应示例**
+
+```json
+{
+  "success": true,
+  "review_status": 3
+}
+```
+
+---
+
 ## 典型使用流程
 
 ```
