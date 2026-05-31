@@ -86,7 +86,7 @@ class AgentChatService:
             })
 
             # 解析模型（MemoryManager 和 LLM 客户端共用）
-            model = await self._resolve_model(agent, llm_model)
+            model = await self._resolve_model(user_id, agent, llm_model)
 
             # 创建 MemoryManager（每请求实例）
             memory_manager = self._create_memory_manager(agent, user_id, model, conv.id)
@@ -174,16 +174,16 @@ class AgentChatService:
     # ==================== 模型 & MemoryManager ====================
 
     async def _resolve_model(
-        self, agent: AgentDefinition, llm_model: Optional[str]
+        self, user_id: int, agent: AgentDefinition, llm_model: Optional[str]
     ) -> str:
         """解析可用的 LLM/VLM 模型名称"""
         model = llm_model or agent.llm_model
         if not model:
-            model = await self.model_config_service.get_default_model_name("llm")
+            model = await self.model_config_service.get_user_default_model_name(user_id, "llm")
         if not model:
-            model = await self.model_config_service.get_default_model_name("vlm")
+            model = await self.model_config_service.get_user_default_model_name(user_id, "vlm")
         if not model:
-            raise AgentError("未配置可用的 LLM 模型，请在系统设置中配置默认模型")
+            raise AgentError("未配置可用的 LLM 模型，请先在模型配置中添加 LLM 模型")
         return model
 
     def _create_memory_manager(
@@ -203,8 +203,8 @@ class AgentChatService:
                 )
 
         async def embedding_factory():
-            embedding_model = await self.model_config_service.get_default_model_name(
-                "embedding"
+            embedding_model = await self.model_config_service.get_user_default_model_name(
+                user_id, "embedding"
             )
             if not embedding_model:
                 raise RuntimeError("未配置 embedding 模型")
@@ -214,13 +214,6 @@ class AgentChatService:
 
         # 辅助模型：用于压缩摘要，优先用更便宜的模型
         async def auxiliary_llm_factory():
-            aux_model = await self.model_config_service.get_default_model_name(
-                "auxiliary_llm"
-            )
-            if aux_model:
-                return await self.model_config_service.get_llm_client_by_model(
-                    user_id, aux_model
-                )
             return await llm_factory()
 
         return MemoryManager.create(

@@ -152,25 +152,3 @@ agent:
       python: "python:3.12-slim"
       javascript: "node:20-slim"
       shell: "bash:5"
-
-# ========================================
-# 模型配置（系统初始化时同步到数据库）
-# ========================================
-model_configs:
-  llm:
-    - protocol: openai
-      model: your-llm-model-name
-      api_key: "your-llm-api-key"
-      base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-
-  embedding:
-    - protocol: openai
-      model: your-embedding-model-name
-      api_key: "your-embedding-api-key"
-      base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-
-  rerank:
-    - protocol: openai
-      model: your-rerank-model-name
-      api_key: "your-rerank-api-key"
-      base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"

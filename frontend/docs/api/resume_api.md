@@ -62,7 +62,7 @@
 | file | File | 是 | - | 简历文件（PDF/DOCX/TXT/MD） |
 | jd_text | string | 否 | `""` | 岗位 JD 描述文本 |
 | config | string | 否 | `"{}"` | 追问配置 JSON 字符串 |
-| llm_model | string | 否 | `""` | LLM 模型名称，空则用系统默认 |
+| llm_model | string | 否 | `""` | LLM 模型名称，空则用用户默认 |
 
 **config 参数结构**
 

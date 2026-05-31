@@ -5,7 +5,6 @@
 1. 模型配置的 CRUD 操作
 2. 根据模型名称获取对应的凭证（核心方法）
 3. 模型连接测试
-4. 系统配置同步
 """
 import asyncio
 import time
@@ -30,7 +29,7 @@ from src.features.user.schemas.model_config_schema import (
 from src.shared.ai_models.llm import create_llm_client, BaseLLM
 from src.shared.ai_models.embedding import create_embedding_client, BaseEmbedding
 from src.shared.ai_models.rerank import create_rerank_client, BaseRerank
-from src.setting.yaml_config import get_config
+
 from src.shared.utils.crypto import encrypt_api_key_async, decrypt_api_key_async
 from src.core.middleware.structured_logging import get_logger
 from src.features.user.api.exceptions import (
@@ -130,10 +129,7 @@ class ModelConfigService:
         """
         根据模型名称获取凭证
 
-        查找优先级：
-        1. 用户私有配置（user_id + model_type + model）
-        2. 系统配置（user_id = NULL + model_type + model）
-        3. 返回 None（调用方使用全局默认）
+        只查找用户配置，不再有系统配置降级。
 
         Args:
             user_id: 用户 ID
@@ -143,7 +139,6 @@ class ModelConfigService:
         Returns:
             ModelCredentials 或 None
         """
-        # 1. 先查找用户私有配置
         config = await self.repo.get_by_user_and_model(user_id, model_type, model)
         if config:
             return ModelCredentials(
@@ -154,18 +149,7 @@ class ModelConfigService:
                 extra_config=config.extra_config,
             )
 
-        # 2. 再查找系统配置
-        config = await self.repo.get_system_config(model_type, model)
-        if config:
-            return ModelCredentials(
-                protocol=config.protocol,
-                model=config.model,
-                api_key=await decrypt_api_key_async(config.api_key) if config.api_key else None,
-                base_url=config.base_url,
-                extra_config=config.extra_config,
-            )
-
-        # 3. 未找到，返回 None
+        # 未找到，返回 None
         logger.debug(
             "未找到模型配置",
             user_id=user_id,
@@ -182,19 +166,10 @@ class ModelConfigService:
         """
         获取用户可用的模型名称列表（用于前端下拉框）
 
-        返回：系统模型 + 用户私有模型（去重）
+        返回：用户自己配置的模型列表
         """
-        models = set()
-
-        # 1. 获取系统配置
-        system_configs = await self.repo.list_system_configs(model_type)
-        models.update(c.model for c in system_configs)
-
-        # 2. 获取用户私有配置
-        user_configs = await self.repo.list_by_user(user_id, model_type)
-        models.update(c.model for c in user_configs)
-
-        return sorted(list(models))
+        configs = await self.repo.list_by_user(user_id, model_type)
+        return sorted(list(set(c.model for c in configs)))
 
     # ========== 配置 CRUD ==========
 
@@ -222,17 +197,13 @@ class ModelConfigService:
     async def create_config(
         self,
         data: ModelConfigCreate,
-        user_id: Optional[int] = None,
+        user_id: int,
     ) -> ModelConfigResponse:
         """创建模型配置"""
         # 检查是否已存在相同模型
-        if user_id is None:
-            # 系统配置（user_id=NULL）：唯一索引无效，需 Service 层校验
-            existing = await self.repo.get_system_config(data.model_type, data.model)
-        else:
-            existing = await self.repo.get_by_user_and_model(
-                user_id, data.model_type, data.model
-            )
+        existing = await self.repo.get_by_user_and_model(
+            user_id, data.model_type, data.model
+        )
         if existing:
             raise ModelConfigAlreadyExistsError(data.model)
 
@@ -719,7 +690,15 @@ class ModelConfigService:
             base_url=request.base_url or "",
             model_name=request.model,
         )
-        await client.generate_text(prompt="Hello", max_tokens=10, temperature=0.1)
+        # 某些模型（如 qwen3）强制要求 enable_thinking=True，测试时默认开启
+        try:
+            await client.generate_text(prompt="Hello", max_tokens=10, temperature=0.1)
+        except Exception as e:
+            error_msg = str(e)
+            if "enable_thinking" in error_msg.lower():
+                await client.generate_text(prompt="Hello", max_tokens=10, temperature=0.1, enable_thinking=True)
+            else:
+                raise
 
     async def _test_embedding(self, request: ModelTestRequest) -> int:
         """测试 Embedding 连接，返回检测到的维度"""
@@ -816,124 +795,6 @@ class ModelConfigService:
         )
         await client.rerank(query="test", documents=["Hello", "World"])
 
-    # ========== 系统配置同步 ==========
-
-    async def sync_system_configs_from_yaml(self) -> Dict[str, Any]:
-        """
-        从 YAML 配置同步系统模型凭证到数据库
-
-        全量覆盖系统配置，不影响用户配置。
-        每个模型条目独立携带 api_key/base_url。
-
-        Returns:
-            同步结果统计
-        """
-        yaml_config = get_config()
-        model_configs = getattr(yaml_config, "model_configs", None)
-
-        if not model_configs:
-            logger.warning("YAML 中未找到 model_configs 配置，跳过同步")
-            return {}
-
-        result = {}
-        yaml_models = {}  # 记录 YAML 中出现的所有系统模型
-
-        for model_type in ["llm", "embedding", "rerank", "vlm", "multimodal_embedding"]:
-            configs = getattr(model_configs, model_type, [])
-            if not configs:
-                continue
-
-            type_result = {"created": 0, "updated": 0, "deleted": 0}
-            yaml_models[model_type] = set()
-
-            for item in configs:
-                model = item.model
-                yaml_models[model_type].add(model)
-
-                # 构建 extra_config
-                extra_config = {}
-                if item.timeout != 60:
-                    extra_config["timeout"] = item.timeout
-                if item.max_retries != 3:
-                    extra_config["max_retries"] = item.max_retries
-                if item.max_concurrent != 5:
-                    extra_config["max_concurrent"] = item.max_concurrent
-
-                # Embedding 模型：自动检测 dimension
-                if model_type == "embedding":
-                    detected_dim = await self._detect_embedding_dimension(
-                        protocol=item.protocol,
-                        api_key=item.api_key,
-                        base_url=item.base_url,
-                        model_name=model,
-                        fallback=item.dimension,
-                    )
-                    if detected_dim is not None:
-                        extra_config["dimension"] = detected_dim
-
-                if not extra_config:
-                    extra_config = None
-
-                # AES 加密 API Key
-                encrypted_api_key = await encrypt_api_key_async(item.api_key) if item.api_key else None
-
-                existing = await self.repo.get_system_config(model_type, model)
-
-                if existing:
-                    # 全量覆盖
-                    await self.repo.update_system_config(
-                        model_type,
-                        model,
-                        protocol=item.protocol,
-                        base_url=item.base_url,
-                        api_key=encrypted_api_key,
-                        extra_config=extra_config,
-                    )
-                    type_result["updated"] += 1
-                else:
-                    # 新增
-                    await self.repo.create_system_config(
-                        model_type=model_type,
-                        protocol=item.protocol,
-                        model=model,
-                        api_key=encrypted_api_key,
-                        base_url=item.base_url,
-                        extra_config=extra_config,
-                    )
-                    type_result["created"] += 1
-
-            result[model_type] = type_result
-
-        # 删除 YAML 中已无但数据库中存在的系统配置
-        for model_type, yaml_model_set in yaml_models.items():
-            db_system_configs = await self.repo.list_system_configs(model_type)
-            for db_config in db_system_configs:
-                if db_config.model not in yaml_model_set:
-                    await self.repo.delete(db_config.id)
-                    result[model_type]["deleted"] += 1
-                    logger.info(
-                        "已删除YAML中不存在的系统模型配置",
-                        model_type=model_type,
-                        model=db_config.model,
-                    )
-
-        # 清除所有系统配置相关的客户端缓存
-        await self._clear_all_system_cache()
-
-        logger.info("系统模型凭证同步完成", result=result)
-        return result
-
-    async def _clear_all_system_cache(self) -> None:
-        """清除所有系统配置相关的客户端缓存"""
-        global _client_cache
-        async with _cache_lock:
-            # 系统配置的 user_id 为 None，缓存 key 中 user_id 部分为 "None" 字符串
-            keys_to_remove = [k for k in _client_cache if k.startswith("None:")]
-            for k in keys_to_remove:
-                del _client_cache[k]
-            if keys_to_remove:
-                logger.debug("已清除系统配置客户端缓存", count=len(keys_to_remove))
-
     # ========== 辅助方法 ==========
 
     def _build_response(self, config: UserModelConfig) -> ModelConfigResponse:
@@ -949,7 +810,6 @@ class ModelConfigService:
             base_url=config.base_url,
             api_key="****" if config.api_key else "",
             extra_config=config.extra_config,
-            is_system=config.is_system_config,
             created_at=config.created_at,
             updated_at=config.updated_at,
         )
@@ -976,7 +836,7 @@ class ModelConfigService:
         result = AvailableModelsWithInfoResponse()
 
         for model_type in ["llm", "embedding", "rerank", "vlm", "multimodal_embedding"]:
-            configs = await self.repo.list_available_configs(user_id, model_type)
+            configs = await self.repo.list_by_user(user_id, model_type)
             seen = set()
             infos = []
 
@@ -986,7 +846,6 @@ class ModelConfigService:
                     infos.append(ModelInfo(
                         model=config.model,
                         protocol=config.protocol,
-                        is_system=config.is_system_config,
                     ))
 
             setattr(result, model_type, infos)
@@ -995,20 +854,18 @@ class ModelConfigService:
 
     # ========== 默认模型动态获取 ==========
 
-    async def get_default_model_name(self, model_type: str) -> Optional[str]:
+    async def get_user_default_model_name(self, user_id: int, model_type: str) -> Optional[str]:
         """
-        获取系统默认模型名称
-
-        从数据库查询 user_id=NULL 且对应 model_type 的第一条记录。
-        如果无系统配置，返回 None。
+        获取用户在指定类型下配置的第一个模型名（作为用户默认）
 
         Args:
-            model_type: 模型类型 (llm/embedding/rerank)
+            user_id: 用户ID
+            model_type: 模型类型 (llm/embedding/rerank/vlm/multimodal_embedding)
 
         Returns:
             模型名称或 None
         """
-        configs = await self.repo.list_system_configs(model_type)
+        configs = await self.repo.list_by_user(user_id, model_type)
         if configs:
             return configs[0].model
         return None

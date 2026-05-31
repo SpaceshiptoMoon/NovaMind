@@ -618,7 +618,7 @@ POST /api/v1/user/users/2/logout-all
 
 ## 11. 获取可用模型列表
 
-获取当前用户可用的所有模型名称（系统配置 + 用户私有配置），供前端下拉框使用。
+获取当前用户可用的所有模型名称（用户私有配置），供前端下拉框使用。
 
 **请求**
 - 方法：GET
@@ -663,7 +663,7 @@ GET /api/v1/user/model-configs/available
 
 ## 12. 获取可用模型详细信息
 
-获取当前用户可用的所有模型详细信息（包含通信协议、是否系统配置等）。
+获取当前用户可用的所有模型详细信息（包含通信协议等）。
 
 **请求**
 - 方法：GET
@@ -687,7 +687,6 @@ GET /api/v1/user/model-configs/available/detail
 | llm | object[] | LLM 模型信息列表 |
 | llm[].model | string | 模型名称 |
 | llm[].protocol | string | 通信协议 |
-| llm[].is_system | boolean | 是否为系统配置 |
 | embedding | object[] | Embedding 模型信息列表（结构同上） |
 | rerank | object[] | Rerank 模型信息列表（结构同上） |
 
@@ -698,20 +697,17 @@ GET /api/v1/user/model-configs/available/detail
   "llm": [
     {
       "model": "gpt-4o",
-      "protocol": "openai",
-      "is_system": true
+      "protocol": "openai"
     },
     {
       "model": "glm-4",
-      "protocol": "openai",
-      "is_system": false
+      "protocol": "openai"
     }
   ],
   "embedding": [
     {
       "model": "text-embedding-3-small",
-      "protocol": "openai",
-      "is_system": true
+      "protocol": "openai"
     }
   ],
   "rerank": []
@@ -754,18 +750,17 @@ GET /api/v1/user/model-configs?model_type=llm
 | total | integer | 配置总数 |
 | items | object[] | 配置列表 |
 | items[].id | integer | 配置 ID |
-| items[].user_id | integer \| null | 用户 ID（null 表示系统配置） |
+| items[].user_id | integer | 用户 ID |
 | items[].model_type | string | 模型类型：llm / embedding / rerank |
 | items[].protocol | string | 通信协议：openai / anthropic / ollama / transformers |
 | items[].model | string | 模型名称 |
 | items[].base_url | string \| null | API Base URL |
 | items[].api_key | string \| null | API Key（已脱敏） |
 | items[].extra_config | object \| null | 扩展配置（如 dimension、endpoint 等） |
-| items[].is_system | boolean | 是否为系统配置 |
 | items[].created_at | string | 创建时间（ISO 8601 格式） |
 | items[].updated_at | string | 更新时间（ISO 8601 格式） |
 
-> 注意：此接口仅返回用户的私有配置，不包含系统配置。系统配置通过"获取可用模型列表"接口获取。
+> 注意：此接口返回用户的模型配置列表。
 
 **响应示例**
 
@@ -782,7 +777,6 @@ GET /api/v1/user/model-configs?model_type=llm
       "base_url": "https://open.bigmodel.cn/api/paas/v4",
       "api_key": "sk-****xxxx",
       "extra_config": null,
-      "is_system": false,
       "created_at": "2026-04-15T10:00:00",
       "updated_at": "2026-04-15T10:00:00"
     },
@@ -795,7 +789,6 @@ GET /api/v1/user/model-configs?model_type=llm
       "base_url": "https://open.bigmodel.cn/api/paas/v4",
       "api_key": "sk-****xxxx",
       "extra_config": {"dimension": 1024},
-      "is_system": false,
       "created_at": "2026-04-15T10:05:00",
       "updated_at": "2026-04-15T10:05:00"
     }
@@ -851,14 +844,13 @@ GET /api/v1/user/model-configs?model_type=llm
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
 | id | integer | 配置 ID |
-| user_id | integer \| null | 用户 ID |
+| user_id | integer | 用户 ID |
 | model_type | string | 模型类型 |
 | protocol | string | 通信协议 |
 | model | string | 模型名称 |
 | base_url | string \| null | API Base URL |
 | api_key | string \| null | API Key（已脱敏） |
 | extra_config | object \| null | 扩展配置 |
-| is_system | boolean | 是否为系统配置 |
 | created_at | string | 创建时间 |
 | updated_at | string | 更新时间 |
 
@@ -874,7 +866,6 @@ GET /api/v1/user/model-configs?model_type=llm
   "base_url": "https://open.bigmodel.cn/api/paas/v4",
   "api_key": "sk-****xxxx",
   "extra_config": null,
-  "is_system": false,
   "created_at": "2026-04-15T11:00:00",
   "updated_at": "2026-04-15T11:00:00"
 }
@@ -917,14 +908,13 @@ GET /api/v1/user/model-configs/12
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
 | id | integer | 配置 ID |
-| user_id | integer \| null | 用户 ID |
+| user_id | integer | 用户 ID |
 | model_type | string | 模型类型 |
 | protocol | string | 通信协议 |
 | model | string | 模型名称 |
 | base_url | string \| null | API Base URL |
 | api_key | string \| null | API Key（已脱敏） |
 | extra_config | object \| null | 扩展配置 |
-| is_system | boolean | 是否为系统配置 |
 | created_at | string | 创建时间 |
 | updated_at | string | 更新时间 |
 
@@ -940,7 +930,6 @@ GET /api/v1/user/model-configs/12
   "base_url": "https://open.bigmodel.cn/api/paas/v4",
   "api_key": "sk-****xxxx",
   "extra_config": null,
-  "is_system": false,
   "created_at": "2026-04-15T11:00:00",
   "updated_at": "2026-04-15T11:00:00"
 }
@@ -990,14 +979,13 @@ GET /api/v1/user/model-configs/12
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
 | id | integer | 配置 ID |
-| user_id | integer \| null | 用户 ID |
+| user_id | integer | 用户 ID |
 | model_type | string | 模型类型 |
 | protocol | string | 通信协议 |
 | model | string | 模型名称 |
 | base_url | string \| null | API Base URL |
 | api_key | string \| null | API Key（已脱敏） |
 | extra_config | object \| null | 扩展配置 |
-| is_system | boolean | 是否为系统配置 |
 | created_at | string | 创建时间 |
 | updated_at | string | 更新时间 |
 
@@ -1013,7 +1001,6 @@ GET /api/v1/user/model-configs/12
   "base_url": "https://new-api.example.com/v1",
   "api_key": "sk-****xxxx",
   "extra_config": null,
-  "is_system": false,
   "created_at": "2026-04-15T11:00:00",
   "updated_at": "2026-04-15T11:30:00"
 }
@@ -1216,4 +1203,4 @@ DELETE /api/v1/user/model-configs/by-model/llm/glm-4
 | `MODEL_CONFIG_NOT_FOUND` | 404 | 配置不存在 |
 | `AUTHENTICATION_FAILED` | 401 | 未登录或 Token 无效 |
 
-> 注意：只能删除用户私有配置，不能删除系统配置。
+> 注意：只能删除用户私有配置。

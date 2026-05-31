@@ -2,7 +2,7 @@
   <div class="model-config-view">
     <div class="page-header">
       <h2>模型配置</h2>
-      <p class="desc">管理您的私有 LLM、Embedding、Rerank、VLM、多模态嵌入模型配置</p>
+      <p class="desc">管理您的 LLM、Embedding、Rerank、VLM、多模态嵌入模型配置</p>
     </div>
 
     <el-tabs v-model="activeTab" @tab-change="handleTabChange">
@@ -18,22 +18,7 @@
       <el-button @click="fetchConfigs">刷新</el-button>
     </div>
 
-    <!-- 系统配置（只读） -->
-    <div v-if="systemConfigs.length" class="config-section">
-      <h3>系统配置</h3>
-      <el-table :data="systemConfigs" stripe>
-        <el-table-column prop="model" label="模型名称" />
-        <el-table-column prop="protocol" label="通信协议" width="120" />
-        <el-table-column prop="base_url" label="Base URL" show-overflow-tooltip />
-        <el-table-column label="状态" width="100">
-          <template #default>
-            <el-tag type="info" size="small">系统</el-tag>
-          </template>
-        </el-table-column>
-      </el-table>
-    </div>
-
-    <!-- 用户私有配置 -->
+    <!-- 用户配置 -->
     <div class="config-section">
       <h3>我的配置</h3>
       <el-table :data="userConfigs" v-loading="loading" stripe>
@@ -108,7 +93,7 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { userApi } from '@/api/user'
-import type { ModelConfig, ModelConfigTestResponse, AvailableModelItem } from '@/api/types'
+import type { ModelConfig, ModelConfigTestResponse } from '@/api/types'
 
 const activeTab = ref<'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding'>('llm')
 const loading = ref(false)
@@ -119,9 +104,6 @@ const testResultVisible = ref(false)
 const isEditing = ref(false)
 const editingId = ref<number | null>(null)
 
-const availableDetail = ref<{ llm: AvailableModelItem[]; embedding: AvailableModelItem[]; rerank: AvailableModelItem[]; vlm: AvailableModelItem[]; multimodal_embedding: AvailableModelItem[] }>({
-  llm: [], embedding: [], rerank: [], vlm: [], multimodal_embedding: [],
-})
 const userConfigList = ref<ModelConfig[]>([])
 
 const formRef = ref<FormInstance>()
@@ -140,18 +122,7 @@ const formRules: FormRules = {
   api_key: [{ required: true, message: '请输入 API Key', trigger: 'blur' }],
 }
 
-const systemConfigs = computed(() => (availableDetail.value[activeTab.value] || []).filter((c) => c.is_system))
 const userConfigs = computed(() => userConfigList.value.filter((c) => c.model_type === activeTab.value))
-
-async function fetchAvailable() {
-  try {
-    const data = await userApi.getAvailableModelDetails()
-    const defaults = { llm: [], embedding: [], rerank: [], vlm: [], multimodal_embedding: [] } as Record<string, AvailableModelItem[]>
-    availableDetail.value = { ...defaults, ...data } as typeof availableDetail.value
-  } catch {
-    // ignore
-  }
-}
 
 async function fetchConfigs() {
   loading.value = true
@@ -215,7 +186,6 @@ async function handleSubmit() {
     }
     dialogVisible.value = false
     fetchConfigs()
-    fetchAvailable()
   } finally {
     submitLoading.value = false
   }
@@ -249,7 +219,6 @@ async function handleDelete(row: ModelConfig) {
     await userApi.deleteModelConfig(row.id)
     ElMessage.success('配置已删除')
     fetchConfigs()
-    fetchAvailable()
   } catch (e) {
     if (e !== 'cancel') {
       const msg = (e as { message?: string })?.message || '删除失败'
@@ -259,7 +228,6 @@ async function handleDelete(row: ModelConfig) {
 }
 
 onMounted(() => {
-  fetchAvailable()
   fetchConfigs()
 })
 </script>

@@ -579,7 +579,7 @@ class QAService:
 
         # 需要重新压缩 — 通过 ModelConfigService 获取 LLM 客户端
         if self.model_config_service:
-            default_model = await self.model_config_service.get_default_model_name("llm")
+            default_model = await self.model_config_service.get_user_default_model_name(user_id, "llm")
             if default_model:
                 llm_client = await self.model_config_service.get_llm_client_by_model(user_id, default_model)
             else:

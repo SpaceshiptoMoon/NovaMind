@@ -2,8 +2,7 @@
 用户模型配置 ORM 模型
 
 存储用户自定义的 LLM/Embedding/Rerank 模型配置
-- user_id = NULL 表示系统配置
-- user_id = 具体值 表示用户私有配置
+每条记录必须绑定具体用户。
 
 设计原则：
 - 凭证分离：只存储连接凭证（api_key、base_url），不存储业务参数
@@ -29,9 +28,7 @@ class UserModelConfig(BaseModel):
     """
     用户模型配置表
 
-    存储连接凭证
-    - user_id = NULL 表示系统配置
-    - user_id = 具体值 表示用户私有配置
+    存储连接凭证，每条记录绑定具体用户
     """
     __tablename__ = "user_model_configs"
 
@@ -39,13 +36,12 @@ class UserModelConfig(BaseModel):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
 
     # ========== 用户关联 ==========
-    # user_id 为 NULL 表示系统配置
     user_id = Column(
         BigInteger,
         ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=True,
+        nullable=False,
         index=True,
-        comment="用户ID，NULL表示系统配置"
+        comment="用户ID"
     )
 
     # ========== 模型配置 ==========
@@ -64,7 +60,6 @@ class UserModelConfig(BaseModel):
     __table_args__ = (
         # 同一用户下 (model_type, model) 唯一
         Index("idx_user_model_type_model", "user_id", "model_type", "model", unique=True),
-        Index("idx_system_config", "model_type", "model"),
         {"comment": "用户模型配置表，存储用户自定义的 LLM/Embedding/Rerank 模型连接凭证"},
     )
 
@@ -76,8 +71,3 @@ class UserModelConfig(BaseModel):
         if self.extra_config is None:
             return default
         return self.extra_config.get(key, default)
-
-    @property
-    def is_system_config(self) -> bool:
-        """是否为系统配置"""
-        return self.user_id is None

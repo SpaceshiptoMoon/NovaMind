@@ -60,14 +60,13 @@ export interface UpdateUserRequest {
 
 export interface ModelConfig {
   id: number
-  user_id: number | null
+  user_id: number
   model_type: 'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding'
   protocol: string
   model: string
   base_url: string | null
   api_key: string | null
   extra_config: Record<string, unknown> | null
-  is_system: boolean
   created_at: string
   updated_at: string
 }
@@ -107,7 +106,6 @@ export interface ModelConfigTestResponse {
 export interface AvailableModelItem {
   model: string
   protocol: string
-  is_system: boolean
 }
 
 export interface AvailableModelsResponse {

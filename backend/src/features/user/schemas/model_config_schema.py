@@ -81,14 +81,13 @@ class ModelConfigResponse(BaseModel):
     """模型配置响应（API Key 已脱敏）"""
 
     id: int = Field(..., description="配置 ID")
-    user_id: Optional[int] = Field(None, description="用户 ID（NULL 表示系统配置）")
+    user_id: int = Field(..., description="用户 ID")
     model_type: str = Field(..., description="模型类型")
     protocol: str = Field(..., description="通信协议")
     model: str = Field(..., description="模型名称")
     base_url: Optional[str] = Field(None, description="API Base URL")
     api_key: Optional[str] = Field(None, description="API Key（已脱敏）")
     extra_config: Optional[Dict[str, Any]] = Field(None, description="扩展配置")
-    is_system: bool = Field(default=False, description="是否为系统配置")
     created_at: datetime = Field(..., description="创建时间")
     updated_at: datetime = Field(..., description="更新时间")
 
@@ -163,7 +162,6 @@ class ModelInfo(BaseModel):
 
     model: str = Field(..., description="模型名称")
     protocol: str = Field(..., description="通信协议")
-    is_system: bool = Field(default=False, description="是否为系统配置")
 
 
 class AvailableModelsWithInfoResponse(BaseModel):
