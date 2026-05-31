@@ -92,28 +92,8 @@ async def create_admin_user() -> None:
 
 
 async def init_user_components() -> None:
-    """创建管理员账户并同步模型配置"""
+    """创建管理员账户"""
     await create_admin_user()
-    await sync_model_configs()
-
-
-async def sync_model_configs() -> None:
-    """从 YAML 同步系统模型配置到数据库"""
-    from src.features.user.services.model_config_service import ModelConfigService
-
-    try:
-        async with get_db_session() as db:
-            model_config_service = ModelConfigService(db)
-            result = await model_config_service.sync_system_configs_from_yaml()
-
-            if result:
-                logger.info("系统模型配置同步完成", result=result)
-            else:
-                logger.info("无模型配置需要同步")
-
-    except Exception as e:
-        logger.error("系统模型配置同步失败", error=str(e))
-        raise
 
 
 def setup_user_exception_handlers(app: FastAPI) -> None:

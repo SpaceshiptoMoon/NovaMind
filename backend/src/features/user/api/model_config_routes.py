@@ -2,9 +2,7 @@
 用户模型配置 API 路由
 
 提供用户自定义 LLM/Embedding/Rerank 模型配置的接口
-支持：
-1. 系统配置（user_id = NULL，所有用户共享）
-2. 用户私有配置（覆盖系统配置）
+所有配置绑定到具体用户
 """
 from fastapi import APIRouter, Depends, Body, Query, Path
 from typing import Annotated, Optional
@@ -36,7 +34,7 @@ router = APIRouter()
     "/model-configs/available",
     response_model=AvailableModelsResponse,
     summary="获取可用模型列表",
-    description="获取当前用户可用的所有模型名称（系统配置 + 用户私有配置）",
+    description="获取当前用户配置的所有模型名称",
 )
 async def get_available_models(
     current_user: Annotated[dict, Depends(require_active_user)],
@@ -77,7 +75,6 @@ async def get_available_models_detail(
 
     返回：
     - 模型名称、提供商、维度（embedding）
-    - 是否为系统配置
     """
     user_id = current_user["id"]
     return await model_config_service.list_available_models_with_info(user_id)
@@ -99,7 +96,7 @@ async def list_model_configs(
     """
     获取用户的私有模型配置列表
 
-    注意：不包含系统配置，系统配置通过 /available 接口获取
+    注意：只返回当前用户的私有配置
     """
     user_id = current_user["id"]
     return await model_config_service.list_configs(user_id, model_type)
@@ -236,7 +233,7 @@ async def delete_model_config_by_name(
     """
     按模型名称删除用户私有配置
 
-    注意：只能删除用户私有配置，不能删除系统配置
+    注意：只能删除用户自己的配置
     """
     user_id = current_user["id"]
     await model_config_service.delete_config_by_model(user_id, model_type, model)

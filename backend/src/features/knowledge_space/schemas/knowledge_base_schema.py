@@ -99,11 +99,11 @@ class QuestionLLMConfig(BaseModel):
     """
     model: Optional[str] = Field(
         default=None,
-        description="LLM 模型名称，为空使用系统默认"
+        description="LLM 模型名称，为空使用用户默认"
     )
     protocol: Optional[str] = Field(
         default=None,
-        description="通信协议，为空使用系统默认"
+        description="通信协议，为空使用用户默认"
     )
     temperature: float = Field(
         default=0.3,

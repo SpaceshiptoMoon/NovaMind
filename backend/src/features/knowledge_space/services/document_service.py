@@ -378,9 +378,10 @@ class DocumentService:
         # 获取空间配置（提前获取，语义切分和向量化都依赖）
         space = await session.get(KnowledgeSpace, document.space_id)
         embedding_model_name = space.embedding_model if space else None
+        space_owner_id = space.owner_id if space else None
 
         # 获取 DocumentProcessor（传入空间配置的嵌入模型，确保语义切分使用正确模型）
-        processor = await _get_document_processor_static(session, model_name=embedding_model_name)
+        processor = await _get_document_processor_static(session, user_id=space_owner_id, model_name=embedding_model_name)
         splitting_config = kb.get_splitting_config()
         strategy = splitting_config.get("strategy", "recursive")
 
@@ -416,6 +417,7 @@ class DocumentService:
             [c["content"] for c in es_chunks],
             embedding_config,
             session=session,
+            user_id=space_owner_id,
         )
 
         for i, embedding in enumerate(embeddings):
@@ -1180,20 +1182,21 @@ async def _get_es_client_static() -> ElasticsearchClient:
     return await ClientFactory.get_elasticsearch_client()
 
 
-async def _get_document_processor_static(session: AsyncSession, model_name: Optional[str] = None) -> DocumentProcessor:
+async def _get_document_processor_static(session: AsyncSession, user_id: Optional[int] = None, model_name: Optional[str] = None) -> DocumentProcessor:
     """获取文档处理器（静态方法用）"""
     from src.features.user.services.model_config_service import ModelConfigService
 
     model_config_service = ModelConfigService(session)
-    if not model_name:
-        model_name = await model_config_service.get_default_model_name("embedding")
+    if not model_name and user_id:
+        model_name = await model_config_service.get_user_default_model_name(user_id, "embedding")
     if not model_name:
         raise DocumentProcessingError(
             document_id=0,
             error_message="未配置 Embedding 模型，请在模型配置中添加",
         )
+    effective_user_id = user_id or 0
     embedding_client = await model_config_service.get_embedding_client_by_model(
-        user_id=None, model=model_name
+        user_id=effective_user_id, model=model_name
     )
     return DocumentProcessor(embedding_client=embedding_client)
 
@@ -1202,13 +1205,14 @@ async def _generate_embeddings_static(
     texts: List[str],
     embedding_config: Dict[str, Any],
     session: Optional[AsyncSession] = None,
+    user_id: Optional[int] = None,
 ) -> List[List[float]]:
     """生成文本向量（静态方法用）"""
     if not session:
         raise DocumentProcessingError(document_id=0, error_message="生成向量需要数据库会话")
 
     model_name = embedding_config.get("model")
-    embedding_client = await _get_embedding_client_static(session, model_name)
+    embedding_client = await _get_embedding_client_static(session, user_id, model_name)
 
     batch_size = embedding_config.get("batch_size", DEFAULT_EMBEDDING_BATCH_SIZE)
     all_embeddings = []
@@ -1221,21 +1225,23 @@ async def _generate_embeddings_static(
 
 async def _get_embedding_client_static(
     session: AsyncSession,
+    user_id: Optional[int] = None,
     model_name: Optional[str] = None,
 ) -> EmbeddingClient:
     """获取 Embedding 客户端（静态方法用）"""
     from src.features.user.services.model_config_service import ModelConfigService
 
     model_config_service = ModelConfigService(session)
-    if not model_name:
-        model_name = await model_config_service.get_default_model_name("embedding")
+    if not model_name and user_id:
+        model_name = await model_config_service.get_user_default_model_name(user_id, "embedding")
     if not model_name:
         raise DocumentProcessingError(
             document_id=0,
             error_message="未配置 Embedding 模型，请在模型配置中添加",
         )
+    effective_user_id = user_id or 0
     return await model_config_service.get_embedding_client_by_model(
-        user_id=None, model=model_name
+        user_id=effective_user_id, model=model_name
     )
 
 
@@ -1297,6 +1303,7 @@ async def _generate_questions_for_chunks_static(
                 all_questions_flat,
                 embedding_config,
                 session=session,
+                user_id=user_id,
             )
             # 将扁平的向量列表按每个分块的问题数量分组
             idx = 0

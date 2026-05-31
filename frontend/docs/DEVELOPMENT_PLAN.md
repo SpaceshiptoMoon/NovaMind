@@ -302,7 +302,7 @@ deleteSessionConfig(sessionId)       → DELETE /sessions/{sessionId}/config
 
 **核心功能**：
 - 三个 Tab：LLM / Embedding / Rerank
-- 每个类型展示系统配置（只读）+ 用户私有配置（可编辑）
+- 每个类型展示用户私有配置（可编辑）
 - 新增/编辑配置表单：模型类型、通信协议、模型名称、Base URL、API Key、扩展配置
 - **连接测试**按钮：测试配置是否有效，显示延迟和 Embedding 维度
 - 删除配置（处理 409 关联资源提示）

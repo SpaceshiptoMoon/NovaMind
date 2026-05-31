@@ -763,7 +763,7 @@ class EvaluationService:
     async def _get_llm_client(self, user_id: int, model: Optional[str] = None) -> tuple:
         try:
             if not model:
-                model = await self.model_config_service.get_default_model_name("llm")
+                model = await self.model_config_service.get_user_default_model_name(user_id, "llm")
             if model:
                 client = await self.model_config_service.get_llm_client_by_model(user_id, model)
                 return (client, model)
@@ -775,7 +775,7 @@ class EvaluationService:
     async def _get_embedding_client(self, user_id: int, model: Optional[str] = None) -> tuple:
         try:
             if not model:
-                model = await self.model_config_service.get_default_model_name("embedding")
+                model = await self.model_config_service.get_user_default_model_name(user_id, "embedding")
             if model:
                 client = await self.model_config_service.get_embedding_client_by_model(user_id, model)
                 return (client, model)

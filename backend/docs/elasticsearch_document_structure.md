@@ -117,7 +117,7 @@
 }
 ```
 
-> `dims` 和 `analyzer` 的实际值由空间 Embedding 配置和系统配置决定。
+> `dims` 和 `analyzer` 的实际值由空间 Embedding 配置和用户配置决定。
 
 ---
 

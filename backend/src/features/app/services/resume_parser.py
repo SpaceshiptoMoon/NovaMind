@@ -217,6 +217,38 @@ class ResumeParser:
             return [ResumeParser._clean_none(item) for item in obj if item is not None]
         return obj
 
+    @staticmethod
+    def _normalize_list_section(data) -> list[dict]:
+        """归一化 LLM 返回的列表型章节数据
+
+        处理两种常见异常格式:
+        1. LLM 用 key 包裹: {"work_experience": [...]} → 提取内层列表
+        2. 列表项为字符串: ["阿里 - 开发", ...] → 过滤掉
+        """
+        if data is None:
+            return []
+        # 情况 1: dict 包裹，提取唯一 value（如果是列表）
+        if isinstance(data, dict):
+            if len(data) == 1:
+                val = next(iter(data.values()))
+                if isinstance(val, list):
+                    data = val
+                else:
+                    return []
+            else:
+                # 多 key 的 dict，尝试找第一个 list value
+                for val in data.values():
+                    if isinstance(val, list):
+                        data = val
+                        break
+                else:
+                    return []
+        # 确保 data 是 list
+        if not isinstance(data, list):
+            return []
+        # 情况 2: 过滤非 dict 项
+        return [item for item in data if isinstance(item, dict)]
+
     def _assemble_resume(
         self,
         raw_text: str,
@@ -236,17 +268,20 @@ class ResumeParser:
 
         # 清理 LLM 输出中的 None 值
         personal_info = self._clean_none(personal_info) if personal_info else {}
-        work_experience = [self._clean_none(w) for w in (work_experience or [])]
-        project_experience = [self._clean_none(p) for p in (project_experience or [])]
-        education = [self._clean_none(e) for e in (education or [])]
+        work_experience = self._normalize_list_section(work_experience)
+        work_experience = [self._clean_none(w) for w in work_experience]
+        project_experience = self._normalize_list_section(project_experience)
+        project_experience = [self._clean_none(p) for p in project_experience]
+        education = self._normalize_list_section(education)
+        education = [self._clean_none(e) for e in education]
         skills_data = self._clean_none(skills_data) if skills_data else {}
         publications = self._clean_none(publications) if publications else {}
 
         resume = StructuredResume(
             personal_info=PersonalInfo(**personal_info) if personal_info else PersonalInfo(),
-            work_experience=[WE(**w) for w in (work_experience or [])],
-            project_experience=[PE(**p) for p in (project_experience or [])],
-            education=[EducationExperience(**e) for e in (education or [])],
+            work_experience=[WE(**w) for w in work_experience],
+            project_experience=[PE(**p) for p in project_experience],
+            education=[EducationExperience(**e) for e in education],
             skills=SD(**skills_data) if skills_data else SD(),
             publications=PD(**publications) if publications else PD(),
             metadata=ResumeMetadata(

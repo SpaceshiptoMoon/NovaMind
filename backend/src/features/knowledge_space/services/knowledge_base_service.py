@@ -137,7 +137,7 @@ class KnowledgeBaseService:
         qg_llm_model = qg_llm_config.get("model")
 
         if not qg_llm_model:
-            default_llm_name = await model_config_service.get_default_model_name("llm")
+            default_llm_name = await model_config_service.get_user_default_model_name(creator_id, "llm")
             if default_llm_name:
                 if not kb_config.get("question_generation"):
                     kb_config["question_generation"] = {}
