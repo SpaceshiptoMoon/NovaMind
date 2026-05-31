@@ -84,6 +84,7 @@ uploads/
 # Docker
 # ========================================
 docker-compose.override.yml
+docker/configs/docker.yaml
 
 # ========================================
 # 临时文件

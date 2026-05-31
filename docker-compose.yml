@@ -9,6 +9,8 @@
 #
 # 前端 + 后端部署在同一个容器中，通过 Nginx 统一对外
 # 数据库等服务为独立容器
+#
+# 密码配置: 所有密码从 .env 文件读取，修改 .env 即可
 
 services:
   # ================================
@@ -21,6 +23,8 @@ services:
     container_name: novamind-app
     ports:
       - "80:80"
+    env_file:
+      - .env
     volumes:
       - ./docker/configs/docker.yaml:/app/src/setting/yaml_config/yaml/docker.yaml:ro
     depends_on:
@@ -43,8 +47,8 @@ services:
     ports:
       - "3306:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: "***REMOVED***"
-      MYSQL_DATABASE: novamind_db
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
+      MYSQL_DATABASE: "${MYSQL_DATABASE}"
       MYSQL_CHARSET: utf8mb4
       MYSQL_COLLATION: utf8mb4_unicode_ci
     command: >
@@ -52,7 +56,7 @@ services:
       --collation-server=utf8mb4_unicode_ci
       --default-authentication-plugin=mysql_native_password
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p***REMOVED***"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -92,8 +96,8 @@ services:
       - "9005:9005"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: ***REMOVED***
-      MINIO_ROOT_PASSWORD: ***REMOVED***
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
     command: server /data --address ":9005" --console-address ":9001"
     volumes:
       - minio-data:/data
@@ -113,7 +117,7 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - xpack.security.http.ssl.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "ES_JAVA_OPTS=${ES_JAVA_OPTS}"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
