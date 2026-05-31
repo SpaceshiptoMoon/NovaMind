@@ -19,9 +19,9 @@ NovaMind 是一个开源的智能知识库管理系统。基于 FastAPI + Vue 3 
 - [核心特性](#核心特性)
 - [技术栈](#技术栈)
 - [快速开始](#快速开始)
-  - [配置](#配置)
-  - [方式一：Docker（推荐）](#方式一docker推荐)
-  - [方式二：本地开发](#方式二本地开发)
+  - [方式一：一键部署（推荐）](#方式一一键部署推荐)
+  - [方式二：Docker 手动部署](#方式二docker-手动部署)
+  - [方式三：本地开发](#方式三本地开发)
 - [项目结构](#项目结构)
 - [架构概览](#架构概览)
 - [功能模块](#功能模块)
@@ -54,49 +54,64 @@ NovaMind 是一个开源的智能知识库管理系统。基于 FastAPI + Vue 3 
 
 ## 快速开始
 
-### 配置
-
-配置文件包含敏感信息（API Key、数据库密码等），未上传到 GitHub。使用前需从 `.example` 模板创建并填入真实值。
-
-### 方式一：Docker（推荐）
+### 方式一：一键部署（推荐）
 
 ```bash
 # 1. 克隆项目
 git clone git@github.com:SpaceshiptoMoon/NovaMind.git
 cd NovaMind
 
-# 2. 创建配置文件
-cp docker/configs/docker.example docker/configs/docker.yaml
-# 编辑 docker/configs/docker.yaml，填入数据库密码、ES 密码等
-
-# 3. 启动所有服务（首次约 5-10 分钟）
-docker compose up -d --build
+# 2. 一键部署（自动创建配置、生成随机密码、启动服务）
+bash deploy.sh
 ```
 
-> Docker 部署会自动创建数据库、建表、创建管理员账户，无需手动操作。
+脚本会自动完成：
+- 从模板创建 `.env`（自动生成随机密码）
+- 创建 `docker.yaml`（Docker 环境配置）
+- 创建 `default.yaml`（后端基础配置）
+- 构建并启动所有 Docker 服务
 
-**访问地址：**
-
-| 服务 | 地址 |
-|------|------|
-| 前端页面 | http://localhost |
-| 后端 API 文档 | http://localhost/api/v1/docs |
-| MinIO 控制台 | http://localhost:9001 |
-| Elasticsearch | http://localhost:9200 |
-
-**常用命令：**
-
-```bash
-docker compose ps                    # 查看服务状态
-docker compose logs -f app           # 查看应用日志
-docker compose down                  # 停止（保留数据）
-docker compose down -v               # 停止并清除数据卷
-docker compose up -d --build app     # 仅重建应用容器
-```
+> 部署完成后管理员密码在 `.env` 文件的 `ADMIN_PASSWORD` 中查看。
 
 **环境要求：** Docker 20.10+、Docker Compose V2+、内存 >= 4GB
 
-### 方式二：本地开发
+### 方式二：Docker 手动部署
+
+如果需要自定义密码，可以手动配置：
+
+```bash
+# 1. 克隆项目
+git clone git@github.com:SpaceshiptoMoon/NovaMind.git
+cd NovaMind
+
+# 2. 创建环境配置（所有密码在此文件集中管理）
+cp .env.example .env
+# 编辑 .env，填入自定义密码
+
+# 3. 创建 Docker 配置
+cp docker/configs/docker.example docker/configs/docker.yaml
+
+# 4. 创建后端基础配置（非敏感配置已预设，敏感配置由 .env 覆盖）
+cp backend/src/setting/yaml_config/yaml/default.example backend/src/setting/yaml_config/yaml/default.yaml
+
+# 5. 启动所有服务（首次约 5-10 分钟）
+docker compose up -d --build
+```
+
+**密码管理说明：**
+
+所有密码集中在 `.env` 文件中，`docker-compose.yml` 和 `docker.yaml` 通过 `${VAR_NAME}` 引用，修改密码只需编辑 `.env` 一个文件。
+
+| 变量 | 说明 |
+|------|------|
+| `MYSQL_ROOT_PASSWORD` | MySQL root 密码 |
+| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | MinIO 凭据 |
+| `ES_PASSWORD` | Elasticsearch 密码 |
+| `SECRET_KEY` | JWT 签名密钥 |
+| `ENCRYPTION_KEY` | AES-256 数据加密密钥 |
+| `ADMIN_PASSWORD` | 管理员初始密码 |
+
+### 方式三：本地开发
 
 ```bash
 # 1. 创建后端配置
@@ -125,6 +140,27 @@ npm run dev
 前端运行在 http://localhost:5173，API 请求自动代理到后端。
 
 > 配置加载机制：`default.yaml` 为基础配置，启动时通过 `--config` 参数指定环境覆盖文件（如 `docker.yaml`），两者深度合并。
+
+---
+
+**访问地址：**
+
+| 服务 | Docker 地址 | 本地开发地址 |
+|------|-----------|-------------|
+| 前端页面 | http://localhost | http://localhost:5173 |
+| 后端 API 文档 | http://localhost/api/v1/docs | http://localhost:8100/docs |
+| MinIO 控制台 | http://localhost:9001 | — |
+| Elasticsearch | http://localhost:9200 | — |
+
+**常用 Docker 命令：**
+
+```bash
+docker compose ps                    # 查看服务状态
+docker compose logs -f app           # 查看应用日志
+docker compose down                  # 停止（保留数据）
+docker compose down -v               # 停止并清除数据卷
+docker compose up -d --build app     # 仅重建应用容器
+```
 
 ## 项目结构
 
@@ -161,6 +197,8 @@ novamind/
 │   └── configs/
 │       └── docker.example     # Docker 环境配置模板
 ├── docker-compose.yml          # 一键部署
+├── deploy.sh                   # 一键部署脚本
+├── .env.example                # 环境变量模板
 └── README.md
 ```
 
@@ -175,10 +213,21 @@ Docker Compose
 │   │   ├── /           → 前端静态文件
 │   │   └── /api/*      → 反向代理 → FastAPI (:8100)
 │   └── FastAPI (监听 8100，容器内部)
+│       └── 配置: default.yaml + docker.yaml (.env 密码注入)
 ├── MySQL 8.0
 ├── Redis 7
 ├── MinIO
 └── Elasticsearch 8.15
+```
+
+**配置架构：**
+
+```
+.env (所有密码，单一来源)
+  ├── docker-compose.yml     ← ${VAR} 引用（基础设施密码）
+  └── docker.yaml            ← ${VAR} 引用（后端配置密码）
+       ↓ env_file: .env      ← 容器内环境变量注入
+       ↓ YAML loader         ← ${VAR_NAME} 自动替换
 ```
 
 后端采用 DDD 分层架构：
