@@ -687,7 +687,6 @@ def test_14_create_model_config(headers: dict) -> dict | None:
                 assert "id" in data, "响应缺少 id 字段"
                 assert data["model_type"] == "llm", "model_type 不匹配"
                 assert data["model"] == config_data["model"], "model 不匹配"
-                assert data["is_system"] is False, "用户创建的配置不应为系统配置"
                 record_result("创建模型配置", True)
                 return data
             except AssertionError as e:

@@ -298,9 +298,9 @@ async def get_model_config(
         model_type="rerank",
     )
 
-    # 从数据库获取默认模型名称
-    default_llm_model = await model_config_service.get_default_model_name("llm")
-    default_rerank_model = await model_config_service.get_default_model_name("rerank")
+    # 从数据库获取用户默认模型名称
+    default_llm_model = await model_config_service.get_user_default_model_name(user_id, "llm")
+    default_rerank_model = await model_config_service.get_user_default_model_name(user_id, "rerank")
 
     return KnowledgeBaseModelConfigResponse(
         embedding_model=embedding_model,

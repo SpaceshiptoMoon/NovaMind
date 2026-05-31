@@ -263,7 +263,7 @@
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item label="LLM 模型">
-                <el-select v-model="configForm.qgLlmModel" placeholder="系统默认" clearable style="width: 100%">
+                <el-select v-model="configForm.qgLlmModel" placeholder="用户默认" clearable style="width: 100%">
                   <el-option
                     v-for="m in llmModels"
                     :key="m.model"
@@ -275,7 +275,7 @@
             </el-col>
             <el-col :span="12">
               <el-form-item label="通信协议">
-                <el-select v-model="configForm.qgLlmProtocol" placeholder="系统默认" clearable style="width: 100%">
+                <el-select v-model="configForm.qgLlmProtocol" placeholder="用户默认" clearable style="width: 100%">
                   <el-option
                     v-for="p in llmProtocols"
                     :key="p"

@@ -110,9 +110,9 @@ class QuestionGenerationService:
         model_name = llm_config.model if llm_config else None
 
         if self.model_config_service:
-            # 如果没有指定模型，获取系统默认
+            # 如果没有指定模型，获取用户默认
             if not model_name:
-                model_name = await self.model_config_service.get_default_model_name("llm")
+                model_name = await self.model_config_service.get_user_default_model_name(user_id or 0, "llm")
 
             if model_name:
                 effective_user_id = user_id or 0

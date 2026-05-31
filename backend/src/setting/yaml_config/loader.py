@@ -15,8 +15,6 @@ from .config import (
     RedisConfig,
     LLMConfig,
     RerankSettings,
-    ModelConfigItem,
-    ModelConfigs,
     AdminConfig,
     SecurityConfig,
     LoggingConfig,
@@ -377,30 +375,7 @@ def create_config_from_dict(data: dict) -> AppConfig:
         queue_name=tq.get("queue_name", "arq:queue"),
     )
 
-    # 模型配置（启动时同步到数据库）
-    mc_data = data.get("model_configs", {})
-    if mc_data:
-        config.model_configs = ModelConfigs(
-            llm=[_parse_model_config_item(item) for item in mc_data.get("llm", [])],
-            embedding=[_parse_model_config_item(item) for item in mc_data.get("embedding", [])],
-            rerank=[_parse_model_config_item(item) for item in mc_data.get("rerank", [])],
-        )
-
     return config
-
-
-def _parse_model_config_item(item: dict) -> ModelConfigItem:
-    """解析单个模型配置条目"""
-    return ModelConfigItem(
-        protocol=item.get("protocol", "openai"),
-        model=item.get("model", ""),
-        api_key=item.get("api_key", ""),
-        base_url=item.get("base_url", ""),
-        dimension=item.get("dimension"),
-        timeout=item.get("timeout", 60),
-        max_retries=item.get("max_retries", 3),
-        max_concurrent=item.get("max_concurrent", 5),
-    )
 
 
 # 全局配置实例

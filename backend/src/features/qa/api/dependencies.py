@@ -74,7 +74,7 @@ async def get_aichat_service(
     获取 AI Chat 服务
 
     通过 ModelConfigService 动态获取模型客户端。
-    llm_model 为 None 时使用系统默认模型。
+    llm_model 为 None 时使用用户默认模型。
     """
     minio_client = await get_minio_client()
     return AIChatService(

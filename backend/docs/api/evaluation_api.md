@@ -540,7 +540,7 @@ curl -X POST "http://localhost:8100/api/v1/spaces/1/knowledge-bases/1/evaluation
 
 **config 参数说明**
 
-> **模型选择**：前端可通过 `GET /api/v1/user/model-configs/available` 获取当前可用的模型列表，返回格式为 `{"llm": ["模型名1", ...], "embedding": ["模型名1", ...]}`。将选中的模型名称字符串填入下方 `llm_model` 或 `embedding_model` 字段即可。不传则使用系统默认模型。
+> **模型选择**：前端可通过 `GET /api/v1/user/model-configs/available` 获取当前可用的模型列表，返回格式为 `{"llm": ["模型名1", ...], "embedding": ["模型名1", ...]}`。将选中的模型名称字符串填入下方 `llm_model` 或 `embedding_model` 字段即可。不传则使用用户默认模型。
 
 | 参数名 | 类型 | 默认值 | 约束 | 说明 |
 |--------|------|--------|------|------|
@@ -548,8 +548,8 @@ curl -X POST "http://localhost:8100/api/v1/spaces/1/knowledge-bases/1/evaluation
 | top_k | int | `5` | 1-50 | 检索返回数量 |
 | score_threshold | float | `0.0` | 0.0-1.0 | 检索分数阈值 |
 | enable_generation | bool | `true` | — | 是否启用生成阶段 |
-| llm_model | string | null | — | 生成回答与评估打分使用的 LLM 模型名称（如 `"glm-4-flash"`、`"deepseek-chat"`）。null 使用系统默认，任务执行后自动回写实际使用的模型名 |
-| embedding_model | string | null | — | 向量相似度计算使用的 Embedding 模型名称（如 `"embedding-3"`、`"bge-large-zh-v1.5"`）。null 使用系统默认，前端也可从可用模型列表中指定选择，任务执行后自动回写实际使用的模型名 |
+| llm_model | string | null | — | 生成回答与评估打分使用的 LLM 模型名称（如 `"glm-4-flash"`、`"deepseek-chat"`）。null 使用用户默认模型，任务执行后自动回写实际使用的模型名 |
+| embedding_model | string | null | — | 向量相似度计算使用的 Embedding 模型名称（如 `"embedding-3"`、`"bge-large-zh-v1.5"`）。null 使用用户默认模型，前端也可从可用模型列表中指定选择，任务执行后自动回写实际使用的模型名 |
 | retrieval_relevance_strategy | string | `llm` | — | 检索相关性判断策略：`llm` / `embedding` |
 | enable_mrr | bool | `true` | — | 是否启用 MRR 指标 |
 | enable_recall_at_k | bool | `false` | — | 是否启用 Recall@K |

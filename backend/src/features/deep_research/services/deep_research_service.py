@@ -239,9 +239,9 @@ class DeepResearchService:
             ResearchFailedError: 未配置模型
         """
         if self._model_config_service:
-            # 如果没有指定模型，获取系统默认
+            # 如果没有指定模型，获取用户配置的默认
             if not llm_model:
-                llm_model = await self._model_config_service.get_default_model_name("llm")
+                llm_model = await self._model_config_service.get_user_default_model_name(user_id, "llm")
 
             if llm_model:
                 return await self._model_config_service.get_llm_client_by_model(

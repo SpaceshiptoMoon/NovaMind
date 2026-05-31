@@ -111,7 +111,7 @@ class InternalSearchConfig(BaseModel):
     )
     rerank_model: Optional[str] = Field(
         default=None,
-        description="Rerank 模型名称，为空使用系统默认",
+        description="Rerank 模型名称，为空使用用户默认",
     )
 
     # ========== 查询改写配置 ==========
@@ -131,7 +131,7 @@ class InternalSearchConfig(BaseModel):
     )
     query_rewrite_llm_model: Optional[str] = Field(
         default=None,
-        description="查询改写使用的 LLM 模型名称，为空使用系统默认",
+        description="查询改写使用的 LLM 模型名称，为空使用用户默认",
     )
 
     @model_validator(mode="after")

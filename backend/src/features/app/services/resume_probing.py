@@ -9,7 +9,7 @@ S10-S11: 自动追问引擎 (V2)
 
 重试与降级策略不变：
 - 主模型指数退避重试3次（2s → 4s → 8s）
-- 重试耗尽后：降级到系统模型
+- 重试耗尽后：降级到用户配置的其他模型
 """
 import asyncio
 import json
@@ -60,7 +60,7 @@ class AutoProbingEngine:
         self._fallback_models_loaded = False
 
     async def _load_fallback_models(self):
-        """从数据库加载系统可用模型列表，排除当前主模型"""
+        """从数据库加载用户可用模型列表，排除当前主模型"""
         if self._fallback_models_loaded or not self.bg_db:
             return
 
@@ -68,7 +68,7 @@ class AutoProbingEngine:
         try:
             from src.features.user.services.model_config_service import ModelConfigService
             svc = ModelConfigService(self.bg_db)
-            configs = await svc.repo.list_system_configs("llm")
+            configs = await svc.repo.list_by_user(self.user_id, "llm")
             current_model = getattr(self.llm, 'model', '')
 
             for cfg in configs:
@@ -114,7 +114,7 @@ class AutoProbingEngine:
                         error=str(e)[:200],
                     )
 
-        # --- 阶段2：降级到系统模型 ---
+        # --- 阶段2：降级到用户其他可用模型 ---
         await self._load_fallback_models()
 
         for model_name, client in self._fallback_clients.items():

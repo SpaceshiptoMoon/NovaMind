@@ -126,9 +126,9 @@ class SearchService:
             except Exception as e:
                 raise EmbeddingError(f"获取 Embedding 客户端失败: {e}")
 
-        # model 为 None 时，尝试获取默认模型
+        # model 为 None 时，尝试获取用户默认模型
         if self.model_config_service:
-            default_model = await self.model_config_service.get_default_model_name("embedding")
+            default_model = await self.model_config_service.get_user_default_model_name(user_id, "embedding")
             if default_model:
                 return await self.model_config_service.get_embedding_client_by_model(
                     user_id, default_model
@@ -154,7 +154,7 @@ class SearchService:
             Rerank 客户端，无配置时返回 None
         """
         if not model and self.model_config_service:
-            model = await self.model_config_service.get_default_model_name("rerank")
+            model = await self.model_config_service.get_user_default_model_name(user_id, "rerank")
 
         if self.model_config_service and model:
             return await self.model_config_service.get_rerank_client_by_model(
@@ -184,7 +184,7 @@ class SearchService:
             SearchError: 未找到模型配置
         """
         if not model and self.model_config_service:
-            model = await self.model_config_service.get_default_model_name("llm")
+            model = await self.model_config_service.get_user_default_model_name(user_id, "llm")
 
         if self.model_config_service and model:
             return await self.model_config_service.get_llm_client_by_model(

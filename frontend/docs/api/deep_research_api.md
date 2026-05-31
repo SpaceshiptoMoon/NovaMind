@@ -131,11 +131,11 @@
 | score_threshold | float | 否 | `0.0` | 最低分数阈值（0-1），低于此值的结果被过滤 |
 | rerank_enabled | bool | 否 | `false` | 是否启用 Rerank 重排序 |
 | rerank_top_k | int | 否 | `5` | Rerank 后返回的结果数量（1-20） |
-| rerank_model | string | 否 | `null`（系统默认） | Rerank 模型名称 |
+| rerank_model | string | 否 | `null`（用户默认） | Rerank 模型名称 |
 | query_rewrite_enabled | bool | 否 | `false` | 是否启用查询改写 |
 | query_rewrite_strategy | string | 否 | `hyde` | 查询改写策略：`hyde`（假设性文档嵌入）/`sub_query`（子问题拆分） |
 | sub_query_count | int | 否 | `3` | 子问题拆分数量（2-5，strategy=sub_query 时生效） |
-| query_rewrite_llm_model | string | 否 | `null`（系统默认） | 查询改写使用的 LLM 模型名称 |
+| query_rewrite_llm_model | string | 否 | `null`（用户默认） | 查询改写使用的 LLM 模型名称 |
 
 > **约束**：hybrid 模式下 `vector_weight` + `bm25_weight` 应等于 1.0
 
@@ -153,7 +153,7 @@
 
 | 参数名 | 类型 | 必填 | 默认值 | 说明 |
 |--------|------|------|--------|------|
-| llm_model | string | 否 | `null`（系统默认） | LLM 模型名称（如 gpt-4o） |
+| llm_model | string | 否 | `null`（用户默认） | LLM 模型名称（如 gpt-4o） |
 | temperature | float | 否 | `0.7` | 温度参数（0-2） |
 | top_p | float | 否 | `0.9` | Top-p 采样参数（0-1） |
 | max_tokens | int | 否 | `4096` | 最大生成 Token 数（1024-16384） |

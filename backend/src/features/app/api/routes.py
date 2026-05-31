@@ -48,8 +48,8 @@ async def upload_resume(
     db: AsyncSession = Depends(get_db),
     model_config_service: ModelConfigService = Depends(_get_model_config_service),
 ):
-    # 解析 LLM 模型：前端传入 > 系统默认
-    model = llm_model or await model_config_service.get_default_model_name("llm")
+    # 解析 LLM 模型：前端传入 > 用户默认
+    model = llm_model or await model_config_service.get_user_default_model_name(user_id, "llm")
     if not model:
         raise ResumeParseError("未配置 LLM 模型")
 

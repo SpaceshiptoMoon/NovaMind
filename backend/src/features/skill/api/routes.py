@@ -198,15 +198,16 @@ async def update_admin_settings(
     "/admin/models",
     response_model=list[str],
     summary="获取可用的 LLM 模型列表（管理员）",
-    description="获取系统可用的 LLM 模型名称列表，用于审查模型选择",
+    description="获取管理员配置的 LLM 模型名称列表，用于审查模型选择",
 )
 async def list_review_models(
+    admin_user_id: int = Depends(get_current_user_id),
     _admin: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     from src.features.user.repository.model_config_repository import ModelConfigRepository
     repo = ModelConfigRepository(db)
-    configs = await repo.list_system_configs("llm")
+    configs = await repo.list_by_user(admin_user_id, "llm")
     return [c.model for c in configs]
 
 

@@ -1002,7 +1002,7 @@ curl -X POST "http://localhost:8100/api/v1/skills/upload" \
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
 | llm_review_enabled | bool | 是否启用 LLM 安全审查 |
-| llm_review_model | string \| null | 使用的 LLM 模型名称（null 表示系统默认） |
+| llm_review_model | string \| null | 使用的 LLM 模型名称（null 表示用户默认） |
 
 **响应示例**
 

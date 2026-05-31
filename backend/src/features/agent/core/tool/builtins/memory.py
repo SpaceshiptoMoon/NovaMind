@@ -271,7 +271,7 @@ class MemoryTool(BaseTool):
 
         from src.features.user.services.model_config_service import ModelConfigService
         model_config_service = ModelConfigService(db)
-        embedding_model = await model_config_service.get_default_model_name("embedding")
+        embedding_model = await model_config_service.get_user_default_model_name(user_id, "embedding")
         if not embedding_model:
             return
 

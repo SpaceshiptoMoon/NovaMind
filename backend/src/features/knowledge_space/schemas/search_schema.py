@@ -74,7 +74,7 @@ class QueryRewriteConfig(BaseModel):
     # 查询改写使用的 LLM 模型
     llm_model: Optional[str] = Field(
         default=None,
-        description="查询改写使用的 LLM 模型名称，为空使用系统默认",
+        description="查询改写使用的 LLM 模型名称，为空使用用户默认",
     )
 
 
@@ -142,7 +142,7 @@ class RerankConfig(BaseModel):
     )
     model: Optional[str] = Field(
         default=None,
-        description="Rerank 模型名称，为空使用系统默认",
+        description="Rerank 模型名称，为空使用用户默认",
     )
 
 
@@ -159,7 +159,7 @@ class LLMConfig(BaseModel):
     )
     model: Optional[str] = Field(
         default=None,
-        description="LLM 模型名称，为空使用系统默认",
+        description="LLM 模型名称，为空使用用户默认",
     )
     temperature: float = Field(
         default=0.7,

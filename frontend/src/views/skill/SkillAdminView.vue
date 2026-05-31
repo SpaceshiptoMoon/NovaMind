@@ -18,7 +18,7 @@
         <span>审查模型</span>
         <el-select
           v-model="llmReviewModel"
-          placeholder="使用系统默认模型"
+          placeholder="使用用户默认模型"
           clearable
           class="model-select"
           @change="handleSaveSettings"

@@ -144,29 +144,6 @@ class RerankSettings:
 
 
 @dataclass
-class ModelConfigItem:
-    """单个模型配置条目（用于 YAML 启动同步）"""
-    protocol: str = "openai"
-    model: str = ""
-    api_key: str = ""
-    base_url: str = ""
-    dimension: Optional[int] = None
-    timeout: int = 60
-    max_retries: int = 3
-    max_concurrent: int = 5
-
-
-@dataclass
-class ModelConfigs:
-    """模型配置集合（用于 YAML 启动同步到数据库）"""
-    llm: List[ModelConfigItem] = field(default_factory=list)
-    embedding: List[ModelConfigItem] = field(default_factory=list)
-    rerank: List[ModelConfigItem] = field(default_factory=list)
-    vlm: List[ModelConfigItem] = field(default_factory=list)
-    multimodal_embedding: List[ModelConfigItem] = field(default_factory=list)
-
-
-@dataclass
 class AdminConfig:
     """管理员账户配置"""
     username: str = "admin"
@@ -318,7 +295,6 @@ class AppConfig:
     # AI 模型配置
     llm: LLMConfig = field(default_factory=LLMConfig)
     rerank: RerankSettings = field(default_factory=RerankSettings)
-    model_configs: Optional["ModelConfigs"] = None
 
     # 知识库配置（新增）
     knowledge_base: KnowledgeBaseConfig = field(default_factory=KnowledgeBaseConfig)

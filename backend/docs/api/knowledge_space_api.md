@@ -641,8 +641,8 @@ Authorization: Bearer <access_token>
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
-| model | string | 否 | LLM 模型名称（为空使用系统默认） |
-| protocol | string | 否 | 通信协议（为空使用系统默认） |
+| model | string | 否 | LLM 模型名称（为空使用用户默认） |
+| protocol | string | 否 | 通信协议（为空使用用户默认） |
 | temperature | float | 否 | 生成温度（0-2，默认 0.3，问题生成建议低值以确保格式稳定） |
 | top_p | float | 否 | 核采样参数（0-1，默认 0.9） |
 | max_tokens | integer | 否 | 最大生成 token 数（100-8192，默认 2048） |
@@ -1730,14 +1730,14 @@ Authorization: Bearer <access_token>
 |--------|------|------|------|
 | enabled | boolean | 否 | 是否启用 Rerank（默认 false） |
 | top_k | integer | 否 | Rerank 后返回数量（>=1，默认 3） |
-| model | string | 否 | Rerank 模型名称（为空使用系统默认） |
+| model | string | 否 | Rerank 模型名称（为空使用用户默认） |
 
 **llm 对象**
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
 | enabled | boolean | 否 | 是否启用 LLM 回答（默认 false） |
-| model | string | 否 | LLM 模型名称（为空使用系统默认） |
+| model | string | 否 | LLM 模型名称（为空使用用户默认） |
 | temperature | float | 否 | 生成温度（0-2，默认 0.7） |
 | top_p | float | 否 | 核采样参数（0-1，默认 0.9） |
 
@@ -1746,10 +1746,10 @@ Authorization: Bearer <access_token>
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
 | strategy | string | 否 | 改写策略：`hyde`（假设性文档嵌入）/`sub_query`（子问题拆分），默认 `"hyde"` |
-| hyde_prompt | string | 否 | HyDE 自定义提示词（最多 2000 字符，为空使用系统默认提示词） |
+| hyde_prompt | string | 否 | HyDE 自定义提示词（最多 2000 字符，为空使用用户默认提示词） |
 | sub_query_count | integer | 否 | 子问题拆分数量（2-5，默认 3，strategy=sub_query 时生效） |
 | sub_query_merge_mode | string | 否 | 子问题结果合并方式：`rrf`（加权融合，默认）/`score`（分数取最大） |
-| llm_model | string | 否 | 查询改写使用的 LLM 模型（为空使用系统默认） |
+| llm_model | string | 否 | 查询改写使用的 LLM 模型（为空使用用户默认） |
 
 > **策略说明**：
 > - **hyde**：用 LLM 生成一段假设性回答文档，再用该文档的向量进行检索，缩小查询与文档的语义鸿沟
@@ -2005,7 +2005,7 @@ Authorization: Bearer <access_token>
 - 方法：`GET`
 - URL：`/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/search/model-config`
 
-> **注意**：Embedding 模型信息从空间级别配置读取，LLM 和 Rerank 模型从系统默认配置读取。
+> **注意**：Embedding 模型信息从空间级别配置读取，LLM 和 Rerank 模型从用户默认配置读取。
 
 **路径参数**
 

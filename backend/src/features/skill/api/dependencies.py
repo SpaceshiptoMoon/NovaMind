@@ -14,6 +14,7 @@ from src.shared.ai_models.base_model import BaseLLM
 from src.features.user.services.model_config_service import ModelConfigService
 from src.features.skill.services.skill_marketplace_service import SkillMarketplaceService
 from src.features.skill.services.skill_checker import SkillSecurityChecker
+from src.features.knowledge_space.api.dependencies import get_current_user_id
 from src.setting.yaml_config.loader import get_config_value
 from src.core.middleware.structured_logging import get_logger
 
@@ -56,15 +57,16 @@ async def _get_llm_review_model() -> Optional[str]:
 
 
 async def _get_review_llm_client(
+    user_id: int,
     model_config_service: ModelConfigService,
 ) -> Optional[BaseLLM]:
     """获取审查用的 LLM 客户端"""
     model_name = await _get_llm_review_model()
     if not model_name:
-        model_name = await model_config_service.get_default_model_name("llm")
+        model_name = await model_config_service.get_user_default_model_name(user_id, "llm")
     if not model_name:
         return None
-    return await model_config_service.get_llm_client_by_model(None, model_name)
+    return await model_config_service.get_llm_client_by_model(user_id, model_name)
 
 
 def _get_model_config_service(db: AsyncSession = Depends(get_db)) -> ModelConfigService:
@@ -73,13 +75,14 @@ def _get_model_config_service(db: AsyncSession = Depends(get_db)) -> ModelConfig
 
 async def get_skill_service(
     db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
     model_config_service: ModelConfigService = Depends(_get_model_config_service),
 ) -> SkillMarketplaceService:
     minio = await get_minio_client()
 
     # 条件注入 LLM 审查
     enabled = await _get_llm_review_enabled()
-    llm_client = await _get_review_llm_client(model_config_service) if enabled else None
+    llm_client = await _get_review_llm_client(user_id, model_config_service) if enabled else None
     checker = SkillSecurityChecker(llm_client=llm_client)
 
     service = SkillMarketplaceService(db=db, minio_client=minio, security_checker=checker)
