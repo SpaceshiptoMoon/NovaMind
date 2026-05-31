@@ -155,6 +155,7 @@ async def upload_resume(
                 probing_plan = result["probing_plan"]
                 jd_analysis_obj = result["jd_analysis"]
                 prefix_knowledge_objs = result["prefix_knowledge"]
+                work_units = probing_plan.work_units
 
                 engine = AutoProbingEngine(llm, user_id=_user_id, bg_db=bg_db)
                 qa_records = await engine.probe_all(
@@ -162,14 +163,19 @@ async def upload_resume(
                 )
                 logger.info("S10 自动追问完成", session_id=session_id, kp_count=len(qa_records))
 
-                # S11: 闭环测评 — 面试准备建议
+                # S11: 面试准备建议
                 preparation_advice = await engine.generate_evaluation(qa_records, structured)
                 logger.info("S11 面试准备建议完成", session_id=session_id)
 
-                # S12: 组装最终报告
+                # S11-NEW: 简历优化建议
+                resume_advice = await engine.generate_resume_advice(qa_records, structured)
+                logger.info("S11-NEW 简历优化建议完成", session_id=session_id)
+
+                # S12: 组装最终报告（三段式）
                 final_report = analyzer._assemble_final_md_report(
                     structured, jd_analysis_obj, probing_plan,
-                    prefix_knowledge_objs, qa_records, preparation_advice,
+                    work_units, prefix_knowledge_objs,
+                    qa_records, preparation_advice, resume_advice,
                 )
 
                 # 存最终报告到 MinIO
