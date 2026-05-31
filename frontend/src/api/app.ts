@@ -98,6 +98,28 @@ export interface ResumeSessionListResponse {
   total: number
 }
 
+// 工作-项目合并单元（V2 三阶段框架）
+export interface WorkProjectUnit {
+  id: string
+  company: string
+  company_brief: string
+  position: string
+  department: string
+  employment_type: string
+  work_period: string
+  work_responsibilities: string[]
+  work_tech_stack: string[]
+  company_industry: string
+  company_scale: string
+  position_context: string
+  industry_context: string
+  projects: ProjectExperience[]
+  complexity_score: number
+  complexity_reasoning: string
+  allocated_rounds: number
+  full_context: string
+}
+
 export interface ModelsResponse {
   models: Record<string, { max_tokens: number; temperature: number; top_p: number }>
 }
