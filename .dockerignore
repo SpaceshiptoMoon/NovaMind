@@ -1,0 +1,56 @@
+# ========================================
+# NovaMind Docker 构建排除
+# ========================================
+# 根级 .dockerignore，作用于 docker/Dockerfile 的构建上下文
+
+# 版本控制
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+backend/.venv/
+backend/venv/
+backend/.env
+backend/.env.*
+
+# Node.js
+frontend/node_modules/
+
+# 文档（构建不需要）
+*.md
+!backend/README.md
+docs/
+
+# IDE
+.idea/
+.vscode/
+.claude/
+
+# Docker 文件本身
+docker-compose*.yml
+Dockerfile
+.dockerignore
+
+# 测试与临时文件
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+*.tmp
+backend/tests/
+
+# 数据目录
+data/
+logs/
+uploads/
+assets/
+
+# 其他
+*.egg-info/
+dist/
+build/
+.eslintcache

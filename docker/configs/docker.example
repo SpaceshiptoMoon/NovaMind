@@ -1,11 +1,12 @@
 # ========================================
 # Docker Compose 环境配置（示例）
 # ========================================
-# 复制此文件为 docker.yaml 并填入真实配置值
-# cp docker.example docker.yaml
+# 1. 复制此文件: cp docker.example docker.yaml
+# 2. 确保 .env 文件中的密码与此处引用的变量名一致
+# 3. YAML loader 会自动替换 ${VAR_NAME} 为容器环境变量
 #
-# 服务间通过容器名通信，不使用 localhost
-# 此文件会被挂载到后端容器中，通过 --config docker 加载
+# 此文件通过 Docker Compose 挂载到后端容器，由 --config docker 加载
+# 与 default.yaml 深度合并，此处只需覆盖 Docker 环境的配置
 
 environment: docker
 debug: false
@@ -18,27 +19,40 @@ redis:
   db: 0
   password: null
 
-# MinIO
+# MinIO — 密码从 .env 读取
 minio:
   endpoint: minio:9005
-  access_key: your-minio-access-key
-  secret_key: your-minio-secret-key
+  access_key: "${MINIO_ROOT_USER}"
+  secret_key: "${MINIO_ROOT_PASSWORD}"
   secure: false
 
-# Elasticsearch
+# Elasticsearch — 密码从 .env 读取
 elasticsearch:
   hosts:
     - "http://elasticsearch:9200"
   username: elastic
-  password: your-es-password
+  password: "${ES_PASSWORD}"
 
-# MySQL
+# MySQL — 密码从 .env 读取
 database:
   host: mysql
   port: 3306
   user: root
-  password: "your-db-password"
+  password: "${MYSQL_ROOT_PASSWORD}"
   database: novamind_db
+
+# 安全配置 — 密钥从 .env 读取（覆盖 default.yaml）
+security:
+  secret_key: "${SECRET_KEY}"
+  encryption_key: "${ENCRYPTION_KEY}"
+
+# 管理员 — 密码从 .env 读取（覆盖 default.yaml）
+admin:
+  username: "admin"
+  email: "admin@example.com"
+  password: "${ADMIN_PASSWORD}"
+  create_on_startup: true
+  reset_password_if_exists: true
 
 # 日志
 logging:
