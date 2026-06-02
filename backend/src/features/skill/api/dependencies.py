@@ -85,7 +85,7 @@ async def get_skill_service(
     llm_client = await _get_review_llm_client(user_id, model_config_service) if enabled else None
     checker = SkillSecurityChecker(llm_client=llm_client)
 
-    service = SkillMarketplaceService(db=db, minio_client=minio, security_checker=checker)
+    service = SkillMarketplaceService(db=db, minio_client=minio, security_checker=checker, model_config_service=model_config_service)
     yield service
     await service.cleanup()
 

@@ -3,7 +3,7 @@
 """
 from typing import List, Optional, Tuple
 
-from sqlalchemy import select, func, delete, update, or_
+from sqlalchemy import select, func, delete, update, or_, and_, case
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +26,13 @@ class SkillRepository:
         "install_count", "rating_avg", "rating_count",
         "review_status", "review_result", "reviewed_at", "deleted_at",
     })
+
+    _MARKETPLACE_FILTER = [
+        SkillDefinition.deleted_at.is_(None),
+        SkillDefinition.visibility == SkillVisibility.PUBLIC,
+        SkillDefinition.status == SkillStatus.PUBLISHED,
+        SkillDefinition.review_status == ReviewStatus.APPROVED,
+    ]
 
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -107,15 +114,32 @@ class SkillRepository:
             SkillDefinition.review_status == ReviewStatus.APPROVED,
         )
 
+        tokens: list = []
+        relevance_expr = None
         if keyword:
-            pattern = f"%{keyword}%"
-            base = base.where(
-                or_(
-                    SkillDefinition.name.ilike(pattern),
-                    SkillDefinition.display_name.ilike(pattern),
-                    SkillDefinition.description.ilike(pattern),
-                )
-            )
+            # 拆分关键词为独立 token，逐词 OR 匹配，提升召回率
+            # 例如 "简历 解析 python" → 3个token独立匹配，命中任意一个即返回
+            tokens = [t.strip() for t in keyword.split() if t.strip()]
+            if tokens:
+                # 构建逐词 OR 条件：每个 token 在三个字段中任一出现即匹配
+                token_conditions = []
+                relevance_parts = []
+                for token in tokens:
+                    pattern = f"%{token}%"
+                    token_hit = or_(
+                        SkillDefinition.name.ilike(pattern),
+                        SkillDefinition.display_name.ilike(pattern),
+                        SkillDefinition.description.ilike(pattern),
+                    )
+                    token_conditions.append(token_hit)
+                    # 命中该 token 得 1 分
+                    relevance_parts.append(case((token_hit, 1), else_=0))
+
+                base = base.where(or_(*token_conditions))
+
+                # 加相关性分数列：命中 token 越多分数越高
+                relevance_expr = sum(relevance_parts).label("_relevance")
+                base = base.add_columns(relevance_expr)
         if category:
             base = base.where(SkillDefinition.category == category)
         if tags:
@@ -137,9 +161,15 @@ class SkillRepository:
             "name": SkillDefinition.display_name.asc(),
         }.get(sort, SkillDefinition.created_at.desc())
 
-        result = await self.session.execute(
-            base.order_by(order_col).offset(offset).limit(limit)
-        )
+        # 关键词搜索时优先按相关性排序（命中 token 越多越靠前）
+        if relevance_expr is not None:
+            result = await self.session.execute(
+                base.order_by(relevance_expr.desc(), order_col).offset(offset).limit(limit)
+            )
+        else:
+            result = await self.session.execute(
+                base.order_by(order_col).offset(offset).limit(limit)
+            )
         return result.scalars().all(), total
 
     async def update(self, skill_id: int, **kwargs) -> Optional[SkillDefinition]:
@@ -204,6 +234,42 @@ class SkillRepository:
             .offset(offset).limit(limit)
         )
         return result.scalars().all(), total
+
+    async def get_distinct_categories(self) -> List[str]:
+        """获取所有已上架技能的去重分类列表"""
+        result = await self.session.execute(
+            select(SkillDefinition.category)
+            .where(
+                SkillDefinition.deleted_at.is_(None),
+                SkillDefinition.visibility == SkillVisibility.PUBLIC,
+                SkillDefinition.status == SkillStatus.PUBLISHED,
+                SkillDefinition.review_status == ReviewStatus.APPROVED,
+                SkillDefinition.category.is_not(None),
+            )
+            .distinct()
+            .order_by(SkillDefinition.category)
+        )
+        return [row[0] for row in result.all()]
+
+    async def get_common_tags(self, limit: int = 50) -> List[str]:
+        """获取所有已上架技能的常用标签（按出现频率降序）"""
+        result = await self.session.execute(
+            select(SkillDefinition.tags)
+            .where(
+                SkillDefinition.deleted_at.is_(None),
+                SkillDefinition.visibility == SkillVisibility.PUBLIC,
+                SkillDefinition.status == SkillStatus.PUBLISHED,
+                SkillDefinition.review_status == ReviewStatus.APPROVED,
+                SkillDefinition.tags.is_not(None),
+            )
+        )
+        tag_counter: dict[str, int] = {}
+        for row in result.all():
+            tags = row[0] or []
+            for tag in tags:
+                tag_counter[tag] = tag_counter.get(tag, 0) + 1
+        sorted_tags = sorted(tag_counter.items(), key=lambda x: -x[1])
+        return [tag for tag, _ in sorted_tags[:limit]]
 
 
 class SkillVersionRepository:
