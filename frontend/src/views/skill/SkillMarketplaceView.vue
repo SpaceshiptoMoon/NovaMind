@@ -25,17 +25,39 @@
 
     <!-- 搜索和过滤（仅广场模式） -->
     <div v-if="activeTab === 'marketplace'" class="filter-bar">
-      <el-input
-        v-model="searchKeyword"
-        placeholder="搜索技能..."
-        clearable
-        style="width: 300px"
-        @keyup.enter="handleSearch"
-      >
-        <template #prefix><el-icon><Search /></el-icon></template>
-      </el-input>
+      <div class="search-section">
+        <el-input
+          v-model="searchKeyword"
+          :placeholder="aiSearchMode ? '用自然语言描述你想要的技能...' : '搜索技能...'"
+          clearable
+          style="width: 320px"
+          @keyup.enter="handleSearch"
+        >
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
+        <el-button :type="aiSearchMode ? 'primary' : 'default'" @click="handleSearch">
+          {{ aiSearchMode ? 'AI 搜索' : '搜索' }}
+        </el-button>
+        <el-tooltip :content="aiSearchMode ? '切换到普通搜索' : '切换到 AI 智能搜索'" placement="top">
+          <el-button @click="toggleAISearch" :type="aiSearchMode ? 'primary' : ''" circle>
+            <el-icon><MagicStick /></el-icon>
+          </el-button>
+        </el-tooltip>
+      </div>
       <el-select v-model="selectedCategory" placeholder="全部分类" clearable style="width: 150px" @change="handleSearch">
         <el-option v-for="cat in skillStore.categories" :key="cat" :label="cat" :value="cat" />
+      </el-select>
+      <el-select
+        v-model="selectedTags"
+        placeholder="标签筛选"
+        clearable
+        multiple
+        collapse-tags
+        collapse-tags-tooltip
+        style="width: 200px"
+        @change="handleSearch"
+      >
+        <el-option v-for="tag in skillStore.availableTags" :key="tag" :label="tag" :value="tag" />
       </el-select>
       <el-select v-model="sortBy" style="width: 130px" @change="handleSearch">
         <el-option label="最新" value="newest" />
@@ -43,6 +65,17 @@
         <el-option label="最高评分" value="rating" />
         <el-option label="名称" value="name" />
       </el-select>
+    </div>
+
+    <!-- AI 搜索解释横幅 -->
+    <div v-if="aiSearchMode && skillStore.aiSearchExplanation" class="ai-explanation-banner">
+      <el-alert
+        :title="skillStore.aiSearchExplanation"
+        type="info"
+        show-icon
+        :closable="true"
+        @close="clearAISearch"
+      />
     </div>
 
     <!-- 技能卡片网格 -->
@@ -92,7 +125,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Upload, Search, Download, Star, Setting } from '@element-plus/icons-vue'
+import { Upload, Search, Download, Star, Setting, MagicStick } from '@element-plus/icons-vue'
 import { useSkillStore } from '@/stores/skill'
 import { useUserStore } from '@/stores/user'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -104,20 +137,35 @@ const userStore = useUserStore()
 const activeTab = ref<'marketplace' | 'mine'>('marketplace')
 const searchKeyword = ref('')
 const selectedCategory = ref('')
+const selectedTags = ref<string[]>([])
 const sortBy = ref('newest')
 const currentPage = ref(1)
 const pageSize = 20
+const aiSearchMode = ref(false)
 
-const currentSkills = computed(() =>
-  activeTab.value === 'mine' ? skillStore.mySkills : skillStore.marketplaceSkills,
-)
-const currentTotal = computed(() =>
-  activeTab.value === 'mine' ? skillStore.mySkillsTotal : skillStore.marketplaceTotal,
-)
-const currentLoading = computed(() => skillStore.marketplaceLoading)
+const currentSkills = computed(() => {
+  if (activeTab.value === 'mine') return skillStore.mySkills
+  return aiSearchMode.value && skillStore.aiSearchResults.length > 0
+    ? skillStore.aiSearchResults
+    : skillStore.marketplaceSkills
+})
+const currentTotal = computed(() => {
+  if (activeTab.value === 'mine') return skillStore.mySkillsTotal
+  return aiSearchMode.value && skillStore.aiSearchParsedQuery
+    ? skillStore.aiSearchTotal
+    : skillStore.marketplaceTotal
+})
+const currentLoading = computed(() => {
+  if (activeTab.value === 'mine') return false
+  return aiSearchMode.value ? skillStore.aiSearchLoading : skillStore.marketplaceLoading
+})
 
 onMounted(() => {
-  skillStore.fetchMarketplace({ sort: sortBy.value, limit: pageSize, offset: 0 })
+  Promise.all([
+    skillStore.fetchMarketplace({ sort: sortBy.value, limit: pageSize, offset: 0 }),
+    skillStore.fetchCategories(),
+    skillStore.fetchTags(),
+  ])
 })
 
 function switchTab(tab: 'marketplace' | 'mine') {
@@ -130,25 +178,57 @@ function switchTab(tab: 'marketplace' | 'mine') {
   }
 }
 
+function toggleAISearch() {
+  aiSearchMode.value = !aiSearchMode.value
+  if (!aiSearchMode.value) {
+    clearAISearch()
+  }
+  searchKeyword.value = ''
+}
+
+function clearAISearch() {
+  aiSearchMode.value = false
+  skillStore.aiSearchResults = []
+  skillStore.aiSearchTotal = 0
+  skillStore.aiSearchExplanation = ''
+  skillStore.aiSearchParsedQuery = null
+}
+
 function handleSearch() {
   currentPage.value = 1
-  skillStore.fetchMarketplace({
-    keyword: searchKeyword.value || undefined,
-    category: selectedCategory.value || undefined,
-    sort: sortBy.value,
-    limit: pageSize,
-    offset: 0,
-  })
+  if (aiSearchMode.value && searchKeyword.value) {
+    skillStore.aiSearch({
+      query: searchKeyword.value,
+      limit: pageSize,
+      offset: 0,
+    })
+  } else {
+    skillStore.fetchMarketplace({
+      keyword: searchKeyword.value || undefined,
+      category: selectedCategory.value || undefined,
+      tags: selectedTags.value.length > 0 ? selectedTags.value.join(',') : undefined,
+      sort: sortBy.value,
+      limit: pageSize,
+      offset: 0,
+    })
+  }
 }
 
 function handlePageChange(page: number) {
   const offset = (page - 1) * pageSize
   if (activeTab.value === 'mine') {
     skillStore.fetchMySkills({ limit: pageSize, offset })
+  } else if (aiSearchMode.value && skillStore.aiSearchParsedQuery) {
+    skillStore.aiSearch({
+      query: searchKeyword.value,
+      limit: pageSize,
+      offset,
+    })
   } else {
     skillStore.fetchMarketplace({
       keyword: searchKeyword.value || undefined,
       category: selectedCategory.value || undefined,
+      tags: selectedTags.value.length > 0 ? selectedTags.value.join(',') : undefined,
       sort: sortBy.value,
       limit: pageSize,
       offset,
@@ -234,6 +314,17 @@ async function handleUpload(file: File) {
   gap: var(--space-3);
   margin-bottom: var(--space-6);
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.search-section {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.ai-explanation-banner {
+  margin-bottom: var(--space-4);
 }
 
 /* ===== Card Grid ===== */

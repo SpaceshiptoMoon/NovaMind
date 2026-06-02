@@ -12,6 +12,9 @@ import type {
   SkillAdminSettingsUpdate,
   SkillAdminReviewAction,
   SkillPendingReviewListResponse,
+  SkillCategoriesResponse,
+  SkillTagsResponse,
+  SkillAISearchResponse,
 } from './types'
 
 // ===================== 技能广场 =====================
@@ -124,5 +127,21 @@ export const skillApi = {
 
   rejectSkill(skillId: number, data?: SkillAdminReviewAction) {
     return request.post<{ success: boolean; review_status: number }>(`/skills/admin/reviews/${skillId}/reject`, data || {})
+  },
+
+  // ==================== 分类和标签 ====================
+
+  listCategories() {
+    return request.get<SkillCategoriesResponse>('/skills/categories')
+  },
+
+  listTags() {
+    return request.get<SkillTagsResponse>('/skills/tags')
+  },
+
+  // ==================== AI 搜索 ====================
+
+  aiSearch(data: { query: string; limit?: number; offset?: number }) {
+    return request.post<SkillAISearchResponse>('/skills/ai-search', data)
   },
 }
