@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { skillApi } from '@/api/skill'
 import type {
@@ -6,6 +6,7 @@ import type {
   SkillListItem,
   SkillReviewItem,
   SkillAdminSettingsResponse,
+  SkillAISearchParsedQuery,
 } from '@/api/types'
 
 export const useSkillStore = defineStore('skill', () => {
@@ -36,14 +37,20 @@ export const useSkillStore = defineStore('skill', () => {
   const pendingReviews = ref<SkillListItem[]>([])
   const pendingReviewsTotal = ref(0)
 
-  // 分类列表（从广场数据中提取）
-  const categories = computed(() => {
-    const cats = new Set<string>()
-    marketplaceSkills.value.forEach(s => {
-      if (s.category) cats.add(s.category)
-    })
-    return Array.from(cats)
-  })
+  // 分类列表（从 API 获取）
+  const categories = ref<string[]>([])
+  const categoriesLoading = ref(false)
+
+  // 标签列表（从 API 获取）
+  const availableTags = ref<string[]>([])
+  const tagsLoading = ref(false)
+
+  // AI 搜索
+  const aiSearchResults = ref<SkillListItem[]>([])
+  const aiSearchTotal = ref(0)
+  const aiSearchExplanation = ref('')
+  const aiSearchParsedQuery = ref<SkillAISearchParsedQuery | null>(null)
+  const aiSearchLoading = ref(false)
 
   async function fetchMarketplace(params?: {
     keyword?: string
@@ -188,6 +195,52 @@ export const useSkillStore = defineStore('skill', () => {
     return await skillApi.rejectSkill(skillId, reason ? { reason } : undefined)
   }
 
+  // ==================== 分类和标签 ====================
+
+  async function fetchCategories() {
+    categoriesLoading.value = true
+    try {
+      const res = await skillApi.listCategories()
+      categories.value = res.categories || []
+    } catch {
+      categories.value = []
+    } finally {
+      categoriesLoading.value = false
+    }
+  }
+
+  async function fetchTags() {
+    tagsLoading.value = true
+    try {
+      const res = await skillApi.listTags()
+      availableTags.value = res.tags || []
+    } catch {
+      availableTags.value = []
+    } finally {
+      tagsLoading.value = false
+    }
+  }
+
+  // ==================== AI 搜索 ====================
+
+  async function aiSearch(params: { query: string; limit?: number; offset?: number }) {
+    aiSearchLoading.value = true
+    try {
+      const res = await skillApi.aiSearch(params)
+      aiSearchResults.value = res.items || []
+      aiSearchTotal.value = res.total
+      aiSearchExplanation.value = res.explanation
+      aiSearchParsedQuery.value = res.ai_query
+    } catch {
+      aiSearchResults.value = []
+      aiSearchTotal.value = 0
+      aiSearchExplanation.value = ''
+      aiSearchParsedQuery.value = null
+    } finally {
+      aiSearchLoading.value = false
+    }
+  }
+
   return {
     marketplaceSkills,
     marketplaceTotal,
@@ -200,6 +253,14 @@ export const useSkillStore = defineStore('skill', () => {
     uploading,
     uploadProgress,
     categories,
+    categoriesLoading,
+    availableTags,
+    tagsLoading,
+    aiSearchResults,
+    aiSearchTotal,
+    aiSearchExplanation,
+    aiSearchParsedQuery,
+    aiSearchLoading,
     adminSettings,
     pendingReviews,
     pendingReviewsTotal,
@@ -216,6 +277,9 @@ export const useSkillStore = defineStore('skill', () => {
     fetchReviews,
     submitReview,
     deleteReview,
+    fetchCategories,
+    fetchTags,
+    aiSearch,
     fetchAdminSettings,
     updateAdminSettings,
     fetchReviewModels,
