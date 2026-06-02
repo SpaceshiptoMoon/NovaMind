@@ -1228,3 +1228,32 @@ export interface SkillPendingReviewListResponse {
   items: SkillListItem[]
   total: number
 }
+
+// ==================== 技能分类和标签 ====================
+
+export interface SkillCategoriesResponse {
+  categories: string[]
+}
+
+export interface SkillTagsResponse {
+  tags: string[]
+}
+
+// ==================== AI 搜索 ====================
+
+export interface SkillAISearchParsedQuery {
+  keywords: string[]
+  category: string | null
+  tags: string[] | null
+  sort: string
+  intent_summary: string
+}
+
+export interface SkillAISearchResponse {
+  items: SkillListItem[]
+  total: number
+  limit: number
+  offset: number
+  explanation: string
+  ai_query: SkillAISearchParsedQuery
+}
