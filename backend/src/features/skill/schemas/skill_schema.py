@@ -169,3 +169,43 @@ class SkillPendingReviewListResponse(BaseModel):
     """待审核列表响应"""
     items: List[SkillListItemResponse]
     total: int
+
+
+# ==================== 分类和标签 ====================
+
+class SkillCategoriesResponse(BaseModel):
+    """分类列表响应"""
+    categories: List[str]
+
+
+class SkillTagsResponse(BaseModel):
+    """标签列表响应"""
+    tags: List[str]
+
+
+# ==================== AI 搜索 ====================
+
+class SkillAISearchRequest(BaseModel):
+    """AI 搜索请求"""
+    query: str = Field(..., min_length=1, max_length=500, description="自然语言搜索查询")
+    limit: int = Field(default=20, ge=1, le=100, description="每页数量")
+    offset: int = Field(default=0, ge=0, description="偏移量")
+
+
+class SkillAISearchParsedQuery(BaseModel):
+    """AI 解析出的结构化搜索参数"""
+    keywords: List[str]
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+    sort: str = "newest"
+    intent_summary: str = ""
+
+
+class SkillAISearchResponse(BaseModel):
+    """AI 搜索响应"""
+    items: List[SkillListItemResponse]
+    total: int
+    limit: int
+    offset: int
+    explanation: str
+    ai_query: SkillAISearchParsedQuery

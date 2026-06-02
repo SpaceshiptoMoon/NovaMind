@@ -1,7 +1,7 @@
 """
 Skill module prompt templates
 
-Covers: skill security review
+Covers: skill security review, skill AI search
 """
 
 TEMPLATES = {
@@ -32,5 +32,24 @@ TEMPLATES = {
         '{{"safe": true/false, "level": "safe/suspicious/dangerous", '
         '"reason": "Detailed explanation referencing specific content", '
         '"threats": ["detected threat categories"]}}'
+    ),
+    "skill_ai_search": (
+        "You are a skill search intent analyzer for a skill marketplace. "
+        "Parse the user's natural language query into structured search parameters.\n\n"
+        "Available categories: {categories}\n\n"
+        "Sort options: newest (latest first), popular (most installs), rating (highest rated), name (alphabetical)\n\n"
+        "User query: {query}\n\n"
+        "Output JSON only (no other text):\n"
+        '{{"keywords": ["extracted", "keywords"], '
+        '"category": "matched_category_or_null", '
+        '"tags": ["tag1", "tag2"], '
+        '"sort": "newest", '
+        '"intent_summary": "用户意图中文说明"}}\n\n'
+        "Rules:\n"
+        "- keywords: always populated, extract core search terms from the query (Chinese or English)\n"
+        "- category: must exactly match an available category from the list above, or null if no match\n"
+        "- tags: infer relevant tags from the query context (e.g., 'python' for Python skills, '数据分析' for data analysis), or null\n"
+        "- sort: infer from the query if user mentions '最新'/'最热门'/'高评分'/'按名称', default 'newest'\n"
+        "- intent_summary: a concise Chinese sentence describing what the user is looking for (e.g., '用户想要找简历解析相关的技能')"
     ),
 }

@@ -3,8 +3,9 @@
 """
 import asyncio
 import io
+import json
 import zipfile
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +30,8 @@ from src.features.skill.repository.skill_repository import (
 from src.features.skill.services.skill_parser import extract_skill_zip, validate_skill_md, ExtractedSkill
 from src.features.skill.services.skill_checker import SkillSecurityChecker
 from src.shared.utils.time_utils import now_china
+from src.shared.prompts import PromptManager, PromptTemplate
+from src.shared.ai_models.base_model import BaseLLM
 
 logger = get_logger(__name__)
 
@@ -41,10 +44,12 @@ class SkillMarketplaceService:
         db: AsyncSession,
         minio_client=None,
         security_checker: Optional[SkillSecurityChecker] = None,
+        model_config_service: Optional[Any] = None,
     ):
         self.db = db
         self.minio = minio_client
         self.checker = security_checker or SkillSecurityChecker()
+        self.model_config_service = model_config_service
         self.skill_repo = SkillRepository(db)
         self.version_repo = SkillVersionRepository(db)
         self.review_repo = SkillReviewRepository(db)
@@ -343,6 +348,129 @@ class SkillMarketplaceService:
         tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
         return await self.skill_repo.list_marketplace(keyword, category, tag_list, sort, limit, offset)
 
+    async def list_categories(self) -> List[str]:
+        """获取所有已上架技能的去重分类列表"""
+        return await self.skill_repo.get_distinct_categories()
+
+    async def list_tags(self) -> List[str]:
+        """获取所有已上架技能的常用标签列表"""
+        return await self.skill_repo.get_common_tags()
+
+    async def ai_search(
+        self, query: str, user_id: int, limit: int = 20, offset: int = 0,
+    ) -> Dict[str, Any]:
+        """AI 智能搜索：LLM 理解自然语言意图 → 结构化参数搜索"""
+        llm_client = await self._get_llm_client(user_id)
+        if not llm_client:
+            return await self._fallback_ai_search(
+                query, limit, offset,
+                "AI 搜索功能不可用，已自动使用关键词搜索",
+            )
+
+        # 获取可用分类作为 prompt 上下文
+        categories = await self.skill_repo.get_distinct_categories()
+
+        # 格式化 prompt
+        prompt = PromptManager.format_prompt(
+            PromptTemplate.SKILL_AI_SEARCH.value,
+            query=query,
+            categories=", ".join(categories) if categories else "暂无分类",
+        )
+
+        # 调用 LLM 解析意图
+        try:
+            response = await asyncio.wait_for(
+                llm_client.generate_text(
+                    prompt=prompt,
+                    max_tokens=512,
+                    temperature=0.1,
+                    response_format={"type": "json_object"},
+                ),
+                timeout=15,
+            )
+            parsed = json.loads(response)
+        except (json.JSONDecodeError, asyncio.TimeoutError, Exception) as e:
+            logger.warning("AI 搜索 LLM 解析失败，降级为关键词搜索", error=str(e))
+            return await self._fallback_ai_search(
+                query, limit, offset,
+                f"AI 解析失败，已自动使用关键词搜索: {query}",
+            )
+
+        # 映射 LLM 输出到搜索参数
+        keywords_raw = parsed.get("keywords") or [query]
+        keywords = " ".join(keywords_raw) if isinstance(keywords_raw, list) else query
+        category = parsed.get("category") or None
+        tags_raw = parsed.get("tags") or None
+        sort = parsed.get("sort", "newest")
+        intent_summary = parsed.get("intent_summary", "")
+
+        # 校验 sort
+        valid_sorts = {"newest", "popular", "rating", "name"}
+        if sort not in valid_sorts:
+            sort = "newest"
+
+        # 处理 tags
+        tag_list = None
+        if tags_raw and isinstance(tags_raw, list):
+            tag_list = [t.strip() for t in tags_raw if t.strip()]
+
+        # 执行搜索
+        skills, total = await self.skill_repo.list_marketplace(
+            keyword=keywords,
+            category=category if category and category != "null" else None,
+            tags=tag_list,
+            sort=sort,
+            limit=limit,
+            offset=offset,
+        )
+
+        # 构建解释
+        explanation = intent_summary or f"根据您的查询，已搜索匹配以下关键词的技能: {keywords}"
+        filters = []
+        if category:
+            filters.append(f"分类: {category}")
+        if tag_list:
+            filters.append(f"标签: {', '.join(tag_list)}")
+        if filters:
+            explanation += f"（筛选条件: {'; '.join(filters)}）"
+
+        return {
+            "items": skills,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "explanation": explanation,
+            "ai_query": {
+                "keywords": keywords_raw if isinstance(keywords_raw, list) else [query],
+                "category": category,
+                "tags": tag_list,
+                "sort": sort,
+                "intent_summary": intent_summary,
+            },
+        }
+
+    async def _fallback_ai_search(
+        self, query: str, limit: int, offset: int, explanation: str,
+    ) -> Dict[str, Any]:
+        """AI 搜索降级：使用关键词搜索"""
+        skills, total = await self.skill_repo.list_marketplace(
+            keyword=query, limit=limit, offset=offset,
+        )
+        return {
+            "items": skills,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "explanation": explanation,
+            "ai_query": {
+                "keywords": [query],
+                "category": None,
+                "tags": None,
+                "sort": "newest",
+                "intent_summary": "",
+            },
+        }
+
     async def list_installed(self, agent_id: int) -> List[SkillInstallation]:
         return await self.install_repo.list_by_agent(agent_id)
 
@@ -463,6 +591,26 @@ class SkillMarketplaceService:
         return buf.getvalue()
 
     # ==================== 内部方法 ====================
+
+    async def _get_llm_client(self, user_id: int, model_name: Optional[str] = None) -> Optional[BaseLLM]:
+        """获取用户的 LLM 客户端（用于 AI 搜索）
+
+        优先使用指定模型，否则使用用户默认模型
+        """
+        if not self.model_config_service:
+            return None
+        if not model_name:
+            try:
+                model_name = await self.model_config_service.get_user_default_model_name(user_id, "llm")
+            except Exception:
+                model_name = None
+        if not model_name:
+            return None
+        try:
+            return await self.model_config_service.get_llm_client_by_model(user_id, model_name)
+        except Exception as e:
+            logger.warning("获取 LLM 客户端失败", error=str(e))
+            return None
 
     def _start_background_review(self, skill_id: int, body_markdown: str, frontmatter_raw: str) -> None:
         """启动后台异步审查任务（使用独立的数据库会话）"""

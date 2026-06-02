@@ -109,6 +109,9 @@ class PromptTemplate(Enum):
     # ==================== 技能安全审查 ====================
     SKILL_SECURITY_REVIEW = "skill_security_review"
 
+    # ==================== 技能 AI 搜索 ====================
+    SKILL_AI_SEARCH = "skill_ai_search"
+
 
 class PromptManager:
     """提示词管理器"""
