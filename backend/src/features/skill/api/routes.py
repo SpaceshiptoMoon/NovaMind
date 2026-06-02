@@ -31,6 +31,11 @@ from src.features.skill.schemas.skill_schema import (
     SkillActionResponse,
     SkillReviewActionResultResponse,
     SkillPendingReviewListResponse,
+    SkillAISearchRequest,
+    SkillAISearchResponse,
+    SkillAISearchParsedQuery,
+    SkillCategoriesResponse,
+    SkillTagsResponse,
 )
 from src.features.skill.exceptions import (
     SkillNotFoundError,
@@ -133,6 +138,62 @@ async def list_marketplace(
     user_map = await _batch_get_usernames(service.db, user_ids)
     items = [_skill_to_list_item(s, user_map.get(s.user_id)) for s in skills]
     return SkillMarketplaceListResponse(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.get(
+    "/categories",
+    response_model=SkillCategoriesResponse,
+    summary="获取技能分类列表",
+    description="获取技能广场中所有已上架技能的分类列表",
+)
+async def list_categories(
+    service: SkillMarketplaceService = Depends(get_skill_service),
+):
+    cats = await service.list_categories()
+    return SkillCategoriesResponse(categories=cats)
+
+
+@router.get(
+    "/tags",
+    response_model=SkillTagsResponse,
+    summary="获取技能标签列表",
+    description="获取技能广场中所有已上架技能的常用标签",
+)
+async def list_tags(
+    service: SkillMarketplaceService = Depends(get_skill_service),
+):
+    tags = await service.list_tags()
+    return SkillTagsResponse(tags=tags)
+
+
+@router.post(
+    "/ai-search",
+    response_model=SkillAISearchResponse,
+    summary="AI 智能搜索",
+    description="输入自然语言描述，AI 理解意图后返回匹配的技能列表",
+)
+async def ai_search(
+    data: SkillAISearchRequest,
+    user_id: int = Depends(get_current_user_id),
+    service: SkillMarketplaceService = Depends(get_skill_service),
+):
+    result = await service.ai_search(
+        query=data.query,
+        user_id=user_id,
+        limit=data.limit,
+        offset=data.offset,
+    )
+    user_ids = list({s.user_id for s in result["items"] if s.user_id})
+    user_map = await _batch_get_usernames(service.db, user_ids)
+    items = [_skill_to_list_item(s, user_map.get(s.user_id)) for s in result["items"]]
+    return SkillAISearchResponse(
+        items=items,
+        total=result["total"],
+        limit=result["limit"],
+        offset=result["offset"],
+        explanation=result["explanation"],
+        ai_query=SkillAISearchParsedQuery(**result["ai_query"]),
+    )
 
 
 @router.get(
