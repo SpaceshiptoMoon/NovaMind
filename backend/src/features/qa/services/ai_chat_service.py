@@ -573,6 +573,16 @@ class AIChatService:
         if len(file_data) > self.MAX_FILE_SIZE:
             raise InvalidMessageContentError(f"文件过大: {len(file_data)} 字节，最大允许 {self.MAX_FILE_SIZE // (1024*1024)}MB")
 
+        # 验证文件内容（魔术字节校验，防止文件伪装攻击）
+        from src.shared.utils.file_validator import validate_file
+        file_info = validate_file(
+            content=file_data,
+            filename=filename,
+            allowed_extensions=self.ALLOWED_FILE_TYPES,
+        )
+        if not file_info.is_valid:
+            raise InvalidMessageContentError(f"文件内容与类型不匹配: {file_info.validation_message}")
+
         # 上传到 MinIO
         storage_path = f"chat-attachments/{user_id}/{uuid4().hex}.{ext}"
         content_type = self.minio_client._get_content_type(filename)

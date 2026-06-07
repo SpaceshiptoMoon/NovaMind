@@ -657,7 +657,7 @@ class DeepResearchService:
             return validated_tasks
         except (json.JSONDecodeError, ValueError) as e:
             # 降级：生成默认任务
-            logger.warning("LLM 任务分解 JSON 解析失败，使用默认任务", error=str(e))
+            self.logger.warning("LLM 任务分解 JSON 解析失败，使用默认任务", error=str(e))
             return [
                 {
                     "task_id": f"task_{i+1}",

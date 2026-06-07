@@ -30,6 +30,30 @@ const router = createRouter({
         },
       ],
     },
+    {
+      path: '/forgot-password',
+      component: AuthLayout,
+      meta: { requiresAuth: false, title: '忘记密码' },
+      children: [
+        {
+          path: '',
+          name: 'ForgotPassword',
+          component: () => import('@/views/auth/ForgotPasswordView.vue'),
+        },
+      ],
+    },
+    {
+      path: '/reset-password',
+      component: AuthLayout,
+      meta: { requiresAuth: false, title: '重置密码' },
+      children: [
+        {
+          path: '',
+          name: 'ResetPassword',
+          component: () => import('@/views/auth/ResetPasswordView.vue'),
+        },
+      ],
+    },
 
     // 主应用路由（使用 MainLayout，需要登录）
     {
@@ -48,6 +72,18 @@ const router = createRouter({
           name: 'Profile',
           component: () => import('@/views/user/UserProfileView.vue'),
           meta: { title: '个人信息' },
+        },
+        {
+          path: 'notifications',
+          name: 'Notifications',
+          component: () => import('@/views/user/NotificationView.vue'),
+          meta: { title: '通知中心' },
+        },
+        {
+          path: 'change-password',
+          name: 'ChangePassword',
+          component: () => import('@/views/user/ChangePasswordView.vue'),
+          meta: { title: '修改密码' },
         },
         {
           path: 'settings/models',

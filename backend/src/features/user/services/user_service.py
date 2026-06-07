@@ -218,6 +218,7 @@ class UserService:
                     "refresh_token": refresh_token,
                     "token_type": "bearer",
                     "expires_in": config.security.access_token_expire_minutes * 60,
+                    "must_change_password": user.must_change_password,
                     "user": {
                         "id": user.id,
                         "username": user.username,
@@ -340,6 +341,11 @@ class UserService:
             success, new_status = await self.user_repository.toggle_user_status(user_id)
             if success:
                 status_text = "停用" if new_status == UserStatus.INACTIVE else "激活"
+                # 停用时将用户所有 Token 纳入黑名单，激活时清除黑名单
+                if new_status == UserStatus.INACTIVE:
+                    await AuthService.blacklist_all_user_tokens(user_id)
+                else:
+                    await AuthService.clear_user_blacklist(user_id)
                 self.logger.info("用户状态切换成功", user_id=user_id, new_status=new_status, status_text=status_text)
             return success, new_status
         except UserError:
@@ -360,6 +366,8 @@ class UserService:
         try:
             success = await self.user_repository.soft_delete(user_id)
             if success:
+                # 将用户所有 Token 纳入黑名单，使其立即失效
+                await AuthService.blacklist_all_user_tokens(user_id)
                 self.logger.info("用户软删除成功", user_id=user_id)
             return success
         except UserError:
@@ -386,3 +394,85 @@ class UserService:
         except Exception as e:
             self.logger.error("检查用户是否存在失败", username=username, error=str(e))
             raise UserOperationError(f"检查用户是否存在失败: {str(e)}")
+
+    async def admin_reset_password(self, user_id: int) -> tuple[str, int]:
+        """
+        管理员重置用户密码，生成临时密码
+
+        Args:
+            user_id: 用户 ID
+
+        Returns:
+            (临时密码, user_id)
+
+        Raises:
+            UserNotFoundError: 用户不存在
+        """
+        import secrets
+        from src.core.auth.hashing import get_password_hash_async
+
+        user = await self.user_repository.get_user_by_id(user_id, use_cache=False)
+        if not user:
+            raise UserNotFoundError(f"用户 {user_id} 不存在")
+
+        # 生成 16 位临时密码
+        temp_password = secrets.token_urlsafe(12)
+        hashed = await get_password_hash_async(temp_password)
+
+        # 更新密码 + 设置强制改密标记
+        update_data = UserUpdate(password=hashed)
+        user = await self.user_repository.update_user(user_id, update_data)
+
+        # 直接设置 must_change_password（绕过白名单）
+        from sqlalchemy import update
+        async with self.user_repository.db.begin_nested():
+            stmt = update(UserModel).where(UserModel.id == user_id).values(must_change_password=True)
+            await self.user_repository.db.execute(stmt)
+
+        # 黑名单所有 Token，强制重新登录
+        await AuthService.blacklist_all_user_tokens(user_id)
+
+        self.logger.info("管理员已重置用户密码", user_id=user_id)
+        return temp_password, user_id
+
+    async def change_password(
+        self, user_id: int, old_password: str, new_password: str
+    ) -> bool:
+        """
+        用户修改密码
+
+        Args:
+            user_id: 用户 ID
+            old_password: 当前密码
+            new_password: 新密码
+
+        Returns:
+            是否修改成功
+
+        Raises:
+            AuthenticationError: 当前密码错误
+            UserNotFoundError: 用户不存在
+        """
+        from src.core.auth.hashing import verify_password_async, get_password_hash_async
+
+        user = await self.user_repository.get_user_by_id(user_id, use_cache=False)
+        if not user:
+            raise UserNotFoundError(f"用户 {user_id} 不存在")
+
+        # 验证旧密码
+        if not await verify_password_async(old_password, user.password_hash):
+            raise AuthenticationError("当前密码错误")
+
+        # 哈希新密码
+        hashed = await get_password_hash_async(new_password)
+        update_data = UserUpdate(password=hashed)
+        await self.user_repository.update_user(user_id, update_data)
+
+        # 清除强制改密标记
+        from sqlalchemy import update
+        async with self.user_repository.db.begin_nested():
+            stmt = update(UserModel).where(UserModel.id == user_id).values(must_change_password=False)
+            await self.user_repository.db.execute(stmt)
+
+        self.logger.info("用户已修改密码", user_id=user_id)
+        return True

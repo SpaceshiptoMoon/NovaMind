@@ -175,3 +175,65 @@ async def clear_cancel_flag(document_id: int) -> None:
     raw_client = redis.redis_client
     await raw_client.delete(f"{CANCEL_KEY_PREFIX}{document_id}")
     logger.debug("已清除文档取消标记", document_id=document_id)
+
+
+# ========== 简历管道任务追踪 ==========
+
+RESUME_TRACKER_KEY = "resume_task_tracker"
+RESUME_CANCEL_KEY_PREFIX = "resume_cancel:"
+
+
+async def bind_job_to_resume(session_id: str, job_id: str) -> None:
+    """建立 session_id → job_id 映射（简历管道）"""
+    redis = await _get_redis()
+    await redis.hset(RESUME_TRACKER_KEY, mapping={str(session_id): job_id})
+    await redis.expire(RESUME_TRACKER_KEY, TRACKER_TTL)
+    logger.debug("简历任务追踪：绑定映射", session_id=session_id, job_id=job_id)
+
+
+async def get_job_id_for_resume(session_id: str) -> Optional[str]:
+    """获取简历管道的 arq job_id"""
+    redis = await _get_redis()
+    raw_client = redis.redis_client
+    job_id = await raw_client.hget(RESUME_TRACKER_KEY, str(session_id))
+    if job_id is None:
+        return None
+    if isinstance(job_id, bytes):
+        return job_id.decode("utf-8")
+    return str(job_id)
+
+
+async def unbind_resume_job(session_id: str) -> None:
+    """移除简历管道 session_id → job_id 映射"""
+    redis = await _get_redis()
+    raw_client = redis.redis_client
+    await raw_client.hdel(RESUME_TRACKER_KEY, str(session_id))
+    logger.debug("简历任务追踪：移除映射", session_id=session_id)
+
+
+async def mark_resume_cancelled(session_id: str) -> None:
+    """设置简历管道取消标记"""
+    redis = await _get_redis()
+    raw_client = redis.redis_client
+    await raw_client.setex(
+        f"{RESUME_CANCEL_KEY_PREFIX}{session_id}",
+        CANCEL_KEY_TTL,
+        "1",
+    )
+    logger.info("已设置简历取消标记", session_id=session_id)
+
+
+async def is_resume_cancelled(session_id: str) -> bool:
+    """检查简历管道是否被标记为取消"""
+    redis = await _get_redis()
+    raw_client = redis.redis_client
+    val = await raw_client.get(f"{RESUME_CANCEL_KEY_PREFIX}{session_id}")
+    return val is not None
+
+
+async def clear_resume_cancel_flag(session_id: str) -> None:
+    """清除简历管道取消标记"""
+    redis = await _get_redis()
+    raw_client = redis.redis_client
+    await raw_client.delete(f"{RESUME_CANCEL_KEY_PREFIX}{session_id}")
+    logger.debug("已清除简历取消标记", session_id=session_id)

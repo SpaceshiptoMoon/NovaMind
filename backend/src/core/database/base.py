@@ -2,11 +2,14 @@ import datetime
 import uuid
 from decimal import Decimal
 from enum import Enum
-from sqlalchemy import Column, DateTime
+from sqlalchemy import Column, DateTime, text
 from sqlalchemy.orm import DeclarativeBase, declared_attr
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from src.shared.utils.time_utils import now_china
+from src.core.middleware.structured_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -66,3 +69,33 @@ async def create_tables(engine: AsyncEngine) -> None:
     """创建所有数据库表"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+
+async def ensure_fulltext_indexes(engine: AsyncEngine) -> None:
+    """确保 FULLTEXT 索引存在（ngram 分词，用于中文全文检索）"""
+    async with engine.begin() as conn:
+        try:
+            result = await conn.execute(
+                text(
+                    "SELECT 1 FROM information_schema.statistics "
+                    "WHERE table_schema = DATABASE() "
+                    "AND table_name = 'skill_definitions' "
+                    "AND index_name = 'ft_skill_search' LIMIT 1"
+                )
+            )
+            if result.first():
+                return
+
+            await conn.execute(
+                text(
+                    "ALTER TABLE skill_definitions "
+                    "ADD FULLTEXT INDEX ft_skill_search "
+                    "(name, display_name, description) WITH PARSER ngram"
+                )
+            )
+            logger.info("FULLTEXT 索引 ft_skill_search 创建成功（ngram 分词）")
+        except Exception:
+            logger.warning(
+                "FULLTEXT 索引创建失败，技能搜索将使用 ILIKE 降级方案。"
+                "请确认 MySQL 8.0+ 且已启用 ngram parser。"
+            )

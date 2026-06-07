@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from typing import Optional, Dict, Any
+import time
 
 from src.features.user.models.user import User, UserStatus
 from src.features.user.schemas.user_schema import UserUpdate
@@ -397,6 +398,11 @@ class UserRepository:
 
         # 调用模型的软删除方法
         user.soft_delete()
+
+        # 追加后缀防止 username/email 冲突，允许新用户注册同名账号
+        timestamp = int(time.time())
+        user.username = f"{user.username}_deleted_{timestamp}"
+        user.email = f"{user.email}_deleted_{timestamp}"
 
         async with self.db.begin_nested():
             self.db.add(user)
