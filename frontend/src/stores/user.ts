@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
+import { useRouter } from 'vue-router'
 import { request, tokenManager } from '@/api'
 import type { User, LoginResponse } from '@/api/types'
 
@@ -69,6 +70,13 @@ export const useUserStore = defineStore('user', () => {
       })
       setToken(data.access_token, data.refresh_token)
       await fetchProfile()
+
+      // 检查是否需要强制修改密码
+      if (data.must_change_password) {
+        const router = useRouter()
+        router.push('/home/change-password?forced=1')
+      }
+
       return data
     } finally {
       loading.value = false

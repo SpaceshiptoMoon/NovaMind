@@ -24,6 +24,7 @@ export interface LoginResponse {
   refresh_token: string
   token_type: string
   expires_in: number
+  must_change_password?: boolean
 }
 
 // ===================== 用户相关 =====================
@@ -1256,4 +1257,37 @@ export interface SkillAISearchResponse {
   offset: number
   explanation: string
   ai_query: SkillAISearchParsedQuery
+}
+
+// ===================== 通知相关 =====================
+
+export interface Notification {
+  id: number
+  user_id: number
+  type: string
+  title: string
+  content: string
+  link: string | null
+  extra_data: Record<string, unknown> | null
+  is_read: boolean
+  read_at: string | null
+  created_at: string
+}
+
+export interface NotificationListResponse {
+  items: Notification[]
+  total: number
+  unread_count: number
+}
+
+export interface UnreadCountResponse {
+  unread_count: number
+}
+
+export interface NotificationPreference {
+  id: number
+  user_id: number
+  email_enabled: boolean
+  in_app_enabled: boolean
+  types_enabled: string[] | null
 }

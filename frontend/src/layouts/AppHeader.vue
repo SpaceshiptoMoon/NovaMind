@@ -59,6 +59,42 @@
     </nav>
 
     <div class="header-right">
+      <!-- 通知铃铛 -->
+      <el-popover
+        placement="bottom-end"
+        :width="360"
+        trigger="click"
+        @show="loadNotifications"
+      >
+        <template #reference>
+          <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99" class="notification-badge">
+            <el-icon :size="20" class="notification-bell"><Bell /></el-icon>
+          </el-badge>
+        </template>
+        <div class="notification-panel">
+          <div class="notification-header">
+            <span class="notification-title">通知</span>
+            <el-button v-if="unreadCount > 0" link type="primary" size="small" @click="handleMarkAllRead">全部已读</el-button>
+          </div>
+          <div v-if="notifications.length === 0" class="notification-empty">暂无通知</div>
+          <div v-else class="notification-list">
+            <div
+              v-for="n in notifications"
+              :key="n.id"
+              :class="['notification-item', { unread: !n.is_read }]"
+              @click="handleNotificationClick(n)"
+            >
+              <div class="notification-item-title">{{ n.title }}</div>
+              <div class="notification-item-content">{{ n.content }}</div>
+              <div class="notification-item-time">{{ formatTime(n.created_at) }}</div>
+            </div>
+          </div>
+          <div v-if="notifications.length > 0" class="notification-footer">
+            <el-button link type="primary" @click="router.push('/home/notifications')">查看全部</el-button>
+          </div>
+        </div>
+      </el-popover>
+
       <el-dropdown trigger="click" @command="handleCommand">
         <div class="user-trigger">
           <el-avatar :size="32" class="user-avatar">
@@ -84,21 +120,98 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import {
   User,
   SwitchButton,
   Cpu,
+  Bell,
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { notificationApi } from '@/api/notification'
+import type { Notification } from '@/api/types'
 import UnicornIcon from '@/components/common/UnicornIcon.vue'
 import NavIcon from '@/components/common/NavIcon.vue'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+
+// ==================== 通知相关 ====================
+const unreadCount = ref(0)
+const notifications = ref<Notification[]>([])
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+async function fetchUnreadCount() {
+  try {
+    const res = await notificationApi.getUnreadCount()
+    unreadCount.value = res.unread_count
+  } catch {
+    // 静默处理
+  }
+}
+
+async function loadNotifications() {
+  try {
+    const res = await notificationApi.getNotifications({ limit: 5, unread_only: false })
+    notifications.value = res.items
+    unreadCount.value = res.unread_count
+  } catch {
+    // 静默处理
+  }
+}
+
+async function handleMarkAllRead() {
+  try {
+    await notificationApi.markAllRead()
+    await loadNotifications()
+  } catch {
+    ElMessage.error('操作失败')
+  }
+}
+
+async function handleNotificationClick(n: Notification) {
+  if (!n.is_read) {
+    try {
+      await notificationApi.markRead(n.id)
+      n.is_read = true
+      unreadCount.value = Math.max(0, unreadCount.value - 1)
+    } catch {
+      // 静默处理
+    }
+  }
+  if (n.link) {
+    router.push(n.link)
+  }
+}
+
+function formatTime(dateStr: string): string {
+  const d = new Date(dateStr)
+  const now = new Date()
+  const diff = now.getTime() - d.getTime()
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return '刚刚'
+  if (minutes < 60) return `${minutes}分钟前`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}小时前`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}天前`
+  return d.toLocaleDateString()
+}
+
+onMounted(() => {
+  fetchUnreadCount()
+  pollTimer = setInterval(fetchUnreadCount, 30000)
+})
+
+onUnmounted(() => {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+})
 
 function isNavActive(path: string): boolean {
   if (path === '/home') return route.path === '/home'
@@ -233,5 +346,94 @@ const handleCommand = async (command: string) => {
   font-size: var(--text-sm);
   color: var(--color-text);
   font-weight: var(--weight-medium);
+}
+
+/* ==================== 通知铃铛 ==================== */
+.notification-badge {
+  margin-right: var(--space-4);
+  cursor: pointer;
+}
+
+.notification-bell {
+  color: var(--color-text-secondary);
+  transition: color var(--transition-fast);
+}
+
+.notification-bell:hover {
+  color: var(--color-text);
+}
+
+.notification-panel {
+  margin: -12px;
+}
+
+.notification-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.notification-title {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.notification-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.notification-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.notification-item {
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  border-bottom: 1px solid var(--color-border-lighter, #f5f5f5);
+}
+
+.notification-item:hover {
+  background: var(--color-bg-hover);
+}
+
+.notification-item.unread {
+  background: var(--color-primary-muted, rgba(64, 158, 255, 0.06));
+}
+
+.notification-item-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+  margin-bottom: 4px;
+}
+
+.notification-item-content {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.notification-item-time {
+  font-size: var(--text-xs);
+  color: var(--color-text-placeholder, #c0c4cc);
+  margin-top: 4px;
+}
+
+.notification-footer {
+  padding: 8px 16px;
+  text-align: center;
+  border-top: 1px solid var(--color-border-light);
 }
 </style>

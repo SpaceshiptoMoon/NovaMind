@@ -205,6 +205,8 @@ class SkillMarketplaceService:
             raise SkillReviewRejectedError("安全审查未通过，请修改后重新上传")
         if skill.review_status == ReviewStatus.SUSPICIOUS:
             raise SkillReviewRejectedError("技能待人工审核，请等待管理员审核")
+        if skill.review_status == ReviewStatus.PENDING:
+            raise SkillReviewRejectedError("技能正在安全审查中，请等待审核完成后再发布")
 
         skill = await self.skill_repo.update(
             skill_id,

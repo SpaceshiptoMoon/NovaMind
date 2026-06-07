@@ -2,13 +2,13 @@
 
 ## 一、项目介绍
 
-**NovaMind** — 开源智能知识库系统。FastAPI (Python 3.12) 后端 + Vue 3 (TypeScript) 前端。支持文档管理、向量检索、多模型 Q&A、深度研究、知识库评估、AI Agent、技能市场、简历挖掘。
+**NovaMind** — 开源智能知识库系统。FastAPI (Python 3.12+) 后端 + Vue 3 (TypeScript) 前端。支持文档管理、向量检索、多模型 Q&A、深度研究、知识库评估、AI Agent、技能市场、简历挖掘。
 
 ### 技术栈
 
 | 层 | 技术 |
 |---|---|
-| 后端 | Python 3.12 + FastAPI + SQLAlchemy 2.0 (async) + Pydantic v2 |
+| 后端 | Python 3.12+ + FastAPI + SQLAlchemy 2.0 (async) + Pydantic v2 |
 | 前端 | Vue 3 + TypeScript + Pinia 3 + Element Plus + Vite |
 | 数据库 | MySQL 8.0 + Elasticsearch 8.15 + Redis 7 |
 | 存储 | MinIO (文档/附件) |
@@ -23,15 +23,24 @@ intelligent/
 │   ├── core/            # 基础设施：app工厂、数据库、认证、安全、中间件
 │   ├── features/        # 8 个业务模块 (user/knowledge_space/qa/deep_research/evaluation/agent/skill/app)
 │   ├── setting/         # YAML 多层配置
-│   └── shared/          # AI模型抽象、缓存、存储、文档处理、Prompt模板
+│   └── shared/          # AI模型抽象、缓存、存储、文档处理、消息队列、Prompt模板
 ├── frontend/src/
 │   ├── api/             # 14 个 API 模块 + Axios + SSE 客户端
 │   ├── stores/          # 6 个 Pinia Store
 │   ├── views/           # 页面视图 (按域组织)
-│   ├── layouts/         # Auth / Main / Workspace 三层布局
+│   ├── layouts/         # Auth / Main / Workspace 三层布局 + AppHeader
 │   ├── components/      # 12 个通用组件
-│   └── router/          # 路由定义 + 守卫
-└── docker/              # Dockerfile、nginx.conf、supervisord.conf
+│   ├── router/          # 路由定义 + 守卫
+│   ├── types/           # TypeScript 类型定义 + RouteMeta 扩展
+│   ├── utils/           # 工具函数 (markdown/document/format)
+│   └── assets/          # CSS 样式
+├── docker/              # Dockerfile、nginx.conf、supervisord.conf
+├── assets/              # 项目静态资源
+├── logs/                # 运行日志
+├── deploy.sh            # Linux 部署脚本
+├── deploy.ps1           # Windows 部署脚本
+├── docker-compose.yml   # Docker Compose 编排
+└── 项目结构导航.md       # 详细项目结构导航
 ```
 
 > 详细的项目结构、所有文件路径、API 端点和前端路由请参考 [项目结构导航.md](项目结构导航.md)。
@@ -55,7 +64,7 @@ repository/   → 数据访问 (SQLAlchemy async)
 | 模块 | 后端路由前缀 | 前端页面路由 |
 |------|-------------|-------------|
 | user | `/api/v1/user` | `/login`, `/home/profile`, `/home/settings/models`, `/home/admin/users` |
-| knowledge_space | `/api/v1/spaces` | `/home/spaces`, `/home/spaces/:id/kbs/:kbId`, `.../search`, `.../evaluation` |
+| knowledge_space | `/api/v1/spaces` | `/home/spaces`, `/home/spaces/:id/knowledge-bases`, `.../search`, `.../evaluation` |
 | qa | `/api/v1/ai-chat`, `/api/v1/qa` | `/home/workspace/chat` |
 | deep_research | `/api/v1/spaces/{id}/deep-research` | `/home/workspace/research/:spaceId` |
 | agent | `/api/v1/agent` | `/home/workspace/agents`, `/home/workspace/agents/:agentId/chat` |

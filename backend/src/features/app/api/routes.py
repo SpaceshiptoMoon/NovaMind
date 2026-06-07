@@ -1,7 +1,6 @@
 """
 简历挖掘 API 路由
 """
-import asyncio
 import json
 import os
 from typing import Optional
@@ -12,7 +11,7 @@ from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.features.knowledge_space.api.dependencies import get_current_user_id
-from src.core.database.database import get_db, get_db_session
+from src.core.database.database import get_db
 from src.features.app.api.dependencies import _get_model_config_service
 from src.features.app.api.exceptions import ResumeSessionNotFoundError, ResumeParseError, InvalidFileTypeError, InvalidConfigError, FileSizeExceededError
 from src.features.app.models.resume import ResumeSessionStatus
@@ -20,9 +19,6 @@ from src.features.app.repository.resume_repository import ResumeSessionRepositor
 from src.features.app.schemas.resume_schema import (
     ResumeSessionResponse, ResumeSessionListResponse, StructuredResume,
 )
-from src.features.app.services.resume_parser import ResumeParser
-from src.features.app.services.resume_analyzer import ResumeAnalyzer
-from src.features.app.services.resume_probing import AutoProbingEngine
 from src.features.user.services.model_config_service import ModelConfigService
 from src.shared.clients import get_minio_client
 from src.core.middleware.structured_logging import get_logger
@@ -103,113 +99,18 @@ async def upload_resume(
         logger.warning("原始文件上传 MinIO 失败", session_id=session_id, error=str(e))
         cfg["file_upload_warning"] = "原始文件存储失败，但不影响解析"
 
-    # 后台异步执行 S1-S12 全流程
-    _user_id = user_id
-    _llm_model = model
-    _jd_text = jd_text or None
-    _cfg = cfg
-    _file_bytes = file_bytes
-    _filename = filename
+    # 后台异步执行 S1-S12 全流程（通过 arq 队列，支持重试和恢复）
+    from src.shared.mq import enqueue_process_resume
 
-    async def _run_pipeline():
-        """后台执行完整 pipeline，使用独立的 db session 和 service"""
-        try:
-            async with get_db_session() as bg_db:
-                bg_model_config_service = ModelConfigService(bg_db)
-                llm = await bg_model_config_service.get_llm_client_by_model(_user_id, _llm_model)
-                bg_repo = ResumeSessionRepository(bg_db)
-
-                # S1-S4: 解析简历
-                parser = ResumeParser(llm)
-                structured = await parser.parse(_file_bytes, _filename)
-                logger.info("S1-S4 简历解析完成", session_id=session_id)
-
-                await bg_repo.update(session_id, {
-                    "structured_resume": structured.model_dump(),
-                    "status": ResumeSessionStatus.ANALYZING,
-                })
-                await bg_db.commit()
-
-                # S5-S9: 分析报告
-                analyzer = ResumeAnalyzer(llm)
-                result = await analyzer.analyze(structured, _jd_text, _cfg)
-                logger.info("S5-S9 分析报告完成", session_id=session_id)
-
-                # 存中间报告到 MinIO
-                intermediate_report = result["md_report"]
-                try:
-                    bg_minio = await get_minio_client()
-                    report_path = f"resume/{session_id}/report.md"
-                    await bg_minio.upload_file(report_path, intermediate_report.encode("utf-8"), content_type="text/markdown")
-                except Exception as e:
-                    logger.warning("中间报告上传 MinIO 失败", session_id=session_id, error=str(e))
-                    report_path = None
-
-                await bg_repo.update(session_id, {
-                    "md_report_url": report_path,
-                    "status": ResumeSessionStatus.PROBING,
-                })
-                await bg_db.commit()
-
-                # S10: 自动追问
-                probing_plan = result["probing_plan"]
-                jd_analysis_obj = result["jd_analysis"]
-                prefix_knowledge_objs = result["prefix_knowledge"]
-                work_units = probing_plan.work_units
-
-                engine = AutoProbingEngine(llm, user_id=_user_id, bg_db=bg_db)
-                qa_records = await engine.probe_all(
-                    session_id, structured, probing_plan, jd_analysis_obj, bg_db,
-                )
-                logger.info("S10 自动追问完成", session_id=session_id, kp_count=len(qa_records))
-
-                # S11: 面试准备建议
-                preparation_advice = await engine.generate_evaluation(qa_records, structured)
-                logger.info("S11 面试准备建议完成", session_id=session_id)
-
-                # S11-NEW: 简历优化建议
-                resume_advice = await engine.generate_resume_advice(qa_records, structured)
-                logger.info("S11-NEW 简历优化建议完成", session_id=session_id)
-
-                # S12: 组装最终报告（三段式）
-                final_report = analyzer._assemble_final_md_report(
-                    structured, jd_analysis_obj, probing_plan,
-                    work_units, prefix_knowledge_objs,
-                    qa_records, preparation_advice, resume_advice,
-                )
-
-                # 存最终报告到 MinIO
-                final_report_path = f"resume/{session_id}/report.md"
-                minio_upload_ok = True
-                try:
-                    bg_minio = await get_minio_client()
-                    await bg_minio.upload_file(final_report_path, final_report.encode("utf-8"), content_type="text/markdown")
-                except Exception as e:
-                    minio_upload_ok = False
-                    logger.warning("最终报告上传 MinIO 失败", session_id=session_id, error=str(e))
-
-                update_data = {"status": ResumeSessionStatus.COMPLETED}
-                if minio_upload_ok:
-                    update_data["md_report_url"] = final_report_path
-                await bg_repo.update(session_id, update_data)
-                await bg_db.commit()
-                logger.info("Pipeline 全部完成", session_id=session_id, minio_upload_ok=minio_upload_ok)
-
-        except Exception as e:
-            logger.error("简历 pipeline 后台任务失败", session_id=session_id, error=str(e))
-            try:
-                async with get_db_session() as bg_db:
-                    bg_repo = ResumeSessionRepository(bg_db)
-                    await bg_repo.update(session_id, {
-                        "status": ResumeSessionStatus.FAILED,
-                        "error_message": str(e)[:2000],
-                    })
-                    await bg_db.commit()
-            except Exception as db_err:
-                logger.error("pipeline 失败后状态更新也失败", session_id=session_id, error=str(db_err))
-
-    task = asyncio.create_task(_run_pipeline())
-    task.add_done_callback(lambda t: t.exception() if not t.cancelled() and t.exception() else None)
+    await enqueue_process_resume(
+        session_id=str(session_id),
+        user_id=user_id,
+        llm_model=model,
+        jd_text=jd_text or None,
+        config=cfg,
+        file_bytes=file_bytes,
+        filename=filename,
+    )
 
     # 立即返回会话（status=parsing）
     session = await session_repo.get_by_id(session_id)
@@ -325,6 +226,32 @@ async def delete_resume_session(
     await repo.delete_by_id(session_id)
     await db.commit()
     return {"message": "删除成功"}
+
+
+@router.post("/resume/sessions/{session_id}/cancel")
+async def cancel_resume_session(
+    session_id: str,
+    user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """取消正在处理的简历会话"""
+    from src.shared.mq.task_tracker import mark_resume_cancelled
+
+    repo = ResumeSessionRepository(db)
+    session = await repo.get_by_id(session_id)
+    if not session or session.user_id != user_id:
+        raise ResumeSessionNotFoundError(session_id)
+
+    # 只有正在处理中的会话才能取消
+    if session.status not in (
+        ResumeSessionStatus.PARSING,
+        ResumeSessionStatus.ANALYZING,
+        ResumeSessionStatus.PROBING,
+    ):
+        raise ResumeParseError("当前会话状态不允许取消")
+
+    await mark_resume_cancelled(session_id)
+    return {"message": "取消请求已发送"}
 
 
 # ==================== Helper ====================

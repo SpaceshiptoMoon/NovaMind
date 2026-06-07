@@ -3,7 +3,7 @@
 """
 from typing import List, Optional, Tuple
 
-from sqlalchemy import select, func, delete, update, or_, and_, case
+from sqlalchemy import select, func, delete, update, or_, and_, case, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -107,6 +107,14 @@ class SkillRepository:
         tags: Optional[List[str]] = None, sort: str = "newest",
         limit: int = 20, offset: int = 0,
     ) -> Tuple[List[SkillDefinition], int]:
+        """技能广场搜索
+
+        搜索策略：
+        1. FULLTEXT (ngram 分词) 布尔模式 → 索引扫描，支持中文分词
+        2. ILIKE 逐词 OR 匹配 → FULLTEXT 不可用时的降级
+        3. 字段加权：name ×3, display_name ×2, description ×1
+        4. 标签加分：匹配的标签数计入相关性，不再做硬过滤
+        """
         base = select(SkillDefinition).where(
             SkillDefinition.deleted_at.is_(None),
             SkillDefinition.visibility == SkillVisibility.PUBLIC,
@@ -116,44 +124,90 @@ class SkillRepository:
 
         tokens: list = []
         relevance_expr = None
+
         if keyword:
-            # 拆分关键词为独立 token，逐词 OR 匹配，提升召回率
-            # 例如 "简历 解析 python" → 3个token独立匹配，命中任意一个即返回
             tokens = [t.strip() for t in keyword.split() if t.strip()]
             if tokens:
-                # 构建逐词 OR 条件：每个 token 在三个字段中任一出现即匹配
-                token_conditions = []
-                relevance_parts = []
-                for token in tokens:
-                    pattern = f"%{token}%"
-                    token_hit = or_(
-                        SkillDefinition.name.ilike(pattern),
-                        SkillDefinition.display_name.ilike(pattern),
-                        SkillDefinition.description.ilike(pattern),
+                # 字段权重配置
+                FIELD_WEIGHTS = {"name": 3, "display_name": 2, "description": 1}
+
+                # 尝试 FULLTEXT（需要 ngram 索引）
+                try:
+                    # 布尔模式 WHERE：每个 token 前加 + 表示必须包含
+                    ft_tokens = " ".join(
+                        f"+{_sanitize_ft_token(t)}" for t in tokens
                     )
-                    token_conditions.append(token_hit)
-                    # 命中该 token 得 1 分
-                    relevance_parts.append(case((token_hit, 1), else_=0))
+                    base = base.where(
+                        text(
+                            "MATCH(skill_definitions.name, "
+                            "skill_definitions.display_name, "
+                            "skill_definitions.description) "
+                            "AGAINST (:ft IN BOOLEAN MODE)"
+                        ).bindparams(ft=ft_tokens)
+                    )
 
-                base = base.where(or_(*token_conditions))
+                    # FULLTEXT 相关性评分（自然语言模式）
+                    ft_score = text(
+                        "MATCH(skill_definitions.name, "
+                        "skill_definitions.display_name, "
+                        "skill_definitions.description) "
+                        "AGAINST (:kw)"
+                    ).bindparams(kw=keyword)
 
-                # 加相关性分数列：命中 token 越多分数越高
-                relevance_expr = sum(relevance_parts).label("_relevance")
-                base = base.add_columns(relevance_expr)
+                    # 字段命中加分（name 命中权重最高）
+                    name_bonus = _build_field_bonus(
+                        SkillDefinition.name, tokens, FIELD_WEIGHTS["name"]
+                    )
+                    display_bonus = _build_field_bonus(
+                        SkillDefinition.display_name, tokens, FIELD_WEIGHTS["display_name"]
+                    )
+                    desc_bonus = _build_field_bonus(
+                        SkillDefinition.description, tokens, FIELD_WEIGHTS["description"]
+                    )
+
+                    relevance_expr = (
+                        ft_score + name_bonus + display_bonus + desc_bonus
+                    ).label("_relevance")
+
+                except Exception:
+                    # FULLTEXT 不可用 → ILIKE 降级
+                    logger.debug("FULLTEXT 不可用，使用 ILIKE 降级搜索")
+                    base, relevance_expr = _build_ilike_relevance(
+                        SkillDefinition, tokens, FIELD_WEIGHTS, base
+                    )
+
         if category:
             base = base.where(SkillDefinition.category == category)
+
+        # 标签：匹配数量越多得分越高（不再做硬 AND 过滤）
         if tags:
-            for tag in tags:
+            tag_bonus = _build_tag_bonus(tags)
+            if tag_bonus is not None:
+                if relevance_expr is not None:
+                    relevance_expr = (relevance_expr + tag_bonus).label("_relevance")
+                else:
+                    relevance_expr = tag_bonus.label("_relevance")
+                # 至少匹配一个标签（OR 逻辑）
+                tag_ors = [
+                    func.json_contains(SkillDefinition.tags, f'"{t}"')
+                    for t in tags
+                ]
                 base = base.where(
                     SkillDefinition.tags.is_not(None),
-                    func.json_contains(SkillDefinition.tags, f'"{tag}"')
+                    or_(*tag_ors),
                 )
 
+        # 统一添加相关性列（避免多次 add_columns 造成重复列）
+        if relevance_expr is not None:
+            base = base.add_columns(relevance_expr)
+
+        # 计数
         count_result = await self.session.execute(
             select(func.count()).select_from(base.subquery())
         )
         total = count_result.scalar() or 0
 
+        # 排序
         order_col = {
             "popular": SkillDefinition.install_count.desc(),
             "rating": SkillDefinition.rating_avg.desc(),
@@ -161,10 +215,10 @@ class SkillRepository:
             "name": SkillDefinition.display_name.asc(),
         }.get(sort, SkillDefinition.created_at.desc())
 
-        # 关键词搜索时优先按相关性排序（命中 token 越多越靠前）
         if relevance_expr is not None:
             result = await self.session.execute(
-                base.order_by(relevance_expr.desc(), order_col).offset(offset).limit(limit)
+                base.order_by(relevance_expr.desc(), order_col)
+                .offset(offset).limit(limit)
             )
         else:
             result = await self.session.execute(
@@ -270,6 +324,75 @@ class SkillRepository:
                 tag_counter[tag] = tag_counter.get(tag, 0) + 1
         sorted_tags = sorted(tag_counter.items(), key=lambda x: -x[1])
         return [tag for tag, _ in sorted_tags[:limit]]
+
+
+# ==================== 搜索辅助函数 ====================
+
+def _sanitize_ft_token(token: str) -> str:
+    """清理 FULLTEXT 特殊字符，保留中文/英文/数字"""
+    return "".join(
+        c for c in token if c.isalnum() or c.isspace() or c in "_-."
+    )
+
+
+def _build_field_bonus(column, tokens: list, weight: int):
+    """构建字段命中加分表达式
+
+    字段中包含任意 token → +weight 分（每个 token 独立计算，取最高命中）
+    """
+    if not tokens:
+        return case((column.isnot(None), 0), else_=0)  # 无 token 不加分
+    # 任一 token 命中该字段就得 weight 分
+    conditions = [column.ilike(f"%{t}%") for t in tokens]
+    return case(
+        (or_(*conditions), weight),
+        else_=0,
+    )
+
+
+def _build_tag_bonus(tags: list):
+    """构建标签加分表达式：匹配的标签数 × 加权系数"""
+    if not tags:
+        return None
+    return sum(
+        case(
+            (func.json_contains(SkillDefinition.tags, f'"{t}"'), 1),
+            else_=0,
+        )
+        for t in tags
+    ) * 2  # 标签匹配权重 ×2
+
+
+def _build_ilike_relevance(model, tokens: list, weights: dict, base):
+    """ILIKE 降级方案：逐词 OR 匹配 + 字段加权
+
+    Returns: (modified_base, relevance_expr)
+    """
+    token_conditions = []
+    relevance_parts = []
+    for token in tokens:
+        pattern = f"%{token}%"
+        token_hit = or_(
+            model.name.ilike(pattern),
+            model.display_name.ilike(pattern),
+            model.description.ilike(pattern),
+        )
+        token_conditions.append(token_hit)
+        # 基础分：命中 1 个 token 得 1 分
+        hit_score = case((token_hit, 1), else_=0)
+
+        # 字段加权加分
+        field_bonus = (
+            case((model.name.ilike(pattern), weights["name"]), else_=0) +
+            case((model.display_name.ilike(pattern), weights["display_name"]), else_=0) +
+            case((model.description.ilike(pattern), weights["description"]), else_=0)
+        )
+        relevance_parts.append(hit_score + field_bonus)
+
+    return (
+        base.where(or_(*token_conditions)),
+        sum(relevance_parts).label("_relevance"),
+    )
 
 
 class SkillVersionRepository:

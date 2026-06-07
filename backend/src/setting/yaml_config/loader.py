@@ -375,6 +375,19 @@ def create_config_from_dict(data: dict) -> AppConfig:
         queue_name=tq.get("queue_name", "arq:queue"),
     )
 
+    # SMTP 邮件配置
+    from src.setting.yaml_config.config import SmtpConfig
+    smtp = data.get("smtp", {})
+    config.smtp = SmtpConfig(
+        enabled=smtp.get("enabled", False),
+        host=smtp.get("host", ""),
+        port=smtp.get("port", 587),
+        username=smtp.get("username", ""),
+        password=smtp.get("password", ""),
+        from_email=smtp.get("from_email", ""),
+        use_tls=smtp.get("use_tls", True),
+    )
+
     return config
 
 

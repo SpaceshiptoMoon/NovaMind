@@ -1,10 +1,11 @@
 """
 消息队列模块（基于 arq + Redis）
 
-提供文档处理任务的异步队列能力：
+提供文档处理和简历挖掘任务的异步队列能力：
 - 任务入队
 - arq 连接池管理
 - document_id ↔ job_id 追踪
+- resume session_id ↔ job_id 追踪
 """
 from typing import Optional
 
@@ -82,6 +83,56 @@ async def enqueue_process_document(
     logger.info(
         "文档处理任务已入队",
         document_id=document_id,
+        job_id=job_id,
+    )
+    return job_id
+
+
+async def enqueue_process_resume(
+    session_id: str,
+    user_id: int,
+    llm_model: str,
+    jd_text: Optional[str],
+    config: dict,
+    file_bytes: bytes,
+    filename: str,
+) -> str:
+    """
+    将简历挖掘任务入队
+
+    Args:
+        session_id: 简历会话 ID
+        user_id: 用户 ID
+        llm_model: LLM 模型名称
+        jd_text: 岗位描述（可选）
+        config: 配置参数
+        file_bytes: 简历文件内容
+        filename: 文件名
+
+    Returns:
+        job_id: arq 任务 ID
+    """
+    from src.shared.mq.task_tracker import bind_job_to_resume
+
+    pool = await get_arq_pool()
+
+    job = await pool.enqueue_job(
+        "process_resume_task",
+        session_id=session_id,
+        user_id=user_id,
+        llm_model=llm_model,
+        jd_text=jd_text,
+        config=config,
+        file_bytes=file_bytes,
+        filename=filename,
+    )
+
+    job_id = job.job_id
+    await bind_job_to_resume(session_id, job_id)
+
+    logger.info(
+        "简历挖掘任务已入队",
+        session_id=session_id,
         job_id=job_id,
     )
     return job_id

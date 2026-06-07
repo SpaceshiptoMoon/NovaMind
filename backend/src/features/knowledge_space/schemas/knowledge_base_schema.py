@@ -87,6 +87,10 @@ class ParsingConfig(BaseModel):
     ocr_enabled: bool = Field(default=False, description="是否启用 OCR")
     preserve_structure: bool = Field(default=True, description="是否保留文档结构")
     encoding: str = Field(default="utf-8", description="文件编码")
+    vlm_description_enabled: bool = Field(
+        default=False,
+        description="是否启用 VLM 图片描述（多模态空间），开启后上传图片时调用视觉模型生成文本描述，支持 BM25 + 文本向量检索",
+    )
 
 
 # ========== 问题生成 LLM 配置 ==========

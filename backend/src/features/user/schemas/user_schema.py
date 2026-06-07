@@ -207,6 +207,7 @@ class Token(BaseModel):
     token_type: str = Field(default="bearer", description="令牌类型，通常为'bearer'")
     refresh_token: Optional[str] = Field(None, description="刷新令牌，用于获取新的访问令牌")
     expires_in: Optional[int] = Field(None, description="访问令牌过期时间（秒）")
+    must_change_password: Optional[bool] = Field(None, description="是否需要强制修改密码")
 
 
 class TokenRefresh(BaseModel):
@@ -269,3 +270,56 @@ class TokenData(BaseModel):
     status: Optional[int] = Field(default=1, description="状态，1为活跃")
     jti: Optional[str] = Field(None, description="Token 唯一标识符")
     iat: Optional[int] = Field(None, description="Token 签发时间戳")
+
+
+# ==================== 密码重置 Schema ====================
+
+class ChangePasswordRequest(BaseModel):
+    """修改密码请求"""
+    old_password: str = Field(..., min_length=1, max_length=128, description="当前密码")
+    new_password: str = Field(..., min_length=8, max_length=30, description="新密码")
+
+    @field_validator('new_password')
+    @classmethod
+    def validate_new_password(cls, v):
+        """验证新密码强度"""
+        return validate_password_strength(v)
+
+
+class ChangePasswordResponse(BaseModel):
+    """修改密码响应"""
+    message: str = Field(default="密码修改成功", description="响应消息")
+
+
+class AdminResetPasswordResponse(BaseModel):
+    """管理员重置密码响应"""
+    message: str = Field(default="密码已重置", description="响应消息")
+    temp_password: str = Field(..., description="临时密码（请通知用户）")
+    user_id: int = Field(..., description="用户 ID")
+
+
+class ForgotPasswordRequest(BaseModel):
+    """忘记密码请求"""
+    email: EmailStr = Field(..., description="注册邮箱")
+
+
+class ForgotPasswordResponse(BaseModel):
+    """忘记密码响应"""
+    message: str = Field(default="如果该邮箱已注册，您将收到重置链接", description="响应消息")
+
+
+class ResetPasswordRequest(BaseModel):
+    """重置密码请求"""
+    token: str = Field(..., description="重置令牌")
+    new_password: str = Field(..., min_length=8, max_length=30, description="新密码")
+
+    @field_validator('new_password')
+    @classmethod
+    def validate_new_password(cls, v):
+        """验证新密码强度"""
+        return validate_password_strength(v)
+
+
+class ResetPasswordResponse(BaseModel):
+    """重置密码响应"""
+    message: str = Field(default="密码重置成功", description="响应消息")

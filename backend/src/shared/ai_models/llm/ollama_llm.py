@@ -63,6 +63,13 @@ class OllamaLLM(BaseLLM):
         )
         self.default_system_prompt = default_system_prompt
         self._http_client: Optional[httpx.AsyncClient] = None
+        self._http_client_lock: Optional[asyncio.Lock] = None
+
+    def _get_lock(self) -> asyncio.Lock:
+        """延迟创建 Lock，确保在事件循环内初始化"""
+        if self._http_client_lock is None:
+            self._http_client_lock = asyncio.Lock()
+        return self._http_client_lock
 
     async def _get_http_client(self) -> httpx.AsyncClient:
         """获取 HTTP 客户端（延迟初始化）"""

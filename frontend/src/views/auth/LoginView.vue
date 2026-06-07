@@ -94,7 +94,7 @@ const handleLogin = async () => {
 }
 
 function handleForgotPassword() {
-  ElMessage.info('请联系管理员重置密码')
+  router.push('/forgot-password')
 }
 </script>
 

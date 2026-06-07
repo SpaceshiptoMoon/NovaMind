@@ -47,6 +47,9 @@ class PromptTemplate(Enum):
     KB_DEFAULT_QUESTION = "kb_default_question"
     SEARCH_ANSWER = "search_answer"
 
+    # 图片描述（VLM）
+    IMAGE_DESCRIPTION = "image_description"
+
     # ==================== 深度研究相关 ====================
     RESEARCH_ANALYZE_QUERY = "research_analyze_query"
     RESEARCH_DECOMPOSE_TASKS = "research_decompose_tasks"
