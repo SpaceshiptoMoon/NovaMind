@@ -89,7 +89,7 @@ src/
 │   ├── MainLayout.vue             # 主布局: AppHeader + 路由视图
 │   ├── WorkspaceLayout.vue        # 工作区: 可折叠侧边栏 + 频道切换
 │   └── AppHeader.vue              # 顶部导航: Logo + 导航链接 + 用户菜单
-├── components/common/             # 13 个通用组件
+├── components/common/             # 12 个通用组件
 │   ├── MarkdownRenderer.vue       # Markdown 渲染 (marked + highlight.js)
 │   ├── Pagination.vue             # 分页器 (v-model 双向绑定)
 │   ├── StatusTag.vue              # 状态标签 (颜色映射)
@@ -103,8 +103,11 @@ src/
 │   ├── NavIcon.vue                 # 自定义 SVG 导航图标
 │   └── UnicornIcon.vue            # 品牌 Logo
 ├── views/                         # 页面视图 (按域组织)
+│   ├── LandingView.vue            # 着陆页 (无需登录)
+│   ├── HomeView.vue               # 首页仪表盘
+│   ├── ForbiddenView.vue          # 403 无权限页
+│   ├── NotFoundView.vue           # 404 页面未找到
 │   ├── auth/LoginView.vue
-│   ├── HomeView.vue
 │   ├── chat/ChatView.vue
 │   ├── space/                     # SpaceListView, KnowledgeBaseView, DocumentView, ...
 │   ├── research/                  # ResearchView, ResearchHistoryView

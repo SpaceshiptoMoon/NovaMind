@@ -593,3 +593,62 @@ class AuthService:
                 user_id=user_id, error=str(e),
             )
             return True  # fail-close: 异常时拒绝访问
+
+    # ==================== 密码重置 Token ====================
+
+    RESET_TOKEN_PREFIX = "password_reset:"
+    RESET_TOKEN_TTL = 30 * 60  # 30 分钟
+
+    @classmethod
+    async def generate_reset_token(cls, user_id: int) -> str:
+        """
+        生成密码重置 Token，存入 Redis
+
+        Args:
+            user_id: 用户 ID
+
+        Returns:
+            重置 Token 字符串
+        """
+        import secrets
+        token = secrets.token_urlsafe(32)
+        redis_client = await get_redis()
+        await redis_client.setex(
+            f"{cls.RESET_TOKEN_PREFIX}{token}",
+            cls.RESET_TOKEN_TTL,
+            str(user_id),
+        )
+        cls._logger.info("密码重置 Token 已生成", user_id=user_id)
+        return token
+
+    @classmethod
+    async def verify_reset_token(cls, token: str) -> Optional[int]:
+        """
+        验证密码重置 Token
+
+        Args:
+            token: 重置 Token
+
+        Returns:
+            用户 ID 或 None（无效/过期）
+        """
+        redis_client = await get_redis()
+        raw_client = redis_client.redis_client
+        user_id_str = await raw_client.get(f"{cls.RESET_TOKEN_PREFIX}{token}")
+        if user_id_str is None:
+            return None
+        if isinstance(user_id_str, bytes):
+            user_id_str = user_id_str.decode("utf-8")
+        return int(user_id_str)
+
+    @classmethod
+    async def invalidate_reset_token(cls, token: str) -> None:
+        """
+        使密码重置 Token 失效（一次性使用）
+
+        Args:
+            token: 重置 Token
+        """
+        redis_client = await get_redis()
+        raw_client = redis_client.redis_client
+        await raw_client.delete(f"{cls.RESET_TOKEN_PREFIX}{token}")

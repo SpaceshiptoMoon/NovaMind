@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from contextlib import asynccontextmanager
 from typing import Optional
 from urllib.parse import urlparse, urlunparse
@@ -13,6 +14,7 @@ logger = get_logger(__name__)
 _engine = None
 _session_factory = None
 _async_engine_lock: Optional[asyncio.Lock] = None
+_engine_lock = threading.Lock()  # 同步函数使用的线程锁
 
 
 def _get_async_lock() -> asyncio.Lock:
@@ -58,53 +60,57 @@ def _build_db_url(config) -> str:
 
 def get_engine():
     """
-    获取数据库引擎（延迟初始化）
+    获取数据库引擎（延迟初始化，线程安全双重检查锁定）
 
     Returns:
         AsyncEngine 实例
     """
     global _engine
     if _engine is None:
-        config = get_config()
-        db_url = _build_db_url(config)
+        with _engine_lock:
+            if _engine is None:
+                config = get_config()
+                db_url = _build_db_url(config)
 
-        # SSL 配置
-        connect_args = {}
-        ssl_enabled = getattr(config.database, 'ssl', False)
-        if ssl_enabled:
-            connect_args["ssl"] = True
+                # SSL 配置
+                connect_args = {}
+                ssl_enabled = getattr(config.database, 'ssl', False)
+                if ssl_enabled:
+                    connect_args["ssl"] = True
 
-        _engine = create_async_engine(
-            db_url,
-            echo=False,
-            future=True,
-            pool_size=config.database.pool_size,
-            max_overflow=config.database.max_overflow,
-            pool_timeout=config.database.pool_timeout,
-            pool_recycle=config.database.pool_recycle,
-            pool_pre_ping=config.database.pool_pre_ping,
-            connect_args=connect_args,
-        )
-        logger.info("数据库引擎已初始化")
+                _engine = create_async_engine(
+                    db_url,
+                    echo=False,
+                    future=True,
+                    pool_size=config.database.pool_size,
+                    max_overflow=config.database.max_overflow,
+                    pool_timeout=config.database.pool_timeout,
+                    pool_recycle=config.database.pool_recycle,
+                    pool_pre_ping=config.database.pool_pre_ping,
+                    connect_args=connect_args,
+                )
+                logger.info("数据库引擎已初始化")
     return _engine
 
 
 def get_session_factory():
     """
-    获取 Session 工厂（延迟初始化）
+    获取 Session 工厂（延迟初始化，线程安全双重检查锁定）
 
     Returns:
         async_sessionmaker 实例
     """
     global _session_factory
     if _session_factory is None:
-        _session_factory = async_sessionmaker(
-            bind=get_engine(),
-            class_=AsyncSession,
-            autocommit=False,
-            autoflush=False,
-            expire_on_commit=False,
-        )
+        with _engine_lock:
+            if _session_factory is None:
+                _session_factory = async_sessionmaker(
+                    bind=get_engine(),
+                    class_=AsyncSession,
+                    autocommit=False,
+                    autoflush=False,
+                    expire_on_commit=False,
+                )
     return _session_factory
 
 

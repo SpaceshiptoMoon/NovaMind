@@ -80,4 +80,24 @@ export const userApi = {
   deleteModelConfigByModel(modelType: string, model: string) {
     return request.delete<{ message: string }>(`/user/model-configs/by-model/${modelType}/${model}`)
   },
+
+  // 密码管理
+  adminResetPassword(userId: number) {
+    return request.post<{ message: string; temp_password: string; user_id: number }>(`${BASE_URL}/${userId}/reset-password`)
+  },
+  changePassword(oldPassword: string, newPassword: string) {
+    return request.post<{ message: string }>('/user/users/me/change-password', {
+      old_password: oldPassword,
+      new_password: newPassword,
+    })
+  },
+  forgotPassword(email: string) {
+    return request.post<{ message: string }>('/user/auth/forgot-password', { email })
+  },
+  resetPassword(token: string, newPassword: string) {
+    return request.post<{ message: string }>('/user/auth/reset-password', {
+      token,
+      new_password: newPassword,
+    })
+  },
 }

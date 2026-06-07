@@ -49,6 +49,9 @@ class RouterManager:
         # 应用中心路由
         from src.features.app.api.routes import router as app_router
 
+        # 通知模块路由
+        from src.features.notification.api.routes import router as notification_router
+
         self.routers.update({
             "qa": qa_router,
             "ai_chat": ai_chat_router,
@@ -72,6 +75,8 @@ class RouterManager:
             "skills": skill_router,
             # 应用中心
             "apps": app_router,
+            # 通知模块
+            "notifications": notification_router,
         })
 
     def get_router(self, name: str) -> APIRouter:
@@ -113,6 +118,8 @@ class RouterManager:
             "skills": f"{API_V1_PREFIX}/skills",
             # 应用中心
             "apps": f"{API_V1_PREFIX}/apps",
+            # 通知模块
+            "notifications": f"{API_V1_PREFIX}/user",
         }
 
         tag_mapping = {
@@ -137,6 +144,8 @@ class RouterManager:
             "skills": "技能广场",
             # 应用中心
             "apps": "应用中心",
+            # 通知模块
+            "notifications": "通知",
         }
 
         for name, router in self.routers.items():

@@ -302,20 +302,21 @@ class SpaceService:
         # 3. 获取关联知识库列表（在软删除之前，确保查询到未删除的 KB）
         kbs = await self.kb_repo.get_by_space(space_id)
 
-        # 4. 级联软删除：空间、关联知识库、文档
-        for kb in kbs:
-            kb.soft_delete()
-            await self.doc_repo.delete_by_kb(kb.id)
-        await self.space_repo.soft_delete(space_id)
+        # 4. 级联软删除：空间、关联知识库、文档（使用 SAVEPOINT 保证原子性）
+        async with self.db.begin_nested():
+            for kb in kbs:
+                kb.soft_delete()
+                await self.doc_repo.delete_by_kb(kb.id)
+            await self.space_repo.soft_delete(space_id)
 
-        # 4.1 清理成员记录
-        deleted_members = await self.member_repo.delete_by_space(space_id)
-        self.logger.info("清理空间成员记录", space_id=space_id, deleted_count=deleted_members)
+            # 4.1 清理成员记录
+            deleted_members = await self.member_repo.delete_by_space(space_id)
+            self.logger.info("清理空间成员记录", space_id=space_id, deleted_count=deleted_members)
 
-        # 4.2 清理审计日志
-        audit_repo = AuditRepository(self.session)
-        deleted_logs = await audit_repo.delete_by_space(space_id)
-        self.logger.info("清理空间审计日志", space_id=space_id, deleted_count=deleted_logs)
+            # 4.2 清理审计日志
+            audit_repo = AuditRepository(self.session)
+            deleted_logs = await audit_repo.delete_by_space(space_id)
+            self.logger.info("清理空间审计日志", space_id=space_id, deleted_count=deleted_logs)
 
         await self.session.commit()
 

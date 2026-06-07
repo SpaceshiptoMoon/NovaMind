@@ -49,6 +49,15 @@ class User(BaseModel):
         comment="状态: 0-禁用, 1-正常, 2-封禁, 3-已删除"
     )
 
+    # ========== 强制改密标记 ==========
+    must_change_password = Column(
+        Boolean,
+        default=False,
+        nullable=False,
+        server_default="0",
+        comment="是否需要在下次登录时强制修改密码",
+    )
+
     # ========== 登录信息（独立字段便于查询统计） ==========
     last_login_at = Column(DateTime, nullable=True, comment="最后登录时间")
     last_login_ip = Column(String(45), nullable=True, comment="最后登录 IP")  # IPv6 最长 45 字符

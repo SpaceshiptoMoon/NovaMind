@@ -17,6 +17,13 @@ from src.features.user.schemas.user_schema import (
     MessageResponse,
     LogoutResponse,
     LogoutAllSessionsResponse,
+    ChangePasswordRequest,
+    ChangePasswordResponse,
+    AdminResetPasswordResponse,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
 )
 from src.features.user.api.auth import require_admin, require_active_user
 from src.features.user.api.dependencies import get_user_service
@@ -102,6 +109,7 @@ async def login_user(
         token_type=result["token_type"],
         refresh_token=result.get("refresh_token"),
         expires_in=result.get("expires_in"),
+        must_change_password=result.get("must_change_password", False),
     )
 
 
@@ -377,3 +385,138 @@ async def logout_all_sessions(
         message=f"已撤销用户 {user_id} 的所有会话",
         revoked_count=revoked_count,
     )
+
+
+# ==================== 密码重置 ====================
+
+
+@router.post(
+    "/users/{user_id}/reset-password",
+    response_model=AdminResetPasswordResponse,
+    summary="管理员重置用户密码",
+    description="生成临时密码并设置强制改密标志（需要管理员权限）",
+)
+async def admin_reset_password(
+    user_id: Annotated[int, Path(gt=0, description="用户ID")],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+    current_user: dict = Depends(require_admin),
+):
+    """管理员重置用户密码，返回临时密码"""
+    if user_id == current_user.get("user_id"):
+        from src.features.user.api.exceptions import UserOperationError
+        raise UserOperationError("不能重置自己的密码，请使用修改密码功能")
+
+    temp_password, uid = await user_service.admin_reset_password(user_id)
+    return AdminResetPasswordResponse(
+        message="密码已重置，用户下次登录需修改密码",
+        temp_password=temp_password,
+        user_id=uid,
+    )
+
+
+@router.post(
+    "/users/me/change-password",
+    response_model=ChangePasswordResponse,
+    summary="修改密码",
+    description="修改当前用户密码（支持强制改密场景）",
+)
+async def change_password(
+    data: ChangePasswordRequest,
+    user_service: Annotated[UserService, Depends(get_user_service)],
+    current_user: dict = Depends(require_active_user),
+):
+    """用户修改密码"""
+    user_id = current_user.get("user_id")
+    await user_service.change_password(user_id, data.old_password, data.new_password)
+    return ChangePasswordResponse(message="密码修改成功")
+
+
+@router.post(
+    "/auth/forgot-password",
+    response_model=ForgotPasswordResponse,
+    summary="忘记密码",
+    description="通过邮箱请求密码重置链接（无需认证）",
+)
+@get_limiter().limit(RateLimits.REGISTER)
+async def forgot_password(
+    request: Request,
+    data: ForgotPasswordRequest,
+):
+    """
+    忘记密码 — 无论邮箱是否存在都返回成功（防止邮箱枚举）
+    """
+    try:
+        from src.features.user.repository.user_repository import UserRepository
+        from src.core.database.database import get_db_session
+
+        async with get_db_session() as db:
+            repo = UserRepository(db)
+            user = await repo.get_user_by_email(data.email, use_cache=False)
+
+            if user:
+                # 生成重置 Token
+                token = await AuthService.generate_reset_token(user.id)
+
+                # 发送重置邮件（异步，失败不影响响应）
+                try:
+                    from src.features.notification.services.email_service import EmailService
+                    reset_link = f"/reset-password?token={token}"
+                    await EmailService.send_reset_email(data.email, reset_link, user.username)
+                except Exception:
+                    pass  # 邮件发送失败不暴露给用户
+
+    except Exception:
+        pass  # 任何异常都不暴露给用户
+
+    return ForgotPasswordResponse()
+
+
+@router.post(
+    "/auth/reset-password",
+    response_model=ResetPasswordResponse,
+    summary="重置密码",
+    description="通过重置 Token 设置新密码（无需认证）",
+)
+@get_limiter().limit(RateLimits.REGISTER)
+async def reset_password(
+    request: Request,
+    data: ResetPasswordRequest,
+):
+    """通过 Token 重置密码"""
+    # 验证 Token
+    user_id = await AuthService.verify_reset_token(data.token)
+    if user_id is None:
+        from src.features.user.api.exceptions import AuthenticationError
+        raise AuthenticationError("重置链接无效或已过期")
+
+    # 更新密码
+    try:
+        from src.core.auth.hashing import get_password_hash_async
+        from src.features.user.repository.user_repository import UserRepository
+        from src.core.database.database import get_db_session
+
+        async with get_db_session() as db:
+            repo = UserRepository(db)
+            user = await repo.get_user_by_id(user_id, use_cache=False)
+            if not user:
+                from src.features.user.api.exceptions import UserNotFoundError
+                raise UserNotFoundError("用户不存在")
+
+            hashed = await get_password_hash_async(data.new_password)
+            update_data = UserUpdate(password=hashed)
+            await repo.update_user(user_id, update_data)
+            await db.commit()
+
+    except (UserNotFoundError,):
+        raise
+    except Exception as e:
+        from src.features.user.api.exceptions import UserOperationError
+        raise UserOperationError(f"密码重置失败: {str(e)}")
+
+    # 使 Token 失效（一次性使用）
+    await AuthService.invalidate_reset_token(data.token)
+
+    # 黑名单所有 Token，强制重新登录
+    await AuthService.blacklist_all_user_tokens(user_id)
+
+    return ResetPasswordResponse()

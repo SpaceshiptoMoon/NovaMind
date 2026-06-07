@@ -1,7 +1,6 @@
 import asyncio
 
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError, InvalidHashError
 
 ph = PasswordHasher(
     time_cost=3,
@@ -18,7 +17,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
     try:
         return ph.verify(hashed_password, plain_password)
-    except (VerifyMismatchError, InvalidHashError):
+    except Exception:
+        # 认证场景下任何异常（密码不匹配、哈希格式错误、参数不兼容等）都视为验证失败
         return False
 
 

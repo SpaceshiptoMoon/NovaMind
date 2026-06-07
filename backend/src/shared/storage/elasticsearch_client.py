@@ -328,6 +328,57 @@ class ElasticsearchClient:
             chunk_type_filter="image",
         )
 
+    async def image_hybrid_vector_search(
+        self,
+        space_id: int,
+        query_vector: List[float],
+        top_k: int = 10,
+        kb_id: Optional[int] = None,
+        text_vector_weight: float = 0.5,
+        image_vector_weight: float = 0.5,
+    ) -> List[Dict[str, Any]]:
+        """双向量搜索：同时搜索 embedding（描述文本向量）和 image_embedding（图片向量），RRF 融合
+
+        适用于 text_to_image 模式，当图片 chunk 有 VLM 描述时，同时匹配描述文本和图片向量。
+
+        Args:
+            space_id: 空间 ID
+            query_vector: 查询向量
+            top_k: 返回数量
+            kb_id: 知识库 ID（可选过滤）
+            text_vector_weight: 描述文本向量权重（默认 0.5）
+            image_vector_weight: 图片向量权重（默认 0.5）
+
+        Returns:
+            RRF 融合后的搜索结果
+        """
+        fetch_size = top_k * 2  # 多取一些用于融合后截断
+
+        # 并行搜索两个向量字段
+        text_results, image_results = await asyncio.gather(
+            self.vector_search(
+                space_id=space_id,
+                query_vector=query_vector,
+                top_k=fetch_size,
+                kb_id=kb_id,
+                field="embedding",
+                chunk_type_filter="image",
+            ),
+            self.image_vector_search(
+                space_id=space_id,
+                query_vector=query_vector,
+                top_k=fetch_size,
+                kb_id=kb_id,
+            ),
+        )
+
+        return self.rrf_fuse(
+            [text_results, image_results],
+            weights=[text_vector_weight, image_vector_weight],
+            k=60,
+            top_k=top_k,
+        )
+
     async def get_chunk(self, space_id: int, chunk_id: str) -> Optional[Dict[str, Any]]:
         """获取分块"""
         index_name = self.generate_index_name(space_id)

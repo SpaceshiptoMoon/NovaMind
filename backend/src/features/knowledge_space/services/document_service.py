@@ -242,35 +242,38 @@ class DocumentService:
             )
             return soft_deleted
 
-        # 9. 创建文档记录（先获取 document_id）
-        document = await self.doc_repo.create({
-            "space_id": kb.space_id,
-            "kb_id": kb_id,
-            "uploader_id": uploader_id,
-            "filename": filename,
-            "file_type": file_type,
-            "file_size": file_size,
-            "file_hash": file_hash,
-            "storage": {},  # 临时空值，上传后更新
-            "status": DocumentStatus.UPLOADED,
-        })
+        # 9. 创建文档记录 + 上传 MinIO（使用 SAVEPOINT 保证原子性）
+        async with self.db.begin_nested():
+            # 创建文档记录（先获取 document_id）
+            document = await self.doc_repo.create({
+                "space_id": kb.space_id,
+                "kb_id": kb_id,
+                "uploader_id": uploader_id,
+                "filename": filename,
+                "file_type": file_type,
+                "file_size": file_size,
+                "file_hash": file_hash,
+                "storage": {},  # 临时空值，上传后更新
+                "status": DocumentStatus.UPLOADED,
+            })
 
-        # 10. 使用真实 document_id 上传到 MinIO
-        minio_result = await self.minio_client.upload_document(
-            space_id=kb.space_id,
-            kb_id=kb_id,
-            document_id=document.id,
-            file_data=file_content,
-            filename=filename,
-            file_hash=file_hash,
-        )
+            # 使用真实 document_id 上传到 MinIO
+            minio_result = await self.minio_client.upload_document(
+                space_id=kb.space_id,
+                kb_id=kb_id,
+                document_id=document.id,
+                file_data=file_content,
+                filename=filename,
+                file_hash=file_hash,
+            )
 
-        # 11. 更新文档记录中的存储信息
-        document.set_minio_info(
-            bucket=minio_result["bucket"],
-            object_name=minio_result["object_name"],
-            etag=minio_result.get("etag"),
-        )
+            # 更新文档记录中的存储信息
+            document.set_minio_info(
+                bucket=minio_result["bucket"],
+                object_name=minio_result["object_name"],
+                etag=minio_result.get("etag"),
+            )
+
         await self.session.commit()
 
         self.logger.info(
@@ -1051,7 +1054,12 @@ async def _process_image_document_static(
     session,
     _logger,
 ):
-    """处理图片类型文档：生成多模态嵌入向量并索引到 ES"""
+    """处理图片类型文档：生成多模态嵌入向量并索引到 ES
+
+    支持两种模式：
+    - VLM 关闭：仅生成 image_embedding，content 不写入，仅支持以图搜图
+    - VLM 开启：额外调用视觉模型生成描述文本 + text embedding，支持 BM25 + 文本向量 + 以图搜图
+    """
     from src.shared.ai_models.embedding import BaseMultimodalEmbedding
 
     # 1. 读取空间配置（统一从 config.embedding 读取）
@@ -1069,6 +1077,15 @@ async def _process_image_document_static(
             error_message="该空间未配置嵌入模型，无法处理图片文件",
         )
 
+    # 检查 VLM 描述开关（从知识库的解析配置读取）
+    kb_repo = KnowledgeBaseRepository(session)
+    kb = await kb_repo.get_by_id(document.kb_id)
+    vlm_enabled = False
+    if kb:
+        kb_config = kb.get_config() or {}
+        parsing_config = kb_config.get("parsing", {})
+        vlm_enabled = parsing_config.get("vlm_description_enabled", False)
+
     # 检查点 0：配置读取后
     await _check_document_cancelled(document.id)
 
@@ -1083,13 +1100,51 @@ async def _process_image_document_static(
             error_message=f"模型 {model_name} 不支持图片嵌入",
         )
 
-    # 3. 生成图片嵌入向量
+    # 3. 生成图片嵌入向量（始终执行，不受 VLM 开关影响）
     image_vector = await client.generate_image_embedding(file_content)
 
     # 检查点 1：向量化完成后
     await _check_document_cancelled(document.id)
 
-    # 4. 构建 ES chunk
+    # 4. VLM 图片描述（如果启用）
+    description_text = ""
+    text_vector = None
+
+    if vlm_enabled:
+        try:
+            description_text = await _generate_image_description(
+                file_content=file_content,
+                document=document,
+                mcs=mcs,
+                _logger=_logger,
+            )
+
+            if description_text:
+                # 生成描述文本的向量
+                text_vector = await _generate_single_embedding_static(
+                    text=description_text,
+                    embedding_config=embedding_config,
+                    session=session,
+                    user_id=document.uploader_id,
+                )
+
+                _logger.info(
+                    "VLM 图片描述生成成功",
+                    document_id=document.id,
+                    description_length=len(description_text),
+                    has_text_vector=text_vector is not None,
+                )
+
+        except Exception as e:
+            _logger.warning(
+                "VLM 图片描述生成失败，跳过描述文本（不影响 image_embedding）",
+                document_id=document.id,
+                error=str(e),
+            )
+            description_text = ""
+            text_vector = None
+
+    # 5. 构建 ES chunk
     storage_info = document.storage or {}
     storage_path = storage_info.get("minio_object_name", "")
 
@@ -1099,7 +1154,6 @@ async def _process_image_document_static(
         "document_id": document.id,
         "chunk_id": f"{document.id}_0",
         "chunk_index": 0,
-        "content": document.filename,
         "chunk_type": "image",
         "image_embedding": image_vector,
         "image_url": storage_path,
@@ -1112,10 +1166,18 @@ async def _process_image_document_static(
         },
     }
 
+    # VLM 开启且有描述时才写入 content 和 embedding
+    if description_text:
+        es_chunk["content"] = description_text
+
+    # VLM 开启且描述文本存在时，额外写入 embedding 字段
+    if description_text and text_vector:
+        es_chunk["embedding"] = text_vector
+
     # 检查点 2：ES 写入前
     await _check_document_cancelled(document.id)
 
-    # 5. 索引到 ES
+    # 6. 索引到 ES
     es_client = await _get_es_client_static()
     indexed_count = await es_client.bulk_index_chunks(
         space_id=document.space_id,
@@ -1130,14 +1192,18 @@ async def _process_image_document_static(
             error_message="ES 索引写入失败",
         )
 
-    # 6. 标记文档完成
+    # 7. 标记文档完成
     document.mark_completed()
-    document.doc_metadata = {
+    doc_meta = {
         **(document.doc_metadata or {}),
         "chunk_count": 1,
         "indexed_at": now_china().isoformat(),
         "chunk_type": "image",
     }
+    if vlm_enabled and description_text:
+        doc_meta["vlm_description"] = True
+        doc_meta["description_length"] = len(description_text)
+    document.doc_metadata = doc_meta
     await session.commit()
 
     _logger.info(
@@ -1145,6 +1211,8 @@ async def _process_image_document_static(
         document_id=document.id,
         model=model_name,
         vector_dim=len(image_vector),
+        vlm_enabled=vlm_enabled,
+        has_description=bool(description_text),
     )
 
 
@@ -1243,6 +1311,100 @@ async def _get_embedding_client_static(
     return await model_config_service.get_embedding_client_by_model(
         user_id=effective_user_id, model=model_name
     )
+
+
+async def _generate_single_embedding_static(
+    text: str,
+    embedding_config: Dict[str, Any],
+    session: AsyncSession,
+    user_id: Optional[int] = None,
+) -> Optional[List[float]]:
+    """生成单条文本的嵌入向量（用于 VLM 描述文本）
+
+    Args:
+        text: 文本内容
+        embedding_config: 嵌入模型配置（含 model 名称）
+        session: 数据库会话
+        user_id: 用户 ID
+
+    Returns:
+        嵌入向量，失败返回 None
+    """
+    try:
+        model_name = embedding_config.get("model")
+        embedding_client = await _get_embedding_client_static(session, user_id, model_name)
+        embeddings = await embedding_client.generate_embeddings_batch([text])
+        return embeddings[0] if embeddings else None
+    except Exception as e:
+        _log = get_logger(__name__)
+        _log.warning("单条文本嵌入生成失败", error=str(e))
+        return None
+
+
+async def _generate_image_description(
+    file_content: bytes,
+    document: Document,
+    mcs,  # ModelConfigService
+    _logger,
+) -> str:
+    """调用 VLM 生成图片描述文本
+
+    Args:
+        file_content: 图片二进制内容
+        document: 文档对象
+        mcs: ModelConfigService 实例
+        _logger: 日志器
+
+    Returns:
+        描述文本（截断到 2000 字符），失败抛异常由调用方处理
+    """
+    import base64
+    from src.shared.prompts.templates import PromptManager, PromptTemplate
+
+    # 1. 获取 VLM 客户端
+    vlm_model = await mcs.get_user_default_model_name(document.uploader_id, "vlm")
+    if not vlm_model:
+        raise ValueError("未配置 VLM 模型，请在模型配置中添加视觉模型")
+
+    vlm_client = await mcs.get_vlm_client_by_model(document.uploader_id, vlm_model)
+
+    # 2. 构建 base64 图片
+    file_ext = (document.file_type or "png").lower()
+    mime_type = f"image/{file_ext}" if file_ext != "jpg" else "image/jpeg"
+    base64_data = base64.b64encode(file_content).decode("utf-8")
+
+    # 3. 获取描述 Prompt
+    description_prompt = PromptManager.get_template(PromptTemplate.IMAGE_DESCRIPTION.value)
+
+    # 4. 构建多模态消息（OpenAI 兼容格式）
+    messages = [{
+        "role": "user",
+        "content": [
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime_type};base64,{base64_data}"},
+            },
+            {
+                "type": "text",
+                "text": description_prompt,
+            },
+        ],
+    }]
+
+    # 5. 调用 VLM 生成描述
+    description = await vlm_client.generate_text(
+        prompt=messages,
+        max_tokens=1024,
+        temperature=0.3,
+    )
+
+    if not description or not description.strip():
+        raise ValueError(f"VLM 返回空描述，模型: {vlm_model}")
+
+    # 6. 截断到 2000 字符
+    description = description.strip()[:2000]
+
+    return description
 
 
 async def _generate_questions_for_chunks_static(

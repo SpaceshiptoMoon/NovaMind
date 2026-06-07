@@ -10,7 +10,7 @@ from src.setting.yaml_config import get_config
 from src.shared.utils.time_utils import now_china
 from src.core.middleware.structured_logging import get_logger
 
-from src.core.database.base import create_tables
+from src.core.database.base import create_tables, ensure_fulltext_indexes
 from src.core.database.database import get_engine, dispose_engine
 
 from src.features.user.api.startup import init_user_components
@@ -50,6 +50,14 @@ async def _init_agent(app):
 register_feature_initializer(_init_agent)
 
 
+async def _init_notification(app):
+    """通知模块初始化"""
+    from src.features.notification.api.startup import init_notification_components
+    await init_notification_components(app)
+
+register_feature_initializer(_init_notification)
+
+
 def _import_models():
     """动态导入所有业务模型，确保在创建表之前注册到 SQLAlchemy metadata"""
     from src.features.user.models.user import User  # noqa: F401
@@ -71,6 +79,8 @@ def _import_models():
     from src.features.agent.models.mcp_server import AgentMcpServer  # noqa: F401
     from src.features.skill.models.skill import SkillDefinition, SkillVersion, SkillReview, SkillInstallation  # noqa: F401
     from src.features.app.models.resume import ResumeSession  # noqa: F401
+    from src.features.notification.models.notification import Notification  # noqa: F401
+    from src.features.notification.models.notification_preference import NotificationPreference  # noqa: F401
 
 logger = get_logger(__name__)
 
@@ -146,6 +156,15 @@ class AppLifespanManager:
             recovered_docs = await recover_orphan_documents()
             if recovered_docs:
                 self.logger.info("孤儿文档恢复完成", recovered=recovered_docs)
+
+            # 恢复孤儿简历会话（PARSING/ANALYZING/PROBING 状态重新入队）
+            try:
+                from src.shared.mq.worker import recover_orphan_resume_sessions
+                recovered_resumes = await recover_orphan_resume_sessions()
+                if recovered_resumes:
+                    self.logger.info("孤儿简历会话恢复完成", recovered=recovered_resumes)
+            except Exception as e:
+                self.logger.warning("孤儿简历会话恢复失败", error=str(e))
         except Exception as e:
             self.logger.warning("arq Worker 启动失败", error=str(e))
 
@@ -200,6 +219,9 @@ class AppLifespanManager:
             db_engine = get_engine()
             await create_tables(db_engine)
             self.logger.info("数据库表创建成功")
+
+            # 创建 FULLTEXT 索引（ngram 中文分词）
+            await ensure_fulltext_indexes(db_engine)
         except Exception as e:
             self.logger.error(
                 "数据库表创建失败",

@@ -30,6 +30,12 @@ from src.features.skill.api.exception_handlers import (
 from src.features.app.api.exception_handlers import (
     setup_app_exception_handlers,
 )
+from src.features.agent.api.exception_handlers import (
+    setup_agent_exception_handlers,
+)
+from src.features.notification.api.exception_handlers import (
+    setup_notification_exception_handlers,
+)
 
 logger = get_logger(__name__)
 
@@ -61,6 +67,12 @@ def setup_exception_handlers(app: FastAPI):
 
     # 应用中心异常处理器
     setup_app_exception_handlers(app)
+
+    # Agent 模块异常处理器
+    setup_agent_exception_handlers(app)
+
+    # 通知模块异常处理器
+    setup_notification_exception_handlers(app)
 
     # 注册全局异常处理器（包含 Exception 兜底和 RequestValidationError）
     setup_global_exception_handlers(app)

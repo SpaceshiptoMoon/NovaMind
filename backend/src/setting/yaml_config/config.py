@@ -60,6 +60,7 @@ class ParsingConfig:
     ocr_enabled: bool = False
     preserve_structure: bool = True
     encoding: str = "utf-8"
+    vlm_description_enabled: bool = False  # 是否启用 VLM 图片描述（多模态空间）
 
 
 @dataclass
@@ -262,6 +263,18 @@ class TaskQueueConfig:
 
 
 @dataclass
+class SmtpConfig:
+    """SMTP 邮件发送配置"""
+    enabled: bool = False
+    host: str = ""
+    port: int = 587
+    username: str = ""
+    password: str = ""
+    from_email: str = ""
+    use_tls: bool = True
+
+
+@dataclass
 class AgentConfig:
     """Agent 智能体配置"""
     max_tool_calls_per_turn: int = 10
@@ -318,6 +331,9 @@ class AppConfig:
 
     # 任务队列配置
     task_queue: TaskQueueConfig = field(default_factory=TaskQueueConfig)
+
+    # SMTP 邮件配置
+    smtp: SmtpConfig = field(default_factory=SmtpConfig)
 
     # CORS 配置
     cors_origins: str = "*"

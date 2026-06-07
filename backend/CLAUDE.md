@@ -57,7 +57,7 @@ src/
 └── shared/
     ├── ai_models/                 # BaseLLM / BaseEmbedding / BaseRerank 抽象
     │   ├── llm/                   # OpenAI / Anthropic / Ollama / Transformers
-    │   ├── embedding/             # OpenAI / Ollama / Transformers
+    │   ├── embedding/             # OpenAI / Ollama / Transformers / DashScope多模态
     │   └── rerank/                # OpenAI / Transformers
     ├── cache/                     # Redis + LRU + 装饰器
     ├── storage/                   # Elasticsearch (9种搜索+RRF) + MinIO

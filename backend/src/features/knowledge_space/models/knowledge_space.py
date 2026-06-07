@@ -118,6 +118,13 @@ class KnowledgeSpace(BaseModel):
         """获取空间级别的多模态嵌入配置"""
         return self.get_config().get("multimodal_embedding")
 
+    @property
+    def vlm_description_enabled(self) -> bool:
+        """是否启用 VLM 图片描述（从空间级别默认解析配置读取）"""
+        defaults = self.get_defaults_config()
+        parsing = defaults.get("parsing", {})
+        return parsing.get("vlm_description_enabled", False)
+
     def get_defaults_config(self) -> dict:
         """获取默认配置"""
         return self.get_config().get("defaults", {})

@@ -1153,12 +1153,22 @@ class SearchService:
             effective_query = request.query
 
         # 5. ES 检索
-        raw_results = await self.es_client.image_vector_search(
-            space_id=space_id,
-            query_vector=query_vector,
-            top_k=request.top_k,
-            kb_id=kb_id,
-        )
+        # text_to_image 模式使用双向量搜索（描述文本 + 图片向量 RRF 融合）
+        if request.search_mode == MultimodalSearchMode.TEXT_TO_IMAGE:
+            raw_results = await self.es_client.image_hybrid_vector_search(
+                space_id=space_id,
+                query_vector=query_vector,
+                top_k=request.top_k,
+                kb_id=kb_id,
+            )
+        else:
+            # image_to_image 模式仅搜索 image_embedding
+            raw_results = await self.es_client.image_vector_search(
+                space_id=space_id,
+                query_vector=query_vector,
+                top_k=request.top_k,
+                kb_id=kb_id,
+            )
 
         # 6. 构建结果（threshold=0.0，过滤在归一化后）
         results = await self._build_image_search_results(raw_results, kb_id, 0.0)

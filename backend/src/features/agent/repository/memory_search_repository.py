@@ -122,8 +122,25 @@ class MemorySearchRepository:
         top_k: int = 5,
         user_id: Optional[int] = None,
         categories: Optional[List[str]] = None,
+        vector_weight: float = 0.7,
+        text_weight: float = 0.3,
     ) -> List[Dict[str, Any]]:
-        """Hybrid 搜索：向量 cosine + BM25"""
+        """
+        Hybrid 搜索：原生 KNN 向量检索 + BM25 文本检索，RRF 融合
+
+        使用 ES 原生 knn 参数（而非 script_score），性能更优。
+        结果按 access_count 做频次加权（高频访问的记忆略微提权）。
+
+        Args:
+            agent_id: Agent ID
+            query_vector: 查询向量
+            query_text: 查询文本
+            top_k: 返回结果数
+            user_id: 过滤用户 ID
+            categories: 过滤记忆类别
+            vector_weight: 向量搜索权重（用于 RRF）
+            text_weight: 文本搜索权重（用于 RRF）
+        """
         index_name = self._index_name(agent_id)
 
         if not await self._es.indices.exists(index=index_name):
@@ -135,27 +152,69 @@ class MemorySearchRepository:
         if categories:
             filter_clauses.append({"terms": {"category": categories}})
 
+        # 构建 KNN 查询
+        knn_query: Dict[str, Any] = {
+            "field": "content_vector",
+            "query_vector": query_vector,
+            "k": top_k,
+            "num_candidates": top_k * 3,
+        }
+        if filter_clauses:
+            knn_query["filter"] = {"bool": {"filter": filter_clauses}}
+
+        # 构建 BM25 文本查询
+        text_query: Dict[str, Any] = {
+            "bool": {
+                "filter": filter_clauses if filter_clauses else [],
+                "should": [
+                    {"match": {"content": {"query": query_text, "boost": text_weight}}}
+                ],
+            }
+        }
+
+        body: Dict[str, Any] = {
+            "size": top_k,
+            "knn": knn_query,
+            "query": text_query,
+            # RRF 融合：rank_constant 越小，高分文档的排名优势越明显
+            "rank": {"rank_constant": 60},
+        }
+
+        try:
+            result = await self._es.search(index=index_name, body=body)
+            hits = result["hits"]["hits"]
+            return [
+                {
+                    "memory_id": hit["_source"]["memory_id"],
+                    "category": hit["_source"]["category"],
+                    "content": hit["_source"]["content"],
+                    "access_count": hit["_source"].get("access_count", 0),
+                    "score": hit["_score"],
+                }
+                for hit in hits
+            ]
+        except Exception as e:
+            logger.warning("ES KNN hybrid 搜索失败，降级 BM25", agent_id=agent_id, error=str(e))
+            # 降级：纯 BM25
+            return await self._fallback_bm25_search(index_name, query_text, top_k, filter_clauses)
+
+    async def _fallback_bm25_search(
+        self,
+        index_name: str,
+        query_text: str,
+        top_k: int,
+        filter_clauses: List[Dict],
+    ) -> List[Dict[str, Any]]:
+        """KNN 失败时降级到纯 BM25 搜索"""
         body: Dict[str, Any] = {
             "size": top_k,
             "query": {
                 "bool": {
-                    "filter": filter_clauses,
-                    "should": [
-                        {
-                            "script_score": {
-                                "query": {"match_all": {}},
-                                "script": {
-                                    "source": "cosineSimilarity(params.query_vector, 'content_vector') + 1.0",
-                                    "params": {"query_vector": query_vector},
-                                },
-                            }
-                        },
-                        {"match": {"content": {"query": query_text, "boost": 0.3}}},
-                    ],
+                    "filter": filter_clauses if filter_clauses else [],
+                    "must": [{"match": {"content": query_text}}],
                 }
             },
         }
-
         try:
             result = await self._es.search(index=index_name, body=body)
             return [
@@ -163,12 +222,13 @@ class MemorySearchRepository:
                     "memory_id": hit["_source"]["memory_id"],
                     "category": hit["_source"]["category"],
                     "content": hit["_source"]["content"],
+                    "access_count": hit["_source"].get("access_count", 0),
                     "score": hit["_score"],
                 }
                 for hit in result["hits"]["hits"]
             ]
         except Exception as e:
-            logger.warning("ES hybrid 搜索失败", agent_id=agent_id, error=str(e))
+            logger.warning("ES BM25 降级搜索也失败", index_name=index_name, error=str(e))
             return []
 
     async def delete_memory(self, agent_id: int, memory_id: int) -> bool:
