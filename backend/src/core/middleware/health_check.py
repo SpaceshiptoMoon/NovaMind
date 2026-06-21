@@ -57,6 +57,37 @@ def _get_engine():
     return get_engine()
 
 
+async def _check_db_component(engine) -> dict:
+    """检查数据库连接"""
+    async with engine.connect() as conn:
+        await conn.execute(text("SELECT 1"))
+    return {"type": "mysql"}
+
+
+async def _check_redis_component() -> dict:
+    """检查 Redis 连接"""
+    redis_client = await get_redis_client()
+    await redis_client.redis_client.ping()
+    return {}
+
+
+async def _check_es_component() -> dict:
+    """检查 Elasticsearch 连接"""
+    es_client = await get_elasticsearch_client()
+    if not await es_client.ping():
+        raise Exception("无法连接")
+    return {}
+
+
+async def _check_minio_component(config) -> dict:
+    """检查 MinIO 连接与 bucket"""
+    minio_client = await get_minio_client()
+    bucket_exists = await minio_client.bucket_exists(config.minio.bucket_name)
+    if not bucket_exists:
+        raise Exception("bucket 不存在")
+    return {"bucket_exists": True}
+
+
 @router.get("/health")
 async def health_check() -> Dict[str, Any]:
     """
@@ -97,98 +128,30 @@ async def detailed_health_check() -> Dict[str, Any]:
         "components": {},
     }
 
-    # 检查数据库
-    try:
-        async def _check_db():
-            async with engine.connect() as conn:
-                await conn.execute(text("SELECT 1"))
-        db_result = await _check_with_timeout(_check_db())
-        if db_result is None:
-            raise TimeoutError("数据库健康检查超时")
-        else:
-            health_status["components"]["database"] = {
-                "status": "healthy",
-                "type": "mysql",
-            }
-    except Exception as e:
-        new_status = "unhealthy"
-        if _priority[new_status] > _priority[overall_status]:
-            overall_status = new_status
-        health_status["components"]["database"] = {
-            "status": "unhealthy",
-            "error": str(e) if not is_production else "连接失败",
-        }
-        logger.error("数据库健康检查失败", error=str(e))
+    # 组件检查定义：(名称, 检查协程, 是否关键依赖)
+    checks = [
+        ("database", _check_db_component(engine), True),
+        ("redis", _check_redis_component(), False),
+        ("elasticsearch", _check_es_component(), True),
+        ("minio", _check_minio_component(config), False),
+    ]
 
-    # 检查 Redis（使用单例）
-    try:
-        async def _check_redis():
-            redis_client = await get_redis_client()
-            await redis_client.redis_client.ping()
-        redis_result = await _check_with_timeout(_check_redis())
-        if redis_result is None:
-            raise TimeoutError("Redis 健康检查超时")
-        else:
-            health_status["components"]["redis"] = {
-                "status": "healthy",
+    for name, coro, is_critical in checks:
+        try:
+            result = await _check_with_timeout(coro)
+            if result is None:
+                raise TimeoutError(f"{name} 健康检查超时")
+            health_status["components"][name] = {"status": "healthy", **(result or {})}
+        except Exception as e:
+            new_status = "unhealthy" if is_critical else "degraded"
+            if _priority[new_status] > _priority[overall_status]:
+                overall_status = new_status
+            health_status["components"][name] = {
+                "status": "unhealthy",
+                "error": str(e) if not is_production else "连接失败",
             }
-    except Exception as e:
-        new_status = "degraded"  # Redis 不是关键依赖
-        if _priority[new_status] > _priority[overall_status]:
-            overall_status = new_status
-        health_status["components"]["redis"] = {
-            "status": "unhealthy",
-            "error": str(e) if not is_production else "连接失败",
-        }
-        logger.warning("Redis 健康检查失败", error=str(e))
-
-    # 检查 Elasticsearch（使用单例）
-    try:
-        async def _check_es():
-            es_client = await get_elasticsearch_client()
-            if not await es_client.ping():
-                raise Exception("无法连接")
-        es_result = await _check_with_timeout(_check_es())
-        if es_result is None:
-            raise TimeoutError("Elasticsearch 健康检查超时")
-        else:
-            health_status["components"]["elasticsearch"] = {
-                "status": "healthy",
-            }
-    except Exception as e:
-        new_status = "unhealthy"
-        if _priority[new_status] > _priority[overall_status]:
-            overall_status = new_status
-        health_status["components"]["elasticsearch"] = {
-            "status": "unhealthy",
-            "error": str(e) if not is_production else "连接失败",
-        }
-        logger.warning("Elasticsearch 健康检查失败", error=str(e))
-
-    # 检查 MinIO（使用单例）
-    try:
-        async def _check_minio():
-            minio_client = await get_minio_client()
-            return await minio_client.bucket_exists(config.minio.bucket_name)
-        bucket_exists = await _check_with_timeout(_check_minio())
-        if bucket_exists is None:
-            raise TimeoutError("MinIO 健康检查超时")
-        elif bucket_exists is False:
-            raise Exception("bucket 不存在")
-        else:
-            health_status["components"]["minio"] = {
-                "status": "healthy",
-                "bucket_exists": True,
-            }
-    except Exception as e:
-        new_status = "degraded"  # MinIO 不是立即关键
-        if _priority[new_status] > _priority[overall_status]:
-            overall_status = new_status
-        health_status["components"]["minio"] = {
-            "status": "unhealthy",
-            "error": str(e) if not is_production else "连接失败",
-        }
-        logger.warning("MinIO 健康检查失败", error=str(e))
+            log_func = logger.error if is_critical else logger.warning
+            log_func(f"{name} 健康检查失败", error=str(e))
 
     health_status["status"] = overall_status
 

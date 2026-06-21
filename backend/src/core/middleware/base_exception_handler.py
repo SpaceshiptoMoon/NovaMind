@@ -24,6 +24,7 @@ class BaseAPIError(Exception):
     子类可通过 _serializable_attrs 类变量声明需要序列化到响应的额外属性名。
     """
 
+    http_status_code: ClassVar[int] = 500
     _serializable_attrs: ClassVar[tuple[str, ...]] = ()
 
     def __init__(self, message: str, code: str = "UNKNOWN_ERROR", details: Dict[str, Any] = None):
@@ -57,16 +58,19 @@ def _build_trace_context(request: Request) -> dict:
 
 
 def create_error_handler(
-    status_code: int,
-    log_message: str,
+    default_status_code: int = 500,
+    log_message: str = "模块异常",
     is_warning: bool = False,
     include_request_id: bool = False,
 ) -> Callable:
     """
     创建异常处理器工厂函数
 
+    优先使用异常类声明的 http_status_code，未声明时 fallback 到 default_status_code。
+    子类可在 class 级别声明 http_status_code 覆盖默认状态码，无需通过 status_map 注册。
+
     Args:
-        status_code: HTTP 状态码
+        default_status_code: HTTP 状态码（默认 500）
         log_message: 日志消息
         is_warning: 是否使用 warning 级别日志（默认 error）
         include_request_id: 是否在响应中包含请求 ID
@@ -77,6 +81,9 @@ def create_error_handler(
     async def handler(request: Request, exc: BaseAPIError):
         """通用异常处理器"""
         trace_id = getattr(request.state, "trace_id", "no-trace")
+
+        # 优先取异常类的 http_status_code，未声明则用默认值
+        status_code = getattr(type(exc), "http_status_code", default_status_code)
 
         # 记录错误日志
         log_func = logger.warning if is_warning else logger.error
