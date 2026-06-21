@@ -1436,7 +1436,7 @@ onBeforeUnmount(() => {
   background: var(--color-primary);
   color: #FFFFFF;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
 }
 
 .send-btn.active:hover {

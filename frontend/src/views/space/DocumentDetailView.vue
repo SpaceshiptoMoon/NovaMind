@@ -15,7 +15,6 @@
         <div class="header-actions">
           <el-button
             v-if="isProcessing"
-            type="warning"
             size="small"
             :loading="cancelLoading"
             @click="handleCancel"
@@ -24,7 +23,6 @@
           </el-button>
           <el-button
             v-if="isFailed"
-            type="warning"
             size="small"
             :loading="retryLoading"
             @click="handleRetry"
@@ -122,7 +120,11 @@
           </div>
         </div>
       </div>
-      <EmptyState v-else description="暂无分块数据" />
+      <EmptyState v-else description="暂无分块数据">
+        <el-button @click="router.push(backTarget)">
+          {{ backLabel }}
+        </el-button>
+      </EmptyState>
 
       <div v-if="totalChunks > chunkPageSize" class="chunks-pagination">
         <el-pagination
@@ -165,6 +167,14 @@ const router = useRouter()
 const spaceId = computed(() => Number(route.params.id))
 const docId = computed(() => Number(route.params.docId))
 const kbId = computed(() => Number(route.query.kbId) || 0)
+
+// 空状态返回目标：有 kbId 回文档管理，否则回知识库列表（兜底直接访问详情页无 query 的情况）
+const backTarget = computed(() =>
+  kbId.value
+    ? `/home/spaces/${spaceId.value}/knowledge-bases/${kbId.value}/documents`
+    : `/home/spaces/${spaceId.value}/knowledge-bases`,
+)
+const backLabel = computed(() => (kbId.value ? '返回文档管理' : '返回知识库'))
 
 const loading = ref(false)
 const reprocessLoading = ref(false)
@@ -375,7 +385,6 @@ onMounted(() => {
   justify-content: center;
   font-size: 11px;
   font-weight: var(--weight-bold);
-  letter-spacing: -0.5px;
   flex-shrink: 0;
 }
 

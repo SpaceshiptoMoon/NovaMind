@@ -1,110 +1,59 @@
 <template>
   <div class="space-list-view">
-    <!-- 左侧边栏 -->
-    <aside class="sidebar">
-      <!-- 侧边栏头部 -->
-      <div class="sidebar-header">
-        <h3 class="sidebar-title">知识空间</h3>
-        <el-button type="primary" size="small" circle @click="showCreateSpaceDialog">
-          <el-icon><Plus /></el-icon>
-        </el-button>
-      </div>
-
-      <!-- 搜索框 -->
-      <div class="sidebar-search">
-        <el-input
-          v-model="searchQuery"
-          placeholder="搜索空间..."
-          prefix-icon="Search"
-          size="small"
-          clearable
-        />
-      </div>
-
-      <!-- 空间列表 -->
-      <div class="sidebar-body">
-        <!-- 我的空间 -->
-        <div class="sidebar-section">
-          <div class="section-label">我的空间</div>
-          <div
-            v-for="space in filteredMySpaces"
-            :key="space.id"
-            class="space-item"
-            :class="{ active: selectedSpaceId === space.id }"
-            @click="handleSpaceClick(space.id)"
-          >
-            <div class="space-item-icon">
-              <el-icon :size="16"><Collection /></el-icon>
-            </div>
-            <div class="space-item-info">
-              <span class="space-item-name">{{ space.name }}</span>
-              <el-tag
-                :type="getVisibilityType(space.visibility)"
-                size="small"
-                class="space-item-vis"
-              >
-                {{ getVisibilityText(space.visibility) }}
-              </el-tag>
-              <el-tag
-                v-if="space.config?.space_type === 'multimodal'"
-                size="small"
-                type="primary"
-                class="space-item-vis"
-              >
-                图片
-              </el-tag>
-            </div>
-          </div>
-          <div v-if="filteredMySpaces.length === 0" class="section-empty">
-            {{ searchQuery ? '无匹配空间' : '暂无空间' }}
-          </div>
-        </div>
-
-        <!-- 公开空间 -->
-        <div v-if="filteredPublicSpaces.length > 0" class="sidebar-section">
-          <div class="section-label">公开空间</div>
-          <div
-            v-for="space in filteredPublicSpaces"
-            :key="space.id"
-            class="space-item"
-            :class="{ active: selectedSpaceId === space.id }"
-            @click="handleSpaceClick(space.id)"
-          >
-            <div class="space-item-icon public">
-              <el-icon :size="16"><Collection /></el-icon>
-            </div>
-            <div class="space-item-info">
-              <span class="space-item-name">{{ space.name }}</span>
-              <el-tag
-                v-if="space.config?.space_type === 'multimodal'"
-                size="small"
-                type="primary"
-                class="space-item-vis"
-              >
-                图片
-              </el-tag>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 侧边栏底部 -->
-      <div class="sidebar-footer">
-        <el-button size="small" text @click="showManageSpacesDialog">
-          <el-icon><Setting /></el-icon>
-          管理空间
-        </el-button>
-      </div>
-    </aside>
-
-    <!-- 右侧主内容区 -->
+    <!-- 主内容区（全宽，空间切换收进顶部下拉） -->
     <main class="main-content">
-      <!-- 内容头部（面包屑 + 操作） -->
-      <div v-if="selectedSpaceId" class="content-header">
-        <BreadcrumbNav />
+      <!-- 空间首页（KB 列表）：完整空间栏 -->
+      <div v-if="isSpaceHome" class="content-header content-header--full">
+        <div class="header-left">
+          <el-select
+            :model-value="selectedSpaceId"
+            placeholder="选择知识空间"
+            class="space-select"
+            filterable
+            @change="handleSpaceChange"
+          >
+            <el-option-group v-if="spaceStore.spaces.length" label="我的空间">
+              <el-option
+                v-for="space in spaceStore.spaces"
+                :key="space.id"
+                :label="space.name"
+                :value="space.id"
+              >
+                <span class="space-option-name">{{ space.name }}</span>
+                <el-tag
+                  v-if="space.config?.space_type === 'multimodal'"
+                  size="small"
+                  type="primary"
+                  class="space-option-tag"
+                >图片</el-tag>
+              </el-option>
+            </el-option-group>
+            <el-option-group
+              v-if="spaceStore.publicSpaces.length"
+              label="公开空间"
+            >
+              <el-option
+                v-for="space in spaceStore.publicSpaces"
+                :key="space.id"
+                :label="space.name"
+                :value="space.id"
+              >
+                <span class="space-option-name">{{ space.name }}</span>
+                <el-tag
+                  v-if="space.config?.space_type === 'multimodal'"
+                  size="small"
+                  type="primary"
+                  class="space-option-tag"
+                >图片</el-tag>
+              </el-option>
+            </el-option-group>
+          </el-select>
+          <BreadcrumbNav v-if="selectedSpaceId" />
+        </div>
         <div class="header-actions">
           <el-button
-            v-if="activeTab === 'knowledge-bases'"
+            v-if="selectedSpaceId"
+            type="primary"
             size="small"
             @click="showCreateKbDialog"
           >
@@ -112,14 +61,32 @@
             新建知识库
           </el-button>
           <el-button
+            v-if="selectedSpaceId"
             size="small"
             circle
-            class="settings-btn"
+            aria-label="空间设置"
             @click="switchTab('settings')"
+            title="空间设置"
           >
             <el-icon><Setting /></el-icon>
           </el-button>
+          <el-button size="small" circle aria-label="新建知识空间" @click="showCreateSpaceDialog" title="新建知识空间">
+            <el-icon><Plus /></el-icon>
+          </el-button>
+          <el-button size="small" text @click="showManageSpacesDialog">
+            <el-icon><Collection /></el-icon>
+            管理空间
+          </el-button>
         </div>
+      </div>
+
+      <!-- 子页面：极简返回栏（仅 返回 + 面包屑） -->
+      <div v-else class="content-header content-header--slim">
+        <button v-if="navBack" class="slim-back" @click="handleNavBack">
+          <el-icon><ArrowLeft /></el-icon>
+          <span>{{ navBack.label }}</span>
+        </button>
+        <BreadcrumbNav />
       </div>
 
       <!-- 子路由内容 -->
@@ -127,13 +94,17 @@
         <router-view :key="`${route.params.id || ''}-${kbRefreshKey}`" />
       </div>
 
-      <!-- 未选择空间时的欢迎页 -->
-      <div v-if="!selectedSpaceId && !loading" class="welcome-state">
+      <!-- 未选择空间时的欢迎页（始终显示，不依赖 loading 避免白屏） -->
+      <div v-if="!selectedSpaceId" class="welcome-state">
         <EmptyState
           variant="default"
           title="选择知识空间"
-          description="从左侧选择或创建一个知识空间，开始管理知识库"
-        />
+          description="从顶部下拉选择或创建一个知识空间，开始管理知识库"
+        >
+          <el-button type="primary" @click="showCreateSpaceDialog">
+            新建知识空间
+          </el-button>
+        </EmptyState>
       </div>
     </main>
 
@@ -320,6 +291,7 @@ import {
   Plus,
   Setting,
   Collection,
+  ArrowLeft,
 } from '@element-plus/icons-vue'
 import { useSpaceStore } from '@/stores/space'
 import { knowledgeBaseApi } from '@/api/knowledgeBase'
@@ -335,9 +307,7 @@ const spaceStore = useSpaceStore()
 
 const loading = ref(false)
 const selectedSpaceId = ref<number | null>(null)
-const activeTab = ref('knowledge-bases')
 const kbRefreshKey = ref(0)
-const searchQuery = ref('')
 
 // 可见性映射
 const visibilityMap: Record<number, { text: string; type: string }> = {
@@ -356,31 +326,20 @@ function getVisibilityType(visibility?: number): string {
   return visibilityMap[visibility]?.type || 'info'
 }
 
-// === 搜索过滤 ===
-
-const filteredMySpaces = computed(() => {
-  const q = searchQuery.value.toLowerCase().trim()
-  if (!q) return spaceStore.spaces
-  return spaceStore.spaces.filter((s) => s.name.toLowerCase().includes(q))
-})
-
-const filteredPublicSpaces = computed(() => {
-  const q = searchQuery.value.toLowerCase().trim()
-  if (!q) return spaceStore.publicSpaces
-  return spaceStore.publicSpaces.filter((s) => s.name.toLowerCase().includes(q))
-})
-
 // === 空间选择 ===
 
 function handleSpaceClick(spaceId: number) {
-  router.push(`/home/spaces/${spaceId}/${activeTab.value}`)
+  router.push(`/home/spaces/${spaceId}/knowledge-bases`)
+}
+
+function handleSpaceChange(spaceId: number) {
+  handleSpaceClick(spaceId)
 }
 
 // === Tab 导航 ===
 
 function switchTab(tab: string) {
   if (selectedSpaceId.value) {
-    activeTab.value = tab
     router.push(`/home/spaces/${selectedSpaceId.value}/${tab}`)
   }
 }
@@ -392,6 +351,35 @@ const kbId = computed(() => {
   if (route.query.kbId) return Number(route.query.kbId)
   return null
 })
+
+// 是否处于空间首页（KB 列表）——决定显示完整空间栏还是极简返回栏
+const isSpaceHome = computed(
+  () => !selectedSpaceId.value || route.name === 'KnowledgeBases',
+)
+
+// 子页面极简返回栏的返回目标（按路由名精确判定，不依赖 activeTab 字符串匹配）
+const navBack = computed<{ label: string; to: string } | null>(() => {
+  const sid = selectedSpaceId.value
+  if (!sid) return null
+  const kbIdParam =
+    (route.params.kbId as string | undefined) ??
+    (route.query.kbId as string | undefined)
+  const kbBase = `/home/spaces/${sid}/knowledge-bases`
+  const docBase = kbIdParam ? `${kbBase}/${kbIdParam}/documents` : ''
+  const name = route.name
+  if (name === 'Documents') return { label: '返回知识库', to: kbBase }
+  if (name === 'KbEvaluation' || name === 'DocumentDetail' || name === 'Search') {
+    return kbIdParam
+      ? { label: '返回文档管理', to: docBase }
+      : { label: '返回知识库', to: kbBase }
+  }
+  if (name === 'SpaceSettings') return { label: '返回知识库', to: kbBase }
+  return null
+})
+
+function handleNavBack() {
+  if (navBack.value) router.push(navBack.value.to)
+}
 
 // === 创建空间 ===
 
@@ -628,20 +616,6 @@ watch(
   { immediate: true },
 )
 
-watch(
-  () => route.path,
-  (path) => {
-    if (path.includes('/knowledge-bases')) {
-      activeTab.value = 'knowledge-bases'
-    } else if (path.includes('/search')) {
-      activeTab.value = 'search'
-    } else if (path.includes('/settings')) {
-      activeTab.value = 'settings'
-    }
-  },
-  { immediate: true },
-)
-
 // === 初始化 ===
 
 async function init() {
@@ -670,140 +644,41 @@ onMounted(() => {
   height: 100%;
 }
 
-/* ===== Sidebar ===== */
+/* ===== Header（空间下拉） ===== */
 
-.sidebar {
-  width: 260px;
-  flex-shrink: 0;
-  background: var(--color-bg-sidebar);
-  border-right: 1px solid var(--color-border-light);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-4) var(--space-4) var(--space-3);
-}
-
-.sidebar-title {
-  margin: 0;
-  font-size: var(--text-lg);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text);
-  font-family: var(--font-display);
-}
-
-.sidebar-search {
-  padding: 0 var(--space-4) var(--space-3);
-}
-
-.sidebar-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0 var(--space-2);
-}
-
-.sidebar-section {
-  margin-bottom: var(--space-4);
-}
-
-.section-label {
-  padding: var(--space-1) var(--space-3) var(--space-2);
-  font-size: var(--text-xs);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.space-item {
+.header-left {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  position: relative;
-  margin-bottom: 2px;
-}
-
-.space-item:hover {
-  background: var(--color-bg-hover);
-}
-
-.space-item.active {
-  background: var(--color-primary-muted);
-}
-
-.space-item.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 60%;
-  border-radius: 0 2px 2px 0;
-  background: var(--color-primary);
-}
-
-.space-item-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-primary-subtle);
-  color: var(--color-primary);
-  flex-shrink: 0;
-}
-
-.space-item-icon.public {
-  background: var(--color-success-subtle);
-  color: var(--color-success);
-}
-
-.space-item-info {
-  flex: 1;
   min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
 }
 
-.space-item-name {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  color: var(--color-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.space-item.active .space-item-name {
-  color: var(--color-primary);
-}
-
-.space-item-vis {
+.space-select {
+  width: 220px;
   flex-shrink: 0;
 }
 
-.section-empty {
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-xs);
-  color: var(--color-text-faint);
-  font-style: italic;
+/* 空间下拉：发丝线（Linear 风） */
+.space-select :deep(.el-select__wrapper) {
+  border-radius: var(--radius-md);
+  box-shadow: 0 0 0 1px var(--color-border) inset;
+  transition: box-shadow var(--transition-fast);
 }
 
-.sidebar-footer {
-  padding: var(--space-3) var(--space-4);
-  border-top: 1px solid var(--color-border-light);
+.space-select :deep(.el-select__wrapper:hover) {
+  box-shadow: 0 0 0 1px var(--color-text-faint) inset;
+}
+
+.space-select :deep(.el-select__wrapper.is-focused) {
+  box-shadow: 0 0 0 1px var(--color-primary) inset;
+}
+
+.space-option-name {
+  margin-right: var(--space-2);
+}
+
+.space-option-tag {
+  flex-shrink: 0;
 }
 
 /* ===== Main Content ===== */
@@ -820,11 +695,43 @@ onMounted(() => {
 .content-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: var(--space-4) var(--space-6);
   background: var(--color-bg-card);
-  border-bottom: 1px solid var(--color-border-light);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
   flex-shrink: 0;
+}
+
+/* 空间首页：完整栏 —— 发丝线 + 大留白，无阴影 */
+.content-header--full {
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-8);
+}
+
+/* 子页面：极简返回栏 */
+.content-header--slim {
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-8);
+}
+
+/* 返回按钮：发丝线胶囊，hover 浅底（Linear 风，无阴影/上浮） */
+.slim-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  padding: 5px 10px;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.slim-back:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
 }
 
 .header-actions {
@@ -833,19 +740,74 @@ onMounted(() => {
   gap: var(--space-2);
 }
 
-.settings-btn {
-  border: none !important;
-  background: transparent !important;
-  transition: background-color var(--transition-base);
+/* ===== Header 按钮：Linear 极简风（扁平 · 发丝线 · hover 浅底，无阴影/上浮） ===== */
+.header-actions {
+  gap: var(--space-2);
 }
 
-.settings-btn:hover {
-  background: var(--color-bg-hover) !important;
+.header-actions :deep(.el-button) {
+  border-radius: var(--radius-md);
+  font-weight: var(--weight-medium);
+  transition: background-color var(--transition-fast), color var(--transition-fast),
+    border-color var(--transition-fast);
 }
+
+/* 实心主操作（新建知识库）：微渐变 + 轻投影，有"放下来"的质感 */
+.header-actions :deep(.el-button:not(.is-text):not(.is-circle)) {
+  background: linear-gradient(135deg, #6366F1, #5B5FE8);
+  border: none;
+  padding: 6px 14px;
+  font-size: 14px;
+  height: auto;
+  box-shadow: 0 1px 3px rgba(99, 102, 241, 0.18), 0 1px 0 rgba(255, 255, 255, 0.12) inset;
+  transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+.header-actions :deep(.el-button:not(.is-text):not(.is-circle)) span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.header-actions :deep(.el-button:not(.is-text):not(.is-circle):hover) {
+  background: linear-gradient(135deg, #6D70F5, #6366F1);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.28), 0 1px 0 rgba(255, 255, 255, 0.15) inset;
+  transform: translateY(-0.5px);
+}
+
+.header-actions :deep(.el-button:not(.is-text):not(.is-circle):active) {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(99, 102, 241, 0.14);
+}
+
+/* 圆形图标按钮：发丝线，透明底，hover 浅底 */
+.header-actions :deep(.el-button.is-circle) {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-secondary);
+  box-shadow: none;
+}
+
+.header-actions :deep(.el-button.is-circle:hover) {
+  color: var(--color-text);
+  border-color: var(--color-border);
+  background: var(--color-bg-hover);
+  transform: none;
+  box-shadow: none;
+}
+
+/* 文字按钮：hover 浅底 */
+.header-actions :deep(.el-button.is-text:hover) {
+  color: var(--color-text);
+  background: var(--color-bg-hover);
+}
+
 
 .content-body {
   flex: 1;
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-6) var(--space-8);
   overflow-y: auto;
 }
 

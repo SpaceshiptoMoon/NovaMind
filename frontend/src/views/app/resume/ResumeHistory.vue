@@ -145,7 +145,7 @@ const statusConfigMap: Record<number, StatusStyle> = {
   0: { label: '失败', dotColor: '#EF4444', textColor: '#EF4444', bgColor: '#FEF2F2' },
   1: { label: '解析中', dotColor: '#F59E0B', textColor: '#D97706', bgColor: '#FFFBEB' },
   2: { label: '分析中', dotColor: '#F59E0B', textColor: '#D97706', bgColor: '#FFFBEB' },
-  4: { label: '追问中', dotColor: '#4285F4', textColor: '#4285F4', bgColor: '#EFF6FF' },
+  4: { label: '追问中', dotColor: '#6366F1', textColor: '#6366F1', bgColor: '#EEF2FF' },
   5: { label: '已完成', dotColor: '#22C55E', textColor: '#16A34A', bgColor: '#F0FDF4' },
 }
 

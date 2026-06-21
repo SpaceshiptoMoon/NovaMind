@@ -162,3 +162,18 @@ smtp:
   password: ""        # SMTP 密码或应用专用密码
   from_email: ""      # 发件人邮箱地址
   use_tls: true       # 是否使用 TLS
+
+# ========================================
+# ClawMate 终端模块配置
+# ========================================
+clawmate:
+  enabled: true                # 是否启用 ClawMate 终端模块
+  default_timeout: 30          # 命令执行默认超时（秒）
+  max_output_size: 65536       # 输出截断大小（字节，默认 64KB）
+  max_session_idle: 600        # session 空闲超时（秒，默认 10 分钟）
+  cleanup_interval: 60         # 空闲清理检查间隔（秒）
+  # blocked_commands: []       # 额外命令黑名单（补充内置的硬封锁和危险模式检测）
+  # write_denied_paths: []     # 额外写入保护路径前缀（补充内置的 ~/.ssh、/etc 等）
+  # write_denied_files: []     # 额外写入保护精确文件路径
+  # write_denied_dirs: []      # 额外写入保护目录前缀
+  # write_safe_root: ""        # 沙盒根目录（设置后只允许写入该目录树内，也可通过环境变量 CLAWMATE_WRITE_SAFE_ROOT 设置）

@@ -24,7 +24,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   size: 'default',
-  effect: 'light',
+  effect: 'plain',
   statusMap: () => ({}),
 })
 

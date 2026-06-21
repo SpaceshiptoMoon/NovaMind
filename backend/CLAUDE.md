@@ -14,6 +14,8 @@ NovaMind 后端采用 DDD 分层架构，每个功能模块位于 `src/features/
 | **agent** | `/api/v1/agent` | ReAct 循环引擎、两层记忆 (短期+长期)、MCP 协议外部工具、Docker 沙盒代码执行、工具注册中心、五阶段上下文压缩 | `routes.py`, `core/engine.py`, `services/chat_service.py` |
 | **skill** | `/api/v1/skills` | 技能上传/发布/安装、规则+LLM 双重安全审查、评分系统 | `routes.py`, `skill_marketplace_service.py`, `skill_checker.py` |
 | **app** | `/api/v1/apps` | 简历挖掘 S1-S12 管道 (解析→分析→追问→评估) | `routes.py`, `resume_parser.py`, `resume_analyzer.py`, `resume_probing.py` |
+| **notification** | `/api/v1/notifications` | 站内通知 + 邮件通知 + 用户偏好 (已读/未读/全部已读) | `routes.py`, `notification_service.py`, `email_service.py` |
+| **clawmate** | `/api/v1/clawmate` | Web 终端 (Shell 会话 + 文件操作 + AI 流式对话)；无 ORM，Session 内存管理；复用 Agent 工具链 | `api/routes.py`, `core/session_manager.py`, `core/command_safety.py`, `core/chat_service.py` |
 
 > 每个模块的完整 API 端点清单见根目录 [项目结构导航.md](../项目结构导航.md)。
 
@@ -38,20 +40,20 @@ src/
 │   ├── auth/hashing.py            # Argon2 密码哈希
 │   └── security/config_validator.py  # 生产环境安全检查
 │
-├── features/{module}/             # 8 个业务模块 (DDD 分层)
+├── features/{module}/             # 10 个业务模块 (DDD 分层；clawmate 用 api/core/schemas 结构)
 │   ├── api/
 │   │   ├── routes.py              # FastAPI 路由端点
 │   │   ├── dependencies.py        # Depends() 服务工厂注入
 │   │   ├── exceptions.py          # 异常类 (继承 BaseAPIError)
 │   │   ├── exception_handlers.py  # (可选) 自定义异常处理器
-│   │   └── startup.py             # 模块初始化 + 异常注册（仅 user/knowledge_space/qa/agent 需要）
+│   │   └── startup.py             # 模块初始化 + 异常注册 (user/knowledge_space/agent/notification/clawmate 需要)
 │   ├── models/                    # SQLAlchemy ORM (继承 BaseModel)
 │   ├── schemas/                   # Pydantic v2 (*Base → *Create/*Update → *Response)
 │   ├── services/                  # 业务逻辑
 │   └── repository/                # 数据访问 (SQLAlchemy async)
 │
 ├── setting/yaml_config/
-│   ├── config.py                  # 27 个 dataclass: AppConfig 聚合所有子配置
+│   ├── config.py                  # 28 个子配置 dataclass: AppConfig 聚合所有子配置
 │   └── loader.py                  # YAML 多层叠加 + ${ENV_VAR} 替换 + get_config() 单例
 │
 └── shared/
@@ -90,6 +92,7 @@ Route → Depends(service_factory) → Service → Repository → DB (get_db())
 - **异常处理:** 所有业务异常继承 `BaseAPIError`，在 `startup.py` 注册
 - **数据库写入:** Repository 写操作用 `begin_nested()` (SAVEPOINT)
 - **配置文件:** `*.yaml` 已 gitignore，只提交 `*.example`
+- **无 ORM 模块:** clawmate 的 Session 纯内存管理、不持久化，故不参与建表、无 ORM 模型
 
 ## 三、测试步骤
 

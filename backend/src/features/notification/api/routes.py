@@ -18,7 +18,7 @@ from src.features.notification.schemas.notification_schema import (
 router = APIRouter()
 
 
-@router.get("/notifications", response_model=NotificationListResponse, summary="获取通知列表")
+@router.get("", response_model=NotificationListResponse, summary="获取通知列表")
 async def list_notifications(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -31,7 +31,7 @@ async def list_notifications(
 
 
 @router.get(
-    "/notifications/unread-count",
+    "/unread-count",
     response_model=UnreadCountResponse,
     summary="获取未读通知数",
 )
@@ -44,7 +44,7 @@ async def get_unread_count(
 
 
 @router.put(
-    "/notifications/{notification_id}/read",
+    "/{notification_id}/read",
     response_model=MarkReadResponse,
     summary="标记通知为已读",
 )
@@ -61,7 +61,7 @@ async def mark_read(
 
 
 @router.put(
-    "/notifications/read-all",
+    "/read-all",
     response_model=MarkReadResponse,
     summary="全部标记为已读",
 )
@@ -75,7 +75,7 @@ async def mark_all_read(
 
 
 @router.get(
-    "/notifications/preferences",
+    "/preferences",
     response_model=NotificationPreferenceResponse,
     summary="获取通知偏好",
 )
@@ -88,7 +88,7 @@ async def get_preferences(
 
 
 @router.put(
-    "/notifications/preferences",
+    "/preferences",
     response_model=NotificationPreferenceResponse,
     summary="更新通知偏好",
 )

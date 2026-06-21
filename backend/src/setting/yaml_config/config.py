@@ -290,6 +290,27 @@ class AgentConfig:
 
 
 @dataclass
+class ClawMateConfigData:
+    """ClawMate 终端模块配置"""
+    enabled: bool = True
+    default_timeout: int = 30
+    max_output_size: int = 65536
+    max_session_idle: int = 600
+    cleanup_interval: int = 60
+    blocked_commands: List[str] = field(default_factory=lambda: [
+        "rm -rf /", "rm -rf /*", "mkfs", "dd if=",
+        ":(){ :|:& };:", "chmod -R 777 /",
+        "shutdown", "reboot", "init 0", "init 6",
+    ])
+    write_denied_paths: List[str] = field(default_factory=lambda: [
+        "/etc", "/proc", "/sys", "/boot", "/root/.ssh",
+    ])
+    write_denied_files: List[str] = field(default_factory=list)
+    write_denied_dirs: List[str] = field(default_factory=list)
+    write_safe_root: str = ""
+
+
+@dataclass
 class AppConfig:
     """应用完整配置"""
     environment: str = "development"
@@ -328,6 +349,9 @@ class AppConfig:
 
     # Agent 智能体配置
     agent: AgentConfig = field(default_factory=AgentConfig)
+
+    # ClawMate 终端模块配置
+    clawmate: ClawMateConfigData = field(default_factory=ClawMateConfigData)
 
     # 任务队列配置
     task_queue: TaskQueueConfig = field(default_factory=TaskQueueConfig)

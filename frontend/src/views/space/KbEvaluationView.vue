@@ -91,10 +91,10 @@
               <el-button type="primary" link size="small" @click="viewReport(row)">
                 查看报告
               </el-button>
-              <el-button v-if="row.status === 'completed'" type="success" link size="small" @click="handleExport(row, 'csv')">
+              <el-button v-if="row.status === 'completed'" link size="small" @click="handleExport(row, 'csv')">
                 导出CSV
               </el-button>
-              <el-button v-if="row.status === 'pending' || row.status === 'running'" type="warning" link size="small" @click="handleCancelTask(row)">
+              <el-button v-if="row.status === 'pending' || row.status === 'running'" link size="small" @click="handleCancelTask(row)">
                 取消
               </el-button>
               <el-button v-if="row.status !== 'pending' && row.status !== 'running'" type="danger" link size="small" @click="handleDeleteTask(row)">
@@ -1004,31 +1004,40 @@ onUnmounted(() => {
 
 .page-nav {
   margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .nav-tabs {
   display: flex;
-  gap: var(--space-2);
 }
 
 .nav-tab {
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-md);
-  font-size: var(--text-base);
-  color: var(--color-text-secondary);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
   text-decoration: none;
   transition: all var(--transition-fast);
+  position: relative;
+  font-weight: var(--weight-medium);
 }
 
 .nav-tab:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text);
+  color: var(--color-text-secondary);
 }
 
 .nav-tab.active {
-  background: var(--color-primary-subtle);
   color: var(--color-primary);
-  font-weight: var(--weight-medium);
+}
+
+.nav-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--color-primary);
+  border-radius: 2px 2px 0 0;
 }
 
 .eval-tabs {
@@ -1045,7 +1054,7 @@ onUnmounted(() => {
   border-radius: var(--radius-xl);
   padding: var(--space-5);
   margin-bottom: var(--space-5);
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--color-border);
 }
 
 .summary-header {
@@ -1092,7 +1101,7 @@ onUnmounted(() => {
   padding: var(--space-3) var(--space-4);
   background: var(--color-bg-card-elevated);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--color-border);
   min-width: 90px;
   transition: all var(--transition-fast);
 }
@@ -1188,7 +1197,7 @@ onUnmounted(() => {
 
 .recall-chunk {
   background: var(--color-bg-hover);
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: 10px var(--space-3);
   margin-bottom: 6px;
@@ -1235,7 +1244,7 @@ onUnmounted(() => {
   padding: 10px var(--space-3);
   border-radius: var(--radius-md);
   background: var(--color-bg-hover);
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--color-border);
   max-height: 120px;
   overflow-y: auto;
   white-space: pre-wrap;
@@ -1253,7 +1262,7 @@ onUnmounted(() => {
   gap: var(--space-2);
   margin-top: var(--space-3);
   padding-top: var(--space-3);
-  border-top: 1px solid var(--color-border-light);
+  border-top: 1px solid var(--color-border);
 }
 
 .human-score-label {
@@ -1282,7 +1291,7 @@ onUnmounted(() => {
   justify-content: flex-end;
   margin-top: var(--space-4);
   padding-top: var(--space-4);
-  border-top: 1px solid var(--color-border-light);
+  border-top: 1px solid var(--color-border);
 }
 
 /* 进度条 */

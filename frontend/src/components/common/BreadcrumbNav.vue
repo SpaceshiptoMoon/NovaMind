@@ -1,6 +1,6 @@
 <template>
   <el-breadcrumb separator="/" class="breadcrumb-nav">
-    <el-breadcrumb-item :to="{ path: `/home/spaces` }">
+    <el-breadcrumb-item :to="{ path: spaceId ? `/home/spaces/${spaceId}/knowledge-bases` : `/home/spaces` }">
       空间
     </el-breadcrumb-item>
     <el-breadcrumb-item v-if="spaceId" :to="{ path: `/home/spaces/${spaceId}/knowledge-bases` }">
@@ -11,6 +11,9 @@
     </el-breadcrumb-item>
     <el-breadcrumb-item v-if="showDocuments && kbId">
       文档
+    </el-breadcrumb-item>
+    <el-breadcrumb-item v-if="moduleLabel">
+      {{ moduleLabel }}
     </el-breadcrumb-item>
     <el-breadcrumb-item v-if="docName">
       {{ docName }}
@@ -42,8 +45,15 @@ const spaceName = computed(() => {
   return spaceStore.currentSpace?.name || '知识空间'
 })
 
-const kbLink = computed(() => `/home/spaces/${spaceId.value}/knowledge-bases/${kbId.value}/documents`)
+const kbLink = computed(() => `/home/spaces/${spaceId.value}/knowledge-bases`)
 const showDocuments = computed(() => !props.docName && (route.name === 'Documents' || route.name === 'DocumentDetail'))
+const moduleLabel = computed(() => {
+  const name = route.name
+  if (name === 'Search') return '知识检索'
+  if (name === 'SpaceSettings') return '空间设置'
+  if (name === 'KbEvaluation') return '评估'
+  return ''
+})
 
 onMounted(async () => {
   if (spaceId.value && !spaceStore.currentSpace) {

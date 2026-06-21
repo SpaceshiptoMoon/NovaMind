@@ -17,9 +17,6 @@
         class="kb-card"
         :class="{ selected: selectedIds.includes(kb.id) }"
       >
-        <!-- 顶部彩色条 -->
-        <div class="kb-card-accent" :style="{ background: getColor(index) }" />
-
         <div class="kb-card-body" @click="goToDocuments(kb.id)">
           <!-- 头部：名称 + 状态 -->
           <div class="kb-card-header">
@@ -27,9 +24,7 @@
               <div class="kb-color-dot" :style="{ background: getColor(index) }" />
               <h4 class="kb-name">{{ kb.name }}</h4>
             </div>
-            <el-tag :type="kb.status === 1 ? 'success' : 'info'" size="small" class="kb-status-tag">
-              {{ kb.status === 1 ? '活跃' : '已归档' }}
-            </el-tag>
+            <span class="kb-status-label">{{ kb.status === 1 ? '活跃' : '已归档' }}</span>
           </div>
 
           <!-- 描述 -->
@@ -47,22 +42,22 @@
         <!-- 操作按钮（hover 显示） -->
         <div class="kb-actions">
           <el-tooltip content="编辑" placement="top">
-            <el-button size="small" circle @click.stop="showEditDialog(kb)">
+            <el-button size="small" circle aria-label="编辑" @click.stop="showEditDialog(kb)">
               <el-icon><Edit /></el-icon>
             </el-button>
           </el-tooltip>
           <el-tooltip content="配置" placement="top">
-            <el-button size="small" circle @click.stop="showConfigDialog(kb)">
+            <el-button size="small" circle aria-label="配置" @click.stop="showConfigDialog(kb)">
               <el-icon><Setting /></el-icon>
             </el-button>
           </el-tooltip>
           <el-tooltip v-if="kb.status === 1" content="归档" placement="top">
-            <el-button size="small" circle type="warning" plain @click.stop="handleArchive(kb)">
+            <el-button size="small" circle aria-label="归档" @click.stop="handleArchive(kb)">
               <el-icon><FolderOpened /></el-icon>
             </el-button>
           </el-tooltip>
           <el-tooltip v-else content="激活" placement="top">
-            <el-button size="small" circle type="success" plain @click.stop="handleUnarchive(kb)">
+            <el-button size="small" circle aria-label="激活" @click.stop="handleUnarchive(kb)">
               <el-icon><FolderAdd /></el-icon>
             </el-button>
           </el-tooltip>
@@ -74,8 +69,12 @@
         v-if="!loading && knowledgeBases.length === 0"
         variant="default"
         title="暂无知识库"
-        description="点击右上角「新建知识库」创建第一个知识库"
-      />
+        description="创建知识库，上传文档，开始构建你的知识体系"
+      >
+        <el-button type="primary" @click="handleQuickCreateKb">
+          新建知识库
+        </el-button>
+      </EmptyState>
     </div>
 
     <!-- 编辑知识库弹窗 -->
@@ -389,12 +388,12 @@ const formRules: FormRules = {
 // === 色板 ===
 
 const colorPalette = [
-  '#2563EB',
+  '#6366F1',
   '#10B981',
   '#EF4444',
   '#7C3AED',
   '#F59E0B',
-  '#0EA5E9',
+  '#6366F1',
   '#F97316',
   '#14B8A6',
 ]
@@ -685,6 +684,24 @@ function goToDocuments(kbId: number) {
   router.push(`/home/spaces/${spaceId.value}/knowledge-bases/${kbId}/documents`)
 }
 
+async function handleQuickCreateKb() {
+  try {
+    const { value } = await ElMessageBox.prompt('请输入知识库名称', '新建知识库', {
+      confirmButtonText: '创建',
+      cancelButtonText: '取消',
+      inputPattern: /\S/,
+      inputErrorMessage: '名称不能为空',
+    })
+    if (value) {
+      await knowledgeBaseApi.createKnowledgeBase(spaceId.value, { name: value.trim() })
+      ElMessage.success('知识库创建成功')
+      fetchKnowledgeBases()
+    }
+  } catch {
+    // 用户取消
+  }
+}
+
 onMounted(() => {
   fetchKnowledgeBases()
 })
@@ -720,28 +737,24 @@ onMounted(() => {
 
 .kb-card {
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  transition: all var(--transition-base);
+  box-shadow: var(--shadow-xs);
+  transition: border-color var(--transition-fast), background-color var(--transition-fast), box-shadow var(--transition-fast);
   display: flex;
   flex-direction: row;
 }
 
 .kb-card:hover {
-  border-color: var(--color-border);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+  border-color: var(--color-text-faint);
+  background: var(--color-bg-card-elevated);
+  box-shadow: var(--shadow-sm);
 }
 
 .kb-card.selected {
   border-color: var(--color-primary);
   background: var(--color-primary-muted);
-}
-
-.kb-card-accent {
-  width: 3px;
-  flex-shrink: 0;
 }
 
 .kb-card-body {
@@ -788,9 +801,11 @@ onMounted(() => {
   color: var(--color-primary);
 }
 
-.kb-status-tag {
+.kb-status-label {
   flex-shrink: 0;
-  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  font-weight: var(--weight-medium);
 }
 
 .kb-desc {
