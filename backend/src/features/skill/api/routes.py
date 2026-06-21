@@ -207,7 +207,7 @@ async def list_installed(
     user_id: int = Depends(get_current_user_id),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
-    return await service.list_installed(agent_id)
+    return await service.list_installed(agent_id, user_id)
 
 
 # ==================== 验证 ====================
@@ -374,7 +374,7 @@ async def download_skill(
     user_id: int = Depends(get_current_user_id),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
-    zip_bytes = await service.download_skill(skill_id)
+    zip_bytes = await service.download_skill(skill_id, user_id)
     return Response(
         content=zip_bytes,
         media_type="application/zip",
@@ -441,11 +441,15 @@ async def uninstall_skill(
     skill_id: Annotated[int, Path(gt=0, description="技能ID")],
     agent_id: Annotated[int, Path(gt=0, description="Agent ID")],
     user_id: int = Depends(get_current_user_id),
+    current_user: dict = Depends(get_current_user),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
     from src.features.agent.repository.agent_repository import AgentRepository
     agent_repo = AgentRepository(service.db)
-    await service.uninstall_skill(user_id, skill_id, agent_id, agent_repo)
+    await service.uninstall_skill(
+        user_id, skill_id, agent_id, agent_repo,
+        is_admin=current_user.get("is_admin", False),
+    )
     return {"success": True, "message": "技能已卸载"}
 
 

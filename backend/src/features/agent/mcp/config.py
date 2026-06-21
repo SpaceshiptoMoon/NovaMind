@@ -1,9 +1,12 @@
 """
 MCP 连接配置模型
 """
+import socket
+import ipaddress
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class StdioConfig(BaseModel):
@@ -17,6 +20,27 @@ class StreamableHttpConfig(BaseModel):
     """Streamable HTTP 传输配置"""
     url: str = Field(..., description="MCP 服务器 URL，如 http://localhost:8000/mcp")
     headers: Dict[str, str] = Field(default_factory=dict, description="请求头")
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, v):
+        """校验 MCP HTTP URL：仅允许 http/https，禁止私有网络 / 环回 / 云元数据地址，防止 SSRF"""
+        parsed = urlparse(v)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("MCP HTTP URL 仅允许 http/https 协议")
+        host = parsed.hostname
+        if not host:
+            raise ValueError("URL 缺少 hostname")
+        try:
+            ip = socket.gethostbyname(host)
+            ip_obj = ipaddress.ip_address(ip)
+            if ip_obj.is_private or ip_obj.is_loopback:
+                raise ValueError("不允许连接私有或环回网络地址")
+            if ip.startswith("169.254."):
+                raise ValueError("不允许连接链路本地地址（含云元数据 169.254.169.254）")
+        except socket.gaierror:
+            raise ValueError("DNS 解析失败")
+        return v
 
 
 class McpConnectionConfig(BaseModel):

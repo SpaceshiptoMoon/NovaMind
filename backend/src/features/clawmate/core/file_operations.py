@@ -278,7 +278,7 @@ class FileOperations:
         resolved = _resolve_path(path, self.env.cwd)
         safe = _safe_path(resolved)
 
-        command = f"find {safe} -name '{pattern}' -type f 2>/dev/null | head -{max_results}"
+        command = f"find {shlex.quote(safe)} -name {shlex.quote(pattern)} -type f 2>/dev/null | head -{max_results}"
 
         result = self.env.execute(command)
 
@@ -321,12 +321,12 @@ class FileOperations:
         # 构建 grep 命令
         include = ""
         if file_pattern != "*":
-            include = f"--include='{file_pattern}'"
+            include = f"--include={shlex.quote(file_pattern)}"
 
         command = (
             f"grep -rn {include} -C {context_lines} "
             f"--max-count={max_results} "
-            f"'{pattern}' {safe} 2>/dev/null"
+            f"{shlex.quote(pattern)} {shlex.quote(safe)} 2>/dev/null"
         )
 
         result = self.env.execute(command)

@@ -298,9 +298,13 @@ class ResumeAnalyzer:
         search_service = self._get_search_service()
         if search_service:
             try:
+                from src.shared.utils.redact import redact_sensitive_text
+                # 搜索查询前脱敏，防止 JD/简历夹带联系方式外发搜索引擎
+                company = redact_sensitive_text(unit.company or "")
+                position = redact_sensitive_text(unit.position or "")
                 queries = [
-                    f"{unit.company} {unit.position} 技术栈 业务方向",
-                    f"{unit.company} {unit.position} 面试 岗位职责",
+                    f"{company} {position} 技术栈 业务方向",
+                    f"{company} {position} 面试 岗位职责",
                 ]
                 all_results = []
                 for query in queries:

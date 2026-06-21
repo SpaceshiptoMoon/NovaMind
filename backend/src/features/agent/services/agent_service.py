@@ -99,10 +99,16 @@ class AgentService:
         )
 
     async def update_agent(
-        self, user_id: int, agent_id: int, data: AgentUpdate
+        self, user_id: int, agent_id: int, data: AgentUpdate, is_admin: bool = False
     ) -> AgentDetailResponse:
         agent = await self.agent_repo.get_by_id(agent_id)
-        if not agent or (agent.user_id is not None and agent.user_id != user_id):
+        if not agent:
+            raise AgentNotFoundError(agent_id)
+        # 系统级预置 Agent（user_id=None）仅管理员可改；普通 Agent 仅属主可改
+        if agent.user_id is None:
+            if not is_admin:
+                raise AgentNotFoundError(agent_id)
+        elif agent.user_id != user_id:
             raise AgentNotFoundError(agent_id)
 
         update_data = data.model_dump(exclude_unset=True)
@@ -112,13 +118,19 @@ class AgentService:
 
         return AgentDetailResponse.model_validate(agent)
 
-    async def delete_agent(self, user_id: int, agent_id: int) -> None:
+    async def delete_agent(self, user_id: int, agent_id: int, is_admin: bool = False) -> None:
         from src.features.agent.models.agent import AgentSession, AgentMessage
         from src.features.agent.models.tool_call import AgentToolCall
         from src.features.agent.models.memory import AgentMemory
 
         agent = await self.agent_repo.get_by_id(agent_id)
-        if not agent or (agent.user_id is not None and agent.user_id != user_id):
+        if not agent:
+            raise AgentNotFoundError(agent_id)
+        # 系统级预置 Agent（user_id=None）仅管理员可删；普通 Agent 仅属主可删
+        if agent.user_id is None:
+            if not is_admin:
+                raise AgentNotFoundError(agent_id)
+        elif agent.user_id != user_id:
             raise AgentNotFoundError(agent_id)
 
         # 级联删除关联数据

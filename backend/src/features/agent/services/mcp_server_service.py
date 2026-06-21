@@ -145,7 +145,7 @@ class McpServerService:
             }
         except Exception as e:
             logger.warning("MCP 连接测试失败", server_id=data.name, error=str(e))
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": "连接测试失败，请检查配置（详情见服务端日志）"}
 
     async def _connect(self, server: AgentMcpServer) -> None:
         """连接 MCP 服务器"""
@@ -175,7 +175,7 @@ class McpServerService:
                 server_id=server.id,
                 error=str(e),
             )
-            raise McpConnectionError(f"连接失败：{str(e)}")
+            raise McpConnectionError("连接失败，请检查配置（详情见服务端日志）")
 
     async def _get_and_validate(
         self, user_id: int, server_id: int, *, is_admin: bool = False

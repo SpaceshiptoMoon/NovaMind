@@ -236,7 +236,7 @@ export const useChatStore = defineStore('chat', () => {
           streamingContent.value += text || ''
           const lastMsg = messages.value[messages.value.length - 1]
           if (lastMsg?.role === 'assistant') {
-            lastMsg.content = streamingContent.value
+            lastMsg.content += text || ''
           }
         },
         onDone(d) {

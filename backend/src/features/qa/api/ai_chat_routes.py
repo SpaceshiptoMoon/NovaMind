@@ -12,6 +12,7 @@ from src.features.user.api.auth import get_current_user
 from src.features.qa.api.dependencies import get_aichat_service, get_qa_service, get_model_config_service, get_minio_client_for_presign
 from src.features.qa.services.ai_chat_service import AIChatService
 from src.features.qa.services.qa_service import QAService
+from src.features.qa.api.constants import DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TOP_P
 from src.features.qa.schemas.ai_chat import (
     ChatRequest,
     ChatResponse,
@@ -270,9 +271,9 @@ async def get_available_models(
     llm_models = await model_config_service.list_available_models(user_id, "llm")
     for model_name in llm_models:
         models[model_name] = {
-            "max_tokens": 2048,
-            "temperature": 0.7,
-            "top_p": 0.8,
+            "max_tokens": DEFAULT_MAX_TOKENS,
+            "temperature": DEFAULT_TEMPERATURE,
+            "top_p": DEFAULT_TOP_P,
             "model_type": "llm",
         }
 

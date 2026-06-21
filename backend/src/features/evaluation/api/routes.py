@@ -25,7 +25,18 @@ from src.features.evaluation.api.exceptions import (
     EvaluationTaskNotFoundError,
     EvaluationTaskPendingError,
     EvaluationTaskNotCompletedError,
+    EvaluationAccessDeniedError,
 )
+
+
+def _check_task_owner(task, member: SpaceMember) -> None:
+    """校验测评任务归属：仅任务作者或空间管理员可操作。
+
+    在端点取到 task 后调用，统一收敛越权校验，
+    避免空间内任意成员越权操作他人创建的测评任务。
+    """
+    if task.user_id != member.user_id and not member.is_admin():
+        raise EvaluationAccessDeniedError(task.id, member.user_id)
 from src.features.evaluation.schemas.evaluation_schema import (
     EvaluationTaskCreateResponse,
     EvaluationTaskListItem,
@@ -295,6 +306,7 @@ async def get_evaluation_task(
     task = await evaluation_service.get_task_by_kb(task_id, space_id, kb_id)
     if not task:
         raise EvaluationTaskNotFoundError(task_id)
+    _check_task_owner(task, member)
     return EvaluationTaskDetailResponse.model_validate(task)
 
 
@@ -314,11 +326,11 @@ async def delete_evaluation_task(
     db: AsyncSession = Depends(get_db),
 ):
     await validate_kb_access(kb_id, space_id, db)
-    # 校验任务归属当前知识库，防止越权删除
+    # 校验任务归属当前知识库 + 作者/管理员权限，防止越权删除
     task = await evaluation_service.get_task_by_kb(task_id, space_id, kb_id)
     if not task:
-        from src.features.evaluation.api.exceptions import EvaluationTaskNotFoundError
         raise EvaluationTaskNotFoundError(task_id)
+    _check_task_owner(task, member)
     result = await evaluation_service.delete_task(task_id)
     return {"success": result, "message": "测评任务已删除"}
 
@@ -342,6 +354,7 @@ async def cancel_evaluation_task(
     task = await evaluation_service.get_task_by_kb(task_id, space_id, kb_id)
     if not task:
         raise EvaluationTaskNotFoundError(task_id)
+    _check_task_owner(task, member)
     task = await evaluation_service.cancel_task(task_id)
     return EvaluationTaskCancelResponse(
         task_id=task.id,
@@ -366,6 +379,7 @@ async def get_task_progress(
     task = await evaluation_service.get_task_by_kb(task_id, space_id, kb_id)
     if not task:
         raise EvaluationTaskNotFoundError(task_id)
+    _check_task_owner(task, member)
     progress = await evaluation_service.get_task_progress(task_id)
     return EvaluationTaskProgressResponse(**progress)
 
@@ -389,6 +403,7 @@ async def submit_human_scores(
     task = await evaluation_service.get_task_by_kb(task_id, space_id, kb_id)
     if not task:
         raise EvaluationTaskNotFoundError(task_id)
+    _check_task_owner(task, member)
 
     updated = await evaluation_service.submit_human_scores(
         task_id=task_id,
@@ -411,6 +426,11 @@ async def get_evaluation_report(
     db: AsyncSession = Depends(get_db),
 ):
     await validate_kb_access(kb_id, space_id, db)
+    # 先校验任务归属（作者或空间管理员），再取报告
+    task = await evaluation_service.get_task_by_kb(task_id, space_id, kb_id)
+    if not task:
+        raise EvaluationTaskNotFoundError(task_id)
+    _check_task_owner(task, member)
     report = await evaluation_service.get_report(task_id)
     if not report:
         raise EvaluationTaskNotFoundError(task_id)
@@ -436,6 +456,7 @@ async def export_evaluation_result(
     task = await evaluation_service.get_task_by_kb(task_id, space_id, kb_id)
     if not task:
         raise EvaluationTaskNotFoundError(task_id)
+    _check_task_owner(task, member)
 
     if task.status == EvaluationStatus.PENDING or task.status == EvaluationStatus.RUNNING:
         raise EvaluationTaskPendingError(task_id)

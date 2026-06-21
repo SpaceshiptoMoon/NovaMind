@@ -209,10 +209,11 @@ class OpenAICompatibleLLM(BaseLLM):
                 )
                 raise
 
-            async for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    content_yielded = True
-                    yield chunk.choices[0].delta.content
+            async with stream:
+                async for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        content_yielded = True
+                        yield chunk.choices[0].delta.content
 
             elapsed = time.monotonic() - start_time
             if not content_yielded:
@@ -309,17 +310,18 @@ class OpenAICompatibleLLM(BaseLLM):
 
             has_reasoning = False
             has_content = False
-            async for chunk in stream:
-                if not chunk.choices:
-                    continue
-                delta = chunk.choices[0].delta
-                rc = getattr(delta, 'reasoning_content', None)
-                if rc:
-                    has_reasoning = True
-                    yield StreamChunk(type="reasoning", text=rc)
-                if delta.content:
-                    has_content = True
-                    yield StreamChunk(type="content", text=delta.content)
+            async with stream:
+                async for chunk in stream:
+                    if not chunk.choices:
+                        continue
+                    delta = chunk.choices[0].delta
+                    rc = getattr(delta, 'reasoning_content', None)
+                    if rc:
+                        has_reasoning = True
+                        yield StreamChunk(type="reasoning", text=rc)
+                    if delta.content:
+                        has_content = True
+                        yield StreamChunk(type="content", text=delta.content)
 
             if not has_content and not has_reasoning:
                 logger.warning("LLM 流式响应无内容", model=self.model)

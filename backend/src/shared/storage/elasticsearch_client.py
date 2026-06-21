@@ -9,7 +9,7 @@ import asyncio
 import re
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from elasticsearch import AsyncElasticsearch
+from elasticsearch import AsyncElasticsearch, NotFoundError, ConnectionError as ESConnectionError
 
 from src.core.middleware.structured_logging import get_logger
 
@@ -480,6 +480,11 @@ class ElasticsearchClient:
                 }
                 for hit in result.get("hits", {}).get("hits", [])
             ]
+        except NotFoundError:
+            return []
+        except ESConnectionError as e:
+            logger.error("ES 搜索异常（基础设施问题）", index=index_name, error=str(e))
+            raise
         except Exception as e:
             logger.warning("向量搜索失败", index=index_name, error=str(e))
             return []
@@ -527,6 +532,11 @@ class ElasticsearchClient:
                 }
                 for hit in result.get("hits", {}).get("hits", [])
             ]
+        except NotFoundError:
+            return []
+        except ESConnectionError as e:
+            logger.error("ES 搜索异常（基础设施问题）", index=index_name, error=str(e))
+            raise
         except Exception as e:
             logger.warning("全文搜索失败", index=index_name, error=str(e))
             return []
@@ -656,6 +666,11 @@ class ElasticsearchClient:
                 }
                 for hit in result.get("hits", {}).get("hits", [])
             ]
+        except NotFoundError:
+            return []
+        except ESConnectionError as e:
+            logger.error("ES 搜索异常（基础设施问题）", index=index_name, error=str(e))
+            raise
         except Exception as e:
             logger.warning("问题 BM25 检索失败", index=index_name, error=str(e))
             return []
@@ -889,6 +904,11 @@ class ElasticsearchClient:
 
         try:
             return await handler()
+        except NotFoundError:
+            return []
+        except ESConnectionError as e:
+            logger.error("ES 搜索异常（基础设施问题）", mode=mode, error=str(e))
+            raise
         except Exception as e:
             logger.warning("检索失败", mode=mode, error=str(e))
             return []

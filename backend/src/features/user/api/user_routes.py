@@ -402,7 +402,7 @@ async def admin_reset_password(
     current_user: dict = Depends(require_admin),
 ):
     """管理员重置用户密码，返回临时密码"""
-    if user_id == current_user.get("user_id"):
+    if user_id == current_user.get("id"):
         from src.features.user.api.exceptions import UserOperationError
         raise UserOperationError("不能重置自己的密码，请使用修改密码功能")
 
@@ -426,7 +426,7 @@ async def change_password(
     current_user: dict = Depends(require_active_user),
 ):
     """用户修改密码"""
-    user_id = current_user.get("user_id")
+    user_id = current_user.get("id")
     await user_service.change_password(user_id, data.old_password, data.new_password)
     return ChangePasswordResponse(message="密码修改成功")
 

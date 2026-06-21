@@ -1046,12 +1046,23 @@ class AIChatService:
         if not items_with_att:
             return context
 
-        remaining_budget = self.ATTACHMENT_TOKEN_BUDGET
-        injected = 0
-        # 反向遍历：最近的消息优先占用预算（全量），老的逐级截断 / 留头部
+        # 预留制：先统计文档附件总数，每个预分配 HEAD_KEEP 作为必保阅读量
+        reserved = 0
         for item in reversed(items_with_att):
             msg_id = item.get("id")
-            records = [att_by_id[aid] for aid in msg_att_map[msg_id] if aid in att_by_id]
+            records = [att_by_id[aid] for aid in msg_att_map.get(msg_id, []) if aid in att_by_id]
+            if not records:
+                continue
+            doc_records = [r for r in records if r.file_type not in IMAGE_TYPES]
+            if doc_records:
+                reserved += len(doc_records) * self.ATTACHMENT_HEAD_KEEP
+        remaining_budget = max(0, self.ATTACHMENT_TOKEN_BUDGET - reserved)
+
+        injected = 0
+        # 反向遍历：最近的消息优先占用剩余预算（全量），老的逐级截断 / 头部保底
+        for item in reversed(items_with_att):
+            msg_id = item.get("id")
+            records = [att_by_id[aid] for aid in msg_att_map.get(msg_id, []) if aid in att_by_id]
             if not records:
                 continue
 
@@ -1061,22 +1072,23 @@ class AIChatService:
             parts: list = []
             original_content = item.get("content", "")
 
-            # 文档附件：按 token 预算（全量 / 截断 / 留头部），绝不完全忽略
+            # 文档附件：每个至少 HEAD_KEEP 保底（已预留），剩余预算从最近开始按全量/截断分配
             if doc_records:
                 full_xml = self._format_attachments_prompt(doc_records)
                 full_tokens = self._token_counter.count_tokens(full_xml)
+                head_xml = self._format_attachments_prompt(doc_records, max_tokens=self.ATTACHMENT_HEAD_KEEP)
 
-                if full_tokens <= remaining_budget:
-                    # 预算够 → 全量注入
+                if remaining_budget >= full_tokens:
+                    # 剩余预算够 → 全量注入
                     doc_xml = full_xml
                     remaining_budget -= full_tokens
                 elif remaining_budget >= self.ATTACHMENT_MIN_KEEP:
-                    # 预算不够全量但够截断 → 截断到剩余
+                    # 不够全量但够截断 → 截断到剩余
                     doc_xml = self._format_attachments_prompt(doc_records, max_tokens=remaining_budget)
                     remaining_budget = 0
                 else:
-                    # 预算耗尽 → 至少保留头部（不忽略）
-                    doc_xml = self._format_attachments_prompt(doc_records, max_tokens=self.ATTACHMENT_HEAD_KEEP)
+                    # 预算用完 → 用必保头部（已预留，不占 remaining_budget）
+                    doc_xml = head_xml
                 parts.append({"type": "text", "text": doc_xml})
 
             # 图片附件 → multimodal（仅 VLM；图片不占文本预算）
