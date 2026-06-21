@@ -15,17 +15,32 @@
             class="channel-select"
             @change="handleChannelChange"
           >
-            <el-option
-              v-for="ch in channels"
-              :key="ch.key"
-              :label="ch.label"
-              :value="ch.key"
-            >
-              <div class="channel-option">
-                <NavIcon :name="ch.icon" :size="16" />
-                <span>{{ ch.label }}</span>
-              </div>
-            </el-option>
+            <el-option-group label="核心">
+              <el-option
+                v-for="ch in primaryChannels"
+                :key="ch.key"
+                :label="ch.label"
+                :value="ch.key"
+              >
+                <div class="channel-option">
+                  <NavIcon :name="ch.icon" :size="16" />
+                  <span>{{ ch.label }}</span>
+                </div>
+              </el-option>
+            </el-option-group>
+            <el-option-group label="更多">
+              <el-option
+                v-for="ch in moreChannels"
+                :key="ch.key"
+                :label="ch.label"
+                :value="ch.key"
+              >
+                <div class="channel-option">
+                  <NavIcon :name="ch.icon" :size="16" />
+                  <span>{{ ch.label }}</span>
+                </div>
+              </el-option>
+            </el-option-group>
             <template #prefix>
               <NavIcon :name="activeChannel.icon" :size="16" />
             </template>
@@ -38,7 +53,7 @@
         <template v-else>
           <div class="channel-icons">
             <button
-              v-for="ch in channels"
+              v-for="ch in primaryChannels"
               :key="ch.key"
               class="channel-icon-btn"
               :class="{ active: activeChannelKey === ch.key }"
@@ -47,6 +62,26 @@
             >
               <NavIcon :name="ch.icon" :size="20" />
             </button>
+            <button
+              class="channel-icon-btn more-toggle"
+              :class="{ active: moreChannels.some(c => c.key === activeChannelKey) }"
+              :title="moreExpanded ? '收起更多' : '更多功能'"
+              @click="moreExpanded = !moreExpanded"
+            >
+              <el-icon :size="20"><More /></el-icon>
+            </button>
+            <template v-if="moreExpanded">
+              <button
+                v-for="ch in moreChannels"
+                :key="ch.key"
+                class="channel-icon-btn"
+                :class="{ active: activeChannelKey === ch.key }"
+                :title="ch.label"
+                @click="switchChannel(ch.key)"
+              >
+                <NavIcon :name="ch.icon" :size="20" />
+              </button>
+            </template>
           </div>
         </template>
       </div>
@@ -114,6 +149,13 @@
             <p class="info-text">发现、上传和分享 AI 技能，安装到你的智能体中。</p>
           </div>
         </template>
+
+        <!-- ClawMate -->
+        <template v-else-if="activeChannelKey === 'clawmate'">
+          <div class="sidebar-info">
+            <p class="info-text">ClawMate：AI 智能对话助手，支持工具调用和上下文分析。</p>
+          </div>
+        </template>
       </div>
     </aside>
 
@@ -142,7 +184,7 @@
 import { ref, computed, onMounted, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Plus, Delete, DArrowLeft, DArrowRight } from '@element-plus/icons-vue'
+import { Plus, Delete, DArrowLeft, DArrowRight, More } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { useSpaceStore } from '@/stores/space'
 import { useChatStore } from '@/stores/chat'
@@ -161,13 +203,18 @@ const sidebarCollapsed = ref(false)
 const selectedAgentId = ref<number | null>(null)
 
 const channels = [
-  { key: 'chat', label: 'AI 对话', icon: 'chat' },
-  { key: 'agents', label: '智能体', icon: 'agents' },
-  { key: 'research', label: '深度研究', icon: 'research' },
-  { key: 'skills', label: '技能广场', icon: 'apps' },
-]
+  { key: 'chat', label: 'AI 对话', icon: 'chat', group: 'primary' },
+  { key: 'agents', label: '智能体', icon: 'agents', group: 'primary' },
+  { key: 'research', label: '深度研究', icon: 'research', group: 'more' },
+  { key: 'skills', label: '技能广场', icon: 'apps', group: 'more' },
+  { key: 'clawmate', label: 'ClawMate', icon: 'chat', group: 'more' },
+] as const
+
+const primaryChannels = computed(() => channels.filter(c => c.group === 'primary'))
+const moreChannels = computed(() => channels.filter(c => c.group === 'more'))
 
 const activeChannelKey = ref('chat')
+const moreExpanded = ref(false)
 
 const activeChannel = computed(() =>
   channels.find(c => c.key === activeChannelKey.value) || channels[0],
@@ -188,6 +235,7 @@ function syncChannelFromRoute() {
   else if (path.includes('/workspace/agents')) activeChannelKey.value = 'agents'
   else if (path.includes('/workspace/research')) activeChannelKey.value = 'research'
   else if (path.includes('/workspace/skills')) activeChannelKey.value = 'skills'
+  else if (path.includes('/workspace/clawmate')) activeChannelKey.value = 'clawmate'
 }
 
 function handleChannelChange(key: string) {
@@ -196,6 +244,7 @@ function handleChannelChange(key: string) {
     agents: '/home/workspace/agents',
     research: '/home/workspace/research',
     skills: '/home/workspace/skills',
+    clawmate: '/home/workspace/clawmate',
   }
   router.push(map[key] || map.chat)
 }
@@ -214,6 +263,9 @@ function handleNew() {
       break
     case 'skills':
       router.push('/home/workspace/skills')
+      break
+    case 'clawmate':
+      router.push('/home/workspace/clawmate')
       break
   }
 }

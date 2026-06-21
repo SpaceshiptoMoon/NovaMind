@@ -3,11 +3,11 @@
    (参考 Dify / Coze / Linear 风格)
    ======================================== */
 :root {
-  /* Primary — 科技蓝 */
-  --color-primary: #2563EB;
-  --color-primary-hover: #1D4ED8;
-  --color-primary-subtle: #EFF6FF;
-  --color-primary-muted: rgba(37, 99, 235, 0.06);
+  /* Primary — 静谧靛紫 */
+  --color-primary: #6366F1;
+  --color-primary-hover: #4F46E5;
+  --color-primary-subtle: #EEF2FF;
+  --color-primary-muted: rgba(99, 102, 241, 0.06);
 
   /* Accent — 紫 */
   --color-accent: #7C3AED;
@@ -20,18 +20,18 @@
   --color-text-muted: #9CA3AF;
   --color-text-faint: #D1D5DB;
 
-  /* Background — 纯净白底 */
-  --color-bg: #F3F4F6;
+  /* Background — 人文暖白底 */
+  --color-bg: #F8F7FF;
   --color-bg-card: #FFFFFF;
-  --color-bg-card-elevated: #F9FAFB;
-  --color-bg-hover: #F3F4F6;
-  --color-bg-sidebar: #F9FAFB;
-  --color-bg-input: #F9FAFB;
+  --color-bg-card-elevated: #FAF9FF;
+  --color-bg-hover: #F1F0FF;
+  --color-bg-sidebar: #FAF9FF;
+  --color-bg-input: #FAF9FF;
 
   /* Border — 冷灰 */
   --color-border: #E5E7EB;
   --color-border-light: #F3F4F6;
-  --color-border-focus: #2563EB;
+  --color-border-focus: #6366F1;
 
   /* Semantic */
   --color-success: #10B981;
@@ -40,19 +40,19 @@
   --color-warning-subtle: #FFFBEB;
   --color-danger: #EF4444;
   --color-danger-subtle: #FEF2F2;
-  --color-info: #3B82F6;
-  --color-info-subtle: #EFF6FF;
+  --color-info: #818CF8;
+  --color-info-subtle: #EEF2FF;
 
   /* Typography */
-  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --font-mono: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
 
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-base: 14px;
-  --text-md: 15px;
-  --text-lg: 16px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-md: 16px;
+  --text-lg: 17px;
   --text-xl: 18px;
   --text-2xl: 22px;
   --text-3xl: 28px;
@@ -177,6 +177,8 @@ body {
   background: var(--color-bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  text-wrap: pretty;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -185,6 +187,7 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--color-text);
   line-height: var(--leading-tight);
   letter-spacing: var(--tracking-tight);
+  text-wrap: balance;
 }
 
 a {

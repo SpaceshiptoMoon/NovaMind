@@ -56,7 +56,6 @@
     <div v-loading="loading" class="doc-table-wrap">
       <el-table
         :data="documents"
-        stripe
         @selection-change="handleSelectionChange"
         class="doc-table"
       >
@@ -105,19 +104,19 @@
           <template #default="{ row }">
             <div class="action-buttons">
               <el-tooltip v-if="isProcessing(row.status)" content="取消处理" placement="top">
-                <el-button type="warning" :icon="CircleClose" circle size="small" :loading="cancelLoadingId === row.id" @click="handleCancel(row)" />
+                <el-button :icon="CircleClose" circle size="small" :loading="cancelLoadingId === row.id" aria-label="取消处理" @click="handleCancel(row)" />
               </el-tooltip>
               <el-tooltip v-if="canProcess(row.status)" :content="(row.status === 'completed' || row.status === 2) ? '重新解析' : '处理'" placement="top">
-                <el-button type="primary" :icon="Refresh" circle size="small" @click="handleSingleProcess(row)" />
+                <el-button :icon="Refresh" circle size="small" aria-label="处理" @click="handleSingleProcess(row)" />
               </el-tooltip>
               <el-tooltip v-if="isFailed(row.status)" content="重试" placement="top">
-                <el-button type="warning" :icon="RefreshRight" circle size="small" :loading="retryLoadingId === row.id" @click="handleRetry(row)" />
+                <el-button :icon="RefreshRight" circle size="small" :loading="retryLoadingId === row.id" aria-label="重试" @click="handleRetry(row)" />
               </el-tooltip>
               <el-tooltip content="详情" placement="top">
-                <el-button :icon="View" circle size="small" @click="goToDetail(row.id)" />
+                <el-button :icon="View" circle size="small" aria-label="详情" @click="goToDetail(row.id)" />
               </el-tooltip>
               <el-tooltip content="删除" placement="top">
-                <el-button type="danger" :icon="Delete" circle size="small" @click="handleDelete(row)" />
+                <el-button :icon="Delete" circle size="small" aria-label="删除" @click="handleDelete(row)" />
               </el-tooltip>
             </div>
           </template>
@@ -471,7 +470,7 @@ onMounted(async () => {
 /* ===== Sub Navigation ===== */
 .page-nav {
   margin-bottom: var(--space-4);
-  border-bottom: 1px solid var(--color-border-light);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .nav-tabs {
@@ -530,21 +529,33 @@ onMounted(async () => {
 }
 
 .file-icon {
-  width: 36px;
-  height: 28px;
-  border-radius: var(--radius-sm);
+  width: 32px;
+  height: 38px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
   flex-shrink: 0;
-  letter-spacing: -0.5px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.05),
+    0 1px 2px rgba(15, 23, 42, 0.08);
+  transition: box-shadow var(--transition-fast);
+}
+
+.filename-cell:hover .file-icon {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.06),
+    0 2px 6px rgba(15, 23, 42, 0.12);
 }
 
 .file-name {
   font-size: var(--text-sm);
   color: var(--color-text);
+  font-weight: var(--weight-medium);
   transition: color var(--transition-fast);
 }
 
@@ -630,19 +641,39 @@ onMounted(async () => {
   line-height: var(--leading-relaxed);
 }
 
-.doc-table-wrap :deep(.el-table) {
+/* ===== 文档表格：Linear 风（发丝线分隔 · 去斑马纹 · 扁平） ===== */
+.doc-table-wrap {
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   overflow: hidden;
+  box-shadow: var(--shadow-xs);
 }
 
+.doc-table-wrap :deep(.el-table) {
+  --el-table-border-color: transparent;
+}
+
+/* 表头：扁平白底、发丝线、小字 muted */
 .doc-table-wrap :deep(.el-table th.el-table__cell) {
-  background: var(--color-bg-card-elevated);
+  background: var(--color-bg-card);
   font-size: var(--text-xs);
   color: var(--color-text-muted);
   font-weight: var(--weight-medium);
+  border-bottom: 1px solid var(--color-border);
 }
 
-.doc-table-wrap :deep(.el-table tr:hover > td) {
+/* 单元格：发丝线行分隔 */
+.doc-table-wrap :deep(.el-table td.el-table__cell) {
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+/* 末行无线 */
+.doc-table-wrap :deep(.el-table__body tr:last-child td.el-table__cell) {
+  border-bottom: none;
+}
+
+/* hover 行：浅底，无阴影 */
+.doc-table-wrap :deep(.el-table tr:hover > td.el-table__cell) {
   background: var(--color-bg-hover) !important;
 }
 

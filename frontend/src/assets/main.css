@@ -9,12 +9,12 @@
    Element Plus Theme Overrides — Clean Modern
    ======================================== */
 :root {
-  --el-color-primary: #2563EB;
-  --el-color-primary-light-3: #5B8DEF;
-  --el-color-primary-light-5: #93B4F5;
-  --el-color-primary-light-7: #BAD1FA;
-  --el-color-primary-light-9: #E2EDFD;
-  --el-color-primary-dark-2: #1D4ED8;
+  --el-color-primary: #6366F1;
+  --el-color-primary-light-3: #8B8DF6;
+  --el-color-primary-light-5: #B4B8FD;
+  --el-color-primary-light-7: #D0D4FE;
+  --el-color-primary-light-9: #E0E7FF;
+  --el-color-primary-dark-2: #4F46E5;
 
   --el-font-family: var(--font-body);
   --el-border-radius-base: var(--radius-md);
@@ -42,16 +42,14 @@
 
 .el-button--primary {
   font-weight: var(--weight-medium);
-  letter-spacing: var(--tracking-wide);
 }
 
 .el-button--primary:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
+  /* flat: no lift, no shadow — Linear 风 */
 }
 
 .el-button--primary:active {
-  transform: translateY(0);
+  /* flat */
 }
 
 .el-button--default:hover {
@@ -124,7 +122,6 @@
   font-weight: var(--weight-medium);
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
-  letter-spacing: var(--tracking-wide);
 }
 
 /* ========================================

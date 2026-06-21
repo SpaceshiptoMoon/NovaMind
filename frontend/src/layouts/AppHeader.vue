@@ -255,11 +255,8 @@ const handleCommand = async (command: string) => {
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--space-6);
-  background: var(--color-bg-header);
-  backdrop-filter: blur(var(--blur-header));
-  -webkit-backdrop-filter: blur(var(--blur-header));
-  border-bottom: 1px solid var(--color-border-light);
-  box-shadow: var(--shadow-xs);
+  background: var(--color-bg-card);
+  border-bottom: 1px solid var(--color-border);
   position: relative;
   z-index: var(--z-sticky);
 }

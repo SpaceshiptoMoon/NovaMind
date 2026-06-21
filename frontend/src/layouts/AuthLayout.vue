@@ -1,14 +1,14 @@
 <template>
   <div class="auth-layout">
     <div class="auth-container">
-      <div class="auth-header">
+      <div v-if="showHeader" class="auth-header">
         <div class="auth-logo">
           <UnicornIcon :size="72" />
         </div>
         <h1 class="auth-title"><span>NovaMind</span></h1>
         <p class="auth-subtitle">智能知识管理平台</p>
       </div>
-      <div class="auth-content">
+      <div class="auth-content" :class="{ 'auth-content--minimal': !showHeader }">
         <router-view />
       </div>
     </div>
@@ -16,7 +16,17 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import UnicornIcon from '@/components/common/UnicornIcon.vue'
+
+const route = useRoute()
+
+// 忘记密码 / 重置密码等页面隐藏 header，使用紧凑卡片
+const showHeader = computed(() => {
+  const minimalRoutes = ['/forgot-password', '/reset-password']
+  return !minimalRoutes.includes(route.path)
+})
 </script>
 
 <style scoped>
@@ -73,5 +83,10 @@ import UnicornIcon from '@/components/common/UnicornIcon.vue'
   padding: var(--space-8);
   box-shadow: var(--shadow-lg);
   border: 1px solid var(--color-border-light);
+}
+
+.auth-content--minimal {
+  padding: var(--space-6);
+  box-shadow: none;
 }
 </style>

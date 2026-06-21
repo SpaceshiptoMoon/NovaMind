@@ -390,7 +390,9 @@
           variant="search"
           title="未找到相关结果"
           description="尝试调整查询内容或检索模式"
-        />
+        >
+          <el-button @click="handleReset">重置搜索</el-button>
+        </EmptyState>
 
         <!-- 未搜索时的引导 -->
         <div v-else class="right-empty">
@@ -794,7 +796,7 @@ onMounted(async () => {
 
 /* ===== Sub Navigation ===== */
 .page-nav {
-  border-bottom: 1px solid var(--color-border-light);
+  border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
@@ -843,7 +845,7 @@ onMounted(async () => {
   width: 320px;
   flex-shrink: 0;
   background: var(--color-bg-card);
-  border-right: 1px solid var(--color-border-light);
+  border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -851,7 +853,7 @@ onMounted(async () => {
 
 .left-section {
   padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--color-border-light);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .left-label {
@@ -860,7 +862,6 @@ onMounted(async () => {
   font-weight: var(--weight-semibold);
   color: var(--color-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
   margin-bottom: var(--space-2);
 }
 
@@ -936,7 +937,7 @@ onMounted(async () => {
 /* Left collapse (advanced) */
 .left-collapse {
   border: none;
-  border-bottom: 1px solid var(--color-border-light);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .left-collapse :deep(.el-collapse-item__header) {
@@ -944,7 +945,6 @@ onMounted(async () => {
   font-weight: var(--weight-semibold);
   color: var(--color-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
   padding: 0 var(--space-4);
   height: 44px;
   background: transparent;
@@ -972,7 +972,7 @@ onMounted(async () => {
   margin-bottom: var(--space-2);
   padding-bottom: var(--space-1);
   padding-left: var(--space-2);
-  border-bottom: 1px solid var(--color-border-light);
+  border-bottom: 1px solid var(--color-border);
   border-left: 3px solid var(--color-primary);
 }
 
@@ -998,7 +998,7 @@ onMounted(async () => {
 .left-footer {
   padding: var(--space-4);
   margin-top: auto;
-  border-top: 1px solid var(--color-border-light);
+  border-top: 1px solid var(--color-border);
 }
 
 .search-submit-btn {
@@ -1103,7 +1103,7 @@ onMounted(async () => {
 
 .result-card {
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: var(--space-3);
   transition: border-color var(--transition-fast);
@@ -1183,7 +1183,7 @@ onMounted(async () => {
   max-height: 140px;
   border-radius: var(--radius-md);
   object-fit: cover;
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--color-border);
   cursor: pointer;
 }
 
@@ -1201,7 +1201,7 @@ onMounted(async () => {
   gap: var(--space-2);
   margin-top: var(--space-3);
   padding-top: var(--space-3);
-  border-top: 1px solid var(--color-border-light);
+  border-top: 1px solid var(--color-border);
 }
 
 /* ===== Image Grid (multimodal) ===== */
@@ -1215,7 +1215,7 @@ onMounted(async () => {
   border-radius: var(--radius-lg);
   overflow: hidden;
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--color-border);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
@@ -1258,7 +1258,7 @@ onMounted(async () => {
   left: 0;
   right: 0;
   padding: var(--space-3) var(--space-2) var(--space-2);
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: flex-end;
   justify-content: space-between;

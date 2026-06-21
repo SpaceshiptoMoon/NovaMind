@@ -166,8 +166,8 @@
         </el-form-item>
         <el-form-item label="启用工具">
           <el-select v-model="form.enabled_tools" multiple placeholder="选择要启用的工具" style="width: 100%">
-            <el-option v-for="tool in agentStore.tools" :key="tool.name" :label="tool.name" :value="tool.name">
-              <span>{{ tool.name }}</span>
+            <el-option v-for="tool in orderedTools" :key="tool.name" :label="toolDisplayName(tool.name)" :value="tool.name">
+              <span>{{ toolDisplayName(tool.name) }}</span>
               <span style="color: var(--color-text-muted); font-size: 12px; margin-left: 8px">{{ tool.description }}</span>
             </el-option>
           </el-select>
@@ -243,6 +243,24 @@ const isChatRoute = computed(() => route.name === 'AgentChat')
 
 const selectedAgentId = ref<number | null>(null)
 const currentAgent = computed(() => agentStore.agents.find((a) => a.id === selectedAgentId.value) || agentStore.currentAgent)
+
+// 工具展示：高频工具加 emoji 前缀并置顶，提升辨识度（value 仍用原始 name，保证后端匹配）
+const PRIORITY_TOOLS = ['knowledge_search', 'web_search']
+function toolDisplayName(name: string): string {
+  if (name === 'knowledge_search') return '📚 knowledge_search'
+  if (name === 'web_search') return '🌐 web_search'
+  return name
+}
+const orderedTools = computed(() => {
+  return [...agentStore.tools].sort((a, b) => {
+    const ai = PRIORITY_TOOLS.indexOf(a.name)
+    const bi = PRIORITY_TOOLS.indexOf(b.name)
+    if (ai === -1 && bi === -1) return 0
+    if (ai === -1) return 1
+    if (bi === -1) return -1
+    return ai - bi
+  })
+})
 
 const availableModels = ref<Record<string, { max_tokens: number; temperature: number; top_p: number; model_type: string }>>({})
 

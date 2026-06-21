@@ -37,6 +37,8 @@ NovaMind 是一个开源的智能知识库管理系统。基于 FastAPI + Vue 3 
 - **Agent 智能体** — MCP Server 扩展、代码沙箱执行、多轮工具调用
 - **技能广场** — 技能包上传/审核/安装、市场发现、Agent 能力扩展
 - **应用中心** — AI 应用入口，已实现简历挖掘等场景化工具
+- **通知中心** — 站内通知 + 邮件推送 + 用户偏好
+- **ClawMate 终端** — 浏览器内的 AI 终端（命令执行、文件操作、流式对话）
 - **DDD 架构** — 领域驱动设计，模块解耦，易于扩展
 
 ## 技术栈
@@ -196,7 +198,9 @@ novamind/
 │   │   │   ├── evaluation/    # 知识库测评
 │   │   │   ├── agent/         # Agent 智能体
 │   │   │   ├── skill/         # 技能广场
-│   │   │   └── app/           # 应用中心
+│   │   │   ├── app/           # 应用中心
+│   │   │   ├── notification/  # 通知中心
+│   │   │   └── clawmate/      # ClawMate 终端
 │   │   ├── shared/            # 跨模块共享组件
 │   │   └── setting/           # 多环境配置管理
 │   ├── main.py                # 后端入口
@@ -274,6 +278,8 @@ src/features/{module}/
 | Agent 智能体 | `/api/v1/agent` | MCP Server 扩展、代码沙箱 |
 | 技能广场 | `/api/v1/skills` | 技能上传、审核、安装、市场浏览 |
 | 应用中心 | `/api/v1/apps` | 简历挖掘等 AI 应用 |
+| 通知中心 | `/api/v1/notifications` | 站内通知、邮件推送、通知偏好 |
+| ClawMate 终端 | `/api/v1/clawmate` | Shell 会话、文件操作、AI 流式对话 |
 
 ## 推荐模型
 
