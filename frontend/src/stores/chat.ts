@@ -59,13 +59,10 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function sendMessage(content: string, options?: {
-    system_prompt?: string
     llm_model?: string
-    max_tokens?: number
-    temperature?: number
-    top_p?: number
     enable_thinking?: boolean
     attachmentIds?: number[]
+    enable_web_search?: boolean
   }) {
     if (!content.trim() && (!options?.attachmentIds?.length)) return
 
@@ -99,13 +96,10 @@ export const useChatStore = defineStore('chat', () => {
       const data = await chatApi.chat({
         content,
         session_id: currentSessionId.value || undefined,
-        system_prompt: options?.system_prompt,
         llm_model: options?.llm_model,
-        max_tokens: options?.max_tokens,
-        temperature: options?.temperature,
-        top_p: options?.top_p,
         enable_thinking: options?.enable_thinking,
         attachment_ids: options?.attachmentIds,
+        enable_web_search: options?.enable_web_search,
       })
 
       if (!currentSessionId.value) {
@@ -140,13 +134,10 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function sendMessageStream(content: string, options?: {
-    system_prompt?: string
     llm_model?: string
-    max_tokens?: number
-    temperature?: number
-    top_p?: number
     enable_thinking?: boolean
     attachmentIds?: number[]
+    enable_web_search?: boolean
   }) {
     if (!content.trim() && (!options?.attachmentIds?.length)) return
 
@@ -199,13 +190,10 @@ export const useChatStore = defineStore('chat', () => {
       await chatApi.chatStream({
         content,
         session_id: currentSessionId.value || undefined,
-        system_prompt: options?.system_prompt,
         llm_model: options?.llm_model,
-        max_tokens: options?.max_tokens,
-        temperature: options?.temperature,
-        top_p: options?.top_p,
         enable_thinking: options?.enable_thinking,
         attachment_ids: options?.attachmentIds,
+        enable_web_search: options?.enable_web_search,
       }, {
         signal: controller.signal,
         onUserMessage(d) {
@@ -230,6 +218,13 @@ export const useChatStore = defineStore('chat', () => {
             })
           }
         },
+        onSources(sources) {
+          // 首字前下发的检索来源，写入 extra.sources 供正文角标与来源列表渲染
+          const lastMsg = messages.value[messages.value.length - 1]
+          if (lastMsg?.role === 'assistant' && sources?.length) {
+            lastMsg.extra = { ...(lastMsg.extra || {}), sources }
+          }
+        },
         onReasoning(text) {
           streamingReasoning.value += text || ''
           const lastMsg = messages.value[messages.value.length - 1]
@@ -249,6 +244,12 @@ export const useChatStore = defineStore('chat', () => {
           if (lastMsg?.role === 'assistant') {
             lastMsg.content = d.content || streamingContent.value
             if (d.id) lastMsg.id = d.id
+            // 来源 / 回答状态兜底（与 sources 事件互补，刷新后历史消息也能还原）
+            const extra: Record<string, unknown> = { ...(lastMsg.extra || {}) }
+            if (d.sources?.length) extra.sources = d.sources
+            if (d.answer_status) extra.answer_status = d.answer_status
+            if (d.confidence !== undefined && d.confidence !== null) extra.confidence = d.confidence
+            if (Object.keys(extra).length) lastMsg.extra = extra
           }
           if (d.session_id && !currentSessionId.value) {
             currentSessionId.value = d.session_id

@@ -60,6 +60,91 @@ class TextCompressor:
             PromptTemplate.QA_COMPRESSION_SUMMARY.value
         )
 
+    async def compress_with_base_summary(
+        self,
+        base_summary: str,
+        new_messages: List[Dict[str, Any]],
+        target_tokens: int = 500,
+    ) -> CompressionResult:
+        """
+        增量压缩：基于已有摘要 + 新消息，生成更新后的摘要。
+
+        相比 compress_messages（把全部历史重新压缩），增量压缩只把「旧摘要 + 自上次
+        压缩边界之后的新消息」喂给 LLM，避免重复压缩已摘要的内容，省 LLM 调用、
+        且基于旧摘要融合，信息保留更连贯。
+
+        Args:
+            base_summary: 已有的对话摘要（覆盖较早的消息）
+            new_messages: 自上次摘要边界之后的新消息
+            target_tokens: 更新后摘要的目标 token 数
+        """
+        if not new_messages:
+            return CompressionResult(
+                summary=base_summary,
+                compressed_tokens=self.token_counter.count_tokens(base_summary),
+                original_tokens=0,
+                kept_messages=[],
+                compression_ratio=1.0,
+            )
+
+        if not self.llm_client:
+            self.logger.warning("LLM 客户端未初始化，增量压缩退化为保留旧摘要")
+            return CompressionResult(
+                summary=base_summary,
+                compressed_tokens=self.token_counter.count_tokens(base_summary),
+                original_tokens=self.token_counter.count_messages_tokens(new_messages),
+                kept_messages=[],
+                compression_ratio=1.0,
+            )
+
+        new_messages_text = "\n".join(
+            f"[{msg.get('role', 'user')}]: {msg.get('content', '')}"
+            for msg in new_messages
+        )
+        original_tokens = self.token_counter.count_messages_tokens(new_messages)
+
+        prompt = f"""{self.summary_prompt}
+
+以下是对话已有的摘要，覆盖了较早的对话内容：
+---
+{base_summary}
+---
+
+以下是自上次摘要之后产生的新对话消息，请将其并入已有摘要：
+---
+{new_messages_text}
+---
+
+请综合以上两部分，生成一份更新后的、约 {target_tokens} 个 token 的摘要（保留关键信息，去掉冗余）：
+
+摘要:"""
+
+        try:
+            summary = await self.llm_client.generate_text(
+                prompt=prompt,
+                max_tokens=800,
+                temperature=0.3,
+            )
+            summary = self._clean_summary(summary)
+        except Exception as e:
+            self.logger.warning("增量压缩失败，退化为保留旧摘要", error=str(e))
+            return CompressionResult(
+                summary=base_summary,
+                compressed_tokens=self.token_counter.count_tokens(base_summary),
+                original_tokens=original_tokens,
+                kept_messages=[],
+                compression_ratio=1.0,
+            )
+
+        compressed_tokens = self.token_counter.count_tokens(summary)
+        return CompressionResult(
+            summary=summary,
+            compressed_tokens=compressed_tokens,
+            original_tokens=original_tokens,
+            kept_messages=[],
+            compression_ratio=round(original_tokens / compressed_tokens, 2) if compressed_tokens else 1.0,
+        )
+
     async def compress_with_strategy(
         self,
         messages: List[Dict[str, Any]],

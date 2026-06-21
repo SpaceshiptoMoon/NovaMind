@@ -604,6 +604,25 @@ export interface ChatMessage {
   attachments?: ChatAttachment[]
 }
 
+/** 检索来源引用（RAG 命中片段或联网结果） */
+export interface ChatSource {
+  /** 来源序号，与正文 [1][2] 角标对齐 */
+  index: number
+  /** 来源类型：kb=知识库 / web=联网 */
+  kind?: 'kb' | 'web'
+  document_id?: number | null
+  document_name?: string | null
+  kb_id?: number | null
+  chunk_id?: string | null
+  /** 检索得分（0~1） */
+  score?: number | null
+  /** 命中片段预览 */
+  snippet?: string | null
+  page?: number | null
+  /** 网址（联网来源） */
+  url?: string | null
+}
+
 export interface ChatAttachment {
   id: number
   filename: string
@@ -637,12 +656,9 @@ export interface ChatRequest {
   content: string
   session_id?: string
   llm_model?: string
-  max_tokens?: number
-  temperature?: number
-  top_p?: number
-  system_prompt?: string
   enable_thinking?: boolean
   attachment_ids?: number[]
+  enable_web_search?: boolean
 }
 
 export interface ChatResponse {
@@ -677,8 +693,48 @@ export interface CompressionConfig {
   custom_prompt?: string
 }
 
+/** 知识库绑定配置（会话级自动 RAG） */
+export interface RagBindingConfig {
+  space_id?: number | null
+  /** 绑定的知识库 ID 列表 */
+  kb_ids: number[]
+  /** 是否启用会话级自动 RAG */
+  auto_rag?: boolean
+  /** 是否启用分级拒答（检索为空拒答、低分标记） */
+  refusal_enabled?: boolean
+  /** 低置信度阈值（单库模式生效） */
+  score_threshold?: number
+  /** 检索模式（默认混合） */
+  search_mode?: string
+  /** 检索返回条数 */
+  top_k?: number
+}
+
+/** 模型生成参数配置（会话级持久化；llm_model/enable_thinking 由请求传，不在此） */
+export interface LlmConfig {
+  max_tokens?: number | null
+  temperature?: number | null
+  top_p?: number | null
+  system_prompt?: string | null
+}
+
 export interface CreateSessionConfigRequest {
   compression?: CompressionConfig
+}
+
+/** 更新会话压缩配置请求（支持反复修改） */
+export interface SessionConfigCompressionUpdate {
+  compression: CompressionConfig
+}
+
+/** 更新会话模型生成参数配置请求（支持反复修改） */
+export interface SessionConfigLlmUpdate {
+  llm_config: LlmConfig
+}
+
+/** 更新会话知识库绑定配置请求（独立于压缩配置，可反复修改） */
+export interface SessionConfigRagUpdate {
+  rag: RagBindingConfig
 }
 
 export interface SessionConfigResponse {
@@ -686,6 +742,10 @@ export interface SessionConfigResponse {
   session_id: string
   user_id: number
   compression_config: CompressionConfig
+  /** 知识库绑定配置（会话级自动 RAG） */
+  kb_bindings?: RagBindingConfig | null
+  /** 模型生成参数配置（会话级持久化） */
+  llm_config?: LlmConfig | null
   created_at: string | null
   updated_at: string | null
 }
@@ -1290,4 +1350,40 @@ export interface NotificationPreference {
   email_enabled: boolean
   in_app_enabled: boolean
   types_enabled: string[] | null
+}
+
+// ===================== ClawMate 对话 =====================
+
+/** POST /clawmate/chat 请求 */
+export interface ClawMateChatRequest {
+  content: string
+  model?: string | null
+}
+
+/** SSE done 事件数据 */
+export interface ClawMateChatDoneData {
+  response: string
+  iterations: number
+  tool_calls_count: number
+  total_tokens: number
+}
+
+/** 工具调用追踪记录（前端维护） */
+export interface ClawMateToolCallRecord {
+  name: string
+  arguments: Record<string, unknown>
+  call_id: string
+  status: 'running' | 'completed' | 'failed'
+  result?: string
+}
+
+/** 聊天消息（前端维护） */
+export interface ClawMateChatMessage {
+  id: number
+  role: 'user' | 'assistant' | 'tool'
+  content: string
+  reasoning?: string
+  tool_call_id?: string | null
+  tool_name?: string | null
+  created_at: string
 }

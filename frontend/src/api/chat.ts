@@ -1,5 +1,5 @@
 import { request, createSSEStream, tokenManager } from './index'
-import type { ChatRequest, ChatResponse, ChatHistoryResponse, HealthCheckResponse, ModelsResponse, UploadChatAttachmentResponse } from './types'
+import type { ChatRequest, ChatResponse, ChatHistoryResponse, HealthCheckResponse, ModelsResponse, UploadChatAttachmentResponse, ChatSource } from './types'
 
 const BASE_URL = '/ai-chat'
 
@@ -36,9 +36,18 @@ export const chatApi = {
     data: ChatRequest,
     callbacks: {
       onUserMessage?: (msg: { id: number; content: string; role: string; session_id: string }) => void
+      onSources?: (sources: ChatSource[]) => void
       onReasoning?: (text: string) => void
       onContent?: (content: string) => void
-      onDone?: (msg: { id: number; content: string; role: string; session_id: string }) => void
+      onDone?: (msg: {
+        id: number
+        content: string
+        role: string
+        session_id: string
+        sources?: ChatSource[]
+        answer_status?: string
+        confidence?: number | null
+      }) => void
       onError?: (err: { code: string; message: string }) => void
       signal?: AbortSignal
     },
@@ -49,6 +58,9 @@ export const chatApi = {
         switch (e.type) {
           case 'user_message':
             callbacks.onUserMessage?.(e.data as Parameters<typeof callbacks.onUserMessage>[0])
+            break
+          case 'sources':
+            callbacks.onSources?.(e.data as ChatSource[])
             break
           case 'reasoning':
             callbacks.onReasoning?.((e.data as { content: string }).content)

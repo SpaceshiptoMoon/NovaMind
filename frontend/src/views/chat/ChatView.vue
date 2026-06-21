@@ -65,15 +65,37 @@
                 <div v-if="msg.reasoning" class="reasoning-section">
                   <div class="reasoning-header" @click="toggleReasoning(msg.id)">
                     <span class="reasoning-label">思考过程</span>
-                    <el-icon :size="12" class="expand-icon" :class="{ expanded: expandedReasoning.has(msg.id) }">
+                    <el-icon :size="12" class="expand-icon" :class="{ expanded: shouldShowReasoning(msg) }">
                       <ArrowDown />
                     </el-icon>
                   </div>
-                  <div v-if="expandedReasoning.has(msg.id)" class="reasoning-body">
-                    <MarkdownRenderer :content="msg.reasoning" />
+                  <div v-if="shouldShowReasoning(msg)" class="reasoning-body">
+                    <div class="reasoning-text">{{ msg.reasoning }}</div>
                   </div>
                 </div>
-                <MarkdownRenderer :content="msg.content" class="message-text" />
+                <div v-if="getAnswerStatus(msg) === 'refused'" class="refused-banner">
+                  <el-icon :size="14"><WarningFilled /></el-icon>
+                  <span>未在知识库中找到相关资料，已拒答</span>
+                </div>
+                <div
+                  class="message-content"
+                  :class="{ 'low-confidence': getAnswerStatus(msg) === 'low_confidence' }"
+                  :data-msg-id="msg.id"
+                  @mouseover="handleCiteOver"
+                  @mouseout="handleCiteLeave"
+                >
+                  <MarkdownRenderer :content="msg.content" class="message-text" />
+                  <div v-if="getAnswerStatus(msg) === 'low_confidence'" class="low-confidence-tip">
+                    ⚠️ 依据较弱（相关度 {{ formatScore(getConfidence(msg)) }}），请审慎参考
+                  </div>
+                </div>
+                <SourceList
+                  v-if="getSources(msg).length"
+                  :sources="getSources(msg)"
+                  :active-index="hoverCiteIndex"
+                  @hover="onSourceHover"
+                  @select="onSourceSelect"
+                />
               </template>
               <template v-else>
                 <div class="message-text">{{ msg.content }}</div>
@@ -214,10 +236,13 @@
                 <span class="setting-label">流式输出</span>
                 <el-switch v-model="useStream" size="small" />
               </div>
+              <div class="setting-group">
+                <span class="setting-label">🌐 联网</span>
+                <el-switch v-model="enableWebSearch" size="small" />
+              </div>
               <button
-                v-if="chatStore.currentSessionId"
                 class="setting-group clickable"
-                @click="handleOpenConfig(chatStore.currentSessionId)"
+                @click="openSessionConfig"
               >
                 <span class="setting-label">会话设置</span>
                 <el-icon :size="12"><ArrowRight /></el-icon>
@@ -248,8 +273,8 @@
           <el-input-number
             v-model="configForm.threshold"
             :min="500"
-            :max="10000"
-            :step="500"
+            :max="200000"
+            :step="1000"
             style="width: 100%"
             :disabled="!configForm.enable_compression"
           />
@@ -286,6 +311,115 @@
             :disabled="!configForm.enable_compression || configForm.strategy !== 'summary'"
           />
         </el-form-item>
+
+        <el-divider content-position="left">会话级自动 RAG</el-divider>
+
+        <el-form-item label="启用自动检索">
+          <el-switch v-model="ragForm.auto_rag" />
+          <span class="form-hint">开启后本会话无需每次手动开关，自动检索绑定的知识库</span>
+        </el-form-item>
+
+        <el-form-item label="绑定空间">
+          <el-select
+            v-model="ragForm.space_id"
+            placeholder="选择空间"
+            filterable
+            clearable
+            style="width: 100%"
+            @change="handleRagFormSpaceChange"
+          >
+            <el-option v-for="s in spaceStore.spaces" :key="s.id" :label="s.name" :value="s.id" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="绑定知识库">
+          <el-select
+            v-model="ragForm.kb_ids"
+            multiple
+            filterable
+            placeholder="选择知识库（可多选）"
+            style="width: 100%"
+            :disabled="!ragForm.space_id"
+          >
+            <el-option v-for="kb in ragFormKbOptions" :key="kb.id" :label="kb.name" :value="kb.id" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="分级拒答">
+          <el-switch v-model="ragForm.refusal_enabled" />
+          <span class="form-hint">检索为空时拒答，单库低分时标记「依据较弱」</span>
+        </el-form-item>
+
+        <el-form-item v-if="ragForm.refusal_enabled" label="低置信阈值">
+          <el-input-number
+            v-model="ragForm.score_threshold"
+            :min="0"
+            :max="1"
+            :step="0.05"
+            :precision="2"
+            style="width: 100%"
+          />
+        </el-form-item>
+
+        <el-form-item label="检索模式">
+          <el-select v-model="ragForm.search_mode" style="width: 100%">
+            <el-option label="内容混合（推荐）" value="content_hybrid" />
+            <el-option label="向量语义" value="vector" />
+            <el-option label="关键词 BM25" value="bm25" />
+            <el-option label="问题混合" value="question_hybrid" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="检索条数">
+          <el-input-number
+            v-model="ragForm.top_k"
+            :min="1"
+            :max="20"
+            style="width: 100%"
+          />
+        </el-form-item>
+
+        <el-divider content-position="left">模型生成参数</el-divider>
+
+        <el-form-item label="温度">
+          <el-input-number
+            v-model="llmForm.temperature"
+            :min="0"
+            :max="2"
+            :step="0.1"
+            style="width: 100%"
+          />
+        </el-form-item>
+
+        <el-form-item label="Top-P">
+          <el-input-number
+            v-model="llmForm.top_p"
+            :min="0"
+            :max="1"
+            :step="0.1"
+            style="width: 100%"
+          />
+        </el-form-item>
+
+        <el-form-item label="最大 Tokens">
+          <el-input-number
+            v-model="llmForm.max_tokens"
+            :min="1"
+            :max="8192"
+            :step="256"
+            style="width: 100%"
+          />
+        </el-form-item>
+
+        <el-form-item label="系统提示词">
+          <el-input
+            v-model="llmForm.system_prompt"
+            type="textarea"
+            :rows="3"
+            placeholder="自定义系统提示词（留空用后端 QA 模板）"
+            maxlength="4000"
+          />
+        </el-form-item>
       </el-form>
 
       <template #footer>
@@ -293,25 +427,57 @@
         <el-button type="primary" :loading="configSaving" @click="handleSaveConfig">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 引用角标悬浮卡（虚拟触发，跟随角标元素定位） -->
+    <el-popover
+      :visible="citePopoverVisible"
+      :virtual-ref="citeTriggerEl"
+      virtual-triggering
+      trigger="click"
+      placement="top"
+      :width="300"
+      popper-class="cite-popover"
+    >
+      <div v-if="activeCiteSource" class="cite-pop-body">
+        <div class="cite-pop-name">{{ getSourceDisplayName(activeCiteSource) }}</div>
+        <div class="cite-pop-sub">
+          <span class="cite-pop-kind" :class="activeCiteSource.kind || 'kb'">{{ activeCiteSource.kind === 'web' ? '联网来源' : '知识库' }}</span>
+          <span v-if="activeCiteSource.score != null">相关度 {{ formatScore(activeCiteSource.score) }}</span>
+          <span v-if="activeCiteSource.page != null">第 {{ activeCiteSource.page }} 页</span>
+        </div>
+        <div v-if="activeCiteSource.snippet" class="cite-pop-snippet">{{ activeCiteSource.snippet }}</div>
+        <a v-if="activeCiteSource.url" :href="activeCiteSource.url" target="_blank" rel="noopener" class="cite-pop-link">查看原文 ↗</a>
+      </div>
+    </el-popover>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount, watch, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete, Setting, Promotion, VideoPause, DocumentCopy, ArrowRight, ArrowDown, Paperclip, Close, Document, Download } from '@element-plus/icons-vue'
+import { Plus, Delete, Setting, Promotion, VideoPause, DocumentCopy, ArrowRight, ArrowDown, Paperclip, Close, Document, Download, WarningFilled } from '@element-plus/icons-vue'
 // Note: Setting is still used in settings toggle button
 import { useChatStore } from '@/stores/chat'
 import { chatApi } from '@/api/chat'
+import { sessionApi } from '@/api/session'
+import { useSpaceStore } from '@/stores/space'
+import { knowledgeBaseApi } from '@/api/knowledgeBase'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import ModelFanSelector from '@/components/common/ModelFanSelector.vue'
+import SourceList from '@/components/chat/SourceList.vue'
+import type { ChatMessage, ChatSource } from '@/api/types'
 
 const chatStore = useChatStore()
+const spaceStore = useSpaceStore()
 const isInWorkspace = inject('isInWorkspace', false)
 
 const inputText = ref('')
 const useStream = ref(true)
 const enableThinking = ref(false)
+const enableWebSearch = ref(false)
+const ragSpaceId = ref<number | undefined>(undefined)
+const ragKbId = ref<number | undefined>(undefined)
+const ragKbOptions = ref<{ id: number; name: string }[]>([])
 const settingsExpanded = ref(false)
 const expandedReasoning = ref(new Set<number>())
 const messagesRef = ref<HTMLElement>()
@@ -332,6 +498,18 @@ function toggleReasoning(msgId: number) {
   } else {
     expandedReasoning.value.add(msgId)
   }
+}
+
+// reasoning 是否展开：用户手动展开的总是显示；流式中的最后一条消息自动展开
+// （思考模型先输出全部 reasoning 再输出 content，自动展开让用户看到思考过程，而非干等回答）
+function shouldShowReasoning(msg) {
+  if (expandedReasoning.value.has(msg.id)) return true
+  if (chatStore.isStreaming) {
+    const msgs = chatStore.messages
+    const last = msgs[msgs.length - 1]
+    return !!last && last.id === msg.id
+  }
+  return false
 }
 
 function scrollToBottom() {
@@ -373,6 +551,15 @@ async function handleNewSession() {
   chatStore.clearMessages()
 }
 
+async function openSessionConfig() {
+  // 新对话无 session_id 时预先生成，配置绑到它；
+  // 发消息时后端用同一 id 建会话（ensure_session_config 发现配置已存在直接复用）。
+  if (!chatStore.currentSessionId) {
+    chatStore.currentSessionId = crypto.randomUUID()
+  }
+  await handleOpenConfig(chatStore.currentSessionId)
+}
+
 async function handleSelectSession(sessionId: string) {
   if (chatStore.currentSessionId === sessionId) return
   await chatStore.fetchMessages(sessionId)
@@ -411,6 +598,7 @@ async function handleSend() {
   const opts = {
     llm_model: selectedModel.value || undefined,
     enable_thinking: enableThinking.value,
+    enable_web_search: enableWebSearch.value || undefined,
     attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
   }
 
@@ -466,11 +654,25 @@ const vlmModelNames = computed(() =>
 )
 
 const settingsSummary = computed(() => {
-  const model = selectedModel.value || defaultModelName.value || '默认'
-  const parts = [model]
+  // 模型名由顶部 model-fan 显示，这里只展示启用的能力，避免重复
+  const parts = []
   if (enableThinking.value) parts.push('深度思考')
-  return parts.join(' · ')
+  if (useStream.value) parts.push('流式')
+  if (enableWebSearch.value) parts.push('联网')
+  return parts.length ? parts.join(' · ') : '标准模式'
 })
+
+async function handleRagSpaceChange(spaceId: number | undefined) {
+  ragKbId.value = undefined
+  ragKbOptions.value = []
+  if (!spaceId) return
+  try {
+    const resp = await knowledgeBaseApi.getKnowledgeBases(spaceId)
+    ragKbOptions.value = (resp?.items ?? []).map((kb) => ({ id: kb.id, name: kb.name }))
+  } catch {
+    ragKbOptions.value = []
+  }
+}
 
 function triggerFileSelect() {
   fileInputRef.value?.click()
@@ -518,6 +720,69 @@ function getFileIcon(type: string): string {
 function getMessageAttachments(msg: ChatMessage): Array<{ id?: number; filename: string; file_type?: string; file_size?: number; storage_path?: string }> {
   if (msg.attachments?.length) return msg.attachments
   return (msg.extra as Record<string, any>)?.attachments ?? []
+}
+
+// ===================== 检索来源 / 回答状态 =====================
+function getSources(msg: ChatMessage): ChatSource[] {
+  const extra = msg.extra as Record<string, unknown> | null
+  return Array.isArray(extra?.sources) ? (extra!.sources as ChatSource[]) : []
+}
+
+function getAnswerStatus(msg: ChatMessage): string {
+  const extra = msg.extra as Record<string, unknown> | null
+  return (extra?.answer_status as string) || 'answered'
+}
+
+function getConfidence(msg: ChatMessage): number | null {
+  const extra = msg.extra as Record<string, unknown> | null
+  return typeof extra?.confidence === 'number' ? (extra.confidence as number) : null
+}
+
+function formatScore(score: number | null | undefined): string {
+  if (score == null) return '-'
+  return Math.round(score * 100) + '%'
+}
+
+function getSourceDisplayName(s: ChatSource): string {
+  return s.document_name || s.url || `来源 ${s.index}`
+}
+
+// ===================== 引用角标 popover（事件代理） =====================
+const citePopoverVisible = ref(false)
+const citeTriggerEl = ref<HTMLElement>()
+const activeCiteSource = ref<ChatSource | null>(null)
+const hoverCiteIndex = ref<number | null>(null)
+
+function handleCiteOver(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  const marker = target.closest('.cite-marker') as HTMLElement | null
+  if (!marker) {
+    citePopoverVisible.value = false
+    hoverCiteIndex.value = null
+    return
+  }
+  const idx = Number(marker.dataset.cite || 0)
+  const contentEl = marker.closest('[data-msg-id]') as HTMLElement | null
+  const msgId = contentEl ? Number(contentEl.dataset.msgId) : 0
+  const msg = chatStore.messages.find((m) => m.id === msgId)
+  const src = msg ? getSources(msg).find((s) => s.index === idx) : undefined
+  citeTriggerEl.value = marker
+  activeCiteSource.value = src ?? null
+  hoverCiteIndex.value = idx
+  citePopoverVisible.value = !!src
+}
+
+function handleCiteLeave() {
+  citePopoverVisible.value = false
+  hoverCiteIndex.value = null
+}
+
+function onSourceHover(index: number | null) {
+  hoverCiteIndex.value = index
+}
+
+function onSourceSelect(_s: ChatSource) {
+  // 预留：来源卡片点击行为（本期仅高亮，后续可跳转文档预览）
 }
 
 function getFileIconClass(type?: string): string {
@@ -604,9 +869,71 @@ const configForm = reactive({
   custom_prompt: '',
 })
 
+// 会话级 RAG 绑定表单（独立于压缩配置，走 PATCH /rag-config）
+const ragForm = reactive<{
+  space_id: number | null
+  kb_ids: number[]
+  auto_rag: boolean
+  refusal_enabled: boolean
+  score_threshold: number
+  search_mode: string
+  top_k: number
+}>({
+  space_id: null,
+  kb_ids: [],
+  auto_rag: false,
+  refusal_enabled: false,
+  score_threshold: 0.3,
+  search_mode: 'content_hybrid',
+  top_k: 5,
+})
+const ragFormKbOptions = ref<{ id: number; name: string }[]>([])
+
+// 会话级模型生成参数表单（max_tokens/temperature/top_p/system_prompt；llm_model/enable_thinking 由主输入区传，不在此）
+const llmForm = reactive({
+  max_tokens: 2048 as number | null,
+  temperature: 0.7 as number | null,
+  top_p: 0.8 as number | null,
+  system_prompt: '' as string,
+})
+
+async function handleRagFormSpaceChange(spaceId: number | null) {
+  ragForm.kb_ids = []
+  ragFormKbOptions.value = []
+  if (!spaceId) return
+  try {
+    const resp = await knowledgeBaseApi.getKnowledgeBases(spaceId)
+    ragFormKbOptions.value = (resp?.items ?? []).map((kb) => ({ id: kb.id, name: kb.name }))
+  } catch {
+    ragFormKbOptions.value = []
+  }
+}
+
 async function handleOpenConfig(sessionId: string) {
   configSessionId.value = sessionId
   configDialogVisible.value = true
+  // RAG 表单先重置
+  ragForm.space_id = null
+  ragForm.kb_ids = []
+  ragForm.auto_rag = false
+  ragForm.refusal_enabled = false
+  ragForm.score_threshold = 0.3
+  ragForm.search_mode = 'content_hybrid'
+  ragForm.top_k = 5
+  ragFormKbOptions.value = []
+  // 模型参数表单重置
+  llmForm.max_tokens = 2048
+  llmForm.temperature = 0.7
+  llmForm.top_p = 0.8
+  llmForm.system_prompt = ''
+  // 懒加载空间列表（供绑定下拉）
+  if (spaceStore.spaces.length === 0) {
+    try {
+      await spaceStore.fetchSpaces()
+    } catch {
+      /* 忽略 */
+    }
+  }
   try {
     await chatStore.fetchSessionConfig(sessionId)
     const cfg = chatStore.sessionConfig?.compression_config
@@ -618,6 +945,28 @@ async function handleOpenConfig(sessionId: string) {
       configForm.target_tokens = cfg.target_tokens || 500
       configForm.custom_prompt = cfg.custom_prompt || ''
     }
+    const kb = chatStore.sessionConfig?.kb_bindings
+    if (kb) {
+      const boundKbIds = Array.isArray(kb.kb_ids) ? [...kb.kb_ids] : []
+      ragForm.space_id = kb.space_id ?? null
+      ragForm.auto_rag = !!kb.auto_rag
+      ragForm.refusal_enabled = !!kb.refusal_enabled
+      ragForm.score_threshold = kb.score_threshold ?? 0.3
+      ragForm.search_mode = kb.search_mode || 'content_hybrid'
+      ragForm.top_k = kb.top_k ?? 5
+    }
+    const llm = chatStore.sessionConfig?.llm_config
+    if (llm) {
+      llmForm.max_tokens = llm.max_tokens ?? 2048
+      llmForm.temperature = llm.temperature ?? 0.7
+      llmForm.top_p = llm.top_p ?? 0.8
+      llmForm.system_prompt = llm.system_prompt || ''
+      if (ragForm.space_id) {
+        await handleRagFormSpaceChange(ragForm.space_id)
+      }
+      // handleRagFormSpaceChange 会清空 kb_ids，加载完选项后再回填已绑定项
+      ragForm.kb_ids = boundKbIds
+    }
   } catch {
     // use defaults
   }
@@ -626,17 +975,39 @@ async function handleOpenConfig(sessionId: string) {
 async function handleSaveConfig() {
   configSaving.value = true
   try {
-    if (chatStore.sessionConfig) {
-      await chatStore.deleteSessionConfig(configSessionId.value)
-    }
-    await chatStore.saveSessionConfig(configSessionId.value, {
-      enable_compression: configForm.enable_compression,
-      strategy: configForm.strategy,
-      threshold: configForm.threshold,
-      keep_recent: configForm.keep_recent,
-      target_tokens: configForm.target_tokens,
-      custom_prompt: configForm.custom_prompt || undefined,
+    // 压缩配置：PATCH（不再删除重建，避免中间态丢失 RAG 绑定）
+    await sessionApi.updateCompressionConfig(configSessionId.value, {
+      compression: {
+        enable_compression: configForm.enable_compression,
+        strategy: configForm.strategy,
+        threshold: configForm.threshold,
+        keep_recent: configForm.keep_recent,
+        target_tokens: configForm.target_tokens,
+        custom_prompt: configForm.custom_prompt || undefined,
+      },
     })
+    // 模型生成参数：PATCH（max_tokens/temperature/top_p/system_prompt）
+    const updated = await sessionApi.updateLlmConfig(configSessionId.value, {
+      llm_config: {
+        max_tokens: llmForm.max_tokens,
+        temperature: llmForm.temperature,
+        top_p: llmForm.top_p,
+        system_prompt: llmForm.system_prompt || undefined,
+      },
+    })
+    // 知识库绑定：PATCH（独立于压缩配置，可反复修改）
+    const ragUpdated = await sessionApi.updateRagConfig(configSessionId.value, {
+      rag: {
+        space_id: ragForm.space_id,
+        kb_ids: ragForm.kb_ids,
+        auto_rag: ragForm.auto_rag,
+        refusal_enabled: ragForm.refusal_enabled,
+        score_threshold: ragForm.score_threshold,
+        search_mode: ragForm.search_mode,
+        top_k: ragForm.top_k,
+      },
+    })
+    chatStore.sessionConfig = ragUpdated
     ElMessage.success('配置已保存')
     configDialogVisible.value = false
   } catch {
@@ -676,7 +1047,7 @@ onBeforeUnmount(() => {
    ======================================== */
 .chat-sidebar {
   width: 260px;
-  border-right: 1px solid var(--color-border-light);
+  border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -685,7 +1056,7 @@ onBeforeUnmount(() => {
 
 .sidebar-top {
   padding: var(--space-4);
-  border-bottom: 1px solid var(--color-border-light);
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
 }
@@ -871,9 +1242,8 @@ onBeforeUnmount(() => {
 }
 
 .prompt-card:hover {
-  border-color: var(--color-border);
+  border-color: var(--color-text-faint);
   background: var(--color-bg-card);
-  box-shadow: var(--shadow-sm);
 }
 
 .prompt-card:hover .prompt-text {
@@ -940,8 +1310,8 @@ onBeforeUnmount(() => {
 .message-row.user .message-text {
   padding: var(--space-3) var(--space-4);
   border-radius: 18px 18px 4px 18px;
-  background: #dbeafe;
-  color: #1e3a5f;
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-hover);
   white-space: pre-wrap;
 }
 
@@ -950,7 +1320,7 @@ onBeforeUnmount(() => {
   padding: var(--space-4) var(--space-5);
   border-radius: 18px 18px 18px 4px;
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--color-border);
 }
 
 /* Reasoning section */
@@ -958,7 +1328,7 @@ onBeforeUnmount(() => {
   margin-bottom: 8px;
   border-radius: 10px;
   background: var(--color-bg-card-elevated);
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--color-border);
   overflow: hidden;
 }
 .reasoning-header {
@@ -985,12 +1355,17 @@ onBeforeUnmount(() => {
 }
 .reasoning-body {
   padding: 8px 12px 12px;
-  border-top: 1px solid var(--color-border-light);
+  border-top: 1px solid var(--color-border);
   font-size: 13px;
   color: var(--color-text-secondary);
   line-height: 1.6;
   max-height: 400px;
   overflow-y: auto;
+}
+
+.reasoning-text {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* Message actions bar */
@@ -1044,7 +1419,7 @@ onBeforeUnmount(() => {
   gap: 5px;
   padding: var(--space-3) var(--space-4);
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--color-border);
   border-radius: 18px 18px 18px 4px;
 }
 
@@ -1065,15 +1440,14 @@ onBeforeUnmount(() => {
   padding: 8px 12px;
   gap: var(--space-2);
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--color-border);
   border-radius: 24px;
-  box-shadow: var(--shadow-sm);
   transition: border-color var(--transition-base), box-shadow var(--transition-base);
 }
 
 .input-pill:focus-within {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-muted), var(--shadow-sm);
+  box-shadow: 0 0 0 3px var(--color-primary-muted);
 }
 
 .chat-textarea {
@@ -1107,7 +1481,7 @@ onBeforeUnmount(() => {
   height: 36px;
   border: none;
   border-radius: var(--radius-full);
-  background: var(--color-border-light);
+  background: var(--color-border);
   color: var(--color-text-faint);
   cursor: not-allowed;
   transition: all var(--transition-base);
@@ -1118,7 +1492,6 @@ onBeforeUnmount(() => {
   background: var(--color-primary);
   color: #FFFFFF;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
 }
 
 .send-btn.active:hover {
@@ -1209,7 +1582,7 @@ onBeforeUnmount(() => {
   margin: 6px auto 0;
   padding: 8px 12px;
   background: var(--color-bg-card-elevated);
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
 }
 
@@ -1293,7 +1666,7 @@ onBeforeUnmount(() => {
   gap: 6px;
   padding: 4px 8px 4px 4px;
   background: var(--color-bg-card-elevated);
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   font-size: var(--text-xs);
   max-width: 240px;
@@ -1390,7 +1763,7 @@ onBeforeUnmount(() => {
 }
 
 .file-icon-box.file-pdf  { background: #ef4444; }
-.file-icon-box.file-doc  { background: #3b82f6; }
+.file-icon-box.file-doc  { background: #6366f1; }
 .file-icon-box.file-txt  { background: #8b5cf6; }
 .file-icon-box.file-md   { background: #06b6d4; }
 .file-icon-box.file-default { background: #6b7280; }
@@ -1405,7 +1778,7 @@ onBeforeUnmount(() => {
 
 .file-card .file-name {
   font-size: 13px;
-  color: #1e3a5f;
+  color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1413,7 +1786,7 @@ onBeforeUnmount(() => {
 
 .file-card .file-meta {
   font-size: 11px;
-  color: #5b7a9d;
+  color: var(--color-text-muted);
   margin-top: 2px;
 }
 
@@ -1424,15 +1797,15 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  color: #5b7a9d;
+  color: var(--color-text-muted);
   flex-shrink: 0;
   margin-left: 4px;
   transition: all 0.15s;
 }
 
 .file-card:hover .file-download-btn {
-  color: #1e3a5f;
-  background: rgba(0, 0, 0, 0.06);
+  color: var(--color-text);
+  background: var(--color-bg-hover);
 }
 
 /* ===== Image card in messages ===== */
@@ -1442,7 +1815,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
   border-radius: 8px;
   overflow: hidden;
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--color-border);
   max-width: 200px;
   transition: border-color 0.15s;
 }
@@ -1497,5 +1870,120 @@ onBeforeUnmount(() => {
 .file-image {
   background: linear-gradient(135deg, #43e97b, #38f9d7);
   color: #fff;
+}
+
+/* ===== Refused / Low-confidence / Sources ===== */
+.refused-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  font-size: 13px;
+  border: 1px solid #ef4444;
+}
+
+.message-content {
+  position: relative;
+}
+
+.message-content.low-confidence {
+  border-left: 3px solid #f59e0b;
+}
+
+.low-confidence-tip {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  font-size: 12px;
+}
+
+.form-hint {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+</style>
+
+<!-- 引用角标由 v-html 渲染、popover 内容 teleport 到 body，需全局样式 -->
+<style>
+.cite-marker {
+  display: inline-block;
+  cursor: pointer;
+  padding: 0 4px;
+  margin: 0 1px;
+  font-size: 0.75em;
+  line-height: 1;
+  vertical-align: super;
+  color: var(--color-primary);
+  background: rgba(99, 102, 241, 0.1);
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+  user-select: none;
+}
+
+.cite-marker:hover {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.cite-popover.el-popover.el-popper {
+  padding: 10px 12px !important;
+}
+
+.cite-pop-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cite-pop-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+  word-break: break-word;
+}
+
+.cite-pop-sub {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.cite-pop-kind {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.cite-pop-kind.kb {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--color-primary);
+}
+
+.cite-pop-kind.web {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+.cite-pop-snippet {
+  font-size: 12px;
+  color: #4b5563;
+  line-height: 1.5;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.cite-pop-link {
+  font-size: 12px;
+  color: var(--color-primary);
 }
 </style>

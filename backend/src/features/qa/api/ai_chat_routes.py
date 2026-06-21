@@ -46,12 +46,9 @@ async def chat(
         session_id=request.session_id,
         content=request.content,
         llm_model=request.llm_model,
-        max_tokens=request.max_tokens,
-        temperature=request.temperature,
-        top_p=request.top_p,
-        system_prompt=request.system_prompt,
         enable_thinking=request.enable_thinking,
         attachment_ids=request.attachment_ids,
+        enable_web_search=request.enable_web_search,
     )
 
     return ChatResponse(
@@ -80,8 +77,10 @@ async def chat_stream(
 
     事件类型：
     - user_message: 用户消息信息
+    - sources: 检索来源引用列表（启用 RAG/联网时，在正文流式前下发）
+    - reasoning: 思考过程片段（开启深度思考时）
     - content: AI生成的文本片段
-    - done: 对话完成，包含完整的AI回复
+    - done: 对话完成，包含完整的AI回复与来源/回答状态
     - error: 错误信息
 
     使用示例（前端）：
@@ -117,12 +116,9 @@ async def chat_stream(
             session_id=request.session_id,
             content=request.content,
             llm_model=request.llm_model,
-            max_tokens=request.max_tokens,
-            temperature=request.temperature,
-            top_p=request.top_p,
-            system_prompt=request.system_prompt,
             enable_thinking=request.enable_thinking,
             attachment_ids=request.attachment_ids,
+            enable_web_search=request.enable_web_search,
         ):
             yield chunk
 
