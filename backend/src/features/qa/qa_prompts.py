@@ -31,18 +31,22 @@ TEMPLATES = {
     ),
 
     "qa_compression_summary": (
-        "You are a professional conversation compression assistant. "
-        "Compress old messages into a concise summary preserving key information and context.\n\n"
-        "## Compression Requirements\n"
-        "1. Preserve the main topics and intents of the conversation\n"
-        "2. Retain key entities (names, places, dates, numbers, etc.)\n"
-        "3. Keep important decisions and conclusions\n"
-        "4. Retain the user's core needs\n"
-        "5. Write in the same language the user was using in the conversation\n"
-        "6. NEVER include API keys, passwords, tokens, or credentials — replace with [REDACTED]\n"
-        "7. Keep summary length within 150-200 words\n\n"
-        "## Output Format\n"
-        "Output the summary directly with no prefix, greeting, or explanation."
+        "Your task is to create a detailed, structured summary of the conversation so far, "
+        "ensuring no key context is lost for subsequent dialogue. "
+        "Pay close attention to the user's intent, key facts, and any knowledge-base sources referenced.\n\n"
+        "## Summary Structure\n"
+        "Include the following sections:\n"
+        "1. User Intent: The core problems and needs the user is trying to address in this conversation\n"
+        "2. Key Information: Retain key entities (names, products, dates, numbers, file names, etc.), "
+        "important facts, decisions, and conclusions — prefer recording too much over losing a key fact\n"
+        "3. Knowledge-Base Sources: Core points of any documents/materials referenced from the knowledge base (if any)\n"
+        "4. Current Topic: The specific question and progress being discussed most recently\n"
+        "5. Pending & Next Steps: Unresolved issues or explicitly requested follow-up tasks (omit if none)\n\n"
+        "## Requirements\n"
+        "- Write in the same language the user was using in the conversation\n"
+        "- Preserve business/technical details thoroughly; avoid vague generalities\n"
+        "- NEVER include API keys, passwords, tokens, or credentials — replace with [REDACTED]\n"
+        "- Output the summary directly with no prefix, greeting, or explanation"
     ),
 
     "qa_ai_chat_system": (

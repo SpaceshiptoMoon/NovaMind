@@ -4,12 +4,14 @@ AI对话服务层
 支持用户配置的 LLM 模型
 支持文档附件上传和分析
 """
-from dataclasses import dataclass
-from typing import List, Optional, Dict, Any, AsyncGenerator, TYPE_CHECKING
+from dataclasses import dataclass, field
+from typing import List, Optional, Dict, Any, AsyncGenerator, Tuple, TYPE_CHECKING
 from uuid import uuid4
 import base64
 import json
 import tempfile
+
+from src.shared.utils.text_processing.token_counter import TokenCounter
 import os
 
 from fastapi import UploadFile
@@ -34,6 +36,13 @@ from src.features.qa.api.exceptions import (
 )
 
 
+# 分级拒答：检索为空时的固定兜底文案（跳过 LLM 调用）
+REFUSAL_ANSWER_TEXT = (
+    "抱歉，未在所绑定的知识库中找到与该问题相关的资料，无法给出可靠回答。"
+    "请尝试更换问题表述、绑定其他知识库，或关闭拒答开关。"
+)
+
+
 @dataclass
 class ChatPreparation:
     """对话预处理的共享结果"""
@@ -45,7 +54,14 @@ class ChatPreparation:
     attachment_ids: Optional[List[int]] = None
     attachments: Optional[list] = None
     attachments_info: Optional[list] = None
-    display_content: str = ""  # 已废弃，保留兼容
+    sources: list = field(default_factory=list)  # 检索来源引用（与正文 [1][2] 角标对齐）
+    answer_status: str = "answered"  # answered / refused / low_confidence
+    confidence: Optional[float] = None
+    refused: bool = False  # 检索为空时短路跳过 LLM
+    # 生效的生成参数（请求 > 会话表 llm_config > 默认，由 _prepare_chat 合并）
+    max_tokens: int = 2048
+    temperature: float = 0.7
+    top_p: float = 0.8
 
 
 class AIChatService:
@@ -73,6 +89,7 @@ class AIChatService:
         self.minio_client = minio_client
         self.attachment_repo = ChatAttachmentRepository(db) if db else None
         self.logger = get_logger(__name__)
+        self._token_counter = TokenCounter()
 
     async def _get_llm_client(
         self,
@@ -118,8 +135,8 @@ class AIChatService:
         session_id: Optional[str],
         content: str,
         llm_model: Optional[str],
-        system_prompt: str,
         attachment_ids: Optional[List[int]] = None,
+        enable_web_search: bool = False,
     ) -> ChatPreparation:
         """
         流式/非流式对话共享的预处理逻辑
@@ -129,7 +146,6 @@ class AIChatService:
             session_id: 会话ID
             content: 用户消息内容
             llm_model: LLM 模型名称
-            system_prompt: 系统提示词
 
         Returns:
             ChatPreparation: 预处理结果
@@ -141,8 +157,15 @@ class AIChatService:
         # 创建或获取会话ID
         session_id = session_id or str(uuid4())
 
-        # 确保会话配置存在
-        await self.qa_service.ensure_session_config(session_id, user_id)
+        # 确保会话配置存在（返回值用于会话级自动 RAG 绑定兜底）
+        session_config = await self.qa_service.ensure_session_config(session_id, user_id)
+
+        # 生成参数：全部从会话表 llm_config 读（property 已兜底 null/缺失 → 默认值）
+        eff_max_tokens = session_config.llm_max_tokens if session_config else 2048
+        eff_temperature = session_config.llm_temperature if session_config else 0.7
+        eff_top_p = session_config.llm_top_p if session_config else 0.8
+        # system_prompt：会话表 llm_config > QA 模板
+        system_prompt = (session_config.llm_system_prompt if session_config else None) or PromptManager.get_template(PromptTemplate.QA_AI_CHAT_SYSTEM.value)
 
         # 解析附件，构造 extra（不修改 content）
         attachments_data = None
@@ -174,7 +197,46 @@ class AIChatService:
         except Exception as inject_err:
             self.logger.warning("附件文本注入失败，跳过注入", error=str(inject_err))
 
-        # 构建对话历史
+        # ===== 检索增强 + 会话级自动 RAG + 分级拒答 =====
+        # 联网：请求开关（前端主输入区）；RAG：完全由会话表 auto_rag 决定（无请求开关）
+        do_web = enable_web_search
+        do_rag = bool(session_config and getattr(session_config, "auto_rag", False))
+
+        # RAG 细节（空间/库/拒答/阈值/模式/top_k）统一从会话表读；
+        # 前端不再传 space_id/kb_id/kb_ids/enable_refusal，避免请求与会话表两套配置源冲突
+        rag_space = session_config.rag_space_id if session_config else None
+        rag_kb_ids = session_config.rag_kb_ids if session_config else []
+        refusal_on = session_config.rag_refusal_enabled if session_config else False
+        score_threshold = session_config.rag_score_threshold if session_config else 0.3
+        search_mode = session_config.rag_search_mode if session_config else "content_hybrid"
+        top_k = session_config.rag_top_k if session_config else 5
+
+        prep_sources: List[dict] = []
+        prep_refused = False
+        prep_status = "answered"
+        prep_confidence: Optional[float] = None
+
+        if do_web or do_rag:
+            # refusal_on 启用阈值过滤：低于 score_threshold 的 KB 来源不注入上下文
+            effective_threshold = score_threshold if refusal_on else None
+            system_prompt, prep_sources = await self._augment_system_prompt_with_retrieval(
+                system_prompt=system_prompt, query=content, user_id=user_id,
+                enable_web_search=do_web, enable_rag=do_rag,
+                space_id=rag_space, kb_ids=rag_kb_ids,
+                top_k=top_k, search_mode=search_mode,
+                score_threshold=effective_threshold,
+            )
+
+            # 分级拒答：过滤后无任何来源 → 拒答（短路跳过 LLM）
+            if refusal_on and not prep_sources:
+                prep_refused = True
+                prep_status = "refused"
+            # 低分来源已被阈值过滤，留下的均合格，不再有 low_confidence 分支
+
+        # 组建对话历史 = 系统提示词 + 压缩内容(摘要) + 新消息，三者独立。
+        # 系统提示词不参与压缩（恒定，从不进 get_conversation_context）；
+        # get_conversation_context 已完成「摘要+新消息」的阈值判断与压缩，
+        # 返回的 context 形如 [{system: 摘要}, 最近消息...]，此处只在外层拼上系统提示词。
         conversation_history = [
             {"role": "system", "content": system_prompt}
         ] + context
@@ -198,20 +260,230 @@ class AIChatService:
             attachment_ids=attachment_ids,
             attachments=attachments_data,
             attachments_info=attachments_info,
-            display_content=content,
+            sources=prep_sources,
+            answer_status=prep_status,
+            confidence=prep_confidence,
+            refused=prep_refused,
+            max_tokens=eff_max_tokens,
+            temperature=eff_temperature,
+            top_p=eff_top_p,
         )
+
+    async def _augment_system_prompt_with_retrieval(
+        self,
+        system_prompt: str,
+        query: str,
+        user_id: int,
+        enable_web_search: bool,
+        enable_rag: bool,
+        space_id: Optional[int],
+        kb_ids: Optional[List[int]] = None,
+        top_k: int = 5,
+        search_mode: str = "content_hybrid",
+        score_threshold: Optional[float] = None,
+    ) -> Tuple[str, List[dict]]:
+        """执行联网/知识库检索，返回 (增强后的 system_prompt, 统一编号的来源列表)。
+
+        来源列表 index 与 prompt 内 [1][2] 角标对齐；任一检索失败均降级跳过，不阻塞对话。
+
+        score_threshold 非空时（refusal_on 启用阈值过滤），丢弃得分低于阈值的 KB 来源——
+        低相关噪声不注入上下文，LLM 只看高质量结果。
+        """
+        raw_sources: List[dict] = []
+
+        if enable_web_search:
+            try:
+                res = await self._retrieve_web(query=query, max_results=5)
+                if res:
+                    raw_sources.extend(res[1])
+            except Exception as e:
+                self.logger.warning("联网搜索失败，跳过", error=str(e))
+
+        if enable_rag:
+            try:
+                res = await self._retrieve_knowledge(
+                    query=query, user_id=user_id, space_id=space_id,
+                    kb_ids=kb_ids, top_k=top_k, search_mode=search_mode,
+                )
+                if res:
+                    raw_sources.extend(res[1])
+            except Exception as e:
+                self.logger.warning("知识库检索失败，跳过", error=str(e))
+
+        # 阈值过滤：丢弃低分 KB 来源（web 来源无阈值语义，保留）
+        if score_threshold is not None:
+            raw_sources = [
+                s for s in raw_sources
+                if s.get("kind") != "kb" or (s.get("score") or 0) >= score_threshold
+            ]
+
+        if not raw_sources:
+            return system_prompt, []
+
+        # 统一重新编号（web + kb 合并后 index 连续，与正文角标一致）
+        sources: List[dict] = []
+        for i, s in enumerate(raw_sources, start=1):
+            s["index"] = i
+            sources.append(s)
+
+        web_items = [s for s in sources if s.get("kind") == "web"]
+        kb_items = [s for s in sources if s.get("kind") == "kb"]
+        ref_lines: List[str] = []
+        if web_items:
+            ref_lines.append("<web-search-results>")
+            for s in web_items:
+                ref_lines.append(
+                    f"[{s['index']}] {s.get('document_name') or ''}\n"
+                    f"URL: {s.get('url', '')}\n{s.get('snippet', '')}"
+                )
+            ref_lines.append("</web-search-results>")
+        if kb_items:
+            ref_lines.append("<knowledge-base-context>")
+            for s in kb_items:
+                header = f"[{s['index']}]" + (f" {s.get('document_name')}" if s.get("document_name") else "")
+                ref_lines.append(f"{header}\n{s.get('snippet', '')}")
+            ref_lines.append("</knowledge-base-context>")
+
+        reference = "\n".join(ref_lines)
+        augmented = (
+            f"{system_prompt}\n\n"
+            "以下是为回答用户问题检索到的参考资料，请严格基于这些资料作答：\n"
+            "1. 使用参考资料中的信息时，在对应句子末尾标注来源序号，如 [1]、[2]，序号与下方参考资料列表一致；\n"
+            "2. 优先使用参考资料，资料不足时可结合自身知识补充，但不要编造资料中不存在的事实；\n"
+            "3. 若参考资料完全不足以回答，请直接说明无法从现有资料中找到答案。\n\n"
+            f"{reference}"
+        )
+        return augmented, sources
+
+    async def _retrieve_web(self, query: str, max_results: int = 5) -> Optional[Tuple[str, List[dict]]]:
+        """联网搜索，返回 (参考资料块文本, 结构化来源列表)。复用 deep_research 的 DuckDuckGo 服务"""
+        from src.features.deep_research.services.duckduckgo_service import (
+            DuckDuckGoSearchService,
+        )
+
+        service = DuckDuckGoSearchService()
+        results = await service.search(query=query, max_results=max_results)
+        if not results:
+            return None
+
+        sources: List[dict] = []
+        lines: List[str] = ["<web-search-results>"]
+        for i, r in enumerate(results, start=1):
+            title = self._sanitize(getattr(r, "title", ""))
+            url = getattr(r, "url", "")
+            snippet = self._sanitize(getattr(r, "content", ""))
+            sources.append({
+                "index": i,
+                "kind": "web",
+                "document_name": title or None,
+                "url": url,
+                "snippet": snippet,
+            })
+            lines.append(f"[{i}] {title}\nURL: {url}\n{snippet}")
+        lines.append("</web-search-results>")
+        return "\n".join(lines), sources
+
+    async def _retrieve_knowledge(
+        self,
+        query: str,
+        user_id: int,
+        space_id: Optional[int],
+        kb_ids: Optional[List[int]] = None,
+        top_k: int = 5,
+        search_mode: str = "content_hybrid",
+    ) -> Optional[Tuple[str, List[dict]]]:
+        """知识库检索，返回 (参考资料块文本, 结构化来源列表)。复用 knowledge_space 的 SearchService"""
+        if not space_id:
+            self.logger.warning("RAG 开关已开但未指定 space_id，跳过知识库检索")
+            return None
+
+        from src.features.knowledge_space.services.search_service import SearchService
+        from src.features.knowledge_space.schemas.search_schema import SearchRequest
+        from src.shared.clients import get_elasticsearch_client
+
+        search_request = SearchRequest(query=query, search_mode=search_mode, top_k=top_k)
+        es_client = await get_elasticsearch_client()
+        model_config_service = self.model_config_service
+        if model_config_service is None:
+            from src.features.user.services.model_config_service import ModelConfigService
+            model_config_service = ModelConfigService(self.db)
+        search_service = SearchService(self.db, es_client, model_config_service)
+
+        # 确定检索的知识库列表：kb_ids > 空间下全部（前 3 个）
+        if kb_ids:
+            target_kb_ids: List[int] = list(kb_ids)
+        else:
+            from src.features.knowledge_space.repository.knowledge_base_repository import (
+                KnowledgeBaseRepository,
+            )
+            kb_repo = KnowledgeBaseRepository(self.db)
+            kbs = await kb_repo.get_by_space(space_id)
+            target_kb_ids = [kb.id for kb in kbs[:3]]
+
+        if not target_kb_ids:
+            return None
+
+        all_results: List[Dict[str, Any]] = []
+        for tid in target_kb_ids:
+            try:
+                r = await search_service.search(
+                    space_id=space_id, kb_id=tid, user_id=user_id, request=search_request
+                )
+                all_results.extend(r.get("results", []))
+            except Exception as e:
+                self.logger.warning("知识库检索失败，跳过", kb_id=tid, error=str(e))
+
+        if not all_results:
+            return None
+
+        all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
+        results = all_results[:top_k]
+
+        sources: List[dict] = []
+        lines: List[str] = ["<knowledge-base-context>"]
+        for i, r in enumerate(results, start=1):
+            file_info = r.get("file_info") or {}
+            metadata = r.get("metadata") or {}
+            filename = file_info.get("filename", "")
+            snippet = self._sanitize(r.get("content", ""))[:800]
+            sources.append({
+                "index": i,
+                "kind": "kb",
+                "document_id": r.get("document_id"),
+                "document_name": filename or None,
+                "kb_id": r.get("kb_id"),
+                "chunk_id": r.get("chunk_id"),
+                "score": r.get("score"),
+                "snippet": snippet,
+                "page": metadata.get("page"),
+            })
+            header = f"[{i}]" + (f" {filename}" if filename else "")
+            lines.append(f"{header}\n{snippet}")
+        lines.append("</knowledge-base-context>")
+        return "\n".join(lines), sources
+
+    @staticmethod
+    def _sanitize(text: Any) -> str:
+        """清理检索文本，剥离 XML 分隔标记以防 prompt 注入"""
+        if not text:
+            return ""
+        if not isinstance(text, str):
+            text = str(text)
+        for tag in (
+            "<web-search-results>", "</web-search-results>",
+            "<knowledge-base-context>", "</knowledge-base-context>",
+        ):
+            text = text.replace(tag, "")
+        return text.strip()
 
     async def chat(self,
                    user_id: int,
                    session_id: Optional[str] = None,
                    content: Optional[str] = None,
                    llm_model: Optional[str] = None,
-                   max_tokens: int = 2048,
-                   temperature: float = 0.7,
-                   top_p: float = 0.8,
-                   system_prompt: Optional[str] = None,
                    enable_thinking: bool = False,
-                   attachment_ids: Optional[List[int]] = None) -> Dict[str, Any]:
+                   attachment_ids: Optional[List[int]] = None,
+                   enable_web_search: bool = False) -> Dict[str, Any]:
         """
         执行AI对话
 
@@ -220,19 +492,17 @@ class AIChatService:
             session_id: 会话ID，如果为None则创建新会话
             content: 用户输入的消息
             llm_model: LLM 模型名称（可选）
-            max_tokens: 生成文本的最大长度
-            temperature: 温度参数
-            top_p: top_p参数
-            system_prompt: 系统提示词
 
         Returns:
             包含用户消息、AI回复和会话信息的字典
         """
-        system_prompt = system_prompt or PromptManager.get_template(PromptTemplate.QA_AI_CHAT_SYSTEM.value)
         user_message = None
         try:
             # 共享预处理
-            prep = await self._prepare_chat(user_id, session_id, content, llm_model, system_prompt, attachment_ids)
+            prep = await self._prepare_chat(
+                user_id, session_id, content, llm_model, attachment_ids,
+                enable_web_search=enable_web_search,
+            )
             user_message = prep.user_message
 
             # 在 LLM 调用前提交预处理数据，释放数据库锁
@@ -240,44 +510,60 @@ class AIChatService:
             await self.qa_service.commit()
             self.logger.info("预处理数据已提交，数据库锁已释放", session_id=prep.session_id)
 
-            # 使用 savepoint 保护 LLM 调用和 AI 消息保存
-            # LLM 失败时 savepoint 自动回滚，避免部分写入
-            async with self.db.begin_nested():
-                # 生成AI回复
-                self.logger.debug("[调试] 开始调用 LLM generate_text", session_id=prep.session_id)
-                ai_response_content = await prep.llm_client.generate_text(
-                    prompt=prep.conversation_history,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    top_p=top_p,
-                    enable_thinking=enable_thinking,
-                )
-                self.logger.debug(
-                    "[调试] LLM 返回内容",
-                    session_id=prep.session_id,
-                    content_len=len(ai_response_content) if ai_response_content else 0,
-                    content_preview=(ai_response_content or "")[:100],
-                )
+            # 分级拒答：检索完全为空时短路跳过 LLM，直接返回固定文案
+            if prep.refused:
+                async with self.db.begin_nested():
+                    ai_response_content = REFUSAL_ANSWER_TEXT
+                    ai_message = await self.qa_service.add_message(
+                        QARequest(
+                            content=ai_response_content,
+                            role="assistant",
+                            session_id=prep.session_id,
+                            extra=self._build_ai_extra(prep),
+                        ),
+                        user_id,
+                    )
+            else:
+                # 使用 savepoint 保护 LLM 调用和 AI 消息保存
+                # LLM 失败时 savepoint 自动回滚，避免部分写入
+                async with self.db.begin_nested():
+                    # 生成AI回复
+                    self.logger.debug("[调试] 开始调用 LLM generate_text", session_id=prep.session_id)
+                    ai_response_content = await prep.llm_client.generate_text(
+                        prompt=prep.conversation_history,
+                        max_tokens=prep.max_tokens,
+                        temperature=prep.temperature,
+                        top_p=prep.top_p,
+                        enable_thinking=enable_thinking,
+                    )
+                    self.logger.debug(
+                        "[调试] LLM 返回内容",
+                        session_id=prep.session_id,
+                        content_len=len(ai_response_content) if ai_response_content else 0,
+                        content_preview=(ai_response_content or "")[:100],
+                    )
 
-                # 添加AI回复到会话
-                self.logger.debug("[调试] 开始 add_message 保存 AI 回复", session_id=prep.session_id)
-                ai_message = await self.qa_service.add_message(
-                    QARequest(
-                        content=ai_response_content,
-                        role="assistant",
-                        session_id=prep.session_id
-                    ),
-                    user_id,
-                )
-                self.logger.debug(
-                    "[调试] add_message 完成",
-                    session_id=prep.session_id,
-                    message_id=ai_message.id,
-                    role=ai_message.role,
-                    content_len=len(ai_message.content) if ai_message.content else 0,
-                )
-                # savepoint 成功退出时自动释放，无需手动 commit
-                # 最终由 get_db 统一 commit
+                    # 添加AI回复到会话（落库 sources/answer_status 到 extra）
+                    self.logger.debug("[调试] 开始 add_message 保存 AI 回复", session_id=prep.session_id)
+                    _ai_extra = self._build_ai_extra(prep)
+                    ai_message = await self.qa_service.add_message(
+                        QARequest(
+                            content=ai_response_content,
+                            role="assistant",
+                            session_id=prep.session_id,
+                            extra=_ai_extra,
+                        ),
+                        user_id,
+                    )
+                    self.logger.debug(
+                        "[调试] add_message 完成",
+                        session_id=prep.session_id,
+                        message_id=ai_message.id,
+                        role=ai_message.role,
+                        content_len=len(ai_message.content) if ai_message.content else 0,
+                    )
+                    # savepoint 成功退出时自动释放，无需手动 commit
+                    # 最终由 get_db 统一 commit
 
             result = {
                 "session_id": prep.session_id,
@@ -292,7 +578,10 @@ class AIChatService:
                     "id": ai_message.id,
                     "content": ai_message.content,
                     "role": ai_message.role,
-                    "created_at": ai_message.created_at
+                    "created_at": ai_message.created_at,
+                    "sources": prep.sources,
+                    "answer_status": prep.answer_status,
+                    "confidence": prep.confidence,
                 },
                 "conversation_history": prep.conversation_history,
                 "llm_model": llm_model,
@@ -379,12 +668,9 @@ class AIChatService:
         session_id: Optional[str] = None,
         content: Optional[str] = None,
         llm_model: Optional[str] = None,
-        max_tokens: int = 2048,
-        temperature: float = 0.7,
-        top_p: float = 0.8,
-        system_prompt: Optional[str] = None,
         enable_thinking: bool = False,
         attachment_ids: Optional[List[int]] = None,
+        enable_web_search: bool = False,
     ) -> AsyncGenerator[str, None]:
         """
         流式执行AI对话
@@ -394,19 +680,17 @@ class AIChatService:
             session_id: 会话ID，如果为None则创建新会话
             content: 用户输入的消息
             llm_model: LLM 模型名称（可选）
-            max_tokens: 生成文本的最大长度
-            temperature: 温度参数
-            top_p: top_p参数
-            system_prompt: 系统提示词
 
         Yields:
             str: SSE格式的流式数据
         """
-        system_prompt = system_prompt or PromptManager.get_template(PromptTemplate.QA_AI_CHAT_SYSTEM.value)
         user_message = None
         try:
             # 共享预处理
-            prep = await self._prepare_chat(user_id, session_id, content, llm_model, system_prompt, attachment_ids)
+            prep = await self._prepare_chat(
+                user_id, session_id, content, llm_model, attachment_ids,
+                enable_web_search=enable_web_search,
+            )
             user_message = prep.user_message
             session_id = prep.session_id
 
@@ -428,69 +712,82 @@ class AIChatService:
                 }
             })
 
-            # 收集完整的AI回复
-            full_response = ""
+            # 检索来源事件（在正文流式前下发，供前端渲染引用卡片）
+            if prep.sources:
+                yield self._format_sse({
+                    "type": "sources",
+                    "data": {
+                        "sources": prep.sources,
+                        "answer_status": prep.answer_status,
+                        "confidence": prep.confidence,
+                        "session_id": session_id,
+                    }
+                })
 
-            # 流式生成AI回复（带心跳机制 + thinking 模式适配）
-            raw_stream = prep.llm_client.generate_text_stream_structured(
-                prompt=prep.conversation_history,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                enable_thinking=enable_thinking,
-            )
+            # 分级拒答：检索完全为空时短路跳过 LLM
+            if prep.refused:
+                full_response = REFUSAL_ANSWER_TEXT
+                ai_message = await self.qa_service.add_message(
+                    QARequest(
+                        content=full_response,
+                        role="assistant",
+                        session_id=session_id,
+                        extra=self._build_ai_extra(prep),
+                    ),
+                    user_id,
+                )
+                await self.qa_service.commit()
+            else:
+                # 收集完整的AI回复
+                full_response = ""
 
-            from src.shared.ai_models.base_model import StreamChunk
-            async for chunk in stream_with_heartbeat_structured(raw_stream):
-                # 心跳注释直接透传
-                if isinstance(chunk, str):
-                    yield chunk
-                    continue
-                if chunk.type == "reasoning":
-                    yield self._format_sse({
-                        "type": "reasoning",
-                        "data": {
-                            "content": chunk.text,
-                            "session_id": session_id,
-                        }
-                    })
-                else:
-                    full_response += chunk.text
-                    yield self._format_sse({
-                        "type": "content",
-                        "data": {
-                            "content": chunk.text,
-                            "session_id": session_id,
-                        }
-                    })
+                # 流式生成AI回复（带心跳机制 + thinking 模式适配）
+                raw_stream = prep.llm_client.generate_text_stream_structured(
+                    prompt=prep.conversation_history,
+                    max_tokens=prep.max_tokens,
+                    temperature=prep.temperature,
+                    top_p=prep.top_p,
+                    enable_thinking=enable_thinking,
+                )
 
-            # 保存完整的AI回复到数据库
-            self.logger.debug(
-                "[调试-流式] 开始 add_message 保存 AI 回复",
-                session_id=session_id,
-                content_len=len(full_response),
-                content_preview=full_response[:100],
-            )
-            ai_message = await self.qa_service.add_message(
-                QARequest(
-                    content=full_response,
-                    role="assistant",
-                    session_id=session_id
-                ),
-                user_id,
-            )
-            self.logger.debug(
-                "[调试-流式] add_message 完成",
-                session_id=session_id,
-                message_id=ai_message.id,
-                role=ai_message.role,
-            )
-            # 显式提交 AI 消息（flush 不等于 commit）
-            self.logger.debug("[调试-流式] 开始 commit AI 消息", session_id=session_id, message_id=ai_message.id)
-            await self.qa_service.commit()
-            self.logger.debug("[调试-流式] AI 回复已成功 commit 到数据库", session_id=session_id, message_id=ai_message.id)
+                from src.shared.ai_models.base_model import StreamChunk
+                async for chunk in stream_with_heartbeat_structured(raw_stream):
+                    # 心跳注释直接透传
+                    if isinstance(chunk, str):
+                        yield chunk
+                        continue
+                    if chunk.type == "reasoning":
+                        yield self._format_sse({
+                            "type": "reasoning",
+                            "data": {
+                                "content": chunk.text,
+                                "session_id": session_id,
+                            }
+                        })
+                    else:
+                        full_response += chunk.text
+                        yield self._format_sse({
+                            "type": "content",
+                            "data": {
+                                "content": chunk.text,
+                                "session_id": session_id,
+                            }
+                        })
 
-            # 发送完成消息
+                # 保存完整的AI回复到数据库（落库 sources/answer_status 到 extra）
+                _ai_extra = self._build_ai_extra(prep)
+                ai_message = await self.qa_service.add_message(
+                    QARequest(
+                        content=full_response,
+                        role="assistant",
+                        session_id=session_id,
+                        extra=_ai_extra,
+                    ),
+                    user_id,
+                )
+                await self.qa_service.commit()
+
+            # 发送完成消息（含来源与回答状态，前端兜底渲染）
             yield self._format_sse({
                 "type": "done",
                 "data": {
@@ -500,6 +797,9 @@ class AIChatService:
                     "created_at": ai_message.created_at,
                     "session_id": session_id,
                     "llm_model": llm_model,
+                    "sources": prep.sources,
+                    "answer_status": prep.answer_status,
+                    "confidence": prep.confidence,
                 }
             })
 
@@ -519,6 +819,20 @@ class AIChatService:
             self.logger.error(error_msg, session_id=session_id, user_id=user_id)
             await self._cleanup_user_message(user_message)
             yield self._format_sse({"type": "error", "content": error_msg})
+
+    def _build_ai_extra(self, prep: ChatPreparation) -> Optional[dict]:
+        """构造 AI 消息 extra（sources/answer_status/confidence）。
+
+        拒答/低置信/有检索来源时落库；正常回答且无来源时返回 None（不写 extra）。
+        chat() 与 chat_stream() 的拒答/正常分支共用，避免 4 处重复构造。
+        """
+        if prep.sources or prep.answer_status != "answered":
+            return {
+                "sources": prep.sources,
+                "answer_status": prep.answer_status,
+                "confidence": prep.confidence,
+            }
+        return None
 
     async def _cleanup_user_message(self, user_message) -> None:
         """清理流式异常时残留的用户消息"""
@@ -541,6 +855,10 @@ class AIChatService:
     IMAGE_FILE_TYPES = {"jpg", "jpeg", "png", "gif", "webp"}
     MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
     MAX_EXTRACTED_TEXT_LENGTH = 50000  # 50000 字符
+    # 附件注入 token 预算：所有文档附件合计不超此值，避免撑爆上下文
+    ATTACHMENT_TOKEN_BUDGET = 20000   # 总预算
+    ATTACHMENT_MIN_KEEP = 2000        # 剩余 ≥ 此值才截断到剩余（否则走头部保留）
+    ATTACHMENT_HEAD_KEEP = 800        # 预算耗尽后，每个老附件至少保留的头部 token
 
     async def upload_attachment(
         self,
@@ -655,11 +973,30 @@ class AIChatService:
         finally:
             os.unlink(tmp_path)
 
-    def _format_attachments_prompt(self, attachments: list) -> str:
-        """将附件文本格式化为 XML 结构的 LLM 提示"""
+    def _format_attachments_prompt(
+        self, attachments: list, max_tokens: Optional[int] = None,
+    ) -> str:
+        """将附件文本格式化为 XML 结构的 LLM 提示。
+
+        max_tokens 非空时，所有附件合计不超过该 token 数：
+        按顺序累计，超出预算的附件截断到剩余预算或标记省略。
+        """
         docs = []
+        used = 0
         for att in attachments:
             text = att.extracted_text or "(无法提取文档文本)"
+            if max_tokens is not None:
+                remaining = max_tokens - used
+                text_tokens = self._token_counter.count_tokens(text)
+                if remaining <= 0:
+                    text = "[...内容因附件预算省略...]"
+                elif text_tokens > remaining:
+                    # 截断到剩余预算（token→char 粗估，中文偏保守）
+                    char_limit = max(100, int(remaining * 2.5))
+                    text = text[:char_limit] + "\n[...内容已截断...]"
+                    used = max_tokens
+                else:
+                    used += text_tokens
             docs.append(f'  <document filename="{att.filename}">\n{text}\n  </document>')
         return "<documents>\n" + "\n".join(docs) + "\n</documents>"
 
@@ -701,13 +1038,19 @@ class AIChatService:
         att_by_id = {a.id: a for a in att_records}
 
         IMAGE_TYPES = {"jpg", "jpeg", "png", "gif", "webp"}
+        # 收集 context 里带附件的 user 消息（保持 context 顺序：旧→新）
+        items_with_att = [
+            item for item in context
+            if item.get("role") == "user" and item.get("id") in msg_att_map
+        ]
+        if not items_with_att:
+            return context
+
+        remaining_budget = self.ATTACHMENT_TOKEN_BUDGET
         injected = 0
-        for item in context:
-            if item.get("role") != "user":
-                continue
+        # 反向遍历：最近的消息优先占用预算（全量），老的逐级截断 / 留头部
+        for item in reversed(items_with_att):
             msg_id = item.get("id")
-            if msg_id not in msg_att_map:
-                continue
             records = [att_by_id[aid] for aid in msg_att_map[msg_id] if aid in att_by_id]
             if not records:
                 continue
@@ -718,12 +1061,25 @@ class AIChatService:
             parts: list = []
             original_content = item.get("content", "")
 
-            # 文档 → XML
+            # 文档附件：按 token 预算（全量 / 截断 / 留头部），绝不完全忽略
             if doc_records:
-                xml = self._format_attachments_prompt(doc_records)
-                parts.append({"type": "text", "text": xml})
+                full_xml = self._format_attachments_prompt(doc_records)
+                full_tokens = self._token_counter.count_tokens(full_xml)
 
-            # 图片 → multimodal（仅 VLM）
+                if full_tokens <= remaining_budget:
+                    # 预算够 → 全量注入
+                    doc_xml = full_xml
+                    remaining_budget -= full_tokens
+                elif remaining_budget >= self.ATTACHMENT_MIN_KEEP:
+                    # 预算不够全量但够截断 → 截断到剩余
+                    doc_xml = self._format_attachments_prompt(doc_records, max_tokens=remaining_budget)
+                    remaining_budget = 0
+                else:
+                    # 预算耗尽 → 至少保留头部（不忽略）
+                    doc_xml = self._format_attachments_prompt(doc_records, max_tokens=self.ATTACHMENT_HEAD_KEEP)
+                parts.append({"type": "text", "text": doc_xml})
+
+            # 图片附件 → multimodal（仅 VLM；图片不占文本预算）
             if img_records and is_vlm and self.minio_client:
                 for img in img_records:
                     try:
@@ -745,13 +1101,14 @@ class AIChatService:
             if parts:
                 parts.append({"type": "text", "text": f"\n\n用户问题：{original_content}"})
                 item["content"] = parts
-            elif doc_records:
-                xml = self._format_attachments_prompt(doc_records)
-                item["content"] = f"{xml}\n\n用户问题：{original_content}"
             injected += 1
 
         if injected:
-            self.logger.info("附件文本已注入上下文", session_id=session_id, injected_count=injected)
+            self.logger.info(
+                "附件文本已注入上下文（按 token 预算）",
+                session_id=session_id, injected_count=injected,
+                budget=self.ATTACHMENT_TOKEN_BUDGET, remaining=remaining_budget,
+            )
 
         return context
 

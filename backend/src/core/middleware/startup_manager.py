@@ -6,6 +6,8 @@
 import time
 from contextlib import asynccontextmanager
 
+from sqlalchemy import text
+
 from src.setting.yaml_config import get_config
 from src.shared.utils.time_utils import now_china
 from src.core.middleware.structured_logging import get_logger
@@ -56,6 +58,14 @@ async def _init_notification(app):
     await init_notification_components(app)
 
 register_feature_initializer(_init_notification)
+
+
+async def _init_clawmate(app):
+    """ClawMate 终端模块初始化"""
+    from src.features.clawmate.api.startup import init_clawmate_components
+    await init_clawmate_components(app)
+
+register_feature_initializer(_init_clawmate)
 
 
 def _import_models():
@@ -131,6 +141,9 @@ class AppLifespanManager:
         db_start = time.time()
         await self._create_database_tables()
         self.logger.info("数据库表创建完成", duration=f"{time.time() - db_start:.2f}s")
+
+        # 幂等 schema 迁移（create_all 不 ALTER 已有表，手动补新增列）
+        await self._run_schema_migrations()
 
         # 初始化各功能模块
         features_start = time.time()
@@ -231,6 +244,48 @@ class AppLifespanManager:
             )
             raise
 
+    async def _run_schema_migrations(self):
+        """
+        幂等补列迁移。
+
+        create_all() 只创建不存在的表，不会给已存在的表 ALTER ADD COLUMN。
+        在此集中维护「新增列」迁移：检测目标列缺失则补建，幂等可重复执行。
+        新增列时向 MIGRATIONS 追加 (表名, 列名, DDL) 即可。
+        """
+        # (表名, 列名, ALTER DDL)
+        migrations = [
+            (
+                "qa_session_configs",
+                "kb_bindings",
+                "ALTER TABLE qa_session_configs ADD COLUMN kb_bindings JSON NULL",
+            ),
+            (
+                "qa_session_configs",
+                "llm_config",
+                "ALTER TABLE qa_session_configs ADD COLUMN llm_config JSON NULL",
+            ),
+        ]
+        db_engine = get_engine()
+        for table, column, ddl in migrations:
+            try:
+                async with db_engine.begin() as conn:
+                    exists = (
+                        await conn.execute(
+                            text("SHOW COLUMNS FROM `%s` LIKE :c" % table),
+                            {"c": column},
+                        )
+                    ).fetchone()
+                    if not exists:
+                        await conn.execute(text(ddl))
+                        self.logger.info("schema 迁移：补列", table=table, column=column)
+            except Exception as e:
+                self.logger.warning(
+                    "schema 迁移失败",
+                    table=table,
+                    column=column,
+                    error=str(e),
+                )
+
     async def _init_features(self, app):
         """初始化各功能模块"""
         for init_func in _feature_initializers:
@@ -263,6 +318,20 @@ class AppLifespanManager:
                 self.logger.info("MCP 连接已关闭")
         except Exception as e:
             self.logger.warning("关闭 MCP 连接时出错", error=str(e))
+
+        # 清理 ClawMate sessions
+        try:
+            if hasattr(self, '_app') and hasattr(self._app.state, 'clawmate_session_manager'):
+                manager = self._app.state.clawmate_session_manager
+                count = manager.active_count
+                if count > 0:
+                    self.logger.info("正在清理 ClawMate sessions", active=count)
+                    # 清理所有 session
+                    for user_id in list(manager._sessions.keys()):
+                        manager.destroy(user_id)
+                self.logger.info("ClawMate sessions 已清理")
+        except Exception as e:
+            self.logger.warning("清理 ClawMate sessions 时出错", error=str(e))
 
         # 关闭数据库引擎连接池
         try:

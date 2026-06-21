@@ -105,3 +105,55 @@ class SessionConfigRepository:
         except Exception as e:
             self.logger.error("删除会话配置失败", session_id=session_id, error=str(e))
             raise
+
+    async def _upsert(
+        self,
+        session_id: str,
+        user_id: int,
+        **columns: dict,
+    ) -> SessionConfig:
+        """
+        通用 upsert：记录不存在则创建（compression 用默认），存在则只更新传入的列。
+
+        三个配置列（compression_config / kb_bindings / llm_config）的更新共享此实现，
+        各自只指定要写的列。注意：只 flush 不 commit，事务由上层（get_db）统一管理。
+        """
+        try:
+            config = await self.get_by_session_id(session_id)
+            if config is None:
+                init = {"compression_config": DEFAULT_COMPRESSION_CONFIG}
+                init.update(columns)
+                config = SessionConfig(
+                    session_id=session_id,
+                    user_id=user_id,
+                    **init,
+                )
+                self.session.add(config)
+            else:
+                config.user_id = user_id
+                for col, val in columns.items():
+                    setattr(config, col, val)
+            await self.session.flush()
+            await self.session.refresh(config)
+            return config
+        except Exception as e:
+            self.logger.error("更新会话配置失败", session_id=session_id, error=str(e))
+            raise
+
+    async def upsert_rag_binding(
+        self, session_id: str, user_id: int, rag_config: dict,
+    ) -> SessionConfig:
+        """绑定/更新会话知识库（会话级自动 RAG）"""
+        return await self._upsert(session_id, user_id, kb_bindings=rag_config)
+
+    async def update_compression(
+        self, session_id: str, user_id: int, compression_config: dict,
+    ) -> SessionConfig:
+        """更新会话压缩配置（支持反复修改）"""
+        return await self._upsert(session_id, user_id, compression_config=compression_config)
+
+    async def update_llm_config(
+        self, session_id: str, user_id: int, llm_config: dict,
+    ) -> SessionConfig:
+        """更新会话模型生成参数配置（支持反复修改）"""
+        return await self._upsert(session_id, user_id, llm_config=llm_config)

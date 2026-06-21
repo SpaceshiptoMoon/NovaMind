@@ -388,6 +388,54 @@ class QAService:
             self.logger.error("创建会话配置失败", session_id=session_id, error=str(e))
             raise
 
+    # ========== 会话配置写入（写库 + 失效缓存） ==========
+    # 配置写入必须同时失效 Redis 缓存，否则 get_conversation_context 的
+    # _get_session_config_with_cache 仍读旧值，导致改了配置不立即生效。
+
+    async def create_session_config(
+        self, session_id: str, user_id: int, compression_config: dict,
+    ) -> Any:
+        config = await self.session_config_repo.create(
+            session_id, user_id, compression_config,
+        )
+        await self.invalidate_session_config_cache(session_id)
+        return config
+
+    async def update_compression_config(
+        self, session_id: str, user_id: int, compression_config: dict,
+    ) -> Any:
+        config = await self.session_config_repo.update_compression(
+            session_id, user_id, compression_config,
+        )
+        await self.invalidate_session_config_cache(session_id)
+        return config
+
+    async def update_llm_config(
+        self, session_id: str, user_id: int, llm_config: dict,
+    ) -> Any:
+        config = await self.session_config_repo.update_llm_config(
+            session_id, user_id, llm_config,
+        )
+        await self.invalidate_session_config_cache(session_id)
+        return config
+
+    async def upsert_rag_binding(
+        self, session_id: str, user_id: int, rag_config: dict,
+    ) -> Any:
+        config = await self.session_config_repo.upsert_rag_binding(
+            session_id, user_id, rag_config,
+        )
+        await self.invalidate_session_config_cache(session_id)
+        return config
+
+    async def invalidate_session_config_cache(self, session_id: str) -> None:
+        """失效会话配置缓存（Redis 不可用时静默跳过）"""
+        if self.cache_service:
+            try:
+                await self.cache_service.invalidate_session_config(session_id)
+            except Exception as e:
+                self.logger.warning("失效会话配置缓存失败", session_id=session_id, error=str(e))
+
     async def _get_session_summary_with_cache(
         self, session_id: str
     ) -> Optional["SessionSummary"]:
@@ -481,6 +529,14 @@ class QAService:
                 self.logger.debug("会话未启用压缩，返回原始消息", session_id=session_id)
                 return [{"id": msg.id, "role": msg.role, "content": msg.content} for msg in messages]
 
+            # summary 策略：先组合(摘要+新消息)再判断阈值
+            # 避免用全部原始历史算 token 虚高（已摘要的旧消息不该重复算/重复喂给 LLM）
+            if actual_strategy == "summary":
+                return await self._get_summary_context(
+                    messages, config, user_id, session_id,
+                    actual_threshold, actual_keep_recent,
+                )
+
             # 将消息转换为 dict 格式（用于压缩处理）
             context_messages = [{"id": msg.id, "role": msg.role, "content": msg.content} for msg in messages]
 
@@ -496,13 +552,8 @@ class QAService:
                 )
                 return context_messages
 
-            # 根据策略分发压缩逻辑（使用字符串比较）
-            if actual_strategy == "summary":
-                return await self._compress_with_summary(
-                    session_id, user_id, context_messages, config,
-                    actual_keep_recent, total_tokens
-                )
-            elif actual_strategy == "sliding_window":
+            # 根据策略分发压缩逻辑（summary 已在上方提前走 _get_summary_context，此处只剩其余策略）
+            if actual_strategy == "sliding_window":
                 return await self._compress_with_sliding_window(
                     session_id, context_messages, actual_keep_recent, total_tokens
                 )
@@ -515,15 +566,15 @@ class QAService:
                     session_id, context_messages, config.compression_target_tokens, total_tokens
                 )
             else:
-                # 未知策略，默认使用 summary
+                # 未知策略，默认走 summary 流程（组合判断 + 增量/全量）
                 self.logger.warning(
                     "未知的压缩策略，使用默认 summary",
                     session_id=session_id,
                     strategy=actual_strategy,
                 )
-                return await self._compress_with_summary(
-                    session_id, user_id, context_messages, config,
-                    actual_keep_recent, total_tokens
+                return await self._get_summary_context(
+                    messages, config, user_id, session_id,
+                    actual_threshold, actual_keep_recent,
                 )
 
         except QAError:
@@ -533,6 +584,169 @@ class QAService:
             raise QAError(f"压缩对话失败: {str(e)}") from e
 
     # ========== 压缩策略实现 ==========
+
+    async def _get_summary_context(
+        self,
+        messages: List[Any],
+        config: Any,
+        user_id: int,
+        session_id: str,
+        threshold: int,
+        keep_recent: int,
+    ) -> List[dict]:
+        """
+        summary 策略的上下文获取：先组合(摘要+新消息)再判断阈值。
+
+        与"读全部原始消息算 token"不同，这里基于**实际喂给 LLM 的组合输入**判断：
+        - 有摘要：组合 = [摘要] + 上次边界之后的新消息
+        - 无摘要：组合 = 全部消息
+        组合 token 超阈值才压缩（增量/全量），避免已摘要的旧消息被重复读、重复算、重复喂。
+        """
+        summary = await self._get_session_summary_with_cache(session_id)
+
+        if summary and summary.last_compressed_message_id:
+            last_id = summary.last_compressed_message_id
+            new_msg_dicts = [
+                {"id": m.id, "role": m.role, "content": m.content}
+                for m in messages
+                if m.id > last_id
+            ]
+            # 组合输入 = 摘要 + 新消息（实际喂给 LLM 的内容）
+            combined = (
+                [{"role": "system", "content": f"对话历史摘要: {summary.summary_content}"}]
+                + new_msg_dicts
+            )
+            combined_tokens = self._token_counter.count_messages_tokens(combined)
+
+            if combined_tokens <= threshold:
+                # 组合没超 → 直接返回摘要 + 最近 keep_recent 条新消息
+                self.logger.debug(
+                    "摘要+新消息未超阈值，返回组合",
+                    session_id=session_id, combined_tokens=combined_tokens, threshold=threshold,
+                )
+                result = [{"role": "system", "content": f"对话历史摘要: {summary.summary_content}"}]
+                for msg in new_msg_dicts[-keep_recent:]:
+                    result.append({"role": msg["role"], "content": msg["content"]})
+                return result
+
+            # 组合超了（新消息积累多）→ 增量压缩：旧摘要 + 新消息 → 新摘要
+            return await self._incremental_compress_and_return(
+                session_id, user_id, config, keep_recent, summary, new_msg_dicts,
+            )
+
+        # 无摘要 → 全部消息，基于全部判断，超了全量压缩
+        context_messages = [{"id": m.id, "role": m.role, "content": m.content} for m in messages]
+        total_tokens = self._token_counter.count_messages_tokens(context_messages)
+        if total_tokens <= threshold:
+            return context_messages
+        return await self._compress_with_summary(
+            session_id, user_id, context_messages, config, keep_recent, total_tokens,
+        )
+
+    async def _get_compression_llm_client(self, user_id: int):
+        """获取用于压缩摘要的 LLM 客户端（用户默认 LLM）"""
+        if not self.model_config_service:
+            raise QAError("未配置 ModelConfigService，无法执行压缩")
+        default_model = await self.model_config_service.get_user_default_model_name(user_id, "llm")
+        if not default_model:
+            raise QAError("未配置 LLM 模型，无法执行压缩")
+        return await self.model_config_service.get_llm_client_by_model(user_id, default_model)
+
+    async def _incremental_compress_and_return(
+        self,
+        session_id: str,
+        user_id: int,
+        config: Any,
+        keep_recent: int,
+        cached_summary: Any,
+        recent_msgs: List[dict],
+    ) -> List[dict]:
+        """
+        增量压缩：旧摘要 + 新消息 → 新摘要。
+
+        只把「旧摘要 + 自上次边界之后的新消息」喂给 LLM 生成更新摘要，
+        不再把全部历史重新压缩——省 LLM 调用，且基于旧摘要融合，信息保留更连贯。
+        """
+        llm_client = await self._get_compression_llm_client(user_id)
+        compressor = TextCompressor(
+            llm_client=llm_client,
+            custom_prompt=config.custom_summary_prompt,
+        )
+
+        # 需并入摘要的新消息 = recent 中除最近 keep_recent 条（它们保留原文）
+        new_msgs_to_compress = (
+            recent_msgs[:-keep_recent] if len(recent_msgs) > keep_recent else recent_msgs
+        )
+
+        self.logger.info(
+            "开始增量 SUMMARY 压缩",
+            session_id=session_id,
+            new_message_count=len(new_msgs_to_compress),
+            target_tokens=config.compression_target_tokens,
+        )
+
+        result = await compressor.compress_with_base_summary(
+            base_summary=cached_summary.summary_content,
+            new_messages=new_msgs_to_compress,
+            target_tokens=config.compression_target_tokens,
+        )
+
+        # 新边界 = 最近 keep_recent 条之前那条
+        new_last_id = (
+            recent_msgs[-(keep_recent + 1)]["id"]
+            if len(recent_msgs) > keep_recent
+            else recent_msgs[-1]["id"]
+        )
+
+        # 存更新后的摘要
+        try:
+            async with self.session_summary_repo.session.begin_nested():
+                new_summary = await self.session_summary_repo.create_summary(
+                    session_id=session_id,
+                    user_id=user_id,
+                    summary_content=result.summary,
+                    summary_tokens=result.compressed_tokens,
+                    compressed_message_count=(cached_summary.compressed_message_count or 0)
+                    + len(new_msgs_to_compress),
+                    original_tokens=result.original_tokens,
+                    last_compressed_message_id=new_last_id,
+                    last_message_id=new_last_id,
+                )
+                if self.cache_service and new_summary:
+                    await self.cache_service.set_session_summary(
+                        session_id,
+                        {
+                            "id": new_summary.id,
+                            "session_id": new_summary.session_id,
+                            "user_id": new_summary.user_id,
+                            "summary_content": new_summary.summary_content,
+                            "summary_tokens": new_summary.summary_tokens,
+                            "compressed_message_count": new_summary.compressed_message_count,
+                            "original_tokens": new_summary.original_tokens,
+                            "last_compressed_message_id": new_summary.last_compressed_message_id,
+                            "version": new_summary.version,
+                        },
+                    )
+        except Exception as save_error:
+            self.logger.error(
+                "增量摘要保存失败，继续使用压缩结果",
+                error=str(save_error), session_id=session_id,
+            )
+
+        self.logger.info(
+            "增量 SUMMARY 压缩完成",
+            session_id=session_id,
+            new_message_count=len(new_msgs_to_compress),
+            compressed_tokens=result.compressed_tokens,
+        )
+
+        # 返回 [新摘要] + 最近 keep_recent 条原文
+        result_context = [
+            {"role": "system", "content": f"对话历史摘要: {result.summary}"}
+        ]
+        for msg in recent_msgs[-keep_recent:]:
+            result_context.append({"role": msg["role"], "content": msg["content"]})
+        return result_context
 
     async def _compress_with_summary(
         self,
@@ -544,48 +758,11 @@ class QAService:
         total_tokens: int,
     ) -> List[dict]:
         """
-        SUMMARY 策略：使用 LLM 生成摘要
+        全量压缩：把全部对话消息压成摘要（首次压缩、尚无摘要时使用）。
 
-        支持缓存摘要，避免重复压缩
+        有摘要的「组合判断 / 增量压缩」由 _get_summary_context 处理，本方法只负责全量。
         """
-        # 检查是否有缓存的摘要（带缓存）
-        cached_summary = await self._get_session_summary_with_cache(session_id)
-        if cached_summary and cached_summary.last_compressed_message_id:
-            # 获取最后被压缩消息之后的消息
-            last_compressed_id = cached_summary.last_compressed_message_id
-            recent_msgs = [m for m in context_messages if m["id"] > last_compressed_id]
-
-            # 如果最近消息数量合理,使用缓存的摘要
-            if len(recent_msgs) <= keep_recent * 2:
-                self.logger.info(
-                    "使用缓存的摘要",
-                    session_id=session_id,
-                    summary_version=cached_summary.version,
-                    recent_message_count=len(recent_msgs),
-                )
-
-                result_context = [
-                    {"role": "system", "content": f"对话历史摘要: {cached_summary.summary_content}"}
-                ]
-
-                # 添加最近的消息
-                for msg in recent_msgs[-keep_recent:]:
-                    result_context.append({
-                        "role": msg["role"],
-                        "content": msg["content"],
-                    })
-
-                return result_context
-
-        # 需要重新压缩 — 通过 ModelConfigService 获取 LLM 客户端
-        if self.model_config_service:
-            default_model = await self.model_config_service.get_user_default_model_name(user_id, "llm")
-            if default_model:
-                llm_client = await self.model_config_service.get_llm_client_by_model(user_id, default_model)
-            else:
-                raise QAError("未配置 LLM 模型，无法执行压缩")
-        else:
-            raise QAError("未配置 ModelConfigService，无法执行压缩")
+        llm_client = await self._get_compression_llm_client(user_id)
         compressor = TextCompressor(
             llm_client=llm_client,
             custom_prompt=config.custom_summary_prompt,

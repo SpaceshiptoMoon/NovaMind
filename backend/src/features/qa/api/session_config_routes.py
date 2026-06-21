@@ -16,9 +16,14 @@ from src.features.qa.api.exceptions import (
 )
 from src.features.qa.repository.session_config_repository import SessionConfigRepository
 from src.features.qa.repository.question_answer_repository import QuestionAnswerRepository
+from src.features.qa.services.qa_service import QAService
+from src.features.qa.api.dependencies import get_qa_service
 from src.features.qa.schemas.session_config import (
     SessionConfigCreate,
+    SessionConfigCompressionUpdate,
+    SessionConfigLlmUpdate,
     SessionConfigResponse,
+    SessionConfigRagUpdate,
 )
 from src.core.middleware.structured_logging import get_logger
 
@@ -38,23 +43,36 @@ def get_session_config_repo(
     return SessionConfigRepository(db)
 
 
+async def verify_session_owner(
+    session_id: str, user_id: int, repo: SessionConfigRepository,
+) -> None:
+    """
+    会话归属校验（create / PATCH 共用）：若该会话已有其他用户的消息，则拒绝。
+
+    用「消息归属」而非「config 归属」，因为 config 可能尚不存在（首次创建）。
+    """
+    qa_repo = QuestionAnswerRepository(repo.session)
+    existing_messages = await qa_repo.get_by_session(session_id)
+    if existing_messages and existing_messages[0].user_id != user_id:
+        raise UnauthorizedAccessException("无权操作此会话配置")
+
+
 @router.post(
     "",
     response_model=SessionConfigResponse,
     status_code=status.HTTP_201_CREATED,
     summary="创建会话配置",
-    description="为指定会话创建压缩配置。注意：压缩配置创建后不可修改。",
+    description="为指定会话创建压缩配置。",
 )
 async def create_config(
     session_id: Annotated[str, Path(min_length=1, description="会话 ID")],
     request: Annotated[SessionConfigCreate, Body(...)],
     user_id: int = Depends(get_current_user_id),
     repo: SessionConfigRepository = Depends(get_session_config_repo),
+    qa_service: QAService = Depends(get_qa_service),
 ):
     """
     创建会话配置
-
-    压缩配置创建后不可修改，请谨慎设置。
 
     - **compression.enable_compression**: 是否启用压缩（默认 true）
     - **compression.strategy**: 压缩策略（默认 summary）
@@ -63,20 +81,17 @@ async def create_config(
     - **compression.keep_recent**: 保留的最近消息数（默认 2）
     - **compression.custom_prompt**: 自定义摘要提示词（可选）
     """
-    # 校验会话归属：如果该 session_id 已有其他用户的消息，则拒绝
-    qa_repo = QuestionAnswerRepository(repo.session)
-    existing_messages = await qa_repo.get_by_session(session_id)
-    if existing_messages and existing_messages[0].user_id != user_id:
-        raise UnauthorizedAccessException("无权为此会话创建配置")
+    # 校验会话归属
+    await verify_session_owner(session_id, user_id, repo)
 
     # 检查是否已存在（应用层快速失败）
     existing = await repo.get_by_session_id(session_id)
     if existing:
         raise SessionConfigAlreadyExistsError(session_id)
 
-    # 创建配置（数据库层兜底，防止 TOCTOU 竞态）
+    # 创建配置（数据库层兜底，防止 TOCTOU 竞态；qa_service 内部写库 + 失效缓存）
     try:
-        config = await repo.create(
+        config = await qa_service.create_session_config(
             session_id=session_id,
             user_id=user_id,
             compression_config=request.compression.model_dump(),
@@ -131,6 +146,7 @@ async def delete_config(
     session_id: Annotated[str, Path(min_length=1, description="会话 ID")],
     user_id: int = Depends(get_current_user_id),
     repo: SessionConfigRepository = Depends(get_session_config_repo),
+    qa_service: QAService = Depends(get_qa_service),
 ):
     """
     删除会话配置
@@ -147,5 +163,125 @@ async def delete_config(
         raise UnauthorizedAccessException("无权操作此会话配置")
 
     await repo.delete(session_id)
+    await qa_service.invalidate_session_config_cache(session_id)
     logger.info("会话配置已删除", session_id=session_id)
     return None
+
+
+@router.patch(
+    "/compression-config",
+    response_model=SessionConfigResponse,
+    summary="更新会话压缩配置",
+    description="更新指定会话的压缩配置。支持反复修改，不影响知识库绑定。",
+)
+async def update_compression_config(
+    session_id: Annotated[str, Path(min_length=1, description="会话 ID")],
+    request: Annotated[SessionConfigCompressionUpdate, Body(...)],
+    user_id: int = Depends(get_current_user_id),
+    repo: SessionConfigRepository = Depends(get_session_config_repo),
+    qa_service: QAService = Depends(get_qa_service),
+):
+    """
+    更新会话压缩配置
+
+    - **compression.enable_compression**: 是否启用压缩
+    - **compression.strategy**: 压缩策略（summary/sliding_window/keep_recent/truncate）
+    - **compression.threshold**: 触发压缩的 token 阈值
+    - **compression.target_tokens**: 压缩后的目标 token 数
+    - **compression.keep_recent**: 保留的最近消息数
+    - **compression.custom_prompt**: 自定义摘要提示词（可选）
+    """
+    # 校验会话归属
+    await verify_session_owner(session_id, user_id, repo)
+
+    config = await qa_service.update_compression_config(
+        session_id=session_id,
+        user_id=user_id,
+        compression_config=request.compression.model_dump(),
+    )
+    logger.info(
+        "会话压缩配置已更新",
+        session_id=session_id,
+        strategy=request.compression.strategy,
+    )
+    return SessionConfigResponse.model_validate(config)
+
+
+@router.patch(
+    "/llm-config",
+    response_model=SessionConfigResponse,
+    summary="更新会话模型生成参数配置",
+    description="更新指定会话的模型生成参数（max_tokens/temperature/top_p/system_prompt）。支持反复修改，不影响其他配置。",
+)
+async def update_llm_config(
+    session_id: Annotated[str, Path(min_length=1, description="会话 ID")],
+    request: Annotated[SessionConfigLlmUpdate, Body(...)],
+    user_id: int = Depends(get_current_user_id),
+    repo: SessionConfigRepository = Depends(get_session_config_repo),
+    qa_service: QAService = Depends(get_qa_service),
+):
+    """
+    更新会话模型生成参数配置
+
+    - **llm_config.max_tokens**: 最大生成 token 数（None 用默认 2048）
+    - **llm_config.temperature**: 温度（None 用默认 0.7）
+    - **llm_config.top_p**: Top-P（None 用默认 0.8）
+    - **llm_config.system_prompt**: 系统提示词（None 用后端 QA 模板）
+
+    注意：llm_model / enable_thinking 由前端请求传，不在此接口。
+    """
+    # 校验会话归属
+    await verify_session_owner(session_id, user_id, repo)
+
+    config = await qa_service.update_llm_config(
+        session_id=session_id,
+        user_id=user_id,
+        llm_config=request.llm_config.model_dump(),
+    )
+    logger.info(
+        "会话模型生成参数配置已更新",
+        session_id=session_id,
+        temperature=request.llm_config.temperature,
+    )
+    return SessionConfigResponse.model_validate(config)
+
+
+@router.patch(
+    "/rag-config",
+    response_model=SessionConfigResponse,
+    summary="更新会话知识库绑定（会话级自动 RAG）",
+    description="绑定或更新指定会话的知识库列表，开启后该会话无需每次手动开关即可自动检索。独立于压缩配置，可反复修改。",
+)
+async def update_rag_config(
+    session_id: Annotated[str, Path(min_length=1, description="会话 ID")],
+    request: Annotated[SessionConfigRagUpdate, Body(...)],
+    user_id: int = Depends(get_current_user_id),
+    repo: SessionConfigRepository = Depends(get_session_config_repo),
+    qa_service: QAService = Depends(get_qa_service),
+):
+    """
+    绑定/更新会话的知识库（会话级自动 RAG）
+
+    - **rag.space_id**: 知识空间 ID
+    - **rag.kb_ids**: 绑定的知识库 ID 列表
+    - **rag.auto_rag**: 是否启用自动检索（默认 false）
+    - **rag.refusal_enabled**: 是否启用分级拒答（默认 false）
+    - **rag.score_threshold**: 低置信度阈值（默认 0.3，单库模式生效）
+    - **rag.search_mode**: 检索模式（默认 content_hybrid）
+    - **rag.top_k**: 检索返回条数（默认 5）
+    """
+    # 校验会话归属
+    await verify_session_owner(session_id, user_id, repo)
+
+    config = await qa_service.upsert_rag_binding(
+        session_id=session_id,
+        user_id=user_id,
+        rag_config=request.rag.model_dump(),
+    )
+    logger.info(
+        "会话知识库绑定已更新",
+        session_id=session_id,
+        kb_count=len(request.rag.kb_ids),
+        auto_rag=request.rag.auto_rag,
+    )
+    return SessionConfigResponse.model_validate(config)
