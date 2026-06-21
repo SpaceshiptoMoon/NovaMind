@@ -52,6 +52,9 @@ class RouterManager:
         # 通知模块路由
         from src.features.notification.api.routes import router as notification_router
 
+        # ClawMate 终端模块路由
+        from src.features.clawmate.api.routes import router as clawmate_router
+
         self.routers.update({
             "qa": qa_router,
             "ai_chat": ai_chat_router,
@@ -77,6 +80,8 @@ class RouterManager:
             "apps": app_router,
             # 通知模块
             "notifications": notification_router,
+            # ClawMate 终端模块
+            "clawmate": clawmate_router,
         })
 
     def get_router(self, name: str) -> APIRouter:
@@ -119,7 +124,9 @@ class RouterManager:
             # 应用中心
             "apps": f"{API_V1_PREFIX}/apps",
             # 通知模块
-            "notifications": f"{API_V1_PREFIX}/user",
+            "notifications": f"{API_V1_PREFIX}/notifications",
+            # ClawMate 终端模块
+            "clawmate": f"{API_V1_PREFIX}/clawmate",
         }
 
         tag_mapping = {
@@ -146,6 +153,8 @@ class RouterManager:
             "apps": "应用中心",
             # 通知模块
             "notifications": "通知",
+            # ClawMate 终端模块
+            "clawmate": "ClawMate 终端",
         }
 
         for name, router in self.routers.items():

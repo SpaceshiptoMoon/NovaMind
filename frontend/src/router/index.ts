@@ -246,6 +246,12 @@ const router = createRouter({
               component: () => import('@/views/skill/SkillDetailView.vue'),
               meta: { title: '技能详情' },
             },
+            {
+              path: 'clawmate',
+              name: 'WorkspaceClawMate',
+              component: () => import('@/views/clawmate/ClawMateView.vue'),
+              meta: { title: 'ClawMate' },
+            },
           ],
         },
       ],
