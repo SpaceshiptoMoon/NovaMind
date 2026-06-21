@@ -303,7 +303,7 @@ class SpaceService:
         kbs = await self.kb_repo.get_by_space(space_id)
 
         # 4. 级联软删除：空间、关联知识库、文档（使用 SAVEPOINT 保证原子性）
-        async with self.db.begin_nested():
+        async with self.session.begin_nested():
             for kb in kbs:
                 kb.soft_delete()
                 await self.doc_repo.delete_by_kb(kb.id)

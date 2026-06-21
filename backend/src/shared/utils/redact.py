@@ -21,6 +21,11 @@ _SENSITIVE_PATTERNS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r'(mongodb|mysql|postgres|redis)://[^\s]+', re.IGNORECASE), r'\1://[REDACTED]'),
     # 私钥块
     (re.compile(r'-----BEGIN\s+(RSA\s+)?PRIVATE\s+KEY-----[\s\S]*?-----END\s+(RSA\s+)?PRIVATE\s+KEY-----', re.IGNORECASE), '[REDACTED_PRIVATE_KEY]'),
+    # 个人敏感信息（PII）：手机号 / 邮箱 / 身份证 / 银行卡（宁可误杀，不漏脱敏）
+    (re.compile(r'(?<!\d)1[3-9]\d{9}(?!\d)'), '[REDACTED_PHONE]'),
+    (re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'), '[REDACTED_EMAIL]'),
+    (re.compile(r'(?<!\d)[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx](?!\d)'), '[REDACTED_ID]'),
+    (re.compile(r'(?<!\d)\d{16,19}(?!\d)'), '[REDACTED_BANKCARD]'),
 ]
 
 

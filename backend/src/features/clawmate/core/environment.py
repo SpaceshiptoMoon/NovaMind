@@ -297,11 +297,16 @@ class LocalEnvironment:
         env = dict(os.environ)
 
         # 移除敏感变量，防止泄露到子进程
-        sensitive_patterns = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
+        sensitive_patterns = (
+            "KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL",
+            "URL", "DSN", "CONN", "PRIVATE_KEY",
+        )
+        # 显式保留子进程必需的安全变量
+        keep = ("PATH", "HOME", "USER", "LANG", "TERM", "SHELL")
         to_remove = [
             k for k in env
             if any(p in k.upper() for p in sensitive_patterns)
-            and k not in ("PATH",)  # 不误杀
+            and k not in keep
         ]
         for k in to_remove:
             env.pop(k, None)

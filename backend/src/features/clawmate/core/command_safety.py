@@ -80,8 +80,10 @@ _RAW_DANGEROUS: List[Tuple[str, str]] = [
     # 系统服务管理
     (r"\bsystemctl\s+(?:stop|disable|mask|restart)\s+(?:ssh|nginx|docker|mysql|postgres|redis)\b",
      "service_destructive"),
-    # 内联脚本执行
-    (r"\b(?:python|python3|node|perl|ruby)\s+(?:-[ec])\s+", "inline_script_execution"),
+    # 内联脚本执行（覆盖 -c/-e，含 -c"..." 无空格变体）
+    (r"\b(?:python|python3|node|perl|ruby)\s+(?:-[a-zA-Z]*c)\s*[\"']?", "inline_script_execution"),
+    # find -exec 调用可外发/可执行命令（curl/wget 外带，bash/python 执行任意代码）
+    (r"find\s+.*-exec\s+(?:curl|wget|bash|sh|zsh|dash|python|python3|node)\b", "find_exec_network_script"),
 ]
 
 # 预编译正则（启动时编译一次）

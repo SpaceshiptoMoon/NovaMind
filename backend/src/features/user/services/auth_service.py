@@ -612,6 +612,7 @@ class AuthService:
         """
         import secrets
         token = secrets.token_urlsafe(32)
+        get_redis = cls._get_redis_client()
         redis_client = await get_redis()
         await redis_client.setex(
             f"{cls.RESET_TOKEN_PREFIX}{token}",
@@ -632,6 +633,7 @@ class AuthService:
         Returns:
             用户 ID 或 None（无效/过期）
         """
+        get_redis = cls._get_redis_client()
         redis_client = await get_redis()
         raw_client = redis_client.redis_client
         user_id_str = await raw_client.get(f"{cls.RESET_TOKEN_PREFIX}{token}")
@@ -649,6 +651,7 @@ class AuthService:
         Args:
             token: 重置 Token
         """
+        get_redis = cls._get_redis_client()
         redis_client = await get_redis()
         raw_client = redis_client.redis_client
         await raw_client.delete(f"{cls.RESET_TOKEN_PREFIX}{token}")

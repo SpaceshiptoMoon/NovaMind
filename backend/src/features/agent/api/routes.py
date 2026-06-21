@@ -108,9 +108,10 @@ async def update_agent(
     agent_id: Annotated[int, Path(gt=0, description="Agent ID")],
     data: AgentUpdate,
     user_id: int = Depends(get_current_user_id),
+    current_user: dict = Depends(get_current_user),
     service: AgentService = Depends(get_agent_service),
 ):
-    return await service.update_agent(user_id, agent_id, data)
+    return await service.update_agent(user_id, agent_id, data, is_admin=_is_admin(current_user))
 
 
 @router.delete(
@@ -122,9 +123,10 @@ async def update_agent(
 async def delete_agent(
     agent_id: Annotated[int, Path(gt=0, description="Agent ID")],
     user_id: int = Depends(get_current_user_id),
+    current_user: dict = Depends(get_current_user),
     service: AgentService = Depends(get_agent_service),
 ):
-    await service.delete_agent(user_id, agent_id)
+    await service.delete_agent(user_id, agent_id, is_admin=_is_admin(current_user))
     return {"success": True, "message": "Agent 已删除"}
 
 

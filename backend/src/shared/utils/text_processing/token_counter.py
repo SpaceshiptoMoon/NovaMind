@@ -25,9 +25,14 @@ def _get_encoder(model_name: Optional[str] = None) -> tiktoken.Encoding:
     """
     # 模型名称前缀到编码器的映射（前缀匹配，覆盖所有变体）
     prefix_map = [
+        # OpenAI 新模型（o200k_base）
+        ("gpt-4o", "o200k_base"),
+        ("o1", "o200k_base"),
+        ("o3", "o200k_base"),
+        # OpenAI 旧模型（cl100k_base）
         ("gpt-4", "cl100k_base"),
         ("gpt-3.5", "cl100k_base"),
-        ("gpt-4o", "cl100k_base"),
+        # 国产 / 开源模型（无专用 tiktoken 分词器，用 cl100k_base 近似估算）
         ("claude-", "cl100k_base"),
         ("qwen", "cl100k_base"),
         ("glm-", "cl100k_base"),

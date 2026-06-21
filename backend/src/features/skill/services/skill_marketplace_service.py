@@ -289,9 +289,23 @@ class SkillMarketplaceService:
 
     async def uninstall_skill(
         self, user_id: int, skill_id: int, agent_id: int,
-        agent_repository=None,
+        agent_repository=None, is_admin: bool = False,
     ) -> bool:
         """从 Agent 卸载技能"""
+        # 校验 Agent 归属，防止越权卸载/篡改他人 Agent（含系统级预置 Agent）
+        if agent_repository is None:
+            # 无 repo 无法校验归属，保守拒绝（正常 HTTP 入口总会传入 agent_repository）
+            raise SkillNotInstalledError(skill_id, agent_id)
+        agent = await agent_repository.get_by_id(agent_id)
+        if not agent:
+            raise SkillNotInstalledError(skill_id, agent_id)
+        if agent.user_id is None:
+            # 系统级预置 Agent 仅管理员可卸载其技能
+            if not is_admin:
+                raise SkillNotInstalledError(skill_id, agent_id)
+        elif agent.user_id != user_id:
+            raise SkillNotInstalledError(skill_id, agent_id)
+
         existing = await self.install_repo.get_by_skill_and_agent(skill_id, agent_id)
         if not existing:
             raise SkillNotInstalledError(skill_id, agent_id)
@@ -473,7 +487,13 @@ class SkillMarketplaceService:
             },
         }
 
-    async def list_installed(self, agent_id: int) -> List[SkillInstallation]:
+    async def list_installed(self, agent_id: int, user_id: int) -> List[SkillInstallation]:
+        from src.features.agent.repository.agent_repository import AgentRepository
+        agent_repo = AgentRepository(self.db)
+        agent = await agent_repo.get_by_id(agent_id)
+        # 仅自己的 Agent 或系统级预置 Agent 可查；他人私有 Agent 返回空（不泄露存在性）
+        if not agent or (agent.user_id is not None and agent.user_id != user_id):
+            return []
         return await self.install_repo.list_by_agent(agent_id)
 
     # ==================== 评价 ====================
@@ -561,11 +581,16 @@ class SkillMarketplaceService:
 
     # ==================== 下载 ====================
 
-    async def download_skill(self, skill_id: int) -> bytes:
+    async def download_skill(self, skill_id: int, user_id: int) -> bytes:
         """从 MinIO 打包技能为 ZIP 供下载"""
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
             raise SkillNotFoundError(skill_id)
+        # 可见性校验（与 get_skill 一致）：作者 / 非私有技能可下载，否则拒绝
+        is_owner = skill.user_id is not None and skill.user_id == user_id
+        is_accessible = skill.visibility != SkillVisibility.PRIVATE
+        if not (is_owner or is_accessible):
+            raise SkillAccessDeniedError(skill_id)
 
         # 获取版本信息
         version = await self.version_repo.get_version(skill_id, skill.version)

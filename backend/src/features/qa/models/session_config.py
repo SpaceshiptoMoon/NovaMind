@@ -8,6 +8,7 @@ from typing import Optional
 from sqlalchemy import Column, BigInteger, String, Text, JSON
 
 from src.core.database.base import BaseModel
+from src.features.qa.api.constants import DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TOP_P
 
 
 class SessionConfig(BaseModel):
@@ -138,17 +139,17 @@ class SessionConfig(BaseModel):
     def llm_max_tokens(self) -> int:
         # null 也兜底默认（用户在弹窗清空时存 null）
         val = self.get_llm_config().get("max_tokens")
-        return val if val is not None else 2048
+        return val if val is not None else DEFAULT_MAX_TOKENS
 
     @property
     def llm_temperature(self) -> float:
         val = self.get_llm_config().get("temperature")
-        return val if val is not None else 0.7
+        return val if val is not None else DEFAULT_TEMPERATURE
 
     @property
     def llm_top_p(self) -> float:
         val = self.get_llm_config().get("top_p")
-        return val if val is not None else 0.8
+        return val if val is not None else DEFAULT_TOP_P
 
     @property
     def llm_system_prompt(self) -> Optional[str]:

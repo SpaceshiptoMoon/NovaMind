@@ -532,7 +532,15 @@ function autoResize() {
 watch(() => chatStore.messages.length, () => {
   scrollToBottom()
 })
-watch(() => chatStore.streamingContent, () => scrollToBottom())
+let scrollRAF = 0
+watch(() => chatStore.streamingContent, () => {
+  if (!scrollRAF) {
+    scrollRAF = requestAnimationFrame(() => {
+      scrollToBottom()
+      scrollRAF = 0
+    })
+  }
+})
 watch(() => chatStore.loading, () => scrollToBottom())
 watch(() => chatStore.pendingAttachments.length, () => {
   for (const att of chatStore.pendingAttachments) {
@@ -642,16 +650,6 @@ const selectedModel = ref('')
 const availableModels = ref<Record<string, { max_tokens: number; temperature: number; top_p: number; model_type: string }>>({})
 const defaultModelName = computed(() => Object.keys(availableModels.value)[0] || '')
 
-const llmModelNames = computed(() =>
-  Object.entries(availableModels.value)
-    .filter(([, v]) => v.model_type !== 'vlm')
-    .map(([name]) => name),
-)
-const vlmModelNames = computed(() =>
-  Object.entries(availableModels.value)
-    .filter(([, v]) => v.model_type === 'vlm')
-    .map(([name]) => name),
-)
 
 const settingsSummary = computed(() => {
   // 模型名由顶部 model-fan 显示，这里只展示启用的能力，避免重复
@@ -1023,6 +1021,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (scrollRAF) cancelAnimationFrame(scrollRAF)
   for (const url of imageBlobCache.values()) {
     URL.revokeObjectURL(url)
   }

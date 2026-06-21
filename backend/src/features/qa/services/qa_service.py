@@ -312,15 +312,39 @@ class QAService:
                 # 返回轻量配置对象（避免 ORM session 绑定问题）
                 # 将 compression_config 嵌套字段展开为顶层属性，兼容 ORM @property 访问方式
                 from types import SimpleNamespace
-                cc = cached.pop("compression_config", {}) or {}
+                cc = cached.get("compression_config", {}) or {}
+                kb = cached.get("kb_bindings", {}) or {}
+                lc = cached.get("llm_config", {}) or {}
                 return SimpleNamespace(
                     **cached,
+                    # 压缩配置（对齐 ORM property）
                     enable_compression=cc.get("enable_compression", True),
                     compression_strategy=cc.get("strategy", "summary"),
                     compression_threshold=cc.get("threshold", 3000),
                     compression_target_tokens=cc.get("target_tokens", 500),
                     keep_recent_messages=cc.get("keep_recent", 2),
                     custom_summary_prompt=cc.get("custom_prompt"),
+                    # RAG 绑定配置（对齐 ORM property，补齐缓存层遗漏）
+                    auto_rag=kb.get("auto_rag", False),
+                    rag_space_id=kb.get("space_id"),
+                    rag_kb_ids=kb.get("kb_ids", []) or [],
+                    rag_refusal_enabled=kb.get("refusal_enabled", False),
+                    rag_score_threshold=(
+                        kb.get("score_threshold")
+                        if kb.get("score_threshold") is not None
+                        else 0.3
+                    ),
+                    rag_search_mode=kb.get("search_mode", "content_hybrid"),
+                    rag_top_k=kb.get("top_k", 5),
+                    # LLM 生成参数（对齐 ORM property，null 兜底默认值）
+                    llm_max_tokens=(
+                        lc.get("max_tokens") if lc.get("max_tokens") is not None else 2048
+                    ),
+                    llm_temperature=(
+                        lc.get("temperature") if lc.get("temperature") is not None else 0.7
+                    ),
+                    llm_top_p=(lc.get("top_p") if lc.get("top_p") is not None else 0.8),
+                    llm_system_prompt=lc.get("system_prompt"),
                 )
 
         # 从数据库获取或创建默认配置（统一使用 ensure_session_config）
@@ -674,8 +698,9 @@ class QAService:
         )
 
         # 需并入摘要的新消息 = recent 中除最近 keep_recent 条（它们保留原文）
+        # 当 recent 不足 keep_recent 条时，无新消息可压缩，返回空列表
         new_msgs_to_compress = (
-            recent_msgs[:-keep_recent] if len(recent_msgs) > keep_recent else recent_msgs
+            recent_msgs[:-keep_recent] if len(recent_msgs) > keep_recent else []
         )
 
         self.logger.info(
@@ -802,7 +827,7 @@ class QAService:
                         user_id=user_id,
                         summary_content=result.summary,
                         summary_tokens=result.compressed_tokens,
-                        compressed_message_count=len(context_messages) - keep_recent,
+                        compressed_message_count=max(0, len(context_messages) - keep_recent),
                         original_tokens=result.original_tokens,
                         last_compressed_message_id=last_msg_id,
                         last_message_id=last_msg_id,

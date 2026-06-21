@@ -243,7 +243,7 @@ class DocumentService:
             return soft_deleted
 
         # 9. 创建文档记录 + 上传 MinIO（使用 SAVEPOINT 保证原子性）
-        async with self.db.begin_nested():
+        async with self.session.begin_nested():
             # 创建文档记录（先获取 document_id）
             document = await self.doc_repo.create({
                 "space_id": kb.space_id,
