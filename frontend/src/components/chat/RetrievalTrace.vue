@@ -66,7 +66,7 @@ const summary = computed(() => {
 
 <style scoped>
 .retrieval-trace {
-  margin: 4px 0;
+  margin: 8px 0 4px;
   font-size: 12px;
 }
 .trace-toggle {
