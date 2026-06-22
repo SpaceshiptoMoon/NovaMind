@@ -24,7 +24,7 @@ class QACacheService:
         return await self._cache.get(f"qa:config:{session_id}")
 
     async def set_session_config(self, session_id: str, config: dict, ttl: int = 300) -> None:
-        await self._cache.set(f"qa:config:{session_id}", config, expire=ttl)
+        await self._cache.set(f"qa:config:{session_id}", config, ttl=ttl)
 
     async def invalidate_session_config(self, session_id: str) -> None:
         await self._cache.delete(f"qa:config:{session_id}")
@@ -35,7 +35,7 @@ class QACacheService:
         return await self._cache.get(f"qa:summary:{session_id}")
 
     async def set_session_summary(self, session_id: str, summary: dict, ttl: int = 600) -> None:
-        await self._cache.set(f"qa:summary:{session_id}", summary, expire=ttl)
+        await self._cache.set(f"qa:summary:{session_id}", summary, ttl=ttl)
 
     async def invalidate_session_summary(self, session_id: str) -> None:
         await self._cache.delete(f"qa:summary:{session_id}")
@@ -46,7 +46,7 @@ class QACacheService:
         return await self._cache.get(f"qa:messages:{session_id}:{user_id}")
 
     async def set_session_messages(self, session_id: str, user_id: int, messages: list, ttl: int = 30) -> None:
-        await self._cache.set(f"qa:messages:{session_id}:{user_id}", messages, expire=ttl)
+        await self._cache.set(f"qa:messages:{session_id}:{user_id}", messages, ttl=ttl)
 
     async def invalidate_session_messages(self, session_id: str, user_id: int) -> None:
         await self._cache.delete(f"qa:messages:{session_id}:{user_id}")
@@ -61,7 +61,7 @@ class QACacheService:
     # ========== 已删除会话标记 ==========
 
     async def mark_session_deleted(self, session_id: str, user_id: int, ttl: int = 3600) -> None:
-        await self._cache.set(f"qa:deleted:{session_id}:{user_id}", True, expire=ttl)
+        await self._cache.set(f"qa:deleted:{session_id}:{user_id}", True, ttl=ttl)
 
     async def is_session_deleted(self, session_id: str, user_id: int) -> bool:
         return (await self._cache.get(f"qa:deleted:{session_id}:{user_id}")) is not None
