@@ -49,6 +49,15 @@
 
     <!-- 设置栏 -->
     <div class="input-footer">
+      <div class="input-footer-left">
+        <ModelFanSelector
+          v-if="availableModels && Object.keys(availableModels).length"
+          :model-value="selectedModel"
+          :models="availableModels"
+          :default-model-name="defaultModelName"
+          @update:model-value="$emit('update:selectedModel', $event)"
+        />
+      </div>
       <button class="settings-toggle" @click="settingsExpanded = !settingsExpanded">
         <el-icon :size="12"><Setting /></el-icon>
         <span>{{ settingsSummary }}</span>
@@ -83,10 +92,14 @@ import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Paperclip, VideoPause, Setting, ArrowDown, ArrowRight } from '@element-plus/icons-vue'
 import { chatApi } from '@/api/chat'
+import ModelFanSelector from '@/components/common/ModelFanSelector.vue'
 
 const props = defineProps<{
   disabled: boolean
   pendingAttachmentsCount?: number
+  availableModels?: Record<string, unknown>
+  defaultModelName?: string
+  selectedModel?: string
 }>()
 
 const emit = defineEmits<{
@@ -99,6 +112,7 @@ const emit = defineEmits<{
   'cancel-stream': []
   'attachment-added': []
   'open-config': []
+  'update:selectedModel': [value: string]
 }>()
 
 const inputText = ref('')
