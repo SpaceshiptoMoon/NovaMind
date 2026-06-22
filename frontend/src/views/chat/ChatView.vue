@@ -53,18 +53,14 @@
       <ChatInput
         :disabled="chatStore.isStreaming || chatStore.loading"
         :pending-attachments-count="chatStore.pendingAttachments.length"
-        :available-models="availableModels"
-        :default-model-name="defaultModelName"
-        :selected-model="selectedModel"
         @send="handleSend"
         @cancel-stream="handleCancelStream"
         @open-config="openSessionConfig"
-        @update:selected-model="selectedModel = $event"
       />
     </div>
 
     <!-- 会话配置弹窗 -->
-    <SessionConfigDialog :sessionId="configSessionId" />
+    <SessionConfigDialog :session-id="configSessionId" :available-models="availableModels" :default-model-name="defaultModelName" :selected-model="selectedModel" @update:selected-model="selectedModel = $event" />
 
   </div>
 </template>
