@@ -302,8 +302,8 @@ class AIChatService:
                         all_sources.extend(r[1])
                 prep_sources = all_sources
 
-            # 分级拒答：过滤后无任何来源 → 拒答（短路跳过 LLM）
-            if refusal_on and not prep_sources:
+            # 分级拒答：仅 RAG 模式且过滤后无来源 → 拒答（联网搜索时放行，LLM 可基于自身知识回答）
+            if refusal_on and not prep_sources and not do_web:
                 prep_refused = True
                 prep_status = "refused"
             # 低分来源已被阈值过滤，留下的均合格，不再有 low_confidence 分支
@@ -401,6 +401,10 @@ class AIChatService:
             except Exception as e:
                 self.logger.warning("知识库检索失败，跳过", error=str(e))
 
+        web_src = sum(1 for s in raw_sources if s.get("kind") == "web")
+        kb_src = sum(1 for s in raw_sources if s.get("kind") == "kb")
+        self.logger.info("检索原始结果（过滤前）", web_count=web_src, kb_count=kb_src)
+
         # 阈值过滤：丢弃低分 KB 来源（web 来源无阈值语义，保留）
         if score_threshold is not None:
             raw_sources = [
@@ -454,6 +458,7 @@ class AIChatService:
 
         service = DuckDuckGoSearchService()
         results = await service.search(query=query, max_results=max_results)
+        self.logger.info("联网搜索原始返回", count=len(results) if results else 0, query=query[:50])
         if not results:
             return None
 

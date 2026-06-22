@@ -20,7 +20,10 @@
           <span class="trace-icon">🔍</span>
           <span class="trace-desc">
             检索：<span class="trace-mode">{{ t.mode }}</span>
-            <span v-if="t.sources_count"> · {{ t.sources_count }} 条结果</span>
+            <span v-if="t.sources_count">
+              · {{ t.sources_count }} 条结果
+              <span v-if="t.web_count">（联网 {{ t.web_count }} + KB {{ t.kb_count ?? 0 }}）</span>
+            </span>
             <span v-if="t.note" class="trace-note">{{ t.note }}</span>
           </span>
         </div>
