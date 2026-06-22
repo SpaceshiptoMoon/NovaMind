@@ -254,8 +254,9 @@ function handleCopyMessage(content: string, e: MouseEvent) {
 .message-row {
   display: flex;
   gap: var(--space-4);
-  margin-bottom: 28px;
-  animation: messageIn 0.35s ease forwards;
+  margin-bottom: 32px;
+  padding: 0 var(--space-2);
+  animation: messageIn 0.3s ease forwards;
 }
 
 @keyframes messageIn {
@@ -341,22 +342,22 @@ function handleCopyMessage(content: string, e: MouseEvent) {
   animation: messageIn 0.35s ease forwards;
 }
 .typing-bubble {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: var(--space-3) var(--space-4);
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 10px 16px;
   background: var(--color-bg-card); border: 1px solid var(--color-border);
   border-radius: 18px 18px 18px 4px;
 }
 .typing-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--color-text-faint);
-  animation: dotPulse 1.4s infinite both;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--color-text-muted);
+  animation: dotBounce 1.2s ease-in-out infinite both;
 }
-.typing-dot:nth-child(2) { animation-delay: 0.2s; }
-.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.30s; }
 
-@keyframes dotPulse {
-  0%, 80%, 100% { opacity: 0.3; }
-  40% { opacity: 1; }
+@keyframes dotBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-6px); opacity: 1; }
 }
 
 /* Attachments */
