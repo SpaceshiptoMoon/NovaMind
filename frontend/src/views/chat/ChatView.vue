@@ -42,7 +42,6 @@
               v-for="(prompt, i) in quickPrompts"
               :key="i"
               class="prompt-card"
-              @click="handleQuickPrompt(prompt.text)"
             >
               <span class="prompt-icon">{{ prompt.icon }}</span>
               <span class="prompt-text">{{ prompt.text }}</span>
@@ -96,6 +95,7 @@ import type { ChatMessage, ChatSource } from '@/api/types'
 import { useChatAttachments } from '@/composables/useChatAttachments'
 import SessionConfigDialog from '@/components/chat/SessionConfigDialog.vue'
 import MessageList from '@/components/chat/MessageList.vue'
+import ChatInput from '@/components/chat/ChatInput.vue'
 
 const chatStore = useChatStore()
 const spaceStore = useSpaceStore()
@@ -105,21 +105,8 @@ const inputText = ref('')
 const useStream = ref(true)
 const enableThinking = ref(false)
 const enableWebSearch = ref(false)
-const ragSpaceId = ref<number | undefined>(undefined)
-const ragKbId = ref<number | undefined>(undefined)
-const ragKbOptions = ref<{ id: number; name: string }[]>([])
-const settingsExpanded = ref(false)
 const messagesRef = ref<HTMLElement>()
-const textareaRef = ref<HTMLTextAreaElement>()
-const fileInputRef = ref<HTMLInputElement>()
-const uploadingFiles = ref(false)
 
-const quickPrompts = [
-  { icon: '💡', text: '帮我分析一下这段代码的逻辑' },
-  { icon: '📝', text: '写一篇关于人工智能发展趋势的摘要' },
-  { icon: '🔍', text: '帮我从知识库中搜索相关资料' },
-  { icon: '🛠️', text: '如何优化数据库查询性能？' },
-]
 
 
 function scrollToBottom() {
@@ -130,14 +117,6 @@ function scrollToBottom() {
   })
 }
 
-function autoResize() {
-  nextTick(() => {
-    const el = textareaRef.value
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = Math.min(el.scrollHeight, 160) + 'px'
-  })
-}
 
 watch(() => chatStore.messages.length, () => {
   scrollToBottom()
@@ -160,10 +139,6 @@ watch(() => chatStore.pendingAttachments.length, () => {
   }
 })
 
-function handleQuickPrompt(text: string) {
-  inputText.value = text
-  handleSend()
-}
 
 async function handleNewSession() {
   chatStore.clearMessages()
@@ -199,32 +174,20 @@ async function handleDeleteSession(sessionId: string) {
   }
 }
 
-async function handleSend() {
-  const content = inputText.value.trim()
-  const hasAttachments = chatStore.pendingAttachments.length > 0
-  if (!content && !hasAttachments) return
-
-  const sendContent = content || (hasAttachments ? '请分析上传的文档' : '')
-  inputText.value = ''
-  nextTick(() => {
-    if (textareaRef.value) {
-      textareaRef.value.style.height = 'auto'
-    }
-  })
-
+async function handleSend(content: string, options: { useStream: boolean; enableThinking: boolean; enableWebSearch: boolean }) {
   const attachmentIds = chatStore.pendingAttachments.map(a => a.id)
   const opts = {
     llm_model: selectedModel.value || undefined,
-    enable_thinking: enableThinking.value,
-    enable_web_search: enableWebSearch.value || undefined,
+    enable_thinking: options.enableThinking,
+    enable_web_search: options.enableWebSearch || undefined,
     attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
   }
 
   try {
-    if (useStream.value) {
-      await chatStore.sendMessageStream(sendContent, opts)
+    if (options.useStream) {
+      await chatStore.sendMessageStream(content, opts)
     } else {
-      await chatStore.sendMessage(sendContent, opts)
+      await chatStore.sendMessage(content, opts)
     }
   } catch {
     ElMessage.error('发送失败，请重试')
@@ -236,12 +199,6 @@ function handleCancelStream() {
 }
 
 
-function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault()
-    handleSend()
-  }
-}
 
 // 模型选择
 const selectedModel = ref('')
@@ -249,64 +206,6 @@ const availableModels = ref<Record<string, { max_tokens: number; temperature: nu
 const defaultModelName = computed(() => Object.keys(availableModels.value)[0] || '')
 
 
-const settingsSummary = computed(() => {
-  // 模型名由顶部 model-fan 显示，这里只展示启用的能力，避免重复
-  const parts = []
-  if (enableThinking.value) parts.push('深度思考')
-  if (useStream.value) parts.push('流式')
-  if (enableWebSearch.value) parts.push('联网')
-  return parts.length ? parts.join(' · ') : '标准模式'
-})
-
-async function handleRagSpaceChange(spaceId: number | undefined) {
-  ragKbId.value = undefined
-  ragKbOptions.value = []
-  if (!spaceId) return
-  try {
-    const resp = await knowledgeBaseApi.getKnowledgeBases(spaceId)
-    ragKbOptions.value = (resp?.items ?? []).map((kb) => ({ id: kb.id, name: kb.name }))
-  } catch {
-    ragKbOptions.value = []
-  }
-}
-
-function triggerFileSelect() {
-  fileInputRef.value?.click()
-}
-
-async function handleFileSelected(e: Event) {
-  const input = e.target as HTMLInputElement
-  if (!input.files?.length) return
-
-  const maxSize = 20 * 1024 * 1024
-  const allowedTypes = ['pdf', 'docx', 'txt', 'md', 'jpg', 'jpeg', 'png', 'gif', 'webp']
-
-  const validFiles: File[] = []
-  for (const file of Array.from(input.files)) {
-    const ext = file.name.split('.').pop()?.toLowerCase() || ''
-    if (!allowedTypes.includes(ext)) {
-      ElMessage.warning(`不支持的文件类型: .${ext}`)
-      continue
-    }
-    if (file.size > maxSize) {
-      ElMessage.warning(`文件过大: ${file.name}（最大 20MB）`)
-      continue
-    }
-    validFiles.push(file)
-  }
-
-  if (validFiles.length) {
-    uploadingFiles.value = true
-    const results = await Promise.allSettled(validFiles.map(f => chatStore.uploadAttachment(f)))
-    for (let i = 0; i < results.length; i++) {
-      if (results[i].status === 'rejected') {
-        ElMessage.error(`上传失败: ${validFiles[i].name}`)
-      }
-    }
-    uploadingFiles.value = false
-  }
-  input.value = ''
-}
 
 
 
