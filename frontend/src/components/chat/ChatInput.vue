@@ -62,9 +62,9 @@
     <!-- 设置栏 -->
     <div class="settings-row">
       <button class="settings-toggle" @click="settingsExpanded = !settingsExpanded">
-        <el-icon :size="14"><Setting /></el-icon>
+        <el-icon :size="12"><Setting /></el-icon>
         <span>{{ settingsSummary }}</span>
-        <el-icon :size="10" class="toggle-arrow" :class="{ expanded: settingsExpanded }"><ArrowDown /></el-icon>
+        <el-icon :size="8" class="toggle-arrow" :class="{ expanded: settingsExpanded }"><ArrowDown /></el-icon>
       </button>
       <div v-if="settingsExpanded" class="settings-bar">
         <div class="settings-bar-inner">
@@ -207,3 +207,164 @@ function handleSendClick() {
   })
 }
 </script>
+
+<style scoped>
+.chat-input-wrapper {
+  padding: 8px 16px 12px;
+}
+.quick-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.quick-prompt-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  border: 1px solid var(--color-border, #E5E7EB);
+  border-radius: 8px;
+  background: var(--el-fill-color, #F9FAFB);
+  color: var(--el-text-color-secondary, #6B7280);
+  cursor: pointer;
+  transition: all 0.15s;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.quick-prompt-btn:hover {
+  border-color: var(--el-color-primary, #6366F1);
+  color: var(--el-color-primary, #6366F1);
+  background: var(--el-color-primary-light-9, #EEF2FF);
+}
+.input-pill {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border, #E5E7EB);
+  border-radius: 12px;
+  background: #fff;
+  transition: border-color 0.15s;
+}
+.input-pill:focus-within {
+  border-color: var(--el-color-primary, #6366F1);
+}
+.attach-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--el-text-color-secondary, #6B7280);
+  cursor: pointer;
+  padding: 0;
+}
+.attach-btn:hover {
+  background: var(--el-fill-color, #F3F4F6);
+}
+.chat-textarea {
+  flex: 1;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  max-height: 120px;
+  padding: 4px 0;
+  color: var(--el-text-color-primary, #111827);
+  background: transparent;
+}
+.chat-textarea::placeholder {
+  color: var(--el-text-color-placeholder, #9CA3AF);
+}
+.send-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: var(--el-color-primary, #6366F1);
+  color: #fff;
+  cursor: pointer;
+  padding: 0;
+}
+.send-btn:disabled {
+  background: var(--el-fill-color, #E5E7EB);
+  color: var(--el-text-color-placeholder, #9CA3AF);
+  cursor: default;
+}
+.send-btn:not(:disabled):hover {
+  opacity: 0.9;
+}
+.send-btn svg {
+  display: block;
+}
+.cancel-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--color-border, #E5E7EB);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--el-text-color-secondary, #6B7280);
+  cursor: pointer;
+  padding: 0;
+}
+.cancel-btn:hover {
+  background: var(--el-fill-color, #F3F4F6);
+}
+.settings-row {
+  margin-top: 8px;
+}
+.settings-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--el-text-color-secondary, #6B7280);
+  font-size: 12px;
+  cursor: pointer;
+}
+.settings-toggle:hover {
+  background: var(--el-fill-color, #F3F4F6);
+}
+.toggle-arrow {
+  transition: transform 0.2s;
+}
+.toggle-arrow.expanded {
+  transform: rotate(180deg);
+}
+.settings-bar {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-border, #E5E7EB);
+  border-radius: 10px;
+  background: #fff;
+}
+.settings-bar-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.settings-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--el-text-color-primary, #111827);
+  cursor: pointer;
+}
+</style>
