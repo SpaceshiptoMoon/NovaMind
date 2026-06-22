@@ -132,7 +132,7 @@ async def get_config(
             id=0,
             session_id=session_id,
             user_id=user_id,
-            compression_config={"enable_compression": True, "strategy": "summary", "threshold": 3000, "target_tokens": 500, "keep_recent": 2, "custom_prompt": None},
+            compression_config={"enable_compression": True, "strategy": "summary", "threshold": 70000, "target_tokens": 2000, "keep_recent": 6, "custom_prompt": None},
             kb_bindings={"space_id": None, "kb_ids": [], "auto_rag": False, "refusal_enabled": False, "score_threshold": 0.3, "search_mode": "content_hybrid", "top_k": 5},
             llm_config={"max_tokens": 2048, "temperature": 0.7, "top_p": 0.8, "system_prompt": None},
         )
