@@ -4,20 +4,6 @@
       <span class="dialog-title">会话设置</span>
     </template>
 
-    <!-- === 模型选择 === -->
-    <div class="config-card">
-      <div class="card-row-between">
-        <div class="card-label">模型</div>
-        <ModelFanSelector
-          v-if="availableModels && Object.keys(availableModels).length"
-          :model-value="selectedModel"
-          :models="availableModels"
-          :default-model-name="defaultModelName"
-          @update:model-value="$emit('update:selectedModel', $event)"
-        />
-      </div>
-    </div>
-
     <!-- === 压缩卡片 === -->
     <div class="config-card">
       <div class="card-row-between">
@@ -145,17 +131,11 @@ import { ArrowDown } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { sessionApi } from '@/api/session'
 import { knowledgeBaseApi } from '@/api/knowledgeBase'
-import ModelFanSelector from '@/components/common/ModelFanSelector.vue'
 import { useChatStore } from '@/stores/chat'
 import { useSpaceStore } from '@/stores/space'
 
-const emit = defineEmits<{ saved: []; 'update:selectedModel': [value: string] }>()
-const props = withDefaults(defineProps<{
-  sessionId?: string | null
-  availableModels?: Record<string, { max_tokens: number; temperature: number; top_p: number; model_type: string }>
-  defaultModelName?: string
-  selectedModel?: string
-}>(), { sessionId: null, availableModels: () => ({}), defaultModelName: '', selectedModel: '' })
+const emit = defineEmits<{ saved: [] }>()
+const props = withDefaults(defineProps<{ sessionId?: string | null }>(), { sessionId: null })
 
 const chatStore = useChatStore()
 const spaceStore = useSpaceStore()

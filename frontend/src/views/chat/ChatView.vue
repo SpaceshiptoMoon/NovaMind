@@ -1,13 +1,18 @@
 <template>
   <div class="chat-view">
-    <!-- 侧边栏：会话列表（仅在非工作台模式显示） -->
+    <!-- 侧边栏：会话列表 -->
     <div v-if="!isInWorkspace" class="chat-sidebar">
       <div class="sidebar-top">
         <button class="new-chat-btn" @click="handleNewSession">
-          <el-icon :size="16"><Plus /></el-icon>
-          <span>开启新对话</span>
+          <span class="new-chat-icon">+</span>
+          <span>新对话</span>
         </button>
       </div>
+
+      <div class="sidebar-group-label">对话分组</div>
+      <button class="group-add-btn">+ 新分组</button>
+
+      <div class="sidebar-recent-label">最近对话</div>
       <div class="session-list">
         <div
           v-for="session in chatStore.sessions"
@@ -17,22 +22,33 @@
           @click="handleSelectSession(session.session_id)"
         >
           <span class="session-title">{{ session.preview || '新对话' }}</span>
-          <button
-            class="session-delete"
-            @click.stop="handleDeleteSession(session.session_id)"
-          >
-            <el-icon :size="12"><Delete /></el-icon>
+          <button class="session-delete" @click.stop="handleDeleteSession(session.session_id)">
+            <span class="session-more">⋯</span>
           </button>
         </div>
         <div v-if="chatStore.sessions.length === 0" class="sidebar-empty">
           <span>暂无对话记录</span>
         </div>
       </div>
+
+      <div class="sidebar-footer">
+        <button class="space-btn"><span class="space-icon">📁</span> 我的空间</button>
+      </div>
     </div>
 
     <!-- 主聊天区域 -->
     <div class="chat-main">
-      <!-- 空状态：欢迎屏幕 -->
+      <!-- 顶部模型栏 -->
+      <div v-if="Object.keys(availableModels).length" class="chat-header">
+        <ModelFanSelector
+          :model-value="selectedModel"
+          :models="availableModels"
+          :default-model-name="defaultModelName"
+          @update:model-value="selectedModel = $event"
+        />
+      </div>
+
+      <!-- 空状态 / 消息列表 -->
       <div v-if="chatStore.messages.length === 0 && !chatStore.loading" class="welcome-screen">
         <div class="welcome-inner">
           <h2 class="welcome-title">今天想聊点什么？</h2>
@@ -40,7 +56,6 @@
         </div>
       </div>
 
-      <!-- 消息列表 -->
       <div v-else ref="messagesRef" class="messages-container">
         <MessageList
           :messages="chatStore.messages"
@@ -60,8 +75,7 @@
     </div>
 
     <!-- 会话配置弹窗 -->
-    <SessionConfigDialog :session-id="configSessionId" :available-models="availableModels" :default-model-name="defaultModelName" :selected-model="selectedModel" @update:selected-model="selectedModel = $event" />
-
+    <SessionConfigDialog :session-id="configSessionId" @update:selected-model="selectedModel = $event" />
   </div>
 </template>
 
@@ -76,6 +90,7 @@ import { sessionApi } from '@/api/session'
 import { useSpaceStore } from '@/stores/space'
 import { knowledgeBaseApi } from '@/api/knowledgeBase'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
+import ModelFanSelector from '@/components/common/ModelFanSelector.vue'
 import SourceList from '@/components/chat/SourceList.vue'
 import type { ChatMessage, ChatSource } from '@/api/types'
 import { useChatAttachments } from '@/composables/useChatAttachments'
@@ -260,34 +275,57 @@ onBeforeUnmount(() => {
 }
 
 .sidebar-top {
-  padding: var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-  display: flex;
-  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-divider);
+}
+.sidebar-group-label {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 16px 16px 6px;
+}
+.group-add-btn {
+  width: 100%;
+  text-align: left;
+  padding: 6px 16px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--font-body);
+}
+.group-add-btn:hover { background: var(--color-bg-hover); }
+
+.sidebar-recent-label {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 16px 16px 6px;
 }
 
 .new-chat-btn {
   width: 100%;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-lg);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: all var(--transition-base);
-}
-
-.new-chat-btn:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+  gap: 6px;
+  padding: 8px 12px;
   background: var(--color-primary-muted);
+  color: var(--color-primary);
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--font-body);
 }
+.new-chat-btn:hover { background: #dbeafe; }
+.new-chat-icon { font-size: 16px; font-weight: 600; }
 
 .session-list {
   flex: 1;
@@ -341,29 +379,49 @@ onBeforeUnmount(() => {
   line-height: var(--leading-normal);
 }
 
-.session-delete {
+.session-more {
   opacity: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
+  font-size: 14px;
   color: var(--color-text-muted);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: opacity var(--transition-fast);
+}
+.session-item:hover .session-more { opacity: 1; }
+.session-item:hover .session-more:hover { color: var(--color-text); }
+
+.sidebar-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-divider);
+  margin-top: auto;
+}
+.space-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--font-body);
+}
+.space-btn:hover { background: var(--color-bg-hover); }
+.space-icon { font-size: 14px; }
+
+/* ========================================
+   Header — Model bar
+   ======================================== */
+.chat-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
-}
-
-.session-item:hover .session-delete {
-  opacity: 1;
-}
-
-.session-delete:hover {
-  background: var(--color-danger-subtle);
-  color: var(--color-danger);
+  background: var(--color-bg-card);
 }
 
 .sidebar-empty {
