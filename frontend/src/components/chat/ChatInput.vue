@@ -47,6 +47,16 @@
       </button>
     </div>
 
+    <!-- 附件预览 -->
+    <div v-if="uploadingFiles || (pendingAttachmentsCount ?? 0) > 0" class="attachment-preview-bar">
+      <div v-for="att in uploadPreview" :key="att.filename" class="attachment-chip">
+        <span class="att-type-badge">{{ getFileExt(att.filename) }}</span>
+        <span class="att-name">{{ att.filename }}</span>
+        <span class="att-size">{{ formatFileSize(att.file_size) }}</span>
+        <button class="att-remove" @click="removeUploadFile(att.filename)"><el-icon :size="10"><Close /></el-icon></button>
+      </div>
+    </div>
+
     <!-- 快捷操作 chips -->
     <div class="quick-actions">
       <button class="action-chip" :class="{ active: enableThinking }" @click="enableThinking = !enableThinking">
@@ -81,8 +91,9 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Paperclip, VideoPause, Setting, ArrowDown, ArrowRight } from '@element-plus/icons-vue'
+import { Paperclip, VideoPause, Setting, ArrowDown, ArrowRight, Close } from '@element-plus/icons-vue'
 import { chatApi } from '@/api/chat'
+import { useChatAttachments } from '@/composables/useChatAttachments'
 
 const props = defineProps<{
   disabled: boolean
@@ -109,6 +120,8 @@ const enableThinking = ref(false)
 const enableWebSearch = ref(false)
 const settingsExpanded = ref(false)
 const uploadingFiles = ref(false)
+const uploadPreview = ref<{ filename: string; file_size: number; file_type: string }[]>([])
+const { getFileExt, formatFileSize } = useChatAttachments()
 const settingsSummary = computed(() => {
   const parts: string[] = []
   if (enableThinking.value) parts.push('深度思考')
@@ -150,6 +163,7 @@ async function handleFileSelected(e: Event) {
       continue
     }
     validFiles.push(file)
+    uploadPreview.value.push({ filename: file.name, file_size: file.size, file_type: ext })
   }
   if (validFiles.length === 0) return
   uploadingFiles.value = true
@@ -164,8 +178,13 @@ async function handleFileSelected(e: Event) {
     ElMessage.error(`上传失败`)
   } finally {
     uploadingFiles.value = false
+    uploadPreview.value = []
     if (fileInputRef.value) fileInputRef.value.value = ''
   }
+}
+
+function removeUploadFile(filename: string) {
+  uploadPreview.value = uploadPreview.value.filter(f => f.filename !== filename)
 }
 
 function handleSendClick() {
@@ -175,6 +194,7 @@ function handleSendClick() {
 
   const sendContent = content || (hasAttachments ? '请分析上传的文档' : '')
   inputText.value = ''
+  uploadPreview.value = []
   autoResize()
 
   emit('send', sendContent, {
