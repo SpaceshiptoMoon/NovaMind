@@ -162,3 +162,4 @@ session_summary_cache = LRUCache[dict](max_size=500, default_ttl=600)
 
 # 消息列表缓存：30 秒 TTL（变化频繁），最多 200 个会话
 session_messages_cache = LRUCache[list](max_size=200, default_ttl=30)
+default_cache = LRUCache[Any](max_size=2000, default_ttl=300)
