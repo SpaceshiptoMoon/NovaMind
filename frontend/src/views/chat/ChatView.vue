@@ -59,6 +59,7 @@
         :pending-attachments-count="chatStore.pendingAttachments.length"
         @send="handleSend"
         @cancel-stream="handleCancelStream"
+        @open-config="openSessionConfig"
       />
     </div>
 
@@ -141,6 +142,13 @@ async function openSessionConfig() {
     chatStore.currentSessionId = crypto.randomUUID()
   }
   configSessionId.value = chatStore.currentSessionId
+
+function openSessionConfig() {
+  configSessionId.value = ''
+  nextTick(() => {
+    configSessionId.value = chatStore.currentSessionId
+  })
+}
 }
 
 async function handleSelectSession(sessionId: string) {

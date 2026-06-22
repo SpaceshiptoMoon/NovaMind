@@ -80,6 +80,10 @@
             <span class="setting-label">🌐 联网</span>
             <el-switch v-model="enableWebSearch" size="small" />
           </div>
+          <button class="setting-group clickable" @click="$emit('open-config')">
+            <span class="setting-label">会话设置</span>
+            <el-icon :size="12"><ArrowRight /></el-icon>
+          </button>
         </div>
       </div>
     </div>
@@ -89,7 +93,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Paperclip, VideoPause, Setting, ArrowDown } from '@element-plus/icons-vue'
+import { Paperclip, VideoPause, Setting, ArrowDown, ArrowRight } from '@element-plus/icons-vue'
 import { chatApi } from '@/api/chat'
 
 const props = defineProps<{
@@ -106,6 +110,7 @@ const emit = defineEmits<{
   }]
   'cancel-stream': []
   'attachment-added': []
+  'open-config': []
 }>()
 
 const inputText = ref('')
