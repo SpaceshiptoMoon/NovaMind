@@ -1,13 +1,6 @@
 <template>
   <div v-for="msg in messages" :key="msg.id || msg._id" class="message-row" :class="msg.role">
-    <div class="message-avatar">
-      <el-avatar v-if="msg.role === 'assistant'" :size="28" icon="UserFilled" class="assistant-avatar" />
-      <el-avatar v-else :size="28" class="user-avatar">我</el-avatar>
-    </div>
-    <div class="message-body">
-      <div class="message-name">{{ msg.role === 'assistant' ? 'AI' : '我' }}</div>
-
-      <template v-if="msg.role === 'assistant'">
+    <div class="message-body">      <template v-if="msg.role === 'assistant'">
         <div v-if="msg.reasoning" class="reasoning-section">
           <div class="reasoning-header" @click="toggleReasoning(msg.id)">
             <span class="reasoning-label">思考过程</span>
