@@ -67,6 +67,10 @@
         <span class="action-icon">🌐</span>
         <span>联网搜索</span>
       </button>
+      <button class="action-chip" :class="{ active: useStream }" @click="useStream = !useStream">
+        <span class="action-icon">⚡</span>
+        <span>流式输出</span>
+      </button>
     </div>
 
   </div>
