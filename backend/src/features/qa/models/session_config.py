@@ -129,6 +129,10 @@ class SessionConfig(BaseModel):
     def rag_top_k(self) -> int:
         return self.get_kb_bindings().get("top_k", 5)
 
+    @property
+    def rag_query_rewriting(self) -> str:
+        return self.get_kb_bindings().get("query_rewriting", "none")
+
     # ========== 模型生成参数访问方法（会话级持久化） ==========
 
     def get_llm_config(self) -> dict:
