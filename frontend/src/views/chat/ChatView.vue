@@ -152,20 +152,14 @@ async function handleNewSession() {
   chatStore.clearMessages()
 }
 
-async function openSessionConfig() {
-  // 新对话无 session_id 时预先生成，配置绑到它；
-  // 发消息时后端用同一 id 建会话（ensure_session_config 发现配置已存在直接复用）。
+function openSessionConfig() {
   if (!chatStore.currentSessionId) {
     chatStore.currentSessionId = crypto.randomUUID()
   }
-  configSessionId.value = chatStore.currentSessionId
-
-function openSessionConfig() {
   configSessionId.value = ''
   nextTick(() => {
     configSessionId.value = chatStore.currentSessionId
   })
-}
 }
 
 async function handleSelectSession(sessionId: string) {
