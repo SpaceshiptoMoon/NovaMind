@@ -42,6 +42,7 @@
           @hover="onSourceHover"
           @select="onSourceSelect"
         />
+        <RetrievalTrace :traces="(msg.extra as Record<string, unknown> | null)?.traces as Record<string, unknown>[] | undefined" />
       </template>
       <template v-else>
         <div class="message-text">{{ msg.content }}</div>
@@ -118,6 +119,7 @@ import { ref, computed } from 'vue'
 import { ArrowDown, WarningFilled, Download, DocumentCopy } from '@element-plus/icons-vue'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import SourceList from '@/components/chat/SourceList.vue'
+import RetrievalTrace from '@/components/chat/RetrievalTrace.vue'
 import type { ChatMessage, ChatSource } from '@/api/types'
 import { useChatAttachments } from '@/composables/useChatAttachments'
 

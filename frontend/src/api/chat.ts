@@ -37,6 +37,7 @@ export const chatApi = {
     callbacks: {
       onUserMessage?: (msg: { id: number; content: string; role: string; session_id: string }) => void
       onSources?: (sources: ChatSource[]) => void
+      onTrace?: (trace: Record<string, unknown>) => void
       onReasoning?: (text: string) => void
       onContent?: (content: string) => void
       onDone?: (msg: {
@@ -61,6 +62,9 @@ export const chatApi = {
             break
           case 'sources':
             callbacks.onSources?.(e.data as ChatSource[])
+            break
+          case 'trace':
+            callbacks.onTrace?.(e.data as Record<string, unknown>)
             break
           case 'reasoning':
             callbacks.onReasoning?.((e.data as { content: string }).content)

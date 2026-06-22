@@ -225,6 +225,13 @@ export const useChatStore = defineStore('chat', () => {
             lastMsg.extra = { ...(lastMsg.extra || {}), sources }
           }
         },
+        onTrace(trace) {
+          const lastMsg = messages.value[messages.value.length - 1]
+          if (lastMsg?.role === 'assistant') {
+            const traces = (lastMsg.extra?.traces as Record<string, unknown>[]) || []
+            lastMsg.extra = { ...(lastMsg.extra || {}), traces: [...traces, trace] }
+          }
+        },
         onReasoning(text) {
           streamingReasoning.value += text || ''
           const lastMsg = messages.value[messages.value.length - 1]

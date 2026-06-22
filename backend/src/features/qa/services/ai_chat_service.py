@@ -62,6 +62,7 @@ class ChatPreparation:
     max_tokens: int = 2048
     temperature: float = 0.7
     top_p: float = 0.8
+    traces: list = field(default_factory=list)
 
 
 class AIChatService:
@@ -318,6 +319,15 @@ class AIChatService:
         # 获取 LLM 客户端
         llm_client = await self._get_llm_client(user_id, llm_model)
 
+        # 构建检索链路 trace（Rewrite → Search → Grade）
+        traces = []
+        if search_queries and search_queries[0] != content:
+            traces.append({"type": "rewrite", "original": content, "rewritten": search_queries[0], "strategy": rewrite_strategy})
+        if prep_sources:
+            traces.append({"type": "search", "mode": search_mode, "sources_count": len(prep_sources)})
+        elif do_rag:
+            traces.append({"type": "search", "mode": search_mode, "sources_count": 0, "note": "无匹配结果"})
+
         self.logger.debug(
             "使用 LLM 客户端",
             user_id=user_id,
@@ -341,6 +351,7 @@ class AIChatService:
             max_tokens=eff_max_tokens,
             temperature=eff_temperature,
             top_p=eff_top_p,
+            traces=traces,
         )
 
     async def _augment_system_prompt_with_retrieval(
@@ -797,6 +808,14 @@ class AIChatService:
                         "session_id": session_id,
                     }
                 })
+
+            # 检索链路 Trace 事件（Rewrite → Search → Grade）
+            if prep.traces:
+                for t in prep.traces:
+                    yield self._format_sse({
+                        "type": "trace",
+                        "data": {**t, "session_id": session_id},
+                    })
 
             # 分级拒答：检索完全为空时短路跳过 LLM
             if prep.refused:
