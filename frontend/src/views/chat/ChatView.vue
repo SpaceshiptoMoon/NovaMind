@@ -53,101 +53,11 @@
 
       <!-- 消息列表 -->
       <div v-else ref="messagesRef" class="messages-container">
-        <div class="messages-inner">
-          <div
-            v-for="msg in chatStore.messages"
-            :key="msg.id"
-            class="message-row"
-            :class="msg.role"
-          >
-            <div class="message-body">
-              <template v-if="msg.role === 'assistant'">
-                <div v-if="msg.reasoning" class="reasoning-section">
-                  <div class="reasoning-header" @click="toggleReasoning(msg.id)">
-                    <span class="reasoning-label">思考过程</span>
-                    <el-icon :size="12" class="expand-icon" :class="{ expanded: shouldShowReasoning(msg) }">
-                      <ArrowDown />
-                    </el-icon>
-                  </div>
-                  <div v-if="shouldShowReasoning(msg)" class="reasoning-body">
-                    <div class="reasoning-text">{{ msg.reasoning }}</div>
-                  </div>
-                </div>
-                <div v-if="getAnswerStatus(msg) === 'refused'" class="refused-banner">
-                  <el-icon :size="14"><WarningFilled /></el-icon>
-                  <span>未在知识库中找到相关资料，已拒答</span>
-                </div>
-                <div
-                  class="message-content"
-                  :class="{ 'low-confidence': getAnswerStatus(msg) === 'low_confidence' }"
-                  :data-msg-id="msg.id"
-                  @mouseover="handleCiteOver"
-                  @mouseout="handleCiteLeave"
-                >
-                  <MarkdownRenderer :content="msg.content" class="message-text" />
-                  <div v-if="getAnswerStatus(msg) === 'low_confidence'" class="low-confidence-tip">
-                    ⚠️ 依据较弱（相关度 {{ formatScore(getConfidence(msg)) }}），请审慎参考
-                  </div>
-                </div>
-                <SourceList
-                  v-if="getSources(msg).length"
-                  :sources="getSources(msg)"
-                  :active-index="hoverCiteIndex"
-                  @hover="onSourceHover"
-                  @select="onSourceSelect"
-                />
-              </template>
-              <template v-else>
-                <div class="message-text">{{ msg.content }}</div>
-                <div v-if="getMessageAttachments(msg).length" class="message-attachments">
-                  <template v-for="att in getMessageAttachments(msg)" :key="att.filename">
-                    <div v-if="isImageFile(att.file_type) && att.id" class="image-card" @click="handleDownloadAttachment(att)">
-                      <img
-                        v-if="getImagePreviewUrl(att)"
-                        :src="getImagePreviewUrl(att)"
-                        class="image-thumb"
-                        loading="lazy"
-                      />
-                      <div v-else class="image-thumb image-thumb-loading">加载中...</div>
-                      <div class="image-info">
-                        <span class="image-name">{{ att.filename }}</span>
-                        <span class="image-size">{{ formatFileSize(att.file_size) }}</span>
-                      </div>
-                    </div>
-                    <div v-else class="file-card" @click="handleDownloadAttachment(att)">
-                      <div class="file-icon-box" :class="getFileIconClass(att.file_type)">
-                        <span class="file-ext-label">{{ getFileExt(att.filename) }}</span>
-                      </div>
-                      <div class="file-info">
-                        <div class="file-name">{{ att.filename }}</div>
-                        <div class="file-meta">{{ getFileExt(att.filename) }} · {{ formatFileSize(att.file_size) }}</div>
-                      </div>
-                      <div class="file-download-btn" title="下载">
-                        <el-icon :size="16"><Download /></el-icon>
-                      </div>
-                    </div>
-                  </template>
-                </div>
-              </template>
-              <div class="message-actions">
-                <button class="msg-copy-btn" @click="handleCopyMessage(msg.content, $event)">
-                  <el-icon :size="13"><DocumentCopy /></el-icon>
-                  <span>复制</span>
-                </button>
-              </div>
-            </div>
-          </div>
-          <!-- 加载指示器 -->
-          <div v-if="chatStore.loading && !chatStore.isStreaming" class="typing-row">
-            <div class="message-body">
-              <div class="typing-bubble">
-                <span class="typing-dot"></span>
-                <span class="typing-dot"></span>
-                <span class="typing-dot"></span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <MessageList
+          :messages="chatStore.messages"
+          :is-streaming="chatStore.isStreaming"
+          :loading="chatStore.loading"
+        />
       </div>
 
       <!-- 输入区域：药丸形 -->
@@ -256,27 +166,6 @@
     <!-- 会话配置弹窗 -->
     <SessionConfigDialog :sessionId="configSessionId" />
 
-    <!-- 引用角标悬浮卡（虚拟触发，跟随角标元素定位） -->
-    <el-popover
-      :visible="citePopoverVisible"
-      :virtual-ref="citeTriggerEl"
-      virtual-triggering
-      trigger="click"
-      placement="top"
-      :width="300"
-      popper-class="cite-popover"
-    >
-      <div v-if="activeCiteSource" class="cite-pop-body">
-        <div class="cite-pop-name">{{ getSourceDisplayName(activeCiteSource) }}</div>
-        <div class="cite-pop-sub">
-          <span class="cite-pop-kind" :class="activeCiteSource.kind || 'kb'">{{ activeCiteSource.kind === 'web' ? '联网来源' : '知识库' }}</span>
-          <span v-if="activeCiteSource.score != null">相关度 {{ formatScore(activeCiteSource.score) }}</span>
-          <span v-if="activeCiteSource.page != null">第 {{ activeCiteSource.page }} 页</span>
-        </div>
-        <div v-if="activeCiteSource.snippet" class="cite-pop-snippet">{{ activeCiteSource.snippet }}</div>
-        <a v-if="activeCiteSource.url" :href="activeCiteSource.url" target="_blank" rel="noopener" class="cite-pop-link">查看原文 ↗</a>
-      </div>
-    </el-popover>
   </div>
 </template>
 
@@ -296,6 +185,7 @@ import SourceList from '@/components/chat/SourceList.vue'
 import type { ChatMessage, ChatSource } from '@/api/types'
 import { useChatAttachments } from '@/composables/useChatAttachments'
 import SessionConfigDialog from '@/components/chat/SessionConfigDialog.vue'
+import MessageList from '@/components/chat/MessageList.vue'
 
 const chatStore = useChatStore()
 const spaceStore = useSpaceStore()
@@ -309,7 +199,6 @@ const ragSpaceId = ref<number | undefined>(undefined)
 const ragKbId = ref<number | undefined>(undefined)
 const ragKbOptions = ref<{ id: number; name: string }[]>([])
 const settingsExpanded = ref(false)
-const expandedReasoning = ref(new Set<number>())
 const messagesRef = ref<HTMLElement>()
 const textareaRef = ref<HTMLTextAreaElement>()
 const fileInputRef = ref<HTMLInputElement>()
@@ -322,25 +211,6 @@ const quickPrompts = [
   { icon: '🛠️', text: '如何优化数据库查询性能？' },
 ]
 
-function toggleReasoning(msgId: number) {
-  if (expandedReasoning.value.has(msgId)) {
-    expandedReasoning.value.delete(msgId)
-  } else {
-    expandedReasoning.value.add(msgId)
-  }
-}
-
-// reasoning 是否展开：用户手动展开的总是显示；流式中的最后一条消息自动展开
-// （思考模型先输出全部 reasoning 再输出 content，自动展开让用户看到思考过程，而非干等回答）
-function shouldShowReasoning(msg) {
-  if (expandedReasoning.value.has(msg.id)) return true
-  if (chatStore.isStreaming) {
-    const msgs = chatStore.messages
-    const last = msgs[msgs.length - 1]
-    return !!last && last.id === msg.id
-  }
-  return false
-}
 
 function scrollToBottom() {
   nextTick(() => {
@@ -455,18 +325,6 @@ function handleCancelStream() {
   chatStore.cancelStream()
 }
 
-function handleCopyMessage(content: string, e: MouseEvent) {
-  navigator.clipboard.writeText(content).then(() => {
-    const btn = (e.currentTarget as HTMLElement)
-    btn.classList.add('copied')
-    const label = btn.querySelector('span')!
-    label.textContent = '已复制'
-    setTimeout(() => {
-      btn.classList.remove('copied')
-      label.textContent = '复制'
-    }, 2000)
-  })
-}
 
 function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -540,89 +398,7 @@ async function handleFileSelected(e: Event) {
   input.value = ''
 }
 
-function getFileIcon(type: string): string {
-  const map: Record<string, string> = { pdf: 'PDF', docx: 'DOC', txt: 'TXT', md: 'MD', jpg: 'IMG', jpeg: 'IMG', png: 'IMG', gif: 'IMG', webp: 'IMG' }
-  return map[type] || 'FILE'
-}
 
-function getMessageAttachments(msg: ChatMessage): Array<{ id?: number; filename: string; file_type?: string; file_size?: number; storage_path?: string }> {
-  if (msg.attachments?.length) return msg.attachments
-  return (msg.extra as Record<string, any>)?.attachments ?? []
-}
-
-// ===================== 检索来源 / 回答状态 =====================
-function getSources(msg: ChatMessage): ChatSource[] {
-  const extra = msg.extra as Record<string, unknown> | null
-  return Array.isArray(extra?.sources) ? (extra!.sources as ChatSource[]) : []
-}
-
-function getAnswerStatus(msg: ChatMessage): string {
-  const extra = msg.extra as Record<string, unknown> | null
-  return (extra?.answer_status as string) || 'answered'
-}
-
-function getConfidence(msg: ChatMessage): number | null {
-  const extra = msg.extra as Record<string, unknown> | null
-  return typeof extra?.confidence === 'number' ? (extra.confidence as number) : null
-}
-
-function formatScore(score: number | null | undefined): string {
-  if (score == null) return '-'
-  return Math.round(score * 100) + '%'
-}
-
-function getSourceDisplayName(s: ChatSource): string {
-  return s.document_name || s.url || `来源 ${s.index}`
-}
-
-// ===================== 引用角标 popover（事件代理） =====================
-const citePopoverVisible = ref(false)
-const citeTriggerEl = ref<HTMLElement>()
-const activeCiteSource = ref<ChatSource | null>(null)
-const hoverCiteIndex = ref<number | null>(null)
-
-function handleCiteOver(e: MouseEvent) {
-  const target = e.target as HTMLElement
-  const marker = target.closest('.cite-marker') as HTMLElement | null
-  if (!marker) {
-    citePopoverVisible.value = false
-    hoverCiteIndex.value = null
-    return
-  }
-  const idx = Number(marker.dataset.cite || 0)
-  const contentEl = marker.closest('[data-msg-id]') as HTMLElement | null
-  const msgId = contentEl ? Number(contentEl.dataset.msgId) : 0
-  const msg = chatStore.messages.find((m) => m.id === msgId)
-  const src = msg ? getSources(msg).find((s) => s.index === idx) : undefined
-  citeTriggerEl.value = marker
-  activeCiteSource.value = src ?? null
-  hoverCiteIndex.value = idx
-  citePopoverVisible.value = !!src
-}
-
-function handleCiteLeave() {
-  citePopoverVisible.value = false
-  hoverCiteIndex.value = null
-}
-
-function onSourceHover(index: number | null) {
-  hoverCiteIndex.value = index
-}
-
-function onSourceSelect(_s: ChatSource) {
-  // 预留：来源卡片点击行为（本期仅高亮，后续可跳转文档预览）
-}
-
-function getFileIconClass(type?: string): string {
-  if (!type) return 'file-default'
-  const t = type.toLowerCase()
-  if (t === 'pdf') return 'file-pdf'
-  if (t === 'docx' || t === 'doc') return 'file-doc'
-  if (t === 'txt') return 'file-txt'
-  if (t === 'md') return 'file-md'
-  if (isImageFile(t)) return 'file-image'
-  return 'file-default'
-}
 
 const {
   isImageFile,
