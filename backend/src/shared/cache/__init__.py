@@ -8,6 +8,7 @@ from .lru_cache import (
     session_config_cache,
     session_summary_cache,
     session_messages_cache,
+    default_cache,
 )
 from .cache_service import (
     CacheService,
@@ -21,6 +22,7 @@ __all__ = [
     "session_config_cache",
     "session_summary_cache",
     "session_messages_cache",
+    "default_cache",
     # 高级缓存服务
     "CacheService",
     "cached",
