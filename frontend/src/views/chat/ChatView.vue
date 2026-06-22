@@ -37,16 +37,6 @@
         <div class="welcome-inner">
           <h2 class="welcome-title">今天想聊点什么？</h2>
           <p class="welcome-subtitle">我可以帮你回答问题、分析文档、编写代码，或从知识库中搜索资料</p>
-          <div class="welcome-prompts">
-            <button
-              v-for="(prompt, i) in quickPrompts"
-              :key="i"
-              class="prompt-card"
-            >
-              <span class="prompt-icon">{{ prompt.icon }}</span>
-              <span class="prompt-text">{{ prompt.text }}</span>
-            </button>
-          </div>
         </div>
       </div>
 
