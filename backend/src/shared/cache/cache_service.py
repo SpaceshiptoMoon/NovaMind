@@ -13,6 +13,8 @@ import hashlib
 import json
 import random
 import asyncio
+
+from src.shared.cache.lru_cache import default_cache as _lru
 from typing import Optional, Any, Dict, List, Callable, Awaitable, Union
 from functools import wraps
 
@@ -132,6 +134,7 @@ class CacheService:
         """
         self.default_ttl = default_ttl
         self._cache = None
+        self._lru = _lru  # L1 本地缓存
 
     async def _get_cache(self):
         """获取 Redis 客户端"""
@@ -143,7 +146,7 @@ class CacheService:
 
     async def get(self, key: str) -> Optional[Any]:
         """
-        获取缓存值
+        获取缓存值（L1 LRU → L2 Redis）
 
         Args:
             key: 缓存键
@@ -151,9 +154,17 @@ class CacheService:
         Returns:
             缓存值，不存在返回 None
         """
+        # L1: 本地缓存
+        l1_val = self._lru.get(key)
+        if l1_val is not None:
+            return l1_val
+
+        # L2: Redis 缓存
         try:
             cache = await self._get_cache()
             value = await cache.get(key)
+            if value is not None:
+                self._lru.set(key, value, ttl=self.default_ttl)
             return value
         except Exception as e:
             logger.warning("缓存读取失败", key=key, error=str(e))
@@ -167,7 +178,7 @@ class CacheService:
         jitter: bool = True,
     ) -> bool:
         """
-        设置缓存值
+        设置缓存值（L1 LRU + L2 Redis）
 
         Args:
             key: 缓存键
@@ -178,9 +189,13 @@ class CacheService:
         Returns:
             是否成功
         """
+        # L1: 本地缓存
+        actual_ttl = ttl or self.default_ttl
+        self._lru.set(key, value, ttl=actual_ttl)
+
+        # L2: Redis 缓存
         try:
             cache = await self._get_cache()
-            actual_ttl = ttl or self.default_ttl
 
             # 添加随机抖动（±10%）防止缓存雪崩
             if jitter and actual_ttl > 0:
@@ -194,7 +209,7 @@ class CacheService:
 
     async def delete(self, key: str) -> bool:
         """
-        删除缓存
+        删除缓存（L1 LRU + L2 Redis）
 
         Args:
             key: 缓存键
@@ -202,6 +217,10 @@ class CacheService:
         Returns:
             是否成功
         """
+        # L1: 本地缓存
+        self._lru.delete(key)
+
+        # L2: Redis 缓存
         try:
             cache = await self._get_cache()
             result = await cache.delete(key)
