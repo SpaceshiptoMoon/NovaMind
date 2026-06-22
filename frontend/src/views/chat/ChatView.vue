@@ -466,6 +466,7 @@ import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import ModelFanSelector from '@/components/common/ModelFanSelector.vue'
 import SourceList from '@/components/chat/SourceList.vue'
 import type { ChatMessage, ChatSource } from '@/api/types'
+import { useChatAttachments } from '@/composables/useChatAttachments'
 
 const chatStore = useChatStore()
 const spaceStore = useSpaceStore()
@@ -794,56 +795,16 @@ function getFileIconClass(type?: string): string {
   return 'file-default'
 }
 
-const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp'])
-function isImageFile(type?: string): boolean {
-  return !!type && IMAGE_EXTENSIONS.has(type.toLowerCase())
-}
-
-// 图片 blob URL 缓存
-const imageBlobCache = new Map<number, string>()
-const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
-
-async function loadAttachmentImage(attId: number) {
-  if (imageBlobCache.has(attId)) return
-  try {
-    const token = localStorage.getItem('access_token')
-    const res = await fetch(`${baseURL}/ai-chat/chat-attachments/${attId}/download`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-    if (!res.ok) return
-    const blob = await res.blob()
-    imageBlobCache.set(attId, URL.createObjectURL(blob))
-  } catch {
-    // ignore
-  }
-}
-
-function getImagePreviewUrl(att: { id?: number; preview_url?: string }): string {
-  if (att.preview_url) return att.preview_url
-  if (att.id) return imageBlobCache.get(att.id) || ''
-  return ''
-}
-
-function getFileExt(filename?: string): string {
-  if (!filename) return 'FILE'
-  const ext = filename.split('.').pop()?.toUpperCase() || 'FILE'
-  return ext
-}
-
-async function handleDownloadAttachment(att: { id?: number; filename: string }) {
-  if (!att.id) return
-  try {
-    await chatApi.downloadAttachmentFile(att.id, att.filename)
-  } catch {
-    ElMessage.error('下载失败')
-  }
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-}
+const {
+  isImageFile,
+  imageBlobCache,
+  loadAttachmentImage,
+  getImagePreviewUrl,
+  getFileExt,
+  handleDownloadAttachment,
+  formatFileSize,
+  revokeBlobUrls,
+} = useChatAttachments()
 
 async function fetchModels() {
   try {
@@ -1022,10 +983,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (scrollRAF) cancelAnimationFrame(scrollRAF)
-  for (const url of imageBlobCache.values()) {
-    URL.revokeObjectURL(url)
-  }
-  imageBlobCache.clear()
+  revokeBlobUrls()
 })
 </script>
 
