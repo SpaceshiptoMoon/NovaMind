@@ -60,107 +60,17 @@
         />
       </div>
 
-      <!-- 输入区域：药丸形 -->
-      <div class="input-area">
-        <div class="input-pill">
-          <button
-            class="attach-btn"
-            :disabled="chatStore.isStreaming || chatStore.loading || uploadingFiles"
-            @click="triggerFileSelect"
-            title="上传文档"
-          >
-            <el-icon :size="16"><Paperclip /></el-icon>
-          </button>
-          <input
-            ref="fileInputRef"
-            type="file"
-            accept=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.gif,.webp"
-            style="display: none"
-            @change="handleFileSelected"
-          />
-          <textarea
-            ref="textareaRef"
-            v-model="inputText"
-            class="chat-textarea"
-            placeholder="输入你的问题..."
-            :rows="1"
-            :disabled="chatStore.isStreaming || chatStore.loading"
-            @keydown="handleKeydown"
-            @input="autoResize"
-          />
-          <ModelFanSelector
-            v-model="selectedModel"
-            :models="availableModels"
-            :default-model-name="defaultModelName"
-          />
-          <button
-            v-if="chatStore.isStreaming"
-            class="send-btn stop-btn"
-            @click="handleCancelStream"
-          >
-            <el-icon :size="16"><VideoPause /></el-icon>
-          </button>
-          <button
-            v-else
-            class="send-btn"
-            :class="{ active: inputText.trim() || chatStore.pendingAttachments.length > 0 }"
-            :disabled="(!inputText.trim() && chatStore.pendingAttachments.length === 0) || chatStore.loading"
-            @click="handleSend"
-          >
-            <el-icon :size="16"><Promotion /></el-icon>
-          </button>
-        </div>
-        <!-- 文件预览 -->
-        <div v-if="chatStore.pendingAttachments.length > 0" class="attachment-preview-bar">
-          <div
-            v-for="att in chatStore.pendingAttachments"
-            :key="att.id"
-            class="attachment-chip"
-          >
-            <img v-if="isImageFile(att.file_type) && getImagePreviewUrl(att)" :src="getImagePreviewUrl(att)" class="att-thumb-img" />
-            <span v-else class="att-type-badge">{{ getFileIcon(att.file_type) }}</span>
-            <span class="att-name">{{ att.filename }}</span>
-            <span class="att-size">{{ formatFileSize(att.file_size) }}</span>
-            <button class="att-remove" @click="chatStore.removePendingAttachment(att.id)">
-              <el-icon :size="10"><Close /></el-icon>
-            </button>
-          </div>
-        </div>
-        <!-- 折叠设置栏 -->
-        <div class="input-footer">
-          <button class="settings-toggle" @click="settingsExpanded = !settingsExpanded">
-            <el-icon :size="12"><Setting /></el-icon>
-            <span>{{ settingsSummary }}</span>
-            <el-icon :size="10" class="toggle-arrow" :class="{ expanded: settingsExpanded }"><ArrowDown /></el-icon>
-          </button>
-          <div class="input-hint-inline">Enter 发送 · Shift+Enter 换行</div>
-        </div>
-        <transition name="settings-slide">
-          <div v-if="settingsExpanded" class="settings-bar">
-            <div class="settings-bar-inner">
-              <div class="setting-group">
-                <span class="setting-label">深度思考</span>
-                <el-switch v-model="enableThinking" size="small" />
-              </div>
-              <div class="setting-group">
-                <span class="setting-label">流式输出</span>
-                <el-switch v-model="useStream" size="small" />
-              </div>
-              <div class="setting-group">
-                <span class="setting-label">🌐 联网</span>
-                <el-switch v-model="enableWebSearch" size="small" />
-              </div>
-              <button
-                class="setting-group clickable"
-                @click="openSessionConfig"
-              >
-                <span class="setting-label">会话设置</span>
-                <el-icon :size="12"><ArrowRight /></el-icon>
-              </button>
-            </div>
-          </div>
-        </transition>
+      <!-- 模型选择 -->
+      <div v-if="Object.keys(availableModels).length" class="model-selector-strip">
+        <ModelFanSelector v-model="selectedModel" :models="availableModels" :default-model-name="defaultModelName" />
       </div>
+      <!-- 输入区域 -->
+      <ChatInput
+        :disabled="chatStore.isStreaming || chatStore.loading"
+        :pending-attachments-count="chatStore.pendingAttachments.length"
+        @send="handleSend"
+        @cancel-stream="handleCancelStream"
+      />
     </div>
 
     <!-- 会话配置弹窗 -->
