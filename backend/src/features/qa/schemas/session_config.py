@@ -32,6 +32,7 @@ class RagBindingConfig(BaseModel):
     score_threshold: float = Field(default=0.3, ge=0.0, le=1.0, description="低置信度阈值（单库模式生效）")
     search_mode: str = Field(default="content_hybrid", description="检索模式（默认混合）")
     top_k: int = Field(default=5, ge=1, le=20, description="检索返回条数")
+    query_rewriting: str = Field(default="none", description="检索前改写策略: none/completion/synonym/decompose/hyde")
 
 
 # ========== 模型生成参数配置结构（会话级持久化） ==========

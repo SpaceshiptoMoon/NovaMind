@@ -216,16 +216,59 @@ class AIChatService:
         prep_status = "answered"
         prep_confidence: Optional[float] = None
 
+        # ===== Query Rewriting（可插拔组件） =====
+        search_queries = [content]
+        rewrite_strategy = getattr(session_config, "rag_query_rewriting", "none") if session_config else "none"
+        if rewrite_strategy != "none" and (do_web or do_rag):
+            from src.features.qa.services.query_rewriter import QueryRewriter, RewriteStrategy
+            llm_for_rewrite = await self.qa_service._get_compression_llm_client(user_id) if self.qa_service else None
+            if llm_for_rewrite:
+                rewriter = QueryRewriter(llm_for_rewrite)
+                ctx_history = [
+                    {"role": m.get("role"), "content": m.get("content")}
+                    for m in context if m.get("role") in ("user", "assistant")
+                ]
+                result = await rewriter.rewrite(
+                    query=content, strategy=RewriteStrategy(rewrite_strategy),
+                    history=ctx_history,
+                )
+                if result.queries:
+                    search_queries = result.queries
+
         if do_web or do_rag:
-            # refusal_on 启用阈值过滤：低于 score_threshold 的 KB 来源不注入上下文
+            # refusal_on 启用阈值过滤
             effective_threshold = score_threshold if refusal_on else None
-            system_prompt, prep_sources = await self._augment_system_prompt_with_retrieval(
-                system_prompt=system_prompt, query=content, user_id=user_id,
-                enable_web_search=do_web, enable_rag=do_rag,
-                space_id=rag_space, kb_ids=rag_kb_ids,
-                top_k=top_k, search_mode=search_mode,
-                score_threshold=effective_threshold,
-            )
+
+            if len(search_queries) == 1:
+                # 单 query（COMPLETION / SYNONYM / HYDE / NONE）
+                system_prompt, prep_sources = await self._augment_system_prompt_with_retrieval(
+                    system_prompt=system_prompt, query=search_queries[0], user_id=user_id,
+                    enable_web_search=do_web, enable_rag=do_rag,
+                    space_id=rag_space, kb_ids=rag_kb_ids,
+                    top_k=top_k, search_mode=search_mode,
+                    score_threshold=effective_threshold,
+                )
+            else:
+                # DECOMPOSE：多个子问题并发检索，合并 sources
+                import asyncio
+                tasks = [
+                    self._augment_system_prompt_with_retrieval(
+                        system_prompt=system_prompt, query=sq, user_id=user_id,
+                        enable_web_search=do_web, enable_rag=do_rag,
+                        space_id=rag_space, kb_ids=rag_kb_ids,
+                        top_k=top_k, search_mode=search_mode,
+                        score_threshold=effective_threshold,
+                    )
+                    for sq in search_queries
+                ]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                all_sources = []
+                for r in results:
+                    if isinstance(r, Exception):
+                        self.logger.warning("DECOMPOSE 子检索失败", error=str(r))
+                    else:
+                        all_sources.extend(r[1])
+                prep_sources = all_sources
 
             # 分级拒答：过滤后无任何来源 → 拒答（短路跳过 LLM）
             if refusal_on and not prep_sources:
