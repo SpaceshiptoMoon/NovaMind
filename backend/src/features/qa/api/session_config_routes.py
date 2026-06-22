@@ -127,7 +127,15 @@ async def get_config(
     config = await repo.get_by_session_id(session_id)
 
     if not config:
-        raise SessionConfigNotFoundError(session_id)
+        # 新会话还没有配置记录，返回默认值（不写库，不报错）
+        return SessionConfigResponse(
+            id=0,
+            session_id=session_id,
+            user_id=user_id,
+            compression_config={"enable_compression": True, "strategy": "summary", "threshold": 3000, "target_tokens": 500, "keep_recent": 2, "custom_prompt": None},
+            kb_bindings={"space_id": None, "kb_ids": [], "auto_rag": False, "refusal_enabled": False, "score_threshold": 0.3, "search_mode": "content_hybrid", "top_k": 5},
+            llm_config={"max_tokens": 2048, "temperature": 0.7, "top_p": 0.8, "system_prompt": None},
+        )
 
     # 权限校验
     if config.user_id != user_id:
