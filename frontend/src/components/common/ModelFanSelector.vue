@@ -91,7 +91,7 @@ const vlmModels = computed(() =>
 
 const shortName = computed(() => {
   const name = props.modelValue || props.defaultModelName || '默认'
-  return name.length > 10 ? name.slice(0, 9) + '..' : name
+  return name.length > 26 ? name.slice(0, 24) + '..' : name
 })
 
 function toggle() {
@@ -135,7 +135,7 @@ onUnmounted(() => document.removeEventListener('click', onClickOutside, true))
   font-size: var(--text-sm);
   cursor: pointer;
   transition: all var(--transition-base);
-  max-width: 140px;
+  max-width: 260px;
 }
 
 .fan-trigger:hover {
