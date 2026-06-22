@@ -145,7 +145,13 @@ function toggleReasoning(msgId: number) {
 }
 
 function shouldShowReasoning(msgId: number): boolean {
-  return expandedReasoning.value.has(msgId)
+  if (expandedReasoning.value.has(msgId)) return true
+  // 流式中最后一条消息自动展开推理（思考模型先输出 reasoning 再输出 content）
+  if (props.isStreaming) {
+    const last = props.messages[props.messages.length - 1]
+    return !!last && (last.id === msgId || (last as any)._id === msgId)
+  }
+  return false
 }
 
 // 消息辅助函数
