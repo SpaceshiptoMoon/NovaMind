@@ -204,8 +204,7 @@ function handleSendClick() {
 }
 
 .input-pill {
-  max-width: 860px;
-  margin: 0 auto;
+  max-width: 100%;
   display: flex;
   align-items: flex-end;
   padding: 8px 12px;
@@ -303,8 +302,7 @@ function handleSendClick() {
    Quick Actions — Visible Chips
    ======================================== */
 .quick-actions {
-  max-width: 860px;
-  margin: 8px auto 0;
+  margin: 8px 0 0;
   display: flex;
   gap: 6px;
   padding: 0 4px;
@@ -374,8 +372,7 @@ function handleSendClick() {
    Attachment Preview Bar
    ======================================== */
 .attachment-preview-bar {
-  max-width: 860px;
-  margin: 6px auto 0;
+  margin: 6px 0 0;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
