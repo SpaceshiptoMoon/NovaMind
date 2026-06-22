@@ -1,17 +1,5 @@
 <template>
   <div class="input-area">
-    <!-- 快速提示 -->
-    <div v-if="!inputText && !disabled && quickPromptVisible" class="quick-prompts">
-      <button
-        v-for="(prompt, i) in quickPrompts"
-        :key="i"
-        class="quick-prompt-btn"
-        @click="handleQuickPromptClick(prompt)"
-      >
-        {{ prompt }}
-      </button>
-    </div>
-
     <!-- 输入药丸 -->
     <div class="input-pill">
       <button
@@ -121,15 +109,6 @@ const enableThinking = ref(false)
 const enableWebSearch = ref(false)
 const settingsExpanded = ref(false)
 const uploadingFiles = ref(false)
-const quickPromptVisible = ref(true)
-
-const quickPrompts = [
-  '帮我分析一下这段代码的逻辑',
-  '写一篇关于人工智能发展趋势的摘要',
-  '帮我从知识库中搜索相关资料',
-  '如何优化数据库查询性能？',
-]
-
 const settingsSummary = computed(() => {
   const parts: string[] = []
   if (enableThinking.value) parts.push('深度思考')
@@ -149,12 +128,6 @@ function handleKeydown(e: KeyboardEvent) {
     e.preventDefault()
     handleSendClick()
   }
-}
-
-function handleQuickPromptClick(text: string) {
-  inputText.value = text
-  quickPromptVisible.value = false
-  autoResize()
 }
 
 function triggerFileSelect() {
@@ -202,7 +175,6 @@ function handleSendClick() {
 
   const sendContent = content || (hasAttachments ? '请分析上传的文档' : '')
   inputText.value = ''
-  quickPromptVisible.value = true
   autoResize()
 
   emit('send', sendContent, {
