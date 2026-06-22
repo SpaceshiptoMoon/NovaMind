@@ -320,9 +320,9 @@ class QAService:
                     # 压缩配置（对齐 ORM property）
                     enable_compression=cc.get("enable_compression", True),
                     compression_strategy=cc.get("strategy", "summary"),
-                    compression_threshold=cc.get("threshold", 3000),
-                    compression_target_tokens=cc.get("target_tokens", 500),
-                    keep_recent_messages=cc.get("keep_recent", 2),
+                    compression_threshold=cc.get("threshold", 70000),
+                    compression_target_tokens=cc.get("target_tokens", 2000),
+                    keep_recent_messages=cc.get("keep_recent", 6),
                     custom_summary_prompt=cc.get("custom_prompt"),
                     # RAG 绑定配置（对齐 ORM property，补齐缓存层遗漏）
                     auto_rag=kb.get("auto_rag", False),

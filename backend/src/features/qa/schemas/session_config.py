@@ -15,9 +15,9 @@ class CompressionConfig(BaseModel):
         default="summary",
         description="压缩策略"
     )
-    threshold: int = Field(default=3000, ge=500, le=200000, description="触发压缩的 token 阈值")
-    target_tokens: int = Field(default=500, ge=100, le=2000, description="压缩后的目标 token 数")
-    keep_recent: int = Field(default=2, ge=0, le=10, description="保留的最近消息数")
+    threshold: int = Field(default=70000, ge=500, le=200000, description="触发压缩的 token 阈值")
+    target_tokens: int = Field(default=2000, ge=100, le=2000, description="压缩后的目标 token 数")
+    keep_recent: int = Field(default=6, ge=0, le=10, description="保留的最近消息数")
     custom_prompt: Optional[str] = Field(default=None, max_length=2000, description="自定义摘要提示词")
 
 

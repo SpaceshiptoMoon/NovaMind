@@ -145,9 +145,9 @@ const modelExpanded = ref(false)
 const configForm = reactive({
   enable_compression: true,
   strategy: 'summary' as 'summary' | 'sliding_window' | 'keep_recent' | 'truncate',
-  threshold: 3000,
-  keep_recent: 2,
-  target_tokens: 500,
+  threshold: 70000,
+  keep_recent: 6,
+  target_tokens: 2000,
   custom_prompt: '',
 })
 
@@ -200,9 +200,9 @@ async function loadConfig(sessionId: string) {
     if (cfg) {
       configForm.enable_compression = cfg.enable_compression ?? true
       configForm.strategy = cfg.strategy || 'summary'
-      configForm.threshold = cfg.threshold || 3000
-      configForm.keep_recent = cfg.keep_recent ?? 2
-      configForm.target_tokens = cfg.target_tokens || 500
+      configForm.threshold = cfg.threshold || 70000
+      configForm.keep_recent = cfg.keep_recent ?? 6
+      configForm.target_tokens = cfg.target_tokens || 2000
       configForm.custom_prompt = cfg.custom_prompt || ''
     }
     const kb = chatStore.sessionConfig?.kb_bindings
