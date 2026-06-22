@@ -133,6 +133,14 @@ class SessionConfig(BaseModel):
     def rag_query_rewriting(self) -> str:
         return self.get_kb_bindings().get("query_rewriting", "none")
 
+    @property
+    def rag_grade_retry_enabled(self) -> bool:
+        return self.get_kb_bindings().get("grade_retry_enabled", False)
+
+    @property
+    def rag_grade_retry_passing_score(self) -> int:
+        return self.get_kb_bindings().get("grade_retry_passing_score", 5)
+
     # ========== 模型生成参数访问方法（会话级持久化） ==========
 
     def get_llm_config(self) -> dict:

@@ -33,6 +33,8 @@ class RagBindingConfig(BaseModel):
     search_mode: str = Field(default="content_hybrid", description="检索模式（默认混合）")
     top_k: int = Field(default=5, ge=1, le=20, description="检索返回条数")
     query_rewriting: str = Field(default="none", description="检索前改写策略: none/completion/synonym/decompose/hyde")
+    grade_retry_enabled: bool = Field(default=False, description="是否启用检索后自评估重试")
+    grade_retry_passing_score: int = Field(default=5, ge=1, le=10, description="检索及格分数（1-10）")
 
 
 # ========== 模型生成参数配置结构（会话级持久化） ==========

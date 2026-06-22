@@ -240,14 +240,45 @@ class AIChatService:
             effective_threshold = score_threshold if refusal_on else None
 
             if len(search_queries) == 1:
-                # 单 query（COMPLETION / SYNONYM / HYDE / NONE）
-                system_prompt, prep_sources = await self._augment_system_prompt_with_retrieval(
-                    system_prompt=system_prompt, query=search_queries[0], user_id=user_id,
-                    enable_web_search=do_web, enable_rag=do_rag,
-                    space_id=rag_space, kb_ids=rag_kb_ids,
-                    top_k=top_k, search_mode=search_mode,
-                    score_threshold=effective_threshold,
-                )
+                grade_retry = getattr(session_config, "rag_grade_retry_enabled", False) if session_config else False
+                if grade_retry:
+                    from src.features.qa.services.grade_retrier import GradeRetrier
+                    llm_for_grade = await self.qa_service._get_compression_llm_client(user_id) if self.qa_service else None
+                    if llm_for_grade:
+                        retrier = GradeRetrier(llm_for_grade)
+                        passing = getattr(session_config, "rag_grade_retry_passing_score", 5)
+
+                        async def _search_fn(q, mode, threshold):
+                            sp, srcs = await self._augment_system_prompt_with_retrieval(
+                                system_prompt=system_prompt, query=q, user_id=user_id,
+                                enable_web_search=do_web, enable_rag=do_rag,
+                                space_id=rag_space, kb_ids=rag_kb_ids,
+                                top_k=top_k, search_mode=mode,
+                                score_threshold=threshold,
+                            )
+                            return srcs, sp
+
+                        prep_sources, system_prompt = await retrier.search_with_retry(
+                            query=search_queries[0], search_fn=_search_fn,
+                            score_threshold=effective_threshold or 0.3,
+                            passing_score=passing,
+                        )
+                    else:
+                        system_prompt, prep_sources = await self._augment_system_prompt_with_retrieval(
+                            system_prompt=system_prompt, query=search_queries[0], user_id=user_id,
+                            enable_web_search=do_web, enable_rag=do_rag,
+                            space_id=rag_space, kb_ids=rag_kb_ids,
+                            top_k=top_k, search_mode=search_mode,
+                            score_threshold=effective_threshold,
+                        )
+                else:
+                    system_prompt, prep_sources = await self._augment_system_prompt_with_retrieval(
+                        system_prompt=system_prompt, query=search_queries[0], user_id=user_id,
+                        enable_web_search=do_web, enable_rag=do_rag,
+                        space_id=rag_space, kb_ids=rag_kb_ids,
+                        top_k=top_k, search_mode=search_mode,
+                        score_threshold=effective_threshold,
+                    )
             else:
                 # DECOMPOSE：多个子问题并发检索，合并 sources
                 import asyncio
