@@ -495,6 +495,25 @@ class ElasticsearchClient:
             return ""
         return ES_SPECIAL_CHARS.sub(r"\\\g<0>", query)
 
+    async def _execute_search(
+        self, index_name: str, body: dict, log_label: str, top_k: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """通用搜索执行：查询 ES → 结果解析 → 异常处理"""
+        try:
+            result = await self.es_client.search(index=index_name, size=top_k, **body)
+            return [
+                {"chunk_id": hit["_id"], "score": hit["_score"], "source": hit["_source"]}
+                for hit in result.get("hits", {}).get("hits", [])
+            ]
+        except NotFoundError:
+            return []
+        except ESConnectionError as e:
+            logger.error("ES 搜索异常（基础设施问题）", index=index_name, error=str(e))
+            raise
+        except Exception as e:
+            logger.warning("%s失败", log_label, index=index_name, error=str(e))
+            return []
+
     async def text_search(
         self, space_id: int, query: str, top_k: int = 5,
         kb_id: Optional[int] = None,
@@ -505,41 +524,9 @@ class ElasticsearchClient:
         filters = self._build_kb_filter(kb_id)
         safe_query = self._escape_query(query)
 
-        try:
-            search_query = {"match": {"content": safe_query}}
-            if filters:
-                body = {
-                    "query": {
-                        "bool": {
-                            "must": [search_query],
-                            "filter": filters,
-                        }
-                    }
-                }
-            else:
-                body = {"query": search_query}
-
-            result = await self.es_client.search(
-                index=index_name,
-                size=top_k,
-                **body,
-            )
-            return [
-                {
-                    "chunk_id": hit["_id"],
-                    "score": hit["_score"],
-                    "source": hit["_source"],
-                }
-                for hit in result.get("hits", {}).get("hits", [])
-            ]
-        except NotFoundError:
-            return []
-        except ESConnectionError as e:
-            logger.error("ES 搜索异常（基础设施问题）", index=index_name, error=str(e))
-            raise
-        except Exception as e:
-            logger.warning("全文搜索失败", index=index_name, error=str(e))
-            return []
+        search_query = {"match": {"content": safe_query}}
+        body = {"query": {"bool": {"must": [search_query], "filter": filters}}} if filters else {"query": search_query}
+        return await self._execute_search(index_name, body, "全文搜索", top_k)
 
     async def hybrid_search(
         self,
@@ -650,30 +637,9 @@ class ElasticsearchClient:
         safe_query = self._escape_query(query)
         filters = self._build_kb_filter(kb_id)
 
-        try:
-            match_query = {"match": {"questions": safe_query}}
-            if filters:
-                body = {"query": {"bool": {"must": [match_query], "filter": filters}}}
-            else:
-                body = {"query": match_query}
-
-            result = await self.es_client.search(index=index_name, size=top_k, **body)
-            return [
-                {
-                    "chunk_id": hit["_id"],
-                    "score": hit["_score"],
-                    "source": hit["_source"],
-                }
-                for hit in result.get("hits", {}).get("hits", [])
-            ]
-        except NotFoundError:
-            return []
-        except ESConnectionError as e:
-            logger.error("ES 搜索异常（基础设施问题）", index=index_name, error=str(e))
-            raise
-        except Exception as e:
-            logger.warning("问题 BM25 检索失败", index=index_name, error=str(e))
-            return []
+        match_query = {"match": {"questions": safe_query}}
+        body = {"query": {"bool": {"must": [match_query], "filter": filters}}} if filters else {"query": match_query}
+        return await self._execute_search(index_name, body, "问题 BM25 检索", top_k)
 
     async def question_vector_search(
         self, space_id: int, query_vector: List[float], top_k: int = 10,
@@ -684,45 +650,22 @@ class ElasticsearchClient:
         index_name = self.generate_index_name(space_id)
         filters = self._build_kb_filter(kb_id)
 
-        try:
-            nested_query = {
-                "nested": {
-                    "path": "question_embeddings",
-                    "query": {
-                        "knn": {
-                            "field": "question_embeddings.vector",
-                            "query_vector": query_vector,
-                            "k": top_k,
-                            "num_candidates": top_k * 3,
-                        }
-                    },
-                    "score_mode": "max",
-                }
-            }
-            if filters:
-                body = {
-                    "query": {
-                        "bool": {
-                            "must": [nested_query],
-                            "filter": filters,
-                        }
+        nested_query = {
+            "nested": {
+                "path": "question_embeddings",
+                "query": {
+                    "knn": {
+                        "field": "question_embeddings.vector",
+                        "query_vector": query_vector,
+                        "k": top_k,
+                        "num_candidates": top_k * 3,
                     }
-                }
-            else:
-                body = {"query": nested_query}
-
-            result = await self.es_client.search(index=index_name, size=top_k, **body)
-            return [
-                {
-                    "chunk_id": hit["_id"],
-                    "score": hit["_score"],
-                    "source": hit["_source"],
-                }
-                for hit in result.get("hits", {}).get("hits", [])
-            ]
-        except Exception as e:
-            logger.warning("问题向量检索失败", index=index_name, error=str(e))
-            return []
+                },
+                "score_mode": "max",
+            }
+        }
+        body = {"query": {"bool": {"must": [nested_query], "filter": filters}}} if filters else {"query": nested_query}
+        return await self._execute_search(index_name, body, "问题向量检索", top_k)
 
     async def question_hybrid_search(
         self, space_id: int, query: str, query_vector: List[float],
