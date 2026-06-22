@@ -66,7 +66,7 @@
         <div class="card-row-between">
           <div>
             <span class="row-label">分级拒答</span>
-            <div class="row-hint" style="margin-top:2px">检索为空拒答，低分标记</div>
+            <div class="row-hint" style="margin-top:2px">过滤低相关结果，检索为空时直接拒答</div>
           </div>
           <el-switch v-model="ragForm.refusal_enabled" size="small" />
         </div>
