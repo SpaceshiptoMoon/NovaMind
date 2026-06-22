@@ -38,14 +38,21 @@
 
     <!-- 主聊天区域 -->
     <div class="chat-main">
-      <!-- 顶部模型栏 -->
-      <div v-if="Object.keys(availableModels).length" class="chat-header">
+      <!-- 顶部栏：模型（左） + 设置（右） -->
+      <div class="chat-header">
         <ModelFanSelector
+          v-if="Object.keys(availableModels).length"
           :model-value="selectedModel"
           :models="availableModels"
           :default-model-name="defaultModelName"
           @update:model-value="selectedModel = $event"
         />
+        <div class="header-right">
+          <button class="setting-group clickable" @click="openSessionConfig">
+            <el-icon :size="14"><Setting /></el-icon>
+            <span class="setting-label">设置</span>
+          </button>
+        </div>
       </div>
 
       <!-- 空状态 / 消息列表 -->
@@ -417,10 +424,40 @@ onBeforeUnmount(() => {
 .chat-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 8px 16px;
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
   background: var(--color-bg-card);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.setting-group.clickable {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+.setting-group.clickable:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+.setting-label {
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .sidebar-empty {
