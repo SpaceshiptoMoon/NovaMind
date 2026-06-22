@@ -563,6 +563,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow-y: auto;
   scroll-behavior: smooth;
+  margin-top: 32px;
 }
 
 .messages-inner {
