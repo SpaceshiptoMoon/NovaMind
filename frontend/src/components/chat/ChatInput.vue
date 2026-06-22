@@ -199,7 +199,7 @@ function handleSendClick() {
    ======================================== */
 .input-area {
   flex-shrink: 0;
-  padding: 0 24px 16px;
+  padding: 0 48px 16px;
   background: var(--color-bg-card);
 }
 

@@ -255,7 +255,7 @@ function handleCopyMessage(content: string, e: MouseEvent) {
    Messages
    ======================================== */
 .messages-inner {
-  padding: 24px 32px var(--space-4);
+  padding: 24px 48px var(--space-4);
   padding: var(--space-6) var(--space-6) var(--space-4);
 }
 
@@ -286,7 +286,7 @@ function handleCopyMessage(content: string, e: MouseEvent) {
 
 /* User message */
 .message-row.user .message-text {
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-3) var(--space-4);
   border-radius: 18px 18px 4px 18px;
   background: var(--color-primary-subtle);
   color: var(--color-primary-hover);
@@ -295,7 +295,7 @@ function handleCopyMessage(content: string, e: MouseEvent) {
 
 /* AI message */
 .message-row.assistant .message-text {
-  padding: var(--space-5) var(--space-5);
+  padding: var(--space-3) var(--space-4);
   border-radius: 18px 18px 18px 4px;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
