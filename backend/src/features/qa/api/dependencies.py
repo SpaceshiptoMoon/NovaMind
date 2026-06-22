@@ -1,6 +1,7 @@
 from src.core.database.database import get_db
 from src.features.qa.services.qa_service import QAService
 from src.features.qa.services.qa_cache_service import QACacheService
+from src.shared.cache.cache_service import CacheService
 from src.features.qa.repository.question_answer_repository import QuestionAnswerRepository
 from src.features.qa.repository.session_config_repository import SessionConfigRepository
 from src.features.qa.repository.session_summary_repository import SessionSummaryRepository
@@ -38,15 +39,8 @@ async def get_session_summary_repository(db: AsyncSession = Depends(get_db)):
 
 
 async def get_qa_cache_service() -> QACacheService:
-    """获取 QACacheService 实例（带 Redis 客户端）"""
-    try:
-        from src.shared.cache.redis_client import get_redis_client
-        redis_client = await get_redis_client()
-        return QACacheService(redis_client=redis_client)
-    except Exception as e:
-        # Redis 不可用时使用纯本地缓存
-        logger.warning("Redis 不可用，降级到本地缓存", error=str(e))
-        return QACacheService(redis_client=None)
+    """获取 QACacheService 实例（委托 CacheService 实现 L1+L2）"""
+    return QACacheService(cache_service=CacheService())
 
 
 async def get_qa_service(
