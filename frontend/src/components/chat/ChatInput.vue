@@ -1,5 +1,5 @@
 <template>
-  <div class="chat-input-wrapper">
+  <div class="input-area">
     <!-- 快速提示 -->
     <div v-if="!inputText && !disabled && quickPromptVisible" class="quick-prompts">
       <button
@@ -60,7 +60,7 @@
     </div>
 
     <!-- 设置栏 -->
-    <div class="settings-row">
+    <div class="input-footer">
       <button class="settings-toggle" @click="settingsExpanded = !settingsExpanded">
         <el-icon :size="12"><Setting /></el-icon>
         <span>{{ settingsSummary }}</span>
@@ -68,18 +68,18 @@
       </button>
       <div v-if="settingsExpanded" class="settings-bar">
         <div class="settings-bar-inner">
-          <label class="settings-item">
-            <span>深度思考</span>
+          <div class="setting-group">
+            <span class="setting-label">深度思考</span>
             <el-switch v-model="enableThinking" size="small" />
-          </label>
-          <label class="settings-item">
-            <span>流式回答</span>
+          </div>
+          <div class="setting-group">
+            <span class="setting-label">流式输出</span>
             <el-switch v-model="useStream" size="small" />
-          </label>
-          <label class="settings-item">
-            <span>🌐联网搜索</span>
+          </div>
+          <div class="setting-group">
+            <span class="setting-label">🌐 联网</span>
             <el-switch v-model="enableWebSearch" size="small" />
-          </label>
+          </div>
         </div>
       </div>
     </div>
@@ -209,162 +209,348 @@ function handleSendClick() {
 </script>
 
 <style scoped>
-.chat-input-wrapper {
-  padding: 8px 16px 12px;
+/* ========================================
+   Input Area — Pill Shape
+   ======================================== */
+.input-area {
+  flex-shrink: 0;
+  padding: 0 var(--space-6) var(--space-5);
+  background: var(--color-bg-card);
 }
-.quick-prompts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-.quick-prompt-btn {
-  padding: 6px 14px;
-  font-size: 13px;
-  border: 1px solid var(--color-border, #E5E7EB);
-  border-radius: 8px;
-  background: var(--el-fill-color, #F9FAFB);
-  color: var(--el-text-color-secondary, #6B7280);
-  cursor: pointer;
-  transition: all 0.15s;
-  line-height: 1.4;
-  white-space: nowrap;
-}
-.quick-prompt-btn:hover {
-  border-color: var(--el-color-primary, #6366F1);
-  color: var(--el-color-primary, #6366F1);
-  background: var(--el-color-primary-light-9, #EEF2FF);
-}
+
 .input-pill {
+  max-width: 860px;
+  margin: 0 auto;
   display: flex;
   align-items: flex-end;
-  gap: 8px;
   padding: 8px 12px;
-  border: 1px solid var(--color-border, #E5E7EB);
-  border-radius: 12px;
-  background: #fff;
-  transition: border-color 0.15s;
+  gap: var(--space-2);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 24px;
+  transition: border-color var(--transition-base), box-shadow var(--transition-base);
 }
+
 .input-pill:focus-within {
-  border-color: var(--el-color-primary, #6366F1);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-muted);
 }
-.attach-btn {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--el-text-color-secondary, #6B7280);
-  cursor: pointer;
-  padding: 0;
-}
-.attach-btn:hover {
-  background: var(--el-fill-color, #F3F4F6);
-}
+
 .chat-textarea {
   flex: 1;
   border: none;
   outline: none;
   resize: none;
-  font-family: inherit;
-  font-size: 14px;
-  line-height: 1.5;
-  max-height: 120px;
-  padding: 4px 0;
-  color: var(--el-text-color-primary, #111827);
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--color-text);
   background: transparent;
+  padding: var(--space-2) var(--space-2);
+  max-height: 160px;
+  overflow-y: auto;
 }
+
 .chat-textarea::placeholder {
-  color: var(--el-text-color-placeholder, #9CA3AF);
+  color: var(--color-text-faint);
 }
+
+.chat-textarea:disabled {
+  opacity: 0.5;
+}
+
 .send-btn {
-  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border: none;
-  border-radius: 8px;
-  background: var(--el-color-primary, #6366F1);
-  color: #fff;
-  cursor: pointer;
-  padding: 0;
-}
-.send-btn:disabled {
-  background: var(--el-fill-color, #E5E7EB);
-  color: var(--el-text-color-placeholder, #9CA3AF);
-  cursor: default;
-}
-.send-btn:not(:disabled):hover {
-  opacity: 0.9;
-}
-.send-btn svg {
-  display: block;
-}
-.cancel-btn {
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  color: var(--color-text-faint);
+  cursor: not-allowed;
+  transition: all var(--transition-base);
   flex-shrink: 0;
+}
+
+.send-btn.active {
+  background: var(--color-primary);
+  color: #FFFFFF;
+  cursor: pointer;
+}
+
+.send-btn.active:hover {
+  background: var(--color-primary-hover);
+  transform: scale(1.05);
+}
+
+.stop-btn {
+  background: var(--color-warning);
+  color: #FFFFFF;
+  cursor: pointer;
+}
+
+.stop-btn:hover {
+  background: var(--color-accent);
+}
+
+.cancel-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--color-border, #E5E7EB);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--el-text-color-secondary, #6B7280);
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-warning);
+  color: #FFFFFF;
   cursor: pointer;
-  padding: 0;
+  transition: all var(--transition-base);
+  flex-shrink: 0;
 }
+
 .cancel-btn:hover {
-  background: var(--el-fill-color, #F3F4F6);
+  background: var(--color-accent);
 }
-.settings-row {
-  margin-top: 8px;
+
+/* ========================================
+   Input Footer — Settings Toggle
+   ======================================== */
+.input-footer {
+  max-width: 860px;
+  margin: 6px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
 }
+
 .settings-toggle {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
   border: none;
-  border-radius: 6px;
   background: transparent;
-  color: var(--el-text-color-secondary, #6B7280);
-  font-size: 12px;
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
   cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
 }
+
 .settings-toggle:hover {
-  background: var(--el-fill-color, #F3F4F6);
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
 }
+
 .toggle-arrow {
-  transition: transform 0.2s;
+  transition: transform var(--transition-fast);
 }
+
 .toggle-arrow.expanded {
   transform: rotate(180deg);
 }
-.settings-bar {
-  margin-top: 8px;
-  padding: 12px;
-  border: 1px solid var(--color-border, #E5E7EB);
-  border-radius: 10px;
-  background: #fff;
+
+.input-hint-inline {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
 }
+
+/* ========================================
+   Settings Bar (Collapsible)
+   ======================================== */
+.settings-slide-enter-active,
+.settings-slide-leave-active {
+  transition: all var(--transition-base);
+  overflow: hidden;
+}
+
+.settings-slide-enter-from,
+.settings-slide-leave-to {
+  opacity: 0;
+  max-height: 0;
+  margin-top: 0;
+}
+
+.settings-slide-enter-to,
+.settings-slide-leave-from {
+  opacity: 1;
+  max-height: 60px;
+  margin-top: 6px;
+}
+
+.settings-bar {
+  max-width: 860px;
+  margin: 6px auto 0;
+  padding: 8px 12px;
+  background: var(--color-bg-card-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
 .settings-bar-inner {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
 }
-.settings-item {
+
+.setting-group {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  font-size: 13px;
-  color: var(--el-text-color-primary, #111827);
+  gap: var(--space-2);
+}
+
+.setting-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.setting-group.clickable {
+  border: none;
+  background: transparent;
+  font-family: var(--font-body);
   cursor: pointer;
+  color: var(--color-text-secondary);
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast);
+}
+
+.setting-group.clickable:hover {
+  color: var(--color-primary);
+}
+
+/* ========================================
+   Attachment Button
+   ======================================== */
+.attach-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.attach-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  color: var(--color-primary);
+}
+
+.attach-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ========================================
+   Attachment Preview Bar
+   ======================================== */
+.attachment-preview-bar {
+  max-width: 860px;
+  margin: 6px auto 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 4px;
+  background: var(--color-bg-card-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-xs);
+  max-width: 240px;
+}
+
+.att-type-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-muted);
+  color: var(--color-primary);
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.att-name {
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.att-size {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.att-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.att-remove:hover {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+
+/* ========================================
+   Quick Prompts
+   ======================================== */
+.quick-prompts {
+  max-width: 860px;
+  margin: 0 auto 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.quick-prompt-btn {
+  padding: 6px 14px;
+  font-size: var(--text-xs);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  font-family: var(--font-body);
+}
+
+.quick-prompt-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-muted);
 }
 </style>

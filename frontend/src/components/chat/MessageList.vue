@@ -240,3 +240,193 @@ function handleCopyMessage(content: string, e: MouseEvent) {
   emit('copy-message', content, e)
 }
 </script>
+
+<style scoped>
+/* ========================================
+   Messages
+   ======================================== */
+.messages-inner {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-6) var(--space-4);
+}
+
+.message-row {
+  display: flex;
+  gap: var(--space-4);
+  margin-bottom: 28px;
+  animation: messageIn 0.35s ease forwards;
+}
+
+@keyframes messageIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.message-row.user { justify-content: flex-end; }
+
+.message-body { max-width: 75%; min-width: 0; }
+
+.message-text {
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  word-break: break-word;
+}
+
+/* User message */
+.message-row.user .message-text {
+  padding: var(--space-3) var(--space-4);
+  border-radius: 18px 18px 4px 18px;
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-hover);
+  white-space: pre-wrap;
+}
+
+/* AI message */
+.message-row.assistant .message-text {
+  padding: var(--space-4) var(--space-5);
+  border-radius: 18px 18px 18px 4px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+}
+
+/* Reasoning */
+.reasoning-section {
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: var(--color-bg-card-elevated);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+.reasoning-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; cursor: pointer; user-select: none;
+  font-size: 13px; color: var(--color-text-secondary);
+}
+.reasoning-header:hover { background: var(--color-bg-hover); }
+.reasoning-label { font-weight: 500; }
+
+.expand-icon { transition: transform 0.2s; }
+.expand-icon.expanded { transform: rotate(180deg); }
+.reasoning-body {
+  padding: 8px 12px 12px;
+  border-top: 1px solid var(--color-border);
+  font-size: 13px; color: var(--color-text-secondary);
+  line-height: 1.6; max-height: 400px; overflow-y: auto;
+}
+.reasoning-text { white-space: pre-wrap; word-break: break-word; }
+
+/* Message actions */
+.message-actions {
+  display: flex; gap: var(--space-2);
+  padding: 2px 2px 0; opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+.message-row:hover .message-actions { opacity: 1; }
+
+.msg-copy-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: none; background: transparent;
+  font-family: var(--font-body); font-size: var(--text-xs);
+  color: var(--color-text-muted); cursor: pointer;
+  padding: 3px 8px; border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+.msg-copy-btn:hover { background: var(--color-bg-hover); color: var(--color-text-secondary); }
+.msg-copy-btn.copied { color: var(--color-success); }
+
+/* Typing indicator */
+.typing-row {
+  display: flex; gap: var(--space-4); margin-bottom: 28px;
+  animation: messageIn 0.35s ease forwards;
+}
+.typing-bubble {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-card); border: 1px solid var(--color-border);
+  border-radius: 18px 18px 18px 4px;
+}
+.typing-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--color-text-faint);
+  animation: dotPulse 1.4s infinite both;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dotPulse {
+  0%, 80%, 100% { opacity: 0.3; }
+  40% { opacity: 1; }
+}
+
+/* Attachments */
+.message-attachments {
+  display: flex; flex-direction: column; gap: 6px; margin-top: 6px;
+}
+.file-card {
+  display: flex; align-items: center; width: 260px;
+  padding: 10px 12px; border-radius: 10px;
+  background: rgba(255,255,255,0.55); cursor: pointer;
+  transition: background 0.15s;
+}
+.file-card:hover { background: rgba(255,255,255,0.7); }
+.file-card .file-icon-box {
+  width: 40px; height: 40px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  margin-right: 10px; flex-shrink: 0;
+}
+.file-icon-box .file-ext-label {
+  font-size: 11px; font-weight: 700; color: #fff; letter-spacing: 0.3px;
+}
+.file-icon-box.file-pdf  { background: #ef4444; }
+.file-icon-box.file-doc  { background: #6366f1; }
+.file-icon-box.file-txt  { background: #8b5cf6; }
+.file-icon-box.file-md   { background: #06b6d4; }
+.file-icon-box.file-default { background: #6b7280; }
+.file-card .file-info { flex: 1; overflow: hidden; }
+.file-card .file-name {
+  font-size: 13px; color: var(--color-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.file-card .file-meta { font-size: 11px; color: var(--color-text-muted); margin-top: 2px; }
+.file-card .file-download-btn {
+  width: 28px; height: 28px; display: flex;
+  align-items: center; justify-content: center; border-radius: 6px;
+  color: var(--color-text-muted); flex-shrink: 0; margin-left: 4px;
+  transition: all 0.15s;
+}
+.file-card:hover .file-download-btn {
+  color: var(--color-text); background: var(--color-bg-hover);
+}
+
+/* Image card */
+.image-card {
+  display: inline-flex; flex-direction: column; cursor: pointer;
+  border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--color-border); max-width: 200px;
+  transition: border-color 0.15s;
+}
+.image-card:hover { border-color: var(--color-primary); }
+.image-thumb { width: 100%; max-height: 150px; object-fit: cover; display: block; }
+.image-thumb-loading {
+  height: 80px; display: flex; align-items: center; justify-content: center;
+  background: var(--color-bg-hover); color: var(--color-text-muted); font-size: var(--text-xs);
+}
+.image-info { padding: 4px 8px; display: flex; gap: 6px; align-items: center; background: var(--color-bg-card); }
+.image-name { font-size: var(--text-xs); color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.image-size { font-size: 10px; color: var(--color-text-muted); flex-shrink: 0; }
+
+/* Refused / Low-confidence */
+.refused-banner {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 12px; margin-bottom: 8px; border-radius: 10px;
+  background: rgba(239,68,68,0.1); color: #ef4444;
+  font-size: 13px; border: 1px solid #ef4444;
+}
+.message-content { position: relative; }
+.message-content.low-confidence { border-left: 3px solid #f59e0b; }
+.low-confidence-tip {
+  margin-top: 8px; padding: 6px 10px; border-radius: 6px;
+  background: rgba(245,158,11,0.1); color: #f59e0b; font-size: 12px;
+}
+</style>
