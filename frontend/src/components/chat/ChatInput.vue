@@ -47,6 +47,18 @@
       </button>
     </div>
 
+    <!-- 快捷操作 chips -->
+    <div class="quick-actions">
+      <button class="action-chip" :class="{ active: enableThinking }" @click="enableThinking = !enableThinking">
+        <span class="action-icon">🧠</span>
+        <span>深度思考</span>
+      </button>
+      <button class="action-chip" :class="{ active: enableWebSearch }" @click="enableWebSearch = !enableWebSearch">
+        <span class="action-icon">🌐</span>
+        <span>联网搜索</span>
+      </button>
+    </div>
+
     <!-- 设置栏 -->
     <div class="input-footer">
       <button class="settings-toggle" @click="settingsExpanded = !settingsExpanded">
@@ -56,18 +68,6 @@
       </button>
       <div v-if="settingsExpanded" class="settings-bar">
         <div class="settings-bar-inner">
-          <div class="setting-group">
-            <span class="setting-label">深度思考</span>
-            <el-switch v-model="enableThinking" size="small" />
-          </div>
-          <div class="setting-group">
-            <span class="setting-label">流式输出</span>
-            <el-switch v-model="useStream" size="small" />
-          </div>
-          <div class="setting-group">
-            <span class="setting-label">🌐 联网</span>
-            <el-switch v-model="enableWebSearch" size="small" />
-          </div>
           <button class="setting-group clickable" @click="$emit('open-config')">
             <span class="setting-label">会话设置</span>
             <el-icon :size="12"><ArrowRight /></el-icon>
@@ -289,6 +289,49 @@ function handleSendClick() {
 
 .cancel-btn:hover {
   background: var(--color-accent);
+}
+
+/* ========================================
+   Quick Actions — Visible Chips
+   ======================================== */
+.quick-actions {
+  max-width: 860px;
+  margin: 8px auto 0;
+  display: flex;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.action-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-card);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.action-chip:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.action-chip.active {
+  background: var(--color-primary-muted);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  font-weight: var(--weight-medium);
+}
+
+.action-icon {
+  font-size: 13px;
+  line-height: 1;
 }
 
 /* ========================================
