@@ -88,6 +88,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { ElMessage } from 'element-plus'
 import { Paperclip, VideoPause, Setting, ArrowDown } from '@element-plus/icons-vue'
 import { chatApi } from '@/api/chat'
 
