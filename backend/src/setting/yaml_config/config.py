@@ -130,9 +130,9 @@ class LLMConfig:
     """LLM 压缩配置（连接凭证已迁移到数据库 user_model_configs）"""
     # 压缩配置（对应 qa_session_configs 表字段）
     compression_strategy: str = "summary"
-    compression_threshold: int = 3000
-    keep_recent_messages: int = 2
-    compression_target_tokens: int = 500
+    compression_threshold: int = 70000
+    keep_recent_messages: int = 6
+    compression_target_tokens: int = 2000
     enable_compression: bool = True
     custom_summary_prompt: Optional[str] = None
 
