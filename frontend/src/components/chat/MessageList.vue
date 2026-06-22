@@ -255,7 +255,7 @@ function handleCopyMessage(content: string, e: MouseEvent) {
    Messages
    ======================================== */
 .messages-inner {
-  padding: 64px 32px var(--space-4);
+  padding: 24px 32px var(--space-4);
   padding: var(--space-6) var(--space-6) var(--space-4);
 }
 
