@@ -101,7 +101,8 @@
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { sessionApi, knowledgeBaseApi } from '@/api'
+import { sessionApi } from '@/api/session'
+import { knowledgeBaseApi } from '@/api/knowledgeBase'
 import { useChatStore } from '@/stores/chat'
 import { useSpaceStore } from '@/stores/space'
 
