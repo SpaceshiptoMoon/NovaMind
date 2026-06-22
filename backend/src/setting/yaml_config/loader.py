@@ -220,9 +220,9 @@ def create_config_from_dict(data: dict) -> AppConfig:
     llm = data.get("llm", {})
     config.llm = LLMConfig(
         compression_strategy=llm.get("compression_strategy", "summary"),
-        compression_threshold=llm.get("compression_threshold", 3000),
-        keep_recent_messages=llm.get("keep_recent_messages", 2),
-        compression_target_tokens=llm.get("compression_target_tokens", 500),
+        compression_threshold=llm.get("compression_threshold", 70000),
+        keep_recent_messages=llm.get("keep_recent_messages", 6),
+        compression_target_tokens=llm.get("compression_target_tokens", 2000),
         enable_compression=llm.get("enable_compression", True),
         custom_summary_prompt=llm.get("custom_summary_prompt"),
     )
