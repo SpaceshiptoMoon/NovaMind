@@ -304,11 +304,11 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-3);
+  padding: 10px 12px;
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: background var(--transition-fast);
-  margin-bottom: 2px;
+  margin-bottom: 1px;
   position: relative;
 }
 
@@ -390,7 +390,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--color-bg-card);
+  background: var(--color-bg-elevated);
 }
 
 /* ========================================
