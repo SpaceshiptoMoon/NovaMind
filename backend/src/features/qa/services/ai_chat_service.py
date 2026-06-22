@@ -324,8 +324,10 @@ class AIChatService:
         if search_queries and search_queries[0] != content:
             traces.append({"type": "rewrite", "original": content, "rewritten": search_queries[0], "strategy": rewrite_strategy})
         if prep_sources:
+            web_count = sum(1 for s in prep_sources if s.get("kind") == "web")
+            kb_count = len(prep_sources) - web_count
             mode_label = "web" if do_web and not do_rag else search_mode
-            traces.append({"type": "search", "mode": mode_label, "sources_count": len(prep_sources)})
+            traces.append({"type": "search", "mode": mode_label, "sources_count": len(prep_sources), "web_count": web_count, "kb_count": kb_count})
         elif do_rag:
             traces.append({"type": "search", "mode": search_mode, "sources_count": 0, "note": "无匹配结果"})
 
@@ -382,6 +384,9 @@ class AIChatService:
                 res = await self._retrieve_web(query=query, max_results=5)
                 if res:
                     raw_sources.extend(res[1])
+                    self.logger.info("联网搜索完成", count=len(res[1]))
+                else:
+                    self.logger.warning("联网搜索无结果（DuckDuckGo 可能限流或不可用）")
             except Exception as e:
                 self.logger.warning("联网搜索失败，跳过", error=str(e))
 
