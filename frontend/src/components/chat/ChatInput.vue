@@ -69,29 +69,13 @@
       </button>
     </div>
 
-    <!-- 设置栏 -->
-    <div class="input-footer">
-      <button class="settings-toggle" @click="settingsExpanded = !settingsExpanded">
-        <el-icon :size="12"><Setting /></el-icon>
-        <span>{{ settingsSummary }}</span>
-        <el-icon :size="8" class="toggle-arrow" :class="{ expanded: settingsExpanded }"><ArrowDown /></el-icon>
-      </button>
-      <div v-if="settingsExpanded" class="settings-bar">
-        <div class="settings-bar-inner">
-          <button class="setting-group clickable" @click="$emit('open-config')">
-            <span class="setting-label">会话设置</span>
-            <el-icon :size="12"><ArrowRight /></el-icon>
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Paperclip, VideoPause, Setting, ArrowDown, ArrowRight, Close } from '@element-plus/icons-vue'
+import { Paperclip, VideoPause, Close } from '@element-plus/icons-vue'
 import { chatApi } from '@/api/chat'
 import { useChatAttachments } from '@/composables/useChatAttachments'
 
@@ -352,117 +336,6 @@ function handleSendClick() {
 .action-icon {
   font-size: 13px;
   line-height: 1;
-}
-
-/* ========================================
-   Input Footer — Settings Toggle
-   ======================================== */
-.input-footer {
-  max-width: 860px;
-  margin: 6px auto 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 4px;
-}
-
-.settings-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border: none;
-  background: transparent;
-  font-family: var(--font-body);
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  transition: all var(--transition-fast);
-}
-
-.settings-toggle:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-secondary);
-}
-
-.toggle-arrow {
-  transition: transform var(--transition-fast);
-}
-
-.toggle-arrow.expanded {
-  transform: rotate(180deg);
-}
-
-.input-hint-inline {
-  font-size: var(--text-xs);
-  color: var(--color-text-faint);
-}
-
-/* ========================================
-   Settings Bar (Collapsible)
-   ======================================== */
-.settings-slide-enter-active,
-.settings-slide-leave-active {
-  transition: all var(--transition-base);
-  overflow: hidden;
-}
-
-.settings-slide-enter-from,
-.settings-slide-leave-to {
-  opacity: 0;
-  max-height: 0;
-  margin-top: 0;
-}
-
-.settings-slide-enter-to,
-.settings-slide-leave-from {
-  opacity: 1;
-  max-height: 60px;
-  margin-top: 6px;
-}
-
-.settings-bar {
-  max-width: 860px;
-  margin: 6px auto 0;
-  padding: 8px 12px;
-  background: var(--color-bg-card-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-}
-
-.settings-bar-inner {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-}
-
-.setting-group {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.setting-label {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  white-space: nowrap;
-}
-
-.setting-group.clickable {
-  border: none;
-  background: transparent;
-  font-family: var(--font-body);
-  cursor: pointer;
-  color: var(--color-text-secondary);
-  padding: 2px 4px;
-  border-radius: var(--radius-sm);
-  transition: color var(--transition-fast);
-}
-
-.setting-group.clickable:hover {
-  color: var(--color-primary);
 }
 
 /* ========================================
