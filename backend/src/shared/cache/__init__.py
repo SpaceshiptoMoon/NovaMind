@@ -9,10 +9,6 @@ from .lru_cache import (
     session_summary_cache,
     session_messages_cache,
 )
-from .cache_decorator import (
-    cache_result,
-    invalidate_cache,
-)
 from .cache_service import (
     CacheService,
     cached,
@@ -25,9 +21,6 @@ __all__ = [
     "session_config_cache",
     "session_summary_cache",
     "session_messages_cache",
-    # 缓存装饰器
-    "cache_result",
-    "invalidate_cache",
     # 高级缓存服务
     "CacheService",
     "cached",
