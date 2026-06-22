@@ -49,17 +49,17 @@
         />
       </div>
 
-      <!-- 模型选择 -->
-      <div v-if="Object.keys(availableModels).length" class="model-selector-strip">
-        <ModelFanSelector v-model="selectedModel" :models="availableModels" :default-model-name="defaultModelName" />
-      </div>
       <!-- 输入区域 -->
       <ChatInput
         :disabled="chatStore.isStreaming || chatStore.loading"
         :pending-attachments-count="chatStore.pendingAttachments.length"
+        :available-models="availableModels"
+        :default-model-name="defaultModelName"
+        :selected-model="selectedModel"
         @send="handleSend"
         @cancel-stream="handleCancelStream"
         @open-config="openSessionConfig"
+        @update:selected-model="selectedModel = $event"
       />
     </div>
 
@@ -80,7 +80,6 @@ import { sessionApi } from '@/api/session'
 import { useSpaceStore } from '@/stores/space'
 import { knowledgeBaseApi } from '@/api/knowledgeBase'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
-import ModelFanSelector from '@/components/common/ModelFanSelector.vue'
 import SourceList from '@/components/chat/SourceList.vue'
 import type { ChatMessage, ChatSource } from '@/api/types'
 import { useChatAttachments } from '@/composables/useChatAttachments'
