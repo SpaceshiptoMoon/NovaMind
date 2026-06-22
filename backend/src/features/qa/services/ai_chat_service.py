@@ -324,7 +324,8 @@ class AIChatService:
         if search_queries and search_queries[0] != content:
             traces.append({"type": "rewrite", "original": content, "rewritten": search_queries[0], "strategy": rewrite_strategy})
         if prep_sources:
-            traces.append({"type": "search", "mode": search_mode, "sources_count": len(prep_sources)})
+            mode_label = "web" if do_web and not do_rag else search_mode
+            traces.append({"type": "search", "mode": mode_label, "sources_count": len(prep_sources)})
         elif do_rag:
             traces.append({"type": "search", "mode": search_mode, "sources_count": 0, "note": "无匹配结果"})
 
