@@ -1,6 +1,15 @@
 <template>
   <div v-for="msg in messages" :key="msg.id || msg._id" class="message-row" :class="msg.role">
-    <div class="message-body">      <template v-if="msg.role === 'assistant'">
+    <div class="message-body">
+      <!-- 思考阶段：无内容无推理时不渲染空白气泡 -->
+      <div v-if="msg.role === 'assistant' && !msg.content && !msg.reasoning && isStreaming" class="thinking-placeholder">
+        <div class="typing-bubble">
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+          <span class="typing-dot"></span>
+        </div>
+      </div>
+      <template v-if="msg.role === 'assistant'">
         <div v-if="msg.reasoning" class="reasoning-section">
           <div class="reasoning-header" @click="toggleReasoning(msg.id)">
             <span class="reasoning-label">思考过程</span>
@@ -17,6 +26,7 @@
           <span>未在知识库中找到相关资料，已拒答</span>
         </div>
         <div
+          v-if="msg.content"
           class="message-content"
           :class="{ 'low-confidence': getAnswerStatus(msg) === 'low_confidence' }"
           :data-msg-id="msg.id"
@@ -265,6 +275,8 @@ function handleCopyMessage(content: string, e: MouseEvent) {
 .message-row.user { justify-content: flex-end; }
 
 .message-body { max-width: 75%; min-width: 0; }
+
+.thinking-placeholder { margin-bottom: 8px; }
 
 .message-text {
   font-size: var(--text-base);
