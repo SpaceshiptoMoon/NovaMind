@@ -14,6 +14,10 @@ import time
 import requests
 from typing import Optional
 
+import pytest
+
+pytestmark = pytest.mark.integration
+
 # ======================== 配置 ========================
 BASE_URL = "http://127.0.0.1:8100"
 ADMIN_USERNAME = "admin"

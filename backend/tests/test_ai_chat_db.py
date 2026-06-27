@@ -19,6 +19,9 @@ import string
 import sys
 
 import requests
+import pytest
+
+pytestmark = pytest.mark.integration
 
 BASE_URL = "http://127.0.0.1:8100"
 TIMEOUT = 30

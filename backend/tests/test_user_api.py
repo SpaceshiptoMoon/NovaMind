@@ -19,6 +19,9 @@ import sys
 import time
 
 import requests
+import pytest
+
+pytestmark = pytest.mark.integration
 
 # ============================================================
 # 基础配置

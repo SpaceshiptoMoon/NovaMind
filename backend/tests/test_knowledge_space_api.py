@@ -15,6 +15,9 @@ import traceback
 from typing import Optional
 
 import requests
+import pytest
+
+pytestmark = pytest.mark.integration
 
 # ======================== 配置 ========================
 BASE_URL = "http://127.0.0.1:8100"
