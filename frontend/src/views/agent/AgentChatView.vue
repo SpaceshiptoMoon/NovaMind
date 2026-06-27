@@ -647,7 +647,7 @@ onBeforeUnmount(() => {
    ======================================== */
 .chat-sidebar {
   width: 260px;
-  border-right: 1px solid var(--color-border-light);
+  border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -660,7 +660,7 @@ onBeforeUnmount(() => {
 
 .sidebar-top {
   padding: var(--space-4);
-  border-bottom: 1px solid var(--color-border-light);
+  border-bottom: 1px solid var(--color-divider);
   display: flex;
   gap: var(--space-2);
   align-items: center;
@@ -693,20 +693,19 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: var(--space-2);
   padding: var(--space-3);
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-lg);
-  background: transparent;
-  color: var(--color-text-secondary);
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-muted);
+  color: var(--color-primary);
   font-family: var(--font-body);
   font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   cursor: pointer;
   transition: all var(--transition-base);
 }
 
 .new-chat-btn:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  background: var(--color-primary-muted);
+  background: #dbeafe;
 }
 
 .conversation-list {
@@ -806,7 +805,7 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--color-bg-card);
+  background: var(--color-bg-elevated);
 }
 
 /* ========================================
@@ -873,7 +872,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  max-width: var(--container-width-sm);
+  max-width: 720px;
   width: 100%;
 }
 
@@ -895,16 +894,18 @@ onBeforeUnmount(() => {
 
 .welcome-title {
   font-family: var(--font-display);
-  font-size: var(--text-2xl);
+  font-size: 32px;
   font-weight: var(--weight-bold);
   color: var(--color-text);
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
+  letter-spacing: var(--tracking-tight);
+  text-align: center;
 }
 
 .welcome-desc {
-  font-size: var(--text-sm);
+  font-size: var(--text-base);
   color: var(--color-text-muted);
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-8);
   text-align: center;
 }
 
@@ -918,7 +919,7 @@ onBeforeUnmount(() => {
 .prompt-card {
   display: flex;
   align-items: flex-start;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-4) var(--space-5);
   border: 1px solid transparent;
   border-radius: var(--radius-lg);
   background: transparent;
@@ -929,9 +930,8 @@ onBeforeUnmount(() => {
 }
 
 .prompt-card:hover {
-  border-color: var(--color-border);
+  border-color: var(--color-text-faint);
   background: var(--color-bg-card);
-  box-shadow: var(--shadow-sm);
 }
 
 .prompt-text {

@@ -222,14 +222,14 @@ export const useChatStore = defineStore('chat', () => {
           // 首字前下发的检索来源，写入 extra.sources 供正文角标与来源列表渲染
           const lastMsg = messages.value[messages.value.length - 1]
           if (lastMsg?.role === 'assistant' && sources?.length) {
-            lastMsg.extra = { ...(lastMsg.extra || {}), sources }
+            lastMsg.extra = { ...lastMsg.extra, sources }
           }
         },
         onTrace(trace) {
           const lastMsg = messages.value[messages.value.length - 1]
           if (lastMsg?.role === 'assistant') {
             const traces = (lastMsg.extra?.traces as Record<string, unknown>[]) || []
-            lastMsg.extra = { ...(lastMsg.extra || {}), traces: [...traces, trace] }
+            lastMsg.extra = { ...lastMsg.extra, traces: [...traces, trace] }
           }
         },
         onReasoning(text) {
@@ -252,7 +252,7 @@ export const useChatStore = defineStore('chat', () => {
             lastMsg.content = d.content || streamingContent.value
             if (d.id) lastMsg.id = d.id
             // 来源 / 回答状态兜底（与 sources 事件互补，刷新后历史消息也能还原）
-            const extra: Record<string, unknown> = { ...(lastMsg.extra || {}) }
+            const extra: Record<string, unknown> = { ...lastMsg.extra }
             if (d.sources?.length) extra.sources = d.sources
             if (d.answer_status) extra.answer_status = d.answer_status
             if (d.confidence !== undefined && d.confidence !== null) extra.confidence = d.confidence
