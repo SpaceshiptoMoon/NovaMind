@@ -110,6 +110,12 @@ const router = createRouter({
               meta: { title: '知识库' },
             },
             {
+              path: ':id/knowledge-bases/:kbId/config',
+              name: 'KbConfig',
+              component: () => import('@/views/space/KbConfigView.vue'),
+              meta: { title: '知识库配置' },
+            },
+            {
               path: ':id/knowledge-bases/:kbId/documents',
               name: 'Documents',
               component: () => import('@/views/space/DocumentView.vue'),

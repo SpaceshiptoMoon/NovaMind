@@ -64,7 +64,7 @@ repository/   → 数据访问 (SQLAlchemy async)
 | 模块 | 后端路由前缀 | 前端页面路由 |
 |------|-------------|-------------|
 | user | `/api/v1/user` | `/login`, `/home/profile`, `/home/settings/models`, `/home/admin/users` |
-| knowledge_space | `/api/v1/spaces` | `/home/spaces`, `/home/spaces/:id/knowledge-bases`, `.../search`, `.../evaluation` |
+| knowledge_space | `/api/v1/spaces` | `/home/spaces`, `/home/spaces/:id/knowledge-bases`, `.../config`, `.../search`, `.../evaluation` |
 | qa | `/api/v1/ai-chat`, `/api/v1/qa` | `/home/workspace/chat` |
 | deep_research | `/api/v1/spaces/{id}/deep-research` | `/home/workspace/research/:spaceId` |
 | agent | `/api/v1/agent` | `/home/workspace/agents`, `/home/workspace/agents/:agentId/chat` |
