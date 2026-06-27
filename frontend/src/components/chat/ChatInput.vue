@@ -49,11 +49,11 @@
 
     <!-- 附件预览 -->
     <div v-if="uploadingFiles || (pendingAttachmentsCount ?? 0) > 0" class="attachment-preview-bar">
-      <div v-for="att in uploadPreview" :key="att.filename" class="attachment-chip">
+      <div v-for="att in chatStore.pendingAttachments" :key="att.id" class="attachment-chip">
         <span class="att-type-badge">{{ getFileExt(att.filename) }}</span>
         <span class="att-name">{{ att.filename }}</span>
         <span class="att-size">{{ formatFileSize(att.file_size) }}</span>
-        <button class="att-remove" @click="removeUploadFile(att.filename)"><el-icon :size="10"><Close /></el-icon></button>
+        <button class="att-remove" @click="removeUploadFile(att.id)"><el-icon :size="10"><Close /></el-icon></button>
       </div>
     </div>
 
@@ -77,10 +77,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Paperclip, VideoPause, Close } from '@element-plus/icons-vue'
-import { chatApi } from '@/api/chat'
+import { useChatStore } from '@/stores/chat'
 import { useChatAttachments } from '@/composables/useChatAttachments'
 
 const props = defineProps<{
@@ -96,27 +96,17 @@ const emit = defineEmits<{
     attachmentIds?: number[]
   }]
   'cancel-stream': []
-  'attachment-added': []
-  'open-config': []
 }>()
 
+const chatStore = useChatStore()
 const inputText = ref('')
 const textareaRef = ref<HTMLTextAreaElement>()
 const fileInputRef = ref<HTMLInputElement>()
 const useStream = ref(true)
 const enableThinking = ref(false)
 const enableWebSearch = ref(false)
-const settingsExpanded = ref(false)
 const uploadingFiles = ref(false)
-const uploadPreview = ref<{ filename: string; file_size: number; file_type: string }[]>([])
 const { getFileExt, formatFileSize } = useChatAttachments()
-const settingsSummary = computed(() => {
-  const parts: string[] = []
-  if (enableThinking.value) parts.push('深度思考')
-  if (useStream.value) parts.push('流式')
-  if (enableWebSearch.value) parts.push('联网')
-  return parts.join(' · ') || '能力设置'
-})
 
 function autoResize() {
   if (!textareaRef.value) return
@@ -151,28 +141,24 @@ async function handleFileSelected(e: Event) {
       continue
     }
     validFiles.push(file)
-    uploadPreview.value.push({ filename: file.name, file_size: file.size, file_type: ext })
   }
   if (validFiles.length === 0) return
   uploadingFiles.value = true
   try {
-    const formData = new FormData()
+    // 后端为单文件端点，逐个上传；store.uploadAttachment 会自动填充 pendingAttachments
     for (const f of validFiles) {
-      formData.append('files', f, f.name)
+      await chatStore.uploadAttachment(f)
     }
-    await chatApi.uploadAttachments(formData)
-    emit('attachment-added')
   } catch {
-    ElMessage.error(`上传失败`)
+    ElMessage.error('上传失败')
   } finally {
     uploadingFiles.value = false
-    uploadPreview.value = []
     if (fileInputRef.value) fileInputRef.value.value = ''
   }
 }
 
-function removeUploadFile(filename: string) {
-  uploadPreview.value = uploadPreview.value.filter(f => f.filename !== filename)
+function removeUploadFile(attachmentId: number) {
+  chatStore.removePendingAttachment(attachmentId)
 }
 
 function handleSendClick() {
@@ -182,7 +168,6 @@ function handleSendClick() {
 
   const sendContent = content || (hasAttachments ? '请分析上传的文档' : '')
   inputText.value = ''
-  uploadPreview.value = []
   autoResize()
 
   emit('send', sendContent, {

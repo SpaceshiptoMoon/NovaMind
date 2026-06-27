@@ -216,10 +216,13 @@ class AIChatService:
         prep_refused = False
         prep_status = "answered"
         prep_confidence: Optional[float] = None
+        prep_raw_count = 0             # 过滤前原始检索数量（trace 区分“无结果”vs“被阈值过滤”）
+        grade_traces: List[dict] = []  # grade→retry 每轮打分记录
 
         # ===== Query Rewriting（可插拔组件） =====
         search_queries = [content]
         rewrite_strategy = getattr(session_config, "rag_query_rewriting", "none") if session_config else "none"
+        rewrite_degraded = False  # 用户开了改写但实际降级（LLM 失败/不可用）→ 透传到 trace
         if rewrite_strategy != "none" and (do_web or do_rag):
             from src.features.qa.services.query_rewriter import QueryRewriter, RewriteStrategy
             llm_for_rewrite = await self.qa_service._get_compression_llm_client(user_id) if self.qa_service else None
@@ -235,6 +238,10 @@ class AIChatService:
                 )
                 if result.queries:
                     search_queries = result.queries
+                rewrite_degraded = result.degraded
+            else:
+                # 用户配置了改写策略，但拿不到改写 LLM → 实际未执行，标记降级
+                rewrite_degraded = True
 
         if do_web or do_rag:
             # refusal_on 启用阈值过滤
@@ -249,23 +256,29 @@ class AIChatService:
                         retrier = GradeRetrier(llm_for_grade)
                         passing = getattr(session_config, "rag_grade_retry_passing_score", 5)
 
+                        last_raw_count = 0  # 闭包捕获最近一次过滤前数量，供 trace 区分成因
+
                         async def _search_fn(q, mode, threshold):
-                            sp, srcs = await self._augment_system_prompt_with_retrieval(
+                            nonlocal last_raw_count
+                            sp, srcs, rc = await self._augment_system_prompt_with_retrieval(
                                 system_prompt=system_prompt, query=q, user_id=user_id,
                                 enable_web_search=do_web, enable_rag=do_rag,
                                 space_id=rag_space, kb_ids=rag_kb_ids,
                                 top_k=top_k, search_mode=mode,
                                 score_threshold=threshold,
                             )
+                            last_raw_count = rc
                             return srcs, sp
 
-                        prep_sources, system_prompt = await retrier.search_with_retry(
+                        prep_sources, system_prompt, grade_traces = await retrier.search_with_retry(
                             query=search_queries[0], search_fn=_search_fn,
-                            score_threshold=effective_threshold or 0.3,
+                            initial_mode=search_mode,
+                            score_threshold=effective_threshold,
                             passing_score=passing,
                         )
+                        prep_raw_count = last_raw_count
                     else:
-                        system_prompt, prep_sources = await self._augment_system_prompt_with_retrieval(
+                        system_prompt, prep_sources, prep_raw_count = await self._augment_system_prompt_with_retrieval(
                             system_prompt=system_prompt, query=search_queries[0], user_id=user_id,
                             enable_web_search=do_web, enable_rag=do_rag,
                             space_id=rag_space, kb_ids=rag_kb_ids,
@@ -273,7 +286,7 @@ class AIChatService:
                             score_threshold=effective_threshold,
                         )
                 else:
-                    system_prompt, prep_sources = await self._augment_system_prompt_with_retrieval(
+                    system_prompt, prep_sources, prep_raw_count = await self._augment_system_prompt_with_retrieval(
                         system_prompt=system_prompt, query=search_queries[0], user_id=user_id,
                         enable_web_search=do_web, enable_rag=do_rag,
                         space_id=rag_space, kb_ids=rag_kb_ids,
@@ -281,26 +294,60 @@ class AIChatService:
                         score_threshold=effective_threshold,
                     )
             else:
-                # DECOMPOSE：多个子问题并发检索，合并 sources
-                import asyncio
-                tasks = [
-                    self._augment_system_prompt_with_retrieval(
-                        system_prompt=system_prompt, query=sq, user_id=user_id,
-                        enable_web_search=do_web, enable_rag=do_rag,
-                        space_id=rag_space, kb_ids=rag_kb_ids,
-                        top_k=top_k, search_mode=search_mode,
-                        score_threshold=effective_threshold,
+                # DECOMPOSE：多子查询并发检索 + 合并去重；开启 grade 时整体打分 + 重试（设计A）
+                grade_retry = getattr(session_config, "rag_grade_retry_enabled", False) if session_config else False
+                llm_for_grade = (await self.qa_service._get_compression_llm_client(user_id) if self.qa_service else None) if grade_retry else None
+
+                if grade_retry and llm_for_grade:
+                    # grade 开 + 有 grade LLM：循环「检索所有子查询→合并→用原问题整体打分」，不通过则切 mode + 降阈值重检索
+                    from src.features.qa.services.grade_retrier import GradeRetrier
+                    retrier = GradeRetrier(llm_for_grade)
+                    passing = getattr(session_config, "rag_grade_retry_passing_score", 5)
+                    # mode 序列：用户配的 search_mode 首轮优先（复用单查询 search_with_retry 的语义）
+                    default_modes = ["content_hybrid", "content_bm25", "all_hybrid"]
+                    modes = [search_mode] + [m for m in default_modes if m != search_mode]
+                    max_retries = 2
+                    last_deduped: List[dict] = []
+                    last_raw_count = 0
+                    for attempt in range(max_retries + 1):
+                        mode = modes[min(attempt, len(modes) - 1)]
+                        threshold = effective_threshold * (0.7 ** attempt) if effective_threshold is not None else None
+                        deduped, rc = await self._decompose_retrieve(
+                            search_queries, system_prompt, user_id, do_web, do_rag,
+                            rag_space, rag_kb_ids, top_k, mode, threshold,
+                        )
+                        if not deduped:
+                            grade_traces.append({
+                                "type": "grade", "attempt": attempt, "mode": mode,
+                                "threshold": round(threshold, 4) if threshold is not None else None,
+                                "score": 0, "passed": False, "reason": "无检索结果",
+                            })
+                            last_deduped, last_raw_count = deduped, rc
+                            continue
+                        grade_result = await retrier.grade(content, deduped, passing)
+                        grade_traces.append({
+                            "type": "grade", "attempt": attempt, "mode": mode,
+                            "threshold": round(threshold, 4) if threshold is not None else None,
+                            "score": grade_result.score, "passed": grade_result.passed,
+                            "reason": grade_result.reason,
+                        })
+                        last_deduped, last_raw_count = deduped, rc
+                        if grade_result.passed:
+                            break
+                    prep_sources = last_deduped
+                    prep_raw_count = last_raw_count
+                    if prep_sources:
+                        system_prompt = self._build_augmented_prompt(system_prompt, prep_sources)
+                else:
+                    # grade 关闭或无 grade LLM：单次 DECOMPOSE 检索（行为同改造前）
+                    deduped, rc = await self._decompose_retrieve(
+                        search_queries, system_prompt, user_id, do_web, do_rag,
+                        rag_space, rag_kb_ids, top_k, search_mode, effective_threshold,
                     )
-                    for sq in search_queries
-                ]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                all_sources = []
-                for r in results:
-                    if isinstance(r, Exception):
-                        self.logger.warning("DECOMPOSE 子检索失败", error=str(r))
-                    else:
-                        all_sources.extend(r[1])
-                prep_sources = all_sources
+                    prep_sources = deduped
+                    prep_raw_count = rc
+                    if prep_sources:
+                        system_prompt = self._build_augmented_prompt(system_prompt, prep_sources)
 
             # 分级拒答：仅 RAG 模式且过滤后无来源 → 拒答（联网搜索时放行，LLM 可基于自身知识回答）
             if refusal_on and not prep_sources and not do_web:
@@ -321,15 +368,24 @@ class AIChatService:
 
         # 构建检索链路 trace（Rewrite → Search → Grade）
         traces = []
-        if search_queries and search_queries[0] != content:
-            traces.append({"type": "rewrite", "original": content, "rewritten": search_queries[0], "strategy": rewrite_strategy})
+        if search_queries and (search_queries[0] != content or rewrite_degraded):
+            traces.append({
+                "type": "rewrite", "original": content,
+                "rewritten": search_queries[0], "strategy": rewrite_strategy,
+                "degraded": rewrite_degraded,
+            })
         if prep_sources:
             web_count = sum(1 for s in prep_sources if s.get("kind") == "web")
             kb_count = len(prep_sources) - web_count
             mode_label = "web" if do_web and not do_rag else search_mode
             traces.append({"type": "search", "mode": mode_label, "sources_count": len(prep_sources), "web_count": web_count, "kb_count": kb_count})
         elif do_rag:
-            traces.append({"type": "search", "mode": search_mode, "sources_count": 0, "note": "无匹配结果"})
+            # 区分成因：raw_count==0 表示真无结果；>0 表示检索到了但全被阈值过滤
+            note = "无匹配结果" if prep_raw_count == 0 else f"检索到 {prep_raw_count} 条但均低于阈值被过滤"
+            traces.append({"type": "search", "mode": search_mode, "sources_count": 0, "note": note})
+        # grade→retry 每轮打分（开启自评估时才有）
+        if grade_traces:
+            traces.extend(grade_traces)
 
         self.logger.debug(
             "使用 LLM 客户端",
@@ -357,6 +413,40 @@ class AIChatService:
             traces=traces,
         )
 
+    def _build_augmented_prompt(self, system_prompt: str, sources: List[dict]) -> str:
+        """将已编号的来源列表拼接进 system_prompt，生成增强 prompt。
+
+        角标 [i] 与 source["index"] 对齐；web/kb 分组渲染。
+        单查询路径与 DECOMPOSE（合并去重、统一重新编号后）共用此方法。
+        """
+        web_items = [s for s in sources if s.get("kind") == "web"]
+        kb_items = [s for s in sources if s.get("kind") == "kb"]
+        ref_lines: List[str] = []
+        if web_items:
+            ref_lines.append("<web-search-results>")
+            for s in web_items:
+                ref_lines.append(
+                    f"[{s['index']}] {s.get('document_name') or ''}\n"
+                    f"URL: {s.get('url', '')}\n{s.get('snippet', '')}"
+                )
+            ref_lines.append("</web-search-results>")
+        if kb_items:
+            ref_lines.append("<knowledge-base-context>")
+            for s in kb_items:
+                header = f"[{s['index']}]" + (f" {s.get('document_name')}" if s.get("document_name") else "")
+                ref_lines.append(f"{header}\n{s.get('snippet', '')}")
+            ref_lines.append("</knowledge-base-context>")
+
+        reference = "\n".join(ref_lines)
+        return (
+            f"{system_prompt}\n\n"
+            "以下是为回答用户问题检索到的参考资料，请严格基于这些资料作答：\n"
+            "1. 使用参考资料中的信息时，在对应句子末尾标注来源序号，如 [1]、[2]，序号与下方参考资料列表一致；\n"
+            "2. 优先使用参考资料，资料不足时可结合自身知识补充，但不要编造资料中不存在的事实；\n"
+            "3. 若参考资料完全不足以回答，请直接说明无法从现有资料中找到答案。\n\n"
+            f"{reference}"
+        )
+
     async def _augment_system_prompt_with_retrieval(
         self,
         system_prompt: str,
@@ -369,7 +459,7 @@ class AIChatService:
         top_k: int = 5,
         search_mode: str = "content_hybrid",
         score_threshold: Optional[float] = None,
-    ) -> Tuple[str, List[dict]]:
+    ) -> Tuple[str, List[dict], int]:
         """执行联网/知识库检索，返回 (增强后的 system_prompt, 统一编号的来源列表)。
 
         来源列表 index 与 prompt 内 [1][2] 角标对齐；任一检索失败均降级跳过，不阻塞对话。
@@ -404,6 +494,7 @@ class AIChatService:
         web_src = sum(1 for s in raw_sources if s.get("kind") == "web")
         kb_src = sum(1 for s in raw_sources if s.get("kind") == "kb")
         self.logger.info("检索原始结果（过滤前）", web_count=web_src, kb_count=kb_src)
+        raw_count = len(raw_sources)  # 过滤前数量，透传给 trace 区分“无结果”与“被阈值过滤”
 
         # 阈值过滤：丢弃低分 KB 来源（web 来源无阈值语义，保留）
         if score_threshold is not None:
@@ -413,7 +504,7 @@ class AIChatService:
             ]
 
         if not raw_sources:
-            return system_prompt, []
+            return system_prompt, [], raw_count
 
         # 统一重新编号（web + kb 合并后 index 连续，与正文角标一致）
         sources: List[dict] = []
@@ -421,34 +512,60 @@ class AIChatService:
             s["index"] = i
             sources.append(s)
 
-        web_items = [s for s in sources if s.get("kind") == "web"]
-        kb_items = [s for s in sources if s.get("kind") == "kb"]
-        ref_lines: List[str] = []
-        if web_items:
-            ref_lines.append("<web-search-results>")
-            for s in web_items:
-                ref_lines.append(
-                    f"[{s['index']}] {s.get('document_name') or ''}\n"
-                    f"URL: {s.get('url', '')}\n{s.get('snippet', '')}"
-                )
-            ref_lines.append("</web-search-results>")
-        if kb_items:
-            ref_lines.append("<knowledge-base-context>")
-            for s in kb_items:
-                header = f"[{s['index']}]" + (f" {s.get('document_name')}" if s.get("document_name") else "")
-                ref_lines.append(f"{header}\n{s.get('snippet', '')}")
-            ref_lines.append("</knowledge-base-context>")
+        return self._build_augmented_prompt(system_prompt, sources), sources, raw_count
 
-        reference = "\n".join(ref_lines)
-        augmented = (
-            f"{system_prompt}\n\n"
-            "以下是为回答用户问题检索到的参考资料，请严格基于这些资料作答：\n"
-            "1. 使用参考资料中的信息时，在对应句子末尾标注来源序号，如 [1]、[2]，序号与下方参考资料列表一致；\n"
-            "2. 优先使用参考资料，资料不足时可结合自身知识补充，但不要编造资料中不存在的事实；\n"
-            "3. 若参考资料完全不足以回答，请直接说明无法从现有资料中找到答案。\n\n"
-            f"{reference}"
-        )
-        return augmented, sources
+    async def _decompose_retrieve(
+        self,
+        search_queries: List[str],
+        system_prompt: str,
+        user_id: int,
+        enable_web_search: bool,
+        enable_rag: bool,
+        space_id: Optional[int],
+        kb_ids: Optional[List[int]],
+        top_k: int,
+        search_mode: str,
+        score_threshold: Optional[float],
+    ) -> Tuple[List[dict], int]:
+        """DECOMPOSE：并发检索所有子查询，合并去重 + 全局重编号。
+
+        返回 (去重重编号后的 sources, 各子查询过滤前数量之和)。
+        任一子查询失败仅 warning 跳过，不阻塞整体。
+        """
+        import asyncio
+        tasks = [
+            self._augment_system_prompt_with_retrieval(
+                system_prompt=system_prompt, query=sq, user_id=user_id,
+                enable_web_search=enable_web_search, enable_rag=enable_rag,
+                space_id=space_id, kb_ids=kb_ids,
+                top_k=top_k, search_mode=search_mode,
+                score_threshold=score_threshold,
+            )
+            for sq in search_queries
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        all_sources: List[dict] = []
+        raw_count = 0
+        for r in results:
+            if isinstance(r, Exception):
+                self.logger.warning("DECOMPOSE 子检索失败", error=str(r))
+            else:
+                all_sources.extend(r[1])
+                raw_count += r[2]  # 各子查询过滤前数量之和
+        # 跨子查询去重（web 按 url、kb 按 chunk_id），避免同一资料被重复编号/注入
+        seen: set = set()
+        deduped: List[dict] = []
+        for s in all_sources:
+            key = s.get("url") if s.get("kind") == "web" else s.get("chunk_id")
+            if key is not None and key in seen:
+                continue
+            if key is not None:
+                seen.add(key)
+            deduped.append(s)
+        # 全局统一重新编号：子查询各自从 1 编号，合并后需重排以保证角标连续唯一
+        for i, s in enumerate(deduped, start=1):
+            s["index"] = i
+        return deduped, raw_count
 
     async def _retrieve_web(self, query: str, max_results: int = 5) -> Optional[Tuple[str, List[dict]]]:
         """联网搜索，返回 (参考资料块文本, 结构化来源列表)。复用 deep_research 的 DuckDuckGo 服务"""

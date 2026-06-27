@@ -79,15 +79,15 @@ class SessionConfig(BaseModel):
 
     @property
     def compression_threshold(self) -> int:
-        return self.get_compression_config().get("threshold", 3000)
+        return self.get_compression_config().get("threshold", 70000)
 
     @property
     def compression_target_tokens(self) -> int:
-        return self.get_compression_config().get("target_tokens", 500)
+        return self.get_compression_config().get("target_tokens", 2000)
 
     @property
     def keep_recent_messages(self) -> int:
-        return self.get_compression_config().get("keep_recent", 2)
+        return self.get_compression_config().get("keep_recent", 6)
 
     @property
     def custom_summary_prompt(self) -> Optional[str]:

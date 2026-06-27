@@ -82,7 +82,7 @@
     </div>
 
     <!-- 会话配置弹窗 -->
-    <SessionConfigDialog :session-id="configSessionId" @update:selected-model="selectedModel = $event" />
+    <SessionConfigDialog :session-id="configSessionId" @saved="handleConfigSaved" />
   </div>
 </template>
 
@@ -149,6 +149,8 @@ watch(() => chatStore.pendingAttachments.length, () => {
 
 
 async function handleNewSession() {
+  // 流式中切会话：先取消正在进行的 SSE，否则回调会写入新会话的消息（污染）
+  if (chatStore.isStreaming) chatStore.cancelStream()
   chatStore.clearMessages()
 }
 
@@ -162,8 +164,17 @@ function openSessionConfig() {
   })
 }
 
+// 配置弹窗保存成功后重新拉取，使当前会话即时应用新配置
+async function handleConfigSaved() {
+  if (configSessionId.value) {
+    await chatStore.fetchSessionConfig(configSessionId.value)
+  }
+}
+
 async function handleSelectSession(sessionId: string) {
   if (chatStore.currentSessionId === sessionId) return
+  // 流式中切会话：fetchMessages 会整体替换 messages 数组，正在飞的 SSE 回调会定位到新会话消息造成污染，故先取消
+  if (chatStore.isStreaming) chatStore.cancelStream()
   await chatStore.fetchMessages(sessionId)
   chatStore.fetchSessionConfig(sessionId)
   scrollToBottom()

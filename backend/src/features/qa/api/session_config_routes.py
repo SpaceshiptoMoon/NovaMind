@@ -133,8 +133,8 @@ async def get_config(
             session_id=session_id,
             user_id=user_id,
             compression_config={"enable_compression": True, "strategy": "summary", "threshold": 70000, "target_tokens": 2000, "keep_recent": 6, "custom_prompt": None},
-            kb_bindings={"space_id": None, "kb_ids": [], "auto_rag": False, "refusal_enabled": False, "score_threshold": 0.3, "search_mode": "content_hybrid", "top_k": 5},
-            llm_config={"max_tokens": 2048, "temperature": 0.7, "top_p": 0.8, "system_prompt": None},
+            kb_bindings={"space_id": None, "kb_ids": [], "auto_rag": False, "refusal_enabled": False, "score_threshold": 0.3, "search_mode": "content_hybrid", "top_k": 5, "query_rewriting": "none", "grade_retry_enabled": False, "grade_retry_passing_score": 5},
+            llm_config={"max_tokens": None, "temperature": None, "top_p": None, "system_prompt": None},
         )
 
     # 权限校验

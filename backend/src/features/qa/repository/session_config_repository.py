@@ -15,9 +15,9 @@ from src.core.middleware.structured_logging import get_logger
 DEFAULT_COMPRESSION_CONFIG = {
     "enable_compression": True,
     "strategy": "summary",
-    "threshold": 3000,
-    "target_tokens": 500,
-    "keep_recent": 2,
+    "threshold": 70000,
+    "target_tokens": 2000,
+    "keep_recent": 6,
     "custom_prompt": None,
 }
 
