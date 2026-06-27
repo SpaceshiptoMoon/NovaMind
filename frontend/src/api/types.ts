@@ -223,6 +223,7 @@ export interface SplittingRecursive {
   strategy: 'recursive'
   chunk_size?: number
   chunk_overlap?: number
+  min_chunk_size?: number
 }
 
 export interface SplittingFixedSize {

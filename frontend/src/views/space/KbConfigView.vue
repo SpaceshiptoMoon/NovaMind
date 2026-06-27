@@ -102,15 +102,16 @@
                 style="width: 100%"
               />
             </el-form-item>
-            <el-form-item label="最小分块大小">
-              <el-input-number
-                v-model="configForm.splittingMinChunkSize"
-                :min="0"
-                :max="2000"
-                style="width: 100%"
-              />
-            </el-form-item>
           </template>
+          <!-- 仅 recursive：小碎块合并阈值（fixed_size splitter 不支持） -->
+          <el-form-item v-if="configForm.splittingStrategy === 'recursive'" label="最小分块大小">
+            <el-input-number
+              v-model="configForm.splittingMinChunkSize"
+              :min="0"
+              :max="2000"
+              style="width: 100%"
+            />
+          </el-form-item>
 
           <!-- markdown -->
           <template v-if="configForm.splittingStrategy === 'markdown'">
@@ -369,7 +370,8 @@ async function onLoad() {
     configForm.splittingChunkSize = (sp as { chunk_size?: number })?.chunk_size ?? 1000
     configForm.splittingChunkOverlap = (sp as { chunk_overlap?: number })?.chunk_overlap ?? 100
     configForm.splittingMaxChunkSize = (sp as { max_chunk_size?: number })?.max_chunk_size ?? 2000
-    configForm.splittingMinChunkSize = (sp as { min_chunk_size?: number })?.min_chunk_size ?? 100
+    configForm.splittingMinChunkSize = (sp as { min_chunk_size?: number })?.min_chunk_size
+      ?? (configForm.splittingStrategy === 'recursive' ? 500 : 100)
     configForm.splittingSimilarityThreshold = (sp as { similarity_threshold?: number })?.similarity_threshold ?? 0.7
     configForm.splittingBatchSize = (sp as { batch_size?: number })?.batch_size ?? 20
 
@@ -405,7 +407,7 @@ async function onLoad() {
 function buildSplittingConfig(): SplittingConfig {
   const s = configForm.splittingStrategy
   if (s === 'recursive') {
-    return { strategy: 'recursive', chunk_size: configForm.splittingChunkSize, chunk_overlap: configForm.splittingChunkOverlap }
+    return { strategy: 'recursive', chunk_size: configForm.splittingChunkSize, chunk_overlap: configForm.splittingChunkOverlap, min_chunk_size: configForm.splittingMinChunkSize }
   }
   if (s === 'fixed_size') {
     return { strategy: 'fixed_size', chunk_size: configForm.splittingChunkSize, chunk_overlap: configForm.splittingChunkOverlap }

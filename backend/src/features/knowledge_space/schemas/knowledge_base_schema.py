@@ -30,6 +30,7 @@ class RecursiveSplittingConfig(BaseModel):
     strategy: Literal["recursive"] = "recursive"
     chunk_size: int = Field(default=1000, ge=50, le=4000, description="目标分块大小，字符数")
     chunk_overlap: int = Field(default=100, ge=0, le=500, description="相邻分块重叠字符数")
+    min_chunk_size: int = Field(default=500, ge=0, le=2000, description="最小分块大小，小于此值的碎块与相邻块合并（0=不合并）")
 
 
 class FixedSizeSplittingConfig(BaseModel):
