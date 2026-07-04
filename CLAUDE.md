@@ -25,8 +25,8 @@ intelligent/
 │   ├── setting/         # YAML 多层配置
 │   └── shared/          # AI模型抽象、缓存、存储、文档处理、消息队列、Prompt模板
 ├── frontend/src/
-│   ├── api/             # 14 个 API 模块 + Axios + SSE 客户端
-│   ├── stores/          # 6 个 Pinia Store
+│   ├── api/             # 15 个 API 模块 + Axios + SSE 客户端
+│   ├── stores/          # 7 个 Pinia Store
 │   ├── views/           # 页面视图 (按域组织)
 │   ├── layouts/         # Auth / Main / Workspace 三层布局 + AppHeader
 │   ├── components/      # 12 个通用组件
@@ -70,6 +70,8 @@ repository/   → 数据访问 (SQLAlchemy async)
 | agent | `/api/v1/agent` | `/home/workspace/agents`, `/home/workspace/agents/:agentId/chat` |
 | skill | `/api/v1/skills` | `/home/workspace/skills` |
 | app | `/api/v1/apps` | `/home/apps/resume` |
+| notification | `/api/v1/notifications` | `/home/notifications` |
+| clawmate | `/api/v1/clawmate` | `/home/workspace/clawmate` |
 
 > 每个模块的完整 API 端点清单和对应源码文件见 [项目结构导航.md](项目结构导航.md)。
 

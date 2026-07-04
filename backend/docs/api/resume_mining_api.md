@@ -545,6 +545,41 @@ llm_model: "gpt-4o"
 
 ---
 
+### 2.6 取消简历会话
+
+取消正在处理的简历会话。仅 PARSING、ANALYZING 或 PROBING 状态的会话可以取消。
+
+`POST` `/api/v1/apps/resume/sessions/{session_id}/cancel`
+
+**路径参数**：
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| session_id | string | 是 | 简历会话 UUID |
+
+**响应参数**：
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| message | string | 操作结果（"取消请求已发送"） |
+
+**响应示例**：
+
+```json
+{
+  "message": "取消请求已发送"
+}
+```
+
+**错误码**：
+
+| 错误码 | HTTP 状态码 | 说明 |
+|--------|-----------|------|
+| SESSION_NOT_FOUND | 404 | 会话不存在或无权访问 |
+| PARSE_ERROR | 400 | 会话状态不允许取消（仅 PARSING/ANALYZING/PROBING 可取消） |
+
+---
+
 ## 三、完整调用流程
 
 ### 有 JD 的完整流程
@@ -577,7 +612,10 @@ llm_model: "gpt-4o"
 2. GET /api/v1/apps/resume/sessions/{id}
    → 查看某个会话详情
 
-3. DELETE /api/v1/apps/resume/sessions/{id}
+3. POST /api/v1/apps/resume/sessions/{id}/cancel
+   → 取消正在处理的会话（可选，仅 PARSING/ANALYZING/PROBING 状态可取消）
+
+4. DELETE /api/v1/apps/resume/sessions/{id}
    → 删除不需要的会话
 ```
 

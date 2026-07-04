@@ -33,11 +33,11 @@ NovaMind 当前能力铺得很广（知识库 / 问答 / 深度研究 / 评估 /
 | 检索质量 | 9 种检索模式 | 🟢 | `search_service.py:590` / `elasticsearch_client.py:826` |
 | 检索质量 | Rerank 重排序 | 🟡 默认关、QA 不调 | `search_service.py:868`；qa 模块未引用 |
 | 检索质量 | RRF 融合（多层） | 🟢 | `elasticsearch_client.py:562` |
-| 检索质量 | 查询改写 HyDE / 子查询 | 🟡 仅检索页用 | `search_service.py:277`；qa 不调 |
+| 检索质量 | 查询改写 HyDE / 子查询 | 🟢 QA 已接 QueryRewriter (4 策略) | `query_rewriter.py`；`ai_chat_service._prepare_chat` |
 | 检索质量 | 检索降级链 | 🟢 | `search_schema.py:411` |
-| **回答质量** | **QA 接入知识库检索** | 🟡 **开关式先行版已落地** | `ai_chat_service.py` 已接检索增强；完整版（会话绑定 KB + sources）待做 |
-| **回答质量** | **引用溯源 / Citation** | 🔴 **缺失** | `qa/schemas/qa.py:33` 无 sources 字段 |
-| **回答质量** | **防幻觉 / 拒答** | 🔴 **仅提示词软约束** | `qa_prompts.py:26`；无代码级拒答 |
+| **回答质量** | **QA 接入知识库检索** | 🟢 **完整 RAG 管道已落地** | 会话级 `auto_rag` + QueryRewriter + GradeRetry + Trace；`ai_chat_service.py` 详见 REFACTOR-qa-rag-pipeline.md |
+| **回答质量** | **引用溯源 / Citation** | 🔴 **缺失** | `qa/schemas/qa.py` 无 sources 字段 |
+| **回答质量** | **防幻觉 / 拒答** | 🟡 **分级拒答开关就位** | `session_config` 的 `refusal_enabled` + `score_threshold` 控制；前端差异化展示待做 |
 | 回答质量 | FAQ / 高频问题加速 | 🔴 缺失 | 全仓无 faq |
 | 功能完整 | 多轮上下文压缩（4 策略） | 🟢 | `qa_service.py:499` |
 | **功能完整** | **用户反馈（👍👎/纠错）** | 🔴 **缺失** | qa 模块 feedback 0 命中 |
@@ -64,7 +64,7 @@ NovaMind 当前能力铺得很广（知识库 / 问答 / 深度研究 / 评估 /
 | 产品体验 | 暗色主题 / i18n | 🔴 全缺 | 无 vue-i18n / isDark |
 | 产品体验 | 移动端 | 🟡 桌面优先 | 无移动布局 |
 
-**统计**：37 项能力中 🟢 10 / 🟡 10 / 🔴 17（P0-1 QA 接检索由 🔴 转为 🟡 开关式先行版，2026-06-15）。红色集中在「回答质量」「功能闭环」「产品体验入口」三个块——恰好是企业知识库的核心。
+**统计**：37 项能力中 🟢 12 / 🟡 9 / 🔴 16（P0-1 QA 接检索由 🔴 转为 🟢 完整 RAG 管道，P0-3 拒答由 🔴 转为 🟡 分级拒答就位，查询改写由 🟡 转为 🟢 已接入 QA，基线更新于 2026-07-04）。红色集中在「回答质量」「功能闭环」「产品体验入口」三个块——恰好是企业知识库的核心。
 
 ---
 
@@ -83,37 +83,21 @@ NovaMind 当前能力铺得很广（知识库 / 问答 / 深度研究 / 评估 /
 
 #### P0-1 打通 QA → 知识库检索的 RAG 链路 ⭐⭐⭐
 
-> **🟡 落地进展（2026-06-15）：开关式先行版已完成，完整版待续。**
-> - ✅ **已交付（开关式轻量版）**：`ChatRequest` 新增 `enable_web_search` / `enable_rag` / `space_id` / `kb_id` 四个字段；`ai_chat_service._prepare_chat` 在 LLM 调用前插入检索增强分支，复用 `SearchService`（RAG）与 `DuckDuckGoSearchService`（联网），命中片段注入 system prompt（`<knowledge-base-context>` / `<web-search-results>`），失败降级不阻塞对话。
-> - ✅ **工作台收敛**：`WorkspaceLayout.vue` 频道分组为「核心（Chat / Agent）+ 更多（深度研究 / 技能广场 / ClawMate）」，把两种核心用法顶到一级；`ChatView.vue` 设置栏新增 🌐联网 / 📚知识库 两个开关 + 空间→知识库级联选择；`AgentView.vue` 工具多选对 `knowledge_search`/`web_search` 加 📚/🌐 前缀并置顶（Agent 侧后端零改动，工具早已注册）。
-> - ⏳ **完整版剩余**：① 会话绑定 KB 后**自动检索**（免每次手动开关）；② 响应增加 `sources` / `answer_status` / `confidence`（→ 与 P0-2 引用 UI、P0-3 拒答联动）；③ 拒答阈值短路。
-> - **与完整版的区别**：开关式 = 用户每条消息显式控制是否检索、无结构化来源返回；完整版 = 会话级自动 RAG + 引用溯源 + 拒答。本次先做开关版立住「两种核心模式」，引用 UI 留待 P0-2。
+> **🟢 落地进展（2026-07-04）：完整 RAG 管道已落地，包含查询改写、Grade-Retry 自评估、检索链路 SSE Trace。**
+> - ✅ **会话级自动 RAG**：SessionConfig 新增 `auto_rag` / `space_id` / `kb_ids` 等 10 个字段，配置单一来源（从会话表读，前端不传）。
+> - ✅ **查询改写（4 策略）**：`QueryRewriter` 支持 COMPLETION / SYNONYM / HYDE / DECOMPOSE，DECOMPOSE 多子查询合并去重 + 编号清洗。
+> - ✅ **Grade-Retry 自评估**：`GradeRetrier` 检索后 LLM 打分（1-10），不通过则换 mode + 降阈值重检索，最多 2 次重试。
+> - ✅ **检索链路 SSE Trace**：`rewrite` / `search` / `grade` 条目经 SSE 透传前端 `RetrievalTrace`，含降级标记与 note 区分。
+> - ✅ **分级拒答**：`refusal_enabled` + `score_threshold` 控制，拒答关时不做分数过滤。
+> - ✅ **工作台收敛**：`WorkspaceLayout.vue` 频道分组为「核心（Chat / Agent）+ 更多（深度研究 / 技能广场 / ClawMate）」。
+> - ⏳ **剩余**：① 响应增加 `sources` / `answer_status` / `confidence`（→ 与 P0-2 引用 UI 联动）；② 前端拒答态差异化展示。
+> - **注意**：前端控制已简化为仅联网开关（`enable_web_search`），RAG 细节统一从会话配置读取，用户可在会话设置面板中配置。
 
 **目标**：智能问答真正基于知识库回答，而不是 LLM 凭空生成。
 
-**现状**：`backend/src/features/qa/services/ai_chat_service.py` 的 `chat()` / `chat_stream()` 已通过开关接入检索（见上方落地进展）；`qa/schemas/qa.py` 的 `QAResponse` 仍无 sources 字段，完整版待做。
+**现状**：`ai_chat_service._prepare_chat` 已完成完整 RAG 管道改造（查询改写 → 检索增强 → Grade-Retry → 分级拒答 → Trace）。`QAResponse` 仍无 sources 字段，待 P0-2 联动。
 
-**方案**：
-1. 在 `ai_chat_service` 的 LLM 调用前**插入检索步骤**：根据会话绑定的 `space_id` + `kb_id`（需在会话/消息上补「检索范围」字段）调用 `SearchService.search()`，取 Top-K chunk。
-2. 将命中 chunk 拼入 system prompt 的上下文区，复用现有 `qa_prompts.py` 的文档问答模板（`:25`）。
-3. 把命中 chunk 元信息（document_id / chunk_id / page / score）结构化挂到响应的 `sources` 字段。
-4. 检索默认走 `content_hybrid`，可选叠加 Rerank + HyDE（P0-1 后接 P0-2 配置）。
-
-**涉及文件**：
-- 后端：
-  - `backend/src/features/qa/services/ai_chat_service.py` — 核心改造点
-  - `backend/src/features/qa/schemas/qa.py` — `QAResponse` 增 `sources: list[SourceRef]`
-  - `backend/src/features/qa/services/qa_service.py` — 同步改造（非流式问答）
-  - `backend/src/features/qa/models/` — 会话/消息补「检索范围」字段（kb_ids）
-  - 复用 `backend/src/features/knowledge_space/services/search_service.py`
-- 前端：
-  - `frontend/src/api/types.ts` — QA 响应类型加 sources
-  - `frontend/src/views/chat/ChatView.vue` — 问答时选择检索范围
-
-**验收标准**：
-- 问「知识库里有答案的问题」时，回答内容来自检索 chunk（可通过关闭检索对照测试）。
-- 响应 JSON 含 `sources` 数组，每项含 document_id / chunk_id / page / score。
-- 不绑定知识库时，回退为普通 LLM 对话（保留现有能力）。
+**下一步**：sources 结构化返回 + 前端引用展示（P0-2）。详见 [`docs/REFACTOR-qa-rag-pipeline.md`](./REFACTOR-qa-rag-pipeline.md)。
 
 ---
 
@@ -474,10 +458,11 @@ class QAResponse(BaseModel):
 ## 七、下一步
 
 1. 评审本路线图，确认 P0 范围与里程碑。
-2. 将 P0-1 ~ P0-4 拆为具体开发任务（建议用任务系统逐项跟踪）。
-3. P0-1 先做技术验证（打通最小 RAG 链路 + 返回 sources），再迭代引用 UI 与拒答。
+2. 将 P0-2 ~ P0-4 拆为具体开发任务（建议用任务系统逐项跟踪）。
+3. P0-1 完整 RAG 管道已落地（会话级自动检索 + 查询改写 + Grade-Retry + Trace + 分级拒答），下一步推进 P0-2 引用 UI 与 sources 结构化返回。
 
 ---
 
 *文档基线日期：2026-06-15，基于当次源码核实。后续代码演进后需同步复核「现状」列。*
 *更新记录：2026-06-15 — P0-1 开关式先行版落地（QA 接检索 🟡）、工作台收敛为 Chat+Agent 两种核心模式，已同步更新「现状」列与 P0-1 章节。*
+*2026-07-04 — P0-1 完整 RAG 管道落地（查询改写 + Grade-Retry + Trace + 分级拒答），QA 接检索由 🟡 转为 🟢、拒答由 🔴 转为 🟡、查询改写由 🟡 转为 🟢，已同步更新能力矩阵与 P0-1 章节。*

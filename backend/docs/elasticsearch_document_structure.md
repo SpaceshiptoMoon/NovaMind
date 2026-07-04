@@ -209,7 +209,9 @@
 | `all_bm25` | `content` + `questions` | 全字段全文检索 |
 | `all_vector` | `embedding` + `question_embeddings.vector` | 全字段向量检索 |
 | `all_hybrid` | 全部 | 全字段全算法融合 |
-| `image_vector` | `image_embedding` | 图片向量检索（以图搜图 / 以文搜图），仅多模态空间可用 |
+| `image_vector` | `image_embedding` | 图片向量检索（以图搜图），仅多模态空间可用 |
+| `text_to_image` | `embedding` + `image_embedding` | 以文搜图，双向量 RRF 融合（VLM 描述文本 + 图片向量），仅多模态空间可用 |
 
 > 混合检索实现：并行执行 BM25 和向量查询，通过加权 RRF（Reciprocal Rank Fusion）合并结果。
 > `image_vector` 模式额外添加 `chunk_type_filter="image"` 确保只返回图片分块。
+> `text_to_image` 模式使用 `image_hybrid_vector_search()` 同时搜索 `embedding` 和 `image_embedding` 字段。

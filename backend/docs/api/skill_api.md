@@ -756,6 +756,74 @@ curl -X POST "http://localhost:8100/api/v1/skills/upload" \
 
 ---
 
+## 五、辅助查询接口
+
+### 5.1 获取技能分类列表
+
+获取广场上所有已发布技能的可用分类列表，无需登录即可访问。
+
+**请求**
+- 方法：`GET`
+- URL：`/api/v1/skills/categories`
+- 认证：无需登录
+
+**请求参数**
+
+无。
+
+**响应示例**
+
+```json
+["productivity", "ai", "automation", "development", "data-analysis"]
+```
+
+---
+
+### 5.2 获取技能标签列表
+
+获取广场上所有已发布技能的可用标签列表，无需登录即可访问。
+
+**请求**
+- 方法：`GET`
+- URL：`/api/v1/skills/tags`
+- 认证：无需登录
+
+**请求参数**
+
+无。
+
+**响应示例**
+
+```json
+["rag", "demo", "automation", "optimization", "search"]
+```
+
+---
+
+### 5.3 AI 自然语言智能搜索
+
+通过自然语言描述搜索技能广场，使用 AI 理解语义进行匹配。
+
+**请求**
+- 方法：`POST`
+- URL：`/api/v1/skills/ai-search`
+- Content-Type：`application/json`
+- 认证：需要 JWT 登录
+
+**请求参数（Body — SkillAISearchRequest）**
+
+| 参数名 | 类型 | 必填 | 默认值 | 约束 | 说明 |
+|--------|------|------|--------|------|------|
+| query | string | 是 | — | 最少 1 字符 | 自然语言搜索描述 |
+| limit | int | 否 | `20` | 1-100 | 返回数量 |
+| offset | int | 否 | `0` | >= 0 | 偏移量 |
+
+**响应参数**
+
+同 [2.1 响应参数](#21-我的技能列表)（SkillMarketplaceListResponse 结构）。
+
+---
+
 ## 四、评价系统
 
 ### 4.1 创建/更新评价
@@ -920,9 +988,9 @@ curl -X POST "http://localhost:8100/api/v1/skills/upload" \
 
 ---
 
-## 五、验证
+## 六、验证
 
-### 5.1 验证 SKILL.md 格式
+### 6.1 验证 SKILL.md 格式
 
 验证 SKILL.md 内容是否符合格式要求，不需要实际上传。用于前端实时校验。
 
@@ -984,11 +1052,11 @@ curl -X POST "http://localhost:8100/api/v1/skills/upload" \
 
 ---
 
-## 六、管理员管理
+## 七、管理员管理
 
 以下接口仅限管理员（`is_admin=true`）调用，普通用户调用将返回 403。
 
-### 6.1 获取审查设置
+### 7.1 获取审查设置
 
 获取当前 LLM 安全审查的配置信息。
 
@@ -1015,7 +1083,7 @@ curl -X POST "http://localhost:8100/api/v1/skills/upload" \
 
 ---
 
-### 6.2 更新审查设置
+### 7.2 更新审查设置
 
 更新 LLM 安全审查的全局开关。设置实时生效，通过 Redis 存储，无需重启服务。
 
@@ -1054,7 +1122,7 @@ curl -X POST "http://localhost:8100/api/v1/skills/upload" \
 
 ---
 
-### 6.3 待审核技能列表
+### 7.3 待审核技能列表
 
 获取被安全审查标记为 SUSPICIOUS（可疑）的技能列表，供管理员人工审核。
 
@@ -1106,7 +1174,7 @@ curl -X POST "http://localhost:8100/api/v1/skills/upload" \
 
 ---
 
-### 6.4 获取可用审查模型
+### 7.4 获取可用审查模型
 
 获取管理员配置的 LLM 模型名称列表，用于选择 LLM 安全审查所使用的模型。
 
@@ -1127,7 +1195,7 @@ curl -X POST "http://localhost:8100/api/v1/skills/upload" \
 
 ---
 
-### 6.5 批准技能
+### 7.5 批准技能
 
 管理员批准被标记为可疑（SUSPICIOUS）的技能，使其通过安全审查。
 
@@ -1160,7 +1228,7 @@ curl -X POST "http://localhost:8100/api/v1/skills/upload" \
 
 ---
 
-### 6.6 拒绝技能
+### 7.6 拒绝技能
 
 管理员拒绝可疑技能，可附上拒绝原因。
 

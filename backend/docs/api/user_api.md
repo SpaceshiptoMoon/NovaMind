@@ -1206,3 +1206,230 @@ DELETE /api/v1/user/model-configs/by-model/llm/glm-4
 | `AUTHENTICATION_FAILED` | 401 | 未登录或 Token 无效 |
 
 > 注意：只能删除用户私有配置。
+
+---
+
+## 20. 管理员重置用户密码
+
+管理员为用户生成临时密码并强制用户下次修改。
+
+**请求**
+- 方法：POST
+- URL：`/api/v1/user/users/{user_id}/reset-password`
+- 权限：需要管理员权限
+
+**路径参数**
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| user_id | integer | 是 | 用户 ID，必须大于 0 |
+
+> 管理员不能重置自己的密码。
+
+**请求示例**
+
+```
+POST /api/v1/user/users/1/reset-password
+```
+
+**响应参数**
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| message | string | 响应消息 |
+
+**响应示例**
+
+```json
+{
+  "message": "密码已重置，临时密码已发送"
+}
+```
+
+**错误码**
+
+| 错误码 | HTTP 状态码 | 说明 |
+|--------|-----------|------|
+| `USER_NOT_FOUND` | 404 | 用户不存在 |
+| `PERMISSION_DENIED` | 403 | 非管理员操作，或管理员重置自己的密码 |
+| `AUTHENTICATION_FAILED` | 401 | 未登录或 Token 无效 |
+
+**速率限制**：5 次/分钟
+
+---
+
+## 21. 当前用户修改密码
+
+当前登录用户修改自己的密码。
+
+**请求**
+- 方法：POST
+- URL：`/api/v1/user/users/me/change-password`
+- Content-Type：application/json
+- 权限：需要登录
+
+**请求参数**
+
+| 参数名 | 类型 | 必填 | 位置 | 说明 |
+|--------|------|------|------|------|
+| old_password | string | 是 | body | 当前密码 |
+| new_password | string | 是 | body | 新密码，8-30 个字符，必须包含大写字母、小写字母、数字和特殊字符，且不能包含用户名 |
+
+**请求示例**
+
+```json
+{
+  "old_password": "OldPass@123",
+  "new_password": "NewPass@456"
+}
+```
+
+**响应参数**
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| message | string | 响应消息 |
+
+**响应示例**
+
+```json
+{
+  "message": "密码修改成功"
+}
+```
+
+**错误码**
+
+| 错误码 | HTTP 状态码 | 说明 |
+|--------|-----------|------|
+| `INVALID_CREDENTIALS` | 400 | 原密码错误 |
+| `VALIDATION_ERROR` | 422 | 请求参数验证失败 |
+
+---
+
+## 22. 忘记密码
+
+通过邮箱发送密码重置链接。为安全起见，无论邮箱是否存在，始终返回 200 状态码以防止邮箱枚举。
+
+**请求**
+- 方法：POST
+- URL：`/api/v1/user/auth/forgot-password`
+- Content-Type：application/json
+- 权限：无需认证
+
+**请求参数**
+
+| 参数名 | 类型 | 必填 | 位置 | 说明 |
+|--------|------|------|------|------|
+| email | string | 是 | body | 注册邮箱地址 |
+
+**请求示例**
+
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+**响应参数**
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| message | string | 响应消息（始终返回成功提示，无论邮箱是否存在） |
+
+**响应示例**
+
+```json
+{
+  "message": "如果该邮箱已注册，重置密码链接已发送"
+}
+```
+
+**错误码**
+
+| 错误码 | HTTP 状态码 | 说明 |
+|--------|-----------|------|
+| `VALIDATION_ERROR` | 422 | 邮箱格式验证失败 |
+
+**速率限制**：3 次/分钟
+
+---
+
+## 23. 通过重置令牌设置新密码
+
+使用邮箱收到的重置令牌设置新密码。
+
+**请求**
+- 方法：POST
+- URL：`/api/v1/user/auth/reset-password`
+- Content-Type：application/json
+- 权限：无需认证
+
+**请求参数**
+
+| 参数名 | 类型 | 必填 | 位置 | 说明 |
+|--------|------|------|------|------|
+| token | string | 是 | body | 重置令牌（通过忘记密码接口发送到邮箱） |
+| new_password | string | 是 | body | 新密码，8-30 个字符，必须包含大写字母、小写字母、数字和特殊字符 |
+
+**请求示例**
+
+```json
+{
+  "token": "reset_token_abc123",
+  "new_password": "NewPass@789"
+}
+```
+
+**响应参数**
+
+| 参数名 | 类型 | 说明 |
+|--------|------|------|
+| message | string | 响应消息 |
+
+**响应示例**
+
+```json
+{
+  "message": "密码重置成功"
+}
+```
+
+**错误码**
+
+| 错误码 | HTTP 状态码 | 说明 |
+|--------|-----------|------|
+| `TOKEN_INVALID` | 400 | 重置令牌无效或已过期 |
+| `VALIDATION_ERROR` | 422 | 请求参数验证失败 |
+
+**速率限制**：3 次/分钟
+
+---
+
+## 接口总览
+
+| 编号 | 方法 | URL | 说明 | 权限 |
+|------|------|-----|------|------|
+| 1 | POST | `/api/v1/user/users` | 创建用户 | 管理员 |
+| 2 | POST | `/api/v1/user/users/login` | 用户登录 | 无需认证 |
+| 3 | POST | `/api/v1/user/users/refresh` | 刷新令牌 | 无需认证 |
+| 4 | POST | `/api/v1/user/users/logout` | 登出 | 登录用户 |
+| 5 | GET | `/api/v1/user/users` | 获取用户列表 | 管理员 |
+| 6 | GET | `/api/v1/user/users/{user_id}` | 获取用户详情 | 登录用户 |
+| 7 | PUT | `/api/v1/user/users/{user_id}` | 更新用户信息 | 登录用户 |
+| 8 | DELETE | `/api/v1/user/users/{user_id}` | 删除用户 | 管理员 |
+| 9 | PATCH | `/api/v1/user/users/{user_id}/status` | 停用/激活用户 | 管理员 |
+| 10 | POST | `/api/v1/user/users/{user_id}/logout-all` | 强制撤销所有会话 | 管理员 |
+| 11 | POST | `/api/v1/user/users/{user_id}/reset-password` | 管理员重置密码 | 管理员 |
+| 12 | POST | `/api/v1/user/users/me/change-password` | 当前用户修改密码 | 登录用户 |
+| 13 | POST | `/api/v1/user/auth/forgot-password` | 忘记密码 | 无需认证 |
+| 14 | POST | `/api/v1/user/auth/reset-password` | 通过令牌重置密码 | 无需认证 |
+| 15 | GET | `/api/v1/user/model-configs/available` | 获取可用模型列表 | 登录用户 |
+| 16 | GET | `/api/v1/user/model-configs/available/detail` | 获取可用模型详细信息 | 登录用户 |
+| 17 | GET | `/api/v1/user/model-configs` | 获取模型配置列表 | 登录用户 |
+| 18 | POST | `/api/v1/user/model-configs` | 创建模型配置 | 登录用户 |
+| 19 | GET | `/api/v1/user/model-configs/{config_id}` | 获取单个配置 | 登录用户 |
+| 20 | PUT | `/api/v1/user/model-configs/{config_id}` | 更新模型配置 | 登录用户 |
+| 21 | DELETE | `/api/v1/user/model-configs/{config_id}` | 删除模型配置 | 登录用户 |
+| 22 | POST | `/api/v1/user/model-configs/test` | 测试模型连接 | 登录用户 |
+| 23 | DELETE | `/api/v1/user/model-configs/by-model/{model_type}/{model}` | 按名称删除配置 | 登录用户 |

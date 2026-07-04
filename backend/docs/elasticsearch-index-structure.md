@@ -59,7 +59,9 @@
 | `all_vector` | RRF 融合 | `embedding` + `question_embeddings.vector` |
 | `all_hybrid` | 4 路 RRF 全融合 | 全部 4 个字段 |
 
-另外 `image_vector_search` 用于以图搜图，搜索 `image_embedding` 并过滤 `chunk_type="image"`。
+另外多模态检索有两种方式（通过 `multimodal_search()` 路由，不在 `search_by_mode` 中）：
+- `image_vector_search`：以图搜图，搜索 `image_embedding` 并过滤 `chunk_type="image"`。
+- `image_hybrid_vector_search`：以文搜图（`text_to_image`），双向量搜索，同时检索 `embedding`（VLM 描述文本）和 `image_embedding`（图片向量），RRF 融合。
 
 ## 索引重建
 

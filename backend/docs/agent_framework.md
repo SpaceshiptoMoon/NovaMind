@@ -27,7 +27,8 @@ src/features/agent/core/
 │   ├── context_compressor.py    # ContextCompressor — 五阶段结构化压缩
 │   ├── context_scrubber.py      # StreamingContextScrubber — SSE 输出标签清理
 │   ├── security.py              # 记忆安全扫描（注入/泄露/Unicode 检测）
-│   └── todo_store.py            # TodoStore — 跨压缩任务状态追踪
+│   ├── todo_store.py            # TodoStore — 跨压缩任务状态追踪
+│   └── DESIGN.md                # 记忆系统设计说明
 │
 ├── tool/                        # 工具系统
 │   ├── __init__.py
@@ -113,16 +114,17 @@ class MemoryManager:
     """记忆系统统一入口"""
 
     @classmethod
-    async def create(cls, agent_id, user_id, session_id, db, ...) -> "MemoryManager"
+    def create(cls, message_repository, tool_call_repository, session_repository,
+               memory_repository, model, llm_client_factory, ...) -> "MemoryManager"
     # 工厂方法，初始化所有子组件
 
-    async def build_frozen_snapshot(self, system_prompt, max_tokens) -> MemorySnapshot
-    # 构建冻结快照（含长期记忆预取），带缓存避免重复构建
+    async def build_frozen_snapshot(self, agent_id, user_id) -> str
+    # 构建冻结快照：首次从 MySQL 加载长期记忆后缓存到内存，会话期间不再变动。
 
-    async def prefetch(self, user_message) -> None
-    # 根据用户消息动态预取相关长期记忆
+    async def prefetch(self, query, agent_id, user_id, top_k=3) -> List[LongTermMemoryEntry]
+    # 根据用户消息动态预取相关长期记忆（ES 混合搜索 → MySQL LIKE 回退）
 
-    async def build_context(self, system_prompt, max_tokens) -> MemorySnapshot
+    async def build_context(self, system_prompt, conversation_id, max_tokens) -> MemorySnapshot
     # 完整上下文构建：DB消息 → Token计算 → 超限压缩 → OpenAI格式
 ```
 
@@ -131,36 +133,38 @@ class MemoryManager:
 当对话历史超出 Token 预算时触发：
 
 ```
-Phase 1: 工具结果裁剪 — 截断过长的 tool_result
-Phase 2: 尾部保护 — 保留最近的对话（不压缩）
-Phase 3: LLM 摘要 — 使用辅助模型生成 13 节结构化摘要
-Phase 4: 迭代合并 — 如果仍然超限，继续压缩
-Phase 5: 工具配对清理 — 移除已失去上下文的工具调用/结果对
+Phase 1: 工具结果信息性剪枝 — 按工具类型生成摘要、去重、参数截断
+Phase 2: Token 预算尾部保护 — 确保最近用户消息在保护区内
+Phase 3: 结构化 LLM 摘要 — 使用辅助模型生成 13 章节模板摘要（敏感数据脱敏）
+Phase 4: 迭代更新 — 融合旧摘要 + 新内容
+Phase 5: 工具对清理 — 移除已失去上下文的工具调用/结果对
 ```
 
 特性：
 - **防抖动**：cooldown 机制避免频繁压缩
 - **摘要持久化**：压缩结果写入 `agent_context_summaries` 表（追加写入）
 - **降级策略**：辅助模型不可用时降级到主模型
-- **脱敏**：压缩前通过 `redact.py` 清理敏感信息
+- **脱敏**：压缩前通过 `src/shared/utils/redact.py` 清理敏感信息
 
 #### LongTermMemory — 长期记忆
 
 ```python
 class LongTermMemory(ILongTermMemory):
-    async def store(agent_id, user_id, category, content, ...)  # 存储
-    async def search(agent_id, user_id, query, top_k=5)         # ES 混合搜索
+    async def store(agent_id, user_id, category, content, ...)  # 存储（MySQL + ES 索引）
+    async def search(agent_id, user_id, query, top_k=5, ...)    # ES 混合搜索 → MySQL LIKE 回退
     async def consolidate(agent_id, user_id, conversation_id, messages)  # 对话结束时提取
-    async def replace(memory_id, content)   # 替换记忆内容
-    async def remove(memory_id)             # 删除记忆
+    async def replace(agent_id, user_id, category, old_content, new_content)  # 替换记忆内容（子串匹配）
+    async def remove(agent_id, user_id, old_content)            # 删除记忆（子串匹配）
 ```
+
+> `replace` 和 `remove` 是 `LongTermMemory` 实现类的方法，不在 `ILongTermMemory` 接口中定义。
 
 搜索策略：ES 混合搜索（BM25 + 向量）→ MySQL LIKE 回退。
 
 #### Security — 记忆安全扫描
 
 ```python
-async def scan_memory_content(content: str) -> SecurityScanResult
+def scan_memory_content(content: str) -> MemorySecurityScanResult
 # 检测：注入攻击、数据泄露、Unicode 欺骗、系统前缀注入、外泄网络等
 ```
 
@@ -172,7 +176,7 @@ async def scan_memory_content(content: str) -> SecurityScanResult
 @dataclass
 class MemoryMessage:
     role: str                                  # user / assistant / system / tool
-    content: str
+    content: Union[str, List[Dict[str, Any]]]
     tool_call_id: Optional[str] = None
     tool_name: Optional[str] = None
     tool_calls: Optional[List[Dict]] = None
@@ -201,9 +205,12 @@ class LongTermMemoryEntry:
     user_id: int
     category: str          # preference / fact / procedure / insight
     content: str
+    source_type: str = "consolidate"   # 来源类型（consolidate / manual）
     relevance_score: float
     access_count: int
     source_conversation_id: Optional[int]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
 ```
 
 ### 1.4 数据库表
@@ -332,9 +339,7 @@ class ToolResult(BaseModel):
     data: Optional[Dict] = None
     duration_ms: int = 0
     error_message: Optional[str] = None
-    metadata: Dict[str, Any] = {}
-
-    def to_llm_content(self) -> str
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 ```
 
 ### 2.3 生命周期钩子
@@ -458,16 +463,17 @@ class AgentLLM:
 class AgentEngine:
     """ReAct 循环引擎"""
 
-    async def run(self, messages, tools, ...) -> AsyncGenerator[dict, None]
+    async def run(self, llm_client, messages, tools, context, ...) -> AsyncGenerator[AgentEvent, None]
     # ReAct 循环：LLM 生成 → 工具调用 → 结果注入 → 再次 LLM，直到无工具调用
 ```
 
 引擎负责：
 1. 组装 system prompt（通过 `SystemPromptBuilder` 分层构建）
 2. 将 `MemorySnapshot` 中的消息传给 `AgentLLM`
-3. 流式产出 SSE 事件（session / content / tool_call / tool_result / done / error）
+3. 流式产出 SSE 事件（content / tool_call / tool_result / reasoning / context_overflow / done / error）
 4. 工具调用通过 `ToolExecutor` 执行
 5. LLM 重试通过 `retry.py` 处理
+6. 上下文溢出时通过 `compress_fn` 自动压缩后重试
 
 ### 4.2 PromptBuilder
 

@@ -387,6 +387,7 @@ Authorization: Bearer <token>
 | system_prompt | string | 否 | body | 系统提示词（最大4000字符），默认 `"You are a helpful assistant."` |
 | enable_thinking | boolean | 否 | body | 是否开启深度思考模式（Qwen 等模型支持），默认 `false` |
 | attachment_ids | array\<integer\> | 否 | body | 附件ID列表（通过上传附件接口获取） |
+| enable_web_search | boolean | 否 | body | 是否启用联网搜索（默认 `false`），启用后 LLM 可自主决定搜索互联网 |
 
 **请求示例**
 
@@ -512,6 +513,8 @@ X-Accel-Buffering: no
 | 事件 | 说明 | 数据格式 |
 |------|------|---------|
 | `user_message` | 用户消息已保存 | `{"id": 50, "content": "...", "role": "user", "session_id": "..."}` |
+| `sources` | 检索来源信息（联网搜索时返回） | `{"sources": [{"title": "...", "url": "..."}]}` |
+| `reasoning` | 深度思考过程的推理片段（`enable_thinking=true` 时） | `{"content": "思考过程..."}` |
 | `content` | AI 生成的文本片段（逐块推送） | `{"content": "文本片段"}` |
 | `done` | 对话完成，包含完整 AI 回复 | `{"id": 51, "content": "完整回复", "role": "assistant", "session_id": "..."}` |
 | `error` | 错误信息 | `{"code": "ERROR_CODE", "message": "错误描述"}` |
@@ -1000,6 +1003,101 @@ Content-Disposition: attachment; filename="download"; filename*=UTF-8''<encoded_
 
 ---
 
+### 18. 更新会话压缩配置
+
+更新指定会话的压缩配置，支持反复修改，不影响知识库绑定等其他配置。
+
+**请求**
+- 方法：PATCH
+- URL：`/api/v1/sessions/{session_id}/config/compression-config`
+- Content-Type：application/json
+- 权限：需要登录
+
+**路径参数**
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| session_id | string | 是 | 会话ID（至少1个字符） |
+
+**请求参数（Body）**
+
+| 参数名 | 类型 | 必填 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| compression | object | 否 | -- | 压缩配置对象 |
+| compression.enable_compression | boolean | 否 | -- | 是否启用压缩 |
+| compression.strategy | string | 否 | -- | 压缩策略：`summary`/`sliding_window`/`keep_recent`/`truncate` |
+| compression.threshold | integer | 否 | -- | 触发压缩的 token 阈值 |
+| compression.target_tokens | integer | 否 | -- | 压缩后的目标 token 数 |
+| compression.keep_recent | integer | 否 | -- | 保留的最近消息数 |
+| compression.custom_prompt | string\|null | 否 | -- | 自定义摘要提示词 |
+
+**响应参数**：同 [16. 创建会话配置](#16-创建会话配置) 响应结构。
+
+---
+
+### 19. 更新会话 LLM 生成参数
+
+更新指定会话的模型生成参数（max_tokens/temperature/top_p/system_prompt），支持反复修改，不影响其他配置。
+
+**请求**
+- 方法：PATCH
+- URL：`/api/v1/sessions/{session_id}/config/llm-config`
+- Content-Type：application/json
+- 权限：需要登录
+
+**路径参数**
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| session_id | string | 是 | 会话ID（至少1个字符） |
+
+**请求参数（Body）**
+
+| 参数名 | 类型 | 必填 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| llm_config | object | 否 | -- | LLM 配置对象 |
+| llm_config.max_tokens | integer | 否 | 2048 | 最大生成 token 数 |
+| llm_config.temperature | float | 否 | 0.7 | 温度参数 |
+| llm_config.top_p | float | 否 | 0.8 | Top-P 参数 |
+| llm_config.system_prompt | string | 否 | -- | 系统提示词 |
+
+**响应参数**：同 [16. 创建会话配置](#16-创建会话配置) 响应结构。
+
+---
+
+### 20. 更新会话知识库绑定（会话级自动 RAG）
+
+绑定或更新指定会话的知识库列表，开启后该会话无需每次手动指定知识库即可自动检索。独立于压缩配置，可反复修改。
+
+**请求**
+- 方法：PATCH
+- URL：`/api/v1/sessions/{session_id}/config/rag-config`
+- Content-Type：application/json
+- 权限：需要登录
+
+**路径参数**
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| session_id | string | 是 | 会话ID（至少1个字符） |
+
+**请求参数（Body）**
+
+| 参数名 | 类型 | 必填 | 默认值 | 说明 |
+|--------|------|------|--------|------|
+| rag | object | 否 | -- | RAG 配置对象 |
+| rag.space_id | integer | 否 | -- | 知识空间 ID |
+| rag.kb_ids | integer[] | 否 | -- | 知识库 ID 列表 |
+| rag.auto_rag | boolean | 否 | false | 是否启用自动检索 |
+| rag.refusal_enabled | boolean | 否 | false | 是否启用拒绝回答 |
+| rag.score_threshold | float | 否 | 0.3 | 检索分数阈值 |
+| rag.search_mode | string | 否 | "content_hybrid" | 检索模式 |
+| rag.top_k | integer | 否 | 5 | 检索返回数量 |
+
+**响应参数**：同 [16. 创建会话配置](#16-创建会话配置) 响应结构。
+
+---
+
 ## 四、完整错误码汇总
 
 ### QA 模块错误码
@@ -1048,4 +1146,7 @@ Content-Disposition: attachment; filename="download"; filename*=UTF-8''<encoded_
 | 15 | GET | `/api/v1/ai-chat/models` | 获取可用模型列表 | 是 |
 | 16 | POST | `/api/v1/sessions/{session_id}/config` | 创建会话配置（201） | 是 |
 | 17 | GET | `/api/v1/sessions/{session_id}/config` | 获取会话配置 | 是 |
-| 18 | DELETE | `/api/v1/sessions/{session_id}/config` | 删除会话配置 | 是 |
+| 18 | PATCH | `/api/v1/sessions/{session_id}/config/compression-config` | 更新会话压缩配置 | 是 |
+| 19 | PATCH | `/api/v1/sessions/{session_id}/config/llm-config` | 更新会话 LLM 生成参数 | 是 |
+| 20 | PATCH | `/api/v1/sessions/{session_id}/config/rag-config` | 更新会话知识库绑定（自动 RAG） | 是 |
+| 21 | DELETE | `/api/v1/sessions/{session_id}/config` | 删除会话配置 | 是 |
