@@ -156,6 +156,7 @@ class ElasticsearchClient:
             },
             "chunk_type": {"type": "keyword"},
             "image_url": {"type": "keyword"},
+            "media_url": {"type": "keyword"},
             "metadata": {
                 "properties": {
                     "page_number": {"type": "integer"},
@@ -163,6 +164,10 @@ class ElasticsearchClient:
                     "char_start": {"type": "integer"},
                     "char_end": {"type": "integer"},
                     "content_hash": {"type": "keyword"},
+                    "start_time": {"type": "float"},
+                    "end_time": {"type": "float"},
+                    "duration": {"type": "float"},
+                    "speaker_id": {"type": "keyword"},
                 }
             },
             "file_info": {

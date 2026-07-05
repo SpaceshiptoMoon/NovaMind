@@ -92,6 +92,44 @@ class ParsingConfig(BaseModel):
         default=False,
         description="是否启用 VLM 图片描述（多模态空间），开启后上传图片时调用视觉模型生成文本描述，支持 BM25 + 文本向量检索",
     )
+    # 视频解析配置（全模态空间）
+    video: Optional["VideoParsingConfig"] = Field(
+        default=None,
+        description="视频文件解析配置（空间包含 video 模态时有效）",
+    )
+    # 音频解析配置（全模态空间）
+    audio: Optional["AudioParsingConfig"] = Field(
+        default=None,
+        description="音频文件解析配置（空间包含 audio 模态时有效）",
+    )
+
+
+class VideoParsingConfig(BaseModel):
+    """视频文件解析配置"""
+    frame_interval: float = Field(
+        default=5.0, ge=1.0, le=60.0,
+        description="关键帧提取间隔（秒），默认每5秒一帧",
+    )
+    max_frames: int = Field(
+        default=60, ge=1, le=200,
+        description="最多提取帧数，默认60帧",
+    )
+
+
+class AudioParsingConfig(BaseModel):
+    """音频文件解析配置"""
+    asr_model: str = Field(
+        default="whisper-1",
+        description="ASR 转写模型名称，默认 whisper-1",
+    )
+    chunk_split_strategy: Literal["sentence", "fixed"] = Field(
+        default="sentence",
+        description="切分策略: sentence(按句子)/fixed(按固定字符数)",
+    )
+    chunk_size: int = Field(
+        default=1000, ge=100, le=4000,
+        description="固定大小切分的字符数（仅 chunk_split_strategy=fixed 时有效）",
+    )
 
 
 # ========== 问题生成 LLM 配置 ==========

@@ -336,9 +336,10 @@ class SearchResult(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(None, description="分块元数据")
     file_info: Optional[Dict[str, Any]] = Field(None, description="文件信息")
 
-    # 图片搜索
-    image_url: Optional[str] = Field(None, description="图片预览 URL（图片类型结果）")
-    chunk_type: Optional[str] = Field(None, description="分块类型: text/image")
+    # 媒体文件
+    image_url: Optional[str] = Field(None, description="图片预览 URL（已废弃，请使用 media_url）")
+    media_url: Optional[str] = Field(None, description="媒体文件预览 URL（图片/视频/音频）")
+    chunk_type: Optional[str] = Field(None, description="分块类型: text/image/video/audio")
 
 
 class SearchResponse(BaseModel):

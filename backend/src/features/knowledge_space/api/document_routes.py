@@ -56,8 +56,8 @@ from src.features.knowledge_space.services.audit_service import AuditService
 # 文件大小限制：默认最大 100MB
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB
 
-# 允许上传的文件类型白名单
-ALLOWED_FILE_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt", ".md", ".csv", ".xlsx", ".xls", ".pptx", ".ppt", ".html", ".json", ".jpg", ".jpeg", ".png", ".gif", ".webp"}
+# 允许上传的文件类型白名单（从 DocumentService.SUPPORTED_FILE_TYPES 派生，无需手动维护）
+ALLOWED_FILE_EXTENSIONS = {f".{t}" for t in DocumentService.SUPPORTED_FILE_TYPES}
 
 # 批量上传最大文件数
 MAX_BATCH_FILE_COUNT = 20
@@ -83,20 +83,20 @@ async def _read_upload_file(file: UploadFile) -> bytes:
 
 async def _build_chunk_response(c: dict) -> ChunkResponse:
     """从 ES 分块字典构建 ChunkResponse（去掉 embedding 大向量）"""
-    # 图片分块：生成 MinIO 预签名 URL
-    image_url = None
+    # 媒体分块：生成 MinIO 预签名 URL（支持 image/video/audio）
+    media_url = None
     chunk_type = c.get("chunk_type")
-    storage_path = c.get("image_url", "")
+    storage_path = c.get("media_url", "") or c.get("image_url", "")
 
-    if chunk_type == "image" and storage_path:
+    if chunk_type in ("image", "video", "audio") and storage_path:
         try:
             from src.shared.clients import ClientFactory
             minio_client = await ClientFactory.get_minio_client()
-            image_url = await minio_client.get_file_url(
+            media_url = await minio_client.get_file_url(
                 minio_client.default_bucket, storage_path, 3600
             )
         except Exception:
-            image_url = None
+            media_url = None
 
     return ChunkResponse(
         chunk_id=c.get("chunk_id", ""),
@@ -110,7 +110,8 @@ async def _build_chunk_response(c: dict) -> ChunkResponse:
         questions=c.get("questions"),
         created_at=c.get("created_at"),
         chunk_type=chunk_type,
-        image_url=image_url,
+        image_url=media_url,  # 向后兼容
+        media_url=media_url,
     )
 
 

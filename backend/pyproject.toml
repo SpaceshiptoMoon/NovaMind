@@ -40,6 +40,8 @@ dependencies = [
     "arq>=0.26",
     "dashscope>=1.25.19",
     "anthropic>=0.95.0",
+    "imageio>=2.37.0",
+    "imageio-ffmpeg>=0.6.0",
 ]
 
 [project.optional-dependencies]

@@ -90,8 +90,9 @@ class ChunkResponse(BaseModel):
     file_info: Optional[Dict[str, Any]] = Field(None, description="文件信息")
     questions: Optional[List[str]] = Field(None, description="假设性问题列表")
     created_at: Optional[str] = Field(None, description="创建时间")
-    chunk_type: Optional[str] = Field(None, description="分块类型: text/image")
-    image_url: Optional[str] = Field(None, description="图片预览 URL（图片类型分块）")
+    chunk_type: Optional[str] = Field(None, description="分块类型: text/image/video/audio")
+    image_url: Optional[str] = Field(None, description="图片预览 URL（已废弃，使用 media_url）")
+    media_url: Optional[str] = Field(None, description="媒体文件预览 URL（图片/视频/音频）")
 
 
 class DocumentDetailResponse(DocumentResponse):

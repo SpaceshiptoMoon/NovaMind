@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 from src.shared.ai_models.llm import BaseLLM
 from src.shared.prompts.templates import PromptTemplate, PromptManager
 from src.shared.utils.heartbeat import stream_with_heartbeat, stream_with_heartbeat_structured
+from src.shared.storage.minio_client import IMAGE_FILE_TYPES
 from src.features.qa.services.qa_service import QAService
 from src.features.qa.schemas.qa import QARequest
 from src.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
@@ -1073,7 +1074,7 @@ class AIChatService:
 
     # 允许的文件类型及扩展名
     ALLOWED_FILE_TYPES = {"pdf", "docx", "txt", "md", "markdown", "jpg", "jpeg", "png", "gif", "webp"}
-    IMAGE_FILE_TYPES = {"jpg", "jpeg", "png", "gif", "webp"}
+    IMAGE_FILE_TYPES = IMAGE_FILE_TYPES  # 收敛到 minio_client 唯一定义
     MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
     MAX_EXTRACTED_TEXT_LENGTH = 50000  # 50000 字符
     # 附件注入 token 预算：所有文档附件合计不超此值，避免撑爆上下文

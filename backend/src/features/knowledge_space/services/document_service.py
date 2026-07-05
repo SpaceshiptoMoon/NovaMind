@@ -85,10 +85,25 @@ class DocumentService:
     MAX_FILE_SIZE = 100 * 1024 * 1024
 
     # 支持的文件类型
-    SUPPORTED_FILE_TYPES = ["pdf", "docx", "doc", "txt", "md", "csv", "xlsx", "xls", "pptx", "ppt", "html", "json", "jpg", "jpeg", "png", "gif", "webp"]
+    SUPPORTED_FILE_TYPES = ["pdf", "docx", "doc", "txt", "md", "csv", "xlsx", "xls", "pptx", "ppt", "html", "json", "jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "avi", "mkv", "webm", "mp3", "wav", "flac", "aac", "ogg", "m4a"]
 
-    # 图片文件类型
-    IMAGE_FILE_TYPES = frozenset({"jpg", "jpeg", "png", "gif", "webp"})
+    # 图片文件类型（从 MinIO 工具收敛到唯一定义）
+    from src.shared.storage.minio_client import IMAGE_FILE_TYPES as _IMG_TYPES
+    IMAGE_FILE_TYPES = _IMG_TYPES
+
+    # 视频文件类型
+    VIDEO_FILE_TYPES = frozenset({"mp4", "mov", "avi", "mkv", "webm"})
+
+    # 音频文件类型
+    AUDIO_FILE_TYPES = frozenset({"mp3", "wav", "flac", "aac", "ogg", "m4a"})
+
+    # 模态 → 文件类型映射（用于上传校验和管道分流）
+    MODALITY_TO_FILE_TYPES = {
+        "text":  frozenset({"pdf", "docx", "doc", "txt", "md", "csv", "xlsx", "xls", "pptx", "ppt", "html", "json"}),
+        "image": IMAGE_FILE_TYPES,
+        "video": VIDEO_FILE_TYPES,
+        "audio": AUDIO_FILE_TYPES,
+    }
 
     def __init__(
         self,
@@ -183,20 +198,23 @@ class DocumentService:
         # 5.5 根据空间类型校验文件类型
         file_type = file_info.extension
         space = await self.space_repo.get_by_id(kb.space_id)
-        space_type = space.space_type if space else "text"
+        space_config = space.get_config() if space else {}
+        modalities = space_config.get("space_type", ["text"])
 
-        if space_type == "text" and file_type in self.IMAGE_FILE_TYPES:
+        # 计算允许的文件类型合集（任意模态组合自动生效）
+        allowed_types = set()
+        for m in modalities:
+            if m in self.MODALITY_TO_FILE_TYPES:
+                allowed_types |= self.MODALITY_TO_FILE_TYPES[m]
+
+        if file_type not in allowed_types:
             raise DocumentInvalidTypeError(
-                f"{file_type}: 该空间为文本类型，只能上传文本文档。请在空间设置中将类型切换为多模态"
-            )
-        if space_type == "multimodal" and file_type not in self.IMAGE_FILE_TYPES:
-            raise DocumentInvalidTypeError(
-                f"{file_type}: 该空间为多模态类型，只能上传图片文件。"
+                f"{file_type}: 该空间不支持此文件类型。空间模态: {modalities}"
             )
 
         # 6. 检查文件大小
         file_size = len(file_content)
-        max_size = self._get_max_file_size(kb)
+        max_size = self._get_max_file_size(kb, file_type)
         if file_size > max_size:
             raise DocumentSizeExceededError(file_size, max_size)
 
@@ -375,6 +393,18 @@ class DocumentService:
             await _process_image_document_static(
                 document, file_content, session, _logger
             )
+            return
+
+        # ===== 视频文档分支（新增） =====
+        if file_ext in DocumentService.VIDEO_FILE_TYPES:
+            from src.features.knowledge_space.services.media_processing import process_video_document
+            await process_video_document(document, file_content, session, _logger)
+            return
+
+        # ===== 音频文档分支（新增） =====
+        if file_ext in DocumentService.AUDIO_FILE_TYPES:
+            from src.features.knowledge_space.services.media_processing import process_audio_document
+            await process_audio_document(document, file_content, session, _logger)
             return
 
         # ===== 文本文档分支（现有逻辑）=====
@@ -751,12 +781,20 @@ class DocumentService:
 
         return ext
 
-    def _get_max_file_size(self, kb: KnowledgeBase) -> int:
-        """获取最大文件大小限制"""
+    # 各模态默认最大文件大小（MB）
+    _MODALITY_MAX_SIZE_MB = {"text": 100, "image": 100, "video": 500, "audio": 200}
+
+    def _get_max_file_size(self, kb: KnowledgeBase, file_type: str = "") -> int:
+        """获取最大文件大小限制，按模态区分默认值"""
         config = kb.get_config()
         limits = config.get("limits", {})
-        max_size_mb = limits.get("max_file_size_mb", 100)
-        return max_size_mb * 1024 * 1024
+        if limits.get("max_file_size_mb"):
+            return limits["max_file_size_mb"] * 1024 * 1024
+        # 按模态取默认值
+        for modality, types in self.MODALITY_TO_FILE_TYPES.items():
+            if file_type in types:
+                return self._MODALITY_MAX_SIZE_MB.get(modality, 100) * 1024 * 1024
+        return 100 * 1024 * 1024
 
     def _get_allowed_file_types(self, kb: KnowledgeBase) -> List[str]:
         """获取允许的文件类型"""

@@ -50,6 +50,9 @@ class PromptTemplate(Enum):
     # 图片描述（VLM）
     IMAGE_DESCRIPTION = "image_description"
 
+    # 视频帧描述（VLM）
+    VIDEO_FRAME_DESCRIPTION = "video_frame_description"
+
     # ==================== 深度研究相关 ====================
     RESEARCH_ANALYZE_QUERY = "research_analyze_query"
     RESEARCH_DECOMPOSE_TASKS = "research_decompose_tasks"

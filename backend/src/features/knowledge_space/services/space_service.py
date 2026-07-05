@@ -31,8 +31,9 @@ from src.core.middleware.structured_logging import get_logger
 from src.setting.yaml_config import get_config
 from src.features.user.services.model_config_service import ModelConfigService
 
-# 空间类型 → 模型类型映射（替代重复的三元表达式）
-_SPACE_TYPE_TO_MODEL_TYPE = {"multimodal": "multimodal_embedding", "text": "embedding"}
+def _resolve_model_type(modalities) -> str:
+    """根据 space_type 列表决定嵌入模型类型。所有模态都转文本，统一用 embedding"""
+    return "embedding"
 
 
 class SpaceService:
@@ -161,10 +162,10 @@ class SpaceService:
             )
 
         # 3. 自动填充默认 Embedding 模型（如果用户未指定）
-        space_type = (config or {}).get("space_type", "text")
+        modalities = (config or {}).get("space_type", ["text"])
         embedding_model_name = space.embedding_model
         if not embedding_model_name and self.model_config_service:
-            model_type = _SPACE_TYPE_TO_MODEL_TYPE.get(space_type, "embedding")
+            model_type = _resolve_model_type(modalities)
             available_models = await self.model_config_service.list_available_models(
                 owner_id, model_type,
             )
@@ -182,14 +183,14 @@ class SpaceService:
                 self.logger.info(
                     "自动填充默认 Embedding 模型",
                     model=default_model,
-                    space_type=space_type,
+                    space_type=modalities,
                     owner_id=owner_id,
                 )
                 await self.session.flush()
 
         # 4. 自动回填 Embedding 维度（从模型配置表读取）
         if embedding_model_name:
-            dim_model_type = _SPACE_TYPE_TO_MODEL_TYPE.get(space_type, "embedding")
+            dim_model_type = _resolve_model_type(modalities)
             embedding_dim = await self._get_embedding_dimension(
                 model_name=embedding_model_name,
                 owner_id=owner_id,
@@ -210,7 +211,7 @@ class SpaceService:
 
             # 从模型配置表重新查询维度（确保拿到真实值）
             if not embedding_dim and embedding_model_name and self.model_config_service:
-                dim_model_type = _SPACE_TYPE_TO_MODEL_TYPE.get(space_type, "embedding")
+                dim_model_type = _resolve_model_type(modalities)
                 embedding_dim = await self._get_embedding_dimension(
                     model_name=embedding_model_name,
                     owner_id=owner_id,
@@ -226,14 +227,14 @@ class SpaceService:
                 embedding_dim = self.es_client.default_embedding_dim
 
             try:
-                create_kwargs = self._build_es_create_kwargs(space.id, embedding_dim, space_type)
+                create_kwargs = self._build_es_create_kwargs(space.id, embedding_dim, modalities)
                 await self.es_client.create_index(**create_kwargs)
                 self.logger.info(
                     "ES 空间索引创建成功",
                     space_id=space.id,
                     embedding_dim=embedding_dim,
                     embedding_model=embedding_model_name,
-                    space_type=space_type,
+                    space_type=modalities,
                 )
             except Exception as e:
                 self.logger.error(
@@ -684,8 +685,8 @@ class SpaceService:
         embedding_update = config_updates.get("embedding")
         new_model = embedding_update.get("model") if isinstance(embedding_update, dict) else None
         if new_model:
-            resolved_type = merged_config.get("space_type", "text")
-            model_type = _SPACE_TYPE_TO_MODEL_TYPE.get(resolved_type, "embedding")
+            resolved_type = merged_config.get("space_type", ["text"])
+            model_type = _resolve_model_type(resolved_type)
             auto_dim = await self._get_embedding_dimension(
                 model_name=new_model,
                 owner_id=space.owner_id,
@@ -747,9 +748,6 @@ class SpaceService:
         flag_modified(space, "config")
 
     @staticmethod
-    def _build_es_create_kwargs(space_id: int, embedding_dim: int, space_type: str) -> Dict[str, Any]:
-        """构建 ES 索引创建参数"""
-        kwargs = {"space_id": space_id, "embedding_dim": embedding_dim}
-        if space_type == "multimodal":
-            kwargs["multimodal_dim"] = embedding_dim
-        return kwargs
+    def _build_es_create_kwargs(space_id: int, embedding_dim: int, space_type) -> Dict[str, Any]:
+        """构建 ES 索引创建参数。全模态现阶段不需要 image_embedding（所有数据转文本）"""
+        return {"space_id": space_id, "embedding_dim": embedding_dim}

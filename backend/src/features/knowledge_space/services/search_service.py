@@ -1134,10 +1134,10 @@ class SearchService:
         # 1. 校验空间和知识库
         space = await self._validate_space_and_kb(space_id, kb_id)
 
-        # 2. 验证空间类型为 multimodal
-        space_type = space.get_config().get("space_type", "text") if space else "text"
-        if space_type != "multimodal":
-            raise SearchError("多模态检索仅适用于多模态空间，请使用通用检索接口")
+        # 2. 验证空间包含 image 模态
+        space_type_list = space.get_config().get("space_type", ["text"]) if space else ["text"]
+        if "image" not in space_type_list:
+            raise SearchError("多模态检索仅适用于包含图片模态的空间，请使用通用检索接口")
 
         # 3. 获取多模态嵌入客户端
         error_msg = "该空间未配置多模态嵌入模型，无法进行多模态检索"
@@ -1218,13 +1218,8 @@ class SearchService:
         from src.shared.ai_models.embedding import BaseMultimodalEmbedding
 
         space_config = space.get_config()
-        space_type = space_config.get("space_type", "text")
-
-        if space_type == "multimodal":
-            model_name = (space_config.get("embedding") or {}).get("model")
-        else:
-            mm_config = space_config.get("multimodal_embedding")
-            model_name = mm_config.get("model") if mm_config else None
+        mm_config = space_config.get("multimodal_embedding")
+        model_name = mm_config.get("model") if mm_config else None
 
         if not model_name:
             raise EmbeddingError(error_msg)
@@ -1247,20 +1242,20 @@ class SearchService:
             if score_threshold > 0 and score < score_threshold:
                 continue
 
-            image_url = source.get("image_url", "")
-            if image_url:
+            media_url = source.get("media_url", "") or source.get("image_url", "")
+            if media_url:
                 try:
                     minio_client = await self._get_minio_client()
-                    image_url = await minio_client.get_file_url(
-                        minio_client.default_bucket, image_url, 3600
+                    media_url = await minio_client.get_file_url(
+                        minio_client.default_bucket, media_url, 3600
                     )
                 except Exception as e:
                     self.logger.warning(
-                        "图片 presigned URL 生成失败",
-                        image_url=image_url,
+                        "媒体文件 presigned URL 生成失败",
+                        media_url=media_url,
                         error=str(e),
                     )
-                    image_url = ""
+                    media_url = ""
 
             results.append(SearchResult(
                 chunk_id=hit.get("chunk_id", ""),
@@ -1271,7 +1266,8 @@ class SearchService:
                 chunk_index=source.get("chunk_index", 0),
                 metadata=source.get("metadata"),
                 file_info=source.get("file_info"),
-                image_url=image_url,
+                image_url=media_url,  # 向后兼容
+                media_url=media_url,
                 chunk_type=source.get("chunk_type", "image"),
             ))
         return results

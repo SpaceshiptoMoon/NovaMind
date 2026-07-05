@@ -70,6 +70,17 @@ class FileValidator:
         b'#!/bin/sh': 'text/x-shellscript',
         b'#!/bin/bash': 'text/x-shellscript',
         b'#!/usr/bin/env': 'text/x-shellscript',
+
+        # Audio
+        b'ID3': 'audio/mpeg',              # MP3 with ID3 tag
+        b'\xff\xfb': 'audio/mpeg',          # MP3 MPEG frame
+        b'\xff\xf3': 'audio/mpeg',          # MP3 MPEG v2
+        b'\xff\xe3': 'audio/mpeg',          # MP3 MPEG v2.5
+        b'fLaC': 'audio/flac',              # FLAC
+        b'OggS': 'audio/ogg',               # OGG audio
+
+        # Video
+        b'\x1aE\xdf\xa3': 'video/webm',     # WebM / MKV
     }
 
     # 扩展名到 MIME 类型的映射
@@ -101,6 +112,19 @@ class FileValidator:
         'jpg': ['image/jpeg'],
         'jpeg': ['image/jpeg'],
         'gif': ['image/gif'],
+        # 视频
+        'mp4': ['video/mp4'],
+        'mov': ['video/quicktime'],
+        'avi': ['video/x-msvideo'],
+        'mkv': ['video/x-matroska'],
+        'webm': ['video/webm'],
+        # 音频
+        'mp3': ['audio/mpeg', 'audio/mp3'],
+        'wav': ['audio/wav', 'audio/x-wav'],
+        'flac': ['audio/flac'],
+        'aac': ['audio/aac'],
+        'ogg': ['audio/ogg'],
+        'm4a': ['audio/mp4', 'audio/x-m4a'],
     }
 
     # Office 文件内容类型（在 ZIP 内部）
@@ -170,6 +194,14 @@ class FileValidator:
         """
         for signature, mime_type in self.MAGIC_SIGNATURES.items():
             if content.startswith(signature):
+                # RIFF container: 区分 WAV 和 AVI
+                if mime_type == 'audio/x-wav' and content.startswith(b'RIFF') and len(content) >= 12:
+                    riff_type = content[8:12]
+                    if riff_type == b'WAVE':
+                        return 'audio/x-wav'
+                    elif riff_type == b'AVI ':
+                        return 'video/x-msvideo'
+                    return None
                 return mime_type
         return None
 
