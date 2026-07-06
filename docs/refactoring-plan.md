@@ -408,6 +408,71 @@ Worker 取出
 
 ---
 
+## 七、完整性审查结果（3 agent 交叉验证）
+
+### 7.1 关键遗漏（Critical）
+
+| # | 遗漏 | 影响 | 补充到 |
+|---|------|------|--------|
+| 1 | `enqueue_process_document()` 不创建 Task 记录 | 核心需求缺失，无 Task 快照 | Step 5.2 |
+| 2 | `execute_document_pipeline()` 无 Task 参数 | 无法写入 Task.step_progress / pipeline_result | Step 4 |
+| 3 | `_build_stats_select()` 状态聚合需重写 JOIN | 统计查询复杂度大增 | Step 6.2 |
+| 4 | `SplittingConfig` 歧视联合无法容纳 audio/video 子配置 | Schema 结构不兼容 | Step 3.2 |
+| 5 | `_validate_config_updates()` 不校验 splitting.audio/video | 切分策略新字段无校验 | Step 3.3 |
+| 6 | `revive()` 删除后 `upload_document()` 复活逻辑需要替代方案 | 同文件重传功能缺失 | Step 2.3 |
+| 7 | `process_kb_documents()` 的 `status=UPLOADED` 查询无替代 | 批量处理入口失效 | Step 6.1 |
+| 8 | 并发防护无 DB 级约束（ `UNIQUE (document_id) WHERE status IN (PENDING,PROCESSING)` ） | 竞态条件风险 | Step 1.3 |
+| 9 | `recover_orphan_documents()` 查 `Document.status` 需改查 Task | 重启恢复失效 | Step 5.7 |
+| 10 | `process_resume_task()` 共用 `TaskTracker` 基础设施，需决定同步迁移还是分叉 | 简历管道受影响 | Step 9 |
+
+### 7.2 后端遗漏（High）
+
+| # | 遗漏 | 补充到 |
+|---|------|--------|
+| 11 | ES chunk 的 `start_time`/`end_time`/`frame_paths` 元数据在统一 MD 切分后如何保留 | Step 4.4 |
+| 12 | `_generate_questions_for_chunks_static()` 读 LIVE KB config 而非 `Task.pipeline_config` 快照 | Step 5.5 |
+| 13 | `_handle_final_failure()` 已是死代码，应删除或正式启用 | Step 5.6 |
+| 14 | `_ensure_mark_failed()` raw SQL 写 `documents` 表需改为 `document_tasks` | Step 5.6 |
+| 15 | `delete_by_kb()` 软删时 Task 行不做级联处理 | Step 2.4 |
+| 16 | `_list_by_parent()` 的 `status` 参数需改为 Task join | Step 6.1 |
+| 17 | `DEFAULT_STORAGE` 常量死代码，可一并清理 | Step 2 |
+| 18 | `get_deleted_by_hash()` 在 revive 删除后变为死代码 | Step 2.3 |
+| 19 | `DocumentProcessor` 需新增 `read_full_text()`（reader-only）和 `split_text()`（splitter-only）两个新方法 | Step 4.1 |
+| 20 | `ai_chat_service.py` 调用了 `DocumentProcessor.load_with_strategy()`，需适配 | Step 4.6 |
+
+### 7.3 前端遗漏（High）
+
+| # | 遗漏 | 补充到 |
+|---|------|--------|
+| 21 | Status 过滤值从 `uploaded`→`pending`，新增 `cancelled` | Step 8.3 |
+| 22 | `isProcessing`/`isFailed`/`canProcess` 状态常量映射更新 | Step 8.3 |
+| 23 | `KbConfigView.onSave()` 音频切分从 `parsing.audio` 移到 `splitting.audio` | Step 8.5 |
+| 24 | `KbConfigView.onLoad()` 音频切分从 `parsing.audio` 读改为 `splitting.audio` | Step 8.5 |
+| 25 | `buildSplittingConfig()` 需包含 audio/video 子配置 | Step 8.5 |
+| 26 | `ProcessDocumentResponse` / `BatchProcessResponse` 需新增 `task_id` | Step 8.1 |
+| 27 | `SplittingConfig` 类型需新增 audio/video override 字段 | Step 8.1 |
+| 28 | `KBStats.uploaded_documents` 语义变化（是否重命名为 `pending_documents`） | Step 8.1 |
+| 29 | `DocumentDetailView` 中 `doc_metadata.chunk_type/frame_count/segment_count` 改为读 `pipeline_result` | Step 8.4 |
+| 30 | 前端目前无 Task 轮询/Store 机制用于实时进度展示 | Step 8.8 |
+| 31 | `KbConfigView` 缺少视频切分 UI（form fields for videoChunkStrategy/videoChunkSize） | Step 8.5 |
+| 32 | `canReprocess`/`isProcessing`/`isFailed` 计算属性需状态键值更新 | Step 8.4 |
+| 33 | `DocumentDetailView.status` 展示源不明确（API 派生 vs 单独 Task 端点） | Step 8.4 |
+| 34 | `getMaxFileSizeText` 已是死代码 | Step 8.7 |
+
+### 7.4 设计决策待定
+
+| # | 决策点 | 待定项 |
+|---|--------|--------|
+| A | `SplittingConfig` 结构调整 | 拆出 top-level 字段 `audio`/`video`，不再用歧视联合包裹 |
+| B | ES metadata 保留方案 | 时间戳切分：按 `[HH:MM:SS]` 标记边界，不在两段之间截断 |
+| C | 取消标记 | Redis（低延迟）+ Task.status=CANCELLED（持久），双重保障 |
+| D | 并发防护 | 应用层 check + DB partial unique index |
+| E | 软删级联 | Task 不级联软删（FK 仍有效），查询时排除 `document.deleted_at IS NOT NULL` |
+
+---
+
+## 八、风险点（更新）
+
 ## 七、风险点
 
 | 风险 | 缓解措施 |
