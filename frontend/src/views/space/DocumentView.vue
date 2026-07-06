@@ -41,15 +41,7 @@
           批量处理 ({{ selectedIds.length }})
         </el-button>
       </div>
-      <div class="right-actions">
-        <el-select v-model="statusFilter" placeholder="状态筛选" clearable style="width: 130px" @change="handleFilterChange">
-          <el-option label="全部" value="" />
-          <el-option label="待处理" value="uploaded" />
-          <el-option label="处理中" value="processing" />
-          <el-option label="已完成" value="completed" />
-          <el-option label="失败" value="failed" />
-        </el-select>
-      </div>
+      <div class="right-actions" />
     </div>
 
     <!-- 文档列表 -->
@@ -80,21 +72,6 @@
             <span class="text-muted">{{ row.chunk_count ?? '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="110" align="center">
-          <template #default="{ row }">
-            <div class="status-cell">
-              <el-progress
-                v-if="isProcessing(row.status)"
-                :percentage="100"
-                :indeterminate="true"
-                :stroke-width="3"
-                :show-text="false"
-                class="status-progress"
-              />
-              <StatusTag :status="String(row.status)" :status-map="docStatusMap" size="small" />
-            </div>
-          </template>
-        </el-table-column>
         <el-table-column prop="created_at" label="上传时间" width="140">
           <template #default="{ row }">
             <span class="text-muted">{{ formatDate(row.created_at) }}</span>
@@ -103,15 +80,6 @@
         <el-table-column label="" width="120" fixed="right" align="right">
           <template #default="{ row }">
             <div class="action-buttons">
-              <el-tooltip v-if="isProcessing(row.status)" content="取消处理" placement="top">
-                <el-button :icon="CircleClose" circle size="small" :loading="cancelLoadingId === row.id" aria-label="取消处理" @click="handleCancel(row)" />
-              </el-tooltip>
-              <el-tooltip v-if="canProcess(row.status)" :content="(row.status === 'completed' || row.status === 2) ? '重新解析' : '处理'" placement="top">
-                <el-button :icon="Refresh" circle size="small" aria-label="处理" @click="handleSingleProcess(row)" />
-              </el-tooltip>
-              <el-tooltip v-if="isFailed(row.status)" content="重试" placement="top">
-                <el-button :icon="RefreshRight" circle size="small" :loading="retryLoadingId === row.id" aria-label="重试" @click="handleRetry(row)" />
-              </el-tooltip>
               <el-tooltip content="详情" placement="top">
                 <el-button :icon="View" circle size="small" aria-label="详情" @click="goToDetail(row.id)" />
               </el-tooltip>
@@ -191,15 +159,14 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload, UploadFilled, Refresh, RefreshRight, CircleClose, View, Delete } from '@element-plus/icons-vue'
+import { Upload, UploadFilled, View, Delete } from '@element-plus/icons-vue'
 import { documentApi } from '@/api/document'
 import { spaceApi } from '@/api/space'
 import { knowledgeBaseApi } from '@/api/knowledgeBase'
-import StatusTag from '@/components/common/StatusTag.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import type { Document as DocType, BatchUploadResponse } from '@/api/types'
 import type { UploadFile } from 'element-plus'
-import { docStatusMap, getFileTypeStyle, normalizeSpaceTypes, getUploadAccept, getFileMaxSize, hasModality } from '@/utils/document'
+import { getFileTypeStyle, normalizeSpaceTypes, getUploadAccept, getFileMaxSize, hasModality } from '@/utils/document'
 import { formatFileSize, formatDate } from '@/utils/format'
 
 const route = useRoute()
@@ -225,7 +192,6 @@ const uploadTipText = computed(() => {
 })
 
 const uploadDialogVisible = ref(false)
-const statusFilter = ref<string>('')
 const documents = ref<DocType[]>([])
 const total = ref(0)
 const currentPage = ref(1)
@@ -242,11 +208,6 @@ const processTargetIds = ref<number[]>([])
 
 function handleSelectionChange(rows: DocType[]) {
   selectedIds.value = rows.map((r) => r.id)
-}
-
-function handleFilterChange() {
-  currentPage.value = 1
-  fetchDocuments()
 }
 
 // === 上传 ===
@@ -312,21 +273,6 @@ async function handleUpload() {
 
 // === 处理 ===
 
-const cancelLoadingId = ref<number | null>(null)
-const retryLoadingId = ref<number | null>(null)
-
-function isProcessing(status: string | number): boolean {
-  return status === 'processing' || status === 1
-}
-
-function isFailed(status: string | number): boolean {
-  return status === 'failed' || status === 3
-}
-
-function canProcess(status: string | number): boolean {
-  return status === 'uploaded' || status === 'completed' || status === 0 || status === 2
-}
-
 function showProcessDialog(ids: number[]) {
   processTargetIds.value = ids
   processDialogVisible.value = true
@@ -349,71 +295,6 @@ async function handleProcess() {
   }
 }
 
-async function handleSingleProcess(row: DocType) {
-  const isCompleted = row.status === 'completed' || row.status === 2
-  if (isCompleted) {
-    try {
-      await ElMessageBox.confirm(
-        `确定要重新解析文档 "${row.filename}" 吗？将清除旧的分块数据。`,
-        '重新解析',
-        { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' },
-      )
-      processLoading.value = true
-      await documentApi.reprocessDocument(spaceId.value, kbId.value, row.id)
-      ElMessage.success('已提交重新解析任务')
-      fetchDocuments()
-    } catch (error: unknown) {
-      if ((error as string) !== 'cancel') {
-        // Error already shown by response interceptor
-      }
-    } finally {
-      processLoading.value = false
-    }
-  } else {
-    showProcessDialog([row.id])
-  }
-}
-
-async function handleCancel(row: DocType) {
-  try {
-    await ElMessageBox.confirm(
-      `确定要取消文档 "${row.filename}" 的处理吗？`,
-      '取消处理',
-      { confirmButtonText: '确定取消', cancelButtonText: '返回', type: 'warning' },
-    )
-    cancelLoadingId.value = row.id
-    await documentApi.cancelDocument(spaceId.value, kbId.value, row.id)
-    ElMessage.success('取消请求已发送')
-    fetchDocuments()
-  } catch (error: unknown) {
-    if ((error as string) !== 'cancel') {
-      // Error already shown by response interceptor
-    }
-  } finally {
-    cancelLoadingId.value = null
-  }
-}
-
-async function handleRetry(row: DocType) {
-  try {
-    await ElMessageBox.confirm(
-      `确定要重试文档 "${row.filename}" 的处理吗？将清除旧的分块数据并重新解析。`,
-      '重试处理',
-      { confirmButtonText: '确定重试', cancelButtonText: '取消', type: 'info' },
-    )
-    retryLoadingId.value = row.id
-    await documentApi.retryDocument(spaceId.value, kbId.value, row.id)
-    ElMessage.success('已提交重试任务')
-    fetchDocuments()
-  } catch (error: unknown) {
-    if ((error as string) !== 'cancel') {
-      // Error already shown by response interceptor
-    }
-  } finally {
-    retryLoadingId.value = null
-  }
-}
-
 // === 列表 ===
 
 async function fetchDocuments() {
@@ -422,7 +303,6 @@ async function fetchDocuments() {
     const data = await documentApi.getDocuments(spaceId.value, kbId.value, {
       skip: (currentPage.value - 1) * pageSize.value,
       limit: pageSize.value,
-      ...(statusFilter.value ? { status: statusFilter.value } : {}),
     })
     documents.value = data.items || []
     total.value = data.total || 0

@@ -275,7 +275,6 @@ class DocumentService:
                 "file_type": file_type,
                 "file_size": file_size,
                 "file_hash": file_hash,
-                "storage": {},
             })
 
             # 使用真实 document_id 上传到 MinIO
@@ -620,8 +619,11 @@ class DocumentService:
         if not document or document.kb_id != kb_id:
             raise DocumentNotFoundError(document_id)
 
-        # 2.5 PROCESSING 状态拒绝删除
-        if document.status == DocumentStatus.PROCESSING:
+        # 2.5 有活跃处理任务时拒绝删除
+        from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        _task_repo = DocumentTaskRepository(self.session)
+        active_task = await _task_repo.get_active_by_document_id(document_id)
+        if active_task:
             raise DocumentAlreadyProcessingError(document_id)
 
         # 3. 细粒度权限检查：EDITOR 只能删除自己的文档，ADMIN 可删除任意文档
@@ -867,7 +869,8 @@ class DocumentService:
         取消文档处理任务
 
         通过 Redis 取消标记通知正在运行的 pipeline 终止，
-        同时尝试通过 arq abort 取消排队中的任务。
+        同时尝试通过 arq abort 取消排队中的任务，
+        并更新 Task 记录为 CANCELLED。
 
         Args:
             document_id: 文档 ID
@@ -877,12 +880,18 @@ class DocumentService:
 
         Raises:
             DocumentNotFoundError: 文档不存在
-            InvalidParameterError: 文档不在处理中状态
+            InvalidParameterError: 文档无活跃处理任务
         """
         document = await self.doc_repo.get_by_id(document_id)
         if not document:
             raise DocumentNotFoundError(document_id)
-        if document.status != DocumentStatus.PROCESSING:
+
+        # 检查是否有活跃任务
+        from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from src.features.knowledge_space.models.document_task import TaskStatus
+        _task_repo = DocumentTaskRepository(self.session)
+        active_task = await _task_repo.get_active_by_document_id(document_id)
+        if not active_task:
             raise InvalidParameterError("只能取消处理中的文档", field="document_id")
 
         from src.shared.mq.task_tracker import (
@@ -892,6 +901,9 @@ class DocumentService:
 
         # 设置取消标记（pipeline 会在检查点检测到）
         await mark_document_cancelled(document_id)
+
+        # 更新任务状态为 CANCELLED
+        active_task.mark_cancelled()
 
         job_id = await get_job_id_for_document(document_id)
         if job_id:
@@ -937,14 +949,17 @@ class DocumentService:
         """
         document = await self._validate_document_not_processing(document_id)
 
-        # COMPLETED 文档需要走 reprocess 流程
-        if document.status == DocumentStatus.COMPLETED:
+        # COMPLETED 任务需要走 reprocess 流程
+        from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from src.features.knowledge_space.models.document_task import TaskStatus
+        _task_repo = DocumentTaskRepository(self.session)
+        latest_task = await _task_repo.get_by_document_id(document_id)
+        if latest_task and latest_task.status == TaskStatus.COMPLETED:
             raise InvalidParameterError(
                 "文档已完成处理，如需重新解析请使用 reprocess 接口",
                 field="document_id",
             )
 
-        # UPLOADED 或 FAILED 状态允许处理
         kb = await self.kb_repo.get_by_id(document.kb_id)
         if not kb:
             raise KnowledgeBaseNotFoundError(document.kb_id)
@@ -973,9 +988,9 @@ class DocumentService:
         """
         results = []
 
-        # 如果未指定 document_ids，查询所有 UPLOADED 状态的文档
+        # 如果未指定 document_ids，查询所有活跃文档（通过 task 状态在 process_document 中过滤）
         if not document_ids:
-            documents = await self.doc_repo.get_by_kb(kb_id, status=DocumentStatus.UPLOADED)
+            documents = await self.doc_repo.get_by_kb(kb_id)
             document_ids = [doc.id for doc in documents]
 
         for doc_id in document_ids:
@@ -1035,12 +1050,8 @@ class DocumentService:
         except Exception as e:
             self.logger.warning("清除 ES 旧分块失败", document_id=document.id, error=str(e))
 
-        # 2. 先入队（失败则不修改状态）
+        # 2. 先入队（失败则不创建任务）
         await self._enqueue_document_processing(document, "重新解析")
-
-        # 3. 入队成功后再修改状态
-        document.status = DocumentStatus.UPLOADED
-        document.status_info = {}
         return document
 
     async def retry_document(
@@ -1048,10 +1059,10 @@ class DocumentService:
         document_id: int,
     ) -> Document:
         """
-        重试文档处理（支持 FAILED 和 COMPLETED 状态）
+        重试文档处理（支持 FAILED 和 COMPLETED 任务状态）
 
         先删除 ES 中的旧分块数据保证唯一性，再重新入队处理。
-        对于 PROCESSING 状态的文档，应先使用 cancel_processing 取消。
+        对于有活跃任务的文档，应先使用 cancel_processing 取消。
 
         Args:
             document_id: 文档 ID
@@ -1066,13 +1077,15 @@ class DocumentService:
         """
         document = await self._validate_document_not_processing(document_id)
 
-        if document.status not in (DocumentStatus.FAILED, DocumentStatus.COMPLETED):
+        from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from src.features.knowledge_space.models.document_task import TaskStatus
+        _task_repo = DocumentTaskRepository(self.session)
+        latest_task = await _task_repo.get_by_document_id(document_id)
+        if not latest_task or latest_task.status not in (TaskStatus.FAILED, TaskStatus.COMPLETED):
             raise InvalidParameterError(
                 "只能重试失败或已完成的文档",
                 field="document_id",
             )
-
-        previous_status = document.status
 
         # 1. 清除 ES 旧分块（best effort，失败不阻塞）
         try:
@@ -1083,17 +1096,13 @@ class DocumentService:
         except Exception as e:
             self.logger.warning("清除 ES 旧分块失败", document_id=document.id, error=str(e))
 
-        # 2. 先入队（失败则不修改状态，避免文档卡在 UPLOADED）
+        # 2. 先入队（失败则不创建任务，避免孤儿记录）
         await self._enqueue_document_processing(document, "重试")
-
-        # 3. 入队成功后再修改状态（这次 commit 由外层 get_db() 管理，不会提前提交）
-        document.status = DocumentStatus.UPLOADED
-        document.status_info = {}
 
         self.logger.info(
             "文档重试已入队",
             document_id=document_id,
-            previous_status=previous_status,
+            previous_task_id=latest_task.id,
         )
         return document
 

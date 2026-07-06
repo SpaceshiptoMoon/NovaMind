@@ -30,9 +30,13 @@ from src.features.knowledge_space.schemas.document_schema import (
     ChunkResponse,
     FailedFileItem,
 )
+from src.features.knowledge_space.schemas.document_task_schema import (
+    DocumentTaskResponse,
+    DocumentTaskListResponse,
+)
 from src.features.knowledge_space.schemas.member_schema import ActionResponse
 from src.features.knowledge_space.models.space_member import SpaceMember
-from src.features.knowledge_space.models.document import DocumentStatus
+from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
 from src.core.database.database import get_db
 from src.features.knowledge_space.api.dependencies import (
     get_current_user_id,
@@ -196,7 +200,7 @@ async def upload_document(
         return DocumentUploadResponse(
             document_id=document.id,
             filename=document.filename,
-            status=DocumentStatus(document.status).name.lower(),
+            status="uploaded",
             message="文档上传成功，等待拆分解析",
         )
 
@@ -263,7 +267,7 @@ async def upload_document(
             DocumentUploadResponse(
                 document_id=doc.id,
                 filename=doc.filename,
-                status=DocumentStatus(doc.status).name.lower(),
+                status="uploaded",
                 message="文档上传成功，等待拆分解析",
             )
             for doc in result["success"]
@@ -281,7 +285,6 @@ async def upload_document(
 async def get_documents(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
-    status: Annotated[Optional[str], Query(description="状态过滤")] = None,
     skip: Annotated[int, Query(ge=0, description="跳过的记录数")] = 0,
     limit: Annotated[int, Query(ge=1, le=1000, description="返回的最大记录数")] = 100,
     member: SpaceMember = Depends(validate_space_member),
@@ -292,23 +295,17 @@ async def get_documents(
     # 验证知识库访问权限
     await validate_kb_access(kb_id, space_id, db)
 
-    status_filter = None
-    if status:
-        try:
-            status_filter = DocumentStatus[status.upper()]
-        except KeyError:
-            from src.features.knowledge_space.api.exceptions import InvalidDocumentStatusError
-            raise InvalidDocumentStatusError(status)
-
+    # TODO: status 过滤器原基于 Document.status 列，该列已迁移至 DocumentTask。
+    # 后续需要通过 JOIN/子查询 DocumentTask.latest status 实现过滤。
     documents = await document_service.get_kb_documents(
         kb_id=kb_id,
-        status=status_filter,
+        status=None,
         skip=skip,
         limit=limit,
     )
 
     # 获取符合条件的总数（用于分页）
-    total = await document_service.count_kb_documents(kb_id=kb_id, status=status_filter)
+    total = await document_service.count_kb_documents(kb_id=kb_id, status=None)
 
     return DocumentListResponse(
         items=[DocumentResponse.model_validate(d) for d in documents],
@@ -377,6 +374,37 @@ async def get_document_chunks(
 
     chunks = await document_service.get_document_chunks(space_id, document_id, skip=skip, limit=limit)
     return [await _build_chunk_response(c) for c in chunks]
+
+
+@router.get(
+    "/{kb_id}/documents/{document_id}/tasks",
+    response_model=DocumentTaskListResponse,
+    summary="获取文档处理任务",
+    description="获取指定文档的所有处理任务记录（按时间倒序）",
+)
+async def get_document_tasks(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    document_service: DocumentService = Depends(get_document_service),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取文档处理任务列表"""
+    # 验证知识库访问权限
+    await validate_kb_access(kb_id, space_id, db)
+
+    # 先验证文档存在
+    document = await document_service.get_document(document_id)
+    if not document or document.kb_id != kb_id:
+        raise DocumentNotFoundError(document_id)
+
+    task_repo = DocumentTaskRepository(db)
+    tasks = await task_repo.list_by_document(document_id)
+    return DocumentTaskListResponse(
+        tasks=[DocumentTaskResponse.model_validate(t) for t in tasks],
+        total=len(tasks),
+    )
 
 
 @router.get(
@@ -505,7 +533,13 @@ async def process_document(
     document = await document_service.process_document(
         document_id=document_id,
     )
-    return DocumentProcessResponse(document_id=document.id)
+    # 获取刚创建的任务 ID
+    task_repo = DocumentTaskRepository(db)
+    latest_task = await task_repo.get_by_document_id(document_id)
+    return DocumentProcessResponse(
+        document_id=document.id,
+        task_id=latest_task.id if latest_task else None,
+    )
 
 
 @router.post(
@@ -556,7 +590,13 @@ async def reprocess_document(
     document = await document_service.reprocess_document(
         document_id=document_id,
     )
-    return DocumentProcessResponse(document_id=document.id)
+    # 获取刚创建的任务 ID
+    task_repo = DocumentTaskRepository(db)
+    latest_task = await task_repo.get_by_document_id(document_id)
+    return DocumentProcessResponse(
+        document_id=document.id,
+        task_id=latest_task.id if latest_task else None,
+    )
 
 
 @router.post(
@@ -603,8 +643,12 @@ async def retry_document_processing(
     document = await document_service.retry_document(
         document_id=document_id,
     )
+    # 获取刚创建的任务 ID
+    task_repo = DocumentTaskRepository(db)
+    latest_task = await task_repo.get_by_document_id(document_id)
     return DocumentProcessResponse(
         document_id=document.id,
+        task_id=latest_task.id if latest_task else None,
         status="processing",
         message="文档重试已开始处理",
     )

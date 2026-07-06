@@ -239,33 +239,27 @@ export interface SpaceConfigUpdateRequest {
 
 // ===================== 知识库相关 =====================
 
-export interface SplittingRecursive {
-  strategy: 'recursive'
+export interface AudioSplittingOverride {
+  strategy: 'sentence' | 'fixed'
+  chunk_size?: number
+}
+
+export interface VideoSplittingOverride {
+  strategy: 'fixed'
+  chunk_size?: number
+}
+
+export interface SplittingConfig {
+  strategy?: 'recursive' | 'fixed_size' | 'markdown' | 'semantic'
   chunk_size?: number
   chunk_overlap?: number
   min_chunk_size?: number
-}
-
-export interface SplittingFixedSize {
-  strategy: 'fixed_size'
-  chunk_size?: number
-  chunk_overlap?: number
-}
-
-export interface SplittingMarkdown {
-  strategy: 'markdown'
-  max_chunk_size?: number
-  min_chunk_size?: number
-}
-
-export interface SplittingSemantic {
-  strategy: 'semantic'
   max_chunk_size?: number
   similarity_threshold?: number
   batch_size?: number
+  audio?: AudioSplittingOverride
+  video?: VideoSplittingOverride
 }
-
-export type SplittingConfig = SplittingRecursive | SplittingFixedSize | SplittingMarkdown | SplittingSemantic
 
 export interface VideoParsingConfig {
   frame_interval?: number   // 抽帧间隔(秒), 1-60, 默认5
@@ -274,8 +268,6 @@ export interface VideoParsingConfig {
 
 export interface AudioParsingConfig {
   asr_model?: string               // ASR模型名, 默认"whisper-1"
-  chunk_split_strategy?: 'sentence' | 'fixed'  // 切片策略, 默认"sentence"
-  chunk_size?: number              // fixed模式字符数, 100-4000, 默认1000
 }
 
 export interface ParsingConfig {
@@ -292,7 +284,7 @@ export interface KBStats {
   document_count: number
   chunk_count: number
   total_size_mb: number
-  uploaded_documents: number
+  pending_documents: number
   completed_documents: number
   failed_documents: number
 }
@@ -376,17 +368,11 @@ export interface Document {
   file_type: string
   file_size: number
   file_hash: string
-  status: number
   doc_metadata: Record<string, unknown> | null
-  status_info: Record<string, unknown> | null
-  retry_count: number
-  error_message: string
   chunk_count: number
   token_count: number
   created_at: string
   updated_at: string | null
-  processing_started_at: string | null
-  processed_at: string | null
 }
 
 export interface Chunk {
@@ -441,8 +427,28 @@ export interface BatchUploadResponse {
   failed: BatchUploadFailedItem[]
 }
 
+export interface DocumentTask {
+  id: number
+  document_id: number
+  kb_id: number
+  space_id: number
+  status: number  // 0-pending, 1-processing, 2-completed, 3-failed, 4-cancelled
+  job_id?: string
+  pipeline_config?: Record<string, unknown>
+  step_progress?: Record<string, unknown>
+  pipeline_result?: Record<string, unknown>
+  error_message?: string
+  retry_count: number
+  queued_at?: string
+  started_at?: string
+  completed_at?: string
+  created_at: string
+  updated_at: string
+}
+
 export interface ProcessDocumentResponse {
   document_id: number
+  task_id?: number
   status: string
   message: string
 }

@@ -459,6 +459,13 @@ async function onLoad() {
     configForm.splittingSimilarityThreshold = (sp as { similarity_threshold?: number })?.similarity_threshold ?? 0.7
     configForm.splittingBatchSize = (sp as { batch_size?: number })?.batch_size ?? 20
 
+    // 音频切片策略从 splitting.audio 读取
+    const audioSp = (sp as { audio?: { strategy?: string; chunk_size?: number } })?.audio
+    if (audioSp) {
+      configForm.audioChunkStrategy = (audioSp.strategy as 'sentence' | 'fixed') || 'sentence'
+      configForm.audioChunkSize = audioSp.chunk_size ?? 1000
+    }
+
     // 解析配置
     const ps = cfg?.parsing as Record<string, unknown> | undefined
     configForm.parsingExtractImages = (ps?.extract_images as boolean) ?? false
@@ -473,8 +480,8 @@ async function onLoad() {
 
     const ac = (ps?.audio as Record<string, unknown>) || {}
     configForm.audioAsrModel = (ac?.asr_model as string) || ''
-    configForm.audioChunkStrategy = ((ac?.chunk_split_strategy as string) || 'sentence') as 'sentence' | 'fixed'
-    configForm.audioChunkSize = (ac?.chunk_size as number) ?? 1000
+
+    // 音频切片策略从 splitting 配置读取
 
     // 问题生成
     const qg = cfg?.question_generation
@@ -499,10 +506,31 @@ async function onLoad() {
 
 function buildSplittingConfig(): SplittingConfig {
   const s = configForm.splittingStrategy
-  if (s === 'recursive') return { strategy: 'recursive', chunk_size: configForm.splittingChunkSize, chunk_overlap: configForm.splittingChunkOverlap, min_chunk_size: configForm.splittingMinChunkSize }
-  if (s === 'fixed_size') return { strategy: 'fixed_size', chunk_size: configForm.splittingChunkSize, chunk_overlap: configForm.splittingChunkOverlap }
-  if (s === 'markdown') return { strategy: 'markdown', max_chunk_size: configForm.splittingMaxChunkSize, min_chunk_size: configForm.splittingMinChunkSize }
-  return { strategy: 'semantic', max_chunk_size: configForm.splittingMaxChunkSize, similarity_threshold: configForm.splittingSimilarityThreshold, batch_size: configForm.splittingBatchSize }
+  const base: SplittingConfig = {
+    strategy: s as SplittingConfig['strategy'],
+  }
+  if (s === 'recursive') {
+    base.chunk_size = configForm.splittingChunkSize
+    base.chunk_overlap = configForm.splittingChunkOverlap
+    base.min_chunk_size = configForm.splittingMinChunkSize
+  } else if (s === 'fixed_size') {
+    base.chunk_size = configForm.splittingChunkSize
+    base.chunk_overlap = configForm.splittingChunkOverlap
+  } else if (s === 'markdown') {
+    base.max_chunk_size = configForm.splittingMaxChunkSize
+    base.min_chunk_size = configForm.splittingMinChunkSize
+  } else {
+    base.max_chunk_size = configForm.splittingMaxChunkSize
+    base.similarity_threshold = configForm.splittingSimilarityThreshold
+    base.batch_size = configForm.splittingBatchSize
+  }
+  if (hasAudio.value) {
+    base.audio = {
+      strategy: configForm.audioChunkStrategy,
+      ...(configForm.audioChunkStrategy === 'fixed' ? { chunk_size: configForm.audioChunkSize } : {}),
+    }
+  }
+  return base
 }
 
 // Step 3 解析、Step 4 切分有表单校验，其他步无需
@@ -542,8 +570,6 @@ async function onSave() {
         ...(hasAudio.value ? {
           audio: {
             asr_model: configForm.audioAsrModel || undefined,
-            chunk_split_strategy: configForm.audioChunkStrategy,
-            ...(configForm.audioChunkStrategy === 'fixed' ? { chunk_size: configForm.audioChunkSize } : {}),
           },
         } : {}),
       },
