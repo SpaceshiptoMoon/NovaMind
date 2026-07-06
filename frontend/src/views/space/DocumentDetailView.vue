@@ -9,34 +9,9 @@
           </div>
           <div class="info-title-text">
             <h3 class="doc-filename">{{ document?.filename || '加载中...' }}</h3>
-            <StatusTag v-if="document" :status="String(document.status)" :status-map="docStatusMap" size="small" />
           </div>
         </div>
         <div class="header-actions">
-          <el-button
-            v-if="isProcessing"
-            size="small"
-            :loading="cancelLoading"
-            @click="handleCancel"
-          >
-            取消处理
-          </el-button>
-          <el-button
-            v-if="isFailed"
-            size="small"
-            :loading="retryLoading"
-            @click="handleRetry"
-          >
-            重试
-          </el-button>
-          <el-button
-            v-if="canReprocess"
-            size="small"
-            :loading="reprocessLoading"
-            @click="handleReprocess"
-          >
-            重新解析
-          </el-button>
           <el-button type="primary" size="small" @click="handleDownload">
             下载
           </el-button>
@@ -173,10 +148,9 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { documentApi } from '@/api/document'
-import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import type { DocumentDetail, Chunk } from '@/api/types'
-import { docStatusMap, getFileTypeStyle, chunkTypeLabels } from '@/utils/document'
+import { getFileTypeStyle, chunkTypeLabels } from '@/utils/document'
 import { formatFileSize, formatDate, formatDuration } from '@/utils/format'
 
 const route = useRoute()
@@ -195,9 +169,6 @@ const backTarget = computed(() =>
 const backLabel = computed(() => (kbId.value ? '返回文档管理' : '返回知识库'))
 
 const loading = ref(false)
-const reprocessLoading = ref(false)
-const cancelLoading = ref(false)
-const retryLoading = ref(false)
 const document = ref<DocumentDetail | null>(null)
 const chunks = ref<Chunk[]>([])
 const totalChunks = ref(0)
@@ -205,21 +176,6 @@ const chunkCurrentPage = ref(1)
 const chunkPageSize = 10
 const previewVisible = ref(false)
 const previewUrl = ref('')
-
-const canReprocess = computed(() => {
-  const s = document.value?.status
-  return s === 'completed' || s === 2
-})
-
-const isProcessing = computed(() => {
-  const s = document.value?.status
-  return s === 'processing' || s === 1
-})
-
-const isFailed = computed(() => {
-  const s = document.value?.status
-  return s === 'failed' || s === 3
-})
 
 async function fetchDocument() {
   loading.value = true
@@ -268,69 +224,6 @@ async function handleDownload() {
   } catch (error: unknown) {
     const err = error as { response?: { data?: { error?: { message?: string } } } }
     ElMessage.error(err.response?.data?.error?.message || '下载失败')
-  }
-}
-
-async function handleReprocess() {
-  try {
-    await ElMessageBox.confirm(
-      '确定要重新解析该文档吗？将清除旧的分块数据并重新切分。',
-      '重新解析',
-      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' },
-    )
-    reprocessLoading.value = true
-    await documentApi.reprocessDocument(spaceId.value, kbId.value, docId.value)
-    ElMessage.success('已提交重新解析任务')
-    fetchDocument()
-  } catch (error: unknown) {
-    if ((error as string) !== 'cancel') {
-      const err = error as { response?: { data?: { error?: { message?: string } } } }
-      ElMessage.error(err.response?.data?.error?.message || '重新解析失败')
-    }
-  } finally {
-    reprocessLoading.value = false
-  }
-}
-
-async function handleCancel() {
-  try {
-    await ElMessageBox.confirm(
-      '确定要取消该文档的处理吗？',
-      '取消处理',
-      { confirmButtonText: '确定取消', cancelButtonText: '返回', type: 'warning' },
-    )
-    cancelLoading.value = true
-    await documentApi.cancelDocument(spaceId.value, kbId.value, docId.value)
-    ElMessage.success('取消请求已发送')
-    fetchDocument()
-  } catch (error: unknown) {
-    if ((error as string) !== 'cancel') {
-      const err = error as { response?: { data?: { error?: { message?: string } } } }
-      ElMessage.error(err.response?.data?.error?.message || '取消失败')
-    }
-  } finally {
-    cancelLoading.value = false
-  }
-}
-
-async function handleRetry() {
-  try {
-    await ElMessageBox.confirm(
-      '确定要重试该文档的处理吗？将清除旧的分块数据并重新解析。',
-      '重试处理',
-      { confirmButtonText: '确定重试', cancelButtonText: '取消', type: 'info' },
-    )
-    retryLoading.value = true
-    await documentApi.retryDocument(spaceId.value, kbId.value, docId.value)
-    ElMessage.success('已提交重试任务')
-    fetchDocument()
-  } catch (error: unknown) {
-    if ((error as string) !== 'cancel') {
-      const err = error as { response?: { data?: { error?: { message?: string } } } }
-      ElMessage.error(err.response?.data?.error?.message || '重试失败')
-    }
-  } finally {
-    retryLoading.value = false
   }
 }
 
