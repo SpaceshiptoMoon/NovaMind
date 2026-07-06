@@ -111,15 +111,17 @@ async def is_document_actively_processing(document_id: int) -> bool:
     try:
         from src.shared.mq import get_arq_pool
         pool = await get_arq_pool()
-        job_info = await pool._get_job(job_id)
-        if job_info is None:
+        # arq 0.28: _get_job_result 返回 None 表示 job 已不存在（完成或过期）
+        job_result = await pool._get_job_result(job_id)
+        if job_result is None:
             await doc_tracker.unbind(document_id)
             logger.info("清理残留任务映射", document_id=document_id, job_id=job_id)
             return False
         return True
     except Exception as e:
-        logger.warning("无法验证任务状态，保守认为仍在处理", document_id=document_id, job_id=job_id, error=str(e))
-        return True
+        # 无法验证时允许重试，避免文档永远卡死在 PROCESSING
+        logger.warning("无法验证任务状态，允许重试", document_id=document_id, job_id=job_id, error=str(e))
+        return False
 
 
 async def mark_document_cancelled(document_id: int) -> None:

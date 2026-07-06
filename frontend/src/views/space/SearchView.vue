@@ -60,8 +60,8 @@
           />
         </div>
 
-        <!-- 检索模式下拉（仅文本空间） -->
-        <div v-if="spaceType !== 'multimodal'" class="left-section">
+        <!-- 检索模式下拉（非纯图片空间） -->
+        <div v-if="!hasImage" class="left-section">
           <label class="left-label">检索模式</label>
           <el-select v-model="searchForm.search_mode" size="small" class="left-full-select">
             <el-option
@@ -98,8 +98,8 @@
           </div>
         </div>
 
-        <!-- LLM 开关 + 模型选择（仅文本空间） -->
-        <div v-if="spaceType !== 'multimodal'" class="left-section">
+        <!-- LLM 开关 + 模型选择（非纯图片空间） -->
+        <div v-if="!hasImage" class="left-section">
           <div class="param-row">
             <span class="param-label">LLM 回答</span>
             <el-switch v-model="searchForm.llm_enabled" size="small" />
@@ -118,7 +118,7 @@
         </div>
 
         <!-- 以图搜图区域（仅多模态空间） -->
-        <div v-if="spaceType === 'multimodal'" class="left-section">
+        <div v-if="hasImage" class="left-section">
           <label class="left-label">以图搜图</label>
           <div
             class="image-drop-zone"
@@ -154,7 +154,7 @@
         </div>
 
         <!-- 高级设置折叠（仅文本空间） -->
-        <el-collapse v-if="spaceType !== 'multimodal'" v-model="advancedCollapsed" class="left-collapse">
+        <el-collapse v-if="!hasImage" v-model="advancedCollapsed" class="left-collapse">
           <el-collapse-item title="高级设置" name="advanced">
             <!-- 检索参数 -->
             <div class="advanced-section">
@@ -311,7 +311,7 @@
           </div>
 
           <!-- 多模态：图片网格 -->
-          <div v-if="spaceType === 'multimodal'" class="image-grid">
+          <div v-if="hasImage" class="image-grid">
             <div
               v-for="(result, index) in searchResults"
               :key="result.chunk_id"
@@ -341,7 +341,7 @@
             </div>
           </div>
 
-          <!-- 文本：结果卡片列表 -->
+          <!-- 文本/视频/音频：结果卡片列表 -->
           <div v-else class="results-list">
             <div
               v-for="(result, index) in searchResults"
@@ -350,6 +350,12 @@
             >
               <div class="result-header">
                 <span class="result-index">{{ index + 1 }}</span>
+                <el-tag
+                  v-if="result.chunk_type && result.chunk_type !== 'text'"
+                  :type="result.chunk_type === 'image' ? 'warning' : result.chunk_type === 'video' ? 'primary' : 'danger'"
+                  size="small"
+                  effect="plain"
+                >{{ chunkTypeLabels[result.chunk_type] || result.chunk_type }}</el-tag>
                 <span class="result-doc">{{ (result.file_info as Record<string, string>)?.filename || `文档 #${result.document_id}` }}</span>
                 <span class="result-score" :class="getScoreClass(result.score)">
                   {{ (result.score * 100).toFixed(1) }}%
@@ -357,16 +363,26 @@
               </div>
               <div class="result-content">
                 <img
-                  v-if="result.image_url && result.chunk_type === 'image'"
-                  :src="result.image_url"
+                  v-if="result.chunk_type === 'image' && (result.media_url || result.image_url)"
+                  :src="result.media_url || result.image_url"
                   class="result-thumbnail"
                   loading="lazy"
-                  @click="previewUrl = result.image_url!; previewVisible = true"
+                  @click="previewUrl = (result.media_url || result.image_url)!; previewVisible = true"
                 />
                 <template v-else>{{ result.content }}</template>
               </div>
               <div class="result-footer">
                 <span v-if="(result.metadata as Record<string, unknown>)?.page">第 {{ (result.metadata as Record<string, unknown>).page }} 页</span>
+                <span v-if="result.chunk_type === 'video' && (result.metadata as Record<string, unknown>)?.start_time != null">
+                  {{ formatDuration((result.metadata as Record<string, unknown>).start_time as number) }}
+                  -
+                  {{ formatDuration((result.metadata as Record<string, unknown>).end_time as number) }}
+                </span>
+                <span v-if="result.chunk_type === 'audio' && (result.metadata as Record<string, unknown>)?.start_time != null">
+                  {{ formatDuration((result.metadata as Record<string, unknown>).start_time as number) }}
+                  -
+                  {{ formatDuration((result.metadata as Record<string, unknown>).end_time as number) }}
+                </span>
                 <span>分块 #{{ result.chunk_index + 1 }}</span>
               </div>
               <div v-if="result.questions?.length" class="result-questions">
@@ -428,13 +444,16 @@ import { knowledgeBaseApi } from '@/api/knowledgeBase'
 import type { KnowledgeBase, SearchMode, SearchResultItem, SearchResponse } from '@/api/types'
 import EmptyState from '@/components/common/EmptyState.vue'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
+import { normalizeSpaceTypes, hasModality, chunkTypeLabels } from '@/utils/document'
+import { formatDuration } from '@/utils/format'
 
 const route = useRoute()
 
 const spaceId = computed(() => Number(route.params.id))
 const currentKbId = computed(() => route.query.kbId || '')
 
-const spaceType = ref<'text' | 'multimodal'>('text')
+const spaceTypes = ref<string[]>(['text'])
+const hasImage = computed(() => hasModality(spaceTypes.value, 'image'))
 const searching = ref(false)
 const hasSearched = ref(false)
 const showAdvanced = ref(false)
@@ -442,7 +461,7 @@ const advancedCollapsed = ref<string[]>([])
 const knowledgeBases = ref<KnowledgeBase[]>([])
 const searchModes = ref<SearchMode[]>([])
 const filteredSearchModes = computed(() => {
-  if (spaceType.value === 'multimodal') {
+  if (hasImage.value) {
     return searchModes.value.filter(m =>
       m.mode === 'image_vector' || m.mode === 'text_to_image'
     )
@@ -530,7 +549,7 @@ async function fetchSearchModes() {
     const data = await searchApi.getSearchModes(spaceId.value, searchForm.kb_id)
     searchModes.value = data.modes || []
 
-    if (spaceType.value === 'multimodal') {
+    if (hasImage.value) {
       searchForm.search_mode = 'text_to_image'
     }
   } catch {
@@ -595,7 +614,7 @@ async function handleSearch() {
 
   try {
     let data: SearchResponse
-    if (spaceType.value === 'multimodal') {
+    if (hasImage.value) {
       data = await searchApi.multimodalSearch(spaceId.value, searchForm.kb_id, {
         query: searchForm.query,
         search_mode: 'text_to_image',
@@ -636,8 +655,8 @@ async function handleSearch() {
     }
     searchResults.value = data.results || []
 
-    // 多模态搜索：根据 document_id 代理获取图片 blob URL
-    if (spaceType.value === 'multimodal' && searchResults.value.length > 0) {
+    // 图片搜索：根据 document_id 代理获取图片 blob URL
+    if (hasImage.value && searchResults.value.length > 0) {
       const uniqueDocIds = [...new Set(searchResults.value.map(r => r.document_id))]
       const urlMap = await Promise.all(
         uniqueDocIds.map(docId =>
@@ -753,7 +772,7 @@ function fileToBase64(file: File): Promise<string> {
 
 function handleImageDrop(event: DragEvent) {
   isDragging.value = false
-  if (spaceType.value !== 'multimodal') return
+  if (!hasImage.value) return
   const file = event.dataTransfer?.files?.[0]
   if (!file || !searchForm.kb_id) return
   if (!file.type.startsWith('image/')) {
@@ -778,8 +797,17 @@ function clearQueryImage() {
 onMounted(async () => {
   fetchKnowledgeBases()
   try {
+    // 优先从 KB config 读取 space_type，fallback 到 Space config
+    const kbId = currentKbId.value
+    if (kbId) {
+      const kbConfig = await knowledgeBaseApi.getConfig(spaceId.value, Number(kbId))
+      if (kbConfig.config?.space_type && Array.isArray(kbConfig.config.space_type) && kbConfig.config.space_type.length > 0) {
+        spaceTypes.value = kbConfig.config.space_type
+        return
+      }
+    }
     const space = await spaceApi.getSpace(spaceId.value)
-    spaceType.value = space.config?.space_type || 'text'
+    spaceTypes.value = normalizeSpaceTypes(space.config)
   } catch {
     // 默认 text
   }

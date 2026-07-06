@@ -605,6 +605,8 @@ class ModelConfigService:
                 await self._test_multimodal_embedding(request)
             elif data.model_type == "rerank":
                 await self._test_rerank(request)
+            elif data.model_type == "asr":
+                await self._test_asr(request)
         except Exception as e:
             raise ModelConfigTestFailedError(data.model_type, str(e)) from e
 
@@ -626,6 +628,7 @@ class ModelConfigService:
             ModelType.RERANK: "rerank",
             ModelType.VLM: "vlm",
             ModelType.MULTIMODAL_EMBEDDING: "multimodal_embedding",
+            ModelType.ASR: "asr",
         }
         return mapping.get(model_type_int, "llm")
 
@@ -649,6 +652,8 @@ class ModelConfigService:
                 await self._test_llm(request)
             elif request.model_type == "multimodal_embedding":
                 detected_dimension = await self._test_multimodal_embedding(request)
+            elif request.model_type == "asr":
+                await self._test_asr(request)
 
             latency = (time.time() - start_time) * 1000
 
@@ -795,6 +800,147 @@ class ModelConfigService:
         )
         await client.rerank(query="test", documents=["Hello", "World"])
 
+    async def _test_asr(self, request: ModelTestRequest) -> None:
+        """测试 ASR 连接（按协议路由：local / openai / dashscope）"""
+        protocol = request.protocol or "openai"
+        if protocol == "local":
+            await self._test_asr_local(request)
+        elif protocol == "dashscope":
+            await self._test_asr_dashscope(request)
+        else:
+            await self._test_asr_openai(request)
+
+    async def _test_asr_local(self, request: ModelTestRequest) -> None:
+        """测试本地 ASR 模型是否可用（检查模型文件完整性）"""
+        from pathlib import Path
+
+        # 模型路径与 media_utils._get_local_whisper_model 一致
+        model_dir = Path(__file__).resolve().parent.parent.parent.parent.parent / "models" / "faster-whisper" / "tiny"
+
+        if not model_dir.exists():
+            raise ValueError(
+                f"本地 ASR 模型目录不存在: {model_dir}，"
+                f"请先下载 faster-whisper tiny 模型到 backend/models/faster-whisper/tiny/"
+            )
+
+        required_files = ["model.bin", "config.json", "tokenizer.json", "vocabulary.txt"]
+        missing = [f for f in required_files if not (model_dir / f).exists()]
+        if missing:
+            raise ValueError(
+                f"本地 ASR 模型文件缺失: {missing}，"
+                f"模型目录: {model_dir}"
+            )
+
+        # 快速验证模型可以加载（不执行实际推理）
+        try:
+            from faster_whisper import WhisperModel
+            import asyncio
+            model = await asyncio.to_thread(
+                WhisperModel,
+                str(model_dir),
+                device="cpu",
+                compute_type="int8",
+                local_files_only=True,
+            )
+            del model
+        except Exception as e:
+            raise ValueError(f"本地 ASR 模型加载失败: {e}") from e
+
+    async def _test_asr_openai(self, request: ModelTestRequest) -> None:
+        """测试 ASR 连接（OpenAI Whisper API）"""
+        import httpx
+        import io
+        import struct
+
+        # 生成最小有效 WAV：0.1 秒 8000Hz 16-bit 单声道静音
+        sample_rate = 8000
+        duration = 0.1  # 秒
+        num_samples = int(sample_rate * duration)
+        pcm_data = b"\x00\x00" * num_samples  # 静音
+
+        wav = io.BytesIO()
+        wav.write(b"RIFF")
+        wav.write(struct.pack("<I", 36 + len(pcm_data)))
+        wav.write(b"WAVE")
+        wav.write(b"fmt ")
+        wav.write(struct.pack("<IHHIIHH", 16, 1, 1, sample_rate,
+                              sample_rate * 2, 2, 16))
+        wav.write(b"data")
+        wav.write(struct.pack("<I", len(pcm_data)))
+        wav.write(pcm_data)
+        test_wav = wav.getvalue()
+
+        base_url = (request.base_url or "https://api.openai.com/v1").rstrip("/")
+        url = f"{base_url}/audio/transcriptions"
+        headers = {
+            "Authorization": f"Bearer {request.api_key}",
+        }
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                url,
+                headers=headers,
+                data={"model": request.model, "response_format": "json"},
+                files={"file": ("test.wav", test_wav, "audio/wav")},
+            )
+            if resp.status_code == 401:
+                raise ValueError("ASR API Key 无效（401）")
+            if resp.status_code == 403:
+                raise ValueError("ASR API Key 无权限（403）")
+            if resp.status_code >= 500:
+                raise ValueError(f"ASR 服务端错误（{resp.status_code}）")
+            # 2xx 或 4xx（模型不存在等）均视为连接可达
+
+    async def _test_asr_dashscope(self, request: ModelTestRequest) -> None:
+        """测试 ASR 连接（DashScope Paraformer API，HTTP URL → async_call → wait）"""
+        from http import HTTPStatus
+        import dashscope
+        from dashscope.audio.asr import Transcription
+
+        if request.api_key:
+            dashscope.api_key = request.api_key
+
+        # 百炼平台需要设置 workspace 级别的 base URL
+        if request.base_url:
+            url = request.base_url.rstrip("/")
+            # 去掉用户误填的兼容模式路径（/compatible-mode/v1 → OpenAI 协议用的）
+            if url.endswith("/compatible-mode/v1"):
+                url = url[:-len("/compatible-mode/v1")]
+            if not url.endswith("/api/v1"):
+                url += "/api/v1"
+            dashscope.base_http_api_url = url
+
+        # 使用 DashScope 官方示例音频（公开 HTTP URL，与生产路径一致）
+        sample_url = "https://dashscope.oss-cn-beijing.aliyuncs.com/samples/audio/paraformer/hello_world_female2.wav"
+
+        # 提交转写任务
+        task_response = Transcription.async_call(
+            model=request.model,
+            file_urls=[sample_url],
+            language_hints=["zh", "en"],
+        )
+
+        if task_response.output is None:
+            raise ValueError(
+                f"DashScope 转写任务提交失败: status={task_response.status_code}, "
+                f"message={getattr(task_response, 'message', 'unknown')}"
+            )
+
+        if task_response.status_code != HTTPStatus.OK:
+            raise ValueError(
+                f"DashScope 转写任务提交失败: status={task_response.status_code}, "
+                f"message={getattr(task_response, 'message', 'unknown')}"
+            )
+
+        # 等待转写完成（验证真实可用性，而非仅提交成功）
+        transcribe_response = Transcription.wait(task=task_response.output.task_id)
+
+        if transcribe_response.status_code != HTTPStatus.OK:
+            raise ValueError(
+                f"DashScope 转写失败: status={transcribe_response.status_code}, "
+                f"message={getattr(transcribe_response, 'message', 'unknown')}"
+            )
+        # 转写成功 = 连接可达
+
     # ========== 辅助方法 ==========
 
     def _build_response(self, config: UserModelConfig) -> ModelConfigResponse:
@@ -835,7 +981,7 @@ class ModelConfigService:
 
         result = AvailableModelsWithInfoResponse()
 
-        for model_type in ["llm", "embedding", "rerank", "vlm", "multimodal_embedding"]:
+        for model_type in ["llm", "embedding", "rerank", "vlm", "multimodal_embedding", "asr"]:
             configs = await self.repo.list_by_user(user_id, model_type)
             seen = set()
             infos = []

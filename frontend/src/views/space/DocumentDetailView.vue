@@ -72,6 +72,18 @@
           <span class="meta-label">更新时间</span>
           <span class="meta-value">{{ formatDate(document.updated_at) }}</span>
         </div>
+        <div v-if="(document.doc_metadata as Record<string, unknown>)?.chunk_type" class="meta-item">
+          <span class="meta-label">内容类型</span>
+          <span class="meta-value">{{ chunkTypeLabels[(document.doc_metadata as Record<string, unknown>).chunk_type as string] || (document.doc_metadata as Record<string, unknown>).chunk_type }}</span>
+        </div>
+        <div v-if="(document.doc_metadata as Record<string, unknown>)?.frame_count != null" class="meta-item">
+          <span class="meta-label">视频帧数</span>
+          <span class="meta-value">{{ (document.doc_metadata as Record<string, unknown>).frame_count }}</span>
+        </div>
+        <div v-if="(document.doc_metadata as Record<string, unknown>)?.segment_count != null" class="meta-item">
+          <span class="meta-label">音频分段数</span>
+          <span class="meta-value">{{ (document.doc_metadata as Record<string, unknown>).segment_count }}</span>
+        </div>
       </div>
     </div>
 
@@ -91,19 +103,25 @@
           <div class="chunk-header">
             <span class="chunk-index-badge">{{ chunk.chunk_index + 1 }}</span>
             <div class="chunk-meta">
+              <span v-if="chunk.chunk_type && chunk.chunk_type !== 'text'" class="meta-tag chunk-type-tag">{{ chunkTypeLabels[chunk.chunk_type] || chunk.chunk_type }}</span>
               <span v-if="(chunk.metadata as Record<string, unknown>)?.page" class="meta-tag">第 {{ (chunk.metadata as Record<string, unknown>).page }} 页</span>
               <span v-if="(chunk.metadata as Record<string, unknown>)?.section_title" class="meta-tag">{{ (chunk.metadata as Record<string, unknown>).section_title }}</span>
+              <span v-if="(chunk.metadata as Record<string, unknown>)?.start_time != null" class="meta-tag time-tag">
+                {{ formatDuration((chunk.metadata as Record<string, unknown>).start_time as number) }}
+                -
+                {{ formatDuration((chunk.metadata as Record<string, unknown>).end_time as number) }}
+              </span>
               <span v-if="chunk.has_embedding" class="meta-tag embedded">已向量化</span>
             </div>
           </div>
           <div class="chunk-content">
             <img
-              v-if="chunk.chunk_type === 'image' && chunk.image_url"
-              :src="chunk.image_url"
+              v-if="chunk.chunk_type === 'image' && (chunk.media_url || chunk.image_url)"
+              :src="chunk.media_url || chunk.image_url"
               :alt="chunk.content"
               loading="lazy"
               class="chunk-image"
-              @click="previewUrl = chunk.image_url!; previewVisible = true"
+              @click="previewUrl = (chunk.media_url || chunk.image_url)!; previewVisible = true"
             />
             <template v-else>{{ chunk.content }}</template>
           </div>
@@ -158,8 +176,8 @@ import { documentApi } from '@/api/document'
 import StatusTag from '@/components/common/StatusTag.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import type { DocumentDetail, Chunk } from '@/api/types'
-import { docStatusMap, getFileTypeStyle } from '@/utils/document'
-import { formatFileSize, formatDate } from '@/utils/format'
+import { docStatusMap, getFileTypeStyle, chunkTypeLabels } from '@/utils/document'
+import { formatFileSize, formatDate, formatDuration } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -519,6 +537,18 @@ onMounted(() => {
 .meta-tag.embedded {
   color: var(--color-success);
   background: var(--color-success-subtle);
+}
+
+.meta-tag.chunk-type-tag {
+  color: var(--color-primary);
+  background: var(--color-primary-subtle);
+  font-weight: var(--weight-medium);
+}
+
+.meta-tag.time-tag {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-hover);
+  font-family: var(--font-mono);
 }
 
 .chunk-content {

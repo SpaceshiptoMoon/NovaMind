@@ -89,55 +89,183 @@
               </el-form-item>
             </el-form>
           </div>
+        </el-tab-pane>
 
-          <!-- Embedding 配置（统一） -->
+        <!-- Tab 2: 模型配置 -->
+        <el-tab-pane label="模型配置" name="models">
           <div class="settings-section">
-            <h3 class="section-title">Embedding 模型配置</h3>
+            <h3 class="section-title">模型配置</h3>
             <p class="section-desc">
-              空间类型的 Embedding 模型配置。修改模型或类型时，空间中不能有已处理的文档。向量维度由后端根据模型自动检测。
+              配置空间级别的 AI 模型。所有知识库默认使用此配置，知识库可在其自身配置中选择覆盖。
             </p>
-            <el-form label-width="120px" style="max-width: 600px">
-              <el-form-item label="空间类型">
-                <el-radio-group v-model="embeddingForm.spaceType">
-                  <el-radio value="text">文本空间</el-radio>
-                  <el-radio value="multimodal">多模态空间（图片）</el-radio>
-                </el-radio-group>
-              </el-form-item>
-              <el-form-item label="Embedding 模型">
-                <el-select
-                  v-model="embeddingForm.model"
-                  :placeholder="embeddingForm.spaceType === 'multimodal' ? '选择多模态嵌入模型' : '选择文本嵌入模型'"
-                  clearable
-                  filterable
-                  style="width: 100%"
-                >
-                  <el-option
-                    v-for="m in currentModels"
-                    :key="m.model"
-                    :label="m.model"
-                    :value="m.model"
-                  />
-                </el-select>
-              </el-form-item>
-              <el-form-item v-if="embeddingForm.dimension" label="向量维度">
-                <span class="dimension-display">{{ embeddingForm.dimension }}（自动检测）</span>
-              </el-form-item>
-              <el-form-item label="批处理大小">
-                <el-input-number v-model="embeddingForm.batch_size" :min="1" :max="128" style="width: 100%" />
-              </el-form-item>
-              <el-form-item label="向量归一化">
-                <el-switch v-model="embeddingForm.normalize" />
-              </el-form-item>
-              <el-form-item>
-                <el-button type="primary" :loading="embeddingSaving" @click="handleSaveEmbedding">
-                  保存 Embedding 配置
-                </el-button>
-              </el-form-item>
-            </el-form>
+
+            <!-- 模态展示 -->
+            <div class="model-section-label" style="display:none">
+              <span class="label-text">空间模态（已下放到知识库）</span>
+            </div>
+            <div class="modality-badges">
+              <el-tag
+                v-for="mt in spaceTypes"
+                :key="mt"
+                :type="mt === 'image' || mt === 'video' ? 'primary' : mt === 'audio' ? 'danger' : 'info'"
+              >{{ mt === 'text' ? '📄 文本' : mt === 'image' ? '🖼 图片' : mt === 'video' ? '🎬 视频' : mt === 'audio' ? '🎵 音频' : mt }}</el-tag>
+            </div>
+
+            <!-- ─── Embedding 模型 ─── -->
+            <div class="model-card">
+              <div class="model-card-header">
+                <span class="model-card-icon">📝</span>
+                <div>
+                  <h4 class="model-card-title">Embedding 模型</h4>
+                  <p class="model-card-desc">将文本块转换为向量，用于语义检索和相似度匹配。所有空间必需。</p>
+                </div>
+              </div>
+              <el-form label-width="130px" class="model-card-form">
+                <el-form-item label="文本 Embedding">
+                  <el-select
+                    v-model="embeddingForm.model"
+                    placeholder="选择文本嵌入模型"
+                    clearable
+                    filterable
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="m in embeddingModels"
+                      :key="m.model"
+                      :label="m.model"
+                      :value="m.model"
+                    />
+                  </el-select>
+                </el-form-item>
+                <el-form-item v-if="embeddingForm.dimension" label="向量维度">
+                  <span class="dimension-display">{{ embeddingForm.dimension }}（自动检测）</span>
+                </el-form-item>
+                <el-form-item v-if="hasImageModality" label="多模态 Embedding">
+                  <el-select
+                    v-model="embeddingForm.mm_model"
+                    placeholder="选择多模态嵌入模型（用于以图搜图）"
+                    clearable
+                    filterable
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="m in mmModels"
+                      :key="m.model"
+                      :label="m.model"
+                      :value="m.model"
+                    />
+                  </el-select>
+                </el-form-item>
+                <el-form-item v-if="hasImageModality && embeddingForm.mm_dimension" label="多模态向量维度">
+                  <span class="dimension-display">{{ embeddingForm.mm_dimension }}（自动检测）</span>
+                </el-form-item>
+                <el-form-item label="批处理大小">
+                  <el-input-number v-model="embeddingForm.batch_size" :min="1" :max="128" style="width: 200px" />
+                </el-form-item>
+                <el-form-item label="向量归一化">
+                  <el-switch v-model="embeddingForm.normalize" />
+                </el-form-item>
+              </el-form>
+            </div>
+
+            <!-- ─── LLM 模型 ─── -->
+            <div class="model-card">
+              <div class="model-card-header">
+                <span class="model-card-icon">🤖</span>
+                <div>
+                  <h4 class="model-card-title">LLM 模型</h4>
+                  <p class="model-card-desc">用于问题生成（HyDE）、查询改写、摘要生成等通用语言任务。</p>
+                </div>
+              </div>
+              <el-form label-width="130px" class="model-card-form">
+                <el-form-item label="LLM 模型">
+                  <el-select
+                    v-model="modelForm.llm_model"
+                    placeholder="选择 LLM 模型"
+                    clearable
+                    filterable
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="m in llmModels"
+                      :key="m.model"
+                      :label="m.model"
+                      :value="m.model"
+                    />
+                  </el-select>
+                </el-form-item>
+              </el-form>
+            </div>
+
+            <!-- ─── ASR 模型 ─── -->
+            <div v-if="hasAudio" class="model-card">
+              <div class="model-card-header">
+                <span class="model-card-icon">🎤</span>
+                <div>
+                  <h4 class="model-card-title">ASR 模型</h4>
+                  <p class="model-card-desc">用于音频文件转文字（语音识别），仅含「音频」模态的空间需要。</p>
+                </div>
+              </div>
+              <el-form label-width="130px" class="model-card-form">
+                <el-form-item label="ASR 模型">
+                  <el-select
+                    v-model="modelForm.asr_model"
+                    placeholder="选择 ASR 模型（如 whisper-1）"
+                    clearable
+                    filterable
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="m in asrModels"
+                      :key="m.model"
+                      :label="m.model"
+                      :value="m.model"
+                    />
+                  </el-select>
+                </el-form-item>
+              </el-form>
+            </div>
+
+            <!-- ─── VLM 模型 ─── -->
+            <div v-if="hasImageModality || hasVideo" class="model-card">
+              <div class="model-card-header">
+                <span class="model-card-icon">👁</span>
+                <div>
+                  <h4 class="model-card-title">VLM 模型</h4>
+                  <p class="model-card-desc">用于图片/视频帧转文字描述，将视觉内容转为可检索的文本。</p>
+                </div>
+                <el-tag type="warning" size="small" effect="plain">开发中</el-tag>
+              </div>
+              <el-form label-width="130px" class="model-card-form">
+                <el-form-item label="VLM 模型">
+                  <el-select
+                    v-model="modelForm.vlm_model"
+                    placeholder="选择 VLM 模型"
+                    clearable
+                    filterable
+                    disabled
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="m in vlmModels"
+                      :key="m.model"
+                      :label="m.model"
+                      :value="m.model"
+                    />
+                  </el-select>
+                </el-form-item>
+              </el-form>
+            </div>
+
+            <div style="margin-top: var(--space-4)">
+              <el-button type="primary" :loading="modelsSaving" @click="handleSaveModels">
+                保存模型配置
+              </el-button>
+            </div>
           </div>
         </el-tab-pane>
 
-        <!-- Tab 2: 成员管理 -->
+        <!-- Tab 3: 成员管理 -->
         <el-tab-pane label="成员管理" name="members">
           <div class="action-bar">
             <el-button type="primary" @click="showInviteDialog">
@@ -271,6 +399,7 @@ import { spaceApi } from '@/api/space'
 import { userApi } from '@/api/user'
 import { memberApi } from '@/api/member'
 import { useUserStore } from '@/stores/user'
+import { normalizeSpaceTypes } from '@/utils/document'
 import type {
   SpaceConfigResponse,
   SpaceConfigStats,
@@ -299,22 +428,36 @@ const infoForm = reactive({
 })
 const infoSaving = ref(false)
 
-// === Embedding ===
+// === 模型配置 ===
 
+const spaceTypes = ref<string[]>(['text'])
+const hasImageModality = computed(() => spaceTypes.value.includes('image'))
+const hasVideo = computed(() => spaceTypes.value.includes('video'))
+const hasAudio = computed(() => spaceTypes.value.includes('audio'))
+
+// Embedding 表单
 const embeddingForm = reactive({
-  spaceType: 'text' as 'text' | 'multimodal',
   model: '',
+  mm_model: '',
   dimension: 1024,
+  mm_dimension: null as number | null,
   batch_size: 32,
   normalize: true,
 })
-const embeddingSaving = ref(false)
+
+// LLM / ASR / VLM 表单
+const modelForm = reactive({
+  llm_model: '',
+  asr_model: '',
+  vlm_model: '',
+})
+
+const modelsSaving = ref(false)
 const embeddingModels = ref<AvailableModelItem[]>([])
 const mmModels = ref<AvailableModelItem[]>([])
-
-const currentModels = computed(() =>
-  embeddingForm.spaceType === 'multimodal' ? mmModels.value : embeddingModels.value
-)
+const llmModels = ref<AvailableModelItem[]>([])
+const vlmModels = ref<AvailableModelItem[]>([])
+const asrModels = ref<AvailableModelItem[]>([])
 
 // === 标签 ===
 
@@ -404,9 +547,8 @@ async function fetchMembers() {
     })
     members.value = data.items || []
     memberTotal.value = data.total || 0
-  } catch (error: unknown) {
-    const err = error as { response?: { data?: { error?: { message?: string } } } }
-    ElMessage.error(err.response?.data?.error?.message || '获取成员列表失败')
+  } catch {
+    // ignore
   } finally {
     memberLoading.value = false
   }
@@ -440,9 +582,8 @@ async function handleInvite() {
       inviteDialogVisible.value = false
       inviteResultVisible.value = true
       fetchMembers()
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { error?: { message?: string } } } }
-      ElMessage.error(err.response?.data?.error?.message || '邀请失败')
+    } catch {
+      // ignore
     } finally {
       inviteLoading.value = false
     }
@@ -471,9 +612,8 @@ async function handleUpdateRole() {
     ElMessage.success('角色更新成功')
     roleDialogVisible.value = false
     fetchMembers()
-  } catch (error: unknown) {
-    const err = error as { response?: { data?: { error?: { message?: string } } } }
-    ElMessage.error(err.response?.data?.error?.message || '更新失败')
+  } catch {
+    // ignore
   } finally {
     roleLoading.value = false
   }
@@ -495,13 +635,11 @@ async function handleRemove(member: Member) {
     fetchMembers()
   } catch (error: unknown) {
     if ((error as string) !== 'cancel') {
-      const err = error as { response?: { data?: { error?: { message?: string } } } }
-      ElMessage.error(err.response?.data?.error?.message || '移除失败')
+      // ignore
     }
   }
 }
 
-// 切换到成员 tab 时自动加载
 watch(activeTab, (tab) => {
   if (tab === 'members') {
     fetchMembers()
@@ -521,6 +659,9 @@ async function fetchConfig() {
     stats.value = config.stats
     embeddingModels.value = modelData.embedding || []
     mmModels.value = modelData.multimodal_embedding || []
+    llmModels.value = modelData.llm || []
+    vlmModels.value = modelData.vlm || []
+    asrModels.value = modelData.asr || []
 
     // 填充基本信息
     infoForm.name = config.name
@@ -529,11 +670,22 @@ async function fetchConfig() {
 
     // 填充 Embedding
     const emb = config.config?.embedding
-    embeddingForm.spaceType = config.config?.space_type || 'text'
+    const mmEmb = config.config?.multimodal_embedding
+    spaceTypes.value = normalizeSpaceTypes(config.config)
     embeddingForm.model = emb?.model || ''
     embeddingForm.dimension = emb?.dimension ?? 1024
     embeddingForm.batch_size = emb?.batch_size ?? 32
     embeddingForm.normalize = emb?.normalize ?? true
+    embeddingForm.mm_model = mmEmb?.model || ''
+    embeddingForm.mm_dimension = (mmEmb as { dimension?: number } | null)?.dimension ?? null
+
+    // 填充 LLM / ASR / VLM
+    const llmCfg = config.config?.llm as Record<string, unknown> | undefined
+    const asrCfg = config.config?.asr as Record<string, unknown> | undefined
+    const vlmCfg = config.config?.vlm as Record<string, unknown> | undefined
+    modelForm.llm_model = (llmCfg?.model as string) || ''
+    modelForm.asr_model = (asrCfg?.model as string) || ''
+    modelForm.vlm_model = (vlmCfg?.model as string) || ''
 
     // 从 space 对象取 visibility
     const space = await spaceApi.getSpace(spaceId.value)
@@ -570,31 +722,39 @@ async function handleSaveInfo() {
   }
 }
 
-// === 保存 Embedding ===
+// === 保存模型配置 ===
 
-async function handleSaveEmbedding() {
-  embeddingSaving.value = true
+async function handleSaveModels() {
+  modelsSaving.value = true
   try {
     const payload: Record<string, any> = {
-      space_type: embeddingForm.spaceType,
       embedding: {
         model: embeddingForm.model || undefined,
         batch_size: embeddingForm.batch_size,
         normalize: embeddingForm.normalize,
       },
+      llm: {
+        model: modelForm.llm_model || undefined,
+      },
+      asr: {
+        model: modelForm.asr_model || undefined,
+      },
+      vlm: {
+        model: modelForm.vlm_model || undefined,
+      },
     }
-    // 多模态空间需额外发送 multimodal_embedding 配置
-    if (embeddingForm.spaceType === 'multimodal') {
+    // 含 image 模态需额外发送 multimodal_embedding 配置
+    if (hasImageModality.value) {
       payload.multimodal_embedding = {
-        model: embeddingForm.model || undefined,
+        model: embeddingForm.mm_model || undefined,
       }
     }
     await spaceApi.updateConfig(spaceId.value, payload)
-    ElMessage.success('Embedding 配置已保存')
+    ElMessage.success('模型配置已保存')
   } catch {
     // handled by interceptor
   } finally {
-    embeddingSaving.value = false
+    modelsSaving.value = false
   }
 }
 
@@ -672,6 +832,71 @@ onMounted(() => {
   margin: 0 0 var(--space-4);
 }
 
+/* 模态标签 */
+.model-section-label {
+  margin-bottom: var(--space-2);
+}
+
+.label-text {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.modality-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+/* 模型卡片 */
+.model-card {
+  background: var(--color-bg-card-elevated);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.model-card:last-of-type {
+  margin-bottom: 0;
+}
+
+.model-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.model-card-icon {
+  font-size: 24px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.model-card-title {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.model-card-desc {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.model-card-form {
+  padding-left: var(--space-1);
+}
+
+/* 通用 */
 .tags-editor {
   display: flex;
   flex-wrap: wrap;

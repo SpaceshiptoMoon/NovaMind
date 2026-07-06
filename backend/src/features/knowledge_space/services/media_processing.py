@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.features.knowledge_space.models.document import Document
 from src.features.knowledge_space.services.document_service import _check_document_cancelled
-from src.shared.utils.media_utils import extract_video_frames, transcribe_audio_with_timestamps
+from src.shared.utils.media_utils import extract_video_frames, transcribe_audio_with_timestamps, upload_parsed_text_to_minio, transcribe_audio_local
 from src.shared.utils.time_utils import now_china
 
 
@@ -107,6 +107,11 @@ async def process_video_document(
     if not descriptions:
         raise ValueError(f"视频 {document.filename} 所有帧的VLM描述均失败")
 
+    # 帧描述全文持久化到 MinIO（立刻 commit 落库）
+    full_text = "\n\n".join(desc for desc, _, _ in descriptions)
+    await upload_parsed_text_to_minio(document, full_text, logger)
+    await session.commit()
+
     # 3. 聚合为 text chunks（按总长度切分）
     chunks = _aggregate_descriptions(descriptions, max_chunk_size=1500)
 
@@ -163,23 +168,66 @@ async def process_audio_document(
     kb_repo = KnowledgeBaseRepository(session)
     kb = await kb_repo.get_by_id(document.kb_id)
 
-    # 读取音频处理配置
+    # 读取音频处理配置（KB 级 > 空间级 > 默认）
     parsing_config = kb.get_parsing_config() if kb else {}
     audio_config = parsing_config.get("audio", {})
-    asr_model = audio_config.get("asr_model", "whisper-1")
+    space_asr_cfg = (space.config or {}).get("asr", {}) if space else {}
+    asr_model = audio_config.get("asr_model") or space_asr_cfg.get("model") or "whisper-1"
     chunk_strategy = audio_config.get("chunk_split_strategy", "sentence")
     chunk_size = audio_config.get("chunk_size", 1000)
 
-    # 1. ASR 转写
+    # 1. ASR 转写（根据协议路由：openai → Whisper / dashscope → Paraformer）
+    from src.features.user.services.model_config_service import ModelConfigService
+    from src.shared.utils.media_utils import transcribe_audio_with_dashscope
+
+    mcs = ModelConfigService(session)
+
+    # 从模型配置系统查找 ASR 凭证（优先精确匹配，找不到用该用户任意 ASR 配置兜底）
+    asr_api_key: Optional[str] = None
+    asr_base_url: Optional[str] = None
+    asr_protocol = "openai"  # 默认
+
+    asr_creds = await mcs.get_credentials_by_model(document.uploader_id, "asr", asr_model)
+    if not asr_creds:
+        # 兜底：用户配的 ASR 模型名与 KB 默认名不一致，取该用户第一个 ASR 配置
+        asr_configs = await mcs.repo.list_by_user(document.uploader_id, "asr")
+        if asr_configs:
+            asr_creds = await mcs.get_credentials_by_model(document.uploader_id, "asr", asr_configs[0].model)
+    if asr_creds:
+        asr_api_key = asr_creds.api_key
+        asr_base_url = asr_creds.base_url
+        asr_protocol = asr_creds.protocol or "openai"
+        asr_model = asr_creds.model or asr_model  # 以实际凭证的模型名为准
+
     logger.info(
         "音频转写开始", document_id=document.id,
-        file_type=document.file_type, model=asr_model,
+        file_type=document.file_type, model=asr_model, protocol=asr_protocol,
     )
-    segments = await transcribe_audio_with_timestamps(
-        file_content=file_content,
-        file_type=document.file_type,
-        model=asr_model,
-    )
+
+    if asr_protocol == "local":
+        # 本地 faster-whisper 模型 — 无需 API Key，无需网络
+        segments = await transcribe_audio_local(
+            file_content=file_content,
+            file_type=document.file_type,
+        )
+    elif asr_protocol == "dashscope":
+        storage_info = document.get_storage_info()
+        segments = await transcribe_audio_with_dashscope(
+            file_content=file_content,
+            file_type=document.file_type,
+            model=asr_model,
+            api_key=asr_api_key,
+            base_url=asr_base_url,
+            minio_bucket=storage_info.get("minio_bucket"),
+        )
+    else:
+        segments = await transcribe_audio_with_timestamps(
+            file_content=file_content,
+            file_type=document.file_type,
+            model=asr_model,
+            api_key=asr_api_key,
+            base_url=asr_base_url,
+        )
     logger.info(
         "音频转写完成", document_id=document.id, segment_count=len(segments),
     )
@@ -189,6 +237,16 @@ async def process_audio_document(
 
     if not segments:
         raise ValueError(f"音频 {document.filename} 转写结果为空")
+
+    # 转写全文持久化到 MinIO（立刻 commit 落库）
+    transcript_lines = [
+        f"[{_format_time(seg.get('start', 0))}] {seg['text']}"
+        for seg in segments if seg.get("text", "").strip()
+    ]
+    if transcript_lines:
+        full_text = "\n".join(transcript_lines)
+        await upload_parsed_text_to_minio(document, full_text, logger)
+        await session.commit()
 
     # 2. 按策略切片
     if chunk_strategy == "fixed":

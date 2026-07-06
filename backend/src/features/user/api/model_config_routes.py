@@ -57,6 +57,8 @@ async def get_available_models(
         embedding=await model_config_service.list_available_models(user_id, "embedding"),
         rerank=await model_config_service.list_available_models(user_id, "rerank"),
         vlm=await model_config_service.list_available_models(user_id, "vlm"),
+        multimodal_embedding=await model_config_service.list_available_models(user_id, "multimodal_embedding"),
+        asr=await model_config_service.list_available_models(user_id, "asr"),
     )
 
 

@@ -15,7 +15,7 @@
 
 from typing import Optional, List, Literal, Dict, Any, Annotated, Union
 from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict, field_serializer, Tag
+from pydantic import BaseModel, Field, ConfigDict, field_serializer, field_validator, Tag
 
 from src.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
 
@@ -144,10 +144,6 @@ class QuestionLLMConfig(BaseModel):
         default=None,
         description="LLM 模型名称，为空使用用户默认"
     )
-    protocol: Optional[str] = Field(
-        default=None,
-        description="通信协议，为空使用用户默认"
-    )
     temperature: float = Field(
         default=0.3,
         ge=0.0,
@@ -235,6 +231,23 @@ class KnowledgeBaseConfig(BaseModel):
     此配置仅管理离线阶段（切分/解析/问题生成）。
     Embedding 模型由空间级别统一管理，知识库运行时自动读取空间配置，不存储副本。
     """
+    space_type: List[str] = Field(
+        default_factory=lambda: ["text"],
+        description="知识库支持的数据模态: text/image/video/audio",
+    )
+
+    @field_validator("space_type", mode="before")
+    @classmethod
+    def normalize_space_type(cls, v):
+        """兼容旧格式: 'text' → ['text'], 'multimodal' → ['image']"""
+        if isinstance(v, str):
+            if v == "multimodal":
+                return ["image"]
+            return [v]
+        if isinstance(v, list):
+            return v
+        return ["text"]
+
     description: str = Field(default="", max_length=2000, description="知识库描述")
     splitting: SplittingConfig = Field(default_factory=RecursiveSplittingConfig, description="切分配置")
     parsing: ParsingConfig = Field(default_factory=ParsingConfig, description="解析配置")
@@ -300,6 +313,7 @@ class KnowledgeBaseConfigUpdate(BaseModel):
     此接口仅管理离线阶段配置（splitting / parsing / question_generation）。
     Embedding 模型由空间级别统一管理，不可通过知识库配置修改。
     """
+    space_type: Optional[List[str]] = Field(None, description="知识库支持的数据模态: text/image/video/audio")
     splitting: Optional[SplittingConfig] = Field(None, description="切分配置")
     parsing: Optional[ParsingConfig] = Field(None, description="解析配置")
     question_generation: Optional[QuestionGenerationConfig] = Field(None, description="问题生成配置")

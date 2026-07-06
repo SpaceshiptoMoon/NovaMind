@@ -31,8 +31,8 @@ from src.core.middleware.structured_logging import get_logger
 from src.setting.yaml_config import get_config
 from src.features.user.services.model_config_service import ModelConfigService
 
-def _resolve_model_type(modalities) -> str:
-    """根据 space_type 列表决定嵌入模型类型。所有模态都转文本，统一用 embedding"""
+def _resolve_model_type(modalities=None) -> str:
+    """决定嵌入模型类型，统一用 embedding"""
     return "embedding"
 
 
@@ -162,10 +162,9 @@ class SpaceService:
             )
 
         # 3. 自动填充默认 Embedding 模型（如果用户未指定）
-        modalities = (config or {}).get("space_type", ["text"])
         embedding_model_name = space.embedding_model
         if not embedding_model_name and self.model_config_service:
-            model_type = _resolve_model_type(modalities)
+            model_type = _resolve_model_type()
             available_models = await self.model_config_service.list_available_models(
                 owner_id, model_type,
             )
@@ -183,14 +182,13 @@ class SpaceService:
                 self.logger.info(
                     "自动填充默认 Embedding 模型",
                     model=default_model,
-                    space_type=modalities,
                     owner_id=owner_id,
                 )
                 await self.session.flush()
 
         # 4. 自动回填 Embedding 维度（从模型配置表读取）
         if embedding_model_name:
-            dim_model_type = _resolve_model_type(modalities)
+            dim_model_type = _resolve_model_type()
             embedding_dim = await self._get_embedding_dimension(
                 model_name=embedding_model_name,
                 owner_id=owner_id,
@@ -208,14 +206,14 @@ class SpaceService:
         # 5. 创建 ES 空间索引（在 commit 之前，失败则整个事务回滚）
         if self.es_client:
             embedding_dim = space.embedding_dimension
+            model_type = _resolve_model_type()
 
             # 从模型配置表重新查询维度（确保拿到真实值）
             if not embedding_dim and embedding_model_name and self.model_config_service:
-                dim_model_type = _resolve_model_type(modalities)
                 embedding_dim = await self._get_embedding_dimension(
                     model_name=embedding_model_name,
                     owner_id=owner_id,
-                    model_type=dim_model_type,
+                    model_type=model_type,
                 )
                 # 查到了就回写到 space config
                 if embedding_dim:
@@ -227,14 +225,13 @@ class SpaceService:
                 embedding_dim = self.es_client.default_embedding_dim
 
             try:
-                create_kwargs = self._build_es_create_kwargs(space.id, embedding_dim, modalities)
+                create_kwargs = self._build_es_create_kwargs(space.id, embedding_dim, model_type)
                 await self.es_client.create_index(**create_kwargs)
                 self.logger.info(
                     "ES 空间索引创建成功",
                     space_id=space.id,
                     embedding_dim=embedding_dim,
                     embedding_model=embedding_model_name,
-                    space_type=modalities,
                 )
             except Exception as e:
                 self.logger.error(
@@ -668,25 +665,18 @@ class SpaceService:
 
         current_config = space.get_config()
 
-        # 1. 校验 space_type 变更（有文档时拒绝）
-        new_space_type = config_updates.get("space_type")
-        current_space_type = current_config.get("space_type", "text")
-        if new_space_type and new_space_type != current_space_type:
-            await self._check_embedding_change_allowed(space_id)
-
-        # 2. 校验 embedding 变更
+        # 1. 校验 embedding 变更
         if self._is_embedding_changed(config_updates, current_config):
             await self._check_embedding_change_allowed(space_id)
 
-        # 3. 深度合并
+        # 2. 深度合并
         merged_config = self._deep_merge(current_config, config_updates)
 
-        # 3.1 embedding 模型变更时，自动从模型配置表回填维度
+        # 2.1 embedding 模型变更时，自动从模型配置表回填维度
         embedding_update = config_updates.get("embedding")
         new_model = embedding_update.get("model") if isinstance(embedding_update, dict) else None
         if new_model:
-            resolved_type = merged_config.get("space_type", ["text"])
-            model_type = _resolve_model_type(resolved_type)
+            model_type = _resolve_model_type()
             auto_dim = await self._get_embedding_dimension(
                 model_name=new_model,
                 owner_id=space.owner_id,
@@ -702,15 +692,15 @@ class SpaceService:
                     dimension=auto_dim,
                 )
 
-        # 3.2 embedding 变更且维度改变时，重建 ES 索引
+        # 2.2 embedding 变更且维度改变时，重建 ES 索引
         embedding_changed = self._is_embedding_changed(config_updates, current_config)
         if embedding_changed and self.es_client:
             old_dim = (current_config.get("embedding") or {}).get("dimension")
             new_dim = (merged_config.get("embedding") or {}).get("dimension")
             if old_dim != new_dim:
                 await self.es_client.delete_index(space_id)
-                resolved_type = merged_config.get("space_type", "text")
-                create_kwargs = self._build_es_create_kwargs(space_id, new_dim, resolved_type)
+                model_type = _resolve_model_type()
+                create_kwargs = self._build_es_create_kwargs(space_id, new_dim, model_type)
                 await self.es_client.create_index(**create_kwargs)
                 self.logger.info(
                     "Embedding 变更：已重建 ES 索引",

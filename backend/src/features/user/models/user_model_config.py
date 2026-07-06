@@ -18,10 +18,11 @@ from src.core.database.base import BaseModel
 class ModelType(IntEnum):
     """模型类型枚举"""
     LLM = 1                  # 大语言模型
-    EMBEDDING = 2             # 向量化模型
+    EMBEDDING = 2            # 向量化模型
     RERANK = 3               # 重排序模型
     VLM = 4                  # 视觉语言模型
-    MULTIMODAL_EMBEDDING = 5  # 多模态嵌入模型
+    MULTIMODAL_EMBEDDING = 5 # 多模态嵌入模型
+    ASR = 6                  # 语音识别模型（Whisper等）
 
 
 class UserModelConfig(BaseModel):
@@ -45,7 +46,7 @@ class UserModelConfig(BaseModel):
     )
 
     # ========== 模型配置 ==========
-    model_type = Column(Integer, nullable=False, comment="模型类型: 1-LLM, 2-Embedding, 3-Rerank")
+    model_type = Column(Integer, nullable=False, comment="模型类型: 1-LLM, 2-Embedding, 3-Rerank, 4-VLM, 5-MultimodalEmbedding, 6-ASR")
     protocol = Column(String(50), nullable=False, default="openai", comment="通信协议: openai/anthropic/ollama/transformers")
     model = Column(String(100), nullable=False, comment="模型名称（如 gpt-4o、embedding-3）")
     base_url = Column(String(500), nullable=True, comment="API Base URL")

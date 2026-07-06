@@ -13,7 +13,7 @@
 import json
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict, field_serializer, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict, field_serializer
 from enum import Enum
 
 # 从模型层导入枚举（避免重复定义，保持一致）
@@ -36,18 +36,51 @@ class SpaceMultimodalEmbeddingConfig(BaseModel):
     dimension: Optional[int] = Field(default=None, ge=1, description="向量维度（后端自动检测）")
 
 
+class SpaceLLMConfig(BaseModel):
+    """空间默认 LLM 配置（用于问题生成、查询改写、摘要等语言任务）"""
+    model: Optional[str] = Field(default=None, description="LLM 模型名称")
+
+
+class SpaceASRConfig(BaseModel):
+    """空间默认 ASR 配置（用于音频 → 文字转写）"""
+    model: Optional[str] = Field(default=None, description="ASR 模型名称（如 whisper-1）")
+
+
+class SpaceVLMConfig(BaseModel):
+    """空间默认 VLM 配置（用于图片/视频帧 → 文字描述）"""
+    model: Optional[str] = Field(default=None, description="VLM 模型名称")
+
+
 class SpaceConfig(BaseModel):
     """空间配置（对应模型中的 config JSON 字段）"""
     space_type: List[str] = Field(
         default_factory=lambda: ["text"],
         description="空间支持的模态列表: text/image/video/audio",
     )
+
+    @field_validator("space_type", mode="before")
+    @classmethod
+    def normalize_space_type(cls, v):
+        """兼容旧格式: 'text' → ['text'], 'multimodal' → ['image']"""
+        if isinstance(v, str):
+            if v == "multimodal":
+                return ["image"]
+            return [v]
+        if isinstance(v, list):
+            return v
+        return ["text"]
     description: Optional[str] = Field(default="", max_length=2000, description="空间描述")
     tags: List[str] = Field(default_factory=list, max_length=20, description="标签（最多20个）")
     # Embedding 配置（空间级别，所有知识库共享）
     embedding: Optional[SpaceEmbeddingConfig] = Field(default=None, description="Embedding 配置")
     # 多模态嵌入配置（用于以图搜图）
     multimodal_embedding: Optional[SpaceMultimodalEmbeddingConfig] = Field(default=None, description="多模态嵌入配置")
+    # LLM 配置（问题生成、查询改写、摘要等）
+    llm: Optional[SpaceLLMConfig] = Field(default=None, description="默认 LLM 配置")
+    # ASR 配置（音频转文字）
+    asr: Optional[SpaceASRConfig] = Field(default=None, description="默认 ASR 配置")
+    # VLM 配置（图片/视频帧描述，暂未启用）
+    vlm: Optional[SpaceVLMConfig] = Field(default=None, description="默认 VLM 配置（暂未启用）")
     # 存储配置
     storage: Optional[Dict[str, Any]] = Field(None, description="存储配置")
     # UI 配置
@@ -128,12 +161,17 @@ class SpaceListResponse(BaseModel):
 
 
 class SpaceConfigUpdate(BaseModel):
-    """空间配置部分更新请求（深度合并，只传要改的字段）"""
-    space_type: Optional[List[str]] = Field(None, description="空间支持的模态列表: text/image/video/audio")
+    """空间配置部分更新请求（深度合并，只传要改的字段）
+
+    注意：数据类型（space_type）已下放到知识库级别配置，不在空间层面管理。
+    """
     description: Optional[str] = Field(None, max_length=2000, description="空间描述")
     tags: Optional[List[str]] = Field(None, max_length=20, description="标签")
     embedding: Optional[SpaceEmbeddingConfig] = Field(None, description="Embedding 配置")
     multimodal_embedding: Optional[SpaceMultimodalEmbeddingConfig] = Field(None, description="多模态嵌入配置")
+    llm: Optional[SpaceLLMConfig] = Field(None, description="默认 LLM 配置")
+    asr: Optional[SpaceASRConfig] = Field(None, description="默认 ASR 配置")
+    vlm: Optional[SpaceVLMConfig] = Field(None, description="默认 VLM 配置")
     defaults: Optional[Dict[str, Any]] = Field(None, description="默认配置")
     limits: Optional[Dict[str, Any]] = Field(None, description="限制配置")
 

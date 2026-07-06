@@ -28,6 +28,35 @@ from src.features.knowledge_space.api.exceptions import (
 )
 from src.shared.storage.elasticsearch_client import ElasticsearchClient
 from src.shared.storage.minio_client import MinioClient
+
+
+def get_effective_space_types(kb_config: Optional[dict] = None, space_config: Optional[dict] = None) -> List[str]:
+    """
+    获取知识库有效的数据模态列表，支持向后兼容
+
+    优先级：KB.config.space_type → Space.config.space_type → 默认 ["text"]
+
+    兼容旧格式：
+    - 字符串 "text" → ["text"]
+    - 字符串 "multimodal" → ["image"]
+    """
+    # 1. KB 级别的 space_type（新）
+    if kb_config:
+        types = kb_config.get("space_type")
+        if types and isinstance(types, list):
+            return types
+
+    # 2. Space 级别的 space_type（旧，降级兼容）
+    if space_config:
+        types = space_config.get("space_type")
+        if types:
+            if isinstance(types, str):
+                return ["image"] if types == "multimodal" else [types]
+            if isinstance(types, list):
+                return types
+
+    # 3. 默认
+    return ["text"]
 from src.core.middleware.structured_logging import get_logger
 from src.setting.yaml_config import get_config
 
@@ -422,7 +451,7 @@ class KnowledgeBaseService:
             {"message": "..."}
 
         Raises:
-            InvalidParameterError: 当存在已完成文档时尝试修改 embedding 模型
+            InvalidParameterError: 切分配置参数不合法（strategy/chunk_size/chunk_overlap）
         """
         kb = await self.kb_repo.get_by_id(kb_id)
         if not kb:

@@ -208,14 +208,18 @@ async def get_search_modes(
     # 获取知识库配置
     space, _ = validated
 
-    # 验证 kb_id 属于当前空间
-    await _validate_active_kb(kb_id, space_id, search_service)
+    # 验证 kb_id 属于当前空间并获取 KB
+    kb = await _validate_active_kb(kb_id, space_id, search_service)
 
-    # 获取 space_type 列表
+    # 获取知识库层面的模态列表
+    from src.features.knowledge_space.services.knowledge_base_service import get_effective_space_types
     space_config = space.get_config() if hasattr(space, "get_config") else {}
-    space_type_list = space_config.get("space_type", ["text"]) if space_config else ["text"]
+    space_type_list = get_effective_space_types(
+        kb_config=kb.get_config() if kb else None,
+        space_config=space_config,
+    )
 
-    # 支持图片检索的空间：额外返回图片/多模态检索模式
+    # 支持图片检索的知识库：额外返回图片/多模态检索模式
     if "image" in space_type_list:
         multimodal_modes = [
             m for m in SEARCH_MODES

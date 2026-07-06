@@ -14,6 +14,7 @@ from typing import Optional
 from arq.worker import Worker
 
 from src.core.middleware.structured_logging import get_logger
+from src.shared.utils.time_utils import now_china
 
 logger = get_logger(__name__)
 
@@ -174,6 +175,8 @@ async def _ensure_mark_failed(document_id: int, error_message: str) -> None:
     2. ORM 失败则用 raw SQL 更新
     3. 都失败则记录严重告警（等待 recover_orphan_documents 在下次启动时处理）
     """
+    from src.features.knowledge_space.models.document import DocumentStatus
+
     failed_msg = f"[已重试最大次数] {error_message}"
 
     # 第 1 层：ORM 独立 session
@@ -193,17 +196,28 @@ async def _ensure_mark_failed(document_id: int, error_message: str) -> None:
         logger.warning("ORM 标记 FAILED 失败，尝试 raw SQL", document_id=document_id, error=str(e))
 
     # 第 2 层：Raw SQL
+    # 注意：documents 表没有 error_message 列，错误信息存储在 status_info JSON 中
     try:
-        from src.core.database.database import async_engine
+        from src.core.database.database import get_engine
         from sqlalchemy import text
 
-        async with async_engine.connect() as conn:
+        failed_at = now_china()
+        async with get_engine().connect() as conn:
             await conn.execute(
                 text(
-                    "UPDATE documents SET status=3, error_message=:msg, "
-                    "updated_at=NOW() WHERE id=:id AND status=1"
+                    "UPDATE documents SET status=:status, processed_at=:now, "
+                    "status_info=JSON_SET(COALESCE(status_info, '{}'), "
+                    "'$.error_message', :msg, '$.last_error_at', :now_iso), "
+                    "updated_at=:now WHERE id=:id AND status=:processing"
                 ),
-                {"msg": failed_msg[:500], "id": document_id},
+                {
+                    "msg": failed_msg[:500],
+                    "id": document_id,
+                    "now": failed_at,
+                    "now_iso": failed_at.isoformat(),
+                    "status": DocumentStatus.FAILED,
+                    "processing": DocumentStatus.PROCESSING,
+                },
             )
             await conn.commit()
             logger.info("文档已标记 FAILED（raw SQL）", document_id=document_id)

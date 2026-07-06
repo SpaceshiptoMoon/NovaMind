@@ -54,19 +54,22 @@ class MinioClient:
         secure: bool = True,
         region: str = "us-east-1",
         default_bucket: str = "knowledge-base",
+        public_endpoint: str = None,
     ):
         """
         初始化 MinIO 客户端
 
         Args:
-            endpoint: MinIO 服务地址
+            endpoint: MinIO 服务地址（内网）
             access_key: 访问密钥
             secret_key: 私钥
             secure: 是否使用 HTTPS（默认启用，生产环境强烈建议启用）
             region: 区域
             default_bucket: 默认桶名前缀
+            public_endpoint: 公网可达的 MinIO 地址（用于生成外部服务可访问的预签名 URL）
         """
         self.endpoint = endpoint
+        self.public_endpoint = public_endpoint
         self.access_key = access_key
         self.secret_key = secret_key
         self.secure = secure
@@ -673,6 +676,49 @@ class MinioClient:
                 error=str(e)
             )
             raise
+
+    async def get_public_file_url(
+        self,
+        bucket_name: str,
+        object_name: str,
+        expires: int = 3600,
+    ) -> str:
+        """
+        获取公网可达的预签名 URL
+
+        当配置了 public_endpoint 时，将预签名 URL 中的内网地址替换为公网地址，
+        供 DashScope 等外部云服务下载文件使用。
+
+        Args:
+            bucket_name: 桶名
+            object_name: 对象名
+            expires: URL 过期时间（秒）
+
+        Returns:
+            公网可达的预签名 URL（如未配置 public_endpoint 则返回内网 URL）
+        """
+        url = await self.get_file_url(bucket_name, object_name, expires)
+        if not self.public_endpoint:
+            logger.warning(
+                "未配置 minio.public_endpoint，外部服务可能无法访问此 URL",
+                object=object_name,
+            )
+            return url
+
+        from urllib.parse import urlparse, urlunparse
+
+        parsed = urlparse(url)
+        # 替换 netloc（host:port）为 public_endpoint
+        netloc = self.public_endpoint
+        if "://" in netloc:
+            # public_endpoint 带了 scheme，也替换 scheme
+            from urllib.parse import urlparse as up
+            pub = up(netloc)
+            parsed = parsed._replace(scheme=pub.scheme, netloc=pub.netloc)
+        else:
+            parsed = parsed._replace(netloc=netloc)
+
+        return urlunparse(parsed)
 
     async def get_file_info(
         self,

@@ -1,7 +1,16 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { spaceApi } from '@/api/space'
+import { normalizeSpaceTypes } from '@/utils/document'
 import type { Space, SpaceConfig } from '@/api/types'
+
+/** 归一化 Space 数据中的 space_type（兼容旧数据中的字符串格式） */
+function patchSpace(space: Space): Space {
+  if (space.config) {
+    space.config.space_type = normalizeSpaceTypes(space.config)
+  }
+  return space
+}
 
 export const useSpaceStore = defineStore('space', () => {
   const spaces = ref<Space[]>([])
@@ -25,7 +34,7 @@ export const useSpaceStore = defineStore('space', () => {
     error.value = null
     try {
       const data = await spaceApi.getSpaces(params)
-      spaces.value = data.items || []
+      spaces.value = (data.items || []).map(patchSpace)
       total.value = data.total
       return spaces.value
     } catch (e) {
@@ -39,7 +48,7 @@ export const useSpaceStore = defineStore('space', () => {
   async function fetchPublicSpaces(params?: { skip?: number; limit?: number }) {
     try {
       const data = await spaceApi.getPublicSpaces(params)
-      publicSpaces.value = data.items || []
+      publicSpaces.value = (data.items || []).map(patchSpace)
       return publicSpaces.value
     } catch {
       publicSpaces.value = []
@@ -50,7 +59,8 @@ export const useSpaceStore = defineStore('space', () => {
     loading.value = true
     error.value = null
     try {
-      currentSpace.value = await spaceApi.getSpace(spaceId)
+      const space = await spaceApi.getSpace(spaceId)
+      currentSpace.value = patchSpace(space)
       return currentSpace.value
     } catch (e) {
       error.value = e instanceof Error ? e.message : '获取空间详情失败'
@@ -61,14 +71,14 @@ export const useSpaceStore = defineStore('space', () => {
   }
 
   async function createSpace(data: { name: string; visibility?: number; config?: SpaceConfig }) {
-    const newSpace = await spaceApi.createSpace(data)
+    const newSpace = patchSpace(await spaceApi.createSpace(data))
     spaces.value.unshift(newSpace)
     total.value++
     return newSpace
   }
 
   async function updateSpace(spaceId: number, data: { name?: string; visibility?: number; config?: SpaceConfig }) {
-    const updatedSpace = await spaceApi.updateSpace(spaceId, data)
+    const updatedSpace = patchSpace(await spaceApi.updateSpace(spaceId, data))
     const index = spaces.value.findIndex((s) => s.id === spaceId)
     if (index !== -1) {
       spaces.value[index] = updatedSpace
@@ -89,7 +99,7 @@ export const useSpaceStore = defineStore('space', () => {
   }
 
   function setCurrentSpace(space: Space | null) {
-    currentSpace.value = space
+    currentSpace.value = space ? patchSpace(space) : null
   }
 
   function clearCurrentSpace() {
@@ -109,7 +119,7 @@ export const useSpaceStore = defineStore('space', () => {
     isSearching.value = true
     try {
       const data = await spaceApi.searchSpaces({ keyword })
-      searchResults.value = data.items || []
+      searchResults.value = (data.items || []).map(patchSpace)
     } catch {
       searchResults.value = []
     } finally {

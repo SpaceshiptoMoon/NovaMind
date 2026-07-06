@@ -62,7 +62,7 @@ export interface UpdateUserRequest {
 export interface ModelConfig {
   id: number
   user_id: number
-  model_type: 'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding'
+  model_type: 'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding' | 'asr'
   protocol: string
   model: string
   base_url: string | null
@@ -73,7 +73,7 @@ export interface ModelConfig {
 }
 
 export interface CreateModelConfigRequest {
-  model_type: 'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding'
+  model_type: 'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding' | 'asr'
   protocol: string
   model: string
   base_url?: string
@@ -90,7 +90,7 @@ export interface UpdateModelConfigRequest {
 }
 
 export interface ModelConfigTestRequest {
-  model_type: 'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding'
+  model_type: 'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding' | 'asr'
   protocol?: string
   model: string
   base_url?: string
@@ -115,6 +115,7 @@ export interface AvailableModelsResponse {
   rerank: string[]
   vlm: string[]
   multimodal_embedding: string[]
+  asr: string[]
 }
 
 export interface AvailableModelDetail {
@@ -123,6 +124,7 @@ export interface AvailableModelDetail {
   rerank: AvailableModelItem[]
   vlm: AvailableModelItem[]
   multimodal_embedding: AvailableModelItem[]
+  asr: AvailableModelItem[]
 }
 
 export interface ModelConfigListResponse {
@@ -150,12 +152,27 @@ export interface SpaceMultimodalEmbeddingConfig {
   dimension?: number
 }
 
+export interface SpaceLLMConfig {
+  model?: string    // LLM 模型名称
+}
+
+export interface SpaceASRConfig {
+  model?: string    // ASR 模型名称（如 whisper-1）
+}
+
+export interface SpaceVLMConfig {
+  model?: string    // VLM 模型名称（视频帧/图片描述）
+}
+
 export interface SpaceConfig {
-  space_type?: 'text' | 'multimodal'
+  space_type?: string[]  // ["text","image","video","audio"] — 多模态组合
   description?: string
   tags?: string[]
   embedding?: SpaceConfigEmbedding
   multimodal_embedding?: SpaceMultimodalEmbeddingConfig
+  llm?: SpaceLLMConfig    // 默认 LLM 配置（问题生成、查询改写、摘要）
+  asr?: SpaceASRConfig    // 默认 ASR 配置（音频转文字）
+  vlm?: SpaceVLMConfig    // 默认 VLM 配置（暂未启用）
   storage?: Record<string, unknown>
   ui?: Record<string, unknown>
   defaults?: Record<string, unknown>
@@ -208,11 +225,14 @@ export interface SpaceConfigResponse {
 }
 
 export interface SpaceConfigUpdateRequest {
-  space_type?: 'text' | 'multimodal'
+  space_type?: string[]  // ["text","image","video","audio"] — 多模态组合
   description?: string
   tags?: string[]
   embedding?: SpaceConfigEmbeddingUpdate
   multimodal_embedding?: SpaceMultimodalEmbeddingConfig
+  llm?: SpaceLLMConfig
+  asr?: SpaceASRConfig
+  vlm?: SpaceVLMConfig
   defaults?: Record<string, unknown>
   limits?: Record<string, unknown>
 }
@@ -247,12 +267,25 @@ export interface SplittingSemantic {
 
 export type SplittingConfig = SplittingRecursive | SplittingFixedSize | SplittingMarkdown | SplittingSemantic
 
+export interface VideoParsingConfig {
+  frame_interval?: number   // 抽帧间隔(秒), 1-60, 默认5
+  max_frames?: number       // 最多抽帧数, 1-200, 默认60
+}
+
+export interface AudioParsingConfig {
+  asr_model?: string               // ASR模型名, 默认"whisper-1"
+  chunk_split_strategy?: 'sentence' | 'fixed'  // 切片策略, 默认"sentence"
+  chunk_size?: number              // fixed模式字符数, 100-4000, 默认1000
+}
+
 export interface ParsingConfig {
   extract_images?: boolean
   extract_tables?: boolean
   ocr_enabled?: boolean
   preserve_structure?: boolean
   encoding?: string
+  video?: VideoParsingConfig
+  audio?: AudioParsingConfig
 }
 
 export interface KBStats {
@@ -280,6 +313,7 @@ export interface QuestionGenerationConfig {
 }
 
 export interface KBConfig {
+  space_type?: string[]  // text/image/video/audio，KB 支持的数据模态
   description?: string
   splitting?: SplittingConfig
   parsing?: ParsingConfig
@@ -325,6 +359,7 @@ export interface KnowledgeBaseConfigResponse {
 }
 
 export interface KnowledgeBaseConfigUpdateRequest {
+  space_type?: string[]
   splitting?: SplittingConfig
   parsing?: ParsingConfig
   question_generation?: QuestionGenerationConfig
@@ -367,6 +402,7 @@ export interface Chunk {
   created_at: string
   chunk_type?: string
   image_url?: string
+  media_url?: string
 }
 
 export interface DocumentDetail extends Document {
@@ -529,6 +565,7 @@ export interface SearchResultItem {
   metadata: Record<string, unknown>
   file_info: Record<string, unknown>
   image_url?: string
+  media_url?: string
   chunk_type?: string
 }
 
@@ -1387,4 +1424,22 @@ export interface ClawMateChatMessage {
   tool_call_id?: string | null
   tool_name?: string | null
   created_at: string
+}
+
+// ===================== 全模态常量 =====================
+
+/** 模态 → 文件扩展名 accept 映射 */
+export const MODALITY_ACCEPT_MAP: Record<string, string> = {
+  text: '.pdf,.docx,.doc,.txt,.md,.csv,.xlsx,.xls,.pptx,.ppt,.html,.json',
+  image: '.jpg,.jpeg,.png,.gif,.webp',
+  video: '.mp4,.mov,.avi,.mkv,.webm',
+  audio: '.mp3,.wav,.flac,.aac,.ogg,.m4a',
+}
+
+/** 模态 → 最大文件大小 (MB) */
+export const MODALITY_MAX_SIZE_MB: Record<string, number> = {
+  text: 100,
+  image: 100,
+  video: 500,
+  audio: 200,
 }

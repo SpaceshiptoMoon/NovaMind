@@ -21,3 +21,11 @@ export function formatDate(date?: string | null): string {
     return '-'
   }
 }
+
+/** 格式化音频/视频时长 (秒 → M:SS) */
+export function formatDuration(seconds: number | undefined | null): string {
+  if (seconds == null) return '--:--'
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  return `${m}:${String(s).padStart(2, '0')}`
+}

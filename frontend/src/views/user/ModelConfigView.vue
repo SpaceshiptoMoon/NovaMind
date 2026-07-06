@@ -2,7 +2,7 @@
   <div class="model-config-view">
     <div class="page-header">
       <h2>模型配置</h2>
-      <p class="desc">管理您的 LLM、Embedding、Rerank、VLM、多模态嵌入模型配置</p>
+      <p class="desc">管理您的 LLM、Embedding、Rerank、VLM、多模态嵌入、ASR 语音识别模型配置</p>
     </div>
 
     <el-tabs v-model="activeTab" @tab-change="handleTabChange">
@@ -11,6 +11,7 @@
       <el-tab-pane label="Rerank 模型" name="rerank" />
       <el-tab-pane label="VLM 视觉模型" name="vlm" />
       <el-tab-pane label="多模态嵌入" name="multimodal_embedding" />
+      <el-tab-pane label="ASR 语音识别" name="asr" />
     </el-tabs>
 
     <div class="toolbar">
@@ -46,12 +47,12 @@
       <el-form ref="formRef" :model="form" :rules="formRules" label-width="100px">
         <el-form-item label="通信协议" prop="protocol">
           <el-select v-model="form.protocol" placeholder="选择协议">
-            <el-option label="OpenAI" value="openai" />
-            <el-option label="Anthropic" value="anthropic" />
-            <el-option label="Ollama" value="ollama" />
-            <el-option label="Transformers" value="transformers" />
-            <el-option label="DashScope 多模态" value="dashscope_multimodal" />
-            <el-option label="OpenAI 多模态" value="multimodal_openai" />
+            <el-option
+              v-for="p in availableProtocols"
+              :key="p.value"
+              :label="p.label"
+              :value="p.value"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="模型名称" prop="model">
@@ -95,7 +96,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { userApi } from '@/api/user'
 import type { ModelConfig, ModelConfigTestResponse } from '@/api/types'
 
-const activeTab = ref<'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding'>('llm')
+const activeTab = ref<'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding' | 'asr'>('llm')
 const loading = ref(false)
 const submitLoading = ref(false)
 const testLoading = ref(false)
@@ -116,13 +117,50 @@ const form = ref({
   api_key: '',
 })
 
-const formRules: FormRules = {
+const formRules = computed<FormRules>(() => ({
   protocol: [{ required: true, message: '请选择通信协议', trigger: 'change' }],
   model: [{ required: true, message: '请输入模型名称', trigger: 'blur' }],
-  api_key: [{ required: true, message: '请输入 API Key', trigger: 'blur' }],
-}
+  api_key: form.value.protocol === 'local'
+    ? []
+    : [{ required: true, message: '请输入 API Key', trigger: 'blur' }],
+}))
 
 const userConfigs = computed(() => userConfigList.value.filter((c) => c.model_type === activeTab.value))
+
+// 各模型类型支持的协议（与后端 factory 一致）
+const PROTOCOL_OPTIONS: Record<string, { value: string; label: string }[]> = {
+  llm: [
+    { value: 'openai', label: 'OpenAI' },
+    { value: 'anthropic', label: 'Anthropic' },
+    { value: 'ollama', label: 'Ollama' },
+    { value: 'transformers', label: 'Transformers' },
+  ],
+  embedding: [
+    { value: 'openai', label: 'OpenAI' },
+    { value: 'ollama', label: 'Ollama' },
+    { value: 'transformers', label: 'Transformers' },
+  ],
+  rerank: [
+    { value: 'openai', label: 'OpenAI' },
+    { value: 'transformers', label: 'Transformers' },
+  ],
+  vlm: [
+    { value: 'openai', label: 'OpenAI' },
+    { value: 'anthropic', label: 'Anthropic' },
+    { value: 'ollama', label: 'Ollama' },
+  ],
+  multimodal_embedding: [
+    { value: 'dashscope_multimodal', label: 'DashScope 多模态' },
+    { value: 'multimodal_openai', label: 'OpenAI 多模态' },
+  ],
+  asr: [
+    { value: 'local', label: '本地 (faster-whisper)' },
+    { value: 'openai', label: 'OpenAI (Whisper)' },
+    { value: 'dashscope', label: 'DashScope (Paraformer)' },
+  ],
+}
+
+const availableProtocols = computed(() => PROTOCOL_OPTIONS[activeTab.value] || [])
 
 async function fetchConfigs() {
   loading.value = true
@@ -143,7 +181,8 @@ function handleTabChange() {
 function showCreateDialog() {
   isEditing.value = false
   editingId.value = null
-  form.value = { protocol: 'openai', model: '', base_url: '', api_key: '' }
+  const defaultProtocol = availableProtocols.value[0]?.value || 'openai'
+  form.value = { protocol: defaultProtocol, model: '', base_url: '', api_key: '' }
   extraConfigStr.value = ''
   dialogVisible.value = true
 }

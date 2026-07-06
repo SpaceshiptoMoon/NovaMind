@@ -166,6 +166,7 @@ def create_config_from_dict(data: dict) -> AppConfig:
 
     config.minio = MinioConfig(
         endpoint=minio_cfg.get("endpoint", "localhost:9000"),
+        public_endpoint=minio_cfg.get("public_endpoint"),
         access_key=minio_cfg.get("access_key", "***REMOVED***"),
         secret_key=minio_cfg.get("secret_key", "***REMOVED***"),
         secure=minio_secure,

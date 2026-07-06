@@ -25,6 +25,7 @@ MODEL_TYPE_MAP = {
     "rerank": ModelType.RERANK,
     "vlm": ModelType.VLM,
     "multimodal_embedding": ModelType.MULTIMODAL_EMBEDDING,
+    "asr": ModelType.ASR,
 }
 
 # 模型类型枚举到字符串的映射
@@ -34,6 +35,7 @@ MODEL_TYPE_STR = {
     ModelType.RERANK: "rerank",
     ModelType.VLM: "vlm",
     ModelType.MULTIMODAL_EMBEDDING: "multimodal_embedding",
+    ModelType.ASR: "asr",
 }
 
 

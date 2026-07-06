@@ -158,10 +158,7 @@
                 拖拽文件到此处，或 <em>点击上传</em>
               </div>
               <div class="upload-tip">
-                {{ spaceType === 'multimodal'
-                  ? '支持 JPG、PNG、GIF、WebP 图片，单个最大 100MB，最多 20 个'
-                  : '支持 PDF、Word、TXT、Markdown、Excel、PPT、HTML、JSON，单个最大 100MB，最多 20 个'
-                }}
+                {{ uploadTipText }}
               </div>
             </div>
           </el-upload>
@@ -197,11 +194,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload, UploadFilled, Refresh, RefreshRight, CircleClose, View, Delete } from '@element-plus/icons-vue'
 import { documentApi } from '@/api/document'
 import { spaceApi } from '@/api/space'
+import { knowledgeBaseApi } from '@/api/knowledgeBase'
 import StatusTag from '@/components/common/StatusTag.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import type { Document as DocType, BatchUploadResponse } from '@/api/types'
 import type { UploadFile } from 'element-plus'
-import { docStatusMap, getFileTypeStyle } from '@/utils/document'
+import { docStatusMap, getFileTypeStyle, normalizeSpaceTypes, getUploadAccept, getFileMaxSize, hasModality } from '@/utils/document'
 import { formatFileSize, formatDate } from '@/utils/format'
 
 const route = useRoute()
@@ -212,13 +210,20 @@ const kbId = computed(() => Number(route.params.kbId))
 
 const loading = ref(false)
 const uploadLoading = ref(false)
-const spaceType = ref<'text' | 'multimodal'>('text')
+const spaceTypes = ref<string[]>(['text'])
 
-const TEXT_ACCEPT = '.pdf,.docx,.doc,.txt,.md,.csv,.xlsx,.xls,.pptx,.ppt,.html,.json'
-const IMAGE_ACCEPT = '.jpg,.jpeg,.png,.gif,.webp'
-const uploadAccept = computed(() =>
-  spaceType.value === 'multimodal' ? IMAGE_ACCEPT : TEXT_ACCEPT
-)
+const uploadAccept = computed(() => getUploadAccept(spaceTypes.value))
+
+const uploadTipText = computed(() => {
+  const parts: string[] = []
+  if (hasModality(spaceTypes.value, 'text')) parts.push('PDF/Word/TXT/MD/Excel/PPT/HTML/JSON')
+  if (hasModality(spaceTypes.value, 'image')) parts.push('JPG/PNG/GIF/WebP')
+  if (hasModality(spaceTypes.value, 'video')) parts.push('MP4/MOV/AVI/MKV/WebM')
+  if (hasModality(spaceTypes.value, 'audio')) parts.push('MP3/WAV/FLAC/AAC/OGG/M4A')
+  const maxMB = Math.max(...spaceTypes.value.map(t => ({ text: 100, image: 100, video: 500, audio: 200 })[t] || 100))
+  return `支持 ${parts.join(' + ')}，视频最大500MB，音频最大200MB，其余最大100MB，最多 20 个`
+})
+
 const uploadDialogVisible = ref(false)
 const statusFilter = ref<string>('')
 const documents = ref<DocType[]>([])
@@ -248,8 +253,10 @@ function handleFilterChange() {
 
 function handleFileChange(file: UploadFile) {
   if (file.raw) {
-    if (file.raw.size > 100 * 1024 * 1024) {
-      ElMessage.error(`文件 "${file.name}" 大小不能超过 100MB`)
+    const ext = file.name.split('.').pop()?.toLowerCase() || ''
+    const maxSizeMB = getFileMaxSize(ext)
+    if (file.raw.size > maxSizeMB * 1024 * 1024) {
+      ElMessage.error(`文件 "${file.name}" 大小不能超过 ${maxSizeMB}MB`)
       fileList.value = fileList.value.filter((f) => f.uid !== file.uid)
       return
     }
@@ -454,8 +461,14 @@ async function handleDelete(doc: DocType) {
 onMounted(async () => {
   fetchDocuments()
   try {
-    const space = await spaceApi.getSpace(spaceId.value)
-    spaceType.value = space.config?.space_type || 'text'
+    // 优先从 KB config 读取 space_type，fallback 到 Space config
+    const kbConfig = await knowledgeBaseApi.getConfig(spaceId.value, kbId.value)
+    if (kbConfig.config?.space_type && Array.isArray(kbConfig.config.space_type) && kbConfig.config.space_type.length > 0) {
+      spaceTypes.value = kbConfig.config.space_type
+    } else {
+      const space = await spaceApi.getSpace(spaceId.value)
+      spaceTypes.value = normalizeSpaceTypes(space.config)
+    }
   } catch {
     // 默认 text
   }

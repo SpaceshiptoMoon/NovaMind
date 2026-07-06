@@ -1132,12 +1132,16 @@ class SearchService:
         start_time = time.time()
 
         # 1. 校验空间和知识库
-        space = await self._validate_space_and_kb(space_id, kb_id)
+        space, kb = await self._validate_space_and_kb(space_id, kb_id)
 
-        # 2. 验证空间包含 image 模态
-        space_type_list = space.get_config().get("space_type", ["text"]) if space else ["text"]
+        # 2. 验证知识库包含 image 模态
+        from src.features.knowledge_space.services.knowledge_base_service import get_effective_space_types
+        space_type_list = get_effective_space_types(
+            kb_config=kb.get_config() if kb else None,
+            space_config=space.get_config() if space else None,
+        )
         if "image" not in space_type_list:
-            raise SearchError("多模态检索仅适用于包含图片模态的空间，请使用通用检索接口")
+            raise SearchError("多模态检索仅适用于包含图片模态的知识库，请使用通用检索接口")
 
         # 3. 获取多模态嵌入客户端
         error_msg = "该空间未配置多模态嵌入模型，无法进行多模态检索"
@@ -1201,14 +1205,14 @@ class SearchService:
     # ---------- 图片搜索共享辅助方法 ----------
 
     async def _validate_space_and_kb(self, space_id: int, kb_id: int):
-        """验证空间和知识库存在且关联，返回 space 对象"""
+        """验证空间和知识库存在且关联，返回 (space, kb) 元组"""
         space = await self.session.get(KnowledgeSpace, space_id)
         if not space:
             raise SpaceNotFoundError(space_id)
         kb = await self.kb_repo.get_by_id(kb_id)
         if not kb or kb.space_id != space_id:
             raise KnowledgeBaseNotFoundError(kb_id)
-        return space
+        return space, kb
 
     async def _get_multimodal_client(self, space, user_id: int, error_msg: str):
         """解析空间多模态嵌入配置，返回 (client, model_name)

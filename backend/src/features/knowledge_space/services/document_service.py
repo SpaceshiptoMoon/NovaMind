@@ -42,6 +42,7 @@ from src.shared.storage.minio_client import MinioClient
 from src.shared.storage.elasticsearch_client import ElasticsearchClient
 from src.shared.utils.document_readers.document_loader import DocumentProcessor
 from src.shared.utils.file_validator import validate_file, FileInfo
+from src.shared.utils.media_utils import upload_parsed_text_to_minio
 from src.shared.ai_models.embedding import OpenAICompatibleEmbedding as EmbeddingClient
 from src.setting.yaml_config import get_config
 from src.core.middleware.structured_logging import get_logger
@@ -195,11 +196,14 @@ class DocumentService:
                 f"{file_info.extension}: {file_info.validation_message}"
             )
 
-        # 5.5 根据空间类型校验文件类型
+        # 5.5 根据知识库模态校验文件类型
         file_type = file_info.extension
+        from src.features.knowledge_space.services.knowledge_base_service import get_effective_space_types
         space = await self.space_repo.get_by_id(kb.space_id)
-        space_config = space.get_config() if space else {}
-        modalities = space_config.get("space_type", ["text"])
+        modalities = get_effective_space_types(
+            kb_config=kb.get_config(),
+            space_config=space.get_config() if space else None,
+        )
 
         # 计算允许的文件类型合集（任意模态组合自动生效）
         allowed_types = set()
@@ -437,6 +441,11 @@ class DocumentService:
             chunks = [doc.get("text", "") or doc.get("content", "") for doc in split_docs]
         finally:
             Path(tmp_path).unlink(missing_ok=True)
+
+        # 解析全文持久化到 MinIO（chunk 切片之前，立刻 commit 落库）
+        full_text = "\n\n".join(chunks)
+        await upload_parsed_text_to_minio(document, full_text, _logger)
+        await session.commit()
 
         # 检查点 1：文档解析完成之后
         await _check_document_cancelled(document_id)
@@ -996,10 +1005,21 @@ class DocumentService:
         """
         document = await self._validate_document_not_processing(document_id)
 
-        # 清除 ES 旧分块 + 重置状态
-        await self._reset_document_to_uploaded(document, "重新解析")
+        # 1. 清除 ES 旧分块（best effort，失败不阻塞）
+        try:
+            await self.es_client.delete_document_chunks(
+                space_id=document.space_id, document_id=document.id,
+            )
+            self.logger.info("重新解析前已清除 ES 旧分块", document_id=document.id)
+        except Exception as e:
+            self.logger.warning("清除 ES 旧分块失败", document_id=document.id, error=str(e))
 
+        # 2. 先入队（失败则不修改状态）
         await self._enqueue_document_processing(document, "重新解析")
+
+        # 3. 入队成功后再修改状态
+        document.status = DocumentStatus.UPLOADED
+        document.status_info = {}
         return document
 
     async def retry_document(
@@ -1032,8 +1052,22 @@ class DocumentService:
             )
 
         previous_status = document.status
-        await self._reset_document_to_uploaded(document, "重试")
+
+        # 1. 清除 ES 旧分块（best effort，失败不阻塞）
+        try:
+            await self.es_client.delete_document_chunks(
+                space_id=document.space_id, document_id=document.id,
+            )
+            self.logger.info("重试前已清除 ES 旧分块", document_id=document.id)
+        except Exception as e:
+            self.logger.warning("清除 ES 旧分块失败", document_id=document.id, error=str(e))
+
+        # 2. 先入队（失败则不修改状态，避免文档卡在 UPLOADED）
         await self._enqueue_document_processing(document, "重试")
+
+        # 3. 入队成功后再修改状态（这次 commit 由外层 get_db() 管理，不会提前提交）
+        document.status = DocumentStatus.UPLOADED
+        document.status_info = {}
 
         self.logger.info(
             "文档重试已入队",
@@ -1158,6 +1192,10 @@ async def _process_image_document_static(
             )
 
             if description_text:
+                # 图片描述全文持久化到 MinIO（立刻 commit 落库）
+                await upload_parsed_text_to_minio(document, description_text, _logger)
+                await session.commit()
+
                 # 生成描述文本的向量
                 text_vector = await _generate_single_embedding_static(
                     text=description_text,

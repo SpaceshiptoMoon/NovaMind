@@ -57,6 +57,7 @@ class ClientFactory:
                         secret_key=config.minio.secret_key,
                         secure=config.minio.secure,
                         default_bucket=config.minio.bucket_name,
+                        public_endpoint=config.minio.public_endpoint,
                     )
                     logger.info("MinIO 客户端已初始化", endpoint=config.minio.endpoint)
 

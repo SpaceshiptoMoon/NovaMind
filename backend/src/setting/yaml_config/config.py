@@ -14,6 +14,7 @@ from urllib.parse import quote_plus
 class MinioConfig:
     """MinIO 对象存储配置"""
     endpoint: str = "localhost:9000"
+    public_endpoint: Optional[str] = None  # 公网可达的 MinIO 地址（用于生成外部服务可访问的预签名 URL）
     access_key: str = "***REMOVED***"
     secret_key: str = "***REMOVED***"
     secure: bool = False

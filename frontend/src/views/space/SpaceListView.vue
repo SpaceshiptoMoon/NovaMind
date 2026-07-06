@@ -20,31 +20,6 @@
                 :value="space.id"
               >
                 <span class="space-option-name">{{ space.name }}</span>
-                <el-tag
-                  v-if="space.config?.space_type === 'multimodal'"
-                  size="small"
-                  type="primary"
-                  class="space-option-tag"
-                >图片</el-tag>
-              </el-option>
-            </el-option-group>
-            <el-option-group
-              v-if="spaceStore.publicSpaces.length"
-              label="公开空间"
-            >
-              <el-option
-                v-for="space in spaceStore.publicSpaces"
-                :key="space.id"
-                :label="space.name"
-                :value="space.id"
-              >
-                <span class="space-option-name">{{ space.name }}</span>
-                <el-tag
-                  v-if="space.config?.space_type === 'multimodal'"
-                  size="small"
-                  type="primary"
-                  class="space-option-tag"
-                >图片</el-tag>
               </el-option>
             </el-option-group>
           </el-select>
@@ -113,6 +88,7 @@
       v-model="createSpaceDialogVisible"
       title="新建知识空间"
       width="480px"
+      class="create-space-dialog"
       destroy-on-close
     >
       <el-form
@@ -135,11 +111,28 @@
             <el-radio :value="2">公开</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="空间类型">
-          <el-radio-group v-model="createSpaceForm.space_type" @change="createSpaceForm.embedding_model = ''">
-            <el-radio value="text">文本空间</el-radio>
-            <el-radio value="multimodal">图片空间</el-radio>
-          </el-radio-group>
+        <!-- 数据类型已下放到知识库级别配置 -->
+        <el-form-item v-if="false" label="空间模态" prop="space_types">
+          <el-checkbox-group v-model="createSpaceForm.space_types" @change="createSpaceForm.embedding_model = ''; createSpaceForm.mm_embedding_model = ''">
+            <div class="modality-checkboxes">
+              <el-checkbox value="text">
+                <span class="modality-label">📄 文本</span>
+                <span class="modality-desc">PDF / Word / TXT / MD / Excel / PPT / HTML / JSON</span>
+              </el-checkbox>
+              <el-checkbox value="image">
+                <span class="modality-label">🖼 图片</span>
+                <span class="modality-desc">JPG / PNG / GIF / WebP</span>
+              </el-checkbox>
+              <el-checkbox value="video">
+                <span class="modality-label">🎬 视频</span>
+                <span class="modality-desc">MP4 / MOV / AVI / MKV / WebM</span>
+              </el-checkbox>
+              <el-checkbox value="audio">
+                <span class="modality-label">🎵 音频</span>
+                <span class="modality-desc">MP3 / WAV / FLAC / AAC / OGG / M4A</span>
+              </el-checkbox>
+            </div>
+          </el-checkbox-group>
         </el-form-item>
         <el-form-item label="描述" prop="description">
           <el-input
@@ -150,19 +143,33 @@
             maxlength="2000"
           />
         </el-form-item>
-        <el-divider content-position="left">
-          {{ createSpaceForm.space_type === 'multimodal' ? '多模态 Embedding 模型' : 'Embedding 模型' }}
-        </el-divider>
-        <el-form-item label="模型">
+        <el-divider content-position="left">Embedding 模型配置（可选，也可后续在空间设置中配置）</el-divider>
+        <el-form-item label="文本 Embedding">
           <el-select
             v-model="createSpaceForm.embedding_model"
-            :placeholder="createSpaceForm.space_type === 'multimodal' ? '选择多模态模型（可选）' : '选择模型（可选，也可后续配置）'"
+            placeholder="选择文本嵌入模型（可选）"
             clearable
             filterable
             style="width: 100%"
           >
             <el-option
-              v-for="m in currentCreateModels"
+              v-for="m in embeddingModels"
+              :key="m.model"
+              :label="m.model"
+              :value="m.model"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="createSpaceForm.space_types.includes('image')" label="多模态 Embedding">
+          <el-select
+            v-model="createSpaceForm.mm_embedding_model"
+            placeholder="选择多模态嵌入模型（可选）"
+            clearable
+            filterable
+            style="width: 100%"
+          >
+            <el-option
+              v-for="m in mmEmbeddingModels"
               :key="m.model"
               :label="m.model"
               :value="m.model"
@@ -284,7 +291,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -293,6 +300,14 @@ import {
   Collection,
   ArrowLeft,
 } from '@element-plus/icons-vue'
+
+// 模态 → 支持的文件格式映射
+const MODALITY_FORMAT_MAP: Record<string, string> = {
+  text: 'PDF、Word、TXT、MD、Excel、PPT、HTML、JSON',
+  image: 'JPG、PNG、GIF、WebP',
+  video: 'MP4、MOV、AVI、MKV、WebM',
+  audio: 'MP3、WAV、FLAC、AAC、OGG、M4A',
+}
 import { useSpaceStore } from '@/stores/space'
 import { knowledgeBaseApi } from '@/api/knowledgeBase'
 import { userApi } from '@/api/user'
@@ -389,31 +404,39 @@ const createSpaceFormRef = ref<FormInstance>()
 const createSpaceForm = reactive({
   name: '',
   visibility: 0,
-  space_type: 'text' as 'text' | 'multimodal',
+  space_types: ['text'] as string[],
   description: '',
   embedding_model: '',
+  mm_embedding_model: '',
   embedding_batch_size: 32,
   embedding_normalize: true,
 })
 const embeddingModels = ref<AvailableModelItem[]>([])
 const mmEmbeddingModels = ref<AvailableModelItem[]>([])
-const currentCreateModels = computed(() =>
-  createSpaceForm.space_type === 'multimodal' ? mmEmbeddingModels.value : embeddingModels.value
-)
 
 const spaceFormRules: FormRules = {
   name: [
     { required: true, message: '请输入空间名称', trigger: 'blur' },
     { min: 1, max: 100, message: '名称长度 1-100 字符', trigger: 'blur' },
   ],
+  space_types: [
+    {
+      type: 'array',
+      required: true,
+      min: 1,
+      message: '至少选择一个模态',
+      trigger: 'change',
+    },
+  ],
 }
 
 function showCreateSpaceDialog() {
   createSpaceForm.name = ''
   createSpaceForm.visibility = 0
-  createSpaceForm.space_type = 'text'
+  createSpaceForm.space_types = ['text']
   createSpaceForm.description = ''
   createSpaceForm.embedding_model = ''
+  createSpaceForm.mm_embedding_model = ''
   createSpaceForm.embedding_batch_size = 32
   createSpaceForm.embedding_normalize = true
   createSpaceDialogVisible.value = true
@@ -439,7 +462,7 @@ async function handleCreateSpace() {
     createSpaceLoading.value = true
     try {
       const config: Record<string, any> = {
-        space_type: createSpaceForm.space_type,
+        space_type: createSpaceForm.space_types,
         description: createSpaceForm.description || undefined,
         embedding: createSpaceForm.embedding_model
           ? {
@@ -449,8 +472,8 @@ async function handleCreateSpace() {
             }
           : undefined,
       }
-      if (createSpaceForm.space_type === 'multimodal' && createSpaceForm.embedding_model) {
-        config.multimodal_embedding = { model: createSpaceForm.embedding_model }
+      if (createSpaceForm.space_types.includes('image') && createSpaceForm.mm_embedding_model) {
+        config.multimodal_embedding = { model: createSpaceForm.mm_embedding_model }
       }
       const space = await spaceStore.createSpace({
         name: createSpaceForm.name,
@@ -614,6 +637,18 @@ watch(
     }
   },
   { immediate: true },
+
+// 路由切换时主动释放焦点，避免页面上残留闪烁光标
+watch(
+  () => route.fullPath,
+  () => {
+    nextTick(() => {
+      if (document.activeElement && document.activeElement !== document.body) {
+        ;(document.activeElement as HTMLElement).blur()
+      }
+    })
+  },
+)
 )
 
 // === 初始化 ===
@@ -635,6 +670,12 @@ async function init() {
 
 onMounted(() => {
   init()
+  // 避免浏览器自动聚焦第一个输入框导致页面上出现闪烁光标
+  nextTick(() => {
+    if (document.activeElement && document.activeElement !== document.body) {
+      ;(document.activeElement as HTMLElement).blur()
+    }
+  })
 })
 </script>
 
@@ -835,5 +876,48 @@ onMounted(() => {
   font-size: var(--text-sm);
   color: var(--color-danger);
   font-weight: var(--weight-medium);
+}
+
+/* 模态多选 */
+.modality-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.modality-checkboxes :deep(.el-checkbox) {
+  margin-right: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.modality-checkboxes :deep(.el-checkbox:hover) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-subtle);
+}
+
+.modality-checkboxes :deep(.el-checkbox.is-checked) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-subtle);
+}
+
+.modality-label {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.modality-desc {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-left: var(--space-2);
+}
+
+/* 创建空间弹窗内容限高滚动 */
+.create-space-dialog :deep(.el-dialog__body) {
+  max-height: 60vh;
+  overflow-y: auto;
 }
 </style>
