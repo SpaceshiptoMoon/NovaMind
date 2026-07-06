@@ -47,9 +47,10 @@ async def process_document_task(
         space_id: 空间 ID
     """
     from src.core.database.database import get_db_session
-    from src.features.knowledge_space.models.document import DocumentStatus
+    from src.features.knowledge_space.models.document_task import TaskStatus
     from src.features.knowledge_space.repository.document_repository import DocumentRepository
     from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
+    from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
     from src.features.knowledge_space.services.document_service import DocumentService, DocumentCancelledError
     from src.shared.mq.task_tracker import unbind_job
 
@@ -64,29 +65,37 @@ async def process_document_task(
     async with get_db_session() as session:
         doc_repo = DocumentRepository(session)
         kb_repo = KnowledgeBaseRepository(session)
+        task_repo = DocumentTaskRepository(session)
 
-        # 1. 幂等性校验：仅处理合法状态的文档
+        # 1. 幂等性校验：仅处理合法状态的任务
+        task = await task_repo.get_by_document_id(document_id)
+        if not task:
+            logger.warning("任务不存在，跳过处理", document_id=document_id)
+            await unbind_job(document_id)
+            return
+
+        if task.status not in (
+            TaskStatus.PENDING,
+            TaskStatus.FAILED,
+            TaskStatus.PROCESSING,
+        ):
+            logger.warning(
+                "任务状态不允许处理，跳过",
+                document_id=document_id,
+                status=task.status,
+            )
+            await unbind_job(document_id)
+            return
+
+        # 加载文档（用于获取存储信息和文件名）
         document = await doc_repo.get_by_id(document_id)
         if not document:
             logger.warning("文档不存在，跳过处理", document_id=document_id)
             await unbind_job(document_id)
             return
 
-        if document.status not in (
-            DocumentStatus.UPLOADED,
-            DocumentStatus.FAILED,
-            DocumentStatus.PROCESSING,
-        ):
-            logger.warning(
-                "文档状态不允许处理，跳过",
-                document_id=document_id,
-                status=document.status,
-            )
-            await unbind_job(document_id)
-            return
-
         # 2. 标记处理中
-        document.mark_processing()
+        task.mark_processing()
         await session.commit()
 
         try:
@@ -101,16 +110,21 @@ async def process_document_task(
             )
 
             # 4. 执行核心 pipeline
-            await DocumentService.execute_document_pipeline(
+            result = await DocumentService.execute_document_pipeline(
                 session=session,
                 document_id=document_id,
                 kb_id=kb_id,
                 space_id=space_id,
                 file_content=file_content,
                 filename=document.filename,
+                task=task,
             )
 
-            # 5. 成功：失效搜索缓存
+            # 5. 成功：标记任务完成
+            task.mark_completed(result)
+            await session.commit()
+
+            # 6. 失效搜索缓存
             try:
                 from src.shared.cache.redis_client import get_redis_client
                 cache = await get_redis_client()
@@ -119,7 +133,7 @@ async def process_document_task(
             except Exception as cache_err:
                 logger.warning("搜索缓存失效失败", kb_id=kb_id, error=str(cache_err))
 
-            # 6. 移除追踪映射
+            # 7. 移除追踪映射
             await unbind_job(document_id)
             logger.info("arq 任务完成：文档处理成功", document_id=document_id, job_id=job_id)
 
@@ -175,28 +189,27 @@ async def _ensure_mark_failed(document_id: int, error_message: str) -> None:
     2. ORM 失败则用 raw SQL 更新
     3. 都失败则记录严重告警（等待 recover_orphan_documents 在下次启动时处理）
     """
-    from src.features.knowledge_space.models.document import DocumentStatus
+    from src.features.knowledge_space.models.document_task import TaskStatus
 
     failed_msg = f"[已重试最大次数] {error_message}"
 
     # 第 1 层：ORM 独立 session
     try:
         from src.core.database.database import get_db_session
-        from src.features.knowledge_space.repository.document_repository import DocumentRepository
+        from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
 
         async with get_db_session() as independent_session:
-            repo = DocumentRepository(independent_session)
-            document = await repo.get_by_id(document_id)
-            if document:
-                document.mark_failed(failed_msg)
+            repo = DocumentTaskRepository(independent_session)
+            task = await repo.get_by_document_id(document_id)
+            if task:
+                task.mark_failed(failed_msg)
                 await independent_session.commit()
-                logger.info("文档已标记 FAILED（ORM）", document_id=document_id)
+                logger.info("任务已标记 FAILED（ORM）", document_id=document_id)
                 return
     except Exception as e:
         logger.warning("ORM 标记 FAILED 失败，尝试 raw SQL", document_id=document_id, error=str(e))
 
     # 第 2 层：Raw SQL
-    # 注意：documents 表没有 error_message 列，错误信息存储在 status_info JSON 中
     try:
         from src.core.database.database import get_engine
         from sqlalchemy import text
@@ -205,29 +218,26 @@ async def _ensure_mark_failed(document_id: int, error_message: str) -> None:
         async with get_engine().connect() as conn:
             await conn.execute(
                 text(
-                    "UPDATE documents SET status=:status, processed_at=:now, "
-                    "status_info=JSON_SET(COALESCE(status_info, '{}'), "
-                    "'$.error_message', :msg, '$.last_error_at', :now_iso), "
-                    "updated_at=:now WHERE id=:id AND status=:processing"
+                    "UPDATE document_tasks SET status=:status, completed_at=:now, "
+                    "error_message=:msg WHERE document_id=:id AND status=:processing"
                 ),
                 {
                     "msg": failed_msg[:500],
                     "id": document_id,
                     "now": failed_at,
-                    "now_iso": failed_at.isoformat(),
-                    "status": DocumentStatus.FAILED,
-                    "processing": DocumentStatus.PROCESSING,
+                    "status": TaskStatus.FAILED,
+                    "processing": TaskStatus.PROCESSING,
                 },
             )
             await conn.commit()
-            logger.info("文档已标记 FAILED（raw SQL）", document_id=document_id)
+            logger.info("任务已标记 FAILED（raw SQL）", document_id=document_id)
             return
     except Exception as e:
         logger.error("raw SQL 标记 FAILED 也失败", document_id=document_id, error=str(e))
 
     # 第 3 层：记录严重告警，等待启动时 recover_orphan_documents 处理
     logger.critical(
-        "文档状态更新全部失败，文档将卡在 PROCESSING 直到服务重启",
+        "任务状态更新全部失败，任务将卡在 PROCESSING 直到服务重启",
         document_id=document_id,
     )
 
@@ -544,34 +554,33 @@ async def recover_orphan_documents() -> int:
         恢复的文档数量
     """
     from src.core.database.database import get_db_session
-    from src.features.knowledge_space.models.document import Document, DocumentStatus
+    from src.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
     from sqlalchemy import select
 
     recovered = 0
 
     async with get_db_session() as session:
         result = await session.execute(
-            select(Document).where(Document.status == DocumentStatus.PROCESSING)
+            select(DocumentTask).where(DocumentTask.status == TaskStatus.PROCESSING)
         )
-        documents = result.scalars().all()
+        tasks = result.scalars().all()
 
-        if not documents:
+        if not tasks:
             logger.info("无需恢复的孤儿文档")
             return 0
 
-        for doc in documents:
-            # 防止无限重试：检查元数据中的重试次数
-            metadata = doc.doc_metadata or {}
-            retry_count = metadata.get("recover_retry_count", 0)
+        for task in tasks:
+            # 防止无限重试：检查任务重试次数
+            retry_count = task.retry_count or 0
 
             if retry_count >= 3:
                 # 超过恢复次数限制，直接标记失败
-                doc.mark_failed("[恢复重试次数超限，需人工介入]")
-                doc.doc_metadata = {**metadata, "recover_retry_count": retry_count + 1}
+                task.mark_failed("[恢复重试次数超限，需人工介入]")
+                task.retry_count = retry_count + 1
                 await session.commit()
                 logger.warning(
                     "孤儿文档恢复次数超限，已标记失败",
-                    document_id=doc.id,
+                    document_id=task.document_id,
                     retry_count=retry_count,
                 )
                 continue
@@ -579,25 +588,25 @@ async def recover_orphan_documents() -> int:
             try:
                 from src.shared.mq import enqueue_process_document
                 # 更新恢复重试计数
-                doc.doc_metadata = {**metadata, "recover_retry_count": retry_count + 1}
+                task.retry_count = retry_count + 1
                 await session.commit()
 
                 await enqueue_process_document(
-                    document_id=doc.id,
-                    kb_id=doc.kb_id,
-                    space_id=doc.space_id,
+                    document_id=task.document_id,
+                    kb_id=task.kb_id,
+                    space_id=task.space_id,
                 )
                 recovered += 1
                 logger.info(
                     "孤儿文档已重新入队",
-                    document_id=doc.id,
-                    kb_id=doc.kb_id,
+                    document_id=task.document_id,
+                    kb_id=task.kb_id,
                     retry_count=retry_count + 1,
                 )
             except Exception as e:
                 logger.error(
                     "孤儿文档恢复失败",
-                    document_id=doc.id,
+                    document_id=task.document_id,
                     error=str(e),
                 )
 

@@ -29,6 +29,10 @@ from src.features.knowledge_space.models.document import (
     Document,
     DocumentStatus,
 )
+from src.features.knowledge_space.models.document_task import (
+    DocumentTask,
+    TaskStatus,
+)
 from src.features.knowledge_space.models.space_audit_log import SpaceAuditLog, AuditAction
 
 __all__ = [
@@ -46,6 +50,9 @@ __all__ = [
     # 文档
     "Document",
     "DocumentStatus",
+    # 文档任务
+    "DocumentTask",
+    "TaskStatus",
     # 审计
     "SpaceAuditLog",
     "AuditAction",

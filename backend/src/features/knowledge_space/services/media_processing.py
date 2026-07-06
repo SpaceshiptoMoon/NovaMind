@@ -2,8 +2,8 @@
 音视频文档处理管道
 
 处理流程：
-- 视频: 提取关键帧 → VLM逐帧描述 → 聚合文本 → Embedding → ES
-- 音频: ASR转写 → 分句切片 → Embedding → ES
+- 视频: 提取关键帧 → VLM逐帧描述 → MD文本 → 统一文本切分 → Embedding → ES
+- 音频: ASR转写 → MD文本 → 统一文本切分 → Embedding → ES
 """
 
 import base64
@@ -12,8 +12,14 @@ from typing import List, Tuple, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.features.knowledge_space.models.document import Document
+from src.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
 from src.features.knowledge_space.services.document_service import _check_document_cancelled
-from src.shared.utils.media_utils import extract_video_frames, transcribe_audio_with_timestamps, upload_parsed_text_to_minio, transcribe_audio_local
+from src.shared.utils.media_utils import (
+    extract_video_frames,
+    transcribe_audio_with_timestamps,
+    upload_parsed_text_to_minio,
+    transcribe_audio_local,
+)
 from src.shared.utils.time_utils import now_china
 
 
@@ -22,14 +28,16 @@ async def process_video_document(
     file_content: bytes,
     session: AsyncSession,
     logger,
+    task: Optional[DocumentTask] = None,
 ) -> None:
     """
     视频文档处理管道
 
-    1. 提取关键帧（按 KB parsing 配置的间隔和最大帧数）
+    1. 提取关键帧（按 pipeline 配置的间隔和最大帧数）
     2. 逐帧调 VLM 生成描述
-    3. 聚合所有帧描述 → 构建 text chunks
-    4. 走文本管道（Embedding → ES）
+    3. MD 拼接全文 → 上传 MinIO
+    4. 统一文本切分
+    5. Embedding → ES 索引
     """
     from src.features.user.services.model_config_service import ModelConfigService
     from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
@@ -39,9 +47,14 @@ async def process_video_document(
     kb_repo = KnowledgeBaseRepository(session)
     kb = await kb_repo.get_by_id(document.kb_id)
 
-    # 读取视频处理配置
-    parsing_config = kb.get_parsing_config() if kb else {}
-    video_config = parsing_config.get("video", {})
+    # 读取 pipeline 配置（优先 Task 快照，回退到 KB 实时配置）
+    # 注：迁移完成后 pipeline_config 应仅从 Task 快照读取
+    pipeline_config = (
+        task.pipeline_config
+        if (task and task.pipeline_config)
+        else (kb.get_parsing_config() if kb else {})
+    )
+    video_config = pipeline_config.get("video", {})
     frame_interval = video_config.get("frame_interval", 5)
     max_frames = video_config.get("max_frames", 60)
 
@@ -82,6 +95,9 @@ async def process_video_document(
             # 上传失败不阻塞整体（极少数帧丢失不影响搜索）
             frame_paths.append("")
 
+    if task:
+        task.set_step("frames_extracted")
+
     # 2. 逐帧 VLM 描述（每5帧检查一次取消信号）
     descriptions = []
     for i, (frame_bytes, ts, frame_idx) in enumerate(frames):
@@ -107,15 +123,28 @@ async def process_video_document(
     if not descriptions:
         raise ValueError(f"视频 {document.filename} 所有帧的VLM描述均失败")
 
-    # 帧描述全文持久化到 MinIO（立刻 commit 落库）
-    full_text = "\n\n".join(desc for desc, _, _ in descriptions)
+    # 帧描述全文 MD 拼接并持久化到 MinIO（立刻 commit 落库）
+    full_text_lines = []
+    for desc, ts, frame_idx in descriptions:
+        full_text_lines.append(f"[{_format_time(ts)}] {desc}")
+    full_text = "\n\n".join(full_text_lines)
     await upload_parsed_text_to_minio(document, full_text, logger)
     await session.commit()
 
-    # 3. 聚合为 text chunks（按总长度切分）
-    chunks = _aggregate_descriptions(descriptions, max_chunk_size=1500)
+    if task:
+        task.set_step("descriptions_generated")
 
-    # 4. Embedding + ES（复用文本管道）
+    # 3. 统一文本切分（替代旧 _aggregate_descriptions）
+    # 切分配置从 pipeline_config 读取（优先 Task 快照）
+    splitting_config = pipeline_config.get("splitting", {})
+    strategy = splitting_config.get("strategy", "recursive")
+    splitting_kwargs = {k: v for k, v in splitting_config.items() if k != "strategy"}
+    chunks = await _split_md_text(full_text, strategy=strategy, **splitting_kwargs)
+
+    if task:
+        task.set_step("text_split")
+
+    # 4. Embedding + ES（embedding_config 从空间级别读取）
     embedding_config = space.embedding_config if space else {}
     await _index_text_chunks(
         document=document,
@@ -127,19 +156,21 @@ async def process_video_document(
         frame_paths=frame_paths,
     )
 
-    # 5. 标记完成
-    document.mark_completed()
+    if task:
+        task.set_step("indexed")
+
+    # 5. 写入处理结果到 Task
     document.storage = {
         **(document.storage or {}),
         "frames": [p for p in frame_paths if p],  # 过滤上传失败的空字符串
     }
-    document.doc_metadata = {
-        **(document.doc_metadata or {}),
-        "chunk_count": len(chunks),
-        "chunk_type": "video",
-        "frame_count": len(frames),
-        "indexed_at": now_china().isoformat(),
-    }
+    if task:
+        task.mark_completed(result={
+            "chunk_count": len(chunks),
+            "chunk_type": "video",
+            "frame_count": len(frames),
+            "indexed_at": now_china().isoformat(),
+        })
     await session.commit()
 
     logger.info(
@@ -153,13 +184,15 @@ async def process_audio_document(
     file_content: bytes,
     session: AsyncSession,
     logger,
+    task: Optional[DocumentTask] = None,
 ) -> None:
     """
     音频文档处理管道
 
     1. ASR 转写（OpenAI Whisper API，带时间戳）
-    2. 按句子/段落构建 chunks
-    3. 走文本管道（Embedding → ES）
+    2. MD 文本拼接 → 上传 MinIO
+    3. 统一文本切分
+    4. Embedding → ES 索引
     """
     from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
     from src.features.knowledge_space.models.knowledge_space import KnowledgeSpace
@@ -168,15 +201,18 @@ async def process_audio_document(
     kb_repo = KnowledgeBaseRepository(session)
     kb = await kb_repo.get_by_id(document.kb_id)
 
-    # 读取音频处理配置（KB 级 > 空间级 > 默认）
-    parsing_config = kb.get_parsing_config() if kb else {}
-    audio_config = parsing_config.get("audio", {})
+    # 读取 pipeline 配置（优先 Task 快照，回退到 KB 实时配置）
+    # 注：迁移完成后 pipeline_config 应仅从 Task 快照读取
+    pipeline_config = (
+        task.pipeline_config
+        if (task and task.pipeline_config)
+        else (kb.get_parsing_config() if kb else {})
+    )
+    audio_config = pipeline_config.get("audio", {})
     space_asr_cfg = (space.config or {}).get("asr", {}) if space else {}
     asr_model = audio_config.get("asr_model") or space_asr_cfg.get("model") or "whisper-1"
-    chunk_strategy = audio_config.get("chunk_split_strategy", "sentence")
-    chunk_size = audio_config.get("chunk_size", 1000)
 
-    # 1. ASR 转写（根据协议路由：openai → Whisper / dashscope → Paraformer）
+    # 1. ASR 转写（根据协议路由：openai → Whisper / dashscope → Paraformer / local → faster-whisper）
     from src.features.user.services.model_config_service import ModelConfigService
     from src.shared.utils.media_utils import transcribe_audio_with_dashscope
 
@@ -238,25 +274,29 @@ async def process_audio_document(
     if not segments:
         raise ValueError(f"音频 {document.filename} 转写结果为空")
 
-    # 转写全文持久化到 MinIO（立刻 commit 落库）
+    # 转写全文 MD 拼接并持久化到 MinIO（立刻 commit 落库）
     transcript_lines = [
         f"[{_format_time(seg.get('start', 0))}] {seg['text']}"
         for seg in segments if seg.get("text", "").strip()
     ]
-    if transcript_lines:
-        full_text = "\n".join(transcript_lines)
-        await upload_parsed_text_to_minio(document, full_text, logger)
-        await session.commit()
+    if not transcript_lines:
+        raise ValueError(f"音频 {document.filename} 转写结果均为空文本")
 
-    # 2. 按策略切片
-    if chunk_strategy == "fixed":
-        chunks = _merge_segments_by_size(segments, chunk_size)
-    else:
-        # sentence: 每个 segment 作为一个 chunk
-        chunks = [
-            (seg["text"], {"start_time": seg.get("start"), "end_time": seg.get("end")})
-            for seg in segments if seg["text"].strip()
-        ]
+    full_text = "\n".join(transcript_lines)
+    await upload_parsed_text_to_minio(document, full_text, logger)
+    await session.commit()
+
+    if task:
+        task.set_step("transcription_done")
+
+    # 2. 统一文本切分（替代旧 _merge_segments_by_size / sentence 直传）
+    splitting_config = pipeline_config.get("splitting", {})
+    strategy = splitting_config.get("strategy", "recursive")
+    splitting_kwargs = {k: v for k, v in splitting_config.items() if k != "strategy"}
+    chunks = await _split_md_text(full_text, strategy=strategy, **splitting_kwargs)
+
+    if task:
+        task.set_step("text_split")
 
     # 3. Embedding + ES
     embedding_config = space.embedding_config if space else {}
@@ -269,21 +309,112 @@ async def process_audio_document(
         logger=logger,
     )
 
-    # 4. 标记完成
-    document.mark_completed()
-    document.doc_metadata = {
-        **(document.doc_metadata or {}),
-        "chunk_count": len(chunks),
-        "chunk_type": "audio",
-        "segment_count": len(segments),
-        "indexed_at": now_china().isoformat(),
-    }
+    if task:
+        task.set_step("indexed")
+
+    # 4. 写入处理结果到 Task
+    if task:
+        task.mark_completed(result={
+            "chunk_count": len(chunks),
+            "chunk_type": "audio",
+            "segment_count": len(segments),
+            "indexed_at": now_china().isoformat(),
+        })
     await session.commit()
 
     logger.info(
         "音频文档处理完成", document_id=document.id,
         chunks=len(chunks), segments=len(segments),
     )
+
+
+# ========== 统一文本切分 ==========
+
+
+async def _split_md_text(
+    md_text: str,
+    strategy: str = "recursive",
+    **kwargs,
+) -> List[Tuple[str, Dict[str, Any]]]:
+    """
+    将 MD/纯文本按指定策略切分为 chunks
+
+    Args:
+        md_text: 待切分的文本内容
+        strategy: 切分策略 (recursive / markdown / fixed_size)
+        **kwargs: 策略相关参数 (chunk_size, chunk_overlap, min_chunk_size, max_chunk_size 等)
+
+    Returns:
+        [(text, metadata_dict), ...] — metadata 目前为空 dict，后续可扩展携带标题/层级
+    """
+    from src.shared.utils.document_readers.document_loader import DocumentRegistry
+
+    splitter_class = DocumentRegistry.get_splitter_class(strategy)
+    if splitter_class is None:
+        raise ValueError(
+            f"不支持的切分策略: {strategy}，可用策略: {DocumentRegistry.get_available_strategies()}"
+        )
+
+    if strategy == "recursive":
+        chunk_size = kwargs.get("chunk_size", 2000)
+        chunk_overlap = kwargs.get("chunk_overlap", 50)
+        min_chunk_size = kwargs.get("min_chunk_size", 500)
+        splitter = splitter_class(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            min_chunk_size=min_chunk_size,
+        )
+        chunk_texts = await splitter._split_text(md_text)
+        return [(text, {}) for text in chunk_texts if text.strip()]
+
+    elif strategy == "markdown":
+        from src.shared.utils.document_readers.splitters.markdown_splitter import MarkdownSplitter
+        max_chunk_size = kwargs.get("max_chunk_size", 1000)
+        min_chunk_size = kwargs.get("min_chunk_size", 50)
+        splitter = MarkdownSplitter(
+            max_chunk_size=max_chunk_size,
+            min_chunk_size=min_chunk_size,
+        )
+        doc_wrapper = [{
+            "text": md_text,
+            "source": "media_pipeline",
+            "page": 1,
+            "doc_id": "0",
+            "type": "markdown",
+            "title": "",
+        }]
+        results = await splitter.split(doc_wrapper)
+        return [(r["text"], {}) for r in results if r.get("text", "").strip()]
+
+    elif strategy == "fixed_size":
+        chunk_size = kwargs.get("chunk_size", 500)
+        chunk_overlap = kwargs.get("chunk_overlap", 0)
+        splitter = splitter_class(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
+        doc_wrapper = [{
+            "text": md_text,
+            "source": "media_pipeline",
+            "page": 1,
+            "doc_id": "0",
+            "type": "text",
+        }]
+        results = await splitter.split(doc_wrapper)
+        return [(r["text"], {}) for r in results if r.get("text", "").strip()]
+
+    else:
+        # 其他策略兜底：尝试作为文档切分器处理
+        doc_wrapper = [{
+            "text": md_text,
+            "source": "media_pipeline",
+            "page": 1,
+            "doc_id": "0",
+            "type": "text",
+        }]
+        splitter = splitter_class(**kwargs)
+        results = await splitter.split(doc_wrapper)
+        return [(r["text"], {}) for r in results if r.get("text", "").strip()]
 
 
 # ========== 内部辅助函数 ==========
@@ -341,105 +472,6 @@ def _format_time(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
-def _aggregate_descriptions(
-    descriptions: List[Tuple[str, float, int]],
-    max_chunk_size: int = 1500,
-) -> List[Tuple[str, Dict[str, Any]]]:
-    """
-    将帧描述聚合为 chunks，每个 chunk 不超过 max_chunk_size 字符
-
-    Returns:
-        [(text, metadata), ...]
-        metadata: {"start_time", "end_time", "frame_indices"}
-    """
-    chunks = []
-    current_lines = []
-    current_length = 0
-    current_start_time = None
-    current_end_time = None
-    current_frame_indices = []
-
-    for desc, timestamp, frame_idx in descriptions:
-        line = f"[{_format_time(timestamp)}] {desc}"
-        line_len = len(line)
-
-        # 判断是否需要开始新 chunk
-        if current_lines and current_length + line_len > max_chunk_size:
-            chunks.append((
-                "\n\n".join(current_lines),
-                {
-                    "start_time": current_start_time,
-                    "end_time": current_end_time,
-                    "frame_indices": current_frame_indices,
-                },
-            ))
-            current_lines = []
-            current_length = 0
-            current_start_time = None
-            current_frame_indices = []
-
-        if current_start_time is None:
-            current_start_time = timestamp
-        current_end_time = timestamp + 5  # 默认帧间隔5秒
-        current_lines.append(line)
-        current_length += line_len
-        current_frame_indices.append(frame_idx)
-
-    # 最后一个 chunk
-    if current_lines:
-        chunks.append((
-            "\n\n".join(current_lines),
-            {
-                "start_time": current_start_time,
-                "end_time": current_end_time,
-                "frame_indices": current_frame_indices,
-            },
-        ))
-
-    return chunks
-
-
-def _merge_segments_by_size(
-    segments: List[Dict],
-    chunk_size: int = 1000,
-) -> List[Tuple[str, Dict[str, Any]]]:
-    """按固定字符数合并 ASR segments"""
-    chunks = []
-    buffer_texts = []
-    start_time = None
-    end_time = None
-    current_len = 0
-
-    for seg in segments:
-        text = seg.get("text", "").strip()
-        if not text:
-            continue
-
-        if not buffer_texts:
-            start_time = seg.get("start", 0.0)
-        buffer_texts.append(text)
-        end_time = seg.get("end", 0.0)
-        current_len += len(text)
-
-        if current_len >= chunk_size:
-            chunks.append((
-                " ".join(buffer_texts),
-                {"start_time": start_time, "end_time": end_time},
-            ))
-            buffer_texts = []
-            current_len = 0
-            start_time = None
-
-    # 剩余部分
-    if buffer_texts:
-        chunks.append((
-            " ".join(buffer_texts),
-            {"start_time": start_time, "end_time": end_time},
-        ))
-
-    return chunks
-
-
 async def _index_text_chunks(
     document: Document,
     chunks: List[Tuple[str, Dict[str, Any]]],
@@ -448,8 +480,14 @@ async def _index_text_chunks(
     session: AsyncSession,
     logger,
     frame_paths: Optional[List[str]] = None,
+    task: Optional[DocumentTask] = None,
 ):
-    """将文本 chunks 写入 ES（复用文本管道逻辑）"""
+    """
+    将文本 chunks 写入 ES（复用文本管道逻辑）
+
+    注：pipeline_config（切分策略等）可从 task.pipeline_config 快照获取，
+    embedding_config 从空间配置读取，二者来源不同。
+    """
     from src.features.knowledge_space.services.document_service import (
         _generate_embeddings_static,
         _get_es_client_static,

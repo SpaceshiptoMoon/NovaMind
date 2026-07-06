@@ -23,59 +23,46 @@ from src.features.knowledge_space.models.knowledge_base import KnowledgeBaseStat
 # ========== 切分策略配置 ==========
 
 
-class RecursiveSplittingConfig(BaseModel):
-    """递归字符切分策略"""
-    model_config = ConfigDict(extra="ignore")
-
-    strategy: Literal["recursive"] = "recursive"
-    chunk_size: int = Field(default=1000, ge=50, le=4000, description="目标分块大小，字符数")
-    chunk_overlap: int = Field(default=100, ge=0, le=500, description="相邻分块重叠字符数")
-    min_chunk_size: int = Field(default=500, ge=0, le=2000, description="最小分块大小，小于此值的碎块与相邻块合并（0=不合并）")
-
-
-class FixedSizeSplittingConfig(BaseModel):
-    """固定大小切分策略"""
-    model_config = ConfigDict(extra="ignore")
-
-    strategy: Literal["fixed_size"] = "fixed_size"
-    chunk_size: int = Field(default=1000, ge=50, le=4000, description="目标分块大小，字符数")
-    chunk_overlap: int = Field(default=100, ge=0, le=500, description="相邻分块重叠字符数")
-
-
-class MarkdownSplittingConfig(BaseModel):
-    """Markdown 结构切分策略"""
-    model_config = ConfigDict(extra="ignore")
-
-    strategy: Literal["markdown"] = "markdown"
-    max_chunk_size: int = Field(default=2000, ge=100, le=8000, description="最大分块大小")
-    min_chunk_size: int = Field(default=100, ge=10, le=1000, description="最小分块大小")
-
-
-class SemanticSplittingConfig(BaseModel):
-    """语义切分策略"""
-    model_config = ConfigDict(extra="ignore")
-
-    strategy: Literal["semantic"] = "semantic"
-    max_chunk_size: int = Field(default=2000, ge=100, le=8000, description="最大分块大小")
-    similarity_threshold: float = Field(
-        default=0.7, ge=0.0, le=1.0,
-        description="语义相似度阈值，低于此值则切分",
+class AudioChunkOverride(BaseModel):
+    """音频专属切分覆盖（可选，不配则走默认文本切分）"""
+    strategy: Literal["sentence", "fixed"] = Field(
+        default="sentence",
+        description="切分策略: sentence(按句子)/fixed(按固定字符数)",
     )
-    batch_size: int = Field(
-        default=20, ge=1, le=100,
-        description="语义切分批处理大小",
+    chunk_size: int = Field(
+        default=1000, ge=100, le=4000,
+        description="固定大小切分的字符数（仅 fixed 模式有效）",
     )
 
 
-SplittingConfig = Annotated[
-    Union[
-        Annotated[RecursiveSplittingConfig, Tag("recursive")],
-        Annotated[FixedSizeSplittingConfig, Tag("fixed_size")],
-        Annotated[MarkdownSplittingConfig, Tag("markdown")],
-        Annotated[SemanticSplittingConfig, Tag("semantic")],
-    ],
-    Field(discriminator="strategy"),
-]
+class VideoChunkOverride(BaseModel):
+    """视频专属切分覆盖（可选，不配则走默认文本切分）"""
+    strategy: Literal["fixed"] = Field(
+        default="fixed",
+        description="切分策略: fixed(按字数聚合帧描述)",
+    )
+    chunk_size: int = Field(
+        default=1500, ge=100, le=4000,
+        description="聚合最大字符数",
+    )
+
+
+class SplittingConfig(BaseModel):
+    """切分配置 — 所有模态统一的默认策略 + 可选专属覆盖"""
+    model_config = ConfigDict(extra="ignore")
+
+    strategy: Literal["recursive", "fixed_size", "markdown", "semantic"] = Field(
+        default="recursive",
+        description="默认切分策略",
+    )
+    chunk_size: int = Field(default=1000, ge=50, le=4000, description="目标分块大小，字符数")
+    chunk_overlap: int = Field(default=100, ge=0, le=500, description="相邻分块重叠字符数")
+    min_chunk_size: int = Field(default=500, ge=0, le=2000, description="最小分块大小（recursive/markdown）")
+    max_chunk_size: int = Field(default=2000, ge=100, le=8000, description="最大分块大小（markdown/semantic）")
+    similarity_threshold: float = Field(default=0.7, ge=0.0, le=1.0, description="语义相似度阈值（semantic 专属）")
+    batch_size: int = Field(default=20, ge=1, le=100, description="语义切分批处理大小（semantic 专属）")
+    audio: Optional[AudioChunkOverride] = Field(default=None, description="音频专属切分（不配则使用默认策略）")
+    video: Optional[VideoChunkOverride] = Field(default=None, description="视频专属切分（不配则使用默认策略）")
 
 
 # ========== 解析配置 ==========
@@ -117,18 +104,10 @@ class VideoParsingConfig(BaseModel):
 
 
 class AudioParsingConfig(BaseModel):
-    """音频文件解析配置"""
+    """音频文件解析配置（仅 ASR，切分配置已迁移至 splitting.audio）"""
     asr_model: str = Field(
         default="whisper-1",
         description="ASR 转写模型名称，默认 whisper-1",
-    )
-    chunk_split_strategy: Literal["sentence", "fixed"] = Field(
-        default="sentence",
-        description="切分策略: sentence(按句子)/fixed(按固定字符数)",
-    )
-    chunk_size: int = Field(
-        default=1000, ge=100, le=4000,
-        description="固定大小切分的字符数（仅 chunk_split_strategy=fixed 时有效）",
     )
 
 
@@ -249,7 +228,7 @@ class KnowledgeBaseConfig(BaseModel):
         return ["text"]
 
     description: str = Field(default="", max_length=2000, description="知识库描述")
-    splitting: SplittingConfig = Field(default_factory=RecursiveSplittingConfig, description="切分配置")
+    splitting: SplittingConfig = Field(default_factory=SplittingConfig, description="切分配置")
     parsing: ParsingConfig = Field(default_factory=ParsingConfig, description="解析配置")
     question_generation: QuestionGenerationConfig = Field(
         default_factory=QuestionGenerationConfig,

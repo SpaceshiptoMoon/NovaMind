@@ -234,7 +234,7 @@ class DocumentService:
         # 8.1 检查是否有同 hash 的已软删除文档（可复用记录）
         soft_deleted = await self.doc_repo.get_deleted_by_hash(kb_id, file_hash)
         if soft_deleted:
-            soft_deleted.revive(uploader_id=uploader_id, filename=filename)
+            soft_deleted.undelete(uploader_id=uploader_id, filename=filename)
 
             # 重新上传 MinIO（软删除时文件已被清理）
             minio_result = await self.minio_client.upload_document(
@@ -275,8 +275,7 @@ class DocumentService:
                 "file_type": file_type,
                 "file_size": file_size,
                 "file_hash": file_hash,
-                "storage": {},  # 临时空值，上传后更新
-                "status": DocumentStatus.UPLOADED,
+                "storage": {},
             })
 
             # 使用真实 document_id 上传到 MinIO
@@ -366,6 +365,7 @@ class DocumentService:
         space_id: int,
         file_content: bytes,
         filename: str,
+        task: Optional["DocumentTask"] = None,
     ) -> None:
         """
         执行文档处理的核心 pipeline（独立函数，可被 arq worker 或直接调用）
@@ -386,6 +386,24 @@ class DocumentService:
         if not document:
             return
 
+        # 获取或确保任务记录
+        if task is None:
+            from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+            from src.features.knowledge_space.models.document_task import TaskStatus
+            _task_repo = DocumentTaskRepository(session)
+            task = await _task_repo.get_by_document_id(document_id)
+            if task is None:
+                task = await _task_repo.create({
+                    "document_id": document_id,
+                    "kb_id": kb_id,
+                    "space_id": space_id,
+                    "status": TaskStatus.PENDING,
+                    "pipeline_config": None,
+                    "queued_at": now_china(),
+                })
+        if task.status.value not in (1,):  # not already PROCESSING
+            task.mark_processing()
+
         kb = await kb_repo.get_by_id(document.kb_id)
         if not kb:
             return
@@ -395,20 +413,20 @@ class DocumentService:
 
         if file_ext in DocumentService.IMAGE_FILE_TYPES:
             await _process_image_document_static(
-                document, file_content, session, _logger
+                document, file_content, session, _logger, task=task
             )
             return
 
         # ===== 视频文档分支（新增） =====
         if file_ext in DocumentService.VIDEO_FILE_TYPES:
             from src.features.knowledge_space.services.media_processing import process_video_document
-            await process_video_document(document, file_content, session, _logger)
+            await process_video_document(document, file_content, session, _logger, task=task)
             return
 
         # ===== 音频文档分支（新增） =====
         if file_ext in DocumentService.AUDIO_FILE_TYPES:
             from src.features.knowledge_space.services.media_processing import process_audio_document
-            await process_audio_document(document, file_content, session, _logger)
+            await process_audio_document(document, file_content, session, _logger, task=task)
             return
 
         # ===== 文本文档分支（现有逻辑）=====
@@ -439,6 +457,7 @@ class DocumentService:
                 batch_size=splitting_config.get("batch_size", 20),
             )
             chunks = [doc.get("text", "") or doc.get("content", "") for doc in split_docs]
+            task.set_step("split", "done")
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
@@ -446,6 +465,7 @@ class DocumentService:
         full_text = "\n\n".join(chunks)
         await upload_parsed_text_to_minio(document, full_text, _logger)
         await session.commit()
+        task.set_step("parsed", "done")
 
         # 检查点 1：文档解析完成之后
         await _check_document_cancelled(document_id)
@@ -464,6 +484,7 @@ class DocumentService:
 
         for i, embedding in enumerate(embeddings):
             es_chunks[i]["embedding"] = embedding
+        task.set_step("embedded", "done")
 
         # 检查点 2：向量化完成之后
         await _check_document_cancelled(document_id)
@@ -538,17 +559,17 @@ class DocumentService:
                 error_message=f"ES 索引写入失败，共 {len(es_chunks)} 个分块均未成功写入",
             )
 
-        # 5. 标记文档完成
-        document.mark_completed()
-        document.doc_metadata = {
-            **(document.doc_metadata or {}),
+        task.set_step("indexed", "done")
+
+        # 5. 标记任务完成
+        task.mark_completed(result={
             "chunk_count": len(chunks),
             "total_tokens": sum(len(c.split()) for c in chunks),
             "split_strategy": splitting_config.get("strategy", "recursive"),
             "chunk_size": splitting_config.get("chunk_size", DEFAULT_CHUNK_SIZE),
             "chunk_overlap": splitting_config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
             "indexed_at": now_china().isoformat(),
-        }
+        })
         await session.commit()
 
         _logger.info(
@@ -1079,19 +1100,37 @@ class DocumentService:
     # ---------- 文档处理共享辅助方法 ----------
 
     async def _validate_document_not_processing(self, document_id: int) -> Document:
-        """获取文档并验证不在处理中"""
+        """获取文档并验证无活跃处理任务"""
         document = await self.doc_repo.get_by_id(document_id)
         if not document:
             raise DocumentNotFoundError(document_id)
-        if document.status == DocumentStatus.PROCESSING:
+        from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        _task_repo = DocumentTaskRepository(self.session)
+        active_task = await _task_repo.get_active_by_document_id(document_id)
+        if active_task:
             raise DocumentAlreadyProcessingError(document_id)
         return document
 
     async def _enqueue_document_processing(self, document: Document, log_label: str = "处理"):
-        """检查活跃任务并入队文档处理"""
+        """创建任务记录并入队文档处理"""
         from src.shared.mq.task_tracker import is_document_actively_processing
+        from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from src.features.knowledge_space.models.document_task import TaskStatus
+
         if await is_document_actively_processing(document.id):
             raise DocumentAlreadyProcessingError(document.id)
+
+        # 创建任务记录
+        task_repo = DocumentTaskRepository(self.session)
+        kb = await self.kb_repo.get_by_id(document.kb_id)
+        await task_repo.create({
+            "document_id": document.id,
+            "kb_id": document.kb_id,
+            "space_id": document.space_id,
+            "status": TaskStatus.PENDING,
+            "pipeline_config": kb.get_config() if kb else None,
+            "queued_at": now_china(),
+        })
 
         from src.shared.mq import enqueue_process_document
         await enqueue_process_document(
@@ -1101,20 +1140,6 @@ class DocumentService:
         )
         self.logger.info(f"文档{log_label}已入队", document_id=document.id)
 
-    async def _reset_document_to_uploaded(self, document: Document, log_label: str = "重置"):
-        """清除 ES 旧分块并重置文档状态为 UPLOADED"""
-        try:
-            await self.es_client.delete_document_chunks(
-                space_id=document.space_id,
-                document_id=document.id,
-            )
-            self.logger.info(f"{log_label}前已清除 ES 旧分块", document_id=document.id)
-        except Exception as e:
-            self.logger.warning("清除 ES 旧分块失败", document_id=document.id, error=str(e))
-
-        document.status = DocumentStatus.UPLOADED
-        document.status_info = {}
-        await self.session.commit()
 
 
 # ========== 模块级静态辅助函数 ==========
@@ -1125,6 +1150,7 @@ async def _process_image_document_static(
     file_content: bytes,
     session,
     _logger,
+    task=None,
 ):
     """处理图片类型文档：生成多模态嵌入向量并索引到 ES
 
@@ -1268,18 +1294,17 @@ async def _process_image_document_static(
             error_message="ES 索引写入失败",
         )
 
-    # 7. 标记文档完成
-    document.mark_completed()
-    doc_meta = {
-        **(document.doc_metadata or {}),
+    # 7. 标记任务完成
+    result = {
         "chunk_count": 1,
         "indexed_at": now_china().isoformat(),
         "chunk_type": "image",
     }
     if vlm_enabled and description_text:
-        doc_meta["vlm_description"] = True
-        doc_meta["description_length"] = len(description_text)
-    document.doc_metadata = doc_meta
+        result["vlm_description"] = True
+        result["description_length"] = len(description_text)
+    if task:
+        task.mark_completed(result=result)
     await session.commit()
 
     _logger.info(

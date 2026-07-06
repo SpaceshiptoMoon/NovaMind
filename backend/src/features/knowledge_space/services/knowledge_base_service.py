@@ -428,12 +428,29 @@ class KnowledgeBaseService:
             if not (100 <= splitting["chunk_size"] <= 4000):
                 raise InvalidParameterError("chunk_size 必须在 100-4000 之间")
         if "chunk_overlap" in splitting:
-            # 单独更新 overlap 时，从请求或当前配置获取 chunk_size 进行比较
             chunk_size = splitting.get("chunk_size")
             if chunk_size is None and kb:
                 chunk_size = (kb.config or {}).get("splitting", {}).get("chunk_size", 500)
             if chunk_size is not None and splitting["chunk_overlap"] >= chunk_size:
                 raise InvalidParameterError("chunk_overlap 必须小于 chunk_size")
+        # 音频切分覆盖
+        splitting_audio = splitting.get("audio")
+        if splitting_audio:
+            if "strategy" in splitting_audio:
+                if splitting_audio["strategy"] not in ("sentence", "fixed"):
+                    raise InvalidParameterError(f"不支持的音频切分策略: {splitting_audio['strategy']}")
+            if "chunk_size" in splitting_audio:
+                if not (100 <= splitting_audio["chunk_size"] <= 4000):
+                    raise InvalidParameterError("audio.chunk_size 必须在 100-4000 之间")
+        # 视频切分覆盖
+        splitting_video = splitting.get("video")
+        if splitting_video:
+            if "strategy" in splitting_video:
+                if splitting_video["strategy"] not in ("fixed",):
+                    raise InvalidParameterError(f"不支持的视频切分策略: {splitting_video['strategy']}")
+            if "chunk_size" in splitting_video:
+                if not (100 <= splitting_video["chunk_size"] <= 4000):
+                    raise InvalidParameterError("video.chunk_size 必须在 100-4000 之间")
 
     async def update_config(
         self,
