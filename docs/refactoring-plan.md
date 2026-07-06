@@ -214,7 +214,25 @@ config:
       max_tokens: 2048
 ```
 
-### 3.4 管道执行流程（统一架构）
+### 3.4 核心原则：MD 是解析与切分之间的唯一桥梁
+
+不管原始文件是什么格式（txt / pdf / docx / xlsx / pptx / html / json / jpg / png / mp3 / wav / mp4 / mkv ...），**解析阶段的唯一产物是一份 Markdown 文档**，这份 MD 随后上传到 MinIO，再被切分器读取并切分为 chunks。
+
+```
+解析（模态相关）              切分（模态无关）
+───────────────              ───────────────
+  txt/pdf/docx/xlsx/...  ──→  full_text.md  ──→ splitter ──→ chunks
+  mp3/wav/flac/...       ──→  transcript.md ──→ splitter ──→ chunks
+  mp4/mov/avi/...        ──→  descriptions.md ──→ splitter ──→ chunks
+  jpg/png/gif/...        ──→  description.md ──→ splitter ──→ chunks
+```
+
+**设计意图：**
+- **可审计** — 任何时候都能从 MinIO 拉回这份 MD，查看"到底什么内容进入了切分器"
+- **可复现** — 切分策略可调整后对同一份 MD 重新切分，无需重新解析原文件
+- **可扩展** — 新增文件类型只需写一个 "原始文件→MD" 的解析器，无需改动切分、Embedding、ES 索引
+
+### 3.5 管道执行流程
 
 ```
 上传文件
@@ -230,24 +248,38 @@ Worker 取出
   │
   ├─ mark_processing()  → Task.started_at
   │
-  ├─ Parse (modality-specific)
-  │   ├─ 文本: DocumentReader 提取全文
-  │   ├─ 音频: ASR转写 → 拼MD ([00:00:00] text)
-  │   ├─ 视频: 抽帧+VLM → 拼MD ([00:00:00] desc)
-  │   └─ 图片: VLM描述 → MD文本
+  ├─ Step 1: Parse — 原始文件 → MD全文
+  │   │
+  │   │  ┌────────────┬─────────────────────────────────────┐
+  │   │  │ 文件类型    │ 解析方式                            │
+  │   │  ├────────────┼─────────────────────────────────────┤
+  │   │  │ txt/md     │ 直接读取 UTF-8 文本                  │
+  │   │  │ pdf/docx   │ DocumentReader 提取全文              │
+  │   │  │ xlsx/csv   │ 表格转 Markdown table                │
+  │   │  │ pptx       │ 幻灯片内容逐页拼接                    │
+  │   │  │ html/json  │ 提取文本内容                         │
+  │   │  │ jpg/png    │ VLM 生成图片描述                     │
+  │   │  │ mp3/wav    │ ASR 转写 → [HH:MM:SS] 带时间戳文本   │
+  │   │  │ mp4/mkv    │ 抽帧 → VLM 逐帧描述 → 带时间戳聚合    │
+  │   │  └────────────┴─────────────────────────────────────┘
+  │   │
+  │   └─→ 产出: full_text (纯文本/Markdown)
   │
-  ├─ 上传 MD → MinIO (spaces/{s}/kbs/{kb}/parsed/{file_hash}.md)
-  │    └─ commit → Document.storage.parsed_text_object
-  │    └─ Task.step_progress.parsed = "done"
+  ├─ Step 2: 上传 MD → MinIO
+  │   │ 路径: spaces/{space_id}/kbs/{kb_id}/parsed/{file_hash}.md
+  │   │ 记录: Document.storage.parsed_text_object = 上述路径
+  │   │ 落库: session.commit()  ← 立即持久化，不等后续步骤
+  │   └─ Task.step_progress.parsed = "done"
   │
-  ├─ Split (modality-agnostic, 输入=MD全文)
-  │   ├─ 检查 splitting.{modality} 有配置 → 走专属策略
-  │   └─ 没有 → 走 splitting 默认策略
-  │    └─ Task.step_progress.split = "done"
+  ├─ Step 3: Split — MD全文 → chunks
+  │   │ 输入: 从 MinIO 或内存读取 Step 2 的 MD 全文
+  │   │ 策略: splitting.{modality} 有配 → 专属策略
+  │   │        splitting.{modality} 没配 → splitting 默认策略
+  │   └─ Task.step_progress.split = "done"
   │
-  ├─ Embedding → Task.step_progress.embedded = "done"
+  ├─ Step 4: Embedding → Task.step_progress.embedded = "done"
   │
-  ├─ ES Index → Task.step_progress.indexed = "done"
+  ├─ Step 5: ES Index → Task.step_progress.indexed = "done"
   │
   └─ mark_completed() → Task (status=COMPLETED, completed_at, pipeline_result)
 ```
