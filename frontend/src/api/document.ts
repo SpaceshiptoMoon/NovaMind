@@ -7,6 +7,8 @@ import type {
   Chunk,
   ProcessDocumentResponse,
   BatchProcessResponse,
+  DocumentTaskListResponse,
+  DocumentTaskItemListResponse,
 } from './types'
 
 export const documentApi = {
@@ -96,5 +98,18 @@ export const documentApi = {
       `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/image`
     )
     return window.URL.createObjectURL(blob)
+  },
+
+  getDocumentTasks(spaceId: number, kbId: number, docId: number) {
+    return request.get<DocumentTaskItemListResponse>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/tasks`
+    )
+  },
+
+  getDocumentTasksOverview(spaceId: number, kbId: number, params?: { skip?: number; limit?: number }) {
+    return request.get<DocumentTaskListResponse>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/document-tasks`,
+      params as Record<string, unknown>
+    )
   },
 }

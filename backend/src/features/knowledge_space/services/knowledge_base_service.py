@@ -408,10 +408,12 @@ class KnowledgeBaseService:
 
     @staticmethod
     def _deep_merge(base: dict, override: dict) -> dict:
-        """深度合并字典（递归）"""
+        """深度合并字典（递归，override 值为 None 时删除对应 key）"""
         result = copy.deepcopy(base)
         for key, value in override.items():
-            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            if value is None:
+                result.pop(key, None)
+            elif key in result and isinstance(result[key], dict) and isinstance(value, dict):
                 result[key] = KnowledgeBaseService._deep_merge(result[key], value)
             else:
                 result[key] = value
@@ -498,10 +500,15 @@ class KnowledgeBaseService:
         return KnowledgeBaseConfig().model_dump()
 
     async def get_kb_document_stats(self, kb_id: int) -> Dict[str, int]:
-        """获取知识库的文档统计信息"""
-        from src.features.knowledge_space.models.document import DocumentStatus
-        return {
-            "uploaded_documents": await self.doc_repo.count_by_kb(kb_id, status=DocumentStatus.UPLOADED),
-            "completed_documents": await self.doc_repo.count_by_kb(kb_id, status=DocumentStatus.COMPLETED),
-            "failed_documents": await self.doc_repo.count_by_kb(kb_id, status=DocumentStatus.FAILED),
+        """获取知识库的文档统计信息（基于 document_tasks 的最新状态）"""
+        from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from src.features.knowledge_space.models.document_task import TaskStatus
+
+        task_repo = DocumentTaskRepository(self.session)
+        stats = {
+            "pending_documents": await task_repo.count_by_status(kb_id, TaskStatus.PENDING),
+            "completed_documents": await task_repo.count_by_status(kb_id, TaskStatus.COMPLETED),
+            "failed_documents": await task_repo.count_by_status(kb_id, TaskStatus.FAILED),
+            "processing_documents": await task_repo.count_by_status(kb_id, TaskStatus.PROCESSING),
         }
+        return stats

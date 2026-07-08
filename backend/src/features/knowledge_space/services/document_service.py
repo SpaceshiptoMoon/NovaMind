@@ -17,10 +17,11 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.knowledge_space.models.document import Document, DocumentStatus
+from src.features.knowledge_space.models.document import Document
 from src.features.knowledge_space.models.knowledge_base import KnowledgeBase
 from src.features.knowledge_space.models.knowledge_space import KnowledgeSpace
 from src.features.knowledge_space.repository.document_repository import DocumentRepository
+from src.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
 from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
 from src.features.knowledge_space.repository.member_repository import MemberRepository
 from src.features.knowledge_space.repository.space_repository import SpaceRepository
@@ -46,6 +47,7 @@ from src.shared.utils.media_utils import upload_parsed_text_to_minio
 from src.shared.ai_models.embedding import OpenAICompatibleEmbedding as EmbeddingClient
 from src.setting.yaml_config import get_config
 from src.core.middleware.structured_logging import get_logger
+from src.features.knowledge_space.models.document_task_batch import BatchAction
 
 
 def _compute_sha256(content: bytes) -> str:
@@ -86,7 +88,7 @@ class DocumentService:
     MAX_FILE_SIZE = 100 * 1024 * 1024
 
     # 支持的文件类型
-    SUPPORTED_FILE_TYPES = ["pdf", "docx", "doc", "txt", "md", "csv", "xlsx", "xls", "pptx", "ppt", "html", "json", "jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "avi", "mkv", "webm", "mp3", "wav", "flac", "aac", "ogg", "m4a"]
+    SUPPORTED_FILE_TYPES = ["pdf", "docx", "doc", "txt", "md", "csv", "html", "json", "jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "avi", "mkv", "webm", "mp3", "wav", "flac", "aac", "ogg", "m4a"]
 
     # 图片文件类型（从 MinIO 工具收敛到唯一定义）
     from src.shared.storage.minio_client import IMAGE_FILE_TYPES as _IMG_TYPES
@@ -100,7 +102,7 @@ class DocumentService:
 
     # 模态 → 文件类型映射（用于上传校验和管道分流）
     MODALITY_TO_FILE_TYPES = {
-        "text":  frozenset({"pdf", "docx", "doc", "txt", "md", "csv", "xlsx", "xls", "pptx", "ppt", "html", "json"}),
+        "text":  frozenset({"pdf", "docx", "doc", "txt", "md", "csv", "html", "json"}),
         "image": IMAGE_FILE_TYPES,
         "video": VIDEO_FILE_TYPES,
         "audio": AUDIO_FILE_TYPES,
@@ -125,10 +127,9 @@ class DocumentService:
     async def count_kb_documents(
         self,
         kb_id: int,
-        status: Optional[DocumentStatus] = None,
     ) -> int:
         """统计知识库中的文档数量"""
-        return await self.doc_repo.count_by_kb(kb_id=kb_id, status=status)
+        return await self.doc_repo.count_by_kb(kb_id=kb_id)
 
     async def upload_document(
         self,
@@ -445,8 +446,17 @@ class DocumentService:
             tmp_path = tmp.name
 
         try:
-            split_docs = await processor.load_with_strategy(
-                file_path=tmp_path,
+            # 先读取原始解析全文，避免将切块结果回拼成“伪全文”再落 MinIO。
+            full_text = await processor.read_full_text(tmp_path)
+            task.set_step("parsed", "done")
+
+            # 解析全文持久化到 MinIO（切块之前，立刻 commit 落库）
+            await upload_parsed_text_to_minio(document, full_text, _logger)
+            await session.commit()
+
+            # 再基于解析全文做切分，确保全文与 chunk 的职责分离。
+            chunks = await processor.split_text(
+                full_text,
                 strategy=strategy,
                 chunk_size=splitting_config.get("chunk_size", DEFAULT_CHUNK_SIZE),
                 chunk_overlap=splitting_config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
@@ -455,16 +465,9 @@ class DocumentService:
                 similarity_threshold=splitting_config.get("similarity_threshold", 0.7),
                 batch_size=splitting_config.get("batch_size", 20),
             )
-            chunks = [doc.get("text", "") or doc.get("content", "") for doc in split_docs]
             task.set_step("split", "done")
         finally:
             Path(tmp_path).unlink(missing_ok=True)
-
-        # 解析全文持久化到 MinIO（chunk 切片之前，立刻 commit 落库）
-        full_text = "\n\n".join(chunks)
-        await upload_parsed_text_to_minio(document, full_text, _logger)
-        await session.commit()
-        task.set_step("parsed", "done")
 
         # 检查点 1：文档解析完成之后
         await _check_document_cancelled(document_id)
@@ -489,7 +492,9 @@ class DocumentService:
         await _check_document_cancelled(document_id)
 
         # 5. 生成假设问题（由知识库配置控制）
-        kb_config = kb.get_config() or {}
+        # 优先使用 task.pipeline_config 快照（入队时的 KB 配置），确保处理的一致性
+        kb_config = (task.pipeline_config if task and task.pipeline_config
+                     else kb.get_config() or {})
         qg_config = kb_config.get("question_generation", {})
         should_generate = qg_config.get("enabled", False) if qg_config else False
 
@@ -531,8 +536,6 @@ class DocumentService:
                 )
                 for chunk in es_chunks:
                     chunk["questions"] = []
-                    chunk["question_embeddings"] = []
-                    chunk["question_embeddings"] = []
                     chunk["question_embeddings"] = []
         else:
             for chunk in es_chunks:
@@ -699,7 +702,6 @@ class DocumentService:
     async def get_kb_documents(
         self,
         kb_id: int,
-        status: Optional[DocumentStatus] = None,
         skip: int = 0,
         limit: int = 100,
     ) -> List[Document]:
@@ -708,7 +710,6 @@ class DocumentService:
 
         Args:
             kb_id: 知识库 ID
-            status: 状态过滤
             skip: 跳过数量
             limit: 返回数量
 
@@ -717,7 +718,6 @@ class DocumentService:
         """
         return await self.doc_repo.get_by_kb(
             kb_id=kb_id,
-            status=status,
             skip=skip,
             limit=limit,
         )
@@ -931,7 +931,9 @@ class DocumentService:
     async def process_document(
         self,
         document_id: int,
-    ) -> Document:
+        *,
+        batch_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """
         触发单文档拆分解析。
         校验状态 → 从 MinIO 下载 → 异步处理。
@@ -967,12 +969,13 @@ class DocumentService:
         if not kb.is_active():
             raise KnowledgeBaseNotFoundError(document.kb_id)
 
-        await self._enqueue_document_processing(document, "处理")
-        return document
+        task_info = await self._enqueue_document_processing(document, "处理", batch_id=batch_id)
+        return {"document": document, **task_info}
 
     async def process_kb_documents(
         self,
         kb_id: int,
+        user_id: int,
         document_ids: Optional[List[int]] = None,
     ) -> Dict[str, Any]:
         """
@@ -988,16 +991,44 @@ class DocumentService:
         """
         results = []
 
+        documents: List[Document] = []
         # 如果未指定 document_ids，查询所有活跃文档（通过 task 状态在 process_document 中过滤）
         if not document_ids:
             documents = await self.doc_repo.get_by_kb(kb_id)
             document_ids = [doc.id for doc in documents]
+        elif document_ids:
+            for doc_id in document_ids:
+                doc = await self.doc_repo.get_by_id(doc_id)
+                if doc:
+                    documents.append(doc)
+
+        if not document_ids:
+            return {
+                "task_id": None,
+                "total": 0,
+                "success": 0,
+                "failed": 0,
+                "skipped": 0,
+                "results": [],
+            }
+
+        batch_repo = DocumentTaskBatchRepository(self.session)
+        batch = await batch_repo.create({
+            "space_id": documents[0].space_id,
+            "kb_id": kb_id,
+            "creator_id": user_id,
+            "action": BatchAction.PROCESS,
+            "total_count": len(document_ids or []),
+            "note": f"批量处理 {len(document_ids or [])} 个文档",
+        })
 
         for doc_id in document_ids:
             try:
-                await self.process_document(doc_id)
+                task_result = await self.process_document(doc_id, batch_id=batch.id)
                 results.append({
                     "document_id": doc_id,
+                    "task_id": batch.id,
+                    "task_item_id": task_result["task_id"],
                     "status": "processing",
                     "message": "已触发处理",
                 })
@@ -1015,6 +1046,7 @@ class DocumentService:
                 })
 
         return {
+            "task_id": batch.id,
             "total": len(results),
             "success": sum(1 for r in results if r["status"] == "processing"),
             "failed": sum(1 for r in results if r["status"] == "failed"),
@@ -1025,7 +1057,9 @@ class DocumentService:
     async def reprocess_document(
         self,
         document_id: int,
-    ) -> Document:
+        *,
+        batch_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """
         重新解析文档（清除旧 chunk，按当前 config 重新切分）
 
@@ -1051,13 +1085,15 @@ class DocumentService:
             self.logger.warning("清除 ES 旧分块失败", document_id=document.id, error=str(e))
 
         # 2. 先入队（失败则不创建任务）
-        await self._enqueue_document_processing(document, "重新解析")
-        return document
+        task_info = await self._enqueue_document_processing(document, "重新解析", batch_id=batch_id)
+        return {"document": document, **task_info}
 
     async def retry_document(
         self,
         document_id: int,
-    ) -> Document:
+        *,
+        batch_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """
         重试文档处理（支持 FAILED 和 COMPLETED 任务状态）
 
@@ -1097,14 +1133,40 @@ class DocumentService:
             self.logger.warning("清除 ES 旧分块失败", document_id=document.id, error=str(e))
 
         # 2. 先入队（失败则不创建任务，避免孤儿记录）
-        await self._enqueue_document_processing(document, "重试")
+        task_info = await self._enqueue_document_processing(
+            document,
+            "重试",
+            batch_id=batch_id,
+            retry_count=(latest_task.retry_count or 0) + 1,
+        )
 
         self.logger.info(
             "文档重试已入队",
             document_id=document_id,
             previous_task_id=latest_task.id,
         )
-        return document
+        return {"document": document, **task_info}
+
+    async def create_task_batch(
+        self,
+        *,
+        document_id: int,
+        user_id: int,
+        action: BatchAction,
+        note: Optional[str] = None,
+    ):
+        document = await self.doc_repo.get_by_id(document_id)
+        if not document:
+            raise DocumentNotFoundError(document_id)
+        batch_repo = DocumentTaskBatchRepository(self.session)
+        return await batch_repo.create({
+            "space_id": document.space_id,
+            "kb_id": document.kb_id,
+            "creator_id": user_id,
+            "action": action,
+            "total_count": 1,
+            "note": note,
+        })
 
     # ---------- 文档处理共享辅助方法 ----------
 
@@ -1120,34 +1182,31 @@ class DocumentService:
             raise DocumentAlreadyProcessingError(document_id)
         return document
 
-    async def _enqueue_document_processing(self, document: Document, log_label: str = "处理"):
+    async def _enqueue_document_processing(
+        self,
+        document: Document,
+        log_label: str = "处理",
+        *,
+        batch_id: Optional[int] = None,
+        retry_count: int = 0,
+    ):
         """创建任务记录并入队文档处理"""
         from src.shared.mq.task_tracker import is_document_actively_processing
-        from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-        from src.features.knowledge_space.models.document_task import TaskStatus
 
         if await is_document_actively_processing(document.id):
             raise DocumentAlreadyProcessingError(document.id)
 
-        # 创建任务记录
-        task_repo = DocumentTaskRepository(self.session)
         kb = await self.kb_repo.get_by_id(document.kb_id)
-        await task_repo.create({
-            "document_id": document.id,
-            "kb_id": document.kb_id,
-            "space_id": document.space_id,
-            "status": TaskStatus.PENDING,
-            "pipeline_config": kb.get_config() if kb else None,
-            "queued_at": now_china(),
-        })
 
         from src.shared.mq import enqueue_process_document
-        await enqueue_process_document(
+        return await enqueue_process_document(
             document_id=document.id,
             kb_id=document.kb_id,
             space_id=document.space_id,
+            batch_id=batch_id,
+            pipeline_config=kb.get_config() if kb else None,
+            retry_count=retry_count,
         )
-        self.logger.info(f"文档{log_label}已入队", document_id=document.id)
 
 
 
@@ -1189,7 +1248,9 @@ async def _process_image_document_static(
     kb = await kb_repo.get_by_id(document.kb_id)
     vlm_enabled = False
     if kb:
-        kb_config = kb.get_config() or {}
+        # 优先使用 task.pipeline_config 快照
+        kb_config = (task.pipeline_config if task and task.pipeline_config
+                     else kb.get_config() or {})
         parsing_config = kb_config.get("parsing", {})
         vlm_enabled = parsing_config.get("vlm_description_enabled", False)
 
@@ -1338,6 +1399,7 @@ def _prepare_es_chunks_static(document: Document, chunks: List[str]) -> List[Dic
         ES 索引格式的分块字典列表
     """
     es_chunks = []
+    storage_info = document.storage or {}
     for i, chunk_text in enumerate(chunks):
         chunk_data = {
             "space_id": document.space_id,
@@ -1347,8 +1409,17 @@ def _prepare_es_chunks_static(document: Document, chunks: List[str]) -> List[Dic
             "chunk_index": i,
             "content": chunk_text,
             "chunk_type": "text",
+            "media_url": storage_info.get("minio_object_name", ""),
+            "file_info": {
+                "filename": document.filename,
+                "file_type": document.file_type,
+            },
+            "metadata": {
+                "content_hash": document.file_hash,
+            },
             "questions": [],
             "question_embeddings": [],
+            "created_at": now_china().isoformat(),
         }
         es_chunks.append(chunk_data)
     return es_chunks

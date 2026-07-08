@@ -163,6 +163,7 @@ class DocumentProcessResponse(BaseModel):
     """单文档处理响应"""
     document_id: int
     task_id: Optional[int] = None
+    task_item_id: Optional[int] = None
     status: str = "processing"
     message: str = "文档已开始处理"
 
@@ -176,6 +177,7 @@ class DocumentCancelResponse(BaseModel):
 
 class DocumentBatchProcessResponse(BaseModel):
     """批量处理响应"""
+    task_id: Optional[int] = None
     total: int
     success: int
     failed: int

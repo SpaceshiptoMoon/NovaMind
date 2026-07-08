@@ -1,31 +1,12 @@
 <template>
   <div class="kb-evaluation-view">
-    <!-- 子导航标签 -->
-    <div class="page-nav">
-      <div class="nav-tabs">
-        <router-link
-          :to="`/home/spaces/${spaceId}/knowledge-bases/${kbId}/documents`"
-          class="nav-tab"
-        >
-          文档管理
-        </router-link>
-        <router-link
-          :to="`/home/spaces/${spaceId}/search?kbId=${kbId}`"
-          class="nav-tab"
-        >
-          检索
-        </router-link>
-        <router-link
-          :to="`/home/spaces/${spaceId}/knowledge-bases/${kbId}/evaluation`"
-          class="nav-tab active"
-        >
-          评测
-        </router-link>
-      </div>
-    </div>
+    <div class="kb-layout">
+      <KbSidebar :nav-items="kbNavItems" />
 
-    <!-- Tab 切换 -->
-    <el-tabs v-model="activeTab" class="eval-tabs">
+      <!-- 右侧内容 -->
+      <div class="kb-content">
+        <!-- Tab 切换 -->
+        <el-tabs v-model="activeTab" class="eval-tabs">
       <!-- ============ 测试集管理 ============ -->
       <el-tab-pane label="测试集" name="test-sets">
         <div class="tab-toolbar">
@@ -529,6 +510,8 @@
         </template>
       </div>
     </el-dialog>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -536,8 +519,10 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload, Download, Loading } from '@element-plus/icons-vue'
+import { Upload, Download, Loading, Document, Search, DataAnalysis } from '@element-plus/icons-vue'
 
+import KbSidebar from '@/components/common/KbSidebar.vue'
+import type { KbNavItem } from '@/components/common/KbSidebar.vue'
 import { evaluationApi } from '@/api/evaluation'
 import { userApi } from '@/api/user'
 import type {
@@ -558,6 +543,17 @@ const kbId = computed(() => {
   if (route.params.kbId) return Number(route.params.kbId)
   if (route.query.kbId) return Number(route.query.kbId)
   return 0
+})
+
+const kbNavItems = computed<KbNavItem[]>(() => {
+  const sid = spaceId.value
+  const kid = kbId.value
+  return [
+    { label: '文档管理', to: `/home/spaces/${sid}/knowledge-bases/${kid}/documents`, route: 'Documents', active: route.name === 'Documents' || route.name === 'DocumentDetail', icon: Document },
+    { label: '任务列表', to: `/home/spaces/${sid}/knowledge-bases/${kid}/tasks`, route: 'DocumentTasks', active: route.name === 'DocumentTasks', icon: DataAnalysis },
+    { label: '检索', to: `/home/spaces/${sid}/search?kbId=${kid}`, route: 'Search', active: route.name === 'Search', icon: Search },
+    { label: '评测', to: `/home/spaces/${sid}/knowledge-bases/${kid}/evaluation`, route: 'KbEvaluation', active: route.name === 'KbEvaluation', icon: DataAnalysis },
+  ]
 })
 
 const activeTab = ref('test-sets')
@@ -999,45 +995,21 @@ onUnmounted(() => {
 
 <style scoped>
 .kb-evaluation-view {
-  padding-top: var(--space-2);
+  height: 100%;
 }
 
-.page-nav {
-  margin-bottom: var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.nav-tabs {
+/* ===== KB Layout: Sidebar + Content ===== */
+.kb-layout {
   display: flex;
+  height: 100%;
 }
 
-.nav-tab {
-  padding: var(--space-3) var(--space-4);
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  text-decoration: none;
-  transition: all var(--transition-fast);
-  position: relative;
-  font-weight: var(--weight-medium);
-}
-
-.nav-tab:hover {
-  color: var(--color-text-secondary);
-}
-
-.nav-tab.active {
-  color: var(--color-primary);
-}
-
-.nav-tab.active::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 2px;
-  background: var(--color-primary);
-  border-radius: 2px 2px 0 0;
+/* ===== Right Content ===== */
+.kb-content {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-4) var(--space-5);
+  overflow-y: auto;
 }
 
 .eval-tabs {

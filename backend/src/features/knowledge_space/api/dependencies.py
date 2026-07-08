@@ -6,9 +6,9 @@
 使用单例工厂管理客户端实例
 """
 
-from typing import Optional
+from typing import Optional, Annotated
 
-from fastapi import Depends, Request
+from fastapi import Depends, Request, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.database.database import get_db
@@ -34,6 +34,7 @@ from src.features.knowledge_space.api.exceptions import (
     SpaceAccessDeniedError,
     MemberNotFoundError,
     KnowledgeBaseNotFoundError,
+    KnowledgeBaseArchivedError,
     UserNotFoundError,
 )
 from src.shared.clients import (
@@ -375,8 +376,31 @@ async def validate_kb_access(
     if kb.space_id != space_id:
         raise KnowledgeBaseNotFoundError(kb_id)
 
-    # 验证知识库状态
-    if kb.status != KnowledgeBaseStatus.ACTIVE:
+    # 验证知识库状态（仅拒绝已删除的，归档知识库允许读取）
+    if kb.status == KnowledgeBaseStatus.DELETED:
         raise KnowledgeBaseNotFoundError(kb_id)
+
+    return kb
+
+
+async def validate_kb_writable(
+    kb_id: Annotated[int, ...],
+    space_id: Annotated[int, ...],
+    db: AsyncSession = Depends(get_db),
+) -> KnowledgeBase:
+    """
+    验证知识库可写（创建/更新/删除操作）
+
+    在 validate_kb_access 基础上额外检查是否已归档。
+    归档的知识库禁止写操作，需先激活。
+
+    Raises:
+        KnowledgeBaseNotFoundError: 知识库不存在或已删除
+        KnowledgeBaseArchivedError: 知识库已归档
+    """
+    kb = await validate_kb_access(kb_id, space_id, db)
+
+    if kb.status == KnowledgeBaseStatus.ARCHIVED:
+        raise KnowledgeBaseArchivedError(kb_id)
 
     return kb

@@ -249,6 +249,11 @@ export interface VideoSplittingOverride {
   chunk_size?: number
 }
 
+export interface ImageChunkOverride {
+  strategy?: 'single' | 'batch'
+  chunk_size?: number
+}
+
 export interface SplittingConfig {
   strategy?: 'recursive' | 'fixed_size' | 'markdown' | 'semantic'
   chunk_size?: number
@@ -257,6 +262,7 @@ export interface SplittingConfig {
   max_chunk_size?: number
   similarity_threshold?: number
   batch_size?: number
+  image?: ImageChunkOverride
   audio?: AudioSplittingOverride
   video?: VideoSplittingOverride
 }
@@ -268,6 +274,7 @@ export interface VideoParsingConfig {
 
 export interface AudioParsingConfig {
   asr_model?: string               // ASR模型名, 默认"whisper-1"
+  language?: string                // 转写语言(zh/en/ja/ko...), 为空则自动检测
 }
 
 export interface ParsingConfig {
@@ -276,6 +283,8 @@ export interface ParsingConfig {
   ocr_enabled?: boolean
   preserve_structure?: boolean
   encoding?: string
+  vlm_description_enabled?: boolean
+  vlm_model?: string
   video?: VideoParsingConfig
   audio?: AudioParsingConfig
 }
@@ -287,6 +296,7 @@ export interface KBStats {
   pending_documents: number
   completed_documents: number
   failed_documents: number
+  processing_documents: number
 }
 
 export interface QuestionGenerationLLMConfig {
@@ -373,6 +383,10 @@ export interface Document {
   token_count: number
   created_at: string
   updated_at: string | null
+  // 以下字段由后端从 DocumentTask 派生（computed_field），可能为默认值
+  status?: number       // TaskStatus: 0=PENDING, 1=PROCESSING, 2=COMPLETED, 3=FAILED, 4=CANCELLED
+  retry_count?: number
+  error_message?: string | null
 }
 
 export interface Chunk {
@@ -429,12 +443,42 @@ export interface BatchUploadResponse {
 
 export interface DocumentTask {
   id: number
-  document_id: number
-  kb_id: number
   space_id: number
-  status: number  // 0-pending, 1-processing, 2-completed, 3-failed, 4-cancelled
-  job_id?: string
+  kb_id: number
+  creator_id: number
+  action: number
+  status: number
   pipeline_config?: Record<string, unknown>
+  total_count: number
+  task_summary?: {
+    pending?: number
+    processing?: number
+    completed?: number
+    failed?: number
+    cancelled?: number
+  }
+  note?: string
+  error_message?: string
+  started_at?: string
+  completed_at?: string
+  created_at: string
+  updated_at: string
+  items: DocumentTaskItem[]
+}
+
+export interface DocumentTaskListResponse {
+  items: DocumentTask[]
+  total: number
+}
+
+export interface DocumentTaskItem {
+  id: number
+  task_id: number
+  document_id: number
+  space_id: number
+  kb_id: number
+  status: number
+  job_id?: string
   step_progress?: Record<string, unknown>
   pipeline_result?: Record<string, unknown>
   error_message?: string
@@ -446,14 +490,21 @@ export interface DocumentTask {
   updated_at: string
 }
 
+export interface DocumentTaskItemListResponse {
+  items: DocumentTaskItem[]
+  total: number
+}
+
 export interface ProcessDocumentResponse {
   document_id: number
   task_id?: number
+  task_item_id?: number
   status: string
   message: string
 }
 
 export interface BatchProcessResponse {
+  task_id?: number
   total: number
   success: number
   failed: number
@@ -1436,7 +1487,7 @@ export interface ClawMateChatMessage {
 
 /** 模态 → 文件扩展名 accept 映射 */
 export const MODALITY_ACCEPT_MAP: Record<string, string> = {
-  text: '.pdf,.docx,.doc,.txt,.md,.csv,.xlsx,.xls,.pptx,.ppt,.html,.json',
+  text: '.pdf,.docx,.doc,.txt,.md,.csv,.html,.json',
   image: '.jpg,.jpeg,.png,.gif,.webp',
   video: '.mp4,.mov,.avi,.mkv,.webm',
   audio: '.mp3,.wav,.flac,.aac,.ogg,.m4a',

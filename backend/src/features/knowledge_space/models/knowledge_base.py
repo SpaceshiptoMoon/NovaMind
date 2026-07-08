@@ -62,21 +62,6 @@ class KnowledgeBase(BaseModel):
     # 软删除
     deleted_at = Column(DateTime, nullable=True, index=True, comment="软删除时间")
 
-    # 时间戳
-    created_at = Column(
-        DateTime,
-        default=lambda: now_china(),
-        nullable=False,
-        comment="创建时间"
-    )
-    updated_at = Column(
-        DateTime,
-        default=lambda: now_china(),
-        onupdate=lambda: now_china(),
-        nullable=False,
-        comment="更新时间"
-    )
-
     # 关联关系（双向：KnowledgeBase.documents <-> Document.knowledge_base）
     documents = relationship("Document", back_populates="knowledge_base", lazy="noload", passive_deletes=True)
 

@@ -122,6 +122,12 @@ const router = createRouter({
               meta: { title: '文档管理' },
             },
             {
+              path: ':id/knowledge-bases/:kbId/tasks',
+              name: 'DocumentTasks',
+              component: () => import('@/views/space/DocumentTaskBatchView.vue'),
+              meta: { title: '任务列表' },
+            },
+            {
               path: ':id/knowledge-bases/:kbId/evaluation',
               name: 'KbEvaluation',
               component: () => import('@/views/space/KbEvaluationView.vue'),

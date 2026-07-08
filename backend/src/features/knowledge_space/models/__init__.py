@@ -33,6 +33,12 @@ from src.features.knowledge_space.models.document_task import (
     DocumentTask,
     TaskStatus,
 )
+from src.features.knowledge_space.models.document_task_item import DocumentTaskItem
+from src.features.knowledge_space.models.document_task_batch import (
+    DocumentTaskBatch,
+    BatchAction,
+    BatchStatus,
+)
 from src.features.knowledge_space.models.space_audit_log import SpaceAuditLog, AuditAction
 
 __all__ = [
@@ -52,7 +58,11 @@ __all__ = [
     "DocumentStatus",
     # 文档任务
     "DocumentTask",
+    "DocumentTaskItem",
     "TaskStatus",
+    "DocumentTaskBatch",
+    "BatchAction",
+    "BatchStatus",
     # 审计
     "SpaceAuditLog",
     "AuditAction",

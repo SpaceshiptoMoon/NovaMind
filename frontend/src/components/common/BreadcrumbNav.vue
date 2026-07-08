@@ -41,17 +41,15 @@ const kbId = computed(() => {
   return ''
 })
 
-const spaceName = computed(() => {
-  return spaceStore.currentSpace?.name || '知识空间'
-})
-
+const spaceName = computed(() => spaceStore.currentSpace?.name || '知识空间')
 const kbLink = computed(() => `/home/spaces/${spaceId.value}/knowledge-bases`)
 const showDocuments = computed(() => !props.docName && (route.name === 'Documents' || route.name === 'DocumentDetail'))
 const moduleLabel = computed(() => {
   const name = route.name
-  if (name === 'Search') return '知识检索'
+  if (name === 'Search') return '知识搜索'
   if (name === 'SpaceSettings') return '空间设置'
   if (name === 'KbEvaluation') return '评估'
+  if (name === 'DocumentTasks') return '任务列表'
   return ''
 })
 
@@ -60,7 +58,7 @@ onMounted(async () => {
     try {
       await spaceStore.fetchSpace(Number(spaceId.value))
     } catch {
-      // 获取空间名称失败不影响导航
+      // ignore breadcrumb fetch failure
     }
   }
 })
@@ -72,13 +70,14 @@ onMounted(async () => {
   line-height: 1;
 }
 
-:deep(.el-breadcrumb__inner) {
-  font-size: var(--text-sm);
+.breadcrumb-nav :deep(.el-breadcrumb__inner) {
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
   transition: color var(--transition-fast);
+  padding: 2px 0;
 }
 
-:deep(.el-breadcrumb__inner.is-link) {
+.breadcrumb-nav :deep(.el-breadcrumb__inner.is-link) {
   font-weight: var(--weight-normal);
   color: var(--color-text-muted);
   display: inline-flex;
@@ -86,16 +85,18 @@ onMounted(async () => {
   gap: var(--space-1);
 }
 
-:deep(.el-breadcrumb__inner.is-link:hover) {
+.breadcrumb-nav :deep(.el-breadcrumb__inner.is-link:hover) {
   color: var(--color-primary);
 }
 
-:deep(.el-breadcrumb__item:last-child .el-breadcrumb__inner) {
-  color: var(--color-text);
+.breadcrumb-nav :deep(.el-breadcrumb__item:last-child .el-breadcrumb__inner) {
+  color: var(--color-text-secondary);
   font-weight: var(--weight-medium);
 }
 
-:deep(.el-breadcrumb__separator) {
-  color: var(--color-text-muted);
+.breadcrumb-nav :deep(.el-breadcrumb__separator) {
+  color: var(--color-border);
+  margin: 0 2px;
+  font-weight: var(--weight-normal);
 }
 </style>

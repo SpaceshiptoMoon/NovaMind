@@ -26,6 +26,7 @@ from src.features.knowledge_space.api.exceptions import (
     KnowledgeBaseNotFoundError,
     KnowledgeBaseAlreadyExistsError,
     KnowledgeBaseAccessDeniedError,
+    KnowledgeBaseArchivedError,
     KnowledgeBaseLimitExceededError,
     # 文档相关
     DocumentNotFoundError,
@@ -83,6 +84,7 @@ def setup_knowledge_space_exception_handlers(app: FastAPI) -> None:
         KnowledgeBaseNotFoundError: 404,
         KnowledgeBaseAlreadyExistsError: 409,
         KnowledgeBaseAccessDeniedError: 403,
+        KnowledgeBaseArchivedError: 403,
         KnowledgeBaseLimitExceededError: 429,
         # 文档相关
         DocumentNotFoundError: 404,

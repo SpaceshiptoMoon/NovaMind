@@ -2,14 +2,13 @@
 文档模型
 
 存储上传到知识空间的文档元数据。
-处理状态与生命周期追踪已迁移至 DocumentTask 模型。
+处理状态与生命周期追踪已迁移至 DocumentTaskItem 模型。
 """
 from typing import Optional
 from enum import IntEnum
 from sqlalchemy import Column, BigInteger, String, DateTime, JSON, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.orm import relationship
 from src.core.database.base import BaseModel
-from src.shared.utils.time_utils import now_china
 
 
 # 保留此枚举用于过渡期兼容 — 旧代码仍可导入，但 Document 模型本身不再使用
@@ -27,7 +26,7 @@ class Document(BaseModel):
     """
     文档模型 — 纯文件元数据
 
-    仅存储文件本身的信息。处理状态、重试、错误等全部由 DocumentTask 管理。
+    仅存储文件本身的信息。处理状态、重试、错误等全部由 DocumentTaskItem 管理。
     """
     __tablename__ = "documents"
 
@@ -43,29 +42,20 @@ class Document(BaseModel):
     file_hash = Column(String(64), nullable=False, index=True, comment="文件哈希值（去重）")
 
     # 存储信息（MinIO 路径 + parsed_text_object）
-    storage = Column(JSON, nullable=False, comment="存储信息（MinIO）")
+    storage = Column(JSON, nullable=False, default=dict, comment="存储信息（MinIO）")
 
-    # 时间戳
-    created_at = Column(DateTime, default=lambda: now_china(), nullable=False, comment="创建时间")
-    updated_at = Column(
-        DateTime,
-        default=lambda: now_china(),
-        onupdate=lambda: now_china(),
-        nullable=False,
-        comment="更新时间",
-    )
     deleted_at = Column(DateTime, nullable=True, index=True, comment="软删除时间")
 
     # 索引和约束
     __table_args__ = (
         UniqueConstraint("kb_id", "file_hash", name="uq_kb_file_hash"),
         Index("idx_space_created", "space_id", "created_at"),
-        {"comment": "文档表，存储文件元数据；处理状态见 document_tasks 表"},
+        {"comment": "文档表，存储文件元数据；处理状态见 document_task_items 表"},
     )
 
     # 关联关系
     knowledge_base = relationship("KnowledgeBase", back_populates="documents", lazy="noload")
-    tasks = relationship("DocumentTask", back_populates="document", lazy="noload", order_by="DocumentTask.id.desc()")
+    tasks = relationship("DocumentTaskItem", back_populates="document", lazy="noload", order_by="DocumentTaskItem.id.desc()")
 
     def __repr__(self) -> str:
         return f"<Document(id={self.id}, filename='{self.filename}')>"

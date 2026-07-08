@@ -34,6 +34,7 @@ from src.features.knowledge_space.api.dependencies import (
     validate_space_editor,
     validate_space_admin,
     validate_kb_access,
+    validate_kb_writable,
     get_kb_repository,
     get_audit_service,
     get_knowledge_base_service,
@@ -176,7 +177,7 @@ async def update_knowledge_base(
 ):
     """更新知识库"""
     # 验证知识库访问权限
-    await validate_kb_access(kb_id, space_id, db)
+    await validate_kb_writable(kb_id, space_id, db)
 
     # 构建更新数据（仅包含实际提交的字段）
     update_data = data.model_dump(exclude_unset=True)

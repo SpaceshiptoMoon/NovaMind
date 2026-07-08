@@ -176,6 +176,19 @@ class KnowledgeBaseAccessDeniedError(KnowledgeSpaceError):
         self.reason = reason
 
 
+class KnowledgeBaseArchivedError(KnowledgeSpaceError):
+    """知识库已归档，禁止写操作"""
+    http_status_code: ClassVar[int] = 403
+    _serializable_attrs: ClassVar[List[str]] = ["kb_id"]
+
+    def __init__(self, kb_id: int):
+        super().__init__(
+            message=f"知识库 {kb_id} 已归档，无法执行此操作。请先激活知识库后再试。",
+            code="KNOWLEDGE_BASE_ARCHIVED",
+        )
+        self.kb_id = kb_id
+
+
 class KnowledgeBaseLimitExceededError(KnowledgeSpaceError):
     """知识库数量限制"""
     _serializable_attrs: ClassVar[List[str]] = ["limit"]
@@ -404,6 +417,7 @@ __all__ = [
     "KnowledgeBaseNotFoundError",
     "KnowledgeBaseAlreadyExistsError",
     "KnowledgeBaseAccessDeniedError",
+    "KnowledgeBaseArchivedError",
     "KnowledgeBaseLimitExceededError",
     "DocumentNotFoundError",
     "DocumentAlreadyExistsError",

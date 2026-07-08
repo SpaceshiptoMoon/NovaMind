@@ -12,10 +12,19 @@
           </div>
         </div>
         <div class="header-actions">
-          <el-button type="primary" size="small" @click="handleDownload">
+          <el-button v-if="canProcess" type="primary" size="small" :loading="actionLoading" @click="handleProcessDoc">
+            处理
+          </el-button>
+          <el-button v-if="canCancel" type="warning" size="small" :loading="actionLoading" @click="handleCancelDoc">
+            取消
+          </el-button>
+          <el-button v-if="canRetry" type="success" size="small" :loading="actionLoading" @click="handleRetryDoc">
+            重试
+          </el-button>
+          <el-button type="primary" size="small" plain @click="handleDownload">
             下载
           </el-button>
-          <el-button type="danger" size="small" @click="handleDelete">
+          <el-button type="danger" size="small" plain @click="handleDelete">
             删除
           </el-button>
         </div>
@@ -23,6 +32,17 @@
 
       <!-- Meta grid -->
       <div v-if="document" class="meta-grid">
+        <div class="meta-item">
+          <span class="meta-label">处理状态</span>
+          <span class="meta-value">
+            <el-tag :type="currentStatusConfig.type" effect="plain" size="small">
+              {{ currentStatusConfig.text }}
+            </el-tag>
+            <span v-if="latestTask?.error_message" class="error-hint" :title="latestTask.error_message">
+              {{ latestTask.error_message.slice(0, 60) }}{{ latestTask.error_message.length > 60 ? '...' : '' }}
+            </span>
+          </span>
+        </div>
         <div class="meta-item">
           <span class="meta-label">文件类型</span>
           <span class="meta-value">{{ document.file_type?.toUpperCase() || '-' }}</span>
@@ -149,8 +169,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { documentApi } from '@/api/document'
 import EmptyState from '@/components/common/EmptyState.vue'
-import type { DocumentDetail, Chunk } from '@/api/types'
-import { getFileTypeStyle, chunkTypeLabels } from '@/utils/document'
+import type { DocumentDetail, Chunk, DocumentTask } from '@/api/types'
+import { getFileTypeStyle, chunkTypeLabels, taskStatusMap } from '@/utils/document'
 import { formatFileSize, formatDate, formatDuration } from '@/utils/format'
 
 const route = useRoute()
@@ -169,13 +189,23 @@ const backTarget = computed(() =>
 const backLabel = computed(() => (kbId.value ? '返回文档管理' : '返回知识库'))
 
 const loading = ref(false)
+const actionLoading = ref(false)
 const document = ref<DocumentDetail | null>(null)
+const latestTask = ref<DocumentTask | null>(null)
 const chunks = ref<Chunk[]>([])
 const totalChunks = ref(0)
 const chunkCurrentPage = ref(1)
 const chunkPageSize = 10
 const previewVisible = ref(false)
 const previewUrl = ref('')
+
+// === 状态辅助（基于 DocumentTask） ===
+
+const docStatus = computed(() => document.value?.status ?? 0)
+const currentStatusConfig = computed(() => taskStatusMap[docStatus.value] ?? { text: '未知', type: 'info' as const })
+const canProcess = computed(() => docStatus.value === 0 || docStatus.value === 3)  // PENDING or FAILED
+const canCancel = computed(() => docStatus.value === 0 || docStatus.value === 1)   // PENDING or PROCESSING
+const canRetry = computed(() => docStatus.value === 3)                              // FAILED
 
 async function fetchDocument() {
   loading.value = true
@@ -254,8 +284,65 @@ async function handleDelete() {
   }
 }
 
+// === 处理操作（基于 Task） ===
+
+async function fetchLatestTask() {
+  if (kbId.value === 0) return
+  try {
+    const res = await documentApi.getDocumentTasks(spaceId.value, kbId.value, docId.value)
+    if (res.items && res.items.length > 0 && res.items[0]) {
+      latestTask.value = res.items[0]
+    }
+  } catch {
+    // 任务信息获取失败不影响主页面
+  }
+}
+
+async function handleProcessDoc() {
+  actionLoading.value = true
+  try {
+    const res = await documentApi.processDocument(spaceId.value, kbId.value, docId.value)
+    ElMessage.success(`已提交到任务 #${res.task_id ?? '-'}`)
+    await fetchDocument()
+    await fetchLatestTask()
+  } catch {
+    // Error already shown by interceptor
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+async function handleCancelDoc() {
+  actionLoading.value = true
+  try {
+    await documentApi.cancelDocument(spaceId.value, kbId.value, docId.value)
+    ElMessage.success('已取消处理')
+    await fetchDocument()
+    await fetchLatestTask()
+  } catch {
+    // Error already shown by interceptor
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+async function handleRetryDoc() {
+  actionLoading.value = true
+  try {
+    const res = await documentApi.retryDocument(spaceId.value, kbId.value, docId.value)
+    ElMessage.success(`已重新提交到任务 #${res.task_id ?? '-'}`)
+    await fetchDocument()
+    await fetchLatestTask()
+  } catch {
+    // Error already shown by interceptor
+  } finally {
+    actionLoading.value = false
+  }
+}
+
 onMounted(() => {
   fetchDocument()
+  fetchLatestTask()
 })
 </script>
 
@@ -343,6 +430,19 @@ onMounted(() => {
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.error-hint {
+  font-size: var(--text-xs);
+  color: var(--color-danger);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ===== Chunks Section ===== */

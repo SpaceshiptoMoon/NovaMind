@@ -54,7 +54,11 @@ async def enqueue_process_document(
     document_id: int,
     kb_id: int,
     space_id: int,
-) -> str:
+    *,
+    batch_id: Optional[int] = None,
+    pipeline_config: Optional[dict] = None,
+    retry_count: int = 0,
+) -> dict:
     """
     将文档处理任务入队
 
@@ -69,7 +73,6 @@ async def enqueue_process_document(
     from src.core.database.database import get_db_session
     from src.features.knowledge_space.models.document_task import TaskStatus
     from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-    from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
     from src.shared.mq.task_tracker import bind_job_to_document
     from src.shared.utils.time_utils import now_china
 
@@ -77,18 +80,16 @@ async def enqueue_process_document(
 
     # 1. 创建 DocumentTask 记录（快照 KB 配置）
     async with get_db_session() as session:
-        kb_repo = KnowledgeBaseRepository(session)
         task_repo = DocumentTaskRepository(session)
 
-        kb = await kb_repo.get_by_id(kb_id)
-        pipeline_config = kb.get_config() if kb else {}
-
         task = await task_repo.create({
+            "batch_id": batch_id,
             "document_id": document_id,
             "kb_id": kb_id,
             "space_id": space_id,
             "status": TaskStatus.PENDING,
             "pipeline_config": pipeline_config,
+            "retry_count": retry_count,
             "queued_at": now_china(),
         })
 
@@ -115,7 +116,7 @@ async def enqueue_process_document(
         task_id=task.id,
         job_id=job_id,
     )
-    return job_id
+    return {"job_id": job_id, "task_id": task.id, "parent_task_id": batch_id}
 
 
 async def enqueue_process_resume(

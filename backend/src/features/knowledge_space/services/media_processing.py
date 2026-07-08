@@ -52,9 +52,9 @@ async def process_video_document(
     pipeline_config = (
         task.pipeline_config
         if (task and task.pipeline_config)
-        else (kb.get_parsing_config() if kb else {})
+        else (kb.get_config() if kb else {})
     )
-    video_config = pipeline_config.get("video", {})
+    video_config = pipeline_config.get("splitting", {}).get("video", {})
     frame_interval = video_config.get("frame_interval", 5)
     max_frames = video_config.get("max_frames", 60)
 
@@ -206,15 +206,18 @@ async def process_audio_document(
     pipeline_config = (
         task.pipeline_config
         if (task and task.pipeline_config)
-        else (kb.get_parsing_config() if kb else {})
+        else (kb.get_config() if kb else {})
     )
-    audio_config = pipeline_config.get("audio", {})
+    audio_config = pipeline_config.get("parsing", {}).get("audio", {})
     space_asr_cfg = (space.config or {}).get("asr", {}) if space else {}
     asr_model = audio_config.get("asr_model") or space_asr_cfg.get("model") or "whisper-1"
 
     # 1. ASR 转写（根据协议路由：openai → Whisper / dashscope → Paraformer / local → faster-whisper）
     from src.features.user.services.model_config_service import ModelConfigService
     from src.shared.utils.media_utils import transcribe_audio_with_dashscope
+
+    # 检查点：ASR 调用前（转写可能耗时较长，允许用户在此处取消）
+    await _check_document_cancelled(document.id)
 
     mcs = ModelConfigService(session)
 
@@ -289,14 +292,18 @@ async def process_audio_document(
     if task:
         task.set_step("transcription_done")
 
-    # 2. 统一文本切分（替代旧 _merge_segments_by_size / sentence 直传）
-    splitting_config = pipeline_config.get("splitting", {})
-    strategy = splitting_config.get("strategy", "recursive")
-    splitting_kwargs = {k: v for k, v in splitting_config.items() if k != "strategy"}
-    chunks = await _split_md_text(full_text, strategy=strategy, **splitting_kwargs)
+    # 2. 统一文本切分，splitting.audio 覆盖通用切分参数
+    splitting_config = dict(pipeline_config.get("splitting", {}))
+    # 应用音频专属切分覆盖（chunk_size, strategy 等）
+    splitting_config.update(splitting_config.pop("audio", {}))
+    strategy = splitting_config.pop("strategy", "recursive")
+    chunks = await _split_md_text(full_text, strategy=strategy, **splitting_config)
 
     if task:
         task.set_step("text_split")
+
+    # 检查点2：文本切分完成，Embedding + ES 索引前
+    await _check_document_cancelled(document.id)
 
     # 3. Embedding + ES
     embedding_config = space.embedding_config if space else {}

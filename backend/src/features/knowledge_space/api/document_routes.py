@@ -33,11 +33,15 @@ from src.features.knowledge_space.schemas.document_schema import (
 from src.features.knowledge_space.schemas.document_task_schema import (
     DocumentTaskResponse,
     DocumentTaskListResponse,
+    DocumentTaskItemResponse,
+    DocumentTaskItemListResponse,
 )
 from src.features.knowledge_space.schemas.member_schema import ActionResponse
 from src.features.knowledge_space.models.space_member import SpaceMember
+from src.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
 from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
 from src.core.database.database import get_db
+from src.features.knowledge_space.models.document_task_batch import BatchAction
 from src.features.knowledge_space.api.dependencies import (
     get_current_user_id,
     validate_space_member,
@@ -46,6 +50,7 @@ from src.features.knowledge_space.api.dependencies import (
     get_document_service,
     get_audit_service,
     validate_kb_access,
+    validate_kb_writable,
 )
 from src.features.knowledge_space.api.exceptions import (
     DocumentNotFoundError,
@@ -137,7 +142,7 @@ async def upload_document(
 ) -> Union[DocumentUploadResponse, DocumentBatchUploadResponse]:
     """上传文档（支持单文件和多文件批量上传）"""
     # 验证知识库访问权限
-    await validate_kb_access(kb_id, space_id, db)
+    await validate_kb_writable(kb_id, space_id, db)
 
     # 数量限制
     if len(files) > MAX_BATCH_FILE_COUNT:
@@ -299,13 +304,12 @@ async def get_documents(
     # 后续需要通过 JOIN/子查询 DocumentTask.latest status 实现过滤。
     documents = await document_service.get_kb_documents(
         kb_id=kb_id,
-        status=None,
         skip=skip,
         limit=limit,
     )
 
     # 获取符合条件的总数（用于分页）
-    total = await document_service.count_kb_documents(kb_id=kb_id, status=None)
+    total = await document_service.count_kb_documents(kb_id=kb_id)
 
     return DocumentListResponse(
         items=[DocumentResponse.model_validate(d) for d in documents],
@@ -377,12 +381,46 @@ async def get_document_chunks(
 
 
 @router.get(
+    "/{kb_id}/document-tasks",
+    response_model=DocumentTaskItemListResponse,
+    summary="获取文档处理批次",
+    description="获取知识库的文档处理批次列表（含子任务明细）",
+)
+async def get_document_tasks_overview(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    skip: Annotated[int, Query(ge=0, description="跳过的记录数")] = 0,
+    limit: Annotated[int, Query(ge=1, le=100, description="返回的最大记录数")] = 20,
+    member: SpaceMember = Depends(validate_space_member),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取知识库批次任务列表"""
+    await validate_kb_access(kb_id, space_id, db)
+
+    batch_repo = DocumentTaskBatchRepository(db)
+    task_repo = DocumentTaskRepository(db)
+    batches = await batch_repo.list_by_kb(kb_id=kb_id, skip=skip, limit=limit)
+
+    items: List[DocumentTaskResponse] = []
+    for batch in batches:
+        tasks = await task_repo.list_by_batch(batch.id)
+        item = DocumentTaskResponse.model_validate(batch)
+        item.items = [DocumentTaskItemResponse.model_validate(t) for t in tasks]
+        items.append(item)
+
+    return DocumentTaskListResponse(
+        items=items,
+        total=len(items),
+    )
+
+
+@router.get(
     "/{kb_id}/documents/{document_id}/tasks",
     response_model=DocumentTaskListResponse,
     summary="获取文档处理任务",
     description="获取指定文档的所有处理任务记录（按时间倒序）",
 )
-async def get_document_tasks(
+async def get_document_task_items(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
     document_id: Annotated[int, Path(gt=0, description="文档ID")],
@@ -401,8 +439,8 @@ async def get_document_tasks(
 
     task_repo = DocumentTaskRepository(db)
     tasks = await task_repo.list_by_document(document_id)
-    return DocumentTaskListResponse(
-        tasks=[DocumentTaskResponse.model_validate(t) for t in tasks],
+    return DocumentTaskItemListResponse(
+        items=[DocumentTaskItemResponse.model_validate(t) for t in tasks],
         total=len(tasks),
     )
 
@@ -470,7 +508,7 @@ async def delete_document(
 ):
     """删除文档"""
     # 验证知识库访问权限
-    await validate_kb_access(kb_id, space_id, db)
+    await validate_kb_writable(kb_id, space_id, db)
 
     # 获取文档信息用于权限检查和审计日志
     document = await document_service.get_document(document_id)
@@ -521,24 +559,29 @@ async def process_document(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
     document_id: Annotated[int, Path(gt=0, description="文档ID")],
-    body: Annotated[DocumentProcessRequest, Body(...)],
+    body: Annotated[Optional[DocumentProcessRequest], Body(default=None)] = None,
     user_id: int = Depends(get_current_user_id),
     member: SpaceMember = Depends(validate_space_editor),
     document_service: DocumentService = Depends(get_document_service),
     db: AsyncSession = Depends(get_db),
 ):
     """触发单文档拆分解析"""
-    await validate_kb_access(kb_id, space_id, db)
+    await validate_kb_writable(kb_id, space_id, db)
 
-    document = await document_service.process_document(
+    batch = await document_service.create_task_batch(
         document_id=document_id,
+        user_id=user_id,
+        action=BatchAction.PROCESS,
+        note="单文档处理",
     )
-    # 获取刚创建的任务 ID
-    task_repo = DocumentTaskRepository(db)
-    latest_task = await task_repo.get_by_document_id(document_id)
+    result = await document_service.process_document(
+        document_id=document_id,
+        batch_id=batch.id,
+    )
     return DocumentProcessResponse(
-        document_id=document.id,
-        task_id=latest_task.id if latest_task else None,
+        document_id=result["document"].id,
+        task_id=batch.id,
+        task_item_id=result["task_id"],
     )
 
 
@@ -559,10 +602,11 @@ async def process_documents(
     db: AsyncSession = Depends(get_db),
 ):
     """批量触发拆分解析"""
-    await validate_kb_access(kb_id, space_id, db)
+    await validate_kb_writable(kb_id, space_id, db)
 
     result = await document_service.process_kb_documents(
         kb_id=kb_id,
+        user_id=user_id,
         document_ids=body.document_ids,
     )
     return DocumentBatchProcessResponse(**result)
@@ -585,17 +629,22 @@ async def reprocess_document(
     db: AsyncSession = Depends(get_db),
 ):
     """重新解析文档"""
-    await validate_kb_access(kb_id, space_id, db)
+    await validate_kb_writable(kb_id, space_id, db)
 
-    document = await document_service.reprocess_document(
+    batch = await document_service.create_task_batch(
         document_id=document_id,
+        user_id=user_id,
+        action=BatchAction.REPROCESS,
+        note="单文档重新处理",
     )
-    # 获取刚创建的任务 ID
-    task_repo = DocumentTaskRepository(db)
-    latest_task = await task_repo.get_by_document_id(document_id)
+    result = await document_service.reprocess_document(
+        document_id=document_id,
+        batch_id=batch.id,
+    )
     return DocumentProcessResponse(
-        document_id=document.id,
-        task_id=latest_task.id if latest_task else None,
+        document_id=result["document"].id,
+        task_id=batch.id,
+        task_item_id=result["task_id"],
     )
 
 
@@ -615,7 +664,7 @@ async def cancel_document_processing(
     db: AsyncSession = Depends(get_db),
 ):
     """取消正在处理的文档"""
-    await validate_kb_access(kb_id, space_id, db)
+    await validate_kb_writable(kb_id, space_id, db)
 
     await document_service.cancel_processing(document_id)
     return DocumentCancelResponse(document_id=document_id)
@@ -631,24 +680,29 @@ async def retry_document_processing(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
     document_id: Annotated[int, Path(gt=0, description="文档ID")],
-    body: Annotated[DocumentProcessRequest, Body(...)],
+    body: Annotated[Optional[DocumentProcessRequest], Body(default=None)] = None,
     user_id: int = Depends(get_current_user_id),
     member: SpaceMember = Depends(validate_space_editor),
     document_service: DocumentService = Depends(get_document_service),
     db: AsyncSession = Depends(get_db),
 ):
     """重试失败或已完成的文档处理（先清除旧分块再重新解析）"""
-    await validate_kb_access(kb_id, space_id, db)
+    await validate_kb_writable(kb_id, space_id, db)
 
-    document = await document_service.retry_document(
+    batch = await document_service.create_task_batch(
         document_id=document_id,
+        user_id=user_id,
+        action=BatchAction.RETRY,
+        note="单文档重试处理",
     )
-    # 获取刚创建的任务 ID
-    task_repo = DocumentTaskRepository(db)
-    latest_task = await task_repo.get_by_document_id(document_id)
+    result = await document_service.retry_document(
+        document_id=document_id,
+        batch_id=batch.id,
+    )
     return DocumentProcessResponse(
-        document_id=document.id,
-        task_id=latest_task.id if latest_task else None,
+        document_id=result["document"].id,
+        task_id=batch.id,
+        task_item_id=result["task_id"],
         status="processing",
         message="文档重试已开始处理",
     )

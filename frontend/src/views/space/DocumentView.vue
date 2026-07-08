@@ -1,173 +1,169 @@
 <template>
   <div class="document-view">
-    <!-- 子导航标签 -->
-    <div class="page-nav">
-      <div class="nav-tabs">
-        <router-link
-          :to="`/home/spaces/${spaceId}/knowledge-bases/${kbId}/documents`"
-          class="nav-tab"
-          :class="{ active: route.name === 'Documents' || route.name === 'DocumentDetail' }"
-        >
-          文档管理
-        </router-link>
-        <router-link
-          :to="`/home/spaces/${spaceId}/search?kbId=${kbId}`"
-          class="nav-tab"
-          :class="{ active: route.name === 'Search' }"
-        >
-          检索
-        </router-link>
-        <router-link
-          :to="`/home/spaces/${spaceId}/knowledge-bases/${kbId}/evaluation`"
-          class="nav-tab"
-          :class="{ active: route.name === 'KbEvaluation' }"
-        >
-          评测
-        </router-link>
-      </div>
-    </div>
+    <div class="kb-layout">
+      <KbSidebar :nav-items="kbNavItems" />
 
-    <!-- 操作栏 -->
-    <div class="action-bar">
-      <div class="left-actions">
-        <el-button type="primary" @click="showUploadDialog">
-          <el-icon><Upload /></el-icon>
-          上传文档
-        </el-button>
-        <el-button
-          v-if="selectedIds.length > 0"
-          @click="showProcessDialog(selectedIds)"
-        >
-          批量处理 ({{ selectedIds.length }})
-        </el-button>
-      </div>
-      <div class="right-actions" />
-    </div>
+      <div class="kb-content">
+        <div class="action-bar">
+          <div class="left-actions">
+            <el-button type="primary" @click="showUploadDialog">
+              <el-icon><Upload /></el-icon>
+              上传文档
+            </el-button>
+            <el-button
+              v-if="selectedIds.length > 0"
+              @click="showProcessDialog(selectedIds)"
+            >
+              批量处理 ({{ selectedIds.length }})
+            </el-button>
+          </div>
+          <div class="right-actions" />
+        </div>
 
-    <!-- 文档列表 -->
-    <div v-loading="loading" class="doc-table-wrap">
-      <el-table
-        :data="documents"
-        @selection-change="handleSelectionChange"
-        class="doc-table"
-      >
-        <el-table-column type="selection" width="45" />
-        <el-table-column prop="filename" label="文件名" min-width="220">
-          <template #default="{ row }">
-            <div class="filename-cell" @click="goToDetail(row.id)">
-              <div class="file-icon" :style="{ background: getFileTypeStyle(row.file_type).bg, color: getFileTypeStyle(row.file_type).color }">
-                {{ row.file_type.toUpperCase().slice(0, 3) }}
-              </div>
-              <span class="file-name">{{ row.filename }}</span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="file_size" label="大小" width="90" align="center">
-          <template #default="{ row }">
-            <span class="text-muted">{{ formatFileSize(row.file_size) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="chunk_count" label="分块" width="70" align="center">
-          <template #default="{ row }">
-            <span class="text-muted">{{ row.chunk_count ?? '-' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="created_at" label="上传时间" width="140">
-          <template #default="{ row }">
-            <span class="text-muted">{{ formatDate(row.created_at) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="" width="120" fixed="right" align="right">
-          <template #default="{ row }">
-            <div class="action-buttons">
-              <el-tooltip content="详情" placement="top">
-                <el-button :icon="View" circle size="small" aria-label="详情" @click="goToDetail(row.id)" />
-              </el-tooltip>
-              <el-tooltip content="删除" placement="top">
-                <el-button :icon="Delete" circle size="small" aria-label="删除" @click="handleDelete(row)" />
-              </el-tooltip>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-    </div>
-
-    <!-- 分页 -->
-    <Pagination
-      :page="currentPage"
-      :page-size="pageSize"
-      :total="total"
-      :page-sizes="[10, 20, 50, 100]"
-      layout="total, sizes, prev, pager, next"
-      @update:page="(p: number) => { currentPage = p; fetchDocuments() }"
-      @update:page-size="(s: number) => { pageSize = s; currentPage = 1; fetchDocuments() }"
-    />
-
-    <!-- 上传文档弹窗 -->
-    <el-dialog v-model="uploadDialogVisible" title="上传文档" width="680px" destroy-on-close>
-      <el-form label-width="80px">
-        <el-form-item label="选择文件">
-          <el-upload
-            ref="uploadRef"
-            :auto-upload="false"
-            :limit="20"
-            multiple
-            :file-list="fileList"
-            :on-change="handleFileChange"
-            :on-remove="handleFileRemove"
-            :on-exceed="handleExceed"
-            :accept="uploadAccept"
-            drag
-            class="upload-area"
+        <div v-loading="loading" class="doc-table-wrap">
+          <el-table
+            :data="documents"
+            @selection-change="handleSelectionChange"
+            class="doc-table"
           >
-            <div class="upload-inner">
-              <el-icon class="upload-icon"><UploadFilled /></el-icon>
-              <div class="upload-text">
-                拖拽文件到此处，或 <em>点击上传</em>
-              </div>
-              <div class="upload-tip">
-                {{ uploadTipText }}
-              </div>
-            </div>
-          </el-upload>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="uploadDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="uploadLoading" @click="handleUpload" :disabled="selectedFiles.length === 0">
-          上传 ({{ selectedFiles.length }})
-        </el-button>
-      </template>
-    </el-dialog>
+            <el-table-column type="selection" width="45" />
+            <el-table-column prop="filename" label="文件名" min-width="220">
+              <template #default="{ row }">
+                <div class="filename-cell" @click="goToDetail(row.id)">
+                  <div
+                    class="file-icon"
+                    :style="{ background: getFileTypeStyle(row.file_type).bg, color: getFileTypeStyle(row.file_type).color }"
+                  >
+                    {{ row.file_type.toUpperCase().slice(0, 3) }}
+                  </div>
+                  <span class="file-name">{{ row.filename }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="file_size" label="大小" width="90" align="center">
+              <template #default="{ row }">
+                <span class="text-muted">{{ formatFileSize(row.file_size) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="chunk_count" label="分块" width="70" align="center">
+              <template #default="{ row }">
+                <span class="text-muted">{{ row.chunk_count ?? '-' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="status" label="状态" width="90" align="center">
+              <template #default="{ row }">
+                <el-tag :type="getStatusConfig(row.status).type" effect="plain" size="small">
+                  {{ getStatusConfig(row.status).text }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="上传时间" width="160">
+              <template #default="{ row }">
+                <span class="text-muted">{{ formatDate(row.created_at) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="" width="170" fixed="right" align="right">
+              <template #default="{ row }">
+                <div class="action-buttons">
+                  <el-tooltip v-if="canProcess(row)" content="处理" placement="top">
+                    <el-button :icon="VideoPlay" circle size="small" type="primary" @click="handleProcessSingle(row)" />
+                  </el-tooltip>
+                  <el-tooltip v-if="canCancel(row)" content="取消" placement="top">
+                    <el-button :icon="Close" circle size="small" type="warning" @click="handleCancelSingle(row)" />
+                  </el-tooltip>
+                  <el-tooltip v-if="canRetry(row)" content="重试" placement="top">
+                    <el-button :icon="RefreshRight" circle size="small" type="success" @click="handleRetrySingle(row)" />
+                  </el-tooltip>
+                  <el-tooltip content="详情" placement="top">
+                    <el-button :icon="View" circle size="small" @click="goToDetail(row.id)" />
+                  </el-tooltip>
+                  <el-tooltip content="删除" placement="top">
+                    <el-button :icon="Delete" circle size="small" @click="handleDelete(row)" />
+                  </el-tooltip>
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
 
-    <!-- 处理文档弹窗 -->
-    <el-dialog v-model="processDialogVisible" title="处理文档" width="480px" destroy-on-close>
-      <p class="process-desc">
-        将对选中的 {{ processTargetIds.length }} 个文档执行切分、解析和向量化。
-      </p>
-      <template #footer>
-        <el-button @click="processDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="processLoading" @click="handleProcess">
-          开始处理
-        </el-button>
-      </template>
-    </el-dialog>
+        <Pagination
+          :page="currentPage"
+          :page-size="pageSize"
+          :total="total"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next"
+          @update:page="(p: number) => { currentPage = p; fetchDocuments() }"
+          @update:page-size="(s: number) => { pageSize = s; currentPage = 1; fetchDocuments() }"
+        />
+
+        <el-dialog v-model="uploadDialogVisible" title="上传文档" width="680px" destroy-on-close>
+          <el-form label-width="80px">
+            <el-form-item label="选择文件">
+              <el-upload
+                ref="uploadRef"
+                :auto-upload="false"
+                :limit="20"
+                multiple
+                :file-list="fileList"
+                :on-change="handleFileChange"
+                :on-remove="handleFileRemove"
+                :on-exceed="handleExceed"
+                :accept="uploadAccept"
+                drag
+                class="upload-area"
+              >
+                <div class="upload-inner">
+                  <el-icon class="upload-icon"><UploadFilled /></el-icon>
+                  <div class="upload-text">
+                    拖拽文件到此处，或 <em>点击上传</em>
+                  </div>
+                  <div class="upload-tip">
+                    {{ uploadTipText }}
+                  </div>
+                </div>
+              </el-upload>
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="uploadDialogVisible = false">取消</el-button>
+            <el-button type="primary" :loading="uploadLoading" @click="handleUpload" :disabled="selectedFiles.length === 0">
+              上传 ({{ selectedFiles.length }})
+            </el-button>
+          </template>
+        </el-dialog>
+
+        <el-dialog v-model="processDialogVisible" title="处理文档" width="480px" destroy-on-close>
+          <p class="process-desc">
+            将对选中的 {{ processTargetIds.length }} 个文档执行切分、解析和向量化。
+          </p>
+          <template #footer>
+            <el-button @click="processDialogVisible = false">取消</el-button>
+            <el-button type="primary" :loading="processLoading" @click="handleProcess">
+              开始处理
+            </el-button>
+          </template>
+        </el-dialog>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload, UploadFilled, View, Delete } from '@element-plus/icons-vue'
-import { documentApi } from '@/api/document'
-import { spaceApi } from '@/api/space'
-import { knowledgeBaseApi } from '@/api/knowledgeBase'
-import Pagination from '@/components/common/Pagination.vue'
-import type { Document as DocType, BatchUploadResponse } from '@/api/types'
+import { Close, DataAnalysis, Delete, Document, List, RefreshRight, Search, Upload, UploadFilled, VideoPlay, View } from '@element-plus/icons-vue'
 import type { UploadFile } from 'element-plus'
-import { getFileTypeStyle, normalizeSpaceTypes, getUploadAccept, getFileMaxSize, hasModality } from '@/utils/document'
-import { formatFileSize, formatDate } from '@/utils/format'
+
+import { documentApi } from '@/api/document'
+import { knowledgeBaseApi } from '@/api/knowledgeBase'
+import { spaceApi } from '@/api/space'
+import type { BatchUploadResponse, Document as DocType } from '@/api/types'
+import KbSidebar from '@/components/common/KbSidebar.vue'
+import type { KbNavItem } from '@/components/common/KbSidebar.vue'
+import Pagination from '@/components/common/Pagination.vue'
+import { getFileMaxSize, getFileTypeStyle, getUploadAccept, hasModality, normalizeSpaceTypes, taskStatusMap } from '@/utils/document'
+import { formatDate, formatFileSize } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -175,23 +171,24 @@ const router = useRouter()
 const spaceId = computed(() => Number(route.params.id))
 const kbId = computed(() => Number(route.params.kbId))
 
-const loading = ref(false)
-const uploadLoading = ref(false)
-const spaceTypes = ref<string[]>(['text'])
-
-const uploadAccept = computed(() => getUploadAccept(spaceTypes.value))
-
-const uploadTipText = computed(() => {
-  const parts: string[] = []
-  if (hasModality(spaceTypes.value, 'text')) parts.push('PDF/Word/TXT/MD/Excel/PPT/HTML/JSON')
-  if (hasModality(spaceTypes.value, 'image')) parts.push('JPG/PNG/GIF/WebP')
-  if (hasModality(spaceTypes.value, 'video')) parts.push('MP4/MOV/AVI/MKV/WebM')
-  if (hasModality(spaceTypes.value, 'audio')) parts.push('MP3/WAV/FLAC/AAC/OGG/M4A')
-  const maxMB = Math.max(...spaceTypes.value.map(t => ({ text: 100, image: 100, video: 500, audio: 200 })[t] || 100))
-  return `支持 ${parts.join(' + ')}，视频最大500MB，音频最大200MB，其余最大100MB，最多 20 个`
+const kbNavItems = computed<KbNavItem[]>(() => {
+  const sid = spaceId.value
+  const kid = kbId.value
+  return [
+    { label: '文档管理', to: `/home/spaces/${sid}/knowledge-bases/${kid}/documents`, route: 'Documents', active: route.name === 'Documents' || route.name === 'DocumentDetail', icon: Document },
+    { label: '任务列表', to: `/home/spaces/${sid}/knowledge-bases/${kid}/tasks`, route: 'DocumentTasks', active: route.name === 'DocumentTasks', icon: List },
+    { label: '搜索', to: `/home/spaces/${sid}/search?kbId=${kid}`, route: 'Search', active: route.name === 'Search', icon: Search },
+    { label: '测评', to: `/home/spaces/${sid}/knowledge-bases/${kid}/evaluation`, route: 'KbEvaluation', active: route.name === 'KbEvaluation', icon: DataAnalysis },
+  ]
 })
 
+const loading = ref(false)
+const uploadLoading = ref(false)
+const processLoading = ref(false)
 const uploadDialogVisible = ref(false)
+const processDialogVisible = ref(false)
+
+const spaceTypes = ref<string[]>(['text'])
 const documents = ref<DocType[]>([])
 const total = ref(0)
 const currentPage = ref(1)
@@ -199,30 +196,34 @@ const pageSize = ref(20)
 const fileList = ref<UploadFile[]>([])
 const selectedFiles = ref<File[]>([])
 const selectedIds = ref<number[]>([])
-
-// 处理弹窗
-const processDialogVisible = ref(false)
-const processLoading = ref(false)
 const processTargetIds = ref<number[]>([])
 
+const uploadAccept = computed(() => getUploadAccept(spaceTypes.value))
+
+const uploadTipText = computed(() => {
+  const parts: string[] = []
+  if (hasModality(spaceTypes.value, 'text')) parts.push('PDF/Word/TXT/MD/CSV/HTML/JSON')
+  if (hasModality(spaceTypes.value, 'image')) parts.push('JPG/PNG/GIF/WebP')
+  if (hasModality(spaceTypes.value, 'video')) parts.push('MP4/MOV/AVI/MKV/WebM')
+  if (hasModality(spaceTypes.value, 'audio')) parts.push('MP3/WAV/FLAC/AAC/OGG/M4A')
+  const maxMB = Math.max(...spaceTypes.value.map(t => ({ text: 100, image: 100, video: 500, audio: 200 })[t] || 100))
+  return `支持 ${parts.join(' + ')}，视频最大 500MB，音频最大 200MB，其余最大 ${maxMB}MB，最多 20 个`
+})
 
 function handleSelectionChange(rows: DocType[]) {
   selectedIds.value = rows.map((r) => r.id)
 }
 
-// === 上传 ===
-
 function handleFileChange(file: UploadFile) {
-  if (file.raw) {
-    const ext = file.name.split('.').pop()?.toLowerCase() || ''
-    const maxSizeMB = getFileMaxSize(ext)
-    if (file.raw.size > maxSizeMB * 1024 * 1024) {
-      ElMessage.error(`文件 "${file.name}" 大小不能超过 ${maxSizeMB}MB`)
-      fileList.value = fileList.value.filter((f) => f.uid !== file.uid)
-      return
-    }
-    selectedFiles.value.push(file.raw)
+  if (!file.raw) return
+  const ext = file.name.split('.').pop()?.toLowerCase() || ''
+  const maxSizeMB = getFileMaxSize(ext)
+  if (file.raw.size > maxSizeMB * 1024 * 1024) {
+    ElMessage.error(`文件 "${file.name}" 大小不能超过 ${maxSizeMB}MB`)
+    fileList.value = fileList.value.filter((f) => f.uid !== file.uid)
+    return
   }
+  selectedFiles.value.push(file.raw)
 }
 
 function handleFileRemove(file: UploadFile) {
@@ -263,15 +264,11 @@ async function handleUpload() {
     }
 
     uploadDialogVisible.value = false
-    fetchDocuments()
-  } catch {
-    // Error already shown by response interceptor
+    await fetchDocuments()
   } finally {
     uploadLoading.value = false
   }
 }
-
-// === 处理 ===
 
 function showProcessDialog(ids: number[]) {
   processTargetIds.value = ids
@@ -281,21 +278,17 @@ function showProcessDialog(ids: number[]) {
 async function handleProcess() {
   processLoading.value = true
   try {
-    await documentApi.batchProcessDocuments(spaceId.value, kbId.value, {
+    const res = await documentApi.batchProcessDocuments(spaceId.value, kbId.value, {
       document_ids: processTargetIds.value,
     })
-    ElMessage.success('已提交处理任务')
+    ElMessage.success(`已创建任务 #${res.task_id ?? '-'}，包含 ${res.total} 个文档`)
     processDialogVisible.value = false
     selectedIds.value = []
-    fetchDocuments()
-  } catch {
-    // Error already shown by response interceptor
+    await fetchDocuments()
   } finally {
     processLoading.value = false
   }
 }
-
-// === 列表 ===
 
 async function fetchDocuments() {
   loading.value = true
@@ -306,8 +299,6 @@ async function fetchDocuments() {
     })
     documents.value = data.items || []
     total.value = data.total || 0
-  } catch {
-    // Error already shown by response interceptor
   } finally {
     loading.value = false
   }
@@ -330,18 +321,54 @@ async function handleDelete(doc: DocType) {
     )
     await documentApi.deleteDocument(spaceId.value, kbId.value, doc.id)
     ElMessage.success('文档已删除')
-    fetchDocuments()
+    await fetchDocuments()
   } catch (error: unknown) {
     if ((error as string) !== 'cancel') {
-      // Error already shown by response interceptor
+      return
     }
   }
 }
 
+function getStatusConfig(status: number | undefined) {
+  return taskStatusMap[status ?? 0] ?? { text: '未知', type: 'info' as const }
+}
+
+function canProcess(doc: DocType): boolean {
+  const s = doc.status ?? 0
+  return s === 0 || s === 3
+}
+
+function canCancel(doc: DocType): boolean {
+  const s = doc.status ?? 0
+  return s === 0 || s === 1
+}
+
+function canRetry(doc: DocType): boolean {
+  const s = doc.status ?? 0
+  return s === 3
+}
+
+async function handleProcessSingle(doc: DocType) {
+  const res = await documentApi.processDocument(spaceId.value, kbId.value, doc.id)
+  ElMessage.success(`文档 "${doc.filename}" 已加入任务 #${res.task_id ?? '-'}`)
+  await fetchDocuments()
+}
+
+async function handleCancelSingle(doc: DocType) {
+  await documentApi.cancelDocument(spaceId.value, kbId.value, doc.id)
+  ElMessage.success(`已取消文档 "${doc.filename}" 的处理`)
+  await fetchDocuments()
+}
+
+async function handleRetrySingle(doc: DocType) {
+  const res = await documentApi.retryDocument(spaceId.value, kbId.value, doc.id)
+  ElMessage.success(`文档 "${doc.filename}" 已重新加入任务 #${res.task_id ?? '-'}`)
+  await fetchDocuments()
+}
+
 onMounted(async () => {
-  fetchDocuments()
+  await fetchDocuments()
   try {
-    // 优先从 KB config 读取 space_type，fallback 到 Space config
     const kbConfig = await knowledgeBaseApi.getConfig(spaceId.value, kbId.value)
     if (kbConfig.config?.space_type && Array.isArray(kbConfig.config.space_type) && kbConfig.config.space_type.length > 0) {
       spaceTypes.value = kbConfig.config.space_type
@@ -350,7 +377,7 @@ onMounted(async () => {
       spaceTypes.value = normalizeSpaceTypes(space.config)
     }
   } catch {
-    // 默认 text
+    // keep default text
   }
 })
 </script>
@@ -358,46 +385,19 @@ onMounted(async () => {
 <style scoped>
 .document-view {
   padding-top: var(--space-2);
+  height: 100%;
 }
 
-/* ===== Sub Navigation ===== */
-.page-nav {
-  margin-bottom: var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.nav-tabs {
+.kb-layout {
   display: flex;
-  gap: 0;
+  height: 100%;
 }
 
-.nav-tab {
-  padding: var(--space-3) var(--space-4);
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  text-decoration: none;
-  transition: all var(--transition-fast);
-  position: relative;
-  font-weight: var(--weight-medium);
-}
-
-.nav-tab:hover {
-  color: var(--color-text-secondary);
-}
-
-.nav-tab.active {
-  color: var(--color-primary);
-}
-
-.nav-tab.active::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 2px;
-  background: var(--color-primary);
-  border-radius: 2px 2px 0 0;
+.kb-content {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-4) var(--space-5);
+  overflow-y: auto;
 }
 
 .action-bar {
@@ -413,7 +413,6 @@ onMounted(async () => {
   gap: var(--space-3);
 }
 
-/* 文件名单元格 */
 .filename-cell {
   display: flex;
   align-items: center;
@@ -461,26 +460,12 @@ onMounted(async () => {
   color: var(--color-text-muted);
 }
 
-/* 状态列 */
-.status-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.status-progress {
-  width: 60px;
-}
-
-/* 操作按钮 */
 .action-buttons {
   display: flex;
   gap: var(--space-1);
   justify-content: flex-end;
 }
 
-/* 上传区域 */
 .upload-area :deep(.el-upload-dragger) {
   padding: var(--space-10) var(--space-6);
   border-radius: var(--radius-xl);
@@ -521,12 +506,6 @@ onMounted(async () => {
   color: var(--color-text-faint);
 }
 
-.form-tip {
-  margin-left: var(--space-3);
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-}
-
 .process-desc {
   margin: 0 0 var(--space-4);
   font-size: var(--text-base);
@@ -534,7 +513,6 @@ onMounted(async () => {
   line-height: var(--leading-relaxed);
 }
 
-/* ===== 文档表格：Linear 风（发丝线分隔 · 去斑马纹 · 扁平） ===== */
 .doc-table-wrap {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -546,7 +524,6 @@ onMounted(async () => {
   --el-table-border-color: transparent;
 }
 
-/* 表头：扁平白底、发丝线、小字 muted */
 .doc-table-wrap :deep(.el-table th.el-table__cell) {
   background: var(--color-bg-card);
   font-size: var(--text-xs);
@@ -555,17 +532,14 @@ onMounted(async () => {
   border-bottom: 1px solid var(--color-border);
 }
 
-/* 单元格：发丝线行分隔 */
 .doc-table-wrap :deep(.el-table td.el-table__cell) {
   border-bottom: 1px solid var(--color-border-light);
 }
 
-/* 末行无线 */
 .doc-table-wrap :deep(.el-table__body tr:last-child td.el-table__cell) {
   border-bottom: none;
 }
 
-/* hover 行：浅底，无阴影 */
 .doc-table-wrap :deep(.el-table tr:hover > td.el-table__cell) {
   background: var(--color-bg-hover) !important;
 }

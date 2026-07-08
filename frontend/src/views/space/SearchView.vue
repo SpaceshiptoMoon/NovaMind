@@ -1,422 +1,400 @@
 <template>
   <div class="search-view">
-    <!-- 子导航标签 -->
-    <div class="page-nav">
-      <div class="nav-tabs">
-        <router-link
-          :to="`/home/spaces/${spaceId}/knowledge-bases/${currentKbId}/documents`"
-          class="nav-tab"
-        >
-          文档管理
-        </router-link>
-        <router-link
-          :to="`/home/spaces/${spaceId}/search?kbId=${currentKbId}`"
-          class="nav-tab active"
-        >
-          检索
-        </router-link>
-        <router-link
-          :to="`/home/spaces/${spaceId}/knowledge-bases/${currentKbId}/evaluation`"
-          class="nav-tab"
-        >
-          评测
-        </router-link>
-      </div>
-    </div>
+    <div class="kb-layout">
+      <KbSidebar :nav-items="kbNavItems" />
 
-    <!-- 两栏布局 -->
-    <div class="search-body">
-      <!-- ====== 左栏：搜索配置 ====== -->
-      <aside class="search-left">
-        <!-- KB 选择器 -->
-        <div class="left-section">
-          <label class="left-label">知识库</label>
-          <el-select
-            v-model="searchForm.kb_id"
-            placeholder="选择知识库"
-            class="left-full-select"
-            @change="handleKbChange"
-          >
-            <el-option
-              v-for="kb in knowledgeBases"
-              :key="kb.id"
-              :label="kb.name"
-              :value="kb.id"
-            />
-          </el-select>
-        </div>
-
-        <!-- 搜索输入 -->
-        <div class="left-section">
-          <label class="left-label">查询内容</label>
+      <!-- 右侧内容 -->
+      <div class="kb-content">
+        <!-- 顶部：检索问题栏 -->
+        <div class="search-query-bar">
           <el-input
             v-model="searchForm.query"
             type="textarea"
-            :rows="3"
+            :rows="1"
             placeholder="输入查询内容，按 Enter 检索..."
             maxlength="2000"
             resize="none"
+            class="query-input"
             @keydown.enter.exact.prevent="handleSearch"
           />
-        </div>
-
-        <!-- 检索模式下拉（非纯图片空间） -->
-        <div v-if="!hasImage" class="left-section">
-          <label class="left-label">检索模式</label>
-          <el-select v-model="searchForm.search_mode" size="small" class="left-full-select">
-            <el-option
-              v-for="mode in filteredSearchModes"
-              :key="mode.mode"
-              :label="mode.label"
-              :value="mode.mode"
-            />
-          </el-select>
-        </div>
-
-        <!-- 基础参数 -->
-        <div class="left-section">
-          <div class="param-row">
-            <span class="param-label">相似度阈值</span>
-            <span class="param-value">{{ (searchForm.score_threshold * 100).toFixed(0) }}%</span>
-          </div>
-          <el-slider
-            v-model="searchForm.score_threshold"
-            :min="0"
-            :max="1"
-            :step="0.05"
-            :show-tooltip="false"
-          />
-          <div class="param-row" style="margin-top: var(--space-3)">
-            <span class="param-label">返回数量</span>
-            <el-input-number
-              v-model="searchForm.top_k"
-              :min="1"
-              :max="100"
-              size="small"
-              style="width: 100px"
-            />
-          </div>
-        </div>
-
-        <!-- LLM 开关 + 模型选择（非纯图片空间） -->
-        <div v-if="!hasImage" class="left-section">
-          <div class="param-row">
-            <span class="param-label">LLM 回答</span>
-            <el-switch v-model="searchForm.llm_enabled" size="small" />
-          </div>
-          <el-select
-            v-model="searchForm.llm_model"
-            :disabled="!searchForm.llm_enabled"
-            placeholder="默认模型"
-            clearable
-            size="small"
-            class="left-full-select"
-            style="margin-top: var(--space-2)"
-          >
-            <el-option v-for="m in availableLlmModels" :key="m" :label="m" :value="m" />
-          </el-select>
-        </div>
-
-        <!-- 以图搜图区域（仅多模态空间） -->
-        <div v-if="hasImage" class="left-section">
-          <label class="left-label">以图搜图</label>
-          <div
-            class="image-drop-zone"
-            :class="{ 'is-dragging': isDragging }"
-            @dragover.prevent="isDragging = true"
-            @dragleave="isDragging = false"
-            @drop.prevent="handleImageDrop"
-            @click="triggerImageSearch"
-          >
-            <template v-if="queryImagePreview">
-              <img :src="queryImagePreview" class="drop-zone-preview" />
-              <el-button
-                size="small"
-                circle
-                class="drop-zone-clear"
-                @click.stop="clearQueryImage"
-              >
-                <el-icon><Close /></el-icon>
-              </el-button>
-            </template>
-            <template v-else>
-              <el-icon :size="28" color="var(--color-text-muted)"><Upload /></el-icon>
-              <span class="drop-zone-text">拖拽或点击上传图片</span>
-            </template>
-          </div>
-          <input
-            ref="imageInput"
-            type="file"
-            accept=".jpg,.jpeg,.png,.gif,.webp"
-            style="display: none"
-            @change="handleImageFileChange"
-          />
-        </div>
-
-        <!-- 高级设置折叠（仅文本空间） -->
-        <el-collapse v-if="!hasImage" v-model="advancedCollapsed" class="left-collapse">
-          <el-collapse-item title="高级设置" name="advanced">
-            <!-- 检索参数 -->
-            <div class="advanced-section">
-              <div class="section-title">检索参数</div>
-              <div class="adv-row">
-                <span class="adv-label">向量权重</span>
-                <el-slider v-model="searchForm.vector_weight" :min="0" :max="1" :step="0.1" show-input :show-input-controls="false" />
-              </div>
-              <div class="adv-row">
-                <span class="adv-label">BM25权重</span>
-                <el-slider v-model="searchForm.bm25_weight" :min="0" :max="1" :step="0.1" show-input :show-input-controls="false" />
-              </div>
-              <div class="adv-row">
-                <span class="adv-label">内容权重</span>
-                <el-slider v-model="searchForm.content_weight" :min="0" :max="1" :step="0.1" show-input :show-input-controls="false" />
-              </div>
-              <div class="adv-row">
-                <span class="adv-label">问题权重</span>
-                <el-slider v-model="searchForm.question_weight" :min="0" :max="1" :step="0.1" show-input :show-input-controls="false" />
-              </div>
-              <div class="adv-row">
-                <span class="adv-label">RRF K</span>
-                <el-input-number v-model="searchForm.rrf_k" :min="1" :max="200" size="small" />
-              </div>
-              <div class="adv-row">
-                <span class="adv-label">使用缓存</span>
-                <el-switch v-model="searchForm.use_cache" size="small" />
-              </div>
-              <div class="adv-row">
-                <span class="adv-label">模式降级</span>
-                <el-switch v-model="searchForm.fallback_on_unavailable" size="small" />
-              </div>
-            </div>
-
-            <!-- Rerank -->
-            <div class="advanced-section">
-              <div class="section-title">重排序</div>
-              <div class="adv-row">
-                <span class="adv-label">启用 Rerank</span>
-                <el-switch v-model="searchForm.rerank_enabled" size="small" />
-              </div>
-              <div class="adv-row">
-                <span class="adv-label">数量</span>
-                <el-input-number v-model="searchForm.rerank_top_k" :min="1" :max="20" :disabled="!searchForm.rerank_enabled" size="small" />
-              </div>
-              <div class="adv-row">
-                <span class="adv-label">模型</span>
-                <el-select v-model="searchForm.rerank_model" :disabled="!searchForm.rerank_enabled" placeholder="默认" clearable size="small" style="flex:1">
-                  <el-option v-for="m in availableRerankModels" :key="m" :label="m" :value="m" />
-                </el-select>
-              </div>
-            </div>
-
-            <!-- LLM -->
-            <div class="advanced-section">
-              <div class="section-title">LLM</div>
-              <div class="adv-row">
-                <span class="adv-label">温度</span>
-                <el-slider v-model="searchForm.llm_temperature" :min="0" :max="2" :step="0.1" :disabled="!searchForm.llm_enabled" show-input :show-input-controls="false" />
-              </div>
-              <div class="adv-row">
-                <span class="adv-label">Top P</span>
-                <el-slider v-model="searchForm.llm_top_p" :min="0" :max="1" :step="0.1" :disabled="!searchForm.llm_enabled" show-input :show-input-controls="false" />
-              </div>
-            </div>
-
-            <!-- 查询改写 -->
-            <div class="advanced-section">
-              <div class="section-title">查询改写</div>
-              <div class="adv-row">
-                <span class="adv-label">策略</span>
-                <el-select v-model="searchForm.qrw_strategy" size="small" style="flex:1">
-                  <el-option label="不启用" value="" />
-                  <el-option label="HyDE" value="hyde" />
-                  <el-option label="子问题拆分" value="sub_query" />
-                </el-select>
-              </div>
-              <div v-if="searchForm.qrw_strategy" class="adv-row">
-                <span class="adv-label">模型</span>
-                <el-input v-model="searchForm.qrw_llm_model" placeholder="默认" size="small" style="flex:1" />
-              </div>
-              <template v-if="searchForm.qrw_strategy === 'sub_query'">
-                <div class="adv-row">
-                  <span class="adv-label">子问题数</span>
-                  <el-input-number v-model="searchForm.qrw_sub_query_count" :min="2" :max="5" size="small" />
-                </div>
-                <div class="adv-row">
-                  <span class="adv-label">合并方式</span>
-                  <el-select v-model="searchForm.qrw_sub_query_merge_mode" size="small" style="flex:1">
-                    <el-option label="RRF 融合" value="rrf" />
-                    <el-option label="分数取最大" value="score" />
-                  </el-select>
-                </div>
-              </template>
-              <div v-if="searchForm.qrw_strategy === 'hyde'" class="adv-row" style="flex-direction:column;align-items:stretch">
-                <span class="adv-label" style="margin-bottom:4px">HyDE 提示词</span>
-                <el-input v-model="searchForm.qrw_hyde_prompt" type="textarea" :rows="2" maxlength="2000" placeholder="留空使用默认" size="small" />
-              </div>
-            </div>
-
-            <el-button size="small" @click="handleReset" style="width:100%">重置默认</el-button>
-          </el-collapse-item>
-        </el-collapse>
-
-        <!-- 检索按钮 -->
-        <div class="left-footer">
           <el-button
             type="primary"
             :loading="searching || imageSearching"
             :disabled="!searchForm.kb_id || !searchForm.query.trim()"
-            class="search-submit-btn"
+            class="query-search-btn"
             @click="handleSearch"
           >
             <el-icon><Search /></el-icon>
             {{ searching ? '检索中...' : '检索' }}
           </el-button>
         </div>
-      </aside>
 
-      <!-- ====== 右栏：检索结果 ====== -->
-      <main class="search-right">
-        <!-- 有结果 -->
-        <template v-if="searchResults.length > 0">
-          <!-- 结果头部 -->
-          <div class="results-header">
-            <h3>检索结果</h3>
-            <span class="results-meta">
-              共 {{ totalResults }} 条 · {{ elapsedMs }}ms
-              <el-tag v-if="cached" type="success" size="small" effect="plain">缓存</el-tag>
-              <el-tag v-if="modeFallback" type="warning" size="small" effect="plain">降级: {{ originalMode }}</el-tag>
-            </span>
-          </div>
-
-          <!-- 查询改写 -->
-          <div v-if="rewrittenQueries?.length" class="rewritten-section">
-            <span class="rewritten-label">查询改写:</span>
-            <el-tag v-for="q in rewrittenQueries" :key="q" size="small" type="primary" effect="plain">
-              {{ q }}
-            </el-tag>
-          </div>
-
-          <!-- AI 回答 -->
-          <div v-if="llmAnswer" class="llm-answer">
-            <div class="llm-answer-header">
-              <span>AI 回答</span>
-              <span class="llm-answer-meta">
-                <span v-if="answerModel" class="llm-answer-model">{{ answerModel }}</span>
-                <span v-if="answerElapsedMs" class="llm-answer-model">{{ answerElapsedMs }}ms</span>
-              </span>
-            </div>
-            <div class="llm-answer-content">
-              <MarkdownRenderer :content="llmAnswer" />
-            </div>
-          </div>
-
-          <!-- 多模态：图片网格 -->
-          <div v-if="hasImage" class="image-grid">
-            <div
-              v-for="(result, index) in searchResults"
-              :key="result.chunk_id"
-              class="image-card"
-              @click="previewUrl = (result.image_url || ''); previewVisible = true"
-            >
-              <div class="image-card-img">
-                <img
-                  v-if="result.image_url"
-                  :src="result.image_url"
-                  :alt="(result.file_info as Record<string, string>)?.filename || ''"
-                  loading="lazy"
-                />
-                <div v-else class="image-card-placeholder">
-                  <el-icon :size="32" color="var(--color-text-faint)"><Upload /></el-icon>
-                </div>
-                <div class="image-card-overlay">
-                  <span class="image-card-score" :class="getScoreClass(result.score)">
-                    {{ (result.score * 100).toFixed(1) }}%
-                  </span>
-                  <span class="image-card-name">{{ (result.file_info as Record<string, string>)?.filename || '' }}</span>
-                </div>
-              </div>
-              <div class="image-card-footer">
-                <span class="image-card-index">#{{ index + 1 }}</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- 文本/视频/音频：结果卡片列表 -->
-          <div v-else class="results-list">
-            <div
-              v-for="(result, index) in searchResults"
-              :key="result.chunk_id"
-              class="result-card"
-            >
-              <div class="result-header">
-                <span class="result-index">{{ index + 1 }}</span>
-                <el-tag
-                  v-if="result.chunk_type && result.chunk_type !== 'text'"
-                  :type="result.chunk_type === 'image' ? 'warning' : result.chunk_type === 'video' ? 'primary' : 'danger'"
-                  size="small"
-                  effect="plain"
-                >{{ chunkTypeLabels[result.chunk_type] || result.chunk_type }}</el-tag>
-                <span class="result-doc">{{ (result.file_info as Record<string, string>)?.filename || `文档 #${result.document_id}` }}</span>
-                <span class="result-score" :class="getScoreClass(result.score)">
-                  {{ (result.score * 100).toFixed(1) }}%
+        <!-- 下方：结果 + 参数 -->
+        <div class="search-body">
+          <!-- ====== 中间：检索结果 ====== -->
+          <main class="search-main">
+            <!-- 有结果 -->
+            <template v-if="searchResults.length > 0">
+              <!-- 结果头部 -->
+              <div class="results-header">
+                <h3>检索结果</h3>
+                <span class="results-meta">
+                  共 {{ totalResults }} 条 · {{ elapsedMs }}ms
+                  <el-tag v-if="cached" type="success" size="small" effect="plain">缓存</el-tag>
+                  <el-tag v-if="modeFallback" type="warning" size="small" effect="plain">降级: {{ originalMode }}</el-tag>
                 </span>
               </div>
-              <div class="result-content">
-                <img
-                  v-if="result.chunk_type === 'image' && (result.media_url || result.image_url)"
-                  :src="result.media_url || result.image_url"
-                  class="result-thumbnail"
-                  loading="lazy"
-                  @click="previewUrl = (result.media_url || result.image_url)!; previewVisible = true"
-                />
-                <template v-else>{{ result.content }}</template>
-              </div>
-              <div class="result-footer">
-                <span v-if="(result.metadata as Record<string, unknown>)?.page">第 {{ (result.metadata as Record<string, unknown>).page }} 页</span>
-                <span v-if="result.chunk_type === 'video' && (result.metadata as Record<string, unknown>)?.start_time != null">
-                  {{ formatDuration((result.metadata as Record<string, unknown>).start_time as number) }}
-                  -
-                  {{ formatDuration((result.metadata as Record<string, unknown>).end_time as number) }}
-                </span>
-                <span v-if="result.chunk_type === 'audio' && (result.metadata as Record<string, unknown>)?.start_time != null">
-                  {{ formatDuration((result.metadata as Record<string, unknown>).start_time as number) }}
-                  -
-                  {{ formatDuration((result.metadata as Record<string, unknown>).end_time as number) }}
-                </span>
-                <span>分块 #{{ result.chunk_index + 1 }}</span>
-              </div>
-              <div v-if="result.questions?.length" class="result-questions">
-                <el-tag
-                  v-for="q in result.questions.slice(0, 3)"
-                  :key="q"
-                  size="small"
-                  effect="plain"
-                  round
-                >
+
+              <!-- 查询改写 -->
+              <div v-if="rewrittenQueries?.length" class="rewritten-section">
+                <span class="rewritten-label">查询改写:</span>
+                <el-tag v-for="q in rewrittenQueries" :key="q" size="small" type="primary" effect="plain">
                   {{ q }}
                 </el-tag>
               </div>
+
+              <!-- AI 回答 -->
+              <div v-if="llmAnswer" class="llm-answer">
+                <div class="llm-answer-header">
+                  <span>AI 回答</span>
+                  <span class="llm-answer-meta">
+                    <span v-if="answerModel" class="llm-answer-model">{{ answerModel }}</span>
+                    <span v-if="answerElapsedMs" class="llm-answer-model">{{ answerElapsedMs }}ms</span>
+                  </span>
+                </div>
+                <div class="llm-answer-content">
+                  <MarkdownRenderer :content="llmAnswer" />
+                </div>
+              </div>
+
+              <!-- 多模态：图片网格 -->
+              <div v-if="hasImage" class="image-grid">
+                <div
+                  v-for="(result, index) in searchResults"
+                  :key="result.chunk_id"
+                  class="image-card"
+                  @click="previewUrl = (result.image_url || ''); previewVisible = true"
+                >
+                  <div class="image-card-img">
+                    <img
+                      v-if="result.image_url"
+                      :src="result.image_url"
+                      :alt="(result.file_info as Record<string, string>)?.filename || ''"
+                      loading="lazy"
+                    />
+                    <div v-else class="image-card-placeholder">
+                      <el-icon :size="32" color="var(--color-text-faint)"><Upload /></el-icon>
+                    </div>
+                    <div class="image-card-overlay">
+                      <span class="image-card-score" :class="getScoreClass(result.score)">
+                        {{ (result.score * 100).toFixed(1) }}%
+                      </span>
+                      <span class="image-card-name">{{ (result.file_info as Record<string, string>)?.filename || '' }}</span>
+                    </div>
+                  </div>
+                  <div class="image-card-footer">
+                    <span class="image-card-index">#{{ index + 1 }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 文本/视频/音频：结果卡片列表 -->
+              <div v-else class="results-list">
+                <div
+                  v-for="(result, index) in searchResults"
+                  :key="result.chunk_id"
+                  class="result-card"
+                >
+                  <div class="result-header">
+                    <span class="result-index">{{ index + 1 }}</span>
+                    <el-tag
+                      v-if="result.chunk_type && result.chunk_type !== 'text'"
+                      :type="result.chunk_type === 'image' ? 'warning' : result.chunk_type === 'video' ? 'primary' : 'danger'"
+                      size="small"
+                      effect="plain"
+                    >{{ chunkTypeLabels[result.chunk_type] || result.chunk_type }}</el-tag>
+                    <span class="result-doc">{{ (result.file_info as Record<string, string>)?.filename || `文档 #${result.document_id}` }}</span>
+                    <span class="result-score" :class="getScoreClass(result.score)">
+                      {{ (result.score * 100).toFixed(1) }}%
+                    </span>
+                  </div>
+                  <div class="result-content">
+                    <img
+                      v-if="result.chunk_type === 'image' && (result.media_url || result.image_url)"
+                      :src="result.media_url || result.image_url"
+                      class="result-thumbnail"
+                      loading="lazy"
+                      @click="previewUrl = (result.media_url || result.image_url)!; previewVisible = true"
+                    />
+                    <template v-else>{{ result.content }}</template>
+                  </div>
+                  <div class="result-footer">
+                    <span v-if="(result.metadata as Record<string, unknown>)?.page">第 {{ (result.metadata as Record<string, unknown>).page }} 页</span>
+                    <span v-if="result.chunk_type === 'video' && (result.metadata as Record<string, unknown>)?.start_time != null">
+                      {{ formatDuration((result.metadata as Record<string, unknown>).start_time as number) }}
+                      -
+                      {{ formatDuration((result.metadata as Record<string, unknown>).end_time as number) }}
+                    </span>
+                    <span v-if="result.chunk_type === 'audio' && (result.metadata as Record<string, unknown>)?.start_time != null">
+                      {{ formatDuration((result.metadata as Record<string, unknown>).start_time as number) }}
+                      -
+                      {{ formatDuration((result.metadata as Record<string, unknown>).end_time as number) }}
+                    </span>
+                    <span>分块 #{{ result.chunk_index + 1 }}</span>
+                  </div>
+                  <div v-if="result.questions?.length" class="result-questions">
+                    <el-tag
+                      v-for="q in result.questions.slice(0, 3)"
+                      :key="q"
+                      size="small"
+                      effect="plain"
+                      round
+                    >
+                      {{ q }}
+                    </el-tag>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <!-- 空状态 -->
+            <EmptyState
+              v-else-if="hasSearched"
+              variant="search"
+              title="未找到相关结果"
+              description="尝试调整查询内容或检索模式"
+            >
+              <el-button @click="handleReset">重置搜索</el-button>
+            </EmptyState>
+
+            <!-- 未搜索时的引导 -->
+            <div v-else class="search-empty">
+              <el-icon :size="48" color="var(--color-text-faint)"><Search /></el-icon>
+              <p class="search-empty-title">输入查询内容开始检索</p>
+              <p class="search-empty-desc">在上方输入查询内容并选择知识库，按 Enter 或点击检索按钮开始搜索</p>
             </div>
-          </div>
-        </template>
+          </main>
 
-        <!-- 空状态 -->
-        <EmptyState
-          v-else-if="hasSearched"
-          variant="search"
-          title="未找到相关结果"
-          description="尝试调整查询内容或检索模式"
-        >
-          <el-button @click="handleReset">重置搜索</el-button>
-        </EmptyState>
+          <!-- ====== 右侧：检索参数 ====== -->
+          <aside class="search-params">
+            <!-- 知识库选择 -->
+            <div class="param-section">
+              <label class="param-section-label">知识库</label>
+              <el-select
+                v-model="searchForm.kb_id"
+                placeholder="选择知识库"
+                class="param-full-select"
+                @change="handleKbChange"
+              >
+                <el-option
+                  v-for="kb in knowledgeBases"
+                  :key="kb.id"
+                  :label="kb.name"
+                  :value="kb.id"
+                />
+              </el-select>
+            </div>
 
-        <!-- 未搜索时的引导 -->
-        <div v-else class="right-empty">
-          <el-icon :size="48" color="var(--color-text-faint)"><Search /></el-icon>
-          <p class="right-empty-title">输入查询内容开始检索</p>
-          <p class="right-empty-desc">在左侧输入查询内容并选择知识库，检索相关文档分块</p>
+            <!-- 检索模式下拉（非纯图片空间） -->
+            <div v-if="!hasImage" class="param-section">
+              <label class="param-section-label">检索模式</label>
+              <el-select v-model="searchForm.search_mode" size="small" class="param-full-select">
+                <el-option
+                  v-for="mode in filteredSearchModes"
+                  :key="mode.mode"
+                  :label="mode.label"
+                  :value="mode.mode"
+                />
+              </el-select>
+            </div>
+
+            <!-- 基础参数 -->
+            <div class="param-section">
+              <div class="param-row">
+                <span class="param-label">相似度阈值</span>
+                <span class="param-value">{{ (searchForm.score_threshold * 100).toFixed(0) }}%</span>
+              </div>
+              <el-slider
+                v-model="searchForm.score_threshold"
+                :min="0"
+                :max="1"
+                :step="0.05"
+                :show-tooltip="false"
+              />
+              <div class="param-row" style="margin-top: var(--space-3)">
+                <span class="param-label">返回数量</span>
+                <el-input-number
+                  v-model="searchForm.top_k"
+                  :min="1"
+                  :max="100"
+                  size="small"
+                  style="width: 100px"
+                />
+              </div>
+            </div>
+
+            <!-- LLM 开关 + 模型选择（非纯图片空间） -->
+            <div v-if="!hasImage" class="param-section">
+              <div class="param-row">
+                <span class="param-label">LLM 回答</span>
+                <el-switch v-model="searchForm.llm_enabled" size="small" />
+              </div>
+              <el-select
+                v-model="searchForm.llm_model"
+                :disabled="!searchForm.llm_enabled"
+                placeholder="默认模型"
+                clearable
+                size="small"
+                class="param-full-select"
+                style="margin-top: var(--space-2)"
+              >
+                <el-option v-for="m in availableLlmModels" :key="m" :label="m" :value="m" />
+              </el-select>
+            </div>
+
+            <!-- 以图搜图区域（仅多模态空间） -->
+            <div v-if="hasImage" class="param-section">
+              <label class="param-section-label">以图搜图</label>
+              <div
+                class="image-drop-zone"
+                :class="{ 'is-dragging': isDragging }"
+                @dragover.prevent="isDragging = true"
+                @dragleave="isDragging = false"
+                @drop.prevent="handleImageDrop"
+                @click="triggerImageSearch"
+              >
+                <template v-if="queryImagePreview">
+                  <img :src="queryImagePreview" class="drop-zone-preview" />
+                  <el-button
+                    size="small"
+                    circle
+                    class="drop-zone-clear"
+                    @click.stop="clearQueryImage"
+                  >
+                    <el-icon><Close /></el-icon>
+                  </el-button>
+                </template>
+                <template v-else>
+                  <el-icon :size="28" color="var(--color-text-muted)"><Upload /></el-icon>
+                  <span class="drop-zone-text">拖拽或点击上传图片</span>
+                </template>
+              </div>
+              <input
+                ref="imageInput"
+                type="file"
+                accept=".jpg,.jpeg,.png,.gif,.webp"
+                style="display: none"
+                @change="handleImageFileChange"
+              />
+            </div>
+
+            <!-- 高级设置折叠（仅文本空间） -->
+            <el-collapse v-if="!hasImage" v-model="advancedCollapsed" class="params-collapse">
+              <el-collapse-item title="高级设置" name="advanced">
+                <!-- 检索参数 -->
+                <div class="advanced-section">
+                  <div class="section-title">检索参数</div>
+                  <div class="adv-row">
+                    <span class="adv-label">向量权重</span>
+                    <el-slider v-model="searchForm.vector_weight" :min="0" :max="1" :step="0.1" show-input :show-input-controls="false" />
+                  </div>
+                  <div class="adv-row">
+                    <span class="adv-label">BM25权重</span>
+                    <el-slider v-model="searchForm.bm25_weight" :min="0" :max="1" :step="0.1" show-input :show-input-controls="false" />
+                  </div>
+                  <div class="adv-row">
+                    <span class="adv-label">内容权重</span>
+                    <el-slider v-model="searchForm.content_weight" :min="0" :max="1" :step="0.1" show-input :show-input-controls="false" />
+                  </div>
+                  <div class="adv-row">
+                    <span class="adv-label">问题权重</span>
+                    <el-slider v-model="searchForm.question_weight" :min="0" :max="1" :step="0.1" show-input :show-input-controls="false" />
+                  </div>
+                  <div class="adv-row">
+                    <span class="adv-label">RRF K</span>
+                    <el-input-number v-model="searchForm.rrf_k" :min="1" :max="200" size="small" />
+                  </div>
+                  <div class="adv-row">
+                    <span class="adv-label">使用缓存</span>
+                    <el-switch v-model="searchForm.use_cache" size="small" />
+                  </div>
+                  <div class="adv-row">
+                    <span class="adv-label">模式降级</span>
+                    <el-switch v-model="searchForm.fallback_on_unavailable" size="small" />
+                  </div>
+                </div>
+
+                <!-- Rerank -->
+                <div class="advanced-section">
+                  <div class="section-title">重排序</div>
+                  <div class="adv-row">
+                    <span class="adv-label">启用 Rerank</span>
+                    <el-switch v-model="searchForm.rerank_enabled" size="small" />
+                  </div>
+                  <div class="adv-row">
+                    <span class="adv-label">数量</span>
+                    <el-input-number v-model="searchForm.rerank_top_k" :min="1" :max="20" :disabled="!searchForm.rerank_enabled" size="small" />
+                  </div>
+                  <div class="adv-row">
+                    <span class="adv-label">模型</span>
+                    <el-select v-model="searchForm.rerank_model" :disabled="!searchForm.rerank_enabled" placeholder="默认" clearable size="small" style="flex:1">
+                      <el-option v-for="m in availableRerankModels" :key="m" :label="m" :value="m" />
+                    </el-select>
+                  </div>
+                </div>
+
+                <!-- LLM -->
+                <div class="advanced-section">
+                  <div class="section-title">LLM</div>
+                  <div class="adv-row">
+                    <span class="adv-label">温度</span>
+                    <el-slider v-model="searchForm.llm_temperature" :min="0" :max="2" :step="0.1" :disabled="!searchForm.llm_enabled" show-input :show-input-controls="false" />
+                  </div>
+                  <div class="adv-row">
+                    <span class="adv-label">Top P</span>
+                    <el-slider v-model="searchForm.llm_top_p" :min="0" :max="1" :step="0.1" :disabled="!searchForm.llm_enabled" show-input :show-input-controls="false" />
+                  </div>
+                </div>
+
+                <!-- 查询改写 -->
+                <div class="advanced-section">
+                  <div class="section-title">查询改写</div>
+                  <div class="adv-row">
+                    <span class="adv-label">策略</span>
+                    <el-select v-model="searchForm.qrw_strategy" size="small" style="flex:1">
+                      <el-option label="不启用" value="" />
+                      <el-option label="HyDE" value="hyde" />
+                      <el-option label="子问题拆分" value="sub_query" />
+                    </el-select>
+                  </div>
+                  <div v-if="searchForm.qrw_strategy" class="adv-row">
+                    <span class="adv-label">模型</span>
+                    <el-input v-model="searchForm.qrw_llm_model" placeholder="默认" size="small" style="flex:1" />
+                  </div>
+                  <template v-if="searchForm.qrw_strategy === 'sub_query'">
+                    <div class="adv-row">
+                      <span class="adv-label">子问题数</span>
+                      <el-input-number v-model="searchForm.qrw_sub_query_count" :min="2" :max="5" size="small" />
+                    </div>
+                    <div class="adv-row">
+                      <span class="adv-label">合并方式</span>
+                      <el-select v-model="searchForm.qrw_sub_query_merge_mode" size="small" style="flex:1">
+                        <el-option label="RRF 融合" value="rrf" />
+                        <el-option label="分数取最大" value="score" />
+                      </el-select>
+                    </div>
+                  </template>
+                  <div v-if="searchForm.qrw_strategy === 'hyde'" class="adv-row" style="flex-direction:column;align-items:stretch">
+                    <span class="adv-label" style="margin-bottom:4px">HyDE 提示词</span>
+                    <el-input v-model="searchForm.qrw_hyde_prompt" type="textarea" :rows="2" maxlength="2000" placeholder="留空使用默认" size="small" />
+                  </div>
+                </div>
+
+                <el-button size="small" @click="handleReset" style="width:100%">重置默认</el-button>
+              </el-collapse-item>
+            </el-collapse>
+          </aside>
         </div>
-      </main>
     </div>
 
     <!-- 图片预览弹窗 -->
@@ -429,6 +407,7 @@
     >
       <img :src="previewUrl" style="max-width: 90vw; max-height: 80vh; object-fit: contain; display: block; margin: auto" />
     </el-dialog>
+    </div>
   </div>
 </template>
 
@@ -436,11 +415,13 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Search, ArrowDown, Upload, Close } from '@element-plus/icons-vue'
+import { Search, ArrowDown, Upload, Close, Document, DataAnalysis } from '@element-plus/icons-vue'
 import { searchApi } from '@/api/search'
 import { documentApi } from '@/api/document'
 import { spaceApi } from '@/api/space'
 import { knowledgeBaseApi } from '@/api/knowledgeBase'
+import KbSidebar from '@/components/common/KbSidebar.vue'
+import type { KbNavItem } from '@/components/common/KbSidebar.vue'
 import type { KnowledgeBase, SearchMode, SearchResultItem, SearchResponse } from '@/api/types'
 import EmptyState from '@/components/common/EmptyState.vue'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
@@ -451,6 +432,17 @@ const route = useRoute()
 
 const spaceId = computed(() => Number(route.params.id))
 const currentKbId = computed(() => route.query.kbId || '')
+
+const kbNavItems = computed<KbNavItem[]>(() => {
+  const sid = spaceId.value
+  const kid = currentKbId.value
+  return [
+    { label: '文档管理', to: `/home/spaces/${sid}/knowledge-bases/${kid}/documents`, route: 'Documents', active: route.name === 'Documents' || route.name === 'DocumentDetail', icon: Document },
+    { label: '任务列表', to: `/home/spaces/${sid}/knowledge-bases/${kid}/tasks`, route: 'DocumentTasks', active: route.name === 'DocumentTasks', icon: DataAnalysis },
+    { label: '检索', to: `/home/spaces/${sid}/search?kbId=${kid}`, route: 'Search', active: route.name === 'Search', icon: Search },
+    { label: '评测', to: `/home/spaces/${sid}/knowledge-bases/${kid}/evaluation`, route: 'KbEvaluation', active: route.name === 'KbEvaluation', icon: DataAnalysis },
+  ]
+})
 
 const spaceTypes = ref<string[]>(['text'])
 const hasImage = computed(() => hasModality(spaceTypes.value, 'image'))
@@ -817,74 +809,86 @@ onMounted(async () => {
 <style scoped>
 /* ===== Root Layout ===== */
 .search-view {
-  display: flex;
-  flex-direction: column;
   height: 100%;
 }
 
-/* ===== Sub Navigation ===== */
-.page-nav {
+/* ===== KB Layout: Sidebar + Content ===== */
+.kb-layout {
+  display: flex;
+  height: 100%;
+}
+
+/* ===== Right Content ===== */
+.kb-content {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== Top: Search Query Bar ===== */
+.search-query-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
   border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-card);
   flex-shrink: 0;
 }
 
-.nav-tabs {
-  display: flex;
+.query-input {
+  flex: 1;
 }
 
-.nav-tab {
-  padding: var(--space-3) var(--space-4);
+.query-input :deep(.el-textarea__inner) {
+  border-radius: var(--radius-lg);
   font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  text-decoration: none;
-  transition: all var(--transition-fast);
-  position: relative;
-  font-weight: var(--weight-medium);
+  line-height: 1.5;
+  padding: 8px 14px;
 }
 
-.nav-tab:hover {
-  color: var(--color-text-secondary);
+.query-search-btn {
+  flex-shrink: 0;
+  height: 38px;
+  border-radius: var(--radius-lg);
+  font-weight: var(--weight-semibold);
+  padding: 0 var(--space-5);
 }
 
-.nav-tab.active {
-  color: var(--color-primary);
-}
-
-.nav-tab.active::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 2px;
-  background: var(--color-primary);
-  border-radius: 2px 2px 0 0;
-}
-
-/* ===== Two-Panel Body ===== */
+/* ===== Below: Results + Params ===== */
 .search-body {
   display: flex;
   flex: 1;
   overflow: hidden;
 }
 
-/* ===== Left Panel ===== */
-.search-left {
-  width: 320px;
+/* ===== Main: Search Results ===== */
+.search-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-5);
+  background: var(--color-bg);
+}
+
+/* ===== Right: Search Params ===== */
+.search-params {
+  width: 280px;
   flex-shrink: 0;
   background: var(--color-bg-card);
-  border-right: 1px solid var(--color-border);
+  border-left: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
 }
 
-.left-section {
+.param-section {
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border);
 }
 
-.left-label {
+.param-section-label {
   display: block;
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
@@ -893,13 +897,8 @@ onMounted(async () => {
   margin-bottom: var(--space-2);
 }
 
-.left-full-select {
+.param-full-select {
   width: 100%;
-}
-
-.left-section :deep(.el-textarea__inner) {
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
 }
 
 /* Param rows */
@@ -962,13 +961,13 @@ onMounted(async () => {
   right: 4px;
 }
 
-/* Left collapse (advanced) */
-.left-collapse {
+/* Params collapse (advanced) */
+.params-collapse {
   border: none;
   border-bottom: 1px solid var(--color-border);
 }
 
-.left-collapse :deep(.el-collapse-item__header) {
+.params-collapse :deep(.el-collapse-item__header) {
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   color: var(--color-text-muted);
@@ -979,12 +978,12 @@ onMounted(async () => {
   border: none;
 }
 
-.left-collapse :deep(.el-collapse-item__wrap) {
+.params-collapse :deep(.el-collapse-item__wrap) {
   background: transparent;
   border: none;
 }
 
-.left-collapse :deep(.el-collapse-item__content) {
+.params-collapse :deep(.el-collapse-item__content) {
   padding: 0 var(--space-4) var(--space-4);
 }
 
@@ -1020,29 +1019,6 @@ onMounted(async () => {
 
 .adv-row :deep(.el-slider) {
   flex: 1;
-}
-
-/* Left footer */
-.left-footer {
-  padding: var(--space-4);
-  margin-top: auto;
-  border-top: 1px solid var(--color-border);
-}
-
-.search-submit-btn {
-  width: 100%;
-  height: 40px;
-  border-radius: var(--radius-lg);
-  font-weight: var(--weight-semibold);
-  font-size: var(--text-sm);
-}
-
-/* ===== Right Panel ===== */
-.search-right {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-5);
-  background: var(--color-bg);
 }
 
 /* Results header */
@@ -1339,8 +1315,8 @@ onMounted(async () => {
   color: var(--color-text-faint);
 }
 
-/* Right empty state (before search) */
-.right-empty {
+/* Search empty state (before search) */
+.search-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1349,14 +1325,14 @@ onMounted(async () => {
   gap: var(--space-3);
 }
 
-.right-empty-title {
+.search-empty-title {
   font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
   color: var(--color-text-muted);
   margin: 0;
 }
 
-.right-empty-desc {
+.search-empty-desc {
   font-size: var(--text-sm);
   color: var(--color-text-faint);
   margin: 0;

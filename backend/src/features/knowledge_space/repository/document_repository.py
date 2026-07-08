@@ -3,17 +3,20 @@
 
 处理文档的数据访问操作
 支持知识库层级
+
+注意：处理状态已迁移至 DocumentTask 模型。
+本文档仓储仅负责 Document（文件元数据）的 CRUD。
+状态统计通过 LEFT JOIN document_tasks 实现。
 """
 
 from typing import Optional, List, Dict, Any
-from datetime import datetime
-from src.shared.utils.time_utils import now_china
-
 from sqlalchemy import select, update, delete, func, cast, Integer, case
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import outerjoin, selectinload
 
-from src.features.knowledge_space.models.document import Document, DocumentStatus
+from src.features.knowledge_space.models.document import Document
+from src.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
+from src.shared.utils.time_utils import now_china
 from src.shared.cache.redis_client import get_redis_client
 from src.core.middleware.structured_logging import get_logger
 
@@ -29,7 +32,8 @@ class DocumentRepository:
     """
     文档仓储
 
-    处理文档的 CRUD 操作，支持知识库层级
+    处理文档的 CRUD 操作，支持知识库层级。
+    处理状态统计通过 LEFT JOIN document_tasks 获取最新 Task 状态。
     """
 
     def __init__(self, session: AsyncSession):
@@ -78,6 +82,8 @@ class DocumentRepository:
         except Exception as e:
             self.logger.warning("失效文档缓存失败", document_id=document_id, error=str(e))
 
+    # ========== CRUD ==========
+
     async def create(self, data: Dict[str, Any]) -> Document:
         """
         创建文档
@@ -88,6 +94,9 @@ class DocumentRepository:
         Returns:
             创建的文档实例
         """
+        if "storage" not in data or data["storage"] is None:
+            data = {**data, "storage": {}}
+
         document = Document(**data)
         self.session.add(document)
         await self.session.flush()
@@ -121,22 +130,20 @@ class DocumentRepository:
     async def get_by_kb(
         self,
         kb_id: int,
-        status: Optional[DocumentStatus] = None,
         skip: int = 0,
         limit: int = 100,
     ) -> List[Document]:
         """获取知识库内的文档列表"""
-        return await self._list_by_parent(Document.kb_id, kb_id, status, skip, limit)
+        return await self._list_by_parent(Document.kb_id, kb_id, skip, limit)
 
     async def get_by_space(
         self,
         space_id: int,
-        status: Optional[DocumentStatus] = None,
         skip: int = 0,
         limit: int = 100,
     ) -> List[Document]:
         """获取空间内的文档列表"""
-        return await self._list_by_parent(Document.space_id, space_id, status, skip, limit)
+        return await self._list_by_parent(Document.space_id, space_id, skip, limit)
 
     async def get_by_hash(
         self,
@@ -223,38 +230,9 @@ class DocumentRepository:
         )
         return result.scalar_one_or_none()
 
-    async def update_status(
-        self,
-        document_id: int,
-        status: DocumentStatus,
-        error_message: Optional[str] = None,
-    ) -> Optional[Document]:
-        """
-        更新文档处理状态
-
-        Args:
-            document_id: 文档 ID
-            status: 新状态
-            error_message: 错误信息（可选）
-
-        Returns:
-            更新后的文档实例或 None
-        """
-        document = await self.get_by_id(document_id)
-        if not document:
-            return None
-
-        document.status = status
-        if error_message:
-            document.set_error(error_message)
-
-        await self.session.flush()
-        await self.session.refresh(document)
-        return document
-
     async def delete(self, document_id: int) -> bool:
         """
-        软删除文档（设置 deleted_at 和 status，同时失效缓存）
+        软删除文档（设置 deleted_at，同时失效缓存）
 
         Args:
             document_id: 文档 ID
@@ -278,9 +256,7 @@ class DocumentRepository:
                 error=str(e),
             )
 
-        # 软删除：设置 deleted_at 和 status，修改 file_hash 以解除唯一约束
-        # file_hash 是 varchar(64)，SHA-256 恰好 64 字符，不能直接 concat
-        # 截断前缀 + 短后缀，确保总长度 ≤ 64: prefix(48) + "_del_"(5) + id(≤11) = 64
+        # 软删除：设置 deleted_at，修改 file_hash 以解除唯一约束
         deleted_hash = func.concat(
             func.substring(Document.file_hash, 1, 48),
             f"_del_{document_id}",
@@ -290,7 +266,6 @@ class DocumentRepository:
             .where(Document.id == document_id)
             .values(
                 deleted_at=now_china(),
-                status=DocumentStatus.DELETED,
                 file_hash=deleted_hash,
             )
         )
@@ -305,6 +280,8 @@ class DocumentRepository:
         """
         软删除知识库内的所有文档
 
+        注意：不级联软删除 DocumentTask，查询时通过 document.deleted_at IS NOT NULL 排除。
+
         Args:
             kb_id: 知识库 ID
 
@@ -314,24 +291,16 @@ class DocumentRepository:
         result = await self.session.execute(
             update(Document)
             .where(Document.kb_id == kb_id, Document.deleted_at.is_(None))
-            .values(
-                deleted_at=now_china(),
-                status=DocumentStatus.DELETED,
-            )
+            .values(deleted_at=now_china())
         )
         return result.rowcount
 
-    async def count_by_kb(
-        self,
-        kb_id: int,
-        status: Optional[DocumentStatus] = None,
-    ) -> int:
+    async def count_by_kb(self, kb_id: int) -> int:
         """
         统计知识库内的文档数量
 
         Args:
             kb_id: 知识库 ID
-            status: 状态过滤
 
         Returns:
             文档数量
@@ -340,16 +309,12 @@ class DocumentRepository:
             Document.kb_id == kb_id,
             Document.deleted_at.is_(None),
         )
-
-        if status is not None:
-            query = query.where(Document.status == status)
-
         result = await self.session.execute(query)
         return result.scalar() or 0
 
     async def get_storage_size(self, kb_id: int) -> int:
         """
-        获取知识库的存储使用量
+        获取知识库的存储使用量（所有未删除文档的文件大小之和）
 
         Args:
             kb_id: 知识库 ID
@@ -360,14 +325,15 @@ class DocumentRepository:
         result = await self.session.execute(
             select(func.sum(Document.file_size)).where(
                 Document.kb_id == kb_id,
-                Document.status != DocumentStatus.FAILED,
                 Document.deleted_at.is_(None),
             )
         )
         return result.scalar() or 0
 
+    # ========== 统计查询 ==========
+
     async def get_kb_realtime_stats(self, kb_id: int) -> Dict[str, Any]:
-        """实时统计知识库信息（排除软删除文档）"""
+        """实时统计知识库信息（排除软删除文档），通过 LEFT JOIN document_tasks 获取状态"""
         stmt = self._build_stats_select().where(
             Document.kb_id == kb_id,
             Document.deleted_at.is_(None),
@@ -387,15 +353,49 @@ class DocumentRepository:
         return {row.kb_id: self._row_to_stats_dict(row) for row in result.all()}
 
     async def get_space_realtime_stats(self, space_id: int) -> Dict[str, Any]:
-        """实时统计空间内文档信息（排除软删除文档）"""
+        """实时统计空间内文档信息（排除软删除文档）
+
+        注意：chunk_count 从 document_tasks 的最新 COMPLETED 任务的 pipeline_result 聚合。
+        """
+        # 子查询：每个文档最新 COMPLETED 任务的 pipeline_result
+        latest_completed_subq = (
+            select(
+                DocumentTask.document_id,
+                DocumentTask.pipeline_result,
+                func.row_number().over(
+                    partition_by=DocumentTask.document_id,
+                    order_by=DocumentTask.id.desc(),
+                ).label("rn"),
+            )
+            .where(DocumentTask.status == TaskStatus.COMPLETED)
+            .subquery()
+        )
+
+        latest_completed = (
+            select(
+                latest_completed_subq.c.document_id,
+                latest_completed_subq.c.pipeline_result,
+            )
+            .where(latest_completed_subq.c.rn == 1)
+            .subquery("latest_completed")
+        )
+
         result = await self.session.execute(
             select(
                 func.count(Document.id).label("document_count"),
                 func.coalesce(func.sum(
-                    cast(func.json_extract(Document.doc_metadata, "$.chunk_count"), Integer)
+                    cast(func.json_extract(latest_completed.c.pipeline_result, "$.chunk_count"), Integer)
                 ), 0).label("chunk_count"),
                 func.coalesce(func.sum(Document.file_size), 0).label("total_size_bytes"),
-            ).where(
+            )
+            .select_from(
+                outerjoin(
+                    Document,
+                    latest_completed,
+                    latest_completed.c.document_id == Document.id,
+                )
+            )
+            .where(
                 Document.space_id == space_id,
                 Document.deleted_at.is_(None),
             )
@@ -441,72 +441,92 @@ class DocumentRepository:
         )
         return list(result.scalars().all())
 
-    async def get_processing_documents(
-        self,
-        limit: int = 100,
-    ) -> List[Document]:
-        """获取正在处理中的文档（用于后台任务）"""
-        return await self._get_by_status(DocumentStatus.PROCESSING, limit)
-
-    async def get_uploaded_documents(
-        self,
-        limit: int = 100,
-    ) -> List[Document]:
-        """获取已上传的文档（用于拆分解析触发）"""
-        return await self._get_by_status(DocumentStatus.UPLOADED, limit)
-
-    # ---------- 共享私有方法 ----------
+    # ---------- 私有方法 ----------
 
     async def _list_by_parent(
         self,
         column,
         parent_id: int,
-        status: Optional[DocumentStatus] = None,
         skip: int = 0,
         limit: int = 100,
     ) -> List[Document]:
         """按父级字段（kb_id 或 space_id）查询文档列表"""
-        query = select(Document).where(
-            column == parent_id,
-            Document.deleted_at.is_(None),
+        query = (
+            select(Document)
+            .where(
+                column == parent_id,
+                Document.deleted_at.is_(None),
+            )
+            .order_by(Document.created_at.desc())
+            .offset(skip)
+            .limit(limit)
         )
-        if status is not None:
-            query = query.where(Document.status == status)
-        query = query.order_by(Document.created_at.desc()).offset(skip).limit(limit)
-        result = await self.session.execute(query)
-        return list(result.scalars().all())
-
-    async def _get_by_status(
-        self,
-        status: DocumentStatus,
-        limit: int = 100,
-    ) -> List[Document]:
-        """按状态查询文档列表"""
-        query = select(Document).where(
-            Document.status == status,
-            Document.deleted_at.is_(None),
-        ).order_by(Document.created_at.asc()).limit(limit)
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
     @staticmethod
     def _build_stats_select(with_kb_id: bool = False):
-        """构建统计查询的 select 子句"""
+        """
+        构建统计查询的 select 子句
+
+        通过 LEFT JOIN document_tasks（窗口函数取每个文档的最新一条 Task）
+        获取当前处理状态和 chunk_count。
+
+        无 Task 的文档视为 pending（status=0, PENDING）。
+        """
+        # 子查询：按 document_id 分区，取每个文档的最新 Task 记录
+        ranked = (
+            select(
+                DocumentTask.document_id,
+                DocumentTask.status,
+                DocumentTask.pipeline_result,
+                func.row_number().over(
+                    partition_by=DocumentTask.document_id,
+                    order_by=DocumentTask.id.desc(),
+                ).label("rn"),
+            ).subquery()
+        )
+
+        latest = (
+            select(
+                ranked.c.document_id.label("doc_id"),
+                ranked.c.status.label("task_status"),
+                ranked.c.pipeline_result.label("pipeline_result"),
+            )
+            .where(ranked.c.rn == 1)
+            .subquery("latest_task")
+        )
+
         columns = []
         if with_kb_id:
             columns.append(Document.kb_id)
+
         columns.extend([
             func.count(Document.id).label("document_count"),
             func.coalesce(func.sum(
-                cast(func.json_extract(Document.doc_metadata, "$.chunk_count"), Integer)
+                cast(func.json_extract(latest.c.pipeline_result, "$.chunk_count"), Integer)
             ), 0).label("chunk_count"),
             func.coalesce(func.sum(Document.file_size), 0).label("total_size_bytes"),
-            func.coalesce(func.sum(case((Document.status == DocumentStatus.UPLOADED, 1), else_=0)), 0).label("uploaded"),
-            func.coalesce(func.sum(case((Document.status == DocumentStatus.COMPLETED, 1), else_=0)), 0).label("completed"),
-            func.coalesce(func.sum(case((Document.status == DocumentStatus.FAILED, 1), else_=0)), 0).label("failed"),
-            func.coalesce(func.sum(case((Document.status == DocumentStatus.PROCESSING, 1), else_=0)), 0).label("processing"),
+            # pending: 无 Task 或 Task.status == PENDING
+            func.coalesce(func.sum(case(
+                (latest.c.doc_id.is_(None), 1),
+                (latest.c.task_status == TaskStatus.PENDING, 1),
+                else_=0,
+            )), 0).label("pending"),
+            func.coalesce(func.sum(case(
+                (latest.c.task_status == TaskStatus.COMPLETED, 1), else_=0
+            )), 0).label("completed"),
+            func.coalesce(func.sum(case(
+                (latest.c.task_status == TaskStatus.FAILED, 1), else_=0
+            )), 0).label("failed"),
+            func.coalesce(func.sum(case(
+                (latest.c.task_status == TaskStatus.PROCESSING, 1), else_=0
+            )), 0).label("processing"),
         ])
-        return select(*columns)
+
+        return select(*columns).select_from(
+            outerjoin(Document, latest, latest.c.doc_id == Document.id)
+        )
 
     @staticmethod
     def _row_to_stats_dict(row) -> Dict[str, Any]:
@@ -515,7 +535,7 @@ class DocumentRepository:
             "document_count": row.document_count,
             "chunk_count": row.chunk_count,
             "total_size_mb": round(row.total_size_bytes / (1024 * 1024), 2),
-            "uploaded_documents": row.uploaded,
+            "pending_documents": row.pending,
             "completed_documents": row.completed,
             "failed_documents": row.failed,
             "processing_documents": row.processing,

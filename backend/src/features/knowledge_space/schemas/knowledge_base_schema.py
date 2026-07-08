@@ -23,6 +23,18 @@ from src.features.knowledge_space.models.knowledge_base import KnowledgeBaseStat
 # ========== 切分策略配置 ==========
 
 
+class ImageChunkOverride(BaseModel):
+    """图片专属切分覆盖（可选，不配则每张图片独立为一个分块）"""
+    strategy: Literal["single", "batch"] = Field(
+        default="single",
+        description="切分策略: single(单图单块)/batch(按VLM描述合并多图)",
+    )
+    chunk_size: int = Field(
+        default=2000, ge=100, le=4000,
+        description="batch 模式下聚合的最大字符数",
+    )
+
+
 class AudioChunkOverride(BaseModel):
     """音频专属切分覆盖（可选，不配则走默认文本切分）"""
     strategy: Literal["sentence", "fixed"] = Field(
@@ -61,6 +73,7 @@ class SplittingConfig(BaseModel):
     max_chunk_size: int = Field(default=2000, ge=100, le=8000, description="最大分块大小（markdown/semantic）")
     similarity_threshold: float = Field(default=0.7, ge=0.0, le=1.0, description="语义相似度阈值（semantic 专属）")
     batch_size: int = Field(default=20, ge=1, le=100, description="语义切分批处理大小（semantic 专属）")
+    image: Optional[ImageChunkOverride] = Field(default=None, description="图片专属切分（不配则使用默认策略）")
     audio: Optional[AudioChunkOverride] = Field(default=None, description="音频专属切分（不配则使用默认策略）")
     video: Optional[VideoChunkOverride] = Field(default=None, description="视频专属切分（不配则使用默认策略）")
 
@@ -78,6 +91,10 @@ class ParsingConfig(BaseModel):
     vlm_description_enabled: bool = Field(
         default=False,
         description="是否启用 VLM 图片描述（多模态空间），开启后上传图片时调用视觉模型生成文本描述，支持 BM25 + 文本向量检索",
+    )
+    vlm_model: Optional[str] = Field(
+        default=None,
+        description="VLM 视觉模型名称，为空则使用空间或系统默认",
     )
     # 视频解析配置（全模态空间）
     video: Optional["VideoParsingConfig"] = Field(
@@ -108,6 +125,10 @@ class AudioParsingConfig(BaseModel):
     asr_model: str = Field(
         default="whisper-1",
         description="ASR 转写模型名称，默认 whisper-1",
+    )
+    language: Optional[str] = Field(
+        default=None,
+        description="转写语言提示（如 zh/en/ja/ko），为空则自动检测",
     )
 
 
