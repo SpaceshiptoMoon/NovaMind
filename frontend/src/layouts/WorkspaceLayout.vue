@@ -438,7 +438,7 @@ onMounted(async () => {
 }
 
 .channel-icon-btn.active {
-  background: var(--color-primary-muted);
+  background: var(--el-color-primary-light-9);
   color: var(--color-primary);
 }
 
@@ -474,7 +474,7 @@ onMounted(async () => {
 }
 
 .list-item.active {
-  background: var(--color-primary-muted);
+  background: var(--el-color-primary-light-9);
 }
 
 .list-item.active::before {

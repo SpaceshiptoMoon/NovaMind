@@ -48,6 +48,7 @@ async def process_document_task(
     """
     from src.core.database.database import get_db_session
     from src.features.knowledge_space.models.document_task import TaskStatus
+    from src.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
     from src.features.knowledge_space.repository.document_repository import DocumentRepository
     from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
     from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
@@ -66,6 +67,7 @@ async def process_document_task(
         doc_repo = DocumentRepository(session)
         kb_repo = KnowledgeBaseRepository(session)
         task_repo = DocumentTaskRepository(session)
+        batch_repo = DocumentTaskBatchRepository(session)
 
         # 1. 幂等性校验：仅处理合法状态的任务
         task = await task_repo.get_by_document_id(document_id)
@@ -97,6 +99,9 @@ async def process_document_task(
         # 2. 标记处理中
         task.mark_processing()
         await session.commit()
+        if task.batch_id:
+            await batch_repo.refresh_summary(task.batch_id)
+            await session.commit()
 
         try:
             # 3. 从 MinIO 下载文件
@@ -123,6 +128,9 @@ async def process_document_task(
             # 5. 成功：标记任务完成
             task.mark_completed(result)
             await session.commit()
+            if task.batch_id:
+                await batch_repo.refresh_summary(task.batch_id)
+                await session.commit()
 
             # 6. 失效搜索缓存
             try:
@@ -161,6 +169,11 @@ async def process_document_task(
 
                 # 强制标记 FAILED（优先用独立 session，兜底用 raw SQL）
                 await _ensure_mark_failed(document_id, str(e))
+                if task.batch_id:
+                    refreshed = await task_repo.get_by_document_id(document_id)
+                    if refreshed and refreshed.batch_id:
+                        await batch_repo.refresh_summary(refreshed.batch_id)
+                        await session.commit()
 
                 # 清理 ES 残留数据（非关键，失败不影响状态）
                 try:
@@ -197,12 +210,16 @@ async def _ensure_mark_failed(document_id: int, error_message: str) -> None:
     try:
         from src.core.database.database import get_db_session
         from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from src.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
 
         async with get_db_session() as independent_session:
             repo = DocumentTaskRepository(independent_session)
+            batch_repo = DocumentTaskBatchRepository(independent_session)
             task = await repo.get_by_document_id(document_id)
             if task:
                 task.mark_failed(failed_msg)
+                if task.batch_id:
+                    await batch_repo.refresh_summary(task.batch_id)
                 await independent_session.commit()
                 logger.info("任务已标记 FAILED（ORM）", document_id=document_id)
                 return
@@ -240,64 +257,6 @@ async def _ensure_mark_failed(document_id: int, error_message: str) -> None:
         "任务状态更新全部失败，任务将卡在 PROCESSING 直到服务重启",
         document_id=document_id,
     )
-
-
-async def _handle_final_failure(
-    session,
-    doc_repo,
-    document_id: int,
-    error_message: str,
-) -> None:
-    """
-    最终重试失败后的事务补偿
-
-    使用独立 DB session，避免被外层 session.rollback() 回滚。
-    保留 MinIO 源文件以便后续手动重处理。
-
-    Args:
-        session: 原始数据库会话（已 rollback，不在此使用）
-        doc_repo: 文档仓储（基于原始 session，不在此使用）
-        document_id: 文档 ID
-        error_message: 错误信息
-    """
-    from src.core.database.database import get_db_session
-    from src.features.knowledge_space.repository.document_repository import DocumentRepository
-    from src.shared.clients import ClientFactory
-
-    # 使用独立 session，确保 mark_failed 不被外层 rollback 影响
-    async with get_db_session() as independent_session:
-        try:
-            independent_repo = DocumentRepository(independent_session)
-            document = await independent_repo.get_by_id(document_id)
-            if not document:
-                return
-
-            # 清理 ES 中的部分数据
-            try:
-                es_client = await ClientFactory.get_elasticsearch_client()
-                await es_client.delete_document_chunks(
-                    space_id=document.space_id,
-                    document_id=document.id,
-                )
-            except Exception as e:
-                logger.warning("清理 ES 数据失败", document_id=document.id, error=str(e))
-
-            # 保留 MinIO 源文件，以便后续手动重处理
-
-            document.mark_failed(f"[已重试最大次数] {error_message}")
-            await independent_session.commit()
-
-            # 事务提交成功后失效搜索缓存
-            try:
-                from src.shared.cache.redis_client import get_redis_client
-                cache = await get_redis_client()
-                await cache.delete_by_pattern(f"search:{document.kb_id}:*", batch_size=100)
-            except Exception as cache_err:
-                logger.warning("搜索缓存失效失败", kb_id=document.kb_id, error=str(cache_err))
-
-            logger.info("文档事务补偿完成", document_id=document.id, status="failed")
-        except Exception as e:
-            logger.error("事务补偿失败", document_id=document_id, error=str(e))
 
 
 async def _handle_cancellation(document_id: int, space_id: int) -> None:

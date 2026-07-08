@@ -1,13 +1,12 @@
 """
 Agent 工具调用记录模型
 """
-from sqlalchemy import Column, BigInteger, String, Text, Integer, JSON, DateTime, ForeignKey, Index
+from sqlalchemy import Column, BigInteger, String, Text, Integer, JSON, ForeignKey, Index
 
-from src.core.database.base import Base
-from src.shared.utils.time_utils import now_china
+from src.core.database.base import BaseModel
 
 
-class AgentToolCall(Base):
+class AgentToolCall(BaseModel):
     """Agent 工具调用记录"""
     __tablename__ = "agent_tool_calls"
 
@@ -21,7 +20,6 @@ class AgentToolCall(Base):
     status = Column(String(20), default="pending", comment="状态：pending/running/completed/failed")
     error_message = Column(Text, nullable=True, comment="错误信息")
     duration_ms = Column(Integer, nullable=True, comment="执行耗时（毫秒）")
-    created_at = Column(DateTime, default=now_china, nullable=False)
 
     __table_args__ = (
         Index("idx_message", "message_id"),

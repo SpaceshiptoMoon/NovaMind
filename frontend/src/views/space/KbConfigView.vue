@@ -12,12 +12,12 @@
           v-for="(s, i) in steps"
           :key="s.title"
           :title="s.title"
-          :class="{ clickable: i <= maxReachedStep }"
+          :class="{ clickable: true }"
           @click="goToStep(i)"
         />
       </el-steps>
 
-      <!-- ─── Step 1: 数据类型 ─── -->
+      <!-- ─── 数据类型 ─── -->
       <section v-show="currentStep === 0" class="step-section">
         <div class="step-heading">
           <span class="step-icon">📦</span>
@@ -30,7 +30,7 @@
         <el-checkbox-group v-model="configForm.kbSpaceTypes" class="modality-checkboxes">
           <el-checkbox label="text">
             <span class="modality-label">📄 文本</span>
-            <span class="modality-desc">PDF / Word / TXT / MD / Excel / PPT / HTML / JSON</span>
+            <span class="modality-desc">PDF / Word / TXT / MD / CSV / HTML / JSON</span>
           </el-checkbox>
           <el-checkbox label="image">
             <span class="modality-label">🖼 图片</span>
@@ -68,7 +68,7 @@
             </div>
             <el-tag size="small" type="info" effect="plain">继承自空间</el-tag>
           </div>
-          <div v-if="hasImageModality" class="info-card">
+          <div v-if="showMmEmbeddingCard" class="info-card">
             <div class="info-card-icon embed-icon">🖼️</div>
             <div class="info-card-body">
               <span class="info-card-label">多模态 Embedding 模型</span>
@@ -92,28 +92,28 @@
           </el-form>
         </div>
 
+        <!-- VLM（image 或 video 勾选时显示） -->
+        <div v-if="hasImage || hasVideo" class="sub-section">
+          <h4 class="sub-title">👁️ 视觉模型 (VLM)</h4>
+          <p class="sub-desc">用于图片描述和视频帧理解，留空使用系统默认。</p>
+          <el-form :model="configForm" label-width="100px" class="config-form">
+            <el-form-item label="VLM 模型">
+              <el-select v-model="configForm.parsingVlmModel" placeholder="系统默认" clearable filterable style="width: 100%">
+                <el-option v-for="m in vlmModels" :key="m.model" :label="m.model" :value="m.model" />
+              </el-select>
+            </el-form-item>
+          </el-form>
+        </div>
+
         <!-- ASR（audio 勾选时显示） -->
         <div v-if="hasAudio" class="sub-section">
           <h4 class="sub-title">🎵 语音转写模型 (ASR)</h4>
-          <el-form label-width="120px" class="config-form" style="max-width: 560px">
+          <el-form label-width="100px" class="config-form" style="max-width: 560px">
             <el-form-item label="ASR 模型">
               <el-select v-model="configForm.audioAsrModel" placeholder="默认 (whisper-1)" clearable filterable style="width: 100%">
                 <el-option v-for="m in asrModels" :key="m.model" :label="m.model" :value="m.model" />
               </el-select>
               <span class="form-hint">语音转文字，留空使用默认</span>
-            </el-form-item>
-          </el-form>
-        </div>
-
-        <!-- 视频抽帧（video 勾选时显示） -->
-        <div v-if="hasVideo" class="sub-section">
-          <h4 class="sub-title">🎬 视频抽帧</h4>
-          <el-form label-width="120px" class="config-form" style="max-width: 560px">
-            <el-form-item label="抽帧间隔(秒)">
-              <el-slider v-model="configForm.videoFrameInterval" :min="1" :max="60" show-input :show-input-controls="false" />
-            </el-form-item>
-            <el-form-item label="最大帧数">
-              <el-input-number v-model="configForm.videoMaxFrames" :min="1" :max="200" style="width: 100%" />
             </el-form-item>
           </el-form>
         </div>
@@ -132,7 +132,7 @@
         <!-- 文本解析 -->
         <div class="sub-section">
           <h4 class="sub-title">📝 文本解析</h4>
-          <el-form ref="parsingFormRef" :model="configForm" label-width="110px" class="config-form">
+          <el-form :model="configForm" label-width="110px" class="config-form">
             <el-row :gutter="24">
               <el-col :span="12">
                 <el-form-item label="提取图片">
@@ -164,6 +164,48 @@
             </el-form-item>
           </el-form>
         </div>
+
+        <!-- 图片解析（image 勾选时显示） -->
+        <div v-if="hasImage" class="sub-section">
+          <h4 class="sub-title">🖼 图片解析</h4>
+          <el-form :model="configForm" label-width="140px" class="config-form">
+            <el-form-item label="VLM 图片描述">
+              <el-switch v-model="configForm.parsingVlmDescription" />
+              <span class="form-hint">调用视觉模型生成图片文本描述，使图片可被文本检索</span>
+            </el-form-item>
+          </el-form>
+        </div>
+
+        <!-- 视频解析（video 勾选时显示） -->
+        <div v-if="hasVideo" class="sub-section">
+          <h4 class="sub-title">🎬 视频解析</h4>
+          <el-form label-width="110px" class="config-form" style="max-width: 560px">
+            <el-form-item label="抽帧间隔(秒)">
+              <el-slider v-model="configForm.videoFrameInterval" :min="1" :max="60" show-input :show-input-controls="false" />
+            </el-form-item>
+            <el-form-item label="最大帧数">
+              <el-input-number v-model="configForm.videoMaxFrames" :min="1" :max="200" style="width: 100%" />
+            </el-form-item>
+          </el-form>
+        </div>
+
+        <!-- 音频转写参数（audio 勾选时显示） -->
+        <div v-if="hasAudio" class="sub-section">
+          <h4 class="sub-title">🎵 音频转写参数</h4>
+          <el-form label-width="100px" class="config-form" style="max-width: 560px">
+            <el-form-item label="转写语言">
+              <el-select v-model="configForm.audioAsrLanguage" placeholder="自动检测" clearable style="width: 100%">
+                <el-option label="自动检测" value="" />
+                <el-option label="中文" value="zh" />
+                <el-option label="英文" value="en" />
+                <el-option label="日文" value="ja" />
+                <el-option label="韩文" value="ko" />
+              </el-select>
+              <span class="form-hint">指定语言可提升识别准确率，留空自动检测</span>
+            </el-form-item>
+          </el-form>
+        </div>
+
       </section>
 
       <!-- ─── Step 4: 切分策略 ─── -->
@@ -179,7 +221,7 @@
         <!-- 文本切分 -->
         <div class="sub-section">
           <h4 class="sub-title">📝 文本切分</h4>
-          <el-form ref="splittingFormRef" :model="configForm" :rules="splittingRules" label-width="110px" class="config-form">
+          <el-form :model="configForm" label-width="110px" class="config-form">
           <el-form-item label="切分策略" prop="splittingStrategy">
             <el-select v-model="configForm.splittingStrategy" style="width: 100%">
               <el-option label="递归字符切分" value="recursive">
@@ -254,6 +296,7 @@
             </el-form-item>
           </template>
         </el-form>
+        </div>
 
         <!-- 音频切片（audio 勾选时显示） -->
         <div v-if="hasAudio" class="sub-section">
@@ -270,6 +313,34 @@
             </el-form-item>
           </el-form>
         </div>
+
+        <!-- 视频切片（video 勾选时显示） -->
+        <div v-if="hasVideo" class="sub-section">
+          <h4 class="sub-title">🎬 视频切片</h4>
+          <el-form label-width="120px" class="config-form" style="max-width: 560px">
+            <el-form-item label="聚合最大字符数">
+              <el-input-number v-model="configForm.videoChunkSize" :min="100" :max="4000" style="width: 100%" />
+              <span class="form-hint">将连续帧的描述文本合并，不超过此字符数</span>
+            </el-form-item>
+          </el-form>
+        </div>
+
+        <!-- 图片切分（image 勾选时显示） -->
+        <div v-if="hasImage" class="sub-section">
+          <h4 class="sub-title">🖼 图片切分</h4>
+          <el-form label-width="120px" class="config-form" style="max-width: 560px">
+            <el-form-item label="切分方式">
+              <el-radio-group v-model="configForm.imageChunkStrategy">
+                <el-radio value="single">单图单块</el-radio>
+                <el-radio value="batch">按描述合并</el-radio>
+              </el-radio-group>
+              <span class="form-hint">单图单块：每张图片独立为一个分块；按描述合并：多张图片VLM描述按字符数聚合</span>
+            </el-form-item>
+            <el-form-item v-if="configForm.imageChunkStrategy === 'batch'" label="聚合最大字符数">
+              <el-input-number v-model="configForm.imageChunkSize" :min="100" :max="4000" style="width: 100%" />
+            </el-form-item>
+          </el-form>
+        </div>
       </section>
 
       <!-- ─── Step 5: 生成策略 ─── -->
@@ -282,7 +353,7 @@
           </div>
         </div>
 
-        <el-form ref="generationFormRef" :model="configForm" label-width="120px" class="config-form">
+        <el-form :model="configForm" label-width="120px" class="config-form">
           <el-form-item label="启用问题生成">
             <el-switch v-model="configForm.qgEnabled" />
             <span class="form-hint">{{ configForm.qgEnabled ? '已开启，处理文档时将自动生成假设问题' : '关闭后将跳过问题生成步骤' }}</span>
@@ -303,11 +374,8 @@
       </section>
 
       <div class="config-footer">
-        <el-button v-if="currentStep > 0" @click="prev">上一步</el-button>
-        <div class="footer-spacer" />
         <el-button @click="goList">取消</el-button>
-        <el-button v-if="currentStep < steps.length - 1" type="primary" @click="next">下一步</el-button>
-        <el-button v-else type="primary" :loading="saving" @click="onSave">保存配置</el-button>
+        <el-button type="primary" :loading="saving" @click="onSave">保存配置</el-button>
       </div>
     </el-card>
   </div>
@@ -317,7 +385,6 @@
 import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { FormInstance, FormRules } from 'element-plus'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { knowledgeBaseApi } from '@/api/knowledgeBase'
 import { spaceApi } from '@/api/space'
@@ -334,9 +401,13 @@ const goListPath = computed(() => `/home/spaces/${spaceId.value}/knowledge-bases
 
 const spaceTypes = ref<string[]>(['text'])
 const kbSpaceTypes = ref<string[]>(['text'])
-const hasVideo = computed(() => hasModality(kbSpaceTypes.value, 'video'))
-const hasAudio = computed(() => hasModality(kbSpaceTypes.value, 'audio'))
-const hasImageModality = computed(() => hasModality(spaceTypes.value, 'image'))
+// 这些 computed 绑定 configForm.kbSpaceTypes，Step 1 勾选时实时响应
+const hasText = computed(() => configForm.kbSpaceTypes.length === 0 || hasModality(configForm.kbSpaceTypes, 'text'))
+const hasImage = computed(() => hasModality(configForm.kbSpaceTypes, 'image'))
+const hasVideo = computed(() => hasModality(configForm.kbSpaceTypes, 'video'))
+const hasAudio = computed(() => hasModality(configForm.kbSpaceTypes, 'audio'))
+// 多模态 Embedding 卡片：取决于 Space（Embedding 由空间统一管理）
+const showMmEmbeddingCard = computed(() => hasModality(spaceTypes.value, 'image'))
 
 const embeddingInfo = reactive({
   text_model: '',
@@ -345,7 +416,10 @@ const embeddingInfo = reactive({
   mm_dimension: null as number | null,
 })
 
-// 5 步：数据类型 → 模型 → 解析 → 切分 → 生成
+const loading = ref(false)
+const saving = ref(false)
+const kbName = ref('')
+
 const steps = [
   { title: '数据类型' },
   { title: '模型配置' },
@@ -353,16 +427,7 @@ const steps = [
   { title: '切分策略' },
   { title: '生成策略' },
 ]
-
 const currentStep = ref(0)
-const maxReachedStep = ref(0)
-const loading = ref(false)
-const saving = ref(false)
-const kbName = ref('')
-
-const parsingFormRef = ref<FormInstance>()
-const splittingFormRef = ref<FormInstance>()
-const generationFormRef = ref<FormInstance>()
 
 const configForm = reactive({
   kbSpaceTypes: ['text'] as string[],
@@ -376,13 +441,20 @@ const configForm = reactive({
   parsingOcrEnabled: false,
   parsingPreserveStructure: true,
   parsingEncoding: 'utf-8',
+  parsingVlmDescription: false,
+  parsingVlmModel: '',
   // 视频
   videoFrameInterval: 5,
   videoMaxFrames: 60,
+  videoChunkSize: 1500,
   // 音频
   audioAsrModel: '',
+  audioAsrLanguage: '',
   audioChunkStrategy: 'sentence' as 'sentence' | 'fixed',
   audioChunkSize: 1000,
+  // 图片切分
+  imageChunkStrategy: 'single' as 'single' | 'batch',
+  imageChunkSize: 2000,
   // 分块
   splittingStrategy: 'recursive' as string,
   splittingChunkSize: 2000,
@@ -397,11 +469,8 @@ const configForm = reactive({
   qgPromptTemplate: '',
 })
 
-const splittingRules: FormRules = {
-  splittingStrategy: [{ required: true, message: '请选择切分策略', trigger: 'change' }],
-}
-
 const llmModels = ref<AvailableModelItem[]>([])
+const vlmModels = ref<AvailableModelItem[]>([])
 const asrModels = ref<AvailableModelItem[]>([])
 
 const dirty = ref(false)
@@ -412,6 +481,7 @@ async function fetchAvailableModels() {
   try {
     const data = await userApi.getAvailableModelDetails()
     llmModels.value = data.llm || []
+    vlmModels.value = data.vlm || []
     asrModels.value = data.asr || []
   } catch { /* ignore */ }
 }
@@ -473,6 +543,8 @@ async function onLoad() {
     configForm.parsingOcrEnabled = (ps?.ocr_enabled as boolean) ?? false
     configForm.parsingPreserveStructure = (ps?.preserve_structure as boolean) ?? true
     configForm.parsingEncoding = (ps?.encoding as string) || 'utf-8'
+    configForm.parsingVlmDescription = (ps?.vlm_description_enabled as boolean) ?? false
+    configForm.parsingVlmModel = (ps?.vlm_model as string) || ''
 
     const vc = (ps?.video as Record<string, unknown>) || {}
     configForm.videoFrameInterval = (vc?.frame_interval as number) ?? 5
@@ -480,8 +552,20 @@ async function onLoad() {
 
     const ac = (ps?.audio as Record<string, unknown>) || {}
     configForm.audioAsrModel = (ac?.asr_model as string) || ''
+    configForm.audioAsrLanguage = (ac?.language as string) || ''
 
-    // 音频切片策略从 splitting 配置读取
+    // 图片切片策略从 splitting.image 读取
+    const imageSp = (sp as { image?: { strategy?: string; chunk_size?: number } })?.image
+    if (imageSp) {
+      configForm.imageChunkStrategy = (imageSp.strategy as 'single' | 'batch') || 'single'
+      configForm.imageChunkSize = imageSp.chunk_size ?? 2000
+    }
+
+    // 视频切片策略从 splitting.video 读取
+    const videoSp = (sp as { video?: { strategy?: string; chunk_size?: number } })?.video
+    if (videoSp) {
+      configForm.videoChunkSize = videoSp.chunk_size ?? 1500
+    }
 
     // 问题生成
     const qg = cfg?.question_generation
@@ -524,32 +608,28 @@ function buildSplittingConfig(): SplittingConfig {
     base.similarity_threshold = configForm.splittingSimilarityThreshold
     base.batch_size = configForm.splittingBatchSize
   }
+  if (hasImage.value) {
+    base.image = {
+      strategy: configForm.imageChunkStrategy,
+      ...(configForm.imageChunkStrategy === 'batch' ? { chunk_size: configForm.imageChunkSize } : {}),
+    }
+  }
   if (hasAudio.value) {
     base.audio = {
       strategy: configForm.audioChunkStrategy,
       ...(configForm.audioChunkStrategy === 'fixed' ? { chunk_size: configForm.audioChunkSize } : {}),
     }
   }
+  if (hasVideo.value) {
+    base.video = {
+      strategy: 'fixed' as const,
+      chunk_size: configForm.videoChunkSize,
+    }
+  }
   return base
 }
 
-// Step 3 解析、Step 4 切分有表单校验，其他步无需
-const _stepFormRefs = [null, null, parsingFormRef, splittingFormRef, null] as const
-
-async function next() {
-  // Step 3 (解析策略) 和 Step 4 (切分与生成) 有表单，其他步无需校验
-  const formRef = _stepFormRefs[currentStep.value]
-  if (formRef?.value) {
-    try { await formRef.value.validate() } catch { return }
-  }
-  if (currentStep.value < steps.length - 1) {
-    currentStep.value++
-    maxReachedStep.value = Math.max(maxReachedStep.value, currentStep.value)
-  }
-}
-
-function prev() { if (currentStep.value > 0) currentStep.value-- }
-function goToStep(i: number) { if (i <= maxReachedStep.value) currentStep.value = i }
+function goToStep(i: number) { currentStep.value = i }
 function goList() { router.push(goListPath.value) }
 
 async function onSave() {
@@ -564,12 +644,17 @@ async function onSave() {
         ocr_enabled: configForm.parsingOcrEnabled,
         preserve_structure: configForm.parsingPreserveStructure,
         encoding: configForm.parsingEncoding || undefined,
+        ...(hasImage.value || hasVideo.value ? {
+          vlm_description_enabled: configForm.parsingVlmDescription,
+          vlm_model: configForm.parsingVlmModel || null,
+        } : {}),
         ...(hasVideo.value ? {
           video: { frame_interval: configForm.videoFrameInterval, max_frames: configForm.videoMaxFrames },
         } : {}),
         ...(hasAudio.value ? {
           audio: {
-            asr_model: configForm.audioAsrModel || undefined,
+            asr_model: configForm.audioAsrModel || null,
+            language: configForm.audioAsrLanguage || null,
           },
         } : {}),
       },
@@ -620,6 +705,7 @@ onMounted(() => {
 .kb-config-page { padding-top: var(--space-2); max-width: 900px; margin: 0 auto; }
 .config-card { max-width: 900px; }
 .steps-bar { margin-bottom: var(--space-6); padding: 0 var(--space-2); }
+:deep(.el-step.clickable) { cursor: pointer; }
 
 .step-section { padding: var(--space-2) var(--space-2) var(--space-4); }
 .step-heading {
@@ -667,8 +753,6 @@ onMounted(() => {
 }
 .footer-spacer { flex: 1; }
 .kb-name-tag { font-size: var(--text-md); color: var(--color-text-muted); font-weight: var(--weight-regular); }
-:deep(.el-step.clickable) { cursor: pointer; }
-
 .modality-checkboxes { display: flex; flex-direction: column; gap: var(--space-2); }
 .modality-checkboxes :deep(.el-checkbox) {
   padding: var(--space-2) var(--space-3); border-radius: var(--radius-md);

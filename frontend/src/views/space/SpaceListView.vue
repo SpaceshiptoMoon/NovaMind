@@ -58,9 +58,10 @@
       <!-- 子页面：极简返回栏（仅 返回 + 面包屑） -->
       <div v-else class="content-header content-header--slim">
         <button v-if="navBack" class="slim-back" @click="handleNavBack">
-          <el-icon><ArrowLeft /></el-icon>
+          <el-icon class="slim-back-icon"><ArrowLeft /></el-icon>
           <span>{{ navBack.label }}</span>
         </button>
+        <span v-if="navBack" class="slim-divider" />
         <BreadcrumbNav />
       </div>
 
@@ -87,7 +88,7 @@
     <el-dialog
       v-model="createSpaceDialogVisible"
       title="新建知识空间"
-      width="480px"
+      width="520px"
       class="create-space-dialog"
       destroy-on-close
     >
@@ -95,99 +96,94 @@
         ref="createSpaceFormRef"
         :model="createSpaceForm"
         :rules="spaceFormRules"
-        label-width="80px"
+        label-width="70px"
+        class="create-space-form"
       >
-        <el-form-item label="名称" prop="name">
-          <el-input
-            v-model="createSpaceForm.name"
-            placeholder="请输入空间名称"
-            maxlength="100"
-          />
-        </el-form-item>
-        <el-form-item label="可见性" prop="visibility">
-          <el-radio-group v-model="createSpaceForm.visibility">
-            <el-radio :value="0">私有</el-radio>
-            <el-radio :value="1">团队</el-radio>
-            <el-radio :value="2">公开</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <!-- 数据类型已下放到知识库级别配置 -->
-        <el-form-item v-if="false" label="空间模态" prop="space_types">
-          <el-checkbox-group v-model="createSpaceForm.space_types" @change="createSpaceForm.embedding_model = ''; createSpaceForm.mm_embedding_model = ''">
-            <div class="modality-checkboxes">
-              <el-checkbox value="text">
-                <span class="modality-label">📄 文本</span>
-                <span class="modality-desc">PDF / Word / TXT / MD / Excel / PPT / HTML / JSON</span>
-              </el-checkbox>
-              <el-checkbox value="image">
-                <span class="modality-label">🖼 图片</span>
-                <span class="modality-desc">JPG / PNG / GIF / WebP</span>
-              </el-checkbox>
-              <el-checkbox value="video">
-                <span class="modality-label">🎬 视频</span>
-                <span class="modality-desc">MP4 / MOV / AVI / MKV / WebM</span>
-              </el-checkbox>
-              <el-checkbox value="audio">
-                <span class="modality-label">🎵 音频</span>
-                <span class="modality-desc">MP3 / WAV / FLAC / AAC / OGG / M4A</span>
-              </el-checkbox>
+        <!-- 基础信息 -->
+        <div class="form-section">
+          <div class="section-label">基础信息</div>
+          <el-form-item label="名称" prop="name">
+            <el-input
+              v-model="createSpaceForm.name"
+              placeholder="请输入空间名称"
+              maxlength="100"
+            />
+          </el-form-item>
+          <el-form-item label="可见性" prop="visibility">
+            <el-radio-group v-model="createSpaceForm.visibility">
+              <el-radio-button :value="0">🔒 私有</el-radio-button>
+              <el-radio-button :value="1">👥 团队</el-radio-button>
+              <el-radio-button :value="2">🌐 公开</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="描述">
+            <el-input
+              v-model="createSpaceForm.description"
+              type="textarea"
+              :rows="3"
+              placeholder="输入空间描述（可选）"
+              maxlength="2000"
+            />
+          </el-form-item>
+        </div>
+
+        <!-- AI 模型配置 -->
+        <div class="form-section">
+          <div class="section-label">
+            <span>AI 模型</span>
+            <span class="section-label-hint">可选，创建后可在空间设置中调整</span>
+          </div>
+          <el-form-item label="文本向量">
+            <el-select
+              v-model="createSpaceForm.embedding_model"
+              placeholder="选择文本向量化模型"
+              clearable
+              filterable
+              style="width: 100%"
+            >
+              <el-option
+                v-for="m in embeddingModels"
+                :key="m.model"
+                :label="m.model"
+                :value="m.model"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="createSpaceForm.space_types.includes('image')" label="多模态">
+            <el-select
+              v-model="createSpaceForm.mm_embedding_model"
+              placeholder="选择多模态向量化模型"
+              clearable
+              filterable
+              style="width: 100%"
+            >
+              <el-option
+                v-for="m in mmEmbeddingModels"
+                :key="m.model"
+                :label="m.model"
+                :value="m.model"
+              />
+            </el-select>
+          </el-form-item>
+
+          <!-- 高级参数（选了模型后显示） -->
+          <div v-if="createSpaceForm.embedding_model" class="advanced-row">
+            <div class="advanced-item">
+              <span class="advanced-label">批处理大小</span>
+              <el-input-number
+                v-model="createSpaceForm.embedding_batch_size"
+                :min="1" :max="128"
+                size="small"
+                controls-position="right"
+                style="width: 120px"
+              />
             </div>
-          </el-checkbox-group>
-        </el-form-item>
-        <el-form-item label="描述" prop="description">
-          <el-input
-            v-model="createSpaceForm.description"
-            type="textarea"
-            :rows="3"
-            placeholder="请输入空间描述（可选）"
-            maxlength="2000"
-          />
-        </el-form-item>
-        <el-divider content-position="left">Embedding 模型配置（可选，也可后续在空间设置中配置）</el-divider>
-        <el-form-item label="文本 Embedding">
-          <el-select
-            v-model="createSpaceForm.embedding_model"
-            placeholder="选择文本嵌入模型（可选）"
-            clearable
-            filterable
-            style="width: 100%"
-          >
-            <el-option
-              v-for="m in embeddingModels"
-              :key="m.model"
-              :label="m.model"
-              :value="m.model"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="createSpaceForm.space_types.includes('image')" label="多模态 Embedding">
-          <el-select
-            v-model="createSpaceForm.mm_embedding_model"
-            placeholder="选择多模态嵌入模型（可选）"
-            clearable
-            filterable
-            style="width: 100%"
-          >
-            <el-option
-              v-for="m in mmEmbeddingModels"
-              :key="m.model"
-              :label="m.model"
-              :value="m.model"
-            />
-          </el-select>
-        </el-form-item>
-        <el-row v-if="createSpaceForm.embedding_model" :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="批处理大小">
-              <el-input-number v-model="createSpaceForm.embedding_batch_size" :min="1" :max="128" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="向量归一化">
-              <el-switch v-model="createSpaceForm.embedding_normalize" />
-            </el-form-item>
-          </el-col>
-        </el-row>
+            <div class="advanced-item">
+              <span class="advanced-label">向量归一化</span>
+              <el-switch v-model="createSpaceForm.embedding_normalize" size="small" />
+            </div>
+          </div>
+        </div>
       </el-form>
       <template #footer>
         <el-button @click="createSpaceDialogVisible = false">取消</el-button>
@@ -196,7 +192,7 @@
           :loading="createSpaceLoading"
           @click="handleCreateSpace"
         >
-          创建
+          创建空间
         </el-button>
       </template>
     </el-dialog>
@@ -301,13 +297,6 @@ import {
   ArrowLeft,
 } from '@element-plus/icons-vue'
 
-// 模态 → 支持的文件格式映射
-const MODALITY_FORMAT_MAP: Record<string, string> = {
-  text: 'PDF、Word、TXT、MD、Excel、PPT、HTML、JSON',
-  image: 'JPG、PNG、GIF、WebP',
-  video: 'MP4、MOV、AVI、MKV、WebM',
-  audio: 'MP3、WAV、FLAC、AAC、OGG、M4A',
-}
 import { useSpaceStore } from '@/stores/space'
 import { knowledgeBaseApi } from '@/api/knowledgeBase'
 import { userApi } from '@/api/user'
@@ -630,13 +619,34 @@ async function handleCreateKb() {
 
 watch(
   () => route.params.id,
-  (id) => {
-    if (id) {
-      selectedSpaceId.value = Number(id)
-      spaceStore.fetchSpace(Number(id))
+  async (id) => {
+    if (!id) {
+      selectedSpaceId.value = null
+      spaceStore.clearCurrentSpace()
+      return
+    }
+
+    const nextSpaceId = Number(id)
+    selectedSpaceId.value = nextSpaceId
+
+    try {
+      await spaceStore.fetchSpace(nextSpaceId)
+    } catch {
+      const exists = spaceStore.spaces.some((space) => space.id === nextSpaceId)
+      selectedSpaceId.value = null
+      spaceStore.clearCurrentSpace()
+
+      if (route.params.id === id) {
+        await router.replace(
+          exists
+            ? `/home/spaces/${nextSpaceId}/knowledge-bases`
+            : '/home/spaces',
+        )
+      }
     }
   },
   { immediate: true },
+)
 
 // 路由切换时主动释放焦点，避免页面上残留闪烁光标
 watch(
@@ -648,7 +658,6 @@ watch(
       }
     })
   },
-)
 )
 
 // === 初始化 ===
@@ -750,29 +759,42 @@ onMounted(() => {
 
 /* 子页面：极简返回栏 */
 .content-header--slim {
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-8);
+  gap: var(--space-3);
+  padding: 0 var(--space-6);
+  height: 44px;
 }
 
-/* 返回按钮：发丝线胶囊，hover 浅底（Linear 风，无阴影/上浮） */
+/* 返回按钮：简洁文本链接，无边框 */
 .slim-back {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
   background: transparent;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border: none;
   color: var(--color-text-secondary);
   cursor: pointer;
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
-  padding: 5px 10px;
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  padding: 0;
+  transition: color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.slim-back-icon {
+  font-size: var(--text-base);
 }
 
 .slim-back:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text);
+  color: var(--color-primary);
+}
+
+/* 分隔线：细竖线 */
+.slim-divider {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  background: var(--color-border);
+  flex-shrink: 0;
 }
 
 .header-actions {
@@ -878,41 +900,59 @@ onMounted(() => {
   font-weight: var(--weight-medium);
 }
 
-/* 模态多选 */
-.modality-checkboxes {
+/* ===== 创建空间表单 ===== */
+
+.create-space-form {
+  padding: var(--space-1) 0;
+}
+
+.form-section {
+  margin-bottom: var(--space-5);
+}
+
+.form-section:last-child {
+  margin-bottom: 0;
+}
+
+.section-label {
   display: flex;
-  flex-direction: column;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.section-label-hint {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
+  color: var(--color-text-muted);
+}
+
+.advanced-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  margin-top: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-card-elevated);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-light);
+}
+
+.advanced-item {
+  display: flex;
+  align-items: center;
   gap: var(--space-2);
 }
 
-.modality-checkboxes :deep(.el-checkbox) {
-  margin-right: 0;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md);
-  transition: border-color var(--transition-fast), background var(--transition-fast);
-}
-
-.modality-checkboxes :deep(.el-checkbox:hover) {
-  border-color: var(--color-primary);
-  background: var(--color-primary-subtle);
-}
-
-.modality-checkboxes :deep(.el-checkbox.is-checked) {
-  border-color: var(--color-primary);
-  background: var(--color-primary-subtle);
-}
-
-.modality-label {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  color: var(--color-text);
-}
-
-.modality-desc {
+.advanced-label {
   font-size: var(--text-xs);
   color: var(--color-text-muted);
-  margin-left: var(--space-2);
+  white-space: nowrap;
 }
 
 /* 创建空间弹窗内容限高滚动 */

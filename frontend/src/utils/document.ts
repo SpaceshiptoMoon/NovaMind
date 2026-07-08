@@ -6,16 +6,27 @@
 import type { SpaceConfig } from '@/api/types'
 import { MODALITY_ACCEPT_MAP, MODALITY_MAX_SIZE_MB } from '@/api/types'
 
-/** 文档状态映射（兼容字符串名称和数字编码） */
+/** 文档处理状态映射（基于 TaskStatus 枚举: 0=PENDING, 1=PROCESSING, 2=COMPLETED, 3=FAILED, 4=CANCELLED） */
+export const taskStatusMap: Record<number, { text: string; type: 'success' | 'warning' | 'danger' | 'info' | 'primary' }> = {
+  0: { text: '待处理', type: 'info' },
+  1: { text: '处理中', type: 'warning' },
+  2: { text: '已完成', type: 'success' },
+  3: { text: '失败', type: 'danger' },
+  4: { text: '已取消', type: 'info' },
+}
+
+/** 文档状态映射（兼容旧字段，基于 TaskStatus） */
 export const docStatusMap: Record<string, { text: string; type: 'success' | 'warning' | 'danger' | 'info' | 'primary' }> = {
-  uploaded: { text: '待处理', type: 'info' },
+  pending: { text: '待处理', type: 'info' },
   processing: { text: '处理中', type: 'warning' },
   completed: { text: '已完成', type: 'success' },
   failed: { text: '失败', type: 'danger' },
+  cancelled: { text: '已取消', type: 'info' },
   '0': { text: '待处理', type: 'info' },
   '1': { text: '处理中', type: 'warning' },
   '2': { text: '已完成', type: 'success' },
   '3': { text: '失败', type: 'danger' },
+  '4': { text: '已取消', type: 'info' },
 }
 
 /** 文件类型样式映射（使用 CSS 自定义属性，支持主题切换） */
@@ -92,13 +103,6 @@ export function getFileMaxSize(ext: string): number {
 /** 判断 space_type 数组是否包含指定模态 */
 export function hasModality(spaceTypes: string[] | undefined | null, modality: string): boolean {
   return Array.isArray(spaceTypes) && spaceTypes.includes(modality)
-}
-
-/** 从 space_type 数组获取最大文件大小提示文本 */
-export function getMaxFileSizeText(spaceTypes: string[]): string {
-  let max = 0
-  for (const t of spaceTypes) max = Math.max(max, MODALITY_MAX_SIZE_MB[t] || 100)
-  return `${max}MB`
 }
 
 /** 归一化旧格式 space_type（兼容 "text"/"multimodal" 字符串 → 数组） */

@@ -14,7 +14,10 @@ logger = get_logger(__name__)
 
 class Base(DeclarativeBase):
     """SQLAlchemy 2.0 风格的声明式基类"""
-    pass
+    __table_args__ = {
+        "mysql_charset": "utf8mb4",
+        "mysql_collate": "utf8mb4_unicode_ci",
+    }
 
 
 def _get_china_now() -> datetime.datetime:

@@ -183,10 +183,140 @@ class DocumentLoader:
 
 
 class DocumentProcessor:
-    """文档处理器，提供高级文档处理功能"""
+    """文档处理器，提供高级文档处理功能
+
+    支持两阶段处理：
+    1. read_full_text() — 读取文件并返回全文（reader-only）
+    2. split_text() — 对文本进行切分（splitter-only）
+    3. load_with_strategy() — 一键读+切（为兼容旧调用保留）
+    """
 
     def __init__(self, embedding_client: Optional[BaseEmbedding] = None):
         self.embedding_client = embedding_client
+        # 初始化各种读取器（从注册表获取）
+        self._readers: Dict[str, BaseReader] = {}
+        for ext, reader_class in DocumentRegistry._readers_registry.items():
+            self._readers[ext] = reader_class()
+
+    async def read_full_text(self, file_path: Union[str, Path]) -> str:
+        """
+        Reader-only：读取文件，返回合并后的全文内容（不做切分）
+
+        支持的文件类型由 DocumentRegistry 注册表决定：
+        pdf, docx, txt, html, md, markdown 等。
+
+        :param file_path: 文件路径
+        :return: 文件的完整文本内容
+        :raises ValueError: 不支持的文件类型
+        :raises FileNotFoundError: 文件不存在
+        """
+        file_path = Path(file_path)
+
+        if not file_path.exists():
+            raise FileNotFoundError(f"File does not exist: {file_path}")
+
+        extension = file_path.suffix.lower().lstrip('.')
+
+        reader = self._readers.get(extension)
+        if reader is None:
+            raise ValueError(
+                f"Unsupported file type: {extension}. "
+                f"Supported types: {list(self._readers.keys())}"
+            )
+
+        # 使用读取器加载文档（返回 List[Dict[str, str]]，每个 dict 代表一页/一段）
+        documents = await reader.load_data(str(file_path))
+
+        # 合并所有段落/页面为一个全文
+        full_text = "\n\n".join(
+            doc.get("content", "") for doc in documents
+        )
+
+        logger.info(
+            "文档全文读取完成",
+            filename=file_path.name,
+            extension=extension,
+            paragraphs=len(documents),
+            char_count=len(full_text),
+        )
+        return full_text
+
+    async def split_text(
+        self,
+        text: str,
+        strategy: str = 'recursive',
+        **kwargs,
+    ) -> List[str]:
+        """
+        Splitter-only：对纯文本进行切分，返回 chunk 文本列表
+
+        不读取文件，只做切分。
+
+        :param text: 要切分的全文文本
+        :param strategy: 切分策略 ('recursive', 'semantic', 'fixed_size', 'markdown')
+        :param kwargs: 策略特定的参数
+        :return: 切分后的文本块列表（纯文本，非 dict）
+        :raises ValueError: 不支持的切分策略
+        """
+        # 从注册表中获取切分器类
+        splitter_class = DocumentRegistry.get_splitter_class(strategy)
+        if splitter_class is None:
+            raise ValueError(
+                f"Unknown strategy: {strategy}. "
+                f"Supported: {DocumentRegistry.get_available_strategies()}"
+            )
+
+        # 根据不同策略创建实例
+        if strategy == 'recursive':
+            chunk_size = kwargs.get('chunk_size', 500)
+            chunk_overlap = kwargs.get('chunk_overlap', 50)
+            min_chunk_size = kwargs.get('min_chunk_size', 50)
+            splitter = splitter_class(
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                min_chunk_size=min_chunk_size,
+            )
+        elif strategy == 'semantic':
+            max_chunk_size = kwargs.get('max_chunk_size', 1000)
+            similarity_threshold = kwargs.get('similarity_threshold', 0.7)
+            batch_size = kwargs.get('batch_size', 20)
+            splitter = splitter_class(
+                embedding_client=self.embedding_client,
+                max_chunk_size=max_chunk_size,
+                similarity_threshold=similarity_threshold,
+                batch_size=batch_size,
+            )
+        elif strategy == 'fixed_size':
+            chunk_size = kwargs.get('chunk_size', 500)
+            chunk_overlap = kwargs.get('chunk_overlap', 0)
+            splitter = splitter_class(
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+            )
+        elif strategy == 'markdown':
+            max_chunk_size = kwargs.get('max_chunk_size', 1000)
+            min_chunk_size = kwargs.get('min_chunk_size', 50)
+            splitter = splitter_class(
+                max_chunk_size=max_chunk_size,
+                min_chunk_size=min_chunk_size,
+            )
+        else:
+            splitter = splitter_class(**kwargs)
+
+        # 对全文进行切分 — 将文本包装为单页文档
+        documents = [{"content": text, "metadata": {}}]
+        chunks = await splitter.split(documents)
+
+        # 提取纯文本内容
+        chunk_texts = [c.get("content", "") for c in chunks if c.get("content", "").strip()]
+
+        logger.info(
+            "文本切分完成",
+            strategy=strategy,
+            char_count=len(text),
+            chunk_count=len(chunk_texts),
+        )
+        return chunk_texts
 
     async def load_with_strategy(self, file_path: Union[str, Path], strategy: Optional[str] = 'recursive',
                           **kwargs) -> List[Dict[str, str]]:
@@ -278,6 +408,8 @@ DocumentRegistry.register_reader('txt', TxtReader)
 DocumentRegistry.register_reader('html', HTMLReader)
 DocumentRegistry.register_reader('md', MarkdownReader)
 DocumentRegistry.register_reader('markdown', MarkdownReader)
+DocumentRegistry.register_reader('csv', TxtReader)
+DocumentRegistry.register_reader('json', TxtReader)
 
 DocumentRegistry.register_splitter('recursive', RecursiveCharacterSplitter)
 DocumentRegistry.register_splitter('semantic', SemanticSplitter)

@@ -109,7 +109,7 @@ class DatabaseConfig:
     @property
     def url(self) -> str:
         """生成数据库连接 URL"""
-        return f"mysql+aiomysql://{self.user}:{quote_plus(self.password)}@{self.host}:{self.port}/{self.database}"
+        return f"mysql+aiomysql://{self.user}:{quote_plus(self.password)}@{self.host}:{self.port}/{self.database}?charset=utf8mb4"
 
 
 @dataclass

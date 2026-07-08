@@ -1,13 +1,12 @@
 """
 Agent 消息模型
 """
-from sqlalchemy import Column, BigInteger, String, Text, Integer, JSON, DateTime, ForeignKey, Index
+from sqlalchemy import Column, BigInteger, String, Text, Integer, JSON, ForeignKey, Index
 
-from src.core.database.base import Base
-from src.shared.utils.time_utils import now_china
+from src.core.database.base import BaseModel
 
 
-class AgentMessage(Base):
+class AgentMessage(BaseModel):
     """Agent 消息"""
     __tablename__ = "agent_messages"
 
@@ -19,7 +18,6 @@ class AgentMessage(Base):
     tool_name = Column(String(100), nullable=True, comment="产生此消息的工具名称")
     token_count = Column(Integer, nullable=True, comment="token 数量")
     extra = Column(JSON, nullable=True, comment="扩展信息")
-    created_at = Column(DateTime, default=now_china, nullable=False)
 
     __table_args__ = (
         Index("idx_conversation_created", "conversation_id", "created_at"),

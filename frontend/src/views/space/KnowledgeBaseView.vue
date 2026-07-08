@@ -61,6 +61,11 @@
               <el-icon><FolderAdd /></el-icon>
             </el-button>
           </el-tooltip>
+          <el-tooltip content="删除" placement="top">
+            <el-button size="small" circle aria-label="删除" @click.stop="handleDeleteSingle(kb)">
+              <el-icon><Delete /></el-icon>
+            </el-button>
+          </el-tooltip>
         </div>
       </div>
 
@@ -112,7 +117,7 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, Edit, Setting, FolderOpened, FolderAdd } from '@element-plus/icons-vue'
+import { Document, Edit, Setting, FolderOpened, FolderAdd, Delete } from '@element-plus/icons-vue'
 import { knowledgeBaseApi } from '@/api/knowledgeBase'
 import type { KnowledgeBase } from '@/api/types'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -300,6 +305,33 @@ async function handleBatchDelete() {
   }
 
   fetchKnowledgeBases()
+}
+
+// === 单个删除 ===
+
+async function handleDeleteSingle(kb: KnowledgeBase) {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除知识库「${kb.name}」吗？此操作将删除该知识库下的所有文档，且不可恢复。`,
+      '删除知识库',
+      {
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+        type: 'error',
+      },
+    )
+  } catch {
+    return
+  }
+
+  try {
+    await knowledgeBaseApi.deleteKnowledgeBase(spaceId.value, kb.id)
+    ElMessage.success(`已删除知识库「${kb.name}」`)
+    fetchKnowledgeBases()
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { error?: { message?: string } } } }
+    ElMessage.error(err.response?.data?.error?.message || '删除失败')
+  }
 }
 
 function goToDocuments(kbId: number) {
