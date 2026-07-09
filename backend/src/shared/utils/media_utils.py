@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import io
 import os
 import logging
 import tempfile
@@ -291,10 +292,6 @@ async def extract_video_frames(
     Returns:
         [(frame_bytes, timestamp_seconds, frame_index), ...] 按时间顺序排列
     """
-    import asyncio
-    import numpy as np
-    from PIL import Image
-
     # 写入临时文件（imageio 需要文件路径）
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
         tmp.write(file_content)
@@ -318,20 +315,34 @@ async def extract_video_frames(
 
         # 逐帧提取（imageio 按时间点读取）
         frames = []
+        last_frame_error: Optional[Exception] = None
         for frame_idx, ts in enumerate(timestamps):
             try:
                 frame = await asyncio.to_thread(_read_frame_at, tmp_path, ts, fps)
                 if frame is not None:
                     # PIL Image → JPEG bytes
-                    buf = tempfile.BytesIO()
+                    buf = io.BytesIO()
                     frame.save(buf, format="JPEG", quality=85)
                     frames.append((buf.getvalue(), ts, frame_idx))
-            except Exception:
-                # 单帧失败不阻塞整体
+            except Exception as e:
+                last_frame_error = e
+                logger.warning(
+                    "视频抽帧失败，跳过当前帧",
+                    extra={
+                        "timestamp": round(ts, 3),
+                        "frame_index": frame_idx,
+                        "error": str(e),
+                    },
+                )
                 continue
 
             if len(frames) >= max_frames:
                 break
+
+        if not frames and last_frame_error is not None:
+            raise RuntimeError(
+                f"视频抽帧全部失败，最后一次错误: {type(last_frame_error).__name__}: {last_frame_error}"
+            ) from last_frame_error
 
         return frames
 
