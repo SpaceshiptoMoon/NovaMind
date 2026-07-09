@@ -474,8 +474,7 @@ def test_2_3_create_knowledge_base():
                 "chunk_overlap": 100
             },
             "parsing": {
-                "extract_tables": True,
-                "preserve_structure": True
+                "ocr_enabled": False
             },
             "question_generation": {
                 "enabled": False
@@ -647,8 +646,7 @@ def test_2_7_update_kb_config():
             "chunk_overlap": 200
         },
         "parsing": {
-            "extract_tables": True,
-            "preserve_structure": False
+            "ocr_enabled": False
         }
     }
 

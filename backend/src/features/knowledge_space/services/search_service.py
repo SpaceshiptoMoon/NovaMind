@@ -1138,7 +1138,6 @@ class SearchService:
         from src.features.knowledge_space.services.knowledge_base_service import get_effective_space_types
         space_type_list = get_effective_space_types(
             kb_config=kb.get_config() if kb else None,
-            space_config=space.get_config() if space else None,
         )
         if "image" not in space_type_list:
             raise SearchError("多模态检索仅适用于包含图片模态的知识库，请使用通用检索接口")
@@ -1216,13 +1215,11 @@ class SearchService:
 
     async def _get_multimodal_client(self, space, user_id: int, error_msg: str):
         """解析空间多模态嵌入配置，返回 (client, model_name)
-
-        多模态空间从 config.embedding 读取，旧空间兼容 config.multimodal_embedding。
         """
         from src.shared.ai_models.embedding import BaseMultimodalEmbedding
 
         space_config = space.get_config()
-        mm_config = space_config.get("multimodal_embedding")
+        mm_config = space_config.get("embedding")
         model_name = mm_config.get("model") if mm_config else None
 
         if not model_name:

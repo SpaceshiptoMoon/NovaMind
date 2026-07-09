@@ -202,10 +202,7 @@ class DocumentService:
         file_type = file_info.extension
         from src.features.knowledge_space.services.knowledge_base_service import get_effective_space_types
         space = await self.space_repo.get_by_id(kb.space_id)
-        modalities = get_effective_space_types(
-            kb_config=kb.get_config(),
-            space_config=space.get_config() if space else None,
-        )
+        modalities = get_effective_space_types(kb_config=kb.get_config())
 
         # 计算允许的文件类型合集（任意模态组合自动生效）
         allowed_types = set()
@@ -449,7 +446,11 @@ class DocumentService:
 
         try:
             # 先读取原始解析全文，避免将切块结果回拼成“伪全文”再落 MinIO。
-            full_text = await processor.read_full_text(tmp_path)
+            parsing_config = kb_config.get("parsing", {})
+            full_text = await processor.read_full_text(
+                tmp_path,
+                ocr_enabled=parsing_config.get("ocr_enabled", False),
+            )
             task.set_step("parsed", "done")
 
             # 解析全文持久化到 MinIO（切块之前，立刻 commit 落库）
@@ -1287,11 +1288,13 @@ async def _process_image_document_static(
 
     if vlm_enabled:
         try:
+            vlm_model_name = parsing_config.get("vlm_model")
             description_text = await _generate_image_description(
                 file_content=file_content,
                 document=document,
                 mcs=mcs,
                 _logger=_logger,
+                vlm_model_name=vlm_model_name,
             )
 
             if description_text:
@@ -1534,6 +1537,7 @@ async def _generate_image_description(
     document: Document,
     mcs,  # ModelConfigService
     _logger,
+    vlm_model_name: Optional[str] = None,
 ) -> str:
     """调用 VLM 生成图片描述文本
 
@@ -1550,7 +1554,7 @@ async def _generate_image_description(
     from src.shared.prompts.templates import PromptManager, PromptTemplate
 
     # 1. 获取 VLM 客户端
-    vlm_model = await mcs.get_user_default_model_name(document.uploader_id, "vlm")
+    vlm_model = vlm_model_name or await mcs.get_user_default_model_name(document.uploader_id, "vlm")
     if not vlm_model:
         raise ValueError("未配置 VLM 模型，请在模型配置中添加视觉模型")
 

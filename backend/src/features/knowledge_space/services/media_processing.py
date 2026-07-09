@@ -54,12 +54,11 @@ async def process_video_document(
         if (task and task.pipeline_config)
         else (kb.get_config() if kb else {})
     )
-    # Video parsing params belong to parsing.video. Keep a fallback to the
-    # legacy splitting.video location so older stored configs still run.
+    parsing_config = pipeline_config.get("parsing", {})
+    splitting_config = dict(pipeline_config.get("splitting", {}))
     video_config = pipeline_config.get("parsing", {}).get("video", {})
-    legacy_video_config = pipeline_config.get("splitting", {}).get("video", {})
-    frame_interval = video_config.get("frame_interval", legacy_video_config.get("frame_interval", 5))
-    max_frames = video_config.get("max_frames", legacy_video_config.get("max_frames", 60))
+    frame_interval = video_config.get("frame_interval", 5)
+    max_frames = video_config.get("max_frames", 60)
 
     mcs = ModelConfigService(session)
 
@@ -114,6 +113,7 @@ async def process_video_document(
                 document=document,
                 mcs=mcs,
                 logger=logger,
+                vlm_model_name=parsing_config.get("vlm_model"),
             )
             if desc:
                 descriptions.append((desc, ts, frame_idx))
@@ -139,9 +139,9 @@ async def process_video_document(
 
     # 3. 统一文本切分（替代旧 _aggregate_descriptions）
     # 切分配置从 pipeline_config 读取（优先 Task 快照）
-    splitting_config = pipeline_config.get("splitting", {})
-    strategy = splitting_config.get("strategy", "recursive")
-    splitting_kwargs = {k: v for k, v in splitting_config.items() if k != "strategy"}
+    splitting_config.update(splitting_config.pop("video", {}))
+    strategy = splitting_config.pop("strategy", "recursive")
+    splitting_kwargs = splitting_config
     chunks = await _split_md_text(full_text, strategy=strategy, **splitting_kwargs)
 
     if task:
@@ -214,6 +214,7 @@ async def process_audio_document(
     audio_config = pipeline_config.get("parsing", {}).get("audio", {})
     space_asr_cfg = (space.config or {}).get("asr", {}) if space else {}
     asr_model = audio_config.get("asr_model") or space_asr_cfg.get("model") or "whisper-1"
+    language = audio_config.get("language")
 
     # 1. ASR 转写（根据协议路由：openai → Whisper / dashscope → Paraformer / local → faster-whisper）
     from src.features.user.services.model_config_service import ModelConfigService
@@ -251,9 +252,11 @@ async def process_audio_document(
         segments = await transcribe_audio_local(
             file_content=file_content,
             file_type=document.file_type,
+            language=language,
         )
     elif asr_protocol == "dashscope":
         storage_info = document.get_storage_info()
+        language_hints = [language] if language else None
         segments = await transcribe_audio_with_dashscope(
             file_content=file_content,
             file_type=document.file_type,
@@ -261,6 +264,7 @@ async def process_audio_document(
             api_key=asr_api_key,
             base_url=asr_base_url,
             minio_bucket=storage_info.get("minio_bucket"),
+            language_hints=language_hints,
         )
     else:
         segments = await transcribe_audio_with_timestamps(
@@ -269,6 +273,7 @@ async def process_audio_document(
             model=asr_model,
             api_key=asr_api_key,
             base_url=asr_base_url,
+            language=language,
         )
     logger.info(
         "音频转写完成", document_id=document.id, segment_count=len(segments),
@@ -437,12 +442,13 @@ async def _describe_single_frame(
     document: Document,
     mcs,
     logger,
+    vlm_model_name: Optional[str] = None,
 ) -> str:
     """对单帧调用 VLM 生成描述（复用图片描述逻辑）"""
     from src.shared.prompts.templates import PromptManager, PromptTemplate
 
     # 获取 VLM 客户端
-    vlm_model = await mcs.get_user_default_model_name(document.uploader_id, "vlm")
+    vlm_model = vlm_model_name or await mcs.get_user_default_model_name(document.uploader_id, "vlm")
     if not vlm_model:
         raise ValueError("未配置 VLM 模型")
 

@@ -216,7 +216,6 @@ async def get_search_modes(
     space_config = space.get_config() if hasattr(space, "get_config") else {}
     space_type_list = get_effective_space_types(
         kb_config=kb.get_config() if kb else None,
-        space_config=space_config,
     )
 
     # 支持图片检索的知识库：额外返回图片/多模态检索模式

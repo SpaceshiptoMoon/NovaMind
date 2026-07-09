@@ -76,7 +76,7 @@ class SpaceService:
             model_name: Embedding 模型名称
             owner_id: 空间创建者 ID
             fallback: 兜底维度
-            model_type: 模型类型 (embedding / multimodal_embedding)
+            model_type: 模型类型
 
         Returns:
             模型维度，失败时返回 fallback
@@ -225,7 +225,7 @@ class SpaceService:
                 embedding_dim = self.es_client.default_embedding_dim
 
             try:
-                create_kwargs = self._build_es_create_kwargs(space.id, embedding_dim, model_type)
+                create_kwargs = self._build_es_create_kwargs(space.id, embedding_dim)
                 await self.es_client.create_index(**create_kwargs)
                 self.logger.info(
                     "ES 空间索引创建成功",
@@ -700,7 +700,7 @@ class SpaceService:
             if old_dim != new_dim:
                 await self.es_client.delete_index(space_id)
                 model_type = _resolve_model_type()
-                create_kwargs = self._build_es_create_kwargs(space_id, new_dim, model_type)
+                create_kwargs = self._build_es_create_kwargs(space_id, new_dim)
                 await self.es_client.create_index(**create_kwargs)
                 self.logger.info(
                     "Embedding 变更：已重建 ES 索引",
@@ -738,6 +738,6 @@ class SpaceService:
         flag_modified(space, "config")
 
     @staticmethod
-    def _build_es_create_kwargs(space_id: int, embedding_dim: int, space_type) -> Dict[str, Any]:
-        """构建 ES 索引创建参数。全模态现阶段不需要 image_embedding（所有数据转文本）"""
+    def _build_es_create_kwargs(space_id: int, embedding_dim: int) -> Dict[str, Any]:
+        """构建 ES 索引创建参数。"""
         return {"space_id": space_id, "embedding_dim": embedding_dim}

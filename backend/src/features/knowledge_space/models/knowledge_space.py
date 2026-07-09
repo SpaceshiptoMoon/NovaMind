@@ -109,16 +109,6 @@ class KnowledgeSpace(BaseModel):
         return emb.get("dimension") if emb else None
 
     @property
-    def space_type(self) -> str:
-        """获取空间类型（默认 text）"""
-        return self.get_config().get("space_type", "text")
-
-    @property
-    def multimodal_embedding_config(self) -> Optional[dict]:
-        """获取空间级别的多模态嵌入配置"""
-        return self.get_config().get("multimodal_embedding")
-
-    @property
     def vlm_description_enabled(self) -> bool:
         """是否启用 VLM 图片描述（从空间级别默认解析配置读取）"""
         defaults = self.get_defaults_config()
@@ -156,4 +146,3 @@ class KnowledgeSpace(BaseModel):
         return self.visibility == SpaceVisibility.PUBLIC
 
     # ========== 状态变更方法 ==========
-

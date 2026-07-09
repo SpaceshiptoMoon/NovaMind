@@ -23,18 +23,6 @@ from src.features.knowledge_space.models.knowledge_base import KnowledgeBaseStat
 # ========== 切分策略配置 ==========
 
 
-class ImageChunkOverride(BaseModel):
-    """图片专属切分覆盖（可选，不配则每张图片独立为一个分块）"""
-    strategy: Literal["single", "batch"] = Field(
-        default="single",
-        description="切分策略: single(单图单块)/batch(按VLM描述合并多图)",
-    )
-    chunk_size: int = Field(
-        default=2000, ge=100, le=4000,
-        description="batch 模式下聚合的最大字符数",
-    )
-
-
 class AudioChunkOverride(BaseModel):
     """音频专属切分覆盖（可选，不配则走默认文本切分）"""
     strategy: Literal["sentence", "fixed"] = Field(
@@ -73,7 +61,6 @@ class SplittingConfig(BaseModel):
     max_chunk_size: int = Field(default=2000, ge=100, le=8000, description="最大分块大小（markdown/semantic）")
     similarity_threshold: float = Field(default=0.7, ge=0.0, le=1.0, description="语义相似度阈值（semantic 专属）")
     batch_size: int = Field(default=20, ge=1, le=100, description="语义切分批处理大小（semantic 专属）")
-    image: Optional[ImageChunkOverride] = Field(default=None, description="图片专属切分（不配则使用默认策略）")
     audio: Optional[AudioChunkOverride] = Field(default=None, description="音频专属切分（不配则使用默认策略）")
     video: Optional[VideoChunkOverride] = Field(default=None, description="视频专属切分（不配则使用默认策略）")
 
@@ -83,11 +70,7 @@ class SplittingConfig(BaseModel):
 
 class ParsingConfig(BaseModel):
     """文档解析配置"""
-    extract_images: bool = Field(default=False, description="是否提取图片")
-    extract_tables: bool = Field(default=True, description="是否提取表格")
     ocr_enabled: bool = Field(default=False, description="是否启用 OCR")
-    preserve_structure: bool = Field(default=True, description="是否保留文档结构")
-    encoding: str = Field(default="utf-8", description="文件编码")
     vlm_description_enabled: bool = Field(
         default=False,
         description="是否启用 VLM 图片描述（多模态空间），开启后上传图片时调用视觉模型生成文本描述，支持 BM25 + 文本向量检索",
@@ -235,18 +218,6 @@ class KnowledgeBaseConfig(BaseModel):
         default_factory=lambda: ["text"],
         description="知识库支持的数据模态: text/image/video/audio",
     )
-
-    @field_validator("space_type", mode="before")
-    @classmethod
-    def normalize_space_type(cls, v):
-        """兼容旧格式: 'text' → ['text'], 'multimodal' → ['image']"""
-        if isinstance(v, str):
-            if v == "multimodal":
-                return ["image"]
-            return [v]
-        if isinstance(v, list):
-            return v
-        return ["text"]
 
     description: str = Field(default="", max_length=2000, description="知识库描述")
     splitting: SplittingConfig = Field(default_factory=SplittingConfig, description="切分配置")

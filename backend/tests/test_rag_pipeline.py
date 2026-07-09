@@ -194,8 +194,7 @@ def step_2_create_kb():
                 "chunk_overlap": 50,
             },
             "parsing": {
-                "extract_tables": True,
-                "preserve_structure": True,
+                "ocr_enabled": False,
             },
             "question_generation": {
                 "enabled": True,

@@ -1,3 +1,4 @@
+import asyncio
 from typing import List, Dict, Optional, Union, Type
 from pathlib import Path
 from src.shared.utils.document_readers.base_reader import BaseReader
@@ -198,7 +199,11 @@ class DocumentProcessor:
         for ext, reader_class in DocumentRegistry._readers_registry.items():
             self._readers[ext] = reader_class()
 
-    async def read_full_text(self, file_path: Union[str, Path]) -> str:
+    async def read_full_text(
+        self,
+        file_path: Union[str, Path],
+        ocr_enabled: bool = False,
+    ) -> str:
         """
         Reader-only：读取文件，返回合并后的全文内容（不做切分）
 
@@ -232,6 +237,9 @@ class DocumentProcessor:
             doc.get("content") or doc.get("text", "") for doc in documents
         )
 
+        if not full_text.strip() and ocr_enabled and extension == "pdf":
+            full_text = await self._ocr_pdf_text(file_path)
+
 
         logger.info(
             "文档全文读取完成",
@@ -239,8 +247,44 @@ class DocumentProcessor:
             extension=extension,
             paragraphs=len(documents),
             char_count=len(full_text),
+            ocr_enabled=ocr_enabled,
         )
         return full_text
+
+    async def _ocr_pdf_text(self, file_path: Path) -> str:
+        """Fallback OCR for scanned PDFs when text extraction returns empty."""
+        return await asyncio.to_thread(self._ocr_pdf_text_sync, file_path)
+
+    @staticmethod
+    def _ocr_pdf_text_sync(file_path: Path) -> str:
+        try:
+            import fitz
+        except Exception:
+            logger.warning("PDF OCR fallback unavailable", filename=file_path.name, reason="fitz_not_installed")
+            return ""
+
+        page_texts: List[str] = []
+        try:
+            with fitz.open(file_path) as pdf:
+                for page in pdf:
+                    try:
+                        textpage = page.get_textpage_ocr()
+                        text = page.get_text(textpage=textpage).strip()
+                    except Exception as exc:
+                        logger.warning(
+                            "PDF OCR page failed",
+                            filename=file_path.name,
+                            page_number=page.number + 1,
+                            error=str(exc),
+                        )
+                        text = ""
+                    if text:
+                        page_texts.append(text)
+        except Exception as exc:
+            logger.warning("PDF OCR fallback failed", filename=file_path.name, error=str(exc))
+            return ""
+
+        return "\n\n".join(page_texts)
 
     async def split_text(
         self,

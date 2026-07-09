@@ -145,6 +145,7 @@ def _validate_audio_for_local_asr(file_content: bytes) -> Tuple[str, str]:
 async def transcribe_audio_local(
     file_content: bytes,
     file_type: str = "mp3",
+    language: Optional[str] = None,
 ) -> List[Dict]:
     """
     使用本地 faster-whisper 模型转写音频，返回带时间戳的段落
@@ -184,6 +185,7 @@ async def transcribe_audio_local(
             tmp_path,
             beam_size=5,
             word_timestamps=False,
+            language=language,
         )
 
         # info 包含: language, language_probability, duration, etc.
@@ -400,6 +402,7 @@ async def transcribe_audio_with_timestamps(
     model: str = "whisper-1",
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> List[Dict]:
     """
     使用 httpx 直调 OpenAI Whisper API 转写音频，返回带时间戳的段落
@@ -428,8 +431,9 @@ async def transcribe_audio_with_timestamps(
 
     # 通过 Magic Bytes 检测真实音频格式，不再依赖文件扩展名
     ext, mime_type = _detect_audio_format(file_content)
+    suffix = f".{ext}"
 
-    with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(file_content)
         tmp_path = tmp.name
 
@@ -441,8 +445,12 @@ async def transcribe_audio_with_timestamps(
                 response = await client.post(
                     url,
                     headers={"Authorization": f"Bearer {api_key}"},
-                    data={"model": model, "response_format": "verbose_json",
-                          "timestamp_granularities[]": "segment"},
+                    data={
+                        "model": model,
+                        "response_format": "verbose_json",
+                        "timestamp_granularities[]": "segment",
+                        **({"language": language} if language else {}),
+                    },
                     files={"file": (f"audio{suffix}", f, mime_type)},
                 )
                 response.raise_for_status()
