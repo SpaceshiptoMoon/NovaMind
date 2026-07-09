@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.middleware.structured_logging import get_logger
 from src.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
 from src.features.knowledge_space.models.document_task_batch import BatchStatus, DocumentTaskBatch
+from src.shared.utils.time_utils import now_china
 
 logger = get_logger(__name__)
 
@@ -39,10 +40,18 @@ class DocumentTaskBatchRepository:
         )
         return list(result.scalars().all())
 
+    async def count_by_kb(self, kb_id: int) -> int:
+        result = await self.session.execute(
+            select(func.count(DocumentTaskBatch.id)).where(DocumentTaskBatch.kb_id == kb_id)
+        )
+        return result.scalar() or 0
+
     async def refresh_summary(self, batch_id: int) -> Optional[DocumentTaskBatch]:
         batch = await self.get_by_id(batch_id)
         if not batch:
             return None
+
+        previous_status = int(batch.status) if batch.status is not None else None
 
         result = await self.session.execute(
             select(DocumentTask.status, func.count(DocumentTask.id))
@@ -68,6 +77,9 @@ class DocumentTaskBatchRepository:
 
         if processing > 0:
             batch.status = BatchStatus.PROCESSING
+            if batch.started_at is None:
+                batch.started_at = now_china()
+            batch.completed_at = None
         elif total > 0 and completed == total:
             batch.status = BatchStatus.COMPLETED
         elif total > 0 and completed + failed + cancelled == total:
@@ -79,6 +91,20 @@ class DocumentTaskBatchRepository:
                 batch.status = BatchStatus.COMPLETED
         else:
             batch.status = BatchStatus.PENDING
+            batch.completed_at = None
+
+        current_status = int(batch.status) if batch.status is not None else None
+        terminal_statuses = {
+            int(BatchStatus.COMPLETED),
+            int(BatchStatus.FAILED),
+            int(BatchStatus.PARTIAL_FAILED),
+            int(BatchStatus.CANCELLED),
+        }
+        if current_status == int(BatchStatus.PROCESSING) and batch.started_at is None:
+            batch.started_at = now_china()
+        if current_status in terminal_statuses:
+            if previous_status != current_status or batch.completed_at is None:
+                batch.completed_at = now_china()
 
         await self.session.flush()
         return batch

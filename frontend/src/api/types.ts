@@ -497,19 +497,27 @@ export interface DocumentTaskItemListResponse {
 
 export interface ProcessDocumentResponse {
   document_id: number
-  task_id?: number
-  task_item_id?: number
+  task_id: number
+  task_item_id: number
   status: string
   message: string
 }
 
-export interface BatchProcessResponse {
+export interface BatchProcessResultItem {
+  document_id: number
+  status: string
+  message: string
   task_id?: number
+  task_item_id?: number
+}
+
+export interface BatchProcessResponse {
+  task_id: number | null
   total: number
   success: number
   failed: number
   skipped: number
-  results: ProcessDocumentResponse[]
+  results: BatchProcessResultItem[]
 }
 
 // ===================== 成员相关 =====================

@@ -109,15 +109,26 @@ async def is_document_actively_processing(document_id: int) -> bool:
     if not job_id:
         return False
     try:
+        from arq.jobs import Job
         from src.shared.mq import get_arq_pool
         pool = await get_arq_pool()
-        # arq 0.28: _get_job_result 返回 None 表示 job 已不存在（完成或过期）
-        job_result = await pool._get_job_result(job_id)
-        if job_result is None:
+        # arq 0.28 的 _get_job_result 需要内部 bytes key，不适合直接传 str job_id。
+        # 这里改用公开 Job API，但只把“仍在队列中的 job”视为活跃。
+        job = Job(job_id, pool, _deserializer=pool.job_deserializer)
+
+        job_result = await job.result_info()
+        if job_result is not None:
             await doc_tracker.unbind(document_id)
-            logger.info("清理残留任务映射", document_id=document_id, job_id=job_id)
+            logger.info("任务已结束，清理任务映射", document_id=document_id, job_id=job_id)
             return False
-        return True
+
+        queued_job = await job.info()
+        if queued_job is not None:
+            return True
+
+        await doc_tracker.unbind(document_id)
+        logger.info("清理残留任务映射", document_id=document_id, job_id=job_id)
+        return False
     except Exception as e:
         # 无法验证时允许重试，避免文档永远卡死在 PROCESSING
         logger.warning("无法验证任务状态，允许重试", document_id=document_id, job_id=job_id, error=str(e))

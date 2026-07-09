@@ -235,7 +235,7 @@ async def _ensure_mark_failed(document_id: int, error_message: str) -> None:
         async with get_engine().connect() as conn:
             await conn.execute(
                 text(
-                    "UPDATE document_tasks SET status=:status, completed_at=:now, "
+                    "UPDATE document_task_items SET status=:status, completed_at=:now, "
                     "error_message=:msg WHERE document_id=:id AND status=:processing"
                 ),
                 {
@@ -545,22 +545,35 @@ async def recover_orphan_documents() -> int:
                 continue
 
             try:
-                from src.shared.mq import enqueue_process_document
-                # 更新恢复重试计数
-                task.retry_count = retry_count + 1
-                await session.commit()
+                from src.shared.mq import get_arq_pool
+                from src.shared.mq.task_tracker import bind_job_to_document
 
-                await enqueue_process_document(
+                pool = await get_arq_pool()
+                job = await pool.enqueue_job(
+                    "process_document_task",
                     document_id=task.document_id,
                     kb_id=task.kb_id,
                     space_id=task.space_id,
                 )
+
+                # 复用原 task item，仅更新恢复后的入队状态
+                task.retry_count = retry_count + 1
+                task.job_id = job.job_id
+                task.status = TaskStatus.PENDING
+                task.queued_at = now_china()
+                task.started_at = None
+                task.completed_at = None
+                task.error_message = None
+                await session.commit()
+                await bind_job_to_document(task.document_id, job.job_id)
+
                 recovered += 1
                 logger.info(
                     "孤儿文档已重新入队",
                     document_id=task.document_id,
                     kb_id=task.kb_id,
                     retry_count=retry_count + 1,
+                    job_id=job.job_id,
                 )
             except Exception as e:
                 logger.error(

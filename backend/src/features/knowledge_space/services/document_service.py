@@ -88,7 +88,7 @@ class DocumentService:
     MAX_FILE_SIZE = 100 * 1024 * 1024
 
     # 支持的文件类型
-    SUPPORTED_FILE_TYPES = ["pdf", "docx", "doc", "txt", "md", "csv", "html", "json", "jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "avi", "mkv", "webm", "mp3", "wav", "flac", "aac", "ogg", "m4a"]
+    SUPPORTED_FILE_TYPES = ["pdf", "docx", "txt", "md", "csv", "html", "json", "jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "avi", "mkv", "webm", "mp3", "wav", "flac", "aac", "ogg", "m4a"]
 
     # 图片文件类型（从 MinIO 工具收敛到唯一定义）
     from src.shared.storage.minio_client import IMAGE_FILE_TYPES as _IMG_TYPES
@@ -102,7 +102,7 @@ class DocumentService:
 
     # 模态 → 文件类型映射（用于上传校验和管道分流）
     MODALITY_TO_FILE_TYPES = {
-        "text":  frozenset({"pdf", "docx", "doc", "txt", "md", "csv", "html", "json"}),
+        "text":  frozenset({"pdf", "docx", "txt", "md", "csv", "html", "json"}),
         "image": IMAGE_FILE_TYPES,
         "video": VIDEO_FILE_TYPES,
         "audio": AUDIO_FILE_TYPES,
@@ -127,9 +127,10 @@ class DocumentService:
     async def count_kb_documents(
         self,
         kb_id: int,
+        status: Optional[int] = None,
     ) -> int:
         """统计知识库中的文档数量"""
-        return await self.doc_repo.count_by_kb(kb_id=kb_id)
+        return await self.doc_repo.count_by_kb(kb_id=kb_id, status=status)
 
     async def upload_document(
         self,
@@ -437,7 +438,8 @@ class DocumentService:
 
         # 获取 DocumentProcessor（传入空间配置的嵌入模型，确保语义切分使用正确模型）
         processor = await _get_document_processor_static(session, user_id=space_owner_id, model_name=embedding_model_name)
-        splitting_config = kb.get_splitting_config()
+        kb_config = (task.pipeline_config if task and task.pipeline_config else kb.get_config() or {})
+        splitting_config = kb_config.get("splitting", {})
         strategy = splitting_config.get("strategy", "recursive")
 
         suffix = f".{document.file_type}"
@@ -704,6 +706,7 @@ class DocumentService:
         kb_id: int,
         skip: int = 0,
         limit: int = 100,
+        status: Optional[int] = None,
     ) -> List[Document]:
         """
         获取知识库的文档列表
@@ -720,6 +723,7 @@ class DocumentService:
             kb_id=kb_id,
             skip=skip,
             limit=limit,
+            status=status,
         )
 
     async def get_document_chunks(
@@ -1021,6 +1025,7 @@ class DocumentService:
             "total_count": len(document_ids or []),
             "note": f"批量处理 {len(document_ids or [])} 个文档",
         })
+        await self.session.commit()
 
         for doc_id in document_ids:
             try:
@@ -1159,7 +1164,7 @@ class DocumentService:
         if not document:
             raise DocumentNotFoundError(document_id)
         batch_repo = DocumentTaskBatchRepository(self.session)
-        return await batch_repo.create({
+        batch = await batch_repo.create({
             "space_id": document.space_id,
             "kb_id": document.kb_id,
             "creator_id": user_id,
@@ -1167,6 +1172,8 @@ class DocumentService:
             "total_count": 1,
             "note": note,
         })
+        await self.session.commit()
+        return batch
 
     # ---------- 文档处理共享辅助方法 ----------
 

@@ -11,7 +11,6 @@ Embedding 模型配置存储在 config.embedding 中：
 from typing import Optional
 from enum import IntEnum
 from sqlalchemy import Column, BigInteger, SmallInteger, String, Text, Boolean, JSON, DateTime, ForeignKey, Index, UniqueConstraint, Integer
-from sqlalchemy.orm import relationship
 from src.core.database.base import BaseModel
 from src.shared.utils.time_utils import now_china
 
@@ -63,7 +62,6 @@ class KnowledgeBase(BaseModel):
     deleted_at = Column(DateTime, nullable=True, index=True, comment="软删除时间")
 
     # 关联关系（双向：KnowledgeBase.documents <-> Document.knowledge_base）
-    documents = relationship("Document", back_populates="knowledge_base", lazy="noload", passive_deletes=True)
 
     # 索引和约束
     __table_args__ = (
@@ -150,4 +148,3 @@ DEFAULT_STORAGE = {
     "es_index_name": None,  # 自动生成
     "minio_prefix": None,  # 自动生成
 }
-

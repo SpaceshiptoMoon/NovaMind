@@ -75,8 +75,7 @@ export const documentApi = {
 
   reprocessDocument(spaceId: number, kbId: number, docId: number) {
     return request.post<ProcessDocumentResponse>(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/reprocess`,
-      {}
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/reprocess`
     )
   },
 
@@ -88,8 +87,7 @@ export const documentApi = {
 
   retryDocument(spaceId: number, kbId: number, docId: number) {
     return request.post<ProcessDocumentResponse>(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/retry`,
-      {}
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/retry`
     )
   },
 

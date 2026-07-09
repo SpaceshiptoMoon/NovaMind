@@ -7,7 +7,6 @@
 from typing import Optional
 from enum import IntEnum
 from sqlalchemy import Column, BigInteger, String, DateTime, JSON, ForeignKey, Index, UniqueConstraint
-from sqlalchemy.orm import relationship
 from src.core.database.base import BaseModel
 
 
@@ -54,8 +53,6 @@ class Document(BaseModel):
     )
 
     # 关联关系
-    knowledge_base = relationship("KnowledgeBase", back_populates="documents", lazy="noload")
-    tasks = relationship("DocumentTaskItem", back_populates="document", lazy="noload", order_by="DocumentTaskItem.id.desc()")
 
     def __repr__(self) -> str:
         return f"<Document(id={self.id}, filename='{self.filename}')>"

@@ -54,9 +54,12 @@ async def process_video_document(
         if (task and task.pipeline_config)
         else (kb.get_config() if kb else {})
     )
-    video_config = pipeline_config.get("splitting", {}).get("video", {})
-    frame_interval = video_config.get("frame_interval", 5)
-    max_frames = video_config.get("max_frames", 60)
+    # Video parsing params belong to parsing.video. Keep a fallback to the
+    # legacy splitting.video location so older stored configs still run.
+    video_config = pipeline_config.get("parsing", {}).get("video", {})
+    legacy_video_config = pipeline_config.get("splitting", {}).get("video", {})
+    frame_interval = video_config.get("frame_interval", legacy_video_config.get("frame_interval", 5))
+    max_frames = video_config.get("max_frames", legacy_video_config.get("max_frames", 60))
 
     mcs = ModelConfigService(session)
 

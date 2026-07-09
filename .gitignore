@@ -28,6 +28,7 @@ dist-ssr/
 .coverage
 htmlcov/
 coverage/
+test_data/
 
 # ========================================
 # 环境变量与配置（含敏感信息）

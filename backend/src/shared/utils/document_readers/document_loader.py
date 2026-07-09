@@ -229,8 +229,9 @@ class DocumentProcessor:
 
         # 合并所有段落/页面为一个全文
         full_text = "\n\n".join(
-            doc.get("content", "") for doc in documents
+            doc.get("content") or doc.get("text", "") for doc in documents
         )
+
 
         logger.info(
             "文档全文读取完成",
@@ -304,11 +305,15 @@ class DocumentProcessor:
             splitter = splitter_class(**kwargs)
 
         # 对全文进行切分 — 将文本包装为单页文档
-        documents = [{"content": text, "metadata": {}}]
+        documents = [{"text": text, "content": text, "source": "", "metadata": {}}]
         chunks = await splitter.split(documents)
+        chunk_texts = [
+            chunk.get("content") or chunk.get("text", "")
+            for chunk in chunks
+            if (chunk.get("content") or chunk.get("text", "")).strip()
+        ]
 
         # 提取纯文本内容
-        chunk_texts = [c.get("content", "") for c in chunks if c.get("content", "").strip()]
 
         logger.info(
             "文本切分完成",

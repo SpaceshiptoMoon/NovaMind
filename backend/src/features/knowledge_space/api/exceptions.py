@@ -242,14 +242,24 @@ class DocumentProcessingError(KnowledgeSpaceError):
 
 class DocumentInvalidTypeError(KnowledgeSpaceError):
     """文档类型不支持"""
-    _serializable_attrs: ClassVar[List[str]] = ["file_type"]
+    _serializable_attrs: ClassVar[List[str]] = ["file_type", "allowed"]
 
-    def __init__(self, file_type: str):
+    def __init__(self, file_type: str = "", allowed: Optional[List[str]] = None, ext: Optional[str] = None):
+        normalized_type = (ext if ext is not None else file_type) or ""
+        allowed = allowed or []
+
+        message = f"不支持的文件类型: {normalized_type or '[empty]'}"
+        if normalized_type in {".doc", "doc"}:
+            message += "。请先将 .doc 转成 .docx 后再上传"
+        if allowed:
+            message += f"。当前支持: {', '.join(allowed)}"
+
         super().__init__(
-            message=f"不支持的文件类型: {file_type}",
+            message=message,
             code="DOCUMENT_INVALID_TYPE",
         )
-        self.file_type = file_type
+        self.file_type = normalized_type
+        self.allowed = allowed
 
 
 class DocumentSizeExceededError(KnowledgeSpaceError):

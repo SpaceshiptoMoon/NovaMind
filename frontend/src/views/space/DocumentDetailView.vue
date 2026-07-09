@@ -302,7 +302,7 @@ async function handleProcessDoc() {
   actionLoading.value = true
   try {
     const res = await documentApi.processDocument(spaceId.value, kbId.value, docId.value)
-    ElMessage.success(`已提交到任务 #${res.task_id ?? '-'}`)
+    ElMessage.success(`已提交到任务项 #${res.task_item_id ?? '-'}`)
     await fetchDocument()
     await fetchLatestTask()
   } catch {
@@ -330,7 +330,7 @@ async function handleRetryDoc() {
   actionLoading.value = true
   try {
     const res = await documentApi.retryDocument(spaceId.value, kbId.value, docId.value)
-    ElMessage.success(`已重新提交到任务 #${res.task_id ?? '-'}`)
+    ElMessage.success(`已重新提交到任务项 #${res.task_item_id ?? '-'}`)
     await fetchDocument()
     await fetchLatestTask()
   } catch {

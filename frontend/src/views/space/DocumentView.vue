@@ -350,7 +350,7 @@ function canRetry(doc: DocType): boolean {
 
 async function handleProcessSingle(doc: DocType) {
   const res = await documentApi.processDocument(spaceId.value, kbId.value, doc.id)
-  ElMessage.success(`文档 "${doc.filename}" 已加入任务 #${res.task_id ?? '-'}`)
+  ElMessage.success(`文档 "${doc.filename}" 已加入任务项 #${res.task_item_id ?? '-'}`)
   await fetchDocuments()
 }
 
@@ -362,7 +362,7 @@ async function handleCancelSingle(doc: DocType) {
 
 async function handleRetrySingle(doc: DocType) {
   const res = await documentApi.retryDocument(spaceId.value, kbId.value, doc.id)
-  ElMessage.success(`文档 "${doc.filename}" 已重新加入任务 #${res.task_id ?? '-'}`)
+  ElMessage.success(`文档 "${doc.filename}" 已重新加入任务项 #${res.task_item_id ?? '-'}`)
   await fetchDocuments()
 }
 

@@ -22,7 +22,6 @@ from src.features.knowledge_space.schemas.document_schema import (
     DocumentDetailResponse,
     DocumentUploadResponse,
     DocumentBatchUploadResponse,
-    DocumentProcessRequest,
     DocumentBatchProcessRequest,
     DocumentProcessResponse,
     DocumentCancelResponse,
@@ -290,6 +289,7 @@ async def upload_document(
 async def get_documents(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    status: Annotated[Optional[int], Query(ge=0, description="状态过滤: 0-待处理 1-处理中 2-已完成 3-失败 4-已取消")] = None,
     skip: Annotated[int, Query(ge=0, description="跳过的记录数")] = 0,
     limit: Annotated[int, Query(ge=1, le=1000, description="返回的最大记录数")] = 100,
     member: SpaceMember = Depends(validate_space_member),
@@ -300,16 +300,15 @@ async def get_documents(
     # 验证知识库访问权限
     await validate_kb_access(kb_id, space_id, db)
 
-    # TODO: status 过滤器原基于 Document.status 列，该列已迁移至 DocumentTask。
-    # 后续需要通过 JOIN/子查询 DocumentTask.latest status 实现过滤。
     documents = await document_service.get_kb_documents(
         kb_id=kb_id,
+        status=status,
         skip=skip,
         limit=limit,
     )
 
     # 获取符合条件的总数（用于分页）
-    total = await document_service.count_kb_documents(kb_id=kb_id)
+    total = await document_service.count_kb_documents(kb_id=kb_id, status=status)
 
     return DocumentListResponse(
         items=[DocumentResponse.model_validate(d) for d in documents],
@@ -382,7 +381,7 @@ async def get_document_chunks(
 
 @router.get(
     "/{kb_id}/document-tasks",
-    response_model=DocumentTaskItemListResponse,
+    response_model=DocumentTaskListResponse,
     summary="获取文档处理批次",
     description="获取知识库的文档处理批次列表（含子任务明细）",
 )
@@ -399,18 +398,22 @@ async def get_document_tasks_overview(
 
     batch_repo = DocumentTaskBatchRepository(db)
     task_repo = DocumentTaskRepository(db)
+    total = await batch_repo.count_by_kb(kb_id=kb_id)
     batches = await batch_repo.list_by_kb(kb_id=kb_id, skip=skip, limit=limit)
 
     items: List[DocumentTaskResponse] = []
     for batch in batches:
+        refreshed_batch = await batch_repo.refresh_summary(batch.id) or batch
         tasks = await task_repo.list_by_batch(batch.id)
-        item = DocumentTaskResponse.model_validate(batch)
+        item = DocumentTaskResponse.model_validate(refreshed_batch)
         item.items = [DocumentTaskItemResponse.model_validate(t) for t in tasks]
         items.append(item)
 
+    await db.commit()
+
     return DocumentTaskListResponse(
         items=items,
-        total=len(items),
+        total=total,
     )
 
 
@@ -559,7 +562,6 @@ async def process_document(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
     document_id: Annotated[int, Path(gt=0, description="文档ID")],
-    body: Annotated[Optional[DocumentProcessRequest], Body(default=None)] = None,
     user_id: int = Depends(get_current_user_id),
     member: SpaceMember = Depends(validate_space_editor),
     document_service: DocumentService = Depends(get_document_service),
@@ -595,7 +597,7 @@ async def process_document(
 async def process_documents(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
-    body: Annotated[DocumentBatchProcessRequest, Body(...)],
+    body: DocumentBatchProcessRequest = Body(...),
     user_id: int = Depends(get_current_user_id),
     member: SpaceMember = Depends(validate_space_editor),
     document_service: DocumentService = Depends(get_document_service),
@@ -680,7 +682,6 @@ async def retry_document_processing(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
     document_id: Annotated[int, Path(gt=0, description="文档ID")],
-    body: Annotated[Optional[DocumentProcessRequest], Body(default=None)] = None,
     user_id: int = Depends(get_current_user_id),
     member: SpaceMember = Depends(validate_space_editor),
     document_service: DocumentService = Depends(get_document_service),

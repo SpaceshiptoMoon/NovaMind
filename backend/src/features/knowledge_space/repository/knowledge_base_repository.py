@@ -9,7 +9,6 @@ from typing import Optional, List, Dict, Any
 
 from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from src.features.knowledge_space.models.knowledge_base import (
     KnowledgeBase,
@@ -71,9 +70,6 @@ class KnowledgeBaseRepository:
             KnowledgeBase.id == kb_id,
             KnowledgeBase.deleted_at.is_(None),
         )
-
-        if include_documents:
-            query = query.options(selectinload(KnowledgeBase.documents))
 
         result = await self.session.execute(query)
         return result.scalar_one_or_none()

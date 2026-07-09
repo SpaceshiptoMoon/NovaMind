@@ -146,10 +146,6 @@ class DocumentBatchUploadResponse(BaseModel):
 # ========== 拆分解析相关 Schema ==========
 
 
-class DocumentProcessRequest(BaseModel):
-    """单文档/重新解析请求"""
-
-
 class DocumentBatchProcessRequest(BaseModel):
     """批量拆分解析请求"""
     document_ids: Optional[List[int]] = Field(

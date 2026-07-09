@@ -717,6 +717,41 @@ def test_3_1_upload_document():
         print(f"    [INFO] 上传的文档 ID: {created_document_id}")
 
 
+def test_3_1_1_upload_doc_should_be_rejected():
+    """3.1.1 上传 .doc 文档应被拒绝"""
+    print_test("3.1.1 上传 .doc 文档 POST .../documents")
+
+    if not created_space_id or not created_kb_id:
+        _add_stat("total")
+        print_skip("无可用空间/知识库 ID, 跳过")
+        return
+
+    fake_doc_bytes = b"fake-doc-binary"
+
+    try:
+        resp = session.post(
+            api_url(f"/api/v1/spaces/{created_space_id}/knowledge-bases/{created_kb_id}/documents"),
+            files={"file": ("unsupported.doc", io.BytesIO(fake_doc_bytes), "application/msword")},
+            timeout=TIMEOUT
+        )
+    except Exception as e:
+        _add_stat("total")
+        print_skip(f"请求异常: {e}")
+        return
+
+    assert_status(resp, 400, ".doc 上传应被拒绝")
+
+    data = safe_json(resp)
+    if not data:
+        return
+
+    _add_stat("total")
+    if ".docx" in str(data):
+        print_pass(".doc 错误提示包含 .docx 转换建议")
+    else:
+        print_fail(f".doc 错误提示未包含 .docx 建议 | 响应: {data}")
+
+
 def test_3_2_get_documents():
     """3.2 获取文档列表"""
     print_test("3.2 获取文档列表 GET .../documents")

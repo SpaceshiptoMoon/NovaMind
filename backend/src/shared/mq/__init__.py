@@ -71,7 +71,9 @@ async def enqueue_process_document(
         job_id: arq 任务 ID
     """
     from src.core.database.database import get_db_session
+    from src.features.knowledge_space.api.exceptions import DocumentAlreadyProcessingError, DocumentNotFoundError
     from src.features.knowledge_space.models.document_task import TaskStatus
+    from src.features.knowledge_space.repository.document_repository import DocumentRepository
     from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
     from src.shared.mq.task_tracker import bind_job_to_document
     from src.shared.utils.time_utils import now_china
@@ -80,7 +82,14 @@ async def enqueue_process_document(
 
     # 1. 创建 DocumentTask 记录（快照 KB 配置）
     async with get_db_session() as session:
+        doc_repo = DocumentRepository(session)
         task_repo = DocumentTaskRepository(session)
+        document = await doc_repo.lock_active_document_by_id(document_id)
+        if not document:
+            raise DocumentNotFoundError(document_id)
+        active_task = await task_repo.get_active_by_document_id(document_id)
+        if active_task:
+            raise DocumentAlreadyProcessingError(document_id)
 
         task = await task_repo.create({
             "batch_id": batch_id,

@@ -454,6 +454,16 @@ class KnowledgeBaseService:
                 if not (100 <= splitting_video["chunk_size"] <= 4000):
                     raise InvalidParameterError("video.chunk_size 必须在 100-4000 之间")
 
+        parsing = config_updates.get("parsing", {})
+        parsing_video = parsing.get("video")
+        if parsing_video:
+            if "frame_interval" in parsing_video:
+                if not (1.0 <= parsing_video["frame_interval"] <= 60.0):
+                    raise InvalidParameterError("parsing.video.frame_interval must be between 1.0 and 60.0")
+            if "max_frames" in parsing_video:
+                if not (1 <= parsing_video["max_frames"] <= 200):
+                    raise InvalidParameterError("parsing.video.max_frames must be between 1 and 200")
+
     async def update_config(
         self,
         kb_id: int,

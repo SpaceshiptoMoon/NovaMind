@@ -8,7 +8,6 @@ Compatibility note:
 from enum import IntEnum
 
 from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, JSON, SmallInteger, String, Text
-from sqlalchemy.orm import relationship
 
 from src.core.database.base import BaseModel
 from src.shared.utils.time_utils import now_china
@@ -45,8 +44,6 @@ class DocumentTaskBatch(BaseModel):
     error_message = Column(Text, nullable=True, comment="Task error")
     started_at = Column(DateTime, nullable=True, comment="Started at")
     completed_at = Column(DateTime, nullable=True, comment="Completed at")
-
-    tasks = relationship("DocumentTask", back_populates="batch", lazy="noload")
 
     __table_args__ = (
         Index("idx_document_task_kb_status", "kb_id", "status"),

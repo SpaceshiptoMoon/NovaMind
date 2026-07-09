@@ -12,7 +12,7 @@
 from typing import Optional, List, Dict, Any
 from sqlalchemy import select, update, delete, func, cast, Integer, case
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import outerjoin, selectinload
+from sqlalchemy.orm import outerjoin
 
 from src.features.knowledge_space.models.document import Document
 from src.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
@@ -125,6 +125,19 @@ class DocumentRepository:
         )
 
         result = await self.session.execute(query)
+        document = result.scalar_one_or_none()
+        if document:
+            await self._attach_latest_tasks([document])
+        return document
+
+    async def lock_active_document_by_id(self, document_id: int) -> Optional[Document]:
+        query = (
+            select(Document).where(
+                Document.id == document_id,
+                Document.deleted_at.is_(None),
+            ).with_for_update()
+        )
+        result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
     async def get_by_kb(
@@ -132,9 +145,10 @@ class DocumentRepository:
         kb_id: int,
         skip: int = 0,
         limit: int = 100,
+        status: Optional[int] = None,
     ) -> List[Document]:
         """获取知识库内的文档列表"""
-        return await self._list_by_parent(Document.kb_id, kb_id, skip, limit)
+        return await self._list_by_parent(Document.kb_id, kb_id, skip, limit, status=status)
 
     async def get_by_space(
         self,
@@ -295,7 +309,7 @@ class DocumentRepository:
         )
         return result.rowcount
 
-    async def count_by_kb(self, kb_id: int) -> int:
+    async def count_by_kb(self, kb_id: int, status: Optional[int] = None) -> int:
         """
         统计知识库内的文档数量
 
@@ -305,10 +319,25 @@ class DocumentRepository:
         Returns:
             文档数量
         """
-        query = select(func.count(Document.id)).where(
-            Document.kb_id == kb_id,
-            Document.deleted_at.is_(None),
-        )
+        if status is None:
+            query = select(func.count(Document.id)).where(
+                Document.kb_id == kb_id,
+                Document.deleted_at.is_(None),
+            )
+        else:
+            latest = self._latest_task_status_subquery()
+            query = (
+                select(func.count(Document.id))
+                .select_from(outerjoin(Document, latest, latest.c.doc_id == Document.id))
+                .where(Document.kb_id == kb_id, Document.deleted_at.is_(None))
+            )
+            status_value = int(status)
+            if status_value == int(TaskStatus.PENDING):
+                query = query.where(
+                    (latest.c.doc_id.is_(None)) | (latest.c.task_status == status_value)
+                )
+            else:
+                query = query.where(latest.c.task_status == status_value)
         result = await self.session.execute(query)
         return result.scalar() or 0
 
@@ -439,7 +468,9 @@ class DocumentRepository:
             .offset(skip)
             .limit(limit)
         )
-        return list(result.scalars().all())
+        documents = list(result.scalars().all())
+        await self._attach_latest_tasks(documents)
+        return documents
 
     # ---------- 私有方法 ----------
 
@@ -449,20 +480,76 @@ class DocumentRepository:
         parent_id: int,
         skip: int = 0,
         limit: int = 100,
+        status: Optional[int] = None,
     ) -> List[Document]:
         """按父级字段（kb_id 或 space_id）查询文档列表"""
-        query = (
-            select(Document)
-            .where(
-                column == parent_id,
-                Document.deleted_at.is_(None),
-            )
-            .order_by(Document.created_at.desc())
-            .offset(skip)
-            .limit(limit)
+        query = select(Document).where(
+            column == parent_id,
+            Document.deleted_at.is_(None),
         )
+        if status is not None:
+            latest = self._latest_task_status_subquery()
+            status_value = int(status)
+            query = query.select_from(outerjoin(Document, latest, latest.c.doc_id == Document.id))
+            if status_value == int(TaskStatus.PENDING):
+                query = query.where(
+                    (latest.c.doc_id.is_(None)) | (latest.c.task_status == status_value)
+                )
+            else:
+                query = query.where(latest.c.task_status == status_value)
+        query = query.order_by(Document.created_at.desc()).offset(skip).limit(limit)
         result = await self.session.execute(query)
-        return list(result.scalars().all())
+        documents = list(result.scalars().all())
+        await self._attach_latest_tasks(documents)
+        return documents
+
+    @staticmethod
+    def _latest_task_status_subquery():
+        ranked = (
+            select(
+                DocumentTask.document_id,
+                DocumentTask.status,
+                func.row_number().over(
+                    partition_by=DocumentTask.document_id,
+                    order_by=DocumentTask.id.desc(),
+                ).label("rn"),
+            ).subquery()
+        )
+        return (
+            select(
+                ranked.c.document_id.label("doc_id"),
+                ranked.c.status.label("task_status"),
+            )
+            .where(ranked.c.rn == 1)
+            .subquery("latest_task")
+        )
+
+    async def _attach_latest_tasks(self, documents: List[Document]) -> None:
+        """Attach each document's latest task item for document-page status reads."""
+        if not documents:
+            return
+
+        document_ids = [doc.id for doc in documents]
+        ranked = (
+            select(
+                DocumentTask.id.label("task_id"),
+                DocumentTask.document_id,
+                func.row_number().over(
+                    partition_by=DocumentTask.document_id,
+                    order_by=DocumentTask.id.desc(),
+                ).label("rn"),
+            )
+            .where(DocumentTask.document_id.in_(document_ids))
+            .subquery()
+        )
+        latest_task_ids = select(ranked.c.task_id).where(ranked.c.rn == 1)
+        result = await self.session.execute(
+            select(DocumentTask).where(DocumentTask.id.in_(latest_task_ids))
+        )
+        task_map = {task.document_id: task for task in result.scalars().all()}
+
+        for document in documents:
+            setattr(document, "task", task_map.get(document.id))
 
     @staticmethod
     def _build_stats_select(with_kb_id: bool = False):

@@ -9,7 +9,6 @@ from enum import IntEnum
 from typing import Optional
 
 from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, JSON, SmallInteger, String, Text
-from sqlalchemy.orm import relationship
 
 from src.core.database.base import BaseModel
 from src.shared.utils.time_utils import now_china
@@ -46,6 +45,7 @@ class DocumentTask(BaseModel):
     space_id = Column(BigInteger, ForeignKey("knowledge_spaces.id", ondelete="CASCADE"), nullable=False, comment="Space ID")
     status = Column(SmallInteger, default=TaskStatus.PENDING, nullable=False, index=True, comment="Task item status")
     job_id = Column(String(64), nullable=True, comment="arq job ID")
+    pipeline_config = Column(JSON, nullable=True, comment="Pipeline config snapshot")
     step_progress = Column(JSON, nullable=True, comment="Step progress")
     pipeline_result = Column(JSON, nullable=True, comment="Pipeline result")
     error_message = Column(Text, nullable=True, comment="Error message")
@@ -53,9 +53,6 @@ class DocumentTask(BaseModel):
     queued_at = Column(DateTime, nullable=True, comment="Queued at")
     started_at = Column(DateTime, nullable=True, comment="Started at")
     completed_at = Column(DateTime, nullable=True, comment="Completed at")
-
-    document = relationship("Document", back_populates="tasks", lazy="noload")
-    batch = relationship("DocumentTaskBatch", back_populates="tasks", lazy="noload")
 
     __table_args__ = (
         Index("idx_task_document", "document_id"),
@@ -67,10 +64,6 @@ class DocumentTask(BaseModel):
     @property
     def task_id(self) -> int:
         return self.batch_id
-
-    @property
-    def pipeline_config(self) -> Optional[dict]:
-        return self.batch.pipeline_config if self.batch is not None else None
 
     def mark_processing(self) -> None:
         self.status = TaskStatus.PROCESSING
