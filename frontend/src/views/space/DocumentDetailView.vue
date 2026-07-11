@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="document-detail-view">
     <!-- 文档信息 -->
     <div v-loading="loading" class="info-section">
@@ -167,10 +167,10 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { documentApi } from '@/api/document'
+import { documentApi } from '@/api/knowledge'
 import EmptyState from '@/components/common/EmptyState.vue'
-import type { DocumentDetail, Chunk, DocumentTask } from '@/api/types'
-import { getFileTypeStyle, chunkTypeLabels, taskStatusMap } from '@/utils/document'
+import type { DocumentDetail, Chunk, DocumentTaskItem } from '@/api/types'
+import { chunkTypeLabels, getFileTypeStyle, taskStatusMap } from '@/components/knowledge'
 import { formatFileSize, formatDate, formatDuration } from '@/utils/format'
 
 const route = useRoute()
@@ -180,7 +180,7 @@ const spaceId = computed(() => Number(route.params.id))
 const docId = computed(() => Number(route.params.docId))
 const kbId = computed(() => Number(route.query.kbId) || 0)
 
-// 空状态返回目标：有 kbId 回文档管理，否则回知识库列表（兜底直接访问详情页无 query 的情况）
+// 空状态返回目标：有 kbId 时回文档管理，否则回知识库列表。
 const backTarget = computed(() =>
   kbId.value
     ? `/home/spaces/${spaceId.value}/knowledge-bases/${kbId.value}/documents`
@@ -191,7 +191,7 @@ const backLabel = computed(() => (kbId.value ? '返回文档管理' : '返回知
 const loading = ref(false)
 const actionLoading = ref(false)
 const document = ref<DocumentDetail | null>(null)
-const latestTask = ref<DocumentTask | null>(null)
+const latestTask = ref<DocumentTaskItem | null>(null)
 const chunks = ref<Chunk[]>([])
 const totalChunks = ref(0)
 const chunkCurrentPage = ref(1)
@@ -199,7 +199,7 @@ const chunkPageSize = 10
 const previewVisible = ref(false)
 const previewUrl = ref('')
 
-// === 状态辅助（基于 DocumentTask） ===
+// 状态辅助：基于最新 DocumentTask 派生页面状态。
 
 const docStatus = computed(() => document.value?.status ?? 0)
 const currentStatusConfig = computed(() => taskStatusMap[docStatus.value] ?? { text: '未知', type: 'info' as const })
@@ -284,7 +284,7 @@ async function handleDelete() {
   }
 }
 
-// === 处理操作（基于 Task） ===
+// 处理操作：基于 Task 接口执行处理、取消和重试。
 
 async function fetchLatestTask() {
   if (kbId.value === 0) return
@@ -294,7 +294,7 @@ async function fetchLatestTask() {
       latestTask.value = res.items[0]
     }
   } catch {
-    // 任务信息获取失败不影响主页面
+    // 浠诲姟淇℃伅鑾峰彇澶辫触涓嶅奖鍝嶄富椤甸潰
   }
 }
 
@@ -591,3 +591,6 @@ onMounted(() => {
   margin-top: var(--space-4);
 }
 </style>
+
+
+

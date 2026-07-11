@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="search-view">
     <div class="kb-layout">
       <KbSidebar :nav-items="kbNavItems" />
@@ -164,14 +164,14 @@
               title="未找到相关结果"
               description="尝试调整查询内容或检索模式"
             >
-              <el-button @click="handleReset">重置搜索</el-button>
+              <el-button @click="handleReset">重置检索</el-button>
             </EmptyState>
 
-            <!-- 未搜索时的引导 -->
+            <!-- 未检索时的引导 -->
             <div v-else class="search-empty">
               <el-icon :size="48" color="var(--color-text-faint)"><Search /></el-icon>
               <p class="search-empty-title">输入查询内容开始检索</p>
-              <p class="search-empty-desc">在上方输入查询内容并选择知识库，按 Enter 或点击检索按钮开始搜索</p>
+              <p class="search-empty-desc">在上方输入查询内容并选择知识库，按 Enter 或点击检索按钮开始搜索。</p>
             </div>
           </main>
 
@@ -416,33 +416,36 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search, ArrowDown, Upload, Close, Document, DataAnalysis } from '@element-plus/icons-vue'
-import { searchApi } from '@/api/search'
-import { documentApi } from '@/api/document'
+import { documentApi, knowledgeBaseApi, searchApi } from '@/api/knowledge'
 import { spaceApi } from '@/api/space'
-import { knowledgeBaseApi } from '@/api/knowledgeBase'
-import KbSidebar from '@/components/common/KbSidebar.vue'
-import type { KbNavItem } from '@/components/common/KbSidebar.vue'
+import { KbSidebar, buildKbNavItems } from '@/components/knowledge'
 import type { KnowledgeBase, SearchMode, SearchResultItem, SearchResponse } from '@/api/types'
 import EmptyState from '@/components/common/EmptyState.vue'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
-import { normalizeSpaceTypes, hasModality, chunkTypeLabels } from '@/utils/document'
+import { chunkTypeLabels, hasModality, normalizeSpaceTypes } from '@/components/knowledge'
 import { formatDuration } from '@/utils/format'
 
 const route = useRoute()
 
 const spaceId = computed(() => Number(route.params.id))
-const currentKbId = computed(() => route.query.kbId || '')
-
-const kbNavItems = computed<KbNavItem[]>(() => {
-  const sid = spaceId.value
-  const kid = currentKbId.value
-  return [
-    { label: '文档管理', to: `/home/spaces/${sid}/knowledge-bases/${kid}/documents`, route: 'Documents', active: route.name === 'Documents' || route.name === 'DocumentDetail', icon: Document },
-    { label: '任务列表', to: `/home/spaces/${sid}/knowledge-bases/${kid}/tasks`, route: 'DocumentTasks', active: route.name === 'DocumentTasks', icon: DataAnalysis },
-    { label: '检索', to: `/home/spaces/${sid}/search?kbId=${kid}`, route: 'Search', active: route.name === 'Search', icon: Search },
-    { label: '评测', to: `/home/spaces/${sid}/knowledge-bases/${kid}/evaluation`, route: 'KbEvaluation', active: route.name === 'KbEvaluation', icon: DataAnalysis },
-  ]
+const currentKbId = computed(() => {
+  const raw = route.query.kbId
+  return Array.isArray(raw) ? (raw[0] || '') : (raw || '')
 })
+
+const kbNavItems = computed(() =>
+  buildKbNavItems({
+    spaceId: spaceId.value,
+    kbId: currentKbId.value,
+    currentRouteName: route.name,
+    icons: {
+      document: Document,
+      list: DataAnalysis,
+      search: Search,
+      evaluation: DataAnalysis,
+    },
+  })
+)
 
 const spaceTypes = ref<string[]>(['text'])
 const hasImage = computed(() => hasModality(spaceTypes.value, 'image'))
@@ -648,11 +651,12 @@ async function handleSearch() {
     searchResults.value = data.results || []
 
     // 图片搜索：根据 document_id 代理获取图片 blob URL
-    if (hasImage.value && searchResults.value.length > 0) {
-      const uniqueDocIds = [...new Set(searchResults.value.map(r => r.document_id))]
+    if (hasImage.value && searchForm.kb_id && searchResults.value.length > 0) {
+      const kbId = searchForm.kb_id
+      const uniqueDocIds = [...new Set(searchResults.value.map(r => r.document_id).filter((docId): docId is number => docId != null))]
       const urlMap = await Promise.all(
         uniqueDocIds.map(docId =>
-          documentApi.getDocumentImage(spaceId.value, searchForm.kb_id, docId)
+          documentApi.getDocumentImage(spaceId.value, kbId, docId)
             .then(url => ({ docId, url }))
             .catch(() => ({ docId, url: '' }))
         )
@@ -660,7 +664,7 @@ async function handleSearch() {
       const urlLookup = new Map(urlMap.map(item => [item.docId, item.url]))
       searchResults.value = searchResults.value.map(r => ({
         ...r,
-        image_url: r.image_url || urlLookup.get(r.document_id) || '',
+        image_url: r.image_url || (r.document_id != null ? urlLookup.get(r.document_id) : '') || '',
       }))
     }
 
@@ -714,11 +718,12 @@ async function handleImageFileChange(event: Event) {
     })
     searchResults.value = data.results || []
 
-    if (searchResults.value.length > 0) {
-      const uniqueDocIds = [...new Set(searchResults.value.map(r => r.document_id))]
+    if (searchForm.kb_id && searchResults.value.length > 0) {
+      const kbId = searchForm.kb_id
+      const uniqueDocIds = [...new Set(searchResults.value.map(r => r.document_id).filter((docId): docId is number => docId != null))]
       const urlMap = await Promise.all(
         uniqueDocIds.map(docId =>
-          documentApi.getDocumentImage(spaceId.value, searchForm.kb_id, docId)
+          documentApi.getDocumentImage(spaceId.value, kbId, docId)
             .then(url => ({ docId, url }))
             .catch(() => ({ docId, url: '' }))
         )
@@ -726,7 +731,7 @@ async function handleImageFileChange(event: Event) {
       const urlLookup = new Map(urlMap.map(item => [item.docId, item.url]))
       searchResults.value = searchResults.value.map(r => ({
         ...r,
-        image_url: r.image_url || urlLookup.get(r.document_id) || '',
+        image_url: r.image_url || (r.document_id != null ? urlLookup.get(r.document_id) : '') || '',
       }))
     }
 
@@ -1343,3 +1348,4 @@ onMounted(async () => {
   padding: 0;
 }
 </style>
+

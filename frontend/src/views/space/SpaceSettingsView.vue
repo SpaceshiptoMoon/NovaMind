@@ -399,7 +399,7 @@ import { spaceApi } from '@/api/space'
 import { userApi } from '@/api/user'
 import { memberApi } from '@/api/member'
 import { useUserStore } from '@/stores/user'
-import { normalizeSpaceTypes } from '@/utils/document'
+import { normalizeSpaceTypes } from '@/components/knowledge'
 import type {
   SpaceConfigResponse,
   SpaceConfigStats,

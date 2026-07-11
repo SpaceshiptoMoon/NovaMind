@@ -1,4 +1,4 @@
-import { request } from './index'
+import { request } from '../index'
 import type {
   DocumentListResponse,
   UploadDocumentResponse,
@@ -9,7 +9,7 @@ import type {
   BatchProcessResponse,
   DocumentTaskListResponse,
   DocumentTaskItemListResponse,
-} from './types'
+} from '../types'
 
 export const documentApi = {
   getDocuments(spaceId: number, kbId: number, params?: { status?: string; skip?: number; limit?: number }) {

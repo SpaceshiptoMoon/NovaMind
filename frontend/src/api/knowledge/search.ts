@@ -1,5 +1,11 @@
-import { request } from './index'
-import type { SearchRequest, SearchResponse, SearchModeListResponse, SearchModelConfigResponse, MultimodalSearchRequest } from './types'
+import { request } from '../index'
+import type {
+  SearchRequest,
+  SearchResponse,
+  SearchModeListResponse,
+  SearchModelConfigResponse,
+  MultimodalSearchRequest,
+} from '../types'
 
 export const searchApi = {
   search(spaceId: number, kbId: number, data: SearchRequest) {

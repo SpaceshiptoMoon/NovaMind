@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { spaceApi } from '@/api/space'
-import { normalizeSpaceTypes } from '@/utils/document'
+import { normalizeSpaceTypes } from '@/components/knowledge'
 import type { Space, SpaceConfig } from '@/api/types'
 
 /** 归一化 Space 数据中的 space_type（兼容旧数据中的字符串格式） */

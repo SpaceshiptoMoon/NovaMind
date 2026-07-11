@@ -298,7 +298,7 @@ import {
 } from '@element-plus/icons-vue'
 
 import { useSpaceStore } from '@/stores/space'
-import { knowledgeBaseApi } from '@/api/knowledgeBase'
+import { knowledgeBaseApi } from '@/api/knowledge'
 import { userApi } from '@/api/user'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { Space, AvailableModelItem } from '@/api/types'

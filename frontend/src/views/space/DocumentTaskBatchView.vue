@@ -190,12 +190,10 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { DataAnalysis, Document, List, RefreshRight, Search } from '@element-plus/icons-vue'
 
-import { documentApi } from '@/api/document'
+import { documentApi } from '@/api/knowledge'
 import type { DocumentTask } from '@/api/types'
-import KbSidebar from '@/components/common/KbSidebar.vue'
-import type { KbNavItem } from '@/components/common/KbSidebar.vue'
+import { KbSidebar, buildKbNavItems, taskStatusMap } from '@/components/knowledge'
 import Pagination from '@/components/common/Pagination.vue'
-import { taskStatusMap } from '@/utils/document'
 import { formatDate } from '@/utils/format'
 
 const route = useRoute()
@@ -211,40 +209,19 @@ const total = ref(0)
 const spaceId = computed(() => Number(route.params.id))
 const kbId = computed(() => Number(route.params.kbId))
 
-const kbNavItems = computed<KbNavItem[]>(() => {
-  const sid = spaceId.value
-  const kid = kbId.value
-  return [
-    {
-      label: '文档管理',
-      to: `/home/spaces/${sid}/knowledge-bases/${kid}/documents`,
-      route: 'Documents',
-      active: route.name === 'Documents' || route.name === 'DocumentDetail',
-      icon: Document,
+const kbNavItems = computed(() =>
+  buildKbNavItems({
+    spaceId: spaceId.value,
+    kbId: kbId.value,
+    currentRouteName: route.name,
+    icons: {
+      document: Document,
+      list: List,
+      search: Search,
+      evaluation: DataAnalysis,
     },
-    {
-      label: '任务列表',
-      to: `/home/spaces/${sid}/knowledge-bases/${kid}/tasks`,
-      route: 'DocumentTasks',
-      active: route.name === 'DocumentTasks',
-      icon: List,
-    },
-    {
-      label: '搜索',
-      to: `/home/spaces/${sid}/search?kbId=${kid}`,
-      route: 'Search',
-      active: route.name === 'Search',
-      icon: Search,
-    },
-    {
-      label: '测评',
-      to: `/home/spaces/${sid}/knowledge-bases/${kid}/evaluation`,
-      route: 'KbEvaluation',
-      active: route.name === 'KbEvaluation',
-      icon: DataAnalysis,
-    },
-  ]
-})
+  })
+)
 
 const currentPageDocumentCount = computed(() => tasks.value.reduce((sum, task) => sum + (task.total_count || 0), 0))
 const currentPageFailedCount = computed(() =>

@@ -19,10 +19,7 @@ import type {
 const BASE = (spaceId: number, kbId: number) =>
   `/spaces/${spaceId}/knowledge-bases/${kbId}/evaluation`
 
-// ===================== 测试集管理 =====================
-
 export const evaluationApi = {
-  // 测试集列表
   getTestSets(
     spaceId: number,
     kbId: number,
@@ -31,7 +28,6 @@ export const evaluationApi = {
     return request.get(`${BASE(spaceId, kbId)}/test-sets`, params as Record<string, unknown>)
   },
 
-  // 上传测试集
   uploadTestSet(
     spaceId: number,
     kbId: number,
@@ -48,7 +44,6 @@ export const evaluationApi = {
       .then((r) => r.data)
   },
 
-  // 删除测试集
   deleteTestSet(
     spaceId: number,
     kbId: number,
@@ -57,7 +52,6 @@ export const evaluationApi = {
     return request.delete(`${BASE(spaceId, kbId)}/test-sets/${testSetId}`)
   },
 
-  // 更新测试集名称
   updateTestSetName(
     spaceId: number,
     kbId: number,
@@ -67,7 +61,6 @@ export const evaluationApi = {
     return request.put(`${BASE(spaceId, kbId)}/test-sets/${testSetId}`, data)
   },
 
-  // 预览测试集用例
   getTestSetCases(
     spaceId: number,
     kbId: number,
@@ -76,9 +69,6 @@ export const evaluationApi = {
     return request.get(`${BASE(spaceId, kbId)}/test-sets/${testSetId}/cases`)
   },
 
-  // ===================== 测评任务管理 =====================
-
-  // 任务列表
   getTasks(
     spaceId: number,
     kbId: number,
@@ -87,7 +77,6 @@ export const evaluationApi = {
     return request.get(`${BASE(spaceId, kbId)}/tasks`, params as Record<string, unknown>)
   },
 
-  // 任务详情
   getTask(
     spaceId: number,
     kbId: number,
@@ -96,7 +85,6 @@ export const evaluationApi = {
     return request.get(`${BASE(spaceId, kbId)}/tasks/${taskId}`)
   },
 
-  // 创建测评任务
   createTask(
     spaceId: number,
     kbId: number,
@@ -105,7 +93,6 @@ export const evaluationApi = {
     return request.post(`${BASE(spaceId, kbId)}/tasks`, data)
   },
 
-  // 删除测评任务
   deleteTask(
     spaceId: number,
     kbId: number,
@@ -114,7 +101,6 @@ export const evaluationApi = {
     return request.delete(`${BASE(spaceId, kbId)}/tasks/${taskId}`)
   },
 
-  // 取消测评任务
   cancelTask(
     spaceId: number,
     kbId: number,
@@ -123,7 +109,6 @@ export const evaluationApi = {
     return request.post(`${BASE(spaceId, kbId)}/tasks/${taskId}/cancel`)
   },
 
-  // 获取任务执行进度
   getTaskProgress(
     spaceId: number,
     kbId: number,
@@ -132,7 +117,6 @@ export const evaluationApi = {
     return request.get(`${BASE(spaceId, kbId)}/tasks/${taskId}/progress`)
   },
 
-  // 获取测评报告
   getReport(
     spaceId: number,
     kbId: number,
@@ -141,7 +125,6 @@ export const evaluationApi = {
     return request.get(`${BASE(spaceId, kbId)}/tasks/${taskId}/report`)
   },
 
-  // 提交人工评分
   submitHumanScores(
     spaceId: number,
     kbId: number,
@@ -151,7 +134,6 @@ export const evaluationApi = {
     return request.post(`${BASE(spaceId, kbId)}/tasks/${taskId}/scores`, data)
   },
 
-  // 导出测评结果
   async exportReport(
     spaceId: number,
     kbId: number,
@@ -166,7 +148,7 @@ export const evaluationApi = {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
 
-    if (!response.ok) throw new Error('导出失败')
+    if (!response.ok) throw new Error('瀵煎嚭澶辫触')
 
     const blob = await response.blob()
     const disposition = response.headers.get('content-disposition')

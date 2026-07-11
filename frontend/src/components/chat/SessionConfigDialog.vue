@@ -130,7 +130,7 @@ import { ref, reactive, watch } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { sessionApi } from '@/api/session'
-import { knowledgeBaseApi } from '@/api/knowledgeBase'
+import { knowledgeBaseApi } from '@/api/knowledge'
 import { useChatStore } from '@/stores/chat'
 import { useSpaceStore } from '@/stores/space'
 

@@ -33,7 +33,7 @@
           </el-checkbox>
           <el-checkbox label="image">
             <span class="modality-label">图片</span>
-            <span class="modality-desc">OCR / VLM 图片理解</span>
+            <span class="modality-desc">OCR / VLM 图像理解</span>
           </el-checkbox>
           <el-checkbox label="video">
             <span class="modality-label">视频</span>
@@ -94,13 +94,7 @@
           <p class="sub-desc">仅在图片解析策略选择 VLM 时生效。</p>
           <el-form :model="configForm" label-width="120px" class="config-form">
             <el-form-item label="VLM 模型">
-              <el-select
-                v-model="configForm.imageVlmModel"
-                clearable
-                filterable
-                placeholder="系统默认"
-                style="width: 100%"
-              >
+              <el-select v-model="configForm.imageVlmModel" clearable filterable placeholder="系统默认" style="width: 100%">
                 <el-option v-for="model in vlmModels" :key="model.model" :label="model.model" :value="model.model" />
               </el-select>
             </el-form-item>
@@ -112,13 +106,7 @@
           <p class="sub-desc">用于视频抽帧后的视觉描述，留空时使用系统默认模型。</p>
           <el-form :model="configForm" label-width="120px" class="config-form">
             <el-form-item label="VLM 模型">
-              <el-select
-                v-model="configForm.videoVlmModel"
-                clearable
-                filterable
-                placeholder="系统默认"
-                style="width: 100%"
-              >
+              <el-select v-model="configForm.videoVlmModel" clearable filterable placeholder="系统默认" style="width: 100%">
                 <el-option v-for="model in vlmModels" :key="model.model" :label="model.model" :value="model.model" />
               </el-select>
             </el-form-item>
@@ -130,13 +118,7 @@
           <p class="sub-desc">用于音频转写，留空时使用默认 ASR 模型。</p>
           <el-form :model="configForm" label-width="120px" class="config-form">
             <el-form-item label="ASR 模型">
-              <el-select
-                v-model="configForm.audioAsrModel"
-                clearable
-                filterable
-                placeholder="默认 whisper-1"
-                style="width: 100%"
-              >
+              <el-select v-model="configForm.audioAsrModel" clearable filterable placeholder="默认 whisper-1" style="width: 100%">
                 <el-option v-for="model in asrModels" :key="model.model" :label="model.model" :value="model.model" />
               </el-select>
             </el-form-item>
@@ -153,113 +135,15 @@
           </div>
         </div>
 
-        <div v-if="hasText" class="sub-section">
-          <h4 class="sub-title">文本解析</h4>
-          <p class="sub-desc">文本按文件类型配置策略。PDF 支持额外的 parser 和 OCR。</p>
-
-          <el-form :model="configForm" label-width="120px" class="config-form">
-            <el-row :gutter="24">
-              <el-col :span="12">
-                <el-form-item label="PDF 策略">
-                  <el-select v-model="configForm.pdfStrategy" style="width: 100%">
-                    <el-option label="default" value="default" />
-                    <el-option label="deepdoc" value="deepdoc" />
-                  </el-select>
-                </el-form-item>
-              </el-col>
-              <el-col v-if="configForm.pdfStrategy === 'deepdoc'" :span="12">
-                <el-form-item label="PDF Parser">
-                  <el-select v-model="configForm.deepdocParser" filterable style="width: 100%">
-                    <el-option
-                      v-for="option in deepdocParserOptions"
-                      :key="option.value"
-                      :label="option.label"
-                      :value="option.value"
-                    />
-                  </el-select>
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="PDF OCR">
-                  <el-switch v-model="configForm.pdfOcrEnabled" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-
-            <div class="text-strategy-grid">
-              <div v-for="item in textStrategyItems" :key="item.key" class="text-strategy-item">
-                <span class="text-strategy-label">{{ item.label }}</span>
-                <el-select v-model="configForm[item.key]" style="width: 180px">
-                  <el-option label="default" value="default" />
-                  <el-option label="deepdoc" value="deepdoc" />
-                </el-select>
-              </div>
-            </div>
-          </el-form>
-        </div>
-
-        <div v-if="hasImage" class="sub-section">
-          <h4 class="sub-title">图片解析</h4>
-          <p class="sub-desc">OCR 与 VLM 二选一；当策略为 VLM 时才会带上 VLM 模型。</p>
-
-          <el-form :model="configForm" label-width="120px" class="config-form">
-            <el-form-item label="解析策略">
-              <el-radio-group v-model="configForm.imageStrategy">
-                <el-radio value="ocr">ocr</el-radio>
-                <el-radio value="vlm">vlm</el-radio>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item v-if="configForm.imageStrategy === 'vlm'" label="VLM 模型">
-              <el-select v-model="configForm.imageVlmModel" clearable filterable placeholder="系统默认" style="width: 100%">
-                <el-option v-for="model in vlmModels" :key="model.model" :label="model.model" :value="model.model" />
-              </el-select>
-            </el-form-item>
-          </el-form>
-        </div>
-
-        <div v-if="hasVideo" class="sub-section">
-          <h4 class="sub-title">视频解析</h4>
-          <p class="sub-desc">控制抽帧频率、最大抽帧数和视觉描述开关。</p>
-
-          <el-form :model="configForm" label-width="120px" class="config-form">
-            <el-form-item label="抽帧间隔">
-              <el-slider v-model="configForm.videoFrameInterval" :min="1" :max="60" show-input :show-input-controls="false" />
-            </el-form-item>
-            <el-form-item label="最大帧数">
-              <el-input-number v-model="configForm.videoMaxFrames" :min="1" :max="200" style="width: 100%" />
-            </el-form-item>
-            <el-form-item label="视觉描述">
-              <el-switch v-model="configForm.videoVlmDescriptionEnabled" />
-            </el-form-item>
-            <el-form-item v-if="configForm.videoVlmDescriptionEnabled" label="VLM 模型">
-              <el-select v-model="configForm.videoVlmModel" clearable filterable placeholder="系统默认" style="width: 100%">
-                <el-option v-for="model in vlmModels" :key="model.model" :label="model.model" :value="model.model" />
-              </el-select>
-            </el-form-item>
-          </el-form>
-        </div>
-
-        <div v-if="hasAudio" class="sub-section">
-          <h4 class="sub-title">音频解析</h4>
-          <p class="sub-desc">ASR 模型与语言配置互不冲突。</p>
-
-          <el-form :model="configForm" label-width="120px" class="config-form">
-            <el-form-item label="ASR 模型">
-              <el-select v-model="configForm.audioAsrModel" clearable filterable placeholder="默认 whisper-1" style="width: 100%">
-                <el-option v-for="model in asrModels" :key="model.model" :label="model.model" :value="model.model" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="语言">
-              <el-select v-model="configForm.audioAsrLanguage" clearable placeholder="自动检测" style="width: 100%">
-                <el-option label="自动检测" value="" />
-                <el-option label="中文" value="zh" />
-                <el-option label="英文" value="en" />
-                <el-option label="日文" value="ja" />
-                <el-option label="韩文" value="ko" />
-              </el-select>
-            </el-form-item>
-          </el-form>
-        </div>
+        <KbTextParsingSection v-if="hasText" :config-form="configForm" />
+        <KbMultimodalParsingSection
+          :config-form="configForm"
+          :has-image="hasImage"
+          :has-video="hasVideo"
+          :has-audio="hasAudio"
+          :vlm-models="vlmModels"
+          :asr-models="asrModels"
+        />
       </section>
 
       <section v-show="currentStep === 3" class="step-section">
@@ -267,110 +151,11 @@
           <span class="step-icon">04</span>
           <div>
             <h3 class="step-title">切分策略</h3>
-            <p class="step-desc">保留文本主切分，并支持音频、视频覆盖配置。</p>
+            <p class="step-desc">保留文本主切分，并支持音频、视频额外切分配置。</p>
           </div>
         </div>
 
-        <div class="sub-section">
-          <h4 class="sub-title">文本切分</h4>
-
-          <el-form :model="configForm" label-width="120px" class="config-form">
-            <el-form-item label="切分策略">
-              <el-select v-model="configForm.splittingStrategy" style="width: 100%">
-                <el-option label="recursive" value="recursive" />
-                <el-option label="fixed_size" value="fixed_size" />
-                <el-option label="markdown" value="markdown" />
-                <el-option label="semantic" value="semantic" />
-              </el-select>
-            </el-form-item>
-
-            <template v-if="configForm.splittingStrategy === 'recursive' || configForm.splittingStrategy === 'fixed_size'">
-              <el-row :gutter="24">
-                <el-col :span="12">
-                  <el-form-item label="chunk_size">
-                    <el-input-number v-model="configForm.splittingChunkSize" :min="100" :max="4000" style="width: 100%" />
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item label="chunk_overlap">
-                    <el-input-number v-model="configForm.splittingChunkOverlap" :min="0" :max="500" style="width: 100%" />
-                  </el-form-item>
-                </el-col>
-              </el-row>
-            </template>
-
-            <el-form-item v-if="configForm.splittingStrategy === 'recursive'" label="min_chunk_size">
-              <el-input-number v-model="configForm.splittingMinChunkSize" :min="0" :max="2000" style="width: 260px" />
-            </el-form-item>
-
-            <template v-if="configForm.splittingStrategy === 'markdown'">
-              <el-row :gutter="24">
-                <el-col :span="12">
-                  <el-form-item label="max_chunk_size">
-                    <el-input-number v-model="configForm.splittingMaxChunkSize" :min="100" :max="8000" style="width: 100%" />
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item label="min_chunk_size">
-                    <el-input-number v-model="configForm.splittingMinChunkSize" :min="0" :max="2000" style="width: 100%" />
-                  </el-form-item>
-                </el-col>
-              </el-row>
-            </template>
-
-            <template v-if="configForm.splittingStrategy === 'semantic'">
-              <el-row :gutter="24">
-                <el-col :span="12">
-                  <el-form-item label="max_chunk_size">
-                    <el-input-number v-model="configForm.splittingMaxChunkSize" :min="100" :max="8000" style="width: 100%" />
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item label="batch_size">
-                    <el-input-number v-model="configForm.splittingBatchSize" :min="1" :max="100" style="width: 100%" />
-                  </el-form-item>
-                </el-col>
-              </el-row>
-              <el-form-item label="similarity_threshold">
-                <el-slider
-                  v-model="configForm.splittingSimilarityThreshold"
-                  :min="0"
-                  :max="1"
-                  :step="0.05"
-                  show-input
-                  :show-input-controls="false"
-                  style="max-width: 480px"
-                />
-              </el-form-item>
-            </template>
-          </el-form>
-        </div>
-
-        <div v-if="hasAudio" class="sub-section">
-          <h4 class="sub-title">音频切分</h4>
-
-          <el-form :model="configForm" label-width="120px" class="config-form">
-            <el-form-item label="切分策略">
-              <el-radio-group v-model="configForm.audioChunkStrategy">
-                <el-radio value="sentence">sentence</el-radio>
-                <el-radio value="fixed">fixed</el-radio>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item v-if="configForm.audioChunkStrategy === 'fixed'" label="chunk_size">
-              <el-input-number v-model="configForm.audioChunkSize" :min="100" :max="4000" style="width: 100%" />
-            </el-form-item>
-          </el-form>
-        </div>
-
-        <div v-if="hasVideo" class="sub-section">
-          <h4 class="sub-title">视频切分</h4>
-
-          <el-form :model="configForm" label-width="120px" class="config-form">
-            <el-form-item label="chunk_size">
-              <el-input-number v-model="configForm.videoChunkSize" :min="100" :max="4000" style="width: 100%" />
-            </el-form-item>
-          </el-form>
-        </div>
+        <KbSplittingSection :config-form="configForm" :has-audio="hasAudio" :has-video="hasVideo" />
       </section>
 
       <section v-show="currentStep === 4" class="step-section">
@@ -382,47 +167,7 @@
           </div>
         </div>
 
-        <el-form :model="configForm" label-width="140px" class="config-form">
-          <el-form-item label="启用问题生成">
-            <el-switch v-model="configForm.qgEnabled" />
-          </el-form-item>
-
-          <fieldset :disabled="!configForm.qgEnabled" class="qg-fieldset">
-            <el-row :gutter="24">
-              <el-col :span="12">
-                <el-form-item label="最大问题数">
-                  <el-input-number v-model="configForm.qgMaxQuestions" :min="1" :max="20" style="width: 100%" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="temperature">
-                  <el-input-number v-model="configForm.qgLlmTemperature" :min="0" :max="2" :step="0.1" style="width: 100%" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-row :gutter="24">
-              <el-col :span="12">
-                <el-form-item label="top_p">
-                  <el-input-number v-model="configForm.qgLlmTopP" :min="0" :max="1" :step="0.1" style="width: 100%" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="max_tokens">
-                  <el-input-number v-model="configForm.qgLlmMaxTokens" :min="100" :max="8192" style="width: 100%" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-form-item label="Prompt 模板">
-              <el-input
-                v-model="configForm.qgPromptTemplate"
-                type="textarea"
-                :rows="4"
-                maxlength="4000"
-                placeholder="可选，自定义问题生成模板"
-              />
-            </el-form-item>
-          </fieldset>
-        </el-form>
+        <KbQuestionGenerationSection :config-form="configForm" />
       </section>
 
       <div class="config-footer">
@@ -435,13 +180,22 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/common/PageHeader.vue'
-import { knowledgeBaseApi } from '@/api/knowledgeBase'
+import { knowledgeBaseApi } from '@/api/knowledge'
+import {
+  applyTextParsingConfig,
+  buildTextParsingConfigFromForm,
+  KbMultimodalParsingSection,
+  KbQuestionGenerationSection,
+  KbSplittingSection,
+  KbTextParsingSection,
+} from '@/components/knowledge'
+import type { AudioChunkStrategy, ImageStrategy, TextStrategy } from '@/components/knowledge'
 import { spaceApi } from '@/api/space'
 import { userApi } from '@/api/user'
-import { hasModality, normalizeSpaceTypes } from '@/utils/document'
+import { hasModality, normalizeSpaceTypes } from '@/components/knowledge'
 import type {
   AvailableModelItem,
   KnowledgeBaseConfigUpdateRequest,
@@ -450,20 +204,6 @@ import type {
   SplittingConfig,
   TextParsingConfig,
 } from '@/api/types'
-
-type TextStrategy = 'default' | 'deepdoc'
-type ImageStrategy = 'ocr' | 'vlm'
-type AudioChunkStrategy = 'sentence' | 'fixed'
-
-type TextStrategyField =
-  | 'docxStrategy'
-  | 'excelStrategy'
-  | 'pptStrategy'
-  | 'epubStrategy'
-  | 'markdownStrategy'
-  | 'htmlStrategy'
-  | 'txtStrategy'
-  | 'jsonStrategy'
 
 const route = useRoute()
 const router = useRouter()
@@ -478,29 +218,6 @@ const steps = [
   { title: '解析策略' },
   { title: '切分策略' },
   { title: '问题生成' },
-]
-
-const textStrategyItems: Array<{ key: TextStrategyField; label: string }> = [
-  { key: 'docxStrategy', label: 'DOCX' },
-  { key: 'excelStrategy', label: 'Excel' },
-  { key: 'pptStrategy', label: 'PPT' },
-  { key: 'epubStrategy', label: 'EPUB' },
-  { key: 'markdownStrategy', label: 'Markdown' },
-  { key: 'htmlStrategy', label: 'HTML' },
-  { key: 'txtStrategy', label: 'TXT' },
-  { key: 'jsonStrategy', label: 'JSON' },
-]
-
-const deepdocParserOptions: Array<{ label: string; value: PdfParserName }> = [
-  { label: 'layout', value: 'layout' },
-  { label: 'plain', value: 'plain' },
-  { label: 'vision', value: 'vision' },
-  { label: 'docling', value: 'docling' },
-  { label: 'mineru', value: 'mineru' },
-  { label: 'opendataloader', value: 'opendataloader' },
-  { label: 'paddleocr', value: 'paddleocr' },
-  { label: 'somark', value: 'somark' },
-  { label: 'tcadp', value: 'tcadp' },
 ]
 
 const currentStep = ref(0)
@@ -574,9 +291,13 @@ const hasVideo = computed(() => hasModality(configForm.kbSpaceTypes, 'video'))
 const hasAudio = computed(() => hasModality(configForm.kbSpaceTypes, 'audio'))
 const showMmEmbeddingCard = computed(() => hasModality(spaceTypes.value, 'image'))
 
-watch(configForm, () => {
-  dirty.value = true
-}, { deep: true })
+watch(
+  configForm,
+  () => {
+    dirty.value = true
+  },
+  { deep: true },
+)
 
 watch(hasImage, (value) => {
   if (!value) {
@@ -601,17 +322,23 @@ watch(hasAudio, (value) => {
   }
 })
 
-watch(() => configForm.imageStrategy, (value) => {
-  if (value !== 'vlm') {
-    configForm.imageVlmModel = ''
-  }
-})
+watch(
+  () => configForm.imageStrategy,
+  (value) => {
+    if (value !== 'vlm') {
+      configForm.imageVlmModel = ''
+    }
+  },
+)
 
-watch(() => configForm.videoVlmDescriptionEnabled, (value) => {
-  if (!value) {
-    configForm.videoVlmModel = ''
-  }
-})
+watch(
+  () => configForm.videoVlmDescriptionEnabled,
+  (value) => {
+    if (!value) {
+      configForm.videoVlmModel = ''
+    }
+  },
+)
 
 function goToStep(index: number) {
   currentStep.value = index
@@ -632,22 +359,8 @@ async function fetchAvailableModels() {
   }
 }
 
-function getTextStrategyValue(value: unknown): TextStrategy {
-  return value === 'deepdoc' ? 'deepdoc' : 'default'
-}
-
 function loadTextParsingConfig(textConfig?: TextParsingConfig) {
-  configForm.pdfStrategy = getTextStrategyValue(textConfig?.pdf?.strategy)
-  configForm.deepdocParser = textConfig?.pdf?.parser || 'layout'
-  configForm.pdfOcrEnabled = textConfig?.pdf?.ocr_enabled ?? false
-  configForm.docxStrategy = getTextStrategyValue(textConfig?.docx?.strategy)
-  configForm.excelStrategy = getTextStrategyValue(textConfig?.excel?.strategy)
-  configForm.pptStrategy = getTextStrategyValue(textConfig?.ppt?.strategy)
-  configForm.epubStrategy = getTextStrategyValue(textConfig?.epub?.strategy)
-  configForm.markdownStrategy = getTextStrategyValue(textConfig?.markdown?.strategy)
-  configForm.htmlStrategy = getTextStrategyValue(textConfig?.html?.strategy)
-  configForm.txtStrategy = getTextStrategyValue(textConfig?.txt?.strategy)
-  configForm.jsonStrategy = getTextStrategyValue(textConfig?.json?.strategy)
+  applyTextParsingConfig(configForm, textConfig)
 }
 
 async function onLoad() {
@@ -726,21 +439,7 @@ async function onLoad() {
 }
 
 function buildTextParsingConfig(): TextParsingConfig {
-  return {
-    pdf: {
-      strategy: configForm.pdfStrategy,
-      parser: configForm.pdfStrategy === 'deepdoc' ? configForm.deepdocParser : undefined,
-      ocr_enabled: configForm.pdfOcrEnabled,
-    },
-    docx: { strategy: configForm.docxStrategy },
-    excel: { strategy: configForm.excelStrategy },
-    ppt: { strategy: configForm.pptStrategy },
-    epub: { strategy: configForm.epubStrategy },
-    markdown: { strategy: configForm.markdownStrategy },
-    html: { strategy: configForm.htmlStrategy },
-    txt: { strategy: configForm.txtStrategy },
-    json: { strategy: configForm.jsonStrategy },
-  }
+  return buildTextParsingConfigFromForm(configForm)
 }
 
 function buildSplittingConfig(): SplittingConfig {

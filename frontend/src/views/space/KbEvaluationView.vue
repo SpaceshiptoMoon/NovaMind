@@ -521,9 +521,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload, Download, Loading, Document, Search, DataAnalysis } from '@element-plus/icons-vue'
 
-import KbSidebar from '@/components/common/KbSidebar.vue'
-import type { KbNavItem } from '@/components/common/KbSidebar.vue'
-import { evaluationApi } from '@/api/evaluation'
+import { KbSidebar, buildKbNavItems } from '@/components/knowledge'
+import { evaluationApi } from '@/api/knowledge'
 import { userApi } from '@/api/user'
 import type {
   TestSet,
@@ -545,16 +544,19 @@ const kbId = computed(() => {
   return 0
 })
 
-const kbNavItems = computed<KbNavItem[]>(() => {
-  const sid = spaceId.value
-  const kid = kbId.value
-  return [
-    { label: '文档管理', to: `/home/spaces/${sid}/knowledge-bases/${kid}/documents`, route: 'Documents', active: route.name === 'Documents' || route.name === 'DocumentDetail', icon: Document },
-    { label: '任务列表', to: `/home/spaces/${sid}/knowledge-bases/${kid}/tasks`, route: 'DocumentTasks', active: route.name === 'DocumentTasks', icon: DataAnalysis },
-    { label: '检索', to: `/home/spaces/${sid}/search?kbId=${kid}`, route: 'Search', active: route.name === 'Search', icon: Search },
-    { label: '评测', to: `/home/spaces/${sid}/knowledge-bases/${kid}/evaluation`, route: 'KbEvaluation', active: route.name === 'KbEvaluation', icon: DataAnalysis },
-  ]
-})
+const kbNavItems = computed(() =>
+  buildKbNavItems({
+    spaceId: spaceId.value,
+    kbId: kbId.value,
+    currentRouteName: route.name,
+    icons: {
+      document: Document,
+      list: DataAnalysis,
+      search: Search,
+      evaluation: DataAnalysis,
+    },
+  })
+)
 
 const activeTab = ref('test-sets')
 

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="document-view">
     <div class="kb-layout">
       <KbSidebar :nav-items="kbNavItems" />
@@ -115,7 +115,7 @@
                 <div class="upload-inner">
                   <el-icon class="upload-icon"><UploadFilled /></el-icon>
                   <div class="upload-text">
-                    拖拽文件到此处，或 <em>点击上传</em>
+                    拖拽文件到此处，或<em>点击上传</em>
                   </div>
                   <div class="upload-tip">
                     {{ uploadTipText }}
@@ -155,14 +155,11 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, DataAnalysis, Delete, Document, List, RefreshRight, Search, Upload, UploadFilled, VideoPlay, View } from '@element-plus/icons-vue'
 import type { UploadFile } from 'element-plus'
 
-import { documentApi } from '@/api/document'
-import { knowledgeBaseApi } from '@/api/knowledgeBase'
+import { documentApi, knowledgeBaseApi } from '@/api/knowledge'
 import { spaceApi } from '@/api/space'
 import type { BatchUploadResponse, Document as DocType } from '@/api/types'
-import KbSidebar from '@/components/common/KbSidebar.vue'
-import type { KbNavItem } from '@/components/common/KbSidebar.vue'
+import { KbSidebar, buildKbNavItems, getFileMaxSize, getFileTypeStyle, getUploadAccept, hasModality, normalizeSpaceTypes, taskStatusMap } from '@/components/knowledge'
 import Pagination from '@/components/common/Pagination.vue'
-import { getFileMaxSize, getFileTypeStyle, getUploadAccept, hasModality, normalizeSpaceTypes, taskStatusMap } from '@/utils/document'
 import { formatDate, formatFileSize } from '@/utils/format'
 
 const route = useRoute()
@@ -171,16 +168,19 @@ const router = useRouter()
 const spaceId = computed(() => Number(route.params.id))
 const kbId = computed(() => Number(route.params.kbId))
 
-const kbNavItems = computed<KbNavItem[]>(() => {
-  const sid = spaceId.value
-  const kid = kbId.value
-  return [
-    { label: '文档管理', to: `/home/spaces/${sid}/knowledge-bases/${kid}/documents`, route: 'Documents', active: route.name === 'Documents' || route.name === 'DocumentDetail', icon: Document },
-    { label: '任务列表', to: `/home/spaces/${sid}/knowledge-bases/${kid}/tasks`, route: 'DocumentTasks', active: route.name === 'DocumentTasks', icon: List },
-    { label: '搜索', to: `/home/spaces/${sid}/search?kbId=${kid}`, route: 'Search', active: route.name === 'Search', icon: Search },
-    { label: '测评', to: `/home/spaces/${sid}/knowledge-bases/${kid}/evaluation`, route: 'KbEvaluation', active: route.name === 'KbEvaluation', icon: DataAnalysis },
-  ]
-})
+const kbNavItems = computed(() =>
+  buildKbNavItems({
+    spaceId: spaceId.value,
+    kbId: kbId.value,
+    currentRouteName: route.name,
+    icons: {
+      document: Document,
+      list: List,
+      search: Search,
+      evaluation: DataAnalysis,
+    },
+  })
+)
 
 const loading = ref(false)
 const uploadLoading = ref(false)
@@ -207,7 +207,7 @@ const uploadTipText = computed(() => {
   if (hasModality(spaceTypes.value, 'video')) parts.push('MP4/MOV/AVI/MKV/WebM')
   if (hasModality(spaceTypes.value, 'audio')) parts.push('MP3/WAV/FLAC/AAC/OGG/M4A')
   const maxMB = Math.max(...spaceTypes.value.map(t => ({ text: 100, image: 100, video: 500, audio: 200 })[t] || 100))
-  return `支持 ${parts.join(' + ')}，视频最大 500MB，音频最大 200MB，其余最大 ${maxMB}MB，最多 20 个`
+  return `支持 ${parts.join(' + ')}，视频最大 500MB，音频最大 200MB，其它最大 ${maxMB}MB，最多 20 个`
 })
 
 function handleSelectionChange(rows: DocType[]) {
@@ -215,7 +215,10 @@ function handleSelectionChange(rows: DocType[]) {
 }
 
 function handleFileChange(file: UploadFile) {
-  if (!file.raw) return
+  if (!file.raw) {
+    ElMessage.warning('文件读取失败，请重新选择')
+    return
+  }
   const ext = file.name.split('.').pop()?.toLowerCase() || ''
   const maxSizeMB = getFileMaxSize(ext)
   if (file.raw.size > maxSizeMB * 1024 * 1024) {
@@ -231,7 +234,7 @@ function handleFileRemove(file: UploadFile) {
 }
 
 function handleExceed() {
-  ElMessage.warning('最多只能上传 20 个文件')
+  ElMessage.warning('最多只可上传 20 个文件')
 }
 
 function showUploadDialog() {
@@ -248,7 +251,16 @@ async function handleUpload() {
 
   uploadLoading.value = true
   try {
-    const filesToSend = selectedFiles.value.length === 1 ? selectedFiles.value[0] : selectedFiles.value
+    const singleFile = selectedFiles.value[0]
+    if (selectedFiles.value.length === 1 && !singleFile) {
+      ElMessage.warning('未找到可上传文件，请重新选择')
+      return
+    }
+    const filesToSend = selectedFiles.value.length === 1 ? singleFile : selectedFiles.value
+    if (!filesToSend) {
+      ElMessage.warning('未找到可上传文件，请重新选择')
+      return
+    }
     const res = await documentApi.uploadDocument(spaceId.value, kbId.value, filesToSend)
 
     if ('total' in res) {
@@ -549,3 +561,5 @@ onMounted(async () => {
   overflow-y: auto;
 }
 </style>
+
+

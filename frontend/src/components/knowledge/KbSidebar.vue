@@ -15,15 +15,7 @@
 </template>
 
 <script setup lang="ts">
-import type { Component } from 'vue'
-
-export interface KbNavItem {
-  label: string
-  to: string
-  route: string
-  active: boolean
-  icon: Component
-}
+import type { KbNavItem } from './navigation'
 
 defineProps<{
   navItems: KbNavItem[]
