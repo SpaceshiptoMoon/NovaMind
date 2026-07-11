@@ -70,6 +70,18 @@ class SplittingConfig(BaseModel):
 
 class ParsingConfig(BaseModel):
     """文档解析配置"""
+    strategy: Literal["default", "deepdoc"] = Field(
+        default="default",
+        description="文档解析策略: default(现有解析) / deepdoc(结构化解析)",
+    )
+    deepdoc_parser_id: Optional[Literal["pdf_layout", "pdf_plain", "pdf_vision", "pdf_docling", "pdf_mineru", "pdf_opendataloader", "pdf_paddleocr", "pdf_somark", "pdf_tcadp", "docx", "epub", "excel", "ppt", "figure", "text", "txt", "markdown", "html", "json"]] = Field(
+        default=None,
+        description="DeepDoc parser ID: pdf_layout/pdf_plain/pdf_vision/pdf_docling/pdf_mineru/pdf_opendataloader/pdf_paddleocr/pdf_somark/pdf_tcadp/docx/epub/excel/ppt/figure/text/txt/markdown/html/json",
+    )
+    deepdoc_pdf_mode: Literal["layout", "plain", "vision"] = Field(
+        default="layout",
+        description="DeepDoc PDF mode: layout (structure-aware), plain (text extraction), or vision (OCR/layout models)",
+    )
     ocr_enabled: bool = Field(default=False, description="是否启用 OCR")
     vlm_description_enabled: bool = Field(
         default=False,

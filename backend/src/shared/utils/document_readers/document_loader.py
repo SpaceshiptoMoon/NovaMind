@@ -12,6 +12,7 @@ from src.shared.utils.document_readers.splitters.recursive_splitter import Recur
 from src.shared.utils.document_readers.splitters.semantic_splitter import SemanticSplitter
 from src.shared.utils.document_readers.splitters.fixed_size_splitter import FixedSizeSplitter
 from src.shared.utils.document_readers.splitters.markdown_splitter import MarkdownSplitter
+from src.shared.utils.deepdoc import DeepDocEngine, DeepDocParser, DeepDocParseResult
 from src.shared.ai_models.base_model import BaseEmbedding
 from src.core.middleware.structured_logging import get_logger
 
@@ -194,6 +195,8 @@ class DocumentProcessor:
 
     def __init__(self, embedding_client: Optional[BaseEmbedding] = None):
         self.embedding_client = embedding_client
+        self._deepdoc_parser = DeepDocParser()
+        self._deepdoc_engine = DeepDocEngine(parser=self._deepdoc_parser)
         # 初始化各种读取器（从注册表获取）
         self._readers: Dict[str, BaseReader] = {}
         for ext, reader_class in DocumentRegistry._readers_registry.items():
@@ -366,6 +369,77 @@ class DocumentProcessor:
             chunk_count=len(chunk_texts),
         )
         return chunk_texts
+
+    async def parse_document(
+        self,
+        file_path: Union[str, Path],
+        parsing_config: Optional[Dict[str, object]] = None,
+        splitting_config: Optional[Dict[str, object]] = None,
+    ) -> tuple[str, List[str]]:
+        result = await self.parse_document_result(
+            file_path,
+            parsing_config=parsing_config,
+            splitting_config=splitting_config,
+        )
+        return result.full_text, result.chunks
+
+    async def parse_document_result(
+        self,
+        file_path: Union[str, Path],
+        parsing_config: Optional[Dict[str, object]] = None,
+        splitting_config: Optional[Dict[str, object]] = None,
+    ) -> DeepDocParseResult:
+        parsing_config = dict(parsing_config or {})
+        splitting_config = dict(splitting_config or {})
+        parsing_strategy = str(parsing_config.get("strategy", "default"))
+
+        if parsing_strategy == "deepdoc":
+            parser_id = parsing_config.get("deepdoc_parser_id")
+            if parser_id:
+                parse_result = await self._deepdoc_engine.aparse_with_parser_id(
+                    file_type=Path(file_path).suffix.lower().lstrip("."),
+                    parser_id=str(parser_id),
+                    file_path=file_path,
+                    parsing_config=parsing_config,
+                    splitting_config=splitting_config,
+                )
+            else:
+                parse_result = await self._deepdoc_parser.parse(
+                    file_path,
+                    parsing_config=parsing_config,
+                    splitting_config=splitting_config,
+                )
+            logger.info(
+                "DeepDoc 解析完成",
+                filename=Path(file_path).name,
+                char_count=len(parse_result.full_text),
+                chunk_count=len(parse_result.chunks),
+            )
+            return parse_result
+
+        full_text = await self.read_full_text(
+            file_path,
+            ocr_enabled=bool(parsing_config.get("ocr_enabled", False)),
+        )
+        chunks = await self.split_text(
+            full_text,
+            strategy=str(splitting_config.get("strategy", "recursive")),
+            chunk_size=splitting_config.get("chunk_size", 500),
+            chunk_overlap=splitting_config.get("chunk_overlap", 50),
+            min_chunk_size=splitting_config.get("min_chunk_size", 50),
+            max_chunk_size=splitting_config.get("max_chunk_size", 1000),
+            similarity_threshold=splitting_config.get("similarity_threshold", 0.7),
+            batch_size=splitting_config.get("batch_size", 20),
+        )
+        return DeepDocParseResult(
+            full_text=full_text,
+            chunks=chunks,
+            metadata={
+                "parser": "default",
+                "file_type": Path(file_path).suffix.lower().lstrip("."),
+                "split_strategy": str(splitting_config.get("strategy", "recursive")),
+            },
+        )
 
     async def load_with_strategy(self, file_path: Union[str, Path], strategy: Optional[str] = 'recursive',
                           **kwargs) -> List[Dict[str, str]]:

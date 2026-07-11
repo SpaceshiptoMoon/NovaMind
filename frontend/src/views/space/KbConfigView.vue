@@ -133,6 +133,40 @@
         <div class="sub-section">
           <h4 class="sub-title">📝 文本解析</h4>
           <el-form :model="configForm" label-width="110px" class="config-form">
+            <el-row v-if="hasText" :gutter="24">
+              <el-col :span="12">
+                <el-form-item label="解析引擎">
+                  <el-select v-model="configForm.parsingStrategy" style="width: 100%">
+                    <el-option label="默认解析" value="default" />
+                    <el-option label="DeepDoc" value="deepdoc" />
+                  </el-select>
+                  <span class="form-hint">DeepDoc 使用 vendored RAGFlow deepdoc 结构化解析链</span>
+                </el-form-item>
+              </el-col>
+              <el-col v-if="configForm.parsingStrategy === 'deepdoc'" :span="12">
+                <el-form-item label="DeepDoc Parser">
+                  <el-select v-model="configForm.deepdocParserId" filterable style="width: 100%">
+                    <el-option
+                      v-for="option in deepdocParserOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+            </el-row>
+            <el-form-item
+              v-if="configForm.parsingStrategy === 'deepdoc' && showDeepDocPdfMode"
+              label="PDF Mode"
+            >
+              <el-radio-group v-model="configForm.deepdocPdfMode">
+                <el-radio value="layout">layout</el-radio>
+                <el-radio value="plain">plain</el-radio>
+                <el-radio value="vision">vision</el-radio>
+              </el-radio-group>
+              <span class="form-hint">仅对 PDF parser 生效；vision 需要额外依赖与模型</span>
+            </el-form-item>
             <el-row :gutter="24">
               <el-col :span="12">
                 <el-form-item label="提取图片">
@@ -390,7 +424,7 @@ import { knowledgeBaseApi } from '@/api/knowledgeBase'
 import { spaceApi } from '@/api/space'
 import { userApi } from '@/api/user'
 import { normalizeSpaceTypes, hasModality } from '@/utils/document'
-import type { SplittingConfig, AvailableModelItem } from '@/api/types'
+import type { SplittingConfig, AvailableModelItem, DeepDocParserId, DeepDocPdfMode } from '@/api/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -406,6 +440,28 @@ const hasText = computed(() => configForm.kbSpaceTypes.length === 0 || hasModali
 const hasImage = computed(() => hasModality(configForm.kbSpaceTypes, 'image'))
 const hasVideo = computed(() => hasModality(configForm.kbSpaceTypes, 'video'))
 const hasAudio = computed(() => hasModality(configForm.kbSpaceTypes, 'audio'))
+const deepdocParserOptions: Array<{ label: string; value: DeepDocParserId }> = [
+  { label: 'pdf_layout', value: 'pdf_layout' },
+  { label: 'pdf_plain', value: 'pdf_plain' },
+  { label: 'pdf_vision', value: 'pdf_vision' },
+  { label: 'pdf_docling', value: 'pdf_docling' },
+  { label: 'pdf_mineru', value: 'pdf_mineru' },
+  { label: 'pdf_opendataloader', value: 'pdf_opendataloader' },
+  { label: 'pdf_paddleocr', value: 'pdf_paddleocr' },
+  { label: 'pdf_somark', value: 'pdf_somark' },
+  { label: 'pdf_tcadp', value: 'pdf_tcadp' },
+  { label: 'docx', value: 'docx' },
+  { label: 'epub', value: 'epub' },
+  { label: 'excel', value: 'excel' },
+  { label: 'ppt', value: 'ppt' },
+  { label: 'figure', value: 'figure' },
+  { label: 'text', value: 'text' },
+  { label: 'txt', value: 'txt' },
+  { label: 'markdown', value: 'markdown' },
+  { label: 'html', value: 'html' },
+  { label: 'json', value: 'json' },
+]
+const showDeepDocPdfMode = computed(() => configForm.deepdocParserId.startsWith('pdf_'))
 // 多模态 Embedding 卡片：取决于 Space（Embedding 由空间统一管理）
 const showMmEmbeddingCard = computed(() => hasModality(spaceTypes.value, 'image'))
 
@@ -435,6 +491,9 @@ const configForm = reactive({
   qgLlmTemperature: 0.3,
   qgLlmTopP: 0.9,
   qgLlmMaxTokens: 2048,
+  parsingStrategy: 'default' as 'default' | 'deepdoc',
+  deepdocParserId: 'pdf_layout' as DeepDocParserId,
+  deepdocPdfMode: 'layout' as DeepDocPdfMode,
   // 文本解析
   parsingExtractImages: false,
   parsingExtractTables: true,
@@ -538,6 +597,9 @@ async function onLoad() {
 
     // 解析配置
     const ps = cfg?.parsing as Record<string, unknown> | undefined
+    configForm.parsingStrategy = (ps?.strategy as 'default' | 'deepdoc') || 'default'
+    configForm.deepdocParserId = (ps?.deepdoc_parser_id as DeepDocParserId) || 'pdf_layout'
+    configForm.deepdocPdfMode = (ps?.deepdoc_pdf_mode as DeepDocPdfMode) || 'layout'
     configForm.parsingExtractImages = (ps?.extract_images as boolean) ?? false
     configForm.parsingExtractTables = (ps?.extract_tables as boolean) ?? true
     configForm.parsingOcrEnabled = (ps?.ocr_enabled as boolean) ?? false
@@ -639,6 +701,12 @@ async function onSave() {
       space_type: configForm.kbSpaceTypes.length > 0 ? configForm.kbSpaceTypes : ['text'],
       splitting: buildSplittingConfig(),
       parsing: {
+        strategy: configForm.parsingStrategy,
+        deepdoc_parser_id: configForm.parsingStrategy === 'deepdoc' ? configForm.deepdocParserId : undefined,
+        deepdoc_pdf_mode:
+          configForm.parsingStrategy === 'deepdoc' && showDeepDocPdfMode.value
+            ? configForm.deepdocPdfMode
+            : undefined,
         extract_images: configForm.parsingExtractImages,
         extract_tables: configForm.parsingExtractTables,
         ocr_enabled: configForm.parsingOcrEnabled,
@@ -646,15 +714,15 @@ async function onSave() {
         encoding: configForm.parsingEncoding || undefined,
         ...(hasImage.value || hasVideo.value ? {
           vlm_description_enabled: configForm.parsingVlmDescription,
-          vlm_model: configForm.parsingVlmModel || null,
+          vlm_model: configForm.parsingVlmModel || undefined,
         } : {}),
         ...(hasVideo.value ? {
           video: { frame_interval: configForm.videoFrameInterval, max_frames: configForm.videoMaxFrames },
         } : {}),
         ...(hasAudio.value ? {
           audio: {
-            asr_model: configForm.audioAsrModel || null,
-            language: configForm.audioAsrLanguage || null,
+            asr_model: configForm.audioAsrModel || undefined,
+            language: configForm.audioAsrLanguage || undefined,
           },
         } : {}),
       },

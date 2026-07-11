@@ -437,8 +437,6 @@ class DocumentService:
         processor = await _get_document_processor_static(session, user_id=space_owner_id, model_name=embedding_model_name)
         kb_config = (task.pipeline_config if task and task.pipeline_config else kb.get_config() or {})
         splitting_config = kb_config.get("splitting", {})
-        strategy = splitting_config.get("strategy", "recursive")
-
         suffix = f".{document.file_type}"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(file_content)
@@ -446,37 +444,35 @@ class DocumentService:
 
         try:
             # 先读取原始解析全文，避免将切块结果回拼成“伪全文”再落 MinIO。
+
             parsing_config = kb_config.get("parsing", {})
-            full_text = await processor.read_full_text(
+            parse_result = await processor.parse_document_result(
                 tmp_path,
-                ocr_enabled=parsing_config.get("ocr_enabled", False),
+                parsing_config=parsing_config,
+                splitting_config=splitting_config,
             )
+            full_text = parse_result.full_text
+            chunks = parse_result.chunks
             task.set_step("parsed", "done")
 
             # 解析全文持久化到 MinIO（切块之前，立刻 commit 落库）
+
             await upload_parsed_text_to_minio(document, full_text, _logger)
             await session.commit()
 
             # 再基于解析全文做切分，确保全文与 chunk 的职责分离。
-            chunks = await processor.split_text(
-                full_text,
-                strategy=strategy,
-                chunk_size=splitting_config.get("chunk_size", DEFAULT_CHUNK_SIZE),
-                chunk_overlap=splitting_config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
-                min_chunk_size=splitting_config.get("min_chunk_size", DEFAULT_MIN_CHUNK_SIZE),
-                max_chunk_size=splitting_config.get("max_chunk_size", 2000),
-                similarity_threshold=splitting_config.get("similarity_threshold", 0.7),
-                batch_size=splitting_config.get("batch_size", 20),
-            )
+            # deepdoc/default 都在 processor.parse_document() 内完成解析与分块。
+
             task.set_step("split", "done")
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
         # 检查点 1：文档解析完成之后
+
         await _check_document_cancelled(document_id)
 
         # 2. 准备 ES 数据
-        es_chunks = _prepare_es_chunks_static(document, chunks)
+        es_chunks = _prepare_es_chunks_static(document, chunks, parse_metadata=parse_result.metadata)
 
         # 3. 向量化并索引到 ES（Embedding 配置从空间级别读取）
         embedding_config = space.embedding_config if space and space.embedding_config else {}
@@ -496,6 +492,7 @@ class DocumentService:
 
         # 5. 生成假设问题（由知识库配置控制）
         # 优先使用 task.pipeline_config 快照（入队时的 KB 配置），确保处理的一致性
+
         kb_config = (task.pipeline_config if task and task.pipeline_config
                      else kb.get_config() or {})
         qg_config = kb_config.get("question_generation", {})
@@ -565,14 +562,23 @@ class DocumentService:
             )
 
         task.set_step("indexed", "done")
+        parse_summary = _extract_parse_metadata_summary(parse_result.metadata)
 
         # 5. 标记任务完成
         task.mark_completed(result={
             "chunk_count": len(chunks),
             "total_tokens": sum(len(c.split()) for c in chunks),
+            "parse_strategy": parsing_config.get("strategy", "default"),
             "split_strategy": splitting_config.get("strategy", "recursive"),
             "chunk_size": splitting_config.get("chunk_size", DEFAULT_CHUNK_SIZE),
             "chunk_overlap": splitting_config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
+            "parser_class": parse_result.metadata.get("parser_class", ""),
+            "pdf_mode": parse_result.metadata.get("pdf_mode", ""),
+            "layout_source": parse_result.metadata.get("layout_source", ""),
+            "vision_strategy": parse_result.metadata.get("vision_strategy", ""),
+            "table_region_count": parse_summary["table_region_count"],
+            "figure_region_count": parse_summary["figure_region_count"],
+            "reading_order_count": parse_summary["reading_order_count"],
             "indexed_at": now_china().isoformat(),
         })
         await session.commit()
@@ -1397,20 +1403,29 @@ async def _process_image_document_static(
     )
 
 
-def _prepare_es_chunks_static(document: Document, chunks: List[str]) -> List[Dict[str, Any]]:
+def _prepare_es_chunks_static(
+    document: Document,
+    chunks: List[str],
+    parse_metadata: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
     """
     将文本分块列表转换为 ES 索引格式的字典列表
 
     Args:
         document: 文档对象
         chunks: 文本分块列表
+        parse_metadata: 解析阶段产出的附加 metadata
 
     Returns:
         ES 索引格式的分块字典列表
     """
     es_chunks = []
     storage_info = document.storage or {}
+    parse_metadata = dict(parse_metadata or {})
+    parse_summary = _extract_parse_metadata_summary(parse_metadata)
+    chunk_structure = list(parse_metadata.get("chunk_structure") or [])
     for i, chunk_text in enumerate(chunks):
+        structure = chunk_structure[i] if i < len(chunk_structure) else {}
         chunk_data = {
             "space_id": document.space_id,
             "kb_id": document.kb_id,
@@ -1426,6 +1441,13 @@ def _prepare_es_chunks_static(document: Document, chunks: List[str]) -> List[Dic
             },
             "metadata": {
                 "content_hash": document.file_hash,
+                "parser": parse_metadata.get("parser", ""),
+                "file_type": parse_metadata.get("file_type", document.file_type),
+                **parse_summary,
+                "chunk_entry_kinds": list(structure.get("entry_kinds") or []),
+                "chunk_entry_source_ids": list(structure.get("entry_source_ids") or []),
+                "chunk_pages": list(structure.get("pages") or []),
+                "chunk_entry_count": int(structure.get("entry_count") or 0),
             },
             "questions": [],
             "question_embeddings": [],
@@ -1433,6 +1455,21 @@ def _prepare_es_chunks_static(document: Document, chunks: List[str]) -> List[Dic
         }
         es_chunks.append(chunk_data)
     return es_chunks
+
+
+def _extract_parse_metadata_summary(parse_metadata: Dict[str, Any]) -> Dict[str, Any]:
+    table_regions = list(parse_metadata.get("table_regions") or [])
+    figure_regions = list(parse_metadata.get("figure_regions") or [])
+    reading_order = list(parse_metadata.get("reading_order") or [])
+    return {
+        "parser_class": parse_metadata.get("parser_class", ""),
+        "pdf_mode": parse_metadata.get("pdf_mode", ""),
+        "layout_source": parse_metadata.get("layout_source", ""),
+        "vision_strategy": parse_metadata.get("vision_strategy", ""),
+        "table_region_count": len(table_regions),
+        "figure_region_count": len(figure_regions),
+        "reading_order_count": len(reading_order),
+    }
 
 
 async def _get_es_client_static() -> ElasticsearchClient:

@@ -277,7 +277,33 @@ export interface AudioParsingConfig {
   language?: string                // 转写语言(zh/en/ja/ko...), 为空则自动检测
 }
 
+export type DeepDocParserId =
+  | 'pdf_layout'
+  | 'pdf_plain'
+  | 'pdf_vision'
+  | 'pdf_docling'
+  | 'pdf_mineru'
+  | 'pdf_opendataloader'
+  | 'pdf_paddleocr'
+  | 'pdf_somark'
+  | 'pdf_tcadp'
+  | 'docx'
+  | 'epub'
+  | 'excel'
+  | 'ppt'
+  | 'figure'
+  | 'text'
+  | 'txt'
+  | 'markdown'
+  | 'html'
+  | 'json'
+
+export type DeepDocPdfMode = 'layout' | 'plain' | 'vision'
+
 export interface ParsingConfig {
+  strategy?: 'default' | 'deepdoc'
+  deepdoc_parser_id?: DeepDocParserId
+  deepdoc_pdf_mode?: DeepDocPdfMode
   extract_images?: boolean
   extract_tables?: boolean
   ocr_enabled?: boolean

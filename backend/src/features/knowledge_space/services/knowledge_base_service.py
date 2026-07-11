@@ -440,6 +440,35 @@ class KnowledgeBaseService:
                     raise InvalidParameterError("video.chunk_size 必须在 100-4000 之间")
 
         parsing = config_updates.get("parsing", {})
+        if "strategy" in parsing:
+            if parsing["strategy"] not in ("default", "deepdoc"):
+                raise InvalidParameterError(f"不支持的解析策略: {parsing['strategy']}")
+        if "deepdoc_parser_id" in parsing:
+            if parsing["deepdoc_parser_id"] not in (
+                "pdf_layout",
+                "pdf_plain",
+                "pdf_vision",
+                "pdf_docling",
+                "pdf_mineru",
+                "pdf_opendataloader",
+                "pdf_paddleocr",
+                "pdf_somark",
+                "pdf_tcadp",
+                "docx",
+                "epub",
+                "excel",
+                "ppt",
+                "figure",
+                "text",
+                "txt",
+                "markdown",
+                "html",
+                "json",
+            ):
+                raise InvalidParameterError(f"不支持的 DeepDoc parser_id: {parsing['deepdoc_parser_id']}")
+        if "deepdoc_pdf_mode" in parsing:
+            if parsing["deepdoc_pdf_mode"] not in ("layout", "plain", "vision"):
+                raise InvalidParameterError(f"不支持的 DeepDoc PDF 模式: {parsing['deepdoc_pdf_mode']}")
         parsing_video = parsing.get("video")
         if parsing_video:
             if "frame_interval" in parsing_video:
