@@ -22,7 +22,7 @@ import cv2
 import numpy as np
 import math
 from PIL import Image
-from src.shared.utils.deepdoc.figure_support import ensure_pil_image
+from src.shared.integrations.deepdoc.figure_support import ensure_pil_image
 
 
 class DecodeImage:

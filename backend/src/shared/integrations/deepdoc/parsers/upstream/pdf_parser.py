@@ -6,7 +6,7 @@ import logging
 import pdfplumber
 
 from src.shared.utils.deepdoc.constants import MAXIMUM_PAGE_NUMBER
-from src.shared.utils.deepdoc.figure_support import picture_vision_llm_chunk
+from src.shared.integrations.deepdoc.figure_support import picture_vision_llm_chunk
 from src.shared.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
 from src.shared.integrations.deepdoc.parsers.pdf_plain import RAGFlowPlainPdfParser
 from src.shared.integrations.deepdoc.parsers.upstream.utils import extract_pdf_outlines

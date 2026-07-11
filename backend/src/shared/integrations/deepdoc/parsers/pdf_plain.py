@@ -8,7 +8,7 @@ from typing import Optional, Union
 
 import pdfplumber
 
-from src.shared.utils.deepdoc.logging_compat import get_logger
+from src.shared.integrations.deepdoc.logging_compat import get_logger
 from src.shared.integrations.deepdoc.parsers.upstream.utils import extract_pdf_outlines
 
 logger = get_logger(__name__)

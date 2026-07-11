@@ -20,7 +20,7 @@ import time
 import os
 
 from src.shared.integrations.deepdoc.vision.model_manager import default_model_dir
-from src.shared.utils.deepdoc.figure_support import timeout as _unused_timeout
+from src.shared.integrations.deepdoc.figure_support import timeout as _unused_timeout
 
 def pip_install_torch(*args, **kwargs):
     try:

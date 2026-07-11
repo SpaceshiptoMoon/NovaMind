@@ -16,7 +16,7 @@ from PIL import Image
 
 from src.shared.utils.deepdoc.constants import MAXIMUM_PAGE_NUMBER
 from src.shared.integrations.deepdoc.core.models import DeepDocParseResult
-from src.shared.utils.deepdoc.page_filter import PageNoiseFilter
+from src.shared.integrations.deepdoc.page_filter import PageNoiseFilter
 from src.shared.utils.deepdoc.pdf_artifacts import PdfArtifactExtractor
 from src.shared.utils.deepdoc.pdf_layout import PdfLayoutExtractor
 from src.shared.integrations.deepdoc.parsers.pdf_plain import RAGFlowPlainPdfParser

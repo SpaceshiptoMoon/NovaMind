@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 from src.shared.integrations.deepdoc.core.capabilities import get_deepdoc_capabilities
-from src.shared.utils.deepdoc.logging_compat import get_logger
+from src.shared.integrations.deepdoc.logging_compat import get_logger
 from src.shared.integrations.deepdoc.core.models import DeepDocParseResult
 from src.shared.integrations.deepdoc.vision_runtime import ensure_vision_parser_available
 

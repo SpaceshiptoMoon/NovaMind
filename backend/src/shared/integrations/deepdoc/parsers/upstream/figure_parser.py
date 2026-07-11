@@ -18,7 +18,7 @@ import logging
 
 from PIL import Image
 
-from src.shared.utils.deepdoc.figure_support import (
+from src.shared.integrations.deepdoc.figure_support import (
     LLMType,
     LLMBundle,
     append_context2table_image4pdf,
