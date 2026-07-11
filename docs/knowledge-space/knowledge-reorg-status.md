@@ -66,13 +66,13 @@ It is intended to make phase completion and remaining cleanup work explicit.
 - `shared/utils/deepdoc/*`
   - kept for compatibility with existing tests, CLI entrypoints, and old import paths
 - `shared/utils/document_readers/*`
-  - retained as compatibility surface, but now expected to re-export from `shared/document_processing/*`
+  - retained as compatibility surface and now slimmed to re-export from `shared/document_processing/*`
 - `shared/utils/media_utils.py`
   - retained as compatibility shim over `shared/media_processing/*`
 - `shared/utils/vlm_utils.py`
   - retained as compatibility shim over `shared/media_processing/vlm/*`
 - `backend/src/src/...`
-  - kept for packaging/install compatibility
+  - kept for packaging/install compatibility and reduced to source-root bridge packages plus the nested DeepDoc entry shim
 
 ### Internal helper migration status
 
@@ -138,3 +138,7 @@ Focused verification after the latest phase-3 cleanup passed with:
   - `19 passed`
 - `pytest tests/test_deepdoc_imports.py tests/test_deepdoc_runtime.py -q`
   - `118 passed, 27 skipped`
+- `pytest tests/test_knowledge_reorg_compat.py -q`
+  - `3 passed`
+- `pytest tests/test_knowledge_reorg_compat.py tests/test_deepdoc_integration_light.py tests/test_knowledge_config_runtime.py -q`
+  - `22 passed`

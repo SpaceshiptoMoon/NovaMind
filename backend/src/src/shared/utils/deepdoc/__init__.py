@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from shared.utils import deepdoc as _deepdoc
+from src.shared.utils import deepdoc as _deepdoc
 
 
 __path__ = list(_deepdoc.__path__)
