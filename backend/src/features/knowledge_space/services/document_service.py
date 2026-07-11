@@ -41,10 +41,10 @@ from src.features.knowledge_space.api.exceptions import (
 )
 from src.shared.storage.minio_client import MinioClient
 from src.shared.storage.elasticsearch_client import ElasticsearchClient
-from src.shared.utils.document_readers.document_loader import DocumentProcessor
-from src.shared.utils.file_validator import validate_file, FileInfo
-from src.shared.utils.media_utils import upload_parsed_text_to_minio
-from src.shared.utils.vlm_utils import (
+from src.shared.document_processing.pipeline import DocumentProcessor
+from src.shared.document_processing.validation import validate_file, FileInfo
+from src.shared.media_processing.audio import upload_parsed_text_to_minio
+from src.shared.media_processing.vlm import (
     build_vlm_image_messages,
     generate_vlm_text_with_fallback,
 )

@@ -13,15 +13,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.features.knowledge_space.models.document import Document
 from src.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
 from src.features.knowledge_space.services.document_service import _check_document_cancelled
-from src.shared.utils.media_utils import (
-    extract_video_frames,
+from src.shared.media_processing.audio import (
+    transcribe_audio_local,
     transcribe_audio_with_timestamps,
     upload_parsed_text_to_minio,
-    transcribe_audio_local,
 )
+from src.shared.media_processing.video import extract_video_frames
 from src.shared.utils.time_utils import now_china
 from src.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
-from src.shared.utils.vlm_utils import (
+from src.shared.media_processing.vlm import (
     build_vlm_image_messages,
     generate_vlm_text_with_fallback,
 )
@@ -226,7 +226,7 @@ async def process_audio_document(
 
     # 1. ASR 转写（根据协议路由：openai → Whisper / dashscope → Paraformer / local → faster-whisper）
     from src.features.user.services.model_config_service import ModelConfigService
-    from src.shared.utils.media_utils import transcribe_audio_with_dashscope
+    from src.shared.media_processing.audio import transcribe_audio_with_dashscope
 
     # 检查点：ASR 调用前（转写可能耗时较长，允许用户在此处取消）
     await _check_document_cancelled(document.id)
@@ -370,7 +370,7 @@ async def _split_md_text(
     Returns:
         [(text, metadata_dict), ...] — metadata 目前为空 dict，后续可扩展携带标题/层级
     """
-    from src.shared.utils.document_readers.document_loader import DocumentRegistry
+    from src.shared.document_processing.pipeline import DocumentRegistry
 
     splitter_class = DocumentRegistry.get_splitter_class(strategy)
     if splitter_class is None:
@@ -391,7 +391,7 @@ async def _split_md_text(
         return [(text, {}) for text in chunk_texts if text.strip()]
 
     elif strategy == "markdown":
-        from src.shared.utils.document_readers.splitters.markdown_splitter import MarkdownSplitter
+        from src.shared.document_processing.splitters import MarkdownSplitter
         max_chunk_size = kwargs.get("max_chunk_size", 1000)
         min_chunk_size = kwargs.get("min_chunk_size", 50)
         splitter = MarkdownSplitter(

@@ -14,10 +14,10 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from src.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
 from src.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
-from src.shared.utils.deepdoc.engine import DeepDocEngine
-from src.shared.utils.deepdoc.models import DeepDocParseResult
+from src.shared.integrations.deepdoc.core.engine import DeepDocEngine
+from src.shared.integrations.deepdoc.core.models import DeepDocParseResult
 from src.shared.utils.deepdoc.server import create_deepdoc_app
-from src.shared.utils.document_readers.document_loader import DocumentProcessor
+from src.shared.document_processing.pipeline import DocumentProcessor
 
 
 def _build_minimal_pdf_bytes(text: str) -> bytes:

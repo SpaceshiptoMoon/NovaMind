@@ -77,7 +77,7 @@
 - Modify: `backend/src/shared/utils/deepdoc/server/__init__.py`
 - Modify: `backend/src/shared/utils/document_readers/document_loader.py`
 - Modify: knowledge-base schema and validation files
-- Modify: `docs/deepdoc-integration.md`
+- Modify: `docs/deepdoc/deepdoc-integration.md`
 
 - [ ] Expose parser factory, engine, server app, model helpers, and Docker stubs as public APIs.
 - [ ] Verify `parsing.strategy = "deepdoc"` and every supported parser ID.

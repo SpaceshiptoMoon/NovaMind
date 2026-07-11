@@ -4,19 +4,19 @@ from importlib import import_module
 
 
 _EXPORT_MAP = {
-    "BaseReader": ("src.shared.utils.document_readers", "BaseReader"),
-    "PDFReader": ("src.shared.utils.document_readers", "PDFReader"),
-    "DocxReader": ("src.shared.utils.document_readers", "DocxReader"),
-    "TxtReader": ("src.shared.utils.document_readers", "TxtReader"),
-    "HTMLReader": ("src.shared.utils.document_readers", "HTMLReader"),
-    "MarkdownReader": ("src.shared.utils.document_readers", "MarkdownReader"),
-    "DocumentLoader": ("src.shared.utils.document_readers", "DocumentLoader"),
-    "DocumentProcessor": ("src.shared.utils.document_readers", "DocumentProcessor"),
-    "BaseSplitter": ("src.shared.utils.document_readers.splitters", "BaseSplitter"),
-    "RecursiveCharacterSplitter": ("src.shared.utils.document_readers.splitters", "RecursiveCharacterSplitter"),
-    "SemanticSplitter": ("src.shared.utils.document_readers.splitters", "SemanticSplitter"),
-    "FixedSizeSplitter": ("src.shared.utils.document_readers.splitters", "FixedSizeSplitter"),
-    "MarkdownSplitter": ("src.shared.utils.document_readers.splitters", "MarkdownSplitter"),
+    "BaseReader": ("src.shared.document_processing.readers", "BaseReader"),
+    "PDFReader": ("src.shared.document_processing.readers", "PDFReader"),
+    "DocxReader": ("src.shared.document_processing.readers", "DocxReader"),
+    "TxtReader": ("src.shared.document_processing.readers", "TxtReader"),
+    "HTMLReader": ("src.shared.document_processing.readers", "HTMLReader"),
+    "MarkdownReader": ("src.shared.document_processing.readers", "MarkdownReader"),
+    "DocumentLoader": ("src.shared.document_processing.pipeline", "DocumentLoader"),
+    "DocumentProcessor": ("src.shared.document_processing.pipeline", "DocumentProcessor"),
+    "BaseSplitter": ("src.shared.document_processing.splitters", "BaseSplitter"),
+    "RecursiveCharacterSplitter": ("src.shared.document_processing.splitters", "RecursiveCharacterSplitter"),
+    "SemanticSplitter": ("src.shared.document_processing.splitters", "SemanticSplitter"),
+    "FixedSizeSplitter": ("src.shared.document_processing.splitters", "FixedSizeSplitter"),
+    "MarkdownSplitter": ("src.shared.document_processing.splitters", "MarkdownSplitter"),
 }
 
 __all__ = list(_EXPORT_MAP.keys())

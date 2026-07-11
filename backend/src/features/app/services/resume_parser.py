@@ -16,8 +16,7 @@ from typing import Optional
 from src.core.middleware.structured_logging import get_logger
 from src.shared.ai_models.llm import BaseLLM
 from src.shared.prompts import PromptTemplate, PromptManager
-from src.shared.utils.document_readers.pdf_reader import PDFReader
-from src.shared.utils.document_readers.docx_reader import DocxReader
+from src.shared.document_processing.readers import PDFReader, DocxReader
 from src.features.app.schemas.resume_schema import StructuredResume
 
 logger = get_logger(__name__)

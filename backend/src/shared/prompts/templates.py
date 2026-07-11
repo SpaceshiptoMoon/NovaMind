@@ -130,7 +130,7 @@ class PromptManager:
         if cls._templates:
             return
 
-        from src.features.knowledge_space.knowledge_space_prompts import TEMPLATES as _ks
+        from src.features.knowledge_space.prompts import TEMPLATES as _ks
         from src.features.deep_research.deep_research_prompts import TEMPLATES as _dr
         from src.features.qa.qa_prompts import TEMPLATES as _qa
         from src.features.evaluation.evaluation_prompts import TEMPLATES as _ev

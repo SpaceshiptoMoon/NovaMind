@@ -16,8 +16,8 @@ from src.features.knowledge_space.schemas.knowledge_base_schema import (
 )
 from src.features.knowledge_space.services.document_service import _generate_image_description
 from src.features.knowledge_space.services.media_processing import _describe_single_frame
-from src.shared.utils.document_readers.document_loader import DocumentProcessor
-from src.shared.utils.media_utils import transcribe_audio_with_timestamps
+from src.shared.document_processing.pipeline import DocumentProcessor
+from src.shared.media_processing.audio import transcribe_audio_with_timestamps
 
 
 @pytest.fixture

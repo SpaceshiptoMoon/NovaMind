@@ -9,5 +9,5 @@ __all__ = [
     "RecursiveCharacterSplitter",
     "SemanticSplitter",
     "FixedSizeSplitter",
-    "MarkdownSplitter"
+    "MarkdownSplitter",
 ]

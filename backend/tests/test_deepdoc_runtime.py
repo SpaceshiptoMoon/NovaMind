@@ -22,21 +22,21 @@ from src.features.knowledge_space.services.document_service import (
     _extract_parse_metadata_summary,
     _prepare_es_chunks_static,
 )
-from src.shared.utils.deepdoc.capabilities import get_deepdoc_capabilities
-from src.shared.utils.deepdoc.compat import LazyImage
-from src.shared.utils.deepdoc.dependencies import get_deepdoc_runtime_report
-from src.shared.utils.deepdoc.engine import DeepDocEngine
-from src.shared.utils.deepdoc.factory import DeepDocParserFactory
+from src.shared.integrations.deepdoc.core.capabilities import get_deepdoc_capabilities
+from src.shared.integrations.deepdoc.compat.compat import LazyImage
+from src.shared.integrations.deepdoc.diagnostics.dependencies import get_deepdoc_runtime_report
+from src.shared.integrations.deepdoc.core.engine import DeepDocEngine
+from src.shared.integrations.deepdoc.core.factory import DeepDocParserFactory
 from src.shared.utils.deepdoc.page_filter import PageNoiseFilter
 from src.shared.utils.deepdoc.parser import DocxParser as UpstreamDocxParserAlias
 from src.shared.utils.deepdoc.parser import PdfParser as UpstreamPdfParserAlias
 from src.shared.utils.deepdoc.pdf_artifacts import PdfArtifactExtractor
 from src.shared.utils.deepdoc.ragflow_pdf_parser import DeepDocPdfBox, RAGFlowPdfParser
 from src.shared.utils.deepdoc.parser import DeepDocParser
-from src.shared.utils.deepdoc.models import DeepDocParseResult
+from src.shared.integrations.deepdoc.core.models import DeepDocParseResult
 from src.shared.utils.deepdoc.server import create_deepdoc_app
 from src.shared.utils.deepdoc.text_concat_model import get_text_concat_model_status
-from src.shared.utils.deepdoc.upstream import get_upstream_deepdoc_snapshot
+from src.shared.integrations.deepdoc.compat.upstream import get_upstream_deepdoc_snapshot
 from src.shared.utils.deepdoc.updown_concat import UpDownConcatMerger
 from src.shared.utils.deepdoc.vision.model_manager import (
     ensure_model_group_available,
@@ -53,7 +53,7 @@ from src.shared.utils.deepdoc.vision_runtime import (
     get_vision_runtime_status,
     run_vision_smoke_check,
 )
-from src.shared.utils.document_readers.document_loader import DocumentProcessor
+from src.shared.document_processing.pipeline import DocumentProcessor
 
 
 def _run(coro):
@@ -1565,7 +1565,7 @@ def test_vision_runtime_guard_raises_clear_error():
 
 
 def test_resume_surname_compatibility_preserves_chinese_names():
-    from src.shared.utils.deepdoc.compat import surname
+    from src.shared.integrations.deepdoc.compat.compat import surname
 
     assert surname.isit("\u738b") is True
     assert surname.isit("\u6b27\u9633") is True

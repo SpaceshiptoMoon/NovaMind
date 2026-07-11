@@ -20,7 +20,6 @@ __all__ = [
     "MarkdownReader",
     "DocumentLoader",
     "DocumentProcessor",
-    # 共享线程池
     "get_shared_executor",
     "run_in_executor",
     "shutdown_executor",

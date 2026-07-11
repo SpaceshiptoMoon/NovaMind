@@ -26,7 +26,7 @@ def test_deepdoc_top_level_exports_include_service_helpers():
 
 
 def test_deepdoc_runtime_parser_can_be_constructed_without_optional_format_imports():
-    from src.shared.utils.deepdoc.runtime_parser import DeepDocParser
+    from src.shared.integrations.deepdoc.core.runtime_parser import DeepDocParser
 
     parser = DeepDocParser()
     assert parser is not None
@@ -40,7 +40,7 @@ def test_deepdoc_pdf_parser_can_be_imported_without_vision_or_xgboost_runtime():
 
 
 def test_deepdoc_engine_can_be_constructed_without_optional_heavy_runtime_imports():
-    from src.shared.utils.deepdoc.engine import DeepDocEngine
+    from src.shared.integrations.deepdoc.core.engine import DeepDocEngine
 
     engine = DeepDocEngine()
     assert engine is not None
@@ -48,7 +48,7 @@ def test_deepdoc_engine_can_be_constructed_without_optional_heavy_runtime_import
 
 
 def test_deepdoc_capabilities_load_without_remote_parser_or_vision_runtime_import_failures():
-    from src.shared.utils.deepdoc.capabilities import get_deepdoc_capabilities
+    from src.shared.integrations.deepdoc.core.capabilities import get_deepdoc_capabilities
 
     capabilities = get_deepdoc_capabilities()
     assert "pdf_modes" in capabilities
