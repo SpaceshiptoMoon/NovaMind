@@ -9,7 +9,7 @@ from the legacy flat parsing layout.
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
 
 
 # ========== Splitting config ==========
@@ -183,6 +183,9 @@ class ParsingConfig(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    strategy: Optional[Literal["default", "deepdoc"]] = Field(default=None)
+    deepdoc_parser_id: Optional[LegacyDeepDocParserId] = Field(default=None)
+    deepdoc_pdf_mode: Optional[Literal["layout", "plain", "vision"]] = Field(default=None)
     text: Optional[TextParsingConfig] = Field(default=None)
     image: Optional[ImageParsingConfig] = Field(default=None)
     video: Optional[VideoParsingConfig] = Field(default=None)
@@ -207,21 +210,25 @@ class ParsingConfig(BaseModel):
         legacy = dict(value)
         strategy = str(legacy.get("strategy", "default"))
         parser_id = legacy.get("deepdoc_parser_id")
+        pdf_mode = legacy.get("deepdoc_pdf_mode")
         ocr_enabled = bool(legacy.get("ocr_enabled", False))
         vlm_enabled = bool(legacy.get("vlm_description_enabled", False))
         vlm_model = legacy.get("vlm_model")
 
         migrated: Dict[str, Any] = {
+            "strategy": strategy,
+            "deepdoc_parser_id": parser_id,
+            "deepdoc_pdf_mode": pdf_mode if pdf_mode in {"layout", "plain", "vision"} else None,
             "text": {
-                "pdf": {"strategy": strategy, "ocr_enabled": ocr_enabled},
-                "docx": {"strategy": strategy},
-                "excel": {"strategy": strategy},
-                "ppt": {"strategy": strategy},
-                "epub": {"strategy": strategy},
-                "markdown": {"strategy": strategy},
-                "html": {"strategy": strategy},
-                "txt": {"strategy": strategy},
-                "json": {"strategy": strategy},
+                "pdf": {"strategy": "default", "ocr_enabled": ocr_enabled},
+                "docx": {"strategy": "default"},
+                "excel": {"strategy": "default"},
+                "ppt": {"strategy": "default"},
+                "epub": {"strategy": "default"},
+                "markdown": {"strategy": "default"},
+                "html": {"strategy": "default"},
+                "txt": {"strategy": "default"},
+                "json_file": {"strategy": "default"},
             },
             "video": legacy.get("video"),
             "audio": legacy.get("audio"),
@@ -262,6 +269,14 @@ class ParsingConfig(BaseModel):
             }
 
         return migrated
+
+    @model_serializer(mode="wrap")
+    def serialize_with_legacy_keys(self, handler):
+        data = handler(self)
+        legacy = build_runtime_parsing_config(data)
+        merged = dict(data)
+        merged.update(legacy)
+        return merged
 
 
 # ========== Question generation ==========
@@ -395,11 +410,34 @@ def build_runtime_parsing_config(parsing: Optional[Dict[str, Any]], file_type: O
     """
     parsed = ParsingConfig.model_validate(parsing or {})
     result: Dict[str, Any] = {}
+    if parsed.strategy is not None:
+        result["strategy"] = parsed.strategy
+    if parsed.deepdoc_parser_id is not None:
+        result["deepdoc_parser_id"] = parsed.deepdoc_parser_id
+    if parsed.deepdoc_pdf_mode is not None:
+        result["deepdoc_pdf_mode"] = parsed.deepdoc_pdf_mode
 
     normalized_file_type = (file_type or "").lower()
     text = parsed.text or TextParsingConfig()
 
+    if not file_type:
+        if parsed.deepdoc_parser_id is not None:
+            return result
+        if parsed.deepdoc_pdf_mode is not None:
+            result.setdefault("deepdoc_pdf_mode", parsed.deepdoc_pdf_mode)
+            return result
+
     target_doc_type = normalized_file_type
+    inferred_non_pdf_deepdoc: str | None = None
+    if not target_doc_type:
+        for doc_type in ("docx", "excel", "ppt", "epub", "markdown", "html", "txt", "json"):
+            attr_name = "json_file" if doc_type == "json" else doc_type
+            cfg = getattr(text, attr_name, None)
+            if cfg and cfg.strategy == "deepdoc":
+                inferred_non_pdf_deepdoc = doc_type
+                break
+        if inferred_non_pdf_deepdoc:
+            target_doc_type = inferred_non_pdf_deepdoc
     if target_doc_type == "md":
         target_doc_type = "markdown"
     elif target_doc_type == "csv":
@@ -409,7 +447,7 @@ def build_runtime_parsing_config(parsing: Optional[Dict[str, Any]], file_type: O
 
     text_cfg: TextTypeParsingConfig | PdfParsingConfig
     text_cfg = getattr(text, target_doc_type, text.pdf)
-    result["strategy"] = text_cfg.strategy
+    result["strategy"] = text_cfg.strategy if file_type else result.get("strategy", text_cfg.strategy)
 
     if target_doc_type == "pdf":
         pdf_cfg = text.pdf

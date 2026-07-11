@@ -10,11 +10,7 @@ from src.shared.integrations.deepdoc.core.factory import DeepDocParserFactory
 from src.shared.integrations.deepdoc.core.models import DeepDocParseResult
 from src.shared.integrations.deepdoc.core.runtime_parser import DeepDocParser
 from src.shared.integrations.deepdoc.compat.upstream import get_upstream_deepdoc_snapshot
-from src.shared.integrations.deepdoc.vision.model_manager import (
-    download_model_group,
-    ensure_model_group_available,
-    get_model_status,
-)
+from src.shared.integrations.deepdoc.vision.model_manager import get_model_status
 from src.shared.integrations.deepdoc.vision_runtime import (
     get_vision_health_status,
     run_vision_smoke_check,
@@ -67,10 +63,14 @@ class DeepDocEngine:
 
     @staticmethod
     def ensure_vision_model_group(group: str):
+        from src.shared.utils.deepdoc.engine import ensure_model_group_available
+
         return ensure_model_group_available(group)
 
     @staticmethod
     def download_vision_models(group: str | None = None):
+        from src.shared.utils.deepdoc.engine import download_model_group
+
         return download_model_group(group)
 
     @staticmethod

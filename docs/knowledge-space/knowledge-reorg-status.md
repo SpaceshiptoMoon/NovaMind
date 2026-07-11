@@ -57,6 +57,7 @@ It is intended to make phase completion and remaining cleanup work explicit.
   - `pdf_artifacts.py`
   - `updown_concat.py`
 - Old files under `shared/utils/deepdoc/` for those helpers are retained as compatibility shims.
+- The new DeepDoc parser implementation has also been further decoupled from the legacy package by switching its remaining internal `MAXIMUM_PAGE_NUMBER` imports to `src.shared.integrations.deepdoc.compat`.
 
 ## Remaining Phase 3 Cleanup
 
@@ -80,6 +81,20 @@ The new `shared/integrations/deepdoc/` package no longer relies on the migrated 
 
 This means the remaining `shared/utils/deepdoc/*` package is now primarily a legacy import surface rather than the
 actual implementation home for the main DeepDoc runtime helpers.
+
+Remaining legacy imports under `shared/utils/deepdoc/*` are now concentrated in:
+
+- compatibility tests
+- CLI compatibility entrypoints
+- thin shim modules that intentionally preserve old import paths
+
+Compatibility shims also continue to expose selected legacy monkeypatch targets and serialization surfaces where the
+existing test and tooling ecosystem still depends on them.
+
+This includes:
+
+- legacy `ParsingConfig` runtime fields exposed through serialization for old callers
+- legacy `shared.utils.deepdoc` monkeypatch targets that still need to resolve inside compatibility tests
 
 ### Tests still targeting compatibility paths
 
@@ -114,3 +129,12 @@ This document defines:
 2. Add or migrate more tests that import the new package directly instead of only validating compatibility paths.
 3. Audit whether `shared/utils/document_readers/`, `media_utils.py`, and `vlm_utils.py` can be further slimmed once external callers are confirmed.
 4. Review `backend/src/src/...` compatibility packages and document which ones are still required for install/import compatibility.
+
+## Latest Verification
+
+Focused verification after the latest phase-3 cleanup passed with:
+
+- `pytest tests/test_deepdoc_integration_light.py tests/test_knowledge_config_runtime.py -q`
+  - `19 passed`
+- `pytest tests/test_deepdoc_imports.py tests/test_deepdoc_runtime.py -q`
+  - `118 passed, 27 skipped`

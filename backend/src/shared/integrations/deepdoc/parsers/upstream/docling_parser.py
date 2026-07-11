@@ -30,7 +30,7 @@ import pdfplumber
 import requests
 from PIL import Image
 
-from src.shared.utils.deepdoc.constants import MAXIMUM_PAGE_NUMBER
+from src.shared.integrations.deepdoc.compat import MAXIMUM_PAGE_NUMBER
 
 try:
     from docling.document_converter import DocumentConverter, PdfFormatOption

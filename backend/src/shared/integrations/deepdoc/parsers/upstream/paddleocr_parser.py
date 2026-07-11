@@ -31,7 +31,7 @@ import pdfplumber
 import requests
 from PIL import Image
 
-from src.shared.utils.deepdoc.constants import MAXIMUM_PAGE_NUMBER
+from src.shared.integrations.deepdoc.compat import MAXIMUM_PAGE_NUMBER
 
 try:
     from src.shared.integrations.deepdoc.parsers.upstream.pdf_parser import RAGFlowPdfParser
