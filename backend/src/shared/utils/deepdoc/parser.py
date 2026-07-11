@@ -4,15 +4,15 @@ import asyncio
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Union
 
-from src.shared.utils.deepdoc.capabilities import get_deepdoc_capabilities
-from src.shared.utils.deepdoc.models import DeepDocParseResult
-from src.shared.utils.deepdoc.ragflow_docx_parser import RAGFlowDocxParser
-from src.shared.utils.deepdoc.ragflow_epub_parser import RAGFlowEpubParser
-from src.shared.utils.deepdoc.ragflow_excel_parser import RAGFlowExcelParser
-from src.shared.utils.deepdoc.ragflow_pdf_parser import RAGFlowPdfParser
-from src.shared.utils.deepdoc.ragflow_ppt_parser import RAGFlowPptParser
-from src.shared.utils.deepdoc.ragflow_text_parser import RAGFlowTextParser
-from src.shared.utils.deepdoc.vision_runtime import ensure_vision_parser_available
+from src.shared.integrations.deepdoc.core.capabilities import get_deepdoc_capabilities
+from src.shared.integrations.deepdoc.core.models import DeepDocParseResult
+from src.shared.integrations.deepdoc.parsers.docx import RAGFlowDocxParser
+from src.shared.integrations.deepdoc.parsers.epub import RAGFlowEpubParser
+from src.shared.integrations.deepdoc.parsers.excel import RAGFlowExcelParser
+from src.shared.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
+from src.shared.integrations.deepdoc.parsers.ppt import RAGFlowPptParser
+from src.shared.integrations.deepdoc.parsers.text import RAGFlowTextParser
+from src.shared.integrations.deepdoc.vision_runtime import ensure_vision_parser_available
 from src.shared.utils.deepdoc.logging_compat import get_logger
 
 logger = get_logger(__name__)

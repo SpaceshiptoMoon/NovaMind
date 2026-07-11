@@ -1,14 +1,1 @@
-from src.shared.utils.deepdoc.ragflow_tcadp_parser import (
-    TencentCloudAPIClient,
-    RAGFlowTCADPParser,
-)
-
-
-class TCADPParser(RAGFlowTCADPParser):
-    pass
-
-
-__all__ = [
-    "TencentCloudAPIClient",
-    "TCADPParser",
-]
+from src.shared.integrations.deepdoc.parsers.upstream.tcadp_parser import *  # noqa: F401,F403

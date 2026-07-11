@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from src.shared.utils.deepdoc.vision.model_manager import default_model_dir
+from src.shared.integrations.deepdoc.vision.model_manager import default_model_dir
 
 
 TEXT_CONCAT_MODEL_REPO_ID = os.getenv(

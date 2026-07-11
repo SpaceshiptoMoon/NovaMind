@@ -162,7 +162,7 @@ def main(argv: list[str] | None = None) -> int:
         import uvicorn
 
         uvicorn.run(
-            "src.shared.utils.deepdoc.server.deepdoc_server:create_deepdoc_app",
+            "src.shared.integrations.deepdoc.server.deepdoc_server:create_deepdoc_app",
             host=args.host,
             port=args.port,
             reload=args.reload,

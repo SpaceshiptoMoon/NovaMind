@@ -9,7 +9,7 @@ import numpy as np
 from PIL import Image
 
 from src.shared.utils.deepdoc.compat import LazyImage
-from src.shared.utils.deepdoc.vision_runtime import get_vision_health_status
+from src.shared.integrations.deepdoc.vision_runtime import get_vision_health_status
 
 
 class PdfArtifactExtractor:
@@ -122,7 +122,7 @@ class PdfArtifactExtractor:
 
     @staticmethod
     def _is_caption_box(box: Any) -> bool:
-        from src.shared.utils.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+        from src.shared.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
 
         return TableStructureRecognizer.is_caption(
             {
@@ -262,7 +262,7 @@ class PdfArtifactExtractor:
         )
         if tsr_structured_boxes:
             try:
-                from src.shared.utils.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+                from src.shared.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
 
                 html = TableStructureRecognizer.construct_table(tsr_structured_boxes, html=True)
                 return html, "tsr_model", {**tsr_meta, "structured_boxes": [dict(box) for box in tsr_structured_boxes]}
@@ -272,7 +272,7 @@ class PdfArtifactExtractor:
         structured_boxes = self._infer_structured_table_boxes(content_boxes, caption=caption)
         if structured_boxes:
             try:
-                from src.shared.utils.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+                from src.shared.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
 
                 return (
                     TableStructureRecognizer.construct_table(structured_boxes, html=True),
@@ -553,7 +553,7 @@ class PdfArtifactExtractor:
         if not health.get("can_run_tsr_inference"):
             return None
         try:
-            from src.shared.utils.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+            from src.shared.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
 
             self._tsr = TableStructureRecognizer(autoload=True)
         except Exception:

@@ -1,16 +1,1 @@
-from src.shared.utils.deepdoc.ragflow_somark_parser import (
-    SoMarkAPIError,
-    SoMarkBlockType,
-    RAGFlowSoMarkParser,
-)
-
-
-class SoMarkParser(RAGFlowSoMarkParser):
-    pass
-
-
-__all__ = [
-    "SoMarkAPIError",
-    "SoMarkBlockType",
-    "SoMarkParser",
-]
+from src.shared.integrations.deepdoc.parsers.upstream.somark_parser import *  # noqa: F401,F403

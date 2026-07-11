@@ -64,8 +64,9 @@ def test_knowledge_base_config_accepts_deepdoc_strategy():
         }
     )
 
-    assert config.model_dump()["parsing"]["strategy"] == "deepdoc"
-    assert config.model_dump()["parsing"]["deepdoc_pdf_mode"] == "plain"
+    dumped = config.model_dump(by_alias=True)
+    assert dumped["parsing"]["text"]["pdf"]["strategy"] == "deepdoc"
+    assert dumped["parsing"]["text"]["pdf"]["parser"] is None
 
 
 def test_knowledge_base_service_accepts_all_deepdoc_vision_options():

@@ -5,7 +5,7 @@ from typing import Any, Dict
 
 from src.shared.integrations.deepdoc.diagnostics.dependencies import get_deepdoc_runtime_report
 from src.shared.integrations.deepdoc.compat.upstream import get_upstream_deepdoc_snapshot
-from src.shared.utils.deepdoc.vision_runtime import get_vision_health_status, get_vision_runtime_status
+from src.shared.integrations.deepdoc.vision_runtime import get_vision_health_status, get_vision_runtime_status
 
 
 def get_deepdoc_capabilities() -> Dict[str, Any]:
@@ -22,7 +22,7 @@ def get_deepdoc_capabilities() -> Dict[str, Any]:
         and (os.getenv("TCADP_SECRET_KEY") or os.getenv("TENCENTCLOUD_SECRET_KEY"))
     )
     try:
-        from src.shared.utils.deepdoc.ragflow_tcadp_parser import TENCENTCLOUD_SDK_AVAILABLE
+        from src.shared.integrations.deepdoc.parsers.remote.tcadp import TENCENTCLOUD_SDK_AVAILABLE
     except Exception:
         TENCENTCLOUD_SDK_AVAILABLE = False
     tcadp_configured = bool(tcadp_credentials_configured and TENCENTCLOUD_SDK_AVAILABLE)
@@ -34,7 +34,7 @@ def get_deepdoc_capabilities() -> Dict[str, Any]:
             "resume": {
                 "available": True,
                 "description": "Vendored RAGFlow resume normalization package with local dependency fallbacks.",
-                "entrypoint": "src.shared.utils.deepdoc.parser.resume.refactor",
+                "entrypoint": "src.shared.integrations.deepdoc.parsers.upstream.resume.refactor",
             }
         },
         "parser_ids": [

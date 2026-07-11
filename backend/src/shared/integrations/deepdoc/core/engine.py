@@ -10,12 +10,12 @@ from src.shared.integrations.deepdoc.core.factory import DeepDocParserFactory
 from src.shared.integrations.deepdoc.core.models import DeepDocParseResult
 from src.shared.integrations.deepdoc.core.runtime_parser import DeepDocParser
 from src.shared.integrations.deepdoc.compat.upstream import get_upstream_deepdoc_snapshot
-from src.shared.utils.deepdoc.vision.model_manager import (
+from src.shared.integrations.deepdoc.vision.model_manager import (
     download_model_group,
     ensure_model_group_available,
     get_model_status,
 )
-from src.shared.utils.deepdoc.vision_runtime import (
+from src.shared.integrations.deepdoc.vision_runtime import (
     get_vision_health_status,
     run_vision_smoke_check,
 )

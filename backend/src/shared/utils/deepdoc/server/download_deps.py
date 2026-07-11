@@ -1,11 +1,1 @@
-from __future__ import annotations
-
-from pathlib import Path
-from typing import Optional
-
-from src.shared.utils.deepdoc.engine import DeepDocEngine
-
-
-def download_deepdoc_dependencies(group: Optional[str] = None) -> Path:
-    """Download ONNX model artifacts for the standalone deepdoc server/runtime."""
-    return DeepDocEngine.download_vision_models(group)
+from src.shared.integrations.deepdoc.server.download_deps import *  # noqa: F401,F403

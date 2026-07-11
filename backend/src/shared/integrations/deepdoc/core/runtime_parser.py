@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 from src.shared.integrations.deepdoc.core.capabilities import get_deepdoc_capabilities
 from src.shared.utils.deepdoc.logging_compat import get_logger
 from src.shared.integrations.deepdoc.core.models import DeepDocParseResult
-from src.shared.utils.deepdoc.vision_runtime import ensure_vision_parser_available
+from src.shared.integrations.deepdoc.vision_runtime import ensure_vision_parser_available
 
 logger = get_logger(__name__)
 
@@ -18,79 +18,79 @@ class DeepDocParser:
 
     @cached_property
     def _docx_parser(self):
-        from src.shared.utils.deepdoc.ragflow_docx_parser import RAGFlowDocxParser
+        from src.shared.integrations.deepdoc.parsers.docx import RAGFlowDocxParser
 
         return RAGFlowDocxParser()
 
     @cached_property
     def _epub_parser(self):
-        from src.shared.utils.deepdoc.ragflow_epub_parser import RAGFlowEpubParser
+        from src.shared.integrations.deepdoc.parsers.epub import RAGFlowEpubParser
 
         return RAGFlowEpubParser()
 
     @cached_property
     def _excel_parser(self):
-        from src.shared.utils.deepdoc.ragflow_excel_parser import RAGFlowExcelParser
+        from src.shared.integrations.deepdoc.parsers.excel import RAGFlowExcelParser
 
         return RAGFlowExcelParser()
 
     @cached_property
     def _figure_parser(self):
-        from src.shared.utils.deepdoc.ragflow_figure_parser import RAGFlowFigureParser
+        from src.shared.integrations.deepdoc.parsers.figure import RAGFlowFigureParser
 
         return RAGFlowFigureParser()
 
     @cached_property
     def _docling_parser(self):
-        from src.shared.utils.deepdoc.ragflow_docling_parser import RAGFlowDoclingParser
+        from src.shared.integrations.deepdoc.parsers.remote.docling import RAGFlowDoclingParser
 
         return RAGFlowDoclingParser()
 
     @cached_property
     def _mineru_parser(self):
-        from src.shared.utils.deepdoc.ragflow_mineru_parser import RAGFlowMinerUParser
+        from src.shared.integrations.deepdoc.parsers.remote.mineru import RAGFlowMinerUParser
 
         return RAGFlowMinerUParser()
 
     @cached_property
     def _opendataloader_parser(self):
-        from src.shared.utils.deepdoc.ragflow_opendataloader_parser import RAGFlowOpenDataLoaderParser
+        from src.shared.integrations.deepdoc.parsers.remote.opendataloader import RAGFlowOpenDataLoaderParser
 
         return RAGFlowOpenDataLoaderParser()
 
     @cached_property
     def _paddleocr_parser(self):
-        from src.shared.utils.deepdoc.ragflow_paddleocr_parser import RAGFlowPaddleOCRParser
+        from src.shared.integrations.deepdoc.parsers.remote.paddleocr import RAGFlowPaddleOCRParser
 
         return RAGFlowPaddleOCRParser()
 
     @cached_property
     def _somark_parser(self):
-        from src.shared.utils.deepdoc.ragflow_somark_parser import RAGFlowSoMarkParser
+        from src.shared.integrations.deepdoc.parsers.remote.somark import RAGFlowSoMarkParser
 
         return RAGFlowSoMarkParser()
 
     @cached_property
     def _tcadp_parser(self):
-        from src.shared.utils.deepdoc.ragflow_tcadp_parser import RAGFlowTCADPParser
+        from src.shared.integrations.deepdoc.parsers.remote.tcadp import RAGFlowTCADPParser
 
         return RAGFlowTCADPParser()
 
     @cached_property
     def _pdf_parser(self):
-        from src.shared.utils.deepdoc.ragflow_pdf_parser import RAGFlowPdfParser
+        from src.shared.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
 
         return RAGFlowPdfParser()
 
     @cached_property
     def _ppt_parser(self):
-        from src.shared.utils.deepdoc.ragflow_ppt_parser import RAGFlowPptParser
+        from src.shared.integrations.deepdoc.parsers.ppt import RAGFlowPptParser
 
         return RAGFlowPptParser()
 
     @cached_property
     def _text_parser(self):
-        from src.shared.utils.deepdoc.ragflow_text_parser import RAGFlowTextParser
+        from src.shared.integrations.deepdoc.parsers.text import RAGFlowTextParser
 
         return RAGFlowTextParser()
 
