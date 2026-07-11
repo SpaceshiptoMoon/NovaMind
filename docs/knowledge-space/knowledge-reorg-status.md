@@ -19,6 +19,7 @@ It is intended to make phase completion and remaining cleanup work explicit.
   - `validation/`
 - `shared/media_processing/` has been introduced with:
   - `audio/`
+  - `image/`
   - `video/`
   - `vlm/`
 - `docs/` has been regrouped into domain-oriented folders including:
@@ -93,6 +94,19 @@ This is acceptable during phase 3, but they should be progressively rebalanced t
 The install-compat package under `backend/src/src/` still exists and should remain until packaging/import compatibility is explicitly revalidated.
 
 Generated `__pycache__` content under that compatibility tree is not part of the desired final structure and should be cleaned separately from source-level refactoring.
+
+### Architecture navigation document
+
+The formal navigation document requested by the reorganization plan has now been added:
+
+- [knowledge-architecture-navigation.md](/C:/Users/xl/Desktop/backend_project/intelligent/docs/knowledge-space/knowledge-architecture-navigation.md:1)
+
+This document defines:
+
+- the target three-layer architecture
+- the implementation-home directories
+- the intentionally retained compatibility surfaces
+- preferred import guidance for ongoing development
 
 ## Recommended Next Steps
 
