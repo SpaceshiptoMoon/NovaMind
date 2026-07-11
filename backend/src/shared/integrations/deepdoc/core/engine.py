@@ -49,7 +49,7 @@ class DeepDocEngine:
 
     @staticmethod
     def text_concat_model_status():
-        from src.shared.utils.deepdoc.text_concat_model import get_text_concat_model_status
+        from src.shared.integrations.deepdoc.text_concat_model import get_text_concat_model_status
 
         return get_text_concat_model_status()
 
@@ -75,7 +75,7 @@ class DeepDocEngine:
 
     @staticmethod
     def download_text_concat_model():
-        from src.shared.utils.deepdoc.text_concat_model import download_text_concat_model as download_text_concat_model_artifact
+        from src.shared.integrations.deepdoc.text_concat_model import download_text_concat_model as download_text_concat_model_artifact
 
         return download_text_concat_model_artifact()
 

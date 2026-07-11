@@ -18,7 +18,7 @@ from src.shared.utils.deepdoc.constants import MAXIMUM_PAGE_NUMBER
 from src.shared.integrations.deepdoc.core.models import DeepDocParseResult
 from src.shared.integrations.deepdoc.page_filter import PageNoiseFilter
 from src.shared.utils.deepdoc.pdf_artifacts import PdfArtifactExtractor
-from src.shared.utils.deepdoc.pdf_layout import PdfLayoutExtractor
+from src.shared.integrations.deepdoc.pdf_layout import PdfLayoutExtractor
 from src.shared.integrations.deepdoc.parsers.pdf_plain import RAGFlowPlainPdfParser
 from src.shared.utils.deepdoc.updown_concat import UpDownConcatMerger
 from src.shared.integrations.deepdoc.vision_runtime import get_vision_health_status
