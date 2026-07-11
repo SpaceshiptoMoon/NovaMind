@@ -1,310 +1,439 @@
 """
-知识库 Schema
+Knowledge base schemas.
 
-定义知识库的请求和响应模型
-
-字段命名与数据库模型 (KnowledgeBase) 保持一致:
-- space_id: 所属空间ID
-- name: 知识库名称
-- creator_id: 创建者ID
-- config: 知识库配置 (JSON)
-- storage: 存储配置 (JSON)
-- stats: 统计信息 (JSON)
-- status: 状态 (SmallInteger: 0-已删除, 1-活跃, 2-已归档)
+This module defines the request/response models for knowledge-base config and
+provides the new parsing config structure with backward-compatible migration
+from the legacy flat parsing layout.
 """
 
-from typing import Optional, List, Literal, Dict, Any, Annotated, Union
 from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict, field_serializer, field_validator, Tag
+from typing import Any, Dict, List, Literal, Optional
 
-from src.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 
-# ========== 切分策略配置 ==========
+# ========== Splitting config ==========
 
 
 class AudioChunkOverride(BaseModel):
-    """音频专属切分覆盖（可选，不配则走默认文本切分）"""
+    """Audio-specific chunk override."""
+
     strategy: Literal["sentence", "fixed"] = Field(
         default="sentence",
-        description="切分策略: sentence(按句子)/fixed(按固定字符数)",
+        description="Chunking strategy for audio transcripts.",
     )
     chunk_size: int = Field(
-        default=1000, ge=100, le=4000,
-        description="固定大小切分的字符数（仅 fixed 模式有效）",
+        default=1000,
+        ge=100,
+        le=4000,
+        description="Chunk size used when strategy=fixed.",
     )
 
 
 class VideoChunkOverride(BaseModel):
-    """视频专属切分覆盖（可选，不配则走默认文本切分）"""
+    """Video-specific chunk override."""
+
     strategy: Literal["fixed"] = Field(
         default="fixed",
-        description="切分策略: fixed(按字数聚合帧描述)",
+        description="Chunking strategy for video descriptions.",
     )
     chunk_size: int = Field(
-        default=1500, ge=100, le=4000,
-        description="聚合最大字符数",
+        default=1500,
+        ge=100,
+        le=4000,
+        description="Maximum merged description length.",
     )
 
 
 class SplittingConfig(BaseModel):
-    """切分配置 — 所有模态统一的默认策略 + 可选专属覆盖"""
+    """Common splitting config."""
+
     model_config = ConfigDict(extra="ignore")
 
     strategy: Literal["recursive", "fixed_size", "markdown", "semantic"] = Field(
         default="recursive",
-        description="默认切分策略",
+        description="Default splitting strategy.",
     )
-    chunk_size: int = Field(default=1000, ge=50, le=4000, description="目标分块大小，字符数")
-    chunk_overlap: int = Field(default=100, ge=0, le=500, description="相邻分块重叠字符数")
-    min_chunk_size: int = Field(default=500, ge=0, le=2000, description="最小分块大小（recursive/markdown）")
-    max_chunk_size: int = Field(default=2000, ge=100, le=8000, description="最大分块大小（markdown/semantic）")
-    similarity_threshold: float = Field(default=0.7, ge=0.0, le=1.0, description="语义相似度阈值（semantic 专属）")
-    batch_size: int = Field(default=20, ge=1, le=100, description="语义切分批处理大小（semantic 专属）")
-    audio: Optional[AudioChunkOverride] = Field(default=None, description="音频专属切分（不配则使用默认策略）")
-    video: Optional[VideoChunkOverride] = Field(default=None, description="视频专属切分（不配则使用默认策略）")
+    chunk_size: int = Field(default=1000, ge=50, le=4000)
+    chunk_overlap: int = Field(default=100, ge=0, le=500)
+    min_chunk_size: int = Field(default=500, ge=0, le=2000)
+    max_chunk_size: int = Field(default=2000, ge=100, le=8000)
+    similarity_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
+    batch_size: int = Field(default=20, ge=1, le=100)
+    audio: Optional[AudioChunkOverride] = Field(default=None)
+    video: Optional[VideoChunkOverride] = Field(default=None)
 
 
-# ========== 解析配置 ==========
+# ========== Parsing config ==========
 
 
-class ParsingConfig(BaseModel):
-    """文档解析配置"""
-    strategy: Literal["default", "deepdoc"] = Field(
-        default="default",
-        description="文档解析策略: default(现有解析) / deepdoc(结构化解析)",
+PdfParserName = Literal[
+    "layout",
+    "plain",
+    "vision",
+    "docling",
+    "mineru",
+    "opendataloader",
+    "paddleocr",
+    "somark",
+    "tcadp",
+]
+
+LegacyDeepDocParserId = Literal[
+    "pdf_layout",
+    "pdf_plain",
+    "pdf_vision",
+    "pdf_docling",
+    "pdf_mineru",
+    "pdf_opendataloader",
+    "pdf_paddleocr",
+    "pdf_somark",
+    "pdf_tcadp",
+    "docx",
+    "epub",
+    "excel",
+    "ppt",
+    "figure",
+    "text",
+    "txt",
+    "markdown",
+    "html",
+    "json",
+]
+
+
+class TextTypeParsingConfig(BaseModel):
+    """Per-document-type text parsing config."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    strategy: Literal["default", "deepdoc"] = Field(default="default")
+
+
+class PdfParsingConfig(TextTypeParsingConfig):
+    """PDF parsing config."""
+
+    parser: Optional[PdfParserName] = Field(default=None)
+    ocr_enabled: bool = Field(default=False)
+
+    @model_validator(mode="after")
+    def validate_parser_usage(self):
+        if self.strategy == "default" and self.parser is not None:
+            raise ValueError("pdf.strategy=default forbids parser")
+        return self
+
+
+class TextParsingConfig(BaseModel):
+    """Text parsing config grouped by document type."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    pdf: PdfParsingConfig = Field(default_factory=PdfParsingConfig)
+    docx: TextTypeParsingConfig = Field(default_factory=TextTypeParsingConfig)
+    excel: TextTypeParsingConfig = Field(default_factory=TextTypeParsingConfig)
+    ppt: TextTypeParsingConfig = Field(default_factory=TextTypeParsingConfig)
+    epub: TextTypeParsingConfig = Field(default_factory=TextTypeParsingConfig)
+    markdown: TextTypeParsingConfig = Field(default_factory=TextTypeParsingConfig)
+    html: TextTypeParsingConfig = Field(default_factory=TextTypeParsingConfig)
+    txt: TextTypeParsingConfig = Field(default_factory=TextTypeParsingConfig)
+    json_file: TextTypeParsingConfig = Field(
+        default_factory=TextTypeParsingConfig,
+        alias="json",
+        serialization_alias="json",
     )
-    deepdoc_parser_id: Optional[Literal["pdf_layout", "pdf_plain", "pdf_vision", "pdf_docling", "pdf_mineru", "pdf_opendataloader", "pdf_paddleocr", "pdf_somark", "pdf_tcadp", "docx", "epub", "excel", "ppt", "figure", "text", "txt", "markdown", "html", "json"]] = Field(
-        default=None,
-        description="DeepDoc parser ID: pdf_layout/pdf_plain/pdf_vision/pdf_docling/pdf_mineru/pdf_opendataloader/pdf_paddleocr/pdf_somark/pdf_tcadp/docx/epub/excel/ppt/figure/text/txt/markdown/html/json",
-    )
-    deepdoc_pdf_mode: Literal["layout", "plain", "vision"] = Field(
-        default="layout",
-        description="DeepDoc PDF mode: layout (structure-aware), plain (text extraction), or vision (OCR/layout models)",
-    )
-    ocr_enabled: bool = Field(default=False, description="是否启用 OCR")
-    vlm_description_enabled: bool = Field(
-        default=False,
-        description="是否启用 VLM 图片描述（多模态空间），开启后上传图片时调用视觉模型生成文本描述，支持 BM25 + 文本向量检索",
-    )
-    vlm_model: Optional[str] = Field(
-        default=None,
-        description="VLM 视觉模型名称，为空则使用空间或系统默认",
-    )
-    # 视频解析配置（全模态空间）
-    video: Optional["VideoParsingConfig"] = Field(
-        default=None,
-        description="视频文件解析配置（空间包含 video 模态时有效）",
-    )
-    # 音频解析配置（全模态空间）
-    audio: Optional["AudioParsingConfig"] = Field(
-        default=None,
-        description="音频文件解析配置（空间包含 audio 模态时有效）",
-    )
+
+
+class ImageParsingConfig(BaseModel):
+    """Image parsing config."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    strategy: Literal["ocr", "vlm"] = Field(default="ocr")
+    vlm_model: Optional[str] = Field(default=None)
+
+    @model_validator(mode="after")
+    def validate_strategy(self):
+        if self.strategy == "ocr" and self.vlm_model:
+            raise ValueError("image.strategy=ocr forbids vlm_model")
+        return self
 
 
 class VideoParsingConfig(BaseModel):
-    """视频文件解析配置"""
-    frame_interval: float = Field(
-        default=5.0, ge=1.0, le=60.0,
-        description="关键帧提取间隔（秒），默认每5秒一帧",
-    )
-    max_frames: int = Field(
-        default=60, ge=1, le=200,
-        description="最多提取帧数，默认60帧",
-    )
+    """Video parsing config."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    frame_interval: float = Field(default=5.0, ge=1.0, le=60.0)
+    max_frames: int = Field(default=60, ge=1, le=200)
+    vlm_description_enabled: bool = Field(default=False)
+    vlm_model: Optional[str] = Field(default=None)
 
 
 class AudioParsingConfig(BaseModel):
-    """音频文件解析配置（仅 ASR，切分配置已迁移至 splitting.audio）"""
-    asr_model: str = Field(
-        default="whisper-1",
-        description="ASR 转写模型名称，默认 whisper-1",
-    )
-    language: Optional[str] = Field(
-        default=None,
-        description="转写语言提示（如 zh/en/ja/ko），为空则自动检测",
-    )
+    """Audio parsing config."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    asr_model: str = Field(default="whisper-1")
+    language: Optional[str] = Field(default=None)
 
 
-# ========== 问题生成 LLM 配置 ==========
+class ParsingConfig(BaseModel):
+    """Top-level parsing config."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    text: Optional[TextParsingConfig] = Field(default=None)
+    image: Optional[ImageParsingConfig] = Field(default=None)
+    video: Optional[VideoParsingConfig] = Field(default=None)
+    audio: Optional[AudioParsingConfig] = Field(default=None)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_parsing(cls, value):
+        if not isinstance(value, dict):
+            return value
+        legacy_keys = {
+            "strategy",
+            "deepdoc_parser_id",
+            "deepdoc_pdf_mode",
+            "ocr_enabled",
+            "vlm_description_enabled",
+            "vlm_model",
+        }
+        if not any(key in value for key in legacy_keys):
+            return value
+
+        legacy = dict(value)
+        strategy = str(legacy.get("strategy", "default"))
+        parser_id = legacy.get("deepdoc_parser_id")
+        ocr_enabled = bool(legacy.get("ocr_enabled", False))
+        vlm_enabled = bool(legacy.get("vlm_description_enabled", False))
+        vlm_model = legacy.get("vlm_model")
+
+        migrated: Dict[str, Any] = {
+            "text": {
+                "pdf": {"strategy": strategy, "ocr_enabled": ocr_enabled},
+                "docx": {"strategy": strategy},
+                "excel": {"strategy": strategy},
+                "ppt": {"strategy": strategy},
+                "epub": {"strategy": strategy},
+                "markdown": {"strategy": strategy},
+                "html": {"strategy": strategy},
+                "txt": {"strategy": strategy},
+                "json": {"strategy": strategy},
+            },
+            "video": legacy.get("video"),
+            "audio": legacy.get("audio"),
+        }
+
+        parser_to_type: Dict[str, tuple[str, Optional[str]]] = {
+            "pdf_layout": ("pdf", "layout"),
+            "pdf_plain": ("pdf", "plain"),
+            "pdf_vision": ("pdf", "vision"),
+            "pdf_docling": ("pdf", "docling"),
+            "pdf_mineru": ("pdf", "mineru"),
+            "pdf_opendataloader": ("pdf", "opendataloader"),
+            "pdf_paddleocr": ("pdf", "paddleocr"),
+            "pdf_somark": ("pdf", "somark"),
+            "pdf_tcadp": ("pdf", "tcadp"),
+            "docx": ("docx", None),
+            "epub": ("epub", None),
+            "excel": ("excel", None),
+            "ppt": ("ppt", None),
+            "markdown": ("markdown", None),
+            "html": ("html", None),
+            "txt": ("txt", None),
+            "json": ("json_file", None),
+            "text": ("txt", None),
+        }
+        if parser_id in parser_to_type:
+            doc_type, parser_name = parser_to_type[parser_id]
+            migrated["text"][doc_type]["strategy"] = "deepdoc"
+            if parser_name is not None:
+                migrated["text"]["pdf"]["parser"] = parser_name
+        elif strategy == "deepdoc":
+            migrated["text"]["pdf"]["strategy"] = "deepdoc"
+
+        if vlm_enabled or vlm_model:
+            migrated["image"] = {
+                "strategy": "vlm",
+                "vlm_model": vlm_model,
+            }
+
+        return migrated
+
+
+# ========== Question generation ==========
 
 
 class QuestionLLMConfig(BaseModel):
-    """问题生成使用的 LLM 配置
+    """Question-generation LLM config."""
 
-    用于生成假设性问题（HyDE），可独立于检索时的 LLM 配置。
-    """
-    model: Optional[str] = Field(
-        default=None,
-        description="LLM 模型名称，为空使用用户默认"
-    )
-    temperature: float = Field(
-        default=0.3,
-        ge=0.0,
-        le=2.0,
-        description="生成温度（0-2，问题生成建议 0.3 以确保格式稳定）"
-    )
-    top_p: float = Field(
-        default=0.9,
-        ge=0.0,
-        le=1.0,
-        description="核采样参数（0-1，越高越多样）"
-    )
-    max_tokens: int = Field(
-        default=2048,
-        ge=100,
-        le=8192,
-        description="最大生成 token 数"
-    )
-
-
-# ========== 问题生成配置 ==========
-
-
-# 默认问题生成提示词模板（使用单花括号，与 PromptManager.format_prompt 兼容）
-DEFAULT_QUESTION_PROMPT = """请严格根据以下文档内容，生成 {count} 个用户可能会问的问题。
-
-要求：
-1. 问题必须且只能基于下方「文档内容」中实际出现的文字信息，禁止使用文档内容之外的人名、地名、机构名等实体
-2. 问题应该覆盖文档的核心信息点
-3. 问题应该是用户真实可能提出的查询
-4. 问题表述要清晰、简洁
-5. 只输出 JSON 数组，不要输出任何其他文字、标记或解释
-
-输出格式：
-[{{"question": "问题内容", "category": "factual"}}]
-
-category 可选值: factual(事实性), conceptual(概念性), procedural(操作性)
-
-文档内容：
-{content}
-
-请生成 {count} 个问题："""
+    model: Optional[str] = Field(default=None)
+    temperature: float = Field(default=0.3, ge=0.0, le=2.0)
+    top_p: float = Field(default=0.9, ge=0.0, le=1.0)
+    max_tokens: int = Field(default=2048, ge=100, le=8192)
 
 
 class QuestionGenerationConfig(BaseModel):
-    """假设问题生成配置
+    """Question-generation config."""
 
-    启用后，系统会在文档切分时为每个分块生成假设性问题，
-    这些问题会与分块内容一起被向量化，用于问题检索模式。
-    """
-    enabled: bool = Field(default=False, description="是否启用假设问题生成")
-    llm: Optional[QuestionLLMConfig] = Field(
-        default=None,
-        description="LLM 配置（为空则使用全局默认配置）"
-    )
-    max_questions_per_chunk: int = Field(
-        default=5,
-        ge=1,
-        le=20,
-        description="每个分块生成的最大问题数"
-    )
-    prompt_template: Optional[str] = Field(
-        default=None,
-        max_length=4000,
-        description="""自定义提示词模板（可选）
-支持的变量：
-- {{content}}: 分块内容
-- {{count}}: 生成问题数量
-
-为空则使用默认模板。示例：
-请根据以下内容生成 {{count}} 个问题：
-{{content}}
-
-问题列表："""
-    )
+    enabled: bool = Field(default=False)
+    llm: Optional[QuestionLLMConfig] = Field(default=None)
+    max_questions_per_chunk: int = Field(default=5, ge=1, le=20)
+    prompt_template: Optional[str] = Field(default=None, max_length=4000)
 
 
-# ========== 知识库完整配置 ==========
+# ========== Full KB config ==========
 
 
 class KnowledgeBaseConfig(BaseModel):
-    """知识库完整配置（创建时使用）
+    """Full knowledge-base config."""
 
-    注意：检索策略不存数据库，由前端在调用检索接口时作为请求参数传入。
-    此配置仅管理离线阶段（切分/解析/问题生成）。
-    Embedding 模型由空间级别统一管理，知识库运行时自动读取空间配置，不存储副本。
-    """
-    space_type: List[str] = Field(
-        default_factory=lambda: ["text"],
-        description="知识库支持的数据模态: text/image/video/audio",
-    )
-
-    description: str = Field(default="", max_length=2000, description="知识库描述")
-    splitting: SplittingConfig = Field(default_factory=SplittingConfig, description="切分配置")
-    parsing: ParsingConfig = Field(default_factory=ParsingConfig, description="解析配置")
-    question_generation: QuestionGenerationConfig = Field(
-        default_factory=QuestionGenerationConfig,
-        description="假设问题生成配置",
-    )
+    space_type: List[str] = Field(default_factory=lambda: ["text"])
+    description: str = Field(default="", max_length=2000)
+    splitting: SplittingConfig = Field(default_factory=SplittingConfig)
+    parsing: ParsingConfig = Field(default_factory=ParsingConfig)
+    question_generation: QuestionGenerationConfig = Field(default_factory=QuestionGenerationConfig)
 
 
-# ========== 创建/更新 Schema ==========
+# ========== Request / response schemas ==========
 
 
 class KnowledgeBaseCreate(BaseModel):
-    """创建知识库请求"""
-    name: str = Field(..., min_length=1, max_length=100, description="知识库名称")
-    config: Optional[KnowledgeBaseConfig] = Field(None, description="知识库配置（不传则使用默认值）")
+    """Create KB request."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    config: Optional[KnowledgeBaseConfig] = Field(default=None)
 
 
 class KnowledgeBaseUpdate(BaseModel):
-    """更新知识库请求"""
-    name: Optional[str] = Field(None, min_length=1, max_length=100, description="知识库名称")
-    config: Optional[KnowledgeBaseConfig] = Field(None, description="知识库配置")
+    """Update KB request."""
+
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    config: Optional[KnowledgeBaseConfig] = Field(default=None)
 
 
 class KnowledgeBaseResponse(BaseModel):
-    """知识库响应"""
+    """Knowledge-base response."""
+
     model_config = ConfigDict(from_attributes=True)
 
-    id: int = Field(..., description="知识库ID")
-    space_id: int = Field(..., description="所属空间ID")
-    name: str = Field(..., description="知识库名称")
-    creator_id: int = Field(..., description="创建者ID")
-    config: Optional[Dict[str, Any]] = Field(None, description="知识库配置")
-    storage: Optional[Dict[str, Any]] = Field(None, description="存储配置")
-    status: int = Field(default=1, description="状态: 0-已删除, 1-活跃, 2-已归档")
-    stats: Optional[Dict[str, Any]] = Field(None, description="统计信息")
-    created_at: datetime = Field(..., description="创建时间")
-    updated_at: datetime = Field(..., description="更新时间")
+    id: int
+    space_id: int
+    name: str
+    creator_id: int
+    config: Optional[Dict[str, Any]] = None
+    storage: Optional[Dict[str, Any]] = None
+    status: int = 1
+    stats: Optional[Dict[str, Any]] = None
+    created_at: datetime
+    updated_at: datetime
 
-    @field_serializer('status')
+    @field_serializer("status")
     def serialize_status(self, value) -> int:
-        """序列化状态枚举为整数"""
-        if hasattr(value, 'value'):
+        if hasattr(value, "value"):
             return value.value
         return int(value) if value is not None else 1
 
 
 class KnowledgeBaseListResponse(BaseModel):
-    """知识库列表响应"""
-    items: List[KnowledgeBaseResponse] = Field(..., description="知识库列表")
-    total: int = Field(..., description="总数")
-    skip: int = Field(..., description="跳过数量")
-    limit: int = Field(..., description="返回数量")
+    """Knowledge-base list response."""
 
-
-# ========== 配置管理相关 Schema ==========
+    items: List[KnowledgeBaseResponse]
+    total: int
+    skip: int
+    limit: int
 
 
 class KnowledgeBaseConfigUpdate(BaseModel):
-    """知识库配置部分更新请求（只传要改的字段，深度合并）
+    """Partial config update request."""
 
-    注意：召回策略不存数据库，由前端在调用召回接口时作为请求参数传入。
-    此接口仅管理离线阶段配置（splitting / parsing / question_generation）。
-    Embedding 模型由空间级别统一管理，不可通过知识库配置修改。
-    """
-    space_type: Optional[List[str]] = Field(None, description="知识库支持的数据模态: text/image/video/audio")
-    splitting: Optional[SplittingConfig] = Field(None, description="切分配置")
-    parsing: Optional[ParsingConfig] = Field(None, description="解析配置")
-    question_generation: Optional[QuestionGenerationConfig] = Field(None, description="问题生成配置")
+    space_type: Optional[List[str]] = Field(default=None)
+    splitting: Optional[SplittingConfig] = Field(default=None)
+    parsing: Optional[ParsingConfig] = Field(default=None)
+    question_generation: Optional[QuestionGenerationConfig] = Field(default=None)
 
 
 class KnowledgeBaseConfigResponse(BaseModel):
-    """知识库配置查询响应"""
-    kb_id: int = Field(..., description="知识库ID")
-    name: str = Field(..., description="知识库名称")
-    config: KnowledgeBaseConfig = Field(..., description="完整配置")
-    stats: Dict[str, Any] = Field(..., description="统计信息")
+    """Knowledge-base config response."""
+
+    kb_id: int
+    name: str
+    config: KnowledgeBaseConfig
+    stats: Dict[str, Any]
+
+
+PDF_PARSER_TO_LEGACY_ID: Dict[str, str] = {
+    "layout": "pdf_layout",
+    "plain": "pdf_plain",
+    "vision": "pdf_vision",
+    "docling": "pdf_docling",
+    "mineru": "pdf_mineru",
+    "opendataloader": "pdf_opendataloader",
+    "paddleocr": "pdf_paddleocr",
+    "somark": "pdf_somark",
+    "tcadp": "pdf_tcadp",
+}
+
+
+TEXT_DOC_TYPES = ("pdf", "docx", "excel", "ppt", "epub", "markdown", "html", "txt", "json")
+
+
+def build_runtime_parsing_config(parsing: Optional[Dict[str, Any]], file_type: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Convert the new nested parsing config into the legacy runtime parsing shape.
+
+    Runtime parsers still expect legacy keys such as:
+    - strategy
+    - deepdoc_parser_id
+    - deepdoc_pdf_mode
+    - ocr_enabled
+    - vlm_description_enabled
+    - vlm_model
+    """
+    parsed = ParsingConfig.model_validate(parsing or {})
+    result: Dict[str, Any] = {}
+
+    normalized_file_type = (file_type or "").lower()
+    text = parsed.text or TextParsingConfig()
+
+    target_doc_type = normalized_file_type
+    if target_doc_type == "md":
+        target_doc_type = "markdown"
+    elif target_doc_type == "csv":
+        target_doc_type = "txt"
+    elif target_doc_type not in TEXT_DOC_TYPES:
+        target_doc_type = "pdf"
+
+    text_cfg: TextTypeParsingConfig | PdfParsingConfig
+    text_cfg = getattr(text, target_doc_type, text.pdf)
+    result["strategy"] = text_cfg.strategy
+
+    if target_doc_type == "pdf":
+        pdf_cfg = text.pdf
+        result["ocr_enabled"] = pdf_cfg.ocr_enabled
+        if pdf_cfg.strategy == "deepdoc" and pdf_cfg.parser:
+            result["deepdoc_parser_id"] = PDF_PARSER_TO_LEGACY_ID[pdf_cfg.parser]
+            if pdf_cfg.parser in ("layout", "plain", "vision"):
+                result["deepdoc_pdf_mode"] = pdf_cfg.parser
+    elif text_cfg.strategy == "deepdoc":
+        result["deepdoc_parser_id"] = target_doc_type
+
+    if parsed.image:
+        result["vlm_description_enabled"] = parsed.image.strategy == "vlm"
+        if parsed.image.vlm_model:
+            result["vlm_model"] = parsed.image.vlm_model
+
+    if parsed.video:
+        result["video"] = parsed.video.model_dump(exclude_none=True)
+        if parsed.video.vlm_description_enabled:
+            result["vlm_description_enabled"] = True
+        if parsed.video.vlm_model:
+            result["vlm_model"] = parsed.video.vlm_model
+
+    if parsed.audio:
+        result["audio"] = parsed.audio.model_dump(exclude_none=True)
+
+    return result

@@ -628,6 +628,17 @@ def test_2_6_get_kb_config():
 
     assert_field_exists(data, "kb_id", "name", "config", label="知识库配置")
     assert_field(data, "kb_id", created_kb_id, label="知识库配置")
+    config = data.get("config") or {}
+    parsing = config.get("parsing") or {}
+    splitting = config.get("splitting") or {}
+    text_cfg = parsing.get("text") or {}
+    pdf = text_cfg.get("pdf") or {}
+
+    assert_field_exists(config, "splitting", "parsing", "question_generation", label="知识库配置内容")
+    assert_field_exists(parsing, "text", label="解析配置")
+    assert_field_exists(text_cfg, "pdf", "docx", "excel", "ppt", "epub", "markdown", "html", "txt", "json", label="文本解析配置")
+    assert_field_exists(pdf, "strategy", "ocr_enabled", label="PDF 解析配置")
+    assert_field_exists(splitting, "strategy", "chunk_size", "chunk_overlap", label="切分配置")
 
 
 def test_2_7_update_kb_config():
@@ -640,13 +651,61 @@ def test_2_7_update_kb_config():
         return
 
     payload = {
+        "space_type": ["text", "image", "video", "audio"],
         "splitting": {
             "strategy": "recursive",
             "chunk_size": 1500,
-            "chunk_overlap": 200
+            "chunk_overlap": 200,
+            "audio": {
+                "strategy": "fixed",
+                "chunk_size": 900
+            },
+            "video": {
+                "strategy": "fixed",
+                "chunk_size": 1400
+            }
         },
         "parsing": {
-            "ocr_enabled": False
+            "text": {
+                "pdf": {
+                    "strategy": "deepdoc",
+                    "parser": "layout",
+                    "ocr_enabled": True
+                },
+                "docx": {"strategy": "default"},
+                "excel": {"strategy": "deepdoc"},
+                "ppt": {"strategy": "default"},
+                "epub": {"strategy": "default"},
+                "markdown": {"strategy": "default"},
+                "html": {"strategy": "default"},
+                "txt": {"strategy": "default"},
+                "json": {"strategy": "default"}
+            },
+            "image": {
+                "strategy": "vlm",
+                "vlm_model": "test-vlm-model"
+            },
+            "video": {
+                "frame_interval": 7,
+                "max_frames": 42,
+                "vlm_description_enabled": True,
+                "vlm_model": "test-video-vlm"
+            },
+            "audio": {
+                "asr_model": "whisper-1",
+                "language": "zh"
+            }
+        },
+        "question_generation": {
+            "enabled": True,
+            "llm": {
+                "model": "test-llm-model",
+                "temperature": 0.4,
+                "top_p": 0.8,
+                "max_tokens": 1024
+            },
+            "max_questions_per_chunk": 4,
+            "prompt_template": "test prompt"
         }
     }
 
@@ -668,6 +727,42 @@ def test_2_7_update_kb_config():
         return
 
     assert_field_exists(data, "kb_id", "config", label="更新知识库配置")
+    config = data.get("config") or {}
+    parsing = config.get("parsing") or {}
+    splitting = config.get("splitting") or {}
+    qg = config.get("question_generation") or {}
+    text_cfg = parsing.get("text") or {}
+    pdf = text_cfg.get("pdf") or {}
+    image = parsing.get("image") or {}
+    video = parsing.get("video") or {}
+    audio = parsing.get("audio") or {}
+
+    assert_field(config, "space_type", payload["space_type"], label="更新知识库配置")
+    assert_field(splitting, "strategy", "recursive", label="切分策略")
+    assert_field(splitting, "chunk_size", 1500, label="切分策略")
+    assert_field(splitting, "chunk_overlap", 200, label="切分策略")
+    assert_field((splitting.get("audio") or {}), "strategy", "fixed", label="音频切分覆盖")
+    assert_field((splitting.get("audio") or {}), "chunk_size", 900, label="音频切分覆盖")
+    assert_field((splitting.get("video") or {}), "chunk_size", 1400, label="视频切分覆盖")
+
+    assert_field(pdf, "strategy", "deepdoc", label="PDF 解析配置")
+    assert_field(pdf, "parser", "layout", label="PDF 解析配置")
+    assert_field(pdf, "ocr_enabled", True, label="PDF 解析配置")
+    assert_field((text_cfg.get("excel") or {}), "strategy", "deepdoc", label="Excel 解析配置")
+    assert_field(image, "strategy", "vlm", label="图片解析配置")
+    assert_field(image, "vlm_model", "test-vlm-model", label="图片解析配置")
+    assert_field(video, "frame_interval", 7, label="视频解析配置")
+    assert_field(video, "max_frames", 42, label="视频解析配置")
+    assert_field(video, "vlm_description_enabled", True, label="视频解析配置")
+    assert_field(video, "vlm_model", "test-video-vlm", label="视频解析配置")
+    assert_field(audio, "asr_model", "whisper-1", label="音频解析配置")
+    assert_field(audio, "language", "zh", label="音频解析配置")
+
+    assert_field(qg, "enabled", True, label="问题生成配置")
+    assert_field((qg.get("llm") or {}), "model", "test-llm-model", label="问题生成 LLM 配置")
+    assert_field((qg.get("llm") or {}), "temperature", 0.4, label="问题生成 LLM 配置")
+    assert_field(qg, "max_questions_per_chunk", 4, label="问题生成配置")
+    assert_field(qg, "prompt_template", "test prompt", label="问题生成配置")
 
 
 # ======================== 三、文档管理 (9 个接口) ========================

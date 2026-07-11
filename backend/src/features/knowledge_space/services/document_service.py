@@ -44,8 +44,13 @@ from src.shared.storage.elasticsearch_client import ElasticsearchClient
 from src.shared.utils.document_readers.document_loader import DocumentProcessor
 from src.shared.utils.file_validator import validate_file, FileInfo
 from src.shared.utils.media_utils import upload_parsed_text_to_minio
+from src.shared.utils.vlm_utils import (
+    build_vlm_image_messages,
+    generate_vlm_text_with_fallback,
+)
 from src.shared.ai_models.embedding import OpenAICompatibleEmbedding as EmbeddingClient
 from src.setting.yaml_config import get_config
+from src.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
 from src.core.middleware.structured_logging import get_logger
 from src.features.knowledge_space.models.document_task_batch import BatchAction
 
@@ -419,7 +424,7 @@ class DocumentService:
         if file_ext in DocumentService.VIDEO_FILE_TYPES:
             from src.features.knowledge_space.services.media_processing import process_video_document
             await process_video_document(document, file_content, session, _logger, task=task)
-            return
+            returnrain
 
         # ===== 音频文档分支（新增） =====
         if file_ext in DocumentService.AUDIO_FILE_TYPES:
@@ -445,7 +450,7 @@ class DocumentService:
         try:
             # 先读取原始解析全文，避免将切块结果回拼成“伪全文”再落 MinIO。
 
-            parsing_config = kb_config.get("parsing", {})
+            parsing_config = build_runtime_parsing_config(kb_config.get("parsing", {}), document.file_type)
             parse_result = await processor.parse_document_result(
                 tmp_path,
                 parsing_config=parsing_config,
@@ -1265,7 +1270,7 @@ async def _process_image_document_static(
         # 优先使用 task.pipeline_config 快照
         kb_config = (task.pipeline_config if task and task.pipeline_config
                      else kb.get_config() or {})
-        parsing_config = kb_config.get("parsing", {})
+        parsing_config = build_runtime_parsing_config(kb_config.get("parsing", {}), document.file_type)
         vlm_enabled = parsing_config.get("vlm_description_enabled", False)
 
     # 检查点 0：配置读取后
@@ -1587,7 +1592,6 @@ async def _generate_image_description(
     Returns:
         描述文本（截断到 2000 字符），失败抛异常由调用方处理
     """
-    import base64
     from src.shared.prompts.templates import PromptManager, PromptTemplate
 
     # 1. 获取 VLM 客户端
@@ -1597,34 +1601,31 @@ async def _generate_image_description(
 
     vlm_client = await mcs.get_vlm_client_by_model(document.uploader_id, vlm_model)
 
-    # 2. 构建 base64 图片
     file_ext = (document.file_type or "png").lower()
     mime_type = f"image/{file_ext}" if file_ext != "jpg" else "image/jpeg"
-    base64_data = base64.b64encode(file_content).decode("utf-8")
 
     # 3. 获取描述 Prompt
     description_prompt = PromptManager.get_template(PromptTemplate.IMAGE_DESCRIPTION.value)
 
     # 4. 构建多模态消息（OpenAI 兼容格式）
-    messages = [{
-        "role": "user",
-        "content": [
-            {
-                "type": "image_url",
-                "image_url": {"url": f"data:{mime_type};base64,{base64_data}"},
-            },
-            {
-                "type": "text",
-                "text": description_prompt,
-            },
-        ],
-    }]
+    messages = build_vlm_image_messages(
+        file_bytes=file_content,
+        mime_type=mime_type,
+        text_prompt=description_prompt,
+    )
 
     # 5. 调用 VLM 生成描述
-    description = await vlm_client.generate_text(
-        prompt=messages,
+    description = await generate_vlm_text_with_fallback(
+        vlm_client=vlm_client,
+        messages=messages,
         max_tokens=1024,
         temperature=0.3,
+        logger=_logger,
+        vlm_model=vlm_model,
+        log_context={
+            "document_id": document.id,
+            "file_type": document.file_type,
+        },
     )
 
     if not description or not description.strip():

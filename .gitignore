@@ -97,6 +97,10 @@ docker/configs/docker.yaml
 # ========================================
 backend/tests/*.mp3
 backend/tests/*.wav
+backend/.pytest_cache
+backend/build
+backend/dist
+
 
 # ========================================
 # 临时文件

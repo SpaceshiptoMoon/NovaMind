@@ -268,49 +268,57 @@ export interface SplittingConfig {
 }
 
 export interface VideoParsingConfig {
-  frame_interval?: number   // 抽帧间隔(秒), 1-60, 默认5
-  max_frames?: number       // 最多抽帧数, 1-200, 默认60
+  frame_interval?: number
+  max_frames?: number
+  vlm_description_enabled?: boolean
+  vlm_model?: string
 }
 
 export interface AudioParsingConfig {
-  asr_model?: string               // ASR模型名, 默认"whisper-1"
-  language?: string                // 转写语言(zh/en/ja/ko...), 为空则自动检测
+  asr_model?: string
+  language?: string
 }
 
-export type DeepDocParserId =
-  | 'pdf_layout'
-  | 'pdf_plain'
-  | 'pdf_vision'
-  | 'pdf_docling'
-  | 'pdf_mineru'
-  | 'pdf_opendataloader'
-  | 'pdf_paddleocr'
-  | 'pdf_somark'
-  | 'pdf_tcadp'
-  | 'docx'
-  | 'epub'
-  | 'excel'
-  | 'ppt'
-  | 'figure'
-  | 'text'
-  | 'txt'
-  | 'markdown'
-  | 'html'
-  | 'json'
+export type PdfParserName =
+  | 'layout'
+  | 'plain'
+  | 'vision'
+  | 'docling'
+  | 'mineru'
+  | 'opendataloader'
+  | 'paddleocr'
+  | 'somark'
+  | 'tcadp'
 
-export type DeepDocPdfMode = 'layout' | 'plain' | 'vision'
+export interface TextTypeParsingConfig {
+  strategy?: 'default' | 'deepdoc'
+}
+
+export interface PdfParsingConfig extends TextTypeParsingConfig {
+  parser?: PdfParserName
+  ocr_enabled?: boolean
+}
+
+export interface TextParsingConfig {
+  pdf?: PdfParsingConfig
+  docx?: TextTypeParsingConfig
+  excel?: TextTypeParsingConfig
+  ppt?: TextTypeParsingConfig
+  epub?: TextTypeParsingConfig
+  markdown?: TextTypeParsingConfig
+  html?: TextTypeParsingConfig
+  txt?: TextTypeParsingConfig
+  json?: TextTypeParsingConfig
+}
+
+export interface ImageParsingConfig {
+  strategy?: 'ocr' | 'vlm'
+  vlm_model?: string
+}
 
 export interface ParsingConfig {
-  strategy?: 'default' | 'deepdoc'
-  deepdoc_parser_id?: DeepDocParserId
-  deepdoc_pdf_mode?: DeepDocPdfMode
-  extract_images?: boolean
-  extract_tables?: boolean
-  ocr_enabled?: boolean
-  preserve_structure?: boolean
-  encoding?: string
-  vlm_description_enabled?: boolean
-  vlm_model?: string
+  text?: TextParsingConfig
+  image?: ImageParsingConfig
   video?: VideoParsingConfig
   audio?: AudioParsingConfig
 }

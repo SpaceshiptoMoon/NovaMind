@@ -6,7 +6,6 @@
 - 音频: ASR转写 → MD文本 → 统一文本切分 → Embedding → ES
 """
 
-import base64
 from typing import List, Tuple, Dict, Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +20,11 @@ from src.shared.utils.media_utils import (
     transcribe_audio_local,
 )
 from src.shared.utils.time_utils import now_china
+from src.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
+from src.shared.utils.vlm_utils import (
+    build_vlm_image_messages,
+    generate_vlm_text_with_fallback,
+)
 
 
 async def process_video_document(
@@ -54,9 +58,9 @@ async def process_video_document(
         if (task and task.pipeline_config)
         else (kb.get_config() if kb else {})
     )
-    parsing_config = pipeline_config.get("parsing", {})
+    parsing_config = build_runtime_parsing_config(pipeline_config.get("parsing", {}), document.file_type)
     splitting_config = dict(pipeline_config.get("splitting", {}))
-    video_config = pipeline_config.get("parsing", {}).get("video", {})
+    video_config = (pipeline_config.get("parsing", {}) or {}).get("video", {})
     frame_interval = video_config.get("frame_interval", 5)
     max_frames = video_config.get("max_frames", 60)
 
@@ -102,6 +106,7 @@ async def process_video_document(
 
     # 2. 逐帧 VLM 描述（每5帧检查一次取消信号）
     descriptions = []
+    first_frame_error: Optional[str] = None
     for i, (frame_bytes, ts, frame_idx) in enumerate(frames):
         if i > 0 and i % 5 == 0:
             await _check_document_cancelled(document.id)
@@ -118,13 +123,16 @@ async def process_video_document(
             if desc:
                 descriptions.append((desc, ts, frame_idx))
         except Exception as e:
+            if first_frame_error is None:
+                first_frame_error = str(e)
             logger.warning(
                 "视频帧VLM描述失败, 跳过", document_id=document.id,
                 frame_index=frame_idx, timestamp=ts, error=str(e),
             )
 
     if not descriptions:
-        raise ValueError(f"视频 {document.filename} 所有帧的VLM描述均失败")
+        detail = f"，首个错误: {first_frame_error}" if first_frame_error else ""
+        raise ValueError(f"视频 {document.filename} 所有帧的VLM描述均失败{detail}")
 
     # 帧描述全文 MD 拼接并持久化到 MinIO（立刻 commit 落库）
     full_text_lines = []
@@ -211,7 +219,7 @@ async def process_audio_document(
         if (task and task.pipeline_config)
         else (kb.get_config() if kb else {})
     )
-    audio_config = pipeline_config.get("parsing", {}).get("audio", {})
+    audio_config = (pipeline_config.get("parsing", {}) or {}).get("audio", {})
     space_asr_cfg = (space.config or {}).get("asr", {}) if space else {}
     asr_model = audio_config.get("asr_model") or space_asr_cfg.get("model") or "whisper-1"
     language = audio_config.get("language")
@@ -455,7 +463,6 @@ async def _describe_single_frame(
     vlm_client = await mcs.get_vlm_client_by_model(document.uploader_id, vlm_model)
 
     # 构建 base64 图片
-    base64_data = base64.b64encode(frame_bytes).decode("utf-8")
     mime_type = "image/jpeg"
 
     # 获取视频帧描述 Prompt
@@ -463,22 +470,65 @@ async def _describe_single_frame(
         PromptTemplate.VIDEO_FRAME_DESCRIPTION.value
     )
 
-    messages = [{
-        "role": "user",
-        "content": [
-            {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_data}"}},
-            {"type": "text", "text": description_prompt},
-        ],
-    }]
+    messages = build_vlm_image_messages(
+        file_bytes=frame_bytes,
+        mime_type=mime_type,
+        text_prompt=description_prompt,
+    )
 
-    description = await vlm_client.generate_text(
-        prompt=messages, max_tokens=1024, temperature=0.3,
+    description = await generate_vlm_text_with_fallback(
+        vlm_client=vlm_client,
+        messages=messages,
+        max_tokens=1024,
+        temperature=0.3,
+        logger=logger,
+        vlm_model=vlm_model,
+        log_context={
+            "document_id": document.id,
+            "frame_index": frame_index,
+        },
     )
 
     if not description or not description.strip():
         return ""
 
     return description.strip()[:500]
+
+
+async def _generate_vlm_description_with_fallback(
+    vlm_client,
+    messages: List[Dict[str, Any]],
+    max_tokens: int,
+    temperature: float,
+    logger,
+    vlm_model: str,
+    document_id: int,
+    frame_index: int,
+) -> str:
+    """兼容部分 VLM 提供商要求显式开启 thinking 的场景。"""
+    try:
+        return await vlm_client.generate_text(
+            prompt=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+    except Exception as e:
+        error_text = str(e)
+        if "enable_thinking" not in error_text.lower():
+            raise
+
+        logger.info(
+            "视频帧VLM描述重试并开启thinking",
+            document_id=document_id,
+            frame_index=frame_index,
+            model=vlm_model,
+        )
+        return await vlm_client.generate_text(
+            prompt=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            enable_thinking=True,
+        )
 
 
 def _format_time(seconds: float) -> str:
