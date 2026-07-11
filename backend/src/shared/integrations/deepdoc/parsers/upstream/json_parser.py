@@ -21,7 +21,7 @@
 import json
 from typing import Any
 
-from src.shared.utils.deepdoc.compat import find_codec
+from src.shared.integrations.deepdoc.compat import find_codec
 
 
 class RAGFlowJsonParser:

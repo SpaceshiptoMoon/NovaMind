@@ -19,8 +19,7 @@ from io import BytesIO
 import pandas as pd
 from openpyxl import Workbook, load_workbook
 
-from src.shared.utils.deepdoc.compat import find_codec
-from src.shared.utils.deepdoc.compat import LazyImage
+from src.shared.integrations.deepdoc.compat import LazyImage, find_codec
 
 # copied from `/openpyxl/cell/cell.py`
 ILLEGAL_CHARACTERS_RE = re.compile(r"[\000-\010]|[\013-\014]|[\016-\037]")

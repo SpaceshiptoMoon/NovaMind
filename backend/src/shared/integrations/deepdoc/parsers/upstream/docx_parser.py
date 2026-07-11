@@ -18,16 +18,14 @@ from docx import Document
 import re
 import pandas as pd
 from collections import Counter
-from src.shared.utils.deepdoc.compat import rag_tokenizer
+from src.shared.integrations.deepdoc.compat import MAXIMUM_PAGE_NUMBER, LazyImage, rag_tokenizer
 from io import BytesIO
 import logging
-from src.shared.utils.deepdoc.constants import MAXIMUM_PAGE_NUMBER
 from docx.image.exceptions import (
     InvalidImageStreamError,
     UnexpectedEndOfFileError,
     UnrecognizedImageError,
 )
-from src.shared.utils.deepdoc.compat import LazyImage
 
 
 class RAGFlowDocxParser:

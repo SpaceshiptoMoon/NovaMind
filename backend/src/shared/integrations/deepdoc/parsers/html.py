@@ -9,7 +9,7 @@ import uuid
 
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 
-from src.shared.utils.deepdoc.compat import find_codec, rag_tokenizer
+from src.shared.integrations.deepdoc.compat import find_codec, rag_tokenizer
 
 
 BLOCK_TAGS = [

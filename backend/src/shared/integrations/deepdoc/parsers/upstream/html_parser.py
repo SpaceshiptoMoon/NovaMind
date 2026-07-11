@@ -15,7 +15,7 @@
 #  limitations under the License.
 #
 
-from src.shared.utils.deepdoc.compat import find_codec, rag_tokenizer
+from src.shared.integrations.deepdoc.compat import find_codec, rag_tokenizer
 import logging
 import re
 import uuid

@@ -12,7 +12,7 @@ from src.shared.document_processing.splitters.recursive_splitter import Recursiv
 from src.shared.document_processing.splitters.semantic_splitter import SemanticSplitter
 from src.shared.document_processing.splitters.fixed_size_splitter import FixedSizeSplitter
 from src.shared.document_processing.splitters.markdown_splitter import MarkdownSplitter
-from src.shared.utils.deepdoc import DeepDocEngine, DeepDocParser, DeepDocParseResult
+from src.shared.integrations.deepdoc import DeepDocEngine, DeepDocParser, DeepDocParseResult
 from src.shared.ai_models.base_model import BaseEmbedding
 from src.core.middleware.structured_logging import get_logger
 

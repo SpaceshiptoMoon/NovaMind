@@ -16,7 +16,7 @@
 
 from io import BytesIO
 
-from src.shared.utils.deepdoc.compat import find_codec
+from src.shared.integrations.deepdoc.compat import find_codec
 
 
 def _import_pdf_reader():

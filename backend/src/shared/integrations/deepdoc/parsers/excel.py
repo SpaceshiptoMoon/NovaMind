@@ -6,7 +6,7 @@ import re
 
 import pandas as pd
 
-from src.shared.utils.deepdoc.compat import LazyImage, find_codec
+from src.shared.integrations.deepdoc.compat import LazyImage, find_codec
 
 # Adapted from RAGFlow deepdoc/parser/excel_parser.py
 

@@ -11,7 +11,7 @@ from typing import Any
 
 import numpy as np
 
-from src.shared.utils.deepdoc.compat import rag_tokenizer
+from src.shared.integrations.deepdoc.compat import rag_tokenizer
 from src.shared.integrations.deepdoc.vision.recognizer import Recognizer
 
 

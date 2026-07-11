@@ -19,7 +19,7 @@ import re
 import json
 import os
 import pandas as pd
-from src.shared.utils.deepdoc.compat import rag_tokenizer
+from src.shared.integrations.deepdoc.compat import rag_tokenizer
 from src.shared.integrations.deepdoc.parsers.upstream.resume.entities import regions
 
 

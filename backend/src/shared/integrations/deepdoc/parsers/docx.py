@@ -14,8 +14,7 @@ from docx.image.exceptions import (
     UnrecognizedImageError,
 )
 
-from src.shared.utils.deepdoc.compat import LazyImage, rag_tokenizer
-from src.shared.utils.deepdoc.constants import MAXIMUM_PAGE_NUMBER
+from src.shared.integrations.deepdoc.compat import LazyImage, MAXIMUM_PAGE_NUMBER, rag_tokenizer
 
 
 class RAGFlowDocxParser:

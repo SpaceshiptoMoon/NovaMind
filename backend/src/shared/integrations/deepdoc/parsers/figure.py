@@ -6,7 +6,7 @@ from typing import Any
 
 from PIL import Image
 
-from src.shared.utils.deepdoc.compat import LazyImage
+from src.shared.integrations.deepdoc.compat import LazyImage
 from src.shared.integrations.deepdoc.parsers.upstream.figure_parser import VisionFigureParser
 from src.shared.integrations.deepdoc.vision.ocr import OCR
 from src.shared.integrations.deepdoc.vision.model_manager import get_model_status

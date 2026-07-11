@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from src.shared.utils.deepdoc.compat import num_tokens_from_string
+from src.shared.integrations.deepdoc.compat import num_tokens_from_string
 from src.shared.integrations.deepdoc.parsers.upstream.utils import get_text
 
 

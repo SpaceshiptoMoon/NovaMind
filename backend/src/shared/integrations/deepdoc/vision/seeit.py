@@ -8,7 +8,7 @@ from typing import Any, Iterable, Mapping, Sequence
 import PIL
 from PIL import Image, ImageDraw
 
-from src.shared.utils.deepdoc.compat import LazyImage
+from src.shared.integrations.deepdoc.compat import LazyImage
 
 
 def _as_image(value: Image.Image | LazyImage | bytes) -> Image.Image:

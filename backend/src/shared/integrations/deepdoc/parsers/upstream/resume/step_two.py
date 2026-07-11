@@ -24,7 +24,7 @@ import traceback
 import signal
 import numpy as np
 from src.shared.integrations.deepdoc.parsers.upstream.resume.entities import degrees, schools, corporations
-from src.shared.utils.deepdoc.compat import rag_tokenizer, surname
+from src.shared.integrations.deepdoc.compat import rag_tokenizer, surname
 from src.shared.integrations.deepdoc.parsers.upstream.resume.support import Pinyin
 from contextlib import contextmanager
 
