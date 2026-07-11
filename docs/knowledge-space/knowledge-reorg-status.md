@@ -39,13 +39,23 @@ It is intended to make phase completion and remaining cleanup work explicit.
   - `compat/`
 - Old `shared/utils/deepdoc/*` modules are still present as compatibility shims.
 
-## Progress Made In This Round
+## Progress Made So Far
 
 - The knowledge-base document-processing runtime entry
   [backend/src/shared/document_processing/pipeline/document_loader.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/shared/document_processing/pipeline/document_loader.py:1)
   now imports `DeepDocEngine`, `DeepDocParser`, and `DeepDocParseResult` directly from
   `src.shared.integrations.deepdoc`.
-- A first batch of internal `shared/integrations/deepdoc/*` modules that only depended on compatibility helpers now import from `src.shared.integrations.deepdoc.compat` instead of routing back through `src.shared.utils.deepdoc.compat`.
+- Internal `shared/integrations/deepdoc/*` modules that depended only on compatibility helpers now import from
+  `src.shared.integrations.deepdoc.compat`.
+- The following helper modules have now been migrated into the new DeepDoc package:
+  - `logging_compat.py`
+  - `figure_support.py`
+  - `page_filter.py`
+  - `text_concat_model.py`
+  - `pdf_layout.py`
+  - `pdf_artifacts.py`
+  - `updown_concat.py`
+- Old files under `shared/utils/deepdoc/` for those helpers are retained as compatibility shims.
 
 ## Remaining Phase 3 Cleanup
 
@@ -53,22 +63,22 @@ It is intended to make phase completion and remaining cleanup work explicit.
 
 - `shared/utils/deepdoc/*`
   - kept for compatibility with existing tests, CLI entrypoints, and old import paths
+- `shared/utils/document_readers/*`
+  - retained as compatibility surface, but now expected to re-export from `shared/document_processing/*`
+- `shared/utils/media_utils.py`
+  - retained as compatibility shim over `shared/media_processing/*`
+- `shared/utils/vlm_utils.py`
+  - retained as compatibility shim over `shared/media_processing/vlm/*`
 - `backend/src/src/...`
   - kept for packaging/install compatibility
 
-### Still using old helper modules inside new DeepDoc package
+### Internal helper migration status
 
-The new DeepDoc package still references several helper modules that remain under `shared/utils/deepdoc/`:
+The new `shared/integrations/deepdoc/` package no longer relies on the migrated core helper modules through
+`shared/utils/deepdoc/`.
 
-- `logging_compat.py`
-- `figure_support.py`
-- `pdf_layout.py`
-- `pdf_artifacts.py`
-- `page_filter.py`
-- `updown_concat.py`
-- `text_concat_model.py`
-
-These are valid next migration candidates, but they are not yet fully moved.
+This means the remaining `shared/utils/deepdoc/*` package is now primarily a legacy import surface rather than the
+actual implementation home for the main DeepDoc runtime helpers.
 
 ### Tests still targeting compatibility paths
 
@@ -78,9 +88,15 @@ Current DeepDoc tests still heavily validate the legacy import surface under:
 
 This is acceptable during phase 3, but they should be progressively rebalanced toward the new package once compatibility coverage is no longer the main concern.
 
+### Compatibility package cleanup still pending
+
+The install-compat package under `backend/src/src/` still exists and should remain until packaging/import compatibility is explicitly revalidated.
+
+Generated `__pycache__` content under that compatibility tree is not part of the desired final structure and should be cleaned separately from source-level refactoring.
+
 ## Recommended Next Steps
 
-1. Move remaining DeepDoc helper modules from `shared/utils/deepdoc/` into `shared/integrations/deepdoc/`.
-2. Update internal imports inside `shared/integrations/deepdoc/` to stop depending on old helper locations.
-3. Add or migrate tests that import the new package directly.
-4. Audit whether `shared/utils/document_readers/`, `media_utils.py`, and `vlm_utils.py` can be further slimmed once external callers are confirmed.
+1. Audit whether legacy `shared/utils/deepdoc/*` shims can be slimmed further without breaking tests, CLI entrypoints, or packaging compatibility.
+2. Add or migrate more tests that import the new package directly instead of only validating compatibility paths.
+3. Audit whether `shared/utils/document_readers/`, `media_utils.py`, and `vlm_utils.py` can be further slimmed once external callers are confirmed.
+4. Review `backend/src/src/...` compatibility packages and document which ones are still required for install/import compatibility.
