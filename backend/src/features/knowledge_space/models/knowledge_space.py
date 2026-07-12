@@ -7,8 +7,8 @@ from typing import Optional
 from enum import IntEnum
 from sqlalchemy import Column, BigInteger, Integer, SmallInteger, String, Text, DateTime, JSON, ForeignKey, Index, UniqueConstraint
 
-from src.core.database.base import BaseModel
-from src.shared.utils.time_utils import now_china
+from novamind.core.database.base import BaseModel
+from novamind.shared.utils.time_utils import now_china
 
 
 class SpaceVisibility(IntEnum):

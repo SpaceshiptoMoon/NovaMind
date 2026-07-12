@@ -11,8 +11,8 @@ from sqlalchemy import Column, BigInteger, SmallInteger, String, DateTime, Forei
 from datetime import timedelta
 import secrets
 
-from src.core.database.base import BaseModel
-from src.shared.utils.time_utils import now_china
+from novamind.core.database.base import BaseModel
+from novamind.shared.utils.time_utils import now_china
 
 
 class SpaceRole(IntEnum):

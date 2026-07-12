@@ -11,25 +11,25 @@ from typing import Optional, Annotated
 from fastapi import Depends, Request, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.database.database import get_db
-from src.features.user.api.auth import get_current_user
-from src.features.user.repository.user_repository import UserRepository
-from src.features.knowledge_space.models.space_member import SpaceMember, MemberStatus, SpaceRole
-from src.features.knowledge_space.models.knowledge_base import KnowledgeBase, KnowledgeBaseStatus
-from src.features.knowledge_space.models.knowledge_space import SpaceVisibility, SpaceStatus
-from src.features.user.models.user import User
-from src.features.knowledge_space.repository.space_repository import SpaceRepository
-from src.features.knowledge_space.repository.member_repository import MemberRepository
-from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-from src.features.knowledge_space.services.space_service import SpaceService
-from src.features.knowledge_space.services.member_service import MemberService
-from src.features.knowledge_space.services.document_service import DocumentService
-from src.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
-from src.features.knowledge_space.services.search_service import SearchService
-from src.features.knowledge_space.services.audit_service import AuditService
-from src.features.user.services.model_config_service import ModelConfigService
-from src.shared.utils.time_utils import now_china
-from src.features.knowledge_space.api.exceptions import (
+from novamind.core.database.database import get_db
+from novamind.features.user.api.auth import get_current_user
+from novamind.features.user.repository.user_repository import UserRepository
+from novamind.features.knowledge_space.models.space_member import SpaceMember, MemberStatus, SpaceRole
+from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase, KnowledgeBaseStatus
+from novamind.features.knowledge_space.models.knowledge_space import SpaceVisibility, SpaceStatus
+from novamind.features.user.models.user import User
+from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
+from novamind.features.knowledge_space.repository.member_repository import MemberRepository
+from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
+from novamind.features.knowledge_space.services.space_service import SpaceService
+from novamind.features.knowledge_space.services.member_service import MemberService
+from novamind.features.knowledge_space.services.document_service import DocumentService
+from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
+from novamind.features.knowledge_space.services.search_service import SearchService
+from novamind.features.knowledge_space.services.audit_service import AuditService
+from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.shared.utils.time_utils import now_china
+from novamind.features.knowledge_space.api.exceptions import (
     SpaceNotFoundError,
     SpaceAccessDeniedError,
     MemberNotFoundError,
@@ -37,7 +37,7 @@ from src.features.knowledge_space.api.exceptions import (
     KnowledgeBaseArchivedError,
     UserNotFoundError,
 )
-from src.shared.clients import (
+from novamind.shared.clients import (
     get_minio_client,
     get_elasticsearch_client,
 )

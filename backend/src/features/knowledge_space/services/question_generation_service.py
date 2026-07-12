@@ -13,15 +13,15 @@ import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.shared.ai_models.llm import BaseLLM
-from src.shared.prompts import PromptTemplate, PromptManager
-from src.features.user.services.model_config_service import ModelConfigService
-from src.features.knowledge_space.schemas.knowledge_base_schema import (
+from novamind.shared.ai_models.llm import BaseLLM
+from novamind.shared.prompts import PromptTemplate, PromptManager
+from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     QuestionGenerationConfig,
     QuestionLLMConfig,
 )
-from src.core.middleware.structured_logging import get_logger
-from src.features.knowledge_space.api.exceptions import (
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.api.exceptions import (
     EmbeddingError,
     InvalidParameterError,
     QuestionGenerationError,

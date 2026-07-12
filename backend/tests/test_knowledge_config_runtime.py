@@ -9,15 +9,15 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from src.features.knowledge_space.schemas.knowledge_base_schema import (
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     KnowledgeBaseConfig,
     ParsingConfig,
     build_runtime_parsing_config,
 )
-from src.features.knowledge_space.services.document_service import _generate_image_description
-from src.features.knowledge_space.services.media_processing import _describe_single_frame
-from src.shared.document_processing.pipeline import DocumentProcessor
-from src.shared.media_processing.audio import transcribe_audio_with_timestamps
+from novamind.features.knowledge_space.services.document_service import _generate_image_description
+from novamind.features.knowledge_space.services.media_processing import _describe_single_frame
+from novamind.shared.knowledge.document_processing.pipeline import DocumentProcessor
+from novamind.shared.knowledge.media_processing.audio import transcribe_audio_with_timestamps
 
 
 @pytest.fixture

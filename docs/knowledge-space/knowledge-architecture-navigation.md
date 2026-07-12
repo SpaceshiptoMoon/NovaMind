@@ -2,32 +2,33 @@
 
 ## Purpose
 
-This document describes the current target structure of the knowledge-base project after the ongoing reorganization, and clarifies which directories are the implementation home versus compatibility layers.
+This document describes the final backend knowledge-base structure and the canonical implementation homes for ongoing development.
 
-It complements the reorganization plan in [knowledge-reorg-plan.md](/C:/Users/xl/Desktop/backend_project/intelligent/docs/knowledge-space/knowledge-reorg-plan.md:1).
+It complements the historical planning document in
+[knowledge-reorg-plan.md](/abs/path/C:/Users/xl/Desktop/backend_project/intelligent/docs/knowledge-space/knowledge-reorg-plan.md:1).
 
-## Current Architecture
+## Final Architecture
 
-The knowledge-base codebase is now organized around three layers:
+The backend knowledge-base codebase is organized around three layers:
 
 1. Business layer
    - `backend/src/features/knowledge_space/`
-   - Owns API, service orchestration, persistence, schemas, and knowledge-specific prompts
-2. Shared processing layer
-   - `backend/src/shared/document_processing/`
-   - `backend/src/shared/media_processing/`
-   - Owns reusable document, text-splitting, audio, video, image, and VLM processing
-3. Integration layer
-   - `backend/src/shared/integrations/deepdoc/`
-   - Owns DeepDoc runtime orchestration, parser implementations, vision runtime, server endpoints, and diagnostics
+   - owns API, service orchestration, persistence, schemas, permissions, and business prompts
+2. Shared knowledge-processing layer
+   - `backend/src/shared/knowledge/document_processing/`
+   - `backend/src/shared/knowledge/media_processing/`
+   - owns reusable document, text-splitting, image, audio, video, and VLM processing
+3. Shared knowledge integration layer
+   - `backend/src/shared/knowledge/integrations/deepdoc/`
+   - owns DeepDoc runtime orchestration, parser implementations, diagnostics, server endpoints, and vision helpers
 
 The intended runtime call chain is:
 
 ```text
 features/knowledge_space/services
-  -> shared/document_processing
-  -> shared/media_processing
-  -> shared/integrations/deepdoc
+  -> shared/knowledge/document_processing
+  -> shared/knowledge/media_processing
+  -> shared/knowledge/integrations/deepdoc
 ```
 
 ## Directory Guide
@@ -43,82 +44,65 @@ features/knowledge_space/services
 - `services/`: knowledge-base orchestration and business logic
 - `prompts/`: prompts used by knowledge-base features
 
-Compatibility note:
-
-- `knowledge_space_prompts.py` is intentionally retained as a shim for older imports
-
 ### Shared document processing
 
-`backend/src/shared/document_processing/`
+`backend/src/shared/knowledge/document_processing/`
 
 - `readers/`: format readers such as PDF, DOCX, HTML, Markdown, TXT
 - `splitters/`: chunking and splitting strategies
 - `pipeline/`: document loading and processing orchestration
 - `validation/`: file validation helpers
 
-Use this package for reusable text-document ingestion logic. New document-processing code should prefer this package over `shared/utils/document_readers`.
-
 ### Shared media processing
 
-`backend/src/shared/media_processing/`
+`backend/src/shared/knowledge/media_processing/`
 
 - `audio/`: ASR and audio transcription helpers
 - `video/`: frame extraction and video preprocessing
-- `image/`: image-oriented helpers and image/VLM-facing exports
+- `image/`: image-oriented helpers
 - `vlm/`: shared VLM request-building and multimodal generation helpers
-
-Use this package for reusable multimodal processing. New code should prefer this package over `shared/utils/media_utils.py` and `shared/utils/vlm_utils.py`.
 
 ### DeepDoc integration
 
-`backend/src/shared/integrations/deepdoc/`
+`backend/src/shared/knowledge/integrations/deepdoc/`
 
 - `core/`: runtime orchestration, engine, factory, and result models
 - `parsers/`: concrete parser implementations and remote parser adapters
 - `vision/`: OCR, layout recognition, TSR, and model management
 - `server/`: FastAPI app, adapters, endpoints, and dependency download helpers
 - `diagnostics/`: dependency/runtime reporting and doctor utilities
-- `compat/`: compatibility helpers, upstream mapping, and constants
+- `compat/`: upstream mapping and compatibility helpers internal to the canonical package
 
-Use this package as the main implementation home for DeepDoc. New imports should target this package directly.
+## Removed Legacy Paths
 
-## Compatibility Layers Still Retained
+The following legacy knowledge-processing paths were removed and should not be referenced for current implementation work:
 
-The following paths are still present intentionally during the final cleanup phase:
-
-- `backend/src/shared/utils/deepdoc/`
-  - legacy DeepDoc import surface
 - `backend/src/shared/utils/document_readers/`
-  - legacy document-processing import surface
 - `backend/src/shared/utils/media_utils.py`
-  - compatibility shim for audio/video helpers
 - `backend/src/shared/utils/vlm_utils.py`
-  - compatibility shim for VLM/image helpers
+- `backend/src/shared/utils/file_validator.py`
+- `backend/src/shared/utils/deepdoc/`
 - `backend/src/src/`
-  - install/import compatibility package
-
-These paths should be treated as compatibility surfaces, not as the preferred place for new implementation work.
 
 ## Import Guidance
 
-Preferred imports:
+Preferred imports for current backend development:
 
-- `src.shared.document_processing...`
-- `src.shared.media_processing...`
-- `src.shared.integrations.deepdoc...`
+- `novamind.shared.knowledge.document_processing...`
+- `novamind.shared.knowledge.media_processing...`
+- `novamind.shared.knowledge.integrations.deepdoc...`
 
-Avoid introducing new imports from:
+Generic utility imports should remain under:
 
-- `src.shared.utils.document_readers...`
-- `src.shared.utils.deepdoc...`
-- `src.shared.utils.media_utils`
-- `src.shared.utils.vlm_utils`
+- `novamind.shared.utils...`
+
+but only for true utilities such as `text_utils`, `time_utils`, `crypto`, `heartbeat`, `redact`, and `ansi_strip`.
 
 ## Validation Focus
 
-When continuing the reorganization, verify these invariants:
+When touching this area, keep these invariants true:
 
-1. The new packages remain the runtime implementation home.
-2. Compatibility layers stay thin and only re-export or delegate.
-3. Tests cover both the new paths and any intentionally retained compatibility paths that still matter operationally.
-4. Knowledge-base services do not regain direct dependency on mixed utility folders when a domain package already exists.
+1. `shared/knowledge/` remains the sole implementation home for knowledge-processing internals.
+2. `shared/utils/` remains limited to true generic utilities.
+3. Tests validate canonical imports directly.
+4. Knowledge-base services do not regain dependencies on deleted legacy utility paths.

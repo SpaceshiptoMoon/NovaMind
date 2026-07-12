@@ -9,25 +9,25 @@ from typing import List, Optional, Dict, Any, Tuple, TYPE_CHECKING
 from datetime import datetime
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.core.middleware.structured_logging import get_logger
-from src.features.qa.repository.question_answer_repository import QuestionAnswerRepository
-from src.features.qa.repository.session_config_repository import SessionConfigRepository
-from src.features.qa.repository.session_summary_repository import SessionSummaryRepository
-from src.features.qa.services.qa_cache_service import QACacheService
-from src.features.qa.schemas.qa import QARequest, QAResponse, QAUpdateRequest
-from src.features.qa.api.exceptions import (
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.qa.repository.question_answer_repository import QuestionAnswerRepository
+from novamind.features.qa.repository.session_config_repository import SessionConfigRepository
+from novamind.features.qa.repository.session_summary_repository import SessionSummaryRepository
+from novamind.features.qa.services.qa_cache_service import QACacheService
+from novamind.features.qa.schemas.qa import QARequest, QAResponse, QAUpdateRequest
+from novamind.features.qa.api.exceptions import (
     QAError,
     DatabaseOperationError,
     SessionNotFoundError,
     MessageNotFoundError,
     InvalidMessageContentError,
 )
-from src.shared.utils.text_processing import TextCompressor
-from src.shared.utils.text_processing.token_counter import TokenCounter
+from novamind.shared.utils.text_utils import TextCompressor
+from novamind.shared.utils.text_utils.token_counter import TokenCounter
 
 if TYPE_CHECKING:
-    from src.features.qa.models.session_config import SessionConfig
-    from src.features.qa.models.session_summary import SessionSummary
+    from novamind.features.qa.models.session_config import SessionConfig
+    from novamind.features.qa.models.session_summary import SessionSummary
 
 
 class QAService:
@@ -376,7 +376,7 @@ class QAService:
             return existing
 
         # 从 YAML 配置读取默认值
-        from src.setting.yaml_config import get_config
+        from novamind.setting.yaml_config import get_config
 
         yaml_config = get_config()
         llm_config = yaml_config.llm

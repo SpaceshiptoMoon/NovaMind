@@ -7,8 +7,8 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Body, Path, Query
 
-from src.features.knowledge_space.models.space_member import SpaceRole, SpaceMember
-from src.features.knowledge_space.schemas.member_schema import (
+from novamind.features.knowledge_space.models.space_member import SpaceRole, SpaceMember
+from novamind.features.knowledge_space.schemas.member_schema import (
     MemberInvite,
     MemberJoin,
     MemberUpdate,
@@ -17,7 +17,7 @@ from src.features.knowledge_space.schemas.member_schema import (
     InviteResponse,
     ActionResponse,
 )
-from src.features.knowledge_space.api.dependencies import (
+from novamind.features.knowledge_space.api.dependencies import (
     get_member_service,
     get_audit_service,
     get_current_user_id,
@@ -25,15 +25,15 @@ from src.features.knowledge_space.api.dependencies import (
     validate_space_admin,
     get_user_repository,
 )
-from src.features.knowledge_space.api.exceptions import (
+from novamind.features.knowledge_space.api.exceptions import (
     MemberNotFoundError,
     UserNotFoundError,
     InvalidParameterError,
 )
-from src.features.knowledge_space.services.member_service import MemberService
-from src.features.knowledge_space.services.audit_service import AuditService
-from src.features.user.repository.user_repository import UserRepository
-from src.features.user.models.user import UserStatus
+from novamind.features.knowledge_space.services.member_service import MemberService
+from novamind.features.knowledge_space.services.audit_service import AuditService
+from novamind.features.user.repository.user_repository import UserRepository
+from novamind.features.user.models.user import UserStatus
 
 router = APIRouter(tags=["空间成员"])
 

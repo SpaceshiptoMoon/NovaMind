@@ -46,7 +46,7 @@ def _build_minimal_pdf_bytes(text: str) -> bytes:
 
 def test_deepdoc_cli_capabilities():
     completed = subprocess.run(
-        [sys.executable, "-m", "src.shared.utils.deepdoc", "capabilities"],
+        [sys.executable, "-m", "novamind.shared.knowledge.integrations.deepdoc", "capabilities"],
         cwd=BACKEND_ROOT,
         capture_output=True,
         text=True,
@@ -60,7 +60,7 @@ def test_deepdoc_cli_capabilities():
 
 def test_deepdoc_cli_doctor():
     completed = subprocess.run(
-        [sys.executable, "-m", "src.shared.utils.deepdoc", "doctor"],
+        [sys.executable, "-m", "novamind.shared.knowledge.integrations.deepdoc", "doctor"],
         cwd=BACKEND_ROOT,
         capture_output=True,
         text=True,
@@ -77,7 +77,7 @@ def test_deepdoc_cli_doctor():
 
 
 def test_deepdoc_cli_doctor_smoke(monkeypatch, capsys):
-    from src.shared.utils.deepdoc import __main__ as deepdoc_cli
+    from novamind.shared.knowledge.integrations.deepdoc import __main__ as deepdoc_cli
 
     monkeypatch.setattr(
         deepdoc_cli,
@@ -104,7 +104,7 @@ def test_deepdoc_cli_doctor_smoke(monkeypatch, capsys):
 
 
 def test_deepdoc_cli_prepare(monkeypatch, tmp_path):
-    from src.shared.utils.deepdoc import __main__ as deepdoc_cli
+    from novamind.shared.knowledge.integrations.deepdoc import __main__ as deepdoc_cli
 
     calls = []
 
@@ -124,7 +124,7 @@ def test_deepdoc_cli_prepare(monkeypatch, tmp_path):
 
 
 def test_deepdoc_cli_prepare_reports_download_failure(monkeypatch, capsys):
-    from src.shared.utils.deepdoc import __main__ as deepdoc_cli
+    from novamind.shared.knowledge.integrations.deepdoc import __main__ as deepdoc_cli
 
     monkeypatch.setattr(
         deepdoc_cli,
@@ -151,7 +151,7 @@ def test_deepdoc_cli_parse_pdf(tmp_path):
         [
             sys.executable,
             "-m",
-            "src.shared.utils.deepdoc",
+            "novamind.shared.knowledge.integrations.deepdoc",
             "parse",
             str(pdf_path),
             "--parser-id",
@@ -172,7 +172,7 @@ def test_deepdoc_cli_parse_pdf(tmp_path):
 def test_deepdoc_server_factory_importable():
     from uvicorn.importer import import_from_string
 
-    factory = import_from_string("src.shared.utils.deepdoc.server.deepdoc_server:create_deepdoc_app")
+    factory = import_from_string("novamind.shared.knowledge.integrations.deepdoc.server.deepdoc_server:create_deepdoc_app")
     app = factory()
 
     assert app.title == "DeepDoc Parser Service"

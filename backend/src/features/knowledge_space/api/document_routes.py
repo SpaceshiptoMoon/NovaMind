@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.knowledge_space.schemas.document_schema import (
+from novamind.features.knowledge_space.schemas.document_schema import (
     DocumentResponse,
     DocumentListResponse,
     DocumentDetailResponse,
@@ -29,19 +29,19 @@ from src.features.knowledge_space.schemas.document_schema import (
     ChunkResponse,
     FailedFileItem,
 )
-from src.features.knowledge_space.schemas.document_task_schema import (
+from novamind.features.knowledge_space.schemas.document_task_schema import (
     DocumentTaskResponse,
     DocumentTaskListResponse,
     DocumentTaskItemResponse,
     DocumentTaskItemListResponse,
 )
-from src.features.knowledge_space.schemas.member_schema import ActionResponse
-from src.features.knowledge_space.models.space_member import SpaceMember
-from src.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
-from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-from src.core.database.database import get_db
-from src.features.knowledge_space.models.document_task_batch import BatchAction
-from src.features.knowledge_space.api.dependencies import (
+from novamind.features.knowledge_space.schemas.member_schema import ActionResponse
+from novamind.features.knowledge_space.models.space_member import SpaceMember
+from novamind.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
+from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+from novamind.core.database.database import get_db
+from novamind.features.knowledge_space.models.document_task_batch import BatchAction
+from novamind.features.knowledge_space.api.dependencies import (
     get_current_user_id,
     validate_space_member,
     validate_space_editor,
@@ -51,15 +51,15 @@ from src.features.knowledge_space.api.dependencies import (
     validate_kb_access,
     validate_kb_writable,
 )
-from src.features.knowledge_space.api.exceptions import (
+from novamind.features.knowledge_space.api.exceptions import (
     DocumentNotFoundError,
     SpaceAccessDeniedError,
     DocumentInvalidTypeError,
     DocumentSizeExceededError,
     DocumentCountExceededError,
 )
-from src.features.knowledge_space.services.document_service import DocumentService
-from src.features.knowledge_space.services.audit_service import AuditService
+from novamind.features.knowledge_space.services.document_service import DocumentService
+from novamind.features.knowledge_space.services.audit_service import AuditService
 
 # 文件大小限制：默认最大 100MB
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB
@@ -98,7 +98,7 @@ async def _build_chunk_response(c: dict) -> ChunkResponse:
 
     if chunk_type in ("image", "video", "audio") and storage_path:
         try:
-            from src.shared.clients import ClientFactory
+            from novamind.shared.clients import ClientFactory
             minio_client = await ClientFactory.get_minio_client()
             media_url = await minio_client.get_file_url(
                 minio_client.default_bucket, storage_path, 3600

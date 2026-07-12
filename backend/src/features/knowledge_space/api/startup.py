@@ -6,9 +6,9 @@
 
 from fastapi import FastAPI
 
-from src.core.middleware.base_exception_handler import register_module_exceptions
-from src.core.middleware.structured_logging import get_logger
-from src.features.knowledge_space.api.exceptions import (
+from novamind.core.middleware.base_exception_handler import register_module_exceptions
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.api.exceptions import (
     KnowledgeSpaceError,
     # 空间相关
     SpaceNotFoundError,

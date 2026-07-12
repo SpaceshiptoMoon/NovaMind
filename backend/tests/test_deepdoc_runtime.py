@@ -16,35 +16,35 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from src.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
-from src.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
-from src.features.knowledge_space.services.document_service import (
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
+from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
+from novamind.features.knowledge_space.services.document_service import (
     _extract_parse_metadata_summary,
     _prepare_es_chunks_static,
 )
-from src.shared.integrations.deepdoc.core.capabilities import get_deepdoc_capabilities
-from src.shared.integrations.deepdoc.compat.compat import LazyImage
-from src.shared.integrations.deepdoc.diagnostics.dependencies import get_deepdoc_runtime_report
-from src.shared.integrations.deepdoc.core.engine import DeepDocEngine
-from src.shared.integrations.deepdoc.core.factory import DeepDocParserFactory
-from src.shared.utils.deepdoc.page_filter import PageNoiseFilter
-from src.shared.utils.deepdoc.parser import DocxParser as UpstreamDocxParserAlias
-from src.shared.utils.deepdoc.parser import PdfParser as UpstreamPdfParserAlias
-from src.shared.utils.deepdoc.pdf_artifacts import PdfArtifactExtractor
-from src.shared.utils.deepdoc.ragflow_pdf_parser import DeepDocPdfBox, RAGFlowPdfParser
-from src.shared.utils.deepdoc.parser import DeepDocParser
-from src.shared.integrations.deepdoc.core.models import DeepDocParseResult
-from src.shared.utils.deepdoc.server import create_deepdoc_app
-from src.shared.utils.deepdoc.text_concat_model import get_text_concat_model_status
-from src.shared.integrations.deepdoc.compat.upstream import get_upstream_deepdoc_snapshot
-from src.shared.utils.deepdoc.updown_concat import UpDownConcatMerger
-from src.shared.utils.deepdoc.vision.model_manager import (
+from novamind.shared.knowledge.integrations.deepdoc.core.capabilities import get_deepdoc_capabilities
+from novamind.shared.knowledge.integrations.deepdoc.compat.compat import LazyImage
+from novamind.shared.knowledge.integrations.deepdoc.diagnostics.dependencies import get_deepdoc_runtime_report
+from novamind.shared.knowledge.integrations.deepdoc.core.engine import DeepDocEngine
+from novamind.shared.knowledge.integrations.deepdoc.core.factory import DeepDocParserFactory
+from novamind.shared.knowledge.integrations.deepdoc.page_filter import PageNoiseFilter
+from novamind.shared.knowledge.integrations.deepdoc.parsers.upstream import DocxParser as UpstreamDocxParserAlias
+from novamind.shared.knowledge.integrations.deepdoc.parsers.upstream import PdfParser as UpstreamPdfParserAlias
+from novamind.shared.knowledge.integrations.deepdoc.pdf_artifacts import PdfArtifactExtractor
+from novamind.shared.knowledge.integrations.deepdoc.parsers.pdf import DeepDocPdfBox, RAGFlowPdfParser
+from novamind.shared.knowledge.integrations.deepdoc.core.runtime_parser import DeepDocParser
+from novamind.shared.knowledge.integrations.deepdoc.core.models import DeepDocParseResult
+from novamind.shared.knowledge.integrations.deepdoc.server import create_deepdoc_app
+from novamind.shared.knowledge.integrations.deepdoc.text_concat_model import get_text_concat_model_status
+from novamind.shared.knowledge.integrations.deepdoc.compat.upstream import get_upstream_deepdoc_snapshot
+from novamind.shared.knowledge.integrations.deepdoc.updown_concat import UpDownConcatMerger
+from novamind.shared.knowledge.integrations.deepdoc.vision.model_manager import (
     ensure_model_group_available,
     expected_model_files,
     get_model_status,
 )
-from src.shared.utils.deepdoc.vision.package_status import get_vendored_vision_package_status
-from src.shared.utils.deepdoc.vision_runtime import (
+from novamind.shared.knowledge.integrations.deepdoc.vision.package_status import get_vendored_vision_package_status
+from novamind.shared.knowledge.integrations.deepdoc.vision_runtime import (
     DeepDocVisionParserUnavailable,
     DeepDocVisionRuntimeUnavailable,
     ensure_vision_parser_available,
@@ -53,7 +53,7 @@ from src.shared.utils.deepdoc.vision_runtime import (
     get_vision_runtime_status,
     run_vision_smoke_check,
 )
-from src.shared.document_processing.pipeline import DocumentProcessor
+from novamind.shared.knowledge.document_processing.pipeline import DocumentProcessor
 
 
 def _run(coro):
@@ -226,8 +226,8 @@ def test_deepdoc_runtime_parser_can_be_constructed_without_optional_format_impor
 
 
 def test_deepdoc_package_lazy_exports_do_not_force_excel_or_ppt_imports():
-    from src.shared.utils.deepdoc import DeepDocParseResult
-    from src.shared.utils.deepdoc.parser import TxtParser
+    from novamind.shared.knowledge.integrations.deepdoc import DeepDocParseResult
+    from novamind.shared.knowledge.integrations.deepdoc.parsers.upstream import TxtParser
 
     assert DeepDocParseResult.__name__ == "DeepDocParseResult"
     assert TxtParser.__name__ == "RAGFlowTxtParser"
@@ -566,7 +566,7 @@ def test_deepdoc_parser_supports_parse_bytes_for_figure():
 
 
 def test_upstream_figure_parser_uses_injected_vision_model():
-    from src.shared.utils.deepdoc.parser.figure_parser import vision_figure_parser_docx_wrapper
+    from novamind.shared.knowledge.integrations.deepdoc.parsers.upstream.figure_parser import vision_figure_parser_docx_wrapper
 
     image = Image.new("RGB", (32, 24), color="white")
 
@@ -586,7 +586,7 @@ def test_upstream_figure_parser_uses_injected_vision_model():
 
 
 def test_upstream_vision_parser_uses_injected_vision_model():
-    from src.shared.utils.deepdoc.parser.pdf_parser import VisionParser
+    from novamind.shared.knowledge.integrations.deepdoc.parsers.upstream.pdf_parser import VisionParser
 
     def fake_vision_model(binary, prompt):
         assert "PDF page 1" in prompt
@@ -650,7 +650,7 @@ def test_deepdoc_parser_supports_opendataloader_pdf_parser(monkeypatch):
 
     monkeypatch.setenv("OPENDATALOADER_APISERVER", "http://mock-opendataloader")
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.ragflow_opendataloader_parser.requests.post",
+        "novamind.shared.knowledge.integrations.deepdoc.parsers.remote.opendataloader.requests.post",
         lambda *args, **kwargs: _FakeResponse(),
     )
 
@@ -682,7 +682,7 @@ def test_deepdoc_parser_supports_docling_pdf_parser(monkeypatch):
 
     monkeypatch.setenv("DOCLING_SERVER_URL", "http://mock-docling")
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.ragflow_docling_parser.requests.post",
+        "novamind.shared.knowledge.integrations.deepdoc.parsers.remote.docling.requests.post",
         lambda *args, **kwargs: _FakeResponse(),
     )
 
@@ -868,11 +868,11 @@ def test_deepdoc_parser_supports_paddleocr_pdf_parser(monkeypatch):
         raise AssertionError(f"unexpected url: {url}")
 
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.ragflow_paddleocr_parser.requests.post",
+        "novamind.shared.knowledge.integrations.deepdoc.parsers.remote.paddleocr.requests.post",
         _fake_post,
     )
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.ragflow_paddleocr_parser.requests.get",
+        "novamind.shared.knowledge.integrations.deepdoc.parsers.remote.paddleocr.requests.get",
         _fake_get,
     )
 
@@ -1418,7 +1418,7 @@ def test_vision_smoke_check_surfaces_check_matrix():
 
 def test_vision_smoke_check_attempts_component_loads(monkeypatch):
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.vision_runtime.get_vision_health_status",
+        "novamind.shared.knowledge.integrations.deepdoc.vision_runtime.get_vision_health_status",
         lambda: {
             "runtime_available": True,
             "parser_available": True,
@@ -1434,11 +1434,11 @@ def test_vision_smoke_check_attempts_component_loads(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.vision_runtime._attempt_component_load",
+        "novamind.shared.knowledge.integrations.deepdoc.vision_runtime._attempt_component_load",
         lambda component: {"attempted": True, "ok": True, "error": None, "component": component},
     )
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.vision_runtime._attempt_component_inference",
+        "novamind.shared.knowledge.integrations.deepdoc.vision_runtime._attempt_component_inference",
         lambda component: {"attempted": True, "ok": True, "error": None, "component": component},
     )
     status = run_vision_smoke_check()
@@ -1452,7 +1452,7 @@ def test_vision_smoke_check_attempts_component_loads(monkeypatch):
 
 def test_vision_smoke_check_skips_component_loads_when_models_unavailable(monkeypatch):
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.vision_runtime.get_vision_health_status",
+        "novamind.shared.knowledge.integrations.deepdoc.vision_runtime.get_vision_health_status",
         lambda: {
             "runtime_available": True,
             "parser_available": True,
@@ -1478,7 +1478,7 @@ def test_vision_smoke_check_skips_component_loads_when_models_unavailable(monkey
 
 def test_vision_smoke_check_skips_inference_when_load_fails(monkeypatch):
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.vision_runtime.get_vision_health_status",
+        "novamind.shared.knowledge.integrations.deepdoc.vision_runtime.get_vision_health_status",
         lambda: {
             "runtime_available": True,
             "parser_available": True,
@@ -1494,7 +1494,7 @@ def test_vision_smoke_check_skips_inference_when_load_fails(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.vision_runtime._attempt_component_load",
+        "novamind.shared.knowledge.integrations.deepdoc.vision_runtime._attempt_component_load",
         lambda component: {"attempted": True, "ok": component == "layout", "error": None},
     )
     called = []
@@ -1504,7 +1504,7 @@ def test_vision_smoke_check_skips_inference_when_load_fails(monkeypatch):
         return {"attempted": True, "ok": True, "error": None}
 
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.vision_runtime._attempt_component_inference",
+        "novamind.shared.knowledge.integrations.deepdoc.vision_runtime._attempt_component_inference",
         _fake_inference,
     )
 
@@ -1517,7 +1517,7 @@ def test_vision_smoke_check_skips_inference_when_load_fails(monkeypatch):
 
 
 def test_attempt_component_inference_supports_mocked_layout_and_tsr(monkeypatch):
-    from src.shared.utils.deepdoc import vision_runtime
+    from novamind.shared.knowledge.integrations.deepdoc import vision_runtime
 
     class _FakeLayoutRecognizer:
         def __init__(self, *, autoload):
@@ -1535,10 +1535,10 @@ def test_attempt_component_inference_supports_mocked_layout_and_tsr(monkeypatch)
             assert len(images) == 1
             return [[{"type": "table row", "score": 0.9, "bbox": [0, 0, 10, 10]}]]
 
-    monkeypatch.setitem(sys.modules, "src.shared.utils.deepdoc.vision.layout_recognizer", SimpleNamespace(LayoutRecognizer=_FakeLayoutRecognizer))
+    monkeypatch.setitem(sys.modules, "novamind.shared.knowledge.integrations.deepdoc.vision.layout_recognizer", SimpleNamespace(LayoutRecognizer=_FakeLayoutRecognizer))
     monkeypatch.setitem(
         sys.modules,
-        "src.shared.utils.deepdoc.vision.table_structure_recognizer",
+        "novamind.shared.knowledge.integrations.deepdoc.vision.table_structure_recognizer",
         SimpleNamespace(TableStructureRecognizer=_FakeTsrRecognizer),
     )
 
@@ -1565,7 +1565,7 @@ def test_vision_runtime_guard_raises_clear_error():
 
 
 def test_resume_surname_compatibility_preserves_chinese_names():
-    from src.shared.integrations.deepdoc.compat.compat import surname
+    from novamind.shared.knowledge.integrations.deepdoc.compat.compat import surname
 
     assert surname.isit("\u738b") is True
     assert surname.isit("\u6b27\u9633") is True
@@ -1573,7 +1573,7 @@ def test_resume_surname_compatibility_preserves_chinese_names():
 
 
 def test_vendored_vision_seeit_draws_and_saves_results(tmp_path):
-    from src.shared.utils.deepdoc.vision.seeit import draw_box, save_results
+    from novamind.shared.knowledge.integrations.deepdoc.vision.seeit import draw_box, save_results
 
     image = Image.new("RGB", (80, 60), color="white")
     detections = [{"type": "title", "score": 0.95, "bbox": [5, 8, 50, 30]}]
@@ -1598,7 +1598,7 @@ def test_upstream_snapshot_matches_implemented_server_and_vision_modules():
 
 
 def test_vendored_docker_stubs_write_minimal_packages(tmp_path):
-    from src.shared.utils.deepdoc.server.docker_stubs import write_docker_stubs
+    from novamind.shared.knowledge.integrations.deepdoc.server.docker_stubs import write_docker_stubs
 
     written = write_docker_stubs(tmp_path)
 
@@ -1612,7 +1612,7 @@ def test_vendored_docker_stubs_write_minimal_packages(tmp_path):
 
 def test_vendored_ocr_diagnostic_entrypoint(tmp_path):
     _skip_if_vision_runtime_unavailable()
-    from src.shared.utils.deepdoc.vision.t_ocr import run_ocr_diagnostics
+    from novamind.shared.knowledge.integrations.deepdoc.vision.t_ocr import run_ocr_diagnostics
 
     image_path = tmp_path / "ocr.png"
     Image.new("RGB", (64, 48), color="white").save(image_path)
@@ -1636,7 +1636,7 @@ def test_vendored_ocr_diagnostic_entrypoint(tmp_path):
 
 def test_vendored_recognizer_diagnostic_entrypoints(tmp_path):
     _skip_if_vision_runtime_unavailable()
-    from src.shared.utils.deepdoc.vision.t_recognizer import run_recognizer_diagnostics
+    from novamind.shared.knowledge.integrations.deepdoc.vision.t_recognizer import run_recognizer_diagnostics
 
     image_path = tmp_path / "layout.png"
     Image.new("RGB", (64, 48), color="white").save(image_path)
@@ -1697,7 +1697,7 @@ def test_vendored_vision_package_status_exposed():
 
 def test_vendored_vision_recognizer_geometry_helpers():
     _skip_if_vision_runtime_unavailable()
-    from src.shared.utils.deepdoc.vision import Recognizer as DeepDocVisionRecognizer
+    from novamind.shared.knowledge.integrations.deepdoc.vision import Recognizer as DeepDocVisionRecognizer
 
     boxes = [
         {"x0": 50, "x1": 100, "top": 80, "bottom": 100},
@@ -1715,7 +1715,7 @@ def test_vendored_vision_recognizer_geometry_helpers():
 
 def test_vendored_vision_recognizer_load_raises_for_missing_model():
     _skip_if_vision_runtime_unavailable()
-    from src.shared.utils.deepdoc.vision import Recognizer as DeepDocVisionRecognizer
+    from novamind.shared.knowledge.integrations.deepdoc.vision import Recognizer as DeepDocVisionRecognizer
 
     recognizer = DeepDocVisionRecognizer(labels=["Text"], domain="layout", model_dir=Path("C:/missing-model-dir"))
     with pytest.raises(FileNotFoundError):
@@ -1740,7 +1740,7 @@ def test_vendored_vision_model_manager_raises_for_missing_group(tmp_path):
 
 def test_vendored_vision_operator_helpers():
     _skip_if_vision_runtime_unavailable()
-    from src.shared.utils.deepdoc.vision.operators import KeepKeys, create_operators, nms
+    from novamind.shared.knowledge.integrations.deepdoc.vision.operators import KeepKeys, create_operators, nms
 
     operators = create_operators([{"KeepKeys": {"keep_keys": ["a", "b"]}}])
     assert len(operators) == 1
@@ -1758,7 +1758,7 @@ def test_vendored_vision_operator_helpers():
 
 def test_vendored_vision_postprocess_builders():
     _skip_if_vision_runtime_unavailable()
-    from src.shared.utils.deepdoc.vision.postprocess import build_post_process
+    from novamind.shared.knowledge.integrations.deepdoc.vision.postprocess import build_post_process
 
     decoder = build_post_process({"name": "CTCLabelDecode"})
     assert decoder is not None
@@ -1768,7 +1768,7 @@ def test_vendored_vision_postprocess_builders():
 
 def test_vendored_vision_ocr_helpers_without_model_load():
     _skip_if_vision_runtime_unavailable()
-    from src.shared.utils.deepdoc.vision.ocr import OCR as DeepDocVisionOCR
+    from novamind.shared.knowledge.integrations.deepdoc.vision.ocr import OCR as DeepDocVisionOCR
 
     ocr = DeepDocVisionOCR(autoload=False)
     assert ".cache" in str(ocr.model_dir)
@@ -1792,7 +1792,7 @@ def test_vendored_vision_ocr_helpers_without_model_load():
 
 def test_vendored_layout_recognizer_can_apply_layouts():
     _skip_if_vision_runtime_unavailable()
-    from src.shared.utils.deepdoc.vision.layout_recognizer import LayoutRecognizer
+    from novamind.shared.knowledge.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
 
     recognizer = LayoutRecognizer()
     image = np.zeros((300, 300, 3), dtype=np.uint8)
@@ -1815,7 +1815,7 @@ def test_vendored_layout_recognizer_can_apply_layouts():
 
 def test_vendored_layout_recognizer_keeps_unmatched_table_regions():
     _skip_if_vision_runtime_unavailable()
-    from src.shared.utils.deepdoc.vision.layout_recognizer import LayoutRecognizer
+    from novamind.shared.knowledge.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
 
     recognizer = LayoutRecognizer()
     image = np.zeros((300, 300, 3), dtype=np.uint8)
@@ -1834,7 +1834,7 @@ def test_vendored_layout_recognizer_keeps_unmatched_table_regions():
 
 def test_vendored_layout_recognizer_can_decode_mock_forward(monkeypatch):
     _skip_if_vision_runtime_unavailable()
-    from src.shared.utils.deepdoc.vision.layout_recognizer import LayoutRecognizer
+    from novamind.shared.knowledge.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
 
     recognizer = LayoutRecognizer()
     recognizer.loaded = True
@@ -1856,7 +1856,7 @@ def test_vendored_layout_recognizer_can_decode_mock_forward(monkeypatch):
 
 def test_vendored_table_structure_recognizer_can_normalize_predictions():
     _skip_if_vision_runtime_unavailable()
-    from src.shared.utils.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+    from novamind.shared.knowledge.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
 
     recognizer = TableStructureRecognizer()
     predictions = [[
@@ -1876,7 +1876,7 @@ def test_vendored_table_structure_recognizer_can_normalize_predictions():
 
 def test_vendored_table_structure_recognizer_can_decode_mock_forward(monkeypatch):
     _skip_if_vision_runtime_unavailable()
-    from src.shared.utils.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+    from novamind.shared.knowledge.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
 
     recognizer = TableStructureRecognizer()
     recognizer.loaded = True
@@ -1896,7 +1896,7 @@ def test_vendored_table_structure_recognizer_can_decode_mock_forward(monkeypatch
 
 def test_vendored_table_structure_recognizer_can_construct_html_table():
     _skip_if_vision_runtime_unavailable()
-    from src.shared.utils.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+    from novamind.shared.knowledge.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
 
     boxes = [
         {"text": "Metric", "x0": 10, "x1": 50, "top": 10, "bottom": 20, "page_number": 0, "R": "0", "C": "0", "H": True},
@@ -1939,11 +1939,11 @@ def test_vision_runtime_guard_can_raise_runtime_error_if_dependencies_missing(mo
         "pyclipper": {"available": False},
     }
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.vision_runtime.get_deepdoc_runtime_report",
+        "novamind.shared.knowledge.integrations.deepdoc.vision_runtime.get_deepdoc_runtime_report",
         lambda: fake_report,
     )
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.vision_runtime.get_missing_runtime_dependencies",
+        "novamind.shared.knowledge.integrations.deepdoc.vision_runtime.get_missing_runtime_dependencies",
         lambda *names: [name for name in names if not fake_report.get(name, {}).get("available")],
     )
     with pytest.raises(DeepDocVisionRuntimeUnavailable) as exc_info:
@@ -1979,7 +1979,7 @@ def test_ragflow_pdf_parser_vision_mode_prefers_layout_model_when_available(monk
     )
 
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.ragflow_pdf_parser.get_vision_health_status",
+        "novamind.shared.knowledge.integrations.deepdoc.parsers.pdf.get_vision_health_status",
         lambda: {"can_run_layout_inference": True},
     )
 
@@ -2062,7 +2062,7 @@ def test_ragflow_pdf_parser_vision_mode_preserves_table_regions_in_artifacts(mon
     )
 
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.ragflow_pdf_parser.get_vision_health_status",
+        "novamind.shared.knowledge.integrations.deepdoc.parsers.pdf.get_vision_health_status",
         lambda: {"can_run_layout_inference": True},
     )
 
@@ -2285,7 +2285,7 @@ def test_upstream_parser_package_exports_aliases():
 
 
 def test_upstream_mineru_parser_class_is_vendored():
-    from src.shared.utils.deepdoc.parser.mineru_parser import (
+    from novamind.shared.knowledge.integrations.deepdoc.parsers.upstream.mineru_parser import (
         MinerUBackend,
         MinerUContentType,
         MinerULanguage,
@@ -2306,7 +2306,7 @@ def test_upstream_mineru_parser_class_is_vendored():
 
 
 def test_upstream_somark_parser_class_is_vendored():
-    from src.shared.utils.deepdoc.parser.somark_parser import SoMarkAPIError, SoMarkBlockType, SoMarkParser
+    from novamind.shared.knowledge.integrations.deepdoc.parsers.upstream.somark_parser import SoMarkAPIError, SoMarkBlockType, SoMarkParser
 
     parser = SoMarkParser()
     assert parser.__class__.__name__ == "SoMarkParser"
@@ -2317,7 +2317,7 @@ def test_upstream_somark_parser_class_is_vendored():
 
 
 def test_upstream_tcadp_parser_class_is_vendored():
-    from src.shared.utils.deepdoc.parser.tcadp_parser import TCADPParser, TencentCloudAPIClient
+    from novamind.shared.knowledge.integrations.deepdoc.parsers.upstream.tcadp_parser import TCADPParser, TencentCloudAPIClient
 
     parser = TCADPParser()
     assert parser.__class__.__name__ == "TCADPParser"
@@ -2327,9 +2327,9 @@ def test_upstream_tcadp_parser_class_is_vendored():
 
 
 def test_upstream_resume_package_is_vendored():
-    from src.shared.utils.deepdoc.parser import refactor_resume
-    from src.shared.utils.deepdoc.parser.resume.step_one import FIELDS
-    from src.shared.utils.deepdoc.parser.resume.step_two import highest_degree
+    from novamind.shared.knowledge.integrations.deepdoc.parsers.upstream import refactor_resume
+    from novamind.shared.knowledge.integrations.deepdoc.parsers.upstream.resume.step_one import FIELDS
+    from novamind.shared.knowledge.integrations.deepdoc.parsers.upstream.resume.step_two import highest_degree
 
     result = refactor_resume(
         {
@@ -2378,7 +2378,7 @@ def test_deepdoc_capabilities_include_upstream_snapshot():
 
 def test_deepdoc_capabilities_expose_tcadp_even_without_sdk(monkeypatch):
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.ragflow_tcadp_parser.TENCENTCLOUD_SDK_AVAILABLE",
+        "novamind.shared.knowledge.integrations.deepdoc.parsers.remote.tcadp.TENCENTCLOUD_SDK_AVAILABLE",
         False,
     )
     monkeypatch.setenv("TCADP_SECRET_ID", "secret-id")
@@ -2457,7 +2457,7 @@ def test_deepdoc_server_ocr_endpoint_rejects_invalid_operator():
 def test_deepdoc_engine_wraps_vision_model_download(monkeypatch, tmp_path):
     expected_path = tmp_path / "deepdoc-models"
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.engine.download_model_group",
+        "novamind.shared.knowledge.integrations.deepdoc.vision.model_manager.download_model_group",
         lambda group=None: expected_path,
     )
     engine = DeepDocEngine()
@@ -2466,7 +2466,7 @@ def test_deepdoc_engine_wraps_vision_model_download(monkeypatch, tmp_path):
 
 def test_deepdoc_engine_wraps_vision_model_group_check(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "src.shared.utils.deepdoc.engine.ensure_model_group_available",
+        "novamind.shared.knowledge.integrations.deepdoc.vision.model_manager.ensure_model_group_available",
         lambda group: tmp_path,
     )
     engine = DeepDocEngine()

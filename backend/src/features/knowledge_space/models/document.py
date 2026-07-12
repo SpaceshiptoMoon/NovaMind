@@ -7,7 +7,7 @@
 from typing import Optional
 from enum import IntEnum
 from sqlalchemy import Column, BigInteger, String, DateTime, JSON, ForeignKey, Index, UniqueConstraint
-from src.core.database.base import BaseModel
+from novamind.core.database.base import BaseModel
 
 
 # 保留此枚举用于过渡期兼容 — 旧代码仍可导入，但 Document 模型本身不再使用

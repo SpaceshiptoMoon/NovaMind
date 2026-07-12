@@ -6,10 +6,10 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.middleware.structured_logging import get_logger
-from src.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
-from src.features.knowledge_space.models.document_task_batch import BatchStatus, DocumentTaskBatch
-from src.shared.utils.time_utils import now_china
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
+from novamind.features.knowledge_space.models.document_task_batch import BatchStatus, DocumentTaskBatch
+from novamind.shared.utils.time_utils import now_china
 
 logger = get_logger(__name__)
 

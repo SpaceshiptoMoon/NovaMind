@@ -11,24 +11,24 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
-from src.features.knowledge_space.models.knowledge_base import (
+from novamind.features.knowledge_space.models.knowledge_base import (
     KnowledgeBase,
     KnowledgeBaseStatus,
 )
-from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-from src.features.knowledge_space.repository.document_repository import DocumentRepository
-from src.features.knowledge_space.repository.member_repository import MemberRepository
-from src.features.knowledge_space.services.permission_service import PermissionService
-from src.features.knowledge_space.api.exceptions import (
+from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
+from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
+from novamind.features.knowledge_space.repository.member_repository import MemberRepository
+from novamind.features.knowledge_space.services.permission_service import PermissionService
+from novamind.features.knowledge_space.api.exceptions import (
     KnowledgeBaseNotFoundError,
     KnowledgeBaseAlreadyExistsError,
     KnowledgeBaseAccessDeniedError,
     KnowledgeBaseLimitExceededError,
     InvalidParameterError,
 )
-from src.shared.storage.elasticsearch_client import ElasticsearchClient
-from src.shared.storage.minio_client import MinioClient
-from src.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfigUpdate
+from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
+from novamind.shared.storage.minio_client import MinioClient
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfigUpdate
 
 
 def get_effective_space_types(kb_config: Optional[dict] = None) -> List[str]:
@@ -43,8 +43,8 @@ def get_effective_space_types(kb_config: Optional[dict] = None) -> List[str]:
             return types
 
     return ["text"]
-from src.core.middleware.structured_logging import get_logger
-from src.setting.yaml_config import get_config
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.setting.yaml_config import get_config
 
 
 class KnowledgeBaseService:
@@ -145,7 +145,7 @@ class KnowledgeBaseService:
         kb_config = kb.get_config()
         config_updated = False
 
-        from src.features.user.services.model_config_service import ModelConfigService
+        from novamind.features.user.services.model_config_service import ModelConfigService
         model_config_service = ModelConfigService(self.session)
         qg_config = kb_config.get("question_generation") or {}
         qg_llm_config = qg_config.get("llm") or {}
@@ -487,13 +487,13 @@ class KnowledgeBaseService:
 
     def _get_default_config(self) -> Dict[str, Any]:
         """获取默认知识库配置（从 Schema 统一生成）"""
-        from src.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
+        from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
         return KnowledgeBaseConfig().model_dump()
 
     async def get_kb_document_stats(self, kb_id: int) -> Dict[str, int]:
         """获取知识库的文档统计信息（基于 document_tasks 的最新状态）"""
-        from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-        from src.features.knowledge_space.models.document_task import TaskStatus
+        from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from novamind.features.knowledge_space.models.document_task import TaskStatus
 
         task_repo = DocumentTaskRepository(self.session)
         stats = {

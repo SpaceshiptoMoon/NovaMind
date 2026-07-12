@@ -3,23 +3,9 @@ from __future__ import annotations
 from importlib import import_module
 
 
-_EXPORT_MAP = {
-    "BaseReader": ("src.shared.document_processing.readers", "BaseReader"),
-    "PDFReader": ("src.shared.document_processing.readers", "PDFReader"),
-    "DocxReader": ("src.shared.document_processing.readers", "DocxReader"),
-    "TxtReader": ("src.shared.document_processing.readers", "TxtReader"),
-    "HTMLReader": ("src.shared.document_processing.readers", "HTMLReader"),
-    "MarkdownReader": ("src.shared.document_processing.readers", "MarkdownReader"),
-    "DocumentLoader": ("src.shared.document_processing.pipeline", "DocumentLoader"),
-    "DocumentProcessor": ("src.shared.document_processing.pipeline", "DocumentProcessor"),
-    "BaseSplitter": ("src.shared.document_processing.splitters", "BaseSplitter"),
-    "RecursiveCharacterSplitter": ("src.shared.document_processing.splitters", "RecursiveCharacterSplitter"),
-    "SemanticSplitter": ("src.shared.document_processing.splitters", "SemanticSplitter"),
-    "FixedSizeSplitter": ("src.shared.document_processing.splitters", "FixedSizeSplitter"),
-    "MarkdownSplitter": ("src.shared.document_processing.splitters", "MarkdownSplitter"),
-}
+_EXPORT_MAP = {}
 
-__all__ = list(_EXPORT_MAP.keys())
+__all__ = []
 
 
 def __getattr__(name):

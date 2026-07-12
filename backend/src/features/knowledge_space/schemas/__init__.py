@@ -11,13 +11,13 @@
 注意：异常类定义在 api/exceptions.py 中
 """
 
-from src.features.knowledge_space.schemas.space_schema import (
+from novamind.features.knowledge_space.schemas.space_schema import (
     SpaceCreate,
     SpaceUpdate,
     SpaceResponse,
     SpaceListResponse,
 )
-from src.features.knowledge_space.schemas.document_schema import (
+from novamind.features.knowledge_space.schemas.document_schema import (
     DocumentResponse,
     DocumentListResponse,
     DocumentDetailResponse,
@@ -25,7 +25,7 @@ from src.features.knowledge_space.schemas.document_schema import (
     DocumentBatchUploadResponse,
     ChunkResponse,
 )
-from src.features.knowledge_space.schemas.member_schema import (
+from novamind.features.knowledge_space.schemas.member_schema import (
     MemberInvite,
     MemberJoin,
     MemberUpdate,
@@ -33,7 +33,7 @@ from src.features.knowledge_space.schemas.member_schema import (
     MemberListResponse,
     InviteResponse,
 )
-from src.features.knowledge_space.schemas.search_schema import (
+from novamind.features.knowledge_space.schemas.search_schema import (
     SearchRequest,
     SearchResult,
     SearchResponse,
@@ -42,7 +42,7 @@ from src.features.knowledge_space.schemas.search_schema import (
     RerankConfig,
     QueryRewriteConfig,
 )
-from src.features.knowledge_space.schemas.knowledge_base_schema import (
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     KnowledgeBaseCreate,
     KnowledgeBaseUpdate,
     KnowledgeBaseResponse,
@@ -50,7 +50,7 @@ from src.features.knowledge_space.schemas.knowledge_base_schema import (
     KnowledgeBaseConfigUpdate,
     KnowledgeBaseConfigResponse,
 )
-from src.features.knowledge_space.schemas.member_schema import ActionResponse
+from novamind.features.knowledge_space.schemas.member_schema import ActionResponse
 
 __all__ = [
     # 空间

@@ -10,7 +10,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from src.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
+from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
 
 
 class FakeKnowledgeBase:
@@ -62,7 +62,7 @@ def test_update_config_merges_new_nested_parsing_structure(monkeypatch):
     service.kb_repo = SimpleNamespace(get_by_id=AsyncMock(return_value=kb))
     service.session = SimpleNamespace(commit=AsyncMock())
     monkeypatch.setattr(
-        "src.features.knowledge_space.services.knowledge_base_service.flag_modified",
+        "novamind.features.knowledge_space.services.knowledge_base_service.flag_modified",
         lambda obj, field: None,
     )
 
@@ -143,7 +143,7 @@ def test_update_config_removes_none_fields_via_deep_merge(monkeypatch):
     service.kb_repo = SimpleNamespace(get_by_id=AsyncMock(return_value=kb))
     service.session = SimpleNamespace(commit=AsyncMock())
     monkeypatch.setattr(
-        "src.features.knowledge_space.services.knowledge_base_service.flag_modified",
+        "novamind.features.knowledge_space.services.knowledge_base_service.flag_modified",
         lambda obj, field: None,
     )
 

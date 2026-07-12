@@ -6,21 +6,21 @@
 
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
-from src.shared.utils.time_utils import now_china
+from novamind.shared.utils.time_utils import now_china
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.knowledge_space.models.space_member import (
+from novamind.features.knowledge_space.models.space_member import (
     SpaceMember,
     SpaceRole,
     MemberStatus,
 )
-from src.features.knowledge_space.repository.member_repository import MemberRepository
-from src.features.knowledge_space.repository.space_repository import SpaceRepository
-from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-from src.features.knowledge_space.repository.document_repository import DocumentRepository
-from src.features.knowledge_space.services.permission_service import PermissionService
-from src.features.knowledge_space.api.exceptions import (
+from novamind.features.knowledge_space.repository.member_repository import MemberRepository
+from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
+from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
+from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
+from novamind.features.knowledge_space.services.permission_service import PermissionService
+from novamind.features.knowledge_space.api.exceptions import (
     SpaceAccessDeniedError,
     MemberNotFoundError,
     MemberAlreadyExistsError,
@@ -29,9 +29,9 @@ from src.features.knowledge_space.api.exceptions import (
     CannotRemoveLastAdminError,
     CannotModifySelfRoleError,
 )
-from src.shared.storage.elasticsearch_client import ElasticsearchClient
-from src.shared.storage.minio_client import MinioClient
-from src.core.middleware.structured_logging import get_logger
+from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
+from novamind.shared.storage.minio_client import MinioClient
+from novamind.core.middleware.structured_logging import get_logger
 
 
 class MemberService:

@@ -6,12 +6,12 @@
 
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
-from src.shared.utils.time_utils import now_china
+from novamind.shared.utils.time_utils import now_china
 
 from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.knowledge_space.models.space_audit_log import SpaceAuditLog, AuditAction
+from novamind.features.knowledge_space.models.space_audit_log import SpaceAuditLog, AuditAction
 
 
 class AuditRepository:

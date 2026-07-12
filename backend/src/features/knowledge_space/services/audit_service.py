@@ -10,12 +10,12 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Request
 
-from src.features.knowledge_space.repository.audit_repository import AuditRepository
-from src.features.knowledge_space.repository.space_repository import SpaceRepository
-from src.features.knowledge_space.models.space_audit_log import SpaceAuditLog, AuditAction
-from src.features.knowledge_space.api.exceptions import SpaceNotFoundError
-from src.core.middleware.structured_logging import get_logger
-from src.core.database.database import get_db_session
+from novamind.features.knowledge_space.repository.audit_repository import AuditRepository
+from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
+from novamind.features.knowledge_space.models.space_audit_log import SpaceAuditLog, AuditAction
+from novamind.features.knowledge_space.api.exceptions import SpaceNotFoundError
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.core.database.database import get_db_session
 
 
 class AuditService:

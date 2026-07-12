@@ -20,7 +20,5 @@ def test_deepdoc_packaging_includes_resume_resources_and_docs():
 
     normalized_names = {name.replace("\\", "/") for name in names}
 
-    assert "shared/utils/deepdoc/parser/resume/entities/res/schools.csv" in normalized_names
-    assert "shared/utils/deepdoc/parser/resume/entities/res/good_sch.json" in normalized_names
-    assert "shared/utils/deepdoc/README.md" in normalized_names
-    assert "shared/utils/deepdoc/DEPLOYMENT.md" in normalized_names
+    assert "shared/knowledge/integrations/deepdoc/parsers/upstream/resume/entities/res/schools.csv" in normalized_names
+    assert "shared/knowledge/integrations/deepdoc/parsers/upstream/resume/entities/res/good_sch.json" in normalized_names

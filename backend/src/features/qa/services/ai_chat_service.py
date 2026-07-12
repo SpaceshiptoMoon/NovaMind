@@ -11,25 +11,25 @@ import base64
 import json
 import tempfile
 
-from src.shared.utils.text_processing.token_counter import TokenCounter
+from novamind.shared.utils.text_utils.token_counter import TokenCounter
 import os
 
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 if TYPE_CHECKING:
-    from src.features.user.services.model_config_service import ModelConfigService
-    from src.shared.storage.minio_client import MinioClient
-from src.shared.ai_models.llm import BaseLLM
-from src.shared.prompts.templates import PromptTemplate, PromptManager
-from src.shared.utils.heartbeat import stream_with_heartbeat, stream_with_heartbeat_structured
-from src.shared.storage.minio_client import IMAGE_FILE_TYPES
-from src.features.qa.services.qa_service import QAService
-from src.features.qa.schemas.qa import QARequest
-from src.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
-from src.features.qa.api.exceptions import (
+    from novamind.features.user.services.model_config_service import ModelConfigService
+    from novamind.shared.storage.minio_client import MinioClient
+from novamind.shared.ai_models.llm import BaseLLM
+from novamind.shared.prompts.templates import PromptTemplate, PromptManager
+from novamind.shared.utils.heartbeat import stream_with_heartbeat, stream_with_heartbeat_structured
+from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
+from novamind.features.qa.services.qa_service import QAService
+from novamind.features.qa.schemas.qa import QARequest
+from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
+from novamind.features.qa.api.exceptions import (
     QAError,
     LLMServiceError,
     InvalidMessageContentError,
@@ -225,7 +225,7 @@ class AIChatService:
         rewrite_strategy = getattr(session_config, "rag_query_rewriting", "none") if session_config else "none"
         rewrite_degraded = False  # 用户开了改写但实际降级（LLM 失败/不可用）→ 透传到 trace
         if rewrite_strategy != "none" and (do_web or do_rag):
-            from src.features.qa.services.query_rewriter import QueryRewriter, RewriteStrategy
+            from novamind.features.qa.services.query_rewriter import QueryRewriter, RewriteStrategy
             llm_for_rewrite = await self.qa_service._get_compression_llm_client(user_id) if self.qa_service else None
             if llm_for_rewrite:
                 rewriter = QueryRewriter(llm_for_rewrite)
@@ -251,7 +251,7 @@ class AIChatService:
             if len(search_queries) == 1:
                 grade_retry = getattr(session_config, "rag_grade_retry_enabled", False) if session_config else False
                 if grade_retry:
-                    from src.features.qa.services.grade_retrier import GradeRetrier
+                    from novamind.features.qa.services.grade_retrier import GradeRetrier
                     llm_for_grade = await self.qa_service._get_compression_llm_client(user_id) if self.qa_service else None
                     if llm_for_grade:
                         retrier = GradeRetrier(llm_for_grade)
@@ -301,7 +301,7 @@ class AIChatService:
 
                 if grade_retry and llm_for_grade:
                     # grade 开 + 有 grade LLM：循环「检索所有子查询→合并→用原问题整体打分」，不通过则切 mode + 降阈值重检索
-                    from src.features.qa.services.grade_retrier import GradeRetrier
+                    from novamind.features.qa.services.grade_retrier import GradeRetrier
                     retrier = GradeRetrier(llm_for_grade)
                     passing = getattr(session_config, "rag_grade_retry_passing_score", 5)
                     # mode 序列：用户配的 search_mode 首轮优先（复用单查询 search_with_retry 的语义）
@@ -570,7 +570,7 @@ class AIChatService:
 
     async def _retrieve_web(self, query: str, max_results: int = 5) -> Optional[Tuple[str, List[dict]]]:
         """联网搜索，返回 (参考资料块文本, 结构化来源列表)。复用 deep_research 的 DuckDuckGo 服务"""
-        from src.features.deep_research.services.duckduckgo_service import (
+        from novamind.features.deep_research.services.duckduckgo_service import (
             DuckDuckGoSearchService,
         )
 
@@ -611,15 +611,15 @@ class AIChatService:
             self.logger.warning("RAG 开关已开但未指定 space_id，跳过知识库检索")
             return None
 
-        from src.features.knowledge_space.services.search_service import SearchService
-        from src.features.knowledge_space.schemas.search_schema import SearchRequest
-        from src.shared.clients import get_elasticsearch_client
+        from novamind.features.knowledge_space.services.search_service import SearchService
+        from novamind.features.knowledge_space.schemas.search_schema import SearchRequest
+        from novamind.shared.clients import get_elasticsearch_client
 
         search_request = SearchRequest(query=query, search_mode=search_mode, top_k=top_k)
         es_client = await get_elasticsearch_client()
         model_config_service = self.model_config_service
         if model_config_service is None:
-            from src.features.user.services.model_config_service import ModelConfigService
+            from novamind.features.user.services.model_config_service import ModelConfigService
             model_config_service = ModelConfigService(self.db)
         search_service = SearchService(self.db, es_client, model_config_service)
 
@@ -627,7 +627,7 @@ class AIChatService:
         if kb_ids:
             target_kb_ids: List[int] = list(kb_ids)
         else:
-            from src.features.knowledge_space.repository.knowledge_base_repository import (
+            from novamind.features.knowledge_space.repository.knowledge_base_repository import (
                 KnowledgeBaseRepository,
             )
             kb_repo = KnowledgeBaseRepository(self.db)
@@ -972,7 +972,7 @@ class AIChatService:
                     enable_thinking=enable_thinking,
                 )
 
-                from src.shared.ai_models.base_model import StreamChunk
+                from novamind.shared.ai_models.base_model import StreamChunk
                 async for chunk in stream_with_heartbeat_structured(raw_stream):
                     # 心跳注释直接透传
                     if isinstance(chunk, str):
@@ -1114,7 +1114,7 @@ class AIChatService:
             raise InvalidMessageContentError(f"文件过大: {len(file_data)} 字节，最大允许 {self.MAX_FILE_SIZE // (1024*1024)}MB")
 
         # 验证文件内容（魔术字节校验，防止文件伪装攻击）
-        from src.shared.document_processing.validation import validate_file
+        from novamind.shared.knowledge.document_processing.validation import validate_file
         file_info = validate_file(
             content=file_data,
             filename=filename,
@@ -1176,7 +1176,7 @@ class AIChatService:
             return None
 
         # PDF / DOCX 需要通过 DocumentProcessor 处理
-        from src.shared.document_processing.pipeline import DocumentProcessor
+        from novamind.shared.knowledge.document_processing.pipeline import DocumentProcessor
 
         with tempfile.NamedTemporaryFile(suffix=f".{file_type}", delete=False) as tmp:
             tmp.write(file_data)
@@ -1230,7 +1230,7 @@ class AIChatService:
             return context
 
         from sqlalchemy import select
-        from src.features.qa.models.question_answer import QuestionAnswer
+        from novamind.features.qa.models.question_answer import QuestionAnswer
 
         stmt = select(QuestionAnswer).where(
             QuestionAnswer.session_id == session_id,

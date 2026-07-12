@@ -14,11 +14,11 @@ from sqlalchemy import select, update, delete, func, cast, Integer, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import outerjoin
 
-from src.features.knowledge_space.models.document import Document
-from src.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
-from src.shared.utils.time_utils import now_china
-from src.shared.cache.redis_client import get_redis_client
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.models.document import Document
+from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
+from novamind.shared.utils.time_utils import now_china
+from novamind.shared.cache.redis_client import get_redis_client
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

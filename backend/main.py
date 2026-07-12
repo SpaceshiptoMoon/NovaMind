@@ -8,6 +8,10 @@ import uvicorn
 import sys
 import os
 
+_BACKEND_SRC = os.path.join(os.path.dirname(__file__), "src")
+if _BACKEND_SRC not in sys.path:
+    sys.path.insert(0, _BACKEND_SRC)
+
 
 def parse_args():
     """解析命令行参数"""
@@ -51,7 +55,7 @@ def create_app():
     Returns:
         FastAPI: 应用实例
     """
-    from src.core.middleware.app_factory import create_app as _create_app
+    from novamind.core.middleware.app_factory import create_app as _create_app
     return _create_app()
 
 
@@ -64,7 +68,7 @@ def main():
     os.environ["ENVIRONMENT"] = args.config
 
     # 预加载配置以验证
-    from src.setting.yaml_config import get_config
+    from novamind.setting.yaml_config import get_config
     try:
         config = get_config()
         print(f"已加载配置: {config.environment}")

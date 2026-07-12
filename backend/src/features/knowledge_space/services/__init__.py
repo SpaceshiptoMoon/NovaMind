@@ -14,14 +14,14 @@
 注意: 分块数据仅存储在 Elasticsearch 中，不在 MySQL 中存储
 """
 
-from src.features.knowledge_space.services.permission_service import PermissionService
-from src.features.knowledge_space.services.space_service import SpaceService
-from src.features.knowledge_space.services.member_service import MemberService
-from src.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
-from src.features.knowledge_space.services.document_service import DocumentService
-from src.features.knowledge_space.services.embedding_service import EmbeddingService
-from src.features.knowledge_space.services.search_service import SearchService
-from src.features.knowledge_space.services.audit_service import AuditService
+from novamind.features.knowledge_space.services.permission_service import PermissionService
+from novamind.features.knowledge_space.services.space_service import SpaceService
+from novamind.features.knowledge_space.services.member_service import MemberService
+from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
+from novamind.features.knowledge_space.services.document_service import DocumentService
+from novamind.features.knowledge_space.services.embedding_service import EmbeddingService
+from novamind.features.knowledge_space.services.search_service import SearchService
+from novamind.features.knowledge_space.services.audit_service import AuditService
 
 __all__ = [
     "PermissionService",

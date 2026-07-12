@@ -6,17 +6,17 @@
 
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
-from src.shared.utils.time_utils import now_china
+from novamind.shared.utils.time_utils import now_china
 
 from sqlalchemy import select, update, delete, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.knowledge_space.models.space_member import (
+from novamind.features.knowledge_space.models.space_member import (
     SpaceMember,
     SpaceRole,
     MemberStatus,
 )
-from src.features.user.models.user import User
+from novamind.features.user.models.user import User
 
 
 class MemberRepository:

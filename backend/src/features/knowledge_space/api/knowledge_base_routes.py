@@ -17,8 +17,8 @@ from fastapi import APIRouter, Depends, Request, Query, Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.database.database import get_db
-from src.features.knowledge_space.schemas.knowledge_base_schema import (
+from novamind.core.database.database import get_db
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     KnowledgeBaseCreate,
     KnowledgeBaseUpdate,
     KnowledgeBaseResponse,
@@ -26,9 +26,9 @@ from src.features.knowledge_space.schemas.knowledge_base_schema import (
     KnowledgeBaseConfigUpdate,
     KnowledgeBaseConfigResponse,
 )
-from src.features.knowledge_space.schemas.member_schema import ActionResponse
-from src.features.knowledge_space.models.space_member import SpaceMember
-from src.features.knowledge_space.api.dependencies import (
+from novamind.features.knowledge_space.schemas.member_schema import ActionResponse
+from novamind.features.knowledge_space.models.space_member import SpaceMember
+from novamind.features.knowledge_space.api.dependencies import (
     get_current_user_id,
     validate_space_member,
     validate_space_editor,
@@ -39,12 +39,12 @@ from src.features.knowledge_space.api.dependencies import (
     get_audit_service,
     get_knowledge_base_service,
 )
-from src.features.knowledge_space.api.exceptions import (
+from novamind.features.knowledge_space.api.exceptions import (
     KnowledgeBaseNotFoundError,
 )
-from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-from src.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
-from src.features.knowledge_space.services.audit_service import AuditService
+from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
+from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
+from novamind.features.knowledge_space.services.audit_service import AuditService
 
 router = APIRouter(tags=["知识库管理"])
 

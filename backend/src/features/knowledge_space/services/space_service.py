@@ -10,26 +10,26 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
-from src.features.knowledge_space.models.knowledge_space import KnowledgeSpace
-from src.features.knowledge_space.models.space_member import SpaceRole
-from src.features.knowledge_space.repository.space_repository import SpaceRepository
-from src.features.knowledge_space.repository.member_repository import MemberRepository
-from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-from src.features.knowledge_space.repository.document_repository import DocumentRepository
-from src.features.knowledge_space.repository.audit_repository import AuditRepository
-from src.features.knowledge_space.services.permission_service import PermissionService
-from src.features.knowledge_space.api.exceptions import (
+from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
+from novamind.features.knowledge_space.models.space_member import SpaceRole
+from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
+from novamind.features.knowledge_space.repository.member_repository import MemberRepository
+from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
+from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
+from novamind.features.knowledge_space.repository.audit_repository import AuditRepository
+from novamind.features.knowledge_space.services.permission_service import PermissionService
+from novamind.features.knowledge_space.api.exceptions import (
     SpaceNotFoundError,
     SpaceAlreadyExistsError,
     SpaceAccessDeniedError,
     KnowledgeSpaceError,
     InvalidParameterError,
 )
-from src.shared.storage.elasticsearch_client import ElasticsearchClient
-from src.shared.storage.minio_client import MinioClient
-from src.core.middleware.structured_logging import get_logger
-from src.setting.yaml_config import get_config
-from src.features.user.services.model_config_service import ModelConfigService
+from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
+from novamind.shared.storage.minio_client import MinioClient
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.setting.yaml_config import get_config
+from novamind.features.user.services.model_config_service import ModelConfigService
 
 def _resolve_model_type(modalities=None) -> str:
     """决定嵌入模型类型，统一用 embedding"""
@@ -554,7 +554,7 @@ class SpaceService:
             raise SpaceNotFoundError(space_id)
 
         from sqlalchemy import func, select
-        from src.features.knowledge_space.models.knowledge_base import KnowledgeBase
+        from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
 
         # 知识库数量
         kb_count_result = await self.session.execute(

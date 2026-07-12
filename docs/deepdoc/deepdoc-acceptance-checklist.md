@@ -3,7 +3,7 @@
 ## Goal
 
 This checklist records what has been concretely proven for the vendored
-`deepdoc` module under `backend/src/shared/utils/deepdoc/`, and what is still
+`deepdoc` module under `backend/src/shared/knowledge/integrations/deepdoc/`, and what is still
 environment-dependent.
 
 It is intended to answer one question precisely:
@@ -17,7 +17,7 @@ It is intended to answer one question precisely:
 
 Evidence:
 
-- `backend/src/shared/utils/deepdoc/`
+- `backend/src/shared/knowledge/integrations/deepdoc/`
 - upstream-aligned subpackages:
   - `parser/`
   - `vision/`
@@ -28,39 +28,39 @@ Interpretation:
 - The implementation is vendored as a real module tree, not only a thin
   wrapper around the existing document loader.
 - Source provenance is machine-auditable through:
-  - `src.shared.utils.deepdoc.upstream.UPSTREAM_SOURCE_MAP`
-  - `src.shared.utils.deepdoc.upstream.LOCAL_ADAPTATION_SOURCE_MAP`
+  - `novamind.shared.knowledge.integrations.deepdoc.compat.upstream.UPSTREAM_SOURCE_MAP`
+  - `novamind.shared.knowledge.integrations.deepdoc.compat.upstream.LOCAL_ADAPTATION_SOURCE_MAP`
   - `backend/tests/test_deepdoc_upstream_mapping.py`
 
 ### 2. Standalone Python API exists
 
 Evidence:
 
-- `src.shared.utils.deepdoc.DeepDocParser`
-- `src.shared.utils.deepdoc.DeepDocEngine`
-- `src.shared.utils.deepdoc.create_deepdoc_app`
-- `src.shared.utils.deepdoc.build_doctor_payload`
+- `novamind.shared.knowledge.integrations.deepdoc.DeepDocParser`
+- `novamind.shared.knowledge.integrations.deepdoc.DeepDocEngine`
+- `novamind.shared.knowledge.integrations.deepdoc.create_deepdoc_app`
+- `novamind.shared.knowledge.integrations.deepdoc.build_doctor_payload`
 
 Primary references:
 
-- `backend/src/shared/utils/deepdoc/__init__.py`
-- `backend/src/shared/utils/deepdoc/engine.py`
-- `backend/src/shared/utils/deepdoc/server/deepdoc_server.py`
+- `backend/src/shared/knowledge/integrations/deepdoc/__init__.py`
+- `backend/src/shared/knowledge/integrations/deepdoc/core/engine.py`
+- `backend/src/shared/knowledge/integrations/deepdoc/server/deepdoc_server.py`
 - `backend/tests/test_deepdoc_imports.py`
 
 ### 3. Standalone CLI exists
 
 Evidence:
 
-- `python -m src.shared.utils.deepdoc capabilities`
-- `python -m src.shared.utils.deepdoc doctor`
-- `python -m src.shared.utils.deepdoc prepare`
-- `python -m src.shared.utils.deepdoc parse`
+- `python -m novamind.shared.knowledge.integrations.deepdoc capabilities`
+- `python -m novamind.shared.knowledge.integrations.deepdoc doctor`
+- `python -m novamind.shared.knowledge.integrations.deepdoc prepare`
+- `python -m novamind.shared.knowledge.integrations.deepdoc parse`
 - installed console script: `deepdoc`
 
 Primary references:
 
-- `backend/src/shared/utils/deepdoc/__main__.py`
+- `backend/src/shared/knowledge/integrations/deepdoc/__main__.py`
 - `backend/pyproject.toml`
 - `backend/tests/test_deepdoc_cli.py`
 - `backend/tests/test_deepdoc_entrypoint.py`
@@ -82,8 +82,8 @@ Evidence:
 
 Primary references:
 
-- `backend/src/shared/utils/deepdoc/server/deepdoc_server.py`
-- `backend/src/shared/utils/deepdoc/server/endpoints/`
+- `backend/src/shared/knowledge/integrations/deepdoc/server/deepdoc_server.py`
+- `backend/src/shared/knowledge/integrations/deepdoc/server/endpoints/`
 - `backend/tests/test_deepdoc_integration_light.py`
 - `backend/tests/test_deepdoc_serve_smoke.py`
 
@@ -101,7 +101,7 @@ Primary references:
 
 - `backend/src/features/knowledge_space/schemas/knowledge_base_schema.py`
 - `backend/src/features/knowledge_space/services/knowledge_base_service.py`
-- `backend/src/shared/utils/document_readers/document_loader.py`
+- `backend/src/shared/knowledge/document_processing/pipeline/document_loader.py`
 - `backend/tests/test_deepdoc_runtime.py`
 - `backend/tests/test_deepdoc_integration_light.py`
 
@@ -109,7 +109,7 @@ Primary references:
 
 Evidence:
 
-- `project.scripts.deepdoc = "shared.utils.deepdoc.__main__:main"`
+- `project.scripts.deepdoc = "novamind.shared.knowledge.integrations.deepdoc.__main__:main"`
 - wheel includes `README.md`, `DEPLOYMENT.md`, and resume resources
 
 Primary references:
@@ -142,7 +142,7 @@ Primary references:
 
 Primary references:
 
-- `backend/src/shared/utils/deepdoc/factory.py`
+- `backend/src/shared/knowledge/integrations/deepdoc/core/factory.py`
 - `backend/src/features/knowledge_space/schemas/knowledge_base_schema.py`
 
 ## What Is Not Fully Proven Yet
@@ -180,10 +180,10 @@ Use these as the quickest real-world checks:
 
 ```powershell
 cd backend
-python -m src.shared.utils.deepdoc capabilities
-python -m src.shared.utils.deepdoc doctor
-python -m src.shared.utils.deepdoc prepare
-python -m src.shared.utils.deepdoc serve --host 127.0.0.1 --port 8001
+python -m novamind.shared.knowledge.integrations.deepdoc capabilities
+python -m novamind.shared.knowledge.integrations.deepdoc doctor
+python -m novamind.shared.knowledge.integrations.deepdoc prepare
+python -m novamind.shared.knowledge.integrations.deepdoc serve --host 127.0.0.1 --port 8001
 ```
 
 Optional HTTP checks:

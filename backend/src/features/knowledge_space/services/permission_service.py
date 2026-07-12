@@ -7,7 +7,7 @@
 
 from typing import Optional
 
-from src.features.knowledge_space.models.space_member import SpaceMember, SpaceRole
+from novamind.features.knowledge_space.models.space_member import SpaceMember, SpaceRole
 
 
 class PermissionService:

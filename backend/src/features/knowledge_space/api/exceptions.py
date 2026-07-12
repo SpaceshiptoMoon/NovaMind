@@ -6,7 +6,7 @@
 
 from typing import Optional, List, ClassVar
 
-from src.core.middleware.base_exception_handler import BaseAPIError
+from novamind.core.middleware.base_exception_handler import BaseAPIError
 
 
 class KnowledgeSpaceError(BaseAPIError):

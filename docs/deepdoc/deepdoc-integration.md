@@ -3,7 +3,7 @@
 ## Goal
 
 This repository vendors and adapts parts of RAGFlow's `deepdoc` module into
-`backend/src/shared/utils/deepdoc/` and wires it into the knowledge-base
+`backend/src/shared/knowledge/integrations/deepdoc/` and wires it into the knowledge-base
 document pipeline through `parsing.strategy = "deepdoc"`.
 
 The current upstream comparison baseline was pulled from RAGFlow commit
@@ -14,7 +14,7 @@ The current upstream comparison baseline was pulled from RAGFlow commit
 - upstream-aligned package layout
   - `parser/`
     - mirrored subpackage so code can be imported through
-      `src.shared.utils.deepdoc.parser.*` in an upstream-like way
+      `novamind.shared.knowledge.integrations.deepdoc.parsers.upstream.*` in an upstream-like way
     - implemented parser modules re-export the adapted runtime parsers already
       used by this project
     - unsupported upstream parser modules are mirrored as explicit stubs so the
@@ -159,7 +159,7 @@ Local compatibility/adaptation:
   synthetic inference path for OCR/layout/TSR when model files are present
 - upstream snapshot reporting that records which parts of upstream `deepdoc`
   are implemented, stubbed, or still missing in this standalone module
-- package-level lazy exports for `src.shared.utils.deepdoc`, `parser`, and
+- package-level lazy exports for `novamind.shared.knowledge.integrations.deepdoc`, `parsers`, and
   `vision`, so optional format or vision dependencies are imported only when
   the corresponding parser/runtime path is actually used
 - runtime-parser lazy parser construction, so creating `DeepDocParser()` no
@@ -366,8 +366,8 @@ Current import/packaging behavior:
 
 - `DeepDocParser()` can now be constructed without eagerly importing Excel,
   PPT, or vision parser modules
-- `src.shared.utils.deepdoc.parser.TxtParser` and
-  `src.shared.utils.deepdoc.DeepDocParseResult` can be imported without
+- `novamind.shared.knowledge.integrations.deepdoc.TxtParser` and
+  `novamind.shared.knowledge.integrations.deepdoc.DeepDocParseResult` can be imported without
   forcing `openpyxl`, `python-pptx`, or `cv2`
 - missing optional format dependencies now block only their own parser path
   instead of failing the entire vendored module at import time
@@ -396,10 +396,10 @@ The vendored module is no longer tied only to the knowledge-base pipeline.
 - `DeepDocParser.parse_bytes(file_bytes, file_type="pdf")`
 - `DeepDocEngine.parse_file(path_like)`
 - installed console command: `deepdoc ...`
-- `python -m src.shared.utils.deepdoc capabilities`
-- `python -m src.shared.utils.deepdoc doctor`
-- `python -m src.shared.utils.deepdoc prepare`
-- `python -m src.shared.utils.deepdoc serve`
+- `python -m novamind.shared.knowledge.integrations.deepdoc capabilities`
+- `python -m novamind.shared.knowledge.integrations.deepdoc doctor`
+- `python -m novamind.shared.knowledge.integrations.deepdoc prepare`
+- `python -m novamind.shared.knowledge.integrations.deepdoc serve`
 - `build_doctor_payload(engine, include_smoke=False)`
   - shared diagnostic payload builder reused by CLI and HTTP service
 - `create_deepdoc_app()`
@@ -453,9 +453,9 @@ Standalone CLI behavior now includes:
 
 Current standalone deployment flow:
 
-1. run `deepdoc doctor` or `python -m src.shared.utils.deepdoc doctor`
+1. run `deepdoc doctor` or `python -m novamind.shared.knowledge.integrations.deepdoc doctor`
 2. install missing runtime dependencies reported in `remediation.next_steps`
-3. run `deepdoc prepare` or `python -m src.shared.utils.deepdoc prepare`
+3. run `deepdoc prepare` or `python -m novamind.shared.knowledge.integrations.deepdoc prepare`
 4. optionally run `deepdoc doctor --smoke`
 5. start `deepdoc serve --host 0.0.0.0 --port 8001`
 6. optionally query `GET /doctor` or `GET /doctor?smoke=true` from the running service
@@ -519,8 +519,8 @@ factory selection.
 The standalone module now also mirrors RAGFlow's specialized
 `deepdoc/parser/resume/` package.
 
-- public entrypoint: `src.shared.utils.deepdoc.parser.resume.refactor`
-- convenience export: `src.shared.utils.deepdoc.parser.refactor_resume`
+- public entrypoint: `novamind.shared.knowledge.integrations.deepdoc.parsers.upstream.resume.refactor`
+- convenience export: `novamind.shared.knowledge.integrations.deepdoc.parsers.upstream.refactor_resume`
 - preserves upstream `step_one.py`, `step_two.py`, and entity dictionaries
 - bundles the upstream school, company, region, and industry resource files
 - uses local tokenizer compatibility helpers instead of RAGFlow's `rag.nlp`
@@ -547,9 +547,9 @@ standalone diagnostics instead of depending on RAGFlow's internal thread pool
 and path initialization helpers.
 
 ```powershell
-python -m src.shared.utils.deepdoc.vision.t_ocr --inputs sample.pdf --output_dir ocr_outputs
-python -m src.shared.utils.deepdoc.vision.t_recognizer --inputs pages --mode layout --output_dir layout_outputs
-python -m src.shared.utils.deepdoc.vision.t_recognizer --inputs table.png --mode tsr --output_dir tsr_outputs
+python -m novamind.shared.knowledge.integrations.deepdoc.vision.t_ocr --inputs sample.pdf --output_dir ocr_outputs
+python -m novamind.shared.knowledge.integrations.deepdoc.vision.t_recognizer --inputs pages --mode layout --output_dir layout_outputs
+python -m novamind.shared.knowledge.integrations.deepdoc.vision.t_recognizer --inputs table.png --mode tsr --output_dir tsr_outputs
 ```
 
 Both commands accept a single image/PDF or a directory, create annotated JPEG

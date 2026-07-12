@@ -2,12 +2,12 @@
 Token 预算管理器
 
 封装 token 计数逻辑，为记忆系统提供预算计算能力。
-复用 src/shared/utils/text_processing/token_counter.py。
+复用 src/shared/utils/text_utils/token_counter.py。
 """
 import json
 from typing import List
 
-from src.features.agent.core.memory.interfaces import MemoryMessage
+from novamind.features.agent.core.memory.interfaces import MemoryMessage
 
 
 class TokenBudget:
@@ -22,7 +22,7 @@ class TokenBudget:
 
     def __init__(self, model_name: str = "gpt-4"):
         self._model_name = model_name
-        from src.shared.utils.text_processing.token_counter import TokenCounter
+        from novamind.shared.utils.text_utils.token_counter import TokenCounter
         self._counter = TokenCounter(model_name)
 
     def count_text_tokens(self, text: str) -> int:

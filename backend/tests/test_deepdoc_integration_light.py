@@ -12,12 +12,12 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from src.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
-from src.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
-from src.shared.integrations.deepdoc.core.engine import DeepDocEngine
-from src.shared.integrations.deepdoc.core.models import DeepDocParseResult
-from src.shared.utils.deepdoc.server import create_deepdoc_app
-from src.shared.document_processing.pipeline import DocumentProcessor
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
+from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
+from novamind.shared.knowledge.integrations.deepdoc.core.engine import DeepDocEngine
+from novamind.shared.knowledge.integrations.deepdoc.core.models import DeepDocParseResult
+from novamind.shared.knowledge.integrations.deepdoc.server import create_deepdoc_app
+from novamind.shared.knowledge.document_processing.pipeline import DocumentProcessor
 
 
 def _build_minimal_pdf_bytes(text: str) -> bytes:

@@ -1,68 +1,61 @@
-# Shared Utils Structure Guide
+# Shared Utils Guide
 
 ## Purpose
 
-This directory currently contains a mix of:
+`backend/src/shared/utils/` is now reserved for small, generic, cross-domain utilities.
 
-- active utility modules
-- compatibility-facing entrypoints
-- transitional shims kept for older imports
+It is no longer the home for knowledge-base document processing, media parsing, file validation,
+or DeepDoc implementation code.
 
-It is intentionally documented here so contributors can tell which paths are implementation homes and which paths should not receive new business logic.
+## What Belongs Here
 
-## Path Classification
+Current valid utility modules:
 
-### Compatibility-oriented paths
-
-These paths mainly exist to preserve older imports or provide stable public entrypoints:
-
-- `deepdoc/`
-- `document_readers/`
-- `media_utils.py`
-- `vlm_utils.py`
-
-Notes:
-
-- `deepdoc/` remains a public compatibility surface and packaging entrypoint.
-- `document_readers/` re-exports the newer document processing implementation.
-- `media_utils.py` and `vlm_utils.py` remain stable helper surfaces used by compatibility tests and existing imports.
-
-### Active utility paths
-
-These are still valid implementation utilities:
-
-- `text_processing/`
+- `text_utils/`
 - `ansi_strip.py`
 - `crypto.py`
 - `heartbeat.py`
 - `redact.py`
 - `time_utils.py`
 
-### Transitional shim
+These are generic helpers reused across multiple backend domains.
 
-- `file_validator.py`
+## What Does Not Belong Here
 
-`file_validator.py` is still the underlying implementation currently re-exported by `src.shared.document_processing.validation.file_validator`.
-Until that direction is reversed or fully migrated, keep it stable and avoid duplicate logic.
+Knowledge-processing implementation code should not be added here.
 
-## Contributor Rules
+That includes:
 
-1. Prefer adding new document parsing logic under `src.shared.document_processing/`.
-2. Prefer adding new DeepDoc runtime logic under `src.shared.integrations.deepdoc/`.
-3. Do not add new core implementation code under compatibility-only paths unless the change is specifically about preserving public imports.
-4. If a compatibility path is changed, verify older imports still resolve.
+- document readers and splitters
+- media parsing helpers
+- DeepDoc runtime and parser code
+- knowledge-specific file validation
 
-## Current Relationship To Newer Structure
+Those capabilities now live under:
 
-- document readers and splitters implementation home:
-  - `src.shared.document_processing/`
-- DeepDoc implementation home:
-  - `src.shared.integrations.deepdoc/`
-- compatibility import surface:
-  - `src.shared.utils.*`
+- `backend/src/shared/knowledge/document_processing/`
+- `backend/src/shared/knowledge/media_processing/`
+- `backend/src/shared/knowledge/integrations/deepdoc/`
 
-## Future Cleanup Direction
+## Import Guidance
 
-The preferred long-term direction is to make compatibility surfaces and active utilities more visibly separated, potentially with explicit sub-grouping such as `compat/`, `security/`, and `system/`.
+Preferred utility imports from this directory:
 
-That change has been deferred for now because import compatibility is still important across the repository.
+- `novamind.shared.utils.text_utils`
+- `novamind.shared.utils.ansi_strip`
+- `novamind.shared.utils.crypto`
+- `novamind.shared.utils.heartbeat`
+- `novamind.shared.utils.redact`
+- `novamind.shared.utils.time_utils`
+
+Do not introduce new imports here for removed legacy paths such as:
+
+- `novamind.shared.utils.document_readers`
+- `novamind.shared.utils.media_utils`
+- `novamind.shared.utils.vlm_utils`
+- `novamind.shared.utils.deepdoc`
+- `novamind.shared.utils.file_validator`
+
+## Contributor Rule
+
+If a helper is primarily knowledge-base parsing logic, put it under `shared/knowledge/`, not `shared/utils/`.

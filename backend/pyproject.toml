@@ -65,7 +65,7 @@ test = [
 ]
 
 [project.scripts]
-deepdoc = "shared.utils.deepdoc.__main__:main"
+deepdoc = "novamind.shared.knowledge.integrations.deepdoc.__main__:main"
 
 [build-system]
 requires = ["setuptools>=68.0"]
@@ -78,5 +78,5 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-"shared.utils.deepdoc" = ["README.md", "DEPLOYMENT.md"]
-"shared.utils.deepdoc.parser.resume.entities" = ["res/*"]
+"shared.knowledge.integrations.deepdoc" = ["README.md", "DEPLOYMENT.md"]
+"shared.knowledge.integrations.deepdoc.parsers.upstream.resume.entities" = ["res/*"]

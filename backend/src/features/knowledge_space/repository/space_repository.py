@@ -6,19 +6,19 @@
 """
 
 from typing import Optional, List, Dict, Any
-from src.shared.utils.time_utils import now_china
+from novamind.shared.utils.time_utils import now_china
 
 from sqlalchemy import select, update, delete, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.knowledge_space.models.knowledge_space import (
+from novamind.features.knowledge_space.models.knowledge_space import (
     KnowledgeSpace,
     SpaceStatus,
     SpaceVisibility,
 )
-from src.features.knowledge_space.models.space_member import SpaceMember, MemberStatus
-from src.shared.cache.redis_client import get_redis_client
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.models.space_member import SpaceMember, MemberStatus
+from novamind.shared.cache.redis_client import get_redis_client
+from novamind.core.middleware.structured_logging import get_logger
 
 
 # 缓存 TTL 常量
@@ -578,7 +578,7 @@ class SpaceRepository:
         try:
             cache = await self._get_cache()
 
-            from src.features.knowledge_space.models.knowledge_base import KnowledgeBase
+            from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
             stmt = select(KnowledgeBase.id).where(
                 KnowledgeBase.space_id == space_id,
                 KnowledgeBase.deleted_at.is_(None),

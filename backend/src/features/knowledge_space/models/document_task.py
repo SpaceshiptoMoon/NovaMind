@@ -10,8 +10,8 @@ from typing import Optional
 
 from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, JSON, SmallInteger, String, Text
 
-from src.core.database.base import BaseModel
-from src.shared.utils.time_utils import now_china
+from novamind.core.database.base import BaseModel
+from novamind.shared.utils.time_utils import now_china
 
 
 class TaskStatus(IntEnum):

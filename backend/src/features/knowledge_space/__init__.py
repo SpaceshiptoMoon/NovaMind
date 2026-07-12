@@ -12,7 +12,7 @@
 """
 
 # API 路由
-from src.features.knowledge_space.api import (
+from novamind.features.knowledge_space.api import (
     space_router,
     knowledge_base_router,
     document_router,
@@ -21,7 +21,7 @@ from src.features.knowledge_space.api import (
 )
 
 # 数据模型
-from src.features.knowledge_space.models import (
+from novamind.features.knowledge_space.models import (
     KnowledgeSpace,
     SpaceVisibility,
     SpaceStatus,
@@ -37,7 +37,7 @@ from src.features.knowledge_space.models import (
 )
 
 # 服务层
-from src.features.knowledge_space.services import (
+from novamind.features.knowledge_space.services import (
     PermissionService,
     SpaceService,
     MemberService,
@@ -49,7 +49,7 @@ from src.features.knowledge_space.services import (
 )
 
 # Schema
-from src.features.knowledge_space.schemas import (
+from novamind.features.knowledge_space.schemas import (
     SpaceCreate,
     SpaceUpdate,
     SpaceResponse,

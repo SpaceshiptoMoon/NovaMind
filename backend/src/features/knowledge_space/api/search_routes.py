@@ -8,9 +8,9 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Body, Path, Query
 
-from src.core.database.database import get_db
-from src.setting.yaml_config import get_config
-from src.features.knowledge_space.schemas.search_schema import (
+from novamind.core.database.database import get_db
+from novamind.setting.yaml_config import get_config
+from novamind.features.knowledge_space.schemas.search_schema import (
     SearchRequest,
     SearchResponse,
     SearchModesResponse,
@@ -18,20 +18,20 @@ from src.features.knowledge_space.schemas.search_schema import (
     MultimodalSearchRequest,
     SEARCH_MODES,
 )
-from src.features.knowledge_space.api.dependencies import (
+from novamind.features.knowledge_space.api.dependencies import (
     get_search_service,
     get_audit_service,
     get_current_user_id,
     validate_space_access,
     validate_kb_access,
 )
-from src.features.knowledge_space.api.exceptions import KnowledgeBaseNotFoundError
-from src.features.knowledge_space.services.search_service import SearchService
-from src.features.knowledge_space.services.audit_service import AuditService
-from src.features.user.api.dependencies import get_model_config_service
-from src.features.user.services.model_config_service import ModelConfigService
+from novamind.features.knowledge_space.api.exceptions import KnowledgeBaseNotFoundError
+from novamind.features.knowledge_space.services.search_service import SearchService
+from novamind.features.knowledge_space.services.audit_service import AuditService
+from novamind.features.user.api.dependencies import get_model_config_service
+from novamind.features.user.services.model_config_service import ModelConfigService
 
-from src.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
+from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
 
 router = APIRouter(tags=["知识检索"])
 
@@ -212,7 +212,7 @@ async def get_search_modes(
     kb = await _validate_active_kb(kb_id, space_id, search_service)
 
     # 获取知识库层面的模态列表
-    from src.features.knowledge_space.services.knowledge_base_service import get_effective_space_types
+    from novamind.features.knowledge_space.services.knowledge_base_service import get_effective_space_types
     space_config = space.get_config() if hasattr(space, "get_config") else {}
     space_type_list = get_effective_space_types(
         kb_config=kb.get_config() if kb else None,

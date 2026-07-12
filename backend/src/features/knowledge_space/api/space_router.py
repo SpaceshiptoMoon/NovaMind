@@ -7,7 +7,7 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Body, Query, Path
 
-from src.features.knowledge_space.schemas.space_schema import (
+from novamind.features.knowledge_space.schemas.space_schema import (
     SpaceCreate,
     SpaceUpdate,
     SpaceResponse,
@@ -15,16 +15,16 @@ from src.features.knowledge_space.schemas.space_schema import (
     SpaceConfigUpdate,
     SpaceConfigResponse,
 )
-from src.features.knowledge_space.api.dependencies import (
+from novamind.features.knowledge_space.api.dependencies import (
     get_space_service,
     get_audit_service,
     get_current_user_id,
     validate_space_access,
     validate_space_admin,
 )
-from src.features.knowledge_space.services.space_service import SpaceService
-from src.features.knowledge_space.services.audit_service import AuditService
-from src.features.knowledge_space.schemas.member_schema import ActionResponse
+from novamind.features.knowledge_space.services.space_service import SpaceService
+from novamind.features.knowledge_space.services.audit_service import AuditService
+from novamind.features.knowledge_space.schemas.member_schema import ActionResponse
 
 router = APIRouter(tags=["知识空间"])
 

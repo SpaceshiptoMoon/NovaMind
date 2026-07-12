@@ -10,18 +10,18 @@ from typing import List, Tuple, Dict, Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.knowledge_space.models.document import Document
-from src.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
-from src.features.knowledge_space.services.document_service import _check_document_cancelled
-from src.shared.media_processing.audio import (
+from novamind.features.knowledge_space.models.document import Document
+from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
+from novamind.features.knowledge_space.services.document_service import _check_document_cancelled
+from novamind.shared.knowledge.media_processing.audio import (
     transcribe_audio_local,
     transcribe_audio_with_timestamps,
     upload_parsed_text_to_minio,
 )
-from src.shared.media_processing.video import extract_video_frames
-from src.shared.utils.time_utils import now_china
-from src.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
-from src.shared.media_processing.vlm import (
+from novamind.shared.knowledge.media_processing.video import extract_video_frames
+from novamind.shared.utils.time_utils import now_china
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
+from novamind.shared.knowledge.media_processing.vlm import (
     build_vlm_image_messages,
     generate_vlm_text_with_fallback,
 )
@@ -43,9 +43,9 @@ async def process_video_document(
     4. 统一文本切分
     5. Embedding → ES 索引
     """
-    from src.features.user.services.model_config_service import ModelConfigService
-    from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-    from src.features.knowledge_space.models.knowledge_space import KnowledgeSpace
+    from novamind.features.user.services.model_config_service import ModelConfigService
+    from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
+    from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
 
     space = await session.get(KnowledgeSpace, document.space_id)
     kb_repo = KnowledgeBaseRepository(session)
@@ -83,7 +83,7 @@ async def process_video_document(
         raise ValueError(f"视频 {document.filename} 未能提取到任何帧")
 
     # 1.5. 帧持久化到 MinIO（在 VLM 调用前上传，避免 VLM 失败后帧丢失）
-    from src.shared.clients import ClientFactory
+    from novamind.shared.clients import ClientFactory
     minio_client = await ClientFactory.get_minio_client()
     storage_info = document.storage or {}
     base_object = storage_info.get("minio_object_name", "")
@@ -205,8 +205,8 @@ async def process_audio_document(
     3. 统一文本切分
     4. Embedding → ES 索引
     """
-    from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-    from src.features.knowledge_space.models.knowledge_space import KnowledgeSpace
+    from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
+    from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
 
     space = await session.get(KnowledgeSpace, document.space_id)
     kb_repo = KnowledgeBaseRepository(session)
@@ -225,8 +225,8 @@ async def process_audio_document(
     language = audio_config.get("language")
 
     # 1. ASR 转写（根据协议路由：openai → Whisper / dashscope → Paraformer / local → faster-whisper）
-    from src.features.user.services.model_config_service import ModelConfigService
-    from src.shared.media_processing.audio import transcribe_audio_with_dashscope
+    from novamind.features.user.services.model_config_service import ModelConfigService
+    from novamind.shared.knowledge.media_processing.audio import transcribe_audio_with_dashscope
 
     # 检查点：ASR 调用前（转写可能耗时较长，允许用户在此处取消）
     await _check_document_cancelled(document.id)
@@ -370,7 +370,7 @@ async def _split_md_text(
     Returns:
         [(text, metadata_dict), ...] — metadata 目前为空 dict，后续可扩展携带标题/层级
     """
-    from src.shared.document_processing.pipeline import DocumentRegistry
+    from novamind.shared.knowledge.document_processing.pipeline import DocumentRegistry
 
     splitter_class = DocumentRegistry.get_splitter_class(strategy)
     if splitter_class is None:
@@ -391,7 +391,7 @@ async def _split_md_text(
         return [(text, {}) for text in chunk_texts if text.strip()]
 
     elif strategy == "markdown":
-        from src.shared.document_processing.splitters import MarkdownSplitter
+        from novamind.shared.knowledge.document_processing.splitters import MarkdownSplitter
         max_chunk_size = kwargs.get("max_chunk_size", 1000)
         min_chunk_size = kwargs.get("min_chunk_size", 50)
         splitter = MarkdownSplitter(
@@ -453,7 +453,7 @@ async def _describe_single_frame(
     vlm_model_name: Optional[str] = None,
 ) -> str:
     """对单帧调用 VLM 生成描述（复用图片描述逻辑）"""
-    from src.shared.prompts.templates import PromptManager, PromptTemplate
+    from novamind.shared.prompts.templates import PromptManager, PromptTemplate
 
     # 获取 VLM 客户端
     vlm_model = vlm_model_name or await mcs.get_user_default_model_name(document.uploader_id, "vlm")
@@ -554,7 +554,7 @@ async def _index_text_chunks(
     注：pipeline_config（切分策略等）可从 task.pipeline_config 快照获取，
     embedding_config 从空间配置读取，二者来源不同。
     """
-    from src.features.knowledge_space.services.document_service import (
+    from novamind.features.knowledge_space.services.document_service import (
         _generate_embeddings_static,
         _get_es_client_static,
     )

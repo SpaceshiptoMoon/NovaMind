@@ -41,7 +41,7 @@ def test_deepdoc_cli_serve_exposes_health_and_capabilities():
         [
             sys.executable,
             "-m",
-            "src.shared.utils.deepdoc",
+            "novamind.shared.knowledge.integrations.deepdoc",
             "serve",
             "--host",
             "127.0.0.1",

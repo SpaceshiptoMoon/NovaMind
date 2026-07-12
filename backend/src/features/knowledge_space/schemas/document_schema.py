@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, ConfigDict, field_serializer, computed_fi
 
 # 延迟导入以避免循环依赖
 def _get_document_task_response_type():
-    from src.features.knowledge_space.schemas.document_task_schema import DocumentTaskResponse
+    from novamind.features.knowledge_space.schemas.document_task_schema import DocumentTaskResponse
     return DocumentTaskResponse
 
 

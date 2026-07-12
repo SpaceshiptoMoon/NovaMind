@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Optional
 from sqlalchemy import Column, BigInteger, Integer, String, Text, DateTime, JSON, ForeignKey
 
-from src.core.database.base import BaseModel
+from novamind.core.database.base import BaseModel
 
 
 class AuditAction(str, Enum):

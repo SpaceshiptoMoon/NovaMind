@@ -12,21 +12,21 @@ from typing import Optional, List, Dict, Any
 import hashlib
 import asyncio
 import tempfile
-from src.shared.utils.time_utils import now_china
+from novamind.shared.utils.time_utils import now_china
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.knowledge_space.models.document import Document
-from src.features.knowledge_space.models.knowledge_base import KnowledgeBase
-from src.features.knowledge_space.models.knowledge_space import KnowledgeSpace
-from src.features.knowledge_space.repository.document_repository import DocumentRepository
-from src.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
-from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-from src.features.knowledge_space.repository.member_repository import MemberRepository
-from src.features.knowledge_space.repository.space_repository import SpaceRepository
-from src.features.knowledge_space.services.permission_service import PermissionService
-from src.features.knowledge_space.api.exceptions import (
+from novamind.features.knowledge_space.models.document import Document
+from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
+from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
+from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
+from novamind.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
+from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
+from novamind.features.knowledge_space.repository.member_repository import MemberRepository
+from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
+from novamind.features.knowledge_space.services.permission_service import PermissionService
+from novamind.features.knowledge_space.api.exceptions import (
     KnowledgeBaseNotFoundError,
     DocumentNotFoundError,
     DocumentAlreadyExistsError,
@@ -39,20 +39,20 @@ from src.features.knowledge_space.api.exceptions import (
     KnowledgeBaseAccessDeniedError,
     SpaceAccessDeniedError,
 )
-from src.shared.storage.minio_client import MinioClient
-from src.shared.storage.elasticsearch_client import ElasticsearchClient
-from src.shared.document_processing.pipeline import DocumentProcessor
-from src.shared.document_processing.validation import validate_file, FileInfo
-from src.shared.media_processing.audio import upload_parsed_text_to_minio
-from src.shared.media_processing.vlm import (
+from novamind.shared.storage.minio_client import MinioClient
+from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
+from novamind.shared.knowledge.document_processing.pipeline import DocumentProcessor
+from novamind.shared.knowledge.document_processing.validation import validate_file, FileInfo
+from novamind.shared.knowledge.media_processing.audio import upload_parsed_text_to_minio
+from novamind.shared.knowledge.media_processing.vlm import (
     build_vlm_image_messages,
     generate_vlm_text_with_fallback,
 )
-from src.shared.ai_models.embedding import OpenAICompatibleEmbedding as EmbeddingClient
-from src.setting.yaml_config import get_config
-from src.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
-from src.core.middleware.structured_logging import get_logger
-from src.features.knowledge_space.models.document_task_batch import BatchAction
+from novamind.shared.ai_models.embedding import OpenAICompatibleEmbedding as EmbeddingClient
+from novamind.setting.yaml_config import get_config
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.models.document_task_batch import BatchAction
 
 
 def _compute_sha256(content: bytes) -> str:
@@ -76,7 +76,7 @@ async def _check_document_cancelled(document_id: int) -> None:
 
     在 pipeline 关键节点调用，实现提前终止。
     """
-    from src.shared.mq.task_tracker import is_document_cancelled
+    from novamind.shared.mq.task_tracker import is_document_cancelled
     if await is_document_cancelled(document_id):
         raise DocumentCancelledError(f"文档 {document_id} 处理已被用户取消")
 
@@ -96,7 +96,7 @@ class DocumentService:
     SUPPORTED_FILE_TYPES = ["pdf", "docx", "txt", "md", "csv", "html", "json", "jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "avi", "mkv", "webm", "mp3", "wav", "flac", "aac", "ogg", "m4a"]
 
     # 图片文件类型（从 MinIO 工具收敛到唯一定义）
-    from src.shared.storage.minio_client import IMAGE_FILE_TYPES as _IMG_TYPES
+    from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES as _IMG_TYPES
     IMAGE_FILE_TYPES = _IMG_TYPES
 
     # 视频文件类型
@@ -205,7 +205,7 @@ class DocumentService:
 
         # 5.5 根据知识库模态校验文件类型
         file_type = file_info.extension
-        from src.features.knowledge_space.services.knowledge_base_service import get_effective_space_types
+        from novamind.features.knowledge_space.services.knowledge_base_service import get_effective_space_types
         space = await self.space_repo.get_by_id(kb.space_id)
         modalities = get_effective_space_types(kb_config=kb.get_config())
 
@@ -391,8 +391,8 @@ class DocumentService:
 
         # 获取或确保任务记录
         if task is None:
-            from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-            from src.features.knowledge_space.models.document_task import TaskStatus
+            from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+            from novamind.features.knowledge_space.models.document_task import TaskStatus
             _task_repo = DocumentTaskRepository(session)
             task = await _task_repo.get_by_document_id(document_id)
             if task is None:
@@ -422,13 +422,13 @@ class DocumentService:
 
         # ===== 视频文档分支（新增） =====
         if file_ext in DocumentService.VIDEO_FILE_TYPES:
-            from src.features.knowledge_space.services.media_processing import process_video_document
+            from novamind.features.knowledge_space.services.media_processing import process_video_document
             await process_video_document(document, file_content, session, _logger, task=task)
             returnrain
 
         # ===== 音频文档分支（新增） =====
         if file_ext in DocumentService.AUDIO_FILE_TYPES:
-            from src.features.knowledge_space.services.media_processing import process_audio_document
+            from novamind.features.knowledge_space.services.media_processing import process_audio_document
             await process_audio_document(document, file_content, session, _logger, task=task)
             return
 
@@ -637,7 +637,7 @@ class DocumentService:
             raise DocumentNotFoundError(document_id)
 
         # 2.5 有活跃处理任务时拒绝删除
-        from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
         _task_repo = DocumentTaskRepository(self.session)
         active_task = await _task_repo.get_active_by_document_id(document_id)
         if active_task:
@@ -659,7 +659,7 @@ class DocumentService:
 
         # 6. 失效该知识库的搜索缓存
         try:
-            from src.shared.cache.redis_client import get_redis_client
+            from novamind.shared.cache.redis_client import get_redis_client
             cache = await get_redis_client()
             await cache.delete_by_pattern(f"search:{kb_id}:*", batch_size=100)
         except Exception as cache_err:
@@ -862,8 +862,8 @@ class DocumentService:
         Returns:
             状态字符串: "queued" | "in_progress" | "not_found"
         """
-        from src.shared.mq.task_tracker import get_job_id_for_document
-        from src.shared.mq import get_arq_pool
+        from novamind.shared.mq.task_tracker import get_job_id_for_document
+        from novamind.shared.mq import get_arq_pool
 
         job_id = await get_job_id_for_document(document_id)
         if not job_id:
@@ -903,17 +903,17 @@ class DocumentService:
             raise DocumentNotFoundError(document_id)
 
         # 检查是否有活跃任务
-        from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-        from src.features.knowledge_space.models.document_task import TaskStatus
+        from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from novamind.features.knowledge_space.models.document_task import TaskStatus
         _task_repo = DocumentTaskRepository(self.session)
         active_task = await _task_repo.get_active_by_document_id(document_id)
         if not active_task:
             raise InvalidParameterError("只能取消处理中的文档", field="document_id")
 
-        from src.shared.mq.task_tracker import (
+        from novamind.shared.mq.task_tracker import (
             get_job_id_for_document, mark_document_cancelled,
         )
-        from src.shared.mq import get_arq_pool
+        from novamind.shared.mq import get_arq_pool
 
         # 设置取消标记（pipeline 会在检查点检测到）
         await mark_document_cancelled(document_id)
@@ -939,7 +939,7 @@ class DocumentService:
         Returns:
             正在处理的数量
         """
-        from src.shared.mq.task_tracker import get_active_document_count
+        from novamind.shared.mq.task_tracker import get_active_document_count
         return await get_active_document_count()
 
     # ========== 拆分解析方法 ==========
@@ -968,8 +968,8 @@ class DocumentService:
         document = await self._validate_document_not_processing(document_id)
 
         # COMPLETED 任务需要走 reprocess 流程
-        from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-        from src.features.knowledge_space.models.document_task import TaskStatus
+        from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from novamind.features.knowledge_space.models.document_task import TaskStatus
         _task_repo = DocumentTaskRepository(self.session)
         latest_task = await _task_repo.get_by_document_id(document_id)
         if latest_task and latest_task.status == TaskStatus.COMPLETED:
@@ -1130,8 +1130,8 @@ class DocumentService:
         """
         document = await self._validate_document_not_processing(document_id)
 
-        from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-        from src.features.knowledge_space.models.document_task import TaskStatus
+        from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from novamind.features.knowledge_space.models.document_task import TaskStatus
         _task_repo = DocumentTaskRepository(self.session)
         latest_task = await _task_repo.get_by_document_id(document_id)
         if not latest_task or latest_task.status not in (TaskStatus.FAILED, TaskStatus.COMPLETED):
@@ -1194,7 +1194,7 @@ class DocumentService:
         document = await self.doc_repo.get_by_id(document_id)
         if not document:
             raise DocumentNotFoundError(document_id)
-        from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
         _task_repo = DocumentTaskRepository(self.session)
         active_task = await _task_repo.get_active_by_document_id(document_id)
         if active_task:
@@ -1210,14 +1210,14 @@ class DocumentService:
         retry_count: int = 0,
     ):
         """创建任务记录并入队文档处理"""
-        from src.shared.mq.task_tracker import is_document_actively_processing
+        from novamind.shared.mq.task_tracker import is_document_actively_processing
 
         if await is_document_actively_processing(document.id):
             raise DocumentAlreadyProcessingError(document.id)
 
         kb = await self.kb_repo.get_by_id(document.kb_id)
 
-        from src.shared.mq import enqueue_process_document
+        from novamind.shared.mq import enqueue_process_document
         return await enqueue_process_document(
             document_id=document.id,
             kb_id=document.kb_id,
@@ -1245,7 +1245,7 @@ async def _process_image_document_static(
     - VLM 关闭：仅生成 image_embedding，content 不写入，仅支持以图搜图
     - VLM 开启：额外调用视觉模型生成描述文本 + text embedding，支持 BM25 + 文本向量 + 以图搜图
     """
-    from src.shared.ai_models.embedding import BaseMultimodalEmbedding
+    from novamind.shared.ai_models.embedding import BaseMultimodalEmbedding
 
     # 1. 读取空间配置（统一从 config.embedding 读取）
     space = await session.get(KnowledgeSpace, document.space_id)
@@ -1277,7 +1277,7 @@ async def _process_image_document_static(
     await _check_document_cancelled(document.id)
 
     # 2. 获取多模态嵌入客户端
-    from src.features.user.services.model_config_service import ModelConfigService
+    from novamind.features.user.services.model_config_service import ModelConfigService
     mcs = ModelConfigService(session)
     client = await mcs.get_multimodal_embedding_client_by_model(document.uploader_id, model_name)
 
@@ -1479,13 +1479,13 @@ def _extract_parse_metadata_summary(parse_metadata: Dict[str, Any]) -> Dict[str,
 
 async def _get_es_client_static() -> ElasticsearchClient:
     """获取 ES 客户端（静态方法用）"""
-    from src.shared.clients import ClientFactory
+    from novamind.shared.clients import ClientFactory
     return await ClientFactory.get_elasticsearch_client()
 
 
 async def _get_document_processor_static(session: AsyncSession, user_id: Optional[int] = None, model_name: Optional[str] = None) -> DocumentProcessor:
     """获取文档处理器（静态方法用）"""
-    from src.features.user.services.model_config_service import ModelConfigService
+    from novamind.features.user.services.model_config_service import ModelConfigService
 
     model_config_service = ModelConfigService(session)
     if not model_name and user_id:
@@ -1530,7 +1530,7 @@ async def _get_embedding_client_static(
     model_name: Optional[str] = None,
 ) -> EmbeddingClient:
     """获取 Embedding 客户端（静态方法用）"""
-    from src.features.user.services.model_config_service import ModelConfigService
+    from novamind.features.user.services.model_config_service import ModelConfigService
 
     model_config_service = ModelConfigService(session)
     if not model_name and user_id:
@@ -1592,7 +1592,7 @@ async def _generate_image_description(
     Returns:
         描述文本（截断到 2000 字符），失败抛异常由调用方处理
     """
-    from src.shared.prompts.templates import PromptManager, PromptTemplate
+    from novamind.shared.prompts.templates import PromptManager, PromptTemplate
 
     # 1. 获取 VLM 客户端
     vlm_model = vlm_model_name or await mcs.get_user_default_model_name(document.uploader_id, "vlm")
@@ -1653,10 +1653,10 @@ async def _generate_questions_for_chunks_static(
         questions_list: List[List[str]] — 每个分块对应的问题文本列表
         question_embeddings_list: List[List[List[float]]] — 每个分块对应的问题向量列表
     """
-    from src.features.knowledge_space.services.question_generation_service import (
+    from novamind.features.knowledge_space.services.question_generation_service import (
         QuestionGenerationService,
     )
-    from src.features.knowledge_space.schemas.knowledge_base_schema import (
+    from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
         QuestionGenerationConfig,
     )
 

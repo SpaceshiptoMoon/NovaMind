@@ -10,8 +10,8 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.middleware.structured_logging import get_logger
-from src.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
 
 logger = get_logger(__name__)
 

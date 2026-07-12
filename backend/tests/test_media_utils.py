@@ -10,7 +10,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 pytest.importorskip("av")
 
-from src.shared.media_processing.video import extract_video_frames
+from novamind.shared.knowledge.media_processing.video import extract_video_frames
 
 
 def test_extract_video_frames_mp4_sample():

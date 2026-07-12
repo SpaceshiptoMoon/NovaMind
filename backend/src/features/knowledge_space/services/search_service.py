@@ -19,15 +19,15 @@ import time
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-from src.features.knowledge_space.repository.member_repository import MemberRepository
-from src.features.knowledge_space.repository.space_repository import SpaceRepository
-from src.shared.storage.elasticsearch_client import ElasticsearchClient
-from src.shared.ai_models.embedding import BaseEmbedding, create_embedding_client
-from src.shared.ai_models.rerank import BaseRerank, create_rerank_client
-from src.shared.cache.redis_client import get_redis_client
-from src.core.middleware.structured_logging import get_logger
-from src.features.knowledge_space.api.exceptions import (
+from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
+from novamind.features.knowledge_space.repository.member_repository import MemberRepository
+from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
+from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
+from novamind.shared.ai_models.embedding import BaseEmbedding, create_embedding_client
+from novamind.shared.ai_models.rerank import BaseRerank, create_rerank_client
+from novamind.shared.cache.redis_client import get_redis_client
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.api.exceptions import (
     SpaceNotFoundError,
     KnowledgeBaseNotFoundError,
     KnowledgeBaseAccessDeniedError,
@@ -38,7 +38,7 @@ from src.features.knowledge_space.api.exceptions import (
     InvalidSearchWeightError,
     KnowledgeSpaceError,
 )
-from src.features.knowledge_space.schemas.search_schema import (
+from novamind.features.knowledge_space.schemas.search_schema import (
     SEARCH_MODE_FALLBACK,
     SearchRequest,
     SearchResponse,
@@ -48,7 +48,7 @@ from src.features.knowledge_space.schemas.search_schema import (
     MultimodalSearchRequest,
     MultimodalSearchMode,
 )
-from src.features.knowledge_space.models.knowledge_space import SpaceVisibility, KnowledgeSpace
+from novamind.features.knowledge_space.models.knowledge_space import SpaceVisibility, KnowledgeSpace
 
 
 # 默认配置常量
@@ -228,7 +228,7 @@ class SearchService:
             context = "\n\n".join(context_parts)
 
             # 构建提示词
-            from src.shared.prompts.templates import PromptTemplate, PromptManager
+            from novamind.shared.prompts.templates import PromptTemplate, PromptManager
             prompt = PromptManager.format_prompt(
                 PromptTemplate.SEARCH_ANSWER.value,
                 context=context,
@@ -299,7 +299,7 @@ class SearchService:
                 "sub_queries": sub_query 时的子问题列表（内部使用，用于多路检索）
             }
         """
-        from src.shared.prompts.templates import PromptTemplate, PromptManager
+        from novamind.shared.prompts.templates import PromptTemplate, PromptManager
         import json
 
         strategy = rewrite_config.strategy
@@ -1112,7 +1112,7 @@ class SearchService:
 
     async def _get_minio_client(self):
         """获取 MinIO 客户端"""
-        from src.shared.clients import ClientFactory
+        from novamind.shared.clients import ClientFactory
         return await ClientFactory.get_minio_client()
 
     async def multimodal_search(
@@ -1135,7 +1135,7 @@ class SearchService:
         space, kb = await self._validate_space_and_kb(space_id, kb_id)
 
         # 2. 验证知识库包含 image 模态
-        from src.features.knowledge_space.services.knowledge_base_service import get_effective_space_types
+        from novamind.features.knowledge_space.services.knowledge_base_service import get_effective_space_types
         space_type_list = get_effective_space_types(
             kb_config=kb.get_config() if kb else None,
         )
@@ -1216,7 +1216,7 @@ class SearchService:
     async def _get_multimodal_client(self, space, user_id: int, error_msg: str):
         """解析空间多模态嵌入配置，返回 (client, model_name)
         """
-        from src.shared.ai_models.embedding import BaseMultimodalEmbedding
+        from novamind.shared.ai_models.embedding import BaseMultimodalEmbedding
 
         space_config = space.get_config()
         mm_config = space_config.get("embedding")
