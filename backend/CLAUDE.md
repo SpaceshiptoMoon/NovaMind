@@ -1,149 +1,120 @@
-# CLAUDE.md — Backend
+# CLAUDE.md - Backend
 
-## 一、功能模块
+## Overview
 
-NovaMind 后端采用 DDD 分层架构，每个功能模块位于 `src/features/{module}/`，统一遵循 `api → services → repository → models → schemas` 结构。
+The backend is a FastAPI application using a feature-oriented, DDD-leaning structure.
 
-| 模块 | 路由前缀 | 功能 | 关键文件 |
-|------|---------|------|---------|
-| **user** | `/api/v1/user` | JWT 认证、Argon2 密码、角色管理、模型凭证 (AES-256 加密) | `user_routes.py`, `model_config_routes.py`, `auth_service.py` |
-| **knowledge_space** | `/api/v1/spaces` | Space→KB→Document 三级层次、RBAC (VIEWER/EDITOR/ADMIN)、文档处理管道、9种搜索 (BM25/向量/混合)、Rerank、假设问题生成 | `space_router.py`, `document_routes.py`, `search_routes.py`, `search_service.py` |
-| **qa** | `/api/v1/ai-chat`, `/api/v1/qa` | 多模型 SSE 流式对话、会话压缩 (summary/sliding_window/truncate)、多级缓存 (L1 LRU + L2 Redis)、文件附件 | `ai_chat_routes.py`, `ai_chat_service.py`, `qa_service.py` |
-| **deep_research** | `/api/v1/spaces/{id}/deep-research` | 查询分析→任务分解→多源搜索 (Tavily/SerpAPI/DuckDuckGo)→报告综合 | `routes.py`, `deep_research_service.py` |
-| **evaluation** | `/api/v1/spaces/{id}/knowledge-bases/{kb_id}/evaluation` | 测试集管理、异步批量评估 (检索+生成+端到端)、人工评分、JSON/CSV 导出 | `routes.py`, `evaluation_service.py`, `generation_evaluator.py` |
-| **agent** | `/api/v1/agent` | ReAct 循环引擎、两层记忆 (短期+长期)、MCP 协议外部工具、Docker 沙盒代码执行、工具注册中心、五阶段上下文压缩 | `routes.py`, `core/engine.py`, `services/chat_service.py` |
-| **skill** | `/api/v1/skills` | 技能上传/发布/安装、规则+LLM 双重安全审查、评分系统 | `routes.py`, `skill_marketplace_service.py`, `skill_checker.py` |
-| **app** | `/api/v1/apps` | 简历挖掘 S1-S12 管道 (解析→分析→追问→评估) | `routes.py`, `resume_parser.py`, `resume_analyzer.py`, `resume_probing.py` |
-| **notification** | `/api/v1/notifications` | 站内通知 + 邮件通知 + 用户偏好 (已读/未读/全部已读) | `routes.py`, `notification_service.py`, `email_service.py` |
-| **clawmate** | `/api/v1/clawmate` | Web 终端 (Shell 会话 + 文件操作 + AI 流式对话)；无 ORM，Session 内存管理；复用 Agent 工具链 | `api/routes.py`, `core/session_manager.py`, `core/command_safety.py`, `core/chat_service.py` |
+Entry points:
 
-> 每个模块的完整 API 端点清单见根目录 [project-structure-navigation.md](../docs/project-structure-navigation.md)。
+- `main.py`
+- `src/core/middleware/app_factory.py`
+- `src/core/middleware/router_manager.py`
+- `src/core/middleware/startup_manager.py`
 
-## 二、结构导航
+## Directory Structure
 
-### 目录结构
+- `src/core/`: framework/runtime layer
+- `src/features/`: feature modules
+- `src/setting/`: config system and YAML assets
+- `src/shared/`: reusable shared capabilities
+- `tests/`: backend tests
 
-```
-src/
-├── core/                          # 核心基础设施
-│   ├── middleware/
-│   │   ├── app_factory.py         # create_app() 组装中间件、路由、限流
-│   │   ├── router_manager.py      # 所有 Router 懒加载注册到 /api/v1
-│   │   ├── startup_manager.py     # 生命周期: Redis→建表→模块初始化→arq Worker
-│   │   ├── base_exception_handler.py  # BaseAPIError + 自动 HTTP 状态码映射
-│   │   ├── trace_middleware.py     # ASGI 中间件, 每请求 trace_id
-│   │   ├── rate_limit.py          # slowapi 限流 (登录5/min、注册3/min 等)
-│   │   └── health_check.py        # /health 系列端点
-│   ├── database/
-│   │   ├── base.py                # BaseModel (id/created_at/updated_at)
-│   │   └── database.py            # get_db() 异步会话管理
-│   ├── auth/hashing.py            # Argon2 密码哈希
-│   └── security/config_validator.py  # 生产环境安全检查
-│
-├── features/{module}/             # 10 个业务模块 (DDD 分层；clawmate 用 api/core/schemas 结构)
-│   ├── api/
-│   │   ├── routes.py              # FastAPI 路由端点
-│   │   ├── dependencies.py        # Depends() 服务工厂注入
-│   │   ├── exceptions.py          # 异常类 (继承 BaseAPIError)
-│   │   ├── exception_handlers.py  # (可选) 自定义异常处理器
-│   │   └── startup.py             # 模块初始化 + 异常注册 (user/knowledge_space/agent/notification/clawmate 需要)
-│   ├── models/                    # SQLAlchemy ORM (继承 BaseModel)
-│   ├── schemas/                   # Pydantic v2 (*Base → *Create/*Update → *Response)
-│   ├── services/                  # 业务逻辑
-│   └── repository/                # 数据访问 (SQLAlchemy async)
-│
-├── setting/yaml_config/
-│   ├── config.py                  # 28 个子配置 dataclass: AppConfig 聚合所有子配置
-│   └── loader.py                  # YAML 多层叠加 + ${ENV_VAR} 替换 + get_config() 单例
-│
-└── shared/
-    ├── ai_models/                 # BaseLLM / BaseEmbedding / BaseRerank 抽象
-    │   ├── llm/                   # OpenAI / Anthropic / Ollama / Transformers
-    │   ├── embedding/             # OpenAI / Ollama / Transformers / DashScope多模态
-    │   └── rerank/                # OpenAI / Transformers
-    ├── cache/                     # Redis + LRU + 装饰器
-    ├── storage/                   # Elasticsearch (9种搜索+RRF) + MinIO
-    ├── mq/                        # arq Worker 文档处理 + 任务追踪
-    ├── prompts/templates.py       # PromptTemplate 枚举 50+ 模板
-    └── utils/
-        ├── document_readers/      # 5 种 Reader + 4 种 Splitter
-        ├── text_processing/       # 文本压缩 + Token 计数
-        ├── crypto.py              # AES-256-CBC API Key 加密
-        ├── file_validator.py      # Magic Number + MIME + 危险扩展名
-        ├── heartbeat.py           # SSE 心跳保活
-        ├── redact.py              # 敏感数据脱敏（压缩前清理）
-        └── time_utils.py          # 中国时区 now_china()
-```
+## Feature Module Contract
 
-### 数据流
+Each feature should follow this structure where applicable:
 
-```
-Route → Depends(service_factory) → Service → Repository → DB (get_db())
-                                                         → ES (搜索)
-                                                         → MinIO (文件)
-                                                         → Redis (缓存)
-                                                         → LLM (AI调用)
-```
+- `api/`: HTTP layer only
+- `services/`: business logic and orchestration
+- `repository/`: persistence access
+- `models/`: SQLAlchemy models
+- `schemas/`: Pydantic schemas
 
-### 关键约定
+Rules:
 
-- **路由注册:** 新路由必须在 `router_manager.py` 手动注册
-- **模块初始化:** 新模块必须在 `startup_manager.py` 注册 `register_feature_initializer`
-- **异常处理:** 所有业务异常继承 `BaseAPIError`，在 `startup.py` 注册
-- **数据库写入:** Repository 写操作用 `begin_nested()` (SAVEPOINT)
-- **配置文件:** `*.yaml` 已 gitignore，只提交 `*.example`
-- **无 ORM 模块:** clawmate 的 Session 纯内存管理、不持久化，故不参与建表、无 ORM 模型
+- Keep request validation in `schemas/`
+- Keep route handlers thin
+- Keep transaction-sensitive logic in services
+- Keep persistence queries in repository classes, not scattered through services
 
-## 三、测试步骤
+## Core Layer Rules
 
-### 环境准备
+`src/core/` is for application runtime concerns only:
 
-```bash
-cd backend
-source .venv/bin/activate                # Windows: .venv\Scripts\activate
-```
+- middleware
+- auth and security
+- app startup/shutdown
+- db session management
+- cross-cutting infrastructure
 
-### 单元测试
+Do not place feature business logic in `core/`.
 
-```bash
-pytest tests/ -m unit
-```
+## Shared Layer Rules
 
-### 集成测试（接口测试）
+`src/shared/` is for reusable capabilities across features, not a dumping ground.
 
-集成测试对实际运行的 API 端点发送 HTTP 请求，验证状态码、返回结构和业务逻辑。**需要先启动后端服务** (`python main.py`)。
+Allowed categories:
 
-```bash
-pytest tests/ -m integration
-```
+- `shared/clients/`: external service clients
+- `shared/cache/`: cache access
+- `shared/mq/`: async task runtime
+- `shared/prompts/`: shared prompts
+- `shared/utils/`: truly generic helpers
+- `shared/knowledge/`: knowledge-processing implementation
 
-| 测试文件 | 测试模块 | 验证内容 |
-|---------|---------|---------|
-| `tests/test_user_api.py` | user | 登录、注册、CRUD、Token 刷新、状态切换 |
-| `tests/test_knowledge_space_api.py` | knowledge_space | 空间/知识库/文档 CRUD、上传、搜索 |
-| `tests/test_qa_api.py` | qa | 消息 CRUD、会话管理 |
-| `tests/test_ai_chat_db.py` | qa (AI 对话) | 对话流程、附件处理 |
-| `tests/test_deep_research_api.py` | deep_research | 研究流程、历史查询 |
-| `tests/test_evaluation_api.py` | evaluation | 测试集上传、评估任务、报告 |
-| `tests/test_rag_pipeline.py` | knowledge_space (RAG) | 文档处理→切片→向量化→检索全链路 |
+If code is only used by one feature and expresses domain behavior, keep it in that feature instead of moving it into `shared/`.
 
-### 开发中的快速验证
+## Knowledge-Base Architecture
 
-```bash
-# 启动后端
-python main.py
+Canonical homes:
 
-# 健康检查 (确认所有依赖正常)
-curl http://localhost:8100/health/detailed
+- `src/features/knowledge_space/`: domain layer for documents, KB config, tasks, chunk lifecycle, APIs
+- `src/shared/knowledge/document_processing/`: text/document parsing implementation
+- `src/shared/knowledge/media_processing/`: audio/video/image multimodal processing
+- `src/shared/knowledge/integrations/deepdoc/`: DeepDoc-specific implementation
 
-# Swagger 文档 (手动测试接口)
-# 浏览器打开 http://localhost:8100/docs
-```
+Do not duplicate parsing logic under both `shared/utils/` and `shared/knowledge/`.
 
-### 新增功能的测试检查项
+## Import Rules
 
-1. 新路由已注册到 `router_manager.py`
-2. 新异常已在 `startup.py` 注册
-3. `pytest tests/ -m integration` 通过
-4. Swagger 文档中接口可正常调用
-5. 响应格式符合 `{"error": {"code": "...", "message": "..."}, "timestamp": "...", "request_id": "..."}`
+- Prefer absolute imports from `novamind...`
+- Avoid relative imports in cross-module shared code
+- Keep `__init__.py` exports minimal and intentional
+- Do not rely on path hacks when normal package imports can solve it
+
+## Coding Rules
+
+- Python 3.12+
+- 4-space indentation
+- Add type hints for service boundaries and shared-layer code
+- Keep async code async end-to-end where reasonable
+- Raise domain-meaningful errors instead of generic `Exception`
+- Log enough context for task failures, especially in parsing and MQ workflows
+
+## Testing Rules
+
+Run:
+
+- `pytest`
+- `pytest -m unit`
+- `pytest -m "not slow"`
+
+Guidelines:
+
+- Put tests in `backend/tests/`
+- Add focused regression tests for parsing bugs
+- Use `test_data/` fixtures when validating multimodal handling
+- When fixing pipeline issues, prefer at least one test that reproduces the original failure mode
+
+## Knowledge Processing Notes
+
+- Document parsing config and runtime config conversion must stay aligned
+- Media parsing should degrade gracefully when metadata is incomplete
+- External integrations like DeepDoc should be isolated behind shared adapters
+- Sample files under `test_data/output/` should remain usable for local verification
+
+## When Editing Backend Code
+
+- Check whether the target code belongs to `feature` or `shared`
+- Check for duplicate implementations before adding new helpers
+- Update docs if you change canonical paths or architecture guidance
+- If you touch imports, verify there is no second stale import path left behind

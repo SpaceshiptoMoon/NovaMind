@@ -68,3 +68,29 @@ defineProps<{
   configForm: TextParsingFormModel
 }>()
 </script>
+
+<style scoped>
+.text-strategy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.text-strategy-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(31, 41, 55, 0.08);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff, #fbf8f3);
+}
+
+.text-strategy-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f2937;
+  letter-spacing: 0.04em;
+}
+</style>

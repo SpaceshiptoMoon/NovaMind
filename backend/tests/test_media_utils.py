@@ -13,23 +13,30 @@ pytest.importorskip("av")
 from novamind.shared.knowledge.media_processing.video import extract_video_frames
 
 
-def test_extract_video_frames_mp4_sample():
-    video_path = Path(__file__).resolve().parents[2] / "test_data" / "output" / "video" / "01_novamind_demo.mp4"
-    frames = asyncio.run(extract_video_frames(video_path.read_bytes(), interval=5, max_frames=60))
-
-    assert frames, "mp4 样例视频应至少提取出一帧"
+def _assert_video_frames(path: Path) -> None:
+    frames = asyncio.run(extract_video_frames(path.read_bytes(), interval=5, max_frames=60))
+    assert frames, f"{path.name} 应至少提取出一帧"
     frame_bytes, timestamp, frame_index = frames[0]
     assert frame_bytes
     assert timestamp == 0
     assert frame_index == 0
+
+
+def test_extract_video_frames_mp4_sample():
+    video_path = Path(__file__).resolve().parents[2] / "test_data" / "output" / "video" / "01_novamind_demo.mp4"
+    _assert_video_frames(video_path)
 
 
 def test_extract_video_frames_mov_sample():
     video_path = Path(__file__).resolve().parents[2] / "test_data" / "output" / "video" / "02_novamind_demo.mov"
-    frames = asyncio.run(extract_video_frames(video_path.read_bytes(), interval=5, max_frames=60))
+    _assert_video_frames(video_path)
 
-    assert frames, "mov 样例视频应至少提取出一帧"
-    frame_bytes, timestamp, frame_index = frames[0]
-    assert frame_bytes
-    assert timestamp == 0
-    assert frame_index == 0
+
+def test_extract_video_frames_mkv_sample():
+    video_path = Path(__file__).resolve().parents[2] / "test_data" / "output" / "video" / "04_novamind_demo.mkv"
+    _assert_video_frames(video_path)
+
+
+def test_extract_video_frames_webm_sample():
+    video_path = Path(__file__).resolve().parents[2] / "test_data" / "output" / "video" / "05_novamind_demo.webm"
+    _assert_video_frames(video_path)

@@ -49,7 +49,7 @@ class DocumentTask(BaseModel):
     step_progress = Column(JSON, nullable=True, comment="Step progress")
     pipeline_result = Column(JSON, nullable=True, comment="Pipeline result")
     error_message = Column(Text, nullable=True, comment="Error message")
-    retry_count = Column(SmallInteger, default=0, nullable=False, comment="Retry count")
+    retry_count = Column(SmallInteger, default=0, nullable=False, comment="Auto retry count")
     queued_at = Column(DateTime, nullable=True, comment="Queued at")
     started_at = Column(DateTime, nullable=True, comment="Started at")
     completed_at = Column(DateTime, nullable=True, comment="Completed at")

@@ -1,21 +1,20 @@
 # ========================================
-# novamind - 一键部署 Docker Compose
+# NovaMind - One-Command Docker Compose
 # ========================================
-# 使用方式:
-#   启动所有服务: docker compose up -d
-#   查看日志:     docker compose logs -f
-#   停止所有服务: docker compose down
-#   重新构建:     docker compose up -d --build
+# Usage:
+#   docker compose up -d
+#   docker compose logs -f
+#   docker compose down
+#   docker compose up -d --build
 #
-# 前端 + 后端部署在同一个容器中，通过 Nginx 统一对外
-# 数据库等服务为独立容器
+# The `app` container serves:
+# - frontend static assets through Nginx
+# - backend API through `backend/main.py`
 #
-# 密码配置: 所有密码从 .env 文件读取，修改 .env 即可
+# Runtime config file mount:
+#   ./docker/configs/docker.yaml -> /app/src/setting/yaml_config/yaml/docker.yaml
 
 services:
-  # ================================
-  # 应用服务 (前端 + 后端 + Nginx)
-  # ================================
   app:
     build:
       context: .
@@ -38,9 +37,6 @@ services:
     networks:
       - app-network
 
-  # ================================
-  # MySQL 8.0
-  # ================================
   mysql:
     image: mysql:8.0
     container_name: novamind-mysql
@@ -67,9 +63,6 @@ services:
     networks:
       - app-network
 
-  # ================================
-  # Redis 7
-  # ================================
   redis:
     image: redis:7-alpine
     container_name: novamind-redis
@@ -86,9 +79,6 @@ services:
     networks:
       - app-network
 
-  # ================================
-  # MinIO 对象存储
-  # ================================
   minio:
     image: minio/minio
     container_name: novamind-minio
@@ -105,9 +95,6 @@ services:
     networks:
       - app-network
 
-  # ================================
-  # Elasticsearch 8.15
-  # ================================
   elasticsearch:
     image: elasticsearch:8.15.0
     container_name: novamind-elasticsearch
@@ -130,18 +117,12 @@ services:
     networks:
       - app-network
 
-# ================================
-# 持久化卷
-# ================================
 volumes:
   mysql-data:
   redis-data:
   minio-data:
   es-data:
 
-# ================================
-# 网络
-# ================================
 networks:
   app-network:
     driver: bridge

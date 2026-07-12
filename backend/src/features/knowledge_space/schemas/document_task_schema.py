@@ -20,7 +20,7 @@ class DocumentTaskItemResponse(BaseModel):
     step_progress: Optional[Dict[str, Any]] = Field(None, description="步骤进度")
     pipeline_result: Optional[Dict[str, Any]] = Field(None, description="处理结果")
     error_message: Optional[str] = Field(None, description="错误信息")
-    retry_count: int = Field(default=0, description="重试次数")
+    retry_count: int = Field(default=0, description="自动重试次数")
     queued_at: Optional[datetime] = Field(None, description="入队时间")
     started_at: Optional[datetime] = Field(None, description="开始处理时间")
     completed_at: Optional[datetime] = Field(None, description="完成时间")

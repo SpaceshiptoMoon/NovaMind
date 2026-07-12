@@ -154,7 +154,7 @@
                         </template>
                       </el-table-column>
 
-                      <el-table-column prop="retry_count" label="重试" width="74" align="center" />
+                      <el-table-column prop="retry_count" label="重试" width="84" align="center" />
 
                       <el-table-column label="完成时间" width="180">
                         <template #default="{ row }">{{ row.completed_at ? formatDateTime(row.completed_at) : '-' }}</template>

@@ -22,7 +22,7 @@ The current project already has:
 - frontend knowledge-base config page
 - runtime logic for text, image, video, and audio pipelines
 
-However, the current implementation still uses the old flat parsing structure:
+The current implementation is moving to a modality-first structure:
 
 ```json
 {
@@ -45,7 +45,7 @@ However, the current implementation still uses the old flat parsing structure:
 }
 ```
 
-This document describes the target structure and now also serves as the implementation reference for the current codebase.
+This document is the implementation reference for the current codebase.
 
 ## Design Goals
 
@@ -57,87 +57,54 @@ This document describes the target structure and now also serves as the implemen
 
 ## Target Config Structure
 
-Recommended target structure:
+Recommended structure:
 
 ```json
 {
-  "name": "Enterprise Knowledge Base",
-  "config": {
-    "description": "Knowledge base for internal enterprise documents",
-    "space_type": ["text", "image", "video", "audio"],
-    "splitting": {
-      "strategy": "recursive",
-      "chunk_size": 1000,
-      "chunk_overlap": 100,
-      "min_chunk_size": 500,
-      "max_chunk_size": 2000,
-      "similarity_threshold": 0.7,
-      "batch_size": 20,
-      "audio": {
-        "strategy": "sentence",
-        "chunk_size": 1000
+  "parsing": {
+    "text": {
+      "pdf": {
+        "strategy": "default | deepdoc",
+        "parser": "layout | plain | vision | docling | mineru | opendataloader | paddleocr | somark | tcadp",
+        "ocr_enabled": false
       },
-      "video": {
-        "strategy": "fixed",
-        "chunk_size": 1500
+      "docx": {
+        "strategy": "default | deepdoc"
+      },
+      "excel": {
+        "strategy": "default | deepdoc"
+      },
+      "ppt": {
+        "strategy": "default | deepdoc"
+      },
+      "epub": {
+        "strategy": "default | deepdoc"
+      },
+      "markdown": {
+        "strategy": "default | deepdoc"
+      },
+      "html": {
+        "strategy": "default | deepdoc"
+      },
+      "txt": {
+        "strategy": "default | deepdoc"
+      },
+      "json": {
+        "strategy": "default | deepdoc"
       }
     },
-    "parsing": {
-      "text": {
-        "pdf": {
-          "strategy": "deepdoc",
-          "parser": "layout",
-          "ocr_enabled": false
-        },
-        "docx": {
-          "strategy": "default"
-        },
-        "excel": {
-          "strategy": "default"
-        },
-        "ppt": {
-          "strategy": "default"
-        },
-        "epub": {
-          "strategy": "default"
-        },
-        "markdown": {
-          "strategy": "default"
-        },
-        "html": {
-          "strategy": "default"
-        },
-        "txt": {
-          "strategy": "default"
-        },
-        "json": {
-          "strategy": "default"
-        }
-      },
-      "image": {
-        "strategy": "ocr"
-      },
-      "video": {
-        "frame_interval": 5.0,
-        "max_frames": 60,
-        "vlm_description_enabled": true,
-        "vlm_model": null
-      },
-      "audio": {
-        "asr_model": "whisper-1",
-        "language": null
-      }
+    "image": {
+      "ocr_enabled": false,
+      "vlm_description_enabled": false,
+      "vlm_model": null
     },
-    "question_generation": {
-      "enabled": false,
-      "llm": {
-        "model": null,
-        "temperature": 0.3,
-        "top_p": 0.9,
-        "max_tokens": 2048
-      },
-      "max_questions_per_chunk": 5,
-      "prompt_template": null
+    "video": {
+      "frame_interval": 5.0,
+      "max_frames": 60
+    },
+    "audio": {
+      "asr_model": "whisper-1",
+      "language": null
     }
   }
 }

@@ -7,7 +7,7 @@
 - document_id ↔ job_id 追踪
 - resume session_id ↔ job_id 追踪
 """
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from novamind.core.middleware.structured_logging import get_logger
 
@@ -58,6 +58,8 @@ async def enqueue_process_document(
     batch_id: Optional[int] = None,
     pipeline_config: Optional[dict] = None,
     retry_count: int = 0,
+    session: Optional["AsyncSession"] = None,
+    batch_data: Optional[Dict[str, Any]] = None,
 ) -> dict:
     """
     将文档处理任务入队
@@ -71,6 +73,7 @@ async def enqueue_process_document(
         job_id: arq 任务 ID
     """
     from novamind.core.database.database import get_db_session
+    from novamind.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
     from novamind.features.knowledge_space.api.exceptions import DocumentAlreadyProcessingError, DocumentNotFoundError
     from novamind.features.knowledge_space.models.document_task import TaskStatus
     from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
@@ -80,16 +83,33 @@ async def enqueue_process_document(
 
     pool = await get_arq_pool()
 
-    # 1. 创建 DocumentTask 记录（快照 KB 配置）
-    async with get_db_session() as session:
-        doc_repo = DocumentRepository(session)
-        task_repo = DocumentTaskRepository(session)
-        document = await doc_repo.lock_active_document_by_id(document_id)
-        if not document:
-            raise DocumentNotFoundError(document_id)
-        active_task = await task_repo.get_active_by_document_id(document_id)
-        if active_task:
-            raise DocumentAlreadyProcessingError(document_id)
+    if session is None:
+        async with get_db_session() as session:
+            return await enqueue_process_document(
+                document_id=document_id,
+                kb_id=kb_id,
+                space_id=space_id,
+                batch_id=batch_id,
+                pipeline_config=pipeline_config,
+                retry_count=retry_count,
+                session=session,
+                batch_data=batch_data,
+            )
+
+    doc_repo = DocumentRepository(session)
+    task_repo = DocumentTaskRepository(session)
+    batch_repo = DocumentTaskBatchRepository(session)
+    document = await doc_repo.lock_active_document_by_id(document_id)
+    if not document:
+        raise DocumentNotFoundError(document_id)
+    active_task = await task_repo.get_active_by_document_id(document_id)
+    if active_task:
+        raise DocumentAlreadyProcessingError(document_id)
+
+    try:
+        if batch_id is None and batch_data is not None:
+            created_batch = await batch_repo.create(batch_data)
+            batch_id = created_batch.id
 
         task = await task_repo.create({
             "batch_id": batch_id,
@@ -101,8 +121,8 @@ async def enqueue_process_document(
             "retry_count": retry_count,
             "queued_at": now_china(),
         })
+        await session.commit()
 
-        # 2. 入队 arq job
         job = await pool.enqueue_job(
             "process_document_task",
             document_id=document_id,
@@ -111,10 +131,11 @@ async def enqueue_process_document(
         )
 
         job_id = job.job_id
-
-        # 3. 回写 job_id 到任务记录
         task.job_id = job_id
         await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
 
     # 4. 绑定 Redis 追踪映射
     await bind_job_to_document(document_id, job_id)

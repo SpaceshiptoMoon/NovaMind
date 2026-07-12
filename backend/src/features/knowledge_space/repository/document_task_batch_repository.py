@@ -30,10 +30,23 @@ class DocumentTaskBatchRepository:
         result = await self.session.execute(select(DocumentTaskBatch).where(DocumentTaskBatch.id == batch_id))
         return result.scalar_one_or_none()
 
+    async def delete(self, batch_id: int) -> bool:
+        batch = await self.get_by_id(batch_id)
+        if not batch:
+            return False
+        await self.session.delete(batch)
+        await self.session.flush()
+        return True
+
     async def list_by_kb(self, kb_id: int, skip: int = 0, limit: int = 50) -> List[DocumentTaskBatch]:
         result = await self.session.execute(
             select(DocumentTaskBatch)
             .where(DocumentTaskBatch.kb_id == kb_id)
+            .where(
+                select(func.count(DocumentTask.id))
+                .where(DocumentTask.batch_id == DocumentTaskBatch.id)
+                .scalar_subquery() > 0
+            )
             .order_by(desc(DocumentTaskBatch.id))
             .offset(skip)
             .limit(limit)
@@ -42,7 +55,13 @@ class DocumentTaskBatchRepository:
 
     async def count_by_kb(self, kb_id: int) -> int:
         result = await self.session.execute(
-            select(func.count(DocumentTaskBatch.id)).where(DocumentTaskBatch.kb_id == kb_id)
+            select(func.count(DocumentTaskBatch.id))
+            .where(DocumentTaskBatch.kb_id == kb_id)
+            .where(
+                select(func.count(DocumentTask.id))
+                .where(DocumentTask.batch_id == DocumentTaskBatch.id)
+                .scalar_subquery() > 0
+            )
         )
         return result.scalar() or 0
 

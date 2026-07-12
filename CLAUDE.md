@@ -1,92 +1,141 @@
 # CLAUDE.md
 
-## 一、项目介绍
+## Project Overview
 
-**NovaMind** — 开源智能知识库系统。FastAPI (Python 3.12+) 后端 + Vue 3 (TypeScript) 前端。支持文档管理、向量检索、多模型 Q&A、深度研究、知识库评估、AI Agent、技能市场、简历挖掘。
+NovaMind is a full-stack intelligent knowledge-base platform.
 
-### 技术栈
+- `backend/`: FastAPI backend, domain services, parsing pipeline, retrieval, AI integrations
+- `frontend/`: Vue 3 + TypeScript frontend, workspace UI, knowledge-base UI, agent UI
+- `docs/`: architecture, design decisions, restructuring plans, handover notes
+- `docker/`: container build and runtime assets
+- `test_data/`: local fixtures for text, image, audio, and video processing
 
-| 层 | 技术 |
-|---|---|
-| 后端 | Python 3.12+ + FastAPI + SQLAlchemy 2.0 (async) + Pydantic v2 |
-| 前端 | Vue 3 + TypeScript + Pinia 3 + Element Plus + Vite |
-| 数据库 | MySQL 8.0 + Elasticsearch 8.15 + Redis 7 |
-| 存储 | MinIO (文档/附件) |
-| 认证 | JWT (access + refresh) + Argon2 |
-| 部署 | Docker 单容器 (Nginx + FastAPI + Supervisord) |
+## Repository Layout
 
-### 目录结构
-
-```
-intelligent/
-├── backend/src/
-│   ├── core/            # 基础设施：app工厂、数据库、认证、安全、中间件
-│   ├── features/        # 8 个业务模块 (user/knowledge_space/qa/deep_research/evaluation/agent/skill/app)
-│   ├── setting/         # YAML 多层配置
-│   └── shared/          # AI模型抽象、缓存、存储、文档处理、消息队列、Prompt模板
-├── frontend/src/
-│   ├── api/             # 15 个 API 模块 + Axios + SSE 客户端
-│   ├── stores/          # 7 个 Pinia Store
-│   ├── views/           # 页面视图 (按域组织)
-│   ├── layouts/         # Auth / Main / Workspace 三层布局 + AppHeader
-│   ├── components/      # 按通用 / chat / knowledge 等领域组织的前端组件
-│   ├── router/          # 路由定义 + 守卫
-│   ├── types/           # TypeScript 类型定义 + RouteMeta 扩展
-│   ├── utils/           # 工具函数 (markdown/document/format)
-│   └── assets/          # CSS 样式
-├── docker/              # Dockerfile、nginx.conf、supervisord.conf
-├── assets/              # 项目静态资源
-├── logs/                # 运行日志
-├── deploy.sh            # Linux 部署脚本
-├── deploy.ps1           # Windows 部署脚本
-├── docker-compose.yml   # Docker Compose 编排
-└── docs/project-structure-navigation.md  # 详细项目结构导航
+```text
+backend/
+frontend/
+docs/
+docker/
+test_data/
+deploy.ps1
+deploy.sh
+docker-compose.yml
 ```
 
-> 详细的项目结构、所有文件路径、API 端点和前端路由请参考 [project-structure-navigation.md](docs/project-structure-navigation.md)。
+## Core Development Principles
 
-### 后端 DDD 分层
+- Prefer clear module ownership over convenience imports.
+- Keep business logic inside feature services, not route handlers.
+- Put shared cross-feature capabilities into `backend/src/shared/`, but only when they are truly reusable.
+- Keep knowledge-base parsing, media processing, and external parser integration grouped under `backend/src/shared/knowledge/`.
+- Avoid creating duplicate utility layers. If a capability already has a canonical home, extend that home instead of adding a second implementation elsewhere.
+- When changing API contracts, update backend schema, frontend types, and docs together.
 
-每个 `backend/src/features/{module}/` 遵循统一结构：
+## Backend Structure
 
-```
-api/          → 路由 (routes.py) + DI工厂 (dependencies.py) + 异常 (exceptions.py) + 启动 (startup.py)
-models/       → SQLAlchemy ORM (继承 BaseModel)
-schemas/      → Pydantic v2 (*Base → *Create/*Update → *Response)
-services/     → 业务逻辑
-repository/   → 数据访问 (SQLAlchemy async)
-```
+Main backend areas:
 
-**数据流:** Route → `Depends(service_factory)` → Service → Repository → DB (`get_db()`)
+- `backend/main.py`: backend entry point
+- `backend/src/core/`: app factory, middleware, lifecycle, database, security, shared runtime infrastructure
+- `backend/src/features/`: feature-oriented domain modules
+- `backend/src/setting/`: configuration loading and YAML config assets
+- `backend/src/shared/`: reusable shared capabilities
 
-### 功能模块路由
+Feature modules should stay organized as:
 
-| 模块 | 后端路由前缀 | 前端页面路由 |
-|------|-------------|-------------|
-| user | `/api/v1/user` | `/login`, `/home/profile`, `/home/settings/models`, `/home/admin/users` |
-| knowledge_space | `/api/v1/spaces` | `/home/spaces`, `/home/spaces/:id/knowledge-bases`, `.../config`, `.../search`, `.../evaluation` |
-| qa | `/api/v1/ai-chat`, `/api/v1/qa` | `/home/workspace/chat` |
-| deep_research | `/api/v1/spaces/{id}/deep-research` | `/home/workspace/research/:spaceId` |
-| agent | `/api/v1/agent` | `/home/workspace/agents`, `/home/workspace/agents/:agentId/chat` |
-| skill | `/api/v1/skills` | `/home/workspace/skills` |
-| app | `/api/v1/apps` | `/home/apps/resume` |
-| notification | `/api/v1/notifications` | `/home/notifications` |
-| clawmate | `/api/v1/clawmate` | `/home/workspace/clawmate` |
+- `api/`: FastAPI route layer only
+- `services/`: business workflows and orchestration
+- `repository/`: database access
+- `models/`: ORM models
+- `schemas/`: request/response and internal Pydantic models
 
-> 每个模块的完整 API 端点清单和对应源码文件见 [project-structure-navigation.md](docs/project-structure-navigation.md)。
+## Knowledge-Base Canonical Homes
 
-### 关键基础设施
+Knowledge-base related code should use these canonical locations:
 
-- **App 工厂:** `core/middleware/app_factory.py` — 组装中间件、异常、路由、限流
-- **路由注册:** `core/middleware/router_manager.py` — 懒加载注册所有 Router 到 `/api/v1`
-- **数据库:** SQLAlchemy 2.0 async + `aiomysql`，`get_db()` 自动 commit/rollback，写操作用 `begin_nested()` (SAVEPOINT)
-- **认证链:** `HTTPBearer()` → `get_current_user()` (JWT + Redis 黑名单) → `require_admin()` / `require_active_user()`
-- **配置:** YAML 多层叠加 `default.yaml → {env}.yaml → local.yaml`，`${ENV_VAR}` 替换，线程安全单例 `get_config()`
-- **异常:** `BaseAPIError` 子类 + 后缀自动映射 (`_NOT_FOUND→404`, `_ALREADY_EXISTS→409`)
-- **AI 模型:** `BaseLLM` / `BaseEmbedding` / `BaseRerank` 抽象类，凭据存 DB 从 YAML 同步
+- `backend/src/features/knowledge_space/`: knowledge-base domain behavior, tasks, APIs, schemas, repositories
+- `backend/src/shared/knowledge/document_processing/`: text and document parsing pipeline
+- `backend/src/shared/knowledge/media_processing/`: audio, video, OCR, VLM, and multimodal processing
+- `backend/src/shared/knowledge/integrations/deepdoc/`: DeepDoc integration only
 
----
+Generic helpers that are not knowledge-specific belong under:
 
+- `backend/src/shared/utils/`
+
+`shared/utils/` should only contain generic utilities such as time, crypto, redact, heartbeat, and truly generic text helpers. It should not become a second home for parser logic, media workflows, or vendor integrations.
+
+## Frontend Structure
+
+Main frontend areas:
+
+- `frontend/src/api/`: API clients grouped by domain
+- `frontend/src/components/`: reusable UI components grouped by domain
+- `frontend/src/views/`: route-level pages
+- `frontend/src/stores/`: Pinia stores
+- `frontend/src/router/`: route registration
+- `frontend/src/layouts/`: application shells
+- `frontend/src/types/`: shared TS types
+
+Knowledge-base UI should stay concentrated in:
+
+- `frontend/src/api/knowledge/`
+- `frontend/src/components/knowledge/`
+- `frontend/src/views/space/`
+
+## Coding Conventions
+
+### Python
+
+- Python 3.12+
+- 4-space indentation
+- `snake_case` for functions, modules, variables
+- `PascalCase` for classes
+- Keep async boundaries explicit
+- Prefer absolute imports from `novamind...`
+- Do not hide side effects inside utility functions
+
+### TypeScript / Vue
+
+- 2-space indentation
+- `PascalCase` for Vue components and route views
+- `camelCase` for stores, composables, and helpers
+- Keep API types close to API modules
+- Prefer explicit props and emitted event typing
+- Keep page orchestration in views, reusable presentation in components
+
+## Validation Workflow
+
+### Backend
+
+- Install: `cd backend && pip install .`
+- Run dev server: `python main.py --config development --reload`
+- Run tests: `pytest`
+- Prefer targeted tests when touching parsing, document tasks, retrieval, or shared infra
+
+### Frontend
+
+- Install: `cd frontend && npm install`
+- Run dev server: `npm run dev`
+- Type check: `npm run type-check`
+- Lint: `npm run lint`
+- Format: `npm run format`
+- Build: `npm run build`
+
+## Change Rules
+
+- Do not move files casually; preserve stable import boundaries unless there is a real structure fix.
+- Do not add new top-level folders without a strong reason.
+- When reorganizing folders, update docs and import paths in the same change.
+- For parsing pipeline changes, verify both runtime code and sample fixtures in `test_data/`.
+- For knowledge-base config changes, keep backend schema, frontend forms, and persisted config structure aligned.
+
+## Important Documentation
+
+- `docs/project-structure-navigation.md`
+- `docs/knowledge-space/knowledge-architecture-navigation.md`
+- `docs/knowledge-space/knowledge-config-structure-design.md`
+- `docs/plans/repository-structure-cleanup-plan.md`
 ## 二、开发步骤
 
 严格遵守以下流程，**不可跳步，不可省略任何环节**：

@@ -405,6 +405,8 @@ async def get_document_tasks_overview(
     for batch in batches:
         refreshed_batch = await batch_repo.refresh_summary(batch.id) or batch
         tasks = await task_repo.list_by_batch(batch.id)
+        if not tasks:
+            continue
         item = DocumentTaskResponse.model_validate(refreshed_batch)
         item.items = [DocumentTaskItemResponse.model_validate(t) for t in tasks]
         items.append(item)
@@ -570,19 +572,15 @@ async def process_document(
     """触发单文档拆分解析"""
     await validate_kb_writable(kb_id, space_id, db)
 
-    batch = await document_service.create_task_batch(
-        document_id=document_id,
-        user_id=user_id,
-        action=BatchAction.PROCESS,
-        note="单文档处理",
-    )
     result = await document_service.process_document(
         document_id=document_id,
-        batch_id=batch.id,
+        batch_creator_id=user_id,
+        batch_action=BatchAction.PROCESS,
+        batch_note="单文档处理",
     )
     return DocumentProcessResponse(
         document_id=result["document"].id,
-        task_id=batch.id,
+        task_id=result["parent_task_id"],
         task_item_id=result["task_id"],
     )
 
@@ -633,19 +631,14 @@ async def reprocess_document(
     """重新解析文档"""
     await validate_kb_writable(kb_id, space_id, db)
 
-    batch = await document_service.create_task_batch(
-        document_id=document_id,
-        user_id=user_id,
-        action=BatchAction.REPROCESS,
-        note="单文档重新处理",
-    )
     result = await document_service.reprocess_document(
         document_id=document_id,
-        batch_id=batch.id,
+        batch_creator_id=user_id,
+        batch_note="单文档重新处理",
     )
     return DocumentProcessResponse(
         document_id=result["document"].id,
-        task_id=batch.id,
+        task_id=result["parent_task_id"],
         task_item_id=result["task_id"],
     )
 
@@ -690,19 +683,14 @@ async def retry_document_processing(
     """重试失败或已完成的文档处理（先清除旧分块再重新解析）"""
     await validate_kb_writable(kb_id, space_id, db)
 
-    batch = await document_service.create_task_batch(
-        document_id=document_id,
-        user_id=user_id,
-        action=BatchAction.RETRY,
-        note="单文档重试处理",
-    )
     result = await document_service.retry_document(
         document_id=document_id,
-        batch_id=batch.id,
+        batch_creator_id=user_id,
+        batch_note="单文档重试处理",
     )
     return DocumentProcessResponse(
         document_id=result["document"].id,
-        task_id=batch.id,
+        task_id=result["parent_task_id"],
         task_item_id=result["task_id"],
         status="processing",
         message="文档重试已开始处理",

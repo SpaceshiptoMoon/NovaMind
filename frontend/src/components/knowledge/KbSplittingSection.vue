@@ -125,3 +125,24 @@ defineProps<{
   hasVideo: boolean
 }>()
 </script>
+
+<style scoped>
+:deep(.el-radio-group) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+:deep(.el-radio) {
+  margin-right: 0;
+  padding: 10px 14px;
+  border: 1px solid rgba(31, 41, 55, 0.08);
+  border-radius: 999px;
+  background: #fff;
+}
+
+:deep(.el-radio.is-checked) {
+  border-color: rgba(177, 77, 34, 0.38);
+  background: rgba(177, 77, 34, 0.08);
+}
+</style>

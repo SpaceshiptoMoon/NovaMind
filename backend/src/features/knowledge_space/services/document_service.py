@@ -949,6 +949,9 @@ class DocumentService:
         document_id: int,
         *,
         batch_id: Optional[int] = None,
+        batch_creator_id: Optional[int] = None,
+        batch_action: BatchAction = BatchAction.PROCESS,
+        batch_note: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         触发单文档拆分解析。
@@ -985,7 +988,14 @@ class DocumentService:
         if not kb.is_active():
             raise KnowledgeBaseNotFoundError(document.kb_id)
 
-        task_info = await self._enqueue_document_processing(document, "处理", batch_id=batch_id)
+        task_info = await self._enqueue_document_processing(
+            document,
+            "处理",
+            batch_id=batch_id,
+            batch_creator_id=batch_creator_id,
+            batch_action=batch_action,
+            batch_note=batch_note,
+        )
         return {"document": document, **task_info}
 
     async def process_kb_documents(
@@ -1062,6 +1072,19 @@ class DocumentService:
                     "message": str(e),
                 })
 
+        created_task_count = sum(1 for r in results if r.get("task_item_id"))
+        if created_task_count == 0:
+            await batch_repo.delete(batch.id)
+            await self.session.commit()
+            return {
+                "task_id": None,
+                "total": len(results),
+                "success": 0,
+                "failed": sum(1 for r in results if r["status"] == "failed"),
+                "skipped": sum(1 for r in results if r["status"] == "skipped"),
+                "results": results,
+            }
+
         return {
             "task_id": batch.id,
             "total": len(results),
@@ -1076,6 +1099,8 @@ class DocumentService:
         document_id: int,
         *,
         batch_id: Optional[int] = None,
+        batch_creator_id: Optional[int] = None,
+        batch_note: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         重新解析文档（清除旧 chunk，按当前 config 重新切分）
@@ -1102,7 +1127,14 @@ class DocumentService:
             self.logger.warning("清除 ES 旧分块失败", document_id=document.id, error=str(e))
 
         # 2. 先入队（失败则不创建任务）
-        task_info = await self._enqueue_document_processing(document, "重新解析", batch_id=batch_id)
+        task_info = await self._enqueue_document_processing(
+            document,
+            "重新解析",
+            batch_id=batch_id,
+            batch_creator_id=batch_creator_id,
+            batch_action=BatchAction.REPROCESS,
+            batch_note=batch_note,
+        )
         return {"document": document, **task_info}
 
     async def retry_document(
@@ -1110,6 +1142,8 @@ class DocumentService:
         document_id: int,
         *,
         batch_id: Optional[int] = None,
+        batch_creator_id: Optional[int] = None,
+        batch_note: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         重试文档处理（支持 FAILED 和 COMPLETED 任务状态）
@@ -1139,7 +1173,6 @@ class DocumentService:
                 "只能重试失败或已完成的文档",
                 field="document_id",
             )
-
         # 1. 清除 ES 旧分块（best effort，失败不阻塞）
         try:
             await self.es_client.delete_document_chunks(
@@ -1154,7 +1187,11 @@ class DocumentService:
             document,
             "重试",
             batch_id=batch_id,
-            retry_count=(latest_task.retry_count or 0) + 1,
+            batch_creator_id=batch_creator_id,
+            batch_action=BatchAction.RETRY,
+            batch_note=batch_note,
+            retry_count=0,
+            pipeline_config_override=latest_task.pipeline_config,
         )
 
         self.logger.info(
@@ -1207,7 +1244,11 @@ class DocumentService:
         log_label: str = "处理",
         *,
         batch_id: Optional[int] = None,
+        batch_creator_id: Optional[int] = None,
+        batch_action: BatchAction = BatchAction.PROCESS,
+        batch_note: Optional[str] = None,
         retry_count: int = 0,
+        pipeline_config_override: Optional[dict] = None,
     ):
         """创建任务记录并入队文档处理"""
         from novamind.shared.mq.task_tracker import is_document_actively_processing
@@ -1216,15 +1257,28 @@ class DocumentService:
             raise DocumentAlreadyProcessingError(document.id)
 
         kb = await self.kb_repo.get_by_id(document.kb_id)
+        pipeline_config = pipeline_config_override if pipeline_config_override is not None else (kb.get_config() if kb else None)
 
         from novamind.shared.mq import enqueue_process_document
+        batch_data = None
+        if batch_id is None and batch_creator_id is not None:
+            batch_data = {
+                "space_id": document.space_id,
+                "kb_id": document.kb_id,
+                "creator_id": batch_creator_id,
+                "action": batch_action,
+                "total_count": 1,
+                "note": batch_note,
+            }
         return await enqueue_process_document(
             document_id=document.id,
             kb_id=document.kb_id,
             space_id=document.space_id,
             batch_id=batch_id,
-            pipeline_config=kb.get_config() if kb else None,
+            pipeline_config=pipeline_config,
             retry_count=retry_count,
+            session=self.session,
+            batch_data=batch_data,
         )
 
 

@@ -70,7 +70,9 @@ async def process_document_task(
         batch_repo = DocumentTaskBatchRepository(session)
 
         # 1. 幂等性校验：仅处理合法状态的任务
-        task = await task_repo.get_by_document_id(document_id)
+        task = await task_repo.get_by_job_id(job_id) if job_id != "unknown" else None
+        if not task:
+            task = await task_repo.get_by_document_id(document_id)
         if not task:
             logger.warning("任务不存在，跳过处理", document_id=document_id)
             await unbind_job(document_id)
@@ -168,9 +170,11 @@ async def process_document_task(
                 await session.rollback()
 
                 # 强制标记 FAILED（优先用独立 session，兜底用 raw SQL）
-                await _ensure_mark_failed(document_id, str(e))
+                await _ensure_mark_failed(document_id, str(e), job_id=job_id)
                 if task.batch_id:
-                    refreshed = await task_repo.get_by_document_id(document_id)
+                    refreshed = await task_repo.get_by_job_id(job_id) if job_id != "unknown" else None
+                    if not refreshed:
+                        refreshed = await task_repo.get_by_document_id(document_id)
                     if refreshed and refreshed.batch_id:
                         await batch_repo.refresh_summary(refreshed.batch_id)
                         await session.commit()
@@ -189,12 +193,52 @@ async def process_document_task(
                 await unbind_job(document_id)
                 # 最终失败不再 raise，避免 arq 尝试无效重试
             else:
-                # 非最终重试：回滚让 arq 重试
                 await session.rollback()
+                await _mark_retrying(
+                    document_id=document_id,
+                    retry_count=retry_count + 1,
+                    max_tries=max_tries,
+                    error_message=str(e),
+                    job_id=job_id,
+                )
                 raise
 
 
-async def _ensure_mark_failed(document_id: int, error_message: str) -> None:
+async def _mark_retrying(
+    document_id: int,
+    retry_count: int,
+    max_tries: int,
+    error_message: str,
+    *,
+    job_id: Optional[str] = None,
+) -> None:
+    """把任务项更新为自动重试中的可见状态。"""
+    from novamind.core.database.database import get_db_session
+    from novamind.features.knowledge_space.models.document_task import TaskStatus
+    from novamind.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
+    from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+
+    async with get_db_session() as session:
+        repo = DocumentTaskRepository(session)
+        batch_repo = DocumentTaskBatchRepository(session)
+        task = await repo.get_by_job_id(job_id) if job_id else None
+        if not task:
+            task = await repo.get_by_document_id(document_id)
+        if not task:
+            return
+
+        task.retry_count = retry_count
+        task.status = TaskStatus.PENDING
+        task.error_message = f"[自动重试 {retry_count}/{max_tries}] {error_message[:300]}"
+        task.queued_at = now_china()
+        task.started_at = None
+        task.completed_at = None
+        if task.batch_id:
+            await batch_repo.refresh_summary(task.batch_id)
+        await session.commit()
+
+
+async def _ensure_mark_failed(document_id: int, error_message: str, *, job_id: Optional[str] = None) -> None:
     """
     强制将文档标记为 FAILED，三层兜底确保状态一定更新
 
@@ -215,7 +259,9 @@ async def _ensure_mark_failed(document_id: int, error_message: str) -> None:
         async with get_db_session() as independent_session:
             repo = DocumentTaskRepository(independent_session)
             batch_repo = DocumentTaskBatchRepository(independent_session)
-            task = await repo.get_by_document_id(document_id)
+            task = await repo.get_by_job_id(job_id) if job_id else None
+            if not task:
+                task = await repo.get_by_document_id(document_id)
             if task:
                 task.mark_failed(failed_msg)
                 if task.batch_id:
@@ -236,11 +282,13 @@ async def _ensure_mark_failed(document_id: int, error_message: str) -> None:
             await conn.execute(
                 text(
                     "UPDATE document_task_items SET status=:status, completed_at=:now, "
-                    "error_message=:msg WHERE document_id=:id AND status=:processing"
+                    "error_message=:msg WHERE "
+                    + ("job_id=:job_id" if job_id else "document_id=:id AND status=:processing")
                 ),
                 {
                     "msg": failed_msg[:500],
                     "id": document_id,
+                    "job_id": job_id,
                     "now": failed_at,
                     "status": TaskStatus.FAILED,
                     "processing": TaskStatus.PROCESSING,
@@ -534,7 +582,7 @@ async def recover_orphan_documents() -> int:
 
             if retry_count >= 3:
                 # 超过恢复次数限制，直接标记失败
-                task.mark_failed("[恢复重试次数超限，需人工介入]")
+                task.mark_failed("[自动重试次数超限，需人工介入]")
                 task.retry_count = retry_count + 1
                 await session.commit()
                 logger.warning(

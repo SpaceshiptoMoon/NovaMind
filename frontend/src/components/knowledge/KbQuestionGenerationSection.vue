@@ -56,3 +56,14 @@ defineProps<{
   configForm: QuestionGenerationFormModel
 }>()
 </script>
+
+<style scoped>
+.qg-fieldset {
+  border-radius: 20px;
+}
+
+:deep(.el-textarea__inner) {
+  border-radius: 16px;
+  line-height: 1.7;
+}
+</style>

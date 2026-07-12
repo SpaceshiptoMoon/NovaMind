@@ -259,8 +259,10 @@ async def upload_parsed_text_to_minio(document, full_text: str, logger) -> str:
         minio_client = await ClientFactory.get_minio_client()
         await minio_client.upload_file(object_name, data, "text/markdown; charset=utf-8")
 
-        storage["parsed_text_object"] = object_name
-        document.storage = storage
+        document.storage = {
+            **storage,
+            "parsed_text_object": object_name,
+        }
 
         logger.info(
             "解析全文已上传 MinIO", document_id=document.id,
