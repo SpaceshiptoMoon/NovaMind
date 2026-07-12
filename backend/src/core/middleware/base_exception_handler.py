@@ -8,7 +8,9 @@
 import traceback
 from typing import Callable, Dict, Any, List, ClassVar
 from fastapi import Request
+from fastapi import HTTPException
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.utils.time_utils import now_china
@@ -326,6 +328,59 @@ async def validation_exception_handler(request: Request, exc) -> JSONResponse:
     )
 
 
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    """
+    HTTPException 处理器
+
+    重点记录 FastAPI / Starlette 在进入路由前抛出的 4xx 异常，
+    例如 multipart/form-data 解析失败。
+    """
+    trace_id = getattr(request.state, "trace_id", "no-trace")
+
+    logger.warning(
+        "HTTP 异常",
+        trace_id=trace_id,
+        status_code=exc.status_code,
+        detail=exc.detail,
+        path=request.url.path,
+        method=request.method,
+    )
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": exc.detail,
+            "timestamp": now_china().isoformat(),
+        },
+    )
+
+
+async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    """
+    Starlette HTTPException 处理器
+
+    兼容 multipart/form-data 解析阶段的异常。
+    """
+    trace_id = getattr(request.state, "trace_id", "no-trace")
+
+    logger.warning(
+        "Starlette HTTP 异常",
+        trace_id=trace_id,
+        status_code=exc.status_code,
+        detail=exc.detail,
+        path=request.url.path,
+        method=request.method,
+    )
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": exc.detail,
+            "timestamp": now_china().isoformat(),
+        },
+    )
+
+
 def setup_global_exception_handlers(app) -> None:
     """
     设置全局异常处理器
@@ -337,6 +392,8 @@ def setup_global_exception_handlers(app) -> None:
 
     # 请求验证异常
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(HTTPException, http_exception_handler)
+    app.add_exception_handler(StarletteHTTPException, starlette_http_exception_handler)
 
     # 全局异常兜底
     app.add_exception_handler(Exception, global_exception_handler)

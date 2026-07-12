@@ -250,7 +250,7 @@ class DocumentInvalidTypeError(KnowledgeSpaceError):
 
         message = f"不支持的文件类型: {normalized_type or '[empty]'}"
         if normalized_type in {".doc", "doc"}:
-            message += "。请先将 .doc 转成 .docx 后再上传"
+            message += "。当前支持 .doc，系统会在上传后自动转换为 .docx"
         if allowed:
             message += f"。当前支持: {', '.join(allowed)}"
 
@@ -260,6 +260,18 @@ class DocumentInvalidTypeError(KnowledgeSpaceError):
         )
         self.file_type = normalized_type
         self.allowed = allowed
+
+
+class DocumentConversionError(KnowledgeSpaceError):
+    """文档转换失败"""
+    _serializable_attrs: ClassVar[List[str]] = ["file_type"]
+
+    def __init__(self, message: str, file_type: str = "doc"):
+        super().__init__(
+            message=message,
+            code="DOCUMENT_CONVERSION_FAILED",
+        )
+        self.file_type = file_type
 
 
 class DocumentSizeExceededError(KnowledgeSpaceError):

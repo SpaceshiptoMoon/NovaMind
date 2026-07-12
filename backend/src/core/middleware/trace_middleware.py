@@ -71,6 +71,8 @@ class TraceIDMiddleware:
         path = scope.get("path", "")
         method = scope.get("method", "")
         should_log = self._should_log_request(path)
+        content_type = headers.get(b"content-type")
+        content_length = headers.get(b"content-length")
 
         start_time = time.time()
 
@@ -79,6 +81,8 @@ class TraceIDMiddleware:
                 "请求开始",
                 endpoint=path,
                 method=method,
+                content_type=content_type.decode() if content_type else None,
+                content_length=content_length.decode() if content_length else None,
             )
 
         async def send_with_trace_id(message: Message) -> None:

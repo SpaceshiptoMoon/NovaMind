@@ -6,6 +6,7 @@ OpenAI、智谱 AI、阿里云 DashScope、硅基流动等
 """
 
 import asyncio
+import traceback
 from typing import Optional
 
 import httpx
@@ -114,13 +115,23 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
     async def generate_embedding(self, text: str) -> list[float]:
         """生成单个文本的嵌入向量（带重试和并发控制）"""
         async with self._get_semaphore():
-            response = await self.client.embeddings.create(
-                model=self.model,
-                input=text,
-            )
-            embedding = response.data[0].embedding
-            self._validate_dimension(embedding)
-            return embedding
+            try:
+                response = await self.client.embeddings.create(
+                    model=self.model,
+                    input=text,
+                )
+                embedding = response.data[0].embedding
+                self._validate_dimension(embedding)
+                return embedding
+            except Exception as e:
+                logger.error(
+                    "Embedding 请求失败",
+                    model=self.model,
+                    base_url=self.base_url,
+                    error=str(e),
+                    traceback=traceback.format_exc(),
+                )
+                raise
 
     async def generate_embeddings_batch(
         self, texts: list[str], batch_size: int = 10
@@ -146,14 +157,25 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
     async def _generate_batch(self, batch_texts: list[str]) -> list[list[float]]:
         """单批次生成嵌入向量（带重试和并发控制）"""
         async with self._get_semaphore():
-            response = await self.client.embeddings.create(
-                model=self.model,
-                input=batch_texts,
-            )
-            batch_embeddings = [data.embedding for data in response.data]
-            for embedding in batch_embeddings:
-                self._validate_dimension(embedding)
-            return batch_embeddings
+            try:
+                response = await self.client.embeddings.create(
+                    model=self.model,
+                    input=batch_texts,
+                )
+                batch_embeddings = [data.embedding for data in response.data]
+                for embedding in batch_embeddings:
+                    self._validate_dimension(embedding)
+                return batch_embeddings
+            except Exception as e:
+                logger.error(
+                    "批量 Embedding 请求失败",
+                    model=self.model,
+                    base_url=self.base_url,
+                    batch_size=len(batch_texts),
+                    error=str(e),
+                    traceback=traceback.format_exc(),
+                )
+                raise
 
     async def embed_batch(self, texts: list[str], batch_size: int = 32) -> list[list[float]]:
         """批量生成嵌入向量（别名方法）"""

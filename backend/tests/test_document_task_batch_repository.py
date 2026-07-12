@@ -60,6 +60,7 @@ async def _run_repository_check() -> None:
                     kb_id=1,
                     creator_id=1,
                     action=BatchAction.PROCESS,
+                    pipeline_config={"parsing": {"text": {"strategy": "deepdoc"}}},
                     total_count=0,
                     note="empty batch",
                 ),
@@ -69,6 +70,7 @@ async def _run_repository_check() -> None:
                     kb_id=1,
                     creator_id=1,
                     action=BatchAction.PROCESS,
+                    pipeline_config={"parsing": {"text": {"strategy": "default"}}},
                     total_count=1,
                     note="active batch",
                 ),
@@ -95,6 +97,7 @@ async def _run_repository_check() -> None:
         assert [batch.id for batch in batches] == [101]
         assert refreshed is not None
         assert refreshed.total_count == 1
+        assert refreshed.pipeline_config == {"parsing": {"text": {"strategy": "default"}}}
         assert refreshed.task_summary == {
             "pending": 1,
             "processing": 0,

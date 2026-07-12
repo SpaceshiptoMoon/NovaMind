@@ -35,7 +35,7 @@ class KnowledgeBase(BaseModel):
     """
     __tablename__ = "knowledge_bases"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment="知识库ID")
     space_id = Column(BigInteger, ForeignKey("knowledge_spaces.id", ondelete="CASCADE"), nullable=False, comment="所属空间")
     name = Column(String(100), nullable=False, comment="知识库名称")
     creator_id = Column(BigInteger, ForeignKey("users.id"), nullable=False, comment="创建者")

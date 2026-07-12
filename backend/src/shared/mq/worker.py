@@ -9,9 +9,12 @@ arq Worker 模块
 - recover_orphan_documents: 启动时恢复孤儿文档
 """
 import asyncio
+import traceback
+from datetime import timedelta
 from typing import Optional
 
 from arq.worker import Worker
+from arq import Retry
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.utils.time_utils import now_china
@@ -20,6 +23,33 @@ logger = get_logger(__name__)
 
 # 全局 Worker 引用
 _worker_task: Optional[asyncio.Task] = None
+
+
+def _get_task_queue_max_tries() -> int:
+    """统一读取任务队列最大尝试次数，避免 worker / 启动恢复阈值不一致。"""
+    from novamind.setting.yaml_config import get_config
+
+    return get_config().task_queue.max_tries
+
+
+def _get_task_queue_retry_delay_seconds() -> int:
+    """统一读取任务队列重试间隔。"""
+    from novamind.setting.yaml_config import get_config
+
+    return get_config().task_queue.retry_base_delay
+
+
+def _build_retry_observability(max_tries: int, retry_count: int) -> dict:
+    retry_delay_seconds = _get_task_queue_retry_delay_seconds()
+    remaining_retry_count = max(max_tries - retry_count, 0)
+    return {
+        "max_tries": max_tries,
+        "retry_count": retry_count,
+        "retry_delay_seconds": retry_delay_seconds,
+        "remaining_retry_count": remaining_retry_count,
+        "total_attempts": max_tries,
+        "completed_attempts": min(retry_count + 1, max_tries),
+    }
 
 
 async def process_document_task(
@@ -77,6 +107,9 @@ async def process_document_task(
             logger.warning("任务不存在，跳过处理", document_id=document_id)
             await unbind_job(document_id)
             return
+
+        task_batch_id = task.batch_id
+        task_retry_count = task.retry_count or 0
 
         if task.status not in (
             TaskStatus.PENDING,
@@ -160,18 +193,21 @@ async def process_document_task(
                 document_id=document_id,
                 job_id=job_id,
                 error=str(e),
+                traceback=traceback.format_exc(),
             )
 
             # 判断是否为最后一次重试
             job_try = ctx.get("job_try", 1)
-            max_tries = ctx.get("max_tries", 3)
+            max_tries = ctx.get("task_queue_max_tries", ctx.get("max_tries", _get_task_queue_max_tries()))
+            retry_delay_seconds = ctx.get("retry_delay_seconds", _get_task_queue_retry_delay_seconds())
+            retry_meta = _build_retry_observability(max_tries, task_retry_count)
             if job_try >= max_tries:
                 # 最终失败：先回滚 pipeline 残留变更，再标记 FAILED
                 await session.rollback()
 
                 # 强制标记 FAILED（优先用独立 session，兜底用 raw SQL）
-                await _ensure_mark_failed(document_id, str(e), job_id=job_id)
-                if task.batch_id:
+                await _ensure_mark_failed(document_id, str(e), job_id=job_id, max_tries=max_tries, retry_count=task_retry_count)
+                if task_batch_id:
                     refreshed = await task_repo.get_by_job_id(job_id) if job_id != "unknown" else None
                     if not refreshed:
                         refreshed = await task_repo.get_by_document_id(document_id)
@@ -193,21 +229,33 @@ async def process_document_task(
                 await unbind_job(document_id)
                 # 最终失败不再 raise，避免 arq 尝试无效重试
             else:
+                current_retry_count = task_retry_count + 1
+                next_retry_at = now_china() + timedelta(seconds=retry_delay_seconds)
+                logger.warning(
+                    "arq 任务失败，准备自动重试",
+                    document_id=document_id,
+                    job_id=job_id,
+                    job_try=job_try,
+                    next_retry_at=next_retry_at,
+                    **retry_meta,
+                )
                 await session.rollback()
                 await _mark_retrying(
                     document_id=document_id,
-                    retry_count=retry_count + 1,
+                    retry_count=current_retry_count,
                     max_tries=max_tries,
+                    retry_delay_seconds=retry_delay_seconds,
                     error_message=str(e),
                     job_id=job_id,
                 )
-                raise
+                raise Retry(retry_delay_seconds)
 
 
 async def _mark_retrying(
     document_id: int,
     retry_count: int,
     max_tries: int,
+    retry_delay_seconds: int,
     error_message: str,
     *,
     job_id: Optional[str] = None,
@@ -229,7 +277,7 @@ async def _mark_retrying(
 
         task.retry_count = retry_count
         task.status = TaskStatus.PENDING
-        task.error_message = f"[自动重试 {retry_count}/{max_tries}] {error_message[:300]}"
+        task.error_message = f"[自动重试 {retry_count}/{max_tries}, 间隔 {retry_delay_seconds}s] {error_message[:300]}"
         task.queued_at = now_china()
         task.started_at = None
         task.completed_at = None
@@ -238,7 +286,14 @@ async def _mark_retrying(
         await session.commit()
 
 
-async def _ensure_mark_failed(document_id: int, error_message: str, *, job_id: Optional[str] = None) -> None:
+async def _ensure_mark_failed(
+    document_id: int,
+    error_message: str,
+    *,
+    job_id: Optional[str] = None,
+    max_tries: Optional[int] = None,
+    retry_count: Optional[int] = None,
+) -> None:
     """
     强制将文档标记为 FAILED，三层兜底确保状态一定更新
 
@@ -267,6 +322,15 @@ async def _ensure_mark_failed(document_id: int, error_message: str, *, job_id: O
                 if task.batch_id:
                     await batch_repo.refresh_summary(task.batch_id)
                 await independent_session.commit()
+                logger.error(
+                    "arq 任务最终失败",
+                    document_id=document_id,
+                    job_id=job_id,
+                    retry_count=retry_count,
+                    max_tries=max_tries,
+                    error=error_message,
+                    failure_stage="orm",
+                )
                 logger.info("任务已标记 FAILED（ORM）", document_id=document_id)
                 return
     except Exception as e:
@@ -295,6 +359,15 @@ async def _ensure_mark_failed(document_id: int, error_message: str, *, job_id: O
                 },
             )
             await conn.commit()
+            logger.error(
+                "arq 任务最终失败",
+                document_id=document_id,
+                job_id=job_id,
+                retry_count=retry_count,
+                max_tries=max_tries,
+                error=error_message,
+                failure_stage="raw_sql",
+            )
             logger.info("任务已标记 FAILED（raw SQL）", document_id=document_id)
             return
     except Exception as e:
@@ -304,6 +377,10 @@ async def _ensure_mark_failed(document_id: int, error_message: str, *, job_id: O
     logger.critical(
         "任务状态更新全部失败，任务将卡在 PROCESSING 直到服务重启",
         document_id=document_id,
+        job_id=job_id,
+        retry_count=retry_count,
+        max_tries=max_tries,
+        error=error_message,
     )
 
 
@@ -368,6 +445,10 @@ async def create_embedded_worker() -> Worker:
         max_jobs=tq.max_jobs,
         job_timeout=tq.job_timeout,
         max_tries=tq.max_tries,
+        ctx={
+            "task_queue_max_tries": tq.max_tries,
+            "retry_delay_seconds": tq.retry_base_delay,
+        },
     )
 
     logger.info(
@@ -375,6 +456,7 @@ async def create_embedded_worker() -> Worker:
         max_jobs=tq.max_jobs,
         job_timeout=tq.job_timeout,
         max_tries=tq.max_tries,
+        retry_delay_seconds=tq.retry_base_delay,
         queue_name=tq.queue_name,
     )
     return worker
@@ -561,10 +643,12 @@ async def recover_orphan_documents() -> int:
         恢复的文档数量
     """
     from novamind.core.database.database import get_db_session
+    from novamind.setting.yaml_config import get_config
     from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
     from sqlalchemy import select
 
     recovered = 0
+    max_tries = get_config().task_queue.max_tries
 
     async with get_db_session() as session:
         result = await session.execute(
@@ -580,7 +664,7 @@ async def recover_orphan_documents() -> int:
             # 防止无限重试：检查任务重试次数
             retry_count = task.retry_count or 0
 
-            if retry_count >= 3:
+            if retry_count >= max_tries:
                 # 超过恢复次数限制，直接标记失败
                 task.mark_failed("[自动重试次数超限，需人工介入]")
                 task.retry_count = retry_count + 1
@@ -589,6 +673,7 @@ async def recover_orphan_documents() -> int:
                     "孤儿文档恢复次数超限，已标记失败",
                     document_id=task.document_id,
                     retry_count=retry_count,
+                    max_tries=max_tries,
                 )
                 continue
 
@@ -621,6 +706,7 @@ async def recover_orphan_documents() -> int:
                     document_id=task.document_id,
                     kb_id=task.kb_id,
                     retry_count=retry_count + 1,
+                    max_tries=max_tries,
                     job_id=job.job_id,
                 )
             except Exception as e:
@@ -645,10 +731,12 @@ async def recover_orphan_resume_sessions() -> int:
         恢复的会话数量
     """
     from novamind.core.database.database import get_db_session
+    from novamind.setting.yaml_config import get_config
     from novamind.features.app.models.resume import ResumeSession, ResumeSessionStatus
     from sqlalchemy import select, or_
 
     recovered = 0
+    max_tries = get_config().task_queue.max_tries
 
     async with get_db_session() as session:
         result = await session.execute(
@@ -670,7 +758,7 @@ async def recover_orphan_resume_sessions() -> int:
             cfg = s.config or {}
             retry_count = cfg.get("recover_retry_count", 0)
 
-            if retry_count >= 3:
+            if retry_count >= max_tries:
                 # 超过恢复次数限制，直接标记失败
                 s.status = ResumeSessionStatus.FAILED
                 s.error_message = "[恢复重试次数超限，需人工介入]"
@@ -680,6 +768,7 @@ async def recover_orphan_resume_sessions() -> int:
                     "孤儿简历会话恢复次数超限，已标记失败",
                     session_id=s.id,
                     retry_count=retry_count,
+                    max_tries=max_tries,
                 )
                 continue
 
@@ -710,6 +799,7 @@ async def recover_orphan_resume_sessions() -> int:
                     "孤儿简历会话已重新入队",
                     session_id=s.id,
                     retry_count=retry_count + 1,
+                    max_tries=max_tries,
                 )
             except Exception as e:
                 logger.error(

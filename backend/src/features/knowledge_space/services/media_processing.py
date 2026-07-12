@@ -150,13 +150,29 @@ async def process_video_document(
     splitting_config.update(splitting_config.pop("video", {}))
     strategy = splitting_config.pop("strategy", "recursive")
     splitting_kwargs = splitting_config
-    chunks = await _split_md_text(full_text, strategy=strategy, **splitting_kwargs)
+    embedding_config = space.embedding_config if space else {}
+    embedding_client = None
+    if strategy == "semantic":
+        from novamind.features.knowledge_space.services.document_service import (
+            _get_embedding_client_static,
+        )
+
+        embedding_client = await _get_embedding_client_static(
+            session=session,
+            user_id=document.uploader_id,
+            model_name=embedding_config.get("model"),
+        )
+    chunks = await _split_md_text(
+        full_text,
+        strategy=strategy,
+        embedding_client=embedding_client,
+        **splitting_kwargs,
+    )
 
     if task:
         task.set_step("text_split")
 
     # 4. Embedding + ES（embedding_config 从空间级别读取）
-    embedding_config = space.embedding_config if space else {}
     await _index_text_chunks(
         document=document,
         chunks=chunks,
@@ -313,7 +329,24 @@ async def process_audio_document(
     # 应用音频专属切分覆盖（chunk_size, strategy 等）
     splitting_config.update(splitting_config.pop("audio", {}))
     strategy = splitting_config.pop("strategy", "recursive")
-    chunks = await _split_md_text(full_text, strategy=strategy, **splitting_config)
+    embedding_config = space.embedding_config if space else {}
+    embedding_client = None
+    if strategy == "semantic":
+        from novamind.features.knowledge_space.services.document_service import (
+            _get_embedding_client_static,
+        )
+
+        embedding_client = await _get_embedding_client_static(
+            session=session,
+            user_id=document.uploader_id,
+            model_name=embedding_config.get("model"),
+        )
+    chunks = await _split_md_text(
+        full_text,
+        strategy=strategy,
+        embedding_client=embedding_client,
+        **splitting_config,
+    )
 
     if task:
         task.set_step("text_split")
@@ -322,7 +355,6 @@ async def process_audio_document(
     await _check_document_cancelled(document.id)
 
     # 3. Embedding + ES
-    embedding_config = space.embedding_config if space else {}
     await _index_text_chunks(
         document=document,
         chunks=chunks,
@@ -357,6 +389,7 @@ async def process_audio_document(
 async def _split_md_text(
     md_text: str,
     strategy: str = "recursive",
+    embedding_client=None,
     **kwargs,
 ) -> List[Tuple[str, Dict[str, Any]]]:
     """
@@ -415,6 +448,28 @@ async def _split_md_text(
         splitter = splitter_class(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
+        )
+        doc_wrapper = [{
+            "text": md_text,
+            "source": "media_pipeline",
+            "page": 1,
+            "doc_id": "0",
+            "type": "text",
+        }]
+        results = await splitter.split(doc_wrapper)
+        return [(r["text"], {}) for r in results if r.get("text", "").strip()]
+
+    elif strategy == "semantic":
+        max_chunk_size = kwargs.get("max_chunk_size", 1000)
+        similarity_threshold = kwargs.get("similarity_threshold", 0.7)
+        batch_size = kwargs.get("batch_size", 20)
+        if embedding_client is None:
+            raise ValueError("semantic splitting requires embedding_client")
+        splitter = splitter_class(
+            embedding_client=embedding_client,
+            max_chunk_size=max_chunk_size,
+            similarity_threshold=similarity_threshold,
+            batch_size=batch_size,
         )
         doc_wrapper = [{
             "text": md_text,

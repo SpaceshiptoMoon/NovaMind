@@ -202,12 +202,13 @@ const uploadAccept = computed(() => getUploadAccept(spaceTypes.value))
 
 const uploadTipText = computed(() => {
   const parts: string[] = []
-  if (hasModality(spaceTypes.value, 'text')) parts.push('PDF/Word/TXT/MD/CSV/HTML/JSON')
+  if (hasModality(spaceTypes.value, 'text')) parts.push('PDF/DOC/DOCX/TXT/MD/CSV/HTML/JSON')
   if (hasModality(spaceTypes.value, 'image')) parts.push('JPG/PNG/GIF/WebP')
   if (hasModality(spaceTypes.value, 'video')) parts.push('MP4/MOV/AVI/MKV/WebM')
   if (hasModality(spaceTypes.value, 'audio')) parts.push('MP3/WAV/FLAC/AAC/OGG/M4A')
   const maxMB = Math.max(...spaceTypes.value.map(t => ({ text: 100, image: 100, video: 500, audio: 200 })[t] || 100))
-  return `支持 ${parts.join(' + ')}，视频最大 500MB，音频最大 200MB，其它最大 ${maxMB}MB，最多 20 个`
+  const docHint = hasModality(spaceTypes.value, 'text') ? '，其中 .doc 会自动转换为 .docx' : ''
+  return `支持 ${parts.join(' + ')}${docHint}，视频最大 500MB，音频最大 200MB，其它最大 ${maxMB}MB，最多 20 个`
 })
 
 function handleSelectionChange(rows: DocType[]) {

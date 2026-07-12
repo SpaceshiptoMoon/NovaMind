@@ -142,7 +142,7 @@ export const appApi = {
     const { data } = await axiosInstance.post<ResumeSession>(
       `${BASE_URL}/resume/upload`,
       formData,
-      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 },
+      { timeout: 120000 },
     )
     return data
   },

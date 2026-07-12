@@ -160,9 +160,18 @@
                         <template #default="{ row }">{{ row.completed_at ? formatDateTime(row.completed_at) : '-' }}</template>
                       </el-table-column>
 
-                      <el-table-column label="错误信息" min-width="220">
+                      <el-table-column label="错误信息" width="320">
                         <template #default="{ row }">
-                          <span class="error-text">{{ row.error_message || '-' }}</span>
+                          <el-tooltip
+                            v-if="row.error_message"
+                            :content="row.error_message"
+                            placement="top-start"
+                            effect="dark"
+                            :show-after="200"
+                          >
+                            <span class="error-text">{{ getErrorPreview(row.error_message) }}</span>
+                          </el-tooltip>
+                          <span v-else class="error-text">-</span>
                         </template>
                       </el-table-column>
                     </el-table>
@@ -205,6 +214,7 @@ const expandedTaskIds = ref<number[]>([])
 const page = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
+const errorPreviewLength = 80
 
 const spaceId = computed(() => Number(route.params.id))
 const kbId = computed(() => Number(route.params.kbId))
@@ -259,6 +269,13 @@ function handlePageChange(nextPage: number, nextPageSize: number) {
 function getTaskDocumentName(documentId: number, pipelineResult?: Record<string, unknown>) {
   const filename = pipelineResult?.filename
   return typeof filename === 'string' && filename ? filename : `文档 ${documentId}`
+}
+
+function getErrorPreview(errorMessage?: string | null) {
+  if (!errorMessage) return '-'
+  return errorMessage.length > errorPreviewLength
+    ? `${errorMessage.slice(0, errorPreviewLength)}...`
+    : errorMessage
 }
 
 function getItemStatusConfig(status?: number) {
@@ -634,6 +651,20 @@ onMounted(fetchTasks)
 .progress-cell span {
   color: var(--color-text-muted);
   font-size: 12px;
+}
+
+.error-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.error-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.5;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .task-breakdown {

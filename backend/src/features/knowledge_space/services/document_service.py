@@ -11,6 +11,7 @@
 from typing import Optional, List, Dict, Any
 import hashlib
 import asyncio
+import traceback
 import tempfile
 from novamind.shared.utils.time_utils import now_china
 from pathlib import Path
@@ -30,6 +31,7 @@ from novamind.features.knowledge_space.api.exceptions import (
     KnowledgeBaseNotFoundError,
     DocumentNotFoundError,
     DocumentAlreadyExistsError,
+    DocumentConversionError,
     DocumentInvalidTypeError,
     DocumentSizeExceededError,
     DocumentProcessingError,
@@ -41,6 +43,7 @@ from novamind.features.knowledge_space.api.exceptions import (
 )
 from novamind.shared.storage.minio_client import MinioClient
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
+from novamind.shared.knowledge.document_processing.converters.doc_converter import convert_doc_to_docx, DocConversionError
 from novamind.shared.knowledge.document_processing.pipeline import DocumentProcessor
 from novamind.shared.knowledge.document_processing.validation import validate_file, FileInfo
 from novamind.shared.knowledge.media_processing.audio import upload_parsed_text_to_minio
@@ -93,7 +96,7 @@ class DocumentService:
     MAX_FILE_SIZE = 100 * 1024 * 1024
 
     # 支持的文件类型
-    SUPPORTED_FILE_TYPES = ["pdf", "docx", "txt", "md", "csv", "html", "json", "jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "avi", "mkv", "webm", "mp3", "wav", "flac", "aac", "ogg", "m4a"]
+    SUPPORTED_FILE_TYPES = ["pdf", "doc", "docx", "txt", "md", "csv", "html", "json", "jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "avi", "mkv", "webm", "mp3", "wav", "flac", "aac", "ogg", "m4a"]
 
     # 图片文件类型（从 MinIO 工具收敛到唯一定义）
     from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES as _IMG_TYPES
@@ -107,7 +110,7 @@ class DocumentService:
 
     # 模态 → 文件类型映射（用于上传校验和管道分流）
     MODALITY_TO_FILE_TYPES = {
-        "text":  frozenset({"pdf", "docx", "txt", "md", "csv", "html", "json"}),
+        "text":  frozenset({"pdf", "doc", "docx", "txt", "md", "csv", "html", "json"}),
         "image": IMAGE_FILE_TYPES,
         "video": VIDEO_FILE_TYPES,
         "audio": AUDIO_FILE_TYPES,
@@ -182,6 +185,7 @@ class DocumentService:
             raise SpaceAccessDeniedError(kb.space_id, uploader_id, "需要编辑者或更高权限才能上传文档")
 
         # 4. 获取允许的文件类型
+        filename, file_content = await self._normalize_upload_file(filename, file_content)
         allowed_types = self._get_allowed_file_types(kb)
 
         # 5. 验证文件（使用 python-magic 检测真实 MIME 类型）
@@ -359,6 +363,24 @@ class DocumentService:
         )
 
         return {"success": success, "failed": failed}
+
+    async def _normalize_upload_file(self, filename: str, file_content: bytes) -> tuple[str, bytes]:
+        ext = self._get_file_type(filename)
+        if ext != "doc":
+            return filename, file_content
+
+        target_filename = f"{Path(filename).stem}.docx"
+        try:
+            converted_bytes = await convert_doc_to_docx(file_content, filename)
+        except DocConversionError as exc:
+            raise DocumentConversionError(str(exc), file_type="doc") from exc
+
+        self.logger.info(
+            "上传文件已从 .doc 自动转换为 .docx",
+            source_filename=filename,
+            target_filename=target_filename,
+        )
+        return target_filename, converted_bytes
 
     @staticmethod
     async def execute_document_pipeline(
@@ -1039,11 +1061,17 @@ class DocumentService:
             }
 
         batch_repo = DocumentTaskBatchRepository(self.session)
+        first_document = documents[0] if documents else None
+        batch_pipeline_config = None
+        if first_document:
+            kb = await self.kb_repo.get_by_id(first_document.kb_id)
+            batch_pipeline_config = kb.get_config() if kb else None
         batch = await batch_repo.create({
             "space_id": documents[0].space_id,
             "kb_id": kb_id,
             "creator_id": user_id,
             "action": BatchAction.PROCESS,
+            "pipeline_config": batch_pipeline_config,
             "total_count": len(document_ids or []),
             "note": f"批量处理 {len(document_ids or [])} 个文档",
         })
@@ -1207,6 +1235,7 @@ class DocumentService:
         document_id: int,
         user_id: int,
         action: BatchAction,
+        pipeline_config: Optional[dict] = None,
         note: Optional[str] = None,
     ):
         document = await self.doc_repo.get_by_id(document_id)
@@ -1218,6 +1247,7 @@ class DocumentService:
             "kb_id": document.kb_id,
             "creator_id": user_id,
             "action": action,
+            "pipeline_config": pipeline_config,
             "total_count": 1,
             "note": note,
         })
@@ -1267,6 +1297,7 @@ class DocumentService:
                 "kb_id": document.kb_id,
                 "creator_id": batch_creator_id,
                 "action": batch_action,
+                "pipeline_config": pipeline_config,
                 "total_count": 1,
                 "note": batch_note,
             }
@@ -1573,7 +1604,21 @@ async def _generate_embeddings_static(
     all_embeddings = []
     for i in range(0, len(texts), batch_size):
         batch = texts[i:i + batch_size]
-        embeddings = await embedding_client.generate_embeddings_batch(batch)
+        try:
+            embeddings = await embedding_client.generate_embeddings_batch(batch)
+        except Exception as e:
+            _log = get_logger(__name__)
+            _log.error(
+                "Embedding 批量生成失败",
+                model_name=model_name,
+                batch_start=i,
+                batch_size=len(batch),
+                error=str(e),
+                traceback=traceback.format_exc(),
+            )
+            raise EmbeddingError(
+                f"Embedding 生成失败: model={model_name or 'unknown'}, batch_start={i}, error={e}"
+            ) from e
         all_embeddings.extend(embeddings)
     return all_embeddings
 
@@ -1624,7 +1669,7 @@ async def _generate_single_embedding_static(
         return embeddings[0] if embeddings else None
     except Exception as e:
         _log = get_logger(__name__)
-        _log.warning("单条文本嵌入生成失败", error=str(e))
+        _log.warning("单条文本嵌入生成失败", error=str(e), traceback=traceback.format_exc())
         return None
 
 

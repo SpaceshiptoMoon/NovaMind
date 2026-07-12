@@ -10,12 +10,14 @@ const instance: AxiosInstance = axios.create({
   },
   transformRequest: [
     (data, headers) => {
-      // FormData 时让浏览器自动设置 Content-Type（含 boundary）
       if (data instanceof FormData) {
-        delete headers['Content-Type']
+        if (headers && typeof headers.setContentType === 'function') {
+          headers.setContentType(false)
+        } else if (headers && 'Content-Type' in headers) {
+          delete headers['Content-Type']
+        }
         return data
       }
-      // 默认 JSON 序列化
       if (typeof data === 'object' && data !== null) {
         return JSON.stringify(data)
       }
@@ -181,16 +183,52 @@ export const request = {
     } else {
       formData.append('files', file)
     }
-    return instance
-      .post<T>(url, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress: (e) => {
-          if (e.total && onProgress) {
-            onProgress(Math.round((e.loaded * 100) / e.total))
-          }
-        },
-      })
-      .then((r) => r.data)
+    const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+    const token = tokenManager.getToken()
+
+    return new Promise<T>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `${baseURL}${url}`, true)
+
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+      }
+
+      xhr.responseType = 'text'
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          onProgress(Math.round((e.loaded * 100) / e.total))
+        }
+      }
+
+      xhr.onload = () => {
+        const responseText = xhr.responseText || ''
+        const contentType = xhr.getResponseHeader('content-type') || ''
+        const isJson = contentType.includes('application/json')
+        const payload = isJson && responseText ? JSON.parse(responseText) : responseText
+
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(payload as T)
+          return
+        }
+
+        const message =
+          payload?.error?.message ||
+          payload?.message ||
+          payload?.detail ||
+          getDefaultMessage(xhr.status)
+        ElMessage.error(message)
+        reject(new Error(message))
+      }
+
+      xhr.onerror = () => {
+        const message = '上传请求失败'
+        ElMessage.error(message)
+        reject(new Error(message))
+      }
+
+      xhr.send(formData)
+    })
   },
 
   // 文件下载（返回 blob）

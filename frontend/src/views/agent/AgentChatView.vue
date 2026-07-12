@@ -196,7 +196,7 @@
           <input
             ref="fileInputRef"
             type="file"
-            accept=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.gif,.webp"
+            accept=".pdf,.doc,.docx,.txt,.md,.jpg,.jpeg,.png,.gif,.webp"
             style="display: none"
             @change="handleFileSelected"
           />
@@ -327,10 +327,13 @@ async function handleFileSelected(e: Event) {
   const input = e.target as HTMLInputElement
   if (!input.files?.length) return
   const maxSize = 20 * 1024 * 1024
-  const allowedTypes = ['pdf', 'docx', 'txt', 'md', 'jpg', 'jpeg', 'png', 'gif', 'webp']
+  const allowedTypes = ['pdf', 'doc', 'docx', 'txt', 'md', 'jpg', 'jpeg', 'png', 'gif', 'webp']
   const validFiles: File[] = []
   for (const file of Array.from(input.files)) {
     const ext = file.name.split('.').pop()?.toLowerCase() || ''
+    if (ext === 'doc') {
+      ElMessage.info(`检测到 ${file.name} 为 .doc，后端会自动转换为 .docx`)
+    }
     if (!allowedTypes.includes(ext)) {
       ElMessage.warning(`不支持的文件类型: .${ext}`)
       continue

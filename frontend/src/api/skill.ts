@@ -24,9 +24,7 @@ export const skillApi = {
     const formData = new FormData()
     formData.append('file', file)
     return instance
-      .post<SkillDefinition>('/skills/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      .post<SkillDefinition>('/skills/upload', formData)
       .then((r) => r.data)
   },
 
@@ -34,9 +32,7 @@ export const skillApi = {
     const formData = new FormData()
     formData.append('file', file)
     return instance
-      .put<SkillDefinition>(`/skills/${skillId}/upload`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      .put<SkillDefinition>(`/skills/${skillId}/upload`, formData)
       .then((r) => r.data)
   },
 

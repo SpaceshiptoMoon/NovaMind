@@ -268,7 +268,26 @@ class ParsingConfig(BaseModel):
                 "vlm_model": vlm_model,
             }
 
-        return migrated
+        merged = dict(migrated)
+        for key, current_value in value.items():
+            if key == "text" and isinstance(current_value, dict):
+                merged_text = dict(migrated["text"])
+                for doc_type, doc_config in current_value.items():
+                    merged_text[doc_type] = doc_config
+                merged["text"] = merged_text
+                continue
+            if key == "image" and current_value is not None:
+                merged["image"] = current_value
+                continue
+            if key == "video" and current_value is not None:
+                merged["video"] = current_value
+                continue
+            if key == "audio" and current_value is not None:
+                merged["audio"] = current_value
+                continue
+            merged[key] = current_value
+
+        return merged
 
     @model_serializer(mode="wrap")
     def serialize_with_legacy_keys(self, handler):
@@ -440,13 +459,18 @@ def build_runtime_parsing_config(parsing: Optional[Dict[str, Any]], file_type: O
             target_doc_type = inferred_non_pdf_deepdoc
     if target_doc_type == "md":
         target_doc_type = "markdown"
+    elif target_doc_type in {"xlsx", "xls"}:
+        target_doc_type = "excel"
+    elif target_doc_type == "pptx":
+        target_doc_type = "ppt"
     elif target_doc_type == "csv":
         target_doc_type = "txt"
     elif target_doc_type not in TEXT_DOC_TYPES:
         target_doc_type = "pdf"
 
+    attr_name = "json_file" if target_doc_type == "json" else target_doc_type
     text_cfg: TextTypeParsingConfig | PdfParsingConfig
-    text_cfg = getattr(text, target_doc_type, text.pdf)
+    text_cfg = getattr(text, attr_name, text.pdf)
     result["strategy"] = text_cfg.strategy if file_type else result.get("strategy", text_cfg.strategy)
 
     if target_doc_type == "pdf":

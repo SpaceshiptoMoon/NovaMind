@@ -38,9 +38,7 @@ export const evaluationApi = {
     formData.append('file', file)
     formData.append('name', name)
     return instance
-      .post<UploadTestSetResponse>(`${BASE(spaceId, kbId)}/test-sets`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      .post<UploadTestSetResponse>(`${BASE(spaceId, kbId)}/test-sets`, formData)
       .then((r) => r.data)
   },
 

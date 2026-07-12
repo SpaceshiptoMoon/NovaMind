@@ -254,7 +254,8 @@ async def upload_parsed_text_to_minio(document, full_text: str, logger) -> str:
             return ""
 
         object_name = f"{base}_parsed/full_text.md"
-        data = full_text.encode("utf-8")
+        # Windows 下很多查看器会优先按本地代码页猜测编码，UTF-8 BOM 能显著提升识别率
+        data = full_text.encode("utf-8-sig")
 
         minio_client = await ClientFactory.get_minio_client()
         await minio_client.upload_file(object_name, data, "text/markdown; charset=utf-8")

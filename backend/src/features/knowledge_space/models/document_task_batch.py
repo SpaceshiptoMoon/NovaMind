@@ -32,8 +32,8 @@ class DocumentTaskBatch(BaseModel):
     __tablename__ = "document_tasks"
 
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment="Task ID")
-    space_id = Column(BigInteger, ForeignKey("knowledge_spaces.id", ondelete="CASCADE"), nullable=False, index=True)
-    kb_id = Column(BigInteger, ForeignKey("knowledge_bases.id", ondelete="CASCADE"), nullable=False, index=True)
+    space_id = Column(BigInteger, ForeignKey("knowledge_spaces.id", ondelete="CASCADE"), nullable=False, index=True, comment="Space ID")
+    kb_id = Column(BigInteger, ForeignKey("knowledge_bases.id", ondelete="CASCADE"), nullable=False, index=True, comment="KB ID")
     creator_id = Column(BigInteger, ForeignKey("users.id"), nullable=False, index=True, comment="Creator ID")
     action = Column(SmallInteger, nullable=False, default=BatchAction.PROCESS, comment="Task action")
     status = Column(SmallInteger, nullable=False, default=BatchStatus.PENDING, index=True, comment="Task status")

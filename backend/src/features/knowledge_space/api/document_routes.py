@@ -219,7 +219,7 @@ async def upload_document(
             if ext not in ALLOWED_FILE_EXTENSIONS:
                 failed_list.append({
                     "filename": file.filename,
-                    "error": f"不支持的文件类型: {ext}",
+                    "error": f"不支持的文件类型: {ext}。当前支持 .pdf/.doc/.docx/.txt/.md/.csv/.html/.json/.jpg/.jpeg/.png/.gif/.webp/.mp4/.mov/.avi/.mkv/.webm/.mp3/.wav/.flac/.aac/.ogg/.m4a",
                 })
                 continue
         else:

@@ -15,6 +15,7 @@ from .trace_middleware import TraceIDMiddleware
 from .exceptions import setup_exception_handlers
 from .rate_limit import get_limiter, rate_limit_exceeded_handler
 from novamind.core.security.config_validator import validate_security_config
+from novamind.core.compat.starlette_multipart_patch import apply_starlette_multipart_patch
 
 
 def create_app() -> FastAPI:
@@ -23,6 +24,7 @@ def create_app() -> FastAPI:
     """
     # 设置结构化日志
     setup_structured_logging()
+    apply_starlette_multipart_patch()
 
     # 加载配置
     config = get_config()

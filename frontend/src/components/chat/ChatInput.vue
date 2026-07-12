@@ -13,7 +13,7 @@
       <input
         ref="fileInputRef"
         type="file"
-        accept=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.gif,.webp"
+        accept=".pdf,.doc,.docx,.txt,.md,.jpg,.jpeg,.png,.gif,.webp"
         style="display: none"
         @change="handleFileSelected"
       />
@@ -132,7 +132,10 @@ async function handleFileSelected(e: Event) {
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
     const ext = file.name.split('.').pop()?.toLowerCase()
-    if (!ext || !['pdf', 'docx', 'txt', 'md', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
+    if (ext === 'doc') {
+      ElMessage.info(`检测到 ${file.name} 为 .doc，后端会自动转换为 .docx`)
+    }
+    if (!ext || !['pdf', 'doc', 'docx', 'txt', 'md', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
       ElMessage.warning(`不支持的文件类型: .${ext}`)
       continue
     }
