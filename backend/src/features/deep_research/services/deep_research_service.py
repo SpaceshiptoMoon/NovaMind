@@ -13,35 +13,35 @@ import json
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.shared.utils.time_utils import now_china
+from novamind.shared.utils.time_utils import now_china
 
-from src.features.deep_research.models.research_session import (
+from novamind.features.deep_research.models.research_session import (
     ResearchSession,
     ResearchStatus,
     ResearchMode,
     SearchSource,
     ExternalSearchProvider,
 )
-from src.features.deep_research.repository.research_repository import ResearchRepository
-from src.features.deep_research.services.tavily_service import TavilySearchService
-from src.features.deep_research.services.serpapi_service import SerpAPISearchService
-from src.features.deep_research.services.duckduckgo_service import DuckDuckGoSearchService
-from src.features.deep_research.schemas.research_schema import (
+from novamind.features.deep_research.repository.research_repository import ResearchRepository
+from novamind.features.deep_research.services.tavily_service import TavilySearchService
+from novamind.features.deep_research.services.serpapi_service import SerpAPISearchService
+from novamind.features.deep_research.services.duckduckgo_service import DuckDuckGoSearchService
+from novamind.features.deep_research.schemas.research_schema import (
     InternalSearchConfig,
 )
-from src.features.knowledge_space.services.search_service import SearchService
-from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-from src.features.knowledge_space.schemas.search_schema import (
+from novamind.features.knowledge_space.services.search_service import SearchService
+from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
+from novamind.features.knowledge_space.schemas.search_schema import (
     SearchRequest,
     WeightConfig,
     RerankConfig,
     SearchMode,
 )
-from src.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
-from src.core.middleware.structured_logging import get_logger
-from src.shared.utils.heartbeat import stream_with_heartbeat
-from src.shared.prompts import PromptTemplate, PromptManager
-from src.features.deep_research.exceptions import (
+from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.utils.heartbeat import stream_with_heartbeat
+from novamind.shared.prompts import PromptTemplate, PromptManager
+from novamind.features.deep_research.exceptions import (
     DeepResearchError,
     ResearchNotFoundError,
     ResearchFailedError,
@@ -862,7 +862,7 @@ class DeepResearchService:
         await self.session.rollback()
         try:
             if ctx.research_id > 0:
-                from src.core.database.database import get_db_session
+                from novamind.core.database.database import get_db_session
                 from sqlalchemy import select, update
                 async with get_db_session() as recovery_session:
                     # 先查询当前状态，避免覆盖已 COMMIT 的 COMPLETED 状态

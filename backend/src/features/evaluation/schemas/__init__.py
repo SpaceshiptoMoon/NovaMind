@@ -2,7 +2,7 @@
 测评模块 - Schema 层
 """
 
-from src.features.evaluation.schemas.evaluation_schema import (
+from novamind.features.evaluation.schemas.evaluation_schema import (
     EvaluationConfig,
     TestCase,
     TestSet,

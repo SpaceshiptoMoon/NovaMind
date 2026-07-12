@@ -9,12 +9,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.middleware.structured_logging import get_logger
-from src.features.skill.models.skill import (
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.skill.models.skill import (
     SkillDefinition, SkillVersion, SkillReview, SkillInstallation,
     SkillSource, SkillVisibility, SkillStatus, ReviewStatus,
 )
-from src.features.skill.exceptions import (
+from novamind.features.skill.exceptions import (
     SkillNotFoundError,
     SkillAlreadyExistsError,
     SkillNotPublishedError,
@@ -24,14 +24,14 @@ from src.features.skill.exceptions import (
     InvalidSkillFormatError,
     SkillReviewRejectedError,
 )
-from src.features.skill.repository.skill_repository import (
+from novamind.features.skill.repository.skill_repository import (
     SkillRepository, SkillVersionRepository, SkillReviewRepository, SkillInstallationRepository,
 )
-from src.features.skill.services.skill_parser import extract_skill_zip, validate_skill_md, ExtractedSkill
-from src.features.skill.services.skill_checker import SkillSecurityChecker
-from src.shared.utils.time_utils import now_china
-from src.shared.prompts import PromptManager, PromptTemplate
-from src.shared.ai_models.base_model import BaseLLM
+from novamind.features.skill.services.skill_parser import extract_skill_zip, validate_skill_md, ExtractedSkill
+from novamind.features.skill.services.skill_checker import SkillSecurityChecker
+from novamind.shared.utils.time_utils import now_china
+from novamind.shared.prompts import PromptManager, PromptTemplate
+from novamind.shared.ai_models.base_model import BaseLLM
 
 logger = get_logger(__name__)
 
@@ -249,7 +249,7 @@ class SkillMarketplaceService:
         if agent_repository:
             agent = await agent_repository.get_by_id(agent_id)
             if not agent:
-                from src.features.agent.api.exceptions import AgentNotFoundError
+                from novamind.features.agent.api.exceptions import AgentNotFoundError
                 raise AgentNotFoundError(agent_id)
             if agent.user_id is not None and agent.user_id != user_id:
                 raise SkillAccessDeniedError(skill_id)
@@ -488,7 +488,7 @@ class SkillMarketplaceService:
         }
 
     async def list_installed(self, agent_id: int, user_id: int) -> List[SkillInstallation]:
-        from src.features.agent.repository.agent_repository import AgentRepository
+        from novamind.features.agent.repository.agent_repository import AgentRepository
         agent_repo = AgentRepository(self.db)
         agent = await agent_repo.get_by_id(agent_id)
         # 仅自己的 Agent 或系统级预置 Agent 可查；他人私有 Agent 返回空（不泄露存在性）
@@ -642,7 +642,7 @@ class SkillMarketplaceService:
     def _start_background_review(self, skill_id: int, body_markdown: str, frontmatter_raw: str) -> None:
         """启动后台异步审查任务（使用独立的数据库会话）"""
         async def _do_review():
-            from src.core.database.database import get_session_factory
+            from novamind.core.database.database import get_session_factory
             session_factory = get_session_factory()
             async with session_factory() as db:
                 try:

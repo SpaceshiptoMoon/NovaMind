@@ -8,12 +8,12 @@ Tavily 是专为 AI 优化的搜索引擎 API
 from typing import List, Optional
 import httpx
 
-from src.features.deep_research.services.external_search_service import (
+from novamind.features.deep_research.services.external_search_service import (
     ExternalSearchService,
     ExternalSearchResult,
 )
-from src.setting.yaml_config import get_config
-from src.core.middleware.structured_logging import get_logger
+from novamind.setting.yaml_config import get_config
+from novamind.core.middleware.structured_logging import get_logger
 
 
 class TavilySearchService(ExternalSearchService):

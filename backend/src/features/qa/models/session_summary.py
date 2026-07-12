@@ -7,7 +7,7 @@
 from typing import Optional
 from sqlalchemy import Column, BigInteger, Integer, String, Text, JSON, ForeignKey
 
-from src.core.database.base import BaseModel
+from novamind.core.database.base import BaseModel
 
 
 class SessionSummary(BaseModel):

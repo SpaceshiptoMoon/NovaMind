@@ -3,7 +3,7 @@ MCP 服务器配置模型
 """
 from sqlalchemy import Column, BigInteger, String, Text, Boolean, JSON, ForeignKey
 
-from src.core.database.base import BaseModel
+from novamind.core.database.base import BaseModel
 
 
 class AgentMcpServer(BaseModel):

@@ -15,12 +15,12 @@ import hashlib
 import secrets
 import time
 
-from src.setting.yaml_config import get_config
-from src.shared.utils.time_utils import now_china
-from src.features.user.schemas.user_schema import TokenData
-from src.features.user.models.user import UserStatus
-from src.core.middleware.structured_logging import get_logger
-from src.features.user.api.exceptions import (
+from novamind.setting.yaml_config import get_config
+from novamind.shared.utils.time_utils import now_china
+from novamind.features.user.schemas.user_schema import TokenData
+from novamind.features.user.models.user import UserStatus
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.user.api.exceptions import (
     TokenInvalidError,
     TokenExpiredError,
     AuthenticationError,
@@ -59,7 +59,7 @@ class AuthService:
         Returns:
             Redis 客户端实例
         """
-        from src.shared.cache.redis_client import get_redis_client
+        from novamind.shared.cache.redis_client import get_redis_client
         return get_redis_client
 
     @classmethod

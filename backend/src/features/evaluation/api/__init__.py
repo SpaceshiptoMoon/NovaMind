@@ -2,11 +2,11 @@
 测评模块 - API 层
 
 注意：为避免循环导入，请按需导入各组件。
-路由请直接从 routes.py 导入：from src.features.evaluation.api.routes import router
+路由请直接从 routes.py 导入：from novamind.features.evaluation.api.routes import router
 """
 
 # 异常类
-from src.features.evaluation.api.exceptions import (
+from novamind.features.evaluation.api.exceptions import (
     EvaluationError,
     EvaluationTestSetNotFoundError,
     EvaluationTaskNotFoundError,

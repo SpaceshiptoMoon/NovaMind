@@ -5,7 +5,7 @@
 """
 
 # 异常类从模块顶层导入（异常定义已迁移至 deep_research/exceptions.py）
-from src.features.deep_research.exceptions import (
+from novamind.features.deep_research.exceptions import (
     DeepResearchError,
     ResearchNotFoundError,
     ResearchFailedError,

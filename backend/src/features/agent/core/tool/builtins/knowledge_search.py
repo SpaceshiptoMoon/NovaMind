@@ -7,9 +7,9 @@
 import json
 from typing import Any, Dict, List
 
-from src.features.agent.core.tool.base import BaseTool
-from src.shared.prompts import PromptManager, PromptTemplate
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.agent.core.tool.base import BaseTool
+from novamind.shared.prompts import PromptManager, PromptTemplate
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -201,10 +201,10 @@ class KnowledgeSearchTool(BaseTool):
         Returns:
             True 表示有权限，False 表示无权限
         """
-        from src.features.knowledge_space.repository.space_repository import SpaceRepository
-        from src.features.knowledge_space.repository.member_repository import MemberRepository
-        from src.features.knowledge_space.models.knowledge_space import SpaceStatus, SpaceVisibility
-        from src.features.user.models.user import User
+        from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
+        from novamind.features.knowledge_space.repository.member_repository import MemberRepository
+        from novamind.features.knowledge_space.models.knowledge_space import SpaceStatus, SpaceVisibility
+        from novamind.features.user.models.user import User
 
         space_repo = SpaceRepository(db)
         member_repo = MemberRepository(db)
@@ -239,7 +239,7 @@ class KnowledgeSearchTool(BaseTool):
     async def _list_spaces(self, context: Dict[str, Any]) -> str:
         """列出用户可访问的知识空间"""
         try:
-            from src.features.knowledge_space.repository.space_repository import SpaceRepository
+            from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
 
             db = context["db_session"]
             user_id = context["user_id"]
@@ -267,7 +267,7 @@ class KnowledgeSearchTool(BaseTool):
     async def _list_knowledge_bases(self, args: Dict[str, Any], context: Dict[str, Any]) -> str:
         """列出指定空间下的知识库"""
         try:
-            from src.features.knowledge_space.repository.knowledge_base_repository import (
+            from novamind.features.knowledge_space.repository.knowledge_base_repository import (
                 KnowledgeBaseRepository,
                 KnowledgeBaseStatus,
             )
@@ -307,8 +307,8 @@ class KnowledgeSearchTool(BaseTool):
     async def _list_all_knowledge_bases(self, context: Dict[str, Any]) -> str:
         """跨空间列出用户所有可访问的知识库"""
         try:
-            from src.features.knowledge_space.repository.space_repository import SpaceRepository
-            from src.features.knowledge_space.repository.knowledge_base_repository import (
+            from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
+            from novamind.features.knowledge_space.repository.knowledge_base_repository import (
                 KnowledgeBaseRepository,
                 KnowledgeBaseStatus,
             )
@@ -349,10 +349,10 @@ class KnowledgeSearchTool(BaseTool):
     async def _search(self, args: Dict[str, Any], context: Dict[str, Any]) -> str:
         """执行知识库搜索"""
         try:
-            from src.features.knowledge_space.services.search_service import SearchService
-            from src.features.knowledge_space.schemas.search_schema import SearchRequest
-            from src.shared.clients import get_elasticsearch_client
-            from src.features.user.services.model_config_service import ModelConfigService
+            from novamind.features.knowledge_space.services.search_service import SearchService
+            from novamind.features.knowledge_space.schemas.search_schema import SearchRequest
+            from novamind.shared.clients import get_elasticsearch_client
+            from novamind.features.user.services.model_config_service import ModelConfigService
 
             db = context["db_session"]
             user_id: int = context["user_id"]
@@ -381,7 +381,7 @@ class KnowledgeSearchTool(BaseTool):
                     request=search_request,
                 )
             else:
-                from src.features.knowledge_space.repository.knowledge_base_repository import (
+                from novamind.features.knowledge_space.repository.knowledge_base_repository import (
                     KnowledgeBaseRepository,
                 )
 
@@ -442,7 +442,7 @@ class KnowledgeSearchTool(BaseTool):
     async def _list_documents(self, args: Dict[str, Any], context: Dict[str, Any]) -> str:
         """列出文档"""
         try:
-            from src.features.knowledge_space.repository.document_repository import (
+            from novamind.features.knowledge_space.repository.document_repository import (
                 DocumentRepository,
             )
 

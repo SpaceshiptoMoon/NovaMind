@@ -9,7 +9,7 @@
 - ExternalSearchProvider: 外部搜索提供商枚举
 """
 
-from src.features.deep_research.models.research_session import (
+from novamind.features.deep_research.models.research_session import (
     ResearchSession,
     ResearchStatus,
     ResearchMode,

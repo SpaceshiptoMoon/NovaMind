@@ -5,7 +5,7 @@ from sqlalchemy import (
     Column, BigInteger, String, Text, Float, Integer, JSON, ForeignKey, Index,
 )
 
-from src.core.database.base import BaseModel
+from novamind.core.database.base import BaseModel
 
 
 class AgentMemory(BaseModel):

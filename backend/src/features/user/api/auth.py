@@ -11,12 +11,12 @@ from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.database.database import get_db
-from src.core.middleware.structured_logging import get_logger
-from src.features.user.services.auth_service import AuthService
-from src.features.user.repository.user_repository import UserRepository
-from src.features.user.schemas.user_schema import TokenData
-from src.features.user.models.user import UserStatus
+from novamind.core.database.database import get_db
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.user.services.auth_service import AuthService
+from novamind.features.user.repository.user_repository import UserRepository
+from novamind.features.user.schemas.user_schema import TokenData
+from novamind.features.user.models.user import UserStatus
 
 
 logger = get_logger(__name__)

@@ -394,10 +394,10 @@ frontend/src/components/knowledge/
 
 建议逐步把以下 API 从“平铺文件”演进成“知识库域内聚”：
 
-- `knowledgeBase.ts`
-- `document.ts`
-- `search.ts`
-- `evaluation.ts`
+- `api/knowledge/knowledgeBase.ts`
+- `api/knowledge/document.ts`
+- `api/knowledge/search.ts`
+- `api/knowledge/evaluation.ts`
 
 前端不用和后端目录完全镜像，但命名要与后端能力域一致。
 

@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
-from src.features.evaluation.models.evaluation_task import EvaluationStatus
+from novamind.features.evaluation.models.evaluation_task import EvaluationStatus
 
 
 # ========== 配置 Schema ==========

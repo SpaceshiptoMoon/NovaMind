@@ -7,14 +7,14 @@
 import json
 from typing import Any, Dict, List, Optional
 
-from src.features.agent.core.memory.interfaces import (
+from novamind.features.agent.core.memory.interfaces import (
     IShortTermMemory,
     MemoryMessage,
     MemorySnapshot,
 )
-from src.features.agent.core.memory.token_budget import TokenBudget
-from src.features.agent.core.memory.compress import ICompressionStrategy
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.agent.core.memory.token_budget import TokenBudget
+from novamind.features.agent.core.memory.compress import ICompressionStrategy
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -86,7 +86,7 @@ class ShortTermMemory(IShortTermMemory):
         # 2. 从数据库加载消息
         if summary_cutoff:
             from sqlalchemy import select
-            from src.features.agent.models.message import AgentMessage
+            from novamind.features.agent.models.message import AgentMessage
             stmt = (
                 select(AgentMessage)
                 .where(

@@ -21,13 +21,13 @@ import asyncio
 import sys
 import os
 
-# 将项目根目录添加到 sys.path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+# 将 backend/src 添加到 sys.path，便于导入 novamind.* 包
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
 async def migrate():
     from sqlalchemy import text
-    from src.core.database.database import async_engine
+    from novamind.core.database.database import async_engine
 
     print("=" * 60)
     print("迁移：移除系统模型配置 (user_id=NULL)")

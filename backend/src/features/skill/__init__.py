@@ -9,12 +9,12 @@
 - 评价与评分
 """
 
-from src.features.skill.models import (
+from novamind.features.skill.models import (
     SkillDefinition, SkillVersion, SkillReview, SkillInstallation,
     SkillSource, SkillVisibility, SkillStatus, ReviewStatus,
 )
 
-from src.features.skill.schemas import (
+from novamind.features.skill.schemas import (
     SkillResponse,
     SkillListItemResponse,
     SkillMarketplaceListResponse,
@@ -27,12 +27,12 @@ from src.features.skill.schemas import (
     SkillValidateRequest,
 )
 
-from src.features.skill.services import (
+from novamind.features.skill.services import (
     SkillMarketplaceService,
     SkillSecurityChecker,
 )
 
-from src.features.skill.repository import (
+from novamind.features.skill.repository import (
     SkillRepository,
     SkillVersionRepository,
     SkillReviewRepository,

@@ -12,13 +12,13 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.features.evaluation.models.evaluation_task import (
+from novamind.features.evaluation.models.evaluation_task import (
     EvaluationTestSet,
     EvaluationTask,
     EvaluationStatus,
 )
-from src.core.middleware.structured_logging import get_logger
-from src.shared.utils.time_utils import now_china
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.utils.time_utils import now_china
 
 logger = get_logger(__name__)
 

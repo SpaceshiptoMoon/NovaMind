@@ -6,16 +6,16 @@
 """
 from typing import Optional
 
-from src.core.database.database import get_db_session
-from src.core.middleware.structured_logging import get_logger
-from src.features.app.models.resume import ResumeSessionStatus
-from src.features.app.repository.resume_repository import ResumeSessionRepository
-from src.features.app.services.resume_parser import ResumeParser
-from src.features.app.services.resume_analyzer import ResumeAnalyzer
-from src.features.app.services.resume_probing import AutoProbingEngine
-from src.features.user.services.model_config_service import ModelConfigService
-from src.shared.clients import get_minio_client
-from src.shared.mq.task_tracker import is_resume_cancelled
+from novamind.core.database.database import get_db_session
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.app.models.resume import ResumeSessionStatus
+from novamind.features.app.repository.resume_repository import ResumeSessionRepository
+from novamind.features.app.services.resume_parser import ResumeParser
+from novamind.features.app.services.resume_analyzer import ResumeAnalyzer
+from novamind.features.app.services.resume_probing import AutoProbingEngine
+from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.shared.clients import get_minio_client
+from novamind.shared.mq.task_tracker import is_resume_cancelled
 
 logger = get_logger(__name__)
 
@@ -151,7 +151,7 @@ async def _mark_cancelled(
     db,
 ) -> None:
     """标记简历会话为已取消"""
-    from src.shared.mq.task_tracker import clear_resume_cancel_flag
+    from novamind.shared.mq.task_tracker import clear_resume_cancel_flag
 
     await clear_resume_cancel_flag(session_id)
     await repo.update(session_id, {

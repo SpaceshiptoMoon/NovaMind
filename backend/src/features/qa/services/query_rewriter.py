@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Optional, List
 from dataclasses import dataclass, field
 
-from src.shared.ai_models.base_model import BaseLLM
+from novamind.shared.ai_models.base_model import BaseLLM
 
 
 class RewriteStrategy(str, Enum):
@@ -177,6 +177,6 @@ class QueryRewriter:
                 prompt=prompt, max_tokens=512, temperature=0.3,
             )
         except Exception as e:
-            from src.core.middleware.structured_logging import get_logger
+            from novamind.core.middleware.structured_logging import get_logger
             get_logger(__name__).warning("QueryRewriter LLM 调用失败", error=str(e))
             return None

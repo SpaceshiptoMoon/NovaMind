@@ -5,20 +5,20 @@ from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.agent.repository.agent_repository import McpServerRepository
-from src.features.agent.mcp.client import McpClientManager
-from src.features.agent.mcp.config import McpConnectionConfig
-from src.features.agent.models.mcp_server import AgentMcpServer
-from src.features.agent.schemas.agent_schema import (
+from novamind.features.agent.repository.agent_repository import McpServerRepository
+from novamind.features.agent.mcp.client import McpClientManager
+from novamind.features.agent.mcp.config import McpConnectionConfig
+from novamind.features.agent.models.mcp_server import AgentMcpServer
+from novamind.features.agent.schemas.agent_schema import (
     McpServerCreate,
     McpServerUpdate,
     McpServerResponse,
 )
-from src.features.agent.api.exceptions import (
+from novamind.features.agent.api.exceptions import (
     McpServerNotFoundError,
     McpConnectionError,
 )
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -186,7 +186,7 @@ class McpServerService:
         # 系统级服务器需要管理员权限才能修改/删除
         if server.user_id is None:
             if not is_admin:
-                from src.features.agent.api.exceptions import McpServerError
+                from novamind.features.agent.api.exceptions import McpServerError
                 raise McpServerError(
                     message="系统级 MCP 服务器需要管理员权限",
                     code="MCP_SERVER_ADMIN_REQUIRED",

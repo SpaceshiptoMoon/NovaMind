@@ -8,15 +8,15 @@ from typing import Optional
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.database.database import get_db
-from src.shared.clients import get_minio_client
-from src.shared.ai_models.base_model import BaseLLM
-from src.features.user.services.model_config_service import ModelConfigService
-from src.features.skill.services.skill_marketplace_service import SkillMarketplaceService
-from src.features.skill.services.skill_checker import SkillSecurityChecker
-from src.features.knowledge_space.api.dependencies import get_current_user_id
-from src.setting.yaml_config.loader import get_config_value
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.database.database import get_db
+from novamind.shared.clients import get_minio_client
+from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.features.skill.services.skill_marketplace_service import SkillMarketplaceService
+from novamind.features.skill.services.skill_checker import SkillSecurityChecker
+from novamind.features.knowledge_space.api.dependencies import get_current_user_id
+from novamind.setting.yaml_config.loader import get_config_value
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

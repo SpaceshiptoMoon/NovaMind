@@ -11,7 +11,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from elasticsearch import AsyncElasticsearch, NotFoundError, ConnectionError as ESConnectionError
 
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 
-from src.core.middleware.base_exception_handler import register_module_exceptions
-from src.core.middleware.structured_logging import get_logger
-from src.features.user.api.exceptions import (
+from novamind.core.middleware.base_exception_handler import register_module_exceptions
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.user.api.exceptions import (
     UserNotFoundError,
     UserAlreadyExistsError,
     UserCreationError,
@@ -15,13 +15,13 @@ from src.features.user.api.exceptions import (
     UserError,
     ModelConfigDeleteConflictError,
 )
-from src.features.user.schemas.user_schema import UserUpdate
-from src.features.user.services.user_service import UserService
-from src.features.user.services.auth_service import AuthService
-from src.features.user.repository.user_repository import UserRepository
-from src.features.user.models.user import UserStatus
-from src.core.database.database import get_db_session
-from src.setting.yaml_config import get_config
+from novamind.features.user.schemas.user_schema import UserUpdate
+from novamind.features.user.services.user_service import UserService
+from novamind.features.user.services.auth_service import AuthService
+from novamind.features.user.repository.user_repository import UserRepository
+from novamind.features.user.models.user import UserStatus
+from novamind.core.database.database import get_db_session
+from novamind.setting.yaml_config import get_config
 
 
 logger = get_logger(__name__)

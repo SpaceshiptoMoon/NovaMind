@@ -8,7 +8,7 @@
 from abc import abstractmethod
 from typing import List
 
-from src.shared.ai_models.base_model import BaseEmbedding
+from novamind.shared.ai_models.base_model import BaseEmbedding
 
 
 class BaseMultimodalEmbedding(BaseEmbedding):

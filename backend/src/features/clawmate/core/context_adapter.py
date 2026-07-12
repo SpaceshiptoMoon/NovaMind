@@ -12,8 +12,8 @@ ClawMate 上下文压缩适配器
 
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from src.core.middleware.structured_logging import get_logger
-from src.features.agent.core.memory.interfaces import MemoryMessage
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.agent.core.memory.interfaces import MemoryMessage
 
 logger = get_logger(__name__)
 
@@ -79,8 +79,8 @@ def create_compress_fn(
     Returns:
         async (messages: List[Dict]) -> List[Dict] 回调函数
     """
-    from src.features.agent.core.memory.context_compressor import ContextCompressor
-    from src.features.agent.core.memory.token_budget import TokenBudget
+    from novamind.features.agent.core.memory.context_compressor import ContextCompressor
+    from novamind.features.agent.core.memory.token_budget import TokenBudget
 
     def llm_factory():
         return llm_client

@@ -15,13 +15,13 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from src.core.middleware.structured_logging import get_logger
-from src.shared.utils.time_utils import now_china
-from src.shared.clients import (
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.utils.time_utils import now_china
+from novamind.shared.clients import (
     get_elasticsearch_client,
     get_minio_client,
 )
-from src.shared.cache.redis_client import get_redis_client
+from novamind.shared.cache.redis_client import get_redis_client
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["健康检查"])
@@ -47,13 +47,13 @@ async def _check_with_timeout(coro, timeout: float = _HEALTH_CHECK_TIMEOUT):
 
 def _get_config():
     """延迟加载配置，避免启动时的循环导入"""
-    from src.setting.yaml_config import get_config
+    from novamind.setting.yaml_config import get_config
     return get_config()
 
 
 def _get_engine():
     """延迟加载数据库引擎"""
-    from src.core.database.database import get_engine
+    from novamind.core.database.database import get_engine
     return get_engine()
 
 

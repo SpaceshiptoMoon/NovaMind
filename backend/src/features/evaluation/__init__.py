@@ -10,20 +10,20 @@
 """
 
 # 数据模型
-from src.features.evaluation.models import (
+from novamind.features.evaluation.models import (
     EvaluationTestSet,
     EvaluationTask,
     EvaluationStatus,
 )
 
 # 仓储层
-from src.features.evaluation.repository import (
+from novamind.features.evaluation.repository import (
     EvaluationTestSetRepository,
     EvaluationTaskRepository,
 )
 
 # Schema
-from src.features.evaluation.schemas import (
+from novamind.features.evaluation.schemas import (
     EvaluationConfig,
     TestCase,
     TestSet,
@@ -48,17 +48,17 @@ from src.features.evaluation.schemas import (
 
 # 服务层 - 使用延迟导入避免循环依赖
 # 请直接从以下路径导入：
-#   - EvaluationService: from src.features.evaluation.services.evaluation_service import EvaluationService
-#   - RetrievalEvaluator: from src.features.evaluation.services.retrieval_evaluator import RetrievalEvaluator
-#   - GenerationEvaluator: from src.features.evaluation.services.generation_evaluator import GenerationEvaluator
-#   - EmbeddingEvaluator: from src.features.evaluation.services.embedding_evaluator import EmbeddingEvaluator
-#   - ClaimDecomposer: from src.features.evaluation.services.claim_decomposer import ClaimDecomposer
+#   - EvaluationService: from novamind.features.evaluation.services.evaluation_service import EvaluationService
+#   - RetrievalEvaluator: from novamind.features.evaluation.services.retrieval_evaluator import RetrievalEvaluator
+#   - GenerationEvaluator: from novamind.features.evaluation.services.generation_evaluator import GenerationEvaluator
+#   - EmbeddingEvaluator: from novamind.features.evaluation.services.embedding_evaluator import EmbeddingEvaluator
+#   - ClaimDecomposer: from novamind.features.evaluation.services.claim_decomposer import ClaimDecomposer
 
 # API 层 - 使用延迟导入避免循环依赖
 # 请直接从以下路径导入：
-#   - router: from src.features.evaluation.api.routes import router
-#   - dependencies: from src.features.evaluation.api.dependencies import ...
-#   - exceptions: from src.features.evaluation.api.exceptions import ...
+#   - router: from novamind.features.evaluation.api.routes import router
+#   - dependencies: from novamind.features.evaluation.api.dependencies import ...
+#   - exceptions: from novamind.features.evaluation.api.exceptions import ...
 
 __all__ = [
     # 模型

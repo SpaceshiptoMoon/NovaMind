@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable, List, Tuple, Any
 
-from src.shared.ai_models.base_model import BaseLLM
+from novamind.shared.ai_models.base_model import BaseLLM
 
 
 @dataclass
@@ -108,7 +108,7 @@ class GradeRetrier:
                 reason=data.get("reason", ""),
             )
         except Exception as e:
-            from src.core.middleware.structured_logging import get_logger
+            from novamind.core.middleware.structured_logging import get_logger
             get_logger(__name__).warning(
                 "Grade 打分失败，默认重试（passed=False）",
                 error=str(e), passing_score=passing_score,

@@ -6,20 +6,20 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, Query, Path
 from fastapi.responses import StreamingResponse
 
-from src.features.user.api.auth import get_current_user
-from src.features.agent.api.dependencies import (
+from novamind.features.user.api.auth import get_current_user
+from novamind.features.agent.api.dependencies import (
     get_agent_service,
     get_agent_chat_service,
     get_mcp_server_service,
     get_tool_registry,
     get_minio_client_for_presign,
 )
-from src.features.agent.services.agent_service import AgentService
-from src.features.agent.services.chat_service import AgentChatService
-from src.features.agent.services.mcp_server_service import McpServerService
-from src.features.agent.core.tool.registry import ToolRegistry
-from src.shared.storage.minio_client import enrich_attachments_with_presigned_urls
-from src.features.agent.schemas.agent_schema import (
+from novamind.features.agent.services.agent_service import AgentService
+from novamind.features.agent.services.chat_service import AgentChatService
+from novamind.features.agent.services.mcp_server_service import McpServerService
+from novamind.features.agent.core.tool.registry import ToolRegistry
+from novamind.shared.storage.minio_client import enrich_attachments_with_presigned_urls
+from novamind.features.agent.schemas.agent_schema import (
     AgentCreate,
     AgentUpdate,
     AgentResponse,
@@ -395,7 +395,7 @@ async def get_tool(
 ):
     tool = registry.get_tool(tool_name)
     if not tool:
-        from src.features.agent.api.exceptions import ToolNotFoundError
+        from novamind.features.agent.api.exceptions import ToolNotFoundError
         raise ToolNotFoundError(tool_name)
 
     tools = tool.get_tools()

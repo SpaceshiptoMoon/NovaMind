@@ -9,11 +9,11 @@ import asyncio
 import json
 from typing import Any, Dict, List
 
-from src.features.agent.core.tool.base import BaseTool
-from src.features.clawmate.core.command_safety import check_command_safety, interpret_exit_code
-from src.shared.utils.ansi_strip import strip_ansi
-from src.shared.utils.redact import redact_sensitive_text
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.agent.core.tool.base import BaseTool
+from novamind.features.clawmate.core.command_safety import check_command_safety, interpret_exit_code
+from novamind.shared.utils.ansi_strip import strip_ansi
+from novamind.shared.utils.redact import redact_sensitive_text
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -126,7 +126,7 @@ class TerminalTool(BaseTool):
     @staticmethod
     def _load_config() -> dict:
         """加载 ClawMate 配置"""
-        from src.features.clawmate.core.config import ClawMateConfig
+        from novamind.features.clawmate.core.config import ClawMateConfig
         config = ClawMateConfig.from_yaml()
         return {
             "max_output_size": config.max_output_size,

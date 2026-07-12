@@ -11,23 +11,23 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.user.services.model_config_service import ModelConfigService
-from src.features.agent.services.agent_service import AgentService
-from src.features.agent.core.engine import AgentEngine, AgentEvent
-from src.features.agent.core.memory.memory_manager import MemoryManager
-from src.features.agent.core.memory.context_scrubber import StreamingContextScrubber
-from src.features.agent.core.prompt_builder import SystemPromptBuilder
-from src.features.agent.repository.agent_repository import MessageRepository, ToolCallRepository, SessionRepository
-from src.features.agent.repository.memory_repository import MemoryRepository
-from src.features.agent.repository.memory_search_repository import MemorySearchRepository
-from src.features.agent.models.agent import AgentDefinition
-from src.features.agent.models.session import AgentSession
-from src.features.agent.models.message import AgentMessage
-from src.features.agent.api.exceptions import AgentError, AgentNotFoundError
-from src.features.agent.core.tool.base import ToolContext
-from src.core.middleware.structured_logging import get_logger
-from src.shared.utils.time_utils import now_china
-from src.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
+from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.features.agent.services.agent_service import AgentService
+from novamind.features.agent.core.engine import AgentEngine, AgentEvent
+from novamind.features.agent.core.memory.memory_manager import MemoryManager
+from novamind.features.agent.core.memory.context_scrubber import StreamingContextScrubber
+from novamind.features.agent.core.prompt_builder import SystemPromptBuilder
+from novamind.features.agent.repository.agent_repository import MessageRepository, ToolCallRepository, SessionRepository
+from novamind.features.agent.repository.memory_repository import MemoryRepository
+from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
+from novamind.features.agent.models.agent import AgentDefinition
+from novamind.features.agent.models.session import AgentSession
+from novamind.features.agent.models.message import AgentMessage
+from novamind.features.agent.api.exceptions import AgentError, AgentNotFoundError
+from novamind.features.agent.core.tool.base import ToolContext
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.utils.time_utils import now_china
+from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
 
 logger = get_logger(__name__)
 
@@ -433,7 +433,7 @@ class AgentChatService:
     ) -> None:
         """扫描 snapshot.messages，为有附件的用户消息动态注入文档文本或图片"""
         from sqlalchemy import select
-        from src.features.agent.models.message import AgentMessage
+        from novamind.features.agent.models.message import AgentMessage
 
         stmt = select(AgentMessage).where(
             AgentMessage.conversation_id == conversation_id,
@@ -550,7 +550,7 @@ class AgentChatService:
 
     async def _collect_skill_fragments(self, enabled_tools: list) -> list:
         """收集技能广场中已安装技能的 Markdown 指令片段"""
-        from src.features.skill.models.skill import SkillStatus, ReviewStatus
+        from novamind.features.skill.models.skill import SkillStatus, ReviewStatus
 
         fragments = []
         for skill_ref in enabled_tools:
@@ -562,7 +562,7 @@ class AgentChatService:
                 if len(parts) < 3:
                     continue
                 skill_id = int(parts[1])
-                from src.features.skill.repository.skill_repository import SkillRepository
+                from novamind.features.skill.repository.skill_repository import SkillRepository
                 repo = SkillRepository(self.db)
                 skill_def = await repo.get_by_id(skill_id)
                 if (
@@ -681,8 +681,8 @@ class AgentChatService:
         conversation_id: int,
     ) -> List[Dict]:
         """将 OpenAI 格式消息压缩后返回（上下文溢出时调用）"""
-        from src.features.agent.core.memory.interfaces import MemoryMessage
-        from src.features.agent.core.memory.token_budget import TokenBudget
+        from novamind.features.agent.core.memory.interfaces import MemoryMessage
+        from novamind.features.agent.core.memory.token_budget import TokenBudget
 
         # OpenAI dicts → MemoryMessage
         mem_msgs = []

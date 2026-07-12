@@ -7,8 +7,8 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.qa.models.session_config import SessionConfig
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.qa.models.session_config import SessionConfig
+from novamind.core.middleware.structured_logging import get_logger
 
 
 # 默认压缩配置

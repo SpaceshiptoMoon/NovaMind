@@ -8,9 +8,9 @@ Claim 拆解与验证器
 import json
 from typing import Any, Dict, List, Optional
 
-from src.shared.ai_models.base_model import BaseLLM
-from src.shared.prompts.templates import PromptTemplate, PromptManager
-from src.core.middleware.structured_logging import get_logger
+from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.prompts.templates import PromptTemplate, PromptManager
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

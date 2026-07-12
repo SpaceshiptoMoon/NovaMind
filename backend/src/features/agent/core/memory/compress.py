@@ -6,8 +6,8 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional, Tuple
 
-from src.features.agent.core.memory.interfaces import MemoryMessage
-from src.features.agent.core.memory.token_budget import TokenBudget
+from novamind.features.agent.core.memory.interfaces import MemoryMessage
+from novamind.features.agent.core.memory.token_budget import TokenBudget
 
 
 class ICompressionStrategy(ABC):

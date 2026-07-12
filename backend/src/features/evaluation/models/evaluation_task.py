@@ -11,7 +11,7 @@ from enum import IntEnum
 from sqlalchemy import Column, BigInteger, SmallInteger, Integer, String, Text, JSON, ForeignKey, Index
 from sqlalchemy.orm import relationship
 
-from src.core.database.base import BaseModel
+from novamind.core.database.base import BaseModel
 
 
 class EvaluationStatus(IntEnum):

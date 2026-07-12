@@ -6,11 +6,11 @@ from fastapi import APIRouter, Depends, Query, Path
 from fastapi.responses import StreamingResponse
 from typing import Annotated, Optional
 
-from src.features.user.api.auth import get_current_user
-from src.features.knowledge_space.api.dependencies import validate_space_access
-from src.features.deep_research.api.dependencies import get_deep_research_service
-from src.features.deep_research.services.deep_research_service import DeepResearchService
-from src.features.deep_research.schemas.research_schema import (
+from novamind.features.user.api.auth import get_current_user
+from novamind.features.knowledge_space.api.dependencies import validate_space_access
+from novamind.features.deep_research.api.dependencies import get_deep_research_service
+from novamind.features.deep_research.services.deep_research_service import DeepResearchService
+from novamind.features.deep_research.schemas.research_schema import (
     ResearchMode,
     SearchSource,
     ExternalSearchProvider,
@@ -20,11 +20,11 @@ from src.features.deep_research.schemas.research_schema import (
     ResearchListItem,
     ResearchStatus,
 )
-from src.features.deep_research.models.research_session import (
+from novamind.features.deep_research.models.research_session import (
     ResearchStatus as ModelResearchStatus,
 )
-from src.features.user.schemas.user_schema import MessageResponse
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.user.schemas.user_schema import MessageResponse
+from novamind.core.middleware.structured_logging import get_logger
 
 router = APIRouter()
 logger = get_logger(__name__)

@@ -13,8 +13,8 @@ from typing import Optional
 
 from arq.worker import Worker
 
-from src.core.middleware.structured_logging import get_logger
-from src.shared.utils.time_utils import now_china
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.utils.time_utils import now_china
 
 logger = get_logger(__name__)
 
@@ -46,14 +46,14 @@ async def process_document_task(
         kb_id: 知识库 ID
         space_id: 空间 ID
     """
-    from src.core.database.database import get_db_session
-    from src.features.knowledge_space.models.document_task import TaskStatus
-    from src.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
-    from src.features.knowledge_space.repository.document_repository import DocumentRepository
-    from src.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-    from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-    from src.features.knowledge_space.services.document_service import DocumentService, DocumentCancelledError
-    from src.shared.mq.task_tracker import unbind_job
+    from novamind.core.database.database import get_db_session
+    from novamind.features.knowledge_space.models.document_task import TaskStatus
+    from novamind.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
+    from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
+    from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
+    from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+    from novamind.features.knowledge_space.services.document_service import DocumentService, DocumentCancelledError
+    from novamind.shared.mq.task_tracker import unbind_job
 
     job_id = ctx.get("job_id", "unknown")
 
@@ -105,7 +105,7 @@ async def process_document_task(
 
         try:
             # 3. 从 MinIO 下载文件
-            from src.shared.clients import ClientFactory
+            from novamind.shared.clients import ClientFactory
             minio_client = await ClientFactory.get_minio_client()
 
             storage_info = document.get_storage_info()
@@ -134,7 +134,7 @@ async def process_document_task(
 
             # 6. 失效搜索缓存
             try:
-                from src.shared.cache.redis_client import get_redis_client
+                from novamind.shared.cache.redis_client import get_redis_client
                 cache = await get_redis_client()
                 await cache.delete_by_pattern(f"search:{kb_id}:*", batch_size=100)
                 logger.info("搜索缓存已失效", kb_id=kb_id)
@@ -177,7 +177,7 @@ async def process_document_task(
 
                 # 清理 ES 残留数据（非关键，失败不影响状态）
                 try:
-                    from src.shared.clients import ClientFactory
+                    from novamind.shared.clients import ClientFactory
                     es_client = await ClientFactory.get_elasticsearch_client()
                     await es_client.delete_document_chunks(
                         space_id=space_id,
@@ -202,15 +202,15 @@ async def _ensure_mark_failed(document_id: int, error_message: str) -> None:
     2. ORM 失败则用 raw SQL 更新
     3. 都失败则记录严重告警（等待 recover_orphan_documents 在下次启动时处理）
     """
-    from src.features.knowledge_space.models.document_task import TaskStatus
+    from novamind.features.knowledge_space.models.document_task import TaskStatus
 
     failed_msg = f"[已重试最大次数] {error_message}"
 
     # 第 1 层：ORM 独立 session
     try:
-        from src.core.database.database import get_db_session
-        from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-        from src.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
+        from novamind.core.database.database import get_db_session
+        from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from novamind.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
 
         async with get_db_session() as independent_session:
             repo = DocumentTaskRepository(independent_session)
@@ -228,7 +228,7 @@ async def _ensure_mark_failed(document_id: int, error_message: str) -> None:
 
     # 第 2 层：Raw SQL
     try:
-        from src.core.database.database import get_engine
+        from novamind.core.database.database import get_engine
         from sqlalchemy import text
 
         failed_at = now_china()
@@ -263,7 +263,7 @@ async def _handle_cancellation(document_id: int, space_id: int) -> None:
     """
     用户取消文档处理后的事务补偿
     """
-    from src.shared.mq.task_tracker import clear_cancel_flag
+    from novamind.shared.mq.task_tracker import clear_cancel_flag
 
     # 清除取消标记
     await clear_cancel_flag(document_id)
@@ -273,7 +273,7 @@ async def _handle_cancellation(document_id: int, space_id: int) -> None:
 
     # 清理 ES 残留数据（非关键）
     try:
-        from src.shared.clients import ClientFactory
+        from novamind.shared.clients import ClientFactory
         es_client = await ClientFactory.get_elasticsearch_client()
         await es_client.delete_document_chunks(
             space_id=space_id,
@@ -292,7 +292,7 @@ class WorkerSettings:
 
     @staticmethod
     def get_config():
-        from src.setting.yaml_config import get_config
+        from novamind.setting.yaml_config import get_config
         config = get_config()
         return config.task_queue
 
@@ -304,8 +304,8 @@ async def create_embedded_worker() -> Worker:
     Returns:
         arq Worker 实例（需手动调用 worker.run()）
     """
-    from src.setting.yaml_config import get_config
-    from src.shared.mq import get_arq_pool
+    from novamind.setting.yaml_config import get_config
+    from novamind.shared.mq import get_arq_pool
 
     config = get_config()
     tq = config.task_queue
@@ -396,7 +396,7 @@ async def process_resume_task(
     3. 成功时移除追踪映射
     4. 失败时 arq 自动重试，最终失败执行三层兜底
     """
-    from src.shared.mq.task_tracker import unbind_resume_job, is_resume_cancelled, clear_resume_cancel_flag
+    from novamind.shared.mq.task_tracker import unbind_resume_job, is_resume_cancelled, clear_resume_cancel_flag
 
     job_id = ctx.get("job_id", "unknown")
 
@@ -414,7 +414,7 @@ async def process_resume_task(
         return
 
     try:
-        from src.features.app.services.resume_pipeline_service import ResumePipelineService
+        from novamind.features.app.services.resume_pipeline_service import ResumePipelineService
         await ResumePipelineService.execute_pipeline(
             session_id=session_id,
             user_id=user_id,
@@ -457,9 +457,9 @@ async def _ensure_mark_resume_failed(session_id: str, error_message: str) -> Non
 
     # 第 1 层：ORM 独立 session
     try:
-        from src.core.database.database import get_db_session
-        from src.features.app.repository.resume_repository import ResumeSessionRepository
-        from src.features.app.models.resume import ResumeSessionStatus
+        from novamind.core.database.database import get_db_session
+        from novamind.features.app.repository.resume_repository import ResumeSessionRepository
+        from novamind.features.app.models.resume import ResumeSessionStatus
 
         async with get_db_session() as independent_session:
             repo = ResumeSessionRepository(independent_session)
@@ -477,7 +477,7 @@ async def _ensure_mark_resume_failed(session_id: str, error_message: str) -> Non
 
     # 第 2 层：Raw SQL
     try:
-        from src.core.database.database import get_engine
+        from novamind.core.database.database import get_engine
         from sqlalchemy import text
 
         engine = get_engine()
@@ -512,8 +512,8 @@ async def recover_orphan_documents() -> int:
     Returns:
         恢复的文档数量
     """
-    from src.core.database.database import get_db_session
-    from src.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
+    from novamind.core.database.database import get_db_session
+    from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
     from sqlalchemy import select
 
     recovered = 0
@@ -545,8 +545,8 @@ async def recover_orphan_documents() -> int:
                 continue
 
             try:
-                from src.shared.mq import get_arq_pool
-                from src.shared.mq.task_tracker import bind_job_to_document
+                from novamind.shared.mq import get_arq_pool
+                from novamind.shared.mq.task_tracker import bind_job_to_document
 
                 pool = await get_arq_pool()
                 job = await pool.enqueue_job(
@@ -596,8 +596,8 @@ async def recover_orphan_resume_sessions() -> int:
     Returns:
         恢复的会话数量
     """
-    from src.core.database.database import get_db_session
-    from src.features.app.models.resume import ResumeSession, ResumeSessionStatus
+    from novamind.core.database.database import get_db_session
+    from novamind.features.app.models.resume import ResumeSession, ResumeSessionStatus
     from sqlalchemy import select, or_
 
     recovered = 0
@@ -636,13 +636,13 @@ async def recover_orphan_resume_sessions() -> int:
                 continue
 
             try:
-                from src.shared.mq import enqueue_process_resume
+                from novamind.shared.mq import enqueue_process_resume
                 # 更新恢复重试计数
                 s.config = {**cfg, "recover_retry_count": retry_count + 1}
                 await session.commit()
 
                 # 读取 MinIO 文件
-                from src.shared.clients import ClientFactory
+                from novamind.shared.clients import ClientFactory
                 minio_client = await ClientFactory.get_minio_client()
                 file_bytes = await minio_client.download_document(
                     minio_client.default_bucket, s.resume_file_url

@@ -13,33 +13,33 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
-from src.features.evaluation.models.evaluation_task import (
+from novamind.features.evaluation.models.evaluation_task import (
     EvaluationStatus,
     EvaluationTestSet,
     EvaluationTask,
 )
-from src.features.evaluation.repository.evaluation_repository import (
+from novamind.features.evaluation.repository.evaluation_repository import (
     EvaluationTestSetRepository,
     EvaluationTaskRepository,
 )
-from src.features.evaluation.schemas.evaluation_schema import EvaluationConfig
-from src.features.evaluation.services.retrieval_evaluator import RetrievalEvaluator
-from src.features.evaluation.services.generation_evaluator import GenerationEvaluator
-from src.features.evaluation.services.embedding_evaluator import EmbeddingEvaluator
-from src.features.evaluation.services.claim_decomposer import ClaimDecomposer
-from src.features.evaluation.services.test_set_parser import parse_test_set
-from src.features.evaluation.services.result_exporter import result_to_json_bytes, result_to_csv
-from src.features.evaluation.api.exceptions import (
+from novamind.features.evaluation.schemas.evaluation_schema import EvaluationConfig
+from novamind.features.evaluation.services.retrieval_evaluator import RetrievalEvaluator
+from novamind.features.evaluation.services.generation_evaluator import GenerationEvaluator
+from novamind.features.evaluation.services.embedding_evaluator import EmbeddingEvaluator
+from novamind.features.evaluation.services.claim_decomposer import ClaimDecomposer
+from novamind.features.evaluation.services.test_set_parser import parse_test_set
+from novamind.features.evaluation.services.result_exporter import result_to_json_bytes, result_to_csv
+from novamind.features.evaluation.api.exceptions import (
     EvaluationTaskNotFoundError,
     EvaluationTestSetNotFoundError,
     EvaluationTaskPendingError,
     EvaluationTaskNotCancellableError,
     EvaluationTaskNotCompletedError,
 )
-from src.shared.ai_models.base_model import BaseLLM, BaseEmbedding
-from src.shared.prompts.templates import PromptTemplate, PromptManager
-from src.shared.storage.minio_client import MinioClient
-from src.core.middleware.structured_logging import get_logger
+from novamind.shared.ai_models.base_model import BaseLLM, BaseEmbedding
+from novamind.shared.prompts.templates import PromptTemplate, PromptManager
+from novamind.shared.storage.minio_client import MinioClient
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -376,7 +376,7 @@ class EvaluationService:
     # ========== 异步执行 ==========
 
     async def _run_evaluation(self, task_id: int, user_id: int) -> None:
-        from src.core.database.database import get_db_session
+        from novamind.core.database.database import get_db_session
         async with get_db_session() as session:
             task_repo = EvaluationTaskRepository(session)
             test_set_repo = EvaluationTestSetRepository(session)
@@ -420,9 +420,9 @@ class EvaluationService:
                     logger.warning("部分模型客户端获取失败", has_llm=llm_client is not None, has_embedding=embedding_client is not None)
 
                 # 用后台任务的独立 session 创建 SearchService，避免共享请求级 session
-                from src.features.knowledge_space.services.search_service import SearchService
-                from src.shared.clients import get_elasticsearch_client
-                from src.features.user.services.model_config_service import ModelConfigService
+                from novamind.features.knowledge_space.services.search_service import SearchService
+                from novamind.shared.clients import get_elasticsearch_client
+                from novamind.features.user.services.model_config_service import ModelConfigService
                 bg_es_client = await get_elasticsearch_client()
                 bg_model_config_service = ModelConfigService(session)
                 bg_search_service = SearchService(session, bg_es_client, bg_model_config_service)
@@ -632,7 +632,7 @@ class EvaluationService:
             "index": index, "question": question, "expected_answer": expected_answer,
         }
 
-        from src.features.knowledge_space.schemas.search_schema import SearchRequest, SearchMode
+        from novamind.features.knowledge_space.schemas.search_schema import SearchRequest, SearchMode
 
         search_request = SearchRequest(
             query=question,
@@ -789,7 +789,7 @@ class EvaluationService:
     @staticmethod
     async def recover_orphan_tasks() -> int:
         """恢复超时的 PENDING 和 RUNNING 任务（启动时调用）"""
-        from src.core.database.database import get_db_session
+        from novamind.core.database.database import get_db_session
         recovered = 0
         async with get_db_session() as session:
             task_repo = EvaluationTaskRepository(session)

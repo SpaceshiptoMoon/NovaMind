@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator, EmailSt
 from typing import Optional, Self, Dict, Any
 from datetime import datetime
 
-from src.features.user.schemas.validators import (
+from novamind.features.user.schemas.validators import (
     validate_username_format,
     validate_username_optional,
     validate_phone_format,

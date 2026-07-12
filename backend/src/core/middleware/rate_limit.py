@@ -21,7 +21,7 @@ from slowapi.errors import RateLimitExceeded
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -34,7 +34,7 @@ def _get_rate_limit_storage_uri() -> str:
     否则回退到内存存储。
     """
     try:
-        from src.setting.yaml_config import get_config
+        from novamind.setting.yaml_config import get_config
         config = get_config()
         if config.redis.enabled and config.redis.host:
             # URL 中不包含密码，通过 storage_options 传递
@@ -50,7 +50,7 @@ def _get_rate_limit_storage_uri() -> str:
 def _get_rate_limit_storage_options() -> dict:
     """获取速率限制存储选项（密码等敏感信息通过此参数传递，不暴露在 URI 中）"""
     try:
-        from src.setting.yaml_config import get_config
+        from novamind.setting.yaml_config import get_config
         config = get_config()
         if config.redis.enabled and config.redis.host and config.redis.password:
             return {"password": config.redis.password}

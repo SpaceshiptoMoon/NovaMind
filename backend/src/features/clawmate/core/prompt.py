@@ -8,7 +8,7 @@ import platform
 from datetime import datetime
 from typing import Optional
 
-from src.shared.utils.time_utils import now_china
+from novamind.shared.utils.time_utils import now_china
 
 
 CLAWMATE_SYSTEM_PROMPT = """你是 ClawMate，一个 AI 驱动的终端助手。帮助用户通过 Shell 命令和文件操作与本地开发环境交互。

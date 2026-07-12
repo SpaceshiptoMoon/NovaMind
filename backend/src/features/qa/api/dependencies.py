@@ -1,16 +1,16 @@
-from src.core.database.database import get_db
-from src.features.qa.services.qa_service import QAService
-from src.features.qa.services.qa_cache_service import QACacheService
-from src.shared.cache.cache_service import CacheService
-from src.features.qa.repository.question_answer_repository import QuestionAnswerRepository
-from src.features.qa.repository.session_config_repository import SessionConfigRepository
-from src.features.qa.repository.session_summary_repository import SessionSummaryRepository
+from novamind.core.database.database import get_db
+from novamind.features.qa.services.qa_service import QAService
+from novamind.features.qa.services.qa_cache_service import QACacheService
+from novamind.shared.cache.cache_service import CacheService
+from novamind.features.qa.repository.question_answer_repository import QuestionAnswerRepository
+from novamind.features.qa.repository.session_config_repository import SessionConfigRepository
+from novamind.features.qa.repository.session_summary_repository import SessionSummaryRepository
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.features.qa.services.ai_chat_service import AIChatService
-from src.features.user.api.dependencies import get_model_config_service
-from src.core.middleware.structured_logging import get_logger
-from src.shared.clients import get_minio_client
+from novamind.features.qa.services.ai_chat_service import AIChatService
+from novamind.features.user.api.dependencies import get_model_config_service
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.clients import get_minio_client
 
 logger = get_logger(__name__)
 

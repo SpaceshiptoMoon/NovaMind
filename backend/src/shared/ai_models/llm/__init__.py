@@ -5,11 +5,11 @@ LLM 客户端包
 支持协议: OpenAI 兼容、Anthropic、Ollama、Transformers 本地推理
 """
 
-from src.shared.ai_models.base_model import BaseLLM
-from src.shared.ai_models.llm.openai_compatible import OpenAICompatibleLLM
-from src.shared.ai_models.llm.anthropic_llm import AnthropicLLM
-from src.shared.ai_models.llm.ollama_llm import OllamaLLM
-from src.shared.ai_models.llm.transformers_llm import TransformersLLM
+from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.ai_models.llm.openai_compatible import OpenAICompatibleLLM
+from novamind.shared.ai_models.llm.anthropic_llm import AnthropicLLM
+from novamind.shared.ai_models.llm.ollama_llm import OllamaLLM
+from novamind.shared.ai_models.llm.transformers_llm import TransformersLLM
 
 
 def create_llm_client(

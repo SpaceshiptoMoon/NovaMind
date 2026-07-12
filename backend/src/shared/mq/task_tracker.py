@@ -6,7 +6,7 @@
 """
 from typing import Optional, Union
 
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -24,7 +24,7 @@ class TaskTracker:
         self._tracker_ttl = tracker_ttl
 
     async def _get_redis(self):
-        from src.shared.cache.redis_client import get_redis_client
+        from novamind.shared.cache.redis_client import get_redis_client
         return await get_redis_client()
 
     async def bind(self, entity_id: Union[int, str], job_id: str) -> None:
@@ -110,7 +110,7 @@ async def is_document_actively_processing(document_id: int) -> bool:
         return False
     try:
         from arq.jobs import Job
-        from src.shared.mq import get_arq_pool
+        from novamind.shared.mq import get_arq_pool
         pool = await get_arq_pool()
         # arq 0.28 的 _get_job_result 需要内部 bytes key，不适合直接传 str job_id。
         # 这里改用公开 Job API，但只把“仍在队列中的 job”视为活跃。

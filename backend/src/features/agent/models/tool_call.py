@@ -3,7 +3,7 @@ Agent 工具调用记录模型
 """
 from sqlalchemy import Column, BigInteger, String, Text, Integer, JSON, ForeignKey, Index
 
-from src.core.database.base import BaseModel
+from novamind.core.database.base import BaseModel
 
 
 class AgentToolCall(BaseModel):

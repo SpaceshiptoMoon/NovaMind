@@ -4,7 +4,7 @@
 import json
 from typing import Any, Dict, List
 
-from src.features.agent.core.tool.base import BaseTool
+from novamind.features.agent.core.tool.base import BaseTool
 
 
 class FileReadTool(BaseTool):

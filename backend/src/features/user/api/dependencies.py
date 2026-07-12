@@ -1,9 +1,9 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
-from src.features.user.services import UserService
-from src.features.user.services.model_config_service import ModelConfigService
-from src.features.user.repository import UserRepository
-from src.core.database.database import get_db
+from novamind.features.user.services import UserService
+from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.features.user.repository import UserRepository
+from novamind.core.database.database import get_db
 
 async def get_user_service(db: AsyncSession = Depends(get_db)):
     user_repository = UserRepository(db)

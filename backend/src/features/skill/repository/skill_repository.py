@@ -7,11 +7,11 @@ from sqlalchemy import select, func, delete, update, or_, and_, case, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.skill.models.skill import (
+from novamind.features.skill.models.skill import (
     SkillDefinition, SkillVersion, SkillReview, SkillInstallation,
     SkillSource, SkillVisibility, SkillStatus, ReviewStatus,
 )
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -38,7 +38,7 @@ class SkillRepository:
         self.session = session
 
     async def create(self, **kwargs) -> SkillDefinition:
-        from src.features.skill.exceptions import SkillAlreadyExistsError
+        from novamind.features.skill.exceptions import SkillAlreadyExistsError
         async with self.session.begin_nested():
             skill = SkillDefinition(**kwargs)
             self.session.add(skill)
@@ -238,7 +238,7 @@ class SkillRepository:
         return skill
 
     async def soft_delete(self, skill_id: int) -> bool:
-        from src.shared.utils.time_utils import now_china
+        from novamind.shared.utils.time_utils import now_china
         ts = int(now_china().timestamp())
         result = await self.session.execute(
             update(SkillDefinition)

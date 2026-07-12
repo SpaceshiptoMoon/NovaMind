@@ -6,7 +6,7 @@
 """
 from sqlalchemy import Column, BigInteger, String, Text, ForeignKey
 
-from src.core.database.base import BaseModel
+from novamind.core.database.base import BaseModel
 
 
 class ChatAttachment(BaseModel):

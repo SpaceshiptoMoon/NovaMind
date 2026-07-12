@@ -7,8 +7,8 @@
 import json
 from typing import Any, Dict, List
 
-from src.features.agent.core.tool.base import BaseTool
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.agent.core.tool.base import BaseTool
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -74,7 +74,7 @@ class ReadToolResultTool(BaseTool):
             return json.dumps({"error": "无法访问数据库"})
 
         from sqlalchemy import select
-        from src.features.agent.models.tool_call import AgentToolCall
+        from novamind.features.agent.models.tool_call import AgentToolCall
 
         stmt = select(AgentToolCall).where(AgentToolCall.id == tc_id)
         result = await db.execute(stmt)

@@ -3,8 +3,8 @@
 """
 from fastapi import FastAPI
 
-from src.core.middleware.base_exception_handler import register_module_exceptions
-from src.features.app.api.exceptions import (
+from novamind.core.middleware.base_exception_handler import register_module_exceptions
+from novamind.features.app.api.exceptions import (
     AppError,
     ResumeSessionNotFoundError,
     ResumeParseError,

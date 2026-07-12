@@ -5,13 +5,13 @@ Embedding 客户端包
 支持协议: OpenAI 兼容、Ollama、Transformers 本地推理
 """
 
-from src.shared.ai_models.base_model import BaseEmbedding
-from src.shared.ai_models.embedding.openai_compatible import OpenAICompatibleEmbedding
-from src.shared.ai_models.embedding.ollama_embedding import OllamaEmbedding
-from src.shared.ai_models.embedding.transformers_embedding import TransformersEmbedding
-from src.shared.ai_models.embedding.multimodal_embedding import BaseMultimodalEmbedding
-from src.shared.ai_models.embedding.openai_compatible_multimodal import OpenAICompatibleMultimodalEmbedding
-from src.shared.ai_models.embedding.dashscope_multimodal import DashScopeMultimodalEmbedding
+from novamind.shared.ai_models.base_model import BaseEmbedding
+from novamind.shared.ai_models.embedding.openai_compatible import OpenAICompatibleEmbedding
+from novamind.shared.ai_models.embedding.ollama_embedding import OllamaEmbedding
+from novamind.shared.ai_models.embedding.transformers_embedding import TransformersEmbedding
+from novamind.shared.ai_models.embedding.multimodal_embedding import BaseMultimodalEmbedding
+from novamind.shared.ai_models.embedding.openai_compatible_multimodal import OpenAICompatibleMultimodalEmbedding
+from novamind.shared.ai_models.embedding.dashscope_multimodal import DashScopeMultimodalEmbedding
 
 
 def create_embedding_client(

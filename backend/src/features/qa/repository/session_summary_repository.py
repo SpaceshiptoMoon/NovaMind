@@ -7,8 +7,8 @@ from typing import Optional, List
 from sqlalchemy import select, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.qa.models.session_summary import SessionSummary
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.qa.models.session_summary import SessionSummary
+from novamind.core.middleware.structured_logging import get_logger
 
 
 class SessionSummaryRepository:

@@ -9,7 +9,7 @@ import random
 from dataclasses import dataclass
 from typing import Any, Callable, Coroutine
 
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

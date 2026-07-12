@@ -1,14 +1,14 @@
 """
 Agent 模块启动初始化
 """
-from src.core.middleware.structured_logging import get_logger
-from src.features.agent.core.tool.registry import ToolRegistry
-from src.features.agent.core.tool.builtins import KnowledgeSearchTool, WebSearchTool, CodeExecutionTool, MemoryTool, TodoTool, ReadToolResultTool
-from src.features.agent.mcp.client import McpClientManager
-from src.features.agent.core.tool.executor import ToolExecutor
-from src.features.agent.core.tool.hooks import LoggingHook, ResultTruncationHook, ResultBudgetHook
-from src.features.agent.core.engine import AgentEngine
-from src.features.agent.core.memory.todo_store import TodoStore
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.agent.core.tool.registry import ToolRegistry
+from novamind.features.agent.core.tool.builtins import KnowledgeSearchTool, WebSearchTool, CodeExecutionTool, MemoryTool, TodoTool, ReadToolResultTool
+from novamind.features.agent.mcp.client import McpClientManager
+from novamind.features.agent.core.tool.executor import ToolExecutor
+from novamind.features.agent.core.tool.hooks import LoggingHook, ResultTruncationHook, ResultBudgetHook
+from novamind.features.agent.core.engine import AgentEngine
+from novamind.features.agent.core.memory.todo_store import TodoStore
 
 logger = get_logger(__name__)
 
@@ -24,8 +24,8 @@ async def init_agent_components(app):
     # 2. 初始化代码执行沙箱（如果启用）
     sandbox = None
     try:
-        from src.features.agent.sandbox.config import SandboxConfig
-        from src.features.agent.sandbox.docker_sandbox import DockerSandbox
+        from novamind.features.agent.sandbox.config import SandboxConfig
+        from novamind.features.agent.sandbox.docker_sandbox import DockerSandbox
 
         sandbox_config = SandboxConfig.from_yaml()
         if sandbox_config.enabled:
@@ -69,14 +69,14 @@ async def init_agent_components(app):
         app.state.agent_sandbox = sandbox
 
     # 7. 注册异常处理器
-    from src.features.agent.api.exception_handlers import setup_agent_exception_handlers
+    from novamind.features.agent.api.exception_handlers import setup_agent_exception_handlers
     setup_agent_exception_handlers(app)
 
     # 8. 异步连接系统级 MCP 服务器（如果有）
     try:
-        from src.core.database.database import get_db_session
-        from src.features.agent.repository.agent_repository import McpServerRepository
-        from src.features.agent.mcp.config import McpConnectionConfig
+        from novamind.core.database.database import get_db_session
+        from novamind.features.agent.repository.agent_repository import McpServerRepository
+        from novamind.features.agent.mcp.config import McpConnectionConfig
 
         async with get_db_session() as db:
             repo = McpServerRepository(db)

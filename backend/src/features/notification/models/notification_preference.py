@@ -3,7 +3,7 @@
 """
 from sqlalchemy import Column, BigInteger, Boolean, JSON, ForeignKey
 
-from src.core.database.base import BaseModel
+from novamind.core.database.base import BaseModel
 
 
 class NotificationPreference(BaseModel):

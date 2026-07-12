@@ -2,7 +2,7 @@
 ClawMate 异常定义
 """
 
-from src.core.middleware.base_exception_handler import BaseAPIError
+from novamind.core.middleware.base_exception_handler import BaseAPIError
 
 
 class ClawMateError(BaseAPIError):

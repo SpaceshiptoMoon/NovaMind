@@ -7,8 +7,8 @@
 from fastapi import APIRouter, Depends, Body, Query, Path
 from typing import Annotated, Optional
 
-from src.features.user.services.model_config_service import ModelConfigService
-from src.features.user.schemas.model_config_schema import (
+from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.features.user.schemas.model_config_schema import (
     ModelConfigCreate,
     ModelConfigUpdate,
     ModelConfigResponse,
@@ -18,11 +18,11 @@ from src.features.user.schemas.model_config_schema import (
     AvailableModelsResponse,
     AvailableModelsWithInfoResponse,
 )
-from src.features.user.schemas.user_schema import MessageResponse
-from src.features.user.api.auth import require_active_user
-from src.features.user.api.dependencies import get_model_config_service
-from src.features.user.api.exceptions import ModelConfigDeleteConflictError
-from src.core.middleware.rate_limit import get_limiter
+from novamind.features.user.schemas.user_schema import MessageResponse
+from novamind.features.user.api.auth import require_active_user
+from novamind.features.user.api.dependencies import get_model_config_service
+from novamind.features.user.api.exceptions import ModelConfigDeleteConflictError
+from novamind.core.middleware.rate_limit import get_limiter
 from fastapi import Request
 
 router = APIRouter()

@@ -13,9 +13,9 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from src.core.middleware.structured_logging import get_logger
-from src.features.clawmate.core.environment import LocalEnvironment
-from src.features.clawmate.core.file_operations import FileOperations
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.clawmate.core.environment import LocalEnvironment
+from novamind.features.clawmate.core.file_operations import FileOperations
 
 logger = get_logger(__name__)
 
@@ -102,12 +102,12 @@ class SessionManager:
 
             # 加载记忆快照
             file_ops = FileOperations(env)
-            from src.features.clawmate.core.memory_store import MemoryStore
+            from novamind.features.clawmate.core.memory_store import MemoryStore
             memory_store = MemoryStore(env.cwd, file_ops)
             frozen_memory, frozen_user = memory_store.load_snapshot()
 
             # 创建 TodoStore
-            from src.features.clawmate.core.tools.todo_tool import ClawMateTodoStore
+            from novamind.features.clawmate.core.tools.todo_tool import ClawMateTodoStore
 
             state = ClawMateSessionState(
                 env=env,

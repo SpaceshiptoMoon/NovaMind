@@ -14,11 +14,11 @@ from typing import Optional, Dict, Any, List, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from src.features.user.models.user_model_config import UserModelConfig, ModelType
-from src.features.user.repository.model_config_repository import (
+from novamind.features.user.models.user_model_config import UserModelConfig, ModelType
+from novamind.features.user.repository.model_config_repository import (
     ModelConfigRepository, MODEL_TYPE_MAP, MODEL_TYPE_STR
 )
-from src.features.user.schemas.model_config_schema import (
+from novamind.features.user.schemas.model_config_schema import (
     ModelConfigCreate,
     ModelConfigUpdate,
     ModelConfigResponse,
@@ -26,13 +26,13 @@ from src.features.user.schemas.model_config_schema import (
     ModelTestRequest,
     ModelTestResponse,
 )
-from src.shared.ai_models.llm import create_llm_client, BaseLLM
-from src.shared.ai_models.embedding import create_embedding_client, BaseEmbedding
-from src.shared.ai_models.rerank import create_rerank_client, BaseRerank
+from novamind.shared.ai_models.llm import create_llm_client, BaseLLM
+from novamind.shared.ai_models.embedding import create_embedding_client, BaseEmbedding
+from novamind.shared.ai_models.rerank import create_rerank_client, BaseRerank
 
-from src.shared.utils.crypto import encrypt_api_key_async, decrypt_api_key_async
-from src.core.middleware.structured_logging import get_logger
-from src.features.user.api.exceptions import (
+from novamind.shared.utils.crypto import encrypt_api_key_async, decrypt_api_key_async
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.user.api.exceptions import (
     ModelConfigNotFoundError,
     ModelConfigAlreadyExistsError,
     ModelConfigTestFailedError,
@@ -718,7 +718,7 @@ class ModelConfigService:
 
     async def _test_multimodal_embedding(self, request: ModelTestRequest) -> int:
         """测试多模态嵌入连接，返回检测到的维度（同时验证文本和图片嵌入能力）"""
-        from src.shared.ai_models.embedding import BaseMultimodalEmbedding
+        from novamind.shared.ai_models.embedding import BaseMultimodalEmbedding
 
         client = create_embedding_client(
             protocol=request.protocol,
@@ -974,7 +974,7 @@ class ModelConfigService:
         user_id: int
     ) -> "AvailableModelsWithInfoResponse":
         """获取可用模型的详细信息"""
-        from src.features.user.schemas.model_config_schema import (
+        from novamind.features.user.schemas.model_config_schema import (
             ModelInfo,
             AvailableModelsWithInfoResponse,
         )
@@ -1037,7 +1037,7 @@ class ModelConfigService:
         if model_type == ModelType.EMBEDDING:
             # 检查空间绑定（Embedding 配置由空间级别统一管理）
             try:
-                from src.features.knowledge_space.models.knowledge_space import KnowledgeSpace
+                from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
 
                 stmt = select(
                     KnowledgeSpace.id, KnowledgeSpace.name, KnowledgeSpace.config

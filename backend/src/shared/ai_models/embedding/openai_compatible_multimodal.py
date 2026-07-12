@@ -23,9 +23,9 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from src.shared.ai_models.embedding.multimodal_embedding import BaseMultimodalEmbedding
-from src.shared.ai_models.embedding.openai_compatible import EmbeddingDimensionError
-from src.core.middleware.structured_logging import get_logger
+from novamind.shared.ai_models.embedding.multimodal_embedding import BaseMultimodalEmbedding
+from novamind.shared.ai_models.embedding.openai_compatible import EmbeddingDimensionError
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

@@ -9,10 +9,10 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from src.core.middleware.structured_logging import get_logger
-from src.features.skill.models.skill import ReviewStatus
-from src.shared.ai_models.base_model import BaseLLM
-from src.shared.prompts import PromptTemplate, PromptManager
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.skill.models.skill import ReviewStatus
+from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.prompts import PromptTemplate, PromptManager
 
 logger = get_logger(__name__)
 

@@ -130,13 +130,13 @@ class PromptManager:
         if cls._templates:
             return
 
-        from src.features.knowledge_space.prompts import TEMPLATES as _ks
-        from src.features.deep_research.deep_research_prompts import TEMPLATES as _dr
-        from src.features.qa.qa_prompts import TEMPLATES as _qa
-        from src.features.evaluation.evaluation_prompts import TEMPLATES as _ev
-        from src.features.app.app_prompts import TEMPLATES as _app
-        from src.features.agent.agent_prompts import TEMPLATES as _ag
-        from src.features.skill.skill_prompts import TEMPLATES as _sk
+        from novamind.features.knowledge_space.prompts import TEMPLATES as _ks
+        from novamind.features.deep_research.deep_research_prompts import TEMPLATES as _dr
+        from novamind.features.qa.qa_prompts import TEMPLATES as _qa
+        from novamind.features.evaluation.evaluation_prompts import TEMPLATES as _ev
+        from novamind.features.app.app_prompts import TEMPLATES as _app
+        from novamind.features.agent.agent_prompts import TEMPLATES as _ag
+        from novamind.features.skill.skill_prompts import TEMPLATES as _sk
 
         for t in [_ks, _dr, _qa, _ev, _app, _ag, _sk]:
             cls._templates.update(t)

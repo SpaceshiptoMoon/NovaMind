@@ -6,8 +6,8 @@ from typing import List, Optional, Tuple
 from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.agent.models.memory import AgentMemory
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.agent.models.memory import AgentMemory
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

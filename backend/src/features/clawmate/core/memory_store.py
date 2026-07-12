@@ -24,8 +24,8 @@ import re
 import tempfile
 from typing import Dict, Any, List, Optional
 
-from src.features.clawmate.core.file_operations import FileOperations
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.clawmate.core.file_operations import FileOperations
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

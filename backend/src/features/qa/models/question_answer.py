@@ -6,7 +6,7 @@
 from typing import Optional
 from sqlalchemy import Column, BigInteger, String, Text, JSON, ForeignKey, Index
 
-from src.core.database.base import BaseModel
+from novamind.core.database.base import BaseModel
 
 
 class QuestionAnswer(BaseModel):

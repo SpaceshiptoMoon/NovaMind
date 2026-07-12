@@ -10,9 +10,9 @@ ClawMate 模块初始化
 
 import asyncio
 
-from src.core.middleware.structured_logging import get_logger
-from src.features.clawmate.core.session_manager import SessionManager
-from src.features.clawmate.core.config import ClawMateConfig
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.clawmate.core.session_manager import SessionManager
+from novamind.features.clawmate.core.config import ClawMateConfig
 
 logger = get_logger(__name__)
 
@@ -37,12 +37,12 @@ async def init_clawmate_components(app):
     )
 
     # 2. 创建 ClawMate 专用工具链
-    from src.features.clawmate.core.tools import ALL_TOOLS
-    from src.features.agent.core.tool.registry import ToolRegistry
-    from src.features.agent.core.tool.executor import ToolExecutor
-    from src.features.agent.core.tool.hooks import LoggingHook, ResultTruncationHook
-    from src.features.agent.core.engine import AgentEngine
-    from src.features.agent.mcp.client import McpClientManager
+    from novamind.features.clawmate.core.tools import ALL_TOOLS
+    from novamind.features.agent.core.tool.registry import ToolRegistry
+    from novamind.features.agent.core.tool.executor import ToolExecutor
+    from novamind.features.agent.core.tool.hooks import LoggingHook, ResultTruncationHook
+    from novamind.features.agent.core.engine import AgentEngine
+    from novamind.features.agent.mcp.client import McpClientManager
 
     tool_registry = ToolRegistry()
     for tool_cls in ALL_TOOLS:
@@ -80,8 +80,8 @@ async def init_clawmate_components(app):
 
 def _register_exceptions(app):
     """注册 ClawMate 异常到全局处理器"""
-    from src.core.middleware.base_exception_handler import register_module_exceptions
-    from src.features.clawmate.api.exceptions import (
+    from novamind.core.middleware.base_exception_handler import register_module_exceptions
+    from novamind.features.clawmate.api.exceptions import (
         ClawMateError,
         SessionNotInitializedError,
         CommandBlockedError,

@@ -11,11 +11,11 @@ from sqlalchemy.exc import IntegrityError
 from typing import Optional, Dict, Any
 import time
 
-from src.features.user.models.user import User, UserStatus
-from src.features.user.schemas.user_schema import UserUpdate
-from src.core.auth.hashing import verify_password_async
-from src.shared.cache.redis_client import get_redis_client
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.user.models.user import User, UserStatus
+from novamind.features.user.schemas.user_schema import UserUpdate
+from novamind.core.auth.hashing import verify_password_async
+from novamind.shared.cache.redis_client import get_redis_client
+from novamind.core.middleware.structured_logging import get_logger
 
 
 # 缓存 TTL 常量

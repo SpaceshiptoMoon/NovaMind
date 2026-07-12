@@ -5,7 +5,7 @@ from typing import Optional, List, Dict, Any, Union, AsyncIterator
 import redis.asyncio as redis
 from redis.exceptions import ConnectionError, RedisError
 
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -730,7 +730,7 @@ async def get_redis_client() -> RedisCache:
 
     委托给 ClientFactory 统一管理单例
     """
-    from src.shared.clients import ClientFactory
+    from novamind.shared.clients import ClientFactory
     return await ClientFactory.get_redis_client()
 
 
@@ -738,5 +738,5 @@ async def close_redis_connection():
     """
     关闭全局Redis连接
     """
-    from src.shared.clients import ClientFactory
+    from novamind.shared.clients import ClientFactory
     await ClientFactory.close_all()

@@ -1,7 +1,7 @@
 """
 通知模块异常
 """
-from src.core.middleware.base_exception_handler import BaseAPIError
+from novamind.core.middleware.base_exception_handler import BaseAPIError
 
 
 class NotificationError(BaseAPIError):

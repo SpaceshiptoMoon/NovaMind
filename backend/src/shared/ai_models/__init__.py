@@ -5,12 +5,12 @@ AI 模型客户端统一入口
 支持协议: openai / anthropic / ollama / transformers
 """
 
-from src.shared.ai_models.base_model import BaseLLM, BaseEmbedding, BaseRerank
-from src.shared.ai_models.llm import OpenAICompatibleLLM, AnthropicLLM, OllamaLLM
-from src.shared.ai_models.llm import TransformersLLM
-from src.shared.ai_models.embedding import OpenAICompatibleEmbedding, OllamaEmbedding
-from src.shared.ai_models.embedding import TransformersEmbedding
-from src.shared.ai_models.rerank import CompatibleRerankClient, TransformersRerankClient
+from novamind.shared.ai_models.base_model import BaseLLM, BaseEmbedding, BaseRerank
+from novamind.shared.ai_models.llm import OpenAICompatibleLLM, AnthropicLLM, OllamaLLM
+from novamind.shared.ai_models.llm import TransformersLLM
+from novamind.shared.ai_models.embedding import OpenAICompatibleEmbedding, OllamaEmbedding
+from novamind.shared.ai_models.embedding import TransformersEmbedding
+from novamind.shared.ai_models.rerank import CompatibleRerankClient, TransformersRerankClient
 
 __all__ = [
     "BaseLLM",

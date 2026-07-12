@@ -36,7 +36,7 @@ def _hkdf_derive(raw_key: bytes) -> bytes:
 
 def _get_encryption_key_v1() -> bytes:
     """旧版 SHA-256 派生（仅用于解密旧 CBC 数据）"""
-    from src.setting.yaml_config import get_config
+    from novamind.setting.yaml_config import get_config
     config = get_config()
     raw_key = config.security.encryption_key
     if not raw_key:
@@ -46,7 +46,7 @@ def _get_encryption_key_v1() -> bytes:
 
 def _get_encryption_key() -> bytes:
     """获取当前版本加密密钥（HKDF 派生）"""
-    from src.setting.yaml_config import get_config
+    from novamind.setting.yaml_config import get_config
     config = get_config()
     raw_key = config.security.encryption_key
     if not raw_key:

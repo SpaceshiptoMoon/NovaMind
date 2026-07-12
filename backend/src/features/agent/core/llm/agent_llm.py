@@ -12,9 +12,9 @@ Agent 专用 LLM 封装
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from src.shared.ai_models.base_model import BaseLLM
-from src.shared.ai_models.llm.openai_compatible import OpenAICompatibleLLM
-from src.core.middleware.structured_logging import get_logger
+from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.ai_models.llm.openai_compatible import OpenAICompatibleLLM
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

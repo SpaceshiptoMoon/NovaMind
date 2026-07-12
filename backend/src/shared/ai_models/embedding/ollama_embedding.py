@@ -14,8 +14,8 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from src.shared.ai_models.base_model import BaseEmbedding
-from src.core.middleware.structured_logging import get_logger
+from novamind.shared.ai_models.base_model import BaseEmbedding
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

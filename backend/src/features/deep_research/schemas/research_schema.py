@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, ConfigDict, model_validator
 from datetime import datetime
 
 # 从模型层导入字符串枚举（值完全一致，无需重复定义）
-from src.features.deep_research.models.research_session import (
+from novamind.features.deep_research.models.research_session import (
     ResearchMode,
     SearchSource,
     ExternalSearchProvider,

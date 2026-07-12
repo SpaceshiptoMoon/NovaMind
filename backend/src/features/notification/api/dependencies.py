@@ -4,8 +4,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 
-from src.core.database.database import get_db
-from src.features.notification.services.notification_service import NotificationService
+from novamind.core.database.database import get_db
+from novamind.features.notification.services.notification_service import NotificationService
 
 
 async def get_notification_service(

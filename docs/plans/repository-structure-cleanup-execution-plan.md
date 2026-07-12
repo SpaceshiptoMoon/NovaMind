@@ -97,7 +97,7 @@ Make `backend/src/shared/utils/` clearly distinguish between:
   - `media_utils.py`
   - `vlm_utils.py`
 - actual utilities:
-  - `text_processing/`
+  - `text_utils/`
   - `ansi_strip.py`
   - `crypto.py`
   - `heartbeat.py`
@@ -131,7 +131,7 @@ backend/src/shared/utils/
     document_readers/
     media_utils.py
     vlm_utils.py
-  text_processing/
+  text_utils/
   security/
     crypto.py
     redact.py

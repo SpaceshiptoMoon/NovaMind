@@ -4,7 +4,7 @@ QA 模块缓存服务（委托 CacheService 实现 L1+L2）
 保留 QACacheService 类名和方法签名，内部委托给 CacheService。
 CacheService 已具备 L1(LRU)+L2(Redis) 双层能力，QA 模块不需要自己的 L1+L2 实现。
 """
-from src.shared.cache.cache_service import CacheService
+from novamind.shared.cache.cache_service import CacheService
 
 
 class QACacheService:

@@ -8,13 +8,13 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.user.api.auth import get_current_user, require_admin
-from src.core.database.database import get_db
-from src.features.user.models.user import User
-from src.features.skill.api.dependencies import get_skill_service, update_llm_review_settings, get_llm_review_settings
-from src.features.skill.services.skill_marketplace_service import SkillMarketplaceService
-from src.features.skill.services.skill_parser import validate_skill_md
-from src.features.skill.schemas.skill_schema import (
+from novamind.features.user.api.auth import get_current_user, require_admin
+from novamind.core.database.database import get_db
+from novamind.features.user.models.user import User
+from novamind.features.skill.api.dependencies import get_skill_service, update_llm_review_settings, get_llm_review_settings
+from novamind.features.skill.services.skill_marketplace_service import SkillMarketplaceService
+from novamind.features.skill.services.skill_parser import validate_skill_md
+from novamind.features.skill.schemas.skill_schema import (
     SkillResponse,
     SkillListItemResponse,
     SkillMarketplaceListResponse,
@@ -37,7 +37,7 @@ from src.features.skill.schemas.skill_schema import (
     SkillCategoriesResponse,
     SkillTagsResponse,
 )
-from src.features.skill.exceptions import (
+from novamind.features.skill.exceptions import (
     SkillNotFoundError,
     InvalidSkillFormatError,
     SkillFileSizeExceededError,
@@ -266,7 +266,7 @@ async def list_review_models(
     _admin: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    from src.features.user.repository.model_config_repository import ModelConfigRepository
+    from novamind.features.user.repository.model_config_repository import ModelConfigRepository
     repo = ModelConfigRepository(db)
     configs = await repo.list_by_user(admin_user_id, "llm")
     return [c.model for c in configs]
@@ -426,7 +426,7 @@ async def install_skill(
     user_id: int = Depends(get_current_user_id),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
-    from src.features.agent.repository.agent_repository import AgentRepository
+    from novamind.features.agent.repository.agent_repository import AgentRepository
     agent_repo = AgentRepository(service.db)
     return await service.install_skill(user_id, skill_id, data.agent_id, agent_repo)
 
@@ -444,7 +444,7 @@ async def uninstall_skill(
     current_user: dict = Depends(get_current_user),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
-    from src.features.agent.repository.agent_repository import AgentRepository
+    from novamind.features.agent.repository.agent_repository import AgentRepository
     agent_repo = AgentRepository(service.db)
     await service.uninstall_skill(
         user_id, skill_id, agent_id, agent_repo,

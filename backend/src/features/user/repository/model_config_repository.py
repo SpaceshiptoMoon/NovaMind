@@ -8,12 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func
 from typing import Optional, List
 
-from src.features.user.models.user_model_config import UserModelConfig, ModelType
-from src.features.user.schemas.model_config_schema import (
+from novamind.features.user.models.user_model_config import UserModelConfig, ModelType
+from novamind.features.user.schemas.model_config_schema import (
     ModelConfigCreate,
     ModelConfigUpdate,
 )
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

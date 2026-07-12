@@ -9,13 +9,13 @@
 """
 
 # 数据模型
-from src.features.deep_research.models import (
+from novamind.features.deep_research.models import (
     ResearchSession,
     ResearchStatus,
 )
 
 # Schema（包含枚举定义）
-from src.features.deep_research.schemas import (
+from novamind.features.deep_research.schemas import (
     ResearchMode,
     SearchSource,
     ExternalSearchProvider,
@@ -30,7 +30,7 @@ from src.features.deep_research.schemas import (
 )
 
 # 服务层
-from src.features.deep_research.services import (
+from novamind.features.deep_research.services import (
     ExternalSearchService,
     ExternalSearchResult,
     TavilySearchService,
@@ -40,13 +40,13 @@ from src.features.deep_research.services import (
 )
 
 # 仓储层
-from src.features.deep_research.repository import ResearchRepository
+from novamind.features.deep_research.repository import ResearchRepository
 
 # API 层 - 使用延迟导入避免循环依赖
 # 请直接从以下路径导入：
-#   - router: from src.features.deep_research.api.routes import router
-#   - dependencies: from src.features.deep_research.api.dependencies import ...
-#   - exceptions: from src.features.deep_research.exceptions import ...
+#   - router: from novamind.features.deep_research.api.routes import router
+#   - dependencies: from novamind.features.deep_research.api.dependencies import ...
+#   - exceptions: from novamind.features.deep_research.exceptions import ...
 
 __all__ = [
     # 模型

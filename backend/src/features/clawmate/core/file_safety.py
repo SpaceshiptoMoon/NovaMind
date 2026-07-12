@@ -12,7 +12,7 @@
 import os
 from typing import Optional, Set, Tuple
 
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

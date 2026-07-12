@@ -1,10 +1,10 @@
 from typing import Optional, List, Dict, Any
 
-from src.core.middleware.structured_logging import get_logger
-from src.features.user.models.user import User as UserModel, UserStatus
-from src.features.user.schemas.user_schema import UserUpdate
-from src.features.user.repository.user_repository import UserRepository
-from src.features.user.api.exceptions import (
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.user.models.user import User as UserModel, UserStatus
+from novamind.features.user.schemas.user_schema import UserUpdate
+from novamind.features.user.repository.user_repository import UserRepository
+from novamind.features.user.api.exceptions import (
     UserAlreadyExistsError,
     UserNotFoundError,
     UserCreationError,
@@ -12,8 +12,8 @@ from src.features.user.api.exceptions import (
     AuthenticationError,
     UserError,
 )
-from src.features.user.services.auth_service import AuthService
-from src.setting.yaml_config import get_config
+from novamind.features.user.services.auth_service import AuthService
+from novamind.setting.yaml_config import get_config
 
 
 class UserService:
@@ -74,7 +74,7 @@ class UserService:
                     raise UserAlreadyExistsError(f"手机号 {phone} 已被注册", field="phone")
 
             # 创建新用户（密码哈希在 Service 层处理）
-            from src.core.auth.hashing import get_password_hash_async
+            from novamind.core.auth.hashing import get_password_hash_async
             user_create = {
                 "username": username,
                 "email": email,
@@ -320,7 +320,7 @@ class UserService:
 
         # 密码哈希在 Service 层处理（不在 Repository 层）
         if "password" in update_data and update_data["password"]:
-            from src.core.auth.hashing import get_password_hash_async
+            from novamind.core.auth.hashing import get_password_hash_async
             user_update.password = await get_password_hash_async(update_data["password"])
 
         user = await self.user_repository.update_user(user_id, user_update)
@@ -409,7 +409,7 @@ class UserService:
             UserNotFoundError: 用户不存在
         """
         import secrets
-        from src.core.auth.hashing import get_password_hash_async
+        from novamind.core.auth.hashing import get_password_hash_async
 
         user = await self.user_repository.get_user_by_id(user_id, use_cache=False)
         if not user:
@@ -453,7 +453,7 @@ class UserService:
             AuthenticationError: 当前密码错误
             UserNotFoundError: 用户不存在
         """
-        from src.core.auth.hashing import verify_password_async, get_password_hash_async
+        from novamind.core.auth.hashing import verify_password_async, get_password_hash_async
 
         user = await self.user_repository.get_user_by_id(user_id, use_cache=False)
         if not user:

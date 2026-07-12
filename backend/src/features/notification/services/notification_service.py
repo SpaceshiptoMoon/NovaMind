@@ -7,20 +7,20 @@ from typing import Optional, List, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.notification.models.notification import Notification, NotificationType
-from src.features.notification.models.notification_preference import NotificationPreference
-from src.features.notification.repository.notification_repository import (
+from novamind.features.notification.models.notification import Notification, NotificationType
+from novamind.features.notification.models.notification_preference import NotificationPreference
+from novamind.features.notification.repository.notification_repository import (
     NotificationRepository,
     NotificationPreferenceRepository,
 )
-from src.features.notification.services.email_service import EmailService
-from src.features.notification.schemas.notification_schema import (
+from novamind.features.notification.services.email_service import EmailService
+from novamind.features.notification.schemas.notification_schema import (
     NotificationResponse,
     NotificationListResponse,
     UnreadCountResponse,
     NotificationPreferenceResponse,
 )
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -154,7 +154,7 @@ class NotificationService:
     async def _get_user_email(self, user_id: int) -> Optional[str]:
         """获取用户邮箱"""
         try:
-            from src.features.user.repository.user_repository import UserRepository
+            from novamind.features.user.repository.user_repository import UserRepository
             user_repo = UserRepository(self.db)
             user = await user_repo.get_user_by_id(user_id, use_cache=False)
             return user.email if user else None

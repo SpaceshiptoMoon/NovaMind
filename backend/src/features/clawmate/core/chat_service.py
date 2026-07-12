@@ -13,13 +13,13 @@ ClawMate AI 对话服务
 import json
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from src.core.middleware.structured_logging import get_logger
-from src.features.agent.core.engine import AgentEngine
-from src.features.clawmate.core.session_manager import SessionManager, ClawMateSessionState
-from src.features.clawmate.core.file_operations import FileOperations
-from src.features.clawmate.core.memory_store import MemoryStore
-from src.features.clawmate.core.prompt import build_clawmate_system_prompt
-from src.features.clawmate.core.tools import TOOL_NAMES
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.agent.core.engine import AgentEngine
+from novamind.features.clawmate.core.session_manager import SessionManager, ClawMateSessionState
+from novamind.features.clawmate.core.file_operations import FileOperations
+from novamind.features.clawmate.core.memory_store import MemoryStore
+from novamind.features.clawmate.core.prompt import build_clawmate_system_prompt
+from novamind.features.clawmate.core.tools import TOOL_NAMES
 
 logger = get_logger(__name__)
 
@@ -211,7 +211,7 @@ class ClawMateChatService:
         返回 None（不压缩，由引擎的 context_overflow 事件处理）。
         """
         try:
-            from src.features.clawmate.core.context_adapter import create_compress_fn
+            from novamind.features.clawmate.core.context_adapter import create_compress_fn
             context_length = getattr(llm_client, 'context_length', None)
             if not context_length:
                 context_length = 128000  # 默认 128K

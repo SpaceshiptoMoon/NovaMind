@@ -5,8 +5,8 @@ from typing import Optional
 from urllib.parse import urlparse, urlunparse
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from src.setting.yaml_config import get_config
-from src.core.middleware.structured_logging import get_logger
+from novamind.setting.yaml_config import get_config
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

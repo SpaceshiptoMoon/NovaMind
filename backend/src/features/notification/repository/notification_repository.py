@@ -8,9 +8,9 @@ from typing import Optional, Tuple, List
 from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.notification.models.notification import Notification
-from src.features.notification.models.notification_preference import NotificationPreference
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.notification.models.notification import Notification
+from novamind.features.notification.models.notification_preference import NotificationPreference
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -70,7 +70,7 @@ class NotificationRepository:
 
     async def mark_read(self, notification_id: int, user_id: int) -> bool:
         """标记单条通知为已读"""
-        from src.shared.utils.time_utils import now_china
+        from novamind.shared.utils.time_utils import now_china
 
         async with self.db.begin_nested():
             stmt = (
@@ -83,7 +83,7 @@ class NotificationRepository:
 
     async def mark_all_read(self, user_id: int) -> int:
         """标记用户所有通知为已读"""
-        from src.shared.utils.time_utils import now_china
+        from novamind.shared.utils.time_utils import now_china
 
         async with self.db.begin_nested():
             stmt = (

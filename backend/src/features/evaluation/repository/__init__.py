@@ -1,4 +1,4 @@
-from src.features.evaluation.repository.evaluation_repository import (
+from novamind.features.evaluation.repository.evaluation_repository import (
     EvaluationTestSetRepository,
     EvaluationTaskRepository,
 )

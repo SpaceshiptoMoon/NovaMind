@@ -9,7 +9,7 @@
 """
 from typing import Optional
 
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -29,7 +29,7 @@ async def get_arq_pool() -> "arq.ArqRedis":
         return _arq_pool
 
     import arq
-    from src.shared.cache.redis_client import get_redis_client
+    from novamind.shared.cache.redis_client import get_redis_client
 
     redis_cache = await get_redis_client()
 
@@ -70,13 +70,13 @@ async def enqueue_process_document(
     Returns:
         job_id: arq 任务 ID
     """
-    from src.core.database.database import get_db_session
-    from src.features.knowledge_space.api.exceptions import DocumentAlreadyProcessingError, DocumentNotFoundError
-    from src.features.knowledge_space.models.document_task import TaskStatus
-    from src.features.knowledge_space.repository.document_repository import DocumentRepository
-    from src.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-    from src.shared.mq.task_tracker import bind_job_to_document
-    from src.shared.utils.time_utils import now_china
+    from novamind.core.database.database import get_db_session
+    from novamind.features.knowledge_space.api.exceptions import DocumentAlreadyProcessingError, DocumentNotFoundError
+    from novamind.features.knowledge_space.models.document_task import TaskStatus
+    from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
+    from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+    from novamind.shared.mq.task_tracker import bind_job_to_document
+    from novamind.shared.utils.time_utils import now_china
 
     pool = await get_arq_pool()
 
@@ -152,7 +152,7 @@ async def enqueue_process_resume(
     Returns:
         job_id: arq 任务 ID
     """
-    from src.shared.mq.task_tracker import bind_job_to_resume
+    from novamind.shared.mq.task_tracker import bind_job_to_resume
 
     pool = await get_arq_pool()
 

@@ -3,7 +3,7 @@ Agent 会话模型
 """
 from sqlalchemy import Column, BigInteger, String, Integer, ForeignKey, Index
 
-from src.core.database.base import BaseModel
+from novamind.core.database.base import BaseModel
 
 
 class AgentSession(BaseModel):

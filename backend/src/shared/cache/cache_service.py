@@ -14,11 +14,11 @@ import json
 import random
 import asyncio
 
-from src.shared.cache.lru_cache import default_cache as _lru
+from novamind.shared.cache.lru_cache import default_cache as _lru
 from typing import Optional, Any, Dict, List, Callable, Awaitable, Union
 from functools import wraps
 
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -138,7 +138,7 @@ class CacheService:
 
     async def _get_cache(self):
         """获取 Redis 客户端"""
-        from src.shared.cache.redis_client import get_redis_client
+        from novamind.shared.cache.redis_client import get_redis_client
 
         if self._cache is None:
             self._cache = await get_redis_client()

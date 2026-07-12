@@ -10,23 +10,23 @@
 """
 
 # API 路由
-from src.features.user.api import router
+from novamind.features.user.api import router
 
 # 数据模型
-from src.features.user.models.user import User
-from src.features.user.models.user_model_config import UserModelConfig, ModelType
+from novamind.features.user.models.user import User
+from novamind.features.user.models.user_model_config import UserModelConfig, ModelType
 
 # 服务层
-from src.features.user.services import UserService
-from src.features.user.services.auth_service import AuthService
-from src.features.user.services.model_config_service import ModelConfigService
+from novamind.features.user.services import UserService
+from novamind.features.user.services.auth_service import AuthService
+from novamind.features.user.services.model_config_service import ModelConfigService
 
 # 仓储层
-from src.features.user.repository import UserRepository
-from src.features.user.repository.model_config_repository import ModelConfigRepository
+from novamind.features.user.repository import UserRepository
+from novamind.features.user.repository.model_config_repository import ModelConfigRepository
 
 # Schema - 用户
-from src.features.user.schemas.user_schema import (
+from novamind.features.user.schemas.user_schema import (
     UserCreate,
     UserLogin,
     UserUpdate,
@@ -35,7 +35,7 @@ from src.features.user.schemas.user_schema import (
 )
 
 # Schema - 模型配置
-from src.features.user.schemas.model_config_schema import (
+from novamind.features.user.schemas.model_config_schema import (
     ModelConfigCreate,
     ModelConfigUpdate,
     ModelConfigResponse,

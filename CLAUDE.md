@@ -29,7 +29,7 @@ intelligent/
 │   ├── stores/          # 7 个 Pinia Store
 │   ├── views/           # 页面视图 (按域组织)
 │   ├── layouts/         # Auth / Main / Workspace 三层布局 + AppHeader
-│   ├── components/      # 12 个通用组件
+│   ├── components/      # 按通用 / chat / knowledge 等领域组织的前端组件
 │   ├── router/          # 路由定义 + 守卫
 │   ├── types/           # TypeScript 类型定义 + RouteMeta 扩展
 │   ├── utils/           # 工具函数 (markdown/document/format)
@@ -40,10 +40,10 @@ intelligent/
 ├── deploy.sh            # Linux 部署脚本
 ├── deploy.ps1           # Windows 部署脚本
 ├── docker-compose.yml   # Docker Compose 编排
-└── 项目结构导航.md       # 详细项目结构导航
+└── docs/project-structure-navigation.md  # 详细项目结构导航
 ```
 
-> 详细的项目结构、所有文件路径、API 端点和前端路由请参考 [项目结构导航.md](项目结构导航.md)。
+> 详细的项目结构、所有文件路径、API 端点和前端路由请参考 [project-structure-navigation.md](docs/project-structure-navigation.md)。
 
 ### 后端 DDD 分层
 
@@ -73,7 +73,7 @@ repository/   → 数据访问 (SQLAlchemy async)
 | notification | `/api/v1/notifications` | `/home/notifications` |
 | clawmate | `/api/v1/clawmate` | `/home/workspace/clawmate` |
 
-> 每个模块的完整 API 端点清单和对应源码文件见 [项目结构导航.md](项目结构导航.md)。
+> 每个模块的完整 API 端点清单和对应源码文件见 [project-structure-navigation.md](docs/project-structure-navigation.md)。
 
 ### 关键基础设施
 

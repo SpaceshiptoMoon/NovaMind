@@ -8,8 +8,8 @@ import asyncio
 import time
 from typing import AsyncIterator, AsyncGenerator, Union
 
-from src.shared.ai_models.base_model import StreamChunk
-from src.core.middleware.structured_logging import get_logger
+from novamind.shared.ai_models.base_model import StreamChunk
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

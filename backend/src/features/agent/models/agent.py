@@ -3,7 +3,7 @@ Agent 定义模型
 """
 from sqlalchemy import Column, BigInteger, String, Text, Integer, Float, JSON, ForeignKey
 
-from src.core.database.base import BaseModel
+from novamind.core.database.base import BaseModel
 
 
 class AgentDefinition(BaseModel):

@@ -20,40 +20,40 @@ class RouterManager:
     def _register_routers(self):
         """注册所有路由（延迟导入，避免启动时加载全部依赖）"""
         # 功能模块路由
-        from src.features.qa.api.qa_routes import router as qa_router
-        from src.features.qa.api.ai_chat_routes import router as ai_chat_router
-        from src.features.qa.api.session_config_routes import router as session_config_router
-        from src.features.user.api.user_routes import router as user_router
-        from src.features.user.api.model_config_routes import router as model_config_router
-        from src.core.middleware.health_check import router as health_router
+        from novamind.features.qa.api.qa_routes import router as qa_router
+        from novamind.features.qa.api.ai_chat_routes import router as ai_chat_router
+        from novamind.features.qa.api.session_config_routes import router as session_config_router
+        from novamind.features.user.api.user_routes import router as user_router
+        from novamind.features.user.api.model_config_routes import router as model_config_router
+        from novamind.core.middleware.health_check import router as health_router
 
         # 知识空间模块路由
-        from src.features.knowledge_space.api.space_router import router as space_router
-        from src.features.knowledge_space.api.knowledge_base_routes import router as knowledge_base_router
-        from src.features.knowledge_space.api.document_routes import router as document_router
-        from src.features.knowledge_space.api.member_routes import router as member_router
-        from src.features.knowledge_space.api.search_routes import router as search_router
+        from novamind.features.knowledge_space.api.space_router import router as space_router
+        from novamind.features.knowledge_space.api.knowledge_base_routes import router as knowledge_base_router
+        from novamind.features.knowledge_space.api.document_routes import router as document_router
+        from novamind.features.knowledge_space.api.member_routes import router as member_router
+        from novamind.features.knowledge_space.api.search_routes import router as search_router
 
         # 深度研究模块路由
-        from src.features.deep_research.api.routes import router as deep_research_router
+        from novamind.features.deep_research.api.routes import router as deep_research_router
 
         # 测评模块路由
-        from src.features.evaluation.api.routes import router as evaluation_router
+        from novamind.features.evaluation.api.routes import router as evaluation_router
 
         # Agent 模块路由
-        from src.features.agent.api.routes import router as agent_router
+        from novamind.features.agent.api.routes import router as agent_router
 
         # 技能广场路由
-        from src.features.skill.api.routes import router as skill_router
+        from novamind.features.skill.api.routes import router as skill_router
 
         # 应用中心路由
-        from src.features.app.api.routes import router as app_router
+        from novamind.features.app.api.routes import router as app_router
 
         # 通知模块路由
-        from src.features.notification.api.routes import router as notification_router
+        from novamind.features.notification.api.routes import router as notification_router
 
         # ClawMate 终端模块路由
-        from src.features.clawmate.api.routes import router as clawmate_router
+        from novamind.features.clawmate.api.routes import router as clawmate_router
 
         self.routers.update({
             "qa": qa_router,

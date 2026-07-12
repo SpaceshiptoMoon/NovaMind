@@ -3,7 +3,7 @@ Agent 模块异常定义
 """
 from typing import ClassVar, List
 
-from src.core.middleware.base_exception_handler import BaseAPIError
+from novamind.core.middleware.base_exception_handler import BaseAPIError
 
 
 class AgentError(BaseAPIError):

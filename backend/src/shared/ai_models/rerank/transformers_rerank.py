@@ -7,8 +7,8 @@ Transformers 本地 Rerank 客户端
 import asyncio
 from typing import List, Dict, Any, Optional
 
-from src.shared.ai_models.base_model import BaseRerank
-from src.core.middleware.structured_logging import get_logger
+from novamind.shared.ai_models.base_model import BaseRerank
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

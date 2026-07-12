@@ -11,18 +11,18 @@ MemoryManager — 记忆系统统一门面
 """
 from typing import Any, Callable, Dict, List, Optional
 
-from src.features.agent.core.memory.interfaces import (
+from novamind.features.agent.core.memory.interfaces import (
     LongTermMemoryEntry,
     MemoryMessage,
     MemorySnapshot,
 )
-from src.features.agent.core.memory.short_term import ShortTermMemory
-from src.features.agent.core.memory.long_term import LongTermMemory
-from src.features.agent.core.memory.token_budget import TokenBudget
-from src.features.agent.core.memory.context_compressor import ContextCompressor
-from src.features.agent.repository.memory_repository import MemoryRepository
-from src.features.agent.repository.context_summary_repository import ContextSummaryRepository
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.agent.core.memory.short_term import ShortTermMemory
+from novamind.features.agent.core.memory.long_term import LongTermMemory
+from novamind.features.agent.core.memory.token_budget import TokenBudget
+from novamind.features.agent.core.memory.context_compressor import ContextCompressor
+from novamind.features.agent.repository.memory_repository import MemoryRepository
+from novamind.features.agent.repository.context_summary_repository import ContextSummaryRepository
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

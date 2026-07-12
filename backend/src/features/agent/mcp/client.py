@@ -8,8 +8,8 @@ import asyncio
 from contextlib import AsyncExitStack
 from typing import Any, Dict, List, Optional
 
-from src.core.middleware.structured_logging import get_logger
-from src.features.agent.mcp.config import McpConnectionConfig
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.agent.mcp.config import McpConnectionConfig
 
 logger = get_logger(__name__)
 

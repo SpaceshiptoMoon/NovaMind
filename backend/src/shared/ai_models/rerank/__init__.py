@@ -5,9 +5,9 @@ Rerank 客户端包
 支持协议: OpenAI 兼容、Transformers 本地推理
 """
 
-from src.shared.ai_models.base_model import BaseRerank
-from src.shared.ai_models.rerank.openai_rerank import CompatibleRerankClient
-from src.shared.ai_models.rerank.transformers_rerank import TransformersRerankClient
+from novamind.shared.ai_models.base_model import BaseRerank
+from novamind.shared.ai_models.rerank.openai_rerank import CompatibleRerankClient
+from novamind.shared.ai_models.rerank.transformers_rerank import TransformersRerankClient
 
 
 def create_rerank_client(

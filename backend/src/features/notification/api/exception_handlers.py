@@ -3,8 +3,8 @@
 """
 from fastapi import FastAPI
 
-from src.core.middleware.base_exception_handler import register_module_exceptions
-from src.features.notification.api.exceptions import (
+from novamind.core.middleware.base_exception_handler import register_module_exceptions
+from novamind.features.notification.api.exceptions import (
     NotificationError,
     NotificationNotFoundError,
     NotificationForbiddenError,

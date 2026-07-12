@@ -5,8 +5,8 @@
 """
 from typing import Any, Dict, List, Optional
 
-from src.core.middleware.structured_logging import get_logger
-from src.features.agent.core.tool.base import BaseTool
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.agent.core.tool.base import BaseTool
 
 logger = get_logger(__name__)
 

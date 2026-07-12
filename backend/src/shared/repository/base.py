@@ -18,7 +18,7 @@ from typing import Generic, TypeVar, Optional, Any, Sequence
 from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.shared.utils.time_utils import now_china
+from novamind.shared.utils.time_utils import now_china
 
 ModelT = TypeVar("ModelT")
 

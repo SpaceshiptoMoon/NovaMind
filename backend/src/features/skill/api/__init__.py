@@ -1,1 +1,1 @@
-from src.features.skill.api.routes import router  # noqa: F401
+from novamind.features.skill.api.routes import router  # noqa: F401

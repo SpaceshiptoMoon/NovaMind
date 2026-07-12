@@ -15,11 +15,11 @@ import hashlib
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from src.features.agent.core.memory.interfaces import MemoryMessage
-from src.features.agent.core.memory.token_budget import TokenBudget
-from src.features.agent.core.memory.compress import ICompressionStrategy
-from src.shared.utils.redact import redact_sensitive_text
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.agent.core.memory.interfaces import MemoryMessage
+from novamind.features.agent.core.memory.token_budget import TokenBudget
+from novamind.features.agent.core.memory.compress import ICompressionStrategy
+from novamind.shared.utils.redact import redact_sensitive_text
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

@@ -10,14 +10,14 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
-from src.features.deep_research.models.research_session import (
+from novamind.features.deep_research.models.research_session import (
     ResearchSession,
     ResearchStatus,
     ResearchMode,
     SearchSource,
     ExternalSearchProvider,
 )
-from src.shared.utils.time_utils import now_china
+from novamind.shared.utils.time_utils import now_china
 
 
 # update_status 允许更新的字段白名单
@@ -25,11 +25,11 @@ _UPDATABLE_FIELDS = frozenset({
     "status_info", "plan", "result", "stats",
     "completed_at", "started_at", "external_provider",
 })
-from src.features.deep_research.exceptions import (
+from novamind.features.deep_research.exceptions import (
     DeepResearchError,
     ResearchNotFoundError,
 )
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -121,7 +121,7 @@ class ResearchRepository:
         Returns:
             研究会话或 None
         """
-        from src.features.knowledge_space.models.knowledge_space import KnowledgeSpace
+        from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
 
         conditions = [
             ResearchSession.session_id == session_id,

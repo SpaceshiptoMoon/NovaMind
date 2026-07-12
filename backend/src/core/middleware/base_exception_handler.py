@@ -10,8 +10,8 @@ from typing import Callable, Dict, Any, List, ClassVar
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-from src.core.middleware.structured_logging import get_logger
-from src.shared.utils.time_utils import now_china
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.utils.time_utils import now_china
 
 logger = get_logger(__name__)
 
@@ -262,7 +262,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     )
 
     # 生产环境返回通用错误消息
-    from src.setting.yaml_config import get_config
+    from novamind.setting.yaml_config import get_config
 
     config = get_config()
     is_production = config.environment == "production"

@@ -8,12 +8,12 @@ from fastapi.responses import StreamingResponse, Response
 from urllib.parse import quote
 import io
 
-from src.features.user.api.auth import get_current_user
-from src.features.qa.api.dependencies import get_aichat_service, get_qa_service, get_model_config_service, get_minio_client_for_presign
-from src.features.qa.services.ai_chat_service import AIChatService
-from src.features.qa.services.qa_service import QAService
-from src.features.qa.api.constants import DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TOP_P
-from src.features.qa.schemas.ai_chat import (
+from novamind.features.user.api.auth import get_current_user
+from novamind.features.qa.api.dependencies import get_aichat_service, get_qa_service, get_model_config_service, get_minio_client_for_presign
+from novamind.features.qa.services.ai_chat_service import AIChatService
+from novamind.features.qa.services.qa_service import QAService
+from novamind.features.qa.api.constants import DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TOP_P
+from novamind.features.qa.schemas.ai_chat import (
     ChatRequest,
     ChatResponse,
     ChatHistoryResponse,
@@ -21,8 +21,8 @@ from src.features.qa.schemas.ai_chat import (
     AvailableModelsResponse,
     UploadChatAttachmentResponse,
 )
-from src.features.user.services.model_config_service import ModelConfigService
-from src.shared.storage.minio_client import enrich_attachments_with_presigned_urls
+from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.shared.storage.minio_client import enrich_attachments_with_presigned_urls
 
 router = APIRouter()
 
@@ -220,7 +220,7 @@ async def download_chat_attachment(
     """下载聊天附件"""
     attachment = await ai_chat_service.attachment_repo.get_by_id(attachment_id)
     if not attachment or attachment.user_id != current_user["id"]:
-        from src.features.qa.api.exceptions import ChatAttachmentNotFoundError
+        from novamind.features.qa.api.exceptions import ChatAttachmentNotFoundError
         raise ChatAttachmentNotFoundError(attachment_id)
 
     file_content = await ai_chat_service.minio_client.download_document(

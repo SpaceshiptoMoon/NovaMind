@@ -5,9 +5,9 @@ from typing import Optional, Dict, Any
 from enum import IntEnum
 from sqlalchemy import Column, BigInteger, String, SmallInteger, JSON, DateTime, Boolean, UniqueConstraint
 
-from src.core.database.base import BaseModel
-from src.core.auth.hashing import verify_password
-from src.shared.utils.time_utils import now_china
+from novamind.core.database.base import BaseModel
+from novamind.core.auth.hashing import verify_password
+from novamind.shared.utils.time_utils import now_china
 
 
 class UserStatus(IntEnum):

@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, Body, Query, Request, Path
 from typing import Annotated, List
 
-from src.features.user.services import UserService
-from src.features.user.api.exceptions import (
+from novamind.features.user.services import UserService
+from novamind.features.user.api.exceptions import (
     PermissionDeniedError,
     UserNotFoundError,
 )
-from src.features.user.schemas.user_schema import (
+from novamind.features.user.schemas.user_schema import (
     UserCreate,
     UserResponse,
     UserUpdate,
@@ -25,11 +25,11 @@ from src.features.user.schemas.user_schema import (
     ResetPasswordRequest,
     ResetPasswordResponse,
 )
-from src.features.user.api.auth import require_admin, require_active_user
-from src.features.user.api.dependencies import get_user_service
-from src.features.user.services.auth_service import AuthService
-from src.features.user.models.user import UserStatus
-from src.core.middleware.rate_limit import get_limiter, RateLimits
+from novamind.features.user.api.auth import require_admin, require_active_user
+from novamind.features.user.api.dependencies import get_user_service
+from novamind.features.user.services.auth_service import AuthService
+from novamind.features.user.models.user import UserStatus
+from novamind.core.middleware.rate_limit import get_limiter, RateLimits
 
 router = APIRouter()
 
@@ -403,7 +403,7 @@ async def admin_reset_password(
 ):
     """管理员重置用户密码，返回临时密码"""
     if user_id == current_user.get("id"):
-        from src.features.user.api.exceptions import UserOperationError
+        from novamind.features.user.api.exceptions import UserOperationError
         raise UserOperationError("不能重置自己的密码，请使用修改密码功能")
 
     temp_password, uid = await user_service.admin_reset_password(user_id)
@@ -446,8 +446,8 @@ async def forgot_password(
     忘记密码 — 无论邮箱是否存在都返回成功（防止邮箱枚举）
     """
     try:
-        from src.features.user.repository.user_repository import UserRepository
-        from src.core.database.database import get_db_session
+        from novamind.features.user.repository.user_repository import UserRepository
+        from novamind.core.database.database import get_db_session
 
         async with get_db_session() as db:
             repo = UserRepository(db)
@@ -459,7 +459,7 @@ async def forgot_password(
 
                 # 发送重置邮件（异步，失败不影响响应）
                 try:
-                    from src.features.notification.services.email_service import EmailService
+                    from novamind.features.notification.services.email_service import EmailService
                     reset_link = f"/reset-password?token={token}"
                     await EmailService.send_reset_email(data.email, reset_link, user.username)
                 except Exception:
@@ -486,20 +486,20 @@ async def reset_password(
     # 验证 Token
     user_id = await AuthService.verify_reset_token(data.token)
     if user_id is None:
-        from src.features.user.api.exceptions import AuthenticationError
+        from novamind.features.user.api.exceptions import AuthenticationError
         raise AuthenticationError("重置链接无效或已过期")
 
     # 更新密码
     try:
-        from src.core.auth.hashing import get_password_hash_async
-        from src.features.user.repository.user_repository import UserRepository
-        from src.core.database.database import get_db_session
+        from novamind.core.auth.hashing import get_password_hash_async
+        from novamind.features.user.repository.user_repository import UserRepository
+        from novamind.core.database.database import get_db_session
 
         async with get_db_session() as db:
             repo = UserRepository(db)
             user = await repo.get_user_by_id(user_id, use_cache=False)
             if not user:
-                from src.features.user.api.exceptions import UserNotFoundError
+                from novamind.features.user.api.exceptions import UserNotFoundError
                 raise UserNotFoundError("用户不存在")
 
             hashed = await get_password_hash_async(data.new_password)
@@ -510,7 +510,7 @@ async def reset_password(
     except (UserNotFoundError,):
         raise
     except Exception as e:
-        from src.features.user.api.exceptions import UserOperationError
+        from novamind.features.user.api.exceptions import UserOperationError
         raise UserOperationError(f"密码重置失败: {str(e)}")
 
     # 使 Token 失效（一次性使用）

@@ -3,11 +3,11 @@
 """
 from fastapi import APIRouter, Depends, Query
 
-from src.features.knowledge_space.api.dependencies import get_current_user_id
-from src.features.notification.api.dependencies import get_notification_service
-from src.features.notification.api.exceptions import NotificationNotFoundError, NotificationForbiddenError
-from src.features.notification.services.notification_service import NotificationService
-from src.features.notification.schemas.notification_schema import (
+from novamind.features.knowledge_space.api.dependencies import get_current_user_id
+from novamind.features.notification.api.dependencies import get_notification_service
+from novamind.features.notification.api.exceptions import NotificationNotFoundError, NotificationForbiddenError
+from novamind.features.notification.services.notification_service import NotificationService
+from novamind.features.notification.schemas.notification_schema import (
     NotificationListResponse,
     UnreadCountResponse,
     MarkReadResponse,

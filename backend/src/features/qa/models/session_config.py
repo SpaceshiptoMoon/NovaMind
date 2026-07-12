@@ -7,8 +7,8 @@
 from typing import Optional
 from sqlalchemy import Column, BigInteger, String, Text, JSON
 
-from src.core.database.base import BaseModel
-from src.features.qa.api.constants import DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TOP_P
+from novamind.core.database.base import BaseModel
+from novamind.features.qa.api.constants import DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TOP_P
 
 
 class SessionConfig(BaseModel):

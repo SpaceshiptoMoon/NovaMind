@@ -7,6 +7,6 @@ Agent 记忆系统
 
 统一门面：MemoryManager 编排记忆的完整生命周期
 """
-from src.features.agent.core.memory.memory_manager import MemoryManager
+from novamind.features.agent.core.memory.memory_manager import MemoryManager
 
 __all__ = ["MemoryManager"]

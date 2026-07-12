@@ -7,7 +7,7 @@
 
 from typing import ClassVar, List
 
-from src.core.middleware.base_exception_handler import BaseAPIError
+from novamind.core.middleware.base_exception_handler import BaseAPIError
 
 
 class DeepResearchError(BaseAPIError):

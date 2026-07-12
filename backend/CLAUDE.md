@@ -17,7 +17,7 @@ NovaMind 后端采用 DDD 分层架构，每个功能模块位于 `src/features/
 | **notification** | `/api/v1/notifications` | 站内通知 + 邮件通知 + 用户偏好 (已读/未读/全部已读) | `routes.py`, `notification_service.py`, `email_service.py` |
 | **clawmate** | `/api/v1/clawmate` | Web 终端 (Shell 会话 + 文件操作 + AI 流式对话)；无 ORM，Session 内存管理；复用 Agent 工具链 | `api/routes.py`, `core/session_manager.py`, `core/command_safety.py`, `core/chat_service.py` |
 
-> 每个模块的完整 API 端点清单见根目录 [项目结构导航.md](../项目结构导航.md)。
+> 每个模块的完整 API 端点清单见根目录 [project-structure-navigation.md](../docs/project-structure-navigation.md)。
 
 ## 二、结构导航
 

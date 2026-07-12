@@ -79,7 +79,7 @@ Make `backend/src/shared/utils/` visually and structurally clearer by distinguis
 `backend/src/shared/utils/` still mixes:
 
 - compatibility-oriented paths such as `deepdoc/`, `document_readers/`, `media_utils.py`, and `vlm_utils.py`
-- active utilities such as `text_processing/`, `crypto.py`, `redact.py`, `heartbeat.py`, and `time_utils.py`
+- active utilities such as `text_utils/`, `crypto.py`, `redact.py`, `heartbeat.py`, and `time_utils.py`
 - transitional files such as `file_validator.py`
 
 #### Planned actions
@@ -94,7 +94,7 @@ Make `backend/src/shared/utils/` visually and structurally clearer by distinguis
 ```text
 backend/src/shared/utils/
   compat/
-  text_processing/
+  text_utils/
   security/
   system/
 ```

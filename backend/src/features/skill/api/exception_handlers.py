@@ -3,8 +3,8 @@
 """
 from fastapi import FastAPI
 
-from src.core.middleware.base_exception_handler import register_module_exceptions
-from src.features.skill.exceptions import (
+from novamind.core.middleware.base_exception_handler import register_module_exceptions
+from novamind.features.skill.exceptions import (
     SkillError,
     SkillNotFoundError,
     SkillAlreadyExistsError,

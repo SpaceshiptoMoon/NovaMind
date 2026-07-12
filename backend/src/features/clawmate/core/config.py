@@ -34,7 +34,7 @@ class ClawMateConfig(BaseModel):
     def from_yaml(cls) -> "ClawMateConfig":
         """从 YAML 配置加载"""
         try:
-            from src.setting.yaml_config import get_config
+            from novamind.setting.yaml_config import get_config
             config = get_config()
             clawmate_config = getattr(config, "clawmate", None)
 

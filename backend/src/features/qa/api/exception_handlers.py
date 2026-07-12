@@ -10,9 +10,9 @@ QA模块的异常处理器
 
 async def llm_service_exception_handler(request, exc):
     """处理LLM服务异常（包含原始错误详情）"""
-    from src.core.middleware.base_exception_handler import _build_trace_context, logger
+    from novamind.core.middleware.base_exception_handler import _build_trace_context, logger
     from fastapi.responses import JSONResponse
-    from src.shared.utils.time_utils import now_china
+    from novamind.shared.utils.time_utils import now_china
 
     ctx = _build_trace_context(request)
     trace_id = ctx.get("trace_id", "no-trace")

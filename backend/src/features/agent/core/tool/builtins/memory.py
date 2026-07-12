@@ -7,8 +7,8 @@
 import json
 from typing import Any, Dict, List
 
-from src.features.agent.core.tool.base import BaseTool
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.agent.core.tool.base import BaseTool
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -102,8 +102,8 @@ class MemoryTool(BaseTool):
     async def _add(self, args: Dict[str, Any], context: Dict[str, Any]) -> str:
         """添加记忆"""
         try:
-            from src.features.agent.core.memory.security import scan_memory_content
-            from src.features.agent.repository.memory_repository import MemoryRepository
+            from novamind.features.agent.core.memory.security import scan_memory_content
+            from novamind.features.agent.repository.memory_repository import MemoryRepository
 
             category = args["category"]
             content = args.get("content", "")
@@ -163,8 +163,8 @@ class MemoryTool(BaseTool):
     async def _replace(self, args: Dict[str, Any], context: Dict[str, Any]) -> str:
         """替换记忆"""
         try:
-            from src.features.agent.core.memory.security import scan_memory_content
-            from src.features.agent.repository.memory_repository import MemoryRepository
+            from novamind.features.agent.core.memory.security import scan_memory_content
+            from novamind.features.agent.repository.memory_repository import MemoryRepository
 
             old_content = args.get("old_content", "")
             new_content = args.get("content", "")
@@ -183,7 +183,7 @@ class MemoryTool(BaseTool):
                 )
 
             repo = MemoryRepository(db)
-            from src.features.agent.models.memory import AgentMemory
+            from novamind.features.agent.models.memory import AgentMemory
             from sqlalchemy import select
 
             stmt = select(AgentMemory).where(
@@ -214,8 +214,8 @@ class MemoryTool(BaseTool):
     async def _remove(self, args: Dict[str, Any], context: Dict[str, Any]) -> str:
         """移除记忆"""
         try:
-            from src.features.agent.repository.memory_repository import MemoryRepository
-            from src.features.agent.models.memory import AgentMemory
+            from novamind.features.agent.repository.memory_repository import MemoryRepository
+            from novamind.features.agent.models.memory import AgentMemory
             from sqlalchemy import select
 
             old_content = args.get("old_content", "")
@@ -245,8 +245,8 @@ class MemoryTool(BaseTool):
             await db.flush()
 
             try:
-                from src.features.agent.repository.memory_search_repository import MemorySearchRepository
-                from src.shared.clients import ClientFactory
+                from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
+                from novamind.shared.clients import ClientFactory
                 es_wrapper = await ClientFactory.get_elasticsearch_client()
                 search_repo = MemorySearchRepository(es_client=es_wrapper.es_client)
                 await search_repo.delete_memory(agent_id, memory.id)
@@ -263,13 +263,13 @@ class MemoryTool(BaseTool):
 
     async def _index_to_es(self, memory, db, user_id: int) -> None:
         """将记忆索引到 ES"""
-        from src.features.agent.repository.memory_search_repository import MemorySearchRepository
-        from src.shared.clients import ClientFactory
+        from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
+        from novamind.shared.clients import ClientFactory
 
         es_wrapper = await ClientFactory.get_elasticsearch_client()
         search_repo = MemorySearchRepository(es_client=es_wrapper.es_client)
 
-        from src.features.user.services.model_config_service import ModelConfigService
+        from novamind.features.user.services.model_config_service import ModelConfigService
         model_config_service = ModelConfigService(db)
         embedding_model = await model_config_service.get_user_default_model_name(user_id, "embedding")
         if not embedding_model:

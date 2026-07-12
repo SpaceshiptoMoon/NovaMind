@@ -7,8 +7,8 @@ Transformers 本地推理 LLM 客户端
 import asyncio
 from typing import AsyncGenerator, Optional
 
-from src.shared.ai_models.base_model import BaseLLM
-from src.core.middleware.structured_logging import get_logger
+from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

@@ -3,8 +3,8 @@ Agent 模块异常处理器
 """
 from fastapi import FastAPI
 
-from src.core.middleware.base_exception_handler import register_module_exceptions
-from src.features.agent.api.exceptions import (
+from novamind.core.middleware.base_exception_handler import register_module_exceptions
+from novamind.features.agent.api.exceptions import (
     AgentError,
     AgentNotFoundError,
     SessionNotFoundError,

@@ -7,25 +7,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from sqlalchemy.exc import IntegrityError
 
-from src.core.database.database import get_db
-from src.features.user.api.auth import get_current_user
-from src.features.qa.api.exceptions import (
+from novamind.core.database.database import get_db
+from novamind.features.user.api.auth import get_current_user
+from novamind.features.qa.api.exceptions import (
     SessionConfigAlreadyExistsError,
     SessionConfigNotFoundError,
     UnauthorizedAccessException,
 )
-from src.features.qa.repository.session_config_repository import SessionConfigRepository
-from src.features.qa.repository.question_answer_repository import QuestionAnswerRepository
-from src.features.qa.services.qa_service import QAService
-from src.features.qa.api.dependencies import get_qa_service
-from src.features.qa.schemas.session_config import (
+from novamind.features.qa.repository.session_config_repository import SessionConfigRepository
+from novamind.features.qa.repository.question_answer_repository import QuestionAnswerRepository
+from novamind.features.qa.services.qa_service import QAService
+from novamind.features.qa.api.dependencies import get_qa_service
+from novamind.features.qa.schemas.session_config import (
     SessionConfigCreate,
     SessionConfigCompressionUpdate,
     SessionConfigLlmUpdate,
     SessionConfigResponse,
     SessionConfigRagUpdate,
 )
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 router = APIRouter(tags=["会话配置"])
 logger = get_logger(__name__)

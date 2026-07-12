@@ -15,14 +15,14 @@ import asyncio
 import json
 from typing import Optional
 
-from src.core.middleware.structured_logging import get_logger
-from src.shared.ai_models.llm import BaseLLM
-from src.shared.prompts import PromptTemplate, PromptManager
-from src.features.app.schemas.resume_schema import (
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.ai_models.llm import BaseLLM
+from novamind.shared.prompts import PromptTemplate, PromptManager
+from novamind.features.app.schemas.resume_schema import (
     StructuredResume, ProbingPlan, KnowledgePoint, JDAnalysis,
     WorkProjectUnit,
 )
-from src.features.app.services.resume_parser import _extract_json
+from novamind.features.app.services.resume_parser import _extract_json
 
 logger = get_logger(__name__)
 
@@ -66,7 +66,7 @@ class AutoProbingEngine:
 
         self._fallback_models_loaded = True
         try:
-            from src.features.user.services.model_config_service import ModelConfigService
+            from novamind.features.user.services.model_config_service import ModelConfigService
             svc = ModelConfigService(self.bg_db)
             configs = await svc.repo.list_by_user(self.user_id, "llm")
             current_model = getattr(self.llm, 'model', '')

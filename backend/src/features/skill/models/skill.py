@@ -8,7 +8,7 @@ from sqlalchemy import (
     SmallInteger, JSON, DateTime, ForeignKey, UniqueConstraint, Index,
 )
 
-from src.core.database.base import BaseModel
+from novamind.core.database.base import BaseModel
 
 
 class SkillSource(StrEnum):

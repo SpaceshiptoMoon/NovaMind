@@ -5,7 +5,7 @@ import uuid
 from enum import IntEnum
 
 from sqlalchemy import Column, String, Text, Integer, BigInteger, JSON, ForeignKey, Index
-from src.core.database.base import BaseModel
+from novamind.core.database.base import BaseModel
 
 
 def _gen_uuid():

@@ -377,7 +377,7 @@ def create_config_from_dict(data: dict) -> AppConfig:
     )
 
     # SMTP 邮件配置
-    from src.setting.yaml_config.config import SmtpConfig
+    from novamind.setting.yaml_config.config import SmtpConfig
     smtp = data.get("smtp", {})
     config.smtp = SmtpConfig(
         enabled=smtp.get("enabled", False),

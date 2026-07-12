@@ -8,19 +8,19 @@ ClawMate API 路由
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from src.features.user.api.auth import get_current_user
-from src.features.clawmate.api.dependencies import (
+from novamind.features.user.api.auth import get_current_user
+from novamind.features.clawmate.api.dependencies import (
     get_session_manager,
     get_user_environment,
     get_file_operations,
     get_chat_service,
 )
-from src.features.clawmate.core.session_manager import SessionManager
-from src.features.clawmate.core.environment import LocalEnvironment
-from src.features.clawmate.core.file_operations import FileOperations
-from src.features.clawmate.core.config import ClawMateConfig
-from src.features.clawmate.core.chat_service import ClawMateChatService
-from src.features.clawmate.schemas.clawmate_schema import (
+from novamind.features.clawmate.core.session_manager import SessionManager
+from novamind.features.clawmate.core.environment import LocalEnvironment
+from novamind.features.clawmate.core.file_operations import FileOperations
+from novamind.features.clawmate.core.config import ClawMateConfig
+from novamind.features.clawmate.core.chat_service import ClawMateChatService
+from novamind.features.clawmate.schemas.clawmate_schema import (
     SessionInitRequest,
     SessionStatusResponse,
     SessionDestroyResponse,
@@ -39,9 +39,9 @@ from src.features.clawmate.schemas.clawmate_schema import (
     FileOperationResponse,
     ClawMateChatRequest,
 )
-from src.features.clawmate.api.exceptions import CommandBlockedError
-from src.features.clawmate.core.command_safety import check_command_safety
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.clawmate.api.exceptions import CommandBlockedError
+from novamind.features.clawmate.core.command_safety import check_command_safety
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -151,7 +151,7 @@ async def get_session_status(
     status = manager.get_status(user_id)
 
     if status is None:
-        from src.features.clawmate.api.exceptions import SessionNotInitializedError
+        from novamind.features.clawmate.api.exceptions import SessionNotInitializedError
         raise SessionNotInitializedError()
 
     return SessionStatusResponse(**status)

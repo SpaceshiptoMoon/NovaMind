@@ -3,7 +3,7 @@
 """
 from fastapi import FastAPI
 
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -15,5 +15,5 @@ async def init_notification_components(app: FastAPI) -> None:
 
 def setup_notification_exception_handlers(app: FastAPI) -> None:
     """注册通知模块异常处理器"""
-    from src.features.notification.api.exception_handlers import setup_notification_exception_handlers
+    from novamind.features.notification.api.exception_handlers import setup_notification_exception_handlers
     setup_notification_exception_handlers(app)

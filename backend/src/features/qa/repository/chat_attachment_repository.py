@@ -7,8 +7,8 @@ from typing import List, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.qa.models.chat_attachment import ChatAttachment
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.qa.models.chat_attachment import ChatAttachment
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

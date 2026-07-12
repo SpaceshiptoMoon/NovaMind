@@ -9,14 +9,14 @@
 """
 from typing import Any, Callable, Dict, List, Optional
 
-from src.features.agent.core.memory.interfaces import (
+from novamind.features.agent.core.memory.interfaces import (
     ILongTermMemory,
     LongTermMemoryEntry,
     MemoryMessage,
 )
-from src.features.agent.repository.memory_repository import MemoryRepository
-from src.shared.prompts import PromptTemplate, PromptManager
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.agent.repository.memory_repository import MemoryRepository
+from novamind.shared.prompts import PromptTemplate, PromptManager
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -60,7 +60,7 @@ class LongTermMemory(ILongTermMemory):
     ) -> LongTermMemoryEntry:
         """存储一条长期记忆 → MySQL + ES"""
         # 安全扫描
-        from src.features.agent.core.memory.security import scan_memory_content
+        from novamind.features.agent.core.memory.security import scan_memory_content
         scan = scan_memory_content(content)
         if not scan:
             logger.warning("记忆写入被安全扫描拦截", threats=scan.threats, category=category)
@@ -108,13 +108,13 @@ class LongTermMemory(ILongTermMemory):
         new_content: str,
     ) -> Dict[str, Any]:
         """替换记忆内容（子串匹配）"""
-        from src.features.agent.core.memory.security import scan_memory_content
+        from novamind.features.agent.core.memory.security import scan_memory_content
 
         scan = scan_memory_content(new_content)
         if not scan:
             return {"error": f"新内容未通过安全检查: {scan.threats}"}
 
-        from src.features.agent.models.memory import AgentMemory
+        from novamind.features.agent.models.memory import AgentMemory
         from sqlalchemy import select
 
         stmt = select(AgentMemory).where(
@@ -138,7 +138,7 @@ class LongTermMemory(ILongTermMemory):
         old_content: str,
     ) -> Dict[str, Any]:
         """移除记忆（子串匹配）"""
-        from src.features.agent.models.memory import AgentMemory
+        from novamind.features.agent.models.memory import AgentMemory
         from sqlalchemy import select
 
         stmt = select(AgentMemory).where(

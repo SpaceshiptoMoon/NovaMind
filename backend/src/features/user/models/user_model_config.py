@@ -12,7 +12,7 @@ from typing import Optional, Dict, Any
 from enum import IntEnum
 from sqlalchemy import Column, BigInteger, String, Integer, JSON, Index, ForeignKey
 
-from src.core.database.base import BaseModel
+from novamind.core.database.base import BaseModel
 
 
 class ModelType(IntEnum):

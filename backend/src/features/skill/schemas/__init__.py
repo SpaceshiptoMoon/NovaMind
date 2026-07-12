@@ -1,4 +1,4 @@
-from src.features.skill.schemas.skill_schema import (
+from novamind.features.skill.schemas.skill_schema import (
     SkillResponse,
     SkillListItemResponse,
     SkillMarketplaceListResponse,

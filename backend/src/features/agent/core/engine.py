@@ -10,11 +10,11 @@ import json
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
-from src.core.middleware.structured_logging import get_logger
-from src.shared.ai_models.base_model import BaseLLM
-from src.features.agent.core.tool.executor import ToolExecutor
-from src.features.agent.core.tool.result import ToolResult, ToolResultStatus
-from src.features.agent.core.retry import (
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.features.agent.core.tool.executor import ToolExecutor
+from novamind.features.agent.core.tool.result import ToolResult, ToolResultStatus
+from novamind.features.agent.core.retry import (
     RetryConfig, ContextOverflowError, retry_llm_call,
     _is_retryable_error, _is_context_overflow, _is_non_retryable,
 )
@@ -180,7 +180,7 @@ class AgentEngine:
         top_p: float,
     ) -> AsyncGenerator[Any, None]:
         """带重试的流式生成：在首个 chunk 到达前重试瞬时错误"""
-        from src.features.agent.core.llm.agent_llm import AgentLLM
+        from novamind.features.agent.core.llm.agent_llm import AgentLLM
 
         cfg = self._retry_config
         attempt = 0
@@ -240,7 +240,7 @@ class AgentEngine:
         meta: Dict[str, Any],
     ) -> AsyncGenerator[AgentEvent, None]:
         """流式迭代：逐 token 产出事件，不缓存（含重试）"""
-        from src.features.agent.core.llm.agent_llm import AgentLLM, CollectedToolCall
+        from novamind.features.agent.core.llm.agent_llm import AgentLLM, CollectedToolCall
 
         agent_llm = AgentLLM(llm_client)
         content_parts: List[str] = []
@@ -379,7 +379,7 @@ class AgentEngine:
         top_p: float,
     ) -> AsyncGenerator[AgentEvent, None]:
         """无工具流式生成（含重试）"""
-        from src.features.agent.core.llm.agent_llm import AgentLLM
+        from novamind.features.agent.core.llm.agent_llm import AgentLLM
 
         agent_llm = AgentLLM(llm_client)
         full_response = ""

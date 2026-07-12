@@ -7,15 +7,15 @@ from fastapi.responses import Response
 from typing import Annotated, List
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.qa.api.dependencies import get_qa_service, get_minio_client_for_presign
-from src.features.user.api.auth import get_current_user
-from src.features.qa.services.qa_service import QAService
-from src.features.qa.schemas.qa import QARequest, QAResponse, QAUpdateRequest, SessionPreviewResponse, SessionListResponse, ConversationContextResponse
-from src.features.qa.api.exceptions import MessageNotFoundError
-from src.features.knowledge_space.api.dependencies import validate_space_access
-from src.core.database.database import get_db
-from src.core.middleware.structured_logging import get_logger
-from src.shared.storage.minio_client import enrich_attachments_with_presigned_urls
+from novamind.features.qa.api.dependencies import get_qa_service, get_minio_client_for_presign
+from novamind.features.user.api.auth import get_current_user
+from novamind.features.qa.services.qa_service import QAService
+from novamind.features.qa.schemas.qa import QARequest, QAResponse, QAUpdateRequest, SessionPreviewResponse, SessionListResponse, ConversationContextResponse
+from novamind.features.qa.api.exceptions import MessageNotFoundError
+from novamind.features.knowledge_space.api.dependencies import validate_space_access
+from novamind.core.database.database import get_db
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.storage.minio_client import enrich_attachments_with_presigned_urls
 
 logger = get_logger(__name__)
 

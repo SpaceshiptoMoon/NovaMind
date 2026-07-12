@@ -6,10 +6,10 @@
 import json
 from typing import Any, Dict, List, Optional
 
-from src.shared.ai_models.base_model import BaseLLM
-from src.shared.prompts.templates import PromptTemplate, PromptManager
-from src.features.evaluation.services.embedding_evaluator import EmbeddingEvaluator
-from src.core.middleware.structured_logging import get_logger
+from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.prompts.templates import PromptTemplate, PromptManager
+from novamind.features.evaluation.services.embedding_evaluator import EmbeddingEvaluator
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

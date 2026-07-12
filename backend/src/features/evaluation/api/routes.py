@@ -11,16 +11,16 @@ from fastapi import APIRouter, Depends, UploadFile, File, Form, Path, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.database.database import get_db
-from src.features.knowledge_space.models.space_member import SpaceMember
-from src.features.knowledge_space.api.dependencies import (
+from novamind.core.database.database import get_db
+from novamind.features.knowledge_space.models.space_member import SpaceMember
+from novamind.features.knowledge_space.api.dependencies import (
     get_current_user_id,
     validate_space_member,
     validate_space_editor,
     validate_kb_access,
 )
-from src.features.evaluation.api.dependencies import get_evaluation_service
-from src.features.evaluation.api.exceptions import (
+from novamind.features.evaluation.api.dependencies import get_evaluation_service
+from novamind.features.evaluation.api.exceptions import (
     EvaluationTestSetNotFoundError,
     EvaluationTaskNotFoundError,
     EvaluationTaskPendingError,
@@ -37,7 +37,7 @@ def _check_task_owner(task, member: SpaceMember) -> None:
     """
     if task.user_id != member.user_id and not member.is_admin():
         raise EvaluationAccessDeniedError(task.id, member.user_id)
-from src.features.evaluation.schemas.evaluation_schema import (
+from novamind.features.evaluation.schemas.evaluation_schema import (
     EvaluationTaskCreateResponse,
     EvaluationTaskListItem,
     EvaluationTaskListResponse,
@@ -56,10 +56,10 @@ from src.features.evaluation.schemas.evaluation_schema import (
     TaskCreateRequest,
     TestCase,
 )
-from src.features.evaluation.models.evaluation_task import EvaluationStatus
-from src.features.evaluation.services.evaluation_service import EvaluationService
-from src.features.evaluation.services.test_set_parser import parse_test_set
-from src.features.knowledge_space.schemas.member_schema import ActionResponse
+from novamind.features.evaluation.models.evaluation_task import EvaluationStatus
+from novamind.features.evaluation.services.evaluation_service import EvaluationService
+from novamind.features.evaluation.services.test_set_parser import parse_test_set
+from novamind.features.knowledge_space.schemas.member_schema import ActionResponse
 
 router = APIRouter(tags=["知识库测评"])
 
@@ -91,16 +91,16 @@ async def create_test_set(
     filename = file.filename or ""
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if f".{ext}" not in ALLOWED_TEST_SET_EXTENSIONS:
-        from src.features.evaluation.api.exceptions import InvalidTestSetError
+        from novamind.features.evaluation.api.exceptions import InvalidTestSetError
         raise InvalidTestSetError(f"不支持的文件格式: .{ext}，仅支持 {sorted(ALLOWED_TEST_SET_EXTENSIONS)}")
 
     content = await file.read()
     if not content:
-        from src.features.evaluation.api.exceptions import InvalidTestSetError
+        from novamind.features.evaluation.api.exceptions import InvalidTestSetError
         raise InvalidTestSetError("文件内容为空")
 
     if len(content) > MAX_TEST_SET_SIZE:
-        from src.features.evaluation.api.exceptions import InvalidTestSetError
+        from novamind.features.evaluation.api.exceptions import InvalidTestSetError
         raise InvalidTestSetError(f"文件大小超过限制（最大 {MAX_TEST_SET_SIZE // 1024 // 1024}MB）")
 
     parse_test_set(content, filename)
@@ -223,7 +223,7 @@ async def delete_test_set(
     # 校验测试集归属当前知识库，防止越权删除
     test_set_obj = await evaluation_service.get_test_set_by_kb(test_set_id, space_id, kb_id)
     if not test_set_obj:
-        from src.features.evaluation.api.exceptions import EvaluationTestSetNotFoundError
+        from novamind.features.evaluation.api.exceptions import EvaluationTestSetNotFoundError
         raise EvaluationTestSetNotFoundError(test_set_id)
     result = await evaluation_service.delete_test_set(test_set_id)
     return {"success": result, "message": "测试集已删除"}

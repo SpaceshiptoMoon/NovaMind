@@ -7,14 +7,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 
-from src.setting.yaml_config import get_config
+from novamind.setting.yaml_config import get_config
 from .structured_logging import setup_structured_logging, get_logger
 from .startup_manager import AppLifespanManager
 from .router_manager import RouterManager
 from .trace_middleware import TraceIDMiddleware
 from .exceptions import setup_exception_handlers
 from .rate_limit import get_limiter, rate_limit_exceeded_handler
-from src.core.security.config_validator import validate_security_config
+from novamind.core.security.config_validator import validate_security_config
 
 
 def create_app() -> FastAPI:

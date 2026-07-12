@@ -13,9 +13,9 @@ import os
 import shlex
 from typing import Optional
 
-from src.features.clawmate.core.environment import LocalEnvironment, BINARY_EXTENSIONS
-from src.features.clawmate.core.file_safety import is_write_denied, is_read_denied
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.clawmate.core.environment import LocalEnvironment, BINARY_EXTENSIONS
+from novamind.features.clawmate.core.file_safety import is_write_denied, is_read_denied
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

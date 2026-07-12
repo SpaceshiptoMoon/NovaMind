@@ -13,12 +13,12 @@ S5-S9 + S12: 简历分析报告生成 Pipeline (V2)
 import json
 from typing import Optional
 
-from src.core.middleware.structured_logging import get_logger
-from src.setting.yaml_config import get_config
-from src.shared.ai_models.llm import BaseLLM
-from src.shared.prompts import PromptTemplate, PromptManager
-from src.features.app.services.resume_parser import _extract_json
-from src.features.app.schemas.resume_schema import (
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.setting.yaml_config import get_config
+from novamind.shared.ai_models.llm import BaseLLM
+from novamind.shared.prompts import PromptTemplate, PromptManager
+from novamind.features.app.services.resume_parser import _extract_json
+from novamind.features.app.schemas.resume_schema import (
     StructuredResume, JDAnalysis, JDSkill,
     ProbingPlan, KnowledgePoint, ProjectPriority, PrefixKnowledge,
     WorkProjectUnit,
@@ -45,7 +45,7 @@ class ResumeAnalyzer:
         # 尝试 Tavily（质量最高，需要 API Key）
         if ext_config and hasattr(ext_config, 'tavily') and ext_config.tavily.api_key:
             try:
-                from src.features.deep_research.services.tavily_service import TavilySearchService
+                from novamind.features.deep_research.services.tavily_service import TavilySearchService
                 svc = TavilySearchService()
                 if svc.is_available():
                     self._search_service = svc
@@ -56,7 +56,7 @@ class ResumeAnalyzer:
 
         # 回退到 DuckDuckGo（免费）
         try:
-            from src.features.deep_research.services.duckduckgo_service import DuckDuckGoSearchService
+            from novamind.features.deep_research.services.duckduckgo_service import DuckDuckGoSearchService
             svc = DuckDuckGoSearchService()
             if svc.is_available():
                 self._search_service = svc
@@ -298,7 +298,7 @@ class ResumeAnalyzer:
         search_service = self._get_search_service()
         if search_service:
             try:
-                from src.shared.utils.redact import redact_sensitive_text
+                from novamind.shared.utils.redact import redact_sensitive_text
                 # 搜索查询前脱敏，防止 JD/简历夹带联系方式外发搜索引擎
                 company = redact_sensitive_text(unit.company or "")
                 position = redact_sensitive_text(unit.position or "")

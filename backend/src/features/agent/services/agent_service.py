@@ -8,16 +8,16 @@ from typing import List, Optional, Tuple, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from src.features.agent.repository.agent_repository import (
+from novamind.features.agent.repository.agent_repository import (
     AgentRepository,
     SessionRepository,
     MessageRepository,
 )
-from src.features.agent.repository.memory_repository import MemoryRepository
-from src.features.agent.models.agent import AgentDefinition
-from src.features.agent.models.session import AgentSession
-from src.features.agent.models.message import AgentMessage
-from src.features.agent.schemas.agent_schema import (
+from novamind.features.agent.repository.memory_repository import MemoryRepository
+from novamind.features.agent.models.agent import AgentDefinition
+from novamind.features.agent.models.session import AgentSession
+from novamind.features.agent.models.message import AgentMessage
+from novamind.features.agent.schemas.agent_schema import (
     AgentCreate,
     AgentUpdate,
     AgentResponse,
@@ -31,12 +31,12 @@ from src.features.agent.schemas.agent_schema import (
     MemoryListResponse,
     MemoryStatsResponse,
 )
-from src.features.agent.api.exceptions import (
+from novamind.features.agent.api.exceptions import (
     AgentNotFoundError,
     SessionNotFoundError,
     MemoryNotFoundError,
 )
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -119,9 +119,9 @@ class AgentService:
         return AgentDetailResponse.model_validate(agent)
 
     async def delete_agent(self, user_id: int, agent_id: int, is_admin: bool = False) -> None:
-        from src.features.agent.models.agent import AgentSession, AgentMessage
-        from src.features.agent.models.tool_call import AgentToolCall
-        from src.features.agent.models.memory import AgentMemory
+        from novamind.features.agent.models.agent import AgentSession, AgentMessage
+        from novamind.features.agent.models.tool_call import AgentToolCall
+        from novamind.features.agent.models.memory import AgentMemory
 
         agent = await self.agent_repo.get_by_id(agent_id)
         if not agent:
@@ -285,8 +285,8 @@ class AgentService:
 
         # 尝试从 ES 删除
         try:
-            from src.features.agent.repository.memory_search_repository import MemorySearchRepository
-            from src.shared.clients import ClientFactory
+            from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
+            from novamind.shared.clients import ClientFactory
             es_wrapper = await ClientFactory.get_elasticsearch_client()
             search_repo = MemorySearchRepository(es_client=es_wrapper.es_client)
             await search_repo.delete_memory(agent_id, memory_id)

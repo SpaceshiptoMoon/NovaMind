@@ -6,7 +6,7 @@ SMTP 未配置时静默跳过（仅日志记录）。
 """
 from typing import Optional
 
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -17,7 +17,7 @@ class EmailService:
     @staticmethod
     def _get_smtp_config():
         """获取 SMTP 配置"""
-        from src.setting.yaml_config import get_config
+        from novamind.setting.yaml_config import get_config
         return get_config().smtp
 
     @staticmethod

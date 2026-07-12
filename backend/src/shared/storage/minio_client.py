@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 from minio import Minio
 from minio.error import S3Error
 
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

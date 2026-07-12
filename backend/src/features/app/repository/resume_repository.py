@@ -4,7 +4,7 @@
 from sqlalchemy import select, func, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.app.models.resume import ResumeSession
+from novamind.features.app.models.resume import ResumeSession
 
 
 class ResumeSessionRepository:

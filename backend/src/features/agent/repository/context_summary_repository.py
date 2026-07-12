@@ -8,8 +8,8 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.agent.models.context_summary import AgentContextSummary
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.agent.models.context_summary import AgentContextSummary
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

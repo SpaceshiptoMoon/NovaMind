@@ -3,7 +3,7 @@ Agent 消息模型
 """
 from sqlalchemy import Column, BigInteger, String, Text, Integer, JSON, ForeignKey, Index
 
-from src.core.database.base import BaseModel
+from novamind.core.database.base import BaseModel
 
 
 class AgentMessage(BaseModel):

@@ -9,8 +9,8 @@
 import asyncio
 from typing import Optional
 
-from src.setting.yaml_config import get_config
-from src.core.middleware.structured_logging import get_logger
+from novamind.setting.yaml_config import get_config
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -48,7 +48,7 @@ class ClientFactory:
             async with cls._get_async_lock():
                 # 双重检查锁定
                 if "minio" not in cls._instances:
-                    from src.shared.storage.minio_client import MinioClient
+                    from novamind.shared.storage.minio_client import MinioClient
 
                     config = get_config()
                     cls._instances["minio"] = MinioClient(
@@ -78,7 +78,7 @@ class ClientFactory:
             async with cls._get_async_lock():
                 # 双重检查锁定
                 if "elasticsearch" not in cls._instances:
-                    from src.shared.storage.elasticsearch_client import ElasticsearchClient
+                    from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 
                     config = get_config()
                     # 从配置读取 SSL 参数，默认不使用 SSL
@@ -113,7 +113,7 @@ class ClientFactory:
         if "redis" not in cls._instances:
             async with cls._get_async_lock():
                 if "redis" not in cls._instances:
-                    from src.shared.cache.redis_client import RedisCache
+                    from novamind.shared.cache.redis_client import RedisCache
 
                     config = get_config()
                     redis_config = getattr(config, 'redis', None)

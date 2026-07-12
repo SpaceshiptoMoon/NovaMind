@@ -11,16 +11,16 @@ QA 模块 - 智能问答与 AI 对话
 __version__ = "1.0.0"
 
 # 数据模型
-from src.features.qa.models import QuestionAnswer
+from novamind.features.qa.models import QuestionAnswer
 
 # 仓储层
-from src.features.qa.repository import QuestionAnswerRepository
+from novamind.features.qa.repository import QuestionAnswerRepository
 
 # 服务层
-from src.features.qa.services import QAService, AIChatService
+from novamind.features.qa.services import QAService, AIChatService
 
 # Schema
-from src.features.qa.schemas import (
+from novamind.features.qa.schemas import (
     QARequest,
     QAResponse,
     QAUpdateRequest,
@@ -30,8 +30,8 @@ from src.features.qa.schemas import (
 )
 
 # API 路由
-from src.features.qa.api.qa_routes import router as qa_router
-from src.features.qa.api.ai_chat_routes import router as ai_chat_router
+from novamind.features.qa.api.qa_routes import router as qa_router
+from novamind.features.qa.api.ai_chat_routes import router as ai_chat_router
 
 __all__ = [
     # 版本

@@ -6,7 +6,7 @@ TodoStore — 压缩后存活的任务跟踪器
 """
 from typing import Any, Dict, List, Optional
 
-from src.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 

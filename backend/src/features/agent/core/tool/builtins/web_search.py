@@ -6,8 +6,8 @@
 import json
 from typing import Any, Dict, List
 
-from src.features.agent.core.tool.base import BaseTool
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.agent.core.tool.base import BaseTool
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -69,7 +69,7 @@ class WebSearchTool(BaseTool):
     async def _search(self, args: Dict[str, Any]) -> str:
         """执行网页搜索"""
         try:
-            from src.features.deep_research.services.duckduckgo_service import (
+            from novamind.features.deep_research.services.duckduckgo_service import (
                 DuckDuckGoSearchService,
             )
 

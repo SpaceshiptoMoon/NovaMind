@@ -8,16 +8,16 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy import text
 
-from src.setting.yaml_config import get_config
-from src.shared.utils.time_utils import now_china
-from src.core.middleware.structured_logging import get_logger
+from novamind.setting.yaml_config import get_config
+from novamind.shared.utils.time_utils import now_china
+from novamind.core.middleware.structured_logging import get_logger
 
-from src.core.database.base import create_tables, ensure_fulltext_indexes
-from src.core.database.database import get_engine, dispose_engine
+from novamind.core.database.base import create_tables, ensure_fulltext_indexes
+from novamind.core.database.database import get_engine, dispose_engine
 
-from src.features.user.api.startup import init_user_components
-from src.features.knowledge_space.api.startup import init_knowledge_space_components
-from src.shared.cache.redis_client import get_redis_client, close_redis_connection
+from novamind.features.user.api.startup import init_user_components
+from novamind.features.knowledge_space.api.startup import init_knowledge_space_components
+from novamind.shared.cache.redis_client import get_redis_client, close_redis_connection
 
 # 功能模块初始化注册表
 _feature_initializers = []
@@ -46,7 +46,7 @@ register_feature_initializer(_init_knowledge_space)
 
 async def _init_agent(app):
     """Agent 模块初始化"""
-    from src.features.agent.api.startup import init_agent_components
+    from novamind.features.agent.api.startup import init_agent_components
     await init_agent_components(app)
 
 register_feature_initializer(_init_agent)
@@ -54,7 +54,7 @@ register_feature_initializer(_init_agent)
 
 async def _init_notification(app):
     """通知模块初始化"""
-    from src.features.notification.api.startup import init_notification_components
+    from novamind.features.notification.api.startup import init_notification_components
     await init_notification_components(app)
 
 register_feature_initializer(_init_notification)
@@ -62,7 +62,7 @@ register_feature_initializer(_init_notification)
 
 async def _init_clawmate(app):
     """ClawMate 终端模块初始化"""
-    from src.features.clawmate.api.startup import init_clawmate_components
+    from novamind.features.clawmate.api.startup import init_clawmate_components
     await init_clawmate_components(app)
 
 register_feature_initializer(_init_clawmate)
@@ -70,27 +70,27 @@ register_feature_initializer(_init_clawmate)
 
 def _import_models():
     """动态导入所有业务模型，确保在创建表之前注册到 SQLAlchemy metadata"""
-    from src.features.user.models.user import User  # noqa: F401
-    from src.features.user.models.user_model_config import UserModelConfig  # noqa: F401
-    from src.features.knowledge_space.models.knowledge_space import KnowledgeSpace  # noqa: F401
-    from src.features.knowledge_space.models.knowledge_base import KnowledgeBase  # noqa: F401
-    from src.features.knowledge_space.models.document import Document  # noqa: F401
-    from src.features.knowledge_space.models.space_member import SpaceMember  # noqa: F401
-    from src.features.knowledge_space.models.space_audit_log import SpaceAuditLog  # noqa: F401
-    from src.features.qa.models.question_answer import QuestionAnswer  # noqa: F401
-    from src.features.qa.models.session_config import SessionConfig  # noqa: F401
-    from src.features.qa.models.session_summary import SessionSummary  # noqa: F401
-    from src.features.deep_research.models.research_session import ResearchSession  # noqa: F401
-    from src.features.evaluation.models.evaluation_task import EvaluationTestSet, EvaluationTask  # noqa: F401
-    from src.features.agent.models.agent import AgentDefinition  # noqa: F401
-    from src.features.agent.models.session import AgentSession  # noqa: F401
-    from src.features.agent.models.message import AgentMessage  # noqa: F401
-    from src.features.agent.models.tool_call import AgentToolCall  # noqa: F401
-    from src.features.agent.models.mcp_server import AgentMcpServer  # noqa: F401
-    from src.features.skill.models.skill import SkillDefinition, SkillVersion, SkillReview, SkillInstallation  # noqa: F401
-    from src.features.app.models.resume import ResumeSession  # noqa: F401
-    from src.features.notification.models.notification import Notification  # noqa: F401
-    from src.features.notification.models.notification_preference import NotificationPreference  # noqa: F401
+    from novamind.features.user.models.user import User  # noqa: F401
+    from novamind.features.user.models.user_model_config import UserModelConfig  # noqa: F401
+    from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace  # noqa: F401
+    from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase  # noqa: F401
+    from novamind.features.knowledge_space.models.document import Document  # noqa: F401
+    from novamind.features.knowledge_space.models.space_member import SpaceMember  # noqa: F401
+    from novamind.features.knowledge_space.models.space_audit_log import SpaceAuditLog  # noqa: F401
+    from novamind.features.qa.models.question_answer import QuestionAnswer  # noqa: F401
+    from novamind.features.qa.models.session_config import SessionConfig  # noqa: F401
+    from novamind.features.qa.models.session_summary import SessionSummary  # noqa: F401
+    from novamind.features.deep_research.models.research_session import ResearchSession  # noqa: F401
+    from novamind.features.evaluation.models.evaluation_task import EvaluationTestSet, EvaluationTask  # noqa: F401
+    from novamind.features.agent.models.agent import AgentDefinition  # noqa: F401
+    from novamind.features.agent.models.session import AgentSession  # noqa: F401
+    from novamind.features.agent.models.message import AgentMessage  # noqa: F401
+    from novamind.features.agent.models.tool_call import AgentToolCall  # noqa: F401
+    from novamind.features.agent.models.mcp_server import AgentMcpServer  # noqa: F401
+    from novamind.features.skill.models.skill import SkillDefinition, SkillVersion, SkillReview, SkillInstallation  # noqa: F401
+    from novamind.features.app.models.resume import ResumeSession  # noqa: F401
+    from novamind.features.notification.models.notification import Notification  # noqa: F401
+    from novamind.features.notification.models.notification_preference import NotificationPreference  # noqa: F401
 
 logger = get_logger(__name__)
 
@@ -152,7 +152,7 @@ class AppLifespanManager:
 
         # 恢复孤儿测评任务
         try:
-            from src.features.evaluation.services.evaluation_service import EvaluationService
+            from novamind.features.evaluation.services.evaluation_service import EvaluationService
             recovered = await EvaluationService.recover_orphan_tasks()
             if recovered:
                 self.logger.info("孤儿测评任务恢复完成", recovered=recovered)
@@ -161,7 +161,7 @@ class AppLifespanManager:
 
         # 启动嵌入式 arq Worker
         try:
-            from src.shared.mq.worker import start_embedded_worker, recover_orphan_documents
+            from novamind.shared.mq.worker import start_embedded_worker, recover_orphan_documents
             await start_embedded_worker()
             self.logger.info("嵌入式 arq Worker 已启动")
 
@@ -172,7 +172,7 @@ class AppLifespanManager:
 
             # 恢复孤儿简历会话（PARSING/ANALYZING/PROBING 状态重新入队）
             try:
-                from src.shared.mq.worker import recover_orphan_resume_sessions
+                from novamind.shared.mq.worker import recover_orphan_resume_sessions
                 recovered_resumes = await recover_orphan_resume_sessions()
                 if recovered_resumes:
                     self.logger.info("孤儿简历会话恢复完成", recovered=recovered_resumes)
@@ -298,7 +298,7 @@ class AppLifespanManager:
 
         # 停止 arq Worker
         try:
-            from src.shared.mq.worker import stop_embedded_worker
+            from novamind.shared.mq.worker import stop_embedded_worker
             await stop_embedded_worker()
             self.logger.info("arq Worker 已停止")
         except Exception as e:
@@ -306,7 +306,7 @@ class AppLifespanManager:
 
         # 关闭 arq 连接池
         try:
-            from src.shared.mq import close_arq_pool
+            from novamind.shared.mq import close_arq_pool
             await close_arq_pool()
         except Exception as e:
             self.logger.warning("关闭 arq 连接池时出错", error=str(e))

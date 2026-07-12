@@ -7,12 +7,12 @@ from typing import List, Optional, Tuple
 from sqlalchemy import select, func, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.agent.models.agent import AgentDefinition
-from src.features.agent.models.session import AgentSession
-from src.features.agent.models.message import AgentMessage
-from src.features.agent.models.tool_call import AgentToolCall
-from src.features.agent.models.mcp_server import AgentMcpServer
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.agent.models.agent import AgentDefinition
+from novamind.features.agent.models.session import AgentSession
+from novamind.features.agent.models.message import AgentMessage
+from novamind.features.agent.models.tool_call import AgentToolCall
+from novamind.features.agent.models.mcp_server import AgentMcpServer
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -143,7 +143,7 @@ class SessionRepository:
         await self.session.flush()
 
     async def delete(self, session_id: str, user_id: int) -> bool:
-        from src.shared.utils.time_utils import now_china
+        from novamind.shared.utils.time_utils import now_china
 
         result = await self.session.execute(
             update(AgentSession)

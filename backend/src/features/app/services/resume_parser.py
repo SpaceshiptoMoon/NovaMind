@@ -13,11 +13,11 @@ import os
 import tempfile
 from typing import Optional
 
-from src.core.middleware.structured_logging import get_logger
-from src.shared.ai_models.llm import BaseLLM
-from src.shared.prompts import PromptTemplate, PromptManager
-from src.shared.document_processing.readers import PDFReader, DocxReader
-from src.features.app.schemas.resume_schema import StructuredResume
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.ai_models.llm import BaseLLM
+from novamind.shared.prompts import PromptTemplate, PromptManager
+from novamind.shared.knowledge.document_processing.readers import PDFReader, DocxReader
+from novamind.features.app.schemas.resume_schema import StructuredResume
 
 logger = get_logger(__name__)
 
@@ -259,7 +259,7 @@ class ResumeParser:
         skills_data: dict,
         publications: dict,
     ) -> StructuredResume:
-        from src.features.app.schemas.resume_schema import (
+        from novamind.features.app.schemas.resume_schema import (
             PersonalInfo, WorkExperience as WE, ProjectExperience as PE,
             EducationExperience, SkillsData as SD, PublicationsData as PD,
             ResumeMetadata,
@@ -300,7 +300,7 @@ class ResumeParser:
         return resume
 
     def _cross_validate(self, resume: StructuredResume) -> StructuredResume:
-        from src.features.app.schemas.resume_schema import ValidationWarning
+        from novamind.features.app.schemas.resume_schema import ValidationWarning
 
         warnings = []
 

@@ -45,7 +45,7 @@ class SandboxConfig(BaseModel):
     def from_yaml(cls) -> "SandboxConfig":
         """从 YAML 配置加载沙箱配置"""
         try:
-            from src.setting.yaml_config.config_manager import get_config
+            from novamind.setting.yaml_config.config_manager import get_config
 
             config = get_config()
             agent_config = getattr(config, "agent", None)

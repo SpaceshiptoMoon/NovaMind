@@ -5,12 +5,12 @@ ClawMate 依赖注入
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.user.api.auth import get_current_user
-from src.core.database.database import get_db
-from src.features.user.services.model_config_service import ModelConfigService
-from src.features.clawmate.core.session_manager import SessionManager
-from src.features.clawmate.core.file_operations import FileOperations
-from src.features.clawmate.core.environment import LocalEnvironment
+from novamind.features.user.api.auth import get_current_user
+from novamind.core.database.database import get_db
+from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.features.clawmate.core.session_manager import SessionManager
+from novamind.features.clawmate.core.file_operations import FileOperations
+from novamind.features.clawmate.core.environment import LocalEnvironment
 
 
 def get_session_manager(request: Request) -> SessionManager:
@@ -31,7 +31,7 @@ async def get_user_environment(
     user_id = current_user["id"]
     env = manager.get(user_id)
     if env is None:
-        from src.features.clawmate.api.exceptions import SessionNotInitializedError
+        from novamind.features.clawmate.api.exceptions import SessionNotInitializedError
         raise SessionNotInitializedError()
     return env
 
@@ -56,7 +56,7 @@ async def get_chat_service(
     model_config_service: ModelConfigService = Depends(get_model_config_service),
 ):
     """获取 ClawMateChatService（per-request）"""
-    from src.features.clawmate.core.chat_service import ClawMateChatService
+    from novamind.features.clawmate.core.chat_service import ClawMateChatService
     return ClawMateChatService(
         session_manager=session_manager,
         agent_engine=engine,

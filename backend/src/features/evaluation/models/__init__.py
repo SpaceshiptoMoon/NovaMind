@@ -1,4 +1,4 @@
-from src.features.evaluation.models.evaluation_task import (
+from novamind.features.evaluation.models.evaluation_task import (
     EvaluationTestSet,
     EvaluationTask,
     EvaluationStatus,

@@ -10,18 +10,18 @@ from fastapi import APIRouter, Depends, UploadFile, File, Form, Query
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.features.knowledge_space.api.dependencies import get_current_user_id
-from src.core.database.database import get_db
-from src.features.app.api.dependencies import _get_model_config_service
-from src.features.app.api.exceptions import ResumeSessionNotFoundError, ResumeParseError, InvalidFileTypeError, InvalidConfigError, FileSizeExceededError
-from src.features.app.models.resume import ResumeSessionStatus
-from src.features.app.repository.resume_repository import ResumeSessionRepository
-from src.features.app.schemas.resume_schema import (
+from novamind.features.knowledge_space.api.dependencies import get_current_user_id
+from novamind.core.database.database import get_db
+from novamind.features.app.api.dependencies import _get_model_config_service
+from novamind.features.app.api.exceptions import ResumeSessionNotFoundError, ResumeParseError, InvalidFileTypeError, InvalidConfigError, FileSizeExceededError
+from novamind.features.app.models.resume import ResumeSessionStatus
+from novamind.features.app.repository.resume_repository import ResumeSessionRepository
+from novamind.features.app.schemas.resume_schema import (
     ResumeSessionResponse, ResumeSessionListResponse, StructuredResume,
 )
-from src.features.user.services.model_config_service import ModelConfigService
-from src.shared.clients import get_minio_client
-from src.core.middleware.structured_logging import get_logger
+from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.shared.clients import get_minio_client
+from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -100,7 +100,7 @@ async def upload_resume(
         cfg["file_upload_warning"] = "原始文件存储失败，但不影响解析"
 
     # 后台异步执行 S1-S12 全流程（通过 arq 队列，支持重试和恢复）
-    from src.shared.mq import enqueue_process_resume
+    from novamind.shared.mq import enqueue_process_resume
 
     await enqueue_process_resume(
         session_id=str(session_id),
@@ -235,7 +235,7 @@ async def cancel_resume_session(
     db: AsyncSession = Depends(get_db),
 ):
     """取消正在处理的简历会话"""
-    from src.shared.mq.task_tracker import mark_resume_cancelled
+    from novamind.shared.mq.task_tracker import mark_resume_cancelled
 
     repo = ResumeSessionRepository(db)
     session = await repo.get_by_id(session_id)
