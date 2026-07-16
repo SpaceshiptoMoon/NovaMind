@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This repository is split into `backend/` and `frontend/`. The backend is a FastAPI app rooted at `backend/main.py`, with domain code under `backend/src/features/<module>/` and shared infrastructure in `backend/src/core/`, `backend/src/shared/`, and `backend/src/setting/`. Backend tests live in `backend/tests/`, with sample evaluation data in `backend/test/`. The frontend is a Vue 3 + TypeScript app in `frontend/src/`, organized by `api/`, `components/`, `views/`, `stores/`, and `router/`. Deployment assets live in `docker/`, docs in `docs/`, and sample upload fixtures in `test_data/`.
+This repository is split into `backend/` and `frontend/`. The backend is a FastAPI app rooted at `backend/main.py`, with domain code under `backend/src/features/<module>/` and shared infrastructure in `backend/src/core/`, `backend/src/shared/`, and `backend/src/setting/`. Backend tests live in `backend/tests/`, with sample evaluation fixtures in `backend/tests/fixtures/`. The frontend is a Vue 3 + TypeScript app in `frontend/src/`, organized by `api/`, `components/`, `views/`, `stores/`, and `router/`. Deployment assets live in `docker/`, docs in `docs/`, and sample upload fixtures in `test_data/`.
 
 ## Build, Test, and Development Commands
 Use the repo-level scripts for full-stack setup: `bash deploy.sh` or `.\deploy.ps1` starts the Docker stack. For local backend work: `cd backend && pip install . && python main.py --config development --reload`. For frontend work: `cd frontend && npm install && npm run dev`. Build the frontend with `npm run build`, preview it with `npm run preview`, and validate types with `npm run type-check`.

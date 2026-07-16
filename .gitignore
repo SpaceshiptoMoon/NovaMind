@@ -62,6 +62,7 @@ backend/src/setting/yaml_config/yaml/testing.yaml
 # Claude Code
 # ========================================
 .claude/
+backend/skills-lock.json
 
 # ========================================
 # OS
