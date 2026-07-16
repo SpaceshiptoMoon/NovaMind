@@ -6,6 +6,8 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-frontend-3178C6?logo=typescript&logoColor=white)](./frontend/package.json)
 [![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](./docker-compose.yml)
 
+[English](./README.en.md) | 简体中文
+
 NovaMind 是一个面向团队与个人的智能知识平台，围绕知识库构建、检索增强问答、深度研究、Agent 工具调用、技能扩展和效果评测提供一体化能力。项目采用 `FastAPI + Vue 3` 构建，支持 Docker 一键部署，也支持前后端分离的本地开发模式。
 
 <p align="center">
