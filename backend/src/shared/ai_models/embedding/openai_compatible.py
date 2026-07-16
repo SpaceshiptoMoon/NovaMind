@@ -5,9 +5,7 @@ OpenAI 兼容 Embedding 客户端
 OpenAI、智谱 AI、阿里云 DashScope、硅基流动等
 """
 
-import asyncio
 import traceback
-from typing import Optional
 
 import httpx
 from openai import AsyncOpenAI

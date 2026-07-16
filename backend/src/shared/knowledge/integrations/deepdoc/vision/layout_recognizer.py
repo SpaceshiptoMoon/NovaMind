@@ -2,13 +2,11 @@ from __future__ import annotations
 
 # Adapted from RAGFlow deepdoc/vision/layout_recognizer.py
 
-import logging
 import os
 import re
 from collections import Counter
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Sequence
 
 import numpy as np
 

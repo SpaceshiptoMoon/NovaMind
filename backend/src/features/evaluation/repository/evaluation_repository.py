@@ -5,7 +5,7 @@
 - EvaluationTestSetRepository: 测试集 CRUD
 - EvaluationTaskRepository: 测评任务 CRUD
 """
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional, List
 
 from sqlalchemy import select, func, or_

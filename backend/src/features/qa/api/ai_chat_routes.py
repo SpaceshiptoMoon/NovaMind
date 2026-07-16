@@ -3,7 +3,7 @@ AI对话API路由
 """
 
 from fastapi import APIRouter, Depends, Query, UploadFile, File, Path
-from typing import Annotated, List
+from typing import Annotated
 from fastapi.responses import StreamingResponse, Response
 from urllib.parse import quote
 import io

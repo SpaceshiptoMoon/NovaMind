@@ -130,7 +130,6 @@ class McpServerService:
                 data.transport_type, data.connection_config
             )
             # 临时连接测试
-            import tempfile
             test_id = -1  # 临时 ID
             tools = await self.mcp_manager.connect_server(
                 test_id, f"test_{data.name}", config

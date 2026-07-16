@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from novamind.shared.storage.minio_client import MinioClient
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.prompts.templates import PromptTemplate, PromptManager
-from novamind.shared.utils.heartbeat import stream_with_heartbeat, stream_with_heartbeat_structured
+from novamind.shared.utils.heartbeat import stream_with_heartbeat_structured
 from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
 from novamind.features.qa.services.qa_service import QAService
 from novamind.features.qa.schemas.qa import QARequest
@@ -972,7 +972,6 @@ class AIChatService:
                     enable_thinking=enable_thinking,
                 )
 
-                from novamind.shared.ai_models.base_model import StreamChunk
                 async for chunk in stream_with_heartbeat_structured(raw_stream):
                     # 心跳注释直接透传
                     if isinstance(chunk, str):

@@ -1,6 +1,6 @@
 from abc import abstractmethod, ABC
-from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional, AsyncGenerator, Union
+from dataclasses import dataclass
+from typing import List, Dict, Any, Optional, AsyncGenerator
 import asyncio
 
 

@@ -3,7 +3,6 @@
 
 支持知识库关联和空间关联
 """
-from typing import Optional
 from sqlalchemy import Column, BigInteger, String, Text, JSON, ForeignKey, Index
 
 from novamind.core.database.base import BaseModel

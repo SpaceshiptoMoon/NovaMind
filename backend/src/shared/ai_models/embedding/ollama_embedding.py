@@ -4,7 +4,7 @@ Ollama 原生 Embedding 客户端
 使用 Ollama 原生 /api/embed 端点，支持单条和批量文本向量化。
 """
 
-from typing import List, Optional
+from typing import Optional
 
 import httpx
 from tenacity import (

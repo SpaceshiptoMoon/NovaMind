@@ -8,7 +8,6 @@ Elasticsearch 客户端封装
 import asyncio
 import re
 from typing import Optional, List, Dict, Any
-from datetime import datetime
 from elasticsearch import AsyncElasticsearch, NotFoundError, ConnectionError as ESConnectionError
 
 from novamind.core.middleware.structured_logging import get_logger

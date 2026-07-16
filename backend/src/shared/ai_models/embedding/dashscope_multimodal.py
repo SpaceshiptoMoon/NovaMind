@@ -11,8 +11,6 @@ SDK 使用方式：
 
 import asyncio
 import base64
-import tempfile
-from typing import Optional
 
 from novamind.shared.ai_models.embedding.multimodal_embedding import BaseMultimodalEmbedding
 from novamind.shared.ai_models.embedding.openai_compatible import EmbeddingDimensionError

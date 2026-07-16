@@ -7,7 +7,7 @@
 
 from typing import Optional, List, Dict, Any
 
-from sqlalchemy import select, update, delete, func
+from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.features.knowledge_space.models.knowledge_base import (
