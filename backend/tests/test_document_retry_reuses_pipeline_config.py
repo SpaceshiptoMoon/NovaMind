@@ -55,6 +55,8 @@ def test_retry_document_reuses_latest_task_pipeline_config():
             result = await DocumentService.retry_document(
                 service,
                 document_id=18,
+                kb_id=1,
+                space_id=1,
                 batch_creator_id=7,
                 batch_note="manual retry",
             )
