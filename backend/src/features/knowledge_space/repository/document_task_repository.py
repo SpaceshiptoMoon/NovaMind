@@ -28,6 +28,12 @@ class DocumentTaskRepository:
         await self.session.refresh(task)
         return task
 
+    async def create_many(self, items: List[Dict[str, Any]]) -> List[DocumentTask]:
+        tasks = [DocumentTask(**item) for item in items]
+        self.session.add_all(tasks)
+        await self.session.flush()
+        return tasks
+
     async def get_by_id(self, task_id: int) -> Optional[DocumentTask]:
         result = await self.session.execute(select(DocumentTask).where(DocumentTask.id == task_id))
         return result.scalar_one_or_none()
@@ -42,6 +48,47 @@ class DocumentTaskRepository:
         result = await self.session.execute(
             select(DocumentTask)
             .where(DocumentTask.document_id == document_id, DocumentTask.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]))
+            .order_by(desc(DocumentTask.id))
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_latest_by_document_ids(self, document_ids: List[int]) -> Dict[int, DocumentTask]:
+        if not document_ids:
+            return {}
+        result = await self.session.execute(
+            select(DocumentTask)
+            .where(DocumentTask.document_id.in_(document_ids))
+            .order_by(DocumentTask.document_id.asc(), desc(DocumentTask.id))
+        )
+        latest: Dict[int, DocumentTask] = {}
+        for task in result.scalars().all():
+            latest.setdefault(task.document_id, task)
+        return latest
+
+    async def get_active_by_document_ids(self, document_ids: List[int]) -> Dict[int, DocumentTask]:
+        if not document_ids:
+            return {}
+        result = await self.session.execute(
+            select(DocumentTask)
+            .where(
+                DocumentTask.document_id.in_(document_ids),
+                DocumentTask.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]),
+            )
+            .order_by(DocumentTask.document_id.asc(), desc(DocumentTask.id))
+        )
+        active: Dict[int, DocumentTask] = {}
+        for task in result.scalars().all():
+            active.setdefault(task.document_id, task)
+        return active
+
+    async def get_previous_by_document_id(self, document_id: int, before_task_id: int) -> Optional[DocumentTask]:
+        result = await self.session.execute(
+            select(DocumentTask)
+            .where(
+                DocumentTask.document_id == document_id,
+                DocumentTask.id < before_task_id,
+            )
             .order_by(desc(DocumentTask.id))
             .limit(1)
         )

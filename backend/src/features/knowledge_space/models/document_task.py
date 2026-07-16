@@ -22,6 +22,12 @@ class TaskStatus(IntEnum):
     CANCELLED = 4
 
 
+class TaskProcessMode(IntEnum):
+    PROCESS = 0
+    REPROCESS = 1
+    RETRY = 2
+
+
 class DocumentTask(BaseModel):
     __tablename__ = "document_task_items"
 
@@ -45,6 +51,7 @@ class DocumentTask(BaseModel):
     space_id = Column(BigInteger, ForeignKey("knowledge_spaces.id", ondelete="CASCADE"), nullable=False, comment="Space ID")
     status = Column(SmallInteger, default=TaskStatus.PENDING, nullable=False, index=True, comment="Task item status")
     job_id = Column(String(64), nullable=True, comment="arq job ID")
+    process_mode = Column(SmallInteger, default=TaskProcessMode.PROCESS, nullable=False, comment="Task process mode")
     pipeline_config = Column(JSON, nullable=True, comment="Pipeline config snapshot")
     step_progress = Column(JSON, nullable=True, comment="Step progress")
     pipeline_result = Column(JSON, nullable=True, comment="Pipeline result")

@@ -40,7 +40,6 @@ from novamind.features.knowledge_space.models.space_member import SpaceMember
 from novamind.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
 from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
 from novamind.core.database.database import get_db
-from novamind.features.knowledge_space.models.document_task_batch import BatchAction
 from novamind.features.knowledge_space.api.dependencies import (
     get_current_user_id,
     validate_space_member,
@@ -554,38 +553,6 @@ async def delete_document(
 
 
 @router.post(
-    "/{kb_id}/documents/{document_id}/process",
-    status_code=202,
-    response_model=DocumentProcessResponse,
-    summary="触发文档拆分解析",
-    description="触发单文档拆分解析（仅处理 UPLOADED/FAILED 状态）",
-)
-async def process_document(
-    space_id: Annotated[int, Path(gt=0, description="空间ID")],
-    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
-    document_id: Annotated[int, Path(gt=0, description="文档ID")],
-    user_id: int = Depends(get_current_user_id),
-    member: SpaceMember = Depends(validate_space_editor),
-    document_service: DocumentService = Depends(get_document_service),
-    db: AsyncSession = Depends(get_db),
-):
-    """触发单文档拆分解析"""
-    await validate_kb_writable(kb_id, space_id, db)
-
-    result = await document_service.process_document(
-        document_id=document_id,
-        batch_creator_id=user_id,
-        batch_action=BatchAction.PROCESS,
-        batch_note="单文档处理",
-    )
-    return DocumentProcessResponse(
-        document_id=result["document"].id,
-        task_id=result["parent_task_id"],
-        task_item_id=result["task_id"],
-    )
-
-
-@router.post(
     "/{kb_id}/documents/process",
     status_code=202,
     response_model=DocumentBatchProcessResponse,
@@ -610,37 +577,6 @@ async def process_documents(
         document_ids=body.document_ids,
     )
     return DocumentBatchProcessResponse(**result)
-
-
-@router.post(
-    "/{kb_id}/documents/{document_id}/reprocess",
-    status_code=202,
-    response_model=DocumentProcessResponse,
-    summary="重新解析文档",
-    description="清除旧 chunk，按当前知识库配置重新切分",
-)
-async def reprocess_document(
-    space_id: Annotated[int, Path(gt=0, description="空间ID")],
-    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
-    document_id: Annotated[int, Path(gt=0, description="文档ID")],
-    user_id: int = Depends(get_current_user_id),
-    member: SpaceMember = Depends(validate_space_editor),
-    document_service: DocumentService = Depends(get_document_service),
-    db: AsyncSession = Depends(get_db),
-):
-    """重新解析文档"""
-    await validate_kb_writable(kb_id, space_id, db)
-
-    result = await document_service.reprocess_document(
-        document_id=document_id,
-        batch_creator_id=user_id,
-        batch_note="单文档重新处理",
-    )
-    return DocumentProcessResponse(
-        document_id=result["document"].id,
-        task_id=result["parent_task_id"],
-        task_item_id=result["task_id"],
-    )
 
 
 @router.post(

@@ -19,10 +19,12 @@ from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.features.knowledge_space.models.document import Document
+from novamind.features.knowledge_space.models.document_task import TaskStatus, TaskProcessMode
 from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
 from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
 from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
 from novamind.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
+from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
 from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
 from novamind.features.knowledge_space.repository.member_repository import MemberRepository
 from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
@@ -40,6 +42,7 @@ from novamind.features.knowledge_space.api.exceptions import (
     KnowledgeSpaceError,
     KnowledgeBaseAccessDeniedError,
     SpaceAccessDeniedError,
+    EmbeddingError,
 )
 from novamind.shared.storage.minio_client import MinioClient
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
@@ -973,6 +976,7 @@ class DocumentService:
         batch_id: Optional[int] = None,
         batch_creator_id: Optional[int] = None,
         batch_action: BatchAction = BatchAction.PROCESS,
+        process_mode: TaskProcessMode = TaskProcessMode.PROCESS,
         batch_note: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
@@ -992,15 +996,17 @@ class DocumentService:
         """
         document = await self._validate_document_not_processing(document_id)
 
-        # COMPLETED 任务需要走 reprocess 流程
+        # COMPLETED 文档自动转入重新解析流程
         from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
         from novamind.features.knowledge_space.models.document_task import TaskStatus
         _task_repo = DocumentTaskRepository(self.session)
         latest_task = await _task_repo.get_by_document_id(document_id)
         if latest_task and latest_task.status == TaskStatus.COMPLETED:
-            raise InvalidParameterError(
-                "文档已完成处理，如需重新解析请使用 reprocess 接口",
-                field="document_id",
+            return await self.reprocess_document(
+                document_id=document_id,
+                batch_id=batch_id,
+                batch_creator_id=batch_creator_id,
+                batch_note=batch_note or "自动转为重新解析",
             )
 
         kb = await self.kb_repo.get_by_id(document.kb_id)
@@ -1040,15 +1046,12 @@ class DocumentService:
         results = []
 
         documents: List[Document] = []
-        # 如果未指定 document_ids，查询所有活跃文档（通过 task 状态在 process_document 中过滤）
         if not document_ids:
             documents = await self.doc_repo.get_by_kb(kb_id)
             document_ids = [doc.id for doc in documents]
-        elif document_ids:
-            for doc_id in document_ids:
-                doc = await self.doc_repo.get_by_id(doc_id)
-                if doc:
-                    documents.append(doc)
+        else:
+            document_ids = list(dict.fromkeys(document_ids))
+            documents = await self.doc_repo.get_by_ids(document_ids)
 
         if not document_ids:
             return {
@@ -1060,50 +1063,57 @@ class DocumentService:
                 "results": [],
             }
 
-        batch_repo = DocumentTaskBatchRepository(self.session)
-        first_document = documents[0] if documents else None
-        batch_pipeline_config = None
-        if first_document:
-            kb = await self.kb_repo.get_by_id(first_document.kb_id)
-            batch_pipeline_config = kb.get_config() if kb else None
-        batch = await batch_repo.create({
-            "space_id": documents[0].space_id,
-            "kb_id": kb_id,
-            "creator_id": user_id,
-            "action": BatchAction.PROCESS,
-            "pipeline_config": batch_pipeline_config,
-            "total_count": len(document_ids or []),
-            "note": f"批量处理 {len(document_ids or [])} 个文档",
-        })
-        await self.session.commit()
+        kb = await self.kb_repo.get_by_id(kb_id)
+        if not kb or not kb.is_active():
+            raise KnowledgeBaseNotFoundError(kb_id)
+
+        current_pipeline_config = kb.get_config() if kb else None
+        existing_doc_ids = [doc.id for doc in documents]
+        locked_documents = await self.doc_repo.lock_active_documents_by_ids(existing_doc_ids)
+        document_map = {doc.id: doc for doc in locked_documents}
+        task_repo = DocumentTaskRepository(self.session)
+        active_task_map = await task_repo.get_active_by_document_ids(existing_doc_ids)
+        latest_task_map = await task_repo.get_latest_by_document_ids(existing_doc_ids)
+
+        eligible_documents: List[Document] = []
+        task_payloads: List[Dict[str, Any]] = []
+        task_modes: Dict[int, str] = {}
 
         for doc_id in document_ids:
-            try:
-                task_result = await self.process_document(doc_id, batch_id=batch.id)
+            document = document_map.get(doc_id)
+            if not document:
                 results.append({
                     "document_id": doc_id,
-                    "task_id": batch.id,
-                    "task_item_id": task_result["task_id"],
-                    "status": "processing",
-                    "message": "已触发处理",
+                    "status": "failed",
+                    "message": str(DocumentNotFoundError(doc_id)),
                 })
-            except DocumentAlreadyProcessingError:
+                continue
+
+            if doc_id in active_task_map:
                 results.append({
                     "document_id": doc_id,
                     "status": "skipped",
                     "message": "文档正在处理中，跳过",
                 })
-            except (DocumentNotFoundError, InvalidParameterError) as e:
-                results.append({
-                    "document_id": doc_id,
-                    "status": "failed",
-                    "message": str(e),
-                })
+                continue
 
-        created_task_count = sum(1 for r in results if r.get("task_item_id"))
-        if created_task_count == 0:
-            await batch_repo.delete(batch.id)
-            await self.session.commit()
+            latest_task = latest_task_map.get(doc_id)
+            process_mode = TaskProcessMode.REPROCESS if latest_task and latest_task.status == TaskStatus.COMPLETED else TaskProcessMode.PROCESS
+
+            eligible_documents.append(document)
+            task_modes[doc_id] = "reprocess" if process_mode == TaskProcessMode.REPROCESS else "process"
+            task_payloads.append({
+                "document_id": doc_id,
+                "kb_id": document.kb_id,
+                "space_id": document.space_id,
+                "status": TaskStatus.PENDING,
+                "process_mode": process_mode,
+                "pipeline_config": current_pipeline_config,
+                "retry_count": 0,
+                "queued_at": now_china(),
+            })
+
+        if not task_payloads:
             return {
                 "task_id": None,
                 "total": len(results),
@@ -1112,6 +1122,54 @@ class DocumentService:
                 "skipped": sum(1 for r in results if r["status"] == "skipped"),
                 "results": results,
             }
+
+        batch_repo = DocumentTaskBatchRepository(self.session)
+        batch = await batch_repo.create({
+            "space_id": eligible_documents[0].space_id,
+            "kb_id": kb_id,
+            "creator_id": user_id,
+            "action": BatchAction.PROCESS,
+            "pipeline_config": current_pipeline_config,
+            "total_count": len(task_payloads),
+            "note": f"批量处理 {len(task_payloads)} 个文档",
+        })
+        for payload in task_payloads:
+            payload["batch_id"] = batch.id
+
+        created_tasks = await task_repo.create_many(task_payloads)
+        await self.session.commit()
+
+        try:
+            enqueued_jobs = await self._enqueue_precreated_tasks(created_tasks)
+        except Exception as e:
+            await self._cancel_batch_enqueue(batch.id, [task.id for task in created_tasks], str(e))
+            for document in eligible_documents:
+                results.append({
+                    "document_id": document.id,
+                    "task_id": batch.id,
+                    "status": "failed",
+                    "message": f"批量入队失败: {e}",
+                })
+            return {
+                "task_id": None,
+                "total": len(results),
+                "success": 0,
+                "failed": sum(1 for r in results if r["status"] == "failed"),
+                "skipped": sum(1 for r in results if r["status"] == "skipped"),
+                "results": results,
+            }
+
+        task_by_document_id = {task.document_id: task for task in created_tasks}
+        for document in eligible_documents:
+            task = task_by_document_id[document.id]
+            results.append({
+                "document_id": document.id,
+                "task_id": batch.id,
+                "task_item_id": task.id,
+                "job_id": enqueued_jobs.get(task.id),
+                "status": "processing",
+                "message": "已触发重新解析" if task_modes[document.id] == "reprocess" else "已触发处理",
+            })
 
         return {
             "task_id": batch.id,
@@ -1130,37 +1188,16 @@ class DocumentService:
         batch_creator_id: Optional[int] = None,
         batch_note: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        重新解析文档（清除旧 chunk，按当前 config 重新切分）
-
-        Args:
-            document_id: 文档 ID
-
-        Returns:
-            文档对象
-
-        Raises:
-            DocumentNotFoundError: 文档不存在
-            DocumentAlreadyProcessingError: 文档正在处理中
-        """
+        """重新解析文档。"""
         document = await self._validate_document_not_processing(document_id)
 
-        # 1. 清除 ES 旧分块（best effort，失败不阻塞）
-        try:
-            await self.es_client.delete_document_chunks(
-                space_id=document.space_id, document_id=document.id,
-            )
-            self.logger.info("重新解析前已清除 ES 旧分块", document_id=document.id)
-        except Exception as e:
-            self.logger.warning("清除 ES 旧分块失败", document_id=document.id, error=str(e))
-
-        # 2. 先入队（失败则不创建任务）
         task_info = await self._enqueue_document_processing(
             document,
             "重新解析",
             batch_id=batch_id,
             batch_creator_id=batch_creator_id,
             batch_action=BatchAction.REPROCESS,
+            process_mode=TaskProcessMode.REPROCESS,
             batch_note=batch_note,
         )
         return {"document": document, **task_info}
@@ -1173,27 +1210,10 @@ class DocumentService:
         batch_creator_id: Optional[int] = None,
         batch_note: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        重试文档处理（支持 FAILED 和 COMPLETED 任务状态）
-
-        先删除 ES 中的旧分块数据保证唯一性，再重新入队处理。
-        对于有活跃任务的文档，应先使用 cancel_processing 取消。
-
-        Args:
-            document_id: 文档 ID
-
-        Returns:
-            文档对象
-
-        Raises:
-            DocumentNotFoundError: 文档不存在
-            DocumentAlreadyProcessingError: 文档正在处理中
-            InvalidParameterError: 文档状态不允许重试
-        """
+        """重试文档处理，支持 FAILED 和 COMPLETED 状态。"""
         document = await self._validate_document_not_processing(document_id)
 
         from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-        from novamind.features.knowledge_space.models.document_task import TaskStatus
         _task_repo = DocumentTaskRepository(self.session)
         latest_task = await _task_repo.get_by_document_id(document_id)
         if not latest_task or latest_task.status not in (TaskStatus.FAILED, TaskStatus.COMPLETED):
@@ -1201,22 +1221,14 @@ class DocumentService:
                 "只能重试失败或已完成的文档",
                 field="document_id",
             )
-        # 1. 清除 ES 旧分块（best effort，失败不阻塞）
-        try:
-            await self.es_client.delete_document_chunks(
-                space_id=document.space_id, document_id=document.id,
-            )
-            self.logger.info("重试前已清除 ES 旧分块", document_id=document.id)
-        except Exception as e:
-            self.logger.warning("清除 ES 旧分块失败", document_id=document.id, error=str(e))
 
-        # 2. 先入队（失败则不创建任务，避免孤儿记录）
         task_info = await self._enqueue_document_processing(
             document,
             "重试",
             batch_id=batch_id,
             batch_creator_id=batch_creator_id,
             batch_action=BatchAction.RETRY,
+            process_mode=TaskProcessMode.RETRY,
             batch_note=batch_note,
             retry_count=0,
             pipeline_config_override=latest_task.pipeline_config,
@@ -1276,11 +1288,12 @@ class DocumentService:
         batch_id: Optional[int] = None,
         batch_creator_id: Optional[int] = None,
         batch_action: BatchAction = BatchAction.PROCESS,
+        process_mode: TaskProcessMode = TaskProcessMode.PROCESS,
         batch_note: Optional[str] = None,
         retry_count: int = 0,
         pipeline_config_override: Optional[dict] = None,
     ):
-        """创建任务记录并入队文档处理"""
+        """创建任务记录并入队文档处理。"""
         from novamind.shared.mq.task_tracker import is_document_actively_processing
 
         if await is_document_actively_processing(document.id):
@@ -1306,12 +1319,85 @@ class DocumentService:
             kb_id=document.kb_id,
             space_id=document.space_id,
             batch_id=batch_id,
+            process_mode=process_mode,
             pipeline_config=pipeline_config,
             retry_count=retry_count,
             session=self.session,
             batch_data=batch_data,
         )
 
+    async def _enqueue_precreated_tasks(self, tasks: List["DocumentTask"]) -> Dict[int, str]:
+        from arq.jobs import Job
+        from novamind.shared.mq import get_arq_pool
+        from novamind.shared.mq.task_tracker import bind_job_to_document, unbind_job
+
+        if not tasks:
+            return {}
+
+        pool = await get_arq_pool()
+        enqueued: List[tuple[int, int, str]] = []
+        try:
+            for task in tasks:
+                job_id = f"doc-task-{task.id}"
+                job = await pool.enqueue_job(
+                    "process_document_task",
+                    document_id=task.document_id,
+                    kb_id=task.kb_id,
+                    space_id=task.space_id,
+                    _job_id=job_id,
+                )
+                if job is None:
+                    raise RuntimeError(f"批量任务入队失败: task_id={task.id}")
+                task.job_id = job.job_id
+                enqueued.append((task.id, task.document_id, job.job_id))
+
+            await self.session.commit()
+
+            for _, document_id, job_id in enqueued:
+                await bind_job_to_document(document_id, job_id)
+
+            return {task_id: job_id for task_id, _, job_id in enqueued}
+        except Exception:
+            await self.session.rollback()
+            for _, document_id, job_id in enqueued:
+                try:
+                    job = Job(job_id, pool, _deserializer=pool.job_deserializer)
+                    await job.abort(timeout=0)
+                except Exception:
+                    self.logger.warning("批量入队回滚时取消 job 失败", document_id=document_id, job_id=job_id)
+                try:
+                    await unbind_job(document_id)
+                except Exception:
+                    self.logger.warning("批量入队回滚时清理任务映射失败", document_id=document_id, job_id=job_id)
+            raise
+
+    async def _cancel_batch_enqueue(self, batch_id: int, task_ids: List[int], error_message: str) -> None:
+        from sqlalchemy import update
+        from novamind.core.database.database import get_db_session
+        from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
+        from novamind.features.knowledge_space.models.document_task_batch import DocumentTaskBatch, BatchStatus
+
+        async with get_db_session() as session:
+            if task_ids:
+                await session.execute(
+                    update(DocumentTask)
+                    .where(DocumentTask.id.in_(task_ids))
+                    .values(
+                        status=TaskStatus.CANCELLED,
+                        error_message=f"[批量入队失败] {error_message[:300]}",
+                        completed_at=now_china(),
+                    )
+                )
+            await session.execute(
+                update(DocumentTaskBatch)
+                .where(DocumentTaskBatch.id == batch_id)
+                .values(
+                    status=BatchStatus.FAILED,
+                    error_message=f"[批量入队失败] {error_message[:300]}",
+                    completed_at=now_china(),
+                )
+            )
+            await session.commit()
 
 
 # ========== 模块级静态辅助函数 ==========

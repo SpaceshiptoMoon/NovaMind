@@ -77,7 +77,8 @@ def download_model_group(group: str | None = None, model_dir: str | os.PathLike[
     snapshot_download(
         repo_id=MODEL_REPO_ID,
         local_dir=str(base_dir),
-        local_dir_use_symlinks=False,
         allow_patterns=allow_patterns,
+        etag_timeout=int(os.getenv("DEEPDOC_HF_ETAG_TIMEOUT", "60")),
+        max_workers=int(os.getenv("DEEPDOC_HF_MAX_WORKERS", "4")),
     )
     return base_dir

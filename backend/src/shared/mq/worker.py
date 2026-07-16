@@ -77,7 +77,8 @@ async def process_document_task(
         space_id: 空间 ID
     """
     from novamind.core.database.database import get_db_session
-    from novamind.features.knowledge_space.models.document_task import TaskStatus
+    from novamind.features.knowledge_space.models.document_task_batch import BatchAction
+    from novamind.features.knowledge_space.models.document_task import TaskStatus, TaskProcessMode
     from novamind.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
     from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
     from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
@@ -139,6 +140,33 @@ async def process_document_task(
             await session.commit()
 
         try:
+            should_reset_chunks = False
+
+            if task.process_mode == TaskProcessMode.REPROCESS:
+                should_reset_chunks = True
+            elif task.process_mode == TaskProcessMode.RETRY:
+                should_reset_chunks = True
+            elif task.batch_id:
+                batch = await batch_repo.get_by_id(task.batch_id)
+                if batch and batch.action in (BatchAction.REPROCESS, BatchAction.RETRY):
+                    should_reset_chunks = True
+            if not should_reset_chunks:
+                previous_task = await task_repo.get_previous_by_document_id(document_id, task.id)
+                if previous_task and previous_task.status == TaskStatus.COMPLETED:
+                    should_reset_chunks = True
+
+            if should_reset_chunks:
+                try:
+                    from novamind.shared.clients import ClientFactory
+                    es_client = await ClientFactory.get_elasticsearch_client()
+                    await es_client.delete_document_chunks(
+                        space_id=space_id,
+                        document_id=document_id,
+                    )
+                    logger.info("开始处理前已清除旧 ES 分块", document_id=document_id, job_id=job_id)
+                except Exception as cleanup_err:
+                    logger.warning("开始处理前清除旧 ES 分块失败", document_id=document_id, error=str(cleanup_err))
+
             # 3. 从 MinIO 下载文件
             from novamind.shared.clients import ClientFactory
             minio_client = await ClientFactory.get_minio_client()

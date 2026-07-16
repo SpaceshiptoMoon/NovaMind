@@ -264,6 +264,11 @@ class AppLifespanManager:
                 "llm_config",
                 "ALTER TABLE qa_session_configs ADD COLUMN llm_config JSON NULL",
             ),
+            (
+                "document_task_items",
+                "process_mode",
+                "ALTER TABLE document_task_items ADD COLUMN process_mode SMALLINT NOT NULL DEFAULT 0 COMMENT 'Task process mode'",
+            ),
         ]
         db_engine = get_engine()
         for table, column, ddl in migrations:

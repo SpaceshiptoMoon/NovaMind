@@ -140,6 +140,33 @@ class DocumentRepository:
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
+    async def get_by_ids(self, document_ids: List[int]) -> List[Document]:
+        if not document_ids:
+            return []
+        query = select(Document).where(
+            Document.id.in_(document_ids),
+            Document.deleted_at.is_(None),
+        )
+        result = await self.session.execute(query)
+        documents = list(result.scalars().all())
+        document_map = {doc.id: doc for doc in documents}
+        ordered = [document_map[doc_id] for doc_id in document_ids if doc_id in document_map]
+        if ordered:
+            await self._attach_latest_tasks(ordered)
+        return ordered
+
+    async def lock_active_documents_by_ids(self, document_ids: List[int]) -> List[Document]:
+        if not document_ids:
+            return []
+        query = (
+            select(Document).where(
+                Document.id.in_(document_ids),
+                Document.deleted_at.is_(None),
+            ).with_for_update()
+        )
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
     async def get_by_kb(
         self,
         kb_id: int,
