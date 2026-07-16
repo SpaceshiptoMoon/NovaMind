@@ -81,7 +81,6 @@ async def process_document_task(
     from novamind.features.knowledge_space.models.document_task import TaskStatus, TaskProcessMode
     from novamind.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
     from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
-    from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
     from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
     from novamind.features.knowledge_space.services.document_service import DocumentService, DocumentCancelledError
     from novamind.shared.mq.task_tracker import unbind_job
@@ -96,7 +95,6 @@ async def process_document_task(
 
     async with get_db_session() as session:
         doc_repo = DocumentRepository(session)
-        kb_repo = KnowledgeBaseRepository(session)
         task_repo = DocumentTaskRepository(session)
         batch_repo = DocumentTaskBatchRepository(session)
 

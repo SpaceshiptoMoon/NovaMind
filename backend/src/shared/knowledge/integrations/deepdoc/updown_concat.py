@@ -126,7 +126,7 @@ class UpDownConcatMerger:
         ]
 
     def _xgb_merge(self, boxes: Sequence[Any], model) -> list[Any]:
-        xgb = _import_xgboost()
+        _import_xgboost()  # fail-fast guard: ensure xgboost is importable before using `model`
         states = [self._state_from_box(box) for box in boxes]
         mean_height = self._mean_height_by_page(states)
         mean_width = self._mean_width_by_page(states)
