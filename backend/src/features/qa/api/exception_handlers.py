@@ -15,7 +15,6 @@ async def llm_service_exception_handler(request, exc):
     from novamind.shared.utils.time_utils import now_china
 
     ctx = _build_trace_context(request)
-    trace_id = ctx.get("trace_id", "no-trace")
 
     error_detail = exc.to_dict()
 

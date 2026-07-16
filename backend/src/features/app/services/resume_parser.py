@@ -310,7 +310,6 @@ class ResumeParser:
 
         for p in resume.project_experience:
             if p.associated_company and p.associated_company in work_companies:
-                work = work_companies[p.associated_company]
                 # 简单检查：如果项目有结束日期且在工作开始之前，可能有冲突
                 # 这里只做提示性校验
                 pass

@@ -86,7 +86,8 @@ class McpServerService:
         return McpServerResponse.model_validate(server)
 
     async def delete_server(self, user_id: int, server_id: int, *, is_admin: bool = False) -> None:
-        server = await self._get_and_validate(user_id, server_id, is_admin=is_admin)
+        # 校验归属/权限（不使用返回值，仅为 access-control 副作用：不通过会 raise）
+        await self._get_and_validate(user_id, server_id, is_admin=is_admin)
         # 先断开连接
         if self.mcp_manager.is_connected(server_id):
             await self.mcp_manager.disconnect_server(server_id)
