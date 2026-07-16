@@ -229,10 +229,13 @@ class SearchService:
 
             # 构建提示词
             from novamind.shared.prompts.templates import PromptTemplate, PromptManager
+            from novamind.shared.prompts.sanitize import sanitize_prompt_input
+            # 净化用户 query，剥离 markdown 标题/分隔标签，降低 prompt 注入风险
+            safe_query = sanitize_prompt_input(query)
             prompt = PromptManager.format_prompt(
                 PromptTemplate.SEARCH_ANSWER.value,
                 context=context,
-                query=query,
+                query=safe_query,
             )
 
             # 调用 LLM 生成回答
@@ -544,17 +547,22 @@ class SearchService:
         rerank_enabled: bool = False,
         rerank_top_k: int = 3,
         rerank_model: str = "",
+        score_threshold: float = 0.0,
+        query_rewrite_sig: str = "",
     ) -> str:
         """
         生成查询哈希（用于缓存键）
 
-        包含所有影响检索结果的参数，包括 rerank 参数
+        包含所有影响检索结果的参数，包括 rerank / score_threshold / query_rewrite 参数。
+        score_threshold 影响结果过滤；query_rewrite 改写实际检索 query，必须入键，
+        否则仅阈值或改写配置不同的请求会共享缓存，导致跨配置缓存污染。
         """
         normalized_query = query.strip().lower()
         key_content = (
             f"{normalized_query}:{top_k}:{search_type}:"
             f"{vector_weight:.2f}:{bm25_weight:.2f}:{content_weight:.2f}:{question_weight:.2f}:"
-            f"rerank_{rerank_enabled}_{rerank_top_k}_{rerank_model}"
+            f"rerank_{rerank_enabled}_{rerank_top_k}_{rerank_model}:"
+            f"st_{score_threshold:.4f}:qw_{query_rewrite_sig}"
         )
         return hashlib.md5(key_content.encode('utf-8')).hexdigest()[:32]
 
@@ -698,6 +706,15 @@ class SearchService:
         # 4. 生成缓存键并尝试从缓存获取
         cache_key = None
         if use_cache:
+            # query_rewrite 改写实际检索 query，影响结果，必须纳入缓存键签名
+            qw = request.query_rewrite
+            if qw is None:
+                query_rewrite_sig = "none"
+            else:
+                query_rewrite_sig = (
+                    f"{qw.strategy}|{qw.sub_query_count}|{qw.sub_query_merge_mode}"
+                    f"|{bool(qw.hyde_prompt)}|{qw.llm_model or ''}"
+                )
             query_hash = self._generate_query_hash(
                 query,
                 top_k,
@@ -709,6 +726,8 @@ class SearchService:
                 rerank_enabled=rerank_enabled,
                 rerank_top_k=rerank_top_k,
                 rerank_model=rerank_model,
+                score_threshold=score_threshold,
+                query_rewrite_sig=query_rewrite_sig,
             )
             cache_key = self._get_search_cache_key(kb_id, search_mode, query_hash)
             cached_results = await self._get_cached_search(cache_key)
