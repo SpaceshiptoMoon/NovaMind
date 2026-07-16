@@ -13,6 +13,9 @@ build/
 venv/
 env/
 *.log
+.cache/
+.tmp/
+kb_typecheck.log
 
 # ========================================
 # Node.js
@@ -98,8 +101,12 @@ docker/configs/docker.yaml
 backend/tests/*.mp3
 backend/tests/*.wav
 backend/.pytest_cache
+backend/.cache
+backend/.cache/
 backend/build
 backend/dist
+backend/tmp*.log
+backend/original_templates_backup.py
 
 
 # ========================================

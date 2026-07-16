@@ -1,13 +1,4 @@
-# ========================================
-# 开发环境配置（示例）
-# ========================================
-# 复制此文件为 development.yaml 并填入真实配置值
-# cp development.example development.yaml
-#
-# 只需覆盖需要改变的部分，其他配置继承自 default.yaml
-
 environment: development
-debug: true
 
 redis:
   enabled: true
@@ -18,8 +9,8 @@ redis:
 
 minio:
   endpoint: localhost:9005
-  access_key: your-access-key
-  secret_key: your-secret-key
+  access_key: ***REMOVED***
+  secret_key: ***REMOVED***
   secure: false
 
 elasticsearch:
@@ -29,8 +20,5 @@ elasticsearch:
   password: your-es-password
 
 database:
+  host: localhost
   password: "your-db-password"
-
-logging:
-  level: DEBUG
-  format: console

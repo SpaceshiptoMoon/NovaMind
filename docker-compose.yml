@@ -7,10 +7,6 @@
 #   docker compose down
 #   docker compose up -d --build
 #
-# The `app` container serves:
-# - frontend static assets through Nginx
-# - backend API through `backend/main.py`
-#
 # Runtime config file mount:
 #   ./docker/configs/docker.yaml -> /app/src/setting/yaml_config/yaml/docker.yaml
 
@@ -31,6 +27,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_started
       elasticsearch:
         condition: service_healthy
     restart: on-failure
@@ -38,7 +36,7 @@ services:
       - app-network
 
   mysql:
-    image: mysql:8.0
+    image: mysql:8.4.10
     container_name: novamind-mysql
     ports:
       - "3306:3306"
@@ -50,13 +48,12 @@ services:
     command: >
       --character-set-server=utf8mb4
       --collation-server=utf8mb4_unicode_ci
-      --default-authentication-plugin=mysql_native_password
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 5s
       timeout: 3s
-      retries: 10
-      start_period: 30s
+      retries: 15
+      start_period: 40s
     volumes:
       - mysql-data:/var/lib/mysql
     restart: unless-stopped
@@ -64,7 +61,7 @@ services:
       - app-network
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.9-alpine
     container_name: novamind-redis
     ports:
       - "6379:6379"
@@ -96,7 +93,7 @@ services:
       - app-network
 
   elasticsearch:
-    image: elasticsearch:8.15.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.7
     container_name: novamind-elasticsearch
     ports:
       - "9200:9200"
@@ -109,8 +106,8 @@ services:
       test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 40s
+      retries: 15
+      start_period: 50s
     volumes:
       - es-data:/usr/share/elasticsearch/data
     restart: unless-stopped

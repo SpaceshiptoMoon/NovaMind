@@ -1,30 +1,14 @@
-# ========================================
-# novamind - 默认共享配置（示例）
-# ========================================
-# 复制此文件为 default.yaml 并填入真实配置值
-# cp default.example default.yaml
-#
-# 环境配置文件（development.yaml 等）会与此文件深度合并
-# 环境配置只需覆盖需要改变的部分
-
-# 项目信息
 project:
   name: novamind
   version: 0.1.0
-  description: novamind - 智能知识库管理系统后端
+  description: novamind backend
 
-# 环境标识（由环境配置覆盖）
-environment: development
-debug: false
-
-# 安全配置
 security:
   secret_key: "your-secret-key-here"
   algorithm: HS256
   access_token_expire_minutes: 30
   encryption_key: "your-aes256-encryption-key"
 
-# MySQL 数据库配置
 database:
   host: localhost
   port: 3306
@@ -37,7 +21,6 @@ database:
   pool_recycle: 3600
   pool_pre_ping: true
 
-# Redis 缓存配置
 redis:
   enabled: false
   host: localhost
@@ -45,9 +28,6 @@ redis:
   db: 0
   password: ""
 
-# ========================================
-# 对象存储配置 (MinIO)
-# ========================================
 minio:
   endpoint: "127.0.0.1:9005"
   access_key: "your-minio-access-key"
@@ -56,9 +36,6 @@ minio:
   region: us-east-1
   bucket_name: "novamind-dev"
 
-# ========================================
-# Elasticsearch 配置
-# ========================================
 elasticsearch:
   hosts:
     - "http://127.0.0.1:9200"
@@ -68,15 +45,9 @@ elasticsearch:
   default_embedding_dim: 1024
   analyzer: standard
 
-# ========================================
-# 向量存储配置
-# ========================================
 vector_db:
   type: elasticsearch
 
-# ========================================
-# 管理员账户配置
-# ========================================
 admin:
   username: "admin"
   email: "admin@example.com"
@@ -84,96 +55,38 @@ admin:
   create_on_startup: true
   reset_password_if_exists: true
 
-# CORS 配置
 cors_origins: "*"
 
-# 缓存配置
-cache:
-  knowledge_space_enabled: true
-  knowledge_space_expire_hours: 1
-  knowledge_space_similarity_threshold: 0.95
-  session_enabled: true
-  session_expire_hours: 24
-  vector_search_enabled: true
-  search_result_ttl: 3600
-
-# 日志配置
-logging:
-  level: INFO
-  format: json
-
-# ========================================
-# 外部搜索配置
-# ========================================
 external_search:
-  default_provider: duckduckgo
-
   tavily:
     api_key: ""
     max_results: 10
     search_depth: basic
     timeout: 30
-
   serpapi:
     api_key: ""
     max_results: 10
     timeout: 30
-
   duckduckgo:
     max_results: 10
     timeout: 15
 
-# ========================================
-# 深度研究配置
-# ========================================
-deep_research:
-  cache_results: true
-  cache_ttl_hours: 24
+task_queue:
+  max_jobs: 3
+  job_timeout: 7200
+  max_tries: 3
+  retry_base_delay: 60
+  queue_name: "arq:queue"
 
-# ========================================
-# Agent 智能体配置
-# ========================================
-agent:
-  max_tool_calls_per_turn: 10
-  default_max_tokens: 4096
-  default_temperature: 0.7
-  max_context_tokens: 8000
-  mcp_connection_timeout: 30
-  sandbox:
-    enabled: false
-    max_memory_mb: 256
-    max_output_bytes: 65536
-    default_timeout: 30
-    max_timeout: 120
-    network_disabled: true
-    rebuild_interval: 50
-    container_prefix: "agent_sandbox"
-    images:
-      python: "python:3.12-slim"
-      javascript: "node:20-slim"
-      shell: "bash:5"
-
-# SMTP 邮件配置（用于密码重置、通知邮件等）
 smtp:
   enabled: false
-  host: ""            # SMTP 服务器地址，如 smtp.gmail.com
-  port: 587           # SMTP 端口
-  username: ""        # SMTP 用户名
-  password: ""        # SMTP 密码或应用专用密码
-  from_email: ""      # 发件人邮箱地址
-  use_tls: true       # 是否使用 TLS
+  host: ""
+  port: 587
+  username: ""
+  password: ""
+  from_email: ""
+  use_tls: true
 
-# ========================================
-# ClawMate 终端模块配置
-# ========================================
-clawmate:
-  enabled: true                # 是否启用 ClawMate 终端模块
-  default_timeout: 30          # 命令执行默认超时（秒）
-  max_output_size: 65536       # 输出截断大小（字节，默认 64KB）
-  max_session_idle: 600        # session 空闲超时（秒，默认 10 分钟）
-  cleanup_interval: 60         # 空闲清理检查间隔（秒）
-  # blocked_commands: []       # 额外命令黑名单（补充内置的硬封锁和危险模式检测）
-  # write_denied_paths: []     # 额外写入保护路径前缀（补充内置的 ~/.ssh、/etc 等）
-  # write_denied_files: []     # 额外写入保护精确文件路径
-  # write_denied_dirs: []      # 额外写入保护目录前缀
-  # write_safe_root: ""        # 沙盒根目录（设置后只允许写入该目录树内，也可通过环境变量 CLAWMATE_WRITE_SAFE_ROOT 设置）
+skill_marketplace:
+  llm_review_enabled: false
+  llm_review_model: null

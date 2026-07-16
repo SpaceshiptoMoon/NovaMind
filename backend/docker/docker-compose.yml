@@ -1,64 +1,62 @@
-# NovaMind 智能知识库系统 - 开发环境 Docker Compose
-# 使用方式:
-#   1. cp .env.example .env  并将占位符替换为真实密码
-#   2. docker compose up -d
+# NovaMind backend - development Docker Compose
+# Usage:
+#   1. cp .env.example .env
+#   2. cp docker.example docker.yaml
+#   3. docker compose up -d
 
 services:
-  # ================================
-  # FastAPI 应用
-  # ================================
   app:
     build:
       context: ..
       dockerfile: docker/Dockerfile
     container_name: novamind-app
+    command: python main.py --config docker --host 0.0.0.0 --port 8100
     ports:
       - "8100:8100"
+    env_file:
+      - .env
+    volumes:
+      - ./docker.yaml:/app/src/setting/yaml_config/yaml/docker.yaml:ro
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_started
       elasticsearch:
         condition: service_healthy
     restart: on-failure
     networks:
       - dev-network
 
-  # ================================
-  # MySQL 8.0
-  # ================================
   mysql:
-    image: mysql:8.0
+    image: mysql:8.4.10
     container_name: novamind-mysql
     ports:
       - "3306:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?请在 backend/docker/.env 中设置}"
-      MYSQL_DATABASE: novamind_db
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-novamind_db}"
       MYSQL_CHARSET: utf8mb4
       MYSQL_COLLATION: utf8mb4_unicode_ci
     command: >
       --character-set-server=utf8mb4
       --collation-server=utf8mb4_unicode_ci
-      --default-authentication-plugin=mysql_native_password
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 5s
       timeout: 3s
-      retries: 10
-      start_period: 30s
+      retries: 15
+      start_period: 40s
     volumes:
       - mysql-data:/var/lib/mysql
     restart: unless-stopped
     networks:
       - dev-network
 
-  # ================================
-  # Redis 7
-  # ================================
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.9-alpine
     container_name: novamind-redis
     ports:
       - "6379:6379"
@@ -73,9 +71,6 @@ services:
     networks:
       - dev-network
 
-  # ================================
-  # MinIO 对象存储
-  # ================================
   minio:
     image: minio/minio
     container_name: novamind-minio
@@ -83,8 +78,8 @@ services:
       - "9005:9005"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?请在 backend/docker/.env 中设置}"
-      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?请在 backend/docker/.env 中设置}"
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
     command: server /data --address ":9005" --console-address ":9001"
     volumes:
       - minio-data:/data
@@ -92,11 +87,8 @@ services:
     networks:
       - dev-network
 
-  # ================================
-  # Elasticsearch 8.15
-  # ================================
   elasticsearch:
-    image: elasticsearch:8.15.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.7
     container_name: novamind-elasticsearch
     ports:
       - "9200:9200"
@@ -104,31 +96,25 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - xpack.security.http.ssl.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms512m -Xmx512m}"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 40s
+      retries: 15
+      start_period: 50s
     volumes:
       - es-data:/usr/share/elasticsearch/data
     restart: unless-stopped
     networks:
       - dev-network
 
-# ================================
-# 持久化卷
-# ================================
 volumes:
   mysql-data:
   redis-data:
   minio-data:
   es-data:
 
-# ================================
-# 网络
-# ================================
 networks:
   dev-network:
     driver: bridge
