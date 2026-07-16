@@ -490,7 +490,7 @@ class RedisCache:
             if not self.redis_client:
                 await self.connect()
 
-            result = await self.redis_client.hset(key, mapping=mapping)
+            await self.redis_client.hset(key, mapping=mapping)
             return True
         except RedisError as e:
             logger.warning(f"设置Hash降级，键: {key}, 错误: {e}")
