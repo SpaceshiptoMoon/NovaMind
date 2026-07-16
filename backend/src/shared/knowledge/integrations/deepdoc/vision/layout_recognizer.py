@@ -137,32 +137,6 @@ class LayoutRecognizer(Recognizer):
             layouts = self.forward(image_list, thr=thr, batch_size=batch_size)
         return self.apply_layouts(image_list, ocr_res, layouts, scale_factor=scale_factor, drop=drop)
 
-    def decode_outputs(self, outputs, metas: list[dict[str, Any]], thr: float = 0.2):
-        if not outputs:
-            return [[] for _ in metas]
-        batch_output = outputs[0]
-        decoded: list[list[dict[str, Any]]] = []
-        for batch_index, meta in enumerate(metas):
-            predictions = batch_output[batch_index] if isinstance(batch_output, np.ndarray) and batch_output.ndim >= 3 else batch_output
-            page_layouts = []
-            for row in predictions:
-                values = np.asarray(row).reshape(-1)
-                if values.size < 6:
-                    continue
-                x0, y0, x1, y1, score, class_id = values[:6]
-                if float(score) < thr:
-                    continue
-                bbox = self.scale_bbox_to_original([float(x0), float(y0), float(x1), float(y1)], meta)
-                page_layouts.append(
-                    {
-                        "type": self.labels[int(class_id)] if int(class_id) < len(self.labels) else str(int(class_id)),
-                        "score": float(score),
-                        "bbox": bbox,
-                    }
-                )
-            decoded.append(page_layouts)
-        return decoded
-
 
 class LayoutRecognizer4YOLOv10(LayoutRecognizer):
     labels = [
