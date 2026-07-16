@@ -8,13 +8,14 @@
   features/{module}/{module}_prompts.py → 各模块的模板内容 + 描述（数据源）
 
 模块分类：
-  1. knowledge_space — RAG 检索、文档处理、假设问题生成、查询改写、知识库问答
+  1. knowledge_space — RAG 检索、查询改写、知识库问答、VLM 描述
   2. deep_research   — 研究主题分析、任务分解、报告生成
-  3. qa              — 通用问答、文档问答、对话压缩、AI 对话系统提示
+  3. qa              — 对话压缩、AI 对话系统提示、查询改写（QueryRewriter）、检索自评估（GradeRetrier）
   4. evaluation      — 检索评估、生成评估、Claim 拆解验证
   5. app             — 简历解析（S1-S4）、简历分析（S4.5-S9）、追问模拟（S10-S11）
   6. agent           — 系统提示词、长期记忆提取、结构化摘要、迭代融合
-  7. skill           — 技能安全审查
+  7. skill           — 技能安全审查、技能 AI 搜索
+  8. clawmate        — ClawMate 终端助手系统提示
 """
 from enum import Enum
 from typing import Dict
@@ -24,19 +25,6 @@ class PromptTemplate(Enum):
     """提示词模板枚举"""
 
     # ==================== 知识空间相关 ====================
-    # RAG 检索
-    CONTEXT_ANSWER = "context_answer"
-    SUMMARIZE_CONTEXT = "summarize_context"
-
-    # 文档处理
-    DOC_SUMMARY = "doc_summary"
-    DOC_HIGHLIGHT_EXTRACTION = "doc_highlight_extraction"
-    DOC_TRANSLATE = "doc_translate"
-
-    # 假设问题生成
-    HYPOTHETICAL_QUESTION_SYSTEM = "hypothetical_question_system"
-    HYPOTHETICAL_QUESTION_USER = "hypothetical_question_user"
-
     # 查询改写
     QUERY_REWRITE_HYDE_SYSTEM = "query_rewrite_hyde_system"
     QUERY_REWRITE_HYDE_USER = "query_rewrite_hyde_user"
@@ -60,10 +48,18 @@ class PromptTemplate(Enum):
     RESEARCH_SYNTHESIZE_REPORT_STREAM = "research_synthesize_report_stream"
 
     # ==================== 问答系统相关 ====================
-    QA_GENERAL = "qa_general"
-    QA_DOCUMENT_BASED = "qa_document_based"
+    # 对话压缩 + AI 对话系统提示
     QA_COMPRESSION_SUMMARY = "qa_compression_summary"
     QA_AI_CHAT_SYSTEM = "qa_ai_chat_system"
+
+    # QueryRewriter 可插拔查询改写（4 种策略，与 search_service 的查询改写是两条独立路径）
+    QA_RW_COMPLETION = "qa_rw_completion"
+    QA_RW_SYNONYM = "qa_rw_synonym"
+    QA_RW_DECOMPOSE = "qa_rw_decompose"
+    QA_RW_HYDE = "qa_rw_hyde"
+
+    # GradeRetrier 检索后自评估（运行时打分→重试，区别于 evaluation 的离线评估）
+    QA_GRADE_RETRIEVAL = "qa_grade_retrieval"
 
     # ==================== 知识库测评相关 ====================
     # 检索评估
@@ -118,6 +114,9 @@ class PromptTemplate(Enum):
     # ==================== 技能 AI 搜索 ====================
     SKILL_AI_SEARCH = "skill_ai_search"
 
+    # ==================== ClawMate 终端助手 ====================
+    CLAWMATE_SYSTEM = "clawmate_system"
+
 
 class PromptManager:
     """提示词管理器"""
@@ -137,8 +136,9 @@ class PromptManager:
         from novamind.features.app.app_prompts import TEMPLATES as _app
         from novamind.features.agent.agent_prompts import TEMPLATES as _ag
         from novamind.features.skill.skill_prompts import TEMPLATES as _sk
+        from novamind.features.clawmate.clawmate_prompts import TEMPLATES as _cm
 
-        for t in [_ks, _dr, _qa, _ev, _app, _ag, _sk]:
+        for t in [_ks, _dr, _qa, _ev, _app, _ag, _sk, _cm]:
             cls._templates.update(t)
 
     @classmethod

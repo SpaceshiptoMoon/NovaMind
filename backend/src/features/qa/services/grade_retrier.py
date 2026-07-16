@@ -3,13 +3,16 @@
 
 检索完成后由 LLM 对结果质量打分，低于阈值则自动重试。
 重试时可切换检索模式、触发 Query Rewriting、降低阈值。
+
+提示词统一托管在中央注册表（shared.prompts），见 qa_prompts.py 的 qa_grade_retrieval。
 """
 import json
 import re
 from dataclasses import dataclass
-from typing import Optional, Callable, Awaitable, List, Tuple, Any
+from typing import Optional, Callable, Awaitable, List, Tuple
 
 from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.prompts.templates import PromptManager, PromptTemplate
 
 
 @dataclass
@@ -18,24 +21,6 @@ class GradeResult:
     score: int = 0       # 1-10 分
     passed: bool = False
     reason: str = ""
-
-
-_GRADE_PROMPT = """你是一个检索质量评估专家。请根据用户问题，评估以下检索结果是否充分回答了问题。
-
-评估标准（1-10 分）：
-- 1-3 分：结果完全无关或严重不足
-- 4-5 分：部分相关但信息明显不全
-- 6-7 分：基本相关，能提供有用信息
-- 8-10 分：高度相关，信息充分
-
-输出格式（JSON）：
-{{"score": <分数>, "reason": "<简要理由（中文）>"}}
-
-用户问题：{query}
-
-检索结果：
-{results}
-"""
 
 
 def _extract_json(raw: Optional[str]) -> Optional[dict]:
@@ -93,7 +78,9 @@ class GradeRetrier:
         results_text = "\n---\n".join(
             s.get("content", s.get("snippet", ""))[:300] for s in sources[:5]
         )
-        prompt = _GRADE_PROMPT.format(query=query, results=results_text)
+        prompt = PromptManager.format_prompt(
+            PromptTemplate.QA_GRADE_RETRIEVAL.value, query=query, results=results_text
+        )
         try:
             raw = await self._llm.generate_text(
                 prompt=prompt, max_tokens=200, temperature=0.1,
