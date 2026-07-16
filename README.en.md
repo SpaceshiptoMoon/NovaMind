@@ -1,9 +1,8 @@
 # NovaMind
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![CI](https://github.com/SpaceshiptoMoon/NovaMind/actions/workflows/ci.yml/badge.svg)](https://github.com/SpaceshiptoMoon/NovaMind/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](./backend/pyproject.toml)
-[![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white)](./backend)
-[![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vue.js&logoColor=white)](./frontend/package.json)
-[![TypeScript](https://img.shields.io/badge/TypeScript-frontend-3178C6?logo=typescript&logoColor=white)](./frontend/package.json)
 [![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](./docker-compose.yml)
 
 English | [简体中文](./README.md)
@@ -16,6 +15,29 @@ NovaMind is an intelligent knowledge platform for teams and individuals, built a
 <p align="center">
   <img src="./assets/features.png" alt="NovaMind Features" width="720">
 </p>
+
+<details open>
+<summary><b>📕 Table of Contents</b></summary>
+
+- [What it is](#what-it-is)
+- [Core capabilities](#core-capabilities)
+- [Who it's for](#whos-it-for)
+- [Tech stack](#tech-stack)
+- [Quick start](#quick-start)
+- [Access points](#access-points)
+- [Repository layout](#repository-layout)
+- [Architecture overview](#architecture-overview)
+- [Project status](#project-status)
+- [Modules](#modules)
+- [Configuration](#configuration)
+- [Model integration](#model-integration)
+- [Testing & quality checks](#testing--quality-checks)
+- [Documentation](#documentation)
+- [Resources & collaboration](#resources--collaboration)
+- [Open-source collaboration](#open-source-collaboration)
+- [License](#license)
+
+</details>
 
 ## What it is
 
@@ -96,7 +118,17 @@ Requirements:
 
 - Docker 20.10+
 - Docker Compose V2+
-- At least ~4 GB of free memory recommended
+- At least 2 CPU cores / 4 GB RAM / 20 GB disk (Elasticsearch uses a 512MB JVM heap by default; tune via `ES_JAVA_OPTS` in `.env`)
+
+> [!IMPORTANT]
+> **On Linux self-hosting you must set `vm.max_map_count`**. Elasticsearch requires `vm.max_map_count >= 262144`; most Linux distributions default to 65530, which makes the ES container exit immediately on boot (log: `max virtual memory areas vm.max_map_count [...] is too low`).
+>
+> ```bash
+> sudo sysctl -w vm.max_map_count=262144              # temporary (lost on reboot)
+> echo 'vm.max_map_count=262144' | sudo tee -a /etc/sysctl.conf  # permanent
+> ```
+>
+> Docker Desktop (macOS / Windows) already handles this inside its Linux VM — no action needed.
 
 Common commands:
 
@@ -231,17 +263,26 @@ NovaMind/
 The default Docker form is "single app container + multiple infra containers":
 
 - The `app` container runs `Nginx + frontend static assets + FastAPI`
-- `mysql`, `redis`, `minio`, `elasticsearch` run as separate services
-- Nginx exposes port `80` and proxies `/api/*` to FastAPI
-- FastAPI listens on `8100` inside the container
-
-Request path:
+- `mysql`, `redis`, `minio`, `elasticsearch` run as separate services; infra ports are bound to `127.0.0.1`, not exposed publicly
+- Nginx exposes port `80` and routes by path to static assets or FastAPI
+- FastAPI listens on `8100` inside the container, reachable only by Nginx
 
 ```text
 Browser
-  |- /        -> Nginx -> Vue static assets
-  |- /api/*   -> Nginx -> FastAPI
-  `- /health  -> Nginx -> FastAPI health endpoint
+  │  :80
+  ▼
+┌──────────────────────────────────────────────────────┐
+│ app container (single container)                     │
+│   Nginx ── /         ─▶ Vue static assets              │
+│        ── /api/*     ─▶ FastAPI (:8100)               │
+│        ── /health    ─▶ FastAPI health endpoint        │
+└──────┬───────────────────────────────────────────────┘
+       │  only Nginx exposes 80; FastAPI is in-container only
+       │
+       ├──▶ MySQL 8.4         ORM persistence: users / spaces / KBs / doc tasks
+       ├──▶ Redis 7           cache / ARQ async task queue
+       ├──▶ MinIO             document originals, parse results, attachment objects
+       └──▶ Elasticsearch 9.3 vector recall + BM25 full-text hybrid retrieval index
 ```
 
 The backend uses a domain-oriented directory layout. A typical module:
@@ -381,6 +422,7 @@ As a public repo, start from:
 - Use `docs/README.md` to find architecture, KB, and frontend design docs
 - Run relevant tests, type checks, and lint before opening a PR
 - For config, docs, screenshot, or ops-flow changes, update the matching docs too
+- Feedback & discussion: open an issue on [GitHub Issues](https://github.com/SpaceshiptoMoon/NovaMind/issues); the repo ships bug / feature / documentation issue templates
 
 ## License
 
