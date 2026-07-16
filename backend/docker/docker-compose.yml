@@ -38,8 +38,6 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
       MYSQL_DATABASE: "${MYSQL_DATABASE:-novamind_db}"
-      MYSQL_CHARSET: utf8mb4
-      MYSQL_COLLATION: utf8mb4_unicode_ci
     command: >
       --character-set-server=utf8mb4
       --collation-server=utf8mb4_unicode_ci

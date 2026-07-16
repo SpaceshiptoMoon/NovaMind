@@ -2,15 +2,17 @@
 
 使用 Docker Compose 一键启动所有服务，快速搭建开发环境。
 
+> ⚠️ 这是**仅后端**的开发用编排（app 直接暴露 8100，无 Nginx/前端）。完整全栈部署请用仓库根目录的 `docker-compose.yml`（含前端构建 + Nginx，对外 80）。两者 `container_name` 相同，不能同时运行。
+
 ## 服务清单
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
 | **app** | 8100 | FastAPI 应用 |
-| **mysql** | 3306 | MySQL 8.0，字符集 utf8mb4 |
+| **mysql** | 3306 | MySQL 8.4，字符集 utf8mb4 |
 | **redis** | 6379 | Redis 7，无密码 |
 | **minio** | 9005 / 9001 | MinIO 对象存储（9001 为控制台，账号见 `.env` 的 `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`） |
-| **elasticsearch** | 9200 | ES 8.15，单节点，已禁用安全认证 |
+| **elasticsearch** | 9200 | ES 9.3，单节点，已禁用安全认证 |
 
 ## 快速开始
 
@@ -30,7 +32,7 @@ docker compose logs -f app
 - MinIO 控制台：http://localhost:9001（账号见 `.env`）
 - Elasticsearch：http://localhost:9200
 
-**首次启动**会自动创建数据库表和管理员账户（账号/密码见 `.env` 的 `ADMIN_USERNAME`/`ADMIN_PASSWORD`），无需手动操作。
+**首次启动**会自动创建数据库表和管理员账户（用户名 `admin`，密码见 `.env` 的 `ADMIN_PASSWORD`），无需手动操作。
 
 ## 常用命令
 
