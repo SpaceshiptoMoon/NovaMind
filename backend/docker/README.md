@@ -9,7 +9,7 @@
 | **app** | 8100 | FastAPI 应用 |
 | **mysql** | 3306 | MySQL 8.0，字符集 utf8mb4 |
 | **redis** | 6379 | Redis 7，无密码 |
-| **minio** | 9005 / 9001 | MinIO 对象存储（9001 为控制台，***REMOVED***/***REMOVED***） |
+| **minio** | 9005 / 9001 | MinIO 对象存储（9001 为控制台，账号见 `.env` 的 `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`） |
 | **elasticsearch** | 9200 | ES 8.15，单节点，已禁用安全认证 |
 
 ## 快速开始
@@ -27,10 +27,10 @@ docker compose logs -f app
 
 启动完成后访问：
 - API 文档：http://localhost:8100/docs
-- MinIO 控制台：http://localhost:9001（账号：***REMOVED*** / ***REMOVED***）
+- MinIO 控制台：http://localhost:9001（账号见 `.env`）
 - Elasticsearch：http://localhost:9200
 
-**首次启动**会自动创建数据库表和管理员账户（admin / ***REMOVED***），无需手动操作。
+**首次启动**会自动创建数据库表和管理员账户（账号/密码见 `.env` 的 `ADMIN_USERNAME`/`ADMIN_PASSWORD`），无需手动操作。
 
 ## 常用命令
 
@@ -51,7 +51,7 @@ docker compose up -d --build
 docker compose exec app bash
 
 # 查看 MySQL 数据
-docker compose exec mysql mysql -uroot -p***REMOVED*** novamind_db
+docker compose exec mysql mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" novamind_db
 
 # 查看 Redis 状态
 docker compose exec redis redis-cli ping
