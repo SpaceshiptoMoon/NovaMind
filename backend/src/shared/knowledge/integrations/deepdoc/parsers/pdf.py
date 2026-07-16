@@ -753,7 +753,15 @@ class RAGFlowPdfParser:
         health = get_vision_health_status()
         if health.get("can_run_layout_inference"):
             try:
-                layout_pages = self._get_layout_recognizer().forward(image_list, thr=0.2, batch_size=16)
+                # _get_layout_recognizer() is built lazily (autoload=False) because the
+                # same instance is reused at the apply-layouts step (pdf.py ~619),
+                # which only needs pre-computed layouts, not the model. Load explicitly
+                # only here, right before detection. Any failure (model missing/corrupt,
+                # onnxruntime unavailable, etc.) falls through to the heuristic fallback.
+                recognizer = self._get_layout_recognizer()
+                if not recognizer.loaded:
+                    recognizer.load()
+                layout_pages = recognizer.forward(image_list, thr=0.2, batch_size=16)
                 return list(layout_pages), {"layout_source": "onnx", "layout_model_error": None}
             except Exception as exc:
                 heuristic_pages = self._build_heuristic_layout_pages(image_list, ocr_pages, zoom=zoom)
