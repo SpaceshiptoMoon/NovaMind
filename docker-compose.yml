@@ -9,6 +9,11 @@
 #
 # Runtime config file mount:
 #   ./docker/configs/docker.yaml -> /app/src/setting/yaml_config/yaml/docker.yaml
+#
+# Infra ports (mysql/redis/minio/es) are bound to 127.0.0.1 so they are reachable
+# only from the host, not exposed publicly. The app container reaches them over
+# the `app-network` bridge, unaffected by this binding. If you deploy on a remote
+# host and need external access to an infra port, change 127.0.0.1:<p>:<p> to <p>:<p>.
 
 services:
   app:
@@ -39,7 +44,7 @@ services:
     image: mysql:8.4.10
     container_name: novamind-mysql
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD}"
       MYSQL_DATABASE: "${MYSQL_DATABASE}"
@@ -64,7 +69,7 @@ services:
     image: redis:7.4.9-alpine
     container_name: novamind-redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -80,8 +85,8 @@ services:
     image: minio/minio
     container_name: novamind-minio
     ports:
-      - "9005:9005"
-      - "9001:9001"
+      - "127.0.0.1:9005:9005"
+      - "127.0.0.1:9001:9001"
     environment:
       MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
@@ -96,7 +101,7 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:9.3.7
     container_name: novamind-elasticsearch
     ports:
-      - "9200:9200"
+      - "127.0.0.1:9200:9200"
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false

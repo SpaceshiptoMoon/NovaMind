@@ -50,4 +50,7 @@ COPY docker/supervisord.conf /etc/supervisor/conf.d/app.conf
 
 EXPOSE 80
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD curl -sf http://localhost/health || exit 1
+
 CMD ["supervisord", "-c", "/etc/supervisor/supervisord.conf"]
