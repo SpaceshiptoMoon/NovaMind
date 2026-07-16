@@ -23,7 +23,7 @@ import asyncio
 import io
 import re
 from typing import Optional, BinaryIO, List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import timedelta
 from minio import Minio
 from minio.error import S3Error
 

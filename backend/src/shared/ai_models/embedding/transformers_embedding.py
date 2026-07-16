@@ -5,7 +5,6 @@ Transformers 本地推理 Embedding 客户端
 """
 
 import asyncio
-from typing import Optional
 
 from novamind.shared.ai_models.base_model import BaseEmbedding
 from novamind.core.middleware.structured_logging import get_logger

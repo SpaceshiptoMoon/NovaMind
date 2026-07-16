@@ -6,7 +6,7 @@
 """
 
 import traceback
-from typing import Callable, Dict, Any, List, ClassVar
+from typing import Callable, Dict, Any, ClassVar
 from fastapi import Request
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
@@ -293,7 +293,6 @@ async def validation_exception_handler(request: Request, exc) -> JSONResponse:
     注意：此处理器通过 app.add_exception_handler(RequestValidationError, ...) 注册，
     FastAPI 保证传入的 exc 参数一定是 RequestValidationError 类型。
     """
-    from fastapi.exceptions import RequestValidationError
 
     trace_id = getattr(request.state, "trace_id", "no-trace")
 

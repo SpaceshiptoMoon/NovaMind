@@ -6,7 +6,7 @@
 import csv
 import io
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 
 CSV_COLUMNS = [

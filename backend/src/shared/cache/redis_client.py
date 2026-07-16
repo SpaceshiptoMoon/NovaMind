@@ -1,7 +1,7 @@
 import base64
 import hashlib
 import json
-from typing import Optional, List, Dict, Any, Union, AsyncIterator
+from typing import Optional, List, Dict, Any, AsyncIterator
 import redis.asyncio as redis
 from redis.exceptions import ConnectionError, RedisError
 

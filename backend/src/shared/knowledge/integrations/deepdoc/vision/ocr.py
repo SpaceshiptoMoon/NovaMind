@@ -20,7 +20,6 @@ import time
 import os
 
 from novamind.shared.knowledge.integrations.deepdoc.vision.model_manager import default_model_dir
-from novamind.shared.knowledge.integrations.deepdoc.figure_support import timeout as _unused_timeout
 
 def pip_install_torch(*args, **kwargs):
     try:

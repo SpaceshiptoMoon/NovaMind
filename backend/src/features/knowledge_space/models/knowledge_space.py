@@ -5,10 +5,9 @@
 """
 from typing import Optional
 from enum import IntEnum
-from sqlalchemy import Column, BigInteger, Integer, SmallInteger, String, Text, DateTime, JSON, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import Column, BigInteger, Integer, SmallInteger, String, DateTime, JSON, ForeignKey, Index
 
 from novamind.core.database.base import BaseModel
-from novamind.shared.utils.time_utils import now_china
 
 
 class SpaceVisibility(IntEnum):

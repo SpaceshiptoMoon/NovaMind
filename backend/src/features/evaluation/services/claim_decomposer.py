@@ -6,7 +6,7 @@ Claim 拆解与验证器
 2. 逐条验证每个 claim 是否可由检索上下文支撑
 """
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.prompts.templates import PromptTemplate, PromptManager

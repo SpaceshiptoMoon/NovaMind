@@ -11,7 +11,7 @@ from typing import List, Tuple, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.features.knowledge_space.models.document import Document
-from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
+from novamind.features.knowledge_space.models.document_task import DocumentTask
 from novamind.features.knowledge_space.services.document_service import _check_document_cancelled
 from novamind.shared.knowledge.media_processing.audio import (
     transcribe_audio_local,

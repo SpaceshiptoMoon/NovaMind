@@ -5,7 +5,6 @@
 支持角色枚举（简单场景）和 RBAC（复杂场景）两种模式
 """
 
-from typing import Optional, Dict, Any
 from enum import IntEnum
 from sqlalchemy import Column, BigInteger, SmallInteger, String, DateTime, ForeignKey, JSON, Index, UniqueConstraint
 from datetime import timedelta

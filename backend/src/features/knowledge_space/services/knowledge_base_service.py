@@ -44,7 +44,6 @@ def get_effective_space_types(kb_config: Optional[dict] = None) -> List[str]:
 
     return ["text"]
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.setting.yaml_config import get_config
 
 
 class KnowledgeBaseService:

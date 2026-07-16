@@ -11,7 +11,6 @@
 
 import os
 import shlex
-from typing import Optional
 
 from novamind.features.clawmate.core.environment import LocalEnvironment, BINARY_EXTENSIONS
 from novamind.features.clawmate.core.file_safety import is_write_denied, is_read_denied
