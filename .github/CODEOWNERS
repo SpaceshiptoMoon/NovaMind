@@ -1,0 +1,19 @@
+# Default owners
+* @SpaceshiptoMoon
+
+# Backend
+/backend/ @SpaceshiptoMoon
+/backend/src/ @SpaceshiptoMoon
+/backend/tests/ @SpaceshiptoMoon
+
+# Frontend
+/frontend/ @SpaceshiptoMoon
+/frontend/src/ @SpaceshiptoMoon
+
+# Deployment and docs
+/docker/ @SpaceshiptoMoon
+/docker-compose.yml @SpaceshiptoMoon
+/docs/ @SpaceshiptoMoon
+/README.md @SpaceshiptoMoon
+/CONTRIBUTING.md @SpaceshiptoMoon
+/SECURITY.md @SpaceshiptoMoon

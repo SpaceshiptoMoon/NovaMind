@@ -1,0 +1,57 @@
+name: Documentation Request
+description: Report missing, outdated, or unclear documentation
+title: "[Docs] "
+labels:
+  - documentation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template when the code works but the documentation is missing, outdated, confusing, or inconsistent.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Documentation Problem
+      description: What documentation problem did you encounter?
+      placeholder: The README says ..., but the actual setup requires ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Documentation Area
+      options:
+        - root README
+        - backend README
+        - frontend README
+        - roadmap
+        - docs navigation
+        - knowledge space docs
+        - deepdoc docs
+        - plans / historical docs
+        - contribution / governance docs
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What Should Be Clarified
+      description: Describe the missing or corrected information you expected to find.
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: Related Files or Links
+      description: Paste file paths, links, screenshots, or command snippets that help locate the issue.
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Who is affected and how does this slow down usage or contribution?

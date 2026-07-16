@@ -1,0 +1,89 @@
+name: Bug Report
+description: Report a reproducible bug in NovaMind
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug report. Please provide concrete reproduction details so the issue can be triaged efficiently.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong?
+      placeholder: Briefly describe the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Provide the smallest reliable reproduction.
+      placeholder: |
+        1. Go to ...
+        2. Run ...
+        3. Upload ...
+        4. Observe ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      options:
+        - backend
+        - frontend
+        - docker
+        - documentation
+        - agent
+        - knowledge space
+        - deep research
+        - evaluation
+        - clawmate
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, Screenshots, or API Samples
+      description: Paste logs, screenshots, or request/response examples if relevant.
+      render: shell
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include versions and runtime details.
+      placeholder: |
+        OS:
+        Python:
+        Node.js:
+        Docker / Compose:
+        Database:
+        Browser:
+        NovaMind revision:
+    validations:
+      required: true
