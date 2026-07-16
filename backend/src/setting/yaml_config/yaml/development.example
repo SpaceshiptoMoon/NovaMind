@@ -9,8 +9,8 @@ redis:
 
 minio:
   endpoint: localhost:9005
-  access_key: ***REMOVED***
-  secret_key: ***REMOVED***
+  access_key: ${MINIO_ROOT_USER}
+  secret_key: ${MINIO_ROOT_PASSWORD}
   secure: false
 
 elasticsearch:

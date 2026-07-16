@@ -9,6 +9,7 @@
 """
 
 import io
+import os
 import sys
 import time
 import traceback
@@ -22,9 +23,9 @@ pytestmark = pytest.mark.integration
 # ======================== 配置 ========================
 BASE_URL = "http://127.0.0.1:8100"
 DEFAULT_ADMIN_USERNAME = "admin"
-DEFAULT_ADMIN_PASSWORD = "***REMOVED***"
+DEFAULT_ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "change-me-admin-password")
 ADMIN_USERNAME = "admin_test"
-ADMIN_PASSWORD = "***REMOVED***"
+ADMIN_PASSWORD = "TestUser@12345"
 TIMEOUT = 30  # 请求超时秒数
 
 # ======================== 全局状态 ========================

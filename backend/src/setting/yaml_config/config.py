@@ -7,8 +7,8 @@ from urllib.parse import quote_plus
 class MinioConfig:
     endpoint: str = "localhost:9000"
     public_endpoint: Optional[str] = None
-    access_key: str = "***REMOVED***"
-    secret_key: str = "***REMOVED***"
+    access_key: str = ""
+    secret_key: str = ""
     secure: bool = False
     region: str = "us-east-1"
     bucket_name: str = "knowledge-base"

@@ -223,7 +223,7 @@
 
 ```json
 {
-  "session_id": "***REMOVED***",
+  "session_id": "0123456789abcdef0123456789abcdef",
   "query": "什么是 RAG 技术？有哪些最佳实践？",
   "research_mode": "standard",
   "search_source": "hybrid",
@@ -415,7 +415,7 @@ data: {"event_type": "...", "data": {...}, "timestamp": 1713158400.0}
   "event_type": "error",
   "data": {
     "message": "研究执行失败，请稍后重试",
-    "session_id": "***REMOVED***"
+    "session_id": "0123456789abcdef0123456789abcdef"
   },
   "timestamp": 1713158420.0
 }
@@ -434,7 +434,7 @@ data: {"event_type": "...", "data": {...}, "timestamp": 1713158400.0}
 {
   "event_type": "done",
   "data": {
-    "session_id": "***REMOVED***",
+    "session_id": "0123456789abcdef0123456789abcdef",
     "final_report": "# RAG 检索增强生成技术研究报告\n\n## 执行摘要\n...",
     "stats": {
       "elapsed_seconds": 45,
@@ -578,7 +578,7 @@ GET /api/v1/spaces/1/deep-research?limit=10&offset=0&status=completed
 {
   "items": [
     {
-      "session_id": "***REMOVED***",
+      "session_id": "0123456789abcdef0123456789abcdef",
       "query": "什么是 RAG 技术？有哪些最佳实践？",
       "research_topic": "RAG 检索增强生成技术的原理与最佳实践研究",
       "status": "completed",
@@ -630,7 +630,7 @@ GET /api/v1/spaces/1/deep-research?limit=10&offset=0&status=completed
 **请求示例**
 
 ```
-GET /api/v1/spaces/1/deep-research/***REMOVED***
+GET /api/v1/spaces/1/deep-research/0123456789abcdef0123456789abcdef
 ```
 
 **响应参数**
@@ -670,7 +670,7 @@ GET /api/v1/spaces/1/deep-research/***REMOVED***
 
 ```json
 {
-  "session_id": "***REMOVED***",
+  "session_id": "0123456789abcdef0123456789abcdef",
   "query": "什么是 RAG 技术？有哪些最佳实践？",
   "research_mode": "standard",
   "search_source": "hybrid",
@@ -772,7 +772,7 @@ GET /api/v1/spaces/1/deep-research/***REMOVED***
 **请求示例**
 
 ```
-DELETE /api/v1/spaces/1/deep-research/***REMOVED***
+DELETE /api/v1/spaces/1/deep-research/0123456789abcdef0123456789abcdef
 ```
 
 **响应参数**

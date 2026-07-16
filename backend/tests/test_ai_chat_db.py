@@ -14,6 +14,7 @@ AI 聊天数据库持久化测试
 """
 
 import json
+import os
 import random
 import string
 import sys
@@ -28,7 +29,7 @@ TIMEOUT = 30
 STREAM_TIMEOUT = 120
 
 DEFAULT_ADMIN_USERNAME = "admin"
-DEFAULT_ADMIN_PASSWORD = "***REMOVED***"
+DEFAULT_ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "change-me-admin-password")
 
 
 def generate_session_id() -> str:

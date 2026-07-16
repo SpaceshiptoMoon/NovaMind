@@ -12,6 +12,7 @@
 """
 
 import json
+import os
 import random
 import string
 import time
@@ -32,11 +33,11 @@ STREAM_TIMEOUT = 120  # SSE 流式请求超时（秒）
 # 管理员测试账号
 ADMIN_USERNAME = "admin_test"
 ADMIN_EMAIL = "admin_test@test.com"
-ADMIN_PASSWORD = "***REMOVED***"
+ADMIN_PASSWORD = "TestUser@12345"
 
 # 默认管理员账号（启动时自动创建，用于创建测试管理员）
 DEFAULT_ADMIN_USERNAME = "admin"
-DEFAULT_ADMIN_PASSWORD = "***REMOVED***"
+DEFAULT_ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "change-me-admin-password")
 
 
 # ========================================

@@ -19,6 +19,7 @@
 
 import io
 import json
+import os
 import sys
 import time
 
@@ -35,7 +36,7 @@ TIMEOUT_POLL = 10
 MAX_POLL_ATTEMPTS = 60
 
 ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "***REMOVED***"
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "change-me-admin-password")
 
 ts = int(time.time())
 TEST_SPACE_NAME = f"evaluation_test_{ts}"

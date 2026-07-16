@@ -13,6 +13,7 @@
     - 数据库可访问
 """
 
+import os
 import random
 import string
 import sys
@@ -32,11 +33,11 @@ API_PREFIX = "/api/v1/user"
 # 管理员测试账号
 ADMIN_USERNAME = "admin_test"
 ADMIN_EMAIL = "admin_test@test.com"
-ADMIN_PASSWORD = "***REMOVED***"
+ADMIN_PASSWORD = "TestUser@12345"
 
 # 系统默认管理员（启动时自动创建）
 DEFAULT_ADMIN_USERNAME = "admin"
-DEFAULT_ADMIN_PASSWORD = "***REMOVED***"
+DEFAULT_ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "change-me-admin-password")
 
 # ============================================================
 # 测试结果统计

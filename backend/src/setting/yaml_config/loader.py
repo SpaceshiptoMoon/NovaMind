@@ -123,8 +123,8 @@ def create_config_from_dict(data: Dict[str, Any]) -> AppConfig:
     config.minio = MinioConfig(
         endpoint=minio_cfg.get("endpoint", "localhost:9000"),
         public_endpoint=minio_cfg.get("public_endpoint"),
-        access_key=minio_cfg.get("access_key", "***REMOVED***"),
-        secret_key=minio_cfg.get("secret_key", "***REMOVED***"),
+        access_key=minio_cfg.get("access_key", ""),
+        secret_key=minio_cfg.get("secret_key", ""),
         secure=minio_secure,
         region=minio_cfg.get("region", "us-east-1"),
         bucket_name=minio_cfg.get("bucket_name", "knowledge-base"),
@@ -190,7 +190,7 @@ def create_config_from_dict(data: Dict[str, Any]) -> AppConfig:
     config.admin = AdminConfig(
         username=admin.get("username", "admin"),
         email=admin.get("email", "admin@example.com"),
-        password=admin.get("password", "***REMOVED***"),
+        password=admin.get("password", ""),
         phone=admin.get("phone"),
         create_on_startup=admin.get("create_on_startup", True),
         reset_password_if_exists=admin.get("reset_password_if_exists", False),
@@ -198,7 +198,7 @@ def create_config_from_dict(data: Dict[str, Any]) -> AppConfig:
 
     security = data.get("security", {})
     config.security = SecurityConfig(
-        secret_key=security.get("secret_key", "your-super-secret-key"),
+        secret_key=security.get("secret_key", ""),
         algorithm=security.get("algorithm", "HS256"),
         access_token_expire_minutes=security.get("access_token_expire_minutes", 30),
         encryption_key=security.get("encryption_key", ""),

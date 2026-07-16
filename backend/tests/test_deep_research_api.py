@@ -22,6 +22,7 @@
 """
 
 import json
+import os
 import sys
 import time
 
@@ -40,7 +41,7 @@ TIMEOUT_STREAM = 180     # 流式请求超时（秒）
 # 管理员测试账号配置
 ADMIN_USERNAME = "admin_test"
 ADMIN_EMAIL = "admin_test@test.com"
-ADMIN_PASSWORD = "***REMOVED***"
+ADMIN_PASSWORD = "TestUser@12345"
 
 # 测试空间名称
 TEST_SPACE_NAME = f"deep_research_test_{int(time.time())}"
@@ -111,7 +112,7 @@ def step_0_ensure_admin_user():
     login_url = f"{BASE_URL}/api/v1/user/users/login"
     login_body = {
         "username": "admin",
-        "password": "***REMOVED***",
+        "password": os.environ.get("ADMIN_PASSWORD", "change-me-admin-password"),
     }
 
     print_request_info("POST", login_url, body=login_body)

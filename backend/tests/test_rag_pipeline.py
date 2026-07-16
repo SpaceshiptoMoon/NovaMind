@@ -21,11 +21,11 @@ pytestmark = pytest.mark.integration
 # ======================== 配置 ========================
 BASE_URL = "http://127.0.0.1:8100"
 ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "***REMOVED***"
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "change-me-admin-password")
 TIMEOUT = 120
 
 # 测试用 PDF 文件
-PDF_PATH = r"C:\Users\xl\Desktop\24研究生\实习\简历\***REMOVED***_桂林电子科技大学_27届_简历.pdf"
+PDF_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "test_data", "sample.pdf")
 
 # 全部 9 种检索模式
 ALL_SEARCH_MODES = [
