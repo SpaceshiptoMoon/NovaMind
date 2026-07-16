@@ -12,6 +12,8 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
 
+pytestmark = pytest.mark.unit
+
 
 class FakeKnowledgeBase:
     def __init__(self, kb_id: int, config: dict):

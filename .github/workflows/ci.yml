@@ -27,11 +27,9 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[test]"
 
-      - name: Run focused backend smoke tests
+      - name: Run backend unit tests
         working-directory: backend
-        run: |
-          pytest tests/test_document_task_retry_count.py -q
-          pytest tests/test_knowledge_base_service_config.py -q
+        run: pytest -m unit -q
 
   frontend-quality:
     name: Frontend Quality

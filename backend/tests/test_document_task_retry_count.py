@@ -1,11 +1,15 @@
 from pathlib import Path
 import sys
 
+import pytest
+
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.features.knowledge_space.models.document_task import DocumentTask
+
+pytestmark = pytest.mark.unit
 
 
 def test_document_task_retry_count_defaults_to_zero():
