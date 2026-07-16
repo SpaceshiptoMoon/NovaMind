@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.skill.models.skill import (
-    SkillDefinition, SkillVersion, SkillReview, SkillInstallation,
+    SkillDefinition, SkillReview, SkillInstallation,
     SkillSource, SkillVisibility, SkillStatus, ReviewStatus,
 )
 from novamind.features.skill.exceptions import (
@@ -27,7 +27,7 @@ from novamind.features.skill.exceptions import (
 from novamind.features.skill.repository.skill_repository import (
     SkillRepository, SkillVersionRepository, SkillReviewRepository, SkillInstallationRepository,
 )
-from novamind.features.skill.services.skill_parser import extract_skill_zip, validate_skill_md, ExtractedSkill
+from novamind.features.skill.services.skill_parser import extract_skill_zip, ExtractedSkill
 from novamind.features.skill.services.skill_checker import SkillSecurityChecker
 from novamind.shared.utils.time_utils import now_china
 from novamind.shared.prompts import PromptManager, PromptTemplate

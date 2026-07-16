@@ -26,7 +26,6 @@ from novamind.features.knowledge_space.api.dependencies import (
     get_user_repository,
 )
 from novamind.features.knowledge_space.api.exceptions import (
-    MemberNotFoundError,
     UserNotFoundError,
     InvalidParameterError,
 )

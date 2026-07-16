@@ -27,7 +27,6 @@ _UPDATABLE_FIELDS = frozenset({
 })
 from novamind.features.deep_research.exceptions import (
     DeepResearchError,
-    ResearchNotFoundError,
 )
 from novamind.core.middleware.structured_logging import get_logger
 

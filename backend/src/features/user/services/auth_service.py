@@ -9,9 +9,8 @@
 """
 
 import jwt
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Optional, Tuple, Callable, Awaitable
-import hashlib
 import secrets
 import time
 
@@ -22,7 +21,6 @@ from novamind.features.user.models.user import UserStatus
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.user.api.exceptions import (
     TokenInvalidError,
-    TokenExpiredError,
     AuthenticationError,
     UserError,
 )

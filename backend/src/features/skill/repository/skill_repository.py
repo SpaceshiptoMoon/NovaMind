@@ -3,13 +3,13 @@
 """
 from typing import List, Optional, Tuple
 
-from sqlalchemy import select, func, delete, update, or_, and_, case, text
+from sqlalchemy import select, func, delete, update, or_, case, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.features.skill.models.skill import (
     SkillDefinition, SkillVersion, SkillReview, SkillInstallation,
-    SkillSource, SkillVisibility, SkillStatus, ReviewStatus,
+    SkillVisibility, SkillStatus, ReviewStatus,
 )
 from novamind.core.middleware.structured_logging import get_logger
 
