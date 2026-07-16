@@ -10,7 +10,7 @@ from datetime import datetime
 from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from novamind.features.knowledge_space.models.space_audit_log import SpaceAuditLog, AuditAction
+from novamind.features.knowledge_space.models.space_audit_log import SpaceAuditLog
 
 
 class AuditRepository:

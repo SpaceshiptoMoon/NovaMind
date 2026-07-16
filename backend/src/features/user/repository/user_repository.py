@@ -8,7 +8,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
-from typing import Optional, Dict, Any
+from typing import Optional
 import time
 
 from novamind.features.user.models.user import User, UserStatus

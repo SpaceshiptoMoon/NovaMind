@@ -3,7 +3,7 @@
 
 从 YAML 配置加载沙箱参数
 """
-from typing import Dict, Optional
+from typing import Dict
 
 from pydantic import BaseModel
 

@@ -5,7 +5,7 @@
 """
 
 from typing import Optional
-from sqlalchemy import Column, BigInteger, String, Text, JSON
+from sqlalchemy import Column, BigInteger, String, JSON
 
 from novamind.core.database.base import BaseModel
 from novamind.features.qa.api.constants import DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TOP_P

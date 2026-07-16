@@ -8,7 +8,7 @@
 - 凭证分离：只存储连接凭证（api_key、base_url），不存储业务参数
 - 模型名称引用：前端传模型名称（如 llm_model="gpt-4o"），后端根据名称查找凭证
 """
-from typing import Optional, Dict, Any
+from typing import Any
 from enum import IntEnum
 from sqlalchemy import Column, BigInteger, String, Integer, JSON, Index, ForeignKey
 

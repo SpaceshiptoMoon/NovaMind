@@ -4,9 +4,8 @@
 使用 python-magic 验证文件的真实 MIME 类型，防止文件伪装攻击。
 """
 
-import hashlib
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 from novamind.core.middleware.structured_logging import get_logger
 

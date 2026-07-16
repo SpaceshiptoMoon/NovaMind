@@ -4,7 +4,7 @@
 在 Docker 沙箱中执行代码，支持 Python、JavaScript、Shell
 """
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from novamind.features.agent.core.tool.base import BaseTool
 from novamind.core.middleware.structured_logging import get_logger

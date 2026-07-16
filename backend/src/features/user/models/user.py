@@ -1,7 +1,7 @@
 """
 用户模型
 """
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from enum import IntEnum
 from sqlalchemy import Column, BigInteger, String, SmallInteger, JSON, DateTime, Boolean, UniqueConstraint
 

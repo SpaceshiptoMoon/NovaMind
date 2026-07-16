@@ -3,7 +3,7 @@
 
 管理所有已注册的工具，提供工具发现和路由功能。
 """
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.agent.core.tool.base import BaseTool

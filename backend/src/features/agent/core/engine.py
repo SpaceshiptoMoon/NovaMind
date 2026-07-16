@@ -180,7 +180,6 @@ class AgentEngine:
         top_p: float,
     ) -> AsyncGenerator[Any, None]:
         """带重试的流式生成：在首个 chunk 到达前重试瞬时错误"""
-        from novamind.features.agent.core.llm.agent_llm import AgentLLM
 
         cfg = self._retry_config
         attempt = 0

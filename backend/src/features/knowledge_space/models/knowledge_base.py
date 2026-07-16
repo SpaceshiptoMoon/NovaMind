@@ -10,7 +10,7 @@ Embedding 模型配置存储在 config.embedding 中：
 """
 from typing import Optional
 from enum import IntEnum
-from sqlalchemy import Column, BigInteger, SmallInteger, String, Text, Boolean, JSON, DateTime, ForeignKey, Index, UniqueConstraint, Integer
+from sqlalchemy import Column, BigInteger, SmallInteger, String, JSON, DateTime, ForeignKey, UniqueConstraint
 from novamind.core.database.base import BaseModel
 from novamind.shared.utils.time_utils import now_china
 

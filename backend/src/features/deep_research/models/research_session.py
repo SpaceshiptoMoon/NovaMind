@@ -4,7 +4,7 @@
 存储深度研究的会话信息、研究任务和结果
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional
 from sqlalchemy import Column, BigInteger, SmallInteger, String, Text, DateTime, JSON, Index, ForeignKey
 from sqlalchemy.orm.attributes import flag_modified
 from enum import Enum as PyEnum, IntEnum
