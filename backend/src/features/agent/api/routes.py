@@ -22,7 +22,6 @@ from novamind.shared.storage.minio_client import enrich_attachments_with_presign
 from novamind.features.agent.schemas.agent_schema import (
     AgentCreate,
     AgentUpdate,
-    AgentResponse,
     AgentDetailResponse,
     AgentListResponse,
     SessionResponse,

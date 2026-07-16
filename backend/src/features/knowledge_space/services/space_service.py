@@ -22,13 +22,11 @@ from novamind.features.knowledge_space.api.exceptions import (
     SpaceNotFoundError,
     SpaceAlreadyExistsError,
     SpaceAccessDeniedError,
-    KnowledgeSpaceError,
     InvalidParameterError,
 )
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.storage.minio_client import MinioClient
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.setting.yaml_config import get_config
 from novamind.features.user.services.model_config_service import ModelConfigService
 
 def _resolve_model_type(modalities=None) -> str:

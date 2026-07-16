@@ -14,12 +14,10 @@ import json
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, ConfigDict, field_serializer
-from enum import Enum
 
 # 从模型层导入枚举（避免重复定义，保持一致）
 from novamind.features.knowledge_space.models.knowledge_space import (
     SpaceVisibility,
-    SpaceStatus,
 )
 
 

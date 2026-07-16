@@ -19,8 +19,7 @@ from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.prompts import PromptTemplate, PromptManager
 from novamind.features.app.services.resume_parser import _extract_json
 from novamind.features.app.schemas.resume_schema import (
-    StructuredResume, JDAnalysis, JDSkill,
-    ProbingPlan, KnowledgePoint, ProjectPriority, PrefixKnowledge,
+    StructuredResume, JDAnalysis, ProbingPlan, KnowledgePoint, ProjectPriority, PrefixKnowledge,
     WorkProjectUnit,
 )
 
