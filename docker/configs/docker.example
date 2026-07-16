@@ -44,7 +44,3 @@ admin:
   password: "${ADMIN_PASSWORD}"
   create_on_startup: true
   reset_password_if_exists: true
-
-logging:
-  level: INFO
-  format: json

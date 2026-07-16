@@ -142,7 +142,7 @@ print_summary() {
   docker compose ps
   echo ""
   echo "Frontend: http://localhost"
-  echo "API docs: http://localhost/api/v1/docs"
+  echo "API docs: http://localhost/docs"
   echo "MinIO:    http://localhost:9001"
   echo ""
 }

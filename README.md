@@ -184,7 +184,7 @@ Docker 部署模式：
 | 服务 | 地址 |
 | --- | --- |
 | 前端首页 | `http://localhost` |
-| 后端 API 文档 | `http://localhost/api/v1/docs` |
+| 后端 API 文档 | `http://localhost/docs` |
 | 健康检查 | `http://localhost/health` |
 | MinIO 控制台 | `http://localhost:9001` |
 | Elasticsearch | `http://localhost:9200` |

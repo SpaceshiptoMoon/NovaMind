@@ -105,7 +105,7 @@ function Show-Summary {
     docker compose ps
     Write-Host ""
     Write-Host "Frontend: http://localhost"
-    Write-Host "API docs: http://localhost/api/v1/docs"
+    Write-Host "API docs: http://localhost/docs"
     Write-Host "MinIO:    http://localhost:9001"
     Write-Host ""
 }

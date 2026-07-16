@@ -184,7 +184,7 @@ Docker deploy:
 | Service | Address |
 | --- | --- |
 | Frontend | `http://localhost` |
-| Backend API docs | `http://localhost/api/v1/docs` |
+| Backend API docs | `http://localhost/docs` |
 | Health check | `http://localhost/health` |
 | MinIO console | `http://localhost:9001` |
 | Elasticsearch | `http://localhost:9200` |
