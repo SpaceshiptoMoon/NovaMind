@@ -39,8 +39,6 @@ from novamind.features.knowledge_space.api.exceptions import (
     DocumentProcessingError,
     DocumentAlreadyProcessingError,
     InvalidParameterError,
-    KnowledgeSpaceError,
-    KnowledgeBaseAccessDeniedError,
     SpaceAccessDeniedError,
     EmbeddingError,
 )
@@ -48,14 +46,13 @@ from novamind.shared.storage.minio_client import MinioClient
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.knowledge.document_processing.converters.doc_converter import convert_doc_to_docx, DocConversionError
 from novamind.shared.knowledge.document_processing.pipeline import DocumentProcessor
-from novamind.shared.knowledge.document_processing.validation import validate_file, FileInfo
+from novamind.shared.knowledge.document_processing.validation import validate_file
 from novamind.shared.knowledge.media_processing.audio import upload_parsed_text_to_minio
 from novamind.shared.knowledge.media_processing.vlm import (
     build_vlm_image_messages,
     generate_vlm_text_with_fallback,
 )
 from novamind.shared.ai_models.embedding import OpenAICompatibleEmbedding as EmbeddingClient
-from novamind.setting.yaml_config import get_config
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.document_task_batch import BatchAction
@@ -449,7 +446,7 @@ class DocumentService:
         if file_ext in DocumentService.VIDEO_FILE_TYPES:
             from novamind.features.knowledge_space.services.media_processing import process_video_document
             await process_video_document(document, file_content, session, _logger, task=task)
-            returnrain
+            return
 
         # ===== 音频文档分支（新增） =====
         if file_ext in DocumentService.AUDIO_FILE_TYPES:
@@ -530,7 +527,6 @@ class DocumentService:
 
         if should_generate:
             try:
-                import asyncio
                 chunk_count = len(es_chunks)
                 _logger.info(
                     "假设问题生成开始",
@@ -905,7 +901,7 @@ class DocumentService:
             self.logger.warning("获取处理状态失败", error=str(e))
             return "not_found"
 
-    async def cancel_processing(self, document_id: int) -> bool:
+    async def cancel_processing(self, document_id: int, *, kb_id: int, space_id: int) -> bool:
         """
         取消文档处理任务
 
@@ -915,21 +911,22 @@ class DocumentService:
 
         Args:
             document_id: 文档 ID
+            kb_id: 知识库 ID（归属校验，防跨知识库越权）
+            space_id: 空间 ID（归属校验，防跨空间越权）
 
         Returns:
             是否成功发送取消信号
 
         Raises:
-            DocumentNotFoundError: 文档不存在
+            DocumentNotFoundError: 文档不存在或不属于该空间/知识库
             InvalidParameterError: 文档无活跃处理任务
         """
         document = await self.doc_repo.get_by_id(document_id)
-        if not document:
+        if not document or document.kb_id != kb_id or document.space_id != space_id:
             raise DocumentNotFoundError(document_id)
 
         # 检查是否有活跃任务
         from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-        from novamind.features.knowledge_space.models.document_task import TaskStatus
         _task_repo = DocumentTaskRepository(self.session)
         active_task = await _task_repo.get_active_by_document_id(document_id)
         if not active_task:
@@ -1089,6 +1086,14 @@ class DocumentService:
                 })
                 continue
 
+            if document.kb_id != kb_id:
+                results.append({
+                    "document_id": doc_id,
+                    "status": "failed",
+                    "message": "文档不属于该知识库",
+                })
+                continue
+
             if doc_id in active_task_map:
                 results.append({
                     "document_id": doc_id,
@@ -1206,12 +1211,16 @@ class DocumentService:
         self,
         document_id: int,
         *,
+        kb_id: int,
+        space_id: int,
         batch_id: Optional[int] = None,
         batch_creator_id: Optional[int] = None,
         batch_note: Optional[str] = None,
     ) -> Dict[str, Any]:
         """重试文档处理，支持 FAILED 和 COMPLETED 状态。"""
         document = await self._validate_document_not_processing(document_id)
+        if document.kb_id != kb_id or document.space_id != space_id:
+            raise DocumentNotFoundError(document_id)
 
         from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
         _task_repo = DocumentTaskRepository(self.session)

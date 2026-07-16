@@ -11,7 +11,7 @@ import mimetypes
 import os
 from typing import Annotated, List, Optional, Union
 from urllib.parse import quote
-from fastapi import APIRouter, Depends, Request, UploadFile, File, Query, Form, Path, Body
+from fastapi import APIRouter, Depends, Request, UploadFile, File, Query, Path, Body
 from fastapi.responses import StreamingResponse
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,7 +44,6 @@ from novamind.features.knowledge_space.api.dependencies import (
     get_current_user_id,
     validate_space_member,
     validate_space_editor,
-    validate_space_admin,
     get_document_service,
     get_audit_service,
     validate_kb_access,
@@ -420,7 +419,7 @@ async def get_document_tasks_overview(
 
 @router.get(
     "/{kb_id}/documents/{document_id}/tasks",
-    response_model=DocumentTaskListResponse,
+    response_model=DocumentTaskItemListResponse,
     summary="获取文档处理任务",
     description="获取指定文档的所有处理任务记录（按时间倒序）",
 )
@@ -597,7 +596,7 @@ async def cancel_document_processing(
     """取消正在处理的文档"""
     await validate_kb_writable(kb_id, space_id, db)
 
-    await document_service.cancel_processing(document_id)
+    await document_service.cancel_processing(document_id, kb_id=kb_id, space_id=space_id)
     return DocumentCancelResponse(document_id=document_id)
 
 
@@ -621,6 +620,8 @@ async def retry_document_processing(
 
     result = await document_service.retry_document(
         document_id=document_id,
+        kb_id=kb_id,
+        space_id=space_id,
         batch_creator_id=user_id,
         batch_note="单文档重试处理",
     )
