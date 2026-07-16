@@ -1,7 +1,7 @@
 # QA 检索增强问答管道 · 重构文档
 
 > 范围：`backend/src/features/qa/services/ai_chat_service.py` 的检索问答管道，及配套组件 `grade_retrier.py` / `query_rewriter.py`。
-> 背景：见 [`IMPROVEMENT-enterprise-kb.md`](../knowledge-space/IMPROVEMENT-enterprise-kb.md) §2.1 —— 重构前 `qa` 模块是「无根对话」（纯上下文拼接 + 裸生成，**完全不调知识库检索**）。本系列重构（批次 1–4）把它升级为完整的 RAG 管道：**查询改写 → 检索增强 → Grade→Retry 自评估 → 检索链路 trace**。
+> 背景：见 [`IMPROVEMENT-enterprise-kb.md`](../knowledge-space/process/IMPROVEMENT-enterprise-kb.md) §2.1 —— 重构前 `qa` 模块是「无根对话」（纯上下文拼接 + 裸生成，**完全不调知识库检索**）。本系列重构（批次 1–4）把它升级为完整的 RAG 管道：**查询改写 → 检索增强 → Grade→Retry 自评估 → 检索链路 trace**。
 > 文档目的：记录重构后的架构、数据流、各组件/helper 职责与配置语义，供后续维护。
 
 ---

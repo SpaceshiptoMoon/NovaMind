@@ -1,5 +1,9 @@
 # Repository Structure Cleanup Plan
 
+> Historical note: this is a planning document rather than the source of truth for the current repository layout.
+> Some paths below reflect the planning-time structure or unrealized target states.
+> Current navigation should follow [`../README.md`](../README.md), [`../project-structure-navigation.md`](../project-structure-navigation.md), and [`../knowledge-space/current/README.md`](../knowledge-space/current/README.md).
+
 ## Background
 
 The knowledge-base project reorganization has already clarified the main backend architecture:
@@ -47,10 +51,11 @@ The package now only exists for source-root/install compatibility, but the path 
 
 ### 3. `docs/` is partially grouped, but still has root-level loose files
 
-Current root-level document files include:
+Current grouped document areas include:
 
 - `docs/frontend/FRONTEND-MULTIMODAL-DESIGN.md`
-- `docs/knowledge-space/IMPROVEMENT-enterprise-kb.md`
+- `docs/knowledge-space/current/`
+- `docs/knowledge-space/process/`
 
 These sit beside grouped folders such as:
 
@@ -140,8 +145,8 @@ Suggested direction:
 - move `FRONTEND-MULTIMODAL-DESIGN.md` into:
   - `docs/frontend/`, or
   - `docs/plans/`
-- move `IMPROVEMENT-enterprise-kb.md` into:
-  - `docs/knowledge-space/`, or
+- keep knowledge-space design-history materials under:
+  - `docs/knowledge-space/process/`, or
   - `docs/plans/`
 - evaluate whether `docs/superpowers/` should:
   - stay as an independent document domain, or

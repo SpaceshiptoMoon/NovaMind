@@ -97,7 +97,7 @@ NovaMind 当前能力铺得很广（知识库 / 问答 / 深度研究 / 评估 /
 
 **现状**：`ai_chat_service._prepare_chat` 已完成完整 RAG 管道改造（查询改写 → 检索增强 → Grade-Retry → 分级拒答 → Trace）。`QAResponse` 仍无 sources 字段，待 P0-2 联动。
 
-**下一步**：sources 结构化返回 + 前端引用展示（P0-2）。详见 [`docs/plans/REFACTOR-qa-rag-pipeline.md`](./plans/REFACTOR-qa-rag-pipeline.md)。
+**下一步**：sources 结构化返回 + 前端引用展示（P0-2）。详见 [`docs/plans/active/REFACTOR-qa-rag-pipeline.md`](../../plans/active/REFACTOR-qa-rag-pipeline.md)。
 
 ---
 

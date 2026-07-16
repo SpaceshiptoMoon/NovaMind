@@ -283,7 +283,7 @@ If startup still fails after the user's next run, check in this order:
 
 Git in this environment required:
 
-- `git -c safe.directory=C:/Users/xl/Desktop/backend_project/intelligent ...`
+- `git -c safe.directory=<repo-root> ...`
 
 because repository ownership differs from the sandbox user.
 
@@ -291,8 +291,8 @@ because repository ownership differs from the sandbox user.
 
 The environment has already approved command prefixes for:
 
-- `git -c safe.directory=C:/Users/xl/Desktop/backend_project/intelligent add`
-- `git -c safe.directory=C:/Users/xl/Desktop/backend_project/intelligent commit`
+- `git -c safe.directory=<repo-root> add`
+- `git -c safe.directory=<repo-root> commit`
 
 ### Test data
 
@@ -327,4 +327,3 @@ Suggested commit theme if needed:
 - `backend/src/shared/mq/__init__.py`
 - `backend/src/shared/mq/worker.py`
 - `backend/sql/2026-07-08_add_document_task_batches.sql`
-

@@ -1,5 +1,9 @@
 # Repository Structure Cleanup Execution Plan
 
+> Historical note: this document is an execution-phase cleanup plan, not the canonical description of the current repository layout.
+> Some paths and actions below reflect planning-time assumptions or partially realized cleanup goals.
+> For current navigation, prefer [`../README.md`](../README.md), [`../project-structure-navigation.md`](../project-structure-navigation.md), and [`../knowledge-space/current/README.md`](../knowledge-space/current/README.md).
+
 ## Purpose
 
 This document turns the repository-wide cleanup direction into an execution-ready plan.
@@ -59,7 +63,7 @@ Current repository navigation is split across:
 
 1. Create `docs/frontend/` if frontend-specific design docs are expected to grow.
 2. Keep `docs/frontend/FRONTEND-MULTIMODAL-DESIGN.md` as the formal frontend design document location.
-3. Keep `docs/knowledge-space/IMPROVEMENT-enterprise-kb.md` as the formal knowledge-space improvement document location.
+3. Keep `docs/knowledge-space/process/IMPROVEMENT-enterprise-kb.md` as the formal knowledge-space improvement-history document location.
 4. Keep `docs/project-structure-navigation.md` as the canonical repository navigation document.
 5. Update all references in:
    - `CLAUDE.md`

@@ -1,5 +1,9 @@
 # Knowledge Reorganization Commit Checklist
 
+> Historical note: this document is a migration-era staging checklist, not the canonical description of the current repository layout.
+> For the current knowledge-space structure, start with [`../knowledge-space/current/README.md`](../knowledge-space/current/README.md).
+> For migration background and moved-file history, see [`../knowledge-space/process/README.md`](../knowledge-space/process/README.md).
+
 ## Goal
 
 This checklist captures the files involved in the knowledge-base repository reorganization so the migration can be staged and committed coherently.
@@ -35,13 +39,13 @@ Add:
 Add:
 
 - `docs/frontend/FRONTEND-MULTIMODAL-DESIGN.md`
-- `docs/knowledge-space/IMPROVEMENT-enterprise-kb.md`
-- `docs/knowledge-space/knowledge-reorg-migration-summary.md`
-- `docs/plans/repository-structure-cleanup-execution-plan.md`
-- `docs/plans/repository-structure-cleanup-implementation.md`
-- `docs/plans/repository-structure-cleanup-plan.md`
-- `docs/plans/repository-structure-cleanup-thorough-implementation.md`
-- `docs/plans/knowledge-reorg-commit-checklist.md`
+- `docs/knowledge-space/process/IMPROVEMENT-enterprise-kb.md`
+- `docs/knowledge-space/process/knowledge-reorg-migration-summary.md`
+- `docs/plans/active/repository-structure-cleanup-execution-plan.md`
+- `docs/plans/active/repository-structure-cleanup-implementation.md`
+- `docs/plans/active/repository-structure-cleanup-plan.md`
+- `docs/plans/active/repository-structure-cleanup-thorough-implementation.md`
+- `docs/plans/historical/knowledge-reorg-commit-checklist.md`
 - `docs/project-structure-navigation.md`
 
 ### Backend clarification docs
@@ -87,10 +91,17 @@ Update:
 
 Update:
 
-- `docs/knowledge-space/knowledge-reorg-plan.md`
-- `docs/knowledge-space/knowledge-reorg-status.md`
-- `docs/plans/REFACTOR-qa-rag-pipeline.md`
-- `docs/plans/refactoring-plan.md`
+- `docs/knowledge-space/process/knowledge-reorg-plan.md`
+- `docs/knowledge-space/process/knowledge-reorg-status.md`
+- `docs/knowledge-space/current/knowledge-architecture-navigation.md`
+- `docs/knowledge-space/README.md`
+- `docs/README.md`
+- `backend/README.md`
+- `docs/knowledge-space/process/knowledge-reorg-plan.md`
+- `docs/knowledge-space/process/knowledge-reorg-status.md`
+- `docs/plans/active/REFACTOR-qa-rag-pipeline.md`
+- `docs/plans/historical/refactoring-plan-readable-summary.md`
+- `docs/plans/historical/refactoring-plan.md` (legacy historical plan retained for traceability; prefer the readable summary as the lighter-weight entrypoint)
 
 ## 4. Suggested Staging Order
 

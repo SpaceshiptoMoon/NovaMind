@@ -1,5 +1,9 @@
 # Backend Shared Knowledge Finalization Plan
 
+> Historical note: this file records a restructuring target from the migration period.
+> The path mappings below include planning-time targets and compatibility-removal goals, so they should not be read as the current repository source of truth.
+> For the current backend knowledge layout, prefer [`../knowledge-space/current/knowledge-architecture-navigation.md`](../knowledge-space/current/knowledge-architecture-navigation.md).
+
 ## Purpose
 
 This document defines the final target structure for backend shared knowledge-processing code.

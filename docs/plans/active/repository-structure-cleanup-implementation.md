@@ -1,5 +1,9 @@
 # Repository Structure Cleanup Implementation
 
+> Historical note: this file is an implementation guide for a cleanup program, not the source of truth for the repository's current layout.
+> It may describe compatibility layers, target structures, or staged actions that were only partially completed.
+> For the current public-facing structure, start with [`../README.md`](../README.md), [`../project-structure-navigation.md`](../project-structure-navigation.md), and [`../knowledge-space/current/README.md`](../knowledge-space/current/README.md).
+
 ## Purpose
 
 This document is the formal implementation guide for the repository structure cleanup.
@@ -53,7 +57,7 @@ Make `docs/` the primary home for repository navigation and design material.
 
 1. Create `docs/frontend/` if frontend design documents are expected to grow.
 2. Standardize `docs/frontend/FRONTEND-MULTIMODAL-DESIGN.md` as the frontend design document location.
-3. Standardize `docs/knowledge-space/IMPROVEMENT-enterprise-kb.md` as the knowledge-space improvement document location.
+3. Standardize `docs/knowledge-space/process/IMPROVEMENT-enterprise-kb.md` as the knowledge-space improvement-history document location.
 4. Standardize `docs/project-structure-navigation.md` as the canonical repository navigation document.
 5. Update references in `CLAUDE.md`, `backend/CLAUDE.md`, `frontend/CLAUDE.md`, and related docs.
 6. Ensure `README.md` points to the canonical documentation entrypoints when safe to update.

@@ -22,7 +22,7 @@ Primary goal that was pursued:
 
 Added a new standalone module tree:
 
-- [backend/src/shared/utils/deepdoc](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/shared/utils/deepdoc:1)
+- `backend/src/shared/utils/deepdoc/` (historical path at handoff time)
 
 This is not a thin wrapper. It includes upstream-aligned package structure:
 
@@ -32,7 +32,7 @@ This is not a thin wrapper. It includes upstream-aligned package structure:
 
 Also added install-compat source-root packages:
 
-- [backend/src/src](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/src:1)
+- `backend/src/src/` (historical path at handoff time)
 
 These compatibility packages were adjusted so installed-wheel imports like
 `src.shared.utils.deepdoc` and `src.features...` still resolve correctly.
@@ -61,9 +61,9 @@ Standalone entrypoints now exist for:
 
 Important files:
 
-- [backend/src/shared/utils/deepdoc/__main__.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/shared/utils/deepdoc/__main__.py:1)
-- [backend/src/shared/utils/deepdoc/engine.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/shared/utils/deepdoc/engine.py:1)
-- [backend/src/shared/utils/deepdoc/server/deepdoc_server.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/shared/utils/deepdoc/server/deepdoc_server.py:1)
+- `backend/src/shared/utils/deepdoc/__main__.py` (historical path at handoff time)
+- `backend/src/shared/utils/deepdoc/engine.py` (historical path at handoff time)
+- `backend/src/shared/utils/deepdoc/server/deepdoc_server.py` (historical path at handoff time)
 
 ### 3. Integrated DeepDoc into the knowledge-base parsing pipeline
 
@@ -75,15 +75,15 @@ Knowledge-base config now supports:
 
 Primary integration points:
 
-- [backend/src/features/knowledge_space/schemas/knowledge_base_schema.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/schemas/knowledge_base_schema.py:73)
-- [backend/src/features/knowledge_space/services/knowledge_base_service.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/services/knowledge_base_service.py:443)
-- [backend/src/shared/utils/document_readers/document_loader.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/shared/utils/document_readers/document_loader.py:394)
-- [backend/src/features/knowledge_space/services/document_service.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/services/document_service.py:1)
+- [backend/src/features/knowledge_space/schemas/knowledge_base_schema.py](../../backend/src/features/knowledge_space/schemas/knowledge_base_schema.py)
+- [backend/src/features/knowledge_space/services/knowledge_base_service.py](../../backend/src/features/knowledge_space/services/knowledge_base_service.py)
+- `backend/src/shared/utils/document_readers/document_loader.py` (historical path at handoff time)
+- [backend/src/features/knowledge_space/services/document_service.py](../../backend/src/features/knowledge_space/services/document_service.py)
 
 Frontend config support was also added:
 
-- [frontend/src/api/types.ts](/C:/Users/xl/Desktop/backend_project/intelligent/frontend/src/api/types.ts:304)
-- [frontend/src/views/space/KbConfigView.vue](/C:/Users/xl/Desktop/backend_project/intelligent/frontend/src/views/space/KbConfigView.vue:141)
+- [frontend/src/api/types.ts](../../frontend/src/api/types.ts)
+- [frontend/src/views/space/KbConfigView.vue](../../frontend/src/views/space/KbConfigView.vue)
 
 ### 4. Added source provenance mapping for auditability
 
@@ -95,11 +95,11 @@ being only a local imitation, the following were added:
 
 Primary file:
 
-- [backend/src/shared/utils/deepdoc/upstream.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/shared/utils/deepdoc/upstream.py:1)
+- `backend/src/shared/utils/deepdoc/upstream.py` (historical path at handoff time)
 
 These maps are validated by:
 
-- [backend/tests/test_deepdoc_upstream_mapping.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/tests/test_deepdoc_upstream_mapping.py:1)
+- [backend/tests/test_deepdoc_upstream_mapping.py](../../backend/tests/test_deepdoc_upstream_mapping.py)
 
 The local temporary upstream snapshot used during this work was:
 
@@ -114,7 +114,7 @@ Note:
 
 Updated:
 
-- [backend/pyproject.toml](/C:/Users/xl/Desktop/backend_project/intelligent/backend/pyproject.toml:67)
+- [backend/pyproject.toml](../../backend/pyproject.toml)
 
 Important additions:
 
@@ -125,29 +125,29 @@ Important additions:
 
 Main DeepDoc-related tests added:
 
-- [backend/tests/test_deepdoc_imports.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/tests/test_deepdoc_imports.py:1)
-- [backend/tests/test_deepdoc_cli.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/tests/test_deepdoc_cli.py:1)
-- [backend/tests/test_deepdoc_entrypoint.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/tests/test_deepdoc_entrypoint.py:1)
-- [backend/tests/test_deepdoc_packaging.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/tests/test_deepdoc_packaging.py:1)
-- [backend/tests/test_deepdoc_installed_cli.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/tests/test_deepdoc_installed_cli.py:1)
-- [backend/tests/test_deepdoc_integration_light.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/tests/test_deepdoc_integration_light.py:1)
-- [backend/tests/test_deepdoc_runtime.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/tests/test_deepdoc_runtime.py:1)
-- [backend/tests/test_deepdoc_serve_smoke.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/tests/test_deepdoc_serve_smoke.py:1)
-- [backend/tests/test_deepdoc_upstream_mapping.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/tests/test_deepdoc_upstream_mapping.py:1)
+- [backend/tests/test_deepdoc_imports.py](../../backend/tests/test_deepdoc_imports.py)
+- [backend/tests/test_deepdoc_cli.py](../../backend/tests/test_deepdoc_cli.py)
+- [backend/tests/test_deepdoc_entrypoint.py](../../backend/tests/test_deepdoc_entrypoint.py)
+- [backend/tests/test_deepdoc_packaging.py](../../backend/tests/test_deepdoc_packaging.py)
+- [backend/tests/test_deepdoc_installed_cli.py](../../backend/tests/test_deepdoc_installed_cli.py)
+- [backend/tests/test_deepdoc_integration_light.py](../../backend/tests/test_deepdoc_integration_light.py)
+- [backend/tests/test_deepdoc_runtime.py](../../backend/tests/test_deepdoc_runtime.py)
+- [backend/tests/test_deepdoc_serve_smoke.py](../../backend/tests/test_deepdoc_serve_smoke.py)
+- [backend/tests/test_deepdoc_upstream_mapping.py](../../backend/tests/test_deepdoc_upstream_mapping.py)
 
 Shared pytest import bootstrap added:
 
-- [backend/tests/conftest.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/tests/conftest.py:1)
+- [backend/tests/conftest.py](../../backend/tests/conftest.py)
 
 ### 7. Added operational docs
 
 DeepDoc-specific docs now include:
 
-- [docs/deepdoc/deepdoc-integration.md](/C:/Users/xl/Desktop/backend_project/intelligent/docs/deepdoc/deepdoc-integration.md:1)
-- [docs/deepdoc/deepdoc-acceptance-checklist.md](/C:/Users/xl/Desktop/backend_project/intelligent/docs/deepdoc/deepdoc-acceptance-checklist.md:1)
-- [docs/superpowers/plans/2026-07-10-deepdoc-source-port.md](/C:/Users/xl/Desktop/backend_project/intelligent/docs/superpowers/plans/2026-07-10-deepdoc-source-port.md:1)
-- [backend/src/shared/utils/deepdoc/README.md](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/shared/utils/deepdoc/README.md:1)
-- [backend/src/shared/utils/deepdoc/DEPLOYMENT.md](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/shared/utils/deepdoc/DEPLOYMENT.md:1)
+- [docs/deepdoc/deepdoc-integration.md](../deepdoc/deepdoc-integration.md)
+- [docs/deepdoc/deepdoc-acceptance-checklist.md](../deepdoc/deepdoc-acceptance-checklist.md)
+- `docs/superpowers/plans/2026-07-10-deepdoc-source-port.md` (historical path at handoff time)
+- `backend/src/shared/utils/deepdoc/README.md` (historical path at handoff time)
+- `backend/src/shared/utils/deepdoc/DEPLOYMENT.md` (historical path at handoff time)
 
 ## What Was Verified
 
@@ -171,7 +171,7 @@ verified through a real subprocess startup and HTTP polling.
 
 Primary test:
 
-- [backend/tests/test_deepdoc_serve_smoke.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/tests/test_deepdoc_serve_smoke.py:1)
+- [backend/tests/test_deepdoc_serve_smoke.py](../../backend/tests/test_deepdoc_serve_smoke.py)
 
 ### C. Doctor command was run against the real environment
 
@@ -274,7 +274,7 @@ One separate documentation commit was added for a non-DeepDoc config handoff:
 
 Document:
 
-- [docs/handover/knowledge-config-handoff.md](/C:/Users/xl/Desktop/backend_project/intelligent/docs/handover/knowledge-config-handoff.md:1)
+- [docs/handover/historical/knowledge-config-handoff.md](./knowledge-config-handoff.md)
 
 This doc is useful context, but it is not the main DeepDoc integration source
 of truth.
@@ -285,7 +285,7 @@ of truth.
 
 At the time of writing this handoff, the worktree is not fully clean because:
 
-- [`.gitignore`](/C:/Users/xl/Desktop/backend_project/intelligent/.gitignore:1) has local modifications
+- [`.gitignore`](../../.gitignore) has local modifications
 
 Current diff adds:
 
@@ -324,9 +324,9 @@ be casually removed without rechecking:
 
 Primary files:
 
-- [backend/src/src/__init__.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/src/__init__.py:1)
-- [backend/src/src/shared/__init__.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/src/shared/__init__.py:1)
-- [backend/src/src/shared/utils/__init__.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/src/shared/utils/__init__.py:1)
+- `backend/src/src/__init__.py` (historical path at handoff time)
+- `backend/src/src/shared/__init__.py` (historical path at handoff time)
+- `backend/src/src/shared/utils/__init__.py` (historical path at handoff time)
 
 ## Recommended Next Steps For The Next Agent
 
@@ -342,9 +342,9 @@ If continuing this DeepDoc line, the next most valuable directions are:
 
 If a new agent has only a few minutes, start here:
 
-1. Read [docs/deepdoc/deepdoc-acceptance-checklist.md](/C:/Users/xl/Desktop/backend_project/intelligent/docs/deepdoc/deepdoc-acceptance-checklist.md:1).
-2. Read [docs/deepdoc/deepdoc-integration.md](/C:/Users/xl/Desktop/backend_project/intelligent/docs/deepdoc/deepdoc-integration.md:1).
-3. Inspect [backend/src/shared/utils/deepdoc/upstream.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/shared/utils/deepdoc/upstream.py:1).
+1. Read [docs/deepdoc/deepdoc-acceptance-checklist.md](../deepdoc/deepdoc-acceptance-checklist.md).
+2. Read [docs/deepdoc/deepdoc-integration.md](../deepdoc/deepdoc-integration.md).
+3. Inspect `backend/src/shared/utils/deepdoc/upstream.py` (historical path at handoff time).
 4. Run:
 
 ```powershell

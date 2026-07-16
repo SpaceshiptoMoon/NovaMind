@@ -44,7 +44,7 @@ Key files:
 Moved or formalized document locations:
 
 - `docs/FRONTEND-MULTIMODAL-DESIGN.md` -> `docs/frontend/FRONTEND-MULTIMODAL-DESIGN.md`
-- `docs/IMPROVEMENT-enterprise-kb.md` -> `docs/knowledge-space/IMPROVEMENT-enterprise-kb.md`
+- `docs/IMPROVEMENT-enterprise-kb.md` -> `docs/knowledge-space/process/IMPROVEMENT-enterprise-kb.md`
 - `项目结构导航.md` -> `docs/project-structure-navigation.md`
 
 ## Updated Consumers

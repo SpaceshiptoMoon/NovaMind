@@ -23,7 +23,7 @@ Removed from knowledge-base schema:
 
 Primary file:
 
-- [backend/src/features/knowledge_space/schemas/knowledge_base_schema.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/schemas/knowledge_base_schema.py:1)
+- [backend/src/features/knowledge_space/schemas/knowledge_base_schema.py](../../backend/src/features/knowledge_space/schemas/knowledge_base_schema.py)
 
 ### 2. Wired the 5 retained parameters into the runtime pipeline
 
@@ -41,17 +41,15 @@ Runtime behavior after this change:
   - Text document pipeline now passes this into `DocumentProcessor.read_full_text(...)`.
   - If PDF text extraction returns empty and `ocr_enabled=true`, a PDF OCR fallback path is attempted.
   - Files:
-    - [backend/src/features/knowledge_space/services/document_service.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/services/document_service.py:447)
-    - [backend/src/shared/utils/document_readers/document_loader.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/shared/utils/document_readers/document_loader.py:201)
+    - [backend/src/features/knowledge_space/services/document_service.py](../../backend/src/features/knowledge_space/services/document_service.py)
+    - `backend/src/shared/utils/document_readers/document_loader.py` (historical path at handoff time)
 
 - `parsing.vlm_model`
   - Image description generation now prefers KB-configured VLM model.
   - Video frame description generation now also prefers KB-configured VLM model.
   - Files:
-    - [backend/src/features/knowledge_space/services/document_service.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/services/document_service.py:1285)
-    - [backend/src/features/knowledge_space/services/document_service.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/services/document_service.py:1529)
-    - [backend/src/features/knowledge_space/services/media_processing.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/services/media_processing.py:102)
-    - [backend/src/features/knowledge_space/services/media_processing.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/services/media_processing.py:437)
+    - [backend/src/features/knowledge_space/services/document_service.py](../../backend/src/features/knowledge_space/services/document_service.py)
+    - [backend/src/features/knowledge_space/services/media_processing.py](../../backend/src/features/knowledge_space/services/media_processing.py)
 
 - `parsing.audio.language`
   - Audio pipeline now reads this field and passes it through to:
@@ -59,15 +57,14 @@ Runtime behavior after this change:
     - DashScope ASR
     - local faster-whisper ASR
   - Files:
-    - [backend/src/features/knowledge_space/services/media_processing.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/services/media_processing.py:211)
-    - [backend/src/shared/utils/media_utils.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/shared/utils/media_utils.py:141)
-    - [backend/src/shared/utils/media_utils.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/shared/utils/media_utils.py:398)
+    - [backend/src/features/knowledge_space/services/media_processing.py](../../backend/src/features/knowledge_space/services/media_processing.py)
+    - `backend/src/shared/utils/media_utils.py` (historical path at handoff time)
 
 - `splitting.video.strategy`
 - `splitting.video.chunk_size`
   - Video pipeline now applies `splitting.video` override before chunk splitting.
   - File:
-    - [backend/src/features/knowledge_space/services/media_processing.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/services/media_processing.py:137)
+    - [backend/src/features/knowledge_space/services/media_processing.py](../../backend/src/features/knowledge_space/services/media_processing.py)
 
 ### 3. Fixed a bug discovered during tests
 
@@ -77,7 +74,7 @@ While wiring `parsing.audio.language`, tests exposed an existing bug in `transcr
 
 This was fixed in:
 
-- [backend/src/shared/utils/media_utils.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/shared/utils/media_utils.py:428)
+- `backend/src/shared/utils/media_utils.py` (historical path at handoff time)
 
 ## Validation Performed
 
@@ -88,8 +85,8 @@ Ran `py_compile` on:
 - `backend/src/features/knowledge_space/schemas/knowledge_base_schema.py`
 - `backend/src/features/knowledge_space/services/document_service.py`
 - `backend/src/features/knowledge_space/services/media_processing.py`
-- `backend/src/shared/utils/document_readers/document_loader.py`
-- `backend/src/shared/utils/media_utils.py`
+- `backend/src/shared/utils/document_readers/document_loader.py` (historical path at handoff time)
+- `backend/src/shared/utils/media_utils.py` (historical path at handoff time)
 - `backend/tests/test_knowledge_config_runtime.py`
 
 ### Tests executed
@@ -106,7 +103,7 @@ Result:
 
 New test file:
 
-- [backend/tests/test_knowledge_config_runtime.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/tests/test_knowledge_config_runtime.py:1)
+- [backend/tests/test_knowledge_config_runtime.py](../../backend/tests/test_knowledge_config_runtime.py)
 
 Coverage from this test file:
 
@@ -137,16 +134,16 @@ This means:
 
 If the next agent wants to extend OCR, the likely continuation point is:
 
-- [backend/src/shared/utils/document_readers/document_loader.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/shared/utils/document_readers/document_loader.py:245)
+- `backend/src/shared/utils/document_readers/document_loader.py` (historical path at handoff time)
 
 ## Files Most Relevant for Follow-up
 
-- [backend/src/features/knowledge_space/schemas/knowledge_base_schema.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/schemas/knowledge_base_schema.py:1)
-- [backend/src/features/knowledge_space/services/document_service.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/services/document_service.py:1)
-- [backend/src/features/knowledge_space/services/media_processing.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/services/media_processing.py:1)
-- [backend/src/shared/utils/document_readers/document_loader.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/shared/utils/document_readers/document_loader.py:1)
-- [backend/src/shared/utils/media_utils.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/shared/utils/media_utils.py:1)
-- [backend/tests/test_knowledge_config_runtime.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/tests/test_knowledge_config_runtime.py:1)
+- [backend/src/features/knowledge_space/schemas/knowledge_base_schema.py](../../backend/src/features/knowledge_space/schemas/knowledge_base_schema.py)
+- [backend/src/features/knowledge_space/services/document_service.py](../../backend/src/features/knowledge_space/services/document_service.py)
+- [backend/src/features/knowledge_space/services/media_processing.py](../../backend/src/features/knowledge_space/services/media_processing.py)
+- `backend/src/shared/utils/document_readers/document_loader.py` (historical path at handoff time)
+- `backend/src/shared/utils/media_utils.py` (historical path at handoff time)
+- [backend/tests/test_knowledge_config_runtime.py](../../backend/tests/test_knowledge_config_runtime.py)
 
 ## Recommended Next Steps
 

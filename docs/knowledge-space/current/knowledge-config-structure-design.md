@@ -317,13 +317,13 @@ The following logic already exists and can be reused:
 
 Relevant files:
 
-- [backend/src/features/knowledge_space/api/knowledge_base_routes.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/api/knowledge_base_routes.py:247)
-- [backend/src/features/knowledge_space/schemas/knowledge_base_schema.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/schemas/knowledge_base_schema.py:1)
-- [backend/src/features/knowledge_space/services/knowledge_base_service.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/services/knowledge_base_service.py:1)
-- [backend/src/features/knowledge_space/services/document_service.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/services/document_service.py:1)
-- [backend/src/features/knowledge_space/services/media_processing.py](/C:/Users/xl/Desktop/backend_project/intelligent/backend/src/features/knowledge_space/services/media_processing.py:1)
-- [frontend/src/views/space/KbConfigView.vue](/C:/Users/xl/Desktop/backend_project/intelligent/frontend/src/views/space/KbConfigView.vue:1)
-- [frontend/src/api/types.ts](/C:/Users/xl/Desktop/backend_project/intelligent/frontend/src/api/types.ts:1)
+- [backend/src/features/knowledge_space/api/knowledge_base_routes.py](../../../backend/src/features/knowledge_space/api/knowledge_base_routes.py)
+- [backend/src/features/knowledge_space/schemas/knowledge_base_schema.py](../../../backend/src/features/knowledge_space/schemas/knowledge_base_schema.py)
+- [backend/src/features/knowledge_space/services/knowledge_base_service.py](../../../backend/src/features/knowledge_space/services/knowledge_base_service.py)
+- [backend/src/features/knowledge_space/services/document_service.py](../../../backend/src/features/knowledge_space/services/document_service.py)
+- [backend/src/features/knowledge_space/services/media_processing.py](../../../backend/src/features/knowledge_space/services/media_processing.py)
+- [frontend/src/views/space/KbConfigView.vue](../../../frontend/src/views/space/KbConfigView.vue)
+- [frontend/src/api/types.ts](../../../frontend/src/api/types.ts)
 
 ## Current Implementation Status
 
