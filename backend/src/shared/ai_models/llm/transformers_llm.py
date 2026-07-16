@@ -58,14 +58,23 @@ class TransformersLLM(BaseLLM):
         self.load_in_8bit = load_in_8bit
         self.load_in_4bit = load_in_4bit
 
-        # 延迟导入，避免未安装 transformers 时报错
+        # 延迟导入：用 find_spec 探测可选依赖是否安装（不绑定未用符号），
+        # transformers 的具体符号（AutoModelForCausalLM/AutoTokenizer）在
+        # _ensure_initialized 中按需导入；这里只做早期可用性校验。
+        import importlib.util
+
+        if (
+            importlib.util.find_spec("transformers") is None
+            or importlib.util.find_spec("torch") is None
+        ):
+            raise ImportError("使用 Transformers 协议需要安装: pip install transformers torch")
+
         try:
-            from transformers import AutoModelForCausalLM, AutoTokenizer
             import torch
-        except ImportError:
+        except ImportError as exc:  # find_spec 通过但 import 失败（版本/依赖问题）
             raise ImportError(
                 "使用 Transformers 协议需要安装: pip install transformers torch"
-            )
+            ) from exc
 
         self._torch = torch
         self._tokenizer = None
