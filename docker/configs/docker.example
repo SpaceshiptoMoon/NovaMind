@@ -6,7 +6,6 @@
 # 3. The YAML loader resolves ${VAR_NAME} from container env vars
 
 environment: docker
-debug: false
 
 redis:
   enabled: true

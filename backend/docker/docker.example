@@ -1,5 +1,4 @@
 environment: docker
-debug: false
 
 redis:
   enabled: true

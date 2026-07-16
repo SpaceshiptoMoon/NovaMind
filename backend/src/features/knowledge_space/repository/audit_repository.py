@@ -5,8 +5,7 @@
 """
 
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timedelta
-from novamind.shared.utils.time_utils import now_china
+from datetime import datetime
 
 from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -195,28 +194,6 @@ class AuditRepository:
 
         result = await self.session.execute(query)
         return list(result.scalars().all())
-
-    async def delete_old_logs(
-        self,
-        days: int = 90,
-        batch_size: int = 10000,
-    ) -> int:
-        """
-        删除旧日志（数据清理）
-
-        Args:
-            days: 保留天数
-            batch_size: 批量删除大小
-
-        Returns:
-            删除的数量
-        """
-        cutoff_date = now_china() - timedelta(days=days)
-
-        result = await self.session.execute(
-            delete(SpaceAuditLog).where(SpaceAuditLog.created_at < cutoff_date)
-        )
-        return result.rowcount
 
     async def delete_by_space(self, space_id: int) -> int:
         """

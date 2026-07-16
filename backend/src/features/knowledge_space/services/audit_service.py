@@ -366,27 +366,3 @@ class AuditService:
             start_time=start_time,
             end_time=end_time,
         )
-
-    async def cleanup_old_logs(
-        self,
-        days: int = 90,
-    ) -> int:
-        """
-        清理旧日志
-
-        Args:
-            days: 保留天数
-
-        Returns:
-            删除的数量
-        """
-        count = await self.audit_repo.delete_old_logs(days=days)
-        await self.session.commit()
-
-        self.logger.info(
-            "审计日志清理完成",
-            deleted_count=count,
-            retention_days=days,
-        )
-
-        return count

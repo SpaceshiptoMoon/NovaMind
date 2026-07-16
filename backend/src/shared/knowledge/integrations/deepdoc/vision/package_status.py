@@ -19,7 +19,6 @@ def get_vendored_vision_package_status() -> Dict[str, Any]:
         "seeit.py",
         "t_recognizer.py",
         "t_ocr.py",
-        "stubs.py",
         "package_status.py",
     ]
     present_modules = [name for name in expected_modules if (package_dir / name).exists()]
