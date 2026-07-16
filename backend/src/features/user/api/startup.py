@@ -72,8 +72,8 @@ async def create_admin_user() -> None:
                     logger.info("管理员账户已存在", username=admin_config.username)
                 return
 
-            # 创建管理员账户
-            admin_user = await user_service.create_user(
+            # 创建管理员账户（保留调用以触发建库副作用；返回值未使用）
+            await user_service.create_user(
                 username=admin_config.username,
                 email=admin_config.email,
                 password=admin_config.password,

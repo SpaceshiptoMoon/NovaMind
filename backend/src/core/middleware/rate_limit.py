@@ -161,7 +161,6 @@ def _extract_retry_after(detail: str) -> int:
     # 尝试解析 "5 per 1 minute" 格式
     match = re.search(r"(\d+)\s*per\s*(\d+)\s*(\w+)", detail)
     if match:
-        count = int(match.group(1))
         period = int(match.group(2))
         unit = match.group(3).lower()
 
@@ -189,15 +188,12 @@ def _get_retry_after_remaining(exc: RateLimitExceeded) -> int:
         int: 剩余等待秒数
     """
     try:
-        limiter = get_limiter()
         limit_obj = exc.limit
         if limit_obj is not None:
             # 获取窗口总时长
             window_seconds = limit_obj.limit.get_expiry()
             # 尝试通过存储获取精确的剩余时间
             # slowapi 存储的 get_expiry 返回键过期的时间戳
-            # 构造存储键（使用 limit 的 key_for 方法）
-            limiter_key = _get_rate_limit_key
             # 直接使用窗口总时长的一半作为保守的剩余时间估计
             # 因为精确的剩余时间需要知道窗口开始的精确时刻
             # 而存储层的 get_expiry 需要精确的键名，在 handler 中不易获取

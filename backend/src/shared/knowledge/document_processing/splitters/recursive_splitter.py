@@ -128,7 +128,6 @@ class RecursiveCharacterSplitter(BaseSplitter):
 
         # 提取文本用于合并计算
         texts = [c['text'] for c in chunks]
-        merged_texts = self._merge_texts(texts)
 
         # 用合并后的文本重建文档列表，保留第一个块的元数据
         result = []
@@ -168,33 +167,3 @@ class RecursiveCharacterSplitter(BaseSplitter):
             i += 1
 
         return result
-
-    def _merge_texts(self, texts: List[str]) -> List[str]:
-        """纯文本级别的合并，用于合并计算（仅保留文本结果）"""
-        if not texts:
-            return texts
-
-        merged = []
-        i = 0
-        while i < len(texts):
-            current = texts[i]
-            # 当前块太小，尝试向后合并
-            while len(current) < self.min_chunk_size and i + 1 < len(texts):
-                combined = current + "\n" + texts[i + 1]
-                if len(combined) <= self.chunk_size:
-                    current = combined
-                    i += 1
-                else:
-                    break
-            # 向后合并超限，尝试向前合并到上一个结果
-            if len(current) < self.min_chunk_size and merged:
-                forward = merged[-1] + "\n" + current
-                if len(forward) <= self.chunk_size:
-                    merged[-1] = forward
-                    i += 1
-                    continue
-            if current.strip():
-                merged.append(current)
-            i += 1
-
-        return merged
