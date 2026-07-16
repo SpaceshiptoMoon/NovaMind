@@ -4,6 +4,60 @@
       <KbSidebar :nav-items="kbNavItems" />
 
       <div class="kb-content">
+        <section class="kb-overview">
+          <div class="kb-overview__copy">
+            <span class="kb-overview__eyebrow">知识库概览</span>
+            <h1 class="kb-overview__title">{{ kbName || '文档管理' }}</h1>
+            <p class="kb-overview__desc">当前知识库的文档概况和继承能力都集中展示在这里。</p>
+
+            <div class="kb-overview__stats">
+              <div class="kb-stat-card">
+                <span class="kb-stat-card__label">文档</span>
+                <strong>{{ kbStats.document_count }}</strong>
+              </div>
+              <div class="kb-stat-card">
+                <span class="kb-stat-card__label">分块</span>
+                <strong>{{ kbStats.chunk_count }}</strong>
+              </div>
+              <div class="kb-stat-card">
+                <span class="kb-stat-card__label">已完成</span>
+                <strong>{{ kbStats.completed_documents }}</strong>
+              </div>
+              <div class="kb-stat-card">
+                <span class="kb-stat-card__label">处理中</span>
+                <strong>{{ kbStats.processing_documents }}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="kb-overview__inherit">
+            <div class="inherit-head">
+              <h2>继承能力</h2>
+              <p>以下能力由空间统一提供。</p>
+            </div>
+
+            <div class="inherit-grid">
+              <div class="inherit-card">
+                <span class="inherit-label">文本向量模型</span>
+                <strong class="inherit-value">{{ embeddingInfo.textModel || '未配置' }}</strong>
+                <span class="inherit-meta">{{ embeddingInfo.textDimension ? `维度 ${embeddingInfo.textDimension}` : '维度待检测' }}</span>
+              </div>
+
+              <div v-if="showMmEmbeddingCard" class="inherit-card">
+                <span class="inherit-label">多模态向量模型</span>
+                <strong class="inherit-value">{{ embeddingInfo.mmModel || '未配置' }}</strong>
+                <span class="inherit-meta">{{ embeddingInfo.mmDimension ? `维度 ${embeddingInfo.mmDimension}` : '维度待检测' }}</span>
+              </div>
+
+              <div class="inherit-card inherit-card--wide">
+                <span class="inherit-label">可用类型</span>
+                <strong class="inherit-value">{{ readableSpaceTypes }}</strong>
+                <span class="inherit-meta">知识库可上传的数据类型会跟随这里变化。</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <div class="action-bar">
           <div class="left-actions">
             <el-button type="primary" @click="showUploadDialog">
@@ -17,7 +71,24 @@
               批量处理 ({{ selectedIds.length }})
             </el-button>
           </div>
-          <div class="right-actions" />
+          <div class="right-actions">
+            <span class="filter-label">状态</span>
+            <el-select
+              v-model="statusFilter"
+              class="status-filter"
+              placeholder="全部状态"
+              clearable
+              @change="handleStatusFilterChange"
+              @clear="handleStatusFilterChange"
+            >
+              <el-option
+                v-for="item in statusOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+          </div>
         </div>
 
         <div v-loading="loading" class="doc-table-wrap">
@@ -189,6 +260,19 @@ const uploadDialogVisible = ref(false)
 const processDialogVisible = ref(false)
 
 const spaceTypes = ref<string[]>(['text'])
+const kbName = ref('')
+const kbStats = ref({
+  document_count: 0,
+  chunk_count: 0,
+  completed_documents: 0,
+  processing_documents: 0,
+})
+const embeddingInfo = ref({
+  textModel: '',
+  textDimension: null as number | null,
+  mmModel: '',
+  mmDimension: null as number | null,
+})
 const documents = ref<DocType[]>([])
 const total = ref(0)
 const currentPage = ref(1)
@@ -197,8 +281,27 @@ const fileList = ref<UploadFile[]>([])
 const selectedFiles = ref<File[]>([])
 const selectedIds = ref<number[]>([])
 const processTargetIds = ref<number[]>([])
+const statusFilter = ref<number | undefined>(undefined)
+
+const statusOptions = [
+  { label: '待处理', value: 0 },
+  { label: '处理中', value: 1 },
+  { label: '已完成', value: 2 },
+  { label: '失败', value: 3 },
+  { label: '已取消', value: 4 },
+]
 
 const uploadAccept = computed(() => getUploadAccept(spaceTypes.value))
+const showMmEmbeddingCard = computed(() => hasModality(spaceTypes.value, 'image'))
+const readableSpaceTypes = computed(() => {
+  const labels: Record<string, string> = {
+    text: '文本',
+    image: '图片',
+    video: '视频',
+    audio: '音频',
+  }
+  return spaceTypes.value.map((item) => labels[item] || item).join(' / ')
+})
 
 const uploadTipText = computed(() => {
   const parts: string[] = []
@@ -294,7 +397,19 @@ async function handleProcess() {
     const res = await documentApi.batchProcessDocuments(spaceId.value, kbId.value, {
       document_ids: processTargetIds.value,
     })
-    ElMessage.success(`已创建任务 #${res.task_id ?? '-'}，包含 ${res.total} 个文档`)
+    const failedMessages = res.results
+      .filter((item) => item.status === 'failed')
+      .map((item) => item.message)
+
+    if (res.success > 0) {
+      const parts = [`已提交 ${res.success} 个文档`]
+      if (res.skipped > 0) parts.push(`${res.skipped} 个跳过`)
+      ElMessage.success(parts.join('，'))
+    }
+    if (failedMessages.length > 0) {
+      ElMessage.warning(failedMessages[0])
+    }
+
     processDialogVisible.value = false
     selectedIds.value = []
     await fetchDocuments()
@@ -307,6 +422,7 @@ async function fetchDocuments() {
   loading.value = true
   try {
     const data = await documentApi.getDocuments(spaceId.value, kbId.value, {
+      status: statusFilter.value,
       skip: (currentPage.value - 1) * pageSize.value,
       limit: pageSize.value,
     })
@@ -315,6 +431,11 @@ async function fetchDocuments() {
   } finally {
     loading.value = false
   }
+}
+
+function handleStatusFilterChange() {
+  currentPage.value = 1
+  fetchDocuments()
 }
 
 function goToDetail(docId: number) {
@@ -348,7 +469,7 @@ function getStatusConfig(status: number | undefined) {
 
 function canProcess(doc: DocType): boolean {
   const s = doc.status ?? 0
-  return s === 0 || s === 3
+  return s === 0 || s === 2 || s === 3
 }
 
 function canCancel(doc: DocType): boolean {
@@ -362,8 +483,15 @@ function canRetry(doc: DocType): boolean {
 }
 
 async function handleProcessSingle(doc: DocType) {
-  const res = await documentApi.processDocument(spaceId.value, kbId.value, doc.id)
-  ElMessage.success(`文档 "${doc.filename}" 已加入任务项 #${res.task_item_id ?? '-'}`)
+  const res = await documentApi.batchProcessDocuments(spaceId.value, kbId.value, {
+    document_ids: [doc.id],
+  })
+  const item = res.results.find((result) => result.document_id === doc.id)
+  if (item?.status === 'processing') {
+    ElMessage.success(`文档 "${doc.filename}" 已加入任务项 #${item.task_item_id ?? '-'}`)
+  } else if (item?.message) {
+    ElMessage.warning(item.message)
+  }
   await fetchDocuments()
 }
 
@@ -383,11 +511,26 @@ onMounted(async () => {
   await fetchDocuments()
   try {
     const kbConfig = await knowledgeBaseApi.getConfig(spaceId.value, kbId.value)
+    kbName.value = kbConfig.name || ''
+    kbStats.value = {
+      document_count: kbConfig.stats?.document_count ?? 0,
+      chunk_count: kbConfig.stats?.chunk_count ?? 0,
+      completed_documents: kbConfig.stats?.completed_documents ?? 0,
+      processing_documents: kbConfig.stats?.processing_documents ?? 0,
+    }
     if (kbConfig.config?.space_type && Array.isArray(kbConfig.config.space_type) && kbConfig.config.space_type.length > 0) {
       spaceTypes.value = kbConfig.config.space_type
-    } else {
-      const space = await spaceApi.getSpace(spaceId.value)
+    }
+
+    const space = await spaceApi.getSpace(spaceId.value)
+    if (!kbConfig.config?.space_type || !Array.isArray(kbConfig.config.space_type) || kbConfig.config.space_type.length === 0) {
       spaceTypes.value = normalizeSpaceTypes(space.config)
+    }
+    embeddingInfo.value = {
+      textModel: space.config?.embedding?.model || '',
+      textDimension: space.config?.embedding?.dimension ?? null,
+      mmModel: space.config?.multimodal_embedding?.model || '',
+      mmDimension: space.config?.multimodal_embedding?.dimension ?? null,
     }
   } catch {
     // keep default text
@@ -413,6 +556,171 @@ onMounted(async () => {
   overflow-y: auto;
 }
 
+.kb-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 400px);
+  align-items: stretch;
+  width: 100%;
+  margin: 0 0 var(--space-5);
+  gap: var(--space-4);
+  padding: 0;
+}
+
+.kb-overview__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 22px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 255, 0.96));
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 18px 40px rgba(15, 23, 42, 0.06);
+}
+
+.kb-overview__eyebrow {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.08);
+  color: #3156a3;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.kb-overview__title {
+  margin: 0;
+  font-size: clamp(24px, 2.6vw, 30px);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+}
+
+.kb-overview__desc {
+  max-width: 460px;
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: var(--leading-relaxed);
+  font-size: 13px;
+}
+
+.kb-overview__stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 100%;
+  margin-top: 2px;
+}
+
+.kb-stat-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  min-height: 88px;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(244, 248, 255, 0.92));
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 10px 24px rgba(15, 23, 42, 0.04);
+}
+
+.kb-stat-card__label {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.kb-stat-card strong {
+  color: var(--color-text);
+  font-size: clamp(24px, 2.8vw, 30px);
+  line-height: 1;
+  letter-spacing: -0.035em;
+  font-family: var(--font-display);
+}
+
+.kb-overview__inherit {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(239, 245, 255, 0.98), rgba(250, 252, 255, 0.96));
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 18px 40px rgba(15, 23, 42, 0.05);
+}
+
+.inherit-head h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.inherit-head p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: var(--leading-relaxed);
+}
+
+.inherit-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.inherit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid rgba(213, 224, 242, 0.9);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(8px);
+}
+
+.inherit-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.75) inset;
+}
+
+.inherit-card--wide .inherit-value {
+  line-height: 1.4;
+}
+
+.inherit-label {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.inherit-value {
+  color: var(--color-text);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  word-break: break-word;
+}
+
+.inherit-meta {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .action-bar {
   display: flex;
   justify-content: space-between;
@@ -424,6 +732,22 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+}
+
+.right-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.filter-label {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.status-filter {
+  width: 160px;
 }
 
 .filename-cell {
@@ -560,6 +884,42 @@ onMounted(async () => {
 .document-view :deep(.el-upload-list) {
   max-height: 300px;
   overflow-y: auto;
+}
+
+@media (max-width: 1100px) {
+  .kb-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .kb-overview__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .kb-content {
+    padding: var(--space-3);
+  }
+
+  .kb-overview__stats {
+    grid-template-columns: 1fr;
+    max-width: 100%;
+  }
+
+  .action-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+
+  .right-actions {
+    justify-content: space-between;
+  }
+
+  .status-filter {
+    width: 100%;
+  }
 }
 </style>
 

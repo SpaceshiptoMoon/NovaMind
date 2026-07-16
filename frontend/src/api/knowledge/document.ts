@@ -12,7 +12,7 @@ import type {
 } from '../types'
 
 export const documentApi = {
-  getDocuments(spaceId: number, kbId: number, params?: { status?: string; skip?: number; limit?: number }) {
+  getDocuments(spaceId: number, kbId: number, params?: { status?: number; skip?: number; limit?: number }) {
     return request.get<DocumentListResponse>(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/documents`,
       params
@@ -60,22 +60,10 @@ export const documentApi = {
     )
   },
 
-  processDocument(spaceId: number, kbId: number, docId: number) {
-    return request.post<ProcessDocumentResponse>(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/process`
-    )
-  },
-
   batchProcessDocuments(spaceId: number, kbId: number, data?: { document_ids?: number[] }) {
     return request.post<BatchProcessResponse>(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/process`,
       data
-    )
-  },
-
-  reprocessDocument(spaceId: number, kbId: number, docId: number) {
-    return request.post<ProcessDocumentResponse>(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/reprocess`
     )
   },
 

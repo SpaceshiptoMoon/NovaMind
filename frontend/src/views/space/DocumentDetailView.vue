@@ -203,7 +203,7 @@ const previewUrl = ref('')
 
 const docStatus = computed(() => document.value?.status ?? 0)
 const currentStatusConfig = computed(() => taskStatusMap[docStatus.value] ?? { text: '未知', type: 'info' as const })
-const canProcess = computed(() => docStatus.value === 0 || docStatus.value === 3)  // PENDING or FAILED
+const canProcess = computed(() => docStatus.value === 0 || docStatus.value === 2 || docStatus.value === 3)  // PENDING or COMPLETED or FAILED
 const canCancel = computed(() => docStatus.value === 0 || docStatus.value === 1)   // PENDING or PROCESSING
 const canRetry = computed(() => docStatus.value === 3)                              // FAILED
 
@@ -301,8 +301,15 @@ async function fetchLatestTask() {
 async function handleProcessDoc() {
   actionLoading.value = true
   try {
-    const res = await documentApi.processDocument(spaceId.value, kbId.value, docId.value)
-    ElMessage.success(`已提交到任务项 #${res.task_item_id ?? '-'}`)
+    const res = await documentApi.batchProcessDocuments(spaceId.value, kbId.value, {
+      document_ids: [docId.value],
+    })
+    const item = res.results.find((result) => result.document_id === docId.value)
+    if (item?.status === 'processing') {
+      ElMessage.success(`已提交到任务项 #${item.task_item_id ?? '-'}`)
+    } else if (item?.message) {
+      ElMessage.warning(item.message)
+    }
     await fetchDocument()
     await fetchLatestTask()
   } catch {

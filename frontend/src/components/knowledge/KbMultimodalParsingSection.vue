@@ -2,7 +2,7 @@
   <div>
     <div v-if="hasImage" class="sub-section">
       <h4 class="sub-title">图片解析</h4>
-      <p class="sub-desc">OCR 与 VLM 二选一；只有在 VLM 策略下才需要选择 VLM 模型。</p>
+      <p class="sub-desc">对应 `parsing.image`。选择 `ocr` 时不会提交 `vlm_model`，选择 `vlm` 时可覆盖空间默认视觉模型。</p>
 
       <el-form :model="configForm" label-width="120px" class="config-form">
         <el-form-item label="解析策略">
@@ -12,7 +12,7 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item v-if="configForm.imageStrategy === 'vlm'" label="VLM 模型">
-          <el-select v-model="configForm.imageVlmModel" clearable filterable placeholder="系统默认" style="width: 100%">
+          <el-select v-model="configForm.imageVlmModel" clearable filterable placeholder="留空时继承空间默认模型" style="width: 100%">
             <el-option v-for="model in vlmModels" :key="model.model" :label="model.model" :value="model.model" />
           </el-select>
         </el-form-item>
@@ -21,7 +21,7 @@
 
     <div v-if="hasVideo" class="sub-section">
       <h4 class="sub-title">视频解析</h4>
-      <p class="sub-desc">控制抽帧频率、最大抽帧数量，以及是否启用视觉描述。</p>
+      <p class="sub-desc">对应 `parsing.video`。控制抽帧节奏、最大帧数，以及是否追加视觉描述。</p>
 
       <el-form :model="configForm" label-width="120px" class="config-form">
         <el-form-item label="抽帧间隔">
@@ -34,7 +34,7 @@
           <el-switch v-model="configForm.videoVlmDescriptionEnabled" />
         </el-form-item>
         <el-form-item v-if="configForm.videoVlmDescriptionEnabled" label="VLM 模型">
-          <el-select v-model="configForm.videoVlmModel" clearable filterable placeholder="系统默认" style="width: 100%">
+          <el-select v-model="configForm.videoVlmModel" clearable filterable placeholder="留空时继承空间默认模型" style="width: 100%">
             <el-option v-for="model in vlmModels" :key="model.model" :label="model.model" :value="model.model" />
           </el-select>
         </el-form-item>
@@ -43,7 +43,7 @@
 
     <div v-if="hasAudio" class="sub-section">
       <h4 class="sub-title">音频解析</h4>
-      <p class="sub-desc">ASR 模型和语言配置可以同时设置，两者并不冲突。</p>
+      <p class="sub-desc">对应 `parsing.audio`。ASR 模型与语言参数互不冲突，空值时回退默认配置。</p>
 
       <el-form :model="configForm" label-width="120px" class="config-form">
         <el-form-item label="ASR 模型">
@@ -91,6 +91,27 @@ defineProps<{
 </script>
 
 <style scoped>
+.sub-section {
+  margin-bottom: 20px;
+  padding: 22px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 20px;
+  background: linear-gradient(180deg, #fff, rgba(250, 249, 255, 0.96));
+  box-shadow: var(--shadow-sm);
+}
+
+.sub-title {
+  margin: 0 0 6px;
+  font-size: var(--text-lg);
+}
+
+.sub-desc {
+  margin: 0 0 18px;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+}
+
 :deep(.el-radio-group) {
   display: flex;
   flex-wrap: wrap;
@@ -100,13 +121,13 @@ defineProps<{
 :deep(.el-radio) {
   margin-right: 0;
   padding: 10px 14px;
-  border: 1px solid rgba(31, 41, 55, 0.08);
-  border-radius: 999px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-full);
   background: #fff;
 }
 
 :deep(.el-radio.is-checked) {
-  border-color: rgba(177, 77, 34, 0.38);
-  background: rgba(177, 77, 34, 0.08);
+  border-color: rgba(99, 102, 241, 0.35);
+  background: var(--color-primary-subtle);
 }
 </style>
