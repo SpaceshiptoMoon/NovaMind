@@ -226,42 +226,6 @@ class Recognizer:
         return [{"type": self.label_list[class_ids[index]].lower(), "bbox": [float(value) for value in boxes[index].tolist()], "score": float(scores[index])} for index in indices]
 
     @staticmethod
-    def scale_bbox_to_original(
-        bbox: Sequence[float],
-        meta: dict[str, Any],
-    ) -> list[float]:
-        if len(bbox) < 4:
-            return list(bbox)
-        original_h, original_w = meta.get("original_shape", (0, 0))
-        input_h, input_w = meta.get("input_shape", (0, 0))
-        if not original_h or not original_w or not input_h or not input_w:
-            return list(bbox)
-        scale_x = float(original_w) / float(input_w)
-        scale_y = float(original_h) / float(input_h)
-        x0, y0, x1, y1 = bbox[:4]
-        return [
-            float(x0) * scale_x,
-            float(y0) * scale_y,
-            float(x1) * scale_x,
-            float(y1) * scale_y,
-        ]
-
-    def forward(self, image_list, thr: float = 0.2, batch_size: int = 16):
-        self.ensure_loaded()
-        results = []
-        for start in range(0, len(image_list), batch_size):
-            batch_images = image_list[start : start + batch_size]
-            tensors = []
-            metas = []
-            for image in batch_images:
-                tensor, meta = self.preprocess(np.array(image))
-                tensors.append(tensor)
-                metas.append(meta)
-            batch = np.concatenate(tensors, axis=0)
-            outputs = self._run_model_batch(batch)
-            results.extend(self.decode_outputs(outputs, metas, thr=thr))
-        return results
-
     @staticmethod
     def sort_Y_firstly(arr, threshold):
         def cmp(c1, c2):
@@ -424,11 +388,12 @@ class Recognizer:
             reverse_overlapped = reverse
         return max_overlapped_i
 
-    def decode_outputs(self, outputs, metas: list[dict[str, Any]], thr: float = 0.2):
-        raise NotImplementedError(f"{self.__class__.__name__}.decode_outputs is not implemented")
-
     def forward(self, image_list, thr: float = 0.2, batch_size: int = 16):
-        return self.__call__(image_list, thr=thr, batch_size=batch_size)
+        # Detection-only path. Delegate to the BASE __call__ explicitly so
+        # subclasses that override __call__ with a fuller pipeline signature
+        # (e.g. LayoutRecognizer.__call__ needs ocr_res) do not dispatch here.
+        # Mirrors upstream RAGFlow's LayoutRecognizer.forward = super().__call__.
+        return Recognizer.__call__(self, image_list, thr=thr, batch_size=batch_size)
 
     def close(self):
         logging.info("Close recognizer.")

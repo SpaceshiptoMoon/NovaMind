@@ -87,32 +87,6 @@ class TableStructureRecognizer(Recognizer):
             predictions = self.forward(images, thr=thr)
         return self.normalize_predictions(predictions)
 
-    def decode_outputs(self, outputs, metas: list[dict[str, Any]], thr: float = 0.2):
-        if not outputs:
-            return [[] for _ in metas]
-        batch_output = outputs[0]
-        decoded: list[list[dict[str, Any]]] = []
-        for batch_index, meta in enumerate(metas):
-            predictions = batch_output[batch_index] if isinstance(batch_output, np.ndarray) and batch_output.ndim >= 3 else batch_output
-            table_predictions = []
-            for row in predictions:
-                values = np.asarray(row).reshape(-1)
-                if values.size < 6:
-                    continue
-                x0, y0, x1, y1, score, class_id = values[:6]
-                if float(score) < thr:
-                    continue
-                bbox = self.scale_bbox_to_original([float(x0), float(y0), float(x1), float(y1)], meta)
-                table_predictions.append(
-                    {
-                        "type": self.labels[int(class_id)] if int(class_id) < len(self.labels) else str(int(class_id)),
-                        "score": float(score),
-                        "bbox": bbox,
-                    }
-                )
-            decoded.append(table_predictions)
-        return decoded
-
     @staticmethod
     def is_caption(box):
         patterns = [
