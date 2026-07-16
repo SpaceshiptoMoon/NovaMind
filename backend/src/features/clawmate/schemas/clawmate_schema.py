@@ -4,7 +4,7 @@ ClawMate Schema
 请求和响应的 Pydantic 模型
 """
 
-from typing import Optional, List
+from typing import Optional
 from pydantic import BaseModel, Field
 
 

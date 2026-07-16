@@ -6,7 +6,6 @@ import gc
 from functools import cmp_to_key
 import logging
 import math
-import os
 from pathlib import Path
 from typing import Any, Sequence
 

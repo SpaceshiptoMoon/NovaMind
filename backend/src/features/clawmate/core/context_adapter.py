@@ -10,7 +10,7 @@ ClawMate 上下文压缩适配器
     → memory_message_to_dict() → 返回压缩后的 messages
 """
 
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.agent.core.memory.interfaces import MemoryMessage

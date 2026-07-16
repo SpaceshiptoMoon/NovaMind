@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, field_validator, model_validator, EmailStr, ConfigDict
-from typing import Optional, Self, Dict, Any
+from typing import Optional, Self
 from datetime import datetime
 
 from novamind.features.user.schemas.validators import (

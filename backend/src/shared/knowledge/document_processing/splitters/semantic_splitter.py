@@ -1,7 +1,5 @@
 import numpy as np
-from typing import List, Dict, Optional
-from collections import Counter
-import math
+from typing import List, Dict
 from novamind.shared.knowledge.document_processing.splitters.base_splitter import BaseSplitter
 from novamind.shared.ai_models.base_model import BaseEmbedding
 

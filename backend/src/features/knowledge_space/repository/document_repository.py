@@ -10,7 +10,7 @@
 """
 
 from typing import Optional, List, Dict, Any
-from sqlalchemy import select, update, delete, func, cast, Integer, case
+from sqlalchemy import select, update, func, cast, Integer, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import outerjoin
 

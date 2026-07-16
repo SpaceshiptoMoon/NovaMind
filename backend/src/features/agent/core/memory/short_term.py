@@ -5,7 +5,7 @@
 管理 Token 预算，超限时自动触发压缩策略。
 """
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from novamind.features.agent.core.memory.interfaces import (
     IShortTermMemory,

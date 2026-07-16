@@ -5,10 +5,10 @@
 避免在 BaseTool 上堆砌通用逻辑。
 """
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from novamind.features.agent.core.tool.definition import ToolDefinition
-from novamind.features.agent.core.tool.result import ToolResult, ToolResultStatus
+from novamind.features.agent.core.tool.result import ToolResult
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)

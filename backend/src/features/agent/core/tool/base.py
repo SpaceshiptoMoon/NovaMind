@@ -4,7 +4,7 @@
 所有 Agent 工具必须继承此类并实现其抽象方法。
 """
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from sqlalchemy.ext.asyncio import AsyncSession
 

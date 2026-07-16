@@ -9,7 +9,6 @@ from contextlib import asynccontextmanager
 from sqlalchemy import text
 
 from novamind.setting.yaml_config import get_config
-from novamind.shared.utils.time_utils import now_china
 from novamind.core.middleware.structured_logging import get_logger
 
 from novamind.core.database.base import create_tables, ensure_fulltext_indexes

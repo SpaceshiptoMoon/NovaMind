@@ -18,7 +18,7 @@ import hashlib
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.features.knowledge_space.api.exceptions import EmbeddingError
-from novamind.shared.ai_models.embedding import OpenAICompatibleEmbedding as EmbeddingClient, BaseEmbedding
+from novamind.shared.ai_models.embedding import BaseEmbedding
 from novamind.shared.cache.redis_client import get_redis_client
 from novamind.core.middleware.structured_logging import get_logger
 

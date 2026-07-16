@@ -11,7 +11,6 @@ import asyncio
 import json
 import os
 import tempfile
-from typing import Optional
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.ai_models.llm import BaseLLM

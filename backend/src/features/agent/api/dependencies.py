@@ -15,7 +15,6 @@ from novamind.features.agent.core.tool.registry import ToolRegistry
 from novamind.features.agent.mcp.client import McpClientManager
 from novamind.features.agent.core.engine import AgentEngine
 from novamind.features.agent.core.memory.todo_store import TodoStore
-from novamind.features.agent.repository.memory_repository import MemoryRepository
 from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
 
 

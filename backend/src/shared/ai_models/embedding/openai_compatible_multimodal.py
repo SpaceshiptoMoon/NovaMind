@@ -10,9 +10,7 @@ OpenAI 兼容多模态 Embedding 客户端
   embeddings.create(input=[text]) — 标准 OpenAI 格式
 """
 
-import asyncio
 import base64
-from typing import Optional
 
 import httpx
 from openai import AsyncOpenAI

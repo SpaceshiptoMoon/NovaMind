@@ -3,12 +3,11 @@
 
 核心业务逻辑：发送通知、查询通知、管理偏好
 """
-from typing import Optional, List, Tuple
+from typing import Optional, List
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from novamind.features.notification.models.notification import Notification, NotificationType
-from novamind.features.notification.models.notification_preference import NotificationPreference
+from novamind.features.notification.models.notification import Notification
 from novamind.features.notification.repository.notification_repository import (
     NotificationRepository,
     NotificationPreferenceRepository,

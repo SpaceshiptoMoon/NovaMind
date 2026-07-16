@@ -23,8 +23,8 @@ from novamind.features.knowledge_space.repository.knowledge_base_repository impo
 from novamind.features.knowledge_space.repository.member_repository import MemberRepository
 from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
-from novamind.shared.ai_models.embedding import BaseEmbedding, create_embedding_client
-from novamind.shared.ai_models.rerank import BaseRerank, create_rerank_client
+from novamind.shared.ai_models.embedding import BaseEmbedding
+from novamind.shared.ai_models.rerank import BaseRerank
 from novamind.shared.cache.redis_client import get_redis_client
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.api.exceptions import (

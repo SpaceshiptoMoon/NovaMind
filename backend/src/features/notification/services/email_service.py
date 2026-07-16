@@ -4,7 +4,6 @@
 使用 aiosmtplib 异步发送邮件。
 SMTP 未配置时静默跳过（仅日志记录）。
 """
-from typing import Optional
 
 from novamind.core.middleware.structured_logging import get_logger
 

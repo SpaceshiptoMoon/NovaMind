@@ -22,7 +22,7 @@ import json
 import os
 import re
 import tempfile
-from typing import Dict, Any, List, Optional
+from typing import List, Optional
 
 from novamind.features.clawmate.core.file_operations import FileOperations
 from novamind.core.middleware.structured_logging import get_logger
