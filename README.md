@@ -1,11 +1,12 @@
 # NovaMind
 
 [![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](./backend/pyproject.toml)
+[![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white)](./backend)
 [![Vue](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vue.js&logoColor=white)](./frontend/package.json)
-[![Node.js](https://img.shields.io/badge/Node.js-22%2B-339933?logo=node.js&logoColor=white)](./frontend/package.json)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-frontend-3178C6?logo=typescript&logoColor=white)](./frontend/package.json)
+[![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](./docker-compose.yml)
 
-NovaMind 是一个开源的智能知识库管理系统。基于 FastAPI + Vue 3 构建，支持文档管理、向量检索、多模型智能问答、深度研究和知识库测评。
+NovaMind 是一个面向团队与个人的智能知识平台，围绕知识库构建、检索增强问答、深度研究、Agent 工具调用、技能扩展和效果评测提供一体化能力。项目采用 `FastAPI + Vue 3` 构建，支持 Docker 一键部署，也支持前后端分离的本地开发模式。
 
 <p align="center">
   <img src="./assets/home.png" alt="NovaMind Home" width="720">
@@ -14,290 +15,371 @@ NovaMind 是一个开源的智能知识库管理系统。基于 FastAPI + Vue 3 
   <img src="./assets/features.png" alt="NovaMind Features" width="720">
 </p>
 
-## 目录
+## 项目定位
 
-- [核心特性](#核心特性)
-- [技术栈](#技术栈)
-- [快速开始](#快速开始)
-  - [方式一：一键部署（推荐）](#方式一一键部署推荐)
-  - [方式二：Docker 手动部署](#方式二docker-手动部署)
-  - [方式三：本地开发](#方式三本地开发)
-- [项目结构](#项目结构)
-- [架构概览](#架构概览)
-- [功能模块](#功能模块)
-- [推荐模型](#推荐模型)
-- [许可证](#许可证)
+很多知识库项目只覆盖“上传文档并问答”这一段链路。NovaMind 试图覆盖更完整的工作流：
 
-## 核心特性
+- 从空间、知识库、文档上传到解析、切分、向量化、索引
+- 从检索到 RAG 问答，再到深度研究报告生成
+- 从普通聊天到带工具调用、MCP 扩展和技能市场的 Agent
+- 从能力搭建到测试集评测、人工复核和结果导出
 
-- **多策略知识检索** — 向量检索 + BM25 文本检索 + 混合检索，支持 Rerank 重排序
-- **多模型智能问答** — 支持 OpenAI 兼容接口，会话级模型切换，上下文压缩
-- **深度研究** — 多源搜索（Tavily / SerpAPI / DuckDuckGo），自动生成研究报告
-- **知识库测评** — 测试集管理、自动化批量测评、人工评分
-- **Agent 智能体** — MCP Server 扩展、代码沙箱执行、多轮工具调用
-- **技能广场** — 技能包上传/审核/安装、市场发现、Agent 能力扩展
-- **应用中心** — AI 应用入口，已实现简历挖掘等场景化工具
-- **通知中心** — 站内通知 + 邮件推送 + 用户偏好
-- **ClawMate 终端** — 浏览器内的 AI 终端（命令执行、文件操作、流式对话）
-- **DDD 架构** — 领域驱动设计，模块解耦，易于扩展
+如果你希望搭建的不只是一个聊天窗口，而是一套可组织知识、执行任务、评估效果的系统，NovaMind 更接近完整工作台。
+
+## 核心能力
+
+- `知识空间与知识库管理`：多空间隔离、成员协作、权限控制、知识库配置和文档全生命周期管理
+- `混合检索`：向量检索、BM25、混合检索、Rerank、查询改写与降级策略
+- `RAG 问答`：基于知识库进行多轮问答，支持会话配置和上下文压缩
+- `深度研究`：联合内部知识库与外部搜索，分步骤生成研究结果和报告
+- `Agent`：支持 MCP Server、工具调用、浏览器内终端和技能扩展
+- `技能广场`：技能上传、审核、安装与市场化分发
+- `知识库评测`：测试集、自动评测、人工打分和结果导出
+- `应用中心`：面向具体业务场景封装 AI 能力
+
+## 适合什么场景
+
+NovaMind 更适合以下团队或个人：
+
+- 需要管理多空间、多知识库，而不是只维护单一问答机器人
+- 需要把文档处理、检索、问答、研究、Agent 和评测串成一个完整工作流
+- 需要保留配置、处理过程和效果验证的可追溯性
+- 需要既支持 Docker 自托管，也支持本地二次开发
+
+如果你的目标只是快速搭一个最小聊天 Demo，这个仓库会显得偏重；如果你要的是一套长期可演进的知识工作台，它更合适。
 
 ## 技术栈
 
 | 类别 | 技术 |
-|------|------|
-| 后端框架 | FastAPI + Python 3.12 |
-| 前端框架 | Vue 3 + TypeScript + Vite |
-| 数据库 | MySQL 8.0 |
-| 缓存 | Redis 7 |
-| 搜索引擎 | Elasticsearch 8.15 |
+| --- | --- |
+| 后端 | FastAPI, Python 3.12, SQLAlchemy, Pydantic |
+| 前端 | Vue 3, TypeScript, Vite, Pinia, Vue Router, Element Plus |
+| 数据存储 | MySQL 8.4 |
+| 缓存 / 队列 | Redis 7, ARQ |
+| 检索引擎 | Elasticsearch 9.3 |
 | 对象存储 | MinIO |
-| AI 模型 | OpenAI 兼容接口（通义千问、智谱 AI 等） |
-| 认证 | JWT + Argon2 |
+| 扩展协议 | MCP |
+| 部署 | Docker Compose, Nginx, Supervisord |
 
 ## 快速开始
 
-### 方式一：一键部署（推荐）
+### 方式一：一键部署
+
+推荐第一次体验时使用。
 
 ```bash
-# 1. 克隆项目
 git clone git@github.com:SpaceshiptoMoon/NovaMind.git
 cd NovaMind
 
-# 2. 一键部署（自动创建配置、生成随机密码、启动服务）
-# Linux / macOS / Git Bash:
+# Linux / macOS / Git Bash
 bash deploy.sh
-# Windows PowerShell:
+
+# Windows PowerShell
 .\deploy.ps1
 ```
 
-脚本会自动完成：
-- 前置检查（Docker 环境、端口占用）
-- 从模板创建 `.env`（自动生成随机密码）
-- 创建 `docker.yaml`（Docker 环境配置）
-- 创建 `default.yaml`（后端基础配置）
-- 构建并启动所有 Docker 服务
-- 健康检查确认服务就绪
+部署脚本会自动完成：
 
-> 部署完成后管理员密码在 `.env` 文件的 `ADMIN_PASSWORD` 中查看。
+- 检查 Docker 和 Docker Compose 环境
+- 从 `.env.example` 生成 `.env`
+- 生成随机密码、密钥和管理员初始密码
+- 创建 `docker/configs/docker.yaml`
+- 创建 `backend/src/setting/yaml_config/yaml/default.yaml`
+- 构建并启动完整服务栈
+- 轮询 `http://localhost/health` 做健康检查
 
-**环境要求：** Docker 20.10+、Docker Compose V2+、内存 >= 4GB
+部署完成后，管理员初始密码可在根目录 `.env` 的 `ADMIN_PASSWORD` 中查看。
 
-**部署管理命令：**
+环境要求：
+
+- Docker 20.10+
+- Docker Compose V2+
+- 建议可用内存不少于 4 GB
+
+常用命令：
 
 ```bash
-bash deploy.sh status    # 查看服务状态
-bash deploy.sh update    # 更新应用（重新构建 app 容器）
-bash deploy.sh logs      # 跟踪应用日志
-bash deploy.sh stop      # 停止服务（保留数据）
-bash deploy.sh clean     # 停止并清除所有数据卷
+bash deploy.sh status
+bash deploy.sh logs
+bash deploy.sh update
+bash deploy.sh stop
+bash deploy.sh clean
 ```
 
-### 方式二：Docker 手动部署
+```powershell
+.\deploy.ps1 status
+.\deploy.ps1 logs
+.\deploy.ps1 update
+.\deploy.ps1 stop
+.\deploy.ps1 clean
+```
 
-如果需要自定义密码，可以手动配置：
+### 方式二：手动 Docker 部署
+
+如果你希望手动控制配置文件和密码：
 
 ```bash
-# 1. 克隆项目
 git clone git@github.com:SpaceshiptoMoon/NovaMind.git
 cd NovaMind
 
-# 2. 创建环境配置（所有密码在此文件集中管理）
 cp .env.example .env
-# 编辑 .env，填入自定义密码
-
-# 3. 创建 Docker 配置
 cp docker/configs/docker.example docker/configs/docker.yaml
-
-# 4. 创建后端基础配置（非敏感配置已预设，敏感配置由 .env 覆盖）
 cp backend/src/setting/yaml_config/yaml/default.example backend/src/setting/yaml_config/yaml/default.yaml
 
-# 5. 启动所有服务（首次约 5-10 分钟）
 docker compose up -d --build
 ```
 
-**密码管理说明：**
+说明：
 
-所有密码集中在 `.env` 文件中，`docker-compose.yml` 和 `docker.yaml` 通过 `${VAR_NAME}` 引用，修改密码只需编辑 `.env` 一个文件。
-
-| 变量 | 说明 |
-|------|------|
-| `MYSQL_ROOT_PASSWORD` | MySQL root 密码 |
-| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | MinIO 凭据 |
-| `SECRET_KEY` | JWT 签名密钥 |
-| `ENCRYPTION_KEY` | AES-256 数据加密密钥 |
-| `ADMIN_PASSWORD` | 管理员初始密码 |
+- `.env` 管理基础设施密码和后端密钥
+- `docker/configs/docker.yaml` 是 Docker 运行时挂载配置
+- `default.yaml` 负责后端基础配置，敏感值通常由环境变量覆盖
 
 ### 方式三：本地开发
 
-```bash
-# 1. 创建后端配置
-cd backend/src/setting/yaml_config/yaml/
-cp default.example default.yaml
-# 编辑 default.yaml，填入本地数据库密码、API Key 等
+适合前后端联调或二次开发。
 
-# 2. 启动后端
+1. 准备后端配置文件
+
+```bash
+cd backend/src/setting/yaml_config/yaml
+cp default.example default.yaml
+cp development.example development.yaml
+```
+
+2. 启动后端
+
+```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# Linux / macOS
+source .venv/bin/activate
+
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+
 pip install .
-mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS novamind_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 python main.py --config development --reload
 ```
 
-后端运行在 http://localhost:8100
+默认后端地址：`http://localhost:8100`
+
+3. 启动前端
 
 ```bash
-# 3. 启动前端
 cd frontend
 npm install
 npm run dev
 ```
 
-前端运行在 http://localhost:5173，API 请求自动代理到后端。
+默认前端地址：`http://localhost:5173`
 
-> 配置加载机制：`default.yaml` 为基础配置，启动时通过 `--config` 参数指定环境覆盖文件（如 `docker.yaml`），两者深度合并。
+## 访问入口
 
----
+Docker 部署模式：
 
-**访问地址：**
+| 服务 | 地址 |
+| --- | --- |
+| 前端首页 | `http://localhost` |
+| 后端 API 文档 | `http://localhost/api/v1/docs` |
+| 健康检查 | `http://localhost/health` |
+| MinIO 控制台 | `http://localhost:9001` |
+| Elasticsearch | `http://localhost:9200` |
 
-| 服务 | Docker 地址 | 本地开发地址 |
-|------|-----------|-------------|
-| 前端页面 | http://localhost | http://localhost:5173 |
-| 后端 API 文档 | http://localhost/api/v1/docs | http://localhost:8100/docs |
-| MinIO 控制台 | http://localhost:9001 | — |
-| Elasticsearch | http://localhost:9200 | — |
+本地开发模式：
 
-**常用 Docker 命令：**
+| 服务 | 地址 |
+| --- | --- |
+| 前端开发服务器 | `http://localhost:5173` |
+| 后端 API 文档 | `http://localhost:8100/docs` |
+| 后端健康检查 | `http://localhost:8100/health` |
 
-```bash
-bash deploy.sh status                # 查看服务状态（推荐）
-bash deploy.sh logs                  # 查看应用日志
-bash deploy.sh stop                  # 停止（保留数据）
-bash deploy.sh clean                 # 停止并清除数据卷
-bash deploy.sh update                # 仅重建应用容器
+## 仓库结构
 
-# 或直接使用 docker compose
-docker compose ps
-docker compose logs -f app
-docker compose down
-```
-
-## 项目结构
-
-```
-novamind/
-├── backend/                    # 后端 (FastAPI)
-│   ├── src/
-│   │   ├── core/              # 核心基础设施（认证、数据库、中间件）
-│   │   ├── features/          # 业务模块（DDD 架构）
-│   │   │   ├── user/          # 用户管理
-│   │   │   ├── knowledge_space/ # 知识空间
-│   │   │   ├── qa/            # 智能问答
-│   │   │   ├── deep_research/ # 深度研究
-│   │   │   ├── evaluation/    # 知识库测评
-│   │   │   ├── agent/         # Agent 智能体
-│   │   │   ├── skill/         # 技能广场
-│   │   │   ├── app/           # 应用中心
-│   │   │   ├── notification/  # 通知中心
-│   │   │   └── clawmate/      # ClawMate 终端
-│   │   ├── shared/            # 跨模块共享组件
-│   │   └── setting/           # 多环境配置管理
-│   ├── main.py                # 后端入口
-│   └── pyproject.toml
-├── frontend/                   # 前端 (Vue 3)
-│   ├── src/
-│   │   ├── api/               # API 请求封装
-│   │   ├── components/        # 公共组件
-│   │   ├── views/             # 页面
-│   │   ├── stores/            # Pinia 状态管理
-│   │   └── router/            # 路由
-│   └── package.json
-├── docker/                     # Docker 部署配置
-│   ├── Dockerfile             # 一体化构建（前端 + 后端 + Nginx）
-│   ├── nginx.conf             # Nginx 配置
-│   ├── supervisord.conf       # 进程管理配置
-│   └── configs/
-│       └── docker.example     # Docker 环境配置模板
-├── docker-compose.yml          # 一键部署
-├── deploy.sh                   # 一键部署脚本 (Linux/macOS/Git Bash)
-├── deploy.ps1                  # 一键部署脚本 (Windows PowerShell)
-├── .env.example                # 环境变量模板
-└── README.md
+```text
+NovaMind/
+|- backend/                         # FastAPI 后端
+|  |- main.py
+|  |- pyproject.toml
+|  |- src/
+|  |  |- core/                     # 应用工厂、中间件、生命周期、安全
+|  |  |- features/                 # 领域模块
+|  |  |- setting/                  # YAML 配置加载
+|  |  `- shared/                   # 共享知识处理基础设施
+|  `- tests/
+|- frontend/                       # Vue 3 + TypeScript 前端
+|  |- src/
+|  |  |- api/
+|  |  |- components/
+|  |  |- router/
+|  |  |- stores/
+|  |  `- views/
+|- docker/                         # Dockerfile、Nginx、Supervisord、配置模板
+|- docs/                           # 设计文档与导航文档
+|- test_data/                      # 样例数据与上传样本
+|- docker-compose.yml
+|- deploy.ps1
+|- deploy.sh
+`- README.md
 ```
 
 ## 架构概览
 
-Docker 部署时，前端、后端和 Nginx 运行在同一个容器中，通过 supervisord 管理。Nginx 对外暴露 80 端口，同时提供前端静态文件服务和 API 反向代理。
+默认 Docker 形态为“单应用容器 + 多基础设施容器”：
 
-```
-Docker Compose
-├── app 容器 (:80)
-│   ├── Nginx (监听 80)
-│   │   ├── /           → 前端静态文件
-│   │   └── /api/*      → 反向代理 → FastAPI (:8100)
-│   └── FastAPI (监听 8100，容器内部)
-│       └── 配置: default.yaml + docker.yaml (.env 密码注入)
-├── MySQL 8.0
-├── Redis 7
-├── MinIO
-└── Elasticsearch 8.15
-```
+- `app` 容器内运行 `Nginx + 前端静态资源 + FastAPI`
+- `mysql`、`redis`、`minio`、`elasticsearch` 以独立服务编排
+- `Nginx` 对外暴露 `80` 端口，并代理 `/api/*` 到 FastAPI
+- FastAPI 在容器内部监听 `8100`
 
-**配置架构：**
+请求路径大致如下：
 
-```
-.env (所有密码，单一来源)
-  ├── docker-compose.yml     ← ${VAR} 引用（基础设施密码）
-  └── docker.yaml            ← ${VAR} 引用（后端配置密码）
-       ↓ env_file: .env      ← 容器内环境变量注入
-       ↓ YAML loader         ← ${VAR_NAME} 自动替换
+```text
+Browser
+  |- /        -> Nginx -> Vue static assets
+  |- /api/*   -> Nginx -> FastAPI
+  `- /health  -> Nginx -> FastAPI health endpoint
 ```
 
-后端采用 DDD 分层架构：
+后端采用按领域拆分的目录结构，典型模块形态如下：
 
-```
+```text
 src/features/{module}/
-├── api/            # 路由、依赖注入、异常处理
-├── services/       # 业务逻辑层
-├── repository/     # 数据访问层
-├── models/         # SQLAlchemy ORM 模型
-└── schemas/        # Pydantic 数据模型
+|- api/
+|- services/
+|- repository/
+|- models/
+`- schemas/
 ```
 
-## 功能模块
+## 项目状态
+
+当前仓库已经完成公开开源所需的基础入口整理，后续重点在于：
+
+- 继续稳定知识库主链路与任务模型
+- 补齐前端真实业务测试，而不是只停留在最小基线
+- 收敛正式设计文档与历史过程文档的边界
+
+更具体的阶段目标见 [`ROADMAP.md`](./ROADMAP.md)。
+
+## 主要模块
 
 | 模块 | 路由前缀 | 说明 |
-|------|---------|------|
-| 用户管理 | `/api/v1/user` | JWT 认证、角色权限控制 |
-| 知识空间 | `/api/v1/spaces` | 文档管理、向量检索、多策略搜索 |
-| 智能问答 | `/api/v1/qa` | 多模型对话、会话管理 |
-| AI 聊天 | `/api/v1/ai-chat` | 实时流式 AI 对话 |
-| 深度研究 | `/api/v1/spaces/{id}/deep-research` | 多源搜索、研究报告生成 |
-| 知识库测评 | `/api/v1/spaces/{id}/knowledge-bases/{kb_id}/evaluation` | 测试集管理、自动化测评 |
-| Agent 智能体 | `/api/v1/agent` | MCP Server 扩展、代码沙箱 |
-| 技能广场 | `/api/v1/skills` | 技能上传、审核、安装、市场浏览 |
-| 应用中心 | `/api/v1/apps` | 简历挖掘等 AI 应用 |
-| 通知中心 | `/api/v1/notifications` | 站内通知、邮件推送、通知偏好 |
-| ClawMate 终端 | `/api/v1/clawmate` | Shell 会话、文件操作、AI 流式对话 |
+| --- | --- | --- |
+| 用户与模型配置 | `/api/v1/user` | 认证、用户管理、模型配置、模型测试 |
+| 知识空间 | `/api/v1/spaces` | 空间管理、成员管理、权限隔离 |
+| 知识库管理 | `/api/v1/spaces/{space_id}/knowledge-bases` | 知识库创建、配置、文档管理 |
+| 知识检索 | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/search` | 搜索模式、检索、Rerank |
+| 智能问答 | `/api/v1/qa` | 基于知识库的多轮问答 |
+| AI 聊天 | `/api/v1/ai-chat` | 流式对话和附件交互 |
+| 深度研究 | `/api/v1/spaces/{space_id}/deep-research` | 多源搜索和研究报告 |
+| 知识库评测 | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation` | 测试集、评测任务、导出 |
+| Agent | `/api/v1/agent` | Agent、MCP Server、工具调用 |
+| 技能广场 | `/api/v1/skills` | 技能上传、审核、安装、浏览 |
+| 应用中心 | `/api/v1/apps` | 场景化 AI 应用 |
+| 通知中心 | `/api/v1/notifications` | 站内通知和偏好设置 |
+| ClawMate | `/api/v1/clawmate` | 浏览器内终端和 AI 辅助工作区 |
 
-## 推荐模型
+## 配置说明
 
-NovaMind 对模型没有强绑定，只要实现了 OpenAI 兼容 API 的模型都可以接入。以下能力更强的模型效果更好：
+### `.env`
 
-- **长上下文窗口**（100k+ tokens），适合深度研究和多步骤问答
-- **稳定的 tool use 能力**，适合 Agent 工具调用和结构化输出
-- **中文理解能力**，适合中文知识库场景
+用于管理基础设施密码和后端安全密钥。
 
-已在以下模型上验证：
+| 变量 | 说明 |
+| --- | --- |
+| `MYSQL_ROOT_PASSWORD` | MySQL root 密码 |
+| `MYSQL_DATABASE` | 默认数据库名 |
+| `MINIO_ROOT_USER` | MinIO 访问账号 |
+| `MINIO_ROOT_PASSWORD` | MinIO 访问密码 |
+| `ES_JAVA_OPTS` | Elasticsearch JVM 参数 |
+| `SECRET_KEY` | JWT 签名密钥 |
+| `ENCRYPTION_KEY` | 加密密钥 |
+| `ADMIN_PASSWORD` | 管理员初始密码 |
 
-| Provider | 模型 | 用途 |
-|----------|------|------|
-| 阿里云 | qwen3.5-plus | LLM 问答 |
-| 阿里云 | text-embedding-v2/v3 | 文本向量化 |
-| 阿里云 | qwen3-vl-rerank | 检索重排序 |
-| 智谱 AI | glm-4 | LLM 问答 |
+### YAML 配置
+
+配置文件位于 `backend/src/setting/yaml_config/yaml/`：
+
+- `default.yaml`：基础配置
+- `development.yaml`：开发环境覆盖配置
+- `production.yaml`：生产环境覆盖配置
+- `testing.yaml`：测试环境配置
+- `docker.yaml`：Docker 运行时附加配置，挂载自 `docker/configs/docker.yaml`
+
+加载逻辑：
+
+- `default.yaml` 作为基线
+- 通过 `python main.py --config development` 或 `--config production` 指定环境
+- 加载器会对配置做深度合并
+- `${VAR_NAME}` 形式的变量会从环境变量解析
+
+## 模型接入建议
+
+NovaMind 对模型供应方没有强绑定，只要实现 OpenAI 兼容接口，就可以接入大部分能力链路。
+
+建议至少准备三类模型：
+
+- `LLM`：负责问答、Agent 对话和研究总结
+- `Embedding`：负责向量化和召回
+- `Rerank`：负责结果重排，提高检索质量
+
+如果你的场景偏中文、多工具调用或长上下文任务，优先选择在这些维度表现稳定的模型。
+
+## 测试与质量检查
+
+后端：
+
+```bash
+cd backend
+pytest
+pytest -m unit
+pytest -m "not slow"
+```
+
+前端：
+
+```bash
+cd frontend
+npm run type-check
+npm run test:unit
+npm run lint
+npm run format
+```
+
+## 文档导航
+
+- 总体文档入口：[`docs/README.md`](./docs/README.md)
+- 公开路线图：[`ROADMAP.md`](./ROADMAP.md)
+- 仓库结构导航：[`docs/project-structure-navigation.md`](./docs/project-structure-navigation.md)
+- 后端说明：[`backend/README.md`](./backend/README.md)
+- 前端说明：[`frontend/README.md`](./frontend/README.md)
+- 贡献指南：[`CONTRIBUTING.md`](./CONTRIBUTING.md)
+- 安全策略：[`SECURITY.md`](./SECURITY.md)
+- 支持方式：[`SUPPORT.md`](./SUPPORT.md)
+
+## 资源与协作
+
+- 文档入口：[`docs/README.md`](./docs/README.md)
+- 当前知识空间正式设计：[`docs/knowledge-space/current/README.md`](./docs/knowledge-space/current/README.md)
+- 历史计划与重构材料：[`docs/plans/README.md`](./docs/plans/README.md)
+- 交接与历史上下文：[`docs/handover/README.md`](./docs/handover/README.md)
+- 贡献方式：[`CONTRIBUTING.md`](./CONTRIBUTING.md)
+- 行为准则：[`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md)
+- 安全报告：[`SECURITY.md`](./SECURITY.md)
+- 支持渠道：[`SUPPORT.md`](./SUPPORT.md)
+
+## 开源协作
+
+作为公开仓库，建议从以下入口开始：
+
+- 使用根 README 完成首次启动和环境准备
+- 使用 `ROADMAP.md` 了解当前阶段重点建设方向
+- 使用 `docs/README.md` 找到架构、知识库和前端相关设计文档
+- 提交 PR 前运行与改动相关的测试、类型检查和 lint
+- 涉及配置、文档、截图或运维流程的改动，请一并更新对应文档
 
 ## 许可证
 
-本项目采用 [MIT License](./LICENSE) 开源发布。
+This repository is released under the [MIT License](./LICENSE).
