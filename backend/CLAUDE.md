@@ -11,6 +11,16 @@ Entry points:
 - `src/core/middleware/router_manager.py`
 - `src/core/middleware/startup_manager.py`
 
+## Parallel Multi-Agent Development
+
+When multiple agent windows work on this repo concurrently, each must run in its own git worktree on its own branch — never in a shared working directory. See the root `CLAUDE.md` and `docs/multi-agent-parallel-development-workflow.md` for the full workflow.
+
+Backend-specific notes:
+
+- Branch by feature boundary (`src/features/<domain>/`); one agent owns one feature.
+- Single-point shared files — `src/shared/prompts/`, `src/core/middleware/router_manager.py`, `src/core/middleware/startup_manager.py`, `*.example` configs, DB models — are edited by only one agent at a time.
+- Run `pytest` (or targeted tests) in the worktree before merging back to the trunk.
+
 ## Directory Structure
 
 - `src/core/`: framework/runtime layer
