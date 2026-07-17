@@ -504,17 +504,3 @@ class KnowledgeBaseService:
         """获取默认知识库配置（从 Schema 统一生成）"""
         from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
         return KnowledgeBaseConfig().model_dump()
-
-    async def get_kb_document_stats(self, kb_id: int) -> Dict[str, int]:
-        """获取知识库的文档统计信息（基于 document_tasks 的最新状态）"""
-        from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-        from novamind.features.knowledge_space.models.document_task import TaskStatus
-
-        task_repo = DocumentTaskRepository(self.session)
-        stats = {
-            "pending_documents": await task_repo.count_by_status(kb_id, TaskStatus.PENDING),
-            "completed_documents": await task_repo.count_by_status(kb_id, TaskStatus.COMPLETED),
-            "failed_documents": await task_repo.count_by_status(kb_id, TaskStatus.FAILED),
-            "processing_documents": await task_repo.count_by_status(kb_id, TaskStatus.PROCESSING),
-        }
-        return stats

@@ -966,63 +966,6 @@ class DocumentService:
 
     # ========== 拆分解析方法 ==========
 
-    async def process_document(
-        self,
-        document_id: int,
-        *,
-        batch_id: Optional[int] = None,
-        batch_creator_id: Optional[int] = None,
-        batch_action: BatchAction = BatchAction.PROCESS,
-        process_mode: TaskProcessMode = TaskProcessMode.PROCESS,
-        batch_note: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        触发单文档拆分解析。
-        校验状态 → 从 MinIO 下载 → 异步处理。
-
-        Args:
-            document_id: 文档 ID
-
-        Returns:
-            文档对象
-
-        Raises:
-            DocumentNotFoundError: 文档不存在
-            DocumentAlreadyProcessingError: 文档正在处理中
-            KnowledgeBaseNotFoundError: 知识库不存在
-        """
-        document = await self._validate_document_not_processing(document_id)
-
-        # COMPLETED 文档自动转入重新解析流程
-        from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-        from novamind.features.knowledge_space.models.document_task import TaskStatus
-        _task_repo = DocumentTaskRepository(self.session)
-        latest_task = await _task_repo.get_by_document_id(document_id)
-        if latest_task and latest_task.status == TaskStatus.COMPLETED:
-            return await self.reprocess_document(
-                document_id=document_id,
-                batch_id=batch_id,
-                batch_creator_id=batch_creator_id,
-                batch_note=batch_note or "自动转为重新解析",
-            )
-
-        kb = await self.kb_repo.get_by_id(document.kb_id)
-        if not kb:
-            raise KnowledgeBaseNotFoundError(document.kb_id)
-
-        if not kb.is_active():
-            raise KnowledgeBaseNotFoundError(document.kb_id)
-
-        task_info = await self._enqueue_document_processing(
-            document,
-            "处理",
-            batch_id=batch_id,
-            batch_creator_id=batch_creator_id,
-            batch_action=batch_action,
-            batch_note=batch_note,
-        )
-        return {"document": document, **task_info}
-
     async def process_kb_documents(
         self,
         kb_id: int,
@@ -1249,31 +1192,6 @@ class DocumentService:
             previous_task_id=latest_task.id,
         )
         return {"document": document, **task_info}
-
-    async def create_task_batch(
-        self,
-        *,
-        document_id: int,
-        user_id: int,
-        action: BatchAction,
-        pipeline_config: Optional[dict] = None,
-        note: Optional[str] = None,
-    ):
-        document = await self.doc_repo.get_by_id(document_id)
-        if not document:
-            raise DocumentNotFoundError(document_id)
-        batch_repo = DocumentTaskBatchRepository(self.session)
-        batch = await batch_repo.create({
-            "space_id": document.space_id,
-            "kb_id": document.kb_id,
-            "creator_id": user_id,
-            "action": action,
-            "pipeline_config": pipeline_config,
-            "total_count": 1,
-            "note": note,
-        })
-        await self.session.commit()
-        return batch
 
     # ---------- 文档处理共享辅助方法 ----------
 

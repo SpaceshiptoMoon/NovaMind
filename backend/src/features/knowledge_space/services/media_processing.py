@@ -601,7 +601,6 @@ async def _index_text_chunks(
     session: AsyncSession,
     logger,
     frame_paths: Optional[List[str]] = None,
-    task: Optional[DocumentTask] = None,
 ):
     """
     将文本 chunks 写入 ES（复用文本管道逻辑）

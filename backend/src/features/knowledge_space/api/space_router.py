@@ -197,9 +197,7 @@ async def update_space(
     if "visibility" in update_data and hasattr(update_data["visibility"], 'value'):
         update_data["visibility"] = update_data["visibility"].value
 
-    # 转换 config 对象为字典
-    if "config" in update_data and hasattr(update_data["config"], 'model_dump'):
-        update_data["config"] = update_data["config"].model_dump()
+    # config 已由 model_dump(exclude_unset=True) 转为 dict，无需再转换
 
     space = await space_service.update_space(
         space_id=space_id,
