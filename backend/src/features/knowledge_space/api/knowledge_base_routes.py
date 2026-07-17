@@ -182,7 +182,9 @@ async def update_knowledge_base(
     # 构建更新数据（仅包含实际提交的字段）
     update_data = data.model_dump(exclude_unset=True)
     if data.config is not None:
-        update_data["config"] = data.config.model_dump()
+        # 仅取客户端实际提交的子字段，由 service 深度合并到现有 config，
+        # 避免回填 schema 默认值覆盖未传的子配置（破坏性部分更新）。
+        update_data["config"] = data.config.model_dump(exclude_unset=True)
 
     kb = await kb_service.update_knowledge_base(
         kb_id=kb_id,
@@ -219,23 +221,23 @@ async def delete_knowledge_base(
     db: AsyncSession = Depends(get_db),
 ):
     """删除知识库"""
-    # 验证知识库访问权限
-    kb = await validate_kb_access(kb_id, space_id, db)
+    # 验证知识库可写（归档知识库禁止删除，需先激活）
+    kb = await validate_kb_writable(kb_id, space_id, db)
     kb_name = kb.name
 
-    # 记录审计日志（在删除之前记录，因为删除后无法获取名称）
+    # 删除知识库
+    await kb_service.delete_knowledge_base(
+        kb_id=kb_id,
+        user_id=user_id,
+    )
+
+    # 删除成功后记录审计日志（kb_name 已提前取出，避免业务失败产生伪审计）
     await audit_service.log_kb_delete(
         space_id=space_id,
         user_id=user_id,
         kb_id=kb_id,
         kb_name=kb_name,
         request=request,
-    )
-
-    # 删除知识库
-    await kb_service.delete_knowledge_base(
-        kb_id=kb_id,
-        user_id=user_id,
     )
 
     return ActionResponse(success=True, message=f"知识库 '{kb_name}' 已删除")
@@ -280,15 +282,17 @@ async def update_knowledge_base_config(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
     config_update: KnowledgeBaseConfigUpdate,
+    user_id: int = Depends(get_current_user_id),
     member: SpaceMember = Depends(validate_space_editor),
     kb_service: KnowledgeBaseService = Depends(get_knowledge_base_service),
     db: AsyncSession = Depends(get_db),
 ):
     """部分更新知识库配置"""
-    kb = await validate_kb_access(kb_id, space_id, db)
+    kb = await validate_kb_writable(kb_id, space_id, db)
 
     await kb_service.update_config(
         kb_id=kb_id,
+        user_id=user_id,
         config_updates=config_update.model_dump(exclude_unset=True),
     )
 
