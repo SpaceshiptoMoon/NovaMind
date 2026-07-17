@@ -52,13 +52,6 @@ class QueryRewriteConfig(BaseModel):
         description="查询改写策略：hyde(假设性文档嵌入)/sub_query(子问题拆分)",
     )
 
-    # HyDE 参数
-    hyde_prompt: Optional[str] = Field(
-        default=None,
-        max_length=2000,
-        description="HyDE 自定义提示词（可选，为空则使用默认提示词）",
-    )
-
     # 子问题拆分参数
     sub_query_count: int = Field(
         default=3,
