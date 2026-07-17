@@ -24,9 +24,15 @@ from novamind.features.knowledge_space.models.document_task import TaskStatus, T
 from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
 from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
 from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
-from novamind.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
-from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
+from novamind.features.knowledge_space.repository.document_task_batch_repository import (
+    DocumentTaskBatchRepository,
+)
+from novamind.features.knowledge_space.repository.document_task_repository import (
+    DocumentTaskRepository,
+)
+from novamind.features.knowledge_space.repository.knowledge_base_repository import (
+    KnowledgeBaseRepository,
+)
 from novamind.features.knowledge_space.repository.member_repository import MemberRepository
 from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
 from novamind.features.knowledge_space.services.permission_service import PermissionService
@@ -45,7 +51,10 @@ from novamind.features.knowledge_space.api.exceptions import (
 )
 from novamind.shared.storage.minio_client import MinioClient
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
-from novamind.shared.knowledge.document_processing.converters.doc_converter import convert_doc_to_docx, DocConversionError
+from novamind.shared.knowledge.document_processing.converters.doc_converter import (
+    convert_doc_to_docx,
+    DocConversionError,
+)
 from novamind.shared.knowledge.document_processing.pipeline import DocumentProcessor
 from novamind.shared.knowledge.document_processing.validation import validate_file
 from novamind.shared.knowledge.media_processing.audio import upload_parsed_text_to_minio
@@ -54,7 +63,9 @@ from novamind.shared.knowledge.media_processing.vlm import (
     generate_vlm_text_with_fallback,
 )
 from novamind.shared.ai_models.embedding import OpenAICompatibleEmbedding as EmbeddingClient
-from novamind.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+    build_runtime_parsing_config,
+)
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     DEFAULT_CHUNK_SIZE as _SCHEMA_CHUNK_SIZE,
     DEFAULT_CHUNK_OVERLAP as _SCHEMA_CHUNK_OVERLAP,
@@ -62,6 +73,7 @@ from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     DEFAULT_MAX_CHUNK_SIZE as _SCHEMA_MAX_CHUNK_SIZE,
     DEFAULT_EMBEDDING_BATCH_SIZE as _SCHEMA_EMBEDDING_BATCH_SIZE,
 )
+from novamind.features.knowledge_space.schemas.document_schema import UploadedDocumentResult
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.document_task_batch import BatchAction
 
@@ -89,6 +101,7 @@ async def _check_document_cancelled(document_id: int) -> None:
     在 pipeline 关键节点调用，实现提前终止。
     """
     from novamind.shared.mq.task_tracker import is_document_cancelled
+
     if await is_document_cancelled(document_id):
         raise DocumentCancelledError(f"文档 {document_id} 处理已被用户取消")
 
@@ -105,10 +118,36 @@ class DocumentService:
     MAX_FILE_SIZE = 100 * 1024 * 1024
 
     # 支持的文件类型
-    SUPPORTED_FILE_TYPES = ["pdf", "doc", "docx", "txt", "md", "csv", "html", "json", "jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "avi", "mkv", "webm", "mp3", "wav", "flac", "aac", "ogg", "m4a"]
+    SUPPORTED_FILE_TYPES = [
+        "pdf",
+        "doc",
+        "docx",
+        "txt",
+        "md",
+        "csv",
+        "html",
+        "json",
+        "jpg",
+        "jpeg",
+        "png",
+        "gif",
+        "webp",
+        "mp4",
+        "mov",
+        "avi",
+        "mkv",
+        "webm",
+        "mp3",
+        "wav",
+        "flac",
+        "aac",
+        "ogg",
+        "m4a",
+    ]
 
     # 图片文件类型（从 MinIO 工具收敛到唯一定义）
     from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES as _IMG_TYPES
+
     IMAGE_FILE_TYPES = _IMG_TYPES
 
     # 视频文件类型
@@ -119,7 +158,7 @@ class DocumentService:
 
     # 模态 → 文件类型映射（用于上传校验和管道分流）
     MODALITY_TO_FILE_TYPES = {
-        "text":  frozenset({"pdf", "doc", "docx", "txt", "md", "csv", "html", "json"}),
+        "text": frozenset({"pdf", "doc", "docx", "txt", "md", "csv", "html", "json"}),
         "image": IMAGE_FILE_TYPES,
         "video": VIDEO_FILE_TYPES,
         "audio": AUDIO_FILE_TYPES,
@@ -156,7 +195,7 @@ class DocumentService:
         file_content: bytes,
         filename: str,
         metadata: Optional[Dict[str, Any]] = None,
-    ) -> Document:
+    ) -> UploadedDocumentResult:
         """
         上传文档（仅存 MinIO，不触发解析）
 
@@ -168,7 +207,9 @@ class DocumentService:
             metadata: 文档元数据
 
         Returns:
-            创建的文档记录
+            上传结果 DTO（document_id/filename/file_size）。不返回 ORM 实例，
+            避免批量上传中后续 rollback 导致实例 expire、路由层访问属性时
+            触发同步懒加载（MissingGreenlet）。
 
         Raises:
             KnowledgeBaseNotFoundError: 知识库不存在
@@ -191,7 +232,9 @@ class DocumentService:
         if not member or not member.is_active():
             raise SpaceAccessDeniedError(kb.space_id, uploader_id, "无权在此知识库上传文档")
         if not self.permission_service.can_upload_document(member):
-            raise SpaceAccessDeniedError(kb.space_id, uploader_id, "需要编辑者或更高权限才能上传文档")
+            raise SpaceAccessDeniedError(
+                kb.space_id, uploader_id, "需要编辑者或更高权限才能上传文档"
+            )
 
         # 4. 获取允许的文件类型
         filename, file_content = await self._normalize_upload_file(filename, file_content)
@@ -212,13 +255,14 @@ class DocumentService:
                 detected_mime=file_info.detected_mime,
                 message=file_info.validation_message,
             )
-            raise DocumentInvalidTypeError(
-                f"{file_info.extension}: {file_info.validation_message}"
-            )
+            raise DocumentInvalidTypeError(f"{file_info.extension}: {file_info.validation_message}")
 
         # 5.5 根据知识库模态校验文件类型
         file_type = file_info.extension
-        from novamind.features.knowledge_space.services.knowledge_base_service import get_effective_space_types
+        from novamind.features.knowledge_space.services.knowledge_base_service import (
+            get_effective_space_types,
+        )
+
         space = await self.space_repo.get_by_id(kb.space_id)
         modalities = get_effective_space_types(kb_config=kb.get_config())
 
@@ -279,7 +323,12 @@ class DocumentService:
                 kb_id=kb_id,
                 uploader_id=uploader_id,
             )
-            return soft_deleted
+            # 在 session 仍活跃时把标量读入 DTO，避免后续 rollback expire 实例。
+            return UploadedDocumentResult(
+                document_id=soft_deleted.id,
+                filename=soft_deleted.filename,
+                file_size=soft_deleted.file_size,
+            )
 
         # 9. 创建文档记录 + 上传 MinIO（使用 SAVEPOINT 保证原子性）
         # 注意：doc_repo.create 先 flush 出真实 document_id 再上传 MinIO，因此
@@ -339,7 +388,12 @@ class DocumentService:
             uploader_id=uploader_id,
         )
 
-        return document
+        # 在 session 仍活跃时把标量读入 DTO，避免后续 rollback expire 实例。
+        return UploadedDocumentResult(
+            document_id=document.id,
+            filename=document.filename,
+            file_size=document.file_size,
+        )
 
     async def upload_documents(
         self,
@@ -358,9 +412,9 @@ class DocumentService:
             files: [(filename, file_content), ...] 文件列表
 
         Returns:
-            {"success": [Document, ...], "failed": [{"filename": str, "error": str}, ...]}
+            {"success": [UploadedDocumentResult, ...], "failed": [{"filename": str, "error": str}, ...]}
         """
-        success: List[Document] = []
+        success: List[UploadedDocumentResult] = []
         failed: List[dict] = []
 
         for filename, file_content in files:
@@ -440,19 +494,24 @@ class DocumentService:
 
         # 获取或确保任务记录
         if task is None:
-            from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+            from novamind.features.knowledge_space.repository.document_task_repository import (
+                DocumentTaskRepository,
+            )
             from novamind.features.knowledge_space.models.document_task import TaskStatus
+
             _task_repo = DocumentTaskRepository(session)
             task = await _task_repo.get_by_document_id(document_id)
             if task is None:
-                task = await _task_repo.create({
-                    "document_id": document_id,
-                    "kb_id": kb_id,
-                    "space_id": space_id,
-                    "status": TaskStatus.PENDING,
-                    "pipeline_config": None,
-                    "queued_at": now_china(),
-                })
+                task = await _task_repo.create(
+                    {
+                        "document_id": document_id,
+                        "kb_id": kb_id,
+                        "space_id": space_id,
+                        "status": TaskStatus.PENDING,
+                        "pipeline_config": None,
+                        "queued_at": now_china(),
+                    }
+                )
         if task.status.value not in (1,):  # not already PROCESSING
             task.mark_processing()
 
@@ -471,13 +530,19 @@ class DocumentService:
 
         # ===== 视频文档分支（新增） =====
         if file_ext in DocumentService.VIDEO_FILE_TYPES:
-            from novamind.features.knowledge_space.services.media_processing import process_video_document
+            from novamind.features.knowledge_space.services.media_processing import (
+                process_video_document,
+            )
+
             await process_video_document(document, file_content, session, _logger, task=task)
             return
 
         # ===== 音频文档分支（新增） =====
         if file_ext in DocumentService.AUDIO_FILE_TYPES:
-            from novamind.features.knowledge_space.services.media_processing import process_audio_document
+            from novamind.features.knowledge_space.services.media_processing import (
+                process_audio_document,
+            )
+
             await process_audio_document(document, file_content, session, _logger, task=task)
             return
 
@@ -488,8 +553,10 @@ class DocumentService:
         space_owner_id = space.owner_id if space else None
 
         # 获取 DocumentProcessor（传入空间配置的嵌入模型，确保语义切分使用正确模型）
-        processor = await _get_document_processor_static(session, user_id=space_owner_id, model_name=embedding_model_name)
-        kb_config = (task.pipeline_config if task and task.pipeline_config else kb.get_config() or {})
+        processor = await _get_document_processor_static(
+            session, user_id=space_owner_id, model_name=embedding_model_name
+        )
+        kb_config = task.pipeline_config if task and task.pipeline_config else kb.get_config() or {}
         splitting_config = kb_config.get("splitting", {})
         suffix = f".{document.file_type}"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -497,9 +564,24 @@ class DocumentService:
             tmp_path = tmp.name
 
         try:
-            # 先读取原始解析全文，避免将切块结果回拼成“伪全文”再落 MinIO。
+            # 先读取原始解析全文，避免将切块结果回拼成”伪全文”再落 MinIO。
 
-            parsing_config = build_runtime_parsing_config(kb_config.get("parsing", {}), document.file_type)
+            parsing_config = build_runtime_parsing_config(
+                kb_config.get("parsing", {}), document.file_type
+            )
+            _logger.info(
+                "文档解析配置已生成",
+                document_id=document_id,
+                file_type=document.file_type,
+                parsing_strategy=parsing_config.get("strategy", "default"),
+                deepdoc_parser_id=parsing_config.get("deepdoc_parser_id"),
+                deepdoc_pdf_mode=parsing_config.get("deepdoc_pdf_mode"),
+                ocr_enabled=parsing_config.get("ocr_enabled", False),
+                vlm_description_enabled=parsing_config.get("vlm_description_enabled", False),
+                splitting_strategy=splitting_config.get("strategy", "recursive"),
+                splitting_chunk_size=splitting_config.get("chunk_size", 1000),
+                splitting_chunk_overlap=splitting_config.get("chunk_overlap", 100),
+            )
             parse_result = await processor.parse_document_result(
                 tmp_path,
                 parsing_config=parsing_config,
@@ -507,6 +589,19 @@ class DocumentService:
             )
             full_text = parse_result.full_text
             chunks = parse_result.chunks
+            _logger.info(
+                "文档解析结果",
+                document_id=document_id,
+                file_type=document.file_type,
+                char_count=len(full_text),
+                chunk_count=len(chunks),
+                parse_metadata_keys=list(parse_result.metadata.keys())
+                if parse_result.metadata
+                else [],
+                deepdoc_rechunked=parse_result.metadata.get("deepdoc_rechunked", False)
+                if parse_result.metadata
+                else False,
+            )
             task.set_step("parsed", "done")
 
             # 解析全文持久化到 MinIO（切块之前，立刻 commit 落库）
@@ -526,7 +621,9 @@ class DocumentService:
         await _check_document_cancelled(document_id)
 
         # 2. 准备 ES 数据
-        es_chunks = _prepare_es_chunks_static(document, chunks, parse_metadata=parse_result.metadata)
+        es_chunks = _prepare_es_chunks_static(
+            document, chunks, parse_metadata=parse_result.metadata
+        )
 
         # 3. 向量化并索引到 ES（Embedding 配置从空间级别读取）
         embedding_config = space.embedding_config if space and space.embedding_config else {}
@@ -547,8 +644,7 @@ class DocumentService:
         # 5. 生成假设问题（由知识库配置控制）
         # 优先使用 task.pipeline_config 快照（入队时的 KB 配置），确保处理的一致性
 
-        kb_config = (task.pipeline_config if task and task.pipeline_config
-                     else kb.get_config() or {})
+        kb_config = task.pipeline_config if task and task.pipeline_config else kb.get_config() or {}
         qg_config = kb_config.get("question_generation", {})
         should_generate = qg_config.get("enabled", False) if qg_config else False
 
@@ -563,7 +659,10 @@ class DocumentService:
                 # 不使用全局超时：generate_questions_batch 内部每批次有 120s 超时，
                 # 失败的批次跳过（保留空结果），成功的批次保留问题。
                 # 这样即使部分批次超时，已生成的结果不会丢失。
-                questions_list, question_embeddings_list = await _generate_questions_for_chunks_static(
+                (
+                    questions_list,
+                    question_embeddings_list,
+                ) = await _generate_questions_for_chunks_static(
                     chunks=[c["content"] for c in es_chunks],
                     document_title=document.filename,
                     kb_config=kb_config,
@@ -571,11 +670,11 @@ class DocumentService:
                     user_id=document.uploader_id,
                     session=session,
                 )
-                for i, (questions, q_embeddings) in enumerate(zip(questions_list, question_embeddings_list)):
+                for i, (questions, q_embeddings) in enumerate(
+                    zip(questions_list, question_embeddings_list)
+                ):
                     es_chunks[i]["questions"] = questions
-                    es_chunks[i]["question_embeddings"] = [
-                        {"vector": emb} for emb in q_embeddings
-                    ]
+                    es_chunks[i]["question_embeddings"] = [{"vector": emb} for emb in q_embeddings]
                 _logger.info(
                     "假设问题生成完成",
                     document_id=document_id,
@@ -618,22 +717,24 @@ class DocumentService:
         parse_summary = _extract_parse_metadata_summary(parse_result.metadata)
 
         # 5. 标记任务完成
-        task.mark_completed(result={
-            "chunk_count": len(chunks),
-            "total_tokens": sum(len(c.split()) for c in chunks),
-            "parse_strategy": parsing_config.get("strategy", "default"),
-            "split_strategy": splitting_config.get("strategy", "recursive"),
-            "chunk_size": splitting_config.get("chunk_size", DEFAULT_CHUNK_SIZE),
-            "chunk_overlap": splitting_config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
-            "parser_class": parse_result.metadata.get("parser_class", ""),
-            "pdf_mode": parse_result.metadata.get("pdf_mode", ""),
-            "layout_source": parse_result.metadata.get("layout_source", ""),
-            "vision_strategy": parse_result.metadata.get("vision_strategy", ""),
-            "table_region_count": parse_summary["table_region_count"],
-            "figure_region_count": parse_summary["figure_region_count"],
-            "reading_order_count": parse_summary["reading_order_count"],
-            "indexed_at": now_china().isoformat(),
-        })
+        task.mark_completed(
+            result={
+                "chunk_count": len(chunks),
+                "total_tokens": sum(len(c.split()) for c in chunks),
+                "parse_strategy": parsing_config.get("strategy", "default"),
+                "split_strategy": splitting_config.get("strategy", "recursive"),
+                "chunk_size": splitting_config.get("chunk_size", DEFAULT_CHUNK_SIZE),
+                "chunk_overlap": splitting_config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
+                "parser_class": parse_result.metadata.get("parser_class", ""),
+                "pdf_mode": parse_result.metadata.get("pdf_mode", ""),
+                "layout_source": parse_result.metadata.get("layout_source", ""),
+                "vision_strategy": parse_result.metadata.get("vision_strategy", ""),
+                "table_region_count": parse_summary["table_region_count"],
+                "figure_region_count": parse_summary["figure_region_count"],
+                "reading_order_count": parse_summary["reading_order_count"],
+                "indexed_at": now_china().isoformat(),
+            }
+        )
         await session.commit()
 
         _logger.info(
@@ -641,7 +742,6 @@ class DocumentService:
             document_id=document_id,
             chunk_count=len(chunks),
         )
-
 
     async def delete_document(
         self,
@@ -685,7 +785,10 @@ class DocumentService:
             raise DocumentNotFoundError(document_id)
 
         # 2.5 有活跃处理任务时拒绝删除
-        from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from novamind.features.knowledge_space.repository.document_task_repository import (
+            DocumentTaskRepository,
+        )
+
         _task_repo = DocumentTaskRepository(self.session)
         active_task = await _task_repo.get_active_by_document_id(document_id)
         if active_task:
@@ -695,7 +798,8 @@ class DocumentService:
         if not self.permission_service.can_delete_any_document(member):
             if document.uploader_id != user_id:
                 raise SpaceAccessDeniedError(
-                    kb.space_id, user_id,
+                    kb.space_id,
+                    user_id,
                     "只能删除自己上传的文档，删除他人文档需要管理员权限",
                 )
 
@@ -708,6 +812,7 @@ class DocumentService:
         # 6. 失效该知识库的搜索缓存
         try:
             from novamind.shared.cache.redis_client import get_redis_client
+
             cache = await get_redis_client()
             await cache.delete_by_pattern(f"search:{kb_id}:*", batch_size=100)
         except Exception as cache_err:
@@ -720,7 +825,9 @@ class DocumentService:
                 document_id=document_id,
             )
         except Exception as e:
-            self.logger.warning("删除 ES 分块数据失败（数据已从 DB 删除）", document_id=document_id, error=str(e))
+            self.logger.warning(
+                "删除 ES 分块数据失败（数据已从 DB 删除）", document_id=document_id, error=str(e)
+            )
 
         try:
             storage_info = document.get_storage_info()
@@ -730,7 +837,9 @@ class DocumentService:
                     object_name=storage_info["minio_object_name"],
                 )
         except Exception as e:
-            self.logger.warning("删除 MinIO 文件失败（数据已从 DB 删除）", document_id=document_id, error=str(e))
+            self.logger.warning(
+                "删除 MinIO 文件失败（数据已从 DB 删除）", document_id=document_id, error=str(e)
+            )
 
         self.logger.info(
             "文档删除成功",
@@ -861,15 +970,15 @@ class DocumentService:
 
         # 防止路径遍历攻击
         # 只允许字母、数字、中文、下划线、连字符、空格和点
-        if not re.match(r'^[\w一-龥\-\s\.]+$', filename):
+        if not re.match(r"^[\w一-龥\-\s\.]+$", filename):
             raise InvalidParameterError("文件名包含非法字符", field="filename")
 
         # 检查路径遍历
-        if '..' in filename or '/' in filename or '\\' in filename:
+        if ".." in filename or "/" in filename or "\\" in filename:
             raise InvalidParameterError("文件名包含非法路径字符", field="filename")
 
         # 获取扩展名
-        ext = Path(filename).suffix.lower().lstrip('.')
+        ext = Path(filename).suffix.lower().lstrip(".")
 
         # 检查是否为支持的文件类型
         if ext not in self.SUPPORTED_FILE_TYPES:
@@ -988,14 +1097,18 @@ class DocumentService:
             raise DocumentNotFoundError(document_id)
 
         # 检查是否有活跃任务
-        from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from novamind.features.knowledge_space.repository.document_task_repository import (
+            DocumentTaskRepository,
+        )
+
         _task_repo = DocumentTaskRepository(self.session)
         active_task = await _task_repo.get_active_by_document_id(document_id)
         if not active_task:
             raise InvalidParameterError("只能取消处理中的文档", field="document_id")
 
         from novamind.shared.mq.task_tracker import (
-            get_job_id_for_document, mark_document_cancelled,
+            get_job_id_for_document,
+            mark_document_cancelled,
         )
         from novamind.shared.mq import get_arq_pool
 
@@ -1011,7 +1124,9 @@ class DocumentService:
                 pool = await get_arq_pool()
                 await pool.abort_job(job_id)
             except Exception as e:
-                self.logger.warning("arq abort 失败（取消标记已设置）", document_id=document_id, error=str(e))
+                self.logger.warning(
+                    "arq abort 失败（取消标记已设置）", document_id=document_id, error=str(e)
+                )
 
         self.logger.info("文档取消信号已发送", document_id=document_id, job_id=job_id)
         return True
@@ -1024,6 +1139,7 @@ class DocumentService:
             正在处理的数量
         """
         from novamind.shared.mq.task_tracker import get_active_document_count
+
         return await get_active_document_count()
 
     # ========== 拆分解析方法 ==========
@@ -1084,44 +1200,58 @@ class DocumentService:
         for doc_id in document_ids:
             document = document_map.get(doc_id)
             if not document:
-                results.append({
-                    "document_id": doc_id,
-                    "status": "failed",
-                    "message": str(DocumentNotFoundError(doc_id)),
-                })
+                results.append(
+                    {
+                        "document_id": doc_id,
+                        "status": "failed",
+                        "message": str(DocumentNotFoundError(doc_id)),
+                    }
+                )
                 continue
 
             if document.kb_id != kb_id:
-                results.append({
-                    "document_id": doc_id,
-                    "status": "failed",
-                    "message": "文档不属于该知识库",
-                })
+                results.append(
+                    {
+                        "document_id": doc_id,
+                        "status": "failed",
+                        "message": "文档不属于该知识库",
+                    }
+                )
                 continue
 
             if doc_id in active_task_map:
-                results.append({
-                    "document_id": doc_id,
-                    "status": "skipped",
-                    "message": "文档正在处理中，跳过",
-                })
+                results.append(
+                    {
+                        "document_id": doc_id,
+                        "status": "skipped",
+                        "message": "文档正在处理中，跳过",
+                    }
+                )
                 continue
 
             latest_task = latest_task_map.get(doc_id)
-            process_mode = TaskProcessMode.REPROCESS if latest_task and latest_task.status == TaskStatus.COMPLETED else TaskProcessMode.PROCESS
+            process_mode = (
+                TaskProcessMode.REPROCESS
+                if latest_task and latest_task.status == TaskStatus.COMPLETED
+                else TaskProcessMode.PROCESS
+            )
 
             eligible_documents.append(document)
-            task_modes[doc_id] = "reprocess" if process_mode == TaskProcessMode.REPROCESS else "process"
-            task_payloads.append({
-                "document_id": doc_id,
-                "kb_id": document.kb_id,
-                "space_id": document.space_id,
-                "status": TaskStatus.PENDING,
-                "process_mode": process_mode,
-                "pipeline_config": current_pipeline_config,
-                "retry_count": 0,
-                "queued_at": now_china(),
-            })
+            task_modes[doc_id] = (
+                "reprocess" if process_mode == TaskProcessMode.REPROCESS else "process"
+            )
+            task_payloads.append(
+                {
+                    "document_id": doc_id,
+                    "kb_id": document.kb_id,
+                    "space_id": document.space_id,
+                    "status": TaskStatus.PENDING,
+                    "process_mode": process_mode,
+                    "pipeline_config": current_pipeline_config,
+                    "retry_count": 0,
+                    "queued_at": now_china(),
+                }
+            )
 
         if not task_payloads:
             return {
@@ -1134,15 +1264,17 @@ class DocumentService:
             }
 
         batch_repo = DocumentTaskBatchRepository(self.session)
-        batch = await batch_repo.create({
-            "space_id": eligible_documents[0].space_id,
-            "kb_id": kb_id,
-            "creator_id": user_id,
-            "action": BatchAction.PROCESS,
-            "pipeline_config": current_pipeline_config,
-            "total_count": len(task_payloads),
-            "note": f"批量处理 {len(task_payloads)} 个文档",
-        })
+        batch = await batch_repo.create(
+            {
+                "space_id": eligible_documents[0].space_id,
+                "kb_id": kb_id,
+                "creator_id": user_id,
+                "action": BatchAction.PROCESS,
+                "pipeline_config": current_pipeline_config,
+                "total_count": len(task_payloads),
+                "note": f"批量处理 {len(task_payloads)} 个文档",
+            }
+        )
         for payload in task_payloads:
             payload["batch_id"] = batch.id
 
@@ -1154,12 +1286,14 @@ class DocumentService:
         except Exception as e:
             await self._cancel_batch_enqueue(batch.id, [task.id for task in created_tasks], str(e))
             for document in eligible_documents:
-                results.append({
-                    "document_id": document.id,
-                    "task_id": batch.id,
-                    "status": "failed",
-                    "message": f"批量入队失败: {e}",
-                })
+                results.append(
+                    {
+                        "document_id": document.id,
+                        "task_id": batch.id,
+                        "status": "failed",
+                        "message": f"批量入队失败: {e}",
+                    }
+                )
             return {
                 "task_id": None,
                 "total": len(results),
@@ -1172,14 +1306,18 @@ class DocumentService:
         task_by_document_id = {task.document_id: task for task in created_tasks}
         for document in eligible_documents:
             task = task_by_document_id[document.id]
-            results.append({
-                "document_id": document.id,
-                "task_id": batch.id,
-                "task_item_id": task.id,
-                "job_id": enqueued_jobs.get(task.id),
-                "status": "processing",
-                "message": "已触发重新解析" if task_modes[document.id] == "reprocess" else "已触发处理",
-            })
+            results.append(
+                {
+                    "document_id": document.id,
+                    "task_id": batch.id,
+                    "task_item_id": task.id,
+                    "job_id": enqueued_jobs.get(task.id),
+                    "status": "processing",
+                    "message": "已触发重新解析"
+                    if task_modes[document.id] == "reprocess"
+                    else "已触发处理",
+                }
+            )
 
         return {
             "task_id": batch.id,
@@ -1227,7 +1365,10 @@ class DocumentService:
         if document.kb_id != kb_id or document.space_id != space_id:
             raise DocumentNotFoundError(document_id)
 
-        from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from novamind.features.knowledge_space.repository.document_task_repository import (
+            DocumentTaskRepository,
+        )
+
         _task_repo = DocumentTaskRepository(self.session)
         latest_task = await _task_repo.get_by_document_id(document_id)
         if not latest_task or latest_task.status not in (TaskStatus.FAILED, TaskStatus.COMPLETED):
@@ -1262,7 +1403,10 @@ class DocumentService:
         document = await self.doc_repo.get_by_id(document_id)
         if not document:
             raise DocumentNotFoundError(document_id)
-        from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from novamind.features.knowledge_space.repository.document_task_repository import (
+            DocumentTaskRepository,
+        )
+
         _task_repo = DocumentTaskRepository(self.session)
         active_task = await _task_repo.get_active_by_document_id(document_id)
         if active_task:
@@ -1289,9 +1433,14 @@ class DocumentService:
             raise DocumentAlreadyProcessingError(document.id)
 
         kb = await self.kb_repo.get_by_id(document.kb_id)
-        pipeline_config = pipeline_config_override if pipeline_config_override is not None else (kb.get_config() if kb else None)
+        pipeline_config = (
+            pipeline_config_override
+            if pipeline_config_override is not None
+            else (kb.get_config() if kb else None)
+        )
 
         from novamind.shared.mq import enqueue_process_document
+
         batch_data = None
         if batch_id is None and batch_creator_id is not None:
             batch_data = {
@@ -1353,18 +1502,27 @@ class DocumentService:
                     job = Job(job_id, pool, _deserializer=pool.job_deserializer)
                     await job.abort(timeout=0)
                 except Exception:
-                    self.logger.warning("批量入队回滚时取消 job 失败", document_id=document_id, job_id=job_id)
+                    self.logger.warning(
+                        "批量入队回滚时取消 job 失败", document_id=document_id, job_id=job_id
+                    )
                 try:
                     await unbind_job(document_id)
                 except Exception:
-                    self.logger.warning("批量入队回滚时清理任务映射失败", document_id=document_id, job_id=job_id)
+                    self.logger.warning(
+                        "批量入队回滚时清理任务映射失败", document_id=document_id, job_id=job_id
+                    )
             raise
 
-    async def _cancel_batch_enqueue(self, batch_id: int, task_ids: List[int], error_message: str) -> None:
+    async def _cancel_batch_enqueue(
+        self, batch_id: int, task_ids: List[int], error_message: str
+    ) -> None:
         from sqlalchemy import update
         from novamind.core.database.database import get_db_session
         from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
-        from novamind.features.knowledge_space.models.document_task_batch import DocumentTaskBatch, BatchStatus
+        from novamind.features.knowledge_space.models.document_task_batch import (
+            DocumentTaskBatch,
+            BatchStatus,
+        )
 
         async with get_db_session() as session:
             if task_ids:
@@ -1428,9 +1586,10 @@ async def _process_image_document_static(
     vlm_enabled = False
     if kb:
         # 优先使用 task.pipeline_config 快照
-        kb_config = (task.pipeline_config if task and task.pipeline_config
-                     else kb.get_config() or {})
-        parsing_config = build_runtime_parsing_config(kb_config.get("parsing", {}), document.file_type)
+        kb_config = task.pipeline_config if task and task.pipeline_config else kb.get_config() or {}
+        parsing_config = build_runtime_parsing_config(
+            kb_config.get("parsing", {}), document.file_type
+        )
         vlm_enabled = parsing_config.get("vlm_description_enabled", False)
 
     # 检查点 0：配置读取后
@@ -1438,6 +1597,7 @@ async def _process_image_document_static(
 
     # 2. 获取多模态嵌入客户端
     from novamind.features.user.services.model_config_service import ModelConfigService
+
     mcs = ModelConfigService(session)
     client = await mcs.get_multimodal_embedding_client_by_model(document.uploader_id, model_name)
 
@@ -1640,10 +1800,13 @@ def _extract_parse_metadata_summary(parse_metadata: Dict[str, Any]) -> Dict[str,
 async def _get_es_client_static() -> ElasticsearchClient:
     """获取 ES 客户端（静态方法用）"""
     from novamind.shared.clients import ClientFactory
+
     return await ClientFactory.get_elasticsearch_client()
 
 
-async def _get_document_processor_static(session: AsyncSession, user_id: Optional[int] = None, model_name: Optional[str] = None) -> DocumentProcessor:
+async def _get_document_processor_static(
+    session: AsyncSession, user_id: Optional[int] = None, model_name: Optional[str] = None
+) -> DocumentProcessor:
     """获取文档处理器（静态方法用）"""
     from novamind.features.user.services.model_config_service import ModelConfigService
 
@@ -1678,7 +1841,7 @@ async def _generate_embeddings_static(
     batch_size = embedding_config.get("batch_size", DEFAULT_EMBEDDING_BATCH_SIZE)
     all_embeddings = []
     for i in range(0, len(texts), batch_size):
-        batch = texts[i:i + batch_size]
+        batch = texts[i : i + batch_size]
         try:
             embeddings = await embedding_client.generate_embeddings_batch(batch)
         except Exception as e:
@@ -1837,7 +2000,9 @@ async def _generate_questions_for_chunks_static(
     _logger = get_logger(__name__)
 
     qg_config_dict = kb_config.get("question_generation", {})
-    qg_config = QuestionGenerationConfig(**qg_config_dict) if qg_config_dict else QuestionGenerationConfig()
+    qg_config = (
+        QuestionGenerationConfig(**qg_config_dict) if qg_config_dict else QuestionGenerationConfig()
+    )
 
     if not qg_config.enabled:
         _logger.info("假设问题生成未启用，跳过")
@@ -1875,7 +2040,7 @@ async def _generate_questions_for_chunks_static(
             idx = 0
             for chunk_questions in batch_results:
                 count = len(chunk_questions)
-                question_embeddings_list.append(all_q_embeddings[idx:idx + count])
+                question_embeddings_list.append(all_q_embeddings[idx : idx + count])
                 idx += count
         except Exception as e:
             _logger.warning("问题向量生成失败，跳过向量", error=str(e))

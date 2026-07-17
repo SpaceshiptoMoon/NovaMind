@@ -130,7 +130,9 @@ def _patch_upload_helpers(monkeypatch, service):
 
 def test_upload_document_updates_hash_cache_after_create(monkeypatch):
     """Successful create must sync the dedup cache to exists=True (regression: batch re-upload IntegrityError)."""
-    created = SimpleNamespace(id=42, set_minio_info=MagicMock())
+    created = SimpleNamespace(
+        id=42, filename="doc.pdf", file_size=18, set_minio_info=MagicMock()
+    )
     cache_mock = AsyncMock()
     service = _build_service(create_side_effect=lambda *a, **k: created, cache_mock=cache_mock)
     _patch_upload_helpers(monkeypatch, service)
@@ -144,7 +146,11 @@ def test_upload_document_updates_hash_cache_after_create(monkeypatch):
         )
     )
 
-    assert doc is created
+    # service now returns a flat DTO (not the ORM instance) so the route layer
+    # never touches ORM attributes that could be expired by a later rollback.
+    assert doc.document_id == 42
+    assert doc.filename == "doc.pdf"
+    assert doc.file_size == 18
     cache_mock.assert_awaited_once()
     # The call must mark this (kb_id, file_hash) as existing.
     args = cache_mock.await_args.args
@@ -179,3 +185,48 @@ def test_upload_document_translates_integrity_error_to_already_exists(monkeypatc
     # On collision we roll back and must NOT have flipped the cache to exists=True.
     service.session.rollback.assert_awaited_once()
     cache_mock.assert_not_awaited()
+
+
+def test_upload_documents_survives_later_rollback_via_dto(monkeypatch):
+    """Regression: batch upload where a later file triggers rollback must not
+    expire earlier success' attributes. Previously the service returned ORM
+    ``Document`` instances; a later ``IntegrityError`` → ``session.rollback()``
+    (``expire_on_rollback=True``) expired them, and the route reading ``doc.id``
+    triggered a sync lazy-load → ``MissingGreenlet``. The service now returns
+    flat ``UploadedDocumentResult`` DTOs with values captured before any later
+    rollback, so the success entries remain usable.
+    """
+    created1 = SimpleNamespace(
+        id=42, filename="doc.pdf", file_size=18, set_minio_info=MagicMock()
+    )
+    call_count = {"n": 0}
+
+    def _create_side(*a, **k):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return created1
+        raise IntegrityError("INSERT INTO documents ...", {}, Exception("Duplicate entry"))
+
+    cache_mock = AsyncMock()
+    service = _build_service(create_side_effect=_create_side, cache_mock=cache_mock)
+    _patch_upload_helpers(monkeypatch, service)
+
+    result = _run(
+        service.upload_documents(
+            kb_id=1,
+            uploader_id=1,
+            files=[("a.pdf", b"aaa"), ("b.pdf", b"bbb")],
+        )
+    )
+
+    # First file succeeded, second hit the unique constraint and was rolled back.
+    assert len(result["success"]) == 1
+    assert len(result["failed"]) == 1
+    service.session.rollback.assert_awaited_once()
+
+    # The success entry carries concrete values despite the later rollback —
+    # the route layer can read these without any ORM lazy-load.
+    uploaded = result["success"][0]
+    assert uploaded.document_id == 42
+    assert uploaded.filename == "doc.pdf"
+    assert uploaded.file_size == 18

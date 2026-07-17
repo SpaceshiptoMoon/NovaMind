@@ -39,6 +39,7 @@ from novamind.features.knowledge_space.schemas.document_task_schema import (
 from novamind.features.knowledge_space.schemas.member_schema import ActionResponse
 from novamind.features.knowledge_space.models.space_member import SpaceMember
 from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
 from novamind.core.database.database import get_db
 from novamind.features.knowledge_space.api.dependencies import (
     get_current_user_id,
@@ -182,7 +183,7 @@ async def upload_document(
         file_content = await _read_upload_file(file)
 
         # 上传文档（仅存 MinIO，不触发解析）
-        document = await document_service.upload_document(
+        uploaded = await document_service.upload_document(
             kb_id=kb_id,
             uploader_id=user_id,
             file_content=file_content,
@@ -193,15 +194,15 @@ async def upload_document(
         await audit_service.log_document_upload(
             space_id=space_id,
             user_id=user_id,
-            document_id=document.id,
-            filename=document.filename,
-            file_size=document.file_size,
+            document_id=uploaded.document_id,
+            filename=uploaded.filename,
+            file_size=uploaded.file_size,
             request=request,
         )
 
         return DocumentUploadResponse(
-            document_id=document.id,
-            filename=document.filename,
+            document_id=uploaded.document_id,
+            filename=uploaded.filename,
             status="uploaded",
             message="文档上传成功，等待拆分解析",
         )
@@ -252,7 +253,7 @@ async def upload_document(
         await audit_service.log_document_upload(
             space_id=space_id,
             user_id=user_id,
-            document_id=doc.id,
+            document_id=doc.document_id,
             filename=doc.filename,
             file_size=doc.file_size,
             request=request,
@@ -267,7 +268,7 @@ async def upload_document(
         total=len(files),
         success=[
             DocumentUploadResponse(
-                document_id=doc.id,
+                document_id=doc.document_id,
                 filename=doc.filename,
                 status="uploaded",
                 message="文档上传成功，等待拆分解析",
@@ -406,6 +407,14 @@ async def get_document_tasks_overview(
         item.items = [DocumentTaskItemResponse.model_validate(t) for t in tasks]
         items.append(item)
 
+    # 关联文档名：批量按 document_id 查 Documents.filename，回填到每个任务项，
+    # 供前端「文档」列展示真实文件名而非占位符（如「文档 24」）。
+    document_ids = {item.document_id for task in items for item in task.items}
+    filename_map = await DocumentRepository(db).get_filename_map_by_ids(list(document_ids))
+    for task in items:
+        for task_item in task.items:
+            task_item.document_name = filename_map.get(task_item.document_id)
+
     return DocumentTaskListResponse(
         items=items,
         total=total,
@@ -437,8 +446,12 @@ async def get_document_task_items(
 
     task_repo = DocumentTaskRepository(db)
     tasks = await task_repo.list_by_document(document_id)
+    task_items = [DocumentTaskItemResponse.model_validate(t) for t in tasks]
+    # 回填文档名（document 已在上文校验存在）
+    for task_item in task_items:
+        task_item.document_name = document.filename
     return DocumentTaskItemListResponse(
-        items=[DocumentTaskItemResponse.model_validate(t) for t in tasks],
+        items=task_items,
         total=len(tasks),
     )
 
