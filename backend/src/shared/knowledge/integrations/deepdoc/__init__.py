@@ -12,6 +12,7 @@ _EXPORT_MAP = {
     "DeepDocParserFactory": ("novamind.shared.knowledge.integrations.deepdoc.core.factory", "DeepDocParserFactory"),
     "DeepDocParserSpec": ("novamind.shared.knowledge.integrations.deepdoc.core.factory", "DeepDocParserSpec"),
     "DeepDocParseResult": ("novamind.shared.knowledge.integrations.deepdoc.core.models", "DeepDocParseResult"),
+    "strip_position_tags": ("novamind.shared.knowledge.integrations.deepdoc.core.models", "strip_position_tags"),
     "DeepDocParser": ("novamind.shared.knowledge.integrations.deepdoc.core.runtime_parser", "DeepDocParser"),
     "DeepDocPdfBox": ("novamind.shared.knowledge.integrations.deepdoc.parsers.pdf", "DeepDocPdfBox"),
     "RAGFlowPdfParser": ("novamind.shared.knowledge.integrations.deepdoc.parsers.pdf", "RAGFlowPdfParser"),

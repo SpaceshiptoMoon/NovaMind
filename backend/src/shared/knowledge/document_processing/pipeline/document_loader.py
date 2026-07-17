@@ -12,7 +12,7 @@ from novamind.shared.knowledge.document_processing.splitters.recursive_splitter 
 from novamind.shared.knowledge.document_processing.splitters.semantic_splitter import SemanticSplitter
 from novamind.shared.knowledge.document_processing.splitters.fixed_size_splitter import FixedSizeSplitter
 from novamind.shared.knowledge.document_processing.splitters.markdown_splitter import MarkdownSplitter
-from novamind.shared.knowledge.integrations.deepdoc import DeepDocEngine, DeepDocParser, DeepDocParseResult
+from novamind.shared.knowledge.integrations.deepdoc import DeepDocEngine, DeepDocParser, DeepDocParseResult, strip_position_tags
 from novamind.shared.ai_models.base_model import BaseEmbedding
 from novamind.core.middleware.structured_logging import get_logger
 
@@ -392,12 +392,24 @@ class DocumentProcessor:
         parsing_config = dict(parsing_config or {})
         splitting_config = dict(splitting_config or {})
         parsing_strategy = str(parsing_config.get("strategy", "default"))
+        file_type = Path(file_path).suffix.lower().lstrip(".")
 
         if parsing_strategy == "deepdoc":
             parser_id = parsing_config.get("deepdoc_parser_id")
+            logger.info(
+                "DeepDoc 解析开始",
+                filename=Path(file_path).name,
+                file_type=file_type,
+                parsing_strategy=parsing_strategy,
+                deepdoc_parser_id=parser_id,
+                deepdoc_pdf_mode=parsing_config.get("deepdoc_pdf_mode"),
+                splitting_strategy=splitting_config.get("strategy", "recursive"),
+                splitting_chunk_size=splitting_config.get("chunk_size", 1000),
+                splitting_chunk_overlap=splitting_config.get("chunk_overlap", 100),
+            )
             if parser_id:
                 parse_result = await self._deepdoc_engine.aparse_with_parser_id(
-                    file_type=Path(file_path).suffix.lower().lstrip("."),
+                    file_type=file_type,
                     parser_id=str(parser_id),
                     file_path=file_path,
                     parsing_config=parsing_config,
@@ -414,10 +426,18 @@ class DocumentProcessor:
                 filename=Path(file_path).name,
                 char_count=len(parse_result.full_text),
                 chunk_count=len(parse_result.chunks),
+                deepdoc_parser_id=parse_result.metadata.get("parser_id", parser_id),
+                deepdoc_rechunked=parse_result.metadata.get("deepdoc_rechunked", False),
             )
             # DeepDoc 内部仅做简单拼接分块（_chunk_blocks），忽略用户配置的
             # splitting strategy/overlap/min_chunk_size/max_chunk_size。
             # 对 full_text 按用户配置的 splitting 参数重新切分，以尊重配置。
+            #
+            # full_text 在 layout/vision 模式下带有 ``@@<page>\t<x0>\t<x1>\t<top>\t<bottom>##``
+            # 版面坐标标记，重新切分前必须剥离，否则坐标会泄漏进 chunk 正文 / embedding。
+            # 位置信息已由 parser 单独写入结构化 chunk 的 metadata（position_tag/source_id），
+            # 剥离 full_text 中的标记不影响位置溯源。
+            clean_full_text = strip_position_tags(parse_result.full_text)
             split_strategy = str(splitting_config.get("strategy", "recursive"))
             # "semantic" 策略需要 embedding_client，DeepDoc 路径暂不支持，回退到 recursive
             if split_strategy == "semantic" and self.embedding_client is None:
@@ -429,7 +449,7 @@ class DocumentProcessor:
             if split_strategy not in ("recursive", "fixed_size", "markdown"):
                 split_strategy = "recursive"
             rechunked = await self.split_text(
-                parse_result.full_text,
+                clean_full_text,
                 strategy=split_strategy,
                 chunk_size=splitting_config.get("chunk_size", 1000),
                 chunk_overlap=splitting_config.get("chunk_overlap", 100),
@@ -439,7 +459,7 @@ class DocumentProcessor:
                 batch_size=splitting_config.get("batch_size", 20),
             )
             parse_result = DeepDocParseResult(
-                full_text=parse_result.full_text,
+                full_text=clean_full_text,
                 chunks=rechunked,
                 metadata={
                     **parse_result.metadata,
@@ -449,6 +469,16 @@ class DocumentProcessor:
             )
             return parse_result
 
+        logger.info(
+            "默认解析开始",
+            filename=Path(file_path).name,
+            file_type=file_type,
+            parsing_strategy=parsing_strategy,
+            ocr_enabled=parsing_config.get("ocr_enabled", False),
+            splitting_strategy=splitting_config.get("strategy", "recursive"),
+            splitting_chunk_size=splitting_config.get("chunk_size", 1000),
+            splitting_chunk_overlap=splitting_config.get("chunk_overlap", 100),
+        )
         full_text = await self.read_full_text(
             file_path,
             ocr_enabled=bool(parsing_config.get("ocr_enabled", False)),
@@ -463,12 +493,19 @@ class DocumentProcessor:
             similarity_threshold=splitting_config.get("similarity_threshold", 0.7),
             batch_size=splitting_config.get("batch_size", 20),
         )
+        logger.info(
+            "默认解析完成",
+            filename=Path(file_path).name,
+            char_count=len(full_text),
+            chunk_count=len(chunks),
+            split_strategy=str(splitting_config.get("strategy", "recursive")),
+        )
         return DeepDocParseResult(
             full_text=full_text,
             chunks=chunks,
             metadata={
                 "parser": "default",
-                "file_type": Path(file_path).suffix.lower().lstrip("."),
+                "file_type": file_type,
                 "split_strategy": str(splitting_config.get("strategy", "recursive")),
             },
         )
