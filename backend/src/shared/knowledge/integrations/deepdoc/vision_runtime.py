@@ -139,7 +139,9 @@ def _attempt_component_load(component: str) -> Dict[str, Any]:
 
             OCR(autoload=True)
         elif component == "layout":
-            from novamind.shared.knowledge.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
+            from novamind.shared.knowledge.integrations.deepdoc.vision.layout_recognizer import (
+                LayoutRecognizer4YOLOv10 as LayoutRecognizer,
+            )
 
             LayoutRecognizer(autoload=True)
         elif component == "tsr":
@@ -165,7 +167,9 @@ def _attempt_component_inference(component: str) -> Dict[str, Any]:
             predictions = ocr(synthetic_image)
             result["prediction_type"] = type(predictions).__name__
         elif component == "layout":
-            from novamind.shared.knowledge.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
+            from novamind.shared.knowledge.integrations.deepdoc.vision.layout_recognizer import (
+                LayoutRecognizer4YOLOv10 as LayoutRecognizer,
+            )
 
             recognizer = LayoutRecognizer(autoload=True)
             predictions = recognizer.forward([synthetic_image], thr=0.0, batch_size=1)
