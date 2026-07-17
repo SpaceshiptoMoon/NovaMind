@@ -415,6 +415,38 @@ class DocumentProcessor:
                 char_count=len(parse_result.full_text),
                 chunk_count=len(parse_result.chunks),
             )
+            # DeepDoc 内部仅做简单拼接分块（_chunk_blocks），忽略用户配置的
+            # splitting strategy/overlap/min_chunk_size/max_chunk_size。
+            # 对 full_text 按用户配置的 splitting 参数重新切分，以尊重配置。
+            split_strategy = str(splitting_config.get("strategy", "recursive"))
+            # "semantic" 策略需要 embedding_client，DeepDoc 路径暂不支持，回退到 recursive
+            if split_strategy == "semantic" and self.embedding_client is None:
+                logger.warning(
+                    "DeepDoc 路径暂不支持 semantic 切分（无 embedding_client），回退到 recursive",
+                    filename=Path(file_path).name,
+                )
+                split_strategy = "recursive"
+            if split_strategy not in ("recursive", "fixed_size", "markdown"):
+                split_strategy = "recursive"
+            rechunked = await self.split_text(
+                parse_result.full_text,
+                strategy=split_strategy,
+                chunk_size=splitting_config.get("chunk_size", 1000),
+                chunk_overlap=splitting_config.get("chunk_overlap", 100),
+                min_chunk_size=splitting_config.get("min_chunk_size", 500),
+                max_chunk_size=splitting_config.get("max_chunk_size", 2000),
+                similarity_threshold=splitting_config.get("similarity_threshold", 0.7),
+                batch_size=splitting_config.get("batch_size", 20),
+            )
+            parse_result = DeepDocParseResult(
+                full_text=parse_result.full_text,
+                chunks=rechunked,
+                metadata={
+                    **parse_result.metadata,
+                    "split_strategy": split_strategy,
+                    "deepdoc_rechunked": True,
+                },
+            )
             return parse_result
 
         full_text = await self.read_full_text(
@@ -424,10 +456,10 @@ class DocumentProcessor:
         chunks = await self.split_text(
             full_text,
             strategy=str(splitting_config.get("strategy", "recursive")),
-            chunk_size=splitting_config.get("chunk_size", 500),
-            chunk_overlap=splitting_config.get("chunk_overlap", 50),
-            min_chunk_size=splitting_config.get("min_chunk_size", 50),
-            max_chunk_size=splitting_config.get("max_chunk_size", 1000),
+            chunk_size=splitting_config.get("chunk_size", 1000),
+            chunk_overlap=splitting_config.get("chunk_overlap", 100),
+            min_chunk_size=splitting_config.get("min_chunk_size", 500),
+            max_chunk_size=splitting_config.get("max_chunk_size", 2000),
             similarity_threshold=splitting_config.get("similarity_threshold", 0.7),
             batch_size=splitting_config.get("batch_size", 20),
         )

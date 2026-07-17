@@ -1,13 +1,14 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { spaceApi } from '@/api/space'
-import { normalizeSpaceTypes } from '@/components/knowledge'
 import type { Space, SpaceConfig } from '@/api/types'
 
-/** 归一化 Space 数据中的 space_type（兼容旧数据中的字符串格式） */
+/** Patch Space data (currently no-op, kept for future extensibility) */
 function patchSpace(space: Space): Space {
-  if (space.config) {
-    space.config.space_type = normalizeSpaceTypes(space.config)
+  // space_type is now a KB-level config, not a space-level config.
+  // Remove any stale space_type from space config if present.
+  if (space.config && 'space_type' in space.config) {
+    delete (space.config as Record<string, unknown>).space_type
   }
   return space
 }

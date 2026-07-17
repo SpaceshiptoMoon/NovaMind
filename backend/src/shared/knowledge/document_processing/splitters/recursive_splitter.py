@@ -6,7 +6,7 @@ from novamind.shared.knowledge.document_processing.splitters.base_splitter impor
 class RecursiveCharacterSplitter(BaseSplitter):
     """递归字符切分器，按不同级别的分隔符切分文本"""
 
-    def __init__(self, chunk_size: int = 2000, chunk_overlap: int = 50,
+    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 100,
                  separators: Optional[List[str]] = None, min_chunk_size: int = 500):
         """
         初始化切分器

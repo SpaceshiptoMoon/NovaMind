@@ -43,7 +43,7 @@ def test_knowledge_base_config_drops_removed_fields():
             "splitting": {
                 "strategy": "recursive",
                 "image": {"strategy": "batch", "chunk_size": 2000},
-                "video": {"strategy": "fixed", "chunk_size": 1234},
+                "video": {"strategy": "fixed_size", "chunk_size": 1234},
             },
             "parsing": {
                 "extract_tables": True,
@@ -475,7 +475,7 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
                 "strategy": "recursive",
                 "chunk_size": 1000,
                 "video": {
-                    "strategy": "fixed",
+                    "strategy": "fixed_size",
                     "chunk_size": 1400,
                 },
             },
@@ -487,7 +487,7 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
     assert captured["frame_interval"] == 7
     assert captured["max_frames"] == 42
     assert captured["video_vlm_model"] == "video-vlm"
-    assert captured["split_strategy"] == "fixed"
+    assert captured["split_strategy"] == "fixed_size"
     assert captured["split_kwargs"]["chunk_size"] == 1400
     assert captured["video_index_chunk_type"] == "video"
     assert "frame description" in captured["parsed_video_text"]
@@ -588,7 +588,7 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
                 "strategy": "recursive",
                 "chunk_size": 1000,
                 "audio": {
-                    "strategy": "fixed",
+                    "strategy": "fixed_size",
                     "chunk_size": 900,
                 },
             },
@@ -599,7 +599,7 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
 
     assert captured["audio_model"] == "faster-whisper-tiny"
     assert captured["audio_language"] == "zh"
-    assert captured["audio_split_strategy"] == "fixed"
+    assert captured["audio_split_strategy"] == "fixed_size"
     assert captured["audio_split_kwargs"]["chunk_size"] == 900
     assert captured["audio_index_chunk_type"] == "audio"
     assert "[00:00:00] hello" in captured["parsed_audio_text"]

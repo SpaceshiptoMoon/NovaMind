@@ -9,32 +9,55 @@ from the legacy flat parsing layout.
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
+
+
+# ========== Shared default constants ==========
+# Single source of truth for splitting defaults — all consumers should reference these
+# instead of hardcoding their own values.
+
+DEFAULT_CHUNK_STRATEGY = "recursive"
+DEFAULT_CHUNK_SIZE = 1000
+DEFAULT_CHUNK_OVERLAP = 100
+DEFAULT_MIN_CHUNK_SIZE = 500
+DEFAULT_MAX_CHUNK_SIZE = 2000
+DEFAULT_SIMILARITY_THRESHOLD = 0.7
+DEFAULT_BATCH_SIZE = 20
+DEFAULT_EMBEDDING_BATCH_SIZE = 32
 
 
 # ========== Splitting config ==========
 
 
 class AudioChunkOverride(BaseModel):
-    """Audio-specific chunk override."""
+    """Audio-specific chunk override.
 
-    strategy: Literal["sentence", "fixed"] = Field(
-        default="sentence",
+    Strategy must match a registered splitter name in DocumentRegistry.
+    Currently registered: recursive, fixed_size, markdown, semantic.
+    "recursive" is recommended for audio transcripts (respects sentence boundaries).
+    """
+
+    strategy: Literal["recursive", "fixed_size", "markdown", "semantic"] = Field(
+        default="recursive",
         description="Chunking strategy for audio transcripts.",
     )
     chunk_size: int = Field(
         default=1000,
         ge=100,
         le=4000,
-        description="Chunk size used when strategy=fixed.",
+        description="Chunk size used when strategy=fixed_size or recursive.",
     )
 
 
 class VideoChunkOverride(BaseModel):
-    """Video-specific chunk override."""
+    """Video-specific chunk override.
 
-    strategy: Literal["fixed"] = Field(
-        default="fixed",
+    Strategy must match a registered splitter name in DocumentRegistry.
+    "fixed_size" groups consecutive frame descriptions up to chunk_size.
+    """
+
+    strategy: Literal["recursive", "fixed_size", "markdown", "semantic"] = Field(
+        default="fixed_size",
         description="Chunking strategy for video descriptions.",
     )
     chunk_size: int = Field(
@@ -51,15 +74,15 @@ class SplittingConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     strategy: Literal["recursive", "fixed_size", "markdown", "semantic"] = Field(
-        default="recursive",
+        default=DEFAULT_CHUNK_STRATEGY,
         description="Default splitting strategy.",
     )
-    chunk_size: int = Field(default=1000, ge=50, le=4000)
-    chunk_overlap: int = Field(default=100, ge=0, le=500)
-    min_chunk_size: int = Field(default=500, ge=0, le=2000)
-    max_chunk_size: int = Field(default=2000, ge=100, le=8000)
-    similarity_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
-    batch_size: int = Field(default=20, ge=1, le=100)
+    chunk_size: int = Field(default=DEFAULT_CHUNK_SIZE, ge=50, le=4000)
+    chunk_overlap: int = Field(default=DEFAULT_CHUNK_OVERLAP, ge=0, le=500)
+    min_chunk_size: int = Field(default=DEFAULT_MIN_CHUNK_SIZE, ge=0, le=2000)
+    max_chunk_size: int = Field(default=DEFAULT_MAX_CHUNK_SIZE, ge=100, le=8000)
+    similarity_threshold: float = Field(default=DEFAULT_SIMILARITY_THRESHOLD, ge=0.0, le=1.0)
+    batch_size: int = Field(default=DEFAULT_BATCH_SIZE, ge=1, le=100)
     audio: Optional[AudioChunkOverride] = Field(default=None)
     video: Optional[VideoChunkOverride] = Field(default=None)
 
@@ -289,14 +312,6 @@ class ParsingConfig(BaseModel):
 
         return merged
 
-    @model_serializer(mode="wrap")
-    def serialize_with_legacy_keys(self, handler):
-        data = handler(self)
-        legacy = build_runtime_parsing_config(data)
-        merged = dict(data)
-        merged.update(legacy)
-        return merged
-
 
 # ========== Question generation ==========
 
@@ -325,7 +340,10 @@ class QuestionGenerationConfig(BaseModel):
 class KnowledgeBaseConfig(BaseModel):
     """Full knowledge-base config."""
 
-    space_type: List[str] = Field(default_factory=lambda: ["text"])
+    space_type: List[Literal["text", "image", "video", "audio"]] = Field(
+        default_factory=lambda: ["text"],
+        description="数据模态列表：text=文本文档, image=图片, video=视频, audio=音频",
+    )
     description: str = Field(default="", max_length=2000)
     splitting: SplittingConfig = Field(default_factory=SplittingConfig)
     parsing: ParsingConfig = Field(default_factory=ParsingConfig)
@@ -384,7 +402,10 @@ class KnowledgeBaseListResponse(BaseModel):
 class KnowledgeBaseConfigUpdate(BaseModel):
     """Partial config update request."""
 
-    space_type: Optional[List[str]] = Field(default=None)
+    space_type: Optional[List[Literal["text", "image", "video", "audio"]]] = Field(
+        default=None,
+        description="数据模态列表：text=文本文档, image=图片, video=视频, audio=音频",
+    )
     splitting: Optional[SplittingConfig] = Field(default=None)
     parsing: Optional[ParsingConfig] = Field(default=None)
     question_generation: Optional[QuestionGenerationConfig] = Field(default=None)

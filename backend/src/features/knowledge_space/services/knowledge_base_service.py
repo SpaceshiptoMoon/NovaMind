@@ -398,12 +398,14 @@ class KnowledgeBaseService:
 
     @staticmethod
     def _deep_merge(base: dict, override: dict) -> dict:
-        """深度合并字典（递归，override 值为 None 时删除对应 key）"""
+        """深度合并字典（递归，深拷贝避免污染原始字典）
+
+        None 值语义：保留为 null（与 SpaceService._deep_merge 一致），
+        不会删除对应 key。如需删除某个配置项，应使用专用的删除接口。
+        """
         result = copy.deepcopy(base)
         for key, value in override.items():
-            if value is None:
-                result.pop(key, None)
-            elif key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
                 result[key] = KnowledgeBaseService._deep_merge(result[key], value)
             else:
                 result[key] = value
@@ -417,19 +419,20 @@ class KnowledgeBaseService:
             if splitting["strategy"] not in valid_strategies:
                 raise InvalidParameterError(f"不支持的切分策略: {splitting['strategy']}")
         if "chunk_size" in splitting:
-            if not (100 <= splitting["chunk_size"] <= 4000):
-                raise InvalidParameterError("chunk_size 必须在 100-4000 之间")
+            if not (50 <= splitting["chunk_size"] <= 4000):
+                raise InvalidParameterError("chunk_size 必须在 50-4000 之间")
         if "chunk_overlap" in splitting:
             chunk_size = splitting.get("chunk_size")
             if chunk_size is None and kb:
-                chunk_size = (kb.config or {}).get("splitting", {}).get("chunk_size", 500)
+                chunk_size = (kb.config or {}).get("splitting", {}).get("chunk_size", 1000)
             if chunk_size is not None and splitting["chunk_overlap"] >= chunk_size:
                 raise InvalidParameterError("chunk_overlap 必须小于 chunk_size")
-        # 音频切分覆盖
+        # 音频切分覆盖 — 策略名必须与 DocumentRegistry 注册名一致
+        _valid_media_strategies = {"recursive", "fixed_size", "markdown", "semantic"}
         splitting_audio = splitting.get("audio")
         if splitting_audio:
             if "strategy" in splitting_audio:
-                if splitting_audio["strategy"] not in ("sentence", "fixed"):
+                if splitting_audio["strategy"] not in _valid_media_strategies:
                     raise InvalidParameterError(f"不支持的音频切分策略: {splitting_audio['strategy']}")
             if "chunk_size" in splitting_audio:
                 if not (100 <= splitting_audio["chunk_size"] <= 4000):
@@ -438,7 +441,7 @@ class KnowledgeBaseService:
         splitting_video = splitting.get("video")
         if splitting_video:
             if "strategy" in splitting_video:
-                if splitting_video["strategy"] not in ("fixed",):
+                if splitting_video["strategy"] not in _valid_media_strategies:
                     raise InvalidParameterError(f"不支持的视频切分策略: {splitting_video['strategy']}")
             if "chunk_size" in splitting_video:
                 if not (100 <= splitting_video["chunk_size"] <= 4000):
