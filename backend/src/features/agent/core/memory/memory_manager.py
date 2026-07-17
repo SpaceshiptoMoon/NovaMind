@@ -13,7 +13,6 @@ from typing import Any, Callable, Dict, List, Optional
 
 from novamind.features.agent.core.memory.interfaces import (
     LongTermMemoryEntry,
-    MemoryMessage,
     MemorySnapshot,
 )
 from novamind.features.agent.core.memory.short_term import ShortTermMemory

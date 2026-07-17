@@ -81,7 +81,7 @@ _prepare_chat
 - DECOMPOSE 子查询经 `_clean_sub_query` 清洗（O-RAG6）：去 `1.`/`1)`/`-`/`•` 列表前缀（**仅当数字后跟 `.`/`)`，不误伤「2024年」「1+1」类合法子查询）+ 过滤「子问题：」标题行。
 
 **GradeRetrier 要点**：
-- `grade(query, sources, passing_score=5)`：LLM 按 `_GRADE_PROMPT` 打 1–10 分，`passed = score >= passing_score`。打分失败默认 `passed=False`（重试，质量优先）；JSON 解析用 `_extract_json` 正则兜底（兼容前导文字 + 代码块）。
+- `grade(query, sources, passing_score=5)`：LLM 按中央注册表模板 `qa_grade_retrieval`（`qa_prompts.py`，经 `PromptManager` 取用）打 1–10 分，`passed = score >= passing_score`。打分失败默认 `passed=False`（重试，质量优先）；JSON 解析用 `_extract_json` 正则兜底（兼容前导文字 + 代码块）。
 - `search_with_retry(query, search_fn, initial_mode=None, score_threshold=None, passing_score, max_retries=2) -> (sources, system_prompt, grade_traces)`：循环每轮切 mode + 降阈值（`threshold × 0.7^attempt`，`None` 时全程不过滤）+ 打分，通过即返；缓存最近一次非空结果，循环结束返 `last`（**不再额外检索一次**）。`initial_mode` = 用户配的 `rag_search_mode` 首轮优先。
 
 ### 3.2 helper（`ai_chat_service.py`）

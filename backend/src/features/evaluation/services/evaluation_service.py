@@ -15,8 +15,6 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from novamind.features.evaluation.models.evaluation_task import (
     EvaluationStatus,
-    EvaluationTestSet,
-    EvaluationTask,
 )
 from novamind.features.evaluation.repository.evaluation_repository import (
     EvaluationTestSetRepository,
@@ -36,7 +34,7 @@ from novamind.features.evaluation.api.exceptions import (
     EvaluationTaskNotCancellableError,
     EvaluationTaskNotCompletedError,
 )
-from novamind.shared.ai_models.base_model import BaseLLM, BaseEmbedding
+from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.prompts.templates import PromptTemplate, PromptManager
 from novamind.shared.storage.minio_client import MinioClient
 from novamind.core.middleware.structured_logging import get_logger

@@ -6,10 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.database.database import get_db
 from novamind.features.knowledge_space.api.dependencies import (
-    get_current_user_id,
-    validate_space_member,
-    validate_space_editor,
-    validate_kb_access,
     get_search_service,
 )
 from novamind.features.user.services.model_config_service import ModelConfigService

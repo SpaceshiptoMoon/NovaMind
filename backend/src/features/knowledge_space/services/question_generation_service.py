@@ -6,7 +6,7 @@
 
 import json
 import re
-from typing import List, Optional, Tuple, Any
+from typing import List, Optional, Tuple
 from dataclasses import dataclass
 
 import asyncio
@@ -22,7 +22,6 @@ from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
 )
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.api.exceptions import (
-    EmbeddingError,
     InvalidParameterError,
     QuestionGenerationError,
 )

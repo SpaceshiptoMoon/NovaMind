@@ -6,9 +6,8 @@
 """
 
 from typing import Annotated
-from fastapi import APIRouter, Depends, Request, Body, Path, Query
+from fastapi import APIRouter, Depends, Request, Body, Path
 
-from novamind.core.database.database import get_db
 from novamind.setting.yaml_config import get_config
 from novamind.features.knowledge_space.schemas.search_schema import (
     SearchRequest,
@@ -23,7 +22,6 @@ from novamind.features.knowledge_space.api.dependencies import (
     get_audit_service,
     get_current_user_id,
     validate_space_access,
-    validate_kb_access,
 )
 from novamind.features.knowledge_space.api.exceptions import KnowledgeBaseNotFoundError
 from novamind.features.knowledge_space.services.search_service import SearchService

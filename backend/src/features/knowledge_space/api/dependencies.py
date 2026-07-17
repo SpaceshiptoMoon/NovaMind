@@ -8,7 +8,7 @@
 
 from typing import Optional, Annotated
 
-from fastapi import Depends, Request, Path
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.database.database import get_db
@@ -35,7 +35,6 @@ from novamind.features.knowledge_space.api.exceptions import (
     MemberNotFoundError,
     KnowledgeBaseNotFoundError,
     KnowledgeBaseArchivedError,
-    UserNotFoundError,
 )
 from novamind.shared.clients import (
     get_minio_client,

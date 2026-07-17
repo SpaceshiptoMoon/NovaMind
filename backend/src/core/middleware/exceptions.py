@@ -8,9 +8,6 @@ from fastapi import FastAPI
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.core.middleware.base_exception_handler import (
-    BaseAPIError,
-    global_exception_handler,
-    validation_exception_handler,
     setup_global_exception_handlers,
 )
 from novamind.features.user.api.startup import setup_user_exception_handlers

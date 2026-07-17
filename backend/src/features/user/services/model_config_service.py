@@ -16,7 +16,7 @@ from sqlalchemy import select
 
 from novamind.features.user.models.user_model_config import UserModelConfig, ModelType
 from novamind.features.user.repository.model_config_repository import (
-    ModelConfigRepository, MODEL_TYPE_MAP, MODEL_TYPE_STR
+    ModelConfigRepository, MODEL_TYPE_STR
 )
 from novamind.features.user.schemas.model_config_schema import (
     ModelConfigCreate,
