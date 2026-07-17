@@ -15,13 +15,19 @@ import pdfplumber
 from PIL import Image
 
 from novamind.shared.knowledge.integrations.deepdoc.compat import MAXIMUM_PAGE_NUMBER
-from novamind.shared.knowledge.integrations.deepdoc.core.models import DeepDocParseResult
+from novamind.shared.knowledge.integrations.deepdoc.core.models import DeepDocParseResult, strip_position_tags
+from novamind.shared.knowledge.integrations.deepdoc.logging_compat import get_logger
 from novamind.shared.knowledge.integrations.deepdoc.page_filter import PageNoiseFilter
 from novamind.shared.knowledge.integrations.deepdoc.pdf_artifacts import PdfArtifactExtractor
 from novamind.shared.knowledge.integrations.deepdoc.pdf_layout import PdfLayoutExtractor
 from novamind.shared.knowledge.integrations.deepdoc.parsers.pdf_plain import RAGFlowPlainPdfParser
 from novamind.shared.knowledge.integrations.deepdoc.updown_concat import UpDownConcatMerger
 from novamind.shared.knowledge.integrations.deepdoc.vision_runtime import get_vision_health_status
+
+# Structured logger (structlog BoundLogger) — accepts key=value context kwargs
+# and renders JSON. Do NOT use stdlib ``logging.info(msg, key=val)`` here: stdlib
+# Logger._log() rejects arbitrary kwargs and raises TypeError at the call site.
+logger = get_logger(__name__)
 
 
 @dataclass(slots=True)
@@ -196,13 +202,24 @@ class RAGFlowPdfParser:
         pdf_mode: str = "layout",
         chunk_size: int = 1000,
     ) -> DeepDocParseResult:
+        source_desc = str(filename) if isinstance(filename, (str, Path)) else "<bytes>"
+        logger.info("DeepDoc PDF 解析器开始", pdf_mode=pdf_mode, chunk_size=chunk_size, source=source_desc)
         if pdf_mode == "plain":
-            return self._parse_plain(filename, chunk_size=chunk_size)
-        if pdf_mode == "layout":
-            return self._parse_layout(filename, chunk_size=chunk_size)
-        if pdf_mode == "vision":
-            return self._parse_vision(filename, chunk_size=chunk_size)
-        raise ValueError(f"Unsupported DeepDoc PDF mode: {pdf_mode}")
+            result = self._parse_plain(filename, chunk_size=chunk_size)
+        elif pdf_mode == "layout":
+            result = self._parse_layout(filename, chunk_size=chunk_size)
+        elif pdf_mode == "vision":
+            result = self._parse_vision(filename, chunk_size=chunk_size)
+        else:
+            raise ValueError(f"Unsupported DeepDoc PDF mode: {pdf_mode}")
+        logger.info(
+            "DeepDoc PDF 解析器完成",
+            pdf_mode=pdf_mode,
+            char_count=len(result.full_text),
+            chunk_count=len(result.chunks),
+            metadata_keys=list(result.metadata.keys()) if result.metadata else [],
+        )
+        return result
 
     def __images__(self, fnm, zoomin=3, page_from=0, page_to=MAXIMUM_PAGE_NUMBER, callback=None):
         self.lefted_chars = []
@@ -518,7 +535,8 @@ class RAGFlowPdfParser:
 
     @staticmethod
     def remove_tag(text: str) -> str:
-        return re.sub(r"@@[\t0-9.-]+?##", "", text)
+        # 委托到 core.models.strip_position_tags，保持全包唯一的坐标标记清洗正则。
+        return strip_position_tags(text)
 
     @staticmethod
     def extract_positions(text: str):
@@ -757,6 +775,13 @@ class RAGFlowPdfParser:
         zoom: int,
     ) -> tuple[list[list[dict[str, Any]]], dict[str, Any]]:
         health = get_vision_health_status()
+        logger.info(
+            "DeepDoc 布局识别开始",
+            can_run_layout_inference=health.get("can_run_layout_inference", False),
+            can_run_vendored_ocr=health.get("can_run_vendored_ocr", False),
+            layout_models_available=health.get("layout_models_available", False),
+            page_count=len(image_list),
+        )
         if health.get("can_run_layout_inference"):
             try:
                 # _get_layout_recognizer() is built lazily (autoload=False) because the
@@ -766,13 +791,23 @@ class RAGFlowPdfParser:
                 # onnxruntime unavailable, etc.) falls through to the heuristic fallback.
                 recognizer = self._get_layout_recognizer()
                 if not recognizer.loaded:
+                    logging.info("DeepDoc 布局识别器首次加载模型")
                     recognizer.load()
                 layout_pages = recognizer.forward(image_list, thr=0.2, batch_size=16)
+                logger.info(
+                    "DeepDoc 布局识别完成（ONNX 模型）",
+                    page_count=len(layout_pages),
+                )
                 return list(layout_pages), {"layout_source": "onnx", "layout_model_error": None}
             except Exception as exc:
+                logger.warning(
+                    "DeepDoc 布局识别 ONNX 推理失败，回退到启发式",
+                    error=str(exc),
+                )
                 heuristic_pages = self._build_heuristic_layout_pages(image_list, ocr_pages, zoom=zoom)
                 return heuristic_pages, {"layout_source": "heuristic", "layout_model_error": str(exc)}
 
+        logging.info("DeepDoc 布局识别不可用，使用启发式布局")
         heuristic_pages = self._build_heuristic_layout_pages(image_list, ocr_pages, zoom=zoom)
         return heuristic_pages, {"layout_source": "heuristic", "layout_model_error": None}
 
@@ -818,9 +853,11 @@ class RAGFlowPdfParser:
             if self._ocr is None:
                 from novamind.shared.knowledge.integrations.deepdoc.vision.ocr import OCR
 
+                logger.info("DeepDoc OCR 引擎首次加载模型", page_index=page_index)
                 self._ocr = OCR(autoload=True)
             result = self._ocr(image)
-        except Exception:
+        except Exception as exc:
+            logger.warning("DeepDoc OCR 推理失败", page_index=page_index, error=str(exc))
             return []
 
         if not result:
@@ -1183,6 +1220,7 @@ class RAGFlowPdfParser:
                 {
                     "kind": "text",
                     "page": int(box.page),
+                    "col_id": int(box.col_id),
                     "bbox": bbox,
                     "text": box.text,
                     "layout_type": box.layout_type or "text",
@@ -1229,6 +1267,7 @@ class RAGFlowPdfParser:
             entries,
             key=lambda item: (
                 int(item.get("page", 0)),
+                int(item.get("col_id", 0)),
                 float((item.get("bbox") or {}).get("top", 0.0)),
                 float((item.get("bbox") or {}).get("x0", 0.0)),
                 0 if item.get("kind") == "text" else 1 if item.get("kind") == "table" else 2,
