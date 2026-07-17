@@ -419,8 +419,11 @@ class ElasticsearchClient:
 
     async def get_document_chunks(
         self, space_id: int, document_id: int, skip: int = 0, limit: int = 100
-    ) -> List[Dict[str, Any]]:
-        """获取文档的所有分块"""
+    ) -> Dict[str, Any]:
+        """获取文档的分块（分页），返回 ``{"items": [...], "total": int}``。
+
+        ``total`` 来自 ES ``track_total_hits``，用于前端分页控件；不再返回全量分块。
+        """
         index_name = self.generate_index_name(space_id)
         try:
             result = await self.es_client.search(
@@ -429,14 +432,22 @@ class ElasticsearchClient:
                 from_=skip,
                 size=limit,
                 sort=[{"chunk_index": {"order": "asc"}}],
+                track_total_hits=True,
             )
-            return [
+            hits = result.get("hits", {})
+            total_obj = hits.get("total", 0)
+            if isinstance(total_obj, dict):
+                total_value = int(total_obj.get("value", 0))
+            else:
+                total_value = int(total_obj or 0)
+            items = [
                 {"chunk_id": hit["_id"], "score": hit["_score"], **hit["_source"]}
-                for hit in result.get("hits", {}).get("hits", [])
+                for hit in hits.get("hits", [])
             ]
+            return {"items": items, "total": total_value}
         except Exception as e:
             logger.error("获取文档分块失败", document_id=document_id, error=str(e))
-            return []
+            return {"items": [], "total": 0}
 
     # ========== 搜索辅助 ==========
 

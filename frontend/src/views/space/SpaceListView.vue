@@ -373,8 +373,12 @@ const navBack = computed<{ label: string; to: string } | null>(() => {
   const name = route.name
   if (name === 'Documents') return { label: '返回知识库', to: kbBase }
   if (name === 'KbEvaluation' || name === 'DocumentDetail' || name === 'Search') {
+    // 从文档详情返回时，带上进入详情时的页码（详情页通过 query.fromPage 透传），
+    // 让列表页恢复到进入时的页，而不是第 1 页。
+    const fromPage = route.query.fromPage
+    const pageSuffix = fromPage ? `?page=${fromPage}` : ''
     return kbIdParam
-      ? { label: '返回文档管理', to: docBase }
+      ? { label: '返回文档管理', to: `${docBase}${pageSuffix}` }
       : { label: '返回知识库', to: kbBase }
   }
   if (name === 'SpaceSettings') return { label: '返回知识库', to: kbBase }

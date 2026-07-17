@@ -440,7 +440,15 @@ export interface Chunk {
 }
 
 export interface DocumentDetail extends Document {
-  chunks: Chunk[]
+  // 分块不再在详情接口返回，前端通过 /chunks 分页接口加载；保留字段以向后兼容
+  chunks?: Chunk[]
+}
+
+export interface ChunkListResponse {
+  items: Chunk[]
+  total: number
+  page: number
+  size: number
 }
 
 export interface DocumentListResponse {
@@ -509,6 +517,7 @@ export interface DocumentTaskItem {
   id: number
   task_id: number
   document_id: number
+  document_name?: string | null
   space_id: number
   kb_id: number
   status: number

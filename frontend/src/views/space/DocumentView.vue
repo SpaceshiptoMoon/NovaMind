@@ -439,7 +439,10 @@ function handleStatusFilterChange() {
 }
 
 function goToDetail(docId: number) {
-  router.push(`/home/spaces/${spaceId.value}/documents/${docId}?kbId=${kbId.value}`)
+  // 携带当前页码，详情页“返回文档管理”时回到进入时的页，而非第 1 页
+  router.push(
+    `/home/spaces/${spaceId.value}/documents/${docId}?kbId=${kbId.value}&fromPage=${currentPage.value}`,
+  )
 }
 
 async function handleDelete(doc: DocType) {
@@ -508,6 +511,11 @@ async function handleRetrySingle(doc: DocType) {
 }
 
 onMounted(async () => {
+  // 从详情页返回时，恢复进入时的页码（由详情页 back 按钮通过 query.page 带回）
+  const queryPage = Number(route.query.page)
+  if (Number.isFinite(queryPage) && queryPage > 0) {
+    currentPage.value = queryPage
+  }
   await fetchDocuments()
   try {
     const kbConfig = await knowledgeBaseApi.getConfig(spaceId.value, kbId.value)
