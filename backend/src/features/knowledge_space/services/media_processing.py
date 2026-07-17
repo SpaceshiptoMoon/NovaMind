@@ -27,6 +27,22 @@ from novamind.shared.knowledge.media_processing.vlm import (
 )
 
 
+async def _find_cloud_asr_credentials(mcs, uploader_id: int, exclude_protocol: str = "local"):
+    """在该用户的 ASR 模型配置中找一个非 local（云端）的可用凭证，用于本地 ASR 失败时回退。"""
+    try:
+        configs = await mcs.repo.list_by_user(uploader_id, "asr")
+    except Exception:
+        return None
+    for cfg in configs:
+        protocol = getattr(cfg, "protocol", None) or "openai"
+        if protocol == exclude_protocol:
+            continue
+        creds = await mcs.get_credentials_by_model(uploader_id, "asr", cfg.model)
+        if creds:
+            return creds
+    return None
+
+
 async def process_video_document(
     document: Document,
     file_content: bytes,
@@ -271,34 +287,76 @@ async def process_audio_document(
         file_type=document.file_type, model=asr_model, protocol=asr_protocol,
     )
 
+    # 路由 ASR 协议到具体转写实现。抽成内部函数，便于 local 失败时用云端凭证回退重试。
+    async def _run_asr(
+        protocol: str,
+        model: str,
+        api_key: Optional[str],
+        base_url: Optional[str],
+    ) -> list:
+        if protocol == "local":
+            return await transcribe_audio_local(
+                file_content=file_content,
+                file_type=document.file_type,
+                language=language,
+            )
+        if protocol == "dashscope":
+            storage_info = document.get_storage_info()
+            language_hints = [language] if language else None
+            return await transcribe_audio_with_dashscope(
+                file_content=file_content,
+                file_type=document.file_type,
+                model=model,
+                api_key=api_key,
+                base_url=base_url,
+                minio_bucket=storage_info.get("minio_bucket"),
+                language_hints=language_hints,
+            )
+        return await transcribe_audio_with_timestamps(
+            file_content=file_content,
+            file_type=document.file_type,
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
+            language=language,
+        )
+
     if asr_protocol == "local":
-        # 本地 faster-whisper 模型 — 无需 API Key，无需网络
-        segments = await transcribe_audio_local(
-            file_content=file_content,
-            file_type=document.file_type,
-            language=language,
-        )
-    elif asr_protocol == "dashscope":
-        storage_info = document.get_storage_info()
-        language_hints = [language] if language else None
-        segments = await transcribe_audio_with_dashscope(
-            file_content=file_content,
-            file_type=document.file_type,
-            model=asr_model,
-            api_key=asr_api_key,
-            base_url=asr_base_url,
-            minio_bucket=storage_info.get("minio_bucket"),
-            language_hints=language_hints,
-        )
+        # 本地 faster-whisper 模型 — 无需 API Key，无需网络。
+        # 模型缺失/解码失败时，若用户配了云端 ASR，则回退云端，避免整任务硬失败。
+        try:
+            segments = await _run_asr("local", asr_model, asr_api_key, asr_base_url)
+        except Exception as local_exc:
+            logger.warning(
+                "本地 ASR 失败，尝试回退云端 ASR",
+                document_id=document.id, error=str(local_exc),
+            )
+            cloud_creds = await _find_cloud_asr_credentials(mcs, document.uploader_id)
+            if cloud_creds is None:
+                from novamind.features.knowledge_space.api.exceptions import (
+                    DocumentProcessingError,
+                )
+                raise DocumentProcessingError(
+                    document_id=document.id,
+                    error_message=(
+                        f"本地 ASR 不可用: {local_exc}。未找到可回退的云端 ASR 配置，"
+                        f"请在模型管理中配置 dashscope/openai ASR，或在配置 "
+                        f"knowledge_base.parsing.local_whisper_model_dir 中补齐本地模型路径。"
+                    ),
+                ) from local_exc
+            cloud_protocol = cloud_creds.protocol or "openai"
+            logger.info(
+                "回退云端 ASR", document_id=document.id,
+                protocol=cloud_protocol, model=cloud_creds.model,
+            )
+            segments = await _run_asr(
+                cloud_protocol,
+                cloud_creds.model or asr_model,
+                cloud_creds.api_key,
+                cloud_creds.base_url,
+            )
     else:
-        segments = await transcribe_audio_with_timestamps(
-            file_content=file_content,
-            file_type=document.file_type,
-            model=asr_model,
-            api_key=asr_api_key,
-            base_url=asr_base_url,
-            language=language,
-        )
+        segments = await _run_asr(asr_protocol, asr_model, asr_api_key, asr_base_url)
     logger.info(
         "音频转写完成", document_id=document.id, segment_count=len(segments),
     )
