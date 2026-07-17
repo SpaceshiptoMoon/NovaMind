@@ -4,7 +4,7 @@ import type {
   UploadDocumentResponse,
   BatchUploadResponse,
   DocumentDetail,
-  Chunk,
+  ChunkListResponse,
   ProcessDocumentResponse,
   BatchProcessResponse,
   DocumentTaskListResponse,
@@ -34,7 +34,7 @@ export const documentApi = {
   },
 
   getDocumentChunks(spaceId: number, kbId: number, docId: number, params?: { skip?: number; limit?: number }) {
-    return request.get<Chunk[]>(
+    return request.get<ChunkListResponse>(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/chunks`,
       params as Record<string, unknown>
     )

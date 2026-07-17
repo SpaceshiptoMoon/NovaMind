@@ -28,6 +28,7 @@ from novamind.features.knowledge_space.schemas.document_schema import (
     DocumentCancelResponse,
     DocumentBatchProcessResponse,
     ChunkResponse,
+    ChunkListResponse,
     FailedFileItem,
 )
 from novamind.features.knowledge_space.schemas.document_task_schema import (
@@ -321,7 +322,7 @@ async def get_documents(
     "/{kb_id}/documents/{document_id}",
     response_model=DocumentDetailResponse,
     summary="获取文档详情",
-    description="获取指定文档的详细信息，包含分块列表",
+    description="获取指定文档的详细信息（分块请走 /chunks 分页接口，不在详情内返回全量分块）",
 )
 async def get_document(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
@@ -331,7 +332,7 @@ async def get_document(
     document_service: DocumentService = Depends(get_document_service),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取文档详情"""
+    """获取文档详情（不含分块，分块由 /chunks 分页接口提供）"""
     # 验证知识库访问权限
     await validate_kb_access(kb_id, space_id, db)
 
@@ -340,20 +341,15 @@ async def get_document(
     if not document or document.kb_id != kb_id:
         raise DocumentNotFoundError(document_id)
 
-    # 从 ES 获取分块列表
-    chunks_raw = await document_service.get_document_chunks(space_id, document_id)
-    chunks = [await _build_chunk_response(c) for c in chunks_raw]
-
-    response = DocumentDetailResponse.model_validate(document)
-    response.chunks = chunks
-    return response
+    # 分块不在详情接口返回，前端通过 /chunks 分页接口按需加载
+    return DocumentDetailResponse.model_validate(document)
 
 
 @router.get(
     "/{kb_id}/documents/{document_id}/chunks",
-    response_model=list[ChunkResponse],
+    response_model=ChunkListResponse,
     summary="获取文档分块",
-    description="获取文档的分块列表",
+    description="分页获取文档的分块列表（返回 total/page/size）",
 )
 async def get_document_chunks(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
@@ -365,7 +361,7 @@ async def get_document_chunks(
     document_service: DocumentService = Depends(get_document_service),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取文档分块"""
+    """获取文档分块（分页）"""
     # 验证知识库访问权限
     await validate_kb_access(kb_id, space_id, db)
 
@@ -374,8 +370,18 @@ async def get_document_chunks(
     if not document or document.kb_id != kb_id:
         raise DocumentNotFoundError(document_id)
 
-    chunks = await document_service.get_document_chunks(space_id, document_id, skip=skip, limit=limit)
-    return [await _build_chunk_response(c) for c in chunks]
+    data = await document_service.get_document_chunks(
+        space_id, document_id, skip=skip, limit=limit
+    )
+    items = [await _build_chunk_response(c) for c in data.get("items", [])]
+    size = limit if limit > 0 else 1
+    page = skip // size + 1
+    return ChunkListResponse(
+        items=items,
+        total=int(data.get("total", 0)),
+        page=page,
+        size=limit,
+    )
 
 
 @router.get(

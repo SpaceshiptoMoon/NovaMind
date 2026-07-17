@@ -51,13 +51,13 @@
           <span class="meta-label">文件大小</span>
           <span class="meta-value">{{ formatFileSize(document.file_size || 0) }}</span>
         </div>
-        <div class="meta-item">
+        <div v-if="(document.chunk_count ?? 0) > 0" class="meta-item">
           <span class="meta-label">分块数</span>
-          <span class="meta-value">{{ document.chunk_count || 0 }}</span>
+          <span class="meta-value">{{ document.chunk_count }}</span>
         </div>
-        <div class="meta-item">
+        <div v-if="(document.token_count ?? 0) > 0" class="meta-item">
           <span class="meta-label">Token 数</span>
-          <span class="meta-value">{{ document.token_count || 0 }}</span>
+          <span class="meta-value">{{ document.token_count }}</span>
         </div>
         <div class="meta-item">
           <span class="meta-label">上传时间</span>
@@ -82,11 +82,11 @@
       </div>
     </div>
 
-    <!-- 分块列表 -->
-    <div class="chunks-section">
+    <!-- 分块列表：无分块时不渲染整个区块 -->
+    <div v-if="totalChunks > 0" class="chunks-section">
       <div class="section-header">
         <h4>文档分块</h4>
-        <span class="chunk-count">{{ document?.chunk_count || 0 }} 个分块</span>
+        <span class="chunk-count">{{ totalChunks }} 个分块</span>
       </div>
 
       <div v-if="chunks.length > 0" class="chunks-list">
@@ -133,19 +133,16 @@
           </div>
         </div>
       </div>
-      <EmptyState v-else description="暂无分块数据">
-        <el-button @click="router.push(backTarget)">
-          {{ backLabel }}
-        </el-button>
-      </EmptyState>
 
-      <div v-if="totalChunks > chunkPageSize" class="chunks-pagination">
-        <el-pagination
-          v-model:current-page="chunkCurrentPage"
+      <div class="chunks-pagination">
+        <Pagination
+          :page="chunkCurrentPage"
           :page-size="chunkPageSize"
           :total="totalChunks"
-          layout="total, prev, pager, next"
-          @current-change="fetchChunks"
+          :page-sizes="[10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next"
+          @update:page="(p: number) => { chunkCurrentPage = p; fetchChunks() }"
+          @update:page-size="(s: number) => { chunkPageSize = s; chunkCurrentPage = 1; fetchChunks() }"
         />
       </div>
     </div>
@@ -168,7 +165,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { documentApi } from '@/api/knowledge'
-import EmptyState from '@/components/common/EmptyState.vue'
+import Pagination from '@/components/common/Pagination.vue'
 import type { DocumentDetail, Chunk, DocumentTaskItem } from '@/api/types'
 import { chunkTypeLabels, getFileTypeStyle, taskStatusMap } from '@/components/knowledge'
 import { formatFileSize, formatDate, formatDuration } from '@/utils/format'
@@ -180,14 +177,6 @@ const spaceId = computed(() => Number(route.params.id))
 const docId = computed(() => Number(route.params.docId))
 const kbId = computed(() => Number(route.query.kbId) || 0)
 
-// 空状态返回目标：有 kbId 时回文档管理，否则回知识库列表。
-const backTarget = computed(() =>
-  kbId.value
-    ? `/home/spaces/${spaceId.value}/knowledge-bases/${kbId.value}/documents`
-    : `/home/spaces/${spaceId.value}/knowledge-bases`,
-)
-const backLabel = computed(() => (kbId.value ? '返回文档管理' : '返回知识库'))
-
 const loading = ref(false)
 const actionLoading = ref(false)
 const document = ref<DocumentDetail | null>(null)
@@ -195,7 +184,7 @@ const latestTask = ref<DocumentTaskItem | null>(null)
 const chunks = ref<Chunk[]>([])
 const totalChunks = ref(0)
 const chunkCurrentPage = ref(1)
-const chunkPageSize = 10
+const chunkPageSize = ref(10)
 const previewVisible = ref(false)
 const previewUrl = ref('')
 
@@ -231,11 +220,12 @@ async function fetchChunks() {
       kbId.value,
       docId.value,
       {
-        skip: (chunkCurrentPage.value - 1) * chunkPageSize,
-        limit: chunkPageSize,
+        skip: (chunkCurrentPage.value - 1) * chunkPageSize.value,
+        limit: chunkPageSize.value,
       }
     )
-    chunks.value = data || []
+    chunks.value = data.items || []
+    totalChunks.value = data.total ?? totalChunks.value
   } catch {
     // 分块获取失败不影响页面展示
   }

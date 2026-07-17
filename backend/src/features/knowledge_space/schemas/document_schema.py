@@ -116,6 +116,14 @@ class ChunkResponse(BaseModel):
     media_url: Optional[str] = Field(None, description="媒体文件预览 URL（图片/视频/音频）")
 
 
+class ChunkListResponse(BaseModel):
+    """分块列表分页响应"""
+    items: List[ChunkResponse] = Field(default_factory=list, description="当前页分块列表")
+    total: int = Field(0, description="分块总数")
+    page: int = Field(1, description="当前页码（1-based）")
+    size: int = Field(10, description="每页大小")
+
+
 class DocumentDetailResponse(DocumentResponse):
     """文档详情响应（包含分块）"""
     chunks: List[ChunkResponse] = Field(default_factory=list, description="分块列表")

@@ -901,9 +901,9 @@ class DocumentService:
         document_id: int,
         skip: int = 0,
         limit: int = 10,
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """
-        获取文档的分块列表（从 Elasticsearch 获取）
+        获取文档的分块列表（从 Elasticsearch 获取，分页）
 
         Args:
             space_id: 空间 ID
@@ -912,7 +912,7 @@ class DocumentService:
             limit: 返回的最大记录数
 
         Returns:
-            分块列表
+            ``{"items": [...], "total": int}`` — items 为当前页分块，total 为分块总数
         """
         return await self.es_client.get_document_chunks(
             space_id=space_id,
