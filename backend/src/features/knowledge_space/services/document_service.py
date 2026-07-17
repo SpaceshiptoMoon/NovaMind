@@ -901,6 +901,40 @@ class DocumentService:
             self.logger.warning("获取处理状态失败", error=str(e))
             return "not_found"
 
+    async def list_batch_overview(
+        self,
+        kb_id: int,
+        skip: int,
+        limit: int,
+    ) -> tuple:
+        """
+        获取知识库的文档处理批次概览（含子任务明细）。
+
+        对每个批次执行 refresh_summary 懒刷新（更新 batch 的 total_count/task_summary
+        等冗余字段），由 service 层统一提交——避免路由层直接 commit。
+        GET 端点的写副作用由此收敛在 service。
+
+        Returns:
+            (total, entries)：entries 为 [(refreshed_batch, tasks), ...]，
+            仅包含有子任务的批次。
+        """
+        batch_repo = DocumentTaskBatchRepository(self.session)
+        task_repo = DocumentTaskRepository(self.session)
+        total = await batch_repo.count_by_kb(kb_id=kb_id)
+        batches = await batch_repo.list_by_kb(kb_id=kb_id, skip=skip, limit=limit)
+
+        entries: list = []
+        for batch in batches:
+            refreshed_batch = await batch_repo.refresh_summary(batch.id) or batch
+            tasks = await task_repo.list_by_batch(batch.id)
+            if not tasks:
+                continue
+            entries.append((refreshed_batch, tasks))
+
+        # refresh_summary 的写副作用由 service 控制提交（事务边界在 service）
+        await self.session.commit()
+        return total, entries
+
     async def cancel_processing(self, document_id: int, *, kb_id: int, space_id: int) -> bool:
         """
         取消文档处理任务
