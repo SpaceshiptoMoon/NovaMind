@@ -237,6 +237,11 @@ class KnowledgeBaseService:
         for field in protected_fields:
             data.pop(field, None)
 
+        # config 走深度合并：PUT 路由传的是 exclude_unset 后的部分片段，
+        # 需并入现有 config，避免未传的子配置被丢弃。
+        if "config" in data:
+            data["config"] = self._deep_merge(kb.get_config(), data["config"])
+
         kb = await self.kb_repo.update(kb_id, data)
         await self.session.commit()
 
@@ -447,6 +452,7 @@ class KnowledgeBaseService:
     async def update_config(
         self,
         kb_id: int,
+        user_id: int,
         config_updates: Dict[str, Any],
     ) -> Dict[str, Any]:
         """
@@ -454,17 +460,27 @@ class KnowledgeBaseService:
 
         Args:
             kb_id: 知识库 ID
+            user_id: 操作用户 ID（service 层权限校验，防绕过路由直接调用）
             config_updates: 要更新的配置片段
 
         Returns:
             {"message": "..."}
 
         Raises:
+            KnowledgeBaseNotFoundError: 知识库不存在
+            KnowledgeBaseAccessDeniedError: 无权限
             InvalidParameterError: 切分配置参数不合法（strategy/chunk_size/chunk_overlap）
         """
         kb = await self.kb_repo.get_by_id(kb_id)
         if not kb:
             raise KnowledgeBaseNotFoundError(kb_id)
+
+        # 检查用户权限（与 update_knowledge_base 一致，防 service 复用绕权）
+        member = await self.member_repo.get_by_space_and_user(kb.space_id, user_id)
+        if not member or not member.is_active():
+            raise KnowledgeBaseAccessDeniedError(kb_id, user_id, "无权更新此知识库配置")
+        if not self.permission_service.can_manage_knowledge_base(member):
+            raise KnowledgeBaseAccessDeniedError(kb_id, user_id, "需要编辑者或以上权限才能更新知识库配置")
 
         current_config = kb.get_config()
 

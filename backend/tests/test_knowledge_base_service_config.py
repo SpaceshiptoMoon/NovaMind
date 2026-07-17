@@ -18,6 +18,7 @@ pytestmark = pytest.mark.unit
 class FakeKnowledgeBase:
     def __init__(self, kb_id: int, config: dict):
         self.id = kb_id
+        self.space_id = 1
         self.config = config
 
     def get_config(self) -> dict:
@@ -63,6 +64,10 @@ def test_update_config_merges_new_nested_parsing_structure(monkeypatch):
     service = object.__new__(KnowledgeBaseService)
     service.kb_repo = SimpleNamespace(get_by_id=AsyncMock(return_value=kb))
     service.session = SimpleNamespace(commit=AsyncMock())
+    # 权限校验 mock（update_config 现需 user_id + service 层鉴权）
+    fake_member = SimpleNamespace(is_active=lambda: True)
+    service.member_repo = SimpleNamespace(get_by_space_and_user=AsyncMock(return_value=fake_member))
+    service.permission_service = SimpleNamespace(can_manage_knowledge_base=lambda m: True)
     monkeypatch.setattr(
         "novamind.features.knowledge_space.services.knowledge_base_service.flag_modified",
         lambda obj, field: None,
@@ -107,7 +112,7 @@ def test_update_config_merges_new_nested_parsing_structure(monkeypatch):
         },
     }
 
-    result = _run(service.update_config(1, updates))
+    result = _run(service.update_config(1, 99, updates))
 
     assert result["message"]
     assert kb.config["space_type"] == ["text", "image", "video", "audio"]
@@ -144,6 +149,9 @@ def test_update_config_removes_none_fields_via_deep_merge(monkeypatch):
     service = object.__new__(KnowledgeBaseService)
     service.kb_repo = SimpleNamespace(get_by_id=AsyncMock(return_value=kb))
     service.session = SimpleNamespace(commit=AsyncMock())
+    fake_member = SimpleNamespace(is_active=lambda: True)
+    service.member_repo = SimpleNamespace(get_by_space_and_user=AsyncMock(return_value=fake_member))
+    service.permission_service = SimpleNamespace(can_manage_knowledge_base=lambda m: True)
     monkeypatch.setattr(
         "novamind.features.knowledge_space.services.knowledge_base_service.flag_modified",
         lambda obj, field: None,
@@ -152,6 +160,7 @@ def test_update_config_removes_none_fields_via_deep_merge(monkeypatch):
     _run(
         service.update_config(
             2,
+            99,
             {
                 "parsing": {
                     "image": None,
@@ -161,3 +170,18 @@ def test_update_config_removes_none_fields_via_deep_merge(monkeypatch):
     )
 
     assert "image" not in kb.config["parsing"]
+
+
+def test_update_config_denies_without_manage_permission():
+    """H6-2: update_config 必须在 service 层校验权限，无 can_manage_knowledge_base 权限应拒绝。"""
+    kb = FakeKnowledgeBase(3, {"space_type": ["text"]})
+    service = object.__new__(KnowledgeBaseService)
+    service.kb_repo = SimpleNamespace(get_by_id=AsyncMock(return_value=kb))
+    inactive_member = SimpleNamespace(is_active=lambda: False)
+    service.member_repo = SimpleNamespace(get_by_space_and_user=AsyncMock(return_value=inactive_member))
+    service.permission_service = SimpleNamespace(can_manage_knowledge_base=lambda m: True)
+
+    from novamind.features.knowledge_space.api.exceptions import KnowledgeBaseAccessDeniedError
+
+    with pytest.raises(KnowledgeBaseAccessDeniedError):
+        _run(service.update_config(3, 99, {"splitting": {"chunk_size": 500}}))
