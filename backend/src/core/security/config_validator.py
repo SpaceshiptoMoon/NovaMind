@@ -52,8 +52,8 @@ class SecurityConfigValidator:
     # 不安全的默认密码
     INSECURE_PASSWORDS = [
         "admin",
-        "***REMOVED***",
-        "***REMOVED***",
+        "Admin@123456",
+        "admin123",
         "password",
         "123456",
         "root",
