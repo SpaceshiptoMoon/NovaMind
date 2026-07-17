@@ -37,7 +37,6 @@ from novamind.features.knowledge_space.schemas.document_task_schema import (
 )
 from novamind.features.knowledge_space.schemas.member_schema import ActionResponse
 from novamind.features.knowledge_space.models.space_member import SpaceMember
-from novamind.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
 from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
 from novamind.core.database.database import get_db
 from novamind.features.knowledge_space.api.dependencies import (
@@ -389,27 +388,22 @@ async def get_document_tasks_overview(
     skip: Annotated[int, Query(ge=0, description="跳过的记录数")] = 0,
     limit: Annotated[int, Query(ge=1, le=100, description="返回的最大记录数")] = 20,
     member: SpaceMember = Depends(validate_space_member),
+    document_service: DocumentService = Depends(get_document_service),
     db: AsyncSession = Depends(get_db),
 ):
     """获取知识库批次任务列表"""
     await validate_kb_access(kb_id, space_id, db)
 
-    batch_repo = DocumentTaskBatchRepository(db)
-    task_repo = DocumentTaskRepository(db)
-    total = await batch_repo.count_by_kb(kb_id=kb_id)
-    batches = await batch_repo.list_by_kb(kb_id=kb_id, skip=skip, limit=limit)
+    # 批次概览的刷新与提交由 service 控制（事务边界在 service，不在路由层）
+    total, entries = await document_service.list_batch_overview(
+        kb_id=kb_id, skip=skip, limit=limit
+    )
 
     items: List[DocumentTaskResponse] = []
-    for batch in batches:
-        refreshed_batch = await batch_repo.refresh_summary(batch.id) or batch
-        tasks = await task_repo.list_by_batch(batch.id)
-        if not tasks:
-            continue
+    for refreshed_batch, tasks in entries:
         item = DocumentTaskResponse.model_validate(refreshed_batch)
         item.items = [DocumentTaskItemResponse.model_validate(t) for t in tasks]
         items.append(item)
-
-    await db.commit()
 
     return DocumentTaskListResponse(
         items=items,
