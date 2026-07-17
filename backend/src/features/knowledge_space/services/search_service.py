@@ -502,7 +502,7 @@ class SearchService:
         # score 模式：记录原始分数
         chunk_scores: Dict[str, List[float]] = {}
 
-        rrf_k = 60  # RRF 常数，论文推荐值
+        # rrf_k 使用形参(来自用户 weights.rrf_k 配置)，不再硬编码覆盖
 
         for result_list in valid_results:
             for rank, item in enumerate(result_list, start=1):
@@ -713,7 +713,7 @@ class SearchService:
             else:
                 query_rewrite_sig = (
                     f"{qw.strategy}|{qw.sub_query_count}|{qw.sub_query_merge_mode}"
-                    f"|{bool(qw.hyde_prompt)}|{qw.llm_model or ''}"
+                    f"|{qw.llm_model or ''}"
                 )
             query_hash = self._generate_query_hash(
                 query,
