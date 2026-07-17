@@ -39,9 +39,6 @@ from novamind.features.knowledge_space.api.dependencies import (
     get_audit_service,
     get_knowledge_base_service,
 )
-from novamind.features.knowledge_space.api.exceptions import (
-    KnowledgeBaseNotFoundError,
-)
 from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
 from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
 from novamind.features.knowledge_space.services.audit_service import AuditService

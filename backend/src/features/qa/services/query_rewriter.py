@@ -3,6 +3,9 @@
 
 支持 4 种改写策略，一次选择一个。
 通过 session_config.kb_bindings.query_rewriting 配置。
+
+提示词统一托管在中央注册表（shared.prompts），见 qa_prompts.py 的
+qa_rw_completion / qa_rw_synonym / qa_rw_decompose / qa_rw_hyde。
 """
 import re
 from enum import Enum
@@ -10,6 +13,7 @@ from typing import Optional, List
 from dataclasses import dataclass, field
 
 from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.prompts.templates import PromptManager, PromptTemplate
 
 
 class RewriteStrategy(str, Enum):
@@ -28,50 +32,6 @@ class RewriteResult:
     strategy: str = "none"
     original_query: str = ""
     degraded: bool = False  # True=LLM 改写失败/不可用，已回退到原 query（透传到 trace 告知用户）
-
-
-# ==================== Prompt 模板 ====================
-
-_PROMPT_COMPLETION = """你是一个对话助手。用户的问题是针对一段对话历史提出的，其中可能使用了代词或省略表达。
-请根据对话历史，将用户的问题补全为一个完整的、无需上下文就能理解的独立问题。
-只输出补全后的问题，不要任何解释。
-
-对话历史：
-{history}
-
-用户问题：{query}
-
-补全后的问题："""
-
-_PROMPT_SYNONYM = """你是一个检索优化专家。请将用户的问题改写为更适合知识库检索的形式。
-要求：
-- 保留核心意图
-- 使用更精确的关键词
-- 去除口语化表达
-- 直接输出改写结果，不要解释
-
-用户问题：{query}
-
-改写后的检索查询："""
-
-_PROMPT_DECOMPOSE = """你是一个问题分析专家。用户的问题是复合型的，包含多个子问题。
-请将问题拆解为多个独立的原子子问题，每个子问题只问一件事。
-每个子问题应能独立检索知识库。
-按从基础到进阶的顺序排列。
-
-输出格式：每行一个子问题，不要编号，不要解释。
-
-用户问题：{query}
-
-子问题："""
-
-_PROMPT_HYDE = """你是一个知识库专家。用户提出了一个问题。
-请根据你的知识，生成一段假设性的文档片段，该文档应该包含回答该问题所需的关键信息。
-这段文档将用于检索相似的知识库文档，因此应该使用事实性、陈述性语言。
-
-用户问题：{query}
-
-假设文档："""
 
 
 # ==================== DECOMPOSE 子查询清洗（O-RAG6） ====================
@@ -122,7 +82,9 @@ class QueryRewriter:
             f"{'User' if m.get('role') == 'user' else 'Assistant'}: {m.get('content', '')}"
             for m in recent
         )
-        prompt = _PROMPT_COMPLETION.format(history=formatted, query=query)
+        prompt = PromptManager.format_prompt(
+            PromptTemplate.QA_RW_COMPLETION.value, history=formatted, query=query
+        )
         rewritten = await self._call_llm(prompt)
         return RewriteResult(
             queries=[rewritten] if rewritten else [query],
@@ -132,7 +94,7 @@ class QueryRewriter:
         )
 
     async def _synonym(self, query: str) -> RewriteResult:
-        prompt = _PROMPT_SYNONYM.format(query=query)
+        prompt = PromptManager.format_prompt(PromptTemplate.QA_RW_SYNONYM.value, query=query)
         rewritten = await self._call_llm(prompt)
         return RewriteResult(
             queries=[rewritten] if rewritten else [query],
@@ -142,7 +104,7 @@ class QueryRewriter:
         )
 
     async def _decompose(self, query: str) -> RewriteResult:
-        prompt = _PROMPT_DECOMPOSE.format(query=query)
+        prompt = PromptManager.format_prompt(PromptTemplate.QA_RW_DECOMPOSE.value, query=query)
         result = await self._call_llm(prompt)
         if result:
             # O-RAG6：清洗编号/项目符号前缀与标题行，避免 "1. xxx"/"- xxx"/"子问题：xxx" 被当作子查询
@@ -161,7 +123,7 @@ class QueryRewriter:
         )
 
     async def _hyde(self, query: str) -> RewriteResult:
-        prompt = _PROMPT_HYDE.format(query=query)
+        prompt = PromptManager.format_prompt(PromptTemplate.QA_RW_HYDE.value, query=query)
         hypothetical = await self._call_llm(prompt)
         return RewriteResult(
             queries=[hypothetical] if hypothetical else [query],

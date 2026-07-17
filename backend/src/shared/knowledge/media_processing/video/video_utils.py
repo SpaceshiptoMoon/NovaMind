@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from novamind.shared.knowledge.media_processing.video.video_normalizer import (
-    VideoNormalizationError,
     normalize_video_for_frame_extraction,
 )
 

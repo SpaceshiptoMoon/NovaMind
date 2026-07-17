@@ -953,9 +953,11 @@ class DocumentService:
 
         Raises:
             DocumentNotFoundError: 文档不存在或不属于该空间/知识库
+            DocumentNotFoundError: 文档不存在或不属于该空间/知识库
             InvalidParameterError: 文档无活跃处理任务
         """
         document = await self.doc_repo.get_by_id(document_id)
+        if not document or document.kb_id != kb_id or document.space_id != space_id:
         if not document or document.kb_id != kb_id or document.space_id != space_id:
             raise DocumentNotFoundError(document_id)
 
