@@ -69,7 +69,13 @@ class RAGFlowPdfParser:
 
     def _get_layout_recognizer(self):
         if self._layout_recognizer is None:
-            from novamind.shared.knowledge.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
+            # The hosted layout.onnx (InfiniFlow/deepdoc) is a YOLOv10 model whose
+            # output is (batch, anchors, 6=[xywh,score,class]); LayoutRecognizer4YOLOv10
+            # has the matching postprocess. Plain LayoutRecognizer's base postprocess
+            # misreads that shape and IndexErrors. Mirrors RAGFlow's docker_stubs alias.
+            from novamind.shared.knowledge.integrations.deepdoc.vision.layout_recognizer import (
+                LayoutRecognizer4YOLOv10 as LayoutRecognizer,
+            )
 
             self._layout_recognizer = LayoutRecognizer()
         return self._layout_recognizer

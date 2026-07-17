@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import Any
 
 from novamind.shared.knowledge.integrations.deepdoc.vision._diagnostic_io import iter_diagnostic_images
-from novamind.shared.knowledge.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
+from novamind.shared.knowledge.integrations.deepdoc.vision.layout_recognizer import (
+    LayoutRecognizer4YOLOv10 as LayoutRecognizer,
+)
 from novamind.shared.knowledge.integrations.deepdoc.vision.seeit import draw_box
 from novamind.shared.knowledge.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
 

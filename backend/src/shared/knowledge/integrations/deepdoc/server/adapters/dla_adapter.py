@@ -29,7 +29,9 @@ class DLAAdapter:
         self._layouter: LayoutRecognizer | None = None
 
     def load(self):
-        from novamind.shared.knowledge.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
+        from novamind.shared.knowledge.integrations.deepdoc.vision.layout_recognizer import (
+            LayoutRecognizer4YOLOv10 as LayoutRecognizer,
+        )
 
         self._layouter = LayoutRecognizer("layout", autoload=True)
 
