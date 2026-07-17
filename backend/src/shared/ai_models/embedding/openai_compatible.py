@@ -16,7 +16,7 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from novamind.shared.ai_models.base_model import BaseEmbedding
+from novamind.shared.ai_models.base_model import BaseEmbedding, PROXY_INHERIT, build_openai_http_client
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -52,6 +52,7 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
         max_concurrent: int = 5,
         batch_size: int = 32,
         normalize: bool = True,
+        proxy: object = PROXY_INHERIT,
         **kwargs,
     ):
         """
@@ -67,6 +68,9 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
             max_concurrent: 最大并发调用数
             batch_size: 批处理大小
             normalize: 是否归一化向量
+            proxy: 代理配置。PROXY_INHERIT（默认）继承环境变量代理；
+                None / "" 显式禁用代理（用于直连国内服务商绕开本地代理）；
+                str 代理 URL 则使用该代理。
         """
         super().__init__(
             api_key=api_key,
@@ -79,10 +83,19 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
         )
         self.batch_size = batch_size
         self.normalize = normalize
+        self.proxy = proxy
 
+        # 通过自定义 httpx.AsyncClient 控制代理语义，避免 httpx 默认从环境变量
+        # 继承代理导致直连国内服务商（如 DashScope）时 TLS 握手失败。
+        http_client = build_openai_http_client(
+            timeout=timeout,
+            max_connections=max_concurrent * 2,
+            proxy=proxy,
+        )
         self.client = AsyncOpenAI(
             api_key=self.api_key,
             base_url=self.base_url,
+            http_client=http_client,
             timeout=httpx.Timeout(timeout, connect=10.0),
             max_retries=max_retries,
         )
