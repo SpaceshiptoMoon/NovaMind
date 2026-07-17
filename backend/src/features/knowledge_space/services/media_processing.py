@@ -43,6 +43,29 @@ async def _find_cloud_asr_credentials(mcs, uploader_id: int, exclude_protocol: s
     return None
 
 
+# VLM 配额/鉴权类错误的特征串。这类错误通常不会因重试而恢复，应触发回退或跳过降级，
+# 而不是让整个文档任务失败后还被 arq 重试 N 次。
+_VLM_QUOTA_OR_AUTH_MARKERS = (
+    "allocationquota",
+    "freetieronly",
+    "free quota",
+    "免费额度",
+    "quota",
+    "exhausted",
+    "403",
+    "401",
+    "unauthorized",
+    "authentication",
+    "permission denied",
+)
+
+
+def _is_vlm_quota_or_auth_error(exc: BaseException) -> bool:
+    """判断 VLM 调用异常是否属于配额/鉴权类（可降级，无需重试）。"""
+    text = str(exc).lower()
+    return any(marker in text for marker in _VLM_QUOTA_OR_AUTH_MARKERS)
+
+
 async def process_video_document(
     document: Document,
     file_content: bytes,
@@ -79,6 +102,9 @@ async def process_video_document(
     video_config = (pipeline_config.get("parsing", {}) or {}).get("video", {})
     frame_interval = video_config.get("frame_interval", 5)
     max_frames = video_config.get("max_frames", 60)
+    # VLM 降级开关：主模型配额/鉴权失败时回退的备用模型；以及全帧失败时是否跳过 VLM。
+    vlm_fallback_model = video_config.get("vlm_fallback_model")
+    vlm_skip_on_quota_error = bool(video_config.get("vlm_skip_on_quota_error", False))
 
     mcs = ModelConfigService(session)
 
@@ -123,6 +149,7 @@ async def process_video_document(
     # 2. 逐帧 VLM 描述（每5帧检查一次取消信号）
     descriptions = []
     first_frame_error: Optional[str] = None
+    quota_or_auth_failures = 0
     for i, (frame_bytes, ts, frame_idx) in enumerate(frames):
         if i > 0 and i % 5 == 0:
             await _check_document_cancelled(document.id)
@@ -135,20 +162,49 @@ async def process_video_document(
                 mcs=mcs,
                 logger=logger,
                 vlm_model_name=parsing_config.get("vlm_model"),
+                vlm_fallback_model=vlm_fallback_model,
             )
             if desc:
                 descriptions.append((desc, ts, frame_idx))
         except Exception as e:
             if first_frame_error is None:
                 first_frame_error = str(e)
+            if _is_vlm_quota_or_auth_error(e):
+                quota_or_auth_failures += 1
             logger.warning(
                 "视频帧VLM描述失败, 跳过", document_id=document.id,
                 frame_index=frame_idx, timestamp=ts, error=str(e),
             )
 
     if not descriptions:
+        all_quota_failure = quota_or_auth_failures == len(frames) and frames
         detail = f"，首个错误: {first_frame_error}" if first_frame_error else ""
-        raise ValueError(f"视频 {document.filename} 所有帧的VLM描述均失败{detail}")
+        # 配置了跳过降级，且全帧都是配额/鉴权类失败：写一条占位描述，避免整任务硬失败。
+        if vlm_skip_on_quota_error and all_quota_failure:
+            logger.warning(
+                "视频所有帧VLM描述均失败（配额/鉴权），已按配置跳过并写占位描述",
+                document_id=document.id, frame_count=len(frames),
+                first_error=first_frame_error,
+            )
+            descriptions.append((
+                "（视频画面描述因 VLM 配额/鉴权不可用已跳过）",
+                0.0,
+                frames[0][2] if frames else 0,
+            ))
+        else:
+            from novamind.features.knowledge_space.api.exceptions import (
+                DocumentProcessingError,
+            )
+            hint = ""
+            if all_quota_failure:
+                hint = (
+                    "（VLM 配额/鉴权不可用。可在知识库视频解析配置中设置 vlm_fallback_model "
+                    "回退备用模型，或开启 vlm_skip_on_quota_error 跳过 VLM。）"
+                )
+            raise DocumentProcessingError(
+                document_id=document.id,
+                error_message=f"视频 {document.filename} 所有帧的VLM描述均失败{detail}{hint}",
+            )
 
     # 帧描述全文 MD 拼接并持久化到 MinIO（立刻 commit 落库）
     full_text_lines = []
@@ -564,8 +620,13 @@ async def _describe_single_frame(
     mcs,
     logger,
     vlm_model_name: Optional[str] = None,
+    vlm_fallback_model: Optional[str] = None,
 ) -> str:
-    """对单帧调用 VLM 生成描述（复用图片描述逻辑）"""
+    """对单帧调用 VLM 生成描述（复用图片描述逻辑）。
+
+    主模型因配额/鉴权类错误失败且配置了 ``vlm_fallback_model`` 时，回退到备用模型重试一次；
+    其它异常原样上抛，由帧循环逐帧捕获并跳过。
+    """
     from novamind.shared.prompts.templates import PromptManager, PromptTemplate
 
     # 获取 VLM 客户端
@@ -589,18 +650,42 @@ async def _describe_single_frame(
         text_prompt=description_prompt,
     )
 
-    description = await generate_vlm_text_with_fallback(
-        vlm_client=vlm_client,
-        messages=messages,
-        max_tokens=1024,
-        temperature=0.3,
-        logger=logger,
-        vlm_model=vlm_model,
-        log_context={
-            "document_id": document.id,
-            "frame_index": frame_index,
-        },
-    )
+    log_context = {
+        "document_id": document.id,
+        "frame_index": frame_index,
+    }
+
+    try:
+        description = await generate_vlm_text_with_fallback(
+            vlm_client=vlm_client,
+            messages=messages,
+            max_tokens=1024,
+            temperature=0.3,
+            logger=logger,
+            vlm_model=vlm_model,
+            log_context=log_context,
+        )
+    except Exception as exc:
+        # 配额/鉴权类错误：若配了备用 VLM 模型，回退重试一次；否则原样上抛。
+        if not vlm_fallback_model or not _is_vlm_quota_or_auth_error(exc):
+            raise
+        logger.warning(
+            "视频帧VLM主模型配额/鉴权失败，回退备用模型",
+            document_id=document.id, frame_index=frame_index,
+            fallback_model=vlm_fallback_model, error=str(exc),
+        )
+        fallback_client = await mcs.get_vlm_client_by_model(
+            document.uploader_id, vlm_fallback_model
+        )
+        description = await generate_vlm_text_with_fallback(
+            vlm_client=fallback_client,
+            messages=messages,
+            max_tokens=1024,
+            temperature=0.3,
+            logger=logger,
+            vlm_model=vlm_fallback_model,
+            log_context=log_context,
+        )
 
     if not description or not description.strip():
         return ""
