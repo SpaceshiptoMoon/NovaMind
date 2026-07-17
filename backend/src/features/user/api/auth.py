@@ -7,6 +7,8 @@ JWT 认证依赖项
 3. 返回完整的用户信息
 """
 
+from typing import Optional
+
 from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,32 +25,17 @@ logger = get_logger(__name__)
 
 
 security = HTTPBearer()
+# 可选认证 bearer：缺 token 不报错（由依赖自行决定匿名放行）
+_optional_security = HTTPBearer(auto_error=False)
 
 
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: AsyncSession = Depends(get_db),
-) -> dict:
+async def _resolve_user_from_token(token: str, db: AsyncSession) -> dict:
     """
-    获取当前用户（带数据库状态验证）
-
-    安全措施：
-    1. 验证 JWT token 有效性
-    2. 从数据库获取最新用户状态
-    3. 检查用户是否被禁用
-
-    Args:
-        credentials: 认证凭据
-        db: 数据库会话
-
-    Returns:
-        dict: 用户信息
+    校验 token 并返回用户信息（共享核心，供必选/可选认证复用）。
 
     Raises:
-        HTTPException: 如果 token 无效或用户被禁用
+        HTTPException: token 无效/黑名单/用户不存在/被禁用
     """
-    token = credentials.credentials
-
     # 1. 验证 token 并检查黑名单
     token_data: TokenData = await AuthService.verify_token_async(token)
     if not token_data or not getattr(token_data, "user_id", None):
@@ -100,6 +87,46 @@ async def get_current_user(
         "status": user.status,
         "jti": token_data.jti,
     }
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    获取当前用户（带数据库状态验证）
+
+    安全措施：
+    1. 验证 JWT token 有效性
+    2. 从数据库获取最新用户状态
+    3. 检查用户是否被禁用
+
+    Args:
+        credentials: 认证凭据
+        db: 数据库会话
+
+    Returns:
+        dict: 用户信息
+
+    Raises:
+        HTTPException: 如果 token 无效或用户被禁用
+    """
+    return await _resolve_user_from_token(credentials.credentials, db)
+
+
+async def get_current_user_optional(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_optional_security),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[dict]:
+    """
+    可选认证：匿名（无 token）返回 None；携带 token 则校验并返回用户。
+
+    用于公开端点：允许匿名访问，同时识别已登录用户以便审计/限流/个性化。
+    携带无效/过期 token 仍按 get_current_user 语义抛 401（显式带 token 应被校验）。
+    """
+    if credentials is None:
+        return None
+    return await _resolve_user_from_token(credentials.credentials, db)
 
 
 def require_admin(current_user: dict = Depends(get_current_user)):
