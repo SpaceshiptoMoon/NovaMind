@@ -43,7 +43,6 @@ from novamind.features.knowledge_space.services import (
     MemberService,
     KnowledgeBaseService,
     DocumentService,
-    EmbeddingService,
     SearchService,
     AuditService,
 )
@@ -108,7 +107,6 @@ __all__ = [
     "MemberService",
     "KnowledgeBaseService",
     "DocumentService",
-    "EmbeddingService",
     "SearchService",
     "AuditService",
     # Schema - 空间
