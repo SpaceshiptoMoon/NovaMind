@@ -253,12 +253,6 @@ class SearchRequest(BaseModel):
         description="检索模式不可用时是否自动降级"
     )
 
-    # 可选过滤条件
-    filters: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="额外过滤条件，如 document_id、date_range 等"
-    )
-
     # 是否使用缓存
     use_cache: bool = Field(
         default=True,
@@ -345,6 +339,8 @@ class SearchResult(BaseModel):
 class SearchResponse(BaseModel):
     """检索响应"""
 
+    model_config = ConfigDict(from_attributes=True)
+
     # 结果列表
     results: List[SearchResult] = Field(..., description="检索结果列表")
 
@@ -386,6 +382,7 @@ class SearchModeItem(BaseModel):
 
 class SearchModesResponse(BaseModel):
     """可用检索模式列表响应"""
+    model_config = ConfigDict(from_attributes=True)
     modes: List[SearchModeItem] = Field(..., description="可用检索模式列表")
     total: int = Field(..., description="可用模式总数")
 
@@ -424,6 +421,8 @@ SEARCH_MODE_FALLBACK = {
 
 class KnowledgeBaseModelConfigResponse(BaseModel):
     """知识库模型配置响应"""
+
+    model_config = ConfigDict(from_attributes=True)
 
     # Embedding 模型配置
     embedding_model: Optional[str] = Field(

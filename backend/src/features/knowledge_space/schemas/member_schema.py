@@ -9,7 +9,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
 
 # 从模型层导入枚举（避免重复定义）
-from novamind.features.knowledge_space.models.space_member import SpaceRole, MemberStatus
+from novamind.features.knowledge_space.models.space_member import SpaceRole
 
 
 class MemberInvite(BaseModel):
@@ -27,8 +27,6 @@ class MemberJoin(BaseModel):
 class MemberUpdate(BaseModel):
     """更新成员请求"""
     role: Optional[SpaceRole] = Field(None, description="角色")
-    permissions: Optional[Dict[str, Any]] = Field(None, description="细粒度权限")
-    status: Optional[MemberStatus] = Field(None, description="成员状态")
 
 
 class MemberResponse(BaseModel):

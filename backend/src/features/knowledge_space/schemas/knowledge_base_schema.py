@@ -393,6 +393,8 @@ class KnowledgeBaseConfigUpdate(BaseModel):
 class KnowledgeBaseConfigResponse(BaseModel):
     """Knowledge-base config response."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     kb_id: int
     name: str
     config: KnowledgeBaseConfig
