@@ -121,6 +121,23 @@ class DocumentDetailResponse(DocumentResponse):
     chunks: List[ChunkResponse] = Field(default_factory=list, description="分块列表")
 
 
+class UploadedDocumentResult(BaseModel):
+    """上传成功后由 service 层返回给路由层的扁平 DTO。
+
+    避免把 ORM ``Document`` 实例泄漏到路由层：批量上传中，后续文件若撞
+    ``uq_kb_file_hash`` 触发 ``session.rollback()``，SQLAlchemy 默认
+    ``expire_on_rollback=True`` 会把 session 内所有实例 expire，路由层再读
+    ORM 属性会触发同步懒加载，在异步驱动下抛 ``MissingGreenlet``。service
+    层在 commit 成功、且任何后续 rollback 发生之前，把 ``id/filename/file_size``
+    读出打包成此 DTO 返回，路由层只消费基本类型。
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    document_id: int = Field(..., description="文档ID")
+    filename: str = Field(..., description="文件名")
+    file_size: int = Field(..., description="文件大小(字节)")
+
+
 class DocumentUploadResponse(BaseModel):
     """文档上传响应"""
     document_id: int = Field(..., description="文档ID")
