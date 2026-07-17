@@ -17,7 +17,7 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from novamind.shared.ai_models.base_model import BaseLLM, ToolCall, LLMResponseWithTools, StreamChunk, LLMResponse
+from novamind.shared.ai_models.base_model import BaseLLM, ToolCall, LLMResponseWithTools, StreamChunk, LLMResponse, PROXY_INHERIT, build_openai_http_client
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -40,6 +40,7 @@ class OpenAICompatibleLLM(BaseLLM):
         max_retries: int = 3,
         max_concurrent: int = 10,
         default_system_prompt: str = "You are a helpful assistant.",
+        proxy: object = PROXY_INHERIT,
         **kwargs,
     ):
         """
@@ -53,6 +54,9 @@ class OpenAICompatibleLLM(BaseLLM):
             max_retries: 最大重试次数
             max_concurrent: 最大并发调用数
             default_system_prompt: 默认系统提示词
+            proxy: 代理配置。PROXY_INHERIT（默认）继承环境变量代理；
+                None / "" 显式禁用代理（用于直连国内服务商绕开本地代理）；
+                str 代理 URL 则使用该代理。
         """
         super().__init__(
             api_key=api_key,
@@ -63,11 +67,20 @@ class OpenAICompatibleLLM(BaseLLM):
             max_concurrent=max_concurrent,
         )
         self.default_system_prompt = default_system_prompt
+        self.proxy = proxy
 
-        # OpenAI 客户端：禁用 SDK 内置重试，由 tenacity 统一管理重试
+        # 通过自定义 httpx.AsyncClient 控制代理语义，避免 httpx 默认从环境变量
+        # 继承代理导致直连国内服务商（如 DashScope）时 TLS 握手失败。
+        # OpenAI 客户端：禁用 SDK 内置重试，由 tenacity 统一管理重试。
+        http_client = build_openai_http_client(
+            timeout=timeout,
+            max_connections=max_concurrent * 2,
+            proxy=proxy,
+        )
         self.client = AsyncOpenAI(
             api_key=self.api_key,
             base_url=self.base_url,
+            http_client=http_client,
             timeout=httpx.Timeout(timeout, connect=10.0),
             max_retries=0,
         )

@@ -4,11 +4,16 @@
 设计原则：
 - 凭证分离：只存储连接凭证（api_key、base_url），不存储业务参数
 - 模型名称引用：前端传模型名称（如 llm_model="gpt-4o"），后端根据名称查找凭证
-- 扩展配置存储在 extra_config 中（如 dimension、endpoint 等）
+- 扩展配置存储在 extra_config 中（如 dimension、proxy、timeout 等）
+- proxy（extra_config 内）：控制 openai 协议客户端代理。省略=继承环境变量代理；
+  null / ""=禁用代理（直连国内服务商如 DashScope 时使用，避免本地代理 TLS 握手失败）；
+  字符串=代理 URL。
 """
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+
+from novamind.shared.ai_models.base_model import PROXY_INHERIT
 
 # ========== 请求/响应模型 ==========
 
@@ -125,6 +130,14 @@ class ModelTestRequest(BaseModel):
     api_key: str = Field(
         ...,
         description="API Key"
+    )
+    proxy: Any = Field(
+        default=PROXY_INHERIT,
+        description=(
+            "代理配置（仅 openai 协议生效）。省略=继承环境变量代理；"
+            "null / 空字符串=禁用代理（直连国内服务商时使用）；"
+            "字符串=代理 URL。"
+        ),
     )
 
     @field_validator('model_type')
