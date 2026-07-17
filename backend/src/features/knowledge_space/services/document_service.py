@@ -958,7 +958,6 @@ class DocumentService:
         """
         document = await self.doc_repo.get_by_id(document_id)
         if not document or document.kb_id != kb_id or document.space_id != space_id:
-        if not document or document.kb_id != kb_id or document.space_id != space_id:
             raise DocumentNotFoundError(document_id)
 
         # 检查是否有活跃任务
