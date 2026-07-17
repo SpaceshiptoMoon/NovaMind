@@ -12,7 +12,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.database.database import get_db
-from novamind.features.user.api.auth import get_current_user
+from novamind.features.user.api.auth import get_current_user, get_current_user_optional
 from novamind.features.user.repository.user_repository import UserRepository
 from novamind.features.knowledge_space.models.space_member import SpaceMember, MemberStatus, SpaceRole
 from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase, KnowledgeBaseStatus
@@ -150,6 +150,17 @@ async def get_current_user_id(
 ) -> int:
     """获取当前用户 ID"""
     return current_user["id"]
+
+
+async def get_optional_current_user_id(
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+) -> Optional[int]:
+    """
+    可选认证：匿名返回 None；携带有效 token 返回 user_id。
+
+    用于公开端点（如公开空间列表）：允许匿名访问，同时识别已登录用户。
+    """
+    return current_user["id"] if current_user is not None else None
 
 
 # ========== 空间访问验证 ==========
