@@ -137,7 +137,11 @@ class SpaceListResponse(BaseModel):
 class SpaceConfigUpdate(BaseModel):
     """空间配置部分更新请求（深度合并，只传要改的字段）
 
-    注意：数据类型（space_type）已下放到知识库级别配置，不在空间层面管理。
+    注意：
+    - 数据类型（space_type）已下放到知识库级别配置，不在空间层面管理。
+    - 解析配置（parsing）和切分配置（splitting）属于知识库级别，请通过
+      PATCH /spaces/{space_id}/knowledge-bases/{kb_id}/config 更新。
+    - 此接口不接受 parsing、splitting、question_generation 字段。
     """
     description: Optional[str] = Field(None, max_length=2000, description="空间描述")
     tags: Optional[List[str]] = Field(None, max_length=20, description="标签")

@@ -165,11 +165,13 @@ export interface SpaceVLMConfig {
 }
 
 export interface SpaceConfig {
-  space_type?: string[]  // ["text","image","video","audio"] — 多模态组合
   description?: string
   tags?: string[]
   embedding?: SpaceConfigEmbedding
-  multimodal_embedding?: SpaceMultimodalEmbeddingConfig
+  // Note: multimodal_embedding is NOT a space-level config field.
+  // The multimodal embedding model is configured per-space via the model config API
+  // and stored in config.embedding.model (the embedding config's model field).
+  // Do not add multimodal_embedding here — it will be silently dropped by the backend.
   llm?: SpaceLLMConfig    // 默认 LLM 配置（问题生成、查询改写、摘要）
   asr?: SpaceASRConfig    // 默认 ASR 配置（音频转文字）
   vlm?: SpaceVLMConfig    // 默认 VLM 配置（暂未启用）
@@ -225,11 +227,9 @@ export interface SpaceConfigResponse {
 }
 
 export interface SpaceConfigUpdateRequest {
-  space_type?: string[]  // ["text","image","video","audio"] — 多模态组合
   description?: string
   tags?: string[]
   embedding?: SpaceConfigEmbeddingUpdate
-  multimodal_embedding?: SpaceMultimodalEmbeddingConfig
   llm?: SpaceLLMConfig
   asr?: SpaceASRConfig
   vlm?: SpaceVLMConfig

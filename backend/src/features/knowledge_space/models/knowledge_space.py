@@ -109,7 +109,14 @@ class KnowledgeSpace(BaseModel):
 
     @property
     def vlm_description_enabled(self) -> bool:
-        """是否启用 VLM 图片描述（从空间级别默认解析配置读取）"""
+        """是否启用 VLM 图片描述
+
+        .. deprecated::
+            此属性从空间级 defaults.parsing 读取，仅为遗留兼容。
+            实际 VLM 开关应从知识库配置 parsing.image.strategy 读取，
+            通过 build_runtime_parsing_config() 转换为 vlm_description_enabled。
+            新代码请勿直接使用此属性。
+        """
         defaults = self.get_defaults_config()
         parsing = defaults.get("parsing", {})
         return parsing.get("vlm_description_enabled", False)
@@ -126,8 +133,8 @@ class KnowledgeSpace(BaseModel):
         """获取默认切分配置"""
         return self.get_defaults_config().get("splitting", {
             "strategy": "recursive",
-            "chunk_size": 500,
-            "chunk_overlap": 50
+            "chunk_size": 1000,
+            "chunk_overlap": 100
         })
 
     # ========== 状态检查方法 ==========

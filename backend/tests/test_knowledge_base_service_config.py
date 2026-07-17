@@ -78,7 +78,7 @@ def test_update_config_merges_new_nested_parsing_structure(monkeypatch):
         "splitting": {
             "chunk_size": 1500,
             "audio": {
-                "strategy": "fixed",
+                "strategy": "fixed_size",
                 "chunk_size": 900,
             },
         },
@@ -118,7 +118,7 @@ def test_update_config_merges_new_nested_parsing_structure(monkeypatch):
     assert kb.config["space_type"] == ["text", "image", "video", "audio"]
     assert kb.config["splitting"]["strategy"] == "recursive"
     assert kb.config["splitting"]["chunk_size"] == 1500
-    assert kb.config["splitting"]["audio"]["strategy"] == "fixed"
+    assert kb.config["splitting"]["audio"]["strategy"] == "fixed_size"
     assert kb.config["parsing"]["text"]["pdf"]["strategy"] == "deepdoc"
     assert kb.config["parsing"]["text"]["pdf"]["parser"] == "layout"
     assert kb.config["parsing"]["text"]["pdf"]["ocr_enabled"] is True
@@ -132,7 +132,8 @@ def test_update_config_merges_new_nested_parsing_structure(monkeypatch):
     service.session.commit.assert_awaited_once()
 
 
-def test_update_config_removes_none_fields_via_deep_merge(monkeypatch):
+def test_update_config_preserves_none_fields_via_deep_merge(monkeypatch):
+    """_deep_merge now preserves None values instead of deleting keys, consistent with SpaceService."""
     kb = FakeKnowledgeBase(
         2,
         {
@@ -169,7 +170,8 @@ def test_update_config_removes_none_fields_via_deep_merge(monkeypatch):
         )
     )
 
-    assert "image" not in kb.config["parsing"]
+    # None values are preserved (not deleted), consistent with SpaceService._deep_merge
+    assert kb.config["parsing"]["image"] is None
 
 
 def test_update_config_denies_without_manage_permission():

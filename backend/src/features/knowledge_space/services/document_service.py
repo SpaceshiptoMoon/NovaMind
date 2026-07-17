@@ -54,6 +54,13 @@ from novamind.shared.knowledge.media_processing.vlm import (
 )
 from novamind.shared.ai_models.embedding import OpenAICompatibleEmbedding as EmbeddingClient
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+    DEFAULT_CHUNK_SIZE as _SCHEMA_CHUNK_SIZE,
+    DEFAULT_CHUNK_OVERLAP as _SCHEMA_CHUNK_OVERLAP,
+    DEFAULT_MIN_CHUNK_SIZE as _SCHEMA_MIN_CHUNK_SIZE,
+    DEFAULT_MAX_CHUNK_SIZE as _SCHEMA_MAX_CHUNK_SIZE,
+    DEFAULT_EMBEDDING_BATCH_SIZE as _SCHEMA_EMBEDDING_BATCH_SIZE,
+)
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.document_task_batch import BatchAction
 
@@ -63,10 +70,11 @@ def _compute_sha256(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
-DEFAULT_CHUNK_SIZE = 2000
-DEFAULT_CHUNK_OVERLAP = 50
-DEFAULT_MIN_CHUNK_SIZE = 500
-DEFAULT_EMBEDDING_BATCH_SIZE = 32
+# Re-export schema constants as module-level names for backward compatibility
+DEFAULT_CHUNK_SIZE = _SCHEMA_CHUNK_SIZE
+DEFAULT_CHUNK_OVERLAP = _SCHEMA_CHUNK_OVERLAP
+DEFAULT_MIN_CHUNK_SIZE = _SCHEMA_MIN_CHUNK_SIZE
+DEFAULT_EMBEDDING_BATCH_SIZE = _SCHEMA_EMBEDDING_BATCH_SIZE
 
 
 class DocumentCancelledError(Exception):
