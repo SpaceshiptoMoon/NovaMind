@@ -248,6 +248,11 @@ class VideoParsingConfig(BaseModel):
     max_frames: int = Field(default=60, ge=1, le=200)
     vlm_description_enabled: bool = Field(default=False)
     vlm_model: Optional[str] = Field(default=None)
+    # VLM 主模型因配额/鉴权类错误失败时，回退到的备用 VLM 模型名（用户在模型管理中配置过的）。
+    vlm_fallback_model: Optional[str] = Field(default=None)
+    # 当所有帧的 VLM 描述均因配额/鉴权类错误失败时，是否跳过 VLM 并写一条占位描述，
+    # 而不是让整个文档任务失败。默认 False（fail fast，抛业务异常提示用户）。
+    vlm_skip_on_quota_error: bool = Field(default=False)
 
 
 class AudioParsingConfig(BaseModel):
