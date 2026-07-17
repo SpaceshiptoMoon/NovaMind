@@ -19,6 +19,7 @@ from novamind.features.knowledge_space.repository.member_repository import Membe
 from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
 from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
 from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
+from novamind.features.knowledge_space.repository.audit_repository import AuditRepository
 from novamind.features.knowledge_space.services.permission_service import PermissionService
 from novamind.features.knowledge_space.api.exceptions import (
     SpaceAccessDeniedError,
@@ -482,12 +483,29 @@ class MemberService:
                 kbs = await self.kb_repo.get_by_space(space_id)
 
                 # 2. 级联软删除：知识库、文档、空间
+                audit_repo = AuditRepository(self.session)
                 for kb in kbs:
                     kb.soft_delete()
                     await self.doc_repo.delete_by_kb(kb.id)
+                    # 补审计：KB 被级联删除（与级联删同事务，原子提交）
+                    await audit_repo.create({
+                        "space_id": space_id,
+                        "user_id": user_id,
+                        "action": "kb_delete",
+                        "resource": {"type": "knowledge_base", "id": kb.id, "name": kb.name},
+                        "details": {"reason": "last_admin_leave_cascade", "auto": True},
+                    })
                 await self.space_repo.soft_delete(space_id)
                 # 2.1 清理所有成员记录（包括管理员自身）
                 await self.member_repo.delete_by_space(space_id)
+                # 补审计：空间被级联删除（与级联删同事务，原子提交）
+                await audit_repo.create({
+                    "space_id": space_id,
+                    "user_id": user_id,
+                    "action": "space_delete",
+                    "resource": {"type": "space", "id": space_id},
+                    "details": {"reason": "last_admin_leave_cascade", "auto": True},
+                })
                 await self.session.commit()
 
                 self.logger.info(

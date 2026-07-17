@@ -227,7 +227,13 @@ async def remove_member(
     _admin: SpaceMember = Depends(validate_space_admin),
 ):
     """移除成员（需要空间管理员权限）"""
-    # 记录审计日志
+    result = await member_service.remove_member(
+        space_id=space_id,
+        operator_id=user_id,
+        user_id=target_user_id,
+    )
+
+    # 业务成功后记录审计日志（避免业务失败产生伪审计）
     await audit_service.log_action(
         space_id=space_id,
         user_id=user_id,
@@ -235,12 +241,6 @@ async def remove_member(
         resource_type="member",
         resource_id=target_user_id,
         request=request,
-    )
-
-    result = await member_service.remove_member(
-        space_id=space_id,
-        operator_id=user_id,
-        user_id=target_user_id,
     )
 
     return ActionResponse(success=result, message="成员已移除")
@@ -260,7 +260,12 @@ async def leave_space(
     audit_service: AuditService = Depends(get_audit_service),
 ):
     """离开空间"""
-    # 记录审计日志
+    result = await member_service.leave_space(
+        space_id=space_id,
+        user_id=user_id,
+    )
+
+    # 业务成功后记录审计日志（避免业务失败产生伪审计）
     await audit_service.log_action(
         space_id=space_id,
         user_id=user_id,
@@ -268,11 +273,6 @@ async def leave_space(
         resource_type="member",
         resource_id=user_id,
         request=request,
-    )
-
-    result = await member_service.leave_space(
-        space_id=space_id,
-        user_id=user_id,
     )
 
     return ActionResponse(success=result, message="已离开空间")
