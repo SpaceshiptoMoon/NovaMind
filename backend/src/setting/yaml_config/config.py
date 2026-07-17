@@ -49,6 +49,9 @@ class ParsingConfig:
     preserve_structure: bool = True
     encoding: str = "utf-8"
     vlm_description_enabled: bool = False
+    # 本地 faster-whisper ASR 模型目录（绝对路径）。为空时回退到环境变量
+    # NOVAMIND_LOCAL_WHISPER_MODEL_DIR，再为空时用默认 backend/models/faster-whisper/tiny。
+    local_whisper_model_dir: Optional[str] = None
 
 
 @dataclass

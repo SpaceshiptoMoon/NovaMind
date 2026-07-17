@@ -85,6 +85,39 @@ _model_lock = asyncio.Lock()
 _local_whisper_model = None
 
 
+def _resolve_local_whisper_model_dir() -> Path:
+    """解析本地 faster-whisper 模型目录。
+
+    优先级：
+      1. YAML 配置 ``knowledge_base.parsing.local_whisper_model_dir``
+      2. 环境变量 ``NOVAMIND_LOCAL_WHISPER_MODEL_DIR``
+      3. 默认 ``backend/models/faster-whisper/tiny``
+
+    历史问题：原实现用 ``Path(__file__).resolve().parent`` 仅上溯 4 层，落到
+    ``backend/src/shared/models/...``（模型实际在 ``backend/models/...``），
+    导致本地 ASR 始终报模型未找到。此处改为可配置，默认上溯到 ``backend/``。
+    """
+    # 1. YAML 配置（延迟导入避免 shared/knowledge → setting 的耦合）
+    try:
+        from novamind.setting import get_config_value
+        configured = get_config_value(
+            "knowledge_base.parsing.local_whisper_model_dir", None
+        )
+    except Exception:
+        configured = None
+    if configured:
+        return Path(str(configured)).expanduser()
+
+    # 2. 环境变量
+    env_dir = os.environ.get("NOVAMIND_LOCAL_WHISPER_MODEL_DIR")
+    if env_dir:
+        return Path(env_dir).expanduser()
+
+    # 3. 默认：__file__ = backend/src/shared/knowledge/media_processing/audio/audio_utils.py
+    #    parents[5] = backend/
+    return Path(__file__).resolve().parents[5] / "models" / "faster-whisper" / "tiny"
+
+
 async def _get_local_whisper_model():
     """懒加载 faster-whisper 模型（单例，异步安全）"""
     global _local_whisper_model
@@ -93,12 +126,13 @@ async def _get_local_whisper_model():
             if _local_whisper_model is None:
                 from faster_whisper import WhisperModel
 
-                # 模型路径：项目根 backend/models/faster-whisper/tiny/
-                model_dir = Path(__file__).resolve().parent.parent.parent.parent / "models" / "faster-whisper" / "tiny"
+                model_dir = _resolve_local_whisper_model_dir()
                 if not model_dir.exists():
                     raise RuntimeError(
                         f"本地 ASR 模型未找到: {model_dir}，"
-                        f"请确保 models/faster-whisper/tiny/ 目录存在且包含 model.bin"
+                        f"请确保目录存在且包含 model.bin；"
+                        f"可在配置 knowledge_base.parsing.local_whisper_model_dir "
+                        f"或环境变量 NOVAMIND_LOCAL_WHISPER_MODEL_DIR 指定路径。"
                     )
 
                 _local_whisper_model = WhisperModel(
