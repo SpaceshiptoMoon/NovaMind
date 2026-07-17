@@ -16,6 +16,7 @@ import tempfile
 from novamind.shared.utils.time_utils import now_china
 from pathlib import Path
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.features.knowledge_space.models.document import Document
@@ -281,36 +282,54 @@ class DocumentService:
             return soft_deleted
 
         # 9. 创建文档记录 + 上传 MinIO（使用 SAVEPOINT 保证原子性）
-        async with self.session.begin_nested():
-            # 创建文档记录（先获取 document_id）
-            document = await self.doc_repo.create({
-                "space_id": kb.space_id,
-                "kb_id": kb_id,
-                "uploader_id": uploader_id,
-                "filename": filename,
-                "file_type": file_type,
-                "file_size": file_size,
-                "file_hash": file_hash,
-            })
+        # 注意：doc_repo.create 先 flush 出真实 document_id 再上传 MinIO，因此
+        # 唯一约束冲突（uq_kb_file_hash）发生在 flush 阶段、MinIO 上传之前，
+        # 不会产生孤儿对象。
+        try:
+            async with self.session.begin_nested():
+                # 创建文档记录（先获取 document_id）
+                document = await self.doc_repo.create(
+                    {
+                        "space_id": kb.space_id,
+                        "kb_id": kb_id,
+                        "uploader_id": uploader_id,
+                        "filename": filename,
+                        "file_type": file_type,
+                        "file_size": file_size,
+                        "file_hash": file_hash,
+                    }
+                )
 
-            # 使用真实 document_id 上传到 MinIO
-            minio_result = await self.minio_client.upload_document(
-                space_id=kb.space_id,
-                kb_id=kb_id,
-                document_id=document.id,
-                file_data=file_content,
-                filename=filename,
-                file_hash=file_hash,
-            )
+                # 使用真实 document_id 上传到 MinIO
+                minio_result = await self.minio_client.upload_document(
+                    space_id=kb.space_id,
+                    kb_id=kb_id,
+                    document_id=document.id,
+                    file_data=file_content,
+                    filename=filename,
+                    file_hash=file_hash,
+                )
 
-            # 更新文档记录中的存储信息
-            document.set_minio_info(
-                bucket=minio_result["bucket"],
-                object_name=minio_result["object_name"],
-                etag=minio_result.get("etag"),
-            )
+                # 更新文档记录中的存储信息
+                document.set_minio_info(
+                    bucket=minio_result["bucket"],
+                    object_name=minio_result["object_name"],
+                    etag=minio_result.get("etag"),
+                )
 
-        await self.session.commit()
+            await self.session.commit()
+        except IntegrityError:
+            # uq_kb_file_hash 冲突：同知识库已存在相同哈希的文档。正常情况下步骤 8 的
+            # 去重检查会先命中并抛出 DocumentAlreadyExistsError，这里只兜底两类漏网
+            # 场景——(a) 哈希缓存残留 exists=False 导致 get_by_hash 跳过 DB 查询，
+            # (b) 并发上传竞争。SAVEPOINT 已自动回滚，再抛业务异常避免 500。
+            await self.session.rollback()
+            raise DocumentAlreadyExistsError(filename)
+
+        # 创建成功后同步哈希缓存为 exists=True。步骤 8 的 get_by_hash 在未命中时会
+        # 缓存 exists=False，若创建后不更正，后续同哈希上传会因缓存命中而绕过去重
+        # 检查、直接撞上 uq_kb_file_hash 唯一约束（正是批量重传时的 IntegrityError）。
+        await self.doc_repo.cache_document_hash(kb_id, file_hash, exists=True)
 
         self.logger.info(
             "文档上传成功，等待拆分解析",
