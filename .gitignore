@@ -118,3 +118,4 @@ backend/original_templates_backup.py
 *.bak
 *.pid
 *.seed
+.git-backup-*
