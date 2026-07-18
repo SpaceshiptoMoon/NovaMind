@@ -10,6 +10,7 @@ from novamind.shared.knowledge.integrations.deepdoc.core.factory import DeepDocP
 from novamind.shared.knowledge.integrations.deepdoc.core.models import DeepDocParseResult
 from novamind.shared.knowledge.integrations.deepdoc.core.runtime_parser import DeepDocParser
 from novamind.shared.knowledge.integrations.deepdoc.compat.upstream import get_upstream_deepdoc_snapshot
+from novamind.shared.knowledge.integrations.deepdoc.logging_compat import get_logger
 from novamind.shared.knowledge.integrations.deepdoc.vision.model_manager import get_model_status
 from novamind.shared.knowledge.integrations.deepdoc.vision_runtime import (
     get_vision_health_status,
@@ -107,6 +108,16 @@ class DeepDocEngine:
         parser_spec = DeepDocParserFactory.resolve_parser_id(file_type, parser_id)
         parser, parser_defaults = DeepDocParserFactory.build_configs(file_type, parser_spec.parser_id)
         merged_parsing = {**parser_defaults, **(parsing_config or {})}
+        _log = get_logger(__name__)
+        _log.info(
+            "DeepDoc aparse_with_parser_id 解析器选择",
+            requested_parser_id=parser_id,
+            resolved_parser_id=parser_spec.parser_id,
+            parser_mode=parser_spec.mode,
+            parser_available=parser_spec.available,
+            merged_parsing_keys=list(merged_parsing.keys()),
+            source="file_path" if file_path else "file_bytes",
+        )
         if file_path is not None:
             result = await parser.parse(
                 file_path,
@@ -123,6 +134,12 @@ class DeepDocEngine:
         else:
             raise ValueError("Either file_path or file_bytes must be provided")
         result.metadata.setdefault("parser_id", parser_spec.parser_id)
+        _log.info(
+            "DeepDoc aparse_with_parser_id 解析完成",
+            parser_id=parser_spec.parser_id,
+            char_count=len(result.full_text),
+            chunk_count=len(result.chunks),
+        )
         return result
 
     def parse_file(self, file_path: str | Path, **kwargs) -> DeepDocParseResult:

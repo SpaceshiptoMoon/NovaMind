@@ -127,7 +127,7 @@
                       <el-table-column label="文档" min-width="250">
                         <template #default="{ row }">
                           <div class="doc-cell">
-                            <span class="doc-name">{{ getTaskDocumentName(row.document_id, row.pipeline_result) }}</span>
+                            <span class="doc-name">{{ getTaskDocumentName(row.document_id, row.pipeline_result, row.document_name) }}</span>
                           </div>
                         </template>
                       </el-table-column>
@@ -168,6 +168,7 @@
                             placement="top-start"
                             effect="dark"
                             :show-after="200"
+                            popper-class="task-error-tooltip"
                           >
                             <span class="error-text">{{ getErrorPreview(row.error_message) }}</span>
                           </el-tooltip>
@@ -248,7 +249,8 @@ async function fetchTasks() {
 
     tasks.value = data.items || []
     total.value = data.total || 0
-    expandedTaskIds.value = tasks.value[0] ? [tasks.value[0].id] : []
+    // 任务列表默认全部收起，不自动展开第一个任务
+    expandedTaskIds.value = []
   } finally {
     loading.value = false
   }
@@ -266,9 +268,17 @@ function handlePageChange(nextPage: number, nextPageSize: number) {
   fetchTasks()
 }
 
-function getTaskDocumentName(documentId: number, pipelineResult?: Record<string, unknown>) {
+function getTaskDocumentName(
+  documentId: number,
+  pipelineResult?: Record<string, unknown>,
+  documentName?: string | null,
+) {
+  // 优先用后端关联的文档名（Documents.filename），其次用解析结果里的 filename，
+  // 都缺失时才回退为占位符「文档 {id}」（仅文档被删除等极端情况）
+  if (typeof documentName === 'string' && documentName) return documentName
   const filename = pipelineResult?.filename
-  return typeof filename === 'string' && filename ? filename : `文档 ${documentId}`
+  if (typeof filename === 'string' && filename) return filename
+  return `文档 ${documentId}`
 }
 
 function getErrorPreview(errorMessage?: string | null) {
@@ -870,5 +880,15 @@ onMounted(fetchTasks)
   .task-overview {
     max-width: 220px;
   }
+}
+</style>
+
+<!-- 非 scoped：el-tooltip 的 popper 被 teleport 到 body，scoped 样式无法命中 -->
+<style>
+.task-error-tooltip.el-popper {
+  max-width: 420px;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.5;
 }
 </style>

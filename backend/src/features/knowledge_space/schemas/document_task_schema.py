@@ -13,6 +13,7 @@ class DocumentTaskItemResponse(BaseModel):
     id: int = Field(..., description="任务项ID")
     task_id: int = Field(..., description="任务ID")
     document_id: int = Field(..., description="文档ID")
+    document_name: Optional[str] = Field(None, description="文档名（由后端按 document_id 关联 Documents.filename 填充，前端展示用）")
     kb_id: int = Field(..., description="知识库ID")
     space_id: int = Field(..., description="空间ID")
     status: int = Field(..., description="任务项状态")

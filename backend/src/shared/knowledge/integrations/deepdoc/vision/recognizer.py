@@ -53,6 +53,9 @@ class Recognizer:
             self.load()
 
     def load(self):
+        import logging as _logging
+        _log = _logging.getLogger(__name__)
+        _log.info("DeepDoc 识别器模型开始加载", domain=self.domain, model_filename=self.model_filename)
         ort = self._import_onnxruntime()
         if self.domain in {"layout", "tsr"}:
             ensure_model_group_available(self.domain, self.model_dir)
@@ -74,6 +77,15 @@ class Recognizer:
         if len(input_shape) == 2 and all(isinstance(v, int) and v > 0 for v in input_shape):
             self.input_shape = tuple(input_shape)
         self.loaded = True
+        _log.info(
+            "DeepDoc 识别器模型加载完成",
+            domain=self.domain,
+            model_path=str(model_path),
+            input_shape=self.input_shape,
+            input_names=self.input_names,
+            output_names=self.output_names,
+            providers=providers,
+        )
         return self
 
     def ensure_loaded(self):
