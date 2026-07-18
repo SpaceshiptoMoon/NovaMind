@@ -135,6 +135,13 @@ class DeepDocParser:
         parsing_config: Dict[str, Any],
         splitting_config: Dict[str, Any],
     ) -> DeepDocParseResult:
+        logger.info(
+            "DeepDoc 解析路由",
+            extension=extension,
+            deepdoc_parser_id=parsing_config.get("deepdoc_parser_id"),
+            deepdoc_pdf_mode=parsing_config.get("deepdoc_pdf_mode"),
+            source_type="file" if isinstance(source, Path) else "bytes",
+        )
         if extension == "pdf":
             return await asyncio.to_thread(self._parse_pdf_sync, source, parsing_config, splitting_config)
         if extension == "docx":
@@ -158,48 +165,73 @@ class DeepDocParser:
         splitting_config: Dict[str, Any],
     ) -> DeepDocParseResult:
         parser_id = str(parsing_config.get("deepdoc_parser_id", "") or "")
+        logger.info(
+            "DeepDoc PDF 解析开始",
+            parser_id=parser_id or "(auto)",
+            deepdoc_pdf_mode=parsing_config.get("deepdoc_pdf_mode", "layout"),
+            chunk_size=splitting_config.get("chunk_size", 1000),
+            source_type="file" if isinstance(source, Path) else "bytes",
+        )
         if parser_id == "pdf_docling":
+            logger.info("DeepDoc PDF 使用远程解析器", parser_id="pdf_docling")
             if isinstance(source, Path):
                 full_text, default_chunks, metadata = self._docling_parser.parse(source)
             else:
                 full_text, default_chunks, metadata = self._docling_parser.parse_bytes(source)
             chunks = self._chunk_blocks(default_chunks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
-            return DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
+            result = DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
+            logger.info("DeepDoc PDF 远程解析完成", parser_id="pdf_docling", char_count=len(full_text), chunk_count=len(chunks))
+            return result
         if parser_id == "pdf_opendataloader":
+            logger.info("DeepDoc PDF 使用远程解析器", parser_id="pdf_opendataloader")
             if isinstance(source, Path):
                 full_text, default_chunks, metadata = self._opendataloader_parser.parse(source)
             else:
                 full_text, default_chunks, metadata = self._opendataloader_parser.parse_bytes(source)
             chunks = self._chunk_blocks(default_chunks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
-            return DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
+            result = DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
+            logger.info("DeepDoc PDF 远程解析完成", parser_id="pdf_opendataloader", char_count=len(full_text), chunk_count=len(chunks))
+            return result
         if parser_id == "pdf_mineru":
+            logger.info("DeepDoc PDF 使用远程解析器", parser_id="pdf_mineru")
             if isinstance(source, Path):
                 full_text, default_chunks, metadata = self._mineru_parser.parse(source)
             else:
                 full_text, default_chunks, metadata = self._mineru_parser.parse_bytes(source, parsing_config=parsing_config)
             chunks = self._chunk_blocks(default_chunks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
-            return DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
+            result = DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
+            logger.info("DeepDoc PDF 远程解析完成", parser_id="pdf_mineru", char_count=len(full_text), chunk_count=len(chunks))
+            return result
         if parser_id == "pdf_paddleocr":
+            logger.info("DeepDoc PDF 使用远程解析器", parser_id="pdf_paddleocr")
             if isinstance(source, Path):
                 full_text, default_chunks, metadata = self._paddleocr_parser.parse(source)
             else:
                 full_text, default_chunks, metadata = self._paddleocr_parser.parse_bytes(source)
             chunks = self._chunk_blocks(default_chunks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
-            return DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
+            result = DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
+            logger.info("DeepDoc PDF 远程解析完成", parser_id="pdf_paddleocr", char_count=len(full_text), chunk_count=len(chunks))
+            return result
         if parser_id == "pdf_somark":
+            logger.info("DeepDoc PDF 使用远程解析器", parser_id="pdf_somark")
             if isinstance(source, Path):
                 full_text, default_chunks, metadata = self._somark_parser.parse(source)
             else:
                 full_text, default_chunks, metadata = self._somark_parser.parse_bytes(source, parsing_config=parsing_config)
             chunks = self._chunk_blocks(default_chunks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
-            return DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
+            result = DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
+            logger.info("DeepDoc PDF 远程解析完成", parser_id="pdf_somark", char_count=len(full_text), chunk_count=len(chunks))
+            return result
         if parser_id == "pdf_tcadp":
+            logger.info("DeepDoc PDF 使用远程解析器", parser_id="pdf_tcadp")
             if isinstance(source, Path):
                 full_text, default_chunks, metadata = self._tcadp_parser.parse(source)
             else:
                 full_text, default_chunks, metadata = self._tcadp_parser.parse_bytes(source, parsing_config=parsing_config)
             chunks = self._chunk_blocks(default_chunks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
-            return DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
+            result = DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
+            logger.info("DeepDoc PDF 远程解析完成", parser_id="pdf_tcadp", char_count=len(full_text), chunk_count=len(chunks))
+            return result
 
         pdf_mode = str(parsing_config.get("deepdoc_pdf_mode", "layout"))
         pdf_modes = self.supported_pdf_modes()
@@ -210,8 +242,20 @@ class DeepDocParser:
                 ensure_vision_parser_available()
             missing = ", ".join(pdf_modes[pdf_mode].get("missing", []))
             raise RuntimeError(f"DeepDoc PDF mode '{pdf_mode}' is not available: {missing}")
+        logger.info(
+            "DeepDoc PDF 使用本地解析器",
+            pdf_mode=pdf_mode,
+            parser_id=parser_id or "(layout/default)",
+        )
         pdf_input = str(source) if isinstance(source, Path) else source
-        return self._pdf_parser(pdf_input, pdf_mode=pdf_mode, chunk_size=int(splitting_config.get("chunk_size", 1000)))
+        result = self._pdf_parser(pdf_input, pdf_mode=pdf_mode, chunk_size=int(splitting_config.get("chunk_size", 1000)))
+        logger.info(
+            "DeepDoc PDF 解析完成",
+            pdf_mode=pdf_mode,
+            char_count=len(result.full_text),
+            chunk_count=len(result.chunks),
+        )
+        return result
 
     def _parse_text_sync(
         self,
@@ -220,6 +264,7 @@ class DeepDocParser:
         parsing_config: Dict[str, Any],
         splitting_config: Dict[str, Any],
     ) -> DeepDocParseResult:
+        logger.info("DeepDoc 文本解析开始", extension=extension, deepdoc_parser_id=parsing_config.get("deepdoc_parser_id"))
         if isinstance(source, Path):
             full_text, default_chunks, parser_metadata = self._text_parser.parse(source, parser_id=parsing_config.get("deepdoc_parser_id"))
             file_type = source.suffix.lower().lstrip(".")
@@ -227,6 +272,7 @@ class DeepDocParser:
             full_text, default_chunks, parser_metadata = self._text_parser.parse_bytes(source, extension, parser_id=parsing_config.get("deepdoc_parser_id"))
             file_type = extension
         chunks = self._chunk_blocks(default_chunks or [full_text], chunk_size=int(splitting_config.get("chunk_size", 1000)))
+        logger.info("DeepDoc 文本解析完成", extension=extension, char_count=len(full_text), chunk_count=len(chunks))
         return DeepDocParseResult(
             full_text=full_text.strip(),
             chunks=chunks,
@@ -234,6 +280,7 @@ class DeepDocParser:
         )
 
     def _parse_docx_sync(self, source: Union[Path, bytes], splitting_config: Dict[str, Any]) -> DeepDocParseResult:
+        logger.info("DeepDoc DOCX 解析开始")
         parser_input = str(source) if isinstance(source, Path) else source
         sections, tables = self._docx_parser(parser_input)
         blocks: List[str] = []
@@ -266,6 +313,7 @@ class DeepDocParser:
 
         full_text = "\n\n".join(blocks).strip()
         chunks = self._chunk_blocks(blocks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
+        logger.info("DeepDoc DOCX 解析完成", char_count=len(full_text), chunk_count=len(chunks), sections=len(sections), images=image_count)
         return DeepDocParseResult(
             full_text=full_text,
             chunks=chunks,
@@ -285,10 +333,12 @@ class DeepDocParser:
         extension: str,
         splitting_config: Dict[str, Any],
     ) -> DeepDocParseResult:
+        logger.info("DeepDoc Excel 解析开始", extension=extension)
         parser_input = str(source) if isinstance(source, Path) else source
         blocks = self._excel_parser.html(parser_input) or self._excel_parser(parser_input)
         full_text = "\n\n".join(block.strip() for block in blocks if block and block.strip()).strip()
         chunks = self._chunk_blocks(blocks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
+        logger.info("DeepDoc Excel 解析完成", extension=extension, char_count=len(full_text), chunk_count=len(chunks), table_chunks=len(blocks))
         return DeepDocParseResult(
             full_text=full_text,
             chunks=chunks,
@@ -302,12 +352,14 @@ class DeepDocParser:
         )
 
     def _parse_epub_sync(self, source: Union[Path, bytes], splitting_config: Dict[str, Any]) -> DeepDocParseResult:
+        logger.info("DeepDoc EPUB 解析开始")
         if isinstance(source, Path):
             sections = self._epub_parser(str(source))
         else:
             sections = self._epub_parser("memory.epub", binary=source)
         full_text = "\n\n".join(section.strip() for section in sections if section and section.strip()).strip()
         chunks = self._chunk_blocks(sections, chunk_size=int(splitting_config.get("chunk_size", 1000)))
+        logger.info("DeepDoc EPUB 解析完成", char_count=len(full_text), chunk_count=len(chunks), sections=len(sections))
         return DeepDocParseResult(
             full_text=full_text,
             chunks=chunks,
@@ -326,11 +378,13 @@ class DeepDocParser:
         extension: str,
         splitting_config: Dict[str, Any],
     ) -> DeepDocParseResult:
+        logger.info("DeepDoc PPT 解析开始", extension=extension)
         parser_input = str(source) if isinstance(source, Path) else source
         slides = self._ppt_parser(parser_input)
         blocks = [f"# Slide {index + 1}\n{slide}".strip() for index, slide in enumerate(slides) if slide and slide.strip()]
         full_text = "\n\n".join(blocks).strip()
         chunks = self._chunk_blocks(blocks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
+        logger.info("DeepDoc PPT 解析完成", extension=extension, char_count=len(full_text), chunk_count=len(chunks), slides=len(slides))
         return DeepDocParseResult(
             full_text=full_text,
             chunks=chunks,
@@ -349,11 +403,13 @@ class DeepDocParser:
         extension: str,
         splitting_config: Dict[str, Any],
     ) -> DeepDocParseResult:
+        logger.info("DeepDoc 图片解析开始", extension=extension)
         if isinstance(source, Path):
             full_text, default_chunks, metadata = self._figure_parser.parse(source)
         else:
             full_text, default_chunks, metadata = self._figure_parser.parse_bytes(source, extension)
         chunks = self._chunk_blocks(default_chunks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
+        logger.info("DeepDoc 图片解析完成", extension=extension, char_count=len(full_text), chunk_count=len(chunks))
         return DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
 
     @staticmethod

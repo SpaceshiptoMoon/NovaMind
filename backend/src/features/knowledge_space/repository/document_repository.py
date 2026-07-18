@@ -155,6 +155,21 @@ class DocumentRepository:
             await self._attach_latest_tasks(ordered)
         return ordered
 
+    async def get_filename_map_by_ids(self, document_ids: List[int]) -> Dict[int, str]:
+        """批量获取 {文档ID: 文件名} 映射，用于任务列表展示文档名。
+
+        仅查询 id 与 filename 两列，轻量且不附带任务信息；
+        软删除的文档不返回（其任务项将回退为占位名）。
+        """
+        if not document_ids:
+            return {}
+        query = select(Document.id, Document.filename).where(
+            Document.id.in_(document_ids),
+            Document.deleted_at.is_(None),
+        )
+        result = await self.session.execute(query)
+        return {doc_id: filename for doc_id, filename in result.all() if filename}
+
     async def lock_active_documents_by_ids(self, document_ids: List[int]) -> List[Document]:
         if not document_ids:
             return []

@@ -130,7 +130,9 @@ class UpDownConcatMerger:
         states = [self._state_from_box(box) for box in boxes]
         mean_height = self._mean_height_by_page(states)
         mean_width = self._mean_width_by_page(states)
-        ordered = sorted(states, key=lambda item: (item["page_number"], item["top"], item["x0"]))
+        # 按 (页, 列, 顶, 左) 排序：双栏论文必须先按列分组再纵向阅读，
+        # 否则左右栏顶部相近的行会被错位穿插（原 (page, top, x0) 排序的 bug）。
+        ordered = sorted(states, key=lambda item: (item["page_number"], item.get("col_id", 0), item["top"], item["x0"]))
         self._annotate_in_row_counts(ordered, mean_height)
         merged_states = self._merge_states_with_model(ordered, mean_height, mean_width, model)
         return [self._box_from_state(state, boxes[0].__class__) for state in merged_states]
@@ -202,13 +204,16 @@ class UpDownConcatMerger:
                 blocks.append(chunks)
 
         merged = [self._merge_block_states(block) for block in blocks]
-        return sorted(merged, key=lambda item: (item["page_number"], item["top"], item["x0"]))
+        return sorted(merged, key=lambda item: (item["page_number"], item.get("col_id", 0), item["top"], item["x0"]))
 
     def _heuristic_merge(self, boxes: Sequence[Any]) -> list[Any]:
         if not boxes:
             return []
         mean_height = median(max(1.0, float(box.bottom - box.top)) for box in boxes)
-        ordered = sorted(boxes, key=lambda item: (item.page, item.x0, item.top))
+        # 按 (页, 列, 顶, 左) 排序：双栏文档先按列分组再纵向阅读。
+        # 原排序 (page, x0, top) 以 x 坐标优先，跨页宽的公式碎片会按 x0 散落，
+        # 破坏纵向阅读顺序（这是 full_text 出现错位的主因）。
+        ordered = sorted(boxes, key=lambda item: (item.page, item.col_id, item.top, item.x0))
         for index in range(len(ordered) - 1):
             for cursor in range(index, -1, -1):
                 if (
