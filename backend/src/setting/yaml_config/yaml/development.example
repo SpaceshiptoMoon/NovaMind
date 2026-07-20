@@ -12,6 +12,9 @@ minio:
   access_key: ${MINIO_ROOT_USER}
   secret_key: ${MINIO_ROOT_PASSWORD}
   secure: false
+  # DashScope 等外部云服务下载文件时的公网可达地址，需含协议前缀。
+  # 本地开发留空即可（本地 ASR 兜底）；部署时填写如 https://minio.example.com
+  public_endpoint:
 
 elasticsearch:
   hosts:

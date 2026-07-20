@@ -5,6 +5,8 @@ minio:
   access_key: minioadmin
   secret_key: minioadmin
   secure: false
+  # 测试环境不需要公网地址
+  public_endpoint:
 
 elasticsearch:
   hosts:

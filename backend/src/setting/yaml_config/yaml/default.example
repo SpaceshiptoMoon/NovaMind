@@ -35,6 +35,9 @@ minio:
   secure: false
   region: us-east-1
   bucket_name: "novamind-dev"
+  # 外部服务（DashScope 等）下载文件时的公网地址，如 https://minio.example.com
+  # 本地开发留空即可，部署时必填
+  public_endpoint:
 
 elasticsearch:
   hosts:
