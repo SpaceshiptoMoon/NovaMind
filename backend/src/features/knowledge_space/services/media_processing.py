@@ -15,6 +15,7 @@ from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.document_task import DocumentTask
 from novamind.features.knowledge_space.services.document_service import (
     _check_document_cancelled,
+    load_pipeline_context,
     persist_parsed_text,
 )
 from novamind.shared.knowledge.media_processing.audio import (
@@ -121,20 +122,9 @@ async def process_video_document(
     5. Embedding → ES 索引
     """
     from novamind.features.user.services.model_config_service import ModelConfigService
-    from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-    from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
 
-    space = await session.get(KnowledgeSpace, document.space_id)
-    kb_repo = KnowledgeBaseRepository(session)
-    kb = await kb_repo.get_by_id(document.kb_id)
-
-    # 读取 pipeline 配置（优先 Task 快照，回退到 KB 实时配置）
-    # 注：迁移完成后 pipeline_config 应仅从 Task 快照读取
-    pipeline_config = (
-        task.pipeline_config
-        if (task and task.pipeline_config)
-        else (kb.get_config() if kb else {})
-    )
+    ctx = await load_pipeline_context(session, document, task)
+    pipeline_config = ctx.pipeline_config
     parsing_config = build_runtime_parsing_config(pipeline_config.get("parsing", {}), document.file_type)
     splitting_config = dict(pipeline_config.get("splitting", {}))
     video_config = (pipeline_config.get("parsing", {}) or {}).get("video", {})
@@ -259,7 +249,7 @@ async def process_video_document(
     apply_modality_splitting_override(splitting_config, "video")
     strategy = splitting_config.pop("strategy", "recursive")
     splitting_kwargs = splitting_config
-    embedding_config = space.embedding_config if space else {}
+    embedding_config = ctx.embedding_config
     embedding_client = await maybe_semantic_embedding_client(
         strategy, embedding_config, session, document.uploader_id
     )
@@ -322,22 +312,10 @@ async def process_audio_document(
     3. 统一文本切分
     4. Embedding → ES 索引
     """
-    from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-    from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
-
-    space = await session.get(KnowledgeSpace, document.space_id)
-    kb_repo = KnowledgeBaseRepository(session)
-    kb = await kb_repo.get_by_id(document.kb_id)
-
-    # 读取 pipeline 配置（优先 Task 快照，回退到 KB 实时配置）
-    # 注：迁移完成后 pipeline_config 应仅从 Task 快照读取
-    pipeline_config = (
-        task.pipeline_config
-        if (task and task.pipeline_config)
-        else (kb.get_config() if kb else {})
-    )
+    ctx = await load_pipeline_context(session, document, task)
+    pipeline_config = ctx.pipeline_config
     audio_config = (pipeline_config.get("parsing", {}) or {}).get("audio", {})
-    space_asr_cfg = (space.config or {}).get("asr", {}) if space else {}
+    space_asr_cfg = (ctx.space.config or {}).get("asr", {}) if ctx.space else {}
     asr_model = audio_config.get("asr_model") or space_asr_cfg.get("model") or "whisper-1"
     language = audio_config.get("language")
 
@@ -474,7 +452,7 @@ async def process_audio_document(
     # 应用音频专属切分覆盖（chunk_size, strategy 等）
     apply_modality_splitting_override(splitting_config, "audio")
     strategy = splitting_config.pop("strategy", "recursive")
-    embedding_config = space.embedding_config if space else {}
+    embedding_config = ctx.embedding_config
     embedding_client = await maybe_semantic_embedding_client(
         strategy, embedding_config, session, document.uploader_id
     )
