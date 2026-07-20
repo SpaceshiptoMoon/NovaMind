@@ -387,34 +387,70 @@ async def process_audio_document(
     if asr_protocol == "local":
         # 本地 faster-whisper 模型 — 无需 API Key，无需网络。
         # 模型缺失/解码失败时，若用户配了云端 ASR，则回退云端，避免整任务硬失败。
-        try:
-            segments = await _run_asr("local", asr_model, asr_api_key, asr_base_url)
-        except Exception as local_exc:
-            logger.warning(
-                "本地 ASR 失败，尝试回退云端 ASR",
-                document_id=document.id, error=str(local_exc),
-            )
+        # 本地 ASR 忙碌时（正在转写其它音频），直接溢出到云端，避免排队堵死管道。
+        from novamind.shared.knowledge.media_processing.audio import is_local_asr_busy
+
+        if is_local_asr_busy():
+            # 本地 ASR 正在转写，尝试溢出到云端
             cloud_creds = await _find_cloud_asr_credentials(mcs, document.uploader_id)
-            if cloud_creds is None:
-                raise DocumentProcessingError(
+            if cloud_creds:
+                cloud_protocol = cloud_creds.protocol or "openai"
+                logger.info(
+                    "本地 ASR 忙碌，溢出到云端 ASR",
                     document_id=document.id,
-                    error_message=(
-                        f"本地 ASR 不可用: {local_exc}。未找到可回退的云端 ASR 配置，"
-                        f"请在模型管理中配置 dashscope/openai ASR，或在配置 "
-                        f"knowledge_base.parsing.local_whisper_model_dir 中补齐本地模型路径。"
-                    ),
-                ) from local_exc
-            cloud_protocol = cloud_creds.protocol or "openai"
-            logger.info(
-                "回退云端 ASR", document_id=document.id,
-                protocol=cloud_protocol, model=cloud_creds.model,
-            )
-            segments = await _run_asr(
-                cloud_protocol,
-                cloud_creds.model or asr_model,
-                cloud_creds.api_key,
-                cloud_creds.base_url,
-            )
+                    protocol=cloud_protocol, model=cloud_creds.model,
+                )
+                segments = await _run_asr(
+                    cloud_protocol,
+                    cloud_creds.model or asr_model,
+                    cloud_creds.api_key,
+                    cloud_creds.base_url,
+                )
+            else:
+                logger.info(
+                    "本地 ASR 忙碌且无云端 ASR 配置，排队等待本地 ASR",
+                    document_id=document.id,
+                )
+                try:
+                    segments = await _run_asr("local", asr_model, asr_api_key, asr_base_url)
+                except Exception as local_exc:
+                    raise DocumentProcessingError(
+                        document_id=document.id,
+                        error_message=(
+                            f"本地 ASR 忙碌且无云端配置: {local_exc}。"
+                            f"请在模型管理中配置 dashscope/openai ASR 以支持溢出，"
+                            f"或等待本地 ASR 空闲后重试。"
+                        ),
+                    ) from local_exc
+        else:
+            try:
+                segments = await _run_asr("local", asr_model, asr_api_key, asr_base_url)
+            except Exception as local_exc:
+                logger.warning(
+                    "本地 ASR 失败，尝试回退云端 ASR",
+                    document_id=document.id, error=str(local_exc),
+                )
+                cloud_creds = await _find_cloud_asr_credentials(mcs, document.uploader_id)
+                if cloud_creds is None:
+                    raise DocumentProcessingError(
+                        document_id=document.id,
+                        error_message=(
+                            f"本地 ASR 不可用: {local_exc}。未找到可回退的云端 ASR 配置，"
+                            f"请在模型管理中配置 dashscope/openai ASR，或在配置 "
+                            f"knowledge_base.parsing.local_whisper_model_dir 中补齐本地模型路径。"
+                        ),
+                    ) from local_exc
+                cloud_protocol = cloud_creds.protocol or "openai"
+                logger.info(
+                    "回退云端 ASR", document_id=document.id,
+                    protocol=cloud_protocol, model=cloud_creds.model,
+                )
+                segments = await _run_asr(
+                    cloud_protocol,
+                    cloud_creds.model or asr_model,
+                    cloud_creds.api_key,
+                    cloud_creds.base_url,
+                )
     else:
         segments = await _run_asr(asr_protocol, asr_model, asr_api_key, asr_base_url)
     logger.info(

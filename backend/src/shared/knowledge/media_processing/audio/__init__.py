@@ -1,4 +1,5 @@
 from novamind.shared.knowledge.media_processing.audio.audio_utils import (
+    is_local_asr_busy,
     transcribe_audio_local,
     transcribe_audio_with_dashscope,
     transcribe_audio_with_timestamps,
@@ -6,6 +7,7 @@ from novamind.shared.knowledge.media_processing.audio.audio_utils import (
 )
 
 __all__ = [
+    "is_local_asr_busy",
     "transcribe_audio_local",
     "transcribe_audio_with_dashscope",
     "transcribe_audio_with_timestamps",
