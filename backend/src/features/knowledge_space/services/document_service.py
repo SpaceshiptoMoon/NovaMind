@@ -74,6 +74,7 @@ from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     DEFAULT_EMBEDDING_BATCH_SIZE as _SCHEMA_EMBEDDING_BATCH_SIZE,
 )
 from novamind.features.knowledge_space.schemas.document_schema import UploadedDocumentResult
+from novamind.features.knowledge_space.schemas.enums import ChunkType
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.document_task_batch import BatchAction
 
@@ -606,8 +607,7 @@ class DocumentService:
 
             # 解析全文持久化到 MinIO（切块之前，立刻 commit 落库）
 
-            await upload_parsed_text_to_minio(document, full_text, _logger)
-            await session.commit()
+            await persist_parsed_text(document, full_text, session, _logger)
 
             # 再基于解析全文做切分，确保全文与 chunk 的职责分离。
             # deepdoc/default 都在 processor.parse_document() 内完成解析与分块。
@@ -1550,6 +1550,26 @@ class DocumentService:
 # ========== 模块级静态辅助函数 ==========
 
 
+async def persist_parsed_text(
+    document: Document,
+    full_text: str,
+    session: AsyncSession,
+    logger,
+) -> str:
+    """将解析/转写后的原始全文上传到 MinIO 并立即 commit 落库。
+
+    所有模态（文本/图片/音频/视频）解析产出的源文本都经此入口持久化，
+    确保「解析全文入 MinIO」这一不变量集中表达，且切分/向量化前已落库，
+    后续管道失败也不会丢失解析结果。
+
+    Returns:
+        MinIO object_name；文本为空或上传失败时返回空字符串。
+    """
+    object_name = await upload_parsed_text_to_minio(document, full_text, logger)
+    await session.commit()
+    return object_name
+
+
 async def _process_image_document_static(
     document: Document,
     file_content: bytes,
@@ -1617,8 +1637,7 @@ async def _process_image_document_static(
         )
 
     # 图片描述全文持久化到 MinIO（立刻 commit 落库）
-    await upload_parsed_text_to_minio(document, description_text, _logger)
-    await session.commit()
+    await persist_parsed_text(document, description_text, session, _logger)
 
     _logger.info(
         "VLM 图片描述生成成功",
@@ -1647,7 +1666,7 @@ async def _process_image_document_static(
         "document_id": document.id,
         "chunk_id": f"{document.id}_0",
         "chunk_index": 0,
-        "chunk_type": "image",
+        "chunk_type": ChunkType.IMAGE,
         "content": description_text,
         "embedding": text_vector,
         "image_url": storage_path,
@@ -1681,7 +1700,7 @@ async def _process_image_document_static(
     result = {
         "chunk_count": 1,
         "indexed_at": now_china().isoformat(),
-        "chunk_type": "image",
+        "chunk_type": ChunkType.IMAGE,
         "vlm_description": True,
         "description_length": len(description_text),
     }
@@ -1728,7 +1747,7 @@ def _prepare_es_chunks_static(
             "chunk_id": f"{document.id}_{i}",
             "chunk_index": i,
             "content": chunk_text,
-            "chunk_type": "text",
+            "chunk_type": ChunkType.TEXT,
             "media_url": storage_info.get("minio_object_name", ""),
             "file_info": {
                 "filename": document.filename,
