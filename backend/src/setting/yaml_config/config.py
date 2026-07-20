@@ -6,7 +6,7 @@ from urllib.parse import quote_plus
 @dataclass
 class MinioConfig:
     endpoint: str = "localhost:9000"
-    public_endpoint: Optional[str] = None
+    public_endpoint: Optional[str] = None  # 外部服务可访问的公网地址，如 https://minio.example.com
     access_key: str = ""
     secret_key: str = ""
     secure: bool = False
@@ -50,7 +50,7 @@ class ParsingConfig:
     encoding: str = "utf-8"
     vlm_description_enabled: bool = False
     # 本地 faster-whisper ASR 模型目录（绝对路径）。为空时回退到环境变量
-    # NOVAMIND_LOCAL_WHISPER_MODEL_DIR，再为空时用默认 backend/models/faster-whisper/tiny。
+    # NOVAMIND_LOCAL_WHISPER_MODEL_DIR，再为空时用默认 ~/.cache/faster-whisper/tiny。
     local_whisper_model_dir: Optional[str] = None
 
 

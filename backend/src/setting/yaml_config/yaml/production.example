@@ -7,6 +7,8 @@ minio:
   secure: true
   region: us-east-1
   bucket_name: knowledge-base
+  # 生产环境必填：外部服务访问 MinIO 的公网地址
+  public_endpoint: https://minio.your-domain.com
 
 elasticsearch:
   hosts:
