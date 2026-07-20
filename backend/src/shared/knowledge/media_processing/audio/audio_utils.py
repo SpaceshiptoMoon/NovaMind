@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import concurrent.futures
 import os
 import logging
 import tempfile
@@ -84,6 +85,17 @@ _MAGIC_EXT_TO_FORMAT = {
 _model_lock = asyncio.Lock()
 _local_whisper_model = None
 
+# ASR 专用单线程 executor。
+# 原因：faster-whisper 的 WhisperModel.transcribe 不支持同一实例并发调用，
+#       并发会触发 CTranslate2 原生层崩溃（进程无声猝死，无 Python traceback）。
+#       单线程串行化转写，既消除并发崩溃，又把长任务从默认 to_thread 共享池
+#       剥离，避免饿死登录密码校验等其它 to_thread 调用。
+# 取舍：max_workers=1 意味着音频任务串行，吞吐下降；但本机 CPU 推理本身
+#       就慢，安全远比并发吞吐重要。需要真并行再上模型实例池（第二步）。
+_asr_executor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix="asr-transcribe"
+)
+
 
 def _segments_to_dict(segments_result) -> List[Dict]:
     """将 faster-whisper 的 segments 迭代器转为标准字典列表。"""
@@ -144,11 +156,18 @@ async def _get_local_whisper_model():
                         f"或环境变量 NOVAMIND_LOCAL_WHISPER_MODEL_DIR 指定路径。"
                     )
 
-                _local_whisper_model = WhisperModel(
-                    str(model_dir),
-                    device="cpu",
-                    compute_type="int8",
-                    local_files_only=True,
+                # 同步构造丢进专用 executor，避免首次加载阻塞事件循环。
+                # 走 _asr_executor（单线程）可与转写调用安全串行，不会并发同一实例。
+                def _load_whisper_model() -> "WhisperModel":
+                    return WhisperModel(
+                        str(model_dir),
+                        device="cpu",
+                        compute_type="int8",
+                        local_files_only=True,
+                    )
+
+                _local_whisper_model = await asyncio.get_running_loop().run_in_executor(
+                    _asr_executor, _load_whisper_model
                 )
                 logger.info("本地 faster-whisper 模型已加载, path=%s", str(model_dir))
     return _local_whisper_model
@@ -222,12 +241,17 @@ async def transcribe_audio_local(
         model = await _get_local_whisper_model()
 
         logger.info("本地 ASR 转写开始, file=%s, size=%d", tmp_path, len(file_content))
-        segments_result, info = await asyncio.to_thread(
-            model.transcribe,
-            tmp_path,
-            beam_size=5,
-            word_timestamps=False,
-            language=language,
+        # 走专用单线程 executor：串行化转写，避免并发同一模型实例导致原生层崩溃，
+        # 同时把长任务从默认 to_thread 共享池剥离，不饿死登录等其它 to_thread 调用。
+        loop = asyncio.get_running_loop()
+        segments_result, info = await loop.run_in_executor(
+            _asr_executor,
+            lambda: model.transcribe(
+                tmp_path,
+                beam_size=5,
+                word_timestamps=False,
+                language=language,
+            ),
         )
 
         # info 包含: language, language_probability, duration, etc.
@@ -247,12 +271,14 @@ async def transcribe_audio_local(
                 "本地 ASR 语言检测置信度低 (language=%s, probability=%.2f)，用中文重试",
                 info.language, info.language_probability,
             )
-            segments_result, info = await asyncio.to_thread(
-                model.transcribe,
-                tmp_path,
-                beam_size=5,
-                word_timestamps=False,
-                language="zh",
+            segments_result, info = await loop.run_in_executor(
+                _asr_executor,
+                lambda: model.transcribe(
+                    tmp_path,
+                    beam_size=5,
+                    word_timestamps=False,
+                    language="zh",
+                ),
             )
             logger.info(
                 "本地 ASR 中文重试完成, language=%s, probability=%.2f, duration=%.1fs",
