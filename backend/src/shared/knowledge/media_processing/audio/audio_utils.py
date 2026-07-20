@@ -297,18 +297,10 @@ async def transcribe_audio_local(
             info.language, info.language_probability, info.duration,
         )
 
-        # 4. 时长为零/极短：音频文件为空或损坏，不浪费 ASR 线程做二次重试
-        if info.duration < 0.1:
-            logger.warning(
-                "本地 ASR 音频时长过短 (%.1fs)，跳过重试直接返回空结果",
-                info.duration,
-            )
-            return []
-
-        # 5. 转换结果格式（与 OpenAI/DashScope 返回格式统一）
+        # 4. 转换结果格式（与 OpenAI/DashScope 返回格式统一）
         segments = _segments_to_dict(segments_result)
 
-        # 6. 结果为空且语言自动检测置信度低时，用中文重试
+        # 5. 结果为空且语言自动检测置信度低时，用中文重试
         #    tiny 模型容易把中文误判为英语（probability < 0.5），导致转写为空。
         #    显式指定 zh 可以大幅提升中文识别率。
         #    注意：仅在首次转写结果为空时重试，已有内容则不再浪费 ASR 线程。
