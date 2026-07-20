@@ -387,38 +387,22 @@ async def process_audio_document(
     if asr_protocol == "local":
         # 本地 faster-whisper 模型 — 无需 API Key，无需网络。
         # 模型缺失/解码失败时，若用户配了云端 ASR，则回退云端，避免整任务硬失败。
-        # 本地 ASR 忙碌时（正在转写其它音频）：
-        #   - 有云端 ASR 配置 → 溢出到云端，不排队
-        #   - 无云端配置 → 抛出 LocalASRBusyError，由 arq worker 延后重入队，
-        #     释放 Worker 槽位给其它文档处理任务
+        # 本地 ASR 忙碌时：直接抛 LocalASRBusyError，由 arq worker 延后重入队，
+        # 不排队、不溢出云端，释放 Worker 槽位给其它文档处理任务。
         #
-        # 关键：用 acquire_asr_or_busy() 非阻塞原子获取锁，消除 is_local_asr_busy()
-        # 与 transcribe_audio_local() 之间的竞态窗口。获取不到锁 = ASR 忙碌。
+        # 关键：用 acquire_asr_or_busy() 非阻塞原子获取锁，消除竞态窗口。
+        # 获取不到锁 = ASR 忙碌。
         from novamind.shared.knowledge.media_processing.audio import acquire_asr_or_busy
 
         asr_acquired = await acquire_asr_or_busy()
         if not asr_acquired:
-            # ASR 忙碌：优先溢出到云端，无云端则延后重入队
-            cloud_creds = await _find_cloud_asr_credentials(mcs, document.uploader_id)
-            if cloud_creds:
-                cloud_protocol = cloud_creds.protocol or "openai"
-                logger.info(
-                    "本地 ASR 忙碌，溢出到云端 ASR",
-                    document_id=document.id,
-                    protocol=cloud_protocol, model=cloud_creds.model,
-                )
-                segments = await _run_asr(
-                    cloud_protocol,
-                    cloud_creds.model or asr_model,
-                    cloud_creds.api_key,
-                    cloud_creds.base_url,
-                )
-            else:
-                logger.info(
-                    "本地 ASR 忙碌且无云端 ASR 配置，延后重入队",
-                    document_id=document.id,
-                )
-                raise LocalASRBusyError(document_id=document.id)
+            # ASR 忙碌：不排队也不溢出云端，直接延后重入队，
+            # 释放 Worker 槽位给其它文档处理任务
+            logger.info(
+                "本地 ASR 忙碌，延后重入队",
+                document_id=document.id,
+            )
+            raise LocalASRBusyError(document_id=document.id)
         else:
             # ASR 空闲，锁已获取。转写完成后在 finally 释放。
             try:
