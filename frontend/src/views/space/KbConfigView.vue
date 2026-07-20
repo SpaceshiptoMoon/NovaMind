@@ -179,7 +179,7 @@ const configForm = reactive({
   txtStrategy: 'default' as TextStrategy,
   jsonStrategy: 'default' as TextStrategy,
 
-  imageStrategy: 'ocr' as ImageStrategy,
+  imageStrategy: 'vlm' as ImageStrategy,
   imageVlmModel: '',
 
   videoFrameInterval: 5,
@@ -225,7 +225,7 @@ watch(
 
 watch(hasImage, (value) => {
   if (!value) {
-    configForm.imageStrategy = 'ocr'
+    configForm.imageStrategy = 'vlm'
     configForm.imageVlmModel = ''
   }
 })
@@ -307,7 +307,7 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
   configForm.videoChunkSize = splitting?.video?.chunk_size ?? 1500
 
   loadTextParsingConfig(parsing?.text)
-  configForm.imageStrategy = parsing?.image?.strategy || 'ocr'
+  configForm.imageStrategy = parsing?.image?.strategy || 'vlm'
   configForm.imageVlmModel = parsing?.image?.vlm_model || ''
   configForm.videoFrameInterval = parsing?.video?.frame_interval ?? 5
   configForm.videoMaxFrames = parsing?.video?.max_frames ?? 60

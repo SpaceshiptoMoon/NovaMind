@@ -1,7 +1,7 @@
 import type { PdfParserName, TextParsingConfig } from '@/api/types'
 
 export type TextStrategy = 'default' | 'deepdoc'
-export type ImageStrategy = 'ocr' | 'vlm'
+export type ImageStrategy = 'vlm' | 'deepdoc_ocr'
 export type AudioChunkStrategy = 'sentence' | 'fixed'
 
 export type TextStrategyField =

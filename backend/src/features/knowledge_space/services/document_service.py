@@ -1630,10 +1630,11 @@ async def _process_image_document_static(
     _logger,
     task=None,
 ):
-    """处理图片类型文档：通过 VLM 生成描述文本，再用文本 Embedding 生成向量索引到 ES
+    """处理图片类型文档
 
-    当前架构：图片 → VLM 描述文本 → 文本 Embedding → ES
-    多模态 Embedding（直接生成图片向量）为预留功能，暂未启用。
+    支持两种策略：
+    - vlm: 通过 VLM 生成图片描述文本，再走文本 Embedding 索引到 ES
+    - deepdoc_ocr: 通过 DeepDoc OCR 提取图片文字，再走文本 Embedding 索引到 ES
     """
     # 1. 统一加载管道配置（space/kb/pipeline_config/embedding_config）
     ctx = await load_pipeline_context(session, document, task)
@@ -1649,49 +1650,81 @@ async def _process_image_document_static(
             error_message="该空间未配置嵌入模型，无法处理图片文件",
         )
 
-    # 检查 VLM 描述开关（从知识库的解析配置读取，优先 task.pipeline_config 快照）
+    # 读取图片解析策略（从知识库的解析配置读取，优先 task.pipeline_config 快照）
     parsing_config = build_runtime_parsing_config(
         ctx.pipeline_config.get("parsing", {}), document.file_type
     )
-    vlm_model_name = parsing_config.get("vlm_model")
-
-    if not vlm_model_name:
-        raise DocumentProcessingError(
-            document_id=document.id,
-            error_message="图片文档处理需要 VLM（视觉语言模型）来生成描述文本，请在知识库解析配置中启用 VLM 描述并选择模型",
-        )
+    image_strategy = parsing_config.get("image_strategy", "vlm")
 
     # 检查点 0：配置读取后
     await _check_document_cancelled(document.id)
 
-    # 2. VLM 生成图片描述文本
-    from novamind.features.user.services.model_config_service import ModelConfigService
+    # 2. 根据策略选择文本提取方式
+    description_text = ""
 
-    mcs = ModelConfigService(session)
-    description_text = await _generate_image_description(
-        file_content=file_content,
-        document=document,
-        mcs=mcs,
-        _logger=_logger,
-        vlm_model_name=vlm_model_name,
-    )
+    if image_strategy == "deepdoc_ocr":
+        description_text = await _process_image_ocr_static(
+            document=document,
+            file_content=file_content,
+            session=session,
+            _logger=_logger,
+        )
+    else:
+        # VLM 路径（默认）
+        vlm_model_name = parsing_config.get("vlm_model")
 
-    if not description_text:
-        raise DocumentProcessingError(
-            document_id=document.id,
-            error_message=f"VLM 模型 {vlm_model_name} 未能生成图片描述文本",
+        if not vlm_model_name:
+            raise DocumentProcessingError(
+                document_id=document.id,
+                error_message="图片文档处理需要 VLM（视觉语言模型）来生成描述文本，请在知识库解析配置中启用 VLM 描述并选择模型",
+            )
+
+        from novamind.features.user.services.model_config_service import ModelConfigService
+
+        mcs = ModelConfigService(session)
+        description_text = await _generate_image_description(
+            file_content=file_content,
+            document=document,
+            mcs=mcs,
+            _logger=_logger,
+            vlm_model_name=vlm_model_name,
         )
 
-    # 图片描述全文持久化到 MinIO（立刻 commit 落库）
+        if not description_text:
+            raise DocumentProcessingError(
+                document_id=document.id,
+                error_message=f"VLM 模型 {vlm_model_name} 未能生成图片描述文本",
+            )
+
+    # 3. 图片文本持久化到 MinIO（立刻 commit 落库）
     await persist_parsed_text(document, description_text, session, _logger)
 
     _logger.info(
-        "VLM 图片描述生成成功",
+        "图片文本提取成功",
         document_id=document.id,
+        image_strategy=image_strategy,
         description_length=len(description_text),
     )
 
-    # 3. 用文本 Embedding 生成描述文本的向量
+    # 4. 空 OCR/VLM 结果：文档以空内容完成
+    if not description_text or not description_text.strip():
+        _logger.warning(
+            "图片文本提取结果为空，文档将以空内容完成",
+            document_id=document.id,
+            filename=document.filename,
+            image_strategy=image_strategy,
+        )
+        if task:
+            task.mark_completed(result={
+                "chunk_count": 0,
+                "chunk_type": ChunkType.IMAGE,
+                "image_strategy": image_strategy,
+                "indexed_at": now_china().isoformat(),
+            })
+        await session.commit()
+        return
+
+    # 5. 用文本 Embedding 生成描述文本的向量
     text_vector = await _generate_single_embedding_static(
         text=description_text,
         embedding_config=embedding_config,
@@ -1702,7 +1735,7 @@ async def _process_image_document_static(
     # 检查点 1：向量化完成后
     await _check_document_cancelled(document.id)
 
-    # 4. 构建 ES chunk
+    # 6. 构建 ES chunk
     storage_info = document.storage or {}
     storage_path = storage_info.get("minio_object_name", "")
 
@@ -1728,7 +1761,7 @@ async def _process_image_document_static(
     # 检查点 2：ES 写入前
     await _check_document_cancelled(document.id)
 
-    # 6. 索引到 ES
+    # 7. 索引到 ES
     es_client = await _get_es_client_static()
     indexed_count = await es_client.bulk_index_chunks(
         space_id=document.space_id,
@@ -1742,12 +1775,12 @@ async def _process_image_document_static(
             error_message="ES 索引写入失败",
         )
 
-    # 7. 标记任务完成
+    # 8. 标记任务完成
     result = {
         "chunk_count": 1,
         "indexed_at": now_china().isoformat(),
         "chunk_type": ChunkType.IMAGE,
-        "vlm_description": True,
+        "image_strategy": image_strategy,
         "description_length": len(description_text),
     }
     if task:
@@ -1758,9 +1791,59 @@ async def _process_image_document_static(
         "图片文档处理完成",
         document_id=document.id,
         model=model_name,
-        vlm_model=vlm_model_name,
-        has_description=bool(description_text),
+        image_strategy=image_strategy,
+        description_length=len(description_text),
     )
+
+
+async def _process_image_ocr_static(
+    document: Document,
+    file_content: bytes,
+    session,
+    _logger,
+) -> str:
+    """使用 DeepDoc OCR 提取图片文字。
+
+    通过 DeepDoc 的 RAGFlowFigureParser（内含 PaddleOCR）提取图片中的文字，
+    返回提取的文本。OCR 推理在独立线程中执行（asyncio.to_thread）。
+    """
+    import asyncio
+
+    from novamind.shared.knowledge.integrations.deepdoc.core.engine import DeepDocParser
+
+    file_type = (document.file_type or "png").lower()
+    _logger.info(
+        "DeepDoc OCR 图片解析开始",
+        document_id=document.id,
+        file_type=file_type,
+    )
+
+    engine = DeepDocParser()
+
+    try:
+        result = await engine.aparse_bytes(
+            file_bytes=file_content,
+            file_type=file_type,
+            parser_id="figure",
+        )
+    except Exception as exc:
+        _logger.warning(
+            "DeepDoc OCR 图片解析失败，文档将以空内容完成",
+            document_id=document.id,
+            error=str(exc),
+        )
+        return ""
+
+    ocr_text = result.full_text.strip() if result else ""
+
+    _logger.info(
+        "DeepDoc OCR 图片解析完成",
+        document_id=document.id,
+        char_count=len(ocr_text),
+        chunk_count=len(result.chunks) if result else 0,
+    )
+
+    return ocr_text
 
 
 def _prepare_es_chunks_static(
