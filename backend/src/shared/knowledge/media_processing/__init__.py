@@ -1,4 +1,5 @@
 from novamind.shared.knowledge.media_processing.audio import (
+    is_local_asr_busy,
     transcribe_audio_local,
     transcribe_audio_with_dashscope,
     transcribe_audio_with_timestamps,
@@ -13,6 +14,7 @@ from novamind.shared.knowledge.media_processing.vlm import (
 
 __all__ = [
     "extract_video_frames",
+    "is_local_asr_busy",
     "transcribe_audio_local",
     "transcribe_audio_with_dashscope",
     "transcribe_audio_with_timestamps",
