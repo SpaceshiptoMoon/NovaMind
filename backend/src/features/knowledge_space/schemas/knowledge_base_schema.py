@@ -225,18 +225,23 @@ class TextParsingConfig(BaseModel):
 
 
 class ImageParsingConfig(BaseModel):
-    """Image parsing config."""
+    """Image parsing config.
+
+    strategy:
+    - "vlm": 使用 VLM 生成图片描述文本，再走文本 Embedding 索引（需要 VLM 模型）
+    - "deepdoc_ocr": 使用 DeepDoc OCR 提取图片文字，再走文本 Embedding 索引（无需 VLM）
+    """
 
     model_config = ConfigDict(extra="ignore")
 
-    strategy: Literal["ocr", "vlm"] = Field(default="ocr")
-    vlm_model: Optional[str] = Field(default=None)
-
-    @model_validator(mode="after")
-    def validate_strategy(self):
-        if self.strategy == "ocr" and self.vlm_model:
-            raise ValueError("image.strategy=ocr forbids vlm_model")
-        return self
+    strategy: Literal["vlm", "deepdoc_ocr"] = Field(
+        default="vlm",
+        description="图片解析策略：vlm(VLM描述)/deepdoc_ocr(DeepDoc OCR文字提取)",
+    )
+    vlm_model: Optional[str] = Field(
+        default=None,
+        description="VLM 模型名称（strategy=vlm 时可选，留空使用用户默认 VLM 模型）",
+    )
 
 
 class VideoParsingConfig(BaseModel):
@@ -282,6 +287,15 @@ class ParsingConfig(BaseModel):
     def migrate_legacy_parsing(cls, value):
         if not isinstance(value, dict):
             return value
+
+        # 迁移旧 image.strategy="ocr" → "deepdoc_ocr"
+        image_cfg = value.get("image")
+        if isinstance(image_cfg, dict) and image_cfg.get("strategy") == "ocr":
+            image_cfg = dict(image_cfg)
+            image_cfg["strategy"] = "deepdoc_ocr"
+            value = dict(value)
+            value["image"] = image_cfg
+
         legacy_keys = {
             "strategy",
             "deepdoc_parser_id",
@@ -353,6 +367,9 @@ class ParsingConfig(BaseModel):
                 "strategy": "vlm",
                 "vlm_model": vlm_model,
             }
+        # 旧 ocr 策略迁移为 deepdoc_ocr
+        elif isinstance(value.get("image"), dict) and value["image"].get("strategy") == "ocr":
+            migrated["image"] = {"strategy": "deepdoc_ocr"}
 
         merged = dict(migrated)
         for key, current_value in value.items():
@@ -570,6 +587,7 @@ def build_runtime_parsing_config(parsing: Optional[Dict[str, Any]], file_type: O
         result["deepdoc_parser_id"] = target_doc_type
 
     if parsed.image:
+        result["image_strategy"] = parsed.image.strategy
         result["vlm_description_enabled"] = parsed.image.strategy == "vlm"
         if parsed.image.vlm_model:
             result["vlm_model"] = parsed.image.vlm_model

@@ -2,13 +2,13 @@
   <div>
     <div v-if="hasImage" class="sub-section">
       <h4 class="sub-title">图片解析</h4>
-      <p class="sub-desc">对应 `parsing.image`。选择 `ocr` 时不会提交 `vlm_model`，选择 `vlm` 时可覆盖空间默认视觉模型。</p>
+      <p class="sub-desc">对应 `parsing.image`。选择 `VLM 描述` 使用视觉语言模型生成图片描述；选择 `DeepDoc OCR` 使用本地 OCR 提取图片中的文字。</p>
 
       <el-form :model="configForm" label-width="120px" class="config-form">
         <el-form-item label="解析策略">
           <el-radio-group v-model="configForm.imageStrategy">
-            <el-radio value="ocr">ocr</el-radio>
-            <el-radio value="vlm">vlm</el-radio>
+            <el-radio value="vlm">VLM 描述</el-radio>
+            <el-radio value="deepdoc_ocr">DeepDoc OCR</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item v-if="configForm.imageStrategy === 'vlm'" label="VLM 模型">

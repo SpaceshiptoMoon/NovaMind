@@ -312,7 +312,7 @@ export interface TextParsingConfig {
 }
 
 export interface ImageParsingConfig {
-  strategy?: 'ocr' | 'vlm'
+  strategy?: 'vlm' | 'deepdoc_ocr'
   vlm_model?: string
 }
 
