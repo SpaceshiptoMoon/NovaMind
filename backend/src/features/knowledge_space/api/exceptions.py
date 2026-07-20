@@ -240,6 +240,19 @@ class DocumentProcessingError(KnowledgeSpaceError):
         self.error_message = error_message
 
 
+class LocalASRBusyError(Exception):
+    """本地 ASR 正在转写其它音频，当前任务需延后重试。
+
+    这不是错误，而是拥塞信号——arq worker 捕获后应延迟重入队，
+    释放 Worker 槽位给其它非音频任务。
+    """
+
+    def __init__(self, document_id: int, message: str = ""):
+        self.document_id = document_id
+        self.message = message or f"本地 ASR 忙碌，文档 {document_id} 延后重试"
+        super().__init__(self.message)
+
+
 class DocumentInvalidTypeError(KnowledgeSpaceError):
     """文档类型不支持"""
     _serializable_attrs: ClassVar[List[str]] = ["file_type", "allowed"]
