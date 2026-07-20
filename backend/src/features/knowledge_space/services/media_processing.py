@@ -391,10 +391,14 @@ async def process_audio_document(
         #   - 有云端 ASR 配置 → 溢出到云端，不排队
         #   - 无云端配置 → 抛出 LocalASRBusyError，由 arq worker 延后重入队，
         #     释放 Worker 槽位给其它文档处理任务
-        from novamind.shared.knowledge.media_processing.audio import is_local_asr_busy
+        #
+        # 关键：用 acquire_asr_or_busy() 非阻塞原子获取锁，消除 is_local_asr_busy()
+        # 与 transcribe_audio_local() 之间的竞态窗口。获取不到锁 = ASR 忙碌。
+        from novamind.shared.knowledge.media_processing.audio import acquire_asr_or_busy
 
-        if is_local_asr_busy():
-            # 本地 ASR 正在转写，优先溢出到云端
+        asr_acquired = await acquire_asr_or_busy()
+        if not asr_acquired:
+            # ASR 忙碌：优先溢出到云端，无云端则延后重入队
             cloud_creds = await _find_cloud_asr_credentials(mcs, document.uploader_id)
             if cloud_creds:
                 cloud_protocol = cloud_creds.protocol or "openai"
@@ -410,13 +414,13 @@ async def process_audio_document(
                     cloud_creds.base_url,
                 )
             else:
-                # 无云端配置：不让 Worker 空等，抛出拥塞信号让 arq 延后重入队
                 logger.info(
                     "本地 ASR 忙碌且无云端 ASR 配置，延后重入队",
                     document_id=document.id,
                 )
                 raise LocalASRBusyError(document_id=document.id)
         else:
+            # ASR 空闲，锁已获取。转写完成后在 finally 释放。
             try:
                 segments = await _run_asr("local", asr_model, asr_api_key, asr_base_url)
             except Exception as local_exc:
@@ -445,6 +449,11 @@ async def process_audio_document(
                     cloud_creds.api_key,
                     cloud_creds.base_url,
                 )
+            finally:
+                # 无论成功失败都释放 ASR 锁，让下一个任务可以进入
+                from novamind.shared.knowledge.media_processing.audio import _asr_busy_lock
+                if _asr_busy_lock.locked():
+                    _asr_busy_lock.release()
     else:
         segments = await _run_asr(asr_protocol, asr_model, asr_api_key, asr_base_url)
     logger.info(

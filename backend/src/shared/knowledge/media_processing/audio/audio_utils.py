@@ -96,20 +96,42 @@ _asr_executor = concurrent.futures.ThreadPoolExecutor(
     max_workers=1, thread_name_prefix="asr-transcribe"
 )
 
-# ASR 忙碌标志：转写进行中时 locked，空闲时 unlocked。
-# 上层（media_processing.py）可通过 is_local_asr_busy() 判断本地 ASR 是否空闲，
-# 忙碌时直接走云端 ASR，避免音频任务在 executor 队列里排长队堵死整个管道。
+# ASR 忙碌锁：转写进行中时 locked，空闲时 unlocked。
+# 两个用途：
+# 1. 上游 media_processing.py 通过 acquire_asr_or_busy() 尝试非阻塞获取锁，
+#    获取不到即说明 ASR 忙碌，抛 LocalASRBusyError 让 arq worker 延后重入队。
+# 2. transcribe_audio_local() 持有此锁期间执行转写，保证串行化。
 _asr_busy_lock = asyncio.Lock()
 
 
 def is_local_asr_busy() -> bool:
     """本地 ASR 是否正在转写（非阻塞检查）。
 
-    供调用方在上游判断：如果忙碌，可走云端 ASR 而非排队等本地。
-    注意：返回 False 不保证紧接着调用 transcribe_audio_local 一定立即执行
-    ——存在 TOCTOU 竞态，但最坏情况也只是排队而非崩溃。
+    供日志/监控使用。上游路由决策应使用 acquire_asr_or_busy()，
+    后者是非阻塞原子操作，消除 is_local_asr_busy() + acquire 之间的竞态。
     """
     return _asr_busy_lock.locked()
+
+
+async def acquire_asr_or_busy() -> bool:
+    """非阻塞尝试获取 ASR 忙碌锁。
+
+    Returns:
+        True — 锁已获取，调用方应正常执行转写，完成后释放锁。
+        False — ASR 正在转写，调用方应抛出 LocalASRBusyError 让 arq 延后重入队。
+    """
+    acquired = _asr_busy_lock.locked()
+    if acquired:
+        return False
+    # 锁当前空闲，尝试非阻塞获取
+    if _asr_busy_lock.locked():
+        return False
+    # asyncio.Lock 没有非阻塞 acquire，用 asyncio.wait_for 模拟
+    try:
+        await asyncio.wait_for(_asr_busy_lock.acquire(), timeout=0.01)
+        return True
+    except asyncio.TimeoutError:
+        return False
 
 
 def _segments_to_dict(segments_result) -> List[Dict]:
@@ -252,77 +274,71 @@ async def transcribe_audio_local(
         tmp_path = tmp.name
 
     try:
-        # 3. 加载模型 + 获取 ASR 忙碌锁
-        #    锁标识本地 ASR 正在转写，供 is_local_asr_busy() 在上游检查，
-        #    让上游在忙碌时直接走云端 ASR，避免在 executor 队列里排长队。
+        # 3. 加载模型
         model = await _get_local_whisper_model()
 
-        acquired = _asr_busy_lock.locked()
-        async with _asr_busy_lock:
-            if acquired:
-                logger.info("本地 ASR 上游未检查忙碌标志，排队等待转写")
-            logger.info("本地 ASR 转写开始, file=%s, size=%d", tmp_path, len(file_content))
-            # 走专用单线程 executor：串行化转写，避免并发同一模型实例导致原生层崩溃，
-            # 同时把长任务从默认 to_thread 共享池剥离，不饿死登录等其它 to_thread 调用。
-            loop = asyncio.get_running_loop()
+        logger.info("本地 ASR 转写开始, file=%s, size=%d", tmp_path, len(file_content))
+        # 走专用单线程 executor：串行化转写，避免并发同一模型实例导致原生层崩溃，
+        # 同时把长任务从默认 to_thread 共享池剥离，不饿死登录等其它 to_thread 调用。
+        loop = asyncio.get_running_loop()
+        segments_result, info = await loop.run_in_executor(
+            _asr_executor,
+            lambda: model.transcribe(
+                tmp_path,
+                beam_size=5,
+                word_timestamps=False,
+                language=language,
+            ),
+        )
+
+        # info 包含: language, language_probability, duration, etc.
+        logger.info(
+            "本地 ASR 转写完成, language=%s, probability=%.2f, duration=%.1fs",
+            info.language, info.language_probability, info.duration,
+        )
+
+        # 4. 时长为零/极短：音频文件为空或损坏，不浪费 ASR 线程做二次重试
+        if info.duration < 0.1:
+            logger.warning(
+                "本地 ASR 音频时长过短 (%.1fs)，跳过重试直接返回空结果",
+                info.duration,
+            )
+            return []
+
+        # 5. 转换结果格式（与 OpenAI/DashScope 返回格式统一）
+        segments = _segments_to_dict(segments_result)
+
+        # 6. 结果为空且语言自动检测置信度低时，用中文重试
+        #    tiny 模型容易把中文误判为英语（probability < 0.5），导致转写为空。
+        #    显式指定 zh 可以大幅提升中文识别率。
+        #    注意：仅在首次转写结果为空时重试，已有内容则不再浪费 ASR 线程。
+        if not segments and language is None and info.language_probability < 0.5:
+            logger.warning(
+                "本地 ASR 语言检测置信度低 (language=%s, probability=%.2f)，用中文重试",
+                info.language, info.language_probability,
+            )
             segments_result, info = await loop.run_in_executor(
                 _asr_executor,
                 lambda: model.transcribe(
                     tmp_path,
                     beam_size=5,
                     word_timestamps=False,
-                    language=language,
+                    language="zh",
                 ),
             )
-
-            # info 包含: language, language_probability, duration, etc.
             logger.info(
-                "本地 ASR 转写完成, language=%s, probability=%.2f, duration=%.1fs",
+                "本地 ASR 中文重试完成, language=%s, probability=%.2f, duration=%.1fs",
                 info.language, info.language_probability, info.duration,
             )
-
-            # 4. 时长为零/极短：音频文件为空或损坏，不浪费 ASR 线程做二次重试
-            if info.duration < 0.1:
-                logger.warning(
-                    "本地 ASR 音频时长过短 (%.1fs)，跳过重试直接返回空结果",
-                    info.duration,
-                )
-                return []
-
-            # 5. 转换结果格式（与 OpenAI/DashScope 返回格式统一）
             segments = _segments_to_dict(segments_result)
 
-            # 6. 结果为空且语言自动检测置信度低时，用中文重试
-            #    tiny 模型容易把中文误判为英语（probability < 0.5），导致转写为空。
-            #    显式指定 zh 可以大幅提升中文识别率。
-            #    注意：仅在首次转写结果为空时重试，已有内容则不再浪费 ASR 线程。
-            if not segments and language is None and info.language_probability < 0.5:
-                logger.warning(
-                    "本地 ASR 语言检测置信度低 (language=%s, probability=%.2f)，用中文重试",
-                    info.language, info.language_probability,
-                )
-                segments_result, info = await loop.run_in_executor(
-                    _asr_executor,
-                    lambda: model.transcribe(
-                        tmp_path,
-                        beam_size=5,
-                        word_timestamps=False,
-                        language="zh",
-                    ),
-                )
-                logger.info(
-                    "本地 ASR 中文重试完成, language=%s, probability=%.2f, duration=%.1fs",
-                    info.language, info.language_probability, info.duration,
-                )
-                segments = _segments_to_dict(segments_result)
+        if not segments:
+            logger.warning(
+                "本地 ASR 转写结果为空, language=%s, duration=%.1fs",
+                info.language, info.duration,
+            )
 
-            if not segments:
-                logger.warning(
-                    "本地 ASR 转写结果为空, language=%s, duration=%.1fs",
-                    info.language, info.duration,
-                )
-
-            return segments
+        return segments
 
     except Exception as e:
         # 捕获 PyAV 解码错误等，转换为明确的错误信息
