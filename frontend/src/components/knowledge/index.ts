@@ -7,6 +7,7 @@ export {
   chunkTypeLabels,
   docStatusMap,
   getFileMaxSize,
+  getFileTypeCategory,
   getFileTypeStyle,
   getUploadAccept,
   hasModality,

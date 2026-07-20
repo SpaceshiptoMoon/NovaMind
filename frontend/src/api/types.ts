@@ -451,6 +451,11 @@ export interface ChunkListResponse {
   size: number
 }
 
+export interface DocumentFramesResponse {
+  frames: Array<{ index: number; url: string }>
+  total: number
+}
+
 export interface DocumentListResponse {
   items: Document[]
   total: number

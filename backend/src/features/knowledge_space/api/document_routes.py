@@ -12,8 +12,7 @@ import os
 from typing import Annotated, List, Optional, Union
 from urllib.parse import quote
 from fastapi import APIRouter, Depends, Request, UploadFile, File, Query, Path, Body
-from fastapi import APIRouter, Depends, Request, UploadFile, File, Query, Path, Body
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -682,6 +681,109 @@ async def get_document_image(
     # 根据文件扩展名推断 Content-Type
     content_type, _ = mimetypes.guess_type(document.filename)
     if not content_type or not content_type.startswith("image/"):
+        content_type = "application/octet-stream"
+
+    encoded_filename = quote(document.filename)
+
+    return StreamingResponse(
+        content=io.BytesIO(file_content),
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{encoded_filename}"',
+            "Cache-Control": "private, max-age=3600",
+        },
+    )
+
+
+# ========== 文档预览与内容路由 ==========
+
+
+@router.get(
+    "/{kb_id}/documents/{document_id}/parsed-text",
+    summary="获取文档解析全文",
+    description="返回文档解析后的 Markdown 全文（从 MinIO 读取 parsed_text_object）。文档未解析完成时返回 404。",
+)
+async def get_document_parsed_text(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    document_service: DocumentService = Depends(get_document_service),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取文档解析后的 Markdown 全文"""
+    await validate_kb_access(kb_id, space_id, db)
+
+    document = await document_service.get_document(document_id)
+    if not document or document.kb_id != kb_id:
+        raise DocumentNotFoundError(document_id)
+
+    parsed_text = await document_service.get_parsed_text(document_id)
+    if parsed_text is None:
+        raise DocumentNotFoundError(document_id)
+
+    return Response(
+        content=parsed_text,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Cache-Control": "private, max-age=3600",
+        },
+    )
+
+
+@router.get(
+    "/{kb_id}/documents/{document_id}/frames",
+    summary="获取文档视频帧",
+    description="返回文档的视频帧预签名 URL 列表。仅视频文档有效，其他类型返回空列表。",
+)
+async def get_document_frames(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    document_service: DocumentService = Depends(get_document_service),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取文档视频帧预签名 URL 列表"""
+    await validate_kb_access(kb_id, space_id, db)
+
+    document = await document_service.get_document(document_id)
+    if not document or document.kb_id != kb_id:
+        raise DocumentNotFoundError(document_id)
+
+    result = await document_service.get_document_frames(document_id)
+    return result
+
+
+@router.get(
+    "/{kb_id}/documents/{document_id}/preview",
+    summary="预览文档原始文件",
+    description="内联返回文档原始文件字节流，用于浏览器预览（图片、音频、PDF 等）。对不可预览的文件类型以 application/octet-stream 返回。",
+)
+async def get_document_preview(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    document_service: DocumentService = Depends(get_document_service),
+    db: AsyncSession = Depends(get_db),
+):
+    """内联预览文档原始文件"""
+    await validate_kb_access(kb_id, space_id, db)
+
+    document = await document_service.get_document(document_id)
+    if not document or document.kb_id != kb_id:
+        raise DocumentNotFoundError(document_id)
+
+    storage = document.storage or {}
+    object_name = storage.get("minio_object_name", "")
+    if not object_name:
+        raise DocumentNotFoundError(document_id)
+
+    file_content = await document_service.download_document(document_id=document_id)
+
+    content_type, _ = mimetypes.guess_type(document.filename)
+    if not content_type:
         content_type = "application/octet-stream"
 
     encoded_filename = quote(document.filename)

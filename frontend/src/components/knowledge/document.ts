@@ -97,3 +97,15 @@ export function normalizeSpaceTypes(config: SpaceConfig | null | undefined): str
   if (raw === 'text') return ['text']
   return ['text']
 }
+
+/** 根据文件扩展名返回文件类型分类 */
+export function getFileTypeCategory(fileType: string): 'text' | 'image' | 'video' | 'audio' {
+  const imageTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']
+  const videoTypes = ['mp4', 'mov', 'avi', 'mkv', 'webm']
+  const audioTypes = ['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a']
+  const ext = fileType?.toLowerCase() || ''
+  if (imageTypes.includes(ext)) return 'image'
+  if (videoTypes.includes(ext)) return 'video'
+  if (audioTypes.includes(ext)) return 'audio'
+  return 'text'
+}

@@ -1,6 +1,6 @@
-﻿<template>
+<template>
   <div class="document-detail-view">
-    <!-- 文档信息 -->
+    <!-- 文档信息头 -->
     <div v-loading="loading" class="info-section">
       <div class="info-header">
         <div class="info-title-row">
@@ -63,10 +63,6 @@
           <span class="meta-label">上传时间</span>
           <span class="meta-value">{{ formatDate(document.created_at) }}</span>
         </div>
-        <div class="meta-item">
-          <span class="meta-label">更新时间</span>
-          <span class="meta-value">{{ formatDate(document.updated_at) }}</span>
-        </div>
         <div v-if="(document.doc_metadata as Record<string, unknown>)?.chunk_type" class="meta-item">
           <span class="meta-label">内容类型</span>
           <span class="meta-value">{{ chunkTypeLabels[(document.doc_metadata as Record<string, unknown>).chunk_type as string] || (document.doc_metadata as Record<string, unknown>).chunk_type }}</span>
@@ -82,67 +78,100 @@
       </div>
     </div>
 
-    <!-- 分块列表：无分块时不渲染整个区块 -->
-    <div v-if="totalChunks > 0" class="chunks-section">
-      <div class="section-header">
-        <h4>文档分块</h4>
-        <span class="chunk-count">{{ totalChunks }} 个分块</span>
-      </div>
+    <!-- 双栏内容区 -->
+    <div class="content-layout">
+      <!-- 左栏：Markdown 渲染 + 分块列表 -->
+      <div class="content-main">
+        <!-- 解析全文渲染 -->
+        <DocumentMarkdownViewer
+          :markdown="parsedMarkdown"
+          :chunks="chunks"
+          :loading="markdownLoading"
+          :error="markdownError"
+          :hovered-chunk-index="hoveredChunkIndex"
+        />
 
-      <div v-if="chunks.length > 0" class="chunks-list">
-        <div
-          v-for="chunk in chunks"
-          :key="chunk.chunk_id"
-          class="chunk-card"
-        >
-          <div class="chunk-header">
-            <span class="chunk-index-badge">{{ chunk.chunk_index + 1 }}</span>
-            <div class="chunk-meta">
-              <span v-if="chunk.chunk_type && chunk.chunk_type !== 'text'" class="meta-tag chunk-type-tag">{{ chunkTypeLabels[chunk.chunk_type] || chunk.chunk_type }}</span>
-              <span v-if="(chunk.metadata as Record<string, unknown>)?.page" class="meta-tag">第 {{ (chunk.metadata as Record<string, unknown>).page }} 页</span>
-              <span v-if="(chunk.metadata as Record<string, unknown>)?.section_title" class="meta-tag">{{ (chunk.metadata as Record<string, unknown>).section_title }}</span>
-              <span v-if="(chunk.metadata as Record<string, unknown>)?.start_time != null" class="meta-tag time-tag">
-                {{ formatDuration((chunk.metadata as Record<string, unknown>).start_time as number) }}
-                -
-                {{ formatDuration((chunk.metadata as Record<string, unknown>).end_time as number) }}
-              </span>
-              <span v-if="chunk.has_embedding" class="meta-tag embedded">已向量化</span>
+        <!-- 分块列表 -->
+        <div v-if="totalChunks > 0" class="chunks-section">
+          <div class="section-header">
+            <h4>文档分块</h4>
+            <span class="chunk-count">{{ totalChunks }} 个分块</span>
+          </div>
+
+          <div v-if="chunks.length > 0" class="chunks-list">
+            <div
+              v-for="chunk in chunks"
+              :key="chunk.chunk_id"
+              class="chunk-card"
+              :class="{ 'chunk-hovered': hoveredChunkIndex === chunk.chunk_index }"
+              @mouseenter="hoveredChunkIndex = chunk.chunk_index"
+              @mouseleave="hoveredChunkIndex = null"
+            >
+              <div class="chunk-header">
+                <span class="chunk-index-badge">{{ chunk.chunk_index + 1 }}</span>
+                <div class="chunk-meta">
+                  <span v-if="chunk.chunk_type && chunk.chunk_type !== 'text'" class="meta-tag chunk-type-tag">{{ chunkTypeLabels[chunk.chunk_type] || chunk.chunk_type }}</span>
+                  <span v-if="(chunk.metadata as Record<string, unknown>)?.page" class="meta-tag">第 {{ (chunk.metadata as Record<string, unknown>).page }} 页</span>
+                  <span v-if="(chunk.metadata as Record<string, unknown>)?.section_title" class="meta-tag">{{ (chunk.metadata as Record<string, unknown>).section_title }}</span>
+                  <span v-if="(chunk.metadata as Record<string, unknown>)?.start_time != null" class="meta-tag time-tag">
+                    {{ formatDuration((chunk.metadata as Record<string, unknown>).start_time as number) }}
+                    -
+                    {{ formatDuration((chunk.metadata as Record<string, unknown>).end_time as number) }}
+                  </span>
+                  <span v-if="chunk.has_embedding" class="meta-tag embedded">已向量化</span>
+                </div>
+              </div>
+              <div class="chunk-content">
+                <img
+                  v-if="chunk.chunk_type === 'image' && (chunk.media_url || chunk.image_url)"
+                  :src="chunk.media_url || chunk.image_url"
+                  :alt="chunk.content"
+                  loading="lazy"
+                  class="chunk-image"
+                  @click="previewUrl = (chunk.media_url || chunk.image_url)!; previewVisible = true"
+                />
+                <template v-else>{{ chunk.content }}</template>
+              </div>
+              <div v-if="chunk.questions?.length > 0" class="chunk-questions">
+                <el-tag
+                  v-for="q in chunk.questions"
+                  :key="q"
+                  size="small"
+                  effect="plain"
+                  round
+                >
+                  {{ q }}
+                </el-tag>
+              </div>
             </div>
           </div>
-          <div class="chunk-content">
-            <img
-              v-if="chunk.chunk_type === 'image' && (chunk.media_url || chunk.image_url)"
-              :src="chunk.media_url || chunk.image_url"
-              :alt="chunk.content"
-              loading="lazy"
-              class="chunk-image"
-              @click="previewUrl = (chunk.media_url || chunk.image_url)!; previewVisible = true"
+
+          <div class="chunks-pagination">
+            <Pagination
+              :page="chunkCurrentPage"
+              :page-size="chunkPageSize"
+              :total="totalChunks"
+              :page-sizes="[10, 20, 50, 100]"
+              layout="total, sizes, prev, pager, next"
+              @update:page="(p: number) => { chunkCurrentPage = p; fetchChunks() }"
+              @update:page-size="(s: number) => { chunkPageSize = s; chunkCurrentPage = 1; fetchChunks() }"
             />
-            <template v-else>{{ chunk.content }}</template>
-          </div>
-          <div v-if="chunk.questions?.length > 0" class="chunk-questions">
-            <el-tag
-              v-for="q in chunk.questions"
-              :key="q"
-              size="small"
-              effect="plain"
-              round
-            >
-              {{ q }}
-            </el-tag>
           </div>
         </div>
       </div>
 
-      <div class="chunks-pagination">
-        <Pagination
-          :page="chunkCurrentPage"
-          :page-size="chunkPageSize"
-          :total="totalChunks"
-          :page-sizes="[10, 20, 50, 100]"
-          layout="total, sizes, prev, pager, next"
-          @update:page="(p: number) => { chunkCurrentPage = p; fetchChunks() }"
-          @update:page-size="(s: number) => { chunkPageSize = s; chunkCurrentPage = 1; fetchChunks() }"
+      <!-- 右栏：原文预览 -->
+      <div v-if="showOriginalPanel" class="content-sidebar">
+        <div class="sidebar-header">
+          <h4>查看原文</h4>
+          <el-button text size="small" @click="showOriginalPanel = false">
+            <el-icon><Close /></el-icon>
+          </el-button>
+        </div>
+        <DocumentOriginalPreview
+          :space-id="spaceId"
+          :kb-id="kbId"
+          :document="document"
         />
       </div>
     </div>
@@ -164,8 +193,11 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Close } from '@element-plus/icons-vue'
 import { documentApi } from '@/api/knowledge'
 import Pagination from '@/components/common/Pagination.vue'
+import DocumentMarkdownViewer from '@/components/knowledge/DocumentMarkdownViewer.vue'
+import DocumentOriginalPreview from '@/components/knowledge/DocumentOriginalPreview.vue'
 import type { DocumentDetail, Chunk, DocumentTaskItem } from '@/api/types'
 import { chunkTypeLabels, getFileTypeStyle, taskStatusMap } from '@/components/knowledge'
 import { formatFileSize, formatDate, formatDuration } from '@/utils/format'
@@ -188,13 +220,23 @@ const chunkPageSize = ref(10)
 const previewVisible = ref(false)
 const previewUrl = ref('')
 
-// 状态辅助：基于最新 DocumentTask 派生页面状态。
+// Markdown 全文
+const parsedMarkdown = ref('')
+const markdownLoading = ref(false)
+const markdownError = ref('')
 
+// 分块悬停
+const hoveredChunkIndex = ref<number | null>(null)
+
+// 原文预览面板
+const showOriginalPanel = ref(true)
+
+// 状态辅助
 const docStatus = computed(() => document.value?.status ?? 0)
 const currentStatusConfig = computed(() => taskStatusMap[docStatus.value] ?? { text: '未知', type: 'info' as const })
-const canProcess = computed(() => docStatus.value === 0 || docStatus.value === 2 || docStatus.value === 3)  // PENDING or COMPLETED or FAILED
-const canCancel = computed(() => docStatus.value === 0 || docStatus.value === 1)   // PENDING or PROCESSING
-const canRetry = computed(() => docStatus.value === 3)                              // FAILED
+const canProcess = computed(() => docStatus.value === 0 || docStatus.value === 2 || docStatus.value === 3)
+const canCancel = computed(() => docStatus.value === 0 || docStatus.value === 1)
+const canRetry = computed(() => docStatus.value === 3)
 
 async function fetchDocument() {
   loading.value = true
@@ -204,11 +246,29 @@ async function fetchDocument() {
     totalChunks.value = data.chunk_count || 0
     chunkCurrentPage.value = 1
     await fetchChunks()
+
+    // 已完成的文档加载 Markdown 全文
+    if (docStatus.value === 2) {
+      fetchParsedText()
+    }
   } catch (error: unknown) {
     const err = error as { response?: { data?: { error?: { message?: string } } } }
     ElMessage.error(err.response?.data?.error?.message || '获取文档详情失败')
   } finally {
     loading.value = false
+  }
+}
+
+async function fetchParsedText() {
+  markdownLoading.value = true
+  markdownError.value = ''
+  try {
+    parsedMarkdown.value = await documentApi.getDocumentParsedText(spaceId.value, kbId.value, docId.value)
+  } catch {
+    markdownError.value = '解析全文不可用'
+    parsedMarkdown.value = ''
+  } finally {
+    markdownLoading.value = false
   }
 }
 
@@ -274,8 +334,6 @@ async function handleDelete() {
   }
 }
 
-// 处理操作：基于 Task 接口执行处理、取消和重试。
-
 async function fetchLatestTask() {
   if (kbId.value === 0) return
   try {
@@ -284,7 +342,7 @@ async function fetchLatestTask() {
       latestTask.value = res.items[0]
     }
   } catch {
-    // 浠诲姟淇℃伅鑾峰彇澶辫触涓嶅奖鍝嶄富椤甸潰
+    // 任务信息获取失败不影响主页面
   }
 }
 
@@ -355,7 +413,7 @@ onMounted(() => {
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-xl);
   padding: var(--space-5);
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-4);
 }
 
 .info-header {
@@ -442,6 +500,41 @@ onMounted(() => {
   white-space: nowrap;
 }
 
+/* ===== Content Layout ===== */
+
+.content-layout {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+
+.content-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.content-sidebar {
+  width: 360px;
+  flex-shrink: 0;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.sidebar-header h4 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
 /* ===== Chunks Section ===== */
 
 .chunks-section {
@@ -485,8 +578,10 @@ onMounted(() => {
   transition: all var(--transition-fast);
 }
 
-.chunk-card:hover {
-  border-color: var(--color-border);
+.chunk-card:hover,
+.chunk-card.chunk-hovered {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary-subtle, rgba(99, 102, 241, 0.15));
 }
 
 .chunk-header {
@@ -587,7 +682,16 @@ onMounted(() => {
   justify-content: center;
   margin-top: var(--space-4);
 }
+
+/* ===== Responsive ===== */
+
+@media (max-width: 1100px) {
+  .content-layout {
+    flex-direction: column;
+  }
+
+  .content-sidebar {
+    width: 100%;
+  }
+}
 </style>
-
-
-

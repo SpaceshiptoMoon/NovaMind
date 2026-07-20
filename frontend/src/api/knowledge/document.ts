@@ -1,4 +1,4 @@
-import { request } from '../index'
+import { request, tokenManager } from '../index'
 import type {
   DocumentListResponse,
   UploadDocumentResponse,
@@ -9,6 +9,7 @@ import type {
   BatchProcessResponse,
   DocumentTaskListResponse,
   DocumentTaskItemListResponse,
+  DocumentFramesResponse,
 } from '../types'
 
 export const documentApi = {
@@ -97,5 +98,36 @@ export const documentApi = {
       `/spaces/${spaceId}/knowledge-bases/${kbId}/document-tasks`,
       params as Record<string, unknown>
     )
+  },
+
+  /** 获取文档解析后的 Markdown 全文 */
+  async getDocumentParsedText(spaceId: number, kbId: number, docId: number): Promise<string> {
+    // 使用原生 fetch 获取文本内容（非 JSON），需手动带上 token
+    const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+    const token = tokenManager.getToken()
+    const headers: Record<string, string> = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const response = await fetch(
+      `${baseURL}/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/parsed-text`,
+      { credentials: 'include', headers }
+    )
+    if (!response.ok) {
+      throw new Error(`获取解析全文失败: ${response.status}`)
+    }
+    return response.text()
+  },
+
+  /** 获取文档视频帧预签名 URL 列表 */
+  getDocumentFrames(spaceId: number, kbId: number, docId: number) {
+    return request.get<DocumentFramesResponse>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/frames`
+    )
+  },
+
+  /** 生成文档原始文件预览 URL（用于 <img>/<audio>/iframe 的 src） */
+  getDocumentPreviewUrl(spaceId: number, kbId: number, docId: number): string {
+    const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+    return `${baseURL}/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/preview`
   },
 }

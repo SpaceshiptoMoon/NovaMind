@@ -946,6 +946,88 @@ class DocumentService:
             object_name=storage_info.get("minio_object_name"),
         )
 
+    async def get_parsed_text(self, document_id: int) -> Optional[bytes]:
+        """获取文档解析后的 Markdown 全文。
+
+        从 MinIO 读取 document.storage["parsed_text_object"] 指向的文件。
+        若文档尚未解析或解析结果不存在，返回 None。
+
+        Args:
+            document_id: 文档 ID
+
+        Returns:
+            Markdown 全文的字节数据，或 None
+        """
+        from novamind.shared.clients import ClientFactory
+
+        document = await self.doc_repo.get_by_id(document_id)
+        if not document:
+            return None
+
+        storage_info = document.get_storage_info()
+        parsed_text_object = storage_info.get("parsed_text_object", "")
+        if not parsed_text_object:
+            return None
+
+        try:
+            minio_client = await ClientFactory.get_minio_client()
+            content = await minio_client.download_document(
+                bucket_name=minio_client.default_bucket,
+                object_name=parsed_text_object,
+            )
+            return content
+        except Exception:
+            self.logger.warning(
+                "解析全文下载失败",
+                document_id=document_id,
+                object_name=parsed_text_object,
+            )
+            return None
+
+    async def get_document_frames(self, document_id: int) -> dict:
+        """获取文档视频帧预签名 URL 列表。
+
+        读取 document.storage["frames"] 中的 MinIO 路径列表，
+        为每个帧生成预签名 URL。非视频文档或无帧数据时返回空列表。
+
+        Args:
+            document_id: 文档 ID
+
+        Returns:
+            {"frames": [{"index": 0, "url": "..."}, ...], "total": N}
+        """
+        from novamind.shared.clients import ClientFactory
+
+        document = await self.doc_repo.get_by_id(document_id)
+        if not document:
+            return {"frames": [], "total": 0}
+
+        storage_info = document.get_storage_info()
+        frame_paths = storage_info.get("frames", [])
+        if not frame_paths:
+            return {"frames": [], "total": 0}
+
+        try:
+            minio_client = await ClientFactory.get_minio_client()
+            frames = []
+            for idx, path in enumerate(frame_paths):
+                if not path:
+                    continue
+                url = await minio_client.get_file_url(
+                    bucket_name=minio_client.default_bucket,
+                    object_name=path,
+                    expires=3600,
+                )
+                frames.append({"index": idx, "url": url})
+
+            return {"frames": frames, "total": len(frames)}
+        except Exception:
+            self.logger.warning(
+                "视频帧预签名 URL 生成失败",
+                document_id=document_id,
+            )
+            return {"frames": [], "total": 0}
+
     def _get_file_type(self, filename: str) -> str:
         """
         获取文件类型并验证文件名安全性
