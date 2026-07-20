@@ -116,19 +116,16 @@ def is_local_asr_busy() -> bool:
 async def acquire_asr_or_busy() -> bool:
     """非阻塞尝试获取 ASR 忙碌锁。
 
+    使用 asyncio.Lock 的 acquire() 配合极短超时模拟非阻塞获取。
+    相比 locked() + acquire() 两步操作，这种方式是原子的——
+    要么成功获取锁，要么超时返回 False，没有竞态窗口。
+
     Returns:
         True — 锁已获取，调用方应正常执行转写，完成后释放锁。
         False — ASR 正在转写，调用方应抛出 LocalASRBusyError 让 arq 延后重入队。
     """
-    acquired = _asr_busy_lock.locked()
-    if acquired:
-        return False
-    # 锁当前空闲，尝试非阻塞获取
-    if _asr_busy_lock.locked():
-        return False
-    # asyncio.Lock 没有非阻塞 acquire，用 asyncio.wait_for 模拟
     try:
-        await asyncio.wait_for(_asr_busy_lock.acquire(), timeout=0.01)
+        await asyncio.wait_for(_asr_busy_lock.acquire(), timeout=0.05)
         return True
     except asyncio.TimeoutError:
         return False
@@ -267,6 +264,17 @@ async def transcribe_audio_local(
         "本地 ASR: 格式校验通过 ext=%s, file_type_hint=%s, size=%d",
         ext, file_type, len(file_content),
     )
+
+    # 1.5 极小文件拦截：低于 1KB 的音频文件几乎不可能包含有效语音内容，
+    #     且极可能触发 CTranslate2/PyAV 原生层崩溃（segfault，无 Python traceback，
+    #     直接杀死进程）。在进入线程池之前提前拒绝，保护进程安全。
+    MIN_AUDIO_SIZE = 1024  # 1KB
+    if len(file_content) < MIN_AUDIO_SIZE:
+        raise ValueError(
+            f"音频文件过小 ({len(file_content)} bytes)，"
+            f"本地 ASR 要求至少 {MIN_AUDIO_SIZE} bytes 才能安全转写。"
+            f"请确认文件完整且包含有效音频数据。"
+        )
 
     # 2. 写入临时文件（faster-whisper 当前版本仅支持文件路径，不支持 BytesIO）
     with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
