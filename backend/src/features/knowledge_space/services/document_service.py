@@ -1557,15 +1557,12 @@ async def _process_image_document_static(
     _logger,
     task=None,
 ):
-    """处理图片类型文档：生成多模态嵌入向量并索引到 ES
+    """处理图片类型文档：通过 VLM 生成描述文本，再用文本 Embedding 生成向量索引到 ES
 
-    支持两种模式：
-    - VLM 关闭：仅生成 image_embedding，content 不写入，仅支持以图搜图
-    - VLM 开启：额外调用视觉模型生成描述文本 + text embedding，支持 BM25 + 文本向量 + 以图搜图
+    当前架构：图片 → VLM 描述文本 → 文本 Embedding → ES
+    多模态 Embedding（直接生成图片向量）为预留功能，暂未启用。
     """
-    from novamind.shared.ai_models.embedding import BaseMultimodalEmbedding
-
-    # 1. 读取空间配置（统一从 config.embedding 读取）
+    # 1. 读取空间配置
     space = await session.get(KnowledgeSpace, document.space_id)
     if not space:
         return
@@ -1583,81 +1580,64 @@ async def _process_image_document_static(
     # 检查 VLM 描述开关（从知识库的解析配置读取）
     kb_repo = KnowledgeBaseRepository(session)
     kb = await kb_repo.get_by_id(document.kb_id)
-    vlm_enabled = False
+    vlm_model_name = None
     if kb:
         # 优先使用 task.pipeline_config 快照
         kb_config = task.pipeline_config if task and task.pipeline_config else kb.get_config() or {}
         parsing_config = build_runtime_parsing_config(
             kb_config.get("parsing", {}), document.file_type
         )
-        vlm_enabled = parsing_config.get("vlm_description_enabled", False)
+        vlm_model_name = parsing_config.get("vlm_model")
+
+    if not vlm_model_name:
+        raise DocumentProcessingError(
+            document_id=document.id,
+            error_message="图片文档处理需要 VLM（视觉语言模型）来生成描述文本，请在知识库解析配置中启用 VLM 描述并选择模型",
+        )
 
     # 检查点 0：配置读取后
     await _check_document_cancelled(document.id)
 
-    # 2. 获取多模态嵌入客户端
+    # 2. VLM 生成图片描述文本
     from novamind.features.user.services.model_config_service import ModelConfigService
 
     mcs = ModelConfigService(session)
-    client = await mcs.get_multimodal_embedding_client_by_model(document.uploader_id, model_name)
+    description_text = await _generate_image_description(
+        file_content=file_content,
+        document=document,
+        mcs=mcs,
+        _logger=_logger,
+        vlm_model_name=vlm_model_name,
+    )
 
-    if not isinstance(client, BaseMultimodalEmbedding):
+    if not description_text:
         raise DocumentProcessingError(
             document_id=document.id,
-            error_message=f"模型 {model_name} 不支持图片嵌入",
+            error_message=f"VLM 模型 {vlm_model_name} 未能生成图片描述文本",
         )
 
-    # 3. 生成图片嵌入向量（始终执行，不受 VLM 开关影响）
-    image_vector = await client.generate_image_embedding(file_content)
+    # 图片描述全文持久化到 MinIO（立刻 commit 落库）
+    await upload_parsed_text_to_minio(document, description_text, _logger)
+    await session.commit()
+
+    _logger.info(
+        "VLM 图片描述生成成功",
+        document_id=document.id,
+        description_length=len(description_text),
+    )
+
+    # 3. 用文本 Embedding 生成描述文本的向量
+    text_vector = await _generate_single_embedding_static(
+        text=description_text,
+        embedding_config=embedding_config,
+        session=session,
+        user_id=document.uploader_id,
+    )
 
     # 检查点 1：向量化完成后
     await _check_document_cancelled(document.id)
 
-    # 4. VLM 图片描述（如果启用）
-    description_text = ""
-    text_vector = None
-
-    if vlm_enabled:
-        try:
-            vlm_model_name = parsing_config.get("vlm_model")
-            description_text = await _generate_image_description(
-                file_content=file_content,
-                document=document,
-                mcs=mcs,
-                _logger=_logger,
-                vlm_model_name=vlm_model_name,
-            )
-
-            if description_text:
-                # 图片描述全文持久化到 MinIO（立刻 commit 落库）
-                await upload_parsed_text_to_minio(document, description_text, _logger)
-                await session.commit()
-
-                # 生成描述文本的向量
-                text_vector = await _generate_single_embedding_static(
-                    text=description_text,
-                    embedding_config=embedding_config,
-                    session=session,
-                    user_id=document.uploader_id,
-                )
-
-                _logger.info(
-                    "VLM 图片描述生成成功",
-                    document_id=document.id,
-                    description_length=len(description_text),
-                    has_text_vector=text_vector is not None,
-                )
-
-        except Exception as e:
-            _logger.warning(
-                "VLM 图片描述生成失败，跳过描述文本（不影响 image_embedding）",
-                document_id=document.id,
-                error=str(e),
-            )
-            description_text = ""
-            text_vector = None
-
-    # 5. 构建 ES chunk
+    # 4. 构建 ES chunk
     storage_info = document.storage or {}
     storage_path = storage_info.get("minio_object_name", "")
 
@@ -1668,7 +1648,8 @@ async def _process_image_document_static(
         "chunk_id": f"{document.id}_0",
         "chunk_index": 0,
         "chunk_type": "image",
-        "image_embedding": image_vector,
+        "content": description_text,
+        "embedding": text_vector,
         "image_url": storage_path,
         "file_info": {
             "filename": document.filename,
@@ -1679,14 +1660,6 @@ async def _process_image_document_static(
         },
     }
 
-    # VLM 开启且有描述时才写入 content 和 embedding
-    if description_text:
-        es_chunk["content"] = description_text
-
-    # VLM 开启且描述文本存在时，额外写入 embedding 字段
-    if description_text and text_vector:
-        es_chunk["embedding"] = text_vector
-
     # 检查点 2：ES 写入前
     await _check_document_cancelled(document.id)
 
@@ -1696,7 +1669,6 @@ async def _process_image_document_static(
         space_id=document.space_id,
         chunks=[es_chunk],
         embedding_dim=mm_dim,
-        multimodal_dim=mm_dim,
     )
 
     if indexed_count == 0:
@@ -1710,10 +1682,9 @@ async def _process_image_document_static(
         "chunk_count": 1,
         "indexed_at": now_china().isoformat(),
         "chunk_type": "image",
+        "vlm_description": True,
+        "description_length": len(description_text),
     }
-    if vlm_enabled and description_text:
-        result["vlm_description"] = True
-        result["description_length"] = len(description_text)
     if task:
         task.mark_completed(result=result)
     await session.commit()
@@ -1722,8 +1693,7 @@ async def _process_image_document_static(
         "图片文档处理完成",
         document_id=document.id,
         model=model_name,
-        vector_dim=len(image_vector),
-        vlm_enabled=vlm_enabled,
+        vlm_model=vlm_model_name,
         has_description=bool(description_text),
     )
 
