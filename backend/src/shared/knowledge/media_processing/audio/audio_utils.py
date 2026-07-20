@@ -85,17 +85,27 @@ _model_lock = asyncio.Lock()
 _local_whisper_model = None
 
 
+def _segments_to_dict(segments_result) -> List[Dict]:
+    """将 faster-whisper 的 segments 迭代器转为标准字典列表。"""
+    result = []
+    for seg in segments_result:
+        text = seg.text.strip() if seg.text else ""
+        if text:
+            result.append({
+                "text": text,
+                "start": round(seg.start, 2),
+                "end": round(seg.end, 2),
+            })
+    return result
+
+
 def _resolve_local_whisper_model_dir() -> Path:
     """解析本地 faster-whisper 模型目录。
 
     优先级：
       1. YAML 配置 ``knowledge_base.parsing.local_whisper_model_dir``
       2. 环境变量 ``NOVAMIND_LOCAL_WHISPER_MODEL_DIR``
-      3. 默认 ``backend/models/faster-whisper/tiny``
-
-    历史问题：原实现用 ``Path(__file__).resolve().parent`` 仅上溯 4 层，落到
-    ``backend/src/shared/models/...``（模型实际在 ``backend/models/...``），
-    导致本地 ASR 始终报模型未找到。此处改为可配置，默认上溯到 ``backend/``。
+      3. 默认 ``~/.cache/faster-whisper/tiny``
     """
     # 1. YAML 配置（延迟导入避免 shared/knowledge → setting 的耦合）
     try:
@@ -113,9 +123,8 @@ def _resolve_local_whisper_model_dir() -> Path:
     if env_dir:
         return Path(env_dir).expanduser()
 
-    # 3. 默认：__file__ = backend/src/shared/knowledge/media_processing/audio/audio_utils.py
-    #    parents[5] = backend/
-    return Path(__file__).resolve().parents[5] / "models" / "faster-whisper" / "tiny"
+    # 3. 默认：用户缓存目录 ~/.cache/faster-whisper/tiny
+    return Path.home() / ".cache" / "faster-whisper" / "tiny"
 
 
 async def _get_local_whisper_model():
@@ -228,15 +237,28 @@ async def transcribe_audio_local(
         )
 
         # 4. 转换结果格式（与 OpenAI/DashScope 返回格式统一）
-        segments = []
-        for seg in segments_result:
-            text = seg.text.strip() if seg.text else ""
-            if text:
-                segments.append({
-                    "text": text,
-                    "start": round(seg.start, 2),
-                    "end": round(seg.end, 2),
-                })
+        segments = _segments_to_dict(segments_result)
+
+        # 5. 结果为空且语言自动检测置信度低时，用中文重试
+        #    tiny 模型容易把中文误判为英语（probability < 0.5），导致转写为空。
+        #    显式指定 zh 可以大幅提升中文识别率。
+        if not segments and language is None and info.language_probability < 0.5:
+            logger.warning(
+                "本地 ASR 语言检测置信度低 (language=%s, probability=%.2f)，用中文重试",
+                info.language, info.language_probability,
+            )
+            segments_result, info = await asyncio.to_thread(
+                model.transcribe,
+                tmp_path,
+                beam_size=5,
+                word_timestamps=False,
+                language="zh",
+            )
+            logger.info(
+                "本地 ASR 中文重试完成, language=%s, probability=%.2f, duration=%.1fs",
+                info.language, info.language_probability, info.duration,
+            )
+            segments = _segments_to_dict(segments_result)
 
         if not segments:
             logger.warning(
