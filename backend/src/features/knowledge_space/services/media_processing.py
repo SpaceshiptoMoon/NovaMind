@@ -10,7 +10,7 @@ from typing import List, Tuple, Dict, Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from novamind.features.knowledge_space.api.exceptions import DocumentProcessingError
+from novamind.features.knowledge_space.api.exceptions import DocumentProcessingError, LocalASRBusyError
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.document_task import DocumentTask
 from novamind.features.knowledge_space.services.document_service import (
@@ -387,11 +387,14 @@ async def process_audio_document(
     if asr_protocol == "local":
         # 本地 faster-whisper 模型 — 无需 API Key，无需网络。
         # 模型缺失/解码失败时，若用户配了云端 ASR，则回退云端，避免整任务硬失败。
-        # 本地 ASR 忙碌时（正在转写其它音频），直接溢出到云端，避免排队堵死管道。
+        # 本地 ASR 忙碌时（正在转写其它音频）：
+        #   - 有云端 ASR 配置 → 溢出到云端，不排队
+        #   - 无云端配置 → 抛出 LocalASRBusyError，由 arq worker 延后重入队，
+        #     释放 Worker 槽位给其它文档处理任务
         from novamind.shared.knowledge.media_processing.audio import is_local_asr_busy
 
         if is_local_asr_busy():
-            # 本地 ASR 正在转写，尝试溢出到云端
+            # 本地 ASR 正在转写，优先溢出到云端
             cloud_creds = await _find_cloud_asr_credentials(mcs, document.uploader_id)
             if cloud_creds:
                 cloud_protocol = cloud_creds.protocol or "openai"
@@ -407,21 +410,12 @@ async def process_audio_document(
                     cloud_creds.base_url,
                 )
             else:
+                # 无云端配置：不让 Worker 空等，抛出拥塞信号让 arq 延后重入队
                 logger.info(
-                    "本地 ASR 忙碌且无云端 ASR 配置，排队等待本地 ASR",
+                    "本地 ASR 忙碌且无云端 ASR 配置，延后重入队",
                     document_id=document.id,
                 )
-                try:
-                    segments = await _run_asr("local", asr_model, asr_api_key, asr_base_url)
-                except Exception as local_exc:
-                    raise DocumentProcessingError(
-                        document_id=document.id,
-                        error_message=(
-                            f"本地 ASR 忙碌且无云端配置: {local_exc}。"
-                            f"请在模型管理中配置 dashscope/openai ASR 以支持溢出，"
-                            f"或等待本地 ASR 空闲后重试。"
-                        ),
-                    ) from local_exc
+                raise LocalASRBusyError(document_id=document.id)
         else:
             try:
                 segments = await _run_asr("local", asr_model, asr_api_key, asr_base_url)

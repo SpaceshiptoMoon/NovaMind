@@ -17,6 +17,7 @@ from arq.worker import Worker
 from arq import Retry
 
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.api.exceptions import LocalASRBusyError
 from novamind.shared.utils.time_utils import now_china
 
 logger = get_logger(__name__)
@@ -212,6 +213,53 @@ async def process_document_task(
             await session.rollback()
             await _handle_cancellation(document_id, space_id)
             await unbind_job(document_id)
+
+        except LocalASRBusyError as asr_busy:
+            # 本地 ASR 忙碌（正在转写其它音频），不是错误，延后重入队。
+            # 释放当前 Worker 槽位给其它文档任务，避免全部 Worker 卡在 ASR 排队。
+            asr_defer_seconds = 30
+            logger.info(
+                "本地 ASR 忙碌，任务延后重入队",
+                document_id=document_id,
+                job_id=job_id,
+                defer_seconds=asr_defer_seconds,
+            )
+            await session.rollback()
+
+            # 任务状态回退到 PENDING，不累加重试次数
+            task.status = TaskStatus.PENDING
+            task.started_at = None
+            task.error_message = f"[ASR 忙碌，{asr_defer_seconds}s 后重试] {asr_busy.message}"
+            await session.commit()
+
+            # 解绑旧 job 映射，让新 job 可以绑定
+            await unbind_job(document_id)
+
+            # 延迟重新入队（用 arq 的 _defer_ 参数实现延迟投递）
+            from novamind.shared.mq import get_arq_pool
+            from novamind.shared.mq.task_tracker import bind_job_to_document
+            pool = await get_arq_pool()
+            new_job = await pool.enqueue_job(
+                "process_document_task",
+                document_id=document_id,
+                kb_id=kb_id,
+                space_id=space_id,
+                _defer_by=asr_defer_seconds,
+            )
+            if new_job:
+                await bind_job_to_document(document_id, new_job.job_id)
+                logger.info(
+                    "ASR 忙碌任务已重新入队",
+                    document_id=document_id,
+                    old_job_id=job_id,
+                    new_job_id=new_job.job_id,
+                    defer_seconds=asr_defer_seconds,
+                )
+            else:
+                logger.warning(
+                    "ASR 忙碌任务重新入队失败，任务将在 PENDING 状态等待恢复",
+                    document_id=document_id,
+                )
 
         except Exception as e:
             logger.error(
