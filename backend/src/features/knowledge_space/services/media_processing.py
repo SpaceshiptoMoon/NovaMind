@@ -448,10 +448,22 @@ async def process_audio_document(
     await _check_document_cancelled(document.id)
 
     if not segments:
-        raise DocumentProcessingError(
-            document_id=document.id,
-            error_message=f"音频 {document.filename} 转写结果为空",
+        # 转写结果为空不是错误——模型能力不足、音频质量差等都是正常情况。
+        # 正常完成文档，0 chunk，不触发 arq 重试。
+        logger.warning(
+            "音频转写结果为空，文档将以空内容完成",
+            document_id=document.id, filename=document.filename,
         )
+        await persist_parsed_text(document, "", session, logger)
+        if task:
+            task.mark_completed(result={
+                "chunk_count": 0,
+                "chunk_type": ChunkType.AUDIO,
+                "segment_count": 0,
+                "indexed_at": now_china().isoformat(),
+            })
+        await session.commit()
+        return
 
     # 转写全文 MD 拼接并持久化到 MinIO（立刻 commit 落库）
     transcript_lines = [
@@ -459,10 +471,20 @@ async def process_audio_document(
         for seg in segments if seg.get("text", "").strip()
     ]
     if not transcript_lines:
-        raise DocumentProcessingError(
-            document_id=document.id,
-            error_message=f"音频 {document.filename} 转写结果均为空文本",
+        logger.warning(
+            "音频转写段落均为空文本，文档将以空内容完成",
+            document_id=document.id, filename=document.filename,
         )
+        await persist_parsed_text(document, "", session, logger)
+        if task:
+            task.mark_completed(result={
+                "chunk_count": 0,
+                "chunk_type": ChunkType.AUDIO,
+                "segment_count": len(segments),
+                "indexed_at": now_china().isoformat(),
+            })
+        await session.commit()
+        return
 
     full_text = "\n".join(transcript_lines)
     await persist_parsed_text(document, full_text, session, logger)
