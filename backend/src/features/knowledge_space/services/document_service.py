@@ -9,6 +9,7 @@
 """
 
 from typing import Optional, List, Dict, Any
+from dataclasses import dataclass
 import hashlib
 import asyncio
 import traceback
@@ -548,16 +549,14 @@ class DocumentService:
             return
 
         # ===== 文本文档分支（现有逻辑）=====
-        # 获取空间配置（提前获取，语义切分和向量化都依赖）
-        space = await session.get(KnowledgeSpace, document.space_id)
-        embedding_model_name = space.embedding_model if space else None
-        space_owner_id = space.owner_id if space else None
+        # 统一加载管道配置（space/kb/pipeline_config/embedding_config）
+        ctx = await load_pipeline_context(session, document, task)
 
         # 获取 DocumentProcessor（传入空间配置的嵌入模型，确保语义切分使用正确模型）
         processor = await _get_document_processor_static(
-            session, user_id=space_owner_id, model_name=embedding_model_name
+            session, user_id=ctx.space_owner_id, model_name=ctx.embedding_model_name
         )
-        kb_config = task.pipeline_config if task and task.pipeline_config else kb.get_config() or {}
+        kb_config = ctx.pipeline_config
         splitting_config = kb_config.get("splitting", {})
         suffix = f".{document.file_type}"
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -626,12 +625,12 @@ class DocumentService:
         )
 
         # 3. 向量化并索引到 ES（Embedding 配置从空间级别读取）
-        embedding_config = space.embedding_config if space and space.embedding_config else {}
+        embedding_config = ctx.embedding_config
         embeddings = await _generate_embeddings_static(
             [c["content"] for c in es_chunks],
             embedding_config,
             session=session,
-            user_id=space_owner_id,
+            user_id=ctx.space_owner_id,
         )
 
         for i, embedding in enumerate(embeddings):
@@ -644,7 +643,7 @@ class DocumentService:
         # 5. 生成假设问题（由知识库配置控制）
         # 优先使用 task.pipeline_config 快照（入队时的 KB 配置），确保处理的一致性
 
-        kb_config = task.pipeline_config if task and task.pipeline_config else kb.get_config() or {}
+        kb_config = ctx.pipeline_config
         qg_config = kb_config.get("question_generation", {})
         should_generate = qg_config.get("enabled", False) if qg_config else False
 
@@ -1570,6 +1569,60 @@ async def persist_parsed_text(
     return object_name
 
 
+@dataclass
+class PipelineContext:
+    """管道配置上下文，统一承载四个模态分支共用的配置读取结果。
+
+    将 space / kb / pipeline_config / embedding_config 的读取集中到
+    load_pipeline_context，避免「Task 快照优先」与「embedding_config 来源」
+    规则在各分支各写一遍而漂移。
+    """
+
+    space: Optional[KnowledgeSpace]
+    kb: Optional[KnowledgeBase]
+    pipeline_config: Dict[str, Any]
+    embedding_config: Dict[str, Any]
+
+    @property
+    def space_owner_id(self) -> Optional[int]:
+        return self.space.owner_id if self.space else None
+
+    @property
+    def embedding_model_name(self) -> Optional[str]:
+        return self.embedding_config.get("model") if self.embedding_config else None
+
+    @property
+    def embedding_dim(self) -> Optional[int]:
+        return self.embedding_config.get("dimension") if self.embedding_config else None
+
+
+async def load_pipeline_context(
+    session: AsyncSession,
+    document: Document,
+    task: Optional["DocumentTask"] = None,
+) -> PipelineContext:
+    """统一加载管道配置：space / kb / pipeline_config / embedding_config。
+
+    - pipeline_config 优先取 task.pipeline_config 快照（入队时配置），回退 kb 实时配置
+    - embedding_config 取空间级 space.embedding_config，缺失时为空 dict
+    """
+    space = await session.get(KnowledgeSpace, document.space_id)
+    kb_repo = KnowledgeBaseRepository(session)
+    kb = await kb_repo.get_by_id(document.kb_id)
+    pipeline_config = (
+        task.pipeline_config
+        if (task and task.pipeline_config)
+        else (kb.get_config() if kb else {})
+    )
+    embedding_config = (space.embedding_config if space else None) or {}
+    return PipelineContext(
+        space=space,
+        kb=kb,
+        pipeline_config=pipeline_config,
+        embedding_config=embedding_config,
+    )
+
+
 async def _process_image_document_static(
     document: Document,
     file_content: bytes,
@@ -1582,14 +1635,13 @@ async def _process_image_document_static(
     当前架构：图片 → VLM 描述文本 → 文本 Embedding → ES
     多模态 Embedding（直接生成图片向量）为预留功能，暂未启用。
     """
-    # 1. 读取空间配置
-    space = await session.get(KnowledgeSpace, document.space_id)
-    if not space:
+    # 1. 统一加载管道配置（space/kb/pipeline_config/embedding_config）
+    ctx = await load_pipeline_context(session, document, task)
+    if not ctx.space:
         return
-    space_config = space.get_config()
-    embedding_config = space_config.get("embedding") or {}
-    model_name = embedding_config.get("model")
-    mm_dim = embedding_config.get("dimension")
+    embedding_config = ctx.embedding_config
+    model_name = ctx.embedding_model_name
+    mm_dim = ctx.embedding_dim
 
     if not model_name:
         raise DocumentProcessingError(
@@ -1597,17 +1649,11 @@ async def _process_image_document_static(
             error_message="该空间未配置嵌入模型，无法处理图片文件",
         )
 
-    # 检查 VLM 描述开关（从知识库的解析配置读取）
-    kb_repo = KnowledgeBaseRepository(session)
-    kb = await kb_repo.get_by_id(document.kb_id)
-    vlm_model_name = None
-    if kb:
-        # 优先使用 task.pipeline_config 快照
-        kb_config = task.pipeline_config if task and task.pipeline_config else kb.get_config() or {}
-        parsing_config = build_runtime_parsing_config(
-            kb_config.get("parsing", {}), document.file_type
-        )
-        vlm_model_name = parsing_config.get("vlm_model")
+    # 检查 VLM 描述开关（从知识库的解析配置读取，优先 task.pipeline_config 快照）
+    parsing_config = build_runtime_parsing_config(
+        ctx.pipeline_config.get("parsing", {}), document.file_type
+    )
+    vlm_model_name = parsing_config.get("vlm_model")
 
     if not vlm_model_name:
         raise DocumentProcessingError(
