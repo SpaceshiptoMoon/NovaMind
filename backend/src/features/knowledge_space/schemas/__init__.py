@@ -17,6 +17,7 @@ from novamind.features.knowledge_space.schemas.space_schema import (
     SpaceResponse,
     SpaceListResponse,
 )
+from novamind.features.knowledge_space.schemas.enums import ChunkType
 from novamind.features.knowledge_space.schemas.document_schema import (
     DocumentResponse,
     DocumentListResponse,
@@ -58,6 +59,8 @@ __all__ = [
     "SpaceUpdate",
     "SpaceResponse",
     "SpaceListResponse",
+    # 领域枚举
+    "ChunkType",
     # 知识库
     "KnowledgeBaseCreate",
     "KnowledgeBaseUpdate",

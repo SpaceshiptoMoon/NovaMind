@@ -10,17 +10,21 @@ from typing import List, Tuple, Dict, Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from novamind.features.knowledge_space.api.exceptions import DocumentProcessingError
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.document_task import DocumentTask
-from novamind.features.knowledge_space.services.document_service import _check_document_cancelled
+from novamind.features.knowledge_space.services.document_service import (
+    _check_document_cancelled,
+    persist_parsed_text,
+)
 from novamind.shared.knowledge.media_processing.audio import (
     transcribe_audio_local,
     transcribe_audio_with_timestamps,
-    upload_parsed_text_to_minio,
 )
 from novamind.shared.knowledge.media_processing.video import extract_video_frames
 from novamind.shared.utils.time_utils import now_china
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
+from novamind.features.knowledge_space.schemas.enums import ChunkType
 from novamind.shared.knowledge.media_processing.vlm import (
     build_vlm_image_messages,
     generate_vlm_text_with_fallback,
@@ -64,6 +68,40 @@ def _is_vlm_quota_or_auth_error(exc: BaseException) -> bool:
     """判断 VLM 调用异常是否属于配额/鉴权类（可降级，无需重试）。"""
     text = str(exc).lower()
     return any(marker in text for marker in _VLM_QUOTA_OR_AUTH_MARKERS)
+
+
+def apply_modality_splitting_override(
+    splitting_config: Dict[str, Any], modality: str
+) -> None:
+    """用模态专属切分参数覆盖通用切分参数。
+
+    splitting_config 形如 {"strategy": ..., "chunk_size": ..., "video": {...}}，
+    调用后 ``modality`` 子键会被合并到顶层并移除，供后续 ``pop("strategy")`` 使用。
+    """
+    splitting_config.update(splitting_config.pop(modality, {}))
+
+
+async def maybe_semantic_embedding_client(
+    strategy: str,
+    embedding_config: Dict[str, Any],
+    session: AsyncSession,
+    user_id: int,
+):
+    """strategy == "semantic" 时返回语义切分所需的 embedding_client，否则返回 None。
+
+    延迟导入 _get_embedding_client_static 以避免 document_service ↔ media_processing 循环导入。
+    """
+    if strategy != "semantic":
+        return None
+    from novamind.features.knowledge_space.services.document_service import (
+        _get_embedding_client_static,
+    )
+
+    return await _get_embedding_client_static(
+        session=session,
+        user_id=user_id,
+        model_name=embedding_config.get("model"),
+    )
 
 
 async def process_video_document(
@@ -122,7 +160,10 @@ async def process_video_document(
     await _check_document_cancelled(document.id)
 
     if not frames:
-        raise ValueError(f"视频 {document.filename} 未能提取到任何帧")
+        raise DocumentProcessingError(
+            document_id=document.id,
+            error_message=f"视频 {document.filename} 未能提取到任何帧",
+        )
 
     # 1.5. 帧持久化到 MinIO（在 VLM 调用前上传，避免 VLM 失败后帧丢失）
     from novamind.shared.clients import ClientFactory
@@ -192,9 +233,6 @@ async def process_video_document(
                 frames[0][2] if frames else 0,
             ))
         else:
-            from novamind.features.knowledge_space.api.exceptions import (
-                DocumentProcessingError,
-            )
             hint = ""
             if all_quota_failure:
                 hint = (
@@ -211,29 +249,20 @@ async def process_video_document(
     for desc, ts, frame_idx in descriptions:
         full_text_lines.append(f"[{_format_time(ts)}] {desc}")
     full_text = "\n\n".join(full_text_lines)
-    await upload_parsed_text_to_minio(document, full_text, logger)
-    await session.commit()
+    await persist_parsed_text(document, full_text, session, logger)
 
     if task:
         task.set_step("descriptions_generated")
 
     # 3. 统一文本切分（替代旧 _aggregate_descriptions）
     # 切分配置从 pipeline_config 读取（优先 Task 快照）
-    splitting_config.update(splitting_config.pop("video", {}))
+    apply_modality_splitting_override(splitting_config, "video")
     strategy = splitting_config.pop("strategy", "recursive")
     splitting_kwargs = splitting_config
     embedding_config = space.embedding_config if space else {}
-    embedding_client = None
-    if strategy == "semantic":
-        from novamind.features.knowledge_space.services.document_service import (
-            _get_embedding_client_static,
-        )
-
-        embedding_client = await _get_embedding_client_static(
-            session=session,
-            user_id=document.uploader_id,
-            model_name=embedding_config.get("model"),
-        )
+    embedding_client = await maybe_semantic_embedding_client(
+        strategy, embedding_config, session, document.uploader_id
+    )
     chunks = await _split_md_text(
         full_text,
         strategy=strategy,
@@ -248,7 +277,7 @@ async def process_video_document(
     await _index_text_chunks(
         document=document,
         chunks=chunks,
-        chunk_type="video",
+        chunk_type=ChunkType.VIDEO,
         embedding_config=embedding_config,
         session=session,
         logger=logger,
@@ -266,7 +295,7 @@ async def process_video_document(
     if task:
         task.mark_completed(result={
             "chunk_count": len(chunks),
-            "chunk_type": "video",
+            "chunk_type": ChunkType.VIDEO,
             "frame_count": len(frames),
             "indexed_at": now_china().isoformat(),
         })
@@ -389,9 +418,6 @@ async def process_audio_document(
             )
             cloud_creds = await _find_cloud_asr_credentials(mcs, document.uploader_id)
             if cloud_creds is None:
-                from novamind.features.knowledge_space.api.exceptions import (
-                    DocumentProcessingError,
-                )
                 raise DocumentProcessingError(
                     document_id=document.id,
                     error_message=(
@@ -421,7 +447,10 @@ async def process_audio_document(
     await _check_document_cancelled(document.id)
 
     if not segments:
-        raise ValueError(f"音频 {document.filename} 转写结果为空")
+        raise DocumentProcessingError(
+            document_id=document.id,
+            error_message=f"音频 {document.filename} 转写结果为空",
+        )
 
     # 转写全文 MD 拼接并持久化到 MinIO（立刻 commit 落库）
     transcript_lines = [
@@ -429,11 +458,13 @@ async def process_audio_document(
         for seg in segments if seg.get("text", "").strip()
     ]
     if not transcript_lines:
-        raise ValueError(f"音频 {document.filename} 转写结果均为空文本")
+        raise DocumentProcessingError(
+            document_id=document.id,
+            error_message=f"音频 {document.filename} 转写结果均为空文本",
+        )
 
     full_text = "\n".join(transcript_lines)
-    await upload_parsed_text_to_minio(document, full_text, logger)
-    await session.commit()
+    await persist_parsed_text(document, full_text, session, logger)
 
     if task:
         task.set_step("transcription_done")
@@ -441,20 +472,12 @@ async def process_audio_document(
     # 2. 统一文本切分，splitting.audio 覆盖通用切分参数
     splitting_config = dict(pipeline_config.get("splitting", {}))
     # 应用音频专属切分覆盖（chunk_size, strategy 等）
-    splitting_config.update(splitting_config.pop("audio", {}))
+    apply_modality_splitting_override(splitting_config, "audio")
     strategy = splitting_config.pop("strategy", "recursive")
     embedding_config = space.embedding_config if space else {}
-    embedding_client = None
-    if strategy == "semantic":
-        from novamind.features.knowledge_space.services.document_service import (
-            _get_embedding_client_static,
-        )
-
-        embedding_client = await _get_embedding_client_static(
-            session=session,
-            user_id=document.uploader_id,
-            model_name=embedding_config.get("model"),
-        )
+    embedding_client = await maybe_semantic_embedding_client(
+        strategy, embedding_config, session, document.uploader_id
+    )
     chunks = await _split_md_text(
         full_text,
         strategy=strategy,
@@ -472,7 +495,7 @@ async def process_audio_document(
     await _index_text_chunks(
         document=document,
         chunks=chunks,
-        chunk_type="audio",
+        chunk_type=ChunkType.AUDIO,
         embedding_config=embedding_config,
         session=session,
         logger=logger,
@@ -485,7 +508,7 @@ async def process_audio_document(
     if task:
         task.mark_completed(result={
             "chunk_count": len(chunks),
-            "chunk_type": "audio",
+            "chunk_type": ChunkType.AUDIO,
             "segment_count": len(segments),
             "indexed_at": now_china().isoformat(),
         })
@@ -739,7 +762,7 @@ def _format_time(seconds: float) -> str:
 async def _index_text_chunks(
     document: Document,
     chunks: List[Tuple[str, Dict[str, Any]]],
-    chunk_type: str,
+    chunk_type: ChunkType,
     embedding_config: Dict[str, Any],
     session: AsyncSession,
     logger,
