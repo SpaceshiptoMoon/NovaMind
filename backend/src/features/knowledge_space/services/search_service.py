@@ -542,6 +542,7 @@ class SearchService:
         bm25_weight: float = 0.3,
         content_weight: float = 0.6,
         question_weight: float = 0.4,
+        rrf_k: int = 60,
         rerank_enabled: bool = False,
         rerank_top_k: int = 3,
         rerank_model: str = "",
@@ -551,7 +552,8 @@ class SearchService:
         """
         生成查询哈希（用于缓存键）
 
-        包含所有影响检索结果的参数，包括 rerank / score_threshold / query_rewrite 参数。
+        包含所有影响检索结果的参数：权重（含 rrf_k）、rerank、score_threshold、query_rewrite 签名。
+        rrf_k 影响 RRF 融合排名，必须入键，否则改 rrf_k 会命中旧缓存；
         score_threshold 影响结果过滤；query_rewrite 改写实际检索 query，必须入键，
         否则仅阈值或改写配置不同的请求会共享缓存，导致跨配置缓存污染。
         """
@@ -559,6 +561,7 @@ class SearchService:
         key_content = (
             f"{normalized_query}:{top_k}:{search_type}:"
             f"{vector_weight:.2f}:{bm25_weight:.2f}:{content_weight:.2f}:{question_weight:.2f}:"
+            f"rrf_{rrf_k}:"
             f"rerank_{rerank_enabled}_{rerank_top_k}_{rerank_model}:"
             f"st_{score_threshold:.4f}:qw_{query_rewrite_sig}"
         )
@@ -635,7 +638,8 @@ class SearchService:
         rrf_k = weights.rrf_k if weights else 60
 
         # 校验算法权重：vector_weight + bm25_weight 必须等于 1.0
-        if abs(vector_weight + bm25_weight - 1.0) > 0.01:
+        # 仅 hybrid 模式实际使用这两个权重；纯 BM25/vector 模式不消费，跳过校验避免误拒
+        if "hybrid" in search_mode and abs(vector_weight + bm25_weight - 1.0) > 0.01:
             raise InvalidSearchWeightError(
                 vector_weight=vector_weight,
                 bm25_weight=bm25_weight,
@@ -655,7 +659,7 @@ class SearchService:
         rerank = request.rerank
         rerank_enabled = rerank.enabled if rerank else False
         rerank_top_k = rerank.top_k if rerank else 3
-        rerank_model = rerank.model if rerank else "bge-reranker-v2-m3"
+        rerank_model = rerank.model if rerank else None
         start_time = time.time()
         original_mode = search_mode
         mode_fallback = False
@@ -703,16 +707,10 @@ class SearchService:
 
         # 4. 生成缓存键并尝试从缓存获取
         cache_key = None
-        if use_cache:
-            # query_rewrite 改写实际检索 query，影响结果，必须纳入缓存键签名
-            qw = request.query_rewrite
-            if qw is None:
-                query_rewrite_sig = "none"
-            else:
-                query_rewrite_sig = (
-                    f"{qw.strategy}|{qw.sub_query_count}|{qw.sub_query_merge_mode}"
-                    f"|{qw.llm_model or ''}"
-                )
+        # query_rewrite 改写结果由 LLM 生成、非确定；以 original query + rewrite_sig 为键会复用
+        # 首次改写结果（缓存污染/不可复现）。故启用改写时直接跳过缓存读写——改写检索本就以
+        # LLM 调用为主开销，缓存收益有限，不值得以正确性换。
+        if use_cache and request.query_rewrite is None:
             query_hash = self._generate_query_hash(
                 query,
                 top_k,
@@ -721,11 +719,12 @@ class SearchService:
                 bm25_weight,
                 content_weight,
                 question_weight,
+                rrf_k=rrf_k,
                 rerank_enabled=rerank_enabled,
                 rerank_top_k=rerank_top_k,
                 rerank_model=rerank_model,
                 score_threshold=score_threshold,
-                query_rewrite_sig=query_rewrite_sig,
+                query_rewrite_sig="none",
             )
             cache_key = self._get_search_cache_key(kb_id, search_mode, query_hash)
             cached_results = await self._get_cached_search(cache_key)
@@ -1040,14 +1039,17 @@ class SearchService:
     @staticmethod
     def _normalize_scores(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        分数归一化（Min-Max），统一到 0~1 范围
+        分数归一化，统一到 0~1 范围
 
         不同检索模式的原始分数量纲差异巨大：
         - BM25: 0~30+
         - 向量(knn cosine): 0~1
         - RRF 融合: 0.005~0.05
 
-        归一化后，用户设置的 score_threshold（0~1）在所有模式下都能正确生效
+        采用 max 归一化（score / max_score）：最高分映射到 1.0，其余按比例缩放。
+        相比 Min-Max，最低分不会被强制降到 0 而被任意正阈值误杀——score_threshold 的
+        语义稳定为「相对最高分的比例」（如 0.5 = 至少达到最高分的一半）。所有分数相等
+        时统一归一化为 1.0（视为同等相关，阈值不再误杀）。
 
         Args:
             results: 检索结果列表
@@ -1059,21 +1061,19 @@ class SearchService:
             return results
 
         scores = [r.get("score", 0) for r in results]
-        min_score = min(scores)
         max_score = max(scores)
 
-        # 所有分数相同（只有一条结果或分数完全一致）时，归一化为 1.0
-        score_range = max_score - min_score
-        if score_range == 0:
+        # 最高分 <= 0（全为 0 或负）时统一归一化为 1.0，视为同等相关，避免除零与阈值误杀
+        if max_score <= 0:
             for r in results:
                 r["original_score"] = r.get("score")
-                # 所有分数相同时保留原始分数
+                r["score"] = 1.0
             return results
 
         for r in results:
             original = r.get("score", 0)
             r["original_score"] = original
-            r["score"] = round((original - min_score) / score_range, 4)
+            r["score"] = round(original / max_score, 4)
 
         return results
 
