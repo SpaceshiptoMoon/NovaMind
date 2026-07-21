@@ -54,6 +54,17 @@ def test_cache_key_stable_for_same_params():
     assert _hash(**base) == _hash(**base)
 
 
+def test_cache_key_differs_by_rrf_k():
+    """仅 rrf_k 不同 → 缓存键必须不同。
+
+    rrf_k 影响 RRF 融合排名，必须入键；否则改 rrf_k 会命中旧缓存（1h TTL 内返回旧结果）。
+    """
+    base = dict(query="如何部署", top_k=10, search_type="all_hybrid")
+    low = _hash(**base, rrf_k=10)
+    high = _hash(**base, rrf_k=1000)
+    assert low != high, "不同 rrf_k 必须产生不同缓存键"
+
+
 def test_sub_query_rrf_k_param_is_used_not_hardcoded():
     """S3-D3: _search_with_sub_queries 必须使用传入的 rrf_k，不得硬编码 60 覆盖。
 

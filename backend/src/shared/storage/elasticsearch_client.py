@@ -557,11 +557,11 @@ class ElasticsearchClient:
     async def content_hybrid_search(
         self, space_id: int, query: str, query_vector: List[float],
         top_k: int = 10, vector_weight: float = 0.7, bm25_weight: float = 0.3,
-        kb_id: Optional[int] = None,
+        rrf_k: int = 60, kb_id: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """内容混合检索（BM25 + 向量）"""
         return await self.hybrid_search(
-            space_id, query, query_vector, top_k, vector_weight, bm25_weight, kb_id=kb_id
+            space_id, query, query_vector, top_k, vector_weight, bm25_weight, rrf_k, kb_id=kb_id
         )
 
     async def question_bm25_search(
@@ -741,7 +741,7 @@ class ElasticsearchClient:
             ),
             "content_hybrid": lambda: (
                 self.content_hybrid_search(
-                    space_id, query, query_vector, top_k, vector_weight, bm25_weight, kb_id=kb_id
+                    space_id, query, query_vector, top_k, vector_weight, bm25_weight, rrf_k, kb_id=kb_id
                 )
                 if query_vector else self.content_bm25_search(space_id, query, top_k, kb_id=kb_id)
             ),
@@ -752,7 +752,7 @@ class ElasticsearchClient:
             ),
             "question_hybrid": lambda: (
                 self.question_hybrid_search(
-                    space_id, query, query_vector, top_k, vector_weight, bm25_weight, kb_id=kb_id
+                    space_id, query, query_vector, top_k, vector_weight, bm25_weight, rrf_k, kb_id=kb_id
                 )
                 if query_vector else self.question_bm25_search(space_id, query, top_k, kb_id=kb_id)
             ),
