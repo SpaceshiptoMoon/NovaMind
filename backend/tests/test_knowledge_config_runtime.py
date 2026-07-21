@@ -406,7 +406,7 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
         captured["split_text"] = md_text
         return [("video chunk", {})]
 
-    async def fake_upload_parsed_text(document, full_text, logger):
+    async def fake_persist_parsed_text(document, full_text, session, logger):
         captured["parsed_video_text"] = full_text
         return "parsed/full_text.md"
 
@@ -427,8 +427,8 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
         fake_split_md_text,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing.upload_parsed_text_to_minio",
-        fake_upload_parsed_text,
+        "novamind.features.knowledge_space.services.media_processing.persist_parsed_text",
+        fake_persist_parsed_text,
     )
     monkeypatch.setattr(
         "novamind.features.knowledge_space.services.media_processing._index_text_chunks",
@@ -520,7 +520,7 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
         captured["audio_text"] = md_text
         return [("audio chunk", {})]
 
-    async def fake_upload_parsed_text(document, full_text, logger):
+    async def fake_persist_parsed_text(document, full_text, session, logger):
         captured["parsed_audio_text"] = full_text
         return "parsed/full_text.md"
 
@@ -537,8 +537,8 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
         fake_split_md_text,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing.upload_parsed_text_to_minio",
-        fake_upload_parsed_text,
+        "novamind.features.knowledge_space.services.media_processing.persist_parsed_text",
+        fake_persist_parsed_text,
     )
     monkeypatch.setattr(
         "novamind.features.knowledge_space.services.media_processing._index_text_chunks",
@@ -646,7 +646,7 @@ async def test_process_audio_document_loads_embedding_client_for_semantic_split(
         fake_split_md_text,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing.upload_parsed_text_to_minio",
+        "novamind.features.knowledge_space.services.media_processing.persist_parsed_text",
         AsyncMock(return_value="parsed/full_text.md"),
     )
     monkeypatch.setattr(
