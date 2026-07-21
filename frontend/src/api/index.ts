@@ -350,4 +350,5 @@ export async function createSSEStream(
   }
 }
 
+export { instance }
 export default instance
