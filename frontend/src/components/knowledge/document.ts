@@ -93,7 +93,6 @@ export function normalizeSpaceTypes(config: SpaceConfig | null | undefined): str
   const raw = config?.space_type
   if (!raw) return ['text']
   if (Array.isArray(raw)) return raw
-  if (raw === 'multimodal') return ['image']
   if (raw === 'text') return ['text']
   return ['text']
 }

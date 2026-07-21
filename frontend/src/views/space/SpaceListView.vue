@@ -149,22 +149,6 @@
               />
             </el-select>
           </el-form-item>
-          <el-form-item v-if="createSpaceForm.space_types.includes('image')" label="多模态">
-            <el-select
-              v-model="createSpaceForm.mm_embedding_model"
-              placeholder="选择多模态向量化模型"
-              clearable
-              filterable
-              style="width: 100%"
-            >
-              <el-option
-                v-for="m in mmEmbeddingModels"
-                :key="m.model"
-                :label="m.model"
-                :value="m.model"
-              />
-            </el-select>
-          </el-form-item>
 
           <!-- 高级参数（选了模型后显示） -->
           <div v-if="createSpaceForm.embedding_model" class="advanced-row">
@@ -400,12 +384,10 @@ const createSpaceForm = reactive({
   space_types: ['text'] as string[],
   description: '',
   embedding_model: '',
-  mm_embedding_model: '',
   embedding_batch_size: 32,
   embedding_normalize: true,
 })
 const embeddingModels = ref<AvailableModelItem[]>([])
-const mmEmbeddingModels = ref<AvailableModelItem[]>([])
 
 const spaceFormRules: FormRules = {
   name: [
@@ -429,7 +411,6 @@ function showCreateSpaceDialog() {
   createSpaceForm.space_types = ['text']
   createSpaceForm.description = ''
   createSpaceForm.embedding_model = ''
-  createSpaceForm.mm_embedding_model = ''
   createSpaceForm.embedding_batch_size = 32
   createSpaceForm.embedding_normalize = true
   createSpaceDialogVisible.value = true
@@ -440,7 +421,6 @@ async function fetchEmbeddingModels() {
   try {
     const data = await userApi.getAvailableModelDetails()
     embeddingModels.value = data.embedding || []
-    mmEmbeddingModels.value = data.multimodal_embedding || []
   } catch {
     // ignore
   }
@@ -464,9 +444,6 @@ async function handleCreateSpace() {
               normalize: createSpaceForm.embedding_normalize,
             }
           : undefined,
-      }
-      if (createSpaceForm.space_types.includes('image') && createSpaceForm.mm_embedding_model) {
-        config.multimodal_embedding = { model: createSpaceForm.mm_embedding_model }
       }
       const space = await spaceStore.createSpace({
         name: createSpaceForm.name,

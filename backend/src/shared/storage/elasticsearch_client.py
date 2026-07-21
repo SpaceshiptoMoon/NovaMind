@@ -110,7 +110,6 @@ class ElasticsearchClient:
         space_id: int,
         embedding_dim: Optional[int] = None,
         analyzer: Optional[str] = None,
-        multimodal_dim: Optional[int] = None,
     ) -> bool:
         """创建空间索引（幂等：索引已存在时直接返回成功）"""
         index_name = self.generate_index_name(space_id)
@@ -179,14 +178,6 @@ class ElasticsearchClient:
             "updated_at": {"type": "date"},
         }
 
-        if multimodal_dim:
-            properties["image_embedding"] = {
-                "type": "dense_vector",
-                "dims": multimodal_dim,
-                "index": True,
-                "similarity": "cosine",
-            }
-
         mappings = {
             "settings": {
                 "number_of_shards": 1,
@@ -214,12 +205,12 @@ class ElasticsearchClient:
             raise
 
     async def ensure_index_exists(
-        self, space_id: int, embedding_dim: Optional[int] = None, multimodal_dim: Optional[int] = None
+        self, space_id: int, embedding_dim: Optional[int] = None
     ) -> str:
         """确保索引存在"""
         index_name = self.generate_index_name(space_id)
         if not await self.index_exists(space_id):
-            await self.create_index(space_id, embedding_dim, multimodal_dim=multimodal_dim)
+            await self.create_index(space_id, embedding_dim)
         return index_name
 
     async def delete_index(self, space_id: int) -> bool:
@@ -273,14 +264,13 @@ class ElasticsearchClient:
         space_id: int,
         chunks: List[Dict[str, Any]],
         embedding_dim: Optional[int] = None,
-        multimodal_dim: Optional[int] = None,
     ) -> int:
         """批量索引分块"""
         if not chunks:
             return 0
 
         index_name = await self.ensure_index_exists(
-            space_id, embedding_dim=embedding_dim, multimodal_dim=multimodal_dim
+            space_id, embedding_dim=embedding_dim
         )
         actions = []
         for chunk in chunks:
@@ -314,74 +304,6 @@ class ElasticsearchClient:
         except Exception as e:
             logger.error("批量索引分块失败", index=index_name, error=str(e))
             return 0
-
-    async def image_vector_search(
-        self,
-        space_id: int,
-        query_vector: List[float],
-        top_k: int = 10,
-        kb_id: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
-        """在 image_embedding 字段上做 KNN 搜索（以图搜图 / 以文搜图）"""
-        return await self.vector_search(
-            space_id=space_id,
-            query_vector=query_vector,
-            top_k=top_k,
-            kb_id=kb_id,
-            field="image_embedding",
-            chunk_type_filter="image",
-        )
-
-    async def image_hybrid_vector_search(
-        self,
-        space_id: int,
-        query_vector: List[float],
-        top_k: int = 10,
-        kb_id: Optional[int] = None,
-        text_vector_weight: float = 0.5,
-        image_vector_weight: float = 0.5,
-    ) -> List[Dict[str, Any]]:
-        """双向量搜索：同时搜索 embedding（描述文本向量）和 image_embedding（图片向量），RRF 融合
-
-        适用于 text_to_image 模式，当图片 chunk 有 VLM 描述时，同时匹配描述文本和图片向量。
-
-        Args:
-            space_id: 空间 ID
-            query_vector: 查询向量
-            top_k: 返回数量
-            kb_id: 知识库 ID（可选过滤）
-            text_vector_weight: 描述文本向量权重（默认 0.5）
-            image_vector_weight: 图片向量权重（默认 0.5）
-
-        Returns:
-            RRF 融合后的搜索结果
-        """
-        fetch_size = top_k * 2  # 多取一些用于融合后截断
-
-        # 并行搜索两个向量字段
-        text_results, image_results = await asyncio.gather(
-            self.vector_search(
-                space_id=space_id,
-                query_vector=query_vector,
-                top_k=fetch_size,
-                kb_id=kb_id,
-                field="embedding",
-                chunk_type_filter="image",
-            ),
-            self.image_vector_search(
-                space_id=space_id,
-                query_vector=query_vector,
-                top_k=fetch_size,
-                kb_id=kb_id,
-            ),
-        )
-
-        return self.rrf_fuse(
-            [text_results, image_results],
-            weights=[text_vector_weight, image_vector_weight],
-            k=60,
-            top_k=top_k,
-        )
 
     async def get_chunk(self, space_id: int, chunk_id: str) -> Optional[Dict[str, Any]]:
         """获取分块"""
@@ -465,7 +387,7 @@ class ElasticsearchClient:
         field: str = "embedding",
         chunk_type_filter: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """向量相似度搜索（统一入口，支持 embedding / image_embedding 字段）"""
+        """向量相似度搜索（统一入口，支持 embedding 字段）"""
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
         filters = self._build_kb_filter(kb_id)

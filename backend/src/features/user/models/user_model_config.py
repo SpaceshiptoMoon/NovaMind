@@ -21,7 +21,7 @@ class ModelType(IntEnum):
     EMBEDDING = 2            # 向量化模型
     RERANK = 3               # 重排序模型
     VLM = 4                  # 视觉语言模型
-    MULTIMODAL_EMBEDDING = 5 # 多模态嵌入模型
+    # 5 已废弃（原 MULTIMODAL_EMBEDDING），保留编号不重用避免数据库冲突
     ASR = 6                  # 语音识别模型（Whisper等）
 
 
@@ -46,7 +46,7 @@ class UserModelConfig(BaseModel):
     )
 
     # ========== 模型配置 ==========
-    model_type = Column(Integer, nullable=False, comment="模型类型: 1-LLM, 2-Embedding, 3-Rerank, 4-VLM, 5-MultimodalEmbedding, 6-ASR")
+    model_type = Column(Integer, nullable=False, comment="模型类型: 1-LLM, 2-Embedding, 3-Rerank, 4-VLM, 6-ASR")
     protocol = Column(String(50), nullable=False, default="openai", comment="通信协议: openai/anthropic/ollama/transformers")
     model = Column(String(100), nullable=False, comment="模型名称（如 gpt-4o、embedding-3）")
     base_url = Column(String(500), nullable=True, comment="API Base URL")

@@ -6,15 +6,9 @@
 
 每个知识空间独立索引: `space_{space_id}` (如 `space_1`)
 
-## 两种 Mapping 变体
-
-创建逻辑在 `space_service.py:749-753`，由 `space_type` 决定:
-- `space_type="text"` → 普通 Mapping (无 `image_embedding`)
-- `space_type="multimodal"` → 额外添加 `image_embedding` 字段 (dense_vector, cosine)
-
 ## 完整字段定义
 
-### 基础字段 (两种空间都有)
+### 基础字段 (所有空间共有)
 
 | 字段 | ES 类型 | 说明 |
 |------|---------|------|
@@ -39,12 +33,6 @@
 | `created_at` | date | 创建时间 |
 | `updated_at` | date | 更新时间 |
 
-### 多模态独有字段
-
-| 字段 | ES 类型 | 条件 |
-|------|---------|------|
-| `image_embedding` | dense_vector (cosine) | 仅 space_type="multimodal" 时存在于 mapping |
-
 ## 9 种检索模式 (search_by_mode)
 
 | 模式 | 算法 | 搜索字段 |
@@ -58,10 +46,6 @@
 | `all_bm25` | BM25 加权 | `content` + `questions` |
 | `all_vector` | RRF 融合 | `embedding` + `question_embeddings.vector` |
 | `all_hybrid` | 4 路 RRF 全融合 | 全部 4 个字段 |
-
-另外多模态检索有两种方式（通过 `multimodal_search()` 路由，不在 `search_by_mode` 中）：
-- `image_vector_search`：以图搜图，搜索 `image_embedding` 并过滤 `chunk_type="image"`。
-- `image_hybrid_vector_search`：以文搜图（`text_to_image`），双向量搜索，同时检索 `embedding`（VLM 描述文本）和 `image_embedding`（图片向量），RRF 融合。
 
 ## 索引重建
 

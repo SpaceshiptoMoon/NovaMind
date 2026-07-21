@@ -4,21 +4,12 @@ import type {
   SearchResponse,
   SearchModeListResponse,
   SearchModelConfigResponse,
-  MultimodalSearchRequest,
 } from '../types'
 
 export const searchApi = {
   search(spaceId: number, kbId: number, data: SearchRequest) {
     return request.post<SearchResponse>(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/search`,
-      data,
-      120000,
-    )
-  },
-
-  multimodalSearch(spaceId: number, kbId: number, data: MultimodalSearchRequest) {
-    return request.post<SearchResponse>(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/search/multimodal-search`,
       data,
       120000,
     )

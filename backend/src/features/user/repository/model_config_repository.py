@@ -24,7 +24,6 @@ MODEL_TYPE_MAP = {
     "embedding": ModelType.EMBEDDING,
     "rerank": ModelType.RERANK,
     "vlm": ModelType.VLM,
-    "multimodal_embedding": ModelType.MULTIMODAL_EMBEDDING,
     "asr": ModelType.ASR,
 }
 
@@ -34,7 +33,6 @@ MODEL_TYPE_STR = {
     ModelType.EMBEDDING: "embedding",
     ModelType.RERANK: "rerank",
     ModelType.VLM: "vlm",
-    ModelType.MULTIMODAL_EMBEDDING: "multimodal_embedding",
     ModelType.ASR: "asr",
 }
 
