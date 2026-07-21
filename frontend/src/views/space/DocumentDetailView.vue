@@ -38,7 +38,7 @@
             <el-tag :type="currentStatusConfig.type" effect="plain" size="small">
               {{ currentStatusConfig.text }}
             </el-tag>
-            <span v-if="latestTask?.error_message" class="error-hint" :title="latestTask.error_message">
+            <span v-if="latestTask?.error_message && docStatus !== 2" class="error-hint" :title="latestTask.error_message">
               {{ latestTask.error_message.slice(0, 60) }}{{ latestTask.error_message.length > 60 ? '...' : '' }}
             </span>
           </span>
@@ -80,17 +80,8 @@
 
     <!-- 双栏内容区 -->
     <div class="content-layout">
-      <!-- 左栏：Markdown 渲染 + 分块列表 -->
+      <!-- 左栏：分块列表 -->
       <div class="content-main">
-        <!-- 解析全文渲染 -->
-        <DocumentMarkdownViewer
-          :markdown="parsedMarkdown"
-          :chunks="chunks"
-          :loading="markdownLoading"
-          :error="markdownError"
-          :hovered-chunk-index="hoveredChunkIndex"
-        />
-
         <!-- 分块列表 -->
         <div v-if="totalChunks > 0" class="chunks-section">
           <div class="section-header">
@@ -103,11 +94,9 @@
               v-for="chunk in chunks"
               :key="chunk.chunk_id"
               class="chunk-card"
-              :class="{ 'chunk-hovered': hoveredChunkIndex === chunk.chunk_index }"
-              @mouseenter="hoveredChunkIndex = chunk.chunk_index"
-              @mouseleave="hoveredChunkIndex = null"
+              :class="{ 'chunk-expanded': expandedChunks[chunk.chunk_index] }"
             >
-              <div class="chunk-header">
+              <div class="chunk-header" @click="toggleChunk(chunk.chunk_index)">
                 <span class="chunk-index-badge">{{ chunk.chunk_index + 1 }}</span>
                 <div class="chunk-meta">
                   <span v-if="chunk.chunk_type && chunk.chunk_type !== 'text'" class="meta-tag chunk-type-tag">{{ chunkTypeLabels[chunk.chunk_type] || chunk.chunk_type }}</span>
@@ -120,29 +109,40 @@
                   </span>
                   <span v-if="chunk.has_embedding" class="meta-tag embedded">已向量化</span>
                 </div>
+                <el-icon class="chunk-toggle" :class="{ 'is-expanded': expandedChunks[chunk.chunk_index] }">
+                  <ArrowRight />
+                </el-icon>
               </div>
-              <div class="chunk-content">
-                <img
-                  v-if="chunk.chunk_type === 'image' && (chunk.media_url || chunk.image_url)"
-                  :src="chunk.media_url || chunk.image_url"
-                  :alt="chunk.content"
-                  loading="lazy"
-                  class="chunk-image"
-                  @click="previewUrl = (chunk.media_url || chunk.image_url)!; previewVisible = true"
-                />
-                <template v-else>{{ chunk.content }}</template>
+              <!-- 折叠态：截断预览 -->
+              <div v-if="!expandedChunks[chunk.chunk_index]" class="chunk-preview" @click="toggleChunk(chunk.chunk_index)">
+                <template v-if="chunk.chunk_type === 'image'">🖼 图片分块</template>
+                <template v-else>{{ truncateContent(chunk.content) }}</template>
               </div>
-              <div v-if="chunk.questions?.length > 0" class="chunk-questions">
-                <el-tag
-                  v-for="q in chunk.questions"
-                  :key="q"
-                  size="small"
-                  effect="plain"
-                  round
-                >
-                  {{ q }}
-                </el-tag>
-              </div>
+              <!-- 展开态：完整内容 -->
+              <template v-else>
+                <div class="chunk-content">
+                  <img
+                    v-if="chunk.chunk_type === 'image' && (chunk.media_url || chunk.image_url)"
+                    :src="chunk.media_url || chunk.image_url"
+                    :alt="chunk.content"
+                    loading="lazy"
+                    class="chunk-image"
+                    @click="previewUrl = (chunk.media_url || chunk.image_url)!; previewVisible = true"
+                  />
+                  <template v-else>{{ chunk.content }}</template>
+                </div>
+                <div v-if="chunk.questions?.length > 0" class="chunk-questions">
+                  <el-tag
+                    v-for="q in chunk.questions"
+                    :key="q"
+                    size="small"
+                    effect="plain"
+                    round
+                  >
+                    {{ q }}
+                  </el-tag>
+                </div>
+              </template>
             </div>
           </div>
 
@@ -193,10 +193,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close } from '@element-plus/icons-vue'
+import { Close, ArrowRight } from '@element-plus/icons-vue'
 import { documentApi } from '@/api/knowledge'
 import Pagination from '@/components/common/Pagination.vue'
-import DocumentMarkdownViewer from '@/components/knowledge/DocumentMarkdownViewer.vue'
 import DocumentOriginalPreview from '@/components/knowledge/DocumentOriginalPreview.vue'
 import type { DocumentDetail, Chunk, DocumentTaskItem } from '@/api/types'
 import { chunkTypeLabels, getFileTypeStyle, taskStatusMap } from '@/components/knowledge'
@@ -220,13 +219,8 @@ const chunkPageSize = ref(10)
 const previewVisible = ref(false)
 const previewUrl = ref('')
 
-// Markdown 全文
-const parsedMarkdown = ref('')
-const markdownLoading = ref(false)
-const markdownError = ref('')
-
-// 分块悬停
-const hoveredChunkIndex = ref<number | null>(null)
+// 分块展开/折叠
+const expandedChunks = ref<Record<number, boolean>>({})
 
 // 原文预览面板
 const showOriginalPanel = ref(true)
@@ -238,6 +232,17 @@ const canProcess = computed(() => docStatus.value === 0 || docStatus.value === 2
 const canCancel = computed(() => docStatus.value === 0 || docStatus.value === 1)
 const canRetry = computed(() => docStatus.value === 3)
 
+function toggleChunk(index: number): void {
+  expandedChunks.value[index] = !expandedChunks.value[index]
+}
+
+function truncateContent(content: string, maxLen = 80): string {
+  if (!content) return ''
+  const firstLine = content.split('\n')[0] || ''
+  if (firstLine.length <= maxLen) return firstLine
+  return firstLine.slice(0, maxLen) + '...'
+}
+
 async function fetchDocument() {
   loading.value = true
   try {
@@ -246,29 +251,11 @@ async function fetchDocument() {
     totalChunks.value = data.chunk_count || 0
     chunkCurrentPage.value = 1
     await fetchChunks()
-
-    // 已完成的文档加载 Markdown 全文
-    if (docStatus.value === 2) {
-      fetchParsedText()
-    }
   } catch (error: unknown) {
     const err = error as { response?: { data?: { error?: { message?: string } } } }
     ElMessage.error(err.response?.data?.error?.message || '获取文档详情失败')
   } finally {
     loading.value = false
-  }
-}
-
-async function fetchParsedText() {
-  markdownLoading.value = true
-  markdownError.value = ''
-  try {
-    parsedMarkdown.value = await documentApi.getDocumentParsedText(spaceId.value, kbId.value, docId.value)
-  } catch {
-    markdownError.value = '解析全文不可用'
-    parsedMarkdown.value = ''
-  } finally {
-    markdownLoading.value = false
   }
 }
 
@@ -578,8 +565,7 @@ onMounted(() => {
   transition: all var(--transition-fast);
 }
 
-.chunk-card:hover,
-.chunk-card.chunk-hovered {
+.chunk-card.chunk-expanded {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 1px var(--color-primary-subtle, rgba(99, 102, 241, 0.15));
 }
@@ -588,7 +574,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-3);
+  cursor: pointer;
 }
 
 .chunk-index-badge {
@@ -609,6 +595,30 @@ onMounted(() => {
   display: flex;
   gap: var(--space-2);
   flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.chunk-toggle {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  transition: transform var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.chunk-toggle.is-expanded {
+  transform: rotate(90deg);
+}
+
+.chunk-preview {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  padding-top: var(--space-2);
 }
 
 .meta-tag {
@@ -646,9 +656,10 @@ onMounted(() => {
   background: var(--color-bg-hover);
   padding: var(--space-3);
   border-radius: var(--radius-md);
-  max-height: 200px;
+  max-height: 160px;
   overflow-y: auto;
   border: 1px solid var(--color-border-light);
+  margin-top: var(--space-3);
 }
 
 .chunk-image {

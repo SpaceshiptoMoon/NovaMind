@@ -1,111 +1,127 @@
 <template>
   <div class="original-preview">
-    <!-- 文本类文档：显示下载按钮和文件信息 -->
-    <template v-if="category === 'text'">
-      <div class="preview-section">
-        <div class="preview-icon">
-          <el-icon :size="48"><Document /></el-icon>
+    <!-- 文件信息 + 操作 -->
+    <div class="preview-section file-info-section">
+      <div class="source-info">
+        <div :class="['source-icon', `source-icon-${category}`]">
+          <el-icon :size="28"><component :is="sourceIcon" /></el-icon>
         </div>
-        <div class="preview-info">
-          <p class="preview-filename">{{ document?.filename }}</p>
-          <p class="preview-meta">{{ formatFileSize(document?.file_size || 0) }} · {{ (document?.file_type || 'FILE').toUpperCase() }}</p>
+        <div class="source-detail">
+          <p class="source-filename">{{ document?.filename }}</p>
+          <p class="source-meta">{{ formatFileSize(document?.file_size || 0) }} · {{ (document?.file_type || 'FILE').toUpperCase() }}</p>
         </div>
-        <el-button type="primary" @click="handleDownload">
+      </div>
+      <div class="file-actions">
+        <el-button
+          type="primary"
+          size="small"
+          :disabled="!canViewOriginal"
+          @click="handleViewOriginal"
+        >
+          <el-icon><View /></el-icon>
+          查看原文
+        </el-button>
+        <el-button
+          size="small"
+          :loading="downloadingSource"
+          @click="handleDownloadSource"
+        >
           <el-icon><Download /></el-icon>
-          下载原文件
+          下载源文件
         </el-button>
       </div>
-    </template>
+    </div>
 
-    <!-- 图片类文档：显示原图 -->
-    <template v-else-if="category === 'image'">
-      <div class="preview-section image-preview">
-        <img
-          :src="previewUrl"
-          :alt="document?.filename"
-          class="preview-image"
-          loading="lazy"
-          @click="imagePreviewVisible = true"
-        />
-        <el-button type="primary" size="small" plain @click="handleDownload" class="image-download">
-          <el-icon><Download /></el-icon>
-          下载原图
-        </el-button>
+    <!-- 图片内联预览 -->
+    <div v-if="category === 'image' && previewUrl" class="preview-section image-inline">
+      <div class="preview-section-header">
+        <h4>原文预览</h4>
       </div>
-      <el-dialog
-        v-model="imagePreviewVisible"
-        :show-close="true"
-        width="auto"
-        class="image-preview-dialog"
-        destroy-on-close
-      >
-        <img :src="previewUrl" style="max-width: 90vw; max-height: 80vh; object-fit: contain; display: block; margin: auto" />
-      </el-dialog>
-    </template>
+      <img
+        :src="previewUrl"
+        :alt="document?.filename"
+        class="preview-image"
+        loading="lazy"
+        @click="imagePreviewVisible = true"
+      />
+    </div>
 
-    <!-- 视频类文档：显示提取帧缩略图网格 -->
-    <template v-else-if="category === 'video'">
-      <div class="preview-section">
-        <div class="preview-section-header">
-          <h4>视频帧</h4>
-          <span v-if="frames.length" class="frame-count">{{ frames.length }} 帧</span>
-        </div>
-        <div v-if="framesLoading" class="frames-loading">
-          <el-skeleton :rows="3" animated />
-        </div>
-        <div v-else-if="frames.length" class="frames-grid">
-          <div
-            v-for="frame in frames"
-            :key="frame.index"
-            class="frame-thumb"
-            @click="selectedFrameUrl = frame.url; framePreviewVisible = true"
-          >
-            <img :src="frame.url" :alt="`帧 ${frame.index + 1}`" loading="lazy" />
-            <span class="frame-index">#{{ frame.index + 1 }}</span>
-          </div>
-        </div>
-        <el-empty v-else description="暂无视频帧数据" :image-size="60" />
-        <el-button type="primary" size="small" plain @click="handleDownload" style="margin-top: 12px">
-          <el-icon><Download /></el-icon>
-          下载原视频
-        </el-button>
+    <!-- 音频内联播放 -->
+    <div v-if="category === 'audio' && previewUrl" class="preview-section audio-inline">
+      <div class="preview-section-header">
+        <h4>原文播放</h4>
       </div>
-      <el-dialog
-        v-model="framePreviewVisible"
-        :show-close="true"
-        width="auto"
-        class="image-preview-dialog"
-        destroy-on-close
-      >
-        <img :src="selectedFrameUrl" style="max-width: 90vw; max-height: 80vh; object-fit: contain; display: block; margin: auto" />
-      </el-dialog>
-    </template>
+      <audio :src="previewUrl" controls class="audio-player" preload="metadata">
+        您的浏览器不支持音频播放
+      </audio>
+    </div>
 
-    <!-- 音频类文档：显示播放器 -->
-    <template v-else-if="category === 'audio'">
-      <div class="preview-section audio-preview">
-        <div class="audio-icon">
-          <el-icon :size="48"><Headset /></el-icon>
+    <!-- 查看原文弹窗 -->
+    <el-dialog
+      v-model="originalDialogVisible"
+      :title="`原文 · ${document?.filename || ''}`"
+      width="700px"
+      top="5vh"
+      destroy-on-close
+      class="original-dialog"
+      append-to-body
+      @opened="handleDialogOpened"
+      @close="handleDialogClose"
+    >
+      <!-- 搜索栏 -->
+      <div v-if="parsedText" class="search-bar">
+        <el-input
+          v-model="searchQuery"
+          placeholder="搜索原文内容..."
+          size="small"
+          clearable
+          @input="handleSearchInput"
+          @keydown.enter="handleSearchKeydown"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+        <div v-if="searchQuery" class="search-nav">
+          <span class="search-count">{{ totalMatches > 0 ? currentMatchIndex : 0 }}/{{ totalMatches }}</span>
+          <el-button size="small" circle :disabled="totalMatches === 0" @click="prevMatch">
+            <el-icon><ArrowUp /></el-icon>
+          </el-button>
+          <el-button size="small" circle :disabled="totalMatches === 0" @click="nextMatch">
+            <el-icon><ArrowDown /></el-icon>
+          </el-button>
         </div>
-        <p class="preview-filename">{{ document?.filename }}</p>
-        <audio :src="previewUrl" controls class="audio-player" preload="metadata">
-          您的浏览器不支持音频播放
-        </audio>
-        <el-button type="primary" size="small" plain @click="handleDownload" style="margin-top: 12px">
-          <el-icon><Download /></el-icon>
-          下载音频
-        </el-button>
       </div>
-    </template>
+
+      <!-- 内容区 -->
+      <div v-loading="textLoading" class="original-dialog-content" ref="contentRef">
+        <template v-if="!textLoading">
+          <MarkdownRenderer v-if="parsedText" :content="parsedText" />
+          <el-empty v-else :description="textError || '暂无原文内容'" :image-size="80" />
+        </template>
+      </div>
+    </el-dialog>
+
+    <!-- 图片放大弹窗 -->
+    <el-dialog
+      v-model="imagePreviewVisible"
+      :show-close="true"
+      width="auto"
+      class="image-preview-dialog"
+      destroy-on-close
+    >
+      <img v-if="previewUrl" :src="previewUrl" style="max-width: 90vw; max-height: 80vh; object-fit: contain; display: block; margin: auto" />
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { Document, Download, Headset } from '@element-plus/icons-vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { Download, Document, Headset, VideoCamera, View, Search, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import { documentApi } from '@/api/knowledge'
 import { getFileTypeCategory } from './document'
 import { formatFileSize } from '@/utils/format'
+import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import type { Document as DocType } from '@/api/types'
 
 const props = defineProps<{
@@ -119,41 +135,253 @@ const category = computed(() => {
   return getFileTypeCategory(props.document.file_type)
 })
 
-const previewUrl = computed(() => {
-  if (!props.document) return ''
-  return documentApi.getDocumentPreviewUrl(props.spaceId, props.kbId, props.document.id)
+const sourceIcon = computed(() => {
+  switch (category.value) {
+    case 'image': return Document
+    case 'video': return VideoCamera
+    case 'audio': return Headset
+    default: return Document
+  }
 })
 
-// 图片预览
+// 是否可以查看原文（文档已完成解析）
+const canViewOriginal = computed(() => props.document?.status === 2)
+
+// 下载状态
+const downloadingSource = ref(false)
+
+// 原文数据（按需加载）
+const parsedText = ref('')
+const textLoading = ref(false)
+const textError = ref('')
+
+// 查看原文弹窗
+const originalDialogVisible = ref(false)
+
+// 搜索状态
+const searchQuery = ref('')
+const currentMatchIndex = ref(0)
+const totalMatches = ref(0)
+const contentRef = ref<HTMLElement | null>(null)
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+
+// 带认证的预览 Blob URL（图片/音频通过 fetch + token 获取后创建）
+const previewUrl = ref('')
+
+async function loadPreviewUrl() {
+  if (!props.document) return
+  if (category.value !== 'image' && category.value !== 'audio') return
+  if (previewUrl.value) {
+    window.URL.revokeObjectURL(previewUrl.value)
+    previewUrl.value = ''
+  }
+  try {
+    previewUrl.value = await documentApi.getDocumentPreviewBlobUrl(
+      props.spaceId, props.kbId, props.document.id
+    )
+  } catch {
+    previewUrl.value = ''
+  }
+}
+
+onMounted(loadPreviewUrl)
+
+watch(() => props.document?.id, () => {
+  loadPreviewUrl()
+  // 文档切换时重置原文数据
+  parsedText.value = ''
+  textError.value = ''
+  originalDialogVisible.value = false
+})
+
+onUnmounted(() => {
+  if (previewUrl.value) {
+    window.URL.revokeObjectURL(previewUrl.value)
+  }
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+  }
+})
+
+// 图片放大弹窗
 const imagePreviewVisible = ref(false)
 
-// 视频帧
-const frames = ref<Array<{ index: number; url: string }>>([])
-const framesLoading = ref(false)
-const framePreviewVisible = ref(false)
-const selectedFrameUrl = ref('')
+// 点击查看原文
+async function handleViewOriginal() {
+  originalDialogVisible.value = true
+  if (parsedText.value) return
 
-onMounted(async () => {
-  if (category.value === 'video' && props.document) {
-    framesLoading.value = true
-    try {
-      const res = await documentApi.getDocumentFrames(props.spaceId, props.kbId, props.document.id)
-      frames.value = res.frames || []
-    } catch {
-      frames.value = []
-    } finally {
-      framesLoading.value = false
-    }
-  }
-})
-
-async function handleDownload() {
-  if (!props.document) return
+  textLoading.value = true
+  textError.value = ''
   try {
-    await documentApi.downloadDocument(props.spaceId, props.kbId, props.document.id, props.document.filename)
+    parsedText.value = await documentApi.getDocumentParsedText(
+      props.spaceId, props.kbId, props.document!.id
+    )
+  } catch (err: unknown) {
+    const status = (err as { response?: { status?: number } })?.response?.status
+    if (status === 404) {
+      textError.value = '文档尚未解析完成'
+    } else {
+      textError.value = '原文加载失败'
+    }
+    parsedText.value = ''
+  } finally {
+    textLoading.value = false
+  }
+}
+
+// 下载源文件
+async function handleDownloadSource() {
+  if (!props.document) return
+  downloadingSource.value = true
+  try {
+    await documentApi.downloadDocument(
+      props.spaceId, props.kbId, props.document.id, props.document.filename
+    )
   } catch {
     // 下载失败已在 interceptor 处理
+  } finally {
+    downloadingSource.value = false
   }
+}
+
+// ===== 搜索功能 =====
+
+function handleDialogOpened() {
+  // 弹窗打开后，若已有搜索词，重新应用高亮
+  if (searchQuery.value) {
+    nextTick(() => applySearch())
+  }
+}
+
+function handleDialogClose() {
+  // 清理搜索状态（DOM 会被 destroy-on-close 销毁）
+  totalMatches.value = 0
+  currentMatchIndex.value = 0
+}
+
+function handleSearchInput() {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => {
+    nextTick(() => applySearch())
+  }, 250)
+}
+
+function handleSearchKeydown(e: KeyboardEvent) {
+  e.preventDefault()
+  if (e.shiftKey) {
+    prevMatch()
+  } else {
+    nextMatch()
+  }
+}
+
+/** 在渲染内容中搜索并高亮匹配文本 */
+function applySearch() {
+  if (!contentRef.value) return
+  clearHighlights()
+
+  const query = searchQuery.value.trim()
+  if (!query) {
+    totalMatches.value = 0
+    currentMatchIndex.value = 0
+    return
+  }
+
+  const lowerQuery = query.toLowerCase()
+  const matches: HTMLElement[] = []
+
+  // 收集可搜索的文本节点
+  const walker = document.createTreeWalker(contentRef.value, NodeFilter.SHOW_TEXT)
+  const textNodes: Text[] = []
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text
+    const parent = node.parentElement
+    if (!parent) continue
+    if (parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE') continue
+    if (parent.classList.contains('search-highlight') || parent.classList.contains('search-highlight-current')) continue
+    if (!node.textContent) continue
+    textNodes.push(node)
+  }
+
+  // 从后往前替换，避免偏移
+  for (let i = textNodes.length - 1; i >= 0; i--) {
+    const textNode = textNodes[i]
+    const text = textNode.textContent || ''
+    const lowerText = text.toLowerCase()
+
+    if (!lowerText.includes(lowerQuery)) continue
+
+    const fragment = document.createDocumentFragment()
+    let lastIndex = 0
+    let pos = lowerText.indexOf(lowerQuery)
+
+    while (pos !== -1) {
+      if (pos > lastIndex) {
+        fragment.appendChild(document.createTextNode(text.slice(lastIndex, pos)))
+      }
+      const mark = document.createElement('mark')
+      mark.className = 'search-highlight'
+      mark.textContent = text.slice(pos, pos + query.length)
+      fragment.appendChild(mark)
+      matches.push(mark)
+      lastIndex = pos + query.length
+      pos = lowerText.indexOf(lowerQuery, lastIndex)
+    }
+
+    if (lastIndex < text.length) {
+      fragment.appendChild(document.createTextNode(text.slice(lastIndex)))
+    }
+
+    textNode.parentNode?.replaceChild(fragment, textNode)
+  }
+
+  // matches 是从后往前收集的，需要反转以匹配文档顺序
+  matches.reverse()
+  totalMatches.value = matches.length
+  currentMatchIndex.value = matches.length > 0 ? 1 : 0
+
+  if (matches.length > 0) {
+    matches[0].classList.add('search-highlight-current')
+    matches[0].scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+}
+
+function clearHighlights() {
+  if (!contentRef.value) return
+  const marks = contentRef.value.querySelectorAll('mark.search-highlight, mark.search-highlight-current')
+  marks.forEach(mark => {
+    const parent = mark.parentNode
+    if (parent) {
+      parent.replaceChild(document.createTextNode(mark.textContent || ''), mark)
+      parent.normalize()
+    }
+  })
+}
+
+function nextMatch() {
+  if (totalMatches.value === 0) return
+  const idx = currentMatchIndex.value % totalMatches.value
+  const nextIdx = (idx + 1) % totalMatches.value
+  navigateToMatch(nextIdx)
+}
+
+function prevMatch() {
+  if (totalMatches.value === 0) return
+  const idx = currentMatchIndex.value - 1
+  const prevIdx = idx <= 0 ? totalMatches.value - 1 : idx - 1
+  navigateToMatch(prevIdx)
+}
+
+function navigateToMatch(index: number) {
+  if (!contentRef.value) return
+  const marks = contentRef.value.querySelectorAll('mark.search-highlight, mark.search-highlight-current')
+  if (index < 0 || index >= marks.length) return
+
+  marks.forEach(m => m.classList.remove('search-highlight-current'))
+  marks[index].classList.add('search-highlight-current')
+  marks[index].scrollIntoView({ behavior: 'smooth', block: 'center' })
+  currentMatchIndex.value = index + 1
 }
 </script>
 
@@ -161,6 +389,7 @@ async function handleDownload() {
 .original-preview {
   display: flex;
   flex-direction: column;
+  gap: var(--space-3);
 }
 
 .preview-section {
@@ -186,45 +415,66 @@ async function handleDownload() {
   color: var(--color-text);
 }
 
-.frame-count {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
+/* 文件信息 + 操作区 */
+.file-info-section {
+  gap: var(--space-4);
 }
 
-.preview-icon,
-.audio-icon {
+.source-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.source-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 64px;
-  border-radius: var(--radius-lg);
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
   background: var(--color-bg-hover);
   color: var(--color-text-secondary);
+  flex-shrink: 0;
 }
 
-.preview-info {
+.source-icon-image { color: #409eff; background: rgba(64, 158, 255, 0.1); }
+.source-icon-video { color: #e6a23c; background: rgba(230, 162, 60, 0.1); }
+.source-icon-audio { color: #67c23a; background: rgba(103, 194, 58, 0.1); }
+
+.source-detail {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  min-width: 0;
 }
 
-.preview-filename {
-  margin: 0;
-  font-size: var(--text-base);
-  font-weight: var(--weight-medium);
-  color: var(--color-text);
-  word-break: break-all;
-}
-
-.preview-meta {
+.source-filename {
   margin: 0;
   font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-meta {
+  margin: 0;
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
 }
 
-.image-preview {
-  align-items: center;
+.file-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* 图片内联预览 */
+.image-inline {
+  padding: var(--space-3);
 }
 
 .preview-image {
@@ -240,60 +490,73 @@ async function handleDownload() {
   opacity: 0.9;
 }
 
-.image-download {
-  align-self: flex-start;
-}
-
-.frames-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: var(--space-2);
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.frame-thumb {
-  position: relative;
-  aspect-ratio: 16 / 9;
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  cursor: pointer;
-  border: 2px solid transparent;
-  transition: border-color var(--transition-fast);
-}
-
-.frame-thumb:hover {
-  border-color: var(--color-primary);
-}
-
-.frame-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.frame-index {
-  position: absolute;
-  bottom: 2px;
-  right: 4px;
-  font-size: 10px;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.6);
-  padding: 1px 4px;
-  border-radius: var(--radius-sm);
-}
-
-.frames-loading {
+/* 音频内联播放 */
+.audio-inline {
   padding: var(--space-3);
-}
-
-.audio-preview {
   align-items: center;
 }
 
 .audio-player {
   width: 100%;
   max-width: 320px;
+}
+
+/* 查看原文弹窗 */
+.original-dialog :deep(.el-dialog__body) {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  height: 60vh;
+  overflow: hidden;
+}
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border-light);
+  flex-shrink: 0;
+}
+
+.search-bar :deep(.el-input) {
+  flex: 1;
+}
+
+.search-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.search-count {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  min-width: 3em;
+  text-align: center;
+}
+
+.original-dialog-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-6);
+}
+
+/* 搜索高亮 */
+:deep(.search-highlight) {
+  background: rgba(255, 213, 79, 0.6);
+  color: inherit;
+  padding: 1px 0;
+  border-radius: 2px;
+}
+
+:deep(.search-highlight-current) {
+  background: rgba(255, 171, 0, 0.85);
+  color: inherit;
+  padding: 1px 0;
+  border-radius: 2px;
 }
 
 .image-preview-dialog :deep(.el-dialog__body) {

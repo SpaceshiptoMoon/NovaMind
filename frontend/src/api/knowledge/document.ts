@@ -1,4 +1,4 @@
-import { request, tokenManager } from '../index'
+import { request, instance } from '../index'
 import type {
   DocumentListResponse,
   UploadDocumentResponse,
@@ -102,20 +102,12 @@ export const documentApi = {
 
   /** 获取文档解析后的 Markdown 全文 */
   async getDocumentParsedText(spaceId: number, kbId: number, docId: number): Promise<string> {
-    // 使用原生 fetch 获取文本内容（非 JSON），需手动带上 token
-    const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
-    const token = tokenManager.getToken()
-    const headers: Record<string, string> = {}
-    if (token) headers['Authorization'] = `Bearer ${token}`
-
-    const response = await fetch(
-      `${baseURL}/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/parsed-text`,
-      { credentials: 'include', headers }
+    // 使用 axios 统一拦截器（自动带 token、自动刷新），获取 text/markdown 响应
+    const response = await instance.get(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/parsed-text`,
+      { responseType: 'text', headers: { Accept: 'text/markdown' } },
     )
-    if (!response.ok) {
-      throw new Error(`获取解析全文失败: ${response.status}`)
-    }
-    return response.text()
+    return typeof response.data === 'string' ? response.data : String(response.data)
   },
 
   /** 获取文档视频帧预签名 URL 列表 */
@@ -125,9 +117,11 @@ export const documentApi = {
     )
   },
 
-  /** 生成文档原始文件预览 URL（用于 <img>/<audio>/iframe 的 src） */
-  getDocumentPreviewUrl(spaceId: number, kbId: number, docId: number): string {
-    const baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
-    return `${baseURL}/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/preview`
+  /** 获取文档原始文件预览 Blob URL（带认证） */
+  async getDocumentPreviewBlobUrl(spaceId: number, kbId: number, docId: number): Promise<string> {
+    const blob = await request.download(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/preview`
+    )
+    return window.URL.createObjectURL(blob)
   },
 }
