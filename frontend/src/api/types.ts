@@ -62,7 +62,7 @@ export interface UpdateUserRequest {
 export interface ModelConfig {
   id: number
   user_id: number
-  model_type: 'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding' | 'asr'
+  model_type: 'llm' | 'embedding' | 'rerank' | 'vlm' | 'asr'
   protocol: string
   model: string
   base_url: string | null
@@ -73,7 +73,7 @@ export interface ModelConfig {
 }
 
 export interface CreateModelConfigRequest {
-  model_type: 'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding' | 'asr'
+  model_type: 'llm' | 'embedding' | 'rerank' | 'vlm' | 'asr'
   protocol: string
   model: string
   base_url?: string
@@ -90,7 +90,7 @@ export interface UpdateModelConfigRequest {
 }
 
 export interface ModelConfigTestRequest {
-  model_type: 'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding' | 'asr'
+  model_type: 'llm' | 'embedding' | 'rerank' | 'vlm' | 'asr'
   protocol?: string
   model: string
   base_url?: string
@@ -114,7 +114,6 @@ export interface AvailableModelsResponse {
   embedding: string[]
   rerank: string[]
   vlm: string[]
-  multimodal_embedding: string[]
   asr: string[]
 }
 
@@ -123,7 +122,6 @@ export interface AvailableModelDetail {
   embedding: AvailableModelItem[]
   rerank: AvailableModelItem[]
   vlm: AvailableModelItem[]
-  multimodal_embedding: AvailableModelItem[]
   asr: AvailableModelItem[]
 }
 
@@ -147,11 +145,6 @@ export interface SpaceConfigEmbeddingUpdate {
   normalize?: boolean
 }
 
-export interface SpaceMultimodalEmbeddingConfig {
-  model?: string
-  dimension?: number
-}
-
 export interface SpaceLLMConfig {
   model?: string    // LLM 模型名称
 }
@@ -168,10 +161,6 @@ export interface SpaceConfig {
   description?: string
   tags?: string[]
   embedding?: SpaceConfigEmbedding
-  // Note: multimodal_embedding is NOT a space-level config field.
-  // The multimodal embedding model is configured per-space via the model config API
-  // and stored in config.embedding.model (the embedding config's model field).
-  // Do not add multimodal_embedding here — it will be silently dropped by the backend.
   llm?: SpaceLLMConfig    // 默认 LLM 配置（问题生成、查询改写、摘要）
   asr?: SpaceASRConfig    // 默认 ASR 配置（音频转文字）
   vlm?: SpaceVLMConfig    // 默认 VLM 配置（暂未启用）
@@ -637,7 +626,6 @@ export interface SearchLLM {
 
 export interface SearchQueryRewrite {
   strategy?: 'hyde' | 'sub_query'
-  hyde_prompt?: string
   sub_query_count?: number
   sub_query_merge_mode?: 'rrf' | 'score'
   llm_model?: string
@@ -653,18 +641,7 @@ export interface SearchRequest {
   query_rewrite?: SearchQueryRewrite
   score_threshold?: number
   fallback_on_unavailable?: boolean
-  filters?: Record<string, unknown>
   use_cache?: boolean
-}
-
-export type MultimodalSearchMode = 'text_to_image' | 'image_to_image'
-
-export interface MultimodalSearchRequest {
-  query?: string
-  image_base64?: string
-  search_mode: MultimodalSearchMode
-  top_k?: number
-  score_threshold?: number
 }
 
 export interface SearchResultItem {
@@ -690,8 +667,12 @@ export interface SearchResponse {
   original_mode: string | null
   mode_fallback: boolean
   top_k: number
-  vector_weight: number
-  bm25_weight: number
+  vector_weight: number | null
+  bm25_weight: number | null
+  content_weight: number | null
+  question_weight: number | null
+  rrf_k: number | null
+  score_threshold: number | null
   answer: string | null
   answer_model: string | null
   answer_elapsed_ms: number | null

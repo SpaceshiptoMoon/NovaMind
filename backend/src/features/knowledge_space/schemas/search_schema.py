@@ -253,48 +253,6 @@ class SearchRequest(BaseModel):
     )
 
 
-class MultimodalSearchMode(str, Enum):
-    """多模态检索子模式"""
-    TEXT_TO_IMAGE = "text_to_image"
-    IMAGE_TO_IMAGE = "image_to_image"
-
-
-class MultimodalSearchRequest(BaseModel):
-    """
-    多模态检索请求
-
-    统一处理以文搜图和以图搜图两种模式
-    """
-    # 查询内容：文本或图片（根据模式二选一）
-    query: Optional[str] = Field(
-        default=None,
-        min_length=1,
-        max_length=2000,
-        description="文本查询（以文搜图模式必填）",
-    )
-    image_base64: Optional[str] = Field(
-        default=None,
-        description="Base64 编码的图片数据（以图搜图模式必填）",
-    )
-
-    # 检索模式
-    search_mode: MultimodalSearchMode = Field(
-        default=MultimodalSearchMode.TEXT_TO_IMAGE,
-        description="检索模式: text_to_image 或 image_to_image",
-    )
-
-    # 结果参数
-    top_k: int = Field(default=10, ge=1, le=100, description="返回结果数量")
-    score_threshold: float = Field(default=0.0, ge=0.0, le=1.0, description="相似度阈值（归一化后）")
-
-    @model_validator(mode="after")
-    def validate_query_or_image(self):
-        """根据模式校验必填字段"""
-        if self.search_mode == MultimodalSearchMode.TEXT_TO_IMAGE and not self.query:
-            raise ValueError("text_to_image 模式需要提供 query")
-        if self.search_mode == MultimodalSearchMode.IMAGE_TO_IMAGE and not self.image_base64:
-            raise ValueError("image_to_image 模式需要提供 image_base64")
-        return self
 
 
 class SearchResult(BaseModel):
@@ -346,8 +304,12 @@ class SearchResponse(BaseModel):
     original_mode: Optional[str] = Field(None, description="原始请求的检索模式（发生降级时有值）")
     mode_fallback: bool = Field(default=False, description="是否发生了模式降级")
     top_k: int = Field(..., description="请求的返回数量")
-    vector_weight: Optional[float] = Field(None, description="向量检索权重")
-    bm25_weight: Optional[float] = Field(None, description="BM25 检索权重")
+    vector_weight: Optional[float] = Field(None, description="向量检索权重（回显入参）")
+    bm25_weight: Optional[float] = Field(None, description="BM25 检索权重（回显入参）")
+    content_weight: Optional[float] = Field(None, description="内容字段权重（回显入参）")
+    question_weight: Optional[float] = Field(None, description="问题字段权重（回显入参）")
+    rrf_k: Optional[int] = Field(None, description="RRF 平滑参数（回显入参）")
+    score_threshold: Optional[float] = Field(None, description="最低分数阈值（回显入参）")
 
     # LLM 回答（当 llm.enabled=true 时返回）
     answer: Optional[str] = Field(None, description="LLM 生成的回答（启用 LLM 时返回）")
@@ -394,9 +356,6 @@ SEARCH_MODES: List[Dict[str, Any]] = [
     {"mode": "all_bm25", "label": "全字段全文检索", "description": "对内容和问题同时进行 BM25 检索", "requires_question_generation": True},
     {"mode": "all_vector", "label": "全字段向量检索", "description": "对内容和问题同时进行向量检索", "requires_question_generation": True},
     {"mode": "all_hybrid", "label": "全字段全算法融合", "description": "对所有字段同时使用 BM25 和向量检索，并通过 RRF 融合", "requires_question_generation": True},
-    # 多模态模式（仅多模态空间可用）
-    {"mode": "image_vector", "label": "以图搜图", "description": "使用图片向量搜索相似图片", "requires_question_generation": False},
-    {"mode": "text_to_image", "label": "以文搜图", "description": "使用文本向量搜索相关图片", "requires_question_generation": False},
 ]
 
 # 模式降级映射
