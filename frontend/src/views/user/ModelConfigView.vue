@@ -2,7 +2,7 @@
   <div class="model-config-view">
     <div class="page-header">
       <h2>模型配置</h2>
-      <p class="desc">管理您的 LLM、Embedding、Rerank、VLM、多模态嵌入、ASR 语音识别模型配置</p>
+      <p class="desc">管理您的 LLM、Embedding、Rerank、VLM、ASR 语音识别模型配置</p>
     </div>
 
     <el-tabs v-model="activeTab" @tab-change="handleTabChange">
@@ -10,7 +10,6 @@
       <el-tab-pane label="Embedding 模型" name="embedding" />
       <el-tab-pane label="Rerank 模型" name="rerank" />
       <el-tab-pane label="VLM 视觉模型" name="vlm" />
-      <el-tab-pane label="多模态嵌入" name="multimodal_embedding" />
       <el-tab-pane label="ASR 语音识别" name="asr" />
     </el-tabs>
 
@@ -96,7 +95,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { userApi } from '@/api/user'
 import type { ModelConfig, ModelConfigTestResponse } from '@/api/types'
 
-const activeTab = ref<'llm' | 'embedding' | 'rerank' | 'vlm' | 'multimodal_embedding' | 'asr'>('llm')
+const activeTab = ref<'llm' | 'embedding' | 'rerank' | 'vlm' | 'asr'>('llm')
 const loading = ref(false)
 const submitLoading = ref(false)
 const testLoading = ref(false)
@@ -148,10 +147,6 @@ const PROTOCOL_OPTIONS: Record<string, { value: string; label: string }[]> = {
     { value: 'openai', label: 'OpenAI' },
     { value: 'anthropic', label: 'Anthropic' },
     { value: 'ollama', label: 'Ollama' },
-  ],
-  multimodal_embedding: [
-    { value: 'dashscope_multimodal', label: 'DashScope 多模态' },
-    { value: 'multimodal_openai', label: 'OpenAI 多模态' },
   ],
   asr: [
     { value: 'local', label: '本地 (faster-whisper)' },

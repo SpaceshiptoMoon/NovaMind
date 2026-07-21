@@ -227,8 +227,8 @@ class ModelConfigService:
                 model=data.model,
             )
 
-        # embedding/multimodal_embedding 类型：自动探测向量维度（需要明文 api_key）
-        if data.model_type in ("embedding", "multimodal_embedding") and data.api_key:
+        # embedding 类型：自动探测向量维度（需要明文 api_key）
+        if data.model_type == "embedding" and data.api_key:
             detected_dim = await self._detect_embedding_dimension(
                 protocol=data.protocol,
                 api_key=data.api_key,
@@ -313,8 +313,8 @@ class ModelConfigService:
                 model=verify_data.model,
             )
 
-        # embedding/multimodal_embedding 类型：model 或 base_url 变更时重新检测维度
-        if ModelType(config.model_type) in (ModelType.EMBEDDING, ModelType.MULTIMODAL_EMBEDDING):
+        # embedding 类型：model 或 base_url 变更时重新检测维度
+        if ModelType(config.model_type) == ModelType.EMBEDDING:
             model_changed = data.model is not None and data.model != config.model
             url_changed = data.base_url is not None and data.base_url != config.base_url
             if model_changed or url_changed:
@@ -535,27 +535,6 @@ class ModelConfigService:
             ),
         )
 
-    async def get_multimodal_embedding_client_by_model(
-        self,
-        user_id: int,
-        model: str
-    ) -> "BaseMultimodalEmbedding":
-        """根据模型名称获取多模态嵌入客户端（通过工厂路由，与 embedding 一致）"""
-        return await self._get_client_by_model(
-            user_id, model, "multimodal_embedding",
-            create_from_credentials=lambda c: create_embedding_client(
-                protocol=c.protocol,
-                api_key=c.api_key or "",
-                base_url=c.base_url or "",
-                model_name=c.model,
-                expected_dimension=(c.extra_config or {}).get("dimension"),
-                timeout=(c.extra_config or {}).get("timeout", 60),
-                max_retries=(c.extra_config or {}).get("max_retries", 3),
-                max_concurrent=(c.extra_config or {}).get("max_concurrent", 5),
-                proxy=_proxy_from_extra(c.extra_config),
-            ),
-        )
-
     async def get_embedding_client_by_model(
         self,
         user_id: int,
@@ -601,7 +580,7 @@ class ModelConfigService:
         """
         创建/更新前强制验证模型连接，失败则抛 ModelConfigTestFailedError
 
-        复用已有的 _test_llm / _test_embedding / _test_multimodal_embedding / _test_rerank 方法。
+        复用已有的 _test_llm / _test_embedding / _test_rerank 方法。
         """
         request = ModelTestRequest(
             model_type=data.model_type,
@@ -617,8 +596,6 @@ class ModelConfigService:
                 await self._test_llm(request)
             elif data.model_type == "embedding":
                 await self._test_embedding(request)
-            elif data.model_type == "multimodal_embedding":
-                await self._test_multimodal_embedding(request)
             elif data.model_type == "rerank":
                 await self._test_rerank(request)
             elif data.model_type == "asr":
@@ -643,7 +620,6 @@ class ModelConfigService:
             ModelType.EMBEDDING: "embedding",
             ModelType.RERANK: "rerank",
             ModelType.VLM: "vlm",
-            ModelType.MULTIMODAL_EMBEDDING: "multimodal_embedding",
             ModelType.ASR: "asr",
         }
         return mapping.get(model_type_int, "llm")
@@ -666,8 +642,6 @@ class ModelConfigService:
                 await self._test_rerank(request)
             elif request.model_type == "vlm":
                 await self._test_llm(request)
-            elif request.model_type == "multimodal_embedding":
-                detected_dimension = await self._test_multimodal_embedding(request)
             elif request.model_type == "asr":
                 await self._test_asr(request)
 
@@ -733,40 +707,6 @@ class ModelConfigService:
         )
         embedding = await client.generate_embedding("Hello")
         return len(embedding)
-
-    async def _test_multimodal_embedding(self, request: ModelTestRequest) -> int:
-        """测试多模态嵌入连接，返回检测到的维度（同时验证文本和图片嵌入能力）"""
-        from novamind.shared.ai_models.embedding import BaseMultimodalEmbedding
-
-        client = create_embedding_client(
-            protocol=request.protocol,
-            api_key=request.api_key,
-            base_url=request.base_url or "",
-            model_name=request.model,
-            proxy=request.proxy,
-        )
-        if not isinstance(client, BaseMultimodalEmbedding):
-            if hasattr(client, 'close'):
-                await client.close()
-            raise ValueError(f"协议 {request.protocol} 不支持图片嵌入，请选择多模态协议")
-
-        # 先测文本嵌入（确保基本可用），同时用返回维度作为检测结果
-        text_embedding = await client.generate_embedding("Hello")
-        detected_dim = len(text_embedding)
-
-        # 再测图片嵌入（核心能力验证，使用 4x4 红色 PNG）
-        # 注：1x1 PNG 会被某些模型（如 DashScope）拒绝解码，4x4 确保兼容
-        test_image = (
-            b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x04'
-            b'\x00\x00\x00\x04\x08\x02\x00\x00\x00&\x93\t)\x00\x00'
-            b'\x00\x10IDATx\x9cc\xf8\xcf\xc0\x00G\x0c\xc4q\x00\xae'
-            b'\x93\x0f\xf1\xd0_#\x9e\x00\x00\x00\x00IEND\xaeB`\x82'
-        )
-        await client.generate_image_embedding(test_image)
-
-        if hasattr(client, 'close'):
-            await client.close()
-        return detected_dim
 
     async def _detect_embedding_dimension(
         self,
@@ -1000,7 +940,7 @@ class ModelConfigService:
 
         result = AvailableModelsWithInfoResponse()
 
-        for model_type in ["llm", "embedding", "rerank", "vlm", "multimodal_embedding", "asr"]:
+        for model_type in ["llm", "embedding", "rerank", "vlm", "asr"]:
             configs = await self.repo.list_by_user(user_id, model_type)
             seen = set()
             infos = []
@@ -1025,7 +965,7 @@ class ModelConfigService:
 
         Args:
             user_id: 用户ID
-            model_type: 模型类型 (llm/embedding/rerank/vlm/multimodal_embedding)
+            model_type: 模型类型 (llm/embedding/rerank/vlm/asr)
 
         Returns:
             模型名称或 None

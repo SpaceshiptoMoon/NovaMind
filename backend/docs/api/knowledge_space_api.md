@@ -1981,129 +1981,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 5.2 多模态检索
-
-> 统一多模态检索接口，支持以文搜图和以图搜图两种模式。适用于多模态类型空间（`space_type="multimodal"`）。
-
-**请求**
-- 方法：`POST`
-- URL：`/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/search/multimodal-search`
-- Content-Type：`application/json`
-
-**路径参数**
-
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| space_id | integer | 是 | 空间 ID（> 0） |
-| kb_id | integer | 是 | 知识库 ID（> 0） |
-
-**请求参数**
-
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| query | string | 否 | 文本查询（`text_to_image` 模式必填，1-2000 字符） |
-| image_base64 | string | 否 | Base64 编码的图片数据（`image_to_image` 模式必填） |
-| search_mode | string | 否 | 检索模式：`text_to_image`（以文搜图，默认）/ `image_to_image`（以图搜图） |
-| top_k | integer | 否 | 返回结果数量（1-100，默认 10） |
-| score_threshold | float | 否 | 相似度阈值（0.0-1.0，默认 0.0，归一化后） |
-
-> **校验规则**：`text_to_image` 模式必须提供 `query`，`image_to_image` 模式必须提供 `image_base64`。
-
-**请求示例 1 -- 以文搜图**
-```json
-{
-  "query": "系统架构图",
-  "search_mode": "text_to_image",
-  "top_k": 5
-}
-```
-
-**请求示例 2 -- 以图搜图**
-```json
-{
-  "image_base64": "data:image/png;base64,iVBORw0KGgo...",
-  "search_mode": "image_to_image",
-  "top_k": 5
-}
-```
-
-**响应参数**
-
-| 参数名 | 类型 | 说明 |
-|--------|------|------|
-| results | array | 检索结果列表 |
-| results[].chunk_id | string | 分块 ID |
-| results[].document_id | integer | 文档 ID |
-| results[].kb_id | integer | 知识库 ID |
-| results[].content | string | 检索到的内容 |
-| results[].score | float | 融合分数 |
-| results[].chunk_index | integer \| null | 分块索引 |
-| results[].questions | string[] \| null | 假设性问题列表 |
-| results[].metadata | object \| null | 分块元数据 |
-| results[].file_info | object \| null | 文件信息 |
-| results[].chunk_type | string \| null | 分块类型：`"image"` |
-| results[].image_url | string \| null | 图片预签名 URL（MinIO 预签名，有效期 1 小时） |
-| total | integer | 结果总数 |
-| query | string | 原始查询文本 |
-| search_mode | string | 实际使用的检索模式 |
-| original_mode | string \| null | 原始请求的检索模式（发生降级时有值） |
-| mode_fallback | boolean | 是否发生了模式降级 |
-| top_k | integer | 请求的返回数量 |
-| vector_weight | float \| null | 向量检索权重 |
-| bm25_weight | float \| null | BM25 检索权重 |
-| answer | string \| null | LLM 生成的回答 |
-| answer_model | string \| null | 生成回答使用的模型名称 |
-| answer_elapsed_ms | float \| null | LLM 回答耗时（毫秒） |
-| elapsed_ms | float \| null | 检索耗时（毫秒） |
-| cached | boolean | 是否来自缓存 |
-| rewritten_queries | string[] \| null | 查询改写后的问题列表 |
-
-**响应示例**
-```json
-{
-  "results": [
-    {
-      "chunk_id": "chunk_img_001",
-      "document_id": 5,
-      "kb_id": 2,
-      "content": "",
-      "score": 0.89,
-      "chunk_index": 3,
-      "questions": null,
-      "metadata": { "page": 2 },
-      "file_info": { "filename": "architecture.png" },
-      "chunk_type": "image",
-      "image_url": "http://minio:9000/documents/architecture.png?X-Amz-Expires=3600&..."
-    }
-  ],
-  "total": 1,
-  "query": "系统架构图",
-  "search_mode": "text_to_image",
-  "original_mode": null,
-  "mode_fallback": false,
-  "top_k": 5,
-  "vector_weight": null,
-  "bm25_weight": null,
-  "answer": null,
-  "answer_model": null,
-  "answer_elapsed_ms": null,
-  "elapsed_ms": 210.5,
-  "cached": false,
-  "rewritten_queries": null
-}
-```
-
-**错误码**
-
-| 错误码 | HTTP 状态码 | 说明 |
-|--------|------------|------|
-| KNOWLEDGE_BASE_NOT_FOUND | 404 | 知识库不存在或不属于该空间 |
-| INVALID_PARAMETER | 400 | 参数校验失败（如 text_to_image 模式缺少 query） |
-| EMBEDDING_ERROR | 400 | 向量化失败 |
-
----
-
-### 5.3 获取可用检索模式
+### 5.2 获取可用检索模式
 
 **请求**
 - 方法：`GET`
@@ -2156,7 +2034,7 @@ Authorization: Bearer <access_token>
 
 ---
 
-### 5.4 获取模型配置
+### 5.3 获取模型配置
 
 **请求**
 - 方法：`GET`
@@ -2238,9 +2116,8 @@ Authorization: Bearer <access_token>
 | 4.6 | DELETE | `/api/v1/spaces/{space_id}/members/{target_user_id}` | 移除成员 | ADMIN |
 | 4.7 | POST | `/api/v1/spaces/{space_id}/members/leave` | 离开空间 | 空间成员 |
 | 5.1 | POST | `.../knowledge-bases/{kb_id}/search` | 统一检索 | 空间成员 |
-| 5.2 | POST | `.../knowledge-bases/{kb_id}/search/multimodal-search` | 多模态检索（以文搜图/以图搜图） | 空间成员 |
-| 5.3 | GET | `.../knowledge-bases/{kb_id}/search/modes` | 获取可用检索模式 | 空间成员 |
-| 5.4 | GET | `.../knowledge-bases/{kb_id}/search/model-config` | 获取模型配置 | 空间成员 |
+| 5.2 | GET | `.../knowledge-bases/{kb_id}/search/modes` | 获取可用检索模式 | 空间成员 |
+| 5.3 | GET | `.../knowledge-bases/{kb_id}/search/model-config` | 获取模型配置 | 空间成员 |
 
 ---
 

@@ -20,7 +20,7 @@
 
 ## Document JSON 示例
 
-### 标准文档（文本空间）
+### 标准文档
 
 ```json
 {
@@ -51,29 +51,6 @@
     "filename": "fastapi_guide.pdf",
     "file_type": ".pdf"
   },
-  "created_at": "2026-04-22T10:30:00",
-  "updated_at": "2026-04-22T10:30:00"
-}
-```
-
-### 多模态文档（含图片的空间）
-
-```json
-{
-  "space_id": 1,
-  "kb_id": 3,
-  "document_id": 42,
-  "chunk_id": "doc_42_chunk_8",
-  "chunk_index": 8,
-  "chunk_type": "image",
-  "image_url": "minio://buckets/docs/doc_42/img_8.png",
-  "image_embedding": [0.0234, -0.0567, 0.0891, ...],
-  "content": "",
-  "embedding": [],
-  "questions": [],
-  "question_embeddings": [],
-  "metadata": { ... },
-  "file_info": { "filename": "presentation.pptx", "file_type": ".pptx" },
   "created_at": "2026-04-22T10:30:00",
   "updated_at": "2026-04-22T10:30:00"
 }
@@ -149,21 +126,6 @@
 }
 ```
 
-### 多模态扩展字段（仅多模态空间）
-
-创建索引时传入 `multimodal_dim` 参数，额外添加：
-
-```json
-{
-  "image_embedding": {
-    "type": "dense_vector",
-    "dims": "<multimodal_dim>",
-    "index": true,
-    "similarity": "cosine"
-  }
-}
-```
-
 ### 动态参数说明
 
 | 参数 | 决定方式 | 默认值 |
@@ -182,11 +144,10 @@
 | `document_id` | long | 所属文档 ID |
 | `chunk_id` | keyword | 分块唯一标识（格式：`doc_{document_id}_chunk_{index}`） |
 | `chunk_index` | integer | 分块序号（从 0 开始） |
-| `chunk_type` | keyword | 分块类型：`"text"`（文本）或 `"image"`（图片），用于多模态区分 |
+| `chunk_type` | keyword | 分块类型：`"text"`（文本）或 `"image"`（图片） |
 | `image_url` | keyword | 图片 URL（MinIO 路径），仅图片分块有值 |
 | `content` | text | 分块原文，用于 BM25 全文检索 |
 | `embedding` | dense_vector | 内容向量，用于向量检索 |
-| `image_embedding` | dense_vector | 图片向量，用于以图搜图/以文搜图（仅多模态空间） |
 | `questions` | text | 假设性问题列表，用于问题全文检索 |
 | `question_embeddings` | nested → dense_vector | 问题向量列表，用于问题向量检索 |
 | `metadata` | object | 元数据（页码、章节标题、字符位置、内容哈希） |
@@ -209,9 +170,5 @@
 | `all_bm25` | `content` + `questions` | 全字段全文检索 |
 | `all_vector` | `embedding` + `question_embeddings.vector` | 全字段向量检索 |
 | `all_hybrid` | 全部 | 全字段全算法融合 |
-| `image_vector` | `image_embedding` | 图片向量检索（以图搜图），仅多模态空间可用 |
-| `text_to_image` | `embedding` + `image_embedding` | 以文搜图，双向量 RRF 融合（VLM 描述文本 + 图片向量），仅多模态空间可用 |
 
 > 混合检索实现：并行执行 BM25 和向量查询，通过加权 RRF（Reciprocal Rank Fusion）合并结果。
-> `image_vector` 模式额外添加 `chunk_type_filter="image"` 确保只返回图片分块。
-> `text_to_image` 模式使用 `image_hybrid_vector_search()` 同时搜索 `embedding` 和 `image_embedding` 字段。

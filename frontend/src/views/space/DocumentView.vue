@@ -43,12 +43,6 @@
                 <span class="inherit-meta">{{ embeddingInfo.textDimension ? `维度 ${embeddingInfo.textDimension}` : '维度待检测' }}</span>
               </div>
 
-              <div v-if="showMmEmbeddingCard" class="inherit-card">
-                <span class="inherit-label">多模态向量模型</span>
-                <strong class="inherit-value">{{ embeddingInfo.mmModel || '未配置' }}</strong>
-                <span class="inherit-meta">{{ embeddingInfo.mmDimension ? `维度 ${embeddingInfo.mmDimension}` : '维度待检测' }}</span>
-              </div>
-
               <div class="inherit-card inherit-card--wide">
                 <span class="inherit-label">可用类型</span>
                 <strong class="inherit-value">{{ readableSpaceTypes }}</strong>
@@ -270,8 +264,6 @@ const kbStats = ref({
 const embeddingInfo = ref({
   textModel: '',
   textDimension: null as number | null,
-  mmModel: '',
-  mmDimension: null as number | null,
 })
 const documents = ref<DocType[]>([])
 const total = ref(0)
@@ -292,7 +284,6 @@ const statusOptions = [
 ]
 
 const uploadAccept = computed(() => getUploadAccept(spaceTypes.value))
-const showMmEmbeddingCard = computed(() => hasModality(spaceTypes.value, 'image'))
 const readableSpaceTypes = computed(() => {
   const labels: Record<string, string> = {
     text: '文本',
@@ -537,8 +528,6 @@ onMounted(async () => {
     embeddingInfo.value = {
       textModel: space.config?.embedding?.model || '',
       textDimension: space.config?.embedding?.dimension ?? null,
-      mmModel: space.config?.multimodal_embedding?.model || '',
-      mmDimension: space.config?.multimodal_embedding?.dimension ?? null,
     }
   } catch {
     // keep default text

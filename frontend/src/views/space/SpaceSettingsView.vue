@@ -140,25 +140,6 @@
                 <el-form-item v-if="embeddingForm.dimension" label="向量维度">
                   <span class="dimension-display">{{ embeddingForm.dimension }}（自动检测）</span>
                 </el-form-item>
-                <el-form-item v-if="hasImageModality" label="多模态 Embedding">
-                  <el-select
-                    v-model="embeddingForm.mm_model"
-                    placeholder="选择多模态嵌入模型（用于以图搜图）"
-                    clearable
-                    filterable
-                    style="width: 100%"
-                  >
-                    <el-option
-                      v-for="m in mmModels"
-                      :key="m.model"
-                      :label="m.model"
-                      :value="m.model"
-                    />
-                  </el-select>
-                </el-form-item>
-                <el-form-item v-if="hasImageModality && embeddingForm.mm_dimension" label="多模态向量维度">
-                  <span class="dimension-display">{{ embeddingForm.mm_dimension }}（自动检测）</span>
-                </el-form-item>
                 <el-form-item label="批处理大小">
                   <el-input-number v-model="embeddingForm.batch_size" :min="1" :max="128" style="width: 200px" />
                 </el-form-item>
@@ -438,9 +419,7 @@ const hasAudio = computed(() => spaceTypes.value.includes('audio'))
 // Embedding 表单
 const embeddingForm = reactive({
   model: '',
-  mm_model: '',
   dimension: 1024,
-  mm_dimension: null as number | null,
   batch_size: 32,
   normalize: true,
 })
@@ -454,7 +433,6 @@ const modelForm = reactive({
 
 const modelsSaving = ref(false)
 const embeddingModels = ref<AvailableModelItem[]>([])
-const mmModels = ref<AvailableModelItem[]>([])
 const llmModels = ref<AvailableModelItem[]>([])
 const vlmModels = ref<AvailableModelItem[]>([])
 const asrModels = ref<AvailableModelItem[]>([])
@@ -658,7 +636,6 @@ async function fetchConfig() {
     configData.value = config
     stats.value = config.stats
     embeddingModels.value = modelData.embedding || []
-    mmModels.value = modelData.multimodal_embedding || []
     llmModels.value = modelData.llm || []
     vlmModels.value = modelData.vlm || []
     asrModels.value = modelData.asr || []
@@ -670,14 +647,11 @@ async function fetchConfig() {
 
     // 填充 Embedding
     const emb = config.config?.embedding
-    const mmEmb = config.config?.multimodal_embedding
     spaceTypes.value = normalizeSpaceTypes(config.config)
     embeddingForm.model = emb?.model || ''
     embeddingForm.dimension = emb?.dimension ?? 1024
     embeddingForm.batch_size = emb?.batch_size ?? 32
     embeddingForm.normalize = emb?.normalize ?? true
-    embeddingForm.mm_model = mmEmb?.model || ''
-    embeddingForm.mm_dimension = (mmEmb as { dimension?: number } | null)?.dimension ?? null
 
     // 填充 LLM / ASR / VLM
     const llmCfg = config.config?.llm as Record<string, unknown> | undefined
@@ -742,12 +716,6 @@ async function handleSaveModels() {
       vlm: {
         model: modelForm.vlm_model || undefined,
       },
-    }
-    // 含 image 模态需额外发送 multimodal_embedding 配置
-    if (hasImageModality.value) {
-      payload.multimodal_embedding = {
-        model: embeddingForm.mm_model || undefined,
-      }
     }
     await spaceApi.updateConfig(spaceId.value, payload)
     ElMessage.success('模型配置已保存')

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="search-view">
     <div class="kb-layout">
       <KbSidebar :nav-items="kbNavItems" />
@@ -19,7 +19,7 @@
           />
           <el-button
             type="primary"
-            :loading="searching || imageSearching"
+            :loading="searching"
             :disabled="!searchForm.kb_id || !searchForm.query.trim()"
             class="query-search-btn"
             @click="handleSearch"
@@ -67,39 +67,8 @@
                 </div>
               </div>
 
-              <!-- 多模态：图片网格 -->
-              <div v-if="hasImage" class="image-grid">
-                <div
-                  v-for="(result, index) in searchResults"
-                  :key="result.chunk_id"
-                  class="image-card"
-                  @click="previewUrl = (result.image_url || ''); previewVisible = true"
-                >
-                  <div class="image-card-img">
-                    <img
-                      v-if="result.image_url"
-                      :src="result.image_url"
-                      :alt="(result.file_info as Record<string, string>)?.filename || ''"
-                      loading="lazy"
-                    />
-                    <div v-else class="image-card-placeholder">
-                      <el-icon :size="32" color="var(--color-text-faint)"><Upload /></el-icon>
-                    </div>
-                    <div class="image-card-overlay">
-                      <span class="image-card-score" :class="getScoreClass(result.score)">
-                        {{ (result.score * 100).toFixed(1) }}%
-                      </span>
-                      <span class="image-card-name">{{ (result.file_info as Record<string, string>)?.filename || '' }}</span>
-                    </div>
-                  </div>
-                  <div class="image-card-footer">
-                    <span class="image-card-index">#{{ index + 1 }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 文本/视频/音频：结果卡片列表 -->
-              <div v-else class="results-list">
+              <!-- 结果卡片列表 -->
+              <div class="results-list">
                 <div
                   v-for="(result, index) in searchResults"
                   :key="result.chunk_id"
@@ -109,7 +78,7 @@
                     <span class="result-index">{{ index + 1 }}</span>
                     <el-tag
                       v-if="result.chunk_type && result.chunk_type !== 'text'"
-                      :type="result.chunk_type === 'image' ? 'warning' : result.chunk_type === 'video' ? 'primary' : 'danger'"
+                      :type="result.chunk_type === 'video' ? 'primary' : result.chunk_type === 'audio' ? 'danger' : 'warning'"
                       size="small"
                       effect="plain"
                     >{{ chunkTypeLabels[result.chunk_type] || result.chunk_type }}</el-tag>
@@ -119,14 +88,7 @@
                     </span>
                   </div>
                   <div class="result-content">
-                    <img
-                      v-if="result.chunk_type === 'image' && (result.media_url || result.image_url)"
-                      :src="result.media_url || result.image_url"
-                      class="result-thumbnail"
-                      loading="lazy"
-                      @click="previewUrl = (result.media_url || result.image_url)!; previewVisible = true"
-                    />
-                    <template v-else>{{ result.content }}</template>
+                    {{ result.content }}
                   </div>
                   <div class="result-footer">
                     <span v-if="(result.metadata as Record<string, unknown>)?.page">第 {{ (result.metadata as Record<string, unknown>).page }} 页</span>
@@ -195,12 +157,12 @@
               </el-select>
             </div>
 
-            <!-- 检索模式下拉（非纯图片空间） -->
-            <div v-if="!hasImage" class="param-section">
+            <!-- 检索模式 -->
+            <div class="param-section">
               <label class="param-section-label">检索模式</label>
               <el-select v-model="searchForm.search_mode" size="small" class="param-full-select">
                 <el-option
-                  v-for="mode in filteredSearchModes"
+                  v-for="mode in searchModes"
                   :key="mode.mode"
                   :label="mode.label"
                   :value="mode.mode"
@@ -233,8 +195,8 @@
               </div>
             </div>
 
-            <!-- LLM 开关 + 模型选择（非纯图片空间） -->
-            <div v-if="!hasImage" class="param-section">
+            <!-- LLM 开关 + 模型选择 -->
+            <div class="param-section">
               <div class="param-row">
                 <span class="param-label">LLM 回答</span>
                 <el-switch v-model="searchForm.llm_enabled" size="small" />
@@ -252,44 +214,8 @@
               </el-select>
             </div>
 
-            <!-- 以图搜图区域（仅多模态空间） -->
-            <div v-if="hasImage" class="param-section">
-              <label class="param-section-label">以图搜图</label>
-              <div
-                class="image-drop-zone"
-                :class="{ 'is-dragging': isDragging }"
-                @dragover.prevent="isDragging = true"
-                @dragleave="isDragging = false"
-                @drop.prevent="handleImageDrop"
-                @click="triggerImageSearch"
-              >
-                <template v-if="queryImagePreview">
-                  <img :src="queryImagePreview" class="drop-zone-preview" />
-                  <el-button
-                    size="small"
-                    circle
-                    class="drop-zone-clear"
-                    @click.stop="clearQueryImage"
-                  >
-                    <el-icon><Close /></el-icon>
-                  </el-button>
-                </template>
-                <template v-else>
-                  <el-icon :size="28" color="var(--color-text-muted)"><Upload /></el-icon>
-                  <span class="drop-zone-text">拖拽或点击上传图片</span>
-                </template>
-              </div>
-              <input
-                ref="imageInput"
-                type="file"
-                accept=".jpg,.jpeg,.png,.gif,.webp"
-                style="display: none"
-                @change="handleImageFileChange"
-              />
-            </div>
-
-            <!-- 高级设置折叠（仅文本空间） -->
-            <el-collapse v-if="!hasImage" v-model="advancedCollapsed" class="params-collapse">
+            <!-- 高级设置折叠 -->
+            <el-collapse v-model="advancedCollapsed" class="params-collapse">
               <el-collapse-item title="高级设置" name="advanced">
                 <!-- 检索参数 -->
                 <div class="advanced-section">
@@ -369,7 +295,9 @@
                   </div>
                   <div v-if="searchForm.qrw_strategy" class="adv-row">
                     <span class="adv-label">模型</span>
-                    <el-input v-model="searchForm.qrw_llm_model" placeholder="默认" size="small" style="flex:1" />
+                    <el-select v-model="searchForm.qrw_llm_model" placeholder="默认" clearable size="small" style="flex:1">
+                      <el-option v-for="m in availableLlmModels" :key="m" :label="m" :value="m" />
+                    </el-select>
                   </div>
                   <template v-if="searchForm.qrw_strategy === 'sub_query'">
                     <div class="adv-row">
@@ -384,10 +312,7 @@
                       </el-select>
                     </div>
                   </template>
-                  <div v-if="searchForm.qrw_strategy === 'hyde'" class="adv-row" style="flex-direction:column;align-items:stretch">
-                    <span class="adv-label" style="margin-bottom:4px">HyDE 提示词</span>
-                    <el-input v-model="searchForm.qrw_hyde_prompt" type="textarea" :rows="2" maxlength="2000" placeholder="留空使用默认" size="small" />
-                  </div>
+                  <!-- HyDE 策略提示词暂不支持自定义 -->
                 </div>
 
                 <el-button size="small" @click="handleReset" style="width:100%">重置默认</el-button>
@@ -395,18 +320,7 @@
             </el-collapse>
           </aside>
         </div>
-    </div>
-
-    <!-- 图片预览弹窗 -->
-    <el-dialog
-      v-model="previewVisible"
-      :show-close="true"
-      width="auto"
-      class="image-preview-dialog"
-      destroy-on-close
-    >
-      <img :src="previewUrl" style="max-width: 90vw; max-height: 80vh; object-fit: contain; display: block; margin: auto" />
-    </el-dialog>
+      </div>
     </div>
   </div>
 </template>
@@ -415,14 +329,13 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Search, ArrowDown, Upload, Close, Document, DataAnalysis } from '@element-plus/icons-vue'
-import { documentApi, knowledgeBaseApi, searchApi } from '@/api/knowledge'
-import { spaceApi } from '@/api/space'
+import { Search, Document, DataAnalysis } from '@element-plus/icons-vue'
+import { knowledgeBaseApi, searchApi } from '@/api/knowledge'
 import { KbSidebar, buildKbNavItems } from '@/components/knowledge'
 import type { KnowledgeBase, SearchMode, SearchResultItem, SearchResponse } from '@/api/types'
 import EmptyState from '@/components/common/EmptyState.vue'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
-import { chunkTypeLabels, hasModality, normalizeSpaceTypes } from '@/components/knowledge'
+import { chunkTypeLabels } from '@/components/knowledge'
 import { formatDuration } from '@/utils/format'
 
 const route = useRoute()
@@ -447,22 +360,11 @@ const kbNavItems = computed(() =>
   })
 )
 
-const spaceTypes = ref<string[]>(['text'])
-const hasImage = computed(() => hasModality(spaceTypes.value, 'image'))
 const searching = ref(false)
 const hasSearched = ref(false)
-const showAdvanced = ref(false)
 const advancedCollapsed = ref<string[]>([])
 const knowledgeBases = ref<KnowledgeBase[]>([])
 const searchModes = ref<SearchMode[]>([])
-const filteredSearchModes = computed(() => {
-  if (hasImage.value) {
-    return searchModes.value.filter(m =>
-      m.mode === 'image_vector' || m.mode === 'text_to_image'
-    )
-  }
-  return searchModes.value
-})
 const searchResults = ref<SearchResultItem[]>([])
 const totalResults = ref(0)
 const elapsedMs = ref(0)
@@ -477,14 +379,6 @@ const llmAnswer = ref<string | null>(null)
 const answerModel = ref<string | null>(null)
 const answerElapsedMs = ref<number | null>(null)
 const originalMode = ref<string | null>(null)
-
-// 图片搜索
-const imageSearching = ref(false)
-const imageInput = ref<HTMLInputElement | null>(null)
-const isDragging = ref(false)
-const queryImagePreview = ref<string | null>(null)
-const previewVisible = ref(false)
-const previewUrl = ref('')
 
 // 默认检索参数
 const defaultSearchForm = {
@@ -506,11 +400,9 @@ const defaultSearchForm = {
   llm_temperature: 0.7,
   llm_top_p: 0.9,
   qrw_strategy: '',
-  qrw_hyde_prompt: '',
   qrw_sub_query_count: 3,
   qrw_sub_query_merge_mode: 'rrf' as 'rrf' | 'score',
   qrw_llm_model: '',
-  filters_json: '',
   use_cache: true,
   fallback_on_unavailable: true,
 }
@@ -543,12 +435,9 @@ async function fetchSearchModes() {
   try {
     const data = await searchApi.getSearchModes(spaceId.value, searchForm.kb_id)
     searchModes.value = data.modes || []
-
-    if (hasImage.value) {
-      searchForm.search_mode = 'text_to_image'
-    }
-  } catch {
-    // 忽略错误
+  } catch (e) {
+    console.error('获取检索模式失败:', e)
+    ElMessage.error('获取检索模式失败，请检查知识库状态')
   }
 
   try {
@@ -557,8 +446,8 @@ async function fetchSearchModes() {
     availableRerankModels.value = config.available_rerank_models || []
     defaultLlmModel.value = config.default_llm_model || ''
     defaultRerankModel.value = config.default_rerank_model || ''
-  } catch {
-    // 忽略错误
+  } catch (e) {
+    console.error('获取模型配置失败:', e)
   }
 }
 
@@ -580,23 +469,9 @@ async function handleSearch() {
   searching.value = true
   hasSearched.value = true
 
-  let filters: Record<string, unknown> | undefined
-  if (searchForm.filters_json.trim()) {
-    try {
-      filters = JSON.parse(searchForm.filters_json.trim())
-    } catch {
-      ElMessage.error('过滤条件 JSON 格式错误')
-      searching.value = false
-      return
-    }
-  }
-
   const queryRewrite = searchForm.qrw_strategy
     ? {
         strategy: searchForm.qrw_strategy as 'hyde' | 'sub_query',
-        ...(searchForm.qrw_strategy === 'hyde' && searchForm.qrw_hyde_prompt
-          ? { hyde_prompt: searchForm.qrw_hyde_prompt }
-          : {}),
         ...(searchForm.qrw_strategy === 'sub_query'
           ? {
               sub_query_count: searchForm.qrw_sub_query_count,
@@ -608,66 +483,37 @@ async function handleSearch() {
     : undefined
 
   try {
-    let data: SearchResponse
-    if (hasImage.value) {
-      data = await searchApi.multimodalSearch(spaceId.value, searchForm.kb_id, {
-        query: searchForm.query,
-        search_mode: 'text_to_image',
-        top_k: searchForm.top_k,
-        score_threshold: searchForm.score_threshold,
-      })
-    } else {
-      data = await searchApi.search(spaceId.value, searchForm.kb_id, {
-        query: searchForm.query,
-        search_mode: searchForm.search_mode,
-        top_k: searchForm.top_k,
-        weights: {
-          vector_weight: searchForm.vector_weight,
-          bm25_weight: searchForm.bm25_weight,
-          content_weight: searchForm.content_weight,
-          question_weight: searchForm.question_weight,
-          rrf_k: searchForm.rrf_k,
-        },
-        score_threshold: searchForm.score_threshold,
-        rerank: {
-          enabled: searchForm.rerank_enabled,
-          top_k: searchForm.rerank_top_k,
-          model: searchForm.rerank_model || undefined,
-        },
-        llm: searchForm.llm_enabled
-          ? {
-              enabled: true,
-              ...(searchForm.llm_model ? { model: searchForm.llm_model } : {}),
-              temperature: searchForm.llm_temperature,
-              top_p: searchForm.llm_top_p,
-            }
-          : undefined,
-        query_rewrite: queryRewrite,
-        filters,
-        use_cache: searchForm.use_cache,
-        fallback_on_unavailable: searchForm.fallback_on_unavailable,
-      })
-    }
+    const data: SearchResponse = await searchApi.search(spaceId.value, searchForm.kb_id, {
+      query: searchForm.query,
+      search_mode: searchForm.search_mode,
+      top_k: searchForm.top_k,
+      weights: {
+        vector_weight: searchForm.vector_weight,
+        bm25_weight: searchForm.bm25_weight,
+        content_weight: searchForm.content_weight,
+        question_weight: searchForm.question_weight,
+        rrf_k: searchForm.rrf_k,
+      },
+      score_threshold: searchForm.score_threshold,
+      rerank: {
+        enabled: searchForm.rerank_enabled,
+        top_k: searchForm.rerank_top_k,
+        model: searchForm.rerank_model || undefined,
+      },
+      llm: searchForm.llm_enabled
+        ? {
+            enabled: true,
+            ...(searchForm.llm_model ? { model: searchForm.llm_model } : {}),
+            temperature: searchForm.llm_temperature,
+            top_p: searchForm.llm_top_p,
+          }
+        : undefined,
+      query_rewrite: queryRewrite,
+      use_cache: searchForm.use_cache,
+      fallback_on_unavailable: searchForm.fallback_on_unavailable,
+    })
+
     searchResults.value = data.results || []
-
-    // 图片搜索：根据 document_id 代理获取图片 blob URL
-    if (hasImage.value && searchForm.kb_id && searchResults.value.length > 0) {
-      const kbId = searchForm.kb_id
-      const uniqueDocIds = [...new Set(searchResults.value.map(r => r.document_id).filter((docId): docId is number => docId != null))]
-      const urlMap = await Promise.all(
-        uniqueDocIds.map(docId =>
-          documentApi.getDocumentImage(spaceId.value, kbId, docId)
-            .then(url => ({ docId, url }))
-            .catch(() => ({ docId, url: '' }))
-        )
-      )
-      const urlLookup = new Map(urlMap.map(item => [item.docId, item.url]))
-      searchResults.value = searchResults.value.map(r => ({
-        ...r,
-        image_url: r.image_url || (r.document_id != null ? urlLookup.get(r.document_id) : '') || '',
-      }))
-    }
-
     totalResults.value = data.total || 0
     elapsedMs.value = data.elapsed_ms || 0
     cached.value = data.cached || false
@@ -690,124 +536,8 @@ async function handleSearch() {
   }
 }
 
-function triggerImageSearch() {
-  imageInput.value?.click()
-}
-
-async function handleImageFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file || !searchForm.kb_id) return
-
-  if (queryImagePreview.value) {
-    URL.revokeObjectURL(queryImagePreview.value)
-  }
-  queryImagePreview.value = URL.createObjectURL(file)
-
-  imageSearching.value = true
-  hasSearched.value = true
-
-  try {
-    const imageBase64 = await fileToBase64(file)
-
-    const data = await searchApi.multimodalSearch(spaceId.value, searchForm.kb_id, {
-      image_base64: imageBase64,
-      search_mode: 'image_to_image',
-      top_k: searchForm.top_k,
-      score_threshold: searchForm.score_threshold,
-    })
-    searchResults.value = data.results || []
-
-    if (searchForm.kb_id && searchResults.value.length > 0) {
-      const kbId = searchForm.kb_id
-      const uniqueDocIds = [...new Set(searchResults.value.map(r => r.document_id).filter((docId): docId is number => docId != null))]
-      const urlMap = await Promise.all(
-        uniqueDocIds.map(docId =>
-          documentApi.getDocumentImage(spaceId.value, kbId, docId)
-            .then(url => ({ docId, url }))
-            .catch(() => ({ docId, url: '' }))
-        )
-      )
-      const urlLookup = new Map(urlMap.map(item => [item.docId, item.url]))
-      searchResults.value = searchResults.value.map(r => ({
-        ...r,
-        image_url: r.image_url || (r.document_id != null ? urlLookup.get(r.document_id) : '') || '',
-      }))
-    }
-
-    totalResults.value = data.total || 0
-    elapsedMs.value = data.elapsed_ms || 0
-    cached.value = data.cached || false
-    modeFallback.value = false
-    rewrittenQueries.value = null
-    llmAnswer.value = null
-    answerModel.value = null
-    answerElapsedMs.value = null
-    originalMode.value = null
-  } catch (error: unknown) {
-    const err = error as { response?: { data?: { error?: { message?: string } } } }
-    ElMessage.error(err.response?.data?.error?.message || '图片搜索失败')
-    searchResults.value = []
-  } finally {
-    imageSearching.value = false
-    input.value = ''
-  }
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result as string
-      const base64 = result.split(',')[1] || result
-      resolve(base64)
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
-
-function handleImageDrop(event: DragEvent) {
-  isDragging.value = false
-  if (!hasImage.value) return
-  const file = event.dataTransfer?.files?.[0]
-  if (!file || !searchForm.kb_id) return
-  if (!file.type.startsWith('image/')) {
-    ElMessage.warning('请拖入图片文件')
-    return
-  }
-  const dt = new DataTransfer()
-  dt.items.add(file)
-  if (imageInput.value) {
-    imageInput.value.files = dt.files
-    imageInput.value.dispatchEvent(new Event('change'))
-  }
-}
-
-function clearQueryImage() {
-  if (queryImagePreview.value) {
-    URL.revokeObjectURL(queryImagePreview.value)
-  }
-  queryImagePreview.value = null
-}
-
-onMounted(async () => {
+onMounted(() => {
   fetchKnowledgeBases()
-  try {
-    // 优先从 KB config 读取 space_type，fallback 到 Space config
-    const kbId = currentKbId.value
-    if (kbId) {
-      const kbConfig = await knowledgeBaseApi.getConfig(spaceId.value, Number(kbId))
-      if (kbConfig.config?.space_type && Array.isArray(kbConfig.config.space_type) && kbConfig.config.space_type.length > 0) {
-        spaceTypes.value = kbConfig.config.space_type
-        return
-      }
-    }
-    const space = await spaceApi.getSpace(spaceId.value)
-    spaceTypes.value = normalizeSpaceTypes(space.config)
-  } catch {
-    // 默认 text
-  }
 })
 </script>
 
@@ -924,46 +654,6 @@ onMounted(async () => {
   font-weight: var(--weight-medium);
   min-width: 32px;
   text-align: right;
-}
-
-/* Image drop zone */
-.image-drop-zone {
-  border: 2px dashed var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  min-height: 100px;
-  position: relative;
-}
-
-.image-drop-zone:hover,
-.image-drop-zone.is-dragging {
-  border-color: var(--color-primary);
-  background: var(--color-primary-subtle);
-}
-
-.drop-zone-text {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-}
-
-.drop-zone-preview {
-  width: 100%;
-  max-height: 120px;
-  object-fit: contain;
-  border-radius: var(--radius-md);
-}
-
-.drop-zone-clear {
-  position: absolute;
-  top: 4px;
-  right: 4px;
 }
 
 /* Params collapse (advanced) */
@@ -1187,15 +877,6 @@ onMounted(async () => {
   overflow: hidden;
 }
 
-.result-thumbnail {
-  max-width: 200px;
-  max-height: 140px;
-  border-radius: var(--radius-md);
-  object-fit: cover;
-  border: 1px solid var(--color-border);
-  cursor: pointer;
-}
-
 .result-footer {
   display: flex;
   gap: var(--space-2);
@@ -1211,113 +892,6 @@ onMounted(async () => {
   margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px solid var(--color-border);
-}
-
-/* ===== Image Grid (multimodal) ===== */
-.image-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: var(--space-2);
-}
-
-.image-card {
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.image-card:hover {
-  border-color: var(--color-primary);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
-}
-
-.image-card-img {
-  position: relative;
-  aspect-ratio: 1 / 1;
-  overflow: hidden;
-  background: var(--color-bg-hover);
-}
-
-.image-card-img img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.3s ease;
-}
-
-.image-card:hover .image-card-img img {
-  transform: scale(1.05);
-}
-
-.image-card-placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.image-card-overlay {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: var(--space-3) var(--space-2) var(--space-2);
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  opacity: 0;
-  transition: opacity var(--transition-fast);
-}
-
-.image-card:hover .image-card-overlay {
-  opacity: 1;
-}
-
-.image-card-score {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  flex-shrink: 0;
-}
-
-.image-card-score.score-high {
-  color: #fff;
-  background: rgba(16, 185, 129, 0.85);
-}
-
-.image-card-score.score-mid {
-  color: #fff;
-  background: rgba(245, 158, 11, 0.85);
-}
-
-.image-card-score.score-low {
-  color: #fff;
-  background: rgba(107, 114, 128, 0.7);
-}
-
-.image-card-name {
-  font-size: var(--text-xs);
-  color: #fff;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 60%;
-}
-
-.image-card-footer {
-  padding: var(--space-2) var(--space-3);
-}
-
-.image-card-index {
-  font-size: var(--text-xs);
-  color: var(--color-text-faint);
 }
 
 /* Search empty state (before search) */
@@ -1342,10 +916,4 @@ onMounted(async () => {
   color: var(--color-text-faint);
   margin: 0;
 }
-
-/* Image preview dialog */
-.image-preview-dialog :deep(.el-dialog__body) {
-  padding: 0;
-}
 </style>
-
