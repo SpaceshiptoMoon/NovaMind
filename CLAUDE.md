@@ -58,15 +58,20 @@ Main backend areas:
 - `backend/src/core/`: app factory, middleware, lifecycle, database, security, shared runtime infrastructure
 - `backend/src/features/`: feature-oriented domain modules
 - `backend/src/setting/`: configuration loading and YAML config assets
-- `backend/src/shared/`: reusable shared capabilities
+- `backend/src/shared/`: reusable shared capabilities, including `ai_models/`, `cache/`, `clients/`, `mq/`, `repository/`, `storage/`, `prompts/`, `utils/`, `knowledge/`
+
+### `novamind` import root (compatibility shim)
+
+`backend/src/novamind/__init__.py` is a compatibility package that extends `__path__` so that `novamind.core.*`, `novamind.features.*`, `novamind.shared.*`, `novamind.setting.*` resolve to `backend/src/core/`, `backend/src/features/`, `backend/src/shared/`, `backend/src/setting/` respectively. There is no real code under `backend/src/novamind/` — always import via the `novamind.<area>...` absolute path, and look for the actual implementation under `backend/src/<area>/`.
 
 Feature modules should stay organized as:
 
-- `api/`: FastAPI route layer only
+- `api/`: FastAPI route layer. Also hosts feature-local helpers that are wiring, not business logic: `startup.py` (registers the feature via `register_feature_initializer`), `exceptions.py` (feature-specific `BaseAPIError` subclasses), `dependencies.py` (FastAPI dependencies). Keep business logic out of these files.
 - `services/`: business workflows and orchestration
 - `repository/`: database access
 - `models/`: ORM models
 - `schemas/`: request/response and internal Pydantic models
+- `prompts/` (optional): feature-local prompt templates. Use `shared/prompts/` for cross-feature reusable prompts; use a feature-local `prompts/` (or a top-level `<feature>_prompts.py`) only when the prompt is specific to that feature and not expected to be reused elsewhere.
 
 ## Frontend Structure
 
@@ -78,6 +83,8 @@ Main frontend areas:
 - `frontend/src/stores/`: Pinia stores
 - `frontend/src/router/`: route registration
 - `frontend/src/layouts/`: application shells
+- `frontend/src/composables/`: reusable Composition API composables
+- `frontend/src/utils/`: generic front-end helpers
 - `frontend/src/types/`: shared TS types
 
 Knowledge-base UI should stay concentrated in:
@@ -92,7 +99,7 @@ Knowledge-base related code should use these canonical locations:
 
 - `backend/src/features/knowledge_space/`: knowledge-base domain behavior, tasks, APIs, schemas, repositories
 - `backend/src/shared/knowledge/document_processing/`: text and document parsing pipeline
-- `backend/src/shared/knowledge/media_processing/`: audio, video, OCR, VLM, and multimodal processing
+- `backend/src/shared/knowledge/media_processing/`: audio, video, OCR, VLM, and multimodal processing. Note: `media_processing/image/` is currently a placeholder (only `__init__.py`); actual image understanding lives in `media_processing/vlm/` and DeepDoc's `integrations/deepdoc/vision/`, and image embedding goes through VLM description + text embedding (see multimodal-embedding memory). Do not assume `image/` contains image processing logic.
 - `backend/src/shared/knowledge/integrations/deepdoc/`: DeepDoc integration only
 
 Generic helpers that are not knowledge-specific belong under:
@@ -126,7 +133,7 @@ Generic helpers that are not knowledge-specific belong under:
 
 ### Backend
 
-- Install: `cd backend && pip install .`
+- 安装依赖：`cd backend && uv pip install .`（项目统一用 uv，不用 pip/poetry）
 - Run dev server: `python main.py --config development --reload`
 - Run tests: `pytest`
 - Prefer targeted tests when touching parsing, document tasks, retrieval, or shared infra
@@ -165,7 +172,7 @@ These are non-negotiable. They override convenience and override anything softer
 - **Database writes:** repository write operations must use `begin_nested()` (SAVEPOINT). Never commit directly.
 - **API key storage:** use `encrypt_api_key_async` / `decrypt_api_key_async`. Never store plaintext.
 - **Password hashing:** use `verify_password_async` / `get_password_hash_async`. Never block the event loop with sync hashing.
-- **Pydantic schemas:** strict layering `*Base → *Create/*Update → *Response`; `Response` must set `from_attributes=True`.
+- **Pydantic schemas:** prefer the layering `*Base → *Create/*Update → *Response` for new schemas, and `*Response` must set `from_attributes=True`. Legacy schemas are not fully aligned with this pattern — e.g. `knowledge_space` schemas (`SpaceCreate`, `DocumentResponse`, `ChunkResponse`) inherit directly from `BaseModel` without a `*Base`. When touching those files you may align them locally, but do not treat the absence of `*Base` in legacy schemas as a violation requiring a sweeping refactor.
 - **Route registration:** new routes must be registered manually in `router_manager.py`. There is no auto-discovery.
 - **Module init:** new modules must register `register_feature_initializer` in `startup_manager.py`.
 - **Config files:** all `*.yaml` are gitignored; commit only `*.example` templates.
@@ -190,7 +197,8 @@ These are non-negotiable. They override convenience and override anything softer
 ## Important Documentation
 
 - `docs/project-structure-navigation.md`
-- `docs/knowledge-space/knowledge-architecture-navigation.md`
-- `docs/knowledge-space/knowledge-config-structure-design.md`
-- `docs/plans/repository-structure-cleanup-plan.md`
+- `docs/knowledge-space/current/knowledge-architecture-navigation.md`
+- `docs/knowledge-space/current/knowledge-config-structure-design.md`
+- `docs/plans/active/repository-structure-cleanup-plan.md`
 - `docs/multi-agent-parallel-development-workflow.md`
+- `docs/transaction-boundary-conventions.md` — authoritative source for the `begin_nested()` SAVEPOINT rule used by repository write operations
