@@ -486,6 +486,7 @@ class AIChatService:
                 res = await self._retrieve_knowledge(
                     query=query, user_id=user_id, space_id=space_id,
                     kb_ids=kb_ids, top_k=top_k, search_mode=search_mode,
+                    score_threshold=score_threshold,
                 )
                 if res:
                     raw_sources.extend(res[1])
@@ -605,8 +606,14 @@ class AIChatService:
         kb_ids: Optional[List[int]] = None,
         top_k: int = 5,
         search_mode: str = "content_hybrid",
+        score_threshold: Optional[float] = None,
     ) -> Optional[Tuple[str, List[dict]]]:
-        """知识库检索，返回 (参考资料块文本, 结构化来源列表)。复用 knowledge_space 的 SearchService"""
+        """知识库检索，返回 (参考资料块文本, 结构化来源列表)。复用 knowledge_space 的 SearchService
+
+        score_threshold 非空时下推到 SearchRequest，在检索服务层预过滤低分块，
+        减少注入上下文的噪声；上层 _augment_system_prompt_with_retrieval 仍保留 post-hoc
+        过滤作为 web+kb 联合拒答闸门（对 kb 来源冗余但无害，对 web 来源仍是唯一闸门）。
+        """
         if not space_id:
             self.logger.warning("RAG 开关已开但未指定 space_id，跳过知识库检索")
             return None
@@ -615,7 +622,12 @@ class AIChatService:
         from novamind.features.knowledge_space.schemas.search_schema import SearchRequest
         from novamind.shared.clients import get_elasticsearch_client
 
-        search_request = SearchRequest(query=query, search_mode=search_mode, top_k=top_k)
+        search_request = SearchRequest(
+            query=query,
+            search_mode=search_mode,
+            top_k=top_k,
+            score_threshold=score_threshold if score_threshold is not None else 0.0,
+        )
         es_client = await get_elasticsearch_client()
         model_config_service = self.model_config_service
         if model_config_service is None:

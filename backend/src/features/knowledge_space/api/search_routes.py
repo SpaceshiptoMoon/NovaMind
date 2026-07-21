@@ -14,7 +14,6 @@ from novamind.features.knowledge_space.schemas.search_schema import (
     SearchResponse,
     SearchModesResponse,
     KnowledgeBaseModelConfigResponse,
-    MultimodalSearchRequest,
     SEARCH_MODES,
 )
 from novamind.features.knowledge_space.api.dependencies import (
@@ -133,6 +132,8 @@ async def search(
         request=request,
     )
 
+    # 权重与阈值统一回显用户入参（不依赖检索模式），便于客户端确认实际生效配置
+    weights = data.weights
     return SearchResponse(
         results=result["results"],
         total=len(result["results"]),
@@ -141,8 +142,12 @@ async def search(
         original_mode=result.get("original_mode"),
         mode_fallback=result.get("mode_fallback", False),
         top_k=data.top_k,
-        vector_weight=data.weights.vector_weight if data.weights and "hybrid" in str(data.search_mode) else None,
-        bm25_weight=data.weights.bm25_weight if data.weights and "hybrid" in str(data.search_mode) else None,
+        vector_weight=weights.vector_weight if weights else None,
+        bm25_weight=weights.bm25_weight if weights else None,
+        content_weight=weights.content_weight if weights else None,
+        question_weight=weights.question_weight if weights else None,
+        rrf_k=weights.rrf_k if weights else None,
+        score_threshold=data.score_threshold,
         elapsed_ms=result.get("elapsed_ms"),
         cached=result.get("cached", False),
         answer=result.get("answer"),
@@ -150,40 +155,6 @@ async def search(
         answer_elapsed_ms=result.get("answer_elapsed_ms"),
         rewritten_queries=result.get("rewritten_queries"),
     )
-
-
-@router.post(
-    "/multimodal-search",
-    response_model=SearchResponse,
-    summary="多模态检索",
-    description="""
-统一多模态检索接口，支持以文搜图和以图搜图两种模式。
-
-**search_mode**:
-- `text_to_image`（默认）: 使用文本查询搜索相关图片，需提供 `query` 字段
-- `image_to_image`: 使用图片搜索相似图片，需提供 `image_base64` 字段（Base64 编码）
-""",
-)
-async def multimodal_search(
-    request: Request,
-    space_id: Annotated[int, Path(gt=0, description="空间ID")],
-    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
-    data: Annotated[MultimodalSearchRequest, Body(...)],
-    user_id: int = Depends(get_current_user_id),
-    validated: tuple = Depends(validate_space_access),
-    search_service: SearchService = Depends(get_search_service),
-):
-    """多模态检索"""
-    await _validate_active_kb(kb_id, space_id, search_service)
-
-    result = await search_service.multimodal_search(
-        space_id=space_id,
-        kb_id=kb_id,
-        user_id=user_id,
-        request=data,
-    )
-
-    return result
 
 
 @router.get(
@@ -209,35 +180,19 @@ async def get_search_modes(
     # 验证 kb_id 属于当前空间并获取 KB
     kb = await _validate_active_kb(kb_id, space_id, search_service)
 
-    # 获取知识库层面的模态列表
-    from novamind.features.knowledge_space.services.knowledge_base_service import get_effective_space_types
-    space_config = space.get_config() if hasattr(space, "get_config") else {}
-    space_type_list = get_effective_space_types(
-        kb_config=kb.get_config() if kb else None,
-    )
-
-    # 支持图片检索的知识库：额外返回图片/多模态检索模式
-    if "image" in space_type_list:
-        multimodal_modes = [
-            m for m in SEARCH_MODES
-            if m["mode"] in ("text_to_image", "image_vector")
-        ]
-        return {
-            "modes": multimodal_modes,
-            "total": len(multimodal_modes),
-        }
-
-    # 纯文本空间：返回文本检索模式
+    # 获取知识库可用的检索模式
     available_modes = await search_service.get_available_modes(
         kb_id=kb_id,
     )
 
+    text_modes = [
+        mode for mode in SEARCH_MODES
+        if mode["mode"] in available_modes
+    ]
+
     return {
-        "modes": [
-            mode for mode in SEARCH_MODES
-            if mode["mode"] in available_modes
-        ],
-        "total": len(available_modes),
+        "modes": text_modes,
+        "total": len(text_modes),
     }
 
 
