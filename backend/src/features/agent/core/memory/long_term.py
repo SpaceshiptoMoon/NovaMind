@@ -6,6 +6,9 @@
 对话开始时搜索相关记忆注入上下文。
 
 搜索路径：ES hybrid（向量+BM25）→ ES BM25 fallback → MySQL LIKE fallback
+
+端口化：依赖经 MemoryStorePort（MySQL）/MemorySearchPort（ES）/PromptProvider
+注入，不再直接 import agent.repository / shared.prompts / AgentMemory ORM。
 """
 from typing import Any, Callable, Dict, List, Optional
 
@@ -14,8 +17,8 @@ from novamind.features.agent.core.memory.interfaces import (
     LongTermMemoryEntry,
     MemoryMessage,
 )
-from novamind.features.agent.repository.memory_repository import MemoryRepository
-from novamind.shared.prompts import PromptManager
+from novamind.features.agent.core.ports import MemorySearchPort, MemoryStorePort
+from novamind.shared.engine_ports import PromptProvider
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -39,14 +42,16 @@ class LongTermMemory(ILongTermMemory):
 
     def __init__(
         self,
-        memory_repository: MemoryRepository,
+        memory_store: MemoryStorePort,
         llm_client_factory: Callable,
-        memory_search_repo: Optional[Any] = None,
+        prompt_provider: PromptProvider,
+        memory_search: Optional[MemorySearchPort] = None,
         embedding_factory: Optional[Callable] = None,
     ):
-        self._repo = memory_repository
+        self._store = memory_store
         self._llm_factory = llm_client_factory
-        self._search_repo = memory_search_repo
+        self._prompt_provider = prompt_provider
+        self._search = memory_search
         self._embedding_factory = embedding_factory
 
     async def store(
@@ -66,7 +71,7 @@ class LongTermMemory(ILongTermMemory):
             logger.warning("记忆写入被安全扫描拦截", threats=scan.threats, category=category)
             raise ValueError(f"记忆内容未通过安全检查: {scan.threats}")
 
-        memory = await self._repo.create(
+        entry = await self._store.create(
             agent_id=agent_id,
             user_id=user_id,
             category=category,
@@ -74,24 +79,11 @@ class LongTermMemory(ILongTermMemory):
             source_conversation_id=source_conversation_id,
             source_type=source_type,
         )
-        entry = LongTermMemoryEntry(
-            id=memory.id,
-            agent_id=memory.agent_id,
-            user_id=memory.user_id,
-            category=memory.category,
-            content=memory.content,
-            source_type=memory.source_type or "consolidate",
-            relevance_score=memory.relevance_score,
-            access_count=memory.access_count,
-            source_conversation_id=memory.source_conversation_id,
-            created_at=memory.created_at,
-            updated_at=memory.updated_at,
-        )
         logger.info(
             "长期记忆已存储",
             agent_id=agent_id,
             category=category,
-            memory_id=memory.id,
+            memory_id=entry.id,
         )
 
         # 异步索引到 ES
@@ -114,22 +106,13 @@ class LongTermMemory(ILongTermMemory):
         if not scan:
             return {"error": f"新内容未通过安全检查: {scan.threats}"}
 
-        from novamind.features.agent.models.memory import AgentMemory
-        from sqlalchemy import select
-
-        stmt = select(AgentMemory).where(
-            AgentMemory.agent_id == agent_id,
-            AgentMemory.user_id == user_id,
-            AgentMemory.content.contains(old_content),
-        )
-        result = await self._repo.session.execute(stmt)
-        memory = result.scalar_one_or_none()
-        if not memory:
+        entry = await self._store.find_by_content_contains(agent_id, user_id, old_content)
+        if not entry:
             return {"error": "未找到匹配的记忆"}
 
-        await self._repo.update(memory.id, content=new_content)
-        await self._repo.session.flush()
-        return {"message": "记忆已更新", "id": memory.id}
+        await self._store.update_content(entry.id, new_content)
+        await self._store.flush()
+        return {"message": "记忆已更新", "id": entry.id}
 
     async def remove(
         self,
@@ -138,29 +121,20 @@ class LongTermMemory(ILongTermMemory):
         old_content: str,
     ) -> Dict[str, Any]:
         """移除记忆（子串匹配）"""
-        from novamind.features.agent.models.memory import AgentMemory
-        from sqlalchemy import select
-
-        stmt = select(AgentMemory).where(
-            AgentMemory.agent_id == agent_id,
-            AgentMemory.user_id == user_id,
-            AgentMemory.content.contains(old_content),
-        )
-        result = await self._repo.session.execute(stmt)
-        memory = result.scalar_one_or_none()
-        if not memory:
+        entry = await self._store.find_by_content_contains(agent_id, user_id, old_content)
+        if not entry:
             return {"error": "未找到匹配的记忆"}
 
-        await self._repo.delete(memory.id)
-        await self._repo.session.flush()
+        await self._store.delete(entry.id)
+        await self._store.flush()
 
         try:
-            if self._search_repo:
-                await self._search_repo.delete_memory(agent_id, memory.id)
+            if self._search:
+                await self._search.delete_memory(agent_id, entry.id)
         except Exception as e:
             logger.warning("ES 记忆删除失败", error=str(e))
 
-        return {"message": "记忆已移除", "id": memory.id}
+        return {"message": "记忆已移除", "id": entry.id}
 
     async def search(
         self,
@@ -172,7 +146,7 @@ class LongTermMemory(ILongTermMemory):
     ) -> List[LongTermMemoryEntry]:
         """根据查询搜索相关的长期记忆：ES hybrid → MySQL LIKE"""
         # 优先 ES 搜索
-        if self._search_repo and self._embedding_factory:
+        if self._search and self._embedding_factory:
             es_results = await self._search_es(
                 agent_id, user_id, query, top_k, categories
             )
@@ -230,7 +204,7 @@ class LongTermMemory(ILongTermMemory):
             stored_count = 0
 
             for item in extracted:
-                existing = await self._repo.find_similar(
+                existing = await self._store.find_similar(
                     agent_id=agent_id,
                     user_id=user_id,
                     category=item["category"],
@@ -270,14 +244,14 @@ class LongTermMemory(ILongTermMemory):
         self, agent_id: int, entry: LongTermMemoryEntry, source_type: str
     ) -> None:
         """生成 embedding 并索引到 ES"""
-        if not self._search_repo or not self._embedding_factory:
+        if not self._search or not self._embedding_factory:
             return
         try:
             embedding_client = await self._embedding_factory()
             embedding = await embedding_client.generate_embedding(entry.content)
             if not embedding:
                 return
-            await self._search_repo.index_memory(
+            await self._search.index_memory(
                 agent_id=agent_id,
                 memory_id=entry.id,
                 user_id=entry.user_id,
@@ -306,7 +280,7 @@ class LongTermMemory(ILongTermMemory):
             if not query_vector:
                 return []
 
-            results = await self._search_repo.search(
+            results = await self._search.search(
                 agent_id=agent_id,
                 query_vector=query_vector,
                 query_text=query,
@@ -320,9 +294,9 @@ class LongTermMemory(ILongTermMemory):
             # 从 MySQL 回填完整数据 + 递增访问计数
             entries: List[LongTermMemoryEntry] = []
             for r in results:
-                memory = await self._repo.get_by_id(r["memory_id"])
+                memory = await self._store.get_by_id(r["memory_id"])
                 if memory:
-                    await self._repo.increment_access_count(memory.id)
+                    await self._store.increment_access_count(memory.id)
                     entries.append(
                         LongTermMemoryEntry(
                             id=memory.id,
@@ -351,7 +325,7 @@ class LongTermMemory(ILongTermMemory):
         categories: Optional[List[str]],
     ) -> List[LongTermMemoryEntry]:
         """MySQL LIKE fallback"""
-        memories = await self._repo.search_by_keywords(
+        memories = await self._store.search_by_keywords(
             agent_id=agent_id,
             user_id=user_id,
             query=query,
@@ -360,7 +334,7 @@ class LongTermMemory(ILongTermMemory):
         )
         entries = []
         for m in memories:
-            await self._repo.increment_access_count(m.id)
+            await self._store.increment_access_count(m.id)
             entries.append(
                 LongTermMemoryEntry(
                     id=m.id,
@@ -407,7 +381,7 @@ class LongTermMemory(ILongTermMemory):
         if len(conversation_text) > max_chars:
             conversation_text = "..." + conversation_text[-max_chars:]
 
-        return PromptManager.format_prompt(
+        return self._prompt_provider.format(
             "agent_long_term_memory",
             conversation_text=conversation_text,
         )

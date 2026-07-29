@@ -18,8 +18,14 @@ from novamind.features.agent.core.memory.memory_manager import MemoryManager
 from novamind.features.agent.core.memory.context_scrubber import StreamingContextScrubber
 from novamind.features.agent.core.prompt_builder import SystemPromptBuilder
 from novamind.features.agent.repository.agent_repository import MessageRepository, ToolCallRepository, SessionRepository
-from novamind.features.agent.repository.memory_repository import MemoryRepository
 from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
+from novamind.features.agent.adapters import (
+    HostKnowledgeSearchPort,
+    HostMemorySearchPort,
+    HostMemoryStorePort,
+    HostPromptProvider,
+    HostWebSearchPort,
+)
 from novamind.features.agent.models.agent import AgentDefinition
 from novamind.features.agent.models.session import AgentSession
 from novamind.features.agent.models.message import AgentMessage
@@ -88,8 +94,23 @@ class AgentChatService:
             # 解析模型（MemoryManager 和 LLM 客户端共用）
             model = await self._resolve_model(user_id, agent, llm_model)
 
+            # 构造请求级端口（引擎依赖注入）：记忆/搜索/提示词端口供 MemoryManager，
+            # 同时经 context 注入给 builtin 工具（web_search/knowledge_search/memory）
+            memory_store = HostMemoryStorePort(self.db)
+            memory_search = (
+                HostMemorySearchPort(repo=self._memory_search_repo)
+                if self._memory_search_repo
+                else None
+            )
+            prompt_provider = HostPromptProvider()
+            knowledge_search_port = HostKnowledgeSearchPort(self.db, self.model_config_service)
+            web_search_port = HostWebSearchPort()
+
             # 创建 MemoryManager（每请求实例）
-            memory_manager = self._create_memory_manager(agent, user_id, model, conv.id)
+            memory_manager = self._create_memory_manager(
+                agent, user_id, model, conv.id,
+                memory_store, memory_search, prompt_provider,
+            )
 
             llm_client, tools, messages = await self._build_context(
                 agent, conv, user_id, model, content, memory_manager
@@ -103,6 +124,12 @@ class AgentChatService:
             ).to_dict()
             context["conversation_id"] = conv.id
             context["tool_result_turn_budget"] = 100_000
+            # 引擎端口注入（供 builtin 工具经 context 取用）
+            context["web_search_port"] = web_search_port
+            context["knowledge_search_port"] = knowledge_search_port
+            context["memory_store_port"] = memory_store
+            context["memory_search_port"] = memory_search
+            context["embedding_client_resolver"] = self._build_embedding_resolver(user_id)
 
             full_response = ""
             scrubber = StreamingContextScrubber()
@@ -187,11 +214,16 @@ class AgentChatService:
         return model
 
     def _create_memory_manager(
-        self, agent: AgentDefinition, user_id: int, model: str, conversation_id: int
+        self,
+        agent: AgentDefinition,
+        user_id: int,
+        model: str,
+        conversation_id: int,
+        memory_store: HostMemoryStorePort,
+        memory_search: Optional[HostMemorySearchPort],
+        prompt_provider: HostPromptProvider,
     ) -> MemoryManager:
-        """创建请求级 MemoryManager 实例"""
-        memory_repo = MemoryRepository(self.db)
-
+        """创建请求级 MemoryManager 实例（端口由 chat_stream 注入）"""
         async def llm_factory():
             try:
                 return await self.model_config_service.get_llm_client_by_model(
@@ -220,17 +252,33 @@ class AgentChatService:
             message_repository=self.msg_repo,
             tool_call_repository=self.tc_repo,
             session_repository=self.session_repo,
-            memory_repository=memory_repo,
+            memory_store=memory_store,
+            prompt_provider=prompt_provider,
             model=model,
             llm_client_factory=llm_factory,
-            memory_search_repo=self._memory_search_repo,
-            embedding_factory=embedding_factory if self._memory_search_repo else None,
+            memory_search=memory_search,
+            embedding_factory=embedding_factory if memory_search else None,
             todo_store=self._todo_store,
             conversation_id=conversation_id,
             agent_id=agent.id,
             user_id=user_id,
             auxiliary_llm_factory=auxiliary_llm_factory,
         )
+
+    def _build_embedding_resolver(self, user_id: int):
+        """构造 embedding 客户端 resolver（供 memory 工具 _index_to_es 经
+        context["embedding_client_resolver"] 调用，与 MemoryManager 的
+        embedding_factory 同源）。"""
+        async def resolver():
+            embedding_model = await self.model_config_service.get_user_default_model_name(
+                user_id, "embedding"
+            )
+            if not embedding_model:
+                raise RuntimeError("未配置 embedding 模型")
+            return await self.model_config_service.get_embedding_client_by_model(
+                user_id, embedding_model
+            )
+        return resolver
 
     # ==================== 阶段方法 ====================
 

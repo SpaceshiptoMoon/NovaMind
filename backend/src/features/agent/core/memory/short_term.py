@@ -38,14 +38,14 @@ class ShortTermMemory(IShortTermMemory):
         session_repository: Any,  # SessionRepository
         token_budget: TokenBudget,
         compression_strategy: ICompressionStrategy,
-        summary_repository: Any = None,  # ContextSummaryRepository
+        summary_store: Any = None,  # MemoryStorePort
     ):
         self._msg_repo = message_repository
         self._tc_repo = tool_call_repository
         self._session_repo = session_repository
         self._token_budget = token_budget
         self._compression = compression_strategy
-        self._summary_repo = summary_repository
+        self._summary_store = summary_store
 
     async def build_context(
         self,
@@ -71,9 +71,9 @@ class ShortTermMemory(IShortTermMemory):
         # 1. 查询最新摘要
         summary_msg = None
         summary_cutoff = None
-        if self._summary_repo:
+        if self._summary_store:
             try:
-                latest_summary = await self._summary_repo.get_latest(conversation_id)
+                latest_summary = await self._summary_store.get_latest_summary(conversation_id)
                 if latest_summary:
                     summary_msg = MemoryMessage(
                         role="system",
