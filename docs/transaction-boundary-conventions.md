@@ -34,6 +34,14 @@ CLAUDE.md 两条相关规则合在一起的本意：
 ## 已知待跟踪项（不在本规范修复范围）
 - `document_service` 部分后台任务路径用参数 `session` 而非 `self.session` 调用 `commit()`，需确认这些 session 与请求主事务的隔离关系，避免后台任务误提交主请求事务。单独立项核查。
 
+> 批次 2 已核查（2026-07）：**隔离安全**。`shared/mq/worker.py:97` 的文档处理入口用
+> `async with get_db_session() as session:` 创建**全新后台 session**，再透传给 static helper
+> `execute_document_pipeline` / `persist_parsed_text` / `_process_image_document_static`
+> 提交（document_service.py:737/1650/1806/1870）。这些 helper 提交的是后台独立 session，
+> 不接触任何请求主事务。`_cancel_batch_enqueue`（L1608）同样用 `get_db_session()` 独立 session。
+> 结论：static helper「commit 参数 session」是正确行为（后台任务自带 session），无需修复。
+> 抽库相关不变式已补：`RetrievalEngine` 绝不持有 session / 绝不 commit（仅 es_client + logger + cache）。
+
 ## 检查清单（新增/改动写路径时）
 - [ ] repo 写方法只 flush/execute，不 commit
 - [ ] commit 由 service 控制，不在路由层

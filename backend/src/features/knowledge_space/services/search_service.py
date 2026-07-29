@@ -11,10 +11,17 @@
 - Embedding 模型：从知识库的 embedding_model 字段获取
 - Rerank 模型：从请求的 rerank.model 字段获取
 - 使用 ModelConfigService 获取凭证并创建客户端
+
+批次 2 接缝：``search`` 的**纯检索段**（缓存读写 / 向量生成 / ES 检索 / 归一化 / 阈值过滤 /
+rerank）已委托给 ``RetrievalEngine.retrieve_raw``（见 ``retrieval_engine.py``）。本服务保留
+宿主业务：权限 / 多租户校验、模式可用性 + fallback、查询改写（LLM）、模型客户端解析、
+LLM 回答生成、响应组装。响应 dict 键与旧路径逐字一致。
+
+回滚：``NOVAMIND_LEGACY_RETRIEVAL=1`` 走 ``_search_legacy``（旧内联编排，复用引擎 helper）。
 """
 
 from typing import List, Optional, Dict, Any
-import hashlib
+import os
 import time
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,10 +32,9 @@ from novamind.features.knowledge_space.repository.space_repository import SpaceR
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.ai_models.embedding import BaseEmbedding
 from novamind.shared.ai_models.rerank import BaseRerank
-from novamind.shared.cache.redis_client import get_redis_client
+from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.api.exceptions import (
-    SpaceNotFoundError,
     KnowledgeBaseNotFoundError,
     KnowledgeBaseAccessDeniedError,
     SpaceAccessDeniedError,
@@ -36,21 +42,21 @@ from novamind.features.knowledge_space.api.exceptions import (
     EmbeddingError,
     InvalidSearchModeError,
     InvalidSearchWeightError,
-    KnowledgeSpaceError,
 )
 from novamind.features.knowledge_space.schemas.search_schema import (
     SEARCH_MODE_FALLBACK,
     SearchRequest,
-    SearchResponse,
-    SearchResult,
     LLMConfig,
     QueryRewriteConfig,
 )
-from novamind.features.knowledge_space.models.knowledge_space import SpaceVisibility, KnowledgeSpace
+from novamind.features.knowledge_space.models.knowledge_space import SpaceVisibility
+from novamind.features.knowledge_space.services.retrieval_engine import (
+    RetrievalEngine,
+    RetrievalQuery,
+)
 
 
 # 默认配置常量
-DEFAULT_SEARCH_CACHE_TTL = 3600  # 1 小时
 DEFAULT_TOP_K = 10
 DEFAULT_VECTOR_WEIGHT = 0.7
 DEFAULT_BATCH_SIZE = 32
@@ -76,6 +82,7 @@ class SearchService:
         session: AsyncSession,
         es_client: ElasticsearchClient,
         model_config_service: Optional[Any] = None,  # ModelConfigService
+        retrieval_engine: Optional[RetrievalEngine] = None,
     ):
         self.session = session
         self.kb_repo = KnowledgeBaseRepository(session)
@@ -84,13 +91,14 @@ class SearchService:
         self.es_client = es_client
         self.model_config_service = model_config_service
         self.logger = get_logger(__name__)
-        self._cache = None
+        self._retrieval_engine = retrieval_engine
 
-    async def _get_cache(self):
-        """获取 Redis 缓存客户端"""
-        if self._cache is None:
-            self._cache = await get_redis_client()
-        return self._cache
+    @property
+    def retrieval_engine(self) -> RetrievalEngine:
+        """延迟获取检索引擎（构造函数中不强制要求）"""
+        if self._retrieval_engine is None:
+            self._retrieval_engine = RetrievalEngine(self.es_client, self.logger)
+        return self._retrieval_engine
 
     async def get_knowledge_base(self, kb_id: int):
         """获取知识库信息（公开方法，供路由层调用）"""
@@ -165,7 +173,7 @@ class SearchService:
         self,
         user_id: int,
         model: str
-    ) -> "BaseLLM":
+    ) -> BaseLLM:
         """
         获取 LLM 客户端
 
@@ -405,197 +413,6 @@ class SearchService:
             "sub_queries": None,
         }
 
-    async def _search_with_sub_queries(
-        self,
-        space_id: int,
-        kb_id: int,
-        search_mode: str,
-        sub_queries: List[str],
-        query_vector: Optional[List[float]],
-        top_k: int,
-        vector_weight: float = 0.7,
-        bm25_weight: float = 0.3,
-        content_weight: float = 0.6,
-        question_weight: float = 0.4,
-        rrf_k: int = 60,
-        merge_mode: str = "rrf",
-        embedding_client: Optional[Any] = None,
-    ) -> List[Dict[str, Any]]:
-        """
-        Sub Query 多路检索并合并结果
-
-        对每个子问题分别执行检索，然后按指定策略合并结果
-
-        Args:
-            space_id: 空间 ID
-            kb_id: 知识库 ID
-            search_mode: 检索模式
-            sub_queries: 子问题列表
-            query_vector: 原始查询向量（作为回退）
-            top_k: 每个子问题的返回数量
-            vector_weight/bm25_weight/content_weight/question_weight/rrf_k: 权重参数
-            merge_mode: 合并方式 - rrf(加权融合) / score(分数取最大)
-            embedding_client: 嵌入客户端（为每个子问题独立生成向量）
-
-        Returns:
-            合并后的检索结果列表
-        """
-        import asyncio
-
-        per_query_top_k = max(top_k, 5)  # 每个子问题至少返回 5 个
-        needs_vector = "vector" in search_mode or "hybrid" in search_mode
-
-        # 并行执行所有子问题的检索
-        async def search_one(sub_query: str) -> List[Dict[str, Any]]:
-            # 为每个子问题独立生成向量，提升向量检索精度
-            sub_vector = query_vector
-            if needs_vector and embedding_client:
-                try:
-                    sub_vector = await embedding_client.generate_embedding(sub_query)
-                except Exception as e:
-                    self.logger.warning(
-                        "子问题向量生成失败，使用原始查询向量",
-                        sub_query=sub_query[:50],
-                        error=str(e),
-                    )
-
-            return await self.es_client.search_by_mode(
-                space_id=space_id,
-                kb_id=kb_id,
-                mode=search_mode,
-                query=sub_query,
-                query_vector=sub_vector,
-                top_k=per_query_top_k,
-                vector_weight=vector_weight,
-                bm25_weight=bm25_weight,
-                content_weight=content_weight,
-                question_weight=question_weight,
-                rrf_k=rrf_k,
-            )
-
-        all_results = await asyncio.gather(
-            *[search_one(sq) for sq in sub_queries],
-            return_exceptions=True,
-        )
-
-        # 过滤异常结果
-        valid_results = []
-        for i, r in enumerate(all_results):
-            if isinstance(r, Exception):
-                self.logger.warning(
-                    "子问题检索失败",
-                    sub_query=sub_queries[i][:50],
-                    error=str(r),
-                )
-            elif r:
-                valid_results.append(r)
-
-        if not valid_results:
-            return []
-
-        # 按 chunk_id 去重并合并分数
-        chunk_data: Dict[str, Dict[str, Any]] = {}
-        # RRF 融合：记录每个文档在每个子查询结果中的排名
-        chunk_rrf_scores: Dict[str, float] = {}
-        # score 模式：记录原始分数
-        chunk_scores: Dict[str, List[float]] = {}
-
-        # rrf_k 使用形参(来自用户 weights.rrf_k 配置)，不再硬编码覆盖
-
-        for result_list in valid_results:
-            for rank, item in enumerate(result_list, start=1):
-                chunk_id = item.get("chunk_id")
-                if not chunk_id:
-                    continue
-                if chunk_id not in chunk_data:
-                    chunk_data[chunk_id] = item
-                    chunk_rrf_scores[chunk_id] = 0.0
-                    chunk_scores[chunk_id] = []
-                # 累加标准 RRF 分数: 1/(k+rank)
-                chunk_rrf_scores[chunk_id] += 1.0 / (rrf_k + rank)
-                chunk_scores[chunk_id].append(item.get("score", 0.0))
-
-        # 计算合并分数
-        merged_results = []
-        for chunk_id in chunk_data:
-            if merge_mode == "score":
-                # 取最高分
-                merged_score = max(chunk_scores[chunk_id])
-            else:
-                # 标准 RRF 融合分数
-                merged_score = chunk_rrf_scores[chunk_id]
-
-            result = chunk_data[chunk_id].copy()
-            result["score"] = merged_score
-            merged_results.append(result)
-
-        # 按分数降序排序，截取 top_k
-        merged_results.sort(key=lambda x: x.get("score", 0), reverse=True)
-        return merged_results[:top_k]
-
-    @staticmethod
-    def _generate_query_hash(
-        query: str,
-        top_k: int,
-        search_type: str,
-        vector_weight: float = 0.7,
-        bm25_weight: float = 0.3,
-        content_weight: float = 0.6,
-        question_weight: float = 0.4,
-        rrf_k: int = 60,
-        rerank_enabled: bool = False,
-        rerank_top_k: int = 3,
-        rerank_model: str = "",
-        score_threshold: float = 0.0,
-        query_rewrite_sig: str = "",
-    ) -> str:
-        """
-        生成查询哈希（用于缓存键）
-
-        包含所有影响检索结果的参数：权重（含 rrf_k）、rerank、score_threshold、query_rewrite 签名。
-        rrf_k 影响 RRF 融合排名，必须入键，否则改 rrf_k 会命中旧缓存；
-        score_threshold 影响结果过滤；query_rewrite 改写实际检索 query，必须入键，
-        否则仅阈值或改写配置不同的请求会共享缓存，导致跨配置缓存污染。
-        """
-        normalized_query = query.strip().lower()
-        key_content = (
-            f"{normalized_query}:{top_k}:{search_type}:"
-            f"{vector_weight:.2f}:{bm25_weight:.2f}:{content_weight:.2f}:{question_weight:.2f}:"
-            f"rrf_{rrf_k}:"
-            f"rerank_{rerank_enabled}_{rerank_top_k}_{rerank_model}:"
-            f"st_{score_threshold:.4f}:qw_{query_rewrite_sig}"
-        )
-        return hashlib.md5(key_content.encode('utf-8')).hexdigest()[:32]
-
-    def _get_search_cache_key(self, kb_id: int, search_type: str, query_hash: str) -> str:
-        """生成检索缓存键"""
-        return f"search:{kb_id}:{search_type}:{query_hash}"
-
-    async def _get_cached_search(self, cache_key: str) -> Optional[List[Dict[str, Any]]]:
-        """获取缓存的检索结果"""
-        try:
-            cache = await self._get_cache()
-            cached = await cache.get(cache_key)
-            if cached is not None:
-                self.logger.debug("检索缓存命中", cache_key=cache_key)
-                return cached
-        except KnowledgeSpaceError:
-            raise
-        except Exception as e:
-            self.logger.warning("读取检索缓存失败", cache_key=cache_key, error=str(e))
-        return None
-
-    async def _cache_search_result(self, cache_key: str, results: List[Dict[str, Any]]) -> None:
-        """缓存检索结果"""
-        try:
-            cache = await self._get_cache()
-            await cache.set(cache_key, results, expire=DEFAULT_SEARCH_CACHE_TTL)
-            self.logger.debug("检索结果已缓存", cache_key=cache_key, ttl=DEFAULT_SEARCH_CACHE_TTL)
-        except KnowledgeSpaceError:
-            raise
-        except Exception as e:
-            self.logger.warning("缓存检索结果失败", cache_key=cache_key, error=str(e))
-
     async def search(
         self,
         space_id: int,
@@ -621,6 +438,19 @@ class SearchService:
             SpaceAccessDeniedError: 无权限检索
             InvalidSearchModeError: 检索模式不可用
         """
+        # 回滚开关：NOVAMIND_LEGACY_RETRIEVAL=1 走旧内联编排
+        if os.getenv("NOVAMIND_LEGACY_RETRIEVAL") == "1":
+            return await self._search_legacy(space_id, kb_id, user_id, request)
+        return await self._search_via_engine(space_id, kb_id, user_id, request)
+
+    async def _search_via_engine(
+        self,
+        space_id: int,
+        kb_id: int,
+        user_id: int,
+        request: SearchRequest,
+    ) -> Dict[str, Any]:
+        """新路径：宿主做权限/配置/改写/生成，纯检索委托 RetrievalEngine.retrieve_raw。"""
         # 从 schema 中提取参数
         query = request.query
         search_mode = str(request.search_mode.value) if hasattr(request.search_mode, 'value') else str(request.search_mode)
@@ -705,13 +535,256 @@ class SearchService:
                     reason="知识库未启用问题生成功能",
                 )
 
+        # 5. 查询改写（如果配置了 query_rewrite）—— LLM，留宿主
+        rewritten_queries = None
+        rewrite_info = None
+        if request.query_rewrite:
+            try:
+                rewrite_info = await self._rewrite_query(
+                    query=query,
+                    rewrite_config=request.query_rewrite,
+                    user_id=user_id,
+                )
+                rewritten_queries = rewrite_info.get("rewritten_queries")
+                self.logger.info(
+                    "查询改写完成",
+                    strategy=request.query_rewrite.strategy,
+                    rewritten_count=len(rewritten_queries) if rewritten_queries else 0,
+                )
+            except Exception as e:
+                self.logger.warning(
+                    "查询改写失败，使用原始查询",
+                    error=str(e),
+                )
+
+        effective_query = query
+        if rewrite_info and rewrite_info.get("search_query"):
+            effective_query = rewrite_info["search_query"]
+        sub_queries = rewrite_info.get("sub_queries") if rewrite_info else None
+        sub_query_merge_mode = (
+            request.query_rewrite.sub_query_merge_mode
+            if (sub_queries and request.query_rewrite) else "rrf"
+        )
+
+        # 6. 客户端 resolver（懒解析：engine 仅在非缓存命中 / 有结果时才调用，
+        #    逐字对齐原 search 的懒解析时序——缓存命中不解析 embedding，避免配置缺失误报）
+        needs_vector = "vector" in search_mode or "hybrid" in search_mode
+        embedding_client_resolver = None
+        if needs_vector:
+            async def _resolve_embedding() -> Optional[BaseEmbedding]:
+                space = await self.space_repo.get_by_id(kb.space_id, use_cache=True)
+                embedding_model = space.embedding_model if space else None
+                return await self._get_embedding_client(user_id, embedding_model)
+            embedding_client_resolver = _resolve_embedding
+        rerank_client_resolver = None
+        if rerank_enabled:
+            async def _resolve_rerank() -> Optional[BaseRerank]:
+                return await self._get_rerank_client(user_id, rerank_model)
+            rerank_client_resolver = _resolve_rerank
+
+        # 7. 构造纯检索入参并委托引擎
+        rq = RetrievalQuery(
+            space_id=space_id,
+            kb_id=kb_id,
+            query=query,
+            effective_query=effective_query,
+            sub_queries=sub_queries,
+            sub_query_merge_mode=sub_query_merge_mode,
+            search_mode=search_mode,
+            top_k=top_k,
+            vector_weight=vector_weight,
+            bm25_weight=bm25_weight,
+            content_weight=content_weight,
+            question_weight=question_weight,
+            rrf_k=rrf_k,
+            score_threshold=score_threshold,
+            rerank_enabled=rerank_enabled,
+            rerank_top_k=rerank_top_k,
+            rerank_model=rerank_model,
+        )
+        # query_rewrite 改写结果非确定，不入缓存——启用改写时跳过缓存读写
+        use_cache_for_engine = use_cache and request.query_rewrite is None
+        result = await self.retrieval_engine.retrieve_raw(
+            rq,
+            embedding_client_resolver=embedding_client_resolver,
+            rerank_client_resolver=rerank_client_resolver,
+            use_cache=use_cache_for_engine,
+        )
+
+        # 8. LLM 回答生成 + elapsed_ms 保真
+        # 缓存命中：elapsed_ms 在 LLM 前算（对齐旧路径 L732）
+        # 缓存未命中：先 LLM 后 elapsed_ms（对齐旧路径 L981）
+        answer = None
+        answer_model = None
+        answer_elapsed_ms = None
+        answer_error = None
+        llm_config = request.llm
+
+        if result.cached:
+            elapsed_ms = (time.time() - start_time) * 1000
+            if llm_config and llm_config.enabled and result.results:
+                try:
+                    llm_result = await self._generate_llm_answer(
+                        query=query,
+                        results=result.results,
+                        llm_config=llm_config,
+                        user_id=user_id,
+                    )
+                    answer = llm_result.get("answer")
+                    answer_model = llm_result.get("model")
+                    answer_elapsed_ms = llm_result.get("elapsed_ms")
+                except Exception as e:
+                    self.logger.error(
+                        "缓存命中但 LLM 回答生成异常",
+                        error=str(e),
+                    )
+                    answer_error = str(e)
+        else:
+            if llm_config and llm_config.enabled and result.results:
+                try:
+                    llm_result = await self._generate_llm_answer(
+                        query=query,
+                        results=result.results,
+                        llm_config=llm_config,
+                        user_id=user_id,
+                    )
+                    answer = llm_result.get("answer")
+                    answer_model = llm_result.get("model")
+                    answer_elapsed_ms = llm_result.get("elapsed_ms")
+
+                    if llm_result.get("error"):
+                        self.logger.warning(
+                            "LLM 回答生成失败，仅返回检索结果",
+                            error=llm_result.get("error"),
+                        )
+                except Exception as e:
+                    self.logger.error(
+                        "LLM 回答生成异常",
+                        error=str(e),
+                    )
+                    answer_error = str(e)
+            elapsed_ms = (time.time() - start_time) * 1000
+
+        response = {
+            "results": result.results,
+            "total": len(result.results),
+            "query": query,
+            "search_mode": search_mode,
+            "original_mode": original_mode if mode_fallback else None,
+            "mode_fallback": mode_fallback,
+            "top_k": top_k,
+            "elapsed_ms": elapsed_ms,
+            "cached": result.cached,
+            "answer": answer,
+            "answer_model": answer_model,
+            "answer_elapsed_ms": answer_elapsed_ms,
+            "rewritten_queries": rewritten_queries,
+        }
+        if answer_error:
+            response["answer_error"] = answer_error
+        return response
+
+    async def _search_legacy(
+        self,
+        space_id: int,
+        kb_id: int,
+        user_id: int,
+        request: SearchRequest,
+    ) -> Dict[str, Any]:
+        """旧内联编排（NOVAMIND_LEGACY_RETRIEVAL=1 时使用，保留作回滚）。
+
+        与批次 2 前的 search() 逐字等价：权限/模式/改写/向量/检索/enrich/归一化/阈值/rerank/
+        缓存/LLM 全在一个方法内。纯检索 helper（_search_with_sub_queries / _generate_query_hash /
+        _enrich_results / _normalize_scores / 缓存读写）已迁至 RetrievalEngine，此处通过
+        self.retrieval_engine 复用（helper 为逐字搬迁，行为不变）。
+        """
+        # 从 schema 中提取参数
+        query = request.query
+        search_mode = str(request.search_mode.value) if hasattr(request.search_mode, 'value') else str(request.search_mode)
+        top_k = request.top_k
+        fallback_on_unavailable = request.fallback_on_unavailable
+        use_cache = request.use_cache
+        score_threshold = request.score_threshold
+
+        # 提取权重配置
+        weights = request.weights
+        vector_weight = weights.vector_weight if weights else 0.7
+        bm25_weight = weights.bm25_weight if weights else 0.3
+        content_weight = weights.content_weight if weights else 0.6
+        question_weight = weights.question_weight if weights else 0.4
+        rrf_k = weights.rrf_k if weights else 60
+
+        # 校验算法权重：vector_weight + bm25_weight 必须等于 1.0
+        if "hybrid" in search_mode and abs(vector_weight + bm25_weight - 1.0) > 0.01:
+            raise InvalidSearchWeightError(
+                vector_weight=vector_weight,
+                bm25_weight=bm25_weight,
+                reason=f"向量权重 ({vector_weight}) 与 BM25 权重 ({bm25_weight}) 之和必须等于 1.0，当前为 {vector_weight + bm25_weight}",
+            )
+
+        # 校验字段权重：content_weight + question_weight 必须等于 1.0（仅 all_* 模式）
+        if search_mode.startswith("all_"):
+            if abs(content_weight + question_weight - 1.0) > 0.01:
+                raise InvalidSearchWeightError(
+                    content_weight=content_weight,
+                    question_weight=question_weight,
+                    reason=f"内容权重 ({content_weight}) 与问题权重 ({question_weight}) 之和必须等于 1.0，当前为 {content_weight + question_weight}",
+                )
+
+        # 提取 rerank 配置
+        rerank = request.rerank
+        rerank_enabled = rerank.enabled if rerank else False
+        rerank_top_k = rerank.top_k if rerank else 3
+        rerank_model = rerank.model if rerank else None
+        start_time = time.time()
+        original_mode = search_mode
+        mode_fallback = False
+
+        # 1. 验证知识库存在
+        kb = await self.kb_repo.get_by_id(kb_id)
+        if not kb:
+            raise KnowledgeBaseNotFoundError(kb_id)
+
+        # 2. 防御性校验：验证 kb_id 归属指定的 space_id
+        if kb.space_id != space_id:
+            raise KnowledgeBaseAccessDeniedError(
+                kb_id=kb_id,
+                user_id=user_id,
+                reason="知识库不属于该空间",
+            )
+
+        # 3. 验证用户权限
+        is_member = await self.member_repo.is_member(kb.space_id, user_id)
+        if not is_member:
+            space = await self.space_repo.get_by_id(kb.space_id, use_cache=True)
+            if not space or space.visibility != SpaceVisibility.PUBLIC:
+                raise SpaceAccessDeniedError(kb.space_id, user_id, "无权访问此知识库")
+
+        # 4. 检查检索模式是否可用
+        available_modes = kb.get_available_search_modes()
+        if search_mode not in available_modes:
+            if fallback_on_unavailable:
+                search_mode = SEARCH_MODE_FALLBACK.get(search_mode, "content_hybrid")
+                mode_fallback = True
+                self.logger.warning(
+                    "检索模式不可用，已自动降级",
+                    original_mode=original_mode,
+                    fallback_mode=search_mode,
+                    kb_id=kb_id,
+                )
+            else:
+                raise InvalidSearchModeError(
+                    mode=search_mode,
+                    available_modes=available_modes,
+                    reason="知识库未启用问题生成功能",
+                )
+
         # 4. 生成缓存键并尝试从缓存获取
+        engine = self.retrieval_engine
         cache_key = None
-        # query_rewrite 改写结果由 LLM 生成、非确定；以 original query + rewrite_sig 为键会复用
-        # 首次改写结果（缓存污染/不可复现）。故启用改写时直接跳过缓存读写——改写检索本就以
-        # LLM 调用为主开销，缓存收益有限，不值得以正确性换。
+        # query_rewrite 改写结果非确定；启用改写时直接跳过缓存读写
         if use_cache and request.query_rewrite is None:
-            query_hash = self._generate_query_hash(
+            query_hash = engine._generate_query_hash(
                 query,
                 top_k,
                 search_mode,
@@ -726,8 +799,8 @@ class SearchService:
                 score_threshold=score_threshold,
                 query_rewrite_sig="none",
             )
-            cache_key = self._get_search_cache_key(kb_id, search_mode, query_hash)
-            cached_results = await self._get_cached_search(cache_key)
+            cache_key = engine._get_search_cache_key(kb_id, search_mode, query_hash)
+            cached_results = await engine._get_cached_search(cache_key)
             if cached_results is not None:
                 elapsed_ms = (time.time() - start_time) * 1000
                 # 缓存命中时，LLM 回答需要单独生成（因为模型可能变化）
@@ -797,7 +870,6 @@ class SearchService:
                 )
 
         # 6. 生成查询向量（如果需要）
-        # HyDE 时使用假设性文档生成向量，sub_query 时使用原始查询
         effective_query = query
         if rewrite_info and rewrite_info.get("search_query"):
             effective_query = rewrite_info["search_query"]
@@ -827,8 +899,7 @@ class SearchService:
         sub_queries = rewrite_info.get("sub_queries") if rewrite_info else None
 
         if sub_queries:
-            # Sub Query 模式：对每个子问题分别检索，然后合并
-            results = await self._search_with_sub_queries(
+            results = await engine._search_with_sub_queries(
                 space_id=space_id,
                 kb_id=kb_id,
                 search_mode=search_mode,
@@ -845,7 +916,6 @@ class SearchService:
             )
         else:
             # 普通模式或 HyDE 模式：单次检索
-            # HyDE 时用原始 query 做全文检索，用假设性文档向量做向量检索
             search_query = query  # BM25 仍使用原始查询
             search_vector = query_vector  # 向量使用改写后的（hyde 文档的 embedding）
 
@@ -864,10 +934,10 @@ class SearchService:
             )
 
         # 8. 补充分块详情
-        results = await self._enrich_results(results)
+        results = await engine._enrich_results(results)
 
-        # 9. 分数归一化（统一到 0~1 范围，使阈值跨模式一致）
-        results = self._normalize_scores(results)
+        # 9. 分数归一化
+        results = engine._normalize_scores(results)
 
         # 10. 分数阈值过滤
         if score_threshold > 0.0:
@@ -884,11 +954,9 @@ class SearchService:
         # 11. Rerank 重排序
         if rerank_enabled and len(results) > 0:
             try:
-                # 从请求中获取 rerank 模型名称
                 rerank_client = await self._get_rerank_client(user_id, rerank_model)
 
                 if rerank_client:
-                    # 提取文档内容
                     documents = [r.get("content", "") for r in results]
 
                     self.logger.info(
@@ -904,13 +972,11 @@ class SearchService:
                         top_k=min(rerank_top_k, len(results)),
                     )
 
-                    # 根据 rerank 结果重新排序并更新分数
                     reranked_results = []
                     for rerank_item in rerank_results:
                         original_index = rerank_item["index"]
                         original_result = results[original_index].copy()
 
-                        # 保留原始分数，用 rerank 分数替换
                         original_result["original_score"] = results[original_index].get("score")
                         original_result["score"] = rerank_item["relevance_score"]
                         original_result["reranked"] = True
@@ -918,9 +984,7 @@ class SearchService:
                         reranked_results.append(original_result)
 
                     results = reranked_results
-
-                    # Rerank 后重新归一化分数到 0~1
-                    results = self._normalize_scores(results)
+                    results = engine._normalize_scores(results)
 
                     self.logger.info(
                         "Rerank 重排序完成",
@@ -935,7 +999,6 @@ class SearchService:
                     )
 
             except Exception as e:
-                # Rerank 失败，降级返回原始结果
                 self.logger.warning(
                     "Rerank 重排序失败，使用原始检索结果",
                     error=str(e),
@@ -945,7 +1008,7 @@ class SearchService:
 
         # 12. 缓存结果
         if use_cache and cache_key and results:
-            await self._cache_search_result(cache_key, results)
+            await engine._cache_search_result(cache_key, results)
 
         # 13. LLM 回答生成（如果启用）
         answer = None
@@ -999,109 +1062,14 @@ class SearchService:
             response["answer_error"] = answer_error
         return response
 
-    async def _enrich_results(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        补充检索结果详情
-
-        由于分块数据仅存储在 Elasticsearch 中，直接从 ES 结果中提取信息
-
-        Args:
-            results: ES 检索结果
-
-        Returns:
-            补充后的结果
-        """
-        if not results:
-            return results
-
-        # 直接从 ES 结果中提取信息，不需要查询 MySQL
-        enriched_results = []
-        for r in results:
-            source = r.get("source", {})
-            file_info = source.get("file_info", {})
-
-            enriched = {
-                "chunk_id": r.get("chunk_id") or source.get("chunk_id"),
-                "score": r.get("score"),
-                "content": source.get("content", ""),
-                "document_id": source.get("document_id"),
-                "chunk_index": source.get("chunk_index"),
-                "kb_id": source.get("kb_id"),
-                "metadata": source.get("metadata", {}),
-                "file_info": file_info,
-                "questions": source.get("questions"),
-            }
-
-            enriched_results.append(enriched)
-
-        return enriched_results
-
-    @staticmethod
-    def _normalize_scores(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        分数归一化，统一到 0~1 范围
-
-        不同检索模式的原始分数量纲差异巨大：
-        - BM25: 0~30+
-        - 向量(knn cosine): 0~1
-        - RRF 融合: 0.005~0.05
-
-        采用 max 归一化（score / max_score）：最高分映射到 1.0，其余按比例缩放。
-        相比 Min-Max，最低分不会被强制降到 0 而被任意正阈值误杀——score_threshold 的
-        语义稳定为「相对最高分的比例」（如 0.5 = 至少达到最高分的一半）。所有分数相等
-        时统一归一化为 1.0（视为同等相关，阈值不再误杀）。
-
-        Args:
-            results: 检索结果列表
-
-        Returns:
-            归一化后的结果列表（原地修改 score 字段）
-        """
-        if not results:
-            return results
-
-        scores = [r.get("score", 0) for r in results]
-        max_score = max(scores)
-
-        # 最高分 <= 0（全为 0 或负）时统一归一化为 1.0，视为同等相关，避免除零与阈值误杀
-        if max_score <= 0:
-            for r in results:
-                r["original_score"] = r.get("score")
-                r["score"] = 1.0
-            return results
-
-        for r in results:
-            original = r.get("score", 0)
-            r["original_score"] = original
-            r["score"] = round(original / max_score, 4)
-
-        return results
-
     async def invalidate_kb_search_cache(self, kb_id: int) -> None:
         """
-        失效知识库的所有检索缓存
+        失效知识库的所有检索缓存（委托 RetrievalEngine）
 
         Args:
             kb_id: 知识库 ID
         """
-        try:
-            cache = await self._get_cache()
-            pattern = f"search:{kb_id}:*"
-            total_deleted = await cache.delete_by_pattern(pattern, batch_size=100)
-            self.logger.debug(
-                "知识库检索缓存已清理",
-                kb_id=kb_id,
-                deleted=total_deleted,
-            )
-        except KnowledgeSpaceError:
-            raise
-        except Exception as e:
-            self.logger.warning(
-                "失效知识库检索缓存失败",
-                kb_id=kb_id,
-                error=str(e),
-            )
-            raise SearchError("失效知识库检索缓存失败，请稍后重试")
+        await self.retrieval_engine.invalidate_kb_search_cache(kb_id)
 
     async def get_available_modes(
         self,
