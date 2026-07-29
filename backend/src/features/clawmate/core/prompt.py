@@ -9,7 +9,7 @@ ClawMate 系统提示词构建
 import platform
 from datetime import datetime
 
-from novamind.shared.prompts.templates import PromptManager, PromptTemplate
+from novamind.shared.prompts.templates import PromptManager
 from novamind.shared.utils.time_utils import now_china
 
 
@@ -53,7 +53,7 @@ def build_clawmate_system_prompt(
         date_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     return PromptManager.format_prompt(
-        PromptTemplate.CLAWMATE_SYSTEM.value,
+        "clawmate_system",
         cwd=cwd,
         platform=f"{platform.system()} {platform.release()}",
         date=date_str,

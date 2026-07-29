@@ -15,7 +15,7 @@ from novamind.features.agent.core.memory.interfaces import (
     MemoryMessage,
 )
 from novamind.features.agent.repository.memory_repository import MemoryRepository
-from novamind.shared.prompts import PromptTemplate, PromptManager
+from novamind.shared.prompts import PromptManager
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -408,7 +408,7 @@ class LongTermMemory(ILongTermMemory):
             conversation_text = "..." + conversation_text[-max_chars:]
 
         return PromptManager.format_prompt(
-            PromptTemplate.AGENT_LONG_TERM_MEMORY.value,
+            "agent_long_term_memory",
             conversation_text=conversation_text,
         )
 

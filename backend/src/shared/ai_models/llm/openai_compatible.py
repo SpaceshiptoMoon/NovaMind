@@ -5,7 +5,7 @@ OpenAI 兼容 LLM 客户端
 OpenAI、智谱 AI、阿里云 DashScope、硅基流动、本地 vLLM/Ollama 等
 """
 
-from typing import Optional, AsyncGenerator
+from typing import Optional, AsyncGenerator, Any, Dict
 import time
 
 import httpx
@@ -17,7 +17,7 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from novamind.shared.ai_models.base_model import BaseLLM, ToolCall, LLMResponseWithTools, StreamChunk, LLMResponse, PROXY_INHERIT, build_openai_http_client
+from novamind.shared.ai_models.base_model import BaseLLM, ToolCall, LLMResponseWithTools, StreamChunk, LLMResponse, ToolStreamEvent, PROXY_INHERIT, build_openai_http_client
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -418,3 +418,111 @@ class OpenAICompatibleLLM(BaseLLM):
                 usage=usage,
                 reasoning=getattr(choice.message, 'reasoning_content', None),
             )
+
+    async def generate_with_tools_stream(
+        self,
+        prompt: str | list,
+        tools: list[dict] | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+        top_p: float = 0.8,
+        tool_choice: str = "auto",
+        enable_thinking: bool = False,
+    ) -> AsyncGenerator[ToolStreamEvent, None]:
+        """支持工具调用的原生流式生成（OpenAI SDK stream=True + tools）。
+
+        逐 chunk 解析 content 增量与 tool_calls 增量，自动收集完整工具调用参数，
+        以 ToolStreamEvent 形式 yield。上层（AgentLLM）翻译为自有 StreamChunk。
+        """
+        async with self._get_semaphore():
+            messages = self._build_messages(prompt)
+            kwargs: Dict[str, Any] = {
+                "model": self.model,
+                "messages": messages,
+                "max_completion_tokens": max_tokens,
+                "temperature": temperature,
+                "top_p": top_p,
+                "stream": True,
+                "stream_options": {"include_usage": True},
+            }
+            if tools:
+                kwargs["tools"] = tools
+                kwargs["tool_choice"] = tool_choice
+            kwargs["extra_body"] = {"enable_thinking": enable_thinking}
+
+            stream = await self.client.chat.completions.create(**kwargs)
+
+            # 收集器：index -> {id, name, arguments}
+            active_tool_calls: Dict[int, dict] = {}
+
+            async for chunk in stream:
+                # usage-only chunk（最后一个 chunk 可能只有 usage）
+                if not chunk.choices:
+                    if hasattr(chunk, "usage") and chunk.usage:
+                        yield ToolStreamEvent(
+                            type="done",
+                            usage={
+                                "prompt_tokens": chunk.usage.prompt_tokens or 0,
+                                "completion_tokens": chunk.usage.completion_tokens or 0,
+                                "total_tokens": chunk.usage.total_tokens or 0,
+                            },
+                        )
+                    continue
+
+                choice = chunk.choices[0]
+                delta = choice.delta
+
+                # 文本内容增量
+                if delta.content:
+                    yield ToolStreamEvent(type="content", content=delta.content)
+
+                # 工具调用增量
+                if delta.tool_calls:
+                    for tc_delta in delta.tool_calls:
+                        idx = tc_delta.index
+
+                        # 新工具调用开始
+                        if idx not in active_tool_calls:
+                            call_id = tc_delta.id or f"call_{idx}"
+                            active_tool_calls[idx] = {
+                                "id": call_id,
+                                "name": "",
+                                "arguments": "",
+                            }
+
+                        tc = active_tool_calls[idx]
+
+                        if tc_delta.id:
+                            tc["id"] = tc_delta.id
+
+                        if tc_delta.function:
+                            if tc_delta.function.name:
+                                tc["name"] = tc_delta.function.name
+                                yield ToolStreamEvent(
+                                    type="tool_call_start",
+                                    tool_call_id=tc["id"],
+                                    tool_name=tc["name"],
+                                )
+                            if tc_delta.function.arguments:
+                                tc["arguments"] += tc_delta.function.arguments
+                                yield ToolStreamEvent(
+                                    type="tool_call_args",
+                                    tool_call_id=tc["id"],
+                                    tool_arguments_delta=tc_delta.function.arguments,
+                                )
+
+                # finish_reason 标记结束
+                if choice.finish_reason:
+                    for i in sorted(active_tool_calls.keys()):
+                        tc = active_tool_calls[i]
+                        yield ToolStreamEvent(
+                            type="tool_call_end",
+                            tool_call_id=tc["id"],
+                            tool_name=tc["name"],
+                            tool_arguments_delta=tc["arguments"],
+                        )
+
+                    yield ToolStreamEvent(
+                        type="done",
+                        finish_reason=choice.finish_reason,
+                    )

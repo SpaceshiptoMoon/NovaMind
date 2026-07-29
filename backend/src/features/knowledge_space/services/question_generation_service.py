@@ -14,7 +14,7 @@ import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.prompts import PromptTemplate, PromptManager
+from novamind.shared.prompts import PromptManager
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     QuestionGenerationConfig,
@@ -456,7 +456,7 @@ category 可选值: factual(事实性), conceptual(概念性), procedural(操作
             prompt = prompt.replace("{{count}}", str(self.config.max_questions_per_chunk))
         else:
             prompt = PromptManager.format_prompt(
-                PromptTemplate.KB_DEFAULT_QUESTION.value,
+                "kb_default_question",
                 content=chunk_content[:3000],
                 count=str(self.config.max_questions_per_chunk),
             )

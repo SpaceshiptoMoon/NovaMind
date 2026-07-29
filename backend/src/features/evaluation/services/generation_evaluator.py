@@ -7,7 +7,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.prompts.templates import PromptTemplate, PromptManager
+from novamind.shared.prompts.templates import PromptManager
 from novamind.features.evaluation.services.embedding_evaluator import EmbeddingEvaluator
 from novamind.features.evaluation.services.claim_decomposer import ClaimDecomposer
 from novamind.core.middleware.structured_logging import get_logger
@@ -108,7 +108,7 @@ class GenerationEvaluator:
         if strategy == "llm":
             return await self._score_with_llm(
                 PromptManager.format_prompt(
-                    PromptTemplate.EVAL_CORRECTNESS.value,
+                    "eval_correctness",
                     question=question,
                     expected_answer=expected_answer,
                     generated_answer=generated_answer,
@@ -120,7 +120,7 @@ class GenerationEvaluator:
         elif strategy == "hybrid" and self.embedding_evaluator:
             llm_score = await self._score_with_llm(
                 PromptManager.format_prompt(
-                    PromptTemplate.EVAL_CORRECTNESS.value,
+                    "eval_correctness",
                     question=question,
                     expected_answer=expected_answer,
                     generated_answer=generated_answer,
@@ -135,7 +135,7 @@ class GenerationEvaluator:
         else:
             return await self._score_with_llm(
                 PromptManager.format_prompt(
-                    PromptTemplate.EVAL_CORRECTNESS.value,
+                    "eval_correctness",
                     question=question,
                     expected_answer=expected_answer,
                     generated_answer=generated_answer,
@@ -167,7 +167,7 @@ class GenerationEvaluator:
             )
             score = await self._score_with_llm(
                 PromptManager.format_prompt(
-                    PromptTemplate.EVAL_FAITHFULNESS.value,
+                    "eval_faithfulness",
                     context=context_text,
                     question=question,
                     generated_answer=generated_answer,
@@ -205,7 +205,7 @@ class GenerationEvaluator:
             # LLM 直接评分
             score = await self._score_with_llm(
                 PromptManager.format_prompt(
-                    PromptTemplate.EVAL_RELEVANCE.value,
+                    "eval_relevance",
                     question=question,
                     generated_answer=generated_answer,
                 ),
@@ -217,7 +217,7 @@ class GenerationEvaluator:
         """评估 Quality，失败返回 None"""
         return await self._score_with_llm(
             PromptManager.format_prompt(
-                PromptTemplate.EVAL_QUALITY.value,
+                "eval_quality",
                 question=question,
                 generated_answer=generated_answer,
             ),
@@ -243,7 +243,7 @@ class GenerationEvaluator:
     async def _generate_reverse_questions(self, generated_answer: str) -> List[str]:
         """从回答反向生成候选问题"""
         prompt = PromptManager.format_prompt(
-            PromptTemplate.EVAL_REVERSE_QUESTION.value,
+            "eval_reverse_question",
             generated_answer=generated_answer,
         )
         try:

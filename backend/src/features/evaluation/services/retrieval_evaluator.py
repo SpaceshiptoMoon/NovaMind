@@ -7,7 +7,7 @@ import json
 from typing import Any, Dict, List, Optional
 
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.prompts.templates import PromptTemplate, PromptManager
+from novamind.shared.prompts.templates import PromptManager
 from novamind.features.evaluation.services.embedding_evaluator import EmbeddingEvaluator
 from novamind.core.middleware.structured_logging import get_logger
 
@@ -148,7 +148,7 @@ class RetrievalEvaluator:
     async def _judge_single_llm(self, question: str, chunk_content: str) -> tuple[bool, str, bool]:
         """使用 LLM 判断单条检索结果的相关性"""
         prompt = PromptManager.format_prompt(
-            PromptTemplate.EVAL_RETRIEVAL_RELEVANCE.value,
+            "eval_retrieval_relevance",
             question=question,
             chunk_content=chunk_content,
         )
@@ -174,7 +174,7 @@ class RetrievalEvaluator:
             for i, chunk in enumerate(chunks)
         )
         prompt = PromptManager.format_prompt(
-            PromptTemplate.EVAL_CONTEXT_RECALL.value,
+            "eval_context_recall",
             expected_answer=expected_answer,
             context_chunks=context_text,
         )

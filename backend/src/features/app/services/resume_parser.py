@@ -14,7 +14,7 @@ import tempfile
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.prompts import PromptTemplate, PromptManager
+from novamind.shared.prompts import PromptManager
 from novamind.shared.knowledge.document_processing.readers import PDFReader, DocxReader
 from novamind.features.app.schemas.resume_schema import StructuredResume
 
@@ -70,12 +70,12 @@ class ResumeParser:
 
         # S3: 并行深度解析
         results = await asyncio.gather(
-            self._parse_section("personal_info", personal_info_content, PromptTemplate.RESUME_PARSE_PERSONAL_INFO.value),
-            self._parse_section("work_experience", sections.get("work_experience", ""), PromptTemplate.RESUME_PARSE_WORK_EXPERIENCE.value),
-            self._parse_section("project_experience", sections.get("project_experience", ""), PromptTemplate.RESUME_PARSE_PROJECT_EXPERIENCE.value),
-            self._parse_section("education", sections.get("education", ""), PromptTemplate.RESUME_PARSE_EDUCATION.value),
-            self._parse_section("skills", sections.get("skills", ""), PromptTemplate.RESUME_PARSE_SKILLS.value),
-            self._parse_section("publications", sections.get("publications", ""), PromptTemplate.RESUME_PARSE_PUBLICATIONS.value),
+            self._parse_section("personal_info", personal_info_content, "resume_parse_personal_info"),
+            self._parse_section("work_experience", sections.get("work_experience", ""), "resume_parse_work_experience"),
+            self._parse_section("project_experience", sections.get("project_experience", ""), "resume_parse_project_experience"),
+            self._parse_section("education", sections.get("education", ""), "resume_parse_education"),
+            self._parse_section("skills", sections.get("skills", ""), "resume_parse_skills"),
+            self._parse_section("publications", sections.get("publications", ""), "resume_parse_publications"),
             return_exceptions=True,
         )
 
@@ -158,7 +158,7 @@ class ResumeParser:
         lines = raw_text.split("\n")
         numbered_text = "\n".join(f"[{i+1}] {lines[i]}" for i in range(len(lines)))
 
-        prompt = PromptManager.format_prompt(PromptTemplate.RESUME_SECTION_SPLIT.value, numbered_text=numbered_text)
+        prompt = PromptManager.format_prompt("resume_section_split", numbered_text=numbered_text)
         response = await self.llm.generate_text(
             prompt=prompt,
             temperature=0.1,

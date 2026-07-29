@@ -131,6 +131,9 @@ class AppLifespanManager:
         self.logger.info("模型配置已迁移到数据库（model_configs）")
         self.logger.info("==============================")
 
+        # 注册提示词模板（须在功能模块初始化与请求处理之前完成）
+        await self._register_prompt_templates()
+
         # 初始化Redis连接
         redis_start = time.time()
         await self._init_redis(config)
@@ -295,6 +298,22 @@ class AppLifespanManager:
         for init_func in _feature_initializers:
             await init_func(app)
         self.logger.info("各功能模块初始化完成")
+
+    async def _register_prompt_templates(self) -> None:
+        """注册各 feature 的提示词模板到 PromptManager。
+
+        提示词注册表（`shared/prompts/prompt_manager.PromptManager`）为纯机制，
+        不反向 import feature 模块（消除原 shared→features 分层违规）。提示词数据
+        由本方法在启动期注入；注册清单集中在
+        `core/middleware/prompt_registration.register_all_prompt_templates`，
+        供启动期与单元测试共用，避免清单漂移。
+        """
+        from novamind.core.middleware.prompt_registration import (
+            register_all_prompt_templates,
+        )
+
+        count = register_all_prompt_templates()
+        self.logger.info("提示词模板注册完成", total=count)
 
     async def _cleanup(self):
         """清理资源"""

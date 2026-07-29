@@ -3,20 +3,22 @@ Agent 专用 LLM 封装
 
 组合持有 BaseLLM 实例（而非继承），提供 Agent 友好的接口：
 - generate(): 非流式生成（委托给 BaseLLM）
-- generate_stream(): 真正的流式输出（OpenAI SDK 原生流式 + 降级策略）
+- generate_stream(): 真正的流式输出（委托给 BaseLLM.generate_with_tools_stream + 降级策略）
 
 选择组合而非继承的理由：
 - BaseLLM 是 shared 层通用抽象，不应被 Agent 专用需求污染
 - Agent 特有的流式工具调用逻辑封装在 feature 层
+
+设计说明：本类只依赖 BaseLLM 抽象与 base_model.ToolStreamEvent，不对具体实现类
+（如 OpenAICompatibleLLM）做 isinstance 判断，也不访问其私有属性
+（_get_semaphore/client）。OpenAI 原生流式工具调用逻辑下沉为
+BaseLLM.generate_with_tools_stream，由具体后端实现；不支持流式的后端会抛
+NotImplementedError，本类降级为非流式。
 """
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.ai_models.llm.openai_compatible import OpenAICompatibleLLM
-from novamind.core.middleware.structured_logging import get_logger
-
-logger = get_logger(__name__)
+from novamind.shared.ai_models.base_model import BaseLLM, ToolStreamEvent
 
 
 @dataclass
@@ -124,124 +126,37 @@ class AgentLLM:
         """
         流式生成
 
-        OpenAI 兼容客户端：使用 stream=True + tools 原生流式
-        其他 LLM：降级为非流式
+        优先委托给 BaseLLM.generate_with_tools_stream（支持原生流式工具调用的后端，
+        如 OpenAI 兼容）；后端不支持时抛 NotImplementedError，降级为非流式。
         """
-        if isinstance(self._llm, OpenAICompatibleLLM):
-            async for chunk in self._stream_with_tools_openai(
-                messages, tools, max_tokens, temperature, top_p, tool_choice
+        try:
+            async for event in self._llm.generate_with_tools_stream(
+                prompt=messages,
+                tools=tools,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                tool_choice=tool_choice,
             ):
-                yield chunk
-        else:
+                yield self._translate_stream_event(event)
+        except NotImplementedError:
             async for chunk in self._stream_fallback(
                 messages, tools, max_tokens, temperature, top_p, tool_choice
             ):
                 yield chunk
 
-    async def _stream_with_tools_openai(
-        self,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]],
-        max_tokens: int,
-        temperature: float,
-        top_p: float,
-        tool_choice: str,
-    ) -> AsyncGenerator[StreamChunk, None]:
-        """
-        基于 OpenAI SDK 的流式工具调用
-
-        逐 chunk 解析 content 和 tool_calls 的增量，
-        自动收集完整的工具调用参数。
-        """
-        async with self._llm._get_semaphore():
-            kwargs: Dict[str, Any] = {
-                "model": self._llm.model,
-                "messages": messages,
-                "max_completion_tokens": max_tokens,
-                "temperature": temperature,
-                "top_p": top_p,
-                "stream": True,
-                "stream_options": {"include_usage": True},
-            }
-            if tools:
-                kwargs["tools"] = tools
-                kwargs["tool_choice"] = tool_choice
-
-            stream = await self._llm.client.chat.completions.create(**kwargs)
-
-            # 收集器：index -> CollectedToolCall
-            active_tool_calls: Dict[int, CollectedToolCall] = {}
-
-            async for chunk in stream:
-                # usage-only chunk（最后一个 chunk 可能只有 usage）
-                if not chunk.choices:
-                    if hasattr(chunk, "usage") and chunk.usage:
-                        yield StreamChunk(
-                            type="done",
-                            usage={
-                                "prompt_tokens": chunk.usage.prompt_tokens or 0,
-                                "completion_tokens": chunk.usage.completion_tokens or 0,
-                                "total_tokens": chunk.usage.total_tokens or 0,
-                            },
-                        )
-                    continue
-
-                choice = chunk.choices[0]
-                delta = choice.delta
-
-                # 文本内容增量
-                if delta.content:
-                    yield StreamChunk(type="content", content=delta.content)
-
-                # 工具调用增量
-                if delta.tool_calls:
-                    for tc_delta in delta.tool_calls:
-                        idx = tc_delta.index
-
-                        # 新工具调用开始
-                        if idx not in active_tool_calls:
-                            call_id = tc_delta.id or f"call_{idx}"
-                            active_tool_calls[idx] = CollectedToolCall(
-                                id=call_id, name="", arguments=""
-                            )
-
-                        tc = active_tool_calls[idx]
-
-                        if tc_delta.id:
-                            tc.id = tc_delta.id
-
-                        if tc_delta.function:
-                            if tc_delta.function.name:
-                                tc.name = tc_delta.function.name
-                                yield StreamChunk(
-                                    type="tool_call_start",
-                                    tool_call_id=tc.id,
-                                    tool_name=tc.name,
-                                )
-                            if tc_delta.function.arguments:
-                                tc.arguments += tc_delta.function.arguments
-                                yield StreamChunk(
-                                    type="tool_call_args",
-                                    tool_call_id=tc.id,
-                                    tool_arguments_delta=tc_delta.function.arguments,
-                                )
-
-                # finish_reason 标记结束
-                if choice.finish_reason:
-                    # 发送所有工具调用的完成事件
-                    for idx in sorted(active_tool_calls.keys()):
-                        tc = active_tool_calls[idx]
-                        yield StreamChunk(
-                            type="tool_call_end",
-                            tool_call_id=tc.id,
-                            tool_name=tc.name,
-                            tool_arguments_delta=tc.arguments,
-                        )
-
-                    yield StreamChunk(
-                        type="done",
-                        finish_reason=choice.finish_reason,
-                    )
+    @staticmethod
+    def _translate_stream_event(event: ToolStreamEvent) -> StreamChunk:
+        """把 base_model.ToolStreamEvent 翻译为 Agent 自有的 StreamChunk。"""
+        return StreamChunk(
+            type=event.type,
+            content=event.content,
+            tool_call_id=event.tool_call_id,
+            tool_name=event.tool_name,
+            tool_arguments_delta=event.tool_arguments_delta,
+            usage=event.usage,
+            finish_reason=event.finish_reason,
+        )
 
     async def _stream_fallback(
         self,

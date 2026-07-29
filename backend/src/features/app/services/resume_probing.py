@@ -17,7 +17,7 @@ from typing import Optional
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.prompts import PromptTemplate, PromptManager
+from novamind.shared.prompts import PromptManager
 from novamind.features.app.schemas.resume_schema import (
     StructuredResume, ProbingPlan, KnowledgePoint, JDAnalysis,
     WorkProjectUnit,
@@ -233,7 +233,7 @@ class AutoProbingEngine:
         try:
             # 第一轮：固定策略 - 做法
             first_prompt = PromptManager.format_prompt(
-                PromptTemplate.RESUME_PROBE_FIRST_ROUND.value,
+                "resume_probe_first_round",
                 kp_name=kp.name,
                 kp_category=kp.category,
                 kp_source=kp.source,
@@ -271,7 +271,7 @@ class AutoProbingEngine:
                     )
 
                 follow_prompt = PromptManager.format_prompt(
-                    PromptTemplate.RESUME_PROBE_FOLLOW_UP.value,
+                    "resume_probe_follow_up",
                     kp_name=kp.name,
                     kp_category=kp.category,
                     prev_question=prev["question"],
@@ -331,7 +331,7 @@ class AutoProbingEngine:
         qa_summary = "\n".join(qa_summary_parts)
 
         prompt = PromptManager.format_prompt(
-            PromptTemplate.RESUME_PROBE_EVALUATION.value,
+            "resume_probe_evaluation",
             name=structured_resume.personal_info.name or "候选人",
             qa_summary=qa_summary,
         )
@@ -376,7 +376,7 @@ class AutoProbingEngine:
         resume_summary = self._make_resume_summary(structured_resume)
 
         prompt = PromptManager.format_prompt(
-            PromptTemplate.RESUME_OPTIMIZATION_ADVICE.value,
+            "resume_optimization_advice",
             name=structured_resume.personal_info.name or "候选人",
             resume_summary=resume_summary,
             qa_summary=qa_summary,

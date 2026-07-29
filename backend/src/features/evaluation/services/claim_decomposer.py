@@ -9,7 +9,7 @@ import json
 from typing import Any, Dict, List
 
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.prompts.templates import PromptTemplate, PromptManager
+from novamind.shared.prompts.templates import PromptManager
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -32,7 +32,7 @@ class ClaimDecomposer:
             claims 列表
         """
         prompt = PromptManager.format_prompt(
-            PromptTemplate.EVAL_CLAIM_DECOMPOSE.value,
+            "eval_claim_decompose",
             generated_answer=generated_answer,
         )
         try:
@@ -60,7 +60,7 @@ class ClaimDecomposer:
             {"supported": bool, "evidence": str}
         """
         prompt = PromptManager.format_prompt(
-            PromptTemplate.EVAL_CLAIM_VERIFY.value,
+            "eval_claim_verify",
             context=context,
             claim=claim,
         )

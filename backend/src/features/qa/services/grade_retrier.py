@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable, List, Tuple
 
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.prompts.templates import PromptManager, PromptTemplate
+from novamind.shared.prompts.templates import PromptManager
 
 
 @dataclass
@@ -79,7 +79,7 @@ class GradeRetrier:
             s.get("content", s.get("snippet", ""))[:300] for s in sources[:5]
         )
         prompt = PromptManager.format_prompt(
-            PromptTemplate.QA_GRADE_RETRIEVAL.value, query=query, results=results_text
+            "qa_grade_retrieval", query=query, results=results_text
         )
         try:
             raw = await self._llm.generate_text(

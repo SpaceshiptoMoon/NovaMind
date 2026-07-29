@@ -30,7 +30,7 @@ from novamind.features.skill.repository.skill_repository import (
 from novamind.features.skill.services.skill_parser import extract_skill_zip, ExtractedSkill
 from novamind.features.skill.services.skill_checker import SkillSecurityChecker
 from novamind.shared.utils.time_utils import now_china
-from novamind.shared.prompts import PromptManager, PromptTemplate
+from novamind.shared.prompts import PromptManager
 from novamind.shared.ai_models.base_model import BaseLLM
 
 logger = get_logger(__name__)
@@ -388,7 +388,7 @@ class SkillMarketplaceService:
 
         # 格式化 prompt
         prompt = PromptManager.format_prompt(
-            PromptTemplate.SKILL_AI_SEARCH.value,
+            "skill_ai_search",
             query=query,
             categories=", ".join(categories) if categories else "暂无分类",
         )
