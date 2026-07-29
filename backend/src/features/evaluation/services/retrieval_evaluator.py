@@ -2,16 +2,18 @@
 检索质量评估器
 
 评估检索阶段的指标：Precision@K、Hit Rate、MRR、Recall@K
+
+批次 5 接缝：prompt 经注入的 ``PromptProvider`` 端口取模板、日志经注入的 ``Logger``
+端口输出，不再直接 import ``shared.prompts.templates.PromptManager`` 与
+``core.middleware.structured_logging.get_logger``（切断引擎 -> 宿主的导入边，
+为批次 6 抽包做准备）。
 """
 import json
 from typing import Any, Dict, List, Optional
 
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.prompts.templates import PromptManager
+from novamind.shared.engine_ports import Logger, PromptProvider
 from novamind.features.evaluation.services.embedding_evaluator import EmbeddingEvaluator
-from novamind.core.middleware.structured_logging import get_logger
-
-logger = get_logger(__name__)
 
 
 class RetrievalEvaluator:
@@ -21,9 +23,14 @@ class RetrievalEvaluator:
         self,
         llm_client: Optional[BaseLLM] = None,
         embedding_evaluator: Optional[EmbeddingEvaluator] = None,
+        *,
+        prompt_provider: PromptProvider,
+        logger: Logger,
     ):
         self.llm_client = llm_client
         self.embedding_evaluator = embedding_evaluator
+        self._prompt_provider = prompt_provider
+        self._logger = logger
 
     async def evaluate(
         self,
@@ -147,7 +154,7 @@ class RetrievalEvaluator:
 
     async def _judge_single_llm(self, question: str, chunk_content: str) -> tuple[bool, str, bool]:
         """使用 LLM 判断单条检索结果的相关性"""
-        prompt = PromptManager.format_prompt(
+        prompt = self._prompt_provider.format(
             "eval_retrieval_relevance",
             question=question,
             chunk_content=chunk_content,
@@ -164,7 +171,7 @@ class RetrievalEvaluator:
             reason = data.get("reason", "")
             return verdict == "relevant", reason, False
         except Exception as e:
-            logger.warning("LLM 判断检索相关性失败", error=str(e))
+            self._logger.warning("LLM 判断检索相关性失败", error=str(e))
             return False, f"LLM 判断失败: {e}", True
 
     async def _context_recall_llm(self, expected_answer: str, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -173,7 +180,7 @@ class RetrievalEvaluator:
             f"[{i + 1}] {chunk.get('content', '')}"
             for i, chunk in enumerate(chunks)
         )
-        prompt = PromptManager.format_prompt(
+        prompt = self._prompt_provider.format(
             "eval_context_recall",
             expected_answer=expected_answer,
             context_chunks=context_text,
@@ -197,7 +204,7 @@ class RetrievalEvaluator:
                 "context_recall": round(recall, 4),
             }
         except Exception as e:
-            logger.warning("LLM 评估 Context Recall 失败", error=str(e))
+            self._logger.warning("LLM 评估 Context Recall 失败", error=str(e))
             return {"context_recall": None, "error": str(e)}
 
     async def _context_recall_embedding(self, expected_answer: str, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:

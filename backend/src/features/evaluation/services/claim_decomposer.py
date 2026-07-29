@@ -4,22 +4,25 @@ Claim 拆解与验证器
 实现 Faithfulness 的 decompose 策略：
 1. LLM 将回答拆解为独立 claims
 2. 逐条验证每个 claim 是否可由检索上下文支撑
+
+批次 5 接缝：prompt 经注入的 ``PromptProvider`` 端口取模板、日志经注入的 ``Logger``
+端口输出，不再直接 import ``shared.prompts.templates.PromptManager`` 与
+``core.middleware.structured_logging.get_logger``。
 """
 import json
 from typing import Any, Dict, List
 
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.prompts.templates import PromptManager
-from novamind.core.middleware.structured_logging import get_logger
-
-logger = get_logger(__name__)
+from novamind.shared.engine_ports import Logger, PromptProvider
 
 
 class ClaimDecomposer:
     """Claim 拆解与验证器"""
 
-    def __init__(self, llm_client: BaseLLM):
+    def __init__(self, llm_client: BaseLLM, *, prompt_provider: PromptProvider, logger: Logger):
         self.llm_client = llm_client
+        self._prompt_provider = prompt_provider
+        self._logger = logger
 
     async def decompose(self, generated_answer: str) -> List[str]:
         """
@@ -31,7 +34,7 @@ class ClaimDecomposer:
         Returns:
             claims 列表
         """
-        prompt = PromptManager.format_prompt(
+        prompt = self._prompt_provider.format(
             "eval_claim_decompose",
             generated_answer=generated_answer,
         )
@@ -45,7 +48,7 @@ class ClaimDecomposer:
             data = json.loads(response)
             return data.get("claims", [])
         except Exception as e:
-            logger.warning("Claim 拆解失败", error=str(e))
+            self._logger.warning("Claim 拆解失败", error=str(e))
             return None
 
     async def verify_claim(self, claim: str, context: str) -> Dict[str, Any]:
@@ -59,7 +62,7 @@ class ClaimDecomposer:
         Returns:
             {"supported": bool, "evidence": str}
         """
-        prompt = PromptManager.format_prompt(
+        prompt = self._prompt_provider.format(
             "eval_claim_verify",
             context=context,
             claim=claim,
@@ -73,7 +76,7 @@ class ClaimDecomposer:
             )
             return json.loads(response)
         except Exception as e:
-            logger.warning("Claim 验证失败", error=str(e), claim=claim[:50])
+            self._logger.warning("Claim 验证失败", error=str(e), claim=claim[:50])
             return {"supported": False, "evidence": f"验证失败: {e}"}
 
     async def evaluate(

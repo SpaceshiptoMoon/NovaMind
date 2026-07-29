@@ -36,4 +36,50 @@ class AudioConfig:
     local_whisper_model_dir: Optional[str] = None
 
 
-__all__ = ["AudioConfig"]
+# ==================== 外部搜索（联网搜索）====================
+
+
+@dataclass
+class DuckDuckGoSearchConfig:
+    """DuckDuckGo 搜索引擎配置（无需 API Key）。
+
+    宿主从 `setting.yaml_config.DuckDuckGoConfig` 构造注入；引擎侧搜索服务
+    不再 import `novamind.setting`。
+    """
+
+    max_results: int = 10
+    timeout: int = 15
+
+
+@dataclass
+class SerpApiSearchConfig:
+    """SerpAPI 搜索引擎配置（Google 结果 API）。
+
+    宿主从 `setting.yaml_config.SerpAPIConfig` 构造注入。
+    """
+
+    api_key: str = ""
+    max_results: int = 10
+    timeout: int = 30
+    engine: str = "google"
+
+
+@dataclass
+class TavilySearchConfig:
+    """Tavily 搜索引擎配置（AI 优化搜索 API）。
+
+    宿主从 `setting.yaml_config.TavilyConfig` 构造注入。
+    """
+
+    api_key: str = ""
+    max_results: int = 10
+    search_depth: str = "basic"
+    timeout: int = 30
+
+
+__all__ = [
+    "AudioConfig",
+    "DuckDuckGoSearchConfig",
+    "SerpApiSearchConfig",
+    "TavilySearchConfig",
+]

@@ -2,6 +2,15 @@
 技能安全检查器 — 规则 + LLM 双重审查
 
 防止恶意技能通过提示词注入攻击 Agent 系统提示词
+
+批次 5 接缝：prompt 经注入的 ``PromptProvider`` 端口取模板、日志经注入的 ``Logger``
+端口输出，不再直接 import ``shared.prompts.PromptManager`` 与
+``core.middleware.structured_logging.get_logger``（切断 skill 引擎 -> 宿主导入边，
+为批次 6 抽 ``novamind-skill-engine`` 做准备）。
+
+默认行为保持不变（``SkillSecurityChecker()`` 无 LLM 时仅做规则检查）：``prompt_provider``
+与 ``logger`` 均可选，未注入时 ``check_llm`` 直接返回 None（等同 LLM 不可用路径），
+不触碰被注入端口。
 """
 import asyncio
 import json
@@ -9,12 +18,9 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.skill.models.skill import ReviewStatus
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.prompts import PromptManager
-
-logger = get_logger(__name__)
+from novamind.shared.engine_ports import Logger, PromptProvider
 
 # 注入模式正则
 _INJECTION_PATTERNS = [
@@ -67,13 +73,24 @@ class SecurityCheckResult:
 class SkillSecurityChecker:
     """技能安全检查器"""
 
-    def __init__(self, llm_client: Optional[BaseLLM] = None):
+    def __init__(
+        self,
+        llm_client: Optional[BaseLLM] = None,
+        *,
+        prompt_provider: Optional[PromptProvider] = None,
+        logger: Optional[Logger] = None,
+    ):
         """
         Args:
             llm_client: 可选的 BaseLLM 实例，用于 LLM 内容审查。
-                        不传入则只做规则检查。
+                        不传入则只做规则检查（默认行为保持不变）。
+            prompt_provider: 可选的 PromptProvider，用于取 ``skill_security_review``
+                        模板。未注入或 ``llm_client`` 缺失时 ``check_llm`` 返回 None。
+            logger: 可选的 Logger，用于记录 LLM 审查超时/失败。未注入时静默跳过日志。
         """
         self._llm_client = llm_client
+        self._prompt_provider = prompt_provider
+        self._logger = logger
 
     async def check_rules(
         self, body_markdown: str, frontmatter_raw: str = "",
@@ -108,11 +125,12 @@ class SkillSecurityChecker:
         Returns:
             LLMCheckResult 或 None（如果 LLM 不可用或超时）
         """
-        if not self._llm_client:
+        # 未注入 LLM 或未注入 prompt_provider 时，等同 LLM 不可用路径
+        if not self._llm_client or not self._prompt_provider:
             return None
 
         try:
-            prompt = PromptManager.format_prompt(
+            prompt = self._prompt_provider.format(
                 "skill_security_review",
                 frontmatter=frontmatter_raw[:2000],
                 body=body_markdown[:4000],
@@ -128,10 +146,19 @@ class SkillSecurityChecker:
             )
             return self._parse_llm_response(response)
         except asyncio.TimeoutError:
-            logger.error("LLM 安全审查超时", security_implication="LLM审查跳过，规则检查通过则自动批准")
+            if self._logger:
+                self._logger.error(
+                    "LLM 安全审查超时",
+                    security_implication="LLM审查跳过，规则检查通过则自动批准",
+                )
             return None
         except Exception as e:
-            logger.error("LLM 安全审查失败", error=str(e), security_implication="LLM审查跳过，规则检查通过则自动批准")
+            if self._logger:
+                self._logger.error(
+                    "LLM 安全审查失败",
+                    error=str(e),
+                    security_implication="LLM审查跳过，规则检查通过则自动批准",
+                )
             return None
 
     async def check(

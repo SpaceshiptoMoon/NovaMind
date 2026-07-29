@@ -6,19 +6,25 @@ Pipeline:
   S2: 章节切割 (LLM → sections)
   S3: 并行深度解析 (6 路 LLM → 结构化数据)
   S4: 交叉校验 (程序化 → 校验后数据)
+
+批次 5 接缝：prompt 经注入的 ``PromptProvider`` 端口取模板、日志经注入的 ``Logger``
+端口输出，不再直接 import ``shared.prompts.PromptManager`` 与
+``core.middleware.structured_logging.get_logger``（切断 resume 引擎 -> 宿主
+prompt 注册表/结构化日志导入边，为批次 6 抽 ``novamind-resume-engine`` 做准备）。
+
+``shared.knowledge.document_processing.readers`` 与 ``shared.utils.redact`` 属
+引擎通用能力（批次 6 迁 ``novamind-knowledge-engine`` / ``novamind-engine-core``），
+resume 引擎 -> 引擎库的依赖方向允许，保留 import。
 """
 import asyncio
 import json
 import os
 import tempfile
 
-from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.prompts import PromptManager
+from novamind.shared.engine_ports import Logger, PromptProvider
 from novamind.shared.knowledge.document_processing.readers import PDFReader, DocxReader
 from novamind.features.app.schemas.resume_schema import StructuredResume
-
-logger = get_logger(__name__)
 
 
 def _extract_json(text: str) -> str:
@@ -48,18 +54,26 @@ def _extract_json(text: str) -> str:
 class ResumeParser:
     """简历结构化解析器"""
 
-    def __init__(self, llm_client: BaseLLM):
+    def __init__(
+        self,
+        llm_client: BaseLLM,
+        *,
+        prompt_provider: PromptProvider,
+        logger: Logger,
+    ):
         self.llm = llm_client
+        self._prompt_provider = prompt_provider
+        self._logger = logger
 
     async def parse(self, file_bytes: bytes, filename: str) -> StructuredResume:
         """完整解析流程 S1 → S4"""
         # S1: 文本提取
         raw_text = await self._extract_text(file_bytes, filename)
-        logger.info("简历文本提取完成", filename=filename, text_len=len(raw_text))
+        self._logger.info("简历文本提取完成", filename=filename, text_len=len(raw_text))
 
         # S2: 章节切割
         sections = await self._split_sections(raw_text)
-        logger.info("章节切割完成", sections=list(sections.keys()))
+        self._logger.info("章节切割完成", sections=list(sections.keys()))
 
         # personal_info 补充全文开头，防止章节切割行号偏差导致 summary 被截断
         raw_lines = raw_text.split("\n")
@@ -91,7 +105,7 @@ class ResumeParser:
         parsed = []
         for i, (name, default) in enumerate(zip(section_names, section_defaults)):
             if isinstance(results[i], Exception):
-                logger.warning("章节并行解析失败，使用默认值", section=name, error=str(results[i]))
+                self._logger.warning("章节并行解析失败，使用默认值", section=name, error=str(results[i]))
                 parsed.append(default)
             else:
                 parsed.append(results[i])
@@ -116,7 +130,7 @@ class ResumeParser:
         )
 
         resume = self._cross_validate(resume)
-        logger.info("简历解析完成", projects=len(resume.project_experience), works=len(resume.work_experience))
+        self._logger.info("简历解析完成", projects=len(resume.project_experience), works=len(resume.work_experience))
 
         return resume
 
@@ -158,7 +172,7 @@ class ResumeParser:
         lines = raw_text.split("\n")
         numbered_text = "\n".join(f"[{i+1}] {lines[i]}" for i in range(len(lines)))
 
-        prompt = PromptManager.format_prompt("resume_section_split", numbered_text=numbered_text)
+        prompt = self._prompt_provider.format("resume_section_split", numbered_text=numbered_text)
         response = await self.llm.generate_text(
             prompt=prompt,
             temperature=0.1,
@@ -181,7 +195,7 @@ class ResumeParser:
         if not content.strip():
             return {} if section_type in ("personal_info", "skills", "publications") else []
 
-        prompt = PromptManager.format_prompt(template_name, content=content)
+        prompt = self._prompt_provider.format(template_name, content=content)
         try:
             response = await self.llm.generate_text(
                 prompt=prompt,
@@ -190,7 +204,7 @@ class ResumeParser:
             )
             return json.loads(_extract_json(response))
         except json.JSONDecodeError as e:
-            logger.warning("章节解析 JSON 失败，尝试不带 response_format 重试", section=section_type, error=str(e))
+            self._logger.warning("章节解析 JSON 失败，尝试不带 response_format 重试", section=section_type, error=str(e))
             try:
                 response = await self.llm.generate_text(
                     prompt=prompt + "\n\n请只输出合法 JSON，不要包含任何其他内容。",
@@ -198,10 +212,10 @@ class ResumeParser:
                 )
                 return json.loads(_extract_json(response))
             except Exception as e2:
-                logger.error("章节解析重试仍失败", section=section_type, error=str(e2))
+                self._logger.error("章节解析重试仍失败", section=section_type, error=str(e2))
                 return {} if section_type in ("personal_info", "skills", "publications") else []
         except Exception as e:
-            logger.error("章节解析失败", section=section_type, error=str(e))
+            self._logger.error("章节解析失败", section=section_type, error=str(e))
             return {} if section_type in ("personal_info", "skills", "publications") else []
 
     # ==================== S4: 交叉校验 ====================

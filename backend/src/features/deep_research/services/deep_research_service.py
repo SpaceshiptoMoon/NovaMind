@@ -377,11 +377,43 @@ class DeepResearchService:
         await self.session.commit()
 
     def _init_external_search_services(self):
-        """初始化外部搜索服务"""
+        """初始化外部搜索服务
+
+        引擎侧三个搜索服务不再自行 `get_config()`，宿主在此从
+        `setting.yaml_config.ExternalSearchConfig` 构造对应 `engine_config`
+        dataclass 注入，切断 search 引擎 → setting 的导入边。
+        """
+        from novamind.setting.yaml_config import get_config
+        from novamind.shared.engine_config import (
+            DuckDuckGoSearchConfig,
+            SerpApiSearchConfig,
+            TavilySearchConfig,
+        )
+
+        es_cfg = get_config().external_search
         self.external_services = {
-            ExternalSearchProvider.TAVILY: TavilySearchService(),
-            ExternalSearchProvider.SERPAPI: SerpAPISearchService(),
-            ExternalSearchProvider.DUCKDUCKGO: DuckDuckGoSearchService(),
+            ExternalSearchProvider.TAVILY: TavilySearchService(
+                TavilySearchConfig(
+                    api_key=es_cfg.tavily.api_key,
+                    max_results=es_cfg.tavily.max_results,
+                    search_depth=es_cfg.tavily.search_depth,
+                    timeout=es_cfg.tavily.timeout,
+                )
+            ),
+            ExternalSearchProvider.SERPAPI: SerpAPISearchService(
+                SerpApiSearchConfig(
+                    api_key=es_cfg.serpapi.api_key,
+                    max_results=es_cfg.serpapi.max_results,
+                    timeout=es_cfg.serpapi.timeout,
+                    engine=es_cfg.serpapi.engine,
+                )
+            ),
+            ExternalSearchProvider.DUCKDUCKGO: DuckDuckGoSearchService(
+                DuckDuckGoSearchConfig(
+                    max_results=es_cfg.duckduckgo.max_results,
+                    timeout=es_cfg.duckduckgo.timeout,
+                )
+            ),
         }
 
     def _get_external_service(self, provider: ExternalSearchProvider):

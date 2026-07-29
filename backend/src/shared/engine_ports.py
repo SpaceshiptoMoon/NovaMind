@@ -14,7 +14,12 @@
 """
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, List, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    # 仅用于类型注解（配合 `from __future__ import annotations` 惰性求值），
+    # 避免 engine_ports 顶部强 import ai_models（批次 6 同迁 engine-core）。
+    from novamind.shared.ai_models.base_model import BaseLLM
 
 
 @runtime_checkable
@@ -59,4 +64,22 @@ class PromptProvider(Protocol):
         ...
 
 
-__all__ = ["Logger", "PromptProvider"]
+@runtime_checkable
+class FallbackLLMProvider(Protocol):
+    """降级 LLM 提供者协议。
+
+    引擎在主模型重试耗尽后，经此端口取用户其他可用 LLM 客户端做降级调用，
+    不再直接 import ``user.services.model_config_service.ModelConfigService``
+    （切断引擎 -> user feature 导入边；ModelConfigService 全量端口化见批次 5b/任务#36）。
+
+    ``exclude_model`` 为当前主模型名，加载结果应排除之，避免降级回主模型。
+    """
+
+    async def load_fallback_clients(
+        self, user_id: int, exclude_model: str
+    ) -> List["BaseLLM"]:
+        """加载用户可用的降级 LLM 客户端列表（排除主模型）。"""
+        ...
+
+
+__all__ = ["Logger", "PromptProvider", "FallbackLLMProvider"]

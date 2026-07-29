@@ -2,17 +2,18 @@
 生成质量评估器
 
 包含 LLM-as-Judge 直接打分、反向问题法等生成阶段评估策略
+
+批次 5 接缝：prompt 经注入的 ``PromptProvider`` 端口取模板、日志经注入的 ``Logger``
+端口输出，不再直接 import ``shared.prompts.templates.PromptManager`` 与
+``core.middleware.structured_logging.get_logger``。
 """
 import json
 from typing import Any, Dict, List, Optional
 
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.prompts.templates import PromptManager
+from novamind.shared.engine_ports import Logger, PromptProvider
 from novamind.features.evaluation.services.embedding_evaluator import EmbeddingEvaluator
 from novamind.features.evaluation.services.claim_decomposer import ClaimDecomposer
-from novamind.core.middleware.structured_logging import get_logger
-
-logger = get_logger(__name__)
 
 
 class GenerationEvaluator:
@@ -23,10 +24,15 @@ class GenerationEvaluator:
         llm_client: BaseLLM,
         embedding_evaluator: Optional[EmbeddingEvaluator] = None,
         claim_decomposer: Optional[ClaimDecomposer] = None,
+        *,
+        prompt_provider: PromptProvider,
+        logger: Logger,
     ):
         self.llm_client = llm_client
         self.embedding_evaluator = embedding_evaluator
         self.claim_decomposer = claim_decomposer
+        self._prompt_provider = prompt_provider
+        self._logger = logger
 
     async def evaluate(
         self,
@@ -107,7 +113,7 @@ class GenerationEvaluator:
         """评估 Correctness，失败返回 None"""
         if strategy == "llm":
             return await self._score_with_llm(
-                PromptManager.format_prompt(
+                self._prompt_provider.format(
                     "eval_correctness",
                     question=question,
                     expected_answer=expected_answer,
@@ -119,7 +125,7 @@ class GenerationEvaluator:
             return await self.embedding_evaluator.similarity_to_score(expected_answer, generated_answer)
         elif strategy == "hybrid" and self.embedding_evaluator:
             llm_score = await self._score_with_llm(
-                PromptManager.format_prompt(
+                self._prompt_provider.format(
                     "eval_correctness",
                     question=question,
                     expected_answer=expected_answer,
@@ -134,7 +140,7 @@ class GenerationEvaluator:
             return max(1, min(10, hybrid))
         else:
             return await self._score_with_llm(
-                PromptManager.format_prompt(
+                self._prompt_provider.format(
                     "eval_correctness",
                     question=question,
                     expected_answer=expected_answer,
@@ -166,7 +172,7 @@ class GenerationEvaluator:
                 for i, chunk in enumerate(context_chunks)
             )
             score = await self._score_with_llm(
-                PromptManager.format_prompt(
+                self._prompt_provider.format(
                     "eval_faithfulness",
                     context=context_text,
                     question=question,
@@ -204,7 +210,7 @@ class GenerationEvaluator:
         else:
             # LLM 直接评分
             score = await self._score_with_llm(
-                PromptManager.format_prompt(
+                self._prompt_provider.format(
                     "eval_relevance",
                     question=question,
                     generated_answer=generated_answer,
@@ -216,7 +222,7 @@ class GenerationEvaluator:
     async def _evaluate_quality(self, question: str, generated_answer: str) -> Optional[int]:
         """评估 Quality，失败返回 None"""
         return await self._score_with_llm(
-            PromptManager.format_prompt(
+            self._prompt_provider.format(
                 "eval_quality",
                 question=question,
                 generated_answer=generated_answer,
@@ -237,12 +243,12 @@ class GenerationEvaluator:
             score = int(data.get(score_key, 5))
             return max(1, min(10, score))
         except Exception as e:
-            logger.warning("LLM 评分失败", error=str(e))
+            self._logger.warning("LLM 评分失败", error=str(e))
             return None
 
     async def _generate_reverse_questions(self, generated_answer: str) -> List[str]:
         """从回答反向生成候选问题"""
-        prompt = PromptManager.format_prompt(
+        prompt = self._prompt_provider.format(
             "eval_reverse_question",
             generated_answer=generated_answer,
         )
@@ -256,5 +262,5 @@ class GenerationEvaluator:
             data = json.loads(response)
             return data.get("generated_questions", [])
         except Exception as e:
-            logger.warning("反向问题生成失败", error=str(e))
+            self._logger.warning("反向问题生成失败", error=str(e))
             return []

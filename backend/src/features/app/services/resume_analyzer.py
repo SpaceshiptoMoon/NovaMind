@@ -9,78 +9,85 @@ S5-S9 + S12: 简历分析报告生成 Pipeline (V2)
   S8:   技术前置学习（学习导向 Q&A）
   S9:   组装中间 MD 报告（三段式）
   S12:  组装最终报告（三段式 + Q&A + 简历建议）
+
+批次 5 接缝：
+  - prompt 经注入的 ``PromptProvider`` 端口取模板、日志经注入的 ``Logger`` 端口输出，
+    不再 import ``shared.prompts.PromptManager`` / ``core.middleware.structured_logging``。
+  - 公司背景补充的联网搜索改经注入的 ``WebSearchPort``（见 ``shared/search_ports.py``），
+    不再直接 import ``deep_research.services.{tavily,duckduckgo}_service`` 与
+    ``setting.yaml_config.get_config``（切断 resume -> deep_research / setting 导入边）。
+  - ``shared.utils.redact`` 属引擎通用能力（批次 6 迁 ``novamind-engine-core``），
+    resume 引擎 -> 引擎库依赖方向允许，保留 import。
 """
 import json
 from typing import Optional
 
-from novamind.core.middleware.structured_logging import get_logger
-from novamind.setting.yaml_config import get_config
 from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.prompts import PromptManager
+from novamind.shared.engine_ports import Logger, PromptProvider
+from novamind.shared.search_ports import WebSearchPort, WebSearchResult
 from novamind.features.app.services.resume_parser import _extract_json
 from novamind.features.app.schemas.resume_schema import (
     StructuredResume, JDAnalysis, ProbingPlan, KnowledgePoint, ProjectPriority, PrefixKnowledge,
     WorkProjectUnit,
 )
 
-logger = get_logger(__name__)
-
 
 class ResumeAnalyzer:
     """简历分析 + 报告生成器（V2 三阶段框架）"""
 
-    def __init__(self, llm_client: BaseLLM):
+    def __init__(
+        self,
+        llm_client: BaseLLM,
+        *,
+        prompt_provider: PromptProvider,
+        logger: Logger,
+        web_search_port: Optional[WebSearchPort] = None,
+    ):
         self.llm = llm_client
-        self._search_service = None
+        self._prompt_provider = prompt_provider
+        self._logger = logger
+        # 联网搜索端口：未注入时公司背景补充降级到纯 LLM 推断（行为不变）
+        self._web_search_port = web_search_port
 
-    def _get_search_service(self):
-        """懒加载搜索引擎服务（优先 Tavily，备选 DuckDuckGo）"""
-        if self._search_service is not None:
-            return self._search_service
-
-        config = get_config()
-        ext_config = getattr(config, 'external_search', None)
-
-        # 尝试 Tavily（质量最高，需要 API Key）
-        if ext_config and hasattr(ext_config, 'tavily') and ext_config.tavily.api_key:
+    async def _search_company_context(self, company: str, position: str) -> list[WebSearchResult]:
+        """经注入的 WebSearchPort 查询公司/岗位背景（未注入端口时返回空，降级 LLM）。"""
+        if self._web_search_port is None:
+            return []
+        from novamind.shared.utils.redact import redact_sensitive_text
+        # 搜索查询前脱敏，防止 JD/简历夹带联系方式外发搜索引擎
+        safe_company = redact_sensitive_text(company or "")
+        safe_position = redact_sensitive_text(position or "")
+        queries = [
+            f"{safe_company} {safe_position} 技术栈 业务方向",
+            f"{safe_company} {safe_position} 面试 岗位职责",
+        ]
+        all_results: list[WebSearchResult] = []
+        for query in queries:
             try:
-                from novamind.features.deep_research.services.tavily_service import TavilySearchService
-                svc = TavilySearchService()
-                if svc.is_available():
-                    self._search_service = svc
-                    logger.info("使用 Tavily 搜索引擎补充公司背景")
-                    return self._search_service
+                results = await self._web_search_port.search(query=query, max_results=5)
+                all_results.extend(results)
             except Exception as e:
-                logger.warning("Tavily 加载失败", error=str(e))
-
-        # 回退到 DuckDuckGo（免费）
-        try:
-            from novamind.features.deep_research.services.duckduckgo_service import DuckDuckGoSearchService
-            svc = DuckDuckGoSearchService()
-            if svc.is_available():
-                self._search_service = svc
-                logger.info("使用 DuckDuckGo 搜索引擎补充公司背景")
-                return self._search_service
-        except Exception as e:
-            logger.warning("DuckDuckGo 加载失败", error=str(e))
-
-        logger.warning("无可用搜索引擎，将降级到纯 LLM 推断")
-        return None
+                self._logger.warning(
+                    "搜索引擎查询失败，将降级到 LLM 推断",
+                    company=company,
+                    error=str(e)[:200],
+                )
+        return all_results
 
     async def _generate_resume_summary(self, resume: StructuredResume) -> str:
         """S4.5: 调用 LLM 生成简历概述"""
         resume_data = self._make_resume_summary(resume)
-        prompt = PromptManager.format_prompt("resume_summary", resume_data=resume_data)
+        prompt = self._prompt_provider.format("resume_summary", resume_data=resume_data)
         try:
             response = await self.llm.generate_text(
                 prompt=prompt,
                 temperature=0.3,
             )
             summary = response.strip()
-            logger.info("简历摘要生成完成", summary_len=len(summary))
+            self._logger.info("简历摘要生成完成", summary_len=len(summary))
             return summary
         except Exception as e:
-            logger.warning("简历摘要生成失败，跳过", error=str(e))
+            self._logger.warning("简历摘要生成失败，跳过", error=str(e))
             return ""
 
     async def analyze(
@@ -100,34 +107,34 @@ class ResumeAnalyzer:
         jd_analysis = None
         if jd_text and jd_text.strip():
             jd_analysis = await self._extract_jd_analysis(jd_text)
-            logger.info("JD 技术图谱提取完成", skills=len(jd_analysis.required_skills))
+            self._logger.info("JD 技术图谱提取完成", skills=len(jd_analysis.required_skills))
 
         # S6: 工作-项目上下文合并
         work_units = self._merge_work_projects(resume)
-        logger.info("工作-项目合并完成", unit_count=len(work_units))
+        self._logger.info("工作-项目合并完成", unit_count=len(work_units))
 
         # S6.5: 公司/岗位背景补充
         work_units = await self._enrich_work_contexts(work_units)
-        logger.info("公司/岗位背景补充完成")
+        self._logger.info("公司/岗位背景补充完成")
 
         # S7: 复杂度评估 + 追问策略
         work_units = await self._assess_complexities(work_units, resume, jd_analysis)
         knowledge_points = self._build_knowledge_points(work_units, resume, jd_analysis, breadth)
-        logger.info("知识点提取完成", kp_count=len(knowledge_points))
+        self._logger.info("知识点提取完成", kp_count=len(knowledge_points))
 
         probing_plan = await self._generate_probing_strategy(
             knowledge_points, work_units, resume, jd_analysis, breadth,
         )
         probing_plan.work_units = work_units
-        logger.info("追问策略生成完成", total_rounds=probing_plan.total_rounds)
+        self._logger.info("追问策略生成完成", total_rounds=probing_plan.total_rounds)
 
         # S8: 技术前置学习
         prefix_knowledge = await self._generate_prefix_knowledge(knowledge_points)
-        logger.info("前缀知识生成完成", count=len(prefix_knowledge))
+        self._logger.info("前缀知识生成完成", count=len(prefix_knowledge))
 
         # S9: 组装 MD 报告
         md_report = self._assemble_md_report(resume, jd_analysis, probing_plan, work_units, prefix_knowledge)
-        logger.info("MD 报告组装完成", report_len=len(md_report))
+        self._logger.info("MD 报告组装完成", report_len=len(md_report))
 
         return {
             "jd_analysis": jd_analysis,
@@ -140,7 +147,7 @@ class ResumeAnalyzer:
     # ==================== S5: JD 技术图谱 ====================
 
     async def _extract_jd_analysis(self, jd_text: str) -> JDAnalysis:
-        prompt = PromptManager.format_prompt("resume_jd_analysis", jd_text=jd_text)
+        prompt = self._prompt_provider.format("resume_jd_analysis", jd_text=jd_text)
         response = await self.llm.generate_text(
             prompt=prompt,
             temperature=0.1,
@@ -282,7 +289,7 @@ class ResumeAnalyzer:
             try:
                 await self._enrich_single_context(unit)
             except Exception as e:
-                logger.warning(
+                self._logger.warning(
                     "公司背景补充失败，跳过",
                     company=unit.company,
                     error=str(e)[:200],
@@ -293,44 +300,30 @@ class ResumeAnalyzer:
         """补充单个工作单元的公司/岗位背景"""
         search_results_text = "（无搜索结果）"
 
-        # 步骤1：搜索引擎查询
-        search_service = self._get_search_service()
-        if search_service:
+        # 步骤1：搜索引擎查询（经注入的 WebSearchPort）
+        all_results = await self._search_company_context(unit.company or "", unit.position or "")
+        if all_results:
             try:
-                from novamind.shared.utils.redact import redact_sensitive_text
-                # 搜索查询前脱敏，防止 JD/简历夹带联系方式外发搜索引擎
-                company = redact_sensitive_text(unit.company or "")
-                position = redact_sensitive_text(unit.position or "")
-                queries = [
-                    f"{company} {position} 技术栈 业务方向",
-                    f"{company} {position} 面试 岗位职责",
-                ]
-                all_results = []
-                for query in queries:
-                    results = await search_service.search(query=query, max_results=5)
-                    all_results.extend(results)
-
-                if all_results:
-                    # 去重并取 top 8
-                    seen_urls = set()
-                    unique = []
-                    for r in all_results:
-                        if r.url not in seen_urls:
-                            seen_urls.add(r.url)
-                            unique.append(r)
-                    top_results = unique[:8]
-                    search_results_text = "\n".join(
-                        f"- [{r.title}] {r.content[:200]}"
-                        for r in top_results
-                    )
-                    logger.info(
-                        "搜索引擎查询成功",
-                        company=unit.company,
-                        result_count=len(top_results),
-                    )
+                # 去重并取 top 8
+                seen_urls = set()
+                unique = []
+                for r in all_results:
+                    if r.url not in seen_urls:
+                        seen_urls.add(r.url)
+                        unique.append(r)
+                top_results = unique[:8]
+                search_results_text = "\n".join(
+                    f"- [{r.title}] {r.snippet[:200]}"
+                    for r in top_results
+                )
+                self._logger.info(
+                    "搜索引擎查询成功",
+                    company=unit.company,
+                    result_count=len(top_results),
+                )
             except Exception as e:
-                logger.warning(
-                    "搜索引擎查询失败，将降级到 LLM 推断",
+                self._logger.warning(
+                    "搜索引擎结果整理失败，将降级到 LLM 推断",
                     company=unit.company,
                     error=str(e)[:200],
                 )
@@ -348,7 +341,7 @@ class ResumeAnalyzer:
                 all_tech.extend(ts.languages + ts.frameworks + ts.middleware)
             tech_stack = ", ".join(set(all_tech))
 
-        prompt = PromptManager.format_prompt(
+        prompt = self._prompt_provider.format(
             "resume_work_context_enrichment",
             company=unit.company,
             position=unit.position,
@@ -374,7 +367,7 @@ class ResumeAnalyzer:
         # 重新构建完整上下文（加入背景信息）
         unit.full_context = self._build_unit_context_with_enrichment(unit)
 
-        logger.info(
+        self._logger.info(
             "公司背景补充完成",
             company=unit.company,
             has_industry=bool(unit.company_industry),
@@ -386,7 +379,7 @@ class ResumeAnalyzer:
         parts = [unit.full_context]  # 保留基础上下文
 
         if unit.company_industry:
-            parts.append(f"\n--- 公司背景 ---")
+            parts.append("\n--- 公司背景 ---")
             parts.append(f"行业: {unit.company_industry}")
         if unit.company_scale:
             parts.append(f"规模: {unit.company_scale}")
@@ -410,7 +403,7 @@ class ResumeAnalyzer:
             try:
                 await self._assess_single_complexity(unit, resume, jd_analysis)
             except Exception as e:
-                logger.warning(
+                self._logger.warning(
                     "复杂度评估失败，使用默认轮数",
                     unit_id=unit.id,
                     error=str(e)[:200],
@@ -449,7 +442,7 @@ class ResumeAnalyzer:
         if not unit.projects and unit.work_responsibilities:
             unit_info_parts.append("工作职责: " + "；".join(unit.work_responsibilities[:5]))
 
-        prompt = PromptManager.format_prompt(
+        prompt = self._prompt_provider.format(
             "resume_complexity_assessment",
             work_unit_info="\n".join(unit_info_parts),
         )
@@ -468,7 +461,7 @@ class ResumeAnalyzer:
         # 安全校验：限制在 2-8 轮
         unit.allocated_rounds = max(2, min(8, unit.allocated_rounds))
 
-        logger.info(
+        self._logger.info(
             "复杂度评估完成",
             unit_id=unit.id,
             score=unit.complexity_score,
@@ -770,7 +763,7 @@ class ResumeAnalyzer:
             indent=2,
         )
 
-        prompt = PromptManager.format_prompt(
+        prompt = self._prompt_provider.format(
             "resume_probing_strategy",
             jd_info=jd_info,
             resume_summary=resume_summary,
@@ -792,7 +785,7 @@ class ResumeAnalyzer:
                 if p.category == "project" and p.source in updated_plans:
                     p.probing_chain = updated_plans[p.source][:p.allocated_rounds]
         except Exception as e:
-            logger.error("追问策略生成失败，使用默认问题", error=str(e))
+            self._logger.error("追问策略生成失败，使用默认问题", error=str(e))
 
         # 生成项目优先级
         proj_points = [p for p in sorted_points if p.category == "project"]
@@ -844,7 +837,7 @@ class ResumeAnalyzer:
 
         results: list[PrefixKnowledge] = []
         for tech_name in tech_list:
-            prompt = PromptManager.format_prompt(
+            prompt = self._prompt_provider.format(
                 "resume_prefix_knowledge",
                 tech_list=json.dumps([tech_name], ensure_ascii=False),
             )
@@ -858,9 +851,9 @@ class ResumeAnalyzer:
                 items = data.get("items", [])
                 if items:
                     results.append(PrefixKnowledge(**items[0]))
-                    logger.info("前缀知识生成成功", tech=tech_name)
+                    self._logger.info("前缀知识生成成功", tech=tech_name)
             except Exception as e:
-                logger.warning("前缀知识生成失败，跳过", tech=tech_name, error=str(e))
+                self._logger.warning("前缀知识生成失败，跳过", tech=tech_name, error=str(e))
 
         return results
 
@@ -961,7 +954,7 @@ class ResumeAnalyzer:
                     for kp in proj_kps:
                         for q in kp.probing_chain[:kp.allocated_rounds]:
                             parts.append(f"{q_idx}. **Q**: {q}")
-                            parts.append(f"   **A**: _（待追问填入）_")
+                            parts.append("   **A**: _（待追问填入）_")
                             q_idx += 1
                     parts.append("")
 
@@ -973,7 +966,7 @@ class ResumeAnalyzer:
                             parts.append(f"\n#### {kp.name}（{kp.allocated_rounds}轮）\n")
                             for i, q in enumerate(kp.probing_chain[:kp.allocated_rounds], 1):
                                 parts.append(f"{i}. **Q**: {q}")
-                                parts.append(f"   **A**: _（待追问填入）_")
+                                parts.append("   **A**: _（待追问填入）_")
                         parts.append("")
             elif unit.work_responsibilities:
                 # 工作职责追问
@@ -982,7 +975,7 @@ class ResumeAnalyzer:
                 for kp in work_kps:
                     for i, q in enumerate(kp.probing_chain[:kp.allocated_rounds], 1):
                         parts.append(f"{i}. **Q**: {q}")
-                        parts.append(f"   **A**: _（待追问填入）_")
+                        parts.append("   **A**: _（待追问填入）_")
                 parts.append("")
 
         # 技能/论文/专利等独立知识点
@@ -994,7 +987,7 @@ class ResumeAnalyzer:
                 parts.append("**追问记录**:")
                 for i, q in enumerate(kp.probing_chain[:kp.allocated_rounds], 1):
                     parts.append(f"{i}. **Q**: {q}")
-                    parts.append(f"   **A**: _（待追问填入）_")
+                    parts.append("   **A**: _（待追问填入）_")
                 parts.append("")
 
         # ==================== Part 3: 简历优化建议（占位） ====================

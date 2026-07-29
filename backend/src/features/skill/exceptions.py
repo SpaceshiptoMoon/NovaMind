@@ -91,6 +91,25 @@ class SkillNotInstalledError(SkillError):
         self.agent_id = agent_id
 
 
+class SkillTargetAgentNotFoundError(SkillError):
+    """安装目标 Agent 不存在
+
+    批次 5 接缝：原 ``skill_marketplace_service.install_skill`` 在 Agent 不存在时
+    直接 raise ``agent.api.exceptions.AgentNotFoundError``（code=``AGENT_NOT_FOUND``、
+    404）。为切断 skill -> agent 的服务层导入边，改抛本 skill 本地异常，但**逐字保留
+    原错误码与消息**（``AGENT_NOT_FOUND`` → 后缀匹配 404），前端契约不变。
+    """
+
+    _serializable_attrs: ClassVar[List[str]] = ["agent_id"]
+
+    def __init__(self, agent_id: int):
+        super().__init__(
+            message=f"Agent {agent_id} 不存在",
+            code="AGENT_NOT_FOUND",
+        )
+        self.agent_id = agent_id
+
+
 class InvalidSkillFormatError(SkillError):
     """SKILL.md 格式无效"""
     _serializable_attrs: ClassVar[List[str]] = ["reason"]
