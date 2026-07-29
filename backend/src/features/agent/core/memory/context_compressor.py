@@ -46,7 +46,7 @@ class ContextCompressor(ICompressionStrategy):
         self,
         llm_client_factory: Optional[Callable] = None,
         tail_ratio: float = 0.20,
-        summary_repository: Optional[Any] = None,
+        summary_store: Optional[Any] = None,
         todo_store: Optional[Any] = None,
         conversation_id: Optional[int] = None,
         long_term_memory: Optional[Any] = None,
@@ -57,7 +57,7 @@ class ContextCompressor(ICompressionStrategy):
         self._llm_factory = llm_client_factory
         self._aux_llm_factory = auxiliary_llm_factory
         self._tail_ratio = tail_ratio
-        self._summary_repo = summary_repository
+        self._summary_store = summary_store
         self._todo_store = todo_store
         self._conversation_id = conversation_id
         self._long_term = long_term_memory
@@ -162,10 +162,10 @@ class ContextCompressor(ICompressionStrategy):
         savings = 1.0 - ratio
 
         # 持久化摘要到 agent_context_summaries
-        if summary and conversation_id and self._summary_repo:
+        if summary and conversation_id and self._summary_store:
             try:
                 summary_token_count = token_budget.count_text_tokens(summary)
-                await self._summary_repo.create(
+                await self._summary_store.save_summary(
                     conversation_id=conversation_id,
                     summary_text=summary,
                     compressed_count=len(turns_to_compress),
@@ -471,9 +471,9 @@ class ContextCompressor(ICompressionStrategy):
 
         # 加载旧摘要：优先内存缓存，其次从 DB 加载
         old_summary = self._previous_summary
-        if not old_summary and self._summary_repo and conversation_id:
+        if not old_summary and self._summary_store and conversation_id:
             try:
-                latest = await self._summary_repo.get_latest(conversation_id)
+                latest = await self._summary_store.get_latest_summary(conversation_id)
                 if latest:
                     old_summary = latest.summary_text
                     logger.debug("从 DB 加载旧摘要用于增量融合", conversation_id=conversation_id)

@@ -3,6 +3,9 @@
 
 提供知识空间发现、知识库浏览、文档检索的完整工具链。
 工具使用流程：空间(list_spaces) → 知识库(list_knowledge_bases) → 搜索(knowledge_search)
+
+端口化：宿主在装配时注入 KnowledgeSearchPort 到 context，工具经端口调用
+知识空间/用户 feature 能力，不再直接 import features.knowledge_space/features.user。
 """
 import json
 from typing import Any, Dict, List
@@ -165,95 +168,37 @@ class KnowledgeSearchTool(BaseTool):
     async def execute_tool(
         self, tool_name: str, arguments: Dict[str, Any], context: Dict[str, Any]
     ) -> str:
+        port = context.get("knowledge_search_port")
+        if port is None:
+            return json.dumps(
+                {"error": "知识库检索端口未配置，无法执行知识库搜索"},
+                ensure_ascii=False,
+            )
+
         dispatch = {
-            "list_spaces": lambda: self._list_spaces(context),
-            "list_knowledge_bases": lambda: self._list_knowledge_bases(arguments, context),
-            "list_all_knowledge_bases": lambda: self._list_all_knowledge_bases(context),
-            "knowledge_search": lambda: self._search(arguments, context),
-            "document_list": lambda: self._list_documents(arguments, context),
+            "list_spaces": lambda: self._list_spaces(port, context),
+            "list_knowledge_bases": lambda: self._list_knowledge_bases(port, arguments, context),
+            "list_all_knowledge_bases": lambda: self._list_all_knowledge_bases(port, context),
+            "knowledge_search": lambda: self._search(port, arguments, context),
+            "document_list": lambda: self._list_documents(port, arguments, context),
         }
         handler = dispatch.get(tool_name)
         if handler:
             return await handler()
         return f"未知工具：{tool_name}"
 
-    # ==================== 权限校验 ====================
-
-    async def _check_space_access(
-        self, db, space_id: int, user_id: int
-    ) -> bool:
-        """
-        校验用户是否有权访问指定空间。
-
-        规则与 validate_space_access 一致：
-        - 空间必须存在且状态为 ACTIVE
-        - 系统管理员拥有所有空间的访问权限
-        - 用户是空间成员（ACTIVE 状态）则允许
-        - 非成员但空间为 PUBLIC 则允许
-        - 其余情况拒绝访问
-
-        Args:
-            db: 数据库会话
-            space_id: 空间 ID
-            user_id: 用户 ID
-
-        Returns:
-            True 表示有权限，False 表示无权限
-        """
-        from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
-        from novamind.features.knowledge_space.repository.member_repository import MemberRepository
-        from novamind.features.knowledge_space.models.knowledge_space import SpaceStatus, SpaceVisibility
-        from novamind.features.user.models.user import User
-
-        space_repo = SpaceRepository(db)
-        member_repo = MemberRepository(db)
-
-        # 获取空间
-        space = await space_repo.get_by_id(space_id)
-        if not space:
-            return False
-
-        # 检查空间状态
-        if space.is_deleted() or space.status != SpaceStatus.ACTIVE:
-            return False
-
-        # 系统管理员直接放行
-        user = await db.get(User, user_id)
-        if user and user.is_admin:
-            return True
-
-        # 检查是否是空间成员
-        is_member = await member_repo.is_member(space_id, user_id)
-        if is_member:
-            return True
-
-        # 非成员：仅公开空间允许访问
-        if space.visibility == SpaceVisibility.PUBLIC:
-            return True
-
-        return False
-
     # ==================== 空间与知识库发现 ====================
 
-    async def _list_spaces(self, context: Dict[str, Any]) -> str:
+    async def _list_spaces(self, port, context: Dict[str, Any]) -> str:
         """列出用户可访问的知识空间"""
         try:
-            from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
-
-            db = context["db_session"]
             user_id = context["user_id"]
+            spaces = await port.list_spaces(user_id)
 
-            repo = SpaceRepository(db)
-            spaces = await repo.get_user_spaces(user_id)
-
-            result = []
-            for space in spaces:
-                result.append({
-                    "id": space.id,
-                    "name": space.name,
-                    "description": space.get_description() or "",
-                })
-
+            result = [
+                {"id": s.id, "name": s.name, "description": s.description}
+                for s in spaces
+            ]
             return json.dumps(
                 {"total": len(result), "spaces": result},
                 ensure_ascii=False,
@@ -263,37 +208,31 @@ class KnowledgeSearchTool(BaseTool):
             logger.error("获取空间列表失败", error=str(e))
             return json.dumps({"error": f"获取空间列表失败：{str(e)}"}, ensure_ascii=False)
 
-    async def _list_knowledge_bases(self, args: Dict[str, Any], context: Dict[str, Any]) -> str:
+    async def _list_knowledge_bases(
+        self, port, args: Dict[str, Any], context: Dict[str, Any]
+    ) -> str:
         """列出指定空间下的知识库"""
         try:
-            from novamind.features.knowledge_space.repository.knowledge_base_repository import (
-                KnowledgeBaseRepository,
-                KnowledgeBaseStatus,
-            )
-
-            db = context["db_session"]
             user_id = context["user_id"]
             space_id = args["space_id"]
 
-            # 校验空间访问权限
-            if not await self._check_space_access(db, space_id, user_id):
+            # 校验空间访问权限（与旧路径一致，先校验后列）
+            if not await port.can_access_space(space_id, user_id):
                 return json.dumps(
                     {"error": f"无权访问空间 {space_id}，请确认空间ID是否正确或您是否有权限"},
                     ensure_ascii=False,
                 )
 
-            repo = KnowledgeBaseRepository(db)
-            kbs = await repo.get_by_space(space_id, status=KnowledgeBaseStatus.ACTIVE)
-
-            result = []
-            for kb in kbs:
-                result.append({
+            kbs = await port.list_knowledge_bases(space_id, user_id)
+            result = [
+                {
                     "id": kb.id,
                     "name": kb.name,
-                    "description": kb.get_description() or "",
+                    "description": kb.description,
                     "space_id": kb.space_id,
-                })
-
+                }
+                for kb in kbs
+            ]
             return json.dumps(
                 {"space_id": space_id, "total": len(result), "knowledge_bases": result},
                 ensure_ascii=False,
@@ -303,37 +242,22 @@ class KnowledgeSearchTool(BaseTool):
             logger.error("获取知识库列表失败", error=str(e))
             return json.dumps({"error": f"获取知识库列表失败：{str(e)}"}, ensure_ascii=False)
 
-    async def _list_all_knowledge_bases(self, context: Dict[str, Any]) -> str:
+    async def _list_all_knowledge_bases(self, port, context: Dict[str, Any]) -> str:
         """跨空间列出用户所有可访问的知识库"""
         try:
-            from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
-            from novamind.features.knowledge_space.repository.knowledge_base_repository import (
-                KnowledgeBaseRepository,
-                KnowledgeBaseStatus,
-            )
-
-            db = context["db_session"]
             user_id = context["user_id"]
+            kbs = await port.list_all_knowledge_bases(user_id)
 
-            space_repo = SpaceRepository(db)
-            kb_repo = KnowledgeBaseRepository(db)
-
-            spaces = await space_repo.get_user_spaces(user_id)
-
-            result = []
-            space_map = {}
-            for space in spaces:
-                space_map[space.id] = space.name
-                kbs = await kb_repo.get_by_space(space.id, status=KnowledgeBaseStatus.ACTIVE)
-                for kb in kbs:
-                    result.append({
-                        "id": kb.id,
-                        "name": kb.name,
-                        "description": kb.get_description() or "",
-                        "space_id": kb.space_id,
-                        "space_name": space.name,
-                    })
-
+            result = [
+                {
+                    "id": kb.id,
+                    "name": kb.name,
+                    "description": kb.description,
+                    "space_id": kb.space_id,
+                    "space_name": kb.space_name,
+                }
+                for kb in kbs
+            ]
             return json.dumps(
                 {"total": len(result), "knowledge_bases": result},
                 ensure_ascii=False,
@@ -345,15 +269,9 @@ class KnowledgeSearchTool(BaseTool):
 
     # ==================== 搜索与文档列表 ====================
 
-    async def _search(self, args: Dict[str, Any], context: Dict[str, Any]) -> str:
+    async def _search(self, port, args: Dict[str, Any], context: Dict[str, Any]) -> str:
         """执行知识库搜索"""
         try:
-            from novamind.features.knowledge_space.services.search_service import SearchService
-            from novamind.features.knowledge_space.schemas.search_schema import SearchRequest
-            from novamind.shared.clients import get_elasticsearch_client
-            from novamind.features.user.services.model_config_service import ModelConfigService
-
-            db = context["db_session"]
             user_id: int = context["user_id"]
 
             space_id = args["space_id"]
@@ -362,71 +280,32 @@ class KnowledgeSearchTool(BaseTool):
             top_k = args.get("top_k", 5)
             search_mode = args.get("search_mode", "content_hybrid")
 
-            search_request = SearchRequest(
+            items = await port.search(
+                space_id=space_id,
+                user_id=user_id,
                 query=query,
-                search_mode=search_mode,
                 top_k=top_k,
+                search_mode=search_mode,
+                kb_id=kb_id,
             )
 
-            es_client = await get_elasticsearch_client()
-            model_config_service = ModelConfigService(db)
-            search_service = SearchService(db, es_client, model_config_service)
-
-            if kb_id:
-                result = await search_service.search(
-                    space_id=space_id,
-                    kb_id=kb_id,
-                    user_id=user_id,
-                    request=search_request,
-                )
-            else:
-                from novamind.features.knowledge_space.repository.knowledge_base_repository import (
-                    KnowledgeBaseRepository,
-                )
-
-                kb_repo = KnowledgeBaseRepository(db)
-                kbs = await kb_repo.get_by_space(space_id)
-                if not kbs:
-                    return json.dumps(
-                        {"error": "该空间下没有知识库", "space_id": space_id},
-                        ensure_ascii=False,
-                    )
-
-                all_results = []
-                for kb in kbs[:3]:
-                    try:
-                        r = await search_service.search(
-                            space_id=space_id,
-                            kb_id=kb.id,
-                            user_id=user_id,
-                            request=search_request,
-                        )
-                        all_results.extend(r.get("results", []))
-                    except Exception as e:
-                        logger.warning("知识库检索失败，跳过", kb_id=kb.id, error=str(e))
-                        continue
-
-                all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
-                result = {"results": all_results[:top_k], "query": query}
-
-            results = result.get("results", [])
-            if not results:
+            if not items:
                 return json.dumps(
                     {"message": "未找到相关结果", "query": query},
                     ensure_ascii=False,
                 )
 
             formatted = []
-            for r in results:
-                item = {
-                    "content": r.get("content", "")[:500],
-                    "score": round(r.get("score", 0), 4),
-                    "document_id": r.get("document_id"),
-                    "chunk_id": r.get("chunk_id"),
+            for item in items:
+                row = {
+                    "content": item.content[:500],
+                    "score": round(item.score, 4),
+                    "document_id": item.document_id,
+                    "chunk_id": item.chunk_id,
                 }
-                if r.get("file_info"):
-                    item["filename"] = r["file_info"].get("filename", "")
-                formatted.append(item)
+                if item.file_info:
+                    row["filename"] = item.file_info.get("filename", "")
+                formatted.append(row)
 
             return json.dumps(
                 {"query": query, "total": len(formatted), "results": formatted},
@@ -438,51 +317,43 @@ class KnowledgeSearchTool(BaseTool):
             logger.error("知识库搜索失败", error=str(e))
             return json.dumps({"error": f"搜索失败：{str(e)}"}, ensure_ascii=False)
 
-    async def _list_documents(self, args: Dict[str, Any], context: Dict[str, Any]) -> str:
+    async def _list_documents(
+        self, port, args: Dict[str, Any], context: Dict[str, Any]
+    ) -> str:
         """列出文档"""
         try:
-            from novamind.features.knowledge_space.repository.document_repository import (
-                DocumentRepository,
-            )
-
-            db = context["db_session"]
             user_id = context["user_id"]
             space_id = args["space_id"]
             kb_id = args["kb_id"]
             page = args.get("page", 1)
             page_size = args.get("page_size", 20)
 
-            # 校验空间访问权限
-            if not await self._check_space_access(db, space_id, user_id):
+            # 校验空间访问权限（与旧路径一致，先校验后列）
+            if not await port.can_access_space(space_id, user_id):
                 return json.dumps(
                     {"error": f"无权访问空间 {space_id}，请确认空间ID是否正确或您是否有权限"},
                     ensure_ascii=False,
                 )
 
-            doc_repo = DocumentRepository(db)
-            skip = (page - 1) * page_size
-            documents = await doc_repo.get_by_kb(
-                kb_id=kb_id, skip=skip, limit=page_size
+            result = await port.list_documents(
+                space_id=space_id,
+                kb_id=kb_id,
+                user_id=user_id,
+                page=page,
+                page_size=page_size,
             )
-            total = await doc_repo.count_by_kb(kb_id=kb_id)
 
-            docs = []
-            for doc in documents:
-                docs.append(
-                    {
-                        "id": doc.id,
-                        "filename": doc.filename,
-                        "status": doc.status.value if hasattr(doc.status, "value") else str(doc.status),
-                        "chunk_count": doc.doc_metadata.get("chunk_count", 0) if doc.doc_metadata else 0,
-                    }
-                )
-
-            return json.dumps(
+            docs = [
                 {
-                    "kb_id": kb_id,
-                    "total": total,
-                    "documents": docs,
-                },
+                    "id": d.id,
+                    "filename": d.filename,
+                    "status": d.status,
+                    "chunk_count": d.chunk_count,
+                }
+                for d in result.documents
+            ]
+            return json.dumps(
+                {"kb_id": kb_id, "total": result.total, "documents": docs},
                 ensure_ascii=False,
                 indent=2,
             )

@@ -63,21 +63,23 @@ class WebSearchTool(BaseTool):
         self, tool_name: str, arguments: Dict[str, Any], context: Dict[str, Any]
     ) -> str:
         if tool_name == "web_search":
-            return await self._search(arguments)
+            return await self._search(arguments, context)
         return f"未知工具：{tool_name}"
 
-    async def _search(self, args: Dict[str, Any]) -> str:
+    async def _search(self, args: Dict[str, Any], context: Dict[str, Any]) -> str:
         """执行网页搜索"""
         try:
-            from novamind.features.deep_research.services.duckduckgo_service import (
-                DuckDuckGoSearchService,
-            )
+            port = context.get("web_search_port")
+            if port is None:
+                return json.dumps(
+                    {"error": "网页搜索端口未配置，无法执行联网搜索"},
+                    ensure_ascii=False,
+                )
 
             query = args["query"]
             max_results = args.get("max_results", 5)
 
-            service = DuckDuckGoSearchService()
-            results = await service.search(query=query, max_results=max_results)
+            results = await port.search(query=query, max_results=max_results)
 
             if not results:
                 return json.dumps(
@@ -85,15 +87,14 @@ class WebSearchTool(BaseTool):
                     ensure_ascii=False,
                 )
 
-            formatted = []
-            for r in results:
-                formatted.append(
-                    {
-                        "title": r.title if hasattr(r, "title") else "",
-                        "url": r.url if hasattr(r, "url") else "",
-                        "snippet": r.content if hasattr(r, "content") else "",
-                    }
-                )
+            formatted = [
+                {
+                    "title": r.title,
+                    "url": r.url,
+                    "snippet": r.snippet,
+                }
+                for r in results
+            ]
 
             return json.dumps(
                 {"query": query, "total": len(formatted), "results": formatted},

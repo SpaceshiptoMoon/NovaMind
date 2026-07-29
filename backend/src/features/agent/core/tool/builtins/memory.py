@@ -3,6 +3,10 @@
 
 允许 Agent 主动添加、替换、移除长期记忆。
 所有写入操作经过安全扫描。
+
+端口化：经 context 注入 memory_store_port（MySQL）/memory_search_port（ES）/
+embedding_client_resolver（embedding 客户端工厂），不再直接 import
+agent.repository / user.services.model_config_service / shared.clients.ClientFactory。
 """
 import json
 from typing import Any, Dict, List
@@ -88,29 +92,34 @@ class MemoryTool(BaseTool):
         if tool_name != "memory":
             return json.dumps({"error": f"未知工具：{tool_name}"}, ensure_ascii=False)
 
+        store = context.get("memory_store_port")
+        if store is None:
+            return json.dumps(
+                {"error": "记忆存储端口未配置，无法执行记忆操作"},
+                ensure_ascii=False,
+            )
+
         action = arguments.get("action", "")
         dispatch = {
-            "add": lambda: self._add(arguments, context),
-            "replace": lambda: self._replace(arguments, context),
-            "remove": lambda: self._remove(arguments, context),
+            "add": lambda: self._add(store, arguments, context),
+            "replace": lambda: self._replace(store, arguments, context),
+            "remove": lambda: self._remove(store, arguments, context),
         }
         handler = dispatch.get(action)
         if handler:
             return await handler()
         return json.dumps({"error": f"未知操作：{action}"}, ensure_ascii=False)
 
-    async def _add(self, args: Dict[str, Any], context: Dict[str, Any]) -> str:
+    async def _add(self, store, args: Dict[str, Any], context: Dict[str, Any]) -> str:
         """添加记忆"""
         try:
             from novamind.features.agent.core.memory.security import scan_memory_content
-            from novamind.features.agent.repository.memory_repository import MemoryRepository
 
             category = args["category"]
             content = args.get("content", "")
             if not content:
                 return json.dumps({"error": "add 操作必须提供 content"}, ensure_ascii=False)
 
-            db = context["db_session"]
             user_id = context["user_id"]
             agent_id = context["agent_id"]
 
@@ -122,33 +131,31 @@ class MemoryTool(BaseTool):
                     ensure_ascii=False,
                 )
 
-            repo = MemoryRepository(db)
-
             # 记忆数量上限检查
-            existing, total = await repo.list_by_agent(agent_id, user_id, limit=1)
+            _, total = await store.list_by_agent(agent_id, user_id, limit=1)
             if total >= _MEMORY_LIMIT_PER_USER_AGENT:
                 return json.dumps(
                     {"error": f"记忆数量已达上限 ({_MEMORY_LIMIT_PER_USER_AGENT} 条)，请先移除旧记忆"},
                     ensure_ascii=False,
                 )
 
-            existing = await repo.find_similar(agent_id, user_id, category, content)
+            existing = await store.find_similar(agent_id, user_id, category, content)
             if existing:
                 return json.dumps(
                     {"message": "相同记忆已存在，未重复添加", "id": existing.id},
                     ensure_ascii=False,
                 )
 
-            memory = await repo.create(
+            memory = await store.create(
                 agent_id=agent_id,
                 user_id=user_id,
                 category=category,
                 content=content,
             )
-            await db.flush()
+            await store.flush()
 
             try:
-                await self._index_to_es(memory, db, user_id)
+                await self._index_to_es(memory, context)
             except Exception as e:
                 logger.warning("记忆 ES 索引失败，仅 MySQL 写入", error=str(e))
 
@@ -160,18 +167,16 @@ class MemoryTool(BaseTool):
             logger.error("添加记忆失败", error=str(e))
             return json.dumps({"error": f"添加记忆失败：{str(e)}"}, ensure_ascii=False)
 
-    async def _replace(self, args: Dict[str, Any], context: Dict[str, Any]) -> str:
+    async def _replace(self, store, args: Dict[str, Any], context: Dict[str, Any]) -> str:
         """替换记忆"""
         try:
             from novamind.features.agent.core.memory.security import scan_memory_content
-            from novamind.features.agent.repository.memory_repository import MemoryRepository
 
             old_content = args.get("old_content", "")
             new_content = args.get("content", "")
             if not old_content or not new_content:
                 return json.dumps({"error": "replace 操作必须提供 old_content 和 content"}, ensure_ascii=False)
 
-            db = context["db_session"]
             user_id = context["user_id"]
             agent_id = context["agent_id"]
 
@@ -182,105 +187,67 @@ class MemoryTool(BaseTool):
                     ensure_ascii=False,
                 )
 
-            repo = MemoryRepository(db)
-            from novamind.features.agent.models.memory import AgentMemory
-            from sqlalchemy import select
-
-            stmt = select(AgentMemory).where(
-                AgentMemory.agent_id == agent_id,
-                AgentMemory.user_id == user_id,
-                AgentMemory.content.contains(old_content),
-            )
-            result = await db.execute(stmt)
-            memory = result.scalar_one_or_none()
-
-            if not memory:
+            entry = await store.find_by_content_contains(agent_id, user_id, old_content)
+            if not entry:
                 return json.dumps(
                     {"error": "未找到匹配的记忆，请确保 old_content 包含正确的内容片段"},
                     ensure_ascii=False,
                 )
 
-            await repo.update(memory.id, content=new_content)
-            await db.flush()
+            await store.update_content(entry.id, new_content)
+            await store.flush()
 
             return json.dumps(
-                {"message": "记忆已更新", "id": memory.id},
+                {"message": "记忆已更新", "id": entry.id},
                 ensure_ascii=False,
             )
         except Exception as e:
             logger.error("替换记忆失败", error=str(e))
             return json.dumps({"error": f"替换记忆失败：{str(e)}"}, ensure_ascii=False)
 
-    async def _remove(self, args: Dict[str, Any], context: Dict[str, Any]) -> str:
+    async def _remove(self, store, args: Dict[str, Any], context: Dict[str, Any]) -> str:
         """移除记忆"""
         try:
-            from novamind.features.agent.repository.memory_repository import MemoryRepository
-            from novamind.features.agent.models.memory import AgentMemory
-            from sqlalchemy import select
-
             old_content = args.get("old_content", "")
             if not old_content:
                 return json.dumps({"error": "remove 操作必须提供 old_content"}, ensure_ascii=False)
 
-            db = context["db_session"]
             user_id = context["user_id"]
             agent_id = context["agent_id"]
 
-            stmt = select(AgentMemory).where(
-                AgentMemory.agent_id == agent_id,
-                AgentMemory.user_id == user_id,
-                AgentMemory.content.contains(old_content),
-            )
-            result = await db.execute(stmt)
-            memory = result.scalar_one_or_none()
+            entry = await store.find_by_content_contains(agent_id, user_id, old_content)
+            if not entry:
+                return json.dumps({"error": "未找到匹配的记忆"}, ensure_ascii=False)
 
-            if not memory:
-                return json.dumps(
-                    {"error": "未找到匹配的记忆"},
-                    ensure_ascii=False,
-                )
-
-            repo = MemoryRepository(db)
-            await repo.delete(memory.id)
-            await db.flush()
+            await store.delete(entry.id)
+            await store.flush()
 
             try:
-                from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
-                from novamind.shared.clients import ClientFactory
-                es_wrapper = await ClientFactory.get_elasticsearch_client()
-                search_repo = MemorySearchRepository(es_client=es_wrapper.es_client)
-                await search_repo.delete_memory(agent_id, memory.id)
+                search_port = context.get("memory_search_port")
+                if search_port:
+                    await search_port.delete_memory(agent_id, entry.id)
             except Exception as e:
                 logger.warning("ES 记忆删除失败", error=str(e))
 
             return json.dumps(
-                {"message": "记忆已移除", "id": memory.id},
+                {"message": "记忆已移除", "id": entry.id},
                 ensure_ascii=False,
             )
         except Exception as e:
             logger.error("移除记忆失败", error=str(e))
             return json.dumps({"error": f"移除记忆失败：{str(e)}"}, ensure_ascii=False)
 
-    async def _index_to_es(self, memory, db, user_id: int) -> None:
-        """将记忆索引到 ES"""
-        from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
-        from novamind.shared.clients import ClientFactory
-
-        es_wrapper = await ClientFactory.get_elasticsearch_client()
-        search_repo = MemorySearchRepository(es_client=es_wrapper.es_client)
-
-        from novamind.features.user.services.model_config_service import ModelConfigService
-        model_config_service = ModelConfigService(db)
-        embedding_model = await model_config_service.get_user_default_model_name(user_id, "embedding")
-        if not embedding_model:
+    async def _index_to_es(self, memory, context: Dict[str, Any]) -> None:
+        """将记忆索引到 ES（经端口 + embedding resolver）"""
+        search_port = context.get("memory_search_port")
+        embedding_resolver = context.get("embedding_client_resolver")
+        if not search_port or not embedding_resolver:
             return
 
-        embedding_client = await model_config_service.get_embedding_client_by_model(
-            user_id, embedding_model
-        )
+        embedding_client = await embedding_resolver()
         vector = await embedding_client.generate_embedding(memory.content)
-        await search_repo.ensure_index(memory.agent_id)
-        await search_repo.index_memory(
+        await search_port.ensure_index(memory.agent_id)
+        await search_port.index_memory(
             agent_id=memory.agent_id,
             memory_id=memory.id,
             user_id=memory.user_id,

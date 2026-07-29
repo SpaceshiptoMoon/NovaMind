@@ -8,6 +8,9 @@ MemoryManager — 记忆系统统一门面
   build_frozen_snapshot() → 长期记忆 → system prompt（会话级不变）
   prefetch(query)         → 语义搜索相关记忆 → 用户消息（每轮变化）
   build_context()         → DB 加载 + Token 预算 + 压缩 → MemorySnapshot
+
+端口化：MemoryStorePort（MySQL 记忆+摘要）/MemorySearchPort（ES）/PromptProvider
+由宿主经 create() 注入，不再直接 import agent.repository / shared.prompts。
 """
 from typing import Any, Callable, Dict, List, Optional
 
@@ -19,8 +22,8 @@ from novamind.features.agent.core.memory.short_term import ShortTermMemory
 from novamind.features.agent.core.memory.long_term import LongTermMemory
 from novamind.features.agent.core.memory.token_budget import TokenBudget
 from novamind.features.agent.core.memory.context_compressor import ContextCompressor
-from novamind.features.agent.repository.memory_repository import MemoryRepository
-from novamind.features.agent.repository.context_summary_repository import ContextSummaryRepository
+from novamind.features.agent.core.ports import MemorySearchPort, MemoryStorePort
+from novamind.shared.engine_ports import PromptProvider
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -33,15 +36,13 @@ class MemoryManager:
         self,
         short_term: ShortTermMemory,
         long_term: LongTermMemory,
-        memory_repository: MemoryRepository,
+        memory_store: MemoryStorePort,
         message_repository: Any,
-        summary_repository: Optional[ContextSummaryRepository] = None,
     ):
         self._short_term = short_term
         self._long_term = long_term
-        self._memory_repo = memory_repository
+        self._memory_store = memory_store
         self._msg_repo = message_repository
-        self._summary_repo = summary_repository
         # 冻结快照缓存
         self._frozen_snapshot_cache: Dict[str, str] = {}
 
@@ -51,10 +52,11 @@ class MemoryManager:
         message_repository: Any,
         tool_call_repository: Any,
         session_repository: Any,
-        memory_repository: MemoryRepository,
+        memory_store: MemoryStorePort,
+        prompt_provider: PromptProvider,
         model: str,
         llm_client_factory: Callable,
-        memory_search_repo: Optional[Any] = None,
+        memory_search: Optional[MemorySearchPort] = None,
         embedding_factory: Optional[Callable] = None,
         todo_store: Optional[Any] = None,
         conversation_id: Optional[int] = None,
@@ -63,20 +65,19 @@ class MemoryManager:
         auxiliary_llm_factory: Optional[Callable] = None,
     ) -> "MemoryManager":
         """工厂方法：创建完整配置的 MemoryManager"""
-        summary_repo = ContextSummaryRepository(memory_repository.session)
-
         # 先创建 LongTermMemory（ContextCompressor 需要访问）
         long_term = LongTermMemory(
-            memory_repository,
+            memory_store,
             llm_client_factory,
-            memory_search_repo=memory_search_repo,
+            prompt_provider=prompt_provider,
+            memory_search=memory_search,
             embedding_factory=embedding_factory,
         )
 
         # 压缩策略：ContextCompressor（五阶段结构化压缩 + 压缩时记忆提取）
         compression_strategy = ContextCompressor(
             llm_client_factory=llm_client_factory,
-            summary_repository=summary_repo,
+            summary_store=memory_store,
             todo_store=todo_store,
             conversation_id=conversation_id,
             long_term_memory=long_term,
@@ -91,14 +92,13 @@ class MemoryManager:
             session_repository=session_repository,
             token_budget=TokenBudget(model),
             compression_strategy=compression_strategy,
-            summary_repository=summary_repo,
+            summary_store=memory_store,
         )
         return cls(
             short_term=short_term,
             long_term=long_term,
-            memory_repository=memory_repository,
+            memory_store=memory_store,
             message_repository=message_repository,
-            summary_repository=summary_repo,
         )
 
     # ==================== 长期记忆 ====================
@@ -114,7 +114,7 @@ class MemoryManager:
             return self._frozen_snapshot_cache[cache_key]
 
         try:
-            memories, _ = await self._memory_repo.list_by_agent(
+            memories, _ = await self._memory_store.list_by_agent(
                 agent_id, user_id, limit=20
             )
             if not memories:
