@@ -35,7 +35,7 @@ from novamind.features.evaluation.api.exceptions import (
     EvaluationTaskNotCompletedError,
 )
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.prompts.templates import PromptTemplate, PromptManager
+from novamind.shared.prompts.templates import PromptManager
 from novamind.shared.storage.minio_client import MinioClient
 from novamind.core.middleware.structured_logging import get_logger
 
@@ -747,7 +747,7 @@ class EvaluationService:
             f"[{i + 1}] {c.get('content', '')}" for i, c in enumerate(chunks)
         )
         prompt = PromptManager.format_prompt(
-            PromptTemplate.EVAL_GENERATE_ANSWER.value,
+            "eval_generate_answer",
             context_text=context_text,
             question=question,
         )

@@ -13,7 +13,7 @@ from typing import Optional, List
 from dataclasses import dataclass, field
 
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.prompts.templates import PromptManager, PromptTemplate
+from novamind.shared.prompts.templates import PromptManager
 
 
 class RewriteStrategy(str, Enum):
@@ -83,7 +83,7 @@ class QueryRewriter:
             for m in recent
         )
         prompt = PromptManager.format_prompt(
-            PromptTemplate.QA_RW_COMPLETION.value, history=formatted, query=query
+            "qa_rw_completion", history=formatted, query=query
         )
         rewritten = await self._call_llm(prompt)
         return RewriteResult(
@@ -94,7 +94,7 @@ class QueryRewriter:
         )
 
     async def _synonym(self, query: str) -> RewriteResult:
-        prompt = PromptManager.format_prompt(PromptTemplate.QA_RW_SYNONYM.value, query=query)
+        prompt = PromptManager.format_prompt("qa_rw_synonym", query=query)
         rewritten = await self._call_llm(prompt)
         return RewriteResult(
             queries=[rewritten] if rewritten else [query],
@@ -104,7 +104,7 @@ class QueryRewriter:
         )
 
     async def _decompose(self, query: str) -> RewriteResult:
-        prompt = PromptManager.format_prompt(PromptTemplate.QA_RW_DECOMPOSE.value, query=query)
+        prompt = PromptManager.format_prompt("qa_rw_decompose", query=query)
         result = await self._call_llm(prompt)
         if result:
             # O-RAG6：清洗编号/项目符号前缀与标题行，避免 "1. xxx"/"- xxx"/"子问题：xxx" 被当作子查询
@@ -123,7 +123,7 @@ class QueryRewriter:
         )
 
     async def _hyde(self, query: str) -> RewriteResult:
-        prompt = PromptManager.format_prompt(PromptTemplate.QA_RW_HYDE.value, query=query)
+        prompt = PromptManager.format_prompt("qa_rw_hyde", query=query)
         hypothetical = await self._call_llm(prompt)
         return RewriteResult(
             queries=[hypothetical] if hypothetical else [query],

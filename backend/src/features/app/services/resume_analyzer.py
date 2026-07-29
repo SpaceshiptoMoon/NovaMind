@@ -16,7 +16,7 @@ from typing import Optional
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.setting.yaml_config import get_config
 from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.prompts import PromptTemplate, PromptManager
+from novamind.shared.prompts import PromptManager
 from novamind.features.app.services.resume_parser import _extract_json
 from novamind.features.app.schemas.resume_schema import (
     StructuredResume, JDAnalysis, ProbingPlan, KnowledgePoint, ProjectPriority, PrefixKnowledge,
@@ -70,7 +70,7 @@ class ResumeAnalyzer:
     async def _generate_resume_summary(self, resume: StructuredResume) -> str:
         """S4.5: 调用 LLM 生成简历概述"""
         resume_data = self._make_resume_summary(resume)
-        prompt = PromptManager.format_prompt(PromptTemplate.RESUME_SUMMARY.value, resume_data=resume_data)
+        prompt = PromptManager.format_prompt("resume_summary", resume_data=resume_data)
         try:
             response = await self.llm.generate_text(
                 prompt=prompt,
@@ -140,7 +140,7 @@ class ResumeAnalyzer:
     # ==================== S5: JD 技术图谱 ====================
 
     async def _extract_jd_analysis(self, jd_text: str) -> JDAnalysis:
-        prompt = PromptManager.format_prompt(PromptTemplate.RESUME_JD_ANALYSIS.value, jd_text=jd_text)
+        prompt = PromptManager.format_prompt("resume_jd_analysis", jd_text=jd_text)
         response = await self.llm.generate_text(
             prompt=prompt,
             temperature=0.1,
@@ -349,7 +349,7 @@ class ResumeAnalyzer:
             tech_stack = ", ".join(set(all_tech))
 
         prompt = PromptManager.format_prompt(
-            PromptTemplate.RESUME_WORK_CONTEXT_ENRICHMENT.value,
+            "resume_work_context_enrichment",
             company=unit.company,
             position=unit.position,
             department=unit.department or "未说明",
@@ -450,7 +450,7 @@ class ResumeAnalyzer:
             unit_info_parts.append("工作职责: " + "；".join(unit.work_responsibilities[:5]))
 
         prompt = PromptManager.format_prompt(
-            PromptTemplate.RESUME_COMPLEXITY_ASSESSMENT.value,
+            "resume_complexity_assessment",
             work_unit_info="\n".join(unit_info_parts),
         )
 
@@ -771,7 +771,7 @@ class ResumeAnalyzer:
         )
 
         prompt = PromptManager.format_prompt(
-            PromptTemplate.RESUME_PROBING_STRATEGY.value,
+            "resume_probing_strategy",
             jd_info=jd_info,
             resume_summary=resume_summary,
             work_units_json=work_units_json,
@@ -845,7 +845,7 @@ class ResumeAnalyzer:
         results: list[PrefixKnowledge] = []
         for tech_name in tech_list:
             prompt = PromptManager.format_prompt(
-                PromptTemplate.RESUME_PREFIX_KNOWLEDGE.value,
+                "resume_prefix_knowledge",
                 tech_list=json.dumps([tech_name], ensure_ascii=False),
             )
             try:

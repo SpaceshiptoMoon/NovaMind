@@ -673,7 +673,7 @@ async def _describe_single_frame(
     主模型因配额/鉴权类错误失败且配置了 ``vlm_fallback_model`` 时，回退到备用模型重试一次；
     其它异常原样上抛，由帧循环逐帧捕获并跳过。
     """
-    from novamind.shared.prompts.templates import PromptManager, PromptTemplate
+    from novamind.shared.prompts.templates import PromptManager
 
     # 获取 VLM 客户端
     vlm_model = vlm_model_name or await mcs.get_user_default_model_name(document.uploader_id, "vlm")
@@ -687,7 +687,7 @@ async def _describe_single_frame(
 
     # 获取视频帧描述 Prompt
     description_prompt = PromptManager.get_template(
-        PromptTemplate.VIDEO_FRAME_DESCRIPTION.value
+        "video_frame_description"
     )
 
     messages = build_vlm_image_messages(

@@ -85,6 +85,31 @@ class LLMResponseWithTools:
     reasoning: str | None = None
 
 
+@dataclass
+class ToolStreamEvent:
+    """带工具调用的流式事件
+
+    将底层 LLM（如 OpenAI 兼容）流式响应中的 content 增量、tool_call 增量、
+    usage、finish_reason 统一为事件流。AgentLLM 等上层消费此事件流并翻译为
+    自有的 StreamChunk，从而避免上层对具体 LLM 实现类（OpenAICompatibleLLM）
+    做 isinstance 判断或访问其私有属性（_get_semaphore/client）。
+
+    type 取值：
+      - "content": 文本内容增量（content 字段）
+      - "tool_call_start": 工具调用开始（tool_call_id, tool_name）
+      - "tool_call_args": 工具参数增量（tool_call_id, tool_arguments_delta）
+      - "tool_call_end": 一个工具调用完成（tool_call_id, tool_name, tool_arguments_delta 全量）
+      - "done": 全部完成（usage, finish_reason）
+    """
+    type: str
+    content: str = ""
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+    tool_arguments_delta: str = ""
+    usage: Dict[str, int] | None = None
+    finish_reason: str | None = None
+
+
 class BaseLLM(ABC):
     """
     LLM 客户端基类
@@ -198,6 +223,27 @@ class BaseLLM(ABC):
             LLMResponseWithTools: 包含 content、tool_calls、finish_reason
         """
         raise NotImplementedError("此 LLM 后端不支持工具调用")
+
+    async def generate_with_tools_stream(
+        self,
+        prompt: str | list,
+        tools: list[dict] | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+        top_p: float = 0.8,
+        tool_choice: str = "auto",
+        enable_thinking: bool = False,
+    ) -> AsyncGenerator[ToolStreamEvent, None]:
+        """支持工具调用的流式生成。
+
+        默认实现不支持（抛 NotImplementedError）；支持原生流式工具调用的
+        后端（如 OpenAICompatibleLLM）覆盖此方法，把 content/tool_call/usage
+        增量以 ToolStreamEvent 形式 yield。上层（AgentLLM）捕获
+        NotImplementedError 后降级为非流式。
+        """
+        raise NotImplementedError("此 LLM 后端不支持流式工具调用")
+        if False:  # pragma: no cover - 保持生成器签名
+            yield ToolStreamEvent(type="done")
 
     # ==================== Thinking 模式适配层（中转站） ====================
 

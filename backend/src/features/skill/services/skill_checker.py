@@ -12,7 +12,7 @@ from typing import List, Optional
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.skill.models.skill import ReviewStatus
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.prompts import PromptTemplate, PromptManager
+from novamind.shared.prompts import PromptManager
 
 logger = get_logger(__name__)
 
@@ -113,7 +113,7 @@ class SkillSecurityChecker:
 
         try:
             prompt = PromptManager.format_prompt(
-                PromptTemplate.SKILL_SECURITY_REVIEW.value,
+                "skill_security_review",
                 frontmatter=frontmatter_raw[:2000],
                 body=body_markdown[:4000],
             )

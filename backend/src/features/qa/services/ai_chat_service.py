@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from novamind.features.user.services.model_config_service import ModelConfigService
     from novamind.shared.storage.minio_client import MinioClient
 from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.prompts.templates import PromptTemplate, PromptManager
+from novamind.shared.prompts.templates import PromptManager
 from novamind.shared.utils.heartbeat import stream_with_heartbeat_structured
 from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
 from novamind.features.qa.services.qa_service import QAService
@@ -167,7 +167,7 @@ class AIChatService:
         eff_temperature = session_config.llm_temperature if session_config else 0.7
         eff_top_p = session_config.llm_top_p if session_config else 0.8
         # system_prompt：会话表 llm_config > QA 模板
-        system_prompt = (session_config.llm_system_prompt if session_config else None) or PromptManager.get_template(PromptTemplate.QA_AI_CHAT_SYSTEM.value)
+        system_prompt = (session_config.llm_system_prompt if session_config else None) or PromptManager.get_template("qa_ai_chat_system")
 
         # 解析附件，构造 extra（不修改 content）
         attachments_data = None

@@ -226,12 +226,12 @@ class SearchService:
             context = "\n\n".join(context_parts)
 
             # 构建提示词
-            from novamind.shared.prompts.templates import PromptTemplate, PromptManager
+            from novamind.shared.prompts.templates import PromptManager
             from novamind.shared.prompts.sanitize import sanitize_prompt_input
             # 净化用户 query，剥离 markdown 标题/分隔标签，降低 prompt 注入风险
             safe_query = sanitize_prompt_input(query)
             prompt = PromptManager.format_prompt(
-                PromptTemplate.SEARCH_ANSWER.value,
+                "search_answer",
                 context=context,
                 query=safe_query,
             )
@@ -300,7 +300,7 @@ class SearchService:
                 "sub_queries": sub_query 时的子问题列表（内部使用，用于多路检索）
             }
         """
-        from novamind.shared.prompts.templates import PromptTemplate, PromptManager
+        from novamind.shared.prompts.templates import PromptManager
         import json
 
         strategy = rewrite_config.strategy
@@ -312,10 +312,10 @@ class SearchService:
         if strategy == "hyde":
             # HyDE: 生成假设性回答文档
             system_prompt = PromptManager.get_template(
-                PromptTemplate.QUERY_REWRITE_HYDE_SYSTEM.value
+                "query_rewrite_hyde_system"
             )
             user_prompt = PromptManager.format_prompt(
-                PromptTemplate.QUERY_REWRITE_HYDE_USER.value,
+                "query_rewrite_hyde_user",
                 query=query,
             )
 
@@ -345,10 +345,10 @@ class SearchService:
         elif strategy == "sub_query":
             # Sub Query: 拆分子问题
             system_prompt = PromptManager.get_template(
-                PromptTemplate.QUERY_REWRITE_SUB_QUERY_SYSTEM.value
+                "query_rewrite_sub_query_system"
             )
             user_prompt = PromptManager.format_prompt(
-                PromptTemplate.QUERY_REWRITE_SUB_QUERY_USER.value,
+                "query_rewrite_sub_query_user",
                 query=query,
                 count=rewrite_config.sub_query_count,
             )

@@ -2129,7 +2129,7 @@ async def _generate_image_description(
     Returns:
         描述文本（截断到 2000 字符），失败抛异常由调用方处理
     """
-    from novamind.shared.prompts.templates import PromptManager, PromptTemplate
+    from novamind.shared.prompts.templates import PromptManager
 
     # 1. 获取 VLM 客户端
     vlm_model = vlm_model_name or await mcs.get_user_default_model_name(document.uploader_id, "vlm")
@@ -2142,7 +2142,7 @@ async def _generate_image_description(
     mime_type = f"image/{file_ext}" if file_ext != "jpg" else "image/jpeg"
 
     # 3. 获取描述 Prompt
-    description_prompt = PromptManager.get_template(PromptTemplate.IMAGE_DESCRIPTION.value)
+    description_prompt = PromptManager.get_template("image_description")
 
     # 4. 构建多模态消息（OpenAI 兼容格式）
     messages = build_vlm_image_messages(

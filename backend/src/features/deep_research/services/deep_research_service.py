@@ -39,7 +39,7 @@ from novamind.features.knowledge_space.schemas.search_schema import (
 from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.utils.heartbeat import stream_with_heartbeat
-from novamind.shared.prompts import PromptTemplate, PromptManager
+from novamind.shared.prompts import PromptManager
 from novamind.features.deep_research.exceptions import (
     DeepResearchError,
     ResearchNotFoundError,
@@ -597,7 +597,7 @@ class DeepResearchService:
         """分析查询，提取研究主题"""
         safe_query = _sanitize_user_input(query)
         prompt = PromptManager.format_prompt(
-            PromptTemplate.RESEARCH_ANALYZE_QUERY.value,
+            "research_analyze_query",
             query=safe_query,
         )
 
@@ -623,7 +623,7 @@ class DeepResearchService:
         safe_query = _sanitize_user_input(query)
         safe_topic = _sanitize_user_input(research_topic)
         prompt = PromptManager.format_prompt(
-            PromptTemplate.RESEARCH_DECOMPOSE_TASKS.value,
+            "research_decompose_tasks",
             research_topic=safe_topic,
             query=safe_query,
             depth=depth,
@@ -1124,7 +1124,7 @@ class DeepResearchService:
         safe_topic = _sanitize_user_input(research_topic)
         key_sources_str = chr(10).join(f"- {s}" for s in key_sources) if key_sources else "无外部来源"
         prompt = PromptManager.format_prompt(
-            PromptTemplate.RESEARCH_SYNTHESIZE_REPORT.value,
+            "research_synthesize_report",
             query=safe_query,
             research_topic=safe_topic,
             context=context,
@@ -1168,7 +1168,7 @@ class DeepResearchService:
             safe_topic = research_topic or ""
         key_sources_str = chr(10).join(f"- {s}" for s in key_sources) if key_sources else "无外部来源"
         prompt = PromptManager.format_prompt(
-            PromptTemplate.RESEARCH_SYNTHESIZE_REPORT_STREAM.value,
+            "research_synthesize_report_stream",
             query=safe_query,
             research_topic=safe_topic,
             context=context,

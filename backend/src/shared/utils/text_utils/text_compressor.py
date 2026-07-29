@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.prompts.templates import PromptManager, PromptTemplate
+from novamind.shared.prompts.templates import PromptManager
 
 from .token_counter import TokenCounter
 
@@ -45,7 +45,7 @@ class TextCompressor:
     @property
     def summary_prompt(self) -> str:
         return self.custom_prompt or PromptManager.get_template(
-            PromptTemplate.QA_COMPRESSION_SUMMARY.value
+            "qa_compression_summary"
         )
 
     def _message_text(self, message: Dict[str, Any]) -> str:

@@ -1,13 +1,16 @@
 """
-提示词模板管理模块
+提示词模板键枚举（过渡层）
 
-统一管理项目中所有 LLM 提示词模板。
+本文件只保留 `PromptTemplate` 枚举，作为提示词键的「字面量常量」供现有调用方
+过渡使用。批次 0 子任务 3 会把全仓 `PromptTemplate.XXX.value` 替换为字符串
+字面量，届时本枚举仅作键名清单参考。
 
-架构：
-  templates.py              → PromptTemplate 枚举 + PromptManager 注册表（薄壳）
-  features/{module}/{module}_prompts.py → 各模块的模板内容 + 描述（数据源）
+提示词注册表机制（PromptManager）已迁至 `shared/prompts/prompt_manager.py`，
+为纯机制、零 feature 依赖；提示词数据由宿主 startup 层注册。本文件不再
+承载 `PromptManager`，也不再反向 import feature 模块（消除 shared→features
+分层违规）。
 
-模块分类：
+模块分类（键归属，数据源在各 feature 的 *_prompts.py）：
   1. knowledge_space — RAG 检索、查询改写、知识库问答、VLM 描述
   2. deep_research   — 研究主题分析、任务分解、报告生成
   3. qa              — 对话压缩、AI 对话系统提示、查询改写（QueryRewriter）、检索自评估（GradeRetrier）
@@ -18,7 +21,6 @@
   8. clawmate        — ClawMate 终端助手系统提示
 """
 from enum import Enum
-from typing import Dict
 
 
 class PromptTemplate(Enum):
@@ -118,61 +120,13 @@ class PromptTemplate(Enum):
     CLAWMATE_SYSTEM = "clawmate_system"
 
 
-class PromptManager:
-    """提示词管理器"""
+# 向后兼容 re-export：PromptManager 注册表机制已迁至 prompt_manager.py。
+# 保留此处 re-export，使现有 `from novamind.shared.prompts.templates import PromptManager`
+# 调用方继续可用；新代码应直接 `from novamind.shared.prompts import PromptManager`。
+from novamind.shared.prompts.prompt_manager import (  # noqa: E402,F401
+    PromptManager,
+    format_prompt,
+    get_prompt,
+)
 
-    _templates: Dict[str, str] = {}
-
-    @classmethod
-    def _ensure_loaded(cls):
-        """延迟加载各模块模板（仅首次调用时执行）"""
-        if cls._templates:
-            return
-
-        from novamind.features.knowledge_space.prompts import TEMPLATES as _ks
-        from novamind.features.deep_research.deep_research_prompts import TEMPLATES as _dr
-        from novamind.features.qa.qa_prompts import TEMPLATES as _qa
-        from novamind.features.evaluation.evaluation_prompts import TEMPLATES as _ev
-        from novamind.features.app.app_prompts import TEMPLATES as _app
-        from novamind.features.agent.agent_prompts import TEMPLATES as _ag
-        from novamind.features.skill.skill_prompts import TEMPLATES as _sk
-        from novamind.features.clawmate.clawmate_prompts import TEMPLATES as _cm
-
-        for t in [_ks, _dr, _qa, _ev, _app, _ag, _sk, _cm]:
-            cls._templates.update(t)
-
-    @classmethod
-    def get_template(cls, template_name: str) -> str:
-        """获取提示词模板"""
-        cls._ensure_loaded()
-        if template_name not in cls._templates:
-            raise ValueError(f"模板 '{template_name}' 不存在")
-        return cls._templates[template_name]
-
-    @classmethod
-    def format_prompt(cls, template_name: str, **kwargs) -> str:
-        """格式化提示词"""
-        template = cls.get_template(template_name)
-        try:
-            return template.format(**kwargs)
-        except KeyError as e:
-            raise ValueError(f"模板 '{template_name}' 缺少参数: {e}") from None
-
-
-# 便捷函数
-def get_prompt(template_name: str) -> str:
-    """获取提示词模板"""
-    return PromptManager.get_template(template_name)
-
-
-def format_prompt(template_name: str, **kwargs) -> str:
-    """格式化提示词"""
-    return PromptManager.format_prompt(template_name, **kwargs)
-
-
-__all__ = [
-    "PromptTemplate",
-    "PromptManager",
-    "get_prompt",
-    "format_prompt",
-]
+__all__ = ["PromptTemplate", "PromptManager", "get_prompt", "format_prompt"]
