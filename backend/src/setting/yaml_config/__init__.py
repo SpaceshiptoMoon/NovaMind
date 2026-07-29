@@ -24,6 +24,8 @@ from .config import (
     TavilyConfig,
     TaskQueueConfig,
     VectorDbConfig,
+    FeatureFlag,
+    FeaturesConfig,
 )
 from .loader import (
     get_config,
@@ -66,4 +68,6 @@ __all__ = [
     "DeepResearchModesConfig",
     "TaskQueueConfig",
     "SmtpConfig",
+    "FeatureFlag",
+    "FeaturesConfig",
 ]

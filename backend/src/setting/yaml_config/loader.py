@@ -16,6 +16,8 @@ from .config import (
     DuckDuckGoConfig,
     ElasticsearchConfig,
     ExternalSearchConfig,
+    FeatureFlag,
+    FeaturesConfig,
     HybridSearchConfig,
     KnowledgeBaseConfig,
     LLMConfig,
@@ -306,6 +308,17 @@ def create_config_from_dict(data: Dict[str, Any]) -> AppConfig:
         from_email=smtp.get("from_email", ""),
         use_tls=smtp.get("use_tls", True),
     )
+
+    # 功能开关：features 段可选，键为 feature 名，值为 bool 或 {enabled: bool}。
+    # 未列出的 feature 默认启用（由 manifest_loader 解析）。
+    features_raw = data.get("features", {}) or {}
+    flags: Dict[str, FeatureFlag] = {}
+    for name, val in features_raw.items():
+        if isinstance(val, dict):
+            flags[name] = FeatureFlag(enabled=bool(val.get("enabled", True)))
+        else:
+            flags[name] = FeatureFlag(enabled=bool(val))
+    config.features = FeaturesConfig(flags=flags)
 
     return config
 

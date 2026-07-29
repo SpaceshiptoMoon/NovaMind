@@ -1,13 +1,29 @@
 """
 路由管理器模块
-负责管理和注册所有应用路由
-支持 API 版本控制
+负责管理和注册所有应用路由，支持 API 版本控制。
+
+批次 1 起，路由来源由「硬编码三张表」（router 对象 dict + prefix_mapping + tag_mapping）
+改为从 feature manifest 聚合：`get_all_routers()` 调 `manifest_loader.get_route_sorted_manifests()`
+按 `route_order` 遍历各 `FeatureManifest.routers`，产出 (router, prefix, [tag])。
+
+**路由注册顺序与初始化拓扑序分离**：路由注册顺序决定 FastAPI 对同名 Pydantic
+响应模型的去重胜出者，必须与 legacy 硬编码顺序逐字一致（否则 openapi 中碰撞 schema
+翻转，破坏前端契约），故用 `route_order`（匹配 legacy 路由序）；初始化仍用拓扑序
+`order`。两者由 manifest_loader 分别提供。
+
+契约不变：`get_all_routers()` 仍返回 `List[tuple]`，每个元素为 (router, prefix, tags)，
+prefix/tag 与改造前逐字一致，确保 `GET /openapi.json` 逐字不变（前端契约源头）。
+
+回滚：设置环境变量 `NOVAMIND_LEGACY_MANIFEST=1` 走旧的硬编码 `_register_routers_legacy`
+路径，manifest 路径与新拓扑初始化可独立回滚。
 """
-from typing import List, Dict
+import os
+from typing import Dict, List, Tuple
+
 from fastapi import APIRouter
 
-# API 版本前缀
-API_V1_PREFIX = "/api/v1"
+from novamind.core.middleware.manifest import API_V1_PREFIX
+from novamind.core.middleware.manifest_loader import get_route_sorted_manifests
 
 
 class RouterManager:
@@ -15,10 +31,43 @@ class RouterManager:
 
     def __init__(self):
         self.routers: Dict[str, APIRouter] = {}
-        self._register_routers()
+        if os.getenv("NOVAMIND_LEGACY_MANIFEST") == "1":
+            self._register_routers_legacy()
+        # manifest 路径无需在此预加载 router 对象；get_all_routers 时按需聚合
 
-    def _register_routers(self):
-        """注册所有路由（延迟导入，避免启动时加载全部依赖）"""
+    # ==================== manifest 聚合路径（默认） ====================
+
+    def get_router(self, name: str) -> APIRouter:
+        """获取指定的路由（仅 legacy 路径填充 self.routers；manifest 路径返回 None）"""
+        return self.routers.get(name)
+
+    def get_all_routers(self) -> List[Tuple[APIRouter, str, List[str]]]:
+        """
+        获取所有路由及其配置。
+
+        Returns:
+            List[tuple]: 路由配置列表，每个元素为 (router, prefix, tags)
+
+        逐字复刻原 get_all_routers 的产出：每条 (router, prefix, [tag])，prefix 与 tag
+        来自 manifest 的 RouterSpec（与原 prefix_mapping/tag_mapping 一致）。health
+        路由（system manifest，prefix=""）随其 route_order=0 排在最前，与原显式 append
+        行为一致。按 `route_order` 遍历（匹配 legacy 路由注册序），而非初始化拓扑序。
+        """
+        if os.getenv("NOVAMIND_LEGACY_MANIFEST") == "1" and self.routers:
+            return self._get_all_routers_legacy()
+
+        router_configs: List[Tuple[APIRouter, str, List[str]]] = []
+        for m in get_route_sorted_manifests():
+            if not m.enabled:
+                continue
+            for spec in m.routers:
+                router_configs.append((spec.router, spec.prefix, [spec.tag]))
+        return router_configs
+
+    # ==================== legacy 硬编码路径（回滚用） ====================
+
+    def _register_routers_legacy(self):
+        """旧硬编码路由注册（仅 NOVAMIND_LEGACY_MANIFEST=1 时使用，保留作回滚）"""
         # 功能模块路由
         from novamind.features.qa.api.qa_routes import router as qa_router
         from novamind.features.qa.api.ai_chat_routes import router as ai_chat_router
@@ -84,48 +133,30 @@ class RouterManager:
             "clawmate": clawmate_router,
         })
 
-    def get_router(self, name: str) -> APIRouter:
-        """获取指定的路由"""
-        return self.routers.get(name)
-
-    def get_all_routers(self) -> List[tuple]:
-        """
-        获取所有路由及其配置
-
-        Returns:
-            List[tuple]: 路由配置列表，每个元素为 (router, prefix, tags)
-        """
-        router_configs = []
+    def _get_all_routers_legacy(self) -> List[Tuple[APIRouter, str, List[str]]]:
+        """旧 get_all_routers 实现（仅 legacy 路径使用）"""
+        router_configs: List[Tuple[APIRouter, str, List[str]]] = []
 
         # 系统路由（无版本前缀）
         router_configs.append((self.routers.get("health"), "", ["健康检查"]))
 
-        # 功能路由（带 v1 版本前缀）
         prefix_mapping = {
             "qa": f"{API_V1_PREFIX}/qa",
             "ai_chat": f"{API_V1_PREFIX}/ai-chat",
             "session_config": f"{API_V1_PREFIX}/sessions/{{session_id}}/config",
             "user": f"{API_V1_PREFIX}/user",
             "model_config": f"{API_V1_PREFIX}/user",
-            # 知识空间模块（嵌套路由，注意顺序和前缀）
             "space": f"{API_V1_PREFIX}/spaces",
             "space_kb": f"{API_V1_PREFIX}/spaces/{{space_id}}/knowledge-bases",
             "space_document": f"{API_V1_PREFIX}/spaces/{{space_id}}/knowledge-bases",
             "space_member": f"{API_V1_PREFIX}/spaces/{{space_id}}/members",
             "space_search": f"{API_V1_PREFIX}/spaces/{{space_id}}/knowledge-bases/{{kb_id}}/search",
-            # 深度研究模块
             "deep_research": f"{API_V1_PREFIX}/spaces/{{space_id}}/deep-research",
-            # 测评模块
             "evaluation": f"{API_V1_PREFIX}/spaces/{{space_id}}/knowledge-bases/{{kb_id}}/evaluation",
-            # Agent 模块
             "agent": f"{API_V1_PREFIX}/agent",
-            # 技能广场
             "skills": f"{API_V1_PREFIX}/skills",
-            # 应用中心
             "apps": f"{API_V1_PREFIX}/apps",
-            # 通知模块
             "notifications": f"{API_V1_PREFIX}/notifications",
-            # ClawMate 终端模块
             "clawmate": f"{API_V1_PREFIX}/clawmate",
         }
 
@@ -135,25 +166,17 @@ class RouterManager:
             "session_config": "会话配置",
             "user": "用户管理",
             "model_config": "模型配置",
-            # 知识空间模块
             "space": "知识空间",
             "space_kb": "知识库管理",
             "space_document": "文档管理",
             "space_member": "空间成员",
             "space_search": "知识检索",
-            # 深度研究模块
             "deep_research": "深度研究",
-            # 测评模块
             "evaluation": "知识库测评",
-            # Agent 模块
             "agent": "Agent 智能体",
-            # 技能广场
             "skills": "技能广场",
-            # 应用中心
             "apps": "应用中心",
-            # 通知模块
             "notifications": "通知",
-            # ClawMate 终端模块
             "clawmate": "ClawMate 终端",
         }
 
@@ -162,7 +185,7 @@ class RouterManager:
                 router_configs.append((
                     router,
                     prefix_mapping[name],
-                    [tag_mapping[name]]
+                    [tag_mapping[name]],
                 ))
 
         return router_configs
