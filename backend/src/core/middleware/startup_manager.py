@@ -1,8 +1,13 @@
 """
 启动管理器模块
 负责应用启动和关闭时的组件管理
-"""
 
+批次 1 起，feature 初始化与 ORM 模型导入改由 manifest 驱动：`_init_features`
+按拓扑序遍历 `get_sorted_manifests()` 调各 `init_hook`；`_import_models` 遍历各
+manifest 的 `models_loader`。旧的硬编码注册表与 `_import_models_legacy` 保留，
+`NOVAMIND_LEGACY_MANIFEST=1` 时回滚到旧路径（与 router_manager 共用同一开关）。
+"""
+import os
 import time
 from contextlib import asynccontextmanager
 
@@ -10,65 +15,92 @@ from sqlalchemy import text
 
 from novamind.setting.yaml_config import get_config
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.core.middleware.manifest_loader import get_sorted_manifests
 
 from novamind.core.database.base import create_tables, ensure_fulltext_indexes
 from novamind.core.database.database import get_engine, dispose_engine
-
-from novamind.features.user.api.startup import init_user_components
-from novamind.features.knowledge_space.api.startup import init_knowledge_space_components
 from novamind.shared.cache.redis_client import get_redis_client, close_redis_connection
 
-# 功能模块初始化注册表
+logger = get_logger(__name__)
+
+
+# ==================== manifest 驱动路径（默认） ====================
+
+
+def _import_models() -> None:
+    """动态导入所有业务模型，确保在创建表之前注册到 SQLAlchemy metadata。
+
+    遍历各 feature manifest 的 `models_loader`；legacy 路径
+    （`NOVAMIND_LEGACY_MANIFEST=1`）走 `_import_models_legacy` 硬编码导入。
+    """
+    if os.getenv("NOVAMIND_LEGACY_MANIFEST") == "1":
+        _import_models_legacy()
+        return
+    for m in get_sorted_manifests():
+        if not m.enabled or m.models_loader is None:
+            continue
+        m.models_loader()
+
+
+# ==================== legacy 硬编码路径（回滚用） ====================
+
+# 功能模块初始化注册表（legacy）
 _feature_initializers = []
 
 
 def register_feature_initializer(init_func):
-    """注册功能模块初始化函数"""
+    """注册功能模块初始化函数（legacy）"""
     _feature_initializers.append(init_func)
 
 
-# 注册已知的功能模块（统一接受 app 参数）
-
+# 注册已知的功能模块（统一接受 app 参数，legacy）
 async def _init_user(app):
-    """用户模块初始化（不使用 app 参数）"""
+    """用户模块初始化（legacy，不使用 app 参数）"""
+    from novamind.features.user.api.startup import init_user_components
     await init_user_components()
+
 
 register_feature_initializer(_init_user)
 
 
 async def _init_knowledge_space(app):
-    """知识空间模块初始化"""
+    """知识空间模块初始化（legacy）"""
+    from novamind.features.knowledge_space.api.startup import init_knowledge_space_components
     await init_knowledge_space_components(app)
+
 
 register_feature_initializer(_init_knowledge_space)
 
 
 async def _init_agent(app):
-    """Agent 模块初始化"""
+    """Agent 模块初始化（legacy）"""
     from novamind.features.agent.api.startup import init_agent_components
     await init_agent_components(app)
+
 
 register_feature_initializer(_init_agent)
 
 
 async def _init_notification(app):
-    """通知模块初始化"""
+    """通知模块初始化（legacy）"""
     from novamind.features.notification.api.startup import init_notification_components
     await init_notification_components(app)
+
 
 register_feature_initializer(_init_notification)
 
 
 async def _init_clawmate(app):
-    """ClawMate 终端模块初始化"""
+    """ClawMate 终端模块初始化（legacy）"""
     from novamind.features.clawmate.api.startup import init_clawmate_components
     await init_clawmate_components(app)
+
 
 register_feature_initializer(_init_clawmate)
 
 
-def _import_models():
-    """动态导入所有业务模型，确保在创建表之前注册到 SQLAlchemy metadata"""
+def _import_models_legacy() -> None:
+    """动态导入所有业务模型（legacy 硬编码，回滚用）"""
     from novamind.features.user.models.user import User  # noqa: F401
     from novamind.features.user.models.user_model_config import UserModelConfig  # noqa: F401
     from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace  # noqa: F401
@@ -90,8 +122,6 @@ def _import_models():
     from novamind.features.app.models.resume import ResumeSession  # noqa: F401
     from novamind.features.notification.models.notification import Notification  # noqa: F401
     from novamind.features.notification.models.notification_preference import NotificationPreference  # noqa: F401
-
-logger = get_logger(__name__)
 
 
 class AppLifespanManager:
@@ -294,9 +324,24 @@ class AppLifespanManager:
                 )
 
     async def _init_features(self, app):
-        """初始化各功能模块"""
-        for init_func in _feature_initializers:
-            await init_func(app)
+        """初始化各功能模块（按 manifest 拓扑序）
+
+        默认遍历 `get_sorted_manifests()`，对每个有 `init_hook` 的 enabled manifest
+        按拓扑序调用，日志呈现拓扑顺序（如 user→knowledge_space→agent→
+        notification→clawmate）。`NOVAMIND_LEGACY_MANIFEST=1` 时回滚到旧的
+        `_feature_initializers` 注册序。
+        """
+        if os.getenv("NOVAMIND_LEGACY_MANIFEST") == "1":
+            for init_func in _feature_initializers:
+                await init_func(app)
+            self.logger.info("各功能模块初始化完成（legacy）")
+            return
+        for m in get_sorted_manifests():
+            if not m.enabled or m.init_hook is None:
+                continue
+            self.logger.info("feature 初始化开始", feature=m.name)
+            await m.init_hook(app)
+            self.logger.info("feature 初始化完成", feature=m.name)
         self.logger.info("各功能模块初始化完成")
 
     async def _register_prompt_templates(self) -> None:

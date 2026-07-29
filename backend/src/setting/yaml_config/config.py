@@ -1,6 +1,35 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 from urllib.parse import quote_plus
+
+
+@dataclass
+class FeatureFlag:
+    """单个功能开关。
+
+    预留扩展：后续可在本 dataclass 上追加更多 per-feature 标志（如只读、
+    灰度比例等），而不破坏 YAML schema。当前只含 `enabled`。
+    """
+
+    enabled: bool = True
+
+
+@dataclass
+class FeaturesConfig:
+    """功能开关集合（feature flag）。
+
+    `flags` 键为 feature 名（与 `features/<name>/manifest.py` 的 `name` 一致），
+    值为 `FeatureFlag`。未在 `flags` 中列出的 feature 默认启用——由 manifest_loader
+    以 `flags.get(name, FeatureFlag()).enabled` 解析。
+
+    YAML 形态（`features:` 段，可选）：
+      features:
+        clawmate:
+          enabled: false
+      # 或简写：clawmate: false
+    """
+
+    flags: Dict[str, FeatureFlag] = field(default_factory=dict)
 
 
 @dataclass
@@ -243,4 +272,5 @@ class AppConfig:
     deep_research: DeepResearchConfig = field(default_factory=DeepResearchConfig)
     task_queue: TaskQueueConfig = field(default_factory=TaskQueueConfig)
     smtp: SmtpConfig = field(default_factory=SmtpConfig)
+    features: FeaturesConfig = field(default_factory=FeaturesConfig)
     cors_origins: str = "*"
