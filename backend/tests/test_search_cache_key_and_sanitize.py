@@ -12,13 +12,14 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.features.knowledge_space.services.search_service import SearchService
+from novamind.features.knowledge_space.services.retrieval_engine import RetrievalEngine
 from novamind.features.knowledge_space.schemas.search_schema import QueryRewriteConfig
 from novamind.shared.prompts.sanitize import sanitize_prompt_input
 
 
 def _hash(**kw):
-    return SearchService._generate_query_hash(**kw)
+    # 批次 2：_generate_query_hash 已从 SearchService 迁至 RetrievalEngine（逐字搬迁）
+    return RetrievalEngine._generate_query_hash(**kw)
 
 
 def test_cache_key_differs_by_score_threshold():
@@ -70,23 +71,25 @@ def test_sub_query_rrf_k_param_is_used_not_hardcoded():
 
     修复前 line 505 `rrf_k = 60` 无条件覆盖形参，用户 weights.rrf_k 对最终 RRF
     融合无效。现两个不同 rrf_k 应产出不同融合分数。
+
+    批次 2：_search_with_sub_queries 已从 SearchService 迁至 RetrievalEngine（逐字搬迁）。
     """
     import asyncio
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
-    from novamind.features.knowledge_space.services.search_service import SearchService
+    from novamind.features.knowledge_space.services.retrieval_engine import RetrievalEngine
 
     # 固定子查询结果（两个子查询，各返回同一个 chunk，rank=1）
     canned = [{"chunk_id": "c1", "content": "x", "score": 0.9}]
 
     async def _run(rrf_k: int) -> float:
-        service = SearchService.__new__(SearchService)
-        service.logger = SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None)
-        service.es_client = SimpleNamespace(
+        engine = RetrievalEngine.__new__(RetrievalEngine)
+        engine.logger = SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None)
+        engine.es_client = SimpleNamespace(
             search_by_mode=AsyncMock(return_value=canned),
         )
-        results = await SearchService._search_with_sub_queries(
-            service,
+        results = await RetrievalEngine._search_with_sub_queries(
+            engine,
             space_id=1,
             kb_id=1,
             search_mode="content_bm25",  # 非 vector/hybrid，无需 embedding_client

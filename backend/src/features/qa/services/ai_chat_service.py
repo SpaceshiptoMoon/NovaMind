@@ -22,6 +22,7 @@ from novamind.core.middleware.structured_logging import get_logger
 if TYPE_CHECKING:
     from novamind.features.user.services.model_config_service import ModelConfigService
     from novamind.shared.storage.minio_client import MinioClient
+    from novamind.features.knowledge_space.services.retrieval_port import RetrievalPort
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.prompts.templates import PromptManager
 from novamind.shared.utils.heartbeat import stream_with_heartbeat_structured
@@ -75,6 +76,7 @@ class AIChatService:
         model_config_service: Optional["ModelConfigService"] = None,
         db: Optional[AsyncSession] = None,
         minio_client: Optional["MinioClient"] = None,
+        retrieval_port: Optional["RetrievalPort"] = None,
     ):
         """
         初始化 AI Chat 服务
@@ -84,6 +86,8 @@ class AIChatService:
             model_config_service: 模型配置服务（用于获取用户配置的模型）
             db: 数据库会话（用于附件存储）
             minio_client: MinIO 客户端（用于文件存储）
+            retrieval_port: 检索端口（批次 2 接缝；为 None 时按需懒构造 HostRetrievalPort
+                包 SearchService，与历史行为等价）
         """
         self.qa_service = qa_service
         self.model_config_service = model_config_service
@@ -92,6 +96,29 @@ class AIChatService:
         self.attachment_repo = ChatAttachmentRepository(db) if db else None
         self.logger = get_logger(__name__)
         self._token_counter = TokenCounter()
+        self._retrieval_port = retrieval_port
+
+    async def _get_retrieval_port(self) -> "RetrievalPort":
+        """懒获取检索端口（HostRetrievalPort 包 SearchService）。
+
+        批次 2 接缝：消费方依赖 RetrievalPort 抽象而非直接 import SearchService。
+        未注入时按历史行为构造 SearchService(self.db, es_client, model_config_service)
+        并包为 HostRetrievalPort。
+        """
+        if self._retrieval_port is None:
+            from novamind.features.knowledge_space.services.search_service import SearchService
+            from novamind.features.knowledge_space.adapters.retrieval_adapter import HostRetrievalPort
+            from novamind.shared.clients import get_elasticsearch_client
+
+            es_client = await get_elasticsearch_client()
+            model_config_service = self.model_config_service
+            if model_config_service is None:
+                from novamind.features.user.services.model_config_service import ModelConfigService
+                model_config_service = ModelConfigService(self.db)
+            self._retrieval_port = HostRetrievalPort(
+                SearchService(self.db, es_client, model_config_service)
+            )
+        return self._retrieval_port
 
     async def _get_llm_client(
         self,
@@ -618,9 +645,7 @@ class AIChatService:
             self.logger.warning("RAG 开关已开但未指定 space_id，跳过知识库检索")
             return None
 
-        from novamind.features.knowledge_space.services.search_service import SearchService
         from novamind.features.knowledge_space.schemas.search_schema import SearchRequest
-        from novamind.shared.clients import get_elasticsearch_client
 
         search_request = SearchRequest(
             query=query,
@@ -628,12 +653,7 @@ class AIChatService:
             top_k=top_k,
             score_threshold=score_threshold if score_threshold is not None else 0.0,
         )
-        es_client = await get_elasticsearch_client()
-        model_config_service = self.model_config_service
-        if model_config_service is None:
-            from novamind.features.user.services.model_config_service import ModelConfigService
-            model_config_service = ModelConfigService(self.db)
-        search_service = SearchService(self.db, es_client, model_config_service)
+        retrieval_port = await self._get_retrieval_port()
 
         # 确定检索的知识库列表：kb_ids > 空间下全部（前 3 个）
         if kb_ids:
@@ -652,7 +672,7 @@ class AIChatService:
         all_results: List[Dict[str, Any]] = []
         for tid in target_kb_ids:
             try:
-                r = await search_service.search(
+                r = await retrieval_port.search(
                     space_id=space_id, kb_id=tid, user_id=user_id, request=search_request
                 )
                 all_results.extend(r.get("results", []))

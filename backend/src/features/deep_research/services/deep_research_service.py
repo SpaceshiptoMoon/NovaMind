@@ -27,8 +27,11 @@ from novamind.features.deep_research.services.serpapi_service import SerpAPISear
 from novamind.features.deep_research.services.duckduckgo_service import DuckDuckGoSearchService
 from novamind.features.deep_research.schemas.research_schema import (
     InternalSearchConfig,
+    ResearchRequest,
 )
 from novamind.features.knowledge_space.services.search_service import SearchService
+from novamind.features.knowledge_space.services.retrieval_port import RetrievalPort
+from novamind.features.knowledge_space.adapters.retrieval_adapter import HostRetrievalPort
 from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
 from novamind.features.knowledge_space.schemas.search_schema import (
     SearchRequest,
@@ -186,6 +189,7 @@ class DeepResearchService:
         self._es_client = es_client
         self._model_config_service = model_config_service
         self._search_service = search_service
+        self._search_port: Optional[RetrievalPort] = None
 
         # 初始化外部搜索服务
         self._init_external_search_services()
@@ -193,20 +197,30 @@ class DeepResearchService:
         self.logger = get_logger(__name__)
 
     @property
-    def search_service(self) -> SearchService:
-        """延迟获取搜索服务（构造函数中不调用异步工厂）"""
-        if self._search_service is None:
-            if self._es_client is None:
-                raise RuntimeError(
-                    "DeepResearchService 需要通过 es_client 参数传入 Elasticsearch 客户端，"
-                    "请使用依赖注入方式创建实例"
+    def search_port(self) -> RetrievalPort:
+        """延迟获取检索端口（HostRetrievalPort 包 SearchService）。
+
+        批次 2 接缝：本服务依赖 RetrievalPort 抽象而非直接依赖 SearchService。
+        构造函数中不调用异步工厂；若调用方传入 SearchService 则包为 HostRetrievalPort，
+        否则按需构造 SearchService(self.session, es_client, model_config_service) 再包。
+        """
+        if self._search_port is None:
+            if self._search_service is not None:
+                self._search_port = HostRetrievalPort(self._search_service)
+            else:
+                if self._es_client is None:
+                    raise RuntimeError(
+                        "DeepResearchService 需要通过 es_client 参数传入 Elasticsearch 客户端，"
+                        "请使用依赖注入方式创建实例"
+                    )
+                self._search_port = HostRetrievalPort(
+                    SearchService(
+                        self.session,
+                        es_client=self._es_client,
+                        model_config_service=self._model_config_service,
+                    )
                 )
-            self._search_service = SearchService(
-                self.session,
-                es_client=self._es_client,
-                model_config_service=self._model_config_service,
-            )
-        return self._search_service
+        return self._search_port
 
     async def cleanup(self) -> None:
         """清理外部搜索服务资源"""
@@ -378,7 +392,7 @@ class DeepResearchService:
         self,
         space_id: int,
         user_id: int,
-        request: "ResearchRequest",
+        request: ResearchRequest,
     ) -> Dict[str, Any]:
         """
         执行深度研究（非流式）
@@ -405,7 +419,7 @@ class DeepResearchService:
             await self._create_research_session(ctx)
             # DR-1: 提前触发 search_service 初始化，尽早暴露 ES 配置问题
             if ctx.params.search_source != SearchSource.EXTERNAL:
-                _ = self.search_service
+                _ = self.search_port
             await self._analyze_and_save_topic(ctx)
             await self._decompose_and_save_tasks(ctx)
             await self._execute_research_search(ctx)
@@ -422,7 +436,7 @@ class DeepResearchService:
         self,
         space_id: int,
         user_id: int,
-        request: "ResearchRequest",
+        request: ResearchRequest,
     ) -> AsyncGenerator[str, None]:
         """
         执行深度研究（流式）
@@ -460,7 +474,7 @@ class DeepResearchService:
             await self._create_research_session(ctx)
             # DR-1: 提前触发 search_service 初始化，尽早暴露 ES 配置问题
             if ctx.params.search_source != SearchSource.EXTERNAL:
-                _ = self.search_service
+                _ = self.search_port
 
             # 1. 分析查询
             yield send_event("progress", {
@@ -956,7 +970,7 @@ class DeepResearchService:
             search_results = []
             for kb in kbs:
                 try:
-                    result = await self.search_service.search(
+                    result = await self.search_port.search(
                         space_id=space_id,
                         kb_id=kb.id,
                         user_id=user_id,
