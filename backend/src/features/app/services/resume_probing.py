@@ -10,21 +10,24 @@ S10-S11: 自动追问引擎 (V2)
 重试与降级策略不变：
 - 主模型指数退避重试3次（2s → 4s → 8s）
 - 重试耗尽后：降级到用户配置的其他模型
+
+批次 5 接缝：prompt 经注入的 ``PromptProvider`` 端口取模板、日志经注入的 ``Logger``
+端口输出，不再 import ``shared.prompts.PromptManager`` /
+``core.middleware.structured_logging.get_logger``。降级 LLM 加载改经注入的
+``FallbackLLMProvider`` 端口，不再 import ``user.services.model_config_service``
+（切断 resume 引擎 -> user feature 导入边；ModelConfigService 全量端口化见任务#36）。
 """
 import asyncio
 import json
 from typing import Optional
 
-from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.prompts import PromptManager
+from novamind.shared.engine_ports import FallbackLLMProvider, Logger, PromptProvider
 from novamind.features.app.schemas.resume_schema import (
     StructuredResume, ProbingPlan, KnowledgePoint, JDAnalysis,
     WorkProjectUnit,
 )
 from novamind.features.app.services.resume_parser import _extract_json
-
-logger = get_logger(__name__)
 
 # ==================== 常量 ====================
 
@@ -48,40 +51,39 @@ class AutoProbingEngine:
     def __init__(
         self,
         llm_client: BaseLLM,
+        *,
+        prompt_provider: PromptProvider,
+        logger: Logger,
         user_id: int = 0,
-        bg_db=None,
+        fallback_llm_provider: Optional[FallbackLLMProvider] = None,
         max_concurrent: int = 3,
     ):
         self.llm = llm_client
+        self._prompt_provider = prompt_provider
+        self._logger = logger
         self.user_id = user_id
-        self.bg_db = bg_db
+        self._fallback_llm_provider = fallback_llm_provider
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._fallback_clients: dict[str, BaseLLM] = {}
         self._fallback_models_loaded = False
 
     async def _load_fallback_models(self):
-        """从数据库加载用户可用模型列表，排除当前主模型"""
-        if self._fallback_models_loaded or not self.bg_db:
+        """经注入的 FallbackLLMProvider 加载用户其他可用 LLM 客户端，排除当前主模型"""
+        if self._fallback_models_loaded or self._fallback_llm_provider is None:
             return
 
         self._fallback_models_loaded = True
         try:
-            from novamind.features.user.services.model_config_service import ModelConfigService
-            svc = ModelConfigService(self.bg_db)
-            configs = await svc.repo.list_by_user(self.user_id, "llm")
             current_model = getattr(self.llm, 'model', '')
-
-            for cfg in configs:
-                if cfg.model == current_model:
-                    continue
-                try:
-                    client = await svc.get_llm_client_by_model(self.user_id, cfg.model)
-                    self._fallback_clients[cfg.model] = client
-                    logger.info("降级模型已加载", fallback_model=cfg.model)
-                except Exception as e:
-                    logger.warning("降级模型加载失败", model=cfg.model, error=str(e))
+            clients = await self._fallback_llm_provider.load_fallback_clients(
+                self.user_id, current_model,
+            )
+            for client in clients:
+                model_name = getattr(client, 'model', '') or repr(client)
+                self._fallback_clients[model_name] = client
+                self._logger.info("降级模型已加载", fallback_model=model_name)
         except Exception as e:
-            logger.warning("加载降级模型列表失败", error=str(e))
+            self._logger.warning("加载降级模型列表失败", error=str(e))
 
     async def _call_llm_with_retry(self, prompt: str, max_tokens: int | None = None, **kwargs) -> str:
         """带重试和降级的 LLM 调用"""
@@ -98,7 +100,7 @@ class AutoProbingEngine:
             except Exception as e:
                 if attempt < MAX_RETRIES:
                     delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
-                    logger.warning(
+                    self._logger.warning(
                         "主模型调用失败，退避重试",
                         model=getattr(self.llm, 'model', 'unknown'),
                         attempt=f"{attempt}/{MAX_RETRIES}",
@@ -107,7 +109,7 @@ class AutoProbingEngine:
                     )
                     await asyncio.sleep(delay)
                 else:
-                    logger.error(
+                    self._logger.error(
                         "主模型重试耗尽，准备降级",
                         model=getattr(self.llm, 'model', 'unknown'),
                         attempts=MAX_RETRIES,
@@ -123,12 +125,12 @@ class AutoProbingEngine:
                     result = await client.generate_text(
                         prompt=prompt, **generate_kwargs,
                     )
-                    logger.info("降级模型调用成功", fallback_model=model_name)
+                    self._logger.info("降级模型调用成功", fallback_model=model_name)
                     return result
                 except Exception as e:
                     if attempt < FALLBACK_MAX_RETRIES:
                         delay = RETRY_BASE_DELAY * (2 ** (attempt - 1))
-                        logger.warning(
+                        self._logger.warning(
                             "降级模型调用失败，重试",
                             fallback_model=model_name,
                             attempt=f"{attempt}/{FALLBACK_MAX_RETRIES}",
@@ -137,7 +139,7 @@ class AutoProbingEngine:
                         )
                         await asyncio.sleep(delay)
                     else:
-                        logger.warning(
+                        self._logger.warning(
                             "降级模型重试耗尽",
                             fallback_model=model_name,
                             error=str(e)[:200],
@@ -152,7 +154,6 @@ class AutoProbingEngine:
         structured_resume: StructuredResume,
         probing_plan: ProbingPlan,
         jd_analysis: Optional[JDAnalysis],
-        bg_db=None,
     ) -> list[dict]:
         """对所有 KP 并行执行自问自答"""
         kps = sorted(probing_plan.knowledge_points, key=lambda k: k.probing_weight, reverse=True)
@@ -173,7 +174,7 @@ class AutoProbingEngine:
         records = []
         for kp, result in zip(kps, results):
             if isinstance(result, Exception):
-                logger.error("知识点追问失败", kp_id=kp.id, kp_name=kp.name, error=str(result))
+                self._logger.error("知识点追问失败", kp_id=kp.id, kp_name=kp.name, error=str(result))
                 records.append({
                     "kp_id": kp.id, "kp_name": kp.name,
                     "module": kp.module, "source": kp.source,
@@ -232,7 +233,7 @@ class AutoProbingEngine:
 
         try:
             # 第一轮：固定策略 - 做法
-            first_prompt = PromptManager.format_prompt(
+            first_prompt = self._prompt_provider.format(
                 "resume_probe_first_round",
                 kp_name=kp.name,
                 kp_category=kp.category,
@@ -270,7 +271,7 @@ class AutoProbingEngine:
                         "可以深挖原理、方案替代、实际案例、边界条件等。"
                     )
 
-                follow_prompt = PromptManager.format_prompt(
+                follow_prompt = self._prompt_provider.format(
                     "resume_probe_follow_up",
                     kp_name=kp.name,
                     kp_category=kp.category,
@@ -300,7 +301,7 @@ class AutoProbingEngine:
                 "qa_pairs": qa_pairs, "status": "completed",
             }
         except Exception as e:
-            logger.error("单 KP 追问失败（所有模型）", kp_id=kp.id, round=len(qa_pairs) + 1, error=str(e))
+            self._logger.error("单 KP 追问失败（所有模型）", kp_id=kp.id, round=len(qa_pairs) + 1, error=str(e))
             return {
                 "kp_id": kp.id, "kp_name": kp.name,
                 "module": kp.module, "source": kp.source,
@@ -330,7 +331,7 @@ class AutoProbingEngine:
 
         qa_summary = "\n".join(qa_summary_parts)
 
-        prompt = PromptManager.format_prompt(
+        prompt = self._prompt_provider.format(
             "resume_probe_evaluation",
             name=structured_resume.personal_info.name or "候选人",
             qa_summary=qa_summary,
@@ -343,7 +344,7 @@ class AutoProbingEngine:
             )
             return response.strip()
         except Exception as e:
-            logger.error("面试准备建议生成失败（所有模型）", error=str(e))
+            self._logger.error("面试准备建议生成失败（所有模型）", error=str(e))
             return ""
 
     async def generate_resume_advice(
@@ -375,7 +376,7 @@ class AutoProbingEngine:
         # 构建简历摘要
         resume_summary = self._make_resume_summary(structured_resume)
 
-        prompt = PromptManager.format_prompt(
+        prompt = self._prompt_provider.format(
             "resume_optimization_advice",
             name=structured_resume.personal_info.name or "候选人",
             resume_summary=resume_summary,
@@ -389,7 +390,7 @@ class AutoProbingEngine:
             )
             return response.strip()
         except Exception as e:
-            logger.error("简历优化建议生成失败（所有模型）", error=str(e))
+            self._logger.error("简历优化建议生成失败（所有模型）", error=str(e))
             return ""
 
     def _make_resume_summary(self, resume: StructuredResume) -> str:

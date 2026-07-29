@@ -2,13 +2,24 @@
 测评核心编排服务
 
 负责：测试集管理 → 创建任务 → 异步执行（并发+进度）→ 结果存 MinIO → 人工评分
+
+批次 5 接缝：本服务是宿主编排层（永久留宿主），但其依赖改为端口/工厂注入：
+  - ``retrieval_port``（RetrievalPort，批次 2 已建）替代直接持有 ``SearchService``，
+    切断 evaluation -> knowledge_space.services.search_service 的导入边；
+  - ``retrieval_factory(session)`` 供后台任务用独立 session 构造后台检索端口，
+    替代原延迟 ``new SearchService`` + ``get_elasticsearch_client`` + ``ModelConfigService``；
+  - ``session_factory()`` 替代延迟 ``get_db_session``（``_run_evaluation`` 后台路径）；
+  - evaluator 构造时注入宿主侧 ``PromptProvider`` + ``Logger``（见 adapters/）。
+
+注：``recover_orphan_tasks`` 是启动期静态方法（无实例状态），保留其延迟
+``get_db_session``——它是纯宿主启动编排，不进入引擎包，不属于引擎 -> 宿主切边范围。
 """
 import asyncio
 import hashlib
 import json
 import time
 import traceback
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
@@ -34,12 +45,19 @@ from novamind.features.evaluation.api.exceptions import (
     EvaluationTaskNotCancellableError,
     EvaluationTaskNotCompletedError,
 )
+from novamind.features.evaluation.adapters.host_prompt_provider import as_prompt_provider
+from novamind.features.knowledge_space.services.retrieval_port import RetrievalPort
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.prompts.templates import PromptManager
+from novamind.shared.engine_ports import Logger, PromptProvider
 from novamind.shared.storage.minio_client import MinioClient
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
+
+# 宿主侧端口实例：PromptProvider 包 PromptManager；Logger 复用 structlog BoundLogger。
+# 模块级构造一次，供所有后台评估任务注入 evaluator。
+_HOST_PROMPT_PROVIDER: PromptProvider = as_prompt_provider()
+_HOST_LOGGER: Logger = get_logger("evaluation.evaluators")
 
 MAX_ERROR_LENGTH = 2000
 EVALUATION_CONCURRENCY = 5
@@ -60,16 +78,20 @@ class EvaluationService:
     def __init__(
         self,
         db: AsyncSession,
-        search_service: Any,
+        retrieval_port: RetrievalPort,
         model_config_service: Any,
         minio_client: MinioClient,
+        retrieval_factory: Callable[[AsyncSession], RetrievalPort],
+        session_factory: Callable[[], Any],
     ):
         self.db = db
         self.test_set_repo = EvaluationTestSetRepository(db)
         self.task_repo = EvaluationTaskRepository(db)
-        self.search_service = search_service
+        self.retrieval_port = retrieval_port
         self.model_config_service = model_config_service
         self.minio_client = minio_client
+        self._retrieval_factory = retrieval_factory
+        self._session_factory = session_factory
 
     # ========== 测试集管理 ==========
 
@@ -374,8 +396,7 @@ class EvaluationService:
     # ========== 异步执行 ==========
 
     async def _run_evaluation(self, task_id: int, user_id: int) -> None:
-        from novamind.core.database.database import get_db_session
-        async with get_db_session() as session:
+        async with self._session_factory() as session:
             task_repo = EvaluationTaskRepository(session)
             test_set_repo = EvaluationTestSetRepository(session)
             try:
@@ -417,13 +438,11 @@ class EvaluationService:
                 if llm_client is None or embedding_client is None:
                     logger.warning("部分模型客户端获取失败", has_llm=llm_client is not None, has_embedding=embedding_client is not None)
 
-                # 用后台任务的独立 session 创建 SearchService，避免共享请求级 session
-                from novamind.features.knowledge_space.services.search_service import SearchService
-                from novamind.shared.clients import get_elasticsearch_client
-                from novamind.features.user.services.model_config_service import ModelConfigService
-                bg_es_client = await get_elasticsearch_client()
-                bg_model_config_service = ModelConfigService(session)
-                bg_search_service = SearchService(session, bg_es_client, bg_model_config_service)
+                # 后台任务用独立 session 经工厂构造 RetrievalPort，避免共享请求级 session
+                # （工厂内部封装 SearchService + ES client + ModelConfigService 的装配，
+                #   evaluation 不再直接 import knowledge_space.services.search_service /
+                #   shared.clients.get_elasticsearch_client / user.services.model_config_service）
+                bg_retrieval_port = self._retrieval_factory(session)
 
                 # 回写实际使用的模型名
                 config_changed = False
@@ -438,15 +457,26 @@ class EvaluationService:
                     flag_modified(task, "config")
                     await session.flush()
 
+                # evaluator 注入宿主侧 PromptProvider + Logger 端口（切断引擎 -> 宿主 prompt/log 导入边）
                 embedding_eval = EmbeddingEvaluator(embedding_client) if embedding_client else None
-                claim_decomposer = ClaimDecomposer(llm_client) if llm_client else None
+                claim_decomposer = (
+                    ClaimDecomposer(
+                        llm_client,
+                        prompt_provider=_HOST_PROMPT_PROVIDER,
+                        logger=_HOST_LOGGER,
+                    )
+                    if llm_client
+                    else None
+                )
 
                 retrieval_evaluator = RetrievalEvaluator(
                     llm_client=llm_client, embedding_evaluator=embedding_eval,
+                    prompt_provider=_HOST_PROMPT_PROVIDER, logger=_HOST_LOGGER,
                 )
                 generation_evaluator = GenerationEvaluator(
                     llm_client=llm_client, embedding_evaluator=embedding_eval,
                     claim_decomposer=claim_decomposer,
+                    prompt_provider=_HOST_PROMPT_PROVIDER, logger=_HOST_LOGGER,
                 )
 
                 # 并发评估
@@ -475,7 +505,7 @@ class EvaluationService:
                                 generation_evaluator=generation_evaluator,
                                 embedding_evaluator=embedding_eval,
                                 llm_client=llm_client, user_id=user_id,
-                                search_service=bg_search_service,
+                                retrieval_port=bg_retrieval_port,
                             )
                             return i, detail
                         except Exception as e:
@@ -624,7 +654,7 @@ class EvaluationService:
         embedding_evaluator: Optional[EmbeddingEvaluator],
         llm_client: Optional[BaseLLM],
         user_id: int,
-        search_service: Any = None,
+        retrieval_port: Optional[RetrievalPort] = None,
     ) -> Dict[str, Any]:
         detail: Dict[str, Any] = {
             "index": index, "question": question, "expected_answer": expected_answer,
@@ -638,7 +668,7 @@ class EvaluationService:
             top_k=config.top_k,
             score_threshold=config.score_threshold,
         )
-        svc = search_service or self.search_service
+        svc = retrieval_port or self.retrieval_port
         search_result = await svc.search(
             space_id=test_set_obj.space_id, kb_id=test_set_obj.kb_id,
             user_id=user_id, request=search_request,
@@ -746,7 +776,7 @@ class EvaluationService:
         context_text = "\n\n".join(
             f"[{i + 1}] {c.get('content', '')}" for i, c in enumerate(chunks)
         )
-        prompt = PromptManager.format_prompt(
+        prompt = _HOST_PROMPT_PROVIDER.format(
             "eval_generate_answer",
             context_text=context_text,
             question=question,

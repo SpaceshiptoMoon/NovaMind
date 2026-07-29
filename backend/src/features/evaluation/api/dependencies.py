@@ -1,17 +1,25 @@
 """
 测评模块依赖注入
+
+批次 5 接缝：EvaluationService 改为接收 ``RetrievalPort`` + ``retrieval_factory`` +
+``session_factory``，而非直接持有 ``SearchService``。装配点在此把宿主侧
+``SearchService`` 经 ``as_retrieval_port`` 包成端口，并构造后台检索工厂（封装
+ES client + ModelConfigService 装配），evaluation 不再 import 这些 knowledge_space/
+user/shared.clients 内部实现。
 """
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from novamind.core.database.database import get_db
+from novamind.core.database.database import get_db, get_db_session
 from novamind.features.knowledge_space.api.dependencies import (
     get_search_service,
 )
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.features.evaluation.services.evaluation_service import EvaluationService
 from novamind.features.knowledge_space.services.search_service import SearchService
-from novamind.shared.clients import get_minio_client
+from novamind.features.knowledge_space.adapters.retrieval_adapter import as_retrieval_port
+from novamind.features.knowledge_space.services.retrieval_port import RetrievalPort
+from novamind.shared.clients import get_elasticsearch_client, get_minio_client
 
 
 async def get_evaluation_service(
@@ -21,9 +29,23 @@ async def get_evaluation_service(
     """获取测评服务"""
     model_config_service = ModelConfigService(db)
     minio_client = await get_minio_client()
+
+    # 请求级检索端口（fallback 用）
+    retrieval_port: RetrievalPort = as_retrieval_port(search_service)
+
+    # 后台任务检索工厂：用独立 session 构造 RetrievalPort（封装 ES + ModelConfigService）
+    es_client = await get_elasticsearch_client()
+
+    def retrieval_factory(session: AsyncSession) -> RetrievalPort:
+        bg_model_config_service = ModelConfigService(session)
+        bg_search_service = SearchService(session, es_client, bg_model_config_service)
+        return as_retrieval_port(bg_search_service)
+
     return EvaluationService(
         db=db,
-        search_service=search_service,
+        retrieval_port=retrieval_port,
         model_config_service=model_config_service,
         minio_client=minio_client,
+        retrieval_factory=retrieval_factory,
+        session_factory=get_db_session,
     )

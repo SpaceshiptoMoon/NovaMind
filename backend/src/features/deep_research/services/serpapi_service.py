@@ -12,7 +12,7 @@ from novamind.features.deep_research.services.external_search_service import (
     ExternalSearchService,
     ExternalSearchResult,
 )
-from novamind.setting.yaml_config import get_config
+from novamind.shared.engine_config import SerpApiSearchConfig
 from novamind.core.middleware.structured_logging import get_logger
 
 
@@ -27,26 +27,18 @@ class SerpAPISearchService(ExternalSearchService):
     - 支持位置、日期等过滤
     """
 
-    def __init__(self):
-        self.logger = get_logger(__name__)
-        self._load_config()
+    def __init__(
+        self,
+        config: Optional[SerpApiSearchConfig] = None,
+        logger=None,
+    ):
+        self.logger = logger or get_logger(__name__)
+        cfg = config or SerpApiSearchConfig()
+        self.api_key = cfg.api_key
+        self.max_results = cfg.max_results
+        self.timeout = cfg.timeout
+        self.engine = cfg.engine
         self._client: Optional[httpx.AsyncClient] = None
-
-    def _load_config(self):
-        """加载配置"""
-        try:
-            config = get_config()
-            sa = config.external_search.serpapi
-            self.api_key = sa.api_key
-            self.max_results = sa.max_results
-            self.timeout = sa.timeout
-            self.engine = sa.engine
-        except Exception as e:
-            self.logger.warning("加载 SerpAPI 配置失败，使用默认值", error=str(e))
-            self.api_key = ""
-            self.max_results = 10
-            self.timeout = 30
-            self.engine = "google"
 
     @property
     def provider_name(self) -> str:

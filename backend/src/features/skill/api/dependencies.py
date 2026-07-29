@@ -14,6 +14,8 @@ from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.features.skill.services.skill_marketplace_service import SkillMarketplaceService
 from novamind.features.skill.services.skill_checker import SkillSecurityChecker
+from novamind.features.skill.adapters.host_prompt_provider import as_prompt_provider
+from novamind.features.agent.adapters.agent_registry_adapter import as_agent_registry_port
 from novamind.features.knowledge_space.api.dependencies import get_current_user_id
 from novamind.setting.yaml_config.loader import get_config_value
 from novamind.core.middleware.structured_logging import get_logger
@@ -80,12 +82,26 @@ async def get_skill_service(
 ) -> SkillMarketplaceService:
     minio = await get_minio_client()
 
-    # 条件注入 LLM 审查
+    # 条件注入 LLM 审查：端口 prompt_provider + logger 始终注入（默认无 LLM 时
+    # check_llm 直接返回 None，行为不变；LLM 启用时经端口取 prompt 与记日志）
     enabled = await _get_llm_review_enabled()
     llm_client = await _get_review_llm_client(user_id, model_config_service) if enabled else None
-    checker = SkillSecurityChecker(llm_client=llm_client)
+    checker = SkillSecurityChecker(
+        llm_client=llm_client,
+        prompt_provider=as_prompt_provider(),
+        logger=get_logger("skill.security_checker").bind(),
+    )
 
-    service = SkillMarketplaceService(db=db, minio_client=minio, security_checker=checker, model_config_service=model_config_service)
+    # AgentRegistryPort：宿主装配点注入，解 skill -> agent 服务层导入边
+    agent_registry_port = as_agent_registry_port(db)
+
+    service = SkillMarketplaceService(
+        db=db,
+        minio_client=minio,
+        security_checker=checker,
+        model_config_service=model_config_service,
+        agent_registry_port=agent_registry_port,
+    )
     yield service
     await service.cleanup()
 

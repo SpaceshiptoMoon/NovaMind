@@ -598,11 +598,19 @@ class AIChatService:
 
     async def _retrieve_web(self, query: str, max_results: int = 5) -> Optional[Tuple[str, List[dict]]]:
         """联网搜索，返回 (参考资料块文本, 结构化来源列表)。复用 deep_research 的 DuckDuckGo 服务"""
+        from novamind.setting.yaml_config import get_config
+        from novamind.shared.engine_config import DuckDuckGoSearchConfig
         from novamind.features.deep_research.services.duckduckgo_service import (
             DuckDuckGoSearchService,
         )
 
-        service = DuckDuckGoSearchService()
+        ddg = get_config().external_search.duckduckgo
+        service = DuckDuckGoSearchService(
+            DuckDuckGoSearchConfig(
+                max_results=ddg.max_results,
+                timeout=ddg.timeout,
+            )
+        )
         results = await service.search(query=query, max_results=max_results)
         self.logger.info("联网搜索原始返回", count=len(results) if results else 0, query=query[:50])
         if not results:

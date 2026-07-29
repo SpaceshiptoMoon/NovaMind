@@ -12,7 +12,7 @@ from novamind.features.deep_research.services.external_search_service import (
     ExternalSearchService,
     ExternalSearchResult,
 )
-from novamind.setting.yaml_config import get_config
+from novamind.shared.engine_config import TavilySearchConfig
 from novamind.core.middleware.structured_logging import get_logger
 
 
@@ -27,26 +27,18 @@ class TavilySearchService(ExternalSearchService):
     - 支持包含答案摘要
     """
 
-    def __init__(self):
-        self.logger = get_logger(__name__)
-        self._load_config()
+    def __init__(
+        self,
+        config: Optional[TavilySearchConfig] = None,
+        logger=None,
+    ):
+        self.logger = logger or get_logger(__name__)
+        cfg = config or TavilySearchConfig()
+        self.api_key = cfg.api_key
+        self.max_results = cfg.max_results
+        self.search_depth = cfg.search_depth
+        self.timeout = cfg.timeout
         self._client: Optional[httpx.AsyncClient] = None
-
-    def _load_config(self):
-        """加载配置"""
-        try:
-            config = get_config()
-            tv = config.external_search.tavily
-            self.api_key = tv.api_key
-            self.max_results = tv.max_results
-            self.search_depth = tv.search_depth
-            self.timeout = tv.timeout
-        except Exception as e:
-            self.logger.warning("加载 Tavily 配置失败，使用默认值", error=str(e))
-            self.api_key = ""
-            self.max_results = 10
-            self.search_depth = "basic"
-            self.timeout = 30
 
     @property
     def provider_name(self) -> str:

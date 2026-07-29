@@ -19,12 +19,18 @@ Agent 引擎对外依赖端口协议
 当前阶段（批次 3）协议留在 `features/agent/core/ports.py`；批次 6 物理抽包时随
 `agent/core/*` 迁入 `novamind-agent-engine/ports.py`。PromptProvider/Logger 复用
 `shared/engine_ports.py`（批次 6 同迁 `novamind-engine-core`）。
+
+批次 5：``WebSearchPort`` / ``WebSearchResult`` 提升到中立的 ``shared/search_ports.py``
+（供 resume 引擎消费，避免 resume -> agent feature 导入边），本模块 re-export
+保持批次 3 代码与测试零改动。
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, Tuple, runtime_checkable
+
+from novamind.shared.search_ports import WebSearchPort, WebSearchResult
 
 if TYPE_CHECKING:
     # 仅用于类型注解（配合 `from __future__ import annotations` 惰性求值），
@@ -34,26 +40,8 @@ if TYPE_CHECKING:
 
 
 # ==================== 联网搜索 ====================
-
-
-@dataclass
-class WebSearchResult:
-    """联网搜索单条结果"""
-
-    title: str
-    url: str
-    snippet: str
-
-
-@runtime_checkable
-class WebSearchPort(Protocol):
-    """联网搜索端口：供 web_search 工具调用，切断对 deep_research 服务的直接依赖。"""
-
-    async def search(
-        self, query: str, max_results: int = 5
-    ) -> List[WebSearchResult]:
-        """执行联网搜索，返回标题/URL/摘要列表。"""
-        ...
+# WebSearchPort / WebSearchResult 已提升到 shared/search_ports.py（见模块头说明），
+# 此处经顶部 re-export 提供向后兼容的导入路径。
 
 
 # ==================== 知识库检索 ====================

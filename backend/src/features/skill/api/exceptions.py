@@ -10,6 +10,7 @@ from novamind.features.skill.exceptions import (  # noqa: F401
     SkillAccessDeniedError,
     SkillAlreadyInstalledError,
     SkillNotInstalledError,
+    SkillTargetAgentNotFoundError,
     InvalidSkillFormatError,
     SkillReviewRejectedError,
     SkillFileSizeExceededError,

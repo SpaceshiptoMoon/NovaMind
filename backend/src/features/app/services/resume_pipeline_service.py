@@ -3,6 +3,13 @@
 
 从 routes.py 中提取的后台 pipeline 逻辑，
 支持 S1-S12 全流程执行、阶段间取消检查。
+
+批次 5 接缝：本服务属宿主编排层（DB/MinIO/ModelConfigService/arq worker），留宿主。
+但 resume 引擎（ResumeParser/ResumeAnalyzer/AutoProbingEngine）的 prompt/log/
+WebSearch/降级 LLM 改经端口注入：装配点在此构造 ``PromptProvider`` / ``Logger`` /
+``WebSearchPort`` / ``FallbackLLMProvider`` 实例并注入引擎，引擎不再 import 宿主
+prompt 注册表 / 结构化日志 / deep_research 搜索服务 / user.services（切断
+resume 引擎 -> 宿主导入边，为批次 6 抽 ``novamind-resume-engine`` 做准备）。
 """
 from typing import Optional
 
@@ -13,6 +20,13 @@ from novamind.features.app.repository.resume_repository import ResumeSessionRepo
 from novamind.features.app.services.resume_parser import ResumeParser
 from novamind.features.app.services.resume_analyzer import ResumeAnalyzer
 from novamind.features.app.services.resume_probing import AutoProbingEngine
+from novamind.features.app.adapters.host_prompt_provider import as_prompt_provider
+from novamind.features.app.adapters.host_fallback_llm_provider import (
+    as_fallback_llm_provider,
+)
+from novamind.features.deep_research.adapters.web_search_port_adapter import (
+    build_web_search_port,
+)
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.clients import get_minio_client
 from novamind.shared.mq.task_tracker import is_resume_cancelled
@@ -53,8 +67,16 @@ class ResumePipelineService:
             llm = await bg_model_config_service.get_llm_client_by_model(user_id, llm_model)
             repo = ResumeSessionRepository(db)
 
+            # 装配 resume 引擎端口（宿主 -> 引擎端口实现）
+            prompt_provider = as_prompt_provider()
+            engine_logger = get_logger("resume.engine").bind()
+            web_search_port = build_web_search_port()
+            fallback_llm_provider = as_fallback_llm_provider(bg_model_config_service)
+
             # ── S1-S4: 解析简历 ──
-            parser = ResumeParser(llm)
+            parser = ResumeParser(
+                llm, prompt_provider=prompt_provider, logger=engine_logger,
+            )
             structured = await parser.parse(file_bytes, filename)
             logger.info("S1-S4 简历解析完成", session_id=session_id)
 
@@ -70,7 +92,12 @@ class ResumePipelineService:
             await db.commit()
 
             # ── S5-S9: 分析报告 ──
-            analyzer = ResumeAnalyzer(llm)
+            analyzer = ResumeAnalyzer(
+                llm,
+                prompt_provider=prompt_provider,
+                logger=engine_logger,
+                web_search_port=web_search_port,
+            )
             result = await analyzer.analyze(structured, jd_text, config)
             logger.info("S5-S9 分析报告完成", session_id=session_id)
 
@@ -101,9 +128,15 @@ class ResumePipelineService:
             prefix_knowledge_objs = result["prefix_knowledge"]
             work_units = probing_plan.work_units
 
-            engine = AutoProbingEngine(llm, user_id=user_id, bg_db=db)
+            engine = AutoProbingEngine(
+                llm,
+                prompt_provider=prompt_provider,
+                logger=engine_logger,
+                user_id=user_id,
+                fallback_llm_provider=fallback_llm_provider,
+            )
             qa_records = await engine.probe_all(
-                session_id, structured, probing_plan, jd_analysis_obj, db,
+                session_id, structured, probing_plan, jd_analysis_obj,
             )
             logger.info("S10 自动追问完成", session_id=session_id, kp_count=len(qa_records))
 

@@ -14,7 +14,7 @@ from novamind.features.deep_research.services.external_search_service import (
     ExternalSearchService,
     ExternalSearchResult,
 )
-from novamind.setting.yaml_config import get_config
+from novamind.shared.engine_config import DuckDuckGoSearchConfig
 from novamind.core.middleware.structured_logging import get_logger
 
 
@@ -29,22 +29,16 @@ class DuckDuckGoSearchService(ExternalSearchService):
     - 作为降级备选方案
     """
 
-    def __init__(self):
-        self.logger = get_logger(__name__)
-        self._load_config()
+    def __init__(
+        self,
+        config: Optional[DuckDuckGoSearchConfig] = None,
+        logger=None,
+    ):
+        self.logger = logger or get_logger(__name__)
+        cfg = config or DuckDuckGoSearchConfig()
+        self.max_results = cfg.max_results
+        self.timeout = cfg.timeout
         self._client: Optional[httpx.AsyncClient] = None
-
-    def _load_config(self):
-        """加载配置"""
-        try:
-            config = get_config()
-            ddg = config.external_search.duckduckgo
-            self.max_results = ddg.max_results
-            self.timeout = ddg.timeout
-        except Exception as e:
-            self.logger.warning("加载 DuckDuckGo 配置失败，使用默认值", error=str(e))
-            self.max_results = 10
-            self.timeout = 15
 
     @property
     def provider_name(self) -> str:

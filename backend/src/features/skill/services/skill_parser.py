@@ -2,6 +2,11 @@
 SKILL.md 解析器 — 解析 Anthropic 技能标准格式
 
 解析 ZIP 包中的 SKILL.md 文件，提取 YAML frontmatter 和 Markdown body
+
+批次 5 接缝：``extract_skill_zip`` 新增可选 ``logger`` 参数（``Logger`` 端口），
+不再直接 import ``core.middleware.structured_logging.get_logger``（切断 skill 引擎
+-> 宿主导入边）。默认 ``logger=None`` 时静默跳过「资源过大」告警，调用方可从
+宿主侧注入 structlog logger。
 """
 import io
 import re
@@ -11,9 +16,7 @@ from typing import Dict, List, Optional, Any
 
 import yaml
 
-from novamind.core.middleware.structured_logging import get_logger
-
-logger = get_logger(__name__)
+from novamind.shared.engine_ports import Logger
 
 # frontmatter 分隔符
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
@@ -197,7 +200,10 @@ def validate_skill_md(content: str) -> ValidationResult:
     )
 
 
-def extract_skill_zip(zip_bytes: bytes) -> ExtractedSkill:
+def extract_skill_zip(
+    zip_bytes: bytes,
+    logger: Optional[Logger] = None,
+) -> ExtractedSkill:
     """
     解压技能 ZIP 包，提取 SKILL.md 和资源文件
 
@@ -207,6 +213,7 @@ def extract_skill_zip(zip_bytes: bytes) -> ExtractedSkill:
 
     Args:
         zip_bytes: ZIP 文件的字节数据
+        logger: 可选的 ``Logger`` 端口实例。未注入时「资源过大」告警静默跳过。
 
     Returns:
         ExtractedSkill 含解析结果和资源文件列表
@@ -275,7 +282,8 @@ def extract_skill_zip(zip_bytes: bytes) -> ExtractedSkill:
 
         data = zf.read(name)
         if len(data) > _MAX_RESOURCE_SIZE:
-            logger.warning("资源文件过大，跳过", path=rel_path, size=len(data))
+            if logger:
+                logger.warning("资源文件过大，跳过", path=rel_path, size=len(data))
             continue
 
         resources.append(ResourceFile(

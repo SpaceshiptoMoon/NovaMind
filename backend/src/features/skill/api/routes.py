@@ -426,9 +426,7 @@ async def install_skill(
     user_id: int = Depends(get_current_user_id),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
-    from novamind.features.agent.repository.agent_repository import AgentRepository
-    agent_repo = AgentRepository(service.db)
-    return await service.install_skill(user_id, skill_id, data.agent_id, agent_repo)
+    return await service.install_skill(user_id, skill_id, data.agent_id)
 
 
 @router.delete(
@@ -444,10 +442,8 @@ async def uninstall_skill(
     current_user: dict = Depends(get_current_user),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
-    from novamind.features.agent.repository.agent_repository import AgentRepository
-    agent_repo = AgentRepository(service.db)
     await service.uninstall_skill(
-        user_id, skill_id, agent_id, agent_repo,
+        user_id, skill_id, agent_id,
         is_admin=current_user.get("is_admin", False),
     )
     return {"success": True, "message": "技能已卸载"}
