@@ -26,6 +26,7 @@ from novamind.shared.knowledge.media_processing.video import extract_video_frame
 from novamind.shared.utils.time_utils import now_china
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
 from novamind.features.knowledge_space.schemas.enums import ChunkType
+from novamind.shared.engine_config import AudioConfig
 from novamind.shared.knowledge.media_processing.vlm import (
     build_vlm_image_messages,
     generate_vlm_text_with_fallback,
@@ -319,6 +320,14 @@ async def process_audio_document(
     asr_model = audio_config.get("asr_model") or space_asr_cfg.get("model") or "whisper-1"
     language = audio_config.get("language")
 
+    # 引擎侧 audio_utils 不再 import setting；宿主在此从 YAML 配置构造 AudioConfig
+    # 注入本地 faster-whisper 模型目录，切断 shared/knowledge -> setting 的导入边。
+    from novamind.setting.yaml_config import get_config
+
+    engine_audio_config = AudioConfig(
+        local_whisper_model_dir=get_config().knowledge_base.parsing.local_whisper_model_dir,
+    )
+
     # 1. ASR 转写（根据协议路由：openai → Whisper / dashscope → Paraformer / local → faster-whisper）
     from novamind.features.user.services.model_config_service import ModelConfigService
     from novamind.shared.knowledge.media_processing.audio import transcribe_audio_with_dashscope
@@ -362,6 +371,7 @@ async def process_audio_document(
                 file_content=file_content,
                 file_type=document.file_type,
                 language=language,
+                audio_config=engine_audio_config,
             )
         if protocol == "dashscope":
             storage_info = document.get_storage_info()

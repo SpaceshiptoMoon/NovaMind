@@ -49,6 +49,9 @@ class ClientFactory:
                 # 双重检查锁定
                 if "minio" not in cls._instances:
                     from novamind.shared.storage.minio_client import MinioClient
+                    from novamind.features.knowledge_space.adapters.novamind_path_strategy import (
+                        NovamindPathStrategy,
+                    )
 
                     config = get_config()
                     cls._instances["minio"] = MinioClient(
@@ -58,6 +61,7 @@ class ClientFactory:
                         secure=config.minio.secure,
                         default_bucket=config.minio.bucket_name,
                         public_endpoint=config.minio.public_endpoint,
+                        path_strategy=NovamindPathStrategy(),
                     )
                     logger.info("MinIO 客户端已初始化", endpoint=config.minio.endpoint)
 
@@ -79,6 +83,9 @@ class ClientFactory:
                 # 双重检查锁定
                 if "elasticsearch" not in cls._instances:
                     from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
+                    from novamind.features.knowledge_space.adapters.novamind_index_schema import (
+                        NovamindIndexSchema,
+                    )
 
                     config = get_config()
                     # 从配置读取 SSL 参数，默认不使用 SSL
@@ -95,6 +102,7 @@ class ClientFactory:
                         ca_certs=ca_certs,
                         default_embedding_dim=es_config.default_embedding_dim,
                         default_analyzer=getattr(es_config, "analyzer", "standard"),
+                        index_schema=NovamindIndexSchema(),
                     )
                     logger.info("Elasticsearch 客户端已初始化", hosts=config.elasticsearch.hosts)
 

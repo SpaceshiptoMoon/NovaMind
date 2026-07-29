@@ -28,6 +28,7 @@ from minio import Minio
 from minio.error import S3Error
 
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.storage.path_strategy import DefaultPathStrategy, PathStrategy
 
 logger = get_logger(__name__)
 
@@ -55,6 +56,7 @@ class MinioClient:
         region: str = "us-east-1",
         default_bucket: str = "knowledge-base",
         public_endpoint: str = None,
+        path_strategy: Optional[PathStrategy] = None,
     ):
         """
         初始化 MinIO 客户端
@@ -75,6 +77,8 @@ class MinioClient:
         self.secure = secure
         self.region = region
         self.default_bucket = default_bucket
+        # 对象路径方案经策略注入；默认实现逐字复刻旧版路径
+        self._path_strategy: PathStrategy = path_strategy or DefaultPathStrategy()
 
         # 安全警告：未启用 SSL
         if not secure:
@@ -141,7 +145,7 @@ class MinioClient:
         """同步上传文档（内部方法）"""
         bucket_name = self.default_bucket
         storage_name = self._generate_storage_name(file_hash, filename)
-        object_name = f"spaces/{space_id}/kbs/{kb_id}/documents/{document_id}/{storage_name}"
+        object_name = self._path_strategy.document_object_name(space_id, kb_id, document_id, storage_name)
 
         file_stream = io.BytesIO(file_data)
         result = self.client.put_object(
@@ -230,7 +234,7 @@ class MinioClient:
         """同步流式上传文档（内部方法）"""
         bucket_name = self.default_bucket
         storage_name = self._generate_storage_name(file_hash, filename)
-        object_name = f"spaces/{space_id}/kbs/{kb_id}/documents/{document_id}/{storage_name}"
+        object_name = self._path_strategy.document_object_name(space_id, kb_id, document_id, storage_name)
 
         result = self.client.put_object(
             bucket_name,
@@ -410,7 +414,7 @@ class MinioClient:
     def _delete_knowledge_base_documents(self, space_id: int, kb_id: int) -> int:
         """同步删除知识库的所有文档（内部方法）"""
         bucket_name = self.default_bucket
-        prefix = f"spaces/{space_id}/kbs/{kb_id}/"
+        prefix = self._path_strategy.document_prefix_for_kb(space_id, kb_id)
         objects = self.client.list_objects(bucket_name, prefix=prefix, recursive=True)
         count = 0
         for obj in objects:
@@ -458,7 +462,7 @@ class MinioClient:
     def _delete_space_documents(self, space_id: int) -> int:
         """同步删除空间的所有文档（内部方法）"""
         bucket_name = self.default_bucket
-        prefix = f"spaces/{space_id}/"
+        prefix = self._path_strategy.document_prefix_for_space(space_id)
         objects = self.client.list_objects(bucket_name, prefix=prefix, recursive=True)
         count = 0
         for obj in objects:
@@ -506,7 +510,7 @@ class MinioClient:
         # 删除旧头像
         self._delete_avatar(bucket_name, user_id)
 
-        object_name = f"avatars/{user_id}/avatar.{extension}"
+        object_name = self._path_strategy.avatar_object_name(user_id, extension)
         content_type = self._get_content_type(f"avatar.{extension}")
 
         file_stream = io.BytesIO(file_data)
@@ -556,7 +560,7 @@ class MinioClient:
 
     def _delete_avatar(self, bucket_name: str, user_id: int) -> None:
         """删除用户的旧头像"""
-        avatar_prefix = f"avatars/{user_id}/"
+        avatar_prefix = self._path_strategy.avatar_prefix_for_user(user_id)
         try:
             objects = self.client.list_objects(bucket_name, prefix=avatar_prefix)
             for obj in objects:
@@ -570,7 +574,7 @@ class MinioClient:
         """同步上传临时文件（内部方法）"""
         bucket_name = self.default_bucket
         safe_filename = self._sanitize_filename(filename)
-        object_name = f"temp/{session_id}/{safe_filename}"
+        object_name = self._path_strategy.temp_object_name(session_id, safe_filename)
 
         file_stream = io.BytesIO(file_data)
         result = self.client.put_object(
@@ -618,7 +622,7 @@ class MinioClient:
     def _cleanup_temp_files(self, session_id: str) -> int:
         """同步清理会话的临时文件（内部方法）"""
         bucket_name = self.default_bucket
-        prefix = f"temp/{session_id}/"
+        prefix = self._path_strategy.temp_prefix_for_session(session_id)
         objects = self.client.list_objects(bucket_name, prefix=prefix)
         count = 0
         for obj in objects:
@@ -802,7 +806,7 @@ class MinioClient:
             对象名（路径）
         """
         storage_name = self._generate_storage_name(file_hash, filename)
-        return f"spaces/{space_id}/kbs/{kb_id}/documents/{document_id}/{storage_name}"
+        return self._path_strategy.document_object_name(space_id, kb_id, document_id, storage_name)
 
     def _generate_storage_name(self, file_hash: str, filename: str) -> str:
         """
@@ -915,30 +919,10 @@ class MinioClient:
             raise
 
 
-# ========== 模块级工具函数 ==========
+# ========== 模块级常量 ==========
 
 IMAGE_FILE_TYPES = frozenset({"jpg", "jpeg", "png", "gif", "webp"})
 
-
-async def enrich_attachments_with_presigned_urls(
-    extra: dict | None,
-    minio_client: MinioClient,
-    bucket: str | None = None,
-    expires: int = 3600,
-) -> None:
-    """为 extra["attachments"] 中的图片附件注入 preview_url（MinIO presigned URL）"""
-    if not extra or "attachments" not in extra:
-        return
-    bucket = bucket or minio_client.default_bucket
-    for att in extra["attachments"]:
-        if (
-            att.get("file_type", "").lower() in IMAGE_FILE_TYPES
-            and "storage_path" in att
-            and "preview_url" not in att
-        ):
-            try:
-                att["preview_url"] = await minio_client.get_file_url(
-                    bucket, att["storage_path"], expires
-                )
-            except Exception:
-                pass
+# 注：``enrich_attachments_with_presigned_urls`` 已迁至宿主 adapter
+# ``features/knowledge_space/adapters/attachment_enrichment.py``（附件预签名 URL 注入是
+# 宿主展示策略，不属于通用存储客户端）。

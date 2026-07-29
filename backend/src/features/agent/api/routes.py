@@ -18,7 +18,7 @@ from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.agent.services.chat_service import AgentChatService
 from novamind.features.agent.services.mcp_server_service import McpServerService
 from novamind.features.agent.core.tool.registry import ToolRegistry
-from novamind.shared.storage.minio_client import enrich_attachments_with_presigned_urls
+from novamind.features.knowledge_space.adapters.attachment_enrichment import enrich_attachments_with_presigned_urls
 from novamind.features.agent.schemas.agent_schema import (
     AgentCreate,
     AgentUpdate,
