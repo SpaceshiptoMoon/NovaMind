@@ -11,6 +11,7 @@ from typing import Optional, List, Dict, Any
 from elasticsearch import AsyncElasticsearch, NotFoundError, ConnectionError as ESConnectionError
 
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.storage.index_schema import DefaultIndexSchema, IndexSchema
 
 logger = get_logger(__name__)
 
@@ -38,11 +39,14 @@ class ElasticsearchClient:
         ca_certs: Optional[str] = None,
         default_embedding_dim: int = 1024,
         default_analyzer: str = "standard",
+        index_schema: Optional[IndexSchema] = None,
     ):
         self.verify_certs = verify_certs
         self.ca_certs = ca_certs
         self.default_embedding_dim = default_embedding_dim
         self.default_analyzer = default_analyzer
+        # 索引命名/mapping/字段名经 schema 注入；默认实现逐字复刻旧版行为
+        self._schema: IndexSchema = index_schema or DefaultIndexSchema()
 
         if use_ssl:
             resolved_hosts = [
@@ -93,8 +97,8 @@ class ElasticsearchClient:
     # ========== 索引管理 ==========
 
     def generate_index_name(self, space_id: int) -> str:
-        """生成空间索引名称"""
-        return f"space_{space_id}"
+        """生成空间索引名称（经 schema）"""
+        return self._schema.index_name(space_id)
 
     async def index_exists(self, space_id: int) -> bool:
         """检查索引是否存在"""
@@ -116,83 +120,14 @@ class ElasticsearchClient:
         dim = embedding_dim or self.default_embedding_dim
         _analyzer = analyzer or self.default_analyzer
 
-        is_ik = _analyzer.startswith("ik_")
-        search_analyzer = "ik_smart" if is_ik else "standard"
-
-        properties = {
-            "space_id": {"type": "long"},
-            "kb_id": {"type": "long"},
-            "document_id": {"type": "long"},
-            "chunk_id": {"type": "keyword"},
-            "chunk_index": {"type": "integer"},
-            "content": {
-                "type": "text",
-                "analyzer": _analyzer,
-                "search_analyzer": search_analyzer,
-            },
-            "embedding": {
-                "type": "dense_vector",
-                "dims": dim,
-                "index": True,
-                "similarity": "cosine",
-            },
-            "questions": {
-                "type": "text",
-                "analyzer": _analyzer,
-                "search_analyzer": search_analyzer,
-            },
-            "question_embeddings": {
-                "type": "nested",
-                "properties": {
-                    "vector": {
-                        "type": "dense_vector",
-                        "dims": dim,
-                        "index": True,
-                        "similarity": "cosine",
-                    }
-                },
-            },
-            "chunk_type": {"type": "keyword"},
-            "image_url": {"type": "keyword"},
-            "media_url": {"type": "keyword"},
-            "metadata": {
-                "properties": {
-                    "page_number": {"type": "integer"},
-                    "section_title": {"type": "text"},
-                    "char_start": {"type": "integer"},
-                    "char_end": {"type": "integer"},
-                    "content_hash": {"type": "keyword"},
-                    "start_time": {"type": "float"},
-                    "end_time": {"type": "float"},
-                    "duration": {"type": "float"},
-                    "speaker_id": {"type": "keyword"},
-                }
-            },
-            "file_info": {
-                "properties": {
-                    "filename": {"type": "keyword"},
-                    "file_type": {"type": "keyword"},
-                }
-            },
-            "created_at": {"type": "date"},
-            "updated_at": {"type": "date"},
-        }
-
-        mappings = {
-            "settings": {
-                "number_of_shards": 1,
-                "number_of_replicas": 0,
-            },
-            "mappings": {
-                "properties": properties,
-            },
-        }
+        # mapping/settings 经 schema 构造（逐字复刻旧版 properties）
+        body = self._schema.build_create_body(dim, _analyzer)
 
         try:
             await self.es_client.indices.create(
                 index=index_name,
-                settings=mappings["settings"],
-                mappings=mappings["mappings"],
+                settings=body["settings"],
+                mappings=body["mappings"],
             )
             logger.info("创建索引成功", index=index_name, embedding_dim=dim)
             return True
@@ -234,7 +169,7 @@ class ElasticsearchClient:
         try:
             result = await self.es_client.delete_by_query(
                 index=index_name,
-                body={"query": {"term": {"kb_id": kb_id}}},
+                body={"query": {"term": {self._schema.field_names.kb_id: kb_id}}},
             )
             deleted = result.get("deleted", 0)
             logger.info("删除知识库文档成功", index=index_name, kb_id=kb_id, deleted=deleted)
@@ -332,7 +267,7 @@ class ElasticsearchClient:
         index_name = self.generate_index_name(space_id)
         try:
             result = await self.es_client.delete_by_query(
-                index=index_name, body={"query": {"term": {"document_id": document_id}}}
+                index=index_name, body={"query": {"term": {self._schema.field_names.document_id: document_id}}}
             )
             return result.get("deleted", 0)
         except Exception as e:
@@ -350,10 +285,10 @@ class ElasticsearchClient:
         try:
             result = await self.es_client.search(
                 index=index_name,
-                query={"term": {"document_id": document_id}},
+                query={"term": {self._schema.field_names.document_id: document_id}},
                 from_=skip,
                 size=limit,
-                sort=[{"chunk_index": {"order": "asc"}}],
+                sort=[{self._schema.field_names.chunk_index: {"order": "asc"}}],
                 track_total_hits=True,
             )
             hits = result.get("hits", {})
@@ -376,7 +311,7 @@ class ElasticsearchClient:
     def _build_kb_filter(self, kb_id: Optional[int] = None) -> List[Dict]:
         """构建知识库过滤条件"""
         if kb_id is not None:
-            return [{"term": {"kb_id": kb_id}}]
+            return [{"term": {self._schema.field_names.kb_id: kb_id}}]
         return []
 
     # ========== 搜索功能 ==========
@@ -384,15 +319,17 @@ class ElasticsearchClient:
     async def vector_search(
         self, space_id: int, query_vector: List[float], top_k: int = 5,
         kb_id: Optional[int] = None,
-        field: str = "embedding",
+        field: Optional[str] = None,
         chunk_type_filter: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """向量相似度搜索（统一入口，支持 embedding 字段）"""
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
+        # 字段名经 schema 解析；默认 embedding 字段
+        field = field or self._schema.field_names.embedding
         filters = self._build_kb_filter(kb_id)
         if chunk_type_filter:
-            filters.append({"term": {"chunk_type": chunk_type_filter}})
+            filters.append({"term": {self._schema.field_names.chunk_type: chunk_type_filter}})
 
         try:
             knn_query = {
@@ -461,7 +398,7 @@ class ElasticsearchClient:
         filters = self._build_kb_filter(kb_id)
         safe_query = self._escape_query(query)
 
-        search_query = {"match": {"content": safe_query}}
+        search_query = {"match": {self._schema.field_names.content: safe_query}}
         body = {"query": {"bool": {"must": [search_query], "filter": filters}}} if filters else {"query": search_query}
         return await self._execute_search(index_name, body, "全文搜索", top_k)
 
@@ -574,7 +511,7 @@ class ElasticsearchClient:
         safe_query = self._escape_query(query)
         filters = self._build_kb_filter(kb_id)
 
-        match_query = {"match": {"questions": safe_query}}
+        match_query = {"match": {self._schema.field_names.questions: safe_query}}
         body = {"query": {"bool": {"must": [match_query], "filter": filters}}} if filters else {"query": match_query}
         return await self._execute_search(index_name, body, "问题 BM25 检索", top_k)
 
@@ -586,13 +523,16 @@ class ElasticsearchClient:
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
         filters = self._build_kb_filter(kb_id)
+        fn = self._schema.field_names
+        nested_path = fn.question_embeddings
+        nested_field = f"{fn.question_embeddings}.{fn.question_embeddings_vector}"
 
         nested_query = {
             "nested": {
-                "path": "question_embeddings",
+                "path": nested_path,
                 "query": {
                     "knn": {
-                        "field": "question_embeddings.vector",
+                        "field": nested_field,
                         "query_vector": query_vector,
                         "k": top_k,
                         "num_candidates": top_k * 3,
@@ -636,11 +576,12 @@ class ElasticsearchClient:
         filters = self._build_kb_filter(kb_id)
 
         try:
+            fn = self._schema.field_names
             should_query = {
                 "bool": {
                     "should": [
-                        {"match": {"content": {"query": safe_query, "boost": content_weight}}},
-                        {"match": {"questions": {"query": safe_query, "boost": question_weight}}},
+                        {"match": {fn.content: {"query": safe_query, "boost": content_weight}}},
+                        {"match": {fn.questions: {"query": safe_query, "boost": question_weight}}},
                     ]
                 }
             }

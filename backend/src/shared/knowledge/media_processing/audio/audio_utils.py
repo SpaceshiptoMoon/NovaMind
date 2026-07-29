@@ -13,6 +13,8 @@ import tempfile
 from pathlib import Path
 from typing import List, Tuple, Dict, Optional, Set
 
+from novamind.shared.engine_config import AudioConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -145,22 +147,22 @@ def _segments_to_dict(segments_result) -> List[Dict]:
     return result
 
 
-def _resolve_local_whisper_model_dir() -> Path:
+def _resolve_local_whisper_model_dir(
+    audio_config: Optional[AudioConfig] = None,
+) -> Path:
     """解析本地 faster-whisper 模型目录。
 
     优先级：
-      1. YAML 配置 ``knowledge_base.parsing.local_whisper_model_dir``
+      1. ``AudioConfig.local_whisper_model_dir``（宿主从 YAML
+         ``knowledge_base.parsing.local_whisper_model_dir`` 构造注入）
       2. 环境变量 ``NOVAMIND_LOCAL_WHISPER_MODEL_DIR``
       3. 默认 ``~/.cache/faster-whisper/tiny``
+
+    引擎侧不再 import `novamind.setting`；YAML 配置由宿主构造 ``AudioConfig``
+    注入，从而切断 `shared/knowledge` -> `setting` 的导入边。
     """
-    # 1. YAML 配置（延迟导入避免 shared/knowledge → setting 的耦合）
-    try:
-        from novamind.setting import get_config_value
-        configured = get_config_value(
-            "knowledge_base.parsing.local_whisper_model_dir", None
-        )
-    except Exception:
-        configured = None
+    # 1. 注入的 AudioConfig（宿主从 YAML 配置构造）
+    configured = getattr(audio_config, "local_whisper_model_dir", None) if audio_config else None
     if configured:
         return Path(str(configured)).expanduser()
 
@@ -173,15 +175,21 @@ def _resolve_local_whisper_model_dir() -> Path:
     return Path.home() / ".cache" / "faster-whisper" / "tiny"
 
 
-async def _get_local_whisper_model():
-    """懒加载 faster-whisper 模型（单例，异步安全）"""
+async def _get_local_whisper_model(
+    audio_config: Optional[AudioConfig] = None,
+):
+    """懒加载 faster-whisper 模型（单例，异步安全）
+
+    ``audio_config`` 仅在首次加载（模型实例尚未创建）时用于解析模型目录；
+    单例已加载后忽略传入的配置，保证后续调用不重复加载。
+    """
     global _local_whisper_model
     if _local_whisper_model is None:
         async with _model_lock:
             if _local_whisper_model is None:
                 from faster_whisper import WhisperModel
 
-                model_dir = _resolve_local_whisper_model_dir()
+                model_dir = _resolve_local_whisper_model_dir(audio_config)
                 if not model_dir.exists():
                     raise RuntimeError(
                         f"本地 ASR 模型未找到: {model_dir}，"
@@ -241,6 +249,7 @@ async def transcribe_audio_local(
     file_content: bytes,
     file_type: str = "mp3",
     language: Optional[str] = None,
+    audio_config: Optional[AudioConfig] = None,
 ) -> List[Dict]:
     """
     使用本地 faster-whisper 模型转写音频，返回带时间戳的段落
@@ -250,6 +259,9 @@ async def transcribe_audio_local(
     Args:
         file_content: 音频文件二进制内容
         file_type: 提示用，实际格式通过 Magic Bytes 检测
+        audio_config: 引擎音频配置，宿主从 YAML
+            ``knowledge_base.parsing.local_whisper_model_dir`` 构造注入；
+            仅在模型首次加载时生效。
 
     Returns:
         [{"text": "...", "start": 0.0, "end": 5.2}, ...]
@@ -283,7 +295,7 @@ async def transcribe_audio_local(
 
     try:
         # 3. 加载模型
-        model = await _get_local_whisper_model()
+        model = await _get_local_whisper_model(audio_config)
 
         logger.info("本地 ASR 转写开始, file=%s, size=%d", tmp_path, len(file_content))
         # 走专用单线程 executor：串行化转写，避免并发同一模型实例导致原生层崩溃，

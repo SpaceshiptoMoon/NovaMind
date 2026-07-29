@@ -1,0 +1,39 @@
+"""
+引擎自用配置 dataclass（临时宿主侧定义）
+
+本模块存放引擎库运行所需、且**不依赖 `novamind.setting`** 的纯数据配置。
+当前阶段（批次 0-5）留在宿主 `shared/` 下；批次 6 物理抽包时，本文件整体迁入
+`novamind-engine-core/config.py`，引擎库只依赖该配置包，不再 import
+`novamind.setting`。
+
+设计约束：
+  - dataclass 只承载引擎运行所需的纯数据字段，不持有 ORM/客户端/session。
+  - 宿主在装配时从 `setting` 的配置对象（如 `ParsingConfig`）构造这些 dataclass
+    并注入引擎，从而切断引擎 -> `setting` 的导入边。
+  - 依赖方向：宿主 -> 引擎 -> 本配置；引擎 ✗-> `setting`。
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Optional
+
+
+@dataclass
+class AudioConfig:
+    """音频处理引擎配置。
+
+    宿主从 `setting.yaml_config.ParsingConfig.local_whisper_model_dir` 构造注入。
+    引擎侧 ``audio_utils`` 据此解析本地 faster-whisper 模型目录，不再 import
+    `novamind.setting`。
+
+    解析优先级（见 ``audio_utils._resolve_local_whisper_model_dir``）：
+      1. ``local_whisper_model_dir``（本字段，对应 YAML
+         ``knowledge_base.parsing.local_whisper_model_dir``）
+      2. 环境变量 ``NOVAMIND_LOCAL_WHISPER_MODEL_DIR``
+      3. 默认 ``~/.cache/faster-whisper/tiny``
+    """
+
+    local_whisper_model_dir: Optional[str] = None
+
+
+__all__ = ["AudioConfig"]
