@@ -18,7 +18,7 @@ from novamind.features.evaluation.models.evaluation_task import (
     EvaluationStatus,
 )
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.shared.utils.time_utils import now_china
+from novamind_engine_core.utils.time_utils import now_china
 
 logger = get_logger(__name__)
 

@@ -136,7 +136,7 @@ def test_6a2_retrieval_engine_has_no_feature_exceptions_import():
 
 def test_6a2_rag_errors_are_neutral_and_isolated_from_host_tree():
     """6a-2：中立 rag_errors 异常树与宿主 KnowledgeSpaceError 树隔离。"""
-    from novamind.shared.rag_errors import RagError, EmbeddingError, SearchError
+    from novamind_engine_core.rag_errors import RagError, EmbeddingError, SearchError
     from novamind.features.knowledge_space.api.exceptions import (
         KnowledgeSpaceError as HostKSE,
         EmbeddingError as HostEmbeddingError,
@@ -159,7 +159,7 @@ def test_6a2_rag_errors_are_neutral_and_isolated_from_host_tree():
 
 def test_6a2_host_cache_port_satisfies_cache_port_protocol():
     """6a-2：HostCachePort 结构化满足中立 CachePort 协议（runtime_checkable）。"""
-    from novamind.shared.cache_ports import CachePort
+    from novamind_engine_core.cache_ports import CachePort
     from novamind.features.knowledge_space.adapters.cache_adapter import HostCachePort
 
     assert isinstance(HostCachePort(), CachePort)
@@ -220,7 +220,7 @@ def test_6a4_skill_checker_has_no_skill_models_import():
 
 def test_6a4_review_status_identity_between_neutral_and_orm():
     """6a-4：中立 ``shared.skill_ports.ReviewStatus`` 与 ORM ``skill.models.skill.ReviewStatus`` 同一对象。"""
-    from novamind.shared.skill_ports import ReviewStatus as NeutralReviewStatus
+    from novamind_engine_core.skill_ports import ReviewStatus as NeutralReviewStatus
     from novamind.features.skill.models.skill import ReviewStatus as ORMReviewStatus
 
     assert NeutralReviewStatus is ORMReviewStatus, "ReviewStatus 中立枚举与 ORM re-export 必须同一对象"

@@ -14,7 +14,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from novamind.features.knowledge_space.services.retrieval_engine import RetrievalEngine
 from novamind.features.knowledge_space.schemas.search_schema import QueryRewriteConfig
-from novamind.shared.prompts.sanitize import sanitize_prompt_input
+from novamind_engine_core.prompts.sanitize import sanitize_prompt_input
 
 
 def _hash(**kw):

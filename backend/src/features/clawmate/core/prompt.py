@@ -9,8 +9,8 @@ ClawMate 系统提示词构建
 import platform
 from datetime import datetime
 
-from novamind.shared.prompts.templates import PromptManager
-from novamind.shared.utils.time_utils import now_china
+from novamind_engine_core.prompts.templates import PromptManager
+from novamind_engine_core.utils.time_utils import now_china
 
 
 def build_clawmate_system_prompt(

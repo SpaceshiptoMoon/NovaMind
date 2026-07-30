@@ -10,7 +10,7 @@ from enum import IntEnum
 from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, JSON, SmallInteger, String, Text
 
 from novamind.core.database.base import BaseModel
-from novamind.shared.utils.time_utils import now_china
+from novamind_engine_core.utils.time_utils import now_china
 
 
 class BatchAction(IntEnum):

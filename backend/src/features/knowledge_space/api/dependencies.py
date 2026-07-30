@@ -28,7 +28,7 @@ from novamind.features.knowledge_space.services.knowledge_base_service import Kn
 from novamind.features.knowledge_space.services.search_service import SearchService
 from novamind.features.knowledge_space.services.audit_service import AuditService
 from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.shared.utils.time_utils import now_china
+from novamind_engine_core.utils.time_utils import now_china
 from novamind.features.knowledge_space.api.exceptions import (
     SpaceNotFoundError,
     SpaceAccessDeniedError,

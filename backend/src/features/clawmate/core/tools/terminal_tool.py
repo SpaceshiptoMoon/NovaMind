@@ -11,8 +11,8 @@ from typing import Any, Dict, List
 
 from novamind.features.agent.core.tool.base import BaseTool
 from novamind.features.clawmate.core.command_safety import check_command_safety, interpret_exit_code
-from novamind.shared.utils.ansi_strip import strip_ansi
-from novamind.shared.utils.redact import redact_sensitive_text
+from novamind_engine_core.utils.ansi_strip import strip_ansi
+from novamind_engine_core.utils.redact import redact_sensitive_text
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)

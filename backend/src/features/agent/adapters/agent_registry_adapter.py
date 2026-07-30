@@ -8,7 +8,7 @@ AgentRegistryPort 宿主适配器
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.features.agent.repository.agent_repository import AgentRepository
-from novamind.shared.registry_ports import AgentRegistryPort, AgentSummary
+from novamind_engine_core.registry_ports import AgentRegistryPort, AgentSummary
 
 
 class HostAgentRegistryPort:

@@ -6,7 +6,7 @@
 
 from typing import Optional, List, Dict, Any
 from datetime import timedelta
-from novamind.shared.utils.time_utils import now_china
+from novamind_engine_core.utils.time_utils import now_china
 
 from sqlalchemy import select, delete, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession

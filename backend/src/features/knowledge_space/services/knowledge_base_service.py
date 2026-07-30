@@ -26,9 +26,9 @@ from novamind.features.knowledge_space.api.exceptions import (
     KnowledgeBaseLimitExceededError,
     InvalidParameterError,
 )
-from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
-from novamind.shared.storage.minio_client import MinioClient
-from novamind.shared.model_config_ports import ModelConfigPort
+from novamind_engine_core.storage.elasticsearch_client import ElasticsearchClient
+from novamind_engine_core.storage.minio_client import MinioClient
+from novamind_engine_core.model_config_ports import ModelConfigPort
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfigUpdate
 
 

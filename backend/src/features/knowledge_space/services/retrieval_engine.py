@@ -21,11 +21,11 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 import asyncio
 import hashlib
 
-from novamind.shared.ai_models.embedding import BaseEmbedding
-from novamind.shared.ai_models.rerank import BaseRerank
-from novamind.shared.cache_ports import CachePort
-from novamind.shared.engine_logging import get_logger
-from novamind.shared.rag_errors import RagError, EmbeddingError, SearchError
+from novamind_engine_core.ai_models.embedding import BaseEmbedding
+from novamind_engine_core.ai_models.rerank import BaseRerank
+from novamind_engine_core.cache_ports import CachePort
+from novamind_engine_core.engine_logging import get_logger
+from novamind_engine_core.rag_errors import RagError, EmbeddingError, SearchError
 
 # 默认配置常量（与 search_service 保持一致，批次 6 迁入引擎包）
 DEFAULT_SEARCH_CACHE_TTL = 3600  # 1 小时

@@ -6,7 +6,7 @@ from enum import Enum
 from sqlalchemy import Column, BigInteger, String, Text, Boolean, JSON, DateTime, ForeignKey, Index
 
 from novamind.core.database.base import BaseModel
-from novamind.shared.utils.time_utils import now_china
+from novamind_engine_core.utils.time_utils import now_china
 
 
 class NotificationType(str, Enum):

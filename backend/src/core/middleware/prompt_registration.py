@@ -14,7 +14,7 @@ startup_manager 既有行为一致），不构成 shared→features 分层违规
 """
 from __future__ import annotations
 
-from novamind.shared.prompts.prompt_manager import PromptManager
+from novamind_engine_core.prompts.prompt_manager import PromptManager
 
 
 def register_all_prompt_templates() -> int:

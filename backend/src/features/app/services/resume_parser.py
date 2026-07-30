@@ -21,8 +21,8 @@ import json
 import os
 import tempfile
 
-from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.engine_ports import Logger, PromptProvider
+from novamind_engine_core.ai_models.llm import BaseLLM
+from novamind_engine_core.engine_ports import Logger, PromptProvider
 from novamind.shared.knowledge.document_processing.readers import PDFReader, DocxReader
 from novamind.features.app.schemas.resume_schema import StructuredResume
 

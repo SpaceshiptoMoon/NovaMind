@@ -11,8 +11,8 @@
 import json
 from typing import Any, Dict, List, Optional
 
-from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.engine_ports import Logger, PromptProvider
+from novamind_engine_core.ai_models.base_model import BaseLLM
+from novamind_engine_core.engine_ports import Logger, PromptProvider
 from novamind.features.evaluation.services.embedding_evaluator import EmbeddingEvaluator
 
 

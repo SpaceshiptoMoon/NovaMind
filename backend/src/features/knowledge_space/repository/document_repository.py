@@ -16,7 +16,7 @@ from sqlalchemy.orm import outerjoin
 
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
-from novamind.shared.utils.time_utils import now_china
+from novamind_engine_core.utils.time_utils import now_china
 from novamind.shared.cache.redis_client import get_redis_client
 from novamind.core.middleware.structured_logging import get_logger
 

@@ -8,6 +8,6 @@
 """
 from __future__ import annotations
 
-from novamind.shared.engine_logging import get_logger
+from novamind_engine_core.engine_logging import get_logger
 
 __all__ = ["get_logger"]

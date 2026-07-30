@@ -15,7 +15,7 @@ import secrets
 import time
 
 from novamind.setting.yaml_config import get_config
-from novamind.shared.utils.time_utils import now_china
+from novamind_engine_core.utils.time_utils import now_china
 from novamind.features.user.schemas.user_schema import TokenData
 from novamind.features.user.models.user import UserStatus
 from novamind.core.middleware.structured_logging import get_logger

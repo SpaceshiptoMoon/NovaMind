@@ -8,7 +8,7 @@ NovaMind 宿主 MinIO 对象路径策略
 
 由 `shared/clients/__init__.py` 的 `ClientFactory.get_minio_client` 注入到 `MinioClient`。
 """
-from novamind.shared.storage.path_strategy import DefaultPathStrategy
+from novamind_engine_core.storage.path_strategy import DefaultPathStrategy
 
 
 class NovamindPathStrategy(DefaultPathStrategy):

@@ -10,8 +10,8 @@ resume 引擎不再直接 import ``user.services.model_config_service``，切断
 """
 from typing import List
 
-from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.engine_ports import FallbackLLMProvider
+from novamind_engine_core.ai_models.base_model import BaseLLM
+from novamind_engine_core.engine_ports import FallbackLLMProvider
 
 
 class HostFallbackLLMProvider:

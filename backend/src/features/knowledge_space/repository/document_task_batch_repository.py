@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
 from novamind.features.knowledge_space.models.document_task_batch import BatchStatus, DocumentTaskBatch
-from novamind.shared.utils.time_utils import now_china
+from novamind_engine_core.utils.time_utils import now_china
 
 logger = get_logger(__name__)
 

@@ -6,7 +6,7 @@ from sqlalchemy import Column, DateTime, text
 from sqlalchemy.orm import DeclarativeBase, declared_attr
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from novamind.shared.utils.time_utils import now_china
+from novamind_engine_core.utils.time_utils import now_china
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
