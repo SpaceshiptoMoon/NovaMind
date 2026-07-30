@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 import tiktoken
 
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.engine_logging import get_logger
 
 
 _encoders: Dict[str, tiktoken.Encoding] = {}

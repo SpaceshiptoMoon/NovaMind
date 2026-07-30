@@ -47,7 +47,7 @@ def test_parsed_text_object_persists_when_storage_is_reassigned():
     assert loaded.storage["parsed_text_object"].endswith("full_text.md")
 
 
-def test_upload_parsed_text_to_minio_writes_utf8_sig(monkeypatch):
+def test_upload_parsed_text_to_minio_writes_utf8_sig():
     captured = {}
 
     class FakeMinioClient:
@@ -55,14 +55,6 @@ def test_upload_parsed_text_to_minio_writes_utf8_sig(monkeypatch):
             captured["object_name"] = object_name
             captured["data"] = data
             captured["content_type"] = content_type
-
-    async def fake_get_minio_client():
-        return FakeMinioClient()
-
-    monkeypatch.setattr(
-        "novamind.shared.clients.ClientFactory.get_minio_client",
-        fake_get_minio_client,
-    )
 
     document = SimpleNamespace(
         id=1,
@@ -75,7 +67,10 @@ def test_upload_parsed_text_to_minio_writes_utf8_sig(monkeypatch):
         error=lambda *args, **kwargs: None,
     )
 
-    object_name = asyncio.run(upload_parsed_text_to_minio(document, "你好", logger))
+    # 批次 6a-5：minio_client 改为直接注入（引擎函数不再惰性 import ClientFactory）
+    object_name = asyncio.run(
+        upload_parsed_text_to_minio(document, "你好", logger, minio_client=FakeMinioClient())
+    )
 
     assert object_name.endswith("full_text.md")
     assert captured["data"].startswith(b"\xef\xbb\xbf")
