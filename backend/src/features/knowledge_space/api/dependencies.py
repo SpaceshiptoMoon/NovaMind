@@ -100,20 +100,30 @@ async def get_member_service(db: AsyncSession = Depends(get_db)) -> MemberServic
 
 
 async def get_document_service(db: AsyncSession = Depends(get_db)) -> DocumentService:
-    """获取文档服务（使用单例客户端）"""
+    """获取文档服务（使用单例客户端，注入模型配置端口）"""
     minio_client = await get_minio_client()
     es_client = await get_elasticsearch_client()
-    return DocumentService(session=db, minio_client=minio_client, es_client=es_client)
+    # 批次 5b：装配点注入 ModelConfigPort（具体 ModelConfigService 构造允许出现在此入口点）
+    model_config_service = ModelConfigService(db)
+    return DocumentService(
+        session=db,
+        minio_client=minio_client,
+        es_client=es_client,
+        model_config_service=model_config_service,
+    )
 
 
 async def get_knowledge_base_service(db: AsyncSession = Depends(get_db)) -> KnowledgeBaseService:
-    """获取知识库服务（使用单例客户端）"""
+    """获取知识库服务（使用单例客户端，注入模型配置端口）"""
     es_client = await get_elasticsearch_client()
     minio_client = await get_minio_client()
+    # 批次 5b：装配点注入 ModelConfigPort
+    model_config_service = ModelConfigService(db)
     return KnowledgeBaseService(
         session=db,
         es_client=es_client,
         minio_client=minio_client,
+        model_config_service=model_config_service,
     )
 
 

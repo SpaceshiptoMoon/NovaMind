@@ -51,6 +51,7 @@ from novamind.features.knowledge_space.api.exceptions import (
     EmbeddingError,
 )
 from novamind.shared.storage.minio_client import MinioClient
+from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.knowledge.document_processing.converters.doc_converter import (
     convert_doc_to_docx,
@@ -171,6 +172,7 @@ class DocumentService:
         session: AsyncSession,
         minio_client: MinioClient,
         es_client: ElasticsearchClient,
+        model_config_service: Optional[ModelConfigPort] = None,
     ):
         self.session = session
         self.doc_repo = DocumentRepository(session)
@@ -178,6 +180,7 @@ class DocumentService:
         self.space_repo = SpaceRepository(session)
         self.minio_client = minio_client
         self.es_client = es_client
+        self.model_config_service = model_config_service
         self.logger = get_logger(__name__)
         self.member_repo = MemberRepository(session)
         self.permission_service = PermissionService()
@@ -474,6 +477,7 @@ class DocumentService:
         file_content: bytes,
         filename: str,
         task: Optional["DocumentTask"] = None,
+        model_config_port: Optional[ModelConfigPort] = None,
     ) -> None:
         """
         执行文档处理的核心 pipeline（独立函数，可被 arq worker 或直接调用）
@@ -526,7 +530,8 @@ class DocumentService:
 
         if file_ext in DocumentService.IMAGE_FILE_TYPES:
             await _process_image_document_static(
-                document, file_content, session, _logger, task=task
+                document, file_content, session, _logger, task=task,
+                model_config_port=model_config_port,
             )
             return
 
@@ -536,7 +541,10 @@ class DocumentService:
                 process_video_document,
             )
 
-            await process_video_document(document, file_content, session, _logger, task=task)
+            await process_video_document(
+                document, file_content, session, _logger, task=task,
+                model_config_port=model_config_port,
+            )
             return
 
         # ===== 音频文档分支（新增） =====
@@ -545,7 +553,10 @@ class DocumentService:
                 process_audio_document,
             )
 
-            await process_audio_document(document, file_content, session, _logger, task=task)
+            await process_audio_document(
+                document, file_content, session, _logger, task=task,
+                model_config_port=model_config_port,
+            )
             return
 
         # ===== 文本文档分支（现有逻辑）=====
@@ -554,7 +565,8 @@ class DocumentService:
 
         # 获取 DocumentProcessor（传入空间配置的嵌入模型，确保语义切分使用正确模型）
         processor = await _get_document_processor_static(
-            session, user_id=ctx.space_owner_id, model_name=ctx.embedding_model_name
+            session, user_id=ctx.space_owner_id, model_name=ctx.embedding_model_name,
+            model_config_port=model_config_port,
         )
         kb_config = ctx.pipeline_config
         splitting_config = kb_config.get("splitting", {})
@@ -631,6 +643,7 @@ class DocumentService:
             embedding_config,
             session=session,
             user_id=ctx.space_owner_id,
+            model_config_port=model_config_port,
         )
 
         for i, embedding in enumerate(embeddings):
@@ -668,6 +681,7 @@ class DocumentService:
                     embedding_config=embedding_config,
                     user_id=document.uploader_id,
                     session=session,
+                    model_config_port=model_config_port,
                 )
                 for i, (questions, q_embeddings) in enumerate(
                     zip(questions_list, question_embeddings_list)
@@ -1711,12 +1725,16 @@ async def _process_image_document_static(
     session,
     _logger,
     task=None,
+    model_config_port: Optional[ModelConfigPort] = None,
 ):
     """处理图片类型文档
 
     支持两种策略：
     - vlm: 通过 VLM 生成图片描述文本，再走文本 Embedding 索引到 ES
     - deepdoc_ocr: 通过 DeepDoc OCR 提取图片文字，再走文本 Embedding 索引到 ES
+
+    批次 5b：model_config_port 由调用方（execute_document_pipeline）注入，
+    本模块级静态助手不再内部自建 ModelConfigService，以满足引擎接缝（零具体类导入）。
     """
     # 1. 统一加载管道配置（space/kb/pipeline_config/embedding_config）
     ctx = await load_pipeline_context(session, document, task)
@@ -1761,9 +1779,8 @@ async def _process_image_document_static(
                 error_message="图片文档处理需要 VLM（视觉语言模型）来生成描述文本，请在知识库解析配置中启用 VLM 描述并选择模型",
             )
 
-        from novamind.features.user.services.model_config_service import ModelConfigService
-
-        mcs = ModelConfigService(session)
+        # 批次 5b：用注入的 ModelConfigPort，不再内部自建 ModelConfigService
+        mcs = model_config_port
         description_text = await _generate_image_description(
             file_content=file_content,
             document=document,
@@ -1812,6 +1829,7 @@ async def _process_image_document_static(
         embedding_config=embedding_config,
         session=session,
         user_id=document.uploader_id,
+        model_config_port=model_config_port,
     )
 
     # 检查点 1：向量化完成后
@@ -2005,12 +2023,16 @@ async def _get_es_client_static() -> ElasticsearchClient:
 
 
 async def _get_document_processor_static(
-    session: AsyncSession, user_id: Optional[int] = None, model_name: Optional[str] = None
+    session: AsyncSession,
+    user_id: Optional[int] = None,
+    model_name: Optional[str] = None,
+    model_config_port: Optional[ModelConfigPort] = None,
 ) -> DocumentProcessor:
-    """获取文档处理器（静态方法用）"""
-    from novamind.features.user.services.model_config_service import ModelConfigService
+    """获取文档处理器（静态方法用）
 
-    model_config_service = ModelConfigService(session)
+    批次 5b：model_config_port 由调用方注入，不再内部自建 ModelConfigService。
+    """
+    model_config_service = model_config_port
     if not model_name and user_id:
         model_name = await model_config_service.get_user_default_model_name(user_id, "embedding")
     if not model_name:
@@ -2030,13 +2052,16 @@ async def _generate_embeddings_static(
     embedding_config: Dict[str, Any],
     session: Optional[AsyncSession] = None,
     user_id: Optional[int] = None,
+    model_config_port: Optional[ModelConfigPort] = None,
 ) -> List[List[float]]:
     """生成文本向量（静态方法用）"""
     if not session:
         raise DocumentProcessingError(document_id=0, error_message="生成向量需要数据库会话")
 
     model_name = embedding_config.get("model")
-    embedding_client = await _get_embedding_client_static(session, user_id, model_name)
+    embedding_client = await _get_embedding_client_static(
+        session, user_id, model_name, model_config_port=model_config_port
+    )
 
     batch_size = embedding_config.get("batch_size", DEFAULT_EMBEDDING_BATCH_SIZE)
     all_embeddings = []
@@ -2065,11 +2090,13 @@ async def _get_embedding_client_static(
     session: AsyncSession,
     user_id: Optional[int] = None,
     model_name: Optional[str] = None,
+    model_config_port: Optional[ModelConfigPort] = None,
 ) -> EmbeddingClient:
-    """获取 Embedding 客户端（静态方法用）"""
-    from novamind.features.user.services.model_config_service import ModelConfigService
+    """获取 Embedding 客户端（静态方法用）
 
-    model_config_service = ModelConfigService(session)
+    批次 5b：model_config_port 由调用方注入，不再内部自建 ModelConfigService。
+    """
+    model_config_service = model_config_port
     if not model_name and user_id:
         model_name = await model_config_service.get_user_default_model_name(user_id, "embedding")
     if not model_name:
@@ -2088,6 +2115,7 @@ async def _generate_single_embedding_static(
     embedding_config: Dict[str, Any],
     session: AsyncSession,
     user_id: Optional[int] = None,
+    model_config_port: Optional[ModelConfigPort] = None,
 ) -> Optional[List[float]]:
     """生成单条文本的嵌入向量（用于 VLM 描述文本）
 
@@ -2102,7 +2130,9 @@ async def _generate_single_embedding_static(
     """
     try:
         model_name = embedding_config.get("model")
-        embedding_client = await _get_embedding_client_static(session, user_id, model_name)
+        embedding_client = await _get_embedding_client_static(
+            session, user_id, model_name, model_config_port=model_config_port
+        )
         embeddings = await embedding_client.generate_embeddings_batch([text])
         return embeddings[0] if embeddings else None
     except Exception as e:
@@ -2181,6 +2211,7 @@ async def _generate_questions_for_chunks_static(
     embedding_config: Dict[str, Any],
     user_id: Optional[int] = None,
     session: Optional[AsyncSession] = None,
+    model_config_port: Optional[ModelConfigPort] = None,
 ) -> tuple:
     """
     为所有分块生成假设问题，并生成问题向量
@@ -2208,7 +2239,9 @@ async def _generate_questions_for_chunks_static(
         _logger.info("假设问题生成未启用，跳过")
         return [], []
 
-    qg_service = QuestionGenerationService(session=session, config=qg_config)
+    qg_service = QuestionGenerationService(
+        session=session, config=qg_config, model_config_service=model_config_port
+    )
 
     # generate_questions_batch 接受 List[Tuple[str, Optional[str]]] 格式
     chunk_tuples = [(chunk, document_title) for chunk in chunks]
@@ -2235,6 +2268,7 @@ async def _generate_questions_for_chunks_static(
                 embedding_config,
                 session=session,
                 user_id=user_id,
+                model_config_port=model_config_port,
             )
             # 将扁平的向量列表按每个分块的问题数量分组
             idx = 0

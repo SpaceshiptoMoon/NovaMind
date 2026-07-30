@@ -11,7 +11,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.agent.core.engine import AgentEngine, AgentEvent
 from novamind.features.agent.core.memory.memory_manager import MemoryManager
@@ -47,7 +47,7 @@ class AgentChatService:
         self,
         db: AsyncSession,
         agent_service: AgentService,
-        model_config_service: ModelConfigService,
+        model_config_service: ModelConfigPort,
         agent_engine: AgentEngine,
         todo_store: Optional[Any] = None,
         memory_search_repo: Optional[MemorySearchRepository] = None,

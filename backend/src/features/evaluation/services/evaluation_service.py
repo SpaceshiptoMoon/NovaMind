@@ -20,6 +20,7 @@ import json
 import time
 import traceback
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from novamind.shared.model_config_ports import ModelConfigPort
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
@@ -79,7 +80,7 @@ class EvaluationService:
         self,
         db: AsyncSession,
         retrieval_port: RetrievalPort,
-        model_config_service: Any,
+        model_config_service: ModelConfigPort,
         minio_client: MinioClient,
         retrieval_factory: Callable[[AsyncSession], RetrievalPort],
         session_factory: Callable[[], Any],

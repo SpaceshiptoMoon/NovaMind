@@ -20,10 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from novamind.core.middleware.structured_logging import get_logger
 
 if TYPE_CHECKING:
-    from novamind.features.user.services.model_config_service import ModelConfigService
     from novamind.shared.storage.minio_client import MinioClient
     from novamind.features.knowledge_space.services.retrieval_port import RetrievalPort
 from novamind.shared.ai_models.llm import BaseLLM
+from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.shared.prompts.templates import PromptManager
 from novamind.shared.utils.heartbeat import stream_with_heartbeat_structured
 from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
@@ -73,7 +73,7 @@ class AIChatService:
     def __init__(
         self,
         qa_service: QAService,
-        model_config_service: Optional["ModelConfigService"] = None,
+        model_config_service: Optional[ModelConfigPort] = None,
         db: Optional[AsyncSession] = None,
         minio_client: Optional["MinioClient"] = None,
         retrieval_port: Optional["RetrievalPort"] = None,
@@ -111,12 +111,10 @@ class AIChatService:
             from novamind.shared.clients import get_elasticsearch_client
 
             es_client = await get_elasticsearch_client()
-            model_config_service = self.model_config_service
-            if model_config_service is None:
-                from novamind.features.user.services.model_config_service import ModelConfigService
-                model_config_service = ModelConfigService(self.db)
+            # 批次 5b：不再内部自建 ModelConfigService；self.model_config_service 为 None 时
+            # SearchService 按其既有 Optional 语义处理（未注入则不带 mcs）。
             self._retrieval_port = HostRetrievalPort(
-                SearchService(self.db, es_client, model_config_service)
+                SearchService(self.db, es_client, self.model_config_service)
             )
         return self._retrieval_port
 

@@ -21,6 +21,7 @@ LLM 回答生成、响应组装。响应 dict 键与旧路径逐字一致。
 """
 
 from typing import List, Optional, Dict, Any
+from novamind.shared.model_config_ports import ModelConfigPort
 import os
 import time
 
@@ -81,7 +82,7 @@ class SearchService:
         self,
         session: AsyncSession,
         es_client: ElasticsearchClient,
-        model_config_service: Optional[Any] = None,  # ModelConfigService
+        model_config_service: Optional[ModelConfigPort] = None,  # ModelConfigPort
         retrieval_engine: Optional[RetrievalEngine] = None,
     ):
         self.session = session

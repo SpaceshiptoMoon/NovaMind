@@ -6,6 +6,7 @@ QA业务逻辑服务层
 """
 import uuid
 from typing import List, Optional, Dict, Any, Tuple, TYPE_CHECKING
+from novamind.shared.model_config_ports import ModelConfigPort
 from datetime import datetime
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -39,7 +40,7 @@ class QAService:
         session_config_repo: SessionConfigRepository,
         session_summary_repo: SessionSummaryRepository,
         cache_service: Optional[QACacheService] = None,
-        model_config_service: Optional[Any] = None,
+        model_config_service: Optional[ModelConfigPort] = None,
     ):
         self.repository = repository
         self.session_config_repo = session_config_repo

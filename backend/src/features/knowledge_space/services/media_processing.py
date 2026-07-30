@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from novamind.features.knowledge_space.api.exceptions import DocumentProcessingError, LocalASRBusyError
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.document_task import DocumentTask
+from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.features.knowledge_space.services.document_service import (
     _check_document_cancelled,
     load_pipeline_context,
@@ -88,10 +89,12 @@ async def maybe_semantic_embedding_client(
     embedding_config: Dict[str, Any],
     session: AsyncSession,
     user_id: int,
+    model_config_port: Optional[ModelConfigPort] = None,
 ):
     """strategy == "semantic" 时返回语义切分所需的 embedding_client，否则返回 None。
 
     延迟导入 _get_embedding_client_static 以避免 document_service ↔ media_processing 循环导入。
+    批次 5b：model_config_port 由调用方注入，透传至 _get_embedding_client_static。
     """
     if strategy != "semantic":
         return None
@@ -103,6 +106,7 @@ async def maybe_semantic_embedding_client(
         session=session,
         user_id=user_id,
         model_name=embedding_config.get("model"),
+        model_config_port=model_config_port,
     )
 
 
@@ -112,6 +116,7 @@ async def process_video_document(
     session: AsyncSession,
     logger,
     task: Optional[DocumentTask] = None,
+    model_config_port: Optional[ModelConfigPort] = None,
 ) -> None:
     """
     视频文档处理管道
@@ -121,9 +126,10 @@ async def process_video_document(
     3. MD 拼接全文 → 上传 MinIO
     4. 统一文本切分
     5. Embedding → ES 索引
-    """
-    from novamind.features.user.services.model_config_service import ModelConfigService
 
+    批次 5b：model_config_port 由调用方（execute_document_pipeline）注入，
+    不再内部自建 ModelConfigService。
+    """
     ctx = await load_pipeline_context(session, document, task)
     pipeline_config = ctx.pipeline_config
     parsing_config = build_runtime_parsing_config(pipeline_config.get("parsing", {}), document.file_type)
@@ -135,7 +141,8 @@ async def process_video_document(
     vlm_fallback_model = video_config.get("vlm_fallback_model")
     vlm_skip_on_quota_error = bool(video_config.get("vlm_skip_on_quota_error", False))
 
-    mcs = ModelConfigService(session)
+    # 批次 5b：用注入的 ModelConfigPort
+    mcs = model_config_port
 
     # 1. 提取帧
     logger.info(
@@ -252,7 +259,8 @@ async def process_video_document(
     splitting_kwargs = splitting_config
     embedding_config = ctx.embedding_config
     embedding_client = await maybe_semantic_embedding_client(
-        strategy, embedding_config, session, document.uploader_id
+        strategy, embedding_config, session, document.uploader_id,
+        model_config_port=model_config_port,
     )
     chunks = await _split_md_text(
         full_text,
@@ -273,6 +281,7 @@ async def process_video_document(
         session=session,
         logger=logger,
         frame_paths=frame_paths,
+        model_config_port=model_config_port,
     )
 
     if task:
@@ -304,6 +313,7 @@ async def process_audio_document(
     session: AsyncSession,
     logger,
     task: Optional[DocumentTask] = None,
+    model_config_port: Optional[ModelConfigPort] = None,
 ) -> None:
     """
     音频文档处理管道
@@ -329,13 +339,13 @@ async def process_audio_document(
     )
 
     # 1. ASR 转写（根据协议路由：openai → Whisper / dashscope → Paraformer / local → faster-whisper）
-    from novamind.features.user.services.model_config_service import ModelConfigService
     from novamind.shared.knowledge.media_processing.audio import transcribe_audio_with_dashscope
 
     # 检查点：ASR 调用前（转写可能耗时较长，允许用户在此处取消）
     await _check_document_cancelled(document.id)
 
-    mcs = ModelConfigService(session)
+    # 批次 5b：用注入的 ModelConfigPort，不再内部自建 ModelConfigService
+    mcs = model_config_port
 
     # 从模型配置系统查找 ASR 凭证（优先精确匹配，找不到用该用户任意 ASR 配置兜底）
     asr_api_key: Optional[str] = None
@@ -509,7 +519,8 @@ async def process_audio_document(
     strategy = splitting_config.pop("strategy", "recursive")
     embedding_config = ctx.embedding_config
     embedding_client = await maybe_semantic_embedding_client(
-        strategy, embedding_config, session, document.uploader_id
+        strategy, embedding_config, session, document.uploader_id,
+        model_config_port=model_config_port,
     )
     chunks = await _split_md_text(
         full_text,
@@ -532,6 +543,7 @@ async def process_audio_document(
         embedding_config=embedding_config,
         session=session,
         logger=logger,
+        model_config_port=model_config_port,
     )
 
     if task:
@@ -800,6 +812,7 @@ async def _index_text_chunks(
     session: AsyncSession,
     logger,
     frame_paths: Optional[List[str]] = None,
+    model_config_port: Optional[ModelConfigPort] = None,
 ):
     """
     将文本 chunks 写入 ES（复用文本管道逻辑）
@@ -854,6 +867,7 @@ async def _index_text_chunks(
     texts = [c["content"] for c in es_chunks]
     embeddings = await _generate_embeddings_static(
         texts, embedding_config, session=session, user_id=document.uploader_id,
+        model_config_port=model_config_port,
     )
 
     for i, emb in enumerate(embeddings):
