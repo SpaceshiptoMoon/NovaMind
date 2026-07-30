@@ -8,11 +8,9 @@
 """
 import asyncio
 import time
-from dataclasses import dataclass
 from typing import Optional, Dict, Any, List, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
 from novamind.features.user.models.user_model_config import UserModelConfig, ModelType
 from novamind.features.user.repository.model_config_repository import (
@@ -30,6 +28,8 @@ from novamind.shared.ai_models.llm import create_llm_client, BaseLLM
 from novamind.shared.ai_models.embedding import create_embedding_client, BaseEmbedding
 from novamind.shared.ai_models.rerank import create_rerank_client, BaseRerank
 from novamind.shared.ai_models.base_model import PROXY_INHERIT
+from novamind.shared.model_config_ports import ModelCredentials
+from novamind.shared.knowledge_space_info_ports import KnowledgeSpaceInfoPort
 
 from novamind.shared.utils.crypto import encrypt_api_key_async, decrypt_api_key_async
 from novamind.core.middleware.structured_logging import get_logger
@@ -38,6 +38,11 @@ from novamind.features.user.api.exceptions import (
     ModelConfigAlreadyExistsError,
     ModelConfigTestFailedError,
 )
+
+# 批次 5b：本服务结构化满足 ``shared.model_config_ports.ModelConfigPort``（客户端创建/查询面
+# 8 方法）。:999 原对 ``knowledge_space.models.KnowledgeSpace`` 的反向依赖经构造器注入的
+# ``KnowledgeSpaceInfoPort`` 解除——service 层不再 import knowledge_space，adapter 层
+# （``features/user/adapters/knowledge_space_info_adapter.py``）持有跨 feature import。
 
 
 def _proxy_from_extra(extra_config: Optional[Dict[str, Any]]) -> Any:
@@ -106,26 +111,18 @@ async def _cleanup_expired_cache() -> None:
         logger.debug("清理过期客户端缓存", count=len(expired_keys))
 
 
-@dataclass
-class ModelCredentials:
-    """
-    模型凭证（用于创建客户端）
-
-    包含创建 AI 客户端所需的所有信息
-    """
-    protocol: str
-    model: str
-    api_key: Optional[str] = None
-    base_url: Optional[str] = None
-    extra_config: Optional[Dict[str, Any]] = None
-
-
 class ModelConfigService:
     """用户模型配置服务"""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(
+        self,
+        db: AsyncSession,
+        knowledge_space_info_port: Optional[KnowledgeSpaceInfoPort] = None,
+    ):
         self.db = db
         self.repo = ModelConfigRepository(db)
+        # 删除 embedding 模型配置时的空间绑定查询端口（解 :999 反向依赖）
+        self._ks_info_port = knowledge_space_info_port
         # 使用模块级缓存（实例引用）
         # 注意：不再创建新的缓存实例，而是引用模块级缓存
 
@@ -995,27 +992,21 @@ class ModelConfigService:
 
         if model_type == ModelType.EMBEDDING:
             # 检查空间绑定（Embedding 配置由空间级别统一管理）
-            try:
-                from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
-
-                stmt = select(
-                    KnowledgeSpace.id, KnowledgeSpace.name, KnowledgeSpace.config
-                ).where(KnowledgeSpace.deleted_at.is_(None))
-                result = await self.db.execute(stmt)
-                all_spaces = result.all()
-
-                for space_id, space_name, space_config in all_spaces:
-                    space_config = space_config or {}
-                    embedding_model = (space_config.get("embedding") or {}).get("model")
-                    if embedding_model == config.model:
+            # 批次 5b：经注入的 KnowledgeSpaceInfoPort 查询，不再 import knowledge_space.models
+            if self._ks_info_port is not None:
+                try:
+                    usages = await self._ks_info_port.find_spaces_using_embedding_model(
+                        config.model
+                    )
+                    for usage in usages:
                         impacts.append({
                             "type": "space",
-                            "id": space_id,
-                            "name": space_name,
-                            "reason": f"空间 '{space_name}' 正在使用此 Embedding 模型",
+                            "id": usage.space_id,
+                            "name": usage.space_name,
+                            "reason": f"空间 '{usage.space_name}' 正在使用此 Embedding 模型",
                         })
-            except Exception as e:
-                logger.error("检查删除影响失败，可能返回不完整结果", error=str(e))
+                except Exception as e:
+                    logger.error("检查删除影响失败，可能返回不完整结果", error=str(e))
 
         elif model_type == ModelType.LLM:
             # LLM 模型仅警告，不阻止删除（会话使用已缓存客户端）

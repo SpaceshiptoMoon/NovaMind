@@ -84,6 +84,7 @@ async def process_document_task(
     from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
     from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
     from novamind.features.knowledge_space.services.document_service import DocumentService, DocumentCancelledError
+    from novamind.features.user.services.model_config_service import ModelConfigService
     from novamind.shared.mq.task_tracker import unbind_job
 
     job_id = ctx.get("job_id", "unknown")
@@ -177,6 +178,9 @@ async def process_document_task(
             )
 
             # 4. 执行核心 pipeline
+            # 批次 5b：worker 入口点构造具体 ModelConfigService 作为 ModelConfigPort 注入
+            # （worker 属于宿主装配层，允许构造具体类；document_service 内部零具体类导入）
+            bg_model_config_port = ModelConfigService(session)
             result = await DocumentService.execute_document_pipeline(
                 session=session,
                 document_id=document_id,
@@ -185,6 +189,7 @@ async def process_document_task(
                 file_content=file_content,
                 filename=document.filename,
                 task=task,
+                model_config_port=bg_model_config_port,
             )
 
             # 5. 成功：标记任务完成

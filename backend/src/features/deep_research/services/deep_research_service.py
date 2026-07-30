@@ -6,6 +6,7 @@
 
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional, AsyncGenerator
+from novamind.shared.model_config_ports import ModelConfigPort
 import re
 import time
 import json
@@ -180,7 +181,7 @@ class DeepResearchService:
     def __init__(
         self,
         session: AsyncSession,
-        model_config_service: Optional[Any] = None,
+        model_config_service: Optional[ModelConfigPort] = None,
         search_service: Optional[SearchService] = None,
         es_client: Optional[Any] = None,
     ):

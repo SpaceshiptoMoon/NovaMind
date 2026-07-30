@@ -12,6 +12,7 @@ import io
 import json
 import zipfile
 from typing import Any, Dict, List, Optional, Tuple
+from novamind.shared.model_config_ports import ModelConfigPort
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,7 +53,7 @@ class SkillMarketplaceService:
         db: AsyncSession,
         minio_client=None,
         security_checker: Optional[SkillSecurityChecker] = None,
-        model_config_service: Optional[Any] = None,
+        model_config_service: Optional[ModelConfigPort] = None,
         agent_registry_port: Optional[AgentRegistryPort] = None,
     ):
         self.db = db

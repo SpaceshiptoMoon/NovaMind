@@ -27,7 +27,7 @@ from novamind.features.knowledge_space.api.exceptions import (
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.storage.minio_client import MinioClient
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.shared.model_config_ports import ModelConfigPort
 
 def _resolve_model_type(modalities=None) -> str:
     """决定嵌入模型类型，统一用 embedding"""
@@ -47,7 +47,7 @@ class SpaceService:
         session: AsyncSession,
         es_client: ElasticsearchClient = None,
         minio_client: MinioClient = None,
-        model_config_service: Optional[ModelConfigService] = None,
+        model_config_service: Optional[ModelConfigPort] = None,
     ):
         self.session = session
         self.space_repo = SpaceRepository(session)

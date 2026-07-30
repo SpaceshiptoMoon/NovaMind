@@ -557,10 +557,7 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
         get_credentials_by_model=AsyncMock(return_value=None),
         repo=SimpleNamespace(list_by_user=AsyncMock(return_value=[])),
     )
-    monkeypatch.setattr(
-        "novamind.features.user.services.model_config_service.ModelConfigService",
-        lambda session: fake_mcs,
-    )
+    # 批次 5b：media_processing 不再内部自建 ModelConfigService，改为参数注入 model_config_port
 
     session = SimpleNamespace(
         get=AsyncMock(return_value=SimpleNamespace(embedding_config={}, config={})),
@@ -594,7 +591,7 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
         }
     )
 
-    await process_audio_document(document, b"fake-audio", session, SimpleNamespace(info=lambda *a, **k: None), task=task)
+    await process_audio_document(document, b"fake-audio", session, SimpleNamespace(info=lambda *a, **k: None), task=task, model_config_port=fake_mcs)
 
     assert captured["audio_model"] == "faster-whisper-tiny"
     assert captured["audio_language"] == "zh"
@@ -622,7 +619,7 @@ async def test_process_audio_document_loads_embedding_client_for_semantic_split(
     async def fake_transcribe(**kwargs):
         return [{"text": "hello", "start": 0.0, "end": 1.0}]
 
-    async def fake_get_embedding_client_static(session, user_id=None, model_name=None):
+    async def fake_get_embedding_client_static(session, user_id=None, model_name=None, model_config_port=None):
         captured["semantic_user_id"] = user_id
         captured["semantic_model_name"] = model_name
         return "semantic-embed-client"
@@ -666,10 +663,7 @@ async def test_process_audio_document_loads_embedding_client_for_semantic_split(
         get_credentials_by_model=AsyncMock(return_value=None),
         repo=SimpleNamespace(list_by_user=AsyncMock(return_value=[])),
     )
-    monkeypatch.setattr(
-        "novamind.features.user.services.model_config_service.ModelConfigService",
-        lambda session: fake_mcs,
-    )
+    # 批次 5b：media_processing 不再内部自建 ModelConfigService，改为参数注入 model_config_port
 
     session = SimpleNamespace(
         get=AsyncMock(return_value=SimpleNamespace(embedding_config={"model": "embed-model"}, config={})),
@@ -701,7 +695,7 @@ async def test_process_audio_document_loads_embedding_client_for_semantic_split(
         }
     )
 
-    await process_audio_document(document, b"fake-audio", session, SimpleNamespace(info=lambda *a, **k: None), task=task)
+    await process_audio_document(document, b"fake-audio", session, SimpleNamespace(info=lambda *a, **k: None), task=task, model_config_port=fake_mcs)
 
     assert captured["semantic_strategy"] == "semantic"
     assert captured["semantic_embedding_client"] == "semantic-embed-client"
@@ -755,7 +749,7 @@ async def test_generate_questions_for_chunks_static_uses_question_generation_con
             self.question = question
 
     class FakeQGService:
-        def __init__(self, session=None, config=None):
+        def __init__(self, session=None, config=None, model_config_service=None):
             captured["qg_config"] = config
 
         async def generate_questions_batch(self, chunks, user_id=None):
@@ -763,7 +757,7 @@ async def test_generate_questions_for_chunks_static_uses_question_generation_con
             captured["qg_user_id"] = user_id
             return [[FakeQuestion("q1"), FakeQuestion("q2")]]
 
-    async def fake_generate_embeddings_static(texts, embedding_config, session=None, user_id=None):
+    async def fake_generate_embeddings_static(texts, embedding_config, session=None, user_id=None, model_config_port=None):
         captured["question_texts"] = texts
         captured["embedding_config"] = embedding_config
         captured["embedding_user_id"] = user_id

@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.prompts import PromptManager
-from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     QuestionGenerationConfig,
     QuestionLLMConfig,
@@ -61,7 +61,7 @@ class QuestionGenerationService:
     def __init__(
         self,
         session: Optional[AsyncSession] = None,
-        model_config_service: Optional[ModelConfigService] = None,
+        model_config_service: Optional[ModelConfigPort] = None,
         config: Optional[QuestionGenerationConfig] = None,
     ):
         """
@@ -76,13 +76,8 @@ class QuestionGenerationService:
         self.config = config or QuestionGenerationConfig()
         self.logger = logger
 
-        # 模型配置服务
-        if model_config_service:
-            self.model_config_service = model_config_service
-        elif session:
-            self.model_config_service = ModelConfigService(session)
-        else:
-            self.model_config_service = None
+        # 模型配置服务（批次 5b：仅存注入端口，不再内部自建 ModelConfigService）
+        self.model_config_service = model_config_service
 
         # LLM 客户端缓存
         self._llm_client: Optional[BaseLLM] = None

@@ -28,6 +28,7 @@ from novamind.features.knowledge_space.api.exceptions import (
 )
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.storage.minio_client import MinioClient
+from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfigUpdate
 
 
@@ -59,6 +60,7 @@ class KnowledgeBaseService:
         session: AsyncSession,
         es_client: ElasticsearchClient,
         minio_client: MinioClient,
+        model_config_service: Optional[ModelConfigPort] = None,
     ):
         self.session = session
         self.kb_repo = KnowledgeBaseRepository(session)
@@ -67,6 +69,7 @@ class KnowledgeBaseService:
         self.permission_service = PermissionService()
         self.es_client = es_client
         self.minio_client = minio_client
+        self.model_config_service = model_config_service
         self.logger = get_logger(__name__)
 
     async def create_knowledge_base(
@@ -144,13 +147,13 @@ class KnowledgeBaseService:
         kb_config = kb.get_config()
         config_updated = False
 
-        from novamind.features.user.services.model_config_service import ModelConfigService
-        model_config_service = ModelConfigService(self.session)
+        # 批次 5b：用注入的 ModelConfigPort，不再内部自建 ModelConfigService
+        model_config_service = self.model_config_service
         qg_config = kb_config.get("question_generation") or {}
         qg_llm_config = qg_config.get("llm") or {}
         qg_llm_model = qg_llm_config.get("model")
 
-        if not qg_llm_model:
+        if not qg_llm_model and model_config_service:
             default_llm_name = await model_config_service.get_user_default_model_name(creator_id, "llm")
             if default_llm_name:
                 if not kb_config.get("question_generation"):

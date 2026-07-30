@@ -12,6 +12,7 @@ ClawMate AI 对话服务
 
 import json
 from typing import Any, AsyncGenerator, Dict, List, Optional
+from novamind.shared.model_config_ports import ModelConfigPort
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.agent.core.engine import AgentEngine
@@ -34,7 +35,7 @@ class ClawMateChatService:
         self,
         session_manager: SessionManager,
         agent_engine: AgentEngine,
-        model_config_service: Any,
+        model_config_service: ModelConfigPort,
     ):
         """
         Args:
