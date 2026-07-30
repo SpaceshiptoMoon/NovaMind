@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
-from novamind.shared.engine_logging import get_logger
+from novamind_engine_core.engine_logging import get_logger
 
 logger = get_logger(__name__)
 

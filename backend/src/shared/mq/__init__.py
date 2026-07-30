@@ -80,7 +80,7 @@ async def enqueue_process_document(
     from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
     from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
     from novamind.shared.mq.task_tracker import bind_job_to_document
-    from novamind.shared.utils.time_utils import now_china
+    from novamind_engine_core.utils.time_utils import now_china
 
     pool = await get_arq_pool()
 

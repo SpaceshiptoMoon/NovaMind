@@ -18,7 +18,7 @@ from arq import Retry
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.api.exceptions import LocalASRBusyError
-from novamind.shared.utils.time_utils import now_china
+from novamind_engine_core.utils.time_utils import now_china
 
 logger = get_logger(__name__)
 

@@ -10,8 +10,8 @@ import json
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
-from novamind.shared.engine_logging import get_logger
-from novamind.shared.ai_models.base_model import BaseLLM
+from novamind_engine_core.engine_logging import get_logger
+from novamind_engine_core.ai_models.base_model import BaseLLM
 from novamind.features.agent.core.tool.executor import ToolExecutor
 from novamind.features.agent.core.tool.result import ToolResult, ToolResultStatus
 from novamind.features.agent.core.retry import (

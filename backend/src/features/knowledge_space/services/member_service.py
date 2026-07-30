@@ -6,7 +6,7 @@
 
 from typing import Optional, List, Dict, Any
 from datetime import timedelta
-from novamind.shared.utils.time_utils import now_china
+from novamind_engine_core.utils.time_utils import now_china
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,8 +30,8 @@ from novamind.features.knowledge_space.api.exceptions import (
     CannotRemoveLastAdminError,
     CannotModifySelfRoleError,
 )
-from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
-from novamind.shared.storage.minio_client import MinioClient
+from novamind_engine_core.storage.elasticsearch_client import ElasticsearchClient
+from novamind_engine_core.storage.minio_client import MinioClient
 from novamind.core.middleware.structured_logging import get_logger
 
 

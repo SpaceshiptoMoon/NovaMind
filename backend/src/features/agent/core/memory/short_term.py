@@ -14,7 +14,7 @@ from novamind.features.agent.core.memory.interfaces import (
 )
 from novamind.features.agent.core.memory.token_budget import TokenBudget
 from novamind.features.agent.core.memory.compress import ICompressionStrategy
-from novamind.shared.engine_logging import get_logger
+from novamind_engine_core.engine_logging import get_logger
 
 logger = get_logger(__name__)
 

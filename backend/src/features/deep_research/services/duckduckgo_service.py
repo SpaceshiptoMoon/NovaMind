@@ -14,8 +14,8 @@ from novamind.features.deep_research.services.external_search_service import (
     ExternalSearchService,
     ExternalSearchResult,
 )
-from novamind.shared.engine_config import DuckDuckGoSearchConfig
-from novamind.shared.engine_logging import get_logger
+from novamind_engine_core.engine_config import DuckDuckGoSearchConfig
+from novamind_engine_core.engine_logging import get_logger
 
 
 class DuckDuckGoSearchService(ExternalSearchService):

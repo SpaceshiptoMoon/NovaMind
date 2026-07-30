@@ -18,8 +18,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from novamind.features.agent.core.memory.interfaces import MemoryMessage
 from novamind.features.agent.core.memory.token_budget import TokenBudget
 from novamind.features.agent.core.memory.compress import ICompressionStrategy
-from novamind.shared.utils.redact import redact_sensitive_text
-from novamind.shared.engine_logging import get_logger
+from novamind_engine_core.utils.redact import redact_sensitive_text
+from novamind_engine_core.engine_logging import get_logger
 
 logger = get_logger(__name__)
 

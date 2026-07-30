@@ -112,7 +112,7 @@ _PORT_METHODS = [
 
 def test_model_config_port_covers_all_call_surfaces():
     """ModelConfigPort 协议覆盖 8 个调用面方法，与 ModelConfigService 同名方法逐一对应。"""
-    from novamind.shared.model_config_ports import ModelConfigPort
+    from novamind_engine_core.model_config_ports import ModelConfigPort
     from novamind.features.user.services.model_config_service import ModelConfigService
 
     port_methods = {
@@ -170,7 +170,7 @@ def test_model_config_service_ctor_accepts_ks_info_port():
 
 def test_host_knowledge_space_info_port_satisfies_protocol():
     """HostKnowledgeSpaceInfoPort 满足 KnowledgeSpaceInfoPort 协议。"""
-    from novamind.shared.knowledge_space_info_ports import KnowledgeSpaceInfoPort
+    from novamind_engine_core.knowledge_space_info_ports import KnowledgeSpaceInfoPort
     from novamind.features.user.adapters.knowledge_space_info_adapter import (
         HostKnowledgeSpaceInfoPort,
         as_knowledge_space_info_port,
@@ -361,7 +361,7 @@ def test_user_get_model_config_service_returns_port_with_ks_info():
 def test_model_credentials_backward_compat_reexport():
     """model_config_service 仍可导出 ModelCredentials（向后兼容，re-export 自 shared/model_config_ports）。"""
     from novamind.features.user.services.model_config_service import ModelCredentials
-    from novamind.shared.model_config_ports import ModelCredentials as PortCreds
+    from novamind_engine_core.model_config_ports import ModelCredentials as PortCreds
 
     assert ModelCredentials is PortCreds, "ModelCredentials 应为同一类（re-export）"
     # 字段契约保留

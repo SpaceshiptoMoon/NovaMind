@@ -143,7 +143,7 @@ class SessionRepository:
         await self.session.flush()
 
     async def delete(self, session_id: str, user_id: int) -> bool:
-        from novamind.shared.utils.time_utils import now_china
+        from novamind_engine_core.utils.time_utils import now_china
 
         result = await self.session.execute(
             update(AgentSession)

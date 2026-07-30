@@ -21,7 +21,7 @@ LLM 回答生成、响应组装。响应 dict 键与旧路径逐字一致。
 """
 
 from typing import List, Optional, Dict, Any
-from novamind.shared.model_config_ports import ModelConfigPort
+from novamind_engine_core.model_config_ports import ModelConfigPort
 import os
 import time
 
@@ -30,10 +30,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
 from novamind.features.knowledge_space.repository.member_repository import MemberRepository
 from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
-from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
-from novamind.shared.ai_models.embedding import BaseEmbedding
-from novamind.shared.ai_models.rerank import BaseRerank
-from novamind.shared.ai_models.base_model import BaseLLM
+from novamind_engine_core.storage.elasticsearch_client import ElasticsearchClient
+from novamind_engine_core.ai_models.embedding import BaseEmbedding
+from novamind_engine_core.ai_models.rerank import BaseRerank
+from novamind_engine_core.ai_models.base_model import BaseLLM
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.api.exceptions import (
     KnowledgeBaseNotFoundError,
@@ -44,7 +44,7 @@ from novamind.features.knowledge_space.api.exceptions import (
     InvalidSearchModeError,
     InvalidSearchWeightError,
 )
-from novamind.shared.rag_errors import (
+from novamind_engine_core.rag_errors import (
     EmbeddingError as RagEmbeddingError,
     SearchError as RagSearchError,
 )
@@ -242,8 +242,8 @@ class SearchService:
             context = "\n\n".join(context_parts)
 
             # 构建提示词
-            from novamind.shared.prompts.templates import PromptManager
-            from novamind.shared.prompts.sanitize import sanitize_prompt_input
+            from novamind_engine_core.prompts.templates import PromptManager
+            from novamind_engine_core.prompts.sanitize import sanitize_prompt_input
             # 净化用户 query，剥离 markdown 标题/分隔标签，降低 prompt 注入风险
             safe_query = sanitize_prompt_input(query)
             prompt = PromptManager.format_prompt(
@@ -316,7 +316,7 @@ class SearchService:
                 "sub_queries": sub_query 时的子问题列表（内部使用，用于多路检索）
             }
         """
-        from novamind.shared.prompts.templates import PromptManager
+        from novamind_engine_core.prompts.templates import PromptManager
         import json
 
         strategy = rewrite_config.strategy

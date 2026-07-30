@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, Tuple, runtime_checkable
 
-from novamind.shared.search_ports import WebSearchPort, WebSearchResult
+from novamind_engine_core.search_ports import WebSearchPort, WebSearchResult
 
 if TYPE_CHECKING:
     # 仅用于类型注解（配合 `from __future__ import annotations` 惰性求值），

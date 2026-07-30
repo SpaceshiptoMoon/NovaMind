@@ -17,7 +17,7 @@ from novamind.features.deep_research.models.research_session import (
     SearchSource,
     ExternalSearchProvider,
 )
-from novamind.shared.utils.time_utils import now_china
+from novamind_engine_core.utils.time_utils import now_china
 
 
 # update_status 允许更新的字段白名单

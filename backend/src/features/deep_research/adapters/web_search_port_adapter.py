@@ -11,7 +11,7 @@ deep_research 内部搜索服务。
 """
 from typing import List, Optional
 
-from novamind.shared.search_ports import WebSearchPort, WebSearchResult
+from novamind_engine_core.search_ports import WebSearchPort, WebSearchResult
 
 
 class HostWebSearchPort:
@@ -25,7 +25,7 @@ class HostWebSearchPort:
         if self._service is None:
             # 默认回退到 DuckDuckGo（免费、无需 API Key）
             from novamind.setting.yaml_config import get_config
-            from novamind.shared.engine_config import DuckDuckGoSearchConfig
+            from novamind_engine_core.engine_config import DuckDuckGoSearchConfig
             from novamind.features.deep_research.services.duckduckgo_service import (
                 DuckDuckGoSearchService,
             )
@@ -67,7 +67,7 @@ def build_web_search_port(prefer_tavily: bool = True) -> WebSearchPort:
     deep_research 搜索服务。
     """
     from novamind.setting.yaml_config import get_config
-    from novamind.shared.engine_config import DuckDuckGoSearchConfig, TavilySearchConfig
+    from novamind_engine_core.engine_config import DuckDuckGoSearchConfig, TavilySearchConfig
 
     es_cfg = get_config().external_search
 

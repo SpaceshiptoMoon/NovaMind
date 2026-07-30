@@ -22,7 +22,7 @@ class TokenBudget:
 
     def __init__(self, model_name: str = "gpt-4"):
         self._model_name = model_name
-        from novamind.shared.utils.text_utils.token_counter import TokenCounter
+        from novamind_engine_core.utils.text_utils.token_counter import TokenCounter
         self._counter = TokenCounter(model_name)
 
     def count_text_tokens(self, text: str) -> int:

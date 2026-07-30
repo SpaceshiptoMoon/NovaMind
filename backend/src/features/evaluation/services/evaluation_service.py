@@ -20,7 +20,7 @@ import json
 import time
 import traceback
 from typing import Any, Callable, Dict, List, Optional, Tuple
-from novamind.shared.model_config_ports import ModelConfigPort
+from novamind_engine_core.model_config_ports import ModelConfigPort
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
@@ -48,9 +48,9 @@ from novamind.features.evaluation.api.exceptions import (
 )
 from novamind.features.evaluation.adapters.host_prompt_provider import as_prompt_provider
 from novamind.features.knowledge_space.services.retrieval_port import RetrievalPort
-from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.engine_ports import Logger, PromptProvider
-from novamind.shared.storage.minio_client import MinioClient
+from novamind_engine_core.ai_models.base_model import BaseLLM
+from novamind_engine_core.engine_ports import Logger, PromptProvider
+from novamind_engine_core.storage.minio_client import MinioClient
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)

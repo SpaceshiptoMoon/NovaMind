@@ -238,7 +238,7 @@ class SkillRepository:
         return skill
 
     async def soft_delete(self, skill_id: int) -> bool:
-        from novamind.shared.utils.time_utils import now_china
+        from novamind_engine_core.utils.time_utils import now_china
         ts = int(now_china().timestamp())
         result = await self.session.execute(
             update(SkillDefinition)

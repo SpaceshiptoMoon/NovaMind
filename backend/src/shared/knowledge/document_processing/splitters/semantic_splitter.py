@@ -1,7 +1,7 @@
 import numpy as np
 from typing import List, Dict
 from novamind.shared.knowledge.document_processing.splitters.base_splitter import BaseSplitter
-from novamind.shared.ai_models.base_model import BaseEmbedding
+from novamind_engine_core.ai_models.base_model import BaseEmbedding
 
 
 class SemanticSplitter(BaseSplitter):

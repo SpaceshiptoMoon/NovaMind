@@ -48,7 +48,7 @@ class ClientFactory:
             async with cls._get_async_lock():
                 # 双重检查锁定
                 if "minio" not in cls._instances:
-                    from novamind.shared.storage.minio_client import MinioClient
+                    from novamind_engine_core.storage.minio_client import MinioClient
                     from novamind.features.knowledge_space.adapters.novamind_path_strategy import (
                         NovamindPathStrategy,
                     )
@@ -82,7 +82,7 @@ class ClientFactory:
             async with cls._get_async_lock():
                 # 双重检查锁定
                 if "elasticsearch" not in cls._instances:
-                    from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
+                    from novamind_engine_core.storage.elasticsearch_client import ElasticsearchClient
                     from novamind.features.knowledge_space.adapters.novamind_index_schema import (
                         NovamindIndexSchema,
                     )
