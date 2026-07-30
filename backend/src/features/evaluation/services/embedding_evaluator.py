@@ -9,7 +9,7 @@
 import math
 from typing import List
 
-from novamind_engine_core.ai_models.base_model import BaseEmbedding
+from novamind.shared.ai_models.base_model import BaseEmbedding
 
 
 class EmbeddingEvaluator:

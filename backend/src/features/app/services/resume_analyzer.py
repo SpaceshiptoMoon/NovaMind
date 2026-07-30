@@ -22,9 +22,9 @@ S5-S9 + S12: 简历分析报告生成 Pipeline (V2)
 import json
 from typing import Optional
 
-from novamind_engine_core.ai_models.llm import BaseLLM
-from novamind_engine_core.engine_ports import Logger, PromptProvider
-from novamind_engine_core.search_ports import WebSearchPort, WebSearchResult
+from novamind.shared.ai_models.llm import BaseLLM
+from novamind.shared.engine_ports import Logger, PromptProvider
+from novamind.shared.search_ports import WebSearchPort, WebSearchResult
 from novamind.features.app.services.resume_parser import _extract_json
 from novamind.features.app.schemas.resume_schema import (
     StructuredResume, JDAnalysis, ProbingPlan, KnowledgePoint, ProjectPriority, PrefixKnowledge,
@@ -53,7 +53,7 @@ class ResumeAnalyzer:
         """经注入的 WebSearchPort 查询公司/岗位背景（未注入端口时返回空，降级 LLM）。"""
         if self._web_search_port is None:
             return []
-        from novamind_engine_core.utils.redact import redact_sensitive_text
+        from novamind.shared.utils.redact import redact_sensitive_text
         # 搜索查询前脱敏，防止 JD/简历夹带联系方式外发搜索引擎
         safe_company = redact_sensitive_text(company or "")
         safe_position = redact_sensitive_text(position or "")

@@ -6,7 +6,7 @@ QA业务逻辑服务层
 """
 import uuid
 from typing import List, Optional, Dict, Any, Tuple, TYPE_CHECKING
-from novamind_engine_core.model_config_ports import ModelConfigPort
+from novamind.shared.model_config_ports import ModelConfigPort
 from datetime import datetime
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -23,8 +23,8 @@ from novamind.features.qa.api.exceptions import (
     MessageNotFoundError,
     InvalidMessageContentError,
 )
-from novamind_engine_core.utils.text_utils import TextCompressor
-from novamind_engine_core.utils.text_utils.token_counter import TokenCounter
+from novamind.shared.utils.text_utils import TextCompressor
+from novamind.shared.utils.text_utils.token_counter import TokenCounter
 
 if TYPE_CHECKING:
     from novamind.features.qa.models.session_config import SessionConfig

@@ -70,7 +70,7 @@ class NotificationRepository:
 
     async def mark_read(self, notification_id: int, user_id: int) -> bool:
         """标记单条通知为已读"""
-        from novamind_engine_core.utils.time_utils import now_china
+        from novamind.shared.utils.time_utils import now_china
 
         async with self.db.begin_nested():
             stmt = (
@@ -83,7 +83,7 @@ class NotificationRepository:
 
     async def mark_all_read(self, user_id: int) -> int:
         """标记用户所有通知为已读"""
-        from novamind_engine_core.utils.time_utils import now_china
+        from novamind.shared.utils.time_utils import now_china
 
         async with self.db.begin_nested():
             stmt = (

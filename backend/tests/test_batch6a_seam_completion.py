@@ -28,8 +28,6 @@ from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 SRC = BACKEND_ROOT / "src"
-PROJECT_ROOT = BACKEND_ROOT.parent
-RAG_ENGINE_SRC = PROJECT_ROOT / "packages" / "novamind-rag-engine" / "src" / "novamind_rag"
 
 
 # ---------- 引擎候选文件清单 ----------
@@ -43,7 +41,7 @@ ENGINE_CANDIDATE_DIRS = [
     SRC / "shared" / "knowledge" / "integrations" / "deepdoc",
     SRC / "features" / "agent" / "core",
     SRC / "features" / "agent" / "mcp",
-    RAG_ENGINE_SRC,
+    SRC / "engines" / "rag",
 ]
 
 ENGINE_CANDIDATE_FILES = [
@@ -91,17 +89,10 @@ def _imports_in(path: Path) -> set[str]:
 
 
 def _own_feature(path: Path) -> str | None:
-    """若候选在 ``features/<X>/`` 下，返回 feature 名 X；否则 None（shared/ 候选）。
-
-    批次 6c：rag-engine 包文件在 ``packages/novamind-rag-engine/src/novamind_rag/`` 下，
-    不在 SRC 内——它们属于 knowledge_space feature（原有功能域），返回 ``"knowledge_space"``。
-    """
+    """若候选在 ``features/<X>/`` 下，返回 feature 名 X；否则 None（shared/ 候选）。"""
     try:
         parts = path.relative_to(SRC).parts
     except ValueError:
-        # 引擎包文件在 SRC 之外：按迁出来源映射
-        if RAG_ENGINE_SRC in path.parents or path.parent == RAG_ENGINE_SRC:
-            return "knowledge_space"
         return None
     if parts and parts[0] == "features" and len(parts) > 1:
         return parts[1]
@@ -140,15 +131,14 @@ def test_6a2_engine_candidates_have_no_shared_cache_redis_client_import():
 
 def test_6a2_retrieval_engine_has_no_feature_exceptions_import():
     """6a-2：RetrievalEngine 不得 import 自身 feature ``api.exceptions``（改用中立 rag_errors）。"""
-    p = RAG_ENGINE_SRC / "retrieval_engine.py"
-    # 6c：retrieval_engine 已迁到 novamind-rag-engine 包 —— 检验新位置。
+    p = SRC / "engines" / "rag" / "retrieval_engine.py"
     bad = [m for m in _imports_in(p) if m.startswith("novamind.features.knowledge_space.api.exceptions")]
     assert not bad, f"retrieval_engine 残留 api.exceptions import: {bad}"
 
 
 def test_6a2_rag_errors_are_neutral_and_isolated_from_host_tree():
     """6a-2：中立 rag_errors 异常树与宿主 KnowledgeSpaceError 树隔离。"""
-    from novamind_engine_core.rag_errors import RagError, EmbeddingError, SearchError
+    from novamind.shared.rag_errors import RagError, EmbeddingError, SearchError
     from novamind.features.knowledge_space.api.exceptions import (
         KnowledgeSpaceError as HostKSE,
         EmbeddingError as HostEmbeddingError,
@@ -171,7 +161,7 @@ def test_6a2_rag_errors_are_neutral_and_isolated_from_host_tree():
 
 def test_6a2_host_cache_port_satisfies_cache_port_protocol():
     """6a-2：HostCachePort 结构化满足中立 CachePort 协议（runtime_checkable）。"""
-    from novamind_engine_core.cache_ports import CachePort
+    from novamind.shared.cache_ports import CachePort
     from novamind.features.knowledge_space.adapters.cache_adapter import HostCachePort
 
     assert isinstance(HostCachePort(), CachePort)
@@ -180,7 +170,7 @@ def test_6a2_host_cache_port_satisfies_cache_port_protocol():
 def test_6a2_retrieval_engine_ctor_accepts_cache_port():
     """6a-2：RetrievalEngine 构造器接收 cache_port 注入；未注入时 _get_cache 返回 None 降级。"""
     import asyncio
-    from novamind_rag import RetrievalEngine
+    from novamind.engines.rag import RetrievalEngine
 
     params = inspect.signature(RetrievalEngine.__init__).parameters
     assert "cache_port" in params, "RetrievalEngine.__init__ 应含 cache_port 参数"
@@ -194,8 +184,7 @@ def test_6a2_retrieval_engine_ctor_accepts_cache_port():
 
 def test_6a3_retrieval_port_has_no_search_schema_import():
     """6a-3：retrieval_port 不得 import ``features.knowledge_space.schemas``（端口不绑宿主 schema）。"""
-    p = RAG_ENGINE_SRC / "retrieval_port.py"
-    # 6c：retrieval_port 已迁到 novamind-rag-engine 包 —— 检验新位置。
+    p = SRC / "engines" / "rag" / "retrieval_port.py"
     bad = [m for m in _imports_in(p) if m.startswith("novamind.features.knowledge_space.schemas")]
     assert not bad, f"retrieval_port 残留 schemas import: {bad}"
 
@@ -206,10 +195,9 @@ def test_6a3_retrieval_port_search_request_param_is_opaque():
     注：docstring 中作为说明文字提及 ``SearchRequest`` 是允许的（解释 host payload 来源），
     接缝不变式只在 AST 层面：无 import + 参数注解为 ``Any``。
     """
-    src = (RAG_ENGINE_SRC / "retrieval_port.py").read_text(
+    src = (SRC / "engines" / "rag" / "retrieval_port.py").read_text(
         encoding="utf-8"
     )
-    # 6c：retrieval_port 已迁到 novamind-rag-engine 包 —— 检验新位置。
     tree = ast.parse(src)
     search_method = None
     for node in ast.walk(tree):
@@ -234,7 +222,7 @@ def test_6a4_skill_checker_has_no_skill_models_import():
 
 def test_6a4_review_status_identity_between_neutral_and_orm():
     """6a-4：中立 ``shared.skill_ports.ReviewStatus`` 与 ORM ``skill.models.skill.ReviewStatus`` 同一对象。"""
-    from novamind_engine_core.skill_ports import ReviewStatus as NeutralReviewStatus
+    from novamind.shared.skill_ports import ReviewStatus as NeutralReviewStatus
     from novamind.features.skill.models.skill import ReviewStatus as ORMReviewStatus
 
     assert NeutralReviewStatus is ORMReviewStatus, "ReviewStatus 中立枚举与 ORM re-export 必须同一对象"

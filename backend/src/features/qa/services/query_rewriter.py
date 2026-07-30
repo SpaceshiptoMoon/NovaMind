@@ -12,8 +12,8 @@ from enum import Enum
 from typing import Optional, List
 from dataclasses import dataclass, field
 
-from novamind_engine_core.ai_models.base_model import BaseLLM
-from novamind_engine_core.prompts.templates import PromptManager
+from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.prompts.templates import PromptManager
 
 
 class RewriteStrategy(str, Enum):

@@ -6,14 +6,14 @@
 
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional, AsyncGenerator
-from novamind_engine_core.model_config_ports import ModelConfigPort
+from novamind.shared.model_config_ports import ModelConfigPort
 import re
 import time
 import json
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from novamind_engine_core.utils.time_utils import now_china
+from novamind.shared.utils.time_utils import now_china
 
 from novamind.features.deep_research.models.research_session import (
     ResearchSession,
@@ -31,7 +31,7 @@ from novamind.features.deep_research.schemas.research_schema import (
     ResearchRequest,
 )
 from novamind.features.knowledge_space.services.search_service import SearchService
-from novamind_rag import RetrievalPort
+from novamind.engines.rag import RetrievalPort
 from novamind.features.knowledge_space.adapters.retrieval_adapter import HostRetrievalPort
 from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
 from novamind.features.knowledge_space.schemas.search_schema import (
@@ -42,8 +42,8 @@ from novamind.features.knowledge_space.schemas.search_schema import (
 )
 from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
 from novamind.core.middleware.structured_logging import get_logger
-from novamind_engine_core.utils.heartbeat import stream_with_heartbeat
-from novamind_engine_core.prompts import PromptManager
+from novamind.shared.utils.heartbeat import stream_with_heartbeat
+from novamind.shared.prompts import PromptManager
 from novamind.features.deep_research.exceptions import (
     DeepResearchError,
     ResearchNotFoundError,
@@ -385,7 +385,7 @@ class DeepResearchService:
         dataclass 注入，切断 search 引擎 → setting 的导入边。
         """
         from novamind.setting.yaml_config import get_config
-        from novamind_engine_core.engine_config import (
+        from novamind.shared.engine_config import (
             DuckDuckGoSearchConfig,
             SerpApiSearchConfig,
             TavilySearchConfig,

@@ -10,19 +10,19 @@ PromptProvider 宿主适配器
 """
 from typing import Any
 
-from novamind_engine_core.engine_ports import PromptProvider
+from novamind.shared.engine_ports import PromptProvider
 
 
 class HostPromptProvider:
     """PromptProvider 宿主实现：委托 PromptManager 类级注册表。"""
 
     def get(self, key: str) -> str:
-        from novamind_engine_core.prompts import PromptManager
+        from novamind.shared.prompts import PromptManager
 
         return PromptManager.get_template(key)
 
     def format(self, key: str, **kwargs: Any) -> str:
-        from novamind_engine_core.prompts import PromptManager
+        from novamind.shared.prompts import PromptManager
 
         return PromptManager.format_prompt(key, **kwargs)
 

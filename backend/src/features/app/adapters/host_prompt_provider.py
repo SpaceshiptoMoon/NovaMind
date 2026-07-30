@@ -5,8 +5,8 @@
 resume 引擎不再直接 import ``shared.prompts.PromptManager``，切断 resume 引擎 ->
 宿主 prompt 注册表的导入边（批次 6 抽 ``novamind-resume-engine`` 前提）。
 """
-from novamind_engine_core.engine_ports import PromptProvider
-from novamind_engine_core.prompts.templates import PromptManager
+from novamind.shared.engine_ports import PromptProvider
+from novamind.shared.prompts.templates import PromptManager
 
 
 class HostPromptProvider:

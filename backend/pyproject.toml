@@ -44,8 +44,6 @@ dependencies = [
     "huggingface-hub>=1.10.2",
     "pymupdf>=1.28.0",
     "faster-whisper>=1.2.1",
-    "novamind-engine-core",
-    "novamind-rag-engine",
 ]
 
 [project.optional-dependencies]

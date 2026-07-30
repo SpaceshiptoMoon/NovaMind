@@ -13,8 +13,8 @@ from novamind.shared.knowledge.document_processing.splitters.semantic_splitter i
 from novamind.shared.knowledge.document_processing.splitters.fixed_size_splitter import FixedSizeSplitter
 from novamind.shared.knowledge.document_processing.splitters.markdown_splitter import MarkdownSplitter
 from novamind.shared.knowledge.integrations.deepdoc import DeepDocEngine, DeepDocParser, DeepDocParseResult, strip_position_tags
-from novamind_engine_core.ai_models.base_model import BaseEmbedding
-from novamind_engine_core.engine_logging import get_logger
+from novamind.shared.ai_models.base_model import BaseEmbedding
+from novamind.shared.engine_logging import get_logger
 
 logger = get_logger(__name__)
 

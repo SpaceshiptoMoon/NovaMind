@@ -21,8 +21,8 @@ import asyncio
 import json
 from typing import Optional
 
-from novamind_engine_core.ai_models.llm import BaseLLM
-from novamind_engine_core.engine_ports import FallbackLLMProvider, Logger, PromptProvider
+from novamind.shared.ai_models.llm import BaseLLM
+from novamind.shared.engine_ports import FallbackLLMProvider, Logger, PromptProvider
 from novamind.features.app.schemas.resume_schema import (
     StructuredResume, ProbingPlan, KnowledgePoint, JDAnalysis,
     WorkProjectUnit,

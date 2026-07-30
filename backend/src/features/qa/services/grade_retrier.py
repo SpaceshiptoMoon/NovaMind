@@ -11,8 +11,8 @@ import re
 from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable, List, Tuple
 
-from novamind_engine_core.ai_models.base_model import BaseLLM
-from novamind_engine_core.prompts.templates import PromptManager
+from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.prompts.templates import PromptManager
 
 
 @dataclass

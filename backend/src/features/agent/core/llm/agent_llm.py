@@ -18,7 +18,7 @@ NotImplementedError，本类降级为非流式。
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from novamind_engine_core.ai_models.base_model import BaseLLM, ToolStreamEvent
+from novamind.shared.ai_models.base_model import BaseLLM, ToolStreamEvent
 
 
 @dataclass

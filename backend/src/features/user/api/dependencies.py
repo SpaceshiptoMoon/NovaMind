@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 from novamind.features.user.services import UserService
 from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind_engine_core.model_config_ports import ModelConfigPort
+from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.features.user.repository import UserRepository
 from novamind.core.database.database import get_db
 

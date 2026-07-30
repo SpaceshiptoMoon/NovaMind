@@ -13,10 +13,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
-from novamind_engine_core.storage.minio_client import IMAGE_FILE_TYPES
+from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
 
 if TYPE_CHECKING:
-    from novamind_engine_core.storage.minio_client import MinioClient
+    from novamind.shared.storage.minio_client import MinioClient
 
 
 async def enrich_attachments_with_presigned_urls(

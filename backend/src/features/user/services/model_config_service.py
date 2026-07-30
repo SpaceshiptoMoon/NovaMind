@@ -24,12 +24,12 @@ from novamind.features.user.schemas.model_config_schema import (
     ModelTestRequest,
     ModelTestResponse,
 )
-from novamind_engine_core.ai_models.llm import create_llm_client, BaseLLM
-from novamind_engine_core.ai_models.embedding import create_embedding_client, BaseEmbedding
-from novamind_engine_core.ai_models.rerank import create_rerank_client, BaseRerank
-from novamind_engine_core.ai_models.base_model import PROXY_INHERIT
-from novamind_engine_core.model_config_ports import ModelCredentials
-from novamind_engine_core.knowledge_space_info_ports import KnowledgeSpaceInfoPort
+from novamind.shared.ai_models.llm import create_llm_client, BaseLLM
+from novamind.shared.ai_models.embedding import create_embedding_client, BaseEmbedding
+from novamind.shared.ai_models.rerank import create_rerank_client, BaseRerank
+from novamind.shared.ai_models.base_model import PROXY_INHERIT
+from novamind.shared.model_config_ports import ModelCredentials
+from novamind.shared.knowledge_space_info_ports import KnowledgeSpaceInfoPort
 
 from novamind.shared.utils.crypto import encrypt_api_key_async, decrypt_api_key_async
 from novamind.core.middleware.structured_logging import get_logger

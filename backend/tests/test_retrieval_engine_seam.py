@@ -16,12 +16,12 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind_rag import (
+from novamind.engines.rag import (
     RetrievalEngine,
     RetrievalQuery,
 )
 from novamind.features.knowledge_space.adapters.retrieval_adapter import HostRetrievalPort
-from novamind_rag import RetrievalPort
+from novamind.engines.rag import RetrievalPort
 
 
 def _make_query(search_mode: str = "content_hybrid") -> RetrievalQuery:
