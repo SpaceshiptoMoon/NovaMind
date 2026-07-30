@@ -9,6 +9,10 @@ from sqlalchemy import (
 )
 
 from novamind.core.database.base import BaseModel
+# ReviewStatus 中立枚举自 shared.skill_ports 引入（批次 6a-4 下沉）；
+# 此处 re-export 保 ORM 列 default=ReviewStatus.PENDING 与既有
+# ``from skill.models.skill import ReviewStatus`` 导入方零改动。
+from novamind.shared.skill_ports import ReviewStatus
 
 
 class SkillSource(StrEnum):
@@ -29,14 +33,6 @@ class SkillStatus(IntEnum):
     DRAFT = 0
     PUBLISHED = 1
     ARCHIVED = 2
-
-
-class ReviewStatus(IntEnum):
-    """安全审查状态"""
-    PENDING = 0
-    APPROVED = 1
-    SUSPICIOUS = 2
-    REJECTED = 3
 
 
 class SkillDefinition(BaseModel):

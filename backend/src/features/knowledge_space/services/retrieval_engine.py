@@ -2,11 +2,18 @@
 
 批次 2 接缝：把 ``SearchService.search`` 中与宿主业务（权限 / 多租户 / 模型配置 / LLM 生成）
 无关的**纯检索段**抽离为 ``RetrievalEngine.retrieve_raw``。引擎只持有 ``es_client`` + logger +
-Redis 缓存句柄，**不持有** session / repos / ModelConfigService；``embedding_client`` /
-``rerank_client`` 由宿主通过 resolver 回调按需注入（懒解析，逐字复刻原 ``search`` 的懒解析时序：
-缓存命中时不解析 embedding，避免配置缺失误报 ``EmbeddingError``）。
+中立 ``CachePort``（宿主装配点注入，未注入时缓存 no-op 降级），**不持有** session / repos /
+ModelConfigService；``embedding_client`` / ``rerank_client`` 由宿主通过 resolver 回调按需注入
+（懒解析，逐字复刻原 ``search`` 的懒解析时序：缓存命中时不解析 embedding，避免配置缺失误报
+``EmbeddingError``）。
 
-批次 6 物理抽包到 ``novamind-rag-engine``；本批仅在 feature 内做接缝，可引用 feature 异常 / schemas。
+批次 6a-2 去 feature 边：异常改用中立 ``shared.rag_errors``
+（``RagError``/``EmbeddingError``/``SearchError``，不依赖宿主 ``BaseAPIError``）；
+缓存改用中立 ``shared.cache_ports.CachePort``（构造器注入，删 ``shared.cache.redis_client``
+直接 import）。宿主 ``SearchService`` 在装配点捕获中立异常重抛为宿主 ``api.exceptions`` 同名异常，
+保留宿主异常码契约（400）不变。
+
+批次 6 物理抽包到 ``novamind-rag-engine``。
 
 回滚：``NOVAMIND_LEGACY_RETRIEVAL=1`` 时 ``SearchService.search`` 走旧内联路径（旧路径保留）。
 """
@@ -16,13 +23,9 @@ import hashlib
 
 from novamind.shared.ai_models.embedding import BaseEmbedding
 from novamind.shared.ai_models.rerank import BaseRerank
-from novamind.shared.cache.redis_client import get_redis_client
-from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.knowledge_space.api.exceptions import (
-    KnowledgeSpaceError,
-    EmbeddingError,
-    SearchError,
-)
+from novamind.shared.cache_ports import CachePort
+from novamind.shared.engine_logging import get_logger
+from novamind.shared.rag_errors import RagError, EmbeddingError, SearchError
 
 # 默认配置常量（与 search_service 保持一致，批次 6 迁入引擎包）
 DEFAULT_SEARCH_CACHE_TTL = 3600  # 1 小时
@@ -119,15 +122,28 @@ class RetrievalEngine:
     不做权限校验、不碰 ORM、不调 LLM、不感知 ModelConfigService。客户端由宿主按需注入。
     """
 
-    def __init__(self, es_client: Any, logger: Optional[Any] = None) -> None:
+    def __init__(
+        self,
+        es_client: Any,
+        logger: Optional[Any] = None,
+        cache_port: Optional[CachePort] = None,
+    ) -> None:
         self.es_client = es_client
         self.logger = logger or get_logger(__name__)
+        # 中立缓存端口：宿主装配点注入 HostCachePort（包 shared.cache.redis_client）。
+        # 未注入（None）时缓存读写一律 no-op 降级。_cache 惰性解析为 cache_port 实例，
+        # 保留旧接缝测试可直接注入 _cache 的能力。
+        self._cache_port = cache_port
         self._cache = None
 
-    async def _get_cache(self):
-        """获取 Redis 缓存客户端"""
+    async def _get_cache(self) -> Optional[CachePort]:
+        """惰性解析缓存端口实例。
+
+        优先返回直接注入的 ``_cache``（接缝测试路径）；否则绑定构造器传入的
+        ``cache_port``；两者皆空返回 ``None``（无缓存，调用方负责 no-op 降级）。
+        """
         if self._cache is None:
-            self._cache = await get_redis_client()
+            self._cache = self._cache_port
         return self._cache
 
     async def retrieve_raw(
@@ -483,11 +499,13 @@ class RetrievalEngine:
         """获取缓存的检索结果"""
         try:
             cache = await self._get_cache()
+            if cache is None:
+                return None
             cached = await cache.get(cache_key)
             if cached is not None:
                 self.logger.debug("检索缓存命中", cache_key=cache_key)
                 return cached
-        except KnowledgeSpaceError:
+        except RagError:
             raise
         except Exception as e:
             self.logger.warning("读取检索缓存失败", cache_key=cache_key, error=str(e))
@@ -497,9 +515,11 @@ class RetrievalEngine:
         """缓存检索结果"""
         try:
             cache = await self._get_cache()
+            if cache is None:
+                return
             await cache.set(cache_key, results, expire=DEFAULT_SEARCH_CACHE_TTL)
             self.logger.debug("检索结果已缓存", cache_key=cache_key, ttl=DEFAULT_SEARCH_CACHE_TTL)
-        except KnowledgeSpaceError:
+        except RagError:
             raise
         except Exception as e:
             self.logger.warning("缓存检索结果失败", cache_key=cache_key, error=str(e))
@@ -591,6 +611,8 @@ class RetrievalEngine:
         """
         try:
             cache = await self._get_cache()
+            if cache is None:
+                return
             pattern = f"search:{kb_id}:*"
             total_deleted = await cache.delete_by_pattern(pattern, batch_size=100)
             self.logger.debug(
@@ -598,7 +620,7 @@ class RetrievalEngine:
                 kb_id=kb_id,
                 deleted=total_deleted,
             )
-        except KnowledgeSpaceError:
+        except RagError:
             raise
         except Exception as e:
             self.logger.warning(

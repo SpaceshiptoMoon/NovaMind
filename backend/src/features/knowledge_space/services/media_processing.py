@@ -384,6 +384,9 @@ async def process_audio_document(
                 audio_config=engine_audio_config,
             )
         if protocol == "dashscope":
+            # 批次 6a-5：minio_client 由宿主装配获取后注入引擎函数（引擎不再 import ClientFactory）
+            from novamind.shared.clients import ClientFactory
+            minio_client = await ClientFactory.get_minio_client()
             storage_info = document.get_storage_info()
             language_hints = [language] if language else None
             return await transcribe_audio_with_dashscope(
@@ -394,6 +397,7 @@ async def process_audio_document(
                 base_url=base_url,
                 minio_bucket=storage_info.get("minio_bucket"),
                 language_hints=language_hints,
+                minio_client=minio_client,
             )
         return await transcribe_audio_with_timestamps(
             file_content=file_content,

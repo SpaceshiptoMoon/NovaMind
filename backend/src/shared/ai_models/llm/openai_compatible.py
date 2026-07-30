@@ -18,7 +18,7 @@ from tenacity import (
 )
 
 from novamind.shared.ai_models.base_model import BaseLLM, ToolCall, LLMResponseWithTools, StreamChunk, LLMResponse, ToolStreamEvent, PROXY_INHERIT, build_openai_http_client
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.engine_logging import get_logger
 
 logger = get_logger(__name__)
 
