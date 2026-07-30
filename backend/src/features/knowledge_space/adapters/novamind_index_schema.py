@@ -9,7 +9,7 @@ NovaMind 宿主 ES 索引 schema
 由 `shared/clients/__init__.py` 的 `ClientFactory.get_elasticsearch_client` 注入到
 `ElasticsearchClient`。
 """
-from novamind_engine_core.storage.index_schema import DefaultIndexSchema
+from novamind.shared.storage.index_schema import DefaultIndexSchema
 
 
 class NovamindIndexSchema(DefaultIndexSchema):

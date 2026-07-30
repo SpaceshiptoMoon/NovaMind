@@ -12,9 +12,9 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind_rag import RetrievalEngine
+from novamind.engines.rag import RetrievalEngine
 from novamind.features.knowledge_space.schemas.search_schema import QueryRewriteConfig
-from novamind_engine_core.prompts.sanitize import sanitize_prompt_input
+from novamind.shared.prompts.sanitize import sanitize_prompt_input
 
 
 def _hash(**kw):
@@ -77,7 +77,7 @@ def test_sub_query_rrf_k_param_is_used_not_hardcoded():
     import asyncio
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
-    from novamind_rag import RetrievalEngine
+    from novamind.engines.rag import RetrievalEngine
 
     # 固定子查询结果（两个子查询，各返回同一个 chunk，rank=1）
     canned = [{"chunk_id": "c1", "content": "x", "score": 0.9}]

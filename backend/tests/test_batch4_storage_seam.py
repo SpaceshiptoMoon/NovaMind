@@ -21,11 +21,11 @@ pytestmark = pytest.mark.unit
 
 # ---- 受保护模块清单 ----
 _ENGINE_STORAGE_MODULES = [
-    "novamind_engine_core.storage.index_schema",
-    "novamind_engine_core.storage.path_strategy",
-    "novamind_engine_core.storage.elasticsearch_client",
-    "novamind_engine_core.storage.minio_client",
-    "novamind_engine_core.engine_config",
+    "novamind.shared.storage.index_schema",
+    "novamind.shared.storage.path_strategy",
+    "novamind.shared.storage.elasticsearch_client",
+    "novamind.shared.storage.minio_client",
+    "novamind.shared.engine_config",
     "novamind.shared.knowledge.media_processing.audio.audio_utils",
 ]
 
@@ -62,7 +62,7 @@ def test_engine_storage_no_forbidden_imports(mod_name: str):
 
 def test_default_index_schema_is_runtime_checkable():
     """IndexSchema 协议应为 runtime_checkable，可在不导入实例的情况下用于 isinstance。"""
-    from novamind_engine_core.storage.index_schema import IndexSchema, DefaultIndexSchema
+    from novamind.shared.storage.index_schema import IndexSchema, DefaultIndexSchema
 
     schema = DefaultIndexSchema()
     assert isinstance(schema, IndexSchema)
@@ -75,7 +75,7 @@ def test_default_index_schema_is_runtime_checkable():
 
 def test_default_path_strategy_is_runtime_checkable():
     """PathStrategy 协议应为 runtime_checkable，并在独立使用时能正确工作。"""
-    from novamind_engine_core.storage.path_strategy import PathStrategy, DefaultPathStrategy
+    from novamind.shared.storage.path_strategy import PathStrategy, DefaultPathStrategy
 
     strategy = DefaultPathStrategy()
     assert isinstance(strategy, PathStrategy)
@@ -90,8 +90,8 @@ def test_default_path_strategy_is_runtime_checkable():
 
 def test_novamind_adapters_inherit_defaults():
     """宿主 adapters 继承 engine 默认值（当前逐字一致）。"""
-    from novamind_engine_core.storage.index_schema import DefaultIndexSchema
-    from novamind_engine_core.storage.path_strategy import DefaultPathStrategy
+    from novamind.shared.storage.index_schema import DefaultIndexSchema
+    from novamind.shared.storage.path_strategy import DefaultPathStrategy
     from novamind.features.knowledge_space.adapters.novamind_index_schema import (
         NovamindIndexSchema,
     )
@@ -105,7 +105,7 @@ def test_novamind_adapters_inherit_defaults():
 
 def test_audio_config_defaults():
     """AudioConfig 独立使用时应返回合理的默认值。"""
-    from novamind_engine_core.engine_config import AudioConfig
+    from novamind.shared.engine_config import AudioConfig
 
     cfg = AudioConfig()
     assert cfg.local_whisper_model_dir is None
@@ -113,7 +113,7 @@ def test_audio_config_defaults():
 
 def test_audio_utils_resolve_accepts_audio_config():
     """_resolve_local_whisper_model_dir 接受 AudioConfig 并遵循优先级。"""
-    from novamind_engine_core.engine_config import AudioConfig
+    from novamind.shared.engine_config import AudioConfig
     from novamind.shared.knowledge.media_processing.audio.audio_utils import (
         _resolve_local_whisper_model_dir,
     )

@@ -14,7 +14,7 @@ import hashlib
 import asyncio
 import traceback
 import tempfile
-from novamind_engine_core.utils.time_utils import now_china
+from novamind.shared.utils.time_utils import now_china
 from pathlib import Path
 
 if TYPE_CHECKING:
@@ -54,9 +54,9 @@ from novamind.features.knowledge_space.api.exceptions import (
     SpaceAccessDeniedError,
     EmbeddingError,
 )
-from novamind_engine_core.storage.minio_client import MinioClient
-from novamind_engine_core.model_config_ports import ModelConfigPort
-from novamind_engine_core.storage.elasticsearch_client import ElasticsearchClient
+from novamind.shared.storage.minio_client import MinioClient
+from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.knowledge.document_processing.converters.doc_converter import (
     convert_doc_to_docx,
     DocConversionError,
@@ -68,7 +68,7 @@ from novamind.shared.knowledge.media_processing.vlm import (
     build_vlm_image_messages,
     generate_vlm_text_with_fallback,
 )
-from novamind_engine_core.ai_models.embedding import OpenAICompatibleEmbedding as EmbeddingClient
+from novamind.shared.ai_models.embedding import OpenAICompatibleEmbedding as EmbeddingClient
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     build_runtime_parsing_config,
 )
@@ -152,7 +152,7 @@ class DocumentService:
     ]
 
     # 图片文件类型（从 MinIO 工具收敛到唯一定义）
-    from novamind_engine_core.storage.minio_client import IMAGE_FILE_TYPES as _IMG_TYPES
+    from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES as _IMG_TYPES
 
     IMAGE_FILE_TYPES = _IMG_TYPES
 
@@ -2165,7 +2165,7 @@ async def _generate_image_description(
     Returns:
         描述文本（截断到 2000 字符），失败抛异常由调用方处理
     """
-    from novamind_engine_core.prompts.templates import PromptManager
+    from novamind.shared.prompts.templates import PromptManager
 
     # 1. 获取 VLM 客户端
     vlm_model = vlm_model_name or await mcs.get_user_default_model_name(document.uploader_id, "vlm")

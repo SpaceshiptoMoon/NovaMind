@@ -18,7 +18,7 @@ from novamind.features.user.services.model_config_service import ModelConfigServ
 from novamind.features.evaluation.services.evaluation_service import EvaluationService
 from novamind.features.knowledge_space.services.search_service import SearchService
 from novamind.features.knowledge_space.adapters.retrieval_adapter import as_retrieval_port
-from novamind_rag import RetrievalPort
+from novamind.engines.rag import RetrievalPort
 from novamind.shared.clients import get_elasticsearch_client, get_minio_client
 
 

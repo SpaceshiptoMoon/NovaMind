@@ -11,7 +11,7 @@ from datetime import timedelta
 import secrets
 
 from novamind.core.database.base import BaseModel
-from novamind_engine_core.utils.time_utils import now_china
+from novamind.shared.utils.time_utils import now_china
 
 
 class SpaceRole(IntEnum):

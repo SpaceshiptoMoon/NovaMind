@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from novamind.core.middleware.structured_logging import get_logger
-from novamind_engine_core.utils.time_utils import now_china
+from novamind.shared.utils.time_utils import now_china
 from novamind.shared.clients import (
     get_elasticsearch_client,
     get_minio_client,

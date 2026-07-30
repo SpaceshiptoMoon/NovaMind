@@ -11,7 +11,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from novamind_engine_core.model_config_ports import ModelConfigPort
+from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.agent.core.engine import AgentEngine, AgentEvent
 from novamind.features.agent.core.memory.memory_manager import MemoryManager
@@ -32,7 +32,7 @@ from novamind.features.agent.models.message import AgentMessage
 from novamind.features.agent.api.exceptions import AgentError, AgentNotFoundError
 from novamind.features.agent.core.tool.base import ToolContext
 from novamind.core.middleware.structured_logging import get_logger
-from novamind_engine_core.utils.time_utils import now_china
+from novamind.shared.utils.time_utils import now_china
 from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
 
 logger = get_logger(__name__)

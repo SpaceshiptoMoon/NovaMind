@@ -11,7 +11,7 @@ import base64
 import json
 import tempfile
 
-from novamind_engine_core.utils.text_utils.token_counter import TokenCounter
+from novamind.shared.utils.text_utils.token_counter import TokenCounter
 import os
 
 from fastapi import UploadFile
@@ -20,13 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from novamind.core.middleware.structured_logging import get_logger
 
 if TYPE_CHECKING:
-    from novamind_engine_core.storage.minio_client import MinioClient
-    from novamind_rag import RetrievalPort
-from novamind_engine_core.ai_models.llm import BaseLLM
-from novamind_engine_core.model_config_ports import ModelConfigPort
-from novamind_engine_core.prompts.templates import PromptManager
-from novamind_engine_core.utils.heartbeat import stream_with_heartbeat_structured
-from novamind_engine_core.storage.minio_client import IMAGE_FILE_TYPES
+    from novamind.shared.storage.minio_client import MinioClient
+    from novamind.engines.rag import RetrievalPort
+from novamind.shared.ai_models.llm import BaseLLM
+from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.shared.prompts.templates import PromptManager
+from novamind.shared.utils.heartbeat import stream_with_heartbeat_structured
+from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
 from novamind.features.qa.services.qa_service import QAService
 from novamind.features.qa.schemas.qa import QARequest
 from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
@@ -597,7 +597,7 @@ class AIChatService:
     async def _retrieve_web(self, query: str, max_results: int = 5) -> Optional[Tuple[str, List[dict]]]:
         """联网搜索，返回 (参考资料块文本, 结构化来源列表)。复用 deep_research 的 DuckDuckGo 服务"""
         from novamind.setting.yaml_config import get_config
-        from novamind_engine_core.engine_config import DuckDuckGoSearchConfig
+        from novamind.shared.engine_config import DuckDuckGoSearchConfig
         from novamind.features.deep_research.services.duckduckgo_service import (
             DuckDuckGoSearchService,
         )

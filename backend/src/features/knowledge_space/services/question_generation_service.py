@@ -13,9 +13,9 @@ import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from novamind_engine_core.ai_models.llm import BaseLLM
-from novamind_engine_core.prompts import PromptManager
-from novamind_engine_core.model_config_ports import ModelConfigPort
+from novamind.shared.ai_models.llm import BaseLLM
+from novamind.shared.prompts import PromptManager
+from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     QuestionGenerationConfig,
     QuestionLLMConfig,

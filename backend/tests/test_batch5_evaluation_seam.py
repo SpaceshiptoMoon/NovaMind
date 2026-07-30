@@ -37,8 +37,8 @@ _ENGINE_EVAL_MODULES = [
 
 # evaluator 不得直接 import 业务侧 prompt 注册表 / 宿主结构化日志 / 宿主 features 旁路
 _FORBIDDEN_EVAL_IMPORTS = {
-    "novamind_engine_core.prompts.templates",
-    "novamind_engine_core.prompts.templates.PromptManager",
+    "novamind.shared.prompts.templates",
+    "novamind.shared.prompts.templates.PromptManager",
     "novamind.core.middleware.structured_logging",
     "novamind.features.knowledge_space.services.search_service",
     "novamind.features.user.services.model_config_service",
@@ -75,7 +75,7 @@ def test_evaluator_no_forbidden_imports(mod_name: str):
 
 def test_host_prompt_provider_satisfies_protocol():
     """HostPromptProvider 实现 PromptProvider 协议（get/format）。"""
-    from novamind_engine_core.engine_ports import PromptProvider
+    from novamind.shared.engine_ports import PromptProvider
     from novamind.features.evaluation.adapters.host_prompt_provider import HostPromptProvider
 
     provider = HostPromptProvider()
@@ -96,7 +96,7 @@ def test_structlog_logger_satisfies_protocol():
     会误判，故先 ``.bind()`` 触发绑定再校验。生产中 evaluator 调用 ``self._logger``
     的方法时同样会触发绑定。
     """
-    from novamind_engine_core.engine_ports import Logger
+    from novamind.shared.engine_ports import Logger
     from novamind.core.middleware.structured_logging import get_logger
 
     host_logger = get_logger("evaluation.evaluators").bind()

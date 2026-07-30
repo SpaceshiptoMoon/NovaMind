@@ -12,7 +12,7 @@ import io
 import json
 import zipfile
 from typing import Any, Dict, List, Optional, Tuple
-from novamind_engine_core.model_config_ports import ModelConfigPort
+from novamind.shared.model_config_ports import ModelConfigPort
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,10 +37,10 @@ from novamind.features.skill.repository.skill_repository import (
 )
 from novamind.features.skill.services.skill_parser import extract_skill_zip, ExtractedSkill
 from novamind.features.skill.services.skill_checker import SkillSecurityChecker
-from novamind_engine_core.utils.time_utils import now_china
-from novamind_engine_core.prompts import PromptManager
-from novamind_engine_core.ai_models.base_model import BaseLLM
-from novamind_engine_core.registry_ports import AgentRegistryPort
+from novamind.shared.utils.time_utils import now_china
+from novamind.shared.prompts import PromptManager
+from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.registry_ports import AgentRegistryPort
 
 logger = get_logger(__name__)
 

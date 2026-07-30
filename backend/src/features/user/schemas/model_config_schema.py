@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
-from novamind_engine_core.ai_models.base_model import PROXY_INHERIT
+from novamind.shared.ai_models.base_model import PROXY_INHERIT
 
 # ========== 请求/响应模型 ==========
 

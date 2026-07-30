@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
-from novamind_engine_core.knowledge_space_info_ports import (
+from novamind.shared.knowledge_space_info_ports import (
     KnowledgeSpaceInfoPort,
     SpaceEmbeddingUsage,
 )

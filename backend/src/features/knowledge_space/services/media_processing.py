@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from novamind.features.knowledge_space.api.exceptions import DocumentProcessingError, LocalASRBusyError
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.document_task import DocumentTask
-from novamind_engine_core.model_config_ports import ModelConfigPort
+from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.features.knowledge_space.services.document_service import (
     _check_document_cancelled,
     load_pipeline_context,
@@ -24,10 +24,10 @@ from novamind.shared.knowledge.media_processing.audio import (
     transcribe_audio_with_timestamps,
 )
 from novamind.shared.knowledge.media_processing.video import extract_video_frames
-from novamind_engine_core.utils.time_utils import now_china
+from novamind.shared.utils.time_utils import now_china
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
 from novamind.features.knowledge_space.schemas.enums import ChunkType
-from novamind_engine_core.engine_config import AudioConfig
+from novamind.shared.engine_config import AudioConfig
 from novamind.shared.knowledge.media_processing.vlm import (
     build_vlm_image_messages,
     generate_vlm_text_with_fallback,
@@ -699,7 +699,7 @@ async def _describe_single_frame(
     主模型因配额/鉴权类错误失败且配置了 ``vlm_fallback_model`` 时，回退到备用模型重试一次；
     其它异常原样上抛，由帧循环逐帧捕获并跳过。
     """
-    from novamind_engine_core.prompts.templates import PromptManager
+    from novamind.shared.prompts.templates import PromptManager
 
     # 获取 VLM 客户端
     vlm_model = vlm_model_name or await mcs.get_user_default_model_name(document.uploader_id, "vlm")

@@ -38,9 +38,9 @@ _ENGINE_SKILL_MODULES = [
 ]
 
 _FORBIDDEN_SKILL_IMPORTS = {
-    "novamind_engine_core.prompts.templates",
-    "novamind_engine_core.prompts.templates.PromptManager",
-    "novamind_engine_core.prompts",
+    "novamind.shared.prompts.templates",
+    "novamind.shared.prompts.templates.PromptManager",
+    "novamind.shared.prompts",
     "novamind.core.middleware.structured_logging",
     # skill 引擎侧不得直接依赖 agent feature（经 AgentRegistryPort 注入）
     "novamind.features.agent.repository.agent_repository",
@@ -168,7 +168,7 @@ def test_agent_registry_port_protocol_location():
 
 def test_host_agent_registry_port_satisfies_protocol():
     """HostAgentRegistryPort 满足 AgentRegistryPort 协议。"""
-    from novamind_engine_core.registry_ports import AgentRegistryPort
+    from novamind.shared.registry_ports import AgentRegistryPort
     from novamind.features.agent.adapters.agent_registry_adapter import HostAgentRegistryPort
 
     class _FakeRepo:

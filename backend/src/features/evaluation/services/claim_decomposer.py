@@ -12,8 +12,8 @@ Claim 拆解与验证器
 import json
 from typing import Any, Dict, List
 
-from novamind_engine_core.ai_models.base_model import BaseLLM
-from novamind_engine_core.engine_ports import Logger, PromptProvider
+from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.engine_ports import Logger, PromptProvider
 
 
 class ClaimDecomposer:

@@ -24,10 +24,10 @@ from novamind.features.knowledge_space.api.exceptions import (
     SpaceAccessDeniedError,
     InvalidParameterError,
 )
-from novamind_engine_core.storage.elasticsearch_client import ElasticsearchClient
-from novamind_engine_core.storage.minio_client import MinioClient
+from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
+from novamind.shared.storage.minio_client import MinioClient
 from novamind.core.middleware.structured_logging import get_logger
-from novamind_engine_core.model_config_ports import ModelConfigPort
+from novamind.shared.model_config_ports import ModelConfigPort
 
 def _resolve_model_type(modalities=None) -> str:
     """决定嵌入模型类型，统一用 embedding"""

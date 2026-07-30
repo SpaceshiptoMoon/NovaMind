@@ -7,7 +7,7 @@ deep_research）依赖 ``RetrievalPort`` 抽象，由依赖注入提供本实现
 from typing import Any, Dict
 
 from novamind.features.knowledge_space.schemas.search_schema import SearchRequest
-from novamind_rag import RetrievalPort
+from novamind.engines.rag import RetrievalPort
 from novamind.features.knowledge_space.services.search_service import SearchService
 
 
