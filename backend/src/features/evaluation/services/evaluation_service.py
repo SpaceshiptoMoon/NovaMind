@@ -47,7 +47,7 @@ from novamind.features.evaluation.api.exceptions import (
     EvaluationTaskNotCompletedError,
 )
 from novamind.features.evaluation.adapters.host_prompt_provider import as_prompt_provider
-from novamind.features.knowledge_space.services.retrieval_port import RetrievalPort
+from novamind_rag import RetrievalPort
 from novamind_engine_core.ai_models.base_model import BaseLLM
 from novamind_engine_core.engine_ports import Logger, PromptProvider
 from novamind_engine_core.storage.minio_client import MinioClient

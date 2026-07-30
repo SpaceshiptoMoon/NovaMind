@@ -1,0 +1,33 @@
+[project]
+name = "novamind-rag-engine"
+version = "0.1.0"
+description = "NovaMind RAG 检索引擎——纯检索段（缓存读写 + 向量生成 + ES 检索 + 归一化 + 阈值过滤 + rerank），可嵌入独立库"
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "novamind-engine-core>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4.0",
+]
+test = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=0.24.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"

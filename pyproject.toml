@@ -14,3 +14,4 @@ members = ["backend", "packages/*"]
 [tool.uv.sources]
 # 内部引擎包以 workspace editable 解析（`uv pip install -e` 等价命中源码）。
 novamind-engine-core = { workspace = true }
+novamind-rag-engine = { workspace = true }

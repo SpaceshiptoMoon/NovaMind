@@ -55,7 +55,7 @@ from novamind.features.knowledge_space.schemas.search_schema import (
     QueryRewriteConfig,
 )
 from novamind.features.knowledge_space.models.knowledge_space import SpaceVisibility
-from novamind.features.knowledge_space.services.retrieval_engine import (
+from novamind_rag import (
     RetrievalEngine,
     RetrievalQuery,
 )

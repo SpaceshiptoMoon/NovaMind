@@ -11,6 +11,10 @@
 第三方未迁移代码），本 shim 把每个迁出模块以 **同一模块对象** 挂到 ``novamind.shared.<tail>``
 名下。
 
+批次 6c 物理抽包后，``retrieval_engine.py`` / ``retrieval_port.py`` 迁入独立包
+``novamind-rag-engine``（模块名 ``novamind_rag``）。宿主代码已改用 ``from novamind_rag import ...``，
+本 shim 把迁出模块挂回旧 ``novamind.features.knowledge_space.services.*`` 路径。
+
 关键：**同一对象**别名（``sys.modules["novamind.shared.<tail>"] = <engine 模块>``），避免
 同一文件以两个模块名加载导致类身份断裂（``isinstance`` / ``runtime_checkable`` Protocol /
 ORM 枚举身份失效）。``novamind_engine_core`` 未安装时静默降级，不阻断宿主启动（但此时宿主
@@ -114,4 +118,37 @@ def _install_engine_core_aliases() -> None:
                 setattr(parent, leaf, module)
 
 
-_install_engine_core_aliases()
+# 迁出到 novamind-rag-engine 的模块旧路径 → 新路径映射
+# 键 = 旧 ``novamind.features.*`` 完全限定模块名；值 = 新 ``novamind_rag.*`` 尾名
+_RAG_ENGINE_TAILS = {
+    "novamind.features.knowledge_space.services.retrieval_engine": "retrieval_engine",
+    "novamind.features.knowledge_space.services.retrieval_port": "retrieval_port",
+}
+
+
+def _install_rag_engine_aliases() -> None:
+    """把迁入 novamind-rag-engine 的模块以同一对象挂回旧 ``novamind.features.*`` 路径。
+
+    处理两层：
+    1. ``sys.modules["novamind.features.knowledge_space.services.retrieval_engine"]``
+       → 指向 ``novamind_rag.retrieval_engine`` 模块对象（覆盖 ``import`` 形态）。
+    2. 在父包 ``novamind.features.knowledge_space.services`` 上 ``setattr``
+       （覆盖 ``from parent import leaf`` 形态）。
+    """
+    for host_name, rag_tail in _RAG_ENGINE_TAILS.items():
+        engine_name = f"novamind_rag.{rag_tail}"
+        try:
+            module = importlib.import_module(engine_name)
+        except ImportError:
+            return
+        sys.modules[host_name] = module
+        # 在父包上挂属性：``from novamind.features.knowledge_space.services
+        # import retrieval_engine`` 经 getattr 命中。
+        parent_tail, _, leaf = host_name.rpartition(".")
+        if parent_tail:
+            parent = sys.modules.get(parent_tail)
+            if parent is not None:
+                setattr(parent, leaf, module)
+
+
+_install_rag_engine_aliases()
