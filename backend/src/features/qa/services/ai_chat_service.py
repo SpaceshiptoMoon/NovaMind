@@ -21,7 +21,7 @@ from novamind.core.middleware.structured_logging import get_logger
 
 if TYPE_CHECKING:
     from novamind_engine_core.storage.minio_client import MinioClient
-    from novamind.features.knowledge_space.services.retrieval_port import RetrievalPort
+    from novamind_rag import RetrievalPort
 from novamind_engine_core.ai_models.llm import BaseLLM
 from novamind_engine_core.model_config_ports import ModelConfigPort
 from novamind_engine_core.prompts.templates import PromptManager

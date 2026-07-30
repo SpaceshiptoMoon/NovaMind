@@ -28,6 +28,8 @@ from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 SRC = BACKEND_ROOT / "src"
+PROJECT_ROOT = BACKEND_ROOT.parent
+RAG_ENGINE_SRC = PROJECT_ROOT / "packages" / "novamind-rag-engine" / "src" / "novamind_rag"
 
 
 # ---------- 引擎候选文件清单 ----------
@@ -41,6 +43,7 @@ ENGINE_CANDIDATE_DIRS = [
     SRC / "shared" / "knowledge" / "integrations" / "deepdoc",
     SRC / "features" / "agent" / "core",
     SRC / "features" / "agent" / "mcp",
+    RAG_ENGINE_SRC,
 ]
 
 ENGINE_CANDIDATE_FILES = [
@@ -48,8 +51,6 @@ ENGINE_CANDIDATE_FILES = [
     SRC / "features" / "deep_research" / "services" / "serpapi_service.py",
     SRC / "features" / "deep_research" / "services" / "tavily_service.py",
     SRC / "features" / "deep_research" / "services" / "external_search_service.py",
-    SRC / "features" / "knowledge_space" / "services" / "retrieval_engine.py",
-    SRC / "features" / "knowledge_space" / "services" / "retrieval_port.py",
     SRC / "features" / "skill" / "services" / "skill_checker.py",
 ]
 
@@ -90,8 +91,18 @@ def _imports_in(path: Path) -> set[str]:
 
 
 def _own_feature(path: Path) -> str | None:
-    """若候选在 ``features/<X>/`` 下，返回 feature 名 X；否则 None（shared/ 候选）。"""
-    parts = path.relative_to(SRC).parts
+    """若候选在 ``features/<X>/`` 下，返回 feature 名 X；否则 None（shared/ 候选）。
+
+    批次 6c：rag-engine 包文件在 ``packages/novamind-rag-engine/src/novamind_rag/`` 下，
+    不在 SRC 内——它们属于 knowledge_space feature（原有功能域），返回 ``"knowledge_space"``。
+    """
+    try:
+        parts = path.relative_to(SRC).parts
+    except ValueError:
+        # 引擎包文件在 SRC 之外：按迁出来源映射
+        if RAG_ENGINE_SRC in path.parents or path.parent == RAG_ENGINE_SRC:
+            return "knowledge_space"
+        return None
     if parts and parts[0] == "features" and len(parts) > 1:
         return parts[1]
     return None
@@ -129,7 +140,8 @@ def test_6a2_engine_candidates_have_no_shared_cache_redis_client_import():
 
 def test_6a2_retrieval_engine_has_no_feature_exceptions_import():
     """6a-2：RetrievalEngine 不得 import 自身 feature ``api.exceptions``（改用中立 rag_errors）。"""
-    p = SRC / "features" / "knowledge_space" / "services" / "retrieval_engine.py"
+    p = RAG_ENGINE_SRC / "retrieval_engine.py"
+    # 6c：retrieval_engine 已迁到 novamind-rag-engine 包 —— 检验新位置。
     bad = [m for m in _imports_in(p) if m.startswith("novamind.features.knowledge_space.api.exceptions")]
     assert not bad, f"retrieval_engine 残留 api.exceptions import: {bad}"
 
@@ -168,7 +180,7 @@ def test_6a2_host_cache_port_satisfies_cache_port_protocol():
 def test_6a2_retrieval_engine_ctor_accepts_cache_port():
     """6a-2：RetrievalEngine 构造器接收 cache_port 注入；未注入时 _get_cache 返回 None 降级。"""
     import asyncio
-    from novamind.features.knowledge_space.services.retrieval_engine import RetrievalEngine
+    from novamind_rag import RetrievalEngine
 
     params = inspect.signature(RetrievalEngine.__init__).parameters
     assert "cache_port" in params, "RetrievalEngine.__init__ 应含 cache_port 参数"
@@ -182,7 +194,8 @@ def test_6a2_retrieval_engine_ctor_accepts_cache_port():
 
 def test_6a3_retrieval_port_has_no_search_schema_import():
     """6a-3：retrieval_port 不得 import ``features.knowledge_space.schemas``（端口不绑宿主 schema）。"""
-    p = SRC / "features" / "knowledge_space" / "services" / "retrieval_port.py"
+    p = RAG_ENGINE_SRC / "retrieval_port.py"
+    # 6c：retrieval_port 已迁到 novamind-rag-engine 包 —— 检验新位置。
     bad = [m for m in _imports_in(p) if m.startswith("novamind.features.knowledge_space.schemas")]
     assert not bad, f"retrieval_port 残留 schemas import: {bad}"
 
@@ -193,9 +206,10 @@ def test_6a3_retrieval_port_search_request_param_is_opaque():
     注：docstring 中作为说明文字提及 ``SearchRequest`` 是允许的（解释 host payload 来源），
     接缝不变式只在 AST 层面：无 import + 参数注解为 ``Any``。
     """
-    src = (SRC / "features" / "knowledge_space" / "services" / "retrieval_port.py").read_text(
+    src = (RAG_ENGINE_SRC / "retrieval_port.py").read_text(
         encoding="utf-8"
     )
+    # 6c：retrieval_port 已迁到 novamind-rag-engine 包 —— 检验新位置。
     tree = ast.parse(src)
     search_method = None
     for node in ast.walk(tree):
