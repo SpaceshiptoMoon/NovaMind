@@ -24,7 +24,7 @@ from novamind.features.agent.core.memory.token_budget import TokenBudget
 from novamind.features.agent.core.memory.context_compressor import ContextCompressor
 from novamind.features.agent.core.ports import MemorySearchPort, MemoryStorePort
 from novamind.shared.engine_ports import PromptProvider
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.engine_logging import get_logger
 
 logger = get_logger(__name__)
 

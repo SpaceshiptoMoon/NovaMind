@@ -10,7 +10,7 @@ import re
 from typing import Optional, List, Dict, Any
 from elasticsearch import AsyncElasticsearch, NotFoundError, ConnectionError as ESConnectionError
 
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.engine_logging import get_logger
 from novamind.shared.storage.index_schema import DefaultIndexSchema, IndexSchema
 
 logger = get_logger(__name__)

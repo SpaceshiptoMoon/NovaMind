@@ -13,7 +13,7 @@ from novamind.features.deep_research.services.external_search_service import (
     ExternalSearchResult,
 )
 from novamind.shared.engine_config import SerpApiSearchConfig
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.engine_logging import get_logger
 
 
 class SerpAPISearchService(ExternalSearchService):

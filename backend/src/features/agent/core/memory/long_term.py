@@ -19,7 +19,7 @@ from novamind.features.agent.core.memory.interfaces import (
 )
 from novamind.features.agent.core.ports import MemorySearchPort, MemoryStorePort
 from novamind.shared.engine_ports import PromptProvider
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.engine_logging import get_logger
 
 logger = get_logger(__name__)
 
