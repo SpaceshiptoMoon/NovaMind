@@ -44,6 +44,10 @@ from novamind.features.knowledge_space.api.exceptions import (
     InvalidSearchModeError,
     InvalidSearchWeightError,
 )
+from novamind.shared.rag_errors import (
+    EmbeddingError as RagEmbeddingError,
+    SearchError as RagSearchError,
+)
 from novamind.features.knowledge_space.schemas.search_schema import (
     SEARCH_MODE_FALLBACK,
     SearchRequest,
@@ -98,7 +102,10 @@ class SearchService:
     def retrieval_engine(self) -> RetrievalEngine:
         """延迟获取检索引擎（构造函数中不强制要求）"""
         if self._retrieval_engine is None:
-            self._retrieval_engine = RetrievalEngine(self.es_client, self.logger)
+            from novamind.features.knowledge_space.adapters.cache_adapter import HostCachePort
+            self._retrieval_engine = RetrievalEngine(
+                self.es_client, self.logger, cache_port=HostCachePort()
+            )
         return self._retrieval_engine
 
     async def get_knowledge_base(self, kb_id: int):
@@ -605,12 +612,18 @@ class SearchService:
         )
         # query_rewrite 改写结果非确定，不入缓存——启用改写时跳过缓存读写
         use_cache_for_engine = use_cache and request.query_rewrite is None
-        result = await self.retrieval_engine.retrieve_raw(
-            rq,
-            embedding_client_resolver=embedding_client_resolver,
-            rerank_client_resolver=rerank_client_resolver,
-            use_cache=use_cache_for_engine,
-        )
+        # 引擎抛中立 rag_errors，装配点映射回宿主 BaseAPIError（保 400 异常码契约）
+        try:
+            result = await self.retrieval_engine.retrieve_raw(
+                rq,
+                embedding_client_resolver=embedding_client_resolver,
+                rerank_client_resolver=rerank_client_resolver,
+                use_cache=use_cache_for_engine,
+            )
+        except RagEmbeddingError as e:
+            raise EmbeddingError(str(e))
+        except RagSearchError as e:
+            raise SearchError(str(e))
 
         # 8. LLM 回答生成 + elapsed_ms 保真
         # 缓存命中：elapsed_ms 在 LLM 前算（对齐旧路径 L732）
@@ -1070,7 +1083,11 @@ class SearchService:
         Args:
             kb_id: 知识库 ID
         """
-        await self.retrieval_engine.invalidate_kb_search_cache(kb_id)
+        # 引擎抛中立 rag_errors，装配点映射回宿主 BaseAPIError（保 400 异常码契约）
+        try:
+            await self.retrieval_engine.invalidate_kb_search_cache(kb_id)
+        except RagSearchError as e:
+            raise SearchError(str(e))
 
     async def get_available_modes(
         self,

@@ -4,12 +4,13 @@
 定义统一的外部搜索接口
 """
 
-import logging
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
-logger = logging.getLogger(__name__)
+from novamind.shared.engine_logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass

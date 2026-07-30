@@ -365,7 +365,7 @@ async def transcribe_audio_local(
         Path(tmp_path).unlink(missing_ok=True)
 
 
-async def upload_parsed_text_to_minio(document, full_text: str, logger) -> str:
+async def upload_parsed_text_to_minio(document, full_text: str, logger, *, minio_client) -> str:
     """
     将解析/转写后的原始全文上传到 MinIO，并在 document.storage JSON 中记录路径
 
@@ -375,6 +375,8 @@ async def upload_parsed_text_to_minio(document, full_text: str, logger) -> str:
         document: Document ORM 对象（需有 .storage JSON 字段）
         full_text: 完整的解析/转写文本
         logger: 日志记录器
+        minio_client: MinIO 客户端（关键字注入，批次 6a-5 切断对
+            ``shared.clients.ClientFactory`` 的惰性 import；调用方负责经宿主装配获取）
 
     Returns:
         MinIO object_name，如果上传失败或文本为空则返回空字符串
@@ -384,8 +386,6 @@ async def upload_parsed_text_to_minio(document, full_text: str, logger) -> str:
         return ""
 
     try:
-        from novamind.shared.clients import ClientFactory
-
         storage = document.storage or {}
         base = storage.get("minio_object_name", "")
         if not base:
@@ -396,7 +396,6 @@ async def upload_parsed_text_to_minio(document, full_text: str, logger) -> str:
         # Windows 下很多查看器会优先按本地代码页猜测编码，UTF-8 BOM 能显著提升识别率
         data = full_text.encode("utf-8-sig")
 
-        minio_client = await ClientFactory.get_minio_client()
         await minio_client.upload_file(object_name, data, "text/markdown; charset=utf-8")
 
         document.storage = {
@@ -502,6 +501,8 @@ async def transcribe_audio_with_dashscope(
     base_url: Optional[str] = None,
     minio_bucket: Optional[str] = None,
     language_hints: Optional[List[str]] = None,
+    *,
+    minio_client,
 ) -> List[Dict]:
     """
     使用 DashScope SDK 调用 Paraformer 转写音频，返回带时间戳的段落
@@ -516,6 +517,8 @@ async def transcribe_audio_with_dashscope(
         base_url: DashScope/百炼 平台 API 地址，不传则使用 SDK 默认
         minio_bucket: MinIO 桶名，用于上传临时文件生成预签名 URL
         language_hints: 语言提示列表，如 ['zh', 'en']，仅 paraformer-v2 支持
+        minio_client: MinIO 客户端（关键字注入，批次 6a-5 切断对
+            ``shared.clients.ClientFactory`` 的惰性 import；调用方负责经宿主装配获取）
 
     Returns:
         [{"text": "...", "start": 0.0, "end": 5.2}, ...]
@@ -524,7 +527,6 @@ async def transcribe_audio_with_dashscope(
     import uuid
     import dashscope
     from dashscope.audio.asr import Transcription
-    from novamind.shared.clients import ClientFactory
 
     if api_key:
         dashscope.api_key = api_key
@@ -557,7 +559,6 @@ async def transcribe_audio_with_dashscope(
     temp_object_name = None
     try:
         # 2. 上传到 MinIO 获取预签名 URL（百炼平台不支持 fileid://）
-        minio_client = await ClientFactory.get_minio_client()
         bucket = minio_bucket or "novamind"
         temp_object_name = f"_asr_temp/{uuid.uuid4().hex}.{ext}"
         await minio_client.upload_file(temp_object_name, file_content, f"audio/{ext}")
@@ -673,10 +674,8 @@ async def transcribe_audio_with_dashscope(
         # 清理 MinIO 临时文件
         if temp_object_name:
             try:
-                from novamind.shared.clients import ClientFactory as _CF
-                _minio = await _CF.get_minio_client()
                 _bucket = minio_bucket or "novamind"
-                await asyncio.to_thread(_minio.client.remove_object, _bucket, temp_object_name)
+                await asyncio.to_thread(minio_client.client.remove_object, _bucket, temp_object_name)
                 logger.debug("已清理 MinIO 临时文件: %s", temp_object_name)
             except Exception as e:
                 logger.warning("清理 MinIO 临时文件失败: %s, error=%s", temp_object_name, str(e))

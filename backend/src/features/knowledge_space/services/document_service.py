@@ -8,7 +8,7 @@
 注意: 分块数据仅存储在 Elasticsearch 中，不在 MySQL 中存储
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from dataclasses import dataclass
 import hashlib
 import asyncio
@@ -16,6 +16,10 @@ import traceback
 import tempfile
 from novamind.shared.utils.time_utils import now_china
 from pathlib import Path
+
+if TYPE_CHECKING:
+    # 仅用于类型注解（``Optional["DocumentTask"]`` 前向引用），避免运行期循环 import。
+    from novamind.features.knowledge_space.models.document_task import DocumentTask
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,7 +76,6 @@ from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     DEFAULT_CHUNK_SIZE as _SCHEMA_CHUNK_SIZE,
     DEFAULT_CHUNK_OVERLAP as _SCHEMA_CHUNK_OVERLAP,
     DEFAULT_MIN_CHUNK_SIZE as _SCHEMA_MIN_CHUNK_SIZE,
-    DEFAULT_MAX_CHUNK_SIZE as _SCHEMA_MAX_CHUNK_SIZE,
     DEFAULT_EMBEDDING_BATCH_SIZE as _SCHEMA_EMBEDDING_BATCH_SIZE,
 )
 from novamind.features.knowledge_space.schemas.document_schema import UploadedDocumentResult
@@ -268,7 +271,7 @@ class DocumentService:
             get_effective_space_types,
         )
 
-        space = await self.space_repo.get_by_id(kb.space_id)
+        await self.space_repo.get_by_id(kb.space_id)
         modalities = get_effective_space_types(kb_config=kb.get_config())
 
         # 计算允许的文件类型合集（任意模态组合自动生效）
@@ -1660,7 +1663,12 @@ async def persist_parsed_text(
     Returns:
         MinIO object_name；文本为空或上传失败时返回空字符串。
     """
-    object_name = await upload_parsed_text_to_minio(document, full_text, logger)
+    # 批次 6a-5：minio_client 由宿主装配获取后注入引擎函数（引擎不再 import ClientFactory）
+    from novamind.shared.clients import ClientFactory
+    minio_client = await ClientFactory.get_minio_client()
+    object_name = await upload_parsed_text_to_minio(
+        document, full_text, logger, minio_client=minio_client
+    )
     await session.commit()
     return object_name
 
@@ -1907,8 +1915,6 @@ async def _process_image_ocr_static(
     通过 DeepDoc 的 RAGFlowFigureParser（内含 PaddleOCR）提取图片中的文字，
     返回提取的文本。OCR 推理在独立线程中执行（asyncio.to_thread）。
     """
-    import asyncio
-
     from novamind.shared.knowledge.integrations.deepdoc.core.engine import DeepDocParser
 
     file_type = (document.file_type or "png").lower()
