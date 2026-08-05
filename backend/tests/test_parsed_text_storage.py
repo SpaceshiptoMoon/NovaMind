@@ -11,7 +11,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.features.knowledge_space.models.document import Document
-from novamind.shared.knowledge.media_processing.audio.audio_utils import upload_parsed_text_to_minio
+from novamind.features.knowledge_space.media.audio.audio_utils import upload_parsed_text_to_minio
 def test_parsed_text_object_persists_when_storage_is_reassigned():
     engine = create_engine("sqlite:///:memory:")
     with engine.begin() as conn:

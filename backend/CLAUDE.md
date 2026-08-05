@@ -69,7 +69,7 @@ Allowed categories:
 - `shared/mq/`: async task runtime
 - `shared/prompts/`: shared prompts
 - `shared/utils/`: truly generic helpers
-- `shared/knowledge/`: knowledge-processing implementation
+- `shared/document/`: cross-feature document readers & validation (truly reusable across features)
 
 If code is only used by one feature and expresses domain behavior, keep it in that feature instead of moving it into `shared/`.
 
@@ -78,11 +78,15 @@ If code is only used by one feature and expresses domain behavior, keep it in th
 Canonical homes:
 
 - `src/features/knowledge_space/`: domain layer for documents, KB config, tasks, chunk lifecycle, APIs
-- `src/shared/knowledge/document_processing/`: text/document parsing implementation
-- `src/shared/knowledge/media_processing/`: audio/video/image multimodal processing
-- `src/shared/knowledge/integrations/deepdoc/`: DeepDoc-specific implementation
+- `src/features/knowledge_space/pipeline/`: document parsing pipeline (DocumentLoader/DocumentProcessor/DocumentRegistry)
+- `src/features/knowledge_space/splitters/`: chunk splitters (recursive/semantic/fixed/markdown)
+- `src/features/knowledge_space/converters/`: document format converters
+- `src/features/knowledge_space/media/`: audio/video/image multimodal processing (VLM/OCR/audio/video)
+- `src/features/knowledge_space/integrations/deepdoc/`: DeepDoc-specific implementation (vendored, self-contained)
+- `src/shared/document/readers/`: cross-feature document readers (PDF/DOCX/TXT/HTML/MD) — reused by app/qa/knowledge_space
+- `src/shared/document/validation/`: cross-feature file validation (FileInfo/FileValidator) — reused by qa/knowledge_space
 
-Do not duplicate parsing logic under both `shared/utils/` and `shared/knowledge/`.
+Do not duplicate parsing logic under both `shared/document/` and `features/knowledge_space/`. Knowledge-base-specific parsing (pipeline/splitters/converters/media/deepdoc) lives in `features/knowledge_space/`; only truly cross-feature readers & validation stay in `shared/document/`.
 
 ## Import Rules
 

@@ -28,7 +28,7 @@ docker-compose.yml
 - Prefer clear module ownership over convenience imports.
 - Keep business logic inside feature services, not route handlers.
 - Put shared cross-feature capabilities into `backend/src/shared/`, but only when they are truly reusable.
-- Keep knowledge-base parsing, media processing, and external parser integration grouped under `backend/src/shared/knowledge/`.
+- Keep knowledge-base parsing, media processing, and external parser integration grouped under `backend/src/features/knowledge_space/` (pipeline/splitters/converters/media/integrations/deepdoc); only truly cross-feature document readers & validation stay under `backend/src/shared/document/`.
 - Avoid creating duplicate utility layers. If a capability already has a canonical home, extend that home instead of adding a second implementation elsewhere.
 - When changing API contracts, update backend schema, frontend types, and docs together.
 
@@ -58,7 +58,7 @@ Main backend areas:
 - `backend/src/core/`: app factory, middleware, lifecycle, database, security, shared runtime infrastructure
 - `backend/src/features/`: feature-oriented domain modules
 - `backend/src/setting/`: configuration loading and YAML config assets
-- `backend/src/shared/`: reusable shared capabilities, including `ai_models/`, `cache/`, `clients/`, `mq/`, `repository/`, `storage/`, `prompts/`, `utils/`, `knowledge/`
+- `backend/src/shared/`: reusable shared capabilities, including `ai_models/`, `cache/`, `clients/`, `mq/`, `storage/`, `prompts/`, `utils/`, `document/`
 
 ### `novamind` import root (compatibility shim)
 
@@ -98,9 +98,13 @@ Knowledge-base UI should stay concentrated in:
 Knowledge-base related code should use these canonical locations:
 
 - `backend/src/features/knowledge_space/`: knowledge-base domain behavior, tasks, APIs, schemas, repositories
-- `backend/src/shared/knowledge/document_processing/`: text and document parsing pipeline
-- `backend/src/shared/knowledge/media_processing/`: audio, video, OCR, VLM, and multimodal processing. Note: `media_processing/image/` is currently a placeholder (only `__init__.py`); actual image understanding lives in `media_processing/vlm/` and DeepDoc's `integrations/deepdoc/vision/`, and image embedding goes through VLM description + text embedding (see multimodal-embedding memory). Do not assume `image/` contains image processing logic.
-- `backend/src/shared/knowledge/integrations/deepdoc/`: DeepDoc integration only
+- `backend/src/features/knowledge_space/pipeline/`: text and document parsing pipeline (DocumentLoader/DocumentProcessor)
+- `backend/src/features/knowledge_space/splitters/`: chunk splitters
+- `backend/src/features/knowledge_space/converters/`: document format converters
+- `backend/src/features/knowledge_space/media/`: audio, video, OCR, VLM, and multimodal processing. Note: `media/image/` is currently a placeholder (only `__init__.py`); actual image understanding lives in `media/vlm/` and DeepDoc's `integrations/deepdoc/vision/`, and image embedding goes through VLM description + text embedding (see multimodal-embedding memory). Do not assume `image/` contains image processing logic.
+- `backend/src/features/knowledge_space/integrations/deepdoc/`: DeepDoc integration only (vendored, self-contained)
+- `backend/src/shared/document/readers/`: cross-feature document readers (PDF/DOCX/TXT/HTML/MD) — reused by app/qa/knowledge_space
+- `backend/src/shared/document/validation/`: cross-feature file validation — reused by qa/knowledge_space
 
 Generic helpers that are not knowledge-specific belong under:
 

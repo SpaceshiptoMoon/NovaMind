@@ -1151,7 +1151,7 @@ class AIChatService:
             raise InvalidMessageContentError(f"文件过大: {len(file_data)} 字节，最大允许 {self.MAX_FILE_SIZE // (1024*1024)}MB")
 
         # 验证文件内容（魔术字节校验，防止文件伪装攻击）
-        from novamind.shared.knowledge.document_processing.validation import validate_file
+        from novamind.shared.document.validation import validate_file
         file_info = validate_file(
             content=file_data,
             filename=filename,
@@ -1213,7 +1213,7 @@ class AIChatService:
             return None
 
         # PDF / DOCX 需要通过 DocumentProcessor 处理
-        from novamind.shared.knowledge.document_processing.pipeline import DocumentProcessor
+        from novamind.features.knowledge_space.pipeline import DocumentProcessor
 
         with tempfile.NamedTemporaryFile(suffix=f".{file_type}", delete=False) as tmp:
             tmp.write(file_data)
