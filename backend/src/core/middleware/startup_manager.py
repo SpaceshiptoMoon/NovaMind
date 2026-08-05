@@ -143,6 +143,10 @@ class AppLifespanManager:
         app.state.config = config
         self.logger.info("配置环境已加载", environment=config.environment)
 
+        # 装配加密密钥（shared/utils/crypto 不得直接读 setting；须在任意加解密前注入）
+        from novamind.shared.utils.crypto import configure_encryption_key
+        configure_encryption_key(config.security.encryption_key)
+
         # 打印关键配置信息（脱敏）
         self.logger.info("========== 配置信息 ==========")
         self.logger.info(

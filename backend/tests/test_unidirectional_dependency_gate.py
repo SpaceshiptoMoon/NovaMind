@@ -97,9 +97,6 @@ KNOWN_VIOLATIONS: dict[str, set[str]] = {
         "novamind.features.knowledge_space.api.exceptions",
         "novamind.features.knowledge_space.models.document_task",
     },
-    "src/shared/utils/crypto.py": {
-        "novamind.setting.yaml_config",
-    },
 }
 
 CANDIDATES = _collect_candidates()
