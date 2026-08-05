@@ -22,16 +22,16 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.features.agent.core.tool.builtins.web_search import WebSearchTool
-from novamind.features.agent.core.tool.builtins.knowledge_search import (
+from novamind.engines.agent.tool.builtins.web_search import WebSearchTool
+from novamind.engines.agent.tool.builtins.knowledge_search import (
     KnowledgeSearchTool,
 )
-from novamind.features.agent.core.tool.builtins.memory import MemoryTool
+from novamind.engines.agent.tool.builtins.memory import MemoryTool
 # 仅为把引擎模块预加载进 sys.modules 供 _engine_module() 取源码，名字本身不使用。
-from novamind.features.agent.core.memory import long_term as long_term_module  # noqa: F401
-from novamind.features.agent.core.memory import memory_manager as memory_manager_module  # noqa: F401
-from novamind.features.agent.core.memory.interfaces import LongTermMemoryEntry
-from novamind.features.agent.core.ports import (
+from novamind.engines.agent.memory import long_term as long_term_module  # noqa: F401
+from novamind.engines.agent.memory import memory_manager as memory_manager_module  # noqa: F401
+from novamind.engines.agent.memory.interfaces import LongTermMemoryEntry
+from novamind.shared.agent_ports import (
     KnowledgeSearchItem,
     SpaceInfo,
     DocumentListResult,
@@ -44,27 +44,27 @@ from novamind.features.agent.core.ports import (
 
 # 每个引擎模块 → 禁止出现的 import 子串
 _FORBIDDEN_IMPORTS = {
-    "novamind.features.agent.core.tool.builtins.web_search": [
+    "novamind.engines.agent.tool.builtins.web_search": [
         "features.deep_research",
     ],
-    "novamind.features.agent.core.tool.builtins.knowledge_search": [
+    "novamind.engines.agent.tool.builtins.knowledge_search": [
         "features.knowledge_space",
         "features.user",
         "shared.clients",
     ],
-    "novamind.features.agent.core.tool.builtins.memory": [
+    "novamind.engines.agent.tool.builtins.memory": [
         "features.agent.repository",
         "features.user.services.model_config_service",
         "shared.clients",
         "features.agent.models.memory",
     ],
-    "novamind.features.agent.core.memory.long_term": [
+    "novamind.engines.agent.memory.long_term": [
         "features.agent.repository",
         "shared.prompts",
         "features.agent.models.memory",
         "sqlalchemy",
     ],
-    "novamind.features.agent.core.memory.memory_manager": [
+    "novamind.engines.agent.memory.memory_manager": [
         "features.agent.repository",
         "shared.prompts",
     ],
@@ -318,7 +318,7 @@ def test_memory_tool_remove_uses_port_and_search_port():
 
 
 def test_long_term_store_uses_store_and_search_ports():
-    from novamind.features.agent.core.memory.long_term import LongTermMemory
+    from novamind.engines.agent.memory.long_term import LongTermMemory
 
     entry = LongTermMemoryEntry(
         id=10, agent_id=1, user_id=2, category="fact", content="c",
@@ -352,7 +352,7 @@ def test_long_term_store_uses_store_and_search_ports():
 
 
 def test_long_term_replace_uses_find_by_content_contains():
-    from novamind.features.agent.core.memory.long_term import LongTermMemory
+    from novamind.engines.agent.memory.long_term import LongTermMemory
 
     entry = LongTermMemoryEntry(
         id=11, agent_id=1, user_id=2, category="fact", content="old",
@@ -376,8 +376,8 @@ def test_long_term_replace_uses_find_by_content_contains():
 def test_long_term_consolidate_uses_prompt_provider():
     from unittest.mock import Mock
 
-    from novamind.features.agent.core.memory.long_term import LongTermMemory
-    from novamind.features.agent.core.memory.interfaces import MemoryMessage
+    from novamind.engines.agent.memory.long_term import LongTermMemory
+    from novamind.engines.agent.memory.interfaces import MemoryMessage
 
     entry = LongTermMemoryEntry(
         id=99, agent_id=1, user_id=2, category="fact", content="x",

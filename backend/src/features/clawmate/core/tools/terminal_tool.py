@@ -9,7 +9,7 @@ import asyncio
 import json
 from typing import Any, Dict, List
 
-from novamind.features.agent.core.tool.base import BaseTool
+from novamind.engines.agent.tool.base import BaseTool
 from novamind.features.clawmate.core.command_safety import check_command_safety, interpret_exit_code
 from novamind.shared.utils.ansi_strip import strip_ansi
 from novamind.shared.utils.redact import redact_sensitive_text

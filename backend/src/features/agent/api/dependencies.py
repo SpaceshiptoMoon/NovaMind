@@ -11,10 +11,10 @@ from novamind.features.user.services.model_config_service import ModelConfigServ
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.agent.services.chat_service import AgentChatService
 from novamind.features.agent.services.mcp_server_service import McpServerService
-from novamind.features.agent.core.tool.registry import ToolRegistry
-from novamind.features.agent.mcp.client import McpClientManager
-from novamind.features.agent.core.engine import AgentEngine
-from novamind.features.agent.core.memory.todo_store import TodoStore
+from novamind.engines.agent.tool.registry import ToolRegistry
+from novamind.engines.agent.mcp.client import McpClientManager
+from novamind.engines.agent.agent_engine import AgentEngine
+from novamind.engines.agent.memory.todo_store import TodoStore
 from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
 
 

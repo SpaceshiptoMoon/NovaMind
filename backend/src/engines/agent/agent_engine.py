@@ -12,9 +12,9 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from novamind.shared.engine_logging import get_logger
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.features.agent.core.tool.executor import ToolExecutor
-from novamind.features.agent.core.tool.result import ToolResult, ToolResultStatus
-from novamind.features.agent.core.retry import (
+from novamind.engines.agent.tool.executor import ToolExecutor
+from novamind.engines.agent.tool.result import ToolResult, ToolResultStatus
+from novamind.engines.agent.retry import (
     RetryConfig, ContextOverflowError, retry_llm_call,
     _is_retryable_error, _is_context_overflow, _is_non_retryable,
 )
@@ -239,7 +239,7 @@ class AgentEngine:
         meta: Dict[str, Any],
     ) -> AsyncGenerator[AgentEvent, None]:
         """流式迭代：逐 token 产出事件，不缓存（含重试）"""
-        from novamind.features.agent.core.llm.agent_llm import AgentLLM, CollectedToolCall
+        from novamind.engines.agent.llm.agent_llm import AgentLLM, CollectedToolCall
 
         agent_llm = AgentLLM(llm_client)
         content_parts: List[str] = []
@@ -378,7 +378,7 @@ class AgentEngine:
         top_p: float,
     ) -> AsyncGenerator[AgentEvent, None]:
         """无工具流式生成（含重试）"""
-        from novamind.features.agent.core.llm.agent_llm import AgentLLM
+        from novamind.engines.agent.llm.agent_llm import AgentLLM
 
         agent_llm = AgentLLM(llm_client)
         full_response = ""

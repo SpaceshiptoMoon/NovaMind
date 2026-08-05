@@ -10,7 +10,7 @@
 import json
 from typing import Any, Dict, List
 
-from novamind.features.agent.core.tool.base import BaseTool
+from novamind.engines.agent.tool.base import BaseTool
 from novamind.shared.engine_logging import get_logger
 
 logger = get_logger(__name__)

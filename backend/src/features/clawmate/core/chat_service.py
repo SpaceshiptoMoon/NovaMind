@@ -15,7 +15,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 from novamind.shared.model_config_ports import ModelConfigPort
 
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.agent.core.engine import AgentEngine
+from novamind.engines.agent.agent_engine import AgentEngine
 from novamind.features.clawmate.core.session_manager import SessionManager, ClawMateSessionState
 from novamind.features.clawmate.core.file_operations import FileOperations
 from novamind.features.clawmate.core.memory_store import MemoryStore

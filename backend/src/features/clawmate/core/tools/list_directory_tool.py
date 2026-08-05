@@ -4,7 +4,7 @@
 import json
 from typing import Any, Dict, List
 
-from novamind.features.agent.core.tool.base import BaseTool
+from novamind.engines.agent.tool.base import BaseTool
 
 
 class ListDirectoryTool(BaseTool):

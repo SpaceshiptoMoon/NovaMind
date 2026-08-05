@@ -170,7 +170,7 @@ def test_agent_web_search_adapter_reexports():
 
 def test_agent_core_ports_reexports_web_search_port():
     """agent/core/ports.py 重导出 WebSearchPort（批次3 代码 import 路径不变）。"""
-    from novamind.features.agent.core import ports as agent_ports
+    from novamind.shared import agent_ports
     from novamind.shared.search_ports import WebSearchPort, WebSearchResult
 
     assert agent_ports.WebSearchPort is WebSearchPort

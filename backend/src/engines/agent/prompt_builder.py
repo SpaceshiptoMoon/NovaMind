@@ -12,7 +12,7 @@
 """
 from typing import List, Optional, Tuple
 
-from novamind.features.agent.core.tool.registry import ToolRegistry
+from novamind.engines.agent.tool.registry import ToolRegistry
 from novamind.shared.engine_logging import get_logger
 
 logger = get_logger(__name__)
@@ -135,7 +135,7 @@ class SystemPromptBuilder:
 
         # Token 预算保护
         if max_prompt_tokens and result:
-            from novamind.features.agent.core.memory.token_budget import TokenBudget
+            from novamind.engines.agent.memory.token_budget import TokenBudget
             budget = TokenBudget(model_name or "gpt-4")
             threshold = int(max_prompt_tokens * 0.20)
 

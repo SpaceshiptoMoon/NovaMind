@@ -10,7 +10,7 @@ feature 模块，改经 `context["knowledge_search_port"]` 调用本适配器。
 """
 from typing import Any, Dict, List, Optional
 
-from novamind.features.agent.core.ports import (
+from novamind.shared.agent_ports import (
     DocumentInfo,
     DocumentListResult,
     KbInfo,

@@ -14,15 +14,15 @@ MemoryManager — 记忆系统统一门面
 """
 from typing import Any, Callable, Dict, List, Optional
 
-from novamind.features.agent.core.memory.interfaces import (
+from novamind.engines.agent.memory.interfaces import (
     LongTermMemoryEntry,
     MemorySnapshot,
 )
-from novamind.features.agent.core.memory.short_term import ShortTermMemory
-from novamind.features.agent.core.memory.long_term import LongTermMemory
-from novamind.features.agent.core.memory.token_budget import TokenBudget
-from novamind.features.agent.core.memory.context_compressor import ContextCompressor
-from novamind.features.agent.core.ports import MemorySearchPort, MemoryStorePort
+from novamind.engines.agent.memory.short_term import ShortTermMemory
+from novamind.engines.agent.memory.long_term import LongTermMemory
+from novamind.engines.agent.memory.token_budget import TokenBudget
+from novamind.engines.agent.memory.context_compressor import ContextCompressor
+from novamind.shared.agent_ports import MemorySearchPort, MemoryStorePort
 from novamind.shared.engine_ports import PromptProvider
 from novamind.shared.engine_logging import get_logger
 

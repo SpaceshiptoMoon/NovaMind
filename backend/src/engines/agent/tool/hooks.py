@@ -7,8 +7,8 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 
-from novamind.features.agent.core.tool.definition import ToolDefinition
-from novamind.features.agent.core.tool.result import ToolResult
+from novamind.engines.agent.tool.definition import ToolDefinition
+from novamind.engines.agent.tool.result import ToolResult
 from novamind.shared.engine_logging import get_logger
 
 logger = get_logger(__name__)

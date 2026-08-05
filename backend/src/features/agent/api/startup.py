@@ -2,14 +2,14 @@
 Agent 模块启动初始化
 """
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.agent.core.tool.registry import ToolRegistry
-from novamind.features.agent.core.tool.builtins import KnowledgeSearchTool, WebSearchTool, CodeExecutionTool, MemoryTool, TodoTool
+from novamind.engines.agent.tool.registry import ToolRegistry
+from novamind.engines.agent.tool.builtins import KnowledgeSearchTool, WebSearchTool, CodeExecutionTool, MemoryTool, TodoTool
 from novamind.features.agent.tool.builtins import ReadToolResultTool
-from novamind.features.agent.mcp.client import McpClientManager
-from novamind.features.agent.core.tool.executor import ToolExecutor
-from novamind.features.agent.core.tool.hooks import LoggingHook, ResultTruncationHook, ResultBudgetHook
-from novamind.features.agent.core.engine import AgentEngine
-from novamind.features.agent.core.memory.todo_store import TodoStore
+from novamind.engines.agent.mcp.client import McpClientManager
+from novamind.engines.agent.tool.executor import ToolExecutor
+from novamind.engines.agent.tool.hooks import LoggingHook, ResultTruncationHook, ResultBudgetHook
+from novamind.engines.agent.agent_engine import AgentEngine
+from novamind.engines.agent.memory.todo_store import TodoStore
 
 logger = get_logger(__name__)
 
@@ -77,7 +77,7 @@ async def init_agent_components(app):
     try:
         from novamind.core.database.database import get_db_session
         from novamind.features.agent.repository.agent_repository import McpServerRepository
-        from novamind.features.agent.mcp.config import McpConnectionConfig
+        from novamind.engines.agent.mcp.config import McpConnectionConfig
 
         async with get_db_session() as db:
             repo = McpServerRepository(db)

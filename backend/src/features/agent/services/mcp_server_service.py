@@ -6,8 +6,8 @@ from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.features.agent.repository.agent_repository import McpServerRepository
-from novamind.features.agent.mcp.client import McpClientManager
-from novamind.features.agent.mcp.config import McpConnectionConfig
+from novamind.engines.agent.mcp.client import McpClientManager
+from novamind.engines.agent.mcp.config import McpConnectionConfig
 from novamind.features.agent.models.mcp_server import AgentMcpServer
 from novamind.features.agent.schemas.agent_schema import (
     McpServerCreate,

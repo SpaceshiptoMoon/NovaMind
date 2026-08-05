@@ -13,10 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.features.agent.services.agent_service import AgentService
-from novamind.features.agent.core.engine import AgentEngine, AgentEvent
-from novamind.features.agent.core.memory.memory_manager import MemoryManager
-from novamind.features.agent.core.memory.context_scrubber import StreamingContextScrubber
-from novamind.features.agent.core.prompt_builder import SystemPromptBuilder
+from novamind.engines.agent.agent_engine import AgentEngine, AgentEvent
+from novamind.engines.agent.memory.memory_manager import MemoryManager
+from novamind.engines.agent.memory.context_scrubber import StreamingContextScrubber
+from novamind.engines.agent.prompt_builder import SystemPromptBuilder
 from novamind.features.agent.repository.agent_repository import MessageRepository, ToolCallRepository, SessionRepository
 from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
 from novamind.features.agent.adapters import (
@@ -30,7 +30,7 @@ from novamind.features.agent.models.agent import AgentDefinition
 from novamind.features.agent.models.session import AgentSession
 from novamind.features.agent.models.message import AgentMessage
 from novamind.features.agent.api.exceptions import AgentError, AgentNotFoundError
-from novamind.features.agent.core.tool.base import ToolContext
+from novamind.engines.agent.tool.base import ToolContext
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.utils.time_utils import now_china
 from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
@@ -729,8 +729,8 @@ class AgentChatService:
         conversation_id: int,
     ) -> List[Dict]:
         """将 OpenAI 格式消息压缩后返回（上下文溢出时调用）"""
-        from novamind.features.agent.core.memory.interfaces import MemoryMessage
-        from novamind.features.agent.core.memory.token_budget import TokenBudget
+        from novamind.engines.agent.memory.interfaces import MemoryMessage
+        from novamind.engines.agent.memory.token_budget import TokenBudget
 
         # OpenAI dicts → MemoryMessage
         mem_msgs = []
