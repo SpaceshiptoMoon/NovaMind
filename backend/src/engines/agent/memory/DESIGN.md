@@ -734,7 +734,7 @@ if is_model_not_found and self.summary_model != self.main_model:
 
 #### 新建文件
 
-**`src/features/agent/core/memory/memory_manager.py`**
+**`src/engines/agent/memory/memory_manager.py`**
 
 MemoryManager 类，核心方法：
 
@@ -842,7 +842,7 @@ if relevant:
 
 #### 新建文件
 
-**`src/features/agent/core/memory/context_compressor.py`**
+**`src/engines/agent/memory/context_compressor.py`**
 
 ContextCompressor 类，实现 ICompressionStrategy。
 
@@ -943,7 +943,7 @@ if states:
 
 #### 新建文件
 
-**`src/features/agent/core/memory/security.py`**
+**`src/engines/agent/memory/security.py`**
 
 记忆安全扫描模块：
 
@@ -954,7 +954,7 @@ if states:
 
 #### 新建文件
 
-**`src/features/agent/tools/builtins/memory.py`**
+**`src/engines/agent/tool/builtins/memory.py`**
 
 memory 内置工具：
 - `get_schema()` → 返回上述 JSON Schema
