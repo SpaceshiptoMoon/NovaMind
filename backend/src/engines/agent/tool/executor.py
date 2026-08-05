@@ -19,7 +19,7 @@ from novamind.engines.agent.tool.result import ToolResult, ToolResultStatus
 from novamind.engines.agent.tool.hooks import ToolHook
 from novamind.engines.agent.tool.registry import ToolRegistry
 from novamind.engines.agent.mcp.client import McpClientManager
-from novamind.shared.engine_logging import get_logger
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 

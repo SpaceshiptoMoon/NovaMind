@@ -13,7 +13,7 @@ S5-S9 + S12: 简历分析报告生成 Pipeline (V2)
 批次 5 接缝：
   - prompt 经注入的 ``PromptProvider`` 端口取模板、日志经注入的 ``Logger`` 端口输出，
     不再 import ``shared.prompts.PromptManager`` / ``core.middleware.structured_logging``。
-  - 公司背景补充的联网搜索改经注入的 ``WebSearchPort``（见 ``shared/search_ports.py``），
+  - 公司背景补充的联网搜索改经注入的 ``WebSearchPort``（见 ``engines/search_ports.py``），
     不再直接 import ``deep_research.services.{tavily,duckduckgo}_service`` 与
     ``setting.yaml_config.get_config``（切断 resume -> deep_research / setting 导入边）。
   - ``shared.utils.redact`` 属引擎通用能力（批次 6 迁 ``novamind-engine-core``），
@@ -23,8 +23,9 @@ import json
 from typing import Optional
 
 from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.engine_ports import Logger, PromptProvider
-from novamind.shared.search_ports import WebSearchPort, WebSearchResult
+from novamind.shared.logging import Logger
+from novamind.engines.ports import PromptProvider
+from novamind.engines.search_ports import WebSearchPort, WebSearchResult
 from novamind.features.app.services.resume_parser import _extract_json
 from novamind.features.app.schemas.resume_schema import (
     StructuredResume, JDAnalysis, ProbingPlan, KnowledgePoint, ProjectPriority, PrefixKnowledge,

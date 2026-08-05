@@ -2,7 +2,7 @@
 
 把 ``deep_research.services.{tavily,duckduckgo,serpapi}_service`` 的
 ``ExternalSearchResult`` 归一化为引擎端口 ``WebSearchPort`` 定义的 ``WebSearchResult``
-（见 ``shared/search_ports.py``）。
+（见 ``engines/search_ports.py``）。
 
 deep_research 拥有搜索服务实现，故其端口适配器归属 deep_research（DDD 正确归属）。
 消费方（agent ``web_search`` 工具、resume 公司背景补充等）经依赖注入消费
@@ -11,7 +11,7 @@ deep_research 内部搜索服务。
 """
 from typing import List, Optional
 
-from novamind.shared.search_ports import WebSearchPort, WebSearchResult
+from novamind.engines.search_ports import WebSearchPort, WebSearchResult
 
 
 class HostWebSearchPort:
@@ -25,7 +25,7 @@ class HostWebSearchPort:
         if self._service is None:
             # 默认回退到 DuckDuckGo（免费、无需 API Key）
             from novamind.setting.yaml_config import get_config
-            from novamind.shared.engine_config import DuckDuckGoSearchConfig
+            from novamind.shared.config import DuckDuckGoSearchConfig
             from novamind.features.deep_research.services.duckduckgo_service import (
                 DuckDuckGoSearchService,
             )
@@ -67,7 +67,7 @@ def build_web_search_port(prefer_tavily: bool = True) -> WebSearchPort:
     deep_research 搜索服务。
     """
     from novamind.setting.yaml_config import get_config
-    from novamind.shared.engine_config import DuckDuckGoSearchConfig, TavilySearchConfig
+    from novamind.shared.config import DuckDuckGoSearchConfig, TavilySearchConfig
 
     es_cfg = get_config().external_search
 

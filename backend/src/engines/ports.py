@@ -1,16 +1,18 @@
 """
-引擎端口协议（临时宿主侧定义）
+引擎端口协议
 
-本模块定义引擎库对外依赖的抽象协议。当前阶段（批次 0-5）这些协议留在宿主
-`shared/` 下，供宿主代码与即将端口化的引擎代码面向接口编程；批次 6 物理抽包时，
-本文件整体迁入 `novamind-engine-core/ports.py`，引擎库只依赖该协议包，
-不再 import `novamind.core.middleware.structured_logging` 或
-`novamind.shared.prompts`。
+本模块定义引擎库对外依赖的抽象协议（engine 专属端口）。引擎通过这些协议
+面向接口编程，宿主在装配时注入实现。
+
+  - ``PromptProvider``：提示词模板提供者协议。
+  - ``FallbackLLMProvider``：降级 LLM 提供者协议。
+
+``Logger`` 协议是公共日志协议（非引擎专属），已并入 ``novamind.shared.logging``。
 
 设计约束：
   - 协议只描述引擎所需的能力，不携带任何 NovaMind 业务实体（ORM/枚举/配置键）。
   - 引擎构造器接收这些协议的实例；宿主在装配时注入实现。
-  - 依赖方向：宿主 -> 引擎 -> 本协议；引擎 ✗-> 宿主 features/setting。
+  - 依赖方向：features -> engines -> shared；引擎 ✗-> 宿主 features/setting。
 """
 from __future__ import annotations
 
@@ -18,29 +20,8 @@ from typing import TYPE_CHECKING, Any, List, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     # 仅用于类型注解（配合 `from __future__ import annotations` 惰性求值），
-    # 避免 engine_ports 顶部强 import ai_models（批次 6 同迁 engine-core）。
+    # 避免 ports 顶部强 import ai_models。
     from novamind.shared.ai_models.base_model import BaseLLM
-
-
-@runtime_checkable
-class Logger(Protocol):
-    """结构化日志协议，对齐 structlog BoundLogger 的调用形态。
-
-    引擎内模块级不再直接 `get_logger(...)`，而是在构造器接收一个 Logger 实例。
-    宿主侧把 `structured_logging.get_logger(name)` 返回的 BoundLogger 直接注入
-    （structlog BoundLogger 满足该 Protocol 的方法签名，duck-type 兼容）。
-
-    注意：structlog 的方法是 `info(event: str, **kw)`，而非 stdlib 的
-    `info("msg %s", arg)`，本协议与之对齐。
-    """
-
-    def debug(self, event: str, **kwargs: Any) -> None: ...
-
-    def info(self, event: str, **kwargs: Any) -> None: ...
-
-    def warning(self, event: str, **kwargs: Any) -> None: ...
-
-    def error(self, event: str, **kwargs: Any) -> None: ...
 
 
 @runtime_checkable
@@ -82,4 +63,4 @@ class FallbackLLMProvider(Protocol):
         ...
 
 
-__all__ = ["Logger", "PromptProvider", "FallbackLLMProvider"]
+__all__ = ["PromptProvider", "FallbackLLMProvider"]

@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Any, List, Optional, Tuple
 
 from novamind.engines.agent.memory.interfaces import LongTermMemoryEntry
-from novamind.shared.agent_ports import (
+from novamind.engines.agent.ports import (
     ContextSummaryEntry,
     MemorySearchPort,
     MemoryStorePort,

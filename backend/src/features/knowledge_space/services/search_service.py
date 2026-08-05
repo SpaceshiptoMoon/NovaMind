@@ -44,7 +44,7 @@ from novamind.features.knowledge_space.api.exceptions import (
     InvalidSearchModeError,
     InvalidSearchWeightError,
 )
-from novamind.shared.rag_errors import (
+from novamind.engines.rag.errors import (
     EmbeddingError as RagEmbeddingError,
     SearchError as RagSearchError,
 )

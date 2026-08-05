@@ -75,7 +75,7 @@ def test_evaluator_no_forbidden_imports(mod_name: str):
 
 def test_host_prompt_provider_satisfies_protocol():
     """HostPromptProvider 实现 PromptProvider 协议（get/format）。"""
-    from novamind.shared.engine_ports import PromptProvider
+    from novamind.engines.ports import PromptProvider
     from novamind.features.evaluation.adapters.host_prompt_provider import HostPromptProvider
 
     provider = HostPromptProvider()
@@ -96,7 +96,7 @@ def test_structlog_logger_satisfies_protocol():
     会误判，故先 ``.bind()`` 触发绑定再校验。生产中 evaluator 调用 ``self._logger``
     的方法时同样会触发绑定。
     """
-    from novamind.shared.engine_ports import Logger
+    from novamind.shared.logging import Logger
     from novamind.core.middleware.structured_logging import get_logger
 
     host_logger = get_logger("evaluation.evaluators").bind()

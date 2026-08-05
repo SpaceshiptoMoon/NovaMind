@@ -2,7 +2,7 @@ import os
 from typing import List, Dict
 from novamind.shared.knowledge.document_processing.readers.base_reader import BaseReader
 from novamind.shared.knowledge.document_processing.readers.executor import run_in_executor
-from novamind.shared.engine_logging import get_logger
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 

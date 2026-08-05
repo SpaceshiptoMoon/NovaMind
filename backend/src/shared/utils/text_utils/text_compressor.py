@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from novamind.shared.engine_logging import get_logger
+from novamind.shared.logging import get_logger
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.prompts.templates import PromptManager
 

@@ -8,7 +8,7 @@ import json
 from typing import Any, Dict, List
 
 from novamind.engines.agent.tool.base import BaseTool
-from novamind.shared.engine_logging import get_logger
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 

@@ -15,7 +15,7 @@ from tenacity import (
 )
 
 from novamind.shared.ai_models.base_model import BaseEmbedding
-from novamind.shared.engine_logging import get_logger
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 

@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 
 from novamind.engines.agent.tool.definition import ToolDefinition
 from novamind.engines.agent.tool.result import ToolResult
-from novamind.shared.engine_logging import get_logger
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 

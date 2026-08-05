@@ -7,6 +7,6 @@ services 与 setting 配置。
 
 任务函数经 ``core/middleware/startup_manager`` 收集后注入 ``start_embedded_worker``。
 """
-from novamind.shared.engine_logging import get_logger
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)

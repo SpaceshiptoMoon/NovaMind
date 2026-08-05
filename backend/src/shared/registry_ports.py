@@ -1,7 +1,7 @@
 """
 宿主 Feature 间交互端口协议
 
-与 ``shared/engine_ports.py``（引擎库对外依赖端口，批次 6 迁 ``novamind-engine-core``）
+与 ``engines/ports.py``（引擎库对外依赖端口，批次 6 迁 ``novamind-engine-core``）
 不同，本模块定义的是**宿主 Feature 之间的交互契约**——消费方与实现方都是宿主侧
 feature 服务，不属于任何引擎包。放在 ``shared/`` 是因为它是一个中立的跨 feature
 抽象：消费方 feature 依赖此协议（而非直接 import 另一个 feature 的 repository），

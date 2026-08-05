@@ -49,7 +49,8 @@ from novamind.features.evaluation.api.exceptions import (
 from novamind.features.evaluation.adapters.host_prompt_provider import as_prompt_provider
 from novamind.engines.rag import RetrievalPort
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.engine_ports import Logger, PromptProvider
+from novamind.shared.logging import Logger
+from novamind.engines.ports import PromptProvider
 from novamind.shared.storage.minio_client import MinioClient
 from novamind.core.middleware.structured_logging import get_logger
 

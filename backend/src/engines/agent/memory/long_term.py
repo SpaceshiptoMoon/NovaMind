@@ -17,9 +17,9 @@ from novamind.engines.agent.memory.interfaces import (
     LongTermMemoryEntry,
     MemoryMessage,
 )
-from novamind.shared.agent_ports import MemorySearchPort, MemoryStorePort
-from novamind.shared.engine_ports import PromptProvider
-from novamind.shared.engine_logging import get_logger
+from novamind.engines.agent.ports import MemorySearchPort, MemoryStorePort
+from novamind.engines.ports import PromptProvider
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 

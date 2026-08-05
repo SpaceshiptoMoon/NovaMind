@@ -10,11 +10,11 @@
   - 三个引擎构造器接收 ``PromptProvider`` + ``Logger`` 端口；``ResumeAnalyzer`` 额外
     接收可选 ``WebSearchPort``；``AutoProbingEngine`` 额外接收可选
     ``FallbackLLMProvider``（替代 bg_db + ModelConfigService）。
-  - ``WebSearchPort`` / ``WebSearchResult`` 提升到中立的 ``shared/search_ports.py``，
+  - ``WebSearchPort`` / ``WebSearchResult`` 提升到中立的 ``engines/search_ports.py``，
     宿主适配器归属 ``features/deep_research/adapters/``（deep_research 拥有搜索服务），
     ``agent/core/ports.py`` 与 ``agent/adapters/web_search_adapter.py`` 重导出保持
     批次 3 零改动。
-  - ``FallbackLLMProvider`` 协议位于 ``shared/engine_ports.py``。
+  - ``FallbackLLMProvider`` 协议位于 ``engines/ports.py``。
   - ``resume_pipeline_service`` 装配点构造并注入上述端口；``probe_all`` 不再接收
     ``bg_db`` 参数。
 """
@@ -111,7 +111,7 @@ def test_probe_all_no_bg_db_param():
 
 def test_host_prompt_provider_satisfies_protocol():
     """app HostPromptProvider 实现 PromptProvider 协议。"""
-    from novamind.shared.engine_ports import PromptProvider
+    from novamind.engines.ports import PromptProvider
     from novamind.features.app.adapters.host_prompt_provider import HostPromptProvider
 
     provider = HostPromptProvider()
@@ -124,7 +124,7 @@ def test_host_prompt_provider_satisfies_protocol():
 
 def test_structlog_logger_satisfies_protocol():
     """宿主侧 structlog BoundLogger（.bind() 后）满足 Logger 协议。"""
-    from novamind.shared.engine_ports import Logger
+    from novamind.shared.logging import Logger
     from novamind.core.middleware.structured_logging import get_logger
 
     host_logger = get_logger("resume.engine").bind()
@@ -132,8 +132,8 @@ def test_structlog_logger_satisfies_protocol():
 
 
 def test_web_search_port_neutral_location():
-    """WebSearchPort / WebSearchResult 位于中立 shared/search_ports.py，不依赖 feature。"""
-    from novamind.shared import search_ports as sp_mod
+    """WebSearchPort / WebSearchResult 位于 engines/search_ports.py，不依赖 feature。"""
+    from novamind.engines import search_ports as sp_mod
 
     imported = _imported_modules(sp_mod)
     for imp in imported:
@@ -155,7 +155,7 @@ def test_web_search_adapter_lives_in_deep_research():
     # adapter 桥接到 deep_research.services（intra-feature，允许）
     imported = _imported_modules(adapter_mod)
     # 至少引用了 deep_research 搜索服务（延迟 import 不在顶层 AST，故只校验类存在）
-    from novamind.shared.search_ports import WebSearchPort
+    from novamind.engines.search_ports import WebSearchPort
     assert isinstance(adapter_mod.HostWebSearchPort(), WebSearchPort)
 
 
@@ -169,17 +169,17 @@ def test_agent_web_search_adapter_reexports():
 
 
 def test_agent_core_ports_reexports_web_search_port():
-    """agent/core/ports.py 重导出 WebSearchPort（批次3 代码 import 路径不变）。"""
-    from novamind.shared import agent_ports
-    from novamind.shared.search_ports import WebSearchPort, WebSearchResult
+    """engines/agent/ports.py 重导出 WebSearchPort（批次3 代码 import 路径不变）。"""
+    from novamind.engines.agent import ports as agent_ports
+    from novamind.engines.search_ports import WebSearchPort, WebSearchResult
 
     assert agent_ports.WebSearchPort is WebSearchPort
     assert agent_ports.WebSearchResult is WebSearchResult
 
 
 def test_fallback_llm_provider_protocol_location():
-    """FallbackLLMProvider 协议位于 shared/engine_ports.py。"""
-    from novamind.shared.engine_ports import FallbackLLMProvider
+    """FallbackLLMProvider 协议位于 engines/ports.py。"""
+    from novamind.engines.ports import FallbackLLMProvider
     from novamind.features.app.adapters.host_fallback_llm_provider import HostFallbackLLMProvider
 
     class _FakeSvc:

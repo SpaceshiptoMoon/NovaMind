@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from novamind.shared.engine_logging import get_logger
+from novamind.shared.logging import get_logger
 from novamind.shared.mq.exceptions import TransientBusyError
 from novamind.shared.utils.time_utils import now_china
 

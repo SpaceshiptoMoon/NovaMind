@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 from typing import List, Tuple, Dict, Optional, Set
 
-from novamind.shared.engine_config import AudioConfig
+from novamind.shared.config import AudioConfig
 
 logger = logging.getLogger(__name__)
 

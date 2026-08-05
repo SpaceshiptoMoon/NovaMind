@@ -74,13 +74,13 @@ def test_model_config_port_protocol_location():
 
 
 def test_knowledge_space_info_port_protocol_location():
-    """KnowledgeSpaceInfoPort / SpaceEmbeddingUsage 位于中立 shared/knowledge_space_info_ports.py，不依赖 feature。"""
-    from novamind.shared import knowledge_space_info_ports as ksip
+    """KnowledgeSpaceInfoPort / SpaceEmbeddingUsage 位于 features/user/ports.py，不依赖其他 feature。"""
+    from novamind.features.user import ports as ksip
 
     imported = _imported_modules(ksip)
     for imp in imported:
         assert not imp.startswith("novamind.features"), (
-            f"knowledge_space_info_ports 不应依赖任何 feature 模块: {imp}"
+            f"user.ports 不应依赖任何 feature 模块: {imp}"
         )
     assert hasattr(ksip, "KnowledgeSpaceInfoPort")
     assert hasattr(ksip, "SpaceEmbeddingUsage")
@@ -170,7 +170,7 @@ def test_model_config_service_ctor_accepts_ks_info_port():
 
 def test_host_knowledge_space_info_port_satisfies_protocol():
     """HostKnowledgeSpaceInfoPort 满足 KnowledgeSpaceInfoPort 协议。"""
-    from novamind.shared.knowledge_space_info_ports import KnowledgeSpaceInfoPort
+    from novamind.features.user.ports import KnowledgeSpaceInfoPort
     from novamind.features.user.adapters.knowledge_space_info_adapter import (
         HostKnowledgeSpaceInfoPort,
         as_knowledge_space_info_port,

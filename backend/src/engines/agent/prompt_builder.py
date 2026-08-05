@@ -13,7 +13,7 @@
 from typing import List, Optional, Tuple
 
 from novamind.engines.agent.tool.registry import ToolRegistry
-from novamind.shared.engine_logging import get_logger
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 

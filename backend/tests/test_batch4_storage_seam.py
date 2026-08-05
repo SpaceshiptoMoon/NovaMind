@@ -25,7 +25,7 @@ _ENGINE_STORAGE_MODULES = [
     "novamind.shared.storage.path_strategy",
     "novamind.shared.storage.elasticsearch_client",
     "novamind.shared.storage.minio_client",
-    "novamind.shared.engine_config",
+    "novamind.shared.config",
     "novamind.shared.knowledge.media_processing.audio.audio_utils",
 ]
 
@@ -105,7 +105,7 @@ def test_novamind_adapters_inherit_defaults():
 
 def test_audio_config_defaults():
     """AudioConfig 独立使用时应返回合理的默认值。"""
-    from novamind.shared.engine_config import AudioConfig
+    from novamind.shared.config import AudioConfig
 
     cfg = AudioConfig()
     assert cfg.local_whisper_model_dir is None
@@ -113,7 +113,7 @@ def test_audio_config_defaults():
 
 def test_audio_utils_resolve_accepts_audio_config():
     """_resolve_local_whisper_model_dir 接受 AudioConfig 并遵循优先级。"""
-    from novamind.shared.engine_config import AudioConfig
+    from novamind.shared.config import AudioConfig
     from novamind.shared.knowledge.media_processing.audio.audio_utils import (
         _resolve_local_whisper_model_dir,
     )

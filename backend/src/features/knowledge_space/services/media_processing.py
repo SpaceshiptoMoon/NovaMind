@@ -27,7 +27,7 @@ from novamind.shared.knowledge.media_processing.video import extract_video_frame
 from novamind.shared.utils.time_utils import now_china
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
 from novamind.features.knowledge_space.schemas.enums import ChunkType
-from novamind.shared.engine_config import AudioConfig
+from novamind.shared.config import AudioConfig
 from novamind.shared.knowledge.media_processing.vlm import (
     build_vlm_image_messages,
     generate_vlm_text_with_fallback,

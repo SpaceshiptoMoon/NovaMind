@@ -31,7 +31,7 @@ from novamind.engines.agent.tool.builtins.memory import MemoryTool
 from novamind.engines.agent.memory import long_term as long_term_module  # noqa: F401
 from novamind.engines.agent.memory import memory_manager as memory_manager_module  # noqa: F401
 from novamind.engines.agent.memory.interfaces import LongTermMemoryEntry
-from novamind.shared.agent_ports import (
+from novamind.engines.agent.ports import (
     KnowledgeSearchItem,
     SpaceInfo,
     DocumentListResult,

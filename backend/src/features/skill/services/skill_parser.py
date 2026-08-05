@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Any
 
 import yaml
 
-from novamind.shared.engine_ports import Logger
+from novamind.shared.logging import Logger
 
 # frontmatter 分隔符
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)

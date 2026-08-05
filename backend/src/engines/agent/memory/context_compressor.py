@@ -19,7 +19,7 @@ from novamind.engines.agent.memory.interfaces import MemoryMessage
 from novamind.engines.agent.memory.token_budget import TokenBudget
 from novamind.engines.agent.memory.compress import ICompressionStrategy
 from novamind.shared.utils.redact import redact_sensitive_text
-from novamind.shared.engine_logging import get_logger
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 

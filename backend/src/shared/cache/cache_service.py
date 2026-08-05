@@ -18,7 +18,7 @@ from novamind.shared.cache.lru_cache import default_cache as _lru
 from typing import Optional, Any, Dict, List, Callable, Awaitable, Union
 from functools import wraps
 
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 

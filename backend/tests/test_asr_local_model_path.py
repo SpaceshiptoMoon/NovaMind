@@ -24,7 +24,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.shared.engine_config import AudioConfig
+from novamind.shared.config import AudioConfig
 from novamind.shared.knowledge.media_processing.audio.audio_utils import (
     _resolve_local_whisper_model_dir,
 )
