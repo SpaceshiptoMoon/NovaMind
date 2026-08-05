@@ -27,7 +27,7 @@ from novamind.shared.logging import Logger
 from novamind.engines.ports import PromptProvider
 from novamind.engines.search_ports import WebSearchPort, WebSearchResult
 from novamind.shared.utils.llm_response import extract_json_str
-from novamind.features.app.schemas.resume_schema import (
+from novamind.engines.resume.schemas import (
     StructuredResume, JDAnalysis, ProbingPlan, KnowledgePoint, ProjectPriority, PrefixKnowledge,
     WorkProjectUnit,
 )
