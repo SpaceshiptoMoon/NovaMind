@@ -11,9 +11,9 @@
     接收可选 ``WebSearchPort``；``AutoProbingEngine`` 额外接收可选
     ``FallbackLLMProvider``（替代 bg_db + ModelConfigService）。
   - ``WebSearchPort`` / ``WebSearchResult`` 位于中立的 ``engines/search_ports.py``，
-    搜索 provider 实现位于 ``engines/search/``，宿主适配器（读 setting 择优 provider）
-    归属 ``features/deep_research/adapters/``，``agent/adapters/web_search_adapter.py``
-    重导出保持批次 3 零改动。
+    搜索 provider 实现位于 ``shared/clients/search/``（基础外部服务客户端，非引擎），
+    宿主适配器（读 setting 择优 provider）归属 ``features/deep_research/adapters/``，
+    ``agent/adapters/web_search_adapter.py`` 重导出保持批次 3 零改动。
   - ``FallbackLLMProvider`` 协议位于 ``engines/ports.py``。
   - ``resume_pipeline_service`` 装配点构造并注入上述端口；``probe_all`` 不再接收
     ``bg_db`` 参数。
@@ -45,8 +45,8 @@ _FORBIDDEN_RESUME_IMPORTS = {
     "novamind.shared.prompts.templates",
     "novamind.shared.prompts.templates.PromptManager",
     "novamind.core.middleware.structured_logging",
-    "novamind.engines.search.tavily_service",
-    "novamind.engines.search.duckduckgo_service",
+    "novamind.shared.clients.search.tavily_service",
+    "novamind.shared.clients.search.duckduckgo_service",
     "novamind.features.user.services.model_config_service",
     "novamind.setting.yaml_config",
 }

@@ -40,7 +40,7 @@ ENGINE_CANDIDATE_DIRS = [
     SRC / "engines" / "agent",
     SRC / "engines" / "rag",
     SRC / "engines" / "eval",
-    SRC / "engines" / "search",
+    SRC / "shared" / "clients" / "search",
 ]
 
 ENGINE_CANDIDATE_FILES = [

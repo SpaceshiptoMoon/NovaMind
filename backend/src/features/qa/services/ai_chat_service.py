@@ -615,10 +615,10 @@ class AIChatService:
         return deduped, raw_count
 
     async def _retrieve_web(self, query: str, max_results: int = 5) -> Optional[Tuple[str, List[dict]]]:
-        """联网搜索，返回 (参考资料块文本, 结构化来源列表)。复用 engines.search 的 DuckDuckGo 服务"""
+        """联网搜索，返回 (参考资料块文本, 结构化来源列表)。复用 shared.clients.search 的 DuckDuckGo 服务"""
         from novamind.setting.yaml_config import get_config
         from novamind.shared.config import DuckDuckGoSearchConfig
-        from novamind.engines.search.duckduckgo_service import (
+        from novamind.shared.clients.search.duckduckgo_service import (
             DuckDuckGoSearchService,
         )
 
