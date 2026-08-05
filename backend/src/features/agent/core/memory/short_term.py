@@ -83,26 +83,11 @@ class ShortTermMemory(IShortTermMemory):
             except Exception as e:
                 logger.warning("摘要查询失败，加载全部消息", error=str(e))
 
-        # 2. 从数据库加载消息
+        # 2. 从数据库加载消息（命中摘要 → 增量加载 cutoff 之后；否则全部）
         if summary_cutoff:
-            from sqlalchemy import select
-            from novamind.features.agent.models.message import AgentMessage
-            stmt = (
-                select(AgentMessage)
-                .where(
-                    AgentMessage.conversation_id == conversation_id,
-                    AgentMessage.created_at > summary_cutoff,
-                )
-                .order_by(AgentMessage.created_at.asc())
-                .limit(200)
+            db_messages, _ = await self._msg_repo.list_by_conversation_after(
+                conversation_id, after=summary_cutoff, limit=200
             )
-            result = await self._session_repo.session.execute(stmt) if hasattr(self._session_repo, 'session') else None
-            if result:
-                db_messages = list(result.scalars().all())
-            else:
-                db_messages, _ = await self._msg_repo.list_by_conversation(
-                    conversation_id, limit=200
-                )
         else:
             db_messages, _ = await self._msg_repo.list_by_conversation(
                 conversation_id, limit=200

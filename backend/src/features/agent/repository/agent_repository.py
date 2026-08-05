@@ -2,6 +2,7 @@
 Agent 模块仓储层
 """
 import uuid
+from datetime import datetime
 from typing import List, Optional, Tuple
 
 from sqlalchemy import select, func, delete, update
@@ -181,6 +182,31 @@ class MessageRepository:
 
         result = await self.session.execute(
             base.order_by(AgentMessage.created_at.asc()).offset(offset).limit(limit)
+        )
+        return result.scalars().all(), total
+
+    async def list_by_conversation_after(
+        self,
+        conversation_id: int,
+        after: datetime,
+        limit: int = 200,
+    ) -> Tuple[List[AgentMessage], int]:
+        """加载对话中 ``created_at > after`` 的消息（摘要 cutoff 之后的增量加载）。
+
+        供 ShortTermMemory 在命中摘要后增量加载消息使用——把原生 SQL 查询
+        收回仓储，避免引擎层直接 import ORM 模型与 SQLAlchemy。
+        """
+        base = select(AgentMessage).where(
+            AgentMessage.conversation_id == conversation_id,
+            AgentMessage.created_at > after,
+        )
+        count_result = await self.session.execute(
+            select(func.count()).select_from(base.subquery())
+        )
+        total = count_result.scalar() or 0
+
+        result = await self.session.execute(
+            base.order_by(AgentMessage.created_at.asc()).limit(limit)
         )
         return result.scalars().all(), total
 
