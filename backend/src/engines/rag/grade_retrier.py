@@ -4,13 +4,17 @@
 检索完成后由 LLM 对结果质量打分，低于阈值则自动重试。
 重试时可切换检索模式、触发 Query Rewriting、降低阈值。
 
-提示词统一托管在中央注册表（shared.prompts），见 qa_prompts.py 的 qa_grade_retrieval。
+接缝：prompt 经注入的 ``PromptProvider`` 端口取模板、日志经注入的 ``Logger`` 端口输出，
+不再直接 import ``shared.prompts.PromptManager`` 与 ``core.middleware.structured_logging``
+（切断引擎 -> 宿主 prompt 注册表/结构化日志导入边）。提示词模板键 ``qa_grade_retrieval``
+由宿主在中央注册表注册（见 ``features/qa/qa_prompts.py``）。
 """
 from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable, List, Tuple
 
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.prompts.templates import PromptManager
+from novamind.shared.logging import Logger
+from novamind.engines.ports import PromptProvider
 from novamind.shared.utils.llm_response import extract_json_obj
 
 
@@ -25,8 +29,16 @@ class GradeResult:
 class GradeRetrier:
     """检索后自评估 + 自动重试"""
 
-    def __init__(self, llm_client: BaseLLM):
+    def __init__(
+        self,
+        llm_client: BaseLLM,
+        *,
+        prompt_provider: PromptProvider,
+        logger: Logger,
+    ):
         self._llm = llm_client
+        self._prompt_provider = prompt_provider
+        self._logger = logger
 
     async def grade(
         self,
@@ -46,7 +58,7 @@ class GradeRetrier:
         results_text = "\n---\n".join(
             s.get("content", s.get("snippet", ""))[:300] for s in sources[:5]
         )
-        prompt = PromptManager.format_prompt(
+        prompt = self._prompt_provider.format(
             "qa_grade_retrieval", query=query, results=results_text
         )
         try:
@@ -63,8 +75,7 @@ class GradeRetrier:
                 reason=data.get("reason", ""),
             )
         except Exception as e:
-            from novamind.core.middleware.structured_logging import get_logger
-            get_logger(__name__).warning(
+            self._logger.warning(
                 "Grade 打分失败，默认重试（passed=False）",
                 error=str(e), passing_score=passing_score,
             )
