@@ -28,7 +28,7 @@ from novamind.features.app.schemas.resume_schema import (
     StructuredResume, ProbingPlan, KnowledgePoint, JDAnalysis,
     WorkProjectUnit,
 )
-from novamind.features.app.services.resume_parser import _extract_json
+from novamind.shared.utils.llm_response import extract_json_str
 
 # ==================== 常量 ====================
 
@@ -250,7 +250,7 @@ class AutoProbingEngine:
                 temperature=0.7,
                 response_format={"type": "json_object"},
             )
-            first_data = json.loads(_extract_json(response))
+            first_data = json.loads(extract_json_str(response))
             pair = {
                 "round": 1,
                 "question": first_data.get("question", ""),
@@ -287,7 +287,7 @@ class AutoProbingEngine:
                     temperature=0.7,
                     response_format={"type": "json_object"},
                 )
-                follow_data = json.loads(_extract_json(response))
+                follow_data = json.loads(extract_json_str(response))
                 pair = {
                     "round": round_num,
                     "question": follow_data.get("question", ""),

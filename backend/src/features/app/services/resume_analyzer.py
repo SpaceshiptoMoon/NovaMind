@@ -26,7 +26,7 @@ from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.engines.ports import PromptProvider
 from novamind.engines.search_ports import WebSearchPort, WebSearchResult
-from novamind.features.app.services.resume_parser import _extract_json
+from novamind.shared.utils.llm_response import extract_json_str
 from novamind.features.app.schemas.resume_schema import (
     StructuredResume, JDAnalysis, ProbingPlan, KnowledgePoint, ProjectPriority, PrefixKnowledge,
     WorkProjectUnit,
@@ -154,7 +154,7 @@ class ResumeAnalyzer:
             temperature=0.1,
             response_format={"type": "json_object"},
         )
-        data = json.loads(_extract_json(response))
+        data = json.loads(extract_json_str(response))
         return JDAnalysis(**data)
 
     # ==================== S6: 工作-项目上下文合并 ====================
@@ -358,7 +358,7 @@ class ResumeAnalyzer:
             temperature=0.2,
             response_format={"type": "json_object"},
         )
-        data = json.loads(_extract_json(response))
+        data = json.loads(extract_json_str(response))
 
         unit.company_industry = data.get("company_industry", "")
         unit.company_scale = data.get("company_scale", "")
@@ -453,7 +453,7 @@ class ResumeAnalyzer:
             temperature=0.1,
             response_format={"type": "json_object"},
         )
-        data = json.loads(_extract_json(response))
+        data = json.loads(extract_json_str(response))
 
         unit.complexity_score = data.get("complexity_score", 0.5)
         unit.allocated_rounds = data.get("allocated_rounds", 3)
@@ -778,7 +778,7 @@ class ResumeAnalyzer:
                 temperature=0.3,
                 response_format={"type": "json_object"},
             )
-            data = json.loads(_extract_json(response))
+            data = json.loads(extract_json_str(response))
             updated_plans = {p["project_name"]: p.get("probing_chain", []) for p in data.get("probing_plans", [])}
 
             # 将问题链分配给对应的知识点
@@ -848,7 +848,7 @@ class ResumeAnalyzer:
                     temperature=0.2,
                     response_format={"type": "json_object"},
                 )
-                data = json.loads(_extract_json(response))
+                data = json.loads(extract_json_str(response))
                 items = data.get("items", [])
                 if items:
                     results.append(PrefixKnowledge(**items[0]))

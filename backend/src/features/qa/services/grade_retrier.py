@@ -6,13 +6,12 @@
 
 提示词统一托管在中央注册表（shared.prompts），见 qa_prompts.py 的 qa_grade_retrieval。
 """
-import json
-import re
 from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable, List, Tuple
 
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.prompts.templates import PromptManager
+from novamind.shared.utils.llm_response import extract_json_obj
 
 
 @dataclass
@@ -21,37 +20,6 @@ class GradeResult:
     score: int = 0       # 1-10 分
     passed: bool = False
     reason: str = ""
-
-
-def _extract_json(raw: Optional[str]) -> Optional[dict]:
-    """从 LLM 输出中提取首个 JSON 对象。
-
-    兼容三种形态：纯 JSON、```json 代码块包裹、前导文字 + JSON + 后缀。
-    解析失败返回 None（由调用方决定降级行为）。
-    """
-    if not raw:
-        return None
-    text = raw.strip()
-
-    # 1) 先剥去严格的 ```json ... ``` 代码块围栏（大小写不敏感）
-    cleaned = text
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
-        cleaned = re.sub(r"\s*```\s*$", "", cleaned, flags=re.IGNORECASE)
-        cleaned = cleaned.strip()
-    try:
-        return json.loads(cleaned)
-    except (json.JSONDecodeError, ValueError):
-        pass
-
-    # 2) 兜底：从“前导文字 + JSON”里正则提取首个 {...} 块
-    match = re.search(r"\{[\s\S]*\}", text)
-    if match:
-        try:
-            return json.loads(match.group(0))
-        except (json.JSONDecodeError, ValueError):
-            return None
-    return None
 
 
 class GradeRetrier:
@@ -85,7 +53,7 @@ class GradeRetrier:
             raw = await self._llm.generate_text(
                 prompt=prompt, max_tokens=200, temperature=0.1,
             )
-            data = _extract_json(raw)
+            data = extract_json_obj(raw)
             if not data:
                 raise ValueError("无法从 LLM 输出解析 JSON")
             score = max(1, min(10, int(data.get("score", 5))))
