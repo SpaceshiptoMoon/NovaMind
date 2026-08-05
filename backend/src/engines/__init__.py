@@ -4,8 +4,8 @@
 
 目录规划：
   rag/          检索引擎（RetrievalEngine + RetrievalPort）
-  agent/        Agent 引擎（未来）
-  eval/         测评引擎（未来）
+  agent/        Agent 引擎
+  eval/         测评引擎（Embedding/Claim/Generation/Retrieval Evaluator）
   knowledge/    知识处理引擎（未来）
   search/       外部搜索引擎（未来）
   resume/       简历解析引擎（未来）

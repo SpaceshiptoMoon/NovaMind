@@ -33,10 +33,12 @@ from novamind.features.evaluation.repository.evaluation_repository import (
     EvaluationTaskRepository,
 )
 from novamind.features.evaluation.schemas.evaluation_schema import EvaluationConfig
-from novamind.features.evaluation.services.retrieval_evaluator import RetrievalEvaluator
-from novamind.features.evaluation.services.generation_evaluator import GenerationEvaluator
-from novamind.features.evaluation.services.embedding_evaluator import EmbeddingEvaluator
-from novamind.features.evaluation.services.claim_decomposer import ClaimDecomposer
+from novamind.engines.eval import (
+    ClaimDecomposer,
+    EmbeddingEvaluator,
+    GenerationEvaluator,
+    RetrievalEvaluator,
+)
 from novamind.features.evaluation.services.test_set_parser import parse_test_set
 from novamind.features.evaluation.services.result_exporter import result_to_json_bytes, result_to_csv
 from novamind.features.evaluation.api.exceptions import (

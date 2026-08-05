@@ -13,8 +13,8 @@ from typing import Any, Dict, List, Optional
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.engines.ports import PromptProvider
-from novamind.features.evaluation.services.embedding_evaluator import EmbeddingEvaluator
-from novamind.features.evaluation.services.claim_decomposer import ClaimDecomposer
+from novamind.engines.eval.embedding_evaluator import EmbeddingEvaluator
+from novamind.engines.eval.claim_decomposer import ClaimDecomposer
 
 
 class GenerationEvaluator:

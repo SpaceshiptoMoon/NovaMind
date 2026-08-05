@@ -1,7 +1,7 @@
 """批次5 evaluation 接缝测试：evaluator 经端口注入工作，不 import 业务侧 PromptManager/get_logger。
 
 验证：
-  - ``evaluation/services/{retrieval,generation,embedding}_evaluator.py`` 与
+  - ``engines/eval/{retrieval,generation,embedding}_evaluator.py`` 与
     ``claim_decomposer.py`` 不再 import ``shared.prompts.templates.PromptManager`` 或
     ``core.middleware.structured_logging.get_logger``（切断引擎 -> 宿主 prompt/log 导入边）。
   - 4 个 evaluator 经构造器接收 ``PromptProvider`` + ``Logger`` 端口（EmbeddingEvaluator 仅
@@ -27,12 +27,12 @@ if str(BACKEND_ROOT) not in sys.path:
 
 pytestmark = pytest.mark.unit
 
-# ---- 引擎侧 evaluator 模块（批次6 迁 novamind-eval-engine）----
+# ---- 引擎侧 evaluator 模块（已迁 engines/eval/）----
 _ENGINE_EVAL_MODULES = [
-    "novamind.features.evaluation.services.retrieval_evaluator",
-    "novamind.features.evaluation.services.generation_evaluator",
-    "novamind.features.evaluation.services.embedding_evaluator",
-    "novamind.features.evaluation.services.claim_decomposer",
+    "novamind.engines.eval.retrieval_evaluator",
+    "novamind.engines.eval.generation_evaluator",
+    "novamind.engines.eval.embedding_evaluator",
+    "novamind.engines.eval.claim_decomposer",
 ]
 
 # evaluator 不得直接 import 业务侧 prompt 注册表 / 宿主结构化日志 / 宿主 features 旁路
@@ -107,10 +107,10 @@ def test_evaluators_require_port_injection():
     """4 个 evaluator 构造器均要求注入 PromptProvider + Logger（EmbeddingEvaluator 除外，仅 BaseEmbedding）。"""
     import inspect
 
-    from novamind.features.evaluation.services.retrieval_evaluator import RetrievalEvaluator
-    from novamind.features.evaluation.services.generation_evaluator import GenerationEvaluator
-    from novamind.features.evaluation.services.claim_decomposer import ClaimDecomposer
-    from novamind.features.evaluation.services.embedding_evaluator import EmbeddingEvaluator
+    from novamind.engines.eval.retrieval_evaluator import RetrievalEvaluator
+    from novamind.engines.eval.generation_evaluator import GenerationEvaluator
+    from novamind.engines.eval.claim_decomposer import ClaimDecomposer
+    from novamind.engines.eval.embedding_evaluator import EmbeddingEvaluator
 
     for cls in (RetrievalEvaluator, GenerationEvaluator, ClaimDecomposer):
         params = inspect.signature(cls.__init__).parameters
