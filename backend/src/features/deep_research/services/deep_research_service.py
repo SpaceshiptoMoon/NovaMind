@@ -23,9 +23,11 @@ from novamind.features.deep_research.models.research_session import (
     ExternalSearchProvider,
 )
 from novamind.features.deep_research.repository.research_repository import ResearchRepository
-from novamind.features.deep_research.services.tavily_service import TavilySearchService
-from novamind.features.deep_research.services.serpapi_service import SerpAPISearchService
-from novamind.features.deep_research.services.duckduckgo_service import DuckDuckGoSearchService
+from novamind.engines.search import (
+    DuckDuckGoSearchService,
+    SerpAPISearchService,
+    TavilySearchService,
+)
 from novamind.features.deep_research.schemas.research_schema import (
     InternalSearchConfig,
     ResearchRequest,
