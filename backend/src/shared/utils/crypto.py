@@ -23,6 +23,18 @@ from cryptography.hazmat.backends import default_backend
 
 _CIPHER_VERSION = "v2:"
 
+# 宿主装配点注入（configure_encryption_key）。shared 层不得直接读 setting。
+_default_encryption_key: Optional[str] = None
+
+
+def configure_encryption_key(key: str) -> None:
+    """启动期注入 ``security.encryption_key``。
+
+    必须在任意无 ``key`` 参数的加解密调用前由装配点（startup_manager）执行一次。
+    """
+    global _default_encryption_key
+    _default_encryption_key = key
+
 
 def _hkdf_derive(raw_key: bytes) -> bytes:
     """HKDF-SHA256 派生 32 字节 AES 密钥"""
@@ -36,21 +48,21 @@ def _hkdf_derive(raw_key: bytes) -> bytes:
 
 def _get_encryption_key_v1() -> bytes:
     """旧版 SHA-256 派生（仅用于解密旧 CBC 数据）"""
-    from novamind.setting.yaml_config import get_config
-    config = get_config()
-    raw_key = config.security.encryption_key
+    raw_key = _default_encryption_key
     if not raw_key:
-        raise ValueError("未配置加密密钥（security.encryption_key）")
+        raise ValueError(
+            "未配置加密密钥（security.encryption_key）：请在启动期调用 configure_encryption_key"
+        )
     return hashlib.sha256(raw_key.encode("utf-8")).digest()
 
 
 def _get_encryption_key() -> bytes:
     """获取当前版本加密密钥（HKDF 派生）"""
-    from novamind.setting.yaml_config import get_config
-    config = get_config()
-    raw_key = config.security.encryption_key
+    raw_key = _default_encryption_key
     if not raw_key:
-        raise ValueError("未配置加密密钥（security.encryption_key），请在 YAML 配置中设置")
+        raise ValueError(
+            "未配置加密密钥（security.encryption_key）：请在启动期调用 configure_encryption_key"
+        )
     return _hkdf_derive(raw_key.encode("utf-8"))
 
 
