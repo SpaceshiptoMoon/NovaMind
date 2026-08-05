@@ -25,31 +25,8 @@ from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.engines.ports import PromptProvider
 from novamind.shared.document.readers import PDFReader, DocxReader
+from novamind.shared.utils.llm_response import extract_json_str
 from novamind.features.app.schemas.resume_schema import StructuredResume
-
-
-def _extract_json(text: str) -> str:
-    """从 LLM 输出中提取 JSON，兼容 markdown 代码块包裹"""
-    text = text.strip()
-    if not text:
-        raise ValueError("LLM 返回空内容")
-    # 已经是合法 JSON
-    if text.startswith("{") or text.startswith("["):
-        return text
-    # 尝试提取 ```json ... ``` 或 ``` ... ``` 包裹的内容
-    import re
-    m = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
-    if m:
-        return m.group(1).strip()
-    # 兜底：找第一个 { 或 [ 到最后一个 } 或 ]
-    start = -1
-    for ch in ("{", "["):
-        idx = text.find(ch)
-        if idx >= 0 and (start < 0 or idx < start):
-            start = idx
-    if start >= 0:
-        return text[start:]
-    raise ValueError(f"无法从 LLM 输出中提取 JSON: {text[:200]}")
 
 
 class ResumeParser:
@@ -179,7 +156,7 @@ class ResumeParser:
             temperature=0.1,
             response_format={"type": "json_object"},
         )
-        data = json.loads(_extract_json(response))
+        data = json.loads(extract_json_str(response))
         sections = {}
         for sec in data.get("sections", []):
             sec_type = sec.get("type", "other")
@@ -203,7 +180,7 @@ class ResumeParser:
                 temperature=0.1,
                 response_format={"type": "json_object"},
             )
-            return json.loads(_extract_json(response))
+            return json.loads(extract_json_str(response))
         except json.JSONDecodeError as e:
             self._logger.warning("章节解析 JSON 失败，尝试不带 response_format 重试", section=section_type, error=str(e))
             try:
@@ -211,7 +188,7 @@ class ResumeParser:
                     prompt=prompt + "\n\n请只输出合法 JSON，不要包含任何其他内容。",
                     temperature=0.1,
                 )
-                return json.loads(_extract_json(response))
+                return json.loads(extract_json_str(response))
             except Exception as e2:
                 self._logger.error("章节解析重试仍失败", section=section_type, error=str(e2))
                 return {} if section_type in ("personal_info", "skills", "publications") else []
