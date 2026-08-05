@@ -104,7 +104,7 @@ Do not duplicate parsing logic under both `shared/utils/` and `shared/knowledge/
 
 分层为 `features → engines → shared`，单向不可逆。
 
-- `engines/` 与 `shared/` 严禁 import `novamind.features.*`、`novamind.setting.*`、任何 SQLAlchemy ORM 模型、`core.database` ORM 会话。所有持久化/配置/多租户/外部资源必须经端口（`shared/*_ports.py` / `shared/engine_ports.py` 等）在 `features/` 装配点注入。
+- `engines/` 与 `shared/` 严禁 import `novamind.features.*`、`novamind.setting.*`、任何 SQLAlchemy ORM 模型、`core.database` ORM 会话。所有持久化/配置/多租户/外部资源必须经端口在 `features/` 装配点注入。端口归属：engine 专属端口（`engines/ports.py`、`engines/search_ports.py`、`engines/agent/ports.py`、`engines/rag/cache_port.py`、`engines/rag/errors.py`）归 `engines/`；feature 间公共端口（`shared/model_config_ports.py`、`shared/registry_ports.py`）留 `shared/` 中立位置；单 feature 内部端口（如 `features/user/ports.py`、`features/skill/ports.py`）下沉对应 feature。
 - `engines/` 是纯逻辑层；`shared/` 是中立能力层；业务编排归属 `features/`。`shared/` 不得反向依赖 `features/` 或 `setting/`。
 - 结构门禁测试 `tests/test_unidirectional_dependency_gate.py` 以 AST 扫描强制此规则，新增违规会被测试拦截。收口已完成，白名单已清空。
 

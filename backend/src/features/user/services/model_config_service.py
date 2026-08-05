@@ -29,7 +29,7 @@ from novamind.shared.ai_models.embedding import create_embedding_client, BaseEmb
 from novamind.shared.ai_models.rerank import create_rerank_client, BaseRerank
 from novamind.shared.ai_models.base_model import PROXY_INHERIT
 from novamind.shared.model_config_ports import ModelCredentials
-from novamind.shared.knowledge_space_info_ports import KnowledgeSpaceInfoPort
+from novamind.features.user.ports import KnowledgeSpaceInfoPort
 
 from novamind.shared.utils.crypto import encrypt_api_key_async, decrypt_api_key_async
 from novamind.core.middleware.structured_logging import get_logger

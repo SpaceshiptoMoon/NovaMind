@@ -5,7 +5,7 @@ from typing import Optional, List, Dict, Any, AsyncIterator
 import redis.asyncio as redis
 from redis.exceptions import ConnectionError, RedisError
 
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 

@@ -9,7 +9,7 @@ from collections import OrderedDict
 from threading import RLock
 from dataclasses import dataclass
 
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 

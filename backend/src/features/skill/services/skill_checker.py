@@ -19,8 +19,9 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.engine_ports import Logger, PromptProvider
-from novamind.shared.skill_ports import ReviewStatus
+from novamind.shared.logging import Logger
+from novamind.engines.ports import PromptProvider
+from novamind.features.skill.ports import ReviewStatus
 
 # 注入模式正则
 _INJECTION_PATTERNS = [

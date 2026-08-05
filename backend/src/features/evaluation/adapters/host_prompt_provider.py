@@ -5,7 +5,7 @@ PromptProvider 宿主适配器
 供 evaluation 的 evaluator 经构造器注入。evaluator 不再 import 业务侧
 `PromptManager`，切断引擎 -> shared.prompts 的直接导入边（批次 6 抽包前提）。
 """
-from novamind.shared.engine_ports import PromptProvider
+from novamind.engines.ports import PromptProvider
 from novamind.shared.prompts.templates import PromptManager
 
 

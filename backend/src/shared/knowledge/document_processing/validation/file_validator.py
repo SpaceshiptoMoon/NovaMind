@@ -7,7 +7,7 @@
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from novamind.shared.engine_logging import get_logger
+from novamind.shared.logging import get_logger
 
 
 logger = get_logger(__name__)

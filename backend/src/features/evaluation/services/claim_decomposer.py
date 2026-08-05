@@ -13,7 +13,8 @@ import json
 from typing import Any, Dict, List
 
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.engine_ports import Logger, PromptProvider
+from novamind.shared.logging import Logger
+from novamind.engines.ports import PromptProvider
 
 
 class ClaimDecomposer:

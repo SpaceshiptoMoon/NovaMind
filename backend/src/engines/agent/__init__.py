@@ -1,6 +1,6 @@
 """Agent 执行引擎——``novamind.engines.agent`` 核心组件。
 
-纯逻辑 ReAct 循环引擎，通过端口（``shared/agent_ports``）从宿主注入依赖，
+纯逻辑 ReAct 循环引擎，通过端口（``engines/agent/ports``）从宿主注入依赖，
 自身零 ``features`` / ``setting`` / ORM 导入。
 
 公共面：

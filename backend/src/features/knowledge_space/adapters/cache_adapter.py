@@ -1,7 +1,7 @@
 """``CachePort`` 宿主适配器（批次 6a-2 新增）。
 
 ``HostCachePort`` 包装宿主 ``shared.cache.redis_client.get_redis_client()`` 返回的
-``RedisCache``，实现 ``shared.cache_ports.CachePort`` 协议。引擎 ``RetrievalEngine``
+``RedisCache``，实现 ``engines.rag.cache_port.CachePort`` 协议。引擎 ``RetrievalEngine``
 经构造器接收 ``CachePort``，与 Redis 实现解耦——为批次 6c 物理抽包
 （``novamind-rag-engine``）留出接缝。
 

@@ -9,7 +9,7 @@ import time
 from typing import AsyncIterator, AsyncGenerator, Union
 
 from novamind.shared.ai_models.base_model import StreamChunk
-from novamind.shared.engine_logging import get_logger
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 

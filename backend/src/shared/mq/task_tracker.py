@@ -6,7 +6,7 @@
 """
 from typing import Optional, Union
 
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 

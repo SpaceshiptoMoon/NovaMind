@@ -27,7 +27,7 @@ from datetime import timedelta
 from minio import Minio
 from minio.error import S3Error
 
-from novamind.shared.engine_logging import get_logger
+from novamind.shared.logging import get_logger
 from novamind.shared.storage.path_strategy import DefaultPathStrategy, PathStrategy
 
 logger = get_logger(__name__)

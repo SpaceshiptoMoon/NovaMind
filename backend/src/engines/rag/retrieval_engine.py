@@ -7,9 +7,9 @@ ModelConfigService；``embedding_client`` / ``rerank_client`` 由宿主通过 re
 （懒解析，逐字复刻原 ``search`` 的懒解析时序：缓存命中时不解析 embedding，避免配置缺失误报
 ``EmbeddingError``）。
 
-批次 6a-2 去 feature 边：异常改用中立 ``shared.rag_errors``
+批次 6a-2 去 feature 边：异常改用中立 ``engines.rag.errors``
 （``RagError``/``EmbeddingError``/``SearchError``，不依赖宿主 ``BaseAPIError``）；
-缓存改用中立 ``shared.cache_ports.CachePort``（构造器注入，删 ``shared.cache.redis_client``
+缓存改用中立 ``engines.rag.cache_port.CachePort``（构造器注入，删 ``shared.cache.redis_client``
 直接 import）。宿主 ``SearchService`` 在装配点捕获中立异常重抛为宿主 ``api.exceptions`` 同名异常，
 保留宿主异常码契约（400）不变。
 
@@ -23,9 +23,9 @@ import hashlib
 
 from novamind.shared.ai_models.embedding import BaseEmbedding
 from novamind.shared.ai_models.rerank import BaseRerank
-from novamind.shared.cache_ports import CachePort
-from novamind.shared.engine_logging import get_logger
-from novamind.shared.rag_errors import RagError, EmbeddingError, SearchError
+from novamind.engines.rag.cache_port import CachePort
+from novamind.shared.logging import get_logger
+from novamind.engines.rag.errors import RagError, EmbeddingError, SearchError
 
 # 默认配置常量（与 search_service 保持一致，批次 6 迁入引擎包）
 DEFAULT_SEARCH_CACHE_TTL = 3600  # 1 小时

@@ -1,16 +1,16 @@
-"""技能引擎中立枚举/值（批次 6a-4 新增，批次 6b 迁入 ``novamind-engine-core``）。
+"""技能审查中立枚举（feature 间端口，下沉 ``features/skill/ports.py``）。
 
 历史背景：``ReviewStatus`` 原定义在 ``features/skill/models/skill.py``（宿主 ORM 模型）。
-``skill_checker.py``（技能引擎核心模块，批次 6e 迁 ``novamind-skill-engine``）import 自该
-ORM 模型——这是引擎对宿主 feature ORM 的导入边，批次 6 物理抽包前必须切断。
+``skill_checker.py`` import 自该 ORM 模型——这是引擎对宿主 feature ORM 的导入边，
+批次 6 物理抽包时切断。
 
-本模块提供引擎自用的中立枚举 ``ReviewStatus``，不依赖宿主 ORM / ``features.*``。
+本模块提供 ``ReviewStatus`` 中立枚举，不依赖宿主 ORM / ``features.*`` 之外的对象。
 宿主 ``skill/models/skill.py`` 改为从本模块 import 并 re-export，ORM 列
 ``default=ReviewStatus.PENDING`` 仍引用同一枚举类（``skill.models.skill.ReviewStatus
-IS shared.skill_ports.ReviewStatus``），SQLAlchemy 映射与既有 ``from
+IS features.skill.ports.ReviewStatus``），SQLAlchemy 映射与既有 ``from
 skill.models.skill import ReviewStatus`` 的导入方零改动。
 
-依赖方向：本模块仅依赖 stdlib ``enum``，零宿主 feature/setting/core 边。
+依赖方向：本模块仅依赖 stdlib ``enum``，零宿主 core/setting 边。
 """
 from __future__ import annotations
 

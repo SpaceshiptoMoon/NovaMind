@@ -1,4 +1,4 @@
-"""Agent 引擎中立端口与 DTO（``shared.agent_ports``）
+"""Agent 引擎中立端口与 DTO（``engines.agent.ports``）
 
 本模块定义 Agent 引擎对宿主能力的抽象依赖，供 ``engines/agent/`` 与
 ``features/agent/adapters/`` 双方 import。依赖方向：宿主 -> 引擎 -> 本模块；
@@ -7,13 +7,13 @@
   - KnowledgeSearchPort：知识空间/知识库发现与文档检索
   - MemoryStorePort：长期记忆 MySQL 持久化 + 上下文压缩摘要
   - MemorySearchPort：长期记忆 ES 向量检索
-  - WebSearchPort/WebSearchResult：已在中立 ``shared/search_ports.py``，此处 re-export
+  - WebSearchPort/WebSearchResult：已在中立 ``engines/search_ports.py``，此处 re-export
 
 DTO 全部为纯 dataclass（非 ORM），包括 ``LongTermMemoryEntry``——因其同时被
 ``MemoryStorePort``（本模块）与引擎 ``ILongTermMemory``（``engines/agent/memory/interfaces``）
 引用，放在本模块避免 shared 反向 import engines。
 
-设计约束（与 ``shared/engine_ports.py`` 一致）：
+设计约束（与 ``engines/ports.py`` 一致）：
   - 协议只描述引擎所需能力，不携带 ORM/枚举/配置键等业务实体。
   - 引擎经 ``context`` 字典接收这些协议的实例；宿主在装配时注入实现。
 """
@@ -23,10 +23,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Protocol, Tuple, runtime_checkable
 
-from novamind.shared.search_ports import WebSearchPort, WebSearchResult
+from novamind.engines.search_ports import WebSearchPort, WebSearchResult
 
 # ==================== 联网搜索 ====================
-# WebSearchPort / WebSearchResult 已在中立 shared/search_ports.py，此处经顶部 re-export
+# WebSearchPort / WebSearchResult 已在中立 engines/search_ports.py，此处经顶部 re-export
 # 提供统一导入面。
 
 

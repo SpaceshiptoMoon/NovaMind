@@ -385,7 +385,7 @@ class DeepResearchService:
         dataclass 注入，切断 search 引擎 → setting 的导入边。
         """
         from novamind.setting.yaml_config import get_config
-        from novamind.shared.engine_config import (
+        from novamind.shared.config import (
             DuckDuckGoSearchConfig,
             SerpApiSearchConfig,
             TavilySearchConfig,
