@@ -15,9 +15,9 @@ import hashlib
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from novamind.features.agent.core.memory.interfaces import MemoryMessage
-from novamind.features.agent.core.memory.token_budget import TokenBudget
-from novamind.features.agent.core.memory.compress import ICompressionStrategy
+from novamind.engines.agent.memory.interfaces import MemoryMessage
+from novamind.engines.agent.memory.token_budget import TokenBudget
+from novamind.engines.agent.memory.compress import ICompressionStrategy
 from novamind.shared.utils.redact import redact_sensitive_text
 from novamind.shared.engine_logging import get_logger
 

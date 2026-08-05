@@ -6,7 +6,7 @@
 from typing import Dict, List, Optional
 
 from novamind.shared.engine_logging import get_logger
-from novamind.features.agent.core.tool.base import BaseTool
+from novamind.engines.agent.tool.base import BaseTool
 
 logger = get_logger(__name__)
 

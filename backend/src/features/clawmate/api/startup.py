@@ -38,11 +38,11 @@ async def init_clawmate_components(app):
 
     # 2. 创建 ClawMate 专用工具链
     from novamind.features.clawmate.core.tools import ALL_TOOLS
-    from novamind.features.agent.core.tool.registry import ToolRegistry
-    from novamind.features.agent.core.tool.executor import ToolExecutor
-    from novamind.features.agent.core.tool.hooks import LoggingHook, ResultTruncationHook
-    from novamind.features.agent.core.engine import AgentEngine
-    from novamind.features.agent.mcp.client import McpClientManager
+    from novamind.engines.agent.tool.registry import ToolRegistry
+    from novamind.engines.agent.tool.executor import ToolExecutor
+    from novamind.engines.agent.tool.hooks import LoggingHook, ResultTruncationHook
+    from novamind.engines.agent.agent_engine import AgentEngine
+    from novamind.engines.agent.mcp.client import McpClientManager
 
     tool_registry = ToolRegistry()
     for tool_cls in ALL_TOOLS:

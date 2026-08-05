@@ -11,7 +11,7 @@ agent.repository / user.services.model_config_service / shared.clients.ClientFac
 import json
 from typing import Any, Dict, List
 
-from novamind.features.agent.core.tool.base import BaseTool
+from novamind.engines.agent.tool.base import BaseTool
 from novamind.shared.engine_logging import get_logger
 
 logger = get_logger(__name__)
@@ -113,7 +113,7 @@ class MemoryTool(BaseTool):
     async def _add(self, store, args: Dict[str, Any], context: Dict[str, Any]) -> str:
         """添加记忆"""
         try:
-            from novamind.features.agent.core.memory.security import scan_memory_content
+            from novamind.engines.agent.memory.security import scan_memory_content
 
             category = args["category"]
             content = args.get("content", "")
@@ -170,7 +170,7 @@ class MemoryTool(BaseTool):
     async def _replace(self, store, args: Dict[str, Any], context: Dict[str, Any]) -> str:
         """替换记忆"""
         try:
-            from novamind.features.agent.core.memory.security import scan_memory_content
+            from novamind.engines.agent.memory.security import scan_memory_content
 
             old_content = args.get("old_content", "")
             new_content = args.get("content", "")

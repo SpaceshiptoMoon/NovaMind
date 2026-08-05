@@ -9,7 +9,7 @@ from contextlib import AsyncExitStack
 from typing import Any, Dict, List, Optional
 
 from novamind.shared.engine_logging import get_logger
-from novamind.features.agent.mcp.config import McpConnectionConfig
+from novamind.engines.agent.mcp.config import McpConnectionConfig
 
 logger = get_logger(__name__)
 

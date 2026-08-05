@@ -7,13 +7,13 @@
 import json
 from typing import Any, Dict, List
 
-from novamind.features.agent.core.memory.interfaces import (
+from novamind.engines.agent.memory.interfaces import (
     IShortTermMemory,
     MemoryMessage,
     MemorySnapshot,
 )
-from novamind.features.agent.core.memory.token_budget import TokenBudget
-from novamind.features.agent.core.memory.compress import ICompressionStrategy
+from novamind.engines.agent.memory.token_budget import TokenBudget
+from novamind.engines.agent.memory.compress import ICompressionStrategy
 from novamind.shared.engine_logging import get_logger
 
 logger = get_logger(__name__)

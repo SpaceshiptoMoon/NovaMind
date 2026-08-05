@@ -14,11 +14,11 @@ import time
 from collections import OrderedDict
 from typing import Any, Dict, List, Optional
 
-from novamind.features.agent.core.tool.definition import ToolDefinition, ToolSource
-from novamind.features.agent.core.tool.result import ToolResult, ToolResultStatus
-from novamind.features.agent.core.tool.hooks import ToolHook
-from novamind.features.agent.core.tool.registry import ToolRegistry
-from novamind.features.agent.mcp.client import McpClientManager
+from novamind.engines.agent.tool.definition import ToolDefinition, ToolSource
+from novamind.engines.agent.tool.result import ToolResult, ToolResultStatus
+from novamind.engines.agent.tool.hooks import ToolHook
+from novamind.engines.agent.tool.registry import ToolRegistry
+from novamind.engines.agent.mcp.client import McpClientManager
 from novamind.shared.engine_logging import get_logger
 
 logger = get_logger(__name__)
@@ -225,7 +225,7 @@ class ToolExecutor:
         raw_tool: Dict[str, Any], source: ToolSource
     ) -> ToolDefinition:
         """将 OpenAI 格式工具定义转换为 ToolDefinition"""
-        from novamind.features.agent.core.tool.definition import ToolParameter
+        from novamind.engines.agent.tool.definition import ToolParameter
 
         func = raw_tool.get("function", {})
         params_schema = func.get("parameters", {})

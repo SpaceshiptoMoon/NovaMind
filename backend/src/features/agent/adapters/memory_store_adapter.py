@@ -12,8 +12,8 @@ embedding 向量由引擎侧生成后传入（MemorySearchPort 不依赖 embeddi
 from datetime import datetime
 from typing import Any, List, Optional, Tuple
 
-from novamind.features.agent.core.memory.interfaces import LongTermMemoryEntry
-from novamind.features.agent.core.ports import (
+from novamind.engines.agent.memory.interfaces import LongTermMemoryEntry
+from novamind.shared.agent_ports import (
     ContextSummaryEntry,
     MemorySearchPort,
     MemoryStorePort,

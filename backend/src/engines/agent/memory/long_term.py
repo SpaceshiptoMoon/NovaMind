@@ -12,12 +12,12 @@
 """
 from typing import Any, Callable, Dict, List, Optional
 
-from novamind.features.agent.core.memory.interfaces import (
+from novamind.engines.agent.memory.interfaces import (
     ILongTermMemory,
     LongTermMemoryEntry,
     MemoryMessage,
 )
-from novamind.features.agent.core.ports import MemorySearchPort, MemoryStorePort
+from novamind.shared.agent_ports import MemorySearchPort, MemoryStorePort
 from novamind.shared.engine_ports import PromptProvider
 from novamind.shared.engine_logging import get_logger
 
@@ -65,7 +65,7 @@ class LongTermMemory(ILongTermMemory):
     ) -> LongTermMemoryEntry:
         """存储一条长期记忆 → MySQL + ES"""
         # 安全扫描
-        from novamind.features.agent.core.memory.security import scan_memory_content
+        from novamind.engines.agent.memory.security import scan_memory_content
         scan = scan_memory_content(content)
         if not scan:
             logger.warning("记忆写入被安全扫描拦截", threats=scan.threats, category=category)
@@ -100,7 +100,7 @@ class LongTermMemory(ILongTermMemory):
         new_content: str,
     ) -> Dict[str, Any]:
         """替换记忆内容（子串匹配）"""
-        from novamind.features.agent.core.memory.security import scan_memory_content
+        from novamind.engines.agent.memory.security import scan_memory_content
 
         scan = scan_memory_content(new_content)
         if not scan:

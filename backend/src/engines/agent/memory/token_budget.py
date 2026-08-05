@@ -7,7 +7,7 @@ Token 预算管理器
 import json
 from typing import List
 
-from novamind.features.agent.core.memory.interfaces import MemoryMessage
+from novamind.engines.agent.memory.interfaces import MemoryMessage
 
 
 class TokenBudget:
