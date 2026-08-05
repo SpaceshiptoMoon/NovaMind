@@ -19,16 +19,16 @@ from novamind.features.knowledge_space.services.document_service import (
     load_pipeline_context,
     persist_parsed_text,
 )
-from novamind.shared.knowledge.media_processing.audio import (
+from novamind.features.knowledge_space.media.audio import (
     transcribe_audio_local,
     transcribe_audio_with_timestamps,
 )
-from novamind.shared.knowledge.media_processing.video import extract_video_frames
+from novamind.features.knowledge_space.media.video import extract_video_frames
 from novamind.shared.utils.time_utils import now_china
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
 from novamind.features.knowledge_space.schemas.enums import ChunkType
 from novamind.shared.config import AudioConfig
-from novamind.shared.knowledge.media_processing.vlm import (
+from novamind.features.knowledge_space.media.vlm import (
     build_vlm_image_messages,
     generate_vlm_text_with_fallback,
 )
@@ -339,7 +339,7 @@ async def process_audio_document(
     )
 
     # 1. ASR 转写（根据协议路由：openai → Whisper / dashscope → Paraformer / local → faster-whisper）
-    from novamind.shared.knowledge.media_processing.audio import transcribe_audio_with_dashscope
+    from novamind.features.knowledge_space.media.audio import transcribe_audio_with_dashscope
 
     # 检查点：ASR 调用前（转写可能耗时较长，允许用户在此处取消）
     await _check_document_cancelled(document.id)
@@ -416,7 +416,7 @@ async def process_audio_document(
         #
         # 关键：用 acquire_asr_or_busy() 非阻塞原子获取锁，消除竞态窗口。
         # 获取不到锁 = ASR 忙碌。
-        from novamind.shared.knowledge.media_processing.audio import acquire_asr_or_busy
+        from novamind.features.knowledge_space.media.audio import acquire_asr_or_busy
 
         asr_acquired = await acquire_asr_or_busy()
         if not asr_acquired:
@@ -459,7 +459,7 @@ async def process_audio_document(
                 )
             finally:
                 # 无论成功失败都释放 ASR 锁，让下一个任务可以进入
-                from novamind.shared.knowledge.media_processing.audio import _asr_busy_lock
+                from novamind.features.knowledge_space.media.audio import _asr_busy_lock
                 if _asr_busy_lock.locked():
                     _asr_busy_lock.release()
     else:
@@ -589,7 +589,7 @@ async def _split_md_text(
     Returns:
         [(text, metadata_dict), ...] — metadata 目前为空 dict，后续可扩展携带标题/层级
     """
-    from novamind.shared.knowledge.document_processing.pipeline import DocumentRegistry
+    from novamind.features.knowledge_space.pipeline import DocumentRegistry
 
     splitter_class = DocumentRegistry.get_splitter_class(strategy)
     if splitter_class is None:
@@ -610,7 +610,7 @@ async def _split_md_text(
         return [(text, {}) for text in chunk_texts if text.strip()]
 
     elif strategy == "markdown":
-        from novamind.shared.knowledge.document_processing.splitters import MarkdownSplitter
+        from novamind.features.knowledge_space.splitters import MarkdownSplitter
         max_chunk_size = kwargs.get("max_chunk_size", 1000)
         min_chunk_size = kwargs.get("min_chunk_size", 50)
         splitter = MarkdownSplitter(

@@ -27,8 +27,8 @@ from novamind.features.knowledge_space.services.media_processing import (
     process_audio_document,
     process_video_document,
 )
-from novamind.shared.knowledge.document_processing.pipeline import DocumentProcessor, DocumentRegistry
-from novamind.shared.knowledge.media_processing.audio import transcribe_audio_with_timestamps
+from novamind.features.knowledge_space.pipeline import DocumentProcessor, DocumentRegistry
+from novamind.features.knowledge_space.media.audio import transcribe_audio_with_timestamps
 
 
 @pytest.fixture

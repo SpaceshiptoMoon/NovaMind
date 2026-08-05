@@ -14,10 +14,10 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
 from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
-from novamind.shared.knowledge.integrations.deepdoc.core.engine import DeepDocEngine
-from novamind.shared.knowledge.integrations.deepdoc.core.models import DeepDocParseResult
-from novamind.shared.knowledge.integrations.deepdoc.server import create_deepdoc_app
-from novamind.shared.knowledge.document_processing.pipeline import DocumentProcessor
+from novamind.features.knowledge_space.integrations.deepdoc.core.engine import DeepDocEngine
+from novamind.features.knowledge_space.integrations.deepdoc.core.models import DeepDocParseResult
+from novamind.features.knowledge_space.integrations.deepdoc.server import create_deepdoc_app
+from novamind.features.knowledge_space.pipeline import DocumentProcessor
 
 
 def _build_minimal_pdf_bytes(text: str) -> bytes:

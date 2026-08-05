@@ -57,14 +57,14 @@ from novamind.features.knowledge_space.api.exceptions import (
 from novamind.shared.storage.minio_client import MinioClient
 from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
-from novamind.shared.knowledge.document_processing.converters.doc_converter import (
+from novamind.features.knowledge_space.converters.doc_converter import (
     convert_doc_to_docx,
     DocConversionError,
 )
-from novamind.shared.knowledge.document_processing.pipeline import DocumentProcessor
-from novamind.shared.knowledge.document_processing.validation import validate_file
-from novamind.shared.knowledge.media_processing.audio import upload_parsed_text_to_minio
-from novamind.shared.knowledge.media_processing.vlm import (
+from novamind.features.knowledge_space.pipeline import DocumentProcessor
+from novamind.shared.document.validation import validate_file
+from novamind.features.knowledge_space.media.audio import upload_parsed_text_to_minio
+from novamind.features.knowledge_space.media.vlm import (
     build_vlm_image_messages,
     generate_vlm_text_with_fallback,
 )
@@ -1915,7 +1915,7 @@ async def _process_image_ocr_static(
     通过 DeepDoc 的 RAGFlowFigureParser（内含 PaddleOCR）提取图片中的文字，
     返回提取的文本。OCR 推理在独立线程中执行（asyncio.to_thread）。
     """
-    from novamind.shared.knowledge.integrations.deepdoc.core.engine import DeepDocParser
+    from novamind.features.knowledge_space.integrations.deepdoc.core.engine import DeepDocParser
 
     file_type = (document.file_type or "png").lower()
     _logger.info(

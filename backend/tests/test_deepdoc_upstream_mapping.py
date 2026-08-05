@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from novamind.shared.knowledge.integrations.deepdoc.compat.upstream import (
+from novamind.features.knowledge_space.integrations.deepdoc.compat.upstream import (
     LOCAL_ADAPTATION_SOURCE_MAP,
     UPSTREAM_SOURCE_MAP,
     get_upstream_deepdoc_snapshot,

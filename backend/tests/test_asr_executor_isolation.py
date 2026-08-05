@@ -26,7 +26,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.shared.knowledge.media_processing.audio import audio_utils
+from novamind.features.knowledge_space.media.audio import audio_utils
 
 pytestmark = pytest.mark.unit
 

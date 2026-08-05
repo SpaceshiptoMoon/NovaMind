@@ -83,8 +83,8 @@ CANDIDATES = _collect_candidates()
 
 
 def test_candidate_collection_nonempty():
-    """冒烟：防止目录路径漂移导致假绿。engines/ ~37 + shared/ ~181。"""
-    assert len(CANDIDATES) > 200, f"候选文件数异常少: {len(CANDIDATES)}（检查 CANDIDATE_DIRS 路径）"
+    """冒烟：防止目录路径漂移导致假绿。engines/ ~37 + shared/ ~61（shared/knowledge 归位 features 后）。"""
+    assert len(CANDIDATES) > 90, f"候选文件数异常少: {len(CANDIDATES)}（检查 CANDIDATE_DIRS 路径）"
 
 
 def test_no_forbidden_imports_outside_whitelist():
