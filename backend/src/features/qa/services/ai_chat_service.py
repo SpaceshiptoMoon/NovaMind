@@ -29,6 +29,7 @@ from novamind.shared.prompts.templates import PromptManager
 from novamind.shared.utils.heartbeat import stream_with_heartbeat_structured
 from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
 from novamind.features.qa.services.qa_service import QAService
+from novamind.features.qa.adapters.host_prompt_provider import HostPromptProvider
 from novamind.features.qa.schemas.qa import QARequest
 from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
 from novamind.features.qa.api.exceptions import (
@@ -102,6 +103,7 @@ class AIChatService:
         self._token_counter = TokenCounter()
         self._retrieval_port = retrieval_port
         self._document_ingestion_port = document_ingestion_port
+        self._prompt_provider = HostPromptProvider()
 
     async def _get_retrieval_port(self) -> "RetrievalPort":
         """懒获取检索端口（HostRetrievalPort 包 SearchService）。
@@ -296,10 +298,14 @@ class AIChatService:
             if len(search_queries) == 1:
                 grade_retry = getattr(session_config, "rag_grade_retry_enabled", False) if session_config else False
                 if grade_retry:
-                    from novamind.features.qa.services.grade_retrier import GradeRetrier
+                    from novamind.engines.rag import GradeRetrier
                     llm_for_grade = await self.qa_service._get_compression_llm_client(user_id) if self.qa_service else None
                     if llm_for_grade:
-                        retrier = GradeRetrier(llm_for_grade)
+                        retrier = GradeRetrier(
+                            llm_for_grade,
+                            prompt_provider=self._prompt_provider,
+                            logger=self.logger,
+                        )
                         passing = getattr(session_config, "rag_grade_retry_passing_score", 5)
 
                         last_raw_count = 0  # 闭包捕获最近一次过滤前数量，供 trace 区分成因
@@ -346,8 +352,12 @@ class AIChatService:
 
                 if grade_retry and llm_for_grade:
                     # grade 开 + 有 grade LLM：循环「检索所有子查询→合并→用原问题整体打分」，不通过则切 mode + 降阈值重检索
-                    from novamind.features.qa.services.grade_retrier import GradeRetrier
-                    retrier = GradeRetrier(llm_for_grade)
+                    from novamind.engines.rag import GradeRetrier
+                    retrier = GradeRetrier(
+                        llm_for_grade,
+                        prompt_provider=self._prompt_provider,
+                        logger=self.logger,
+                    )
                     passing = getattr(session_config, "rag_grade_retry_passing_score", 5)
                     # mode 序列：用户配的 search_mode 首轮优先（复用单查询 search_with_retry 的语义）
                     default_modes = ["content_hybrid", "content_bm25", "all_hybrid"]
