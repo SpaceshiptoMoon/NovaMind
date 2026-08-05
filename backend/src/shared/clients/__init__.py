@@ -4,13 +4,17 @@
 提供单例模式的客户端实例管理
 支持 MinIO、Elasticsearch、Redis 等客户端
 使用 asyncio.Lock 保护并发初始化
+
+中立化说明（单向依赖铁律）：本模块位于 ``shared/``，不得依赖 ``features/`` 或
+``setting/``。宿主配置与策略（``NovamindPathStrategy`` / ``NovamindIndexSchema``）
+经 ``ClientFactory.configure(...)`` 在启动期由装配点（``core/middleware/startup_manager``）
+注入；``get_*_client`` 类方法使用注入的配置而非运行时读 ``setting.yaml_config``。
 """
 
 import asyncio
 from typing import Optional
 
-from novamind.setting.yaml_config import get_config
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.engine_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -25,6 +29,37 @@ class ClientFactory:
 
     _instances = {}
     _async_lock: Optional[asyncio.Lock] = None
+
+    # 宿主装配点注入（configure）。shared 层不得直接读 setting/features。
+    _config = None
+    _minio_path_strategy = None
+    _es_index_schema = None
+
+    @classmethod
+    def configure(
+        cls,
+        config,
+        minio_path_strategy=None,
+        es_index_schema=None,
+    ) -> None:
+        """启动期注入宿主配置与路径/索引策略。
+
+        必须在任意 ``get_*_client`` 调用前由装配点（startup_manager）执行一次。
+        ``config`` 为宿主 ``AppConfig``；``minio_path_strategy`` / ``es_index_schema``
+        为宿主侧 ``NovamindPathStrategy`` / ``NovamindIndexSchema`` 实例。
+        """
+        cls._config = config
+        cls._minio_path_strategy = minio_path_strategy
+        cls._es_index_schema = es_index_schema
+        logger.info("ClientFactory 已装配宿主配置与策略")
+
+    @classmethod
+    def _ensure_configured(cls):
+        """断言已装配配置，否则给出明确错误（避免 shared 读 setting 兜底）。"""
+        if cls._config is None:
+            raise RuntimeError(
+                "ClientFactory 未装配配置：请在启动期调用 ClientFactory.configure(config, ...)"
+            )
 
     @classmethod
     def _get_async_lock(cls) -> asyncio.Lock:
@@ -49,11 +84,9 @@ class ClientFactory:
                 # 双重检查锁定
                 if "minio" not in cls._instances:
                     from novamind.shared.storage.minio_client import MinioClient
-                    from novamind.features.knowledge_space.adapters.novamind_path_strategy import (
-                        NovamindPathStrategy,
-                    )
 
-                    config = get_config()
+                    cls._ensure_configured()
+                    config = cls._config
                     cls._instances["minio"] = MinioClient(
                         endpoint=config.minio.endpoint,
                         access_key=config.minio.access_key,
@@ -61,7 +94,7 @@ class ClientFactory:
                         secure=config.minio.secure,
                         default_bucket=config.minio.bucket_name,
                         public_endpoint=config.minio.public_endpoint,
-                        path_strategy=NovamindPathStrategy(),
+                        path_strategy=cls._minio_path_strategy,
                     )
                     logger.info("MinIO 客户端已初始化", endpoint=config.minio.endpoint)
 
@@ -83,11 +116,9 @@ class ClientFactory:
                 # 双重检查锁定
                 if "elasticsearch" not in cls._instances:
                     from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
-                    from novamind.features.knowledge_space.adapters.novamind_index_schema import (
-                        NovamindIndexSchema,
-                    )
 
-                    config = get_config()
+                    cls._ensure_configured()
+                    config = cls._config
                     # 从配置读取 SSL 参数，默认不使用 SSL
                     es_config = config.elasticsearch
                     use_ssl = getattr(es_config, "use_ssl", False)
@@ -102,7 +133,7 @@ class ClientFactory:
                         ca_certs=ca_certs,
                         default_embedding_dim=es_config.default_embedding_dim,
                         default_analyzer=getattr(es_config, "analyzer", "standard"),
-                        index_schema=NovamindIndexSchema(),
+                        index_schema=cls._es_index_schema,
                     )
                     logger.info("Elasticsearch 客户端已初始化", hosts=config.elasticsearch.hosts)
 
@@ -123,7 +154,8 @@ class ClientFactory:
                 if "redis" not in cls._instances:
                     from novamind.shared.cache.redis_client import RedisCache
 
-                    config = get_config()
+                    cls._ensure_configured()
+                    config = cls._config
                     redis_config = getattr(config, 'redis', None)
 
                     # 确定 Redis 运行模式

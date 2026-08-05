@@ -77,11 +77,6 @@ def _is_forbidden(mod: str) -> bool:
 # 历史违规白名单：rel_path → 该文件当前已知的违规 import 全名集合。
 # 收口（#3-A/B/C）每消除一处即从此删除对应条目，直至清空。
 KNOWN_VIOLATIONS: dict[str, set[str]] = {
-    "src/shared/clients/__init__.py": {
-        "novamind.setting.yaml_config",
-        "novamind.features.knowledge_space.adapters.novamind_path_strategy",
-        "novamind.features.knowledge_space.adapters.novamind_index_schema",
-    },
     "src/shared/mq/worker.py": {
         "novamind.features.knowledge_space.api.exceptions",
         "novamind.features.knowledge_space.models.document_task_batch",
