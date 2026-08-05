@@ -17,9 +17,7 @@ from novamind.core.database.database import get_db_session
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.app.models.resume import ResumeSessionStatus
 from novamind.features.app.repository.resume_repository import ResumeSessionRepository
-from novamind.features.app.services.resume_parser import ResumeParser
-from novamind.features.app.services.resume_analyzer import ResumeAnalyzer
-from novamind.features.app.services.resume_probing import AutoProbingEngine
+from novamind.engines.resume import ResumeParser, ResumeAnalyzer, AutoProbingEngine
 from novamind.features.app.adapters.host_prompt_provider import as_prompt_provider
 from novamind.features.app.adapters.host_fallback_llm_provider import (
     as_fallback_llm_provider,

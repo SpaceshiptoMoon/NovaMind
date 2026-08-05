@@ -16,8 +16,9 @@ from novamind.features.app.api.dependencies import _get_model_config_service
 from novamind.features.app.api.exceptions import ResumeSessionNotFoundError, ResumeParseError, InvalidFileTypeError, InvalidConfigError, FileSizeExceededError
 from novamind.features.app.models.resume import ResumeSessionStatus
 from novamind.features.app.repository.resume_repository import ResumeSessionRepository
+from novamind.engines.resume.schemas import StructuredResume
 from novamind.features.app.schemas.resume_schema import (
-    ResumeSessionResponse, ResumeSessionListResponse, StructuredResume,
+    ResumeSessionResponse, ResumeSessionListResponse,
 )
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.clients import get_minio_client

@@ -26,7 +26,7 @@ from novamind.shared.logging import Logger
 from novamind.engines.ports import PromptProvider
 from novamind.shared.document.readers import PDFReader, DocxReader
 from novamind.shared.utils.llm_response import extract_json_str
-from novamind.features.app.schemas.resume_schema import StructuredResume
+from novamind.engines.resume.schemas import StructuredResume
 
 
 class ResumeParser:
@@ -250,7 +250,7 @@ class ResumeParser:
         skills_data: dict,
         publications: dict,
     ) -> StructuredResume:
-        from novamind.features.app.schemas.resume_schema import (
+        from novamind.engines.resume.schemas import (
             PersonalInfo, WorkExperience as WE, ProjectExperience as PE,
             EducationExperience, SkillsData as SD, PublicationsData as PD,
             ResumeMetadata,
@@ -291,7 +291,7 @@ class ResumeParser:
         return resume
 
     def _cross_validate(self, resume: StructuredResume) -> StructuredResume:
-        from novamind.features.app.schemas.resume_schema import ValidationWarning
+        from novamind.engines.resume.schemas import ValidationWarning
 
         warnings = []
 

@@ -24,7 +24,7 @@ from typing import Optional
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.engines.ports import FallbackLLMProvider, PromptProvider
-from novamind.features.app.schemas.resume_schema import (
+from novamind.engines.resume.schemas import (
     StructuredResume, ProbingPlan, KnowledgePoint, JDAnalysis,
     WorkProjectUnit,
 )

@@ -1,19 +1,22 @@
-"""批次5 resume 接缝测试。
+"""Resume 引擎接缝测试。
 
-验证：
-  - ``app/services/resume_parser.py`` / ``resume_analyzer.py`` / ``resume_probing.py``
-    三个 resume 引擎模块不再 import ``shared.prompts.PromptManager`` /
-    ``core.middleware.structured_logging.get_logger`` /
-    ``engines.search.*`` / ``user.services.model_config_service`` /
-    ``setting.yaml_config``（切断 resume 引擎 -> 宿主 prompt/log/搜索/配置/ModelConfig
-    导入边，为批次 6 抽 ``novamind-resume-engine`` 前提）。
+守护三引擎从 ``features/app/services/`` 迁入 ``engines/resume/`` 后的接缝不变式：
+
+  - ``engines/resume/resume_parser.py`` / ``resume_analyzer.py`` / ``resume_probing.py``
+    不得 import 宿主 ``features`` / ``setting`` / ``shared.prompts.PromptManager`` /
+    ``core.middleware.structured_logging`` / ``engines.search.*`` provider /
+    ``user.services.model_config_service``（端口化后 prompt/log/WebSearch/降级 LLM
+    经注入端口，Schema 跟引擎走迁 ``engines/resume/schemas.py``，切断引擎 -> 宿主
+    prompt/log/搜索/配置/ModelConfig/schema 导入边）。
   - 三个引擎构造器接收 ``PromptProvider`` + ``Logger`` 端口；``ResumeAnalyzer`` 额外
     接收可选 ``WebSearchPort``；``AutoProbingEngine`` 额外接收可选
     ``FallbackLLMProvider``（替代 bg_db + ModelConfigService）。
+  - 引擎产物 Schema（``StructuredResume`` 等）位于 ``engines/resume/schemas.py``；
+    feature 侧 API DTO（``ResumeSessionResponse`` / ``ResumeSessionListResponse``）
+    留 ``features/app/schemas/resume_schema.py`` 反向引用（feature -> engine 合法）。
   - ``WebSearchPort`` / ``WebSearchResult`` 位于中立的 ``engines/search_ports.py``，
     搜索 provider 实现位于 ``shared/clients/search/``（基础外部服务客户端，非引擎），
-    宿主适配器（读 setting 择优 provider）归属 ``features/deep_research/adapters/``，
-    ``agent/adapters/web_search_adapter.py`` 重导出保持批次 3 零改动。
+    宿主适配器归属 ``features/deep_research/adapters/``。
   - ``FallbackLLMProvider`` 协议位于 ``engines/ports.py``。
   - ``resume_pipeline_service`` 装配点构造并注入上述端口；``probe_all`` 不再接收
     ``bg_db`` 参数。
@@ -33,11 +36,11 @@ if str(BACKEND_ROOT) not in sys.path:
 
 pytestmark = pytest.mark.unit
 
-# ---- resume 引擎侧模块（批次6 迁 novamind-resume-engine）----
+# ---- resume 引擎侧模块（已迁 engines/resume/）----
 _ENGINE_RESUME_MODULES = [
-    "novamind.features.app.services.resume_parser",
-    "novamind.features.app.services.resume_analyzer",
-    "novamind.features.app.services.resume_probing",
+    "novamind.engines.resume.resume_parser",
+    "novamind.engines.resume.resume_analyzer",
+    "novamind.engines.resume.resume_probing",
 ]
 
 _FORBIDDEN_RESUME_IMPORTS = {
@@ -48,6 +51,7 @@ _FORBIDDEN_RESUME_IMPORTS = {
     "novamind.shared.clients.search.tavily_service",
     "novamind.shared.clients.search.duckduckgo_service",
     "novamind.features.user.services.model_config_service",
+    "novamind.features.app.schemas.resume_schema",
     "novamind.setting.yaml_config",
 }
 
@@ -82,9 +86,9 @@ def test_resume_engine_no_forbidden_imports(mod_name: str):
 
 def test_resume_engines_require_port_injection():
     """三个 resume 引擎构造器均要求注入 PromptProvider + Logger。"""
-    from novamind.features.app.services.resume_parser import ResumeParser
-    from novamind.features.app.services.resume_analyzer import ResumeAnalyzer
-    from novamind.features.app.services.resume_probing import AutoProbingEngine
+    from novamind.engines.resume.resume_parser import ResumeParser
+    from novamind.engines.resume.resume_analyzer import ResumeAnalyzer
+    from novamind.engines.resume.resume_probing import AutoProbingEngine
 
     for cls in (ResumeParser, ResumeAnalyzer, AutoProbingEngine):
         params = inspect.signature(cls.__init__).parameters
@@ -103,7 +107,7 @@ def test_resume_engines_require_port_injection():
 
 def test_probe_all_no_bg_db_param():
     """probe_all 不再接收 bg_db 参数（降级 LLM 经 FallbackLLMProvider 注入）。"""
-    from novamind.features.app.services.resume_probing import AutoProbingEngine
+    from novamind.engines.resume.resume_probing import AutoProbingEngine
 
     params = inspect.signature(AutoProbingEngine.probe_all).parameters
     assert "bg_db" not in params
@@ -210,3 +214,57 @@ def test_resume_pipeline_service_assembles_ports():
     assert "logger=engine_logger" in src
     assert "web_search_port=web_search_port" in src
     assert "fallback_llm_provider=fallback_llm_provider" in src
+
+
+def test_resume_engines_exported_from_engines_resume():
+    """三引擎从 engines.resume 公共面导出（消费方经包级 import）。"""
+    from novamind.engines.resume import (
+        ResumeParser,
+        ResumeAnalyzer,
+        AutoProbingEngine,
+    )
+
+    assert ResumeParser.__name__ == "ResumeParser"
+    assert ResumeAnalyzer.__name__ == "ResumeAnalyzer"
+    assert AutoProbingEngine.__name__ == "AutoProbingEngine"
+
+
+def test_resume_schema_split_location():
+    """引擎产物 Schema 跟引擎走（engines/resume/schemas.py），feature 侧 DTO 反向引用。
+
+    - StructuredResume 等 engine-output 模型在 engines.resume.schemas
+    - ResumeSessionResponse / ResumeSessionListResponse 留 features.app.schemas.resume_schema
+    - engines/resume/schemas.py 不含两个 DTO（拆分干净）
+    - features/app/schemas/resume_schema.py 反向 import StructuredResume（feature -> engine 合法）
+    """
+    from novamind.engines.resume import schemas as engine_schemas
+    from novamind.features.app.schemas import resume_schema as feature_dto
+
+    # 引擎产物 Schema 在 engines.resume.schemas
+    assert hasattr(engine_schemas, "StructuredResume")
+    assert hasattr(engine_schemas, "JDAnalysis")
+    assert hasattr(engine_schemas, "ProbingPlan")
+
+    # DTO 留 feature，且不含 engine-output 模型（仅 2 个 DTO）
+    assert hasattr(feature_dto, "ResumeSessionResponse")
+    assert hasattr(feature_dto, "ResumeSessionListResponse")
+    assert not hasattr(engine_schemas, "ResumeSessionResponse"), (
+        "engines/resume/schemas.py 不应再含 API DTO（已拆回 feature）"
+    )
+
+    # feature DTO 反向引用 engine Schema（同一性 + Optional 包装）
+    from typing import Optional as _Optional
+    from novamind.engines.resume.schemas import StructuredResume
+    field = feature_dto.ResumeSessionResponse.model_fields["structured_resume"]
+    assert field.annotation == _Optional[StructuredResume], (
+        f"structured_resume 注解应为 Optional[StructuredResume]，实际: {field.annotation}"
+    )
+
+
+def test_resume_engine_schema_no_features_import():
+    """engines/resume/schemas.py 零 features/setting import（纯 Pydantic 引擎契约）。"""
+    from novamind.engines.resume import schemas as engine_schemas
+
+    imported = _imported_modules(engine_schemas)
+    offenders = [m for m in imported if m.startswith(("novamind.features", "novamind.setting"))]
+    assert not offenders, f"engines/resume/schemas.py 残留禁止 import: {offenders}"
