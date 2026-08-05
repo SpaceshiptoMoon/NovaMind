@@ -4,15 +4,15 @@
 
 本文档描述 Agent 模块的核心框架实现，包含三个子系统：**记忆系统**、**工具系统**、**LLM 交互层**，以及 **ReAct 引擎**。
 
-核心代码位于 `src/features/agent/core/`，分为 `memory/`、`tool/`、`llm/` 三个子目录和 `engine.py` 引擎入口。
+核心代码位于 `src/engines/agent/`（引擎纯逻辑层），分为 `memory/`、`tool/`、`llm/`、`mcp/` 四个子目录和 `agent_engine.py` 引擎入口；宿主装配层在 `src/features/agent/`。
 
 ---
 
 ## 目录结构
 
 ```
-src/features/agent/core/
-├── engine.py                    # AgentEngine — ReAct 循环引擎
+src/engines/agent/               # 引擎纯逻辑层（零 feature/setting/ORM 依赖）
+├── agent_engine.py             # AgentEngine — ReAct 循环引擎（原 engine.py）
 ├── prompt_builder.py            # SystemPromptBuilder — 分层 prompt 组装
 ├── retry.py                     # LLM 调用重试逻辑
 │
@@ -43,16 +43,22 @@ src/features/agent/core/
 │       ├── web_search.py        # 网络搜索
 │       ├── code_execution.py    # Docker 沙盒代码执行
 │       ├── memory.py            # 记忆管理（add/replace/remove）
-│       ├── todo.py              # 任务追踪
-│       └── read_tool_result.py  # 工具结果读取
+│       └── todo.py              # 任务追踪（read_tool_result 已移至宿主侧 features/agent/tool/builtins/）
+│
+├── mcp/                         # MCP 协议支持（从 features/agent/mcp 迁入）
+│   ├── client.py                # McpClientManager
+│   └── config.py                # MCP 连接配置
 │
 └── llm/                         # LLM 交互层
     ├── __init__.py
     └── agent_llm.py             # AgentLLM — 组合 BaseLLM，流式/非流式 + 工具调用
 
-# 配套文件
+# 宿主装配层
 src/features/agent/
 ├── agent_prompts.py             # Prompt 模板常量
+├── api/                         # 路由 + startup 装配点
+├── services/                    # chat_service 装配 AgentEngine + 注入端口适配器
+├── adapters/                    # 引擎端口的宿主实现（知识库/记忆/搜索/prompt）
 ├── models/
 │   ├── memory.py                # AgentMemory ORM
 │   ├── context_summary.py       # AgentContextSummary ORM（追加写入压缩摘要）
@@ -61,10 +67,9 @@ src/features/agent/
 │   ├── memory_repository.py     # 长期记忆 CRUD
 │   ├── memory_search_repository.py  # ES 混合搜索记忆
 │   └── context_summary_repository.py  # 压缩摘要仓储
-├── mcp/                         # MCP 协议支持
-│   ├── client.py                # McpClientManager
-│   └── config.py                # MCP 连接配置
-└── sandbox/                     # 代码沙盒
+├── tool/builtins/
+│   └── read_tool_result.py      # 依赖 AgentToolCall ORM 的宿主侧工具（不随引擎迁入）
+└── sandbox/                     # 代码沙盒（宿主资源）
     ├── docker_sandbox.py        # Docker 隔离执行
     └── config.py                # 沙盒配置
 ```
@@ -549,7 +554,7 @@ class SystemPromptBuilder:
 | 工具基类 (`base.py`) | ✅ 完成 | BaseTool |
 | 6 个内置工具 (`builtins/`) | ✅ 完成 | knowledge/web/code/memory/todo/read |
 | AgentLLM (`agent_llm.py`) | ✅ 完成 | 流式 + 非流式 + 降级 |
-| AgentEngine (`engine.py`) | ✅ 完成 | ReAct 循环 |
+| AgentEngine (`agent_engine.py`) | ✅ 完成 | ReAct 循环 |
 | PromptBuilder (`prompt_builder.py`) | ✅ 完成 | 分层 prompt 组装 |
 | 记忆管理 API | ✅ 完成 | GET/DELETE memories, GET stats |
 | 记忆内置工具 (`builtins/memory.py`) | ✅ 完成 | add/replace/remove 操作 |
