@@ -8,7 +8,7 @@ SerpAPI 提供 Google 搜索结果 API
 from typing import List, Optional
 import httpx
 
-from novamind.features.deep_research.services.external_search_service import (
+from novamind.engines.search.external_search_service import (
     ExternalSearchService,
     ExternalSearchResult,
 )

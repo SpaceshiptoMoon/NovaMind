@@ -6,8 +6,8 @@
   rag/          检索引擎（RetrievalEngine + RetrievalPort）
   agent/        Agent 引擎
   eval/         测评引擎（Embedding/Claim/Generation/Retrieval Evaluator）
+  search/       外部搜索引擎（DuckDuckGo/Tavily/SerpAPI provider）
   knowledge/    知识处理引擎（未来）
-  search/       外部搜索引擎（未来）
   resume/       简历解析引擎（未来）
   skill/        技能审查引擎（未来）
 """

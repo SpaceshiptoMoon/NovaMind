@@ -39,13 +39,11 @@ ENGINE_CANDIDATE_DIRS = [
     SRC / "shared" / "document",
     SRC / "engines" / "agent",
     SRC / "engines" / "rag",
+    SRC / "engines" / "eval",
+    SRC / "engines" / "search",
 ]
 
 ENGINE_CANDIDATE_FILES = [
-    SRC / "features" / "deep_research" / "services" / "duckduckgo_service.py",
-    SRC / "features" / "deep_research" / "services" / "serpapi_service.py",
-    SRC / "features" / "deep_research" / "services" / "tavily_service.py",
-    SRC / "features" / "deep_research" / "services" / "external_search_service.py",
     SRC / "features" / "skill" / "services" / "skill_checker.py",
 ]
 

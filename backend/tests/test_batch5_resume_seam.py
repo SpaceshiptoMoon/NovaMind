@@ -4,16 +4,16 @@
   - ``app/services/resume_parser.py`` / ``resume_analyzer.py`` / ``resume_probing.py``
     三个 resume 引擎模块不再 import ``shared.prompts.PromptManager`` /
     ``core.middleware.structured_logging.get_logger`` /
-    ``deep_research.services.*`` / ``user.services.model_config_service`` /
+    ``engines.search.*`` / ``user.services.model_config_service`` /
     ``setting.yaml_config``（切断 resume 引擎 -> 宿主 prompt/log/搜索/配置/ModelConfig
     导入边，为批次 6 抽 ``novamind-resume-engine`` 前提）。
   - 三个引擎构造器接收 ``PromptProvider`` + ``Logger`` 端口；``ResumeAnalyzer`` 额外
     接收可选 ``WebSearchPort``；``AutoProbingEngine`` 额外接收可选
     ``FallbackLLMProvider``（替代 bg_db + ModelConfigService）。
-  - ``WebSearchPort`` / ``WebSearchResult`` 提升到中立的 ``engines/search_ports.py``，
-    宿主适配器归属 ``features/deep_research/adapters/``（deep_research 拥有搜索服务），
-    ``agent/core/ports.py`` 与 ``agent/adapters/web_search_adapter.py`` 重导出保持
-    批次 3 零改动。
+  - ``WebSearchPort`` / ``WebSearchResult`` 位于中立的 ``engines/search_ports.py``，
+    搜索 provider 实现位于 ``engines/search/``，宿主适配器（读 setting 择优 provider）
+    归属 ``features/deep_research/adapters/``，``agent/adapters/web_search_adapter.py``
+    重导出保持批次 3 零改动。
   - ``FallbackLLMProvider`` 协议位于 ``engines/ports.py``。
   - ``resume_pipeline_service`` 装配点构造并注入上述端口；``probe_all`` 不再接收
     ``bg_db`` 参数。
@@ -45,8 +45,8 @@ _FORBIDDEN_RESUME_IMPORTS = {
     "novamind.shared.prompts.templates",
     "novamind.shared.prompts.templates.PromptManager",
     "novamind.core.middleware.structured_logging",
-    "novamind.features.deep_research.services.tavily_service",
-    "novamind.features.deep_research.services.duckduckgo_service",
+    "novamind.engines.search.tavily_service",
+    "novamind.engines.search.duckduckgo_service",
     "novamind.features.user.services.model_config_service",
     "novamind.setting.yaml_config",
 }

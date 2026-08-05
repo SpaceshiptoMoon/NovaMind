@@ -1,13 +1,13 @@
 """WebSearchPort 宿主适配器（deep_research 归属）。
 
-把 ``deep_research.services.{tavily,duckduckgo,serpapi}_service`` 的
+把 ``engines.search.{tavily,duckduckgo,serpapi}_service`` 的
 ``ExternalSearchResult`` 归一化为引擎端口 ``WebSearchPort`` 定义的 ``WebSearchResult``
 （见 ``engines/search_ports.py``）。
 
-deep_research 拥有搜索服务实现，故其端口适配器归属 deep_research（DDD 正确归属）。
-消费方（agent ``web_search`` 工具、resume 公司背景补充等）经依赖注入消费
-``WebSearchPort``，装配时调 ``build_web_search_port`` 取实现，不再各自直接 import
-deep_research 内部搜索服务。
+搜索 provider 实现已迁 ``engines/search/``（中立可复用），本适配器读 ``setting`` 择优
+构造 provider，故归属 deep_research（feature 层可读 setting）。消费方（agent
+``web_search`` 工具、resume 公司背景补充等）经依赖注入消费 ``WebSearchPort``，装配时
+调 ``build_web_search_port`` 取实现，不再各自直接 import 搜索 provider。
 """
 from typing import List, Optional
 
@@ -26,7 +26,7 @@ class HostWebSearchPort:
             # 默认回退到 DuckDuckGo（免费、无需 API Key）
             from novamind.setting.yaml_config import get_config
             from novamind.shared.config import DuckDuckGoSearchConfig
-            from novamind.features.deep_research.services.duckduckgo_service import (
+            from novamind.engines.search.duckduckgo_service import (
                 DuckDuckGoSearchService,
             )
 
@@ -72,7 +72,7 @@ def build_web_search_port(prefer_tavily: bool = True) -> WebSearchPort:
     es_cfg = get_config().external_search
 
     if prefer_tavily and es_cfg.tavily.api_key:
-        from novamind.features.deep_research.services.tavily_service import (
+        from novamind.engines.search.tavily_service import (
             TavilySearchService,
         )
 
@@ -87,7 +87,7 @@ def build_web_search_port(prefer_tavily: bool = True) -> WebSearchPort:
         if svc.is_available():
             return HostWebSearchPort(service=svc)  # type: ignore[return-value]
 
-    from novamind.features.deep_research.services.duckduckgo_service import (
+    from novamind.engines.search.duckduckgo_service import (
         DuckDuckGoSearchService,
     )
 
