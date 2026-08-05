@@ -49,10 +49,10 @@ from novamind.features.evaluation.schemas import (
 # 服务层 - 使用延迟导入避免循环依赖
 # 请直接从以下路径导入：
 #   - EvaluationService: from novamind.features.evaluation.services.evaluation_service import EvaluationService
-#   - RetrievalEvaluator: from novamind.features.evaluation.services.retrieval_evaluator import RetrievalEvaluator
-#   - GenerationEvaluator: from novamind.features.evaluation.services.generation_evaluator import GenerationEvaluator
-#   - EmbeddingEvaluator: from novamind.features.evaluation.services.embedding_evaluator import EmbeddingEvaluator
-#   - ClaimDecomposer: from novamind.features.evaluation.services.claim_decomposer import ClaimDecomposer
+#   - RetrievalEvaluator: from novamind.engines.eval.retrieval_evaluator import RetrievalEvaluator
+#   - GenerationEvaluator: from novamind.engines.eval.generation_evaluator import GenerationEvaluator
+#   - EmbeddingEvaluator: from novamind.engines.eval.embedding_evaluator import EmbeddingEvaluator
+#   - ClaimDecomposer: from novamind.engines.eval.claim_decomposer import ClaimDecomposer
 
 # API 层 - 使用延迟导入避免循环依赖
 # 请直接从以下路径导入：
