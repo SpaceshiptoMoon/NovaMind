@@ -1537,7 +1537,7 @@ class DocumentService:
             else (kb.get_config() if kb else None)
         )
 
-        from novamind.shared.mq import enqueue_process_document
+        from novamind.features.knowledge_space.tasks.document_tasks import enqueue_process_document
 
         batch_data = None
         if batch_id is None and batch_creator_id is not None:

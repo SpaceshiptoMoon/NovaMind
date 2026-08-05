@@ -209,10 +209,21 @@ class AppLifespanManager:
         except Exception as e:
             self.logger.warning("孤儿测评任务恢复失败", error=str(e))
 
-        # 启动嵌入式 arq Worker
+        # 启动嵌入式 arq Worker（任务函数从各 feature tasks 收集注入；shared/mq 只提供通用运行时）
         try:
-            from novamind.shared.mq.worker import start_embedded_worker, recover_orphan_documents
-            await start_embedded_worker()
+            from novamind.features.knowledge_space.tasks.document_tasks import (
+                process_document_task,
+                recover_orphan_documents,
+            )
+            from novamind.features.app.tasks.resume_tasks import (
+                process_resume_task,
+                recover_orphan_resume_sessions,
+            )
+            from novamind.shared.mq.worker import start_embedded_worker
+            await start_embedded_worker(
+                functions=[process_document_task, process_resume_task],
+                task_queue=config.task_queue,
+            )
             self.logger.info("嵌入式 arq Worker 已启动")
 
             # 恢复孤儿文档（PROCESSING 状态的文档重新入队）
@@ -222,7 +233,6 @@ class AppLifespanManager:
 
             # 恢复孤儿简历会话（PARSING/ANALYZING/PROBING 状态重新入队）
             try:
-                from novamind.shared.mq.worker import recover_orphan_resume_sessions
                 recovered_resumes = await recover_orphan_resume_sessions()
                 if recovered_resumes:
                     self.logger.info("孤儿简历会话恢复完成", recovered=recovered_resumes)
