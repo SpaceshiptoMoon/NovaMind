@@ -16,7 +16,7 @@ from novamind.core.database.base import Base
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.document_task import DocumentTask
 from novamind.features.knowledge_space.models.document_task_batch import BatchAction, DocumentTaskBatch
-from novamind.shared.mq import enqueue_process_document
+from novamind.features.knowledge_space.tasks.document_tasks import enqueue_process_document
 
 
 class _FailingPool:

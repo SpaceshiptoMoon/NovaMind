@@ -100,7 +100,7 @@ async def upload_resume(
         cfg["file_upload_warning"] = "原始文件存储失败，但不影响解析"
 
     # 后台异步执行 S1-S12 全流程（通过 arq 队列，支持重试和恢复）
-    from novamind.shared.mq import enqueue_process_resume
+    from novamind.features.app.tasks.resume_tasks import enqueue_process_resume
 
     await enqueue_process_resume(
         session_id=str(session_id),

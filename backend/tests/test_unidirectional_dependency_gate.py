@@ -75,29 +75,9 @@ def _is_forbidden(mod: str) -> bool:
 
 
 # 历史违规白名单：rel_path → 该文件当前已知的违规 import 全名集合。
-# 收口（#3-A/B/C）每消除一处即从此删除对应条目，直至清空。
-KNOWN_VIOLATIONS: dict[str, set[str]] = {
-    "src/shared/mq/worker.py": {
-        "novamind.features.knowledge_space.models.document_task_batch",
-        "novamind.features.knowledge_space.models.document_task",
-        "novamind.features.knowledge_space.repository.document_task_batch_repository",
-        "novamind.features.knowledge_space.repository.document_repository",
-        "novamind.features.knowledge_space.repository.document_task_repository",
-        "novamind.features.knowledge_space.services.document_service",
-        "novamind.features.user.services.model_config_service",
-        "novamind.features.app.services.resume_pipeline_service",
-        "novamind.features.app.repository.resume_repository",
-        "novamind.features.app.models.resume",
-        "novamind.setting.yaml_config",
-    },
-    "src/shared/mq/__init__.py": {
-        "novamind.features.knowledge_space.repository.document_task_repository",
-        "novamind.features.knowledge_space.repository.document_repository",
-        "novamind.features.knowledge_space.repository.document_task_batch_repository",
-        "novamind.features.knowledge_space.api.exceptions",
-        "novamind.features.knowledge_space.models.document_task",
-    },
-}
+# 收口（#3-A/B/C/D）完成后白名单已清空——engines/ 与 shared/ 全树零
+# novamind.features.* / novamind.setting.* import。保留空 dict 以维持测试结构。
+KNOWN_VIOLATIONS: dict[str, set[str]] = {}
 
 CANDIDATES = _collect_candidates()
 
