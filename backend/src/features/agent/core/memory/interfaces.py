@@ -4,11 +4,17 @@
 定义记忆的统一契约：
 - IShortTermMemory: 短期记忆（对话上下文）
 - ILongTermMemory: 长期记忆（跨会话知识）
+
+``LongTermMemoryEntry`` 已上提到 ``shared/agent_ports.py``（同时被 MemoryStorePort
+与 ILongTermMemory 引用），此处经顶部 import 提供，保持 ``from ...interfaces import
+LongTermMemoryEntry`` 路径不变。
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
+
+from novamind.shared.agent_ports import LongTermMemoryEntry  # noqa: F401
 
 
 # ==================== 数据模型 ====================
@@ -39,23 +45,6 @@ class MemorySnapshot:
     total_tokens: int
     compressed: bool = False
     compression_ratio: float = 1.0
-
-
-@dataclass
-class LongTermMemoryEntry:
-    """长期记忆条目"""
-
-    id: int
-    agent_id: int
-    user_id: int
-    category: str  # preference / fact / procedure / insight
-    content: str
-    source_type: str = "consolidate"
-    relevance_score: float = 0.0
-    access_count: int = 0
-    source_conversation_id: Optional[int] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
 
 
 # ==================== 抽象接口 ====================
