@@ -7,6 +7,7 @@
 from typing import Optional, List, ClassVar
 
 from novamind.core.middleware.base_exception_handler import BaseAPIError
+from novamind.shared.mq.exceptions import TransientBusyError
 
 
 class KnowledgeSpaceError(BaseAPIError):
@@ -240,17 +241,20 @@ class DocumentProcessingError(KnowledgeSpaceError):
         self.error_message = error_message
 
 
-class LocalASRBusyError(Exception):
+class LocalASRBusyError(TransientBusyError):
     """本地 ASR 正在转写其它音频，当前任务需延后重试。
 
     这不是错误，而是拥塞信号——arq worker 捕获后应延迟重入队，
     释放 Worker 槽位给其它非音频任务。
+
+    继承中立的 ``TransientBusyError``（``shared/mq/exceptions``），worker 只识别
+    基类与 ``defer_seconds``，无需 import 本异常即可处理拥塞。
     """
 
     def __init__(self, document_id: int, message: str = ""):
         self.document_id = document_id
-        self.message = message or f"本地 ASR 忙碌，文档 {document_id} 延后重试"
-        super().__init__(self.message)
+        msg = message or f"本地 ASR 忙碌，文档 {document_id} 延后重试"
+        super().__init__(message=msg, defer_seconds=30)
 
 
 class DocumentInvalidTypeError(KnowledgeSpaceError):

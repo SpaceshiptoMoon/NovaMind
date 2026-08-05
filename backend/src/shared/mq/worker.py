@@ -16,8 +16,8 @@ from typing import Optional
 from arq.worker import Worker
 from arq import Retry
 
-from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.knowledge_space.api.exceptions import LocalASRBusyError
+from novamind.shared.engine_logging import get_logger
+from novamind.shared.mq.exceptions import TransientBusyError
 from novamind.shared.utils.time_utils import now_china
 
 logger = get_logger(__name__)
@@ -219,10 +219,11 @@ async def process_document_task(
             await _handle_cancellation(document_id, space_id)
             await unbind_job(document_id)
 
-        except LocalASRBusyError as asr_busy:
+        except TransientBusyError as asr_busy:
             # 本地 ASR 忙碌（正在转写其它音频），不是错误，延后重入队。
             # 释放当前 Worker 槽位给其它文档任务，避免全部 Worker 卡在 ASR 排队。
-            asr_defer_seconds = 30
+            # 捕获中立基类，defer_seconds 由异常携带，worker 不感知 ASR 语义。
+            asr_defer_seconds = getattr(asr_busy, "defer_seconds", 30)
             logger.info(
                 "本地 ASR 忙碌，任务延后重入队",
                 document_id=document_id,
