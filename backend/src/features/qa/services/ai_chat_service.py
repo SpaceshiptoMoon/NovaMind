@@ -22,6 +22,7 @@ from novamind.core.middleware.structured_logging import get_logger
 if TYPE_CHECKING:
     from novamind.shared.storage.minio_client import MinioClient
     from novamind.engines.rag import RetrievalPort
+    from novamind.shared.document.ports import DocumentIngestionPort
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.shared.prompts.templates import PromptManager
@@ -77,6 +78,7 @@ class AIChatService:
         db: Optional[AsyncSession] = None,
         minio_client: Optional["MinioClient"] = None,
         retrieval_port: Optional["RetrievalPort"] = None,
+        document_ingestion_port: Optional["DocumentIngestionPort"] = None,
     ):
         """
         初始化 AI Chat 服务
@@ -88,6 +90,8 @@ class AIChatService:
             minio_client: MinIO 客户端（用于文件存储）
             retrieval_port: 检索端口（批次 2 接缝；为 None 时按需懒构造 HostRetrievalPort
                 包 SearchService，与历史行为等价）
+            document_ingestion_port: 文档摄入端口（R3 接缝；为 None 时按需懒构造
+                HostDocumentIngestionPort 包 DocumentProcessor，与历史行为等价）
         """
         self.qa_service = qa_service
         self.model_config_service = model_config_service
@@ -97,6 +101,7 @@ class AIChatService:
         self.logger = get_logger(__name__)
         self._token_counter = TokenCounter()
         self._retrieval_port = retrieval_port
+        self._document_ingestion_port = document_ingestion_port
 
     async def _get_retrieval_port(self) -> "RetrievalPort":
         """懒获取检索端口（HostRetrievalPort 包 SearchService）。
@@ -117,6 +122,21 @@ class AIChatService:
                 SearchService(self.db, es_client, self.model_config_service)
             )
         return self._retrieval_port
+
+    async def _get_document_ingestion_port(self) -> "DocumentIngestionPort":
+        """懒获取文档摄入端口（HostDocumentIngestionPort 包 DocumentProcessor）。
+
+        R3 接缝：消费方依赖 DocumentIngestionPort 抽象而非直接 import
+        ``features.knowledge_space.pipeline.DocumentProcessor``。未注入时按历史行为
+        构造 ``DocumentProcessor()`` 并包为 HostDocumentIngestionPort。
+        """
+        if self._document_ingestion_port is None:
+            from novamind.features.knowledge_space.adapters.document_ingestion_adapter import (
+                HostDocumentIngestionPort,
+            )
+
+            self._document_ingestion_port = HostDocumentIngestionPort()
+        return self._document_ingestion_port
 
     async def _get_llm_client(
         self,
@@ -1212,16 +1232,15 @@ class AIChatService:
                     continue
             return None
 
-        # PDF / DOCX 需要通过 DocumentProcessor 处理
-        from novamind.features.knowledge_space.pipeline import DocumentProcessor
+        # PDF / DOCX 经文档摄入端口处理（R3 接缝：不直接 import knowledge_space.pipeline）
+        ingestion_port = await self._get_document_ingestion_port()
 
         with tempfile.NamedTemporaryFile(suffix=f".{file_type}", delete=False) as tmp:
             tmp.write(file_data)
             tmp_path = tmp.name
 
         try:
-            processor = DocumentProcessor()
-            docs = await processor.load_with_strategy(
+            docs = await ingestion_port.load_with_strategy(
                 tmp_path,
                 strategy="recursive",
                 chunk_size=10000,
