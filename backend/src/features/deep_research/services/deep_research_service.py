@@ -23,7 +23,7 @@ from novamind.features.deep_research.models.research_session import (
     ExternalSearchProvider,
 )
 from novamind.features.deep_research.repository.research_repository import ResearchRepository
-from novamind.engines.search import (
+from novamind.shared.clients.search import (
     DuckDuckGoSearchService,
     SerpAPISearchService,
     TavilySearchService,
