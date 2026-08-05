@@ -6,17 +6,19 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 
 class ToolContext:
-    """工具执行上下文"""
+    """工具执行上下文
+
+    ``db_session`` 在引擎层保持不透明（``Any``）——具体类型由宿主在装配点注入，
+    引擎不感知 SQLAlchemy，避免引擎层对 ORM 的反向依赖。
+    """
 
     __slots__ = ("db_session", "user_id", "agent_id", "session_id", "_extra")
 
     def __init__(
         self,
-        db_session: AsyncSession,
+        db_session: Any,
         user_id: int,
         agent_id: int,
         session_id: str,
