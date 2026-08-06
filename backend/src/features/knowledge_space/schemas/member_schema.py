@@ -56,7 +56,7 @@ class MemberListResponse(BaseModel):
     limit: int = Field(..., description="返回数量")
 
 
-class ActionResponse(BaseModel):
+class MemberActionResponse(BaseModel):
     """通用操作响应"""
     success: bool = Field(..., description="操作是否成功")
     message: str = Field(..., description="响应消息")

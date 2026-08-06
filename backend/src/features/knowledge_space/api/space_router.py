@@ -25,7 +25,7 @@ from novamind.features.knowledge_space.api.dependencies import (
 )
 from novamind.features.knowledge_space.services.space_service import SpaceService
 from novamind.features.knowledge_space.services.audit_service import AuditService
-from novamind.features.knowledge_space.schemas.member_schema import ActionResponse
+from novamind.features.knowledge_space.schemas.member_schema import MemberActionResponse
 
 router = APIRouter(tags=["知识空间"])
 
@@ -218,7 +218,7 @@ async def update_space(
 
 @router.delete(
     "/{space_id}",
-    response_model=ActionResponse,
+    response_model=MemberActionResponse,
     summary="删除知识空间",
     description="删除指定的知识空间",
 )
@@ -243,7 +243,7 @@ async def delete_space(
         request=request,
     )
 
-    return ActionResponse(success=result, message="空间已删除")
+    return MemberActionResponse(success=result, message="空间已删除")
 
 
 # ========== 配置管理路由 ==========

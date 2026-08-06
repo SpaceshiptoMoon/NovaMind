@@ -227,14 +227,14 @@ class TokenRefreshResponse(BaseModel):
     expires_in: Optional[int] = Field(None, description="访问令牌过期时间（秒）")
 
 
-class MessageResponse(BaseModel):
+class UserMessageResponse(BaseModel):
     """
     通用消息响应模型
     """
     message: str = Field(..., description="响应消息")
 
 
-class LogoutResponse(MessageResponse):
+class LogoutResponse(UserMessageResponse):
     """
     登出响应模型
     """

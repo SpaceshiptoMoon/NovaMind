@@ -110,7 +110,7 @@ class SessionResponse(BaseModel):
     updated_at: Optional[datetime] = None
 
 
-class SessionListResponse(BaseModel):
+class AgentSessionListResponse(BaseModel):
     """会话列表响应"""
     items: List[SessionResponse]
     total: int
@@ -120,7 +120,7 @@ class SessionListResponse(BaseModel):
 
 # ==================== 消息 ====================
 
-class MessageResponse(BaseModel):
+class AgentMessageResponse(BaseModel):
     """消息响应"""
     model_config = ConfigDict(from_attributes=True)
 
@@ -137,7 +137,7 @@ class MessageResponse(BaseModel):
 
 class MessageListResponse(BaseModel):
     """消息列表响应"""
-    items: List[MessageResponse]
+    items: List[AgentMessageResponse]
     total: int
 
 
@@ -217,7 +217,7 @@ class ToolProviderResponse(BaseModel):
 
 # ==================== 通用操作响应 ====================
 
-class ActionResponse(BaseModel):
+class AgentActionResponse(BaseModel):
     """操作结果响应"""
     success: bool
     message: str

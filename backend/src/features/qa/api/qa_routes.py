@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from novamind.features.qa.api.dependencies import get_qa_service, get_minio_client_for_presign
 from novamind.features.user.api.auth import get_current_user
 from novamind.features.qa.services.qa_service import QAService
-from novamind.features.qa.schemas.qa import QARequest, QAResponse, QAUpdateRequest, SessionPreviewResponse, SessionListResponse, ConversationContextResponse
+from novamind.features.qa.schemas.qa import QARequest, QAResponse, QAUpdateRequest, SessionPreviewResponse, ChatSessionListResponse, ConversationContextResponse
 from novamind.features.qa.api.exceptions import MessageNotFoundError
 from novamind.features.knowledge_space.api.dependencies import validate_space_access
 from novamind.core.database.database import get_db
@@ -72,7 +72,7 @@ async def get_session_messages(
 
 @router.get(
     "/sessions",
-    response_model=SessionListResponse,
+    response_model=ChatSessionListResponse,
     summary="获取会话列表",
     description="获取当前用户的所有会话（含最新消息预览），支持分页",
 )
@@ -84,7 +84,7 @@ async def get_user_sessions(
 ):
     """获取用户的所有会话列表（含预览，支持分页）"""
     items, total = await qa_service.get_user_sessions(current_user["id"], limit, offset)
-    return SessionListResponse(
+    return ChatSessionListResponse(
         items=[SessionPreviewResponse(**item) for item in items],
         total=total,
         limit=limit,

@@ -14,7 +14,7 @@ from novamind.features.user.schemas.user_schema import (
     Token,
     TokenRefresh,
     TokenRefreshResponse,
-    MessageResponse,
+    UserMessageResponse,
     LogoutResponse,
     LogoutAllSessionsResponse,
     ChangePasswordRequest,
@@ -284,7 +284,7 @@ async def update_user(
 
 @router.delete(
     "/users/{user_id}",
-    response_model=MessageResponse,
+    response_model=UserMessageResponse,
     summary="删除用户",
     description="软删除用户账户（管理员不可删除自己）",
 )
@@ -302,7 +302,7 @@ async def delete_user(
         current_user: 当前登录的管理员用户
 
     Returns:
-        MessageResponse: 操作结果
+        UserMessageResponse: 操作结果
     """
     # 自我保护：管理员不能删除自己
     if current_user.get("id") == user_id:
@@ -313,14 +313,14 @@ async def delete_user(
     if success:
         # 软删除后立即使用户所有 Token 失效
         await AuthService.blacklist_all_user_tokens(user_id)
-        return MessageResponse(message="用户已删除")
+        return UserMessageResponse(message="用户已删除")
     else:
         raise UserNotFoundError(user_id=user_id)
 
 
 @router.patch(
     "/users/{user_id}/status",
-    response_model=MessageResponse,
+    response_model=UserMessageResponse,
     summary="停用/激活用户",
     description="切换用户账户的停用/激活状态（需要管理员权限）",
 )
@@ -338,7 +338,7 @@ async def deactivate_user(
         current_user: 当前登录的管理员用户
 
     Returns:
-        MessageResponse: 操作结果
+        UserMessageResponse: 操作结果
     """
     # 自我保护：管理员不能停用/激活自己
     if current_user.get("id") == user_id:
@@ -353,7 +353,7 @@ async def deactivate_user(
             # 重新激活时清除用户级黑名单，允许用户正常使用
             await AuthService.clear_user_blacklist(user_id)
         status_text = "已停用" if new_status == UserStatus.INACTIVE else "已激活"
-        return MessageResponse(message=f"用户{status_text}")
+        return UserMessageResponse(message=f"用户{status_text}")
     else:
         raise UserNotFoundError(user_id=user_id)
 

@@ -56,7 +56,7 @@ class SessionPreviewResponse(BaseModel):
     preview: str = Field(default="", description="会话预览，取第一条用户消息的前30个字符")
 
 
-class SessionListResponse(BaseModel):
+class ChatSessionListResponse(BaseModel):
     """会话列表响应（含分页）"""
     items: List[SessionPreviewResponse] = Field(..., description="会话列表")
     total: int = Field(..., description="总数")

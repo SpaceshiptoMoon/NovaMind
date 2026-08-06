@@ -139,7 +139,7 @@ class RerankConfig(BaseModel):
     )
 
 
-class LLMConfig(BaseModel):
+class SearchLLMConfig(BaseModel):
     """
     LLM 回答配置
 
@@ -223,7 +223,7 @@ class SearchRequest(BaseModel):
         default=None,
         description="Rerank 重排序配置（为空则不重排序）",
     )
-    llm: Optional[LLMConfig] = Field(
+    llm: Optional[SearchLLMConfig] = Field(
         default=None,
         description="LLM 回答配置（为空则不生成回答）",
     )

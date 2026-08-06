@@ -24,8 +24,8 @@ from novamind.features.agent.schemas.agent_schema import (
     AgentDetailResponse,
     AgentListResponse,
     SessionResponse,
-    SessionListResponse,
-    MessageResponse,
+    AgentSessionListResponse,
+    AgentMessageResponse,
     MessageListResponse,
     MemoryResponse,
     MemoryListResponse,
@@ -181,11 +181,11 @@ class AgentService:
         agent_id: Optional[int] = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> SessionListResponse:
+    ) -> AgentSessionListResponse:
         convs, total = await self.session_repo.list_by_user(
             user_id, agent_id, limit, offset
         )
-        return SessionListResponse(
+        return AgentSessionListResponse(
             items=[SessionResponse.model_validate(c) for c in convs],
             total=total,
             limit=limit,
@@ -236,7 +236,7 @@ class AgentService:
             conv.id, limit, offset
         )
         return MessageListResponse(
-            items=[MessageResponse.model_validate(m) for m in messages],
+            items=[AgentMessageResponse.model_validate(m) for m in messages],
             total=total,
         )
 
