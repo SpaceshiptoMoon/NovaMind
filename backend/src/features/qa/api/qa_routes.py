@@ -11,7 +11,7 @@ from novamind.features.qa.api.dependencies import get_qa_service, get_minio_clie
 from novamind.features.user.api.auth import get_current_user
 from novamind.features.qa.services.qa_service import QAService
 from novamind.features.qa.schemas.qa import QARequest, QAResponse, QAUpdateRequest, SessionPreviewResponse, ChatSessionListResponse, ConversationContextResponse
-from novamind.features.qa.api.exceptions import MessageNotFoundError
+from novamind.features.qa.exceptions import MessageNotFoundError
 from novamind.features.knowledge_space.api.dependencies import validate_space_access
 from novamind.core.database.database import get_db
 from novamind.core.middleware.structured_logging import get_logger
