@@ -142,3 +142,39 @@ class DocumentTaskRepository:
     async def get_by_job_id(self, job_id: str) -> Optional[DocumentTask]:
         result = await self.session.execute(select(DocumentTask).where(DocumentTask.job_id == job_id))
         return result.scalar_one_or_none()
+
+    @staticmethod
+    async def mark_failed_independent(
+        document_id: int,
+        error_message: str,
+        *,
+        job_id: Optional[str] = None,
+        completed_at: Any = None,
+        failed_status: int = TaskStatus.FAILED,
+        processing_status: int = TaskStatus.PROCESSING,
+    ) -> None:
+        """紧急兜底：ORM session 不可用时，用独立连接 raw SQL 标记任务失败。
+
+        直接 commit 独立连接（紧急路径，非正常写流程，绕过 begin_nested/SAVEPOINT 约定）。
+        逐字保真原 ``_ensure_mark_failed`` 第 2 层 raw SQL（含 job_id/无 job_id 两分支 WHERE）。
+        """
+        from sqlalchemy import text
+        from novamind.core.database.database import get_engine
+
+        where_clause = "job_id=:job_id" if job_id else "document_id=:id AND status=:processing"
+        async with get_engine().connect() as conn:
+            await conn.execute(
+                text(
+                    "UPDATE document_task_items SET status=:status, completed_at=:now, "
+                    "error_message=:msg WHERE " + where_clause
+                ),
+                {
+                    "msg": error_message[:500],
+                    "id": document_id,
+                    "job_id": job_id,
+                    "now": completed_at,
+                    "status": failed_status,
+                    "processing": processing_status,
+                },
+            )
+            await conn.commit()

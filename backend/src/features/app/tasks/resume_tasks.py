@@ -109,28 +109,16 @@ async def _ensure_mark_resume_failed(session_id: str, error_message: str) -> Non
     except Exception as e:
         logger.warning("ORM 标记简历 FAILED 失败，尝试 raw SQL", session_id=session_id, error=str(e))
 
-    # 第 2 层：Raw SQL
+    # 第 2 层：Raw SQL（下沉 ResumeSessionRepository.mark_failed_independent）
     try:
-        from novamind.core.database.database import get_engine
         from novamind.features.app.models.resume import ResumeSessionStatus
-        from sqlalchemy import text
+        from novamind.features.app.repository.resume_repository import ResumeSessionRepository
 
-        engine = get_engine()
-        async with engine.connect() as conn:
-            await conn.execute(
-                text(
-                    "UPDATE resume_sessions SET status=:status, error_message=:msg, "
-                    "updated_at=NOW() WHERE id=:id"
-                ),
-                {
-                    "status": ResumeSessionStatus.FAILED.value,
-                    "msg": failed_msg[:2000],
-                    "id": int(session_id),
-                },
-            )
-            await conn.commit()
-            logger.info("简历会话已标记 FAILED（raw SQL）", session_id=session_id)
-            return
+        await ResumeSessionRepository.mark_failed_independent(
+            session_id, ResumeSessionStatus.FAILED.value, failed_msg
+        )
+        logger.info("简历会话已标记 FAILED（raw SQL）", session_id=session_id)
+        return
     except Exception as e:
         logger.error("raw SQL 标记简历 FAILED 也失败", session_id=session_id, error=str(e))
 
