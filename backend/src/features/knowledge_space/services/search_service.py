@@ -1,23 +1,11 @@
 """
-检索服务
+检索服务。
 
-处理知识库的向量检索、全文检索和混合检索
-支持多租户和知识库层级
-使用 Elasticsearch 统一向量和全文检索
+处理知识库的向量检索、全文检索和混合检索，支持多租户和知识库层级。
+使用 Elasticsearch 统一向量和全文检索，分块数据仅存储在 Elasticsearch 中。
 
-注意: 分块数据仅存储在 Elasticsearch 中，不在 MySQL 中存储
-
-模型配置支持：
-- Embedding 模型：从知识库的 embedding_model 字段获取
-- Rerank 模型：从请求的 rerank.model 字段获取
-- 使用 ModelConfigService 获取凭证并创建客户端
-
-批次 2 接缝：``search`` 的**纯检索段**（缓存读写 / 向量生成 / ES 检索 / 归一化 / 阈值过滤 /
-rerank）已委托给 ``RetrievalEngine.retrieve_raw``（``novamind.engines.rag``）。本服务保留
-宿主业务：权限 / 多租户校验、模式可用性 + fallback、查询改写（LLM）、模型客户端解析、
-LLM 回答生成、响应组装。响应 dict 键与旧路径逐字一致。
-
-回滚：``NOVAMIND_LEGACY_RETRIEVAL=1`` 走 ``_search_legacy``（旧内联编排，复用引擎 helper）。
+模型配置：Embedding 从知识库字段获取，Rerank 从请求参数获取，
+通过 ModelConfigService 获取凭证并创建客户端。
 """
 
 from typing import List, Optional, Dict, Any

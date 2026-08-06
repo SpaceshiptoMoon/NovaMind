@@ -1,13 +1,7 @@
 """
-附件预签名 URL 注入（宿主展示策略）
+附件预签名 URL 注入，为消息附件中的图片生成 MinIO presigned preview_url。
 
-从 ``shared/storage/minio_client.py`` 迁出：为消息 ``extra["attachments"]`` 中的图片
-附件注入 ``preview_url``（MinIO presigned URL）。这是宿主展示层策略（决定哪些附件
-类型生成预览 URL），不属于通用存储客户端，故归 ``features/knowledge_space/adapters/``。
-
-被 ``features/agent/api/routes.py``、``features/qa/api/ai_chat_routes.py``、
-``features/qa/api/qa_routes.py`` 消费。放在 knowledge_space adapter 下是因为 agent
-与 qa 都已依赖 knowledge_space（批次1 拓扑），避免引入 agent→qa 新耦合。
+从 shared/storage/minio_client.py 迁出，属宿主展示层策略。
 """
 from __future__ import annotations
 

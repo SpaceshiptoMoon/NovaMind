@@ -1,18 +1,7 @@
-"""``CachePort`` 宿主适配器（批次 6a-2 新增）。
+"""
+CachePort 宿主适配器，包装 RedisCache 实现 engines.rag.cache_port.CachePort 协议。
 
-``HostCachePort`` 包装宿主 ``shared.cache.redis_client.get_redis_client()`` 返回的
-``RedisCache``，实现 ``engines.rag.cache_port.CachePort`` 协议。引擎 ``RetrievalEngine``
-经构造器接收 ``CachePort``，与 Redis 实现解耦——为批次 6c 物理抽包
-（``novamind-rag-engine``）留出接缝。
-
-惰性解析：宿主 Redis 客户端在首次缓存操作时才获取（对齐原
-``RetrievalEngine._get_cache`` 惰性语义），避免构造期触发 Redis 连接。
-
-方法签名逐字对齐 ``RedisCache``（``set(key, value, expire=None)`` /
-``delete_by_pattern(pattern, batch_size=100)``），零转换委托。
-
-依赖方向：本适配器属宿主装配层，允许 import 宿主 ``shared.cache.redis_client``
-（adapter 层是宿主与引擎的桥，不进引擎包）。
+惰性解析 Redis 客户端，方法签名对齐 RedisCache，零转换委托。
 """
 from __future__ import annotations
 
