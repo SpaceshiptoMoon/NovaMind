@@ -22,7 +22,7 @@ from novamind.features.knowledge_space.api.dependencies import (
     get_current_user_id,
     validate_space_access,
 )
-from novamind.features.knowledge_space.api.exceptions import KnowledgeBaseNotFoundError
+from novamind.features.knowledge_space.exceptions import KnowledgeBaseNotFoundError
 from novamind.features.knowledge_space.services.search_service import SearchService
 from novamind.features.knowledge_space.services.audit_service import AuditService
 from novamind.features.user.api.dependencies import get_model_config_service

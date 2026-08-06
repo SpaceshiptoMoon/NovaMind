@@ -10,7 +10,7 @@ from typing import List, Tuple, Dict, Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from novamind.features.knowledge_space.api.exceptions import DocumentProcessingError, LocalASRBusyError
+from novamind.features.knowledge_space.exceptions import DocumentProcessingError, LocalASRBusyError
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.document_task import DocumentTask
 from novamind.shared.model_config_ports import ModelConfigPort

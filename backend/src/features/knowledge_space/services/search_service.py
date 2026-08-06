@@ -35,7 +35,7 @@ from novamind.shared.ai_models.embedding import BaseEmbedding
 from novamind.shared.ai_models.rerank import BaseRerank
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.knowledge_space.api.exceptions import (
+from novamind.features.knowledge_space.exceptions import (
     KnowledgeBaseNotFoundError,
     KnowledgeBaseAccessDeniedError,
     SpaceAccessDeniedError,

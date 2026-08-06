@@ -25,7 +25,7 @@ from novamind.features.knowledge_space.api.dependencies import (
     validate_space_admin,
     get_user_repository,
 )
-from novamind.features.knowledge_space.api.exceptions import (
+from novamind.features.knowledge_space.exceptions import (
     UserNotFoundError,
     InvalidParameterError,
 )

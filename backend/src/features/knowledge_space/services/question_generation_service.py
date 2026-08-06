@@ -21,7 +21,7 @@ from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     QuestionLLMConfig,
 )
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.knowledge_space.api.exceptions import (
+from novamind.features.knowledge_space.exceptions import (
     InvalidParameterError,
     QuestionGenerationError,
 )
