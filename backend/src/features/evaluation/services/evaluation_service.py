@@ -41,7 +41,7 @@ from novamind.engines.eval import (
 )
 from novamind.features.evaluation.services.test_set_parser import parse_test_set
 from novamind.features.evaluation.services.result_exporter import result_to_json_bytes, result_to_csv
-from novamind.features.evaluation.api.exceptions import (
+from novamind.features.evaluation.exceptions import (
     EvaluationTaskNotFoundError,
     EvaluationTestSetNotFoundError,
     EvaluationTaskPendingError,

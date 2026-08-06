@@ -20,7 +20,7 @@ from novamind.features.knowledge_space.api.dependencies import (
     validate_kb_access,
 )
 from novamind.features.evaluation.api.dependencies import get_evaluation_service
-from novamind.features.evaluation.api.exceptions import (
+from novamind.features.evaluation.exceptions import (
     EvaluationTestSetNotFoundError,
     EvaluationTaskNotFoundError,
     EvaluationTaskPendingError,
@@ -91,16 +91,16 @@ async def create_test_set(
     filename = file.filename or ""
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if f".{ext}" not in ALLOWED_TEST_SET_EXTENSIONS:
-        from novamind.features.evaluation.api.exceptions import InvalidTestSetError
+        from novamind.features.evaluation.exceptions import InvalidTestSetError
         raise InvalidTestSetError(f"不支持的文件格式: .{ext}，仅支持 {sorted(ALLOWED_TEST_SET_EXTENSIONS)}")
 
     content = await file.read()
     if not content:
-        from novamind.features.evaluation.api.exceptions import InvalidTestSetError
+        from novamind.features.evaluation.exceptions import InvalidTestSetError
         raise InvalidTestSetError("文件内容为空")
 
     if len(content) > MAX_TEST_SET_SIZE:
-        from novamind.features.evaluation.api.exceptions import InvalidTestSetError
+        from novamind.features.evaluation.exceptions import InvalidTestSetError
         raise InvalidTestSetError(f"文件大小超过限制（最大 {MAX_TEST_SET_SIZE // 1024 // 1024}MB）")
 
     parse_test_set(content, filename)
@@ -223,7 +223,7 @@ async def delete_test_set(
     # 校验测试集归属当前知识库，防止越权删除
     test_set_obj = await evaluation_service.get_test_set_by_kb(test_set_id, space_id, kb_id)
     if not test_set_obj:
-        from novamind.features.evaluation.api.exceptions import EvaluationTestSetNotFoundError
+        from novamind.features.evaluation.exceptions import EvaluationTestSetNotFoundError
         raise EvaluationTestSetNotFoundError(test_set_id)
     result = await evaluation_service.delete_test_set(test_set_id)
     return {"success": result, "message": "测试集已删除"}
