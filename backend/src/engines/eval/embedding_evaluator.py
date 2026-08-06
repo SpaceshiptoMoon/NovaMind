@@ -1,10 +1,5 @@
 """
-基于 Embedding 的评估器
-
-提供余弦相似度计算，用于多种评估策略
-
-批次 5 接缝：原模块级 ``get_logger(__name__)`` 实际从未被使用（死代码），端口化
-时直接移除，无需注入 Logger 端口；本评估器只依赖注入的 ``BaseEmbedding``。
+基于 Embedding 的评估器。余弦相似度计算，依赖注入的 BaseEmbedding。
 """
 import math
 from typing import List
