@@ -19,6 +19,7 @@ from novamind.core.middleware.manifest_loader import get_sorted_manifests
 
 from novamind.core.database.base import create_tables, ensure_fulltext_indexes
 from novamind.core.database.database import get_engine, dispose_engine
+from novamind.core.database.schema_migrations import SCHEMA_MIGRATIONS
 from novamind.shared.cache.redis_client import get_redis_client, close_redis_connection
 
 logger = get_logger(__name__)
@@ -310,28 +311,11 @@ class AppLifespanManager:
 
         create_all() 只创建不存在的表，不会给已存在的表 ALTER ADD COLUMN。
         在此集中维护「新增列」迁移：检测目标列缺失则补建，幂等可重复执行。
-        新增列时向 MIGRATIONS 追加 (表名, 列名, DDL) 即可。
+        新增列时向 ``core.database.schema_migrations.SCHEMA_MIGRATIONS`` 追加
+        (表名, 列名, DDL) 即可，结构由 ``tests/test_schema_migrations.py`` 校验。
         """
-        # (表名, 列名, ALTER DDL)
-        migrations = [
-            (
-                "qa_session_configs",
-                "kb_bindings",
-                "ALTER TABLE qa_session_configs ADD COLUMN kb_bindings JSON NULL",
-            ),
-            (
-                "qa_session_configs",
-                "llm_config",
-                "ALTER TABLE qa_session_configs ADD COLUMN llm_config JSON NULL",
-            ),
-            (
-                "document_task_items",
-                "process_mode",
-                "ALTER TABLE document_task_items ADD COLUMN process_mode SMALLINT NOT NULL DEFAULT 0 COMMENT 'Task process mode'",
-            ),
-        ]
         db_engine = get_engine()
-        for table, column, ddl in migrations:
+        for table, column, ddl in SCHEMA_MIGRATIONS:
             try:
                 async with db_engine.begin() as conn:
                     exists = (
