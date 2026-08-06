@@ -581,7 +581,7 @@ async def enqueue_process_document(
     """
     from novamind.core.database.database import get_db_session
     from novamind.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
-    from novamind.features.knowledge_space.api.exceptions import DocumentAlreadyProcessingError, DocumentNotFoundError
+    from novamind.features.knowledge_space.exceptions import DocumentAlreadyProcessingError, DocumentNotFoundError
     from novamind.features.knowledge_space.models.document_task import TaskStatus
     from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
     from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository

@@ -18,7 +18,7 @@ from novamind.features.knowledge_space.repository.knowledge_base_repository impo
 from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
 from novamind.features.knowledge_space.repository.audit_repository import AuditRepository
 from novamind.features.knowledge_space.services.permission_service import PermissionService
-from novamind.features.knowledge_space.api.exceptions import (
+from novamind.features.knowledge_space.exceptions import (
     SpaceNotFoundError,
     SpaceAlreadyExistsError,
     SpaceAccessDeniedError,

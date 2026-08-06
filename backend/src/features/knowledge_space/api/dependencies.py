@@ -29,7 +29,7 @@ from novamind.features.knowledge_space.services.search_service import SearchServ
 from novamind.features.knowledge_space.services.audit_service import AuditService
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.utils.time_utils import now_china
-from novamind.features.knowledge_space.api.exceptions import (
+from novamind.features.knowledge_space.exceptions import (
     SpaceNotFoundError,
     SpaceAccessDeniedError,
     MemberNotFoundError,

@@ -50,7 +50,7 @@ from novamind.features.knowledge_space.api.dependencies import (
     validate_kb_access,
     validate_kb_writable,
 )
-from novamind.features.knowledge_space.api.exceptions import (
+from novamind.features.knowledge_space.exceptions import (
     DocumentNotFoundError,
     SpaceAccessDeniedError,
     DocumentInvalidTypeError,

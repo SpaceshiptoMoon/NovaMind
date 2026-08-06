@@ -41,7 +41,7 @@ from novamind.features.knowledge_space.repository.knowledge_base_repository impo
 from novamind.features.knowledge_space.repository.member_repository import MemberRepository
 from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
 from novamind.features.knowledge_space.services.permission_service import PermissionService
-from novamind.features.knowledge_space.api.exceptions import (
+from novamind.features.knowledge_space.exceptions import (
     KnowledgeBaseNotFoundError,
     DocumentNotFoundError,
     DocumentAlreadyExistsError,
