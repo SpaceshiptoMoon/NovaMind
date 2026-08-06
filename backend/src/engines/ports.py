@@ -1,18 +1,7 @@
 """
-引擎端口协议
-
-本模块定义引擎库对外依赖的抽象协议（engine 专属端口）。引擎通过这些协议
-面向接口编程，宿主在装配时注入实现。
-
-  - ``PromptProvider``：提示词模板提供者协议。
-  - ``FallbackLLMProvider``：降级 LLM 提供者协议。
-
-``Logger`` 协议是公共日志协议（非引擎专属），已并入 ``novamind.shared.logging``。
-
-设计约束：
-  - 协议只描述引擎所需的能力，不携带任何 NovaMind 业务实体（ORM/枚举/配置键）。
-  - 引擎构造器接收这些协议的实例；宿主在装配时注入实现。
-  - 依赖方向：features -> engines -> shared；引擎 ✗-> 宿主 features/setting。
+引擎端口协议。
+PromptProvider + FallbackLLMProvider，跨多引擎复用放 engines/ 顶层。
+仅依赖 typing.Protocol，不依赖 feature/setting。
 """
 from __future__ import annotations
 

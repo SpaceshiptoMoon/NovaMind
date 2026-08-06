@@ -1,13 +1,7 @@
 """
-检索后自评估 + 自动重试组件（Grade → Retry）
-
-检索完成后由 LLM 对结果质量打分，低于阈值则自动重试。
-重试时可切换检索模式、触发 Query Rewriting、降低阈值。
-
-接缝：prompt 经注入的 ``PromptProvider`` 端口取模板、日志经注入的 ``Logger`` 端口输出，
-不再直接 import ``shared.prompts.PromptManager`` 与 ``core.middleware.structured_logging``
-（切断引擎 -> 宿主 prompt 注册表/结构化日志导入边）。提示词模板键 ``qa_grade_retrieval``
-由宿主在中央注册表注册（见 ``features/qa/qa_prompts.py``）。
+检索后自评估 + 自动重试组件（Grade → Retry）。
+LLM 对检索结果打分，低于阈值时自动切换模式/改写查询/降低阈值；
+prompt 经 PromptProvider 注入，日志经 Logger 注入。
 """
 from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable, List, Tuple

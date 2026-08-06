@@ -1,21 +1,7 @@
 """
-S10-S11: 自动追问引擎 (V2)
-
-核心改动：
-1. 前几轮固定策略（做法→原因→结果→困难），后续自由追问
-2. 传入工作单元完整上下文（公司+岗位+行业+项目）
-3. 新增 generate_resume_advice() 生成简历优化建议
-4. 每轮追问必须引用上一轮回答
-
-重试与降级策略不变：
-- 主模型指数退避重试3次（2s → 4s → 8s）
-- 重试耗尽后：降级到用户配置的其他模型
-
-批次 5 接缝：prompt 经注入的 ``PromptProvider`` 端口取模板、日志经注入的 ``Logger``
-端口输出，不再 import ``shared.prompts.PromptManager`` /
-``core.middleware.structured_logging.get_logger``。降级 LLM 加载改经注入的
-``FallbackLLMProvider`` 端口，不再 import ``user.services.model_config_service``
-（切断 resume 引擎 -> user feature 导入边；ModelConfigService 全量端口化见任务#36）。
+S10-S11: 自动追问引擎。
+前几轮固定策略（做法→原因→结果→困难），后续自由追问；
+prompt/log/降级LLM 经注入端口获取。
 """
 import asyncio
 import json

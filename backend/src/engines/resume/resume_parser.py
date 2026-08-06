@@ -1,20 +1,7 @@
 """
-S1-S4: 简历结构化解析 Pipeline
-
-Pipeline:
-  S1: 文本提取 (PDF/DOCX → raw_text)
-  S2: 章节切割 (LLM → sections)
-  S3: 并行深度解析 (6 路 LLM → 结构化数据)
-  S4: 交叉校验 (程序化 → 校验后数据)
-
-批次 5 接缝：prompt 经注入的 ``PromptProvider`` 端口取模板、日志经注入的 ``Logger``
-端口输出，不再直接 import ``shared.prompts.PromptManager`` 与
-``core.middleware.structured_logging.get_logger``（切断 resume 引擎 -> 宿主
-prompt 注册表/结构化日志导入边，为批次 6 抽 ``novamind-resume-engine`` 做准备）。
-
-``shared.knowledge.document_processing.readers`` 与 ``shared.utils.redact`` 属
-引擎通用能力（批次 6 迁 ``novamind-knowledge-engine`` / ``novamind-engine-core``），
-resume 引擎 -> 引擎库的依赖方向允许，保留 import。
+S1-S4: 简历结构化解析 Pipeline。
+文本提取→章节切割→6路LLM并行深度解析→程序化交叉校验。
+prompt/log 经注入端口获取。
 """
 import asyncio
 import json

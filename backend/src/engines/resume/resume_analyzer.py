@@ -1,23 +1,7 @@
 """
-S5-S9 + S12: 简历分析报告生成 Pipeline (V2)
-
-三阶段框架：
-  S5:   JD 技术图谱提取（有JD时）
-  S6:   工作-项目上下文合并（WorkProjectUnit）
-  S6.5: 公司/岗位背景补充（搜索引擎 + LLM）
-  S7:   复杂度评估 + 追问策略（自动分配轮数）
-  S8:   技术前置学习（学习导向 Q&A）
-  S9:   组装中间 MD 报告（三段式）
-  S12:  组装最终报告（三段式 + Q&A + 简历建议）
-
-批次 5 接缝：
-  - prompt 经注入的 ``PromptProvider`` 端口取模板、日志经注入的 ``Logger`` 端口输出，
-    不再 import ``shared.prompts.PromptManager`` / ``core.middleware.structured_logging``。
-  - 公司背景补充的联网搜索改经注入的 ``WebSearchPort``（见 ``engines/search_ports.py``），
-    不再直接 import ``deep_research.services.{tavily,duckduckgo}_service`` 与
-    ``setting.yaml_config.get_config``（切断 resume -> deep_research / setting 导入边）。
-  - ``shared.utils.redact`` 属引擎通用能力（批次 6 迁 ``novamind-engine-core``），
-    resume 引擎 -> 引擎库依赖方向允许，保留 import。
+S5-S9 + S12: 简历分析报告生成 Pipeline。
+三阶段：JD技术提取→项目合并→复杂评估→技术学习→报告组装。
+prompt/log/WebSearch/降级LLM 经注入端口获取。
 """
 import json
 from typing import Optional
