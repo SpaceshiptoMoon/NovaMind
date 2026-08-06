@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.agent.sandbox.config import LANGUAGE_EXTENSIONS, SandboxConfig
-from novamind.features.agent.api.exceptions import (
+from novamind.features.agent.exceptions import (
     SandboxExecutionError,
     SandboxNotAvailableError,
     SandboxTimeoutError,

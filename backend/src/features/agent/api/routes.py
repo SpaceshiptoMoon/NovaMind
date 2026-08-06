@@ -394,7 +394,7 @@ async def get_tool(
 ):
     tool = registry.get_tool(tool_name)
     if not tool:
-        from novamind.features.agent.api.exceptions import ToolNotFoundError
+        from novamind.features.agent.exceptions import ToolNotFoundError
         raise ToolNotFoundError(tool_name)
 
     tools = tool.get_tools()

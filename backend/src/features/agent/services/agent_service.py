@@ -31,7 +31,7 @@ from novamind.features.agent.schemas.agent_schema import (
     MemoryListResponse,
     MemoryStatsResponse,
 )
-from novamind.features.agent.api.exceptions import (
+from novamind.features.agent.exceptions import (
     AgentNotFoundError,
     SessionNotFoundError,
     MemoryNotFoundError,
