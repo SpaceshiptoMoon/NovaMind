@@ -1,18 +1,7 @@
 """
-测评核心编排服务
+测评核心编排服务，负责测试集管理、异步执行、结果存储与人工评分。
 
-负责：测试集管理 → 创建任务 → 异步执行（并发+进度）→ 结果存 MinIO → 人工评分
-
-批次 5 接缝：本服务是宿主编排层（永久留宿主），但其依赖改为端口/工厂注入：
-  - ``retrieval_port``（RetrievalPort，批次 2 已建）替代直接持有 ``SearchService``，
-    切断 evaluation -> knowledge_space.services.search_service 的导入边；
-  - ``retrieval_factory(session)`` 供后台任务用独立 session 构造后台检索端口，
-    替代原延迟 ``new SearchService`` + ``get_elasticsearch_client`` + ``ModelConfigService``；
-  - ``session_factory()`` 替代延迟 ``get_db_session``（``_run_evaluation`` 后台路径）；
-  - evaluator 构造时注入宿主侧 ``PromptProvider`` + ``Logger``（见 adapters/）。
-
-注：``recover_orphan_tasks`` 是启动期静态方法（无实例状态），保留其延迟
-``get_db_session``——它是纯宿主启动编排，不进入引擎包，不属于引擎 -> 宿主切边范围。
+依赖经端口/工厂注入（RetrievalPort / retrieval_factory / session_factory）。
 """
 import asyncio
 import hashlib

@@ -1,12 +1,7 @@
-"""FallbackLLMProvider 宿主适配器（resume 引擎）。
+"""
+FallbackLLMProvider 宿主适配器，包装 ModelConfigService 供 AutoProbingEngine 降级调用。
 
-把宿主侧 ``ModelConfigService`` 包成引擎端口 ``FallbackLLMProvider`` 实例，供
-``AutoProbingEngine`` 在主模型重试耗尽后取用户其他可用 LLM 客户端做降级调用。
-resume 引擎不再直接 import ``user.services.model_config_service``，切断 resume
-引擎 -> user feature 导入边（ModelConfigService 全量端口化见批次 5b/任务#36）。
-
-行为对齐原 ``AutoProbingEngine._load_fallback_models``：列出用户 llm 模型配置，
-排除当前主模型，逐个构造客户端；构造失败的模型静默跳过。
+行为对齐原 _load_fallback_models：列出用户 LLM 模型，排除主模型，逐个构造客户端。
 """
 from typing import List
 

@@ -1,16 +1,7 @@
-"""技能审查中立枚举（feature 间端口，下沉 ``features/skill/ports.py``）。
+"""
+技能审查中立枚举 ReviewStatus，供 skill_checker 与宿主 ORM 共享。
 
-历史背景：``ReviewStatus`` 原定义在 ``features/skill/models/skill.py``（宿主 ORM 模型）。
-``skill_checker.py`` import 自该 ORM 模型——这是引擎对宿主 feature ORM 的导入边，
-批次 6 物理抽包时切断。
-
-本模块提供 ``ReviewStatus`` 中立枚举，不依赖宿主 ORM / ``features.*`` 之外的对象。
-宿主 ``skill/models/skill.py`` 改为从本模块 import 并 re-export，ORM 列
-``default=ReviewStatus.PENDING`` 仍引用同一枚举类（``skill.models.skill.ReviewStatus
-IS features.skill.ports.ReviewStatus``），SQLAlchemy 映射与既有 ``from
-skill.models.skill import ReviewStatus`` 的导入方零改动。
-
-依赖方向：本模块仅依赖 stdlib ``enum``，零宿主 core/setting 边。
+宿主 skill/models/skill.py 从此 import 并 re-export，保持 ORM 列 default 引用同一性。
 """
 from __future__ import annotations
 

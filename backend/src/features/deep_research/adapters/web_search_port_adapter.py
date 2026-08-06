@@ -1,13 +1,7 @@
-"""WebSearchPort 宿主适配器（deep_research 归属）。
+"""
+WebSearchPort 宿主适配器，归一化搜索 provider 结果为引擎端口格式。
 
-把 ``shared.clients.search.{tavily,duckduckgo,serpapi}_service`` 的
-``ExternalSearchResult`` 归一化为引擎端口 ``WebSearchPort`` 定义的 ``WebSearchResult``
-（见 ``engines/search_ports.py``）。
-
-搜索 provider 实现为 shared 基础能力（外部 SaaS HTTP 客户端，无编排），本适配器读
-``setting`` 择优构造 provider，故归属 deep_research（feature 层可读 setting）。消费方
-（agent ``web_search`` 工具、resume 公司背景补充等）经依赖注入消费 ``WebSearchPort``，
-装配时调 ``build_web_search_port`` 取实现，不再各自直接 import 搜索 provider。
+读 setting 择优构造 provider，消费方经依赖注入消费。
 """
 from typing import List, Optional
 

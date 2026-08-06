@@ -1,12 +1,7 @@
 """
-KnowledgeSearchPort 宿主适配器
+KnowledgeSearchPort 宿主适配器，包装 knowledge_space repository 与 SearchService。
 
-包 knowledge_space / user feature 的 repository 与 SearchService，实现引擎
-`KnowledgeSearchPort`。引擎侧 `knowledge_search` 工具不再直接 import 这些
-feature 模块，改经 `context["knowledge_search_port"]` 调用本适配器。
-
-权限校验、跨库合并等宿主业务逻辑均在此实现，逐字对齐旧
-`knowledge_search.py` 的 `_check_space_access`/`_list_*`/`_search`/`_list_documents`。
+权限校验、跨库合并等业务逻辑在此实现。
 """
 from typing import Any, Dict, List, Optional
 

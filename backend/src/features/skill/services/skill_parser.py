@@ -1,12 +1,7 @@
 """
-SKILL.md 解析器 — 解析 Anthropic 技能标准格式
+SKILL.md 解析器 — 解析 Anthropic 技能标准格式，提取 YAML frontmatter 和 Markdown body。
 
-解析 ZIP 包中的 SKILL.md 文件，提取 YAML frontmatter 和 Markdown body
-
-批次 5 接缝：``extract_skill_zip`` 新增可选 ``logger`` 参数（``Logger`` 端口），
-不再直接 import ``core.middleware.structured_logging.get_logger``（切断 skill 引擎
--> 宿主导入边）。默认 ``logger=None`` 时静默跳过「资源过大」告警，调用方可从
-宿主侧注入 structlog logger。
+日志经可选 Logger 端口注入，未注入时静默跳过告警。
 """
 import io
 import re
