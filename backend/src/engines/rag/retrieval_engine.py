@@ -1,21 +1,7 @@
-"""检索引擎（纯检索段）—— ``novamind.engines.rag`` 核心组件。
-
-批次 2 接缝：把 ``SearchService.search`` 中与宿主业务（权限 / 多租户 / 模型配置 / LLM 生成）
-无关的**纯检索段**抽离为 ``RetrievalEngine.retrieve_raw``。引擎只持有 ``es_client`` + logger +
-中立 ``CachePort``（宿主装配点注入，未注入时缓存 no-op 降级），**不持有** session / repos /
-ModelConfigService；``embedding_client`` / ``rerank_client`` 由宿主通过 resolver 回调按需注入
-（懒解析，逐字复刻原 ``search`` 的懒解析时序：缓存命中时不解析 embedding，避免配置缺失误报
-``EmbeddingError``）。
-
-批次 6a-2 去 feature 边：异常改用中立 ``engines.rag.errors``
-（``RagError``/``EmbeddingError``/``SearchError``，不依赖宿主 ``BaseAPIError``）；
-缓存改用中立 ``engines.rag.cache_port.CachePort``（构造器注入，删 ``shared.cache.redis_client``
-直接 import）。宿主 ``SearchService`` 在装配点捕获中立异常重抛为宿主 ``api.exceptions`` 同名异常，
-保留宿主异常码契约（400）不变。
-
-批次 6x 归位 ``engines/rag/``：引擎按目录分层独立于 features，host 经
-``from novamind.engines.rag import RetrievalEngine, RetrievalQuery`` 导入。
-``NOVAMIND_LEGACY_RETRIEVAL=1`` 时 ``SearchService.search`` 走旧内联路径（旧路径保留）。
+"""
+检索引擎（纯检索段）。
+RetrievalEngine.retrieve_raw 提供纯 ES 检索，通过 resolver 回调注入
+embedding/rerank 客户端，不直接持有 session/repos/ModelConfigService。
 """
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 import asyncio
