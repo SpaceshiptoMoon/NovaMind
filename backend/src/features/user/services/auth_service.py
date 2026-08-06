@@ -19,7 +19,7 @@ from novamind.shared.utils.time_utils import now_china
 from novamind.features.user.schemas.user_schema import TokenData
 from novamind.features.user.models.user import UserStatus
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.user.api.exceptions import (
+from novamind.features.user.exceptions import (
     TokenInvalidError,
     AuthenticationError,
     UserError,

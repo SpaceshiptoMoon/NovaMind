@@ -33,7 +33,7 @@ from novamind.features.user.ports import KnowledgeSpaceInfoPort
 
 from novamind.shared.utils.crypto import encrypt_api_key_async, decrypt_api_key_async
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.user.api.exceptions import (
+from novamind.features.user.exceptions import (
     ModelConfigNotFoundError,
     ModelConfigAlreadyExistsError,
     ModelConfigTestFailedError,

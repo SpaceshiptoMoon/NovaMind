@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Body, Query, Request, Path
 from typing import Annotated, List
 
 from novamind.features.user.services import UserService
-from novamind.features.user.api.exceptions import (
+from novamind.features.user.exceptions import (
     PermissionDeniedError,
     UserNotFoundError,
 )
@@ -403,7 +403,7 @@ async def admin_reset_password(
 ):
     """管理员重置用户密码，返回临时密码"""
     if user_id == current_user.get("id"):
-        from novamind.features.user.api.exceptions import UserOperationError
+        from novamind.features.user.exceptions import UserOperationError
         raise UserOperationError("不能重置自己的密码，请使用修改密码功能")
 
     temp_password, uid = await user_service.admin_reset_password(user_id)
@@ -486,7 +486,7 @@ async def reset_password(
     # 验证 Token
     user_id = await AuthService.verify_reset_token(data.token)
     if user_id is None:
-        from novamind.features.user.api.exceptions import AuthenticationError
+        from novamind.features.user.exceptions import AuthenticationError
         raise AuthenticationError("重置链接无效或已过期")
 
     # 更新密码
@@ -499,7 +499,7 @@ async def reset_password(
             repo = UserRepository(db)
             user = await repo.get_user_by_id(user_id, use_cache=False)
             if not user:
-                from novamind.features.user.api.exceptions import UserNotFoundError
+                from novamind.features.user.exceptions import UserNotFoundError
                 raise UserNotFoundError("用户不存在")
 
             hashed = await get_password_hash_async(data.new_password)
@@ -510,7 +510,7 @@ async def reset_password(
     except (UserNotFoundError,):
         raise
     except Exception as e:
-        from novamind.features.user.api.exceptions import UserOperationError
+        from novamind.features.user.exceptions import UserOperationError
         raise UserOperationError(f"密码重置失败: {str(e)}")
 
     # 使 Token 失效（一次性使用）
