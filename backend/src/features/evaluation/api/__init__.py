@@ -6,7 +6,7 @@
 """
 
 # 异常类
-from novamind.features.evaluation.api.exceptions import (
+from novamind.features.evaluation.exceptions import (
     EvaluationError,
     EvaluationTestSetNotFoundError,
     EvaluationTaskNotFoundError,
