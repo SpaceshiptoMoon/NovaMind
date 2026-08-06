@@ -25,7 +25,7 @@ from novamind.features.agent.schemas.agent_schema import (
     AgentDetailResponse,
     AgentListResponse,
     SessionResponse,
-    SessionListResponse,
+    AgentSessionListResponse,
     MessageListResponse,
     AgentChatRequest,
     McpServerCreate,
@@ -33,7 +33,7 @@ from novamind.features.agent.schemas.agent_schema import (
     McpServerResponse,
     ToolProviderResponse,
     ToolFunctionResponse,
-    ActionResponse,
+    AgentActionResponse,
     McpToolsRefreshResponse,
     MemoryListResponse,
     MemoryStatsResponse,
@@ -115,7 +115,7 @@ async def update_agent(
 
 @router.delete(
     "/agents/{agent_id}",
-    response_model=ActionResponse,
+    response_model=AgentActionResponse,
     summary="删除 Agent",
     description="删除指定的 Agent 及其相关数据",
 )
@@ -164,7 +164,7 @@ async def chat_stream(
 
 @router.get(
     "/agents/{agent_id}/sessions",
-    response_model=SessionListResponse,
+    response_model=AgentSessionListResponse,
     summary="列出对话",
     description="获取指定 Agent 的所有对话会话列表",
 )
@@ -195,7 +195,7 @@ async def get_session(
 
 @router.delete(
     "/sessions/{session_id}",
-    response_model=ActionResponse,
+    response_model=AgentActionResponse,
     summary="删除对话",
     description="删除指定的对话会话及其所有消息",
 )
@@ -277,7 +277,7 @@ async def update_mcp_server(
 
 @router.delete(
     "/mcp-servers/{server_id}",
-    response_model=ActionResponse,
+    response_model=AgentActionResponse,
     summary="删除 MCP 服务器配置",
     description="删除指定的 MCP 服务器配置",
 )
@@ -434,7 +434,7 @@ async def list_memories(
 
 @router.delete(
     "/agents/{agent_id}/memories/{memory_id}",
-    response_model=ActionResponse,
+    response_model=AgentActionResponse,
     summary="删除记忆",
     description="删除指定的长期记忆",
 )

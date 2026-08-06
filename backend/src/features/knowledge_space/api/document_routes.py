@@ -36,7 +36,7 @@ from novamind.features.knowledge_space.schemas.document_task_schema import (
     DocumentTaskItemResponse,
     DocumentTaskItemListResponse,
 )
-from novamind.features.knowledge_space.schemas.member_schema import ActionResponse
+from novamind.features.knowledge_space.schemas.member_schema import MemberActionResponse
 from novamind.features.knowledge_space.models.space_member import SpaceMember
 from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
 from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
@@ -507,7 +507,7 @@ async def download_document(
 
 @router.delete(
     "/{kb_id}/documents/{document_id}",
-    response_model=ActionResponse,
+    response_model=MemberActionResponse,
     summary="删除文档",
     description="从知识库中删除文档。编辑者只能删除自己上传的文档，管理员可删除任意文档。",
 )
@@ -558,7 +558,7 @@ async def delete_document(
         user_id=user_id,
     )
 
-    return ActionResponse(success=result, message="文档已删除")
+    return MemberActionResponse(success=result, message="文档已删除")
 
 
 # ========== 拆分解析路由 ==========

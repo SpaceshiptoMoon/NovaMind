@@ -51,7 +51,7 @@ from novamind.engines.rag.errors import (
 from novamind.features.knowledge_space.schemas.search_schema import (
     SEARCH_MODE_FALLBACK,
     SearchRequest,
-    LLMConfig,
+    SearchLLMConfig,
     QueryRewriteConfig,
 )
 from novamind.features.knowledge_space.models.knowledge_space import SpaceVisibility
@@ -211,7 +211,7 @@ class SearchService:
         self,
         query: str,
         results: List[Dict[str, Any]],
-        llm_config: LLMConfig,
+        llm_config: SearchLLMConfig,
         user_id: int,
     ) -> Dict[str, Any]:
         """

@@ -23,7 +23,7 @@ from novamind.features.deep_research.schemas.research_schema import (
 from novamind.features.deep_research.models.research_session import (
     ResearchStatus as ModelResearchStatus,
 )
-from novamind.features.user.schemas.user_schema import MessageResponse
+from novamind.features.user.schemas.user_schema import UserMessageResponse
 from novamind.core.middleware.structured_logging import get_logger
 
 router = APIRouter()
@@ -312,7 +312,7 @@ async def get_research(
 
 @router.delete(
     "/{session_id}",
-    response_model=MessageResponse,
+    response_model=UserMessageResponse,
     summary="删除研究记录",
     description="删除指定研究会话记录，普通用户只能删除自己的研究，管理员可删除任意研究",
 )
@@ -335,4 +335,4 @@ async def delete_research(
         is_admin=is_admin,
     )
 
-    return MessageResponse(message="研究已删除")
+    return UserMessageResponse(message="研究已删除")

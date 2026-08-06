@@ -160,7 +160,7 @@ class ModelTestResponse(BaseModel):
 
 # ========== 可用模型列表 ==========
 
-class AvailableModelsResponse(BaseModel):
+class ModelConfigAvailableModelsResponse(BaseModel):
     """可用模型列表响应（供前端下拉框）"""
 
     llm: List[str] = Field(default_factory=list, description="可用的 LLM 模型名称")

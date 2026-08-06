@@ -86,7 +86,7 @@ class ModelInfoResponse(BaseModel):
     model_type: str = Field(default="llm", description="模型类型: llm/vlm")
 
 
-class AvailableModelsResponse(BaseModel):
+class ChatAvailableModelsResponse(BaseModel):
     """可用模型列表响应"""
     models: dict[str, ModelInfoResponse] = Field(..., description="可用模型列表")
 

@@ -15,10 +15,10 @@ from novamind.features.user.schemas.model_config_schema import (
     ModelConfigListResponse,
     ModelTestRequest,
     ModelTestResponse,
-    AvailableModelsResponse,
+    ModelConfigAvailableModelsResponse,
     AvailableModelsWithInfoResponse,
 )
-from novamind.features.user.schemas.user_schema import MessageResponse
+from novamind.features.user.schemas.user_schema import UserMessageResponse
 from novamind.features.user.api.auth import require_active_user
 from novamind.features.user.api.dependencies import get_model_config_service
 from novamind.features.user.api.exceptions import ModelConfigDeleteConflictError
@@ -32,7 +32,7 @@ router = APIRouter()
 
 @router.get(
     "/model-configs/available",
-    response_model=AvailableModelsResponse,
+    response_model=ModelConfigAvailableModelsResponse,
     summary="获取可用模型列表",
     description="获取当前用户配置的所有模型名称",
 )
@@ -52,7 +52,7 @@ async def get_available_models(
     """
     user_id = current_user["id"]
 
-    return AvailableModelsResponse(
+    return ModelConfigAvailableModelsResponse(
         llm=await model_config_service.list_available_models(user_id, "llm"),
         embedding=await model_config_service.list_available_models(user_id, "embedding"),
         rerank=await model_config_service.list_available_models(user_id, "rerank"),
@@ -167,7 +167,7 @@ async def update_model_config(
 
 @router.delete(
     "/model-configs/{config_id}",
-    response_model=MessageResponse,
+    response_model=UserMessageResponse,
     summary="删除模型配置",
     description="删除指定的模型配置",
     responses={409: {"description": "存在关联资源，无法删除"}},
@@ -184,7 +184,7 @@ async def delete_model_config(
     if impacts:
         raise ModelConfigDeleteConflictError(impacts=impacts)
 
-    return MessageResponse(message="配置已删除")
+    return UserMessageResponse(message="配置已删除")
 
 
 # ========== 连接测试 ==========
@@ -221,7 +221,7 @@ async def test_model_config(
 
 @router.delete(
     "/model-configs/by-model/{model_type}/{model}",
-    response_model=MessageResponse,
+    response_model=UserMessageResponse,
     summary="按模型名称删除配置",
     description="根据模型类型和模型名称删除用户私有配置",
 )
@@ -238,4 +238,4 @@ async def delete_model_config_by_name(
     """
     user_id = current_user["id"]
     await model_config_service.delete_config_by_model(user_id, model_type, model)
-    return MessageResponse(message=f"配置 {model_type}/{model} 已删除")
+    return UserMessageResponse(message=f"配置 {model_type}/{model} 已删除")

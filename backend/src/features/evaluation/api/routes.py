@@ -59,7 +59,7 @@ from novamind.features.evaluation.schemas.evaluation_schema import (
 from novamind.features.evaluation.models.evaluation_task import EvaluationStatus
 from novamind.features.evaluation.services.evaluation_service import EvaluationService
 from novamind.features.evaluation.services.test_set_parser import parse_test_set
-from novamind.features.knowledge_space.schemas.member_schema import ActionResponse
+from novamind.features.knowledge_space.schemas.member_schema import MemberActionResponse
 
 router = APIRouter(tags=["知识库测评"])
 
@@ -206,7 +206,7 @@ async def get_test_set_cases(
 
 @router.delete(
     "/test-sets/{test_set_id}",
-    response_model=ActionResponse,
+    response_model=MemberActionResponse,
     summary="删除测试集",
     description="删除指定的测试集及其关联文件",
 )
@@ -312,7 +312,7 @@ async def get_evaluation_task(
 
 @router.delete(
     "/tasks/{task_id}",
-    response_model=ActionResponse,
+    response_model=MemberActionResponse,
     summary="删除测评任务",
     description="删除指定的测评任务及其关联结果",
 )

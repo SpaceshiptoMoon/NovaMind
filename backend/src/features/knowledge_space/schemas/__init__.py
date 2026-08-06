@@ -51,7 +51,7 @@ from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     KnowledgeBaseConfigUpdate,
     KnowledgeBaseConfigResponse,
 )
-from novamind.features.knowledge_space.schemas.member_schema import ActionResponse
+from novamind.features.knowledge_space.schemas.member_schema import MemberActionResponse
 
 __all__ = [
     # 空间
@@ -68,7 +68,7 @@ __all__ = [
     "KnowledgeBaseListResponse",
     "KnowledgeBaseConfigUpdate",
     "KnowledgeBaseConfigResponse",
-    "ActionResponse",
+    "MemberActionResponse",
     # 文档
     "DocumentResponse",
     "DocumentListResponse",

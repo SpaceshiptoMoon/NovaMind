@@ -26,7 +26,7 @@ from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     KnowledgeBaseConfigUpdate,
     KnowledgeBaseConfigResponse,
 )
-from novamind.features.knowledge_space.schemas.member_schema import ActionResponse
+from novamind.features.knowledge_space.schemas.member_schema import MemberActionResponse
 from novamind.features.knowledge_space.models.space_member import SpaceMember
 from novamind.features.knowledge_space.api.dependencies import (
     get_current_user_id,
@@ -203,7 +203,7 @@ async def update_knowledge_base(
 
 @router.delete(
     "/{kb_id}",
-    response_model=ActionResponse,
+    response_model=MemberActionResponse,
     summary="删除知识库",
     description="删除知识库（需要空间管理员权限）",
 )
@@ -237,7 +237,7 @@ async def delete_knowledge_base(
         request=request,
     )
 
-    return ActionResponse(success=True, message=f"知识库 '{kb_name}' 已删除")
+    return MemberActionResponse(success=True, message=f"知识库 '{kb_name}' 已删除")
 
 
 # ========== 配置管理路由 ==========

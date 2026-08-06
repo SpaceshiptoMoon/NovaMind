@@ -15,7 +15,7 @@ from novamind.features.knowledge_space.schemas.member_schema import (
     MemberResponse,
     MemberListResponse,
     InviteResponse,
-    ActionResponse,
+    MemberActionResponse,
 )
 from novamind.features.knowledge_space.api.dependencies import (
     get_member_service,
@@ -212,7 +212,7 @@ async def update_member_role(
 
 @router.delete(
     "/{target_user_id}",
-    response_model=ActionResponse,
+    response_model=MemberActionResponse,
     summary="移除成员",
     description="从空间中移除指定成员（需要空间管理员权限）",
 )
@@ -242,12 +242,12 @@ async def remove_member(
         request=request,
     )
 
-    return ActionResponse(success=result, message="成员已移除")
+    return MemberActionResponse(success=result, message="成员已移除")
 
 
 @router.post(
     "/leave",
-    response_model=ActionResponse,
+    response_model=MemberActionResponse,
     summary="离开空间",
     description="当前用户离开知识空间",
 )
@@ -274,4 +274,4 @@ async def leave_space(
         request=request,
     )
 
-    return ActionResponse(success=result, message="已离开空间")
+    return MemberActionResponse(success=result, message="已离开空间")

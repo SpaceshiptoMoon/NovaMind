@@ -191,7 +191,7 @@ class ExternalSearchConfig(BaseModel):
 
 # ==================== LLM 配置 ====================
 
-class LLMConfig(BaseModel):
+class ResearchLLMConfig(BaseModel):
     """
     LLM 模型配置
 
@@ -266,8 +266,8 @@ class ResearchRequest(BaseModel):
     )
 
     # ========== LLM 配置 ==========
-    llm: LLMConfig = Field(
-        default_factory=LLMConfig,
+    llm: ResearchLLMConfig = Field(
+        default_factory=ResearchLLMConfig,
         description="LLM 模型配置",
     )
 

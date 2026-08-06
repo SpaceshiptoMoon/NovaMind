@@ -18,7 +18,7 @@ from novamind.features.qa.schemas.ai_chat import (
     ChatResponse,
     ChatHistoryResponse,
     HealthCheckResponse,
-    AvailableModelsResponse,
+    ChatAvailableModelsResponse,
     UploadChatAttachmentResponse,
 )
 from novamind.features.user.services.model_config_service import ModelConfigService
@@ -254,7 +254,7 @@ async def health_check():
 
 @router.get(
     "/models",
-    response_model=AvailableModelsResponse,
+    response_model=ChatAvailableModelsResponse,
     summary="获取可用模型",
     description="获取当前可用的AI模型列表及配置",
 )
@@ -288,4 +288,4 @@ async def get_available_models(
                 "model_type": "vlm",
             }
 
-    return AvailableModelsResponse(models=models)
+    return ChatAvailableModelsResponse(models=models)
