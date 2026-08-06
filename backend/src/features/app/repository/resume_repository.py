@@ -52,3 +52,29 @@ class ResumeSessionRepository:
         entity = await self.session.get(ResumeSession, session_id)
         await self.session.refresh(entity)
         return entity
+
+    @staticmethod
+    async def mark_failed_independent(
+        session_id: str, status_value: int, error_message: str
+    ) -> None:
+        """紧急兜底：ORM session 不可用时，用独立连接 raw SQL 标记会话失败。
+
+        直接 commit 独立连接（紧急路径，非正常写流程，绕过 begin_nested/SAVEPOINT 约定）。
+        逐字保真原 ``_ensure_mark_resume_failed`` 第 2 层 raw SQL。
+        """
+        from sqlalchemy import text
+        from novamind.core.database.database import get_engine
+
+        async with get_engine().connect() as conn:
+            await conn.execute(
+                text(
+                    "UPDATE resume_sessions SET status=:status, error_message=:msg, "
+                    "updated_at=NOW() WHERE id=:id"
+                ),
+                {
+                    "status": status_value,
+                    "msg": error_message[:2000],
+                    "id": int(session_id),
+                },
+            )
+            await conn.commit()

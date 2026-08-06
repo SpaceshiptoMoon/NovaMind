@@ -409,40 +409,28 @@ async def _ensure_mark_failed(
     except Exception as e:
         logger.warning("ORM 标记 FAILED 失败，尝试 raw SQL", document_id=document_id, error=str(e))
 
-    # 第 2 层：Raw SQL
+    # 第 2 层：Raw SQL（下沉 DocumentTaskRepository.mark_failed_independent）
     try:
-        from novamind.core.database.database import get_engine
-        from sqlalchemy import text
+        from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
 
         failed_at = now_china()
-        async with get_engine().connect() as conn:
-            await conn.execute(
-                text(
-                    "UPDATE document_task_items SET status=:status, completed_at=:now, "
-                    "error_message=:msg WHERE "
-                    + ("job_id=:job_id" if job_id else "document_id=:id AND status=:processing")
-                ),
-                {
-                    "msg": failed_msg[:500],
-                    "id": document_id,
-                    "job_id": job_id,
-                    "now": failed_at,
-                    "status": TaskStatus.FAILED,
-                    "processing": TaskStatus.PROCESSING,
-                },
-            )
-            await conn.commit()
-            logger.error(
-                "arq 任务最终失败",
-                document_id=document_id,
-                job_id=job_id,
-                retry_count=retry_count,
-                max_tries=max_tries,
-                error=error_message,
-                failure_stage="raw_sql",
-            )
-            logger.info("任务已标记 FAILED（raw SQL）", document_id=document_id)
-            return
+        await DocumentTaskRepository.mark_failed_independent(
+            document_id,
+            failed_msg,
+            job_id=job_id,
+            completed_at=failed_at,
+        )
+        logger.error(
+            "arq 任务最终失败",
+            document_id=document_id,
+            job_id=job_id,
+            retry_count=retry_count,
+            max_tries=max_tries,
+            error=error_message,
+            failure_stage="raw_sql",
+        )
+        logger.info("任务已标记 FAILED（raw SQL）", document_id=document_id)
+        return
     except Exception as e:
         logger.error("raw SQL 标记 FAILED 也失败", document_id=document_id, error=str(e))
 
