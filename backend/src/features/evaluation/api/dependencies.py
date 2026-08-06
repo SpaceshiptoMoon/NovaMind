@@ -1,11 +1,7 @@
 """
-测评模块依赖注入
+测评模块依赖注入，构造 EvaluationService 所需端口与工厂。
 
-批次 5 接缝：EvaluationService 改为接收 ``RetrievalPort`` + ``retrieval_factory`` +
-``session_factory``，而非直接持有 ``SearchService``。装配点在此把宿主侧
-``SearchService`` 经 ``as_retrieval_port`` 包成端口，并构造后台检索工厂（封装
-ES client + ModelConfigService 装配），evaluation 不再 import 这些 knowledge_space/
-user/shared.clients 内部实现。
+装配点把 SearchService 包成 RetrievalPort，构造后台检索工厂。
 """
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession

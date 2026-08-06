@@ -1,8 +1,5 @@
-"""简历挖掘 arq 任务函数与宿主编排。
-
-从 ``shared/mq/worker.py`` 下沉（批次 6e 单向依赖收口）。函数体原样保留，
-在 ``features/app`` 域内 import features models/repo/services、setting、core.database、
-shared 中立设施均合法。
+"""
+简历挖掘 arq 任务函数与宿主编排。
 """
 from typing import Optional
 

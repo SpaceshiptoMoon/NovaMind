@@ -1,11 +1,7 @@
-"""内置工具：读取截断的完整工具结果（宿主侧工具）
+"""
+内置工具：读取截断的完整工具结果。
 
-当工具返回超大结果被截断时，LLM 可通过此工具按 tool_call_id
-从 agent_tool_calls 表取回完整结果。
-
-该工具直接访问宿主 ``AgentToolCall`` ORM 与 DB session，属宿主持久化辅助，
-不是通用引擎工具——因此留在 ``features/agent/tool/builtins/`` 宿主侧，
-不随引擎迁入 ``engines/agent/``。引擎层工具经端口注入宿主能力，此工具例外。
+直接访问宿主 AgentToolCall ORM 与 DB session，属宿主持久化辅助，留宿主侧。
 """
 import json
 from typing import Any, Dict, List

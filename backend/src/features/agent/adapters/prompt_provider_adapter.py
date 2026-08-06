@@ -1,12 +1,5 @@
 """
-PromptProvider 宿主适配器
-
-包 `shared.prompts.prompt_manager.PromptManager`（纯注册表），实现引擎
-`PromptProvider` 协议。引擎内模块（如 LongTermMemory）不再直接 import
-`shared.prompts`，改经注入的 PromptProvider 用字符串键取模板。
-
-依赖方向：本适配器属宿主层，可 import shared.prompts；引擎层只依赖
-`engines.ports.PromptProvider` 协议。
+PromptProvider 宿主适配器，包装 PromptManager 供引擎模块经端口注入取模板。
 """
 from typing import Any
 

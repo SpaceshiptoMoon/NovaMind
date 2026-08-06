@@ -1,11 +1,7 @@
 """
-技能广场服务 — 上传、发布、安装、评价、搜索
+技能广场服务 — 上传、发布、安装、评价、搜索。
 
-批次 5 接缝：本服务属宿主编排层（DB/MinIO/仓储），留宿主。但安装/卸载/已装列表
-对 Agent 的访问改经注入的 ``AgentRegistryPort``（见 ``shared/registry_ports.py``），
-不再直接 import ``agent.repository.AgentRepository``，切断 skill -> agent 服务层
-导入边。Agent 不存在时改抛 skill 本地异常 ``SkillTargetAgentNotFoundError``
-（code=``AGENT_NOT_FOUND`` → 404，逐字保留前端契约）。
+对 Agent 的访问经 AgentRegistryPort 端口，与 agent repository 解耦。
 """
 import asyncio
 import io

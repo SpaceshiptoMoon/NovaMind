@@ -1,15 +1,7 @@
 """
-简历挖掘 Pipeline 服务
+简历挖掘 Pipeline 服务，支持 S1-S12 全流程执行与阶段间取消检查。
 
-从 routes.py 中提取的后台 pipeline 逻辑，
-支持 S1-S12 全流程执行、阶段间取消检查。
-
-批次 5 接缝：本服务属宿主编排层（DB/MinIO/ModelConfigService/arq worker），留宿主。
-但 resume 引擎（ResumeParser/ResumeAnalyzer/AutoProbingEngine）的 prompt/log/
-WebSearch/降级 LLM 改经端口注入：装配点在此构造 ``PromptProvider`` / ``Logger`` /
-``WebSearchPort`` / ``FallbackLLMProvider`` 实例并注入引擎，引擎不再 import 宿主
-prompt 注册表 / 结构化日志 / deep_research 搜索服务 / user.services（切断
-resume 引擎 -> 宿主导入边，为批次 6 抽 ``novamind-resume-engine`` 做准备）。
+宿主编排层通过端口注入引擎依赖（PromptProvider / Logger / WebSearchPort / FallbackLLMProvider）。
 """
 from typing import Optional
 

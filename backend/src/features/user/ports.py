@@ -1,12 +1,7 @@
-"""知识空间信息端口（KnowledgeSpaceInfoPort）。
+"""
+知识空间信息端口 KnowledgeSpaceInfoPort，供 user 服务查询空间绑定模型。
 
-批次 5b：解开 ``user.ModelConfigService._check_delete_impact`` 对
-``knowledge_space.models.knowledge_space.KnowledgeSpace`` 的反向依赖（原 :999 内联
-import）。``ModelConfigService`` 经构造器注入本端口，删除 embedding 模型配置时通过
-端口查询哪些空间正在使用该模型，不再直接 import knowledge_space models。
-
-端口中立，不依赖任何 feature；宿主适配器 ``features/user/adapters/knowledge_space_info_adapter.py``
-实现，桥接 knowledge_space ORM（adapter 层允许跨 feature import）。
+端口中立不依赖任何 feature，宿主适配器在 adapters/ 实现。
 """
 from __future__ import annotations
 

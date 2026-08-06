@@ -1,16 +1,7 @@
 """
-技能安全检查器 — 规则 + LLM 双重审查
+技能安全检查器 — 规则 + LLM 双重审查，防恶意 skill 提示词注入。
 
-防止恶意技能通过提示词注入攻击 Agent 系统提示词
-
-批次 5 接缝：prompt 经注入的 ``PromptProvider`` 端口取模板、日志经注入的 ``Logger``
-端口输出，不再直接 import ``shared.prompts.PromptManager`` 与
-``core.middleware.structured_logging.get_logger``（切断 skill 引擎 -> 宿主导入边，
-为批次 6 抽 ``novamind-skill-engine`` 做准备）。
-
-默认行为保持不变（``SkillSecurityChecker()`` 无 LLM 时仅做规则检查）：``prompt_provider``
-与 ``logger`` 均可选，未注入时 ``check_llm`` 直接返回 None（等同 LLM 不可用路径），
-不触碰被注入端口。
+Prompt 与日志经端口注入，默认仅做规则检查，LLM 不可用时安全降级。
 """
 import asyncio
 import json
