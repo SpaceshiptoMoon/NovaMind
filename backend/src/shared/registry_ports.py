@@ -1,15 +1,7 @@
-"""
-宿主 Feature 间交互端口协议
+"""宿主 Feature 间交互端口协议。
 
-与 ``engines/ports.py``（引擎库对外依赖端口，批次 6 迁 ``novamind-engine-core``）
-不同，本模块定义的是**宿主 Feature 之间的交互契约**——消费方与实现方都是宿主侧
-feature 服务，不属于任何引擎包。放在 ``shared/`` 是因为它是一个中立的跨 feature
-抽象：消费方 feature 依赖此协议（而非直接 import 另一个 feature 的 repository），
-实现方 feature 提供适配器，从而切断 feature ↔ feature 的直接导入边。
-
-当前仅 ``AgentRegistryPort``：解开 skill ↔ agent 的服务层耦合——skill 不再直接
-import ``agent.repository.AgentRepository`` / ``agent.api.exceptions``，改经此端口
-查询 Agent 归属与更新 enabled_tools。
+消费方与实现方都是宿主 feature 服务，放 ``shared/`` 作中立跨 feature 抽象，
+切断 feature↔feature 直接导入边。当前仅 ``AgentRegistryPort``（解开 skill↔agent 耦合）。
 """
 from __future__ import annotations
 
