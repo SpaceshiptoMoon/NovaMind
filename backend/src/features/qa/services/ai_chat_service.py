@@ -115,7 +115,7 @@ class AIChatService:
         if self._retrieval_port is None:
             from novamind.features.knowledge_space.services.search_service import SearchService
             from novamind.features.knowledge_space.adapters.retrieval_adapter import HostRetrievalPort
-            from novamind.shared.clients import get_elasticsearch_client
+            from novamind.shared.storage.client_factory import get_elasticsearch_client
 
             es_client = await get_elasticsearch_client()
             # 批次 5b：不再内部自建 ModelConfigService；self.model_config_service 为 None 时
@@ -628,7 +628,7 @@ class AIChatService:
         """联网搜索，返回 (参考资料块文本, 结构化来源列表)。复用 shared.clients.search 的 DuckDuckGo 服务"""
         from novamind.setting.yaml_config import get_config
         from novamind.shared.config import DuckDuckGoSearchConfig
-        from novamind.shared.clients.search.duckduckgo_service import (
+        from novamind.shared.storage.client_factory.search.duckduckgo_service import (
             DuckDuckGoSearchService,
         )
 

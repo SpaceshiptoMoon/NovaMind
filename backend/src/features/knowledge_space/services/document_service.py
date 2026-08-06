@@ -975,7 +975,7 @@ class DocumentService:
         Returns:
             Markdown 全文的字节数据，或 None
         """
-        from novamind.shared.clients import ClientFactory
+        from novamind.shared.storage.client_factory import ClientFactory
 
         document = await self.doc_repo.get_by_id(document_id)
         if not document:
@@ -1013,7 +1013,7 @@ class DocumentService:
         Returns:
             {"frames": [{"index": 0, "url": "..."}, ...], "total": N}
         """
-        from novamind.shared.clients import ClientFactory
+        from novamind.shared.storage.client_factory import ClientFactory
 
         document = await self.doc_repo.get_by_id(document_id)
         if not document:
@@ -1664,7 +1664,7 @@ async def persist_parsed_text(
         MinIO object_name；文本为空或上传失败时返回空字符串。
     """
     # 批次 6a-5：minio_client 由宿主装配获取后注入引擎函数（引擎不再 import ClientFactory）
-    from novamind.shared.clients import ClientFactory
+    from novamind.shared.storage.client_factory import ClientFactory
     minio_client = await ClientFactory.get_minio_client()
     object_name = await upload_parsed_text_to_minio(
         document, full_text, logger, minio_client=minio_client
@@ -2023,7 +2023,7 @@ def _extract_parse_metadata_summary(parse_metadata: Dict[str, Any]) -> Dict[str,
 
 async def _get_es_client_static() -> ElasticsearchClient:
     """获取 ES 客户端（静态方法用）"""
-    from novamind.shared.clients import ClientFactory
+    from novamind.shared.storage.client_factory import ClientFactory
 
     return await ClientFactory.get_elasticsearch_client()
 

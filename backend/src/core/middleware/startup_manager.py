@@ -164,7 +164,7 @@ class AppLifespanManager:
         await self._register_prompt_templates()
 
         # 装配共享客户端工厂（注入宿主配置与路径/索引策略；shared 层不得直接读 setting/features）
-        from novamind.shared.clients import ClientFactory
+        from novamind.shared.storage.client_factory import ClientFactory
         from novamind.features.knowledge_space.adapters.novamind_path_strategy import (
             NovamindPathStrategy,
         )

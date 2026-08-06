@@ -16,7 +16,7 @@ from novamind.features.deep_research.adapters.web_search_port_adapter import (
     build_web_search_port,
 )
 from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.shared.clients import get_minio_client
+from novamind.shared.storage.client_factory import get_minio_client
 from novamind.shared.mq.task_tracker import is_resume_cancelled
 
 logger = get_logger(__name__)

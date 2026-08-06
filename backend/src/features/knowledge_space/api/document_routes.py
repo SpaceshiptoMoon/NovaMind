@@ -97,7 +97,7 @@ async def _build_chunk_response(c: dict) -> ChunkResponse:
 
     if chunk_type in ("image", "video", "audio") and storage_path:
         try:
-            from novamind.shared.clients import ClientFactory
+            from novamind.shared.storage.client_factory import ClientFactory
             minio_client = await ClientFactory.get_minio_client()
             media_url = await minio_client.get_file_url(
                 minio_client.default_bucket, storage_path, 3600

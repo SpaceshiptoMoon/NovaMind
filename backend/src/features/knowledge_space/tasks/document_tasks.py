@@ -146,7 +146,7 @@ async def process_document_task(
 
             if should_reset_chunks:
                 try:
-                    from novamind.shared.clients import ClientFactory
+                    from novamind.shared.storage.client_factory import ClientFactory
                     es_client = await ClientFactory.get_elasticsearch_client()
                     await es_client.delete_document_chunks(
                         space_id=space_id,
@@ -157,7 +157,7 @@ async def process_document_task(
                     logger.warning("开始处理前清除旧 ES 分块失败", document_id=document_id, error=str(cleanup_err))
 
             # 3. 从 MinIO 下载文件
-            from novamind.shared.clients import ClientFactory
+            from novamind.shared.storage.client_factory import ClientFactory
             minio_client = await ClientFactory.get_minio_client()
 
             storage_info = document.get_storage_info()
@@ -286,7 +286,7 @@ async def process_document_task(
 
                 # 清理 ES 残留数据（非关键，失败不影响状态）
                 try:
-                    from novamind.shared.clients import ClientFactory
+                    from novamind.shared.storage.client_factory import ClientFactory
                     es_client = await ClientFactory.get_elasticsearch_client()
                     await es_client.delete_document_chunks(
                         space_id=space_id,
@@ -456,7 +456,7 @@ async def _handle_cancellation(document_id: int, space_id: int) -> None:
 
     # 清理 ES 残留数据（非关键）
     try:
-        from novamind.shared.clients import ClientFactory
+        from novamind.shared.storage.client_factory import ClientFactory
         es_client = await ClientFactory.get_elasticsearch_client()
         await es_client.delete_document_chunks(
             space_id=space_id,

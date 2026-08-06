@@ -286,7 +286,7 @@ class AgentService:
         # 尝试从 ES 删除
         try:
             from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
-            from novamind.shared.clients import ClientFactory
+            from novamind.shared.storage.client_factory import ClientFactory
             es_wrapper = await ClientFactory.get_elasticsearch_client()
             search_repo = MemorySearchRepository(es_client=es_wrapper.es_client)
             await search_repo.delete_memory(agent_id, memory_id)

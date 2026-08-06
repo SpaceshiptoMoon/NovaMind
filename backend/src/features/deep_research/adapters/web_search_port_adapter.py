@@ -20,7 +20,7 @@ class HostWebSearchPort:
             # 默认回退到 DuckDuckGo（免费、无需 API Key）
             from novamind.setting.yaml_config import get_config
             from novamind.shared.config import DuckDuckGoSearchConfig
-            from novamind.shared.clients.search.duckduckgo_service import (
+            from novamind.shared.storage.client_factory.search.duckduckgo_service import (
                 DuckDuckGoSearchService,
             )
 
@@ -66,7 +66,7 @@ def build_web_search_port(prefer_tavily: bool = True) -> WebSearchPort:
     es_cfg = get_config().external_search
 
     if prefer_tavily and es_cfg.tavily.api_key:
-        from novamind.shared.clients.search.tavily_service import (
+        from novamind.shared.storage.client_factory.search.tavily_service import (
             TavilySearchService,
         )
 
@@ -81,7 +81,7 @@ def build_web_search_port(prefer_tavily: bool = True) -> WebSearchPort:
         if svc.is_available():
             return HostWebSearchPort(service=svc)  # type: ignore[return-value]
 
-    from novamind.shared.clients.search.duckduckgo_service import (
+    from novamind.shared.storage.client_factory.search.duckduckgo_service import (
         DuckDuckGoSearchService,
     )
 

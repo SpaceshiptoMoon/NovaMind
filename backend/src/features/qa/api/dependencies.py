@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from novamind.features.qa.services.ai_chat_service import AIChatService
 from novamind.features.user.api.dependencies import get_model_config_service
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.shared.clients import get_minio_client
+from novamind.shared.storage.client_factory import get_minio_client
 
 logger = get_logger(__name__)
 

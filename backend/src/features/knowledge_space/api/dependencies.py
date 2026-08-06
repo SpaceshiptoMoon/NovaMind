@@ -33,7 +33,7 @@ from novamind.features.knowledge_space.exceptions import (
     KnowledgeBaseNotFoundError,
     KnowledgeBaseArchivedError,
 )
-from novamind.shared.clients import (
+from novamind.shared.storage.client_factory import (
     get_minio_client,
     get_elasticsearch_client,
 )
