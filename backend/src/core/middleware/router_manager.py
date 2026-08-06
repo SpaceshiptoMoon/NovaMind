@@ -1,21 +1,8 @@
 """
-路由管理器模块
-负责管理和注册所有应用路由，支持 API 版本控制。
+路由管理器，负责管理和注册所有应用路由，支持 API 版本控制。
 
-批次 1 起，路由来源由「硬编码三张表」（router 对象 dict + prefix_mapping + tag_mapping）
-改为从 feature manifest 聚合：`get_all_routers()` 调 `manifest_loader.get_route_sorted_manifests()`
-按 `route_order` 遍历各 `FeatureManifest.routers`，产出 (router, prefix, [tag])。
-
-**路由注册顺序与初始化拓扑序分离**：路由注册顺序决定 FastAPI 对同名 Pydantic
-响应模型的去重胜出者，必须与 legacy 硬编码顺序逐字一致（否则 openapi 中碰撞 schema
-翻转，破坏前端契约），故用 `route_order`（匹配 legacy 路由序）；初始化仍用拓扑序
-`order`。两者由 manifest_loader 分别提供。
-
-契约不变：`get_all_routers()` 仍返回 `List[tuple]`，每个元素为 (router, prefix, tags)，
-prefix/tag 与改造前逐字一致，确保 `GET /openapi.json` 逐字不变（前端契约源头）。
-
-回滚：设置环境变量 `NOVAMIND_LEGACY_MANIFEST=1` 走旧的硬编码 `_register_routers_legacy`
-路径，manifest 路径与新拓扑初始化可独立回滚。
+路由来源由 feature manifest 聚合，按 route_order 注册以保证 openapi schema 一致性。
+NOVAMIND_LEGACY_MANIFEST=1 时回滚到旧硬编码路径。
 """
 import os
 from typing import Dict, List, Tuple

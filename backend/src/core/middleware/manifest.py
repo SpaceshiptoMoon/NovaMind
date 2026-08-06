@@ -1,21 +1,9 @@
-"""Feature Manifest 数据模型
+"""
+Feature Manifest 数据模型。
 
-批次 1 的核心抽象：每个 feature 用一个 `FeatureManifest` 描述自己的路由、
-依赖、初始化钩子、ORM 模型与开关，由 `manifest_loader` 统一发现并拓扑排序，
-替代 `router_manager` 与 `startup_manager` 中原先硬编码的三张表/注册表。
-
-设计原则：
-- 路由以 `RouterSpec` 描述（key + router 对象 + prefix + tag），prefix/tag 与
-  原 `router_manager` 的 `prefix_mapping`/`tag_mapping` 逐字一致，确保
-  `GET /openapi.json` 逐字不变（前端契约源头）。
-- `order` 是拓扑排序的稳定 tiebreaker：当多个 feature 的依赖都已满足时，
-  按 `order` 升序挑选。这样无需伪造依赖边即可得到确定的初始化顺序
-  （如 user→knowledge_space→agent→notification→clawmate）。
-- `init_hook` 为可选的异步初始化函数（接收 app）；无副作用的 feature 可留 None。
-- `models_loader` 为可选的同步函数，负责导入该 feature 的全部 ORM 模型以注册到
-  SQLAlchemy metadata；无 ORM 模型的 feature（如 clawmate）留 None。
-- `enabled` 由 `manifest_loader` 从 `FeaturesConfig` 解析后注入，manifest 自身
-  声明时不写死 enabled，保持「配置驱动开关」。
+每个 feature 用 FeatureManifest 描述路由、依赖、初始化钩子、ORM 模型与开关，
+由 manifest_loader 统一发现并拓扑排序。RouterSpec 的 prefix/tag 与原 router_manager
+逐字一致，确保 openapi.json 不变。
 """
 from __future__ import annotations
 

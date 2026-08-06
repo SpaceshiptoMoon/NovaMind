@@ -1,16 +1,8 @@
 """
-提示词注册表（纯机制，零 feature 依赖）
+提示词注册表（纯机制，零 feature 依赖）。
 
-本模块只提供注册表机制：`register(TEMPLATES)` 写入、`get_template/format_prompt`
-读取。它 **不 import 任何 feature** 的提示词数据——这是引擎可抽离的前提：
-`shared/` 层不能反向依赖 `features/`。
-
-提示词数据的注册由宿主启动层（`core/middleware/startup_manager._register_prompt_templates`）
-在应用生命周期启动时完成，该层合法地 import 各 feature 的 `*_prompts.TEMPLATES`。
-
-历史：本注册表原位于 `shared/prompts/templates.py` 的 `PromptManager`，其
-`_ensure_loaded` 方法反向 import 8 个 feature 模块，构成 shared→features 分层违规。
-现拆分为「纯机制（本文件）+ 数据注册（startup 层）」两段，消除该违规。
+提供 register(TEMPLATES) 写入、get_template / format_prompt 读取。
+提示词数据由宿主启动层在应用生命周期中注册，本模块不 import 任何 feature。
 """
 from __future__ import annotations
 
