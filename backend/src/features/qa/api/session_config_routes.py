@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 
 from novamind.core.database.database import get_db
 from novamind.features.user.api.auth import get_current_user
-from novamind.features.qa.api.exceptions import (
+from novamind.features.qa.exceptions import (
     SessionConfigAlreadyExistsError,
     UnauthorizedAccessException,
 )

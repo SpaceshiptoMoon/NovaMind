@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from novamind.core.middleware.base_exception_handler import register_module_exceptions
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.qa.api.exception_handlers import llm_service_exception_handler
-from novamind.features.qa.api.exceptions import (
+from novamind.features.qa.exceptions import (
     SessionNotFoundError,
     MessageNotFoundError,
     UnauthorizedAccessException,
@@ -18,7 +18,7 @@ from novamind.features.qa.api.exceptions import (
     ChatAttachmentNotFoundError,
     QAError,
 )
-from novamind.features.qa.api.exceptions import DatabaseOperationError
+from novamind.features.qa.exceptions import DatabaseOperationError
 
 logger = get_logger(__name__)
 
@@ -38,5 +38,5 @@ def setup_qa_exception_handlers(app: FastAPI) -> None:
         QAError: 400,
     })
     # LLM 服务异常需要特殊处理（包含原始错误信息）
-    from novamind.features.qa.api.exceptions import LLMServiceError
+    from novamind.features.qa.exceptions import LLMServiceError
     app.add_exception_handler(LLMServiceError, llm_service_exception_handler)
