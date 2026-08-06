@@ -1,12 +1,7 @@
 """
-NovaMind 宿主 MinIO 对象路径策略
+NovaMind 宿主 MinIO 对象路径策略，实现 PathStrategy 协议，固化对象路径方案。
 
-实现 `shared/storage/path_strategy.py` 的 `PathStrategy` 协议，固化 NovaMind 部署的
-对象路径方案（``spaces/{id}/kbs/{id}/documents/{id}/...``、``avatars/{id}/avatar.{ext}``、
-``temp/{session}/{file}``）。当前与引擎默认 `DefaultPathStrategy` 逐字一致，故直接继承；
-将来 NovaMind 需定制路径方案时覆写对应方法即可，引擎侧 `MinioClient` 无需改动。
-
-由 `shared/clients/__init__.py` 的 `ClientFactory.get_minio_client` 注入到 `MinioClient`。
+支持 spaces/、avatars/、temp/ 三类路径，当前继承 DefaultPathStrategy，需定制时覆写即可。
 """
 from novamind.shared.storage.path_strategy import DefaultPathStrategy
 

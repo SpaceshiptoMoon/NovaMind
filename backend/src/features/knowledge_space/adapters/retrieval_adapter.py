@@ -1,8 +1,5 @@
-"""检索端口宿主适配器
-
-``HostRetrievalPort`` 包装 ``SearchService``，实现 ``RetrievalPort``。消费方（qa /
-deep_research）依赖 ``RetrievalPort`` 抽象，由依赖注入提供本实现——从而与 ``SearchService``
-具体类解耦，为批次 6 引擎抽包留出接缝。
+"""
+检索端口宿主适配器，包装 SearchService 实现 RetrievalPort 协议。
 """
 from typing import Any, Dict
 
