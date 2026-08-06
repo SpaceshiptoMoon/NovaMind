@@ -1,7 +1,5 @@
-"""文档摄入端口宿主适配器：包 ``DocumentProcessor`` 实现 ``DocumentIngestionPort``。
-
-切断 ``features.qa → features.knowledge_space.pipeline`` 直接 import 边——
-qa 经 ``DocumentIngestionPort`` 抽象调用，本适配器在知识库 feature 装配点注入。
+"""
+DocumentIngestionPort 宿主适配器，桥接 pipeline.DocumentProcessor 提供文件解析能力。
 """
 from __future__ import annotations
 

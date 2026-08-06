@@ -1,8 +1,5 @@
-"""arq 任务临时拥塞信号中立基类。
-
-``shared/mq`` 不得依赖 ``features``，故宿主侧的具体拥塞异常（如
-``LocalASRBusyError``）应继承本模块的 ``TransientBusyError``；arq worker 只捕获
-中立基类，从 ``defer_seconds`` 属性读取延迟秒数，无需感知 ASR 语义。
+"""
+arq 任务临时拥塞信号 TransientBusyError，worker 捕获后按 defer_seconds 延迟重入队。
 """
 
 

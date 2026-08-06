@@ -1,7 +1,5 @@
 """
-arq 通用 Worker 运行时，中立层。
-
-仅保留嵌入式 Worker 的创建/启动/停止，任务函数由外部经 functions 参数注入。
+arq 通用 Worker 运行时，提供嵌入式 Worker 的创建、启动与停止。
 """
 import asyncio
 from typing import Callable, Optional, Sequence

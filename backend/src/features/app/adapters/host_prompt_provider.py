@@ -1,5 +1,5 @@
 """
-PromptProvider 宿主适配器，包装 PromptManager 供 resume 引擎经构造器注入。
+PromptProvider 宿主适配器，包装 PromptManager 供 resume 引擎取模板。
 """
 from novamind.engines.ports import PromptProvider
 from novamind.shared.prompts.templates import PromptManager

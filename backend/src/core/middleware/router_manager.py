@@ -1,8 +1,5 @@
 """
-路由管理器，负责管理和注册所有应用路由，支持 API 版本控制。
-
-路由来源由 feature manifest 聚合，按 route_order 注册以保证 openapi schema 一致性。
-NOVAMIND_LEGACY_MANIFEST=1 时回滚到旧硬编码路径。
+路由管理器，负责注册所有应用路由，支持 API 版本控制。
 """
 import os
 from typing import Dict, List, Tuple

@@ -1,5 +1,3 @@
 """
-skill 引擎宿主适配器包
-
-实现 skill 引擎对外依赖端口（PromptProvider 等），桥接宿主侧注册表。
+skill 适配器层，桥接宿主能力到 skill 引擎端口。
 """

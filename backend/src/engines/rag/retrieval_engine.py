@@ -1,7 +1,5 @@
 """
-检索引擎（纯检索段）。
-RetrievalEngine.retrieve_raw 提供纯 ES 检索，通过 resolver 回调注入
-embedding/rerank 客户端，不直接持有 session/repos/ModelConfigService。
+检索引擎 RetrievalEngine，提供纯 ES 检索入口 retrieve_raw。
 """
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 import asyncio

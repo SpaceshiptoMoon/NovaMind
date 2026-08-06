@@ -1,7 +1,5 @@
 """
-宿主功能间搜索端口。
-WebSearchPort + WebSearchResult，resume 与 agent 共用。
-仅依赖 stdlib，不依赖任何 feature/setting。
+Web 搜索端口 WebSearchPort，定义 WebSearchResult 数据类。
 """
 from __future__ import annotations
 

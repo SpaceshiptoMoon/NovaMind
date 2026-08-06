@@ -1,7 +1,5 @@
-"""引擎自用配置 dataclass。
-
-存放引擎运行所需、不依赖 ``novamind.setting`` 的纯数据配置。宿主装配时从
-``setting`` 构造并注入引擎，切断引擎→setting 导入边。dataclass 不持有 ORM/客户端/session。
+"""
+引擎自用配置 dataclass，存放引擎运行所需的纯数据配置（AudioConfig、搜索配置等）。
 """
 from __future__ import annotations
 

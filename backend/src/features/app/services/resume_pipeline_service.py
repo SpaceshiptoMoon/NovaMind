@@ -1,7 +1,5 @@
 """
 简历挖掘 Pipeline 服务，支持 S1-S12 全流程执行与阶段间取消检查。
-
-宿主编排层通过端口注入引擎依赖（PromptProvider / Logger / WebSearchPort / FallbackLLMProvider）。
 """
 from typing import Optional
 

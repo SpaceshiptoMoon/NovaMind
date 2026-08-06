@@ -1,7 +1,5 @@
 """
 测评核心编排服务，负责测试集管理、异步执行、结果存储与人工评分。
-
-依赖经端口/工厂注入（RetrievalPort / retrieval_factory / session_factory）。
 """
 import asyncio
 import hashlib

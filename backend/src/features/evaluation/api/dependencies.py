@@ -1,7 +1,5 @@
 """
 测评模块依赖注入，构造 EvaluationService 所需端口与工厂。
-
-装配点把 SearchService 包成 RetrievalPort，构造后台检索工厂。
 """
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession

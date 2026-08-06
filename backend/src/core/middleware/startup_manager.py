@@ -1,8 +1,5 @@
 """
 启动管理器，负责应用启动和关闭时的组件管理。
-
-Feature 初始化与 ORM 模型导入由 manifest 驱动，按拓扑序遍历各 init_hook 与 models_loader。
-NOVAMIND_LEGACY_MANIFEST=1 时回滚到旧硬编码路径。
 """
 import os
 import time

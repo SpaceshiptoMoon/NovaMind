@@ -1,8 +1,5 @@
 """
-Elasticsearch 索引 schema 端口，把索引命名与 mapping 从 ElasticsearchClient 解耦。
-
-引擎经 IndexSchema 协议获取索引名与建索引体，宿主经 ClientFactory 注入实现。
-DefaultIndexSchema 逐字复刻原逻辑，保证不注入时行为一致。
+Elasticsearch 索引 schema 端口，定义 IndexSchema 协议及 DefaultIndexSchema 默认实现。
 """
 from __future__ import annotations
 

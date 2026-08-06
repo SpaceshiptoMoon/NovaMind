@@ -1,15 +1,7 @@
 """
-共享客户端工厂
-
-提供单例模式的客户端实例管理
-支持 MinIO、Elasticsearch、Redis 等客户端
-使用 asyncio.Lock 保护并发初始化
-
-中立化说明（单向依赖铁律）：本模块位于 ``shared/``，不得依赖 ``features/`` 或
-``setting/``。宿主配置与策略（``NovamindPathStrategy`` / ``NovamindIndexSchema``）
-经 ``ClientFactory.configure(...)`` 在启动期由装配点（``core/middleware/startup_manager``）
-注入；``get_*_client`` 类方法使用注入的配置而非运行时读 ``setting.yaml_config``。
+共享客户端工厂，提供 MinIO、Elasticsearch、Redis 等客户端的单例管理。
 """
+
 
 import asyncio
 from typing import Optional

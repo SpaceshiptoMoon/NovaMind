@@ -1,8 +1,5 @@
-"""shared 公共日志门面。
-
-提供 ``Logger`` 协议、``StdLogger`` stdlib 后端、``get_logger(name)`` 入口。
-``get_logger`` 优先 ``structlog.get_logger``（宿主已全局配置），缺失时回退 ``StdLogger``。
-仅依赖 stdlib/structlog，零宿主 feature/setting/core 边。
+"""
+shared 公共日志门面，提供 Logger 协议、StdLogger stdlib 后端及 get_logger 工厂函数。
 """
 from __future__ import annotations
 

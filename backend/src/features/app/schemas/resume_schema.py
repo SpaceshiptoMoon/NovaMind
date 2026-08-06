@@ -1,9 +1,5 @@
-"""简历挖掘 API 请求/响应 DTO。
-
-引擎产物模型（StructuredResume 等）已随 resume 引擎迁入 ``engines/resume/schemas.py``
-（引擎产出契约跟引擎走，引擎不得反向 import feature）。本文件仅保留 feature 侧
-API 响应 DTO，``StructuredResume`` 字段经 ``engines.resume.schemas`` 引用（feature
--> engine 依赖方向合法）。
+"""
+简历挖掘 API 请求/响应 DTO，StructuredResume 等引擎产物模型在 engines/resume/schemas.py。
 """
 from typing import Optional
 

@@ -1,17 +1,7 @@
-"""LLM 响应 JSON 提取工具。
+"""
+LLM 响应 JSON 提取工具，从 markdown 代码块或混入文字中提取 JSON。
 
-LLM 常把 JSON 包在 markdown 代码块（```json ... ```）里或混入前导/后缀文字。本模块
-提供稳健提取，多策略回退：已是合法 JSON 开头 → 剥 ```json 围栏 → 首个 ``{`` / ``[`` 兜底。
-
-供 resume 解析（``resume_parser``/``resume_analyzer``/``resume_probing``）、qa 检索
-重试（``grade_retrier``）等需要从 LLM 输出取结构化 JSON 的消费方共用，消除各 feature
-内重复实现。
-
-提供两种接口：
-  - ``extract_json_str(text) -> str``：提取 JSON 字符串，失败抛 ``ValueError``，调用方
-    自行 ``json.loads``。保留异常向上传播以便 try/except 降级（resume 现有模式）。
-  - ``extract_json_obj(text) -> Optional[dict]``：提取并解析，失败返回 ``None``。供不想
-    区分"提取失败"与"解析失败"、只需拿到 dict|None 的调用方使用（grade_retrier 模式）。
+提供 extract_json_str（失败抛异常）和 extract_json_obj（失败返回 None）两种接口。
 """
 import json
 import re

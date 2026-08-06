@@ -1,7 +1,5 @@
 """
-技能安全检查器 — 规则 + LLM 双重审查，防恶意 skill 提示词注入。
-
-Prompt 与日志经端口注入，默认仅做规则检查，LLM 不可用时安全降级。
+技能安全检查器——规则 + LLM 双重审查，防恶意 skill 提示词注入。
 """
 import asyncio
 import json

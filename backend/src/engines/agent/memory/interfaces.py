@@ -1,13 +1,5 @@
 """
-记忆系统抽象接口和数据模型
-
-定义记忆的统一契约：
-- IShortTermMemory: 短期记忆（对话上下文）
-- ILongTermMemory: 长期记忆（跨会话知识）
-
-``LongTermMemoryEntry`` 已上提到 ``engines/agent/ports.py``（同时被 MemoryStorePort
-与 ILongTermMemory 引用），此处经顶部 import 提供，保持 ``from ...interfaces import
-LongTermMemoryEntry`` 路径不变。
+记忆系统抽象接口和数据模型，定义 IShortTermMemory 和 ILongTermMemory 契约。
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field

@@ -1,7 +1,5 @@
 """
-RAG 引擎中立异常基类。
-RagError / EmbeddingError / SearchError，仅依赖 stdlib Exception，
-不依赖宿主 BaseAPIError。
+检索引擎异常类 RetrievalError 及其子类。
 """
 from __future__ import annotations
 
