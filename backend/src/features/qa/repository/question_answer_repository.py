@@ -7,7 +7,7 @@ from sqlalchemy import select, and_, func, delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.features.qa.models.question_answer import QuestionAnswer
-from novamind.features.qa.api.exceptions import DatabaseOperationError
+from novamind.features.qa.exceptions import DatabaseOperationError
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)

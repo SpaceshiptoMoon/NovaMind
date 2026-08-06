@@ -16,7 +16,7 @@ from novamind.features.qa.repository.session_config_repository import SessionCon
 from novamind.features.qa.repository.session_summary_repository import SessionSummaryRepository
 from novamind.features.qa.services.qa_cache_service import QACacheService
 from novamind.features.qa.schemas.qa import QARequest, QAResponse, QAUpdateRequest
-from novamind.features.qa.api.exceptions import (
+from novamind.features.qa.exceptions import (
     QAError,
     DatabaseOperationError,
     SessionNotFoundError,
