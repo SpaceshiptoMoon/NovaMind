@@ -1,19 +1,4 @@
-"""模型配置端口（ModelConfigPort）与模型凭证数据类。
-
-批次 5b：把 ``ModelConfigService`` 的**客户端创建/查询面**抽成中立端口，供各 feature
-服务经构造器注入 ``ModelConfigPort``，不再直接 import ``user.services.model_config_service``
-（切断 ``features.<X> → features.user.services`` 导入边）。CRUD/test 方法仅
-``user/api/model_config_routes.py`` 用，属宿主自有，不进端口——具体 ``ModelConfigService``
-结构化满足本协议，装配点（``features/<X>/api/dependencies.py``、arq worker 入口、
-模块级静态助手函数）仍构造 ``ModelConfigService(db)`` 作为 ``ModelConfigPort`` 注入。
-
-端口覆盖 8 个调用面方法：
-  - ``get_llm_client_by_model`` / ``get_vlm_client_by_model`` / ``get_embedding_client_by_model``
-    / ``get_rerank_client_by_model``：按模型名取对应 AI 客户端。
-  - ``get_user_default_model_name``：取用户在某类型下配置的首个模型名（作为默认）。
-  - ``list_available_models`` / ``list_available_models_with_info``：列可用模型。
-  - ``get_credentials_by_model``：取模型凭证（ASR/VLM 等需明文凭证的场景）。
-"""
+"""模型配置端口（ModelConfigPort）与模型凭证数据类。"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -25,11 +10,7 @@ if TYPE_CHECKING:  # 仅类型注解用，避免端口模块运行时依赖 ai_m
 
 @dataclass
 class ModelCredentials:
-    """模型凭证（用于创建 AI 客户端）。
-
-    包含创建 AI 客户端所需的所有信息。原定义在 ``model_config_service.py``，
-    批次 5b 迁到本中立位置，原模块 re-export 保向后兼容。
-    """
+    """模型凭证（用于创建 AI 客户端）。"""
 
     protocol: str
     model: str
