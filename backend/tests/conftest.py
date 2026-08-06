@@ -33,3 +33,28 @@ def _register_prompt_templates() -> None:
     )
 
     register_all_prompt_templates()
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-integration",
+        action="store_true",
+        default=False,
+        help="运行需 :8100 服务的集成测试（默认跳过，避免噪声掩盖真回归）",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """默认跳过 integration 标记的测试（依赖运行中的 :8100 服务）。
+
+    集成测试常驻 ConnectionError 会掩盖真回归信号。显式 ``--run-integration``
+    才运行；普通 ``pytest`` / ``pytest -m unit`` 一律跳过。
+    """
+    if config.getoption("--run-integration"):
+        return
+    skip_integration = pytest.mark.skip(
+        reason="集成测试需运行中的 :8100 服务，加 --run-integration 启用"
+    )
+    for item in items:
+        if "integration" in item.keywords:
+            item.add_marker(skip_integration)

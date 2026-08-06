@@ -66,7 +66,7 @@ def _patch_asr(monkeypatch, fake_model):
     monkeypatch.setattr(
         audio_utils,
         "_get_local_whisper_model",
-        lambda: _fake_get_model(fake_model),
+        lambda audio_config=None: _fake_get_model(fake_model),
     )
     monkeypatch.setattr(
         audio_utils,
@@ -92,8 +92,8 @@ async def test_concurrent_transcribe_serialized_no_overlap(monkeypatch):
     _patch_asr(monkeypatch, fake_model)
 
     await asyncio.gather(
-        audio_utils.transcribe_audio_local(b"\x00" * 32, "mp3"),
-        audio_utils.transcribe_audio_local(b"\x00" * 32, "mp3"),
+        audio_utils.transcribe_audio_local(b"\x00" * 1024, "mp3"),
+        audio_utils.transcribe_audio_local(b"\x00" * 1024, "mp3"),
     )
 
     # 2 次调用 × start+end = 4 个事件

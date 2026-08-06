@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+pytest.importorskip("pandas")  # docx_parser 惰性 import pandas；缺失则跳过本模块
 from docx import Document as DocxDocument
 from fastapi.testclient import TestClient
 from PIL import Image
