@@ -4,7 +4,7 @@ from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.user.models.user import User as UserModel, UserStatus
 from novamind.features.user.schemas.user_schema import UserUpdate
 from novamind.features.user.repository.user_repository import UserRepository
-from novamind.features.user.api.exceptions import (
+from novamind.features.user.exceptions import (
     UserAlreadyExistsError,
     UserNotFoundError,
     UserCreationError,
