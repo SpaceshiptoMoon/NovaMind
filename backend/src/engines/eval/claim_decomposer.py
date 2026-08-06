@@ -1,13 +1,6 @@
 """
-Claim 拆解与验证器
-
-实现 Faithfulness 的 decompose 策略：
-1. LLM 将回答拆解为独立 claims
-2. 逐条验证每个 claim 是否可由检索上下文支撑
-
-批次 5 接缝：prompt 经注入的 ``PromptProvider`` 端口取模板、日志经注入的 ``Logger``
-端口输出，不再直接 import ``shared.prompts.templates.PromptManager`` 与
-``core.middleware.structured_logging.get_logger``。
+Claim 拆解与验证器。LLM 将回答拆解为独立 claims 并逐条验证上下文支撑。
+prompt 经 PromptProvider 注入，日志经 Logger 注入。
 """
 import json
 from typing import Any, Dict, List

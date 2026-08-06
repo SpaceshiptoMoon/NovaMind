@@ -1,11 +1,6 @@
 """
-生成质量评估器
-
-包含 LLM-as-Judge 直接打分、反向问题法等生成阶段评估策略
-
-批次 5 接缝：prompt 经注入的 ``PromptProvider`` 端口取模板、日志经注入的 ``Logger``
-端口输出，不再直接 import ``shared.prompts.templates.PromptManager`` 与
-``core.middleware.structured_logging.get_logger``。
+生成质量评估器。LLM-as-Judge 打分、反向问题法等评估策略。
+prompt 经 PromptProvider 注入，日志经 Logger 注入。
 """
 import json
 from typing import Any, Dict, List, Optional

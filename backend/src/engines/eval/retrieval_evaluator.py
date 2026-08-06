@@ -1,12 +1,6 @@
 """
-检索质量评估器
-
-评估检索阶段的指标：Precision@K、Hit Rate、MRR、Recall@K
-
-批次 5 接缝：prompt 经注入的 ``PromptProvider`` 端口取模板、日志经注入的 ``Logger``
-端口输出，不再直接 import ``shared.prompts.templates.PromptManager`` 与
-``core.middleware.structured_logging.get_logger``（切断引擎 -> 宿主的导入边，
-为批次 6 抽包做准备）。
+检索质量评估器。评估 Precision@K、Hit Rate、MRR、Recall@K。
+prompt 经 PromptProvider 注入，日志经 Logger 注入。
 """
 import json
 from typing import Any, Dict, List, Optional
