@@ -1,25 +1,8 @@
 """shared 公共日志门面。
 
-本模块是整个项目（shared/engines/features 三层）共用的结构化日志入口，提供：
-
-  - ``Logger``：结构化日志协议（对齐 structlog BoundLogger 调用形态），公共协议，
-    非引擎专属——shared/engines/features 任何层都可面向该协议编程。
-  - ``StdLogger``：stdlib logging 后端实现，满足 ``Logger`` Protocol（嵌入场景
-    无 structlog 时回退使用）。
-  - ``get_logger(name)``：优先 ``structlog.get_logger(name)``（宿主已全局配置，
-    行为逐字保留），structlog 缺失时回退 ``StdLogger(name)``。
-
-设计：
-  - 宿主侧已通过 ``setup_structured_logging`` 全局配置 structlog，故优先返回
-    ``structlog.get_logger(name)``——日志在宿主内行为与原先逐字一致
-    （JSON 结构化、contextvars 合并、exc_info 渲染、调用位置等均由 structlog 处理）。
-  - 嵌入方若未安装 structlog，回退到 stdlib ``logging``（库标准做法：库用 stdlib
-    logging，由嵌入方配置 handler）。``StdLogger`` 满足 ``Logger`` Protocol，
-    调用形态对齐 structlog BoundLogger（``info(event, **kw)``，
-    ``**kw`` 作为结构化字段经 stdlib ``extra`` 传递，``exc_info`` 等特殊键透传 stdlib）。
-
-依赖方向：本模块仅依赖 stdlib/structlog（第三方库，非宿主业务），零宿主
-feature/setting/core 边。是 ``shared/`` 中立公共组件。
+提供 ``Logger`` 协议、``StdLogger`` stdlib 后端、``get_logger(name)`` 入口。
+``get_logger`` 优先 ``structlog.get_logger``（宿主已全局配置），缺失时回退 ``StdLogger``。
+仅依赖 stdlib/structlog，零宿主 feature/setting/core 边。
 """
 from __future__ import annotations
 
