@@ -32,7 +32,7 @@ from novamind.features.qa.services.qa_service import QAService
 from novamind.features.qa.adapters.host_prompt_provider import HostPromptProvider
 from novamind.features.qa.schemas.qa import QARequest
 from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
-from novamind.features.qa.api.exceptions import (
+from novamind.features.qa.exceptions import (
     QAError,
     LLMServiceError,
     InvalidMessageContentError,
