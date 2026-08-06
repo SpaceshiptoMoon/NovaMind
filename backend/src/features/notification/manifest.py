@@ -1,7 +1,5 @@
-"""notification feature manifest
-
-无真实初始化依赖（init 仅记日志）；order=40 作拓扑 tiebreaker 使其排在 agent
-之后、clawmate 之前，匹配批次 1 预期启动序 user→ks→agent→notification→clawmate。
+"""
+notification feature manifest，声明路由、模型加载与初始化顺序。
 """
 from __future__ import annotations
 
