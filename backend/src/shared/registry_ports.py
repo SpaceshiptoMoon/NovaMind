@@ -1,7 +1,5 @@
-"""宿主 Feature 间交互端口协议。
-
-消费方与实现方都是宿主 feature 服务，放 ``shared/`` 作中立跨 feature 抽象，
-切断 feature↔feature 直接导入边。当前仅 ``AgentRegistryPort``（解开 skill↔agent 耦合）。
+"""
+宿主 Feature 间交互端口协议，包含 AgentRegistryPort 与 AgentSummary。
 """
 from __future__ import annotations
 

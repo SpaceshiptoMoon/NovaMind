@@ -1,9 +1,5 @@
 """
-AgentRegistryPort 宿主适配器
-
-把宿主侧 ``AgentRepository`` 包成 ``AgentRegistryPort`` 实例，供 skill feature 经
-依赖注入消费。skill 不再直接 import ``agent.repository.AgentRepository``，改经此
-端口查询 Agent 归属与更新 enabled_tools，切断 skill -> agent 的服务层导入边。
+AgentRegistryPort 宿主适配器，桥接 AgentRepository 实现 Agent 查询与工具更新。
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 

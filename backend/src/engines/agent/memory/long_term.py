@@ -1,14 +1,5 @@
 """
-长期记忆管理器
-
-对话结束时从消息中提取关键信息（偏好/事实/过程/洞察），
-去重后持久化到 agent_memories 表，并索引到 ES。
-对话开始时搜索相关记忆注入上下文。
-
-搜索路径：ES hybrid（向量+BM25）→ ES BM25 fallback → MySQL LIKE fallback
-
-端口化：依赖经 MemoryStorePort（MySQL）/MemorySearchPort（ES）/PromptProvider
-注入，不再直接 import agent.repository / shared.prompts / AgentMemory ORM。
+长期记忆管理器，提取、去重、持久化对话中的关键信息，搜索相关记忆注入上下文。
 """
 from typing import Any, Callable, Dict, List, Optional
 

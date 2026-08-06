@@ -1,15 +1,9 @@
 """
-分层系统提示词组装器
-
-按层组装 Agent 系统提示词：
-  Layer 1: 基础身份（agent.system_prompt）    — 优先级 5（最高）
-  Layer 2: 已启用工具的行为引导（条件注入）      — 优先级 4
-  Layer 3: 技能广场 Markdown 指令              — 优先级 2
-  Layer 4: 模型适配规则（按模型名条件注入）     — 优先级 1（最低）
-  Layer 5: 长期记忆冻结快照                    — 优先级 3
+分层系统提示词组装器，按优先级组装基础身份、工具引导、技能指令、模型适配规则、记忆快照五层。
 
 支持 Token 预算保护：超限时按优先级从低到高丢弃层。
 """
+
 from typing import List, Optional, Tuple
 
 from novamind.engines.agent.tool.registry import ToolRegistry

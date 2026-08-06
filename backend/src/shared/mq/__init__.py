@@ -1,8 +1,5 @@
 """
-消息队列模块（基于 arq + Redis），中立运行时。
-
-仅保留 arq 连接池管理（get_arq_pool / close_arq_pool）与 task_tracker。
-任务编排下沉到各 feature 的 tasks/ 子包。
+消息队列模块（基于 arq + Redis），提供 arq 连接池管理与 task_tracker。
 """
 from typing import Optional
 

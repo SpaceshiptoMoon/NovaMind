@@ -1,5 +1,5 @@
 """
-PromptProvider 宿主适配器，包装 PromptManager 供引擎模块经端口注入取模板。
+PromptProvider 宿主适配器，包装 PromptManager 取模板。
 """
 from typing import Any
 

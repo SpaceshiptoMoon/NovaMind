@@ -1,13 +1,5 @@
 """
-MemoryStorePort / MemorySearchPort 宿主适配器
-
-- HostMemoryStorePort：包 `MemoryRepository` + `ContextSummaryRepository`，实现
-  `MemoryStorePort`。AgentMemory ORM 与裸 SQL 子串查询（replace/remove）归一到端口，
-  返回引擎自有的 `LongTermMemoryEntry`/`ContextSummaryEntry`，引擎不再接触 ORM。
-- HostMemorySearchPort：包 `MemorySearchRepository`，实现 `MemorySearchPort`，
-  切断引擎对 `shared.clients.ClientFactory` 的依赖。
-
-embedding 向量由引擎侧生成后传入（MemorySearchPort 不依赖 embedding 客户端）。
+MemoryStorePort / MemorySearchPort 宿主适配器，桥接记忆 ORM 与 ES 检索。
 """
 from datetime import datetime
 from typing import Any, List, Optional, Tuple

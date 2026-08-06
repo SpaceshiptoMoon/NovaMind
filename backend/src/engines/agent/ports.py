@@ -1,7 +1,5 @@
 """
-Agent 引擎端口与 DTO。
-消费方依赖此端口查询/管理 Agent 归属与 enabled_tools，实现方在 feature 提供适配器。
-仅依赖 typing，不依赖 feature/setting。
+Agent 引擎端口协议，定义 MemoryStorePort、MemorySearchPort、KnowledgeSearchPort 等端口。
 """
 from __future__ import annotations
 

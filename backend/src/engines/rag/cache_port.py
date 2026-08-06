@@ -1,7 +1,5 @@
 """
-缓存端口协议。
-引擎依赖 CachePort（get/set/delete/delete_by_pattern），宿主在装配点注入，
-未注入时缓存 no-op 降级。
+检索缓存端口 CachePort，定义 set / delete_by_pattern 接口。
 """
 from __future__ import annotations
 

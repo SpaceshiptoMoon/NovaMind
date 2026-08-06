@@ -1,8 +1,5 @@
 """
-MinIO 对象路径策略端口，把路径方案从 MinioClient 解耦。
-
-引擎经 PathStrategy 协议获取对象名与列表前缀，宿主经 ClientFactory 注入实现。
-DefaultPathStrategy 逐字复刻原路径方案，保证不注入时行为一致。
+MinIO 对象路径策略端口，定义 PathStrategy 协议及 DefaultPathStrategy 默认实现。
 """
 from __future__ import annotations
 

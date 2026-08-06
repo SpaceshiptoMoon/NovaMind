@@ -1,9 +1,5 @@
 """
-Feature Manifest 数据模型。
-
-每个 feature 用 FeatureManifest 描述路由、依赖、初始化钩子、ORM 模型与开关，
-由 manifest_loader 统一发现并拓扑排序。RouterSpec 的 prefix/tag 与原 router_manager
-逐字一致，确保 openapi.json 不变。
+Feature Manifest 数据模型，描述路由、依赖、初始化钩子、ORM 模型与开关。
 """
 from __future__ import annotations
 

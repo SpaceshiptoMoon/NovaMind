@@ -1,8 +1,5 @@
 """
-提示词注册表（纯机制，零 feature 依赖）。
-
-提供 register(TEMPLATES) 写入、get_template / format_prompt 读取。
-提示词数据由宿主启动层在应用生命周期中注册，本模块不 import 任何 feature。
+提示词注册表，提供 register / get_template / format_prompt 读写接口。
 """
 from __future__ import annotations
 

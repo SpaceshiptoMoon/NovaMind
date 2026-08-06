@@ -1,7 +1,5 @@
 """
-内置工具：读取截断的完整工具结果。
-
-直接访问宿主 AgentToolCall ORM 与 DB session，属宿主持久化辅助，留宿主侧。
+内置工具：读取截断的完整工具结果，从 agent_tool_calls 表取回原始数据。
 """
 import json
 from typing import Any, Dict, List

@@ -1,11 +1,5 @@
 """
-内置工具：知识库搜索
-
-提供知识空间发现、知识库浏览、文档检索的完整工具链。
-工具使用流程：空间(list_spaces) → 知识库(list_knowledge_bases) → 搜索(knowledge_search)
-
-端口化：宿主在装配时注入 KnowledgeSearchPort 到 context，工具经端口调用
-知识空间/用户 feature 能力，不再直接 import features.knowledge_space/features.user。
+内置工具：知识库搜索，提供空间发现、知识库浏览、文档检索的完整工具链。
 """
 import json
 from typing import Any, Dict, List

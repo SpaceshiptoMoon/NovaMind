@@ -1,16 +1,5 @@
 """
-MemoryManager — 记忆系统统一门面
-
-编排长期记忆和短期记忆的完整生命周期。
-每请求创建，通过 create() 工厂方法注入依赖。
-
-生命周期:
-  build_frozen_snapshot() → 长期记忆 → system prompt（会话级不变）
-  prefetch(query)         → 语义搜索相关记忆 → 用户消息（每轮变化）
-  build_context()         → DB 加载 + Token 预算 + 压缩 → MemorySnapshot
-
-端口化：MemoryStorePort（MySQL 记忆+摘要）/MemorySearchPort（ES）/PromptProvider
-由宿主经 create() 注入，不再直接 import agent.repository / shared.prompts。
+MemoryManager — 记忆系统统一门面，编排长期记忆和短期记忆的生命周期。
 """
 from typing import Any, Callable, Dict, List, Optional
 

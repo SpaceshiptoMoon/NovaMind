@@ -1,7 +1,5 @@
 """
-引擎端口协议。
-PromptProvider + FallbackLLMProvider，跨多引擎复用放 engines/ 顶层。
-仅依赖 typing.Protocol，不依赖 feature/setting。
+引擎公共端口，定义 PromptProvider 和 FallbackLLMProvider 协议。
 """
 from __future__ import annotations
 

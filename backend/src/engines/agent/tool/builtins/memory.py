@@ -1,12 +1,5 @@
 """
-内置工具：记忆管理
-
-允许 Agent 主动添加、替换、移除长期记忆。
-所有写入操作经过安全扫描。
-
-端口化：经 context 注入 memory_store_port（MySQL）/memory_search_port（ES）/
-embedding_client_resolver（embedding 客户端工厂），不再直接 import
-agent.repository / user.services.model_config_service / shared.clients.ClientFactory。
+内置工具：记忆管理，允许 Agent 主动添加、替换、移除长期记忆。
 """
 import json
 from typing import Any, Dict, List
