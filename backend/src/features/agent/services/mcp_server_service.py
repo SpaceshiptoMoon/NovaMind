@@ -14,7 +14,7 @@ from novamind.features.agent.schemas.agent_schema import (
     McpServerUpdate,
     McpServerResponse,
 )
-from novamind.features.agent.api.exceptions import (
+from novamind.features.agent.exceptions import (
     McpServerNotFoundError,
     McpConnectionError,
 )
@@ -186,7 +186,7 @@ class McpServerService:
         # 系统级服务器需要管理员权限才能修改/删除
         if server.user_id is None:
             if not is_admin:
-                from novamind.features.agent.api.exceptions import McpServerError
+                from novamind.features.agent.exceptions import McpServerError
                 raise McpServerError(
                     message="系统级 MCP 服务器需要管理员权限",
                     code="MCP_SERVER_ADMIN_REQUIRED",

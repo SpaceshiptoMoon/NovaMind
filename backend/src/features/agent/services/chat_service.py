@@ -29,7 +29,7 @@ from novamind.features.agent.adapters import (
 from novamind.features.agent.models.agent import AgentDefinition
 from novamind.features.agent.models.session import AgentSession
 from novamind.features.agent.models.message import AgentMessage
-from novamind.features.agent.api.exceptions import AgentError, AgentNotFoundError
+from novamind.features.agent.exceptions import AgentError, AgentNotFoundError
 from novamind.engines.agent.tool.base import ToolContext
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.utils.time_utils import now_china
