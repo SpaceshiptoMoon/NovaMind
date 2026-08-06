@@ -8,7 +8,7 @@ Tavily 是专为 AI 优化的搜索引擎 API
 from typing import List, Optional
 import httpx
 
-from novamind.shared.clients.search.external_search_service import (
+from novamind.shared.search.external_search_service import (
     ExternalSearchService,
     ExternalSearchResult,
 )

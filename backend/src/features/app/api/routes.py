@@ -21,7 +21,7 @@ from novamind.features.app.schemas.resume_schema import (
     ResumeSessionResponse, ResumeSessionListResponse,
 )
 from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.shared.clients import get_minio_client
+from novamind.shared.storage.client_factory import get_minio_client
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)

@@ -164,7 +164,7 @@ async def process_video_document(
         )
 
     # 1.5. 帧持久化到 MinIO（在 VLM 调用前上传，避免 VLM 失败后帧丢失）
-    from novamind.shared.clients import ClientFactory
+    from novamind.shared.storage.client_factory import ClientFactory
     minio_client = await ClientFactory.get_minio_client()
     storage_info = document.storage or {}
     base_object = storage_info.get("minio_object_name", "")
@@ -385,7 +385,7 @@ async def process_audio_document(
             )
         if protocol == "dashscope":
             # 批次 6a-5：minio_client 由宿主装配获取后注入引擎函数（引擎不再 import ClientFactory）
-            from novamind.shared.clients import ClientFactory
+            from novamind.shared.storage.client_factory import ClientFactory
             minio_client = await ClientFactory.get_minio_client()
             storage_info = document.get_storage_info()
             language_hints = [language] if language else None

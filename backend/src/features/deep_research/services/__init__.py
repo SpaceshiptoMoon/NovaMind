@@ -2,7 +2,7 @@
 深度研究模块 - 服务层
 """
 
-from novamind.shared.clients.search import (
+from novamind.shared.search import (
     DuckDuckGoSearchService,
     ExternalSearchResult,
     ExternalSearchService,

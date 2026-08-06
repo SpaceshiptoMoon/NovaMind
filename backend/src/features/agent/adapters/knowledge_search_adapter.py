@@ -32,7 +32,7 @@ class HostKnowledgeSearchPort:
 
     async def _get_es_client(self) -> Any:
         if self._es_client is None:
-            from novamind.shared.clients import get_elasticsearch_client
+            from novamind.shared.storage.client_factory import get_elasticsearch_client
 
             self._es_client = await get_elasticsearch_client()
         return self._es_client

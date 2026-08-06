@@ -10,7 +10,7 @@ import httpx
 from bs4 import BeautifulSoup
 from urllib.parse import parse_qs, unquote
 
-from novamind.shared.clients.search.external_search_service import (
+from novamind.shared.search.external_search_service import (
     ExternalSearchService,
     ExternalSearchResult,
 )

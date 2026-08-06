@@ -184,7 +184,7 @@ async def recover_orphan_resume_sessions() -> int:
                 await session.commit()
 
                 # 读取 MinIO 文件
-                from novamind.shared.clients import ClientFactory
+                from novamind.shared.storage.client_factory import ClientFactory
                 minio_client = await ClientFactory.get_minio_client()
                 file_bytes = await minio_client.download_document(
                     minio_client.default_bucket, s.resume_file_url

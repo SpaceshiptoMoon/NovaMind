@@ -730,7 +730,7 @@ async def get_redis_client() -> RedisCache:
 
     委托给 ClientFactory 统一管理单例
     """
-    from novamind.shared.clients import ClientFactory
+    from novamind.shared.storage.client_factory import ClientFactory
     return await ClientFactory.get_redis_client()
 
 
@@ -738,5 +738,5 @@ async def close_redis_connection():
     """
     关闭全局Redis连接
     """
-    from novamind.shared.clients import ClientFactory
+    from novamind.shared.storage.client_factory import ClientFactory
     await ClientFactory.close_all()

@@ -1103,5 +1103,5 @@ class SearchService:
 
     async def _get_minio_client(self):
         """获取 MinIO 客户端"""
-        from novamind.shared.clients import ClientFactory
+        from novamind.shared.storage.client_factory import ClientFactory
         return await ClientFactory.get_minio_client()

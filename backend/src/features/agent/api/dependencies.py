@@ -37,7 +37,7 @@ def get_todo_store(request: Request) -> TodoStore:
 async def get_minio_client_for_presign():
     """获取 MinIO 客户端（路由层附件预签名用）"""
     try:
-        from novamind.shared.clients import ClientFactory
+        from novamind.shared.storage.client_factory import ClientFactory
         return await ClientFactory.get_minio_client()
     except Exception:
         return None
@@ -46,7 +46,7 @@ async def get_minio_client_for_presign():
 async def get_memory_search_repo() -> Optional[MemorySearchRepository]:
     """获取 ES 记忆检索仓储（可选，ES 不可用时返回 None）"""
     try:
-        from novamind.shared.clients import ClientFactory
+        from novamind.shared.storage.client_factory import ClientFactory
 
         es_client_wrapper = await ClientFactory.get_elasticsearch_client()
         return MemorySearchRepository(es_client=es_client_wrapper.es_client)
@@ -78,7 +78,7 @@ async def get_agent_chat_service(
     # 延迟获取 MinIO 客户端
     if minio_client is None:
         try:
-            from novamind.shared.clients import ClientFactory
+            from novamind.shared.storage.client_factory import ClientFactory
             minio_client = await ClientFactory.get_minio_client()
         except Exception:
             pass
