@@ -1,24 +1,7 @@
 """
-提示词模板键枚举（过渡层）
+提示词模板键枚举 PromptTemplate，作为提示词键的字符串常量引用。
 
-本文件只保留 `PromptTemplate` 枚举，作为提示词键的「字面量常量」供现有调用方
-过渡使用。批次 0 子任务 3 会把全仓 `PromptTemplate.XXX.value` 替换为字符串
-字面量，届时本枚举仅作键名清单参考。
-
-提示词注册表机制（PromptManager）已迁至 `shared/prompts/prompt_manager.py`，
-为纯机制、零 feature 依赖；提示词数据由宿主 startup 层注册。本文件不再
-承载 `PromptManager`，也不再反向 import feature 模块（消除 shared→features
-分层违规）。
-
-模块分类（键归属，数据源在各 feature 的 *_prompts.py）：
-  1. knowledge_space — RAG 检索、查询改写、知识库问答、VLM 描述
-  2. deep_research   — 研究主题分析、任务分解、报告生成
-  3. qa              — 对话压缩、AI 对话系统提示、查询改写（QueryRewriter）、检索自评估（GradeRetrier）
-  4. evaluation      — 检索评估、生成评估、Claim 拆解验证
-  5. app             — 简历解析（S1-S4）、简历分析（S4.5-S9）、追问模拟（S10-S11）
-  6. agent           — 系统提示词、长期记忆提取、结构化摘要、迭代融合
-  7. skill           — 技能安全审查、技能 AI 搜索
-  8. clawmate        — ClawMate 终端助手系统提示
+键按模块归属：knowledge_space / deep_research / qa / evaluation / app / agent / skill / clawmate。
 """
 from enum import Enum
 

@@ -1,9 +1,7 @@
-"""arq 通用 Worker 运行时（中立层）。
+"""
+arq 通用 Worker 运行时，中立层。
 
-批次 6e 单向依赖收口：本模块只保留 arq 嵌入式 Worker 的通用运行时——创建/启动/
-停止 Worker。宿主编排（任务函数、重试/取消兜底、孤儿恢复、入队）下沉到各 feature 的
-``tasks/`` 子包，由 ``core/middleware/startup_manager`` 收集后经 ``functions`` 参数
-注入本模块。``shared/mq`` 不得 import ``features`` 或 ``setting``。
+仅保留嵌入式 Worker 的创建/启动/停止，任务函数由外部经 functions 参数注入。
 """
 import asyncio
 from typing import Callable, Optional, Sequence

@@ -1,10 +1,8 @@
-"""消息队列模块（基于 arq + Redis）——中立运行时。
+"""
+消息队列模块（基于 arq + Redis），中立运行时。
 
-批次 6e 单向依赖收口：本模块只保留 arq 连接池管理（``get_arq_pool`` / ``close_arq_pool``）。
-任务入队与宿主编排下沉到各 feature 的 ``tasks/`` 子包（``enqueue_process_document`` →
-``features/knowledge_space/tasks``，``enqueue_process_resume`` → ``features/app/tasks``）。
-``shared/mq`` 不得 import ``features`` 或 ``setting``；``document_id ↔ job_id`` 追踪
-由中立的 ``task_tracker`` 承担。
+仅保留 arq 连接池管理（get_arq_pool / close_arq_pool）与 task_tracker。
+任务编排下沉到各 feature 的 tasks/ 子包。
 """
 from typing import Optional
 

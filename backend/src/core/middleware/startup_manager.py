@@ -1,11 +1,8 @@
 """
-启动管理器模块
-负责应用启动和关闭时的组件管理
+启动管理器，负责应用启动和关闭时的组件管理。
 
-批次 1 起，feature 初始化与 ORM 模型导入改由 manifest 驱动：`_init_features`
-按拓扑序遍历 `get_sorted_manifests()` 调各 `init_hook`；`_import_models` 遍历各
-manifest 的 `models_loader`。旧的硬编码注册表与 `_import_models_legacy` 保留，
-`NOVAMIND_LEGACY_MANIFEST=1` 时回滚到旧路径（与 router_manager 共用同一开关）。
+Feature 初始化与 ORM 模型导入由 manifest 驱动，按拓扑序遍历各 init_hook 与 models_loader。
+NOVAMIND_LEGACY_MANIFEST=1 时回滚到旧硬编码路径。
 """
 import os
 import time

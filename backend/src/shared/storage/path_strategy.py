@@ -1,16 +1,8 @@
 """
-MinIO 对象路径策略端口
+MinIO 对象路径策略端口，把路径方案从 MinioClient 解耦。
 
-把「对象存储路径方案」从 `MinioClient` 中解耦：引擎（`shared/storage/minio_client.py`，
-批次 6 迁 `novamind-knowledge-engine`）经 `PathStrategy` 协议获取对象名与列表前缀，
-不再硬编码宿主 NovaMind 的 ``spaces/{id}/kbs/{id}/documents/{id}/...`` 路径方案。
-宿主在 `features/knowledge_space/adapters/novamind_path_strategy.py` 实现
-`NovamindPathStrategy` 并经 `ClientFactory` 注入。
-
-设计约束：
-  - `DefaultPathStrategy` 逐字复刻 `minio_client.py` 原路径方案，保证不注入策略时
-    行为与旧版逐字一致（对象路径不变，旧索引/对象仍兼容）。
-  - 依赖方向：宿主 -> 引擎 -> 本协议；引擎 ✗-> 宿主 features/setting。
+引擎经 PathStrategy 协议获取对象名与列表前缀，宿主经 ClientFactory 注入实现。
+DefaultPathStrategy 逐字复刻原路径方案，保证不注入时行为一致。
 """
 from __future__ import annotations
 

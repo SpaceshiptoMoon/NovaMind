@@ -1,17 +1,8 @@
 """
-Elasticsearch 索引 schema 端口
+Elasticsearch 索引 schema 端口，把索引命名与 mapping 从 ElasticsearchClient 解耦。
 
-把「索引命名」与「索引 mapping/字段名」从 `ElasticsearchClient` 中解耦：
-引擎（`shared/storage/elasticsearch_client.py`，批次 6 迁 `novamind-rag-engine`）
-经 `IndexSchema` 协议获取索引名与建索引体，不再硬编码宿主 NovaMind 的 `space_{id}`
-命名与字段 mapping。宿主在 `features/knowledge_space/adapters/novamind_index_schema.py`
-实现 `NovamindIndexSchema` 并经 `ClientFactory` 注入。
-
-设计约束：
-  - `DefaultIndexSchema` 逐字复刻 `elasticsearch_client.py` 原 `generate_index_name`/
-    `create_index` 的 mapping（L122-179）与字段名，保证不注入 schema 时行为与旧版逐字一致。
-  - `IndexFieldNames` 集中检索方法引用的字段名，便于宿主自定义字段命名。
-  - 依赖方向：宿主 -> 引擎 -> 本协议；引擎 ✗-> 宿主 features/setting。
+引擎经 IndexSchema 协议获取索引名与建索引体，宿主经 ClientFactory 注入实现。
+DefaultIndexSchema 逐字复刻原逻辑，保证不注入时行为一致。
 """
 from __future__ import annotations
 
