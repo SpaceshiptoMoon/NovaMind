@@ -39,7 +39,6 @@
         <div v-for="item in textStrategyItems" :key="item.key" class="text-strategy-item">
           <div class="text-strategy-copy">
             <span class="text-strategy-label">{{ item.label }}</span>
-            <small>对应 `parsing.text.{{ item.key.replace('Strategy', '').replace('json', 'json') }}`</small>
           </div>
           <el-select v-model="configForm[item.key]" style="width: 180px">
             <el-option label="default" value="default" />

@@ -2,7 +2,7 @@
   <div>
     <div class="sub-section">
       <h4 class="sub-title">文本切分主策略</h4>
-      <p class="sub-desc">对应 `splitting.strategy`。页面会根据后端规则，只展示当前策略真正生效的参数。</p>
+      <p class="sub-desc">按所选切分策略只展示真正生效的参数。</p>
 
       <el-form :model="configForm" label-width="140px" class="config-form">
         <el-form-item label="切分策略">
@@ -83,7 +83,7 @@
 
     <div v-if="hasAudio" class="sub-section">
       <h4 class="sub-title">音频切分覆盖</h4>
-      <p class="sub-desc">对应 `splitting.audio`。仅覆盖音频转写文本的切分方式。</p>
+      <p class="sub-desc">仅覆盖音频转写文本的切分方式。</p>
 
       <el-form :model="configForm" label-width="140px" class="config-form">
         <el-form-item label="切分策略">
@@ -100,7 +100,7 @@
 
     <div v-if="hasVideo" class="sub-section">
       <h4 class="sub-title">视频切分覆盖</h4>
-      <p class="sub-desc">对应 `splitting.video`。后端只支持固定策略，因此这里仅配置 `chunk_size`。</p>
+      <p class="sub-desc">视频切分仅支持固定策略，这里只配置 `chunk_size`。</p>
 
       <el-form :model="configForm" label-width="140px" class="config-form">
         <el-form-item label="chunk_size">
