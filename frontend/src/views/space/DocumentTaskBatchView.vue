@@ -144,12 +144,12 @@
                         <template #default="{ row }">
                           <div class="progress-cell">
                             <el-progress
-                              :percentage="getTaskProgressPercent(row.step_progress)"
+                              :percentage="getTaskProgressPercent(row)"
                               :stroke-width="7"
                               :show-text="false"
                               color="#0f766e"
                             />
-                            <span>{{ getTaskProgressText(row.step_progress) }}</span>
+                            <span>{{ getTaskProgressText(row) }}</span>
                           </div>
                         </template>
                       </el-table-column>
@@ -344,14 +344,21 @@ function getTaskSuccessPercent(task: DocumentTask) {
   return Math.min(100, Math.round((completedCount / totalCount) * 100))
 }
 
-function getTaskProgressPercent(stepProgress?: Record<string, unknown>) {
+function getTaskProgressPercent(row?: { status?: number; step_progress?: Record<string, unknown> }) {
+  // 终态优先：已完成则满格，避免 step_progress 为空或媒体步骤键不被识别时显示 0%。
+  if (row?.status === 2) return 100
+  const stepProgress = row?.step_progress
   if (!stepProgress) return 0
   const steps = ['parsed', 'split', 'embedded', 'indexed']
   const doneCount = steps.filter(step => stepProgress[step] === 'done').length
   return Math.round((doneCount / steps.length) * 100)
 }
 
-function getTaskProgressText(stepProgress?: Record<string, unknown>) {
+function getTaskProgressText(row?: { status?: number; step_progress?: Record<string, unknown> }) {
+  // 终态优先：与状态列保持一致，避免「已完成」行显示「未开始」等矛盾文案。
+  if (row?.status === 2) return '已完成'
+  if (row?.status === 4) return '已取消'
+  const stepProgress = row?.step_progress
   if (!stepProgress) return '未开始'
 
   const labels: Record<string, string> = {
