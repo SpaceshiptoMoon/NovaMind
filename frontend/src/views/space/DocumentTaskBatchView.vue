@@ -91,6 +91,16 @@
                         <span class="task-breakdown__item is-danger">失败 {{ task.task_summary?.failed ?? 0 }}</span>
                         <span class="task-breakdown__item is-muted">取消 {{ task.task_summary?.cancelled ?? 0 }}</span>
                       </div>
+
+                      <div v-if="getTaskNodeSummary(task).length" class="task-node-summary">
+                        <span
+                          v-for="node in getTaskNodeSummary(task)"
+                          :key="node.label"
+                          class="task-node-summary__chip"
+                        >
+                          {{ node.label }} {{ node.count }}
+                        </span>
+                      </div>
                     </div>
 
                     <div class="task-item__side">
@@ -103,7 +113,7 @@
                           :show-text="false"
                           :color="getTaskProgressColor(task.status)"
                         />
-                        <span class="task-overview__meta">已结束 {{ getTaskSettledCount(task) }} / {{ task.total_count || 0 }}</span>
+                        <span class="task-overview__meta">已处理 {{ getTaskProcessedCount(task) }} / {{ task.total_count || 0 }}</span>
                       </div>
                       <span class="task-item__toggle">{{ expandedTaskIds.includes(task.id) ? '收起详情' : '展开详情' }}</span>
                     </div>
@@ -116,6 +126,14 @@
                     </div>
 
                     <el-table :data="task.items" row-key="id" class="detail-table">
+                      <el-table-column type="expand">
+                        <template #default="{ row }">
+                          <div class="node-log-wrap">
+                            <TaskNodeLogTable :step-progress="row.step_progress" />
+                          </div>
+                        </template>
+                      </el-table-column>
+
                       <el-table-column label="任务项" width="96">
                         <template #default="{ row }">{{ row.id }}</template>
                       </el-table-column>
@@ -201,8 +219,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { DataAnalysis, Document, List, RefreshRight, Search } from '@element-plus/icons-vue'
 
 import { documentApi } from '@/api/knowledge'
-import type { DocumentTask } from '@/api/types'
-import { KbSidebar, buildKbNavItems, taskStatusMap } from '@/components/knowledge'
+import type { DocumentTask, TaskNodeLog } from '@/api/types'
+import { KbSidebar, TaskNodeLogTable, buildKbNavItems, taskStatusMap } from '@/components/knowledge'
 import Pagination from '@/components/common/Pagination.vue'
 import { formatDate } from '@/utils/format'
 
@@ -335,6 +353,55 @@ function getTaskSettledCount(task: DocumentTask) {
   return (summary?.completed ?? 0) + (summary?.failed ?? 0) + (summary?.cancelled ?? 0)
 }
 
+// 批次节点汇总展示顺序 + 中文标签（覆盖文本/音频/视频三套管道节点）
+const NODE_LABELS: { key: string; label: string }[] = [
+  { key: 'parsed', label: '解析' },
+  { key: 'transcription_done', label: '转写' },
+  { key: 'frames_extracted', label: '抽帧' },
+  { key: 'descriptions_generated', label: '画面描述' },
+  { key: 'split', label: '切分' },
+  { key: 'text_split', label: '切分' },
+  { key: 'embedded', label: '向量化' },
+  { key: 'question_generation', label: '问题生成' },
+  { key: 'indexed', label: '索引' },
+]
+
+/** 读取节点状态，兼容新结构体 {status:'done'} 与旧扁平字符串 'done'。 */
+function getNodeStatus(stepProgress: Record<string, unknown>, key: string): string | undefined {
+  const entry = stepProgress[key]
+  if (entry == null) return undefined
+  if (typeof entry === 'string') return entry
+  if (typeof entry === 'object' && entry !== null) {
+    const status = (entry as TaskNodeLog).status
+    return typeof status === 'string' ? status : undefined
+  }
+  return undefined
+}
+
+/** 从 task.items 聚合各节点已完成文档数，仅返回该批实际出现过的节点。 */
+function getTaskNodeSummary(task: DocumentTask): { label: string; count: number }[] {
+  const counts: Record<string, number> = {}
+  for (const item of task.items ?? []) {
+    const sp = item.step_progress
+    if (!sp) continue
+    for (const { key } of NODE_LABELS) {
+      if (getNodeStatus(sp, key) === 'done') {
+        counts[key] = (counts[key] ?? 0) + 1
+      }
+    }
+  }
+  return NODE_LABELS.filter(({ key }) => counts[key]).map(({ key, label }) => ({
+    label,
+    count: counts[key] ?? 0,
+  }))
+}
+
+/** 批次已处理文档数：优先用后端冗余列，回退到 task_summary 现算。 */
+function getTaskProcessedCount(task: DocumentTask): number {
+  if (typeof task.processed_count === 'number') return task.processed_count
+  return getTaskSettledCount(task)
+}
+
 function getTaskSuccessPercent(task: DocumentTask) {
   const totalCount = task.total_count || 0
   if (!totalCount) return 0
@@ -350,7 +417,7 @@ function getTaskProgressPercent(row?: { status?: number; step_progress?: Record<
   const stepProgress = row?.step_progress
   if (!stepProgress) return 0
   const steps = ['parsed', 'split', 'embedded', 'indexed']
-  const doneCount = steps.filter(step => stepProgress[step] === 'done').length
+  const doneCount = steps.filter(step => getNodeStatus(stepProgress, step) === 'done').length
   return Math.round((doneCount / steps.length) * 100)
 }
 
@@ -369,7 +436,7 @@ function getTaskProgressText(row?: { status?: number; step_progress?: Record<str
   }
 
   const doneSteps = Object.entries(labels)
-    .filter(([key]) => stepProgress[key] === 'done')
+    .filter(([key]) => getNodeStatus(stepProgress, key) === 'done')
     .map(([, label]) => label)
 
   return doneSteps.join(' / ') || '处理中'
@@ -739,6 +806,30 @@ onMounted(fetchTasks)
 
 .task-breakdown__item.is-muted::before {
   background: var(--color-text-muted);
+}
+
+.task-node-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.task-node-summary__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.node-log-wrap {
+  padding: 12px 16px;
+  background: var(--color-bg-card-elevated);
 }
 
 .task-item__side {
