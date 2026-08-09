@@ -477,6 +477,15 @@ export interface BatchUploadResponse {
   failed: BatchUploadFailedItem[]
 }
 
+export interface TaskNodeLog {
+  status: string // running | done | failed | skipped
+  started_at?: string | null
+  finished_at?: string | null
+  duration_ms?: number | null
+  metrics?: Record<string, unknown>
+  error?: string | null
+}
+
 export interface DocumentTask {
   id: number
   space_id: number
@@ -486,6 +495,7 @@ export interface DocumentTask {
   status: number
   pipeline_config?: Record<string, unknown>
   total_count: number
+  processed_count?: number
   task_summary?: {
     pending?: number
     processing?: number
@@ -516,7 +526,7 @@ export interface DocumentTaskItem {
   kb_id: number
   status: number
   job_id?: string
-  step_progress?: Record<string, unknown>
+  step_progress?: Record<string, TaskNodeLog | string>
   pipeline_result?: Record<string, unknown>
   error_message?: string
   retry_count: number
