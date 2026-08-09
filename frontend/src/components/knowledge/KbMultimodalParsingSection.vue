@@ -2,7 +2,7 @@
   <div>
     <div v-if="hasImage" class="sub-section">
       <h4 class="sub-title">图片解析</h4>
-      <p class="sub-desc">对应 `parsing.image`。选择 `VLM 描述` 使用视觉语言模型生成图片描述；选择 `DeepDoc OCR` 使用本地 OCR 提取图片中的文字。</p>
+      <p class="sub-desc">选择 `VLM 描述` 使用视觉语言模型生成图片描述；选择 `DeepDoc OCR` 使用本地 OCR 提取图片中的文字。</p>
 
       <el-form :model="configForm" label-width="120px" class="config-form">
         <el-form-item label="解析策略">
@@ -21,7 +21,7 @@
 
     <div v-if="hasVideo" class="sub-section">
       <h4 class="sub-title">视频解析</h4>
-      <p class="sub-desc">对应 `parsing.video`。控制抽帧节奏、最大帧数，以及是否追加视觉描述。</p>
+      <p class="sub-desc">控制抽帧节奏、最大帧数，以及是否追加视觉描述。</p>
 
       <el-form :model="configForm" label-width="120px" class="config-form">
         <el-form-item label="抽帧间隔">
@@ -43,7 +43,7 @@
 
     <div v-if="hasAudio" class="sub-section">
       <h4 class="sub-title">音频解析</h4>
-      <p class="sub-desc">对应 `parsing.audio`。ASR 模型与语言参数互不冲突，空值时回退默认配置。</p>
+      <p class="sub-desc">ASR 模型与语言参数互不冲突，空值时回退默认配置。</p>
 
       <el-form :model="configForm" label-width="120px" class="config-form">
         <el-form-item label="ASR 模型">
