@@ -86,6 +86,7 @@ class DocumentTaskBatchRepository:
         total = pending + processing + completed + failed + cancelled
 
         batch.total_count = total
+        batch.processed_count = completed + failed + cancelled
         batch.task_summary = {
             "pending": pending,
             "processing": processing,

@@ -149,6 +149,8 @@ async def process_video_document(
         "视频帧提取开始", document_id=document.id,
         interval=frame_interval, max_frames=max_frames,
     )
+    if task:
+        task.start_step("frames_extracted")
     frames = await extract_video_frames(file_content, frame_interval, max_frames)
     logger.info(
         "视频帧提取完成", document_id=document.id, frame_count=len(frames),
@@ -183,8 +185,10 @@ async def process_video_document(
             frame_paths.append("")
 
     if task:
-        task.set_step("frames_extracted")
+        task.finish_step("frames_extracted", metrics={"frame_count": len(frames)})
 
+    if task:
+        task.start_step("descriptions_generated")
     # 2. 逐帧 VLM 描述（每5帧检查一次取消信号）
     descriptions = []
     first_frame_error: Optional[str] = None
@@ -250,7 +254,7 @@ async def process_video_document(
     await persist_parsed_text(document, full_text, session, logger)
 
     if task:
-        task.set_step("descriptions_generated")
+        task.finish_step("descriptions_generated", metrics={"description_count": len(descriptions)})
 
     # 3. 统一文本切分（替代旧 _aggregate_descriptions）
     # 切分配置从 pipeline_config 读取（优先 Task 快照）
@@ -262,6 +266,8 @@ async def process_video_document(
         strategy, embedding_config, session, document.uploader_id,
         model_config_port=model_config_port,
     )
+    if task:
+        task.start_step("text_split")
     chunks = await _split_md_text(
         full_text,
         strategy=strategy,
@@ -270,9 +276,11 @@ async def process_video_document(
     )
 
     if task:
-        task.set_step("text_split")
+        task.finish_step("text_split", metrics={"chunk_count": len(chunks)})
 
     # 4. Embedding + ES（embedding_config 从空间级别读取）
+    if task:
+        task.start_step("indexed")
     await _index_text_chunks(
         document=document,
         chunks=chunks,
@@ -285,7 +293,7 @@ async def process_video_document(
     )
 
     if task:
-        task.set_step("indexed")
+        task.finish_step("indexed", metrics={"chunk_count": len(chunks)})
 
     # 5. 写入处理结果到 Task
     document.storage = {
@@ -408,6 +416,8 @@ async def process_audio_document(
             language=language,
         )
 
+    if task:
+        task.start_step("transcription_done")
     if asr_protocol == "local":
         # 本地 faster-whisper 模型 — 无需 API Key，无需网络。
         # 模型缺失/解码失败时，若用户配了云端 ASR，则回退云端，避免整任务硬失败。
@@ -480,6 +490,8 @@ async def process_audio_document(
         )
         await persist_parsed_text(document, "", session, logger)
         if task:
+            task.finish_step("transcription_done", metrics={"segment_count": 0, "asr_protocol": asr_protocol})
+        if task:
             task.mark_completed(result={
                 "chunk_count": 0,
                 "chunk_type": ChunkType.AUDIO,
@@ -501,6 +513,8 @@ async def process_audio_document(
         )
         await persist_parsed_text(document, "", session, logger)
         if task:
+            task.finish_step("transcription_done", metrics={"segment_count": len(segments), "asr_protocol": asr_protocol})
+        if task:
             task.mark_completed(result={
                 "chunk_count": 0,
                 "chunk_type": ChunkType.AUDIO,
@@ -514,7 +528,7 @@ async def process_audio_document(
     await persist_parsed_text(document, full_text, session, logger)
 
     if task:
-        task.set_step("transcription_done")
+        task.finish_step("transcription_done", metrics={"segment_count": len(segments), "asr_protocol": asr_protocol, "language": language})
 
     # 2. 统一文本切分，splitting.audio 覆盖通用切分参数
     splitting_config = dict(pipeline_config.get("splitting", {}))
@@ -526,6 +540,8 @@ async def process_audio_document(
         strategy, embedding_config, session, document.uploader_id,
         model_config_port=model_config_port,
     )
+    if task:
+        task.start_step("text_split")
     chunks = await _split_md_text(
         full_text,
         strategy=strategy,
@@ -534,12 +550,14 @@ async def process_audio_document(
     )
 
     if task:
-        task.set_step("text_split")
+        task.finish_step("text_split", metrics={"chunk_count": len(chunks)})
 
     # 检查点2：文本切分完成，Embedding + ES 索引前
     await _check_document_cancelled(document.id)
 
     # 3. Embedding + ES
+    if task:
+        task.start_step("indexed")
     await _index_text_chunks(
         document=document,
         chunks=chunks,
@@ -551,7 +569,7 @@ async def process_audio_document(
     )
 
     if task:
-        task.set_step("indexed")
+        task.finish_step("indexed", metrics={"chunk_count": len(chunks)})
 
     # 4. 写入处理结果到 Task
     if task:
