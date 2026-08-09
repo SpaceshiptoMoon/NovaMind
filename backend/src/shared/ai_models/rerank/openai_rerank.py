@@ -45,7 +45,7 @@ class CompatibleRerankClient(BaseRerank):
         timeout: int = 30,
         max_retries: int = 3,
         max_concurrent: int = 5,
-        endpoint: str = "/rerank",
+        endpoint: str = "",
         **kwargs,
     ):
         """
@@ -58,7 +58,10 @@ class CompatibleRerankClient(BaseRerank):
             timeout: 超时时间（秒）
             max_retries: 最大重试次数
             max_concurrent: 最大并发数
-            endpoint: 端点路径（默认 /rerank，阿里云用 /reranks）
+            endpoint: 端点路径。留空则按 base_url 自动选择：
+                DashScope（base_url 含 dashscope.aliyuncs.com）用 ``/reranks``，
+                base_url 需配成 ``https://dashscope.aliyuncs.com/compatible-api/v1``；
+                其它兼容服务商（硅基流动、智谱等）用默认 ``/rerank``。
         """
         super().__init__(
             api_key=api_key,
@@ -68,7 +71,14 @@ class CompatibleRerankClient(BaseRerank):
             max_retries=max_retries,
             max_concurrent=max_concurrent,
         )
-        self.endpoint = endpoint
+        if endpoint:
+            self.endpoint = endpoint
+        elif base_url and "dashscope.aliyuncs.com" in base_url:
+            # DashScope 的 OpenAI 兼容 rerank 端点是 /reranks（非 /rerank），
+            # 请求体仍是扁平 {model, query, documents, top_n}，与其它兼容服务商一致。
+            self.endpoint = "/reranks"
+        else:
+            self.endpoint = "/rerank"
 
     @retry(
         stop=stop_after_attempt(3),
