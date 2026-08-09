@@ -1,7 +1,7 @@
 <template>
   <div class="sub-section">
     <h4 class="sub-title">文本解析</h4>
-    <p class="sub-desc">按文件类型设置解析策略。PDF 额外支持 parser 与 OCR，其他文本类型仅支持 `default / deepdoc`。</p>
+    <p class="sub-desc">按文件类型设置解析策略。PDF 额外支持解析器与 OCR，其他文本类型仅支持默认 / DeepDoc。</p>
 
     <el-form :model="configForm" label-width="120px" class="config-form">
       <div class="pdf-panel">
@@ -10,13 +10,13 @@
           <el-col :span="8">
             <el-form-item label="解析策略">
               <el-select v-model="configForm.pdfStrategy" style="width: 100%">
-                <el-option label="default" value="default" />
-                <el-option label="deepdoc" value="deepdoc" />
+                <el-option label="默认" value="default" />
+                <el-option label="DeepDoc" value="deepdoc" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col v-if="configForm.pdfStrategy === 'deepdoc'" :span="8">
-            <el-form-item label="PDF Parser">
+            <el-form-item label="PDF 解析器">
               <el-select v-model="configForm.deepdocParser" filterable style="width: 100%">
                 <el-option
                   v-for="option in deepdocParserOptions"
@@ -41,8 +41,8 @@
             <span class="text-strategy-label">{{ item.label }}</span>
           </div>
           <el-select v-model="configForm[item.key]" style="width: 180px">
-            <el-option label="default" value="default" />
-            <el-option label="deepdoc" value="deepdoc" />
+            <el-option label="默认" value="default" />
+            <el-option label="DeepDoc" value="deepdoc" />
           </el-select>
         </div>
       </div>

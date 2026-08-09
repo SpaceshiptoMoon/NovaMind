@@ -7,10 +7,10 @@
       <el-form :model="configForm" label-width="140px" class="config-form">
         <el-form-item label="切分策略">
           <el-select v-model="configForm.splittingStrategy" style="width: 100%">
-            <el-option label="recursive" value="recursive" />
-            <el-option label="fixed_size" value="fixed_size" />
-            <el-option label="markdown" value="markdown" />
-            <el-option label="semantic" value="semantic" />
+            <el-option label="递归" value="recursive" />
+            <el-option label="定长" value="fixed_size" />
+            <el-option label="Markdown" value="markdown" />
+            <el-option label="语义" value="semantic" />
           </el-select>
         </el-form-item>
 
@@ -22,31 +22,31 @@
         <template v-if="configForm.splittingStrategy === 'recursive' || configForm.splittingStrategy === 'fixed_size'">
           <el-row :gutter="20">
             <el-col :span="12">
-              <el-form-item label="chunk_size">
+              <el-form-item label="分块大小">
                 <el-input-number v-model="configForm.splittingChunkSize" :min="100" :max="4000" style="width: 100%" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="chunk_overlap">
+              <el-form-item label="分块重叠">
                 <el-input-number v-model="configForm.splittingChunkOverlap" :min="0" :max="500" style="width: 100%" />
               </el-form-item>
             </el-col>
           </el-row>
         </template>
 
-        <el-form-item v-if="configForm.splittingStrategy === 'recursive'" label="min_chunk_size">
+        <el-form-item v-if="configForm.splittingStrategy === 'recursive'" label="最小分块大小">
           <el-input-number v-model="configForm.splittingMinChunkSize" :min="0" :max="2000" style="width: 260px" />
         </el-form-item>
 
         <template v-if="configForm.splittingStrategy === 'markdown'">
           <el-row :gutter="20">
             <el-col :span="12">
-              <el-form-item label="max_chunk_size">
+              <el-form-item label="最大分块大小">
                 <el-input-number v-model="configForm.splittingMaxChunkSize" :min="100" :max="8000" style="width: 100%" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="min_chunk_size">
+              <el-form-item label="最小分块大小">
                 <el-input-number v-model="configForm.splittingMinChunkSize" :min="0" :max="2000" style="width: 100%" />
               </el-form-item>
             </el-col>
@@ -56,17 +56,17 @@
         <template v-if="configForm.splittingStrategy === 'semantic'">
           <el-row :gutter="20">
             <el-col :span="12">
-              <el-form-item label="max_chunk_size">
+              <el-form-item label="最大分块大小">
                 <el-input-number v-model="configForm.splittingMaxChunkSize" :min="100" :max="8000" style="width: 100%" />
               </el-form-item>
             </el-col>
             <el-col :span="12">
-              <el-form-item label="batch_size">
+              <el-form-item label="批次大小">
                 <el-input-number v-model="configForm.splittingBatchSize" :min="1" :max="100" style="width: 100%" />
               </el-form-item>
             </el-col>
           </el-row>
-          <el-form-item label="similarity_threshold">
+          <el-form-item label="相似度阈值">
             <el-slider
               v-model="configForm.splittingSimilarityThreshold"
               :min="0"
@@ -88,11 +88,11 @@
       <el-form :model="configForm" label-width="140px" class="config-form">
         <el-form-item label="切分策略">
           <el-radio-group v-model="configForm.audioChunkStrategy">
-            <el-radio value="sentence">sentence</el-radio>
-            <el-radio value="fixed">fixed</el-radio>
+            <el-radio value="sentence">按句</el-radio>
+            <el-radio value="fixed">定长</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item v-if="configForm.audioChunkStrategy === 'fixed'" label="chunk_size">
+        <el-form-item v-if="configForm.audioChunkStrategy === 'fixed'" label="分块大小">
           <el-input-number v-model="configForm.audioChunkSize" :min="100" :max="4000" style="width: 100%" />
         </el-form-item>
       </el-form>
@@ -100,10 +100,10 @@
 
     <div v-if="hasVideo" class="sub-section">
       <h4 class="sub-title">视频切分覆盖</h4>
-      <p class="sub-desc">视频切分仅支持固定策略，这里只配置 `chunk_size`。</p>
+      <p class="sub-desc">视频切分仅支持定长策略，这里只配置分块大小。</p>
 
       <el-form :model="configForm" label-width="140px" class="config-form">
-        <el-form-item label="chunk_size">
+        <el-form-item label="分块大小">
           <el-input-number v-model="configForm.videoChunkSize" :min="100" :max="4000" style="width: 100%" />
         </el-form-item>
       </el-form>
@@ -146,10 +146,10 @@ const strategyTitle = computed(() => {
 
 const strategyDesc = computed(() => {
   const descriptions: Record<string, string> = {
-    recursive: '使用 chunk_size、chunk_overlap、min_chunk_size 进行层级文本切分。',
-    fixed_size: '使用固定长度窗口切分，仅依赖 chunk_size 与 chunk_overlap。',
-    markdown: '按 Markdown 层级切分，主要使用 max_chunk_size 与 min_chunk_size。',
-    semantic: '基于语义相似度切分，依赖 max_chunk_size、batch_size、similarity_threshold。',
+    recursive: '使用分块大小、分块重叠、最小分块大小进行层级文本切分。',
+    fixed_size: '使用固定长度窗口切分，仅依赖分块大小与分块重叠。',
+    markdown: '按 Markdown 层级切分，主要使用最大分块大小与最小分块大小。',
+    semantic: '基于语义相似度切分，依赖最大分块大小、批次大小、相似度阈值。',
   }
   return descriptions[props.configForm.splittingStrategy] || ''
 })
