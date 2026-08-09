@@ -79,6 +79,9 @@ class DocumentTask(BaseModel):
     def mark_completed(self, result: Optional[dict] = None) -> None:
         self.status = TaskStatus.COMPLETED
         self.completed_at = now_china()
+        # 成功完成即清空先前残留的瞬时错误（如 ASR 忙碌延后、自动重试记录），
+        # 避免「已完成」行挂着旧 error_message 造成状态与错误信息自相矛盾。
+        self.error_message = None
         if result:
             self.pipeline_result = {**(self.pipeline_result or {}), **result}
 
