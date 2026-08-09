@@ -14,7 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.features.user.models.user_model_config import UserModelConfig, ModelType
 from novamind.features.user.repository.model_config_repository import (
-    ModelConfigRepository, MODEL_TYPE_STR
+    ModelConfigRepository,
+    model_type_int_to_str,
+    model_type_int_to_enum,
 )
 from novamind.features.user.schemas.model_config_schema import (
     ModelConfigCreate,
@@ -282,7 +284,7 @@ class ModelConfigService:
         if data.model is not None and data.model != config.model:
             existing = await self.repo.get_by_user_and_model(
                 user_id,
-                MODEL_TYPE_STR.get(ModelType(config.model_type), ""),
+                model_type_int_to_str(config.model_type, ""),
                 data.model
             )
             if existing:
@@ -311,7 +313,7 @@ class ModelConfigService:
             )
 
         # embedding 类型：model 或 base_url 变更时重新检测维度
-        if ModelType(config.model_type) == ModelType.EMBEDDING:
+        if model_type_int_to_enum(config.model_type) == ModelType.EMBEDDING:
             model_changed = data.model is not None and data.model != config.model
             url_changed = data.base_url is not None and data.base_url != config.base_url
             if model_changed or url_changed:
@@ -351,13 +353,13 @@ class ModelConfigService:
         # 清除客户端缓存
         await self._clear_client_cache(
             user_id,
-            MODEL_TYPE_STR.get(ModelType(config.model_type), ""),
+            model_type_int_to_str(config.model_type, ""),
             old_model
         )
         if data.model and data.model != old_model:
             await self._clear_client_cache(
                 user_id,
-                MODEL_TYPE_STR.get(ModelType(config.model_type), ""),
+                model_type_int_to_str(config.model_type, ""),
                 data.model
             )
 
@@ -377,7 +379,7 @@ class ModelConfigService:
         if not config or config.user_id != user_id:
             raise ModelConfigNotFoundError(config_id)
 
-        model_type = MODEL_TYPE_STR.get(ModelType(config.model_type), "")
+        model_type = model_type_int_to_str(config.model_type, "")
         model = config.model
 
         await self.repo.delete(config_id)
@@ -901,7 +903,7 @@ class ModelConfigService:
 
     def _build_response(self, config: UserModelConfig) -> ModelConfigResponse:
         """构建配置响应"""
-        model_type_str = MODEL_TYPE_STR.get(ModelType(config.model_type), "unknown")
+        model_type_str = model_type_int_to_str(config.model_type, "unknown")
 
         return ModelConfigResponse(
             id=config.id,
@@ -988,7 +990,7 @@ class ModelConfigService:
             影响列表（空列表表示无影响，可安全删除）
         """
         impacts = []
-        model_type = ModelType(config.model_type)
+        model_type = model_type_int_to_enum(config.model_type)
 
         if model_type == ModelType.EMBEDDING:
             # 检查空间绑定（Embedding 配置由空间级别统一管理）

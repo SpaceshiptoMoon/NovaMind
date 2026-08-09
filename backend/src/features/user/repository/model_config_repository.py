@@ -37,6 +37,31 @@ MODEL_TYPE_STR = {
 }
 
 
+def model_type_int_to_str(value: int, default: str = "unknown") -> str:
+    """ORM ``model_type`` 整数 → 字符串，对已废弃编号安全降级。
+
+    DB 可能残留编号 5（原 MULTIMODAL_EMBEDDING，已从枚举移除但旧行未清），
+    此时 ``ModelType(value)`` 会抛 ``ValueError``。这里捕获并返回 ``default``，
+    避免单条脏数据让整个列表/详情接口 500。
+    """
+    try:
+        return MODEL_TYPE_STR.get(ModelType(value), default)
+    except ValueError:
+        return default
+
+
+def model_type_int_to_enum(value: int) -> Optional[ModelType]:
+    """ORM ``model_type`` 整数 → 枚举，已废弃编号返回 ``None``。
+
+    供需要按枚举分支（如 EMBEDDING 重探维度、删除影响检查）的调用方使用；
+    返回 ``None`` 时后续 ``== ModelType.X`` 比较自然不命中，不会崩。
+    """
+    try:
+        return ModelType(value)
+    except ValueError:
+        return None
+
+
 class ModelConfigRepository:
     """用户模型配置仓储"""
 
