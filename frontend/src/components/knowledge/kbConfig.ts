@@ -41,6 +41,33 @@ export function getTextStrategyValue(value: unknown): TextStrategy {
   return value === 'deepdoc' ? 'deepdoc' : 'default'
 }
 
+/**
+ * 问题生成的系统默认提示词模板（用于占位提示）。
+ *
+ * 后端实际默认模板见 `backend/src/features/knowledge_space/prompts/templates.py`
+ * 的 `kb_default_question`（英文，使用 {content}/{count} 单花括号占位符，经
+ * PromptManager.format_prompt 渲染）。这里给出其中文对照版本，并改用自定义
+ * 模板约定的 {{content}}/{{count}} 双花括号占位符（见
+ * `question_generation_service.py` _build_prompt 的自定义分支），用户可直接
+ * 复制改写。若两端模板有调整需同步。
+ */
+export const DEFAULT_QUESTION_PROMPT_TEMPLATE = `留空则使用系统默认模板。自定义时支持占位符 {{content}}（分块内容）与 {{count}}（问题数）。
+
+请严格根据以下文档内容，生成 {{count}} 个用户可能会问的问题。
+要求：
+1. 仅基于下方文档内容中实际存在的信息，不得引入文档未提及的实体（人名/地名/机构等）
+2. 覆盖文档核心信息点
+3. 是真实用户会提出的问题
+4. 问题清晰简洁
+5. 仅输出 JSON 数组，不含其他文本或说明
+
+输出格式：
+[{"question": "问题内容", "category": "factual"}]
+类别可选：factual / conceptual / procedural
+
+文档内容：
+{{content}}`
+
 export function applyTextParsingConfig(
   target: {
     pdfStrategy: TextStrategy

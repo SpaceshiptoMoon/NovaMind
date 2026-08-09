@@ -4,7 +4,7 @@
       <div>
         <h4 class="sub-title">问题生成参数</h4>
         <p class="sub-desc">
-          保存到后端 `question_generation`。关闭后仅保留开关状态，开启时才会提交问题数量和提示词。
+          关闭后仅保留开关状态，开启时才会提交问题数量和提示词。
         </p>
       </div>
       <el-switch v-model="configForm.qgEnabled" />
@@ -29,17 +29,17 @@
 
         <el-row :gutter="20">
           <el-col :span="8">
-            <el-form-item label="temperature">
+            <el-form-item label="温度">
               <el-input-number v-model="configForm.qgLlmTemperature" :min="0" :max="2" :step="0.1" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="top_p">
+            <el-form-item label="Top P">
               <el-input-number v-model="configForm.qgLlmTopP" :min="0" :max="1" :step="0.1" style="width: 100%" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
-            <el-form-item label="max_tokens">
+            <el-form-item label="最大 Token 数">
               <el-input-number v-model="configForm.qgLlmMaxTokens" :min="100" :max="8192" style="width: 100%" />
             </el-form-item>
           </el-col>
@@ -51,7 +51,7 @@
             type="textarea"
             :rows="5"
             maxlength="4000"
-            placeholder="可选，自定义问题生成提示词模板"
+            :placeholder="DEFAULT_QUESTION_PROMPT_TEMPLATE"
           />
         </el-form-item>
       </el-form>
@@ -61,6 +61,7 @@
 
 <script setup lang="ts">
 import type { AvailableModelItem } from '@/api/types'
+import { DEFAULT_QUESTION_PROMPT_TEMPLATE } from './kbConfig'
 
 type QuestionGenerationFormModel = {
   qgEnabled: boolean
