@@ -81,6 +81,10 @@ class ParsingConfig:
     # 本地 faster-whisper ASR 模型目录（绝对路径）。为空时回退到环境变量
     # NOVAMIND_LOCAL_WHISPER_MODEL_DIR，再为空时用默认 ~/.cache/faster-whisper/tiny。
     local_whisper_model_dir: Optional[str] = None
+    # 本地 faster-whisper 转写 CPU 线程数。None 时按物理核自动取保守值（留至少 1
+    # 物理核给事件循环）。转写期间其它请求仍卡顿就调小（如 2）；ASR 太慢可调大，
+    # 但勿超过 (物理核 - 1)，否则会重新饿死事件循环。
+    local_whisper_cpu_threads: Optional[int] = None
 
 
 @dataclass

@@ -344,6 +344,7 @@ async def process_audio_document(
 
     engine_audio_config = AudioConfig(
         local_whisper_model_dir=get_config().knowledge_base.parsing.local_whisper_model_dir,
+        local_whisper_cpu_threads=get_config().knowledge_base.parsing.local_whisper_cpu_threads,
     )
 
     # 1. ASR 转写（根据协议路由：openai → Whisper / dashscope → Paraformer / local → faster-whisper）
