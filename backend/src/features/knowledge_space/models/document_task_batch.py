@@ -39,6 +39,7 @@ class DocumentTaskBatch(BaseModel):
     status = Column(SmallInteger, nullable=False, default=BatchStatus.PENDING, index=True, comment="Task status")
     pipeline_config = Column(JSON, nullable=True, comment="Pipeline config snapshot")
     total_count = Column(SmallInteger, nullable=False, default=0, comment="Document count")
+    processed_count = Column(SmallInteger, nullable=True, default=0, comment="已处理文档数 completed+failed+cancelled")
     task_summary = Column(JSON, nullable=True, comment="Task summary")
     note = Column(String(255), nullable=True, comment="Task note")
     error_message = Column(Text, nullable=True, comment="Task error")

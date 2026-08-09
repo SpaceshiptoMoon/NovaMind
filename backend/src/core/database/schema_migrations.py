@@ -26,4 +26,9 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
         "process_mode",
         "ALTER TABLE document_task_items ADD COLUMN process_mode SMALLINT NOT NULL DEFAULT 0 COMMENT 'Task process mode'",
     ),
+    (
+        "document_tasks",
+        "processed_count",
+        "ALTER TABLE document_tasks ADD COLUMN processed_count SMALLINT NULL DEFAULT 0 COMMENT '已处理文档数 completed+failed+cancelled'",
+    ),
 )

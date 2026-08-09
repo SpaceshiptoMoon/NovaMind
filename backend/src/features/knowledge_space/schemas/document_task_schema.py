@@ -46,6 +46,7 @@ class DocumentTaskResponse(BaseModel):
     status: int = Field(..., description="任务状态")
     pipeline_config: Optional[Dict[str, Any]] = Field(None, description="处理配置快照")
     total_count: int = Field(..., description="文档总数")
+    processed_count: Optional[int] = Field(None, description="已处理文档数 completed+failed+cancelled")
     task_summary: Optional[Dict[str, Any]] = Field(None, description="任务汇总")
     note: Optional[str] = Field(None, description="任务说明")
     error_message: Optional[str] = Field(None, description="任务级错误")

@@ -388,6 +388,8 @@ async def _ensure_mark_failed(
             if not task:
                 task = await repo.get_by_document_id(document_id)
             if task:
+                # 先把最后一个 running 节点标记为 failed + error，让节点日志显示「卡在哪个节点」
+                task.mark_last_running_step_failed(error_message)
                 task.mark_failed(failed_msg)
                 if task.batch_id:
                     await batch_repo.refresh_summary(task.batch_id)
@@ -499,6 +501,7 @@ async def recover_orphan_documents() -> int:
 
             if retry_count >= max_tries:
                 # 超过恢复次数限制，直接标记失败
+                task.mark_last_running_step_failed("[自动重试次数超限，需人工介入]")
                 task.mark_failed("[自动重试次数超限，需人工介入]")
                 task.retry_count = retry_count + 1
                 await session.commit()

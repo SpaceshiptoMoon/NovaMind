@@ -597,6 +597,7 @@ class DocumentService:
                 splitting_chunk_size=splitting_config.get("chunk_size", 1000),
                 splitting_chunk_overlap=splitting_config.get("chunk_overlap", 100),
             )
+            task.start_step("parsed")
             parse_result = await processor.parse_document_result(
                 tmp_path,
                 parsing_config=parsing_config,
@@ -617,7 +618,8 @@ class DocumentService:
                 if parse_result.metadata
                 else False,
             )
-            task.set_step("parsed", "done")
+            task.finish_step("parsed", metrics={"char_count": len(full_text), "chunk_count": len(chunks), "parse_strategy": parsing_config.get("strategy", "default"), "file_type": document.file_type})
+            task.start_step("split")
 
             # 解析全文持久化到 MinIO（切块之前，立刻 commit 落库）
 
@@ -626,7 +628,7 @@ class DocumentService:
             # 再基于解析全文做切分，确保全文与 chunk 的职责分离。
             # deepdoc/default 都在 processor.parse_document() 内完成解析与分块。
 
-            task.set_step("split", "done")
+            task.finish_step("split", metrics={"chunk_count": len(chunks), "split_strategy": splitting_config.get("strategy", "recursive"), "chunk_size": splitting_config.get("chunk_size", DEFAULT_CHUNK_SIZE)})
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
@@ -641,6 +643,7 @@ class DocumentService:
 
         # 3. 向量化并索引到 ES（Embedding 配置从空间级别读取）
         embedding_config = ctx.embedding_config
+        task.start_step("embedded")
         embeddings = await _generate_embeddings_static(
             [c["content"] for c in es_chunks],
             embedding_config,
@@ -651,7 +654,7 @@ class DocumentService:
 
         for i, embedding in enumerate(embeddings):
             es_chunks[i]["embedding"] = embedding
-        task.set_step("embedded", "done")
+        task.finish_step("embedded", metrics={"embedding_count": len(embeddings), "dimension": embedding_config.get("dimension")})
 
         # 检查点 2：向量化完成之后
         await _check_document_cancelled(document_id)
@@ -659,6 +662,7 @@ class DocumentService:
         # 5. 生成假设问题（由知识库配置控制）
         # 优先使用 task.pipeline_config 快照（入队时的 KB 配置），确保处理的一致性
 
+        task.start_step("question_generation")
         kb_config = ctx.pipeline_config
         qg_config = kb_config.get("question_generation", {})
         should_generate = qg_config.get("enabled", False) if qg_config else False
@@ -710,12 +714,16 @@ class DocumentService:
                 chunk["questions"] = []
                 chunk["question_embeddings"] = []
 
+        total_questions = sum(len(c.get("questions") or []) for c in es_chunks)
+        task.finish_step("question_generation", metrics={"enabled": should_generate, "total_questions": total_questions})
+
         # 检查点 3：问题生成完成之后
         await _check_document_cancelled(document_id)
 
         # 检查点 4：ES 索引写入之前
         await _check_document_cancelled(document_id)
 
+        task.start_step("indexed")
         es_client = await _get_es_client_static()
         indexed_count = await es_client.bulk_index_chunks(
             space_id=document.space_id,
@@ -729,7 +737,7 @@ class DocumentService:
                 error_message=f"ES 索引写入失败，共 {len(es_chunks)} 个分块均未成功写入",
             )
 
-        task.set_step("indexed", "done")
+        task.finish_step("indexed", metrics={"indexed_count": indexed_count, "chunk_count": len(es_chunks)})
         parse_summary = _extract_parse_metadata_summary(parse_result.metadata)
 
         # 5. 标记任务完成
