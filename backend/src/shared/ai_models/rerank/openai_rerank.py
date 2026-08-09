@@ -30,9 +30,14 @@ class CompatibleRerankClient(BaseRerank):
     （硅基流动、智谱 AI、阿里云 DashScope 等）。
 
     API 格式: POST {base_url}{endpoint}
-    默认 endpoint: /rerank（阿里云 DashScope 用 /reranks）
+    端点按 base_url 自动选择：
+      - DashScope 原生（base_url 含 dashscope.aliyuncs.com 且不含 compatible-api）：
+        endpoint /rerank/text-rerank/text-rerank，请求体嵌套
+        {"model", "input": {"query", "documents"}, "parameters": {"top_n", ...}}
+      - DashScope 兼容（base_url 含 compatible-api）：endpoint /reranks，请求体扁平
+      - 其它兼容服务商（硅基流动、智谱等）：endpoint /rerank，请求体扁平
 
-    请求体: {"model", "query", "documents", "top_n"}
+    请求体（扁平）: {"model", "query", "documents", "top_n"}
     响应体（标准格式）: {"results": [{"index": int, "relevance_score": float}, ...]}
     响应体（阿里云格式）: {"output": {"results": [{"index": int, "relevance_score": float}, ...]}}
     """
@@ -59,8 +64,13 @@ class CompatibleRerankClient(BaseRerank):
             max_retries: 最大重试次数
             max_concurrent: 最大并发数
             endpoint: 端点路径。留空则按 base_url 自动选择：
-                DashScope（base_url 含 dashscope.aliyuncs.com）用 ``/reranks``，
-                base_url 需配成 ``https://dashscope.aliyuncs.com/compatible-api/v1``；
+                DashScope 原生（base_url 含 dashscope.aliyuncs.com 但不含
+                ``compatible-api``）用 ``/rerank/text-rerank/text-rerank``，
+                base_url 配成 ``https://dashscope.aliyuncs.com/api/v1/services``，
+                请求体用嵌套 ``{model, input:{query,documents}, parameters:{top_n}}``；
+                DashScope 兼容（base_url 含 ``compatible-api``）用 ``/reranks``，
+                base_url 配成 ``https://dashscope.aliyuncs.com/compatible-api/v1``，
+                请求体扁平，与其它兼容服务商一致；
                 其它兼容服务商（硅基流动、智谱等）用默认 ``/rerank``。
         """
         super().__init__(
@@ -71,11 +81,16 @@ class CompatibleRerankClient(BaseRerank):
             max_retries=max_retries,
             max_concurrent=max_concurrent,
         )
+        is_dashscope = bool(base_url) and "dashscope.aliyuncs.com" in base_url
+        # 原生 DashScope rerank：嵌套 body、端点 /rerank/text-rerank/text-rerank
+        # （已用 qwen3-vl-rerank 实测 200 验证路径与 body 格式）。
+        self._is_dashscope_native = is_dashscope and "compatible-api" not in base_url
         if endpoint:
             self.endpoint = endpoint
-        elif base_url and "dashscope.aliyuncs.com" in base_url:
-            # DashScope 的 OpenAI 兼容 rerank 端点是 /reranks（非 /rerank），
-            # 请求体仍是扁平 {model, query, documents, top_n}，与其它兼容服务商一致。
+        elif self._is_dashscope_native:
+            self.endpoint = "/rerank/text-rerank/text-rerank"
+        elif is_dashscope:
+            # DashScope OpenAI 兼容 rerank：端点 /reranks，请求体扁平。
             self.endpoint = "/reranks"
         else:
             self.endpoint = "/rerank"
@@ -110,15 +125,27 @@ class CompatibleRerankClient(BaseRerank):
             if self.api_key:
                 headers["Authorization"] = f"Bearer {self.api_key}"
 
-            response = await client.post(
-                f"{self.base_url}{self.endpoint}",
-                headers=headers,
-                json={
+            if self._is_dashscope_native:
+                # DashScope 原生 rerank：嵌套 input/parameters 格式
+                # （qwen3-vl-rerank 等模型走该端点，已实测 200）。
+                payload = {
+                    "model": self.model,
+                    "input": {"query": query, "documents": documents},
+                    "parameters": {"top_n": top_k, "return_documents": False},
+                }
+            else:
+                # 标准 /rerank 兼容格式（硅基流动、智谱、DashScope 兼容 API）
+                payload = {
                     "model": self.model,
                     "query": query,
                     "documents": documents,
                     "top_n": top_k,
-                },
+                }
+
+            response = await client.post(
+                f"{self.base_url}{self.endpoint}",
+                headers=headers,
+                json=payload,
             )
 
             response.raise_for_status()
