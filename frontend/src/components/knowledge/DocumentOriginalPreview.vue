@@ -469,7 +469,15 @@ function navigateToMatch(index: number) {
 .file-actions {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: var(--space-2);
+}
+
+/* 两个操作按钮等宽：避免“查看原文/下载源文件”字数不同导致宽度不一，
+   以及下载 loading 转圈时图标替换造成的宽度抖动。 */
+.file-actions .el-button {
+  width: 100%;
+  margin: 0;
 }
 
 /* 图片内联预览 */
