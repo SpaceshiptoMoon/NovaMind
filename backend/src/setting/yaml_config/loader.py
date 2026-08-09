@@ -228,6 +228,7 @@ def create_config_from_dict(data: Dict[str, Any]) -> AppConfig:
             encoding=parsing.get("encoding", "utf-8"),
             vlm_description_enabled=parsing.get("vlm_description_enabled", False),
             local_whisper_model_dir=parsing.get("local_whisper_model_dir", None),
+            local_whisper_cpu_threads=parsing.get("local_whisper_cpu_threads", None),
         ),
         retrieval=RetrievalConfig(
             top_k=retrieval.get("top_k", 5),

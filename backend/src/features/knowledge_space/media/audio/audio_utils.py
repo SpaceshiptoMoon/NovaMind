@@ -202,10 +202,21 @@ async def _get_local_whisper_model(
                 # 走 _asr_executor（单线程）可与转写调用安全串行，不会并发同一实例。
                 # 限制 CPU 线程数：faster-whisper 默认 cpu_threads=0（吃满所有核），
                 # 180s 级 int8 推理会占满全部 CPU，导致 asyncio 事件循环线程排不上队，
-                # 所有并发 HTTP 请求（登录等）表现为"一直加载"。留 2 核给事件循环与
-                # 其它请求处理，从源头消除 CPU 饿死。num_workers=1 关闭内部并行解码
-                # worker，避免与外层 _asr_executor 叠加放大 CPU 占用。
-                _cpu_threads = max(1, (os.cpu_count() or 2) - 2)
+                # 所有并发 HTTP 请求（登录等）表现为"一直加载"。
+                #
+                # 默认按物理核估算并留至少 1 物理核给事件循环（超线程机器逻辑核≈2×物理，
+                # 故取 logical//2 - 1）。相比旧的 logical-2，避免在 8 逻辑核/4 物理核机器
+                # 上仍让 ASR 占 6 逻辑核≈3 物理核、饿死事件循环。
+                # 可经 YAML knowledge_base.parsing.local_whisper_cpu_threads 覆盖：
+                # 仍卡顿调小（如 2），ASR 太慢调大但勿超过 (物理核 - 1)。
+                # num_workers=1 关闭内部并行解码 worker，避免与外层 _asr_executor
+                # 叠加放大 CPU 占用。
+                _configured = getattr(audio_config, "local_whisper_cpu_threads", None)
+                if isinstance(_configured, int) and _configured > 0:
+                    _cpu_threads = _configured
+                else:
+                    _logical = os.cpu_count() or 2
+                    _cpu_threads = max(1, (_logical // 2) - 1)
 
                 def _load_whisper_model() -> "WhisperModel":
                     return WhisperModel(
