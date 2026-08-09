@@ -200,11 +200,20 @@ async def _get_local_whisper_model(
 
                 # 同步构造丢进专用 executor，避免首次加载阻塞事件循环。
                 # 走 _asr_executor（单线程）可与转写调用安全串行，不会并发同一实例。
+                # 限制 CPU 线程数：faster-whisper 默认 cpu_threads=0（吃满所有核），
+                # 180s 级 int8 推理会占满全部 CPU，导致 asyncio 事件循环线程排不上队，
+                # 所有并发 HTTP 请求（登录等）表现为"一直加载"。留 2 核给事件循环与
+                # 其它请求处理，从源头消除 CPU 饿死。num_workers=1 关闭内部并行解码
+                # worker，避免与外层 _asr_executor 叠加放大 CPU 占用。
+                _cpu_threads = max(1, (os.cpu_count() or 2) - 2)
+
                 def _load_whisper_model() -> "WhisperModel":
                     return WhisperModel(
                         str(model_dir),
                         device="cpu",
                         compute_type="int8",
+                        cpu_threads=_cpu_threads,
+                        num_workers=1,
                         local_files_only=True,
                     )
 
