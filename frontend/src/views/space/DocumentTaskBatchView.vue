@@ -178,18 +178,27 @@
                         <template #default="{ row }">{{ row.completed_at ? formatDateTime(row.completed_at) : '-' }}</template>
                       </el-table-column>
 
-                      <el-table-column label="错误信息" width="320">
+                      <el-table-column label="流程日志" min-width="380">
                         <template #default="{ row }">
-                          <el-tooltip
-                            v-if="row.error_message"
-                            :content="row.error_message"
-                            placement="top-start"
-                            effect="dark"
-                            :show-after="200"
-                            popper-class="task-error-tooltip"
-                          >
-                            <span class="error-text">{{ getErrorPreview(row.error_message) }}</span>
-                          </el-tooltip>
+                          <div v-if="getTaskFlowSegments(row).length" class="flow-log">
+                            <el-tooltip
+                              v-for="(seg, i) in getTaskFlowSegments(row)"
+                              :key="i"
+                              :content="seg.error || ''"
+                              :disabled="!seg.error"
+                              placement="top"
+                              effect="dark"
+                              :show-after="200"
+                              popper-class="task-error-tooltip"
+                            >
+                              <span class="flow-seg" :class="`flow-seg--${seg.tone}`">
+                                <span class="flow-seg__icon">{{ seg.icon }}</span>
+                                <span v-if="seg.label" class="flow-seg__label">{{ seg.label }}</span>
+                                <span v-if="seg.duration" class="flow-seg__dur">{{ seg.duration }}</span>
+                                <span v-if="seg.error" class="flow-seg__err">: {{ getErrorPreview(seg.error) }}</span>
+                              </span>
+                            </el-tooltip>
+                          </div>
                           <span v-else class="error-text">-</span>
                         </template>
                       </el-table-column>
@@ -215,7 +224,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { DataAnalysis, Document, List, RefreshRight, Search } from '@element-plus/icons-vue'
 
 import { documentApi } from '@/api/knowledge'
@@ -225,7 +234,6 @@ import Pagination from '@/components/common/Pagination.vue'
 import { formatDate } from '@/utils/format'
 
 const route = useRoute()
-const router = useRouter()
 
 const loading = ref(false)
 const tasks = ref<DocumentTask[]>([])
@@ -402,6 +410,82 @@ function getTaskProcessedCount(task: DocumentTask): number {
   return getTaskSettledCount(task)
 }
 
+interface FlowSegment {
+  label: string
+  icon: string
+  tone: 'success' | 'warning' | 'danger' | 'muted'
+  duration?: string
+  error?: string
+}
+
+function formatDurationMs(ms?: number | null): string {
+  if (ms == null) return ''
+  if (ms < 1000) return `${ms}ms`
+  const seconds = ms / 1000
+  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`
+  const minutes = Math.floor(seconds / 60)
+  const rest = Math.round(seconds % 60)
+  return `${minutes}m${rest}s`
+}
+
+function _segmentFromStatus(label: string, status: string | undefined, node: TaskNodeLog | null): FlowSegment {
+  let icon = '·'
+  let tone: FlowSegment['tone'] = 'muted'
+  let duration: string | undefined
+  let error: string | undefined
+  if (status === 'done') {
+    icon = '✓'
+    tone = 'success'
+    duration = formatDurationMs(node?.duration_ms)
+  } else if (status === 'running') {
+    icon = '⟳'
+    tone = 'warning'
+  } else if (status === 'failed') {
+    icon = '✗'
+    tone = 'danger'
+    duration = formatDurationMs(node?.duration_ms)
+    error = node?.error ?? undefined
+  } else if (status === 'skipped') {
+    icon = '⊘'
+    tone = 'muted'
+  }
+  return { label, icon, tone, duration, error }
+}
+
+/**
+ * 把单文档的 step_progress 渲染成内联流程日志段数组：
+ * 解析✓2s · 切分✓0.3s · 向量化✓5s · 索引✗ ES写入失败
+ * 无节点日志但有 task 级 error_message 时，用一条失败段兜底显示。
+ */
+function getTaskFlowSegments(
+  row?: { step_progress?: Record<string, unknown>; error_message?: string | null },
+): FlowSegment[] {
+  const sp = row?.step_progress
+  if (!sp || !Object.keys(sp).length) {
+    if (row?.error_message) {
+      return [{ label: '', icon: '✗', tone: 'danger', error: row.error_message }]
+    }
+    return []
+  }
+
+  const segments: FlowSegment[] = []
+  const seen = new Set<string>()
+  for (const { key, label } of NODE_LABELS) {
+    if (!(key in sp)) continue
+    seen.add(key)
+    const raw = sp[key]
+    const node = typeof raw === 'object' && raw !== null ? (raw as TaskNodeLog) : null
+    segments.push(_segmentFromStatus(label, getNodeStatus(sp, key), node))
+  }
+  // 向前兼容：追加 NODE_LABELS 未列出的新节点键
+  for (const [key, raw] of Object.entries(sp)) {
+    if (seen.has(key)) continue
+    const node = typeof raw === 'object' && raw !== null ? (raw as TaskNodeLog) : null
+    segments.push(_segmentFromStatus(key, getNodeStatus(sp, key), node))
+  }
+  return segments
+}
+
 function getTaskSuccessPercent(task: DocumentTask) {
   const totalCount = task.total_count || 0
   if (!totalCount) return 0
@@ -444,10 +528,6 @@ function getTaskProgressText(row?: { status?: number; step_progress?: Record<str
 
 function formatDateTime(value?: string | null) {
   return value ? formatDate(value) : '-'
-}
-
-function goToDetail(documentId: number) {
-  router.push(`/home/spaces/${spaceId.value}/documents/${documentId}?kbId=${kbId.value}`)
 }
 
 watch([spaceId, kbId], () => {
@@ -942,6 +1022,76 @@ onMounted(fetchTasks)
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.flow-log {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  line-height: 1.6;
+}
+
+.flow-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--color-bg-hover);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.flow-seg__icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.flow-seg__label {
+  color: var(--color-text-secondary);
+}
+
+.flow-seg__dur {
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.flow-seg__err {
+  color: var(--color-danger);
+  font-weight: 500;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flow-seg--success {
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.flow-seg--success .flow-seg__icon {
+  color: var(--color-success);
+}
+
+.flow-seg--warning {
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.flow-seg--warning .flow-seg__icon {
+  color: var(--color-warning);
+}
+
+.flow-seg--danger {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.flow-seg--danger .flow-seg__icon {
+  color: var(--color-danger);
+}
+
+.flow-seg--muted .flow-seg__icon {
+  color: var(--color-text-muted);
 }
 
 @media (max-width: 1100px) {
