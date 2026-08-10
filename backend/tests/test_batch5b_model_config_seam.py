@@ -10,7 +10,8 @@
   - ``KnowledgeSpaceInfoPort`` 协议中立（不依赖 feature），``HostKnowledgeSpaceInfoPort``
     满足协议；adapter 层持有跨 feature import（``knowledge_space.models``），service 层不再持有。
   - 各 feature 服务类（agent/chat、qa/ai_chat、qa/qa_service、deep_research、space_service、
-    search_service、question_generation、knowledge_base_service、document_service、media_processing、
+    search_service、question_generation、knowledge_base_service、document_pipeline /
+    document_upload_service / document_task_service / document_query_service、media_processing、
     evaluation_service、clawmate/chat、skill_marketplace）不再 import
     ``user.services.model_config_service``（切断 ``features.<X> → features.user.services`` 导入边），
     构造器含 ``model_config_service``/``model_config_port`` 参数。

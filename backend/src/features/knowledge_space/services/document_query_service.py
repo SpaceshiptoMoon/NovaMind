@@ -58,6 +58,16 @@ class DocumentQueryService:
         """统计知识库中的文档数量"""
         return await self.doc_repo.count_by_kb(kb_id=kb_id, status=status)
 
+    async def get_filename_map(self, document_ids: List[int]) -> Dict[int, str]:
+        """按 document_id 批量取 ``Documents.filename``，供任务列表回填真实文件名。
+
+        将「路由层直接 new DocumentRepository」的层级泄漏收敛到 service；
+        返回 ``{document_id: filename}``，无记录的 id 不出现在映射中。
+        """
+        if not document_ids:
+            return {}
+        return await self.doc_repo.get_filename_map_by_ids(document_ids)
+
     async def delete_document(
         self,
         kb_id: int,
@@ -274,8 +284,6 @@ class DocumentQueryService:
         Returns:
             Markdown 全文的字节数据，或 None
         """
-        from novamind.shared.storage.client_factory import ClientFactory
-
         document = await self.doc_repo.get_by_id(document_id)
         if not document:
             return None
@@ -286,9 +294,8 @@ class DocumentQueryService:
             return None
 
         try:
-            minio_client = await ClientFactory.get_minio_client()
-            content = await minio_client.download_document(
-                bucket_name=minio_client.default_bucket,
+            content = await self.minio_client.download_document(
+                bucket_name=self.minio_client.default_bucket,
                 object_name=parsed_text_object,
             )
             return content
@@ -312,8 +319,6 @@ class DocumentQueryService:
         Returns:
             {"frames": [{"index": 0, "url": "..."}, ...], "total": N}
         """
-        from novamind.shared.storage.client_factory import ClientFactory
-
         document = await self.doc_repo.get_by_id(document_id)
         if not document:
             return {"frames": [], "total": 0}
@@ -324,13 +329,12 @@ class DocumentQueryService:
             return {"frames": [], "total": 0}
 
         try:
-            minio_client = await ClientFactory.get_minio_client()
             frames = []
             for idx, path in enumerate(frame_paths):
                 if not path:
                     continue
-                url = await minio_client.get_file_url(
-                    bucket_name=minio_client.default_bucket,
+                url = await self.minio_client.get_file_url(
+                    bucket_name=self.minio_client.default_bucket,
                     object_name=path,
                     expires=3600,
                 )

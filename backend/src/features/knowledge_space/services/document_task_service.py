@@ -116,6 +116,14 @@ class DocumentTaskService:
         await self.session.commit()
         return total, entries
 
+    async def list_tasks_by_document(self, document_id: int) -> list:
+        """取指定文档的全部处理任务记录（按时间倒序）。
+
+        将「路由层直接 new DocumentTaskRepository」的层级泄漏收敛到 service。
+        """
+        task_repo = DocumentTaskRepository(self.session)
+        return await task_repo.list_by_document(document_id)
+
     async def cancel_processing(self, document_id: int, *, kb_id: int, space_id: int) -> bool:
         """
         取消文档处理任务
@@ -134,7 +142,6 @@ class DocumentTaskService:
 
         Raises:
             DocumentNotFoundError: 文档不存在或不属于该空间/知识库
-            DocumentNotFoundError: 文档不存在或不属于该空间/知识库
             InvalidParameterError: 文档无活跃处理任务
         """
         document = await self.doc_repo.get_by_id(document_id)
@@ -142,10 +149,6 @@ class DocumentTaskService:
             raise DocumentNotFoundError(document_id)
 
         # 检查是否有活跃任务
-        from novamind.features.knowledge_space.repository.document_task_repository import (
-            DocumentTaskRepository,
-        )
-
         _task_repo = DocumentTaskRepository(self.session)
         active_task = await _task_repo.get_active_by_document_id(document_id)
         if not active_task:
@@ -230,7 +233,7 @@ class DocumentTaskService:
         if not kb or not kb.is_active():
             raise KnowledgeBaseNotFoundError(kb_id)
 
-        current_pipeline_config = kb.get_config() if kb else None
+        current_pipeline_config = kb.get_config()
         existing_doc_ids = [doc.id for doc in documents]
         locked_documents = await self.doc_repo.lock_active_documents_by_ids(existing_doc_ids)
         document_map = {doc.id: doc for doc in locked_documents}
@@ -410,10 +413,6 @@ class DocumentTaskService:
         if document.kb_id != kb_id or document.space_id != space_id:
             raise DocumentNotFoundError(document_id)
 
-        from novamind.features.knowledge_space.repository.document_task_repository import (
-            DocumentTaskRepository,
-        )
-
         _task_repo = DocumentTaskRepository(self.session)
         latest_task = await _task_repo.get_by_document_id(document_id)
         if not latest_task or latest_task.status not in (TaskStatus.FAILED, TaskStatus.COMPLETED):
@@ -448,10 +447,6 @@ class DocumentTaskService:
         document = await self.doc_repo.get_by_id(document_id)
         if not document:
             raise DocumentNotFoundError(document_id)
-        from novamind.features.knowledge_space.repository.document_task_repository import (
-            DocumentTaskRepository,
-        )
-
         _task_repo = DocumentTaskRepository(self.session)
         active_task = await _task_repo.get_active_by_document_id(document_id)
         if active_task:
