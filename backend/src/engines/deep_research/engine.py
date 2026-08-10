@@ -11,8 +11,13 @@ A-1 阶段：仅落纯模块函数（检索结果清洗/外部搜索决策/充�
 """
 from __future__ import annotations
 
-from typing import Any, List
+import json
+import re
+from typing import Any, AsyncIterator, Dict, List, Optional
 
+from novamind.shared.ai_models.llm import BaseLLM
+from novamind.shared.logging import Logger
+from novamind.engines.ports import PromptProvider
 from novamind.engines.deep_research.types import SearchSource
 
 
@@ -129,4 +134,163 @@ __all__ = [
     "deduplicate_results",
     "extract_key_sources",
     "format_search_context",
+    "DeepResearchEngine",
 ]
+
+
+class DeepResearchEngine:
+    """深度研究核心引擎（无状态）：可复用的研究机制。
+
+    LLM 客户端、prompt 提供者按调用注入（AgentEngine 风格）；日志经构造器注入。
+    不持业务上下文 / ORM / 租户 / 配置；业务编排（会话创建/持久化/SSE/多租户）留 feature。
+
+    输入约定：``analyze_query`` / ``decompose_tasks`` / ``synthesize_report[_stream]`` 接收
+    **feature 入口已 sanitize** 的 query/topic（feature ``_sanitize_user_input`` 抛 feature 异常），
+    引擎不重复 sanitize，只负责 LLM 调用与结果解析。
+    """
+
+    def __init__(self, *, logger: Optional[Logger] = None):
+        self._logger = logger
+
+    async def analyze_query(
+        self,
+        llm_client: BaseLLM,
+        prompt_provider: PromptProvider,
+        query: str,
+    ) -> str:
+        """分析查询，提取研究主题（接已 sanitize 的 query）。"""
+        prompt = prompt_provider.format(KEY_ANALYZE_QUERY, query=query)
+        result = await llm_client.generate_text(
+            prompt=prompt,
+            max_tokens=100,
+            temperature=0.3,
+            enable_thinking=False,
+        )
+        return result.strip()
+
+    async def decompose_tasks(
+        self,
+        llm_client: BaseLLM,
+        prompt_provider: PromptProvider,
+        query: str,
+        topic: str,
+        depth: int,
+    ) -> List[Dict[str, Any]]:
+        """分解研究任务（接已 sanitize 的 query/topic；``depth`` 为整数，不接 ResearchMode）。
+
+        LLM 返回 JSON 解析失败时降级为默认任务（按 depth 生成），并经注入 logger 告警。
+        """
+        prompt = prompt_provider.format(
+            KEY_DECOMPOSE_TASKS,
+            research_topic=topic,
+            query=query,
+            depth=depth,
+        )
+        result = await llm_client.generate_text(
+            prompt=prompt,
+            max_tokens=1000,
+            temperature=0.5,
+            enable_thinking=False,
+        )
+        try:
+            json_pattern = r"\[[\s\S]*\]"
+            matches = re.findall(json_pattern, result)
+            if not matches:
+                raise json.JSONDecodeError("未找到 JSON 数组", result, 0)
+            json_match = matches[0]
+            tasks = json.loads(json_match)
+            validated_tasks: List[Dict[str, Any]] = []
+            for i, task in enumerate(tasks[:depth]):
+                validated_tasks.append({
+                    "task_id": task.get("task_id") or task.get("id") or f"task_{i+1}",
+                    "description": task.get("description", f"研究 {topic} 的第 {i+1} 个方面"),
+                    "priority": task.get("priority", i + 1),
+                })
+            return validated_tasks
+        except (json.JSONDecodeError, ValueError) as e:
+            if self._logger is not None:
+                self._logger.warning(
+                    "LLM 任务分解 JSON 解析失败，使用默认任务", error=str(e)
+                )
+            return [
+                {
+                    "task_id": f"task_{i+1}",
+                    "description": f"研究 {topic} 的第 {i+1} 个方面",
+                    "priority": i + 1,
+                }
+                for i in range(depth)
+            ]
+
+    async def synthesize_report(
+        self,
+        llm_client: BaseLLM,
+        prompt_provider: PromptProvider,
+        *,
+        query: str,
+        research_topic: str,
+        results: List[Dict[str, Any]],
+        key_sources: List[str],
+        max_tokens: int,
+        temperature: float,
+        top_p: float,
+    ) -> tuple:
+        """综合信息生成报告（非流式）。``results`` 经 ``format_search_context`` 格式化为上下文。"""
+        context = format_search_context(results)
+        key_sources_str = (
+            chr(10).join(f"- {s}" for s in key_sources) if key_sources else "无外部来源"
+        )
+        prompt = prompt_provider.format(
+            KEY_SYNTHESIZE_REPORT,
+            query=query,
+            research_topic=research_topic,
+            context=context,
+            key_sources=key_sources_str,
+        )
+        report = await llm_client.generate_text(
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            enable_thinking=False,
+        )
+        metadata = {
+            "report_length": len(report),
+            "sources_count": len(key_sources),
+        }
+        return report, metadata
+
+    async def synthesize_report_stream(
+        self,
+        llm_client: BaseLLM,
+        prompt_provider: PromptProvider,
+        *,
+        query: str,
+        research_topic: str,
+        context: str,
+        key_sources: List[str],
+        max_tokens: int,
+        temperature: float,
+        top_p: float,
+    ) -> AsyncIterator[str]:
+        """综合信息生成报告（流式，yield 原始 chunk，不含 heartbeat）。
+
+        与非流式不同，接收 feature 预格式化的 ``context``（stream 路径在调用前已格式化）。
+        """
+        key_sources_str = (
+            chr(10).join(f"- {s}" for s in key_sources) if key_sources else "无外部来源"
+        )
+        prompt = prompt_provider.format(
+            KEY_SYNTHESIZE_REPORT_STREAM,
+            query=query,
+            research_topic=research_topic,
+            context=context,
+            key_sources=key_sources_str,
+        )
+        async for chunk in llm_client.generate_text_stream(
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            enable_thinking=False,
+        ):
+            yield chunk

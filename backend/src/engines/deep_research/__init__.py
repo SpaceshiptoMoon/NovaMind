@@ -28,6 +28,7 @@ from novamind.engines.deep_research.engine import (
     KEY_SYNTHESIZE_REPORT_STREAM,
     SUFFICIENT_RESULT_COUNT,
     MAX_ITERATION_THRESHOLD,
+    DeepResearchEngine,
     deduplicate_results,
     extract_key_sources,
     format_search_context,
@@ -47,6 +48,8 @@ __all__ = [
     "SearchComplete",
     # 端口
     "InternalSearchPort",
+    # 引擎类
+    "DeepResearchEngine",
     # 错误
     "EngineInvalidResearchQueryError",
     # 常量
