@@ -46,6 +46,10 @@ REFUSAL_ANSWER_TEXT = (
     "请尝试更换问题表述、绑定其他知识库，或关闭拒答开关。"
 )
 
+# Grade-Retry fallback 检索模式序列（feature 业务策略；C-1：原 engines/rag/grade_retrier
+# 内嵌的 default_modes 已上移至此，引擎不再持有 knowledge_space SearchMode 字面量）。
+_GRADE_RETRY_FALLBACK_MODES = ["content_hybrid", "content_bm25", "all_hybrid"]
+
 
 @dataclass
 class ChatPreparation:
@@ -289,6 +293,7 @@ class AIChatService:
 
                         prep_sources, system_prompt, grade_traces = await retrier.search_with_retry(
                             query=search_queries[0], search_fn=_search_fn,
+                            search_modes=_GRADE_RETRY_FALLBACK_MODES,
                             initial_mode=search_mode,
                             score_threshold=effective_threshold,
                             passing_score=passing,
@@ -325,8 +330,7 @@ class AIChatService:
                     )
                     passing = getattr(session_config, "rag_grade_retry_passing_score", 5)
                     # mode 序列：用户配的 search_mode 首轮优先（复用单查询 search_with_retry 的语义）
-                    default_modes = ["content_hybrid", "content_bm25", "all_hybrid"]
-                    modes = [search_mode] + [m for m in default_modes if m != search_mode]
+                    modes = [search_mode] + [m for m in _GRADE_RETRY_FALLBACK_MODES if m != search_mode]
                     max_retries = 2
                     last_deduped: List[dict] = []
                     last_raw_count = 0
