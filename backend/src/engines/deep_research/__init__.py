@@ -4,15 +4,15 @@ Deep Research 引擎包：可复用的深度研究机制（查询分析/任务�
 与 ``engines/rag`` / ``engines/agent`` / ``engines/resume`` 同级，属 engines 纯逻辑层。
 业务编排（ORM/setting/多租户/SSE/持久化）留 ``features/deep_research/``。
 
-- ``types``：纯数据契约（SearchSource/EngineResearchParams/ResearchResultItem/SearchEvent）
+- ``types``：纯数据契约（SearchSource/EngineResearchParams/SearchEvent）
 - ``ports``：本引擎端口（InternalSearchPort）；跨引擎端口在 ``engines/ports.py`` / ``engines/search_ports.py``
 - ``errors``：引擎级异常（feature 边界映射为 feature 异常）
-- ``engine``：``DeepResearchEngine`` 无状态方法（A-2/A-3 完成类组装）+ 纯模块函数
+- ``engine``：``DeepResearchEngine`` 无状态方法（analyze_query/decompose_tasks/search/
+  synthesize_report[_stream]）+ 纯模块函数
 """
 from novamind.engines.deep_research.types import (
     EngineResearchParams,
     IterationProgress,
-    ResearchResultItem,
     SearchComplete,
     SearchEvent,
     SearchSource,
@@ -40,7 +40,6 @@ __all__ = [
     # 类型
     "SearchSource",
     "EngineResearchParams",
-    "ResearchResultItem",
     "SearchEvent",
     "TaskStarted",
     "IterationProgress",

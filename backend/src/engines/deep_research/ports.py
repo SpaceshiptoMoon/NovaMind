@@ -6,9 +6,7 @@ Deep Research 引擎端口。
 """
 from __future__ import annotations
 
-from typing import List, Protocol, runtime_checkable
-
-from novamind.engines.deep_research.types import ResearchResultItem
+from typing import Any, Dict, List, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -17,10 +15,13 @@ class InternalSearchPort(Protocol):
 
     宿主装配点构造 ``HostInternalSearchPort``（绑定 space_id/user_id/config）注入引擎，
     引擎按调用查询，不持有租户上下文。
+
+    返回归一化结果字典列表（与纯函数 ``deduplicate_results``/``format_search_context``/
+    ``extract_key_sources`` 的 dict ``.get`` 访问及 feature 侧持久化一致）。
     """
 
-    async def search(self, query: str, *, top_k: int = 10) -> List[ResearchResultItem]:
-        """执行内部 RAG 检索，返回归一化 ``ResearchResultItem`` 列表。"""
+    async def search(self, query: str, *, top_k: int = 10) -> List[Dict[str, Any]]:
+        """执行内部 RAG 检索，返回归一化结果字典列表。"""
         ...
 
 

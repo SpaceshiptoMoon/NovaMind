@@ -335,3 +335,113 @@ def test_deep_research_service_maps_engine_error_to_feature_error():
     assert "raise InvalidResearchQueryError(str(e))" in service_src, (
         "应将 EngineInvalidResearchQueryError 映射为 InvalidResearchQueryError"
     )
+
+
+# ---- A-3：DeepResearchEngine.search 迭代循环 + 端口装配 ----
+
+
+def test_deep_research_engine_search_signature():
+    """search 签名无 llm_client/prompt_provider；接 web/internal 端口 + tasks + params + logger（全 keyword-only）。"""
+    from novamind.engines.deep_research.engine import DeepResearchEngine
+
+    fn = DeepResearchEngine.search
+    params = inspect.signature(fn).parameters
+    expected = {"web_search_port", "internal_search_port", "tasks", "params", "logger"}
+    found = set(params.keys()) - {"self"}
+    assert expected <= found, (
+        f"DeepResearchEngine.search 缺少参数: {expected - found}"
+    )
+    # 循环不调 LLM/prompt
+    assert "llm_client" not in params, "search 不应接 llm_client（循环不调 LLM）"
+    assert "prompt_provider" not in params, "search 不应接 prompt_provider（循环不调 prompt）"
+    # web_search_port/internal_search_port/tasks/params/logger 均为 keyword-only
+    for name in expected:
+        assert params[name].kind == inspect.Parameter.KEYWORD_ONLY, (
+            f"{name} 应为 keyword-only"
+        )
+
+
+def test_host_internal_search_port_adapter_location():
+    """HostInternalSearchPort 位于 features/deep_research/adapters，下沉 knowledge_space 跨 feature import。"""
+    adapter_path = BACKEND_ROOT / "src/features/deep_research/adapters/internal_search_port_adapter.py"
+    src = adapter_path.read_text(encoding="utf-8")
+
+    # adapter 持有跨 feature import（knowledge_space）——证明跨 feature 边界下沉到 adapter，引擎层零依赖
+    assert "novamind.features.knowledge_space" in src, (
+        "HostInternalSearchPort adapter 应持有 knowledge_space 跨 feature import"
+    )
+    assert "HostInternalSearchPort" in src
+    assert "as_internal_search_port" in src
+
+
+def test_host_internal_search_port_satisfies_protocol():
+    """HostInternalSearchPort 结构化实现 InternalSearchPort 协议。"""
+    from novamind.engines.deep_research.ports import InternalSearchPort
+    from novamind.features.deep_research.adapters.internal_search_port_adapter import (
+        HostInternalSearchPort,
+    )
+
+    assert hasattr(HostInternalSearchPort, "search"), (
+        "HostInternalSearchPort 应实现 search 方法"
+    )
+    # runtime_checkable 协议检查方法名存在性
+    class _Fake:
+        async def search(self, query, *, top_k=10):
+            return []
+    assert isinstance(_Fake(), InternalSearchPort), (
+        "InternalSearchPort 应为 runtime_checkable 且 _Fake 满足"
+    )
+
+
+def test_host_web_search_port_has_close_and_provider_factory():
+    """HostWebSearchPort.close() 存在；build_web_search_port_for_provider 存在（A-3 D1/D2）。"""
+    from novamind.features.deep_research.adapters.web_search_port_adapter import (
+        HostWebSearchPort,
+        build_web_search_port,
+        build_web_search_port_for_provider,
+    )
+
+    assert hasattr(HostWebSearchPort, "close"), "HostWebSearchPort 应有 close() 方法"
+    # 保留无参 build_web_search_port（resume/agent 依赖）
+    assert callable(build_web_search_port), "build_web_search_port 应保留（resume/agent 依赖）"
+    assert callable(build_web_search_port_for_provider), (
+        "build_web_search_port_for_provider 应存在（deep_research 每请求注入）"
+    )
+
+
+def test_web_search_result_has_optional_content_and_score():
+    """WebSearchResult 含 content/score 可选字段（向后兼容；deep_research 外部路径用）。"""
+    from novamind.engines.search_ports import WebSearchResult
+
+    r = WebSearchResult(title="t", url="u", snippet="s")
+    # content/score 有默认值（向后兼容：resume/agent 不传仍可构造）
+    assert r.content == ""
+    assert r.score == 0.0
+    r2 = WebSearchResult(title="t", url="u", snippet="s", content="c", score=0.5)
+    assert r2.content == "c"
+    assert r2.score == 0.5
+
+
+def test_prompt_keys_resolvable_via_prompt_provider():
+    """4 prompt key 经注入 PromptProvider.format 可解析（防 key 漂移）。
+
+    注册 deep_research prompts 模板（幂等）后，as_prompt_provider() 返回的 HostPromptProvider
+    应能解析 KEY_ANALYZE_QUERY/KEY_DECOMPOSE_TASKS/KEY_SYNTHESIZE_REPORT/KEY_SYNTHESIZE_REPORT_STREAM。
+    """
+    from novamind.shared.prompts.prompt_manager import PromptManager
+    from novamind.features.deep_research.deep_research_prompts import TEMPLATES as DR_TEMPLATES
+    from novamind.engines.prompt_provider_adapter import as_prompt_provider
+    from novamind.engines.deep_research.engine import (
+        KEY_ANALYZE_QUERY,
+        KEY_DECOMPOSE_TASKS,
+        KEY_SYNTHESIZE_REPORT,
+        KEY_SYNTHESIZE_REPORT_STREAM,
+    )
+
+    PromptManager.register(DR_TEMPLATES)  # 幂等：重复注册同一份无副作用
+    provider = as_prompt_provider()
+    # 各模板所需参数最少集（format 不抛 KeyError 即通过）
+    provider.format(KEY_ANALYZE_QUERY, query="q")
+    provider.format(KEY_DECOMPOSE_TASKS, research_topic="t", query="q", depth=2)
+    provider.format(KEY_SYNTHESIZE_REPORT, query="q", research_topic="t", context="c", key_sources="k")
+    provider.format(KEY_SYNTHESIZE_REPORT_STREAM, query="q", research_topic="t", context="c", key_sources="k")

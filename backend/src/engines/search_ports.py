@@ -9,11 +9,17 @@ from typing import List, Protocol, runtime_checkable
 
 @dataclass
 class WebSearchResult:
-    """联网搜索单条结果"""
+    """联网搜索单条结果。
+
+    ``content`` / ``score`` 为可选字段（向后兼容：resume/agent 等消费方不读它们；
+    deep_research 外部路径用 ``content`` 排序/去重与上下文格式化、用 ``score`` 排序）。
+    """
 
     title: str
     url: str
     snippet: str
+    content: str = ""
+    score: float = 0.0
 
 
 @runtime_checkable

@@ -19,34 +19,25 @@ from novamind.features.deep_research.models.research_session import (
     ResearchSession,
     ResearchStatus,
     ResearchMode,
-    ExternalSearchProvider,
 )
 from novamind.engines.deep_research.types import SearchSource
+from novamind.engines.deep_research.types import (
+    EngineResearchParams,
+    IterationProgress,
+    SearchComplete,
+    TaskFailed,
+)
 from novamind.engines.deep_research.errors import EngineInvalidResearchQueryError
 from novamind.features.deep_research.repository.research_repository import ResearchRepository
-from novamind.shared.search import (
-    DuckDuckGoSearchService,
-    SerpAPISearchService,
-    TavilySearchService,
-)
 from novamind.features.deep_research.schemas.research_schema import (
-    InternalSearchConfig,
     ResearchRequest,
 )
 from novamind.features.knowledge_space.services.search_service import SearchService
 from novamind.shared.retrieval_port import RetrievalPort
 from novamind.features.knowledge_space.adapters.retrieval_adapter import HostRetrievalPort
 from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-from novamind.features.knowledge_space.schemas.search_schema import (
-    SearchRequest,
-    WeightConfig,
-    RerankConfig,
-    SearchMode,
-)
-from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.utils.heartbeat import stream_with_heartbeat
-from novamind.shared.prompts import PromptManager
 from novamind.features.deep_research.exceptions import (
     DeepResearchError,
     ResearchNotFoundError,
@@ -56,8 +47,12 @@ from novamind.features.deep_research.exceptions import (
     ResearchSpaceAccessDeniedError,
     InvalidResearchQueryError,
     ResearchModeNotSupportedError,
-    SearchProviderNotConfiguredError,
-    SearchProviderUnavailableError,
+)
+from novamind.features.deep_research.adapters.web_search_port_adapter import (
+    build_web_search_port_for_provider,
+)
+from novamind.features.deep_research.adapters.internal_search_port_adapter import (
+    as_internal_search_port,
 )
 
 
@@ -70,13 +65,11 @@ RESEARCH_MODE_CONFIG = {
 
 
 # 纯检索辅助函数自 engines/deep_research 反向引用（feature -> engine 合法）。
-# A-1：仅落纯函数；LLM 方法与迭代检索循环在 A-2/A-3 迁入 DeepResearchEngine。
+# A-3：迭代循环（去重/充分性/外部决策）已迁入 DeepResearchEngine.search；
+# feature 仅保留综合上下文/关键来源两个纯函数代理（synthesize 路径用）。
 from novamind.engines.deep_research.engine import (  # noqa: E402
-    deduplicate_results as _deduplicate_results_fn,
     extract_key_sources as _extract_key_sources_fn,
     format_search_context as _format_search_context_fn,
-    is_sufficient_results as _is_sufficient_results_fn,
-    should_use_external_search as _should_use_external_search_fn,
 )
 
 
@@ -189,13 +182,13 @@ class DeepResearchService:
         self._model_config_service = model_config_service
         self._search_service = search_service
         self._search_port: Optional[RetrievalPort] = None
-
-        # 初始化外部搜索服务
-        self._init_external_search_services()
+        # A-3：web_search_port 按请求 provider 构造（build_web_search_port_for_provider），
+        # 在 cleanup() 关闭。每请求一个 DeepResearchService 实例（见 api/dependencies）。
+        self._web_search_port: Optional[Any] = None
 
         self.logger = get_logger(__name__)
 
-        # A-2：核心研究机制（查询分析/任务分解/综合）委托无状态 DeepResearchEngine；
+        # A-2/A-3：核心研究机制（查询分析/任务分解/迭代检索/综合）委托无状态 DeepResearchEngine；
         # prompt 经注入的 PromptProvider（HostPromptProvider 委托 PromptManager）取模板。
         from novamind.engines.prompt_provider_adapter import as_prompt_provider
         from novamind.engines.deep_research import DeepResearchEngine
@@ -230,13 +223,15 @@ class DeepResearchService:
         return self._search_port
 
     async def cleanup(self) -> None:
-        """清理外部搜索服务资源"""
-        for service in self.external_services.values():
-            if hasattr(service, "close"):
-                try:
-                    await service.close()
-                except Exception as e:
-                    self.logger.warning("关闭外部搜索服务失败", error=str(e))
+        """清理外部搜索服务资源（关闭按请求构造的 web_search_port）"""
+        if self._web_search_port is not None:
+            try:
+                close = getattr(self._web_search_port, "close", None)
+                if close is not None:
+                    await close()
+            except Exception as e:
+                self.logger.warning("关闭 web_search_port 失败", error=str(e))
+            self._web_search_port = None
 
     async def _get_llm_client(
         self,
@@ -383,49 +378,48 @@ class DeepResearchService:
         await self.research_repo.delete(research.id)
         await self.session.commit()
 
-    def _init_external_search_services(self):
-        """初始化外部搜索服务
-
-        引擎侧三个搜索服务不再自行 `get_config()`，宿主在此从
-        `setting.yaml_config.ExternalSearchConfig` 构造对应 `engine_config`
-        dataclass 注入，切断 search 引擎 → setting 的导入边。
-        """
-        from novamind.setting.yaml_config import get_config
-        from novamind.shared.config import (
-            DuckDuckGoSearchConfig,
-            SerpApiSearchConfig,
-            TavilySearchConfig,
+    def _build_engine_params(self, ctx: ResearchContext) -> EngineResearchParams:
+        """从 feature ``ResearchContext`` 装配引擎纯参数 ``EngineResearchParams``。"""
+        llm_cfg = ctx.params.llm_config
+        return EngineResearchParams(
+            search_source=ctx.params.search_source,
+            depth=ctx.mode_config["depth"],
+            iterations=ctx.mode_config["iterations"],
+            top_k=ctx.params.internal_config.top_k,
+            external_max_results=ctx.params.external_config.max_results,
+            llm_max_tokens=llm_cfg.max_tokens,
+            llm_temperature=llm_cfg.temperature,
+            llm_top_p=llm_cfg.top_p,
+            llm_model=llm_cfg.llm_model,
         )
 
-        es_cfg = get_config().external_search
-        self.external_services = {
-            ExternalSearchProvider.TAVILY: TavilySearchService(
-                TavilySearchConfig(
-                    api_key=es_cfg.tavily.api_key,
-                    max_results=es_cfg.tavily.max_results,
-                    search_depth=es_cfg.tavily.search_depth,
-                    timeout=es_cfg.tavily.timeout,
-                )
-            ),
-            ExternalSearchProvider.SERPAPI: SerpAPISearchService(
-                SerpApiSearchConfig(
-                    api_key=es_cfg.serpapi.api_key,
-                    max_results=es_cfg.serpapi.max_results,
-                    timeout=es_cfg.serpapi.timeout,
-                    engine=es_cfg.serpapi.engine,
-                )
-            ),
-            ExternalSearchProvider.DUCKDUCKGO: DuckDuckGoSearchService(
-                DuckDuckGoSearchConfig(
-                    max_results=es_cfg.duckduckgo.max_results,
-                    timeout=es_cfg.duckduckgo.timeout,
-                )
-            ),
-        }
+    def _build_search_ports(self, ctx: ResearchContext) -> tuple:
+        """按 search_source 构造引擎检索端口（web/internal，未用的一侧为 None）。
 
-    def _get_external_service(self, provider: ExternalSearchProvider):
-        """获取外部搜索服务"""
-        return self.external_services.get(provider)
+        - EXTERNAL：仅 web_search_port（按 request.provider 构造，存 self._web_search_port 供 cleanup）。
+        - INTERNAL：仅 internal_search_port（绑定 space_id/user_id/internal_config）。
+        - HYBRID：两者皆构造。
+        """
+        search_source = ctx.params.search_source
+        web_port = None
+        internal_port = None
+        if search_source != SearchSource.INTERNAL:
+            # 按请求 provider 构造；未配置/不可用抛 SearchProvider*Error（DeepResearchError 子类）
+            self._web_search_port = build_web_search_port_for_provider(
+                ctx.params.external_config.provider
+            )
+            web_port = self._web_search_port
+        if search_source != SearchSource.EXTERNAL:
+            kb_repo = KnowledgeBaseRepository(self.session)
+            internal_port = as_internal_search_port(
+                search_port=self.search_port,
+                kb_repo=kb_repo,
+                space_id=ctx.space_id,
+                user_id=ctx.user_id,
+                internal_config=ctx.params.internal_config,
+                logger=self.logger,
+            )
+        return web_port, internal_port
 
     async def research(
         self,
@@ -538,55 +532,65 @@ class DeepResearchService:
                 "total_tasks": len(ctx.tasks),
             })
 
-            # 3. 逐任务执行检索（yield SSE 进度事件）
+            # 3. 逐任务执行检索（消费 DeepResearchEngine.search 事件流，yield SSE 进度）
+            # A-3：流式与非流式共用引擎迭代循环（按任务去重+充分性+catch-and-continue），
+            # 消除原 research_stream 内联重复循环。单任务失败 → TaskFailed（catch-and-continue），
+            # 与非流式行为统一（原流式此处无 per-task try/except，单任务失败会中止整个研究）。
             total_steps = len(ctx.tasks) * ctx.mode_config["iterations"]
-            step_count = 0
-            for task in ctx.tasks:
-                task_query = task.get("description", ctx.params.query)
-                for iteration in range(ctx.mode_config["iterations"]):
-                    step_count += 1
-                    use_external = self._should_use_external_search(
-                        ctx.params.search_source, iteration
-                    )
-                    step_desc = f"{'外部搜索' if use_external else '内部检索'}：{task_query[:50]}"
+            task_desc_by_id = {
+                str(t.get("task_id", "")): t.get("description", "")
+                for t in ctx.tasks
+            }
+            engine_params = self._build_engine_params(ctx)
+            web_port, internal_port = self._build_search_ports(ctx)
+
+            async for event in self._engine.search(
+                web_search_port=web_port,
+                internal_search_port=internal_port,
+                tasks=ctx.tasks,
+                params=engine_params,
+                logger=self.logger,
+            ):
+                if isinstance(event, IterationProgress):
+                    task_query = task_desc_by_id.get(event.task_id, "")
+                    step_desc = f"{'外部搜索' if event.use_external else '内部检索'}：{task_query[:50]}"
                     yield send_event("progress", {
                         "status": "searching",
                         "current_step": step_desc,
-                        "progress_percent": 20.0 + (step_count / total_steps) * 60.0,
-                        "completed_tasks": step_count,
+                        "progress_percent": 20.0 + (event.step_count / total_steps) * 60.0,
+                        "completed_tasks": event.step_count,
                         "total_tasks": total_steps,
                     })
-                    if use_external:
-                        results = await self._execute_external_search(
-                            provider=ctx.params.external_config.provider,
-                            query=task_query,
-                            max_results=ctx.params.external_config.max_results,
-                        )
-                        ctx.external_count += 1
-                    else:
-                        results = await self._execute_internal_search(
-                            space_id=ctx.space_id,
-                            user_id=ctx.user_id,
-                            query=task_query,
-                            config=ctx.params.internal_config,
-                        )
-                        ctx.internal_count += 1
-                    self._deduplicate_results(ctx.all_results, results)
-                    if self._is_sufficient_results(ctx.all_results, iteration):
-                        break
+                elif isinstance(event, TaskFailed):
+                    # 引擎已 log；feature 仅记录，catch-and-continue（与非流式统一）
+                    self.logger.warning(
+                        "研究任务检索失败（catch-and-continue）",
+                        task_id=event.task_id,
+                        error=event.error,
+                    )
+                elif isinstance(event, SearchComplete):
+                    ctx.all_results = event.all_results
+                    ctx.search_results = {
+                        "results": event.all_results,
+                        "summary": event.summary,
+                        "internal_count": event.summary.get("internal_count", 0),
+                        "external_count": event.summary.get("external_count", 0),
+                    }
 
-            # 构建统一搜索结果结构（与非流式路径一致）
-            ctx.search_results = {
-                "results": ctx.all_results,
-                "summary": {
-                    "internal_count": ctx.internal_count,
-                    "external_count": ctx.external_count,
-                    "total_results": len(ctx.all_results),
-                    "key_sources": self._extract_key_sources(ctx.all_results),
-                },
-                "internal_count": ctx.internal_count,
-                "external_count": ctx.external_count,
-            }
+            # 兜底：若未收到 SearchComplete（不应发生），保空结果
+            if ctx.search_results is None:
+                ctx.search_results = {
+                    "results": [],
+                    "summary": {
+                        "internal_count": 0,
+                        "external_count": 0,
+                        "total_results": 0,
+                        "key_sources": [],
+                    },
+                    "internal_count": 0,
+                    "external_count": 0,
+                }
+                ctx.all_results = []
 
             # 4. 流式综合报告
             yield send_event("progress", {
@@ -599,7 +603,7 @@ class DeepResearchService:
 
             full_report = ""
             context_str = self._format_search_context(ctx.all_results)
-            key_sources = self._extract_key_sources(ctx.all_results)
+            key_sources = ctx.search_results["summary"].get("key_sources", [])
             raw_stream = self._synthesize_report_stream(
                 query=ctx.params.query,
                 research_topic=ctx.research_topic,
@@ -623,8 +627,8 @@ class DeepResearchService:
             elapsed_seconds = int(time.time() - ctx.start_time)
             stats = {
                 "elapsed_seconds": elapsed_seconds,
-                "internal_searches": ctx.internal_count,
-                "external_searches": ctx.external_count,
+                "internal_searches": ctx.search_results.get("internal_count", 0),
+                "external_searches": ctx.search_results.get("external_count", 0),
                 "total_results": len(ctx.all_results),
             }
             await self.research_repo.update_search_results(ctx.research_id, ctx.all_results)
@@ -742,73 +746,45 @@ class DeepResearchService:
         self.logger.debug("任务分解完成", session_id=ctx.session_id, tasks_count=len(ctx.tasks))
 
     async def _execute_research_search(self, ctx: ResearchContext) -> None:
-        """串行执行所有任务的检索（SQLAlchemy AsyncSession 不保证并发安全）"""
+        """执行迭代检索（薄委托 DeepResearchEngine.search 事件流）。
 
-        async def _search_single_task(task: Dict[str, Any]) -> Dict[str, Any]:
-            """单个任务的多轮迭代检索"""
-            task_results = []
-            internal_count = 0
-            external_count = 0
-            task_query = task.get("description", ctx.params.query)
+        A-3：可复用迭代循环（按任务去重+充分性+catch-and-continue）已迁入引擎，
+        feature 仅消费事件并在 SearchComplete 时填充 ctx.search_results。TaskStarted/
+        IterationProgress/TaskFailed 在非流式路径下静默（引擎内部已 log TaskFailed）。
+        """
+        engine_params = self._build_engine_params(ctx)
+        web_port, internal_port = self._build_search_ports(ctx)
 
-            for iteration in range(ctx.mode_config["iterations"]):
-                use_external = self._should_use_external_search(
-                    ctx.params.search_source, iteration
-                )
-                if use_external:
-                    results = await self._execute_external_search(
-                        provider=ctx.params.external_config.provider,
-                        query=task_query,
-                        max_results=ctx.params.external_config.max_results,
-                    )
-                    external_count += 1
-                else:
-                    results = await self._execute_internal_search(
-                        space_id=ctx.space_id,
-                        user_id=ctx.user_id,
-                        query=task_query,
-                        config=ctx.params.internal_config,
-                    )
-                    internal_count += 1
+        async for event in self._engine.search(
+            web_search_port=web_port,
+            internal_search_port=internal_port,
+            tasks=ctx.tasks,
+            params=engine_params,
+            logger=self.logger,
+        ):
+            if isinstance(event, SearchComplete):
+                ctx.all_results = event.all_results
+                ctx.search_results = {
+                    "results": event.all_results,
+                    "summary": event.summary,
+                    "internal_count": event.summary.get("internal_count", 0),
+                    "external_count": event.summary.get("external_count", 0),
+                }
 
-                self._deduplicate_results(task_results, results)
-                if self._is_sufficient_results(task_results, iteration):
-                    break
-
-            return {
-                "results": task_results,
-                "internal_count": internal_count,
-                "external_count": external_count,
+        # 兜底：若未收到 SearchComplete（不应发生），保空结果
+        if ctx.search_results is None:
+            ctx.search_results = {
+                "results": [],
+                "summary": {
+                    "internal_count": 0,
+                    "external_count": 0,
+                    "total_results": 0,
+                    "key_sources": [],
+                },
+                "internal_count": 0,
+                "external_count": 0,
             }
-
-        # 串行执行所有任务（避免共享 SQLAlchemy session 的并发问题）
-        all_results = []
-        total_internal = 0
-        total_external = 0
-        for task in ctx.tasks:
-            try:
-                result = await _search_single_task(task)
-                total_internal += result["internal_count"]
-                total_external += result["external_count"]
-                self._deduplicate_results(all_results, result["results"])
-            except Exception as e:
-                self.logger.warning(
-                    "任务检索失败",
-                    task_id=task.get("task_id"),
-                    error=str(e),
-                )
-
-        ctx.search_results = {
-            "results": all_results,
-            "summary": {
-                "internal_count": total_internal,
-                "external_count": total_external,
-                "total_results": len(all_results),
-                "key_sources": self._extract_key_sources(all_results),
-            },
-            "internal_count": total_internal,
-            "external_count": total_external,
-        }
+            ctx.all_results = []
 
     async def _synthesize_and_save_report(self, ctx: ResearchContext) -> None:
         """综合报告并持久化全部结果"""
@@ -908,161 +884,6 @@ class DeepResearchService:
                 original_error=str(error),
                 recovery_error=str(commit_err),
             )
-
-    async def _execute_internal_search(
-        self,
-        space_id: int,
-        user_id: int,
-        query: str,
-        config: "InternalSearchConfig",
-    ) -> List[Dict[str, Any]]:
-        """
-        执行内部 RAG 检索
-
-        Args:
-            space_id: 知识空间 ID
-            user_id: 用户 ID
-            query: 查询文本
-            config: 内部检索配置
-
-        Returns:
-            检索结果列表
-        """
-        try:
-            # 确定要搜索的知识库（仅搜索活跃状态的知识库）
-            kb_repo = KnowledgeBaseRepository(self.session)
-            if config.kb_ids:
-                # 指定了知识库 ID 列表
-                kbs = []
-                for kb_id in config.kb_ids:
-                    kb = await kb_repo.get_by_id(kb_id)
-                    # 检查知识库归属、状态是否活跃
-                    if kb and kb.space_id == space_id and kb.status == KnowledgeBaseStatus.ACTIVE:
-                        kbs.append(kb)
-            else:
-                # 搜索空间下所有活跃知识库
-                all_kbs = await kb_repo.get_by_space(space_id)
-                kbs = [kb for kb in all_kbs if kb.status == KnowledgeBaseStatus.ACTIVE]
-
-            if not kbs:
-                self.logger.warning("空间无可用知识库，跳过内部检索", space_id=space_id)
-                return []
-
-            # 构建检索请求
-            weights = WeightConfig(
-                vector_weight=config.vector_weight,
-                bm25_weight=config.bm25_weight,
-            )
-            rerank_config = None
-            if config.rerank_enabled:
-                rerank_config = RerankConfig(
-                    enabled=True,
-                    top_k=config.rerank_top_k,
-                    model=config.rerank_model,
-                )
-
-            search_req = SearchRequest(
-                query=query,
-                search_mode=SearchMode(config.search_mode),
-                top_k=config.top_k,
-                weights=weights,
-                rerank=rerank_config,
-                score_threshold=config.score_threshold,
-            )
-
-            # 顺序搜索所有知识库并合并结果（共享 session 不能并发）
-            search_results = []
-            for kb in kbs:
-                try:
-                    result = await self.search_port.search(
-                        space_id=space_id,
-                        kb_id=kb.id,
-                        user_id=user_id,
-                        request=search_req,
-                    )
-                    search_results.append(result)
-                except Exception as e:
-                    self.logger.warning("知识库搜索失败", kb_id=kb.id, error=str(e))
-                    search_results.append({"results": []})
-
-            all_results = []
-            for kb, search_result in zip(kbs, search_results):
-                for r in search_result.get("results", []):
-                    all_results.append({
-                        "source_type": "internal",
-                        "content": r.get("content", ""),
-                        "document_id": r.get("document_id"),
-                        "chunk_id": r.get("chunk_id"),
-                        "document_name": r.get("file_info", {}).get("filename") or r.get("document_name"),
-                        "kb_id": kb.id,
-                        "kb_name": kb.name,
-                        "score": r.get("score", 0),
-                    })
-
-            # 按 score 排序并截取 top_k
-            all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
-            return all_results[:config.top_k]
-        except Exception as e:
-            self.logger.warning("内部检索失败", query=query, error=str(e))
-            raise DeepResearchError("内部检索失败，请稍后重试")
-
-    async def _execute_external_search(
-        self,
-        provider: ExternalSearchProvider,
-        query: str,
-        max_results: int,
-    ) -> List[Dict[str, Any]]:
-        """执行外部搜索"""
-        service = self._get_external_service(provider)
-        if not service:
-            raise SearchProviderNotConfiguredError(provider.value)
-
-        if not service.is_available():
-            raise SearchProviderUnavailableError(provider.value, "服务不可用或未配置")
-
-        try:
-            results = await service.search(query, max_results)
-            return [
-                {
-                    "source_type": "external",
-                    "content": r.content,
-                    "url": r.url,
-                    "title": r.title,
-                    "score": r.score,
-                }
-                for r in results
-            ]
-        except (SearchProviderNotConfiguredError, SearchProviderUnavailableError):
-            raise
-        except DeepResearchError:
-            raise
-        except Exception as e:
-            self.logger.error("外部搜索失败", provider=provider, error=str(e))
-            raise SearchProviderUnavailableError(provider.value, str(e))
-
-    def _should_use_external_search(
-        self,
-        search_source: SearchSource,
-        iteration: int,
-    ) -> bool:
-        """动态决策是否使用外部搜索（委托 engines/deep_research 纯函数）。"""
-        return _should_use_external_search_fn(search_source, iteration)
-
-    def _is_sufficient_results(
-        self,
-        results: List[Dict[str, Any]],
-        iteration: int,
-    ) -> bool:
-        """检查结果是否足够（委托 engines/deep_research 纯函数）。"""
-        return _is_sufficient_results_fn(results, iteration)
-
-    def _deduplicate_results(
-        self,
-        all_results: List[Dict[str, Any]],
-        new_results: List[Dict[str, Any]],
-    ) -> None:
-        """基于 URL、标题或 chunk_id 去重并追加（委托 engines/deep_research 纯函数，原地去重）。"""
-        _deduplicate_results_fn(all_results, new_results)
 
     def _extract_key_sources(self, results: List[Dict[str, Any]]) -> List[str]:
         """提取关键来源（委托 engines/deep_research 纯函数）。"""
