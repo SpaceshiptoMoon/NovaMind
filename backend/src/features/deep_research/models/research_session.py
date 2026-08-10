@@ -31,13 +31,6 @@ class ResearchMode(str, PyEnum):
     DEEP = "deep"              # 深度模式
 
 
-class SearchSource(str, PyEnum):
-    """检索来源枚举"""
-    INTERNAL = "internal"      # 内部知识库
-    EXTERNAL = "external"      # 外部网络搜索
-    HYBRID = "hybrid"          # 混合检索
-
-
 class ExternalSearchProvider(str, PyEnum):
     """外部搜索提供商枚举"""
     TAVILY = "tavily"          # Tavily

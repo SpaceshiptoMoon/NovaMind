@@ -9,12 +9,13 @@ from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 from datetime import datetime
 
-# 从模型层导入字符串枚举（值完全一致，无需重复定义）
+# 从模型层导入字符串枚举（值完全一致，无需重复定义）。
+# SearchSource 自 engines/deep_research/types 反向 re-export（feature -> engine 合法）。
 from novamind.features.deep_research.models.research_session import (
     ResearchMode,
-    SearchSource,
     ExternalSearchProvider,
 )
+from novamind.engines.deep_research.types import SearchSource
 
 
 # ==================== 枚举类型 ====================

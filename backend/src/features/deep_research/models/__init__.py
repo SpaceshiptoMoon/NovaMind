@@ -5,7 +5,7 @@
 - ResearchSession: 深度研究会话模型
 - ResearchStatus: 研究状态枚举
 - ResearchMode: 研究模式枚举
-- SearchSource: 检索来源枚举
+- SearchSource: 检索来源枚举（自 engines/deep_research/types 反向 re-export，feature -> engine 合法）
 - ExternalSearchProvider: 外部搜索提供商枚举
 """
 
@@ -13,9 +13,9 @@ from novamind.features.deep_research.models.research_session import (
     ResearchSession,
     ResearchStatus,
     ResearchMode,
-    SearchSource,
     ExternalSearchProvider,
 )
+from novamind.engines.deep_research.types import SearchSource
 
 __all__ = [
     "ResearchSession",

@@ -14,9 +14,9 @@ from novamind.features.deep_research.models.research_session import (
     ResearchSession,
     ResearchStatus,
     ResearchMode,
-    SearchSource,
     ExternalSearchProvider,
 )
+from novamind.engines.deep_research.types import SearchSource
 from novamind.shared.utils.time_utils import now_china
 
 
