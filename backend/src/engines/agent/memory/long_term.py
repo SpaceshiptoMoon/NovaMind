@@ -8,7 +8,7 @@ from novamind.engines.agent.memory.interfaces import (
     LongTermMemoryEntry,
     MemoryMessage,
 )
-from novamind.engines.agent.ports import MemorySearchPort, MemoryStorePort
+from novamind.engines.agent.ports import LongTermMemoryStorePort, MemorySearchPort
 from novamind.engines.ports import PromptProvider
 from novamind.shared.logging import get_logger
 
@@ -33,7 +33,7 @@ class LongTermMemory(ILongTermMemory):
 
     def __init__(
         self,
-        memory_store: MemoryStorePort,
+        memory_store: LongTermMemoryStorePort,
         llm_client_factory: Callable,
         prompt_provider: PromptProvider,
         memory_search: Optional[MemorySearchPort] = None,

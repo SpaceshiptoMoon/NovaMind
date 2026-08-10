@@ -1,5 +1,5 @@
 """
-Agent 引擎端口协议，定义 MemoryStorePort、MemorySearchPort、KnowledgeSearchPort 等端口。
+Agent 引擎端口协议，定义 LongTermMemoryStorePort、ContextSummaryStorePort、MemorySearchPort、KnowledgeSearchPort 等端口。
 """
 from __future__ import annotations
 
@@ -129,7 +129,7 @@ class ContextSummaryEntry:
 
 @dataclass
 class LongTermMemoryEntry:
-    """长期记忆条目（纯 dataclass，非 ORM；同时被 MemoryStorePort 与引擎
+    """长期记忆条目（纯 dataclass，非 ORM；同时被 LongTermMemoryStorePort 与引擎
     ILongTermMemory 引用，故放本中立模块）。"""
 
     id: int
@@ -146,12 +146,13 @@ class LongTermMemoryEntry:
 
 
 @runtime_checkable
-class MemoryStorePort(Protocol):
-    """长期记忆 MySQL 持久化 + 上下文压缩摘要端口。
+class LongTermMemoryStorePort(Protocol):
+    """长期记忆 MySQL 持久化端口。
 
-    替代 ``MemoryRepository``/``ContextSummaryRepository`` 直接 import 与
-    ``AgentMemory`` ORM 的裸 SQL 查询。子串匹配的 replace/remove 由
-    ``find_by_content_contains`` 承接（对齐旧 ``select(AgentMemory).contains()``）。
+    替代 ``MemoryRepository`` 直接 import 与 ``AgentMemory`` ORM 的裸 SQL 查询。
+    子串匹配的 replace/remove 由 ``find_by_content_contains`` 承接（对齐旧
+    ``select(AgentMemory).contains()``）。消费方为 LongTermMemory / memory 工具 /
+    MemoryManager（CRUD + 检索组，不涉及摘要）。
     """
 
     async def create(
@@ -219,6 +220,16 @@ class MemoryStorePort(Protocol):
     async def flush(self) -> None:
         """刷写当前事务（对齐旧 repo.session.flush()/db.flush()）。"""
         ...
+
+
+@runtime_checkable
+class ContextSummaryStorePort(Protocol):
+    """上下文压缩摘要持久化端口。
+
+    替代 ``ContextSummaryRepository`` 直接 import。消费方为 ContextCompressor /
+    ShortTermMemory（仅 save_summary / get_latest_summary 两个方法，依赖面从
+    合并端口的 12 方法降到 2）。
+    """
 
     async def save_summary(
         self,
@@ -295,6 +306,7 @@ __all__ = [
     "KnowledgeSearchPort",
     "ContextSummaryEntry",
     "LongTermMemoryEntry",
-    "MemoryStorePort",
+    "LongTermMemoryStorePort",
+    "ContextSummaryStorePort",
     "MemorySearchPort",
 ]
