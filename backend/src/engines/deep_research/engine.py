@@ -5,9 +5,10 @@ Deep Research 核心引擎：可复用的研究机制（查询分析/任务分�
 ORM 模型 / ``core.database``。LLM 客户端、prompt 提供者、检索端口、日志均按调用注入
 （AgentEngine 风格）；引擎类无状态。
 
-A-1 阶段：仅落纯模块函数（检索结果清洗/外部搜索决策/充分性/去重/关键来源/上下文格式化）
-+ 常量 + prompt key 常量。LLM 方法（analyze_query/decompose_tasks/synthesize_report[_stream]）
-与迭代检索循环（``search``）在 A-2/A-3 阶段迁入 ``DeepResearchEngine`` 类。
+- 纯模块函数：检索结果清洗/外部搜索决策/充分性/去重/关键来源/上下文格式化 + 常量 + prompt key。
+- ``DeepResearchEngine`` 类：``analyze_query``/``decompose_tasks``/``synthesize_report[_stream]``
+  （按调用接 llm_client + prompt_provider）+ ``search``（迭代检索循环，AsyncIterator[SearchEvent]，
+  签名不含 llm/prompt；按调用接 web_search_port/internal_search_port）。
 """
 from __future__ import annotations
 
@@ -18,7 +19,17 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.engines.ports import PromptProvider
-from novamind.engines.deep_research.types import SearchSource
+from novamind.engines.search_ports import WebSearchPort
+from novamind.engines.deep_research.ports import InternalSearchPort
+from novamind.engines.deep_research.types import (
+    EngineResearchParams,
+    IterationProgress,
+    SearchComplete,
+    SearchEvent,
+    SearchSource,
+    TaskFailed,
+    TaskStarted,
+)
 
 
 # 结果充分性阈值常量
@@ -294,3 +305,100 @@ class DeepResearchEngine:
             enable_thinking=False,
         ):
             yield chunk
+
+    async def search(
+        self,
+        *,
+        web_search_port: Optional[WebSearchPort],
+        internal_search_port: Optional[InternalSearchPort],
+        tasks: List[Dict[str, Any]],
+        params: EngineResearchParams,
+        logger: Optional[Logger] = None,
+    ) -> AsyncIterator[SearchEvent]:
+        """迭代检索循环（AsyncIterator[SearchEvent]），流式与非流式共用。
+
+        忠实复现原非流 ``_execute_research_search`` 语义（R1）：
+
+        - 逐任务串行（共享 SQLAlchemy session 不保证并发安全）；
+        - 每任务多轮迭代，按 ``should_use_external_search`` 决策外部/内部；
+        - 每任务内按 URL/标题/chunk_id 去重（``deduplicate_results`` 原地）；
+        - ``is_sufficient_results`` 命中则提前结束本任务迭代；
+        - 单任务抛错 → ``TaskFailed``，catch-and-continue，本任务结果不计入 all_results；
+        - 任务的 task_results 再去重并入 all_results（全局去重），累计 internal/external 调用计数；
+        - 末尾 ``SearchComplete`` 携带 all_results + summary（含计数与 key_sources）。
+
+        签名不含 ``llm_client``/``prompt_provider``：循环不调 LLM/prompt。
+        归一化外部 ``WebSearchResult`` 与内部 dict 结果为统一 dict 形状（与纯函数及 feature 持久化一致）。
+        """
+        all_results: List[Dict[str, Any]] = []
+        total_internal = 0
+        total_external = 0
+        total_steps = len(tasks) * params.iterations
+        step_count = 0
+
+        for task in tasks:
+            task_id = str(task.get("task_id", ""))
+            task_query = task.get("description", "") or ""
+            yield TaskStarted(
+                task_id=task_id,
+                description=task_query,
+                total_iterations=params.iterations,
+            )
+            try:
+                task_results: List[Dict[str, Any]] = []
+                internal_count = 0
+                external_count = 0
+                for iteration in range(params.iterations):
+                    step_count += 1
+                    use_external = should_use_external_search(params.search_source, iteration)
+                    yield IterationProgress(
+                        task_id=task_id,
+                        iteration=iteration,
+                        use_external=use_external,
+                        step_count=step_count,
+                        total_steps=total_steps,
+                        current_results_count=len(task_results),
+                    )
+                    if use_external:
+                        if web_search_port is None:
+                            raise RuntimeError("外部检索未配置 web_search_port")
+                        raw = await web_search_port.search(
+                            task_query, max_results=params.external_max_results
+                        )
+                        results = [
+                            {
+                                "source_type": "external",
+                                "content": getattr(r, "content", "") or getattr(r, "snippet", ""),
+                                "url": getattr(r, "url", ""),
+                                "title": getattr(r, "title", ""),
+                                "score": getattr(r, "score", 0.0),
+                            }
+                            for r in raw
+                        ]
+                        external_count += 1
+                    else:
+                        if internal_search_port is None:
+                            raise RuntimeError("内部检索未配置 internal_search_port")
+                        results = await internal_search_port.search(
+                            task_query, top_k=params.top_k
+                        )
+                        internal_count += 1
+                    deduplicate_results(task_results, results)
+                    if is_sufficient_results(task_results, iteration):
+                        break
+                # 任务成功：去重并入 all_results，累计计数
+                deduplicate_results(all_results, task_results)
+                total_internal += internal_count
+                total_external += external_count
+            except Exception as e:
+                if logger is not None:
+                    logger.warning("任务检索失败", task_id=task_id, error=str(e))
+                yield TaskFailed(task_id=task_id, error=str(e))
+
+        summary = {
+            "internal_count": total_internal,
+            "external_count": total_external,
+            "total_results": len(all_results),
+            "key_sources": extract_key_sources(all_results),
+        }
+        yield SearchComplete(all_results=all_results, summary=summary)

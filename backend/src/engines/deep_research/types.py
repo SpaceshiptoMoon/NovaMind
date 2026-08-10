@@ -1,8 +1,8 @@
 """
 Deep Research 引擎核心数据类型。
 
-承载可复用研究机制的纯数据契约：检索来源枚举、引擎研究参数、归一化检索结果、
-搜索事件流变体。本模块不得 import ``novamind.features.*`` / ``novamind.setting.*`` /
+承载可复用研究机制的纯数据契约：检索来源枚举、引擎研究参数、搜索事件流变体。
+本模块不得 import ``novamind.features.*`` / ``novamind.setting.*`` /
 ORM 模型 / ``core.database``（分层铁律：engines 是纯逻辑层）。
 
 - ``SearchSource``：检索来源枚举（internal/external/hybrid）。此前定义在 ORM 模型
@@ -11,9 +11,12 @@ ORM 模型 / ``core.database``（分层铁律：engines 是纯逻辑层）。
   feature 侧 ORM 模型 / schemas / repository 经 re-export 反向引用（feature -> engine 合法）。
 - ``EngineResearchParams``：纯 dataclass 研究参数，**无 Any / feature DTO**，引擎无状态
   方法按调用接收。
-- ``ResearchResultItem``：归一化检索结果（内部/外部两路统一形状），与 feature 侧
-  Pydantic ``SearchResultItem`` 分离（避命名冲突）。
 - ``SearchEvent`` 变体：``DeepResearchEngine.search`` 产出的异步事件流，host 消费后持久化。
+  ``SearchComplete.all_results`` 为 ``List[Dict[str, Any]]``（归一化检索结果字典），
+  与纯函数 ``deduplicate_results`` / ``format_search_context`` / ``extract_key_sources``
+  （dict ``.get`` 访问）及 feature 侧持久化（repo 存 dict、synthesize_report 自持久化
+  dict 经 format_search_context 派生上下文）一致——全程统一用 dict，避免反复转换
+  （R1：忠实复现原非流语义，最低风险）。
 """
 from __future__ import annotations
 
@@ -49,28 +52,6 @@ class EngineResearchParams:
 
 
 @dataclass
-class ResearchResultItem:
-    """归一化检索结果（内部 RAG 与外部 Web 两路统一形状）。
-
-    与 feature 侧 Pydantic ``SearchResultItem``（API 响应 DTO）分离，避免命名冲突。
-    外部结果填 ``url``/``title``/``snippet``/``content``/``score``；
-    内部结果额外填 ``document_id``/``chunk_id``/``document_name``/``kb_id``/``kb_name``。
-    """
-
-    title: str = ""
-    url: str = ""
-    snippet: str = ""
-    content: str = ""
-    score: float = 0.0
-    source: str = ""  # "internal" / "external"
-    document_id: Optional[int] = None
-    chunk_id: Optional[int] = None
-    document_name: Optional[str] = None
-    kb_id: Optional[int] = None
-    kb_name: Optional[str] = None
-
-
-@dataclass
 class TaskStarted:
     """单个研究任务开始事件。"""
 
@@ -101,9 +82,14 @@ class TaskFailed:
 
 @dataclass
 class SearchComplete:
-    """全部任务检索完成事件，携带归一化结果与摘要。"""
+    """全部任务检索完成事件，携带归一化结果与摘要。
 
-    all_results: List[ResearchResultItem]
+    ``all_results`` 为归一化检索结果字典列表（内部/外部两路统一形状），
+    feature 侧据此持久化与综合报告。``summary`` 含 internal_count/external_count/
+    total_results/key_sources。
+    """
+
+    all_results: List[Dict[str, Any]] = field(default_factory=list)
     summary: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -113,7 +99,6 @@ SearchEvent = Union[TaskStarted, IterationProgress, TaskFailed, SearchComplete]
 __all__ = [
     "SearchSource",
     "EngineResearchParams",
-    "ResearchResultItem",
     "TaskStarted",
     "IterationProgress",
     "TaskFailed",
