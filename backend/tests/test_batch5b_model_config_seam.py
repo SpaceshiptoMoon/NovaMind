@@ -276,6 +276,8 @@ _STATIC_HELPERS_DOCUMENT = [
     "_generate_embeddings_static",
     "_generate_single_embedding_static",
     "_generate_questions_for_chunks_static",
+    # 共享后置尾（切分/向量化/QG/索引）接收 model_config_port，由三模态管道注入
+    "_run_post_parse_tail",
 ]
 
 
@@ -293,7 +295,6 @@ _MEDIA_HELPERS = [
     "process_video_document",
     "process_audio_document",
     "maybe_semantic_embedding_client",
-    "_index_text_chunks",
 ]
 
 
