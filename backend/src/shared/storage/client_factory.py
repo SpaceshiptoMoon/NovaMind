@@ -38,7 +38,7 @@ class ClientFactory:
 
         必须在任意 ``get_*_client`` 调用前由装配点（startup_manager）执行一次。
         ``config`` 为宿主 ``AppConfig``；``minio_path_strategy`` / ``es_index_schema``
-        为宿主侧 ``NovamindPathStrategy`` / ``NovamindIndexSchema`` 实例。
+        为可选的宿主侧 ``PathStrategy`` / ``IndexSchema`` 实现，未注入则回退 ``Default*``。
         """
         cls._config = config
         cls._minio_path_strategy = minio_path_strategy

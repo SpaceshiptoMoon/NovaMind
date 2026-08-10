@@ -163,19 +163,10 @@ class AppLifespanManager:
         # 注册提示词模板（须在功能模块初始化与请求处理之前完成）
         await self._register_prompt_templates()
 
-        # 装配共享客户端工厂（注入宿主配置与路径/索引策略；shared 层不得直接读 setting/features）
+        # 装配共享客户端工厂（注入宿主配置；shared 层不得直接读 setting/features）
+        # 路径/索引策略直接用 shared 层 Default* 实现（宿主无需定制层），不注入则自动回退。
         from novamind.shared.storage.client_factory import ClientFactory
-        from novamind.features.knowledge_space.adapters.novamind_path_strategy import (
-            NovamindPathStrategy,
-        )
-        from novamind.features.knowledge_space.adapters.novamind_index_schema import (
-            NovamindIndexSchema,
-        )
-        ClientFactory.configure(
-            config,
-            minio_path_strategy=NovamindPathStrategy(),
-            es_index_schema=NovamindIndexSchema(),
-        )
+        ClientFactory.configure(config)
 
         # 初始化Redis连接
         redis_start = time.time()

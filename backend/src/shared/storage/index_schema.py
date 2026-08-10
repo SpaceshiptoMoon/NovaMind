@@ -53,8 +53,7 @@ class DefaultIndexSchema:
     """默认索引 schema：逐字复刻 NovaMind 现行 ``space_{space_id}`` 命名与 mapping。
 
     不注入 schema 时 ``ElasticsearchClient`` 使用本实现，行为与端口化前逐字一致。
-    宿主可注入 ``NovamindIndexSchema``（同值，归 knowledge_space adapter 所有）以
-    明确所有权；批次 6 抽包时本类随引擎迁出，宿主侧注入自己的实现。
+    宿主如需定制索引命名/mapping，可注入自己的 ``IndexSchema`` 实现。
     """
 
     def __init__(self) -> None:
