@@ -45,7 +45,7 @@ from novamind.features.knowledge_space.api.dependencies import (
     get_current_user_id,
     validate_space_member,
     validate_space_editor,
-    get_document_service,
+    get_document_query_service,
     get_document_upload_service,
     get_document_task_service,
     get_audit_service,
@@ -59,7 +59,8 @@ from novamind.features.knowledge_space.exceptions import (
     DocumentSizeExceededError,
     DocumentCountExceededError,
 )
-from novamind.features.knowledge_space.services.document_service import DocumentService
+from novamind.features.knowledge_space.services.document_query_service import DocumentQueryService
+from novamind.features.knowledge_space.services.document_file_types import SUPPORTED_FILE_TYPES
 from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
 from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
 from novamind.features.knowledge_space.services.audit_service import AuditService
@@ -67,8 +68,8 @@ from novamind.features.knowledge_space.services.audit_service import AuditServic
 # 文件大小限制：默认最大 100MB
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB
 
-# 允许上传的文件类型白名单（从 DocumentService.SUPPORTED_FILE_TYPES 派生，无需手动维护）
-ALLOWED_FILE_EXTENSIONS = {f".{t}" for t in DocumentService.SUPPORTED_FILE_TYPES}
+# 允许上传的文件类型白名单（从 document_file_types.SUPPORTED_FILE_TYPES 派生，无需手动维护）
+ALLOWED_FILE_EXTENSIONS = {f".{t}" for t in SUPPORTED_FILE_TYPES}
 
 # 批量上传最大文件数
 MAX_BATCH_FILE_COUNT = 20
@@ -296,14 +297,14 @@ async def get_documents(
     skip: Annotated[int, Query(ge=0, description="跳过的记录数")] = 0,
     limit: Annotated[int, Query(ge=1, le=1000, description="返回的最大记录数")] = 100,
     member: SpaceMember = Depends(validate_space_member),
-    document_service: DocumentService = Depends(get_document_service),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
     db: AsyncSession = Depends(get_db),
 ):
     """获取文档列表"""
     # 验证知识库访问权限
     await validate_kb_access(kb_id, space_id, db)
 
-    documents = await document_service.get_kb_documents(
+    documents = await document_query_service.get_kb_documents(
         kb_id=kb_id,
         status=status,
         skip=skip,
@@ -311,7 +312,7 @@ async def get_documents(
     )
 
     # 获取符合条件的总数（用于分页）
-    total = await document_service.count_kb_documents(kb_id=kb_id, status=status)
+    total = await document_query_service.count_kb_documents(kb_id=kb_id, status=status)
 
     return DocumentListResponse(
         items=[DocumentResponse.model_validate(d) for d in documents],
@@ -332,14 +333,14 @@ async def get_document(
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
     document_id: Annotated[int, Path(gt=0, description="文档ID")],
     member: SpaceMember = Depends(validate_space_member),
-    document_service: DocumentService = Depends(get_document_service),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
     db: AsyncSession = Depends(get_db),
 ):
     """获取文档详情（不含分块，分块由 /chunks 分页接口提供）"""
     # 验证知识库访问权限
     await validate_kb_access(kb_id, space_id, db)
 
-    document = await document_service.get_document(document_id)
+    document = await document_query_service.get_document(document_id)
 
     if not document or document.kb_id != kb_id:
         raise DocumentNotFoundError(document_id)
@@ -361,7 +362,7 @@ async def get_document_chunks(
     skip: Annotated[int, Query(ge=0, description="跳过的记录数")] = 0,
     limit: Annotated[int, Query(ge=1, le=1000, description="返回的最大记录数")] = 10,
     member: SpaceMember = Depends(validate_space_member),
-    document_service: DocumentService = Depends(get_document_service),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
     db: AsyncSession = Depends(get_db),
 ):
     """获取文档分块（分页）"""
@@ -369,11 +370,11 @@ async def get_document_chunks(
     await validate_kb_access(kb_id, space_id, db)
 
     # 先验证文档存在
-    document = await document_service.get_document(document_id)
+    document = await document_query_service.get_document(document_id)
     if not document or document.kb_id != kb_id:
         raise DocumentNotFoundError(document_id)
 
-    data = await document_service.get_document_chunks(
+    data = await document_query_service.get_document_chunks(
         space_id, document_id, skip=skip, limit=limit
     )
     items = [await _build_chunk_response(c) for c in data.get("items", [])]
@@ -441,7 +442,7 @@ async def get_document_task_items(
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
     document_id: Annotated[int, Path(gt=0, description="文档ID")],
     member: SpaceMember = Depends(validate_space_member),
-    document_service: DocumentService = Depends(get_document_service),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
     db: AsyncSession = Depends(get_db),
 ):
     """获取文档处理任务列表"""
@@ -449,7 +450,7 @@ async def get_document_task_items(
     await validate_kb_access(kb_id, space_id, db)
 
     # 先验证文档存在
-    document = await document_service.get_document(document_id)
+    document = await document_query_service.get_document(document_id)
     if not document or document.kb_id != kb_id:
         raise DocumentNotFoundError(document_id)
 
@@ -475,7 +476,7 @@ async def download_document(
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
     document_id: Annotated[int, Path(gt=0, description="文档ID")],
     member: SpaceMember = Depends(validate_space_member),
-    document_service: DocumentService = Depends(get_document_service),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
     db: AsyncSession = Depends(get_db),
 ):
     """下载文档"""
@@ -483,12 +484,12 @@ async def download_document(
     await validate_kb_access(kb_id, space_id, db)
 
     # 获取文档
-    document = await document_service.get_document(document_id)
+    document = await document_query_service.get_document(document_id)
     if not document or document.kb_id != kb_id:
         raise DocumentNotFoundError(document_id)
 
     # 下载文件内容
-    file_content = await document_service.download_document(
+    file_content = await document_query_service.download_document(
         document_id=document_id,
     )
 
@@ -522,7 +523,7 @@ async def delete_document(
     document_id: Annotated[int, Path(gt=0, description="文档ID")],
     user_id: int = Depends(get_current_user_id),
     member: SpaceMember = Depends(validate_space_member),
-    document_service: DocumentService = Depends(get_document_service),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
     audit_service: AuditService = Depends(get_audit_service),
     db: AsyncSession = Depends(get_db),
 ):
@@ -531,7 +532,7 @@ async def delete_document(
     await validate_kb_writable(kb_id, space_id, db)
 
     # 获取文档信息用于权限检查和审计日志
-    document = await document_service.get_document(document_id)
+    document = await document_query_service.get_document(document_id)
     if not document or document.kb_id != kb_id:
         raise DocumentNotFoundError(document_id)
 
@@ -556,7 +557,7 @@ async def delete_document(
     )
 
     # 删除文档
-    result = await document_service.delete_document(
+    result = await document_query_service.delete_document(
         kb_id=kb_id,
         document_id=document_id,
         user_id=user_id,
@@ -664,13 +665,13 @@ async def get_document_image(
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
     document_id: Annotated[int, Path(gt=0, description="文档ID")],
     member: SpaceMember = Depends(validate_space_member),
-    document_service: DocumentService = Depends(get_document_service),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
     db: AsyncSession = Depends(get_db),
 ):
     """代理获取文档图片（后端从 MinIO 读取并直接返回字节流）"""
     await validate_kb_access(kb_id, space_id, db)
 
-    document = await document_service.get_document(document_id)
+    document = await document_query_service.get_document(document_id)
     if not document or document.kb_id != kb_id:
         raise DocumentNotFoundError(document_id)
 
@@ -680,7 +681,7 @@ async def get_document_image(
         raise DocumentNotFoundError(document_id)
 
     # 从 MinIO 下载文件
-    file_content = await document_service.download_document(document_id=document_id)
+    file_content = await document_query_service.download_document(document_id=document_id)
 
     # 根据文件扩展名推断 Content-Type
     content_type, _ = mimetypes.guess_type(document.filename)
@@ -712,17 +713,17 @@ async def get_document_parsed_text(
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
     document_id: Annotated[int, Path(gt=0, description="文档ID")],
     member: SpaceMember = Depends(validate_space_member),
-    document_service: DocumentService = Depends(get_document_service),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
     db: AsyncSession = Depends(get_db),
 ):
     """获取文档解析后的 Markdown 全文"""
     await validate_kb_access(kb_id, space_id, db)
 
-    document = await document_service.get_document(document_id)
+    document = await document_query_service.get_document(document_id)
     if not document or document.kb_id != kb_id:
         raise DocumentNotFoundError(document_id)
 
-    parsed_text = await document_service.get_parsed_text(document_id)
+    parsed_text = await document_query_service.get_parsed_text(document_id)
     if parsed_text is None:
         raise DocumentNotFoundError(document_id)
 
@@ -745,17 +746,17 @@ async def get_document_frames(
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
     document_id: Annotated[int, Path(gt=0, description="文档ID")],
     member: SpaceMember = Depends(validate_space_member),
-    document_service: DocumentService = Depends(get_document_service),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
     db: AsyncSession = Depends(get_db),
 ):
     """获取文档视频帧预签名 URL 列表"""
     await validate_kb_access(kb_id, space_id, db)
 
-    document = await document_service.get_document(document_id)
+    document = await document_query_service.get_document(document_id)
     if not document or document.kb_id != kb_id:
         raise DocumentNotFoundError(document_id)
 
-    result = await document_service.get_document_frames(document_id)
+    result = await document_query_service.get_document_frames(document_id)
     return result
 
 
@@ -769,13 +770,13 @@ async def get_document_preview(
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
     document_id: Annotated[int, Path(gt=0, description="文档ID")],
     member: SpaceMember = Depends(validate_space_member),
-    document_service: DocumentService = Depends(get_document_service),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
     db: AsyncSession = Depends(get_db),
 ):
     """内联预览文档原始文件"""
     await validate_kb_access(kb_id, space_id, db)
 
-    document = await document_service.get_document(document_id)
+    document = await document_query_service.get_document(document_id)
     if not document or document.kb_id != kb_id:
         raise DocumentNotFoundError(document_id)
 
@@ -784,7 +785,7 @@ async def get_document_preview(
     if not object_name:
         raise DocumentNotFoundError(document_id)
 
-    file_content = await document_service.download_document(document_id=document_id)
+    file_content = await document_query_service.download_document(document_id=document_id)
 
     content_type, _ = mimetypes.guess_type(document.filename)
     if not content_type:

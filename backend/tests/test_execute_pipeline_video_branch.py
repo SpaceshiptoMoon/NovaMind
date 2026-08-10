@@ -1,4 +1,4 @@
-"""Regression test for the video branch of DocumentService.execute_document_pipeline.
+"""Regression test for the video branch of document_pipeline.execute_document_pipeline.
 
 回归背景：document_service.py 视频分支曾存在 `returnrain`（单个 NAME token，非 `return`），
 导致 `process_video_document` 完成 commit 后立刻抛 NameError，视频处理 100% 必崩。

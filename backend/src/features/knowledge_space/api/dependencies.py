@@ -20,7 +20,7 @@ from novamind.features.knowledge_space.repository.member_repository import Membe
 from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
 from novamind.features.knowledge_space.services.space_service import SpaceService
 from novamind.features.knowledge_space.services.member_service import MemberService
-from novamind.features.knowledge_space.services.document_service import DocumentService
+from novamind.features.knowledge_space.services.document_query_service import DocumentQueryService
 from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
 from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
 from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
@@ -101,17 +101,14 @@ async def get_member_service(db: AsyncSession = Depends(get_db)) -> MemberServic
     return MemberService(db, es_client=es_client, minio_client=minio_client)
 
 
-async def get_document_service(db: AsyncSession = Depends(get_db)) -> DocumentService:
-    """获取文档服务（使用单例客户端，注入模型配置端口）"""
+async def get_document_query_service(db: AsyncSession = Depends(get_db)) -> DocumentQueryService:
+    """获取文档查询服务（使用单例 MinIO/ES 客户端，查询/下载/删除无需模型配置）"""
     minio_client = await get_minio_client()
     es_client = await get_elasticsearch_client()
-    # 批次 5b：装配点注入 ModelConfigPort（具体 ModelConfigService 构造允许出现在此入口点）
-    model_config_service = ModelConfigService(db)
-    return DocumentService(
+    return DocumentQueryService(
         session=db,
         minio_client=minio_client,
         es_client=es_client,
-        model_config_service=model_config_service,
     )
 
 

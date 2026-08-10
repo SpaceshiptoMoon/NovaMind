@@ -214,7 +214,7 @@ _SERVICE_MODULES = [
     "src/features/knowledge_space/services/search_service.py",
     "src/features/knowledge_space/services/question_generation_service.py",
     "src/features/knowledge_space/services/knowledge_base_service.py",
-    "src/features/knowledge_space/services/document_service.py",
+    "src/features/knowledge_space/services/document_query_service.py",
     "src/features/knowledge_space/services/document_pipeline.py",
     "src/features/knowledge_space/services/document_upload_service.py",
     "src/features/knowledge_space/services/document_task_service.py",
@@ -316,7 +316,7 @@ def test_execute_document_pipeline_module_level_with_port_param():
     from novamind.features.knowledge_space.services import document_pipeline as dp
 
     fn = dp.execute_document_pipeline
-    # 模块级函数（已从 DocumentService 的 staticmethod 抽出），无 self 参数
+    # 模块级函数（已从 DocumentService 的 staticmethod 抽出到 document_pipeline），无 self 参数
     assert not isinstance(fn, staticmethod), "execute_document_pipeline 应为模块级函数，非 staticmethod"
     params = inspect.signature(fn).parameters
     assert "self" not in params, "execute_document_pipeline 为模块级函数，不应有 self"
