@@ -1,7 +1,7 @@
 """批次4 StoragePort 接缝测试：ES/MinIO 通过注入 schema/strategy 工作，不 import setting/features。
 
-验证 IndexSchema、PathStrategy 协议 + DefaultIndexSchema/MinioClient 通过注入
-的宿主 adapters (NovamindIndexSchema/NovamindPathStrategy) 正确组装，且
+验证 IndexSchema、PathStrategy 协议 + DefaultIndexSchema/MinioClient 通过
+注入的 schema/strategy 正确组装，且
 ``shared/storage/`` 下不 import ``novamind.setting`` 或 ``novamind.features``。
 """
 
@@ -86,21 +86,6 @@ def test_default_path_strategy_is_runtime_checkable():
     assert strategy.document_prefix_for_space(1) == "spaces/1/"
     assert strategy.avatar_object_name(42, "png").startswith("avatars/42/avatar")
     assert strategy.temp_object_name(session_id="sess123", filename="file.txt").startswith("temp/sess123/")
-
-
-def test_novamind_adapters_inherit_defaults():
-    """宿主 adapters 继承 engine 默认值（当前逐字一致）。"""
-    from novamind.shared.storage.index_schema import DefaultIndexSchema
-    from novamind.shared.storage.path_strategy import DefaultPathStrategy
-    from novamind.features.knowledge_space.adapters.novamind_index_schema import (
-        NovamindIndexSchema,
-    )
-    from novamind.features.knowledge_space.adapters.novamind_path_strategy import (
-        NovamindPathStrategy,
-    )
-
-    assert isinstance(NovamindIndexSchema(), DefaultIndexSchema)
-    assert isinstance(NovamindPathStrategy(), DefaultPathStrategy)
 
 
 def test_audio_config_defaults():

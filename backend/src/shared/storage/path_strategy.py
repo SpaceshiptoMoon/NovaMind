@@ -45,7 +45,7 @@ class DefaultPathStrategy:
     """默认路径策略：逐字复刻 NovaMind 现行路径方案。
 
     不注入策略时 ``MinioClient`` 使用本实现，对象路径与端口化前逐字一致。
-    宿主可注入 ``NovamindPathStrategy``（同值，归 knowledge_space adapter 所有）。
+    宿主如需定制对象路径方案，可注入自己的 ``PathStrategy`` 实现。
     """
 
     def document_object_name(
