@@ -556,7 +556,7 @@ async def _process_image_ocr_static(
     通过 DeepDoc 的 RAGFlowFigureParser（内含 PaddleOCR）提取图片中的文字，
     返回提取的文本。OCR 推理在独立线程中执行（asyncio.to_thread）。
     """
-    from novamind.features.knowledge_space.integrations.deepdoc.core.engine import DeepDocParser
+    from novamind.engines.document.integrations.deepdoc.core.engine import DeepDocParser
 
     file_type = (document.file_type or "png").lower()
     _logger.info(

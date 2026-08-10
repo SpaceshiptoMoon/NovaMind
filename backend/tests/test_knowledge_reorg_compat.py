@@ -39,8 +39,8 @@ def test_novamind_root_package_bridges_to_real_modules():
     import novamind as compat_novamind
     import novamind.shared as compat_shared
     import novamind.shared.utils as compat_utils
-    from novamind.features.knowledge_space.integrations.deepdoc import DeepDocEngine
-    from novamind.features.knowledge_space.integrations.deepdoc import DeepDocEngine as ReImportedDeepDocEngine
+    from novamind.engines.document.integrations.deepdoc import DeepDocEngine
+    from novamind.engines.document.integrations.deepdoc import DeepDocEngine as ReImportedDeepDocEngine
 
     assert (BACKEND_ROOT / "src").as_posix() in [Path(p).as_posix() for p in compat_novamind.__path__]
     assert (BACKEND_ROOT / "src" / "shared").as_posix() in [Path(p).as_posix() for p in compat_shared.__path__]
