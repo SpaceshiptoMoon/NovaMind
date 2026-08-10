@@ -2457,6 +2457,18 @@
             "description": "处理配置快照",
             "title": "Pipeline Config"
           },
+          "processed_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "已处理文档数 completed+failed+cancelled",
+            "title": "Processed Count"
+          },
           "space_id": {
             "description": "空间ID",
             "title": "Space Id",
