@@ -11,7 +11,11 @@ from novamind.engines.agent.memory.short_term import ShortTermMemory
 from novamind.engines.agent.memory.long_term import LongTermMemory
 from novamind.engines.agent.memory.token_budget import TokenBudget
 from novamind.engines.agent.memory.context_compressor import ContextCompressor
-from novamind.engines.agent.ports import MemorySearchPort, MemoryStorePort
+from novamind.engines.agent.ports import (
+    ContextSummaryStorePort,
+    LongTermMemoryStorePort,
+    MemorySearchPort,
+)
 from novamind.engines.ports import PromptProvider
 from novamind.shared.logging import get_logger
 
@@ -25,12 +29,14 @@ class MemoryManager:
         self,
         short_term: ShortTermMemory,
         long_term: LongTermMemory,
-        memory_store: MemoryStorePort,
+        long_term_store: LongTermMemoryStorePort,
+        summary_store: ContextSummaryStorePort,
         message_repository: Any,
     ):
         self._short_term = short_term
         self._long_term = long_term
-        self._memory_store = memory_store
+        self._long_term_store = long_term_store
+        self._summary_store = summary_store
         self._msg_repo = message_repository
         # 冻结快照缓存
         self._frozen_snapshot_cache: Dict[str, str] = {}
@@ -41,7 +47,8 @@ class MemoryManager:
         message_repository: Any,
         tool_call_repository: Any,
         session_repository: Any,
-        memory_store: MemoryStorePort,
+        long_term_store: LongTermMemoryStorePort,
+        summary_store: ContextSummaryStorePort,
         prompt_provider: PromptProvider,
         model: str,
         llm_client_factory: Callable,
@@ -56,7 +63,7 @@ class MemoryManager:
         """工厂方法：创建完整配置的 MemoryManager"""
         # 先创建 LongTermMemory（ContextCompressor 需要访问）
         long_term = LongTermMemory(
-            memory_store,
+            long_term_store,
             llm_client_factory,
             prompt_provider=prompt_provider,
             memory_search=memory_search,
@@ -66,7 +73,7 @@ class MemoryManager:
         # 压缩策略：ContextCompressor（五阶段结构化压缩 + 压缩时记忆提取）
         compression_strategy = ContextCompressor(
             llm_client_factory=llm_client_factory,
-            summary_store=memory_store,
+            summary_store=summary_store,
             todo_store=todo_store,
             conversation_id=conversation_id,
             long_term_memory=long_term,
@@ -81,12 +88,13 @@ class MemoryManager:
             session_repository=session_repository,
             token_budget=TokenBudget(model),
             compression_strategy=compression_strategy,
-            summary_store=memory_store,
+            summary_store=summary_store,
         )
         return cls(
             short_term=short_term,
             long_term=long_term,
-            memory_store=memory_store,
+            long_term_store=long_term_store,
+            summary_store=summary_store,
             message_repository=message_repository,
         )
 
@@ -103,7 +111,7 @@ class MemoryManager:
             return self._frozen_snapshot_cache[cache_key]
 
         try:
-            memories, _ = await self._memory_store.list_by_agent(
+            memories, _ = await self._long_term_store.list_by_agent(
                 agent_id, user_id, limit=20
             )
             if not memories:

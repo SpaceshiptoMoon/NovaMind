@@ -1,5 +1,6 @@
 """
-MemoryStorePort / MemorySearchPort 宿主适配器，桥接记忆 ORM 与 ES 检索。
+LongTermMemoryStorePort / ContextSummaryStorePort / MemorySearchPort 宿主适配器，
+桥接记忆 ORM 与 ES 检索。
 """
 from datetime import datetime
 from typing import Any, List, Optional, Tuple
@@ -7,8 +8,9 @@ from typing import Any, List, Optional, Tuple
 from novamind.engines.agent.memory.interfaces import LongTermMemoryEntry
 from novamind.engines.agent.ports import (
     ContextSummaryEntry,
+    ContextSummaryStorePort,
+    LongTermMemoryStorePort,
     MemorySearchPort,
-    MemoryStorePort,
 )
 
 
@@ -41,7 +43,9 @@ def _to_summary(summary: Any) -> ContextSummaryEntry:
 
 
 class HostMemoryStorePort:
-    """MemoryStorePort 宿主实现：委托 MemoryRepository + ContextSummaryRepository。"""
+    """LongTermMemoryStorePort + ContextSummaryStorePort 宿主实现：委托
+    MemoryRepository + ContextSummaryRepository（单类双实现，db 会话唯一、flush 语义
+    不割裂）。"""
 
     def __init__(self, db: Any):
         from novamind.features.agent.repository.memory_repository import (
@@ -226,8 +230,18 @@ class HostMemorySearchPort:
         return await self._repo.delete_memory(agent_id, memory_id)
 
 
-def as_memory_store_port(db: Any) -> MemoryStorePort:
-    """构造 MemoryStorePort 实例。"""
+def as_memory_store_port(db: Any) -> LongTermMemoryStorePort:
+    """构造长期记忆端口实例（供 memory 工具 / MemoryManager 长期记忆路径注入）。"""
+    return HostMemoryStorePort(db)  # type: ignore[return-value]
+
+
+def as_context_summary_store_port(db: Any) -> ContextSummaryStorePort:
+    """构造上下文摘要端口实例（供 ContextCompressor / ShortTermMemory 注入）。
+
+    与 ``as_memory_store_port`` 返回同一 ``HostMemoryStorePort`` 类型（单类双实现
+    两个端口）；装配点如需单实例同时承担两个端口，应构造一次 ``HostMemoryStorePort``
+    并复用，而非分别调用这两个工厂（避免重复建 repo）。
+    """
     return HostMemoryStorePort(db)  # type: ignore[return-value]
 
 

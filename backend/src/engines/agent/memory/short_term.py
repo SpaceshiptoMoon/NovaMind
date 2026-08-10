@@ -38,7 +38,7 @@ class ShortTermMemory(IShortTermMemory):
         session_repository: Any,  # SessionRepository
         token_budget: TokenBudget,
         compression_strategy: ICompressionStrategy,
-        summary_store: Any = None,  # MemoryStorePort
+        summary_store: Any = None,  # ContextSummaryStorePort
     ):
         self._msg_repo = message_repository
         self._tc_repo = tool_call_repository

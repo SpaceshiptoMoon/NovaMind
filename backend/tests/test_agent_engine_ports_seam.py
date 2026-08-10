@@ -6,7 +6,7 @@
    （features.knowledge_space/features.user/features.deep_research/
    shared.clients/features.agent.repository/shared.prompts/AgentMemory ORM）。
 2. 工具经 context["*_port"] 调用端口，端口缺失时返回「未配置」错误而非崩溃。
-3. LongTermMemory 经 MemoryStorePort/PromptProvider 工作，不接触 repository/ORM。
+3. LongTermMemory 经 LongTermMemoryStorePort/PromptProvider 工作，不接触 repository/ORM。
 4. 宿主适配器满足端口协议。
 """
 import ast
