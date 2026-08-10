@@ -116,7 +116,7 @@ def test_probe_all_no_bg_db_param():
 def test_host_prompt_provider_satisfies_protocol():
     """app HostPromptProvider 实现 PromptProvider 协议。"""
     from novamind.engines.ports import PromptProvider
-    from novamind.features.app.adapters.host_prompt_provider import HostPromptProvider
+    from novamind.shared.prompts.host_prompt_provider import HostPromptProvider
 
     provider = HostPromptProvider()
     assert isinstance(provider, PromptProvider)

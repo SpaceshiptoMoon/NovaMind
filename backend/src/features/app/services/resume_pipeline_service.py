@@ -8,7 +8,7 @@ from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.app.models.resume import ResumeSessionStatus
 from novamind.features.app.repository.resume_repository import ResumeSessionRepository
 from novamind.engines.resume import ResumeParser, ResumeAnalyzer, AutoProbingEngine
-from novamind.features.app.adapters.host_prompt_provider import as_prompt_provider
+from novamind.shared.prompts.host_prompt_provider import as_prompt_provider
 from novamind.features.app.adapters.host_fallback_llm_provider import (
     as_fallback_llm_provider,
 )

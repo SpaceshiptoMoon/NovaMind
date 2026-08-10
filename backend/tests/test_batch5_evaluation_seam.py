@@ -76,7 +76,7 @@ def test_evaluator_no_forbidden_imports(mod_name: str):
 def test_host_prompt_provider_satisfies_protocol():
     """HostPromptProvider 实现 PromptProvider 协议（get/format）。"""
     from novamind.engines.ports import PromptProvider
-    from novamind.features.evaluation.adapters.host_prompt_provider import HostPromptProvider
+    from novamind.shared.prompts.host_prompt_provider import HostPromptProvider
 
     provider = HostPromptProvider()
     assert isinstance(provider, PromptProvider)

@@ -6,7 +6,7 @@
     ``shared.prompts.PromptManager`` / ``core.middleware.structured_logging``（端口化后
     prompt 经注入的 ``PromptProvider``、日志经注入的 ``Logger``，切断引擎 -> 宿主导入边）。
   - ``GradeRetrier.__init__`` 必须接收 ``prompt_provider`` + ``logger`` 端口注入。
-  - 宿主适配器 ``features/qa/adapters/host_prompt_provider.HostPromptProvider`` 满足
+  - 宿主适配器 ``shared.prompts.host_prompt_provider.HostPromptProvider`` 满足
     ``engines.ports.PromptProvider`` 协议。
 
 断言方式：AST 扫描 import 模块名（精确，不受 docstring 文本干扰）+ 运行时协议检查。
@@ -82,7 +82,7 @@ def test_grade_retrier_exports_from_engines_rag():
 def test_qa_host_prompt_provider_satisfies_protocol():
     """qa HostPromptProvider 满足 PromptProvider 协议。"""
     from novamind.engines.ports import PromptProvider
-    from novamind.features.qa.adapters.host_prompt_provider import HostPromptProvider
+    from novamind.shared.prompts.host_prompt_provider import HostPromptProvider
 
     provider = HostPromptProvider()
     assert isinstance(provider, PromptProvider)
