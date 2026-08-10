@@ -376,3 +376,37 @@ def test_model_credentials_backward_compat_reexport():
     assert creds.api_key is None
     assert creds.base_url is None
     assert creds.extra_config is None
+
+
+# ---- deep_research 引擎模块纯度（ModelConfigPort / ORM / setting 不得入引擎层）----
+
+_DEEP_RESEARCH_ENGINE_MODULES = [
+    "src/engines/deep_research/types.py",
+    "src/engines/deep_research/ports.py",
+    "src/engines/deep_research/errors.py",
+    "src/engines/deep_research/engine.py",
+]
+
+
+@pytest.mark.parametrize("rel_path", _DEEP_RESEARCH_ENGINE_MODULES)
+def test_deep_research_engine_modules_do_not_import_model_config_service(rel_path: str):
+    """engines/deep_research/*.py 不得 import ModelConfigService / ORM / setting（经端口注入）。"""
+    tree = _source_tree(rel_path)
+    imported = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imported.append(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                imported.append(node.module)
+    assert _FORBIDDEN_CONCRETE_IMPORT not in imported, (
+        f"{rel_path} 仍 import 了具体 ModelConfigService（应经 ModelConfigPort 注入）"
+    )
+    for imp in imported:
+        assert not imp.startswith("novamind.setting"), (
+            f"{rel_path} 不得依赖 setting: {imp}"
+        )
+        assert not imp.startswith("novamind.features"), (
+            f"{rel_path} 不得依赖 features: {imp}"
+        )

@@ -19,9 +19,9 @@ from novamind.features.deep_research.models.research_session import (
     ResearchSession,
     ResearchStatus,
     ResearchMode,
-    SearchSource,
     ExternalSearchProvider,
 )
+from novamind.engines.deep_research.types import SearchSource
 from novamind.features.deep_research.repository.research_repository import ResearchRepository
 from novamind.shared.search import (
     DuckDuckGoSearchService,
@@ -60,12 +60,7 @@ from novamind.features.deep_research.exceptions import (
 )
 
 
-# 研究模式参数映射
-# 结果充分性阈值常量
-SUFFICIENT_RESULT_COUNT = 10  # 结果数量阈值
-MAX_ITERATION_THRESHOLD = 3  # 最大迭代阈值
-
-
+# 研究模式参数映射（业务配置，留 feature；与 setting/yaml_config/config.py 重复）
 RESEARCH_MODE_CONFIG = {
     ResearchMode.QUICK: {"depth": 2, "iterations": 3},
     ResearchMode.STANDARD: {"depth": 3, "iterations": 5},
@@ -73,15 +68,15 @@ RESEARCH_MODE_CONFIG = {
 }
 
 
-def _sanitize_search_field(text: str) -> str:
-    """清理搜索结果字段中的特殊标记，空值时返回空字符串而不抛异常"""
-    if not text or not text.strip():
-        return ""
-    markers = ["<|im_start|>", "<|im_end|>", "", "[INST]", "[/INST]", "<<SYS>>", "<</SYS>>"]
-    sanitized = text
-    for marker in markers:
-        sanitized = sanitized.replace(marker, "")
-    return sanitized.strip()
+# 纯检索辅助函数自 engines/deep_research 反向引用（feature -> engine 合法）。
+# A-1：仅落纯函数；LLM 方法与迭代检索循环在 A-2/A-3 迁入 DeepResearchEngine。
+from novamind.engines.deep_research.engine import (  # noqa: E402
+    deduplicate_results as _deduplicate_results_fn,
+    extract_key_sources as _extract_key_sources_fn,
+    format_search_context as _format_search_context_fn,
+    is_sufficient_results as _is_sufficient_results_fn,
+    should_use_external_search as _should_use_external_search_fn,
+)
 
 
 def _sanitize_user_input(text: str) -> str:
@@ -1076,83 +1071,32 @@ class DeepResearchService:
         search_source: SearchSource,
         iteration: int,
     ) -> bool:
-        """动态决策是否使用外部搜索"""
-        if search_source == SearchSource.EXTERNAL:
-            return True
-        elif search_source == SearchSource.INTERNAL:
-            return False
-        else:  # hybrid
-            # 首次迭代优先内部 RAG
-            if iteration == 0:
-                return False
-            # 后续迭代交替使用
-            return iteration % 2 == 1
+        """动态决策是否使用外部搜索（委托 engines/deep_research 纯函数）。"""
+        return _should_use_external_search_fn(search_source, iteration)
 
     def _is_sufficient_results(
         self,
         results: List[Dict[str, Any]],
         iteration: int,
     ) -> bool:
-        """检查结果是否足够"""
-        if len(results) >= SUFFICIENT_RESULT_COUNT:
-            return True
-        if len(results) > 0 and iteration >= MAX_ITERATION_THRESHOLD:
-            return True
-        return False
+        """检查结果是否足够（委托 engines/deep_research 纯函数）。"""
+        return _is_sufficient_results_fn(results, iteration)
 
     def _deduplicate_results(
         self,
         all_results: List[Dict[str, Any]],
         new_results: List[Dict[str, Any]],
     ) -> None:
-        """基于 URL、标题或 chunk_id 过滤重复结果，将去重后的新结果追加到 all_results"""
-        existing_urls = {r.get("url") for r in all_results if r.get("url")}
-        existing_titles = {r.get("title") for r in all_results if r.get("title")}
-        existing_chunk_ids = {r.get("chunk_id") for r in all_results if r.get("chunk_id")}
-        for r in new_results:
-            r_url = r.get("url")
-            r_title = r.get("title")
-            r_chunk_id = r.get("chunk_id")
-            if r_url and r_url in existing_urls:
-                continue
-            if r_title and r_title in existing_titles:
-                continue
-            if r_chunk_id and r_chunk_id in existing_chunk_ids:
-                continue
-            all_results.append(r)
-            if r_url:
-                existing_urls.add(r_url)
-            if r_title:
-                existing_titles.add(r_title)
-            if r_chunk_id:
-                existing_chunk_ids.add(r_chunk_id)
+        """基于 URL、标题或 chunk_id 去重并追加（委托 engines/deep_research 纯函数，原地去重）。"""
+        _deduplicate_results_fn(all_results, new_results)
 
     def _extract_key_sources(self, results: List[Dict[str, Any]]) -> List[str]:
-        """提取关键来源"""
-        sources = []
-        seen = set()
-
-        for r in results[:10]:
-            source = r.get("url") or f"文档: {r.get('document_name', r.get('document_id', '未知'))}"
-            if source not in seen:
-                sources.append(source)
-                seen.add(source)
-
-        return sources[:5]
+        """提取关键来源（委托 engines/deep_research 纯函数）。"""
+        return _extract_key_sources_fn(results)
 
     def _format_search_context(self, results: List[Dict[str, Any]]) -> str:
-        """格式化检索结果为上下文（清理内容防止 prompt 注入）"""
-        context_parts = []
-
-        for i, r in enumerate(results[:15], start=1):
-            raw_source = r.get("url") or f"文档 {r.get('document_name', r.get('document_id', '未知'))}"
-            source = _sanitize_search_field(raw_source) or f"来源 {i}"
-            raw_content = r.get("content", "")
-            content = _sanitize_search_field(raw_content)
-            if content:
-                context_parts.append(f"【来源 {i}】({source})\n{content}\n")
-
-        return "\n".join(context_parts)
+        """格式化检索结果为上下文（委托 engines/deep_research 纯函数，内部清理防注入）。"""
+        return _format_search_context_fn(results)
 
     async def _synthesize_report(
         self,
