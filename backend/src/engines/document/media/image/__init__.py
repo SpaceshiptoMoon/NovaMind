@@ -1,4 +1,4 @@
-from novamind.features.knowledge_space.media.vlm import (
+from novamind.engines.document.media.vlm import (
     build_image_data_url,
     build_vlm_image_messages,
     generate_vlm_text_with_fallback,

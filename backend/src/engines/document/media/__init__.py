@@ -1,4 +1,4 @@
-from novamind.features.knowledge_space.media.audio import (
+from novamind.engines.document.media.audio import (
     _asr_busy_lock,
     acquire_asr_or_busy,
     is_local_asr_busy,
@@ -7,8 +7,8 @@ from novamind.features.knowledge_space.media.audio import (
     transcribe_audio_with_timestamps,
     upload_parsed_text_to_minio,
 )
-from novamind.features.knowledge_space.media.video import extract_video_frames
-from novamind.features.knowledge_space.media.vlm import (
+from novamind.engines.document.media.video import extract_video_frames
+from novamind.engines.document.media.vlm import (
     build_image_data_url,
     build_vlm_image_messages,
     generate_vlm_text_with_fallback,

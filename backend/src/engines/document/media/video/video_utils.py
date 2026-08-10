@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from novamind.features.knowledge_space.media.video.video_normalizer import (
+from novamind.engines.document.media.video.video_normalizer import (
     normalize_video_for_frame_extraction,
 )
 
