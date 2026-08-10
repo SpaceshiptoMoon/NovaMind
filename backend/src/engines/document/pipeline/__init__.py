@@ -1,4 +1,4 @@
-from novamind.features.knowledge_space.pipeline.document_loader import (
+from novamind.engines.document.pipeline.document_loader import (
     DocumentLoader,
     DocumentProcessor,
     DocumentRegistry,

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any, List
 
-from novamind.features.knowledge_space.pipeline import DocumentProcessor
+from novamind.engines.document.pipeline import DocumentProcessor
 from novamind.shared.document.ports import DocumentIngestionPort
 
 

@@ -10,7 +10,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 
 def test_document_reader_compat_modules_reexport_new_implementations():
-    from novamind.features.knowledge_space.pipeline import DocumentProcessor
+    from novamind.engines.document.pipeline import DocumentProcessor
     from novamind.shared.document.readers.base_reader import BaseReader
     from novamind.shared.document.readers.docx_reader import DocxReader
     from novamind.shared.document.readers.pdf_reader import PDFReader

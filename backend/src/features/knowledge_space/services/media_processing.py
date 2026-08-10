@@ -563,7 +563,7 @@ async def _split_md_text(
     Returns:
         [(text, metadata_dict), ...] — metadata 目前为空 dict，后续可扩展携带标题/层级
     """
-    from novamind.features.knowledge_space.pipeline import DocumentRegistry
+    from novamind.engines.document.pipeline import DocumentRegistry
 
     splitter_class = DocumentRegistry.get_splitter_class(strategy)
     if splitter_class is None:
