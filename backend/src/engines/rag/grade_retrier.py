@@ -96,8 +96,19 @@ class GradeRetrier:
           每轮打分供前端 RetrievalTrace 展示。
         """
 
-        default_modes = ["content_hybrid", "content_bm25", "all_hybrid"]
-        modes = list(search_modes) if search_modes else list(default_modes)
+        # 引擎不内嵌 feature 检索模式字面量（knowledge_space SearchMode）：
+        # search_modes 由调用方传（feature 业务策略）；未传时退化为仅 initial_mode
+        # 单模式（无 mode 切换），保持引擎中性。调用方 ai_chat_service 显式传
+        # fallback mode 序列（C-1：原 default_modes 硬编码已移至 feature）。
+        if search_modes:
+            modes = list(search_modes)
+        elif initial_mode:
+            modes = [initial_mode]
+        else:
+            raise ValueError(
+                "search_with_retry 需 search_modes 或 initial_mode 之一"
+                "（引擎不内嵌检索模式默认值）"
+            )
         # 用户配置的 initial_mode 优先排首位（去重保序）
         if initial_mode:
             modes = [initial_mode] + [m for m in modes if m != initial_mode]
