@@ -32,7 +32,11 @@ backend/src/features/knowledge_space/
 ├── services/                     # 业务逻辑
 │   ├── space_service.py          # 空间创建/配置/ES索引管理
 │   ├── knowledge_base_service.py # 知识库 CRUD
-│   ├── document_service.py       # 文档处理管道（核心）
+│   ├── document_file_types.py    # 文件类型常量与模态映射（中立，三方共用）
+│   ├── document_pipeline.py      # 文档处理管道执行（execute_document_pipeline + 助手群）
+│   ├── document_upload_service.py # 文档上传校验 + MinIO 落库
+│   ├── document_task_service.py  # 文档任务/批次编排（入队/取消/状态）
+│   ├── document_query_service.py # 文档 CRUD/下载/级联删除
 │   ├── search_service.py         # 检索服务（9 种模式）
 │   ├── embedding_service.py      # 向量化服务（Redis缓存）
 │   ├── question_generation_service.py  # 假设问题生成
@@ -93,7 +97,7 @@ backend/src/shared/
 
 ```
 arq Worker → process_document_task()
-  → DocumentService.execute_document_pipeline()（按文件类型路由）
+  → document_pipeline.execute_document_pipeline()（按文件类型路由）
     │
     ├─ 文本分支（pdf/docx/txt/md/...）：
     │   → DocumentProcessor 解析（按文件类型选 Reader，DeepDoc 结构化切块在内）
@@ -199,7 +203,7 @@ _MODEL_TYPE_STR = {
 
 | 文件 | 修改内容 |
 |------|---------|
-| **`document_service.py`** | **核心管道扩展**：新增音视频处理分支；`ALLOWED_FILE_TYPES` 扩展；空间类型校验逻辑重写 |
+| **`document_service.py`**（已拆分为 `document_pipeline` / `document_upload_service` / `document_task_service` / `document_query_service`） | **核心管道扩展**：新增音视频处理分支；`ALLOWED_FILE_TYPES` 扩展；空间类型校验逻辑重写 |
 | **`search_service.py`** | **检索统一**：`search_by_mode()` 注册全模态模式；全模态缓存/rerank/LLM回答；`_enrich_results` 返回音视频字段 |
 | `space_service.py` | 模型类型映射扩展；`_build_es_create_kwargs` 传递音视频维度；空间类型互斥校验需重写 |
 | `embedding_service.py` | 新增音视频向量化缓存（格式对齐 `emb:{model}:{modal_type}:{hash}`） |
@@ -249,5 +253,5 @@ _MODEL_TYPE_STR = {
 |------|--------|------|
 | 允许上传的文件类型 | `pdf,docx,doc,txt,md,csv,xlsx,xls,pptx,ppt,html,json,jpg,jpeg,png,gif,webp,mp4,mov,avi,mkv,webm,mp3,wav,flac,aac,ogg,m4a` | `document_routes.py:60` |
 | 最大文件大小 | 100MB（视频 500MB） | `document_routes.py:57` |
-| 图片文件类型 | `jpg,jpeg,png,gif,webp` | `document_service.py:91` |
+| 图片文件类型 | `jpg,jpeg,png,gif,webp` | `document_file_types.py`（`IMAGE_FILE_TYPES`） |
 | 批量上传最大数 | 20 个 | `document_routes.py:63` |

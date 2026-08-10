@@ -111,7 +111,7 @@ class DocumentRepository:
         根据 ID 获取文档
 
         注意：分块数据存储在 Elasticsearch 中，不在 MySQL 中
-        如需获取分块，请使用 DocumentService.get_document_chunks()
+        如需获取分块，请使用 DocumentQueryService.get_document_chunks()
 
         Args:
             document_id: 文档 ID

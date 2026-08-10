@@ -2,8 +2,8 @@
 
 > 来源代码：
 > - Mapping 定义：`backend/src/shared/storage/elasticsearch_client.py` — `create_index()`
-> - 文本/音频/视频 chunk 写入：`backend/src/features/knowledge_space/services/document_service.py` — `_build_es_chunks()`（统一构造器，三模态共用），`_prepare_es_chunks_static()`（旧 shim，保留兼容）
-> - 图片 chunk 写入：`backend/src/features/knowledge_space/services/document_service.py` — `_process_image_document_static()`
+> - 文本/音频/视频 chunk 写入：`backend/src/features/knowledge_space/services/document_pipeline.py` — `_build_es_chunks()`（统一构造器，三模态共用），`_prepare_es_chunks_static()`（旧 shim，保留兼容）
+> - 图片 chunk 写入：`backend/src/features/knowledge_space/services/document_pipeline.py` — `_process_image_document_static()`
 > - 搜索模式：`backend/src/shared/storage/elasticsearch_client.py` — `search_by_mode()`
 
 ---
@@ -47,7 +47,7 @@ properties = {
 
 ### 文本 chunk — 最终写入 10 个字段
 
-构建于 `document_service.py` `_build_es_chunks()`（文本分支，1872-1935），`questions`/`question_embeddings` 在 `_run_post_parse_tail` 问题生成步骤填充（`:2050/:2051`），`embedding` 在向量化步骤追加（`:2025`）：
+构建于 `document_pipeline.py` `_build_es_chunks()`（文本分支），`questions`/`question_embeddings` 在 `_run_post_parse_tail` 问题生成步骤填充，`embedding` 在向量化步骤追加：
 
 ```
 space_id              ✅  第 1915 行
@@ -70,7 +70,7 @@ updated_at            ❌ 不写入
 
 ### 图片 chunk — 最终写入 9~11 个字段
 
-构建于 `document_service.py` `_process_image_document_static()`（1647-1784）：
+构建于 `document_pipeline.py` `_process_image_document_static()`：
 
 ```
 space_id              ✅  第 1768 行
@@ -94,7 +94,7 @@ updated_at            ❌ 不写入
 
 ### 音频/视频 chunk — 最终写入 13 个字段
 
-构建于 `document_service.py` `_build_es_chunks()`（媒体分支，1872-1935，由 `_run_post_parse_tail` 调用）。音频与视频共用同一构造路径，仅 `chunk_type`（`AUDIO`/`VIDEO`）与是否带 `frame_paths` 不同：
+构建于 `document_pipeline.py` `_build_es_chunks()`（媒体分支，由 `_run_post_parse_tail` 调用）。音频与视频共用同一构造路径，仅 `chunk_type`（`AUDIO`/`VIDEO`）与是否带 `frame_paths` 不同：
 
 ```
 space_id              ✅  第 1915 行
