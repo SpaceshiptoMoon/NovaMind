@@ -1081,48 +1081,6 @@ def test_3_8_batch_process_documents():
         print_fail(f"批量触发解析期望 200/202, 实际 {resp.status_code} | {resp.text[:300]}")
 
 
-def test_3_9_reprocess_document():
-    """3.9 重新解析文档"""
-    print_test("3.9 重新解析文档 POST .../documents/{document_id}/reprocess")
-
-    if not created_space_id or not created_kb_id or not created_document_id:
-        _add_stat("total")
-        print_skip("无可用空间/知识库/文档 ID, 跳过")
-        return
-
-    payload = {
-        "enable_question_generation": False,
-        "question_count": 3
-    }
-
-    try:
-        resp = session.post(
-            api_url(f"/api/v1/spaces/{created_space_id}/knowledge-bases/{created_kb_id}/documents/{created_document_id}/reprocess"),
-            json=payload,
-            timeout=TIMEOUT
-        )
-    except Exception as e:
-        _add_stat("total")
-        print_skip(f"请求异常: {e}")
-        return
-
-    if is_external_service_error(resp):
-        _add_stat("total")
-        print_skip("外部服务不可用, 跳过重新解析")
-        return
-
-    _add_stat("total")
-    if resp.status_code in (200, 202):
-        print_pass(f"重新解析文档, 状态码: {resp.status_code}")
-        data = safe_json(resp)
-        if data:
-            assert_field_exists(data, "document_id", "status", "message", label="重新解析")
-    elif resp.status_code == 409:
-        print_pass("重新解析返回 409 (文档正在处理中, 符合预期)")
-    else:
-        print_fail(f"重新解析期望 200/202/409, 实际 {resp.status_code} | {resp.text[:300]}")
-
-
 # ======================== 四、成员管理 (7 个接口) ========================
 def test_4_1_get_members():
     """4.1 获取成员列表"""
@@ -1596,7 +1554,6 @@ def main():
     test_3_6_delete_document_not_found()
     test_3_7_process_document()
     test_3_8_batch_process_documents()
-    test_3_9_reprocess_document()
 
     # 五、知识检索 (3 个接口) — 必须在成员管理之前，因为 4.7 离开空间会软删除空间
     print_header("五、知识检索 (3 个接口)")

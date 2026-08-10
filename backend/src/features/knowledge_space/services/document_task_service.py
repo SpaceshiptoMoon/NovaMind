@@ -2,7 +2,7 @@
 
 集中承载文档处理的任务编排与批次管理：
 - ``process_kb_documents``：批量触发拆分解析
-- ``reprocess_document`` / ``retry_document``：单文档重解析/重试
+- ``retry_document``：单文档重试（FAILED/COMPLETED）
 - ``cancel_processing``：取消处理（Redis 取消标记 + arq abort）
 - ``list_batch_overview`` / ``get_active_processing_count`` / ``get_processing_status``：状态查询
 - ``_enqueue_document_processing`` / ``_enqueue_precreated_tasks`` /
@@ -375,28 +375,6 @@ class DocumentTaskService:
             "skipped": sum(1 for r in results if r["status"] == "skipped"),
             "results": results,
         }
-
-    async def reprocess_document(
-        self,
-        document_id: int,
-        *,
-        batch_id: Optional[int] = None,
-        batch_creator_id: Optional[int] = None,
-        batch_note: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """重新解析文档。"""
-        document = await self._validate_document_not_processing(document_id)
-
-        task_info = await self._enqueue_document_processing(
-            document,
-            "重新解析",
-            batch_id=batch_id,
-            batch_creator_id=batch_creator_id,
-            batch_action=BatchAction.REPROCESS,
-            process_mode=TaskProcessMode.REPROCESS,
-            batch_note=batch_note,
-        )
-        return {"document": document, **task_info}
 
     async def retry_document(
         self,
