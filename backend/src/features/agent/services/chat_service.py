@@ -52,6 +52,11 @@ class AgentChatService:
         todo_store: Optional[Any] = None,
         memory_search_repo: Optional[MemorySearchRepository] = None,
         minio_client: Optional[Any] = None,
+        memory_store_port: Optional[HostMemoryStorePort] = None,
+        memory_search_port: Optional[HostMemorySearchPort] = None,
+        knowledge_search_port: Optional[HostKnowledgeSearchPort] = None,
+        web_search_port: Optional[HostWebSearchPort] = None,
+        prompt_provider: Optional[HostPromptProvider] = None,
     ):
         self.db = db
         self.agent_service = agent_service
@@ -60,6 +65,11 @@ class AgentChatService:
         self._todo_store = todo_store
         self._memory_search_repo = memory_search_repo
         self._minio_client = minio_client
+        self._memory_store_port = memory_store_port
+        self._memory_search_port = memory_search_port
+        self._knowledge_search_port = knowledge_search_port
+        self._web_search_port = web_search_port
+        self._prompt_provider = prompt_provider
         self.msg_repo = MessageRepository(db)
         self.tc_repo = ToolCallRepository(db)
         self.session_repo = SessionRepository(db)
@@ -94,17 +104,12 @@ class AgentChatService:
             # 解析模型（MemoryManager 和 LLM 客户端共用）
             model = await self._resolve_model(user_id, agent, llm_model)
 
-            # 构造请求级端口（引擎依赖注入）：记忆/搜索/提示词端口供 MemoryManager，
-            # 同时经 context 注入给 builtin 工具（web_search/knowledge_search/memory）
-            memory_store = HostMemoryStorePort(self.db)
-            memory_search = (
-                HostMemorySearchPort(repo=self._memory_search_repo)
-                if self._memory_search_repo
-                else None
-            )
-            prompt_provider = HostPromptProvider()
-            knowledge_search_port = HostKnowledgeSearchPort(self.db, self.model_config_service)
-            web_search_port = HostWebSearchPort()
+            # 端口由装配点（get_agent_chat_service）注入，此处直接取用
+            memory_store = self._memory_store_port
+            memory_search = self._memory_search_port
+            prompt_provider = self._prompt_provider
+            knowledge_search_port = self._knowledge_search_port
+            web_search_port = self._web_search_port
 
             # 创建 MemoryManager（每请求实例）
             memory_manager = self._create_memory_manager(

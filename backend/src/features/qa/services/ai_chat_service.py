@@ -89,10 +89,10 @@ class AIChatService:
             model_config_service: 模型配置服务（用于获取用户配置的模型）
             db: 数据库会话（用于附件存储）
             minio_client: MinIO 客户端（用于文件存储）
-            retrieval_port: 检索端口（批次 2 接缝；为 None 时按需懒构造 HostRetrievalPort
-                包 SearchService，与历史行为等价）
-            document_ingestion_port: 文档摄入端口（R3 接缝；为 None 时按需懒构造
-                HostDocumentIngestionPort 包 DocumentProcessor，与历史行为等价）
+            retrieval_port: 检索端口（批次 2 接缝；装配点注入 HostRetrievalPort
+                包 SearchService）
+            document_ingestion_port: 文档摄入端口（R3 接缝；装配点注入
+                HostDocumentIngestionPort 包 DocumentProcessor）
         """
         self.qa_service = qa_service
         self.model_config_service = model_config_service
@@ -104,41 +104,6 @@ class AIChatService:
         self._retrieval_port = retrieval_port
         self._document_ingestion_port = document_ingestion_port
         self._prompt_provider = HostPromptProvider()
-
-    async def _get_retrieval_port(self) -> "RetrievalPort":
-        """懒获取检索端口（HostRetrievalPort 包 SearchService）。
-
-        批次 2 接缝：消费方依赖 RetrievalPort 抽象而非直接 import SearchService。
-        未注入时按历史行为构造 SearchService(self.db, es_client, model_config_service)
-        并包为 HostRetrievalPort。
-        """
-        if self._retrieval_port is None:
-            from novamind.features.knowledge_space.services.search_service import SearchService
-            from novamind.features.knowledge_space.adapters.retrieval_adapter import HostRetrievalPort
-            from novamind.shared.storage.client_factory import get_elasticsearch_client
-
-            es_client = await get_elasticsearch_client()
-            # 批次 5b：不再内部自建 ModelConfigService；self.model_config_service 为 None 时
-            # SearchService 按其既有 Optional 语义处理（未注入则不带 mcs）。
-            self._retrieval_port = HostRetrievalPort(
-                SearchService(self.db, es_client, self.model_config_service)
-            )
-        return self._retrieval_port
-
-    async def _get_document_ingestion_port(self) -> "DocumentIngestionPort":
-        """懒获取文档摄入端口（HostDocumentIngestionPort 包 DocumentProcessor）。
-
-        R3 接缝：消费方依赖 DocumentIngestionPort 抽象而非直接 import
-        ``features.knowledge_space.pipeline.DocumentProcessor``。未注入时按历史行为
-        构造 ``DocumentProcessor()`` 并包为 HostDocumentIngestionPort。
-        """
-        if self._document_ingestion_port is None:
-            from novamind.features.knowledge_space.adapters.document_ingestion_adapter import (
-                HostDocumentIngestionPort,
-            )
-
-            self._document_ingestion_port = HostDocumentIngestionPort()
-        return self._document_ingestion_port
 
     async def _get_llm_client(
         self,
@@ -689,7 +654,7 @@ class AIChatService:
             top_k=top_k,
             score_threshold=score_threshold if score_threshold is not None else 0.0,
         )
-        retrieval_port = await self._get_retrieval_port()
+        retrieval_port = self._retrieval_port
 
         # 确定检索的知识库列表：kb_ids > 空间下全部（前 3 个）
         if kb_ids:
@@ -1243,7 +1208,7 @@ class AIChatService:
             return None
 
         # PDF / DOCX 经文档摄入端口处理（R3 接缝：不直接 import knowledge_space.pipeline）
-        ingestion_port = await self._get_document_ingestion_port()
+        ingestion_port = self._document_ingestion_port
 
         with tempfile.NamedTemporaryFile(suffix=f".{file_type}", delete=False) as tmp:
             tmp.write(file_data)

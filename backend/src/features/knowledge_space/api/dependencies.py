@@ -37,6 +37,9 @@ from novamind.shared.storage.client_factory import (
     get_minio_client,
     get_elasticsearch_client,
 )
+from novamind.engines.rag import RetrievalEngine
+from novamind.features.knowledge_space.adapters.cache_adapter import HostCachePort
+from novamind.core.middleware.structured_logging import get_logger
 
 
 # ========== 请求级缓存 ==========
@@ -125,13 +128,20 @@ async def get_knowledge_base_service(db: AsyncSession = Depends(get_db)) -> Know
 
 
 async def get_search_service(db: AsyncSession = Depends(get_db)) -> SearchService:
-    """获取检索服务（使用单例客户端，注入模型配置服务）"""
+    """获取检索服务（单例客户端，注入模型配置服务与检索引擎）"""
     es_client = await get_elasticsearch_client()
     model_config_service = ModelConfigService(db)
+    # 装配点构造 RetrievalEngine + HostCachePort 注入（端口在装配点构造，不散落服务内）
+    retrieval_engine = RetrievalEngine(
+        es_client,
+        get_logger("novamind.features.knowledge_space.services.search_service"),
+        cache_port=HostCachePort(),
+    )
     return SearchService(
         session=db,
         es_client=es_client,
         model_config_service=model_config_service,
+        retrieval_engine=retrieval_engine,
     )
 
 

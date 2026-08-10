@@ -16,6 +16,13 @@ from novamind.engines.agent.mcp.client import McpClientManager
 from novamind.engines.agent.agent_engine import AgentEngine
 from novamind.engines.agent.memory.todo_store import TodoStore
 from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
+from novamind.features.agent.adapters import (
+    HostKnowledgeSearchPort,
+    HostMemorySearchPort,
+    HostMemoryStorePort,
+    HostWebSearchPort,
+)
+from novamind.shared.prompts.host_prompt_provider import as_prompt_provider
 
 
 def get_tool_registry(request: Request) -> ToolRegistry:
@@ -83,6 +90,15 @@ async def get_agent_chat_service(
         except Exception:
             pass
 
+    # 装配点（批次 5-B3）：5 个引擎端口在此构造后注入，AgentChatService 不再内部构造
+    memory_store_port = HostMemoryStorePort(db)
+    memory_search_port = (
+        HostMemorySearchPort(repo=memory_search_repo) if memory_search_repo else None
+    )
+    knowledge_search_port = HostKnowledgeSearchPort(db, model_config_service)
+    web_search_port = HostWebSearchPort()
+    prompt_provider = as_prompt_provider()
+
     return AgentChatService(
         db=db,
         agent_service=agent_service,
@@ -91,6 +107,11 @@ async def get_agent_chat_service(
         todo_store=todo_store,
         memory_search_repo=memory_search_repo,
         minio_client=minio_client,
+        memory_store_port=memory_store_port,
+        memory_search_port=memory_search_port,
+        knowledge_search_port=knowledge_search_port,
+        web_search_port=web_search_port,
+        prompt_provider=prompt_provider,
     )
 
 
