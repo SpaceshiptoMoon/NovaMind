@@ -10,6 +10,9 @@ from novamind.shared.logging import get_logger
 logger = get_logger(__name__)
 
 _MEMORY_LIMIT_PER_USER_AGENT = 50
+# C-2：记忆条数上限改由 ToolContext 注入（context key: memory_limit_per_user_agent）。
+# 保留模块常量作 fallback 默认——feature 装配点（agent/clawmate）可经 context 覆盖，
+# 引擎本身不内嵌 app 策略数值。
 
 
 class MemoryTool(BaseTool):
@@ -124,11 +127,12 @@ class MemoryTool(BaseTool):
                     ensure_ascii=False,
                 )
 
-            # 记忆数量上限检查
+            # 记忆数量上限检查（C-2：上限经 context 注入，fallback 模块常量）
+            limit = context.get("memory_limit_per_user_agent", _MEMORY_LIMIT_PER_USER_AGENT)
             _, total = await store.list_by_agent(agent_id, user_id, limit=1)
-            if total >= _MEMORY_LIMIT_PER_USER_AGENT:
+            if total >= limit:
                 return json.dumps(
-                    {"error": f"记忆数量已达上限 ({_MEMORY_LIMIT_PER_USER_AGENT} 条)，请先移除旧记忆"},
+                    {"error": f"记忆数量已达上限 ({limit} 条)，请先移除旧记忆"},
                     ensure_ascii=False,
                 )
 

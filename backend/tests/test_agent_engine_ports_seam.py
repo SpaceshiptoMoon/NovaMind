@@ -285,6 +285,59 @@ def test_memory_tool_add_uses_port():
     fake_store.create.assert_awaited_once()
 
 
+def test_memory_tool_add_honors_context_injected_limit():
+    """C-2：记忆条数上限经 context(memory_limit_per_user_agent) 注入，引擎不内嵌 app 策略数值。
+
+    注入 limit=0 + total=0 → 触发上限拦截（0 >= 0），返回已达上限错误且不调 create。
+    """
+    tool = MemoryTool()
+    fake_store = SimpleNamespace(
+        list_by_agent=AsyncMock(return_value=([], 0)),
+        find_similar=AsyncMock(return_value=None),
+        create=AsyncMock(),
+        flush=AsyncMock(return_value=None),
+    )
+    out = _run(
+        tool.execute_tool(
+            "memory",
+            {"action": "add", "category": "fact", "content": "hello"},
+            context={
+                "memory_store_port": fake_store,
+                "user_id": 7,
+                "agent_id": 1,
+                "memory_limit_per_user_agent": 0,
+            },
+        )
+    )
+    data = json.loads(out)
+    assert "已达上限" in data["error"]
+    fake_store.create.assert_not_awaited()
+
+
+def test_memory_tool_add_falls_back_to_default_limit():
+    """C-2：未注入 context key 时回退模块默认（50），不抛错（向后兼容）。"""
+    tool = MemoryTool()
+    entry = LongTermMemoryEntry(
+        id=43, agent_id=1, user_id=7, category="fact", content="c",
+    )
+    fake_store = SimpleNamespace(
+        list_by_agent=AsyncMock(return_value=([], 10)),  # 10 < 50 默认 → 不拦截
+        find_similar=AsyncMock(return_value=None),
+        create=AsyncMock(return_value=entry),
+        flush=AsyncMock(return_value=None),
+    )
+    out = _run(
+        tool.execute_tool(
+            "memory",
+            {"action": "add", "category": "fact", "content": "hello"},
+            context={"memory_store_port": fake_store, "user_id": 7, "agent_id": 1},
+        )
+    )
+    data = json.loads(out)
+    assert data["message"] == "记忆已添加"
+    fake_store.create.assert_awaited_once()
+
+
 def test_memory_tool_remove_uses_port_and_search_port():
     tool = MemoryTool()
     entry = LongTermMemoryEntry(
