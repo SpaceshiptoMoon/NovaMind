@@ -14,7 +14,7 @@ from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.features.skill.services.skill_marketplace_service import SkillMarketplaceService
 from novamind.features.skill.services.skill_checker import SkillSecurityChecker
-from novamind.features.skill.adapters.host_prompt_provider import as_prompt_provider
+from novamind.shared.prompts.host_prompt_provider import as_prompt_provider
 from novamind.features.agent.adapters.agent_registry_adapter import as_agent_registry_port
 from novamind.features.knowledge_space.api.dependencies import get_current_user_id
 from novamind.setting.yaml_config.loader import get_config_value
