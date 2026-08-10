@@ -330,7 +330,7 @@ backend/src/
 - `features/*/schemas/`（请求/响应 Pydantic schema）
 - `features/*/adapters/`（端口实现，桥接 host 与引擎）
 - `shared/cache/`（缓存实现，host 装配）
-- `shared/clients/`（ClientFactory，host 装配）
+- `shared/storage/`（ClientFactory，host 装配）
 - `shared/mq/`（异步任务运行时）
 - `core/`（框架/中间件/启动/数据库）
 - `setting/`（配置系统）

@@ -64,7 +64,7 @@ Do not place feature business logic in `core/`.
 
 Allowed categories:
 
-- `shared/clients/`: external service clients
+- `shared/storage/`: external service clients (ES/MinIO/Redis, via `client_factory/`)
 - `shared/cache/`: cache access
 - `shared/mq/`: async task runtime
 - `shared/prompts/`: shared prompts
