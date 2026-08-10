@@ -46,6 +46,7 @@ from novamind.features.knowledge_space.api.dependencies import (
     validate_space_member,
     validate_space_editor,
     get_document_service,
+    get_document_upload_service,
     get_audit_service,
     validate_kb_access,
     validate_kb_writable,
@@ -58,6 +59,7 @@ from novamind.features.knowledge_space.exceptions import (
     DocumentCountExceededError,
 )
 from novamind.features.knowledge_space.services.document_service import DocumentService
+from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
 from novamind.features.knowledge_space.services.audit_service import AuditService
 
 # 文件大小限制：默认最大 100MB
@@ -134,7 +136,7 @@ async def upload_document(
     files: List[UploadFile] = File(..., description="文档文件（支持多文件）"),
     user_id: int = Depends(get_current_user_id),
     member: SpaceMember = Depends(validate_space_editor),
-    document_service: DocumentService = Depends(get_document_service),
+    document_upload_service: DocumentUploadService = Depends(get_document_upload_service),
     audit_service: AuditService = Depends(get_audit_service),
     db: AsyncSession = Depends(get_db),
 ) -> Union[DocumentUploadResponse, DocumentBatchUploadResponse]:
@@ -183,7 +185,7 @@ async def upload_document(
         file_content = await _read_upload_file(file)
 
         # 上传文档（仅存 MinIO，不触发解析）
-        uploaded = await document_service.upload_document(
+        uploaded = await document_upload_service.upload_document(
             kb_id=kb_id,
             uploader_id=user_id,
             file_content=file_content,
@@ -240,7 +242,7 @@ async def upload_document(
 
     # 批量上传（如果所有文件都未通过校验则跳过服务调用）
     if file_data_list:
-        result = await document_service.upload_documents(
+        result = await document_upload_service.upload_documents(
             kb_id=kb_id,
             uploader_id=user_id,
             files=file_data_list,

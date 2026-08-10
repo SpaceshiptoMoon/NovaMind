@@ -31,7 +31,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from novamind.features.knowledge_space.api.exceptions import (
     DocumentAlreadyExistsError,
 )
-from novamind.features.knowledge_space.services.document_service import DocumentService
+from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
 
 pytestmark = pytest.mark.unit
 
@@ -62,8 +62,8 @@ def _run(coro):
 
 
 def _build_service(create_side_effect, cache_mock):
-    """Construct a DocumentService with all upload-time dependencies stubbed."""
-    service = object.__new__(DocumentService)
+    """Construct a DocumentUploadService with all upload-time dependencies stubbed."""
+    service = object.__new__(DocumentUploadService)
     service.logger = MagicMock()
 
     kb = _FakeKb()
@@ -102,7 +102,7 @@ def _build_service(create_side_effect, cache_mock):
 def _patch_upload_helpers(monkeypatch, service):
     """Bypass file normalization/validation/modality checks with trivial stubs."""
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.document_service.validate_file",
+        "novamind.features.knowledge_space.services.document_upload_service.validate_file",
         lambda content, filename, allowed_extensions: SimpleNamespace(
             is_valid=True,
             extension="pdf",
@@ -115,15 +115,15 @@ def _patch_upload_helpers(monkeypatch, service):
         lambda kb_config=None: ["text"],
     )
     monkeypatch.setattr(
-        DocumentService, "_normalize_upload_file",
+        DocumentUploadService, "_normalize_upload_file",
         AsyncMock(return_value=("doc.pdf", b"file-content-bytes")),
     )
     monkeypatch.setattr(
-        DocumentService, "_get_allowed_file_types",
+        DocumentUploadService, "_get_allowed_file_types",
         lambda self, kb: ["pdf"],
     )
     monkeypatch.setattr(
-        DocumentService, "_get_max_file_size",
+        DocumentUploadService, "_get_max_file_size",
         lambda self, kb, file_type="": 100 * 1024 * 1024,
     )
 
