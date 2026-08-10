@@ -30,7 +30,12 @@ CANDIDATE_DIRS = [
 ]
 
 # 禁止 import 的顶层包前缀（精确匹配或前缀匹配）。
+# 对 engines/ 全树生效。
 FORBIDDEN_PREFIXES = ("novamind.features", "novamind.setting")
+
+# shared/ 额外禁止向上依赖 engines（shared 是底层工具层，不得反向依赖 engines）。
+# 仅对 src/shared/ 下文件生效。
+SHARED_FORBIDDEN_PREFIXES = ("novamind.engines",)
 
 
 def _collect_candidates() -> list[Path]:
@@ -67,11 +72,11 @@ def _imports_in(path: Path) -> set[str]:
     return mods
 
 
-def _is_forbidden(mod: str) -> bool:
+def _is_forbidden(mod: str, prefixes: tuple[str, ...] = FORBIDDEN_PREFIXES) -> bool:
     """模块名是否命中禁止清单（精确匹配或前缀匹配）。"""
-    if mod in FORBIDDEN_PREFIXES:
+    if mod in prefixes:
         return True
-    return any(mod.startswith(prefix + ".") for prefix in FORBIDDEN_PREFIXES)
+    return any(mod.startswith(prefix + ".") for prefix in prefixes)
 
 
 # 历史违规白名单：rel_path → 该文件当前已知的违规 import 全名集合。
@@ -96,10 +101,17 @@ def test_no_forbidden_imports_outside_whitelist():
     for p in CANDIDATES:
         rel = str(p.relative_to(BACKEND_ROOT)).replace("\\", "/")
         allowed = KNOWN_VIOLATIONS.get(rel, set())
+        # shared/ 文件额外禁止依赖 engines（底层工具层不得向上）。
+        if rel.startswith("src/shared/"):
+            extra_prefixes = SHARED_FORBIDDEN_PREFIXES
+        else:
+            extra_prefixes = ()
         for mod in _imports_in(p):
             if _is_forbidden(mod) and mod not in allowed:
                 offenders.append(f"{rel}: {mod}")
-    assert not offenders, "发现禁止 import（engines/shared 不得依赖 features/setting）:\n" + "\n".join(offenders)
+            elif extra_prefixes and _is_forbidden(mod, extra_prefixes) and mod not in allowed:
+                offenders.append(f"{rel}: {mod}")
+    assert not offenders, "发现禁止 import（engines/shared 不得依赖 features/setting；shared 不得依赖 engines）:\n" + "\n".join(offenders)
 
 
 def test_whitelist_entries_still_apply():

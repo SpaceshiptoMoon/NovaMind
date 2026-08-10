@@ -116,7 +116,7 @@ def test_probe_all_no_bg_db_param():
 def test_host_prompt_provider_satisfies_protocol():
     """app HostPromptProvider 实现 PromptProvider 协议。"""
     from novamind.engines.ports import PromptProvider
-    from novamind.shared.prompts.host_prompt_provider import HostPromptProvider
+    from novamind.engines.prompt_provider_adapter import HostPromptProvider
 
     provider = HostPromptProvider()
     assert isinstance(provider, PromptProvider)
@@ -205,7 +205,7 @@ def test_resume_pipeline_service_assembles_ports():
 
     imported = _imported_modules(svc_mod)
     # 装配点 import 端口适配器
-    assert any("host_prompt_provider" in imp for imp in imported), "应 import host_prompt_provider"
+    assert any("prompt_provider_adapter" in imp for imp in imported), "应 import prompt_provider_adapter"
     assert any("host_fallback_llm_provider" in imp for imp in imported), "应 import host_fallback_llm_provider"
     assert any("web_search_port_adapter" in imp for imp in imported), "应 import web_search_port_adapter"
 

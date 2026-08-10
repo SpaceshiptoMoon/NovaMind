@@ -22,7 +22,7 @@ from novamind.features.agent.adapters import (
     HostMemoryStorePort,
     HostWebSearchPort,
 )
-from novamind.shared.prompts.host_prompt_provider import as_prompt_provider
+from novamind.engines.prompt_provider_adapter import as_prompt_provider
 
 
 def get_tool_registry(request: Request) -> ToolRegistry:

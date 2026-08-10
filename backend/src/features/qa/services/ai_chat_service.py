@@ -29,7 +29,7 @@ from novamind.shared.prompts.templates import PromptManager
 from novamind.shared.utils.heartbeat import stream_with_heartbeat_structured
 from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
 from novamind.features.qa.services.qa_service import QAService
-from novamind.shared.prompts.host_prompt_provider import HostPromptProvider
+from novamind.engines.prompt_provider_adapter import HostPromptProvider
 from novamind.features.qa.schemas.qa import QARequest
 from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
 from novamind.features.qa.exceptions import (
