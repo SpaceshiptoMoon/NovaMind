@@ -15,8 +15,8 @@
     ``user.services.model_config_service``（切断 ``features.<X> → features.user.services`` 导入边），
     构造器含 ``model_config_service``/``model_config_port`` 参数。
   - 装配/入口点（``features/*/api/dependencies.py``、arq worker）允许 import 具体类（白名单）。
-  - ``DocumentService.execute_document_pipeline`` 为静态方法、接收 ``model_config_port`` 参数，
-    内部不再 ``self.model_config_service``（staticmethod 无 self）；document_service / media_processing
+  - ``execute_document_pipeline`` 为 ``document_pipeline`` 模块级函数、接收 ``model_config_port`` 参数，
+    内部不再 ``self.model_config_service``（模块级函数无 self）；document_pipeline / media_processing
     模块级静态助手接收 ``model_config_port`` 并透传，不再内部自建 ``ModelConfigService``。
 """
 
@@ -215,6 +215,7 @@ _SERVICE_MODULES = [
     "src/features/knowledge_space/services/question_generation_service.py",
     "src/features/knowledge_space/services/knowledge_base_service.py",
     "src/features/knowledge_space/services/document_service.py",
+    "src/features/knowledge_space/services/document_pipeline.py",
     "src/features/knowledge_space/services/media_processing.py",
     "src/features/evaluation/services/evaluation_service.py",
     "src/features/clawmate/core/chat_service.py",
@@ -283,8 +284,8 @@ _STATIC_HELPERS_DOCUMENT = [
 
 @pytest.mark.parametrize("helper_name", _STATIC_HELPERS_DOCUMENT)
 def test_document_static_helpers_accept_model_config_port(helper_name: str):
-    """document_service 模块级静态助手接收 model_config_port 参数（调用方注入，不自建）。"""
-    from novamind.features.knowledge_space.services import document_service as ds
+    """document_pipeline 模块级静态助手接收 model_config_port 参数（调用方注入，不自建）。"""
+    from novamind.features.knowledge_space.services import document_pipeline as ds
 
     fn = getattr(ds, helper_name)
     params = inspect.signature(fn).parameters
@@ -308,15 +309,15 @@ def test_media_processing_helpers_accept_model_config_port(helper_name: str):
     assert "model_config_port" in params, f"{helper_name} 缺少 model_config_port 参数"
 
 
-def test_execute_document_pipeline_is_staticmethod_with_port_param():
-    """execute_document_pipeline 是 staticmethod 且接收 model_config_port（无 self）。"""
-    from novamind.features.knowledge_space.services.document_service import DocumentService
+def test_execute_document_pipeline_module_level_with_port_param():
+    """execute_document_pipeline 为 document_pipeline 模块级函数，接收 model_config_port（无 self）。"""
+    from novamind.features.knowledge_space.services import document_pipeline as dp
 
-    # staticmethod 访问得到底层函数，无 self 参数
-    fn = DocumentService.__dict__["execute_document_pipeline"]
-    assert isinstance(fn, staticmethod), "execute_document_pipeline 应为 staticmethod"
+    fn = dp.execute_document_pipeline
+    # 模块级函数（已从 DocumentService 的 staticmethod 抽出），无 self 参数
+    assert not isinstance(fn, staticmethod), "execute_document_pipeline 应为模块级函数，非 staticmethod"
     params = inspect.signature(fn).parameters
-    assert "self" not in params, "execute_document_pipeline 为 staticmethod，不应有 self"
+    assert "self" not in params, "execute_document_pipeline 为模块级函数，不应有 self"
     assert "model_config_port" in params, "execute_document_pipeline 缺少 model_config_port 参数"
 
 

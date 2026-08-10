@@ -19,7 +19,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
 from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
-from novamind.features.knowledge_space.services.document_service import (
+from novamind.features.knowledge_space.services.document_pipeline import (
     _extract_parse_metadata_summary,
     _prepare_es_chunks_static,
 )

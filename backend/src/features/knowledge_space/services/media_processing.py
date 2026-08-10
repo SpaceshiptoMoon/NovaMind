@@ -14,7 +14,7 @@ from novamind.features.knowledge_space.exceptions import DocumentProcessingError
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.document_task import DocumentTask
 from novamind.shared.model_config_ports import ModelConfigPort
-from novamind.features.knowledge_space.services.document_service import (
+from novamind.features.knowledge_space.services.document_pipeline import (
     _check_document_cancelled,
     load_pipeline_context,
     persist_parsed_text,
@@ -94,12 +94,12 @@ async def maybe_semantic_embedding_client(
 ):
     """strategy == "semantic" 时返回语义切分所需的 embedding_client，否则返回 None。
 
-    延迟导入 _get_embedding_client_static 以避免 document_service ↔ media_processing 循环导入。
+    延迟导入 _get_embedding_client_static 以避免 document_pipeline ↔ media_processing 循环导入。
     批次 5b：model_config_port 由调用方注入，透传至 _get_embedding_client_static。
     """
     if strategy != "semantic":
         return None
-    from novamind.features.knowledge_space.services.document_service import (
+    from novamind.features.knowledge_space.services.document_pipeline import (
         _get_embedding_client_static,
     )
 

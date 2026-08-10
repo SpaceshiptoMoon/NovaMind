@@ -14,7 +14,7 @@ from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     ParsingConfig,
     build_runtime_parsing_config,
 )
-from novamind.features.knowledge_space.services.document_service import (
+from novamind.features.knowledge_space.services.document_pipeline import (
     _generate_image_description,
     _generate_questions_for_chunks_static,
 )
@@ -639,7 +639,7 @@ async def test_process_audio_document_loads_embedding_client_for_semantic_split(
         fake_transcribe,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.document_service._get_embedding_client_static",
+        "novamind.features.knowledge_space.services.document_pipeline._get_embedding_client_static",
         fake_get_embedding_client_static,
     )
     monkeypatch.setattr(
@@ -652,16 +652,16 @@ async def test_process_audio_document_loads_embedding_client_for_semantic_split(
     )
     # 共享后置尾会调用这些叶子函数，需要 fake 掉以避免实际 DB/ES/向量化请求
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.document_service._check_document_cancelled",
+        "novamind.features.knowledge_space.services.document_pipeline._check_document_cancelled",
         AsyncMock(),
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.document_service._generate_embeddings_static",
+        "novamind.features.knowledge_space.services.document_pipeline._generate_embeddings_static",
         AsyncMock(return_value=[None]),
     )
     fake_es_client = SimpleNamespace(bulk_index_chunks=AsyncMock(return_value=1))
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.document_service._get_es_client_static",
+        "novamind.features.knowledge_space.services.document_pipeline._get_es_client_static",
         AsyncMock(return_value=fake_es_client),
     )
     monkeypatch.setattr(
@@ -783,7 +783,7 @@ async def test_generate_questions_for_chunks_static_uses_question_generation_con
         FakeQGService,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.document_service._generate_embeddings_static",
+        "novamind.features.knowledge_space.services.document_pipeline._generate_embeddings_static",
         fake_generate_embeddings_static,
     )
 

@@ -15,8 +15,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-import novamind.features.knowledge_space.services.document_service as ds_module
-from novamind.features.knowledge_space.services.document_service import DocumentService
+import novamind.features.knowledge_space.services.document_pipeline as ds_module
+from novamind.features.knowledge_space.services.document_pipeline import execute_document_pipeline
 
 
 def test_execute_pipeline_video_branch_returns_cleanly():
@@ -43,7 +43,7 @@ def test_execute_pipeline_video_branch_returns_cleanly():
         mp_module.process_video_document = process_video_document
         try:
             # 不应抛异常（修复前此处抛 NameError）
-            await DocumentService.execute_document_pipeline(
+            await execute_document_pipeline(
                 session=session,
                 document_id=1,
                 kb_id=1,
