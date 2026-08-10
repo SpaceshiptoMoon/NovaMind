@@ -8,7 +8,7 @@
 注意: 分块数据仅存储在 Elasticsearch 中，不在 MySQL 中存储
 """
 
-from typing import Optional, List, Dict, Any, TYPE_CHECKING
+from typing import Optional, List, Dict, Any, Tuple, TYPE_CHECKING
 from dataclasses import dataclass
 import hashlib
 import asyncio
@@ -619,131 +619,40 @@ class DocumentService:
                 else False,
             )
             task.finish_step("parsed", metrics={"char_count": len(full_text), "chunk_count": len(chunks), "parse_strategy": parsing_config.get("strategy", "default"), "file_type": document.file_type})
-            task.start_step("split")
-
             # 解析全文持久化到 MinIO（切块之前，立刻 commit 落库）
-
             await persist_parsed_text(document, full_text, session, _logger)
-
-            # 再基于解析全文做切分，确保全文与 chunk 的职责分离。
-            # deepdoc/default 都在 processor.parse_document() 内完成解析与分块。
-
-            task.finish_step("split", metrics={"chunk_count": len(chunks), "split_strategy": splitting_config.get("strategy", "recursive"), "chunk_size": splitting_config.get("chunk_size", DEFAULT_CHUNK_SIZE)})
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
         # 检查点 1：文档解析完成之后
-
         await _check_document_cancelled(document_id)
 
-        # 2. 准备 ES 数据
-        es_chunks = _prepare_es_chunks_static(
-            document, chunks, parse_metadata=parse_result.metadata
-        )
-
-        # 3. 向量化并索引到 ES（Embedding 配置从空间级别读取）
-        embedding_config = ctx.embedding_config
-        task.start_step("embedded")
-        embeddings = await _generate_embeddings_static(
-            [c["content"] for c in es_chunks],
-            embedding_config,
+        # 2-5. 切分/向量化/问题生成/索引：交由共享后置尾（文本传结构化 prechunked_items）
+        chunk_structure = list((parse_result.metadata or {}).get("chunk_structure") or [])
+        prechunked_items = [
+            (c, chunk_structure[i] if i < len(chunk_structure) else {})
+            for i, c in enumerate(parse_result.chunks)
+        ]
+        tail_result = await _run_post_parse_tail(
+            document=document,
             session=session,
-            user_id=ctx.space_owner_id,
+            task=task,
             model_config_port=model_config_port,
+            logger=_logger,
+            chunk_type=ChunkType.TEXT,
+            embedding_config=ctx.embedding_config,
+            pipeline_config=ctx.pipeline_config,
+            splitting_config=splitting_config,
+            prechunked_items=prechunked_items,
+            parse_metadata=parse_result.metadata,
+            user_id=document.uploader_id,
         )
-
-        for i, embedding in enumerate(embeddings):
-            es_chunks[i]["embedding"] = embedding
-        task.finish_step("embedded", metrics={"embedding_count": len(embeddings), "dimension": embedding_config.get("dimension")})
-
-        # 检查点 2：向量化完成之后
-        await _check_document_cancelled(document_id)
-
-        # 5. 生成假设问题（由知识库配置控制）
-        # 优先使用 task.pipeline_config 快照（入队时的 KB 配置），确保处理的一致性
-
-        task.start_step("question_generation")
-        kb_config = ctx.pipeline_config
-        qg_config = kb_config.get("question_generation", {})
-        should_generate = qg_config.get("enabled", False) if qg_config else False
-
-        if should_generate:
-            try:
-                chunk_count = len(es_chunks)
-                _logger.info(
-                    "假设问题生成开始",
-                    document_id=document_id,
-                    chunk_count=chunk_count,
-                )
-                # 不使用全局超时：generate_questions_batch 内部每批次有 120s 超时，
-                # 失败的批次跳过（保留空结果），成功的批次保留问题。
-                # 这样即使部分批次超时，已生成的结果不会丢失。
-                (
-                    questions_list,
-                    question_embeddings_list,
-                ) = await _generate_questions_for_chunks_static(
-                    chunks=[c["content"] for c in es_chunks],
-                    document_title=document.filename,
-                    kb_config=kb_config,
-                    embedding_config=embedding_config,
-                    user_id=document.uploader_id,
-                    session=session,
-                    model_config_port=model_config_port,
-                )
-                for i, (questions, q_embeddings) in enumerate(
-                    zip(questions_list, question_embeddings_list)
-                ):
-                    es_chunks[i]["questions"] = questions
-                    es_chunks[i]["question_embeddings"] = [{"vector": emb} for emb in q_embeddings]
-                _logger.info(
-                    "假设问题生成完成",
-                    document_id=document_id,
-                    total_questions=sum(len(q) for q in questions_list),
-                )
-            except Exception as e:
-                _logger.warning(
-                    "假设问题生成失败，跳过继续处理",
-                    document_id=document_id,
-                    error=str(e),
-                )
-                for chunk in es_chunks:
-                    chunk["questions"] = []
-                    chunk["question_embeddings"] = []
-        else:
-            for chunk in es_chunks:
-                chunk["questions"] = []
-                chunk["question_embeddings"] = []
-
-        total_questions = sum(len(c.get("questions") or []) for c in es_chunks)
-        task.finish_step("question_generation", metrics={"enabled": should_generate, "total_questions": total_questions})
-
-        # 检查点 3：问题生成完成之后
-        await _check_document_cancelled(document_id)
-
-        # 检查点 4：ES 索引写入之前
-        await _check_document_cancelled(document_id)
-
-        task.start_step("indexed")
-        es_client = await _get_es_client_static()
-        indexed_count = await es_client.bulk_index_chunks(
-            space_id=document.space_id,
-            chunks=es_chunks,
-            embedding_dim=embedding_config.get("dimension"),
-        )
-
-        if indexed_count == 0 and len(es_chunks) > 0:
-            raise DocumentProcessingError(
-                document_id=document_id,
-                error_message=f"ES 索引写入失败，共 {len(es_chunks)} 个分块均未成功写入",
-            )
-
-        task.finish_step("indexed", metrics={"indexed_count": indexed_count, "chunk_count": len(es_chunks)})
         parse_summary = _extract_parse_metadata_summary(parse_result.metadata)
 
         # 5. 标记任务完成
         task.mark_completed(
             result={
-                "chunk_count": len(chunks),
+                "chunk_count": tail_result["chunk_count"],
                 "total_tokens": sum(len(c.split()) for c in chunks),
                 "parse_strategy": parsing_config.get("strategy", "default"),
                 "split_strategy": splitting_config.get("strategy", "recursive"),
@@ -1960,58 +1869,225 @@ async def _process_image_ocr_static(
     return ocr_text
 
 
-def _prepare_es_chunks_static(
+def _build_es_chunks(
     document: Document,
-    chunks: List[str],
+    chunk_items: List[Tuple[str, Dict[str, Any]]],
+    chunk_type: ChunkType,
+    *,
     parse_metadata: Optional[Dict[str, Any]] = None,
+    frame_paths: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
-    """
-    将文本分块列表转换为 ES 索引格式的字典列表
+    """统一构造 ES 索引格式的分块字典列表（文本/音频/视频共用）。
 
-    Args:
-        document: 文档对象
-        chunks: 文本分块列表
-        parse_metadata: 解析阶段产出的附加 metadata
+    - 文本：富 metadata（parser/parse_summary/chunk_structure 的 entry_kinds/pages/...），仅 media_url。
+    - 音频/视频：metadata 含 start_time/end_time，视频按 frame_indices 映射 frame_paths；media_url + image_url。
 
-    Returns:
-        ES 索引格式的分块字典列表
+    `chunk_items` 为 [(text, per_chunk_meta), ...]；文本 per_chunk_meta 取自 parse_metadata["chunk_structure"][i]。
     """
     es_chunks = []
     storage_info = document.storage or {}
     parse_metadata = dict(parse_metadata or {})
-    parse_summary = _extract_parse_metadata_summary(parse_metadata)
-    chunk_structure = list(parse_metadata.get("chunk_structure") or [])
-    for i, chunk_text in enumerate(chunks):
-        structure = chunk_structure[i] if i < len(chunk_structure) else {}
+    is_text = chunk_type == ChunkType.TEXT
+    parse_summary = _extract_parse_metadata_summary(parse_metadata) if is_text else {}
+    media_url = storage_info.get("minio_object_name", "")
+    for i, (text, meta) in enumerate(chunk_items):
+        chunk_meta: Dict[str, Any] = {"content_hash": document.file_hash}
+        if is_text:
+            chunk_meta.update({
+                "parser": parse_metadata.get("parser", ""),
+                "file_type": parse_metadata.get("file_type", document.file_type),
+                **parse_summary,
+                "chunk_entry_kinds": list(meta.get("entry_kinds") or []),
+                "chunk_entry_source_ids": list(meta.get("entry_source_ids") or []),
+                "chunk_pages": list(meta.get("pages") or []),
+                "chunk_entry_count": int(meta.get("entry_count") or 0),
+            })
+        else:
+            chunk_meta["start_time"] = meta.get("start_time")
+            chunk_meta["end_time"] = meta.get("end_time")
+            if frame_paths and "frame_indices" in meta:
+                chunk_meta["frame_paths"] = [
+                    frame_paths[idx]
+                    for idx in meta["frame_indices"]
+                    if idx < len(frame_paths) and frame_paths[idx]
+                ]
         chunk_data = {
             "space_id": document.space_id,
             "kb_id": document.kb_id,
             "document_id": document.id,
             "chunk_id": f"{document.id}_{i}",
             "chunk_index": i,
-            "content": chunk_text,
-            "chunk_type": ChunkType.TEXT,
-            "media_url": storage_info.get("minio_object_name", ""),
+            "content": text,
+            "chunk_type": chunk_type,
+            "media_url": media_url,
             "file_info": {
                 "filename": document.filename,
                 "file_type": document.file_type,
             },
-            "metadata": {
-                "content_hash": document.file_hash,
-                "parser": parse_metadata.get("parser", ""),
-                "file_type": parse_metadata.get("file_type", document.file_type),
-                **parse_summary,
-                "chunk_entry_kinds": list(structure.get("entry_kinds") or []),
-                "chunk_entry_source_ids": list(structure.get("entry_source_ids") or []),
-                "chunk_pages": list(structure.get("pages") or []),
-                "chunk_entry_count": int(structure.get("entry_count") or 0),
-            },
+            "metadata": chunk_meta,
             "questions": [],
             "question_embeddings": [],
             "created_at": now_china().isoformat(),
         }
+        if not is_text:
+            chunk_data["image_url"] = media_url
         es_chunks.append(chunk_data)
     return es_chunks
+
+
+def _prepare_es_chunks_static(
+    document: Document,
+    chunks: List[str],
+    parse_metadata: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """将文本分块列表转换为 ES 索引格式的字典列表（薄 shim，委托 _build_es_chunks）。
+
+    保留旧签名以兼容现有调用与测试；行为与原实现一致。
+    """
+    chunk_structure = list((parse_metadata or {}).get("chunk_structure") or [])
+    chunk_items = [
+        (c, chunk_structure[i] if i < len(chunk_structure) else {})
+        for i, c in enumerate(chunks)
+    ]
+    return _build_es_chunks(document, chunk_items, ChunkType.TEXT, parse_metadata=parse_metadata)
+
+
+async def _run_post_parse_tail(
+    *,
+    document: Document,
+    session: AsyncSession,
+    task: "DocumentTask",
+    model_config_port: Optional[ModelConfigPort],
+    logger,
+    chunk_type: ChunkType,
+    embedding_config: Dict[str, Any],
+    pipeline_config: Dict[str, Any],
+    splitting_config: Dict[str, Any],
+    full_text: str = "",
+    prechunked_items: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
+    parse_metadata: Optional[Dict[str, Any]] = None,
+    frame_paths: Optional[List[str]] = None,
+    user_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    """共享后置尾：切分 → 构造 ES chunks → 向量化 → 问题生成 → 索引。
+
+    文本/音频/视频三模态共用此尾，统一节点名 split/embedded/question_generation/indexed。
+    - 转换器若已产出结构化分块（如 DeepDoc），传 prechunked_items，尾直接采用，不再二次切分；
+      否则传 full_text，尾用 _split_md_text 切分（音频/视频走此分支）。
+    - QG 由 pipeline_config["question_generation"]["enabled"] 控制，失败跳过、留空，与文本管道原逻辑一致。
+
+    Returns:
+        {chunk_count, indexed_count, total_questions, split_strategy}，供调用方写 mark_completed。
+    """
+    # 1. 切分
+    task.start_step("split")
+    if prechunked_items is not None:
+        chunk_items = list(prechunked_items)
+        split_strategy = "structural"
+    else:
+        from novamind.features.knowledge_space.services.media_processing import (
+            _split_md_text,
+            maybe_semantic_embedding_client,
+        )
+        sc = dict(splitting_config)
+        strategy = sc.pop("strategy", "recursive")
+        embedding_client = await maybe_semantic_embedding_client(
+            strategy, embedding_config, session, document.uploader_id,
+            model_config_port=model_config_port,
+        )
+        chunk_items = await _split_md_text(
+            full_text, strategy=strategy, embedding_client=embedding_client, **sc,
+        )
+        split_strategy = strategy
+    chunk_count = len(chunk_items)
+    task.finish_step("split", metrics={
+        "chunk_count": chunk_count,
+        "split_strategy": split_strategy,
+        "chunk_size": splitting_config.get("chunk_size"),
+    })
+    await _check_document_cancelled(document.id)
+
+    # 2. 构造 ES chunks（文本/媒体 metadata 由 _build_es_chunks 按 chunk_type 分支处理）
+    es_chunks = _build_es_chunks(
+        document, chunk_items, chunk_type,
+        parse_metadata=parse_metadata, frame_paths=frame_paths,
+    )
+
+    # 3. 向量化
+    task.start_step("embedded")
+    embeddings = await _generate_embeddings_static(
+        [c["content"] for c in es_chunks], embedding_config,
+        session=session, user_id=user_id or document.uploader_id,
+        model_config_port=model_config_port,
+    )
+    for i, emb in enumerate(embeddings):
+        if emb:
+            es_chunks[i]["embedding"] = emb
+    task.finish_step("embedded", metrics={
+        "embedding_count": len(embeddings),
+        "dimension": embedding_config.get("dimension"),
+    })
+    await _check_document_cancelled(document.id)
+
+    # 4. 问题生成（由 KB 配置控制；失败跳过、留空）
+    task.start_step("question_generation")
+    qg_config = pipeline_config.get("question_generation", {})
+    should_generate = qg_config.get("enabled", False) if qg_config else False
+    if should_generate:
+        try:
+            questions_list, question_embeddings_list = await _generate_questions_for_chunks_static(
+                chunks=[c["content"] for c in es_chunks],
+                document_title=document.filename,
+                kb_config=pipeline_config,
+                embedding_config=embedding_config,
+                user_id=document.uploader_id,
+                session=session,
+                model_config_port=model_config_port,
+            )
+            for i, (questions, q_embeddings) in enumerate(
+                zip(questions_list, question_embeddings_list)
+            ):
+                es_chunks[i]["questions"] = questions
+                es_chunks[i]["question_embeddings"] = [{"vector": emb} for emb in q_embeddings]
+        except Exception as e:
+            logger.warning(
+                "假设问题生成失败，跳过继续处理",
+                document_id=document.id, error=str(e),
+            )
+            for chunk in es_chunks:
+                chunk["questions"] = []
+                chunk["question_embeddings"] = []
+    else:
+        for chunk in es_chunks:
+            chunk["questions"] = []
+            chunk["question_embeddings"] = []
+    total_questions = sum(len(c.get("questions") or []) for c in es_chunks)
+    task.finish_step("question_generation", metrics={
+        "enabled": should_generate, "total_questions": total_questions,
+    })
+    await _check_document_cancelled(document.id)
+
+    # 5. 索引到 ES
+    task.start_step("indexed")
+    es_client = await _get_es_client_static()
+    indexed_count = await es_client.bulk_index_chunks(
+        space_id=document.space_id,
+        chunks=es_chunks,
+        embedding_dim=embedding_config.get("dimension"),
+    )
+    if indexed_count == 0 and es_chunks:
+        raise RuntimeError(f"ES 索引写入失败: {len(es_chunks)} 个分块均未成功写入")
+    task.finish_step("indexed", metrics={
+        "indexed_count": indexed_count, "chunk_count": len(es_chunks),
+    })
+
+    return {
+        "chunk_count": chunk_count,
+        "indexed_count": indexed_count,
+        "total_questions": total_questions,
+        "split_strategy": split_strategy,
+    }
+
 
 
 def _extract_parse_metadata_summary(parse_metadata: Dict[str, Any]) -> Dict[str, Any]:

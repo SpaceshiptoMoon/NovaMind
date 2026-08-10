@@ -37,8 +37,8 @@ CLAUDE.md 两条相关规则合在一起的本意：
 > 批次 2 已核查（2026-07）：**隔离安全**。`shared/mq/worker.py:97` 的文档处理入口用
 > `async with get_db_session() as session:` 创建**全新后台 session**，再透传给 static helper
 > `execute_document_pipeline` / `persist_parsed_text` / `_process_image_document_static`
-> 提交（document_service.py:737/1650/1806/1870）。这些 helper 提交的是后台独立 session，
-> 不接触任何请求主事务。`_cancel_batch_enqueue`（L1608）同样用 `get_db_session()` 独立 session。
+> 提交（document_service.py:671/1589/1748/1813）。这些 helper 提交的是后台独立 session，
+> 不接触任何请求主事务。`_cancel_batch_enqueue`（L1531）同样用 `get_db_session()` 独立 session。
 > 结论：static helper「commit 参数 session」是正确行为（后台任务自带 session），无需修复。
 > 抽库相关不变式已补：`RetrievalEngine` 绝不持有 session / 绝不 commit（仅 es_client + logger + cache）。
 

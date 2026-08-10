@@ -18,6 +18,7 @@ from novamind.features.knowledge_space.services.document_service import (
     _check_document_cancelled,
     load_pipeline_context,
     persist_parsed_text,
+    _run_post_parse_tail,
 )
 from novamind.features.knowledge_space.media.audio import (
     transcribe_audio_local,
@@ -256,44 +257,22 @@ async def process_video_document(
     if task:
         task.finish_step("descriptions_generated", metrics={"description_count": len(descriptions)})
 
-    # 3. 统一文本切分（替代旧 _aggregate_descriptions）
-    # 切分配置从 pipeline_config 读取（优先 Task 快照）
+    # 3-5. 切分/向量化/问题生成/索引：交由共享后置尾
     apply_modality_splitting_override(splitting_config, "video")
-    strategy = splitting_config.pop("strategy", "recursive")
-    splitting_kwargs = splitting_config
-    embedding_config = ctx.embedding_config
-    embedding_client = await maybe_semantic_embedding_client(
-        strategy, embedding_config, session, document.uploader_id,
-        model_config_port=model_config_port,
-    )
-    if task:
-        task.start_step("text_split")
-    chunks = await _split_md_text(
-        full_text,
-        strategy=strategy,
-        embedding_client=embedding_client,
-        **splitting_kwargs,
-    )
-
-    if task:
-        task.finish_step("text_split", metrics={"chunk_count": len(chunks)})
-
-    # 4. Embedding + ES（embedding_config 从空间级别读取）
-    if task:
-        task.start_step("indexed")
-    await _index_text_chunks(
+    tail_result = await _run_post_parse_tail(
         document=document,
-        chunks=chunks,
-        chunk_type=ChunkType.VIDEO,
-        embedding_config=embedding_config,
         session=session,
-        logger=logger,
-        frame_paths=frame_paths,
+        task=task,
         model_config_port=model_config_port,
+        logger=logger,
+        chunk_type=ChunkType.VIDEO,
+        embedding_config=ctx.embedding_config,
+        pipeline_config=pipeline_config,
+        splitting_config=splitting_config,
+        full_text=full_text,
+        frame_paths=frame_paths,
+        user_id=document.uploader_id,
     )
-
-    if task:
-        task.finish_step("indexed", metrics={"chunk_count": len(chunks)})
 
     # 5. 写入处理结果到 Task
     document.storage = {
@@ -302,7 +281,7 @@ async def process_video_document(
     }
     if task:
         task.mark_completed(result={
-            "chunk_count": len(chunks),
+            "chunk_count": tail_result["chunk_count"],
             "chunk_type": ChunkType.VIDEO,
             "frame_count": len(frames),
             "indexed_at": now_china().isoformat(),
@@ -311,7 +290,7 @@ async def process_video_document(
 
     logger.info(
         "视频文档处理完成", document_id=document.id,
-        chunks=len(chunks), frames=len(frames), frame_paths=len(frame_paths),
+        chunks=tail_result["chunk_count"], frames=len(frames), frame_paths=len(frame_paths),
     )
 
 
@@ -531,51 +510,27 @@ async def process_audio_document(
     if task:
         task.finish_step("transcription_done", metrics={"segment_count": len(segments), "asr_protocol": asr_protocol, "language": language})
 
-    # 2. 统一文本切分，splitting.audio 覆盖通用切分参数
+    # 2-4. 切分/向量化/问题生成/索引：交由共享后置尾
     splitting_config = dict(pipeline_config.get("splitting", {}))
-    # 应用音频专属切分覆盖（chunk_size, strategy 等）
     apply_modality_splitting_override(splitting_config, "audio")
-    strategy = splitting_config.pop("strategy", "recursive")
-    embedding_config = ctx.embedding_config
-    embedding_client = await maybe_semantic_embedding_client(
-        strategy, embedding_config, session, document.uploader_id,
-        model_config_port=model_config_port,
-    )
-    if task:
-        task.start_step("text_split")
-    chunks = await _split_md_text(
-        full_text,
-        strategy=strategy,
-        embedding_client=embedding_client,
-        **splitting_config,
-    )
-
-    if task:
-        task.finish_step("text_split", metrics={"chunk_count": len(chunks)})
-
-    # 检查点2：文本切分完成，Embedding + ES 索引前
-    await _check_document_cancelled(document.id)
-
-    # 3. Embedding + ES
-    if task:
-        task.start_step("indexed")
-    await _index_text_chunks(
+    tail_result = await _run_post_parse_tail(
         document=document,
-        chunks=chunks,
-        chunk_type=ChunkType.AUDIO,
-        embedding_config=embedding_config,
         session=session,
-        logger=logger,
+        task=task,
         model_config_port=model_config_port,
+        logger=logger,
+        chunk_type=ChunkType.AUDIO,
+        embedding_config=ctx.embedding_config,
+        pipeline_config=pipeline_config,
+        splitting_config=splitting_config,
+        full_text=full_text,
+        user_id=document.uploader_id,
     )
-
-    if task:
-        task.finish_step("indexed", metrics={"chunk_count": len(chunks)})
 
     # 4. 写入处理结果到 Task
     if task:
         task.mark_completed(result={
-            "chunk_count": len(chunks),
+            "chunk_count": tail_result["chunk_count"],
             "chunk_type": ChunkType.AUDIO,
             "segment_count": len(segments),
             "indexed_at": now_china().isoformat(),
@@ -584,7 +539,7 @@ async def process_audio_document(
 
     logger.info(
         "音频文档处理完成", document_id=document.id,
-        chunks=len(chunks), segments=len(segments),
+        chunks=tail_result["chunk_count"], segments=len(segments),
     )
 
 
@@ -825,90 +780,3 @@ def _format_time(seconds: float) -> str:
     m, s = divmod(int(seconds), 60)
     h, m = divmod(m, 60)
     return f"{h:02d}:{m:02d}:{s:02d}"
-
-
-async def _index_text_chunks(
-    document: Document,
-    chunks: List[Tuple[str, Dict[str, Any]]],
-    chunk_type: ChunkType,
-    embedding_config: Dict[str, Any],
-    session: AsyncSession,
-    logger,
-    frame_paths: Optional[List[str]] = None,
-    model_config_port: Optional[ModelConfigPort] = None,
-):
-    """
-    将文本 chunks 写入 ES（复用文本管道逻辑）
-
-    注：pipeline_config（切分策略等）可从 task.pipeline_config 快照获取，
-    embedding_config 从空间配置读取，二者来源不同。
-    """
-    from novamind.features.knowledge_space.services.document_service import (
-        _generate_embeddings_static,
-        _get_es_client_static,
-    )
-
-    # 构建 ES chunks
-    es_chunks = []
-    for i, (text, meta) in enumerate(chunks):
-        chunk_meta = {
-            "content_hash": document.file_hash,
-            "start_time": meta.get("start_time"),
-            "end_time": meta.get("end_time"),
-        }
-
-        # 视频：将 frame_indices 映射为 MinIO 路径
-        if frame_paths and "frame_indices" in meta:
-            chunk_meta["frame_paths"] = [
-                frame_paths[idx]
-                for idx in meta["frame_indices"]
-                if idx < len(frame_paths) and frame_paths[idx]
-            ]
-
-        chunk_data = {
-            "space_id": document.space_id,
-            "kb_id": document.kb_id,
-            "document_id": document.id,
-            "chunk_id": f"{document.id}_{i}",
-            "chunk_index": i,
-            "content": text,
-            "chunk_type": chunk_type,
-            "media_url": (document.storage or {}).get("minio_object_name", ""),
-            "image_url": (document.storage or {}).get("minio_object_name", ""),
-            "file_info": {
-                "filename": document.filename,
-                "file_type": document.file_type,
-            },
-            "metadata": chunk_meta,
-            "questions": [],
-            "question_embeddings": [],
-            "created_at": now_china().isoformat(),
-        }
-        es_chunks.append(chunk_data)
-
-    # 向量化
-    texts = [c["content"] for c in es_chunks]
-    embeddings = await _generate_embeddings_static(
-        texts, embedding_config, session=session, user_id=document.uploader_id,
-        model_config_port=model_config_port,
-    )
-
-    for i, emb in enumerate(embeddings):
-        if emb:
-            es_chunks[i]["embedding"] = emb
-
-    # 写入 ES
-    es_client = await _get_es_client_static()
-    indexed = await es_client.bulk_index_chunks(
-        space_id=document.space_id,
-        chunks=es_chunks,
-        embedding_dim=embedding_config.get("dimension"),
-    )
-
-    if indexed == 0 and es_chunks:
-        raise RuntimeError(f"ES 索引写入失败: {len(es_chunks)} 个分块均未成功写入")
-
-    logger.info(
-        "text chunks索引完成", document_id=document.id,
-        chunk_type=chunk_type, indexed_count=indexed,
-    )

@@ -384,6 +384,12 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
         def set_step(self, step, status=None):
             self.steps.append((step, status))
 
+        def start_step(self, step):
+            self.steps.append((step, "running"))
+
+        def finish_step(self, step, metrics=None):
+            self.steps.append((step, "done"))
+
         def mark_completed(self, result):
             self.completed = result
 
@@ -400,19 +406,16 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
         captured["video_vlm_model"] = kwargs["vlm_model_name"]
         return "frame description"
 
-    async def fake_split_md_text(md_text, strategy="recursive", **kwargs):
-        captured["split_strategy"] = strategy
-        captured["split_kwargs"] = kwargs
-        captured["split_text"] = md_text
-        return [("video chunk", {})]
-
     async def fake_persist_parsed_text(document, full_text, session, logger):
         captured["parsed_video_text"] = full_text
         return "parsed/full_text.md"
 
-    async def fake_index_text_chunks(**kwargs):
-        captured["video_index_chunk_type"] = kwargs["chunk_type"]
-        captured["video_chunks"] = kwargs["chunks"]
+    async def fake_post_parse_tail(**kwargs):
+        captured["video_index_chunk_type"] = str(kwargs["chunk_type"])
+        sc = kwargs.get("splitting_config") or {}
+        captured["split_strategy"] = sc.get("strategy")
+        captured["split_kwargs"] = {"chunk_size": sc.get("chunk_size")}
+        return {"chunk_count": 1, "indexed_count": 1, "total_questions": 0, "split_strategy": sc.get("strategy", "recursive")}
 
     monkeypatch.setattr(
         "novamind.features.knowledge_space.services.media_processing.extract_video_frames",
@@ -423,23 +426,19 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
         fake_describe_single_frame,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing._split_md_text",
-        fake_split_md_text,
-    )
-    monkeypatch.setattr(
         "novamind.features.knowledge_space.services.media_processing.persist_parsed_text",
         fake_persist_parsed_text,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing._index_text_chunks",
-        fake_index_text_chunks,
+        "novamind.features.knowledge_space.services.media_processing._run_post_parse_tail",
+        fake_post_parse_tail,
     )
     monkeypatch.setattr(
         "novamind.features.knowledge_space.services.media_processing._check_document_cancelled",
         AsyncMock(),
     )
     monkeypatch.setattr(
-        "novamind.shared.clients.ClientFactory.get_minio_client",
+        "novamind.shared.storage.client_factory.ClientFactory.get_minio_client",
         AsyncMock(return_value=FakeMinioClient()),
     )
     monkeypatch.setattr(
@@ -506,6 +505,12 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
         def set_step(self, step, status=None):
             self.steps.append((step, status))
 
+        def start_step(self, step):
+            self.steps.append((step, "running"))
+
+        def finish_step(self, step, metrics=None):
+            self.steps.append((step, "done"))
+
         def mark_completed(self, result):
             self.completed = result
 
@@ -514,35 +519,28 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
         captured["audio_language"] = kwargs["language"]
         return [{"text": "hello", "start": 0.0, "end": 1.0}]
 
-    async def fake_split_md_text(md_text, strategy="recursive", **kwargs):
-        captured["audio_split_strategy"] = strategy
-        captured["audio_split_kwargs"] = kwargs
-        captured["audio_text"] = md_text
-        return [("audio chunk", {})]
-
     async def fake_persist_parsed_text(document, full_text, session, logger):
         captured["parsed_audio_text"] = full_text
         return "parsed/full_text.md"
 
-    async def fake_index_text_chunks(**kwargs):
-        captured["audio_index_chunk_type"] = kwargs["chunk_type"]
-        captured["audio_chunks"] = kwargs["chunks"]
+    async def fake_post_parse_tail(**kwargs):
+        captured["audio_index_chunk_type"] = str(kwargs["chunk_type"])
+        sc = kwargs.get("splitting_config") or {}
+        captured["audio_split_strategy"] = sc.get("strategy")
+        captured["audio_split_kwargs"] = {"chunk_size": sc.get("chunk_size")}
+        return {"chunk_count": 1, "indexed_count": 1, "total_questions": 0, "split_strategy": sc.get("strategy", "recursive")}
 
     monkeypatch.setattr(
         "novamind.features.knowledge_space.services.media_processing.transcribe_audio_with_timestamps",
         fake_transcribe,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing._split_md_text",
-        fake_split_md_text,
-    )
-    monkeypatch.setattr(
         "novamind.features.knowledge_space.services.media_processing.persist_parsed_text",
         fake_persist_parsed_text,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing._index_text_chunks",
-        fake_index_text_chunks,
+        "novamind.features.knowledge_space.services.media_processing._run_post_parse_tail",
+        fake_post_parse_tail,
     )
     monkeypatch.setattr(
         "novamind.features.knowledge_space.services.media_processing._check_document_cancelled",
@@ -613,6 +611,12 @@ async def test_process_audio_document_loads_embedding_client_for_semantic_split(
         def set_step(self, step, status=None):
             return None
 
+        def start_step(self, step):
+            pass
+
+        def finish_step(self, step, metrics=None):
+            pass
+
         def mark_completed(self, result):
             captured["semantic_audio_result"] = result
 
@@ -646,9 +650,19 @@ async def test_process_audio_document_loads_embedding_client_for_semantic_split(
         "novamind.features.knowledge_space.services.media_processing.persist_parsed_text",
         AsyncMock(return_value="parsed/full_text.md"),
     )
+    # 共享后置尾会调用这些叶子函数，需要 fake 掉以避免实际 DB/ES/向量化请求
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing._index_text_chunks",
+        "novamind.features.knowledge_space.services.document_service._check_document_cancelled",
         AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.document_service._generate_embeddings_static",
+        AsyncMock(return_value=[None]),
+    )
+    fake_es_client = SimpleNamespace(bulk_index_chunks=AsyncMock(return_value=1))
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.document_service._get_es_client_static",
+        AsyncMock(return_value=fake_es_client),
     )
     monkeypatch.setattr(
         "novamind.features.knowledge_space.services.media_processing._check_document_cancelled",
@@ -676,6 +690,7 @@ async def test_process_audio_document_loads_embedding_client_for_semantic_split(
         uploader_id=9,
         filename="semantic.mp3",
         file_type="mp3",
+        file_hash="",
         storage={"minio_object_name": "spaces/1/kbs/1/documents/3/semantic.mp3"},
     )
     task = FakeTask(
