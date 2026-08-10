@@ -22,6 +22,7 @@ from novamind.features.knowledge_space.services.space_service import SpaceServic
 from novamind.features.knowledge_space.services.member_service import MemberService
 from novamind.features.knowledge_space.services.document_service import DocumentService
 from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
+from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
 from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
 from novamind.features.knowledge_space.services.search_service import SearchService
 from novamind.features.knowledge_space.services.audit_service import AuditService
@@ -118,6 +119,11 @@ async def get_document_upload_service(db: AsyncSession = Depends(get_db)) -> Doc
     """获取文档上传服务（使用单例 MinIO 客户端）"""
     minio_client = await get_minio_client()
     return DocumentUploadService(session=db, minio_client=minio_client)
+
+
+async def get_document_task_service(db: AsyncSession = Depends(get_db)) -> DocumentTaskService:
+    """获取文档任务/批次服务（任务编排不触碰 MinIO/ES/模型配置）"""
+    return DocumentTaskService(session=db)
 
 
 async def get_knowledge_base_service(db: AsyncSession = Depends(get_db)) -> KnowledgeBaseService:

@@ -14,14 +14,14 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.features.knowledge_space.services.document_service import DocumentService
+from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
 from novamind.features.knowledge_space.api.exceptions import DocumentNotFoundError
 
 
 def test_retry_document_rejects_cross_kb_document():
     """retry_document 对不属于 (kb_id, space_id) 的文档应抛 DocumentNotFoundError。"""
     async def _run():
-        service = DocumentService.__new__(DocumentService)
+        service = DocumentTaskService.__new__(DocumentTaskService)
         service.session = object()
         service.logger = SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None)
         # 文档实际属于 kb=2/space=2，但调用方声称 kb=1/space=1
@@ -31,7 +31,7 @@ def test_retry_document_rejects_cross_kb_document():
 
         raised = False
         try:
-            await DocumentService.retry_document(
+            await DocumentTaskService.retry_document(
                 service,
                 document_id=18,
                 kb_id=1,
@@ -50,7 +50,7 @@ def test_retry_document_rejects_cross_kb_document():
 def test_cancel_processing_rejects_cross_kb_document():
     """cancel_processing 对不属于 (kb_id, space_id) 的文档应抛 DocumentNotFoundError。"""
     async def _run():
-        service = DocumentService.__new__(DocumentService)
+        service = DocumentTaskService.__new__(DocumentTaskService)
         service.session = object()
         service.logger = SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None)
         service.doc_repo = SimpleNamespace(
@@ -59,7 +59,7 @@ def test_cancel_processing_rejects_cross_kb_document():
 
         raised = False
         try:
-            await DocumentService.cancel_processing(
+            await DocumentTaskService.cancel_processing(
                 service, 18, kb_id=1, space_id=1,
             )
         except DocumentNotFoundError:
@@ -73,7 +73,7 @@ def test_cancel_processing_rejects_cross_kb_document():
 def test_retry_document_allows_same_kb_document():
     """归属一致时应正常放行（不误拒）。"""
     async def _run():
-        service = DocumentService.__new__(DocumentService)
+        service = DocumentTaskService.__new__(DocumentTaskService)
         service.session = object()
         service.logger = SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None)
         service._validate_document_not_processing = AsyncMock(
@@ -98,7 +98,7 @@ def test_retry_document_allows_same_kb_document():
 
         repo_module.DocumentTaskRepository = _FakeRepo
         try:
-            result = await DocumentService.retry_document(
+            result = await DocumentTaskService.retry_document(
                 service,
                 document_id=18,
                 kb_id=1,

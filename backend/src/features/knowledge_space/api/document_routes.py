@@ -47,6 +47,7 @@ from novamind.features.knowledge_space.api.dependencies import (
     validate_space_editor,
     get_document_service,
     get_document_upload_service,
+    get_document_task_service,
     get_audit_service,
     validate_kb_access,
     validate_kb_writable,
@@ -60,6 +61,7 @@ from novamind.features.knowledge_space.exceptions import (
 )
 from novamind.features.knowledge_space.services.document_service import DocumentService
 from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
+from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
 from novamind.features.knowledge_space.services.audit_service import AuditService
 
 # 文件大小限制：默认最大 100MB
@@ -397,14 +399,14 @@ async def get_document_tasks_overview(
     skip: Annotated[int, Query(ge=0, description="跳过的记录数")] = 0,
     limit: Annotated[int, Query(ge=1, le=100, description="返回的最大记录数")] = 20,
     member: SpaceMember = Depends(validate_space_member),
-    document_service: DocumentService = Depends(get_document_service),
+    document_task_service: DocumentTaskService = Depends(get_document_task_service),
     db: AsyncSession = Depends(get_db),
 ):
     """获取知识库批次任务列表"""
     await validate_kb_access(kb_id, space_id, db)
 
     # 批次概览的刷新与提交由 service 控制（事务边界在 service，不在路由层）
-    total, entries = await document_service.list_batch_overview(
+    total, entries = await document_task_service.list_batch_overview(
         kb_id=kb_id, skip=skip, limit=limit
     )
 
@@ -579,13 +581,13 @@ async def process_documents(
     body: DocumentBatchProcessRequest = Body(...),
     user_id: int = Depends(get_current_user_id),
     member: SpaceMember = Depends(validate_space_editor),
-    document_service: DocumentService = Depends(get_document_service),
+    document_task_service: DocumentTaskService = Depends(get_document_task_service),
     db: AsyncSession = Depends(get_db),
 ):
     """批量触发拆分解析"""
     await validate_kb_writable(kb_id, space_id, db)
 
-    result = await document_service.process_kb_documents(
+    result = await document_task_service.process_kb_documents(
         kb_id=kb_id,
         user_id=user_id,
         document_ids=body.document_ids,
@@ -605,13 +607,13 @@ async def cancel_document_processing(
     document_id: Annotated[int, Path(gt=0, description="文档ID")],
     user_id: int = Depends(get_current_user_id),
     member: SpaceMember = Depends(validate_space_editor),
-    document_service: DocumentService = Depends(get_document_service),
+    document_task_service: DocumentTaskService = Depends(get_document_task_service),
     db: AsyncSession = Depends(get_db),
 ):
     """取消正在处理的文档"""
     await validate_kb_writable(kb_id, space_id, db)
 
-    await document_service.cancel_processing(document_id, kb_id=kb_id, space_id=space_id)
+    await document_task_service.cancel_processing(document_id, kb_id=kb_id, space_id=space_id)
     return DocumentCancelResponse(document_id=document_id)
 
 
@@ -627,13 +629,13 @@ async def retry_document_processing(
     document_id: Annotated[int, Path(gt=0, description="文档ID")],
     user_id: int = Depends(get_current_user_id),
     member: SpaceMember = Depends(validate_space_editor),
-    document_service: DocumentService = Depends(get_document_service),
+    document_task_service: DocumentTaskService = Depends(get_document_task_service),
     db: AsyncSession = Depends(get_db),
 ):
     """重试失败或已完成的文档处理（先清除旧分块再重新解析）"""
     await validate_kb_writable(kb_id, space_id, db)
 
-    result = await document_service.retry_document(
+    result = await document_task_service.retry_document(
         document_id=document_id,
         kb_id=kb_id,
         space_id=space_id,
