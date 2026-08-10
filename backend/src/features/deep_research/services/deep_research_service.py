@@ -33,7 +33,7 @@ from novamind.features.deep_research.schemas.research_schema import (
     ResearchRequest,
 )
 from novamind.features.knowledge_space.services.search_service import SearchService
-from novamind.engines.rag import RetrievalPort
+from novamind.shared.retrieval_port import RetrievalPort
 from novamind.features.knowledge_space.adapters.retrieval_adapter import HostRetrievalPort
 from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
 from novamind.features.knowledge_space.schemas.search_schema import (

@@ -21,7 +21,7 @@ from novamind.engines.rag import (
     RetrievalQuery,
 )
 from novamind.features.knowledge_space.adapters.retrieval_adapter import HostRetrievalPort
-from novamind.engines.rag import RetrievalPort
+from novamind.shared.retrieval_port import RetrievalPort
 
 
 def _make_query(search_mode: str = "content_hybrid") -> RetrievalQuery:

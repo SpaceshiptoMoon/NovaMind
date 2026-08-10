@@ -36,7 +36,7 @@ from novamind.features.evaluation.exceptions import (
     EvaluationTaskNotCompletedError,
 )
 from novamind.features.evaluation.adapters.host_prompt_provider import as_prompt_provider
-from novamind.engines.rag import RetrievalPort
+from novamind.shared.retrieval_port import RetrievalPort
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.engines.ports import PromptProvider

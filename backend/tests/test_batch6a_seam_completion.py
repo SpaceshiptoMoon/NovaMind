@@ -47,6 +47,15 @@ ENGINE_CANDIDATE_FILES = [
     SRC / "features" / "skill" / "services" / "skill_checker.py",
 ]
 
+# 宿主装配文件（非引擎逻辑）排除：``ClientFactory`` 是宿主客户端工厂，
+# 由 startup_manager 调 ``ClientFactory.configure`` 注入策略后构造 MinIO/ES/Redis
+# 客户端单例，合法直接 import ``shared.cache.redis_client`` 构造 ``RedisCache``，
+# 不属于 6a-2「引擎候选不得直连 redis」不变式约束范围（ddab50a 把它从
+# ``shared/clients`` 迁入 ``shared/storage`` 后被候选扫描误纳入，此处显式排除）。
+ENGINE_CANDIDATE_EXCLUDE = {
+    SRC / "shared" / "storage" / "client_factory.py",
+}
+
 
 def _collect_candidates() -> list[Path]:
     """收集所有引擎候选 .py 文件（递归目录 + 单文件，排除 __pycache__/__init__.py 可选保留）。"""
@@ -56,6 +65,8 @@ def _collect_candidates() -> list[Path]:
         if d.is_dir():
             for p in sorted(d.rglob("*.py")):
                 if "__pycache__" in p.parts:
+                    continue
+                if p in ENGINE_CANDIDATE_EXCLUDE:
                     continue
                 if p not in seen:
                     seen.add(p)
@@ -179,7 +190,7 @@ def test_6a2_retrieval_engine_ctor_accepts_cache_port():
 
 def test_6a3_retrieval_port_has_no_search_schema_import():
     """6a-3：retrieval_port 不得 import ``features.knowledge_space.schemas``（端口不绑宿主 schema）。"""
-    p = SRC / "engines" / "rag" / "retrieval_port.py"
+    p = SRC / "shared" / "retrieval_port.py"
     bad = [m for m in _imports_in(p) if m.startswith("novamind.features.knowledge_space.schemas")]
     assert not bad, f"retrieval_port 残留 schemas import: {bad}"
 
@@ -190,7 +201,7 @@ def test_6a3_retrieval_port_search_request_param_is_opaque():
     注：docstring 中作为说明文字提及 ``SearchRequest`` 是允许的（解释 host payload 来源），
     接缝不变式只在 AST 层面：无 import + 参数注解为 ``Any``。
     """
-    src = (SRC / "engines" / "rag" / "retrieval_port.py").read_text(
+    src = (SRC / "shared" / "retrieval_port.py").read_text(
         encoding="utf-8"
     )
     tree = ast.parse(src)

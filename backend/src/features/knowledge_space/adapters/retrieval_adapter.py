@@ -4,7 +4,7 @@
 from typing import Any, Dict
 
 from novamind.features.knowledge_space.schemas.search_schema import SearchRequest
-from novamind.engines.rag import RetrievalPort
+from novamind.shared.retrieval_port import RetrievalPort
 from novamind.features.knowledge_space.services.search_service import SearchService
 
 
