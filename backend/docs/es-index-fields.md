@@ -2,7 +2,7 @@
 
 > 来源代码：
 > - Mapping 定义：`backend/src/shared/storage/elasticsearch_client.py` — `create_index()`
-> - 文本 chunk 写入：`backend/src/features/knowledge_space/services/document_service.py` — `_prepare_es_chunks_static()`
+> - 文本/音频/视频 chunk 写入：`backend/src/features/knowledge_space/services/document_service.py` — `_build_es_chunks()`（统一构造器，三模态共用），`_prepare_es_chunks_static()`（旧 shim，保留兼容）
 > - 图片 chunk 写入：`backend/src/features/knowledge_space/services/document_service.py` — `_process_image_document_static()`
 > - 搜索模式：`backend/src/shared/storage/elasticsearch_client.py` — `search_by_mode()`
 
@@ -47,21 +47,21 @@ properties = {
 
 ### 文本 chunk — 最终写入 10 个字段
 
-构建于 `document_service.py:1230-1244`，向量化后追加 `:427`：
+构建于 `document_service.py` `_build_es_chunks()`（文本分支，1872-1935），`questions`/`question_embeddings` 在 `_run_post_parse_tail` 问题生成步骤填充（`:2050/:2051`），`embedding` 在向量化步骤追加（`:2025`）：
 
 ```
-space_id              ✅  第 1233 行
-kb_id                 ✅  第 1234 行
-document_id           ✅  第 1235 行
-chunk_id              ✅  第 1236 行（格式: {doc_id}_{i}）
-chunk_index           ✅  第 1237 行（从 0 递增）
-content               ✅  第 1238 行（切片文本）
-chunk_type            ✅  第 1239 行（固定 "text"）
-questions             ✅  第 1240 行（初始 []，问题生成后填充）
-question_embeddings   ✅  第 1241 行（初始 []，问题生成后填充）
-embedding             ✅  第 427 行（向量化后写入）
+space_id              ✅  第 1915 行
+kb_id                 ✅  第 1916 行
+document_id           ✅  第 1917 行
+chunk_id              ✅  第 1918 行（格式: {doc_id}_{i}）
+chunk_index           ✅  第 1919 行（从 0 递增）
+content               ✅  第 1920 行（切片文本）
+chunk_type            ✅  第 1921 行（固定 "text"）
+questions             ✅  第 1928 行（初始 []，问题生成后填充）
+question_embeddings   ✅  第 1929 行（初始 []，问题生成后填充）
+embedding             ✅  第 2025 行（向量化后写入）
 ──────────────────────────────────────────
-image_url             ❌ 不写入
+image_url             ❌ 不写入（文本分支仅在非文本时写 image_url，见 `_build_es_chunks:1932-1933`）
 metadata.*            ❌ 不写入（mapping 定义了 page_number/section_title 等但从未写）
 file_info.*           ❌ 不写入（mapping 定义了 filename/file_type 但从未写）
 created_at            ❌ 不写入
@@ -70,27 +70,57 @@ updated_at            ❌ 不写入
 
 ### 图片 chunk — 最终写入 9~11 个字段
 
-构建于 `document_service.py:1151-1175`：
+构建于 `document_service.py` `_process_image_document_static()`（1647-1784）：
 
 ```
-space_id              ✅  第 1152 行
-kb_id                 ✅  第 1153 行
-document_id           ✅  第 1154 行
-chunk_id              ✅  第 1155 行（固定格式 {doc_id}_0）
-chunk_index           ✅  第 1156 行（固定 0）
-chunk_type            ✅  第 1157 行（固定 "image"）
-image_url             ✅  第 1159 行（MinIO 路径）
-file_info.filename    ✅  第 1161 行
-file_info.file_type   ✅  第 1162 行
-metadata.content_hash ✅  第 1165 行（document.file_hash）
-content               ⚠️  第 1171 行（仅 VLM 开启且生成了描述时写入）
-embedding             ⚠️  第 1175 行（仅 VLM 开启且生成了描述文本向量时写入）
+space_id              ✅  第 1768 行
+kb_id                 ✅  第 1769 行
+document_id           ✅  第 1770 行
+chunk_id              ✅  第 1771 行（固定格式 {doc_id}_0）
+chunk_index           ✅  第 1772 行（固定 0）
+chunk_type            ✅  第 1773 行（固定 "image"）
+image_url             ✅  第 1776 行（MinIO 路径）
+file_info.filename    ✅  第 1778 行
+file_info.file_type   ✅  第 1779 行
+metadata.content_hash ✅  第 1782 行（document.file_hash）
+content               ⚠️  第 1774 行（仅 VLM 开启且生成了描述时写入）
+embedding             ⚠️  第 1775 行（仅 VLM 开启且生成了描述文本向量时写入）
 ──────────────────────────────────────────
 questions             ❌ 不写入
 question_embeddings   ❌ 不写入
 created_at            ❌ 不写入
 updated_at            ❌ 不写入
 ```
+
+### 音频/视频 chunk — 最终写入 13 个字段
+
+构建于 `document_service.py` `_build_es_chunks()`（媒体分支，1872-1935，由 `_run_post_parse_tail` 调用）。音频与视频共用同一构造路径，仅 `chunk_type`（`AUDIO`/`VIDEO`）与是否带 `frame_paths` 不同：
+
+```
+space_id              ✅  第 1915 行
+kb_id                 ✅  第 1916 行
+document_id           ✅  第 1917 行
+chunk_id              ✅  第 1918 行（格式: {doc_id}_{i}）
+chunk_index           ✅  第 1919 行（从 0 递增）
+content               ✅  第 1920 行（切片文本：ASR 转写 / VLM 帧描述）
+chunk_type            ✅  第 1921 行（"audio" | "video"）
+media_url             ✅  第 1922 行（MinIO 对象名）
+image_url             ✅  第 1933 行（== media_url，媒体分支写）
+file_info.filename    ✅  第 1924 行
+file_info.file_type   ✅  第 1925 行
+metadata.content_hash ✅  第 1894 行（document.file_hash）
+metadata.start_time   ✅  第 1906 行（音频分段时间戳 / 视频帧时间戳）
+metadata.end_time     ✅  第 1907 行
+metadata.frame_paths  ✅  第 1909 行（仅视频：按 chunk 的 frame_indices 映射 frame_paths）
+questions             ✅  第 1928 行（初始 []，QG 开启时由 _run_post_parse_tail 填充 :2050）
+question_embeddings   ✅  第 1929 行（初始 []，QG 开启时填充 :2051）
+embedding             ✅  第 2025 行（向量化后写入，_run_post_parse_tail embedded 步骤）
+created_at            ✅  第 1930 行（now_china().isoformat()）
+──────────────────────────────────────────
+updated_at            ❌ 不写入
+```
+
+> QG 由 `pipeline_config["question_generation"]["enabled"]` 控制，三模态统一经 `_run_post_parse_tail` 生成（见 `knowledge-architecture-navigation.md`）。QG 关闭时 `questions`/`question_embeddings` 保持 `[]`。
 
 ## 三、搜索模式与字段对应
 

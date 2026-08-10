@@ -93,27 +93,34 @@ backend/src/shared/
 
 ```
 arq Worker → process_document_task()
-  → DocumentService.execute_document_pipeline()
+  → DocumentService.execute_document_pipeline()（按文件类型路由）
     │
-    ├─ 文本文件分支（pdf/docx/txt/md/...）：
-    │   → DocumentProcessor 解析（按文件类型选 Reader）
-    │   → Splitter 切片
-    │   → EmbeddingService 向量化（Redis 缓存，48h TTL）
-    │   → QuestionGenerationService 假设问题生成（可选）
-    │   → ElasticsearchClient.bulk_index_chunks() 批量索引
+    ├─ 文本分支（pdf/docx/txt/md/...）：
+    │   → DocumentProcessor 解析（按文件类型选 Reader，DeepDoc 结构化切块在内）
+    │   → persist_parsed_text（解析 MD 全文 → MinIO）
+    │   → _run_post_parse_tail（prechunked 优先，回退 _split_md_text）
     │
-    ├─ 图片文件分支（jpg/png/gif/webp）：
-    │   → _process_image_document_static()
-    │   → VLM 描述生成（可选，需开启 vlm_description_enabled）
-    │   → 构建 image chunk → ES 索引
+    ├─ 视频分支（mp4/mov/avi/mkv/webm）：
+    │   → process_video_document()：关键帧提取 → VLM 帧描述（转换器）
+    │   → persist_parsed_text（帧描述拼接 MD → MinIO）
+    │   → _run_post_parse_tail（_split_md_text 切片，frame_paths 映射）
     │
-    ├─ 视频文件分支（mp4/mov/avi/mkv/webm）：
-    │   → process_video_document()
-    │   → 关键帧提取 → VLM 描述 → 文本向量化 → ES 索引
+    ├─ 音频分支（mp3/wav/flac/aac/ogg/m4a）：
+    │   → process_audio_document()：ASR 转写（转换器）
+    │   → persist_parsed_text（转写 MD → MinIO）
+    │   → _run_post_parse_tail（_split_md_text 切片）
     │
-    └─ 音频文件分支（mp3/wav/flac/aac/ogg/m4a）：
-        → process_audio_document()
-        → ASR 转写 → 文本切片 → 向量化 → ES 索引
+    └─ 图片分支（jpg/png/gif/webp）：独立通路，不走共享后置尾
+        → _process_image_document_static()
+        → VLM 描述生成（可选，需开启 vlm_description_enabled）
+        → 构建 image chunk → ES 索引
+
+  _run_post_parse_tail（文本/音频/视频共用，节点名统一 split/embedded/question_generation/indexed）：
+    split → _build_es_chunks → embedded（EmbeddingService，Redis 缓存 48h TTL）
+            → question_generation（QuestionGenerationService，由 pipeline_config 控制）
+            → indexed（ElasticsearchClient.bulk_index_chunks）
+
+  注意：QG 现对三模态统一生效（原音频/视频分块不生成假设问题已修复）；图片分支单 chunk、无 QG。
 ```
 
 ### 2.3 检索流程
@@ -154,7 +161,7 @@ arq Worker → process_document_task()
 |--------|------|----------|
 | `splitting` | 切片策略（strategy/chunk_size/overlap） | 视频需新增场景切割 |
 | `parsing` | 解析配置（PDF策略、VLM策略、ASR参数等） | 音视频各有独立参数 |
-| `question_generation` | 假设问题生成（enabled/model/batch_size） | 所有模态可复用 |
+| `question_generation` | 假设问题生成（enabled/model/batch_size） | 文本/音频/视频统一复用（经 `_run_post_parse_tail`）；图片分支无 QG |
 
 ### 3.3 模型类型映射
 
@@ -196,7 +203,7 @@ _MODEL_TYPE_STR = {
 | **`search_service.py`** | **检索统一**：`search_by_mode()` 注册全模态模式；全模态缓存/rerank/LLM回答；`_enrich_results` 返回音视频字段 |
 | `space_service.py` | 模型类型映射扩展；`_build_es_create_kwargs` 传递音视频维度；空间类型互斥校验需重写 |
 | `embedding_service.py` | 新增音视频向量化缓存（格式对齐 `emb:{model}:{modal_type}:{hash}`） |
-| `question_generation_service.py` | 图片/视频/音频可考虑复用或跳过 |
+| `question_generation_service.py` | 已由 `_run_post_parse_tail` 统一调用，文本/音频/视频共用；图片分支不生成假设问题 |
 
 ### 4.4 API Routes — 需要修改
 
