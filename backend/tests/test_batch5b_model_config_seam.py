@@ -271,7 +271,7 @@ def test_service_ctor_accepts_model_config_port(mod_name: str, cls_name: str):
     )
 
 
-# ---- document_service / media_processing 静态助手穿参 ----
+# ---- document_pipeline / media_processing 静态助手穿参 ----
 
 _STATIC_HELPERS_DOCUMENT = [
     "_process_image_document_static",

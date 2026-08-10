@@ -24,21 +24,21 @@ CLAUDE.md 两条相关规则合在一起的本意：
 - 多步写需要原子性时，用 `async with self.session.begin_nested():` 包裹。已有好例子：
   - `space_service.create_space`（建空间 + 加 owner 成员）
   - `space_service.delete_space`（级联软删 space/kb/doc/member/audit）
-  - `document_service` 文档上传（create doc + MinIO upload）
-- 不要在路由层 `commit()`（违反「业务逻辑在 service」分层）。已修：`document_routes` 的批次概览端点原在路由层 `db.commit()`，已上提为 `DocumentService.list_batch_overview`。
+  - `document_upload_service` 文档上传（create doc + MinIO upload，见 `upload_document`）
+- 不要在路由层 `commit()`（违反「业务逻辑在 service」分层）。已修：`document_routes` 的批次概览端点原在路由层 `db.commit()`，已上提为 `DocumentTaskService.list_batch_overview`。
 
 ### 例外（刻意设计，勿动）
 - `audit_service.log_action` 用**独立 session**（`get_db_session()`）+ 立即 `commit`：审计日志需在主事务回滚时仍留痕。这是有意行为，有注释自证。
   - 注意：独立 session + 「先审计后业务」的顺序会放大成伪审计（业务失败仍记为成功）。故审计调用应在**业务成功之后**（见 S5 修复）。
 
 ## 已知待跟踪项（不在本规范修复范围）
-- `document_service` 部分后台任务路径用参数 `session` 而非 `self.session` 调用 `commit()`，需确认这些 session 与请求主事务的隔离关系，避免后台任务误提交主请求事务。单独立项核查。
+- `document_pipeline` 部分后台任务路径用参数 `session` 而非 `self.session` 调用 `commit()`，需确认这些 session 与请求主事务的隔离关系，避免后台任务误提交主请求事务。单独立项核查。
 
 > 批次 2 已核查（2026-07）：**隔离安全**。`shared/mq/worker.py:97` 的文档处理入口用
 > `async with get_db_session() as session:` 创建**全新后台 session**，再透传给 static helper
 > `execute_document_pipeline` / `persist_parsed_text` / `_process_image_document_static`
-> 提交（document_service.py:671/1589/1748/1813）。这些 helper 提交的是后台独立 session，
-> 不接触任何请求主事务。`_cancel_batch_enqueue`（L1531）同样用 `get_db_session()` 独立 session。
+> 提交（现位于 `document_pipeline.py`）。这些 helper 提交的是后台独立 session，
+> 不接触任何请求主事务。`_cancel_batch_enqueue`（现位于 `document_task_service.py`）同样用 `get_db_session()` 独立 session。
 > 结论：static helper「commit 参数 session」是正确行为（后台任务自带 session），无需修复。
 > 抽库相关不变式已补：`RetrievalEngine` 绝不持有 session / 绝不 commit（仅 es_client + logger + cache）。
 
