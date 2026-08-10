@@ -217,6 +217,7 @@ _SERVICE_MODULES = [
     "src/features/knowledge_space/services/document_service.py",
     "src/features/knowledge_space/services/document_pipeline.py",
     "src/features/knowledge_space/services/document_upload_service.py",
+    "src/features/knowledge_space/services/document_task_service.py",
     "src/features/knowledge_space/services/media_processing.py",
     "src/features/evaluation/services/evaluation_service.py",
     "src/features/clawmate/core/chat_service.py",

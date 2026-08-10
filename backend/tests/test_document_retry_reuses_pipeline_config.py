@@ -9,12 +9,12 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.features.knowledge_space.models.document_task import TaskStatus
-from novamind.features.knowledge_space.services.document_service import DocumentService
+from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
 
 
 def test_retry_document_reuses_latest_task_pipeline_config():
     async def _run():
-        service = DocumentService.__new__(DocumentService)
+        service = DocumentTaskService.__new__(DocumentTaskService)
         service.session = object()
         service.es_client = SimpleNamespace(delete_document_chunks=AsyncMock())
         service.logger = SimpleNamespace(info=lambda *args, **kwargs: None, warning=lambda *args, **kwargs: None)
@@ -52,7 +52,7 @@ def test_retry_document_reuses_latest_task_pipeline_config():
 
         repo_module.DocumentTaskRepository = _FakeRepo
         try:
-            result = await DocumentService.retry_document(
+            result = await DocumentTaskService.retry_document(
                 service,
                 document_id=18,
                 kb_id=1,
