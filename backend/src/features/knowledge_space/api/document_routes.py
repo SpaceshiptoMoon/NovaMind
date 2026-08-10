@@ -38,8 +38,6 @@ from novamind.features.knowledge_space.schemas.document_task_schema import (
 )
 from novamind.features.knowledge_space.schemas.member_schema import MemberActionResponse
 from novamind.features.knowledge_space.models.space_member import SpaceMember
-from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
 from novamind.core.database.database import get_db
 from novamind.features.knowledge_space.api.dependencies import (
     get_current_user_id,
@@ -401,6 +399,7 @@ async def get_document_tasks_overview(
     limit: Annotated[int, Query(ge=1, le=100, description="返回的最大记录数")] = 20,
     member: SpaceMember = Depends(validate_space_member),
     document_task_service: DocumentTaskService = Depends(get_document_task_service),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
     db: AsyncSession = Depends(get_db),
 ):
     """获取知识库批次任务列表"""
@@ -420,7 +419,7 @@ async def get_document_tasks_overview(
     # 关联文档名：批量按 document_id 查 Documents.filename，回填到每个任务项，
     # 供前端「文档」列展示真实文件名而非占位符（如「文档 24」）。
     document_ids = {item.document_id for task in items for item in task.items}
-    filename_map = await DocumentRepository(db).get_filename_map_by_ids(list(document_ids))
+    filename_map = await document_query_service.get_filename_map(list(document_ids))
     for task in items:
         for task_item in task.items:
             task_item.document_name = filename_map.get(task_item.document_id)
@@ -443,6 +442,7 @@ async def get_document_task_items(
     document_id: Annotated[int, Path(gt=0, description="文档ID")],
     member: SpaceMember = Depends(validate_space_member),
     document_query_service: DocumentQueryService = Depends(get_document_query_service),
+    document_task_service: DocumentTaskService = Depends(get_document_task_service),
     db: AsyncSession = Depends(get_db),
 ):
     """获取文档处理任务列表"""
@@ -454,8 +454,7 @@ async def get_document_task_items(
     if not document or document.kb_id != kb_id:
         raise DocumentNotFoundError(document_id)
 
-    task_repo = DocumentTaskRepository(db)
-    tasks = await task_repo.list_by_document(document_id)
+    tasks = await document_task_service.list_tasks_by_document(document_id)
     task_items = [DocumentTaskItemResponse.model_validate(t) for t in tasks]
     # 回填文档名（document 已在上文校验存在）
     for task_item in task_items:

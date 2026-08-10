@@ -83,8 +83,8 @@ def test_retry_document_allows_same_kb_document():
             return_value={"task_id": 123, "parent_task_id": 456}
         )
 
-        import novamind.features.knowledge_space.repository.document_task_repository as repo_module
-        original = repo_module.DocumentTaskRepository
+        import novamind.features.knowledge_space.services.document_task_service as svc_module
+        original = svc_module.DocumentTaskRepository
 
         class _FakeRepo:
             def __init__(self, session):
@@ -96,7 +96,7 @@ def test_retry_document_allows_same_kb_document():
                     id=99, status=TaskStatus.FAILED, pipeline_config={}, retry_count=0,
                 )
 
-        repo_module.DocumentTaskRepository = _FakeRepo
+        svc_module.DocumentTaskRepository = _FakeRepo
         try:
             result = await DocumentTaskService.retry_document(
                 service,
@@ -107,7 +107,7 @@ def test_retry_document_allows_same_kb_document():
                 batch_note="same-kb retry",
             )
         finally:
-            repo_module.DocumentTaskRepository = original
+            svc_module.DocumentTaskRepository = original
 
         assert result["task_id"] == 123
 

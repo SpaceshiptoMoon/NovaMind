@@ -1,9 +1,9 @@
 """Regression test for the video branch of document_pipeline.execute_document_pipeline.
 
-回归背景：document_service.py 视频分支曾存在 `returnrain`（单个 NAME token，非 `return`），
-导致 `process_video_document` 完成 commit 后立刻抛 NameError，视频处理 100% 必崩。
-原视频测试直接调用 process_video_document 而绕过 execute_document_pipeline，使该 bug 长期隐藏。
-本测试直接驱动 execute_document_pipeline 的视频分支，确保其正常返回、不抛 NameError。
+回归背景：document_pipeline 视频分支（拆分前位于 document_service.py）曾存在 `returnrain`
+（单个 NAME token，非 `return`），导致 `process_video_document` 完成 commit 后立刻抛 NameError，
+视频处理 100% 必崩。原视频测试直接调用 process_video_document 而绕过 execute_document_pipeline，
+使该 bug 长期隐藏。本测试直接驱动 execute_document_pipeline 的视频分支，确保其正常返回、不抛 NameError。
 """
 import asyncio
 from pathlib import Path
@@ -17,6 +17,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 import novamind.features.knowledge_space.services.document_pipeline as ds_module
 from novamind.features.knowledge_space.services.document_pipeline import execute_document_pipeline
+from novamind.features.knowledge_space.models.document_task import TaskStatus
 
 
 def test_execute_pipeline_video_branch_returns_cleanly():
@@ -34,7 +35,7 @@ def test_execute_pipeline_video_branch_returns_cleanly():
         ds_module.KnowledgeBaseRepository = lambda s: kb_repo
 
         # 提供一个已处于 PROCESSING 的 task，避免 mark_processing 副作用
-        task = SimpleNamespace(status=SimpleNamespace(value=1), mark_processing=lambda: None)
+        task = SimpleNamespace(status=TaskStatus.PROCESSING, mark_processing=lambda: None)
 
         # mock 视频处理函数（分支内 from ... import 取到的对象）
         process_video_document = AsyncMock()

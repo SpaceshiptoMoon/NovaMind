@@ -23,7 +23,6 @@ from novamind.features.knowledge_space.repository.knowledge_base_repository impo
     KnowledgeBaseRepository,
 )
 from novamind.features.knowledge_space.repository.member_repository import MemberRepository
-from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
 from novamind.features.knowledge_space.services.permission_service import PermissionService
 from novamind.features.knowledge_space.exceptions import (
     KnowledgeBaseNotFoundError,
@@ -42,11 +41,6 @@ from novamind.features.knowledge_space.converters.doc_converter import (
 from novamind.shared.document.validation import validate_file
 from novamind.features.knowledge_space.schemas.document_schema import UploadedDocumentResult
 from novamind.core.middleware.structured_logging import get_logger
-
-from novamind.features.knowledge_space.services.document_file_types import (
-    SUPPORTED_FILE_TYPES,
-    MODALITY_TO_FILE_TYPES,
-)
 
 
 def _compute_sha256(content: bytes) -> str:
@@ -70,7 +64,6 @@ class DocumentUploadService:
         self.session = session
         self.doc_repo = DocumentRepository(session)
         self.kb_repo = KnowledgeBaseRepository(session)
-        self.space_repo = SpaceRepository(session)
         self.minio_client = minio_client
         self.logger = get_logger(__name__)
         self.member_repo = MemberRepository(session)
@@ -151,7 +144,6 @@ class DocumentUploadService:
             get_effective_space_types,
         )
 
-        await self.space_repo.get_by_id(kb.space_id)
         modalities = get_effective_space_types(kb_config=kb.get_config())
 
         # 计算允许的文件类型合集（任意模态组合自动生效）
@@ -183,27 +175,31 @@ class DocumentUploadService:
         # 8.1 检查是否有同 hash 的已软删除文档（可复用记录）
         soft_deleted = await self.doc_repo.get_deleted_by_hash(kb_id, file_hash)
         if soft_deleted:
-            soft_deleted.undelete(uploader_id=uploader_id, filename=filename)
+            # 复活已软删除记录 + 重新上传 MinIO 用 SAVEPOINT 保证原子性：
+            # 若 MinIO 上传失败，undelete 的 ORM 改动随 SAVEPOINT 自动回滚，
+            # 不会留下"已复活但无对象"的脏记录（与下方新建分支同构）。
+            async with self.session.begin_nested():
+                soft_deleted.undelete(uploader_id=uploader_id, filename=filename)
 
-            # 重新上传 MinIO（软删除时文件已被清理）
-            minio_result = await self.minio_client.upload_document(
-                space_id=kb.space_id,
-                kb_id=kb_id,
-                document_id=soft_deleted.id,
-                file_data=file_content,
-                filename=filename,
-                file_hash=file_hash,
-            )
-            soft_deleted.set_minio_info(
-                bucket=minio_result["bucket"],
-                object_name=minio_result["object_name"],
-                etag=minio_result.get("etag"),
-            )
+                # 重新上传 MinIO（软删除时文件已被清理）
+                minio_result = await self.minio_client.upload_document(
+                    space_id=kb.space_id,
+                    kb_id=kb_id,
+                    document_id=soft_deleted.id,
+                    file_data=file_content,
+                    filename=filename,
+                    file_hash=file_hash,
+                )
+                soft_deleted.set_minio_info(
+                    bucket=minio_result["bucket"],
+                    object_name=minio_result["object_name"],
+                    etag=minio_result.get("etag"),
+                )
+
+            await self.session.commit()
 
             # 更新 hash 缓存（该 hash 现在又有活跃文档了）
             await self.doc_repo.cache_document_hash(kb_id, file_hash, exists=True)
-
-            await self.session.commit()
 
             self.logger.info(
                 "复活已删除文档",

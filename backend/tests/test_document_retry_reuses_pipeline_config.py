@@ -39,9 +39,9 @@ def test_retry_document_reuses_latest_task_pipeline_config():
 
         service._enqueue_document_processing = _fake_enqueue
 
-        import novamind.features.knowledge_space.repository.document_task_repository as repo_module
+        import novamind.features.knowledge_space.services.document_task_service as svc_module
 
-        original_repo = repo_module.DocumentTaskRepository
+        original_repo = svc_module.DocumentTaskRepository
 
         class _FakeRepo:
             def __init__(self, session):
@@ -50,7 +50,7 @@ def test_retry_document_reuses_latest_task_pipeline_config():
             async def get_by_document_id(self, document_id):
                 return latest_task
 
-        repo_module.DocumentTaskRepository = _FakeRepo
+        svc_module.DocumentTaskRepository = _FakeRepo
         try:
             result = await DocumentTaskService.retry_document(
                 service,
@@ -61,7 +61,7 @@ def test_retry_document_reuses_latest_task_pipeline_config():
                 batch_note="manual retry",
             )
         finally:
-            repo_module.DocumentTaskRepository = original_repo
+            svc_module.DocumentTaskRepository = original_repo
 
         assert result["task_id"] == 123
         assert captured["log_label"] == "重试"

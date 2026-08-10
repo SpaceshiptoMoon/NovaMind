@@ -112,11 +112,12 @@ async def execute_document_pipeline(
         return
 
     # 获取或确保任务记录
+    from novamind.features.knowledge_space.models.document_task import TaskStatus
+
     if task is None:
         from novamind.features.knowledge_space.repository.document_task_repository import (
             DocumentTaskRepository,
         )
-        from novamind.features.knowledge_space.models.document_task import TaskStatus
 
         _task_repo = DocumentTaskRepository(session)
         task = await _task_repo.get_by_document_id(document_id)
@@ -131,7 +132,7 @@ async def execute_document_pipeline(
                     "queued_at": now_china(),
                 }
             )
-    if task.status.value not in (1,):  # not already PROCESSING
+    if task.status != TaskStatus.PROCESSING:
         task.mark_processing()
 
     kb = await kb_repo.get_by_id(document.kb_id)
@@ -302,7 +303,8 @@ async def persist_parsed_text(
     Returns:
         MinIO object_name；文本为空或上传失败时返回空字符串。
     """
-    # 批次 6a-5：minio_client 由宿主装配获取后注入引擎函数（引擎不再 import ClientFactory）
+    # persist_parsed_text 属于 feature 层（非 engines/），经 ClientFactory 取 MinIO 客户端；
+    # upload_parsed_text_to_minio 负责实际上传，随后立即 commit 落库。
     from novamind.shared.storage.client_factory import ClientFactory
     minio_client = await ClientFactory.get_minio_client()
     object_name = await upload_parsed_text_to_minio(
