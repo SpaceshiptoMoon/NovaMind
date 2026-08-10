@@ -10,7 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from novamind.features.qa.services.ai_chat_service import AIChatService
 from novamind.features.user.api.dependencies import get_model_config_service
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.shared.storage.client_factory import get_minio_client
+from novamind.shared.storage.client_factory import get_minio_client, get_elasticsearch_client
+from novamind.features.knowledge_space.services.search_service import SearchService
+from novamind.features.knowledge_space.adapters.retrieval_adapter import as_retrieval_port
+from novamind.features.knowledge_space.adapters.document_ingestion_adapter import (
+    as_document_ingestion_port,
+)
 
 logger = get_logger(__name__)
 
@@ -69,11 +74,20 @@ async def get_aichat_service(
 
     通过 ModelConfigService 动态获取模型客户端。
     llm_model 为 None 时使用用户默认模型。
+
+    装配点（批次 5-B2）：检索端口与文档摄入端口在此构造后注入，
+    AIChatService 不再内部懒构造。
     """
     minio_client = await get_minio_client()
+    es_client = await get_elasticsearch_client()
+    search_service = SearchService(db, es_client, model_config_service)
+    retrieval_port = as_retrieval_port(search_service)
+    ingestion_port = as_document_ingestion_port()
     return AIChatService(
         qa_service=qa_service,
         model_config_service=model_config_service,
         db=db,
         minio_client=minio_client,
+        retrieval_port=retrieval_port,
+        document_ingestion_port=ingestion_port,
     )
