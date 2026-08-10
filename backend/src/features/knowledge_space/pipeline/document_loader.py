@@ -7,11 +7,11 @@ from novamind.shared.document.readers.docx_reader import DocxReader
 from novamind.shared.document.readers.txt_reader import TxtReader
 from novamind.shared.document.readers.html_reader import HTMLReader
 from novamind.shared.document.readers.md_reader import MarkdownReader
-from novamind.features.knowledge_space.splitters.base_splitter import BaseSplitter
-from novamind.features.knowledge_space.splitters.recursive_splitter import RecursiveCharacterSplitter
-from novamind.features.knowledge_space.splitters.semantic_splitter import SemanticSplitter
-from novamind.features.knowledge_space.splitters.fixed_size_splitter import FixedSizeSplitter
-from novamind.features.knowledge_space.splitters.markdown_splitter import MarkdownSplitter
+from novamind.engines.document.splitters.base_splitter import BaseSplitter
+from novamind.engines.document.splitters.recursive_splitter import RecursiveCharacterSplitter
+from novamind.engines.document.splitters.semantic_splitter import SemanticSplitter
+from novamind.engines.document.splitters.fixed_size_splitter import FixedSizeSplitter
+from novamind.engines.document.splitters.markdown_splitter import MarkdownSplitter
 from novamind.features.knowledge_space.integrations.deepdoc import DeepDocEngine, DeepDocParser, DeepDocParseResult, strip_position_tags
 from novamind.shared.ai_models.base_model import BaseEmbedding
 from novamind.shared.logging import get_logger

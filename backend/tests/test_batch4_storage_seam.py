@@ -26,7 +26,7 @@ _ENGINE_STORAGE_MODULES = [
     "novamind.shared.storage.elasticsearch_client",
     "novamind.shared.storage.minio_client",
     "novamind.shared.config",
-    "novamind.features.knowledge_space.media.audio.audio_utils",
+    "novamind.engines.document.media.audio.audio_utils",
 ]
 
 _FORBIDDEN_PREFIXES = ("novamind.setting", "novamind.features")
@@ -99,7 +99,7 @@ def test_audio_config_defaults():
 def test_audio_utils_resolve_accepts_audio_config():
     """_resolve_local_whisper_model_dir 接受 AudioConfig 并遵循优先级。"""
     from novamind.shared.config import AudioConfig
-    from novamind.features.knowledge_space.media.audio.audio_utils import (
+    from novamind.engines.document.media.audio.audio_utils import (
         _resolve_local_whisper_model_dir,
     )
 

@@ -15,7 +15,7 @@ def test_document_reader_compat_modules_reexport_new_implementations():
     from novamind.shared.document.readers.docx_reader import DocxReader
     from novamind.shared.document.readers.pdf_reader import PDFReader
     from novamind.shared.document.readers.executor import run_in_executor
-    from novamind.features.knowledge_space.splitters.recursive_splitter import RecursiveCharacterSplitter
+    from novamind.engines.document.splitters.recursive_splitter import RecursiveCharacterSplitter
 
     assert DocumentProcessor is not None
     assert BaseReader is not None
@@ -26,9 +26,9 @@ def test_document_reader_compat_modules_reexport_new_implementations():
 
 
 def test_media_compat_modules_reexport_new_implementations():
-    from novamind.features.knowledge_space.media.audio import transcribe_audio_local
-    from novamind.features.knowledge_space.media.video import extract_video_frames
-    from novamind.features.knowledge_space.media.vlm import build_vlm_image_messages
+    from novamind.engines.document.media.audio import transcribe_audio_local
+    from novamind.engines.document.media.video import extract_video_frames
+    from novamind.engines.document.media.vlm import build_vlm_image_messages
 
     assert extract_video_frames is not None
     assert transcribe_audio_local is not None

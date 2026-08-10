@@ -243,7 +243,7 @@ def test_6a4_review_status_identity_between_neutral_and_orm():
 
 def test_6a5_audio_utils_has_no_shared_clients_import():
     """6a-5：audio_utils 不得 import ``shared.clients``（minio_client 改构造器/参数注入）。"""
-    p = SRC / "features" / "knowledge_space" / "media" / "audio" / "audio_utils.py"
+    p = SRC / "engines" / "document" / "media" / "audio" / "audio_utils.py"
     bad = [
         m
         for m in _imports_in(p)
@@ -254,7 +254,7 @@ def test_6a5_audio_utils_has_no_shared_clients_import():
 
 def test_6a5_audio_utils_minio_client_is_keyword_injected():
     """6a-5：两个函数 ``minio_client`` 为关键字必传（KEYWORD_ONLY）注入。"""
-    from novamind.features.knowledge_space.media.audio.audio_utils import (
+    from novamind.engines.document.media.audio.audio_utils import (
         upload_parsed_text_to_minio,
         transcribe_audio_with_dashscope,
     )

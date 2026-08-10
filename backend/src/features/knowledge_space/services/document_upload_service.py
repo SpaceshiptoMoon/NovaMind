@@ -34,7 +34,7 @@ from novamind.features.knowledge_space.exceptions import (
     SpaceAccessDeniedError,
 )
 from novamind.shared.storage.minio_client import MinioClient
-from novamind.features.knowledge_space.converters.doc_converter import (
+from novamind.engines.document.converters.doc_converter import (
     convert_doc_to_docx,
     DocConversionError,
 )

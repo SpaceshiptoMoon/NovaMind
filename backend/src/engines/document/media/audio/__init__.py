@@ -1,4 +1,4 @@
-from novamind.features.knowledge_space.media.audio.audio_utils import (
+from novamind.engines.document.media.audio.audio_utils import (
     _asr_busy_lock,
     acquire_asr_or_busy,
     is_local_asr_busy,

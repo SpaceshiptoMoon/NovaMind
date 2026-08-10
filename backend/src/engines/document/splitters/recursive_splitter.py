@@ -1,6 +1,6 @@
 import re
 from typing import List, Dict, Optional
-from novamind.features.knowledge_space.splitters.base_splitter import BaseSplitter
+from novamind.engines.document.splitters.base_splitter import BaseSplitter
 
 
 class RecursiveCharacterSplitter(BaseSplitter):
