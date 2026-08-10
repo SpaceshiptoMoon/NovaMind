@@ -58,7 +58,7 @@ Main backend areas:
 - `backend/src/core/`: app factory, middleware, lifecycle, database, security, shared runtime infrastructure
 - `backend/src/features/`: feature-oriented domain modules
 - `backend/src/setting/`: configuration loading and YAML config assets
-- `backend/src/shared/`: reusable shared capabilities, including `ai_models/`, `cache/`, `clients/`, `mq/`, `storage/`, `prompts/`, `utils/`, `document/`
+- `backend/src/shared/`: reusable shared capabilities, including `ai_models/`, `cache/`, `mq/`, `storage/`（含 `client_factory/`：ES/MinIO/Redis 客户端工厂）, `prompts/`, `utils/`, `document/`
 
 ### `novamind` import root (compatibility shim)
 
