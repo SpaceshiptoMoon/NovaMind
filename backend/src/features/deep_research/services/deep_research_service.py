@@ -22,6 +22,7 @@ from novamind.features.deep_research.models.research_session import (
     ExternalSearchProvider,
 )
 from novamind.engines.deep_research.types import SearchSource
+from novamind.engines.deep_research.errors import EngineInvalidResearchQueryError
 from novamind.features.deep_research.repository.research_repository import ResearchRepository
 from novamind.shared.search import (
     DuckDuckGoSearchService,
@@ -193,6 +194,14 @@ class DeepResearchService:
         self._init_external_search_services()
 
         self.logger = get_logger(__name__)
+
+        # A-2：核心研究机制（查询分析/任务分解/综合）委托无状态 DeepResearchEngine；
+        # prompt 经注入的 PromptProvider（HostPromptProvider 委托 PromptManager）取模板。
+        from novamind.engines.prompt_provider_adapter import as_prompt_provider
+        from novamind.engines.deep_research import DeepResearchEngine
+
+        self._prompt_provider = as_prompt_provider()
+        self._engine = DeepResearchEngine(logger=self.logger)
 
     @property
     def search_port(self) -> RetrievalPort:
@@ -455,6 +464,9 @@ class DeepResearchService:
             await self._execute_research_search(ctx)
             await self._synthesize_and_save_report(ctx)
             return self._build_research_result(ctx)
+        except EngineInvalidResearchQueryError as e:
+            # E2：引擎级查询错映射为 feature 异常，避免落 generic 分支丢具体信息
+            raise InvalidResearchQueryError(str(e)) from e
         except DeepResearchError as e:
             await self._handle_research_error(ctx, e)
             raise ResearchFailedError(ctx.session_id, str(e)) from e
@@ -626,6 +638,13 @@ class DeepResearchService:
                 "sources": key_sources,
             })
 
+        except EngineInvalidResearchQueryError as e:
+            # E2：引擎级查询错映射为 feature 异常，避免落 generic 分支丢具体信息
+            yield send_event("error", {
+                "message": str(e),
+                "session_id": ctx.session_id,
+            })
+            return
         except DeepResearchError as e:
             await self._handle_research_error(ctx, e)
             yield send_event("error", {"message": str(e), "session_id": ctx.session_id})
@@ -638,22 +657,13 @@ class DeepResearchService:
     # ==================== 私有方法 ====================
 
     async def _analyze_query(self, query: str, user_id: int = None, llm_model: str = None) -> str:
-        """分析查询，提取研究主题"""
+        """分析查询，提取研究主题（薄委托 DeepResearchEngine.analyze_query）。
+
+        feature 入口 sanitize（抛 InvalidResearchQueryError），引擎接已 sanitize 的 query。
+        """
         safe_query = _sanitize_user_input(query)
-        prompt = PromptManager.format_prompt(
-            "research_analyze_query",
-            query=safe_query,
-        )
-
         llm = await self._get_llm_client(user_id, llm_model)
-        result = await llm.generate_text(
-            prompt=prompt,
-            max_tokens=100,
-            temperature=0.3,
-            enable_thinking=False,
-        )
-
-        return result.strip()
+        return await self._engine.analyze_query(llm, self._prompt_provider, safe_query)
 
     async def _decompose_tasks(
         self,
@@ -663,52 +673,16 @@ class DeepResearchService:
         user_id: int = None,
         llm_model: str = None,
     ) -> List[Dict[str, Any]]:
-        """分解研究任务"""
+        """分解研究任务（薄委托 DeepResearchEngine.decompose_tasks）。
+
+        feature 入口 sanitize query/topic；引擎接 depth 整数与已 sanitize 输入。
+        """
         safe_query = _sanitize_user_input(query)
         safe_topic = _sanitize_user_input(research_topic)
-        prompt = PromptManager.format_prompt(
-            "research_decompose_tasks",
-            research_topic=safe_topic,
-            query=safe_query,
-            depth=depth,
-        )
-
         llm = await self._get_llm_client(user_id, llm_model)
-        result = await llm.generate_text(
-            prompt=prompt,
-            max_tokens=1000,
-            temperature=0.5,
-            enable_thinking=False,
+        return await self._engine.decompose_tasks(
+            llm, self._prompt_provider, safe_query, safe_topic, depth
         )
-
-        try:
-            # 尝试解析 JSON
-            json_pattern = r'\[[\s\S]*\]'
-            matches = re.findall(json_pattern, result)
-            if not matches:
-                raise json.JSONDecodeError("未找到 JSON 数组", result, 0)
-            json_match = matches[0]
-            tasks = json.loads(json_match)
-            # 校验每个 task 是否包含必填字段
-            validated_tasks = []
-            for i, task in enumerate(tasks[:depth]):
-                validated_tasks.append({
-                    "task_id": task.get("task_id") or task.get("id") or f"task_{i+1}",
-                    "description": task.get("description", f"研究 {research_topic} 的第 {i+1} 个方面"),
-                    "priority": task.get("priority", i + 1),
-                })
-            return validated_tasks
-        except (json.JSONDecodeError, ValueError) as e:
-            # 降级：生成默认任务
-            self.logger.warning("LLM 任务分解 JSON 解析失败，使用默认任务", error=str(e))
-            return [
-                {
-                    "task_id": f"task_{i+1}",
-                    "description": f"研究 {research_topic} 的第 {i+1} 个方面",
-                    "priority": i + 1,
-                }
-                for i in range(depth)
-            ]
 
     # ==================== 管线方法 ====================
 
@@ -1109,36 +1083,25 @@ class DeepResearchService:
         user_id: int = None,
         llm_model: str = None,
     ) -> tuple:
-        """综合信息生成报告（非流式）"""
-        context = self._format_search_context(search_results.get("results", []))
-        key_sources = search_results.get("summary", {}).get("key_sources", [])
+        """综合信息生成报告（非流式，薄委托 DeepResearchEngine.synthesize_report）。
 
+        feature 入口 sanitize query/topic；引擎自 results 格式化 context。
+        """
         safe_query = _sanitize_user_input(query)
         safe_topic = _sanitize_user_input(research_topic)
-        key_sources_str = chr(10).join(f"- {s}" for s in key_sources) if key_sources else "无外部来源"
-        prompt = PromptManager.format_prompt(
-            "research_synthesize_report",
+        llm = await self._get_llm_client(user_id, llm_model)
+        results = search_results.get("results", [])
+        key_sources = search_results.get("summary", {}).get("key_sources", [])
+        return await self._engine.synthesize_report(
+            llm, self._prompt_provider,
             query=safe_query,
             research_topic=safe_topic,
-            context=context,
-            key_sources=key_sources_str,
-        )
-
-        llm = await self._get_llm_client(user_id, llm_model)
-        report = await llm.generate_text(
-            prompt=prompt,
+            results=results,
+            key_sources=key_sources,
             max_tokens=max_tokens,
             temperature=temperature,
             top_p=top_p,
-            enable_thinking=False,
         )
-
-        metadata = {
-            "report_length": len(report),
-            "sources_count": len(key_sources),
-        }
-
-        return report, metadata
 
     async def _synthesize_report_stream(
         self,
@@ -1152,28 +1115,26 @@ class DeepResearchService:
         user_id: int = None,
         llm_model: str = None,
     ) -> AsyncGenerator[str, None]:
-        """综合信息生成报告（流式）"""
+        """综合信息生成报告（流式，薄委托 DeepResearchEngine.synthesize_report_stream）。
+
+        feature 入口 sanitize query/topic（topic sanitize 失败降级原始值）；context 由
+        调用方预格式化（stream 路径在调用前已格式化），引擎直接消费。
+        """
         safe_query = _sanitize_user_input(query)
         try:
             safe_topic = _sanitize_user_input(research_topic)
         except Exception:
             self.logger.warning("research_topic sanitize 失败，使用原始值", topic=research_topic)
             safe_topic = research_topic or ""
-        key_sources_str = chr(10).join(f"- {s}" for s in key_sources) if key_sources else "无外部来源"
-        prompt = PromptManager.format_prompt(
-            "research_synthesize_report_stream",
+        llm = await self._get_llm_client(user_id, llm_model)
+        async for chunk in self._engine.synthesize_report_stream(
+            llm, self._prompt_provider,
             query=safe_query,
             research_topic=safe_topic,
             context=context,
-            key_sources=key_sources_str,
-        )
-
-        llm = await self._get_llm_client(user_id, llm_model)
-        async for chunk in llm.generate_text_stream(
-            prompt=prompt,
+            key_sources=key_sources,
             max_tokens=max_tokens,
             temperature=temperature,
             top_p=top_p,
-            enable_thinking=False,
         ):
             yield chunk

@@ -209,3 +209,129 @@ def test_deep_research_service_reexports_search_source_from_engine():
                     assert alias.name != "SearchSource", (
                         f"{rel} 仍从 models.research_session import SearchSource（应改自引擎 re-export）"
                     )
+
+
+# ---- A-2：DeepResearchEngine LLM 方法按调用接 client/provider ----
+
+
+def test_deep_research_engine_methods_present():
+    """DeepResearchEngine 暴露 analyze_query/decompose_tasks/synthesize_report/synthesize_report_stream。"""
+    from novamind.engines.deep_research.engine import DeepResearchEngine
+
+    for name in (
+        "analyze_query",
+        "decompose_tasks",
+        "synthesize_report",
+        "synthesize_report_stream",
+    ):
+        assert hasattr(DeepResearchEngine, name), (
+            f"DeepResearchEngine 缺少 LLM 方法: {name}"
+        )
+
+
+def test_deep_research_engine_llm_methods_accept_llm_and_prompt_provider():
+    """analyze_query/decompose_tasks/synthesize_report[_stream] 按调用接 llm_client + prompt_provider（AgentEngine 风格）。"""
+    from novamind.engines.deep_research.engine import DeepResearchEngine
+    from novamind.shared.ai_models.llm import BaseLLM
+    from novamind.engines.ports import PromptProvider
+
+    for name in ("analyze_query", "decompose_tasks", "synthesize_report", "synthesize_report_stream"):
+        fn = getattr(DeepResearchEngine, name)
+        params = inspect.signature(fn).parameters
+        # 首参 self（unbound method），次参 llm_client（位置），再次 prompt_provider（位置）；其余 keyword-only
+        param_list = [p for p in params.values() if p.name != "self"]
+        assert param_list[0].name == "llm_client", (
+            f"{name} 首参（除 self）应为 llm_client，实际: {param_list[0].name}"
+        )
+        assert param_list[1].name == "prompt_provider", (
+            f"{name} 次参应为 prompt_provider，实际: {param_list[1].name}"
+        )
+
+
+def test_deep_research_engine_decompose_tasks_takes_depth_int():
+    """decompose_tasks 接 depth（int），不接 ResearchMode（feature DTO）。"""
+    from novamind.engines.deep_research.engine import DeepResearchEngine
+
+    fn = DeepResearchEngine.decompose_tasks
+    params = inspect.signature(fn).parameters
+    assert "depth" in params, "decompose_tasks 应接 depth 参数"
+    # 不应有 research_mode 参数
+    assert "research_mode" not in params, (
+        "decompose_tasks 不应接 research_mode（feature DTO，引擎不感知业务枚举）"
+    )
+
+
+def test_deep_research_engine_synthesize_report_derives_context_internally():
+    """synthesize_report 接 results（在引擎内 format_search_context），不接预格式化 context。
+
+    与 synthesize_report_stream（接预格式化 context）非对称：stream 路径在 feature 调用前已格式化。
+    """
+    from novamind.engines.deep_research.engine import DeepResearchEngine
+
+    fn = DeepResearchEngine.synthesize_report
+    params = inspect.signature(fn).parameters
+    assert "results" in params, "synthesize_report 应接 results 参数（引擎内派生 context）"
+    # 非流式不应接预格式化 context（应自 results 派生）
+    assert "context" not in params, (
+        "synthesize_report 不应接预格式化 context（应在引擎内自 results 派生）"
+    )
+
+    # 流式接预格式化 context（非对称，调用方已格式化）
+    stream_fn = DeepResearchEngine.synthesize_report_stream
+    stream_params = inspect.signature(stream_fn).parameters
+    assert "context" in stream_params, (
+        "synthesize_report_stream 应接预格式化 context（stream 路径调用前已格式化）"
+    )
+
+
+def test_deep_research_engine_ctor_no_business_context():
+    """DeepResearchEngine.__init__ 不接 ResearchContext / ORM / repo（仅可选 logger）。"""
+    from novamind.engines.deep_research.engine import DeepResearchEngine
+
+    params = inspect.signature(DeepResearchEngine.__init__).parameters
+    # 仅 self + logger（keyword-only）
+    param_names = set(params.keys()) - {"self"}
+    assert param_names == {"logger"}, (
+        f"DeepResearchEngine.__init__ 应仅接 logger，实际: {param_names}"
+    )
+    assert params["logger"].kind == inspect.Parameter.KEYWORD_ONLY, (
+        "logger 应为 keyword-only"
+    )
+
+
+def test_deep_research_service_proxies_llm_methods():
+    """service 的 _analyze_query/_decompose_tasks/_synthesize_report[_stream] 薄委托 DeepResearchEngine。
+
+    service 方法仍保留原签名（调用点不变），体内 sanitize + 取 llm + 委托 engine。
+    """
+    from novamind.features.deep_research.services.deep_research_service import DeepResearchService
+
+    for name in ("_analyze_query", "_decompose_tasks", "_synthesize_report", "_synthesize_report_stream"):
+        assert hasattr(DeepResearchService, name), (
+            f"DeepResearchService 缺少薄委托方法: {name}"
+        )
+
+    # service 构造器装配了 engine + prompt_provider
+    service_src = inspect.getsource(DeepResearchService)
+    assert "self._engine" in service_src, "service 应装配 self._engine"
+    assert "self._prompt_provider" in service_src, "service 应装配 self._prompt_provider"
+    assert "DeepResearchEngine(" in service_src, "service 应构造 DeepResearchEngine 实例"
+
+
+def test_deep_research_service_maps_engine_error_to_feature_error():
+    """E2：service 在 research/research_stream 边界捕获 EngineInvalidResearchQueryError → InvalidResearchQueryError。"""
+    service_src = (
+        BACKEND_ROOT / "src/features/deep_research/services/deep_research_service.py"
+    ).read_text(encoding="utf-8")
+
+    assert "EngineInvalidResearchQueryError" in service_src, (
+        "service 应 import EngineInvalidResearchQueryError 用于边界映射"
+    )
+    # research() 与 research_stream() 均应有 except EngineInvalidResearchQueryError 分支
+    # 统计出现次数：import 1 + research 1 + research_stream 1 = 3
+    assert service_src.count("except EngineInvalidResearchQueryError") >= 2, (
+        "research() 与 research_stream() 均应捕获 EngineInvalidResearchQueryError（>=2 处）"
+    )
+    assert "raise InvalidResearchQueryError(str(e))" in service_src, (
+        "应将 EngineInvalidResearchQueryError 映射为 InvalidResearchQueryError"
+    )
