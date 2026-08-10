@@ -1,11 +1,12 @@
 """跨 feature 文档摄入端口。
 
 供 ``features/qa`` 等需要从上传文件（PDF/DOCX/...）提取文本的 feature 经抽象端口
-调用知识库解析能力（``features/knowledge_space/pipeline/DocumentProcessor``），
-切断 ``features.qa → features.knowledge_space.pipeline`` 直接 import 边。
+调用文档解析能力（``engines/document/pipeline/DocumentProcessor``），
+切断 ``features.qa → features.knowledge_space`` feature 间直接 import 边。
 
-端口为纯 Protocol（契约），不依赖任何 feature 实现；实现由
-``features/knowledge_space/adapters/document_ingestion_adapter.py`` 提供。
+端口为纯 Protocol（契约），不依赖任何 feature/engine 实现；实现由
+``features/knowledge_space/adapters/document_ingestion_adapter.py`` 提供
+（装配 ``engines.document.pipeline.DocumentProcessor``）。
 """
 from __future__ import annotations
 

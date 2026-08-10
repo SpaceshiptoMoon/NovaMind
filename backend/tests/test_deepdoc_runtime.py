@@ -54,7 +54,7 @@ from novamind.engines.document.integrations.deepdoc.vision_runtime import (
     get_vision_runtime_status,
     run_vision_smoke_check,
 )
-from novamind.features.knowledge_space.pipeline import DocumentProcessor
+from novamind.engines.document.pipeline import DocumentProcessor
 
 
 def _run(coro):

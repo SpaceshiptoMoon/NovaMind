@@ -43,7 +43,7 @@ from novamind.features.knowledge_space.exceptions import (
 )
 from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
-from novamind.features.knowledge_space.pipeline import DocumentProcessor
+from novamind.engines.document.pipeline import DocumentProcessor
 from novamind.engines.document.media.audio import upload_parsed_text_to_minio
 from novamind.engines.document.media.vlm import (
     build_vlm_image_messages,

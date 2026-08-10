@@ -77,16 +77,16 @@ If code is only used by one feature and expresses domain behavior, keep it in th
 
 Canonical homes:
 
-- `src/features/knowledge_space/`: domain layer for documents, KB config, tasks, chunk lifecycle, APIs
-- `src/features/knowledge_space/pipeline/`: document parsing pipeline (DocumentLoader/DocumentProcessor/DocumentRegistry)
-- `src/features/knowledge_space/splitters/`: chunk splitters (recursive/semantic/fixed/markdown)
-- `src/features/knowledge_space/converters/`: document format converters
-- `src/features/knowledge_space/media/`: audio/video/image multimodal processing (VLM/OCR/audio/video)
-- `src/features/knowledge_space/integrations/deepdoc/`: DeepDoc-specific implementation (vendored, self-contained)
+- `src/features/knowledge_space/`: domain layer for documents, KB config, tasks, chunk lifecycle, APIs (business logic; parsing/chunking/multimodal engines live in `engines/document/`)
+- `src/engines/document/pipeline/`: document parsing pipeline (DocumentLoader/DocumentProcessor/DocumentRegistry) — reusable engines-layer component
+- `src/engines/document/splitters/`: chunk splitters (recursive/semantic/fixed/markdown)
+- `src/engines/document/converters/`: document format converters
+- `src/engines/document/media/`: audio/video/image multimodal processing (VLM/OCR/audio/video)
+- `src/engines/document/integrations/deepdoc/`: DeepDoc-specific implementation (vendored, self-contained)
 - `src/shared/document/readers/`: cross-feature document readers (PDF/DOCX/TXT/HTML/MD) — reused by app/qa/knowledge_space
 - `src/shared/document/validation/`: cross-feature file validation (FileInfo/FileValidator) — reused by qa/knowledge_space
 
-Do not duplicate parsing logic under both `shared/document/` and `features/knowledge_space/`. Knowledge-base-specific parsing (pipeline/splitters/converters/media/deepdoc) lives in `features/knowledge_space/`; only truly cross-feature readers & validation stay in `shared/document/`.
+Do not duplicate parsing logic under both `shared/document/` and `engines/document/`. Document-processing engines (pipeline/splitters/converters/media/deepdoc) live in `engines/document/` as reusable components any feature may import (`features → engines` allowed); `features/knowledge_space/` retains only business logic and orchestrates them via ports. Only truly cross-feature readers & validation stay in `shared/document/`.
 
 ## Import Rules
 

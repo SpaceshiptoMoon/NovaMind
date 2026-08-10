@@ -17,7 +17,7 @@ from novamind.features.knowledge_space.services.knowledge_base_service import Kn
 from novamind.engines.document.integrations.deepdoc.core.engine import DeepDocEngine
 from novamind.engines.document.integrations.deepdoc.core.models import DeepDocParseResult
 from novamind.engines.document.integrations.deepdoc.server import create_deepdoc_app
-from novamind.features.knowledge_space.pipeline import DocumentProcessor
+from novamind.engines.document.pipeline import DocumentProcessor
 
 
 def _build_minimal_pdf_bytes(text: str) -> bytes:
