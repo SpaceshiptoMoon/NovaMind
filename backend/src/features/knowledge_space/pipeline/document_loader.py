@@ -12,7 +12,7 @@ from novamind.engines.document.splitters.recursive_splitter import RecursiveChar
 from novamind.engines.document.splitters.semantic_splitter import SemanticSplitter
 from novamind.engines.document.splitters.fixed_size_splitter import FixedSizeSplitter
 from novamind.engines.document.splitters.markdown_splitter import MarkdownSplitter
-from novamind.features.knowledge_space.integrations.deepdoc import DeepDocEngine, DeepDocParser, DeepDocParseResult, strip_position_tags
+from novamind.engines.document.integrations.deepdoc import DeepDocEngine, DeepDocParser, DeepDocParseResult, strip_position_tags
 from novamind.shared.ai_models.base_model import BaseEmbedding
 from novamind.shared.logging import get_logger
 

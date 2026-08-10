@@ -19,10 +19,10 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.features.knowledge_space.integrations.deepdoc.core.models import (
+from novamind.engines.document.integrations.deepdoc.core.models import (
     strip_position_tags,
 )
-from novamind.features.knowledge_space.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
+from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
 
 pytestmark = pytest.mark.unit
 

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from novamind.features.knowledge_space.integrations.deepdoc.compat.upstream import (
+from novamind.engines.document.integrations.deepdoc.compat.upstream import (
     LOCAL_ADAPTATION_SOURCE_MAP,
     UPSTREAM_SOURCE_MAP,
     get_upstream_deepdoc_snapshot,
@@ -12,7 +12,7 @@ from novamind.features.knowledge_space.integrations.deepdoc.compat.upstream impo
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEEPDOC_ROOT = REPO_ROOT / "backend" / "src" / "shared" / "knowledge" / "integrations" / "deepdoc"
+DEEPDOC_ROOT = REPO_ROOT / "backend" / "src" / "engines" / "document" / "integrations" / "deepdoc"
 UPSTREAM_ROOT = REPO_ROOT / ".tmp_ragflow_upstream"
 
 
