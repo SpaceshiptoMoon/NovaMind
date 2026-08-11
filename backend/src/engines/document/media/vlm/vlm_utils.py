@@ -26,6 +26,27 @@ def build_vlm_image_messages(file_bytes: bytes, mime_type: str, text_prompt: str
     }]
 
 
+def build_vlm_multi_image_messages(
+    frames_bytes: List[bytes],
+    mime_type: str,
+    text_prompt: str,
+) -> List[Dict[str, Any]]:
+    """构建 OpenAI 兼容格式的多图多模态消息（grouped 策略用）。
+
+    content 列表含多个 ``image_url`` 项（按帧顺序）+ 一个 ``text`` 项。
+    部分 VLM 提供商不支持多图输入，调用方捕获异常后应降级为逐帧单图描述。
+    """
+    content: List[Dict[str, Any]] = [
+        {
+            "type": "image_url",
+            "image_url": {"url": build_image_data_url(fb, mime_type)},
+        }
+        for fb in frames_bytes
+    ]
+    content.append({"type": "text", "text": text_prompt})
+    return [{"role": "user", "content": content}]
+
+
 async def generate_vlm_text_with_fallback(
     vlm_client,
     messages: List[Dict[str, Any]],
