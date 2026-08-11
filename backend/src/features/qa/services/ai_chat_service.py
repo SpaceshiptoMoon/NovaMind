@@ -25,11 +25,14 @@ if TYPE_CHECKING:
     from novamind.shared.document.ports import DocumentIngestionPort
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.shared.search_config_ports import SearchConfigPort
 from novamind.shared.prompts.templates import PromptManager
 from novamind.shared.utils.heartbeat import stream_with_heartbeat_structured
 from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
 from novamind.features.qa.services.qa_service import QAService
 from novamind.engines.prompt_provider_adapter import HostPromptProvider
+from novamind.engines.search_errors import WebSearchError
+from novamind.engines.search_ports import WebSearchPort, build_web_search_port_from_provider
 from novamind.features.qa.schemas.qa import QARequest
 from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
 from novamind.features.qa.exceptions import (
@@ -84,6 +87,7 @@ class AIChatService:
         minio_client: Optional["MinioClient"] = None,
         retrieval_port: Optional["RetrievalPort"] = None,
         document_ingestion_port: Optional["DocumentIngestionPort"] = None,
+        search_config_port: Optional[SearchConfigPort] = None,
     ):
         """
         初始化 AI Chat 服务
@@ -97,6 +101,8 @@ class AIChatService:
                 包 SearchService）
             document_ingestion_port: 文档摄入端口（R3 接缝；装配点注入
                 HostDocumentIngestionPort 包 DocumentProcessor）
+            search_config_port: 搜索配置端口（批2 接缝；装配点注入
+                as_search_config_port，按用户级搜索配置择优 provider，未命中回退 YAML）
         """
         self.qa_service = qa_service
         self.model_config_service = model_config_service
@@ -107,6 +113,7 @@ class AIChatService:
         self._token_counter = TokenCounter()
         self._retrieval_port = retrieval_port
         self._document_ingestion_port = document_ingestion_port
+        self._search_config_port = search_config_port
         self._prompt_provider = HostPromptProvider()
 
     async def _get_llm_client(
@@ -496,7 +503,7 @@ class AIChatService:
 
         if enable_web_search:
             try:
-                res = await self._retrieve_web(query=query, max_results=5)
+                res = await self._retrieve_web(query=query, user_id=user_id, max_results=5)
                 if res:
                     raw_sources.extend(res[1])
                     self.logger.info("联网搜索完成", count=len(res[1]))
@@ -593,23 +600,37 @@ class AIChatService:
             s["index"] = i
         return deduped, raw_count
 
-    async def _retrieve_web(self, query: str, max_results: int = 5) -> Optional[Tuple[str, List[dict]]]:
-        """联网搜索，返回 (参考资料块文本, 结构化来源列表)。复用 shared.clients.search 的 DuckDuckGo 服务"""
-        from novamind.setting.yaml_config import get_config
-        from novamind.shared.config import DuckDuckGoSearchConfig
-        from novamind.shared.storage.client_factory.search.duckduckgo_service import (
-            DuckDuckGoSearchService,
-        )
+    async def _retrieve_web(
+        self,
+        query: str,
+        user_id: int,
+        max_results: int = 5,
+    ) -> Optional[Tuple[str, List[dict]]]:
+        """联网搜索，返回 (参考资料块文本, 结构化来源列表)。
 
-        ddg = get_config().external_search.duckduckgo
-        service = DuckDuckGoSearchService(
-            DuckDuckGoSearchConfig(
-                max_results=ddg.max_results,
-                timeout=ddg.timeout,
-            )
+        按用户级搜索配置择优 provider，未命中则回退 YAML 全局配置；任一失败降级返回 None。
+        web source 含 score 字段（供 trace/排序）。修复：原错误 import
+        ``novamind.shared.storage.client_factory.search.duckduckgo_service``（client_factory
+        是单文件模块不是包）致 ImportError 被外层 try/except 静默吞掉，联网搜索形同失效。
+        """
+        port = await self._resolve_web_search_port(user_id)
+        if port is None:
+            self.logger.warning("联网搜索不可用：无用户级配置且 YAML 兜底失败")
+            return None
+        try:
+            results = await port.search(query=query, max_results=max_results)
+        except Exception as e:
+            self.logger.warning("联网搜索执行失败，跳过", error=str(e))
+            return None
+        finally:
+            try:
+                await port.close()
+            except Exception:
+                pass
+
+        self.logger.info(
+            "联网搜索原始返回", count=len(results) if results else 0, query=query[:50]
         )
-        results = await service.search(query=query, max_results=max_results)
-        self.logger.info("联网搜索原始返回", count=len(results) if results else 0, query=query[:50])
         if not results:
             return None
 
@@ -619,16 +640,83 @@ class AIChatService:
             title = self._sanitize(getattr(r, "title", ""))
             url = getattr(r, "url", "")
             snippet = self._sanitize(getattr(r, "content", ""))
+            score = float(getattr(r, "score", 0.0) or 0.0)
             sources.append({
                 "index": i,
                 "kind": "web",
                 "document_name": title or None,
                 "url": url,
                 "snippet": snippet,
+                "score": score,
             })
             lines.append(f"[{i}] {title}\nURL: {url}\n{snippet}")
         lines.append("</web-search-results>")
         return "\n".join(lines), sources
+
+    async def _resolve_web_search_port(
+        self,
+        user_id: int,
+    ) -> Optional[WebSearchPort]:
+        """按用户级配置择优构造 WebSearchPort，未命中/失败则回退 YAML 全局配置，均失败返回 None。"""
+        # 1. 用户级配置（SearchConfigPort 注入；解密后明文 key）
+        if self._search_config_port is not None:
+            try:
+                creds = await self._search_config_port.get_primary_search_config(user_id)
+            except Exception as e:
+                self.logger.warning("读取用户搜索配置失败，回退 YAML", error=str(e))
+                creds = None
+            if creds is not None:
+                try:
+                    return build_web_search_port_from_provider(
+                        creds.provider, creds.api_key, creds.extra_config
+                    )
+                except WebSearchError as e:
+                    self.logger.warning(
+                        "用户级搜索配置构造端口失败，回退 YAML",
+                        provider=creds.provider, error=str(e),
+                    )
+                except Exception as e:
+                    self.logger.warning(
+                        "用户级搜索配置构造端口异常，回退 YAML",
+                        provider=creds.provider, error=str(e),
+                    )
+        # 2. YAML 全局兜底
+        return self._build_yaml_fallback_port()
+
+    def _build_yaml_fallback_port(self) -> Optional[WebSearchPort]:
+        """按 YAML external_search 全局配置构造 WebSearchPort 兜底。
+
+        优先 Tavily（配了 api_key），否则 DuckDuckGo（免费）。复用 engines builder，
+        不 import deep_research feature。均失败返回 None。
+        """
+        from novamind.setting.yaml_config import get_config
+
+        es_cfg = get_config().external_search
+        if es_cfg.tavily.api_key:
+            try:
+                return build_web_search_port_from_provider(
+                    "tavily",
+                    es_cfg.tavily.api_key,
+                    {
+                        "max_results": es_cfg.tavily.max_results,
+                        "search_depth": es_cfg.tavily.search_depth,
+                        "timeout": es_cfg.tavily.timeout,
+                    },
+                )
+            except WebSearchError as e:
+                self.logger.warning("YAML Tavily 兜底构造失败，试 DuckDuckGo", error=str(e))
+        try:
+            return build_web_search_port_from_provider(
+                "duckduckgo",
+                None,
+                {
+                    "max_results": es_cfg.duckduckgo.max_results,
+                    "timeout": es_cfg.duckduckgo.timeout,
+                },
+            )
+        except WebSearchError as e:
+            self.logger.warning("YAML DuckDuckGo 兜底构造失败，联网搜索不可用", error=str(e))
+            return None
 
     async def _retrieve_knowledge(
         self,
