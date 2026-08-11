@@ -1,3 +1,4 @@
+"""DeepDoc PDF 上游解析器适配：委托上游 RAGFlow PDF 解析逻辑。"""
 from __future__ import annotations
 
 from io import BytesIO

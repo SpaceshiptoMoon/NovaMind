@@ -1,3 +1,4 @@
+"""DeepDoc 文档解析引擎（vendored，自包含）——多格式文档解析、OCR、版面分析、表格识别。"""
 from __future__ import annotations
 
 from importlib import import_module

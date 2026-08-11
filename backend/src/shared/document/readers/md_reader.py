@@ -1,3 +1,4 @@
+"""Markdown 文档读取器。"""
 import os
 from pathlib import Path
 from typing import List, Dict

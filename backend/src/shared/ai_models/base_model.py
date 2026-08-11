@@ -1,3 +1,4 @@
+"""AI 模型基类定义：BaseLLM / BaseEmbedding / BaseRerank + 响应数据结构（StreamChunk / LLMResponse / ToolCall）。跨 LLM provider 统一抽象层。"""
 from abc import abstractmethod, ABC
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional, AsyncGenerator

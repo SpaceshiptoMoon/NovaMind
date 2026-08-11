@@ -1,3 +1,4 @@
+"""DeepDoc 页面筛选：按页码范围 / 内容密度过滤文档页。"""
 from __future__ import annotations
 
 import re

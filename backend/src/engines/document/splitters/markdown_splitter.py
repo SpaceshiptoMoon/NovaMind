@@ -1,3 +1,4 @@
+"""Markdown 切分器：按标题层级 / 段落边界切分保留文档结构。"""
 import re
 from typing import List, Dict
 from novamind.engines.document.splitters.base_splitter import BaseSplitter

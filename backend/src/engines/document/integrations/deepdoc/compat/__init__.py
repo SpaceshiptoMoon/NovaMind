@@ -1,3 +1,4 @@
+"""DeepDoc 向上游 RAGFlow 的兼容适配模块。"""
 from __future__ import annotations
 
 from importlib import import_module

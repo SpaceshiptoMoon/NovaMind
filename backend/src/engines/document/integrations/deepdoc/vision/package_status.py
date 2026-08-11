@@ -1,3 +1,4 @@
+"""DeepDoc 视觉包状态：检测 onnxruntime / PaddlePaddle 等推理后端的可用性。"""
 from __future__ import annotations
 
 from pathlib import Path

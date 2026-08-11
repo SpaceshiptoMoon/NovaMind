@@ -1,3 +1,4 @@
+"""DeepDoc 服务器适配器集合（OCR / TSR / DLA）。"""
 from __future__ import annotations
 
 from importlib import import_module

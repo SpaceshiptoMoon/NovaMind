@@ -1,3 +1,4 @@
+"""DeepDoc PaddleOCR 远程解析器适配：通过 HTTP 调 PaddleOCR 服务执行 OCR。"""
 from __future__ import annotations
 
 import json

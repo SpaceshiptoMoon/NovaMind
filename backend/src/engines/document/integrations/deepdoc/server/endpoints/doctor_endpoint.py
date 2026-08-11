@@ -1,3 +1,4 @@
+"""DeepDoc 健康检查 / 能力探测 HTTP 端点。"""
 from __future__ import annotations
 
 from typing import Any, Dict

@@ -1,3 +1,4 @@
+"""DeepDoc 服务器端点集合（OCR / TSR / DLA / 全文解析 / 健康检查）。"""
 from __future__ import annotations
 
 from importlib import import_module

@@ -1,3 +1,4 @@
+"""DeepDoc 数据模型：解析请求 / 响应 / 版面 / 区块等核心数据结构。"""
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 import re

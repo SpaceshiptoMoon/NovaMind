@@ -1,3 +1,4 @@
+"""DeepDoc 视觉模型管理器：OCR / TSR / DLA 模型的加载、缓存与切换。"""
 from __future__ import annotations
 
 import os

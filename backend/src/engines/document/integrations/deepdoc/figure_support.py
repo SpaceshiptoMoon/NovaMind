@@ -1,3 +1,4 @@
+"""DeepDoc 图表支持：图表检测与提取辅助。"""
 from __future__ import annotations
 
 import io

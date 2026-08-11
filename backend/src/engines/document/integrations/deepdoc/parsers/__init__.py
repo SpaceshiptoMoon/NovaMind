@@ -1,3 +1,4 @@
+"""DeepDoc 解析器集合（docx / epub / excel / pdf / ppt / html / markdown / json / txt / figure）。"""
 from __future__ import annotations
 
 from importlib import import_module

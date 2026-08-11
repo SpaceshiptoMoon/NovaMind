@@ -1,3 +1,4 @@
+"""文本拼接模型：控制多页 / 多区块文本的拼接策略。"""
 from __future__ import annotations
 
 import os

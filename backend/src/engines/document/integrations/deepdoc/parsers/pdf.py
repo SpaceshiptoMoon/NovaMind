@@ -1,3 +1,4 @@
+"""DeepDoc PDF 解析器：含 OCR / 版面分析的完整 PDF 处理。"""
 from __future__ import annotations
 
 # Adapted around RAGFlow deepdoc/parser/pdf_parser.py class layout.

@@ -1,3 +1,4 @@
+"""DeepDoc OCR HTTP 端点。"""
 from __future__ import annotations
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile

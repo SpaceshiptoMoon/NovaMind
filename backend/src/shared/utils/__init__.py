@@ -1,3 +1,4 @@
+"""通用工具集（心跳 / 文本压缩 / token 计数 / 时间 / crypto / 脱敏）。"""
 from __future__ import annotations
 
 from importlib import import_module

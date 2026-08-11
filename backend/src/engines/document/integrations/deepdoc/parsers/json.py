@@ -1,3 +1,4 @@
+"""DeepDoc JSON 解析器。"""
 from __future__ import annotations
 
 # Adapted from RAGFlow deepdoc/parser/json_parser.py

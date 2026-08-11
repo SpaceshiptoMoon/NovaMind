@@ -1,3 +1,4 @@
+"""DeepDoc 通用文本解析器。"""
 from __future__ import annotations
 
 # Unified text-family router backed by RAGFlow parser adaptations.

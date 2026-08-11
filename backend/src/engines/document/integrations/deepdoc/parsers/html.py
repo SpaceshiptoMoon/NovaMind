@@ -1,3 +1,4 @@
+"""DeepDoc HTML 解析器。"""
 from __future__ import annotations
 
 # Adapted from RAGFlow deepdoc/parser/html_parser.py

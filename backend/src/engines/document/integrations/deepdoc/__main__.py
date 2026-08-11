@@ -1,3 +1,4 @@
+"""DeepDoc 独立入口：注册 parsers + 启动 FastAPI 服务（用于 HTTP 远程解析）。"""
 from __future__ import annotations
 
 import argparse

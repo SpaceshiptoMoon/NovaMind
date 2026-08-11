@@ -1,3 +1,4 @@
+"""Agent 内置工具集（web_search / knowledge_search / memory / todo / code_execution）。"""
 from novamind.engines.agent.tool.builtins.knowledge_search import KnowledgeSearchTool
 from novamind.engines.agent.tool.builtins.web_search import WebSearchTool
 from novamind.engines.agent.tool.builtins.code_execution import CodeExecutionTool

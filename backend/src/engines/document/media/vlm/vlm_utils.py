@@ -1,3 +1,4 @@
+"""VLM 工具：图像 data URL 构建 + VLM 消息构造 + 多模型 fallback 调用。"""
 import base64
 from typing import Any, Dict, List, Optional
 

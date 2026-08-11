@@ -1,3 +1,4 @@
+"""DeepDoc 兼容层：映射上游 RAGFlow 的模块路径 / 类名 / 函数签名到本实现。"""
 from __future__ import annotations
 
 import re

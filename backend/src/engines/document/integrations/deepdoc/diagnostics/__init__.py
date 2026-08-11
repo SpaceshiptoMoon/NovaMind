@@ -1,3 +1,4 @@
+"""DeepDoc 诊断模块：依赖检查 / 环境探测 / 健康报告。"""
 from __future__ import annotations
 
 from importlib import import_module

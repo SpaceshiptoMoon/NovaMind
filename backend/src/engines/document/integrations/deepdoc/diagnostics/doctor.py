@@ -1,3 +1,4 @@
+"""DeepDoc Doctor：综合诊断入口，生成环境能力报告与缺失依赖清单。"""
 from __future__ import annotations
 
 from typing import Any

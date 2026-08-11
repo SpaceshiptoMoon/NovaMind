@@ -1,3 +1,4 @@
+"""DeepDoc 依赖下载：自动拉取 OCR / TSR / DLA 等模型权重文件。"""
 from __future__ import annotations
 
 from pathlib import Path

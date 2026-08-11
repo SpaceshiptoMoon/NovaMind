@@ -1,3 +1,4 @@
+"""DeepDoc 能力查询：检测当前环境可用的解析特性（OCR / TSR / DLA / 远程解析器）。"""
 from __future__ import annotations
 
 import os

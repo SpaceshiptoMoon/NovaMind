@@ -1,3 +1,4 @@
+"""视频归一化：将输入视频转码为统一码率/分辨率/编码格式，供帧提取使用。"""
 from __future__ import annotations
 
 import logging

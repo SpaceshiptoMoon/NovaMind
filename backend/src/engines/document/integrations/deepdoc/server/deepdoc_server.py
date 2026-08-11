@@ -1,3 +1,4 @@
+"""DeepDoc 服务器入口：FastAPI 应用组装 + 端点注册 + 启动逻辑。"""
 from __future__ import annotations
 
 from typing import Any, Dict, Optional

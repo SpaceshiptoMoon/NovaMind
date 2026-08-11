@@ -1,3 +1,4 @@
+"""DeepDoc 可视化工具：将识别结果绘制到原始图像上（开发调试用）。"""
 from __future__ import annotations
 
 import logging

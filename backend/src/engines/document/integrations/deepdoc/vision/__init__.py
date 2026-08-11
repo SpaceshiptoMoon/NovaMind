@@ -1,3 +1,4 @@
+"""DeepDoc 视觉模块：OCR 识别 / 版面分析 / 表格结构识别 / 模型管理。"""
 from __future__ import annotations
 
 from importlib import import_module

@@ -1,3 +1,4 @@
+"""跨 feature 文档读取器（PDF / DOCX / TXT / HTML / MD），被 app / qa / knowledge_space 复用。"""
 from novamind.shared.document.readers.base_reader import BaseReader
 from novamind.shared.document.readers.pdf_reader import PDFReader
 from novamind.shared.document.readers.docx_reader import DocxReader

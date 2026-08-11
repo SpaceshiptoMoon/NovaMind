@@ -1,3 +1,4 @@
+"""DeepDoc TSR（表格结构识别）适配器：封装表格检测模型的加载与推理。"""
 from __future__ import annotations
 
 import io

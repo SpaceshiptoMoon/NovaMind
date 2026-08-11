@@ -1,3 +1,4 @@
+"""Redis 缓存客户端（RedisCache），封装连接池、序列化、模式批量删除等操作。"""
 import base64
 import hashlib
 import json

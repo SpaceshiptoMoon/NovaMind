@@ -1,3 +1,4 @@
+"""DeepDoc 远程解析器集合（Docling / MinerU / PaddleOCR / OpenDataLoader / SoMark / TCADP）。"""
 from __future__ import annotations
 
 from importlib import import_module

@@ -1,3 +1,4 @@
+"""DeepDoc 图表解析器：提取文档中嵌入的图片 / 图表并生成描述。"""
 from __future__ import annotations
 
 import io

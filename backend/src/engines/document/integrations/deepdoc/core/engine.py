@@ -1,3 +1,4 @@
+"""DeepDoc 解析引擎：统一入口，编排解析管道（加载→解析→版面分析→输出）。"""
 from __future__ import annotations
 
 import asyncio
