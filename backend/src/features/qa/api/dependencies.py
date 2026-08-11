@@ -16,6 +16,7 @@ from novamind.features.knowledge_space.adapters.retrieval_adapter import as_retr
 from novamind.features.knowledge_space.adapters.document_ingestion_adapter import (
     as_document_ingestion_port,
 )
+from novamind.features.user.adapters.search_config_port_adapter import as_search_config_port
 
 logger = get_logger(__name__)
 
@@ -83,6 +84,7 @@ async def get_aichat_service(
     search_service = SearchService(db, es_client, model_config_service)
     retrieval_port = as_retrieval_port(search_service)
     ingestion_port = as_document_ingestion_port()
+    search_config_port = as_search_config_port(db)
     return AIChatService(
         qa_service=qa_service,
         model_config_service=model_config_service,
@@ -90,4 +92,5 @@ async def get_aichat_service(
         minio_client=minio_client,
         retrieval_port=retrieval_port,
         document_ingestion_port=ingestion_port,
+        search_config_port=search_config_port,
     )
