@@ -7319,6 +7319,206 @@
         "title": "ResumeSessionResponse",
         "type": "object"
       },
+      "SearchConfigCreate": {
+        "description": "创建搜索配置请求",
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "API Key（duckduckgo 可空）",
+            "examples": [
+              "tvly-xxxxxxxx"
+            ],
+            "title": "Api Key"
+          },
+          "extra_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "扩展配置（max_results/search_depth/timeout/include_domains 等）",
+            "examples": [
+              {
+                "max_results": 10,
+                "search_depth": "basic"
+              }
+            ],
+            "title": "Extra Config"
+          },
+          "is_primary": {
+            "default": false,
+            "description": "是否设为首选 provider",
+            "title": "Is Primary",
+            "type": "boolean"
+          },
+          "provider": {
+            "description": "搜索服务商: tavily/serpapi/duckduckgo",
+            "examples": [
+              "tavily",
+              "serpapi",
+              "duckduckgo"
+            ],
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "title": "SearchConfigCreate",
+        "type": "object"
+      },
+      "SearchConfigListResponse": {
+        "description": "搜索配置列表响应",
+        "properties": {
+          "items": {
+            "description": "配置列表",
+            "items": {
+              "$ref": "#/components/schemas/SearchConfigResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "description": "总数",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "items"
+        ],
+        "title": "SearchConfigListResponse",
+        "type": "object"
+      },
+      "SearchConfigResponse": {
+        "description": "搜索配置响应（API Key 已脱敏）",
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "API Key（已脱敏）",
+            "title": "Api Key"
+          },
+          "created_at": {
+            "description": "创建时间",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "extra_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "扩展配置",
+            "title": "Extra Config"
+          },
+          "id": {
+            "description": "配置 ID",
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_primary": {
+            "description": "是否首选",
+            "title": "Is Primary",
+            "type": "boolean"
+          },
+          "provider": {
+            "description": "搜索服务商",
+            "title": "Provider",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "更新时间",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "description": "用户 ID",
+            "title": "User Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "provider",
+          "is_primary",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SearchConfigResponse",
+        "type": "object"
+      },
+      "SearchConfigUpdate": {
+        "description": "更新搜索配置请求\n\napi_key 留空（None）= 不修改（保留原密文）；显式传空串视为清空。",
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "API Key（留空表示不修改）",
+            "title": "Api Key"
+          },
+          "extra_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "扩展配置",
+            "title": "Extra Config"
+          },
+          "is_primary": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "是否设为首选 provider",
+            "title": "Is Primary"
+          }
+        },
+        "title": "SearchConfigUpdate",
+        "type": "object"
+      },
       "SearchLLMConfig": {
         "description": "LLM 回答配置\n\n对召回结果生成 LLM 回答。",
         "properties": {
@@ -7868,6 +8068,85 @@
         ],
         "title": "SearchSource",
         "type": "string"
+      },
+      "SearchTestRequest": {
+        "description": "搜索连接测试请求（提交凭据实搜一次验证，不入库）",
+        "properties": {
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "API Key（duckduckgo 可空）",
+            "title": "Api Key"
+          },
+          "extra_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "扩展配置",
+            "title": "Extra Config"
+          },
+          "provider": {
+            "description": "搜索服务商: tavily/serpapi/duckduckgo",
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "title": "SearchTestRequest",
+        "type": "object"
+      },
+      "SearchTestResponse": {
+        "description": "搜索连接测试响应",
+        "properties": {
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "响应延迟（毫秒）",
+            "title": "Latency Ms"
+          },
+          "message": {
+            "description": "测试结果消息",
+            "title": "Message",
+            "type": "string"
+          },
+          "results_count": {
+            "default": 0,
+            "description": "返回结果数",
+            "title": "Results Count",
+            "type": "integer"
+          },
+          "success": {
+            "description": "测试是否成功",
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "success",
+          "message"
+        ],
+        "title": "SearchTestResponse",
+        "type": "object"
       },
       "SessionConfigCompressionUpdate": {
         "description": "更新会话压缩配置请求（支持反复修改）",
@@ -20972,6 +21251,335 @@
         "summary": "更新模型配置",
         "tags": [
           "模型配置"
+        ]
+      }
+    },
+    "/api/v1/user/search-configs": {
+      "get": {
+        "description": "获取当前用户的联网搜索 provider 配置列表",
+        "operationId": "list_search_configs_api_v1_user_search_configs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchConfigListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "获取搜索配置列表",
+        "tags": [
+          "搜索配置"
+        ]
+      },
+      "post": {
+        "description": "创建用户联网搜索 provider 凭证配置",
+        "operationId": "create_search_config_api_v1_user_search_configs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchConfigCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "创建搜索配置",
+        "tags": [
+          "搜索配置"
+        ]
+      }
+    },
+    "/api/v1/user/search-configs/test": {
+      "post": {
+        "description": "用提交的凭据实搜一次验证可用性（不入库）",
+        "operationId": "test_search_config_api_v1_user_search_configs_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchTestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "测试搜索连接",
+        "tags": [
+          "搜索配置"
+        ]
+      }
+    },
+    "/api/v1/user/search-configs/{config_id}": {
+      "delete": {
+        "description": "删除指定的搜索配置",
+        "operationId": "delete_search_config_api_v1_user_search_configs__config_id__delete",
+        "parameters": [
+          {
+            "description": "配置 ID",
+            "in": "path",
+            "name": "config_id",
+            "required": true,
+            "schema": {
+              "description": "配置 ID",
+              "exclusiveMinimum": 0,
+              "title": "Config Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMessageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "删除搜索配置",
+        "tags": [
+          "搜索配置"
+        ]
+      },
+      "get": {
+        "description": "根据配置 ID 获取详情",
+        "operationId": "get_search_config_api_v1_user_search_configs__config_id__get",
+        "parameters": [
+          {
+            "description": "配置 ID",
+            "in": "path",
+            "name": "config_id",
+            "required": true,
+            "schema": {
+              "description": "配置 ID",
+              "exclusiveMinimum": 0,
+              "title": "Config Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "获取单个搜索配置",
+        "tags": [
+          "搜索配置"
+        ]
+      },
+      "put": {
+        "description": "更新指定的搜索配置（api_key 留空表示不修改）",
+        "operationId": "update_search_config_api_v1_user_search_configs__config_id__put",
+        "parameters": [
+          {
+            "description": "配置 ID",
+            "in": "path",
+            "name": "config_id",
+            "required": true,
+            "schema": {
+              "description": "配置 ID",
+              "exclusiveMinimum": 0,
+              "title": "Config Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchConfigUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "更新搜索配置",
+        "tags": [
+          "搜索配置"
+        ]
+      }
+    },
+    "/api/v1/user/search-configs/{config_id}/primary": {
+      "put": {
+        "description": "将指定配置设为当前用户首选 provider（同时清除其他 primary）",
+        "operationId": "set_search_primary_api_v1_user_search_configs__config_id__primary_put",
+        "parameters": [
+          {
+            "description": "配置 ID",
+            "in": "path",
+            "name": "config_id",
+            "required": true,
+            "schema": {
+              "description": "配置 ID",
+              "exclusiveMinimum": 0,
+              "title": "Config Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "设为默认搜索引擎",
+        "tags": [
+          "搜索配置"
         ]
       }
     },

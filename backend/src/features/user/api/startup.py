@@ -14,6 +14,10 @@ from novamind.features.user.exceptions import (
     TokenInvalidError,
     UserError,
     ModelConfigDeleteConflictError,
+    SearchConfigNotFoundError,
+    SearchConfigAlreadyExistsError,
+    SearchConfigTestFailedError,
+    SearchConfigError,
 )
 from novamind.features.user.schemas.user_schema import UserUpdate
 from novamind.features.user.services.user_service import UserService
@@ -110,4 +114,9 @@ def setup_user_exception_handlers(app: FastAPI) -> None:
         TokenInvalidError: 401,
         UserError: 400,
         ModelConfigDeleteConflictError: 409,
+        # 搜索配置异常（http_status_code ClassVar 已声明，status_map 注册日志标签 + 兜底）
+        SearchConfigNotFoundError: 404,
+        SearchConfigAlreadyExistsError: 409,
+        SearchConfigTestFailedError: 400,
+        SearchConfigError: 400,
     })

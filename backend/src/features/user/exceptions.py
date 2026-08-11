@@ -152,6 +152,56 @@ class ModelConfigDeleteConflictError(ModelConfigError):
         self.impacts = impacts
 
 
+# ========== 搜索配置相关异常 ==========
+
+class SearchConfigError(UserError):
+    """搜索配置基础异常"""
+
+    http_status_code: ClassVar[int] = 400
+
+    def __init__(self, message: str, code: str = "SEARCH_CONFIG_ERROR"):
+        super().__init__(message=message, code=code)
+
+
+class SearchConfigNotFoundError(SearchConfigError):
+    """搜索配置不存在错误"""
+    _serializable_attrs: ClassVar[List[str]] = ["config_id"]
+    http_status_code: ClassVar[int] = 404
+
+    def __init__(self, config_id: Optional[int] = None, message: Optional[str] = None):
+        if message is None:
+            message = f"搜索配置 {config_id} 不存在" if config_id else "搜索配置不存在"
+        super().__init__(message=message, code="SEARCH_CONFIG_NOT_FOUND")
+        self.config_id = config_id
+
+
+class SearchConfigAlreadyExistsError(SearchConfigError):
+    """搜索配置已存在错误（同 user 同 provider 重复）"""
+    _serializable_attrs: ClassVar[List[str]] = ["provider"]
+    http_status_code: ClassVar[int] = 409
+
+    def __init__(self, provider: str):
+        super().__init__(
+            message=f"搜索服务商 {provider} 的配置已存在",
+            code="SEARCH_CONFIG_ALREADY_EXISTS",
+        )
+        self.provider = provider
+
+
+class SearchConfigTestFailedError(SearchConfigError):
+    """搜索配置测试失败错误"""
+    _serializable_attrs: ClassVar[List[str]] = ["provider", "error"]
+    http_status_code: ClassVar[int] = 400
+
+    def __init__(self, provider: str, error: str):
+        super().__init__(
+            message=f"搜索连接测试失败: {error}",
+            code="SEARCH_CONFIG_TEST_FAILED",
+        )
+        self.provider = provider
+        self.error = error
+
+
 __all__ = [
     "UserError",
     "UserNotFoundError",
@@ -169,4 +219,9 @@ __all__ = [
     "ModelConfigAlreadyExistsError",
     "ModelConfigTestFailedError",
     "ModelConfigDeleteConflictError",
+    # 搜索配置异常
+    "SearchConfigError",
+    "SearchConfigNotFoundError",
+    "SearchConfigAlreadyExistsError",
+    "SearchConfigTestFailedError",
 ]
