@@ -56,12 +56,11 @@
       </audio>
     </div>
 
-    <!-- 查看原文：居中模态窗，半透明遮罩锁背景，固定尺寸，顶部固定内容滚动 -->
+    <!-- 查看原文：居中固定模态窗，半透明遮罩锁背景，固定尺寸，顶部固定内容滚动 -->
     <el-dialog
       v-model="originalDialogVisible"
       width="820px"
       align-center
-      draggable
       :show-close="false"
       destroy-on-close
       class="original-dialog"
