@@ -484,10 +484,9 @@ async def _process_image_document_static(
     # 5-8. 切分/向量化/问题生成/索引：交由共享后置尾（与文本/音频/视频同路径）
     #      图片经 VLM/OCR 归一为描述文本后，后续逻辑全部共享，自动获得 question_generation
     #      等共享能力——修复此前图片路径自写 embedded/indexed 导致相似问不生成的缺口。
-    #      图片描述文本与 MD 文档同构，按顶层通用切分策略（recursive/markdown/fixed_size/semantic）
-    #      切成多块（与文本/音频/视频同路径）。splitting schema 无 image 子键（只有 audio/video），
-    #      故不调 apply_modality_splitting_override；并丢弃遗留脏 image 子键（如旧版
-    #      image.strategy="single"），避免其覆盖顶层 strategy 触发 _split_md_text 报错。
+    #      切分统一走顶层通用策略（recursive/markdown/fixed_size/semantic），不再有模态子键
+    #      覆盖。防御性丢弃遗留脏 image 子键（如旧版 image.strategy="single"），避免历史配置
+    #      残留干扰；audio/video 子键同理由 SplittingConfig extra=ignore 在配置层丢弃。
     splitting_config = dict(ctx.pipeline_config.get("splitting", {}))
     splitting_config.pop("image", None)
     tail_result = await _run_post_parse_tail(

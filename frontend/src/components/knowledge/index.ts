@@ -25,7 +25,6 @@ export {
   textStrategyItems,
 } from './kbConfig'
 export type {
-  AudioChunkStrategy,
   ImageStrategy,
   TextStrategy,
   TextStrategyField,

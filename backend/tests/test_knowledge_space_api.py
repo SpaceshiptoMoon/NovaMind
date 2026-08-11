@@ -656,15 +656,7 @@ def test_2_7_update_kb_config():
         "splitting": {
             "strategy": "recursive",
             "chunk_size": 1500,
-            "chunk_overlap": 200,
-            "audio": {
-                "strategy": "fixed",
-                "chunk_size": 900
-            },
-            "video": {
-                "strategy": "fixed",
-                "chunk_size": 1400
-            }
+            "chunk_overlap": 200
         },
         "parsing": {
             "text": {
@@ -742,9 +734,6 @@ def test_2_7_update_kb_config():
     assert_field(splitting, "strategy", "recursive", label="切分策略")
     assert_field(splitting, "chunk_size", 1500, label="切分策略")
     assert_field(splitting, "chunk_overlap", 200, label="切分策略")
-    assert_field((splitting.get("audio") or {}), "strategy", "fixed", label="音频切分覆盖")
-    assert_field((splitting.get("audio") or {}), "chunk_size", 900, label="音频切分覆盖")
-    assert_field((splitting.get("video") or {}), "chunk_size", 1400, label="视频切分覆盖")
 
     assert_field(pdf, "strategy", "deepdoc", label="PDF 解析配置")
     assert_field(pdf, "parser", "layout", label="PDF 解析配置")

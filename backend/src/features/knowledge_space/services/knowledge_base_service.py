@@ -430,25 +430,6 @@ class KnowledgeBaseService:
                 chunk_size = (kb.config or {}).get("splitting", {}).get("chunk_size", 1000)
             if chunk_size is not None and splitting["chunk_overlap"] >= chunk_size:
                 raise InvalidParameterError("chunk_overlap 必须小于 chunk_size")
-        # 音频切分覆盖 — 策略名必须与 DocumentRegistry 注册名一致
-        _valid_media_strategies = {"recursive", "fixed_size", "markdown", "semantic"}
-        splitting_audio = splitting.get("audio")
-        if splitting_audio:
-            if "strategy" in splitting_audio:
-                if splitting_audio["strategy"] not in _valid_media_strategies:
-                    raise InvalidParameterError(f"不支持的音频切分策略: {splitting_audio['strategy']}")
-            if "chunk_size" in splitting_audio:
-                if not (100 <= splitting_audio["chunk_size"] <= 4000):
-                    raise InvalidParameterError("audio.chunk_size 必须在 100-4000 之间")
-        # 视频切分覆盖
-        splitting_video = splitting.get("video")
-        if splitting_video:
-            if "strategy" in splitting_video:
-                if splitting_video["strategy"] not in _valid_media_strategies:
-                    raise InvalidParameterError(f"不支持的视频切分策略: {splitting_video['strategy']}")
-            if "chunk_size" in splitting_video:
-                if not (100 <= splitting_video["chunk_size"] <= 4000):
-                    raise InvalidParameterError("video.chunk_size 必须在 100-4000 之间")
 
         try:
             KnowledgeBaseConfigUpdate.model_validate(config_updates)

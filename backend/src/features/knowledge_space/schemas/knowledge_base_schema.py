@@ -42,9 +42,10 @@ LEGACY_SPLITTING_STRATEGY_ALIASES: Dict[str, str] = {
 def _migrate_legacy_splitting_strategy(value: Any) -> Any:
     """Normalize legacy splitting strategy names to the current Literal set.
 
-    Applied to the top-level strategy and to the nested audio/video overrides.
-    Unknown values are left untouched so they still surface a clear validation
-    error rather than being silently coerced to a wrong strategy.
+    Applied to the top-level strategy. Unknown values are left untouched so they
+    still surface a clear validation error rather than being silently coerced to a
+    wrong strategy. Legacy audio/video sub-key overrides have been removed; any
+    residual sub-keys are dropped by SplittingConfig(extra="ignore").
     """
     if not isinstance(value, dict):
         return value
@@ -56,69 +57,7 @@ def _migrate_legacy_splitting_strategy(value: Any) -> Any:
             top_strategy, top_strategy
         )
 
-    for sub_key in ("audio", "video"):
-        sub_cfg = normalized.get(sub_key)
-        if isinstance(sub_cfg, dict) and isinstance(sub_cfg.get("strategy"), str):
-            sub_cfg = dict(sub_cfg)
-            sub_cfg["strategy"] = LEGACY_SPLITTING_STRATEGY_ALIASES.get(
-                sub_cfg["strategy"], sub_cfg["strategy"]
-            )
-            normalized[sub_key] = sub_cfg
-
     return normalized
-
-
-class AudioChunkOverride(BaseModel):
-    """Audio-specific chunk override.
-
-    Strategy must match a registered splitter name in DocumentRegistry.
-    Currently registered: recursive, fixed_size, markdown, semantic.
-    "recursive" is recommended for audio transcripts (respects sentence boundaries).
-    """
-
-    model_config = ConfigDict(extra="ignore")
-
-    strategy: Literal["recursive", "fixed_size", "markdown", "semantic"] = Field(
-        default="recursive",
-        description="Chunking strategy for audio transcripts.",
-    )
-    chunk_size: int = Field(
-        default=1000,
-        ge=100,
-        le=4000,
-        description="Chunk size used when strategy=fixed_size or recursive.",
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _migrate_legacy_strategy(cls, value):
-        return _migrate_legacy_splitting_strategy(value)
-
-
-class VideoChunkOverride(BaseModel):
-    """Video-specific chunk override.
-
-    Strategy must match a registered splitter name in DocumentRegistry.
-    "fixed_size" groups consecutive frame descriptions up to chunk_size.
-    """
-
-    model_config = ConfigDict(extra="ignore")
-
-    strategy: Literal["recursive", "fixed_size", "markdown", "semantic"] = Field(
-        default="fixed_size",
-        description="Chunking strategy for video descriptions.",
-    )
-    chunk_size: int = Field(
-        default=1500,
-        ge=100,
-        le=4000,
-        description="Maximum merged description length.",
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _migrate_legacy_strategy(cls, value):
-        return _migrate_legacy_splitting_strategy(value)
 
 
 class SplittingConfig(BaseModel):
@@ -136,8 +75,6 @@ class SplittingConfig(BaseModel):
     max_chunk_size: int = Field(default=DEFAULT_MAX_CHUNK_SIZE, ge=100, le=8000)
     similarity_threshold: float = Field(default=DEFAULT_SIMILARITY_THRESHOLD, ge=0.0, le=1.0)
     batch_size: int = Field(default=DEFAULT_BATCH_SIZE, ge=1, le=100)
-    audio: Optional[AudioChunkOverride] = Field(default=None)
-    video: Optional[VideoChunkOverride] = Field(default=None)
 
     @model_validator(mode="before")
     @classmethod
