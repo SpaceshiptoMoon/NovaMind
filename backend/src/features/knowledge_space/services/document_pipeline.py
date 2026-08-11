@@ -391,7 +391,6 @@ async def _process_image_document_static(
         return
     embedding_config = ctx.embedding_config
     model_name = ctx.embedding_model_name
-    mm_dim = ctx.embedding_dim
 
     if not model_name:
         raise DocumentProcessingError(
@@ -482,79 +481,36 @@ async def _process_image_document_static(
         await session.commit()
         return
 
-    # 5. 用文本 Embedding 生成描述文本的向量
-    if task:
-        task.start_step("embedded")
-    text_vector = await _generate_single_embedding_static(
-        text=description_text,
-        embedding_config=embedding_config,
+    # 5-8. 切分/向量化/问题生成/索引：交由共享后置尾（与文本/音频/视频同路径）
+    #      图片经 VLM/OCR 归一为描述文本后，后续逻辑全部共享，自动获得 question_generation
+    #      等共享能力——修复此前图片路径自写 embedded/indexed 导致相似问不生成的缺口。
+    from novamind.features.knowledge_space.services.media_processing import (
+        apply_modality_splitting_override,
+    )
+    splitting_config = dict(ctx.pipeline_config.get("splitting", {}))
+    apply_modality_splitting_override(splitting_config, "image")
+    tail_result = await _run_post_parse_tail(
+        document=document,
         session=session,
-        user_id=document.uploader_id,
+        task=task,
         model_config_port=model_config_port,
+        logger=_logger,
+        chunk_type=ChunkType.IMAGE,
+        embedding_config=embedding_config,
+        pipeline_config=ctx.pipeline_config,
+        splitting_config=splitting_config,
+        full_text=description_text,
+        user_id=document.uploader_id,
     )
-    if task:
-        task.finish_step("embedded", metrics={
-            "embedding_count": 1,
-            "dimension": embedding_config.get("dimension"),
-        })
 
-    # 检查点 1：向量化完成后
-    await _check_document_cancelled(document.id)
-
-    # 6. 构建 ES chunk
-    storage_info = document.storage or {}
-    storage_path = storage_info.get("minio_object_name", "")
-
-    es_chunk = {
-        "space_id": document.space_id,
-        "kb_id": document.kb_id,
-        "document_id": document.id,
-        "chunk_id": f"{document.id}_0",
-        "chunk_index": 0,
-        "chunk_type": ChunkType.IMAGE,
-        "content": description_text,
-        "embedding": text_vector,
-        "image_url": storage_path,
-        "file_info": {
-            "filename": document.filename,
-            "file_type": document.file_type,
-        },
-        "metadata": {
-            "content_hash": document.file_hash,
-        },
-    }
-
-    # 检查点 2：ES 写入前
-    await _check_document_cancelled(document.id)
-
-    # 7. 索引到 ES
-    if task:
-        task.start_step("indexed")
-    es_client = await _get_es_client_static()
-    indexed_count = await es_client.bulk_index_chunks(
-        space_id=document.space_id,
-        chunks=[es_chunk],
-        embedding_dim=mm_dim,
-    )
-    if task:
-        task.finish_step("indexed", metrics={
-            "indexed_count": indexed_count,
-            "chunk_count": 1,
-        })
-
-    if indexed_count == 0:
-        raise DocumentProcessingError(
-            document_id=document.id,
-            error_message="ES 索引写入失败",
-        )
-
-    # 8. 标记任务完成
+    # 9. 标记任务完成
     result = {
-        "chunk_count": 1,
+        "chunk_count": tail_result["chunk_count"],
         "indexed_at": now_china().isoformat(),
         "chunk_type": ChunkType.IMAGE,
         "image_strategy": image_strategy,
         "description_length": len(description_text),
+        "total_questions": tail_result.get("total_questions", 0),
     }
     if task:
         task.mark_completed(result=result)
@@ -566,6 +522,7 @@ async def _process_image_document_static(
         model=model_name,
         image_strategy=image_strategy,
         description_length=len(description_text),
+        chunks=tail_result["chunk_count"],
     )
 
 
@@ -651,8 +608,10 @@ def _build_es_chunks(
                 "chunk_entry_count": int(meta.get("entry_count") or 0),
             })
         else:
-            chunk_meta["start_time"] = meta.get("start_time")
-            chunk_meta["end_time"] = meta.get("end_time")
+            # start_time/end_time 仅音视频分段有意义；图片无时间维度，不带
+            if chunk_type != ChunkType.IMAGE:
+                chunk_meta["start_time"] = meta.get("start_time")
+                chunk_meta["end_time"] = meta.get("end_time")
             if frame_paths and "frame_indices" in meta:
                 chunk_meta["frame_paths"] = [
                     frame_paths[idx]
