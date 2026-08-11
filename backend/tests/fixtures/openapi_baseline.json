@@ -819,33 +819,6 @@
         "title": "AgentUpdate",
         "type": "object"
       },
-      "AudioChunkOverride": {
-        "description": "Audio-specific chunk override.\n\nStrategy must match a registered splitter name in DocumentRegistry.\nCurrently registered: recursive, fixed_size, markdown, semantic.\n\"recursive\" is recommended for audio transcripts (respects sentence boundaries).",
-        "properties": {
-          "chunk_size": {
-            "default": 1000,
-            "description": "Chunk size used when strategy=fixed_size or recursive.",
-            "maximum": 4000.0,
-            "minimum": 100.0,
-            "title": "Chunk Size",
-            "type": "integer"
-          },
-          "strategy": {
-            "default": "recursive",
-            "description": "Chunking strategy for audio transcripts.",
-            "enum": [
-              "recursive",
-              "fixed_size",
-              "markdown",
-              "semantic"
-            ],
-            "title": "Strategy",
-            "type": "string"
-          }
-        },
-        "title": "AudioChunkOverride",
-        "type": "object"
-      },
       "AudioParsingConfig": {
         "description": "Audio parsing config.",
         "properties": {
@@ -9861,16 +9834,6 @@
       "SplittingConfig": {
         "description": "Common splitting config.",
         "properties": {
-          "audio": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AudioChunkOverride"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "batch_size": {
             "default": 20,
             "maximum": 100.0,
@@ -9924,16 +9887,6 @@
             ],
             "title": "Strategy",
             "type": "string"
-          },
-          "video": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/VideoChunkOverride"
-              },
-              {
-                "type": "null"
-              }
-            ]
           }
         },
         "title": "SplittingConfig",
@@ -11007,33 +10960,6 @@
           }
         },
         "title": "ValidationWarning",
-        "type": "object"
-      },
-      "VideoChunkOverride": {
-        "description": "Video-specific chunk override.\n\nStrategy must match a registered splitter name in DocumentRegistry.\n\"fixed_size\" groups consecutive frame descriptions up to chunk_size.",
-        "properties": {
-          "chunk_size": {
-            "default": 1500,
-            "description": "Maximum merged description length.",
-            "maximum": 4000.0,
-            "minimum": 100.0,
-            "title": "Chunk Size",
-            "type": "integer"
-          },
-          "strategy": {
-            "default": "fixed_size",
-            "description": "Chunking strategy for video descriptions.",
-            "enum": [
-              "recursive",
-              "fixed_size",
-              "markdown",
-              "semantic"
-            ],
-            "title": "Strategy",
-            "type": "string"
-          }
-        },
-        "title": "VideoChunkOverride",
         "type": "object"
       },
       "VideoParsingConfig": {

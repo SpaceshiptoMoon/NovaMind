@@ -64,7 +64,7 @@
           </p>
         </div>
 
-        <KbSplittingSection :config-form="configForm" :has-audio="hasAudio" :has-video="hasVideo" />
+        <KbSplittingSection :config-form="configForm" />
       </section>
 
       <section v-show="currentStep === 0" class="editor-section">
@@ -127,7 +127,7 @@ import {
   KbTextParsingSection,
   normalizeSpaceTypes,
 } from '@/components/knowledge'
-import type { AudioChunkStrategy, ImageStrategy, TextStrategy } from '@/components/knowledge'
+import type { ImageStrategy, TextStrategy } from '@/components/knowledge'
 import { spaceApi } from '@/api/space'
 import { userApi } from '@/api/user'
 import type {
@@ -197,9 +197,6 @@ const configForm = reactive({
   splittingMaxChunkSize: 2000,
   splittingSimilarityThreshold: 0.7,
   splittingBatchSize: 20,
-  audioChunkStrategy: 'sentence' as AudioChunkStrategy,
-  audioChunkSize: 1000,
-  videoChunkSize: 1500,
 
   qgEnabled: false,
   qgLlmModel: '',
@@ -241,8 +238,6 @@ watch(hasAudio, (value) => {
   if (!value) {
     configForm.audioAsrModel = ''
     configForm.audioAsrLanguage = ''
-    configForm.audioChunkStrategy = 'sentence'
-    configForm.audioChunkSize = 1000
   }
 })
 
@@ -302,9 +297,6 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
   configForm.splittingMaxChunkSize = splitting?.max_chunk_size ?? 2000
   configForm.splittingSimilarityThreshold = splitting?.similarity_threshold ?? 0.7
   configForm.splittingBatchSize = splitting?.batch_size ?? 20
-  configForm.audioChunkStrategy = splitting?.audio?.strategy || 'sentence'
-  configForm.audioChunkSize = splitting?.audio?.chunk_size ?? 1000
-  configForm.videoChunkSize = splitting?.video?.chunk_size ?? 1500
 
   loadTextParsingConfig(parsing?.text)
   configForm.imageStrategy = parsing?.image?.strategy || 'vlm'
@@ -377,20 +369,6 @@ function buildSplittingConfig(): SplittingConfig {
     splitting.max_chunk_size = configForm.splittingMaxChunkSize
     splitting.similarity_threshold = configForm.splittingSimilarityThreshold
     splitting.batch_size = configForm.splittingBatchSize
-  }
-
-  if (hasAudio.value) {
-    splitting.audio = {
-      strategy: configForm.audioChunkStrategy,
-      chunk_size: configForm.audioChunkStrategy === 'fixed' ? configForm.audioChunkSize : undefined,
-    }
-  }
-
-  if (hasVideo.value) {
-    splitting.video = {
-      strategy: 'fixed',
-      chunk_size: configForm.videoChunkSize,
-    }
   }
 
   return splitting

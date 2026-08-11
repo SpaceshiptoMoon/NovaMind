@@ -80,40 +80,11 @@
         </template>
       </el-form>
     </div>
-
-    <div v-if="hasAudio" class="sub-section">
-      <h4 class="sub-title">音频切分覆盖</h4>
-      <p class="sub-desc">仅覆盖音频转写文本的切分方式。</p>
-
-      <el-form :model="configForm" label-width="140px" class="config-form">
-        <el-form-item label="切分策略">
-          <el-radio-group v-model="configForm.audioChunkStrategy">
-            <el-radio value="sentence">按句</el-radio>
-            <el-radio value="fixed">定长</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item v-if="configForm.audioChunkStrategy === 'fixed'" label="分块大小">
-          <el-input-number v-model="configForm.audioChunkSize" :min="100" :max="4000" style="width: 100%" />
-        </el-form-item>
-      </el-form>
-    </div>
-
-    <div v-if="hasVideo" class="sub-section">
-      <h4 class="sub-title">视频切分覆盖</h4>
-      <p class="sub-desc">视频切分仅支持定长策略，这里只配置分块大小。</p>
-
-      <el-form :model="configForm" label-width="140px" class="config-form">
-        <el-form-item label="分块大小">
-          <el-input-number v-model="configForm.videoChunkSize" :min="100" :max="4000" style="width: 100%" />
-        </el-form-item>
-      </el-form>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AudioChunkStrategy } from './kbConfig'
 
 type SplittingFormModel = {
   splittingStrategy: string
@@ -123,15 +94,10 @@ type SplittingFormModel = {
   splittingMaxChunkSize: number
   splittingSimilarityThreshold: number
   splittingBatchSize: number
-  audioChunkStrategy: AudioChunkStrategy
-  audioChunkSize: number
-  videoChunkSize: number
 }
 
 const props = defineProps<{
   configForm: SplittingFormModel
-  hasAudio: boolean
-  hasVideo: boolean
 }>()
 
 const strategyTitle = computed(() => {
@@ -196,24 +162,5 @@ const strategyDesc = computed(() => {
   color: var(--color-text-secondary);
   font-size: var(--text-sm);
   line-height: var(--leading-relaxed);
-}
-
-:deep(.el-radio-group) {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-:deep(.el-radio) {
-  margin-right: 0;
-  padding: 10px 14px;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-full);
-  background: #fff;
-}
-
-:deep(.el-radio.is-checked) {
-  border-color: rgba(99, 102, 241, 0.35);
-  background: var(--color-primary-subtle);
 }
 </style>

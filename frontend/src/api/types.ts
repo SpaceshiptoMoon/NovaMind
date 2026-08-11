@@ -228,21 +228,6 @@ export interface SpaceConfigUpdateRequest {
 
 // ===================== 知识库相关 =====================
 
-export interface AudioSplittingOverride {
-  strategy: 'sentence' | 'fixed'
-  chunk_size?: number
-}
-
-export interface VideoSplittingOverride {
-  strategy: 'fixed'
-  chunk_size?: number
-}
-
-export interface ImageChunkOverride {
-  strategy?: 'single' | 'batch'
-  chunk_size?: number
-}
-
 export interface SplittingConfig {
   strategy?: 'recursive' | 'fixed_size' | 'markdown' | 'semantic'
   chunk_size?: number
@@ -251,9 +236,6 @@ export interface SplittingConfig {
   max_chunk_size?: number
   similarity_threshold?: number
   batch_size?: number
-  image?: ImageChunkOverride
-  audio?: AudioSplittingOverride
-  video?: VideoSplittingOverride
 }
 
 export interface VideoParsingConfig {

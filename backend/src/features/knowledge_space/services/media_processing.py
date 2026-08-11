@@ -75,17 +75,6 @@ def _is_vlm_quota_or_auth_error(exc: BaseException) -> bool:
     return any(marker in text for marker in _VLM_QUOTA_OR_AUTH_MARKERS)
 
 
-def apply_modality_splitting_override(
-    splitting_config: Dict[str, Any], modality: str
-) -> None:
-    """用模态专属切分参数覆盖通用切分参数。
-
-    splitting_config 形如 {"strategy": ..., "chunk_size": ..., "video": {...}}，
-    调用后 ``modality`` 子键会被合并到顶层并移除，供后续 ``pop("strategy")`` 使用。
-    """
-    splitting_config.update(splitting_config.pop(modality, {}))
-
-
 async def maybe_semantic_embedding_client(
     strategy: str,
     embedding_config: Dict[str, Any],
@@ -259,7 +248,6 @@ async def process_video_document(
         task.finish_step("descriptions_generated", metrics={"description_count": len(descriptions)})
 
     # 3-5. 切分/向量化/问题生成/索引：交由共享后置尾
-    apply_modality_splitting_override(splitting_config, "video")
     tail_result = await _run_post_parse_tail(
         document=document,
         session=session,
@@ -525,7 +513,6 @@ async def process_audio_document(
 
     # 2-4. 切分/向量化/问题生成/索引：交由共享后置尾
     splitting_config = dict(pipeline_config.get("splitting", {}))
-    apply_modality_splitting_override(splitting_config, "audio")
     tail_result = await _run_post_parse_tail(
         document=document,
         session=session,

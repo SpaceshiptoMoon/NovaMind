@@ -60,7 +60,7 @@ def test_knowledge_base_config_drops_removed_fields():
     assert "preserve_structure" not in dumped["parsing"]
     assert dumped["parsing"]["text"]["pdf"]["ocr_enabled"] is True
     assert dumped["parsing"]["image"]["vlm_model"] == "glm-4v"
-    assert dumped["splitting"]["video"]["chunk_size"] == 1234
+    assert "video" not in dumped["splitting"]
     assert dumped["parsing"]["audio"]["language"] == "zh"
 
 
@@ -485,8 +485,10 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
     assert captured["frame_interval"] == 7
     assert captured["max_frames"] == 42
     assert captured["video_vlm_model"] == "video-vlm"
-    assert captured["split_strategy"] == "fixed_size"
-    assert captured["split_kwargs"]["chunk_size"] == 1400
+    # 切分统一后无模态子键覆盖：顶层 strategy=recursive/chunk_size=1000 生效，
+    # 残留的 video 子键（fixed_size/1400）被忽略（SplittingConfig extra=ignore）。
+    assert captured["split_strategy"] == "recursive"
+    assert captured["split_kwargs"]["chunk_size"] == 1000
     assert captured["video_index_chunk_type"] == "video"
     assert "frame description" in captured["parsed_video_text"]
     assert task.completed["chunk_type"] == "video"
@@ -593,8 +595,10 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
 
     assert captured["audio_model"] == "faster-whisper-tiny"
     assert captured["audio_language"] == "zh"
-    assert captured["audio_split_strategy"] == "fixed_size"
-    assert captured["audio_split_kwargs"]["chunk_size"] == 900
+    # 切分统一后无模态子键覆盖：顶层 strategy=recursive/chunk_size=1000 生效，
+    # 残留的 audio 子键（fixed_size/900）被忽略（SplittingConfig extra=ignore）。
+    assert captured["audio_split_strategy"] == "recursive"
+    assert captured["audio_split_kwargs"]["chunk_size"] == 1000
     assert captured["audio_index_chunk_type"] == "audio"
     assert "[00:00:00] hello" in captured["parsed_audio_text"]
     assert task.completed["chunk_type"] == "audio"
