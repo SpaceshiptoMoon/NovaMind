@@ -2,6 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 from novamind.features.user.services import UserService
 from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.features.user.services.search_config_service import SearchConfigService
 from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.features.user.repository import UserRepository
 from novamind.core.database.database import get_db
@@ -26,4 +27,13 @@ async def get_model_config_service(db: AsyncSession = Depends(get_db)) -> ModelC
         as_knowledge_space_info_port,
     )
     return ModelConfigService(db, knowledge_space_info_port=as_knowledge_space_info_port(db))
+
+
+async def get_search_config_service(db: AsyncSession = Depends(get_db)) -> SearchConfigService:
+    """获取搜索配置服务（路由装配点）。
+
+    返回具体 ``SearchConfigService``（CRUD 面）；qa 装配点用
+    ``as_search_config_port`` 以 ``SearchConfigPort`` 端口注入 AIChatService。
+    """
+    return SearchConfigService(db)
     

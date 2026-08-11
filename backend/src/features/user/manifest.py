@@ -7,6 +7,7 @@ from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, Ro
 def _import_models() -> None:
     from novamind.features.user.models.user import User  # noqa: F401
     from novamind.features.user.models.user_model_config import UserModelConfig  # noqa: F401
+    from novamind.features.user.models.user_search_config import UserSearchConfig  # noqa: F401
 
 
 async def _init(app) -> None:
@@ -18,12 +19,14 @@ async def _init(app) -> None:
 def manifest() -> FeatureManifest:
     from novamind.features.user.api.user_routes import router as user_router
     from novamind.features.user.api.model_config_routes import router as model_config_router
+    from novamind.features.user.api.search_config_routes import router as search_config_router
 
     return FeatureManifest(
         name="user",
         routers=[
             RouterSpec("user", user_router, f"{API_V1_PREFIX}/user", "用户管理"),
             RouterSpec("model_config", model_config_router, f"{API_V1_PREFIX}/user", "模型配置"),
+            RouterSpec("search_config", search_config_router, f"{API_V1_PREFIX}/user", "搜索配置"),
         ],
         depends_on=[],
         order=10,
