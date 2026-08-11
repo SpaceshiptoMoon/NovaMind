@@ -481,14 +481,15 @@ async def _process_image_document_static(
         await session.commit()
         return
 
-    # 5-8. 向量化/问题生成/索引：交由共享后置尾（与文本/音频/视频同路径）
+    # 5-8. 切分/向量化/问题生成/索引：交由共享后置尾（与文本/音频/视频同路径）
     #      图片经 VLM/OCR 归一为描述文本后，后续逻辑全部共享，自动获得 question_generation
     #      等共享能力——修复此前图片路径自写 embedded/indexed 导致相似问不生成的缺口。
-    #      图片语义为「一图一 chunk」：描述文本整体作为单个结构化分块（prechunked_items）
-    #      传入共享尾，跳过 _split_md_text 切分。既还原原版图片单块语义，又避免 splitting
-    #      配置中的脏策略值（如遗留 ``single``）经 apply_modality_splitting_override 合并到
-    #      顶层后触发 _split_md_text「不支持的切分策略」报错。splitting 无 image 子键 schema，
-    #      故不调 apply_modality_splitting_override（与 audio/video 不同）。
+    #      图片描述文本与 MD 文档同构，按顶层通用切分策略（recursive/markdown/fixed_size/semantic）
+    #      切成多块（与文本/音频/视频同路径）。splitting schema 无 image 子键（只有 audio/video），
+    #      故不调 apply_modality_splitting_override；并丢弃遗留脏 image 子键（如旧版
+    #      image.strategy="single"），避免其覆盖顶层 strategy 触发 _split_md_text 报错。
+    splitting_config = dict(ctx.pipeline_config.get("splitting", {}))
+    splitting_config.pop("image", None)
     tail_result = await _run_post_parse_tail(
         document=document,
         session=session,
@@ -498,8 +499,8 @@ async def _process_image_document_static(
         chunk_type=ChunkType.IMAGE,
         embedding_config=embedding_config,
         pipeline_config=ctx.pipeline_config,
-        splitting_config=ctx.pipeline_config.get("splitting", {}),
-        prechunked_items=[(description_text, {})],
+        splitting_config=splitting_config,
+        full_text=description_text,
         user_id=document.uploader_id,
     )
 
