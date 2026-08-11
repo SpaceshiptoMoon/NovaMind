@@ -530,20 +530,6 @@ function navigateToMatch(index: number) {
   max-width: 320px;
 }
 
-/* 查看原文浮窗：编辑器/阅读器标题栏 + 固定搜索栏 + 内容区内部滚动 */
-.original-dialog :deep(.el-dialog__body) {
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  height: 78vh;
-  max-height: 86vh;
-  /* flex item 默认 min-height:auto 会被内容撑开超过 78vh，
-     必须置 0 才能锁住固定高度、让内部内容区滚动 */
-  min-height: 0;
-  overflow: hidden;
-  background: var(--color-bg-card);
-}
-
 /* 标题栏 */
 .original-header {
   display: flex;
@@ -686,9 +672,14 @@ function navigateToMatch(index: number) {
 <!-- 非 scoped：el-dialog 被 teleport 到 body，scoped 无法命中默认 header；
      覆盖 el-dialog 默认外观（居中模态，遮罩由 el-dialog 默认 modal 提供） -->
 <style>
+/* 固定长宽窗口：宽 820px（prop）、高 80vh，flex column 让 header 固定、body 占满剩余 */
 .original-dialog.el-dialog {
   margin: 0;
   max-width: 92vw;
+  height: 80vh;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--color-border-light);
   border-radius: 20px;
   background: var(--color-bg-card);
@@ -698,11 +689,26 @@ function navigateToMatch(index: number) {
   overflow: hidden;
 }
 
-/* 去掉 el-dialog 默认 header padding 与关闭按钮，用自定义 #header slot */
+/* 去掉 el-dialog 默认 header padding 与关闭按钮，用自定义 #header slot；
+   flex-shrink:0 保证标题栏始终固定、不被压缩 */
 .original-dialog .el-dialog__header {
   padding: 0;
   margin: 0;
   border: 0;
+  flex-shrink: 0;
+}
+
+/* body 占满剩余高度、内部 flex column 容纳搜索栏 + 内容区；
+   min-height:0 是 flex item 滚动的关键（teleport 到 body 外，必须用全局非 scoped 样式命中） */
+.original-dialog .el-dialog__body {
+  padding: 0;
+  margin: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-bg-card);
 }
 
 .original-dialog .el-dialog__headerbtn {
