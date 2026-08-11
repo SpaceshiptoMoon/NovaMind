@@ -2,6 +2,32 @@ import type { PdfParserName, TextParsingConfig } from '@/api/types'
 
 export type TextStrategy = 'default' | 'deepdoc'
 export type ImageStrategy = 'vlm' | 'deepdoc_ocr'
+export type VideoStrategy = 'simple' | 'scene' | 'dedup' | 'grouped' | 'rewrite' | 'dedup_grouped'
+
+/** 视频解析策略选项（6 预设映射到抽帧/去重/描述三阶段组合）。 */
+export const videoStrategyItems: Array<{
+  value: VideoStrategy
+  label: string
+  desc: string
+  disabled?: boolean
+}> = [
+  { value: 'simple', label: '逐帧描述', desc: '固定间隔抽帧 + 逐帧单图描述（默认）' },
+  { value: 'scene', label: '场景抽帧', desc: '按镜头切换点抽帧 + 逐帧描述' },
+  { value: 'dedup', label: '相似去重', desc: '固定间隔 + 相似帧去重 + 逐帧描述' },
+  { value: 'grouped', label: '分组描述', desc: '多帧一组喂 VLM 多图生成连贯描述' },
+  { value: 'rewrite', label: '重写连贯', desc: '逐帧描述后 LLM 重写润色（保留时间锚点）' },
+  {
+    value: 'dedup_grouped',
+    label: '去重+分组（暂未实现）',
+    desc: '图像 embedding 去重 + 分组描述（预留，待图像 embedding 引入）',
+    disabled: true,
+  },
+]
+
+export function getVideoStrategyValue(value: unknown): VideoStrategy {
+  const allowed: VideoStrategy[] = ['simple', 'scene', 'dedup', 'grouped', 'rewrite', 'dedup_grouped']
+  return (allowed as string[]).includes(value as string) ? (value as VideoStrategy) : 'simple'
+}
 
 export type TextStrategyField =
   | 'docxStrategy'

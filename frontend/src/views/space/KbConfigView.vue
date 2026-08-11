@@ -127,7 +127,8 @@ import {
   KbTextParsingSection,
   normalizeSpaceTypes,
 } from '@/components/knowledge'
-import type { ImageStrategy, TextStrategy } from '@/components/knowledge'
+import type { ImageStrategy, TextStrategy, VideoStrategy } from '@/components/knowledge'
+import { getVideoStrategyValue } from '@/components/knowledge'
 import { spaceApi } from '@/api/space'
 import { userApi } from '@/api/user'
 import type {
@@ -138,6 +139,7 @@ import type {
   PdfParserName,
   SplittingConfig,
   TextParsingConfig,
+  VideoParsingConfig,
 } from '@/api/types'
 
 const route = useRoute()
@@ -182,10 +184,14 @@ const configForm = reactive({
   imageStrategy: 'vlm' as ImageStrategy,
   imageVlmModel: '',
 
+  videoStrategy: 'simple' as VideoStrategy,
   videoFrameInterval: 5,
   videoMaxFrames: 60,
   videoVlmDescriptionEnabled: false,
   videoVlmModel: '',
+  videoSceneThreshold: null as number | null,
+  videoDedupSimilarityThreshold: null as number | null,
+  videoGroupSize: null as number | null,
 
   audioAsrModel: '',
   audioAsrLanguage: '',
@@ -229,8 +235,12 @@ watch(hasImage, (value) => {
 
 watch(hasVideo, (value) => {
   if (!value) {
+    configForm.videoStrategy = 'simple'
     configForm.videoVlmDescriptionEnabled = false
     configForm.videoVlmModel = ''
+    configForm.videoSceneThreshold = null
+    configForm.videoDedupSimilarityThreshold = null
+    configForm.videoGroupSize = null
   }
 })
 
@@ -301,10 +311,17 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
   loadTextParsingConfig(parsing?.text)
   configForm.imageStrategy = parsing?.image?.strategy || 'vlm'
   configForm.imageVlmModel = parsing?.image?.vlm_model || ''
+  configForm.videoStrategy = getVideoStrategyValue(parsing?.video?.strategy)
   configForm.videoFrameInterval = parsing?.video?.frame_interval ?? 5
   configForm.videoMaxFrames = parsing?.video?.max_frames ?? 60
   configForm.videoVlmDescriptionEnabled = parsing?.video?.vlm_description_enabled ?? false
   configForm.videoVlmModel = parsing?.video?.vlm_model || ''
+  configForm.videoSceneThreshold =
+    parsing?.video?.scene_threshold === undefined ? null : parsing.video.scene_threshold
+  configForm.videoDedupSimilarityThreshold =
+    parsing?.video?.dedup_similarity_threshold === undefined ? null : parsing.video.dedup_similarity_threshold
+  configForm.videoGroupSize =
+    parsing?.video?.group_size === undefined ? null : parsing.video.group_size
   configForm.audioAsrModel = parsing?.audio?.asr_model || ''
   configForm.audioAsrLanguage = parsing?.audio?.language || ''
 
@@ -389,12 +406,23 @@ function buildParsingConfig(): ParsingConfig {
   }
 
   if (hasVideo.value) {
-    parsing.video = {
+    const video: VideoParsingConfig = {
+      strategy: configForm.videoStrategy,
       frame_interval: configForm.videoFrameInterval,
       max_frames: configForm.videoMaxFrames,
       vlm_description_enabled: configForm.videoVlmDescriptionEnabled,
       vlm_model: configForm.videoVlmDescriptionEnabled ? (configForm.videoVlmModel || undefined) : undefined,
     }
+    if (configForm.videoSceneThreshold !== null) {
+      video.scene_threshold = configForm.videoSceneThreshold
+    }
+    if (configForm.videoDedupSimilarityThreshold !== null) {
+      video.dedup_similarity_threshold = configForm.videoDedupSimilarityThreshold
+    }
+    if (configForm.videoGroupSize !== null) {
+      video.group_size = configForm.videoGroupSize
+    }
+    parsing.video = video
   }
 
   if (hasAudio.value) {
