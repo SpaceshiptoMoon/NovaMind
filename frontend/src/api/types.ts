@@ -130,6 +130,52 @@ export interface ModelConfigListResponse {
   items: ModelConfig[]
 }
 
+// ===================== 搜索引擎配置相关 =====================
+
+export type SearchProvider = 'tavily' | 'serpapi' | 'duckduckgo'
+
+export interface SearchEngineConfig {
+  id: number
+  user_id: number
+  provider: SearchProvider
+  api_key: string | null // 已脱敏：'****' 表示已设置，'' / null 表示未设置
+  extra_config: Record<string, unknown> | null
+  is_primary: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateSearchEngineConfigRequest {
+  provider: SearchProvider
+  api_key?: string
+  extra_config?: Record<string, unknown>
+  is_primary?: boolean
+}
+
+export interface UpdateSearchEngineConfigRequest {
+  api_key?: string // 留空 = 不修改（保留原密文）
+  extra_config?: Record<string, unknown>
+  is_primary?: boolean
+}
+
+export interface SearchEngineConfigListResponse {
+  total: number
+  items: SearchEngineConfig[]
+}
+
+export interface SearchEngineTestRequest {
+  provider: SearchProvider
+  api_key?: string
+  extra_config?: Record<string, unknown>
+}
+
+export interface SearchEngineTestResponse {
+  success: boolean
+  message: string
+  latency_ms: number | null
+  results_count: number
+}
+
 // ===================== 知识空间相关 =====================
 
 export interface SpaceConfigEmbedding {
@@ -146,24 +192,24 @@ export interface SpaceConfigEmbeddingUpdate {
 }
 
 export interface SpaceLLMConfig {
-  model?: string    // LLM 模型名称
+  model?: string // LLM 模型名称
 }
 
 export interface SpaceASRConfig {
-  model?: string    // ASR 模型名称（如 whisper-1）
+  model?: string // ASR 模型名称（如 whisper-1）
 }
 
 export interface SpaceVLMConfig {
-  model?: string    // VLM 模型名称（视频帧/图片描述）
+  model?: string // VLM 模型名称（视频帧/图片描述）
 }
 
 export interface SpaceConfig {
   description?: string
   tags?: string[]
   embedding?: SpaceConfigEmbedding
-  llm?: SpaceLLMConfig    // 默认 LLM 配置（问题生成、查询改写、摘要）
-  asr?: SpaceASRConfig    // 默认 ASR 配置（音频转文字）
-  vlm?: SpaceVLMConfig    // 默认 VLM 配置（暂未启用）
+  llm?: SpaceLLMConfig // 默认 LLM 配置（问题生成、查询改写、摘要）
+  asr?: SpaceASRConfig // 默认 ASR 配置（音频转文字）
+  vlm?: SpaceVLMConfig // 默认 VLM 配置（暂未启用）
   storage?: Record<string, unknown>
   ui?: Record<string, unknown>
   defaults?: Record<string, unknown>
@@ -330,7 +376,7 @@ export interface QuestionGenerationConfig {
 }
 
 export interface KBConfig {
-  space_type?: string[]  // text/image/video/audio，KB 支持的数据模态
+  space_type?: string[] // text/image/video/audio，KB 支持的数据模态
   description?: string
   splitting?: SplittingConfig
   parsing?: ParsingConfig
@@ -399,7 +445,7 @@ export interface Document {
   created_at: string
   updated_at: string | null
   // 以下字段由后端从 DocumentTask 派生（computed_field），可能为默认值
-  status?: number       // TaskStatus: 0=PENDING, 1=PROCESSING, 2=COMPLETED, 3=FAILED, 4=CANCELLED
+  status?: number // TaskStatus: 0=PENDING, 1=PROCESSING, 2=COMPLETED, 3=FAILED, 4=CANCELLED
   retry_count?: number
   error_message?: string | null
 }
@@ -813,7 +859,10 @@ export interface HealthCheckResponse {
 }
 
 export interface ModelsResponse {
-  models: Record<string, { max_tokens: number; temperature: number; top_p: number; model_type: string }>
+  models: Record<
+    string,
+    { max_tokens: number; temperature: number; top_p: number; model_type: string }
+  >
 }
 
 // ===================== 会话配置相关 =====================
