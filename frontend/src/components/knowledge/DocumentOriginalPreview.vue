@@ -671,9 +671,17 @@ function navigateToMatch(index: number) {
 <!-- 非 scoped：el-dialog 被 teleport 到 body，scoped 无法命中默认 header；
      覆盖 el-dialog 默认外观（居中模态，遮罩由 el-dialog 默认 modal 提供） -->
 <style>
+/* 强制 overlay 用 flex 居中，不依赖 align-center prop
+   （el-dialog append-to-body teleport 到 body 外，prop 驱动的居中 class 不稳，用全局非 scoped 命中） */
+.el-overlay-dialog:has(.original-dialog) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
 /* 固定长宽窗口：宽 820px（prop）、高 80vh，flex column 让 header 固定、body 占满剩余 */
 .original-dialog.el-dialog {
-  margin: 0;
+  margin: 0 !important;
   max-width: 92vw;
   height: 80vh;
   max-height: 88vh;
