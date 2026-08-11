@@ -1,7 +1,7 @@
 """媒体 chunk 时间元数据对齐测试。
 
 验证方式 1（时间戳锚点 + 切分后反查对齐）：
-- `_align_chunk_times`：正则提 `[HH:MM:SS#idx]` → 查 timeline_map 填 start_time/end_time/frame_indices
+- `align_chunk_times`：正则提 `[HH:MM:SS#idx]` → 查 timeline_map 填 start_time/end_time/frame_indices
   + 剥离锚点得到进 embedding 的纯描述 content。
 - `_split_md_text` 的 `fixed_size` 行边界适配：按行累积，不切进「[锚点] 描述」行内部。
 """
@@ -14,24 +14,21 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.features.knowledge_space.services.document_pipeline import _align_chunk_times
+from novamind.engines.document.media.chunk_time_alignment import align_chunk_times
 from novamind.features.knowledge_space.services.media_processing import _split_md_text
 
 pytestmark = pytest.mark.unit
 
 
-# ==================== _align_chunk_times ====================
+# ==================== align_chunk_times ====================
 
 
 def test_align_single_anchor_chunk_maps_time_and_strips_anchor():
     """单锚点 chunk：start/end 取该帧时间，frame_indices=[idx]，content 剥离锚点。"""
     chunk_items = [("[00:00:15#3] 主讲人介绍 RAG 架构", {})]
-    time_alignment = {
-        "timeline_map": {3: (15.0, 20.0)},
-        "is_video": True,
-    }
+    timeline_map = {3: (15.0, 20.0)}
 
-    aligned = _align_chunk_times(chunk_items, time_alignment)
+    aligned = align_chunk_times(chunk_items, timeline_map, is_video=True)
 
     assert len(aligned) == 1
     text, meta = aligned[0]
@@ -44,16 +41,13 @@ def test_align_single_anchor_chunk_maps_time_and_strips_anchor():
 def test_align_multi_anchor_chunk_aggregates_time_range():
     """多锚点 chunk（多帧合并切分）：start=min, end=max, frame_indices=全部 idx。"""
     chunk_items = [("[00:00:15#3] 段A\n\n[00:00:25#5] 段B\n\n[00:00:35#7] 段C", {})]
-    time_alignment = {
-        "timeline_map": {
-            3: (15.0, 25.0),
-            5: (25.0, 35.0),
-            7: (35.0, None),  # 末帧 end=None
-        },
-        "is_video": True,
+    timeline_map = {
+        3: (15.0, 25.0),
+        5: (25.0, 35.0),
+        7: (35.0, None),  # 末帧 end=None
     }
 
-    aligned = _align_chunk_times(chunk_items, time_alignment)
+    aligned = align_chunk_times(chunk_items, timeline_map, is_video=True)
 
     text, meta = aligned[0]
     assert text == "段A\n\n段B\n\n段C"
@@ -65,15 +59,12 @@ def test_align_multi_anchor_chunk_aggregates_time_range():
 def test_align_audio_chunk_has_no_frame_indices():
     """音频 is_video=False：填 start_time/end_time 但不填 frame_indices。"""
     chunk_items = [("[00:00:00#0] hello\n[00:00:01#1] world", {})]
-    time_alignment = {
-        "timeline_map": {
-            0: (0.0, 1.0),
-            1: (1.0, 2.0),
-        },
-        "is_video": False,
+    timeline_map = {
+        0: (0.0, 1.0),
+        1: (1.0, 2.0),
     }
 
-    aligned = _align_chunk_times(chunk_items, time_alignment)
+    aligned = align_chunk_times(chunk_items, timeline_map, is_video=False)
 
     text, meta = aligned[0]
     assert text == "hello\nworld"
@@ -85,9 +76,9 @@ def test_align_audio_chunk_has_no_frame_indices():
 def test_align_anchorless_chunk_gets_none_times():
     """无锚点块（单段超 chunk_size 被切成尾部块）：start/end 填 None。"""
     chunk_items = [("这是一段没有锚点的尾部文本", {})]
-    time_alignment = {"timeline_map": {0: (0.0, 1.0)}, "is_video": True}
+    timeline_map = {0: (0.0, 1.0)}
 
-    aligned = _align_chunk_times(chunk_items, time_alignment)
+    aligned = align_chunk_times(chunk_items, timeline_map, is_video=True)
 
     text, meta = aligned[0]
     assert text == "这是一段没有锚点的尾部文本"  # 无锚点前缀，剥离后不变
@@ -100,9 +91,9 @@ def test_align_anchorless_chunk_gets_none_times():
 def test_align_preserves_existing_meta_keys():
     """对齐不破坏 chunk 原有 meta 键（仅追加时间字段）。"""
     chunk_items = [("[00:00:10#2] 描述", {"existing": "kept"})]
-    time_alignment = {"timeline_map": {2: (10.0, 20.0)}, "is_video": True}
+    timeline_map = {2: (10.0, 20.0)}
 
-    aligned = _align_chunk_times(chunk_items, time_alignment)
+    aligned = align_chunk_times(chunk_items, timeline_map, is_video=True)
 
     _, meta = aligned[0]
     assert meta["existing"] == "kept"
@@ -113,9 +104,9 @@ def test_align_preserves_existing_meta_keys():
 def test_align_unknown_idx_dropped_gracefully():
     """chunk 含 timeline_map 里没有的 idx（帧丢失等）：忽略该 idx，不报错。"""
     chunk_items = [("[00:00:10#2] 段A\n\n[00:00:20#99] 段B", {})]
-    time_alignment = {"timeline_map": {2: (10.0, 20.0)}, "is_video": True}  # 99 不在 map
+    timeline_map = {2: (10.0, 20.0)}  # 99 不在 map
 
-    aligned = _align_chunk_times(chunk_items, time_alignment)
+    aligned = align_chunk_times(chunk_items, timeline_map, is_video=True)
 
     text, meta = aligned[0]
     assert text == "段A\n\n段B"
