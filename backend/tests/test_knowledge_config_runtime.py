@@ -415,6 +415,7 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
         sc = kwargs.get("splitting_config") or {}
         captured["split_strategy"] = sc.get("strategy")
         captured["split_kwargs"] = {"chunk_size": sc.get("chunk_size")}
+        captured["video_time_alignment"] = kwargs.get("time_alignment")
         return {"chunk_count": 1, "indexed_count": 1, "total_questions": 0, "split_strategy": sc.get("strategy", "recursive")}
 
     monkeypatch.setattr(
@@ -490,7 +491,13 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
     assert captured["split_strategy"] == "recursive"
     assert captured["split_kwargs"]["chunk_size"] == 1000
     assert captured["video_index_chunk_type"] == "video"
+    assert "[00:00:01#0]" in captured["parsed_video_text"]  # 双锚点 [HH:MM:SS#frame_idx]
     assert "frame description" in captured["parsed_video_text"]
+    # chunk 时间对齐：单帧 ts=1.0 idx=0，末帧 end=None（开放区间）
+    ta = captured["video_time_alignment"]
+    assert ta is not None
+    assert ta["is_video"] is True
+    assert ta["timeline_map"][0] == (1.0, None)
     assert task.completed["chunk_type"] == "video"
 
 
@@ -530,6 +537,7 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
         sc = kwargs.get("splitting_config") or {}
         captured["audio_split_strategy"] = sc.get("strategy")
         captured["audio_split_kwargs"] = {"chunk_size": sc.get("chunk_size")}
+        captured["audio_time_alignment"] = kwargs.get("time_alignment")
         return {"chunk_count": 1, "indexed_count": 1, "total_questions": 0, "split_strategy": sc.get("strategy", "recursive")}
 
     monkeypatch.setattr(
@@ -600,7 +608,12 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
     assert captured["audio_split_strategy"] == "recursive"
     assert captured["audio_split_kwargs"]["chunk_size"] == 1000
     assert captured["audio_index_chunk_type"] == "audio"
-    assert "[00:00:00] hello" in captured["parsed_audio_text"]
+    assert "[00:00:00#0] hello" in captured["parsed_audio_text"]  # 双锚点 [HH:MM:SS#seg_idx]
+    # chunk 时间对齐：单 segment start=0 end=1，is_video=False（不填 frame_indices）
+    ta = captured["audio_time_alignment"]
+    assert ta is not None
+    assert ta["is_video"] is False
+    assert ta["timeline_map"][0] == (0.0, 1.0)
     assert task.completed["chunk_type"] == "audio"
 
 
