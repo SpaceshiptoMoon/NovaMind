@@ -59,8 +59,8 @@
     <!-- 查看原文：右下角固定浮窗，无遮罩，背景页面正常可用，顶部固定内容滚动 -->
     <el-dialog
       v-model="originalDialogVisible"
-      width="480px"
-      top="0"
+      width="820px"
+      align-center
       draggable
       :show-close="false"
       :modal="false"
@@ -537,8 +537,8 @@ function navigateToMatch(index: number) {
   padding: 0;
   display: flex;
   flex-direction: column;
-  height: 60vh;
-  max-height: 80vh;
+  height: 78vh;
+  max-height: 86vh;
   overflow: hidden;
   background: var(--color-bg-card);
 }
@@ -688,11 +688,8 @@ function navigateToMatch(index: number) {
 }
 
 .original-dialog.el-dialog {
-  position: fixed;
-  right: 28px;
-  bottom: 28px;
   margin: 0;
-  max-width: calc(100vw - 56px);
+  max-width: 92vw;
   border: 1px solid var(--color-border-light);
   border-radius: 20px;
   background: var(--color-bg-card);
