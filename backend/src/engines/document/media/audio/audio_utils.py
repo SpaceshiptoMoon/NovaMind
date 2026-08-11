@@ -6,12 +6,14 @@
 """
 
 import asyncio
-import concurrent.futures
+import multiprocessing as mp
 import os
 import logging
 import tempfile
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
-from typing import List, Tuple, Dict, Optional, Set
+from typing import List, Tuple, Dict, Any, Optional, Set
 
 from novamind.shared.config import AudioConfig
 
@@ -84,19 +86,25 @@ _MAGIC_EXT_TO_FORMAT = {
     "flac": "FLAC",
 }
 
-_model_lock = asyncio.Lock()
-_local_whisper_model = None
-
-# ASR 专用单线程 executor。
+# ASR 专用单进程 executor（子进程隔离）。
 # 原因：faster-whisper 的 WhisperModel.transcribe 不支持同一实例并发调用，
 #       并发会触发 CTranslate2 原生层崩溃（进程无声猝死，无 Python traceback）。
-#       单线程串行化转写，既消除并发崩溃，又把长任务从默认 to_thread 共享池
-#       剥离，避免饿死登录密码校验等其它 to_thread 调用。
+#       单进程串行化转写，既消除并发崩溃，又把 CPU-bound int8 推理从主进程
+#       事件循环剥离——同进程线程 executor 仍与事件循环线程争用 CPU/GIL，
+#       长转写会饿死 HTTP 请求；子进程做 OS 级 CPU/GIL 隔离，主进程事件循环
+#       彻底不受影响。CTranslate2 崩溃也只杀子进程，不杀主进程。
 # 取舍：max_workers=1 意味着音频任务串行，吞吐下降；但本机 CPU 推理本身
-#       就慢，安全远比并发吞吐重要。需要真并行再上模型实例池（第二步）。
-_asr_executor = concurrent.futures.ThreadPoolExecutor(
-    max_workers=1, thread_name_prefix="asr-transcribe"
+#       就慢，安全与隔离远比并发吞吐重要。需要真并行再上多进程池。
+# spawn 上下文：Windows 必须；Linux/macOS 用 spawn 统一行为（fork 在 asyncio
+#       + C 扩展 + 模型加载有坑）。worker 子进程 import 本模块时模块级会再
+#       创建一个 ProcessPoolExecutor 对象，但 worker 不提交任务 → 不 spawn
+#       孙进程，无递归，对象随 worker 退出清理，无害。
+_asr_executor = ProcessPoolExecutor(
+    max_workers=1, mp_context=mp.get_context("spawn"),
 )
+
+# 进程池崩溃重建锁（BrokenProcessPool 后串行化重建，避免竞态）
+_asr_executor_lock = asyncio.Lock()
 
 # ASR 忙碌锁：转写进行中时 locked，空闲时 unlocked。
 # 两个用途：
@@ -175,64 +183,105 @@ def _resolve_local_whisper_model_dir(
     return Path.home() / ".cache" / "faster-whisper" / "tiny"
 
 
-async def _get_local_whisper_model(
-    audio_config: Optional[AudioConfig] = None,
-):
-    """懒加载 faster-whisper 模型（单例，异步安全）
+def _resolve_cpu_threads(audio_config: Optional[AudioConfig] = None) -> int:
+    """解析本地 ASR 推理使用的 CPU 线程数。
 
-    ``audio_config`` 仅在首次加载（模型实例尚未创建）时用于解析模型目录；
-    单例已加载后忽略传入的配置，保证后续调用不重复加载。
+    优先级：
+      1. ``AudioConfig.local_whisper_cpu_threads``（宿主从 YAML
+         ``knowledge_base.parsing.local_whisper_cpu_threads`` 构造注入）
+      2. 默认 ``max(1, logical//2 - 1)``（按物理核估算并留至少 1 物理核）
+
+    子进程的 cpu_threads 限制的是**子进程** CPU，与主进程 OS 级隔离——
+    主进程事件循环独占其余核，不受 ASR 推理影响。
     """
-    global _local_whisper_model
-    if _local_whisper_model is None:
-        async with _model_lock:
-            if _local_whisper_model is None:
-                from faster_whisper import WhisperModel
+    _configured = (
+        getattr(audio_config, "local_whisper_cpu_threads", None)
+        if audio_config
+        else None
+    )
+    if isinstance(_configured, int) and _configured > 0:
+        return _configured
+    _logical = os.cpu_count() or 2
+    return max(1, (_logical // 2) - 1)
 
-                model_dir = _resolve_local_whisper_model_dir(audio_config)
-                if not model_dir.exists():
-                    raise RuntimeError(
-                        f"本地 ASR 模型未找到: {model_dir}，"
-                        f"请确保目录存在且包含 model.bin；"
-                        f"可在配置 knowledge_base.parsing.local_whisper_model_dir "
-                        f"或环境变量 NOVAMIND_LOCAL_WHISPER_MODEL_DIR 指定路径。"
-                    )
 
-                # 同步构造丢进专用 executor，避免首次加载阻塞事件循环。
-                # 走 _asr_executor（单线程）可与转写调用安全串行，不会并发同一实例。
-                # 限制 CPU 线程数：faster-whisper 默认 cpu_threads=0（吃满所有核），
-                # 180s 级 int8 推理会占满全部 CPU，导致 asyncio 事件循环线程排不上队，
-                # 所有并发 HTTP 请求（登录等）表现为"一直加载"。
-                #
-                # 默认按物理核估算并留至少 1 物理核给事件循环（超线程机器逻辑核≈2×物理，
-                # 故取 logical//2 - 1）。相比旧的 logical-2，避免在 8 逻辑核/4 物理核机器
-                # 上仍让 ASR 占 6 逻辑核≈3 物理核、饿死事件循环。
-                # 可经 YAML knowledge_base.parsing.local_whisper_cpu_threads 覆盖：
-                # 仍卡顿调小（如 2），ASR 太慢调大但勿超过 (物理核 - 1)。
-                # num_workers=1 关闭内部并行解码 worker，避免与外层 _asr_executor
-                # 叠加放大 CPU 占用。
-                _configured = getattr(audio_config, "local_whisper_cpu_threads", None)
-                if isinstance(_configured, int) and _configured > 0:
-                    _cpu_threads = _configured
-                else:
-                    _logical = os.cpu_count() or 2
-                    _cpu_threads = max(1, (_logical // 2) - 1)
+# 子进程内 faster-whisper 模型缓存（仅子进程使用，worker 进程持久复用）。
+# 注意：这是子进程模块级全局，主进程不持有模型；spawn worker 首次执行任务时
+#       加载，后续复用。必须放在模块级以便子进程 import 时定义。
+_subprocess_model = None
 
-                def _load_whisper_model() -> "WhisperModel":
-                    return WhisperModel(
-                        str(model_dir),
-                        device="cpu",
-                        compute_type="int8",
-                        cpu_threads=_cpu_threads,
-                        num_workers=1,
-                        local_files_only=True,
-                    )
 
-                _local_whisper_model = await asyncio.get_running_loop().run_in_executor(
-                    _asr_executor, _load_whisper_model
-                )
-                logger.info("本地 faster-whisper 模型已加载, path=%s", str(model_dir))
-    return _local_whisper_model
+def _transcribe_in_subprocess(
+    tmp_path: str,
+    language: Optional[str],
+    model_dir: str,
+    cpu_threads: int,
+) -> Dict[str, Any]:
+    """子进程内执行：加载模型（子进程全局缓存）+ transcribe + 返回可 pickle 结果。
+
+    必须是模块级函数（spawn worker 经 pickle 引用，需可 import）。
+    返回纯 dict（segments + info 关键字段），经 IPC 回传主进程。
+
+    Args:
+        tmp_path: 主进程写入的临时音频文件路径（子进程读文件，避免传 bytes）
+        language: 语言提示，None 表示自动检测
+        model_dir: faster-whisper 模型目录（主进程解析后传入）
+        cpu_threads: 子进程推理 CPU 线程数（主进程解析后传入）
+
+    Returns:
+        {"segments": [{"text","start","end"},...],
+         "language": str, "language_probability": float, "duration": float}
+    """
+    global _subprocess_model
+    from faster_whisper import WhisperModel
+
+    if _subprocess_model is None:
+        _subprocess_model = WhisperModel(
+            model_dir,
+            device="cpu",
+            compute_type="int8",
+            cpu_threads=cpu_threads,
+            num_workers=1,
+            local_files_only=True,
+        )
+        logger.info("子进程 faster-whisper 模型已加载, path=%s", model_dir)
+
+    logger.info("子进程 ASR 转写开始, file=%s", tmp_path)
+    segments_result, info = _subprocess_model.transcribe(
+        tmp_path,
+        beam_size=5,
+        word_timestamps=False,
+        language=language,
+    )
+    logger.info(
+        "子进程 ASR 转写完成, language=%s, probability=%.2f, duration=%.1fs",
+        info.language, info.language_probability, info.duration,
+    )
+    return {
+        "segments": _segments_to_dict(segments_result),
+        "language": info.language,
+        "language_probability": info.language_probability,
+        "duration": info.duration,
+    }
+
+
+async def _rebuild_asr_executor() -> None:
+    """进程池崩溃后重建（BrokenProcessPool 后调用）。
+
+    CTranslate2 原生层 segfault 会杀子进程 → ProcessPoolExecutor 抛
+    BrokenProcessPool。重建池后下次任务重新加载模型；本次抛错由上游
+    media_processing 回退云端 ASR。
+    """
+    global _asr_executor
+    async with _asr_executor_lock:
+        try:
+            _asr_executor.shutdown(wait=False)
+        except Exception:
+            pass
+        _asr_executor = ProcessPoolExecutor(
+            max_workers=1, mp_context=mp.get_context("spawn"),
+        )
+        logger.warning("ASR 进程池已重建（前一个子进程崩溃）")
 
 
 def _validate_audio_for_local_asr(file_content: bytes) -> Tuple[str, str]:
@@ -314,60 +363,74 @@ async def transcribe_audio_local(
         tmp_path = tmp.name
 
     try:
-        # 3. 加载模型
-        model = await _get_local_whisper_model(audio_config)
+        # 3. 解析模型目录 + CPU 线程数（主进程），校验模型存在
+        model_dir = _resolve_local_whisper_model_dir(audio_config)
+        if not model_dir.exists():
+            raise RuntimeError(
+                f"本地 ASR 模型未找到: {model_dir}，"
+                f"请确保目录存在且包含 model.bin；"
+                f"可在配置 knowledge_base.parsing.local_whisper_model_dir "
+                f"或环境变量 NOVAMIND_LOCAL_WHISPER_MODEL_DIR 指定路径。"
+            )
+        cpu_threads = _resolve_cpu_threads(audio_config)
 
         logger.info("本地 ASR 转写开始, file=%s, size=%d", tmp_path, len(file_content))
-        # 走专用单线程 executor：串行化转写，避免并发同一模型实例导致原生层崩溃，
-        # 同时把长任务从默认 to_thread 共享池剥离，不饿死登录等其它 to_thread 调用。
+        # 走专用单进程 executor：子进程内加载模型 + transcribe，OS 级 CPU/GIL 隔离，
+        # 主进程事件循环不受 int8 推理饿死；单进程串行避免并发同一模型实例崩溃。
         loop = asyncio.get_running_loop()
-        segments_result, info = await loop.run_in_executor(
-            _asr_executor,
-            lambda: model.transcribe(
+        try:
+            result = await loop.run_in_executor(
+                _asr_executor,
+                _transcribe_in_subprocess,
                 tmp_path,
-                beam_size=5,
-                word_timestamps=False,
-                language=language,
-            ),
-        )
+                language,
+                str(model_dir),
+                cpu_threads,
+            )
+        except BrokenProcessPool:
+            # 子进程崩溃（CTranslate2 segfault 等）→ 重建池，本次抛错让上游回退云端
+            await _rebuild_asr_executor()
+            raise
 
-        # info 包含: language, language_probability, duration, etc.
         logger.info(
             "本地 ASR 转写完成, language=%s, probability=%.2f, duration=%.1fs",
-            info.language, info.language_probability, info.duration,
+            result["language"], result["language_probability"], result["duration"],
         )
 
-        # 4. 转换结果格式（与 OpenAI/DashScope 返回格式统一）
-        segments = _segments_to_dict(segments_result)
+        # 4. 结果格式已由子进程归一为 segments dict
+        segments = result["segments"]
 
         # 5. 结果为空且语言自动检测置信度低时，用中文重试
         #    tiny 模型容易把中文误判为英语（probability < 0.5），导致转写为空。
         #    显式指定 zh 可以大幅提升中文识别率。
-        #    注意：仅在首次转写结果为空时重试，已有内容则不再浪费 ASR 线程。
-        if not segments and language is None and info.language_probability < 0.5:
+        #    注意：仅在首次转写结果为空时重试，已有内容则不再浪费 ASR 子进程。
+        if not segments and language is None and result["language_probability"] < 0.5:
             logger.warning(
                 "本地 ASR 语言检测置信度低 (language=%s, probability=%.2f)，用中文重试",
-                info.language, info.language_probability,
+                result["language"], result["language_probability"],
             )
-            segments_result, info = await loop.run_in_executor(
-                _asr_executor,
-                lambda: model.transcribe(
+            try:
+                result = await loop.run_in_executor(
+                    _asr_executor,
+                    _transcribe_in_subprocess,
                     tmp_path,
-                    beam_size=5,
-                    word_timestamps=False,
-                    language="zh",
-                ),
-            )
+                    "zh",
+                    str(model_dir),
+                    cpu_threads,
+                )
+            except BrokenProcessPool:
+                await _rebuild_asr_executor()
+                raise
             logger.info(
                 "本地 ASR 中文重试完成, language=%s, probability=%.2f, duration=%.1fs",
-                info.language, info.language_probability, info.duration,
+                result["language"], result["language_probability"], result["duration"],
             )
-            segments = _segments_to_dict(segments_result)
+            segments = result["segments"]
 
         if not segments:
             logger.warning(
                 "本地 ASR 转写结果为空, language=%s, duration=%.1fs",
-                info.language, info.duration,
+                result["language"], result["duration"],
             )
 
         return segments

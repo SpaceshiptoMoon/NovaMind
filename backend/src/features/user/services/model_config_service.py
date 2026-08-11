@@ -772,7 +772,7 @@ class ModelConfigService:
         """测试本地 ASR 模型是否可用（检查模型文件完整性）"""
         from pathlib import Path
 
-        # 模型路径与 media_utils._get_local_whisper_model 一致
+        # 模型路径与 audio_utils._resolve_local_whisper_model_dir 一致
         model_dir = Path(__file__).resolve().parent.parent.parent.parent.parent / "models" / "faster-whisper" / "tiny"
 
         if not model_dir.exists():
