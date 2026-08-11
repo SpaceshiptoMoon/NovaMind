@@ -33,6 +33,15 @@ def format_time_anchor(seconds: float, idx: int) -> str:
     return f"[{format_time(seconds)}#{idx}]"
 
 
+def extract_anchor_indices(text: str) -> List[int]:
+    """提取文本中所有 ``[HH:MM:SS#idx]`` 锚点的 idx，按出现顺序返回。
+
+    供 rewrite 策略后处理校验：LLM 重写后锚点 idx 集合应与输入帧 idx 一致，
+    不一致则回退原逐帧描述，保兜底。
+    """
+    return [int(m) for m in _ANCHOR_RE.findall(text)]
+
+
 def build_frame_timeline_map(
     descriptions: List[Tuple[str, float, int]],
 ) -> Dict[int, Tuple[Optional[float], Optional[float]]]:

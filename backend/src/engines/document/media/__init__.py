@@ -14,10 +14,22 @@ from novamind.engines.document.media.chunk_time_alignment import (
     build_segment_timeline_map,
     format_time_anchor,
 )
-from novamind.engines.document.media.video import extract_video_frames
+from novamind.engines.document.media.video import (
+    AllFrameDescriptionsFailedError,
+    describe_grouped,
+    describe_rewrite,
+    describe_single,
+    dedup_embedding,
+    dedup_frame_diff,
+    dedup_none,
+    extract_frames_fixed,
+    extract_frames_scene,
+    extract_video_frames,
+)
 from novamind.engines.document.media.vlm import (
     build_image_data_url,
     build_vlm_image_messages,
+    build_vlm_multi_image_messages,
     generate_vlm_text_with_fallback,
 )
 
@@ -25,6 +37,15 @@ __all__ = [
     "_asr_busy_lock",
     "acquire_asr_or_busy",
     "extract_video_frames",
+    "extract_frames_fixed",
+    "extract_frames_scene",
+    "dedup_none",
+    "dedup_frame_diff",
+    "dedup_embedding",
+    "describe_single",
+    "describe_grouped",
+    "describe_rewrite",
+    "AllFrameDescriptionsFailedError",
     "is_local_asr_busy",
     "transcribe_audio_local",
     "transcribe_audio_with_dashscope",
@@ -32,9 +53,11 @@ __all__ = [
     "upload_parsed_text_to_minio",
     "build_image_data_url",
     "build_vlm_image_messages",
+    "build_vlm_multi_image_messages",
     "generate_vlm_text_with_fallback",
     "align_chunk_times",
     "build_frame_timeline_map",
     "build_segment_timeline_map",
     "format_time_anchor",
+    "extract_anchor_indices",
 ]
