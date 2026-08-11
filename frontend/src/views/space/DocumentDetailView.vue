@@ -121,14 +121,17 @@
               <!-- 展开态：完整内容 -->
               <template v-else>
                 <div class="chunk-content">
-                  <img
-                    v-if="chunk.chunk_type === 'image' && (chunk.media_url || chunk.image_url)"
-                    :src="chunk.media_url || chunk.image_url"
-                    :alt="chunk.content"
-                    loading="lazy"
-                    class="chunk-image"
-                    @click="previewUrl = (chunk.media_url || chunk.image_url)!; previewVisible = true"
-                  />
+                  <template v-if="chunk.chunk_type === 'image'">
+                    <img
+                      v-if="chunk.media_url || chunk.image_url"
+                      :src="chunk.media_url || chunk.image_url"
+                      :alt="chunk.content"
+                      loading="lazy"
+                      class="chunk-image"
+                      @click="previewUrl = (chunk.media_url || chunk.image_url)!; previewVisible = true"
+                    />
+                    <div class="chunk-image-desc">{{ chunk.content }}</div>
+                  </template>
                   <template v-else>{{ chunk.content }}</template>
                 </div>
                 <div v-if="chunk.questions?.length > 0" class="chunk-questions">
@@ -673,6 +676,16 @@ onMounted(() => {
 
 .chunk-image:hover {
   opacity: 0.9;
+}
+
+.chunk-image-desc {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .image-preview-dialog :deep(.el-dialog__body) {
