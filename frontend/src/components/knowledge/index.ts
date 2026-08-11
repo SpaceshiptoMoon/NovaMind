@@ -22,10 +22,13 @@ export {
   buildTextParsingConfigFromForm,
   deepdocParserOptions,
   getTextStrategyValue,
+  getVideoStrategyValue,
   textStrategyItems,
+  videoStrategyItems,
 } from './kbConfig'
 export type {
   ImageStrategy,
   TextStrategy,
   TextStrategyField,
+  VideoStrategy,
 } from './kbConfig'

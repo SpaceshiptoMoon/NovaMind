@@ -239,10 +239,20 @@ export interface SplittingConfig {
 }
 
 export interface VideoParsingConfig {
+  /** 视频解析策略：6 预设（抽帧/去重/描述三阶段组合） */
+  strategy?: 'simple' | 'scene' | 'dedup' | 'grouped' | 'rewrite' | 'dedup_grouped'
   frame_interval?: number
   max_frames?: number
   vlm_description_enabled?: boolean
   vlm_model?: string
+  vlm_fallback_model?: string
+  vlm_skip_on_quota_error?: boolean
+  /** 场景抽帧切换点阈值（strategy=scene），0~1，默认 0.3 */
+  scene_threshold?: number
+  /** 去重相似度阈值（strategy=dedup），0~1，默认 0.95 */
+  dedup_similarity_threshold?: number
+  /** 分组大小（strategy=grouped），每组喂 VLM 多图的帧数，默认 3 */
+  group_size?: number
 }
 
 export interface AudioParsingConfig {

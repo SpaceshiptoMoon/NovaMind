@@ -21,14 +21,63 @@
 
     <div v-if="hasVideo" class="sub-section">
       <h4 class="sub-title">视频解析</h4>
-      <p class="sub-desc">控制抽帧节奏、最大帧数，以及是否追加视觉描述。</p>
+      <p class="sub-desc">
+        选择抽帧/去重/描述三阶段的组合预设。高级参数按策略条件展开，留空继承引擎默认值。
+      </p>
 
       <el-form :model="configForm" label-width="120px" class="config-form">
-        <el-form-item label="抽帧间隔">
+        <el-form-item label="解析策略">
+          <el-radio-group v-model="configForm.videoStrategy">
+            <el-radio
+              v-for="item in videoStrategyItems"
+              :key="item.value"
+              :value="item.value"
+              :disabled="item.disabled"
+            >{{ item.label }}</el-radio>
+          </el-radio-group>
+          <div class="strategy-desc">
+            {{ videoStrategyItems.find((i) => i.value === configForm.videoStrategy)?.desc }}
+          </div>
+        </el-form-item>
+        <el-form-item v-if="configForm.videoStrategy !== 'scene'" label="抽帧间隔">
           <el-slider v-model="configForm.videoFrameInterval" :min="1" :max="60" show-input :show-input-controls="false" />
         </el-form-item>
         <el-form-item label="最大帧数">
           <el-input-number v-model="configForm.videoMaxFrames" :min="1" :max="200" style="width: 100%" />
+        </el-form-item>
+        <el-form-item v-if="configForm.videoStrategy === 'scene'" label="场景阈值">
+          <el-input-number
+            v-model="configForm.videoSceneThreshold"
+            :min="0"
+            :max="1"
+            :step="0.05"
+            :precision="2"
+            placeholder="0.3"
+            style="width: 100%"
+          />
+          <span class="field-hint">切换点灵敏度，0~1，默认 0.3（越小越敏感、抽帧越密）</span>
+        </el-form-item>
+        <el-form-item v-if="configForm.videoStrategy === 'dedup'" label="去重阈值">
+          <el-input-number
+            v-model="configForm.videoDedupSimilarityThreshold"
+            :min="0"
+            :max="1"
+            :step="0.01"
+            :precision="2"
+            placeholder="0.95"
+            style="width: 100%"
+          />
+          <span class="field-hint">相似度阈值，0~1，默认 0.95（越大去重越严格）</span>
+        </el-form-item>
+        <el-form-item v-if="configForm.videoStrategy === 'grouped'" label="分组大小">
+          <el-input-number
+            v-model="configForm.videoGroupSize"
+            :min="1"
+            :max="20"
+            placeholder="3"
+            style="width: 100%"
+          />
+          <span class="field-hint">每组喂 VLM 多图的帧数，默认 3（多图不支持时自动降级逐帧）</span>
         </el-form-item>
         <el-form-item label="视觉描述">
           <el-switch v-model="configForm.videoVlmDescriptionEnabled" />
@@ -67,15 +116,19 @@
 
 <script setup lang="ts">
 import type { AvailableModelItem } from '@/api/types'
-import type { ImageStrategy } from './kbConfig'
+import { type ImageStrategy, type VideoStrategy, videoStrategyItems } from './kbConfig'
 
 type MultimodalParsingFormModel = {
   imageStrategy: ImageStrategy
   imageVlmModel: string
+  videoStrategy: VideoStrategy
   videoFrameInterval: number
   videoMaxFrames: number
   videoVlmDescriptionEnabled: boolean
   videoVlmModel: string
+  videoSceneThreshold: number | null
+  videoDedupSimilarityThreshold: number | null
+  videoGroupSize: number | null
   audioAsrModel: string
   audioAsrLanguage: string
 }
@@ -129,5 +182,19 @@ defineProps<{
 :deep(.el-radio.is-checked) {
   border-color: rgba(99, 102, 241, 0.35);
   background: var(--color-primary-subtle);
+}
+
+.strategy-desc {
+  margin-top: 6px;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
 }
 </style>
