@@ -408,6 +408,11 @@ async def _process_image_document_static(
     # 检查点 0：配置读取后
     await _check_document_cancelled(document.id)
 
+    # 图片「解析」阶段 = VLM/OCR 提取描述文本（等价文本管道的 parsed）。
+    # 此前图片路径全程不写 step_progress，导致任务列表流程日志显示「-」。
+    if task:
+        task.start_step("parsed")
+
     # 2. 根据策略选择文本提取方式
     description_text = ""
 
@@ -446,6 +451,11 @@ async def _process_image_document_static(
 
     # 3. 图片文本持久化到 MinIO（立刻 commit 落库）
     await persist_parsed_text(document, description_text, session, _logger)
+    if task:
+        task.finish_step("parsed", metrics={
+            "image_strategy": image_strategy,
+            "description_length": len(description_text),
+        })
 
     _logger.info(
         "图片文本提取成功",
@@ -473,6 +483,8 @@ async def _process_image_document_static(
         return
 
     # 5. 用文本 Embedding 生成描述文本的向量
+    if task:
+        task.start_step("embedded")
     text_vector = await _generate_single_embedding_static(
         text=description_text,
         embedding_config=embedding_config,
@@ -480,6 +492,11 @@ async def _process_image_document_static(
         user_id=document.uploader_id,
         model_config_port=model_config_port,
     )
+    if task:
+        task.finish_step("embedded", metrics={
+            "embedding_count": 1,
+            "dimension": embedding_config.get("dimension"),
+        })
 
     # 检查点 1：向量化完成后
     await _check_document_cancelled(document.id)
@@ -511,12 +528,19 @@ async def _process_image_document_static(
     await _check_document_cancelled(document.id)
 
     # 7. 索引到 ES
+    if task:
+        task.start_step("indexed")
     es_client = await _get_es_client_static()
     indexed_count = await es_client.bulk_index_chunks(
         space_id=document.space_id,
         chunks=[es_chunk],
         embedding_dim=mm_dim,
     )
+    if task:
+        task.finish_step("indexed", metrics={
+            "indexed_count": indexed_count,
+            "chunk_count": 1,
+        })
 
     if indexed_count == 0:
         raise DocumentProcessingError(
