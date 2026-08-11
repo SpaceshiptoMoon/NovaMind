@@ -59,10 +59,10 @@
     <!-- 查看原文：右下角固定浮窗，无遮罩，背景页面正常可用，顶部固定内容滚动 -->
     <el-dialog
       v-model="originalDialogVisible"
-      :title="`原文 · ${document?.filename || ''}`"
-      width="420px"
+      width="480px"
       top="0"
       draggable
+      :show-close="false"
       :modal="false"
       :lock-scroll="false"
       destroy-on-close
@@ -71,6 +71,26 @@
       @opened="handleDialogOpened"
       @close="handleDialogClose"
     >
+      <!-- 标题栏：eyebrow + 文件名 + 关闭，可拖动 -->
+      <template #header>
+        <div class="original-header">
+          <div class="original-header__titles">
+            <span class="original-header__eyebrow">原文</span>
+            <span class="original-header__filename" :title="document?.filename || ''">
+              {{ document?.filename || '未知文件' }}
+            </span>
+          </div>
+          <button
+            type="button"
+            class="original-header__close"
+            aria-label="关闭原文"
+            @click="originalDialogVisible = false"
+          >
+            <el-icon><Close /></el-icon>
+          </button>
+        </div>
+      </template>
+
       <!-- 搜索栏 -->
       <div v-if="parsedText" class="search-bar">
         <el-input
@@ -120,7 +140,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { Download, Document, Headset, VideoCamera, View, Search, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import { Close, Download, Document, Headset, VideoCamera, View, Search, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import { documentApi } from '@/api/knowledge'
 import { getFileTypeCategory } from './document'
 import { formatFileSize } from '@/utils/format'
@@ -512,7 +532,7 @@ function navigateToMatch(index: number) {
   max-width: 320px;
 }
 
-/* 查看原文弹窗：右下角固定浮窗，内容区内部滚动看上下文 */
+/* 查看原文浮窗：编辑器/阅读器标题栏 + 固定搜索栏 + 内容区内部滚动 */
 .original-dialog :deep(.el-dialog__body) {
   padding: 0;
   display: flex;
@@ -520,14 +540,78 @@ function navigateToMatch(index: number) {
   height: 60vh;
   max-height: 80vh;
   overflow: hidden;
+  background: var(--color-bg-card);
 }
 
+/* 标题栏 */
+.original-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border-light);
+  background: var(--color-bg-card);
+}
+
+.original-header__titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.original-header__eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+}
+
+.original-header__filename {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.original-header__close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.original-header__close:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.original-header__close:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* 搜索栏：紧贴标题栏下方，hairline 分隔 */
 .search-bar {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-5);
   border-bottom: 1px solid var(--color-border-light);
+  background: var(--color-bg-card);
   flex-shrink: 0;
 }
 
@@ -545,15 +629,34 @@ function navigateToMatch(index: number) {
 .search-count {
   font-size: var(--text-xs);
   color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   min-width: 3em;
   text-align: center;
 }
 
+/* 内容区：阅读区，padding 留白 + 精致滚动条 */
 .original-dialog-content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-4) var(--space-6);
+  padding: var(--space-5) var(--space-6);
+  background: var(--color-bg-card);
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.original-dialog-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.original-dialog-content::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+  border: 2px solid var(--color-bg-card);
+}
+
+.original-dialog-content::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-faint);
 }
 
 /* 搜索高亮 */
@@ -576,8 +679,8 @@ function navigateToMatch(index: number) {
 }
 </style>
 
-<!-- 非 scoped：el-dialog 被 teleport 到 body，scoped 无法命中 overlay 容器；
-     右下角浮窗定位 + 让背景 overlay 不拦截点击（背景页面正常可用/可滚动） -->
+<!-- 非 scoped：el-dialog 被 teleport 到 body，scoped 无法命中 overlay 容器与默认 header；
+     右下角浮窗定位 + 覆盖 el-dialog 默认外观 + 让背景 overlay 不拦截点击 -->
 <style>
 .el-overlay-dialog:has(.original-dialog) {
   pointer-events: none;
@@ -586,11 +689,28 @@ function navigateToMatch(index: number) {
 
 .original-dialog.el-dialog {
   position: fixed;
-  right: 24px;
-  bottom: 24px;
+  right: 28px;
+  bottom: 28px;
   margin: 0;
-  max-width: 92vw;
+  max-width: calc(100vw - 56px);
+  border: 1px solid var(--color-border-light);
+  border-radius: 20px;
+  background: var(--color-bg-card);
+  box-shadow:
+    0 24px 60px -16px rgba(15, 23, 42, 0.22),
+    0 8px 20px -8px rgba(15, 23, 42, 0.12);
   pointer-events: auto;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
+}
+
+/* 去掉 el-dialog 默认 header padding 与关闭按钮，用自定义 #header slot */
+.original-dialog .el-dialog__header {
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.original-dialog .el-dialog__headerbtn {
+  display: none;
 }
 </style>
