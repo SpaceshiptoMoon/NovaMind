@@ -13,6 +13,12 @@ import type {
   UpdateModelConfigRequest,
   ModelConfigTestRequest,
   ModelConfigTestResponse,
+  SearchEngineConfig,
+  SearchEngineConfigListResponse,
+  CreateSearchEngineConfigRequest,
+  UpdateSearchEngineConfigRequest,
+  SearchEngineTestRequest,
+  SearchEngineTestResponse,
 } from './types'
 
 const BASE_URL = '/user/users'
@@ -49,12 +55,17 @@ export const userApi = {
     return request.patch<{ message: string }>(`${BASE_URL}/${userId}/status`)
   },
   logoutAll(userId: number) {
-    return request.post<{ message: string; revoked_count: number }>(`${BASE_URL}/${userId}/logout-all`)
+    return request.post<{ message: string; revoked_count: number }>(
+      `${BASE_URL}/${userId}/logout-all`,
+    )
   },
 
   // 模型配置
   getModelConfigs(modelType?: string) {
-    return request.get<ModelConfigListResponse>('/user/model-configs', modelType ? { model_type: modelType } : undefined)
+    return request.get<ModelConfigListResponse>(
+      '/user/model-configs',
+      modelType ? { model_type: modelType } : undefined,
+    )
   },
   getAvailableModels() {
     return request.get<AvailableModelsResponse>('/user/model-configs/available')
@@ -81,9 +92,31 @@ export const userApi = {
     return request.delete<{ message: string }>(`/user/model-configs/by-model/${modelType}/${model}`)
   },
 
+  // 搜索引擎配置（联网搜索 provider 凭证，多租户）
+  getSearchEngineConfigs() {
+    return request.get<SearchEngineConfigListResponse>('/user/search-configs')
+  },
+  createSearchEngineConfig(data: CreateSearchEngineConfigRequest) {
+    return request.post<SearchEngineConfig>('/user/search-configs', data)
+  },
+  updateSearchEngineConfig(configId: number, data: UpdateSearchEngineConfigRequest) {
+    return request.put<SearchEngineConfig>(`/user/search-configs/${configId}`, data)
+  },
+  deleteSearchEngineConfig(configId: number) {
+    return request.delete<{ message: string }>(`/user/search-configs/${configId}`)
+  },
+  setSearchEnginePrimary(configId: number) {
+    return request.put<SearchEngineConfig>(`/user/search-configs/${configId}/primary`)
+  },
+  testSearchEngineConfig(data: SearchEngineTestRequest) {
+    return request.post<SearchEngineTestResponse>('/user/search-configs/test', data)
+  },
+
   // 密码管理
   adminResetPassword(userId: number) {
-    return request.post<{ message: string; temp_password: string; user_id: number }>(`${BASE_URL}/${userId}/reset-password`)
+    return request.post<{ message: string; temp_password: string; user_id: number }>(
+      `${BASE_URL}/${userId}/reset-password`,
+    )
   },
   changePassword(oldPassword: string, newPassword: string) {
     return request.post<{ message: string }>('/user/users/me/change-password', {
