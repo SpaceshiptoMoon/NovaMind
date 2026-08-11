@@ -25,8 +25,10 @@ class AudioConfig:
     local_whisper_model_dir: Optional[str] = None
     # 本地 faster-whisper 转写使用的 CPU 线程数（对应 YAML
     # ``knowledge_base.parsing.local_whisper_cpu_threads``）。为 None 时按机器
-    # 物理核数自动取保守值（见 audio_utils._get_local_whisper_model），保留至少
+    # 物理核数自动取保守值（见 audio_utils._resolve_cpu_threads），保留至少
     # 一个物理核给 asyncio 事件循环，避免长音频 int8 推理饿死其它 HTTP 请求。
+    # 注：ASR 推理在独立子进程跑（ProcessPoolExecutor），OS 级 CPU/GIL 隔离，
+    # 主进程事件循环已不受影响；cpu_threads 仅约束子进程 CPU。
     # 仍卡顿可调小（如 2）；ASR 太慢可调大，但不要超过 (物理核 - 1)。
     local_whisper_cpu_threads: Optional[int] = None
 
