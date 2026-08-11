@@ -56,13 +56,15 @@
       </audio>
     </div>
 
-    <!-- 查看原文弹窗：固定小窗口，内容区内部滚动看上下文，可拖动避开主界面 -->
+    <!-- 查看原文：右下角固定浮窗，无遮罩，背景页面正常可用，顶部固定内容滚动 -->
     <el-dialog
       v-model="originalDialogVisible"
       :title="`原文 · ${document?.filename || ''}`"
-      width="500px"
-      top="8vh"
+      width="420px"
+      top="0"
       draggable
+      :modal="false"
+      :lock-scroll="false"
       destroy-on-close
       class="original-dialog"
       append-to-body
@@ -510,17 +512,13 @@ function navigateToMatch(index: number) {
   max-width: 320px;
 }
 
-/* 查看原文弹窗：固定小窗口，内容区内部滚动看上下文 */
-.original-dialog :deep(.el-dialog) {
-  max-width: 92vw;
-}
-
+/* 查看原文弹窗：右下角固定浮窗，内容区内部滚动看上下文 */
 .original-dialog :deep(.el-dialog__body) {
   padding: 0;
   display: flex;
   flex-direction: column;
-  height: 55vh;
-  max-height: 70vh;
+  height: 60vh;
+  max-height: 80vh;
   overflow: hidden;
 }
 
@@ -575,5 +573,24 @@ function navigateToMatch(index: number) {
 
 .image-preview-dialog :deep(.el-dialog__body) {
   padding: 0;
+}
+</style>
+
+<!-- 非 scoped：el-dialog 被 teleport 到 body，scoped 无法命中 overlay 容器；
+     右下角浮窗定位 + 让背景 overlay 不拦截点击（背景页面正常可用/可滚动） -->
+<style>
+.el-overlay-dialog:has(.original-dialog) {
+  pointer-events: none;
+  display: block;
+}
+
+.original-dialog.el-dialog {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  margin: 0;
+  max-width: 92vw;
+  pointer-events: auto;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
 }
 </style>
