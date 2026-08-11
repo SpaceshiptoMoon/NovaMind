@@ -537,6 +537,9 @@ function navigateToMatch(index: number) {
   flex-direction: column;
   height: 78vh;
   max-height: 86vh;
+  /* flex item 默认 min-height:auto 会被内容撑开超过 78vh，
+     必须置 0 才能锁住固定高度、让内部内容区滚动 */
+  min-height: 0;
   overflow: hidden;
   background: var(--color-bg-card);
 }
@@ -636,6 +639,9 @@ function navigateToMatch(index: number) {
 /* 内容区：阅读区，padding 留白 + 精致滚动条 */
 .original-dialog-content {
   flex: 1;
+  /* flex item 默认 min-height:auto 会被内容撑开，overflow 不触发滚动；
+     置 0 才能限制在剩余空间内、内部上下滚动 */
+  min-height: 0;
   overflow-y: auto;
   padding: var(--space-5) var(--space-6);
   background: var(--color-bg-card);
