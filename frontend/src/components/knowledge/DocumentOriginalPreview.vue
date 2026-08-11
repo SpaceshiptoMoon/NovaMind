@@ -56,12 +56,13 @@
       </audio>
     </div>
 
-    <!-- 查看原文弹窗 -->
+    <!-- 查看原文弹窗：固定小窗口，内容区内部滚动看上下文，可拖动避开主界面 -->
     <el-dialog
       v-model="originalDialogVisible"
       :title="`原文 · ${document?.filename || ''}`"
-      width="700px"
-      top="5vh"
+      width="500px"
+      top="8vh"
+      draggable
       destroy-on-close
       class="original-dialog"
       append-to-body
@@ -509,12 +510,17 @@ function navigateToMatch(index: number) {
   max-width: 320px;
 }
 
-/* 查看原文弹窗 */
+/* 查看原文弹窗：固定小窗口，内容区内部滚动看上下文 */
+.original-dialog :deep(.el-dialog) {
+  max-width: 92vw;
+}
+
 .original-dialog :deep(.el-dialog__body) {
   padding: 0;
   display: flex;
   flex-direction: column;
-  height: 60vh;
+  height: 55vh;
+  max-height: 70vh;
   overflow: hidden;
 }
 
