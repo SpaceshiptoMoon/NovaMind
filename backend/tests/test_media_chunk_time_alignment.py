@@ -115,6 +115,38 @@ def test_align_unknown_idx_dropped_gracefully():
     assert meta["frame_indices"] == [2]  # 99 被过滤
 
 
+def test_align_grouped_chunk_expands_frame_groups():
+    """grouped chunk：frame_groups 把组首锚点 idx 展开为组内所有帧 idx。"""
+    chunk_items = [("[00:00:00#0] 组0连贯描述\n\n[00:00:10#2] 组1连贯描述", {})]
+    timeline_map = {
+        0: (0.0, 10.0),   # 组0：start=组首ts, end=下一组首ts
+        2: (10.0, None),  # 组1：末组 end=None
+    }
+    frame_groups = {0: [0, 1], 2: [2, 3]}
+
+    aligned = align_chunk_times(
+        chunk_items, timeline_map, is_video=True, frame_groups=frame_groups
+    )
+
+    text, meta = aligned[0]
+    assert text == "组0连贯描述\n\n组1连贯描述"
+    assert meta["start_time"] == 0.0  # min(0.0, 10.0)
+    assert meta["end_time"] == 10.0  # max(10.0, None 被过滤)
+    # frame_indices 展开为组内所有帧 idx（供下游映射多帧图路径）
+    assert meta["frame_indices"] == [0, 1, 2, 3]
+
+
+def test_align_without_frame_groups_keeps_single_idx_behavior():
+    """未传 frame_groups 时 frame_indices 行为不变（single/rewrite：每锚点单帧）。"""
+    chunk_items = [("[00:00:15#3] 段A\n\n[00:00:25#5] 段B", {})]
+    timeline_map = {3: (15.0, 25.0), 5: (25.0, None)}
+
+    aligned = align_chunk_times(chunk_items, timeline_map, is_video=True)
+
+    _, meta = aligned[0]
+    assert meta["frame_indices"] == [3, 5]  # 不展开
+
+
 # ==================== _split_md_text fixed_size 行边界 ====================
 
 

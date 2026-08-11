@@ -182,10 +182,23 @@ class ImageParsingConfig(BaseModel):
 
 
 class VideoParsingConfig(BaseModel):
-    """Video parsing config."""
+    """Video parsing config.
+
+    strategy（视频解析策略，6 预设映射到抽帧/去重/描述三阶段组合）：
+    - "simple": 固定间隔抽帧 + 不去重 + 逐帧单图描述（默认，等价旧行为）
+    - "scene": 场景切换抽帧（直方图差）+ 不去重 + 逐帧单图描述
+    - "dedup": 固定间隔 + 直方图相似度去重 + 逐帧单图描述
+    - "grouped": 固定间隔 + 不去重 + 多帧一组喂 VLM 多图生成连贯描述
+    - "rewrite": 固定间隔 + 不去重 + 逐帧描述后 LLM 重写连贯（保留时间锚点）
+    - "dedup_grouped": 固定间隔 + 图像 embedding 去重 + 分组描述（预留，暂未实现）
+    """
 
     model_config = ConfigDict(extra="ignore")
 
+    strategy: Literal["simple", "scene", "dedup", "grouped", "rewrite", "dedup_grouped"] = Field(
+        default="simple",
+        description="视频解析策略：6 预设（抽帧/去重/描述三阶段组合）",
+    )
     frame_interval: float = Field(default=5.0, ge=1.0, le=60.0)
     max_frames: int = Field(default=60, ge=1, le=200)
     vlm_description_enabled: bool = Field(default=False)
@@ -195,6 +208,13 @@ class VideoParsingConfig(BaseModel):
     # 当所有帧的 VLM 描述均因配额/鉴权类错误失败时，是否跳过 VLM 并写一条占位描述，
     # 而不是让整个文档任务失败。默认 False（fail fast，抛业务异常提示用户）。
     vlm_skip_on_quota_error: bool = Field(default=False)
+    # 高级参数（可选，留空用引擎层默认）：
+    # 场景抽帧切换点阈值（strategy=scene），0~1，默认 0.3。
+    scene_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    # 去重相似度阈值（strategy=dedup），0~1，默认 0.95。
+    dedup_similarity_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    # 分组大小（strategy=grouped），每组喂 VLM 多图的帧数，默认 3。
+    group_size: Optional[int] = Field(default=None, ge=1, le=20)
 
 
 class AudioParsingConfig(BaseModel):
@@ -531,6 +551,7 @@ def build_runtime_parsing_config(parsing: Optional[Dict[str, Any]], file_type: O
 
     if parsed.video:
         result["video"] = parsed.video.model_dump(exclude_none=True)
+        result["video_strategy"] = parsed.video.strategy
         if parsed.video.vlm_description_enabled:
             result["vlm_description_enabled"] = True
         if parsed.video.vlm_model:

@@ -80,6 +80,8 @@ def align_chunk_times(
     chunk_items: List[Tuple[str, Dict[str, Any]]],
     timeline_map: Dict[int, Tuple[Optional[float], Optional[float]]],
     is_video: bool,
+    *,
+    frame_groups: Optional[Dict[int, List[int]]] = None,
 ) -> List[Tuple[str, Dict[str, Any]]]:
     """切分后块到帧/segment 的时间对齐 + 剥离锚点。
 
@@ -88,6 +90,9 @@ def align_chunk_times(
     - 剥离 ``[HH:MM:SS#idx]`` 锚点前缀，返回纯描述文本（进 embedding，无时间戳噪声）。
     - 无锚点的块（单段超 chunk_size 被切成尾部块等罕见情形）start/end 填 None，前端标「时间未知」。
     - chunk 含 timeline_map 里没有的 idx（帧丢失等）被静默忽略，不报错。
+    - ``frame_groups``（grouped 策略用）：``{anchor_idx: [组内所有 frame_idx]}``。若提供且
+      锚点 idx 在 frame_groups 中，``frame_indices`` 展开为组内所有帧 idx（供下游映射多帧图路径）；
+      否则 ``frame_indices = [idx]``（single/rewrite 行为不变）。
     """
     aligned: List[Tuple[str, Dict[str, Any]]] = []
     for text, meta in chunk_items:
@@ -107,7 +112,15 @@ def align_chunk_times(
             new_meta["start_time"] = min(starts) if starts else None
             new_meta["end_time"] = max(ends) if ends else None
             if is_video:
-                new_meta["frame_indices"] = [i for i in idxs if i in timeline_map]
+                fis: List[int] = []
+                for i in idxs:
+                    if i not in timeline_map:
+                        continue
+                    if frame_groups and i in frame_groups:
+                        fis.extend(frame_groups[i])
+                    else:
+                        fis.append(i)
+                new_meta["frame_indices"] = fis
         else:
             new_meta.setdefault("start_time", None)
             new_meta.setdefault("end_time", None)

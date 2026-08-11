@@ -22,11 +22,11 @@ from novamind.features.knowledge_space.services.knowledge_base_service import (
     get_effective_space_types,
 )
 from novamind.features.knowledge_space.services.media_processing import (
-    _describe_single_frame,
     _split_md_text,
     process_audio_document,
     process_video_document,
 )
+from novamind.features.knowledge_space.exceptions import DocumentProcessingError
 from novamind.engines.document.pipeline import DocumentProcessor, DocumentRegistry
 from novamind.engines.document.media.audio import transcribe_audio_with_timestamps
 
@@ -218,8 +218,20 @@ def test_runtime_parsing_config_maps_image_video_audio_sections():
     assert runtime["vlm_model"] == "video-vlm"
     assert runtime["video"]["frame_interval"] == 9
     assert runtime["video"]["max_frames"] == 21
+    assert runtime["video_strategy"] == "simple"  # 未显式指定 strategy 默认 simple
     assert runtime["audio"]["asr_model"] == "whisper-1"
     assert runtime["audio"]["language"] == "zh"
+
+
+def test_runtime_parsing_config_flattens_video_strategy_presets():
+    """6 预设 strategy 均扁平化到 video_strategy 顶层键。"""
+    for preset in ("simple", "scene", "dedup", "grouped", "rewrite", "dedup_grouped"):
+        runtime = build_runtime_parsing_config(
+            {"video": {"strategy": preset, "frame_interval": 5, "max_frames": 60}},
+            file_type="mp4",
+        )
+        assert runtime["video_strategy"] == preset
+        assert runtime["video"]["strategy"] == preset  # 嵌套字典保留 strategy
 
 
 def test_runtime_parsing_config_maps_non_pdf_deepdoc_strategy():
@@ -280,30 +292,6 @@ async def test_generate_image_description_prefers_configured_vlm_model():
 
     assert text == "image description"
     mcs.get_vlm_client_by_model.assert_awaited_once_with(1, "custom-vlm")
-    mcs.get_user_default_model_name.assert_not_awaited()
-
-
-@pytest.mark.anyio("asyncio")
-async def test_describe_single_frame_prefers_configured_vlm_model():
-    client = SimpleNamespace(generate_text=AsyncMock(return_value="frame description"))
-    mcs = SimpleNamespace(
-        get_user_default_model_name=AsyncMock(return_value="default-vlm"),
-        get_vlm_client_by_model=AsyncMock(return_value=client),
-    )
-    document = SimpleNamespace(id=1, uploader_id=1)
-
-    text = await _describe_single_frame(
-        frame_bytes=b"fake-frame",
-        frame_index=0,
-        timestamp=0.0,
-        document=document,
-        mcs=mcs,
-        logger=SimpleNamespace(),
-        vlm_model_name="custom-frame-vlm",
-    )
-
-    assert text == "frame description"
-    mcs.get_vlm_client_by_model.assert_awaited_once_with(1, "custom-frame-vlm")
     mcs.get_user_default_model_name.assert_not_awaited()
 
 
@@ -397,14 +385,16 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
         async def upload_file(self, object_name, data, content_type):
             captured.setdefault("frame_uploads", []).append((object_name, content_type))
 
-    async def fake_extract_video_frames(file_content, interval, max_frames):
+    async def fake_extract_frames_fixed(file_content, interval, max_frames):
         captured["frame_interval"] = interval
         captured["max_frames"] = max_frames
         return [(b"frame", 1.0, 0)]
 
-    async def fake_describe_single_frame(**kwargs):
-        captured["video_vlm_model"] = kwargs["vlm_model_name"]
-        return "frame description"
+    async def fake_describe_single(frames, vlm_client, prompt, *, logger, vlm_model, **kwargs):
+        captured["video_vlm_model"] = vlm_model
+        captured["video_vlm_client"] = vlm_client
+        # 逐帧描述：返回与 frames 同结构的 [(desc, ts, frame_idx)]
+        return [("frame description", frames[0][1], frames[0][2])]
 
     async def fake_persist_parsed_text(document, full_text, session, logger):
         captured["parsed_video_text"] = full_text
@@ -418,13 +408,19 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
         captured["video_time_alignment"] = kwargs.get("time_alignment")
         return {"chunk_count": 1, "indexed_count": 1, "total_questions": 0, "split_strategy": sc.get("strategy", "recursive")}
 
+    # fake ModelConfigPort：配置了 vlm_model 时不查默认，get_vlm_client_by_model 返回占位 client
+    fake_mcs = SimpleNamespace(
+        get_user_default_model_name=AsyncMock(return_value="default-vlm"),
+        get_vlm_client_by_model=AsyncMock(return_value="fake-vlm-client"),
+    )
+
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing.extract_video_frames",
-        fake_extract_video_frames,
+        "novamind.features.knowledge_space.services.media_processing.extract_frames_fixed",
+        fake_extract_frames_fixed,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing._describe_single_frame",
-        fake_describe_single_frame,
+        "novamind.features.knowledge_space.services.media_processing.describe_single",
+        fake_describe_single,
     )
     monkeypatch.setattr(
         "novamind.features.knowledge_space.services.media_processing.persist_parsed_text",
@@ -437,6 +433,10 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
     monkeypatch.setattr(
         "novamind.features.knowledge_space.services.media_processing._check_document_cancelled",
         AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "novamind.shared.prompts.templates.PromptManager.get_template",
+        lambda name: "fake-prompt",
     )
     monkeypatch.setattr(
         "novamind.shared.storage.client_factory.ClientFactory.get_minio_client",
@@ -464,6 +464,7 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
         {
             "parsing": {
                 "video": {
+                    "strategy": "simple",
                     "frame_interval": 7,
                     "max_frames": 42,
                     "vlm_description_enabled": True,
@@ -481,11 +482,19 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
         }
     )
 
-    await process_video_document(document, b"fake-video", session, SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None), task=task)
+    await process_video_document(
+        document,
+        b"fake-video",
+        session,
+        SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None),
+        task=task,
+        model_config_port=fake_mcs,
+    )
 
     assert captured["frame_interval"] == 7
     assert captured["max_frames"] == 42
     assert captured["video_vlm_model"] == "video-vlm"
+    fake_mcs.get_user_default_model_name.assert_not_awaited()  # 配置了 vlm_model，不查默认
     # 切分统一后无模态子键覆盖：顶层 strategy=recursive/chunk_size=1000 生效，
     # 残留的 video 子键（fixed_size/1400）被忽略（SplittingConfig extra=ignore）。
     assert captured["split_strategy"] == "recursive"
@@ -493,11 +502,12 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
     assert captured["video_index_chunk_type"] == "video"
     assert "[00:00:01#0]" in captured["parsed_video_text"]  # 双锚点 [HH:MM:SS#frame_idx]
     assert "frame description" in captured["parsed_video_text"]
-    # chunk 时间对齐：单帧 ts=1.0 idx=0，末帧 end=None（开放区间）
+    # chunk 时间对齐：单帧 ts=1.0 idx=0，末帧 end=None（开放区间）；simple 策略无 frame_groups
     ta = captured["video_time_alignment"]
     assert ta is not None
     assert ta["is_video"] is True
     assert ta["timeline_map"][0] == (1.0, None)
+    assert "frame_groups" not in ta
     assert task.completed["chunk_type"] == "video"
 
 
@@ -836,4 +846,153 @@ async def test_generate_questions_for_chunks_static_uses_question_generation_con
     assert captured["question_texts"] == ["q1", "q2"]
     assert questions_list == [["q1", "q2"]]
     assert embeddings_list == [[[0.1], [0.2]]]
+
+
+@pytest.mark.anyio("asyncio")
+async def test_process_video_document_grouped_strategy_passes_frame_groups(monkeypatch):
+    """grouped 策略：describe_grouped 返回多帧组 → frame_groups + 组首锚点 timeline 传到 tail。"""
+    captured = {}
+
+    class FakeTask:
+        def __init__(self, pipeline_config):
+            self.pipeline_config = pipeline_config
+            self.steps = []
+            self.completed = None
+
+        def start_step(self, step):
+            self.steps.append((step, "running"))
+
+        def finish_step(self, step, metrics=None):
+            self.steps.append((step, "done"))
+
+        def mark_completed(self, result):
+            self.completed = result
+
+    class FakeMinioClient:
+        async def upload_file(self, object_name, data, content_type):
+            pass
+
+    async def fake_extract_frames_fixed(file_content, interval, max_frames):
+        return [(b"f0", 0.0, 0), (b"f1", 5.0, 1), (b"f2", 10.0, 2), (b"f3", 15.0, 3)]
+
+    async def fake_describe_grouped(frames, group_size, vlm_client, prompt, *, logger, vlm_model, **kwargs):
+        captured["group_size"] = group_size
+        return [
+            ("group0 desc", 0.0, 5.0, [0, 1]),
+            ("group1 desc", 10.0, 15.0, [2, 3]),
+        ]
+
+    async def fake_persist_parsed_text(document, full_text, session, logger):
+        captured["parsed_video_text"] = full_text
+        return "parsed/full_text.md"
+
+    async def fake_post_parse_tail(**kwargs):
+        captured["video_time_alignment"] = kwargs.get("time_alignment")
+        return {"chunk_count": 2, "indexed_count": 2, "total_questions": 0, "split_strategy": "recursive"}
+
+    fake_mcs = SimpleNamespace(
+        get_user_default_model_name=AsyncMock(return_value="default-vlm"),
+        get_vlm_client_by_model=AsyncMock(return_value="fake-vlm-client"),
+    )
+
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing.extract_frames_fixed",
+        fake_extract_frames_fixed,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing.describe_grouped",
+        fake_describe_grouped,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing.persist_parsed_text",
+        fake_persist_parsed_text,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing._run_post_parse_tail",
+        fake_post_parse_tail,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing._check_document_cancelled",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "novamind.shared.prompts.templates.PromptManager.get_template",
+        lambda name: "fake-prompt",
+    )
+    monkeypatch.setattr(
+        "novamind.shared.storage.client_factory.ClientFactory.get_minio_client",
+        AsyncMock(return_value=FakeMinioClient()),
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.repository.knowledge_base_repository.KnowledgeBaseRepository.get_by_id",
+        AsyncMock(return_value=SimpleNamespace(get_config=lambda: {})),
+    )
+
+    session = SimpleNamespace(
+        get=AsyncMock(return_value=SimpleNamespace(embedding_config={})),
+        commit=AsyncMock(),
+    )
+    document = SimpleNamespace(
+        id=1, kb_id=1, space_id=1, uploader_id=1,
+        filename="demo.mp4", file_type="mp4",
+        storage={"minio_object_name": "spaces/1/kbs/1/documents/1/demo.mp4"},
+    )
+    task = FakeTask({
+        "parsing": {
+            "video": {"strategy": "grouped", "group_size": 2, "vlm_model": "video-vlm"},
+        },
+        "splitting": {"strategy": "recursive", "chunk_size": 1000},
+    })
+
+    await process_video_document(
+        document, b"fake-video", session,
+        SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None),
+        task=task, model_config_port=fake_mcs,
+    )
+
+    assert captured["group_size"] == 2
+    # 拼接用组首帧锚点
+    assert "[00:00:00#0]" in captured["parsed_video_text"]  # 组0 锚点（组首 idx=0）
+    assert "[00:00:10#2]" in captured["parsed_video_text"]  # 组1 锚点（组首 idx=2）
+    # frame_groups 映射组首→组内所有帧 idx
+    ta = captured["video_time_alignment"]
+    assert ta["frame_groups"] == {0: [0, 1], 2: [2, 3]}
+    # timeline 用组首 ts：组0 (0.0, 下一组首 10.0)，组1 (10.0, None 末组)
+    assert ta["timeline_map"][0] == (0.0, 10.0)
+    assert ta["timeline_map"][2] == (10.0, None)
+
+
+@pytest.mark.anyio("asyncio")
+async def test_process_video_document_dedup_grouped_strategy_not_implemented(monkeypatch):
+    """dedup_grouped 策略预留：选该策略抛 DocumentProcessingError 引导改选。"""
+    captured = {}
+
+    class FakeTask:
+        def __init__(self, pipeline_config):
+            self.pipeline_config = pipeline_config
+
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.repository.knowledge_base_repository.KnowledgeBaseRepository.get_by_id",
+        AsyncMock(return_value=SimpleNamespace(get_config=lambda: {})),
+    )
+    session = SimpleNamespace(
+        get=AsyncMock(return_value=SimpleNamespace(embedding_config={})),
+        commit=AsyncMock(),
+    )
+    document = SimpleNamespace(
+        id=1, kb_id=1, space_id=1, uploader_id=1,
+        filename="demo.mp4", file_type="mp4",
+        storage={"minio_object_name": "spaces/1/kbs/1/documents/1/demo.mp4"},
+    )
+    task = FakeTask({
+        "parsing": {"video": {"strategy": "dedup_grouped", "vlm_model": "video-vlm"}},
+        "splitting": {"strategy": "recursive"},
+    })
+
+    with pytest.raises(DocumentProcessingError):
+        await process_video_document(
+            document, b"fake-video", session,
+            SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None),
+            task=task, model_config_port=None,
+        )
 
