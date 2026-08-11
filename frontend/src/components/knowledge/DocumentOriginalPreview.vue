@@ -56,15 +56,13 @@
       </audio>
     </div>
 
-    <!-- 查看原文：右下角固定浮窗，无遮罩，背景页面正常可用，顶部固定内容滚动 -->
+    <!-- 查看原文：居中模态窗，半透明遮罩锁背景，固定尺寸，顶部固定内容滚动 -->
     <el-dialog
       v-model="originalDialogVisible"
       width="820px"
       align-center
       draggable
       :show-close="false"
-      :modal="false"
-      :lock-scroll="false"
       destroy-on-close
       class="original-dialog"
       append-to-body
@@ -679,14 +677,9 @@ function navigateToMatch(index: number) {
 }
 </style>
 
-<!-- 非 scoped：el-dialog 被 teleport 到 body，scoped 无法命中 overlay 容器与默认 header；
-     右下角浮窗定位 + 覆盖 el-dialog 默认外观 + 让背景 overlay 不拦截点击 -->
+<!-- 非 scoped：el-dialog 被 teleport 到 body，scoped 无法命中默认 header；
+     覆盖 el-dialog 默认外观（居中模态，遮罩由 el-dialog 默认 modal 提供） -->
 <style>
-.el-overlay-dialog:has(.original-dialog) {
-  pointer-events: none;
-  display: block;
-}
-
 .original-dialog.el-dialog {
   margin: 0;
   max-width: 92vw;
@@ -696,7 +689,6 @@ function navigateToMatch(index: number) {
   box-shadow:
     0 24px 60px -16px rgba(15, 23, 42, 0.22),
     0 8px 20px -8px rgba(15, 23, 42, 0.12);
-  pointer-events: auto;
   overflow: hidden;
 }
 
