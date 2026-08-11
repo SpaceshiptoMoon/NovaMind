@@ -1,3 +1,4 @@
+"""DeepDoc Excel 解析器。"""
 from __future__ import annotations
 
 from io import BytesIO

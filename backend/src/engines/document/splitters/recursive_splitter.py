@@ -1,3 +1,4 @@
+"""递归切分器：按分隔符优先级分层（段落→句子→词），兜底固定大小。"""
 import re
 from typing import List, Dict, Optional
 from novamind.engines.document.splitters.base_splitter import BaseSplitter

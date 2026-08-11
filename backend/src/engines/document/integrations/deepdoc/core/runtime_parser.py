@@ -1,3 +1,4 @@
+"""DeepDoc 运行时解析器：应用层封装，组合 engine + factory + 后处理。"""
 from __future__ import annotations
 
 import asyncio

@@ -1,3 +1,4 @@
+"""DeepDoc 纯文本文件解析器。"""
 from __future__ import annotations
 
 # Adapted from RAGFlow deepdoc/parser/txt_parser.py

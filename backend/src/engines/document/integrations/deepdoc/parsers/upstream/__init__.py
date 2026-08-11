@@ -1,3 +1,4 @@
+"""DeepDoc 上游解析器适配层：对接上游 RAGFlow 解析器的薄包装。"""
 from __future__ import annotations
 
 from importlib import import_module

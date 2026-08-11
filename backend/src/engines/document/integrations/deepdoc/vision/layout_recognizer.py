@@ -1,3 +1,4 @@
+"""DeepDoc 版面识别器：检测页面中的文本块 / 标题 / 表格 / 图像区域。"""
 from __future__ import annotations
 
 # Adapted from RAGFlow deepdoc/vision/layout_recognizer.py

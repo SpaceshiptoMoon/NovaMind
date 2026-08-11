@@ -1,3 +1,4 @@
+"""旧版 .doc 转 .docx 转换器，经 soffice 或 win32com 执行在线格式迁移。"""
 import asyncio
 import shutil
 import subprocess

@@ -1,3 +1,4 @@
+"""语义切分器：经 embedding 相似度检测语义断点切分。"""
 import numpy as np
 from typing import List, Dict
 from novamind.engines.document.splitters.base_splitter import BaseSplitter

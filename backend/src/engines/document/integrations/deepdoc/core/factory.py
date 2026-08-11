@@ -1,3 +1,4 @@
+"""DeepDoc 解析器工厂：按文件类型 / 能力矩阵创建对应解析器实例。"""
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -1,3 +1,4 @@
+"""PDF 版面分析：阅读顺序恢复、双栏合并、区块排序。"""
 from __future__ import annotations
 
 from collections import Counter, defaultdict

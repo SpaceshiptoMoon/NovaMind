@@ -1,3 +1,4 @@
+"""DeepDoc 纯文本 PDF 解析器：无 OCR / 无版面分析，仅提取原始文本。"""
 from __future__ import annotations
 
 # Adapted from RAGFlow deepdoc/parser/pdf_parser.py:PlainParser

@@ -1,3 +1,4 @@
+"""DeepDoc 表格识别器：表格结构检测 + 单元格内容 OCR。"""
 from __future__ import annotations
 
 import argparse

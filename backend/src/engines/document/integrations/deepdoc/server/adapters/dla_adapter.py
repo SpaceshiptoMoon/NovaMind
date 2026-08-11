@@ -1,3 +1,4 @@
+"""DeepDoc DLA（版面分析）适配器：封装版面检测模型的加载与推理。"""
 from __future__ import annotations
 
 import io

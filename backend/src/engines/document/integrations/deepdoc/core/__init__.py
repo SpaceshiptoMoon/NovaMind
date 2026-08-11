@@ -1,3 +1,4 @@
+"""DeepDoc 核心模块：解析引擎 / 能力模型 / 运行时解析器 / 工厂。"""
 from __future__ import annotations
 
 from importlib import import_module

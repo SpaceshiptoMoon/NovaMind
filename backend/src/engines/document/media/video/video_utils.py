@@ -1,3 +1,4 @@
+"""视频工具：帧提取（extract_video_frames）+ 元数据读取。"""
 from __future__ import annotations
 
 import asyncio

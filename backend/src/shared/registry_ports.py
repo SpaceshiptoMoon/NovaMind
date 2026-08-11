@@ -26,7 +26,7 @@ class AgentRegistryPort(Protocol):
 
     async def get_agent(self, agent_id: int) -> Optional[AgentSummary]:
         """按 ID 取 Agent 概要；不存在返回 None。"""
-        ...
+        ... 
 
     async def update_enabled_tools(self, agent_id: int, enabled_tools: List[str]) -> None:
         """更新 Agent 的 enabled_tools 列表。"""

@@ -1,3 +1,4 @@
+"""DeepDoc 可部署服务器：将解析能力暴露为 HTTP API（OCR / TSR / DLA / 全文解析）。"""
 from __future__ import annotations
 
 from importlib import import_module

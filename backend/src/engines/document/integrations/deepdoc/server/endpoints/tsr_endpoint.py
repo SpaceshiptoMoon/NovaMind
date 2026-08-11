@@ -1,3 +1,4 @@
+"""DeepDoc TSR（表格结构识别）HTTP 端点。"""
 from __future__ import annotations
 
 from fastapi import APIRouter, File, HTTPException, UploadFile

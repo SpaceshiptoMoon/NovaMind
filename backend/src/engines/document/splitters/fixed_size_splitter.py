@@ -1,3 +1,4 @@
+"""固定大小切分器：按字符数 / 重叠量切分。"""
 from typing import List, Dict
 from novamind.engines.document.splitters.base_splitter import BaseSplitter
 

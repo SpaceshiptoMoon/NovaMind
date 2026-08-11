@@ -1,3 +1,4 @@
+"""DeepDoc 视觉诊断 I/O：开发调试用中间产物（图像标注 / 识别结果）的读写。"""
 from __future__ import annotations
 
 from pathlib import Path

@@ -1,3 +1,4 @@
+"""DeepDoc 通用识别器：统一 OCR / 版面 / 表格识别的调用接口。"""
 from __future__ import annotations
 
 # Adapted toward RAGFlow deepdoc/vision/recognizer.py

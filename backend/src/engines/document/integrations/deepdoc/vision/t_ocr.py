@@ -1,3 +1,4 @@
+"""DeepDoc 表格 OCR：表格区域的文字识别。"""
 from __future__ import annotations
 
 import argparse

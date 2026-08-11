@@ -1,3 +1,4 @@
+"""视觉运行时：OCR / 版面 / 表格识别模型的加载与调用入口。"""
 from __future__ import annotations
 
 from typing import Any, Dict

@@ -1,3 +1,4 @@
+"""DeepDoc 上游引用：统一管理对上游 RAGFlow 模块的延迟导入与 fallback。"""
 from __future__ import annotations
 
 from typing import Any, Dict, List

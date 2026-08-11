@@ -1,3 +1,4 @@
+"""DeepDoc 全文解析 HTTP 端点。"""
 from __future__ import annotations
 
 import base64

@@ -1,3 +1,4 @@
+"""DeepDoc 表格结构识别器：检测表格行列结构（TSR）。"""
 from __future__ import annotations
 
 # Adapted from RAGFlow deepdoc/vision/table_structure_recognizer.py

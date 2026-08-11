@@ -1,3 +1,4 @@
+"""文档解析管道：DocumentLoader（按扩展名路由解析器） + DocumentProcessor（编排解析 / 切分 / 元数据） + DocumentRegistry（解析器注册表）。"""
 import asyncio
 from typing import List, Dict, Optional, Union, Type
 from pathlib import Path

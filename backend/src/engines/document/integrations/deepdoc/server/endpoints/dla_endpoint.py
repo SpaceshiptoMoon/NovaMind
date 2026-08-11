@@ -1,3 +1,4 @@
+"""DeepDoc DLA（版面分析）HTTP 端点。"""
 from __future__ import annotations
 
 from fastapi import APIRouter, File, HTTPException, UploadFile

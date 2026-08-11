@@ -1,3 +1,4 @@
+"""PDF 版面产物：页面级解析中间产物（文本块 / 表格 / 图像区域）的数据结构。"""
 from __future__ import annotations
 
 from io import BytesIO

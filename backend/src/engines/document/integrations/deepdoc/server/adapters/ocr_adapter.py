@@ -1,3 +1,4 @@
+"""DeepDoc OCR 适配器：封装文字识别模型的加载与推理。"""
 from __future__ import annotations
 
 import logging

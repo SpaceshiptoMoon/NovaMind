@@ -1,3 +1,4 @@
+"""DeepDoc OpenDataLoader 上游解析器适配。"""
 from __future__ import annotations
 
 import logging

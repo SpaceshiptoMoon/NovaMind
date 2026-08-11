@@ -1,3 +1,4 @@
+"""文档读取器基类。"""
 from abc import ABC, abstractmethod
 from typing import List, Dict
 

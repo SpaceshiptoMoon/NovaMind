@@ -1,3 +1,4 @@
+"""DeepDoc 简历解析辅助：实体库（学校 / 企业 / 行业 / 学历 / 地区）与匹配函数。"""
 from __future__ import annotations
 
 import ast

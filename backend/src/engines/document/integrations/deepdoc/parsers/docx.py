@@ -1,3 +1,4 @@
+"""DeepDoc DOCX 解析器。"""
 from __future__ import annotations
 
 # Adapted from RAGFlow deepdoc/parser/docx_parser.py

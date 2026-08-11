@@ -1,3 +1,4 @@
+"""纯文本文件读取器。"""
 import os
 from typing import List, Dict
 from novamind.shared.document.readers.base_reader import BaseReader

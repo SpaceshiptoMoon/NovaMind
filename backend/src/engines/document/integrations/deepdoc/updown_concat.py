@@ -1,3 +1,4 @@
+"""上下拼接策略：按列 / 按行拼接多栏 PDF 文本块。"""
 from __future__ import annotations
 
 import re

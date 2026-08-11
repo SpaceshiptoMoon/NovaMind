@@ -1,3 +1,4 @@
+"""DeepDoc OpenDataLoader 远程解析器适配：通过 HTTP 调 OpenDataLoader 服务解析文档。"""
 from __future__ import annotations
 
 import os
