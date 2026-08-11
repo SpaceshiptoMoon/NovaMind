@@ -17,6 +17,19 @@ from typing import List, Tuple, Dict, Any, Optional, Set
 
 from novamind.shared.config import AudioConfig
 
+
+class AudioFileInvalidError(ValueError):
+    """音频文件本身无效（过小/损坏/格式不支持/解码失败）。
+
+    这类错误是**永久性**的——回退云端 ASR 也无法挽救：云端要么下载同一个损坏文件，
+    要么文件根本不是有效音频。调用方（``media_processing``）应直接抛清晰错误引导用户
+    重新上传，而不是回退云端把根因藏到 ``FILE_DOWNLOAD_FAILED`` 之后。
+
+    与瞬时性错误区分：模型未找到（``RuntimeError``）、子进程崩溃
+    （``BrokenProcessPool``）属环境/运行时问题，回退云端有意义。
+    """
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -295,10 +308,10 @@ def _validate_audio_for_local_asr(file_content: bytes) -> Tuple[str, str]:
         (ext, mime_type) 如果格式可接受
 
     Raises:
-        ValueError: 格式不支持或文件无效
+        AudioFileInvalidError: 格式不支持或文件无效
     """
     if not file_content or len(file_content) < 12:
-        raise ValueError("音频文件太小或为空，无法识别格式 (最小 12 bytes)")
+        raise AudioFileInvalidError("音频文件太小或为空，无法识别格式 (最小 12 bytes)")
 
     ext, mime = _detect_audio_format(file_content)
 
@@ -306,7 +319,7 @@ def _validate_audio_for_local_asr(file_content: bytes) -> Tuple[str, str]:
     if ext not in _LOCAL_ASR_SUPPORTED_EXTENSIONS:
         # 尝试给出更详细的诊断
         detected_desc = _MAGIC_EXT_TO_FORMAT.get(ext, f"未知格式 (.{ext})")
-        raise ValueError(
+        raise AudioFileInvalidError(
             f"本地 ASR 不支持此音频格式: {detected_desc}。"
             f"支持的格式: {', '.join(sorted(_LOCAL_ASR_SUPPORTED_EXTENSIONS))}"
         )
@@ -336,8 +349,8 @@ async def transcribe_audio_local(
         [{"text": "...", "start": 0.0, "end": 5.2}, ...]
 
     Raises:
-        ValueError: 音频格式不支持或文件无效
-        RuntimeError: 模型未找到或转写失败
+        AudioFileInvalidError: 音频格式不支持或文件无效（永久性，调用方不应回退云端）
+        RuntimeError: 模型未找到或转写失败（瞬时性，可回退云端）
     """
     # 1. 格式校验 + 音频时长预检（在进入模型前拒绝无效文件）
     ext, _mime = _validate_audio_for_local_asr(file_content)
@@ -351,7 +364,7 @@ async def transcribe_audio_local(
     #     直接杀死进程）。在进入线程池之前提前拒绝，保护进程安全。
     MIN_AUDIO_SIZE = 1024  # 1KB
     if len(file_content) < MIN_AUDIO_SIZE:
-        raise ValueError(
+        raise AudioFileInvalidError(
             f"音频文件过小 ({len(file_content)} bytes)，"
             f"本地 ASR 要求至少 {MIN_AUDIO_SIZE} bytes 才能安全转写。"
             f"请确认文件完整且包含有效音频数据。"
@@ -439,7 +452,7 @@ async def transcribe_audio_local(
         # 捕获 PyAV 解码错误等，转换为明确的错误信息
         error_msg = str(e)
         if "av." in type(e).__module__ or "PyAV" in type(e).__name__:
-            raise ValueError(
+            raise AudioFileInvalidError(
                 f"音频解码失败，文件可能已损坏或编码不兼容: {error_msg[:200]}"
             ) from e
         raise

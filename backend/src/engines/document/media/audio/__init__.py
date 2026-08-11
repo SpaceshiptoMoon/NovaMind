@@ -1,5 +1,6 @@
 """音频处理模块。"""
 from novamind.engines.document.media.audio.audio_utils import (
+    AudioFileInvalidError,
     _asr_busy_lock,
     acquire_asr_or_busy,
     is_local_asr_busy,
@@ -10,6 +11,7 @@ from novamind.engines.document.media.audio.audio_utils import (
 )
 
 __all__ = [
+    "AudioFileInvalidError",
     "acquire_asr_or_busy",
     "is_local_asr_busy",
     "transcribe_audio_local",

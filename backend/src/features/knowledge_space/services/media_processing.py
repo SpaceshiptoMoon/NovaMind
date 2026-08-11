@@ -21,6 +21,7 @@ from novamind.features.knowledge_space.services.document_pipeline import (
     _run_post_parse_tail,
 )
 from novamind.engines.document.media.audio import (
+    AudioFileInvalidError,
     transcribe_audio_local,
     transcribe_audio_with_timestamps,
 )
@@ -422,6 +423,18 @@ async def process_audio_document(
             try:
                 segments = await _run_asr("local", asr_model, asr_api_key, asr_base_url)
             except Exception as local_exc:
+                # 文件本身损坏/过小/格式不支持是永久性错误——回退云端也救不了
+                # （云端要解码同一个损坏文件，或文件根本不是有效音频），且会把根因
+                # 藏到云端 FILE_DOWNLOAD_FAILED 之后让用户误以为是网络/MinIO 问题。
+                # 直接抛清晰错误引导用户重新上传。
+                if isinstance(local_exc, AudioFileInvalidError):
+                    raise DocumentProcessingError(
+                        document_id=document.id,
+                        error_message=(
+                            f"音频文件损坏或不完整，无法转写: {local_exc}。"
+                            f"请重新上传完整的音频文件。"
+                        ),
+                    ) from local_exc
                 logger.warning(
                     "本地 ASR 失败，尝试回退云端 ASR",
                     document_id=document.id, error=str(local_exc),
