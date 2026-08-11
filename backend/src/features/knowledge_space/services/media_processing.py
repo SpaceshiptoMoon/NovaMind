@@ -30,15 +30,20 @@ from novamind.engines.document.media.chunk_time_alignment import (
     build_segment_timeline_map,
     format_time_anchor,
 )
-from novamind.engines.document.media.video import extract_video_frames
+from novamind.engines.document.media.video import (
+    AllFrameDescriptionsFailedError,
+    dedup_frame_diff,
+    describe_grouped,
+    describe_rewrite,
+    describe_single,
+    extract_frames_fixed,
+    extract_frames_scene,
+    extract_video_frames,
+)
 from novamind.shared.utils.time_utils import now_china
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
 from novamind.features.knowledge_space.schemas.enums import ChunkType
 from novamind.shared.config import AudioConfig
-from novamind.engines.document.media.vlm import (
-    build_vlm_image_messages,
-    generate_vlm_text_with_fallback,
-)
 
 
 async def _find_cloud_asr_credentials(mcs, uploader_id: int, exclude_protocol: str = "local"):
@@ -131,23 +136,45 @@ async def process_video_document(
     parsing_config = build_runtime_parsing_config(pipeline_config.get("parsing", {}), document.file_type)
     splitting_config = dict(pipeline_config.get("splitting", {}))
     video_config = (pipeline_config.get("parsing", {}) or {}).get("video", {})
+    # strategy：6 预设映射到抽帧/去重/描述三阶段（build_runtime_parsing_config 同时扁平化到 video_strategy）
+    strategy = video_config.get("strategy") or parsing_config.get("video_strategy") or "simple"
     frame_interval = video_config.get("frame_interval", 5)
     max_frames = video_config.get("max_frames", 60)
     # VLM 降级开关：主模型配额/鉴权失败时回退的备用模型；以及全帧失败时是否跳过 VLM。
     vlm_fallback_model = video_config.get("vlm_fallback_model")
     vlm_skip_on_quota_error = bool(video_config.get("vlm_skip_on_quota_error", False))
+    # 高级参数（可选，留空用引擎层默认）
+    scene_threshold = video_config.get("scene_threshold")
+    dedup_similarity_threshold = video_config.get("dedup_similarity_threshold")
+    group_size = video_config.get("group_size") or 3
 
     # 批次 5b：用注入的 ModelConfigPort
     mcs = model_config_port
 
-    # 1. 提取帧
+    # dedup_grouped 策略预留：图像 embedding 去重待 IMAGE_EMBEDDING 模型类型引入后实现
+    if strategy == "dedup_grouped":
+        raise DocumentProcessingError(
+            document_id=document.id,
+            error_message=(
+                f"视频 {document.filename} 选用策略 dedup_grouped 暂未实现"
+                "（图像 embedding 去重待引入），请改用 simple/scene/dedup/grouped/rewrite 策略"
+            ),
+        )
+
+    # 1. 提取帧（按 strategy 路由：scene 场景抽帧，其余固定间隔）
     logger.info(
         "视频帧提取开始", document_id=document.id,
-        interval=frame_interval, max_frames=max_frames,
+        strategy=strategy, interval=frame_interval, max_frames=max_frames,
     )
     if task:
         task.start_step("frames_extracted")
-    frames = await extract_video_frames(file_content, frame_interval, max_frames)
+    if strategy == "scene":
+        scene_kwargs: Dict[str, Any] = {}
+        if scene_threshold is not None:
+            scene_kwargs["scene_threshold"] = scene_threshold
+        frames = await extract_frames_scene(file_content, max_frames, **scene_kwargs)
+    else:
+        frames = await extract_frames_fixed(file_content, frame_interval, max_frames)
     logger.info(
         "视频帧提取完成", document_id=document.id, frame_count=len(frames),
     )
@@ -160,6 +187,21 @@ async def process_video_document(
             document_id=document.id,
             error_message=f"视频 {document.filename} 未能提取到任何帧",
         )
+
+    # 1.5 去重（dedup 策略：相邻帧直方图相似度去重，frame_idx 重映射为连续序号）
+    if strategy == "dedup":
+        dedup_kwargs: Dict[str, Any] = {}
+        if dedup_similarity_threshold is not None:
+            dedup_kwargs["similarity_threshold"] = dedup_similarity_threshold
+        frames = dedup_frame_diff(frames, **dedup_kwargs)
+        logger.info(
+            "视频帧去重完成", document_id=document.id, kept_frame_count=len(frames),
+        )
+        if not frames:
+            raise DocumentProcessingError(
+                document_id=document.id,
+                error_message=f"视频 {document.filename} 去重后无剩余帧",
+            )
 
     # 1.5. 帧持久化到 MinIO（在 VLM 调用前上传，避免 VLM 失败后帧丢失）
     from novamind.shared.storage.client_factory import ClientFactory
@@ -185,54 +227,108 @@ async def process_video_document(
 
     if task:
         task.start_step("descriptions_generated")
-    # 2. 逐帧 VLM 描述（每5帧检查一次取消信号）
-    descriptions = []
-    first_frame_error: Optional[str] = None
-    quota_or_auth_failures = 0
-    for i, (frame_bytes, ts, frame_idx) in enumerate(frames):
-        if i > 0 and i % 5 == 0:
-            await _check_document_cancelled(document.id)
-        try:
-            desc = await _describe_single_frame(
-                frame_bytes=frame_bytes,
-                frame_index=frame_idx,
-                timestamp=ts,
-                document=document,
-                mcs=mcs,
-                logger=logger,
-                vlm_model_name=parsing_config.get("vlm_model"),
-                vlm_fallback_model=vlm_fallback_model,
-            )
-            if desc:
-                descriptions.append((desc, ts, frame_idx))
-        except Exception as e:
-            if first_frame_error is None:
-                first_frame_error = str(e)
-            if _is_vlm_quota_or_auth_error(e):
-                quota_or_auth_failures += 1
-            logger.warning(
-                "视频帧VLM描述失败, 跳过", document_id=document.id,
-                frame_index=frame_idx, timestamp=ts, error=str(e),
-            )
+    # 2. 装配 VLM client + prompt（features 装配点注入引擎 describe_* 函数）
+    vlm_model_name = parsing_config.get("vlm_model") or await mcs.get_user_default_model_name(
+        document.uploader_id, "vlm"
+    )
+    if not vlm_model_name:
+        raise DocumentProcessingError(
+            document_id=document.id,
+            error_message=f"视频 {document.filename} 解析需配置 VLM 模型",
+        )
+    vlm_client = await mcs.get_vlm_client_by_model(document.uploader_id, vlm_model_name)
+    vlm_fallback_client = None
+    if vlm_fallback_model:
+        vlm_fallback_client = await mcs.get_vlm_client_by_model(
+            document.uploader_id, vlm_fallback_model
+        )
 
-    if not descriptions:
-        all_quota_failure = quota_or_auth_failures == len(frames) and frames
-        detail = f"，首个错误: {first_frame_error}" if first_frame_error else ""
-        # 配置了跳过降级，且全帧都是配额/鉴权类失败：写一条占位描述，避免整任务硬失败。
-        if vlm_skip_on_quota_error and all_quota_failure:
+    from novamind.shared.prompts.templates import PromptManager
+
+    cancelled_check = lambda: _check_document_cancelled(document.id)
+    base_log_ctx: Dict[str, Any] = {"document_id": document.id}
+
+    # 双锚点 [HH:MM:SS#frame_idx]：时间戳给人看，#frame_idx 给切分后反查唯一映射回帧时间区间。
+    # 帧时间线 {frame_idx: (start_sec, end_sec)}，end = 下一帧 ts（末帧 end=None，末尾开放区间）。
+    # 切分后 align_chunk_times 据此把 chunk 反查到的 #idx 映射成 start_time/end_time。
+    full_text = ""
+    frame_timeline_map: Dict[int, Tuple[Optional[float], Optional[float]]] = {}
+    frame_groups: Optional[Dict[int, List[int]]] = None
+    descriptions_count = 0
+
+    try:
+        if strategy == "grouped":
+            # grouped：每 group_size 帧一组喂 VLM 多图；锚点用组首帧 idx，frame_groups 展开组内所有帧
+            grouped_prompt = PromptManager.get_template("video_frame_grouped_description")
+            grouped_descs = await describe_grouped(
+                frames, group_size, vlm_client, grouped_prompt,
+                logger=logger, vlm_model=vlm_model_name,
+                vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
+                is_quota_error=_is_vlm_quota_or_auth_error,
+                log_context=base_log_ctx, cancelled_check=cancelled_check,
+            )
+            lines: List[str] = []
+            frame_groups = {}
+            timeline_input: List[Tuple[str, float, int]] = []
+            for desc, start_ts, _end_ts, idx_list in grouped_descs:
+                anchor_idx = idx_list[0]
+                lines.append(f"{format_time_anchor(start_ts, anchor_idx)} {desc}")
+                frame_groups[anchor_idx] = idx_list
+                timeline_input.append((desc, start_ts, anchor_idx))
+            full_text = "\n\n".join(lines)
+            frame_timeline_map = build_frame_timeline_map(timeline_input)
+            descriptions_count = len(grouped_descs)
+        elif strategy == "rewrite":
+            # rewrite：逐帧 single 描述 + LLM 重写连贯（保留锚点）；返回 (full_text, descriptions)
+            single_prompt = PromptManager.get_template("video_frame_description")
+            rewrite_prompt = PromptManager.get_template("video_frame_rewrite_prompt")
+            llm_model_name = await mcs.get_user_default_model_name(document.uploader_id, "llm")
+            if not llm_model_name:
+                raise DocumentProcessingError(
+                    document_id=document.id,
+                    error_message=f"视频 {document.filename} rewrite 策略需配置 LLM 模型",
+                )
+            llm_client = await mcs.get_llm_client_by_model(document.uploader_id, llm_model_name)
+            full_text, descriptions = await describe_rewrite(
+                frames, vlm_client, llm_client, single_prompt, rewrite_prompt,
+                logger=logger, vlm_model=vlm_model_name, llm_model=llm_model_name,
+                vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
+                is_quota_error=_is_vlm_quota_or_auth_error,
+                log_context=base_log_ctx, cancelled_check=cancelled_check,
+            )
+            frame_timeline_map = build_frame_timeline_map(descriptions)
+            descriptions_count = len(descriptions)
+        else:  # simple / scene / dedup：逐帧单图描述
+            single_prompt = PromptManager.get_template("video_frame_description")
+            descriptions = await describe_single(
+                frames, vlm_client, single_prompt,
+                logger=logger, vlm_model=vlm_model_name,
+                vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
+                is_quota_error=_is_vlm_quota_or_auth_error,
+                log_context=base_log_ctx, cancelled_check=cancelled_check,
+            )
+            full_text_lines = [f"{format_time_anchor(ts, idx)} {desc}" for desc, ts, idx in descriptions]
+            full_text = "\n\n".join(full_text_lines)
+            frame_timeline_map = build_frame_timeline_map(descriptions)
+            descriptions_count = len(descriptions)
+    except AllFrameDescriptionsFailedError as e:
+        # 全帧/全组描述均失败：按 vlm_skip_on_quota_error 决策写占位描述或抛业务异常
+        all_quota = e.total_frames > 0 and e.quota_failures == e.total_frames
+        if vlm_skip_on_quota_error and all_quota:
             logger.warning(
                 "视频所有帧VLM描述均失败（配额/鉴权），已按配置跳过并写占位描述",
-                document_id=document.id, frame_count=len(frames),
-                first_error=first_frame_error,
+                document_id=document.id, frame_count=e.total_frames,
+                first_error=str(e.first_error) if e.first_error else None,
             )
-            descriptions.append((
-                "（视频画面描述因 VLM 配额/鉴权不可用已跳过）",
-                0.0,
-                frames[0][2] if frames else 0,
-            ))
+            first_ts = frames[0][1] if frames else 0.0
+            first_idx = frames[0][2] if frames else 0
+            full_text = f"{format_time_anchor(first_ts, first_idx)} （视频画面描述因 VLM 配额/鉴权不可用已跳过）"
+            frame_timeline_map = {first_idx: (first_ts, None)}
+            descriptions_count = 1
         else:
+            detail = f"，首个错误: {e.first_error}" if e.first_error else ""
             hint = ""
-            if all_quota_failure:
+            if all_quota:
                 hint = (
                     "（VLM 配额/鉴权不可用。可在知识库视频解析配置中设置 vlm_fallback_model "
                     "回退备用模型，或开启 vlm_skip_on_quota_error 跳过 VLM。）"
@@ -242,21 +338,11 @@ async def process_video_document(
                 error_message=f"视频 {document.filename} 所有帧的VLM描述均失败{detail}{hint}",
             )
 
-    # 帧描述全文 MD 拼接并持久化到 MinIO（立刻 commit 落库）
-    # 双锚点 [HH:MM:SS#frame_idx]：时间戳给人看，#frame_idx 给切分后反查唯一映射回帧时间区间。
-    full_text_lines = []
-    for desc, ts, frame_idx in descriptions:
-        full_text_lines.append(f"{format_time_anchor(ts, frame_idx)} {desc}")
-    full_text = "\n\n".join(full_text_lines)
-
-    # 帧时间线：{frame_idx: (start_sec, end_sec)}，end = 下一帧 ts（末帧 end=None，末尾开放区间）。
-    # 切分后 align_chunk_times 据此把 chunk 反查到的 #idx 映射成 start_time/end_time。
-    frame_timeline_map = build_frame_timeline_map(descriptions)
-
+    # 帧描述全文 MD 持久化到 MinIO（立刻 commit 落库）
     await persist_parsed_text(document, full_text, session, logger)
 
     if task:
-        task.finish_step("descriptions_generated", metrics={"description_count": len(descriptions)})
+        task.finish_step("descriptions_generated", metrics={"description_count": descriptions_count})
 
     # 3-5. 切分/向量化/问题生成/索引：交由共享后置尾
     tail_result = await _run_post_parse_tail(
@@ -271,7 +357,11 @@ async def process_video_document(
         splitting_config=splitting_config,
         full_text=full_text,
         frame_paths=frame_paths,
-        time_alignment={"timeline_map": frame_timeline_map, "is_video": True},
+        time_alignment={
+            "timeline_map": frame_timeline_map,
+            "is_video": True,
+            **({"frame_groups": frame_groups} if frame_groups is not None else {}),
+        },
         user_id=document.uploader_id,
     )
 
@@ -702,123 +792,3 @@ async def _split_md_text(
         splitter = splitter_class(**kwargs)
         results = await splitter.split(doc_wrapper)
         return [(r["text"], {}) for r in results if r.get("text", "").strip()]
-
-
-# ========== 内部辅助函数 ==========
-
-
-async def _describe_single_frame(
-    frame_bytes: bytes,
-    frame_index: int,
-    timestamp: float,
-    document: Document,
-    mcs,
-    logger,
-    vlm_model_name: Optional[str] = None,
-    vlm_fallback_model: Optional[str] = None,
-) -> str:
-    """对单帧调用 VLM 生成描述（复用图片描述逻辑）。
-
-    主模型因配额/鉴权类错误失败且配置了 ``vlm_fallback_model`` 时，回退到备用模型重试一次；
-    其它异常原样上抛，由帧循环逐帧捕获并跳过。
-    """
-    from novamind.shared.prompts.templates import PromptManager
-
-    # 获取 VLM 客户端
-    vlm_model = vlm_model_name or await mcs.get_user_default_model_name(document.uploader_id, "vlm")
-    if not vlm_model:
-        raise ValueError("未配置 VLM 模型")
-
-    vlm_client = await mcs.get_vlm_client_by_model(document.uploader_id, vlm_model)
-
-    # 构建 base64 图片
-    mime_type = "image/jpeg"
-
-    # 获取视频帧描述 Prompt
-    description_prompt = PromptManager.get_template(
-        "video_frame_description"
-    )
-
-    messages = build_vlm_image_messages(
-        file_bytes=frame_bytes,
-        mime_type=mime_type,
-        text_prompt=description_prompt,
-    )
-
-    log_context = {
-        "document_id": document.id,
-        "frame_index": frame_index,
-    }
-
-    try:
-        description = await generate_vlm_text_with_fallback(
-            vlm_client=vlm_client,
-            messages=messages,
-            max_tokens=1024,
-            temperature=0.3,
-            logger=logger,
-            vlm_model=vlm_model,
-            log_context=log_context,
-        )
-    except Exception as exc:
-        # 配额/鉴权类错误：若配了备用 VLM 模型，回退重试一次；否则原样上抛。
-        if not vlm_fallback_model or not _is_vlm_quota_or_auth_error(exc):
-            raise
-        logger.warning(
-            "视频帧VLM主模型配额/鉴权失败，回退备用模型",
-            document_id=document.id, frame_index=frame_index,
-            fallback_model=vlm_fallback_model, error=str(exc),
-        )
-        fallback_client = await mcs.get_vlm_client_by_model(
-            document.uploader_id, vlm_fallback_model
-        )
-        description = await generate_vlm_text_with_fallback(
-            vlm_client=fallback_client,
-            messages=messages,
-            max_tokens=1024,
-            temperature=0.3,
-            logger=logger,
-            vlm_model=vlm_fallback_model,
-            log_context=log_context,
-        )
-
-    if not description or not description.strip():
-        return ""
-
-    return description.strip()[:500]
-
-
-async def _generate_vlm_description_with_fallback(
-    vlm_client,
-    messages: List[Dict[str, Any]],
-    max_tokens: int,
-    temperature: float,
-    logger,
-    vlm_model: str,
-    document_id: int,
-    frame_index: int,
-) -> str:
-    """兼容部分 VLM 提供商要求显式开启 thinking 的场景。"""
-    try:
-        return await vlm_client.generate_text(
-            prompt=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
-    except Exception as e:
-        error_text = str(e)
-        if "enable_thinking" not in error_text.lower():
-            raise
-
-        logger.info(
-            "视频帧VLM描述重试并开启thinking",
-            document_id=document_id,
-            frame_index=frame_index,
-            model=vlm_model,
-        )
-        return await vlm_client.generate_text(
-            prompt=messages,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            enable_thinking=True,
-        )

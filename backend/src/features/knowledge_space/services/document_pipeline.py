@@ -722,7 +722,10 @@ async def _run_post_parse_tail(
     if time_alignment:
         from novamind.engines.document.media import align_chunk_times
         chunk_items = align_chunk_times(
-            chunk_items, time_alignment["timeline_map"], bool(time_alignment["is_video"])
+            chunk_items,
+            time_alignment["timeline_map"],
+            bool(time_alignment["is_video"]),
+            frame_groups=time_alignment.get("frame_groups"),
         )
 
     # 2. 构造 ES chunks（文本/媒体 metadata 由 _build_es_chunks 按 chunk_type 分支处理）

@@ -10963,8 +10963,21 @@
         "type": "object"
       },
       "VideoParsingConfig": {
-        "description": "Video parsing config.",
+        "description": "Video parsing config.\n\nstrategy（视频解析策略，6 预设映射到抽帧/去重/描述三阶段组合）：\n- \"simple\": 固定间隔抽帧 + 不去重 + 逐帧单图描述（默认，等价旧行为）\n- \"scene\": 场景切换抽帧（直方图差）+ 不去重 + 逐帧单图描述\n- \"dedup\": 固定间隔 + 直方图相似度去重 + 逐帧单图描述\n- \"grouped\": 固定间隔 + 不去重 + 多帧一组喂 VLM 多图生成连贯描述\n- \"rewrite\": 固定间隔 + 不去重 + 逐帧描述后 LLM 重写连贯（保留时间锚点）\n- \"dedup_grouped\": 固定间隔 + 图像 embedding 去重 + 分组描述（预留，暂未实现）",
         "properties": {
+          "dedup_similarity_threshold": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dedup Similarity Threshold"
+          },
           "frame_interval": {
             "default": 5.0,
             "maximum": 60.0,
@@ -10972,12 +10985,52 @@
             "title": "Frame Interval",
             "type": "number"
           },
+          "group_size": {
+            "anyOf": [
+              {
+                "maximum": 20.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Size"
+          },
           "max_frames": {
             "default": 60,
             "maximum": 200.0,
             "minimum": 1.0,
             "title": "Max Frames",
             "type": "integer"
+          },
+          "scene_threshold": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scene Threshold"
+          },
+          "strategy": {
+            "default": "simple",
+            "description": "视频解析策略：6 预设（抽帧/去重/描述三阶段组合）",
+            "enum": [
+              "simple",
+              "scene",
+              "dedup",
+              "grouped",
+              "rewrite",
+              "dedup_grouped"
+            ],
+            "title": "Strategy",
+            "type": "string"
           },
           "vlm_description_enabled": {
             "default": false,

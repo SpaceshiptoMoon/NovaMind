@@ -25,6 +25,10 @@ class PromptTemplate(Enum):
 
     # 视频帧描述（VLM）
     VIDEO_FRAME_DESCRIPTION = "video_frame_description"
+    # 视频分组多帧描述（VLM 多图，grouped 策略）
+    VIDEO_FRAME_GROUPED_DESCRIPTION = "video_frame_grouped_description"
+    # 视频逐帧描述重写（LLM 润色，rewrite 策略，保留时间锚点）
+    VIDEO_FRAME_REWRITE_PROMPT = "video_frame_rewrite_prompt"
 
     # ==================== 深度研究相关 ====================
     RESEARCH_ANALYZE_QUERY = "research_analyze_query"
