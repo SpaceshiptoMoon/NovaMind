@@ -19,6 +19,7 @@
 
 from typing import Optional, List, Dict, Any, Tuple, TYPE_CHECKING
 from dataclasses import dataclass
+import re
 import traceback
 import tempfile
 from novamind.shared.utils.time_utils import now_china
@@ -574,6 +575,53 @@ async def _process_image_ocr_static(
     return ocr_text
 
 
+# 切分后反查对齐用：匹配 chunk 文本里的 [HH:MM:SS#idx] 双锚点。
+# 媒体管道拼接 md 时每帧/段首带此锚点；切分器切完，_align_chunk_times 据此把 chunk 映射回
+# 帧/segment 时间区间，填 start_time/end_time/frame_indices，并剥离锚点得到进 embedding 的纯描述。
+_ANCHOR_RE = re.compile(r"\[\d{2}:\d{2}:\d{2}#(\d+)\]")
+_ANCHOR_PREFIX_RE = re.compile(r"\[\d{2}:\d{2}:\d{2}#\d+\]\s*")
+
+
+def _align_chunk_times(
+    chunk_items: List[Tuple[str, Dict[str, Any]]],
+    time_alignment: Dict[str, Any],
+) -> List[Tuple[str, Dict[str, Any]]]:
+    """切分后块到帧/segment 的时间对齐。
+
+    - 正则提取每个 chunk 文本里的 ``#idx`` 锚点 → 查 ``timeline_map`` 取 (start, end)；
+      chunk 时间区间 = ``[min(starts), max(ends)]``，视频填 ``frame_indices``。
+    - 剥离 ``[HH:MM:SS#idx]`` 锚点前缀，返回纯描述文本（进 embedding，无时间戳噪声）。
+    - 无锚点的块（单段超 chunk_size 被切成尾部块等罕见情形）start/end 填 None，前端标「时间未知」。
+    """
+    timeline_map: Dict[int, Tuple[Optional[float], Optional[float]]] = time_alignment["timeline_map"]
+    is_video = bool(time_alignment["is_video"])
+    aligned: List[Tuple[str, Dict[str, Any]]] = []
+    for text, meta in chunk_items:
+        idxs = [int(m) for m in _ANCHOR_RE.findall(text)]
+        new_meta = dict(meta)
+        if idxs:
+            starts = [
+                timeline_map[i][0]
+                for i in idxs
+                if i in timeline_map and timeline_map[i][0] is not None
+            ]
+            ends = [
+                timeline_map[i][1]
+                for i in idxs
+                if i in timeline_map and timeline_map[i][1] is not None
+            ]
+            new_meta["start_time"] = min(starts) if starts else None
+            new_meta["end_time"] = max(ends) if ends else None
+            if is_video:
+                new_meta["frame_indices"] = [i for i in idxs if i in timeline_map]
+        else:
+            new_meta.setdefault("start_time", None)
+            new_meta.setdefault("end_time", None)
+        clean_text = _ANCHOR_PREFIX_RE.sub("", text).strip()
+        aligned.append((clean_text, new_meta))
+    return aligned
+
+
 def _build_es_chunks(
     document: Document,
     chunk_items: List[Tuple[str, Dict[str, Any]]],
@@ -674,6 +722,7 @@ async def _run_post_parse_tail(
     prechunked_items: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
     parse_metadata: Optional[Dict[str, Any]] = None,
     frame_paths: Optional[List[str]] = None,
+    time_alignment: Optional[Dict[str, Any]] = None,
     user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """共享后置尾：切分 → 构造 ES chunks → 向量化 → 问题生成 → 索引。
@@ -703,7 +752,8 @@ async def _run_post_parse_tail(
             model_config_port=model_config_port,
         )
         chunk_items = await _split_md_text(
-            full_text, strategy=strategy, embedding_client=embedding_client, **sc,
+            full_text, strategy=strategy, embedding_client=embedding_client,
+            line_aware=time_alignment is not None, **sc,
         )
         split_strategy = strategy
     chunk_count = len(chunk_items)
@@ -713,6 +763,11 @@ async def _run_post_parse_tail(
         "chunk_size": splitting_config.get("chunk_size"),
     })
     await _check_document_cancelled(document.id)
+
+    # 1.5. 媒体时间对齐：切分后正则反查 [HH:MM:SS#idx] 锚点 → 填 start_time/end_time/frame_indices
+    # + 剥离锚点得到纯描述 content（进 embedding）。仅音视频传 time_alignment；文本/图片 None 跳过。
+    if time_alignment:
+        chunk_items = _align_chunk_times(chunk_items, time_alignment)
 
     # 2. 构造 ES chunks（文本/媒体 metadata 由 _build_es_chunks 按 chunk_type 分支处理）
     es_chunks = _build_es_chunks(

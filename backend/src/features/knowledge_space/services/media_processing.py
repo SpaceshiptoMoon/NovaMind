@@ -238,10 +238,20 @@ async def process_video_document(
             )
 
     # 帧描述全文 MD 拼接并持久化到 MinIO（立刻 commit 落库）
+    # 双锚点 [HH:MM:SS#frame_idx]：时间戳给人看，#frame_idx 给切分后反查唯一映射回帧时间区间。
     full_text_lines = []
     for desc, ts, frame_idx in descriptions:
-        full_text_lines.append(f"[{_format_time(ts)}] {desc}")
+        full_text_lines.append(f"[{_format_time(ts)}#{frame_idx}] {desc}")
     full_text = "\n\n".join(full_text_lines)
+
+    # 帧时间线：{frame_idx: (start_sec, end_sec)}，end = 下一帧 ts（末帧 end=None，末尾开放区间）。
+    # 切分后 _align_chunk_times 据此把 chunk 反查到的 #idx 映射成 start_time/end_time。
+    sorted_desc = sorted(descriptions, key=lambda d: d[2])  # 按 frame_idx 升序
+    frame_timeline_map: Dict[int, Tuple[Optional[float], Optional[float]]] = {}
+    for i, (_, ts, frame_idx) in enumerate(sorted_desc):
+        end_ts = sorted_desc[i + 1][1] if i + 1 < len(sorted_desc) else None
+        frame_timeline_map[frame_idx] = (ts, end_ts)
+
     await persist_parsed_text(document, full_text, session, logger)
 
     if task:
@@ -260,6 +270,7 @@ async def process_video_document(
         splitting_config=splitting_config,
         full_text=full_text,
         frame_paths=frame_paths,
+        time_alignment={"timeline_map": frame_timeline_map, "is_video": True},
         user_id=document.uploader_id,
     )
 
@@ -483,10 +494,15 @@ async def process_audio_document(
         return
 
     # 转写全文 MD 拼接并持久化到 MinIO（立刻 commit 落库）
-    transcript_lines = [
-        f"[{_format_time(seg.get('start', 0))}] {seg['text']}"
-        for seg in segments if seg.get("text", "").strip()
-    ]
+    # 双锚点 [HH:MM:SS#seg_idx]：seg_idx 用 enumerate 原始 segments 顺序（跳过空文本仍占原序号，
+    # 保持 anchor #idx 与 segment_timeline_map 键一致），切分后反查映射回 segment 时间区间。
+    transcript_lines = []
+    segment_timeline_map: Dict[int, Tuple[Optional[float], Optional[float]]] = {}
+    for seg_idx, seg in enumerate(segments):
+        if not seg.get("text", "").strip():
+            continue
+        transcript_lines.append(f"[{_format_time(seg.get('start', 0))}#{seg_idx}] {seg['text']}")
+        segment_timeline_map[seg_idx] = (seg.get("start", 0), seg.get("end"))
     if not transcript_lines:
         logger.warning(
             "音频转写段落均为空文本，文档将以空内容完成",
@@ -524,6 +540,7 @@ async def process_audio_document(
         pipeline_config=pipeline_config,
         splitting_config=splitting_config,
         full_text=full_text,
+        time_alignment={"timeline_map": segment_timeline_map, "is_video": False},
         user_id=document.uploader_id,
     )
 
@@ -550,6 +567,7 @@ async def _split_md_text(
     md_text: str,
     strategy: str = "recursive",
     embedding_client=None,
+    line_aware: bool = False,
     **kwargs,
 ) -> List[Tuple[str, Dict[str, Any]]]:
     """
@@ -557,7 +575,10 @@ async def _split_md_text(
 
     Args:
         md_text: 待切分的文本内容
-        strategy: 切分策略 (recursive / markdown / fixed_size)
+        strategy: 切分策略 (recursive / markdown / fixed_size / semantic)
+        line_aware: 仅 fixed_size 生效——True 时按行累积切分（音视频带 [HH:MM:SS#idx] 锚点文本，
+            避免切进「[锚点] 描述」行内部导致锚点分家）；False 时按字符切（图片等无锚点文本）。
+            由调用方据 time_alignment 是否非空决定（音视频 True，图片/文本 False）。
         **kwargs: 策略相关参数 (chunk_size, chunk_overlap, min_chunk_size, max_chunk_size 等)
 
     Returns:
@@ -605,6 +626,34 @@ async def _split_md_text(
     elif strategy == "fixed_size":
         chunk_size = kwargs.get("chunk_size", 500)
         chunk_overlap = kwargs.get("chunk_overlap", 0)
+        if line_aware:
+            # 行边界对齐版（音视频带 [HH:MM:SS#idx] 锚点文本）：按行累积到 chunk_size 就在行间
+            # flush，绝不切进「[锚点] 描述」行内部，保证切分后反查锚点不错位。
+            # overlap 用「保留尾部若干行使其字符和 ≈ chunk_overlap」实现（行单位 overlap）。
+            lines = md_text.split("\n")
+            chunks: List[str] = []
+            buf: List[str] = []
+            buf_len = 0
+            for line in lines:
+                addition = len(line) + (1 if buf else 0)  # 非首行加 \n 连接符长度
+                if buf and buf_len + addition > chunk_size:
+                    chunks.append("\n".join(buf))
+                    # overlap：从尾部回溯取若干行，使其字符和 ≥ chunk_overlap 即停
+                    tail: List[str] = []
+                    tail_len = 0
+                    for tl in reversed(buf):
+                        if tail and tail_len + len(tl) >= chunk_overlap:
+                            break
+                        tail.insert(0, tl)
+                        tail_len += len(tl) + (1 if len(tail) > 1 else 0)
+                    buf = tail
+                    buf_len = sum(len(l) for l in tail) + max(0, len(tail) - 1)
+                buf.append(line)
+                buf_len += addition
+            if buf:
+                chunks.append("\n".join(buf))
+            return [(c, {}) for c in chunks if c.strip()]
+        # 字符切（图片等无锚点文本）：原 FixedSizeSplitter 行为
         splitter = splitter_class(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
