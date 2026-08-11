@@ -25,6 +25,11 @@ from novamind.engines.document.media.audio import (
     transcribe_audio_local,
     transcribe_audio_with_timestamps,
 )
+from novamind.engines.document.media.chunk_time_alignment import (
+    build_frame_timeline_map,
+    build_segment_timeline_map,
+    format_time_anchor,
+)
 from novamind.engines.document.media.video import extract_video_frames
 from novamind.shared.utils.time_utils import now_china
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
@@ -241,16 +246,12 @@ async def process_video_document(
     # 双锚点 [HH:MM:SS#frame_idx]：时间戳给人看，#frame_idx 给切分后反查唯一映射回帧时间区间。
     full_text_lines = []
     for desc, ts, frame_idx in descriptions:
-        full_text_lines.append(f"[{_format_time(ts)}#{frame_idx}] {desc}")
+        full_text_lines.append(f"{format_time_anchor(ts, frame_idx)} {desc}")
     full_text = "\n\n".join(full_text_lines)
 
     # 帧时间线：{frame_idx: (start_sec, end_sec)}，end = 下一帧 ts（末帧 end=None，末尾开放区间）。
-    # 切分后 _align_chunk_times 据此把 chunk 反查到的 #idx 映射成 start_time/end_time。
-    sorted_desc = sorted(descriptions, key=lambda d: d[2])  # 按 frame_idx 升序
-    frame_timeline_map: Dict[int, Tuple[Optional[float], Optional[float]]] = {}
-    for i, (_, ts, frame_idx) in enumerate(sorted_desc):
-        end_ts = sorted_desc[i + 1][1] if i + 1 < len(sorted_desc) else None
-        frame_timeline_map[frame_idx] = (ts, end_ts)
+    # 切分后 align_chunk_times 据此把 chunk 反查到的 #idx 映射成 start_time/end_time。
+    frame_timeline_map = build_frame_timeline_map(descriptions)
 
     await persist_parsed_text(document, full_text, session, logger)
 
@@ -497,12 +498,11 @@ async def process_audio_document(
     # 双锚点 [HH:MM:SS#seg_idx]：seg_idx 用 enumerate 原始 segments 顺序（跳过空文本仍占原序号，
     # 保持 anchor #idx 与 segment_timeline_map 键一致），切分后反查映射回 segment 时间区间。
     transcript_lines = []
-    segment_timeline_map: Dict[int, Tuple[Optional[float], Optional[float]]] = {}
     for seg_idx, seg in enumerate(segments):
         if not seg.get("text", "").strip():
             continue
-        transcript_lines.append(f"[{_format_time(seg.get('start', 0))}#{seg_idx}] {seg['text']}")
-        segment_timeline_map[seg_idx] = (seg.get("start", 0), seg.get("end"))
+        transcript_lines.append(f"{format_time_anchor(seg.get('start', 0), seg_idx)} {seg['text']}")
+    segment_timeline_map = build_segment_timeline_map(segments)
     if not transcript_lines:
         logger.warning(
             "音频转写段落均为空文本，文档将以空内容完成",
@@ -822,10 +822,3 @@ async def _generate_vlm_description_with_fallback(
             temperature=temperature,
             enable_thinking=True,
         )
-
-
-def _format_time(seconds: float) -> str:
-    """格式化秒数为 HH:MM:SS"""
-    m, s = divmod(int(seconds), 60)
-    h, m = divmod(m, 60)
-    return f"{h:02d}:{m:02d}:{s:02d}"
