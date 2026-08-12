@@ -67,6 +67,7 @@ class AgentService:
             max_tool_calls_per_turn=data.max_tool_calls_per_turn,
             enabled_tools=data.enabled_tools,
             enabled_mcp_servers=data.enabled_mcp_servers,
+            extra_config=data.extra_config,
         )
         await self.db.commit()
         return AgentDetailResponse.model_validate(agent)
@@ -215,6 +216,7 @@ class AgentService:
         tool_name: Optional[str] = None,
         token_count: Optional[int] = None,
         extra: Optional[dict] = None,
+        reasoning: Optional[str] = None,
     ) -> AgentMessage:
         msg = await self.msg_repo.create(
             conversation_id=conversation_id,
@@ -224,6 +226,7 @@ class AgentService:
             tool_name=tool_name,
             token_count=token_count,
             extra=extra,
+            reasoning=reasoning,
         )
         await self.db.flush()
         return msg

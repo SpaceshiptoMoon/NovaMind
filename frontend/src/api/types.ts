@@ -1231,7 +1231,7 @@ export interface Agent {
   user_id: number | null
   name: string
   description: string | null
-  system_prompt: string
+  system_prompt?: string | null
   llm_model: string | null
   max_tokens: number
   context_window: number
@@ -1240,6 +1240,7 @@ export interface Agent {
   max_tool_calls_per_turn: number
   enabled_tools: string[] | null
   enabled_mcp_servers: number[] | null
+  extra_config?: Record<string, unknown> | null
   created_at: string
   updated_at: string
 }
@@ -1256,6 +1257,7 @@ export interface CreateAgentRequest {
   max_tool_calls_per_turn?: number
   enabled_tools?: string[]
   enabled_mcp_servers?: number[]
+  extra_config?: Record<string, unknown> | null
 }
 
 export type UpdateAgentRequest = Partial<CreateAgentRequest>
@@ -1321,9 +1323,12 @@ export interface McpServer {
 }
 
 export interface McpTool {
-  name: string
-  description: string
-  inputSchema?: Record<string, unknown>
+  type: 'function'
+  function: {
+    name: string
+    description: string
+    parameters?: Record<string, unknown>
+  }
 }
 
 export interface CreateMcpServerRequest {

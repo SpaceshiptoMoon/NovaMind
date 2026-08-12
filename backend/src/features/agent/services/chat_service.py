@@ -137,7 +137,9 @@ class AgentChatService:
             context["embedding_client_resolver"] = self._build_embedding_resolver(user_id)
 
             full_response = ""
+            full_reasoning = ""
             scrubber = StreamingContextScrubber()
+            reasoning_scrubber = StreamingContextScrubber()
 
             # 上下文溢出时的自动压缩回调
             async def _compress_on_overflow(msgs):
@@ -167,7 +169,11 @@ class AgentChatService:
                     yield self._format_sse("tool_result", event.data)
 
                 elif event.event_type == "reasoning":
-                    yield self._format_sse("reasoning", event.data)
+                    raw_r = event.data.get("content", "")
+                    cleaned_r = reasoning_scrubber.feed(raw_r)
+                    full_reasoning += cleaned_r
+                    if cleaned_r:
+                        yield self._format_sse("reasoning", {"content": cleaned_r})
 
                 elif event.event_type == "content":
                     raw_content = event.data.get("content", "")
@@ -181,9 +187,14 @@ class AgentChatService:
                     remaining = scrubber.flush()
                     if remaining:
                         full_response += remaining
+                    remaining_r = reasoning_scrubber.flush()
+                    if remaining_r:
+                        full_reasoning += remaining_r
                     if event.data.get("truncated", False):
                         full_response += "\n\n[Agent 已达到最大迭代次数，对话被截断]"
-                    done_data = await self._handle_done(event, conv, content, full_response)
+                    done_data = await self._handle_done(
+                        event, conv, content, full_response, reasoning=full_reasoning or None
+                    )
                     yield self._format_sse("done", done_data)
 
                 elif event.event_type == "error":
@@ -700,6 +711,7 @@ class AgentChatService:
         conv: AgentSession,
         user_content: str,
         full_response: str,
+        reasoning: Optional[str] = None,
     ) -> Dict[str, Any]:
         """处理 done 事件：保存 assistant 消息、更新统计、设置标题"""
         total_tokens = event.data.get("total_tokens", 0)
@@ -709,6 +721,7 @@ class AgentChatService:
             role="assistant",
             content=full_response,
             token_count=total_tokens,
+            reasoning=reasoning,
         )
 
         await self.agent_service.update_session_stats(conv.id, total_tokens)
