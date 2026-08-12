@@ -382,8 +382,6 @@ class AIChatService:
                             break
                     prep_sources = last_deduped
                     prep_raw_count = last_raw_count
-                    if prep_sources:
-                        system_prompt = self._build_augmented_prompt(system_prompt, prep_sources)
                 else:
                     # grade 关闭或无 grade LLM：单次 DECOMPOSE 检索（行为同改造前）
                     deduped, rc = await self._decompose_retrieve(
@@ -394,8 +392,6 @@ class AIChatService:
                     )
                     prep_sources = deduped
                     prep_raw_count = rc
-                    if prep_sources:
-                        system_prompt = self._build_augmented_prompt(system_prompt, prep_sources)
 
             # 分级拒答：仅 RAG 模式且过滤后无来源 → 拒答（联网搜索时放行，LLM 可基于自身知识回答）
             if refusal_on and not prep_sources and not do_web:
@@ -407,9 +403,19 @@ class AIChatService:
         # 系统提示词不参与压缩（恒定，从不进 get_conversation_context）；
         # get_conversation_context 已完成「摘要+新消息」的阈值判断与压缩，
         # 返回的 context 形如 [{system: 摘要}, 最近消息...]，此处只在外层拼上系统提示词。
-        conversation_history = [
-            {"role": "system", "content": system_prompt}
-        ] + context
+        # 检索资料作为独立 system message 紧贴当前 user 前：资料属于当前 turn 上下文，
+        # 不污染会话级 system_prompt；长对话时资料紧贴问题，attention 更聚焦。
+        # context 末条为当前 user message（_prepare_chat 先 add_message 再 get_conversation_context）。
+        retrieval_context = self._build_retrieval_context(prep_sources) if prep_sources else ""
+        if retrieval_context and context:
+            conversation_history = (
+                [{"role": "system", "content": system_prompt}]
+                + context[:-1]
+                + [{"role": "system", "content": retrieval_context}]
+                + [context[-1]]
+            )
+        else:
+            conversation_history = [{"role": "system", "content": system_prompt}] + context
 
         # 获取 LLM 客户端
         llm_client = await self._get_llm_client(user_id, llm_model)
@@ -462,12 +468,16 @@ class AIChatService:
             traces=traces,
         )
 
-    def _build_augmented_prompt(self, system_prompt: str, sources: List[dict]) -> str:
-        """将已编号的来源列表拼接进 system_prompt，生成增强 prompt。
+    def _build_retrieval_context(self, sources: List[dict]) -> str:
+        """构造检索上下文文本（引用规则 + web/kb 资料块），作为独立 system message 紧贴当前 user 前。
 
+        资料属于"为回答当前问题临时查的"上下文，不污染会话级 system_prompt；
+        紧贴当前 user message 放置，长对话时资料与问题相邻，attention 更聚焦。
         角标 [i] 与 source["index"] 对齐；web/kb 分组渲染。
         单查询路径与 DECOMPOSE（合并去重、统一重新编号后）共用此方法。
         """
+        if not sources:
+            return ""
         web_items = [s for s in sources if s.get("kind") == "web"]
         kb_items = [s for s in sources if s.get("kind") == "kb"]
         ref_lines: List[str] = []
@@ -488,7 +498,6 @@ class AIChatService:
 
         reference = "\n".join(ref_lines)
         return (
-            f"{system_prompt}\n\n"
             "以下是为回答用户问题检索到的参考资料，请严格基于这些资料作答：\n"
             "1. 使用参考资料中的信息时，在对应句子末尾标注来源序号，如 [1]、[2]，序号与下方参考资料列表一致；\n"
             "2. 优先使用参考资料，资料不足时可结合自身知识补充，但不要编造资料中不存在的事实；\n"
@@ -511,8 +520,10 @@ class AIChatService:
         search_provider: Optional[str] = None,
         max_results: int = 5,
     ) -> Tuple[str, List[dict], int]:
-        """执行联网/知识库检索，返回 (增强后的 system_prompt, 统一编号的来源列表)。
+        """执行联网/知识库检索，返回 (原始 system_prompt, 统一编号的来源列表, 过滤前数量)。
 
+        system_prompt 不在此增强——检索资料由调用方用 _build_retrieval_context 构造为独立
+        system message 紧贴当前 user 前（资料属于当前 turn 上下文，不污染会话级 system_prompt）。
         来源列表 index 与 prompt 内 [1][2] 角标对齐；任一检索失败均降级跳过，不阻塞对话。
 
         score_threshold 非空时（refusal_on 启用阈值过滤），丢弃得分低于阈值的 KB 来源——
@@ -564,7 +575,7 @@ class AIChatService:
             s["index"] = i
             sources.append(s)
 
-        return self._build_augmented_prompt(system_prompt, sources), sources, raw_count
+        return system_prompt, sources, raw_count
 
     async def _decompose_retrieve(
         self,
