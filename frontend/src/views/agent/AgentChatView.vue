@@ -25,7 +25,10 @@
             <el-icon :size="12"><Delete /></el-icon>
           </button>
         </div>
-        <div v-if="agentStore.conversations.length === 0 && !agentStore.conversationsLoading" class="sidebar-empty">
+        <div
+          v-if="agentStore.conversations.length === 0 && !agentStore.conversationsLoading"
+          class="sidebar-empty"
+        >
           <span>暂无对话</span>
         </div>
       </div>
@@ -63,7 +66,11 @@
                       {{ getToolStatusLabel(msg.tool_call_id) }}
                     </span>
                   </div>
-                  <el-icon :size="12" class="expand-icon" :class="{ expanded: expandedTools.has(msg.id) }">
+                  <el-icon
+                    :size="12"
+                    class="expand-icon"
+                    :class="{ expanded: expandedTools.has(msg.id) }"
+                  >
                     <ArrowDown />
                   </el-icon>
                 </div>
@@ -86,7 +93,11 @@
                 <div class="message-text">{{ msg.content }}</div>
                 <div v-if="getMessageAttachments(msg).length" class="message-attachments">
                   <template v-for="att in getMessageAttachments(msg)" :key="att.filename">
-                    <div v-if="isImageFile(att.file_type) && att.id" class="image-card" @click="handleDownloadAttachment(att)">
+                    <div
+                      v-if="isImageFile(att.file_type) && att.id"
+                      class="image-card"
+                      @click="handleDownloadAttachment(att)"
+                    >
                       <img
                         v-if="getImagePreviewUrl(att)"
                         :src="getImagePreviewUrl(att)"
@@ -105,7 +116,9 @@
                       </div>
                       <div class="file-info">
                         <div class="file-name">{{ att.filename }}</div>
-                        <div class="file-meta">{{ getFileExt(att.filename) }} · {{ formatFileSize(att.file_size) }}</div>
+                        <div class="file-meta">
+                          {{ getFileExt(att.filename) }} · {{ formatFileSize(att.file_size) }}
+                        </div>
                       </div>
                       <div class="file-download-btn" title="下载">
                         <el-icon :size="16"><Download /></el-icon>
@@ -122,7 +135,11 @@
                 <div v-if="msg.reasoning" class="reasoning-section">
                   <div class="reasoning-header" @click="toggleReasoning(msg.id)">
                     <span class="reasoning-label">思考过程</span>
-                    <el-icon :size="12" class="expand-icon" :class="{ expanded: expandedReasoning.has(msg.id) }">
+                    <el-icon
+                      :size="12"
+                      class="expand-icon"
+                      :class="{ expanded: expandedReasoning.has(msg.id) }"
+                    >
                       <ArrowDown />
                     </el-icon>
                   </div>
@@ -185,92 +202,92 @@
           </div>
 
           <div class="input-pill">
-          <button
-            class="attach-btn"
-            :disabled="agentStore.isStreaming || agentStore.loading || uploadingFiles"
-            @click="triggerFileSelect"
-            title="上传文档"
-          >
-            <el-icon :size="16"><Paperclip /></el-icon>
-          </button>
-          <input
-            ref="fileInputRef"
-            type="file"
-            accept=".pdf,.doc,.docx,.txt,.md,.jpg,.jpeg,.png,.gif,.webp"
-            style="display: none"
-            @change="handleFileSelected"
-          />
-          <textarea
-            ref="textareaRef"
-            v-model="inputText"
-            class="chat-textarea"
-            placeholder="输入消息..."
-            :rows="1"
-            :disabled="agentStore.isStreaming || agentStore.loading"
-            @keydown="handleKeydown"
-            @input="autoResize"
-          />
-          <ModelFanSelector
-            v-model="selectedModel"
-            :models="availableModels"
-            :default-model-name="defaultModelName"
-          />
-          <button
-            v-if="agentStore.isStreaming"
-            class="send-btn stop-btn"
-            @click="handleCancelStream"
-          >
-            <el-icon :size="16"><VideoPause /></el-icon>
-          </button>
-          <button
-            v-else
-            class="send-btn"
-            :class="{ active: inputText.trim() || agentStore.pendingAttachments.length > 0 }"
-            :disabled="(!inputText.trim() && agentStore.pendingAttachments.length === 0) || agentStore.loading"
-            @click="handleSend"
-          >
-            <el-icon :size="16"><Promotion /></el-icon>
-          </button>
-        </div>
-        <!-- 文件预览 -->
-        <div v-if="agentStore.pendingAttachments.length > 0" class="attachment-preview-bar">
-          <div
-            v-for="att in agentStore.pendingAttachments"
-            :key="att.id"
-            class="attachment-chip"
-          >
-            <img v-if="isImageFile(att.file_type) && getImagePreviewUrl(att)" :src="getImagePreviewUrl(att)" class="att-thumb-img" />
-            <span v-else class="att-type-badge">{{ getFileIcon(att.file_type) }}</span>
-            <span class="att-name">{{ att.filename }}</span>
-            <span class="att-size">{{ formatFileSize(att.file_size) }}</span>
-            <button class="att-remove" @click="agentStore.removePendingAttachment(att.id)">
-              <el-icon :size="10"><Close /></el-icon>
+            <button
+              class="attach-btn"
+              :disabled="agentStore.isStreaming || agentStore.loading || uploadingFiles"
+              @click="triggerFileSelect"
+              title="上传文档"
+            >
+              <el-icon :size="16"><Paperclip /></el-icon>
+            </button>
+            <input
+              ref="fileInputRef"
+              type="file"
+              accept=".pdf,.doc,.docx,.txt,.md,.jpg,.jpeg,.png,.gif,.webp"
+              style="display: none"
+              @change="handleFileSelected"
+            />
+            <textarea
+              ref="textareaRef"
+              v-model="inputText"
+              class="chat-textarea"
+              placeholder="输入消息..."
+              :rows="1"
+              :disabled="agentStore.isStreaming || agentStore.loading"
+              @keydown="handleKeydown"
+              @input="autoResize"
+            />
+            <button
+              v-if="agentStore.isStreaming"
+              class="send-btn stop-btn"
+              @click="handleCancelStream"
+            >
+              <el-icon :size="16"><VideoPause /></el-icon>
+            </button>
+            <button
+              v-else
+              class="send-btn"
+              :class="{ active: inputText.trim() || agentStore.pendingAttachments.length > 0 }"
+              :disabled="
+                (!inputText.trim() && agentStore.pendingAttachments.length === 0) ||
+                agentStore.loading
+              "
+              @click="handleSend"
+            >
+              <el-icon :size="16"><Promotion /></el-icon>
             </button>
           </div>
-        </div>
-        <!-- 折叠设置栏 -->
-        <div class="input-footer">
-          <button class="settings-toggle" @click="settingsExpanded = !settingsExpanded">
-            <el-icon :size="12"><Setting /></el-icon>
-            <span>{{ settingsSummary }}</span>
-            <el-icon :size="10" class="toggle-arrow" :class="{ expanded: settingsExpanded }"><ArrowDown /></el-icon>
-          </button>
-          <div class="input-hint-inline">Enter 发送 · Shift+Enter 换行</div>
-        </div>
-        <transition name="settings-slide">
-          <div v-if="settingsExpanded" class="settings-bar">
-            <div class="settings-bar-inner">
-              <div class="setting-group">
-                <span class="setting-label">深度思考</span>
-                <el-switch v-model="enableThinking" size="small" />
-              </div>
-              <div class="setting-group">
-                <span class="setting-label">流式输出</span>
-                <el-switch v-model="useStream" size="small" />
-              </div>
+          <!-- 文件预览 -->
+          <div v-if="agentStore.pendingAttachments.length > 0" class="attachment-preview-bar">
+            <div v-for="att in agentStore.pendingAttachments" :key="att.id" class="attachment-chip">
+              <img
+                v-if="isImageFile(att.file_type) && getImagePreviewUrl(att)"
+                :src="getImagePreviewUrl(att)"
+                class="att-thumb-img"
+              />
+              <span v-else class="att-type-badge">{{ getFileIcon(att.file_type) }}</span>
+              <span class="att-name">{{ att.filename }}</span>
+              <span class="att-size">{{ formatFileSize(att.file_size) }}</span>
+              <button class="att-remove" @click="agentStore.removePendingAttachment(att.id)">
+                <el-icon :size="10"><Close /></el-icon>
+              </button>
             </div>
           </div>
-        </transition>
+          <!-- 折叠设置栏 -->
+          <div class="input-footer">
+            <button class="settings-toggle" @click="settingsExpanded = !settingsExpanded">
+              <el-icon :size="12"><Setting /></el-icon>
+              <span>{{ settingsSummary }}</span>
+              <el-icon :size="10" class="toggle-arrow" :class="{ expanded: settingsExpanded }"
+                ><ArrowDown
+              /></el-icon>
+            </button>
+            <div class="input-hint-inline">Enter 发送 · Shift+Enter 换行</div>
+          </div>
+          <transition name="settings-slide">
+            <div v-if="settingsExpanded" class="settings-bar">
+              <div class="settings-bar-inner">
+                <div class="setting-group">
+                  <span class="setting-label">深度思考</span>
+                  <el-switch v-model="enableThinking" size="small" />
+                </div>
+                <div class="setting-group">
+                  <span class="setting-label">流式输出</span>
+                  <el-switch v-model="useStream" size="small" />
+                </div>
+              </div>
+            </div>
+          </transition>
         </div>
       </div>
     </div>
@@ -281,13 +298,25 @@
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch, inject } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete, ArrowLeft, ArrowDown, SetUp, Setting, Promotion, VideoPause, DocumentCopy, Paperclip, Close, Document, Download } from '@element-plus/icons-vue'
+import {
+  Plus,
+  Delete,
+  ArrowLeft,
+  ArrowDown,
+  SetUp,
+  Setting,
+  Promotion,
+  VideoPause,
+  DocumentCopy,
+  Paperclip,
+  Close,
+  Document,
+  Download,
+} from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { agentApi } from '@/api/agent'
-import { chatApi } from '@/api/chat'
 import type { AgentMessage } from '@/api/types'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
-import ModelFanSelector from '@/components/common/ModelFanSelector.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -296,7 +325,9 @@ const isInWorkspace = inject('isInWorkspace', false)
 
 const agentId = computed(() => Number(route.params.agentId))
 const agentName = computed(() => agentStore.currentAgent?.name || '智能体')
-const isWelcomeMode = computed(() => agentStore.messages.length === 0 && !agentStore.messagesLoading)
+const isWelcomeMode = computed(
+  () => agentStore.messages.length === 0 && !agentStore.messagesLoading,
+)
 
 const inputText = ref('')
 const useStream = ref(true)
@@ -307,14 +338,8 @@ const messagesRef = ref<HTMLElement>()
 const fileInputRef = ref<HTMLInputElement>()
 const uploadingFiles = ref(false)
 
-// 模型选择
-const selectedModel = ref('')
-const availableModels = ref<Record<string, { max_tokens: number; temperature: number; top_p: number; model_type: string }>>({})
-const defaultModelName = computed(() => Object.keys(availableModels.value)[0] || '')
-
 const settingsSummary = computed(() => {
-  const model = selectedModel.value || defaultModelName.value || '默认'
-  const parts = [model]
+  const parts: string[] = []
   if (enableThinking.value) parts.push('深度思考')
   return parts.join(' · ')
 })
@@ -347,7 +372,7 @@ async function handleFileSelected(e: Event) {
 
   if (validFiles.length) {
     uploadingFiles.value = true
-    const results = await Promise.allSettled(validFiles.map(f => agentStore.uploadAttachment(f)))
+    const results = await Promise.allSettled(validFiles.map((f) => agentStore.uploadAttachment(f)))
     for (let i = 0; i < results.length; i++) {
       if (results[i].status === 'rejected') {
         ElMessage.error(`上传失败: ${validFiles[i].name}`)
@@ -359,11 +384,29 @@ async function handleFileSelected(e: Event) {
 }
 
 function getFileIcon(type: string): string {
-  const map: Record<string, string> = { pdf: 'PDF', docx: 'DOC', txt: 'TXT', md: 'MD', jpg: 'IMG', jpeg: 'IMG', png: 'IMG', gif: 'IMG', webp: 'IMG' }
+  const map: Record<string, string> = {
+    pdf: 'PDF',
+    docx: 'DOC',
+    txt: 'TXT',
+    md: 'MD',
+    jpg: 'IMG',
+    jpeg: 'IMG',
+    png: 'IMG',
+    gif: 'IMG',
+    webp: 'IMG',
+  }
   return map[type] || 'FILE'
 }
 
-function getMessageAttachments(msg: AgentMessage): Array<{ id?: number; filename: string; file_type?: string; file_size?: number; storage_path?: string }> {
+function getMessageAttachments(
+  msg: AgentMessage,
+): Array<{
+  id?: number
+  filename: string
+  file_type?: string
+  file_size?: number
+  storage_path?: string
+}> {
   return (msg.extra as Record<string, any>)?.attachments ?? []
 }
 
@@ -427,15 +470,6 @@ function formatFileSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
-async function fetchModels() {
-  try {
-    const data = await chatApi.getModels()
-    availableModels.value = data.models
-  } catch {
-    // ignore
-  }
-}
-
 const textareaRef = ref<HTMLTextAreaElement>()
 const expandedTools = ref(new Set<number>())
 
@@ -463,18 +497,30 @@ function autoResize() {
   })
 }
 
-watch(() => agentStore.messages.length, () => {
-  scrollToBottom()
-})
-watch(() => agentStore.streamingContent, () => scrollToBottom())
-watch(() => agentStore.loading, () => scrollToBottom())
-watch(() => agentStore.pendingAttachments.length, () => {
-  for (const att of agentStore.pendingAttachments) {
-    if (isImageFile(att.file_type) && att.id && !imageBlobCache.has(att.id)) {
-      loadAttachmentImage(att.id)
+watch(
+  () => agentStore.messages.length,
+  () => {
+    scrollToBottom()
+  },
+)
+watch(
+  () => agentStore.streamingContent,
+  () => scrollToBottom(),
+)
+watch(
+  () => agentStore.loading,
+  () => scrollToBottom(),
+)
+watch(
+  () => agentStore.pendingAttachments.length,
+  () => {
+    for (const att of agentStore.pendingAttachments) {
+      if (isImageFile(att.file_type) && att.id && !imageBlobCache.has(att.id)) {
+        loadAttachmentImage(att.id)
+      }
     }
-  }
-})
+  },
+)
 
 function goBack() {
   if (isInWorkspace) {
@@ -535,9 +581,8 @@ async function handleSend() {
   })
 
   try {
-    const attachmentIds = agentStore.pendingAttachments.map(a => a.id)
+    const attachmentIds = agentStore.pendingAttachments.map((a) => a.id)
     const opts = {
-      ...(selectedModel.value ? { llm_model: selectedModel.value } : {}),
       enable_thinking: enableThinking.value,
       attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
     }
@@ -591,7 +636,12 @@ function getToolStatus(callId: string | null) {
 
 function getToolStatusLabel(callId: string | null) {
   const status = getToolStatus(callId)
-  const map: Record<string, string> = { running: '执行中', completed: '完成', failed: '失败', pending: '等待中' }
+  const map: Record<string, string> = {
+    running: '执行中',
+    completed: '完成',
+    failed: '失败',
+    pending: '等待中',
+  }
   return map[status] || status
 }
 
@@ -621,10 +671,7 @@ function truncateResult(text: string): string {
 }
 
 onMounted(async () => {
-  await Promise.all([
-    agentStore.initForAgent(agentId.value),
-    fetchModels(),
-  ])
+  await Promise.all([agentStore.initForAgent(agentId.value)])
 })
 
 onBeforeUnmount(() => {
@@ -972,8 +1019,14 @@ onBeforeUnmount(() => {
 }
 
 @keyframes messageIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .message-row.user {
@@ -1045,11 +1098,21 @@ onBeforeUnmount(() => {
   letter-spacing: 0.3px;
 }
 
-.file-icon-box.file-pdf  { background: var(--color-file-pdf); }
-.file-icon-box.file-doc  { background: var(--color-file-doc); }
-.file-icon-box.file-txt  { background: var(--color-file-txt); }
-.file-icon-box.file-md   { background: var(--color-file-md); }
-.file-icon-box.file-default { background: var(--color-file-other); }
+.file-icon-box.file-pdf {
+  background: var(--color-file-pdf);
+}
+.file-icon-box.file-doc {
+  background: var(--color-file-doc);
+}
+.file-icon-box.file-txt {
+  background: var(--color-file-txt);
+}
+.file-icon-box.file-md {
+  background: var(--color-file-md);
+}
+.file-icon-box.file-default {
+  background: var(--color-file-other);
+}
 
 .file-card .file-info {
   flex: 1;
@@ -1320,12 +1383,24 @@ onBeforeUnmount(() => {
   animation: dotPulse 1.4s ease-in-out infinite;
 }
 
-.typing-dot:nth-child(2) { animation-delay: 0.2s; }
-.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
 
 @keyframes dotPulse {
-  0%, 60%, 100% { opacity: 0.3; transform: scale(0.8); }
-  30% { opacity: 1; transform: scale(1); }
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* ========================================
@@ -1369,12 +1444,16 @@ onBeforeUnmount(() => {
   border: 1px solid var(--color-border-light);
   border-radius: 24px;
   box-shadow: var(--shadow-sm);
-  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .input-pill:focus-within {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-muted), var(--shadow-sm);
+  box-shadow:
+    0 0 0 3px var(--color-primary-muted),
+    var(--shadow-sm);
 }
 
 .input-action-btn {
@@ -1437,7 +1516,7 @@ onBeforeUnmount(() => {
 
 .send-btn.active {
   background: var(--color-primary);
-  color: #FFFFFF;
+  color: #ffffff;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
 }
@@ -1449,7 +1528,7 @@ onBeforeUnmount(() => {
 
 .stop-btn {
   background: var(--color-warning);
-  color: #FFFFFF;
+  color: #ffffff;
   cursor: pointer;
 }
 
