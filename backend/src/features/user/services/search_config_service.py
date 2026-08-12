@@ -61,6 +61,21 @@ class SearchConfigService:
         无首选配置返回 None（宿主降级到 YAML 全局配置，由 AIChatService 处理）。
         """
         config = await self.repo.get_primary(user_id)
+        return await self._to_credentials(config)
+
+    async def get_search_config_by_provider(
+        self, user_id: int, provider: str
+    ) -> Optional[SearchCredentials]:
+        """按 (user_id, provider) 取该用户的指定 provider 凭证（解密后明文）。
+
+        供聊天时显式选 provider：命中返回凭证，宿主构造 WebSearchPort；
+        未命中返回 None，由宿主回退自动择优。
+        """
+        config = await self.repo.get_by_user_and_provider(user_id, provider)
+        return await self._to_credentials(config)
+
+    async def _to_credentials(self, config: Optional[UserSearchConfig]) -> Optional[SearchCredentials]:
+        """ORM 行 → 解密后 SearchCredentials；config 为 None 返回 None。"""
         if not config:
             return None
         api_key = await decrypt_api_key_async(config.api_key) if config.api_key else None

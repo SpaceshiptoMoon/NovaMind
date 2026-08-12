@@ -50,6 +50,7 @@ async def chat(
         enable_thinking=request.enable_thinking,
         attachment_ids=request.attachment_ids,
         enable_web_search=request.enable_web_search,
+        search_provider=request.search_provider,
     )
 
     return ChatResponse(
@@ -120,6 +121,7 @@ async def chat_stream(
             enable_thinking=request.enable_thinking,
             attachment_ids=request.attachment_ids,
             enable_web_search=request.enable_web_search,
+            search_provider=request.search_provider,
         ):
             yield chunk
 

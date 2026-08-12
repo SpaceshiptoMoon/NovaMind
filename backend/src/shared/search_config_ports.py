@@ -41,5 +41,15 @@ class SearchConfigPort(Protocol):
         """
         ...
 
+    async def get_search_config_by_provider(
+        self, user_id: int, provider: str
+    ) -> Optional[SearchCredentials]:
+        """按 (user_id, provider) 取该用户的指定 provider 配置，无则返回 ``None``。
+
+        供聊天时显式选 provider：命中返回解密后明文凭证，宿主构造 ``WebSearchPort``；
+        未命中返回 ``None``，由宿主回退自动择优。
+        """
+        ...
+
 
 __all__ = ["SearchConfigPort", "SearchCredentials"]

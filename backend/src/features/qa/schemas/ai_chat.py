@@ -3,7 +3,7 @@ AI对话相关的数据模式
 """
 
 from datetime import datetime
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional, List, Literal
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -38,6 +38,11 @@ class ChatRequest(BaseModel):
     enable_thinking: bool = Field(default=False, description="是否开启深度思考模式（Qwen 等模型支持）")
     attachment_ids: Optional[List[int]] = Field(default=None, description="附件ID列表（通过上传接口获取）")
     enable_web_search: bool = Field(default=False, description="是否启用联网搜索（DuckDuckGo），将检索结果注入上下文")
+    search_provider: Optional[Literal["tavily", "serpapi", "duckduckgo"]] = Field(
+        default=None,
+        description="联网搜索服务商：tavily/serpapi/duckduckgo；为空走用户首选 → YAML 兜底，"
+        "指定值用该 provider 的用户配置，未配置/失败回退自动择优",
+    )
 
 
 class ChatResponse(BaseModel):
