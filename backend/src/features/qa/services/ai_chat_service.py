@@ -427,8 +427,9 @@ class AIChatService:
             kb_count = len(prep_sources) - web_count
             mode_label = "web" if do_web and not do_rag else search_mode
             traces.append({"type": "search", "mode": mode_label, "sources_count": len(prep_sources), "web_count": web_count, "kb_count": kb_count})
-        elif do_rag:
+        elif do_web or do_rag:
             # 区分成因：raw_count==0 表示真无结果；>0 表示检索到了但全被阈值过滤
+            # do_web 也记 trace：联网搜索无结果/失败时前端能看到"检索 0 条"，避免零反馈
             note = "无匹配结果" if prep_raw_count == 0 else f"检索到 {prep_raw_count} 条但均低于阈值被过滤"
             traces.append({"type": "search", "mode": search_mode, "sources_count": 0, "note": note})
         # grade→retry 每轮打分（开启自评估时才有）

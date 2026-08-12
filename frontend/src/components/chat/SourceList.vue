@@ -8,48 +8,87 @@
     </div>
     <transition name="source-collapse">
       <div v-show="!collapsed" class="source-list-items">
-        <div
-          v-for="s in sources"
-          :key="s.index"
-          class="source-card"
-          :class="{ active: activeIndex === s.index }"
-          @mouseenter="emit('hover', s.index)"
-          @mouseleave="emit('hover', null)"
-          @click="emit('select', s)"
-        >
-          <span class="source-index">{{ s.index }}</span>
-          <div class="source-meta">
-            <div class="source-name-row">
-              <span class="source-name" :title="displayName(s)">{{ displayName(s) }}</span>
-              <span class="source-kind" :class="s.kind || 'kb'">{{ s.kind === 'web' ? '联网' : '知识库' }}</span>
+        <!-- 联网来源分组 -->
+        <template v-if="webItems.length">
+          <div class="source-group-title web">🌐 联网来源</div>
+          <div
+            v-for="s in webItems"
+            :key="s.index"
+            :data-source-index="s.index"
+            class="source-card"
+            :class="{ active: activeIndex === s.index }"
+            @click="toggleExpand(s.index)"
+            @mouseenter="emit('hover', s.index)"
+            @mouseleave="emit('hover', null)"
+          >
+            <span class="source-index">{{ s.index }}</span>
+            <div class="source-meta">
+              <div class="source-name-row">
+                <span class="source-name" :title="displayName(s)">{{ displayName(s) }}</span>
+                <span class="source-kind web">联网</span>
+              </div>
+              <div class="source-sub">
+                <span v-if="s.score != null" class="source-score">相关度 {{ formatScore(s.score) }}</span>
+                <a
+                  v-if="s.url"
+                  :href="s.url"
+                  target="_blank"
+                  rel="noopener"
+                  class="source-link"
+                  @click.stop
+                >链接 ↗</a>
+              </div>
+              <div
+                v-if="s.snippet"
+                class="source-snippet"
+                :class="{ expanded: isExpanded(s.index) }"
+              >{{ s.snippet }}</div>
             </div>
-            <div class="source-sub">
-              <span v-if="s.score != null" class="source-score">相关度 {{ formatScore(s.score) }}</span>
-              <span v-if="s.page != null" class="source-page">第 {{ s.page }} 页</span>
-              <a
-                v-if="s.url"
-                :href="s.url"
-                target="_blank"
-                rel="noopener"
-                class="source-link"
-                @click.stop
-              >链接 ↗</a
-              >
-            </div>
-            <div v-if="s.snippet" class="source-snippet">{{ s.snippet }}</div>
           </div>
-        </div>
+        </template>
+
+        <!-- 知识库来源分组 -->
+        <template v-if="kbItems.length">
+          <div class="source-group-title kb">📚 知识库来源</div>
+          <div
+            v-for="s in kbItems"
+            :key="s.index"
+            :data-source-index="s.index"
+            class="source-card"
+            :class="{ active: activeIndex === s.index }"
+            @click="toggleExpand(s.index)"
+            @mouseenter="emit('hover', s.index)"
+            @mouseleave="emit('hover', null)"
+          >
+            <span class="source-index">{{ s.index }}</span>
+            <div class="source-meta">
+              <div class="source-name-row">
+                <span class="source-name" :title="displayName(s)">{{ displayName(s) }}</span>
+                <span class="source-kind kb">知识库</span>
+              </div>
+              <div class="source-sub">
+                <span v-if="s.score != null" class="source-score">相关度 {{ formatScore(s.score) }}</span>
+                <span v-if="s.page != null" class="source-page">第 {{ s.page }} 页</span>
+              </div>
+              <div
+                v-if="s.snippet"
+                class="source-snippet"
+                :class="{ expanded: isExpanded(s.index) }"
+              >{{ s.snippet }}</div>
+            </div>
+          </div>
+        </template>
       </div>
     </transition>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
 import type { ChatSource } from '@/api/types'
 
-defineProps<{
+const props = defineProps<{
   sources: ChatSource[]
   activeIndex?: number | null
 }>()
@@ -60,6 +99,24 @@ const emit = defineEmits<{
 }>()
 
 const collapsed = ref(false)
+// 展开的来源卡 index 集合（点击卡片切换 snippet 全文/3 行截断）
+const expandedSet = ref(new Set<number>())
+
+const webItems = computed(() => props.sources.filter((s) => s.kind === 'web'))
+const kbItems = computed(() => props.sources.filter((s) => s.kind !== 'web'))
+
+function isExpanded(index: number): boolean {
+  return expandedSet.value.has(index)
+}
+
+function toggleExpand(index: number) {
+  const s = props.sources.find((x) => x.index === index)
+  if (s) emit('select', s)
+  const next = new Set(expandedSet.value)
+  if (next.has(index)) next.delete(index)
+  else next.add(index)
+  expandedSet.value = next
+}
 
 function displayName(s: ChatSource): string {
   return s.document_name || s.url || `来源 ${s.index}`
@@ -112,6 +169,25 @@ function formatScore(score: number): string {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.source-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 6px 2px;
+  margin-top: 4px;
+}
+
+.source-group-title:first-child {
+  margin-top: 0;
+}
+
+.source-group-title.web {
+  color: #10b981;
+}
+
+.source-group-title.kb {
+  color: var(--color-primary);
 }
 
 .source-collapse-enter-active,
@@ -221,5 +297,11 @@ function formatScore(score: number): string {
   line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.source-snippet.expanded {
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  overflow: visible;
 }
 </style>
