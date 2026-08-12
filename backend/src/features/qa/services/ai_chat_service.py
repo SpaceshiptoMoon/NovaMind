@@ -237,6 +237,9 @@ class AIChatService:
         score_threshold = session_config.rag_score_threshold if session_config else 0.3
         search_mode = session_config.rag_search_mode if session_config else "content_hybrid"
         top_k = session_config.rag_top_k if session_config else 5
+        # 检索融合权重（仅 hybrid 类模式消费，由下游 search_service 校验和≈1.0）
+        rag_vector_weight = session_config.rag_vector_weight if session_config else 0.7
+        rag_bm25_weight = session_config.rag_bm25_weight if session_config else 0.3
 
         # 会话级联网搜索配置（provider/max_results）；请求级 search_provider 显式覆盖会话默认
         web_search_provider = getattr(session_config, "web_search_provider", None) if session_config else None
@@ -302,6 +305,7 @@ class AIChatService:
                                 space_id=rag_space, kb_ids=rag_kb_ids,
                                 top_k=top_k, search_mode=mode,
                                 score_threshold=threshold,
+                                vector_weight=rag_vector_weight, bm25_weight=rag_bm25_weight,
                                 max_results=web_search_max_results,
                             )
                             last_raw_count = rc
@@ -323,6 +327,7 @@ class AIChatService:
                             space_id=rag_space, kb_ids=rag_kb_ids,
                             top_k=top_k, search_mode=search_mode,
                             score_threshold=effective_threshold,
+                            vector_weight=rag_vector_weight, bm25_weight=rag_bm25_weight,
                             max_results=web_search_max_results,
                         )
                 else:
@@ -333,6 +338,7 @@ class AIChatService:
                         space_id=rag_space, kb_ids=rag_kb_ids,
                         top_k=top_k, search_mode=search_mode,
                         score_threshold=effective_threshold,
+                        vector_weight=rag_vector_weight, bm25_weight=rag_bm25_weight,
                         max_results=web_search_max_results,
                     )
             else:
@@ -361,6 +367,7 @@ class AIChatService:
                             search_queries, system_prompt, user_id, do_web, do_rag,
                             rag_space, rag_kb_ids, top_k, mode, threshold,
                             search_provider=effective_web_provider,
+                            vector_weight=rag_vector_weight, bm25_weight=rag_bm25_weight,
                             max_results=web_search_max_results,
                         )
                         if not deduped:
@@ -389,6 +396,7 @@ class AIChatService:
                         search_queries, system_prompt, user_id, do_web, do_rag,
                         rag_space, rag_kb_ids, top_k, search_mode, effective_threshold,
                         search_provider=effective_web_provider,
+                        vector_weight=rag_vector_weight, bm25_weight=rag_bm25_weight,
                         max_results=web_search_max_results,
                     )
                     prep_sources = deduped
@@ -518,6 +526,8 @@ class AIChatService:
         top_k: int = 5,
         search_mode: str = "content_hybrid",
         score_threshold: Optional[float] = None,
+        vector_weight: float = 0.7,
+        bm25_weight: float = 0.3,
         search_provider: Optional[str] = None,
         max_results: int = 5,
     ) -> Tuple[str, List[dict], int]:
@@ -549,6 +559,7 @@ class AIChatService:
                     query=query, user_id=user_id, space_id=space_id,
                     kb_ids=kb_ids, top_k=top_k, search_mode=search_mode,
                     score_threshold=score_threshold,
+                    vector_weight=vector_weight, bm25_weight=bm25_weight,
                 )
                 if res:
                     raw_sources.extend(res[1])
@@ -591,6 +602,8 @@ class AIChatService:
         search_mode: str,
         score_threshold: Optional[float],
         search_provider: Optional[str] = None,
+        vector_weight: float = 0.7,
+        bm25_weight: float = 0.3,
         max_results: int = 5,
     ) -> Tuple[List[dict], int]:
         """DECOMPOSE：并发检索所有子查询，合并去重 + 全局重编号。
@@ -607,6 +620,7 @@ class AIChatService:
                 space_id=space_id, kb_ids=kb_ids,
                 top_k=top_k, search_mode=search_mode,
                 score_threshold=score_threshold,
+                vector_weight=vector_weight, bm25_weight=bm25_weight,
                 max_results=max_results,
             )
             for sq in search_queries
@@ -800,6 +814,8 @@ class AIChatService:
         top_k: int = 5,
         search_mode: str = "content_hybrid",
         score_threshold: Optional[float] = None,
+        vector_weight: float = 0.7,
+        bm25_weight: float = 0.3,
     ) -> Optional[Tuple[str, List[dict]]]:
         """知识库检索，返回 (参考资料块文本, 结构化来源列表)。复用 knowledge_space 的 SearchService
 
@@ -811,13 +827,15 @@ class AIChatService:
             self.logger.warning("RAG 开关已开但未指定 space_id，跳过知识库检索")
             return None
 
-        from novamind.features.knowledge_space.schemas.search_schema import SearchRequest
+        from novamind.features.knowledge_space.schemas.search_schema import SearchRequest, WeightConfig
 
         search_request = SearchRequest(
             query=query,
             search_mode=search_mode,
             top_k=top_k,
             score_threshold=score_threshold if score_threshold is not None else 0.0,
+            # 会话级融合权重透传到 RRF；content_weight/question_weight/rrf_k 用 WeightConfig 默认（0.6/0.4/60）
+            weights=WeightConfig(vector_weight=vector_weight, bm25_weight=bm25_weight),
         )
         retrieval_port = self._retrieval_port
 

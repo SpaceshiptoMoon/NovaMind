@@ -87,6 +87,19 @@
           <span class="row-label">检索条数</span>
           <el-input-number v-model="ragForm.top_k" :min="1" :max="20" size="small" style="width:100px" />
         </div>
+        <div class="card-row" v-if="isHybridSearchMode">
+          <span class="row-label">向量权重</span>
+          <el-input-number
+            v-model="ragForm.vector_weight"
+            :min="0"
+            :max="1"
+            :step="0.05"
+            :precision="2"
+            size="small"
+            style="width: 100px"
+          />
+          <span class="row-hint">BM25 权重 {{ bm25WeightDisplay }}（自动补足 1.0）</span>
+        </div>
       </template>
     </div>
 
@@ -162,7 +175,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, computed } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { sessionApi } from '@/api/session'
@@ -197,7 +210,13 @@ const ragForm = reactive({
   score_threshold: 0.3,
   search_mode: 'content_hybrid',
   top_k: 5,
+  // 向量检索权重（仅 hybrid 类模式消费）；BM25 权重由 1 - vector_weight 派生，提交时计算
+  vector_weight: 0.7,
 })
+
+// 仅 hybrid 类模式消费融合权重，非 hybrid 模式隐藏输入
+const isHybridSearchMode = computed(() => ragForm.search_mode.includes('hybrid'))
+const bm25WeightDisplay = computed(() => (1 - ragForm.vector_weight).toFixed(2))
 
 const ragFormKbOptions = ref<{ id: number; name: string }[]>([])
 
@@ -251,6 +270,7 @@ async function loadConfig(sessionId: string) {
   ragForm.space_id = null; ragForm.kb_ids = []; ragForm.auto_rag = false
   ragForm.refusal_enabled = false; ragForm.score_threshold = 0.3
   ragForm.search_mode = 'content_hybrid'; ragForm.top_k = 5
+  ragForm.vector_weight = 0.7
   llmForm.max_tokens = 2048; llmForm.temperature = 0.7
   llmForm.top_p = 0.8; llmForm.system_prompt = ''
   webSearchForm.provider = undefined; webSearchForm.max_results = 5
@@ -283,6 +303,7 @@ async function loadConfig(sessionId: string) {
       ragForm.score_threshold = kb.score_threshold ?? 0.3
       ragForm.search_mode = kb.search_mode || 'content_hybrid'
       ragForm.top_k = kb.top_k ?? 5
+      ragForm.vector_weight = kb.vector_weight ?? 0.7
       if (ragForm.space_id) {
         await handleRagFormSpaceChange(ragForm.space_id)
       }
@@ -347,6 +368,8 @@ async function handleSave() {
         score_threshold: ragForm.score_threshold,
         search_mode: ragForm.search_mode,
         top_k: ragForm.top_k,
+        vector_weight: ragForm.vector_weight,
+        bm25_weight: Number((1 - ragForm.vector_weight).toFixed(2)),
       },
     })
     const wsUpdated = await sessionApi.updateWebSearchConfig(props.sessionId!, {

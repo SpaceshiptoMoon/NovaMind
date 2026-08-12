@@ -338,6 +338,12 @@ class QAService:
                     ),
                     rag_search_mode=kb.get("search_mode", "content_hybrid"),
                     rag_top_k=kb.get("top_k", 5),
+                    rag_vector_weight=(
+                        kb.get("vector_weight") if kb.get("vector_weight") is not None else 0.7
+                    ),
+                    rag_bm25_weight=(
+                        kb.get("bm25_weight") if kb.get("bm25_weight") is not None else 0.3
+                    ),
                     # LLM 生成参数（对齐 ORM property，null 兜底默认值）
                     llm_max_tokens=(
                         lc.get("max_tokens") if lc.get("max_tokens") is not None else 2048
