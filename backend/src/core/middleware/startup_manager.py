@@ -113,6 +113,8 @@ def _import_models_legacy() -> None:
     from novamind.features.agent.models.message import AgentMessage  # noqa: F401
     from novamind.features.agent.models.tool_call import AgentToolCall  # noqa: F401
     from novamind.features.agent.models.mcp_server import AgentMcpServer  # noqa: F401
+    from novamind.features.agent.models.memory import AgentMemory  # noqa: F401
+    from novamind.features.agent.models.context_summary import AgentContextSummary  # noqa: F401
     from novamind.features.skill.models.skill import SkillDefinition, SkillVersion, SkillReview, SkillInstallation  # noqa: F401
     from novamind.features.app.models.resume import ResumeSession  # noqa: F401
     from novamind.features.notification.models.notification import Notification  # noqa: F401
