@@ -505,7 +505,7 @@ async def test_augment_passes_max_results_to_retrieve_web(monkeypatch):
 
     async def _fake_retrieve_web(query, user_id, search_provider=None, max_results=5):
         captured["max_results"] = max_results
-        return None  # 无结果，走降级（不触发 _build_augmented_prompt）
+        return None  # 无结果，走降级（不触发 _build_retrieval_context）
 
     monkeypatch.setattr(svc, "_retrieve_web", _fake_retrieve_web)
 
@@ -565,3 +565,37 @@ def test_session_config_web_search_properties():
     c.web_search_config = {"provider": "serpapi", "max_results": 3}
     d = c.to_dict()
     assert d["web_search_config"] == {"provider": "serpapi", "max_results": 3}
+
+
+# ========== _build_retrieval_context：检索资料独立成 system message ==========
+
+def test_build_retrieval_context_empty_returns_empty_string():
+    """无来源时返回空字符串（_prepare_chat 据此跳过插入 retrieval message）。"""
+    svc = _make_chat_service()
+    assert svc._build_retrieval_context([]) == ""
+
+
+def test_build_retrieval_context_contains_sources_without_system_prompt_prefix():
+    """retrieval_context 含 web/kb 资料块与引用规则，但不拼接 system_prompt（独立 system message）。
+
+    语义：检索资料属于当前 turn 上下文，不污染会话级 system_prompt；
+    system_prompt 由调用方单独作为首条 system message 传入。
+    """
+    svc = _make_chat_service()
+    sources = [
+        {"index": 1, "kind": "web", "document_name": "T", "url": "https://e.com",
+         "snippet": "s1", "score": 0.9},
+        {"index": 2, "kind": "kb", "document_name": "doc.md",
+         "snippet": "kb-snippet", "score": 0.8},
+    ]
+    ctx = svc._build_retrieval_context(sources)
+    # 含 web/kb 资料块与角标
+    assert "<web-search-results>" in ctx
+    assert "[1] T" in ctx
+    assert "https://e.com" in ctx
+    assert "<knowledge-base-context>" in ctx
+    assert "[2]" in ctx and "doc.md" in ctx
+    # 含引用规则
+    assert "请严格基于这些资料作答" in ctx
+    # 不拼接 system_prompt：ctx 以引用规则开头（而非 system_prompt 内容）
+    assert ctx.startswith("以下是为回答用户问题检索到的参考资料")
