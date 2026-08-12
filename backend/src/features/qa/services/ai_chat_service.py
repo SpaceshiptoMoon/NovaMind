@@ -237,6 +237,11 @@ class AIChatService:
         search_mode = session_config.rag_search_mode if session_config else "content_hybrid"
         top_k = session_config.rag_top_k if session_config else 5
 
+        # 会话级联网搜索配置（provider/max_results）；请求级 search_provider 显式覆盖会话默认
+        web_search_provider = getattr(session_config, "web_search_provider", None) if session_config else None
+        web_search_max_results = getattr(session_config, "web_search_max_results", 5) if session_config else 5
+        effective_web_provider = search_provider or web_search_provider
+
         prep_sources: List[dict] = []
         prep_refused = False
         prep_status = "answered"
@@ -292,10 +297,11 @@ class AIChatService:
                             sp, srcs, rc = await self._augment_system_prompt_with_retrieval(
                                 system_prompt=system_prompt, query=q, user_id=user_id,
                                 enable_web_search=do_web, enable_rag=do_rag,
-                                search_provider=search_provider,
+                                search_provider=effective_web_provider,
                                 space_id=rag_space, kb_ids=rag_kb_ids,
                                 top_k=top_k, search_mode=mode,
                                 score_threshold=threshold,
+                                max_results=web_search_max_results,
                             )
                             last_raw_count = rc
                             return srcs, sp
@@ -312,19 +318,21 @@ class AIChatService:
                         system_prompt, prep_sources, prep_raw_count = await self._augment_system_prompt_with_retrieval(
                             system_prompt=system_prompt, query=search_queries[0], user_id=user_id,
                             enable_web_search=do_web, enable_rag=do_rag,
-                            search_provider=search_provider,
+                            search_provider=effective_web_provider,
                             space_id=rag_space, kb_ids=rag_kb_ids,
                             top_k=top_k, search_mode=search_mode,
                             score_threshold=effective_threshold,
+                            max_results=web_search_max_results,
                         )
                 else:
                     system_prompt, prep_sources, prep_raw_count = await self._augment_system_prompt_with_retrieval(
                         system_prompt=system_prompt, query=search_queries[0], user_id=user_id,
                         enable_web_search=do_web, enable_rag=do_rag,
-                        search_provider=search_provider,
+                        search_provider=effective_web_provider,
                         space_id=rag_space, kb_ids=rag_kb_ids,
                         top_k=top_k, search_mode=search_mode,
                         score_threshold=effective_threshold,
+                        max_results=web_search_max_results,
                     )
             else:
                 # DECOMPOSE：多子查询并发检索 + 合并去重；开启 grade 时整体打分 + 重试（设计A）
@@ -351,7 +359,8 @@ class AIChatService:
                         deduped, rc = await self._decompose_retrieve(
                             search_queries, system_prompt, user_id, do_web, do_rag,
                             rag_space, rag_kb_ids, top_k, mode, threshold,
-                            search_provider=search_provider,
+                            search_provider=effective_web_provider,
+                            max_results=web_search_max_results,
                         )
                         if not deduped:
                             grade_traces.append({
@@ -380,7 +389,8 @@ class AIChatService:
                     deduped, rc = await self._decompose_retrieve(
                         search_queries, system_prompt, user_id, do_web, do_rag,
                         rag_space, rag_kb_ids, top_k, search_mode, effective_threshold,
-                        search_provider=search_provider,
+                        search_provider=effective_web_provider,
+                        max_results=web_search_max_results,
                     )
                     prep_sources = deduped
                     prep_raw_count = rc
@@ -498,6 +508,7 @@ class AIChatService:
         search_mode: str = "content_hybrid",
         score_threshold: Optional[float] = None,
         search_provider: Optional[str] = None,
+        max_results: int = 5,
     ) -> Tuple[str, List[dict], int]:
         """执行联网/知识库检索，返回 (增强后的 system_prompt, 统一编号的来源列表)。
 
@@ -510,7 +521,7 @@ class AIChatService:
 
         if enable_web_search:
             try:
-                res = await self._retrieve_web(query=query, user_id=user_id, search_provider=search_provider, max_results=5)
+                res = await self._retrieve_web(query=query, user_id=user_id, search_provider=search_provider, max_results=max_results)
                 if res:
                     raw_sources.extend(res[1])
                     self.logger.info("联网搜索完成", count=len(res[1]))
@@ -567,6 +578,7 @@ class AIChatService:
         search_mode: str,
         score_threshold: Optional[float],
         search_provider: Optional[str] = None,
+        max_results: int = 5,
     ) -> Tuple[List[dict], int]:
         """DECOMPOSE：并发检索所有子查询，合并去重 + 全局重编号。
 
@@ -582,6 +594,7 @@ class AIChatService:
                 space_id=space_id, kb_ids=kb_ids,
                 top_k=top_k, search_mode=search_mode,
                 score_threshold=score_threshold,
+                max_results=max_results,
             )
             for sq in search_queries
         ]

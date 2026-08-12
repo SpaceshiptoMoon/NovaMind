@@ -31,4 +31,9 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
         "processed_count",
         "ALTER TABLE document_tasks ADD COLUMN processed_count SMALLINT NULL DEFAULT 0 COMMENT '已处理文档数 completed+failed+cancelled'",
     ),
+    (
+        "qa_session_configs",
+        "web_search_config",
+        "ALTER TABLE qa_session_configs ADD COLUMN web_search_config JSON NULL",
+    ),
 )

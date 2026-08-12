@@ -10,6 +10,7 @@ import type {
   SessionConfigLlmUpdate,
   SessionConfigResponse,
   SessionConfigRagUpdate,
+  SessionConfigWebSearchUpdate,
 } from './types'
 
 const BASE_URL = '/qa'
@@ -69,5 +70,10 @@ export const sessionApi = {
   // 会话级自动 RAG（知识库绑定，独立于压缩配置，可反复修改）
   updateRagConfig(sessionId: string, data: SessionConfigRagUpdate) {
     return request.patch<SessionConfigResponse>(`/sessions/${sessionId}/config/rag-config`, data)
+  },
+
+  // 更新联网搜索引擎配置（provider/max_results，启用开关由请求级 enable_web_search 控制）
+  updateWebSearchConfig(sessionId: string, data: SessionConfigWebSearchUpdate) {
+    return request.patch<SessionConfigResponse>(`/sessions/${sessionId}/config/web-search-config`, data)
   },
 }

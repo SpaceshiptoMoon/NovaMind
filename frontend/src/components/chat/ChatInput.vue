@@ -90,42 +90,15 @@
         <span>流式输出</span>
       </button>
     </div>
-
-    <!-- 联网搜索 provider 选择（开启联网搜索时显示） -->
-    <div v-if="enableWebSearch" class="search-provider-row">
-      <span class="search-provider-label">使用：</span>
-      <el-select
-        v-model="selectedSearchProvider"
-        size="small"
-        placeholder="自动（首选）"
-        class="search-provider-select"
-      >
-        <el-option :value="undefined" label="自动（首选）" />
-        <el-option
-          v-for="c in searchEngineConfigs"
-          :key="c.id"
-          :value="c.provider"
-          :label="providerLabel(c)"
-        />
-      </el-select>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Paperclip, VideoPause, Close } from '@element-plus/icons-vue'
 import { useChatStore } from '@/stores/chat'
 import { useChatAttachments } from '@/composables/useChatAttachments'
-import { userApi } from '@/api/user'
-import type { SearchEngineConfig, SearchProvider } from '@/api/types'
-
-const SEARCH_PROVIDER_LABELS: Record<SearchProvider, string> = {
-  tavily: 'Tavily',
-  serpapi: 'SerpAPI',
-  duckduckgo: 'DuckDuckGo',
-}
 
 const props = defineProps<{
   disabled: boolean
@@ -139,7 +112,6 @@ const emit = defineEmits<{
       useStream: boolean
       enableThinking: boolean
       enableWebSearch: boolean
-      searchProvider?: SearchProvider
       attachmentIds?: number[]
     },
   ]
@@ -155,25 +127,6 @@ const enableThinking = ref(false)
 const enableWebSearch = ref(false)
 const uploadingFiles = ref(false)
 const { getFileExt, formatFileSize } = useChatAttachments()
-
-// 联网搜索 provider 选择
-const selectedSearchProvider = ref<SearchProvider | undefined>(undefined)
-const searchEngineConfigs = ref<SearchEngineConfig[]>([])
-
-function providerLabel(c: SearchEngineConfig): string {
-  const base = SEARCH_PROVIDER_LABELS[c.provider] || c.provider
-  return c.is_primary ? `${base}（首选）` : base
-}
-
-async function fetchSearchEngineConfigs() {
-  try {
-    const data = await userApi.getSearchEngineConfigs()
-    searchEngineConfigs.value = data.items
-  } catch {
-    // 拉取失败（未登录/网络）静默：下拉仅显示「自动（首选）」
-    searchEngineConfigs.value = []
-  }
-}
 
 function autoResize() {
   if (!textareaRef.value) return
@@ -247,13 +200,8 @@ function handleSendClick() {
     useStream: useStream.value,
     enableThinking: enableThinking.value,
     enableWebSearch: enableWebSearch.value,
-    searchProvider: selectedSearchProvider.value,
   })
 }
-
-onMounted(() => {
-  fetchSearchEngineConfigs()
-})
 </script>
 
 <style scoped>
@@ -403,27 +351,6 @@ onMounted(() => {
 .action-icon {
   font-size: 13px;
   line-height: 1;
-}
-
-/* ========================================
-   Search Provider Selector
-   ======================================== */
-.search-provider-row {
-  margin: 6px 0 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 4px;
-}
-
-.search-provider-label {
-  color: var(--color-text-muted);
-  font-size: var(--text-xs);
-  font-family: var(--font-body);
-}
-
-.search-provider-select {
-  width: 180px;
 }
 
 /* ========================================

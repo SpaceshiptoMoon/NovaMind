@@ -8285,6 +8285,19 @@
           "user_id": {
             "title": "User Id",
             "type": "integer"
+          },
+          "web_search_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "联网搜索引擎配置（会话级持久化）",
+            "title": "Web Search Config"
           }
         },
         "required": [
@@ -8294,6 +8307,20 @@
           "compression_config"
         ],
         "title": "SessionConfigResponse",
+        "type": "object"
+      },
+      "SessionConfigWebSearchUpdate": {
+        "description": "更新会话联网搜索引擎配置请求（支持反复修改）",
+        "properties": {
+          "web_search_config": {
+            "$ref": "#/components/schemas/WebSearchConfig",
+            "description": "联网搜索引擎配置"
+          }
+        },
+        "required": [
+          "web_search_config"
+        ],
+        "title": "SessionConfigWebSearchUpdate",
         "type": "object"
       },
       "SessionDestroyResponse": {
@@ -11362,6 +11389,38 @@
           }
         },
         "title": "VideoParsingConfig",
+        "type": "object"
+      },
+      "WebSearchConfig": {
+        "description": "联网搜索引擎配置（会话级持久化）\n\n注意：是否启用联网搜索由请求级 enable_web_search（聊天 chip）控制，不在此列。\nprovider=None 表示自动择优（用户首选 is_primary → YAML 兜底）。",
+        "properties": {
+          "max_results": {
+            "default": 5,
+            "description": "联网搜索结果条数",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Max Results",
+            "type": "integer"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "enum": [
+                  "tavily",
+                  "serpapi",
+                  "duckduckgo"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "搜索引擎 provider（None=自动择优）",
+            "title": "Provider"
+          }
+        },
+        "title": "WebSearchConfig",
         "type": "object"
       },
       "WeightConfig": {
@@ -15149,6 +15208,68 @@
           }
         ],
         "summary": "更新会话知识库绑定（会话级自动 RAG）",
+        "tags": [
+          "会话配置",
+          "会话配置"
+        ]
+      }
+    },
+    "/api/v1/sessions/{session_id}/config/web-search-config": {
+      "patch": {
+        "description": "更新指定会话的联网搜索引擎 provider 与结果条数。是否启用联网搜索仍由请求级 enable_web_search 控制，不在此接口。支持反复修改，不影响其他配置。",
+        "operationId": "update_web_search_config_api_v1_sessions__session_id__config_web_search_config_patch",
+        "parameters": [
+          {
+            "description": "会话 ID",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "description": "会话 ID",
+              "minLength": 1,
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionConfigWebSearchUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "更新会话联网搜索引擎配置",
         "tags": [
           "会话配置",
           "会话配置"

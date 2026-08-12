@@ -60,6 +60,16 @@ class SessionConfig(BaseModel):
         comment="模型生成参数配置（max_tokens/temperature/top_p/system_prompt）"
     )
 
+    # 联网搜索引擎配置（JSON 格式，会话级持久化）
+    # 结构: {provider, max_results}；不含 enabled——启用开关由请求级 enable_web_search（聊天 chip）控制
+    # provider=None 表示自动择优（用户首选 is_primary → YAML 兜底）
+    web_search_config = Column(
+        JSON,
+        nullable=True,
+        default=None,
+        comment="联网搜索引擎配置（provider/max_results，会话级持久化）"
+    )
+
     def __repr__(self) -> str:
         return f"<SessionConfig(session_id={self.session_id})>"
 
@@ -168,6 +178,22 @@ class SessionConfig(BaseModel):
         # None 是合法值，表示「用后端 QA 模板」，不兜底
         return self.get_llm_config().get("system_prompt")
 
+    # ========== 联网搜索引擎配置访问方法（会话级持久化） ==========
+
+    def get_web_search_config(self) -> dict:
+        """获取联网搜索引擎配置"""
+        return self.web_search_config or {}
+
+    @property
+    def web_search_provider(self) -> Optional[str]:
+        # None 是合法值，表示「自动择优」（用户首选 → YAML 兜底），不兜底
+        return self.get_web_search_config().get("provider")
+
+    @property
+    def web_search_max_results(self) -> int:
+        val = self.get_web_search_config().get("max_results")
+        return val if val is not None else 5
+
     def to_dict(self) -> dict:
         """转换为字典"""
         return {
@@ -177,6 +203,7 @@ class SessionConfig(BaseModel):
             "compression_config": self.compression_config,
             "kb_bindings": self.kb_bindings,
             "llm_config": self.llm_config,
+            "web_search_config": self.web_search_config,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

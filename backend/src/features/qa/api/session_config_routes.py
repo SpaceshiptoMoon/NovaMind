@@ -23,6 +23,7 @@ from novamind.features.qa.schemas.session_config import (
     SessionConfigLlmUpdate,
     SessionConfigResponse,
     SessionConfigRagUpdate,
+    SessionConfigWebSearchUpdate,
 )
 from novamind.core.middleware.structured_logging import get_logger
 
@@ -134,6 +135,7 @@ async def get_config(
             compression_config={"enable_compression": True, "strategy": "summary", "threshold": 70000, "target_tokens": 2000, "keep_recent": 6, "custom_prompt": None},
             kb_bindings={"space_id": None, "kb_ids": [], "auto_rag": False, "refusal_enabled": False, "score_threshold": 0.3, "search_mode": "content_hybrid", "top_k": 5, "query_rewriting": "none", "grade_retry_enabled": False, "grade_retry_passing_score": 5},
             llm_config={"max_tokens": None, "temperature": None, "top_p": None, "system_prompt": None},
+            web_search_config=None,
         )
 
     # 权限校验
@@ -290,5 +292,42 @@ async def update_rag_config(
         session_id=session_id,
         kb_count=len(request.rag.kb_ids),
         auto_rag=request.rag.auto_rag,
+    )
+    return SessionConfigResponse.model_validate(config)
+
+
+@router.patch(
+    "/web-search-config",
+    response_model=SessionConfigResponse,
+    summary="更新会话联网搜索引擎配置",
+    description="更新指定会话的联网搜索引擎 provider 与结果条数。是否启用联网搜索仍由请求级 enable_web_search 控制，不在此接口。支持反复修改，不影响其他配置。",
+)
+async def update_web_search_config(
+    session_id: Annotated[str, Path(min_length=1, description="会话 ID")],
+    request: Annotated[SessionConfigWebSearchUpdate, Body(...)],
+    user_id: int = Depends(get_current_user_id),
+    repo: SessionConfigRepository = Depends(get_session_config_repo),
+    qa_service: QAService = Depends(get_qa_service),
+):
+    """
+    更新会话联网搜索引擎配置
+
+    - **web_search_config.provider**: 搜索引擎 provider（None=自动择优：用户首选 → YAML 兜底）
+    - **web_search_config.max_results**: 联网搜索结果条数（默认 5）
+
+    注意：是否启用联网搜索由请求级 enable_web_search（聊天 chip）控制，不在此接口。
+    """
+    # 校验会话归属
+    await verify_session_owner(session_id, user_id, repo)
+
+    config = await qa_service.update_web_search_config(
+        session_id=session_id,
+        user_id=user_id,
+        web_search_config=request.web_search_config.model_dump(),
+    )
+    logger.info(
+        "会话联网搜索引擎配置已更新",
+        session_id=session_id,
+        provider=request.web_search_config.provider,
     )
     return SessionConfigResponse.model_validate(config)

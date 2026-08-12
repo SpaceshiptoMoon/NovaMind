@@ -75,6 +75,25 @@ class SessionConfigRagUpdate(BaseModel):
     rag: RagBindingConfig = Field(..., description="知识库绑定配置")
 
 
+# ========== 联网搜索引擎配置结构（会话级持久化） ==========
+
+class WebSearchConfig(BaseModel):
+    """联网搜索引擎配置（会话级持久化）
+
+    注意：是否启用联网搜索由请求级 enable_web_search（聊天 chip）控制，不在此列。
+    provider=None 表示自动择优（用户首选 is_primary → YAML 兜底）。
+    """
+    provider: Optional[Literal["tavily", "serpapi", "duckduckgo"]] = Field(
+        default=None, description="搜索引擎 provider（None=自动择优）"
+    )
+    max_results: int = Field(default=5, ge=1, le=20, description="联网搜索结果条数")
+
+
+class SessionConfigWebSearchUpdate(BaseModel):
+    """更新会话联网搜索引擎配置请求（支持反复修改）"""
+    web_search_config: WebSearchConfig = Field(..., description="联网搜索引擎配置")
+
+
 class SessionConfigResponse(BaseModel):
     """会话配置响应"""
     id: int
@@ -83,6 +102,7 @@ class SessionConfigResponse(BaseModel):
     compression_config: dict
     kb_bindings: Optional[dict] = Field(default=None, description="知识库绑定配置（会话级自动 RAG）")
     llm_config: Optional[dict] = Field(default=None, description="模型生成参数配置（会话级持久化）")
+    web_search_config: Optional[dict] = Field(default=None, description="联网搜索引擎配置（会话级持久化）")
 
     # 时间戳
     created_at: Optional[datetime] = None

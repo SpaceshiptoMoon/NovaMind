@@ -493,3 +493,75 @@ async def test_retrieve_web_explicit_provider_no_port_falls_back_yaml(monkeypatc
     res = await svc._retrieve_web(query="q", user_id=10, search_provider="tavily")
     assert res is not None
     assert res[1][0]["document_name"] == "Y"
+
+
+# ========== 会话级 web search 配置：max_results 透传 ==========
+
+@pytest.mark.asyncio
+async def test_augment_passes_max_results_to_retrieve_web(monkeypatch):
+    """_augment 把会话级 max_results 透传给 _retrieve_web。"""
+    svc = _make_chat_service(search_config_port=None)
+    captured: dict = {}
+
+    async def _fake_retrieve_web(query, user_id, search_provider=None, max_results=5):
+        captured["max_results"] = max_results
+        return None  # 无结果，走降级（不触发 _build_augmented_prompt）
+
+    monkeypatch.setattr(svc, "_retrieve_web", _fake_retrieve_web)
+
+    await svc._augment_system_prompt_with_retrieval(
+        system_prompt="sys", query="q", user_id=10,
+        enable_web_search=True, enable_rag=False,
+        space_id=None, max_results=8,
+    )
+    assert captured["max_results"] == 8
+
+
+@pytest.mark.asyncio
+async def test_augment_default_max_results_is_5(monkeypatch):
+    """_augment 不传 max_results 时默认 5（向后兼容旧调用）。"""
+    svc = _make_chat_service(search_config_port=None)
+    captured: dict = {}
+
+    async def _fake_retrieve_web(query, user_id, search_provider=None, max_results=5):
+        captured["max_results"] = max_results
+        return None
+
+    monkeypatch.setattr(svc, "_retrieve_web", _fake_retrieve_web)
+
+    await svc._augment_system_prompt_with_retrieval(
+        system_prompt="sys", query="q", user_id=10,
+        enable_web_search=True, enable_rag=False, space_id=None,
+    )
+    assert captured["max_results"] == 5
+
+
+# ========== SessionConfig.web_search_* property + to_dict ==========
+
+def test_session_config_web_search_properties():
+    """SessionConfig.web_search_provider / web_search_max_results / to_dict + None 兜底。"""
+    from novamind.features.qa.models.session_config import SessionConfig
+
+    c = SessionConfig(
+        session_id="s1", user_id=1,
+        compression_config={"enable_compression": True},
+    )
+    # 配置完整
+    c.web_search_config = {"provider": "tavily", "max_results": 8}
+    assert c.web_search_provider == "tavily"
+    assert c.web_search_max_results == 8
+
+    # 列为 None → provider=None（自动择优）、max_results 兜底 5
+    c.web_search_config = None
+    assert c.web_search_provider is None
+    assert c.web_search_max_results == 5
+
+    # 字段为 null → 同样兜底
+    c.web_search_config = {"provider": None, "max_results": None}
+    assert c.web_search_provider is None
+    assert c.web_search_max_results == 5
+
+    # to_dict 含 web_search_config
+    c.web_search_config = {"provider": "serpapi", "max_results": 3}
+    d = c.to_dict()
+    assert d["web_search_config"] == {"provider": "serpapi", "max_results": 3}
