@@ -42,6 +42,7 @@ class AgentCreate(BaseModel):
     max_tool_calls_per_turn: int = Field(10, ge=1, le=50, description="每轮最大工具调用次数")
     enabled_tools: Optional[List[str]] = Field(None, description="启用的工具列表")
     enabled_mcp_servers: Optional[List[int]] = Field(None, description="启用的 MCP 服务器 ID")
+    extra_config: Optional[Dict[str, Any]] = Field(None, description="额外配置")
 
 
 class AgentUpdate(BaseModel):
@@ -57,6 +58,7 @@ class AgentUpdate(BaseModel):
     max_tool_calls_per_turn: Optional[int] = Field(None, ge=1, le=50)
     enabled_tools: Optional[List[str]] = None
     enabled_mcp_servers: Optional[List[int]] = None
+    extra_config: Optional[Dict[str, Any]] = None
 
 
 class AgentResponse(BaseModel):
@@ -82,6 +84,7 @@ class AgentResponse(BaseModel):
 class AgentDetailResponse(AgentResponse):
     """Agent 详情响应（包含 system_prompt，仅详情/创建/更新接口使用）"""
     system_prompt: str
+    extra_config: Optional[Dict[str, Any]] = None
 
 
 class AgentListResponse(BaseModel):
@@ -132,6 +135,7 @@ class AgentMessageResponse(BaseModel):
     tool_name: Optional[str] = None
     token_count: Optional[int] = None
     extra: Optional[Dict[str, Any]] = None
+    reasoning: Optional[str] = None
     created_at: Optional[datetime] = None
 
 

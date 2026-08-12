@@ -25,7 +25,10 @@
             <el-icon :size="12"><Delete /></el-icon>
           </button>
         </div>
-        <div v-if="agentStore.agents.length === 0 && !agentStore.agentsLoading" class="sidebar-empty">
+        <div
+          v-if="agentStore.agents.length === 0 && !agentStore.agentsLoading"
+          class="sidebar-empty"
+        >
           <span>暂无智能体</span>
         </div>
       </div>
@@ -108,7 +111,9 @@
               <div class="config-label">MCP 服务器</div>
               <div class="config-value">
                 <template v-if="currentAgent?.enabled_mcp_servers?.length">
-                  <span v-for="m in currentAgent.enabled_mcp_servers" :key="m" class="tag">Server #{{ m }}</span>
+                  <span v-for="m in currentAgent.enabled_mcp_servers" :key="m" class="tag"
+                    >Server #{{ m }}</span
+                  >
                 </template>
                 <template v-else>未启用</template>
               </div>
@@ -134,13 +139,30 @@
           <el-input v-model="form.name" placeholder="为智能体起个名字" maxlength="50" />
         </el-form-item>
         <el-form-item label="描述" prop="description">
-          <el-input v-model="form.description" type="textarea" :rows="2" placeholder="简要描述智能体的用途" maxlength="200" />
+          <el-input
+            v-model="form.description"
+            type="textarea"
+            :rows="2"
+            placeholder="简要描述智能体的用途"
+            maxlength="200"
+          />
         </el-form-item>
         <el-form-item label="系统提示词" prop="system_prompt">
-          <el-input v-model="form.system_prompt" type="textarea" :rows="5" placeholder="定义智能体的行为、角色和能力" maxlength="4000" />
+          <el-input
+            v-model="form.system_prompt"
+            type="textarea"
+            :rows="5"
+            placeholder="定义智能体的行为、角色和能力"
+            maxlength="4000"
+          />
         </el-form-item>
         <el-form-item label="LLM 模型">
-          <el-select v-model="form.llm_model" placeholder="留空使用默认模型" clearable style="width: 100%">
+          <el-select
+            v-model="form.llm_model"
+            placeholder="留空使用默认模型"
+            clearable
+            style="width: 100%"
+          >
             <el-option-group v-if="llmModelNames.length" label="LLM 文本模型">
               <el-option v-for="name in llmModelNames" :key="name" :label="name" :value="name" />
             </el-option-group>
@@ -165,18 +187,42 @@
           <el-input-number v-model="form.max_tool_calls_per_turn" :min="1" :max="50" />
         </el-form-item>
         <el-form-item label="启用工具">
-          <el-select v-model="form.enabled_tools" multiple placeholder="选择要启用的工具" style="width: 100%">
-            <el-option v-for="tool in orderedTools" :key="tool.name" :label="toolDisplayName(tool.name)" :value="tool.name">
+          <el-select
+            v-model="form.enabled_tools"
+            multiple
+            placeholder="选择要启用的工具"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="tool in orderedTools"
+              :key="tool.name"
+              :label="toolDisplayName(tool.name)"
+              :value="tool.name"
+            >
               <span>{{ toolDisplayName(tool.name) }}</span>
-              <span style="color: var(--color-text-muted); font-size: 12px; margin-left: 8px">{{ tool.description }}</span>
+              <span style="color: var(--color-text-muted); font-size: 12px; margin-left: 8px">{{
+                tool.description
+              }}</span>
             </el-option>
           </el-select>
         </el-form-item>
         <el-form-item label="MCP 服务器">
-          <el-select v-model="form.enabled_mcp_servers" multiple placeholder="选择要启用的 MCP 服务器" style="width: 100%">
-            <el-option v-for="server in agentStore.mcpServers" :key="server.id" :label="server.name" :value="server.id">
+          <el-select
+            v-model="form.enabled_mcp_servers"
+            multiple
+            placeholder="选择要启用的 MCP 服务器"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="server in agentStore.mcpServers"
+              :key="server.id"
+              :label="server.name"
+              :value="server.id"
+            >
               <span>{{ server.name }}</span>
-              <span style="color: var(--color-text-muted); font-size: 12px; margin-left: 8px">{{ server.status }}</span>
+              <span style="color: var(--color-text-muted); font-size: 12px; margin-left: 8px">{{
+                server.status
+              }}</span>
             </el-option>
           </el-select>
         </el-form-item>
@@ -217,7 +263,9 @@
       </el-form>
       <template #footer>
         <el-button @click="mcpDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="mcpSubmitLoading" @click="handleMcpSubmit">确定</el-button>
+        <el-button type="primary" :loading="mcpSubmitLoading" @click="handleMcpSubmit"
+          >确定</el-button
+        >
       </template>
     </el-dialog>
   </div>
@@ -232,7 +280,13 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { useAgentStore } from '@/stores/agent'
 import { chatApi } from '@/api/chat'
 import NavIcon from '@/components/common/NavIcon.vue'
-import type { Agent, CreateAgentRequest, UpdateAgentRequest, McpServer, CreateMcpServerRequest } from '@/api/types'
+import type {
+  Agent,
+  CreateAgentRequest,
+  UpdateAgentRequest,
+  McpServer,
+  CreateMcpServerRequest,
+} from '@/api/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -242,7 +296,9 @@ const isInWorkspace = inject('isInWorkspace', false)
 const isChatRoute = computed(() => route.name === 'AgentChat')
 
 const selectedAgentId = ref<number | null>(null)
-const currentAgent = computed(() => agentStore.agents.find((a) => a.id === selectedAgentId.value) || agentStore.currentAgent)
+const currentAgent = computed(
+  () => agentStore.agents.find((a) => a.id === selectedAgentId.value) || agentStore.currentAgent,
+)
 
 // 工具展示：高频工具加 emoji 前缀并置顶，提升辨识度（value 仍用原始 name，保证后端匹配）
 const PRIORITY_TOOLS = ['knowledge_search', 'web_search']
@@ -262,7 +318,9 @@ const orderedTools = computed(() => {
   })
 })
 
-const availableModels = ref<Record<string, { max_tokens: number; temperature: number; top_p: number; model_type: string }>>({})
+const availableModels = ref<
+  Record<string, { max_tokens: number; temperature: number; top_p: number; model_type: string }>
+>({})
 
 const llmModelNames = computed(() =>
   Object.entries(availableModels.value)
@@ -291,7 +349,14 @@ const editingId = ref<number | null>(null)
 const submitLoading = ref(false)
 const formRef = ref<FormInstance>()
 
-const form = reactive<CreateAgentRequest & { temperature: number; top_p: number; max_tokens: number; max_tool_calls_per_turn: number }>({
+const form = reactive<
+  CreateAgentRequest & {
+    temperature: number
+    top_p: number
+    max_tokens: number
+    max_tool_calls_per_turn: number
+  }
+>({
   name: '',
   description: '',
   system_prompt: '',
@@ -336,7 +401,7 @@ function openEditDialog(agent: Agent) {
   editingId.value = agent.id
   form.name = agent.name
   form.description = agent.description || ''
-  form.system_prompt = agent.system_prompt
+  form.system_prompt = agent.system_prompt ?? ''
   form.llm_model = agent.llm_model || ''
   form.temperature = agent.temperature
   form.top_p = agent.top_p
@@ -468,9 +533,8 @@ async function handleMcpSubmit() {
 
   mcpSubmitLoading.value = true
   try {
-    const connectionConfig: Record<string, unknown> = mcpForm.transport_type === 'streamable_http'
-      ? { url: mcpForm.url }
-      : { command: mcpForm.url }
+    const connectionConfig: Record<string, unknown> =
+      mcpForm.transport_type === 'streamable_http' ? { url: mcpForm.url } : { command: mcpForm.url }
 
     const data: CreateMcpServerRequest = {
       name: mcpForm.name,
@@ -548,12 +612,15 @@ function mcpStatusLabel(status: string): string {
 }
 
 // 工作台侧栏"创建智能体"按钮通过 query 触发
-watch(() => route.query.action, (action) => {
-  if (action === 'create') {
-    openCreateDialog()
-    router.replace({ query: {} })
-  }
-})
+watch(
+  () => route.query.action,
+  (action) => {
+    if (action === 'create') {
+      openCreateDialog()
+      router.replace({ query: {} })
+    }
+  },
+)
 
 onMounted(async () => {
   await Promise.all([
@@ -886,7 +953,7 @@ onMounted(async () => {
 .action-btn.primary {
   background: var(--color-primary);
   border-color: var(--color-primary);
-  color: #FFFFFF;
+  color: #ffffff;
 }
 
 .action-btn.primary:hover {
