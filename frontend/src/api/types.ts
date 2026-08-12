@@ -839,6 +839,7 @@ export interface ChatRequest {
   enable_thinking?: boolean
   attachment_ids?: number[]
   enable_web_search?: boolean
+  search_provider?: SearchProvider
 }
 
 export interface ChatResponse {
