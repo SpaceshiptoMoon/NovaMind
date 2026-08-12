@@ -1239,6 +1239,23 @@
             "description": "LLM 模型名称（如 gpt-4o），为空使用默认配置",
             "title": "Llm Model"
           },
+          "search_provider": {
+            "anyOf": [
+              {
+                "enum": [
+                  "tavily",
+                  "serpapi",
+                  "duckduckgo"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "联网搜索服务商：tavily/serpapi/duckduckgo；为空走用户首选 → YAML 兜底，指定值用该 provider 的用户配置，未配置/失败回退自动择优",
+            "title": "Search Provider"
+          },
           "session_id": {
             "anyOf": [
               {

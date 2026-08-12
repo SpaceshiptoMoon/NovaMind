@@ -162,6 +162,7 @@ class AIChatService:
         llm_model: Optional[str],
         attachment_ids: Optional[List[int]] = None,
         enable_web_search: bool = False,
+        search_provider: Optional[str] = None,
     ) -> ChatPreparation:
         """
         流式/非流式对话共享的预处理逻辑
@@ -291,6 +292,7 @@ class AIChatService:
                             sp, srcs, rc = await self._augment_system_prompt_with_retrieval(
                                 system_prompt=system_prompt, query=q, user_id=user_id,
                                 enable_web_search=do_web, enable_rag=do_rag,
+                                search_provider=search_provider,
                                 space_id=rag_space, kb_ids=rag_kb_ids,
                                 top_k=top_k, search_mode=mode,
                                 score_threshold=threshold,
@@ -310,6 +312,7 @@ class AIChatService:
                         system_prompt, prep_sources, prep_raw_count = await self._augment_system_prompt_with_retrieval(
                             system_prompt=system_prompt, query=search_queries[0], user_id=user_id,
                             enable_web_search=do_web, enable_rag=do_rag,
+                            search_provider=search_provider,
                             space_id=rag_space, kb_ids=rag_kb_ids,
                             top_k=top_k, search_mode=search_mode,
                             score_threshold=effective_threshold,
@@ -318,6 +321,7 @@ class AIChatService:
                     system_prompt, prep_sources, prep_raw_count = await self._augment_system_prompt_with_retrieval(
                         system_prompt=system_prompt, query=search_queries[0], user_id=user_id,
                         enable_web_search=do_web, enable_rag=do_rag,
+                        search_provider=search_provider,
                         space_id=rag_space, kb_ids=rag_kb_ids,
                         top_k=top_k, search_mode=search_mode,
                         score_threshold=effective_threshold,
@@ -347,6 +351,7 @@ class AIChatService:
                         deduped, rc = await self._decompose_retrieve(
                             search_queries, system_prompt, user_id, do_web, do_rag,
                             rag_space, rag_kb_ids, top_k, mode, threshold,
+                            search_provider=search_provider,
                         )
                         if not deduped:
                             grade_traces.append({
@@ -375,6 +380,7 @@ class AIChatService:
                     deduped, rc = await self._decompose_retrieve(
                         search_queries, system_prompt, user_id, do_web, do_rag,
                         rag_space, rag_kb_ids, top_k, search_mode, effective_threshold,
+                        search_provider=search_provider,
                     )
                     prep_sources = deduped
                     prep_raw_count = rc
@@ -491,6 +497,7 @@ class AIChatService:
         top_k: int = 5,
         search_mode: str = "content_hybrid",
         score_threshold: Optional[float] = None,
+        search_provider: Optional[str] = None,
     ) -> Tuple[str, List[dict], int]:
         """执行联网/知识库检索，返回 (增强后的 system_prompt, 统一编号的来源列表)。
 
@@ -503,7 +510,7 @@ class AIChatService:
 
         if enable_web_search:
             try:
-                res = await self._retrieve_web(query=query, user_id=user_id, max_results=5)
+                res = await self._retrieve_web(query=query, user_id=user_id, search_provider=search_provider, max_results=5)
                 if res:
                     raw_sources.extend(res[1])
                     self.logger.info("联网搜索完成", count=len(res[1]))
@@ -559,6 +566,7 @@ class AIChatService:
         top_k: int,
         search_mode: str,
         score_threshold: Optional[float],
+        search_provider: Optional[str] = None,
     ) -> Tuple[List[dict], int]:
         """DECOMPOSE：并发检索所有子查询，合并去重 + 全局重编号。
 
@@ -570,6 +578,7 @@ class AIChatService:
             self._augment_system_prompt_with_retrieval(
                 system_prompt=system_prompt, query=sq, user_id=user_id,
                 enable_web_search=enable_web_search, enable_rag=enable_rag,
+                search_provider=search_provider,
                 space_id=space_id, kb_ids=kb_ids,
                 top_k=top_k, search_mode=search_mode,
                 score_threshold=score_threshold,
@@ -604,6 +613,7 @@ class AIChatService:
         self,
         query: str,
         user_id: int,
+        search_provider: Optional[str] = None,
         max_results: int = 5,
     ) -> Optional[Tuple[str, List[dict]]]:
         """联网搜索，返回 (参考资料块文本, 结构化来源列表)。
@@ -613,7 +623,7 @@ class AIChatService:
         ``novamind.shared.storage.client_factory.search.duckduckgo_service``（client_factory
         是单文件模块不是包）致 ImportError 被外层 try/except 静默吞掉，联网搜索形同失效。
         """
-        port = await self._resolve_web_search_port(user_id)
+        port = await self._resolve_web_search_port(user_id, search_provider)
         if port is None:
             self.logger.warning("联网搜索不可用：无用户级配置且 YAML 兜底失败")
             return None
@@ -656,9 +666,46 @@ class AIChatService:
     async def _resolve_web_search_port(
         self,
         user_id: int,
+        search_provider: Optional[str] = None,
     ) -> Optional[WebSearchPort]:
-        """按用户级配置择优构造 WebSearchPort，未命中/失败则回退 YAML 全局配置，均失败返回 None。"""
-        # 1. 用户级配置（SearchConfigPort 注入；解密后明文 key）
+        """按用户级配置择优构造 WebSearchPort，未命中/失败则回退 YAML 全局配置，均失败返回 None。
+
+        ``search_provider`` 非空时优先用该 provider 的用户配置（聊天时显式选）；
+        未配置/构造失败回退自动择优（首选 → YAML 兜底）。
+        """
+        # 0. 用户显式指定 provider：优先用该 provider 的用户配置
+        if search_provider and self._search_config_port is not None:
+            try:
+                creds = await self._search_config_port.get_search_config_by_provider(
+                    user_id, search_provider
+                )
+            except Exception as e:
+                self.logger.warning(
+                    "读取指定 provider 搜索配置失败，回退自动择优",
+                    provider=search_provider, error=str(e),
+                )
+                creds = None
+            if creds is not None:
+                try:
+                    return build_web_search_port_from_provider(
+                        creds.provider, creds.api_key, creds.extra_config
+                    )
+                except WebSearchError as e:
+                    self.logger.warning(
+                        "指定 provider 构造端口失败，回退自动择优",
+                        provider=creds.provider, error=str(e),
+                    )
+                except Exception as e:
+                    self.logger.warning(
+                        "指定 provider 构造端口异常，回退自动择优",
+                        provider=creds.provider, error=str(e),
+                    )
+            else:
+                self.logger.info(
+                    "用户未配置指定 provider，回退自动择优",
+                    provider=search_provider, user_id=user_id,
+                )
+        # 1. 自动择优：用户首选配置（SearchConfigPort 注入；解密后明文 key）
         if self._search_config_port is not None:
             try:
                 creds = await self._search_config_port.get_primary_search_config(user_id)
@@ -822,7 +869,8 @@ class AIChatService:
                    llm_model: Optional[str] = None,
                    enable_thinking: bool = False,
                    attachment_ids: Optional[List[int]] = None,
-                   enable_web_search: bool = False) -> Dict[str, Any]:
+                   enable_web_search: bool = False,
+                   search_provider: Optional[str] = None) -> Dict[str, Any]:
         """
         执行AI对话
 
@@ -841,6 +889,7 @@ class AIChatService:
             prep = await self._prepare_chat(
                 user_id, session_id, content, llm_model, attachment_ids,
                 enable_web_search=enable_web_search,
+                search_provider=search_provider,
             )
             user_message = prep.user_message
 
@@ -1010,6 +1059,7 @@ class AIChatService:
         enable_thinking: bool = False,
         attachment_ids: Optional[List[int]] = None,
         enable_web_search: bool = False,
+        search_provider: Optional[str] = None,
     ) -> AsyncGenerator[str, None]:
         """
         流式执行AI对话
@@ -1029,6 +1079,7 @@ class AIChatService:
             prep = await self._prepare_chat(
                 user_id, session_id, content, llm_model, attachment_ids,
                 enable_web_search=enable_web_search,
+                search_provider=search_provider,
             )
             user_message = prep.user_message
             session_id = prep.session_id
