@@ -36,4 +36,9 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
         "web_search_config",
         "ALTER TABLE qa_session_configs ADD COLUMN web_search_config JSON NULL",
     ),
+    (
+        "agent_messages",
+        "reasoning",
+        "ALTER TABLE agent_messages ADD COLUMN reasoning TEXT NULL",
+    ),
 )
