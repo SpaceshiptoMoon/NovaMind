@@ -98,7 +98,7 @@ const emit = defineEmits<{
   (e: 'select', source: ChatSource): void
 }>()
 
-const collapsed = ref(false)
+const collapsed = ref(true)
 // 展开的来源卡 index 集合（点击卡片切换 snippet 全文/3 行截断）
 const expandedSet = ref(new Set<number>())
 
