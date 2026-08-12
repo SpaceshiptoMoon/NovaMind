@@ -41,8 +41,16 @@
         :disabled="(!inputText.trim() && pendingAttachmentsCount === 0) || disabled"
         @click="handleSendClick"
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 2L11 13" /><path d="M22 2L15 22L11 13L2 9L22 2Z" />
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M22 2L11 13" />
+          <path d="M22 2L15 22L11 13L2 9L22 2Z" />
         </svg>
       </button>
     </div>
@@ -53,17 +61,27 @@
         <span class="att-type-badge">{{ getFileExt(att.filename) }}</span>
         <span class="att-name">{{ att.filename }}</span>
         <span class="att-size">{{ formatFileSize(att.file_size) }}</span>
-        <button class="att-remove" @click="removeUploadFile(att.id)"><el-icon :size="10"><Close /></el-icon></button>
+        <button class="att-remove" @click="removeUploadFile(att.id)">
+          <el-icon :size="10"><Close /></el-icon>
+        </button>
       </div>
     </div>
 
     <!-- 快捷操作 chips -->
     <div class="quick-actions">
-      <button class="action-chip" :class="{ active: enableThinking }" @click="enableThinking = !enableThinking">
+      <button
+        class="action-chip"
+        :class="{ active: enableThinking }"
+        @click="enableThinking = !enableThinking"
+      >
         <span class="action-icon">🧠</span>
         <span>深度思考</span>
       </button>
-      <button class="action-chip" :class="{ active: enableWebSearch }" @click="enableWebSearch = !enableWebSearch">
+      <button
+        class="action-chip"
+        :class="{ active: enableWebSearch }"
+        @click="enableWebSearch = !enableWebSearch"
+      >
         <span class="action-icon">🌐</span>
         <span>联网搜索</span>
       </button>
@@ -73,15 +91,41 @@
       </button>
     </div>
 
+    <!-- 联网搜索 provider 选择（开启联网搜索时显示） -->
+    <div v-if="enableWebSearch" class="search-provider-row">
+      <span class="search-provider-label">使用：</span>
+      <el-select
+        v-model="selectedSearchProvider"
+        size="small"
+        placeholder="自动（首选）"
+        class="search-provider-select"
+      >
+        <el-option :value="undefined" label="自动（首选）" />
+        <el-option
+          v-for="c in searchEngineConfigs"
+          :key="c.id"
+          :value="c.provider"
+          :label="providerLabel(c)"
+        />
+      </el-select>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Paperclip, VideoPause, Close } from '@element-plus/icons-vue'
 import { useChatStore } from '@/stores/chat'
 import { useChatAttachments } from '@/composables/useChatAttachments'
+import { userApi } from '@/api/user'
+import type { SearchEngineConfig, SearchProvider } from '@/api/types'
+
+const SEARCH_PROVIDER_LABELS: Record<SearchProvider, string> = {
+  tavily: 'Tavily',
+  serpapi: 'SerpAPI',
+  duckduckgo: 'DuckDuckGo',
+}
 
 const props = defineProps<{
   disabled: boolean
@@ -89,12 +133,16 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  send: [content: string, options: {
-    useStream: boolean
-    enableThinking: boolean
-    enableWebSearch: boolean
-    attachmentIds?: number[]
-  }]
+  send: [
+    content: string,
+    options: {
+      useStream: boolean
+      enableThinking: boolean
+      enableWebSearch: boolean
+      searchProvider?: SearchProvider
+      attachmentIds?: number[]
+    },
+  ]
   'cancel-stream': []
 }>()
 
@@ -107,6 +155,25 @@ const enableThinking = ref(false)
 const enableWebSearch = ref(false)
 const uploadingFiles = ref(false)
 const { getFileExt, formatFileSize } = useChatAttachments()
+
+// 联网搜索 provider 选择
+const selectedSearchProvider = ref<SearchProvider | undefined>(undefined)
+const searchEngineConfigs = ref<SearchEngineConfig[]>([])
+
+function providerLabel(c: SearchEngineConfig): string {
+  const base = SEARCH_PROVIDER_LABELS[c.provider] || c.provider
+  return c.is_primary ? `${base}（首选）` : base
+}
+
+async function fetchSearchEngineConfigs() {
+  try {
+    const data = await userApi.getSearchEngineConfigs()
+    searchEngineConfigs.value = data.items
+  } catch {
+    // 拉取失败（未登录/网络）静默：下拉仅显示「自动（首选）」
+    searchEngineConfigs.value = []
+  }
+}
 
 function autoResize() {
   if (!textareaRef.value) return
@@ -135,7 +202,10 @@ async function handleFileSelected(e: Event) {
     if (ext === 'doc') {
       ElMessage.info(`检测到 ${file.name} 为 .doc，后端会自动转换为 .docx`)
     }
-    if (!ext || !['pdf', 'doc', 'docx', 'txt', 'md', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
+    if (
+      !ext ||
+      !['pdf', 'doc', 'docx', 'txt', 'md', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)
+    ) {
       ElMessage.warning(`不支持的文件类型: .${ext}`)
       continue
     }
@@ -177,8 +247,13 @@ function handleSendClick() {
     useStream: useStream.value,
     enableThinking: enableThinking.value,
     enableWebSearch: enableWebSearch.value,
+    searchProvider: selectedSearchProvider.value,
   })
 }
+
+onMounted(() => {
+  fetchSearchEngineConfigs()
+})
 </script>
 
 <style scoped>
@@ -200,7 +275,9 @@ function handleSendClick() {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
   border-radius: 24px;
-  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .input-pill:focus-within {
@@ -248,7 +325,7 @@ function handleSendClick() {
 
 .send-btn.active {
   background: var(--color-primary);
-  color: #FFFFFF;
+  color: #ffffff;
   cursor: pointer;
 }
 
@@ -259,7 +336,7 @@ function handleSendClick() {
 
 .stop-btn {
   background: var(--color-warning);
-  color: #FFFFFF;
+  color: #ffffff;
   cursor: pointer;
 }
 
@@ -276,7 +353,7 @@ function handleSendClick() {
   border: none;
   border-radius: var(--radius-full);
   background: var(--color-warning);
-  color: #FFFFFF;
+  color: #ffffff;
   cursor: pointer;
   transition: all var(--transition-base);
   flex-shrink: 0;
@@ -326,6 +403,27 @@ function handleSendClick() {
 .action-icon {
   font-size: 13px;
   line-height: 1;
+}
+
+/* ========================================
+   Search Provider Selector
+   ======================================== */
+.search-provider-row {
+  margin: 6px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.search-provider-label {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-family: var(--font-body);
+}
+
+.search-provider-select {
+  width: 180px;
 }
 
 /* ========================================

@@ -59,7 +59,9 @@
       <div v-if="chatStore.messages.length === 0 && !chatStore.loading" class="welcome-screen">
         <div class="welcome-inner">
           <h2 class="welcome-title">今天想聊点什么？</h2>
-          <p class="welcome-subtitle">我可以帮你回答问题、分析文档、编写代码，或从知识库中搜索资料</p>
+          <p class="welcome-subtitle">
+            我可以帮你回答问题、分析文档、编写代码，或从知识库中搜索资料
+          </p>
         </div>
       </div>
 
@@ -89,7 +91,21 @@
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount, watch, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete, Setting, Promotion, VideoPause, DocumentCopy, ArrowRight, ArrowDown, Paperclip, Close, Document, Download, WarningFilled } from '@element-plus/icons-vue'
+import {
+  Plus,
+  Delete,
+  Setting,
+  Promotion,
+  VideoPause,
+  DocumentCopy,
+  ArrowRight,
+  ArrowDown,
+  Paperclip,
+  Close,
+  Document,
+  Download,
+  WarningFilled,
+} from '@element-plus/icons-vue'
 // Note: Setting is still used in settings toggle button
 import { useChatStore } from '@/stores/chat'
 import { chatApi } from '@/api/chat'
@@ -99,7 +115,7 @@ import { knowledgeBaseApi } from '@/api/knowledge'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import ModelFanSelector from '@/components/common/ModelFanSelector.vue'
 import SourceList from '@/components/chat/SourceList.vue'
-import type { ChatMessage, ChatSource } from '@/api/types'
+import type { ChatMessage, ChatSource, SearchProvider } from '@/api/types'
 import { useChatAttachments } from '@/composables/useChatAttachments'
 import SessionConfigDialog from '@/components/chat/SessionConfigDialog.vue'
 import MessageList from '@/components/chat/MessageList.vue'
@@ -115,8 +131,6 @@ const enableThinking = ref(false)
 const enableWebSearch = ref(false)
 const messagesRef = ref<HTMLElement>()
 
-
-
 function scrollToBottom() {
   nextTick(() => {
     if (messagesRef.value) {
@@ -125,28 +139,38 @@ function scrollToBottom() {
   })
 }
 
-
-watch(() => chatStore.messages.length, () => {
-  scrollToBottom()
-})
+watch(
+  () => chatStore.messages.length,
+  () => {
+    scrollToBottom()
+  },
+)
 let scrollRAF = 0
-watch(() => chatStore.streamingContent, () => {
-  if (!scrollRAF) {
-    scrollRAF = requestAnimationFrame(() => {
-      scrollToBottom()
-      scrollRAF = 0
-    })
-  }
-})
-watch(() => chatStore.loading, () => scrollToBottom())
-watch(() => chatStore.pendingAttachments.length, () => {
-  for (const att of chatStore.pendingAttachments) {
-    if (isImageFile(att.file_type) && att.id && !imageBlobCache.has(att.id)) {
-      loadAttachmentImage(att.id)
+watch(
+  () => chatStore.streamingContent,
+  () => {
+    if (!scrollRAF) {
+      scrollRAF = requestAnimationFrame(() => {
+        scrollToBottom()
+        scrollRAF = 0
+      })
     }
-  }
-})
-
+  },
+)
+watch(
+  () => chatStore.loading,
+  () => scrollToBottom(),
+)
+watch(
+  () => chatStore.pendingAttachments.length,
+  () => {
+    for (const att of chatStore.pendingAttachments) {
+      if (isImageFile(att.file_type) && att.id && !imageBlobCache.has(att.id)) {
+        loadAttachmentImage(att.id)
+      }
+    }
+  },
+)
 
 async function handleNewSession() {
   // 流式中切会话：先取消正在进行的 SSE，否则回调会写入新会话的消息（污染）
@@ -194,12 +218,21 @@ async function handleDeleteSession(sessionId: string) {
   }
 }
 
-async function handleSend(content: string, options: { useStream: boolean; enableThinking: boolean; enableWebSearch: boolean }) {
-  const attachmentIds = chatStore.pendingAttachments.map(a => a.id)
+async function handleSend(
+  content: string,
+  options: {
+    useStream: boolean
+    enableThinking: boolean
+    enableWebSearch: boolean
+    searchProvider?: SearchProvider
+  },
+) {
+  const attachmentIds = chatStore.pendingAttachments.map((a) => a.id)
   const opts = {
     llm_model: selectedModel.value || undefined,
     enable_thinking: options.enableThinking,
     enable_web_search: options.enableWebSearch || undefined,
+    search_provider: options.searchProvider || undefined,
     attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
   }
 
@@ -218,16 +251,12 @@ function handleCancelStream() {
   chatStore.cancelStream()
 }
 
-
-
 // 模型选择
 const selectedModel = ref('')
-const availableModels = ref<Record<string, { max_tokens: number; temperature: number; top_p: number; model_type: string }>>({})
+const availableModels = ref<
+  Record<string, { max_tokens: number; temperature: number; top_p: number; model_type: string }>
+>({})
 const defaultModelName = computed(() => Object.keys(availableModels.value)[0] || '')
-
-
-
-
 
 const {
   isImageFile,
@@ -310,7 +339,9 @@ onBeforeUnmount(() => {
   cursor: pointer;
   font-family: var(--font-body);
 }
-.group-add-btn:hover { background: var(--color-bg-hover); }
+.group-add-btn:hover {
+  background: var(--color-bg-hover);
+}
 
 .sidebar-recent-label {
   font-size: 11px;
@@ -336,8 +367,13 @@ onBeforeUnmount(() => {
   cursor: pointer;
   font-family: var(--font-body);
 }
-.new-chat-btn:hover { background: #dbeafe; }
-.new-chat-icon { font-size: 16px; font-weight: 600; }
+.new-chat-btn:hover {
+  background: #dbeafe;
+}
+.new-chat-icon {
+  font-size: 16px;
+  font-weight: 600;
+}
 
 .session-list {
   flex: 1;
@@ -398,8 +434,12 @@ onBeforeUnmount(() => {
   cursor: pointer;
   transition: opacity var(--transition-fast);
 }
-.session-item:hover .session-more { opacity: 1; }
-.session-item:hover .session-more:hover { color: var(--color-text); }
+.session-item:hover .session-more {
+  opacity: 1;
+}
+.session-item:hover .session-more:hover {
+  color: var(--color-text);
+}
 
 .sidebar-footer {
   padding: 12px 16px;
@@ -420,8 +460,12 @@ onBeforeUnmount(() => {
   cursor: pointer;
   font-family: var(--font-body);
 }
-.space-btn:hover { background: var(--color-bg-hover); }
-.space-icon { font-size: 14px; }
+.space-btn:hover {
+  background: var(--color-bg-hover);
+}
+.space-icon {
+  font-size: 14px;
+}
 
 /* ========================================
    Header — Model bar
@@ -591,8 +635,14 @@ onBeforeUnmount(() => {
 }
 
 @keyframes messageIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .message-row.user {
@@ -746,7 +796,9 @@ onBeforeUnmount(() => {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
   border-radius: 24px;
-  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .input-pill:focus-within {
@@ -794,7 +846,7 @@ onBeforeUnmount(() => {
 
 .send-btn.active {
   background: var(--color-primary);
-  color: #FFFFFF;
+  color: #ffffff;
   cursor: pointer;
 }
 
@@ -805,7 +857,7 @@ onBeforeUnmount(() => {
 
 .stop-btn {
   background: var(--color-warning);
-  color: #FFFFFF;
+  color: #ffffff;
   cursor: pointer;
 }
 
@@ -1066,11 +1118,21 @@ onBeforeUnmount(() => {
   letter-spacing: 0.3px;
 }
 
-.file-icon-box.file-pdf  { background: #ef4444; }
-.file-icon-box.file-doc  { background: #6366f1; }
-.file-icon-box.file-txt  { background: #8b5cf6; }
-.file-icon-box.file-md   { background: #06b6d4; }
-.file-icon-box.file-default { background: #6b7280; }
+.file-icon-box.file-pdf {
+  background: #ef4444;
+}
+.file-icon-box.file-doc {
+  background: #6366f1;
+}
+.file-icon-box.file-txt {
+  background: #8b5cf6;
+}
+.file-icon-box.file-md {
+  background: #06b6d4;
+}
+.file-icon-box.file-default {
+  background: #6b7280;
+}
 
 .file-card .file-info {
   flex: 1;
@@ -1227,7 +1289,9 @@ onBeforeUnmount(() => {
   color: var(--color-primary);
   background: rgba(99, 102, 241, 0.1);
   border-radius: 4px;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
   user-select: none;
 }
 

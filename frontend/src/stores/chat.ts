@@ -2,7 +2,14 @@ import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { chatApi } from '@/api/chat'
 import { sessionApi } from '@/api/session'
-import type { ChatMessage, ChatAttachment, SessionItem, SessionConfigResponse, CompressionConfig } from '@/api/types'
+import type {
+  ChatMessage,
+  ChatAttachment,
+  SessionItem,
+  SessionConfigResponse,
+  CompressionConfig,
+  SearchProvider,
+} from '@/api/types'
 
 export const useChatStore = defineStore('chat', () => {
   const sessions = ref<SessionItem[]>([])
@@ -58,13 +65,17 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function sendMessage(content: string, options?: {
-    llm_model?: string
-    enable_thinking?: boolean
-    attachmentIds?: number[]
-    enable_web_search?: boolean
-  }) {
-    if (!content.trim() && (!options?.attachmentIds?.length)) return
+  async function sendMessage(
+    content: string,
+    options?: {
+      llm_model?: string
+      enable_thinking?: boolean
+      attachmentIds?: number[]
+      enable_web_search?: boolean
+      search_provider?: SearchProvider
+    },
+  ) {
+    if (!content.trim() && !options?.attachmentIds?.length) return
 
     // 防止重复发送
     const lastMsg = messages.value[messages.value.length - 1]
@@ -73,7 +84,7 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     const attachmentList = options?.attachmentIds?.length
-      ? pendingAttachments.value.filter(a => options.attachmentIds!.includes(a.id))
+      ? pendingAttachments.value.filter((a) => options.attachmentIds!.includes(a.id))
       : undefined
     const userMessage: ChatMessage = {
       id: Date.now(),
@@ -100,6 +111,7 @@ export const useChatStore = defineStore('chat', () => {
         enable_thinking: options?.enable_thinking,
         attachment_ids: options?.attachmentIds,
         enable_web_search: options?.enable_web_search,
+        search_provider: options?.search_provider,
       })
 
       if (!currentSessionId.value) {
@@ -133,13 +145,17 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function sendMessageStream(content: string, options?: {
-    llm_model?: string
-    enable_thinking?: boolean
-    attachmentIds?: number[]
-    enable_web_search?: boolean
-  }) {
-    if (!content.trim() && (!options?.attachmentIds?.length)) return
+  async function sendMessageStream(
+    content: string,
+    options?: {
+      llm_model?: string
+      enable_thinking?: boolean
+      attachmentIds?: number[]
+      enable_web_search?: boolean
+      search_provider?: SearchProvider
+    },
+  ) {
+    if (!content.trim() && !options?.attachmentIds?.length) return
 
     // 防止重复发送：如果最后一条消息内容相同且还在流式中，跳过
     const lastMsg = messages.value[messages.value.length - 1]
@@ -148,7 +164,7 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     const attachmentList = options?.attachmentIds?.length
-      ? pendingAttachments.value.filter(a => options.attachmentIds!.includes(a.id))
+      ? pendingAttachments.value.filter((a) => options.attachmentIds!.includes(a.id))
       : undefined
     const userMessage: ChatMessage = {
       id: Date.now(),
@@ -187,90 +203,99 @@ export const useChatStore = defineStore('chat', () => {
     abortController.value = controller
 
     try {
-      await chatApi.chatStream({
-        content,
-        session_id: currentSessionId.value || undefined,
-        llm_model: options?.llm_model,
-        enable_thinking: options?.enable_thinking,
-        attachment_ids: options?.attachmentIds,
-        enable_web_search: options?.enable_web_search,
-      }, {
-        signal: controller.signal,
-        onUserMessage(d) {
-          // 用服务端返回的消息替换本地临时用户消息，保持 ID 一致
-          const localUserMsg = messages.value.find(
-            (m) => m.role === 'user' && m.content === content && typeof m.id === 'number' && m.id > 1000000000000
-          )
-          if (localUserMsg) {
-            localUserMsg.id = d.id
-            localUserMsg.session_id = d.session_id
-            localUserMsg.created_at = d.created_at
-            if ((d as { attachments?: ChatAttachment[] }).attachments) {
-              localUserMsg.attachments = (d as { attachments?: ChatAttachment[] }).attachments
+      await chatApi.chatStream(
+        {
+          content,
+          session_id: currentSessionId.value || undefined,
+          llm_model: options?.llm_model,
+          enable_thinking: options?.enable_thinking,
+          attachment_ids: options?.attachmentIds,
+          enable_web_search: options?.enable_web_search,
+          search_provider: options?.search_provider,
+        },
+        {
+          signal: controller.signal,
+          onUserMessage(d) {
+            // 用服务端返回的消息替换本地临时用户消息，保持 ID 一致
+            const localUserMsg = messages.value.find(
+              (m) =>
+                m.role === 'user' &&
+                m.content === content &&
+                typeof m.id === 'number' &&
+                m.id > 1000000000000,
+            )
+            if (localUserMsg) {
+              localUserMsg.id = d.id
+              localUserMsg.session_id = d.session_id
+              localUserMsg.created_at = d.created_at
+              if ((d as { attachments?: ChatAttachment[] }).attachments) {
+                localUserMsg.attachments = (d as { attachments?: ChatAttachment[] }).attachments
+              }
             }
-          }
 
-          if (d.session_id && !currentSessionId.value) {
-            currentSessionId.value = d.session_id
-            sessions.value.unshift({
-              session_id: d.session_id,
-              preview: content.slice(0, 30),
-            })
-          }
+            if (d.session_id && !currentSessionId.value) {
+              currentSessionId.value = d.session_id
+              sessions.value.unshift({
+                session_id: d.session_id,
+                preview: content.slice(0, 30),
+              })
+            }
+          },
+          onSources(sources) {
+            // 首字前下发的检索来源，写入 extra.sources 供正文角标与来源列表渲染
+            const lastMsg = messages.value[messages.value.length - 1]
+            if (lastMsg?.role === 'assistant' && sources?.length) {
+              lastMsg.extra = { ...lastMsg.extra, sources }
+            }
+          },
+          onTrace(trace) {
+            const lastMsg = messages.value[messages.value.length - 1]
+            if (lastMsg?.role === 'assistant') {
+              const traces = (lastMsg.extra?.traces as Record<string, unknown>[]) || []
+              lastMsg.extra = { ...lastMsg.extra, traces: [...traces, trace] }
+            }
+          },
+          onReasoning(text) {
+            streamingReasoning.value += text || ''
+            const lastMsg = messages.value[messages.value.length - 1]
+            if (lastMsg?.role === 'assistant') {
+              lastMsg.reasoning = streamingReasoning.value
+            }
+          },
+          onContent(text) {
+            streamingContent.value += text || ''
+            const lastMsg = messages.value[messages.value.length - 1]
+            if (lastMsg?.role === 'assistant') {
+              lastMsg.content += text || ''
+            }
+          },
+          onDone(d) {
+            const lastMsg = messages.value[messages.value.length - 1]
+            if (lastMsg?.role === 'assistant') {
+              lastMsg.content = d.content || streamingContent.value
+              if (d.id) lastMsg.id = d.id
+              // 来源 / 回答状态兜底（与 sources 事件互补，刷新后历史消息也能还原）
+              const extra: Record<string, unknown> = { ...lastMsg.extra }
+              if (d.sources?.length) extra.sources = d.sources
+              if (d.answer_status) extra.answer_status = d.answer_status
+              if (d.confidence !== undefined && d.confidence !== null)
+                extra.confidence = d.confidence
+              if (Object.keys(extra).length) lastMsg.extra = extra
+            }
+            if (d.session_id && !currentSessionId.value) {
+              currentSessionId.value = d.session_id
+              sessions.value.unshift({
+                session_id: d.session_id,
+                preview: content.slice(0, 30),
+              })
+            }
+            controller.abort()
+          },
+          onError(err) {
+            error.value = err.message
+          },
         },
-        onSources(sources) {
-          // 首字前下发的检索来源，写入 extra.sources 供正文角标与来源列表渲染
-          const lastMsg = messages.value[messages.value.length - 1]
-          if (lastMsg?.role === 'assistant' && sources?.length) {
-            lastMsg.extra = { ...lastMsg.extra, sources }
-          }
-        },
-        onTrace(trace) {
-          const lastMsg = messages.value[messages.value.length - 1]
-          if (lastMsg?.role === 'assistant') {
-            const traces = (lastMsg.extra?.traces as Record<string, unknown>[]) || []
-            lastMsg.extra = { ...lastMsg.extra, traces: [...traces, trace] }
-          }
-        },
-        onReasoning(text) {
-          streamingReasoning.value += text || ''
-          const lastMsg = messages.value[messages.value.length - 1]
-          if (lastMsg?.role === 'assistant') {
-            lastMsg.reasoning = streamingReasoning.value
-          }
-        },
-        onContent(text) {
-          streamingContent.value += text || ''
-          const lastMsg = messages.value[messages.value.length - 1]
-          if (lastMsg?.role === 'assistant') {
-            lastMsg.content += text || ''
-          }
-        },
-        onDone(d) {
-          const lastMsg = messages.value[messages.value.length - 1]
-          if (lastMsg?.role === 'assistant') {
-            lastMsg.content = d.content || streamingContent.value
-            if (d.id) lastMsg.id = d.id
-            // 来源 / 回答状态兜底（与 sources 事件互补，刷新后历史消息也能还原）
-            const extra: Record<string, unknown> = { ...lastMsg.extra }
-            if (d.sources?.length) extra.sources = d.sources
-            if (d.answer_status) extra.answer_status = d.answer_status
-            if (d.confidence !== undefined && d.confidence !== null) extra.confidence = d.confidence
-            if (Object.keys(extra).length) lastMsg.extra = extra
-          }
-          if (d.session_id && !currentSessionId.value) {
-            currentSessionId.value = d.session_id
-            sessions.value.unshift({
-              session_id: d.session_id,
-              preview: content.slice(0, 30),
-            })
-          }
-          controller.abort()
-        },
-        onError(err) {
-          error.value = err.message
-        },
-      })
+      )
     } catch (e) {
       const lastMsg = messages.value[messages.value.length - 1]
       if (lastMsg?.role === 'assistant' && !lastMsg.content) {
@@ -289,7 +314,10 @@ export const useChatStore = defineStore('chat', () => {
 
   // ========== 附件管理 ==========
 
-  async function uploadAttachment(file: File, onProgress?: (percent: number) => void): Promise<ChatAttachment> {
+  async function uploadAttachment(
+    file: File,
+    onProgress?: (percent: number) => void,
+  ): Promise<ChatAttachment> {
     const result = await chatApi.uploadAttachment(file, onProgress)
     const attachment: ChatAttachment = {
       id: result.attachment_id,
@@ -302,7 +330,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function removePendingAttachment(attachmentId: number) {
-    pendingAttachments.value = pendingAttachments.value.filter(a => a.id !== attachmentId)
+    pendingAttachments.value = pendingAttachments.value.filter((a) => a.id !== attachmentId)
   }
 
   function clearPendingAttachments() {
