@@ -115,8 +115,8 @@ class SessionConfigRepository:
         """
         通用 upsert：记录不存在则创建（compression 用默认），存在则只更新传入的列。
 
-        三个配置列（compression_config / kb_bindings / llm_config）的更新共享此实现，
-        各自只指定要写的列。注意：只 flush 不 commit，事务由上层（get_db）统一管理。
+        四个配置列（compression_config / kb_bindings / llm_config / web_search_config）的更新
+        共享此实现，各自只指定要写的列。注意：只 flush 不 commit，事务由上层（get_db）统一管理。
         """
         try:
             config = await self.get_by_session_id(session_id)
@@ -157,3 +157,9 @@ class SessionConfigRepository:
     ) -> SessionConfig:
         """更新会话模型生成参数配置（支持反复修改）"""
         return await self._upsert(session_id, user_id, llm_config=llm_config)
+
+    async def update_web_search_config(
+        self, session_id: str, user_id: int, web_search_config: dict,
+    ) -> SessionConfig:
+        """更新会话联网搜索引擎配置（支持反复修改）"""
+        return await self._upsert(session_id, user_id, web_search_config=web_search_config)

@@ -8,7 +8,6 @@ import type {
   SessionItem,
   SessionConfigResponse,
   CompressionConfig,
-  SearchProvider,
 } from '@/api/types'
 
 export const useChatStore = defineStore('chat', () => {
@@ -72,7 +71,6 @@ export const useChatStore = defineStore('chat', () => {
       enable_thinking?: boolean
       attachmentIds?: number[]
       enable_web_search?: boolean
-      search_provider?: SearchProvider
     },
   ) {
     if (!content.trim() && !options?.attachmentIds?.length) return
@@ -111,7 +109,6 @@ export const useChatStore = defineStore('chat', () => {
         enable_thinking: options?.enable_thinking,
         attachment_ids: options?.attachmentIds,
         enable_web_search: options?.enable_web_search,
-        search_provider: options?.search_provider,
       })
 
       if (!currentSessionId.value) {
@@ -152,7 +149,6 @@ export const useChatStore = defineStore('chat', () => {
       enable_thinking?: boolean
       attachmentIds?: number[]
       enable_web_search?: boolean
-      search_provider?: SearchProvider
     },
   ) {
     if (!content.trim() && !options?.attachmentIds?.length) return
@@ -211,7 +207,6 @@ export const useChatStore = defineStore('chat', () => {
           enable_thinking: options?.enable_thinking,
           attachment_ids: options?.attachmentIds,
           enable_web_search: options?.enable_web_search,
-          search_provider: options?.search_provider,
         },
         {
           signal: controller.signal,

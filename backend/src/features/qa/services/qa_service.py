@@ -316,6 +316,7 @@ class QAService:
                 cc = cached.get("compression_config", {}) or {}
                 kb = cached.get("kb_bindings", {}) or {}
                 lc = cached.get("llm_config", {}) or {}
+                ws = cached.get("web_search_config", {}) or {}
                 return SimpleNamespace(
                     **cached,
                     # 压缩配置（对齐 ORM property）
@@ -346,6 +347,11 @@ class QAService:
                     ),
                     llm_top_p=(lc.get("top_p") if lc.get("top_p") is not None else 0.8),
                     llm_system_prompt=lc.get("system_prompt"),
+                    # 联网搜索引擎配置（对齐 ORM property，null 兜底默认值）
+                    web_search_provider=ws.get("provider"),
+                    web_search_max_results=(
+                        ws.get("max_results") if ws.get("max_results") is not None else 5
+                    ),
                 )
 
         # 从数据库获取或创建默认配置（统一使用 ensure_session_config）
@@ -440,6 +446,15 @@ class QAService:
     ) -> Any:
         config = await self.session_config_repo.update_llm_config(
             session_id, user_id, llm_config,
+        )
+        await self.invalidate_session_config_cache(session_id)
+        return config
+
+    async def update_web_search_config(
+        self, session_id: str, user_id: int, web_search_config: dict,
+    ) -> Any:
+        config = await self.session_config_repo.update_web_search_config(
+            session_id, user_id, web_search_config,
         )
         await self.invalidate_session_config_cache(session_id)
         return config

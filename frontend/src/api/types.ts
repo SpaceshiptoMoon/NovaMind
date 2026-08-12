@@ -921,6 +921,18 @@ export interface SessionConfigRagUpdate {
   rag: RagBindingConfig
 }
 
+/** 联网搜索引擎配置（会话级持久化；启用开关由请求级 enable_web_search 控制，不在此） */
+export interface WebSearchConfig {
+  /** None=自动择优（用户首选 → YAML 兜底） */
+  provider?: SearchProvider | null
+  max_results?: number
+}
+
+/** 更新会话联网搜索引擎配置请求（支持反复修改） */
+export interface SessionConfigWebSearchUpdate {
+  web_search_config: WebSearchConfig
+}
+
 export interface SessionConfigResponse {
   id: number
   session_id: string
@@ -930,6 +942,8 @@ export interface SessionConfigResponse {
   kb_bindings?: RagBindingConfig | null
   /** 模型生成参数配置（会话级持久化） */
   llm_config?: LlmConfig | null
+  /** 联网搜索引擎配置（会话级持久化） */
+  web_search_config?: WebSearchConfig | null
   created_at: string | null
   updated_at: string | null
 }

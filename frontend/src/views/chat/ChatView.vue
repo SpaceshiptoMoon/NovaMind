@@ -115,7 +115,7 @@ import { knowledgeBaseApi } from '@/api/knowledge'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import ModelFanSelector from '@/components/common/ModelFanSelector.vue'
 import SourceList from '@/components/chat/SourceList.vue'
-import type { ChatMessage, ChatSource, SearchProvider } from '@/api/types'
+import type { ChatMessage, ChatSource } from '@/api/types'
 import { useChatAttachments } from '@/composables/useChatAttachments'
 import SessionConfigDialog from '@/components/chat/SessionConfigDialog.vue'
 import MessageList from '@/components/chat/MessageList.vue'
@@ -224,7 +224,6 @@ async function handleSend(
     useStream: boolean
     enableThinking: boolean
     enableWebSearch: boolean
-    searchProvider?: SearchProvider
   },
 ) {
   const attachmentIds = chatStore.pendingAttachments.map((a) => a.id)
@@ -232,7 +231,6 @@ async function handleSend(
     llm_model: selectedModel.value || undefined,
     enable_thinking: options.enableThinking,
     enable_web_search: options.enableWebSearch || undefined,
-    search_provider: options.searchProvider || undefined,
     attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
   }
 

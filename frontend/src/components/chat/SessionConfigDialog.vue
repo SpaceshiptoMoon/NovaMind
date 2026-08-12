@@ -90,6 +90,42 @@
       </template>
     </div>
 
+    <!-- === 联网搜索引擎卡片 === -->
+    <div class="config-card">
+      <div class="card-label">联网搜索引擎</div>
+      <div class="row-hint" style="margin: 4px 0 10px">
+        启用联网搜索由聊天输入框的「联网搜索」开关控制；此处仅设置使用哪个引擎
+      </div>
+      <div class="card-row">
+        <span class="row-label">搜索引擎</span>
+        <el-select
+          v-model="webSearchForm.provider"
+          size="small"
+          clearable
+          placeholder="自动（首选）"
+          style="width: 180px"
+        >
+          <el-option :value="undefined" label="自动（首选）" />
+          <el-option
+            v-for="c in searchEngineConfigs"
+            :key="c.id"
+            :value="c.provider"
+            :label="providerLabel(c)"
+          />
+        </el-select>
+      </div>
+      <div class="card-row">
+        <span class="row-label">结果条数</span>
+        <el-input-number
+          v-model="webSearchForm.max_results"
+          :min="1"
+          :max="20"
+          size="small"
+          style="width: 120px"
+        />
+      </div>
+    </div>
+
     <!-- === 模型卡片 === -->
     <div class="config-card">
       <div class="card-row-between" @click="modelExpanded = !modelExpanded" style="cursor:pointer">
@@ -131,8 +167,10 @@ import { ArrowDown } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { sessionApi } from '@/api/session'
 import { knowledgeBaseApi } from '@/api/knowledge'
+import { userApi } from '@/api/user'
 import { useChatStore } from '@/stores/chat'
 import { useSpaceStore } from '@/stores/space'
+import type { SearchEngineConfig, SearchProvider } from '@/api/types'
 
 const emit = defineEmits<{ saved: [] }>()
 const props = withDefaults(defineProps<{ sessionId?: string | null }>(), { sessionId: null })
@@ -170,6 +208,33 @@ const llmForm = reactive({
   system_prompt: '',
 })
 
+// 联网搜索引擎配置（会话级持久化；启用开关由聊天 chip 控制，不在此）
+const SEARCH_PROVIDER_LABELS: Record<SearchProvider, string> = {
+  tavily: 'Tavily',
+  serpapi: 'SerpAPI',
+  duckduckgo: 'DuckDuckGo',
+}
+const webSearchForm = reactive({
+  provider: undefined as SearchProvider | undefined,
+  max_results: 5,
+})
+const searchEngineConfigs = ref<SearchEngineConfig[]>([])
+
+function providerLabel(c: SearchEngineConfig): string {
+  const base = SEARCH_PROVIDER_LABELS[c.provider] || c.provider
+  return c.is_primary ? `${base}（首选）` : base
+}
+
+async function fetchSearchEngineConfigs() {
+  try {
+    const data = await userApi.getSearchEngineConfigs()
+    searchEngineConfigs.value = data.items
+  } catch {
+    // 拉取失败静默：下拉仅显示「自动（首选）」
+    searchEngineConfigs.value = []
+  }
+}
+
 watch(() => props.sessionId, (newId) => {
   if (newId) {
     visible.value = true
@@ -188,7 +253,11 @@ async function loadConfig(sessionId: string) {
   ragForm.search_mode = 'content_hybrid'; ragForm.top_k = 5
   llmForm.max_tokens = 2048; llmForm.temperature = 0.7
   llmForm.top_p = 0.8; llmForm.system_prompt = ''
+  webSearchForm.provider = undefined; webSearchForm.max_results = 5
   ragFormKbOptions.value = []
+
+  // 拉取用户已配的搜索引擎列表（供下拉选择）
+  await fetchSearchEngineConfigs()
 
   if (spaceStore.spaces.length === 0) {
     try { await spaceStore.fetchSpaces() } catch { /* 忽略 */ }
@@ -225,6 +294,11 @@ async function loadConfig(sessionId: string) {
       llmForm.temperature = llm.temperature ?? 0.7
       llmForm.top_p = llm.top_p ?? 0.8
       llmForm.system_prompt = llm.system_prompt || ''
+    }
+    const ws = chatStore.sessionConfig?.web_search_config
+    if (ws) {
+      webSearchForm.provider = ws.provider ?? undefined
+      webSearchForm.max_results = ws.max_results ?? 5
     }
   } catch {
     // 使用默认值
@@ -275,7 +349,13 @@ async function handleSave() {
         top_k: ragForm.top_k,
       },
     })
-    chatStore.sessionConfig = ragUpdated
+    const wsUpdated = await sessionApi.updateWebSearchConfig(props.sessionId!, {
+      web_search_config: {
+        provider: webSearchForm.provider ?? null,
+        max_results: webSearchForm.max_results,
+      },
+    })
+    chatStore.sessionConfig = wsUpdated ?? ragUpdated
     ElMessage.success('配置已保存')
     visible.value = false
     emit('saved')
