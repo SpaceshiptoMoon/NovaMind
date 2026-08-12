@@ -32,6 +32,7 @@
           :data-msg-id="msg.id"
           @mouseover="handleCiteOver"
           @mouseout="handleCiteLeave"
+          @click="handleCiteClick"
         >
           <MarkdownRenderer :content="msg.content" class="message-text" />
           <div v-if="getAnswerStatus(msg) === 'low_confidence'" class="low-confidence-tip">
@@ -219,8 +220,24 @@ function handleCiteOver(e: MouseEvent) {
   const msg = props.messages.find(m => m.id === msgId)
   if (!msg) return
   const sources = getSources(msg)
-  activeCiteSource.value = sources[index] || null
+  // data-cite 是 1-based 角标（与 source.index 对齐），数组 0-based 访问需 -1
+  activeCiteSource.value = sources[index - 1] || null
   if (activeCiteSource.value) citePopoverVisible.value = true
+}
+
+function handleCiteClick(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  const cite = target.closest('[data-cite]') as HTMLElement | null
+  if (!cite) return
+  const index = parseInt(cite.dataset.cite || '0', 10)
+  if (!index) return
+  const msgEl = target.closest('[data-msg-id]') as HTMLElement | null
+  if (!msgEl) return
+  // 高亮对应来源卡（hoverCiteIndex → SourceList active class）
+  hoverCiteIndex.value = index
+  // 滚动到来源卡居中
+  const card = msgEl.querySelector(`[data-source-index="${index}"]`) as HTMLElement | null
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
 function handleCiteLeave() {

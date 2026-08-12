@@ -1,7 +1,7 @@
 <template>
   <div v-if="traces?.length" class="retrieval-trace">
     <button class="trace-toggle" @click="expanded = !expanded">
-      <span class="trace-label">📎 检索详情</span>
+      <span class="trace-label">🔍 检索详情</span>
       <span class="trace-summary">{{ summary }}</span>
       <el-icon :size="10" class="toggle-arrow" :class="{ expanded }"><ArrowDown /></el-icon>
     </button>
@@ -57,7 +57,16 @@ const summary = computed(() => {
   const parts: string[] = []
   for (const t of props.traces) {
     if (t.type === 'rewrite') parts.push('改写')
-    if (t.type === 'search') parts.push(`检索(${t.sources_count || 0}条)`)
+    if (t.type === 'search') {
+      const n = (t.sources_count as number) || 0
+      if (n > 0) {
+        const web = (t.web_count as number) || 0
+        const kb = (t.kb_count as number) || 0
+        parts.push(`检索 ${n} 条（联网 ${web} + KB ${kb}）`)
+      } else {
+        parts.push('检索 0 条（无匹配）')
+      }
+    }
     if (t.type === 'grade') parts.push(t.passed ? '通过' : '重试')
   }
   return parts.join(' → ')
