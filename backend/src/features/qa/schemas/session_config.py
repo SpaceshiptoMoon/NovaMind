@@ -3,7 +3,7 @@
 """
 from typing import Optional, Literal, List
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ========== 压缩配置结构 ==========
@@ -32,9 +32,20 @@ class RagBindingConfig(BaseModel):
     score_threshold: float = Field(default=0.3, ge=0.0, le=1.0, description="低置信度阈值（单库模式生效）")
     search_mode: str = Field(default="content_hybrid", description="检索模式（默认混合）")
     top_k: int = Field(default=5, ge=1, le=20, description="检索返回条数")
+    vector_weight: float = Field(default=0.7, ge=0.0, le=1.0, description="向量检索权重（hybrid 类模式下与 bm25_weight 之和需=1.0）")
+    bm25_weight: float = Field(default=0.3, ge=0.0, le=1.0, description="BM25 检索权重（hybrid 类模式下与 vector_weight 之和需=1.0）")
     query_rewriting: str = Field(default="none", description="检索前改写策略: none/completion/synonym/decompose/hyde")
     grade_retry_enabled: bool = Field(default=False, description="是否启用检索后自评估重试")
     grade_retry_passing_score: int = Field(default=5, ge=1, le=10, description="检索及格分数（1-10）")
+
+    @model_validator(mode="after")
+    def _check_weights_sum(self) -> "RagBindingConfig":
+        # schema 层统一校验，避免脏值落库；service 层另在 hybrid 模式触发时再校验
+        if abs(self.vector_weight + self.bm25_weight - 1.0) > 0.01:
+            raise ValueError(
+                f"向量权重({self.vector_weight}) 与 BM25 权重({self.bm25_weight}) 之和必须等于 1.0，当前为 {round(self.vector_weight + self.bm25_weight, 4)}"
+            )
+        return self
 
 
 # ========== 模型生成参数配置结构（会话级持久化） ==========

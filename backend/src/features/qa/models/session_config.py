@@ -42,7 +42,8 @@ class SessionConfig(BaseModel):
     )
 
     # 知识库绑定配置（JSON 格式，用于会话级自动 RAG）
-    # 结构: {space_id, kb_ids:[], auto_rag, refusal_enabled, score_threshold, search_mode, top_k}
+    # 结构: {space_id, kb_ids:[], auto_rag, refusal_enabled, score_threshold, search_mode, top_k,
+    #        vector_weight, bm25_weight}  # 后两者仅 hybrid 类模式消费，和需=1.0
     kb_bindings = Column(
         JSON,
         nullable=True,
@@ -138,6 +139,18 @@ class SessionConfig(BaseModel):
     @property
     def rag_top_k(self) -> int:
         return self.get_kb_bindings().get("top_k", 5)
+
+    @property
+    def rag_vector_weight(self) -> float:
+        # hybrid 类模式向量检索权重；null 兜底默认 0.7（与下游 SearchRequest.weights=None 兜底一致）
+        val = self.get_kb_bindings().get("vector_weight")
+        return val if val is not None else 0.7
+
+    @property
+    def rag_bm25_weight(self) -> float:
+        # hybrid 类模式 BM25 检索权重；null 兜底默认 0.3，与 rag_vector_weight 之和需=1.0
+        val = self.get_kb_bindings().get("bm25_weight")
+        return val if val is not None else 0.3
 
     @property
     def rag_query_rewriting(self) -> str:

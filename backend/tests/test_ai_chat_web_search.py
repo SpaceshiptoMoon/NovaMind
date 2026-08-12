@@ -599,3 +599,97 @@ def test_build_retrieval_context_contains_sources_without_system_prompt_prefix()
     assert "请严格基于这些资料作答" in ctx
     # 不拼接 system_prompt：ctx 以引用规则开头（而非 system_prompt 内容）
     assert ctx.startswith("以下是为回答用户问题检索到的参考资料")
+
+
+# ========== 会话级 BM25/向量融合权重 ==========
+
+def test_rag_binding_config_rejects_weights_sum_not_one():
+    """RagBindingConfig schema 层校验：vector_weight + bm25_weight ≠ 1.0 → ValidationError。"""
+    from pydantic import ValidationError
+
+    from novamind.features.qa.schemas.session_config import RagBindingConfig
+
+    with pytest.raises(ValidationError):
+        RagBindingConfig(vector_weight=0.8, bm25_weight=0.3)  # 和=1.1
+
+
+def test_rag_binding_config_accepts_weights_sum_one():
+    """RagBindingConfig schema 层校验：和=1.0 通过，字段值落库正确。"""
+    from novamind.features.qa.schemas.session_config import RagBindingConfig
+
+    cfg = RagBindingConfig(vector_weight=0.8, bm25_weight=0.2)
+    assert cfg.vector_weight == 0.8
+    assert cfg.bm25_weight == 0.2
+    # 默认值兜底（旧数据无键时）
+    default_cfg = RagBindingConfig()
+    assert default_cfg.vector_weight == 0.7
+    assert default_cfg.bm25_weight == 0.3
+
+
+@pytest.mark.asyncio
+async def test_retrieve_knowledge_passes_session_weights_to_search_request():
+    """会话级 vector_weight/bm25_weight 透传到 SearchRequest.weights（→ RRF）。"""
+    svc = _make_chat_service()
+    captured: dict = {}
+
+    class _FakeRetrievalPort:
+        async def search(self, space_id, kb_id, user_id, request):
+            captured["weights"] = request.weights
+            return {"results": []}
+
+    svc._retrieval_port = _FakeRetrievalPort()
+    # kb_ids 非空跳过 kb_repo 分支；retrieval_port 返回空 → 函数 return None
+    res = await svc._retrieve_knowledge(
+        query="q", user_id=1, space_id=10, kb_ids=[1],
+        top_k=5, search_mode="content_hybrid", score_threshold=None,
+        vector_weight=0.8, bm25_weight=0.2,
+    )
+    assert res is None
+    assert captured["weights"] is not None
+    assert captured["weights"].vector_weight == 0.8
+    assert captured["weights"].bm25_weight == 0.2
+
+
+@pytest.mark.asyncio
+async def test_retrieve_knowledge_default_weights_when_unspecified():
+    """_retrieve_knowledge 未传权重 → WeightConfig 默认 0.7/0.3（与下游 weights=None 兜底一致）。"""
+    svc = _make_chat_service()
+    captured: dict = {}
+
+    class _FakeRetrievalPort:
+        async def search(self, space_id, kb_id, user_id, request):
+            captured["weights"] = request.weights
+            return {"results": []}
+
+    svc._retrieval_port = _FakeRetrievalPort()
+    await svc._retrieve_knowledge(
+        query="q", user_id=1, space_id=10, kb_ids=[1],
+    )
+    assert captured["weights"].vector_weight == 0.7
+    assert captured["weights"].bm25_weight == 0.3
+
+
+@pytest.mark.asyncio
+async def test_augment_passes_weights_to_retrieve_knowledge():
+    """_augment_system_prompt_with_retrieval 把 vector_weight/bm25_weight 透传给 _retrieve_knowledge。
+
+    覆盖 _prepare_chat → _augment → _retrieve_knowledge 链路（含 grade_retry 关闭的单查询路径）。
+    """
+    svc = _make_chat_service()
+    captured: dict = {}
+
+    async def _fake_retrieve_knowledge(**kwargs):
+        captured.update(kwargs)
+        return None  # 无结果，跳过后续处理
+
+    svc._retrieve_knowledge = _fake_retrieve_knowledge
+    # enable_web_search=False 跳过 _retrieve_web，只走 RAG 分支
+    await svc._augment_system_prompt_with_retrieval(
+        system_prompt="sys", query="q", user_id=1,
+        enable_web_search=False, enable_rag=True,
+        space_id=10, kb_ids=[1], top_k=5, search_mode="content_hybrid",
+        score_threshold=None, vector_weight=0.8, bm25_weight=0.2,
+        max_results=5,
+    )
+    assert captured.get("vector_weight") == 0.8
+    assert captured.get("bm25_weight") == 0.2

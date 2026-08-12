@@ -974,6 +974,10 @@ export interface RagBindingConfig {
   search_mode?: string
   /** 检索返回条数 */
   top_k?: number
+  /** 向量检索权重（hybrid 类模式下与 bm25_weight 之和需=1.0） */
+  vector_weight?: number
+  /** BM25 检索权重（hybrid 类模式下与 vector_weight 之和需=1.0） */
+  bm25_weight?: number
 }
 
 /** 模型生成参数配置（会话级持久化；llm_model/enable_thinking 由请求传，不在此） */
