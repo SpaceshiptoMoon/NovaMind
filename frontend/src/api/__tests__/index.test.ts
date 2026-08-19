@@ -133,6 +133,7 @@ describe('api/index', () => {
   })
 
   it('refreshes token and retries the original request on 401', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', '/api/v1')
     const { tokenManager } = await loadApiModule()
     tokenManager.setToken('expired-access')
     tokenManager.setRefreshToken('refresh-123')
@@ -248,6 +249,7 @@ describe('api/index', () => {
   })
 
   it('passes auth header to SSE requests and parses event/data payloads', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', '/api/v1')
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       body: {
