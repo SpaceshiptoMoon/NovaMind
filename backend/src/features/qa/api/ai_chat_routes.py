@@ -22,7 +22,7 @@ from novamind.features.qa.schemas.ai_chat import (
     UploadChatAttachmentResponse,
 )
 from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.features.knowledge_space.adapters.attachment_enrichment import enrich_attachments_with_presigned_urls
+from novamind.shared.storage.attachment_presign import enrich_attachments_with_presigned_urls
 
 router = APIRouter()
 
