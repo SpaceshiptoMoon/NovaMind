@@ -24,6 +24,22 @@ from novamind.features.user.exceptions import (
     AuthenticationError,
     UserError,
 )
+# 认证原语下沉 core/auth：JWT 解码与黑名单查询是横切基础设施，user/AuthService
+# 复用 core 实现，公开 API 不变；token 生成 / 撤销等业务仍留本类。
+from novamind.core.auth.token import (
+    TOKEN_TYPE_ACCESS as _CORE_TOKEN_TYPE_ACCESS,
+    decode_access_token as _core_decode_access_token,
+    decode_token_payload as _core_decode_token_payload,
+)
+from novamind.core.auth.blacklist import (
+    TOKEN_BLACKLIST_PREFIX as _CORE_TOKEN_BLACKLIST_PREFIX,
+    USER_TOKENS_PREFIX as _CORE_USER_TOKENS_PREFIX,
+    USER_BLACKLIST_PREFIX as _CORE_USER_BLACKLIST_PREFIX,
+    BLACKLIST_DEFAULT_TTL as _CORE_BLACKLIST_DEFAULT_TTL,
+    is_token_revoked as _core_is_token_revoked,
+    is_user_blacklisted as _core_is_user_blacklisted,
+    AuthBlacklistError,
+)
 
 
 class AuthService:
@@ -38,16 +54,16 @@ class AuthService:
 
     _logger = get_logger(__name__)
 
-    # Token 类型
-    TOKEN_TYPE_ACCESS = "access"
+    # Token 类型（值来自 core/auth/token 单一来源）
+    TOKEN_TYPE_ACCESS = _CORE_TOKEN_TYPE_ACCESS
     TOKEN_TYPE_REFRESH = "refresh"
 
-    # Token 黑名单 Redis 键前缀
-    TOKEN_BLACKLIST_PREFIX = "token_blacklist:"
-    USER_TOKENS_PREFIX = "user_tokens:"
+    # Token 黑名单 Redis 键前缀（值来自 core/auth/blacklist 单一来源）
+    TOKEN_BLACKLIST_PREFIX = _CORE_TOKEN_BLACKLIST_PREFIX
+    USER_TOKENS_PREFIX = _CORE_USER_TOKENS_PREFIX
 
-    # 黑名单默认过期时间（7天，与 Refresh Token 一致）
-    BLACKLIST_DEFAULT_TTL = 7 * 24 * 60 * 60
+    # 黑名单默认过期时间（7天，与 Refresh Token 一致；值来自 core/auth/blacklist）
+    BLACKLIST_DEFAULT_TTL = _CORE_BLACKLIST_DEFAULT_TTL
 
     @classmethod
     def _get_redis_client(cls):
@@ -297,41 +313,19 @@ class AuthService:
         Returns:
             TokenData: token 数据，如果无效则 None
         """
-        config = get_config()
-        try:
-            payload = jwt.decode(
-                token,
-                config.security.secret_key,
-                algorithms=[config.security.algorithm],
-            )
-
-            # 检查 token 类型
-            token_type = payload.get("type", cls.TOKEN_TYPE_ACCESS)
-            if token_type != cls.TOKEN_TYPE_ACCESS:
-                cls._logger.warning("Token 类型错误，需要 access token")
-                return None
-
-            # 提取用户信息
-            username = payload.get("sub")
-            if username is None:
-                cls._logger.warning("Token 无效: 缺少用户名")
-                return None
-
-            return TokenData(
-                user_id=payload.get("user_id"),
-                username=username,
-                email=payload.get("email"),
-                is_admin=payload.get("is_admin", payload.get("role") == "admin"),  # 兼容旧 Token
-                status=payload.get("status", 1),
-                jti=payload.get("jti"),
-                iat=payload.get("iat"),
-            )
-        except jwt.ExpiredSignatureError:
-            cls._logger.warning("Token 已过期")
+        # JWT 解码下沉 core/auth/token（原 jwt.decode 逻辑归位认证基础设施）
+        claims = _core_decode_access_token(token)
+        if claims is None:
             return None
-        except jwt.PyJWTError as e:
-            cls._logger.warning("Token 验证失败", error=str(e))
-            return None
+        return TokenData(
+            user_id=claims.user_id,
+            username=claims.username,
+            email=claims.email,
+            is_admin=claims.is_admin,
+            status=claims.status,
+            jti=claims.jti,
+            iat=claims.iat,
+        )
 
     @classmethod
     async def verify_token_async(cls, token: str) -> Optional[TokenData]:
@@ -370,15 +364,8 @@ class AuthService:
         Returns:
             dict: payload 或 None
         """
-        config = get_config()
-        try:
-            return jwt.decode(
-                token,
-                config.security.secret_key,
-                algorithms=[config.security.algorithm],
-            )
-        except jwt.PyJWTError:
-            return None
+        # JWT 解码下沉 core/auth/token
+        return _core_decode_token_payload(token)
 
     @classmethod
     async def revoke_token(cls, jti: str, expires_seconds: int = None) -> None:
@@ -415,18 +402,12 @@ class AuthService:
         Returns:
             bool: 是否已撤销
         """
-        if not jti:
-            return False
-
+        # 黑名单查询下沉 core/auth/blacklist
         try:
-            get_redis = cls._get_redis_client()
-            redis_client = await get_redis()
-            cache_key = f"{cls.TOKEN_BLACKLIST_PREFIX}{jti}"
-            result = await redis_client.exists(cache_key)
-            return result > 0
-        except Exception as e:
-            cls._logger.error("检查 Token 黑名单失败", jti=jti[:8] + "...", error=str(e))
-            raise TokenInvalidError(f"检查 Token 黑名单失败: {str(e)}")
+            return await _core_is_token_revoked(jti)
+        except AuthBlacklistError as e:
+            cls._logger.error("检查 Token 黑名单失败", jti=(jti or "")[:8] + "...", error=str(e))
+            raise TokenInvalidError(f"检查 Token 黑名单失败: {str(e)}") from e
 
     @classmethod
     async def logout(cls, token: str) -> bool:
@@ -517,8 +498,8 @@ class AuthService:
             cls._logger.error("添加用户 token 记录失败", user_id=user_id, error=str(e))
             raise TokenInvalidError(f"添加用户 token 记录失败: {str(e)}")
 
-    # 用户级 Token 黑名单键前缀
-    USER_BLACKLIST_PREFIX = "user_blacklist:"
+    # 用户级 Token 黑名单键前缀（值来自 core/auth/blacklist 单一来源）
+    USER_BLACKLIST_PREFIX = _CORE_USER_BLACKLIST_PREFIX
 
     @classmethod
     async def blacklist_all_user_tokens(cls, user_id: int) -> None:
@@ -573,24 +554,8 @@ class AuthService:
         Returns:
             bool: 是否在黑名单中
         """
-        try:
-            get_redis = cls._get_redis_client()
-            redis_client = await get_redis()
-            key = f"{cls.USER_BLACKLIST_PREFIX}{user_id}"
-            result = await redis_client.get(key)
-            if result is None:
-                return False
-            # 如果提供了 token 签发时间，仅当 Token 在黑名单设置之前签发时才视为黑名单
-            if token_iat is not None:
-                blacklist_time = int(result)
-                return token_iat < blacklist_time
-            return True
-        except Exception as e:
-            cls._logger.error(
-                "检查用户级黑名单失败（安全策略：fail-close，拒绝访问）",
-                user_id=user_id, error=str(e),
-            )
-            return True  # fail-close: 异常时拒绝访问
+        # 用户级黑名单查询下沉 core/auth/blacklist（含 fail-close 与 iat 精确判断）
+        return await _core_is_user_blacklisted(user_id, token_iat=token_iat)
 
     # ==================== 密码重置 Token ====================
 
