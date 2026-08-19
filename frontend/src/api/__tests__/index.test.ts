@@ -89,6 +89,8 @@ describe('api/index', () => {
       configurable: true,
       value: locationState,
     })
+    // 重置 MockWebSocket 实例池（class 在下方声明，test 时已赋值）
+    MockWebSocket.instances = []
   })
 
   it('manages tokens in localStorage', async () => {
@@ -297,5 +299,109 @@ describe('api/index', () => {
     await expect(
       createSSEStream('/chat/stream', {}, { onMessage: vi.fn() }),
     ).rejects.toThrow('stream failed')
+  })
+
+  // ===== createWebSocketStream =====
+  // MockWebSocket：捕获构造参数，暴露 onopen/onmessage/onerror/onclose 供测试触发，
+  // send/close 为 vi.fn 供断言。实例池供测试取回。
+  class MockWebSocket {
+    static instances: MockWebSocket[] = []
+    url: string
+    protocols: string[] | string
+    onopen: (() => void) | null = null
+    onmessage: ((evt: { data: string }) => void) | null = null
+    onerror: (() => void) | null = null
+    onclose: ((evt: { code: number; reason?: string }) => void) | null = null
+    send = vi.fn()
+    close = vi.fn()
+    readyState = 0
+    constructor(url: string, protocols?: string[] | string) {
+      this.url = url
+      this.protocols = protocols ?? []
+      MockWebSocket.instances.push(this)
+    }
+  }
+
+  it('createWebSocketStream streams content + done frames then resolves on close 1000', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'ws://test.host/api/v1')
+    vi.stubGlobal('WebSocket', MockWebSocket)
+    localStorage.setItem('access_token', 'test-token')
+
+    const { createWebSocketStream } = await loadApiModule()
+    const onMessage = vi.fn()
+    const body = { message: 'hi' }
+
+    const promise = createWebSocketStream(
+      '/agent/agents/1/ws',
+      body,
+      { onMessage },
+    )
+
+    const ws = MockWebSocket.instances[0]!
+
+    // 构造参数：fullUrl + subprotocols
+    expect(ws.url).toBe('ws://test.host/api/v1/agent/agents/1/ws')
+    expect(ws.protocols).toEqual(['bearer.test-token'])
+
+    // onopen → ws.send({action:'chat', payload: body})
+    ws.onopen!()
+    expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ action: 'chat', payload: body }))
+
+    // 喂两帧
+    ws.onmessage!({ data: JSON.stringify({ type: 'content', data: { content: 'hi' } }) })
+    ws.onmessage!({ data: JSON.stringify({ type: 'done', data: { ok: true } }) })
+    // onMessage 经 setTimeout(0) 异步 flush，等一个宏任务
+    await new Promise((r) => setTimeout(r, 0))
+    expect(onMessage).toHaveBeenNthCalledWith(1, { type: 'content', data: { content: 'hi' } })
+    expect(onMessage).toHaveBeenNthCalledWith(2, { type: 'done', data: { ok: true } })
+
+    // close 1000 → promise resolve
+    ws.onclose!({ code: 1000 })
+    await expect(promise).resolves.toBeUndefined()
+  })
+
+  it('createWebSocketStream rejects on auth-failure close code 4401', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'ws://test.host/api/v1')
+    vi.stubGlobal('WebSocket', MockWebSocket)
+    localStorage.setItem('access_token', 'test-token')
+
+    const { createWebSocketStream } = await loadApiModule()
+    const onMessage = vi.fn()
+
+    const promise = createWebSocketStream(
+      '/agent/agents/1/ws',
+      { message: 'hi' },
+      { onMessage },
+    )
+
+    const ws = MockWebSocket.instances[0]!
+    // 直接 close 4401（握手期认证失败，未 onopen）
+    ws.onclose!({ code: 4401, reason: 'unauthorized' })
+
+    await expect(promise).rejects.toThrow('unauthorized')
+    expect(onMessage).not.toHaveBeenCalled()
+  })
+
+  it('createWebSocketStream resolves and closes ws when AbortSignal already aborted', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'ws://test.host/api/v1')
+    vi.stubGlobal('WebSocket', MockWebSocket)
+    localStorage.setItem('access_token', 'test-token')
+
+    const { createWebSocketStream } = await loadApiModule()
+    const onMessage = vi.fn()
+    const ac = new AbortController()
+    ac.abort()
+
+    const promise = createWebSocketStream(
+      '/agent/agents/1/ws',
+      { message: 'hi' },
+      { onMessage, signal: ac.signal },
+    )
+
+    // 预先 aborted → 内部 ws.close(1000, 'cancel') + resolve，不触发 onopen/onmessage
+    await expect(promise).resolves.toBeUndefined()
+    const ws = MockWebSocket.instances[0]!
+    expect(ws.close).toHaveBeenCalledWith(1000, 'cancel')
+    expect(onMessage).not.toHaveBeenCalled()
   })
 })

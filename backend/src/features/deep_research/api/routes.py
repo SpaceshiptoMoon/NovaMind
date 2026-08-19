@@ -2,11 +2,9 @@
 深度研究 API 路由
 """
 
-import json
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Path, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.auth import UserStatusResolver, get_current_user, get_user_status_resolver
@@ -230,56 +228,6 @@ async def research_ws(
         request=data,
     )
     await run_stream_to_ws(websocket, gen)
-
-
-async def _research_stream_sse(gen):
-    """dict 事件 → SSE 帧（过渡期保留 SSE 端点兼容前端，W6 移除）"""
-    async for d in gen:
-        yield f"event: {d['type']}\ndata: {json.dumps(d['data'], ensure_ascii=False)}\n\n"
-
-
-@router.post(
-    "/stream",
-    response_class=StreamingResponse,
-    summary="执行深度研究（流式）",
-    description="基于知识空间执行深度研究，流式返回进度和报告内容",
-)
-async def execute_research_stream(
-    request: ResearchRequest,
-    validated: tuple = Depends(validate_space_access),
-    research_service: DeepResearchService = Depends(get_deep_research_service),
-    current_user: dict = Depends(get_current_user),
-):
-    """
-    执行深度研究（流式 SSE，过渡）
-
-    返回 Server-Sent Events (SSE) 格式的流式数据。
-
-    事件类型：
-    - progress: 进度更新
-    - content: 报告内容片段
-    - error: 错误信息
-    - done: 研究完成
-    """
-    space, member = validated
-    space_id = space.id
-    user_id = current_user["id"]
-
-    return StreamingResponse(
-        _research_stream_sse(
-            research_service.research_stream(
-                space_id=space_id,
-                user_id=user_id,
-                request=request,
-            )
-        ),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 @router.get(

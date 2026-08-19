@@ -68,73 +68,6 @@
         "title": "AgentActionResponse",
         "type": "object"
       },
-      "AgentChatRequest": {
-        "description": "Agent 对话请求",
-        "properties": {
-          "attachment_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "附件ID列表",
-            "title": "Attachment Ids"
-          },
-          "content": {
-            "description": "用户消息内容",
-            "minLength": 1,
-            "title": "Content",
-            "type": "string"
-          },
-          "enable_thinking": {
-            "default": false,
-            "description": "是否开启深度思考模式",
-            "title": "Enable Thinking",
-            "type": "boolean"
-          },
-          "llm_model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "覆盖 Agent 的 LLM 模型",
-            "title": "Llm Model"
-          },
-          "session_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "会话 ID，不传则创建新会话",
-            "title": "Session Id"
-          },
-          "stream": {
-            "default": true,
-            "description": "是否流式输出",
-            "title": "Stream",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "content"
-        ],
-        "title": "AgentChatRequest",
-        "type": "object"
-      },
       "AgentCreate": {
         "description": "创建 Agent",
         "properties": {
@@ -1565,35 +1498,6 @@
           "content"
         ],
         "title": "ChunkResponse",
-        "type": "object"
-      },
-      "ClawMateChatRequest": {
-        "description": "ClawMate AI 对话请求",
-        "properties": {
-          "content": {
-            "description": "用户消息",
-            "maxLength": 50000,
-            "minLength": 1,
-            "title": "Content",
-            "type": "string"
-          },
-          "model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "LLM 模型名称，不传则使用默认模型",
-            "title": "Model"
-          }
-        },
-        "required": [
-          "content"
-        ],
-        "title": "ClawMateChatRequest",
         "type": "object"
       },
       "CompressionConfig": {
@@ -11954,79 +11858,6 @@
         ]
       }
     },
-    "/api/v1/agent/agents/{agent_id}/chat-stream": {
-      "post": {
-        "description": "与 Agent 进行流式对话，返回 SSE 格式的事件流",
-        "operationId": "chat_stream_api_v1_agent_agents__agent_id__chat_stream_post",
-        "parameters": [
-          {
-            "description": "Agent ID",
-            "in": "path",
-            "name": "agent_id",
-            "required": true,
-            "schema": {
-              "description": "Agent ID",
-              "exclusiveMinimum": 0,
-              "title": "Agent Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "minio_client",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {},
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Minio Client"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentChatRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Agent 对话（SSE 流式）",
-        "tags": [
-          "Agent 智能体"
-        ]
-      }
-    },
     "/api/v1/agent/agents/{agent_id}/memories": {
       "get": {
         "description": "获取指定 Agent 的长期记忆列表，支持按类别过滤和分页",
@@ -13153,46 +12984,6 @@
         ]
       }
     },
-    "/api/v1/ai-chat/chat-stream": {
-      "post": {
-        "description": "执行AI流式对话，返回SSE格式的流式数据",
-        "operationId": "chat_stream_api_v1_ai_chat_chat_stream_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChatRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "AI对话（流式）",
-        "tags": [
-          "AI 聊天"
-        ]
-      }
-    },
     "/api/v1/ai-chat/clear-chat": {
       "delete": {
         "description": "清除指定会话的所有聊天记录",
@@ -13637,51 +13428,6 @@
         "summary": "Upload Resume",
         "tags": [
           "应用中心"
-        ]
-      }
-    },
-    "/api/v1/clawmate/chat": {
-      "post": {
-        "description": "与 ClawMate AI 助手进行流式对话。自动创建 session，无需先调用初始化接口。",
-        "operationId": "chat_api_v1_clawmate_chat_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ClawMateChatRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "AI 对话（SSE 流式）",
-        "tags": [
-          "ClawMate 终端"
         ]
       }
     },
@@ -17353,57 +17099,6 @@
           }
         ],
         "summary": "执行深度研究（非流式）",
-        "tags": [
-          "深度研究"
-        ]
-      }
-    },
-    "/api/v1/spaces/{space_id}/deep-research/stream": {
-      "post": {
-        "description": "基于知识空间执行深度研究，流式返回进度和报告内容",
-        "operationId": "execute_research_stream_api_v1_spaces__space_id__deep_research_stream_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "space_id",
-            "required": true,
-            "schema": {
-              "title": "Space Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ResearchRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "执行深度研究（流式）",
         "tags": [
           "深度研究"
         ]

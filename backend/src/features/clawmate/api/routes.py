@@ -5,10 +5,7 @@ ClawMate API 路由
 所有端点需要 JWT 认证。
 """
 
-import json
-
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse
 
 from novamind.core.auth import UserStatusResolver, get_current_user, get_user_status_resolver
 from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
@@ -396,37 +393,3 @@ async def chat_ws(
         model=data.model,
     )
     await run_stream_to_ws(websocket, gen)
-
-
-async def _chat_stream_sse(gen):
-    """dict 事件 → SSE 帧（过渡期保留 SSE 端点兼容前端，W6 移除）"""
-    async for d in gen:
-        yield f"event: {d['type']}\ndata: {json.dumps(d['data'], ensure_ascii=False)}\n\n"
-
-
-@router.post(
-    "/chat",
-    summary="AI 对话（SSE 流式）",
-    description="与 ClawMate AI 助手进行流式对话。自动创建 session，无需先调用初始化接口。",
-)
-async def chat(
-    data: ClawMateChatRequest,
-    current_user: dict = Depends(get_current_user),
-    service: ClawMateChatService = Depends(get_chat_service),
-):
-    user_id = _get_user_id(current_user)
-    return StreamingResponse(
-        _chat_stream_sse(
-            service.chat_stream(
-                user_id=user_id,
-                content=data.content,
-                model=data.model,
-            )
-        ),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
