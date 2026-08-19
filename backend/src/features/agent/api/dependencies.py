@@ -3,7 +3,7 @@ Agent 模块依赖注入
 """
 from typing import Any, Optional
 
-from fastapi import Depends, Request
+from fastapi import Depends, Request, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.auth import get_current_user
@@ -40,6 +40,16 @@ def get_agent_engine(request: Request) -> AgentEngine:
 
 def get_todo_store(request: Request) -> TodoStore:
     return request.app.state.agent_todo_store
+
+
+# WebSocket 版：WS 端点无法注入 HTTP Request，改从 websocket.app.state 取。
+# FastAPI WS 依赖会注入 websocket: WebSocket 参数（类比 HTTP 的 request: Request）。
+def get_agent_engine_ws(websocket: WebSocket) -> AgentEngine:
+    return websocket.app.state.agent_engine
+
+
+def get_todo_store_ws(websocket: WebSocket) -> TodoStore:
+    return websocket.app.state.agent_todo_store
 
 
 async def get_minio_client_for_presign():
