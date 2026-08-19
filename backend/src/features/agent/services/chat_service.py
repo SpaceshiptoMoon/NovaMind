@@ -12,6 +12,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.shared.search_config_ports import SearchConfigPort
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.engines.agent.agent_engine import AgentEngine, AgentEvent
 from novamind.engines.agent.memory.memory_manager import MemoryManager
@@ -57,6 +58,7 @@ class AgentChatService:
         knowledge_search_port: Optional[HostKnowledgeSearchPort] = None,
         web_search_port: Optional[HostWebSearchPort] = None,
         prompt_provider: Optional[HostPromptProvider] = None,
+        search_config_port: Optional[SearchConfigPort] = None,
     ):
         self.db = db
         self.agent_service = agent_service
@@ -70,6 +72,7 @@ class AgentChatService:
         self._knowledge_search_port = knowledge_search_port
         self._web_search_port = web_search_port
         self._prompt_provider = prompt_provider
+        self._search_config_port = search_config_port
         self.msg_repo = MessageRepository(db)
         self.tc_repo = ToolCallRepository(db)
         self.session_repo = SessionRepository(db)
@@ -109,7 +112,13 @@ class AgentChatService:
             memory_search = self._memory_search_port
             prompt_provider = self._prompt_provider
             knowledge_search_port = self._knowledge_search_port
-            web_search_port = self._web_search_port
+
+            # web_search_port：Agent 创建时勾选 web_search 工具即启用，
+            # 按用户首选搜索引擎配置 → YAML 兜底解析（聊天页不提供开关/供应商选择）
+            if "web_search" in (agent.enabled_tools or []):
+                web_search_port = await self._resolve_web_search_port(user_id)
+            else:
+                web_search_port = None
 
             # 创建 MemoryManager（每请求实例）
             memory_manager = self._create_memory_manager(
@@ -138,6 +147,7 @@ class AgentChatService:
 
             full_response = ""
             full_reasoning = ""
+            collected_sources: List[Dict[str, Any]] = []
             scrubber = StreamingContextScrubber()
             reasoning_scrubber = StreamingContextScrubber()
 
@@ -166,6 +176,7 @@ class AgentChatService:
 
                 elif event.event_type == "tool_result":
                     await self._handle_tool_result(event, conv, context)
+                    self._extract_sources(event, collected_sources)
                     yield self._format_sse("tool_result", event.data)
 
                 elif event.event_type == "reasoning":
@@ -192,8 +203,13 @@ class AgentChatService:
                         full_reasoning += remaining_r
                     if event.data.get("truncated", False):
                         full_response += "\n\n[Agent 已达到最大迭代次数，对话被截断]"
+                    # 发送结构化来源引用（对齐 QA sources 事件）
+                    if collected_sources:
+                        yield self._format_sse("sources", {"sources": collected_sources})
                     done_data = await self._handle_done(
-                        event, conv, content, full_response, reasoning=full_reasoning or None
+                        event, conv, content, full_response,
+                        reasoning=full_reasoning or None,
+                        sources=collected_sources or None,
                     )
                     yield self._format_sse("done", done_data)
 
@@ -228,6 +244,45 @@ class AgentChatService:
         if not model:
             raise AgentError("未配置可用的 LLM 模型，请先在模型配置中添加 LLM 模型")
         return model
+
+    async def _resolve_web_search_port(
+        self,
+        user_id: int,
+    ) -> Optional[object]:
+        """按用户配置解析 WebSearchPort（对齐 QA ``_resolve_web_search_port`` 择优链，去掉请求级指定）。
+
+        1. 用户首选配置 → SearchConfigPort.get_primary_search_config()
+           → engines.build_web_search_port_from_provider()
+        2. YAML 全局兜底 → build_web_search_port()（Tavily 优先 → DuckDuckGo）
+        均失败返回 None。
+        """
+        from novamind.engines.search_ports import build_web_search_port_from_provider
+        from novamind.engines.search_errors import WebSearchError
+        from novamind.features.deep_research.adapters.web_search_port_adapter import build_web_search_port
+
+        # 1. 用户首选配置
+        if self._search_config_port is not None:
+            try:
+                creds = await self._search_config_port.get_primary_search_config(user_id)
+                if creds is not None:
+                    try:
+                        return build_web_search_port_from_provider(
+                            creds.provider, creds.api_key, creds.extra_config
+                        )
+                    except WebSearchError as e:
+                        logger.warning(
+                            "用户首选搜索端口构造失败，回退 YAML 兜底",
+                            provider=creds.provider, error=str(e),
+                        )
+            except Exception as e:
+                logger.warning("读取用户首选搜索配置失败，回退 YAML 兜底", error=str(e))
+
+        # 2. YAML 全局兜底（build_web_search_port: Tavily → DuckDuckGo）
+        try:
+            return build_web_search_port()
+        except Exception as e:
+            logger.warning("YAML 搜索端口兜底构造失败", error=str(e))
+            return None
 
     def _create_memory_manager(
         self,
@@ -643,6 +698,57 @@ class AgentChatService:
                 logger.warning("技能指令注入失败", skill_ref=skill_ref, error=str(e))
         return fragments
 
+    # ==================== 来源提取 ====================
+
+    def _extract_sources(
+        self, event: AgentEvent, collected_sources: List[Dict[str, Any]]
+    ) -> None:
+        """从 tool_result 事件中提取结构化来源引用（对齐 QA SourceRef）。"""
+        tool_name = event.data.get("tool_name", "")
+        result_str = event.data.get("result", "")
+        if not result_str:
+            return
+
+        try:
+            result_obj = json.loads(result_str)
+        except (json.JSONDecodeError, TypeError):
+            return
+
+        if tool_name == "web_search":
+            items = result_obj.get("results", [])
+            if not isinstance(items, list):
+                return
+            start_idx = len(collected_sources)
+            for i, item in enumerate(items):
+                if not isinstance(item, dict):
+                    continue
+                collected_sources.append({
+                    "index": start_idx + i + 1,
+                    "kind": "web",
+                    "document_name": str(item.get("title", "") or ""),
+                    "url": str(item.get("url", "") or ""),
+                    "snippet": str(item.get("snippet", "") or ""),
+                })
+        elif tool_name == "knowledge_search":
+            items = result_obj.get("results", [])
+            if not isinstance(items, list):
+                return
+            start_idx = len(collected_sources)
+            for i, item in enumerate(items):
+                if not isinstance(item, dict):
+                    continue
+                fi = item.get("file_info") or {}
+                metadata = item.get("metadata") or {}
+                collected_sources.append({
+                    "index": start_idx + i + 1,
+                    "kind": "kb",
+                    "document_id": item.get("document_id"),
+                    "document_name": str(fi.get("filename", "") or ""),
+                    "chunk_id": item.get("chunk_id") or metadata.get("chunk_id"),
+                    "score": item.get("score"),
+                    "snippet": str(item.get("content", "") or "")[:500],
+                })
+
     # ==================== 事件处理 ====================
 
     async def _handle_tool_call(
@@ -712,6 +818,7 @@ class AgentChatService:
         user_content: str,
         full_response: str,
         reasoning: Optional[str] = None,
+        sources: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """处理 done 事件：保存 assistant 消息、更新统计、设置标题"""
         total_tokens = event.data.get("total_tokens", 0)
@@ -735,6 +842,8 @@ class AgentChatService:
         await self.db.commit()
 
         event.data["message_id"] = assistant_msg.id
+        if sources:
+            event.data["sources"] = sources
         return event.data
 
     # ==================== 上下文自动压缩 ====================

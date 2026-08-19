@@ -68,6 +68,7 @@ class WebSearchTool(BaseTool):
 
     async def _search(self, args: Dict[str, Any], context: Dict[str, Any]) -> str:
         """执行网页搜索"""
+        port = None
         try:
             port = context.get("web_search_port")
             if port is None:
@@ -105,6 +106,12 @@ class WebSearchTool(BaseTool):
         except Exception as e:
             logger.error("网页搜索失败", error=str(e))
             return json.dumps({"error": f"搜索失败：{str(e)}"}, ensure_ascii=False)
+        finally:
+            if port is not None:
+                try:
+                    await port.close()
+                except Exception:
+                    pass
 
     def get_system_prompt_fragment(self) -> str:
         return (

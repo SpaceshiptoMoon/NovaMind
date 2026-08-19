@@ -157,6 +157,7 @@ class HostKnowledgeSearchPort:
         top_k: int = 5,
         search_mode: str = "content_hybrid",
         kb_id: Optional[int] = None,
+        score_threshold: Optional[float] = None,
     ) -> List[KnowledgeSearchItem]:
         from novamind.features.knowledge_space.schemas.search_schema import (
             SearchRequest,
@@ -169,6 +170,7 @@ class HostKnowledgeSearchPort:
             query=query,
             search_mode=search_mode,
             top_k=top_k,
+            score_threshold=score_threshold if score_threshold is not None else 0.0,
         )
         search_service = await self._build_search_service()
 
@@ -235,8 +237,6 @@ class HostKnowledgeSearchPort:
             DocumentInfo(
                 id=doc.id,
                 filename=doc.filename,
-                status=doc.status.value if hasattr(doc.status, "value") else str(doc.status),
-                chunk_count=doc.doc_metadata.get("chunk_count", 0) if doc.doc_metadata else 0,
             )
             for doc in documents
         ]

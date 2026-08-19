@@ -15,6 +15,7 @@
 - [`repository-structure-cleanup-execution-plan.md`](./repository-structure-cleanup-execution-plan.md)：按批次展开的执行计划
 - [`repository-structure-cleanup-thorough-implementation.md`](./repository-structure-cleanup-thorough-implementation.md)：更彻底的清理版本
 - [`REFACTOR-qa-rag-pipeline.md`](./REFACTOR-qa-rag-pipeline.md)：QA 检索增强问答管道重构
+- [`agent-capability-pluggable-plan.md`](./agent-capability-pluggable-plan.md)：Agent 能力可插拔化（MCP / 搜索 / 工具，创建页可选 + 聊天页开关与供应商选择）
 
 ## 使用约定
 

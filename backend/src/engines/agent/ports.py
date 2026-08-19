@@ -54,7 +54,7 @@ class DocumentInfo:
 
     id: int
     filename: str
-    status: str
+    status: str = ""
     chunk_count: int = 0
 
 
@@ -97,8 +97,12 @@ class KnowledgeSearchPort(Protocol):
         top_k: int = 5,
         search_mode: str = "content_hybrid",
         kb_id: Optional[int] = None,
+        score_threshold: Optional[float] = None,
     ) -> List[KnowledgeSearchItem]:
-        """知识库检索；kb_id 为 None 时在该空间 Top N 知识库间跨库检索。"""
+        """知识库检索；kb_id 为 None 时在该空间 Top N 知识库间跨库检索。
+
+        score_threshold 非空时下推到 SearchRequest 在检索服务层预过滤低分块。
+        """
         ...
 
     async def list_documents(

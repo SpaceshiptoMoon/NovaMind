@@ -11,6 +11,7 @@ import type {
   ToolProvider,
   ToolCallRecord,
   ChatAttachment,
+  SourceRef,
 } from '@/api/types'
 
 export const useAgentStore = defineStore('agent', () => {
@@ -36,6 +37,7 @@ export const useAgentStore = defineStore('agent', () => {
   const isStreaming = ref(false)
   const streamingContent = ref('')
   const streamingReasoning = ref('')
+  const streamingSources = ref<SourceRef[]>([])
   const toolCalls = ref<ToolCallRecord[]>([])
   const abortController = ref<AbortController | null>(null)
   const loading = ref(false)
@@ -138,8 +140,12 @@ export const useAgentStore = defineStore('agent', () => {
 
   // ===================== SSE 流式对话 =====================
 
-  async function sendMessageStream(agentId: number, content: string, options?: { llm_model?: string; enable_thinking?: boolean; attachmentIds?: number[] }) {
-    if (!content.trim() && (!options?.attachmentIds?.length)) return
+  async function sendMessageStream(
+    agentId: number,
+    content: string,
+    options?: { llm_model?: string; enable_thinking?: boolean; attachmentIds?: number[] },
+  ) {
+    if (!content.trim() && !options?.attachmentIds?.length) return
 
     // 添加用户消息
     const userMsg: AgentMessage = {
@@ -152,7 +158,11 @@ export const useAgentStore = defineStore('agent', () => {
       token_count: null,
       created_at: new Date().toISOString(),
       extra: options?.attachmentIds?.length
-        ? { attachments: pendingAttachments.value.filter(a => options.attachmentIds!.includes(a.id)) }
+        ? {
+            attachments: pendingAttachments.value.filter((a) =>
+              options.attachmentIds!.includes(a.id),
+            ),
+          }
         : null,
     }
     messages.value.push(userMsg)
@@ -161,6 +171,7 @@ export const useAgentStore = defineStore('agent', () => {
     isStreaming.value = true
     streamingContent.value = ''
     streamingReasoning.value = ''
+    streamingSources.value = []
     toolCalls.value = []
     error.value = null
 
@@ -188,101 +199,119 @@ export const useAgentStore = defineStore('agent', () => {
     }
 
     try {
-      await agentApi.chatStream(agentId, {
-        content,
-        session_id: currentSessionId.value || null,
-        llm_model: options?.llm_model || null,
-        enable_thinking: options?.enable_thinking,
-        stream: true,
-        attachment_ids: options?.attachmentIds,
-      }, {
-        signal: controller.signal,
-        onSession(d) {
-          if (!currentSessionId.value) {
-            currentSessionId.value = d.session_id
-            conversations.value.unshift({
-              id: 0,
-              user_id: 0,
-              agent_id: agentId,
-              session_id: d.session_id,
-              title: content.slice(0, 30),
-              status: 'active',
-              message_count: 1,
-              total_tokens_used: 0,
+      await agentApi.chatStream(
+        agentId,
+        {
+          content,
+          session_id: currentSessionId.value || null,
+          llm_model: options?.llm_model || null,
+          enable_thinking: options?.enable_thinking,
+          stream: true,
+          attachment_ids: options?.attachmentIds,
+        },
+        {
+          signal: controller.signal,
+          onSession(d) {
+            if (!currentSessionId.value) {
+              currentSessionId.value = d.session_id
+              conversations.value.unshift({
+                id: 0,
+                user_id: 0,
+                agent_id: agentId,
+                session_id: d.session_id,
+                title: content.slice(0, 30),
+                status: 'active',
+                message_count: 1,
+                total_tokens_used: 0,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+            }
+          },
+          onToolCall(d) {
+            const record: ToolCallRecord = {
+              toolName: d.tool_name,
+              arguments: d.arguments,
+              callId: d.call_id,
+              status: 'running',
+            }
+            toolCalls.value.push(record)
+
+            const toolMsg: AgentMessage = {
+              id: Date.now() + Math.random(),
+              conversation_id: 0,
+              role: 'tool',
+              content: null,
+              tool_call_id: d.call_id,
+              tool_name: d.tool_name,
+              token_count: null,
               created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            })
-          }
-        },
-        onToolCall(d) {
-          const record: ToolCallRecord = {
-            toolName: d.tool_name,
-            arguments: d.arguments,
-            callId: d.call_id,
-            status: 'running',
-          }
-          toolCalls.value.push(record)
+            }
 
-          const toolMsg: AgentMessage = {
-            id: Date.now() + Math.random(),
-            conversation_id: 0,
-            role: 'tool',
-            content: null,
-            tool_call_id: d.call_id,
-            tool_name: d.tool_name,
-            token_count: null,
-            created_at: new Date().toISOString(),
-          }
+            if (assistantIndex >= 0) {
+              messages.value.splice(assistantIndex, 0, toolMsg)
+              assistantIndex++
+            } else {
+              messages.value.push(toolMsg)
+            }
+          },
+          onToolResult(d) {
+            const call = toolCalls.value.find((c) => c.callId === d.call_id)
+            if (call) {
+              call.status = d.status === 'completed' ? 'completed' : 'failed'
+              call.result = d.result
+              call.durationMs = d.duration_ms
+            }
 
-          if (assistantIndex >= 0) {
-            messages.value.splice(assistantIndex, 0, toolMsg)
-            assistantIndex++
-          } else {
-            messages.value.push(toolMsg)
-          }
-        },
-        onToolResult(d) {
-          const call = toolCalls.value.find((c) => c.callId === d.call_id)
-          if (call) {
-            call.status = d.status === 'completed' ? 'completed' : 'failed'
-            call.result = d.result
-            call.durationMs = d.duration_ms
-          }
-
-          const toolMsg = messages.value.find((m) => m.tool_call_id === d.call_id && m.role === 'tool')
-          if (toolMsg) {
-            toolMsg.content = d.result
-          }
-        },
-        onReasoning(text) {
-          streamingReasoning.value += text || ''
-          ensureAssistant()
-          assistantMsg!.reasoning = streamingReasoning.value
-        },
-        onContent(text) {
-          streamingContent.value += text || ''
-          ensureAssistant()
-          assistantMsg!.content = streamingContent.value
-        },
-        onDone(d) {
-          ensureAssistant()
-          if (d.message_id) assistantMsg!.id = d.message_id
-          if (!assistantMsg!.content) {
+            const toolMsg = messages.value.find(
+              (m) => m.tool_call_id === d.call_id && m.role === 'tool',
+            )
+            if (toolMsg) {
+              toolMsg.content = d.result
+            }
+          },
+          onReasoning(text) {
+            streamingReasoning.value += text || ''
+            ensureAssistant()
+            assistantMsg!.reasoning = streamingReasoning.value
+          },
+          onContent(text) {
+            streamingContent.value += text || ''
+            ensureAssistant()
             assistantMsg!.content = streamingContent.value
-          }
-          controller.abort()
+          },
+          onSources(d) {
+            streamingSources.value = d.sources as SourceRef[]
+            ensureAssistant()
+            assistantMsg!.sources = streamingSources.value
+          },
+          onDone(d) {
+            ensureAssistant()
+            if (d.message_id) assistantMsg!.id = d.message_id
+            if (!assistantMsg!.content) {
+              assistantMsg!.content = streamingContent.value
+            }
+            if (d.sources) {
+              assistantMsg!.sources = d.sources
+            }
+            controller.abort()
+          },
+          onError(err) {
+            error.value = err.content
+            ensureAssistant()
+            if (!assistantMsg!.content) {
+              assistantMsg!.content = `[错误] ${err.content}`
+            }
+          },
         },
-        onError(err) {
-          error.value = err.content
-          ensureAssistant()
-          if (!assistantMsg!.content) {
-            assistantMsg!.content = `[错误] ${err.content}`
-          }
-        },
-      })
+      )
     } catch (e) {
-      if (assistantMsg && !assistantMsg.content) {
-        const idx = messages.value.indexOf(assistantMsg)
+      // 注意：assistantMsg 在闭包 ensureAssistant 中赋值，TS 在 catch 分支会将其
+      // 收窄为 null，直接读 `assistantMsg.content` 会把真值分支判成 never；
+      // 用 as 断言重置窄化类型绕过该陷阱。
+      const pendingAssistant = assistantMsg as AgentMessage | null
+      if (pendingAssistant && !pendingAssistant.content) {
+        const idx = messages.value.indexOf(pendingAssistant)
         if (idx !== -1) messages.value.splice(idx, 1)
       }
       if (e instanceof DOMException && e.name === 'AbortError') return
@@ -292,14 +321,19 @@ export const useAgentStore = defineStore('agent', () => {
       isStreaming.value = false
       streamingContent.value = ''
       streamingReasoning.value = ''
+      streamingSources.value = []
       abortController.value = null
     }
   }
 
   // ===================== 非流式对话 =====================
 
-  async function sendMessage(agentId: number, content: string, options?: { llm_model?: string; enable_thinking?: boolean; attachmentIds?: number[] }) {
-    if (!content.trim() && (!options?.attachmentIds?.length)) return
+  async function sendMessage(
+    agentId: number,
+    content: string,
+    options?: { llm_model?: string; enable_thinking?: boolean; attachmentIds?: number[] },
+  ) {
+    if (!content.trim() && !options?.attachmentIds?.length) return
 
     const userMsg: AgentMessage = {
       id: Date.now(),
@@ -311,7 +345,11 @@ export const useAgentStore = defineStore('agent', () => {
       token_count: null,
       created_at: new Date().toISOString(),
       extra: options?.attachmentIds?.length
-        ? { attachments: pendingAttachments.value.filter(a => options.attachmentIds!.includes(a.id)) }
+        ? {
+            attachments: pendingAttachments.value.filter((a) =>
+              options.attachmentIds!.includes(a.id),
+            ),
+          }
         : null,
     }
     messages.value.push(userMsg)
@@ -327,92 +365,101 @@ export const useAgentStore = defineStore('agent', () => {
     try {
       let collectedContent = ''
       let collectedReasoning = ''
+      let collectedSources: SourceRef[] = []
       const collectedToolCalls: ToolCallRecord[] = []
 
-      await agentApi.chatStream(agentId, {
-        content,
-        session_id: currentSessionId.value || null,
-        llm_model: options?.llm_model || null,
-        enable_thinking: options?.enable_thinking,
-        stream: false,
-        attachment_ids: options?.attachmentIds,
-      }, {
-        signal: controller2.signal,
-        onSession(d) {
-          if (!currentSessionId.value) {
-            currentSessionId.value = d.session_id
-            conversations.value.unshift({
-              id: 0,
-              user_id: 0,
-              agent_id: agentId,
-              session_id: d.session_id,
-              title: content.slice(0, 30),
-              status: 'active',
-              message_count: 1,
-              total_tokens_used: 0,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
+      await agentApi.chatStream(
+        agentId,
+        {
+          content,
+          session_id: currentSessionId.value || null,
+          llm_model: options?.llm_model || null,
+          enable_thinking: options?.enable_thinking,
+          stream: false,
+          attachment_ids: options?.attachmentIds,
+        },
+        {
+          signal: controller2.signal,
+          onSession(d) {
+            if (!currentSessionId.value) {
+              currentSessionId.value = d.session_id
+              conversations.value.unshift({
+                id: 0,
+                user_id: 0,
+                agent_id: agentId,
+                session_id: d.session_id,
+                title: content.slice(0, 30),
+                status: 'active',
+                message_count: 1,
+                total_tokens_used: 0,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+            }
+          },
+          onToolCall(d) {
+            collectedToolCalls.push({
+              toolName: d.tool_name,
+              arguments: d.arguments,
+              callId: d.call_id,
+              status: 'running',
             })
-          }
-        },
-        onToolCall(d) {
-          collectedToolCalls.push({
-            toolName: d.tool_name,
-            arguments: d.arguments,
-            callId: d.call_id,
-            status: 'running',
-          })
-        },
-        onToolResult(d) {
-          const call = collectedToolCalls.find((c) => c.callId === d.call_id)
-          if (call) {
-            call.status = d.status === 'completed' ? 'completed' : 'failed'
-            call.result = d.result
-            call.durationMs = d.duration_ms
-          }
-        },
-        onReasoning(text) {
-          collectedReasoning += text || ''
-        },
-        onContent(text) {
-          collectedContent += text || ''
-        },
-        onDone(d) {
-          // Apply collected data once
-          toolCalls.value = collectedToolCalls
+          },
+          onToolResult(d) {
+            const call = collectedToolCalls.find((c) => c.callId === d.call_id)
+            if (call) {
+              call.status = d.status === 'completed' ? 'completed' : 'failed'
+              call.result = d.result
+              call.durationMs = d.duration_ms
+            }
+          },
+          onReasoning(text) {
+            collectedReasoning += text || ''
+          },
+          onContent(text) {
+            collectedContent += text || ''
+          },
+          onSources(d) {
+            collectedSources = d.sources as SourceRef[]
+          },
+          onDone(d) {
+            // Apply collected data once
+            toolCalls.value = collectedToolCalls
 
-          for (const tc of collectedToolCalls) {
-            const toolMsg: AgentMessage = {
-              id: Date.now() + Math.random(),
+            for (const tc of collectedToolCalls) {
+              const toolMsg: AgentMessage = {
+                id: Date.now() + Math.random(),
+                conversation_id: 0,
+                role: 'tool',
+                content: tc.result || null,
+                tool_call_id: tc.callId,
+                tool_name: tc.toolName,
+                token_count: null,
+                created_at: new Date().toISOString(),
+              }
+              messages.value.push(toolMsg)
+            }
+
+            const aiMsg: AgentMessage = {
+              id: d.message_id || Date.now() + 1,
               conversation_id: 0,
-              role: 'tool',
-              content: tc.result || null,
-              tool_call_id: tc.callId,
-              tool_name: tc.toolName,
+              role: 'assistant',
+              content: collectedContent,
+              tool_call_id: null,
+              tool_name: null,
               token_count: null,
               created_at: new Date().toISOString(),
+              reasoning: collectedReasoning || undefined,
+              sources: d.sources || collectedSources,
             }
-            messages.value.push(toolMsg)
-          }
-
-          const aiMsg: AgentMessage = {
-            id: d.message_id || Date.now() + 1,
-            conversation_id: 0,
-            role: 'assistant',
-            content: collectedContent,
-            tool_call_id: null,
-            tool_name: null,
-            token_count: null,
-            created_at: new Date().toISOString(),
-            reasoning: collectedReasoning || undefined,
-          }
-          messages.value.push(aiMsg)
-          controller2.abort()
+            messages.value.push(aiMsg)
+            controller2.abort()
+          },
+          onError(err) {
+            error.value = err.content
+          },
         },
-        onError(err) {
-          error.value = err.content
-        },
-      })
+      )
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return
       error.value = e instanceof Error ? e.message : '发送失败'
@@ -433,13 +480,17 @@ export const useAgentStore = defineStore('agent', () => {
     toolCalls.value = []
     streamingContent.value = ''
     streamingReasoning.value = ''
+    streamingSources.value = []
     error.value = null
     pendingAttachments.value = []
   }
 
   // ========== 附件管理 ==========
 
-  async function uploadAttachment(file: File, onProgress?: (percent: number) => void): Promise<ChatAttachment> {
+  async function uploadAttachment(
+    file: File,
+    onProgress?: (percent: number) => void,
+  ): Promise<ChatAttachment> {
     const { chatApi } = await import('@/api/chat')
     const result = await chatApi.uploadAttachment(file, onProgress)
     const attachment: ChatAttachment = {
@@ -453,7 +504,7 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   function removePendingAttachment(attachmentId: number) {
-    pendingAttachments.value = pendingAttachments.value.filter(a => a.id !== attachmentId)
+    pendingAttachments.value = pendingAttachments.value.filter((a) => a.id !== attachmentId)
   }
 
   function clearPendingAttachments() {
@@ -476,7 +527,10 @@ export const useAgentStore = defineStore('agent', () => {
     return server
   }
 
-  async function updateMcpServer(serverId: number, data: Parameters<typeof agentApi.updateMcpServer>[1]) {
+  async function updateMcpServer(
+    serverId: number,
+    data: Parameters<typeof agentApi.updateMcpServer>[1],
+  ) {
     const updated = await agentApi.updateMcpServer(serverId, data)
     const idx = mcpServers.value.findIndex((s) => s.id === serverId)
     if (idx !== -1) mcpServers.value[idx] = updated
@@ -536,6 +590,7 @@ export const useAgentStore = defineStore('agent', () => {
     isStreaming,
     streamingContent,
     streamingReasoning,
+    streamingSources,
     toolCalls,
     abortController,
     loading,

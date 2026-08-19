@@ -44,13 +44,42 @@ export const agentApi = {
 
   chatStream(
     agentId: number,
-    data: { content: string; session_id?: string | null; llm_model?: string | null; enable_thinking?: boolean; stream?: boolean; attachment_ids?: number[] },
+    data: {
+      content: string
+      session_id?: string | null
+      llm_model?: string | null
+      enable_thinking?: boolean
+      stream?: boolean
+      attachment_ids?: number[]
+    },
     callbacks: {
       onSession?: (d: { session_id: string; agent_id: number }) => void
-      onToolCall?: (d: { tool_name: string; arguments: Record<string, unknown>; call_id: string }) => void
-      onToolResult?: (d: { tool_name: string; result: string; duration_ms: number; status: string; call_id: string }) => void
+      onToolCall?: (d: {
+        tool_name: string
+        arguments: Record<string, unknown>
+        call_id: string
+      }) => void
+      onToolResult?: (d: {
+        tool_name: string
+        result: string
+        duration_ms: number
+        status: string
+        call_id: string
+      }) => void
       onReasoning?: (text: string) => void
       onContent?: (content: string) => void
+      onSources?: (d: {
+        sources: {
+          index: number
+          kind: string
+          document_name?: string | null
+          url?: string | null
+          snippet?: string | null
+          score?: number | null
+          document_id?: number | null
+          chunk_id?: string | null
+        }[]
+      }) => void
       onDone?: (d: AgentChatDoneData) => void
       onError?: (err: { content: string }) => void
       signal?: AbortSignal
@@ -75,6 +104,9 @@ export const agentApi = {
           case 'content':
             callbacks.onContent?.((e.data as { content: string }).content)
             break
+          case 'sources':
+            callbacks.onSources?.(e.data as Parameters<typeof callbacks.onSources>[0])
+            break
           case 'done':
             callbacks.onDone?.(e.data as AgentChatDoneData)
             break
@@ -89,7 +121,10 @@ export const agentApi = {
   },
 
   listSessions(agentId: number, params?: { limit?: number; offset?: number }) {
-    return request.get<AgentConversationListResponse>(`/agent/agents/${agentId}/sessions`, params as Record<string, unknown>)
+    return request.get<AgentConversationListResponse>(
+      `/agent/agents/${agentId}/sessions`,
+      params as Record<string, unknown>,
+    )
   },
 
   getSession(sessionId: string) {
@@ -97,7 +132,10 @@ export const agentApi = {
   },
 
   getMessages(sessionId: string, params?: { limit?: number; offset?: number }) {
-    return request.get<AgentMessageListResponse>(`/agent/sessions/${sessionId}/messages`, params as Record<string, unknown>)
+    return request.get<AgentMessageListResponse>(
+      `/agent/sessions/${sessionId}/messages`,
+      params as Record<string, unknown>,
+    )
   },
 
   deleteSession(sessionId: string) {
@@ -131,11 +169,16 @@ export const agentApi = {
   },
 
   refreshMcpTools(serverId: number) {
-    return request.post<{ success: boolean; tools: McpTool[] }>(`/agent/mcp-servers/${serverId}/refresh-tools`)
+    return request.post<{ success: boolean; tools: McpTool[] }>(
+      `/agent/mcp-servers/${serverId}/refresh-tools`,
+    )
   },
 
   testMcpConnection(data: CreateMcpServerRequest) {
-    return request.post<{ success: boolean; tools: McpTool[] }>('/agent/mcp-servers/test-connection', data)
+    return request.post<{ success: boolean; tools: McpTool[] }>(
+      '/agent/mcp-servers/test-connection',
+      data,
+    )
   },
 
   // ===================== 工具 =====================

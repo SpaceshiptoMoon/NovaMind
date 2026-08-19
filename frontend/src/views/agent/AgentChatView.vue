@@ -266,13 +266,27 @@
           <!-- 折叠设置栏 -->
           <div class="input-footer">
             <button class="settings-toggle" @click="settingsExpanded = !settingsExpanded">
-              <el-icon :size="12"><Setting /></el-icon>
-              <span>{{ settingsSummary }}</span>
-              <el-icon :size="10" class="toggle-arrow" :class="{ expanded: settingsExpanded }"
-                ><ArrowDown
-              /></el-icon>
+              <span class="settings-icon">
+                <el-icon :size="12"><Setting /></el-icon>
+              </span>
+              <span v-if="activeSettings.length" class="settings-summary">
+                <span
+                  v-for="s in activeSettings"
+                  :key="s.key"
+                  class="settings-chip"
+                  :class="`is-${s.key}`"
+                  >{{ s.label }}</span
+                >
+              </span>
+              <span v-else class="settings-placeholder">对话设置</span>
+              <el-icon :size="10" class="toggle-arrow" :class="{ expanded: settingsExpanded }">
+                <ArrowDown />
+              </el-icon>
             </button>
-            <div class="input-hint-inline">Enter 发送 · Shift+Enter 换行</div>
+            <div class="input-hint-inline">
+              <span class="hint-item"><kbd>Enter</kbd> 发送</span>
+              <span class="hint-item"><kbd>Shift</kbd>+<kbd>Enter</kbd> 换行</span>
+            </div>
           </div>
           <transition name="settings-slide">
             <div v-if="settingsExpanded" class="settings-bar">
@@ -310,7 +324,6 @@ import {
   DocumentCopy,
   Paperclip,
   Close,
-  Document,
   Download,
 } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
@@ -338,10 +351,11 @@ const messagesRef = ref<HTMLElement>()
 const fileInputRef = ref<HTMLInputElement>()
 const uploadingFiles = ref(false)
 
-const settingsSummary = computed(() => {
-  const parts: string[] = []
-  if (enableThinking.value) parts.push('深度思考')
-  return parts.join(' · ')
+const activeSettings = computed(() => {
+  const parts: { key: string; label: string }[] = []
+  if (enableThinking.value) parts.push({ key: 'thinking', label: '深度思考' })
+  if (!useStream.value) parts.push({ key: 'nostream', label: '非流式' })
+  return parts
 })
 
 function triggerFileSelect() {
@@ -398,16 +412,23 @@ function getFileIcon(type: string): string {
   return map[type] || 'FILE'
 }
 
-function getMessageAttachments(
-  msg: AgentMessage,
-): Array<{
+function getMessageAttachments(msg: AgentMessage): Array<{
   id?: number
   filename: string
   file_type?: string
   file_size?: number
   storage_path?: string
 }> {
-  return (msg.extra as Record<string, any>)?.attachments ?? []
+  const extra = msg.extra as Record<string, unknown> | null | undefined
+  return (
+    (extra?.attachments as Array<Record<string, unknown>> | undefined)?.map((a) => ({
+      id: typeof a.id === 'number' ? a.id : undefined,
+      filename: typeof a.filename === 'string' ? a.filename : '',
+      file_type: typeof a.file_type === 'string' ? a.file_type : undefined,
+      file_size: typeof a.file_size === 'number' ? a.file_size : undefined,
+      storage_path: typeof a.storage_path === 'string' ? a.storage_path : undefined,
+    })) ?? []
+  )
 }
 
 function getFileIconClass(type?: string): string {
@@ -671,7 +692,7 @@ function truncateResult(text: string): string {
 }
 
 onMounted(async () => {
-  await Promise.all([agentStore.initForAgent(agentId.value)])
+  ;[await agentStore.initForAgent(agentId.value)]
 })
 
 onBeforeUnmount(() => {
@@ -1551,31 +1572,82 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-2);
   padding: 0 4px;
 }
 
 .settings-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  border: none;
-  background: transparent;
+  gap: 6px;
+  border: 1px solid var(--color-border-light);
+  background: var(--color-bg-card);
   font-family: var(--font-body);
   font-size: var(--text-xs);
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   cursor: pointer;
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  transition: all var(--transition-fast);
+  padding: 3px 8px 3px 4px;
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-xs);
+  transition: all var(--transition-base);
+  max-width: 100%;
 }
 
 .settings-toggle:hover {
+  border-color: var(--color-border);
   background: var(--color-bg-hover);
-  color: var(--color-text-secondary);
+  color: var(--color-text);
+}
+
+.settings-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-muted);
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.settings-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.settings-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.settings-chip.is-thinking {
+  background: var(--color-primary-muted);
+  color: var(--color-primary);
+}
+
+.settings-chip.is-nostream {
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
+}
+
+.settings-placeholder {
+  color: var(--color-text-muted);
+  white-space: nowrap;
 }
 
 .toggle-arrow {
   transition: transform var(--transition-fast);
+  color: var(--color-text-muted);
+  flex-shrink: 0;
 }
 
 .toggle-arrow.expanded {
@@ -1583,8 +1655,34 @@ onBeforeUnmount(() => {
 }
 
 .input-hint-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   font-size: var(--text-xs);
   color: var(--color-text-faint);
+  white-space: nowrap;
+}
+
+.hint-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hint-item kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-card-elevated);
+  border: 1px solid var(--color-border-light);
+  border-bottom-width: 2px;
+  border-radius: 4px;
 }
 
 /* ========================================
