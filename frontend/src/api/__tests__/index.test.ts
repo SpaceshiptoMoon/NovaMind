@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- 测试 mock 拦截器回调类型简化用 any */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const requestUse = vi.fn()

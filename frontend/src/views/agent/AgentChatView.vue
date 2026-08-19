@@ -263,45 +263,31 @@
               </button>
             </div>
           </div>
-          <!-- 折叠设置栏 -->
+          <!-- 快捷操作 chips：深度思考 / 流式输出 -->
           <div class="input-footer">
-            <button class="settings-toggle" @click="settingsExpanded = !settingsExpanded">
-              <span class="settings-icon">
-                <el-icon :size="12"><Setting /></el-icon>
-              </span>
-              <span v-if="activeSettings.length" class="settings-summary">
-                <span
-                  v-for="s in activeSettings"
-                  :key="s.key"
-                  class="settings-chip"
-                  :class="`is-${s.key}`"
-                  >{{ s.label }}</span
-                >
-              </span>
-              <span v-else class="settings-placeholder">对话设置</span>
-              <el-icon :size="10" class="toggle-arrow" :class="{ expanded: settingsExpanded }">
-                <ArrowDown />
-              </el-icon>
-            </button>
+            <div class="quick-actions">
+              <button
+                class="action-chip"
+                :class="{ active: enableThinking }"
+                @click="enableThinking = !enableThinking"
+              >
+                <span class="action-icon">🧠</span>
+                <span>深度思考</span>
+              </button>
+              <button
+                class="action-chip"
+                :class="{ active: useStream }"
+                @click="useStream = !useStream"
+              >
+                <span class="action-icon">⚡</span>
+                <span>流式输出</span>
+              </button>
+            </div>
             <div class="input-hint-inline">
               <span class="hint-item"><kbd>Enter</kbd> 发送</span>
               <span class="hint-item"><kbd>Shift</kbd>+<kbd>Enter</kbd> 换行</span>
             </div>
           </div>
-          <transition name="settings-slide">
-            <div v-if="settingsExpanded" class="settings-bar">
-              <div class="settings-bar-inner">
-                <div class="setting-group">
-                  <span class="setting-label">深度思考</span>
-                  <el-switch v-model="enableThinking" size="small" />
-                </div>
-                <div class="setting-group">
-                  <span class="setting-label">流式输出</span>
-                  <el-switch v-model="useStream" size="small" />
-                </div>
-              </div>
-            </div>
-          </transition>
         </div>
       </div>
     </div>
@@ -318,7 +304,6 @@ import {
   ArrowLeft,
   ArrowDown,
   SetUp,
-  Setting,
   Promotion,
   VideoPause,
   DocumentCopy,
@@ -345,18 +330,10 @@ const isWelcomeMode = computed(
 const inputText = ref('')
 const useStream = ref(true)
 const enableThinking = ref(false)
-const settingsExpanded = ref(false)
 const expandedReasoning = ref(new Set<number>())
 const messagesRef = ref<HTMLElement>()
 const fileInputRef = ref<HTMLInputElement>()
 const uploadingFiles = ref(false)
-
-const activeSettings = computed(() => {
-  const parts: { key: string; label: string }[] = []
-  if (enableThinking.value) parts.push({ key: 'thinking', label: '深度思考' })
-  if (!useStream.value) parts.push({ key: 'nostream', label: '非流式' })
-  return parts
-})
 
 function triggerFileSelect() {
   fileInputRef.value?.click()
@@ -1565,7 +1542,7 @@ onBeforeUnmount(() => {
 }
 
 /* ========================================
-   Input Footer — Settings Toggle
+   Input Footer — Quick Actions
    ======================================== */
 .input-footer {
   margin: 6px auto 0;
@@ -1576,82 +1553,41 @@ onBeforeUnmount(() => {
   padding: 0 4px;
 }
 
-.settings-toggle {
-  display: inline-flex;
-  align-items: center;
+.quick-actions {
+  display: flex;
   gap: 6px;
-  border: 1px solid var(--color-border-light);
-  background: var(--color-bg-card);
-  font-family: var(--font-body);
-  font-size: var(--text-xs);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  padding: 3px 8px 3px 4px;
-  border-radius: var(--radius-full);
-  box-shadow: var(--shadow-xs);
-  transition: all var(--transition-base);
-  max-width: 100%;
 }
 
-.settings-toggle:hover {
-  border-color: var(--color-border);
-  background: var(--color-bg-hover);
-  color: var(--color-text);
-}
-
-.settings-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-full);
-  background: var(--color-primary-muted);
-  color: var(--color-primary);
-  flex-shrink: 0;
-}
-
-.settings-summary {
+.action-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.settings-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 8px;
+  padding: 4px 12px;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-full);
+  background: var(--color-bg-card);
+  color: var(--color-text-muted);
   font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  white-space: nowrap;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all var(--transition-fast);
 }
 
-.settings-chip.is-thinking {
+.action-chip:hover {
+  border-color: var(--color-primary);
+  color: var(--color-text-secondary);
+}
+
+.action-chip.active {
   background: var(--color-primary-muted);
+  border-color: var(--color-primary);
   color: var(--color-primary);
+  font-weight: var(--weight-medium);
 }
 
-.settings-chip.is-nostream {
-  background: var(--color-warning-subtle);
-  color: var(--color-warning);
-}
-
-.settings-placeholder {
-  color: var(--color-text-muted);
-  white-space: nowrap;
-}
-
-.toggle-arrow {
-  transition: transform var(--transition-fast);
-  color: var(--color-text-muted);
-  flex-shrink: 0;
-}
-
-.toggle-arrow.expanded {
-  transform: rotate(180deg);
+.action-icon {
+  font-size: 13px;
+  line-height: 1;
 }
 
 .input-hint-inline {
@@ -1683,56 +1619,6 @@ onBeforeUnmount(() => {
   border: 1px solid var(--color-border-light);
   border-bottom-width: 2px;
   border-radius: 4px;
-}
-
-/* ========================================
-   Settings Bar (Collapsible)
-   ======================================== */
-.settings-slide-enter-active,
-.settings-slide-leave-active {
-  transition: all var(--transition-base);
-  overflow: hidden;
-}
-
-.settings-slide-enter-from,
-.settings-slide-leave-to {
-  opacity: 0;
-  max-height: 0;
-  margin-top: 0;
-}
-
-.settings-slide-enter-to,
-.settings-slide-leave-from {
-  opacity: 1;
-  max-height: 60px;
-  margin-top: 6px;
-}
-
-.settings-bar {
-  margin: 6px auto 0;
-  padding: 8px 12px;
-  background: var(--color-bg-card-elevated);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-lg);
-}
-
-.settings-bar-inner {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-}
-
-.setting-group {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.setting-label {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  white-space: nowrap;
 }
 
 /* ========================================
