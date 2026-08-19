@@ -369,8 +369,13 @@ class DocumentUploadService:
             raise InvalidParameterError("文件名不能为空", field="filename")
 
         # 防止路径遍历攻击
-        # 只允许字母、数字、中文、下划线、连字符、空格和点
-        if not re.match(r"^[\w一-龥\-\s\.]+$", filename):
+        # 允许字母、数字、中文（含扩展 A 区与兼容表意字）、CJK 标点、全角字符、
+        # 下划线、连字符、空格和点。全角字符（如 ：（））不是 ASCII 路径分隔符，
+        # 不构成路径遍历风险；真正的 ../、/、\ 由下方显式检查拦截。
+        if not re.match(
+            r"^[\w㐀-鿿豈-﫿　-〿＀-￯\-\s\.]+$",
+            filename,
+        ):
             raise InvalidParameterError("文件名包含非法字符", field="filename")
 
         # 检查路径遍历
