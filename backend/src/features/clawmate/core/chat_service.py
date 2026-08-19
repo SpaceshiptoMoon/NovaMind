@@ -77,7 +77,7 @@ class ClawMateChatService:
             try:
                 async for event in self._run_chat(state, user_id, content, model):
                     yield event
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, GeneratorExit):
                 # 客户端断连（WS close）→ run_stream_to_ws aclose 触发；
                 # async with 释放 chat_lock 后 re-raise
                 logger.info("ClawMate 对话被客户端取消", user_id=user_id)

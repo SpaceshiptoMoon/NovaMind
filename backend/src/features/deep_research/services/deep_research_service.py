@@ -639,7 +639,7 @@ class DeepResearchService:
                 "session_id": ctx.session_id,
             })
             return
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, GeneratorExit):
             # 客户端断连（WS close）→ run_stream_to_ws aclose 触发；回滚事务，
             # 研究记录若已创建则标记 CANCELLED（用独立 recovery 会话避免污染原事务）
             research_id = ctx.research_id if "ctx" in locals() else 0
