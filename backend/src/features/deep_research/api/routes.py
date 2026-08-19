@@ -187,9 +187,12 @@ async def research_ws(
     服务端推送 ``{"type": ..., "data": ...}`` 事件流（progress/content/done/error）。
     客户端 close 触发 service ``asyncio.CancelledError`` → 研究记录标记 CANCELLED。
     """
-    user = await ws_authenticate(websocket, resolver)
-    if user is None:
-        return  # 认证失败已 close
+    user, close_code = await ws_authenticate(websocket, resolver)
+    token = ws_extract_token(websocket)
+    await websocket.accept(subprotocol=f"bearer.{token}" if token else None)
+    if close_code is not None:
+        await websocket.close(code=close_code)
+        return
 
     # 空间权限校验（WS 不能用 HTTP Depends(get_current_user_id)，直接传 user_id + db）
     try:
@@ -197,9 +200,6 @@ async def research_ws(
     except (SpaceNotFoundError, SpaceAccessDeniedError):
         await websocket.close(code=4403, reason="无权访问该知识空间")
         return
-
-    token = ws_extract_token(websocket)
-    await websocket.accept(subprotocol=f"bearer.{token}" if token else None)
 
     try:
         msg = await websocket.receive_json()

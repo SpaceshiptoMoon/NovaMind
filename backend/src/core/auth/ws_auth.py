@@ -5,8 +5,10 @@
 子协议、复用 ``core/auth`` 的 ``decode_access_token`` + ``is_user_blacklisted`` +
 ``UserStatusResolver`` 校验链，与 HTTP ``get_current_user`` 等价。
 
-认证失败 ``await websocket.close(code=4401/4403)``（Starlette 在 accept 前 close
-会向客户端回 403）；成功返回 user dict，由调用方 ``websocket.accept(subprotocol=...)``。
+认证失败返回 ``(None, close_code)``，**不在本函数内 close**——由调用方先
+``websocket.accept()`` 再 ``websocket.close(code=close_code)``。原因：accept 前
+``websocket.close`` 会被 uvicorn 转成 HTTP 403 握手拒绝，close code 不作为 WS
+close frame 传到客户端；accept 后 close 才能把 4401/4403 精准传给前端。
 """
 from __future__ import annotations
 
@@ -40,43 +42,45 @@ def ws_extract_token(websocket: WebSocket) -> Optional[str]:
 
 async def ws_authenticate(
     websocket: WebSocket, resolver: UserStatusResolver
-) -> Optional[dict]:
+) -> tuple[Optional[dict], Optional[int]]:
     """WS 握手认证：subprotocol JWT → 黑名单 → 用户状态。
 
-    失败时 ``await websocket.close(...)`` 并返回 ``None``；成功返回 user dict
-    （字段对齐 HTTP ``get_current_user``）。调用方拿到非 None 后再 ``accept``。
+    返回 ``(user, close_code)``：
+    - 成功：``(user_dict, None)``（user dict 字段对齐 HTTP ``get_current_user``）
+    - 失败：``(None, close_code)``（4401 未认证 / 4403 状态不允许）
+
+    **不调 ``websocket.close``**——由调用方 ``accept`` 后 ``close(close_code)``
+    确保 close code 作为 WS close frame 传到客户端。
     """
     token = ws_extract_token(websocket)
     claims = decode_access_token(token) if token else None
     if not claims or not claims.user_id:
-        await websocket.close(code=WS_CLOSE_UNAUTHENTICATED)
-        return None
+        return None, WS_CLOSE_UNAUTHENTICATED
 
     # 用户级黑名单（用户被软删除/停用时所有 Token 立即失效）
     if await is_user_blacklisted(claims.user_id, token_iat=claims.iat):
-        await websocket.close(code=WS_CLOSE_UNAUTHENTICATED)
-        return None
+        return None, WS_CLOSE_UNAUTHENTICATED
 
     # 经端口取 DB 最新用户状态（core 不碰 user ORM）
     user = await resolver.get_user_for_auth(claims.user_id)
     if not user:
-        await websocket.close(code=WS_CLOSE_UNAUTHENTICATED)
-        return None
+        return None, WS_CLOSE_UNAUTHENTICATED
     if user.get("is_deleted"):
-        await websocket.close(code=WS_CLOSE_FORBIDDEN)
-        return None
+        return None, WS_CLOSE_FORBIDDEN
     if not user.get("is_active") and not user.get("is_admin"):
-        await websocket.close(code=WS_CLOSE_FORBIDDEN)
-        return None
+        return None, WS_CLOSE_FORBIDDEN
 
-    return {
-        "id": user["id"],
-        "username": user["username"],
-        "email": user["email"],
-        "is_admin": user["is_admin"],
-        "status": user.get("status"),
-        "jti": claims.jti,
-    }
+    return (
+        {
+            "id": user["id"],
+            "username": user["username"],
+            "email": user["email"],
+            "is_admin": user["is_admin"],
+            "status": user.get("status"),
+            "jti": claims.jti,
+        },
+        None,
+    )
 
 
 __all__ = [
