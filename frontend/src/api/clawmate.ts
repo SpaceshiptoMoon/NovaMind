@@ -1,10 +1,10 @@
 /**
  * ClawMate API 模块
  *
- * AI 对话（SSE 流式）
+ * AI 对话（WebSocket 流式）
  */
 
-import { createSSEStream } from './index'
+import { createWebSocketStream } from './index'
 import type {
   ClawMateChatRequest,
   ClawMateChatDoneData,
@@ -13,9 +13,9 @@ import type {
 const BASE = '/clawmate'
 
 export const clawmateApi = {
-  // ==================== AI 对话（SSE 流式） ====================
+  // ==================== AI 对话（WebSocket 流式） ====================
 
-  /** SSE 流式对话 */
+  /** WebSocket 流式对话 */
   chatStream(
     data: ClawMateChatRequest,
     callbacks: {
@@ -29,7 +29,7 @@ export const clawmateApi = {
       signal?: AbortSignal
     },
   ) {
-    return createSSEStream(`${BASE}/chat`, data, {
+    return createWebSocketStream(`${BASE}/ws`, data, {
       onMessage(event) {
         const e = event as { type: string; data: unknown }
         switch (e.type) {
