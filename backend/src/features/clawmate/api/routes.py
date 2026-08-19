@@ -14,7 +14,7 @@ from novamind.features.clawmate.api.dependencies import (
     get_session_manager,
     get_user_environment,
     get_file_operations,
-    get_chat_service,
+    get_chat_service_ws,
 )
 from novamind.features.clawmate.core.session_manager import SessionManager
 from novamind.features.clawmate.core.environment import LocalEnvironment
@@ -350,7 +350,7 @@ async def create_dir(
 async def chat_ws(
     websocket: WebSocket,
     resolver: UserStatusResolver = Depends(get_user_status_resolver),
-    service: ClawMateChatService = Depends(get_chat_service),
+    service: ClawMateChatService = Depends(get_chat_service_ws),
 ):
     """ClawMate AI 对话（WebSocket 流式）。
 

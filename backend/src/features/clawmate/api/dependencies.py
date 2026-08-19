@@ -2,7 +2,7 @@
 ClawMate 依赖注入
 """
 
-from fastapi import Depends, Request
+from fastapi import Depends, Request, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.auth import get_current_user
@@ -21,6 +21,15 @@ def get_session_manager(request: Request) -> SessionManager:
 def get_clawmate_engine(request: Request):
     """从 app.state 获取 ClawMate AgentEngine 单例"""
     return request.app.state.clawmate_engine
+
+
+# WebSocket 版：WS 端点无法注入 HTTP Request，改从 websocket.app.state 取。
+def get_session_manager_ws(websocket: WebSocket) -> SessionManager:
+    return websocket.app.state.clawmate_session_manager
+
+
+def get_clawmate_engine_ws(websocket: WebSocket):
+    return websocket.app.state.clawmate_engine
 
 
 async def get_user_environment(
@@ -48,6 +57,20 @@ async def get_model_config_service(
 ) -> ModelConfigService:
     """获取模型配置服务"""
     return ModelConfigService(db)
+
+
+async def get_chat_service_ws(
+    session_manager: SessionManager = Depends(get_session_manager_ws),
+    engine=Depends(get_clawmate_engine_ws),
+    model_config_service: ModelConfigService = Depends(get_model_config_service),
+):
+    """获取 ClawMateChatService（WS 端点用，经 WS 版 session_manager/engine）"""
+    from novamind.features.clawmate.core.chat_service import ClawMateChatService
+    return ClawMateChatService(
+        session_manager=session_manager,
+        agent_engine=engine,
+        model_config_service=model_config_service,
+    )
 
 
 async def get_chat_service(

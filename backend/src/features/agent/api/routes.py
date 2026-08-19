@@ -12,13 +12,13 @@ from novamind.core.database.database import get_db
 from novamind.core.ws import run_stream_to_ws
 from novamind.features.agent.api.dependencies import (
     _build_agent_chat_service,
-    get_agent_engine,
+    get_agent_engine_ws,
     get_agent_service,
     get_memory_search_repo,
     get_minio_client_for_presign,
     get_mcp_server_service,
     get_model_config_service,
-    get_todo_store,
+    get_todo_store_ws,
     get_tool_registry,
 )
 from novamind.features.agent.services.agent_service import AgentService
@@ -149,8 +149,8 @@ async def chat_ws(
     resolver: UserStatusResolver = Depends(get_user_status_resolver),
     agent_service: AgentService = Depends(get_agent_service),
     model_config_service: ModelConfigService = Depends(get_model_config_service),
-    agent_engine: AgentEngine = Depends(get_agent_engine),
-    todo_store: TodoStore = Depends(get_todo_store),
+    agent_engine: AgentEngine = Depends(get_agent_engine_ws),
+    todo_store: TodoStore = Depends(get_todo_store_ws),
     memory_search_repo: Optional[MemorySearchRepository] = Depends(get_memory_search_repo),
 ):
     """Agent 对话（WebSocket 流式）。
