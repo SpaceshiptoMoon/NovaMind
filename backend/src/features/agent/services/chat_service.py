@@ -142,6 +142,23 @@ class AgentChatService:
             context["memory_search_port"] = memory_search
             context["embedding_client_resolver"] = self._build_embedding_resolver(user_id)
 
+            # E6 子 agent 委派：Agent 勾选 task 工具时注入 SubAgentRunner
+            if "task" in (agent.enabled_tools or []):
+                from novamind.engines.agent.subagent import SubAgentRunner
+
+                context["subagent_runner"] = SubAgentRunner(
+                    agent_engine=self.agent_engine,
+                    tool_executor=self.agent_engine.tool_executor,
+                    model_config_service=self.model_config_service,
+                    user_id=user_id,
+                    model=model,
+                    enabled_tools=agent.enabled_tools or [],
+                    enabled_mcp_ids=agent.enabled_mcp_servers or [],
+                    parent_context=context,
+                )
+            else:
+                context["subagent_runner"] = None
+
             full_response = ""
             full_reasoning = ""
             collected_sources: List[Dict[str, Any]] = []
