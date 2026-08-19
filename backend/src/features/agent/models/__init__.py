@@ -4,6 +4,7 @@ from novamind.features.agent.models.message import AgentMessage
 from novamind.features.agent.models.tool_call import AgentToolCall
 from novamind.features.agent.models.mcp_server import AgentMcpServer
 from novamind.features.agent.models.context_summary import AgentContextSummary
+from novamind.features.agent.models.agent_usage import AgentUsage
 
 __all__ = [
     "AgentDefinition",
@@ -12,4 +13,5 @@ __all__ = [
     "AgentToolCall",
     "AgentMcpServer",
     "AgentContextSummary",
+    "AgentUsage",
 ]
