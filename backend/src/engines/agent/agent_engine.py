@@ -19,6 +19,7 @@ from novamind.engines.agent.retry import (
     _is_retryable_error, _is_context_overflow, _is_non_retryable,
 )
 from novamind.shared.ai_models.usage import CanonicalUsage, normalize_usage
+from novamind.engines.agent.loop_detection import LoopDetectionConfig, LoopDetector
 
 logger = get_logger(__name__)
 
@@ -37,9 +38,11 @@ class AgentEngine:
         self,
         tool_executor: ToolExecutor,
         retry_config: Optional[RetryConfig] = None,
+        loop_detection: Optional[LoopDetectionConfig] = None,
     ):
         self.tool_executor = tool_executor
         self._retry_config = retry_config or RetryConfig()
+        self._loop_detection = loop_detection
 
     async def run(
         self,
@@ -67,6 +70,12 @@ class AgentEngine:
         full_response = ""
         iteration = 0
         overflow_retry_used = False
+        loop_detector = (
+            LoopDetector(self._loop_detection)
+            if (self._loop_detection and self._loop_detection.enabled)
+            else None
+        )
+        pending_warning: Optional[str] = None
 
         if not tools:
             async for event in self._generate_without_tools(
@@ -77,8 +86,12 @@ class AgentEngine:
 
         while iteration < max_iterations:
             iteration += 1
+            if pending_warning:
+                messages.append({"role": "user", "content": pending_warning})
+                pending_warning = None
             meta: Dict[str, Any] = {}
             iteration_had_tools = False
+            hard_stop = False
 
             try:
                 if stream:
@@ -93,6 +106,15 @@ class AgentEngine:
                         elif event.event_type == "tool_call":
                             iteration_had_tools = True
                             total_tool_calls += 1
+                            if loop_detector:
+                                w, hs = loop_detector.track(
+                                    event.data.get("tool_name", ""),
+                                    event.data.get("arguments") or {},
+                                )
+                                if w:
+                                    pending_warning = w
+                                if hs:
+                                    hard_stop = True
                 else:
                     async for event in self._run_iteration_batch(
                         llm_client, messages, tools, context,
@@ -105,12 +127,24 @@ class AgentEngine:
                         elif event.event_type == "tool_call":
                             iteration_had_tools = True
                             total_tool_calls += 1
+                            if loop_detector:
+                                w, hs = loop_detector.track(
+                                    event.data.get("tool_name", ""),
+                                    event.data.get("arguments") or {},
+                                )
+                                if w:
+                                    pending_warning = w
+                                if hs:
+                                    hard_stop = True
 
                 total_tokens += meta.get("total_tokens", 0)
                 iter_usage = meta.get("usage")
                 if iter_usage:
                     total_usage = total_usage + iter_usage
 
+                if hard_stop:
+                    logger.warning("loop_detection hard stop", iteration=iteration)
+                    break
                 if not iteration_had_tools:
                     break
 
