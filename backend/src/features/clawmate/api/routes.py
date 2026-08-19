@@ -360,11 +360,12 @@ async def chat_ws(
     tool_result/warning/error/done）。客户端 close 触发 service CancelledError 清理
     （释放 per-user chat_lock）。
     """
-    user = await ws_authenticate(websocket, resolver)
-    if user is None:
-        return  # 认证失败已 close
+    user, close_code = await ws_authenticate(websocket, resolver)
     token = ws_extract_token(websocket)
     await websocket.accept(subprotocol=f"bearer.{token}" if token else None)
+    if close_code is not None:
+        await websocket.close(code=close_code)
+        return
 
     try:
         msg = await websocket.receive_json()

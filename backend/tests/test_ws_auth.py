@@ -1,10 +1,11 @@
 """WebSocket 认证单测：``novamind.core.auth.ws_auth.ws_authenticate``。
 
-覆盖 4 条路径：
-1. 有效 token + 活跃用户 → 返回 user dict，不 close
-2. 无 subprotocol token → None + close(4401)
-3. 无效 token（解码失败）→ None + close(4401)
-4. 用户已删除（is_deleted=True）→ None + close(4403)
+ws_authenticate 返回 ``(user, close_code)``，不在内部 close（由 handler accept 后
+close 确保 code 精准传到客户端）。覆盖 4 条路径：
+1. 有效 token + 活跃用户 → (user_dict, None)，不 close
+2. 无 subprotocol token → (None, 4401)
+3. 无效 token（解码失败）→ (None, 4401)
+4. 用户已删除（is_deleted=True）→ (None, 4403)
 
 JWT 解码走真实 ``decode_access_token`` —— 通过 monkeypatch ``token.get_config``
 注入已知 secret_key，避免依赖 YAML 配置文件。黑名单查询 ``is_user_blacklisted``
@@ -53,7 +54,10 @@ def no_blacklist(monkeypatch):
 
 
 class FakeWS:
-    """最小 WebSocket mock：只暴露 ws_authenticate 用到的 headers + close。"""
+    """最小 WebSocket mock：只暴露 ws_authenticate 用到的 headers + close。
+
+    ws_authenticate 不再内部 close，close 仅用于断言「未被调用」。
+    """
 
     def __init__(self, headers: dict[str, str]) -> None:
         self.headers = headers
@@ -106,8 +110,9 @@ async def test_valid_token_active_user(fake_config, no_blacklist):
         }
     )
 
-    user = await ws_authenticate(ws, resolver)
+    user, close_code = await ws_authenticate(ws, resolver)
 
+    assert close_code is None
     assert user is not None
     assert user["id"] == 1
     assert user["username"] == "tester"
@@ -115,7 +120,7 @@ async def test_valid_token_active_user(fake_config, no_blacklist):
     assert user["is_admin"] is False
     assert user["status"] == 1
     assert user["jti"] == "test-jti"
-    ws.close.assert_not_called()
+    ws.close.assert_not_called()  # 不在内部 close，由 handler close
     resolver.get_user_for_auth.assert_awaited_once_with(1)
 
 
@@ -127,10 +132,11 @@ async def test_no_subprotocol_token(fake_config, no_blacklist):
     ws = FakeWS({})  # 无 sec-websocket-protocol
     resolver = _make_resolver(None)
 
-    user = await ws_authenticate(ws, resolver)
+    user, close_code = await ws_authenticate(ws, resolver)
 
     assert user is None
-    ws.close.assert_awaited_once_with(code=4401)
+    assert close_code == 4401
+    ws.close.assert_not_called()  # 不在内部 close
     resolver.get_user_for_auth.assert_not_called()
 
 
@@ -142,10 +148,11 @@ async def test_invalid_token(fake_config, no_blacklist):
     ws = FakeWS({"sec-websocket-protocol": "bearer.invalid-jwt"})
     resolver = _make_resolver(None)
 
-    user = await ws_authenticate(ws, resolver)
+    user, close_code = await ws_authenticate(ws, resolver)
 
     assert user is None
-    ws.close.assert_awaited_once_with(code=4401)
+    assert close_code == 4401
+    ws.close.assert_not_called()
     resolver.get_user_for_auth.assert_not_called()
 
 
@@ -168,7 +175,8 @@ async def test_user_deleted(fake_config, no_blacklist):
         }
     )
 
-    user = await ws_authenticate(ws, resolver)
+    user, close_code = await ws_authenticate(ws, resolver)
 
     assert user is None
-    ws.close.assert_awaited_once_with(code=4403)
+    assert close_code == 4403
+    ws.close.assert_not_called()
