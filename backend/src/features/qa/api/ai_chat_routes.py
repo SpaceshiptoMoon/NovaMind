@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse, Response
 from urllib.parse import quote
 import io
 
-from novamind.features.user.api.auth import get_current_user
+from novamind.core.auth import get_current_user
 from novamind.features.qa.api.dependencies import get_aichat_service, get_qa_service, get_model_config_service, get_minio_client_for_presign
 from novamind.features.qa.services.ai_chat_service import AIChatService
 from novamind.features.qa.services.qa_service import QAService

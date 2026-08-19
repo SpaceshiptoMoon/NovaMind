@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query, Path
 from fastapi.responses import StreamingResponse
 from typing import Annotated, Optional
 
-from novamind.features.user.api.auth import get_current_user
+from novamind.core.auth import get_current_user
 from novamind.features.knowledge_space.api.dependencies import validate_space_access
 from novamind.features.deep_research.api.dependencies import get_deep_research_service
 from novamind.features.deep_research.services.deep_research_service import DeepResearchService

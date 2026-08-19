@@ -6,7 +6,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, Query, Path
 from fastapi.responses import StreamingResponse
 
-from novamind.features.user.api.auth import get_current_user
+from novamind.core.auth import get_current_user
 from novamind.features.agent.api.dependencies import (
     get_agent_service,
     get_agent_chat_service,

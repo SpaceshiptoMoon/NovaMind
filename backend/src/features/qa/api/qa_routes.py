@@ -8,7 +8,7 @@ from typing import Annotated, List
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.features.qa.api.dependencies import get_qa_service, get_minio_client_for_presign
-from novamind.features.user.api.auth import get_current_user
+from novamind.core.auth import get_current_user
 from novamind.features.qa.services.qa_service import QAService
 from novamind.features.qa.schemas.qa import QARequest, QAResponse, QAUpdateRequest, SessionPreviewResponse, ChatSessionListResponse, ConversationContextResponse
 from novamind.features.qa.exceptions import MessageNotFoundError

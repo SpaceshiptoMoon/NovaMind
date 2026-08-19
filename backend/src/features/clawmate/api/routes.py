@@ -8,7 +8,7 @@ ClawMate API 路由
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from novamind.features.user.api.auth import get_current_user
+from novamind.core.auth import get_current_user
 from novamind.features.clawmate.api.dependencies import (
     get_session_manager,
     get_user_environment,

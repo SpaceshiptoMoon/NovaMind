@@ -5,7 +5,7 @@ ClawMate 依赖注入
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from novamind.features.user.api.auth import get_current_user
+from novamind.core.auth import get_current_user
 from novamind.core.database.database import get_db
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.features.clawmate.core.session_manager import SessionManager

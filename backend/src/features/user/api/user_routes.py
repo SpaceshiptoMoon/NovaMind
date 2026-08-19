@@ -25,7 +25,7 @@ from novamind.features.user.schemas.user_schema import (
     ResetPasswordRequest,
     ResetPasswordResponse,
 )
-from novamind.features.user.api.auth import require_admin, require_active_user
+from novamind.core.auth import require_admin, require_active_user
 from novamind.features.user.api.dependencies import get_user_service
 from novamind.features.user.services.auth_service import AuthService
 from novamind.features.user.models.user import UserStatus
