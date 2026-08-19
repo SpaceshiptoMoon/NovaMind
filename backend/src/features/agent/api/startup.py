@@ -7,7 +7,7 @@ from novamind.engines.agent.tool.builtins import KnowledgeSearchTool, WebSearchT
 from novamind.features.agent.tool.builtins import ReadToolResultTool
 from novamind.engines.agent.mcp.client import McpClientManager
 from novamind.engines.agent.tool.executor import ToolExecutor
-from novamind.engines.agent.tool.hooks import LoggingHook, ResultTruncationHook, ResultBudgetHook
+from novamind.engines.agent.tool.hooks import LoggingHook, ToolOutputBudgetHook, ResultBudgetHook
 from novamind.engines.agent.agent_engine import AgentEngine
 from novamind.engines.agent.memory.todo_store import TodoStore
 
@@ -55,7 +55,7 @@ async def init_agent_components(app):
     # 5. 创建工具执行器（含 Hook 链）+ Agent 引擎
     hooks = [
         LoggingHook(),
-        ResultTruncationHook(max_result_chars=50_000),
+        ToolOutputBudgetHook(max_tokens=10_000),
         ResultBudgetHook(preview_threshold=10_000, preview_chars=1_500),
     ]
     tool_executor = ToolExecutor(registry, mcp_manager, hooks=hooks)
