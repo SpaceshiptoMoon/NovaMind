@@ -19,7 +19,7 @@ from novamind.features.user.schemas.model_config_schema import (
     AvailableModelsWithInfoResponse,
 )
 from novamind.features.user.schemas.user_schema import UserMessageResponse
-from novamind.features.user.api.auth import require_active_user
+from novamind.core.auth import require_active_user
 from novamind.features.user.api.dependencies import get_model_config_service
 from novamind.features.user.exceptions import ModelConfigDeleteConflictError
 from novamind.core.middleware.rate_limit import get_limiter

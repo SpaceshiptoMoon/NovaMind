@@ -9,7 +9,7 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.database.database import get_db
-from novamind.features.user.api.auth import get_current_user, get_current_user_optional
+from novamind.core.auth import get_current_user, get_current_user_optional
 from novamind.features.user.repository.user_repository import UserRepository
 from novamind.features.knowledge_space.models.space_member import SpaceMember, MemberStatus, SpaceRole
 from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase, KnowledgeBaseStatus

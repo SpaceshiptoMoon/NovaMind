@@ -17,7 +17,7 @@ from novamind.features.user.schemas.search_config_schema import (
     SearchTestResponse,
 )
 from novamind.features.user.schemas.user_schema import UserMessageResponse
-from novamind.features.user.api.auth import require_active_user
+from novamind.core.auth import require_active_user
 from novamind.features.user.api.dependencies import get_search_config_service
 from novamind.core.middleware.rate_limit import get_limiter
 

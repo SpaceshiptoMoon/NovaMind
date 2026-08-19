@@ -8,7 +8,7 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from novamind.features.user.api.auth import get_current_user, require_admin
+from novamind.core.auth import get_current_user, require_admin
 from novamind.core.database.database import get_db
 from novamind.features.user.models.user import User
 from novamind.features.skill.api.dependencies import get_skill_service, update_llm_review_settings, get_llm_review_settings
