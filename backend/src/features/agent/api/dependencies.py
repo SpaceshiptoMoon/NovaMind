@@ -79,16 +79,21 @@ async def get_agent_service(
     return AgentService(db)
 
 
-async def get_agent_chat_service(
-    db: AsyncSession = Depends(get_db),
-    user_id: int = Depends(_current_user_id),
-    agent_service: AgentService = Depends(get_agent_service),
-    model_config_service: ModelConfigService = Depends(get_model_config_service),
-    agent_engine: AgentEngine = Depends(get_agent_engine),
-    todo_store: TodoStore = Depends(get_todo_store),
-    memory_search_repo: Optional[MemorySearchRepository] = Depends(get_memory_search_repo),
-    minio_client: Optional[Any] = None,
+async def _build_agent_chat_service(
+    db: AsyncSession,
+    user_id: int,
+    agent_service: AgentService,
+    model_config_service: ModelConfigService,
+    agent_engine: AgentEngine,
+    todo_store: TodoStore,
+    memory_search_repo: Optional[MemorySearchRepository],
+    minio_client: Optional[Any],
 ) -> AgentChatService:
+    """构造 AgentChatService（HTTP/WS 装配共用）。
+
+    web_search_port 按数据库用户默认搜索引擎（is_primary）构造；user_id 由调用方
+    传入（HTTP 来自 ``_current_user_id``，WS 来自 ``ws_authenticate``）。
+    """
     # 延迟获取 MinIO 客户端
     if minio_client is None:
         try:
@@ -123,6 +128,22 @@ async def get_agent_chat_service(
         knowledge_search_port=knowledge_search_port,
         web_search_port=web_search_port,
         prompt_provider=prompt_provider,
+    )
+
+
+async def get_agent_chat_service(
+    db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(_current_user_id),
+    agent_service: AgentService = Depends(get_agent_service),
+    model_config_service: ModelConfigService = Depends(get_model_config_service),
+    agent_engine: AgentEngine = Depends(get_agent_engine),
+    todo_store: TodoStore = Depends(get_todo_store),
+    memory_search_repo: Optional[MemorySearchRepository] = Depends(get_memory_search_repo),
+    minio_client: Optional[Any] = None,
+) -> AgentChatService:
+    return await _build_agent_chat_service(
+        db, user_id, agent_service, model_config_service, agent_engine,
+        todo_store, memory_search_repo, minio_client,
     )
 
 

@@ -11,6 +11,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from novamind.core.ws import envelope
 from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.engines.agent.agent_engine import AgentEngine, AgentEvent
@@ -89,14 +90,14 @@ class AgentChatService:
         enable_thinking: bool = False,
         stream: bool = True,
         attachment_ids: Optional[List[int]] = None,
-    ) -> AsyncGenerator[str, None]:
-        """执行 Agent 对话，返回 SSE 格式事件流"""
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """执行 Agent 对话，返回事件流（dict 事件，经 WS 推送）"""
         try:
             agent, conv, user_msg = await self._prepare(
                 user_id, agent_id, content, session_id, llm_model, attachment_ids
             )
 
-            yield self._format_sse("session", {
+            yield self._emit("session", {
                 "session_id": conv.session_id,
                 "agent_id": agent_id,
             })
@@ -168,26 +169,26 @@ class AgentChatService:
             ):
                 if event.event_type == "tool_call":
                     await self._handle_tool_call(event, user_msg, conv, context)
-                    yield self._format_sse("tool_call", event.data)
+                    yield self._emit("tool_call", event.data)
 
                 elif event.event_type == "tool_result":
                     await self._handle_tool_result(event, conv, context)
                     self._extract_sources(event, collected_sources)
-                    yield self._format_sse("tool_result", event.data)
+                    yield self._emit("tool_result", event.data)
 
                 elif event.event_type == "reasoning":
                     raw_r = event.data.get("content", "")
                     cleaned_r = reasoning_scrubber.feed(raw_r)
                     full_reasoning += cleaned_r
                     if cleaned_r:
-                        yield self._format_sse("reasoning", {"content": cleaned_r})
+                        yield self._emit("reasoning", {"content": cleaned_r})
 
                 elif event.event_type == "content":
                     raw_content = event.data.get("content", "")
                     cleaned = scrubber.feed(raw_content)
                     full_response += cleaned
                     if cleaned:
-                        yield self._format_sse("content", {"content": cleaned})
+                        yield self._emit("content", {"content": cleaned})
 
                 elif event.event_type == "done":
                     # flush scrubber buffer
@@ -201,30 +202,40 @@ class AgentChatService:
                         full_response += "\n\n[Agent 已达到最大迭代次数，对话被截断]"
                     # 发送结构化来源引用（对齐 QA sources 事件）
                     if collected_sources:
-                        yield self._format_sse("sources", {"sources": collected_sources})
+                        yield self._emit("sources", {"sources": collected_sources})
                     done_data = await self._handle_done(
                         event, conv, content, full_response,
                         reasoning=full_reasoning or None,
                         sources=collected_sources or None,
                     )
-                    yield self._format_sse("done", done_data)
+                    yield self._emit("done", done_data)
 
                 elif event.event_type == "error":
-                    yield self._format_sse("error", event.data)
+                    yield self._emit("error", event.data)
 
                 elif event.event_type == "context_overflow":
                     logger.warning("上下文溢出，建议压缩", conversation_id=conv.id)
-                    yield self._format_sse("error", {"content": "对话上下文过长，请开启新会话或缩短对话历史"})
+                    yield self._emit("error", {"content": "对话上下文过长，请开启新会话或缩短对话历史"})
 
         except AgentNotFoundError:
-            yield self._format_sse("error", {"content": "Agent 不存在"})
+            yield self._emit("error", {"content": "Agent 不存在"})
+        except asyncio.CancelledError:
+            # 客户端断连（WS close）→ run_stream_to_ws aclose 触发；回滚未提交事务，
+            # assistant 消息不落库（user 消息已在 _prepare 提交）
+            conv_id = conv.id if "conv" in locals() else None
+            logger.info("Agent 对话被客户端取消", conversation_id=conv_id)
+            try:
+                await self.db.rollback()
+            except Exception as rollback_err:
+                logger.warning("取消时事务回滚失败", error=str(rollback_err))
+            raise
         except Exception as e:
             logger.error("Agent 对话失败", error=str(e))
             try:
                 await self.db.rollback()
             except Exception as rollback_err:
                 logger.warning("事务回滚失败", error=str(rollback_err))
-            yield self._format_sse("error", {"content": f"对话失败：{str(e)}"})
+            yield self._emit("error", {"content": f"对话失败：{str(e)}"})
 
     # ==================== 模型 & MemoryManager ====================
 
@@ -856,6 +867,6 @@ class AgentChatService:
 
     # ==================== 工具方法 ====================
 
-    def _format_sse(self, event_type: str, data: dict) -> str:
-        """格式化 SSE 事件"""
-        return f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+    def _emit(self, event_type: str, data: dict) -> dict:
+        """构造统一事件 envelope（WS 推送用，取代 SSE 帧）"""
+        return envelope(event_type, data)
