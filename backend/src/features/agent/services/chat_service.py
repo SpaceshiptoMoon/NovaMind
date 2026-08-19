@@ -219,7 +219,7 @@ class AgentChatService:
 
         except AgentNotFoundError:
             yield self._emit("error", {"content": "Agent 不存在"})
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, GeneratorExit):
             # 客户端断连（WS close）→ run_stream_to_ws aclose 触发；回滚未提交事务，
             # assistant 消息不落库（user 消息已在 _prepare 提交）
             conv_id = conv.id if "conv" in locals() else None

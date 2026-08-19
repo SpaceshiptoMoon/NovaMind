@@ -1,7 +1,9 @@
 """WebSocket 流式推送工具。
 
 把 ``async generator`` yield 的事件 dict 推到 WebSocket；客户端断连时
-``aclose`` generator 触发 service 内 ``asyncio.CancelledError`` 做清理。
+``aclose`` generator 在挂起点抛 ``GeneratorExit``（async generator 的 aclose
+抛 GeneratorExit 而非 CancelledError），触发 service 内
+``except (asyncio.CancelledError, GeneratorExit)`` 做清理。
 4 个聊天流式端点（agent/qa/clawmate/deep_research）共用此工具。
 """
 from __future__ import annotations
@@ -27,8 +29,10 @@ async def run_stream_to_ws(
 
     - 正常：``async for event: await websocket.send_json(event)``
     - 客户端断连：``WebSocketDisconnect`` 捕获后静默退出
-    - 无论如何 ``finally: await event_gen.aclose()`` —— 触发 service generator
-      内 ``asyncio.CancelledError``，让 service 做事务回滚/状态标记 CANCELLED 等清理
+    - 无论如何 ``finally: await event_gen.aclose()`` —— 在挂起点抛
+      ``GeneratorExit`` 进 service generator，触发其
+      ``except (asyncio.CancelledError, GeneratorExit)`` 做事务回滚/状态标记
+      CANCELLED 等清理（aclose 抛 GeneratorExit，不是 CancelledError）
     """
     try:
         async for event in event_gen:

@@ -1209,7 +1209,7 @@ class AIChatService:
                 "confidence": prep.confidence,
             })
 
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, GeneratorExit):
             # 客户端断连（WS close）→ run_stream_to_ws aclose 触发；清理已 commit 的
             # 用户消息 + 回滚未提交事务（assistant 消息不落库），然后向上抛取消
             self.logger.info("流式对话被客户端取消", session_id=session_id)
