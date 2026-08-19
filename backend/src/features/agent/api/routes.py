@@ -1,11 +1,9 @@
 """
 Agent 模块 API 路由
 """
-import json
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Path, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.auth import UserStatusResolver, get_current_user, get_user_status_resolver
@@ -14,7 +12,6 @@ from novamind.core.database.database import get_db
 from novamind.core.ws import run_stream_to_ws
 from novamind.features.agent.api.dependencies import (
     _build_agent_chat_service,
-    get_agent_chat_service,
     get_agent_engine,
     get_agent_service,
     get_memory_search_repo,
@@ -25,7 +22,6 @@ from novamind.features.agent.api.dependencies import (
     get_tool_registry,
 )
 from novamind.features.agent.services.agent_service import AgentService
-from novamind.features.agent.services.chat_service import AgentChatService
 from novamind.features.agent.services.mcp_server_service import McpServerService
 from novamind.engines.agent.agent_engine import AgentEngine
 from novamind.engines.agent.memory.todo_store import TodoStore
@@ -206,45 +202,6 @@ async def chat_ws(
         attachment_ids=data.attachment_ids,
     )
     await run_stream_to_ws(websocket, gen)
-
-
-async def _chat_stream_sse(gen):
-    """dict 事件 → SSE 帧（过渡期保留 SSE 端点兼容前端，W6 移除）"""
-    async for d in gen:
-        yield f"event: {d['type']}\ndata: {json.dumps(d['data'], ensure_ascii=False)}\n\n"
-
-
-@router.post(
-    "/agents/{agent_id}/chat-stream",
-    summary="Agent 对话（SSE 流式）",
-    description="与 Agent 进行流式对话，返回 SSE 格式的事件流",
-)
-async def chat_stream(
-    agent_id: Annotated[int, Path(gt=0, description="Agent ID")],
-    data: AgentChatRequest,
-    user_id: int = Depends(get_current_user_id),
-    service: AgentChatService = Depends(get_agent_chat_service),
-):
-    return StreamingResponse(
-        _chat_stream_sse(
-            service.chat_stream(
-                user_id=user_id,
-                agent_id=agent_id,
-                content=data.content,
-                session_id=data.session_id,
-                llm_model=data.llm_model,
-                enable_thinking=data.enable_thinking,
-                stream=data.stream,
-                attachment_ids=data.attachment_ids,
-            )
-        ),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 @router.get(

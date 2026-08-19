@@ -2,7 +2,6 @@
 AI对话API路由
 """
 
-import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, UploadFile, File, Path, WebSocket, WebSocketDisconnect
@@ -118,84 +117,6 @@ async def chat_ws(
     )
     await run_stream_to_ws(websocket, gen)
 
-
-async def _chat_stream_sse(gen):
-    """dict 事件 → SSE 帧（过渡期保留 SSE 端点兼容前端，W6 移除）"""
-    async for d in gen:
-        yield f"event: {d['type']}\ndata: {json.dumps(d['data'], ensure_ascii=False, default=str)}\n\n"
-
-
-@router.post(
-    "/chat-stream",
-    response_class=StreamingResponse,
-    summary="AI对话（流式）",
-    description="执行AI流式对话，返回SSE格式的流式数据",
-)
-async def chat_stream(
-    request: ChatRequest,
-    ai_chat_service: AIChatService = Depends(get_aichat_service),
-    current_user: dict = Depends(get_current_user),
-):
-    """
-    执行AI流式对话
-
-    返回Server-Sent Events (SSE)格式的流式数据。
-
-    事件类型：
-    - user_message: 用户消息信息
-    - sources: 检索来源引用列表（启用 RAG/联网时，在正文流式前下发）
-    - reasoning: 思考过程片段（开启深度思考时）
-    - content: AI生成的文本片段
-    - done: 对话完成，包含完整的AI回复与来源/回答状态
-    - error: 错误信息
-
-    使用示例（前端）：
-    ```javascript
-    const response = await fetch('/ai-chat/chat-stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: '你好', session_id: 'xxx' })
-    });
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const text = decoder.decode(value);
-        const lines = text.split('\\n\\n');
-
-        for (const line of lines) {
-            if (line.startsWith('data: ')) {
-                const data = JSON.parse(line.slice(6));
-                console.log(data);
-            }
-        }
-    }
-    ```
-    """
-    return StreamingResponse(
-        _chat_stream_sse(
-            ai_chat_service.chat_stream(
-                user_id=current_user["id"],
-                session_id=request.session_id,
-                content=request.content,
-                llm_model=request.llm_model,
-                enable_thinking=request.enable_thinking,
-                attachment_ids=request.attachment_ids,
-                enable_web_search=request.enable_web_search,
-                search_provider=request.search_provider,
-            )
-        ),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"
-        }
-    )
 
 @router.get(
     "/chat-history",
