@@ -15,7 +15,7 @@ from novamind.features.qa.exceptions import MessageNotFoundError
 from novamind.features.knowledge_space.api.dependencies import validate_space_access
 from novamind.core.database.database import get_db
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.knowledge_space.adapters.attachment_enrichment import enrich_attachments_with_presigned_urls
+from novamind.shared.storage.attachment_presign import enrich_attachments_with_presigned_urls
 
 logger = get_logger(__name__)
 

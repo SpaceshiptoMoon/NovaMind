@@ -923,6 +923,7 @@ class MinioClient:
 
 IMAGE_FILE_TYPES = frozenset({"jpg", "jpeg", "png", "gif", "webp"})
 
-# 注：``enrich_attachments_with_presigned_urls`` 已迁至宿主 adapter
-# ``features/knowledge_space/adapters/attachment_enrichment.py``（附件预签名 URL 注入是
-# 宿主展示策略，不属于通用存储客户端）。
+# 注：``enrich_attachments_with_presigned_urls`` 住在
+# ``shared/storage/attachment_presign.py``——附件预签名 URL 注入是跨 feature
+# 共用的展示策略（agent / qa 消息列表端点使用），只依赖本模块，无 ORM/feature 依赖，
+# 故归 shared 中立位置，避免 feature 间互相直连。
