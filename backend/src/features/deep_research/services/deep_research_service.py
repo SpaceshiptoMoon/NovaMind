@@ -4,15 +4,16 @@
 实现基于 RAG 的深度研究功能，支持动态选择内部/外部搜索
 """
 
+import asyncio
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional, AsyncGenerator
 from novamind.shared.model_config_ports import ModelConfigPort
 import re
 import time
-import json
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from novamind.core.ws import envelope
 from novamind.shared.utils.time_utils import now_china
 
 from novamind.features.deep_research.models.research_session import (
@@ -37,7 +38,6 @@ from novamind.shared.retrieval_port import RetrievalPort
 from novamind.features.knowledge_space.adapters.retrieval_adapter import HostRetrievalPort
 from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.shared.utils.heartbeat import stream_with_heartbeat
 from novamind.features.deep_research.exceptions import (
     DeepResearchError,
     ResearchNotFoundError,
@@ -473,11 +473,11 @@ class DeepResearchService:
         space_id: int,
         user_id: int,
         request: ResearchRequest,
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         执行深度研究（流式）
 
-        Yield SSE 格式的 JSON 字符串
+        Yield dict 事件（经 WS 推送，统一 envelope ``{"type": ..., "data": ...}``）。
 
         事件类型：
         - progress: 进度更新
@@ -496,15 +496,6 @@ class DeepResearchService:
             all_results=[],
         )
 
-        def send_event(event_type: str, data: dict) -> str:
-            """生成 SSE 事件"""
-            event = {
-                "event_type": event_type,
-                "data": data,
-                "timestamp": time.time(),
-            }
-            return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-
         try:
             # 0. 创建会话
             await self._create_research_session(ctx)
@@ -513,7 +504,7 @@ class DeepResearchService:
                 _ = self.search_port
 
             # 1. 分析查询
-            yield send_event("progress", {
+            yield self._emit("progress", {
                 "status": "analyzing",
                 "current_step": "分析查询，提取研究主题",
                 "progress_percent": 10.0,
@@ -524,7 +515,7 @@ class DeepResearchService:
 
             # 2. 分解任务
             await self._decompose_and_save_tasks(ctx)
-            yield send_event("progress", {
+            yield self._emit("progress", {
                 "status": "analyzing",
                 "current_step": f"研究主题：{ctx.research_topic}，正在分解子任务",
                 "progress_percent": 20.0,
@@ -532,7 +523,7 @@ class DeepResearchService:
                 "total_tasks": len(ctx.tasks),
             })
 
-            # 3. 逐任务执行检索（消费 DeepResearchEngine.search 事件流，yield SSE 进度）
+            # 3. 逐任务执行检索（消费 DeepResearchEngine.search 事件流，yield 进度事件）
             # A-3：流式与非流式共用引擎迭代循环（按任务去重+充分性+catch-and-continue），
             # 消除原 research_stream 内联重复循环。单任务失败 → TaskFailed（catch-and-continue），
             # 与非流式行为统一（原流式此处无 per-task try/except，单任务失败会中止整个研究）。
@@ -554,7 +545,7 @@ class DeepResearchService:
                 if isinstance(event, IterationProgress):
                     task_query = task_desc_by_id.get(event.task_id, "")
                     step_desc = f"{'外部搜索' if event.use_external else '内部检索'}：{task_query[:50]}"
-                    yield send_event("progress", {
+                    yield self._emit("progress", {
                         "status": "searching",
                         "current_step": step_desc,
                         "progress_percent": 20.0 + (event.step_count / total_steps) * 60.0,
@@ -593,7 +584,7 @@ class DeepResearchService:
                 ctx.all_results = []
 
             # 4. 流式综合报告
-            yield send_event("progress", {
+            yield self._emit("progress", {
                 "status": "synthesizing",
                 "current_step": "综合信息生成报告",
                 "progress_percent": 85.0,
@@ -616,12 +607,11 @@ class DeepResearchService:
                 llm_model=ctx.params.llm_config.llm_model,
             )
 
-            async for chunk in stream_with_heartbeat(raw_stream):
-                if chunk.startswith(": "):  # SSE 心跳注释，只转发保活不追加到报告
-                    yield chunk
-                    continue
+            # WS 端不走 SSE 心跳包装：直接消费 LLM 原始 chunk 流，每个 chunk 包成 content 事件。
+            # 过渡 SSE 端点（route 层 _stream_sse）由 dict→SSE 帧转换，不再依赖 SSE 心跳注释。
+            async for chunk in raw_stream:
                 full_report += chunk
-                yield send_event("content", {"chunk": chunk})
+                yield self._emit("content", {"chunk": chunk})
 
             # 5. 持久化并完成
             elapsed_seconds = int(time.time() - ctx.start_time)
@@ -635,7 +625,7 @@ class DeepResearchService:
             await self.research_repo.complete_research(ctx.research_id, full_report, stats, key_sources)
             await self.session.commit()
 
-            yield send_event("done", {
+            yield self._emit("done", {
                 "session_id": ctx.session_id,
                 "final_report": full_report,
                 "stats": stats,
@@ -644,21 +634,65 @@ class DeepResearchService:
 
         except EngineInvalidResearchQueryError as e:
             # E2：引擎级查询错映射为 feature 异常，避免落 generic 分支丢具体信息
-            yield send_event("error", {
+            yield self._emit("error", {
                 "message": str(e),
                 "session_id": ctx.session_id,
             })
             return
+        except asyncio.CancelledError:
+            # 客户端断连（WS close）→ run_stream_to_ws aclose 触发；回滚事务，
+            # 研究记录若已创建则标记 CANCELLED（用独立 recovery 会话避免污染原事务）
+            research_id = ctx.research_id if "ctx" in locals() else 0
+            session_id = ctx.session_id if "ctx" in locals() else ""
+            self.logger.info("深度研究被客户端取消", research_id=research_id, session_id=session_id)
+            try:
+                await self.session.rollback()
+            except Exception as rollback_err:
+                self.logger.warning("取消时事务回滚失败", error=str(rollback_err))
+            if research_id > 0:
+                try:
+                    from novamind.core.database.database import get_db_session
+                    from sqlalchemy import select
+                    async with get_db_session() as recovery_session:
+                        # 先查询当前状态，避免覆盖已 COMMIT 的 COMPLETED 状态
+                        result = await recovery_session.execute(
+                            select(ResearchSession.status).where(ResearchSession.id == research_id)
+                        )
+                        current_status = result.scalar_one_or_none()
+                        if current_status is not None and current_status == ResearchStatus.COMPLETED:
+                            self.logger.warning(
+                                "研究已处于 COMPLETED 状态，跳过 CANCELLED 标记",
+                                research_id=research_id,
+                                session_id=session_id,
+                            )
+                        else:
+                            recovery_repo = ResearchRepository(recovery_session)
+                            research = await recovery_repo.get_by_id(research_id)
+                            if research:
+                                research.mark_cancelled(reason="客户端断连")
+                                await recovery_session.commit()
+                except Exception as commit_err:
+                    self.logger.error(
+                        "标记研究取消时提交异常，需手动恢复",
+                        research_id=research_id,
+                        session_id=session_id,
+                        recovery_error=str(commit_err),
+                    )
+            raise
         except DeepResearchError as e:
             await self._handle_research_error(ctx, e)
-            yield send_event("error", {"message": str(e), "session_id": ctx.session_id})
+            yield self._emit("error", {"message": str(e), "session_id": ctx.session_id})
             return
         except Exception as e:
             await self._handle_research_error(ctx, e)
-            yield send_event("error", {"message": "研究执行失败，请稍后重试", "session_id": ctx.session_id})
+            yield self._emit("error", {"message": "研究执行失败，请稍后重试", "session_id": ctx.session_id})
             return
 
     # ==================== 私有方法 ====================
+
+    def _emit(self, event_type: str, data: dict) -> dict:
+        """构造统一事件 envelope（WS 推送用，取代 SSE 帧）"""
+        return envelope(event_type, data)
 
     async def _analyze_query(self, query: str, user_id: int = None, llm_model: str = None) -> str:
         """分析查询，提取研究主题（薄委托 DeepResearchEngine.analyze_query）。

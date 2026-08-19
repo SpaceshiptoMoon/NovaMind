@@ -2,12 +2,19 @@
 深度研究 API 路由
 """
 
-from fastapi import APIRouter, Depends, Query, Path
-from fastapi.responses import StreamingResponse
+import json
 from typing import Annotated, Optional
 
-from novamind.core.auth import get_current_user
+from fastapi import APIRouter, Depends, Path, Query, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from novamind.core.auth import UserStatusResolver, get_current_user, get_user_status_resolver
+from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
+from novamind.core.database.database import get_db
+from novamind.core.ws import run_stream_to_ws
 from novamind.features.knowledge_space.api.dependencies import validate_space_access
+from novamind.features.knowledge_space.exceptions import SpaceAccessDeniedError, SpaceNotFoundError
 from novamind.features.deep_research.api.dependencies import get_deep_research_service
 from novamind.features.deep_research.services.deep_research_service import DeepResearchService
 from novamind.features.deep_research.schemas.research_schema import (
@@ -162,6 +169,75 @@ async def execute_research(
     )
 
 
+@router.websocket("/ws")
+async def research_ws(
+    websocket: WebSocket,
+    space_id: Annotated[int, Path(gt=0, description="知识空间 ID")],
+    db: AsyncSession = Depends(get_db),
+    resolver: UserStatusResolver = Depends(get_user_status_resolver),
+    research_service: DeepResearchService = Depends(get_deep_research_service),
+):
+    """深度研究（WebSocket 流式）。
+
+    路由前缀 ``/api/v1/spaces/{space_id}/deep-research`` + ``/ws`` →
+    ``/api/v1/spaces/{space_id}/deep-research/ws``。
+
+    认证：subprotocol ``bearer.<jwt>``（ws_authenticate 校验，失败 close 4401/4403）。
+    空间权限：ws_authenticate 拿到 user 后，用 ``space_id`` + ``user["id"]`` 复用
+    ``validate_space_access`` 校验空间访问权限（失败 close 4403，握手前 close 由
+    Starlette 回 403）。客户端连接后发 ``{"action": "research", "payload": ResearchRequest}``，
+    服务端推送 ``{"type": ..., "data": ...}`` 事件流（progress/content/done/error）。
+    客户端 close 触发 service ``asyncio.CancelledError`` → 研究记录标记 CANCELLED。
+    """
+    user = await ws_authenticate(websocket, resolver)
+    if user is None:
+        return  # 认证失败已 close
+
+    # 空间权限校验（WS 不能用 HTTP Depends(get_current_user_id)，直接传 user_id + db）
+    try:
+        await validate_space_access(space_id, user_id=user["id"], db=db)
+    except (SpaceNotFoundError, SpaceAccessDeniedError):
+        await websocket.close(code=4403, reason="无权访问该知识空间")
+        return
+
+    token = ws_extract_token(websocket)
+    await websocket.accept(subprotocol=f"bearer.{token}" if token else None)
+
+    try:
+        msg = await websocket.receive_json()
+    except WebSocketDisconnect:
+        return
+
+    if not isinstance(msg, dict) or msg.get("action") != "research":
+        await websocket.send_json(
+            {"type": "error", "data": {"message": "未知 action，期望 action=research"}}
+        )
+        await websocket.close()
+        return
+
+    try:
+        data = ResearchRequest(**(msg.get("payload") or {}))
+    except Exception as e:
+        await websocket.send_json(
+            {"type": "error", "data": {"message": f"请求参数错误：{str(e)}"}}
+        )
+        await websocket.close()
+        return
+
+    gen = research_service.research_stream(
+        space_id=space_id,
+        user_id=user["id"],
+        request=data,
+    )
+    await run_stream_to_ws(websocket, gen)
+
+
+async def _research_stream_sse(gen):
+    """dict 事件 → SSE 帧（过渡期保留 SSE 端点兼容前端，W6 移除）"""
+    async for d in gen:
+        yield f"event: {d['type']}\ndata: {json.dumps(d['data'], ensure_ascii=False)}\n\n"
+
+
 @router.post(
     "/stream",
     response_class=StreamingResponse,
@@ -175,9 +251,9 @@ async def execute_research_stream(
     current_user: dict = Depends(get_current_user),
 ):
     """
-    执行深度研究（流式 SSE）
+    执行深度研究（流式 SSE，过渡）
 
-    返回 Server-Sent Events (SSE) 格式的流式数据
+    返回 Server-Sent Events (SSE) 格式的流式数据。
 
     事件类型：
     - progress: 进度更新
@@ -189,16 +265,14 @@ async def execute_research_stream(
     space_id = space.id
     user_id = current_user["id"]
 
-    async def generate():
-        async for chunk in research_service.research_stream(
-            space_id=space_id,
-            user_id=user_id,
-            request=request,
-        ):
-            yield chunk
-
     return StreamingResponse(
-        generate(),
+        _research_stream_sse(
+            research_service.research_stream(
+                space_id=space_id,
+                user_id=user_id,
+                request=request,
+            )
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

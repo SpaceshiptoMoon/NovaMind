@@ -127,7 +127,8 @@ instance.interceptors.response.use(
     // 统一错误提示（排除 401，上面已处理）
     if (response && response.status !== 401) {
       const errorData = response.data
-      const message = errorData?.error?.message || errorData?.message || getDefaultMessage(response.status)
+      const message =
+        errorData?.error?.message || errorData?.message || getDefaultMessage(response.status)
       ElMessage.error(message)
     }
 
@@ -282,7 +283,9 @@ export async function createSSEStream(
   function yieldToMain() {
     if (yieldScheduled) return
     yieldScheduled = true
-    queueMicrotask(() => { yieldScheduled = false })
+    queueMicrotask(() => {
+      yieldScheduled = false
+    })
   }
 
   function flushEvent(): boolean {
@@ -331,7 +334,7 @@ export async function createSSEStream(
       if (!trimmed) {
         if (flushEvent()) {
           // 让出执行权，允许 Vue 刷新响应式更新并渲染 DOM
-          await new Promise(r => setTimeout(r, 0))
+          await new Promise((r) => setTimeout(r, 0))
         }
         continue
       }
@@ -340,7 +343,7 @@ export async function createSSEStream(
 
       if (trimmed.startsWith('event:')) {
         if (flushEvent()) {
-          await new Promise(r => setTimeout(r, 0))
+          await new Promise((r) => setTimeout(r, 0))
         }
         currentEventType = trimmed.slice(6).trim()
       } else if (trimmed.startsWith('data:')) {
@@ -354,6 +357,8 @@ export async function createSSEStream(
 // 接口与 createSSEStream 一致：onMessage({type,data}) / onError / signal，
 // 4 个聊天 api 模块零改接口即可切换。
 // 认证：subprotocol 子协议 bearer.<jwt>（token 不进 URL）。
+// action：握手后发送的 action 字段，默认 'chat'（agent 端点）；
+// deep_research 端点用 'research'，通过第 4 个可选参数传入。
 export async function createWebSocketStream(
   url: string,
   body: unknown,
@@ -362,6 +367,7 @@ export async function createWebSocketStream(
     onError?: (error: string) => void
     signal?: AbortSignal
   },
+  action: string = 'chat',
 ): Promise<void> {
   const apiBase = import.meta.env.VITE_API_BASE_URL || '/api/v1'
   const token = tokenManager.getToken()
@@ -410,7 +416,7 @@ export async function createWebSocketStream(
     }
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ action: 'chat', payload: body }))
+      ws.send(JSON.stringify({ action, payload: body }))
     }
 
     ws.onmessage = (evt: MessageEvent) => {
