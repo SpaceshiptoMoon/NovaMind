@@ -20,6 +20,7 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8100',
         changeOrigin: true,
+        ws: true,
         configure: (proxy) => {
           proxy.on('proxyRes', (proxyRes) => {
             if (proxyRes.headers['content-type']?.includes('text/event-stream')) {

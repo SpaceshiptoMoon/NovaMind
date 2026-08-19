@@ -1,4 +1,4 @@
-import { request, createSSEStream, tokenManager } from './index'
+import { request, createWebSocketStream, tokenManager } from './index'
 import type {
   Agent,
   CreateAgentRequest,
@@ -85,7 +85,7 @@ export const agentApi = {
       signal?: AbortSignal
     },
   ) {
-    return createSSEStream(`/agent/agents/${agentId}/chat-stream`, data, {
+    return createWebSocketStream(`/agent/agents/${agentId}/ws`, data, {
       onMessage(event) {
         const e = event
         switch (e.type) {
