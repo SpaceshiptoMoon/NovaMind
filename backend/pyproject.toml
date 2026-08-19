@@ -24,6 +24,7 @@ dependencies = [
     "sqlalchemy>=2.0",
     "structlog>=24.0.0",
     "uvicorn>=0.40.0",
+    "websockets>=12.0",
     "pyyaml>=6.0.3",
     "jieba>=0.42.1",
     "tiktoken>=0.12.0",
