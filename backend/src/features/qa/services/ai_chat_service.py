@@ -7,8 +7,8 @@ AI对话服务层
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any, AsyncGenerator, Tuple, TYPE_CHECKING
 from uuid import uuid4
+import asyncio
 import base64
-import json
 import tempfile
 
 from novamind.shared.utils.text_utils.token_counter import TokenCounter
@@ -18,6 +18,7 @@ from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.core.ws import envelope
 
 if TYPE_CHECKING:
     from novamind.shared.storage.minio_client import MinioClient
@@ -1085,9 +1086,9 @@ class AIChatService:
         attachment_ids: Optional[List[int]] = None,
         enable_web_search: bool = False,
         search_provider: Optional[str] = None,
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[Dict[str, Any], None]:
         """
-        流式执行AI对话
+        流式执行AI对话，返回事件流（dict 事件，经 WS 推送）
 
         Args:
             user_id: 用户ID
@@ -1096,7 +1097,7 @@ class AIChatService:
             llm_model: LLM 模型名称（可选）
 
         Yields:
-            str: SSE格式的流式数据
+            dict: 统一事件 envelope ``{"type": ..., "data": ...}``，WS 推送用
         """
         user_message = None
         try:
@@ -1115,37 +1116,28 @@ class AIChatService:
             self.logger.info("预处理数据已提交，数据库锁已释放（流式）", session_id=session_id)
 
             # 发送用户消息信息
-            yield self._format_sse({
-                "type": "user_message",
-                "data": {
-                    "id": prep.user_message.id,
-                    "content": prep.user_message.content,
-                    "role": prep.user_message.role,
-                    "session_id": session_id,
-                    "created_at": prep.user_message.created_at,
-                    "attachments": prep.attachments_info,
-                }
+            yield self._emit("user_message", {
+                "id": prep.user_message.id,
+                "content": prep.user_message.content,
+                "role": prep.user_message.role,
+                "session_id": session_id,
+                "created_at": prep.user_message.created_at,
+                "attachments": prep.attachments_info,
             })
 
             # 检索来源事件（在正文流式前下发，供前端渲染引用卡片）
             if prep.sources:
-                yield self._format_sse({
-                    "type": "sources",
-                    "data": {
-                        "sources": prep.sources,
-                        "answer_status": prep.answer_status,
-                        "confidence": prep.confidence,
-                        "session_id": session_id,
-                    }
+                yield self._emit("sources", {
+                    "sources": prep.sources,
+                    "answer_status": prep.answer_status,
+                    "confidence": prep.confidence,
+                    "session_id": session_id,
                 })
 
             # 检索链路 Trace 事件（Rewrite → Search → Grade）
             if prep.traces:
                 for t in prep.traces:
-                    yield self._format_sse({
-                        "type": "trace",
-                        "data": {**t, "session_id": session_id},
-                    })
+                    yield self._emit("trace", {**t, "session_id": session_id})
 
             # 分级拒答：检索完全为空时短路跳过 LLM
             if prep.refused:
@@ -1174,26 +1166,21 @@ class AIChatService:
                 )
 
                 async for chunk in stream_with_heartbeat_structured(raw_stream):
-                    # 心跳注释直接透传
+                    # 心跳注释（SSE 时代透传 ``: heartbeat``）：WS 化后改为
+                    # 应用层 heartbeat 事件，前端 switch 无 case 即忽略
                     if isinstance(chunk, str):
-                        yield chunk
+                        yield self._emit("heartbeat", {})
                         continue
                     if chunk.type == "reasoning":
-                        yield self._format_sse({
-                            "type": "reasoning",
-                            "data": {
-                                "content": chunk.text,
-                                "session_id": session_id,
-                            }
+                        yield self._emit("reasoning", {
+                            "content": chunk.text,
+                            "session_id": session_id,
                         })
                     else:
                         full_response += chunk.text
-                        yield self._format_sse({
-                            "type": "content",
-                            "data": {
-                                "content": chunk.text,
-                                "session_id": session_id,
-                            }
+                        yield self._emit("content", {
+                            "content": chunk.text,
+                            "session_id": session_id,
                         })
 
                 # 保存完整的AI回复到数据库（落库 sources/answer_status 到 extra）
@@ -1210,37 +1197,47 @@ class AIChatService:
                 await self.qa_service.commit()
 
             # 发送完成消息（含来源与回答状态，前端兜底渲染）
-            yield self._format_sse({
-                "type": "done",
-                "data": {
-                    "id": ai_message.id,
-                    "content": full_response,
-                    "role": ai_message.role,
-                    "created_at": ai_message.created_at,
-                    "session_id": session_id,
-                    "llm_model": llm_model,
-                    "sources": prep.sources,
-                    "answer_status": prep.answer_status,
-                    "confidence": prep.confidence,
-                }
+            yield self._emit("done", {
+                "id": ai_message.id,
+                "content": full_response,
+                "role": ai_message.role,
+                "created_at": ai_message.created_at,
+                "session_id": session_id,
+                "llm_model": llm_model,
+                "sources": prep.sources,
+                "answer_status": prep.answer_status,
+                "confidence": prep.confidence,
             })
 
+        except asyncio.CancelledError:
+            # 客户端断连（WS close）→ run_stream_to_ws aclose 触发；清理已 commit 的
+            # 用户消息 + 回滚未提交事务（assistant 消息不落库），然后向上抛取消
+            self.logger.info("流式对话被客户端取消", session_id=session_id)
+            try:
+                await self._cleanup_user_message(user_message)
+            except Exception as cleanup_err:
+                self.logger.warning("取消时清理用户消息失败", error=str(cleanup_err))
+            try:
+                await self.qa_service.rollback()
+            except Exception as rollback_err:
+                self.logger.warning("取消时事务回滚失败", error=str(rollback_err))
+            raise
         except LLMServiceError as e:
             # LLM 调用失败：用户未看到完整回复，清理用户消息
             self.logger.warning("流式对话 LLM 异常", session_id=session_id, error=str(e))
             await self._cleanup_user_message(user_message)
-            yield self._format_sse({"type": "error", "content": str(e)})
+            yield self._emit("error", {"content": str(e)})
         except QAError as e:
             # QA 服务异常：清理已提交的用户消息，避免残留孤立数据
             self.logger.warning("流式对话 QA 异常，清理用户消息", session_id=session_id, error=str(e))
             await self._cleanup_user_message(user_message)
-            yield self._format_sse({"type": "error", "content": str(e)})
+            yield self._emit("error", {"content": str(e)})
         except Exception as e:
             # 未知异常：清理已提交的用户消息，避免残留孤立数据
             error_msg = f"流式对话服务异常: {str(e)}"
             self.logger.error(error_msg, session_id=session_id, user_id=user_id)
             await self._cleanup_user_message(user_message)
-            yield self._format_sse({"type": "error", "content": error_msg})
+            yield self._emit("error", {"content": error_msg})
 
     def _build_ai_extra(self, prep: ChatPreparation) -> Optional[dict]:
         """构造 AI 消息 extra（sources/answer_status/confidence）。
@@ -1567,16 +1564,8 @@ class AIChatService:
             self.logger.warning("MinIO 下载失败", path=attachment.storage_path, error=str(e))
             return None
 
-    # ========== SSE 格式化 ==========
+    # ========== 事件 envelope（WS 推送用，取代 SSE 帧） ==========
 
-    def _format_sse(self, data: Dict[str, Any]) -> str:
-        """
-        格式化为SSE（Server-Sent Events）格式
-
-        Args:
-            data: 要发送的数据字典
-
-        Returns:
-            str: SSE格式的字符串
-        """
-        return f"data: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+    def _emit(self, event_type: str, data: Dict[str, Any]) -> dict:
+        """构造统一事件 envelope ``{"type": ..., "data": ...}``（WS 推送用，取代 SSE 帧）"""
+        return envelope(event_type, data)
