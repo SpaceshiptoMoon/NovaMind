@@ -350,5 +350,122 @@ export async function createSSEStream(
   }
 }
 
+// WebSocket 流式请求工具（取代聊天流式的 SSE，双向通道）
+// 接口与 createSSEStream 一致：onMessage({type,data}) / onError / signal，
+// 4 个聊天 api 模块零改接口即可切换。
+// 认证：subprotocol 子协议 bearer.<jwt>（token 不进 URL）。
+export async function createWebSocketStream(
+  url: string,
+  body: unknown,
+  callbacks: {
+    onMessage: (event: { type: string; data: unknown }) => void
+    onError?: (error: string) => void
+    signal?: AbortSignal
+  },
+): Promise<void> {
+  const apiBase = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+  const token = tokenManager.getToken()
+  // http(s):// → ws(s)://；相对路径（如 /api/v1）→ 用当前页协议+host 拼绝对 WS URL
+  const wsBase = apiBase.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
+  let fullUrl: string
+  if (/^wss?:\/\//.test(wsBase)) {
+    fullUrl = wsBase + url
+  } else {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    fullUrl = `${proto}//${window.location.host}${wsBase}${url}`
+  }
+  const subprotocols = token ? [`bearer.${token}`] : []
+
+  return new Promise<void>((resolve, reject) => {
+    const ws = new WebSocket(fullUrl, subprotocols)
+    let settled = false
+    let flushScheduled = false
+    const pending: { type: string; data: unknown }[] = []
+
+    const flush = () => {
+      flushScheduled = false
+      while (pending.length) {
+        const ev = pending.shift()!
+        callbacks.onMessage(ev)
+      }
+    }
+    const scheduleFlush = () => {
+      if (flushScheduled) return
+      flushScheduled = true
+      setTimeout(flush, 0) // 宏任务让出主线程，让 Vue 渲染 token 流
+    }
+
+    const cleanup = () => {
+      ws.onopen = null
+      ws.onmessage = null
+      ws.onerror = null
+      ws.onclose = null
+    }
+
+    const finish = (fn: () => void) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      fn()
+    }
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ action: 'chat', payload: body }))
+    }
+
+    ws.onmessage = (evt: MessageEvent) => {
+      try {
+        const parsed = JSON.parse(typeof evt.data === 'string' ? evt.data : '{}')
+        if (parsed && parsed.type !== undefined) {
+          pending.push({ type: parsed.type, data: parsed.data ?? parsed })
+          scheduleFlush()
+        }
+      } catch {
+        // 忽略非法 JSON 帧
+      }
+    }
+
+    ws.onerror = () => {
+      // 具体错误信息由 onclose code/reason 判定
+    }
+
+    ws.onclose = (evt: CloseEvent) => {
+      if (evt.code === 1000 || evt.code === 1001) {
+        finish(() => resolve())
+      } else if (evt.code === 4401 || evt.code === 4403) {
+        finish(() => reject(new Error(evt.reason || '认证失败')))
+      } else if (callbacks.signal?.aborted) {
+        finish(() => resolve()) // 主动取消，静默
+      } else {
+        finish(() => reject(new Error(evt.reason || `连接关闭 (${evt.code})`)))
+      }
+    }
+
+    // 取消：AbortSignal → ws.close(1000)
+    if (callbacks.signal) {
+      if (callbacks.signal.aborted) {
+        finish(() => {
+          try {
+            ws.close(1000, 'cancel')
+          } catch {
+            /* ignore */
+          }
+          resolve()
+        })
+        return
+      }
+      callbacks.signal.addEventListener('abort', () => {
+        if (settled) return
+        try {
+          ws.close(1000, 'cancel')
+        } catch {
+          /* ignore */
+        }
+        finish(() => resolve())
+      })
+    }
+  })
+}
+
 export { instance }
 export default instance
