@@ -2,13 +2,17 @@
 AI对话API路由
 """
 
-from fastapi import APIRouter, Depends, Query, UploadFile, File, Path
+import json
 from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query, UploadFile, File, Path, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse, Response
 from urllib.parse import quote
 import io
 
-from novamind.core.auth import get_current_user
+from novamind.core.auth import UserStatusResolver, get_current_user, get_user_status_resolver
+from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
+from novamind.core.ws import run_stream_to_ws
 from novamind.features.qa.api.dependencies import get_aichat_service, get_qa_service, get_model_config_service, get_minio_client_for_presign
 from novamind.features.qa.services.ai_chat_service import AIChatService
 from novamind.features.qa.services.qa_service import QAService
@@ -59,6 +63,66 @@ async def chat(
         ai_message=result["ai_message"],
         conversation_history=result["conversation_history"]
     )
+
+
+@router.websocket("/ws")
+async def chat_ws(
+    websocket: WebSocket,
+    ai_chat_service: AIChatService = Depends(get_aichat_service),
+    resolver: UserStatusResolver = Depends(get_user_status_resolver),
+):
+    """AI 对话（WebSocket 流式）。
+
+    认证：subprotocol ``bearer.<jwt>``（ws_authenticate 校验，失败 close 4401/4403）。
+    客户端连接后发 ``{"action": "chat", "payload": {content, session_id?, ...}}``，
+    服务端推送 ``{"type": ..., "data": ...}`` 事件流（user_message/sources/trace/
+    reasoning/content/heartbeat/done/error）。客户端 close 触发 service
+    CancelledError 清理。
+    """
+    user = await ws_authenticate(websocket, resolver)
+    if user is None:
+        return  # 认证失败已 close
+    token = ws_extract_token(websocket)
+    await websocket.accept(subprotocol=f"bearer.{token}" if token else None)
+
+    try:
+        msg = await websocket.receive_json()
+    except WebSocketDisconnect:
+        return
+
+    if not isinstance(msg, dict) or msg.get("action") != "chat":
+        await websocket.send_json(
+            {"type": "error", "data": {"content": "未知 action，期望 action=chat"}}
+        )
+        await websocket.close()
+        return
+
+    try:
+        data = ChatRequest(**(msg.get("payload") or {}))
+    except Exception as e:
+        await websocket.send_json(
+            {"type": "error", "data": {"content": f"请求参数错误：{str(e)}"}}
+        )
+        await websocket.close()
+        return
+
+    gen = ai_chat_service.chat_stream(
+        user_id=user["id"],
+        session_id=data.session_id,
+        content=data.content,
+        llm_model=data.llm_model,
+        enable_thinking=data.enable_thinking,
+        attachment_ids=data.attachment_ids,
+        enable_web_search=data.enable_web_search,
+        search_provider=data.search_provider,
+    )
+    await run_stream_to_ws(websocket, gen)
+
+
+async def _chat_stream_sse(gen):
+    """dict 事件 → SSE 帧（过渡期保留 SSE 端点兼容前端，W6 移除）"""
+    async for d in gen:
+        yield f"event: {d['type']}\ndata: {json.dumps(d['data'], ensure_ascii=False, default=str)}\n\n"
 
 
 @router.post(
@@ -112,21 +176,19 @@ async def chat_stream(
     }
     ```
     """
-    async def generate():
-        async for chunk in ai_chat_service.chat_stream(
-            user_id=current_user["id"],
-            session_id=request.session_id,
-            content=request.content,
-            llm_model=request.llm_model,
-            enable_thinking=request.enable_thinking,
-            attachment_ids=request.attachment_ids,
-            enable_web_search=request.enable_web_search,
-            search_provider=request.search_provider,
-        ):
-            yield chunk
-
     return StreamingResponse(
-        generate(),
+        _chat_stream_sse(
+            ai_chat_service.chat_stream(
+                user_id=current_user["id"],
+                session_id=request.session_id,
+                content=request.content,
+                llm_model=request.llm_model,
+                enable_thinking=request.enable_thinking,
+                attachment_ids=request.attachment_ids,
+                enable_web_search=request.enable_web_search,
+                search_provider=request.search_provider,
+            )
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

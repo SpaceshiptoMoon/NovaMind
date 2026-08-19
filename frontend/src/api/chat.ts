@@ -1,4 +1,4 @@
-import { request, createSSEStream, tokenManager } from './index'
+import { request, createWebSocketStream, tokenManager } from './index'
 import type { ChatRequest, ChatResponse, ChatHistoryResponse, HealthCheckResponse, ModelsResponse, UploadChatAttachmentResponse, ChatSource } from './types'
 
 const BASE_URL = '/ai-chat'
@@ -53,7 +53,7 @@ export const chatApi = {
       signal?: AbortSignal
     },
   ) {
-    return createSSEStream(`${BASE_URL}/chat-stream`, data, {
+    return createWebSocketStream(`${BASE_URL}/ws`, data, {
       onMessage(event) {
         const e = event as { type: string; data: unknown }
         switch (e.type) {
