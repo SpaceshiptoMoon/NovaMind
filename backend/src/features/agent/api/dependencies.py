@@ -99,6 +99,10 @@ async def get_agent_chat_service(
     web_search_port = HostWebSearchPort()
     prompt_provider = as_prompt_provider()
 
+    # 用户级搜索配置端口（对齐 QA：按用户首选/指定 provider 择优构造 WebSearchPort）
+    from novamind.features.user.adapters.search_config_port_adapter import as_search_config_port
+    search_config_port = as_search_config_port(db)
+
     return AgentChatService(
         db=db,
         agent_service=agent_service,
@@ -112,6 +116,7 @@ async def get_agent_chat_service(
         knowledge_search_port=knowledge_search_port,
         web_search_port=web_search_port,
         prompt_provider=prompt_provider,
+        search_config_port=search_config_port,
     )
 
 

@@ -1300,11 +1300,27 @@ export interface AgentMessage {
   extra?: Record<string, any> | null
   created_at: string
   reasoning?: string
+  sources?: SourceRef[]
 }
 
 export interface AgentMessageListResponse {
   items: AgentMessage[]
   total: number
+}
+
+// ==================== 检索来源引用 ====================
+
+export interface SourceRef {
+  index: number
+  kind: 'kb' | 'web'
+  document_id?: number | null
+  document_name?: string | null
+  kb_id?: number | null
+  chunk_id?: string | null
+  score?: number | null
+  snippet?: string | null
+  page?: number | null
+  url?: string | null
 }
 
 export interface McpServer {
@@ -1360,6 +1376,7 @@ export interface AgentChatDoneData {
   total_tokens: number
   iterations: number
   truncated: boolean
+  sources?: SourceRef[]
 }
 
 export interface ToolCallRecord {

@@ -176,8 +176,6 @@ class MemorySearchRepository:
             "size": top_k,
             "knn": knn_query,
             "query": text_query,
-            # RRF 融合：rank_constant 越小，高分文档的排名优势越明显
-            "rank": {"rank_constant": 60},
         }
 
         try:
