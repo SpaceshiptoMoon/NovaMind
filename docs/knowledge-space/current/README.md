@@ -13,6 +13,7 @@
 - [`knowledge-architecture-navigation.md`](./knowledge-architecture-navigation.md)：知识模块的后端结构导航
 - [`document-processing-flow.md`](./document-processing-flow.md)：文档上传、解析、切分、入库的运行流程
 - [`knowledge-config-structure-design.md`](./knowledge-config-structure-design.md)：知识库配置结构、保留字段和设计边界
+- [`evaluation-guide.md`](./evaluation-guide.md)：知识库测评的测试集标准、评估指标与结果解读、使用指南
 
 ## 使用约定
 

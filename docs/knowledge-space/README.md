@@ -14,7 +14,8 @@
 1. [`current/knowledge-architecture-navigation.md`](./current/knowledge-architecture-navigation.md)：知识模块结构导航
 2. [`current/document-processing-flow.md`](./current/document-processing-flow.md)：文档上传到处理的运行流程
 3. [`current/knowledge-config-structure-design.md`](./current/knowledge-config-structure-design.md)：知识库配置结构与设计边界
-4. `process/` 下的历史文档：仅在需要追溯演进背景时阅读
+4. [`current/evaluation-guide.md`](./current/evaluation-guide.md)：知识库测评的测试集标准、评估指标与结果解读
+5. `process/` 下的历史文档：仅在需要追溯演进背景时阅读
 
 ## 当前正式文档
 
@@ -22,6 +23,7 @@
 - [`current/knowledge-architecture-navigation.md`](./current/knowledge-architecture-navigation.md)
 - [`current/document-processing-flow.md`](./current/document-processing-flow.md)
 - [`current/knowledge-config-structure-design.md`](./current/knowledge-config-structure-design.md)
+- [`current/evaluation-guide.md`](./current/evaluation-guide.md)
 
 ## 过程与历史文档
 
