@@ -6,6 +6,7 @@ from typing import Any, Optional
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from novamind.core.auth import get_current_user
 from novamind.core.database.database import get_db
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.features.agent.services.agent_service import AgentService
@@ -20,8 +21,8 @@ from novamind.features.agent.adapters import (
     HostKnowledgeSearchPort,
     HostMemorySearchPort,
     HostMemoryStorePort,
-    HostWebSearchPort,
 )
+from novamind.features.agent.adapters.web_search_adapter import resolve_web_search_port
 from novamind.engines.prompt_provider_adapter import as_prompt_provider
 
 
@@ -50,6 +51,11 @@ async def get_minio_client_for_presign():
         return None
 
 
+async def _current_user_id(current_user: dict = Depends(get_current_user)) -> int:
+    """获取当前用户 ID（供装配点按数据库默认搜索引擎构造 WebSearchPort）。"""
+    return current_user["id"]
+
+
 async def get_memory_search_repo() -> Optional[MemorySearchRepository]:
     """获取 ES 记忆检索仓储（可选，ES 不可用时返回 None）"""
     try:
@@ -75,6 +81,7 @@ async def get_agent_service(
 
 async def get_agent_chat_service(
     db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(_current_user_id),
     agent_service: AgentService = Depends(get_agent_service),
     model_config_service: ModelConfigService = Depends(get_model_config_service),
     agent_engine: AgentEngine = Depends(get_agent_engine),
@@ -96,12 +103,12 @@ async def get_agent_chat_service(
         HostMemorySearchPort(repo=memory_search_repo) if memory_search_repo else None
     )
     knowledge_search_port = HostKnowledgeSearchPort(db, model_config_service)
-    web_search_port = HostWebSearchPort()
     prompt_provider = as_prompt_provider()
 
-    # 用户级搜索配置端口（对齐 QA：按用户首选/指定 provider 择优构造 WebSearchPort）
+    # web_search_port：按数据库用户默认搜索引擎（is_primary）构造，首选失败回退 YAML 兜底
     from novamind.features.user.adapters.search_config_port_adapter import as_search_config_port
     search_config_port = as_search_config_port(db)
+    web_search_port = await resolve_web_search_port(search_config_port, user_id)
 
     return AgentChatService(
         db=db,
@@ -116,7 +123,6 @@ async def get_agent_chat_service(
         knowledge_search_port=knowledge_search_port,
         web_search_port=web_search_port,
         prompt_provider=prompt_provider,
-        search_config_port=search_config_port,
     )
 
 
