@@ -100,8 +100,23 @@ async def init_user_components() -> None:
     await create_admin_user()
 
 
+def setup_auth_port_wiring(app: FastAPI) -> None:
+    """装配 core/auth 认证端口。
+
+    把 user 的 ``UserStatusResolver`` 实现注册为
+    ``core/auth/dependencies.get_user_status_resolver`` 的 dependency_overrides，
+    使 core/auth 的认证依赖能经端口取 DB 用户状态，无需 core 反向依赖 user。
+    """
+    # 懒导入规避启动期循环依赖
+    from novamind.core.auth.dependencies import get_user_status_resolver
+    from novamind.features.user.adapters.auth_user_resolver_adapter import (
+        as_user_status_resolver,
+    )
+    app.dependency_overrides[get_user_status_resolver] = as_user_status_resolver
+
+
 def setup_user_exception_handlers(app: FastAPI) -> None:
-    """注册用户模块的异常处理器"""
+    """注册用户模块的异常处理器 + 装配 core/auth 认证端口"""
     register_module_exceptions(app, status_map={
         UserNotFoundError: 404,
         UserAlreadyExistsError: 409,
@@ -120,3 +135,4 @@ def setup_user_exception_handlers(app: FastAPI) -> None:
         SearchConfigTestFailedError: 400,
         SearchConfigError: 400,
     })
+    setup_auth_port_wiring(app)
