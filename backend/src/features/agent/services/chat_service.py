@@ -171,20 +171,40 @@ class AgentChatService:
                     msgs, memory_manager, model, agent.context_window or 32768, conv.id
                 )
 
-            async for event in self.agent_engine.run(
-                llm_client=llm_client,
-                messages=messages,
-                tools=tools,
-                context=context,
-                stream=stream,
-                enable_thinking=enable_thinking,
-                max_iterations=agent.max_tool_calls_per_turn,
-                max_tokens=agent.max_tokens,
-                temperature=agent.temperature,
-                top_p=agent.top_p,
-                compress_fn=_compress_on_overflow,
-            ):
-                if event.event_type == "tool_call":
+            # E7 Plan-and-Execute：Agent extra_config.plan_mode 时用 PlanningFlow 编排
+            plan_mode = bool((agent.extra_config or {}).get("plan_mode"))
+            if plan_mode:
+                from novamind.engines.agent.flow import PlanningFlow
+
+                event_gen = PlanningFlow(self.agent_engine).execute(
+                    llm_client=llm_client,
+                    messages=messages,
+                    tools=tools,
+                    context=context,
+                    user_query=content,
+                    max_tokens=agent.max_tokens,
+                    temperature=agent.temperature,
+                    top_p=agent.top_p,
+                    enable_thinking=enable_thinking,
+                )
+            else:
+                event_gen = self.agent_engine.run(
+                    llm_client=llm_client,
+                    messages=messages,
+                    tools=tools,
+                    context=context,
+                    stream=stream,
+                    enable_thinking=enable_thinking,
+                    max_iterations=agent.max_tool_calls_per_turn,
+                    max_tokens=agent.max_tokens,
+                    temperature=agent.temperature,
+                    top_p=agent.top_p,
+                    compress_fn=_compress_on_overflow,
+                )
+            async for event in event_gen:
+                if event.event_type.startswith("plan."):
+                    yield self._emit(event.event_type, event.data)
+                elif event.event_type == "tool_call":
                     await self._handle_tool_call(event, user_msg, conv, context)
                     yield self._emit("tool_call", event.data)
 
