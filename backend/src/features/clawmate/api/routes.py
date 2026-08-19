@@ -5,10 +5,14 @@ ClawMate API 路由
 所有端点需要 JWT 认证。
 """
 
-from fastapi import APIRouter, Depends
+import json
+
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 
-from novamind.core.auth import get_current_user
+from novamind.core.auth import UserStatusResolver, get_current_user, get_user_status_resolver
+from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
+from novamind.core.ws import run_stream_to_ws
 from novamind.features.clawmate.api.dependencies import (
     get_session_manager,
     get_user_environment,
@@ -345,6 +349,61 @@ async def create_dir(
 # ==================== AI 对话 ====================
 
 
+@router.websocket("/ws")
+async def chat_ws(
+    websocket: WebSocket,
+    resolver: UserStatusResolver = Depends(get_user_status_resolver),
+    service: ClawMateChatService = Depends(get_chat_service),
+):
+    """ClawMate AI 对话（WebSocket 流式）。
+
+    认证：subprotocol ``bearer.<jwt>``（ws_authenticate 校验，失败 close 4401/4403）。
+    客户端连接后发 ``{"action": "chat", "payload": {content, model?}}``，
+    服务端推送 ``{"type": ..., "data": ...}`` 事件流（content/reasoning/tool_call/
+    tool_result/warning/error/done）。客户端 close 触发 service CancelledError 清理
+    （释放 per-user chat_lock）。
+    """
+    user = await ws_authenticate(websocket, resolver)
+    if user is None:
+        return  # 认证失败已 close
+    token = ws_extract_token(websocket)
+    await websocket.accept(subprotocol=f"bearer.{token}" if token else None)
+
+    try:
+        msg = await websocket.receive_json()
+    except WebSocketDisconnect:
+        return
+
+    if not isinstance(msg, dict) or msg.get("action") != "chat":
+        await websocket.send_json(
+            {"type": "error", "data": {"message": "未知 action，期望 action=chat"}}
+        )
+        await websocket.close()
+        return
+
+    try:
+        data = ClawMateChatRequest(**(msg.get("payload") or {}))
+    except Exception as e:
+        await websocket.send_json(
+            {"type": "error", "data": {"message": f"请求参数错误：{str(e)}"}}
+        )
+        await websocket.close()
+        return
+
+    gen = service.chat_stream(
+        user_id=user["id"],
+        content=data.content,
+        model=data.model,
+    )
+    await run_stream_to_ws(websocket, gen)
+
+
+async def _chat_stream_sse(gen):
+    """dict 事件 → SSE 帧（过渡期保留 SSE 端点兼容前端，W6 移除）"""
+    async for d in gen:
+        yield f"event: {d['type']}\ndata: {json.dumps(d['data'], ensure_ascii=False)}\n\n"
+
+
 @router.post(
     "/chat",
     summary="AI 对话（SSE 流式）",
@@ -357,10 +416,12 @@ async def chat(
 ):
     user_id = _get_user_id(current_user)
     return StreamingResponse(
-        service.chat_stream(
-            user_id=user_id,
-            content=data.content,
-            model=data.model,
+        _chat_stream_sse(
+            service.chat_stream(
+                user_id=user_id,
+                content=data.content,
+                model=data.model,
+            )
         ),
         media_type="text/event-stream",
         headers={

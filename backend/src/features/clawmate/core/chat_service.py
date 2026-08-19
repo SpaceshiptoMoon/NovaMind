@@ -10,8 +10,10 @@ ClawMate AI 对话服务
 - 对话历史限制：防止无限增长
 """
 
-import json
+import asyncio
 from typing import Any, AsyncGenerator, Dict, List, Optional
+
+from novamind.core.ws import envelope
 from novamind.shared.model_config_ports import ModelConfigPort
 
 from novamind.core.middleware.structured_logging import get_logger
@@ -52,8 +54,8 @@ class ClawMateChatService:
         user_id: int,
         content: str,
         model: Optional[str] = None,
-    ) -> AsyncGenerator[str, None]:
-        """SSE 流式 AI 对话
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """流式 AI 对话（dict 事件流，经 WS 推送）
 
         Args:
             user_id: 用户 ID
@@ -61,23 +63,28 @@ class ClawMateChatService:
             model: 可选的模型名称
 
         Yields:
-            SSE 格式的事件字符串
+            ``{"type": ..., "data": ...}`` 事件 dict（envelope）
         """
         # 1. 获取/创建 session state
         state = self.session_manager.get_or_create_state(user_id)
 
         # 2. 防并发锁
         if state.chat_lock.locked():
-            yield self._sse("error", {"message": "上一轮对话尚未完成，请等待"})
+            yield self._emit("error", {"message": "上一轮对话尚未完成，请等待"})
             return
 
         async with state.chat_lock:
             try:
                 async for event in self._run_chat(state, user_id, content, model):
                     yield event
+            except asyncio.CancelledError:
+                # 客户端断连（WS close）→ run_stream_to_ws aclose 触发；
+                # async with 释放 chat_lock 后 re-raise
+                logger.info("ClawMate 对话被客户端取消", user_id=user_id)
+                raise
             except Exception as e:
                 logger.error("ClawMate 对话失败", user_id=user_id, error=str(e))
-                yield self._sse("error", {"message": f"对话失败: {str(e)}"})
+                yield self._emit("error", {"message": f"对话失败: {str(e)}"})
 
     async def _run_chat(
         self,
@@ -85,13 +92,13 @@ class ClawMateChatService:
         user_id: int,
         content: str,
         model: Optional[str],
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[Dict[str, Any], None]:
         """执行一轮对话的核心逻辑"""
 
         # 3. 解析 LLM 模型
         llm_client = await self._resolve_model(user_id, model)
         if llm_client is None:
-            yield self._sse("error", {"message": "未配置可用的 LLM 模型，请先在设置中添加模型"})
+            yield self._emit("error", {"message": "未配置可用的 LLM 模型，请先在设置中添加模型"})
             return
 
         # 4. 构建系统提示词
@@ -147,39 +154,39 @@ class ClawMateChatService:
             if event.event_type == "content":
                 text = event.data.get("content", "")
                 full_response += text
-                yield self._sse("content", {"text": text})
+                yield self._emit("content", {"text": text})
 
             elif event.event_type == "reasoning":
-                yield self._sse("reasoning", {"text": event.data.get("content", "")})
+                yield self._emit("reasoning", {"text": event.data.get("content", "")})
 
             elif event.event_type == "tool_call":
-                yield self._sse("tool_call", {
+                yield self._emit("tool_call", {
                     "name": event.data.get("tool_name", ""),
                     "arguments": event.data.get("arguments", {}),
                     "call_id": event.data.get("call_id", ""),
                 })
 
             elif event.event_type == "tool_result":
-                # 截断过长的工具结果（SSE 前端预览用）
+                # 截断过长的工具结果（前端预览用）
                 result_text = event.data.get("result", "")
                 if len(result_text) > 500:
                     result_text = result_text[:500] + "..."
-                yield self._sse("tool_result", {
+                yield self._emit("tool_result", {
                     "name": event.data.get("tool_name", ""),
                     "result": result_text,
                 })
 
             elif event.event_type == "context_overflow":
                 # 上下文溢出 — 引擎已尝试压缩但失败或不可用
-                yield self._sse("warning", {
+                yield self._emit("warning", {
                     "message": "对话上下文过长，已无法继续。建议开启新对话或缩减当前话题范围"
                 })
 
             elif event.event_type == "error":
-                yield self._sse("error", {"message": event.data.get("content", "未知错误")})
+                yield self._emit("error", {"message": event.data.get("content", "未知错误")})
 
             elif event.event_type == "done":
-                yield self._sse("done", {
+                yield self._emit("done", {
                     "response": full_response,
                     "iterations": event.data.get("iterations", 0),
                     "tool_calls_count": event.data.get("tool_calls_count", 0),
@@ -246,7 +253,6 @@ class ClawMateChatService:
             logger.warning("ClawMate 模型解析失败", user_id=user_id, error=str(e))
             return None
 
-    @staticmethod
-    def _sse(event_type: str, data: dict) -> str:
-        """格式化 SSE 事件"""
-        return f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+    def _emit(self, event_type: str, data: dict) -> dict:
+        """构造统一事件 envelope（WS 推送用，取代 SSE 帧）"""
+        return envelope(event_type, data)
