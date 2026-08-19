@@ -1,23 +1,37 @@
 """
 Agent 模块 API 路由
 """
+import json
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Query, Path
+from fastapi import APIRouter, Depends, Path, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from novamind.core.auth import get_current_user
+from novamind.core.auth import UserStatusResolver, get_current_user, get_user_status_resolver
+from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
+from novamind.core.database.database import get_db
+from novamind.core.ws import run_stream_to_ws
 from novamind.features.agent.api.dependencies import (
-    get_agent_service,
+    _build_agent_chat_service,
     get_agent_chat_service,
-    get_mcp_server_service,
-    get_tool_registry,
+    get_agent_engine,
+    get_agent_service,
+    get_memory_search_repo,
     get_minio_client_for_presign,
+    get_mcp_server_service,
+    get_model_config_service,
+    get_todo_store,
+    get_tool_registry,
 )
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.agent.services.chat_service import AgentChatService
 from novamind.features.agent.services.mcp_server_service import McpServerService
+from novamind.engines.agent.agent_engine import AgentEngine
+from novamind.engines.agent.memory.todo_store import TodoStore
 from novamind.engines.agent.tool.registry import ToolRegistry
+from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
+from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.storage.attachment_presign import enrich_attachments_with_presigned_urls
 from novamind.features.agent.schemas.agent_schema import (
     AgentCreate,
@@ -131,6 +145,75 @@ async def delete_agent(
 
 # ==================== Agent 对话 ====================
 
+@router.websocket("/agents/{agent_id}/ws")
+async def chat_ws(
+    websocket: WebSocket,
+    agent_id: Annotated[int, Path(gt=0, description="Agent ID")],
+    db: AsyncSession = Depends(get_db),
+    resolver: UserStatusResolver = Depends(get_user_status_resolver),
+    agent_service: AgentService = Depends(get_agent_service),
+    model_config_service: ModelConfigService = Depends(get_model_config_service),
+    agent_engine: AgentEngine = Depends(get_agent_engine),
+    todo_store: TodoStore = Depends(get_todo_store),
+    memory_search_repo: Optional[MemorySearchRepository] = Depends(get_memory_search_repo),
+):
+    """Agent 对话（WebSocket 流式）。
+
+    认证：subprotocol ``bearer.<jwt>``（ws_authenticate 校验，失败 close 4401/4403）。
+    客户端连接后发 ``{"action": "chat", "payload": {content, session_id?, ...}}``，
+    服务端推送 ``{"type": ..., "data": ...}`` 事件流（session/tool_call/tool_result/
+    reasoning/content/sources/done/error）。客户端 close 触发 service CancelledError 清理。
+    """
+    user = await ws_authenticate(websocket, resolver)
+    if user is None:
+        return  # 认证失败已 close
+    token = ws_extract_token(websocket)
+    await websocket.accept(subprotocol=f"bearer.{token}" if token else None)
+
+    try:
+        msg = await websocket.receive_json()
+    except WebSocketDisconnect:
+        return
+
+    if not isinstance(msg, dict) or msg.get("action") != "chat":
+        await websocket.send_json(
+            {"type": "error", "data": {"content": "未知 action，期望 action=chat"}}
+        )
+        await websocket.close()
+        return
+
+    try:
+        data = AgentChatRequest(**(msg.get("payload") or {}))
+    except Exception as e:
+        await websocket.send_json(
+            {"type": "error", "data": {"content": f"请求参数错误：{str(e)}"}}
+        )
+        await websocket.close()
+        return
+
+    service = await _build_agent_chat_service(
+        db, user["id"], agent_service, model_config_service, agent_engine,
+        todo_store, memory_search_repo, None,
+    )
+    gen = service.chat_stream(
+        user_id=user["id"],
+        agent_id=agent_id,
+        content=data.content,
+        session_id=data.session_id,
+        llm_model=data.llm_model,
+        enable_thinking=data.enable_thinking,
+        stream=data.stream,
+        attachment_ids=data.attachment_ids,
+    )
+    await run_stream_to_ws(websocket, gen)
+
+
+async def _chat_stream_sse(gen):
+    """dict 事件 → SSE 帧（过渡期保留 SSE 端点兼容前端，W6 移除）"""
+    async for d in gen:
+        yield f"event: {d['type']}\ndata: {json.dumps(d['data'], ensure_ascii=False)}\n\n"
+
+
 @router.post(
     "/agents/{agent_id}/chat-stream",
     summary="Agent 对话（SSE 流式）",
@@ -143,15 +226,17 @@ async def chat_stream(
     service: AgentChatService = Depends(get_agent_chat_service),
 ):
     return StreamingResponse(
-        service.chat_stream(
-            user_id=user_id,
-            agent_id=agent_id,
-            content=data.content,
-            session_id=data.session_id,
-            llm_model=data.llm_model,
-            enable_thinking=data.enable_thinking,
-            stream=data.stream,
-            attachment_ids=data.attachment_ids,
+        _chat_stream_sse(
+            service.chat_stream(
+                user_id=user_id,
+                agent_id=agent_id,
+                content=data.content,
+                session_id=data.session_id,
+                llm_model=data.llm_model,
+                enable_thinking=data.enable_thinking,
+                stream=data.stream,
+                attachment_ids=data.attachment_ids,
+            )
         ),
         media_type="text/event-stream",
         headers={
