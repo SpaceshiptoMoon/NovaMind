@@ -156,3 +156,72 @@ class ResultBudgetHook(ToolHook):
         else:
             result.metadata["_oversized"] = False
         return result
+
+
+class ToolOutputBudgetHook(ToolHook):
+    """按 token 预算截断工具输出（E2 tool_output_budget）。
+
+    比 ``ResultTruncationHook`` 更智能：
+    - token 估算（~4 字符/token）而非纯字符
+    - head/tail 双端保留（中间省略），吸附行边界避免截断半行
+    - exempt 工具（如 ``knowledge_search`` 检索结果不截断，避免丢来源）
+
+    防止单个工具超大输出撑爆上下文窗口。
+    """
+
+    def __init__(
+        self,
+        max_tokens: int = 10_000,
+        head_ratio: float = 0.6,
+        exempt_tools: tuple = ("knowledge_search",),
+    ) -> None:
+        self._max_tokens = max_tokens
+        self._max_chars = max_tokens * 4  # 粗估 4 字符/token
+        self._head_ratio = head_ratio
+        self._exempt = set(exempt_tools)
+
+    async def before_execute(
+        self,
+        tool: ToolDefinition,
+        arguments: Dict[str, Any],
+        context: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        return None
+
+    async def after_execute(
+        self,
+        tool: ToolDefinition,
+        arguments: Dict[str, Any],
+        result: ToolResult,
+        context: Dict[str, Any],
+    ) -> ToolResult:
+        if tool.name in self._exempt:
+            return result
+        content = result.content
+        if not content or len(content) <= self._max_chars:
+            return result
+
+        head_chars = int(self._max_chars * self._head_ratio)
+        tail_chars = self._max_chars - head_chars
+        head = content[:head_chars]
+        tail = content[-tail_chars:]
+
+        # 吸附行边界（head 截到上一行尾，tail 从下一行头开始）
+        nl = head.rfind("\n")
+        if nl > head_chars // 2:
+            head = head[: nl + 1]
+        nl = tail.find("\n")
+        if nl != -1 and nl < tail_chars // 2:
+            tail = tail[nl + 1 :]
+
+        omitted = len(content) - len(head) - len(tail)
+        result.content = (
+            head
+            + f"\n\n[... {omitted} chars (~{omitted // 4} tokens) omitted from "
+            f"{tool.name} output. Use more specific parameters to narrow results.]\n\n"
+            + tail
+        )
+        result.metadata["truncated"] = True
+        result.metadata["original_length"] = len(content)
+        result.metadata["original_tokens_est"] = len(content) // 4
+        return result
