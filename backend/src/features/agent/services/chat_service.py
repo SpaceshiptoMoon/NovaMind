@@ -208,6 +208,10 @@ class AgentChatService:
                         reasoning=full_reasoning or None,
                         sources=collected_sources or None,
                     )
+                    # E1 可观测性：done 加 cost_usd + 写 agent_usage 表
+                    done_data = await self._record_usage(
+                        done_data, user_id, conv, agent_id, model
+                    )
                     yield self._emit("done", done_data)
 
                 elif event.event_type == "error":
@@ -813,6 +817,58 @@ class AgentChatService:
         if sources:
             event.data["sources"] = sources
         return event.data
+
+    async def _record_usage(
+        self,
+        done_data: Dict[str, Any],
+        user_id: int,
+        conv: AgentSession,
+        agent_id: int,
+        model: str,
+    ) -> Dict[str, Any]:
+        """E1 可观测性：done_data 加 cost_usd + 写 agent_usage 表。
+
+        失败不阻断对话（仅 warning 日志）。
+        """
+        usage_breakdown = done_data.get("usage_breakdown") or {}
+        if not usage_breakdown:
+            return done_data
+        try:
+            from novamind.shared.ai_models.usage import CanonicalUsage, estimate_cost
+            from novamind.features.agent.repository.agent_usage_repository import (
+                AgentUsageRepository,
+            )
+
+            usage = CanonicalUsage(
+                input_tokens=usage_breakdown.get("input_tokens", 0),
+                output_tokens=usage_breakdown.get("output_tokens", 0),
+                cache_read_tokens=usage_breakdown.get("cache_read_tokens", 0),
+                cache_write_tokens=usage_breakdown.get("cache_write_tokens", 0),
+                reasoning_tokens=usage_breakdown.get("reasoning_tokens", 0),
+            )
+            cost = estimate_cost(usage, model)
+            done_data["cost_usd"] = float(cost)
+
+            usage_repo = AgentUsageRepository(self.db)
+            await usage_repo.log_usage(
+                user_id=user_id,
+                session_id=conv.session_id,
+                conversation_id=conv.id,
+                agent_id=agent_id,
+                model=model,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                cache_read_tokens=usage.cache_read_tokens,
+                cache_write_tokens=usage.cache_write_tokens,
+                reasoning_tokens=usage.reasoning_tokens,
+                total_tokens=usage.total_tokens,
+                cost_usd=cost,
+                iterations=done_data.get("iterations", 0),
+                tool_calls_count=done_data.get("tool_calls_count", 0),
+            )
+        except Exception as e:
+            logger.warning("agent_usage 记录失败", error=str(e))
+        return done_data
 
     # ==================== 上下文自动压缩 ====================
 

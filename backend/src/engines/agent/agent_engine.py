@@ -18,6 +18,7 @@ from novamind.engines.agent.retry import (
     RetryConfig, ContextOverflowError, retry_llm_call,
     _is_retryable_error, _is_context_overflow, _is_non_retryable,
 )
+from novamind.shared.ai_models.usage import CanonicalUsage, normalize_usage
 
 logger = get_logger(__name__)
 
@@ -61,6 +62,7 @@ class AgentEngine:
                          上下文溢出时调用以压缩消息列表。
         """
         total_tokens = 0
+        total_usage = CanonicalUsage()
         total_tool_calls = 0
         full_response = ""
         iteration = 0
@@ -105,6 +107,9 @@ class AgentEngine:
                             total_tool_calls += 1
 
                 total_tokens += meta.get("total_tokens", 0)
+                iter_usage = meta.get("usage")
+                if iter_usage:
+                    total_usage = total_usage + iter_usage
 
                 if not iteration_had_tools:
                     break
@@ -163,6 +168,14 @@ class AgentEngine:
                 "full_response": full_response,
                 "tool_calls_count": total_tool_calls,
                 "total_tokens": total_tokens,
+                "usage_breakdown": {
+                    "input_tokens": total_usage.input_tokens,
+                    "output_tokens": total_usage.output_tokens,
+                    "cache_read_tokens": total_usage.cache_read_tokens,
+                    "cache_write_tokens": total_usage.cache_write_tokens,
+                    "reasoning_tokens": total_usage.reasoning_tokens,
+                    "total_tokens": total_usage.total_tokens,
+                },
                 "iterations": iteration,
                 "truncated": truncated,
             },
@@ -266,7 +279,9 @@ class AgentEngine:
 
             elif chunk.type == "done":
                 if chunk.usage:
-                    total_tokens = chunk.usage.get("total_tokens", 0)
+                    iter_usage = normalize_usage(chunk.usage)
+                    total_tokens = iter_usage.total_tokens
+                    meta["usage"] = iter_usage
 
         meta["total_tokens"] = total_tokens
 
@@ -315,7 +330,9 @@ class AgentEngine:
         )
 
         if response.usage:
-            total_tokens = response.usage.get("total_tokens", 0)
+            iter_usage = normalize_usage(response.usage)
+            total_tokens = iter_usage.total_tokens
+            meta["usage"] = iter_usage
 
         if response.reasoning:
             yield AgentEvent("reasoning", {"content": response.reasoning})
