@@ -8,7 +8,7 @@
 """
 from __future__ import annotations
 
-from typing import Any, AsyncGenerator, Dict
+from typing import Any, AsyncGenerator, Dict, Optional
 
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -23,20 +23,24 @@ def envelope(event_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def run_stream_to_ws(
-    websocket: WebSocket, event_gen: AsyncGenerator[Dict[str, Any], None]
+    websocket: WebSocket,
+    event_gen: AsyncGenerator[Dict[str, Any], None],
+    send_fn: Optional[Any] = None,
 ) -> None:
     """把 yield dict 的 async generator 推到 WS。
 
-    - 正常：``async for event: await websocket.send_json(event)``
+    - 正常：``async for event: await send_fn(event)``（默认 ``websocket.send_json``，
+      可传 ``send_fn`` 加锁，E5 异步审批并发 send 时用）
     - 客户端断连：``WebSocketDisconnect`` 捕获后静默退出
     - 无论如何 ``finally: await event_gen.aclose()`` —— 在挂起点抛
       ``GeneratorExit`` 进 service generator，触发其
       ``except (asyncio.CancelledError, GeneratorExit)`` 做事务回滚/状态标记
       CANCELLED 等清理（aclose 抛 GeneratorExit，不是 CancelledError）
     """
+    send = send_fn or websocket.send_json
     try:
         async for event in event_gen:
-            await websocket.send_json(event)
+            await send(event)
     except WebSocketDisconnect:
         pass
     finally:

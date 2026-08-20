@@ -90,6 +90,8 @@ class AgentChatService:
         enable_thinking: bool = False,
         stream: bool = True,
         attachment_ids: Optional[List[int]] = None,
+        approval_registry: Optional[Any] = None,
+        event_sink: Optional[Any] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """执行 Agent 对话，返回事件流（dict 事件，经 WS 推送）"""
         try:
@@ -158,6 +160,11 @@ class AgentChatService:
                 )
             else:
                 context["subagent_runner"] = None
+
+            # E5 异步审批：注入 approval_registry + event_sink（WS 端点传入，
+            # ApprovalHook DANGEROUS 时发 approval_request + 等用户决策）
+            context["approval_registry"] = approval_registry
+            context["event_sink"] = event_sink
 
             full_response = ""
             full_reasoning = ""
