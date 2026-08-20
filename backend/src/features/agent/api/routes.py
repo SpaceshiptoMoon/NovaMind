@@ -1,6 +1,7 @@
 """
 Agent 模块 API 路由
 """
+import asyncio
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Path, Query, WebSocket, WebSocketDisconnect
@@ -10,6 +11,7 @@ from novamind.core.auth import UserStatusResolver, get_current_user, get_user_st
 from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
 from novamind.core.database.database import get_db
 from novamind.core.ws import run_stream_to_ws
+from novamind.engines.agent.safety import ApprovalRegistry
 from novamind.features.agent.api.dependencies import (
     _build_agent_chat_service,
     get_agent_engine_ws,
@@ -192,6 +194,16 @@ async def chat_ws(
         db, user["id"], agent_service, model_config_service, agent_engine,
         todo_store, memory_search_repo, None,
     )
+
+    # E5 异步审批：ApprovalRegistry + locked send（并发 send 经 lock）+ 双 task
+    # （send 推送事件流，recv 收用户 approval 决策）
+    registry = ApprovalRegistry()
+    send_lock = asyncio.Lock()
+
+    async def locked_send(event):
+        async with send_lock:
+            await websocket.send_json(event)
+
     gen = service.chat_stream(
         user_id=user["id"],
         agent_id=agent_id,
@@ -201,8 +213,30 @@ async def chat_ws(
         enable_thinking=data.enable_thinking,
         stream=data.stream,
         attachment_ids=data.attachment_ids,
+        approval_registry=registry,
+        event_sink=locked_send,
     )
-    await run_stream_to_ws(websocket, gen)
+
+    async def recv_approvals():
+        """并发收用户 WS 消息（approval 决策 → registry.resolve）。"""
+        while True:
+            try:
+                msg = await websocket.receive_json()
+            except WebSocketDisconnect:
+                break
+            if isinstance(msg, dict) and msg.get("action") == "approval":
+                registry.resolve(
+                    msg.get("approval_id", ""), msg.get("decision", "deny")
+                )
+
+    send_task = asyncio.create_task(
+        run_stream_to_ws(websocket, gen, send_fn=locked_send)
+    )
+    recv_task = asyncio.create_task(recv_approvals())
+    try:
+        await send_task
+    finally:
+        recv_task.cancel()
 
 
 @router.get(
