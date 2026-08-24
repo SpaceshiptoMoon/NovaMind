@@ -309,7 +309,7 @@ const handleCommand = async (command: string) => {
 }
 
 .nav-item.active {
-  color: var(--color-primary);
+  color: var(--color-text);
   background: var(--color-primary-muted);
   font-weight: var(--weight-medium);
 }
@@ -334,7 +334,7 @@ const handleCommand = async (command: string) => {
 }
 
 .user-avatar {
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
   color: var(--color-user-bubble-text);
   font-size: var(--text-sm);
 }

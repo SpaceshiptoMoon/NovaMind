@@ -406,10 +406,10 @@ function handleCopyMessage(content: string, e: MouseEvent) {
 .file-icon-box .file-ext-label {
   font-size: 11px; font-weight: 700; color: #fff; letter-spacing: 0.3px;
 }
-.file-icon-box.file-pdf  { background: #ef4444; }
-.file-icon-box.file-doc  { background: #6366f1; }
-.file-icon-box.file-txt  { background: #8b5cf6; }
-.file-icon-box.file-md   { background: #06b6d4; }
+.file-icon-box.file-pdf  { background: #4b5563; }
+.file-icon-box.file-doc  { background: #6b7280; }
+.file-icon-box.file-txt  { background: #9ca3af; }
+.file-icon-box.file-md   { background: #4b5563; }
 .file-icon-box.file-default { background: #6b7280; }
 .file-card .file-info { flex: 1; overflow: hidden; }
 .file-card .file-name {

@@ -305,7 +305,7 @@ async function handleUpload(file: File) {
   right: 0;
   bottom: -1px;
   height: 2px;
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
   border-radius: 2px 2px 0 0;
 }
 

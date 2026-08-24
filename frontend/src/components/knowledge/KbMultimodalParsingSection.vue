@@ -180,7 +180,7 @@ defineProps<{
 }
 
 :deep(.el-radio.is-checked) {
-  border-color: rgba(99, 102, 241, 0.35);
+  border-color: rgba(17, 24, 39, 0.35);
   background: var(--color-primary-subtle);
 }
 

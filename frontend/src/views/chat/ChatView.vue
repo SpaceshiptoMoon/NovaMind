@@ -412,7 +412,7 @@ onBeforeUnmount(() => {
   bottom: 6px;
   width: 3px;
   border-radius: 2px;
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
 }
 
 .session-title {
@@ -843,13 +843,13 @@ onBeforeUnmount(() => {
 }
 
 .send-btn.active {
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
   color: #ffffff;
   cursor: pointer;
 }
 
 .send-btn.active:hover {
-  background: var(--color-primary-hover);
+  background: var(--color-btn-primary-hover);
   transform: scale(1.05);
 }
 
@@ -1117,16 +1117,16 @@ onBeforeUnmount(() => {
 }
 
 .file-icon-box.file-pdf {
-  background: #ef4444;
+  background: #4b5563;
 }
 .file-icon-box.file-doc {
-  background: #6366f1;
+  background: #6b7280;
 }
 .file-icon-box.file-txt {
-  background: #8b5cf6;
+  background: #9ca3af;
 }
 .file-icon-box.file-md {
-  background: #06b6d4;
+  background: #4b5563;
 }
 .file-icon-box.file-default {
   background: #6b7280;
@@ -1285,7 +1285,7 @@ onBeforeUnmount(() => {
   line-height: 1;
   vertical-align: super;
   color: var(--color-primary);
-  background: rgba(99, 102, 241, 0.1);
+  background: rgba(17, 24, 39, 0.1);
   border-radius: 4px;
   transition:
     background 0.15s,
@@ -1294,7 +1294,7 @@ onBeforeUnmount(() => {
 }
 
 .cite-marker:hover {
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
   color: #fff;
 }
 
@@ -1331,13 +1331,13 @@ onBeforeUnmount(() => {
 }
 
 .cite-pop-kind.kb {
-  background: rgba(99, 102, 241, 0.12);
+  background: rgba(17, 24, 39, 0.12);
   color: var(--color-primary);
 }
 
 .cite-pop-kind.web {
-  background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
+  background: rgba(17, 24, 39, 0.12);
+  color: #4b5563;
 }
 
 .cite-pop-snippet {

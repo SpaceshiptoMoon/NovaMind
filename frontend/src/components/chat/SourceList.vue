@@ -183,7 +183,7 @@ function formatScore(score: number): string {
 }
 
 .source-group-title.web {
-  color: #10b981;
+  color: #4b5563;
 }
 
 .source-group-title.kb {
@@ -222,7 +222,7 @@ function formatScore(score: number): string {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
   color: #fff;
   font-size: 11px;
   font-weight: 600;
@@ -232,7 +232,7 @@ function formatScore(score: number): string {
 }
 
 .source-card.active .source-index {
-  background: var(--color-primary-hover);
+  background: var(--color-btn-primary-hover);
 }
 
 .source-meta {
@@ -264,13 +264,13 @@ function formatScore(score: number): string {
 }
 
 .source-kind.kb {
-  background: rgba(99, 102, 241, 0.12);
-  color: var(--color-primary);
+  background: rgba(17, 24, 39, 0.08);
+  color: var(--color-text-secondary);
 }
 
 .source-kind.web {
-  background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
+  background: rgba(17, 24, 39, 0.12);
+  color: var(--color-text);
 }
 
 .source-sub {

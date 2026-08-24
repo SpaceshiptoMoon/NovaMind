@@ -67,14 +67,14 @@
       </div>
     </div>
 
-    <!-- 快捷操作 chips -->
+    <!-- 快捷操作 chips：线条图标卡片风 -->
     <div class="quick-actions">
       <button
         class="action-chip"
         :class="{ active: enableThinking }"
         @click="enableThinking = !enableThinking"
       >
-        <span class="action-icon">🧠</span>
+        <el-icon :size="14" class="action-icon"><MagicStick /></el-icon>
         <span>深度思考</span>
       </button>
       <button
@@ -82,11 +82,11 @@
         :class="{ active: enableWebSearch }"
         @click="enableWebSearch = !enableWebSearch"
       >
-        <span class="action-icon">🌐</span>
+        <el-icon :size="14" class="action-icon"><Search /></el-icon>
         <span>联网搜索</span>
       </button>
       <button class="action-chip" :class="{ active: useStream }" @click="useStream = !useStream">
-        <span class="action-icon">⚡</span>
+        <el-icon :size="14" class="action-icon"><Lightning /></el-icon>
         <span>流式输出</span>
       </button>
     </div>
@@ -96,7 +96,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Paperclip, VideoPause, Close } from '@element-plus/icons-vue'
+import { Paperclip, VideoPause, Close, MagicStick, Search, Lightning } from '@element-plus/icons-vue'
 import { useChatStore } from '@/stores/chat'
 import { useChatAttachments } from '@/composables/useChatAttachments'
 
@@ -272,13 +272,13 @@ function handleSendClick() {
 }
 
 .send-btn.active {
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
   color: #ffffff;
   cursor: pointer;
 }
 
 .send-btn.active:hover {
-  background: var(--color-primary-hover);
+  background: var(--color-btn-primary-hover);
   transform: scale(1.05);
 }
 
@@ -317,19 +317,20 @@ function handleSendClick() {
 .quick-actions {
   margin: 8px 0 0;
   display: flex;
-  gap: 6px;
+  gap: 8px;
   padding: 0 4px;
+  flex-wrap: wrap;
 }
 
 .action-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
   background: var(--color-bg-card);
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   font-size: var(--text-xs);
   font-family: var(--font-body);
   cursor: pointer;
@@ -337,19 +338,22 @@ function handleSendClick() {
 }
 
 .action-chip:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+  background: var(--color-bg-hover);
+  border-color: var(--color-border);
+  color: var(--color-text);
 }
 
 .action-chip.active {
-  background: var(--color-primary-muted);
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+  background: var(--color-text);
+  border-color: var(--color-text);
+  color: #ffffff;
   font-weight: var(--weight-medium);
 }
 
 .action-icon {
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 14px;
   line-height: 1;
 }
 

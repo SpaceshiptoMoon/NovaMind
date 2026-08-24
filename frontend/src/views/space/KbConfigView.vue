@@ -511,7 +511,7 @@ onMounted(() => {
   border: 1px solid var(--color-border-light);
   border-radius: 24px;
   background:
-    radial-gradient(circle at top right, rgba(99, 102, 241, 0.1), transparent 28%),
+    radial-gradient(circle at top right, rgba(17, 24, 39, 0.1), transparent 28%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 249, 255, 0.96));
   box-shadow: var(--shadow-lg);
 }
@@ -544,12 +544,12 @@ onMounted(() => {
 
 .nav-pill:hover {
   transform: translateY(-1px);
-  border-color: rgba(99, 102, 241, 0.28);
+  border-color: rgba(17, 24, 39, 0.28);
   box-shadow: var(--shadow-sm);
 }
 
 .nav-pill.is-active {
-  border-color: rgba(99, 102, 241, 0.4);
+  border-color: rgba(17, 24, 39, 0.4);
   background: linear-gradient(180deg, rgba(238, 242, 255, 0.92), rgba(255, 255, 255, 0.98));
   box-shadow: var(--shadow-md);
 }
@@ -629,12 +629,12 @@ onMounted(() => {
 
 .modality-grid :deep(.el-checkbox:hover) {
   transform: translateY(-2px);
-  border-color: rgba(99, 102, 241, 0.26);
+  border-color: rgba(17, 24, 39, 0.26);
   box-shadow: var(--shadow-sm);
 }
 
 .modality-grid :deep(.el-checkbox.is-checked) {
-  border-color: rgba(99, 102, 241, 0.35);
+  border-color: rgba(17, 24, 39, 0.35);
   background: linear-gradient(180deg, rgba(238, 242, 255, 0.95), rgba(255, 255, 255, 0.98));
   box-shadow: var(--shadow-md);
 }
@@ -691,7 +691,7 @@ onMounted(() => {
 }
 
 :deep(.config-footer .el-button--primary) {
-  box-shadow: 0 10px 24px rgba(99, 102, 241, 0.18);
+  box-shadow: 0 10px 24px rgba(17, 24, 39, 0.18);
 }
 
 @media (max-width: 1024px) {

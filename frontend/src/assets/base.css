@@ -1,18 +1,22 @@
 /* ========================================
    Design Tokens — Clean Modern AI
-   (参考 Dify / Coze / Linear 风格)
+   (对齐 WorkBuddy：青绿主色 + 中性灰白底)
    ======================================== */
 :root {
-  /* Primary — 静谧靛紫 */
-  --color-primary: #6366F1;
-  --color-primary-hover: #4F46E5;
-  --color-primary-subtle: #EEF2FF;
-  --color-primary-muted: rgba(99, 102, 241, 0.06);
+  /* Primary — 纯黑白灰主题，无绿色；用于图标/焦点/链接/活动态 */
+  --color-primary: #111827;
+  --color-primary-hover: #030712;
+  --color-primary-subtle: #F1F3F5;
+  --color-primary-muted: rgba(17, 24, 39, 0.05);
 
-  /* Accent — 紫 */
-  --color-accent: #7C3AED;
-  --color-accent-hover: #6D28D9;
-  --color-accent-subtle: #F5F3FF;
+  /* 实心主按钮：黑 */
+  --color-btn-primary: #111827;
+  --color-btn-primary-hover: #030712;
+
+  /* Accent — 深灰，无绿色 */
+  --color-accent: #374151;
+  --color-accent-hover: #1f2937;
+  --color-accent-subtle: #F1F3F5;
 
   /* Text — 冷色 */
   --color-text: #111827;
@@ -20,28 +24,28 @@
   --color-text-muted: #9CA3AF;
   --color-text-faint: #D1D5DB;
 
-  /* Background — 人文暖白底 */
-  --color-bg: #F8F7FF;
+  /* Background — 中性灰白底 */
+  --color-bg: #F7F8FA;
   --color-bg-card: #FFFFFF;
-  --color-bg-card-elevated: #FAF9FF;
-  --color-bg-hover: #F1F0FF;
-  --color-bg-sidebar: #FAF9FF;
-  --color-bg-input: #FAF9FF;
+  --color-bg-card-elevated: #FAFBFC;
+  --color-bg-hover: #F1F3F5;
+  --color-bg-sidebar: #FAFBFC;
+  --color-bg-input: #F7F8FA;
 
   /* Border — 冷灰 */
   --color-border: #E5E7EB;
-  --color-border-light: #F3F4F6;
-  --color-border-focus: #6366F1;
+  --color-border-light: #EEF0F3;
+  --color-border-focus: #4b5563;
 
   /* Semantic */
-  --color-success: #10B981;
-  --color-success-subtle: #ECFDF5;
+  --color-success: #4b5563;
+  --color-success-subtle: #F1F3F5;
   --color-warning: #F59E0B;
   --color-warning-subtle: #FFFBEB;
   --color-danger: #EF4444;
   --color-danger-subtle: #FEF2F2;
-  --color-info: #818CF8;
-  --color-info-subtle: #EEF2FF;
+  --color-info: #3B82F6;
+  --color-info-subtle: #EFF6FF;
 
   /* Typography */
   --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
@@ -116,6 +120,7 @@
   --header-height: 56px;
   --sidebar-width: 220px;
   --sidebar-width-collapsed: 48px;
+  --drawer-width: 340px;
 
   /* Container widths */
   --container-width-sm: 576px;
@@ -146,6 +151,7 @@
   /* Z-index */
   --z-base: 0;
   --z-raised: 10;
+  --z-drawer: 60;
   --z-dropdown: 100;
   --z-sticky: 200;
   --z-overlay: 300;

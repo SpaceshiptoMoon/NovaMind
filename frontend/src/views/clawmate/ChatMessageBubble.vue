@@ -92,7 +92,7 @@ const toolArguments = computed(() => toolRecord.value?.arguments)
 .user-bubble {
   padding: var(--space-3) var(--space-4);
   border-radius: 18px 18px 4px 18px;
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
   color: #ffffff;
   white-space: pre-wrap;
 }
