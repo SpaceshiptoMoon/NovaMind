@@ -165,7 +165,7 @@
                               :percentage="getTaskProgressPercent(row)"
                               :stroke-width="7"
                               :show-text="false"
-                              color="#0f766e"
+                              color="#4b5563"
                             />
                             <span>{{ getTaskProgressText(row) }}</span>
                           </div>
@@ -348,7 +348,7 @@ function getTaskTone(status?: number) {
 
 function getTaskProgressColor(status?: number) {
   const map: Record<string, string> = {
-    success: '#0f766e',
+    success: '#4b5563',
     warning: '#d97706',
     danger: '#dc2626',
     neutral: '#64748b',
@@ -640,7 +640,7 @@ onMounted(fetchTasks)
   width: 88px;
   height: 88px;
   border-radius: 50%;
-  background: rgba(99, 102, 241, 0.06);
+  background: rgba(17, 24, 39, 0.06);
 }
 
 .dashboard-stat--primary::after {
@@ -726,7 +726,7 @@ onMounted(fetchTasks)
 }
 
 .task-item--success {
-  border-color: rgba(16, 185, 129, 0.22);
+  border-color: rgba(17, 24, 39, 0.22);
 }
 
 .task-item--warning {
@@ -777,7 +777,7 @@ onMounted(fetchTasks)
 
 .task-status-dot--success {
   background: var(--color-success);
-  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12);
+  box-shadow: 0 0 0 4px rgba(17, 24, 39, 0.12);
 }
 
 .task-status-dot--warning {
@@ -1067,7 +1067,7 @@ onMounted(fetchTasks)
 }
 
 .flow-seg--success {
-  background: rgba(16, 185, 129, 0.1);
+  background: rgba(17, 24, 39, 0.1);
 }
 
 .flow-seg--success .flow-seg__icon {

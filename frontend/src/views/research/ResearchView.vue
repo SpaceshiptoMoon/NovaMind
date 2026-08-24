@@ -602,7 +602,7 @@ watch(spaceId, () => {
   bottom: 6px;
   width: 3px;
   border-radius: 2px;
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
 }
 
 .conv-info {
@@ -1025,14 +1025,14 @@ watch(spaceId, () => {
 }
 
 .send-btn.active {
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
   color: #FFFFFF;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
+  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.25);
 }
 
 .send-btn.active:hover {
-  background: var(--color-primary-hover);
+  background: var(--color-btn-primary-hover);
   transform: scale(1.05);
 }
 

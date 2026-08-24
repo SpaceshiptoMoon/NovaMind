@@ -187,19 +187,19 @@ function scrollToFeatures() {
   align-items: center;
   padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-full);
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
   color: #FFFFFF;
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   text-decoration: none;
   transition: all var(--transition-base);
-  box-shadow: 0 2px 8px rgba(66, 133, 244, 0.2);
+  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.2);
 }
 
 .nav-cta:hover {
-  background: var(--color-primary-hover);
+  background: var(--color-btn-primary-hover);
   color: #FFFFFF;
-  box-shadow: 0 4px 12px rgba(66, 133, 244, 0.3);
+  box-shadow: 0 4px 12px rgba(17, 24, 39, 0.3);
   transform: translateY(-1px);
 }
 
@@ -292,15 +292,15 @@ function scrollToFeatures() {
 }
 
 .hero-btn-primary {
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
   color: #FFFFFF;
-  box-shadow: 0 4px 16px rgba(66, 133, 244, 0.25);
+  box-shadow: 0 4px 16px rgba(17, 24, 39, 0.25);
 }
 
 .hero-btn-primary:hover {
-  background: var(--color-primary-hover);
+  background: var(--color-btn-primary-hover);
   color: #FFFFFF;
-  box-shadow: 0 6px 20px rgba(66, 133, 244, 0.35);
+  box-shadow: 0 6px 20px rgba(17, 24, 39, 0.35);
   transform: translateY(-1px);
 }
 
@@ -326,7 +326,7 @@ function scrollToFeatures() {
 .hero-glow-1 {
   width: 500px;
   height: 500px;
-  background: radial-gradient(circle, rgba(66, 133, 244, 0.12), transparent 70%);
+  background: radial-gradient(circle, rgba(17, 24, 39, 0.12), transparent 70%);
   top: 5%;
   right: -10%;
   animation: floatGlow 20s ease-in-out infinite;

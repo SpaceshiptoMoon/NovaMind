@@ -669,7 +669,7 @@ onUnmounted(() => {
 }
 
 .pipeline-step.is-active .step-dot {
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
   border-color: var(--color-primary);
   box-shadow: 0 0 0 4px var(--color-primary-subtle);
 }
@@ -806,7 +806,7 @@ onUnmounted(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
   margin-top: 5px;
   flex-shrink: 0;
 }
@@ -1030,7 +1030,7 @@ onUnmounted(() => {
 }
 
 .markdown-body :deep(.qa-tag-q) {
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
   color: #FFF;
 }
 

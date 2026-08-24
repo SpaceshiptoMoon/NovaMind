@@ -8,46 +8,23 @@
     <!-- Fixed sidebar -->
     <aside class="workspace-sidebar" :class="{ collapsed: sidebarCollapsed }" role="navigation" aria-label="工作台侧边栏">
       <div class="sidebar-header">
-        <!-- 展开模式：频道下拉 + 新建按钮 -->
+        <!-- 展开模式：WorkBuddy 风格频道 pill tabs。点击 tab 即「新建/开启」对应频道 -->
         <template v-if="!sidebarCollapsed">
-          <el-select
-            v-model="activeChannelKey"
-            class="channel-select"
-            @change="handleChannelChange"
-          >
-            <el-option-group label="核心">
-              <el-option
-                v-for="ch in primaryChannels"
-                :key="ch.key"
-                :label="ch.label"
-                :value="ch.key"
-              >
-                <div class="channel-option">
-                  <NavIcon :name="ch.icon" :size="16" />
-                  <span>{{ ch.label }}</span>
-                </div>
-              </el-option>
-            </el-option-group>
-            <el-option-group label="更多">
-              <el-option
-                v-for="ch in moreChannels"
-                :key="ch.key"
-                :label="ch.label"
-                :value="ch.key"
-              >
-                <div class="channel-option">
-                  <NavIcon :name="ch.icon" :size="16" />
-                  <span>{{ ch.label }}</span>
-                </div>
-              </el-option>
-            </el-option-group>
-            <template #prefix>
-              <NavIcon :name="activeChannel.icon" :size="16" />
-            </template>
-          </el-select>
-          <button class="new-btn" @click="handleNew">
-            <el-icon :size="14"><Plus /></el-icon>
-          </button>
+          <nav class="channel-tabs" role="tablist" aria-label="工作台频道">
+            <button
+              v-for="ch in channels"
+              :key="ch.key"
+              class="channel-tab"
+              :class="{ active: activeChannelKey === ch.key }"
+              role="tab"
+              :aria-selected="activeChannelKey === ch.key"
+              :title="ch.label"
+              @click="activateChannel(ch.key)"
+            >
+              <NavIcon :name="ch.icon" :size="16" />
+              <span class="channel-tab-label">{{ ch.label }}</span>
+            </button>
+          </nav>
         </template>
         <!-- 折叠模式：频道 icon 列表 -->
         <template v-else>
@@ -58,7 +35,7 @@
               class="channel-icon-btn"
               :class="{ active: activeChannelKey === ch.key }"
               :title="ch.label"
-              @click="switchChannel(ch.key)"
+              @click="activateChannel(ch.key)"
             >
               <NavIcon :name="ch.icon" :size="20" />
             </button>
@@ -77,7 +54,7 @@
                 class="channel-icon-btn"
                 :class="{ active: activeChannelKey === ch.key }"
                 :title="ch.label"
-                @click="switchChannel(ch.key)"
+                @click="activateChannel(ch.key)"
               >
                 <NavIcon :name="ch.icon" :size="20" />
               </button>
@@ -88,58 +65,85 @@
 
       <!-- Sidebar content -->
       <div class="sidebar-body" v-show="!sidebarCollapsed">
-        <!-- Chat: session list -->
+        <!-- Chat: session list（可折叠） -->
         <template v-if="activeChannelKey === 'chat'">
-          <div class="list-area">
-            <div
-              v-for="session in chatStore.sessions"
-              :key="session.session_id"
-              class="list-item"
-              :class="{ active: chatStore.currentSessionId === session.session_id }"
-              @click="handleSelectChatSession(session.session_id)"
-            >
-              <span class="item-title">{{ session.preview || '新对话' }}</span>
-              <button class="item-delete" @click.stop="handleDeleteChatSession(session.session_id)">
-                <el-icon :size="12"><Delete /></el-icon>
-              </button>
-            </div>
-            <div v-if="chatStore.sessions.length === 0" class="list-empty">暂无对话记录</div>
-          </div>
-        </template>
-
-        <!-- Agents: agent list -->
-        <template v-else-if="activeChannelKey === 'agents'">
-          <div class="list-area">
-            <div
-              v-for="agent in agentStore.agents"
-              :key="agent.id"
-              class="list-item"
-              :class="{ active: selectedAgentId === agent.id }"
-              @click="handleSelectAgent(agent)"
-            >
-              <div class="agent-avatar-sm">{{ agent.name.charAt(0) }}</div>
-              <div class="item-info">
-                <span class="item-title">{{ agent.name }}</span>
-                <span class="item-desc">{{ agent.description || '暂无描述' }}</span>
+          <div class="list-section">
+            <button class="list-section-header" @click="toggleSection('chat')">
+              <span class="list-section-title">最近对话</span>
+              <span class="list-section-count">{{ chatStore.sessions.length }}</span>
+              <el-icon :size="12" class="list-section-chevron" :class="{ collapsed: sectionCollapsed.chat }">
+                <ArrowDown />
+              </el-icon>
+            </button>
+            <div v-show="!sectionCollapsed.chat" class="list-area">
+              <div
+                v-for="session in chatStore.sessions"
+                :key="session.session_id"
+                class="list-item"
+                :class="{ active: chatStore.currentSessionId === session.session_id }"
+                @click="handleSelectChatSession(session.session_id)"
+              >
+                <span class="item-title">{{ session.preview || '新对话' }}</span>
+                <button class="item-delete" @click.stop="handleDeleteChatSession(session.session_id)">
+                  <el-icon :size="12"><Delete /></el-icon>
+                </button>
               </div>
+              <div v-if="chatStore.sessions.length === 0" class="list-empty">暂无对话记录</div>
             </div>
-            <div v-if="agentStore.agents.length === 0" class="list-empty">暂无智能体</div>
           </div>
         </template>
 
-        <!-- Research: space list -->
-        <template v-else-if="activeChannelKey === 'research'">
-          <div class="list-area">
-            <div
-              v-for="space in researchSpaces"
-              :key="space.id"
-              class="list-item"
-              :class="{ active: currentResearchSpaceId === String(space.id) }"
-              @click="handleSelectResearchSpace(space.id)"
-            >
-              <span class="item-title">{{ space.name }}</span>
+        <!-- Agents: agent list（可折叠） -->
+        <template v-else-if="activeChannelKey === 'agents'">
+          <div class="list-section">
+            <button class="list-section-header" @click="toggleSection('agents')">
+              <span class="list-section-title">我的智能体</span>
+              <span class="list-section-count">{{ agentStore.agents.length }}</span>
+              <el-icon :size="12" class="list-section-chevron" :class="{ collapsed: sectionCollapsed.agents }">
+                <ArrowDown />
+              </el-icon>
+            </button>
+            <div v-show="!sectionCollapsed.agents" class="list-area">
+              <div
+                v-for="agent in agentStore.agents"
+                :key="agent.id"
+                class="list-item"
+                :class="{ active: selectedAgentId === agent.id }"
+                @click="handleSelectAgent(agent)"
+              >
+                <div class="agent-avatar-sm">{{ agent.name.charAt(0) }}</div>
+                <div class="item-info">
+                  <span class="item-title">{{ agent.name }}</span>
+                  <span class="item-desc">{{ agent.description || '暂无描述' }}</span>
+                </div>
+              </div>
+              <div v-if="agentStore.agents.length === 0" class="list-empty">暂无智能体</div>
             </div>
-            <div v-if="researchSpaces.length === 0" class="list-empty">暂无知识空间</div>
+          </div>
+        </template>
+
+        <!-- Research: space list（可折叠） -->
+        <template v-else-if="activeChannelKey === 'research'">
+          <div class="list-section">
+            <button class="list-section-header" @click="toggleSection('research')">
+              <span class="list-section-title">知识空间</span>
+              <span class="list-section-count">{{ researchSpaces.length }}</span>
+              <el-icon :size="12" class="list-section-chevron" :class="{ collapsed: sectionCollapsed.research }">
+                <ArrowDown />
+              </el-icon>
+            </button>
+            <div v-show="!sectionCollapsed.research" class="list-area">
+              <div
+                v-for="space in researchSpaces"
+                :key="space.id"
+                class="list-item"
+                :class="{ active: currentResearchSpaceId === String(space.id) }"
+                @click="handleSelectResearchSpace(space.id)"
+              >
+                <span class="item-title">{{ space.name }}</span>
+              </div>
+              <div v-if="researchSpaces.length === 0" class="list-empty">暂无知识空间</div>
+            </div>
           </div>
         </template>
 
@@ -175,27 +179,43 @@
 
     <!-- Main content -->
     <main class="workspace-main" id="workspace-main" role="main">
-      <router-view />
+      <div class="workspace-content">
+        <router-view />
+      </div>
+      <!-- 右抽屉：引用来源 / 工具结果。折叠态 width:0 不占位 -->
+      <WorkbenchDrawer :sources="drawerSources" :tool-calls="drawerToolCalls" />
+      <!-- 抽屉展开按钮（抽屉关闭时浮在主区右上角） -->
+      <button
+        v-if="!workbench.drawerOpen"
+        class="drawer-toggle"
+        title="打开引用面板"
+        @click="workbench.openDrawer('overview')"
+      >
+        <el-icon :size="14"><Expand /></el-icon>
+      </button>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, provide } from 'vue'
+import { ref, computed, reactive, onMounted, provide, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Plus, Delete, DArrowLeft, DArrowRight, More } from '@element-plus/icons-vue'
+import { Delete, DArrowLeft, DArrowRight, More, Expand, ArrowDown } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { useSpaceStore } from '@/stores/space'
 import { useChatStore } from '@/stores/chat'
+import { useWorkbenchStore } from '@/stores/workbench'
 import NavIcon from '@/components/common/NavIcon.vue'
-import type { Agent } from '@/api/types'
+import WorkbenchDrawer from '@/components/workbench/WorkbenchDrawer.vue'
+import type { Agent, ChatSource, SourceRef, ToolCallRecord } from '@/api/types'
 
 const route = useRoute()
 const router = useRouter()
 const agentStore = useAgentStore()
 const spaceStore = useSpaceStore()
 const chatStore = useChatStore()
+const workbench = useWorkbenchStore()
 
 provide('isInWorkspace', true)
 
@@ -216,17 +236,72 @@ const moreChannels = computed(() => channels.filter(c => c.group === 'more'))
 const activeChannelKey = ref('chat')
 const moreExpanded = ref(false)
 
-const activeChannel = computed(() =>
-  channels.find(c => c.key === activeChannelKey.value) || channels[0],
-)
+// 下方列表的折叠态：每个频道独立记忆
+const sectionCollapsed = reactive({
+  chat: false,
+  agents: false,
+  research: false,
+})
+
+function toggleSection(key: 'chat' | 'agents' | 'research') {
+  sectionCollapsed[key] = !sectionCollapsed[key]
+}
 
 const currentResearchSpaceId = computed(() => String(route.params.spaceId ?? ''))
 const researchSpaces = computed(() => spaceStore.spaces)
 
-function switchChannel(key: string) {
-  activeChannelKey.value = key
-  handleChannelChange(key)
+// ===================== 右抽屉数据聚合 =====================
+// 按当前频道从对应 store 聚合 sources / toolCalls 喂给抽屉。
+// chat: 来源在 chatStore.messages[].extra.sources（ChatSource[]）
+// agents: 来源在 agentStore.messages[].sources（SourceRef[]），工具记录在 agentStore.toolCalls
+// 其它频道暂无数据，抽屉显示空态。
+function toSourceRef(s: ChatSource): SourceRef {
+  return {
+    index: s.index,
+    kind: s.kind ?? 'kb',
+    document_id: s.document_id ?? null,
+    document_name: s.document_name ?? null,
+    kb_id: s.kb_id ?? null,
+    chunk_id: s.chunk_id ?? null,
+    score: s.score ?? null,
+    snippet: s.snippet ?? null,
+    page: s.page ?? null,
+    url: s.url ?? null,
+  }
 }
+
+const drawerSources = computed<SourceRef[]>(() => {
+  if (activeChannelKey.value === 'chat') {
+    const out: SourceRef[] = []
+    for (const m of chatStore.messages) {
+      const raw = (m.extra?.sources as ChatSource[] | undefined) ?? undefined
+      if (raw) out.push(...raw.map(toSourceRef))
+    }
+    return out
+  }
+  if (activeChannelKey.value === 'agents') {
+    const out: SourceRef[] = []
+    for (const m of agentStore.messages) {
+      if (m.sources) out.push(...m.sources)
+    }
+    return out
+  }
+  return []
+})
+
+const drawerToolCalls = computed<ToolCallRecord[]>(() => {
+  if (activeChannelKey.value === 'agents') return agentStore.toolCalls
+  return []
+})
+
+// 点 tab 即「激活并新建/开启」该频道：对话开新对话、智能体进入创建、其余跳转
+function activateChannel(key: string) {
+  activeChannelKey.value = key
+  handleNew(key)
+}
+
+// 切换频道时重置抽屉选中态，避免残留上一频道工具结果
+watch(activeChannelKey, () => workbench.resetSelection())
 
 // Sync activeChannelKey with route
 function syncChannelFromRoute() {
@@ -238,19 +313,9 @@ function syncChannelFromRoute() {
   else if (path.includes('/workspace/clawmate')) activeChannelKey.value = 'clawmate'
 }
 
-function handleChannelChange(key: string) {
-  const map: Record<string, string> = {
-    chat: '/home/workspace/chat',
-    agents: '/home/workspace/agents',
-    research: '/home/workspace/research',
-    skills: '/home/workspace/skills',
-    clawmate: '/home/workspace/clawmate',
-  }
-  router.push(map[key] || map.chat)
-}
-
-function handleNew() {
-  switch (activeChannelKey.value) {
+// 按频道执行「新建/开启」动作。chat=开启新对话；agents=进入创建；其余=跳转到对应入口
+function handleNew(key: string = activeChannelKey.value) {
+  switch (key) {
     case 'chat':
       chatStore.clearMessages()
       router.push('/home/workspace/chat')
@@ -385,25 +450,112 @@ onMounted(async () => {
   color: var(--color-text);
 }
 
-.new-btn {
-  width: 32px;
-  height: 32px;
+/* ========================================
+   Channel Tabs (WorkBuddy 风格 pill tabs)
+   ======================================== */
+.channel-tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.channel-tab {
   display: flex;
   align-items: center;
-  justify-content: center;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--color-text-secondary);
+  font-size: var(--text-sm);
   cursor: pointer;
   transition: all var(--transition-fast);
+  width: 100%;
+  text-align: left;
+}
+
+.channel-tab:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.channel-tab.active {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+  font-weight: var(--weight-medium, 500);
+}
+
+/* active tab：文字黑、图标保留青绿点缀 */
+.channel-tab.active :deep(svg) {
+  color: var(--color-primary);
+}
+
+.channel-tab-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ========================================
+   可折叠列表分组
+   ======================================== */
+.list-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.list-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
   flex-shrink: 0;
 }
 
-.new-btn:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  background: var(--color-primary-muted);
+.list-section-header:hover {
+  background: var(--color-bg-hover);
+}
+
+.list-section-title {
+  flex: 1;
+  text-align: left;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold, 600);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.list-section-count {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint, var(--color-text-muted));
+}
+
+.list-section-chevron {
+  color: var(--color-text-muted);
+  transition: transform var(--transition-fast);
+}
+
+.list-section-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+
+/* 折叠时 list-area 隐藏，section 收成一条 header */
+.list-section > .list-area {
+  flex: 1;
+  overflow-y: auto;
 }
 
 /* ========================================
@@ -438,7 +590,7 @@ onMounted(async () => {
 }
 
 .channel-icon-btn.active {
-  background: var(--el-color-primary-light-9);
+  background: var(--color-bg-hover);
   color: var(--color-primary);
 }
 
@@ -474,7 +626,7 @@ onMounted(async () => {
 }
 
 .list-item.active {
-  background: var(--el-color-primary-light-9);
+  background: var(--color-bg-hover);
 }
 
 .list-item.active::before {
@@ -485,7 +637,7 @@ onMounted(async () => {
   bottom: var(--space-1);
   width: 3px;
   border-radius: var(--radius-sm);
-  background: var(--color-primary);
+  background: var(--color-text);
 }
 
 .item-title {
@@ -613,6 +765,41 @@ onMounted(async () => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  display: flex;
+}
+
+.workspace-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 抽屉折叠时浮在主区右上角的展开按钮 */
+.drawer-toggle {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: var(--z-raised);
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card, #fff);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  box-shadow: var(--shadow-sm);
+}
+
+.drawer-toggle:hover {
+  color: var(--color-primary);
+  border-color: var(--color-border-focus);
 }
 
 /* Skip link */
@@ -621,7 +808,7 @@ onMounted(async () => {
   top: -100%;
   left: var(--space-4);
   padding: var(--space-2) var(--space-4);
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
   color: #FFFFFF;
   border-radius: var(--radius-md);
   font-size: var(--text-sm);

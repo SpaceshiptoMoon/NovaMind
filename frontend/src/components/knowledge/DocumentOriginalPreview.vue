@@ -461,7 +461,7 @@ function navigateToMatch(index: number) {
 
 .source-icon-image { color: #409eff; background: rgba(64, 158, 255, 0.1); }
 .source-icon-video { color: #e6a23c; background: rgba(230, 162, 60, 0.1); }
-.source-icon-audio { color: #67c23a; background: rgba(103, 194, 58, 0.1); }
+.source-icon-audio { color: #4b5563; background: rgba(17, 24, 39, 0.08); }
 
 .source-detail {
   display: flex;

@@ -9,12 +9,23 @@
    Element Plus Theme Overrides — Clean Modern
    ======================================== */
 :root {
-  --el-color-primary: #6366F1;
-  --el-color-primary-light-3: #8B8DF6;
-  --el-color-primary-light-5: #B4B8FD;
-  --el-color-primary-light-7: #D0D4FE;
-  --el-color-primary-light-9: #E0E7FF;
-  --el-color-primary-dark-2: #4F46E5;
+  /* Element Plus 主色切中性黑：所有 el-button--primary / el-link / el-switch /
+     el-tabs / el-pagination / el-checkbox 等组件不再纯绿，统一黑白 */
+  --el-color-primary: #111827;
+  --el-color-primary-light-3: #4b5563;
+  --el-color-primary-light-5: #6b7280;
+  --el-color-primary-light-7: #9ca3af;
+  --el-color-primary-light-9: #F1F3F5;
+  --el-color-primary-dark-2: #030712;
+
+  /* Element Plus success 也去绿 → 中性灰（el-tag / el-message / 校验不再绿）；
+     warning 琥珀、danger 红保留为功能色 */
+  --el-color-success: #4b5563;
+  --el-color-success-light-3: #6b7280;
+  --el-color-success-light-5: #9ca3af;
+  --el-color-success-light-7: #c4c9cf;
+  --el-color-success-light-9: #F1F3F5;
+  --el-color-success-dark-2: #374151;
 
   --el-font-family: var(--font-body);
   --el-border-radius-base: var(--radius-md);
@@ -53,8 +64,8 @@
 }
 
 .el-button--default:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+  border-color: var(--color-text);
+  color: var(--color-text);
   background: var(--color-primary-muted);
 }
 

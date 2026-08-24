@@ -99,7 +99,7 @@ defineProps<{
 .pdf-panel {
   margin-bottom: 18px;
   padding: 18px;
-  border: 1px solid rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(17, 24, 39, 0.12);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.92);
 }

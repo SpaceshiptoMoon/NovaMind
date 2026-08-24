@@ -676,8 +676,8 @@ onMounted(async () => {
 }
 
 .create-agent-btn:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+  border-color: var(--color-text);
+  color: var(--color-text);
   background: var(--color-primary-muted);
 }
 
@@ -715,7 +715,7 @@ onMounted(async () => {
   bottom: 6px;
   width: 3px;
   border-radius: 2px;
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
 }
 
 .agent-avatar {
@@ -951,13 +951,13 @@ onMounted(async () => {
 }
 
 .action-btn.primary {
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
   border-color: var(--color-primary);
   color: #ffffff;
 }
 
 .action-btn.primary:hover {
-  background: var(--color-primary-hover);
+  background: var(--color-btn-primary-hover);
 }
 
 /* ========================================

@@ -570,7 +570,7 @@ onMounted(() => {
 
 .chunk-card.chunk-expanded {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 1px var(--color-primary-subtle, rgba(99, 102, 241, 0.15));
+  box-shadow: 0 0 0 1px var(--color-primary-subtle, rgba(17, 24, 39, 0.15));
 }
 
 .chunk-header {

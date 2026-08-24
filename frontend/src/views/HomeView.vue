@@ -242,13 +242,13 @@ function goToResearch() {
   width: 32px;
   height: 32px;
   border-radius: var(--radius-full);
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
+  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.25);
 }
 
 /* ========================================

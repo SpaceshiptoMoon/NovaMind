@@ -67,7 +67,7 @@ defineProps<{
   transform: translateY(-50%);
   width: 3px;
   height: 20px;
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
   border-radius: 0 3px 3px 0;
 }
 

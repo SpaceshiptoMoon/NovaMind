@@ -798,12 +798,12 @@ onMounted(() => {
 
 /* 实心主操作（新建知识库）：微渐变 + 轻投影，有"放下来"的质感 */
 .header-actions :deep(.el-button:not(.is-text):not(.is-circle)) {
-  background: linear-gradient(135deg, #6366F1, #5B5FE8);
+  background: linear-gradient(135deg, #111827, #374151);
   border: none;
   padding: 6px 14px;
   font-size: 14px;
   height: auto;
-  box-shadow: 0 1px 3px rgba(99, 102, 241, 0.18), 0 1px 0 rgba(255, 255, 255, 0.12) inset;
+  box-shadow: 0 1px 3px rgba(17, 24, 39, 0.18), 0 1px 0 rgba(255, 255, 255, 0.12) inset;
   transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
 }
 
@@ -814,14 +814,14 @@ onMounted(() => {
 }
 
 .header-actions :deep(.el-button:not(.is-text):not(.is-circle):hover) {
-  background: linear-gradient(135deg, #6D70F5, #6366F1);
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.28), 0 1px 0 rgba(255, 255, 255, 0.15) inset;
+  background: linear-gradient(135deg, #374151, #111827);
+  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.28), 0 1px 0 rgba(255, 255, 255, 0.15) inset;
   transform: translateY(-0.5px);
 }
 
 .header-actions :deep(.el-button:not(.is-text):not(.is-circle):active) {
   transform: translateY(0);
-  box-shadow: 0 1px 2px rgba(99, 102, 241, 0.14);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.14);
 }
 
 /* 圆形图标按钮：发丝线，透明底，hover 浅底 */

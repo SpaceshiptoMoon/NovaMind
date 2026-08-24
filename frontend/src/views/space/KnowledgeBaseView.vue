@@ -150,19 +150,20 @@ const formRules: FormRules = {
 
 // === 色板 ===
 
+// 单色灰阶色板（无绿色），靠明度区分图表项
 const colorPalette = [
-  '#6366F1',
-  '#10B981',
-  '#EF4444',
-  '#7C3AED',
-  '#F59E0B',
-  '#6366F1',
-  '#F97316',
-  '#14B8A6',
+  '#111827',
+  '#374151',
+  '#4b5563',
+  '#6b7280',
+  '#9ca3af',
+  '#1f2937',
+  '#d1d5db',
+  '#8b9199',
 ]
 
 function getColor(index: number): string {
-  return colorPalette[index % colorPalette.length] ?? '#6366F1'
+  return colorPalette[index % colorPalette.length] ?? '#4b5563'
 }
 
 // === 跳转配置向导页 ===
