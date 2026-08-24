@@ -46,138 +46,171 @@
         </div>
       </header>
 
-      <!-- 消息列表 (仅对话模式) -->
+      <!-- 消息列表 (仅对话模式)：按轮分组，工作过程折叠 -->
       <div v-if="!isWelcomeMode" ref="messagesRef" class="messages-container">
         <div class="messages-inner">
-          <template v-for="msg in agentStore.messages" :key="msg.id">
-            <!-- tool 消息：显示为工具调用卡片 -->
-            <div v-if="msg.role === 'tool'" class="tool-card-row">
-              <div class="tool-card">
-                <div class="tool-header" @click="toggleToolExpand(msg.id)">
-                  <div class="tool-info">
-                    <span class="tool-icon">
-                      <el-icon :size="14"><SetUp /></el-icon>
-                    </span>
-                    <span class="tool-name">{{ msg.tool_name || 'Tool' }}</span>
-                    <span v-if="getToolDuration(msg.tool_call_id)" class="tool-duration">
-                      {{ getToolDuration(msg.tool_call_id) }}ms
-                    </span>
-                    <span class="tool-status" :class="getToolStatus(msg.tool_call_id)">
-                      {{ getToolStatusLabel(msg.tool_call_id) }}
-                    </span>
-                  </div>
-                  <el-icon
-                    :size="12"
-                    class="expand-icon"
-                    :class="{ expanded: expandedTools.has(msg.id) }"
-                  >
-                    <ArrowDown />
-                  </el-icon>
-                </div>
-                <div v-if="expandedTools.has(msg.id)" class="tool-body">
-                  <div v-if="getToolArgs(msg.tool_call_id)" class="tool-section">
-                    <div class="tool-section-label">参数</div>
-                    <pre class="tool-json">{{ formatJson(getToolArgs(msg.tool_call_id)!) }}</pre>
-                  </div>
-                  <div v-if="msg.content" class="tool-section">
-                    <div class="tool-section-label">结果</div>
-                    <pre class="tool-json">{{ truncateResult(msg.content) }}</pre>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 用户消息 -->
-            <div v-else-if="msg.role === 'user'" class="message-row user">
-              <div class="message-body">
-                <div class="message-text">{{ msg.content }}</div>
-                <div v-if="getMessageAttachments(msg).length" class="message-attachments">
-                  <template v-for="att in getMessageAttachments(msg)" :key="att.filename">
-                    <div
-                      v-if="isImageFile(att.file_type) && att.id"
-                      class="image-card"
-                      @click="handleDownloadAttachment(att)"
-                    >
-                      <img
-                        v-if="getImagePreviewUrl(att)"
-                        :src="getImagePreviewUrl(att)"
-                        class="image-thumb"
-                        loading="lazy"
-                      />
-                      <div v-else class="image-thumb image-thumb-loading">加载中...</div>
-                      <div class="image-info">
-                        <span class="image-name">{{ att.filename }}</span>
-                        <span class="image-size">{{ formatFileSize(att.file_size) }}</span>
-                      </div>
-                    </div>
-                    <div v-else class="file-card" @click="handleDownloadAttachment(att)">
-                      <div class="file-icon-box" :class="getFileIconClass(att.file_type)">
-                        <span class="file-ext-label">{{ getFileExt(att.filename) }}</span>
-                      </div>
-                      <div class="file-info">
-                        <div class="file-name">{{ att.filename }}</div>
-                        <div class="file-meta">
-                          {{ getFileExt(att.filename) }} · {{ formatFileSize(att.file_size) }}
+          <template v-for="turn in turns" :key="turn.key">
+            <div class="chat-turn">
+              <!-- 用户消息 -->
+              <div v-if="turn.userMsg" class="message-row user">
+                <div class="message-body">
+                  <div class="message-text">{{ turn.userMsg.content }}</div>
+                  <div v-if="getMessageAttachments(turn.userMsg).length" class="message-attachments">
+                    <template v-for="att in getMessageAttachments(turn.userMsg)" :key="att.filename">
+                      <div
+                        v-if="isImageFile(att.file_type) && att.id"
+                        class="image-card"
+                        @click="handleDownloadAttachment(att)"
+                      >
+                        <img
+                          v-if="getImagePreviewUrl(att)"
+                          :src="getImagePreviewUrl(att)"
+                          class="image-thumb"
+                          loading="lazy"
+                        />
+                        <div v-else class="image-thumb image-thumb-loading">加载中...</div>
+                        <div class="image-info">
+                          <span class="image-name">{{ att.filename }}</span>
+                          <span class="image-size">{{ formatFileSize(att.file_size) }}</span>
                         </div>
                       </div>
-                      <div class="file-download-btn" title="下载">
-                        <el-icon :size="16"><Download /></el-icon>
+                      <div v-else class="file-card" @click="handleDownloadAttachment(att)">
+                        <div class="file-icon-box" :class="getFileIconClass(att.file_type)">
+                          <span class="file-ext-label">{{ getFileExt(att.filename) }}</span>
+                        </div>
+                        <div class="file-info">
+                          <div class="file-name">{{ att.filename }}</div>
+                          <div class="file-meta">
+                            {{ getFileExt(att.filename) }} · {{ formatFileSize(att.file_size) }}
+                          </div>
+                        </div>
+                        <div class="file-download-btn" title="下载">
+                          <el-icon :size="16"><Download /></el-icon>
+                        </div>
                       </div>
-                    </div>
-                  </template>
+                    </template>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <!-- AI 消息 -->
-            <div v-else-if="msg.role === 'assistant' && msg.content" class="message-row assistant">
-              <div class="message-body">
-                <div v-if="msg.reasoning" class="reasoning-section">
-                  <div class="reasoning-header" @click="toggleReasoning(msg.id)">
-                    <span class="reasoning-label">思考过程</span>
-                    <el-icon
-                      :size="12"
-                      class="expand-icon"
-                      :class="{ expanded: expandedReasoning.has(msg.id) }"
+              <!-- assistant 一轮：avatar 折叠头 + 工作过程 + 最终回复 -->
+              <div
+                v-if="turn.items.length || turn.finalAssistant || turn.isActive"
+                class="assistant-turn"
+              >
+                <div class="avatar-row">
+                  <div class="turn-avatar">{{ agentName.charAt(0) }}</div>
+                  <div class="turn-name">{{ agentName }}</div>
+                </div>
+
+                <button class="fold-line" @click="toggleTurn(turn.key)">
+                  <span class="fold-status">{{ turnStatusLabel(turn) }}</span>
+                  <el-icon :size="12" class="fold-chevron" :class="{ expanded: isTurnExpanded(turn) }">
+                    <ArrowDown />
+                  </el-icon>
+                </button>
+
+                <!-- 工作过程（按序折叠）：工具调用 / 中间结果 / 思考过程 -->
+                <div v-show="isTurnExpanded(turn)" class="work-trail">
+                  <template v-for="item in turn.workItems" :key="item.id">
+                    <!-- 工具调用卡片（可继续折叠） -->
+                    <div v-if="item.role === 'tool'" class="tool-card-row">
+                      <div class="tool-card">
+                        <div class="tool-header" @click="toggleToolExpand(item.id)">
+                          <div class="tool-info">
+                            <span class="tool-icon">
+                              <el-icon :size="14"><SetUp /></el-icon>
+                            </span>
+                            <span class="tool-name">{{ item.tool_name || 'Tool' }}</span>
+                            <span v-if="getToolDuration(item.tool_call_id)" class="tool-duration">
+                              {{ getToolDuration(item.tool_call_id) }}ms
+                            </span>
+                            <span class="tool-status" :class="getToolStatus(item.tool_call_id)">
+                              {{ getToolStatusLabel(item.tool_call_id) }}
+                            </span>
+                          </div>
+                          <div class="tool-header-actions">
+                            <button
+                              class="tool-drawer-btn"
+                              title="在右侧抽屉查看"
+                              @click.stop="openToolInDrawer(item.tool_call_id)"
+                            >
+                              <el-icon :size="12"><Expand /></el-icon>
+                            </button>
+                            <el-icon
+                              :size="12"
+                              class="expand-icon"
+                              :class="{ expanded: expandedTools.has(item.id) }"
+                            >
+                              <ArrowDown />
+                            </el-icon>
+                          </div>
+                        </div>
+                        <div v-if="expandedTools.has(item.id)" class="tool-body">
+                          <div v-if="getToolArgs(item.tool_call_id)" class="tool-section">
+                            <div class="tool-section-label">参数</div>
+                            <pre class="tool-json">{{ formatJson(getToolArgs(item.tool_call_id)!) }}</pre>
+                          </div>
+                          <div v-if="item.content" class="tool-section">
+                            <div class="tool-section-label">结果</div>
+                            <pre class="tool-json">{{ truncateResult(item.content) }}</pre>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <!-- 中间 assistant 输出（含 AI 决定调用工具时的真实文本、plan/子 agent 摘要等） -->
+                    <div
+                      v-else-if="item.role === 'assistant' && item.content"
+                      class="work-assistant"
                     >
-                      <ArrowDown />
-                    </el-icon>
-                  </div>
-                  <div v-if="expandedReasoning.has(msg.id)" class="reasoning-body">
-                    <MarkdownRenderer :content="msg.reasoning" />
+                      <MarkdownRenderer :content="item.content" />
+                    </div>
+                  </template>
+
+                  <!-- 思考过程（来自最终 assistant 的 reasoning） -->
+                  <div v-if="turn.finalAssistant?.reasoning" class="reasoning-section">
+                    <div class="reasoning-header" @click="toggleReasoning(turn.finalAssistant.id)">
+                      <span class="reasoning-label">思考过程</span>
+                      <el-icon
+                        :size="12"
+                        class="expand-icon"
+                        :class="{ expanded: expandedReasoning.has(turn.finalAssistant.id) }"
+                      >
+                        <ArrowDown />
+                      </el-icon>
+                    </div>
+                    <div v-if="expandedReasoning.has(turn.finalAssistant.id)" class="reasoning-body">
+                      <MarkdownRenderer :content="turn.finalAssistant.reasoning" />
+                    </div>
                   </div>
                 </div>
-                <MarkdownRenderer :content="msg.content" class="message-text" />
-                <div class="message-actions">
-                  <button class="msg-copy-btn" @click="handleCopyMessage(msg.content!, $event)">
-                    <el-icon :size="13"><DocumentCopy /></el-icon>
-                    <span>复制</span>
-                  </button>
+
+                <!-- 最终回复（始终显示） -->
+                <div v-if="turn.finalAssistant?.content" class="final-answer">
+                  <MarkdownRenderer :content="turn.finalAssistant.content" class="message-text" />
+                  <div class="message-actions">
+                    <button
+                      class="msg-copy-btn"
+                      @click="handleCopyMessage(turn.finalAssistant.content!, $event)"
+                    >
+                      <el-icon :size="13"><DocumentCopy /></el-icon>
+                      <span>复制</span>
+                    </button>
+                  </div>
+                </div>
+                <!-- 流式/加载中：暂无最终回复时的占位 -->
+                <div v-else-if="turn.isActive" class="typing-row">
+                  <div class="message-body">
+                    <div class="typing-bubble">
+                      <span class="typing-dot"></span>
+                      <span class="typing-dot"></span>
+                      <span class="typing-dot"></span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </template>
-
-          <!-- 流式模式：等待首个 token 的 typing 指示器 -->
-          <div v-if="agentStore.isStreaming && !agentStore.streamingContent" class="typing-row">
-            <div class="message-body">
-              <div class="typing-bubble">
-                <span class="typing-dot"></span>
-                <span class="typing-dot"></span>
-                <span class="typing-dot"></span>
-              </div>
-            </div>
-          </div>
-          <!-- 非流式模式：loading 指示器 -->
-          <div v-else-if="agentStore.loading" class="typing-row">
-            <div class="message-body">
-              <div class="typing-bubble">
-                <span class="typing-dot"></span>
-                <span class="typing-dot"></span>
-                <span class="typing-dot"></span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -263,15 +296,20 @@
               </button>
             </div>
           </div>
-          <!-- 快捷操作 chips：深度思考 / 流式输出 -->
+          <!-- 快捷操作 chips：模型选择 / 深度思考 / 流式输出 -->
           <div class="input-footer">
             <div class="quick-actions">
+              <ModelTrigger
+                v-if="Object.keys(availableModels).length"
+                v-model="selectedModel"
+                :models="availableModels"
+              />
               <button
                 class="action-chip"
                 :class="{ active: enableThinking }"
                 @click="enableThinking = !enableThinking"
               >
-                <span class="action-icon">🧠</span>
+                <el-icon :size="14" class="action-icon"><MagicStick /></el-icon>
                 <span>深度思考</span>
               </button>
               <button
@@ -279,7 +317,7 @@
                 :class="{ active: useStream }"
                 @click="useStream = !useStream"
               >
-                <span class="action-icon">⚡</span>
+                <el-icon :size="14" class="action-icon"><Lightning /></el-icon>
                 <span>流式输出</span>
               </button>
             </div>
@@ -310,15 +348,22 @@ import {
   Paperclip,
   Close,
   Download,
+  Expand,
+  MagicStick,
+  Lightning,
 } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
+import { useWorkbenchStore } from '@/stores/workbench'
 import { agentApi } from '@/api/agent'
+import { chatApi } from '@/api/chat'
 import type { AgentMessage } from '@/api/types'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
+import ModelTrigger from '@/components/common/ModelTrigger.vue'
 
 const route = useRoute()
 const router = useRouter()
 const agentStore = useAgentStore()
+const workbench = useWorkbenchStore()
 const isInWorkspace = inject('isInWorkspace', false)
 
 const agentId = computed(() => Number(route.params.agentId))
@@ -330,7 +375,135 @@ const isWelcomeMode = computed(
 const inputText = ref('')
 const useStream = ref(true)
 const enableThinking = ref(false)
+// 模型选择：'' = Auto（跟随智能体配置）；否则指定本次对话使用的模型
+const selectedModel = ref('')
+const availableModels = ref<
+  Record<string, { max_tokens: number; temperature: number; top_p: number; model_type: string }>
+>({})
 const expandedReasoning = ref(new Set<number>())
+// 工作过程折叠态：按 turn.key 记忆（历史轮默认折叠；当前流式轮自动展开）
+const expandedTurns = ref(new Set<string>())
+
+// ===================== 按轮分组 =====================
+// 一轮 = 一条用户消息 + 其后的所有 tool/assistant/system 消息（直到下一条用户消息）。
+// 只展示该轮「最后一条 assistant」的最终回复；其前的 tool/中间 assistant/思考过程
+// 按序折叠在 avatar 折叠头下，并显示该轮总耗时。
+interface ChatTurn {
+  key: string
+  userMsg: AgentMessage | null
+  items: AgentMessage[]
+  finalAssistant: AgentMessage | null
+  workItems: AgentMessage[]
+  startTime: number
+  endTime: number | null
+  isActive: boolean
+}
+
+function tsOf(iso: string | null | undefined): number {
+  if (!iso) return 0
+  const t = new Date(iso).getTime()
+  return Number.isNaN(t) ? 0 : t
+}
+
+function formatDuration(ms: number): string {
+  if (!ms || ms < 0) ms = 0
+  const s = Math.floor(ms / 1000)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  const sec = s % 60
+  if (m < 60) return `${m}m${sec.toString().padStart(2, '0')}s`
+  const h = Math.floor(m / 60)
+  return `${h}h${(m % 60).toString().padStart(2, '0')}m`
+}
+
+const turns = computed<ChatTurn[]>(() => {
+  const msgs = agentStore.messages
+  const result: ChatTurn[] = []
+  let current: ChatTurn | null = null
+  for (const msg of msgs) {
+    if (msg.role === 'user') {
+      if (current) result.push(current)
+      current = {
+        key: `turn-${msg.id}`,
+        userMsg: msg,
+        items: [],
+        finalAssistant: null,
+        workItems: [],
+        startTime: tsOf(msg.created_at),
+        endTime: null,
+        isActive: false,
+      }
+    } else if (current) {
+      current.items.push(msg)
+    } else {
+      // 没有前置用户消息的孤立消息（如历史首条是 assistant）
+      current = {
+        key: `turn-orphan-${msg.id}`,
+        userMsg: null,
+        items: [msg],
+        finalAssistant: null,
+        workItems: [],
+        startTime: tsOf(msg.created_at),
+        endTime: null,
+        isActive: false,
+      }
+    }
+  }
+  if (current) result.push(current)
+
+  for (const t of result) {
+    // 找该轮最后一条有内容的 assistant 作为最终回复
+    let lastIdx = -1
+    for (let i = t.items.length - 1; i >= 0; i--) {
+      const it = t.items[i]
+      // 排除带 extra.tool_calls 的决策消息：那是「AI 决定调用工具」的中间步骤，
+      // content 是该轮决策文本而非最终回答；即便它是该轮最后一条 assistant 也不能当最终回复
+      if (it && it.role === 'assistant' && it.content && !it.extra?.tool_calls) {
+        lastIdx = i
+        break
+      }
+    }
+    if (lastIdx >= 0) {
+      const final = t.items[lastIdx]
+      if (final) {
+        t.finalAssistant = final
+        t.workItems = t.items.filter((_, i) => i !== lastIdx)
+        t.endTime = tsOf(final.created_at)
+      }
+    } else {
+      t.workItems = [...t.items]
+      const lastItem = t.items[t.items.length - 1]
+      if (lastItem) t.endTime = tsOf(lastItem.created_at)
+    }
+  }
+
+  // 当前正在流式/加载的最后一轮标记为 active
+  if (result.length && (agentStore.isStreaming || agentStore.loading)) {
+    const last = result[result.length - 1]
+    if (last) last.isActive = true
+  }
+  return result
+})
+
+function isTurnExpanded(turn: ChatTurn): boolean {
+  // 当前流式轮自动展开（便于观察工具执行）；已完成轮默认折叠，点击展开
+  return turn.isActive || expandedTurns.value.has(turn.key)
+}
+
+function toggleTurn(key: string) {
+  if (expandedTurns.value.has(key)) expandedTurns.value.delete(key)
+  else expandedTurns.value.add(key)
+}
+
+function turnStatusLabel(turn: ChatTurn): string {
+  if (turn.isActive && !turn.finalAssistant?.content) return '生成中…'
+  if (turn.isActive) return '生成中…'
+  if (turn.endTime && turn.startTime) {
+    const ms = turn.endTime - turn.startTime
+    if (ms > 0) return `已完成 ${formatDuration(ms)}`
+  }
+  return '已完成'
+}
 const messagesRef = ref<HTMLElement>()
 const fileInputRef = ref<HTMLInputElement>()
 const uploadingFiles = ref(false)
@@ -530,12 +703,21 @@ function goBack() {
 
 function handleNewChat() {
   agentStore.clearChat()
+  workbench.resetSelection()
 }
 
 async function handleSelectConversation(sessionId: string) {
   if (agentStore.currentSessionId === sessionId) return
   await agentStore.fetchMessages(sessionId)
+  // 切换会话后清空抽屉选中态，避免残留上一会话工具结果
+  workbench.resetSelection()
   scrollToBottom()
+}
+
+// 在右侧抽屉打开该工具调用的结果详情
+function openToolInDrawer(callId: string | null) {
+  if (!callId) return
+  workbench.selectToolCall(callId)
 }
 
 async function handleDeleteConversation(sessionId: string) {
@@ -582,6 +764,7 @@ async function handleSend() {
     const attachmentIds = agentStore.pendingAttachments.map((a) => a.id)
     const opts = {
       enable_thinking: enableThinking.value,
+      llm_model: selectedModel.value || undefined,
       attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
     }
     if (useStream.value) {
@@ -629,7 +812,9 @@ function getToolDuration(callId: string | null) {
 }
 
 function getToolStatus(callId: string | null) {
-  return getToolRecord(callId)?.status || 'running'
+  // 实时流期间 toolCalls 记录一定存在（onToolCall 同时建记录与消息）；
+  // 走到默认分支只可能是历史回放且未匹配到记录，持久化的 tool 消息必然已结束，故默认 completed
+  return getToolRecord(callId)?.status || 'completed'
 }
 
 function getToolStatusLabel(callId: string | null) {
@@ -668,8 +853,18 @@ function truncateResult(text: string): string {
   return text.slice(0, 2000) + '\n... (已截断)'
 }
 
+async function fetchModels() {
+  try {
+    const data = await chatApi.getModels()
+    availableModels.value = data.models
+  } catch {
+    // ignore
+  }
+}
+
 onMounted(async () => {
-  ;[await agentStore.initForAgent(agentId.value)]
+  await agentStore.initForAgent(agentId.value)
+  fetchModels()
 })
 
 onBeforeUnmount(() => {
@@ -730,8 +925,8 @@ onBeforeUnmount(() => {
 }
 
 .back-btn:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+  border-color: var(--color-text);
+  color: var(--color-text);
 }
 
 .new-chat-btn {
@@ -744,7 +939,7 @@ onBeforeUnmount(() => {
   border: none;
   border-radius: var(--radius-md);
   background: var(--color-primary-muted);
-  color: var(--color-primary);
+  color: var(--color-text);
   font-family: var(--font-body);
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
@@ -783,7 +978,7 @@ onBeforeUnmount(() => {
 }
 
 .conv-item.active .conv-title {
-  color: var(--color-primary);
+  color: var(--color-text);
   font-weight: var(--weight-medium);
 }
 
@@ -795,7 +990,7 @@ onBeforeUnmount(() => {
   bottom: 6px;
   width: 3px;
   border-radius: 2px;
-  background: var(--color-primary);
+  background: var(--color-btn-primary);
 }
 
 .conv-title {
@@ -1025,6 +1220,123 @@ onBeforeUnmount(() => {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ========================================
+   按轮分组：avatar 折叠头 + 工作过程 + 最终回复
+   ======================================== */
+.chat-turn {
+  margin-bottom: 32px;
+}
+
+.assistant-turn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  animation: messageIn 0.35s ease forwards;
+}
+
+.avatar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.turn-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-full);
+  background: var(--color-text);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  flex-shrink: 0;
+}
+
+.turn-name {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+/* 折叠线：已完成耗时 / 生成中 */
+.fold-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 3px 12px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-full);
+  background: var(--color-bg-card);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.fold-line:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.fold-chevron {
+  transition: transform var(--transition-fast);
+  color: inherit;
+}
+
+.fold-chevron.expanded {
+  transform: rotate(180deg);
+}
+
+/* 工作过程时间线 */
+.work-trail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: var(--space-1) 0 var(--space-2) var(--space-2);
+  padding: var(--space-2) 0 var(--space-2) var(--space-4);
+  border-left: 2px solid var(--color-border-light);
+}
+
+.work-assistant {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card-elevated);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.work-assistant :deep(p) {
+  margin: 0 0 8px;
+}
+
+.work-assistant :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+/* 最终回复 */
+.final-answer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.final-answer .message-text {
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  word-break: break-word;
+}
+
+.final-answer .message-actions {
+  align-self: flex-start;
 }
 
 .message-row.user {
@@ -1272,6 +1584,31 @@ onBeforeUnmount(() => {
   gap: var(--space-2);
 }
 
+.tool-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.tool-drawer-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.tool-drawer-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-primary);
+}
+
 .tool-icon {
   display: flex;
   align-items: center;
@@ -1302,8 +1639,8 @@ onBeforeUnmount(() => {
 }
 
 .tool-status.completed {
-  background: var(--color-success-subtle);
-  color: var(--color-success);
+  background: rgba(17, 24, 39, 0.06);
+  color: var(--color-text-secondary);
 }
 
 .tool-status.failed {
@@ -1513,14 +1850,14 @@ onBeforeUnmount(() => {
 }
 
 .send-btn.active {
-  background: var(--color-primary);
+  background: var(--color-text);
   color: #ffffff;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.25);
+  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.25);
 }
 
 .send-btn.active:hover {
-  background: var(--color-primary-hover);
+  background: #1f2937;
   transform: scale(1.05);
 }
 
@@ -1561,12 +1898,12 @@ onBeforeUnmount(() => {
 .action-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
   background: var(--color-bg-card);
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   font-size: var(--text-xs);
   font-family: var(--font-body);
   cursor: pointer;
@@ -1574,19 +1911,22 @@ onBeforeUnmount(() => {
 }
 
 .action-chip:hover {
-  border-color: var(--color-primary);
-  color: var(--color-text-secondary);
+  background: var(--color-bg-hover);
+  border-color: var(--color-border);
+  color: var(--color-text);
 }
 
 .action-chip.active {
-  background: var(--color-primary-muted);
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+  background: var(--color-text);
+  border-color: var(--color-text);
+  color: #ffffff;
   font-weight: var(--weight-medium);
 }
 
 .action-icon {
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 14px;
   line-height: 1;
 }
 

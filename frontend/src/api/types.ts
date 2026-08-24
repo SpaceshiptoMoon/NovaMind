@@ -1306,6 +1306,27 @@ export interface AgentMessage {
 export interface AgentMessageListResponse {
   items: AgentMessage[]
   total: number
+  tool_calls?: AgentToolCallInfo[]
+}
+
+// 后端历史回放的工具调用记录（agent_tool_calls 表）
+export interface AgentToolCallInfo {
+  id: number
+  call_id: string | null
+  tool_name: string
+  tool_source: string
+  arguments: Record<string, unknown>
+  status: string
+  duration_ms: number | null
+  error_message: string | null
+}
+
+// OpenAI 兼容工具调用格式：AI 决定调用工具时落库的 assistant 决策消息
+// 存于 AgentMessage.extra.tool_calls，供历史回放还原 ReAct 决策步骤
+export interface OpenAICompatToolCall {
+  id: string
+  type: 'function'
+  function: { name: string; arguments: string }
 }
 
 // ==================== 检索来源引用 ====================
