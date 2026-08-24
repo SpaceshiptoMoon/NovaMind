@@ -98,7 +98,7 @@ class AgentEngine:
                     async for event in self._run_iteration_stream(
                         llm_client, messages, tools, context,
                         max_tokens, temperature, top_p, enable_thinking,
-                        meta=meta,
+                        meta=meta, iteration=iteration,
                     ):
                         yield event
                         if event.event_type == "content":
@@ -119,7 +119,7 @@ class AgentEngine:
                     async for event in self._run_iteration_batch(
                         llm_client, messages, tools, context,
                         max_tokens, temperature, top_p, enable_thinking,
-                        meta=meta,
+                        meta=meta, iteration=iteration,
                     ):
                         yield event
                         if event.event_type == "content":
@@ -284,8 +284,15 @@ class AgentEngine:
         top_p: float,
         enable_thinking: bool,
         meta: Dict[str, Any],
+        iteration: int,
     ) -> AsyncGenerator[AgentEvent, None]:
-        """流式迭代：逐 token 产出事件，不缓存（含重试）"""
+        """流式迭代：逐 token 产出事件，不缓存（含重试）
+
+        iteration: 当前 ReAct 轮号（1-based），写入每条事件 data 供 chat_service
+        落库 agent_messages.iteration / agent_tool_calls.iteration，前端按轮绑组。
+        """
+        import uuid
+
         from novamind.engines.agent.llm.agent_llm import AgentLLM, CollectedToolCall
 
         agent_llm = AgentLLM(llm_client)
@@ -299,14 +306,17 @@ class AgentEngine:
         ):
             if chunk.type == "content":
                 content_parts.append(chunk.content)
-                yield AgentEvent("content", {"content": chunk.content})
+                yield AgentEvent("content", {"content": chunk.content, "iteration": iteration})
 
             elif chunk.type == "reasoning":
-                yield AgentEvent("reasoning", {"content": chunk.content})
+                yield AgentEvent("reasoning", {"content": chunk.content, "iteration": iteration})
 
             elif chunk.type == "tool_call_end":
-                collected[chunk.tool_call_id] = CollectedToolCall(
-                    id=chunk.tool_call_id,
+                # tool_call_id 为空（部分 provider 不返回）时生成 fallback id，
+                # 避免 None 作 key 在多工具时覆盖丢失调用（与非流式 _process_tool_calls 对齐）
+                tc_id = chunk.tool_call_id or f"call_{uuid.uuid4().hex[:8]}"
+                collected[tc_id] = CollectedToolCall(
+                    id=tc_id,
                     name=chunk.tool_name or "",
                     arguments=chunk.tool_arguments_delta,
                 )
@@ -328,8 +338,12 @@ class AgentEngine:
         )
         # 先发「AI 决定调用工具」决策事件（该轮全部 OpenAI 格式 tool_calls），
         # 供 chat_service 落库一条 role=assistant 中间消息，还原完整 ReAct 链路
-        yield AgentEvent("assistant_tool_calls", {"tool_calls": assistant_msg.get("tool_calls", [])})
+        yield AgentEvent("assistant_tool_calls", {
+            "tool_calls": assistant_msg.get("tool_calls", []),
+            "iteration": iteration,
+        })
         for event in tool_events:
+            event.data["iteration"] = iteration
             yield event
 
         messages.append(assistant_msg)
@@ -349,8 +363,12 @@ class AgentEngine:
         top_p: float,
         enable_thinking: bool,
         meta: Dict[str, Any],
+        iteration: int,
     ) -> AsyncGenerator[AgentEvent, None]:
-        """非流式迭代：使用 generate_with_tools() 等待完整响应"""
+        """非流式迭代：使用 generate_with_tools() 等待完整响应
+
+        iteration: 当前 ReAct 轮号（1-based），写入每条事件 data 供 chat_service 落库。
+        """
         total_tokens = 0
 
         response = await retry_llm_call(
@@ -372,18 +390,22 @@ class AgentEngine:
             meta["usage"] = iter_usage
 
         if response.reasoning:
-            yield AgentEvent("reasoning", {"content": response.reasoning})
+            yield AgentEvent("reasoning", {"content": response.reasoning, "iteration": iteration})
 
         if response.tool_calls:
             if response.content:
-                yield AgentEvent("content", {"content": response.content})
+                yield AgentEvent("content", {"content": response.content, "iteration": iteration})
 
             tool_events, assistant_msg, tool_result_msgs = (
                 await self._process_tool_calls(response.tool_calls, context)
             )
             # 先发「AI 决定调用工具」决策事件（该轮全部 OpenAI 格式 tool_calls）
-            yield AgentEvent("assistant_tool_calls", {"tool_calls": assistant_msg.get("tool_calls", [])})
+            yield AgentEvent("assistant_tool_calls", {
+                "tool_calls": assistant_msg.get("tool_calls", []),
+                "iteration": iteration,
+            })
             for event in tool_events:
+                event.data["iteration"] = iteration
                 yield event
 
             messages.append(assistant_msg)
@@ -394,7 +416,7 @@ class AgentEngine:
             return
 
         if response.content:
-            yield AgentEvent("content", {"content": response.content})
+            yield AgentEvent("content", {"content": response.content, "iteration": iteration})
 
         meta["total_tokens"] = total_tokens
 
@@ -622,7 +644,13 @@ class AgentEngine:
         context: Dict[str, Any],
     ) -> Tuple[List[AgentEvent], Dict[str, Any], List[Dict[str, Any]]]:
         """处理流式路径收集到的工具调用（并行执行，单工具故障隔离）"""
-        items = [(cid, tc.name, tc.arguments) for cid, tc in collected.items()]
+        import uuid
+
+        # 防御：cid 为空时生成 fallback（正常路径已在 _run_iteration_stream 收集时补齐）
+        items = [
+            (cid or f"call_{uuid.uuid4().hex[:8]}", tc.name, tc.arguments)
+            for cid, tc in collected.items()
+        ]
 
         if len(items) == 1:
             call_evt, result_evt, tc_dict, tool_msg = await self._execute_single_tool(

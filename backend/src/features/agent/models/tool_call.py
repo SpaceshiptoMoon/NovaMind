@@ -21,6 +21,7 @@ class AgentToolCall(BaseModel):
     status = Column(String(20), default="pending", comment="状态：pending/running/completed/failed/timeout")
     error_message = Column(Text, nullable=True, comment="错误信息")
     duration_ms = Column(Integer, nullable=True, comment="执行耗时（毫秒）")
+    iteration = Column(Integer, nullable=True, comment="ReAct 轮号（1-based，与所属 assistant 决策消息同轮）；null 为历史数据")
 
     __table_args__ = (
         Index("idx_message", "message_id"),

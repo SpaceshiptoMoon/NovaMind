@@ -175,6 +175,9 @@ class AgentChatService:
             # 用 iteration_start 偏移把每轮 AI 文本分配给该轮决策消息，
             # 最终回答只取最后一轮（无工具调用）的文本，避免中间文本被吞进最终答案
             iteration_start = 0
+            # 同理按轮切分 reasoning：每轮决策消息存该轮思考过程，最终回答存最后一轮，
+            # 供前端每个 ReAct 步骤显示 think
+            iteration_reasoning_start = 0
 
             # 上下文溢出时的自动压缩回调
             async def _compress_on_overflow(msgs):
@@ -213,15 +216,26 @@ class AgentChatService:
                     compress_fn=_compress_on_overflow,
                 )
             async for event in event_gen:
+                # 跟踪最新 ReAct 轮号：每条携带 iteration 的事件都更新 current_iteration，
+                # 供本轮 assistant_tool_calls/tool_call/tool_result/done 落库时打 iteration 标签。
+                # 注意最终回答属于最后一轮（无工具调用那轮），其 iteration 由该轮 content/reasoning
+                # 事件推进，故不能只在 assistant_tool_calls 分支设置。
+                if "iteration" in event.data:
+                    context["current_iteration"] = event.data.get("iteration")
                 if event.event_type.startswith("plan."):
                     yield self._emit(event.event_type, event.data)
                 elif event.event_type == "assistant_tool_calls":
                     # AI 决定调用工具：落库一条 role=assistant 决策消息，content 存该轮 AI 真实输出文本
                     # （从 full_response 当前偏移截取，经流级 scrubber 清洗），extra.tool_calls 存该轮全部工具。
+                    # reasoning 同轮切片存决策消息 reasoning 字段，供前端每步显示 think。
                     # 还原完整 ReAct 链路：user → assistant(决策文本) → tool → ... → assistant(最终)。
                     iteration_text = full_response[iteration_start:]
-                    await self._handle_assistant_tool_calls(event, conv, context, iteration_text)
+                    iteration_reasoning = full_reasoning[iteration_reasoning_start:]
+                    await self._handle_assistant_tool_calls(
+                        event, conv, context, iteration_text, iteration_reasoning
+                    )
                     iteration_start = len(full_response)
+                    iteration_reasoning_start = len(full_reasoning)
                     yield self._emit("assistant_tool_calls", event.data)
                 elif event.event_type == "tool_call":
                     await self._handle_tool_call(event, user_msg, conv, context)
@@ -259,13 +273,16 @@ class AgentChatService:
                     # 最终回答 = 最后一轮（无工具调用）的 AI 文本（从 iteration_start 截取），
                     # 含 flush 尾部与截断标记；前序各轮文本已归入各自决策消息
                     final_text = full_response[iteration_start:]
+                    # 最终 reasoning = 最后一轮思考（前序各轮已归入各自决策消息）
+                    final_reasoning = full_reasoning[iteration_reasoning_start:] or None
                     # 发送结构化来源引用（对齐 QA sources 事件）
                     if collected_sources:
                         yield self._emit("sources", {"sources": collected_sources})
                     done_data = await self._handle_done(
                         event, conv, content, final_text,
-                        reasoning=full_reasoning or None,
+                        reasoning=final_reasoning,
                         sources=collected_sources or None,
+                        iteration=context.get("current_iteration"),
                     )
                     # E1 可观测性：done 加 cost_usd + 写 agent_usage 表
                     done_data = await self._record_usage(
@@ -788,11 +805,13 @@ class AgentChatService:
         conv: AgentSession,
         context: Dict[str, Any],
         iteration_text: str = "",
+        iteration_reasoning: str = "",
     ) -> None:
         """处理 assistant_tool_calls 事件：落库「AI 决定调用工具」的 assistant 决策消息，
         并把 message_id 记入 context，供本轮 tool_call 记录关联（而非挂在 user 消息上）。
 
         content 存该轮 AI 真实输出文本（经流级 scrubber 清洗，可能为空），
+        reasoning 存该轮思考过程（同轮切片，供前端每步显示 think），
         extra.tool_calls 存该轮全部 OpenAI 格式 tool_calls，
         供历史回放还原完整 ReAct 链路：user → assistant(决策文本) → tool → assistant(最终)。
         """
@@ -801,7 +820,9 @@ class AgentChatService:
             conversation_id=conv.id,
             role="assistant",
             content=iteration_text or None,
+            reasoning=iteration_reasoning or None,
             extra={"tool_calls": tool_calls},
+            iteration=context.get("current_iteration"),
         )
         context["assistant_msg_id"] = msg.id
 
@@ -825,6 +846,7 @@ class AgentChatService:
             tool_source="mcp" if event.data["tool_name"].startswith("mcp__") else "skill" if event.data["tool_name"].startswith("skill__") else "builtin",
             arguments=event.data.get("arguments", {}),
             status="running",
+            iteration=context.get("current_iteration"),
         )
         context[f"tc_{call_id}"] = tc.id
 
@@ -867,6 +889,7 @@ class AgentChatService:
             content=message_content,
             tool_call_id=call_id,
             tool_name=event.data.get("tool_name"),
+            iteration=context.get("current_iteration"),
         )
 
     async def _handle_done(
@@ -877,6 +900,7 @@ class AgentChatService:
         full_response: str,
         reasoning: Optional[str] = None,
         sources: Optional[List[Dict[str, Any]]] = None,
+        iteration: Optional[int] = None,
     ) -> Dict[str, Any]:
         """处理 done 事件：保存 assistant 消息、更新统计、设置标题"""
         total_tokens = event.data.get("total_tokens", 0)
@@ -887,6 +911,7 @@ class AgentChatService:
             content=full_response,
             token_count=total_tokens,
             reasoning=reasoning,
+            iteration=iteration,
         )
 
         await self.agent_service.update_session_stats(conv.id, total_tokens)

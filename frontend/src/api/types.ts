@@ -1301,6 +1301,8 @@ export interface AgentMessage {
   created_at: string
   reasoning?: string
   sources?: SourceRef[]
+  /** ReAct 轮号（1-based，每次 LLM 调用一轮）；null 为历史数据，前端按顺序推断 fallback */
+  iteration?: number | null
 }
 
 export interface AgentMessageListResponse {
@@ -1319,6 +1321,8 @@ export interface AgentToolCallInfo {
   status: string
   duration_ms: number | null
   error_message: string | null
+  /** ReAct 轮号（1-based，与所属 assistant 决策消息同轮）；null 为历史数据 */
+  iteration?: number | null
 }
 
 // OpenAI 兼容工具调用格式：AI 决定调用工具时落库的 assistant 决策消息
@@ -1328,6 +1332,14 @@ export interface OpenAICompatToolCall {
   type: 'function'
   function: { name: string; arguments: string }
 }
+
+// ContentBlock 视图类型：把 assistant 消息的 reasoning/content/extra.tool_calls 三字段
+// 统一成 block 数组，前端按 kind 分发渲染（think / text / tool_call），
+// 判别不再依赖 extra.tool_calls 字段存在性。纯表示层，后端存储不变。
+export type ContentBlock =
+  | { kind: 'reasoning'; text: string }
+  | { kind: 'text'; text: string }
+  | { kind: 'tool_call'; id: string; name: string; arguments: string }
 
 // ==================== 检索来源引用 ====================
 

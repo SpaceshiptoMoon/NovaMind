@@ -280,14 +280,15 @@ export const useAgentStore = defineStore('agent', () => {
             }
           },
           onAssistantToolCalls(d) {
-            // AI 决定调用工具：把当前轮已流式累积的 AI 文本（streamingContent）
-            // 归入该轮决策消息 content，再重置占位与累积器——下一轮文本进入新占位，
-            // 最终回答只取最后一轮。还原 user → assistant(决策文本) → tool → ... → assistant(最终)。
+            // AI 决定调用工具：把当前轮已流式累积的 AI 文本（streamingContent）和思考
+            // （streamingReasoning）归入该轮决策消息，再重置占位与累积器——下一轮进入新占位，
+            // 最终回答只取最后一轮。还原 user → assistant(决策文本+think) → tool → ... → assistant(最终)。
             const decisionMsg: AgentMessage = {
               id: Date.now() + Math.random(),
               conversation_id: 0,
               role: 'assistant',
               content: streamingContent.value || null,
+              reasoning: streamingReasoning.value || undefined,
               tool_call_id: null,
               tool_name: null,
               token_count: null,
@@ -300,9 +301,13 @@ export const useAgentStore = defineStore('agent', () => {
             } else {
               messages.value.push(decisionMsg)
             }
-            // 重置：该轮文本已归入决策消息，占位清空承载下一轮（最终回答）
+            // 重置：该轮文本+思考已归入决策消息，占位清空承载下一轮（最终回答）
             streamingContent.value = ''
-            if (assistantMsg) assistantMsg.content = ''
+            streamingReasoning.value = ''
+            if (assistantMsg) {
+              assistantMsg.content = ''
+              assistantMsg.reasoning = ''
+            }
           },
           onToolResult(d) {
             const call = toolCalls.value.find((c) => c.callId === d.call_id)
@@ -416,7 +421,16 @@ export const useAgentStore = defineStore('agent', () => {
       let collectedReasoning = ''
       let collectedSources: SourceRef[] = []
       const collectedToolCalls: ToolCallRecord[] = []
-      const collectedDecisions: OpenAICompatToolCall[][] = []
+      // 决策消息按轮切片：记录每轮 tool_calls + 该轮 content/reasoning 切片，
+      // 与流式路径 onAssistantToolCalls 语义对齐（流式用 streamingContent 累积重置，
+      // 批量用 offset 切片，二者决策消息都带 content+reasoning 而非 content=null）
+      const collectedDecisions: {
+        tool_calls: OpenAICompatToolCall[]
+        content: string | null
+        reasoning: string | undefined
+      }[] = []
+      let decisionContentOffset = 0
+      let decisionReasoningOffset = 0
 
       await agentApi.chatStream(
         agentId,
@@ -456,7 +470,16 @@ export const useAgentStore = defineStore('agent', () => {
             })
           },
           onAssistantToolCalls(d) {
-            collectedDecisions.push(d.tool_calls as OpenAICompatToolCall[])
+            // 按轮切片：该轮决策文本 = 自上次决策偏移以来的 content/reasoning
+            const iterText = collectedContent.slice(decisionContentOffset)
+            const iterReasoning = collectedReasoning.slice(decisionReasoningOffset)
+            collectedDecisions.push({
+              tool_calls: d.tool_calls as OpenAICompatToolCall[],
+              content: iterText || null,
+              reasoning: iterReasoning || undefined,
+            })
+            decisionContentOffset = collectedContent.length
+            decisionReasoningOffset = collectedReasoning.length
           },
           onToolResult(d) {
             const call = collectedToolCalls.find((c) => c.callId === d.call_id)
@@ -479,18 +502,19 @@ export const useAgentStore = defineStore('agent', () => {
             // Apply collected data once
             toolCalls.value = collectedToolCalls
 
-            // 先按序 push AI 决策消息（content=null, extra.tool_calls），再 push 工具结果
-            for (const tcs of collectedDecisions) {
+            // 先按序 push AI 决策消息（该轮 content + reasoning + extra.tool_calls），再 push 工具结果
+            for (const dec of collectedDecisions) {
               const decisionMsg: AgentMessage = {
                 id: Date.now() + Math.random(),
                 conversation_id: 0,
                 role: 'assistant',
-                content: null,
+                content: dec.content,
                 tool_call_id: null,
                 tool_name: null,
                 token_count: null,
                 created_at: new Date().toISOString(),
-                extra: { tool_calls: tcs },
+                reasoning: dec.reasoning,
+                extra: { tool_calls: dec.tool_calls },
               }
               messages.value.push(decisionMsg)
             }
@@ -509,16 +533,19 @@ export const useAgentStore = defineStore('agent', () => {
               messages.value.push(toolMsg)
             }
 
+            // 最终回答 = 最后一轮（无工具调用）的 content/reasoning（自最后决策偏移切片）
+            const finalText = collectedContent.slice(decisionContentOffset)
+            const finalReasoning = collectedReasoning.slice(decisionReasoningOffset)
             const aiMsg: AgentMessage = {
               id: d.message_id || Date.now() + 1,
               conversation_id: 0,
               role: 'assistant',
-              content: collectedContent,
+              content: finalText,
               tool_call_id: null,
               tool_name: null,
               token_count: null,
               created_at: new Date().toISOString(),
-              reasoning: collectedReasoning || undefined,
+              reasoning: finalReasoning || undefined,
               sources: d.sources || collectedSources,
             }
             messages.value.push(aiMsg)

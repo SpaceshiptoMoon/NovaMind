@@ -136,6 +136,7 @@ class AgentMessageResponse(BaseModel):
     token_count: Optional[int] = None
     extra: Optional[Dict[str, Any]] = None
     reasoning: Optional[str] = None
+    iteration: Optional[int] = None
     created_at: Optional[datetime] = None
 
 
@@ -151,6 +152,7 @@ class ToolCallResponse(BaseModel):
     status: str
     duration_ms: Optional[int] = None
     error_message: Optional[str] = None
+    iteration: Optional[int] = None
 
 
 class MessageListResponse(BaseModel):

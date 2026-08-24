@@ -103,67 +103,85 @@
                   <div class="turn-name">{{ agentName }}</div>
                 </div>
 
-                <button class="fold-line" @click="toggleTurn(turn.key)">
-                  <span class="fold-status">{{ turnStatusLabel(turn) }}</span>
+                <!-- 多步 ReAct 才显示折叠头，单步平铺不折叠 -->
+                <button
+                  v-if="turn.steps.length > 1"
+                  class="fold-line"
+                  @click="toggleTurn(turn.key)"
+                >
+                  <span class="fold-status">{{
+                    turn.isActive ? '生成中…' : `已完成 ${turn.steps.length} 步`
+                  }}</span>
                   <el-icon :size="12" class="fold-chevron" :class="{ expanded: isTurnExpanded(turn) }">
                     <ArrowDown />
                   </el-icon>
                 </button>
 
-                <!-- 工作过程（按序折叠）：工具调用 / 中间结果 / 思考过程 -->
-                <div v-show="isTurnExpanded(turn)" class="work-trail">
-                  <template v-for="item in turn.workItems" :key="item.id">
-                    <!-- 工具调用卡片（可继续折叠） -->
-                    <div v-if="item.role === 'tool'" class="tool-card-row">
+                <!-- 工作过程：按 ReAct 步骤渲染。多步默认折叠，单步/流式平铺。
+                     无步骤且无思考过程时不渲染空容器 -->
+                <div
+                  v-if="turn.steps.length > 0 || turn.finalAssistant?.reasoning"
+                  v-show="turn.steps.length <= 1 || isTurnExpanded(turn)"
+                  class="work-trail"
+                >
+                  <template v-for="(step, si) in turn.steps" :key="si">
+                    <!-- AI 输出（LLM 一次响应原样还原：按 ContentBlock 分发 reasoning/text/tool_call） -->
+                    <div v-if="step.ai && toContentBlocks(step.ai).length" class="ai-output">
+                      <template v-for="(block, bi) in toContentBlocks(step.ai)" :key="bi">
+                        <div v-if="block.kind === 'reasoning'" class="ai-reasoning">
+                          <MarkdownRenderer :content="block.text" />
+                        </div>
+                        <div v-else-if="block.kind === 'text'" class="ai-content">
+                          <MarkdownRenderer :content="block.text" />
+                        </div>
+                        <div v-else-if="block.kind === 'tool_call'" class="ai-tool-call">
+                          <span class="ai-tool-name">{{ block.name }}</span>
+                          <pre v-if="block.arguments" class="ai-tool-args">{{
+                            formatToolArgs(block.arguments)
+                          }}</pre>
+                        </div>
+                      </template>
+                    </div>
+                    <!-- 工具实际执行（结果与 AI 输出分离；参数已在 AI 输出的 tool_calls 展示） -->
+                    <div v-for="tool in step.tools" :key="tool.id" class="tool-card-row">
                       <div class="tool-card">
-                        <div class="tool-header" @click="toggleToolExpand(item.id)">
+                        <div class="tool-header" @click="toggleToolExpand(tool.id)">
                           <div class="tool-info">
                             <span class="tool-icon">
                               <el-icon :size="14"><SetUp /></el-icon>
                             </span>
-                            <span class="tool-name">{{ item.tool_name || 'Tool' }}</span>
-                            <span v-if="getToolDuration(item.tool_call_id)" class="tool-duration">
-                              {{ getToolDuration(item.tool_call_id) }}ms
+                            <span class="tool-name">{{ tool.tool_name || 'Tool' }}</span>
+                            <span v-if="getToolDuration(tool.tool_call_id)" class="tool-duration">
+                              {{ getToolDuration(tool.tool_call_id) }}ms
                             </span>
-                            <span class="tool-status" :class="getToolStatus(item.tool_call_id)">
-                              {{ getToolStatusLabel(item.tool_call_id) }}
+                            <span class="tool-status" :class="getToolStatus(tool.tool_call_id)">
+                              {{ getToolStatusLabel(tool.tool_call_id) }}
                             </span>
                           </div>
                           <div class="tool-header-actions">
                             <button
                               class="tool-drawer-btn"
                               title="在右侧抽屉查看"
-                              @click.stop="openToolInDrawer(item.tool_call_id)"
+                              @click.stop="openToolInDrawer(tool.tool_call_id)"
                             >
                               <el-icon :size="12"><Expand /></el-icon>
                             </button>
                             <el-icon
                               :size="12"
                               class="expand-icon"
-                              :class="{ expanded: expandedTools.has(item.id) }"
+                              :class="{ expanded: expandedTools.has(tool.id) }"
                             >
                               <ArrowDown />
                             </el-icon>
                           </div>
                         </div>
-                        <div v-if="expandedTools.has(item.id)" class="tool-body">
-                          <div v-if="getToolArgs(item.tool_call_id)" class="tool-section">
-                            <div class="tool-section-label">参数</div>
-                            <pre class="tool-json">{{ formatJson(getToolArgs(item.tool_call_id)!) }}</pre>
-                          </div>
-                          <div v-if="item.content" class="tool-section">
+                        <div v-if="expandedTools.has(tool.id)" class="tool-body">
+                          <div v-if="tool.content" class="tool-section">
                             <div class="tool-section-label">结果</div>
-                            <pre class="tool-json">{{ truncateResult(item.content) }}</pre>
+                            <pre class="tool-json">{{ truncateResult(tool.content) }}</pre>
                           </div>
                         </div>
                       </div>
-                    </div>
-                    <!-- 中间 assistant 输出（含 AI 决定调用工具时的真实文本、plan/子 agent 摘要等） -->
-                    <div
-                      v-else-if="item.role === 'assistant' && item.content"
-                      class="work-assistant"
-                    >
-                      <MarkdownRenderer :content="item.content" />
                     </div>
                   </template>
 
@@ -356,7 +374,7 @@ import { useAgentStore } from '@/stores/agent'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { agentApi } from '@/api/agent'
 import { chatApi } from '@/api/chat'
-import type { AgentMessage } from '@/api/types'
+import type { AgentMessage, ContentBlock, OpenAICompatToolCall } from '@/api/types'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import ModelTrigger from '@/components/common/ModelTrigger.vue'
 
@@ -388,12 +406,19 @@ const expandedTurns = ref(new Set<string>())
 // 一轮 = 一条用户消息 + 其后的所有 tool/assistant/system 消息（直到下一条用户消息）。
 // 只展示该轮「最后一条 assistant」的最终回复；其前的 tool/中间 assistant/思考过程
 // 按序折叠在 avatar 折叠头下，并显示该轮总耗时。
+interface ReActStep {
+  // 一个 ReAct 步骤 = AI 一次响应（决策消息 content + tool_calls）+ 其调用的工具执行结果
+  ai: AgentMessage | null
+  tools: AgentMessage[]
+}
+
 interface ChatTurn {
   key: string
   userMsg: AgentMessage | null
   items: AgentMessage[]
   finalAssistant: AgentMessage | null
   workItems: AgentMessage[]
+  steps: ReActStep[]
   startTime: number
   endTime: number | null
   isActive: boolean
@@ -429,6 +454,7 @@ const turns = computed<ChatTurn[]>(() => {
         items: [],
         finalAssistant: null,
         workItems: [],
+        steps: [],
         startTime: tsOf(msg.created_at),
         endTime: null,
         isActive: false,
@@ -443,6 +469,7 @@ const turns = computed<ChatTurn[]>(() => {
         items: [msg],
         finalAssistant: null,
         workItems: [],
+        steps: [],
         startTime: tsOf(msg.created_at),
         endTime: null,
         isActive: false,
@@ -456,9 +483,10 @@ const turns = computed<ChatTurn[]>(() => {
     let lastIdx = -1
     for (let i = t.items.length - 1; i >= 0; i--) {
       const it = t.items[i]
-      // 排除带 extra.tool_calls 的决策消息：那是「AI 决定调用工具」的中间步骤，
-      // content 是该轮决策文本而非最终回答；即便它是该轮最后一条 assistant 也不能当最终回复
-      if (it && it.role === 'assistant' && it.content && !it.extra?.tool_calls) {
+      // 排除含 tool_call 块的决策消息：那是「AI 决定调用工具」的中间步骤，
+      // content 是该轮决策文本而非最终回答；即便它是该轮最后一条 assistant 也不能当最终回复。
+      // 判别基于 ContentBlock（不依赖 extra.tool_calls 字段存在性），空 content 的决策也能正确归类
+      if (it && it.role === 'assistant' && it.content && !hasToolCallBlocks(it)) {
         lastIdx = i
         break
       }
@@ -475,6 +503,44 @@ const turns = computed<ChatTurn[]>(() => {
       const lastItem = t.items[t.items.length - 1]
       if (lastItem) t.endTime = tsOf(lastItem.created_at)
     }
+
+    // 按 ReAct 步骤分组：优先用 iteration 字段（同一轮的 assistant 决策 + tool 归同一步），
+    // 还原 LLM 一次响应（ai: content + tool_calls）+ 工具执行（tools）的原始结构。
+    // 无 iteration（历史数据）fallback 到老的顺序推断（assistant 开新 step，tool 归入）。
+    const steps: ReActStep[] = []
+    const hasIter = t.workItems.some((it) => it.iteration != null)
+    if (hasIter) {
+      const byIter = new Map<number, ReActStep>()
+      const order: number[] = []
+      for (const item of t.workItems) {
+        const iter = item.iteration ?? 0
+        let step = byIter.get(iter)
+        if (!step) {
+          step = { ai: null, tools: [] }
+          byIter.set(iter, step)
+          order.push(iter)
+        }
+        if (item.role === 'assistant') {
+          step.ai = item
+        } else if (item.role === 'tool') {
+          step.tools.push(item)
+        }
+      }
+      for (const iter of order) steps.push(byIter.get(iter)!)
+    } else {
+      let cur: ReActStep | null = null
+      for (const item of t.workItems) {
+        if (item.role === 'assistant') {
+          if (cur) steps.push(cur)
+          cur = { ai: item, tools: [] }
+        } else if (item.role === 'tool') {
+          if (!cur) cur = { ai: null, tools: [] }
+          cur.tools.push(item)
+        }
+      }
+      if (cur) steps.push(cur)
+    }
+    t.steps = steps
   }
 
   // 当前正在流式/加载的最后一轮标记为 active
@@ -486,8 +552,8 @@ const turns = computed<ChatTurn[]>(() => {
 })
 
 function isTurnExpanded(turn: ChatTurn): boolean {
-  // 当前流式轮自动展开（便于观察工具执行）；已完成轮默认折叠，点击展开
-  return turn.isActive || expandedTurns.value.has(turn.key)
+  // 多步 ReAct 默认折叠（用户点击展开看中间步骤）；单步由 v-show 的 steps.length<=1 平铺
+  return expandedTurns.value.has(turn.key)
 }
 
 function toggleTurn(key: string) {
@@ -802,6 +868,44 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 // Tool call helpers
+function toContentBlocks(msg: AgentMessage | null): ContentBlock[] {
+  // 把 assistant 消息的 reasoning/content/extra.tool_calls 三字段统一成 block 数组，
+  // 前端按 kind 分发渲染（reasoning → think, text → 回答, tool_call → 工具调用）。
+  // 纯表示层视图模型，后端存储不变。决策消息 blocks=[reasoning?,text?,tool_call*]，
+  // 最终回答 blocks=[reasoning?,text?]，纯 tool 消息不走此路径。
+  if (!msg) return []
+  const blocks: ContentBlock[] = []
+  if (msg.reasoning) blocks.push({ kind: 'reasoning', text: msg.reasoning })
+  if (msg.content) blocks.push({ kind: 'text', text: msg.content })
+  const tcs = msg.extra?.tool_calls as OpenAICompatToolCall[] | undefined
+  if (tcs?.length) {
+    for (const tc of tcs) {
+      blocks.push({
+        kind: 'tool_call',
+        id: tc.id,
+        name: tc.function.name,
+        arguments: tc.function.arguments,
+      })
+    }
+  }
+  return blocks
+}
+
+function hasToolCallBlocks(msg: AgentMessage | null): boolean {
+  // 判定 assistant 消息是否含工具调用块（决策消息），用于 finalAssistant 归类
+  return toContentBlocks(msg).some((b) => b.kind === 'tool_call')
+}
+
+function formatToolArgs(args: string | undefined): string {
+  // tool_calls.function.arguments 是 JSON 字符串，parse 后格式化展示
+  if (!args) return ''
+  try {
+    return JSON.stringify(JSON.parse(args), null, 2)
+  } catch {
+    return args
+  }
+}
+
 function getToolRecord(callId: string | null) {
   if (!callId) return null
   return agentStore.toolCalls.find((c) => c.callId === callId)
@@ -1320,6 +1424,56 @@ onBeforeUnmount(() => {
 
 .work-assistant :deep(p:last-child) {
   margin-bottom: 0;
+}
+
+/* AI 输出单元：还原 LLM 一次响应（reasoning + content + tool_calls），不分离不合成 */
+.ai-output {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card-elevated);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+.ai-output :deep(p:last-child) {
+  margin-bottom: 0;
+}
+.ai-reasoning {
+  border-left: 2px solid var(--color-border-light);
+  padding-left: var(--space-2);
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+.ai-content {
+  color: var(--color-text-secondary);
+}
+/* recall tools：LLM 输出的 tool_calls（工具名 + 参数），作为 ai-output 的直接子块 */
+.ai-tool-call {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card-elevated);
+}
+.ai-tool-name {
+  font-family: var(--font-mono, monospace);
+  font-weight: 600;
+  color: var(--color-text-primary, var(--color-text-secondary));
+}
+.ai-tool-args {
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card-elevated);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs, 12px);
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* 最终回复 */

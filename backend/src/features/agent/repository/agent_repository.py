@@ -232,11 +232,23 @@ class ToolCallRepository:
         )
         await self.session.flush()
 
-    async def list_by_conversation(self, conversation_id: int) -> List[AgentToolCall]:
+    async def list_by_conversation(
+        self,
+        conversation_id: int,
+        after: Optional[datetime] = None,
+    ) -> List[AgentToolCall]:
+        """加载会话工具调用记录。
+
+        after: 命中摘要时传 summary_cutoff，仅加载 cutoff 之后的记录，避免 cutoff 前
+            assistant 消息已被摘要替代而 tool_calls 成孤儿（浪费 + 潜在错配）。None 全量。
+        """
+        stmt = select(AgentToolCall).where(
+            AgentToolCall.conversation_id == conversation_id
+        )
+        if after is not None:
+            stmt = stmt.where(AgentToolCall.created_at >= after)
         result = await self.session.execute(
-            select(AgentToolCall)
-            .where(AgentToolCall.conversation_id == conversation_id)
-            .order_by(AgentToolCall.created_at.asc())
+            stmt.order_by(AgentToolCall.created_at.asc())
         )
         return result.scalars().all()
 

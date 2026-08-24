@@ -19,6 +19,7 @@ class AgentMessage(BaseModel):
     token_count = Column(Integer, nullable=True, comment="token 数量")
     extra = Column(JSON, nullable=True, comment="扩展信息")
     reasoning = Column(Text, nullable=True, comment="助手思考过程（深度思考模式下 LLM 的推理链）")
+    iteration = Column(Integer, nullable=True, comment="ReAct 轮号（1-based，每次 LLM 调用一轮）；null 为历史数据")
 
     __table_args__ = (
         Index("idx_conversation_created", "conversation_id", "created_at"),

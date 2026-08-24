@@ -160,3 +160,69 @@ async def test_get_messages_returns_tool_calls_for_replay() -> None:
     assert resp.tool_calls[0].call_id == "call_a"
     assert resp.tool_calls[0].status == "completed"
     assert resp.tool_calls[1].status == "failed"
+
+
+# ==================== 5. list_by_conversation(after=) cutoff 过滤（批次 D） ====================
+
+@pytest.mark.asyncio
+async def test_list_by_conversation_after_filters_cutoff() -> None:
+    """list_by_conversation(after=) 应仅返回 cutoff 之后创建的 tool_calls，
+    避免摘要 cutoff 前的 assistant 消息已被摘要替代后 tool_calls 成孤儿（批次 D）"""
+    from datetime import datetime, timedelta
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from novamind.core.database.base import BaseModel
+    from novamind.features.agent.models.message import AgentMessage
+    from novamind.features.agent.models.session import AgentSession
+    from novamind.features.agent.repository.agent_repository import ToolCallRepository
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    async with engine.begin() as conn:
+        await conn.run_sync(
+            BaseModel.metadata.create_all,
+            tables=[AgentSession.__table__, AgentMessage.__table__, AgentToolCall.__table__],
+        )
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+
+    base = datetime(2026, 1, 1, 12, 0, 0)
+    async with Session() as session:
+        # SQLite + BigInteger PK 不自增，显式指定主键
+        sess = AgentSession(id=1, user_id=1, agent_id=1, session_id="s-cutoff")
+        session.add(sess)
+        await session.flush()
+        conv_id = sess.id
+        msg = AgentMessage(id=10, conversation_id=conv_id, role="assistant", content=None)
+        session.add(msg)
+        await session.flush()
+        msg_id = msg.id
+
+        old1 = AgentToolCall(
+            id=101, message_id=msg_id, conversation_id=conv_id, call_id="c1",
+            tool_name="t", tool_source="builtin", arguments={}, status="completed",
+        )
+        old1.created_at = base - timedelta(hours=2)
+        old2 = AgentToolCall(
+            id=102, message_id=msg_id, conversation_id=conv_id, call_id="c2",
+            tool_name="t", tool_source="builtin", arguments={}, status="completed",
+        )
+        old2.created_at = base - timedelta(hours=1)
+        new1 = AgentToolCall(
+            id=103, message_id=msg_id, conversation_id=conv_id, call_id="c3",
+            tool_name="t", tool_source="builtin", arguments={}, status="completed",
+        )
+        new1.created_at = base + timedelta(hours=1)
+        session.add_all([old1, old2, new1])
+        await session.commit()
+
+    cutoff = base
+    async with Session() as session:
+        repo = ToolCallRepository(session)
+        all_tcs = await repo.list_by_conversation(conv_id)
+        assert {t.call_id for t in all_tcs} == {"c1", "c2", "c3"}
+        after_tcs = await repo.list_by_conversation(conv_id, after=cutoff)
+        assert {t.call_id for t in after_tcs} == {"c3"}, (
+            f"after=cutoff 应只返回 cutoff 之后创建的记录: {[t.call_id for t in after_tcs]}"
+        )
+
+    await engine.dispose()

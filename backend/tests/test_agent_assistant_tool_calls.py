@@ -14,12 +14,14 @@ from unittest.mock import AsyncMock
 import pytest
 
 from novamind.engines.agent.agent_engine import AgentEngine, AgentEvent
+from novamind.engines.agent.memory.short_term import ShortTermMemory
 from novamind.engines.agent.tool.result import ToolResult, ToolResultStatus
 from novamind.features.agent.services.chat_service import AgentChatService
 from novamind.shared.ai_models.base_model import (
     BaseLLM,
     LLMResponseWithTools,
     ToolCall,
+    ToolStreamEvent,
 )
 
 
@@ -95,6 +97,11 @@ async def test_engine_emits_assistant_tool_calls_before_tool_events() -> None:
     assert len(tc_list) == 1
     assert tc_list[0]["function"]["name"] == "echo"
     assert tc_list[0]["id"] == "call_1"
+
+    # 批次 A：run() 经 _run_iteration_batch 产出的事件应携带 iteration 标签
+    assert decision.data.get("iteration") == 1, "第 1 轮 assistant_tool_calls 应带 iteration=1"
+    assert events[idx_tool_call].data.get("iteration") == 1
+    assert events[idx_tool_result].data.get("iteration") == 1
 
 
 # ==================== 2. _handle_assistant_tool_calls 落库决策消息 ====================
@@ -195,3 +202,178 @@ async def test_handle_tool_call_falls_back_to_user_msg_id() -> None:
     })
     await svc._handle_tool_call(event, SimpleNamespace(id=5), SimpleNamespace(id=7), {})
     assert captured["message_id"] == 5
+
+
+# ==================== 4. 流式多工具无 call_id：fallback 不丢失、配对一致 ====================
+
+
+class _StubLLMStreamNoId(BaseLLM):
+    """流式桩：yield 两个 tool_call_end（tool_call_id=None）+ done。
+
+    模拟部分 provider 不返回 tool_call_id 的情况，验证 fallback id 生成、
+    多工具不因 None key 覆盖丢失、assistant.tool_calls[].id 与 tool 事件 call_id 配对。
+    """
+
+    def __init__(self) -> None:  # type: ignore[no-untyped-def]
+        self.model = "stub-stream-noid"
+
+    async def generate_with_tools_stream(self, **kwargs):  # type: ignore[no-untyped-def]
+        yield ToolStreamEvent(
+            type="tool_call_end", tool_call_id=None,
+            tool_name="search", tool_arguments_delta='{"q":"a"}',
+        )
+        yield ToolStreamEvent(
+            type="tool_call_end", tool_call_id=None,
+            tool_name="calc", tool_arguments_delta='{"x":1}',
+        )
+        yield ToolStreamEvent(type="done", usage={"total_tokens": 8}, finish_reason="tool_calls")
+
+    async def generate_with_tools(self, **kwargs):  # type: ignore[no-untyped-def]
+        raise NotImplementedError
+
+    async def generate_text(self, **kwargs):  # type: ignore[no-untyped-def]
+        raise NotImplementedError
+
+    async def generate_text_stream(self, **kwargs):  # type: ignore[no-untyped-def]
+        raise NotImplementedError
+        yield  # noqa: unreachable — 保持 async generator 语义
+
+
+@pytest.mark.asyncio
+async def test_stream_multi_tool_no_call_id_fallback() -> None:
+    """流式多工具且 LLM 不返回 tool_call_id 时：
+    - 两个工具都保留（修复前 None 作 dict key 会覆盖只剩 1 个）
+    - fallback id 非空且互不相同
+    - assistant.tool_calls[].id 与 tool_call 事件 call_id 配对（同 fallback id）
+    """
+    fake_tool_executor = SimpleNamespace(execute=AsyncMock(return_value=ToolResult(
+        status=ToolResultStatus.SUCCESS, content="ok", duration_ms=1,
+    )))
+    engine = AgentEngine(tool_executor=fake_tool_executor)  # type: ignore[arg-type]
+
+    events = []
+    async for event in engine._run_iteration_stream(
+        llm_client=_StubLLMStreamNoId(),  # type: ignore[arg-type]
+        messages=[{"role": "user", "content": "x"}],
+        tools=[
+            {"type": "function", "function": {"name": "search"}},
+            {"type": "function", "function": {"name": "calc"}},
+        ],
+        context={},
+        max_tokens=100,
+        temperature=0.7,
+        top_p=0.8,
+        enable_thinking=False,
+        meta={},
+        iteration=1,
+    ):
+        events.append(event)
+
+    types = [e.event_type for e in events]
+    assert "assistant_tool_calls" in types
+    decision = events[types.index("assistant_tool_calls")]
+    tc_list = decision.data.get("tool_calls", [])
+
+    # 修复前：两个 None key 覆盖，collected 只剩 1 个 → 这里必须 == 2
+    assert len(tc_list) == 2, f"两个工具都应保留，修复前 None key 覆盖会丢一个: {tc_list}"
+
+    ids = [tc["id"] for tc in tc_list]
+    assert all(ids), f"fallback id 不应为空: {ids}"
+    assert len(set(ids)) == 2, f"两个工具 fallback id 应互不相同: {ids}"
+
+    names = [tc["function"]["name"] for tc in tc_list]
+    assert set(names) == {"search", "calc"}
+
+    # tool_call 事件 call_id 应与决策 tool_calls id 配对（同 fallback id）
+    tool_call_events = [e for e in events if e.event_type == "tool_call"]
+    tool_call_ids = [e.data["call_id"] for e in tool_call_events]
+    assert set(tool_call_ids) == set(ids), (
+        f"tool_call 事件 call_id 应与决策 tool_calls id 配对: {tool_call_ids} vs {ids}"
+    )
+
+    # 批次 A：每条 ReAct 事件都应携带 iteration 标签（供 chat_service 落库按轮绑组）
+    assert decision.data.get("iteration") == 1, "assistant_tool_calls 应带 iteration=1"
+    for tc_evt in tool_call_events:
+        assert tc_evt.data.get("iteration") == 1, f"tool_call 事件应带 iteration=1: {tc_evt.data}"
+    tool_result_events = [e for e in events if e.event_type == "tool_result"]
+    for tr_evt in tool_result_events:
+        assert tr_evt.data.get("iteration") == 1, f"tool_result 事件应带 iteration=1: {tr_evt.data}"
+
+
+# ==================== 5. _convert_db_messages：call_id 直接配对 + load-time 断言 ====================
+
+
+def _msg(id_, role, content=None, tool_call_id=None, tool_name=None):
+    """构造 agent_messages 行桩"""
+    return SimpleNamespace(
+        id=id_, role=role, content=content, tool_call_id=tool_call_id,
+        tool_name=tool_name, token_count=None,
+    )
+
+
+def _tc(id_, message_id, call_id, tool_name, arguments):
+    """构造 agent_tool_calls 行桩"""
+    return SimpleNamespace(
+        id=id_, message_id=message_id, call_id=call_id,
+        tool_name=tool_name, arguments=arguments,
+    )
+
+
+def _build_short_term():
+    """绕过 __init__，只用 _convert_db_messages 方法"""
+    return ShortTermMemory.__new__(ShortTermMemory)
+
+
+def test_convert_db_messages_call_id_paired() -> None:
+    """新链路：assistant.tool_calls 用 tc.call_id 直接配对，与 tool 消息 tool_call_id 一致 → 通过"""
+    stm = _build_short_term()
+    db_msgs = [
+        _msg(1, "user", content="q"),
+        _msg(2, "assistant", content=None),  # 决策消息
+        _msg(3, "tool", content="r1", tool_call_id="c1", tool_name="search"),
+        _msg(4, "tool", content="r2", tool_call_id="c2", tool_name="calc"),
+        _msg(5, "assistant", content="最终回答"),
+    ]
+    db_tcs = [
+        _tc(10, 2, "c1", "search", {"q": "a"}),
+        _tc(11, 2, "c2", "calc", {"x": 1}),
+    ]
+    mem = stm._convert_db_messages(db_msgs, db_tcs)
+    # assistant 决策消息 tool_calls id 直接取 tc.call_id（非 name_queue 排队）
+    decision = mem[1]
+    assert decision.role == "assistant"
+    ids = [tc["id"] for tc in decision.tool_calls]
+    assert ids == ["c1", "c2"], f"应直接用 tc.call_id 配对: {ids}"
+    # tool 消息 tool_call_id 原样保留，与 assistant id 配对（断言通过未 raise）
+
+
+def test_convert_db_messages_mismatch_raises() -> None:
+    """新链路：assistant.tool_calls id 与 tool 消息 tool_call_id 不一致 → raise ValueError"""
+    stm = _build_short_term()
+    db_msgs = [
+        _msg(2, "assistant", content=None),
+        _msg(3, "tool", content="r1", tool_call_id="c1", tool_name="search"),
+        _msg(4, "tool", content="r2", tool_call_id="c3", tool_name="calc"),  # c3 ≠ c2
+    ]
+    db_tcs = [
+        _tc(10, 2, "c1", "search", {"q": "a"}),
+        _tc(11, 2, "c2", "calc", {"x": 1}),
+    ]
+    with pytest.raises(ValueError, match="不配对"):
+        stm._convert_db_messages(db_msgs, db_tcs)
+
+
+def test_convert_db_messages_historical_fallback_warning() -> None:
+    """历史链路：tc.call_id 为 None → fallback f"call_{tc.id}"，降级 warning 不 raise"""
+    stm = _build_short_term()
+    db_msgs = [
+        _msg(2, "assistant", content=None),
+        # 历史 tool 消息可能也无 tool_call_id
+        _msg(3, "tool", content="r1", tool_call_id=None, tool_name="search"),
+    ]
+    db_tcs = [
+        _tc(10, 2, None, "search", {"q": "a"}),  # call_id=None → 历史数据
+    ]
+    mem = stm._convert_db_messages(db_msgs, db_tcs)  # 不应 raise
+    ids = [tc["id"] for tc in mem[0].tool_calls]
+    assert ids == ["call_10"], f"fallback 应为 call_{{tc.id}}: {ids}"
