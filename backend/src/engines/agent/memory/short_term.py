@@ -93,7 +93,11 @@ class ShortTermMemory(IShortTermMemory):
                 conversation_id, limit=200
             )
 
-        db_tool_calls = await self._tc_repo.list_by_conversation(conversation_id)
+        # 工具调用记录：命中摘要时仅加载 cutoff 之后的，避免 cutoff 前 assistant 消息
+        # 已被摘要替代而 tool_calls 成孤儿（浪费 + 潜在错配）
+        db_tool_calls = await self._tc_repo.list_by_conversation(
+            conversation_id, after=summary_cutoff
+        )
 
         # 2. 转换为内部消息模型
         memory_messages = self._convert_db_messages(db_messages, db_tool_calls)
@@ -175,24 +179,23 @@ class ShortTermMemory(IShortTermMemory):
 
         核心逻辑：
         1. 构建 message_id → [AgentToolCall] 映射
-        2. 还原 assistant 消息的 tool_calls（OpenAI 格式）
-        3. 从 tool 消息中提取原始 call_id，按 tool_name 分组排队
-        4. 确保 assistant.tool_calls[].id 与 tool.tool_call_id 一致
+        2. 还原 assistant 消息的 tool_calls（OpenAI 格式），call_id 直接取
+           AgentToolCall.call_id —— 新链路落库时 call_id 已与 tool 消息
+           tool_call_id 一致（同源于 agent_engine 的 _execute_single_tool.call_id）；
+           历史数据 call_id 为 null 时 fallback 到 f"call_{tc.id}"
+        3. load-time 配对断言（_assert_tool_call_pairing）：assistant.tool_calls[].id
+           集合应与紧随其后的 tool 消息 tool_call_id 集合一致；新链路不一致 raise，
+           历史链路（用了 fallback）降级 warning 不中断
         """
         # message_id → [AgentToolCall]
         tool_calls_map: Dict[int, List[Any]] = {}
         for tc in db_tool_calls:
             tool_calls_map.setdefault(tc.message_id, []).append(tc)
 
-        # tool_name → [tool_call_id] 队列，用于还原 assistant 消息的 call_id
-        tool_call_ids_by_name: Dict[str, List[str]] = {}
-        for msg in db_messages:
-            if msg.role == "tool" and msg.tool_call_id:
-                tool_call_ids_by_name.setdefault(msg.tool_name or "", []).append(
-                    msg.tool_call_id
-                )
-
         messages: List[MemoryMessage] = []
+        # 记录每条带 tool_calls 的 assistant 在 messages 中的索引 + 是否用了 fallback，
+        # 供 _assert_tool_call_pairing 判定新链路（严格 raise）还是历史链路（降级 warning）
+        assistant_tc_meta: List[tuple] = []
         for msg in db_messages:
             if msg.role == "user":
                 messages.append(
@@ -207,10 +210,15 @@ class ShortTermMemory(IShortTermMemory):
                 msg_tool_calls = tool_calls_map.get(msg.id, [])
                 if msg_tool_calls:
                     openai_tool_calls = []
+                    used_fallback = False
                     for tc in msg_tool_calls:
-                        # 从同名 tool 消息队列中取出原始 call_id
-                        name_queue = tool_call_ids_by_name.get(tc.tool_name, [])
-                        call_id = name_queue.pop(0) if name_queue else f"call_{tc.id}"
+                        # 直接用 AgentToolCall.call_id（新链路已与 tool 消息 tool_call_id 一致）；
+                        # 历史数据 call_id 为 null 时 fallback 到 f"call_{tc.id}"
+                        if tc.call_id:
+                            call_id = tc.call_id
+                        else:
+                            call_id = f"call_{tc.id}"
+                            used_fallback = True
 
                         openai_tool_calls.append(
                             {
@@ -236,6 +244,7 @@ class ShortTermMemory(IShortTermMemory):
                             token_count=msg.token_count,
                         )
                     )
+                    assistant_tc_meta.append((len(messages) - 1, used_fallback))
                 else:
                     messages.append(
                         MemoryMessage(
@@ -256,7 +265,47 @@ class ShortTermMemory(IShortTermMemory):
                     )
                 )
 
+        self._assert_tool_call_pairing(messages, assistant_tc_meta)
         return messages
+
+    def _assert_tool_call_pairing(
+        self,
+        messages: List[MemoryMessage],
+        assistant_tc_meta: List[tuple],
+    ) -> None:
+        """load-time 配对断言：每条带 tool_calls 的 assistant，其 tool_calls[].id 集合应与
+        紧随其后的 tool 消息 tool_call_id 集合一致。
+
+        - 新链路（未用 fallback，tc.call_id 非空）不一致 → raise ValueError，早失败早暴露
+        - 历史链路（用了 fallback，tc.call_id 为 null）→ 降级 warning，不中断
+        """
+        n = len(messages)
+        for idx, used_fallback in assistant_tc_meta:
+            assistant_ids = [tc["id"] for tc in messages[idx].tool_calls]
+            # 收集紧随其后的 tool 消息 tool_call_id
+            tool_ids: List[str] = []
+            j = idx + 1
+            while j < n and messages[j].role == "tool":
+                if messages[j].tool_call_id:
+                    tool_ids.append(messages[j].tool_call_id)
+                j += 1
+
+            if used_fallback:
+                # 历史链路：call_id 为 null，无法严格配对，降级 warning
+                logger.warning(
+                    "assistant 决策消息 tool_calls 用了 fallback call_id（历史数据），"
+                    "跳过配对断言",
+                    assistant_ids=assistant_ids,
+                    tool_ids=tool_ids,
+                )
+                continue
+
+            # 新链路：严格断言 assistant.tool_calls id 与 tool 消息 tool_call_id 配对
+            if set(assistant_ids) != set(tool_ids):
+                raise ValueError(
+                    f"assistant.tool_calls id 与 tool 消息 tool_call_id 不配对"
+                    f"（新链路应一致）: assistant={assistant_ids} vs tool={tool_ids}"
+                )
 
     def _build_openai_messages(
         self, system_prompt: str, memory_messages: List[MemoryMessage]

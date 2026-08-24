@@ -423,6 +423,17 @@
             "title": "Id",
             "type": "integer"
           },
+          "iteration": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iteration"
+          },
           "reasoning": {
             "anyOf": [
               {
@@ -4991,6 +5002,13 @@
               "$ref": "#/components/schemas/AgentMessageResponse"
             },
             "title": "Items",
+            "type": "array"
+          },
+          "tool_calls": {
+            "items": {
+              "$ref": "#/components/schemas/ToolCallResponse"
+            },
+            "title": "Tool Calls",
             "type": "array"
           },
           "total": {
@@ -10779,6 +10797,84 @@
           "refresh_token"
         ],
         "title": "TokenRefreshResponse",
+        "type": "object"
+      },
+      "ToolCallResponse": {
+        "description": "工具调用记录响应（用于历史回放工具状态）",
+        "properties": {
+          "arguments": {
+            "additionalProperties": true,
+            "title": "Arguments",
+            "type": "object"
+          },
+          "call_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call Id"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "iteration": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iteration"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tool_name": {
+            "title": "Tool Name",
+            "type": "string"
+          },
+          "tool_source": {
+            "title": "Tool Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tool_name",
+          "tool_source",
+          "status"
+        ],
+        "title": "ToolCallResponse",
         "type": "object"
       },
       "ToolFunctionResponse": {

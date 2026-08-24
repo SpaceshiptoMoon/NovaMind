@@ -46,4 +46,14 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
         "call_id",
         "ALTER TABLE agent_tool_calls ADD COLUMN call_id VARCHAR(64) NULL COMMENT 'LLM 工具调用ID，与 tool 消息 tool_call_id 对应'",
     ),
+    (
+        "agent_messages",
+        "iteration",
+        "ALTER TABLE agent_messages ADD COLUMN iteration INT NULL COMMENT 'ReAct 轮号（1-based，每次 LLM 调用一轮）；null 为历史数据'",
+    ),
+    (
+        "agent_tool_calls",
+        "iteration",
+        "ALTER TABLE agent_tool_calls ADD COLUMN iteration INT NULL COMMENT 'ReAct 轮号（1-based，与所属 assistant 决策消息同轮）；null 为历史数据'",
+    ),
 )

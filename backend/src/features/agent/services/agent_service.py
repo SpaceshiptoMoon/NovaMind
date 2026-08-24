@@ -220,6 +220,7 @@ class AgentService:
         token_count: Optional[int] = None,
         extra: Optional[dict] = None,
         reasoning: Optional[str] = None,
+        iteration: Optional[int] = None,
     ) -> AgentMessage:
         msg = await self.msg_repo.create(
             conversation_id=conversation_id,
@@ -230,6 +231,7 @@ class AgentService:
             token_count=token_count,
             extra=extra,
             reasoning=reasoning,
+            iteration=iteration,
         )
         await self.db.flush()
         return msg
