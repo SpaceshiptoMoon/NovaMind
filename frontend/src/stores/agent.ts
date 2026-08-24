@@ -12,7 +12,22 @@ import type {
   ToolCallRecord,
   ChatAttachment,
   SourceRef,
+  OpenAICompatToolCall,
 } from '@/api/types'
+
+// 后端工具状态归并到前端 ToolCallRecord.status 四态
+// pending/running → running；completed → completed；failed/timeout/其它 → failed
+function normalizeToolStatus(status: string): ToolCallRecord['status'] {
+  switch (status) {
+    case 'completed':
+      return 'completed'
+    case 'pending':
+    case 'running':
+      return 'running'
+    default:
+      return 'failed'
+  }
+}
 
 export const useAgentStore = defineStore('agent', () => {
   // Agent 列表
@@ -122,6 +137,15 @@ export const useAgentStore = defineStore('agent', () => {
       const data = await agentApi.getMessages(sessionId)
       messages.value = data.items || []
       currentSessionId.value = sessionId
+      // 历史回放：用持久化的工具调用记录重建 toolCalls 状态，
+      // 否则历史工具卡片因 getToolRecord 找不到记录而默认显示「执行中」
+      toolCalls.value = (data.tool_calls || []).map((tc) => ({
+        toolName: tc.tool_name,
+        arguments: tc.arguments,
+        callId: tc.call_id || '',
+        status: normalizeToolStatus(tc.status),
+        durationMs: tc.duration_ms ?? undefined,
+      }))
     } catch (e) {
       messages.value = []
       error.value = e instanceof Error ? e.message : '获取消息失败'
@@ -255,6 +279,31 @@ export const useAgentStore = defineStore('agent', () => {
               messages.value.push(toolMsg)
             }
           },
+          onAssistantToolCalls(d) {
+            // AI 决定调用工具：把当前轮已流式累积的 AI 文本（streamingContent）
+            // 归入该轮决策消息 content，再重置占位与累积器——下一轮文本进入新占位，
+            // 最终回答只取最后一轮。还原 user → assistant(决策文本) → tool → ... → assistant(最终)。
+            const decisionMsg: AgentMessage = {
+              id: Date.now() + Math.random(),
+              conversation_id: 0,
+              role: 'assistant',
+              content: streamingContent.value || null,
+              tool_call_id: null,
+              tool_name: null,
+              token_count: null,
+              created_at: new Date().toISOString(),
+              extra: { tool_calls: d.tool_calls as OpenAICompatToolCall[] },
+            }
+            if (assistantIndex >= 0) {
+              messages.value.splice(assistantIndex, 0, decisionMsg)
+              assistantIndex++
+            } else {
+              messages.value.push(decisionMsg)
+            }
+            // 重置：该轮文本已归入决策消息，占位清空承载下一轮（最终回答）
+            streamingContent.value = ''
+            if (assistantMsg) assistantMsg.content = ''
+          },
           onToolResult(d) {
             const call = toolCalls.value.find((c) => c.callId === d.call_id)
             if (call) {
@@ -367,6 +416,7 @@ export const useAgentStore = defineStore('agent', () => {
       let collectedReasoning = ''
       let collectedSources: SourceRef[] = []
       const collectedToolCalls: ToolCallRecord[] = []
+      const collectedDecisions: OpenAICompatToolCall[][] = []
 
       await agentApi.chatStream(
         agentId,
@@ -405,6 +455,9 @@ export const useAgentStore = defineStore('agent', () => {
               status: 'running',
             })
           },
+          onAssistantToolCalls(d) {
+            collectedDecisions.push(d.tool_calls as OpenAICompatToolCall[])
+          },
           onToolResult(d) {
             const call = collectedToolCalls.find((c) => c.callId === d.call_id)
             if (call) {
@@ -425,6 +478,22 @@ export const useAgentStore = defineStore('agent', () => {
           onDone(d) {
             // Apply collected data once
             toolCalls.value = collectedToolCalls
+
+            // 先按序 push AI 决策消息（content=null, extra.tool_calls），再 push 工具结果
+            for (const tcs of collectedDecisions) {
+              const decisionMsg: AgentMessage = {
+                id: Date.now() + Math.random(),
+                conversation_id: 0,
+                role: 'assistant',
+                content: null,
+                tool_call_id: null,
+                tool_name: null,
+                token_count: null,
+                created_at: new Date().toISOString(),
+                extra: { tool_calls: tcs },
+              }
+              messages.value.push(decisionMsg)
+            }
 
             for (const tc of collectedToolCalls) {
               const toolMsg: AgentMessage = {

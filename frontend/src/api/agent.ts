@@ -9,6 +9,7 @@ import type {
   AgentConversationListResponse,
   AgentMessage,
   AgentMessageListResponse,
+  OpenAICompatToolCall,
   McpServer,
   McpTool,
   CreateMcpServerRequest,
@@ -67,6 +68,7 @@ export const agentApi = {
         call_id: string
       }) => void
       onReasoning?: (text: string) => void
+      onAssistantToolCalls?: (d: { tool_calls: OpenAICompatToolCall[] }) => void
       onContent?: (content: string) => void
       onSources?: (d: {
         sources: {
@@ -94,6 +96,11 @@ export const agentApi = {
             break
           case 'tool_call':
             callbacks.onToolCall?.(e.data as Parameters<typeof callbacks.onToolCall>[0])
+            break
+          case 'assistant_tool_calls':
+            callbacks.onAssistantToolCalls?.(
+              e.data as Parameters<typeof callbacks.onAssistantToolCalls>[0],
+            )
             break
           case 'tool_result':
             callbacks.onToolResult?.(e.data as Parameters<typeof callbacks.onToolResult>[0])
