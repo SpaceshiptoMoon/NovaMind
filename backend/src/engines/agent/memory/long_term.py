@@ -234,7 +234,11 @@ class LongTermMemory(ILongTermMemory):
     async def _index_to_es(
         self, agent_id: int, entry: LongTermMemoryEntry, source_type: str
     ) -> None:
-        """生成 embedding 并索引到 ES"""
+        """生成 embedding 并索引到 ES。
+
+        若 index_memory 返回重建标志（embedding 模型维度变更导致索引自愈重建），
+        从 MySQL 重索引该 Agent 全部记忆，恢复向量检索能力。
+        """
         if not self._search or not self._embedding_factory:
             return
         try:
@@ -242,7 +246,7 @@ class LongTermMemory(ILongTermMemory):
             embedding = await embedding_client.generate_embedding(entry.content)
             if not embedding:
                 return
-            await self._search.index_memory(
+            recreated = await self._search.index_memory(
                 agent_id=agent_id,
                 memory_id=entry.id,
                 user_id=entry.user_id,
@@ -253,8 +257,62 @@ class LongTermMemory(ILongTermMemory):
                 source_conversation_id=entry.source_conversation_id,
                 created_at=entry.created_at,
             )
+            if recreated:
+                await self._reindex_all_memories(agent_id, entry.user_id, embedding_client)
         except Exception as e:
             logger.warning("ES 记忆索引失败", memory_id=entry.id, error=str(e))
+
+    async def _reindex_all_memories(
+        self,
+        agent_id: int,
+        user_id: int,
+        embedding_client: Any,
+        batch_size: int = 100,
+        max_total: int = 1000,
+    ) -> None:
+        """重建索引后从 MySQL source-of-truth 重嵌全部记忆。
+
+        分页拉取 list_by_agent，逐条生成 embedding 并 index_memory。
+        失败不阻断（仅 warning）。max_total 兜底防异常巨量记忆拖垮会话。
+        """
+        if not self._search:
+            return
+        try:
+            reindexed = 0
+            offset = 0
+            while reindexed < max_total:
+                memories, total = await self._store.list_by_agent(
+                    agent_id=agent_id, user_id=user_id, limit=batch_size, offset=offset,
+                )
+                if not memories:
+                    break
+                for m in memories:
+                    if reindexed >= max_total:
+                        break
+                    try:
+                        emb = await embedding_client.generate_embedding(m.content)
+                        if not emb:
+                            continue
+                        await self._search.index_memory(
+                            agent_id=agent_id,
+                            memory_id=m.id,
+                            user_id=m.user_id,
+                            category=m.category,
+                            content=m.content,
+                            embedding=emb,
+                            source_type="consolidate",
+                            source_conversation_id=m.source_conversation_id,
+                            created_at=m.created_at,
+                        )
+                        reindexed += 1
+                    except Exception as e:
+                        logger.warning("重索引单条记忆失败", memory_id=m.id, error=str(e))
+                if reindexed >= total or len(memories) < batch_size:
+                    break
+                offset += batch_size
+            logger.info("记忆重建后重索引完成", agent_id=agent_id, reindexed=reindexed)
+        except Exception as e:
+            logger.warning("记忆全量重索引失败", agent_id=agent_id, error=str(e))
 
     async def _search_es(
         self,

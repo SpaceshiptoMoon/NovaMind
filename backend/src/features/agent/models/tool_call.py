@@ -13,16 +13,18 @@ class AgentToolCall(BaseModel):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     message_id = Column(BigInteger, ForeignKey("agent_messages.id"), nullable=False, comment="触发的 assistant 消息ID")
     conversation_id = Column(BigInteger, ForeignKey("agent_sessions.id"), nullable=False, comment="会话ID")
+    call_id = Column(String(64), nullable=True, comment="LLM 工具调用ID，与 role=tool 消息的 tool_call_id 对应，用于历史回放状态")
     tool_name = Column(String(100), nullable=False, comment="工具名称")
     tool_source = Column(String(20), nullable=False, comment="工具来源：builtin/mcp")
     arguments = Column(JSON, nullable=False, comment="调用参数")
     result = Column(Text, nullable=True, comment="执行结果")
-    status = Column(String(20), default="pending", comment="状态：pending/running/completed/failed")
+    status = Column(String(20), default="pending", comment="状态：pending/running/completed/failed/timeout")
     error_message = Column(Text, nullable=True, comment="错误信息")
     duration_ms = Column(Integer, nullable=True, comment="执行耗时（毫秒）")
 
     __table_args__ = (
         Index("idx_message", "message_id"),
+        Index("idx_call_id", "call_id"),
         {"comment": "Agent 工具调用记录表，记录 Agent 每次调用内置工具或 MCP 工具的参数、结果和状态"},
     )
 

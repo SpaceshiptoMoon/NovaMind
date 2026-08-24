@@ -12,6 +12,7 @@ from novamind.features.agent.repository.agent_repository import (
     AgentRepository,
     SessionRepository,
     MessageRepository,
+    ToolCallRepository,
 )
 from novamind.features.agent.repository.memory_repository import MemoryRepository
 from novamind.features.agent.models.agent import AgentDefinition
@@ -27,6 +28,7 @@ from novamind.features.agent.schemas.agent_schema import (
     AgentSessionListResponse,
     AgentMessageResponse,
     MessageListResponse,
+    ToolCallResponse,
     MemoryResponse,
     MemoryListResponse,
     MemoryStatsResponse,
@@ -49,6 +51,7 @@ class AgentService:
         self.agent_repo = AgentRepository(db)
         self.session_repo = SessionRepository(db)
         self.msg_repo = MessageRepository(db)
+        self.tc_repo = ToolCallRepository(db)
         self.memory_repo = MemoryRepository(db)
 
     # ==================== Agent CRUD ====================
@@ -238,9 +241,12 @@ class AgentService:
         messages, total = await self.msg_repo.list_by_conversation(
             conv.id, limit, offset
         )
+        # 加载会话全部工具调用记录，供前端历史回放工具状态（call_id 与 tool 消息 tool_call_id 对应）
+        tool_calls = await self.tc_repo.list_by_conversation(conv.id)
         return MessageListResponse(
             items=[AgentMessageResponse.model_validate(m) for m in messages],
             total=total,
+            tool_calls=[ToolCallResponse.model_validate(tc) for tc in tool_calls],
         )
 
     async def update_session_stats(

@@ -195,8 +195,8 @@ class HostMemorySearchPort:
         source_type: str = "consolidate",
         source_conversation_id: Optional[int] = None,
         created_at: Optional[datetime] = None,
-    ) -> None:
-        await self._repo.index_memory(
+    ) -> bool:
+        return await self._repo.index_memory(
             agent_id=agent_id,
             memory_id=memory_id,
             user_id=user_id,
