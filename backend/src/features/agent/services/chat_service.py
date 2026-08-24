@@ -171,6 +171,10 @@ class AgentChatService:
             collected_sources: List[Dict[str, Any]] = []
             scrubber = StreamingContextScrubber()
             reasoning_scrubber = StreamingContextScrubber()
+            # 按迭代切分 AI 文本：full_response 仍作流级清洗累计（scrubber 行为不变），
+            # 用 iteration_start 偏移把每轮 AI 文本分配给该轮决策消息，
+            # 最终回答只取最后一轮（无工具调用）的文本，避免中间文本被吞进最终答案
+            iteration_start = 0
 
             # 上下文溢出时的自动压缩回调
             async def _compress_on_overflow(msgs):
@@ -211,6 +215,14 @@ class AgentChatService:
             async for event in event_gen:
                 if event.event_type.startswith("plan."):
                     yield self._emit(event.event_type, event.data)
+                elif event.event_type == "assistant_tool_calls":
+                    # AI 决定调用工具：落库一条 role=assistant 决策消息，content 存该轮 AI 真实输出文本
+                    # （从 full_response 当前偏移截取，经流级 scrubber 清洗），extra.tool_calls 存该轮全部工具。
+                    # 还原完整 ReAct 链路：user → assistant(决策文本) → tool → ... → assistant(最终)。
+                    iteration_text = full_response[iteration_start:]
+                    await self._handle_assistant_tool_calls(event, conv, context, iteration_text)
+                    iteration_start = len(full_response)
+                    yield self._emit("assistant_tool_calls", event.data)
                 elif event.event_type == "tool_call":
                     await self._handle_tool_call(event, user_msg, conv, context)
                     yield self._emit("tool_call", event.data)
@@ -244,11 +256,14 @@ class AgentChatService:
                         full_reasoning += remaining_r
                     if event.data.get("truncated", False):
                         full_response += "\n\n[Agent 已达到最大迭代次数，对话被截断]"
+                    # 最终回答 = 最后一轮（无工具调用）的 AI 文本（从 iteration_start 截取），
+                    # 含 flush 尾部与截断标记；前序各轮文本已归入各自决策消息
+                    final_text = full_response[iteration_start:]
                     # 发送结构化来源引用（对齐 QA sources 事件）
                     if collected_sources:
                         yield self._emit("sources", {"sources": collected_sources})
                     done_data = await self._handle_done(
-                        event, conv, content, full_response,
+                        event, conv, content, final_text,
                         reasoning=full_reasoning or None,
                         sources=collected_sources or None,
                     )
@@ -767,6 +782,29 @@ class AgentChatService:
 
     # ==================== 事件处理 ====================
 
+    async def _handle_assistant_tool_calls(
+        self,
+        event: AgentEvent,
+        conv: AgentSession,
+        context: Dict[str, Any],
+        iteration_text: str = "",
+    ) -> None:
+        """处理 assistant_tool_calls 事件：落库「AI 决定调用工具」的 assistant 决策消息，
+        并把 message_id 记入 context，供本轮 tool_call 记录关联（而非挂在 user 消息上）。
+
+        content 存该轮 AI 真实输出文本（经流级 scrubber 清洗，可能为空），
+        extra.tool_calls 存该轮全部 OpenAI 格式 tool_calls，
+        供历史回放还原完整 ReAct 链路：user → assistant(决策文本) → tool → assistant(最终)。
+        """
+        tool_calls = event.data.get("tool_calls", [])
+        msg = await self.agent_service.save_message(
+            conversation_id=conv.id,
+            role="assistant",
+            content=iteration_text or None,
+            extra={"tool_calls": tool_calls},
+        )
+        context["assistant_msg_id"] = msg.id
+
     async def _handle_tool_call(
         self,
         event: AgentEvent,
@@ -776,9 +814,13 @@ class AgentChatService:
     ) -> None:
         """处理 tool_call 事件：保存工具调用记录"""
         call_id = event.data.get("call_id", "")
+        # 优先关联到本轮 assistant 决策消息（_handle_assistant_tool_calls 写入）；
+        # 缺失时 fallback 到 user 消息，保持旧链路兼容
+        assistant_msg_id = context.get("assistant_msg_id")
         tc = await self.tc_repo.create(
-            message_id=user_msg.id,
+            message_id=assistant_msg_id if assistant_msg_id is not None else user_msg.id,
             conversation_id=conv.id,
+            call_id=call_id or None,
             tool_name=event.data["tool_name"],
             tool_source="mcp" if event.data["tool_name"].startswith("mcp__") else "skill" if event.data["tool_name"].startswith("skill__") else "builtin",
             arguments=event.data.get("arguments", {}),

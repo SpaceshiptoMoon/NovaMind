@@ -278,8 +278,12 @@ class MemorySearchPort(Protocol):
         source_type: str = "consolidate",
         source_conversation_id: Optional[int] = None,
         created_at: Optional[datetime] = None,
-    ) -> None:
-        """索引单条记忆到 ES。"""
+    ) -> bool:
+        """索引单条记忆到 ES。
+
+        Returns:
+            True 表示索引因维度不匹配被重建（调用方应重索引全部记忆）。
+        """
         ...
 
     async def search(

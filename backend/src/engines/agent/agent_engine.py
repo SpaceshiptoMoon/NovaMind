@@ -326,6 +326,9 @@ class AgentEngine:
         tool_events, assistant_msg, tool_result_msgs = (
             await self._process_tool_calls_collected(collected, context)
         )
+        # 先发「AI 决定调用工具」决策事件（该轮全部 OpenAI 格式 tool_calls），
+        # 供 chat_service 落库一条 role=assistant 中间消息，还原完整 ReAct 链路
+        yield AgentEvent("assistant_tool_calls", {"tool_calls": assistant_msg.get("tool_calls", [])})
         for event in tool_events:
             yield event
 
@@ -378,6 +381,8 @@ class AgentEngine:
             tool_events, assistant_msg, tool_result_msgs = (
                 await self._process_tool_calls(response.tool_calls, context)
             )
+            # 先发「AI 决定调用工具」决策事件（该轮全部 OpenAI 格式 tool_calls）
+            yield AgentEvent("assistant_tool_calls", {"tool_calls": assistant_msg.get("tool_calls", [])})
             for event in tool_events:
                 yield event
 

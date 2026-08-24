@@ -139,10 +139,25 @@ class AgentMessageResponse(BaseModel):
     created_at: Optional[datetime] = None
 
 
+class ToolCallResponse(BaseModel):
+    """工具调用记录响应（用于历史回放工具状态）"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    call_id: Optional[str] = None
+    tool_name: str
+    tool_source: str
+    arguments: Dict[str, Any] = Field(default_factory=dict)
+    status: str
+    duration_ms: Optional[int] = None
+    error_message: Optional[str] = None
+
+
 class MessageListResponse(BaseModel):
     """消息列表响应"""
     items: List[AgentMessageResponse]
     total: int
+    tool_calls: List[ToolCallResponse] = Field(default_factory=list)
 
 
 
