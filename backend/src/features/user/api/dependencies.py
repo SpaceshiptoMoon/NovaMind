@@ -6,6 +6,9 @@ from novamind.features.user.services.search_config_service import SearchConfigSe
 from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.features.user.repository import UserRepository
 from novamind.core.database.database import get_db
+from novamind.core.authorization.ports import PermissionCheckerPort
+from novamind.features.user.services.permission_service import PermissionService
+from novamind.shared.storage.client_factory import ClientFactory
 
 async def get_user_service(db: AsyncSession = Depends(get_db)):
     user_repository = UserRepository(db)
@@ -36,4 +39,13 @@ async def get_search_config_service(db: AsyncSession = Depends(get_db)) -> Searc
     ``as_search_config_port`` 以 ``SearchConfigPort`` 端口注入 AIChatService。
     """
     return SearchConfigService(db)
-    
+
+
+async def get_permission_checker(db: AsyncSession = Depends(get_db)) -> PermissionCheckerPort:
+    """获取权限检查服务（RBAC 装配点）。
+
+    返回 ``PermissionService`` 实例，供依赖注入框架以 ``PermissionCheckerPort`` 端口消费。
+    Redis 客户端未装配时 PermissionService 会直查数据库。
+    """
+    redis_client = await ClientFactory.get_redis_client()
+    return PermissionService(db, redis_client)
