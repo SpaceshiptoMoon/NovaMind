@@ -45,7 +45,10 @@ async def get_permission_checker(db: AsyncSession = Depends(get_db)) -> Permissi
     """获取权限检查服务（RBAC 装配点）。
 
     返回 ``PermissionService`` 实例，供依赖注入框架以 ``PermissionCheckerPort`` 端口消费。
-    Redis 客户端未装配时 PermissionService 会直查数据库。
+    Redis 客户端未装配或初始化失败时，降级为 ``redis_client=None``，走 DB 直查。
     """
-    redis_client = await ClientFactory.get_redis_client()
+    try:
+        redis_client = await ClientFactory.get_redis_client()
+    except Exception:
+        redis_client = None
     return PermissionService(db, redis_client)
