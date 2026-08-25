@@ -179,12 +179,15 @@ async def _migrate_is_admin_to_role(db) -> None:
         return
 
     # is_admin=True 且 role_id 为空 → 绑 admin；其余未绑 → 绑 viewer
-    await db.execute(text(
-        f"UPDATE users SET role_id = {admin_role.id} WHERE is_admin = 1 AND role_id IS NULL"
-    ))
-    await db.execute(text(
-        f"UPDATE users SET role_id = {viewer_role.id} WHERE role_id IS NULL"
-    ))
+    # 使用 IS TRUE 兼容 PostgreSQL boolean 与 SQLite；role_id 使用 bindparam 防止注入。
+    await db.execute(
+        text("UPDATE users SET role_id = :admin_id WHERE is_admin IS TRUE AND role_id IS NULL"),
+        {"admin_id": admin_role.id},
+    )
+    await db.execute(
+        text("UPDATE users SET role_id = :viewer_id WHERE role_id IS NULL"),
+        {"viewer_id": viewer_role.id},
+    )
     await db.flush()
 
 
