@@ -67,8 +67,14 @@ def pytest_collection_modifyitems(config, items):
 async def tmp_db():
     """SQLite 内存库，定向建表，每测试独立。"""
     from novamind.features.user.models.role import Role, Permission, RolePermission
+    from novamind.features.user.models.user import User
 
-    rbac_tables = [Role.__table__, Permission.__table__, RolePermission.__table__]
+    rbac_tables = [
+        Role.__table__,
+        Permission.__table__,
+        RolePermission.__table__,
+        User.__table__,
+    ]
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, tables=rbac_tables))
