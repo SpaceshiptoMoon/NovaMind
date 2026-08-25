@@ -176,6 +176,14 @@ class UserLogin(BaseModel):
         return v
 
 
+class RoleBrief(BaseModel):
+    """用户响应中嵌入的精简角色信息"""
+    code: str = Field(..., description="角色唯一编码")
+    name: str = Field(..., description="角色显示名称")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class UserResponse(BaseModel):
     """
     用户响应模型（只包含公开信息，不暴露内部字段）
@@ -184,13 +192,20 @@ class UserResponse(BaseModel):
     username: str = Field(..., description="用户名")
     email: EmailStr = Field(..., description="用户邮箱")
     phone: Optional[str] = Field(None, description="用户手机号码")
-    is_admin: bool = Field(default=False, description="是否管理员")
+    role: RoleBrief = Field(..., description="用户系统角色")
+    is_admin: bool = Field(default=False, description="是否系统管理员（从 role 派生）")
     status: int = Field(..., description="用户状态，0为禁用，1为启用，2为封禁，3为已删除")
     last_login_at: Optional[datetime] = Field(None, description="最后登录时间")
     created_at: datetime = Field(..., description="用户创建时间")
     updated_at: Optional[datetime] = Field(None, description="用户最后更新时间")
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode='after')
+    def _derive_is_admin(self) -> 'UserResponse':
+        """从 role.code 派生是否系统管理员"""
+        self.is_admin = self.role is not None and self.role.code == 'admin'
+        return self
 
 
 class Token(BaseModel):

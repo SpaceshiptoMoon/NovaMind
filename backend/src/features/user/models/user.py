@@ -3,7 +3,8 @@
 """
 from typing import Dict, Any
 from enum import IntEnum
-from sqlalchemy import Column, BigInteger, String, SmallInteger, JSON, DateTime, Boolean, UniqueConstraint
+from sqlalchemy import Column, BigInteger, String, SmallInteger, JSON, DateTime, Boolean, UniqueConstraint, ForeignKey
+from sqlalchemy.orm import relationship
 
 from novamind.core.database.base import BaseModel
 from novamind.core.auth.hashing import verify_password
@@ -25,7 +26,7 @@ class User(BaseModel):
     字段设计原则：
     - 高频查询字段独立存储（username, email, phone, status）
     - 低频扩展字段存 JSON（profile）
-    - is_admin 布尔字段标识系统管理员
+    - role_id 外键关联系统角色，管理员身份由 role.code 派生
     """
     __tablename__ = "users"
 
@@ -39,7 +40,14 @@ class User(BaseModel):
     phone = Column(String(20), nullable=True, comment="手机号")
 
     # ========== 角色与状态 ==========
-    is_admin = Column(Boolean, default=False, nullable=False, index=True, comment="是否管理员")
+    role_id = Column(
+        BigInteger,
+        ForeignKey("roles.id"),
+        nullable=False,
+        index=True,
+        comment="系统角色ID",
+    )
+    role = relationship("Role", lazy="selectin")
     # 状态使用整数枚举，便于比较和索引
     status = Column(
         SmallInteger,
@@ -96,6 +104,11 @@ class User(BaseModel):
     def is_deleted(self) -> bool:
         """检查用户是否已删除"""
         return self.status == UserStatus.DELETED
+
+    # ========== 角色派生 ==========
+    def is_admin(self) -> bool:
+        """检查用户是否为系统管理员（从 role.code 派生）"""
+        return self.role is not None and self.role.code == "admin"
 
     # ========== Profile 访问方法 ==========
     def get_profile_value(self, key: str, default: Any = None) -> Any:
