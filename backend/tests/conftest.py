@@ -4,6 +4,9 @@ import sys
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from novamind.core.database.base import Base
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
@@ -58,3 +61,18 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "integration" in item.keywords:
             item.add_marker(skip_integration)
+
+
+@pytest_asyncio.fixture
+async def tmp_db():
+    """SQLite 内存库，定向建表，每测试独立。"""
+    from novamind.features.user.models.role import Role, Permission, RolePermission
+
+    rbac_tables = [Role.__table__, Permission.__table__, RolePermission.__table__]
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with engine.begin() as conn:
+        await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, tables=rbac_tables))
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with Session() as session:
+        yield session
+    await engine.dispose()
