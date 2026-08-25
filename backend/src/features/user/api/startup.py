@@ -24,7 +24,9 @@ from novamind.features.user.services.user_service import UserService
 from novamind.features.user.services.auth_service import AuthService
 from novamind.features.user.repository.user_repository import UserRepository
 from novamind.features.user.models.user import UserStatus
+from novamind.features.user.models.role import Role, Permission, RolePermission
 from novamind.core.database.database import get_db_session
+from novamind.core.authorization.permission_codes import SystemPermission, PRESET_ROLE_PERMISSIONS
 from novamind.setting.yaml_config import get_config
 
 
@@ -95,8 +97,120 @@ async def create_admin_user() -> None:
         raise
 
 
+async def _init_rbac_seed(db) -> None:
+    """幂等创建预置角色/权限/映射。"""
+    from sqlalchemy import select, func
+
+    is_sqlite = db.bind.dialect.name == "sqlite"
+
+    async def _next_id(model_cls):
+        """SQLite 下 BigInteger autoincrement 不工作，手动分配自增 ID。"""
+        if not is_sqlite:
+            return None
+        max_id = (await db.execute(select(func.max(model_cls.id)))).scalar()
+        return (max_id or 0) + 1
+
+    # 1. 权限项
+    existing_perm_codes = set((await db.execute(select(Permission.code))).scalars().all())
+    for code in SystemPermission.ALL:
+        if code not in existing_perm_codes:
+            perm = Permission(code=code, name=_PERM_META[code]["name"], module=_PERM_META[code]["module"])
+            perm_id = await _next_id(Permission)
+            if perm_id is not None:
+                perm.id = perm_id
+            db.add(perm)
+    await db.flush()
+
+    # 2. 预置角色
+    existing_role_codes = set((await db.execute(select(Role.code))).scalars().all())
+    for code in ("admin", "editor", "viewer"):
+        if code not in existing_role_codes:
+            role = Role(code=code, name=_ROLE_NAMES[code], is_system=True)
+            role_id = await _next_id(Role)
+            if role_id is not None:
+                role.id = role_id
+            db.add(role)
+    await db.flush()
+
+    # 3. 角色权限映射（仅对系统预置角色按 PRESET 配置，已存在的映射不重复加）
+    roles = {r.code: r for r in (await db.execute(select(Role))).scalars().all()}
+    perms = {p.code: p for p in (await db.execute(select(Permission))).scalars().all()}
+    for role_code, perm_codes in PRESET_ROLE_PERMISSIONS.items():
+        role = roles[role_code]
+        existing = set((await db.execute(
+            select(RolePermission.permission_id).where(RolePermission.role_id == role.id)
+        )).scalars().all())
+        for pc in perm_codes:
+            if perms[pc].id not in existing:
+                db.add(RolePermission(role_id=role.id, permission_id=perms[pc].id))
+    await db.flush()
+
+
+_PERM_META = {
+    "user.manage": {"name": "用户管理", "module": "user"},
+    "skill.review": {"name": "技能审核", "module": "skill"},
+    "skill.config": {"name": "技能配置", "module": "skill"},
+    "agent.manage_system": {"name": "系统级Agent管理", "module": "agent"},
+    "role.manage": {"name": "角色管理", "module": "user"},
+}
+
+_ROLE_NAMES = {"admin": "管理员", "editor": "编辑者", "viewer": "浏览者"}
+
+
+async def _migrate_is_admin_to_role(db) -> None:
+    """迁移现有用户：原 is_admin=True→admin，False→viewer。幂等。
+    在删 is_admin 列前调用（若列已删则跳过）。"""
+    from sqlalchemy import select, text
+
+    # 检测 is_admin 列是否存在（旧库迁移场景）
+    has_col = False
+    try:
+        await db.execute(text("SELECT is_admin FROM users LIMIT 1"))
+        has_col = True
+    except Exception:
+        has_col = False
+
+    if not has_col:
+        return  # 新库或已迁移
+
+    admin_role = (await db.execute(select(Role).where(Role.code == "admin"))).scalar_one_or_none()
+    viewer_role = (await db.execute(select(Role).where(Role.code == "viewer"))).scalar_one_or_none()
+    if not admin_role or not viewer_role:
+        return
+
+    # is_admin=True 且 role_id 为空 → 绑 admin；其余未绑 → 绑 viewer
+    await db.execute(text(
+        f"UPDATE users SET role_id = {admin_role.id} WHERE is_admin = 1 AND role_id IS NULL"
+    ))
+    await db.execute(text(
+        f"UPDATE users SET role_id = {viewer_role.id} WHERE role_id IS NULL"
+    ))
+    await db.flush()
+
+
+async def _drop_legacy_is_admin_column(db) -> None:
+    """幂等删除 users.is_admin 遗留列（新库或已删则跳过）。"""
+    from sqlalchemy import text
+
+    try:
+        await db.execute(text("SELECT is_admin FROM users LIMIT 1"))
+    except Exception:
+        return  # 列已不存在
+
+    try:
+        await db.execute(text("ALTER TABLE users DROP COLUMN is_admin"))
+        await db.flush()
+        logger.info("schema 迁移：删除遗留列 users.is_admin")
+    except Exception as e:
+        logger.warning("删除 users.is_admin 列失败", error=str(e))
+
+
 async def init_user_components() -> None:
-    """创建管理员账户"""
+    """初始化用户模块：RBAC 预置 seed、is_admin→role 迁移、删遗留列、默认管理员账户。"""
+    async with get_db_session() as db:
+        await _init_rbac_seed(db)
+        await _migrate_is_admin_to_role(db)
+        await _drop_legacy_is_admin_column(db)
     await create_admin_user()
 
 
