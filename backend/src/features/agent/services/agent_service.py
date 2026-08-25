@@ -7,6 +7,7 @@ from typing import Optional, Dict
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from datetime import datetime
 
 from novamind.features.agent.repository.agent_repository import (
     AgentRepository,
@@ -15,9 +16,13 @@ from novamind.features.agent.repository.agent_repository import (
     ToolCallRepository,
 )
 from novamind.features.agent.repository.memory_repository import MemoryRepository
+from novamind.features.agent.repository.context_summary_repository import (
+    ContextSummaryRepository,
+)
 from novamind.features.agent.models.agent import AgentDefinition
 from novamind.features.agent.models.session import AgentSession
 from novamind.features.agent.models.message import AgentMessage
+from novamind.features.agent.models.context_summary import AgentContextSummary
 from novamind.features.agent.schemas.agent_schema import (
     AgentCreate,
     AgentUpdate,
@@ -53,6 +58,7 @@ class AgentService:
         self.msg_repo = MessageRepository(db)
         self.tc_repo = ToolCallRepository(db)
         self.memory_repo = MemoryRepository(db)
+        self.context_summary_repo = ContextSummaryRepository(db)
 
     # ==================== Agent CRUD ====================
 
@@ -245,10 +251,57 @@ class AgentService:
         )
         # 加载会话全部工具调用记录，供前端历史回放工具状态（call_id 与 tool 消息 tool_call_id 对应）
         tool_calls = await self.tc_repo.list_by_conversation(conv.id)
+        # 历史回放 compaction 标记：把 agent_context_summaries 派生为 role='compaction'
+        # 消息，按 created_at 合并进当前页消息流，刷新/切会话后压缩点仍可见。
+        # compaction 稀少（长对话才触发），仅插入 created_at 落在当前页时间窗内的标记。
+        items = [AgentMessageResponse.model_validate(m) for m in messages]
+        if messages:
+            try:
+                summaries = await self.context_summary_repo.list_by_conversation(conv.id)
+            except Exception as e:
+                logger.warning("压缩摘要历史回放查询失败", error=str(e))
+                summaries = []
+            if summaries:
+                page_start = messages[0].created_at
+                page_end = messages[-1].created_at
+                compaction_items = [
+                    self._derive_compaction_response(s)
+                    for s in summaries
+                    if s.created_at is not None
+                    and page_start is not None
+                    and page_end is not None
+                    and page_start <= s.created_at <= page_end
+                ]
+                if compaction_items:
+                    items = sorted(
+                        items + compaction_items,
+                        key=lambda x: x.created_at or datetime.min,
+                    )
         return MessageListResponse(
-            items=[AgentMessageResponse.model_validate(m) for m in messages],
+            items=items,
             total=total,
             tool_calls=[ToolCallResponse.model_validate(tc) for tc in tool_calls],
+        )
+
+    def _derive_compaction_response(self, summary: AgentContextSummary) -> AgentMessageResponse:
+        """把压缩摘要派生为 role='compaction' 响应消息（不落库，仅历史回放显示）。
+
+        id 用负数避免与真实 AgentMessage.id 冲突；extra.compaction 携带 N 条 + 摘要正文，
+        供前端 CompactionItem 渲染标记行与就地展开。
+        """
+        return AgentMessageResponse(
+            id=-(summary.id),
+            conversation_id=summary.conversation_id,
+            role="compaction",
+            content=None,
+            created_at=summary.created_at,
+            extra={
+                "compaction": {
+                    "summarized_count": summary.compressed_count,
+                    "summary": summary.summary_text,
+                    "compression_ratio": summary.compression_ratio,
+                }
+            },
         )
 
     async def update_session_stats(

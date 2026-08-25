@@ -154,10 +154,14 @@ class MemoryManager:
         system_prompt: str,
         conversation_id: int,
         max_tokens: int,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        dry_run: bool = False,
     ) -> MemorySnapshot:
         """构建发送给 LLM 的完整上下文快照"""
         return await self._short_term.build_context(
             system_prompt=system_prompt,
             conversation_id=conversation_id,
             max_tokens=max_tokens,
+            tools=tools,
+            dry_run=dry_run,
         )

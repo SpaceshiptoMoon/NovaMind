@@ -115,7 +115,7 @@
       </div>
 
       <!-- 工具结果视图 -->
-      <div v-else class="drawer-body">
+      <div v-else-if="workbench.drawerView === 'tool'" class="drawer-body">
         <div v-if="!selectedToolCall" class="drawer-empty">未选中工具调用</div>
         <div v-else class="tool-detail">
           <div class="tool-detail-header">
@@ -143,6 +143,28 @@
           </div>
         </div>
       </div>
+
+      <!-- 消息全文视图（轨迹视图选中 assistant/user 行，展示 reasoning/content） -->
+      <div v-else-if="workbench.drawerView === 'message'" class="drawer-body">
+        <div v-if="!selectedMessage" class="drawer-empty">未选中消息</div>
+        <div v-else class="message-detail">
+          <div class="message-detail-header">
+            <span class="message-detail-role" :class="selectedMessage.role">{{ roleLabel(selectedMessage.role) }}</span>
+            <span v-if="selectedMessage.iteration != null" class="message-detail-iter">第 {{ selectedMessage.iteration }} 轮</span>
+          </div>
+          <div v-if="selectedMessage.reasoning" class="message-detail-section">
+            <div class="tool-detail-label">思考过程</div>
+            <div class="message-detail-md"><MarkdownRenderer :content="selectedMessage.reasoning" /></div>
+          </div>
+          <div v-if="selectedMessage.content" class="message-detail-section">
+            <div class="tool-detail-label">内容</div>
+            <div class="message-detail-md"><MarkdownRenderer :content="selectedMessage.content" /></div>
+          </div>
+          <div v-if="!selectedMessage.content && !selectedMessage.reasoning" class="drawer-empty">
+            该消息无文本内容
+          </div>
+        </div>
+      </div>
     </div>
   </aside>
 </template>
@@ -151,7 +173,9 @@
 import { ref, computed } from 'vue'
 import { Close, SetUp } from '@element-plus/icons-vue'
 import { useWorkbenchStore } from '@/stores/workbench'
-import type { SourceRef, ToolCallRecord } from '@/api/types'
+import { useAgentStore } from '@/stores/agent'
+import type { SourceRef, ToolCallRecord, AgentMessage } from '@/api/types'
+import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 
 const props = defineProps<{
   sources: SourceRef[]
@@ -164,6 +188,7 @@ const views = [
   { key: 'overview' as const, label: '概览' },
   { key: 'sources' as const, label: '引用来源' },
   { key: 'tool' as const, label: '工具结果' },
+  { key: 'message' as const, label: '消息' },
 ]
 
 // 引用来源展开集合
@@ -176,6 +201,22 @@ const kbSources = computed(() => props.sources.filter((s) => s.kind !== 'web'))
 const selectedToolCall = computed(
   () => props.toolCalls.find((c) => c.callId === workbench.selectedToolCallId) ?? null,
 )
+
+// 消息全文视图：从 agentStore.messages 按 selectedMessageId 查（message view 仅 agent 频道触发）
+const agentStore = useAgentStore()
+const selectedMessage = computed(
+  () => agentStore.messages.find((m) => m.id === workbench.selectedMessageId) ?? null,
+)
+
+function roleLabel(role: AgentMessage['role']): string {
+  switch (role) {
+    case 'user': return 'USER'
+    case 'assistant': return 'ASSISTANT'
+    case 'system': return 'SYSTEM'
+    case 'tool': return 'TOOL'
+    case 'compaction': return 'COMPACTED'
+  }
+}
 
 function toggleSource(index: number) {
   const next = new Set(expandedSources.value)
@@ -636,5 +677,74 @@ function formatJson(obj: Record<string, unknown>): string {
   font-size: var(--text-sm);
   color: var(--color-text-muted);
   text-align: center;
+}
+
+/* 消息全文 */
+.message-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.message-detail-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card, #fff);
+}
+
+.message-detail-role {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+}
+
+.message-detail-role.assistant {
+  background: rgba(99, 102, 241, 0.12);
+  color: #4338ca;
+}
+
+.message-detail-role.user {
+  background: rgba(17, 24, 39, 0.08);
+  color: var(--color-text);
+}
+
+.message-detail-role.tool {
+  background: rgba(20, 184, 166, 0.12);
+  color: #0f766e;
+}
+
+.message-detail-iter {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.message-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.message-detail-md {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card, #fff);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--color-text);
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.message-detail-md :deep(p:last-child) {
+  margin-bottom: 0;
 }
 </style>

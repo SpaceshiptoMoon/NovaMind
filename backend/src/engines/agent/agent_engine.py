@@ -7,6 +7,7 @@ ReAct 循环引擎
 """
 import asyncio
 import json
+import time
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
@@ -29,6 +30,20 @@ class AgentEvent:
     """Agent 事件"""
     event_type: str
     data: Dict[str, Any]
+
+
+def _usage_dict(usage: Optional[CanonicalUsage]) -> Optional[Dict[str, Any]]:
+    """CanonicalUsage → dict（供事件 data 携带 per-iteration usage，前端轨迹视图展示）"""
+    if usage is None:
+        return None
+    return {
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "cache_read_tokens": usage.cache_read_tokens,
+        "cache_write_tokens": usage.cache_write_tokens,
+        "reasoning_tokens": usage.reasoning_tokens,
+        "total_tokens": usage.total_tokens,
+    }
 
 
 class AgentEngine:
@@ -76,6 +91,8 @@ class AgentEngine:
             else None
         )
         pending_warning: Optional[str] = None
+        last_iter_usage: Optional[CanonicalUsage] = None
+        last_iter_duration_ms: Optional[int] = None
 
         if not tools:
             async for event in self._generate_without_tools(
@@ -141,6 +158,9 @@ class AgentEngine:
                 iter_usage = meta.get("usage")
                 if iter_usage:
                     total_usage = total_usage + iter_usage
+                # 记录最后一轮 per-iteration usage/duration，供 done 事件带给最终 assistant 消息
+                last_iter_usage = iter_usage
+                last_iter_duration_ms = meta.get("duration_ms")
 
                 if hard_stop:
                     logger.warning("loop_detection hard stop", iteration=iteration)
@@ -212,6 +232,9 @@ class AgentEngine:
                 },
                 "iterations": iteration,
                 "truncated": truncated,
+                # 最后一轮 per-iteration usage/duration，供 chat_service 落最终 assistant 消息 extra
+                "last_iteration_usage": _usage_dict(last_iter_usage),
+                "last_iteration_duration_ms": last_iter_duration_ms,
             },
         )
 
@@ -299,6 +322,7 @@ class AgentEngine:
         content_parts: List[str] = []
         collected: Dict[str, CollectedToolCall] = {}
         total_tokens = 0
+        t0 = time.monotonic()
 
         async for chunk in self._retry_generate_stream(
             agent_llm, messages, tools,
@@ -328,6 +352,7 @@ class AgentEngine:
                     meta["usage"] = iter_usage
 
         meta["total_tokens"] = total_tokens
+        meta["duration_ms"] = int((time.monotonic() - t0) * 1000)
 
         if not collected:
             return
@@ -337,10 +362,13 @@ class AgentEngine:
             await self._process_tool_calls_collected(collected, context)
         )
         # 先发「AI 决定调用工具」决策事件（该轮全部 OpenAI 格式 tool_calls），
-        # 供 chat_service 落库一条 role=assistant 中间消息，还原完整 ReAct 链路
+        # 供 chat_service 落库一条 role=assistant 中间消息，还原完整 ReAct 链路。
+        # 带 per-iteration usage + LLM 调用耗时，供轨迹视图 per-message token/耗时展示。
         yield AgentEvent("assistant_tool_calls", {
             "tool_calls": assistant_msg.get("tool_calls", []),
             "iteration": iteration,
+            "usage": _usage_dict(meta.get("usage")),
+            "duration_ms": meta.get("duration_ms"),
         })
         for event in tool_events:
             event.data["iteration"] = iteration
@@ -370,6 +398,7 @@ class AgentEngine:
         iteration: 当前 ReAct 轮号（1-based），写入每条事件 data 供 chat_service 落库。
         """
         total_tokens = 0
+        t0 = time.monotonic()
 
         response = await retry_llm_call(
             lambda: llm_client.generate_with_tools(
@@ -388,6 +417,7 @@ class AgentEngine:
             iter_usage = normalize_usage(response.usage)
             total_tokens = iter_usage.total_tokens
             meta["usage"] = iter_usage
+        meta["duration_ms"] = int((time.monotonic() - t0) * 1000)
 
         if response.reasoning:
             yield AgentEvent("reasoning", {"content": response.reasoning, "iteration": iteration})
@@ -399,10 +429,13 @@ class AgentEngine:
             tool_events, assistant_msg, tool_result_msgs = (
                 await self._process_tool_calls(response.tool_calls, context)
             )
-            # 先发「AI 决定调用工具」决策事件（该轮全部 OpenAI 格式 tool_calls）
+            # 先发「AI 决定调用工具」决策事件（该轮全部 OpenAI 格式 tool_calls）。
+            # 带 per-iteration usage + LLM 调用耗时，供轨迹视图 per-message token/耗时展示。
             yield AgentEvent("assistant_tool_calls", {
                 "tool_calls": assistant_msg.get("tool_calls", []),
                 "iteration": iteration,
+                "usage": _usage_dict(meta.get("usage")),
+                "duration_ms": meta.get("duration_ms"),
             })
             for event in tool_events:
                 event.data["iteration"] = iteration

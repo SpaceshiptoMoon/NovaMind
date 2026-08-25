@@ -1292,7 +1292,7 @@ export interface AgentConversationListResponse {
 export interface AgentMessage {
   id: number
   conversation_id: number
-  role: 'user' | 'assistant' | 'system' | 'tool'
+  role: 'user' | 'assistant' | 'system' | 'tool' | 'compaction'
   content: string | null
   tool_call_id: string | null
   tool_name: string | null
@@ -1321,6 +1321,9 @@ export interface AgentToolCallInfo {
   status: string
   duration_ms: number | null
   error_message: string | null
+  /** 工具执行结果（轨迹视图 inspector 展示；oversized 时为完整结果，前端截断） */
+  result?: string | null
+  result_truncated?: boolean
   /** ReAct 轮号（1-based，与所属 assistant 决策消息同轮）；null 为历史数据 */
   iteration?: number | null
 }
@@ -1340,6 +1343,38 @@ export type ContentBlock =
   | { kind: 'reasoning'; text: string }
   | { kind: 'text'; text: string }
   | { kind: 'tool_call'; id: string; name: string; arguments: string }
+
+// 上下文压缩事件载荷（WS compaction 事件 + agent_messages role='compaction' 的 extra.compaction）
+// 对齐后端 chat_stream 的 compaction 事件与 get_messages 派生消息
+export interface AgentCompactionData {
+  conversation_id?: number
+  /** 已压缩 N 条消息 */
+  summarized_count: number
+  /** 摘要正文（展开看） */
+  summary: string
+  compression_ratio?: number
+  tokens_after?: number
+  created_at?: string
+}
+
+// 上下文用量（WS context_usage 事件 + REST ContextUsageResponse）
+// used = system + tools(schema) + messages，对齐后端 build_context 三项口径
+export interface AgentContextUsageData {
+  used_tokens: number
+  context_window: number
+  system_tokens: number
+  tools_tokens: number
+  messages_tokens: number
+  reserved_tokens?: number
+  compressed?: boolean
+  compression_ratio?: number
+}
+
+// system prompt 全文（REST SystemPromptResponse，轨迹视图 inspector 展开 system 行按需拉）
+export interface SystemPromptResponse {
+  system_prompt: string
+  tokens: number
+}
 
 // ==================== 检索来源引用 ====================
 
