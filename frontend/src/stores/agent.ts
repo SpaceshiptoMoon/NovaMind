@@ -59,6 +59,8 @@ export const useAgentStore = defineStore('agent', () => {
   const abortController = ref<AbortController | null>(null)
   const loading = ref(false)
   const pendingAttachments = ref<ChatAttachment[]>([])
+  // 当前 plan 消息引用（Plan-and-Execute 模式，onPlan 聚合 step 状态用）
+  const planMsg = ref<AgentMessage | null>(null)
 
   // MCP & 工具（全局共享）
   const mcpServers = ref<McpServer[]>([])
@@ -207,6 +209,7 @@ export const useAgentStore = defineStore('agent', () => {
     streamingSources.value = []
     toolCalls.value = []
     error.value = null
+    planMsg.value = null
 
     // 不预先 push assistant 占位消息，按事件顺序自然 push
     let assistantMsg: AgentMessage | null = null
@@ -377,6 +380,57 @@ export const useAgentStore = defineStore('agent', () => {
           onContextUsage(d) {
             contextUsage.value = d
           },
+          onPlan(type, d) {
+            if (type === 'plan.created') {
+              const steps = d.steps || []
+              const msg: AgentMessage = {
+                id: Date.now() + Math.random(),
+                conversation_id: 0,
+                role: 'plan',
+                content: d.title || null,
+                tool_call_id: null,
+                tool_name: null,
+                token_count: null,
+                created_at: new Date().toISOString(),
+                extra: {
+                  plan: {
+                    title: d.title || '',
+                    steps,
+                    statuses: steps.map(() => 'not_started'),
+                  },
+                },
+              }
+              messages.value.push(msg)
+              planMsg.value = msg
+            } else if (planMsg.value) {
+              const plan = (planMsg.value.extra as {
+                plan?: { statuses?: string[]; summary?: string }
+              }).plan
+              if (plan?.statuses) {
+                if (type === 'plan.step_started' && d.step_index != null) {
+                  plan.statuses[d.step_index] = 'in_progress'
+                } else if (type === 'plan.step_completed' && d.step_index != null) {
+                  plan.statuses[d.step_index] = 'completed'
+                }
+              }
+              if (type === 'plan.completed' && d.summary) {
+                if (plan) plan.summary = d.summary
+              }
+            }
+          },
+          onLoopWarning(d) {
+            messages.value.push({
+              id: Date.now() + Math.random(),
+              conversation_id: 0,
+              role: 'notice',
+              content: d.content,
+              tool_call_id: null,
+              tool_name: null,
+              token_count: null,
+              created_at: new Date().toISOString(),
+              extra: { notice: true, iteration: d.iteration },
+            })
+          },
           onError(err) {
             error.value = err.content
             ensureAssistant()
@@ -439,6 +493,7 @@ export const useAgentStore = defineStore('agent', () => {
     loading.value = true
     toolCalls.value = []
     error.value = null
+    planMsg.value = null
 
     const controller2 = new AbortController()
     abortController.value = controller2
@@ -594,6 +649,57 @@ export const useAgentStore = defineStore('agent', () => {
           onContextUsage(d) {
             contextUsage.value = d
           },
+          onPlan(type, d) {
+            if (type === 'plan.created') {
+              const steps = d.steps || []
+              const msg: AgentMessage = {
+                id: Date.now() + Math.random(),
+                conversation_id: 0,
+                role: 'plan',
+                content: d.title || null,
+                tool_call_id: null,
+                tool_name: null,
+                token_count: null,
+                created_at: new Date().toISOString(),
+                extra: {
+                  plan: {
+                    title: d.title || '',
+                    steps,
+                    statuses: steps.map(() => 'not_started'),
+                  },
+                },
+              }
+              messages.value.push(msg)
+              planMsg.value = msg
+            } else if (planMsg.value) {
+              const plan = (planMsg.value.extra as {
+                plan?: { statuses?: string[]; summary?: string }
+              }).plan
+              if (plan?.statuses) {
+                if (type === 'plan.step_started' && d.step_index != null) {
+                  plan.statuses[d.step_index] = 'in_progress'
+                } else if (type === 'plan.step_completed' && d.step_index != null) {
+                  plan.statuses[d.step_index] = 'completed'
+                }
+              }
+              if (type === 'plan.completed' && d.summary) {
+                if (plan) plan.summary = d.summary
+              }
+            }
+          },
+          onLoopWarning(d) {
+            messages.value.push({
+              id: Date.now() + Math.random(),
+              conversation_id: 0,
+              role: 'notice',
+              content: d.content,
+              tool_call_id: null,
+              tool_name: null,
+              token_count: null,
+              created_at: new Date().toISOString(),
+              extra: { notice: true, iteration: d.iteration },
+            })
+          },
           onError(err) {
             error.value = err.content
           },
@@ -623,6 +729,7 @@ export const useAgentStore = defineStore('agent', () => {
     error.value = null
     pendingAttachments.value = []
     contextUsage.value = null
+    planMsg.value = null
   }
 
   // ========== 附件管理 ==========

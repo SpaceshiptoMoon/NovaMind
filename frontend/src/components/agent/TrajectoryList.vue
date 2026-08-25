@@ -106,6 +106,19 @@
                 <span v-if="rec.toolCall?.result" class="traj-result">→ {{ firstLine(rec.toolCall.result, 60) }}</span>
               </template>
 
+              <!-- plan -->
+              <template v-else-if="rec.kind === 'plan'">
+                <button class="compaction-toggle" @click.stop="togglePlan(rec.recordId)">
+                  <span class="compaction-chevron" :class="{ expanded: expandedPlans.has(rec.recordId) }">▶</span>
+                  <span class="compaction-label">{{ rec.summary }}</span>
+                </button>
+              </template>
+
+              <!-- notice -->
+              <template v-else-if="rec.kind === 'notice'">
+                <span class="traj-preview">{{ rec.summary }}</span>
+              </template>
+
               <!-- 折叠徽章 + 指标 -->
               <span
                 v-if="rec.kind === 'user' && isTurnFolded(rec)"
@@ -128,6 +141,13 @@
               <span v-if="rec.toolCall?.durationMs != null" class="traj-duration">{{ formatDurationMs(rec.toolCall.durationMs) }}</span>
               <span v-if="totalTokensOf(rec)" class="traj-duration">{{ totalTokensOf(rec) }} tok</span>
               <span v-if="rec.kind === 'tool'" class="traj-tool-status" :class="rec.toolCall?.status">{{ toolStatusLabel(rec) }}</span>
+            </div>
+          </div>
+          <!-- plan 行展开体：步骤清单 + 状态符号 -->
+          <div v-if="rec.kind === 'plan' && expandedPlans.has(rec.recordId)" class="traj-plan-body">
+            <div v-for="(step, i) in planSteps(rec)" :key="i" class="plan-step">
+              <span class="plan-status-glyph">{{ planStatusGlyph(rec, i) }}</span>
+              <span class="plan-step-text">{{ step }}</span>
             </div>
           </div>
         </template>
@@ -215,6 +235,7 @@ const selectedRecord = computed<TrajectoryRecord | null>(() => {
 const collapsedTurns = ref(new Set<number>())
 const collapsedAssistants = ref(new Set<string>())
 const expandedCompactions = ref(new Set<string>())
+const expandedPlans = ref(new Set<string>())
 
 function toggleTurn(turnIndex: number) {
   const next = new Set(collapsedTurns.value)
@@ -233,6 +254,12 @@ function toggleCompaction(recordId: string) {
   if (next.has(recordId)) next.delete(recordId)
   else next.add(recordId)
   expandedCompactions.value = next
+}
+function togglePlan(recordId: string) {
+  const next = new Set(expandedPlans.value)
+  if (next.has(recordId)) next.delete(recordId)
+  else next.add(recordId)
+  expandedPlans.value = next
 }
 
 const turnKeys = computed(() => {
@@ -429,6 +456,8 @@ function roleLabel(kind: TrajectoryRecord['kind']): string {
     case 'tool': return 'TOOL'
     case 'compaction': return 'COMPACTED'
     case 'system': return 'SYSTEM'
+    case 'plan': return 'PLAN'
+    case 'notice': return 'NOTICE'
   }
 }
 function firstLine(text: string | null | undefined, max = 120): string {
@@ -466,6 +495,17 @@ function toolStatusLabel(rec: TrajectoryRecord): string {
 function compactionSummary(rec: TrajectoryRecord): string {
   const comp = rec.msg.extra?.compaction as { summary?: string } | undefined
   return comp?.summary || ''
+}
+function planSteps(rec: TrajectoryRecord): string[] {
+  const plan = rec.msg.extra?.plan as { steps?: string[] } | undefined
+  return plan?.steps ?? []
+}
+function planStatusGlyph(rec: TrajectoryRecord, i: number): string {
+  const plan = rec.msg.extra?.plan as { statuses?: string[] } | undefined
+  const s = plan?.statuses?.[i]
+  if (s === 'completed') return '[✓]'
+  if (s === 'in_progress') return '[→]'
+  return '[ ]'
 }
 function cssEscape(s: string): string {
   if (typeof CSS !== 'undefined' && CSS.escape) return CSS.escape(s)
@@ -588,6 +628,12 @@ function cssEscape(s: string): string {
 .traj-row.error:hover {
   background: rgba(254, 226, 226, 0.7);
 }
+.traj-row.notice {
+  background: rgba(254, 243, 199, 0.4);
+}
+.traj-row.notice:hover {
+  background: rgba(254, 243, 199, 0.7);
+}
 
 .traj-index {
   flex-shrink: 0;
@@ -614,6 +660,8 @@ function cssEscape(s: string): string {
 .traj-role.tool { background: rgba(20, 184, 166, 0.12); color: #0f766e; }
 .traj-role.system { background: rgba(245, 158, 11, 0.12); color: #b45309; }
 .traj-role.compaction { background: rgba(107, 114, 128, 0.12); color: #4b5563; }
+.traj-role.plan { background: rgba(139, 92, 246, 0.12); color: #6d28d9; }
+.traj-role.notice { background: rgba(245, 158, 11, 0.12); color: #b45309; }
 
 .traj-iter {
   flex-shrink: 0;
@@ -722,6 +770,31 @@ function cssEscape(s: string): string {
 }
 .traj-compaction-body :deep(p:last-child) {
   margin-bottom: 0;
+}
+
+/* plan 行展开体 */
+.traj-plan-body {
+  margin: var(--space-1) 0 var(--space-2) 40px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card, #fff);
+  font-size: var(--text-sm);
+  max-height: 320px;
+  overflow-y: auto;
+}
+.plan-step {
+  display: flex;
+  gap: var(--space-2);
+  padding: 2px 0;
+}
+.plan-status-glyph {
+  flex-shrink: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--color-text-muted);
+}
+.plan-step-text {
+  color: var(--color-text-secondary);
 }
 
 .compaction-toggle {

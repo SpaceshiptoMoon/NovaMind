@@ -105,6 +105,11 @@ class AgentEngine:
             iteration += 1
             if pending_warning:
                 messages.append({"role": "user", "content": pending_warning})
+                # 通知 features 层落库 role='notice' 纠偏警告（engines 层不落库，
+                # 守单向依赖铁律），供轨迹视图还原 loop_detection 注入的 user 消息
+                yield AgentEvent("loop_warning", {
+                    "content": pending_warning, "iteration": iteration,
+                })
                 pending_warning = None
             meta: Dict[str, Any] = {}
             iteration_had_tools = False

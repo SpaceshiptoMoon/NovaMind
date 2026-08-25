@@ -267,123 +267,143 @@
         />
       </div>
 
-      <!-- 输入区域 -->
+      <!-- 输入区域（dsh 风格单一浮动卡片：附件栏 → 文本框 → 底部左右工具行） -->
       <div v-if="viewMode === 'chat'" class="input-area" :class="{ 'is-welcome': isWelcomeMode }">
         <div class="input-area-inner" :class="{ 'welcome-center': isWelcomeMode }">
-          <!-- 欢迎问候 (仅欢迎模式) -->
+          <!-- 欢迎问候 (仅欢迎模式)：headline + 单行提示 chip -->
           <div v-if="isWelcomeMode" class="welcome-greeting">
             <div class="welcome-avatar">{{ agentName.charAt(0) }}</div>
             <h2 class="welcome-title">{{ agentName }}</h2>
             <p class="welcome-desc">{{ agentStore.currentAgent?.description || '智能体对话' }}</p>
-            <div class="welcome-prompts">
+            <div class="welcome-prompts-row">
               <button
                 v-for="(prompt, i) in quickPrompts"
                 :key="i"
-                class="prompt-card"
+                class="prompt-chip"
                 @click="handleQuickPrompt(prompt)"
               >
-                <span class="prompt-text">{{ prompt }}</span>
+                {{ prompt }}
               </button>
             </div>
           </div>
 
-          <div class="input-pill">
-            <button
-              class="attach-btn"
-              :disabled="agentStore.isStreaming || agentStore.loading || uploadingFiles"
-              @click="triggerFileSelect"
-              title="上传文档"
-            >
-              <el-icon :size="16"><Paperclip /></el-icon>
-            </button>
-            <input
-              ref="fileInputRef"
-              type="file"
-              accept=".pdf,.doc,.docx,.txt,.md,.jpg,.jpeg,.png,.gif,.webp"
-              style="display: none"
-              @change="handleFileSelected"
-            />
-            <textarea
-              ref="textareaRef"
-              v-model="inputText"
-              class="chat-textarea"
-              placeholder="输入消息..."
-              :rows="1"
-              :disabled="agentStore.isStreaming || agentStore.loading"
-              @keydown="handleKeydown"
-              @input="autoResize"
-            />
-            <button
-              v-if="agentStore.isStreaming"
-              class="send-btn stop-btn"
-              @click="handleCancelStream"
-            >
-              <el-icon :size="16"><VideoPause /></el-icon>
-            </button>
-            <button
-              v-else
-              class="send-btn"
-              :class="{ active: inputText.trim() || agentStore.pendingAttachments.length > 0 }"
-              :disabled="
-                (!inputText.trim() && agentStore.pendingAttachments.length === 0) ||
-                agentStore.loading
-              "
-              @click="handleSend"
-            >
-              <el-icon :size="16"><Promotion /></el-icon>
-            </button>
-          </div>
-          <!-- 文件预览 -->
-          <div v-if="agentStore.pendingAttachments.length > 0" class="attachment-preview-bar">
-            <div v-for="att in agentStore.pendingAttachments" :key="att.id" class="attachment-chip">
-              <img
-                v-if="isImageFile(att.file_type) && getImagePreviewUrl(att)"
-                :src="getImagePreviewUrl(att)"
-                class="att-thumb-img"
+          <div class="input-card">
+            <!-- 附件缩略图栏（卡内顶部，有附件才渲染） -->
+            <div v-if="agentStore.pendingAttachments.length > 0" class="input-attachments">
+              <div v-for="att in agentStore.pendingAttachments" :key="att.id" class="attachment-chip">
+                <img
+                  v-if="isImageFile(att.file_type) && getImagePreviewUrl(att)"
+                  :src="getImagePreviewUrl(att)"
+                  class="att-thumb-img"
+                />
+                <span v-else class="att-type-badge">{{ getFileIcon(att.file_type) }}</span>
+                <span class="att-name">{{ att.filename }}</span>
+                <span class="att-size">{{ formatFileSize(att.file_size) }}</span>
+                <button class="att-remove" @click="agentStore.removePendingAttachment(att.id)">
+                  <el-icon :size="10"><Close /></el-icon>
+                </button>
+              </div>
+            </div>
+
+            <!-- 文本框区 -->
+            <div class="input-scroll">
+              <textarea
+                ref="textareaRef"
+                v-model="inputText"
+                class="chat-textarea"
+                placeholder="输入消息..."
+                :rows="1"
+                :disabled="agentStore.isStreaming || agentStore.loading"
+                @keydown="handleKeydown"
+                @input="autoResize"
               />
-              <span v-else class="att-type-badge">{{ getFileIcon(att.file_type) }}</span>
-              <span class="att-name">{{ att.filename }}</span>
-              <span class="att-size">{{ formatFileSize(att.file_size) }}</span>
-              <button class="att-remove" @click="agentStore.removePendingAttachment(att.id)">
-                <el-icon :size="10"><Close /></el-icon>
-              </button>
+            </div>
+
+            <!-- 底部工具行：左 = + 附件 + 模式 chip；右 = 模型 + ContextMeter + 发送/停止 -->
+            <div class="input-row">
+              <div class="input-tools">
+                <button
+                  class="input-add-btn"
+                  :disabled="agentStore.isStreaming || agentStore.loading || uploadingFiles"
+                  @click="triggerFileSelect"
+                  title="上传文档"
+                >
+                  <el-icon :size="14"><Plus /></el-icon>
+                </button>
+                <input
+                  ref="fileInputRef"
+                  type="file"
+                  accept=".pdf,.doc,.docx,.txt,.md,.jpg,.jpeg,.png,.gif,.webp"
+                  style="display: none"
+                  @change="handleFileSelected"
+                />
+                <div class="input-modes">
+                  <button
+                    class="mode-chip"
+                    :class="{ active: enableThinking }"
+                    @click="enableThinking = !enableThinking"
+                  >
+                    <el-icon :size="14" class="mode-chip-icon"><MagicStick /></el-icon>
+                    <span>深度思考</span>
+                  </button>
+                  <button
+                    class="mode-chip"
+                    :class="{ active: useStream }"
+                    @click="useStream = !useStream"
+                  >
+                    <el-icon :size="14" class="mode-chip-icon"><Lightning /></el-icon>
+                    <span>流式输出</span>
+                  </button>
+                </div>
+              </div>
+              <div class="input-trailing">
+                <ModelTrigger
+                  v-if="Object.keys(availableModels).length"
+                  v-model="selectedModel"
+                  :models="availableModels"
+                />
+                <ContextMeter
+                  v-if="agentStore.contextUsage"
+                  :used="agentStore.contextUsage.used_tokens"
+                  :window="agentStore.contextUsage.context_window"
+                  :breakdown="agentStore.contextUsage"
+                />
+                <button
+                  v-if="agentStore.isStreaming"
+                  class="send-primary stop-primary"
+                  title="停止"
+                  @click="handleCancelStream"
+                >
+                  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
+                    <rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor" />
+                  </svg>
+                </button>
+                <button
+                  v-else
+                  class="send-primary"
+                  :class="{ active: inputText.trim() || agentStore.pendingAttachments.length > 0 }"
+                  :disabled="
+                    (!inputText.trim() && agentStore.pendingAttachments.length === 0) ||
+                    agentStore.loading
+                  "
+                  title="发送"
+                  @click="handleSend"
+                >
+                  <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
+                    <path
+                      d="M8.3125 0.980183C8.66767 1.0531 8.97902 1.20418 9.2627 1.43233C9.48724 1.61297 9.73029 1.85793 9.97949 2.10714L14.707 6.83468L13.293 8.24874L9 3.95577V15.0417H7V3.95577L2.70703 8.24874L1.29297 6.83468L6.02051 2.10714C6.26971 1.85793 6.51277 1.61297 6.7373 1.43233C6.97662 1.23986 7.28445 1.04402 7.6875 0.980183C7.8973 0.947006 8.1031 0.95516 8.3125 0.980183Z"
+                      fill="currentColor"
+                    />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
-          <!-- 快捷操作 chips：模型选择 / 深度思考 / 流式输出 -->
-          <div class="input-footer">
-            <div class="quick-actions">
-              <ModelTrigger
-                v-if="Object.keys(availableModels).length"
-                v-model="selectedModel"
-                :models="availableModels"
-              />
-              <ContextMeter
-                v-if="agentStore.contextUsage"
-                :used="agentStore.contextUsage.used_tokens"
-                :window="agentStore.contextUsage.context_window"
-                :breakdown="agentStore.contextUsage"
-              />
-              <button
-                class="action-chip"
-                :class="{ active: enableThinking }"
-                @click="enableThinking = !enableThinking"
-              >
-                <el-icon :size="14" class="action-icon"><MagicStick /></el-icon>
-                <span>深度思考</span>
-              </button>
-              <button
-                class="action-chip"
-                :class="{ active: useStream }"
-                @click="useStream = !useStream"
-              >
-                <el-icon :size="14" class="action-icon"><Lightning /></el-icon>
-                <span>流式输出</span>
-              </button>
-            </div>
-            <div class="input-hint-inline">
-              <span class="hint-item"><kbd>Enter</kbd> 发送</span>
-              <span class="hint-item"><kbd>Shift</kbd>+<kbd>Enter</kbd> 换行</span>
-            </div>
+
+          <!-- 键盘提示（卡外微 caption，仅非欢迎态显示） -->
+          <div v-if="!isWelcomeMode" class="input-hint">
+            <span class="hint-item"><kbd>Enter</kbd> 发送</span>
+            <span class="hint-item"><kbd>Shift</kbd>+<kbd>Enter</kbd> 换行</span>
           </div>
         </div>
       </div>
@@ -401,10 +421,7 @@ import {
   ArrowLeft,
   ArrowDown,
   SetUp,
-  Promotion,
-  VideoPause,
   DocumentCopy,
-  Paperclip,
   Close,
   Download,
   Expand,
@@ -1364,39 +1381,30 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
-.welcome-prompts {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-3);
-  width: 100%;
-}
-
-.prompt-card {
+/* 欢迎态快捷提示：单行居中 chip（对齐 dsh 简洁风，非 2×2 大卡） */
+.welcome-prompts-row {
   display: flex;
-  align-items: flex-start;
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid transparent;
-  border-radius: var(--radius-lg);
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: var(--space-4);
+}
+
+.prompt-chip {
+  padding: 6px 14px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-full);
   background: transparent;
-  cursor: pointer;
-  transition: all var(--transition-base);
-  text-align: left;
-  font-family: var(--font-body);
-}
-
-.prompt-card:hover {
-  border-color: var(--color-text-faint);
-  background: var(--color-bg-card);
-}
-
-.prompt-text {
-  font-size: var(--text-sm);
   color: var(--color-text-muted);
-  line-height: var(--leading-normal);
-  transition: color var(--transition-fast);
+  font-size: var(--text-xs);
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all var(--transition-fast);
 }
 
-.prompt-card:hover .prompt-text {
+.prompt-chip:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border);
   color: var(--color-text);
 }
 
@@ -2026,55 +2034,71 @@ onBeforeUnmount(() => {
 }
 
 .input-area-inner.welcome-center {
+  position: relative;
   max-width: var(--container-width-sm);
-  transform: translateY(calc(-50vh + 96px));
+  transform: translateY(calc(-50vh + 80px));
 }
 
-.input-pill {
+/* dsh 风格 hero 光晕：输入卡背后的柔和蓝色椭圆，CSS radial-gradient + blur 近似 dsh SVG gaussian */
+.input-area-inner.welcome-center::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -40px;
+  width: 110%;
+  height: 320px;
+  transform: translateX(-50%);
+  background: radial-gradient(
+    ellipse at center,
+    rgba(99, 102, 241, 0.1),
+    transparent 70%
+  );
+  filter: blur(40px);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* dsh 风格单一浮动输入卡：附件栏 → 文本框 → 底部左右工具行 */
+.input-card {
+  box-sizing: border-box;
   display: flex;
-  align-items: flex-end;
-  padding: var(--space-2) var(--space-3);
-  gap: var(--space-2);
-  background: var(--color-bg-input-bar);
-  backdrop-filter: blur(var(--blur-input));
-  -webkit-backdrop-filter: blur(var(--blur-input));
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px 6px;
   border: 1px solid var(--color-border-light);
-  border-radius: 24px;
+  border-radius: 22px;
+  background: var(--color-bg-card);
   box-shadow: var(--shadow-sm);
   transition:
     border-color var(--transition-base),
     box-shadow var(--transition-base);
 }
 
-.input-pill:focus-within {
-  border-color: var(--color-primary);
+.input-card:focus-within {
+  border-color: var(--color-info);
   box-shadow:
-    0 0 0 3px var(--color-primary-muted),
+    0 0 0 3px var(--color-info-subtle),
     var(--shadow-sm);
 }
 
-.input-action-btn {
+/* 附件缩略图栏（卡内顶部，有附件才渲染） */
+.input-attachments {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 4px 0;
 }
 
-.input-action-btn:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-secondary);
+/* 文本框区 */
+.input-scroll {
+  max-height: 160px;
+  overflow-y: auto;
 }
 
 .chat-textarea {
-  flex: 1;
+  display: block;
+  width: 100%;
   border: none;
   outline: none;
   resize: none;
@@ -2083,9 +2107,7 @@ onBeforeUnmount(() => {
   line-height: var(--leading-normal);
   color: var(--color-text);
   background: transparent;
-  padding: var(--space-2) var(--space-2);
-  max-height: 160px;
-  overflow-y: auto;
+  padding: 4px 8px 0 12px;
 }
 
 .chat-textarea::placeholder {
@@ -2096,75 +2118,70 @@ onBeforeUnmount(() => {
   opacity: 0.5;
 }
 
-.send-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: var(--radius-full);
-  background: var(--color-border-light);
-  color: var(--color-text-faint);
-  cursor: not-allowed;
-  transition: all var(--transition-base);
-  flex-shrink: 0;
-}
-
-.send-btn.active {
-  background: var(--color-text);
-  color: #ffffff;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.25);
-}
-
-.send-btn.active:hover {
-  background: #1f2937;
-  transform: scale(1.05);
-}
-
-.stop-btn {
-  background: var(--color-warning);
-  color: #ffffff;
-  cursor: pointer;
-}
-
-.stop-btn:hover {
-  background: var(--color-accent);
-}
-
-.input-hint {
-  margin: 8px auto 0;
-  text-align: center;
-  font-size: var(--text-xs);
-  color: var(--color-text-faint);
-}
-
-/* ========================================
-   Input Footer — Quick Actions
-   ======================================== */
-.input-footer {
-  margin: 6px auto 0;
+/* 底部工具行：左 = + 附件 + 模式 chip；右 = 模型 + ContextMeter + 发送/停止 */
+.input-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
-  padding: 0 4px;
+  gap: 12px;
+  padding: 2px 4px 0;
 }
 
-.quick-actions {
+.input-tools,
+.input-modes,
+.input-trailing {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  min-width: 0;
 }
 
-.action-chip {
+.input-tools {
+  gap: 12px;
+}
+
+.input-modes {
+  gap: 8px;
+}
+
+.input-trailing {
+  flex: none;
+  gap: 12px;
+}
+
+/* + 附件圆形按钮（dsh 风格 28px 圆） */
+.input-add-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.input-add-btn:hover:not(:disabled) {
+  background: var(--color-bg-card-elevated);
+}
+
+.input-add-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 模式 chip：深度思考 / 流式输出 */
+.mode-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  height: 28px;
+  padding: 0 10px;
   border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-lg);
-  background: var(--color-bg-card);
+  border-radius: var(--radius-md);
+  background: transparent;
   color: var(--color-text-secondary);
   font-size: var(--text-xs);
   font-family: var(--font-body);
@@ -2172,33 +2189,69 @@ onBeforeUnmount(() => {
   transition: all var(--transition-fast);
 }
 
-.action-chip:hover {
+.mode-chip:hover {
   background: var(--color-bg-hover);
   border-color: var(--color-border);
   color: var(--color-text);
 }
 
-.action-chip.active {
+.mode-chip.active {
   background: var(--color-text);
   border-color: var(--color-text);
   color: #ffffff;
   font-weight: var(--weight-medium);
 }
 
-.action-icon {
+.mode-chip-icon {
   display: inline-flex;
   align-items: center;
   font-size: 14px;
   line-height: 1;
 }
 
-.input-hint-inline {
-  display: inline-flex;
-  align-items: center;
+/* 发送 / 停止主按钮（dsh 风格 34px 蓝色圆形） */
+.send-primary {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-border-light);
+  color: #ffffff;
+  cursor: not-allowed;
+  transition: all var(--transition-base);
+}
+
+.send-primary.active {
+  background: var(--color-info);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
+}
+
+.send-primary.active:hover {
+  background: #2563eb;
+  transform: scale(1.05);
+}
+
+.send-primary.stop-primary {
+  background: var(--color-warning);
+  cursor: pointer;
+}
+
+.send-primary.stop-primary:hover {
+  background: var(--color-accent);
+}
+
+/* 卡外键盘提示（仅非欢迎态显示） */
+.input-hint {
+  display: flex;
+  justify-content: center;
   gap: 10px;
+  margin: 6px auto 0;
   font-size: var(--text-xs);
   color: var(--color-text-faint);
-  white-space: nowrap;
 }
 
 .hint-item {
@@ -2224,40 +2277,9 @@ onBeforeUnmount(() => {
 }
 
 /* ========================================
-   Attachment Button & Preview
+   Input Footer — Quick Actions
    ======================================== */
-.attach-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.attach-btn:hover:not(:disabled) {
-  background: var(--color-bg-hover);
-  color: var(--color-primary);
-}
-
-.attach-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.attachment-preview-bar {
-  margin: 6px auto 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 0 4px;
-}
+/* (已合并进 .input-card 底部 .input-row，旧 .input-footer / .quick-actions / .action-chip 废弃) */
 
 .attachment-chip {
   display: inline-flex;

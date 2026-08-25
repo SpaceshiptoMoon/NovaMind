@@ -7,6 +7,8 @@ import type {
   AgentChatDoneData,
   AgentCompactionData,
   AgentContextUsageData,
+  PlanData,
+  LoopWarningData,
   SystemPromptResponse,
   AgentConversation,
   AgentConversationListResponse,
@@ -86,6 +88,8 @@ export const agentApi = {
       onDone?: (d: AgentChatDoneData) => void
       onCompaction?: (d: AgentCompactionData) => void
       onContextUsage?: (d: AgentContextUsageData) => void
+      onPlan?: (type: string, d: PlanData) => void
+      onLoopWarning?: (d: LoopWarningData) => void
       onError?: (err: { content: string }) => void
       signal?: AbortSignal
     },
@@ -125,6 +129,15 @@ export const agentApi = {
             break
           case 'context_usage':
             callbacks.onContextUsage?.(e.data as AgentContextUsageData)
+            break
+          case 'plan.created':
+          case 'plan.step_started':
+          case 'plan.step_completed':
+          case 'plan.completed':
+            callbacks.onPlan?.(e.type, e.data as PlanData)
+            break
+          case 'loop_warning':
+            callbacks.onLoopWarning?.(e.data as LoopWarningData)
             break
           case 'error':
             callbacks.onError?.(e.data as { content: string })

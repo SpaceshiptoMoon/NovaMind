@@ -1292,7 +1292,7 @@ export interface AgentConversationListResponse {
 export interface AgentMessage {
   id: number
   conversation_id: number
-  role: 'user' | 'assistant' | 'system' | 'tool' | 'compaction'
+  role: 'user' | 'assistant' | 'system' | 'tool' | 'compaction' | 'plan' | 'notice'
   content: string | null
   tool_call_id: string | null
   tool_name: string | null
@@ -1355,6 +1355,25 @@ export interface AgentCompactionData {
   compression_ratio?: number
   tokens_after?: number
   created_at?: string
+}
+
+// Plan-and-Execute 事件数据（plan.created/step_started/step_completed/completed 并集）
+// plan.created: title/steps/step_count；step_started: step_index/step/plan_status；
+// step_completed: step_index/plan_status；completed: summary
+export interface PlanData {
+  title?: string
+  steps?: string[]
+  step_count?: number
+  step_index?: number
+  step?: string
+  plan_status?: string
+  summary?: string
+}
+
+// loop_detection 注入的纠偏警告事件数据
+export interface LoopWarningData {
+  content: string
+  iteration?: number
 }
 
 // 上下文用量（WS context_usage 事件 + REST ContextUsageResponse）

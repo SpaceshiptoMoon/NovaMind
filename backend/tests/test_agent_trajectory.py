@@ -132,3 +132,47 @@ async def test_get_system_prompt_returns_full_prompt() -> None:
     resp = await svc.get_system_prompt(user_id=1, session_id="sess-1")
     assert isinstance(resp, SystemPromptResponse)
     assert resp.system_prompt == "cached system prompt"
+
+
+@pytest.mark.asyncio
+async def test_handle_plan_created_persists_role_plan() -> None:
+    """_handle_plan_created 落 role='plan' 消息，extra.plan 存 title/steps/step_count。
+    验证 Plan-and-Execute 计划清单持久化（历史回放可见）。
+    """
+    svc = AgentChatService.__new__(AgentChatService)
+    captured: dict = {}
+
+    async def fake_save(**kwargs):  # type: ignore[no-untyped-def]
+        captured.update(kwargs)
+        return SimpleNamespace(id=101)
+
+    svc.agent_service = SimpleNamespace(save_message=fake_save)
+    event = AgentEvent("plan.created", {
+        "title": "调研计划", "steps": ["步骤1", "步骤2", "步骤3"], "step_count": 3,
+    })
+    conv = SimpleNamespace(id=7)
+    await svc._handle_plan_created(event, conv)
+    assert captured["role"] == "plan"
+    assert captured["content"] == "调研计划"
+    assert captured["extra"]["plan"]["step_count"] == 3
+    assert len(captured["extra"]["plan"]["steps"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_save_error_message_persists_role_assistant_with_error_flag() -> None:
+    """_save_error_message 落 role='assistant' + extra.error，content 带 [错误] 前缀。
+    验证 error/context_overflow 持久化（失败对话历史回放可见）。
+    """
+    svc = AgentChatService.__new__(AgentChatService)
+    captured: dict = {}
+
+    async def fake_save(**kwargs):  # type: ignore[no-untyped-def]
+        captured.update(kwargs)
+        return SimpleNamespace(id=102)
+
+    svc.agent_service = SimpleNamespace(save_message=fake_save)
+    conv = SimpleNamespace(id=7)
+    await svc._save_error_message(conv, "工具执行失败", extra={"error": True})
+    assert captured["role"] == "assistant"
+    assert captured["content"].startswith("[错误]")
+    assert captured["extra"]["error"] is True
