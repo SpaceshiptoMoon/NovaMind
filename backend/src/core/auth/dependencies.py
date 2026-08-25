@@ -84,10 +84,12 @@ async def _resolve_user_from_token(
 
     # 4. 状态检查（is_active/is_deleted 由 user adapter 按 UserStatus 枚举计算）
     #    - 已删除：一律拒绝
-    #    - 非活跃：仅管理员放行
+    #    - 非活跃：仅系统管理员（role_code == 'admin'）放行
     if user.get("is_deleted"):
         raise HTTPException(status_code=403, detail="用户已被删除")
-    if not user.get("is_active") and not user.get("is_admin"):
+    role_code = user.get("role_code")
+    is_admin = role_code == "admin"
+    if not user.get("is_active") and not is_admin:
         raise HTTPException(status_code=403, detail="用户已被禁用")
 
     # 5. 返回完整用户信息（status 透传 user adapter 提供的 UserStatus 枚举值）
@@ -95,7 +97,8 @@ async def _resolve_user_from_token(
         "id": user["id"],
         "username": user["username"],
         "email": user["email"],
-        "is_admin": user["is_admin"],
+        "role_code": role_code,
+        "is_admin": is_admin,
         "status": user.get("status"),
         "jti": claims.jti,
     }
@@ -108,7 +111,7 @@ async def get_current_user(
     """获取当前用户（带数据库状态验证）。
 
     Returns:
-        dict: 用户信息（id/username/email/is_admin/status/jti）
+        dict: 用户信息（id/username/email/role_code/is_admin/status/jti）
 
     Raises:
         HTTPException: token 无效或用户被删除/禁用
@@ -131,8 +134,8 @@ async def get_current_user_optional(
 
 
 def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
-    """管理员权限检查（仅 is_admin 为 True 的用户）。"""
-    if not current_user.get("is_admin", False):
+    """管理员权限检查（仅 role_code 为 'admin' 的用户）。"""
+    if current_user.get("role_code") != "admin":
         raise HTTPException(status_code=403, detail="需要管理员权限")
     return current_user
 

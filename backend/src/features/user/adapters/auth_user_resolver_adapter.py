@@ -37,6 +37,8 @@ class UserStatusResolverAdapter:
             "id": user.id,
             "username": user.username,
             "email": user.email,
+            # role_code 供 core/auth 派生 is_admin 与权限守卫使用
+            "role_code": user.role.code if user.role else None,
             "is_admin": user.is_admin,
             "status": user.status,
             # 枚举语义留在 user 侧计算，core/auth 只判布尔

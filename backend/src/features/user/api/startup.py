@@ -233,10 +233,12 @@ def setup_auth_port_wiring(app: FastAPI) -> None:
         as_user_status_resolver,
     )
     from novamind.core.authorization.ports import PermissionCheckerPort
+    from novamind.core.authorization.dependencies import get_permission_checker_dep
     from novamind.features.user.api.dependencies import get_permission_checker
 
     app.dependency_overrides[get_user_status_resolver] = as_user_status_resolver
     app.dependency_overrides[PermissionCheckerPort] = get_permission_checker
+    app.dependency_overrides[get_permission_checker_dep] = get_permission_checker
 
 
 def setup_user_exception_handlers(app: FastAPI) -> None:
