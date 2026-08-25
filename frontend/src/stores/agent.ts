@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { agentApi } from '@/api/agent'
 import type {
@@ -13,6 +13,7 @@ import type {
   ChatAttachment,
   SourceRef,
   OpenAICompatToolCall,
+  AgentContextUsageData,
 } from '@/api/types'
 
 // 后端工具状态归并到前端 ToolCallRecord.status 四态
@@ -54,6 +55,7 @@ export const useAgentStore = defineStore('agent', () => {
   const streamingReasoning = ref('')
   const streamingSources = ref<SourceRef[]>([])
   const toolCalls = ref<ToolCallRecord[]>([])
+  const contextUsage = ref<AgentContextUsageData | null>(null)
   const abortController = ref<AbortController | null>(null)
   const loading = ref(false)
   const pendingAttachments = ref<ChatAttachment[]>([])
@@ -145,7 +147,14 @@ export const useAgentStore = defineStore('agent', () => {
         callId: tc.call_id || '',
         status: normalizeToolStatus(tc.status),
         durationMs: tc.duration_ms ?? undefined,
+        result: tc.result ?? undefined,
       }))
+      // 历史回放 ContextMeter 初始值（全完整：切会话即显示仪表）
+      try {
+        contextUsage.value = await agentApi.getContextUsage(sessionId)
+      } catch {
+        contextUsage.value = null
+      }
     } catch (e) {
       messages.value = []
       error.value = e instanceof Error ? e.message : '获取消息失败'
@@ -350,6 +359,24 @@ export const useAgentStore = defineStore('agent', () => {
             }
             controller.abort()
           },
+          onCompaction(d) {
+            // 压缩标记行：dsh shadowed 语义，不移除历史消息，push 到末尾。
+            // 后端历史回放 get_messages 也会返回 role='compaction' 消息，刷新后行为一致
+            messages.value.push({
+              id: Date.now() + Math.random(),
+              conversation_id: 0,
+              role: 'compaction',
+              content: null,
+              tool_call_id: null,
+              tool_name: null,
+              token_count: null,
+              created_at: d.created_at || new Date().toISOString(),
+              extra: { compaction: d },
+            })
+          },
+          onContextUsage(d) {
+            contextUsage.value = d
+          },
           onError(err) {
             error.value = err.content
             ensureAssistant()
@@ -551,6 +578,22 @@ export const useAgentStore = defineStore('agent', () => {
             messages.value.push(aiMsg)
             controller2.abort()
           },
+          onCompaction(d) {
+            messages.value.push({
+              id: Date.now() + Math.random(),
+              conversation_id: 0,
+              role: 'compaction',
+              content: null,
+              tool_call_id: null,
+              tool_name: null,
+              token_count: null,
+              created_at: d.created_at || new Date().toISOString(),
+              extra: { compaction: d },
+            })
+          },
+          onContextUsage(d) {
+            contextUsage.value = d
+          },
           onError(err) {
             error.value = err.content
           },
@@ -579,6 +622,7 @@ export const useAgentStore = defineStore('agent', () => {
     streamingSources.value = []
     error.value = null
     pendingAttachments.value = []
+    contextUsage.value = null
   }
 
   // ========== 附件管理 ==========
@@ -688,6 +732,7 @@ export const useAgentStore = defineStore('agent', () => {
     streamingReasoning,
     streamingSources,
     toolCalls,
+    contextUsage,
     abortController,
     loading,
     mcpServers,

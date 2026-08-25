@@ -16,6 +16,7 @@ from novamind.features.agent.api.dependencies import (
     _build_agent_chat_service,
     get_agent_engine_ws,
     get_agent_service,
+    get_agent_chat_service,
     get_memory_search_repo,
     get_minio_client_for_presign,
     get_mcp_server_service,
@@ -24,6 +25,7 @@ from novamind.features.agent.api.dependencies import (
     get_tool_registry,
 )
 from novamind.features.agent.services.agent_service import AgentService
+from novamind.features.agent.services.chat_service import AgentChatService
 from novamind.features.agent.services.mcp_server_service import McpServerService
 from novamind.engines.agent.agent_engine import AgentEngine
 from novamind.engines.agent.memory.todo_store import TodoStore
@@ -39,6 +41,8 @@ from novamind.features.agent.schemas.agent_schema import (
     SessionResponse,
     AgentSessionListResponse,
     MessageListResponse,
+    ContextUsageResponse,
+    SystemPromptResponse,
     AgentChatRequest,
     McpServerCreate,
     McpServerUpdate,
@@ -304,6 +308,34 @@ async def get_messages(
         for msg in result.items:
             await enrich_attachments_with_presigned_urls(msg.extra, minio_client)
     return result
+
+
+@router.get(
+    "/sessions/{session_id}/context-usage",
+    response_model=ContextUsageResponse,
+    summary="获取会话当前上下文用量",
+    description="估算指定会话的当前上下文 token 占用（system/tools/messages 分项），供 ContextMeter 历史回放初始值",
+)
+async def get_context_usage(
+    session_id: Annotated[str, Path(min_length=1, description="会话ID")],
+    user_id: int = Depends(get_current_user_id),
+    service: AgentChatService = Depends(get_agent_chat_service),
+):
+    return await service.estimate_context_usage(user_id, session_id)
+
+
+@router.get(
+    "/sessions/{session_id}/system-prompt",
+    response_model=SystemPromptResponse,
+    summary="获取会话当前 system prompt 全文",
+    description="返回会话当前 system prompt（base + tool guidance + skill + frozen memory），供轨迹视图 inspector 展开 system 行按需拉",
+)
+async def get_system_prompt(
+    session_id: Annotated[str, Path(min_length=1, description="会话ID")],
+    user_id: int = Depends(get_current_user_id),
+    service: AgentChatService = Depends(get_agent_chat_service),
+):
+    return await service.get_system_prompt(user_id, session_id)
 
 
 # ==================== MCP 服务器管理 ====================

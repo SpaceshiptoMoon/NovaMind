@@ -5,9 +5,11 @@ import type {
   UpdateAgentRequest,
   AgentListResponse,
   AgentChatDoneData,
+  AgentCompactionData,
+  AgentContextUsageData,
+  SystemPromptResponse,
   AgentConversation,
   AgentConversationListResponse,
-  AgentMessage,
   AgentMessageListResponse,
   OpenAICompatToolCall,
   McpServer,
@@ -15,7 +17,6 @@ import type {
   CreateMcpServerRequest,
   UpdateMcpServerRequest,
   ToolProvider,
-  ToolCallRecord,
 } from './types'
 
 // ===================== Agent 管理 =====================
@@ -83,6 +84,8 @@ export const agentApi = {
         }[]
       }) => void
       onDone?: (d: AgentChatDoneData) => void
+      onCompaction?: (d: AgentCompactionData) => void
+      onContextUsage?: (d: AgentContextUsageData) => void
       onError?: (err: { content: string }) => void
       signal?: AbortSignal
     },
@@ -117,6 +120,12 @@ export const agentApi = {
           case 'done':
             callbacks.onDone?.(e.data as AgentChatDoneData)
             break
+          case 'compaction':
+            callbacks.onCompaction?.(e.data as AgentCompactionData)
+            break
+          case 'context_usage':
+            callbacks.onContextUsage?.(e.data as AgentContextUsageData)
+            break
           case 'error':
             callbacks.onError?.(e.data as { content: string })
             break
@@ -142,6 +151,18 @@ export const agentApi = {
     return request.get<AgentMessageListResponse>(
       `/agent/sessions/${sessionId}/messages`,
       params as Record<string, unknown>,
+    )
+  },
+
+  getContextUsage(sessionId: string) {
+    return request.get<AgentContextUsageData>(
+      `/agent/sessions/${sessionId}/context-usage`,
+    )
+  },
+
+  getSystemPrompt(sessionId: string) {
+    return request.get<SystemPromptResponse>(
+      `/agent/sessions/${sessionId}/system-prompt`,
     )
   },
 

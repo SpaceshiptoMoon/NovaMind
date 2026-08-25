@@ -5,7 +5,7 @@
 管理 Token 预算，超限时自动触发压缩策略。
 """
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from novamind.engines.agent.memory.interfaces import (
     IShortTermMemory,
@@ -53,6 +53,8 @@ class ShortTermMemory(IShortTermMemory):
         conversation_id: int,
         max_tokens: int,
         reserve_tokens: int = 1024,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        dry_run: bool = False,
     ) -> MemorySnapshot:
         """
         构建上下文快照
@@ -106,21 +108,26 @@ class ShortTermMemory(IShortTermMemory):
         if summary_msg:
             memory_messages = [summary_msg] + memory_messages
 
-        # 3. 计算 token 预算
+        # 3. 计算 token 预算（total = system + tools(schema) + messages，对齐 ContextMeter 三项）
         available_tokens = max_tokens - reserve_tokens
         system_tokens = self._token_budget.count_text_tokens(system_prompt)
         messages_tokens = self._token_budget.count_messages_tokens(memory_messages)
-        total_tokens = system_tokens + messages_tokens
+        tools_tokens = self._token_budget.count_text_tokens(
+            json.dumps(tools or [], ensure_ascii=False)
+        )
+        total_tokens = system_tokens + tools_tokens + messages_tokens
 
         compressed = False
         compression_ratio = 1.0
+        compressed_count = 0
+        compaction_summary = ""
 
-        # 4. 超出预算，触发压缩
-        if total_tokens > available_tokens:
+        # 4. 超出预算，触发压缩（dry_run 只算 token，不压缩不写 summary）
+        if total_tokens > available_tokens and not dry_run:
             memory_messages, compressed, compression_ratio = (
                 await self._compression.compress(
                     messages=memory_messages,
-                    available_tokens=available_tokens - system_tokens,
+                    available_tokens=available_tokens - system_tokens - tools_tokens,
                     token_budget=self._token_budget,
                     conversation_id=conversation_id,
                 )
@@ -128,13 +135,23 @@ class ShortTermMemory(IShortTermMemory):
             messages_tokens = self._token_budget.count_messages_tokens(
                 memory_messages
             )
-            total_tokens = system_tokens + messages_tokens
+            total_tokens = system_tokens + tools_tokens + messages_tokens
             logger.info(
                 "上下文已压缩",
                 conversation_id=conversation_id,
                 compression_ratio=compression_ratio,
                 tokens_after=total_tokens,
             )
+            # 压缩元数据从刚写入的 summary 重查（compress 内部已 save_summary），
+            # 供前端 CompactionItem 显示「已压缩 N 条」+ 摘要正文
+            if compressed and self._summary_store:
+                try:
+                    latest = await self._summary_store.get_latest_summary(conversation_id)
+                    if latest:
+                        compressed_count = latest.compressed_count
+                        compaction_summary = latest.summary_text
+                except Exception as e:
+                    logger.warning("压缩后摘要重查失败", error=str(e))
 
         # 5. 组装 OpenAI 格式消息
         openai_messages = self._build_openai_messages(
@@ -146,6 +163,13 @@ class ShortTermMemory(IShortTermMemory):
             total_tokens=total_tokens,
             compressed=compressed,
             compression_ratio=compression_ratio,
+            system_tokens=system_tokens,
+            tools_tokens=tools_tokens,
+            messages_tokens=messages_tokens,
+            compressed_count=compressed_count,
+            compaction_summary=compaction_summary,
+            context_window=max_tokens,
+            reserved_tokens=reserve_tokens,
         )
 
     async def add_message(

@@ -37,6 +37,16 @@ class MemorySnapshot:
     total_tokens: int
     compressed: bool = False
     compression_ratio: float = 1.0
+    # ContextMeter 三项分项（total_tokens = system + tools + messages）
+    system_tokens: int = 0
+    tools_tokens: int = 0
+    messages_tokens: int = 0
+    # 压缩元数据（compressed=True 时填充，供前端 CompactionItem 显示「已压缩 N 条」+ 摘要正文）
+    compressed_count: int = 0
+    compaction_summary: str = ""
+    # 窗口口径，供前端直接用
+    context_window: int = 0
+    reserved_tokens: int = 0
 
 
 # ==================== 抽象接口 ====================
@@ -58,6 +68,8 @@ class IShortTermMemory(ABC):
         conversation_id: int,
         max_tokens: int,
         reserve_tokens: int = 1024,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        dry_run: bool = False,
     ) -> MemorySnapshot:
         """
         构建发送给 LLM 的完整上下文快照
@@ -67,6 +79,8 @@ class IShortTermMemory(ABC):
             conversation_id: 会话 ID
             max_tokens: 模型上下文窗口大小（token 数）
             reserve_tokens: 为 LLM 生成预留的 token 数
+            tools: OpenAI tools schema 列表，用于计算 tools 项 token（ContextMeter 分项）
+            dry_run: True 时只算 token 不触发压缩、不写 summary（用于历史会话初始用量估算）
 
         Returns:
             MemorySnapshot 包含格式化后的消息列表和 token 统计

@@ -152,6 +152,7 @@ class ToolCallResponse(BaseModel):
     status: str
     duration_ms: Optional[int] = None
     error_message: Optional[str] = None
+    result: Optional[str] = None
     iteration: Optional[int] = None
 
 
@@ -160,6 +161,33 @@ class MessageListResponse(BaseModel):
     items: List[AgentMessageResponse]
     total: int
     tool_calls: List[ToolCallResponse] = Field(default_factory=list)
+
+
+class ContextUsageResponse(BaseModel):
+    """会话当前上下文用量（ContextMeter 历史回放初始值）。
+
+    口径与实时 context_usage 事件一致：used = system + tools(schema) + messages。
+    tools 项是 OpenAI tools schema JSON 的 token，system 项含 tool guidance 文本，
+    三项相加可能与 LLM 真实计费略有口径重叠，UI 标注「近似」。
+    """
+    used_tokens: int
+    context_window: int
+    system_tokens: int = 0
+    tools_tokens: int = 0
+    messages_tokens: int = 0
+    reserved_tokens: int = 0
+    compressed: bool = False
+    compression_ratio: float = 1.0
+
+
+class SystemPromptResponse(BaseModel):
+    """会话当前 system prompt 全文（轨迹视图 inspector 展开 system 行按需拉）。
+
+    含 base prompt + tool guidance + skill fragments + frozen memory 的完整拼接，
+    dry_run 路径构造无副作用。tokens 为 system_tokens 估算。
+    """
+    system_prompt: str
+    tokens: int = 0
 
 
 

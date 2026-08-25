@@ -6,6 +6,7 @@ Agent 对话服务
 import asyncio
 import base64
 import json
+from datetime import datetime, timezone
 from time import monotonic
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
@@ -16,6 +17,11 @@ from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.engines.agent.agent_engine import AgentEngine, AgentEvent
 from novamind.engines.agent.memory.memory_manager import MemoryManager
+from novamind.engines.agent.memory.interfaces import MemorySnapshot
+from novamind.features.agent.schemas.agent_schema import (
+    ContextUsageResponse,
+    SystemPromptResponse,
+)
 from novamind.engines.agent.memory.context_scrubber import StreamingContextScrubber
 from novamind.engines.agent.prompt_builder import SystemPromptBuilder
 from novamind.features.agent.repository.agent_repository import MessageRepository, ToolCallRepository, SessionRepository
@@ -119,9 +125,30 @@ class AgentChatService:
                 memory_store, memory_search, prompt_provider,
             )
 
-            llm_client, tools, messages = await self._build_context(
+            llm_client, tools, messages, snapshot, _ = await self._build_context(
                 agent, conv, user_id, model, content, memory_manager
             )
+            # 调试向预览：会话级上下文用量（ContextMeter）+ 压缩事件（CompactionItem）
+            # 在事件循环之前 emit，前端输入框仪表即时更新、压缩发生时插标记行
+            yield self._emit("context_usage", {
+                "used_tokens": snapshot.total_tokens,
+                "context_window": snapshot.context_window,
+                "system_tokens": snapshot.system_tokens,
+                "tools_tokens": snapshot.tools_tokens,
+                "messages_tokens": snapshot.messages_tokens,
+                "reserved_tokens": snapshot.reserved_tokens,
+                "compressed": snapshot.compressed,
+                "compression_ratio": snapshot.compression_ratio,
+            })
+            if snapshot.compressed:
+                yield self._emit("compaction", {
+                    "conversation_id": conv.id,
+                    "summarized_count": snapshot.compressed_count,
+                    "summary": snapshot.compaction_summary,
+                    "compression_ratio": snapshot.compression_ratio,
+                    "tokens_after": snapshot.total_tokens,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                })
 
             context = ToolContext(
                 db_session=self.db,
@@ -445,8 +472,13 @@ class AgentChatService:
         model: str,
         user_content: str,
         memory_manager: MemoryManager,
-    ) -> tuple[Any, List[Dict], List[Dict]]:
-        """构建阶段：获取 LLM 客户端、工具列表、上下文消息（三层记忆）"""
+        dry_run: bool = False,
+    ) -> tuple[Any, List[Dict], List[Dict], MemorySnapshot]:
+        """构建阶段：获取 LLM 客户端、工具列表、上下文消息（三层记忆）。
+
+        dry_run=True 时只算 token 不触发压缩、不写 summary、跳过 prefetch/附件注入
+        副作用，用于历史会话初始 context_usage 估算（ContextMeter）。
+        """
         # LLM 客户端（优先 LLM 类型，fallback 到 VLM 类型）
         try:
             llm_client = await self.model_config_service.get_llm_client_by_model(
@@ -496,15 +528,19 @@ class AgentChatService:
         else:
             system_prompt = cached_partial
 
-        # Layer 1+2 并行：短期记忆构建 + 长期记忆预取同时发起
-        prefetch_task = asyncio.create_task(
-            memory_manager.prefetch(user_content, agent.id, user_id)
-        )
+        # Layer 1+2 并行：短期记忆构建 + 长期记忆预取同时发起（dry_run 跳过预取副作用）
+        prefetch_task = None
+        if not dry_run:
+            prefetch_task = asyncio.create_task(
+                memory_manager.prefetch(user_content, agent.id, user_id)
+            )
 
         snapshot = await memory_manager.build_context(
             system_prompt=system_prompt,
             conversation_id=conv.id,
             max_tokens=agent.context_window or 32768,
+            tools=tools,
+            dry_run=dry_run,
         )
 
         if snapshot.compressed:
@@ -515,27 +551,95 @@ class AgentChatService:
                 tokens=snapshot.total_tokens,
             )
 
-        # 等待预取完成，注入到用户消息
-        try:
-            relevant = await prefetch_task
-            if relevant:
-                self._apply_prefetch_to_messages(relevant, snapshot.messages)
-                logger.debug(
-                    "长期记忆动态预取已注入",
-                    agent_id=agent.id,
-                    memories_count=len(relevant),
-                )
-        except Exception as e:
-            logger.warning("动态预取注入失败，跳过", error=str(e))
+        # 等待预取完成，注入到用户消息（dry_run 无预取）
+        if prefetch_task is not None:
+            try:
+                relevant = await prefetch_task
+                if relevant:
+                    self._apply_prefetch_to_messages(relevant, snapshot.messages)
+                    logger.debug(
+                        "长期记忆动态预取已注入",
+                        agent_id=agent.id,
+                        memories_count=len(relevant),
+                    )
+            except Exception as e:
+                logger.warning("动态预取注入失败，跳过", error=str(e))
 
-        # 动态注入附件文本到上下文
-        try:
-            is_vlm = await self._is_vlm_model(model, user_id)
-            await self._inject_attachments_to_snapshot(snapshot, conv.id, user_id, is_vlm)
-        except Exception as inject_err:
-            logger.warning("附件文本注入失败，跳过注入", error=str(inject_err))
+        # 动态注入附件文本到上下文（dry_run 跳过附件 IO）
+        if not dry_run:
+            try:
+                is_vlm = await self._is_vlm_model(model, user_id)
+                await self._inject_attachments_to_snapshot(snapshot, conv.id, user_id, is_vlm)
+            except Exception as inject_err:
+                logger.warning("附件文本注入失败，跳过注入", error=str(inject_err))
 
-        return llm_client, tools, snapshot.messages
+        return llm_client, tools, snapshot.messages, snapshot, system_prompt
+
+    async def estimate_context_usage(
+        self, user_id: int, session_id: str
+    ) -> ContextUsageResponse:
+        """历史会话初始上下文用量估算（ContextMeter 历史回放）。
+
+        复用 _build_context(dry_run=True)：只算 system/tools/messages token 分项，
+        不触发压缩、不写 summary、跳过 prefetch/附件副作用。口径与实时 context_usage
+        事件一致，前端切历史会话即可显示仪表初始值。
+        """
+        conv = await self.agent_service.get_session(user_id, session_id)
+        agent = await self.agent_service._get_agent_or_fail(user_id, conv.agent_id)
+        model = await self._resolve_model(user_id, agent, None)
+        memory_manager = self._create_memory_manager(
+            agent, user_id, model, conv.id,
+            self._memory_store_port, self._memory_search_port, self._prompt_provider,
+        )
+        _, _, _, snapshot, _ = await self._build_context(
+            agent, conv, user_id, model, "", memory_manager, dry_run=True
+        )
+        return ContextUsageResponse(
+            used_tokens=snapshot.total_tokens,
+            context_window=snapshot.context_window,
+            system_tokens=snapshot.system_tokens,
+            tools_tokens=snapshot.tools_tokens,
+            messages_tokens=snapshot.messages_tokens,
+            reserved_tokens=snapshot.reserved_tokens,
+            compressed=snapshot.compressed,
+            compression_ratio=snapshot.compression_ratio,
+        )
+
+    async def get_system_prompt(
+        self, user_id: int, session_id: str
+    ) -> SystemPromptResponse:
+        """返回会话当前 system prompt 全文（轨迹视图 inspector 展开 system 行按需拉）。
+
+        复用 _build_context 的 system_prompt 构造逻辑（base + tool guidance + skill
+        fragments + frozen_memory），与实际发给 LLM 的 system prompt 一致。
+        """
+        conv = await self.agent_service.get_session(user_id, session_id)
+        agent = await self.agent_service._get_agent_or_fail(user_id, conv.agent_id)
+        model = await self._resolve_model(user_id, agent, None)
+        memory_manager = self._create_memory_manager(
+            agent, user_id, model, conv.id,
+            self._memory_store_port, self._memory_search_port, self._prompt_provider,
+        )
+        enabled_tools = agent.enabled_tools or []
+        formatted_prompt = self._format_base_prompt(agent.system_prompt, enabled_tools)
+        frozen_memory = await self._get_frozen_memory(memory_manager, agent.id, user_id)
+        cache_key = f"{agent.id}:{frozenset(enabled_tools)}:{model}"
+        cached_partial = self._get_cached_prompt(cache_key)
+        if cached_partial is None:
+            skill_fragments = await self._collect_skill_fragments(enabled_tools)
+            cached_partial = await self._prompt_builder.build(
+                base_prompt=formatted_prompt,
+                enabled_tools=enabled_tools,
+                skill_fragments=skill_fragments,
+                frozen_memory="",
+                model_name=model,
+                max_prompt_tokens=agent.context_window,
+            )
+            self._set_cached_prompt(cache_key, cached_partial)
+        system_prompt = cached_partial + ("\n\n" + frozen_memory if frozen_memory else "")
+        from novamind.engines.agent.memory.token_budget import TokenBudget
+        tokens = TokenBudget(model).count_text_tokens(system_prompt)
+        return SystemPromptResponse(system_prompt=system_prompt, tokens=tokens)
 
     # ==================== 系统提示辅助 ====================
 
@@ -816,12 +920,18 @@ class AgentChatService:
         供历史回放还原完整 ReAct 链路：user → assistant(决策文本) → tool → assistant(最终)。
         """
         tool_calls = event.data.get("tool_calls", [])
+        extra: Dict[str, Any] = {"tool_calls": tool_calls}
+        # per-iteration usage + LLM 调用耗时（轨迹视图 per-message token/耗时展示）
+        if event.data.get("usage"):
+            extra["usage"] = event.data["usage"]
+        if event.data.get("duration_ms") is not None:
+            extra["duration_ms"] = event.data["duration_ms"]
         msg = await self.agent_service.save_message(
             conversation_id=conv.id,
             role="assistant",
             content=iteration_text or None,
             reasoning=iteration_reasoning or None,
-            extra={"tool_calls": tool_calls},
+            extra=extra,
             iteration=context.get("current_iteration"),
         )
         context["assistant_msg_id"] = msg.id
@@ -905,12 +1015,20 @@ class AgentChatService:
         """处理 done 事件：保存 assistant 消息、更新统计、设置标题"""
         total_tokens = event.data.get("total_tokens", 0)
 
+        # 最后一轮 per-iteration usage + LLM 调用耗时（轨迹视图 per-message token/耗时）
+        done_extra: Dict[str, Any] = {}
+        if event.data.get("last_iteration_usage"):
+            done_extra["usage"] = event.data["last_iteration_usage"]
+        if event.data.get("last_iteration_duration_ms") is not None:
+            done_extra["duration_ms"] = event.data["last_iteration_duration_ms"]
+
         assistant_msg = await self.agent_service.save_message(
             conversation_id=conv.id,
             role="assistant",
             content=full_response,
             token_count=total_tokens,
             reasoning=reasoning,
+            extra=done_extra or None,
             iteration=iteration,
         )
 

@@ -3,7 +3,7 @@
 
 Append-only 操作：INSERT + SELECT 最新一条。
 """
-from typing import Optional
+from typing import List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +30,22 @@ class ContextSummaryRepository:
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def list_by_conversation(
+        self, conversation_id: int
+    ) -> List[AgentContextSummary]:
+        """列出某个会话的全部压缩摘要（按 created_at 升序）。
+
+        供 get_messages 历史回放合并 compaction 标记行——每条摘要派生一条
+        role='compaction' 消息插入消息流，刷新/切会话后压缩点仍可见。
+        """
+        stmt = (
+            select(AgentContextSummary)
+            .where(AgentContextSummary.conversation_id == conversation_id)
+            .order_by(AgentContextSummary.created_at.asc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
 
     async def create(
         self,
