@@ -43,11 +43,27 @@
             <div class="badge-avatar">{{ agentName.charAt(0) }}</div>
             <span class="header-title">{{ agentName }}</span>
           </div>
+          <div v-if="!isWelcomeMode" class="header-tabs">
+            <button
+              class="view-pill"
+              :class="{ active: viewMode === 'chat' }"
+              @click="viewMode = 'chat'"
+            >
+              聊天
+            </button>
+            <button
+              class="view-pill"
+              :class="{ active: viewMode === 'trajectory' }"
+              @click="viewMode = 'trajectory'"
+            >
+              轨迹
+            </button>
+          </div>
         </div>
       </header>
 
       <!-- 消息列表 (仅对话模式)：按轮分组，工作过程折叠 -->
-      <div v-if="!isWelcomeMode" ref="messagesRef" class="messages-container">
+      <div v-if="!isWelcomeMode && viewMode === 'chat'" ref="messagesRef" class="messages-container">
         <div class="messages-inner">
           <template v-for="turn in turns" :key="turn.key">
             <div class="chat-turn">
@@ -116,6 +132,16 @@
                     <ArrowDown />
                   </el-icon>
                 </button>
+
+                <!-- 压缩标记行（CompactionItem）：压缩发生位置的「已压缩 N 条」可展开看摘要。
+                     dsh shadowed 语义：不移除历史消息，仅标记 model 在此停止看到之前历史 -->
+                <CompactionItem
+                  v-for="c in turn.compactionItems"
+                  :key="`compaction-${c.id}`"
+                  :data="(c.extra as Record<string, unknown>)?.compaction as AgentCompactionData | undefined"
+                  :expanded="expandedCompactions.has(c.id)"
+                  @toggle="toggleCompaction(c.id)"
+                />
 
                 <!-- 工作过程：按 ReAct 步骤渲染。多步默认折叠，单步/流式平铺。
                      无步骤且无思考过程时不渲染空容器 -->
@@ -232,8 +258,17 @@
         </div>
       </div>
 
+      <!-- 轨迹视图（调试向消息时间线，平铺每条消息 + 内部 inspector 展开详情） -->
+      <div v-if="!isWelcomeMode && viewMode === 'trajectory'" class="trajectory-container">
+        <TrajectoryList
+          :messages="agentStore.messages"
+          :tool-calls="agentStore.toolCalls"
+          :session-id="agentStore.currentSessionId"
+        />
+      </div>
+
       <!-- 输入区域 -->
-      <div class="input-area" :class="{ 'is-welcome': isWelcomeMode }">
+      <div v-if="viewMode === 'chat'" class="input-area" :class="{ 'is-welcome': isWelcomeMode }">
         <div class="input-area-inner" :class="{ 'welcome-center': isWelcomeMode }">
           <!-- 欢迎问候 (仅欢迎模式) -->
           <div v-if="isWelcomeMode" class="welcome-greeting">
@@ -322,6 +357,12 @@
                 v-model="selectedModel"
                 :models="availableModels"
               />
+              <ContextMeter
+                v-if="agentStore.contextUsage"
+                :used="agentStore.contextUsage.used_tokens"
+                :window="agentStore.contextUsage.context_window"
+                :breakdown="agentStore.contextUsage"
+              />
               <button
                 class="action-chip"
                 :class="{ active: enableThinking }"
@@ -374,9 +415,17 @@ import { useAgentStore } from '@/stores/agent'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { agentApi } from '@/api/agent'
 import { chatApi } from '@/api/chat'
-import type { AgentMessage, ContentBlock, OpenAICompatToolCall } from '@/api/types'
+import type {
+  AgentMessage,
+  AgentCompactionData,
+  ContentBlock,
+  OpenAICompatToolCall,
+} from '@/api/types'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import ModelTrigger from '@/components/common/ModelTrigger.vue'
+import ContextMeter from '@/components/common/ContextMeter.vue'
+import CompactionItem from '@/components/agent/CompactionItem.vue'
+import TrajectoryList from '@/components/agent/TrajectoryList.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -401,6 +450,15 @@ const availableModels = ref<
 const expandedReasoning = ref(new Set<number>())
 // 工作过程折叠态：按 turn.key 记忆（历史轮默认折叠；当前流式轮自动展开）
 const expandedTurns = ref(new Set<string>())
+// 压缩标记行就地展开态：按 compaction 消息 id 记忆（dsh 就地 disclosure，与 expandedReasoning 同模式）
+const expandedCompactions = ref(new Set<number>())
+function toggleCompaction(id: number) {
+  if (expandedCompactions.value.has(id)) expandedCompactions.value.delete(id)
+  else expandedCompactions.value.add(id)
+}
+
+// 视图模式：聊天（产品化气泡）/ 轨迹（调试向消息时间线，平铺每条消息 + 点击展开详情）
+const viewMode = ref<'chat' | 'trajectory'>('chat')
 
 // ===================== 按轮分组 =====================
 // 一轮 = 一条用户消息 + 其后的所有 tool/assistant/system 消息（直到下一条用户消息）。
@@ -416,6 +474,7 @@ interface ChatTurn {
   key: string
   userMsg: AgentMessage | null
   items: AgentMessage[]
+  compactionItems: AgentMessage[]
   finalAssistant: AgentMessage | null
   workItems: AgentMessage[]
   steps: ReActStep[]
@@ -452,6 +511,7 @@ const turns = computed<ChatTurn[]>(() => {
         key: `turn-${msg.id}`,
         userMsg: msg,
         items: [],
+        compactionItems: [],
         finalAssistant: null,
         workItems: [],
         steps: [],
@@ -460,13 +520,20 @@ const turns = computed<ChatTurn[]>(() => {
         isActive: false,
       }
     } else if (current) {
-      current.items.push(msg)
+      // compaction 标记行分流到 compactionItems，不计入 items/workItems/steps，
+      // 也不参与 finalAssistant 检测（role!=='assistant' 天然排除）
+      if (msg.role === 'compaction') {
+        current.compactionItems.push(msg)
+      } else {
+        current.items.push(msg)
+      }
     } else {
-      // 没有前置用户消息的孤立消息（如历史首条是 assistant）
+      // 没有前置用户消息的孤立消息（如历史首条是 assistant 或 compaction）
       current = {
         key: `turn-orphan-${msg.id}`,
         userMsg: null,
-        items: [msg],
+        items: msg.role === 'compaction' ? [] : [msg],
+        compactionItems: msg.role === 'compaction' ? [msg] : [],
         finalAssistant: null,
         workItems: [],
         steps: [],
@@ -780,7 +847,7 @@ async function handleSelectConversation(sessionId: string) {
   scrollToBottom()
 }
 
-// 在右侧抽屉打开该工具调用的结果详情
+// 在右侧抽屉打开该工具调用的结果详情（chat 模式工具卡片用）
 function openToolInDrawer(callId: string | null) {
   if (!callId) return
   workbench.selectToolCall(callId)
@@ -1205,6 +1272,47 @@ onBeforeUnmount(() => {
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   color: var(--color-text);
+}
+
+/* 视图切换 tab（聊天 / 轨迹） */
+.header-tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin-left: var(--space-3);
+}
+
+.view-pill {
+  padding: 3px 12px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.view-pill:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.view-pill.active {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border);
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+}
+
+/* 轨迹视图容器 */
+.trajectory-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: 48px;
+  background: var(--color-bg-elevated);
 }
 
 /* ========================================
