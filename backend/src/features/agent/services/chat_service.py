@@ -249,8 +249,26 @@ class AgentChatService:
                 # 事件推进，故不能只在 assistant_tool_calls 分支设置。
                 if "iteration" in event.data:
                     context["current_iteration"] = event.data.get("iteration")
-                if event.event_type.startswith("plan."):
+                if event.event_type == "plan.created":
+                    # 计划生成：落库 role='plan' 消息（extra.plan 存 title/steps），
+                    # 供历史回放还原 Plan-and-Execute 计划清单；step 状态变化不持久化（实时靠 emit）
+                    await self._handle_plan_created(event, conv)
+                    yield self._emit("plan.created", event.data)
+                elif event.event_type == "plan.completed":
+                    # 外层 done 前置标志：plan 模式下区分内层/外层 done，外层才落最终 summary
+                    context["plan_finalizing"] = True
+                    yield self._emit("plan.completed", event.data)
+                elif event.event_type.startswith("plan."):
                     yield self._emit(event.event_type, event.data)
+                elif event.event_type == "loop_warning":
+                    # loop_detection 注入的纠偏警告：落库 role='notice'，轨迹可见
+                    await self.agent_service.save_message(
+                        conversation_id=conv.id,
+                        role="notice",
+                        content=event.data.get("content"),
+                        extra={"notice": True, "iteration": event.data.get("iteration")},
+                    )
+                    yield self._emit("loop_warning", event.data)
                 elif event.event_type == "assistant_tool_calls":
                     # AI 决定调用工具：落库一条 role=assistant 决策消息，content 存该轮 AI 真实输出文本
                     # （从 full_response 当前偏移截取，经流级 scrubber 清洗），extra.tool_calls 存该轮全部工具。
@@ -288,6 +306,10 @@ class AgentChatService:
                         yield self._emit("content", {"content": cleaned})
 
                 elif event.event_type == "done":
+                    # plan 模式内层 ReAct 的 done：跳过最终消息落库与 emit，继续下一步；
+                    # 只有 plan.completed 之后的 done（plan_finalizing）才落最终 summary
+                    if plan_mode and not context.get("plan_finalizing"):
+                        continue
                     # flush scrubber buffer
                     remaining = scrubber.flush()
                     if remaining:
@@ -297,11 +319,17 @@ class AgentChatService:
                         full_reasoning += remaining_r
                     if event.data.get("truncated", False):
                         full_response += "\n\n[Agent 已达到最大迭代次数，对话被截断]"
-                    # 最终回答 = 最后一轮（无工具调用）的 AI 文本（从 iteration_start 截取），
-                    # 含 flush 尾部与截断标记；前序各轮文本已归入各自决策消息
-                    final_text = full_response[iteration_start:]
-                    # 最终 reasoning = 最后一轮思考（前序各轮已归入各自决策消息）
-                    final_reasoning = full_reasoning[iteration_reasoning_start:] or None
+                    if plan_mode and context.get("plan_finalizing"):
+                        # 外层 done：最终回答用 PlanningFlow _finalize 的 summary，
+                        # 而非累积切片（各步 ReAct 文本已由 assistant_tool_calls 落决策消息）
+                        final_text = event.data.get("full_response", "")
+                        final_reasoning = None
+                    else:
+                        # 最终回答 = 最后一轮（无工具调用）的 AI 文本（从 iteration_start 截取），
+                        # 含 flush 尾部与截断标记；前序各轮文本已归入各自决策消息
+                        final_text = full_response[iteration_start:]
+                        # 最终 reasoning = 最后一轮思考（前序各轮已归入各自决策消息）
+                        final_reasoning = full_reasoning[iteration_reasoning_start:] or None
                     # 发送结构化来源引用（对齐 QA sources 事件）
                     if collected_sources:
                         yield self._emit("sources", {"sources": collected_sources})
@@ -318,11 +346,19 @@ class AgentChatService:
                     yield self._emit("done", done_data)
 
                 elif event.event_type == "error":
+                    # 落库错误消息（role='assistant' + extra.error），供历史回放还原失败对话
+                    await self._save_error_message(
+                        conv, event.data.get("content", ""), extra={"error": True}
+                    )
                     yield self._emit("error", event.data)
 
                 elif event.event_type == "context_overflow":
                     logger.warning("上下文溢出，建议压缩", conversation_id=conv.id)
-                    yield self._emit("error", {"content": "对话上下文过长，请开启新会话或缩短对话历史"})
+                    overflow_msg = "对话上下文过长，请开启新会话或缩短对话历史"
+                    await self._save_error_message(
+                        conv, overflow_msg, extra={"error": True, "overflow": True}
+                    )
+                    yield self._emit("error", {"content": overflow_msg})
 
         except AgentNotFoundError:
             yield self._emit("error", {"content": "Agent 不存在"})
@@ -902,6 +938,41 @@ class AgentChatService:
                 })
 
     # ==================== 事件处理 ====================
+
+    async def _handle_plan_created(
+        self, event: AgentEvent, conv: AgentSession
+    ) -> None:
+        """处理 plan.created 事件：落库 role='plan' 消息（extra.plan 存计划清单），
+        供历史回放还原 Plan-and-Execute 计划。step 状态变化不持久化（实时靠 emit）。
+        """
+        plan = event.data
+        await self.agent_service.save_message(
+            conversation_id=conv.id,
+            role="plan",
+            content=plan.get("title") or None,
+            extra={"plan": {
+                "title": plan.get("title", ""),
+                "steps": plan.get("steps", []),
+                "step_count": plan.get("step_count", 0),
+            }},
+        )
+
+    async def _save_error_message(
+        self, conv: AgentSession, content: str, extra: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """落库错误/溢出消息（role='assistant' + extra.error），供历史回放还原失败对话。
+        失败不阻断主流程（仅 warning 日志）。
+        """
+        try:
+            text = content if content.startswith("[错误]") else f"[错误] {content}"
+            await self.agent_service.save_message(
+                conversation_id=conv.id,
+                role="assistant",
+                content=text,
+                extra=extra,
+            )
+        except Exception as e:
+            logger.warning("错误消息落库失败", conversation_id=conv.id, error=str(e))
 
     async def _handle_assistant_tool_calls(
         self,

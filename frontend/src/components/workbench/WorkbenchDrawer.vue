@@ -215,6 +215,8 @@ function roleLabel(role: AgentMessage['role']): string {
     case 'system': return 'SYSTEM'
     case 'tool': return 'TOOL'
     case 'compaction': return 'COMPACTED'
+    case 'plan': return 'PLAN'
+    case 'notice': return 'NOTICE'
   }
 }
 

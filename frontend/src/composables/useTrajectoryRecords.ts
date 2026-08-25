@@ -15,7 +15,7 @@ import type {
 } from '@/api/types'
 
 // system 行不在 messages 里（按需拉全文），由 TrajectoryList 构造伪 record 传给 inspector
-export type TrajectoryKind = 'user' | 'assistant' | 'tool' | 'compaction' | 'system'
+export type TrajectoryKind = 'user' | 'assistant' | 'tool' | 'compaction' | 'system' | 'plan' | 'notice'
 
 export interface TrajectoryRecord {
   /** 稳定身份：msg.id > tool_call_id > 'system' > seq */
@@ -172,6 +172,12 @@ export function useTrajectoryRecords(
         summary = comp?.summarized_count
           ? `已压缩 ${comp.summarized_count} 条`
           : firstLine(comp?.summary) || '上下文已压缩'
+      } else if (kind === 'plan') {
+        const plan = extra?.plan as { title?: string; steps?: string[]; step_count?: number } | undefined
+        const stepN = plan?.steps?.length ?? plan?.step_count ?? 0
+        summary = plan?.title ? `计划: ${plan.title} (${stepN}步)` : `计划 (${stepN}步)`
+      } else if (kind === 'notice') {
+        summary = firstLine(msg.content) || '系统纠偏警告'
       }
 
       result.push({

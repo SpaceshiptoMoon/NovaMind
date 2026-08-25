@@ -97,6 +97,31 @@
               <div class="insp-md"><MarkdownRenderer :content="record.msg.content || ''" /></div>
             </div>
           </template>
+
+          <!-- plan -->
+          <template v-else-if="record.kind === 'plan'">
+            <dl class="insp-overview">
+              <div class="ov-row"><dt>标题</dt><dd>{{ planTitle || '—' }}</dd></div>
+              <div class="ov-row"><dt>步数</dt><dd>{{ planStepsList.length }}</dd></div>
+            </dl>
+            <div class="insp-section">
+              <div class="insp-label">计划步骤</div>
+              <div class="plan-step-list">
+                <div v-for="(step, i) in planStepsList" :key="i" class="plan-step-row">
+                  <span class="plan-step-glyph">{{ planGlyph(i) }}</span>
+                  <span class="plan-step-text">{{ step }}</span>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <!-- notice -->
+          <template v-else-if="record.kind === 'notice'">
+            <div class="insp-section">
+              <div class="insp-label">系统纠偏警告</div>
+              <div class="insp-md"><MarkdownRenderer :content="record.msg.content || ''" /></div>
+            </div>
+          </template>
         </section>
 
         <!-- ===== System Prompt ===== -->
@@ -308,6 +333,10 @@ const tabs = computed<{ id: TabId; label: string }[]>(() => {
     if (hasPayload.value) list.push('payload')
     if (r.toolCall?.result || r.toolCall?.status === 'running') list.push('result')
     if (r.toolCall?.durationMs != null) list.push('timing')
+  } else if (r.kind === 'plan') {
+    list.push('summary')
+  } else if (r.kind === 'notice') {
+    list.push('content')
   }
   return list.map((id) => ({ id, label: TAB_LABELS[id] }))
 })
@@ -363,6 +392,24 @@ const compactionSummary = computed(() => {
   return comp?.summary || ''
 })
 
+const planTitle = computed(() => {
+  const plan = props.record?.msg.extra?.plan as { title?: string } | undefined
+  return plan?.title || ''
+})
+const planStepsList = computed(() => {
+  const plan = props.record?.msg.extra?.plan as { steps?: string[] } | undefined
+  return plan?.steps ?? []
+})
+function planGlyph(i: number): string {
+  const plan = props.record?.msg.extra?.plan as { statuses?: string[] } | undefined
+  // 历史回放无 statuses（后端不持久化中间状态），视为已完成
+  if (!plan?.statuses) return '[✓]'
+  const s = plan.statuses[i]
+  if (s === 'completed') return '[✓]'
+  if (s === 'in_progress') return '[→]'
+  return '[ ]'
+}
+
 const toolStatus = computed<ToolCallRecord['status']>(() => {
   if (props.record?.kind !== 'tool') return 'completed'
   return props.record.toolCall?.status ?? 'completed'
@@ -402,6 +449,8 @@ function kindLabel(kind: TrajectoryRecord['kind'] | 'system'): string {
     case 'tool': return 'TOOL'
     case 'compaction': return 'COMPACTED'
     case 'system': return 'SYSTEM'
+    case 'plan': return 'PLAN'
+    case 'notice': return 'NOTICE'
   }
 }
 
@@ -522,6 +571,8 @@ if (!agentStore.tools.length) {
 .inspector-kind.tool { background: rgba(20, 184, 166, 0.12); color: #0f766e; }
 .inspector-kind.system { background: rgba(245, 158, 11, 0.12); color: #b45309; }
 .inspector-kind.compaction { background: rgba(107, 114, 128, 0.12); color: #4b5563; }
+.inspector-kind.plan { background: rgba(139, 92, 246, 0.12); color: #6d28d9; }
+.inspector-kind.notice { background: rgba(245, 158, 11, 0.12); color: #b45309; }
 
 .inspector-loc {
   flex: 1;
@@ -892,5 +943,29 @@ if (!agentStore.tools.length) {
 .att-size {
   color: var(--color-text-muted);
   flex-shrink: 0;
+}
+
+/* plan steps */
+.plan-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.plan-step-row {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-card-elevated, var(--color-bg-sidebar));
+  font-size: var(--text-xs);
+}
+.plan-step-glyph {
+  flex-shrink: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--color-text-muted);
+}
+.plan-step-text {
+  color: var(--color-text-secondary);
 }
 </style>
