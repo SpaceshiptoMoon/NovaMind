@@ -1,6 +1,7 @@
 """RBAC 三表 ORM 模型测试。"""
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from novamind.core.database.base import Base
 from novamind.features.user.models.role import Role, Permission, RolePermission
 
@@ -30,5 +31,5 @@ async def test_role_code_unique(tmp_db):
     tmp_db.add(Role(id=1, code="admin", name="管理员", is_system=True))
     await tmp_db.flush()
     tmp_db.add(Role(id=2, code="admin", name="重复", is_system=False))
-    with pytest.raises(Exception):
+    with pytest.raises(IntegrityError):
         await tmp_db.flush()
