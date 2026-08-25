@@ -218,18 +218,25 @@ async def init_user_components() -> None:
 
 
 def setup_auth_port_wiring(app: FastAPI) -> None:
-    """装配 core/auth 认证端口。
+    """装配 core/auth 认证端口与 RBAC 权限端口。
 
     把 user 的 ``UserStatusResolver`` 实现注册为
     ``core/auth/dependencies.get_user_status_resolver`` 的 dependency_overrides，
     使 core/auth 的认证依赖能经端口取 DB 用户状态，无需 core 反向依赖 user。
+
+    同时把 ``PermissionService`` 注册为 ``PermissionCheckerPort`` 的默认实现，
+    供各 feature 路由守卫注入使用。
     """
     # 懒导入规避启动期循环依赖
     from novamind.core.auth.dependencies import get_user_status_resolver
     from novamind.features.user.adapters.auth_user_resolver_adapter import (
         as_user_status_resolver,
     )
+    from novamind.core.authorization.ports import PermissionCheckerPort
+    from novamind.features.user.api.dependencies import get_permission_checker
+
     app.dependency_overrides[get_user_status_resolver] = as_user_status_resolver
+    app.dependency_overrides[PermissionCheckerPort] = get_permission_checker
 
 
 def setup_user_exception_handlers(app: FastAPI) -> None:
