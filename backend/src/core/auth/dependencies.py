@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from novamind.core.auth.blacklist import is_user_blacklisted
 from novamind.core.auth.ports import UserStatusResolver
 from novamind.core.auth.token import decode_access_token
+from novamind.core.authorization.exceptions import PermissionDeniedError
 from novamind.core.database.database import get_db
 
 security = HTTPBearer()
@@ -136,7 +137,7 @@ async def get_current_user_optional(
 def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
     """管理员权限检查（仅 role_code 为 'admin' 的用户）。"""
     if current_user.get("role_code") != "admin":
-        raise HTTPException(status_code=403, detail="需要管理员权限")
+        raise PermissionDeniedError(message="需要管理员权限")
     return current_user
 
 

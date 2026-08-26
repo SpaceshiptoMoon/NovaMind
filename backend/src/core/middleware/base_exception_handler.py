@@ -219,7 +219,8 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     全局未捕获异常处理器
 
     捕获所有未被特定处理器处理的异常
-    支持业务异常（具有 code/message 属性）自动映射状态码
+    支持业务异常（具有 code/message 属性）自动映射状态码；
+    对 BaseAPIError 子类优先使用其声明的 http_status_code。
     """
     trace_id = getattr(request.state, "trace_id", "no-trace")
 
@@ -228,8 +229,10 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     error_message = getattr(exc, "message", None) or str(exc)
 
     if error_code:
-        # 业务异常：根据 code 映射 HTTP 状态码
-        status_code = get_status_code_for_error(error_code)
+        # BaseAPIError 子类优先使用类级别 http_status_code，未声明再用 error_code 映射
+        status_code = getattr(type(exc), "http_status_code", None)
+        if status_code is None:
+            status_code = get_status_code_for_error(error_code)
 
         logger.warning(
             "业务异常",
