@@ -3,13 +3,15 @@
 """
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Query, Path, UploadFile, File
+from fastapi import APIRouter, Depends, Query, Path, UploadFile, File, Request
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from novamind.core.auth import get_current_user, require_admin
+from novamind.core.auth import get_current_user, require_active_user
+from novamind.core.authorization.dependencies import require_permission
 from novamind.core.database.database import get_db
+from novamind.core.middleware.rate_limit import get_limiter, RateLimits
 from novamind.features.user.models.user import User
 from novamind.features.skill.api.dependencies import get_skill_service, update_llm_review_settings, get_llm_review_settings
 from novamind.features.skill.services.skill_marketplace_service import SkillMarketplaceService
@@ -218,7 +220,12 @@ async def list_installed(
     summary="验证 SKILL.md 格式",
     description="验证 SKILL.md 内容格式是否正确，返回解析结果",
 )
-async def validate_skill(data: SkillValidateRequest):
+@get_limiter().limit(RateLimits.DEFAULT)
+async def validate_skill(
+    request: Request,
+    data: SkillValidateRequest,
+    current_user: dict = Depends(require_active_user),
+):
     result = validate_skill_md(data.content)
     return SkillValidateResponse(
         valid=result.valid,
@@ -236,7 +243,7 @@ async def validate_skill(data: SkillValidateRequest):
     description="获取技能审查的全局设置，包括 LLM 审查开关",
 )
 async def get_admin_settings(
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_permission("skill.config")),
 ):
     return await get_llm_review_settings()
 
@@ -249,7 +256,7 @@ async def get_admin_settings(
 )
 async def update_admin_settings(
     data: SkillAdminSettingsUpdate,
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_permission("skill.config")),
 ):
     await update_llm_review_settings(data.llm_review_enabled, data.llm_review_model)
     return await get_llm_review_settings()
@@ -263,7 +270,7 @@ async def update_admin_settings(
 )
 async def list_review_models(
     admin_user_id: int = Depends(get_current_user_id),
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_permission("skill.config")),
     db: AsyncSession = Depends(get_db),
 ):
     from novamind.features.user.repository.model_config_repository import ModelConfigRepository
@@ -281,7 +288,7 @@ async def list_review_models(
 async def list_pending_reviews(
     limit: Annotated[int, Query(ge=1, le=100, description="每页数量")] = 20,
     offset: Annotated[int, Query(ge=0, description="偏移量")] = 0,
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_permission("skill.review")),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
     skills, total = await service.list_pending_review(limit, offset)
@@ -301,7 +308,7 @@ async def list_pending_reviews(
 )
 async def approve_skill(
     skill_id: Annotated[int, Path(gt=0, description="技能ID")],
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_permission("skill.review")),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
     updated = await service.approve_skill(skill_id)
@@ -317,7 +324,7 @@ async def approve_skill(
 async def reject_skill(
     skill_id: Annotated[int, Path(gt=0, description="技能ID")],
     body: SkillAdminReviewAction = None,
-    _admin: dict = Depends(require_admin),
+    _admin: dict = Depends(require_permission("skill.review")),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
     reason = body.reason if body else None

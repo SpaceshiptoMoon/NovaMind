@@ -25,7 +25,8 @@ from novamind.features.user.schemas.user_schema import (
     ResetPasswordRequest,
     ResetPasswordResponse,
 )
-from novamind.core.auth import require_admin, require_active_user
+from novamind.core.auth import require_active_user
+from novamind.core.authorization.dependencies import require_permission
 from novamind.features.user.api.dependencies import get_user_service
 from novamind.features.user.services.auth_service import AuthService
 from novamind.features.user.models.user import UserStatus
@@ -45,7 +46,7 @@ async def create_user(
     request: Request,  # 速率限制需要
     request_data: Annotated[UserCreate, Body(...)],
     user_service: Annotated[UserService, Depends(get_user_service)],
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_permission("user.manage")),
 ):
     """
     创建新用户
@@ -177,7 +178,7 @@ async def logout(
 )
 async def get_users(
     user_service: Annotated[UserService, Depends(get_user_service)],
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_permission("user.manage")),
     skip: Annotated[int, Query(ge=0, description="跳过的记录数")] = 0,
     limit: Annotated[int, Query(ge=1, le=100, description="返回的最大记录数")] = 20,
 ):
@@ -291,7 +292,7 @@ async def update_user(
 async def delete_user(
     user_id: Annotated[int, Path(gt=0, description="用户ID")],
     user_service: Annotated[UserService, Depends(get_user_service)],
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_permission("user.manage")),
 ):
     """
     软删除用户账户
@@ -327,7 +328,7 @@ async def delete_user(
 async def deactivate_user(
     user_id: Annotated[int, Path(gt=0, description="用户ID")],
     user_service: Annotated[UserService, Depends(get_user_service)],
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_permission("user.manage")),
 ):
     """
     停用/激活用户账户
@@ -367,7 +368,7 @@ async def deactivate_user(
 async def logout_all_sessions(
     user_id: Annotated[int, Path(gt=0, description="用户ID")],
     user_service: Annotated[UserService, Depends(get_user_service)],
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_permission("user.manage")),
 ):
     """
     强制撤销用户所有会话（踢出所有设备）
@@ -399,7 +400,7 @@ async def logout_all_sessions(
 async def admin_reset_password(
     user_id: Annotated[int, Path(gt=0, description="用户ID")],
     user_service: Annotated[UserService, Depends(get_user_service)],
-    current_user: dict = Depends(require_admin),
+    current_user: dict = Depends(require_permission("user.manage")),
 ):
     """管理员重置用户密码，返回临时密码"""
     if user_id == current_user.get("id"):
