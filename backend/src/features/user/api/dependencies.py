@@ -8,11 +8,26 @@ from novamind.features.user.repository import UserRepository
 from novamind.core.database.database import get_db
 from novamind.core.authorization.ports import PermissionCheckerPort
 from novamind.features.user.services.permission_service import PermissionService
+from novamind.features.user.services.role_service import RoleService
 from novamind.shared.storage.client_factory import ClientFactory
 
 async def get_user_service(db: AsyncSession = Depends(get_db)):
     user_repository = UserRepository(db)
     return UserService(user_repository)
+
+
+async def get_role_service(db: AsyncSession = Depends(get_db)) -> RoleService:
+    """获取角色管理服务（RBAC 路由装配点）。
+
+    注入 ``PermissionCheckerPort`` 实现，便于 ``assign_user_role`` 后失效用户权限缓存。
+    Redis 客户端未装配时降级为 ``redis_client=None``。
+    """
+    try:
+        redis_client = await ClientFactory.get_redis_client()
+    except Exception:
+        redis_client = None
+    permission_checker = PermissionService(db, redis_client)
+    return RoleService(db, permission_checker)
 
 
 async def get_model_config_service(db: AsyncSession = Depends(get_db)) -> ModelConfigPort:

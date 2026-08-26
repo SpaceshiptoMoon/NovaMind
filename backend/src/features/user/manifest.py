@@ -18,6 +18,7 @@ async def _init(app) -> None:
 
 def manifest() -> FeatureManifest:
     from novamind.features.user.api.user_routes import router as user_router
+    from novamind.features.user.api.role_routes import router as role_router
     from novamind.features.user.api.model_config_routes import router as model_config_router
     from novamind.features.user.api.search_config_routes import router as search_config_router
 
@@ -25,6 +26,7 @@ def manifest() -> FeatureManifest:
         name="user",
         routers=[
             RouterSpec("user", user_router, f"{API_V1_PREFIX}/user", "用户管理"),
+            RouterSpec("role", role_router, f"{API_V1_PREFIX}/user", "角色管理"),
             RouterSpec("model_config", model_config_router, f"{API_V1_PREFIX}/user", "模型配置"),
             RouterSpec("search_config", search_config_router, f"{API_V1_PREFIX}/user", "搜索配置"),
         ],

@@ -52,6 +52,27 @@ class UserOperationError(UserError):
         super().__init__(message=message, code="USER_OPERATION_FAILED")
 
 
+# ========== 角色管理相关异常 ==========
+
+class RoleError(UserError):
+    """角色管理基础异常"""
+
+    def __init__(self, message: str, code: str = "ROLE_ERROR"):
+        super().__init__(message=message, code=code)
+
+
+class RoleNotFoundError(RoleError):
+    """角色不存在错误"""
+    _serializable_attrs: ClassVar[List[str]] = ["role_id"]
+    http_status_code: ClassVar[int] = 404
+
+    def __init__(self, role_id: Optional[int] = None, message: Optional[str] = None):
+        if message is None:
+            message = f"角色 {role_id} 不存在" if role_id else "角色不存在"
+        super().__init__(message=message, code="ROLE_NOT_FOUND")
+        self.role_id = role_id
+
+
 class AuthenticationError(UserError):
     """认证失败错误"""
 
@@ -208,6 +229,9 @@ __all__ = [
     "UserAlreadyExistsError",
     "UserCreationError",
     "UserOperationError",
+    # 角色管理异常
+    "RoleError",
+    "RoleNotFoundError",
     "AuthenticationError",
     "PermissionDeniedError",
     "InvalidCredentialsError",
