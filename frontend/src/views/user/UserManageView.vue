@@ -4,7 +4,7 @@
       <template #header>
         <div class="card-header">
           <span>用户管理</span>
-          <el-button type="primary" @click="showCreateDialog">
+          <el-button type="primary" @click="showCreateDialog" v-if="permStore.hasPermission('user.write')">
             <el-icon><Plus /></el-icon>
             新建用户
           </el-button>
@@ -35,7 +35,7 @@
             {{ row.phone || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="角色" width="100">
+        <el-table-column label="角色" width="120">
           <template #default="{ row }">
             <el-tag :type="row.is_admin ? 'danger' : 'info'" size="small">
               {{ row.is_admin ? '管理员' : '用户' }}
@@ -54,12 +54,12 @@
             {{ formatDate(row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="260" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="handleViewDetail(row)">
               查看
             </el-button>
-            <el-button type="primary" link size="small" @click="showEditDialog(row)">
+            <el-button type="primary" link size="small" @click="showEditDialog(row)" v-if="permStore.hasPermission('user.write')">
               编辑
             </el-button>
             <el-button
@@ -67,13 +67,14 @@
               link
               size="small"
               @click="handleToggleStatus(row)"
+              v-if="permStore.hasPermission('user.write')"
             >
               {{ row.status === 1 ? '停用' : '启用' }}
             </el-button>
-            <el-button type="info" link size="small" @click="handleForceLogout(row)">
+            <el-button type="info" link size="small" @click="handleForceLogout(row)" v-if="permStore.hasPermission('user.write')">
               下线
             </el-button>
-            <el-button type="danger" link size="small" @click="showResetPasswordDialog(row)">
+            <el-button type="danger" link size="small" @click="showResetPasswordDialog(row)" v-if="permStore.hasPermission('user.write')">
               重置密码
             </el-button>
             <el-button
@@ -82,6 +83,7 @@
               link
               size="small"
               @click="handleDelete(row)"
+              v-if="permStore.hasPermission('user.delete')"
             >
               删除
             </el-button>
@@ -213,10 +215,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Loading } from '@element-plus/icons-vue'
 import { userApi } from '@/api/user'
 import { useUserStore } from '@/stores/user'
+import { usePermissionStore } from '@/stores/permission'
 import type { User } from '@/api/types'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const userStore = useUserStore()
+const permStore = usePermissionStore()
 
 const loading = ref(false)
 const submitLoading = ref(false)
@@ -228,8 +232,8 @@ const statusFilter = ref<number | ''>('')
 const currentPage = ref(1)
 const pageSize = 10
 
-// 当前用户是管理员
-const canDeleteAdmin = computed(() => userStore.isAdmin)
+// 当前用户是管理员 - 改用权限判断
+const canDeleteAdmin = computed(() => permStore.hasPermission('user.delete'))
 
 // 搜索 + 状态筛选后的用户列表
 const filteredUsers = computed(() => {

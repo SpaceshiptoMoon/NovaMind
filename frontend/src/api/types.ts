@@ -62,6 +62,52 @@ export interface UpdateUserRequest {
   status?: number
 }
 
+// ===================== 角色权限相关 =====================
+
+export interface Permission {
+  id: number
+  code: string
+  name: string
+  module: string
+  description: string | null
+}
+
+export interface Role {
+  id: number
+  code: string
+  name: string
+  description: string | null
+  is_system: boolean
+  permissions: Permission[]
+}
+
+export interface CreateRoleRequest {
+  code: string
+  name: string
+  description?: string
+  permission_codes: string[]
+}
+
+export interface UpdateRoleRequest {
+  name?: string
+  description?: string
+  permission_codes?: string[]
+}
+
+export interface UserRoleAssignRequest {
+  role_id: number
+}
+
+export interface RoleListResponse {
+  items: Role[]
+  total: number
+}
+
+export interface PermissionListResponse {
+  items: Permission[]
+  total: number
+}
+
 // ===================== 模型配置相关 =====================
 
 export interface ModelConfig {

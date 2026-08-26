@@ -279,15 +279,6 @@ export async function createSSEStream(
   let currentEventType = ''
   let currentData = ''
 
-  let yieldScheduled = false
-  function yieldToMain() {
-    if (yieldScheduled) return
-    yieldScheduled = true
-    queueMicrotask(() => {
-      yieldScheduled = false
-    })
-  }
-
   function flushEvent(): boolean {
     if (!currentData) {
       currentEventType = ''

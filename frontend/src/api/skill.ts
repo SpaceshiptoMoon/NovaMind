@@ -2,7 +2,6 @@ import { request } from './index'
 import instance from './index'
 import type {
   SkillDefinition,
-  SkillListItem,
   SkillMarketplaceListResponse,
   SkillReviewItem,
   SkillReviewListResponse,

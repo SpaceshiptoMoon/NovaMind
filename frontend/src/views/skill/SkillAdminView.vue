@@ -8,7 +8,7 @@
     </PageHeader>
 
     <!-- 审查设置 -->
-    <div class="settings-card">
+    <div class="settings-card" v-permission="'skill.config'">
       <h3 class="section-title">自动审查设置</h3>
       <div class="setting-row">
         <span>LLM 安全审查</span>
@@ -32,7 +32,7 @@
 
     <!-- 待审核列表 -->
     <h3 class="section-title section-spacing">待审核技能</h3>
-    <div v-loading="skillStore.marketplaceLoading" class="review-list">
+    <div v-loading="skillStore.marketplaceLoading" class="review-list" v-permission="'skill.config'">
       <div v-for="skill in skillStore.pendingReviews" :key="skill.id" class="review-card">
         <div class="review-main">
           <div class="review-icon">{{ skill.icon || '⚡' }}</div>
@@ -74,10 +74,12 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { useSkillStore } from '@/stores/skill'
+import { usePermissionStore } from '@/stores/permission'
 import PageHeader from '@/components/common/PageHeader.vue'
 
 const router = useRouter()
 const skillStore = useSkillStore()
+const permStore = usePermissionStore()
 
 const llmReviewEnabled = ref(false)
 const llmReviewModel = ref<string | null>(null)
