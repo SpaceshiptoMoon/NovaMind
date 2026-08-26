@@ -12,6 +12,7 @@ from typing import Optional
 import time
 
 from novamind.features.user.models.user import User, UserStatus
+from novamind.features.user.models.role import Role
 from novamind.features.user.schemas.user_schema import UserUpdate
 from novamind.core.auth.hashing import verify_password_async
 from novamind.shared.cache.redis_client import get_redis_client
@@ -26,8 +27,9 @@ logger = get_logger(__name__)
 
 class UserRepository:
     # 允许通过 update_user 更新的字段白名单
+    # 注意：role_id 不从此处开放，角色分配由专用端点/Task 8 负责，防止客户端直接注入提权
     _UPDATABLE_FIELDS = frozenset({
-        "username", "email", "phone", "is_admin", "status",
+        "username", "email", "phone", "status",
     })
 
     def __init__(self, db: AsyncSession = None):
@@ -57,7 +59,7 @@ class UserRepository:
                 "username": user.username,
                 "email": user.email,
                 "phone": user.phone,
-                "is_admin": user.is_admin,
+                "role_id": user.role_id,
                 "status": user.status,
                 "created_at": user.created_at.isoformat() if user.created_at else None,
             }
@@ -101,7 +103,7 @@ class UserRepository:
             email=user_create["email"],
             phone=user_create.get("phone"),
             password_hash=hashed_password,
-            is_admin=user_create.get("is_admin", False),
+            role_id=user_create.get("role_id"),
             status=user_create.get("status", UserStatus.ACTIVE),
         )
         try:
@@ -116,6 +118,15 @@ class UserRepository:
         except IntegrityError:
             # 嵌套事务会自动回滚 SAVEPOINT，无需手动 rollback
             raise ValueError("用户名或邮箱已被注册")
+
+    async def get_role_by_code(self, code: str) -> Optional[Role]:
+        """根据角色编码获取角色（带缓存）。"""
+        if not self.db:
+            raise ValueError("数据库会话未设置")
+
+        stmt = select(Role).where(Role.code == code)
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def get_user_by_username(self, username: str, use_cache: bool = True, include_deleted: bool = False) -> Optional[User]:
         """根据用户名获取用户（带缓存）

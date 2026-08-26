@@ -34,6 +34,7 @@ class TokenClaims(BaseModel):
     user_id: Optional[int] = None
     username: Optional[str] = None
     email: Optional[str] = None
+    role_code: Optional[str] = None
     is_admin: bool = False
     status: int = 1
     jti: Optional[str] = None
@@ -95,7 +96,8 @@ def decode_access_token(token: str) -> Optional[TokenClaims]:
         user_id=payload.get("user_id"),
         username=username,
         email=payload.get("email"),
-        is_admin=payload.get("is_admin", payload.get("role") == "admin"),  # 兼容旧 Token
+        role_code=payload.get("role_code"),
+        is_admin=payload.get("is_admin", payload.get("role_code") == "admin"),  # 兼容旧 Token
         status=payload.get("status", 1),
         jti=payload.get("jti"),
         iat=payload.get("iat"),

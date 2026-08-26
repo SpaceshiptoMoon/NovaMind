@@ -117,7 +117,11 @@ class UserUpdate(BaseModel):
     )
     is_admin: Optional[bool] = Field(
         None,
-        description="是否管理员（仅限超级管理员通过专用接口修改，普通更新不传此字段）",
+        description="是否管理员（已弃用，请使用 role_code；保留仅用于兼容旧客户端）",
+    )
+    role_code: Optional[str] = Field(
+        None,
+        description="角色编码（仅限超级管理员通过专用接口修改，普通更新不传此字段；由 Task 8 专用端点处理）",
     )
     status: Optional[int] = Field(None, description="用户状态，0为禁用，1为启用，2为封禁，3为已删除", ge=0, le=3)
 
@@ -274,13 +278,15 @@ class TokenData(BaseModel):
     - user_id: 用户ID
     - username: 用户名
     - email: 邮箱
-    - role: 角色
+    - role_code: 角色编码
+    - is_admin: 是否管理员（从 role_code 派生）
     - status: 状态
     - jti: Token 唯一标识符
     """
     user_id: Optional[int] = Field(None, description="用户ID")
     username: Optional[str] = Field(None, description="用户名")
     email: Optional[str] = Field(None, description="邮箱")
+    role_code: Optional[str] = Field(None, description="角色编码")
     is_admin: Optional[bool] = Field(default=False, description="是否管理员")
     status: Optional[int] = Field(default=1, description="状态，1为活跃")
     jti: Optional[str] = Field(None, description="Token 唯一标识符")

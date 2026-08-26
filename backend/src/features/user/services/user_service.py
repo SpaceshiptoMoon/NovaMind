@@ -38,7 +38,7 @@ class UserService:
         password: str,
         phone: Optional[str] = None,
         status: Optional[int] = 1,
-        is_admin: bool = False,
+        role_code: str = "viewer",
     ) -> Optional[UserModel]:
         """
         创建新用户
@@ -48,7 +48,7 @@ class UserService:
             password: 密码
             phone: 电话号码（可选）
             status: 用户状态（可选，默认为1）
-            is_admin: 是否管理员（可选，默认为 False）
+            role_code: 角色编码（可选，默认为 viewer）
 
         Returns:
             User: 创建成功的用户对象，如果创建失败则抛出异常
@@ -73,6 +73,11 @@ class UserService:
                 if existing_phone:
                     raise UserAlreadyExistsError(f"手机号 {phone} 已被注册", field="phone")
 
+            # 根据角色编码查询角色，绑定 role_id
+            role = await self.user_repository.get_role_by_code(role_code)
+            if not role:
+                raise UserCreationError(f"角色 {role_code} 不存在")
+
             # 创建新用户（密码哈希在 Service 层处理）
             from novamind.core.auth.hashing import get_password_hash_async
             user_create = {
@@ -81,11 +86,11 @@ class UserService:
                 "password": await get_password_hash_async(password),
                 "phone": phone,
                 "status": status,
-                "is_admin": is_admin,
+                "role_id": role.id,
             }
             user = await self.user_repository.create_user(user_create)
             # 记录用户创建成功（关键业务事件）
-            self.logger.info("用户创建成功", user_id=user.id)
+            self.logger.info("用户创建成功", user_id=user.id, role_code=role_code)
             return user
         except UserAlreadyExistsError:
             # 用户已存在，直接重新抛出异常
@@ -93,6 +98,36 @@ class UserService:
         except Exception as e:
             self.logger.error("创建用户失败", error=str(e))
             raise UserCreationError(f"创建用户失败: {str(e)}")
+
+    async def register_user(
+        self,
+        username: str,
+        email: str,
+        password: str,
+        phone: Optional[str] = None,
+        status: Optional[int] = 1,
+    ) -> Optional[UserModel]:
+        """
+        用户自注册（强制 viewer 角色）
+
+        Args:
+            username: 用户名
+            email: 邮箱
+            password: 密码
+            phone: 电话号码（可选）
+            status: 用户状态（可选，默认为1）
+
+        Returns:
+            User: 创建成功的用户对象
+        """
+        return await self.create_user(
+            username=username,
+            email=email,
+            password=password,
+            phone=phone,
+            status=status,
+            role_code="viewer",
+        )
 
     async def get_user_by_id(self, user_id: int) -> Optional[UserModel]:
         """
@@ -198,11 +233,12 @@ class UserService:
                 config = get_config()
 
                 # 创建 access token 和 refresh token 对
+                role_code = user.role.code if user.role else "viewer"
                 access_token, refresh_token = await AuthService.create_token_pair(
                     user_id=user.id,
                     username=user.username,
                     email=user.email,
-                    is_admin=user.is_admin,
+                    role_code=role_code,
                     status=user.status,
                 )
 
@@ -223,7 +259,8 @@ class UserService:
                         "id": user.id,
                         "username": user.username,
                         "email": user.email,
-                        "is_admin": user.is_admin,
+                        "role_code": role_code,
+                        "is_admin": role_code == "admin",
                     },
                 }
 
@@ -250,10 +287,12 @@ class UserService:
         async def _get_user_info(uid: int):
             user = await self.user_repository.get_user_by_id(uid, use_cache=False)
             if user:
+                role_code = user.role.code if user.role else None
                 return {
                     "id": user.id,
                     "email": user.email,
-                    "is_admin": user.is_admin,
+                    "role_code": role_code,
+                    "is_admin": role_code == "admin",
                     "status": user.status,
                 }
             return None
@@ -317,6 +356,12 @@ class UserService:
             existing = await self.user_repository.get_user_by_phone(update_data["phone"], include_deleted=True)
             if existing and existing.id != user_id:
                 raise UserAlreadyExistsError(f"手机号 {update_data['phone']} 已被注册", field="phone")
+
+        # 安全规则：普通 update_user 接口不允许修改角色（role_code / is_admin 均不接受）
+        # 角色分配由 Task 8 专用 PUT /users/{id}/role 端点经 repository 直写，不经此处 schema
+        if "role_code" in update_data or "is_admin" in update_data:
+            from novamind.features.user.exceptions import PermissionDeniedError
+            raise PermissionDeniedError(message="角色字段请使用专用角色分配端点修改")
 
         # 密码哈希在 Service 层处理（不在 Repository 层）
         if "password" in update_data and update_data["password"]:

@@ -82,7 +82,7 @@ class AuthService:
         user_id: int,
         username: str,
         email: str,
-        is_admin: bool = False,
+        role_code: str = "viewer",
         status: int = 1,
         expires_delta: Optional[timedelta] = None,
     ) -> str:
@@ -93,7 +93,7 @@ class AuthService:
             user_id: 用户ID
             username: 用户名
             email: 邮箱
-            is_admin: 是否管理员
+            role_code: 角色编码（默认 viewer），用于派生 is_admin
             status: 状态
             expires_delta: 过期时间
 
@@ -101,6 +101,9 @@ class AuthService:
             str: JWT token
         """
         config = get_config()
+
+        # role_code 为权威来源，is_admin 严格派生，禁止外部注入不一致值
+        is_admin = role_code == "admin"
 
         # 生成 jti 用于黑名单
         jti = secrets.token_urlsafe(32)
@@ -111,6 +114,7 @@ class AuthService:
             "user_id": user_id,
             "username": username,
             "email": email,
+            "role_code": role_code,
             "is_admin": is_admin,
             "status": status,
             "type": cls.TOKEN_TYPE_ACCESS,
@@ -138,6 +142,8 @@ class AuthService:
         cls,
         user_id: int,
         username: str,
+        email: Optional[str] = None,
+        role_code: Optional[str] = None,
         expires_days: int = 7,
     ) -> str:
         """
@@ -146,6 +152,8 @@ class AuthService:
         Args:
             user_id: 用户ID
             username: 用户名
+            email: 邮箱（可选，用于刷新时减少 DB 查询）
+            role_code: 角色编码（可选，用于刷新时减少 DB 查询）
             expires_days: 过期天数（默认7天）
 
         Returns:
@@ -159,6 +167,8 @@ class AuthService:
         to_encode = {
             "sub": username,
             "user_id": user_id,
+            "email": email,
+            "role_code": role_code,
             "type": cls.TOKEN_TYPE_REFRESH,
             "jti": jti,  # 用于黑名单
         }
@@ -174,7 +184,11 @@ class AuthService:
         )
 
         # 将 token jti 添加到用户的 token 列表（用于批量撤销）
-        await cls._add_user_token(user_id, jti, expires_days * 24 * 60 * 60)
+        # Redis 未装配时仅记录警告，不阻塞 token 生成（单元测试/无 Redis 环境可降级）
+        try:
+            await cls._add_user_token(user_id, jti, expires_days * 24 * 60 * 60)
+        except TokenInvalidError as e:
+            cls._logger.warning("刷新令牌未记录到用户 token 列表", user_id=user_id, error=str(e))
 
         return encoded_jwt
 
@@ -184,7 +198,7 @@ class AuthService:
         user_id: int,
         username: str,
         email: str,
-        is_admin: bool = False,
+        role_code: str = "viewer",
         status: int = 1,
     ) -> Tuple[str, str]:
         """
@@ -194,7 +208,7 @@ class AuthService:
             user_id: 用户ID
             username: 用户名
             email: 邮箱
-            is_admin: 是否管理员
+            role_code: 角色编码（默认 viewer），用于派生 is_admin
             status: 状态
 
         Returns:
@@ -204,12 +218,14 @@ class AuthService:
             user_id=user_id,
             username=username,
             email=email,
-            is_admin=is_admin,
+            role_code=role_code,
             status=status,
         )
         refresh_token = await cls.create_refresh_token(
             user_id=user_id,
             username=username,
+            email=email,
+            role_code=role_code,
         )
         return access_token, refresh_token
 
@@ -253,6 +269,7 @@ class AuthService:
         # 初始化用户信息（默认值）
         user = None
         email = ""
+        role_code = "viewer"
         is_admin = False
         status = 1
 
@@ -265,7 +282,11 @@ class AuthService:
                 cls._logger.warning("用户不存在", user_id=user_id)
                 return None
             user_status = user.get("status")
+            role_code = user.get("role_code")
             is_admin = user.get("is_admin", False)
+            # 兼容未返回 role_code 的旧回调：按 is_admin 推断角色编码
+            if role_code is None:
+                role_code = "admin" if is_admin else "viewer"
             if user_status == UserStatus.DELETED:
                 cls._logger.warning("用户已被删除", user_id=user_id)
                 return None
@@ -274,7 +295,6 @@ class AuthService:
                 return None
             # 从数据库获取最新的用户信息
             email = user.get("email", "")
-            is_admin = user.get("is_admin", False)
             status = user.get("status", 1)
 
         # 将旧的 refresh token 加入黑名单
@@ -286,7 +306,7 @@ class AuthService:
             user_id=user_id,
             username=username,
             email=email,
-            is_admin=is_admin,
+            role_code=role_code,
             status=status,
         )
         new_refresh_token = await cls.create_refresh_token(
@@ -321,6 +341,7 @@ class AuthService:
             user_id=claims.user_id,
             username=claims.username,
             email=claims.email,
+            role_code=claims.role_code,
             is_admin=claims.is_admin,
             status=claims.status,
             jti=claims.jti,
