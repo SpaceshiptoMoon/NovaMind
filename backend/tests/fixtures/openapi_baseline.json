@@ -16151,6 +16151,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "验证 SKILL.md 格式",
         "tags": [
           "技能广场"

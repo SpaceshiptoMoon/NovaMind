@@ -64,8 +64,8 @@ async def get_current_user_id(current_user: dict = Depends(get_current_user)) ->
 
 
 def _is_admin(current_user: dict) -> bool:
-    """从当前用户信息中提取管理员标识"""
-    return current_user.get("is_admin", False)
+    """从当前用户信息中提取管理员标识（role_code 为权威来源）"""
+    return current_user.get("role_code") == "admin"
 
 
 # ==================== Agent 管理 ====================
