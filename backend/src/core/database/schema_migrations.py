@@ -12,6 +12,11 @@ from __future__ import annotations
 
 SCHEMA_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     (
+        "users",
+        "role_id",
+        "ALTER TABLE users ADD COLUMN role_id BIGINT NULL COMMENT '关联角色ID，替代 is_admin'",
+    ),
+    (
         "qa_session_configs",
         "kb_bindings",
         "ALTER TABLE qa_session_configs ADD COLUMN kb_bindings JSON NULL",
