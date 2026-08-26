@@ -1,8 +1,9 @@
 import type { Router } from 'vue-router'
 import { tokenManager } from '@/api'
+import { usePermissionStore } from '@/stores/permission'
 
 export function setupRouterGuards(router: Router) {
-  router.beforeEach((to, _from) => {
+  router.beforeEach(async (to, _from) => {
     const title = to.meta.title
     document.title = title ? `${title} - NovaMind` : 'NovaMind'
 
@@ -37,6 +38,13 @@ export function setupRouterGuards(router: Router) {
       } else {
         return { path: '/login', query: { redirect: to.fullPath } }
       }
+    }
+
+    const requiresPermission = to.meta.requiresPermission as string | string[] | undefined
+    if (requiresPermission) {
+      const permStore = usePermissionStore()
+      if (!permStore.loaded) await permStore.fetchPermissions()
+      if (!permStore.hasPermission(requiresPermission)) return { path: '/403' }
     }
 
     return true

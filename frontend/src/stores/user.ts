@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { useRouter } from 'vue-router'
 import { request, tokenManager } from '@/api'
 import type { User, LoginResponse } from '@/api/types'
+import { usePermissionStore } from '@/stores/permission'
 
 interface JwtPayload {
   user_id: number
@@ -45,7 +46,7 @@ export const useUserStore = defineStore('user', () => {
     const token = tokenManager.getToken()
     return !!token && !isTokenExpired(token)
   })
-  const isAdmin = computed(() => user.value?.is_admin ?? false)
+  const isAdmin = computed(() => usePermissionStore().isAdmin)
   const username = computed(() => user.value?.username ?? '')
 
   function setToken(accessToken: string, refresh?: string) {
@@ -59,6 +60,7 @@ export const useUserStore = defineStore('user', () => {
     user.value = null
     tokenManager.clearToken()
     localStorage.removeItem('user')
+    usePermissionStore().clear()
   }
 
   async function login(uname: string, password: string) {
@@ -70,6 +72,8 @@ export const useUserStore = defineStore('user', () => {
       })
       setToken(data.access_token, data.refresh_token)
       await fetchProfile()
+      const permStore = usePermissionStore()
+      await permStore.fetchPermissions()
 
       // 检查是否需要强制修改密码
       if (data.must_change_password) {

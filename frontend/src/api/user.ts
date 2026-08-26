@@ -5,6 +5,7 @@ import type {
   CreateUserRequest,
   UpdateUserRequest,
   User,
+  MyPermissionsResponse,
   ModelConfig,
   ModelConfigListResponse,
   AvailableModelsResponse,
@@ -36,6 +37,9 @@ export const userApi = {
   },
 
   // 用户管理
+  getMyPermissions() {
+    return request.get<MyPermissionsResponse>(`${BASE_URL}/me/permissions`)
+  },
   getUsers(params?: { skip?: number; limit?: number }) {
     return request.get<User[]>(BASE_URL, params)
   },
