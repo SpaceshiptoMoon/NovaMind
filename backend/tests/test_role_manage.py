@@ -9,9 +9,8 @@ from novamind.features.user.exceptions import UserNotFoundError
 
 @pytest.mark.asyncio
 async def test_create_role_with_permissions(tmp_db):
-    from novamind.features.user.models.role import Permission, RolePermission
+    from novamind.features.user.models.role import Permission
     from novamind.core.authorization.permission_codes import SystemPermission
-    from sqlalchemy import select
     # 预置权限项（SQLite 下 BigInteger 主键不会自增，显式指定 id）
     for idx, code in enumerate(SystemPermission.ALL, start=1):
         tmp_db.add(Permission(id=idx, code=code, name=code, module="x"))

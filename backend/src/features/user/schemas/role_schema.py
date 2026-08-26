@@ -34,3 +34,7 @@ class RoleResponse(RoleBase):
     is_system: bool
     permissions: List[PermissionResponse] = Field(default_factory=list)
     model_config = ConfigDict(from_attributes=True)
+
+
+class UserRoleAssignRequest(BaseModel):
+    role_id: int = Field(..., gt=0, description="目标角色ID")
