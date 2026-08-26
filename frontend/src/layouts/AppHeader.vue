@@ -46,11 +46,18 @@
                 模型配置
               </el-dropdown-item>
               <el-dropdown-item
-                v-if="userStore.isAdmin"
+                v-if="permStore.hasPermission('user.read')"
                 command="admin/users"
               >
                 <el-icon><User /></el-icon>
                 用户管理
+              </el-dropdown-item>
+              <el-dropdown-item
+                v-if="permStore.hasPermission('role.manage')"
+                command="admin/roles"
+              >
+                <el-icon><UserFilled /></el-icon>
+                角色管理
               </el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -128,8 +135,10 @@ import {
   SwitchButton,
   Cpu,
   Bell,
+  UserFilled,
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { usePermissionStore } from '@/stores/permission'
 import { notificationApi } from '@/api/notification'
 import type { Notification } from '@/api/types'
 import UnicornIcon from '@/components/common/UnicornIcon.vue'
@@ -138,6 +147,7 @@ import NavIcon from '@/components/common/NavIcon.vue'
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+const permStore = usePermissionStore()
 
 // ==================== 通知相关 ====================
 const unreadCount = ref(0)

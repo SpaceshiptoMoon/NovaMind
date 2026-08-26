@@ -1,11 +1,12 @@
 <template>
   <div class="skill-marketplace">
     <PageHeader title="技能广场">
-      <el-button v-if="userStore.user?.is_admin" @click="router.push('/home/workspace/skills/admin')">
+      <el-button v-if="permStore.hasPermission('skill.config')" @click="router.push('/home/workspace/skills/admin')">
         <el-icon><Setting /></el-icon>
         审核管理
       </el-button>
       <el-upload
+        v-if="permStore.hasPermission('skill.config')"
         :show-file-list="false"
         :before-upload="handleUpload"
         accept=".zip"
@@ -128,11 +129,13 @@ import { ElMessage } from 'element-plus'
 import { Upload, Search, Download, Star, Setting, MagicStick } from '@element-plus/icons-vue'
 import { useSkillStore } from '@/stores/skill'
 import { useUserStore } from '@/stores/user'
+import { usePermissionStore } from '@/stores/permission'
 import PageHeader from '@/components/common/PageHeader.vue'
 
 const router = useRouter()
 const skillStore = useSkillStore()
 const userStore = useUserStore()
+const permStore = usePermissionStore()
 
 const activeTab = ref<'marketplace' | 'mine'>('marketplace')
 const searchKeyword = ref('')

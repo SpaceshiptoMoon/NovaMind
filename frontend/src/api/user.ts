@@ -20,6 +20,12 @@ import type {
   UpdateSearchEngineConfigRequest,
   SearchEngineTestRequest,
   SearchEngineTestResponse,
+  Role,
+  CreateRoleRequest,
+  UpdateRoleRequest,
+  UserRoleAssignRequest,
+  RoleListResponse,
+  PermissionListResponse,
 } from './types'
 
 const BASE_URL = '/user/users'
@@ -136,5 +142,28 @@ export const userApi = {
       token,
       new_password: newPassword,
     })
+  },
+
+  // 角色管理
+  getRoles() {
+    return request.get<RoleListResponse>('/user/roles')
+  },
+  getRole(roleId: number) {
+    return request.get<Role>(`/user/roles/${roleId}`)
+  },
+  createRole(data: CreateRoleRequest) {
+    return request.post<Role>('/user/roles', data)
+  },
+  updateRole(roleId: number, data: UpdateRoleRequest) {
+    return request.put<Role>(`/user/roles/${roleId}`, data)
+  },
+  deleteRole(roleId: number) {
+    return request.delete<{ message: string }>(`/user/roles/${roleId}`)
+  },
+  getPermissions() {
+    return request.get<PermissionListResponse>('/user/permissions')
+  },
+  assignUserRole(userId: number, data: UserRoleAssignRequest) {
+    return request.put<{ message: string }>(`/user/users/${userId}/role`, data)
   },
 }

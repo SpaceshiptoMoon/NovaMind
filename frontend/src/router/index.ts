@@ -95,7 +95,13 @@ const router = createRouter({
           path: 'admin/users',
           name: 'UserManage',
           component: () => import('@/views/user/UserManageView.vue'),
-          meta: { title: '用户管理', requiresAdmin: true },
+          meta: { title: '用户管理', requiresPermission: 'user.read' },
+        },
+        {
+          path: 'admin/roles',
+          name: 'RoleManage',
+          component: () => import('@/views/user/RoleManageView.vue'),
+          meta: { title: '角色管理', requiresPermission: 'role.manage' },
         },
         {
           path: 'spaces',
@@ -250,7 +256,7 @@ const router = createRouter({
               path: 'skills/admin',
               name: 'WorkspaceSkillAdmin',
               component: () => import('@/views/skill/SkillAdminView.vue'),
-              meta: { title: '技能审核', requiresAdmin: true },
+              meta: { title: '技能审核', requiresPermission: 'skill.config' },
             },
             {
               path: 'skills/:skillId',
