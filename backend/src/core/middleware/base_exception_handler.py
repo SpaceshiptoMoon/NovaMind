@@ -229,8 +229,9 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     error_message = getattr(exc, "message", None) or str(exc)
 
     if error_code:
-        # BaseAPIError 子类优先使用类级别 http_status_code，未声明再用 error_code 映射
-        status_code = getattr(type(exc), "http_status_code", None)
+        # 仅当异常类自身显式声明 http_status_code 时才优先使用；
+        # 不继承 BaseAPIError 默认 500，避免覆盖 error_code 映射。
+        status_code = exc.__class__.__dict__.get("http_status_code")
         if status_code is None:
             status_code = get_status_code_for_error(error_code)
 
