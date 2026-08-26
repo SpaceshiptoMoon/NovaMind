@@ -3,6 +3,7 @@ from typing import Optional
 
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from novamind.features.user.models.role import Role, Permission, RolePermission
 
@@ -20,7 +21,7 @@ class RoleRepository:
         return result.scalar_one_or_none()
 
     async def list_roles(self) -> list[Role]:
-        stmt = select(Role).order_by(Role.id)
+        stmt = select(Role).order_by(Role.id).options(selectinload(Role.permissions))
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
@@ -68,6 +69,17 @@ class RoleRepository:
         return True
 
     async def set_role_permissions(self, role_id: int, permission_codes: list[str]) -> None:
+        if permission_codes:
+            # 校验所有 code 必须存在，避免静默遗漏
+            stmt = select(Permission).where(Permission.code.in_(permission_codes))
+            result = await self.db.execute(stmt)
+            perms = result.scalars().all()
+            found_codes = {p.code for p in perms}
+            missing = [code for code in permission_codes if code not in found_codes]
+            if missing:
+                from novamind.features.user.exceptions import RoleError
+                raise RoleError(f"权限码不存在: {', '.join(missing)}", code="PERMISSION_CODE_NOT_FOUND")
+
         # 先删除旧映射
         async with self.db.begin_nested():
             await self.db.execute(
@@ -76,9 +88,6 @@ class RoleRepository:
             await self.db.flush()
 
             if permission_codes:
-                stmt = select(Permission).where(Permission.code.in_(permission_codes))
-                result = await self.db.execute(stmt)
-                perms = result.scalars().all()
                 for perm in perms:
                     self.db.add(RolePermission(role_id=role_id, permission_id=perm.id))
                 await self.db.flush()

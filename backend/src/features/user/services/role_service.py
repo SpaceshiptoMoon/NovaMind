@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.authorization.ports import PermissionCheckerPort
 from novamind.features.user.exceptions import RoleNotFoundError, UserOperationError, UserNotFoundError
-from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from novamind.features.user.models.role import Role, Permission

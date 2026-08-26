@@ -10,6 +10,7 @@ from novamind.features.user.schemas.role_schema import (
     RoleUpdate,
     RoleResponse,
     PermissionResponse,
+    UserRoleAssignRequest,
 )
 from novamind.features.user.services.role_service import RoleService
 
@@ -100,8 +101,8 @@ async def list_permissions(svc: Annotated[RoleService, Depends(get_role_service)
 )
 async def assign_user_role(
     user_id: Annotated[int, Path(gt=0, description="用户ID")],
-    body: Annotated[dict, Body(...)],
+    body: Annotated[UserRoleAssignRequest, Body(...)],
     svc: Annotated[RoleService, Depends(get_role_service)],
 ):
-    await svc.assign_user_role(user_id, body["role_id"])
+    await svc.assign_user_role(user_id, body.role_id)
     return {"success": True}
