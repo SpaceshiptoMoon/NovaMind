@@ -6,9 +6,10 @@
 """
 from __future__ import annotations
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends
 
 from novamind.core.auth.dependencies import get_current_user
+from novamind.core.authorization.exceptions import PermissionDeniedError
 from novamind.core.authorization.ports import PermissionCheckerPort
 
 
@@ -43,7 +44,7 @@ def require_permission(code: str):
 
         perms = await checker.get_user_permissions(current_user["id"])
         if code not in perms:
-            raise HTTPException(status_code=403, detail=f"缺少权限: {code}")
+            raise PermissionDeniedError(message=f"缺少权限: {code}")
 
         return current_user
 
