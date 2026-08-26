@@ -83,5 +83,5 @@ async def test_user_is_admin_derived_from_role(tmp_db):
     await tmp_db.flush()
     await tmp_db.refresh(u1)
     await tmp_db.refresh(u2)
-    assert u1.is_admin() is True
-    assert u2.is_admin() is False
+    assert u1.is_admin is True
+    assert u2.is_admin is False
