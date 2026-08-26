@@ -18,6 +18,8 @@ from novamind.features.user.exceptions import (
     SearchConfigAlreadyExistsError,
     SearchConfigTestFailedError,
     SearchConfigError,
+    RoleNotFoundError,
+    RoleError,
 )
 from novamind.features.user.schemas.user_schema import UserUpdate
 from novamind.features.user.services.user_service import UserService
@@ -259,5 +261,7 @@ def setup_user_exception_handlers(app: FastAPI) -> None:
         SearchConfigAlreadyExistsError: 409,
         SearchConfigTestFailedError: 400,
         SearchConfigError: 400,
+        RoleNotFoundError: 404,
+        RoleError: 400,
     })
     setup_auth_port_wiring(app)
