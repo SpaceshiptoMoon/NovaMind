@@ -41,6 +41,11 @@ export interface User {
   updated_at: string | null
 }
 
+export interface MyPermissionsResponse {
+  permissions: string[]
+  role_code: string
+}
+
 export interface CreateUserRequest {
   username: string
   email: string

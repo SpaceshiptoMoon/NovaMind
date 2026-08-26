@@ -26,7 +26,11 @@ from novamind.features.user.schemas.user_schema import (
     ResetPasswordResponse,
 )
 from novamind.core.auth import require_active_user
-from novamind.core.authorization.dependencies import require_permission
+from novamind.core.authorization.dependencies import (
+    require_permission,
+    get_permission_checker_dep,
+)
+from novamind.core.authorization.ports import PermissionCheckerPort
 from novamind.features.user.api.dependencies import get_user_service
 from novamind.features.user.services.auth_service import AuthService
 from novamind.features.user.models.user import UserStatus
@@ -231,6 +235,21 @@ async def get_user(
     user = await user_service.get_user_by_id(user_id)
 
     return user
+
+
+@router.get(
+    "/users/me/permissions",
+    response_model=dict,
+    summary="获取当前用户权限",
+    description="返回当前用户拥有的权限码列表及角色码",
+)
+async def get_my_permissions(
+    current_user: dict = Depends(require_active_user),
+    checker: PermissionCheckerPort = Depends(get_permission_checker_dep),
+):
+    """获取当前用户权限列表与角色码"""
+    perms = await checker.get_user_permissions(current_user["id"])
+    return {"permissions": list(perms), "role_code": current_user.get("role_code")}
 
 
 @router.put(

@@ -205,3 +205,30 @@ def test_post_skills_validate_requires_authentication():
         },
     )
     assert resp.status_code == 401
+
+
+# ==================== /user/users/me/permissions ====================
+
+
+def test_get_my_permissions_returns_permissions_and_role_code():
+    client = TestClient(_make_app({"user.manage"}, role_code="editor"))
+    resp = client.get(f"{USER_PREFIX}/users/me/permissions")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["permissions"] == ["user.manage"]
+    assert data["role_code"] == "editor"
+
+
+def test_get_my_permissions_admin_bypass_returns_all_permissions():
+    client = TestClient(_make_app(set(), role_code="admin"))
+    resp = client.get(f"{USER_PREFIX}/users/me/permissions")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["permissions"] == []
+    assert data["role_code"] == "admin"
+
+
+def test_get_my_permissions_requires_authentication():
+    client = TestClient(_make_app(set(), override_current_user=False))
+    resp = client.get(f"{USER_PREFIX}/users/me/permissions")
+    assert resp.status_code == 401
