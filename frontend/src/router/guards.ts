@@ -8,6 +8,20 @@ export function setupRouterGuards(router: Router) {
     document.title = title ? `${title} - NovaMind` : 'NovaMind'
 
     const token = tokenManager.getToken()
+    const permStore = usePermissionStore()
+
+    // 只要持有 token 就在路由进入前预加载权限，确保组件挂载前权限/角色状态就绪
+    if (token && !permStore.loaded) {
+      try {
+        await permStore.fetchPermissions()
+      } catch {
+        tokenManager.clearToken()
+        localStorage.removeItem('user')
+        permStore.clear()
+        return { path: '/login', query: { redirect: to.fullPath } }
+      }
+    }
+
     const requiresAuth = to.meta.requiresAuth !== false
     const requiresAdmin = to.meta.requiresAdmin === true
 
@@ -22,29 +36,13 @@ export function setupRouterGuards(router: Router) {
       return { path: '/login', query: { redirect: to.fullPath } }
     }
 
-    if (requiresAdmin) {
-      const userStr = localStorage.getItem('user')
-      if (userStr) {
-        try {
-          const user = JSON.parse(userStr)
-          if (!user.is_admin) {
-            return { path: '/403' }
-          }
-        } catch {
-          tokenManager.clearToken()
-          localStorage.removeItem('user')
-          return { path: '/login', query: { redirect: to.fullPath } }
-        }
-      } else {
-        return { path: '/login', query: { redirect: to.fullPath } }
-      }
+    if (requiresAdmin && !permStore.isAdmin) {
+      return { path: '/403' }
     }
 
     const requiresPermission = to.meta.requiresPermission as string | string[] | undefined
-    if (requiresPermission) {
-      const permStore = usePermissionStore()
-      if (!permStore.loaded) await permStore.fetchPermissions()
-      if (!permStore.hasPermission(requiresPermission)) return { path: '/403' }
+    if (requiresPermission && !permStore.hasPermission(requiresPermission)) {
+      return { path: '/403' }
     }
 
     return true
