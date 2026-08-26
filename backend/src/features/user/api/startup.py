@@ -60,10 +60,9 @@ async def create_admin_user() -> None:
                     return
                 # 检查是否需要重置密码
                 if admin_config.reset_password_if_exists:
-                    # 更新管理员密码和角色
+                    # 仅重置管理员密码，不改角色（首次创建时 role 已绑 admin）
                     admin_user_update = UserUpdate(
                         password=admin_config.password,
-                        is_admin=True,
                     )
                     await user_service.update_user(
                         user_id=existing_admin.id,
@@ -84,7 +83,7 @@ async def create_admin_user() -> None:
                 email=admin_config.email,
                 password=admin_config.password,
                 phone=admin_config.phone,
-                is_admin=True,
+                role_code="admin",
             )
 
             logger.info("管理员账户创建成功", username=admin_config.username)

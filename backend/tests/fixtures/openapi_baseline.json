@@ -7355,6 +7355,27 @@
         "title": "ResumeSessionResponse",
         "type": "object"
       },
+      "RoleBrief": {
+        "description": "用户响应中嵌入的精简角色信息",
+        "properties": {
+          "code": {
+            "description": "角色唯一编码",
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "description": "角色显示名称",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "title": "RoleBrief",
+        "type": "object"
+      },
       "SearchConfigCreate": {
         "description": "创建搜索配置请求",
         "properties": {
@@ -11191,7 +11212,7 @@
           },
           "is_admin": {
             "default": false,
-            "description": "是否管理员",
+            "description": "是否系统管理员（从 role 派生）",
             "title": "Is Admin",
             "type": "boolean"
           },
@@ -11219,6 +11240,10 @@
             ],
             "description": "用户手机号码",
             "title": "Phone"
+          },
+          "role": {
+            "$ref": "#/components/schemas/RoleBrief",
+            "description": "用户系统角色"
           },
           "status": {
             "description": "用户状态，0为禁用，1为启用，2为封禁，3为已删除",
@@ -11248,6 +11273,7 @@
           "id",
           "username",
           "email",
+          "role",
           "status",
           "created_at"
         ],
@@ -11282,7 +11308,7 @@
                 "type": "null"
               }
             ],
-            "description": "是否管理员（仅限超级管理员通过专用接口修改，普通更新不传此字段）",
+            "description": "是否管理员（已弃用，请使用 role_code；保留仅用于兼容旧客户端）",
             "title": "Is Admin"
           },
           "password": {
@@ -11316,6 +11342,18 @@
               "13800138000"
             ],
             "title": "Phone"
+          },
+          "role_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "角色编码（仅限超级管理员通过专用接口修改，普通更新不传此字段；由 Task 8 专用端点处理）",
+            "title": "Role Code"
           },
           "status": {
             "anyOf": [
