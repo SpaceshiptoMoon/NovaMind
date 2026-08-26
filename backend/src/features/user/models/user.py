@@ -110,6 +110,7 @@ class User(BaseModel):
         return self.status == UserStatus.DELETED
 
     # ========== 角色派生 ==========
+    @property
     def is_admin(self) -> bool:
         """检查用户是否为系统管理员（从 role.code 派生）"""
         return self.role is not None and self.role.code == "admin"
