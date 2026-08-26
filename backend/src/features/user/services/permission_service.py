@@ -47,7 +47,7 @@ class PermissionService(PermissionCheckerPort):
         # 3. 写缓存（空集合不缓存，避免权限授予/回收后命中旧空缓存）
         if self.redis and perms:
             await self.redis.set(
-                f"{ROLE_PERM_CACHE_PREFIX}{user_id}", ",".join(perms), ex=ROLE_PERM_TTL
+                f"{ROLE_PERM_CACHE_PREFIX}{user_id}", ",".join(perms), expire=ROLE_PERM_TTL
             )
         return perms
 
