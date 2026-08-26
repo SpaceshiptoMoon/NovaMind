@@ -89,7 +89,8 @@ class User(BaseModel):
     )
 
     def __repr__(self) -> str:
-        return f"<User(id={self.id}, username='{self.username}')>"
+        # 避免访问关系字段导致 DetachedInstanceError（请求结束后 session 关闭）
+        return f"<User(id={self.id}, username='{getattr(self, 'username', '?')}')>"
 
     # ========== 密码验证 ==========
     def check_password(self, plain_password: str) -> bool:
