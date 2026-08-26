@@ -288,7 +288,7 @@ async def list_review_models(
 async def list_pending_reviews(
     limit: Annotated[int, Query(ge=1, le=100, description="每页数量")] = 20,
     offset: Annotated[int, Query(ge=0, description="偏移量")] = 0,
-    _admin: dict = Depends(require_permission("skill.review")),
+    _admin: dict = Depends(require_permission("skill.config")),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
     skills, total = await service.list_pending_review(limit, offset)
