@@ -89,8 +89,15 @@ class User(BaseModel):
     )
 
     def __repr__(self) -> str:
-        # 避免访问关系字段导致 DetachedInstanceError（请求结束后 session 关闭）
-        return f"<User(id={self.id}, username='{getattr(self, 'username', '?')}')>"
+        # 避免访问映射字段导致 DetachedInstanceError（请求结束后 session 关闭）
+        # 使用 object.__getattribute__ 绕过 SQLAlchemy 描述符协议
+        try:
+            uid = object.__getattribute__(self, 'id')
+            uname = object.__getattribute__(self, 'username')
+        except AttributeError:
+            uid = '?'
+            uname = '?'
+        return f"<User(id={uid}, username='{uname}')>"
 
     # ========== 密码验证 ==========
     def check_password(self, plain_password: str) -> bool:
