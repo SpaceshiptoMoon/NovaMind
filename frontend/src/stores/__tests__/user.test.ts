@@ -7,6 +7,12 @@ const request = {
   put: vi.fn(),
 }
 
+const userApi = {
+  login: vi.fn(),
+  register: vi.fn(),
+  logout: vi.fn(),
+}
+
 const tokenManager = {
   getToken: vi.fn(),
   setToken: vi.fn(),
@@ -15,15 +21,22 @@ const tokenManager = {
   clearToken: vi.fn(),
 }
 
-const push = vi.fn()
-
 vi.mock('@/api', () => ({
   request,
   tokenManager,
+  TOKEN_SYNC_EVENT: 'novamind:token-sync',
 }))
 
-vi.mock('vue-router', () => ({
-  useRouter: () => ({ push }),
+vi.mock('@/api/user', () => ({
+  userApi,
+}))
+
+vi.mock('@/stores/permission', () => ({
+  usePermissionStore: () => ({
+    isAdmin: false,
+    fetchPermissions: vi.fn(),
+    clear: vi.fn(),
+  }),
 }))
 
 function createJwt(payload: Record<string, unknown>) {
@@ -43,7 +56,7 @@ describe('useUserStore', () => {
     localStorage.clear()
   })
 
-  it('sets tokens, fetches profile, and redirects when password change is required', async () => {
+  it('sets tokens, fetches profile, and returns must_change_password flag', async () => {
     const token = createJwt({
       user_id: 7,
       exp: Math.floor(Date.now() / 1000) + 3600,
@@ -60,7 +73,7 @@ describe('useUserStore', () => {
       updated_at: null,
     }
 
-    request.post.mockResolvedValue({
+    userApi.login.mockResolvedValue({
       access_token: token,
       refresh_token: 'refresh-token',
       token_type: 'bearer',
@@ -74,7 +87,7 @@ describe('useUserStore', () => {
     const store = useUserStore()
     const result = await store.login('nova', 'secret')
 
-    expect(request.post).toHaveBeenCalledWith('/user/users/login', {
+    expect(userApi.login).toHaveBeenCalledWith({
       username: 'nova',
       password: 'secret',
     })
@@ -83,7 +96,6 @@ describe('useUserStore', () => {
     expect(request.get).toHaveBeenCalledWith('/user/users/7')
     expect(store.user).toEqual(profile)
     expect(localStorage.getItem('user')).toBe(JSON.stringify(profile))
-    expect(push).toHaveBeenCalledWith('/home/change-password?forced=1')
     expect(result.must_change_password).toBe(true)
     expect(store.loading).toBe(false)
   })
@@ -201,6 +213,7 @@ describe('useUserStore', () => {
 
     request.post.mockRejectedValue(new Error('logout failed'))
     tokenManager.getToken.mockReturnValue(token)
+    tokenManager.getRefreshToken.mockReturnValue('refresh-token')
     localStorage.setItem(
       'user',
       JSON.stringify({
@@ -220,14 +233,14 @@ describe('useUserStore', () => {
     const store = useUserStore()
 
     await expect(store.logout()).resolves.toBeUndefined()
-    expect(request.post).toHaveBeenCalledWith('/user/users/logout')
+    expect(userApi.logout).toHaveBeenCalledWith('refresh-token')
     expect(tokenManager.clearToken).toHaveBeenCalledTimes(1)
     expect(localStorage.getItem('user')).toBeNull()
     expect(store.user).toBeNull()
   })
 
   it('resets loading and does not persist auth when login fails', async () => {
-    request.post.mockRejectedValue(new Error('login failed'))
+    userApi.login.mockRejectedValue(new Error('login failed'))
 
     const { useUserStore } = await loadStore()
     const store = useUserStore()
