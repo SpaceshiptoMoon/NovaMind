@@ -211,9 +211,9 @@ async def refresh_token(
 )
 async def logout(
     request: Request,
-    logout_data: Optional[LogoutRequest] = Body(default=None),
     user_service: Annotated[UserService, Depends(get_user_service)],
     current_user: dict = Depends(require_active_user),
+    logout_data: Optional[LogoutRequest] = Body(default=None),
 ):
     """
     用户登出，撤销令牌
