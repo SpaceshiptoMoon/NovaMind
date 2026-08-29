@@ -78,12 +78,11 @@
               重置密码
             </el-button>
             <el-button
-              v-if="!row.is_admin || canDeleteAdmin"
+              v-if="(!row.is_admin || canDeleteAdmin) && permStore.hasPermission('user.delete')"
               type="danger"
               link
               size="small"
               @click="handleDelete(row)"
-              v-if="permStore.hasPermission('user.delete')"
             >
               删除
             </el-button>

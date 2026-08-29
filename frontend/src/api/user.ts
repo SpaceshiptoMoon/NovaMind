@@ -2,6 +2,7 @@ import { request } from './index'
 import type {
   LoginRequest,
   LoginResponse,
+  RegisterRequest,
   CreateUserRequest,
   UpdateUserRequest,
   User,
@@ -34,6 +35,9 @@ export const userApi = {
   // 认证
   login(data: LoginRequest) {
     return request.post<LoginResponse>(`${BASE_URL}/login`, data)
+  },
+  register(data: RegisterRequest) {
+    return request.post<LoginResponse>(`${BASE_URL}/register`, data)
   },
   refreshToken(refreshToken: string) {
     return request.post<LoginResponse>(`${BASE_URL}/refresh`, { refresh_token: refreshToken })
