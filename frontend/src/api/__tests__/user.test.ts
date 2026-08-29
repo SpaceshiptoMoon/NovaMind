@@ -27,6 +27,7 @@ describe('userApi', () => {
 
     await userApi.login({ username: 'nova', password: 'secret' } as any)
     await userApi.refreshToken('refresh-token')
+    await userApi.logout('refresh-token')
     await userApi.logout()
 
     expect(request.post).toHaveBeenNthCalledWith(1, '/user/users/login', {
@@ -36,7 +37,10 @@ describe('userApi', () => {
     expect(request.post).toHaveBeenNthCalledWith(2, '/user/users/refresh', {
       refresh_token: 'refresh-token',
     })
-    expect(request.post).toHaveBeenNthCalledWith(3, '/user/users/logout')
+    expect(request.post).toHaveBeenNthCalledWith(3, '/user/users/logout', {
+      refresh_token: 'refresh-token',
+    })
+    expect(request.post).toHaveBeenNthCalledWith(4, '/user/users/logout', undefined)
   })
 
   it('maps user management endpoints with ids and payloads', async () => {

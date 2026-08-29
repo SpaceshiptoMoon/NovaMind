@@ -42,8 +42,8 @@ export const userApi = {
   refreshToken(refreshToken: string) {
     return request.post<LoginResponse>(`${BASE_URL}/refresh`, { refresh_token: refreshToken })
   },
-  logout() {
-    return request.post<{ message: string }>(`${BASE_URL}/logout`)
+  logout(refreshToken?: string) {
+    return request.post<{ message: string }>(`${BASE_URL}/logout`, refreshToken ? { refresh_token: refreshToken } : undefined)
   },
 
   // 用户管理

@@ -30,6 +30,13 @@ const instance: AxiosInstance = axios.create({
 const TOKEN_KEY = 'access_token'
 const REFRESH_TOKEN_KEY = 'refresh_token'
 
+// token 被拦截器刷新/清除时派发，供 store 同步响应式镜像
+export const TOKEN_SYNC_EVENT = 'novamind:token-sync'
+
+function emitTokenSync() {
+  window.dispatchEvent(new CustomEvent(TOKEN_SYNC_EVENT))
+}
+
 export const tokenManager = {
   getToken: (): string | null => localStorage.getItem(TOKEN_KEY),
   setToken: (token: string): void => localStorage.setItem(TOKEN_KEY, token),
@@ -44,10 +51,18 @@ export const tokenManager = {
 // Token 刷新状态管理（防止并发刷新）
 let isRefreshing = false
 let pendingRequests: ((token: string) => void)[] = []
+let pendingRejectors: ((error: unknown) => void)[] = []
 
 function onTokenRefreshed(token: string) {
   pendingRequests.forEach((cb) => cb(token))
   pendingRequests = []
+  pendingRejectors = []
+}
+
+function onTokenRefreshFailed() {
+  pendingRejectors.forEach((reject) => reject(new Error('登录状态已失效，请重新登录')))
+  pendingRequests = []
+  pendingRejectors = []
 }
 
 async function refreshTokenRequest(): Promise<string> {
@@ -66,6 +81,7 @@ async function refreshTokenRequest(): Promise<string> {
   if (refresh_token) {
     tokenManager.setRefreshToken(refresh_token)
   }
+  emitTokenSync()
   return access_token
 }
 
@@ -81,29 +97,38 @@ instance.interceptors.request.use(
   (error) => Promise.reject(error),
 )
 
+// 认证失败响应不该触发静默刷新的端点（密码错误 ≠ token 过期）
+const AUTH_ENDPOINTS = ['/users/login', '/users/register', '/users/refresh']
+
 // 响应拦截器 — 后端直接返回数据，不包裹在 { code, data } 中
 instance.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config
     const { response } = error
+    const isAuthEndpoint = AUTH_ENDPOINTS.some((ep) =>
+      (originalRequest?.url || '').includes(ep),
+    )
 
-    // 401 且有 refresh_token → 尝试静默刷新
-    if (response?.status === 401 && !originalRequest._retry) {
+    // 401 且非认证端点且有 refresh_token → 尝试静默刷新
+    if (response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       const refreshToken = tokenManager.getRefreshToken()
       if (!refreshToken) {
         tokenManager.clearToken()
+        emitTokenSync()
         redirectToLogin()
         return Promise.reject(error)
       }
 
       if (isRefreshing) {
         // 其他请求排队等待刷新完成
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
           pendingRequests.push((token: string) => {
             originalRequest.headers.Authorization = `Bearer ${token}`
             resolve(instance(originalRequest))
           })
+          // 刷新失败时释放排队请求，避免 Promise 永久挂起
+          pendingRejectors.push(reject)
         })
       }
 
@@ -115,13 +140,25 @@ instance.interceptors.response.use(
         onTokenRefreshed(newToken)
         originalRequest.headers.Authorization = `Bearer ${newToken}`
         return instance(originalRequest)
-      } catch {
+      } catch (refreshError) {
         tokenManager.clearToken()
+        emitTokenSync()
+        // 释放排队请求（若不释放，这些 Promise 永远 pending）
+        onTokenRefreshFailed()
         redirectToLogin()
-        return Promise.reject(error)
+        return Promise.reject(refreshError)
       } finally {
         isRefreshing = false
       }
+    }
+
+    // 强制改密：跳转改密页（后端 PASSWORD_CHANGE_REQUIRED，403）
+    const errorCode = response?.data?.error?.code
+    if (errorCode === 'PASSWORD_CHANGE_REQUIRED') {
+      if (window.location.pathname !== '/home/change-password') {
+        window.location.href = '/home/change-password?forced=1'
+      }
+      return Promise.reject(error)
     }
 
     // 统一错误提示（排除 401，上面已处理）

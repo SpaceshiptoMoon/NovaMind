@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
-import { request, tokenManager } from '@/api'
+import { request, tokenManager, TOKEN_SYNC_EVENT } from '@/api'
 import { userApi } from '@/api/user'
 import type { User, LoginResponse, RegisterRequest } from '@/api/types'
 import { usePermissionStore } from '@/stores/permission'
@@ -41,16 +41,20 @@ function getUserIdFromToken(): number | null {
 export const useUserStore = defineStore('user', () => {
   const user = ref<User | null>(null)
   const loading = ref(false)
+  // 响应式 token 镜像：setToken/clearToken 时同步更新，使 isLoggedIn 等派生
+  // 状态在 token 变化时重新计算（此前 computed 直读 localStorage 无响应式依赖）
+  const accessToken = ref<string | null>(tokenManager.getToken())
 
   const isLoggedIn = computed(() => {
-    const token = tokenManager.getToken()
+    const token = accessToken.value
     return !!token && !isTokenExpired(token)
   })
   const isAdmin = computed(() => usePermissionStore().isAdmin)
   const username = computed(() => user.value?.username ?? '')
 
-  function setToken(accessToken: string, refresh?: string) {
-    tokenManager.setToken(accessToken)
+  function setToken(t: string, refresh?: string) {
+    accessToken.value = t
+    tokenManager.setToken(t)
     if (refresh) {
       tokenManager.setRefreshToken(refresh)
     }
@@ -58,6 +62,7 @@ export const useUserStore = defineStore('user', () => {
 
   function clearAuth() {
     user.value = null
+    accessToken.value = null
     tokenManager.clearToken()
     localStorage.removeItem('user')
     usePermissionStore().clear()
@@ -66,10 +71,7 @@ export const useUserStore = defineStore('user', () => {
   async function login(uname: string, password: string) {
     loading.value = true
     try {
-      const data = await request.post<LoginResponse>('/user/users/login', {
-        username: uname,
-        password,
-      })
+      const data = await userApi.login({ username: uname, password })
       setToken(data.access_token, data.refresh_token)
       await fetchProfile()
       const permStore = usePermissionStore()
@@ -121,7 +123,7 @@ export const useUserStore = defineStore('user', () => {
 
   async function logout() {
     try {
-      await request.post('/user/users/logout')
+      await userApi.logout(tokenManager.getRefreshToken() ?? undefined)
     } catch {
       // 即使接口失败也清除本地状态
     } finally {
@@ -135,6 +137,7 @@ export const useUserStore = defineStore('user', () => {
       clearAuth()
       return
     }
+    accessToken.value = token
 
     const userStr = localStorage.getItem('user')
     if (userStr) {
@@ -144,6 +147,13 @@ export const useUserStore = defineStore('user', () => {
         localStorage.removeItem('user')
       }
     }
+  }
+
+  // 拦截器静默刷新/清除 token 后，同步响应式镜像（每个 store 实例注册一次）
+  if (typeof window !== 'undefined') {
+    window.addEventListener(TOKEN_SYNC_EVENT, () => {
+      accessToken.value = tokenManager.getToken()
+    })
   }
 
   init()
