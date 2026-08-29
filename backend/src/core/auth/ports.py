@@ -21,8 +21,8 @@ class UserStatusResolver(Protocol):
         """返回用户状态 dict；用户不存在返回 None。
 
         约定字段：``id`` / ``username`` / ``email`` / ``is_admin`` / ``status`` /
-        ``is_active`` / ``is_deleted``。``is_active`` / ``is_deleted`` 由实现侧
-        按 ``UserStatus`` 枚举计算，core/auth 不感知枚举。
+        ``is_active`` / ``is_deleted`` / ``must_change_password``。``is_active`` / ``is_deleted`` / ``must_change_password`` 由实现侧
+        按 ``UserStatus`` 枚举与用户标记计算，core/auth 只判布尔，不感知枚举值。
         """
         ...
 

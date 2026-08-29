@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Body, Query, Request, Path
-from typing import Annotated, List
+from typing import Annotated, List, Optional
 
 from novamind.features.user.services import UserService
 from novamind.features.user.exceptions import (
@@ -17,6 +17,7 @@ from novamind.features.user.schemas.user_schema import (
     TokenRefreshResponse,
     UserMessageResponse,
     LogoutResponse,
+    LogoutRequest,
     LogoutAllSessionsResponse,
     ChangePasswordRequest,
     ChangePasswordResponse,
@@ -25,6 +26,7 @@ from novamind.features.user.schemas.user_schema import (
     ForgotPasswordResponse,
     ResetPasswordRequest,
     ResetPasswordResponse,
+    MyPermissionsResponse,
 )
 from novamind.core.auth import require_active_user
 from novamind.core.authorization.dependencies import (
@@ -205,23 +207,29 @@ async def refresh_token(
     "/users/logout",
     response_model=LogoutResponse,
     summary="用户登出",
-    description="撤销当前用户的访问令牌",
+    description="撤销当前访问令牌（可选同时撤销刷新令牌）",
 )
 async def logout(
     request: Request,
+    logout_data: Optional[LogoutRequest] = Body(default=None),
     user_service: Annotated[UserService, Depends(get_user_service)],
     current_user: dict = Depends(require_active_user),
 ):
     """
     用户登出，撤销令牌
 
-    从请求头获取 token 并加入黑名单
+    从请求头获取 access token 加入黑名单；
+    请求体可选携带 refresh_token，传入则一并撤销（推荐前端始终传入）。
     """
-    # 从请求头获取 token
+    # 从请求头获取 access token
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.split(" ")[1]
         await user_service.logout(token)
+
+    # 一并撤销请求体中的 refresh token（登出后 7 天内不可再换新 token）
+    if logout_data and logout_data.refresh_token:
+        await user_service.logout(logout_data.refresh_token)
 
     return LogoutResponse(message="登出成功")
 
@@ -291,7 +299,7 @@ async def get_user(
 
 @router.get(
     "/users/me/permissions",
-    response_model=dict,
+    response_model=MyPermissionsResponse,
     summary="获取当前用户权限",
     description="返回当前用户拥有的权限码列表及角色码",
 )
@@ -301,7 +309,9 @@ async def get_my_permissions(
 ):
     """获取当前用户权限列表与角色码"""
     perms = await checker.get_user_permissions(current_user["id"])
-    return {"permissions": list(perms), "role_code": current_user.get("role_code")}
+    return MyPermissionsResponse(
+        permissions=sorted(perms), role_code=current_user.get("role_code")
+    )
 
 
 @router.put(
@@ -452,7 +462,11 @@ async def logout_all_sessions(
     Returns:
         LogoutAllSessionsResponse: 操作结果
     """
+    # 1. æ¤éç»è®°å¨æ¡ç refresh tokenï¼jti é»åå + å é¤ user_tokens è®°å½ï¼
     revoked_count = await AuthService.logout_all_sessions(user_id)
+    # 2. è®¾ç½®ç¨æ·çº§é»ååï¼iat æ¯è¾ï¼ï¼æªç»è®°ç access token ä¹ç«å³å¤±æï¼
+    #    ä¸ç"access token å­æ´»è³èªç¶è¿æ"ççªå£
+    await AuthService.blacklist_all_user_tokens(user_id)
     return LogoutAllSessionsResponse(
         message=f"已撤销用户 {user_id} 的所有会话",
         revoked_count=revoked_count,
@@ -509,7 +523,7 @@ async def change_password(
     summary="忘记密码",
     description="通过邮箱请求密码重置链接（无需认证）",
 )
-@get_limiter().limit(RateLimits.REGISTER)
+@get_limiter().limit(RateLimits.PASSWORD_RESET)
 async def forgot_password(
     request: Request,
     data: ForgotPasswordRequest,
@@ -553,42 +567,8 @@ async def forgot_password(
 async def reset_password(
     request: Request,
     data: ResetPasswordRequest,
+    user_service: Annotated[UserService, Depends(get_user_service)],
 ):
-    """通过 Token 重置密码"""
-    # 验证 Token
-    user_id = await AuthService.verify_reset_token(data.token)
-    if user_id is None:
-        from novamind.features.user.exceptions import AuthenticationError
-        raise AuthenticationError("重置链接无效或已过期")
-
-    # 更新密码
-    try:
-        from novamind.core.auth.hashing import get_password_hash_async
-        from novamind.features.user.repository.user_repository import UserRepository
-        from novamind.core.database.database import get_db_session
-
-        async with get_db_session() as db:
-            repo = UserRepository(db)
-            user = await repo.get_user_by_id(user_id, use_cache=False)
-            if not user:
-                from novamind.features.user.exceptions import UserNotFoundError
-                raise UserNotFoundError("用户不存在")
-
-            hashed = await get_password_hash_async(data.new_password)
-            update_data = UserUpdate(password=hashed)
-            await repo.update_user(user_id, update_data)
-            await db.commit()
-
-    except (UserNotFoundError,):
-        raise
-    except Exception as e:
-        from novamind.features.user.exceptions import UserOperationError
-        raise UserOperationError(f"密码重置失败: {str(e)}")
-
-    # 使 Token 失效（一次性使用）
-    await AuthService.invalidate_reset_token(data.token)
-
-    # 黑名单所有 Token，强制重新登录
-    await AuthService.blacklist_all_user_tokens(user_id)
-
+    """通过 Token 重置密码（业务逻辑见 UserService.reset_password_by_token）"""
+    await user_service.reset_password_by_token(data.token, data.new_password)
     return ResetPasswordResponse()

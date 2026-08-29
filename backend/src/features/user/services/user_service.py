@@ -1,5 +1,7 @@
 from typing import Optional, List, Dict, Any
 
+from sqlalchemy import update
+
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.user.models.user import User as UserModel, UserStatus
 from novamind.features.user.schemas.user_schema import UserUpdate
@@ -364,14 +366,29 @@ class UserService:
             raise PermissionDeniedError(message="角色字段请使用专用角色分配端点修改")
 
         # 密码哈希在 Service 层处理（不在 Repository 层）
+        password_changed = False
         if "password" in update_data and update_data["password"]:
             from novamind.core.auth.hashing import get_password_hash_async
             user_update.password = await get_password_hash_async(update_data["password"])
+            password_changed = True
 
         user = await self.user_repository.update_user(user_id, user_update)
         if not user:
             raise UserNotFoundError(user_id=user_id)
+
+        # 密码被修改时：旧 token 全部失效 + 清除强制改密标记，与其他改密路径语义一致
+        if password_changed:
+            await self._apply_password_changed_effects(user_id)
+
         return user
+
+    async def _apply_password_changed_effects(self, user_id: int) -> None:
+        """密码变更后的联动处理：清除强制改密标记 + 拉黑该用户所有 token。"""
+        from sqlalchemy import update as sa_update
+        async with self.user_repository.db.begin_nested():
+            stmt = sa_update(UserModel).where(UserModel.id == user_id).values(must_change_password=False)
+            await self.user_repository.db.execute(stmt)
+        await AuthService.blacklist_all_user_tokens(user_id)
 
     async def toggle_user_status(self, user_id: int) -> tuple[bool, int]:
         """
@@ -464,21 +481,29 @@ class UserService:
         temp_password = secrets.token_urlsafe(12)
         hashed = await get_password_hash_async(temp_password)
 
-        # 更新密码 + 设置强制改密标记
-        update_data = UserUpdate(password=hashed)
-        user = await self.user_repository.update_user(user_id, update_data)
-
-        # 直接设置 must_change_password（绕过白名单）
-        from sqlalchemy import update
-        async with self.user_repository.db.begin_nested():
-            stmt = update(UserModel).where(UserModel.id == user_id).values(must_change_password=True)
-            await self.user_repository.db.execute(stmt)
+        # 直写密码哈希并设置强制改密标记（不经过 UserUpdate 请求模型——
+        # 其 password 字段 max_length=30 + 强度校验针对明文口令，会拒绝 97 字符的 argon2 哈希）
+        await self._set_password_hash(user_id, hashed)
+        await self._set_must_change_password(user_id, True)
 
         # 黑名单所有 Token，强制重新登录
         await AuthService.blacklist_all_user_tokens(user_id)
 
         self.logger.info("管理员已重置用户密码", user_id=user_id)
         return temp_password, user_id
+
+    async def _set_password_hash(self, user_id: int, hashed_password: str) -> None:
+        """直写密码哈希列（内部路径，绕过请求 schema 的明文口令校验）。"""
+        async with self.user_repository.db.begin_nested():
+            stmt = update(UserModel).where(UserModel.id == user_id).values(password_hash=hashed_password)
+            await self.user_repository.db.execute(stmt)
+        await self.user_repository._invalidate_user_cache(user_id)
+
+    async def _set_must_change_password(self, user_id: int, value: bool) -> None:
+        """直写强制改密标记（内部路径，绕过 update_user 字段白名单）。"""
+        async with self.user_repository.db.begin_nested():
+            stmt = update(UserModel).where(UserModel.id == user_id).values(must_change_password=value)
+            await self.user_repository.db.execute(stmt)
 
     async def change_password(
         self, user_id: int, old_password: str, new_password: str
@@ -508,16 +533,51 @@ class UserService:
         if not await verify_password_async(old_password, user.password_hash):
             raise AuthenticationError("当前密码错误")
 
-        # 哈希新密码
+        # 哈希新密码并直写（不经 UserUpdate 请求模型，理由同 admin_reset_password）
         hashed = await get_password_hash_async(new_password)
-        update_data = UserUpdate(password=hashed)
-        await self.user_repository.update_user(user_id, update_data)
+        await self._set_password_hash(user_id, hashed)
 
-        # 清除强制改密标记
-        from sqlalchemy import update
-        async with self.user_repository.db.begin_nested():
-            stmt = update(UserModel).where(UserModel.id == user_id).values(must_change_password=False)
-            await self.user_repository.db.execute(stmt)
+        # 清除强制改密标记 + 黑名单所有 Token，强制重新登录
+        await self._set_must_change_password(user_id, False)
+        await AuthService.blacklist_all_user_tokens(user_id)
 
         self.logger.info("用户已修改密码", user_id=user_id)
         return True
+
+    async def reset_password_by_token(self, token: str, new_password: str) -> int:
+        """
+        通过重置 Token 设置新密码（忘记密码流程）
+
+        业务逻辑归 Service 层：Token 验证、密码落库、一次性失效、强制重新登录。
+
+        Args:
+            token: 重置 Token
+            new_password: 新密码（明文，强度已在请求 schema 校验）
+
+        Returns:
+            user_id: 重置成功的用户 ID
+
+        Raises:
+            AuthenticationError: Token 无效或已过期
+            UserNotFoundError: 用户不存在
+        """
+        user_id = await AuthService.verify_reset_token(token)
+        if user_id is None:
+            raise AuthenticationError("重置链接无效或已过期")
+
+        user = await self.user_repository.get_user_by_id(user_id, use_cache=False)
+        if not user:
+            raise UserNotFoundError(f"用户 {user_id} 不存在")
+
+        from novamind.core.auth.hashing import get_password_hash_async
+        hashed = await get_password_hash_async(new_password)
+        await self._set_password_hash(user_id, hashed)
+
+        # 使 Token 失效（一次性使用）
+        await AuthService.invalidate_reset_token(token)
+
+        # 黑名单所有 Token，强制重新登录
+        await AuthService.blacklist_all_user_tokens(user_id)
+
+        self.logger.info("用户通过重置链接修改密码", user_id=user_id)
+        return user_id

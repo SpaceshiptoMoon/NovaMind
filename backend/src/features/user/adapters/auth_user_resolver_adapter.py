@@ -46,6 +46,8 @@ class UserStatusResolverAdapter:
             # 枚举语义留在 user 侧计算，core/auth 只判布尔
             "is_active": user.status == UserStatus.ACTIVE,
             "is_deleted": user.status == UserStatus.DELETED,
+            # 强制改密标记（core/auth 据此拦截非豁免端点）
+            "must_change_password": bool(user.must_change_password),
         }
 
 
