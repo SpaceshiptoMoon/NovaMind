@@ -4403,6 +4403,25 @@
         "title": "LogoutAllSessionsResponse",
         "type": "object"
       },
+      "LogoutRequest": {
+        "description": "登出请求模型（可选携带 refresh_token 一并撤销）\n\n- 不传 body 或不传 refresh_token 时，仅撤销请求头中的 access token\n- 传入 refresh_token 时同时撤销，防止登出后 7 天内仍可换新 token",
+        "properties": {
+          "refresh_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "刷新令牌（可选，传入则一并撤销）",
+            "title": "Refresh Token"
+          }
+        },
+        "title": "LogoutRequest",
+        "type": "object"
+      },
       "LogoutResponse": {
         "description": "登出响应模型",
         "properties": {
@@ -5540,6 +5559,36 @@
           "message"
         ],
         "title": "ModelTestResponse",
+        "type": "object"
+      },
+      "MyPermissionsResponse": {
+        "description": "当前用户权限响应模型",
+        "properties": {
+          "permissions": {
+            "description": "权限码列表",
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "role_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "角色编码",
+            "title": "Role Code"
+          }
+        },
+        "required": [
+          "permissions"
+        ],
+        "title": "MyPermissionsResponse",
         "type": "object"
       },
       "NotificationListResponse": {
@@ -22433,8 +22482,25 @@
     },
     "/api/v1/user/users/logout": {
       "post": {
-        "description": "撤销当前用户的访问令牌",
+        "description": "撤销当前访问令牌（可选同时撤销刷新令牌）",
         "operationId": "logout_api_v1_user_users_logout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LogoutRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Logout Data"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -22445,6 +22511,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -22514,9 +22590,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get My Permissions Api V1 User Users Me Permissions Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/MyPermissionsResponse"
                 }
               }
             },

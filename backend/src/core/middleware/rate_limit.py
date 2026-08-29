@@ -62,8 +62,10 @@ def _get_rate_limit_key(request: Request) -> str:
     """
     获取限流键：认证用户使用 user_id，未认证使用 IP 地址。
 
-    仅从 request.state 获取已解析的 user_id（由 auth 中间件设置），
-    避免在限流层同步解码 JWT 阻塞事件循环。
+    user_id 由 get_current_user 认证依赖写入 request.state（认证成功后）。因此：
+    - 装饰器标注限流的端点：检查发生在依赖解析之后，认证用户按 user_id 限流；
+    - SlowAPIMiddleware 的 default_limits：检查在依赖之前，一律按 IP 限流。
+    不在限流层解码 JWT，避免签名验证阻塞事件循环。
     """
     user_id = getattr(request.state, "user_id", None)
     if user_id:
@@ -117,10 +119,12 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSO
     return JSONResponse(
         status_code=429,
         content={
-            "error": "请求过于频繁，请稍后再试",
-            "code": "RATE_LIMIT_EXCEEDED",
-            "detail": str(exc.detail),
-            "retry_after": _get_retry_after_remaining(exc),
+            "error": {
+                "code": "RATE_LIMIT_EXCEEDED",
+                "message": "请求过于频繁，请稍后再试",
+                "detail": str(exc.detail),
+                "retry_after": _get_retry_after_remaining(exc),
+            },
         },
         headers={
             "Retry-After": str(_get_retry_after_remaining(exc)),

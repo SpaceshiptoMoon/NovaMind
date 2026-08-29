@@ -6,6 +6,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from novamind.setting.yaml_config import get_config
 from .structured_logging import setup_structured_logging, get_logger
@@ -60,6 +61,8 @@ def create_app() -> FastAPI:
     # 配置速率限制
     app.state.limiter = get_limiter()
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+    # 注册中间件使 default_limits（100/minute）对未显式标注限流的路由生效
+    app.add_middleware(SlowAPIMiddleware)
 
     # 添加中间件（注意：中间件的顺序很重要）
     _add_middleware(app, config)

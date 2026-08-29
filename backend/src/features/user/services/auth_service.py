@@ -349,29 +349,6 @@ class AuthService:
         )
 
     @classmethod
-    async def verify_token_async(cls, token: str) -> Optional[TokenData]:
-        """
-        异步验证 token 并提取用户信息（包含黑名单检查）
-
-        Args:
-            token: JWT token
-
-        Returns:
-            TokenData: token 数据，如果无效则 None
-        """
-        token_data = cls.verify_token(token)
-        if not token_data:
-            return None
-
-        # 检查是否在黑名单中
-        jti = token_data.jti
-        if jti and await cls.is_token_revoked(jti):
-            cls._logger.warning("Token 已被撤销")
-            return None
-
-        return token_data
-
-    @classmethod
     def _decode_token(cls, token: str) -> Optional[dict]:
         """
         解码 token（不验证类型）

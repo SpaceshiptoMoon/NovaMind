@@ -81,8 +81,21 @@ class RoleService:
         if permission_codes is not None:
             await self.repo.set_role_permissions(role_id, permission_codes)
             role = await self._get_role_with_permissions(role_id)
+            # 角色权限变更后，失效该角色下所有用户的权限缓存，
+            # 避免旧权限最长残留一个 TTL（5 分钟）
+            await self._invalidate_role_users_cache(role_id)
 
         return role
+
+    async def _invalidate_role_users_cache(self, role_id: int) -> None:
+        """失效绑定指定角色的所有用户的权限缓存（checker 未装配时跳过）。"""
+        if self.checker is None:
+            return
+        user_ids = (
+            await self.db.execute(select(User.id).where(User.role_id == role_id))
+        ).scalars().all()
+        for uid in user_ids:
+            await self.checker.invalidate(uid)
 
     async def delete_role(self, role_id: int) -> None:
         role = await self.repo.get_role_by_id(role_id)

@@ -288,6 +288,16 @@ class LogoutResponse(UserMessageResponse):
     pass
 
 
+class LogoutRequest(BaseModel):
+    """
+    登出请求模型（可选携带 refresh_token 一并撤销）
+
+    - 不传 body 或不传 refresh_token 时，仅撤销请求头中的 access token
+    - 传入 refresh_token 时同时撤销，防止登出后 7 天内仍可换新 token
+    """
+    refresh_token: Optional[str] = Field(None, description="刷新令牌（可选，传入则一并撤销）")
+
+
 class LogoutAllSessionsResponse(BaseModel):
     """
     撤销所有会话响应模型
@@ -372,3 +382,9 @@ class ResetPasswordRequest(BaseModel):
 class ResetPasswordResponse(BaseModel):
     """重置密码响应"""
     message: str = Field(default="密码重置成功", description="响应消息")
+
+
+class MyPermissionsResponse(BaseModel):
+    """当前用户权限响应模型"""
+    permissions: list[str] = Field(..., description="权限码列表")
+    role_code: Optional[str] = Field(None, description="角色编码")

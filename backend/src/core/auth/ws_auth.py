@@ -16,7 +16,7 @@ from typing import Optional
 
 from fastapi import WebSocket
 
-from novamind.core.auth.blacklist import is_user_blacklisted
+from novamind.core.auth.blacklist import is_token_revoked, is_user_blacklisted
 from novamind.core.auth.ports import UserStatusResolver
 from novamind.core.auth.token import decode_access_token
 
@@ -55,6 +55,10 @@ async def ws_authenticate(
     token = ws_extract_token(websocket)
     claims = decode_access_token(token) if token else None
     if not claims or not claims.user_id:
+        return None, WS_CLOSE_UNAUTHENTICATED
+
+    # token 级黑名单（登出/刷新轮换后该 jti 立即失效）
+    if claims.jti and await is_token_revoked(claims.jti):
         return None, WS_CLOSE_UNAUTHENTICATED
 
     # 用户级黑名单（用户被软删除/停用时所有 Token 立即失效）
