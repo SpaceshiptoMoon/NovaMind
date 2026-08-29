@@ -127,8 +127,17 @@ instance.interceptors.response.use(
     // 统一错误提示（排除 401，上面已处理）
     if (response && response.status !== 401) {
       const errorData = response.data
+      const detailsMessage = Array.isArray(errorData?.error?.details)
+        ? errorData.error.details
+            .map((d: { message?: string }) => d?.message)
+            .filter(Boolean)
+            .join('；')
+        : ''
       const message =
-        errorData?.error?.message || errorData?.message || getDefaultMessage(response.status)
+        detailsMessage ||
+        errorData?.error?.message ||
+        errorData?.message ||
+        getDefaultMessage(response.status)
       ElMessage.error(message)
     }
 

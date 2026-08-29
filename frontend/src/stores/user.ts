@@ -1,8 +1,8 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
-import { useRouter } from 'vue-router'
 import { request, tokenManager } from '@/api'
-import type { User, LoginResponse } from '@/api/types'
+import { userApi } from '@/api/user'
+import type { User, LoginResponse, RegisterRequest } from '@/api/types'
 import { usePermissionStore } from '@/stores/permission'
 
 interface JwtPayload {
@@ -74,13 +74,20 @@ export const useUserStore = defineStore('user', () => {
       await fetchProfile()
       const permStore = usePermissionStore()
       await permStore.fetchPermissions()
+      return data
+    } finally {
+      loading.value = false
+    }
+  }
 
-      // 检查是否需要强制修改密码
-      if (data.must_change_password) {
-        const router = useRouter()
-        router.push('/home/change-password?forced=1')
-      }
-
+  async function register(payload: RegisterRequest) {
+    loading.value = true
+    try {
+      const data = await userApi.register(payload)
+      setToken(data.access_token, data.refresh_token)
+      await fetchProfile()
+      const permStore = usePermissionStore()
+      await permStore.fetchPermissions()
       return data
     } finally {
       loading.value = false
@@ -150,6 +157,7 @@ export const useUserStore = defineStore('user', () => {
     setToken,
     clearAuth,
     login,
+    register,
     fetchProfile,
     updateProfile,
     logout,

@@ -113,27 +113,29 @@
         <el-checkbox-group v-model="selectedPermCodes" class="perm-group">
           <el-row :gutter="10">
             <el-col :span="12" v-for="cat in permissionCategories" :key="cat">
-              <div class="perm-category" v-if="getCategoryPermissions(cat).length > 0">
-                <h4 class="category-title">{{ cat }}</h4>
-                <el-checkbox
-                  v-for="perm in getCategoryPermissions(cat)"
-                  :key="perm.code"
-                  :label="perm.code"
-                  :disabled="currentRole?.is_system"
-                >
-                  {{ perm.name }} <span class="perm-code">({{ perm.code }})</span>
-                </el-checkbox>
-              </div>
+              <template v-if="getCategoryPermissions(cat).length > 0">
+                <div class="perm-category">
+                  <h4 class="category-title">{{ cat }}</h4>
+                  <template v-for="perm in getCategoryPermissions(cat)" :key="perm.code">
+                    <el-checkbox
+                      :label="perm.code"
+                      :disabled="currentRole?.is_system"
+                    >
+                      {{ perm.name }} <span class="perm-code">({{ perm.code }})</span>
+                    </el-checkbox>
+                  </template>
+                </div>
+              </template>
             </el-col>
           </el-row>
         </el-checkbox-group>
-        <template #footer>
-          <el-button @click="permDialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="permSubmitLoading" @click="handlePermSubmit" :disabled="currentRole?.is_system">
-            保存权限
-          </el-button>
-        </template>
       </div>
+      <template #footer>
+        <el-button @click="permDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="permSubmitLoading" @click="handlePermSubmit" :disabled="currentRole?.is_system">
+          保存权限
+        </el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
@@ -143,7 +145,7 @@ import { ref, computed, onMounted, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Loading } from '@element-plus/icons-vue'
 import { userApi } from '@/api/user'
-import type { Role, Permission, CreateRoleRequest, UpdateRoleRequest } from '@/api/types'
+import type { Role, Permission, CreateRoleRequest } from '@/api/types'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const loading = ref(false)

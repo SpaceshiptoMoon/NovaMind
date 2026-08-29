@@ -31,7 +31,7 @@
 
       <div class="form-options">
         <el-checkbox v-model="rememberMe">记住我</el-checkbox>
-        <a class="forgot-link" @click.prevent="handleForgotPassword">忘记密码？</a>
+        <el-button type="text" size="small" @click="handleForgotPassword">忘记密码？</el-button>
       </div>
 
       <el-button
@@ -44,6 +44,10 @@
         登录
       </el-button>
     </el-form>
+
+    <div class="register-link">
+      没有账号？<el-button type="text" size="small" @click="goRegister">去注册</el-button>
+    </div>
   </div>
 </template>
 
@@ -80,10 +84,14 @@ const handleLogin = async () => {
 
     loading.value = true
     try {
-      await userStore.login(form.username, form.password)
+      const data = await userStore.login(form.username, form.password)
       ElMessage.success('登录成功')
-      const redirect = (route.query.redirect as string) || '/'
-      router.push(redirect)
+      if (data.must_change_password) {
+        router.push('/home/change-password?forced=1')
+      } else {
+        const redirect = (route.query.redirect as string) || '/'
+        router.push(redirect)
+      }
     } catch (error: unknown) {
       const err = error as { response?: { data?: { message?: string } } }
       ElMessage.error(err.response?.data?.message || '登录失败')
@@ -95,6 +103,10 @@ const handleLogin = async () => {
 
 function handleForgotPassword() {
   router.push('/forgot-password')
+}
+
+function goRegister() {
+  router.push('/register')
 }
 </script>
 
@@ -127,5 +139,24 @@ function handleForgotPassword() {
   width: 100%;
   height: 44px;
   font-weight: var(--weight-medium);
+}
+
+.register-link {
+  text-align: center;
+  margin-top: var(--space-5);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.register-link a {
+  color: var(--color-primary);
+  text-decoration: none;
+  margin-left: var(--space-1);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+
+.register-link a:hover {
+  color: var(--color-primary-hover);
 }
 </style>
