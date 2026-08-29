@@ -180,6 +180,34 @@ class UserLogin(BaseModel):
         return v
 
 
+class UserRegister(UserBase):
+    """
+    用户注册模型（开放注册，分配 viewer 角色）
+
+    字段规范：
+    - password: 用户登录密码，长度建议8-30个字符，至少包含字母、数字和特殊字符
+    """
+    password: str = Field(
+        ...,
+        description="用户登录密码，长度为8-30个字符，必须包含大小写字母、数字和特殊字符",
+        min_length=8,
+        max_length=30,
+        examples=["Secure@123", "MyP@ss2024"]
+    )
+
+    @field_validator('password')
+    @classmethod
+    def validate_password(cls, v):
+        """验证密码强度"""
+        return validate_password_strength(v)
+
+    @model_validator(mode='after')
+    def validate_password_not_username(self) -> Self:
+        """验证密码不能包含用户名"""
+        validate_password_not_username(self.username, self.password)
+        return self
+
+
 class RoleBrief(BaseModel):
     """用户响应中嵌入的精简角色信息"""
     code: str = Field(..., description="角色唯一编码")

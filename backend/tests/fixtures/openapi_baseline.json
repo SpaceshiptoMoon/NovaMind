@@ -6144,6 +6144,45 @@
         "title": "PdfParsingConfig",
         "type": "object"
       },
+      "PermissionResponse": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "module": {
+            "title": "Module",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name",
+          "module"
+        ],
+        "title": "PermissionResponse",
+        "type": "object"
+      },
       "PersonalInfo": {
         "properties": {
           "age": {
@@ -7374,6 +7413,140 @@
           "name"
         ],
         "title": "RoleBrief",
+        "type": "object"
+      },
+      "RoleCreate": {
+        "properties": {
+          "code": {
+            "maxLength": 50,
+            "minLength": 2,
+            "title": "Code",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "maxLength": 100,
+            "title": "Name",
+            "type": "string"
+          },
+          "permission_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permission Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "title": "RoleCreate",
+        "type": "object"
+      },
+      "RoleResponse": {
+        "properties": {
+          "code": {
+            "maxLength": 50,
+            "minLength": 2,
+            "title": "Code",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_system": {
+            "title": "Is System",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 100,
+            "title": "Name",
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/PermissionResponse"
+            },
+            "title": "Permissions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "id",
+          "is_system"
+        ],
+        "title": "RoleResponse",
+        "type": "object"
+      },
+      "RoleUpdate": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "permission_codes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permission Codes"
+          }
+        },
+        "title": "RoleUpdate",
         "type": "object"
       },
       "SearchConfigCreate": {
@@ -11190,6 +11363,65 @@
         "title": "UserMessageResponse",
         "type": "object"
       },
+      "UserRegister": {
+        "description": "用户注册模型（开放注册，分配 viewer 角色）\n\n字段规范：\n- password: 用户登录密码，长度建议8-30个字符，至少包含字母、数字和特殊字符",
+        "properties": {
+          "email": {
+            "description": "用户邮箱地址，必须符合邮箱格式，用于找回密码等操作",
+            "examples": [
+              "user@example.com",
+              "zhangsan@company.cn"
+            ],
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "description": "用户登录密码，长度为8-30个字符，必须包含大小写字母、数字和特殊字符",
+            "examples": [
+              "Secure@123",
+              "MyP@ss2024"
+            ],
+            "maxLength": 30,
+            "minLength": 8,
+            "title": "Password",
+            "type": "string"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "用户手机号码，可选字段，必须符合11位手机号格式",
+            "examples": [
+              "13800138000"
+            ],
+            "title": "Phone"
+          },
+          "username": {
+            "description": "用户唯一标识符，长度为3-50个字符，支持字母、数字、下划线",
+            "examples": [
+              "zhangsan",
+              "user_123"
+            ],
+            "maxLength": 50,
+            "minLength": 3,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "email",
+          "password"
+        ],
+        "title": "UserRegister",
+        "type": "object"
+      },
       "UserResponse": {
         "description": "用户响应模型（只包含公开信息，不暴露内部字段）",
         "properties": {
@@ -11278,6 +11510,21 @@
           "created_at"
         ],
         "title": "UserResponse",
+        "type": "object"
+      },
+      "UserRoleAssignRequest": {
+        "properties": {
+          "role_id": {
+            "description": "目标角色ID",
+            "exclusiveMinimum": 0.0,
+            "title": "Role Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "role_id"
+        ],
+        "title": "UserRoleAssignRequest",
         "type": "object"
       },
       "UserUpdate": {
@@ -21483,6 +21730,221 @@
         ]
       }
     },
+    "/api/v1/user/permissions": {
+      "get": {
+        "description": "获取系统所有权限定义",
+        "operationId": "list_permissions_api_v1_user_permissions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PermissionResponse"
+                  },
+                  "title": "Response List Permissions Api V1 User Permissions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "权限列表",
+        "tags": [
+          "角色管理"
+        ]
+      }
+    },
+    "/api/v1/user/roles": {
+      "get": {
+        "description": "获取所有角色及其权限",
+        "operationId": "list_roles_api_v1_user_roles_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoleResponse"
+                  },
+                  "title": "Response List Roles Api V1 User Roles Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "角色列表",
+        "tags": [
+          "角色管理"
+        ]
+      },
+      "post": {
+        "description": "创建新角色并绑定权限",
+        "operationId": "create_role_api_v1_user_roles_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "创建角色",
+        "tags": [
+          "角色管理"
+        ]
+      }
+    },
+    "/api/v1/user/roles/{role_id}": {
+      "delete": {
+        "description": "删除非系统内置且未被用户绑定的角色",
+        "operationId": "delete_role_api_v1_user_roles__role_id__delete",
+        "parameters": [
+          {
+            "description": "角色ID",
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "description": "角色ID",
+              "exclusiveMinimum": 0,
+              "title": "Role Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "删除角色",
+        "tags": [
+          "角色管理"
+        ]
+      },
+      "put": {
+        "description": "更新角色名称、描述及权限",
+        "operationId": "update_role_api_v1_user_roles__role_id__put",
+        "parameters": [
+          {
+            "description": "角色ID",
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "description": "角色ID",
+              "exclusiveMinimum": 0,
+              "title": "Role Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "更新角色",
+        "tags": [
+          "角色管理"
+        ]
+      }
+    },
     "/api/v1/user/search-configs": {
       "get": {
         "description": "获取当前用户的联网搜索 provider 配置列表",
@@ -22043,6 +22505,35 @@
         ]
       }
     },
+    "/api/v1/user/users/me/permissions": {
+      "get": {
+        "description": "返回当前用户拥有的权限码列表及角色码",
+        "operationId": "get_my_permissions_api_v1_user_users_me_permissions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get My Permissions Api V1 User Users Me Permissions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "获取当前用户权限",
+        "tags": [
+          "用户管理"
+        ]
+      }
+    },
     "/api/v1/user/users/refresh": {
       "post": {
         "description": "使用刷新令牌获取新的访问令牌",
@@ -22080,6 +22571,48 @@
           }
         },
         "summary": "刷新令牌",
+        "tags": [
+          "用户管理"
+        ]
+      }
+    },
+    "/api/v1/user/users/register": {
+      "post": {
+        "description": "用户自注册账户（分配 viewer 角色）并自动登录",
+        "operationId": "register_user_api_v1_user_users_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserRegister"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "用户注册",
         "tags": [
           "用户管理"
         ]
@@ -22343,6 +22876,65 @@
         "summary": "管理员重置用户密码",
         "tags": [
           "用户管理"
+        ]
+      }
+    },
+    "/api/v1/user/users/{user_id}/role": {
+      "put": {
+        "description": "为用户分配角色并清除权限缓存",
+        "operationId": "assign_user_role_api_v1_user_users__user_id__role_put",
+        "parameters": [
+          {
+            "description": "用户ID",
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "description": "用户ID",
+              "exclusiveMinimum": 0,
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserRoleAssignRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "分配用户角色",
+        "tags": [
+          "角色管理"
         ]
       }
     },
