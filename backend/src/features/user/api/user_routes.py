@@ -11,6 +11,7 @@ from novamind.features.user.schemas.user_schema import (
     UserResponse,
     UserUpdate,
     UserLogin,
+    UserRegister,
     Token,
     TokenRefresh,
     TokenRefreshResponse,
@@ -35,6 +36,7 @@ from novamind.features.user.api.dependencies import get_user_service
 from novamind.features.user.services.auth_service import AuthService
 from novamind.features.user.models.user import UserStatus
 from novamind.core.middleware.rate_limit import get_limiter, RateLimits
+from novamind.setting.yaml_config import get_config
 
 router = APIRouter()
 
@@ -115,6 +117,56 @@ async def login_user(
         refresh_token=result.get("refresh_token"),
         expires_in=result.get("expires_in"),
         must_change_password=result.get("must_change_password", False),
+    )
+
+
+@router.post(
+    "/users/register",
+    response_model=Token,
+    summary="用户注册",
+    description="用户自注册账户（分配 viewer 角色）并自动登录",
+)
+@get_limiter().limit(RateLimits.REGISTER)
+async def register_user(
+    request: Request,
+    user_register: Annotated[UserRegister, Body(...)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+):
+    """
+    用户自注册（开放注册）
+
+    创建 viewer 角色用户并自动返回登录令牌
+
+    Args:
+        user_register: 注册数据（用户名、邮箱、密码、可选手机号）
+        user_service: 用户服务
+
+    Returns:
+        Token: 包含 access_token、refresh_token 和过期时间
+    """
+    user = await user_service.register_user(
+        username=user_register.username,
+        email=user_register.email,
+        password=user_register.password,
+        phone=user_register.phone,
+    )
+
+    # 自动登录返回 token（register_user 失败时抛异常，不会返回 None）
+    config = get_config()
+    role_code = user.role.code if user.role else "viewer"
+    access_token, refresh_token = await AuthService.create_token_pair(
+        user_id=user.id,
+        username=user.username,
+        email=user.email,
+        role_code=role_code,
+        status=user.status,
+    )
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=refresh_token,
+        expires_in=config.security.access_token_expire_minutes * 60,
+        must_change_password=user.must_change_password,
     )
 
 

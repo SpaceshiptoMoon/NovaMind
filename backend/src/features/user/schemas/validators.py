@@ -25,8 +25,10 @@ def validate_username_optional(v: Optional[str]) -> Optional[str]:
 
 
 def validate_phone_format(v: Optional[str]) -> Optional[str]:
-    """验证手机号格式"""
-    if v and not re.match(r'^1[3-9]\d{9}$', v):
+    """验证手机号格式（空字符串规范化为 None，避免空值撞 phone 唯一约束）"""
+    if not v:
+        return None
+    if not re.match(r'^1[3-9]\d{9}$', v):
         raise ValueError('手机号格式不正确')
     return v
 
