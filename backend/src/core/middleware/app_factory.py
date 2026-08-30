@@ -13,6 +13,7 @@ from .structured_logging import setup_structured_logging, get_logger
 from .startup_manager import AppLifespanManager
 from .router_manager import RouterManager
 from .trace_middleware import TraceIDMiddleware
+from .app_gate import AppGateMiddleware
 from .exceptions import setup_exception_handlers
 from .rate_limit import get_limiter, rate_limit_exceeded_handler
 from novamind.core.security.config_validator import validate_security_config
@@ -114,6 +115,10 @@ def _add_middleware(app: FastAPI, config):
         expose_headers=["X-Request-ID", "X-Trace-ID"],
         max_age=600,
     )
+
+    # 3. 应用门禁中间件（CORS 之后添加 → 先于 CORS 执行、被 CORS 响应包裹：
+    #    403 拒绝响应也会带上 CORS 头，前端拦截器能正常读取错误体）
+    app.add_middleware(AppGateMiddleware)
 
 
 def _register_routes(app: FastAPI, router_manager: RouterManager):

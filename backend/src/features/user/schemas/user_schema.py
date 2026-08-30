@@ -389,3 +389,36 @@ class MyPermissionsResponse(BaseModel):
     """当前用户权限响应模型"""
     permissions: list[str] = Field(..., description="权限码列表")
     role_code: Optional[str] = Field(None, description="角色编码")
+    disabled_apps: list[str] = Field(default_factory=list, description="被禁用的应用代码列表（admin 恒为空）")
+
+
+# ==================== 应用级权限（deny-list） ====================
+
+
+class UserAppAccessBase(BaseModel):
+    """应用权限基础模型"""
+    disabled_apps: list[str] = Field(default_factory=list, description="被禁用的应用代码列表")
+
+
+class UserAppAccessUpdateRequest(UserAppAccessBase):
+    """应用权限更新请求（全量替换被禁用集合）"""
+
+    @field_validator("disabled_apps")
+    @classmethod
+    def validate_app_codes(cls, v: list[str]) -> list[str]:
+        from novamind.core.authorization.app_codes import AppCode
+
+        allowed = set(AppCode.ALL)
+        illegal = set(v) - allowed
+        if illegal:
+            raise ValueError(f"未知应用代码: {sorted(illegal)}（合法值: {AppCode.ALL}）")
+        if len(v) != len(set(v)):
+            raise ValueError("disabled_apps 不允许重复项")
+        return v
+
+
+class UserAppAccessResponse(UserAppAccessBase):
+    """应用权限响应模型"""
+    user_id: int = Field(..., description="用户ID")
+
+    model_config = ConfigDict(from_attributes=True)

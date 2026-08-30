@@ -98,6 +98,7 @@ def _import_models_legacy() -> None:
     """动态导入所有业务模型（legacy 硬编码，回滚用）"""
     from novamind.features.user.models.user import User  # noqa: F401
     from novamind.features.user.models.user_model_config import UserModelConfig  # noqa: F401
+    from novamind.features.user.models.user_disabled_app import UserDisabledApp  # noqa: F401
     from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace  # noqa: F401
     from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase  # noqa: F401
     from novamind.features.knowledge_space.models.document import Document  # noqa: F401

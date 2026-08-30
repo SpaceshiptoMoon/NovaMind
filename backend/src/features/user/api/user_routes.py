@@ -27,6 +27,8 @@ from novamind.features.user.schemas.user_schema import (
     ResetPasswordRequest,
     ResetPasswordResponse,
     MyPermissionsResponse,
+    UserAppAccessResponse,
+    UserAppAccessUpdateRequest,
 )
 from novamind.core.auth import require_active_user
 from novamind.core.authorization.dependencies import (
@@ -309,11 +311,29 @@ async def get_user(
 async def get_my_permissions(
     current_user: dict = Depends(require_active_user),
     checker: PermissionCheckerPort = Depends(get_permission_checker_dep),
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
 ):
-    """获取当前用户权限列表与角色码"""
+    """获取当前用户权限列表与角色码（含被禁用应用，admin 恒为空集合）"""
     perms = await checker.get_user_permissions(current_user["id"])
+
+    disabled_apps: list[str] = []
+    if current_user.get("role_code") != "admin":
+        redis_client = None
+        try:
+            from novamind.shared.storage.client_factory import ClientFactory
+
+            redis_client = await ClientFactory.get_redis_client()
+        except Exception:
+            redis_client = None
+        from novamind.features.user.services.app_access_service import AppAccessService
+
+        svc = AppAccessService(db, redis_client)
+        disabled_apps = sorted(await svc.get_disabled_apps(current_user["id"]))
+
     return MyPermissionsResponse(
-        permissions=sorted(perms), role_code=current_user.get("role_code")
+        permissions=sorted(perms),
+        role_code=current_user.get("role_code"),
+        disabled_apps=disabled_apps,
     )
 
 
@@ -581,3 +601,62 @@ async def reset_password(
     """通过 Token 重置密码（业务逻辑见 UserService.reset_password_by_token）"""
     await user_service.reset_password_by_token(data.token, data.new_password)
     return ResetPasswordResponse()
+
+# ==================== 应用级权限（deny-list） ====================
+
+@router.get(
+    "/users/{user_id}/app-access",
+    response_model=UserAppAccessResponse,
+    summary="获取用户应用权限",
+    description="返回用户被禁用的应用代码列表（需要 user.manage 权限）",
+)
+async def get_user_app_access(
+    user_id: Annotated[int, Path(gt=0, description="用户ID")],
+    current_user: dict = Depends(require_permission("user.manage")),
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+):
+    """获取用户被禁用的应用列表（空列表 = 全部可用）"""
+    await _ensure_user_exists(db, user_id)
+    from novamind.features.user.services.app_access_service import AppAccessService
+
+    svc = AppAccessService(db, _appgate_redis())
+    return UserAppAccessResponse(
+        user_id=user_id, disabled_apps=sorted(await svc.get_disabled_apps(user_id))
+    )
+
+
+@router.put(
+    "/users/{user_id}/app-access",
+    response_model=UserAppAccessResponse,
+    summary="设置用户应用权限",
+    description="全量替换用户被禁用的应用集合（需要 user.manage 权限；空集合 = 全部可用）",
+)
+async def update_user_app_access(
+    user_id: Annotated[int, Path(gt=0, description="用户ID")],
+    body: Annotated[UserAppAccessUpdateRequest, Body(...)],
+    current_user: dict = Depends(require_permission("user.manage")),
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+):
+    """全量替换用户被禁用的应用集合（管理页勾选式 UI 的后端）"""
+    await _ensure_user_exists(db, user_id)
+    from novamind.features.user.services.app_access_service import AppAccessService
+
+    svc = AppAccessService(db, _appgate_redis())
+    await svc.set_disabled_apps(
+        user_id, set(body.disabled_apps), operator_id=current_user.get("id")
+    )
+    return UserAppAccessResponse(
+        user_id=user_id, disabled_apps=sorted(body.disabled_apps)
+    )
+
+
+async def _ensure_user_exists(db: AsyncSession, user_id: int) -> None:
+    """目标用户存在性检查（404）。"""
+    user = await db.get(UserModel, user_id)
+    if user is None:
+        raise UserNotFoundError(user_id=user_id)
+
+
+def _appgate_redis():
+    """同步占位：Redis 由 AppAccessService 内部处理——此函数保留接口对称，返回 None。"""
+    return None
