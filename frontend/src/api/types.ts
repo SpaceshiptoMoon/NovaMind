@@ -42,6 +42,7 @@ export interface User {
   email: string
   phone: string | null
   is_admin: boolean
+  is_super_admin: boolean
   status: number // 0-禁用 1-正常 2-封禁 3-已删除
   last_login_at: string | null
   created_at: string
@@ -51,6 +52,29 @@ export interface User {
 export interface MyPermissionsResponse {
   permissions: string[]
   role_code: string
+  disabled_apps: string[]
+}
+
+// 可门禁的应用代码（与后端 core/authorization/app_codes.AppCode 对齐）
+export const APP_CODES = ['qa', 'agent', 'skill', 'app', 'clawmate'] as const
+export type AppCodeType = (typeof APP_CODES)[number]
+
+// 应用显示名（用户管理页勾选弹窗与侧边栏共用）
+export const APP_CODE_LABELS: Record<AppCodeType, string> = {
+  qa: 'AI 对话',
+  agent: '智能体',
+  skill: '技能广场',
+  app: '应用中心（简历挖掘）',
+  clawmate: 'ClawMate',
+}
+
+export interface UserAppAccess {
+  user_id: number
+  disabled_apps: string[]
+}
+
+export interface UpdateUserAppAccessRequest {
+  disabled_apps: string[]
 }
 
 export interface CreateUserRequest {

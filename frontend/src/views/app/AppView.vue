@@ -28,9 +28,10 @@
 </template>
 
 <script setup lang="ts">
-import { type Component } from 'vue'
+import { type Component, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Document, ArrowRight } from '@element-plus/icons-vue'
+import { usePermissionStore } from '@/stores/permission'
 
 interface AppCard {
   id: string
@@ -40,11 +41,14 @@ interface AppCard {
   iconComponent: Component
   bgColor: string
   iconColor: string
+  /** 应用门禁代码（AppCode） */
+  appCode: string
 }
 
 const router = useRouter()
+const permStore = usePermissionStore()
 
-const apps: AppCard[] = [
+const allApps: AppCard[] = [
   {
     id: 'resume_mining',
     name: '简历挖掘',
@@ -53,8 +57,12 @@ const apps: AppCard[] = [
     iconComponent: Document,
     bgColor: 'linear-gradient(135deg, #E8F0FE 0%, #D2E3FC 100%)',
     iconColor: '#4285F4',
+    appCode: 'app',
   },
 ]
+
+// 应用级权限过滤（被禁应用不渲染卡片；门禁强制执行在后端）
+const apps = computed(() => allApps.filter((a) => permStore.hasApp(a.appCode)))
 
 function navigateTo(app: AppCard) {
   router.push(app.route_path)

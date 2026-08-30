@@ -195,25 +195,25 @@ const router = createRouter({
           path: 'apps',
           name: 'Apps',
           component: () => import('@/views/app/AppView.vue'),
-          meta: { title: '应用中心' },
+          meta: { title: '应用中心', requiresApp: 'app' },
         },
         {
           path: 'apps/resume',
           name: 'ResumeMining',
           component: () => import('@/views/app/resume/ResumeApp.vue'),
-          meta: { title: '简历挖掘' },
+          meta: { title: '简历挖掘', requiresApp: 'app' },
         },
         {
           path: 'apps/resume/history',
           name: 'ResumeHistory',
           component: () => import('@/views/app/resume/ResumeHistory.vue'),
-          meta: { title: '简历挖掘历史' },
+          meta: { title: '简历挖掘历史', requiresApp: 'app' },
         },
         {
           path: 'apps/resume/session/:sessionId',
           name: 'ResumeMiningSession',
           component: () => import('@/views/app/resume/ResumeApp.vue'),
-          meta: { title: '简历挖掘' },
+          meta: { title: '简历挖掘', requiresApp: 'app' },
         },
         // 统一工作台
         {
@@ -226,13 +226,13 @@ const router = createRouter({
               path: 'chat',
               name: 'WorkspaceChat',
               component: () => import('@/views/chat/ChatView.vue'),
-              meta: { title: 'AI 对话' },
+              meta: { title: 'AI 对话', requiresApp: 'qa' },
             },
             {
               path: 'agents',
               name: 'WorkspaceAgents',
               component: () => import('@/views/agent/AgentView.vue'),
-              meta: { title: '智能体' },
+              meta: { title: '智能体', requiresApp: 'agent' },
             },
             {
               path: 'agents/:agentId/chat',
@@ -262,7 +262,7 @@ const router = createRouter({
               path: 'skills',
               name: 'WorkspaceSkills',
               component: () => import('@/views/skill/SkillMarketplaceView.vue'),
-              meta: { title: '技能广场' },
+              meta: { title: '技能广场', requiresApp: 'skill' },
             },
             {
               path: 'skills/admin',
@@ -280,7 +280,7 @@ const router = createRouter({
               path: 'clawmate',
               name: 'WorkspaceClawMate',
               component: () => import('@/views/clawmate/ClawMateView.vue'),
-              meta: { title: 'ClawMate' },
+              meta: { title: 'ClawMate', requiresApp: 'clawmate' },
             },
           ],
         },
