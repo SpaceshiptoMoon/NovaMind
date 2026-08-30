@@ -4,7 +4,7 @@
       <template #header>
         <div class="card-header">
           <span>用户管理</span>
-          <el-button type="primary" @click="showCreateDialog" v-if="permStore.hasPermission('user.write')">
+          <el-button type="primary" @click="showCreateDialog" v-if="permStore.hasPermission('user.manage')">
             <el-icon><Plus /></el-icon>
             新建用户
           </el-button>
@@ -59,7 +59,7 @@
             <el-button type="primary" link size="small" @click="handleViewDetail(row)">
               查看
             </el-button>
-            <el-button type="primary" link size="small" @click="showEditDialog(row)" v-if="permStore.hasPermission('user.write')">
+            <el-button type="primary" link size="small" @click="showEditDialog(row)" v-if="permStore.hasPermission('user.manage')">
               编辑
             </el-button>
             <el-button
@@ -67,18 +67,18 @@
               link
               size="small"
               @click="handleToggleStatus(row)"
-              v-if="permStore.hasPermission('user.write')"
+              v-if="permStore.hasPermission('user.manage')"
             >
               {{ row.status === 1 ? '停用' : '启用' }}
             </el-button>
-            <el-button type="info" link size="small" @click="handleForceLogout(row)" v-if="permStore.hasPermission('user.write')">
+            <el-button type="info" link size="small" @click="handleForceLogout(row)" v-if="permStore.hasPermission('user.manage')">
               下线
             </el-button>
-            <el-button type="danger" link size="small" @click="showResetPasswordDialog(row)" v-if="permStore.hasPermission('user.write')">
+            <el-button type="danger" link size="small" @click="showResetPasswordDialog(row)" v-if="permStore.hasPermission('user.manage')">
               重置密码
             </el-button>
             <el-button
-              v-if="(!row.is_admin || canDeleteAdmin) && permStore.hasPermission('user.delete')"
+              v-if="(!row.is_admin || canDeleteAdmin) && permStore.hasPermission('user.manage')"
               type="danger"
               link
               size="small"
@@ -232,7 +232,7 @@ const currentPage = ref(1)
 const pageSize = 10
 
 // 当前用户是管理员 - 改用权限判断
-const canDeleteAdmin = computed(() => permStore.hasPermission('user.delete'))
+const canDeleteAdmin = computed(() => permStore.hasPermission('user.manage'))
 
 // 搜索 + 状态筛选后的用户列表
 const filteredUsers = computed(() => {

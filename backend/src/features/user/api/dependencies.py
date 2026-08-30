@@ -7,7 +7,7 @@ from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.features.user.repository import UserRepository
 from novamind.core.database.database import get_db
 from novamind.core.authorization.ports import PermissionCheckerPort
-from novamind.features.user.services.permission_service import PermissionService
+from novamind.features.user.services.permission_service import RbacPermissionService
 from novamind.features.user.services.role_service import RoleService
 from novamind.shared.storage.client_factory import ClientFactory
 
@@ -26,7 +26,7 @@ async def get_role_service(db: AsyncSession = Depends(get_db)) -> RoleService:
         redis_client = await ClientFactory.get_redis_client()
     except Exception:
         redis_client = None
-    permission_checker = PermissionService(db, redis_client)
+    permission_checker = RbacPermissionService(db, redis_client)
     return RoleService(db, permission_checker)
 
 
@@ -59,11 +59,11 @@ async def get_search_config_service(db: AsyncSession = Depends(get_db)) -> Searc
 async def get_permission_checker(db: AsyncSession = Depends(get_db)) -> PermissionCheckerPort:
     """获取权限检查服务（RBAC 装配点）。
 
-    返回 ``PermissionService`` 实例，供依赖注入框架以 ``PermissionCheckerPort`` 端口消费。
+    返回 ``RbacPermissionService`` 实例，供依赖注入框架以 ``PermissionCheckerPort`` 端口消费。
     Redis 客户端未装配或初始化失败时，降级为 ``redis_client=None``，走 DB 直查。
     """
     try:
         redis_client = await ClientFactory.get_redis_client()
     except Exception:
         redis_client = None
-    return PermissionService(db, redis_client)
+    return RbacPermissionService(db, redis_client)

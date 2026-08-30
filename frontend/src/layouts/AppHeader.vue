@@ -46,7 +46,7 @@
                 模型配置
               </el-dropdown-item>
               <el-dropdown-item
-                v-if="permStore.hasPermission('user.read')"
+                v-if="permStore.hasPermission('user.manage')"
                 command="admin/users"
               >
                 <el-icon><User /></el-icon>

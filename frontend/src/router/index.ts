@@ -107,7 +107,7 @@ const router = createRouter({
           path: 'admin/users',
           name: 'UserManage',
           component: () => import('@/views/user/UserManageView.vue'),
-          meta: { title: '用户管理', requiresPermission: 'user.read' },
+          meta: { title: '用户管理', requiresPermission: 'user.manage' },
         },
         {
           path: 'admin/roles',

@@ -2,7 +2,7 @@
 知识空间模块 - 服务层
 
 包含:
-- permission_service: 权限检查服务
+- permission_service: 空间访问检查（SpaceAccessChecker）
 - space_service: 空间管理服务
 - member_service: 成员管理服务
 - knowledge_base_service: 知识库管理服务
@@ -15,7 +15,7 @@
 注意: 分块数据仅存储在 Elasticsearch 中，不在 MySQL 中存储
 """
 
-from novamind.features.knowledge_space.services.permission_service import PermissionService
+from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
 from novamind.features.knowledge_space.services.space_service import SpaceService
 from novamind.features.knowledge_space.services.member_service import MemberService
 from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
@@ -26,7 +26,7 @@ from novamind.features.knowledge_space.services.search_service import SearchServ
 from novamind.features.knowledge_space.services.audit_service import AuditService
 
 __all__ = [
-    "PermissionService",
+    "SpaceAccessChecker",
     "SpaceService",
     "MemberService",
     "KnowledgeBaseService",

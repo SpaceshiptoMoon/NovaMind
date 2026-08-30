@@ -10,9 +10,10 @@ from typing import Optional
 from novamind.features.knowledge_space.models.space_member import SpaceMember, SpaceRole
 
 
-class PermissionService:
+class SpaceAccessChecker:
     """
-    权限检查服务
+    空间资源访问检查器（区别于 user feature 的 RbacPermissionService：
+    那是系统权限码查询，本类是空间成员角色判断）
 
     权限层级：VIEWER(0) < EDITOR(1) < ADMIN(2)
     自定义权限（custom_permissions）可覆盖角色默认权限，优先级最高。

@@ -38,7 +38,7 @@ from novamind.features.knowledge_space.models import (
 
 # 服务层
 from novamind.features.knowledge_space.services import (
-    PermissionService,
+    SpaceAccessChecker,
     SpaceService,
     MemberService,
     KnowledgeBaseService,
@@ -104,7 +104,7 @@ __all__ = [
     "SpaceAuditLog",
     "AuditAction",
     # 服务层
-    "PermissionService",
+    "SpaceAccessChecker",
     "SpaceService",
     "MemberService",
     "KnowledgeBaseService",

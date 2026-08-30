@@ -191,17 +191,11 @@ const formRules: FormRules = {
 
 // 权限分类映射
 const permissionCategoryMap: Record<string, string> = {
-  'user.read': '用户',
-  'user.write': '用户',
-  'user.delete': '用户',
+  'user.manage': '用户',
   'role.manage': '角色',
-  'space.manage': '知识空间',
-  'kb.manage': '知识库',
-  'doc.manage': '文档',
   'skill.config': '技能',
   'skill.review': '技能',
-  'agent.manage': '智能体',
-  'admin.panel': '管理面板',
+  'agent.manage_system': '智能体',
 }
 
 const permissionCategories = computed(() => {
