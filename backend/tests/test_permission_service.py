@@ -1,4 +1,4 @@
-"""PermissionService 权限查询与缓存测试。"""
+"""RbacPermissionService 权限查询与缓存测试。"""
 import pytest
 
 
@@ -17,8 +17,8 @@ async def test_get_user_permissions_returns_role_permissions(tmp_db):
     user = User(id=1, username="u", email="u@e.com", password_hash="h", phone=None, status=1, role_id=role.id)
     tmp_db.add(user)
     await tmp_db.flush()
-    from novamind.features.user.services.permission_service import PermissionService
-    svc = PermissionService(tmp_db, redis_client=None)  # 无 Redis 时直查
+    from novamind.features.user.services.permission_service import RbacPermissionService
+    svc = RbacPermissionService(tmp_db, redis_client=None)  # 无 Redis 时直查
     perms = await svc.get_user_permissions(user.id)
     assert perms == {"agent.manage_system", "skill.config"}
 
@@ -35,7 +35,7 @@ async def test_admin_role_returns_all_permissions_marker(tmp_db):
     user = User(id=1, username="a", email="a@e.com", password_hash="h", phone=None, status=1, role_id=admin_role.id)
     tmp_db.add(user)
     await tmp_db.flush()
-    from novamind.features.user.services.permission_service import PermissionService
-    svc = PermissionService(tmp_db, redis_client=None)
+    from novamind.features.user.services.permission_service import RbacPermissionService
+    svc = RbacPermissionService(tmp_db, redis_client=None)
     perms = await svc.get_user_permissions(user.id)
     assert SystemPermission.USER_MANAGE in perms and SystemPermission.ROLE_MANAGE in perms

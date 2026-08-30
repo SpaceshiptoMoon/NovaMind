@@ -1,4 +1,10 @@
-"""PermissionService：RBAC 权限查询实现。"""
+"""RbacPermissionService：系统级 RBAC 权限码查询实现。
+
+注意与 ``knowledge_space/services/permission_service.py`` 的
+``SpaceAccessChecker`` 区分：本类查「用户 → 角色 → 权限码」（平台管理面，
+如 user.manage/role.manage），后者查「空间成员角色」（空间资源面，
+VIEWER/EDITOR/ADMIN）。二者语义与数据源完全不同。
+"""
 from typing import Optional
 
 from sqlalchemy import select
@@ -12,7 +18,7 @@ ROLE_PERM_CACHE_PREFIX = "rbac:user_perms:"  # Redis key 前缀
 ROLE_PERM_TTL = 300  # 5 分钟
 
 
-class PermissionService(PermissionCheckerPort):
+class RbacPermissionService(PermissionCheckerPort):
     """基于 ``User -> Role -> Permission`` 的权限查询服务。
 
     支持 Redis 缓存；未提供 Redis 客户端时直接查询数据库，便于测试与降级。

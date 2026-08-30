@@ -225,7 +225,7 @@ def setup_auth_port_wiring(app: FastAPI) -> None:
     ``core/auth/dependencies.get_user_status_resolver`` 的 dependency_overrides，
     使 core/auth 的认证依赖能经端口取 DB 用户状态，无需 core 反向依赖 user。
 
-    同时把 ``PermissionService`` 注册为 ``PermissionCheckerPort`` 的默认实现，
+    同时把 ``RbacPermissionService`` 注册为 ``PermissionCheckerPort`` 的默认实现，
     供各 feature 路由守卫注入使用。
     """
     # 懒导入规避启动期循环依赖

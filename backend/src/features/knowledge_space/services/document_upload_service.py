@@ -23,7 +23,7 @@ from novamind.features.knowledge_space.repository.knowledge_base_repository impo
     KnowledgeBaseRepository,
 )
 from novamind.features.knowledge_space.repository.member_repository import MemberRepository
-from novamind.features.knowledge_space.services.permission_service import PermissionService
+from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
 from novamind.features.knowledge_space.exceptions import (
     KnowledgeBaseNotFoundError,
     DocumentAlreadyExistsError,
@@ -67,7 +67,7 @@ class DocumentUploadService:
         self.minio_client = minio_client
         self.logger = get_logger(__name__)
         self.member_repo = MemberRepository(session)
-        self.permission_service = PermissionService()
+        self.permission_service = SpaceAccessChecker()
 
     async def upload_document(
         self,

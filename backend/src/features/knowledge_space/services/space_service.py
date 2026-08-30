@@ -17,7 +17,7 @@ from novamind.features.knowledge_space.repository.member_repository import Membe
 from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
 from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
 from novamind.features.knowledge_space.repository.audit_repository import AuditRepository
-from novamind.features.knowledge_space.services.permission_service import PermissionService
+from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
 from novamind.features.knowledge_space.exceptions import (
     SpaceNotFoundError,
     SpaceAlreadyExistsError,
@@ -54,7 +54,7 @@ class SpaceService:
         self.member_repo = MemberRepository(session)
         self.kb_repo = KnowledgeBaseRepository(session)
         self.doc_repo = DocumentRepository(session)
-        self.permission_service = PermissionService()
+        self.permission_service = SpaceAccessChecker()
         self.es_client = es_client
         self.minio_client = minio_client
         self.model_config_service = model_config_service
