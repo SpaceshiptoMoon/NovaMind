@@ -18,6 +18,7 @@ from novamind.core.authorization.dependencies import (
 )
 from novamind.core.authorization.exceptions import PermissionDeniedError
 from novamind.core.authorization.ports import PermissionCheckerPort
+from novamind.core.database.database import get_db
 from novamind.core.middleware.base_exception_handler import create_error_handler
 from novamind.core.middleware.manifest import API_V1_PREFIX
 from novamind.features.user.api.user_routes import router as user_router
@@ -97,6 +98,8 @@ def _make_app(
             "id": 1,
             "role_code": role_code,
         }
+    # me/permissions 端点查应用禁用表需要 DB——用 SQLite 内存库，避免连真实 MySQL 挂起
+    app.dependency_overrides[get_db] = _fake_get_db
     app.dependency_overrides[get_permission_checker_dep] = lambda: _FakeChecker(
         permissions
     )
@@ -111,6 +114,28 @@ def _make_app(
     app.include_router(user_router, prefix=USER_PREFIX)
     app.include_router(skill_router, prefix=SKILL_PREFIX)
     return app
+
+
+_fake_db_engine = None
+
+
+async def _fake_get_db():
+    """SQLite 内存库 session（建 user_disabled_apps 表；其他查询走空库即可）。"""
+    global _fake_db_engine
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from novamind.core.database.base import Base
+    from novamind.features.user.models.user_disabled_app import UserDisabledApp
+
+    if _fake_db_engine is None:
+        _fake_db_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with _fake_db_engine.begin() as conn:
+            await conn.run_sync(
+                lambda c: Base.metadata.create_all(c, tables=[UserDisabledApp.__table__])
+            )
+    Session = async_sessionmaker(_fake_db_engine, expire_on_commit=False)
+    async with Session() as session:
+        yield session
 
 
 # ==================== 用户管理端点 ====================
@@ -217,6 +242,8 @@ def test_get_my_permissions_returns_permissions_and_role_code():
     data = resp.json()
     assert data["permissions"] == ["user.manage"]
     assert data["role_code"] == "editor"
+    # 应用禁用列表默认空（deny-list：无记录=全部可用）
+    assert data["disabled_apps"] == []
 
 
 def test_get_my_permissions_admin_bypass_returns_all_permissions():

@@ -5564,6 +5564,14 @@
       "MyPermissionsResponse": {
         "description": "当前用户权限响应模型",
         "properties": {
+          "disabled_apps": {
+            "description": "被禁用的应用代码列表（admin 恒为空）",
+            "items": {
+              "type": "string"
+            },
+            "title": "Disabled Apps",
+            "type": "array"
+          },
           "permissions": {
             "description": "权限码列表",
             "items": {
@@ -11306,6 +11314,44 @@
           "file_size"
         ],
         "title": "UploadChatAttachmentResponse",
+        "type": "object"
+      },
+      "UserAppAccessResponse": {
+        "description": "应用权限响应模型",
+        "properties": {
+          "disabled_apps": {
+            "description": "被禁用的应用代码列表",
+            "items": {
+              "type": "string"
+            },
+            "title": "Disabled Apps",
+            "type": "array"
+          },
+          "user_id": {
+            "description": "用户ID",
+            "title": "User Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "UserAppAccessResponse",
+        "type": "object"
+      },
+      "UserAppAccessUpdateRequest": {
+        "description": "应用权限更新请求（全量替换被禁用集合）",
+        "properties": {
+          "disabled_apps": {
+            "description": "被禁用的应用代码列表",
+            "items": {
+              "type": "string"
+            },
+            "title": "Disabled Apps",
+            "type": "array"
+          }
+        },
+        "title": "UserAppAccessUpdateRequest",
         "type": "object"
       },
       "UserCreate": {
@@ -22852,6 +22898,116 @@
           }
         ],
         "summary": "更新用户信息",
+        "tags": [
+          "用户管理"
+        ]
+      }
+    },
+    "/api/v1/user/users/{user_id}/app-access": {
+      "get": {
+        "description": "返回用户被禁用的应用代码列表（需要 user.manage 权限）",
+        "operationId": "get_user_app_access_api_v1_user_users__user_id__app_access_get",
+        "parameters": [
+          {
+            "description": "用户ID",
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "description": "用户ID",
+              "exclusiveMinimum": 0,
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserAppAccessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "获取用户应用权限",
+        "tags": [
+          "用户管理"
+        ]
+      },
+      "put": {
+        "description": "全量替换用户被禁用的应用集合（需要 user.manage 权限；空集合 = 全部可用）",
+        "operationId": "update_user_app_access_api_v1_user_users__user_id__app_access_put",
+        "parameters": [
+          {
+            "description": "用户ID",
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "description": "用户ID",
+              "exclusiveMinimum": 0,
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserAppAccessUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserAppAccessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "设置用户应用权限",
         "tags": [
           "用户管理"
         ]

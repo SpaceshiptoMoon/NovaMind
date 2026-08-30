@@ -8,6 +8,7 @@ def _import_models() -> None:
     from novamind.features.user.models.user import User  # noqa: F401
     from novamind.features.user.models.user_model_config import UserModelConfig  # noqa: F401
     from novamind.features.user.models.user_search_config import UserSearchConfig  # noqa: F401
+    from novamind.features.user.models.user_disabled_app import UserDisabledApp  # noqa: F401
 
 
 async def _init(app) -> None:
