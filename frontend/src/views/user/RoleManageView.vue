@@ -238,7 +238,7 @@ async function fetchRoles() {
   loading.value = true
   try {
     const res = await userApi.getRoles()
-    roles.value = res.items
+    roles.value = res
   } catch (error: unknown) {
     const err = error as { response?: { data?: { message?: string } } }
     ElMessage.error(err.response?.data?.message || '获取角色列表失败')
@@ -251,8 +251,8 @@ async function fetchRoles() {
 async function fetchPermissions() {
   try {
     const res = await userApi.getPermissions()
-    allPermissions.value = res.items
-    permissions.value = res.items
+    allPermissions.value = res
+    permissions.value = res
   } catch (error: unknown) {
     const err = error as { response?: { data?: { message?: string } } }
     ElMessage.error(err.response?.data?.message || '获取权限列表失败')
@@ -262,19 +262,10 @@ async function fetchPermissions() {
 // ===================== 权限配置 =====================
 async function showPermissionDialog(role: Role) {
   currentRole.value = role
-  permLoading.value = true
-  try {
-    // 重新获取最新角色详情（包含权限）
-    const res = await userApi.getRole(role.id)
-    currentRole.value = res
-    selectedPermCodes.value = res.permissions?.map((p) => p.code) || []
-    permDialogVisible.value = true
-  } catch (error: unknown) {
-    const err = error as { response?: { data?: { message?: string } } }
-    ElMessage.error(err.response?.data?.message || '获取角色详情失败')
-  } finally {
-    permLoading.value = false
-  }
+  // 列表接口已 selectinload(permissions)，直接用行数据，无需再请求详情
+  selectedPermCodes.value = role.permissions?.map((p) => p.code) || []
+  permDialogVisible.value = true
+  permLoading.value = false
 }
 
 async function handlePermSubmit() {
@@ -308,6 +299,7 @@ function showCreateDialog() {
 
 function showEditDialog(role: Role) {
   isEdit.value = true
+  currentRole.value = role
   formData.code = role.code
   formData.name = role.name
   formData.description = role.description || ''

@@ -2,7 +2,7 @@ import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { request, tokenManager, TOKEN_SYNC_EVENT } from '@/api'
 import { userApi } from '@/api/user'
-import type { User, LoginResponse, RegisterRequest } from '@/api/types'
+import type { User, RegisterRequest } from '@/api/types'
 import { usePermissionStore } from '@/stores/permission'
 
 interface JwtPayload {
