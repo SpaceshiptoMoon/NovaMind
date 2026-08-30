@@ -105,16 +105,6 @@ export interface UserRoleAssignRequest {
   role_id: number
 }
 
-export interface RoleListResponse {
-  items: Role[]
-  total: number
-}
-
-export interface PermissionListResponse {
-  items: Permission[]
-  total: number
-}
-
 // ===================== 模型配置相关 =====================
 
 export interface ModelConfig {

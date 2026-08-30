@@ -22,11 +22,10 @@ import type {
   SearchEngineTestRequest,
   SearchEngineTestResponse,
   Role,
+  Permission,
   CreateRoleRequest,
   UpdateRoleRequest,
   UserRoleAssignRequest,
-  RoleListResponse,
-  PermissionListResponse,
 } from './types'
 
 const BASE_URL = '/user/users'
@@ -148,12 +147,9 @@ export const userApi = {
     })
   },
 
-  // 角色管理
+  // 角色管理（列表接口返回裸数组，无 { items } 包装）
   getRoles() {
-    return request.get<RoleListResponse>('/user/roles')
-  },
-  getRole(roleId: number) {
-    return request.get<Role>(`/user/roles/${roleId}`)
+    return request.get<Role[]>('/user/roles')
   },
   createRole(data: CreateRoleRequest) {
     return request.post<Role>('/user/roles', data)
@@ -165,7 +161,7 @@ export const userApi = {
     return request.delete<{ message: string }>(`/user/roles/${roleId}`)
   },
   getPermissions() {
-    return request.get<PermissionListResponse>('/user/permissions')
+    return request.get<Permission[]>('/user/permissions')
   },
   assignUserRole(userId: number, data: UserRoleAssignRequest) {
     return request.put<{ message: string }>(`/user/users/${userId}/role`, data)
