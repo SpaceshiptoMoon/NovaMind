@@ -28,6 +28,7 @@
           工作台
         </span>
         <span
+          v-if="permStore.hasApp('app')"
           :class="['nav-item', { active: isNavActive('/home/apps') }]"
           @click="router.push('/home/apps')"
         >

@@ -206,6 +206,7 @@ import { useAgentStore } from '@/stores/agent'
 import { useSpaceStore } from '@/stores/space'
 import { useChatStore } from '@/stores/chat'
 import { useWorkbenchStore } from '@/stores/workbench'
+import { usePermissionStore } from '@/stores/permission'
 import NavIcon from '@/components/common/NavIcon.vue'
 import WorkbenchDrawer from '@/components/workbench/WorkbenchDrawer.vue'
 import type { Agent, ChatSource, SourceRef, ToolCallRecord } from '@/api/types'
@@ -222,16 +223,24 @@ provide('isInWorkspace', true)
 const sidebarCollapsed = ref(false)
 const selectedAgentId = ref<number | null>(null)
 
-const channels = [
-  { key: 'chat', label: 'AI 对话', icon: 'chat', group: 'primary' },
-  { key: 'agents', label: '智能体', icon: 'agents', group: 'primary' },
-  { key: 'research', label: '深度研究', icon: 'research', group: 'more' },
-  { key: 'skills', label: '技能广场', icon: 'apps', group: 'more' },
-  { key: 'clawmate', label: 'ClawMate', icon: 'chat', group: 'more' },
+// 频道清单：app 键对应应用门禁代码（AppCode）；research 属空间功能不进门禁（常驻）
+const allChannels = [
+  { key: 'chat', label: 'AI 对话', icon: 'chat', group: 'primary', app: 'qa' },
+  { key: 'agents', label: '智能体', icon: 'agents', group: 'primary', app: 'agent' },
+  { key: 'research', label: '深度研究', icon: 'research', group: 'more', app: null },
+  { key: 'skills', label: '技能广场', icon: 'apps', group: 'more', app: 'skill' },
+  { key: 'clawmate', label: 'ClawMate', icon: 'chat', group: 'more', app: 'clawmate' },
 ] as const
 
-const primaryChannels = computed(() => channels.filter(c => c.group === 'primary'))
-const moreChannels = computed(() => channels.filter(c => c.group === 'more'))
+const permStore = usePermissionStore()
+
+// 应用级权限过滤（admin 短路全过；被禁应用的频道不渲染）
+const channels = computed(() =>
+  allChannels.filter((c) => c.app === null || permStore.hasApp(c.app))
+)
+
+const primaryChannels = computed(() => channels.value.filter((c) => c.group === 'primary'))
+const moreChannels = computed(() => channels.value.filter((c) => c.group === 'more'))
 
 const activeChannelKey = ref('chat')
 const moreExpanded = ref(false)

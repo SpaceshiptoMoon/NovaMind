@@ -45,6 +45,12 @@ export function setupRouterGuards(router: Router) {
       return { path: '/403' }
     }
 
+    // 应用级权限（deny-list）：被禁应用的路由直接 403（强制执行在后端 AppGateMiddleware）
+    const requiresApp = to.meta.requiresApp as string | undefined
+    if (requiresApp && !permStore.hasApp(requiresApp)) {
+      return { path: '/403' }
+    }
+
     return true
   })
 

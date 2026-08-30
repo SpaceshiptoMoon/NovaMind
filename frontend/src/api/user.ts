@@ -7,6 +7,8 @@ import type {
   UpdateUserRequest,
   User,
   MyPermissionsResponse,
+  UserAppAccess,
+  UpdateUserAppAccessRequest,
   ModelConfig,
   ModelConfigListResponse,
   AvailableModelsResponse,
@@ -165,5 +167,13 @@ export const userApi = {
   },
   assignUserRole(userId: number, data: UserRoleAssignRequest) {
     return request.put<{ message: string }>(`/user/users/${userId}/role`, data)
+  },
+
+  // 应用级权限（deny-list）
+  getUserAppAccess(userId: number) {
+    return request.get<UserAppAccess>(`/user/users/${userId}/app-access`)
+  },
+  updateUserAppAccess(userId: number, data: UpdateUserAppAccessRequest) {
+    return request.put<UserAppAccess>(`/user/users/${userId}/app-access`, data)
   },
 }

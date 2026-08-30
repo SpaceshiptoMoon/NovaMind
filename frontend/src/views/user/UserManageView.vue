@@ -37,7 +37,10 @@
         </el-table-column>
         <el-table-column label="角色" width="120">
           <template #default="{ row }">
-            <el-tag :type="row.is_admin ? 'danger' : 'info'" size="small">
+            <el-tag v-if="row.is_super_admin" type="danger" size="small" effect="dark">
+              超级管理员
+            </el-tag>
+            <el-tag v-else :type="row.is_admin ? 'warning' : 'info'" size="small">
               {{ row.is_admin ? '管理员' : '用户' }}
             </el-tag>
           </template>
@@ -63,18 +66,38 @@
               编辑
             </el-button>
             <el-button
+              type="primary"
+              link
+              size="small"
+              @click="showAppAccessDialog(row)"
+              v-if="permStore.hasPermission('user.manage')"
+            >
+              应用权限
+            </el-button>
+            <el-button
+              type="primary"
+              link
+              size="small"
+              @click="showRoleDialog(row)"
+              v-if="permStore.hasPermission('role.manage')"
+              :disabled="row.is_super_admin"
+            >
+              设为角色
+            </el-button>
+            <el-button
               :type="row.status === 1 ? 'warning' : 'success'"
               link
               size="small"
               @click="handleToggleStatus(row)"
               v-if="permStore.hasPermission('user.manage')"
+              :disabled="row.is_super_admin"
             >
               {{ row.status === 1 ? '停用' : '启用' }}
             </el-button>
-            <el-button type="info" link size="small" @click="handleForceLogout(row)" v-if="permStore.hasPermission('user.manage')">
+            <el-button type="info" link size="small" @click="handleForceLogout(row)" v-if="permStore.hasPermission('user.manage')" :disabled="row.is_super_admin">
               下线
             </el-button>
-            <el-button type="danger" link size="small" @click="showResetPasswordDialog(row)" v-if="permStore.hasPermission('user.manage')">
+            <el-button type="danger" link size="small" @click="showResetPasswordDialog(row)" v-if="permStore.hasPermission('user.manage')" :disabled="row.is_super_admin">
               重置密码
             </el-button>
             <el-button
@@ -83,6 +106,7 @@
               link
               size="small"
               @click="handleDelete(row)"
+              :disabled="row.is_super_admin"
             >
               删除
             </el-button>
@@ -150,7 +174,10 @@
           <el-descriptions-item label="邮箱">{{ detailUser.email }}</el-descriptions-item>
           <el-descriptions-item label="手机号">{{ detailUser.phone || '-' }}</el-descriptions-item>
           <el-descriptions-item label="角色">
-            <el-tag :type="detailUser.is_admin ? 'danger' : 'info'" size="small">
+            <el-tag v-if="detailUser.is_super_admin" type="danger" size="small" effect="dark">
+              超级管理员
+            </el-tag>
+            <el-tag v-else :type="detailUser.is_admin ? 'warning' : 'info'" size="small">
               {{ detailUser.is_admin ? '管理员' : '普通用户' }}
             </el-tag>
           </el-descriptions-item>
@@ -205,6 +232,66 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 应用权限弹窗（勾选=可用，取消勾选=禁用；deny-list） -->
+    <el-dialog
+      v-model="appAccessVisible"
+      title="应用权限"
+      width="440px"
+      append-to-body
+      destroy-on-close
+    >
+      <p class="reset-tip">
+        为用户 <strong>{{ appAccessUser?.username }}</strong> 配置可用应用（取消勾选即禁用该应用）
+      </p>
+      <div v-if="appAccessLoading" style="text-align: center; padding: 40px">
+        <el-icon class="is-loading" :size="24"><Loading /></el-icon>
+      </div>
+      <template v-else>
+        <el-checkbox-group v-model="appAccessEnabled" class="app-access-group">
+          <el-checkbox v-for="code in APP_CODES" :key="code" :value="code">
+            {{ APP_CODE_LABELS[code] }}
+          </el-checkbox>
+        </el-checkbox-group>
+        <p class="app-access-tip">知识空间不在此列——其内容由空间成员角色控制。</p>
+      </template>
+      <template #footer>
+        <el-button @click="appAccessVisible = false">取消</el-button>
+        <el-button type="primary" :loading="appAccessSubmitLoading" @click="handleAppAccessSubmit">
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 设置角色弹窗 -->
+    <el-dialog
+      v-model="roleDialogVisible"
+      title="设置角色"
+      width="440px"
+      append-to-body
+      destroy-on-close
+    >
+      <p class="reset-tip">
+        为用户 <strong>{{ roleDialogUser?.username }}</strong> 分配系统角色
+      </p>
+      <div v-if="roleDialogLoading" style="text-align: center; padding: 40px">
+        <el-icon class="is-loading" :size="24"><Loading /></el-icon>
+      </div>
+      <el-select v-else v-model="roleDialogSelectedId" placeholder="选择角色" style="width: 100%">
+        <el-option
+          v-for="r in roleDialogRoles"
+          :key="r.id"
+          :label="`${r.name} (${r.code})`"
+          :value="r.id"
+        />
+      </el-select>
+      <template #footer>
+        <el-button @click="roleDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="roleDialogSubmitLoading" @click="handleRoleSubmit">
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -215,7 +302,8 @@ import { Plus, Loading } from '@element-plus/icons-vue'
 import { userApi } from '@/api/user'
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
-import type { User } from '@/api/types'
+import type { User, Role, AppCodeType } from '@/api/types'
+import { APP_CODES, APP_CODE_LABELS } from '@/api/types'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const userStore = useUserStore()
@@ -540,6 +628,100 @@ async function handleDelete(user: User) {
   }
 }
 
+// ===================== 应用权限（deny-list） =====================
+const appAccessVisible = ref(false)
+const appAccessLoading = ref(false)
+const appAccessSubmitLoading = ref(false)
+const appAccessUser = ref<User | null>(null)
+// 勾选集合 = 可用应用（提交时转换为被禁集合：全集 - 勾选）
+const appAccessEnabled = ref<AppCodeType[]>([])
+
+async function showAppAccessDialog(user: User) {
+  appAccessUser.value = user
+  appAccessVisible.value = true
+  appAccessLoading.value = true
+  appAccessEnabled.value = []
+  try {
+    const access = await userApi.getUserAppAccess(user.id)
+    const disabled = new Set(access.disabled_apps)
+    appAccessEnabled.value = APP_CODES.filter((c) => !disabled.has(c))
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { message?: string } } }
+    ElMessage.error(err.response?.data?.message || '获取应用权限失败')
+    appAccessVisible.value = false
+  } finally {
+    appAccessLoading.value = false
+  }
+}
+
+async function handleAppAccessSubmit() {
+  if (!appAccessUser.value) return
+  appAccessSubmitLoading.value = true
+  try {
+    // 勾选=可用 → 被禁集合 = 全集 - 勾选
+    const enabled = new Set(appAccessEnabled.value)
+    const disabled = APP_CODES.filter((c) => !enabled.has(c))
+    await userApi.updateUserAppAccess(appAccessUser.value.id, { disabled_apps: disabled })
+    ElMessage.success(`用户 "${appAccessUser.value.username}" 应用权限已更新`)
+    appAccessVisible.value = false
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { message?: string } } }
+    ElMessage.error(err.response?.data?.message || '保存应用权限失败')
+  } finally {
+    appAccessSubmitLoading.value = false
+  }
+}
+
+// ===================== 设置角色 =====================
+const roleDialogVisible = ref(false)
+const roleDialogLoading = ref(false)
+const roleDialogSubmitLoading = ref(false)
+const roleDialogUser = ref<User | null>(null)
+const roleDialogSelectedId = ref<number | null>(null)
+const roleDialogRoles = ref<Role[]>([])
+
+async function showRoleDialog(user: User) {
+  roleDialogUser.value = user
+  roleDialogVisible.value = true
+  roleDialogLoading.value = true
+  roleDialogSelectedId.value = null
+  try {
+    const roles = await userApi.getRoles()
+    roleDialogRoles.value = roles
+    // 回显当前角色
+    const current = roles.find((r) => r.code === 'admin')
+    roleDialogSelectedId.value =
+      user.is_admin && current ? current.id : (roles.find((r) => r.code === 'viewer')?.id ?? null)
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { message?: string } } }
+    ElMessage.error(err.response?.data?.message || '获取角色列表失败')
+    roleDialogVisible.value = false
+  } finally {
+    roleDialogLoading.value = false
+  }
+}
+
+async function handleRoleSubmit() {
+  if (!roleDialogUser.value || !roleDialogSelectedId.value) {
+    ElMessage.warning('请选择角色')
+    return
+  }
+  roleDialogSubmitLoading.value = true
+  try {
+    await userApi.assignUserRole(roleDialogUser.value.id, {
+      role_id: roleDialogSelectedId.value,
+    })
+    ElMessage.success(`用户 "${roleDialogUser.value.username}" 角色已更新`)
+    roleDialogVisible.value = false
+    fetchUsers()
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { message?: string } } }
+    ElMessage.error(err.response?.data?.message || '设置角色失败')
+  } finally {
+    roleDialogSubmitLoading.value = false
+  }
+}
+
 onMounted(() => {
   fetchUsers()
 })
@@ -580,6 +762,19 @@ onMounted(() => {
   margin: 0 0 var(--space-4);
   font-size: var(--text-base);
   color: var(--color-text-secondary);
+}
+
+.app-access-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+}
+
+.app-access-tip {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
 }
 
 :deep(.el-table) {
