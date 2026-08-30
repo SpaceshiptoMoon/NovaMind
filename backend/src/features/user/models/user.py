@@ -66,6 +66,17 @@ class User(BaseModel):
         comment="是否需要在下次登录时强制修改密码",
     )
 
+    # ========== 最高管理员标记 ==========
+    # YAML 配置的初始 admin 账号置位；最高管理员不可被降级/删除/停用/重置密码，
+    # 与"授权管理员"（被分配 admin 角色的普通用户）的区别仅在此标记
+    is_super_admin = Column(
+        Boolean,
+        default=False,
+        nullable=False,
+        server_default="0",
+        comment="最高管理员标记（不可被其他管理员降级/删除/停用）",
+    )
+
     # ========== 登录信息（独立字段便于查询统计） ==========
     last_login_at = Column(DateTime, nullable=True, comment="最后登录时间")
     last_login_ip = Column(String(45), nullable=True, comment="最后登录 IP")  # IPv6 最长 45 字符

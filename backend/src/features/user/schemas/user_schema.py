@@ -226,6 +226,7 @@ class UserResponse(BaseModel):
     phone: Optional[str] = Field(None, description="用户手机号码")
     role: RoleBrief = Field(..., description="用户系统角色")
     is_admin: bool = Field(default=False, description="是否系统管理员（从 role 派生）")
+    is_super_admin: bool = Field(default=False, description="是否最高管理员（YAML 配置的初始账号）")
     status: int = Field(..., description="用户状态，0为禁用，1为启用，2为封禁，3为已删除")
     last_login_at: Optional[datetime] = Field(None, description="最后登录时间")
     created_at: datetime = Field(..., description="用户创建时间")

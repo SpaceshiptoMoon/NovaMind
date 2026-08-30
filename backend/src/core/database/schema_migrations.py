@@ -61,4 +61,9 @@ SCHEMA_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
         "iteration",
         "ALTER TABLE agent_tool_calls ADD COLUMN iteration INT NULL COMMENT 'ReAct 轮号（1-based，与所属 assistant 决策消息同轮）；null 为历史数据'",
     ),
+    (
+        "users",
+        "is_super_admin",
+        "ALTER TABLE users ADD COLUMN is_super_admin BOOLEAN NOT NULL DEFAULT 0 COMMENT '最高管理员标记（不可被其他管理员降级/删除/停用）'",
+    ),
 )

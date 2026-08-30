@@ -36,9 +36,12 @@ from novamind.core.authorization.dependencies import (
 from novamind.core.authorization.ports import PermissionCheckerPort
 from novamind.features.user.api.dependencies import get_user_service
 from novamind.features.user.services.auth_service import AuthService
+from novamind.features.user.models.user import User as UserModel
 from novamind.features.user.models.user import UserStatus
+from novamind.core.database.database import get_db
 from novamind.core.middleware.rate_limit import get_limiter, RateLimits
 from novamind.setting.yaml_config import get_config
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 
@@ -450,6 +453,7 @@ async def logout_all_sessions(
     user_id: Annotated[int, Path(gt=0, description="用户ID")],
     user_service: Annotated[UserService, Depends(get_user_service)],
     current_user: dict = Depends(require_permission("user.manage")),
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
 ):
     """
     强制撤销用户所有会话（踢出所有设备）
@@ -462,10 +466,15 @@ async def logout_all_sessions(
     Returns:
         LogoutAllSessionsResponse: 操作结果
     """
-    # 1. æ¤éç»è®°å¨æ¡ç refresh tokenï¼jti é»åå + å é¤ user_tokens è®°å½ï¼
+    # 最高管理员保护：超管会话不可被其他管理员强制下线
+    target = await db.get(UserModel, user_id)
+    if target is not None and getattr(target, "is_super_admin", False):
+        raise PermissionDeniedError(message="最高管理员账户不可强制下线")
+
+    # 1. 撤销登记在案的 refresh token（jti 黑名单 + 删除 user_tokens 记录）
     revoked_count = await AuthService.logout_all_sessions(user_id)
-    # 2. è®¾ç½®ç¨æ·çº§é»ååï¼iat æ¯è¾ï¼ï¼æªç»è®°ç access token ä¹ç«å³å¤±æï¼
-    #    ä¸ç"access token å­æ´»è³èªç¶è¿æ"ççªå£
+    # 2. 设置用户级黑名单（iat 比较）：未登记的 access token 也立即失效，
+    #    不留"access token 存活至自然过期"的窗口
     await AuthService.blacklist_all_user_tokens(user_id)
     return LogoutAllSessionsResponse(
         message=f"已撤销用户 {user_id} 的所有会话",

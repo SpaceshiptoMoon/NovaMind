@@ -11,9 +11,9 @@ class SystemPermission:
     ALL = [USER_MANAGE, SKILL_REVIEW, SKILL_CONFIG, AGENT_MANAGE_SYSTEM, ROLE_MANAGE]
 
 
-# 预置角色 → 权限映射
+# 预置角色 → 权限映射（三级全局模型：admin / viewer；最高管理员由 users.is_super_admin 标记区分，
+# 不单独设角色。editor 角色已废弃，存量用户由 startup._deprecate_editor_role 迁移至 viewer）
 PRESET_ROLE_PERMISSIONS = {
     "admin": SystemPermission.ALL,
-    "editor": [SystemPermission.AGENT_MANAGE_SYSTEM],
     "viewer": [],
 }
