@@ -5,7 +5,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.authorization.ports import PermissionCheckerPort
-from novamind.features.user.exceptions import RoleNotFoundError, UserOperationError, UserNotFoundError
+from novamind.features.user.exceptions import (
+    PermissionDeniedError,
+    RoleNotFoundError,
+    UserOperationError,
+    UserNotFoundError,
+)
 from sqlalchemy.orm import selectinload
 
 from novamind.features.user.models.role import Role, Permission
@@ -118,6 +123,10 @@ class RoleService:
         user = await self.db.get(User, user_id)
         if user is None:
             raise UserNotFoundError(user_id=user_id)
+
+        # 最高管理员保护：超管角色只能通过 YAML 配置变更，管理端点不可降级
+        if getattr(user, "is_super_admin", False):
+            raise PermissionDeniedError(message="最高管理员角色不可通过管理端点修改")
 
         role = await self.repo.get_role_by_id(role_id)
         if role is None:

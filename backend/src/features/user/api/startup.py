@@ -77,6 +77,15 @@ async def create_admin_user() -> None:
                     logger.warning("请及时修改默认管理员密码！")
                 else:
                     logger.info("管理员账户已存在", username=admin_config.username)
+                # 幂等置位最高管理员标记（三级模型：超管 = YAML 配置的初始账号）
+                from sqlalchemy import update as sa_update
+                async with db.begin_nested():
+                    await db.execute(
+                        sa_update(User)
+                        .where(User.username == admin_config.username)
+                        .where(User.is_super_admin.is_(False))
+                        .values(is_super_admin=True)
+                    )
                 return
 
             # 创建管理员账户（保留调用以触发建库副作用；返回值未使用）
@@ -87,6 +96,14 @@ async def create_admin_user() -> None:
                 phone=admin_config.phone,
                 role_code="admin",
             )
+            # 新建后置位最高管理员标记
+            from sqlalchemy import update as sa_update
+            async with db.begin_nested():
+                await db.execute(
+                    sa_update(User)
+                    .where(User.username == admin_config.username)
+                    .values(is_super_admin=True)
+                )
 
             logger.info("管理员账户创建成功", username=admin_config.username)
             logger.info("管理员邮箱", email=admin_config.email)
@@ -122,9 +139,9 @@ async def _init_rbac_seed(db) -> None:
             db.add(perm)
     await db.flush()
 
-    # 2. 预置角色
+    # 2. 预置角色（三级全局模型：admin 授权管理员 / viewer 普通用户；最高管理员由 is_super_admin 标记区分）
     existing_role_codes = set((await db.execute(select(Role.code))).scalars().all())
-    for code in ("admin", "editor", "viewer"):
+    for code in ("admin", "viewer"):
         if code not in existing_role_codes:
             role = Role(code=code, name=_ROLE_NAMES[code], is_system=True)
             role_id = await _next_id(Role)
@@ -155,7 +172,38 @@ _PERM_META = {
     "role.manage": {"name": "角色管理", "module": "user"},
 }
 
-_ROLE_NAMES = {"admin": "管理员", "editor": "编辑者", "viewer": "浏览者"}
+_ROLE_NAMES = {"admin": "管理员", "viewer": "普通用户"}
+
+
+async def _deprecate_editor_role(db) -> None:
+    """废弃 editor 角色并迁移存量用户到 viewer（三级全局模型下无位置）。幂等。
+
+    顺序：editor 用户重绑 viewer → 删 role_permissions 映射 → 删 editor 角色。
+    editor 不存在则直接返回（新库或已迁移）。
+    """
+    from sqlalchemy import select, delete, update as sa_update
+
+    from novamind.features.user.models.user import User as UserModel
+
+    editor = (await db.execute(select(Role).where(Role.code == "editor"))).scalar_one_or_none()
+    if editor is None:
+        return
+
+    viewer = (await db.execute(select(Role).where(Role.code == "viewer"))).scalar_one_or_none()
+    if viewer is None:
+        return
+
+    moved = (
+        await db.execute(
+            sa_update(UserModel).where(UserModel.role_id == editor.id).values(role_id=viewer.id)
+        )
+    ).rowcount
+    async with db.begin_nested():
+        await db.execute(delete(RolePermission).where(RolePermission.role_id == editor.id))
+        await db.delete(editor)
+    await db.flush()
+    if moved:
+        logger.info("editor 角色已废弃，存量用户迁移至 viewer", moved=moved)
 
 
 async def _migrate_is_admin_to_role(db) -> None:
@@ -210,9 +258,10 @@ async def _drop_legacy_is_admin_column(db) -> None:
 
 
 async def init_user_components() -> None:
-    """初始化用户模块：RBAC 预置 seed、is_admin→role 迁移、删遗留列、默认管理员账户。"""
+    """初始化用户模块：RBAC 预置 seed、editor 废弃迁移、is_admin→role 迁移、删遗留列、默认管理员账户。"""
     async with get_db_session() as db:
         await _init_rbac_seed(db)
+        await _deprecate_editor_role(db)
         await _migrate_is_admin_to_role(db)
         await _drop_legacy_is_admin_column(db)
     await create_admin_user()

@@ -10,7 +10,7 @@ async def test_seed_creates_system_roles_and_permissions(tmp_db):
     await _init_rbac_seed(tmp_db)
     roles = (await tmp_db.execute(__import__("sqlalchemy").select(Role))).scalars().all()
     codes = {r.code for r in roles}
-    assert {"admin", "editor", "viewer"} <= codes
+    assert {"admin", "viewer"} <= codes and "editor" not in codes  # editor 已废弃
     perms = (await tmp_db.execute(__import__("sqlalchemy").select(Permission))).scalars().all()
     assert any(p.code == "user.manage" for p in perms)
     admin = next(r for r in roles if r.code == "admin")

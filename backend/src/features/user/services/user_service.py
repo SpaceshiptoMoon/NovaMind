@@ -12,6 +12,7 @@ from novamind.features.user.exceptions import (
     UserCreationError,
     UserOperationError,
     AuthenticationError,
+    PermissionDeniedError,
     UserError,
 )
 from novamind.features.user.services.auth_service import AuthService
@@ -368,6 +369,11 @@ class UserService:
         # 密码哈希在 Service 层处理（不在 Repository 层）
         password_changed = False
         if "password" in update_data and update_data["password"]:
+            # 管理员经 PUT /users/{id} 携带 password 修改他人密码时，不可对最高管理员操作
+            # （本人走 change-password 流程，不经此处）
+            await self._ensure_not_super_admin(
+                await self.user_repository.get_user_by_id(user_id, use_cache=False)
+            )
             from novamind.core.auth.hashing import get_password_hash_async
             user_update.password = await get_password_hash_async(update_data["password"])
             password_changed = True
@@ -390,6 +396,15 @@ class UserService:
             await self.user_repository.db.execute(stmt)
         await AuthService.blacklist_all_user_tokens(user_id)
 
+    async def _ensure_not_super_admin(self, user: UserModel) -> None:
+        """最高管理员保护：不可被其他管理员删除/停用/重置密码/改角色。
+
+        绝对规则，无需操作者上下文——即使是超管本人或另一超管也不经这些
+        管理端点操作（超管改自己密码走 change-password 流程）。
+        """
+        if user is not None and getattr(user, "is_super_admin", False):
+            raise PermissionDeniedError(message="最高管理员账户不可执行此操作")
+
     async def toggle_user_status(self, user_id: int) -> tuple[bool, int]:
         """
         切换用户状态（ACTIVE ↔ INACTIVE）
@@ -400,6 +415,9 @@ class UserService:
             tuple[bool, int]: (操作是否成功, 新状态值)
         """
         try:
+            await self._ensure_not_super_admin(
+                await self.user_repository.get_user_by_id(user_id, use_cache=False)
+            )
             success, new_status = await self.user_repository.toggle_user_status(user_id)
             if success:
                 status_text = "停用" if new_status == UserStatus.INACTIVE else "激活"
@@ -426,6 +444,9 @@ class UserService:
             bool: 如果成功删除返回True，如果用户不存在返回False
         """
         try:
+            await self._ensure_not_super_admin(
+                await self.user_repository.get_user_by_id(user_id, use_cache=False)
+            )
             success = await self.user_repository.soft_delete(user_id)
             if success:
                 # 将用户所有 Token 纳入黑名单，使其立即失效
@@ -476,6 +497,8 @@ class UserService:
         user = await self.user_repository.get_user_by_id(user_id, use_cache=False)
         if not user:
             raise UserNotFoundError(f"用户 {user_id} 不存在")
+        # 最高管理员保护：管理员重置密码端点不可重置超管密码
+        await self._ensure_not_super_admin(user)
 
         # 生成 16 位临时密码
         temp_password = secrets.token_urlsafe(12)

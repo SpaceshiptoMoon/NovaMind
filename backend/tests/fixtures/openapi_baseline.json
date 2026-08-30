@@ -11497,6 +11497,12 @@
             "title": "Is Admin",
             "type": "boolean"
           },
+          "is_super_admin": {
+            "default": false,
+            "description": "是否最高管理员（YAML 配置的初始账号）",
+            "title": "Is Super Admin",
+            "type": "boolean"
+          },
           "last_login_at": {
             "anyOf": [
               {
