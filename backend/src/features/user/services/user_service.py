@@ -331,12 +331,16 @@ class UserService:
             self.logger.info("用户登出成功")
         return success
 
-    async def update_user(self, user_id: int, user_update: UserUpdate) -> Optional[UserModel]:
+    async def update_user(
+        self, user_id: int, user_update: UserUpdate, *, allow_super_admin_reset: bool = False
+    ) -> Optional[UserModel]:
         """
         更新用户信息
         Args:
             user_id: 用户ID
             user_update: 用户更新数据（Pydantic 模型）
+            allow_super_admin_reset: 允许对超管重置密码（启动期 create_admin_user
+                的 YAML 授权通道；API 路径不得传 True）
 
         Returns:
             User: 更新后的用户对象，如果用户不存在则返回None
@@ -370,10 +374,11 @@ class UserService:
         password_changed = False
         if "password" in update_data and update_data["password"]:
             # 管理员经 PUT /users/{id} 携带 password 修改他人密码时，不可对最高管理员操作
-            # （本人走 change-password 流程，不经此处）
-            await self._ensure_not_super_admin(
-                await self.user_repository.get_user_by_id(user_id, use_cache=False)
-            )
+            # （本人走 change-password 流程；启动期 YAML 重置走 allow_super_admin_reset）
+            if not allow_super_admin_reset:
+                await self._ensure_not_super_admin(
+                    await self.user_repository.get_user_by_id(user_id, use_cache=False)
+                )
             from novamind.core.auth.hashing import get_password_hash_async
             user_update.password = await get_password_hash_async(update_data["password"])
             password_changed = True

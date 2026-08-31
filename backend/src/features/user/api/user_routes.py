@@ -619,7 +619,7 @@ async def get_user_app_access(
     await _ensure_user_exists(db, user_id)
     from novamind.features.user.services.app_access_service import AppAccessService
 
-    svc = AppAccessService(db, _appgate_redis())
+    svc = AppAccessService(db, await _appgate_redis())
     return UserAppAccessResponse(
         user_id=user_id, disabled_apps=sorted(await svc.get_disabled_apps(user_id))
     )
@@ -641,7 +641,7 @@ async def update_user_app_access(
     await _ensure_user_exists(db, user_id)
     from novamind.features.user.services.app_access_service import AppAccessService
 
-    svc = AppAccessService(db, _appgate_redis())
+    svc = AppAccessService(db, await _appgate_redis())
     await svc.set_disabled_apps(
         user_id, set(body.disabled_apps), operator_id=current_user.get("id")
     )
@@ -657,6 +657,15 @@ async def _ensure_user_exists(db: AsyncSession, user_id: int) -> None:
         raise UserNotFoundError(user_id=user_id)
 
 
-def _appgate_redis():
-    """同步占位：Redis 由 AppAccessService 内部处理——此函数保留接口对称，返回 None。"""
-    return None
+async def _appgate_redis():
+    """取 Redis 客户端供应用禁用缓存（装配失败降级 None→DB 直查）。
+
+    与 dependencies.get_permission_checker 同款模式；PUT 后的 invalidate
+    必须能删到读侧（me/permissions、AppGateMiddleware）命中的同一缓存。
+    """
+    try:
+        from novamind.shared.storage.client_factory import ClientFactory
+
+        return await ClientFactory.get_redis_client()
+    except Exception:
+        return None

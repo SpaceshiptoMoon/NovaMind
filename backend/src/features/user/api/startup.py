@@ -69,6 +69,7 @@ async def create_admin_user() -> None:
                     await user_service.update_user(
                         user_id=existing_admin.id,
                         user_update=admin_user_update,
+                        allow_super_admin_reset=True,  # YAML 授权通道，不受超管保护拦截
                     )
                     # 重置密码后撤销所有已有会话
                     await AuthService.blacklist_all_user_tokens(existing_admin.id)
@@ -79,11 +80,12 @@ async def create_admin_user() -> None:
                     logger.info("管理员账户已存在", username=admin_config.username)
                 # 幂等置位最高管理员标记（三级模型：超管 = YAML 配置的初始账号）
                 from sqlalchemy import update as sa_update
+                from novamind.features.user.models.user import User as UserModel
                 async with db.begin_nested():
                     await db.execute(
-                        sa_update(User)
-                        .where(User.username == admin_config.username)
-                        .where(User.is_super_admin.is_(False))
+                        sa_update(UserModel)
+                        .where(UserModel.username == admin_config.username)
+                        .where(UserModel.is_super_admin.is_(False))
                         .values(is_super_admin=True)
                     )
                 return
@@ -98,10 +100,11 @@ async def create_admin_user() -> None:
             )
             # 新建后置位最高管理员标记
             from sqlalchemy import update as sa_update
+            from novamind.features.user.models.user import User as UserModel
             async with db.begin_nested():
                 await db.execute(
-                    sa_update(User)
-                    .where(User.username == admin_config.username)
+                    sa_update(UserModel)
+                    .where(UserModel.username == admin_config.username)
                     .values(is_super_admin=True)
                 )
 
@@ -200,6 +203,10 @@ async def _deprecate_editor_role(db) -> None:
     ).rowcount
     async with db.begin_nested():
         await db.execute(delete(RolePermission).where(RolePermission.role_id == editor.id))
+        # core delete 后 ORM 关系快照已过期：先 expire 再删角色，
+        # 否则单元工作按旧快照发 DELETE 清 role_permissions 映射，
+        # 匹配 0 行抛 StaleDataError（MySQL 实测）
+        db.expire(editor)
         await db.delete(editor)
     await db.flush()
     if moved:
