@@ -664,6 +664,41 @@ async def process_audio_document(
 # ========== 统一文本切分 ==========
 
 
+def _split_line_aware(md_text: str, chunk_size: int, chunk_overlap: int) -> List[str]:
+    """按行累积切分，绝不切进「[HH:MM:SS#idx] 描述」行内部，保证锚点不分家。
+
+    供 fixed_size 与 recursive 在 line_aware=True 时共用（音视频带时间锚点文本）。
+    单行超 chunk_size 时整行成一块（oversized），正确性优先于尺寸软上限。
+    overlap 用「保留尾部若干行使其字符和 ≈ chunk_overlap」实现（行单位 overlap）。
+    抽自原 fixed_size line_aware 内联实现，供 recursive 复用修复 B3/B4：
+    grouped 组描述 >chunk_size 时原 recursive 分隔符层级退到行内，把行首锚点切到
+    上一个 chunk、描述切到下一个 chunk，导致 align_chunk_times 丢时间对齐。
+    """
+    lines = md_text.split("\n")
+    chunks: List[str] = []
+    buf: List[str] = []
+    buf_len = 0
+    for line in lines:
+        addition = len(line) + (1 if buf else 0)  # 非首行加 \n 连接符长度
+        if buf and buf_len + addition > chunk_size:
+            chunks.append("\n".join(buf))
+            # overlap：从尾部回溯取若干行，使其字符和 ≥ chunk_overlap 即停
+            tail: List[str] = []
+            tail_len = 0
+            for tl in reversed(buf):
+                if tail and tail_len + len(tl) >= chunk_overlap:
+                    break
+                tail.insert(0, tl)
+                tail_len += len(tl) + (1 if len(tail) > 1 else 0)
+            buf = tail
+            buf_len = sum(len(l) for l in tail) + max(0, len(tail) - 1)
+        buf.append(line)
+        buf_len += addition
+    if buf:
+        chunks.append("\n".join(buf))
+    return [c for c in chunks if c.strip()]
+
+
 async def _split_md_text(
     md_text: str,
     strategy: str = "recursive",
@@ -677,9 +712,10 @@ async def _split_md_text(
     Args:
         md_text: 待切分的文本内容
         strategy: 切分策略 (recursive / markdown / fixed_size / semantic)
-        line_aware: 仅 fixed_size 生效——True 时按行累积切分（音视频带 [HH:MM:SS#idx] 锚点文本，
-            避免切进「[锚点] 描述」行内部导致锚点分家）；False 时按字符切（图片等无锚点文本）。
-            由调用方据 time_alignment 是否非空决定（音视频 True，图片/文本 False）。
+        line_aware: 仅 fixed_size / recursive 生效——True 时按行累积切分（音视频带
+            [HH:MM:SS#idx] 锚点文本，避免切进「[锚点] 描述」行内部导致锚点分家）；
+            False 时按字符/分隔符切（图片等无锚点文本）。由调用方据 time_alignment
+            是否非空决定（音视频 True，图片/文本 False）。
         **kwargs: 策略相关参数 (chunk_size, chunk_overlap, min_chunk_size, max_chunk_size 等)
 
     Returns:
@@ -697,6 +733,10 @@ async def _split_md_text(
         chunk_size = kwargs.get("chunk_size", 2000)
         chunk_overlap = kwargs.get("chunk_overlap", 50)
         min_chunk_size = kwargs.get("min_chunk_size", 500)
+        if line_aware:
+            # 音视频带 [HH:MM:SS#idx] 锚点文本：按行边界切，避免组描述 >chunk_size 时
+            # recursive 分隔符层级退到行内把锚点切分家（B3/B4）。min_chunk_size 不适用行模式。
+            return [(c, {}) for c in _split_line_aware(md_text, chunk_size, chunk_overlap)]
         splitter = splitter_class(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
@@ -728,32 +768,9 @@ async def _split_md_text(
         chunk_size = kwargs.get("chunk_size", 500)
         chunk_overlap = kwargs.get("chunk_overlap", 0)
         if line_aware:
-            # 行边界对齐版（音视频带 [HH:MM:SS#idx] 锚点文本）：按行累积到 chunk_size 就在行间
-            # flush，绝不切进「[锚点] 描述」行内部，保证切分后反查锚点不错位。
-            # overlap 用「保留尾部若干行使其字符和 ≈ chunk_overlap」实现（行单位 overlap）。
-            lines = md_text.split("\n")
-            chunks: List[str] = []
-            buf: List[str] = []
-            buf_len = 0
-            for line in lines:
-                addition = len(line) + (1 if buf else 0)  # 非首行加 \n 连接符长度
-                if buf and buf_len + addition > chunk_size:
-                    chunks.append("\n".join(buf))
-                    # overlap：从尾部回溯取若干行，使其字符和 ≥ chunk_overlap 即停
-                    tail: List[str] = []
-                    tail_len = 0
-                    for tl in reversed(buf):
-                        if tail and tail_len + len(tl) >= chunk_overlap:
-                            break
-                        tail.insert(0, tl)
-                        tail_len += len(tl) + (1 if len(tail) > 1 else 0)
-                    buf = tail
-                    buf_len = sum(len(l) for l in tail) + max(0, len(tail) - 1)
-                buf.append(line)
-                buf_len += addition
-            if buf:
-                chunks.append("\n".join(buf))
-            return [(c, {}) for c in chunks if c.strip()]
+            # 行边界对齐版（音视频带 [HH:MM:SS#idx] 锚点文本）：抽公共 _split_line_aware，
+            # 与 recursive 共用，绝不切进「[锚点] 描述」行内部，保证锚点反查不错位。
+            return [(c, {}) for c in _split_line_aware(md_text, chunk_size, chunk_overlap)]
         # 字符切（图片等无锚点文本）：原 FixedSizeSplitter 行为
         splitter = splitter_class(
             chunk_size=chunk_size,
