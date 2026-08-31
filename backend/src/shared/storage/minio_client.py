@@ -411,6 +411,52 @@ class MinioClient:
             )
             return False
 
+    async def delete_objects_by_prefix(
+        self,
+        bucket_name: str,
+        prefix: str,
+    ) -> int:
+        """异步递归删除指定前缀下所有对象，返回删除数。
+
+        用于清理视频重处理/删除时残留的 ``{base_object}_frames/`` 帧目录孤儿对象
+        （主对象 delete_document 只删单个 object，不覆盖帧前缀）。
+
+        Args:
+            bucket_name: 桶名
+            prefix: 对象名前缀（如 ``obj_frames/``）
+
+        Returns:
+            实际删除的对象数
+        """
+        def _list_and_remove() -> int:
+            count = 0
+            objects = self.client.list_objects(bucket_name, prefix=prefix, recursive=True)
+            for obj in objects:
+                try:
+                    self.client.remove_object(bucket_name, obj.object_name)
+                    count += 1
+                except Exception as e:
+                    logger.warning(
+                        "删除前缀下单个对象失败，继续删除其余",
+                        bucket=bucket_name,
+                        object=obj.object_name,
+                        error=str(e),
+                    )
+            return count
+
+        try:
+            deleted = await asyncio.to_thread(_list_and_remove)
+            if deleted:
+                logger.info(
+                    "按前缀清理对象完成", bucket=bucket_name, prefix=prefix, deleted_count=deleted,
+                )
+            return deleted
+        except S3Error as e:
+            logger.error(
+                "按前缀清理对象失败", bucket=bucket_name, prefix=prefix, error=str(e),
+            )
+            return 0
+
     def _delete_knowledge_base_documents(self, space_id: int, kb_id: int) -> int:
         """同步删除知识库的所有文档（内部方法）"""
         bucket_name = self.default_bucket
