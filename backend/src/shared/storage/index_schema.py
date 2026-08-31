@@ -117,6 +117,10 @@ class DefaultIndexSchema:
                     "end_time": {"type": "float"},
                     "duration": {"type": "float"},
                     "speaker_id": {"type": "keyword"},
+                    # 视频帧图：显式声明类型，避免 ES 动态映射把 frame_paths 推断为 text+keyword
+                    # 子字段（无法直接按 path 过滤）、frame_indices 推断为 long。
+                    "frame_paths": {"type": "keyword"},
+                    "frame_indices": {"type": "integer"},
                 }
             },
             "file_info": {
