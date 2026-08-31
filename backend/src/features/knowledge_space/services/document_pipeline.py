@@ -644,9 +644,12 @@ def _build_es_chunks(
         }
         if not is_text:
             # VIDEO chunk 的 image_url 取该 chunk 首帧的 MinIO path 作为缩略图（真实帧图），
-            # 不再误导指向整个视频文件；无帧则空串。IMAGE 模态维持 media_url（图片文件本身）。
-            if chunk_type == ChunkType.VIDEO and frame_paths and meta.get("frame_indices"):
-                chunk_data["image_url"] = frame_paths.get(meta["frame_indices"][0], "") or ""
+            # 不再误导指向整个视频文件；无可用帧则空串。IMAGE 模态维持 media_url（图片文件本身）。
+            if chunk_type == ChunkType.VIDEO:
+                if frame_paths and meta.get("frame_indices"):
+                    chunk_data["image_url"] = frame_paths.get(meta["frame_indices"][0], "") or ""
+                else:
+                    chunk_data["image_url"] = ""
             else:
                 chunk_data["image_url"] = media_url
         es_chunks.append(chunk_data)
