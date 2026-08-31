@@ -243,13 +243,18 @@ async def process_video_document(
     if task:
         task.start_step("descriptions_generated")
     # 2. 装配 VLM client + prompt（features 装配点注入引擎 describe_* 函数）
-    vlm_model_name = parsing_config.get("vlm_model") or await mcs.get_user_default_model_name(
-        document.uploader_id, "vlm"
-    )
+    # 从视频自身嵌套配置读 vlm_model（video_config = pipeline_config["parsing"]["video"]），
+    # 不读扁平 parsing_config["vlm_model"]：build_runtime_parsing_config 把 image.vlm_model
+    # 与 video.vlm_model 共写同一扁平 result["vlm_model"]，video 留空时残留 image 的模型，
+    # 视频会静默串用图片的 VLM（跨模态污染，且是不可追踪的兜底）。留空即抛错，不回退用户
+    # 默认（守"没选不兜底"原则，与图片路径一致）。vlm_fallback_model 是用户显式配置的备用，保留。
+    vlm_model_name = video_config.get("vlm_model")
     if not vlm_model_name:
         raise DocumentProcessingError(
             document_id=document.id,
-            error_message=f"视频 {document.filename} 解析需配置 VLM 模型",
+            error_message=(
+                f"视频 {document.filename} 解析需配置 VLM 模型，请在知识库视频解析配置中选择 VLM 模型"
+            ),
         )
     vlm_client = await mcs.get_vlm_client_by_model(document.uploader_id, vlm_model_name)
     vlm_fallback_client = None
