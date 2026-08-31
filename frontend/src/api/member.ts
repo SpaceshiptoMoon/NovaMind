@@ -5,6 +5,7 @@ import type {
   InviteMemberRequest,
   InviteMemberResponse,
   JoinSpaceRequest,
+  DirectAddMemberRequest,
   UpdateMemberRoleRequest,
 } from './types'
 
@@ -30,6 +31,11 @@ export const memberApi = {
   // 加入空间
   joinSpace(spaceId: number, data: JoinSpaceRequest) {
     return request.post<Member>(`/spaces/${spaceId}/members/join`, data)
+  },
+
+  // 直接添加成员（免邀请令牌，管理员按用户名/邮箱直接加为 ACTIVE）
+  addMemberDirect(spaceId: number, data: DirectAddMemberRequest) {
+    return request.post<Member>(`/spaces/${spaceId}/members/add`, data)
   },
 
   // 更新成员角色
