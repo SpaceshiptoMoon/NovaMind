@@ -159,6 +159,28 @@ async def process_document_task(
                 except Exception as cleanup_err:
                     logger.warning("开始处理前清除旧 ES 分块失败", document_id=document_id, error=str(cleanup_err))
 
+                # 清理 MinIO 旧帧目录（{base_object}_frames/ 前缀）：视频重处理时帧数/idx 可能
+                # 变化，主对象覆盖但高序号旧帧成孤儿；delete_document_chunks 只清 ES 不清 MinIO。
+                try:
+                    from novamind.shared.storage.client_factory import ClientFactory
+                    frame_storage_info = document.get_storage_info()
+                    frame_bucket = frame_storage_info.get("minio_bucket")
+                    frame_base = frame_storage_info.get("minio_object_name")
+                    if frame_bucket and frame_base:
+                        minio_client = await ClientFactory.get_minio_client()
+                        deleted = await minio_client.delete_objects_by_prefix(
+                            frame_bucket, f"{frame_base}_frames/",
+                        )
+                        if deleted:
+                            logger.info(
+                                "重处理前已清理旧视频帧", document_id=document_id,
+                                deleted_frames=deleted,
+                            )
+                except Exception as frame_cleanup_err:
+                    logger.warning(
+                        "重处理前清理旧视频帧失败", document_id=document_id, error=str(frame_cleanup_err),
+                    )
+
             # 3. 从 MinIO 下载文件
             from novamind.shared.storage.client_factory import ClientFactory
             minio_client = await ClientFactory.get_minio_client()

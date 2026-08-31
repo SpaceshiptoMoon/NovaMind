@@ -157,6 +157,18 @@ class DocumentQueryService:
         try:
             storage_info = document.get_storage_info()
             if storage_info.get("minio_bucket") and storage_info.get("minio_object_name"):
+                # 先清视频帧目录（{base_object}_frames/ 前缀）：delete_document 只删主对象，
+                # 不删帧，删文档后帧成 MinIO 孤儿。先于主对象删除，确保帧一并清理。
+                try:
+                    await self.minio_client.delete_objects_by_prefix(
+                        storage_info["minio_bucket"],
+                        f"{storage_info['minio_object_name']}_frames/",
+                    )
+                except Exception as frame_err:
+                    self.logger.warning(
+                        "删除视频帧前缀失败（继续删主对象）",
+                        document_id=document_id, error=str(frame_err),
+                    )
                 await self.minio_client.delete_document(
                     bucket_name=storage_info["minio_bucket"],
                     object_name=storage_info["minio_object_name"],
