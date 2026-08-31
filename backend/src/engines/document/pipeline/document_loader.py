@@ -267,6 +267,16 @@ class DocumentProcessor:
             logger.warning("PDF OCR fallback unavailable", filename=file_path.name, reason="fitz_not_installed")
             return ""
 
+        # fitz.get_textpage_ocr() 底层依赖系统级 Tesseract 二进制。此前 Tesseract 缺失时
+        # 每页 OCR 抛异常被下方页循环的 try/except 静默吞成空串，扫描版 PDF 入库为空且无报错。
+        # 这里前置检查并把缺失上抛为 RuntimeError，让任务 FAILED 且消息可见。
+        import shutil
+        if not shutil.which("tesseract"):
+            raise RuntimeError(
+                "PDF OCR 需要 Tesseract 系统二进制，当前未安装在 PATH；"
+                "无法对扫描版 PDF 做 OCR。请安装 Tesseract 或在 KB 配置中关闭 ocr_enabled"
+            )
+
         page_texts: List[str] = []
         try:
             with fitz.open(file_path) as pdf:
