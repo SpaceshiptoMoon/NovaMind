@@ -80,6 +80,32 @@ async def test_super_admin_password_cannot_be_set_via_update(seeded_db):
 
 
 @pytest.mark.asyncio
+async def test_super_admin_reset_allowed_via_startup_channel(seeded_db):
+    """启动期 create_admin_user 的 YAML 重置通道不受超管保护拦截（防回归：
+    该保护曾在重启时把 reset_password_if_exists 流程炸成启动失败）。"""
+    from novamind.features.user.schemas.user_schema import UserUpdate
+
+    db = seeded_db
+    sa = await _make_user(db, "root", "admin", super_admin=True, uid=1)
+    svc = UserService(UserRepository(db))
+
+    async def _noop_blacklist(uid):
+        return None
+
+    import novamind.features.user.services.user_service as usvc_mod
+
+    orig = usvc_mod.AuthService.blacklist_all_user_tokens
+    usvc_mod.AuthService.blacklist_all_user_tokens = staticmethod(_noop_blacklist)
+    try:
+        user = await svc.update_user(
+            sa.id, UserUpdate(password="YamlReset@123x"), allow_super_admin_reset=True
+        )
+        assert user is not None
+    finally:
+        usvc_mod.AuthService.blacklist_all_user_tokens = orig
+
+
+@pytest.mark.asyncio
 async def test_super_admin_role_cannot_be_reassigned(seeded_db):
     db = seeded_db
     sa = await _make_user(db, "root", "admin", super_admin=True, uid=1)
