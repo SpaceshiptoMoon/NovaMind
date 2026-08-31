@@ -365,6 +365,8 @@ export interface VideoParsingConfig {
   vlm_model?: string
   vlm_fallback_model?: string
   vlm_skip_on_quota_error?: boolean
+  /** VLM 逐帧/逐组描述并发数（1=串行，默认 4，1~20）。长视频并发降时延，过高可能触发配额限流 */
+  vlm_concurrency?: number
   /** 场景抽帧切换点阈值（strategy=scene），0~1，默认 0.3 */
   scene_threshold?: number
   /** 去重相似度阈值（strategy=dedup），0~1，默认 0.95 */

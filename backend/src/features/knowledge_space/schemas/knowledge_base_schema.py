@@ -208,6 +208,9 @@ class VideoParsingConfig(BaseModel):
     # 当所有帧的 VLM 描述均因配额/鉴权类错误失败时，是否跳过 VLM 并写一条占位描述，
     # 而不是让整个文档任务失败。默认 False（fail fast，抛业务异常提示用户）。
     vlm_skip_on_quota_error: bool = Field(default=False)
+    # VLM 逐帧/逐组描述并发数（1=串行，默认 4）。长视频 60 帧串行易逼近 arq job_timeout=1800s，
+    # 有界并发降时延；过高可能触发 VLM 配额限流，配合 vlm_fallback_model/vlm_skip_on_quota_error 降级。
+    vlm_concurrency: int = Field(default=4, ge=1, le=20)
     # 高级参数（可选，留空用引擎层默认）：
     # 场景抽帧切换点阈值（strategy=scene），0~1，默认 0.3。
     scene_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
