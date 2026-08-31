@@ -19,6 +19,49 @@ class SpaceAccessChecker:
     自定义权限（custom_permissions）可覆盖角色默认权限，优先级最高。
     """
 
+    # 有效 (resource, action) 覆盖键——与下方 _check_* 方法实际查询的键一致。
+    # 管理端写入 custom_permissions 时必须落在此表内，否则视为非法键（防 no-op/脏数据）。
+    CAPABILITY_KEYS: dict[str, set[str]] = {
+        "knowledge_bases": {"manage"},
+        "documents": {"upload", "delete", "delete_any"},
+        "members": {"invite", "manage"},
+    }
+
+    @classmethod
+    def validate_custom_permissions(cls, perms: Optional[dict]) -> Optional[dict]:
+        """校验并归一 custom_permissions：只允许 CAPABILITY_KEYS 内的 resource→action→bool。
+
+        Args:
+            perms: 待校验的 custom_permissions（resource → action → bool）
+
+        Returns:
+            归一后的 dict（剔除空 resource/空 action 子 dict）
+
+        Raises:
+            ValueError: 出现非法 resource/action 键或值非 bool 时
+        """
+        if perms is None:
+            return None
+        if not isinstance(perms, dict):
+            raise ValueError("custom_permissions 必须是对象")
+
+        normalized: dict[str, dict[str, bool]] = {}
+        for resource, actions in perms.items():
+            if resource not in cls.CAPABILITY_KEYS:
+                raise ValueError(f"未知的权限资源: {resource}")
+            if not isinstance(actions, dict):
+                raise ValueError(f"权限资源 {resource} 的动作必须是对象")
+            clean: dict[str, bool] = {}
+            for action, value in actions.items():
+                if action not in cls.CAPABILITY_KEYS[resource]:
+                    raise ValueError(f"权限资源 {resource} 不支持动作: {action}")
+                if not isinstance(value, bool):
+                    raise ValueError(f"{resource}.{action} 必须是布尔值")
+                clean[action] = value
+            if clean:
+                normalized[resource] = clean
+        return normalized
+
     def _check_custom_permission(
         self, member: Optional[SpaceMember], resource: str, action: str
     ) -> Optional[bool]:

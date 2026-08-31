@@ -29,6 +29,7 @@ from novamind.features.knowledge_space.exceptions import (
     InviteInvalidError,
     CannotRemoveLastAdminError,
     CannotModifySelfRoleError,
+    InvalidParameterError,
 )
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.storage.minio_client import MinioClient
@@ -317,6 +318,58 @@ class MemberService:
             operator_id=operator_id,
         )
 
+        return target_member
+
+    async def update_member_permissions(
+        self,
+        space_id: int,
+        operator_id: int,
+        user_id: int,
+        custom_permissions: Optional[Dict[str, Any]],
+    ) -> Optional[SpaceMember]:
+        """
+        更新成员细粒度权限（custom_permissions 全量替换，线程安全）
+
+        Args:
+            space_id: 空间 ID
+            operator_id: 操作人 ID
+            user_id: 目标用户 ID
+            custom_permissions: resource→action→bool 覆盖映射（None=清空覆盖，全回退角色）
+
+        Returns:
+            更新后的成员记录
+
+        Raises:
+            SpaceAccessDeniedError: 无权限
+            MemberNotFoundError: 成员不存在
+            InvalidParameterError: custom_permissions 含非法键/值
+        """
+        # 校验键值落在 SpaceAccessChecker.CAPABILITY_KEYS 内
+        try:
+            normalized = self.permission_service.validate_custom_permissions(custom_permissions)
+        except ValueError as e:
+            raise InvalidParameterError(str(e), "custom_permissions")
+
+        # 行锁获取操作人权限（防竞态）
+        operator = await self.member_repo.get_by_space_and_user_for_update(space_id, operator_id)
+        if not self.permission_service.is_admin(operator):
+            raise SpaceAccessDeniedError(space_id, operator_id, "无权修改成员权限")
+
+        target_member = await self.member_repo.get_by_space_and_user_for_update(space_id, user_id)
+        if not target_member:
+            raise MemberNotFoundError(space_id, user_id)
+
+        target_member.custom_permissions = normalized
+        await self.session.flush()
+        await self.session.refresh(target_member)
+        await self.session.commit()
+
+        self.logger.info(
+            "成员细粒度权限更新成功",
+            space_id=space_id,
+            user_id=user_id,
+            operator_id=operator_id,
+        )
         return target_member
 
     async def remove_member(
