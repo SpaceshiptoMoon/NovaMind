@@ -11,6 +11,7 @@ from novamind.features.knowledge_space.models.space_member import SpaceRole, Spa
 from novamind.features.knowledge_space.schemas.member_schema import (
     MemberInvite,
     MemberJoin,
+    MemberDirectAdd,
     MemberUpdate,
     MemberResponse,
     MemberListResponse,
@@ -151,6 +152,52 @@ async def join_space(
         resource_type="member",
         resource_id=user_id,
         details={"method": "invite_token"},
+    )
+
+    return MemberResponse.model_validate(member)
+
+
+@router.post(
+    "/add",
+    response_model=MemberResponse,
+    summary="直接添加成员",
+    description="管理员按用户名或邮箱将已有用户直接加为空间成员（ACTIVE，免邀请令牌）",
+)
+async def add_member_direct(
+    request: Request,
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    data: Annotated[MemberDirectAdd, Body(...)],
+    user_id: int = Depends(get_current_user_id),
+    member_service: MemberService = Depends(get_member_service),
+    audit_service: AuditService = Depends(get_audit_service),
+    user_repo: UserRepository = Depends(get_user_repository),
+    _admin: SpaceMember = Depends(validate_space_admin),
+):
+    """直接添加成员（需要空间管理员权限，免邀请令牌）"""
+    # identifier 含 @ 按邮箱查，否则按用户名查
+    if "@" in data.identifier:
+        target_user = await user_repo.get_user_by_email(data.identifier)
+    else:
+        target_user = await user_repo.get_user_by_username(data.identifier)
+
+    if not target_user or target_user.status == UserStatus.DELETED:
+        raise UserNotFoundError(data.identifier)
+
+    member = await member_service.add_member_directly(
+        space_id=space_id,
+        operator_id=user_id,
+        user_id=target_user.id,
+        role=SpaceRole(data.role.value),
+    )
+
+    await audit_service.log_action(
+        space_id=space_id,
+        user_id=user_id,
+        action="member_add_direct",
+        resource_type="member",
+        resource_id=target_user.id,
+        details={"identifier": data.identifier, "role": data.role.value},
+        request=request,
     )
 
     return MemberResponse.model_validate(member)

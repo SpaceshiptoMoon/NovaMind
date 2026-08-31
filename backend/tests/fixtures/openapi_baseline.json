@@ -4720,6 +4720,28 @@
         "title": "MemberActionResponse",
         "type": "object"
       },
+      "MemberDirectAdd": {
+        "description": "直接添加成员请求（免邀请令牌，管理员将已有用户直接加为 ACTIVE 成员）\n\nidentifier 可为邮箱或用户名：含 @ 按邮箱查，否则按用户名查。",
+        "properties": {
+          "identifier": {
+            "description": "被添加用户邮箱或用户名",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Identifier",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/SpaceRole",
+            "default": 0,
+            "description": "角色"
+          }
+        },
+        "required": [
+          "identifier"
+        ],
+        "title": "MemberDirectAdd",
+        "type": "object"
+      },
       "MemberInvite": {
         "description": "邀请成员请求",
         "properties": {
@@ -21020,6 +21042,65 @@
           }
         ],
         "summary": "邀请成员",
+        "tags": [
+          "空间成员",
+          "空间成员"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/members/add": {
+      "post": {
+        "description": "管理员按用户名或邮箱将已有用户直接加为空间成员（ACTIVE，免邀请令牌）",
+        "operationId": "add_member_direct_api_v1_spaces__space_id__members_add_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberDirectAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "直接添加成员",
         "tags": [
           "空间成员",
           "空间成员"

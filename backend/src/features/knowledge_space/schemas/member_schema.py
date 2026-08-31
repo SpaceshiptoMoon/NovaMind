@@ -24,6 +24,15 @@ class MemberJoin(BaseModel):
     invite_token: str = Field(..., min_length=1, max_length=128, description="邀请令牌")
 
 
+class MemberDirectAdd(BaseModel):
+    """直接添加成员请求（免邀请令牌，管理员将已有用户直接加为 ACTIVE 成员）
+
+    identifier 可为邮箱或用户名：含 @ 按邮箱查，否则按用户名查。
+    """
+    identifier: str = Field(..., min_length=1, max_length=128, description="被添加用户邮箱或用户名")
+    role: SpaceRole = Field(default=SpaceRole.VIEWER, description="角色")
+
+
 class MemberUpdate(BaseModel):
     """更新成员请求"""
     role: Optional[SpaceRole] = Field(None, description="角色")

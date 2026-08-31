@@ -253,6 +253,10 @@
               <el-icon><Plus /></el-icon>
               邀请成员
             </el-button>
+            <el-button @click="showDirectAddDialog">
+              <el-icon><UserFilled /></el-icon>
+              直接添加
+            </el-button>
           </div>
 
           <el-table :data="members" v-loading="memberLoading" stripe>
@@ -344,6 +348,38 @@
             </template>
           </el-dialog>
 
+          <!-- 直接添加成员弹窗 -->
+          <el-dialog v-model="directAddDialogVisible" title="直接添加成员" width="480px">
+            <el-alert
+              type="info"
+              :closable="false"
+              show-icon
+              style="margin-bottom: 16px"
+            >
+              <template #title>
+                输入用户的<strong>用户名</strong>或<strong>邮箱</strong>，直接将其加为本空间成员（无需邀请链接，立即生效）。
+              </template>
+            </el-alert>
+            <el-form ref="directAddFormRef" :model="directAddForm" :rules="directAddRules" label-width="80px">
+              <el-form-item label="用户" prop="identifier">
+                <el-input v-model="directAddForm.identifier" placeholder="用户名或邮箱" />
+              </el-form-item>
+              <el-form-item label="角色" prop="role">
+                <el-radio-group v-model="directAddForm.role">
+                  <el-radio :value="0">查看者</el-radio>
+                  <el-radio :value="1">编辑者</el-radio>
+                  <el-radio :value="2">管理员</el-radio>
+                </el-radio-group>
+              </el-form-item>
+            </el-form>
+            <template #footer>
+              <el-button @click="directAddDialogVisible = false">取消</el-button>
+              <el-button type="primary" :loading="directAddLoading" @click="handleDirectAdd">
+                添加
+              </el-button>
+            </template>
+          </el-dialog>
+
           <!-- 修改角色弹窗 -->
           <el-dialog v-model="roleDialogVisible" title="修改成员角色" width="400px">
             <el-form label-width="80px">
@@ -375,7 +411,7 @@
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Loading, Plus } from '@element-plus/icons-vue'
+import { Loading, Plus, UserFilled } from '@element-plus/icons-vue'
 import { spaceApi } from '@/api/space'
 import { userApi } from '@/api/user'
 import { memberApi } from '@/api/member'
@@ -494,6 +530,21 @@ const inviteExpires = ref('')
 const editMember = ref<Member | null>(null)
 const editRole = ref(0)
 
+// 直接添加成员
+const directAddDialogVisible = ref(false)
+const directAddLoading = ref(false)
+const directAddFormRef = ref<FormInstance>()
+const directAddForm = reactive({
+  identifier: '',
+  role: 0,
+})
+const directAddRules: FormRules = {
+  identifier: [
+    { required: true, message: '请输入用户名或邮箱', trigger: 'blur' },
+    { min: 1, max: 128, message: '长度不合法', trigger: 'blur' },
+  ],
+}
+
 const roleMap: Record<number, { text: string; type: string }> = {
   0: { text: '查看者', type: 'info' },
   1: { text: '编辑者', type: 'warning' },
@@ -537,6 +588,33 @@ function showInviteDialog() {
   inviteForm.role = 0
   inviteForm.expires_hours = 72
   inviteDialogVisible.value = true
+}
+
+function showDirectAddDialog() {
+  directAddForm.identifier = ''
+  directAddForm.role = 0
+  directAddDialogVisible.value = true
+}
+
+async function handleDirectAdd() {
+  if (!directAddFormRef.value) return
+  await directAddFormRef.value.validate(async (valid) => {
+    if (!valid) return
+    directAddLoading.value = true
+    try {
+      await memberApi.addMemberDirect(spaceId.value, {
+        identifier: directAddForm.identifier.trim(),
+        role: directAddForm.role,
+      })
+      ElMessage.success('成员已添加')
+      directAddDialogVisible.value = false
+      fetchMembers()
+    } catch {
+      // 拦截器已统一弹错
+    } finally {
+      directAddLoading.value = false
+    }
+  })
 }
 
 async function handleInvite() {

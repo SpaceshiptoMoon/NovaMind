@@ -7,6 +7,7 @@ ACTIVE、角色可变更。
 """
 import pytest
 import pytest_asyncio
+from typing import Any, Dict, Optional
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
@@ -46,14 +47,14 @@ async def db():
 
 
 def _patch_create_invite_with_manual_id(db: AsyncSession):
-    """SQLite 下 BigInteger 主键不自动分配：包装 create_invite，flush 前手动给 id。
+    """SQLite 下 BigInteger 主键不自动分配：包装 create_invite / add_member，flush 前手动给 id。
 
-    服务层调用 create_invite 全用关键字参数，这里按关键字取值。
+    服务层调用这两个方法全用关键字参数，这里按关键字取值。
     """
     from datetime import timedelta
     from novamind.shared.utils.time_utils import now_china
 
-    async def _wrapped(
+    async def _create_invite_wrapped(
         self,
         *,
         space_id: int,
@@ -78,9 +79,35 @@ def _patch_create_invite_with_manual_id(db: AsyncSession):
         await self.session.refresh(member)
         return member
 
-    orig = MemberRepository.create_invite
-    MemberRepository.create_invite = _wrapped  # type: ignore[assignment]
-    return orig
+    async def _add_member_wrapped(
+        self,
+        *,
+        space_id: int,
+        user_id: int,
+        role: SpaceRole = SpaceRole.VIEWER,
+        invited_by: Optional[int] = None,
+        custom_permissions: Optional[Dict[str, Any]] = None,
+    ) -> SpaceMember:
+        member = SpaceMember(
+            space_id=space_id,
+            user_id=user_id,
+            role=role,
+            invited_by=invited_by,
+            custom_permissions=custom_permissions,
+            status=MemberStatus.ACTIVE,
+        )
+        max_id = (await db.execute(select(func.max(SpaceMember.id)))).scalar() or 0
+        member.id = max_id + 1
+        self.session.add(member)
+        await self.session.flush()
+        await self.session.refresh(member)
+        return member
+
+    orig_create = MemberRepository.create_invite
+    orig_add = MemberRepository.add_member
+    MemberRepository.create_invite = _create_invite_wrapped  # type: ignore[assignment]
+    MemberRepository.add_member = _add_member_wrapped  # type: ignore[assignment]
+    return orig_create, orig_add
 
 
 async def _seed(db: AsyncSession) -> tuple[int, int, int]:
@@ -121,7 +148,7 @@ async def _seed(db: AsyncSession) -> tuple[int, int, int]:
 async def test_invite_returns_full_token_and_join_activates(db):
     space_id, owner_id, invitee_id = await _seed(db)
 
-    orig = _patch_create_invite_with_manual_id(db)
+    orig_create, orig_add = _patch_create_invite_with_manual_id(db)
     try:
         svc = MemberService(db)
 
@@ -131,7 +158,8 @@ async def test_invite_returns_full_token_and_join_activates(db):
             role=SpaceRole.VIEWER, expires_hours=48,
         )
     finally:
-        MemberRepository.create_invite = orig  # type: ignore[assignment]
+        MemberRepository.create_invite = orig_create  # type: ignore[assignment]
+        MemberRepository.add_member = orig_add  # type: ignore[assignment]
     assert member.invite_token and len(member.invite_token) == 64
     assert "..." not in member.invite_token
     assert member.status == MemberStatus.PENDING
@@ -158,7 +186,7 @@ async def test_join_with_truncated_token_fails(db):
     from novamind.features.knowledge_space.exceptions import InviteInvalidError
 
     space_id, owner_id, invitee_id = await _seed(db)
-    orig = _patch_create_invite_with_manual_id(db)
+    orig_create, orig_add = _patch_create_invite_with_manual_id(db)
     try:
         svc = MemberService(db)
         member = await svc.invite_member(
@@ -166,7 +194,46 @@ async def test_join_with_truncated_token_fails(db):
             role=SpaceRole.VIEWER,
         )
     finally:
-        MemberRepository.create_invite = orig  # type: ignore[assignment]
+        MemberRepository.create_invite = orig_create  # type: ignore[assignment]
+        MemberRepository.add_member = orig_add  # type: ignore[assignment]
     truncated = member.invite_token[:8] + "..."
     with pytest.raises(InviteInvalidError):
         await svc.join_space(token=truncated, user_id=invitee_id, space_id=space_id)
+
+
+@pytest.mark.asyncio
+async def test_add_member_directly_activates_immediately(db):
+    """直接添加（免 token）：成员立即 ACTIVE，无需 join 步骤。"""
+    space_id, owner_id, _invitee_id = await _seed(db)
+
+    # 再造一个待添加用户
+    extra = User(
+        id=12, username="extra", email="extra@t.com", password_hash="h",
+        role_id=1, status=UserStatus.ACTIVE,
+    )
+    db.add(extra)
+    await db.flush()
+    await db.commit()
+
+    svc = MemberService(db)
+    orig_create, orig_add = _patch_create_invite_with_manual_id(db)
+    try:
+        member = await svc.add_member_directly(
+            space_id=space_id, operator_id=owner_id, user_id=12,
+            role=SpaceRole.EDITOR,
+        )
+    finally:
+        MemberRepository.create_invite = orig_create  # type: ignore[assignment]
+        MemberRepository.add_member = orig_add  # type: ignore[assignment]
+    assert member.status == MemberStatus.ACTIVE
+    assert member.role == SpaceRole.EDITOR
+    assert member.invite_token is None  # 直接添加不产生邀请令牌
+
+    # 重复添加同一活跃成员应拒绝
+    from novamind.features.knowledge_space.exceptions import MemberAlreadyExistsError
+
+    with pytest.raises(MemberAlreadyExistsError):
+        await svc.add_member_directly(
+            space_id=space_id, operator_id=owner_id, user_id=12,
+            role=SpaceRole.VIEWER,
+        )

@@ -717,6 +717,11 @@ export interface JoinSpaceRequest {
   invite_token: string
 }
 
+export interface DirectAddMemberRequest {
+  identifier: string // 邮箱或用户名
+  role?: number
+}
+
 export interface UpdateMemberRoleRequest {
   role: number
 }
