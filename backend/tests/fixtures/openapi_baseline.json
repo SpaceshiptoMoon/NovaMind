@@ -4824,6 +4824,24 @@
         "title": "MemberListResponse",
         "type": "object"
       },
+      "MemberPermissionsUpdate": {
+        "description": "更新成员细粒度权限请求\n\ncustom_permissions 为 resource → action → bool 的覆盖映射，仅设需覆盖项；\n未列出的 (resource, action) 回退到角色默认。PUT 为全量替换语义。\n合法键见 SpaceAccessChecker.CAPABILITY_KEYS。",
+        "properties": {
+          "custom_permissions": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "boolean"
+              },
+              "type": "object"
+            },
+            "description": "细粒度权限覆盖（resource→action→bool）",
+            "title": "Custom Permissions",
+            "type": "object"
+          }
+        },
+        "title": "MemberPermissionsUpdate",
+        "type": "object"
+      },
       "MemberResponse": {
         "description": "成员响应",
         "properties": {
@@ -21394,6 +21412,77 @@
           }
         ],
         "summary": "更新成员角色",
+        "tags": [
+          "空间成员",
+          "空间成员"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/members/{target_user_id}/permissions": {
+      "put": {
+        "description": "更新指定成员的 custom_permissions 覆盖（需要空间管理员权限，全量替换）",
+        "operationId": "update_member_permissions_api_v1_spaces__space_id__members__target_user_id__permissions_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "目标用户ID",
+            "in": "path",
+            "name": "target_user_id",
+            "required": true,
+            "schema": {
+              "description": "目标用户ID",
+              "exclusiveMinimum": 0,
+              "title": "Target User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberPermissionsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "更新成员细粒度权限",
         "tags": [
           "空间成员",
           "空间成员"

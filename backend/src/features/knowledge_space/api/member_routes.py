@@ -13,6 +13,7 @@ from novamind.features.knowledge_space.schemas.member_schema import (
     MemberJoin,
     MemberDirectAdd,
     MemberUpdate,
+    MemberPermissionsUpdate,
     MemberResponse,
     MemberListResponse,
     InviteResponse,
@@ -252,6 +253,43 @@ async def update_member_role(
         resource_type="member",
         resource_id=target_user_id,
         details={"new_role": data.role.value},
+        request=request,
+    )
+
+    return MemberResponse.model_validate(member)
+
+
+@router.put(
+    "/{target_user_id}/permissions",
+    response_model=MemberResponse,
+    summary="更新成员细粒度权限",
+    description="更新指定成员的 custom_permissions 覆盖（需要空间管理员权限，全量替换）",
+)
+async def update_member_permissions(
+    request: Request,
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    target_user_id: Annotated[int, Path(gt=0, description="目标用户ID")],
+    data: Annotated[MemberPermissionsUpdate, Body(...)],
+    user_id: int = Depends(get_current_user_id),
+    member_service: MemberService = Depends(get_member_service),
+    audit_service: AuditService = Depends(get_audit_service),
+    _admin: SpaceMember = Depends(validate_space_admin),
+):
+    """更新成员细粒度权限（需要空间管理员权限）"""
+    member = await member_service.update_member_permissions(
+        space_id=space_id,
+        operator_id=user_id,
+        user_id=target_user_id,
+        custom_permissions=data.custom_permissions,
+    )
+
+    await audit_service.log_action(
+        space_id=space_id,
+        user_id=user_id,
+        action="member_permissions_update",
+        resource_type="member",
+        resource_id=target_user_id,
+        details={"custom_permissions": data.custom_permissions},
         request=request,
     )
 

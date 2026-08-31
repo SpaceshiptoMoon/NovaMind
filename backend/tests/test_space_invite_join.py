@@ -237,3 +237,63 @@ async def test_add_member_directly_activates_immediately(db):
             space_id=space_id, operator_id=owner_id, user_id=12,
             role=SpaceRole.VIEWER,
         )
+
+
+@pytest.mark.asyncio
+async def test_custom_permissions_override_role(db):
+    """细粒度权限覆盖角色默认：VIEWER 被允许上传、被拒绝删除，未覆盖项继承角色。"""
+    from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
+
+    space_id, owner_id, _invitee_id = await _seed(db)
+    orig_create, orig_add = _patch_create_invite_with_manual_id(db)
+    try:
+        svc = MemberService(db)
+        await svc.add_member_directly(
+            space_id=space_id, operator_id=owner_id, user_id=11,
+            role=SpaceRole.VIEWER,
+        )
+        member = await svc.update_member_permissions(
+            space_id=space_id, operator_id=owner_id, user_id=11,
+            custom_permissions={"documents": {"upload": True, "delete": False}},
+        )
+    finally:
+        MemberRepository.create_invite = orig_create  # type: ignore[assignment]
+        MemberRepository.add_member = orig_add  # type: ignore[assignment]
+
+    checker = SpaceAccessChecker()
+    assert checker.can_upload_document(member) is True       # 覆盖允许（突破 VIEWER 限制）
+    assert checker.can_delete_document(member) is False      # 覆盖拒绝
+    assert checker.can_manage_knowledge_base(member) is False  # 未覆盖 → 继承 VIEWER
+
+
+@pytest.mark.asyncio
+async def test_custom_permissions_validation_rejects_unknown(db):
+    """非法 resource / action / 值类型一律 InvalidParameterError，且不触发 DB 写。"""
+    from novamind.features.knowledge_space.exceptions import InvalidParameterError
+
+    space_id, owner_id, _invitee_id = await _seed(db)
+    orig_create, orig_add = _patch_create_invite_with_manual_id(db)
+    try:
+        svc = MemberService(db)
+        await svc.add_member_directly(
+            space_id=space_id, operator_id=owner_id, user_id=11, role=SpaceRole.VIEWER,
+        )
+    finally:
+        MemberRepository.create_invite = orig_create  # type: ignore[assignment]
+        MemberRepository.add_member = orig_add  # type: ignore[assignment]
+
+    with pytest.raises(InvalidParameterError):
+        await svc.update_member_permissions(
+            space_id=space_id, operator_id=owner_id, user_id=11,
+            custom_permissions={"unknown_resource": {"upload": True}},
+        )
+    with pytest.raises(InvalidParameterError):
+        await svc.update_member_permissions(
+            space_id=space_id, operator_id=owner_id, user_id=11,
+            custom_permissions={"documents": {"fly": True}},
+        )
+    with pytest.raises(InvalidParameterError):
+        await svc.update_member_permissions(
+            space_id=space_id, operator_id=owner_id, user_id=11,
+            custom_permissions={"documents": {"upload": "yes"}},  # 非 bool
+        )

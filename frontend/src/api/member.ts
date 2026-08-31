@@ -7,6 +7,7 @@ import type {
   JoinSpaceRequest,
   DirectAddMemberRequest,
   UpdateMemberRoleRequest,
+  UpdateMemberPermissionsRequest,
 } from './types'
 
 export const memberApi = {
@@ -46,6 +47,18 @@ export const memberApi = {
   ) {
     return request.put<Member>(
       `/spaces/${spaceId}/members/${targetUserId}`,
+      data
+    )
+  },
+
+  // 更新成员细粒度权限（custom_permissions 全量替换）
+  updateMemberPermissions(
+    spaceId: number,
+    targetUserId: number,
+    data: UpdateMemberPermissionsRequest
+  ) {
+    return request.put<Member>(
+      `/spaces/${spaceId}/members/${targetUserId}/permissions`,
       data
     )
   },

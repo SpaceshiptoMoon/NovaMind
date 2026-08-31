@@ -274,11 +274,14 @@
                 {{ formatMemberDate(row.joined_at) }}
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="160" fixed="right">
+            <el-table-column label="操作" width="230" fixed="right">
               <template #default="{ row }">
                 <template v-if="row.user_id !== currentUserId">
                   <el-button type="primary" link size="small" @click="showRoleDialog(row)">
                     修改角色
+                  </el-button>
+                  <el-button type="primary" link size="small" @click="showPermDialog(row)">
+                    细粒度权限
                   </el-button>
                   <el-button type="danger" link size="small" @click="handleRemove(row)">
                     移除
@@ -397,6 +400,40 @@
             <template #footer>
               <el-button @click="roleDialogVisible = false">取消</el-button>
               <el-button type="primary" :loading="roleLoading" @click="handleUpdateRole">
+                保存
+              </el-button>
+            </template>
+          </el-dialog>
+
+          <!-- 细粒度权限弹窗 -->
+          <el-dialog v-model="permDialogVisible" title="细粒度权限" width="560px">
+            <el-alert
+              type="info"
+              :closable="false"
+              show-icon
+              style="margin-bottom: 16px"
+            >
+              <template #title>
+                每项可设为<strong>继承</strong>（按角色，默认）、<strong>允许</strong>、<strong>拒绝</strong>。
+                显式允许/拒绝会覆盖角色默认；未列出项保持继承。
+              </template>
+            </el-alert>
+            <el-form label-width="120px">
+              <el-form-item
+                v-for="cap in CAPABILITIES"
+                :key="`${cap.resource}.${cap.action}`"
+                :label="cap.label"
+              >
+                <el-radio-group v-model="permState[`${cap.resource}.${cap.action}`]">
+                  <el-radio value="inherit">继承</el-radio>
+                  <el-radio value="allow">允许</el-radio>
+                  <el-radio value="deny">拒绝</el-radio>
+                </el-radio-group>
+              </el-form-item>
+            </el-form>
+            <template #footer>
+              <el-button @click="permDialogVisible = false">取消</el-button>
+              <el-button type="primary" :loading="permLoading" @click="handleSavePermissions">
                 保存
               </el-button>
             </template>
@@ -545,6 +582,22 @@ const directAddRules: FormRules = {
   ],
 }
 
+// 细粒度权限：6 个有效能力项（与后端 SpaceAccessChecker.CAPABILITY_KEYS 对齐）
+const CAPABILITIES = [
+  { resource: 'knowledge_bases', action: 'manage', label: '管理知识库' },
+  { resource: 'documents', action: 'upload', label: '上传文档' },
+  { resource: 'documents', action: 'delete', label: '删除文档' },
+  { resource: 'documents', action: 'delete_any', label: '删除任意文档' },
+  { resource: 'members', action: 'invite', label: '邀请成员' },
+  { resource: 'members', action: 'manage', label: '管理成员' },
+] as const
+
+type PermTriState = 'inherit' | 'allow' | 'deny'
+const permDialogVisible = ref(false)
+const permLoading = ref(false)
+const permMember = ref<Member | null>(null)
+const permState = reactive<Record<string, PermTriState>>({})
+
 const roleMap: Record<number, { text: string; type: string }> = {
   0: { text: '查看者', type: 'info' },
   1: { text: '编辑者', type: 'warning' },
@@ -615,6 +668,47 @@ async function handleDirectAdd() {
       directAddLoading.value = false
     }
   })
+}
+
+function showPermDialog(member: Member) {
+  permMember.value = member
+  // 从 member.custom_permissions 反填三态：true→allow, false→deny, 缺失→inherit
+  const perms = (member.custom_permissions || {}) as Record<string, Record<string, boolean>>
+  for (const cap of CAPABILITIES) {
+    const key = `${cap.resource}.${cap.action}`
+    const val = perms[cap.resource]?.[cap.action]
+    permState[key] = val === true ? 'allow' : val === false ? 'deny' : 'inherit'
+  }
+  permDialogVisible.value = true
+}
+
+async function handleSavePermissions() {
+  if (!permMember.value) return
+  // 仅收集非继承项，构建 resource→action→bool
+  const custom_permissions: Record<string, Record<string, boolean>> = {}
+  for (const cap of CAPABILITIES) {
+    const key = `${cap.resource}.${cap.action}`
+    const state = permState[key]
+    if (state === 'allow' || state === 'deny') {
+      if (!custom_permissions[cap.resource]) custom_permissions[cap.resource] = {}
+      custom_permissions[cap.resource]![cap.action] = state === 'allow'
+    }
+  }
+  permLoading.value = true
+  try {
+    await memberApi.updateMemberPermissions(
+      spaceId.value,
+      permMember.value.user_id,
+      { custom_permissions },
+    )
+    ElMessage.success('细粒度权限已更新')
+    permDialogVisible.value = false
+    fetchMembers()
+  } catch {
+    // 拦截器已统一弹错
+  } finally {
+    permLoading.value = false
+  }
 }
 
 async function handleInvite() {

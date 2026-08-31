@@ -38,6 +38,18 @@ class MemberUpdate(BaseModel):
     role: Optional[SpaceRole] = Field(None, description="角色")
 
 
+class MemberPermissionsUpdate(BaseModel):
+    """更新成员细粒度权限请求
+
+    custom_permissions 为 resource → action → bool 的覆盖映射，仅设需覆盖项；
+    未列出的 (resource, action) 回退到角色默认。PUT 为全量替换语义。
+    合法键见 SpaceAccessChecker.CAPABILITY_KEYS。
+    """
+    custom_permissions: Dict[str, Dict[str, bool]] = Field(
+        default_factory=dict, description="细粒度权限覆盖（resource→action→bool）"
+    )
+
+
 class MemberResponse(BaseModel):
     """成员响应"""
     model_config = ConfigDict(from_attributes=True)

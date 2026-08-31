@@ -726,6 +726,11 @@ export interface UpdateMemberRoleRequest {
   role: number
 }
 
+export interface UpdateMemberPermissionsRequest {
+  // resource → action → bool 覆盖；仅设需覆盖项，未列出者回退角色默认
+  custom_permissions: Record<string, Record<string, boolean>>
+}
+
 // ===================== 检索相关 =====================
 
 export interface SearchWeights {
