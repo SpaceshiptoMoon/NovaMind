@@ -159,7 +159,14 @@ class SpaceMember(BaseModel):
         if self.status != MemberStatus.PENDING:
             return False
         if self.invite_expires_at:
-            if now_china() > self.invite_expires_at:
+            # DB 回读的 datetime 可能是 offset-naive（驱动剥离了时区），
+            # 与带时区的 now_china() 直接比较会抛 TypeError。补回中国时区再比。
+            expires = self.invite_expires_at
+            if expires.tzinfo is None:
+                from novamind.shared.utils.time_utils import CHINA_TZ
+
+                expires = expires.replace(tzinfo=CHINA_TZ)
+            if now_china() > expires:
                 return False
         return True
 

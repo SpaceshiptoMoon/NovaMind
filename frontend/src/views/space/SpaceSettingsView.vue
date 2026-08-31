@@ -554,7 +554,7 @@ async function handleInvite() {
       })
 
       const baseUrl = window.location.origin
-      inviteLink.value = `${baseUrl}/spaces/${spaceId.value}/join?token=${data.invite_token}`
+      inviteLink.value = `${baseUrl}/home/spaces/${spaceId.value}/join?token=${data.invite_token}`
       inviteExpires.value = data.invite_expires_at
 
       inviteDialogVisible.value = false

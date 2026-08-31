@@ -172,6 +172,12 @@ const router = createRouter({
           ],
         },
         {
+          path: 'spaces/:id/join',
+          name: 'SpaceJoin',
+          component: () => import('@/views/space/SpaceJoinView.vue'),
+          meta: { title: '加入空间', requiresAuth: true },
+        },
+        {
           path: 'chat',
           redirect: '/home/workspace/chat',
         },
