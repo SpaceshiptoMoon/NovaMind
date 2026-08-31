@@ -192,6 +192,9 @@ async def describe_grouped(
     results: List[Tuple[str, float, float, List[int]]] = []
     first_error: Optional[BaseException] = None
     any_group_succeeded = False
+    # 累计配额/鉴权类失败帧数，供 vlm_skip_on_quota_error 判断"全帧配额失败"降级。
+    # 原硬编码 quota_failures=0 导致该开关在 grouped 策略下永远不生效。
+    quota_failures = 0
 
     for gi, group in enumerate(groups):
         if cancelled_check is not None and gi > 0 and gi % cancel_every == 0:
@@ -213,6 +216,9 @@ async def describe_grouped(
         except Exception as exc:
             if first_error is None:
                 first_error = exc
+            # 主多图调用若为配额/鉴权类错误，该组 len(group) 帧计为配额失败
+            if is_quota_error is not None and is_quota_error(exc):
+                quota_failures += len(group)
             logger.warning(
                 "grouped 多图VLM失败，该组降级逐帧描述",
                 group_index=gi, error=str(exc), **base_ctx,
@@ -226,7 +232,9 @@ async def describe_grouped(
                     vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
                     is_quota_error=is_quota_error, log_context=base_ctx,
                 )
-            except AllFrameDescriptionsFailedError:
+            except AllFrameDescriptionsFailedError as single_err:
+                # 累计 single 回退抛出的配额失败数（原 continue 吞掉了该计数）
+                quota_failures += single_err.quota_failures
                 continue
             for s_desc, s_ts, s_idx in singles:
                 results.append((s_desc, s_ts, s_ts, [s_idx]))
@@ -239,7 +247,9 @@ async def describe_grouped(
 
     if not any_group_succeeded:
         raise AllFrameDescriptionsFailedError(
-            first_error=first_error, quota_failures=0, total_frames=len(frames),
+            first_error=first_error,
+            quota_failures=min(quota_failures, len(frames)),
+            total_frames=len(frames),
         )
     return results
 
