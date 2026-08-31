@@ -426,6 +426,14 @@ async def _process_image_document_static(
         # VLM 路径（默认）
         vlm_model_name = parsing_config.get("vlm_model")
 
+        # 留空时回退用户默认 VLM 模型，与视频路径（media_processing.py:231）行为对齐，
+        # 并与 ImageParsingConfig.vlm_model docstring"留空使用用户默认 VLM"一致。
+        # 此前直接抛错，导致 _generate_image_description:976 内的同名回退成为死代码。
+        if not vlm_model_name and model_config_port:
+            vlm_model_name = await model_config_port.get_user_default_model_name(
+                document.uploader_id, "vlm"
+            )
+
         if not vlm_model_name:
             raise DocumentProcessingError(
                 document_id=document.id,
@@ -549,18 +557,21 @@ async def _process_image_ocr_static(
     engine = DeepDocParser()
 
     try:
-        result = await engine.aparse_bytes(
+        # DeepDocParser 按 file_type 扩展名路由到 _parse_figure_sync（runtime_parser.py:156），
+        # 不接受 parser_id 参数；此前误调 aparse_bytes（DeepDocEngine 的方法）导致
+        # AttributeError 被下方 except 静默吞成空文本，文档以 0 chunk"成功"完成。
+        result = await engine.parse_bytes(
             file_bytes=file_content,
             file_type=file_type,
-            parser_id="figure",
         )
     except Exception as exc:
-        _logger.warning(
-            "DeepDoc OCR 图片解析失败，文档将以空内容完成",
+        # 不再静默吞错：依赖缺失（figure.py 顶层 import cv2 失败）、引擎异常等必须上抛为
+        # 任务 FAILED，让用户看到清晰错误而非"成功但空内容"。图片本身无文字（result 为空）
+        # 不是异常，由调用方 _process_image_document_static:467 的"空内容完成"分支处理。
+        raise DocumentProcessingError(
             document_id=document.id,
-            error=str(exc),
-        )
-        return ""
+            error_message=f"DeepDoc OCR 解析失败：{exc}",
+        ) from exc
 
     ocr_text = result.full_text.strip() if result else ""
 

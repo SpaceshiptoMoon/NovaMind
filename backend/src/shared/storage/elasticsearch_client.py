@@ -204,6 +204,21 @@ class ElasticsearchClient:
         if not chunks:
             return 0
 
+        # embedding_dim 未显式传入时，从首个含向量的 chunk 推断真实维度，
+        # 避免 create_index 静默兜底 default_embedding_dim(1024) 造成维度不匹配、
+        # bulk 全部失败。此前 space_service 回填 dimension 依赖模型 extra_config.dimension
+        # 手填，缺失即降级 1024——若真实模型为 768 维则索引按 1024 建，写入全挂。
+        if embedding_dim is None:
+            for _c in chunks:
+                _emb = _c.get("embedding")
+                if _emb:
+                    embedding_dim = len(_emb)
+                    break
+        if embedding_dim is None:
+            raise RuntimeError(
+                "无法确定 embedding 维度：chunks 无向量且未显式传入 embedding_dim，拒绝建索引"
+            )
+
         index_name = await self.ensure_index_exists(
             space_id, embedding_dim=embedding_dim
         )
