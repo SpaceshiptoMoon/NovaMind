@@ -177,7 +177,7 @@ class ImageParsingConfig(BaseModel):
     )
     vlm_model: Optional[str] = Field(
         default=None,
-        description="VLM 模型名称（strategy=vlm 时可选，留空使用用户默认 VLM 模型）",
+        description="VLM 模型名称（strategy=vlm 时必填，留空将抛错要求显式选择，不做默认回退）",
     )
 
 
