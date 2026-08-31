@@ -109,8 +109,9 @@ async def invite_member(
         request=request,
     )
 
-    # 返回 token 前缀用于识别，完整 token 仅在创建时可见
-    response_token = member.invite_token[:8] + "..." if member.invite_token else None
+    # 完整 token 仅在创建时一次性返回——前端据此拼邀请链接，
+    # 被邀请人用该 token 调 /join 完成加入。截断返回会让链接失效（曾的 bug）。
+    response_token = member.invite_token
 
     return InviteResponse(
         member_id=member.id,
