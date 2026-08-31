@@ -143,6 +143,8 @@ async def process_video_document(
     # VLM 降级开关：主模型配额/鉴权失败时回退的备用模型；以及全帧失败时是否跳过 VLM。
     vlm_fallback_model = video_config.get("vlm_fallback_model")
     vlm_skip_on_quota_error = bool(video_config.get("vlm_skip_on_quota_error", False))
+    # VLM 逐帧/逐组描述并发数（默认 4）；缓解长视频串行逼近 arq job_timeout
+    vlm_concurrency = int(video_config.get("vlm_concurrency", 4))
     # 高级参数（可选，留空用引擎层默认）
     scene_threshold = video_config.get("scene_threshold")
     dedup_similarity_threshold = video_config.get("dedup_similarity_threshold")
@@ -286,6 +288,7 @@ async def process_video_document(
                 vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
                 is_quota_error=_is_vlm_quota_or_auth_error,
                 log_context=base_log_ctx, cancelled_check=cancelled_check,
+                concurrency=vlm_concurrency,
             )
             lines: List[str] = []
             frame_groups = {}
@@ -315,6 +318,7 @@ async def process_video_document(
                 vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
                 is_quota_error=_is_vlm_quota_or_auth_error,
                 log_context=base_log_ctx, cancelled_check=cancelled_check,
+                concurrency=vlm_concurrency,
             )
             frame_timeline_map = build_frame_timeline_map(descriptions)
             descriptions_count = len(descriptions)
@@ -326,6 +330,7 @@ async def process_video_document(
                 vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
                 is_quota_error=_is_vlm_quota_or_auth_error,
                 log_context=base_log_ctx, cancelled_check=cancelled_check,
+                concurrency=vlm_concurrency,
             )
             full_text_lines = [f"{format_time_anchor(ts, idx)} {desc}" for desc, ts, idx in descriptions]
             full_text = "\n\n".join(full_text_lines)

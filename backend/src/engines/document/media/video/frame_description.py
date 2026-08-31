@@ -15,6 +15,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
@@ -81,66 +82,79 @@ async def describe_single(
     log_context: Optional[Dict[str, Any]] = None,
     cancelled_check: Optional[CancelledCheck] = None,
     cancel_every: int = 5,
+    concurrency: int = 4,
 ) -> List[Tuple[str, float, int]]:
-    """逐帧单图 VLM 描述。
+    """逐帧单图 VLM 描述（有界并发）。
 
-    返回 ``[(desc, ts, frame_idx), ...]``。单帧失败记录 warning 并跳过；主 client 配额/鉴权
-    失败且配置了 ``vlm_fallback_client`` 时回退重试一次。全部帧失败抛
-    ``AllFrameDescriptionsFailedError``。
+    返回 ``[(desc, ts, frame_idx), ...]``，按帧顺序。单帧失败记录 warning 并跳过；主 client
+    配额/鉴权失败且配置了 ``vlm_fallback_client`` 时回退重试一次。全部帧失败抛
+    ``AllFrameDescriptionsFailedError``。``concurrency`` 控制 VLM 逐帧并发数（默认 4），
+    缓解长视频串行逼近 arq job_timeout；用 ``asyncio.Semaphore``+``gather`` 保序、保
+    quota 累计、保 fallback、保取消检查。
     """
     base_ctx: Dict[str, Any] = dict(log_context or {})
+    sem = asyncio.Semaphore(max(1, concurrency))
+
+    async def _describe_one(i: int, frame_bytes: bytes, ts: float, frame_idx: int):
+        # 并发下每个 worker 起跑前按原 cadence 各查一次取消
+        if cancelled_check is not None and i > 0 and (cancel_every <= 1 or i % cancel_every == 0):
+            await cancelled_check()
+        async with sem:
+            messages = build_vlm_image_messages(frame_bytes, "image/jpeg", prompt)
+            frame_ctx = {**base_ctx, "frame_index": frame_idx}
+            try:
+                desc = await generate_vlm_text_with_fallback(
+                    vlm_client, messages,
+                    max_tokens=max_tokens, temperature=temperature,
+                    logger=logger, vlm_model=vlm_model, log_context=frame_ctx,
+                )
+            except Exception as exc:
+                is_quota = is_quota_error is not None and is_quota_error(exc)
+                if is_quota and vlm_fallback_client is not None:
+                    logger.warning(
+                        "视频帧VLM主模型配额/鉴权失败，回退备用模型",
+                        fallback_model=vlm_fallback_model, frame_index=frame_idx,
+                        error=str(exc), **base_ctx,
+                    )
+                    try:
+                        desc = await generate_vlm_text_with_fallback(
+                            vlm_fallback_client, messages,
+                            max_tokens=max_tokens, temperature=temperature,
+                            logger=logger, vlm_model=vlm_fallback_model or "", log_context=frame_ctx,
+                        )
+                    except Exception as fb_exc:
+                        logger.warning(
+                            "视频帧VLM备用模型也失败, 跳过",
+                            frame_index=frame_idx, error=str(fb_exc), **base_ctx,
+                        )
+                        return (frame_idx, ts, None, fb_exc, is_quota)
+                else:
+                    logger.warning(
+                        "视频帧VLM描述失败, 跳过",
+                        frame_index=frame_idx, error=str(exc), **base_ctx,
+                    )
+                    return (frame_idx, ts, None, exc, is_quota)
+            if desc and desc.strip():
+                return (frame_idx, ts, desc.strip()[:max_desc_len], None, False)
+            return (frame_idx, ts, None, None, False)
+
+    raw = await asyncio.gather(*[
+        _describe_one(i, fb, ts, fi)
+        for i, (fb, ts, fi) in enumerate(frames)
+    ])
+
+    # gather 保序；按帧顺序汇总描述、首个错误、配额失败计数
     descriptions: List[Tuple[str, float, int]] = []
     first_error: Optional[BaseException] = None
     quota_failures = 0
-
-    for i, (frame_bytes, ts, frame_idx) in enumerate(frames):
-        if cancelled_check is not None and i > 0 and i % cancel_every == 0:
-            await cancelled_check()
-
-        messages = build_vlm_image_messages(frame_bytes, "image/jpeg", prompt)
-        frame_ctx = {**base_ctx, "frame_index": frame_idx}
-
-        try:
-            desc = await generate_vlm_text_with_fallback(
-                vlm_client, messages,
-                max_tokens=max_tokens, temperature=temperature,
-                logger=logger, vlm_model=vlm_model, log_context=frame_ctx,
-            )
-        except Exception as exc:
+    for frame_idx, ts, desc, exc, was_quota in raw:
+        if desc is not None:
+            descriptions.append((desc, ts, frame_idx))
+        elif exc is not None:
             if first_error is None:
                 first_error = exc
-            is_quota = is_quota_error is not None and is_quota_error(exc)
-            if is_quota:
+            if was_quota:
                 quota_failures += 1
-
-            # 配额/鉴权类错误且有备用 client：回退重试一次
-            if is_quota and vlm_fallback_client is not None:
-                logger.warning(
-                    "视频帧VLM主模型配额/鉴权失败，回退备用模型",
-                    fallback_model=vlm_fallback_model, frame_index=frame_idx,
-                    error=str(exc), **base_ctx,
-                )
-                try:
-                    desc = await generate_vlm_text_with_fallback(
-                        vlm_fallback_client, messages,
-                        max_tokens=max_tokens, temperature=temperature,
-                        logger=logger, vlm_model=vlm_fallback_model or "", log_context=frame_ctx,
-                    )
-                except Exception as fb_exc:
-                    logger.warning(
-                        "视频帧VLM备用模型也失败, 跳过",
-                        frame_index=frame_idx, error=str(fb_exc), **base_ctx,
-                    )
-                    continue
-            else:
-                logger.warning(
-                    "视频帧VLM描述失败, 跳过",
-                    frame_index=frame_idx, error=str(exc), **base_ctx,
-                )
-                continue
-
-        if desc and desc.strip():
-            descriptions.append((desc.strip()[:max_desc_len], ts, frame_idx))
 
     if not descriptions:
         raise AllFrameDescriptionsFailedError(
@@ -166,6 +180,7 @@ async def describe_grouped(
     log_context: Optional[Dict[str, Any]] = None,
     cancelled_check: Optional[CancelledCheck] = None,
     cancel_every: int = 1,
+    concurrency: int = 4,
 ) -> List[Tuple[str, float, float, List[int]]]:
     """多帧一组喂 VLM 多图消息生成连贯描述。
 
@@ -185,65 +200,85 @@ async def describe_grouped(
             vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
             is_quota_error=is_quota_error, log_context=base_ctx,
             cancelled_check=cancelled_check, cancel_every=5,
+            concurrency=concurrency,
         )
         return [(desc, ts, ts, [idx]) for desc, ts, idx in singles]
 
     groups = [frames[i:i + group_size] for i in range(0, len(frames), group_size)]
-    results: List[Tuple[str, float, float, List[int]]] = []
-    first_error: Optional[BaseException] = None
-    any_group_succeeded = False
-    # 累计配额/鉴权类失败帧数，供 vlm_skip_on_quota_error 判断"全帧配额失败"降级。
-    # 原硬编码 quota_failures=0 导致该开关在 grouped 策略下永远不生效。
-    quota_failures = 0
+    sem = asyncio.Semaphore(max(1, concurrency))
 
-    for gi, group in enumerate(groups):
-        if cancelled_check is not None and gi > 0 and gi % cancel_every == 0:
+    async def _describe_group(gi: int, group: List[Tuple[bytes, float, int]]) -> Dict[str, Any]:
+        if cancelled_check is not None and gi > 0 and (cancel_every <= 1 or gi % cancel_every == 0):
             await cancelled_check()
-
         frames_bytes = [fb for fb, _, _ in group]
         idx_list = [idx for _, _, idx in group]
         start_ts = group[0][1]
         end_ts = group[-1][1]
         group_ctx = {**base_ctx, "group_index": gi, "frame_indices": idx_list}
-
         messages = build_vlm_multi_image_messages(frames_bytes, "image/jpeg", prompt)
-        try:
-            desc = await generate_vlm_text_with_fallback(
-                vlm_client, messages,
-                max_tokens=max_tokens, temperature=temperature,
-                logger=logger, vlm_model=vlm_model, log_context=group_ctx,
-            )
-        except Exception as exc:
-            if first_error is None:
-                first_error = exc
-            # 主多图调用若为配额/鉴权类错误，该组 len(group) 帧计为配额失败
-            if is_quota_error is not None and is_quota_error(exc):
-                quota_failures += len(group)
-            logger.warning(
-                "grouped 多图VLM失败，该组降级逐帧描述",
-                group_index=gi, error=str(exc), **base_ctx,
-            )
+        result: Dict[str, Any] = {
+            "gi": gi, "ok": False, "desc": None, "start_ts": start_ts, "end_ts": end_ts,
+            "idx_list": idx_list, "main_exc": None, "single_quota": 0,
+            "single_first_error": None, "singles": None,
+        }
+        async with sem:
             try:
-                singles = await describe_single(
-                    group, vlm_client, prompt,
-                    logger=logger, vlm_model=vlm_model,
-                    max_tokens=_DEFAULT_SINGLE_MAX_TOKENS, temperature=temperature,
-                    max_desc_len=_DEFAULT_MAX_DESC_LEN,
-                    vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
-                    is_quota_error=is_quota_error, log_context=base_ctx,
+                desc = await generate_vlm_text_with_fallback(
+                    vlm_client, messages,
+                    max_tokens=max_tokens, temperature=temperature,
+                    logger=logger, vlm_model=vlm_model, log_context=group_ctx,
                 )
-            except AllFrameDescriptionsFailedError as single_err:
-                # 累计 single 回退抛出的配额失败数（原 continue 吞掉了该计数）
-                quota_failures += single_err.quota_failures
-                continue
-            for s_desc, s_ts, s_idx in singles:
+            except Exception as exc:
+                result["main_exc"] = exc
+                logger.warning(
+                    "grouped 多图VLM失败，该组降级逐帧描述",
+                    group_index=gi, error=str(exc), **base_ctx,
+                )
+                # single 回退用 concurrency=1 串行，避免组级并发叠加帧级并发触发配额 burst
+                try:
+                    singles = await describe_single(
+                        group, vlm_client, prompt,
+                        logger=logger, vlm_model=vlm_model,
+                        max_tokens=_DEFAULT_SINGLE_MAX_TOKENS, temperature=temperature,
+                        max_desc_len=_DEFAULT_MAX_DESC_LEN,
+                        vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
+                        is_quota_error=is_quota_error, log_context=base_ctx,
+                        concurrency=1,
+                    )
+                except AllFrameDescriptionsFailedError as single_err:
+                    result["single_quota"] = single_err.quota_failures
+                    result["single_first_error"] = single_err.first_error
+                else:
+                    result["singles"] = singles
+                return result
+            if desc and desc.strip():
+                result["ok"] = True
+                result["desc"] = desc.strip()[:max_desc_len]
+            return result
+
+    group_results = await asyncio.gather(*[
+        _describe_group(gi, g) for gi, g in enumerate(groups)
+    ])
+
+    # 按 gi 顺序合并（gather 保序，显式排序防语义漂移）
+    results: List[Tuple[str, float, float, List[int]]] = []
+    first_error: Optional[BaseException] = None
+    any_group_succeeded = False
+    quota_failures = 0
+    for r in sorted(group_results, key=lambda x: x["gi"]):
+        if r["ok"]:
+            results.append((r["desc"], r["start_ts"], r["end_ts"], r["idx_list"]))
+            any_group_succeeded = True
+            continue
+        if r["singles"]:
+            for s_desc, s_ts, s_idx in r["singles"]:
                 results.append((s_desc, s_ts, s_ts, [s_idx]))
                 any_group_succeeded = True
             continue
-
-        if desc and desc.strip():
-            results.append((desc.strip()[:max_desc_len], start_ts, end_ts, idx_list))
-            any_group_succeeded = True
+        # 组彻底失败：记首个错误 + 累计 single 回退的配额失败数（single 实际逐帧统计，权威）
+        if first_error is None:
+            first_error = r["main_exc"] or r["single_first_error"]
+        quota_failures += r["single_quota"]
 
     if not any_group_succeeded:
         raise AllFrameDescriptionsFailedError(
@@ -274,6 +309,7 @@ async def describe_rewrite(
     log_context: Optional[Dict[str, Any]] = None,
     cancelled_check: Optional[CancelledCheck] = None,
     cancel_every: int = 5,
+    concurrency: int = 4,
 ) -> Tuple[str, List[Tuple[str, float, int]]]:
     """逐帧描述 + LLM 重写连贯，保留 ``[HH:MM:SS#idx]`` 锚点。
 
@@ -296,6 +332,7 @@ async def describe_rewrite(
         vlm_fallback_client=vlm_fallback_client, vlm_fallback_model=vlm_fallback_model,
         is_quota_error=is_quota_error, log_context=base_ctx,
         cancelled_check=cancelled_check, cancel_every=cancel_every,
+        concurrency=concurrency,
     )
 
     # 2. 拼接带锚点文本

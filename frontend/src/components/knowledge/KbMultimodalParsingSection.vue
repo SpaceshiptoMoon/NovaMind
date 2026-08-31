@@ -83,9 +83,13 @@
           <el-switch v-model="configForm.videoVlmDescriptionEnabled" />
         </el-form-item>
         <el-form-item v-if="configForm.videoVlmDescriptionEnabled" label="VLM 模型">
-          <el-select v-model="configForm.videoVlmModel" clearable filterable placeholder="留空时继承空间默认模型" style="width: 100%">
+          <el-select v-model="configForm.videoVlmModel" clearable filterable placeholder="必选：留空将报错要求显式选择" style="width: 100%">
             <el-option v-for="model in vlmModels" :key="model.model" :label="model.model" :value="model.model" />
           </el-select>
+        </el-form-item>
+        <el-form-item v-if="configForm.videoVlmDescriptionEnabled" label="VLM 并发数">
+          <el-input-number v-model="configForm.videoVlmConcurrency" :min="1" :max="20" style="width: 100%" />
+          <span class="field-hint">逐帧/逐组 VLM 描述并发数，默认 4；长视频提高可降时延，过高可能触发配额限流</span>
         </el-form-item>
       </el-form>
     </div>
@@ -126,6 +130,7 @@ type MultimodalParsingFormModel = {
   videoMaxFrames: number
   videoVlmDescriptionEnabled: boolean
   videoVlmModel: string
+  videoVlmConcurrency: number
   videoSceneThreshold: number | null
   videoDedupSimilarityThreshold: number | null
   videoGroupSize: number | null
