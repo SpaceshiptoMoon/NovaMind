@@ -209,18 +209,33 @@ async def process_video_document(
     storage_info = document.storage or {}
     base_object = storage_info.get("minio_object_name", "")
 
-    frame_paths = []
+    # frame_paths 用 Dict[int, str]（frame_idx → MinIO path），根治抽帧解码失败导致的
+    # frame_idx 空洞：engines 抽帧在 _read_frame_at 返回 None 或抛错时跳过该帧但 frame_idx
+    # 仍递增（video_utils.py / frame_extraction.py 的 enumerate+continue 模式），若 frame_paths
+    # 按位置 append 会与 frame_idx 错位 → ES chunk 帧图指向错误帧或丢失。dict 映射让
+    # _build_es_chunks 按 frame_idx 精确取帧，空洞 idx 自动跳过。dedup 策略因 dedup_frame_diff
+    # 已用 len(kept) 重映射连续 idx 而天然免疫，此处 dict 同样兼容。
+    frame_paths: Dict[int, str] = {}
     for frame_bytes, ts, frame_idx in frames:
+        object_name = f"{base_object}_frames/frame_{frame_idx:04d}.jpg"
         try:
-            object_name = f"{base_object}_frames/frame_{frame_idx:04d}.jpg"
             await minio_client.upload_file(object_name, frame_bytes, "image/jpeg")
-            frame_paths.append(object_name)
+            frame_paths[frame_idx] = object_name
             logger.debug("帧已上传 MinIO", object_name=object_name, timestamp=ts)
         except Exception as e:
             logger.error("帧上传 MinIO 失败", document_id=document.id,
                          frame_idx=frame_idx, timestamp=ts, error=str(e))
-            # 上传失败不阻塞整体（极少数帧丢失不影响搜索）
-            frame_paths.append("")
+            # 上传失败占位保留 frame_idx→空映射，不丢 idx 对应关系，不阻塞整体
+            frame_paths[frame_idx] = ""
+
+    # 帧上传后立即持久化 storage["frames"]，确保后续切分/嵌入/索引（_run_post_parse_tail）
+    # 失败时帧仍可追踪，配合重处理/删除的 MinIO 前缀清理避免孤儿。storage["frames"] 保持
+    # "按 frame_idx 升序的非空 path 列表"格式（get_document_frames 按列表 enumerate 消费）。
+    document.storage = {
+        **(document.storage or {}),
+        "frames": [frame_paths[k] for k in sorted(frame_paths) if frame_paths[k]],
+    }
+    await session.commit()
 
     if task:
         task.finish_step("frames_extracted", metrics={"frame_count": len(frames)})
@@ -365,11 +380,7 @@ async def process_video_document(
         user_id=document.uploader_id,
     )
 
-    # 5. 写入处理结果到 Task
-    document.storage = {
-        **(document.storage or {}),
-        "frames": [p for p in frame_paths if p],  # 过滤上传失败的空字符串
-    }
+    # 5. 写入处理结果到 Task（storage["frames"] 已在帧上传后立即持久化，此处不再重写）
     if task:
         task.mark_completed(result={
             "chunk_count": tail_result["chunk_count"],

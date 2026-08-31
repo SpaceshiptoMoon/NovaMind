@@ -585,12 +585,13 @@ def _build_es_chunks(
     chunk_type: ChunkType,
     *,
     parse_metadata: Optional[Dict[str, Any]] = None,
-    frame_paths: Optional[List[str]] = None,
+    frame_paths: Optional[Dict[int, str]] = None,
 ) -> List[Dict[str, Any]]:
     """统一构造 ES 索引格式的分块字典列表（文本/音频/视频共用）。
 
     - 文本：富 metadata（parser/parse_summary/chunk_structure 的 entry_kinds/pages/...），仅 media_url。
     - 音频/视频：metadata 含 start_time/end_time，视频按 frame_indices 映射 frame_paths；media_url + image_url。
+    - ``frame_paths`` 为 ``{frame_idx: minio_path}``，按 frame_idx 精确取帧，免疫抽帧空洞（见 media_processing.py 上传处说明）。
 
     `chunk_items` 为 [(text, per_chunk_meta), ...]；文本 per_chunk_meta 取自 parse_metadata["chunk_structure"][i]。
     """
@@ -618,10 +619,10 @@ def _build_es_chunks(
                 chunk_meta["start_time"] = meta.get("start_time")
                 chunk_meta["end_time"] = meta.get("end_time")
             if frame_paths and "frame_indices" in meta:
+                # dict.get(idx)：抽帧空洞或上传失败的 idx 自动跳过，不错位、不越界
                 chunk_meta["frame_paths"] = [
-                    frame_paths[idx]
-                    for idx in meta["frame_indices"]
-                    if idx < len(frame_paths) and frame_paths[idx]
+                    frame_paths[idx] for idx in meta["frame_indices"]
+                    if frame_paths.get(idx)
                 ]
         chunk_data = {
             "space_id": document.space_id,
@@ -642,7 +643,12 @@ def _build_es_chunks(
             "created_at": now_china().isoformat(),
         }
         if not is_text:
-            chunk_data["image_url"] = media_url
+            # VIDEO chunk 的 image_url 取该 chunk 首帧的 MinIO path 作为缩略图（真实帧图），
+            # 不再误导指向整个视频文件；无帧则空串。IMAGE 模态维持 media_url（图片文件本身）。
+            if chunk_type == ChunkType.VIDEO and frame_paths and meta.get("frame_indices"):
+                chunk_data["image_url"] = frame_paths.get(meta["frame_indices"][0], "") or ""
+            else:
+                chunk_data["image_url"] = media_url
         es_chunks.append(chunk_data)
     return es_chunks
 
@@ -678,7 +684,7 @@ async def _run_post_parse_tail(
     full_text: str = "",
     prechunked_items: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
     parse_metadata: Optional[Dict[str, Any]] = None,
-    frame_paths: Optional[List[str]] = None,
+    frame_paths: Optional[Dict[int, str]] = None,
     time_alignment: Optional[Dict[str, Any]] = None,
     user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
