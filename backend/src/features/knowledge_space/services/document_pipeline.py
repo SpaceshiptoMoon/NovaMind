@@ -423,16 +423,10 @@ async def _process_image_document_static(
             _logger=_logger,
         )
     else:
-        # VLM 路径（默认）
+        # VLM 路径（默认）。vlm_model 必须由用户在解析配置中显式选择；
+        # 不做"留空回退用户默认 VLM"的兜底——兜底会让解析路径不可追踪
+        # （无法从配置看出实际用了哪个模型）。留空即显式抛错。
         vlm_model_name = parsing_config.get("vlm_model")
-
-        # 留空时回退用户默认 VLM 模型，与视频路径（media_processing.py:231）行为对齐，
-        # 并与 ImageParsingConfig.vlm_model docstring"留空使用用户默认 VLM"一致。
-        # 此前直接抛错，导致 _generate_image_description:976 内的同名回退成为死代码。
-        if not vlm_model_name and model_config_port:
-            vlm_model_name = await model_config_port.get_user_default_model_name(
-                document.uploader_id, "vlm"
-            )
 
         if not vlm_model_name:
             raise DocumentProcessingError(
@@ -983,12 +977,13 @@ async def _generate_image_description(
     """
     from novamind.shared.prompts.templates import PromptManager
 
-    # 1. 获取 VLM 客户端
-    vlm_model = vlm_model_name or await mcs.get_user_default_model_name(document.uploader_id, "vlm")
-    if not vlm_model:
+    # 1. 获取 VLM 客户端。vlm_model_name 由调用方 _process_image_document_static 保证非空
+    #    （留空时已抛 DocumentProcessingError）；此处不做"回退用户默认 VLM"兜底，保证
+    #    解析路径可追踪。
+    if not vlm_model_name:
         raise ValueError("未配置 VLM 模型，请在模型配置中添加视觉模型")
 
-    vlm_client = await mcs.get_vlm_client_by_model(document.uploader_id, vlm_model)
+    vlm_client = await mcs.get_vlm_client_by_model(document.uploader_id, vlm_model_name)
 
     file_ext = (document.file_type or "png").lower()
     mime_type = f"image/{file_ext}" if file_ext != "jpg" else "image/jpeg"
