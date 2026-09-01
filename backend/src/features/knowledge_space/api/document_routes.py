@@ -6,13 +6,12 @@
 
 路由前缀: /api/v1/spaces/{space_id}/knowledge-bases
 """
-import io
 import mimetypes
 import os
 from typing import Annotated, List, Optional, Union
 from urllib.parse import quote
 from fastapi import APIRouter, Depends, Request, UploadFile, File, Query, Path, Body
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import Response
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -496,9 +495,11 @@ async def download_document(
     encoded_filename = quote(document.filename)
     ascii_fallback = "download"
 
-    # 返回流式响应
-    return StreamingResponse(
-        content=io.BytesIO(file_content),
+    # 返回响应：file_content 是完整 bytes，用 Response 自动设 Content-Length，
+    # 浏览器按正常下载处理（StreamingResponse+BytesIO 走 chunked 不带 Content-Length，
+    # 大文件浏览器不知道大小容易中途断开 → ConnectionResetError 10054）。
+    return Response(
+        content=file_content,
         media_type="application/octet-stream",
         headers={
             "Content-Disposition": (
@@ -689,8 +690,8 @@ async def get_document_image(
 
     encoded_filename = quote(document.filename)
 
-    return StreamingResponse(
-        content=io.BytesIO(file_content),
+    return Response(
+        content=file_content,
         media_type=content_type,
         headers={
             "Content-Disposition": f'inline; filename="{encoded_filename}"',
@@ -792,8 +793,8 @@ async def get_document_preview(
 
     encoded_filename = quote(document.filename)
 
-    return StreamingResponse(
-        content=io.BytesIO(file_content),
+    return Response(
+        content=file_content,
         media_type=content_type,
         headers={
             "Content-Disposition": f'inline; filename="{encoded_filename}"',
