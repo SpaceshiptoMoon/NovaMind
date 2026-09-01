@@ -189,7 +189,6 @@ const configForm = reactive({
   videoMaxFrames: 60,
   videoVlmDescriptionEnabled: false,
   videoVlmModel: '',
-  videoVlmConcurrency: 4,
   videoSceneThreshold: null as number | null,
   videoDedupSimilarityThreshold: null as number | null,
   videoGroupSize: null as number | null,
@@ -239,7 +238,6 @@ watch(hasVideo, (value) => {
     configForm.videoStrategy = 'simple'
     configForm.videoVlmDescriptionEnabled = false
     configForm.videoVlmModel = ''
-    configForm.videoVlmConcurrency = 4
     configForm.videoSceneThreshold = null
     configForm.videoDedupSimilarityThreshold = null
     configForm.videoGroupSize = null
@@ -318,7 +316,6 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
   configForm.videoMaxFrames = parsing?.video?.max_frames ?? 60
   configForm.videoVlmDescriptionEnabled = parsing?.video?.vlm_description_enabled ?? false
   configForm.videoVlmModel = parsing?.video?.vlm_model || ''
-  configForm.videoVlmConcurrency = parsing?.video?.vlm_concurrency ?? 4
   configForm.videoSceneThreshold =
     parsing?.video?.scene_threshold === undefined ? null : parsing.video.scene_threshold
   configForm.videoDedupSimilarityThreshold =
@@ -415,7 +412,6 @@ function buildParsingConfig(): ParsingConfig {
       max_frames: configForm.videoMaxFrames,
       vlm_description_enabled: configForm.videoVlmDescriptionEnabled,
       vlm_model: configForm.videoVlmDescriptionEnabled ? (configForm.videoVlmModel || undefined) : undefined,
-      vlm_concurrency: configForm.videoVlmDescriptionEnabled ? configForm.videoVlmConcurrency : undefined,
     }
     if (configForm.videoSceneThreshold !== null) {
       video.scene_threshold = configForm.videoSceneThreshold

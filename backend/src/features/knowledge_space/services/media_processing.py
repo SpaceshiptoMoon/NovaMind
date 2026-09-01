@@ -143,8 +143,11 @@ async def process_video_document(
     # VLM 降级开关：主模型配额/鉴权失败时回退的备用模型；以及全帧失败时是否跳过 VLM。
     vlm_fallback_model = video_config.get("vlm_fallback_model")
     vlm_skip_on_quota_error = bool(video_config.get("vlm_skip_on_quota_error", False))
-    # VLM 逐帧/逐组描述并发数（默认 4）；缓解长视频串行逼近 arq job_timeout
-    vlm_concurrency = int(video_config.get("vlm_concurrency", 4))
+    # VLM 逐帧/逐组描述并发数：系统级性能旋钮，由 YAML 配置
+    # knowledge_base.parsing.video_vlm_concurrency 控制（默认 4，范围 1~20），
+    # 不放每个知识库的 VideoParsingConfig——并发是宿主调优项，非业务配置。
+    from novamind.setting.yaml_config import get_config
+    vlm_concurrency = max(1, min(20, int(get_config().knowledge_base.parsing.video_vlm_concurrency)))
     # 高级参数（可选，留空用引擎层默认）
     scene_threshold = video_config.get("scene_threshold")
     dedup_similarity_threshold = video_config.get("dedup_similarity_threshold")
