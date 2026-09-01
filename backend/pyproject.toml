@@ -74,6 +74,9 @@ test = [
 deepdoc-vision = [
     "xgboost>=2.0.0",
     "opencv-python-headless>=4.8.0",
+    # OCR 检测后处理（DB 多边形框扩张/裁剪）顶层 import，full 模式必需
+    "shapely>=2.0.0",
+    "pyclipper>=1.2.0",
 ]
 
 [project.scripts]

@@ -21,9 +21,14 @@ VISION_RUNTIME_DEPENDENCIES = (
     "pillow",
     "huggingface_hub",
     "fitz",
+    # shapely / pyclipper 被 vision/postprocess.py 顶层无条件 import，OCR 检测路径
+    # （DBPostProcess 多边形框扩张/裁剪）必需，非可选；缺它会在 _fuse_page
+    # 实例化 OCR 时 ModuleNotFoundError，门禁必须前置拦截。
+    "shapely",
+    "pyclipper",
 )
 
-VISION_OPTIONAL_DEPENDENCIES = ("paddleocr", "shapely", "pyclipper")
+VISION_OPTIONAL_DEPENDENCIES = ("paddleocr",)
 
 
 class DeepDocVisionRuntimeUnavailable(RuntimeError):
