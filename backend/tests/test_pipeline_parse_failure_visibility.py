@@ -196,3 +196,94 @@ async def test_bulk_index_raises_when_embedding_dim_none():
             chunks=[{"chunk_id": "c1", "content": "x", "embedding": [0.1] * 768}],
             embedding_dim=None,
         )
+
+
+# ---------------------------------------------------------------------------
+# P0-3：DeepDoc layout 抽出 0 字符不再静默当成功
+# ---------------------------------------------------------------------------
+
+
+def _make_parse_result(full_text: str, *, plain_sections=None, bboxes=None, pages=None, pdf_mode="layout"):
+    """构造一个最小 parse_result：full_text + metadata，用于 _raise_on_empty_parse。"""
+    return SimpleNamespace(
+        full_text=full_text,
+        chunks=[],
+        metadata={
+            "pdf_mode": pdf_mode,
+            "pages": pages,
+            "plain_sections": plain_sections or [],
+            "bboxes": bboxes or [],
+        },
+    )
+
+
+def test_empty_parse_with_plain_text_raises_plain_hint():
+    """layout 模式 extract_words 抽空、但 extract_text（plain_sections）有文字时，
+    必须抛 DocumentProcessingError 并建议改用 plain/default——不再静默当成功。
+
+    复现：大 PDF 有文字层，pdfplumber 按 CMap/Type3 字体无法切词，layout 词盒全空 →
+    原管道标"成功 chunk_count=0"，前端看到无内容。修复后显式抛错并给出可操作建议。
+    """
+    parse_result = _make_parse_result(
+        "",
+        plain_sections=[("第一行文字", ""), ("第二行文字", "")],
+        bboxes=[],  # 词盒全空
+        pages=120,
+        pdf_mode="layout",
+    )
+    with pytest.raises(DocumentProcessingError, match="plain 模式") as ei:
+        document_pipeline._raise_on_empty_parse(
+            full_text="",
+            parse_result=parse_result,
+            parsing_config={"strategy": "deepdoc", "deepdoc_pdf_mode": "layout"},
+            document_id=96,
+        )
+    # 错误信息含诊断量：纯文本字数 > 0、页数
+    assert "纯文本抽取到" in ei.value.error_message
+    assert "120" in ei.value.error_message
+
+
+def test_empty_parse_no_plain_text_raises_ocr_hint():
+    """layout 模式 extract_text 与 extract_words 均空（无文字层或 pdfplumber 无法解析）时，
+    抛 DocumentProcessingError 并建议 vision/OCR——不静默当成功。"""
+    parse_result = _make_parse_result(
+        "",
+        plain_sections=[],  # 纯文本也空
+        bboxes=[],
+        pages=120,
+        pdf_mode="layout",
+    )
+    with pytest.raises(DocumentProcessingError, match="vision") as ei:
+        document_pipeline._raise_on_empty_parse(
+            full_text="",
+            parse_result=parse_result,
+            parsing_config={"strategy": "deepdoc", "deepdoc_pdf_mode": "layout"},
+            document_id=96,
+        )
+    assert "OCR" in ei.value.error_message
+    assert "120" in ei.value.error_message
+
+
+def test_non_empty_parse_does_not_raise():
+    """正常解析有文本时不抛错——_raise_on_empty_parse 是空文本守卫，不影响正常路径。"""
+    parse_result = _make_parse_result("这是正常解析的文本内容", plain_sections=[("x", "")], pages=5)
+    # 不抛即通过
+    document_pipeline._raise_on_empty_parse(
+        full_text="这是正常解析的文本内容",
+        parse_result=parse_result,
+        parsing_config={"strategy": "deepdoc"},
+        document_id=96,
+    )
+
+
+def test_empty_parse_default_strategy_no_pdf_mode():
+    """非 deepdoc 的 default 策略下 0 字符也应抛错（mode_desc 退化 strategy 不含 pdf_mode）。"""
+    parse_result = SimpleNamespace(full_text="   ", chunks=[], metadata={})
+    with pytest.raises(DocumentProcessingError, match="vision") as ei:
+        document_pipeline._raise_on_empty_parse(
+            full_text="   ",
+            parse_result=parse_result,
+            parsing_config={"strategy": "default"},
+            document_id=96,
+        )
+    assert "default" in ei.value.error_message

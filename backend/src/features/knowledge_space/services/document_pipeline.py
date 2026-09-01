@@ -82,6 +82,50 @@ async def _check_document_cancelled(document_id: int) -> None:
         raise DocumentCancelledError(f"文档 {document_id} 处理已被用户取消")
 
 
+def _raise_on_empty_parse(
+    full_text: str,
+    parse_result: Any,
+    parsing_config: Dict[str, Any],
+    document_id: int,
+) -> None:
+    """解析跑完但 0 字符 → 抛 DocumentProcessingError，不静默当成功。
+
+    此前 layout 模式对「pdfplumber extract_words 抽不到词盒」的 PDF 会返回空 full_text，
+    管道却标"成功"，前端表现为"成功但无内容"的假成功。这里显式拦截，并根据 plain_sections
+    （extract_text 直出文本）是否有文字给出可操作建议：
+
+    - plain_sections 有文字 → 词盒抽取失败，建议改用 plain/default 模式（仍能拿到文本）。
+    - plain_sections 也空 → 文字层无法被 pdfplumber 解析或本就无文字层，建议 vision/OCR。
+
+    守"没选就不兜底"原则：不自动回退到其它模式，由用户显式切换（保证解析路径可追踪）。
+    """
+    if full_text.strip():
+        return
+    meta = parse_result.metadata or {}
+    plain_sections = meta.get("plain_sections") or []
+    plain_chars = sum(len(line) for line, _ in plain_sections)
+    bbox_count = len(meta.get("bboxes") or [])
+    pages = meta.get("pages")
+    strategy = parsing_config.get("strategy", "default")
+    pdf_mode = meta.get("pdf_mode") or parsing_config.get("deepdoc_pdf_mode") or ""
+    mode_desc = f"{strategy}/{pdf_mode}" if pdf_mode else strategy
+    if plain_chars > 0:
+        hint = (
+            f"解析抽出 0 字符：{mode_desc} 模式的词盒抽取（pdfplumber extract_words）"
+            f"对 {pages or '?'} 页全部返回空，但纯文本抽取到 {plain_chars} 字符——"
+            f"该 PDF 文字层无法被按词切分（疑似字体/CMap/Type3 问题）。"
+            f"建议改用 plain 模式或 default 解析策略以获得文本。"
+        )
+    else:
+        hint = (
+            f"解析抽出 0 字符：{mode_desc} 模式纯文本与词盒均为空"
+            f"（pages={pages or '?'}, bboxes={bbox_count}）——"
+            f"该 PDF 文字层无法被 pdfplumber 解析或本就无文字层。"
+            f"建议改用 vision 模式（含 OCR）或在知识库配置中开启 OCR。"
+        )
+    raise DocumentProcessingError(document_id=document_id, error_message=hint)
+
+
 async def execute_document_pipeline(
     session: AsyncSession,
     document_id: int,
@@ -229,6 +273,9 @@ async def execute_document_pipeline(
             if parse_result.metadata
             else False,
         )
+        # 空文本检测：解析跑完但 0 字符——不静默当成功（否则前端看到"成功但无内容"的假成功）。
+        # 守"没选就不兜底"原则：不自动回退到其它模式，抛错并给出可操作建议，让用户显式切换模式。
+        _raise_on_empty_parse(full_text, parse_result, parsing_config, document_id)
         task.finish_step("parsed", metrics={"char_count": len(full_text), "chunk_count": len(chunks), "parse_strategy": parsing_config.get("strategy", "default"), "file_type": document.file_type})
         # 解析全文持久化到 MinIO（切块之前，立刻 commit 落库）
         await persist_parsed_text(document, full_text, session, _logger)
