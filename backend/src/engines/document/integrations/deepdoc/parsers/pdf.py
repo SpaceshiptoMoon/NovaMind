@@ -200,17 +200,20 @@ class RAGFlowPdfParser:
         self,
         filename: Union[str, bytes, Path],
         *,
-        pdf_mode: str = "layout",
+        pdf_mode: str = "full",
         chunk_size: int = 1000,
     ) -> DeepDocParseResult:
         source_desc = str(filename) if isinstance(filename, (str, Path)) else "<bytes>"
         logger.info("DeepDoc PDF 解析器开始", pdf_mode=pdf_mode, chunk_size=chunk_size, source=source_desc)
         if pdf_mode == "plain":
             result = self._parse_plain(filename, chunk_size=chunk_size)
-        elif pdf_mode == "layout":
-            result = self._parse_layout(filename, chunk_size=chunk_size)
-        elif pdf_mode == "vision":
-            result = self._parse_vision(filename, chunk_size=chunk_size)
+        elif pdf_mode == "full":
+            result = self._parse_full(filename, chunk_size=chunk_size)
+        elif pdf_mode in ("layout", "vision"):
+            # 兼容别名：layout/vision 已并入 full（上游对齐的逐框融合流水线），
+            # 保留一个发布周期，防止旧 runtime config / 测试漏迁移。
+            logger.info("DeepDoc PDF 模式别名映射到 full", alias=pdf_mode)
+            result = self._parse_full(filename, chunk_size=chunk_size)
         else:
             raise ValueError(f"Unsupported DeepDoc PDF mode: {pdf_mode}")
         logger.info(
@@ -582,68 +585,20 @@ class RAGFlowPdfParser:
             },
         )
 
-    def _parse_layout(
+    def _parse_full(
         self,
         filename: Union[str, bytes, Path],
         *,
         chunk_size: int,
     ) -> DeepDocParseResult:
+        """上游对齐的默认全量流水线：每页 OCR 检测 + 逐框文字层融合 + 乱码回退 OCR
+        （_extract_fused_pages）→ ONNX 版面贴标签 → 段落合并 → 页眉过滤 → 表格/图片
+        抽取 → 阅读顺序 → 结构化 chunks。后续步骤复用原 vision 路径的尾巴。"""
         plain_sections, _, outlines = self._plain_parser(filename)
-        boxes = self.parse_into_bboxes(filename)
-        merged_boxes, merge_strategy = self._merge_vertical_boxes_with_strategy(boxes)
-        filtered_boxes, filter_meta = self._filter_boxes_with_meta(merged_boxes or boxes, total_pages=len({box.page for box in boxes}))
-        chunk_boxes = filtered_boxes or merged_boxes or boxes
-        page_images = self._render_page_images(filename)
-        artifacts = self._extract_artifacts(chunk_boxes, page_images=page_images, zoom=2.0)
-        table_regions = self._build_table_regions_metadata(artifacts)
-        figure_regions = self._build_figure_regions_metadata(artifacts)
-        reading_order = self._build_reading_order_metadata(
-            chunk_boxes,
-            table_regions,
-            figure_regions,
-        )
-        tagged_lines = [box.as_tagged_text() for box in chunk_boxes]
-        full_text = "\n".join(tagged_lines).strip()
-        chunks, chunk_structure = self._build_structured_chunks(reading_order, chunk_size=chunk_size)
-        detected_columns = max((box.col_id for box in boxes), default=0) + 1 if boxes else 1
-        return DeepDocParseResult(
-            full_text=full_text,
-            chunks=chunks,
-            metadata={
-                "parser": "deepdoc",
-                "file_type": "pdf",
-                "pdf_mode": "layout",
-                "pages": len({box.page for box in boxes}),
-                "detected_columns": detected_columns,
-                "merged_block_count": len(chunk_boxes),
-                "paragraph_merge_strategy": merge_strategy,
-                "page_filter": filter_meta,
-                "artifacts": artifacts,
-                "table_regions": table_regions,
-                "figure_regions": figure_regions,
-                "reading_order": reading_order,
-                "chunk_structure": chunk_structure,
-                "text_concat_model": self._updown_concat.model_status(),
-                "outlines": outlines,
-                "plain_sections": plain_sections,
-                "bboxes": [asdict(box) for box in boxes],
-                "merged_bboxes": [asdict(box) for box in chunk_boxes],
-                "source": "ragflow-adapted",
-                "parser_class": "RAGFlowPdfParser",
-            },
-        )
-
-    def _parse_vision(
-        self,
-        filename: Union[str, bytes, Path],
-        *,
-        chunk_size: int,
-    ) -> DeepDocParseResult:
-        plain_sections, _, outlines = self._plain_parser(filename)
-        image_list, ocr_pages, layout_pages, vision_meta = self._extract_vision_pages(filename)
+        image_list, fused_pages, layout_pages, fusion_meta = self._extract_fused_pages(filename)
         layout_boxes, page_layout = self._get_layout_recognizer()(
             image_list,
-            ocr_pages,
+            fused_pages,
             scale_factor=2,
             layouts=layout_pages,
             drop=False,
@@ -706,13 +661,14 @@ class RAGFlowPdfParser:
             metadata={
                 "parser": "deepdoc",
                 "file_type": "pdf",
-                "pdf_mode": "vision",
+                "pdf_mode": "full",
+                "text_source": "fused",
                 "pages": len(image_list),
                 "outlines": outlines,
                 "plain_sections": plain_sections,
-                "vision_strategy": vision_meta["vision_strategy"],
-                "layout_source": vision_meta["layout_source"],
-                "layout_model_error": vision_meta.get("layout_model_error"),
+                "vision_strategy": fusion_meta["vision_strategy"],
+                "layout_source": fusion_meta["layout_source"],
+                "layout_model_error": fusion_meta.get("layout_model_error"),
                 "paragraph_merge_strategy": merge_strategy,
                 "page_filter": filter_meta,
                 "artifacts": artifacts,
@@ -721,7 +677,7 @@ class RAGFlowPdfParser:
                 "reading_order": reading_order,
                 "chunk_structure": chunk_structure,
                 "text_concat_model": self._updown_concat.model_status(),
-                "ocr_sources": self._collect_ocr_sources(ocr_pages),
+                "ocr_sources": self._collect_ocr_sources(fused_pages),
                 "layout_bboxes": [asdict(box) for box in all_boxes],
                 "merged_bboxes": [asdict(box) for box in chunk_boxes],
                 "page_layout": page_layout,
@@ -730,16 +686,28 @@ class RAGFlowPdfParser:
             },
         )
 
-    def _extract_vision_pages(
+    def _extract_fused_pages(
         self,
         filename: Union[str, bytes, Path],
     ) -> tuple[list[np.ndarray], list[list[dict[str, Any]]], list[list[dict[str, Any]]], dict[str, Any]]:
+        """上游 RAGFlow __images__+__ocr 对齐：渲染每页 → 抽 pdfplumber 文字层字符 →
+        每页 OCR.detect 拿框 → 文字层字符按坐标匹配进框 → 逐框裁决（干净用文字层 /
+        乱码回退 OCR / 无字符走 OCR）→ 空框 recognize_batch。产出 fused_pages 与原
+        ocr_pages 同形状，供 _get_layout_recognizer() 贴 layout_type。"""
         fitz = self._import_fitz()
-        doc = fitz.open(stream=filename, filetype="pdf") if isinstance(filename, bytes) else fitz.open(str(filename))
+        pdf_source = str(filename) if not isinstance(filename, bytes) else BytesIO(filename)
         image_list: list[np.ndarray] = []
-        ocr_pages: list[list[dict[str, Any]]] = []
+        fused_pages: list[list[dict[str, Any]]] = []
         zoom = 2
+        doc = fitz.open(stream=filename, filetype="pdf") if isinstance(filename, bytes) else fitz.open(str(filename))
+        plumber_pdf = None
         try:
+            try:
+                plumber_pdf = pdfplumber.open(pdf_source)
+            except Exception as exc:
+                logger.warning("DeepDoc pdfplumber 打开失败，文字层融合退化为纯 OCR", error=str(exc))
+                plumber_pdf = None
+            plumber_pages = plumber_pdf.pages if plumber_pdf is not None else []
             for page_index in range(doc.page_count):
                 page = doc.load_page(page_index)
                 pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
@@ -747,26 +715,178 @@ class RAGFlowPdfParser:
                 if pix.n == 4:
                     img = img[:, :, :3]
                 image_list.append(img)
-
-                blocks = self._extract_fitz_blocks(page)
-                if not blocks:
-                    blocks = self._extract_ocr_blocks(img, page, page_index, zoom)
-                if not blocks:
-                    blocks = self._fallback_plain_page_blocks(page, page_index)
-                ocr_pages.append(blocks)
+                page_chars = self._extract_page_chars(plumber_pages, page_index)
+                fused_pages.append(self._fuse_page(img, page_chars, page_index, zoom))
         finally:
+            if plumber_pdf is not None:
+                plumber_pdf.close()
             doc.close()
 
         layout_pages, layout_meta = self._resolve_layout_pages(
             image_list=image_list,
-            ocr_pages=ocr_pages,
+            ocr_pages=fused_pages,
             zoom=zoom,
         )
         layout_meta["vision_strategy"] = self._build_vision_strategy(
-            self._collect_ocr_sources(ocr_pages),
+            self._collect_ocr_sources(fused_pages),
             layout_meta["layout_source"],
         )
-        return image_list, ocr_pages, layout_pages, layout_meta
+        return image_list, fused_pages, layout_pages, layout_meta
+
+    def _extract_page_chars(self, plumber_pages: Sequence[Any], page_index: int) -> list[dict[str, Any]]:
+        """抽该页 pdfplumber 文字层字符；乱码页（CID/PUA 或子集字体编码错乱）直接
+        清空，强制该页全走 OCR。接线上游 __images__ 的乱码预清洗。"""
+        if not plumber_pages or page_index >= len(plumber_pages):
+            return []
+        try:
+            ppage = plumber_pages[page_index]
+            chars = [c for c in ppage.dedupe_chars().chars if self._has_color(c)]
+        except Exception:
+            return []
+        sample_text = "".join(str(c.get("text", "") or "") for c in chars[:200])
+        if self._is_garbled_text(sample_text) or self._is_garbled_by_font_encoding(chars):
+            logger.info("DeepDoc 检测到乱码文字层，该页改走 OCR", page_index=page_index)
+            return []
+        return chars
+
+    def _fuse_page(
+        self,
+        img: np.ndarray,
+        page_chars: list[dict[str, Any]],
+        page_index: int,
+        zoom: int,
+    ) -> list[dict[str, Any]]:
+        """上游 __ocr 逐框融合：OCR.detect 拿框 → pdfplumber chars 按坐标 find_overlapped
+        匹配进框 → 逐框裁决（干净用文字层 / 乱码或无字符回退 OCR）→ 空框 recognize_batch。"""
+        from novamind.engines.document.integrations.deepdoc.vision.recognizer import Recognizer
+
+        if self._ocr is None:
+            from novamind.engines.document.integrations.deepdoc.vision.ocr import OCR
+
+            logger.info("DeepDoc OCR 引擎首次加载模型", page_index=page_index)
+            self._ocr = OCR(autoload=True)
+
+        img_np = np.asarray(img)
+        try:
+            detected = list(self._ocr.detect(img_np) or [])
+        except Exception as exc:
+            logger.warning("DeepDoc OCR detect 失败", page_index=page_index, error=str(exc))
+            return []
+        if not detected:
+            return []
+
+        boxes: list[dict[str, Any]] = []
+        for box_px, _score in detected:
+            pts = np.asarray(box_px, dtype=np.float32)
+            x0 = float(np.min(pts[:, 0]) / zoom)
+            x1 = float(np.max(pts[:, 0]) / zoom)
+            top = float(np.min(pts[:, 1]) / zoom)
+            bottom = float(np.max(pts[:, 1]) / zoom)
+            if x0 >= x1 or top >= bottom:
+                continue
+            boxes.append(
+                {
+                    "x0": x0,
+                    "x1": x1,
+                    "top": top,
+                    "bottom": bottom,
+                    "text": "",
+                    "chars": [],
+                    "ocr_source": "text_layer",
+                    "page_number": page_index,
+                }
+            )
+        if not boxes:
+            return []
+        mean_h = float(np.median([b["bottom"] - b["top"] for b in boxes])) or 1.0
+        boxes = Recognizer.sort_Y_firstly(boxes, mean_h / 3)
+
+        # 1) pdfplumber 字符按坐标匹配进 OCR 检测框
+        for c in page_chars:
+            ii = Recognizer.find_overlapped(c, boxes)
+            if ii is None:
+                self.lefted_chars.append(c)
+                continue
+            ch = float(c["bottom"]) - float(c["top"])
+            bh = boxes[ii]["bottom"] - boxes[ii]["top"]
+            if abs(ch - bh) / max(ch, bh) >= 0.7 and str(c.get("text", "")) != " ":
+                self.lefted_chars.append(c)
+                continue
+            boxes[ii]["chars"].append(c)
+
+        # 2) 逐框裁决：文字层干净则用，乱码（PUA/CID 或子集字体编码）则清空回退 OCR
+        for b in boxes:
+            if not b["chars"]:
+                b.pop("chars", None)
+                continue
+            m_ht = float(np.mean([float(c.get("height", 0.0)) for c in b["chars"]])) or 0.0
+            garbled = 0
+            total = 0
+            text_parts: list[str] = []
+            for c in Recognizer.sort_Y_firstly(b["chars"], m_ht):
+                t = str(c.get("text", "") or "")
+                if t == " " and text_parts:
+                    if re.match(r"[0-9a-zA-Z,.?;:!%]", text_parts[-1][-1]):
+                        text_parts.append(" ")
+                else:
+                    text_parts.append(t)
+                    for ch in t:
+                        if not ch.isspace():
+                            total += 1
+                            if self._is_garbled_char(ch):
+                                garbled += 1
+            box_chars = b.pop("chars", [])
+            b["text"] = "".join(text_parts)
+            if total > 0 and (
+                garbled / total >= 0.5 or self._is_garbled_by_font_encoding(box_chars)
+            ):
+                b["text"] = ""
+                b["ocr_source"] = "vendored_ocr"
+
+        # 3) 空文本框批量 OCR 识别
+        empty_boxes = [b for b in boxes if not b["text"]]
+        if empty_boxes:
+            crops = []
+            for b in empty_boxes:
+                pts = np.array(
+                    [
+                        [b["x0"] * zoom, b["top"] * zoom],
+                        [b["x1"] * zoom, b["top"] * zoom],
+                        [b["x1"] * zoom, b["bottom"] * zoom],
+                        [b["x0"] * zoom, b["bottom"] * zoom],
+                    ],
+                    dtype=np.float32,
+                )
+                crops.append(self._ocr.get_rotate_crop_image(img_np, pts))
+            try:
+                texts = self._ocr.recognize_batch(crops) or []
+            except Exception as exc:
+                logger.warning("DeepDoc OCR recognize_batch 失败", page_index=page_index, error=str(exc))
+                texts = []
+            for b, t in zip(empty_boxes, texts):
+                b["text"] = str(t or "").strip()
+                if b["text"]:
+                    b["ocr_source"] = "vendored_ocr"
+
+        # 4) 产出块（过滤空文本）
+        blocks: list[dict[str, Any]] = []
+        for b in boxes:
+            text = b["text"].strip()
+            if not text:
+                continue
+            blocks.append(
+                {
+                    "text": text,
+                    "x0": b["x0"],
+                    "x1": b["x1"],
+                    "top": b["top"],
+                    "bottom": b["bottom"],
+                    "page_number": page_index,
+                    "font_size": 0.0,
+                    "ocr_source": b.get("ocr_source", "text_layer"),
+                }
+            )
+        return blocks
 
     def _resolve_layout_pages(
         self,
@@ -832,165 +952,6 @@ class RAGFlowPdfParser:
             )
         return layout_pages
 
-    def _extract_ocr_blocks(
-        self,
-        image: np.ndarray,
-        page: Any,
-        page_index: int,
-        zoom: int,
-    ) -> list[dict[str, Any]]:
-        blocks = self._extract_vendored_ocr_blocks(image, page_index, zoom)
-        if blocks:
-            return blocks
-        return self._extract_fitz_ocr_blocks(page, page_index)
-
-    def _extract_vendored_ocr_blocks(
-        self,
-        image: np.ndarray,
-        page_index: int,
-        zoom: int,
-    ) -> list[dict[str, Any]]:
-        try:
-            if self._ocr is None:
-                from novamind.engines.document.integrations.deepdoc.vision.ocr import OCR
-
-                logger.info("DeepDoc OCR 引擎首次加载模型", page_index=page_index)
-                self._ocr = OCR(autoload=True)
-            result = self._ocr(image)
-        except Exception as exc:
-            logger.warning("DeepDoc OCR 推理失败", page_index=page_index, error=str(exc))
-            return []
-
-        if not result:
-            return []
-
-        blocks = []
-        for item in result:
-            if not item or len(item) != 2:
-                continue
-            quad, rec = item
-            if not rec or len(rec) != 2:
-                continue
-            text, score = rec
-            if not text or float(score) < 0.5:
-                continue
-            pts = np.array(quad, dtype=np.float32)
-            blocks.append(
-                {
-                    "text": str(text).strip(),
-                    "x0": float(np.min(pts[:, 0]) / zoom),
-                    "x1": float(np.max(pts[:, 0]) / zoom),
-                    "top": float(np.min(pts[:, 1]) / zoom),
-                    "bottom": float(np.max(pts[:, 1]) / zoom),
-                    "page_number": page_index,
-                    "font_size": 0.0,
-                    "ocr_source": "vendored_ocr",
-                }
-            )
-        return blocks
-
-    @staticmethod
-    def _extract_fitz_ocr_blocks(page: Any, page_index: int) -> list[dict[str, Any]]:
-        try:
-            textpage = page.get_textpage_ocr()
-            text_dict = page.get_text("dict", textpage=textpage)
-        except Exception:
-            return []
-
-        blocks = []
-        for block in text_dict.get("blocks", []):
-            if block.get("type") != 0:
-                continue
-            lines = block.get("lines", [])
-            if not lines:
-                continue
-            texts = []
-            for line in lines:
-                spans = line.get("spans", [])
-                line_text = "".join(span.get("text", "") for span in spans).strip()
-                if line_text:
-                    texts.append(line_text)
-            text = " ".join(texts).strip()
-            if not text:
-                continue
-            x0, top, x1, bottom = block["bbox"]
-            blocks.append(
-                {
-                    "text": text,
-                    "x0": float(x0),
-                    "x1": float(x1),
-                    "top": float(top),
-                    "bottom": float(bottom),
-                    "page_number": page_index,
-                    "font_size": 0.0,
-                    "ocr_source": "fitz_ocr",
-                }
-            )
-        return blocks
-
-    @staticmethod
-    def _extract_fitz_blocks(page: Any) -> list[dict[str, Any]]:
-        blocks = []
-        text_dict = page.get_text("dict")
-        for block in text_dict.get("blocks", []):
-            if block.get("type") != 0:
-                continue
-            lines = block.get("lines", [])
-            if not lines:
-                continue
-            texts = []
-            font_sizes = []
-            for line in lines:
-                spans = line.get("spans", [])
-                line_text = "".join(span.get("text", "") for span in spans).strip()
-                if line_text:
-                    texts.append(line_text)
-                font_sizes.extend(float(span.get("size", 0.0)) for span in spans if span.get("size"))
-            text = " ".join(texts).strip()
-            if not text:
-                continue
-            x0, top, x1, bottom = block["bbox"]
-            blocks.append(
-                {
-                    "text": text,
-                    "x0": float(x0),
-                    "x1": float(x1),
-                    "top": float(top),
-                    "bottom": float(bottom),
-                    "page_number": page.number,
-                    "font_size": max(font_sizes) if font_sizes else 0.0,
-                }
-            )
-        return blocks
-
-    @staticmethod
-    def _fallback_plain_page_blocks(page: Any, page_index: int) -> list[dict[str, Any]]:
-        words = page.get_text("words", sort=True) or []
-        if not words:
-            return []
-        lines: dict[tuple[int, int], list[tuple[Any, ...]]] = {}
-        for word in words:
-            key = (int(round(word[1] / 8)), int(round(word[0] / 100)))
-            lines.setdefault(key, []).append(word)
-        blocks = []
-        for group in sorted(lines.values(), key=lambda arr: (min(item[1] for item in arr), min(item[0] for item in arr))):
-            group = sorted(group, key=lambda item: item[0])
-            text = " ".join(str(item[4]) for item in group if str(item[4]).strip()).strip()
-            if not text:
-                continue
-            blocks.append(
-                {
-                    "text": text,
-                    "x0": float(min(item[0] for item in group)),
-                    "x1": float(max(item[2] for item in group)),
-                    "top": float(min(item[1] for item in group)),
-                    "bottom": float(max(item[3] for item in group)),
-                    "page_number": page_index,
-                    "font_size": 0.0,
-                }
-            )
-        return blocks
-
     @staticmethod
     def _build_heuristic_layouts(
         blocks: list[dict[str, Any]],
@@ -1045,10 +1006,14 @@ class RAGFlowPdfParser:
     @staticmethod
     def _build_vision_strategy(ocr_sources: list[str], layout_source: str) -> str:
         source_set = set(ocr_sources)
-        if source_set == {"fitz_text"}:
-            text_source = "fitz"
+        if source_set == {"text_layer"}:
+            text_source = "text-layer"
         elif source_set == {"vendored_ocr"}:
             text_source = "vendored-ocr"
+        elif source_set == {"text_layer", "vendored_ocr"}:
+            text_source = "fused"
+        elif source_set == {"fitz_text"}:
+            text_source = "fitz"
         elif source_set == {"fitz_ocr"}:
             text_source = "fitz-ocr"
         else:
@@ -1374,25 +1339,3 @@ class RAGFlowPdfParser:
             if box.page in kept_pages
             and (box.text.strip() or (box.layout_type or "").lower() in {"table", "figure", "figure caption", "table caption"})
         ]
-
-    def _render_page_images(
-        self,
-        filename: Union[str, bytes, Path],
-        *,
-        zoom: int = 2,
-    ) -> dict[int, Image.Image]:
-        fitz = self._import_fitz()
-        doc = fitz.open(stream=filename, filetype="pdf") if isinstance(filename, bytes) else fitz.open(str(filename))
-        images: dict[int, Image.Image] = {}
-        try:
-            for page_index in range(doc.page_count):
-                page = doc.load_page(page_index)
-                pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
-                mode = "RGB" if pix.n < 4 else "RGBA"
-                image = Image.frombytes(mode, [pix.width, pix.height], pix.samples)
-                if image.mode == "RGBA":
-                    image = image.convert("RGB")
-                images[page_index + 1] = image
-        finally:
-            doc.close()
-        return images
