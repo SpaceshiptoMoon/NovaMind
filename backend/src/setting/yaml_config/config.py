@@ -85,6 +85,10 @@ class ParsingConfig:
     # 物理核给事件循环）。转写期间其它请求仍卡顿就调小（如 2）；ASR 太慢可调大，
     # 但勿超过 (物理核 - 1)，否则会重新饿死事件循环。
     local_whisper_cpu_threads: Optional[int] = None
+    # 视频 VLM 逐帧/逐组描述并发数（1=串行，默认 4，范围 1~20）。长视频 60 帧串行
+    # 易逼近 arq job_timeout=1800s，有界并发降时延；过高可能触发 VLM 配额限流，
+    # 配合 vlm_fallback_model / vlm_skip_on_quota_error（KB 级）降级。
+    video_vlm_concurrency: int = 4
 
 
 @dataclass

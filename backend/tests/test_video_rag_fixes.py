@@ -383,3 +383,155 @@ async def test_storage_frames_persisted_before_tail(monkeypatch):
     ]
     # tail 之前至少 commit 过一次（帧上传后的即时持久化）
     assert session.commit_calls >= 1
+
+
+# ---------------------------------------------------------------------------
+# B9 配置来源：vlm_concurrency 由 YAML 配置控制，非每知识库 VideoParsingConfig
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_video_vlm_concurrency_read_from_yaml_config(monkeypatch):
+    """B9 配置来源：并发数读自 YAML knowledge_base.parsing.video_vlm_concurrency，
+    不再从每知识库 VideoParsingConfig 读取。monkeypatch 全局 config 返回 7，
+    断言传入 describe_single 的 concurrency==7。"""
+    document = _make_video_document()
+    document.storage = {"minio_object_name": "obj"}
+    ctx = SimpleNamespace(
+        pipeline_config={"parsing": {"video": {"strategy": "simple", "vlm_model": "v-vlm"}}},
+        embedding_config={"model": "emb", "dimension": 8},
+    )
+
+    captured: dict = {}
+
+    async def fake_load(session, doc, task):
+        return ctx
+
+    async def fake_cancel(doc_id):
+        return None
+
+    async def fake_extract(content, interval, maxf):
+        return [(b"f", 0.0, 0)]
+
+    async def fake_get_minio(cls):
+        return _FakeMinio()
+
+    async def fake_describe_single(frames, vlm_client, prompt, **kw):
+        captured["concurrency"] = kw.get("concurrency")
+        return [("desc", ts, idx) for _, ts, idx in frames]
+
+    async def fake_persist(document, text, session, logger):
+        return None
+
+    async def fake_tail(**kw):
+        return {"chunk_count": 1}
+
+    # 全局 YAML config 返回 video_vlm_concurrency=7
+    fake_app_config = SimpleNamespace(
+        knowledge_base=SimpleNamespace(
+            parsing=SimpleNamespace(video_vlm_concurrency=7),
+        ),
+    )
+
+    monkeypatch.setattr(media_processing, "load_pipeline_context", fake_load)
+    monkeypatch.setattr(media_processing, "_check_document_cancelled", fake_cancel)
+    monkeypatch.setattr(media_processing, "extract_frames_fixed", fake_extract)
+    monkeypatch.setattr(
+        "novamind.shared.storage.client_factory.ClientFactory.get_minio_client",
+        classmethod(fake_get_minio),
+    )
+    monkeypatch.setattr(media_processing, "describe_single", fake_describe_single)
+    monkeypatch.setattr(media_processing, "persist_parsed_text", fake_persist)
+    monkeypatch.setattr(media_processing, "_run_post_parse_tail", fake_tail)
+    monkeypatch.setattr(
+        "novamind.shared.prompts.templates.PromptManager.get_template", lambda name: "prompt"
+    )
+    monkeypatch.setattr("novamind.setting.yaml_config.get_config", lambda: fake_app_config)
+
+    class _MCS:
+        async def get_vlm_client_by_model(self, user_id, model):
+            return object()
+
+    session = _FakeSession()
+    await media_processing.process_video_document(
+        document=document,
+        file_content=b"fake",
+        session=session,
+        logger=_silent_logger(),
+        task=None,
+        model_config_port=_MCS(),
+    )
+
+    assert captured["concurrency"] == 7  # 来自 YAML config，非 VideoParsingConfig 默认 4
+
+
+@pytest.mark.asyncio
+async def test_video_vlm_concurrency_clamped_to_range(monkeypatch):
+    """B9 配置来源：YAML 越界值被 clamp 到 [1,20]（防止误配 0 或超大值）。"""
+    document = _make_video_document()
+    document.storage = {"minio_object_name": "obj"}
+    ctx = SimpleNamespace(
+        pipeline_config={"parsing": {"video": {"strategy": "simple", "vlm_model": "v-vlm"}}},
+        embedding_config={"model": "emb", "dimension": 8},
+    )
+
+    captured: dict = {}
+
+    async def fake_load(session, doc, task):
+        return ctx
+
+    async def fake_cancel(doc_id):
+        return None
+
+    async def fake_extract(content, interval, maxf):
+        return [(b"f", 0.0, 0)]
+
+    async def fake_get_minio(cls):
+        return _FakeMinio()
+
+    async def fake_describe_single(frames, vlm_client, prompt, **kw):
+        captured["concurrency"] = kw.get("concurrency")
+        return [("desc", ts, idx) for _, ts, idx in frames]
+
+    async def fake_persist(document, text, session, logger):
+        return None
+
+    async def fake_tail(**kw):
+        return {"chunk_count": 1}
+
+    fake_app_config = SimpleNamespace(
+        knowledge_base=SimpleNamespace(
+            parsing=SimpleNamespace(video_vlm_concurrency=99),  # 越界
+        ),
+    )
+
+    monkeypatch.setattr(media_processing, "load_pipeline_context", fake_load)
+    monkeypatch.setattr(media_processing, "_check_document_cancelled", fake_cancel)
+    monkeypatch.setattr(media_processing, "extract_frames_fixed", fake_extract)
+    monkeypatch.setattr(
+        "novamind.shared.storage.client_factory.ClientFactory.get_minio_client",
+        classmethod(fake_get_minio),
+    )
+    monkeypatch.setattr(media_processing, "describe_single", fake_describe_single)
+    monkeypatch.setattr(media_processing, "persist_parsed_text", fake_persist)
+    monkeypatch.setattr(media_processing, "_run_post_parse_tail", fake_tail)
+    monkeypatch.setattr(
+        "novamind.shared.prompts.templates.PromptManager.get_template", lambda name: "prompt"
+    )
+    monkeypatch.setattr("novamind.setting.yaml_config.get_config", lambda: fake_app_config)
+
+    class _MCS:
+        async def get_vlm_client_by_model(self, user_id, model):
+            return object()
+
+    session = _FakeSession()
+    await media_processing.process_video_document(
+        document=document,
+        file_content=b"fake",
+        session=session,
+        logger=_silent_logger(),
+        task=None,
+        model_config_port=_MCS(),
+    )
+
+    assert captured["concurrency"] == 20  # clamp 到上界
