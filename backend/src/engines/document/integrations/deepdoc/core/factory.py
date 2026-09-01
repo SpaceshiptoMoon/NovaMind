@@ -21,7 +21,7 @@ class DeepDocParserFactory:
     """RAGFlow-style parser selector for the vendored deepdoc module."""
 
     DEFAULT_PARSER_IDS: Dict[str, str] = {
-        "pdf": "pdf_layout",
+        "pdf": "pdf_full",
         "docx": "docx",
         "epub": "epub",
         "xls": "excel",
@@ -54,19 +54,12 @@ class DeepDocParserFactory:
                 available=bool(pdf_modes["plain"]["available"]),
                 description=str(pdf_modes["plain"]["description"]),
             ),
-            "pdf_layout": DeepDocParserSpec(
-                parser_id="pdf_layout",
+            "pdf_full": DeepDocParserSpec(
+                parser_id="pdf_full",
                 file_type="pdf",
-                mode="layout",
-                available=bool(pdf_modes["layout"]["available"]),
-                description=str(pdf_modes["layout"]["description"]),
-            ),
-            "pdf_vision": DeepDocParserSpec(
-                parser_id="pdf_vision",
-                file_type="pdf",
-                mode="vision",
-                available=bool(pdf_modes["vision"]["available"]),
-                description=str(pdf_modes["vision"]["description"]),
+                mode="full",
+                available=bool(pdf_modes["full"]["available"]),
+                description=str(pdf_modes["full"]["description"]),
             ),
             "pdf_docling": DeepDocParserSpec(
                 parser_id="pdf_docling",
@@ -197,7 +190,7 @@ class DeepDocParserFactory:
         parser = DeepDocParser()
         parsing_config = {}
         if spec.file_type == "pdf":
-            if spec.mode in {"plain", "layout", "vision"}:
+            if spec.mode in {"plain", "full"}:
                 parsing_config["deepdoc_pdf_mode"] = spec.mode
             parsing_config["deepdoc_parser_id"] = spec.parser_id
         elif spec.parser_id not in {"docx", "epub", "excel", "ppt", "figure", "text"}:

@@ -90,38 +90,32 @@ def _raise_on_empty_parse(
 ) -> None:
     """解析跑完但 0 字符 → 抛 DocumentProcessingError，不静默当成功。
 
-    此前 layout 模式对「pdfplumber extract_words 抽不到词盒」的 PDF 会返回空 full_text，
-    管道却标"成功"，前端表现为"成功但无内容"的假成功。这里显式拦截，并根据 plain_sections
-    （extract_text 直出文本）是否有文字给出可操作建议：
-
-    - plain_sections 有文字 → 词盒抽取失败，建议改用 plain/default 模式（仍能拿到文本）。
-    - plain_sections 也空 → 文字层无法被 pdfplumber 解析或本就无文字层，建议 vision/OCR。
+    full 模式（上游对齐的逐框融合：文字层 + OCR 回退）跑完仍 0 字符，意味着文字层为空
+    且 OCR 也未识别到文字——可能是 OCR 模型未就绪或页面本就是纯无字图片。plain 模式 /
+    default 策略仅抽文字层，0 字符意味着无文字层（扫描件），建议切 full。
 
     守"没选就不兜底"原则：不自动回退到其它模式，由用户显式切换（保证解析路径可追踪）。
     """
     if full_text.strip():
         return
     meta = parse_result.metadata or {}
-    plain_sections = meta.get("plain_sections") or []
-    plain_chars = sum(len(line) for line, _ in plain_sections)
-    bbox_count = len(meta.get("bboxes") or [])
     pages = meta.get("pages")
     strategy = parsing_config.get("strategy", "default")
     pdf_mode = meta.get("pdf_mode") or parsing_config.get("deepdoc_pdf_mode") or ""
     mode_desc = f"{strategy}/{pdf_mode}" if pdf_mode else strategy
-    if plain_chars > 0:
+    if pdf_mode == "plain" or strategy == "default":
         hint = (
-            f"解析抽出 0 字符：{mode_desc} 模式的词盒抽取（pdfplumber extract_words）"
-            f"对 {pages or '?'} 页全部返回空，但纯文本抽取到 {plain_chars} 字符——"
-            f"该 PDF 文字层无法被按词切分（疑似字体/CMap/Type3 问题）。"
-            f"建议改用 plain 模式或 default 解析策略以获得文本。"
+            f"解析抽出 0 字符：{mode_desc} 模式仅抽取文字层、未做 OCR，"
+            f"但该 PDF（{pages or '?'} 页）文字层为空（疑似扫描件或图片 PDF）。"
+            f"建议将 PDF 解析器改用 full 模式（含逐框文字层/OCR 融合）以获取文本。"
         )
     else:
+        ocr_sources = meta.get("ocr_sources") or []
         hint = (
-            f"解析抽出 0 字符：{mode_desc} 模式纯文本与词盒均为空"
-            f"（pages={pages or '?'}, bboxes={bbox_count}）——"
-            f"该 PDF 文字层无法被 pdfplumber 解析或本就无文字层。"
-            f"建议改用 vision 模式（含 OCR）或在知识库配置中开启 OCR。"
+            f"解析抽出 0 字符：{mode_desc} 模式已完成逐框文字层/OCR 融合仍无文本"
+            f"（pages={pages or '?'}, ocr_sources={ocr_sources}）——"
+            f"文字层为空且 OCR 未识别到文字。请检查 OCR 模型是否就绪"
+            f"（运行 scripts/download_deepdoc_models.py --check）或确认页面非纯无字图片。"
         )
     raise DocumentProcessingError(document_id=document_id, error_message=hint)
 

@@ -86,9 +86,8 @@ class SplittingConfig(BaseModel):
 
 
 PdfParserName = Literal[
-    "layout",
+    "full",
     "plain",
-    "vision",
     "docling",
     "mineru",
     "opendataloader",
@@ -98,8 +97,9 @@ PdfParserName = Literal[
 ]
 
 LegacyDeepDocParserId = Literal[
-    "pdf_layout",
+    "pdf_full",
     "pdf_plain",
+    "pdf_layout",
     "pdf_vision",
     "pdf_docling",
     "pdf_mineru",
@@ -233,7 +233,7 @@ class ParsingConfig(BaseModel):
 
     strategy: Optional[Literal["default", "deepdoc"]] = Field(default=None)
     deepdoc_parser_id: Optional[LegacyDeepDocParserId] = Field(default=None)
-    deepdoc_pdf_mode: Optional[Literal["layout", "plain", "vision"]] = Field(default=None)
+    deepdoc_pdf_mode: Optional[Literal["full", "plain"]] = Field(default=None)
     text: Optional[TextParsingConfig] = Field(default=None)
     image: Optional[ImageParsingConfig] = Field(default=None)
     video: Optional[VideoParsingConfig] = Field(default=None)
@@ -268,6 +268,11 @@ class ParsingConfig(BaseModel):
         strategy = str(legacy.get("strategy", "default"))
         parser_id = legacy.get("deepdoc_parser_id")
         pdf_mode = legacy.get("deepdoc_pdf_mode")
+        migrated_pdf_mode = (
+            "full" if pdf_mode in {"layout", "vision", "full"}
+            else "plain" if pdf_mode == "plain"
+            else None
+        )
         ocr_enabled = bool(legacy.get("ocr_enabled", False))
         vlm_enabled = bool(legacy.get("vlm_description_enabled", False))
         vlm_model = legacy.get("vlm_model")
@@ -275,7 +280,7 @@ class ParsingConfig(BaseModel):
         migrated: Dict[str, Any] = {
             "strategy": strategy,
             "deepdoc_parser_id": parser_id,
-            "deepdoc_pdf_mode": pdf_mode if pdf_mode in {"layout", "plain", "vision"} else None,
+            "deepdoc_pdf_mode": migrated_pdf_mode,
             "text": {
                 "pdf": {"strategy": "default", "ocr_enabled": ocr_enabled},
                 "docx": {"strategy": "default"},
@@ -292,9 +297,10 @@ class ParsingConfig(BaseModel):
         }
 
         parser_to_type: Dict[str, tuple[str, Optional[str]]] = {
-            "pdf_layout": ("pdf", "layout"),
+            "pdf_full": ("pdf", "full"),
+            "pdf_layout": ("pdf", "full"),
             "pdf_plain": ("pdf", "plain"),
-            "pdf_vision": ("pdf", "vision"),
+            "pdf_vision": ("pdf", "full"),
             "pdf_docling": ("pdf", "docling"),
             "pdf_mineru": ("pdf", "mineru"),
             "pdf_opendataloader": ("pdf", "opendataloader"),
@@ -318,6 +324,9 @@ class ParsingConfig(BaseModel):
                 migrated["text"]["pdf"]["parser"] = parser_name
         elif strategy == "deepdoc":
             migrated["text"]["pdf"]["strategy"] = "deepdoc"
+            # 旧配置可能只带 deepdoc_pdf_mode 没带 deepdoc_parser_id，按模式补 parser
+            if migrated_pdf_mode:
+                migrated["text"]["pdf"]["parser"] = migrated_pdf_mode
 
         if vlm_enabled or vlm_model:
             migrated["image"] = {
@@ -344,6 +353,9 @@ class ParsingConfig(BaseModel):
                 continue
             if key == "audio" and current_value is not None:
                 merged["audio"] = current_value
+                continue
+            if key == "deepdoc_pdf_mode":
+                # 保留迁移后的值（layout/vision → full），不被原始旧值覆盖
                 continue
             merged[key] = current_value
 
@@ -460,9 +472,8 @@ class KnowledgeBaseConfigResponse(BaseModel):
 
 
 PDF_PARSER_TO_LEGACY_ID: Dict[str, str] = {
-    "layout": "pdf_layout",
+    "full": "pdf_full",
     "plain": "pdf_plain",
-    "vision": "pdf_vision",
     "docling": "pdf_docling",
     "mineru": "pdf_mineru",
     "opendataloader": "pdf_opendataloader",
@@ -538,7 +549,7 @@ def build_runtime_parsing_config(parsing: Optional[Dict[str, Any]], file_type: O
         result["ocr_enabled"] = pdf_cfg.ocr_enabled
         if pdf_cfg.strategy == "deepdoc" and pdf_cfg.parser:
             result["deepdoc_parser_id"] = PDF_PARSER_TO_LEGACY_ID[pdf_cfg.parser]
-            if pdf_cfg.parser in ("layout", "plain", "vision"):
+            if pdf_cfg.parser in ("full", "plain"):
                 result["deepdoc_pdf_mode"] = pdf_cfg.parser
     elif text_cfg.strategy == "deepdoc":
         result["deepdoc_parser_id"] = target_doc_type

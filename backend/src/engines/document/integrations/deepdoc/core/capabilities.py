@@ -39,9 +39,8 @@ def get_deepdoc_capabilities() -> Dict[str, Any]:
             }
         },
         "parser_ids": [
-            "pdf_layout",
+            "pdf_full",
             "pdf_plain",
-            "pdf_vision",
             "pdf_docling",
             "pdf_mineru",
             "pdf_opendataloader",
@@ -64,13 +63,9 @@ def get_deepdoc_capabilities() -> Dict[str, Any]:
                 "available": True,
                 "description": "Adapted from RAGFlow PlainParser.",
             },
-            "layout": {
-                "available": True,
-                "description": "Vendored plain parser plus local layout enhancement.",
-            },
-            "vision": {
+            "full": {
                 "available": bool(vision_status["parser_available"]),
-                "description": "Vendored vision-mode parser using fitz page rendering plus deferred deepdoc vision helpers.",
+                "description": "Upstream-aligned full pipeline: per-page OCR detect + per-box text-layer fusion + ONNX layout + TSR. Default mode; handles scanned and digital-native PDFs.",
                 "missing": vision_status["missing_required"] or ["vision parser implementation not wired"],
                 "optional_missing": vision_status["missing_optional"],
                 "upstream_modules": vision_status["upstream_modules"],

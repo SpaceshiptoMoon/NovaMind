@@ -234,19 +234,23 @@ class DeepDocParser:
             logger.info("DeepDoc PDF 远程解析完成", parser_id="pdf_tcadp", char_count=len(full_text), chunk_count=len(chunks))
             return result
 
-        pdf_mode = str(parsing_config.get("deepdoc_pdf_mode", "layout"))
+        pdf_mode = str(parsing_config.get("deepdoc_pdf_mode", "full"))
+        if pdf_mode in ("layout", "vision"):
+            # 兼容旧配置：layout/vision 已并入 full（上游对齐的逐框融合流水线）
+            logger.info("DeepDoc PDF 模式别名映射到 full", alias=pdf_mode)
+            pdf_mode = "full"
         pdf_modes = self.supported_pdf_modes()
         if pdf_mode not in pdf_modes:
             raise ValueError(f"Unsupported DeepDoc PDF mode: {pdf_mode}")
         if not pdf_modes[pdf_mode]["available"]:
-            if pdf_mode == "vision":
+            if pdf_mode == "full":
                 ensure_vision_parser_available()
             missing = ", ".join(pdf_modes[pdf_mode].get("missing", []))
             raise RuntimeError(f"DeepDoc PDF mode '{pdf_mode}' is not available: {missing}")
         logger.info(
             "DeepDoc PDF 使用本地解析器",
             pdf_mode=pdf_mode,
-            parser_id=parser_id or "(layout/default)",
+            parser_id=parser_id or "(full/default)",
         )
         pdf_input = str(source) if isinstance(source, Path) else source
         result = self._pdf_parser(pdf_input, pdf_mode=pdf_mode, chunk_size=int(splitting_config.get("chunk_size", 1000)))
