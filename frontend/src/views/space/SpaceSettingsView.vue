@@ -115,18 +115,50 @@
             <div class="model-card">
               <div class="model-card-header">
                 <span class="model-card-icon">📝</span>
-                <div>
+                <div class="model-card-title-wrap">
                   <h4 class="model-card-title">Embedding 模型</h4>
                   <p class="model-card-desc">将文本块转换为向量，用于语义检索和相似度匹配。所有空间必需。</p>
                 </div>
+                <el-tag
+                  :type="embeddingForm.model ? 'success' : effectiveEmbeddingModel ? 'warning' : 'info'"
+                  size="small"
+                  effect="plain"
+                  class="model-status-tag"
+                  :title="
+                    embeddingForm.model
+                      ? '空间已固化 Embedding 配置'
+                      : effectiveEmbeddingModel
+                        ? '空间未单独配置，当前使用你在「模型管理」配置的默认 Embedding 模型（文档处理/检索均 fallback 到此）'
+                        : '尚未配置任何 Embedding 模型'
+                  "
+                >
+                  {{
+                    embeddingForm.model
+                      ? `已配置 · ${embeddingForm.model}`
+                      : effectiveEmbeddingModel
+                        ? `默认 · ${effectiveEmbeddingModel}`
+                        : '未配置'
+                  }}
+                </el-tag>
               </div>
               <el-form label-width="130px" class="model-card-form">
+                <el-alert
+                  v-if="embeddingLocked"
+                  type="warning"
+                  :closable="false"
+                  show-icon
+                  class="embedding-locked-alert"
+                >
+                  本空间已有 {{ documentCount }} 个文档，Embedding 模型已锁定，无法修改（不同模型的向量不兼容，更改会导致检索失效）。如需更换 Embedding 模型，请新建空间。
+                </el-alert>
                 <el-form-item label="文本 Embedding">
                   <el-select
+                    v-if="embeddingModels.length"
                     v-model="embeddingForm.model"
                     placeholder="选择文本嵌入模型"
                     clearable
                     filterable
+                    :disabled="embeddingLocked"
                     style="width: 100%"
                   >
                     <el-option
@@ -136,6 +168,12 @@
                       :value="m.model"
                     />
                   </el-select>
+                  <div v-else class="model-empty-state">
+                    <span>尚未在「模型管理」中配置 Embedding 模型</span>
+                    <el-button type="primary" link size="small" @click="goToModelConfig">
+                      前往模型管理
+                    </el-button>
+                  </div>
                 </el-form-item>
                 <el-form-item v-if="embeddingForm.dimension" label="向量维度">
                   <span class="dimension-display">{{ embeddingForm.dimension }}（自动检测）</span>
@@ -153,14 +191,23 @@
             <div class="model-card">
               <div class="model-card-header">
                 <span class="model-card-icon">🤖</span>
-                <div>
+                <div class="model-card-title-wrap">
                   <h4 class="model-card-title">LLM 模型</h4>
                   <p class="model-card-desc">用于问题生成（HyDE）、查询改写、摘要生成等通用语言任务。</p>
                 </div>
+                <el-tag
+                  :type="modelForm.llm_model ? 'success' : 'info'"
+                  size="small"
+                  effect="plain"
+                  class="model-status-tag"
+                >
+                  {{ modelForm.llm_model ? `已配置 · ${modelForm.llm_model}` : '未配置' }}
+                </el-tag>
               </div>
               <el-form label-width="130px" class="model-card-form">
                 <el-form-item label="LLM 模型">
                   <el-select
+                    v-if="llmModels.length"
                     v-model="modelForm.llm_model"
                     placeholder="选择 LLM 模型"
                     clearable
@@ -174,6 +221,12 @@
                       :value="m.model"
                     />
                   </el-select>
+                  <div v-else class="model-empty-state">
+                    <span>尚未在「模型管理」中配置 LLM 模型</span>
+                    <el-button type="primary" link size="small" @click="goToModelConfig">
+                      前往模型管理
+                    </el-button>
+                  </div>
                 </el-form-item>
               </el-form>
             </div>
@@ -182,14 +235,23 @@
             <div v-if="hasAudio" class="model-card">
               <div class="model-card-header">
                 <span class="model-card-icon">🎤</span>
-                <div>
+                <div class="model-card-title-wrap">
                   <h4 class="model-card-title">ASR 模型</h4>
                   <p class="model-card-desc">用于音频文件转文字（语音识别），仅含「音频」模态的空间需要。</p>
                 </div>
+                <el-tag
+                  :type="modelForm.asr_model ? 'success' : 'info'"
+                  size="small"
+                  effect="plain"
+                  class="model-status-tag"
+                >
+                  {{ modelForm.asr_model ? `已配置 · ${modelForm.asr_model}` : '未配置' }}
+                </el-tag>
               </div>
               <el-form label-width="130px" class="model-card-form">
                 <el-form-item label="ASR 模型">
                   <el-select
+                    v-if="asrModels.length"
                     v-model="modelForm.asr_model"
                     placeholder="选择 ASR 模型（如 whisper-1）"
                     clearable
@@ -203,6 +265,12 @@
                       :value="m.model"
                     />
                   </el-select>
+                  <div v-else class="model-empty-state">
+                    <span>尚未在「模型管理」中配置 ASR 模型</span>
+                    <el-button type="primary" link size="small" @click="goToModelConfig">
+                      前往模型管理
+                    </el-button>
+                  </div>
                 </el-form-item>
               </el-form>
             </div>
@@ -496,6 +564,17 @@ const embeddingForm = reactive({
   batch_size: 32,
   normalize: true,
 })
+
+// 实际生效的 Embedding 模型：空间已固化 → 用空间配置；否则 fallback 到用户默认（首个可用）。
+// 后端文档处理/检索在空间未配时同样 fallback 到用户默认模型（document_pipeline._get_embedding_client_static）。
+const effectiveEmbeddingModel = computed(
+  () => embeddingForm.model || embeddingModels.value[0]?.model || '',
+)
+
+// Embedding 变更保护：空间已有文档时锁定 Embedding select，禁止修改
+// （不同模型向量不兼容，后端 _check_embedding_change_allowed 同样拒绝）。无文档时可自由修改。
+const documentCount = computed(() => stats.value?.document_count ?? 0)
+const embeddingLocked = computed(() => documentCount.value > 0)
 
 // LLM / ASR / VLM 表单
 const modelForm = reactive({
@@ -901,6 +980,10 @@ async function handleSaveModels() {
 onMounted(() => {
   fetchConfig()
 })
+
+function goToModelConfig() {
+  router.push('/home/settings/models')
+}
 </script>
 
 <style scoped>
@@ -1030,6 +1113,30 @@ onMounted(() => {
   font-size: var(--text-xs);
   color: var(--color-text-muted);
   line-height: 1.5;
+}
+
+.model-card-title-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-status-tag {
+  margin-left: auto;
+  flex-shrink: 0;
+  align-self: center;
+  white-space: nowrap;
+}
+
+.model-empty-state {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.embedding-locked-alert {
+  margin-bottom: var(--space-4);
 }
 
 .model-card-form {
