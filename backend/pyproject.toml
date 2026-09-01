@@ -17,7 +17,7 @@ dependencies = [
     "pydantic-settings>=2.12.0",
     "pyjwt>=2.10.1",
     "redis[asyncio]>=5.2.0",
-    "pypdf2>=3.0.1",
+    "pypdf>=4.0.0",
     "python-docx>=1.2.0",
     "python-multipart>=0.0.21",
     "scikit-learn>=1.8.0",
@@ -67,6 +67,13 @@ test = [
     "httpx>=0.28.0",
     "requests>=2.31.0",
     "aiosqlite>=0.20.0",
+]
+# DeepDoc vision 运行时：OCR / 版面识别 / 表格结构识别所需的额外重型依赖。
+# core 部署无需安装；需要 PDF vision 模式（扫描件 OCR 等）时执行
+# `uv pip install '.[deepdoc-vision]'`，并运行 `scripts/download_deepdoc_models.py` 拉取模型。
+deepdoc-vision = [
+    "xgboost>=2.0.0",
+    "opencv-python-headless>=4.8.0",
 ]
 
 [project.scripts]
