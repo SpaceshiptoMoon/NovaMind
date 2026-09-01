@@ -66,7 +66,8 @@ def test_knowledge_base_config_accepts_deepdoc_strategy():
 
     dumped = config.model_dump(by_alias=True)
     assert dumped["parsing"]["text"]["pdf"]["strategy"] == "deepdoc"
-    assert dumped["parsing"]["text"]["pdf"]["parser"] is None
+    # deepdoc_pdf_mode="plain" 经 migrate_legacy_parsing 回填 text.pdf.parser="plain"
+    assert dumped["parsing"]["text"]["pdf"]["parser"] == "plain"
 
 
 def test_knowledge_base_service_accepts_all_deepdoc_vision_options():
@@ -109,8 +110,10 @@ def test_document_processor_uses_deepdoc_strategy(monkeypatch, tmp_path):
         )
     )
 
-    assert full_text.startswith("@@1")
-    assert chunks == ["@@1\t0\t10\t0\t10##hello"]
+    # parse_document 剥离 ``@@<page>\t...##`` 位置标记后按 splitting 配置重新切分，
+    # 故 full_text 为纯净 "hello"、chunks 为切分结果（非原始带坐标的 chunk）。
+    assert full_text == "hello"
+    assert chunks == ["hello"]
 
 
 def test_document_processor_uses_deepdoc_parser_id(monkeypatch, tmp_path):
@@ -271,5 +274,7 @@ def test_deepdoc_engine_available_pdf_modes_exposed():
     modes = engine.available_pdf_modes()
 
     assert "plain" in modes
-    assert "layout" in modes
-    assert "vision" in modes
+    assert "full" in modes
+    # layout/vision 已收敛为 full，不再作为独立模式暴露
+    assert "layout" not in modes
+    assert "vision" not in modes

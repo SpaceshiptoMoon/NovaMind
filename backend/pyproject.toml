@@ -45,6 +45,13 @@ dependencies = [
     "huggingface-hub>=1.10.2",
     "pymupdf>=1.28.0",
     "faster-whisper>=1.2.1",
+    # DeepDoc PDF `full` 模式（默认）运行时：OCR 检测/版面/表格识别。
+    # full 是默认 PDF 解析模式，故这些依赖为核心，uv sync 即装。
+    # 仅 `plain` 模式（纯文字层）可不在运行时调用它们，但 import 仍需可用。
+    "xgboost>=2.0.0",
+    "opencv-python-headless>=4.8.0",
+    "shapely>=2.0.0",
+    "pyclipper>=1.4.0",
 ]
 
 [project.optional-dependencies]
@@ -67,16 +74,6 @@ test = [
     "httpx>=0.28.0",
     "requests>=2.31.0",
     "aiosqlite>=0.20.0",
-]
-# DeepDoc vision 运行时：OCR / 版面识别 / 表格结构识别所需的额外重型依赖。
-# core 部署无需安装；需要 PDF vision 模式（扫描件 OCR 等）时执行
-# `uv pip install '.[deepdoc-vision]'`，并运行 `scripts/download_deepdoc_models.py` 拉取模型。
-deepdoc-vision = [
-    "xgboost>=2.0.0",
-    "opencv-python-headless>=4.8.0",
-    # OCR 检测后处理（DB 多边形框扩张/裁剪）顶层 import，full 模式必需
-    "shapely>=2.0.0",
-    "pyclipper>=1.2.0",
 ]
 
 [project.scripts]
