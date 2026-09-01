@@ -4,6 +4,7 @@ from __future__ import annotations
 # Adapted around RAGFlow deepdoc/parser/pdf_parser.py class layout.
 
 from dataclasses import asdict, dataclass
+import gc
 from io import BytesIO
 from pathlib import Path
 import logging
@@ -596,6 +597,7 @@ class RAGFlowPdfParser:
         抽取 → 阅读顺序 → 结构化 chunks。后续步骤复用原 vision 路径的尾巴。"""
         plain_sections, _, outlines = self._plain_parser(filename)
         image_list, fused_pages, layout_pages, fusion_meta = self._extract_fused_pages(filename)
+        page_count = len(image_list)
         layout_boxes, page_layout = self._get_layout_recognizer()(
             image_list,
             fused_pages,
@@ -603,6 +605,11 @@ class RAGFlowPdfParser:
             layouts=layout_pages,
             drop=False,
         )
+        # 布局分类已消费 image_list，立即释放整份渲染 buffer：大 PDF 逐页 OCR 检测
+        # 用的 numpy 页 + 后续 artifact 的 PIL 页若同时存活会双倍内存（doc 565 实测 OOM）。
+        image_list.clear()
+        del image_list
+        gc.collect()
 
         all_boxes = [
             DeepDocPdfBox(
@@ -637,17 +644,13 @@ class RAGFlowPdfParser:
         ]
         text_boxes = [box for box in all_boxes if box.text.strip()]
         merged_boxes, merge_strategy = self._merge_vertical_boxes_with_strategy(text_boxes)
-        filtered_boxes, filter_meta = self._filter_boxes_with_meta(merged_boxes or text_boxes, total_pages=len(image_list))
+        filtered_boxes, filter_meta = self._filter_boxes_with_meta(merged_boxes or text_boxes, total_pages=page_count)
         chunk_boxes = filtered_boxes or merged_boxes or text_boxes
         artifact_boxes = self._collect_artifact_boxes(all_boxes, chunk_boxes)
-        # 仅把含表格/图片 artifact 的页转 PIL（_collect_group_crops 按 page key 查），
-        # 避免把全部页 numpy 一次性复制为 PIL 导致大 PDF OOM（doc 565 实测 MemoryError）。
-        artifact_pages = {box.page for box in artifact_boxes if 1 <= box.page <= len(image_list)}
-        page_images = {
-            page_num: Image.fromarray(image_list[page_num - 1])
-            for page_num in artifact_pages
-        }
-        artifacts = self._extract_artifacts(artifact_boxes, page_images=page_images, zoom=2.0)
+        # artifact 页从 fitz 按需渲染 PIL（仅含表格/图片的页，_collect_group_crops 按 page key 查）。
+        # 关键：image_list 已在布局分类后整体释放，numpy 阶段与 PIL 阶段不再重叠，
+        # 峰值从「全量 numpy + 工件页 PIL」双份降为单份，避免大 PDF 双倍内存 OOM（doc 565）。
+        artifacts = self._extract_artifacts(artifact_boxes, page_images=self._render_artifact_pages(filename, artifact_boxes), zoom=2.0)
         table_regions = self._build_table_regions_metadata(artifacts)
         figure_regions = self._build_figure_regions_metadata(artifacts)
         reading_order = self._build_reading_order_metadata(
@@ -666,7 +669,7 @@ class RAGFlowPdfParser:
                 "file_type": "pdf",
                 "pdf_mode": "full",
                 "text_source": "fused",
-                "pages": len(image_list),
+                "pages": page_count,
                 "outlines": outlines,
                 "plain_sections": plain_sections,
                 "vision_strategy": fusion_meta["vision_strategy"],
@@ -1077,6 +1080,31 @@ class RAGFlowPdfParser:
         zoom: float = 1.0,
     ) -> dict[str, list[dict[str, Any]]]:
         return self._artifact_extractor.extract(list(boxes), page_images=page_images, zoom=zoom)
+
+    def _render_artifact_pages(
+        self,
+        filename: Union[str, bytes, Path],
+        artifact_boxes: Sequence[DeepDocPdfBox],
+    ) -> dict[int, Image.Image]:
+        """把含表格/图片 artifact 的页从 fitz 渲染为 PIL，只渲染这些页。
+
+        与 _extract_fused_pages 的全量 numpy 渲染串行（调用方先释放 image_list），
+        避免大 PDF 同时持有全量渲染 buffer 与 artifact PIL 页导致双倍内存 OOM。
+        """
+        artifact_pages = sorted({box.page for box in artifact_boxes if box.page >= 1})
+        if not artifact_pages:
+            return {}
+        fitz = self._import_fitz()
+        doc = fitz.open(stream=filename, filetype="pdf") if isinstance(filename, bytes) else fitz.open(str(filename))
+        try:
+            def _page_image(page_num: int) -> Image.Image:
+                pix = doc.load_page(page_num - 1).get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+                return Image.fromarray(img[:, :, :3] if pix.n == 4 else img)
+
+            return {page_num: _page_image(page_num) for page_num in artifact_pages}
+        finally:
+            doc.close()
 
     @staticmethod
     def _build_table_regions_metadata(
