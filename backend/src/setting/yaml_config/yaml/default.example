@@ -81,6 +81,19 @@ task_queue:
   retry_base_delay: 60
   queue_name: "arq:queue"
 
+knowledge_base:
+  parsing:
+    # 视频 VLM 逐帧/逐组描述并发数（1=串行，默认 4，范围 1~20）。
+    # 长视频 60 帧串行易逼近 arq job_timeout，有界并发降时延；
+    # 过高可能触发 VLM 配额限流，配合 KB 级 vlm_fallback_model / vlm_skip_on_quota_error 降级。
+    video_vlm_concurrency: 4
+    # 本地 faster-whisper ASR 模型目录（绝对路径）；空则回退环境变量
+    # NOVAMIND_LOCAL_WHISPER_MODEL_DIR，再空则用默认 ~/.cache/faster-whisper/tiny
+    local_whisper_model_dir:
+    # 本地 ASR 转写 CPU 线程数；空则按物理核自动取保守值（留至少 1 核给事件循环）。
+    # 转写时其它请求卡顿就调小（如 2）；ASR 太慢可调大，但勿超过 (物理核 - 1)
+    local_whisper_cpu_threads:
+
 smtp:
   enabled: false
   host: ""
