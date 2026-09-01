@@ -50,16 +50,52 @@ export const textStrategyItems: Array<{ key: TextStrategyField; label: string }>
   { key: 'jsonStrategy', label: 'JSON' },
 ]
 
-export const deepdocParserOptions: Array<{ label: string; value: PdfParserName }> = [
-  { label: 'layout', value: 'layout' },
-  { label: 'plain', value: 'plain' },
-  { label: 'vision', value: 'vision' },
-  { label: 'docling', value: 'docling' },
-  { label: 'mineru', value: 'mineru' },
-  { label: 'opendataloader', value: 'opendataloader' },
-  { label: 'paddleocr', value: 'paddleocr' },
-  { label: 'somark', value: 'somark' },
-  { label: 'tcadp', value: 'tcadp' },
+export const deepdocParserOptions: Array<{ label: string; value: PdfParserName; desc: string }> = [
+  {
+    label: 'layout（版面分析）',
+    value: 'layout',
+    desc: '抽取文字层 + 识别版面/表格/阅读顺序。不含 OCR——扫描件/图片 PDF 会抽出 0 字符。适合有文字层的原生 PDF。',
+  },
+  {
+    label: 'plain（纯文本）',
+    value: 'plain',
+    desc: '仅抽取文字层，无版面分析、无 OCR。最快，适合结构简单的文字 PDF。扫描件/图片 PDF 无效。',
+  },
+  {
+    label: 'vision（视觉识别 + OCR）',
+    value: 'vision',
+    desc: '渲染每页为图片 + 版面识别 + OCR。扫描件、图片 PDF、layout/plain 抽不到字的 PDF 选这个。速度最慢、占内存最高。',
+  },
+  {
+    label: 'docling（远程）',
+    value: 'docling',
+    desc: '远程 Docling 解析服务。需在后端配置外部服务地址，否则解析失败。',
+  },
+  {
+    label: 'mineru（远程）',
+    value: 'mineru',
+    desc: '远程 Mineru 解析服务。需在后端配置外部服务地址，否则解析失败。',
+  },
+  {
+    label: 'opendataloader（远程）',
+    value: 'opendataloader',
+    desc: '远程 OpenDataLoader 解析服务。需在后端配置外部服务地址，否则解析失败。',
+  },
+  {
+    label: 'paddleocr（远程）',
+    value: 'paddleocr',
+    desc: '远程 PaddleOCR 解析服务。需在后端配置外部服务地址，否则解析失败。',
+  },
+  {
+    label: 'somark（远程）',
+    value: 'somark',
+    desc: '远程 SoMark 解析服务。需在后端配置外部服务地址，否则解析失败。',
+  },
+  {
+    label: 'tcadp（远程）',
+    value: 'tcadp',
+    desc: '远程 TCADP 解析服务。需在后端配置外部服务地址，否则解析失败。',
+  },
 ]
 
 export function getTextStrategyValue(value: unknown): TextStrategy {

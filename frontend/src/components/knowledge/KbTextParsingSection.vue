@@ -10,9 +10,14 @@
           <el-col :span="8">
             <el-form-item label="解析策略">
               <el-select v-model="configForm.pdfStrategy" style="width: 100%">
-                <el-option label="默认" value="default" />
+                <el-option label="默认（PyPDF2）" value="default" />
                 <el-option label="DeepDoc" value="deepdoc" />
               </el-select>
+              <div class="field-hint">
+                {{ configForm.pdfStrategy === 'deepdoc'
+                  ? 'DeepDoc：用下方解析器，支持版面分析/OCR/远程服务，能力最全但较慢。'
+                  : '默认：PyPDF2 直出文字层，快但无版面分析；扫描件可配合下方"启用 OCR"做 Tesseract OCR。' }}
+              </div>
             </el-form-item>
           </el-col>
           <el-col v-if="configForm.pdfStrategy === 'deepdoc'" :span="8">
@@ -25,11 +30,18 @@
                   :value="option.value"
                 />
               </el-select>
+              <div class="field-hint">
+                {{ deepdocParserOptions.find((i) => i.value === configForm.deepdocParser)?.desc }}
+              </div>
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="启用 OCR">
               <el-switch v-model="configForm.pdfOcrEnabled" />
+              <div class="field-hint">
+                仅"默认"策略生效：文字层抽空时用 Tesseract 对图片页 OCR。DeepDoc 的 OCR 由
+                "vision"解析器提供——选 vision 即含 OCR，无需在此开关。
+              </div>
             </el-form-item>
           </el-col>
         </el-row>
@@ -91,6 +103,13 @@ defineProps<{
 
 .sub-desc {
   margin: 0 0 18px;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+}
+
+.field-hint {
+  margin-top: 4px;
   color: var(--color-text-muted);
   font-size: var(--text-sm);
   line-height: var(--leading-relaxed);
