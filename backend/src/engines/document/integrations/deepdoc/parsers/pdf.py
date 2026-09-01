@@ -640,9 +640,12 @@ class RAGFlowPdfParser:
         filtered_boxes, filter_meta = self._filter_boxes_with_meta(merged_boxes or text_boxes, total_pages=len(image_list))
         chunk_boxes = filtered_boxes or merged_boxes or text_boxes
         artifact_boxes = self._collect_artifact_boxes(all_boxes, chunk_boxes)
+        # 仅把含表格/图片 artifact 的页转 PIL（_collect_group_crops 按 page key 查），
+        # 避免把全部页 numpy 一次性复制为 PIL 导致大 PDF OOM（doc 565 实测 MemoryError）。
+        artifact_pages = {box.page for box in artifact_boxes if 1 <= box.page <= len(image_list)}
         page_images = {
-            index + 1: Image.fromarray(image)
-            for index, image in enumerate(image_list)
+            page_num: Image.fromarray(image_list[page_num - 1])
+            for page_num in artifact_pages
         }
         artifacts = self._extract_artifacts(artifact_boxes, page_images=page_images, zoom=2.0)
         table_regions = self._build_table_regions_metadata(artifacts)
