@@ -13,6 +13,9 @@ from typing import Any, Sequence
 import numpy as np
 
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import ensure_model_group_available
+from novamind.shared.logging import get_logger
+
+_logger = get_logger(__name__)
 
 
 class Recognizer:
@@ -54,9 +57,7 @@ class Recognizer:
             self.load()
 
     def load(self):
-        import logging as _logging
-        _log = _logging.getLogger(__name__)
-        _log.info("DeepDoc 识别器模型开始加载", domain=self.domain, model_filename=self.model_filename)
+        _logger.info("DeepDoc 识别器模型开始加载", domain=self.domain, model_filename=self.model_filename)
         ort = self._import_onnxruntime()
         if self.domain in {"layout", "tsr"}:
             ensure_model_group_available(self.domain, self.model_dir)
@@ -78,7 +79,7 @@ class Recognizer:
         if len(input_shape) == 2 and all(isinstance(v, int) and v > 0 for v in input_shape):
             self.input_shape = tuple(input_shape)
         self.loaded = True
-        _log.info(
+        _logger.info(
             "DeepDoc 识别器模型加载完成",
             domain=self.domain,
             model_path=str(model_path),
