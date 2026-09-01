@@ -4,7 +4,7 @@ from typing import List, Dict
 from novamind.shared.document.readers.base_reader import BaseReader
 from novamind.shared.document.readers.executor import run_in_executor
 from novamind.shared.logging import get_logger
-from PyPDF2 import PdfReader as PyPdfReader
+from pypdf import PdfReader as PyPdfReader
 
 logger = get_logger(__name__)
 
@@ -23,7 +23,7 @@ class PDFReader(BaseReader):
         """
         documents = []
         try:
-            # 使用PyPDF2读取PDF
+            # 使用 pypdf（PyPDF2 官方继任者，API 兼容）读取 PDF
             pdf = PyPdfReader(file_path)
 
             # 提取所有页面的文本

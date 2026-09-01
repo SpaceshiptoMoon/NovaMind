@@ -9,7 +9,7 @@ pytest.importorskip("pandas")  # docx_parser 惰性 import pandas；缺失则跳
 from docx import Document as DocxDocument
 from fastapi.testclient import TestClient
 from PIL import Image
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 from io import BytesIO
 import zipfile
 
