@@ -19,6 +19,7 @@
 
 from typing import Optional, List, Dict, Any, Tuple, TYPE_CHECKING
 from dataclasses import dataclass
+import re
 import traceback
 import tempfile
 from novamind.shared.utils.time_utils import now_china
@@ -271,6 +272,36 @@ async def execute_document_pipeline(
         # 守"没选就不兜底"原则：不自动回退到其它模式，抛错并给出可操作建议，让用户显式切换模式。
         _raise_on_empty_parse(full_text, parse_result, parsing_config, document_id)
         task.finish_step("parsed", metrics={"char_count": len(full_text), "chunk_count": len(chunks), "parse_strategy": parsing_config.get("strategy", "default"), "file_type": document.file_type})
+
+        # 上传 PDF figure 图片到 MinIO 并替换占位符为真实 URL。
+        # 仅 PDF full 模式会产出 figure_regions + image_blobs；上传在 persist 之前完成，
+        # 保证最终落盘的完整 MD 与 ES chunk content 都已含可访问图片链接。
+        figure_regions = list((parse_result.metadata or {}).get("figure_regions") or [])
+        image_url_map: Dict[str, str] = {}
+        if figure_regions and document.file_type.lower() == "pdf":
+            from novamind.shared.storage.client_factory import ClientFactory
+
+            minio_client = await ClientFactory.get_minio_client()
+            image_url_map = await _upload_figure_images_to_minio(
+                document, figure_regions, _logger, minio_client=minio_client
+            )
+        if image_url_map:
+            full_text = _replace_figure_placeholders(full_text, image_url_map)
+            parse_result.chunks = [
+                _replace_figure_placeholders(chunk, image_url_map)
+                for chunk in parse_result.chunks
+            ]
+            chunks = parse_result.chunks
+            # 上传完成后清除原始 PNG bytes，降低大 PDF 多图场景的内存占用。
+            for region in figure_regions:
+                region.pop("image_blobs", None)
+            _logger.info(
+                "PDF figure 图片占位符已替换",
+                document_id=document_id,
+                replaced_count=len(image_url_map),
+                figure_region_count=len(figure_regions),
+            )
+
         # 解析全文持久化到 MinIO（切块之前，立刻 commit 落库）
         await persist_parsed_text(document, full_text, session, _logger)
     finally:
@@ -353,6 +384,109 @@ async def persist_parsed_text(
     )
     await session.commit()
     return object_name
+
+
+def _replace_figure_placeholders(text: str, image_url_map: Dict[str, str]) -> str:
+    """把 full_text / chunk content 里的 __FIGURE_URL__{artifact_id}__ 替换为真实 URL。"""
+    if not text or not image_url_map:
+        return text
+    for artifact_id, image_url in image_url_map.items():
+        placeholder = f"__FIGURE_URL__{artifact_id}__"
+        text = text.replace(placeholder, image_url)
+    return text
+
+
+async def _upload_figure_images_to_minio(
+    document: Document,
+    figure_regions: List[Dict[str, Any]],
+    logger,
+    minio_client,
+) -> Dict[str, str]:
+    """上传 PDF figure 图片到 MinIO，返回 {artifact_id: image_url}。
+
+    每个 figure region 必须有 ``image_blobs``（PNG bytes 列表），取首张
+    （``_encode_crops`` 的合成图或单页图）上传。上传成功后在 region 字典
+    里写入 ``minio_object_name`` 和 ``image_url``。
+    """
+    image_url_map: Dict[str, str] = {}
+    storage = document.storage or {}
+    base = storage.get("minio_object_name", "")
+    if not base or not figure_regions:
+        return image_url_map
+
+    from io import BytesIO
+    from PIL import Image as PILImage
+
+    bucket_name = getattr(minio_client, "default_bucket", "knowledge-base")
+
+    for region in figure_regions:
+        artifact_id = str(region.get("artifact_id") or "")
+        if not artifact_id:
+            continue
+        blobs = list(region.get("image_blobs") or [])
+        if not blobs:
+            continue
+        image_bytes = blobs[0]
+        if len(image_bytes) < 100:
+            logger.warning(
+                "PDF figure 图片数据量过小，跳过上传",
+                document_id=document.id,
+                artifact_id=artifact_id,
+                size_bytes=len(image_bytes),
+                min_bytes=100,
+            )
+            continue
+        try:
+            img = PILImage.open(BytesIO(image_bytes))
+            if img.width < 32 or img.height < 32:
+                logger.warning(
+                    "PDF figure 图片尺寸过小，跳过上传",
+                    document_id=document.id,
+                    artifact_id=artifact_id,
+                    width=img.width,
+                    height=img.height,
+                )
+                continue
+        except Exception as exc:
+            logger.warning(
+                "PDF figure 图片格式检测失败，跳过上传",
+                document_id=document.id,
+                artifact_id=artifact_id,
+                error=str(exc),
+            )
+            continue
+
+        safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", artifact_id)
+        page = int(region.get("page_start") or 0)
+        object_name = f"{base}_figures/figure_{safe_id}_{page}.png"
+        try:
+            await minio_client.upload_file(object_name, image_bytes, "image/png")
+            image_url = await minio_client.get_file_url(
+                bucket_name=bucket_name,
+                object_name=object_name,
+                expires=3600,
+            )
+            region["minio_object_name"] = object_name
+            region["image_url"] = image_url
+            image_url_map[artifact_id] = image_url
+            region.pop("image_blobs", None)
+            logger.info(
+                "PDF figure 图片上传成功",
+                document_id=document.id,
+                artifact_id=artifact_id,
+                object_name=object_name,
+            )
+        except Exception as exc:
+            logger.warning(
+                "PDF figure 图片上传失败",
+                document_id=document.id,
+                artifact_id=artifact_id,
+                object_name=object_name,
+                error=str(exc),
+            )
+            continue
+
+    return image_url_map
 
 
 @dataclass
@@ -654,6 +788,31 @@ def _build_es_chunks(
                 "chunk_pages": list(meta.get("pages") or []),
                 "chunk_entry_count": int(meta.get("entry_count") or 0),
             })
+            # 收集该 chunk 涉及的 PDF figure 图片链接（已由上传 helper 写入 region）。
+            entry_kinds = list(meta.get("entry_kinds") or [])
+            if "figure" in entry_kinds:
+                figure_regions = list(parse_metadata.get("figure_regions") or [])
+                if figure_regions:
+                    figure_map = {
+                        str(r.get("artifact_id")): r
+                        for r in figure_regions
+                        if r.get("artifact_id")
+                    }
+                    figure_links: List[Dict[str, Any]] = []
+                    for source_id in meta.get("entry_source_ids") or []:
+                        region = figure_map.get(str(source_id))
+                        if not region:
+                            continue
+                        figure_links.append({
+                            "artifact_id": region["artifact_id"],
+                            "minio_object_name": region.get("minio_object_name"),
+                            "image_url": region.get("image_url"),
+                            "page": region.get("page_start"),
+                            "caption": region.get("caption", ""),
+                        })
+                    if figure_links:
+                        chunk_meta["figure_image_links"] = figure_links
+                        chunk_meta["figure_image_count"] = len(figure_links)
         else:
             # start_time/end_time 仅音视频分段有意义；图片无时间维度，不带
             if chunk_type != ChunkType.IMAGE:

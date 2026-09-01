@@ -169,6 +169,17 @@ class DocumentQueryService:
                         "删除视频帧前缀失败（继续删主对象）",
                         document_id=document_id, error=str(frame_err),
                     )
+                # 同时清理 PDF figure 图片目录（{base_object}_figures/ 前缀）
+                try:
+                    await self.minio_client.delete_objects_by_prefix(
+                        storage_info["minio_bucket"],
+                        f"{storage_info['minio_object_name']}_figures/",
+                    )
+                except Exception as figure_err:
+                    self.logger.warning(
+                        "删除 PDF figure 图片前缀失败（继续删主对象）",
+                        document_id=document_id, error=str(figure_err),
+                    )
                 await self.minio_client.delete_document(
                     bucket_name=storage_info["minio_bucket"],
                     object_name=storage_info["minio_object_name"],

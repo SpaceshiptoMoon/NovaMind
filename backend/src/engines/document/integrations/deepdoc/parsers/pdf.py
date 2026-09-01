@@ -658,8 +658,11 @@ class RAGFlowPdfParser:
             table_regions,
             figure_regions,
         )
-        tagged_lines = [box.as_tagged_text() for box in chunk_boxes]
-        full_text = "\n".join(tagged_lines).strip()
+        # 用 reading_order 构建完整 MD：文本段 + 表格占位/HTML + 图片占位符。
+        # 图片占位符将在 document_pipeline 上传 MinIO 后替换为真实 URL。
+        full_text = "\n\n".join(
+            self._reading_order_entry_text(entry) for entry in reading_order
+        ).strip()
         chunks, chunk_structure = self._build_structured_chunks(reading_order, chunk_size=chunk_size)
         return DeepDocParseResult(
             full_text=full_text,
@@ -1182,6 +1185,8 @@ class RAGFlowPdfParser:
                 for member in figure.get("members", [])
                 if str(member.get("text", "")).strip()
             ]
+            image = figure.get("image")
+            image_blobs = list(getattr(image, "blobs", [])) if image is not None else []
             figure_regions.append(
                 {
                     "artifact_id": figure.get("artifact_id"),
@@ -1193,7 +1198,8 @@ class RAGFlowPdfParser:
                     "text": figure.get("text", ""),
                     "member_texts": member_texts,
                     "member_text_count": len(member_texts),
-                    "has_image": bool(figure.get("has_image")),
+                    "has_image": bool(image_blobs),
+                    "image_blobs": image_blobs,
                 }
             )
         return figure_regions
@@ -1247,6 +1253,7 @@ class RAGFlowPdfParser:
         for region in figure_regions:
             bbox = dict(region.get("bbox") or {})
             page = int(region.get("page_start") or (min(region.get("pages") or [1])))
+            artifact_id = str(region.get("artifact_id") or "")
             entries.append(
                 {
                     "kind": "figure",
@@ -1255,8 +1262,9 @@ class RAGFlowPdfParser:
                     "text": str(region.get("text", "")),
                     "caption": str(region.get("caption", "")),
                     "layout_type": "figure",
-                    "artifact_id": region.get("artifact_id"),
-                    "source_id": region.get("artifact_id"),
+                    "artifact_id": artifact_id,
+                    "source_id": artifact_id,
+                    "image_placeholder": f"__FIGURE_URL__{artifact_id}__" if artifact_id else "",
                 }
             )
 
@@ -1293,9 +1301,14 @@ class RAGFlowPdfParser:
             return "\n".join(parts).strip()
         if kind == "figure":
             caption = str(entry.get("caption", "")).strip()
+            artifact_id = str(entry.get("source_id", "") or "")
+            placeholder = str(entry.get("image_placeholder", "") or "")
+            alt = caption or f"Figure {artifact_id}" if artifact_id else "Figure"
+            if placeholder:
+                return f"![{alt}]({placeholder})"
+            # 没有占位符时回退到纯文本标记，保证即使上传失败也有可读内容
             text = str(entry.get("text", "")).strip()
-            prefix = "[FIGURE]"
-            parts = [part for part in [prefix, caption, text] if part]
+            parts = [part for part in ["[FIGURE]", caption, text] if part]
             return "\n".join(parts).strip()
         return str(entry.get("text", "")).strip()
 

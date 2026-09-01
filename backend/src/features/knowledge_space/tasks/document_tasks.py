@@ -176,9 +176,18 @@ async def process_document_task(
                                 "重处理前已清理旧视频帧", document_id=document_id,
                                 deleted_frames=deleted,
                             )
+                        # 同时清理 PDF figure 图片目录（{base_object}_figures/ 前缀）
+                        deleted_figures = await minio_client.delete_objects_by_prefix(
+                            frame_bucket, f"{frame_base}_figures/",
+                        )
+                        if deleted_figures:
+                            logger.info(
+                                "重处理前已清理旧 PDF figure 图片", document_id=document_id,
+                                deleted_figures=deleted_figures,
+                            )
                 except Exception as frame_cleanup_err:
                     logger.warning(
-                        "重处理前清理旧视频帧失败", document_id=document_id, error=str(frame_cleanup_err),
+                        "重处理前清理旧视频帧/figure 图片失败", document_id=document_id, error=str(frame_cleanup_err),
                     )
 
             # 3. 从 MinIO 下载文件

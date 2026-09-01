@@ -121,6 +121,18 @@ class DefaultIndexSchema:
                     # 子字段（无法直接按 path 过滤）、frame_indices 推断为 long。
                     "frame_paths": {"type": "keyword"},
                     "frame_indices": {"type": "integer"},
+                    # PDF figure 图片链接：nested 保存 artifact_id / MinIO path / 预签名 URL
+                    "figure_image_links": {
+                        "type": "nested",
+                        "properties": {
+                            "artifact_id": {"type": "keyword"},
+                            "minio_object_name": {"type": "keyword"},
+                            "image_url": {"type": "keyword"},
+                            "page": {"type": "integer"},
+                            "caption": {"type": "text"},
+                        },
+                    },
+                    "figure_image_count": {"type": "integer"},
                 }
             },
             "file_info": {
