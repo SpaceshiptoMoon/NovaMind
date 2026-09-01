@@ -424,6 +424,7 @@ class UserNotFoundError(KnowledgeSpaceError):
 class InvalidParameterError(KnowledgeSpaceError):
     """参数无效"""
     _serializable_attrs: ClassVar[List[str]] = ["field"]
+    http_status_code: ClassVar[int] = 400
 
     def __init__(self, message: str, field: Optional[str] = None):
         super().__init__(

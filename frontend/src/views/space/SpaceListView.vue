@@ -26,6 +26,17 @@
           <BreadcrumbNav v-if="selectedSpaceId" />
         </div>
         <div class="header-actions">
+          <!-- 空间级操作（始终可用） -->
+          <el-button size="small" @click="showCreateSpaceDialog">
+            <el-icon><Plus /></el-icon>
+            新建知识空间
+          </el-button>
+          <el-button size="small" text @click="showManageSpacesDialog">
+            <el-icon><Collection /></el-icon>
+            管理空间
+          </el-button>
+          <span v-if="selectedSpaceId" class="action-divider" />
+          <!-- 当前空间操作（选中空间后可用） -->
           <el-button
             v-if="selectedSpaceId"
             type="primary"
@@ -44,13 +55,6 @@
             title="空间设置"
           >
             <el-icon><Setting /></el-icon>
-          </el-button>
-          <el-button size="small" circle aria-label="新建知识空间" @click="showCreateSpaceDialog" title="新建知识空间">
-            <el-icon><Plus /></el-icon>
-          </el-button>
-          <el-button size="small" text @click="showManageSpacesDialog">
-            <el-icon><Collection /></el-icon>
-            管理空间
           </el-button>
         </div>
       </div>
@@ -110,11 +114,27 @@
             />
           </el-form-item>
           <el-form-item label="可见性" prop="visibility">
-            <el-radio-group v-model="createSpaceForm.visibility">
-              <el-radio-button :value="0">🔒 私有</el-radio-button>
-              <el-radio-button :value="1">👥 团队</el-radio-button>
-              <el-radio-button :value="2">🌐 公开</el-radio-button>
-            </el-radio-group>
+            <div class="visibility-options">
+              <label
+                v-for="opt in visibilityOptions"
+                :key="opt.value"
+                class="visibility-option"
+                :class="{ 'is-active': createSpaceForm.visibility === opt.value }"
+                @click="createSpaceForm.visibility = opt.value"
+              >
+                <span class="visibility-dot" :style="{ background: opt.color }" />
+                <span class="visibility-option-body">
+                  <span class="visibility-option-name">{{ opt.label }}</span>
+                  <span class="visibility-option-desc">{{ opt.desc }}</span>
+                </span>
+                <el-icon
+                  v-if="createSpaceForm.visibility === opt.value"
+                  class="visibility-option-check"
+                >
+                  <Check />
+                </el-icon>
+              </label>
+            </div>
           </el-form-item>
           <el-form-item label="描述">
             <el-input
@@ -279,6 +299,7 @@ import {
   Setting,
   Collection,
   ArrowLeft,
+  Check,
 } from '@element-plus/icons-vue'
 
 import { useSpaceStore } from '@/stores/space'
@@ -303,6 +324,13 @@ const visibilityMap: Record<number, { text: string; type: string }> = {
   1: { text: '团队', type: 'warning' },
   2: { text: '公开', type: 'success' },
 }
+
+// 创建弹窗：可见性卡片选项（色点颜色与上方表格 tag 语义一致）
+const visibilityOptions = [
+  { value: 0, label: '私有', desc: '仅你和受邀成员可见', color: '#9ca3af' },
+  { value: 1, label: '团队', desc: '组织内成员可访问', color: '#f59e0b' },
+  { value: 2, label: '公开', desc: '所有登录用户可见', color: '#10b981' },
+] as const
 
 function getVisibilityText(visibility?: number): string {
   if (visibility === undefined) return '未知'
@@ -797,7 +825,7 @@ onMounted(() => {
 }
 
 /* 实心主操作（新建知识库）：微渐变 + 轻投影，有"放下来"的质感 */
-.header-actions :deep(.el-button:not(.is-text):not(.is-circle)) {
+.header-actions :deep(.el-button.el-button--primary) {
   background: linear-gradient(135deg, #111827, #374151);
   border: none;
   padding: 6px 14px;
@@ -807,21 +835,56 @@ onMounted(() => {
   transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
 }
 
-.header-actions :deep(.el-button:not(.is-text):not(.is-circle)) span {
+.header-actions :deep(.el-button.el-button--primary) span {
   display: inline-flex;
   align-items: center;
   gap: 5px;
 }
 
-.header-actions :deep(.el-button:not(.is-text):not(.is-circle):hover) {
+.header-actions :deep(.el-button.el-button--primary:hover) {
   background: linear-gradient(135deg, #374151, #111827);
   box-shadow: 0 2px 8px rgba(17, 24, 39, 0.28), 0 1px 0 rgba(255, 255, 255, 0.15) inset;
   transform: translateY(-0.5px);
 }
 
-.header-actions :deep(.el-button:not(.is-text):not(.is-circle):active) {
+.header-actions :deep(.el-button.el-button--primary:active) {
   transform: translateY(0);
   box-shadow: 0 1px 2px rgba(17, 24, 39, 0.14);
+}
+
+/* 次级按钮（新建知识空间）：描边样式，hover 浅底，层级低于主按钮 */
+.header-actions :deep(.el-button:not(.is-text):not(.is-circle):not(.el-button--primary)) {
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-secondary);
+  padding: 6px 14px;
+  font-size: 14px;
+  height: auto;
+  box-shadow: none;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.header-actions :deep(.el-button:not(.is-text):not(.is-circle):not(.el-button--primary) span) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.header-actions :deep(.el-button:not(.is-text):not(.is-circle):not(.el-button--primary):hover) {
+  color: var(--color-text);
+  border-color: var(--color-border);
+  background: var(--color-bg-hover);
+  transform: none;
+  box-shadow: none;
+}
+
+/* 操作分组分隔线 */
+.action-divider {
+  display: inline-block;
+  width: 1px;
+  height: 20px;
+  background: var(--color-border);
+  flex-shrink: 0;
 }
 
 /* 圆形图标按钮：发丝线，透明底，hover 浅底 */
@@ -940,5 +1003,73 @@ onMounted(() => {
 .create-space-dialog :deep(.el-dialog__body) {
   max-height: 60vh;
   overflow-y: auto;
+}
+
+/* ===== 可见性卡片选择器 ===== */
+.visibility-options {
+  display: flex;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.visibility-option {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-card);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast),
+    box-shadow var(--transition-fast);
+  min-width: 0;
+}
+
+.visibility-option:hover {
+  border-color: var(--color-text-faint);
+}
+
+.visibility-option.is-active {
+  border-color: var(--color-primary);
+  background: var(--color-bg-hover);
+  box-shadow: 0 0 0 1px var(--color-primary) inset;
+}
+
+.visibility-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+
+.visibility-option-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.visibility-option-name {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+  line-height: 1.4;
+}
+
+.visibility-option-desc {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.visibility-option-check {
+  flex-shrink: 0;
+  color: var(--color-primary);
+  font-size: 16px;
+  margin-top: 2px;
 }
 </style>
