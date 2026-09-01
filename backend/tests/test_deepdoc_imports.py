@@ -52,4 +52,4 @@ def test_deepdoc_capabilities_load_without_remote_parser_or_vision_runtime_impor
 
     capabilities = get_deepdoc_capabilities()
     assert "pdf_modes" in capabilities
-    assert "vision" in capabilities["pdf_modes"]
+    assert "full" in capabilities["pdf_modes"]

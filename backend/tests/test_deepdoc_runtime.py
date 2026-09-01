@@ -206,7 +206,7 @@ def test_knowledge_base_config_accepts_deepdoc_strategy():
     assert config.model_dump()["parsing"]["deepdoc_pdf_mode"] == "plain"
 
 
-def test_knowledge_base_service_accepts_all_deepdoc_vision_options():
+def test_knowledge_base_service_accepts_all_deepdoc_full_options():
     service = object.__new__(KnowledgeBaseService)
 
     service._validate_config_updates(
@@ -214,7 +214,7 @@ def test_knowledge_base_service_accepts_all_deepdoc_vision_options():
             "parsing": {
                 "strategy": "deepdoc",
                 "deepdoc_parser_id": "pdf_paddleocr",
-                "deepdoc_pdf_mode": "vision",
+                "deepdoc_pdf_mode": "full",
             }
         }
     )
@@ -894,6 +894,7 @@ def test_deepdoc_parser_supports_paddleocr_pdf_parser(monkeypatch):
     assert "@@1	" in result.full_text
 
 
+@pytest.mark.skip(reason="layout 模式已并入 full；parse_into_bboxes 仍由其直接测试覆盖")
 def test_ragflow_pdf_parser_parse_into_bboxes():
     parser = RAGFlowPdfParser()
     result = parser(_build_minimal_pdf_bytes("BBox PDF"), pdf_mode="layout", chunk_size=500)
@@ -902,6 +903,7 @@ def test_ragflow_pdf_parser_parse_into_bboxes():
     assert "BBox PDF" in result.full_text
 
 
+@pytest.mark.skip(reason="layout 模式已并入 full；列检测/词盒为旧 layout 专属，新流水线见 test_deepdoc_pdf_fusion.py")
 def test_ragflow_pdf_parser_detects_columns_and_positions():
     parser = RAGFlowPdfParser()
     pdf_bytes = _build_positioned_pdf_bytes(
@@ -921,6 +923,7 @@ def test_ragflow_pdf_parser_detects_columns_and_positions():
     assert result.metadata["merged_block_count"] <= len(result.metadata["bboxes"])
 
 
+@pytest.mark.skip(reason="layout 模式已并入 full；merged_block_count 为旧 layout 专属元数据")
 def test_ragflow_pdf_parser_merges_vertical_lines_into_blocks():
     parser = RAGFlowPdfParser()
     pdf_bytes = _build_positioned_pdf_bytes(
@@ -1039,6 +1042,7 @@ def test_page_noise_filter_removes_dirty_pages():
     assert filtered[0].text == "Clean page"
 
 
+@pytest.mark.skip(reason="layout 模式已并入 full；该测试经 layout 路径 monkeypatch parse_into_bboxes，新流水线见 test_deepdoc_pdf_fusion.py")
 def test_ragflow_pdf_parser_applies_page_filter(monkeypatch):
     parser = RAGFlowPdfParser()
 
@@ -1198,14 +1202,14 @@ def test_pdf_artifact_extractor_can_use_mocked_tsr_model():
     assert reading_order[1]["order_on_page"] == 1
 
 
-def test_deepdoc_parser_vision_mode_surfaces_artifacts():
+def test_deepdoc_parser_full_mode_surfaces_artifacts():
     _skip_if_vision_runtime_unavailable()
     parser = DeepDocParser()
     result = _run(
         parser.parse_bytes(
-            _build_minimal_pdf_bytes("Vision Mode"),
+            _build_minimal_pdf_bytes("Full Mode"),
             file_type="pdf",
-            parsing_config={"deepdoc_pdf_mode": "vision"},
+            parsing_config={"deepdoc_pdf_mode": "full"},
             splitting_config={"chunk_size": 500},
         )
     )
@@ -1215,9 +1219,10 @@ def test_deepdoc_parser_vision_mode_surfaces_artifacts():
     assert "figures" in result.metadata["artifacts"]
 
 
-def test_ragflow_pdf_parser_layout_artifacts_include_lazy_images():
+def test_ragflow_pdf_parser_full_mode_artifacts_include_lazy_images():
+    _skip_if_vision_runtime_unavailable()
     parser = RAGFlowPdfParser()
-    result = parser(_build_minimal_pdf_bytes("Layout Artifact"), pdf_mode="layout", chunk_size=500)
+    result = parser(_build_minimal_pdf_bytes("Full Artifact"), pdf_mode="full", chunk_size=500)
 
     assert "artifacts" in result.metadata
     assert isinstance(result.metadata["artifacts"]["tables"], list)
@@ -1243,14 +1248,13 @@ def test_deepdoc_engine_standalone_facade():
     assert engine.can_parse("pptx") is True
     assert engine.can_parse("png") is True
     assert engine.supports_pdf_mode("plain") is True
-    assert engine.supports_pdf_mode("vision") is get_vision_runtime_status()["parser_available"]
+    assert engine.supports_pdf_mode("full") is get_vision_runtime_status()["parser_available"]
 
 
 def test_deepdoc_factory_exposes_parser_ids():
     specs = DeepDocParserFactory.list_specs()
-    assert "pdf_layout" in specs
+    assert "pdf_full" in specs
     assert "pdf_plain" in specs
-    assert "pdf_vision" in specs
     assert "pdf_docling" in specs
     assert "pdf_mineru" in specs
     assert "pdf_opendataloader" in specs
@@ -1265,7 +1269,7 @@ def test_deepdoc_factory_exposes_parser_ids():
     assert "html" in specs
     assert "json" in specs
     assert specs["pdf_plain"].mode == "plain"
-    assert specs["pdf_vision"].available is get_vision_runtime_status()["parser_available"]
+    assert specs["pdf_full"].available is get_vision_runtime_status()["parser_available"]
 
 
 def test_knowledge_base_config_accepts_deepdoc_parser_id():
@@ -1373,10 +1377,9 @@ def test_deepdoc_capabilities_surface_unavailable_vision_mode():
     capabilities = get_deepdoc_capabilities()
     assert "pdf_modes" in capabilities
     assert capabilities["pdf_modes"]["plain"]["available"] is True
-    assert capabilities["pdf_modes"]["layout"]["available"] is True
-    assert capabilities["pdf_modes"]["vision"]["available"] is get_vision_runtime_status()["parser_available"]
+    assert capabilities["pdf_modes"]["full"]["available"] is get_vision_runtime_status()["parser_available"]
     assert "vision_runtime" in capabilities
-    assert "package_status" in capabilities["pdf_modes"]["vision"]
+    assert "package_status" in capabilities["pdf_modes"]["full"]
 
 
 def test_deepdoc_runtime_report_surfaces_missing_heavy_dependencies():
@@ -1952,6 +1955,7 @@ def test_vision_runtime_guard_can_raise_runtime_error_if_dependencies_missing(mo
     assert "xgboost" in str(exc_info.value)
 
 
+@pytest.mark.skip(reason="vision 模式已并入 full；旧 fitz 文字层路径元数据不再适用，新融合行为见 test_deepdoc_pdf_fusion.py")
 def test_deepdoc_parser_supports_vision_mode():
     _skip_if_vision_runtime_unavailable()
     parser = DeepDocParser()
@@ -1972,6 +1976,7 @@ def test_deepdoc_parser_supports_vision_mode():
     assert result.chunks
 
 
+@pytest.mark.skip(reason="vision 模式已并入 full；_extract_fitz_blocks/_extract_vendored_ocr_blocks 已移除")
 def test_ragflow_pdf_parser_vision_mode_prefers_layout_model_when_available(monkeypatch):
     _skip_if_vision_runtime_unavailable()
     parser = RAGFlowPdfParser()
@@ -1993,6 +1998,7 @@ def test_ragflow_pdf_parser_vision_mode_prefers_layout_model_when_available(monk
     assert result.metadata["layout_bboxes"][0]["layout_type"] == "title"
 
 
+@pytest.mark.skip(reason="vision 模式已并入 full；旧 OCR 回退 helper 已移除，新逐框融合见 test_deepdoc_pdf_fusion.py")
 def test_ragflow_pdf_parser_vision_mode_uses_vendored_ocr_fallback(monkeypatch):
     _skip_if_vision_runtime_unavailable()
     parser = RAGFlowPdfParser()
@@ -2023,6 +2029,7 @@ def test_ragflow_pdf_parser_vision_mode_uses_vendored_ocr_fallback(monkeypatch):
     assert "OCR Block" in result.full_text
 
 
+@pytest.mark.skip(reason="vision 模式已并入 full；_extract_fitz_ocr_blocks 已移除")
 def test_ragflow_pdf_parser_vision_mode_uses_fitz_ocr_fallback(monkeypatch):
     _skip_if_vision_runtime_unavailable()
     parser = RAGFlowPdfParser()
@@ -2052,6 +2059,7 @@ def test_ragflow_pdf_parser_vision_mode_uses_fitz_ocr_fallback(monkeypatch):
     assert "Fitz OCR" in result.full_text
 
 
+@pytest.mark.skip(reason="vision 模式已并入 full；旧 vision 路径已移除，表格区域由 full 经 PdfArtifactExtractor 覆盖")
 def test_ragflow_pdf_parser_vision_mode_preserves_table_regions_in_artifacts(monkeypatch):
     _skip_if_vision_runtime_unavailable()
     parser = RAGFlowPdfParser()
@@ -2083,6 +2091,7 @@ def test_ragflow_pdf_parser_vision_mode_preserves_table_regions_in_artifacts(mon
 
 
 def test_table_regions_include_page_order_and_structure_summary():
+    _skip_if_vision_runtime_unavailable()
     parser = RAGFlowPdfParser()
     pdf_bytes = _build_positioned_pdf_bytes(
         [
@@ -2091,7 +2100,7 @@ def test_table_regions_include_page_order_and_structure_summary():
         ]
     )
 
-    result = parser(pdf_bytes, pdf_mode="layout", chunk_size=500)
+    result = parser(pdf_bytes, pdf_mode="full", chunk_size=500)
 
     assert "table_regions" in result.metadata
     assert result.metadata["table_regions"] == []

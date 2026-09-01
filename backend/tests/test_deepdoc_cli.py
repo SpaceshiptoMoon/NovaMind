@@ -55,7 +55,7 @@ def test_deepdoc_cli_capabilities():
 
     payload = json.loads(completed.stdout)
     assert "pdf_modes" in payload
-    assert "vision" in payload["pdf_modes"]
+    assert "full" in payload["pdf_modes"]
 
 
 def test_deepdoc_cli_doctor():
