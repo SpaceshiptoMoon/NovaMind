@@ -788,31 +788,24 @@ def _build_es_chunks(
                 "chunk_pages": list(meta.get("pages") or []),
                 "chunk_entry_count": int(meta.get("entry_count") or 0),
             })
-            # 收集该 chunk 涉及的 PDF figure 图片链接（已由上传 helper 写入 region）。
-            entry_kinds = list(meta.get("entry_kinds") or [])
-            if "figure" in entry_kinds:
-                figure_regions = list(parse_metadata.get("figure_regions") or [])
-                if figure_regions:
-                    figure_map = {
-                        str(r.get("artifact_id")): r
-                        for r in figure_regions
-                        if r.get("artifact_id")
+            # 文档级 PDF figure 图片链接：每个文本 chunk 的 metadata 都保存该文档全部图片，
+            # 便于检索时向 LLM/前端提供完整图文上下文，不局限于当前 chunk 包含的 figure。
+            figure_regions = list(parse_metadata.get("figure_regions") or [])
+            if figure_regions:
+                all_figure_links: List[Dict[str, Any]] = [
+                    {
+                        "artifact_id": r["artifact_id"],
+                        "minio_object_name": r.get("minio_object_name"),
+                        "image_url": r.get("image_url"),
+                        "page": r.get("page_start"),
+                        "caption": r.get("caption", ""),
                     }
-                    figure_links: List[Dict[str, Any]] = []
-                    for source_id in meta.get("entry_source_ids") or []:
-                        region = figure_map.get(str(source_id))
-                        if not region:
-                            continue
-                        figure_links.append({
-                            "artifact_id": region["artifact_id"],
-                            "minio_object_name": region.get("minio_object_name"),
-                            "image_url": region.get("image_url"),
-                            "page": region.get("page_start"),
-                            "caption": region.get("caption", ""),
-                        })
-                    if figure_links:
-                        chunk_meta["figure_image_links"] = figure_links
-                        chunk_meta["figure_image_count"] = len(figure_links)
+                    for r in figure_regions
+                    if r.get("artifact_id")
+                ]
+                if all_figure_links:
+                    chunk_meta["figure_image_links"] = all_figure_links
+                    chunk_meta["figure_image_count"] = len(all_figure_links)
         else:
             # start_time/end_time 仅音视频分段有意义；图片无时间维度，不带
             if chunk_type != ChunkType.IMAGE:

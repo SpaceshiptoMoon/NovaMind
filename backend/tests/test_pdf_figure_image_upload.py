@@ -163,8 +163,8 @@ async def test_upload_figure_images_filters_small_and_invalid():
     minio_client.upload_file.assert_not_awaited()
 
 
-def test_build_es_chunks_figure_image_links_list():
-    """chunk 包含 figure 时 metadata.figure_image_links 应为列表。"""
+def test_build_es_chunks_figure_image_links_per_chunk_carries_all():
+    """每个文本 chunk 的 metadata.figure_image_links 都应包含文档全部图片链接。"""
     document = SimpleNamespace(
         id=1,
         space_id=1,
@@ -178,7 +178,7 @@ def test_build_es_chunks_figure_image_links_list():
         "parser": "deepdoc",
         "file_type": "pdf",
         "table_region_count": 0,
-        "figure_region_count": 1,
+        "figure_region_count": 2,
         "reading_order_count": 2,
         "figure_regions": [
             {
@@ -187,7 +187,14 @@ def test_build_es_chunks_figure_image_links_list():
                 "caption": "图1",
                 "minio_object_name": "spaces/1/kbs/1/documents/1/x.pdf_figures/figure_fig1_1.png",
                 "image_url": "https://minio.example.com/fig1.png",
-            }
+            },
+            {
+                "artifact_id": "fig2",
+                "page_start": 2,
+                "caption": "图2",
+                "minio_object_name": "spaces/1/kbs/1/documents/1/x.pdf_figures/figure_fig2_2.png",
+                "image_url": "https://minio.example.com/fig2.png",
+            },
         ],
     }
     chunk_items = [
@@ -203,16 +210,23 @@ def test_build_es_chunks_figure_image_links_list():
     es_chunks = _build_es_chunks(document, chunk_items, ChunkType.TEXT, parse_metadata=parse_metadata)
 
     assert len(es_chunks) == 2
-    text_chunk = es_chunks[0]
-    figure_chunk = es_chunks[1]
-    assert "figure_image_links" not in text_chunk["metadata"]
-    assert figure_chunk["metadata"]["figure_image_links"] == [
+    expected_links = [
         {
             "artifact_id": "fig1",
             "minio_object_name": "spaces/1/kbs/1/documents/1/x.pdf_figures/figure_fig1_1.png",
             "image_url": "https://minio.example.com/fig1.png",
             "page": 1,
             "caption": "图1",
-        }
+        },
+        {
+            "artifact_id": "fig2",
+            "minio_object_name": "spaces/1/kbs/1/documents/1/x.pdf_figures/figure_fig2_2.png",
+            "image_url": "https://minio.example.com/fig2.png",
+            "page": 2,
+            "caption": "图2",
+        },
     ]
-    assert figure_chunk["metadata"]["figure_image_count"] == 1
+    assert es_chunks[0]["metadata"]["figure_image_links"] == expected_links
+    assert es_chunks[0]["metadata"]["figure_image_count"] == 2
+    assert es_chunks[1]["metadata"]["figure_image_links"] == expected_links
+    assert es_chunks[1]["metadata"]["figure_image_count"] == 2
