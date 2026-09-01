@@ -35,12 +35,12 @@
               </div>
             </el-form-item>
           </el-col>
-          <el-col :span="8">
+          <el-col v-if="configForm.pdfStrategy === 'default'" :span="8">
             <el-form-item label="启用 OCR">
               <el-switch v-model="configForm.pdfOcrEnabled" />
               <div class="field-hint">
-                仅"默认"策略生效：文字层抽空时用 Tesseract 对图片页 OCR。DeepDoc 的 OCR 由
-                "vision"解析器提供——选 vision 即含 OCR，无需在此开关。
+                仅"默认（PyPDF2）"策略生效：文字层抽空时用 Tesseract 对图片页 OCR。选
+                DeepDoc 时 OCR 由 full 解析器内建（逐框融合，plain 无 OCR），无需此开关。
               </div>
             </el-form-item>
           </el-col>

@@ -379,9 +379,8 @@ export interface AudioParsingConfig {
 }
 
 export type PdfParserName =
-  | 'layout'
+  | 'full'
   | 'plain'
-  | 'vision'
   | 'docling'
   | 'mineru'
   | 'opendataloader'

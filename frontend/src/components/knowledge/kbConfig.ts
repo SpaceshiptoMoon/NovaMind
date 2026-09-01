@@ -52,19 +52,14 @@ export const textStrategyItems: Array<{ key: TextStrategyField; label: string }>
 
 export const deepdocParserOptions: Array<{ label: string; value: PdfParserName; desc: string }> = [
   {
-    label: 'layout（版面分析）',
-    value: 'layout',
-    desc: '抽取文字层 + 识别版面/表格/阅读顺序。不含 OCR——扫描件/图片 PDF 会抽出 0 字符。适合有文字层的原生 PDF。',
+    label: 'full（全量流水线·推荐）',
+    value: 'full',
+    desc: '默认模式，对齐 RAGFlow 上游：每页 OCR 检测 + 逐框文字层融合 + ONNX 版面 + 表格识别。文字层干净时优先用文字层（跳过 OCR 识别，快），乱码或无文字层时回退 OCR。扫描件、图片 PDF、数字原生 PDF 通吃。速度最慢、占内存最高。',
   },
   {
     label: 'plain（纯文本）',
     value: 'plain',
-    desc: '仅抽取文字层，无版面分析、无 OCR。最快，适合结构简单的文字 PDF。扫描件/图片 PDF 无效。',
-  },
-  {
-    label: 'vision（视觉识别 + OCR）',
-    value: 'vision',
-    desc: '渲染每页为图片 + 版面识别 + OCR。扫描件、图片 PDF、layout/plain 抽不到字的 PDF 选这个。速度最慢、占内存最高。',
+    desc: '仅抽取文字层，无版面分析、无 OCR。最快，适合结构简单的纯文字 PDF。扫描件/图片 PDF 会抽出 0 字符，需改用 full。',
   },
   {
     label: 'docling（远程）',
@@ -146,7 +141,7 @@ export function applyTextParsingConfig(
   textConfig?: TextParsingConfig,
 ) {
   target.pdfStrategy = getTextStrategyValue(textConfig?.pdf?.strategy)
-  target.deepdocParser = textConfig?.pdf?.parser || 'layout'
+  target.deepdocParser = textConfig?.pdf?.parser || 'full'
   target.pdfOcrEnabled = textConfig?.pdf?.ocr_enabled ?? false
   target.docxStrategy = getTextStrategyValue(textConfig?.docx?.strategy)
   target.excelStrategy = getTextStrategyValue(textConfig?.excel?.strategy)
