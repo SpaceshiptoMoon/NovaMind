@@ -130,11 +130,11 @@
             <el-table-column label="" width="170" fixed="right" align="right">
               <template #default="{ row }">
                 <div class="action-buttons">
-                  <el-tooltip v-if="canProcess(row)" content="处理" placement="top">
+                  <el-tooltip v-if="canProcess(row)" content="首次处理" placement="top">
                     <el-button :icon="VideoPlay" circle size="small" type="primary" @click="handleProcessSingle(row)" />
                   </el-tooltip>
                   <el-tooltip v-if="canReprocess(row)" content="重新处理" placement="top">
-                    <el-button :icon="VideoPlay" circle size="small" type="primary" @click="handleProcessSingle(row)" />
+                    <el-button :icon="RefreshRight" circle size="small" type="primary" @click="handleProcessSingle(row)" />
                   </el-tooltip>
                   <el-tooltip v-if="canCancel(row)" content="取消" placement="top">
                     <el-button :icon="Close" circle size="small" type="warning" @click="handleCancelSingle(row)" />
@@ -553,19 +553,21 @@ const DOC_STATUS = {
 
 /**
  * 各状态可执行操作（与后端校验严格对齐，避免按钮可见却报错）：
- * - 0 待处理：处理 / 详情 / 删除
+ * - 0 待处理：首次处理 / 详情 / 删除
  * - 1 处理中：取消 / 详情            （delete 被后端 DocumentAlreadyProcessingError 拒绝）
  * - 2 已完成：重新处理 / 详情 / 删除
  * - 3 失败：重试 / 详情 / 删除
- * - 4 已取消：处理 / 详情 / 删除
+ * - 4 已取消：重新处理 / 详情 / 删除
  */
 function canProcess(doc: DocType): boolean {
-  const s = doc.status ?? 0
-  return s === DOC_STATUS.PENDING || s === DOC_STATUS.CANCELLED
+  // 首次处理：从未入队解析的文档（仅状态 0 待处理）
+  return (doc.status ?? 0) === DOC_STATUS.PENDING
 }
 
 function canReprocess(doc: DocType): boolean {
-  return (doc.status ?? 0) === DOC_STATUS.COMPLETED
+  // 重新处理：已跑过一次（已完成或已取消）后再次触发
+  const s = doc.status ?? 0
+  return s === DOC_STATUS.COMPLETED || s === DOC_STATUS.CANCELLED
 }
 
 function canCancel(doc: DocType): boolean {
