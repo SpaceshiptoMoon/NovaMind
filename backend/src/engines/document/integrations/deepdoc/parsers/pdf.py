@@ -749,6 +749,19 @@ class RAGFlowPdfParser:
             table_regions,
             figure_regions,
         )
+        # 分阶段诊断：定位「整页内容丢失」类问题。按页统计各阶段文本字符数，
+        # 配合 filter_meta（toc/dirty 移除页）可一眼看出内容在哪一步被丢。
+        logger.info(
+            "DeepDoc full 流水线分阶段统计",
+            page_count=page_count,
+            layout_chars_by_page=self._chars_by_page(all_boxes),
+            text_merge_chars_by_page=self._chars_by_page(text_boxes),
+            vertical_merge_chars_by_page=self._chars_by_page(merged_boxes),
+            filter_chars_by_page=self._chars_by_page(filtered_boxes),
+            filter_meta=filter_meta,
+            reading_order_entries_by_page=self._reading_order_entries_by_page(reading_order),
+            chunk_boxes_count=len(chunk_boxes),
+        )
         # 用 reading_order 构建完整 MD：文本段 + 表格占位/HTML + 图片占位符。
         # 图片占位符将在 document_pipeline 上传 MinIO 后替换为真实 URL。
         full_text = "\n\n".join(
@@ -1524,6 +1537,23 @@ class RAGFlowPdfParser:
             chunk_size=chunk_size,
         )
         return fallback, []
+
+    @staticmethod
+    def _chars_by_page(boxes: Sequence[DeepDocPdfBox]) -> dict[int, int]:
+        """按页统计 boxes 文本字符数，用于分阶段诊断整页内容丢失。"""
+        totals: dict[int, int] = {}
+        for box in boxes:
+            page = int(box.page)
+            totals[page] = totals.get(page, 0) + len(str(box.text or ""))
+        return totals
+
+    @staticmethod
+    def _reading_order_entries_by_page(reading_order: Sequence[dict[str, Any]]) -> dict[int, int]:
+        counts: dict[int, int] = {}
+        for entry in reading_order:
+            page = int(entry.get("page", 0))
+            counts[page] = counts.get(page, 0) + 1
+        return counts
 
     @staticmethod
     def _collect_artifact_boxes(

@@ -65,15 +65,15 @@ class MarkdownSplitter(BaseSplitter):
             part_content = part['content']
             part_title = part['title']
             part_level = part['level']
-            
+
             # 如果当前块加上新内容超过最大大小，且当前块不是空的，则保存当前块并开始新块
-            if (len(current_chunk["content"]) + len(part_content) > self.max_chunk_size 
+            if (len(current_chunk["content"]) + len(part_content) > self.max_chunk_size
                 and current_chunk["content"].strip()):
-                
-                # 保存当前块
-                if len(current_chunk["content"].strip()) >= self.min_chunk_size:
+
+                # 保存当前块（小块统一留给末尾 _merge_small_chunks 合并，不在此丢弃）
+                if current_chunk["content"].strip():
                     chunks.append(current_chunk)
-                
+
                 # 开始新块
                 current_chunk = {
                     "content": part_content,
@@ -86,7 +86,7 @@ class MarkdownSplitter(BaseSplitter):
                     current_chunk["content"] += "\n\n" + part_content
                 else:
                     current_chunk["content"] = part_content
-                
+
                 # 更新标题和层级（使用较高级别的标题作为块标题）
                 if part_level < current_chunk["level"] or current_chunk["level"] == 0:
                     current_chunk["title"] = part_title
@@ -94,8 +94,8 @@ class MarkdownSplitter(BaseSplitter):
                 elif part_level == current_chunk["level"] and not current_chunk["title"]:
                     current_chunk["title"] = part_title
 
-        # 添加最后一个块
-        if current_chunk["content"].strip() and len(current_chunk["content"].strip()) >= self.min_chunk_size:
+        # 添加最后一个块（不在此按 min_chunk_size 丢弃，留给末尾合并）
+        if current_chunk["content"].strip():
             chunks.append(current_chunk)
 
         # 进一步处理过长的段落
@@ -108,7 +108,32 @@ class MarkdownSplitter(BaseSplitter):
             else:
                 refined_chunks.append(chunk)
 
+        # 小块合并到前一块：min_chunk_size 的语义是「把小块合并到前一个块」而非「丢弃」，
+        # 避免尾部小块被丢弃导致内容丢失（DeepDoc full_text 重切分实测丢 370/2345 字）。
+        refined_chunks = self._merge_small_chunks(refined_chunks)
+
+        # 兜底：非空文本不应切成 0 个 chunk。当全部内容 < min_chunk_size 时，
+        # _merge_small_chunks 会保留首个小块，此处再兜一层保险。
+        if not refined_chunks and text.strip():
+            refined_chunks = [{"content": text.strip(), "title": title, "level": 0}]
+
         return refined_chunks
+
+    def _merge_small_chunks(self, chunks: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """把 < min_chunk_size 的块合并到前一块，避免丢弃内容。
+
+        首个块无论大小都保留（否则全是小块的文档会返回 0 chunk）。
+        """
+        if not chunks:
+            return chunks
+        merged: List[Dict[str, str]] = []
+        for chunk in chunks:
+            content = chunk["content"].strip()
+            if len(content) >= self.min_chunk_size or not merged:
+                merged.append(chunk)
+            else:
+                merged[-1]["content"] = (merged[-1]["content"] + "\n\n" + content).strip()
+        return merged
 
     def _split_by_headers(self, text: str) -> List[Dict[str, str]]:
         """
@@ -228,12 +253,10 @@ class MarkdownSplitter(BaseSplitter):
                 "title": title,
                 "level": level
             })
-        
-        # 过滤掉太小的块
-        return [
-            c for c in chunks 
-            if len(c["content"].strip()) >= self.min_chunk_size
-        ]
+
+        # 不在此丢弃小块：尾部小块由调用方 _merge_small_chunks 合并到前一块，
+        # 避免内容丢失。
+        return chunks
 
     def _split_by_sentences(self, text: str) -> List[str]:
         """

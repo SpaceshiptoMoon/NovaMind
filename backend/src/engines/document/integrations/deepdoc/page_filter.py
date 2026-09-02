@@ -7,10 +7,10 @@ from typing import Any, Sequence
 
 
 TOC_HEADING_PATTERN = re.compile(
-    r"(contents|鐩綍|鐩|table of contents|鑷磋阿|acknowledge(?:ment)?s?)$",
+    r"(contents|目录|目次|table of contents|致谢|acknowledge(?:ment)?s?)$",
     re.IGNORECASE,
 )
-DIRTY_TEXT_PATTERN = re.compile(r"\(cid\s*:\s*\d+\s*\)|[\uE000-\uF8FF]|锟?")
+DIRTY_TEXT_PATTERN = re.compile(r"\(cid\s*:\s*\d+\s*\)|[\uE000-\uF8FF]|锟斤苟|锟")
 
 
 class PageNoiseFilter:
