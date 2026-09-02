@@ -13,6 +13,8 @@ from novamind.engines.document.integrations.deepdoc.compat import LazyImage, fin
 
 ILLEGAL_CHARACTERS_RE = re.compile(r"[\000-\010]|[\013-\014]|[\016-\037]")
 
+logger = logging.getLogger(__name__)
+
 
 class RAGFlowExcelParser:
     @staticmethod
@@ -188,7 +190,11 @@ class RAGFlowExcelParser:
 
         for sheetname in wb.sheetnames:
             ws = wb[sheetname]
-            rows = RAGFlowExcelParser._get_rows_limited(ws)
+            try:
+                rows = RAGFlowExcelParser._get_rows_limited(ws)
+            except Exception:
+                logger.warning("Skip sheet '%s' due to rows access error", sheetname, exc_info=True)
+                continue
             if not rows:
                 continue
 
@@ -230,7 +236,11 @@ class RAGFlowExcelParser:
         rows_out = []
         for sheetname in wb.sheetnames:
             ws = wb[sheetname]
-            rows = RAGFlowExcelParser._get_rows_limited(ws)
+            try:
+                rows = RAGFlowExcelParser._get_rows_limited(ws)
+            except Exception:
+                logger.warning("Skip sheet '%s' due to rows access error", sheetname, exc_info=True)
+                continue
             if not rows:
                 continue
             header = list(rows[0])
@@ -240,13 +250,13 @@ class RAGFlowExcelParser:
                     if cell.value is None or str(cell.value).strip() == "":
                         continue
                     title = str(header[idx].value) if idx < len(header) else ""
-                    prefix = f"{title}: " if title else ""
+                    prefix = f"{title}：" if title else ""
                     fields.append(prefix + str(cell.value))
                 if not fields:
                     continue
                 line = "; ".join(fields)
                 if "sheet" not in sheetname.lower():
-                    line += f" -- {sheetname}"
+                    line += f" —— {sheetname}"
                 rows_out.append(line)
         return rows_out
 
@@ -257,7 +267,11 @@ class RAGFlowExcelParser:
             total = 0
             for sheetname in wb.sheetnames:
                 ws = wb[sheetname]
-                total += RAGFlowExcelParser._get_actual_row_count(ws)
+                try:
+                    total += RAGFlowExcelParser._get_actual_row_count(ws)
+                except Exception:
+                    logger.warning("Skip sheet '%s' due to row count access error", sheetname, exc_info=True)
+                    continue
             return total
 
         if fnm.split(".")[-1].lower() in {"csv", "txt"}:

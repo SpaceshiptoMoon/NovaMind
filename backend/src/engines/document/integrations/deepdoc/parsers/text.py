@@ -7,7 +7,7 @@ from pathlib import Path
 
 from novamind.engines.document.integrations.deepdoc.parsers.html import RAGFlowHtmlParser
 from novamind.engines.document.integrations.deepdoc.parsers.json import RAGFlowJsonParser
-from novamind.engines.document.integrations.deepdoc.parsers.markdown import (
+from novamind.engines.document.integrations.deepdoc.parsers.upstream.markdown_parser import (
     MarkdownElementExtractor,
     RAGFlowMarkdownParser,
 )

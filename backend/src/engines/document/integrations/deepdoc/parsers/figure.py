@@ -5,6 +5,7 @@ import io
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from PIL import Image
 
 from novamind.engines.document.integrations.deepdoc.compat import LazyImage
@@ -74,14 +75,25 @@ class RAGFlowFigureParser(VisionFigureParser):
         except Exception:
             return [], []
 
-        detections = list(ocr.detect(image) or [])
+        # OCR.detect/recognize 底层（TextDetector.__call__ 的 ori_im.shape、
+        # get_rotate_crop_image 的 cv2.warpPerspective）只接受 numpy ndarray，
+        # 直接传 PIL.Image 会 AttributeError。pdf.py 同样用 np.asarray(img) 喂两路。
+        img_np = np.asarray(image)
+
+        try:
+            detections = list(ocr.detect(img_np) or [])
+        except Exception:
+            return [], []
         if not detections:
             return [], []
 
         lines: list[str] = []
         boxes: list[dict[str, Any]] = []
         for quad, _ in detections:
-            text = ocr.recognize(image, quad)
+            try:
+                text = ocr.recognize(img_np, quad)
+            except Exception:
+                text = ""
             points = quad.tolist() if hasattr(quad, "tolist") else quad
             cleaned_points = [[float(p[0]), float(p[1])] for p in points]
             boxes.append({"quad": cleaned_points, "text": text})

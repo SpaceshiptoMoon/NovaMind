@@ -153,6 +153,13 @@ class RAGFlowHtmlParser:
                 pieces.append(current)
                 current = ""
                 current_tokens = 0
+            if atom_tokens > chunk_token_num and not atom.isspace():
+                # 单个 atom 超过 token 预算（长 URL / base64 / 无空格超长串）：
+                # 按 chunk_token_num 字符窗口切块，否则整段会作为一个超大 chunk。
+                # 对齐上游 html_parser._split_oversized_block 的回退分支。
+                for i in range(0, len(atom), chunk_token_num):
+                    pieces.append(atom[i : i + chunk_token_num])
+                continue
             current += atom
             current_tokens += atom_tokens
         if current:
