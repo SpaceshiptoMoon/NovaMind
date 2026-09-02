@@ -292,7 +292,12 @@ def test_ocr_parallel_devices_round_robin():
 
 
 class _FakeRotatingOCR:
-    """模拟不同方向识别率不同的 OCR：原图方向无结果，顺时针 90° 有结果。"""
+    """模拟不同方向识别率不同的 OCR，返回真实 OCR.__call__ 契约。
+
+    真实 ``OCR.__call__`` 返回 ``[(box, (text, score)), ...]``（检测到文字）或
+    ``(None, None, time_dict)`` 三元组（无文字）。早期测试用 ``(boxes, rec_results)``
+    二元组 mock 镜像了错误契约，掩盖了 pdf_artifacts 的解包 bug（doc 568 崩溃）。
+    """
 
     parallel_devices = 1
 
@@ -300,9 +305,9 @@ class _FakeRotatingOCR:
         h, w = img.shape[:2]
         # 原 crop 为 100x200（高>宽），90° 旋转后变为 200x100（高<宽）
         if h > w:
-            return [], []
+            return None, None, {}
         box = np.array([[10, 10], [90, 10], [90, 30], [10, 30]], dtype=np.float32)
-        return [box], [("cell", 0.95)]
+        return [(box, ("cell", 0.95))]
 
 
 @pytest.mark.unit
@@ -314,6 +319,39 @@ def test_evaluate_table_orientation_picks_90():
     assert scores[0] == 0.0
     assert scores[90] > 0.0
     assert image.size == (200, 100)
+
+
+class _RealContractTwoBoxOCR:
+    """复现 doc 568 崩溃：真实 OCR.__call__ 契约，每个方向都返回 2 个 (box,(text,score)) pair。
+
+    旧代码 ``boxes, rec_results = ocr(...)`` 把 2 元素列表误解包成二元组，
+    随后 ``for _, score in rec_results`` 迭代到 4 点 box 时抛
+    ``too many values to unpack (expected 2)``。
+    """
+
+    parallel_devices = 1
+
+    def __call__(self, img, device_id=0):
+        h, w = img.shape[:2]
+        # 90°/270° 旋转后图像方向变化，这里统一给 2 个框，确保任何方向都不崩
+        box1 = np.array([[10, 10], [40, 10], [40, 20], [10, 20]], dtype=np.float32)
+        box2 = np.array([[10, 30], [40, 30], [40, 40], [10, 40]], dtype=np.float32)
+        score = 0.9 if h < w else 0.5
+        return [(box1, ("a", score)), (box2, ("b", score))]
+
+
+@pytest.mark.unit
+def test_evaluate_table_orientation_real_contract_two_boxes():
+    """真实 OCR 契约下 2 个框不应崩溃，综合得分 = 平均置信度 × 框数。"""
+    crop = Image.new("RGB", (200, 100), color=(255, 255, 255))
+    angle, _image, scores = PdfArtifactExtractor._evaluate_table_orientation(
+        crop, _RealContractTwoBoxOCR()
+    )
+    # 所有方向都有 2 个框、得分 0.9（h<w 时）或 0.5（h>w 时），composite = score * 2
+    assert scores[0] == pytest.approx(0.9 * 2)
+    assert scores[90] == pytest.approx(0.5 * 2)
+    # 最高分对应 angle=0（0.9*2 > 0.5*2），且 (score, -angle) 平局时偏好小 angle
+    assert angle == 0
 
 
 @pytest.mark.unit

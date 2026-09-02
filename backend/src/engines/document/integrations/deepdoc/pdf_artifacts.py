@@ -853,16 +853,21 @@ class PdfArtifactExtractor:
                 rotated = crop_image.rotate(-angle, expand=True, fillcolor=(255, 255, 255))
             img_np = np.asarray(rotated)
             try:
-                boxes, rec_results = ocr(img_np, device_id=0)
+                ocr_result = ocr(img_np, device_id=0)
             except Exception:
-                _, rec_results = [], []
-            if not rec_results:
+                ocr_result = None
+            # OCR.__call__ 返回 [(box, (text, score)), ...]（检测到文字）或
+            # (None, None, time_dict) 三元组（无文字 / img 为 None）。
+            # 早期代码误以为返回 (boxes, rec_results) 二元组，在恰好 2 个框时会
+            # 静默错配并在下游解包崩溃（too many values to unpack）。这里归一化。
+            pairs = ocr_result if isinstance(ocr_result, list) else []
+            if not pairs:
                 scores[angle] = 0.0
                 candidates.append((angle, rotated, 0.0))
                 continue
-            mean_score = float(np.mean([float(score) for _, score in rec_results]))
+            mean_score = float(np.mean([float(rec[1][1]) for rec in pairs]))
             # 综合得分 = 平均置信度 × 识别框数量，避免单个大框误胜。
-            composite = mean_score * len(rec_results)
+            composite = mean_score * len(pairs)
             scores[angle] = composite
             candidates.append((angle, rotated, composite))
 
@@ -893,17 +898,19 @@ class PdfArtifactExtractor:
 
         img_np = np.asarray(rotated_image)
         try:
-            rotated_boxes, rec_results = ocr(img_np, device_id=0)
+            ocr_result = ocr(img_np, device_id=0)
         except Exception:
-            rotated_boxes, rec_results = [], []
-
-        if not rotated_boxes or not rec_results or len(rotated_boxes) != len(rec_results):
+            ocr_result = None
+        # OCR.__call__ 返回 [(box, (text, score)), ...] 或 (None, None, time_dict)；
+        # 归一化为 (box, (text, score)) 列表（已是 zip 后的成对结果，无需再 zip）。
+        pairs = ocr_result if isinstance(ocr_result, list) else []
+        if not pairs:
             return []
 
         page = int(descriptor["page"])
         bbox = descriptor["bbox"]
         content_boxes: list[Any] = []
-        for quad, (text, _score) in zip(rotated_boxes, rec_results):
+        for quad, (text, _score) in pairs:
             if not text or not text.strip():
                 continue
             original_points = [
