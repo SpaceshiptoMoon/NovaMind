@@ -62,6 +62,20 @@ async def _find_cloud_asr_credentials(mcs, uploader_id: int, exclude_protocol: s
     return None
 
 
+async def _begin_step(session: AsyncSession, task: Optional[DocumentTask], name: str) -> None:
+    """记录节点开始并立即落库。
+
+    `task.start_step` 只改内存对象的 step_progress；若不在节点开始时立即 commit，
+    一旦该节点执行中崩溃，内存里的 running 节点会随异常丢失，`_ensure_mark_failed`
+    用独立 session 重载 task 时 step_progress 仍为 null，`mark_last_running_step_failed`
+    找不到 running 节点 → 前端节点日志空白。每个 start_step 后立即 commit 保证 running 节点落库。
+    """
+    if task is None:
+        return
+    task.start_step(name)
+    await session.commit()
+
+
 # VLM 配额/鉴权类错误的特征串。这类错误通常不会因重试而恢复，应触发回退或跳过降级，
 # 而不是让整个文档任务失败后还被 arq 重试 N 次。
 _VLM_QUOTA_OR_AUTH_MARKERS = (
@@ -172,7 +186,7 @@ async def process_video_document(
         strategy=strategy, interval=frame_interval, max_frames=max_frames,
     )
     if task:
-        task.start_step("frames_extracted")
+        await _begin_step(session, task, "frames_extracted")
     if strategy == "scene":
         scene_kwargs: Dict[str, Any] = {}
         if scene_threshold is not None:
@@ -246,7 +260,7 @@ async def process_video_document(
         task.finish_step("frames_extracted", metrics={"frame_count": len(frames)})
 
     if task:
-        task.start_step("descriptions_generated")
+        await _begin_step(session, task, "descriptions_generated")
     # 2. 装配 VLM client + prompt（features 装配点注入引擎 describe_* 函数）
     # 从视频自身嵌套配置读 vlm_model（video_config = pipeline_config["parsing"]["video"]），
     # 不读扁平 parsing_config["vlm_model"]：build_runtime_parsing_config 把 image.vlm_model
@@ -512,7 +526,7 @@ async def process_audio_document(
         )
 
     if task:
-        task.start_step("transcription_done")
+        await _begin_step(session, task, "transcription_done")
     if asr_protocol == "local":
         # 本地 faster-whisper 模型 — 无需 API Key，无需网络。
         # 模型缺失/解码失败时，若用户配了云端 ASR，则回退云端，避免整任务硬失败。

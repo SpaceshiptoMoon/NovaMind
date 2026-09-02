@@ -121,6 +121,20 @@ def _raise_on_empty_parse(
     raise DocumentProcessingError(document_id=document_id, error_message=hint)
 
 
+async def _begin_step(session: AsyncSession, task: Optional["DocumentTask"], name: str) -> None:
+    """记录节点开始并立即落库。
+
+    `task.start_step` 只改内存对象的 step_progress；若不在节点开始时立即 commit，
+    一旦该节点执行中崩溃，内存里的 `{name: running}` 会随异常丢失，`_ensure_mark_failed`
+    用独立 session 重载 task 时 step_progress 仍为 null，`mark_last_running_step_failed`
+    找不到 running 节点 → 前端节点日志空白。每个 start_step 后立即 commit 保证 running 节点落库。
+    """
+    if task is None:
+        return
+    task.start_step(name)
+    await session.commit()
+
+
 async def execute_document_pipeline(
     session: AsyncSession,
     document_id: int,
@@ -247,7 +261,7 @@ async def execute_document_pipeline(
             splitting_chunk_size=splitting_config.get("chunk_size", 1000),
             splitting_chunk_overlap=splitting_config.get("chunk_overlap", 100),
         )
-        task.start_step("parsed")
+        await _begin_step(session, task, "parsed")
         parse_result = await processor.parse_document_result(
             tmp_path,
             parsing_config=parsing_config,
@@ -584,8 +598,7 @@ async def _process_image_document_static(
 
     # 图片「解析」阶段 = VLM/OCR 提取描述文本（等价文本管道的 parsed）。
     # 此前图片路径全程不写 step_progress，导致任务列表流程日志显示「-」。
-    if task:
-        task.start_step("parsed")
+    await _begin_step(session, task, "parsed")
 
     # 2. 根据策略选择文本提取方式
     description_text = ""
@@ -895,7 +908,7 @@ async def _run_post_parse_tail(
         {chunk_count, indexed_count, total_questions, split_strategy}，供调用方写 mark_completed。
     """
     # 1. 切分
-    task.start_step("split")
+    await _begin_step(session, task, "split")
     if prechunked_items is not None:
         chunk_items = list(prechunked_items)
         split_strategy = "structural"
@@ -942,7 +955,7 @@ async def _run_post_parse_tail(
     )
 
     # 3. 向量化
-    task.start_step("embedded")
+    await _begin_step(session, task, "embedded")
     embeddings = await _generate_embeddings_static(
         [c["content"] for c in es_chunks], embedding_config,
         session=session, user_id=user_id or document.uploader_id,
@@ -958,7 +971,7 @@ async def _run_post_parse_tail(
     await _check_document_cancelled(document.id)
 
     # 4. 问题生成（由 KB 配置控制；失败跳过、留空）
-    task.start_step("question_generation")
+    await _begin_step(session, task, "question_generation")
     qg_config = pipeline_config.get("question_generation", {})
     should_generate = qg_config.get("enabled", False) if qg_config else False
     if should_generate:
@@ -996,7 +1009,7 @@ async def _run_post_parse_tail(
     await _check_document_cancelled(document.id)
 
     # 5. 索引到 ES
-    task.start_step("indexed")
+    await _begin_step(session, task, "indexed")
     es_client = await _get_es_client_static()
     indexed_count = await es_client.bulk_index_chunks(
         space_id=document.space_id,
