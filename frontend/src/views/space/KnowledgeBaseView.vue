@@ -73,7 +73,7 @@
       <EmptyState
         v-if="!loading && knowledgeBases.length === 0"
         variant="default"
-        title="暂无知识库"
+        headline="暂无知识库"
         description="创建知识库，上传文档，开始构建你的知识体系"
       >
         <el-button type="primary" @click="handleQuickCreateKb">
@@ -388,6 +388,11 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: var(--space-4);
+}
+
+/* 空状态需横跨所有列，否则只占一个 280px 单元格、图标视觉偏左不居中 */
+.kb-grid > :deep(.empty-state) {
+  grid-column: 1 / -1;
 }
 
 .kb-card {

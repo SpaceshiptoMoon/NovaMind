@@ -78,7 +78,7 @@
       <div v-if="!selectedSpaceId" class="welcome-state">
         <EmptyState
           variant="default"
-          title="选择知识空间"
+          headline="选择知识空间"
           description="从顶部下拉选择或创建一个知识空间，开始管理知识库"
         >
           <el-button type="primary" @click="showCreateSpaceDialog">

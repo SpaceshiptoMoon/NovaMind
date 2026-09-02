@@ -7,7 +7,7 @@
       </el-button>
     </div>
     <div v-loading="loading" class="notification-content">
-      <EmptyState v-if="!loading && items.length === 0" title="暂无通知" type="list" />
+      <EmptyState v-if="!loading && items.length === 0" headline="暂无通知" />
       <div v-else class="notification-items">
         <div
           v-for="n in items"
