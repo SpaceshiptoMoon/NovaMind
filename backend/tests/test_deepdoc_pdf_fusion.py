@@ -437,3 +437,154 @@ def test_cross_page_table_row_offsets(monkeypatch):
     rs = sorted(int(b["R"]) for b in boxes)
     assert rs == [0, 1]
     assert meta["crosspage_row_offset"] == [1, 2]
+
+
+@pytest.mark.unit
+def test_cross_page_table_composite_row_continuity(monkeypatch):
+    """跨页表走合成图路径：TSR 仅跑一次，R 在合成图坐标系全局连续（对齐上游 cropout）。"""
+    from dataclasses import dataclass
+
+    @dataclass
+    class _FakeBox:
+        page: int
+        x0: float
+        x1: float
+        top: float
+        bottom: float
+        text: str
+        layout_type: str
+
+    box1 = _FakeBox(1, 10, 90, 10, 30, "A", "table")
+    box2 = _FakeBox(2, 10, 90, 10, 30, "B", "table")
+    page_images = {
+        1: Image.new("RGB", (100, 100), (255, 255, 255)),
+        2: Image.new("RGB", (100, 100), (255, 255, 255)),
+    }
+
+    extractor = PdfArtifactExtractor()
+    call_count = {"n": 0}
+
+    class _FakeTSR:
+        def __call__(self, images, thr=0.2):
+            call_count["n"] += 1
+            # 合成图 80x40：两行各 20 高
+            return [[
+                {"label": "table row", "x0": 0, "x1": 80, "top": 0, "bottom": 20},
+                {"label": "table row", "x0": 0, "x1": 80, "top": 20, "bottom": 40},
+                {"label": "table column", "x0": 0, "x1": 80, "top": 0, "bottom": 40},
+            ]]
+
+    monkeypatch.setattr(extractor, "_get_tsr_recognizer", lambda: _FakeTSR())
+
+    artifacts = extractor.extract([box1, box2], page_images=page_images, zoom=1.0)
+    table = artifacts["tables"][0]
+    struct = table["table_structure"]
+
+    assert call_count["n"] == 1, "跨页合成图模式 TSR 应仅被调用一次"
+    assert struct.get("composite") is True
+    rs = sorted(int(b["R"]) for b in struct["structured_boxes"])
+    assert rs == [0, 1], "跨页行编号应在合成图上全局连续"
+    assert struct["crosspage_row_offset"] == [0, 1]
+
+
+@pytest.mark.unit
+def test_cross_page_composite_columns_aligned(monkeypatch):
+    """跨页表合成图模式下列编号跨页一致（C 全局连续，修复原 C 不跨页偏移弱点）。"""
+    from dataclasses import dataclass
+
+    @dataclass
+    class _FakeBox:
+        page: int
+        x0: float
+        x1: float
+        top: float
+        bottom: float
+        text: str
+        layout_type: str
+
+    # 每页两列：col0 x∈[10,90]，col1 x∈[110,190]
+    boxes = [
+        _FakeBox(1, 10, 90, 10, 30, "A0", "table"),
+        _FakeBox(1, 110, 190, 10, 30, "A1", "table"),
+        _FakeBox(2, 10, 90, 10, 30, "B0", "table"),
+        _FakeBox(2, 110, 190, 10, 30, "B1", "table"),
+    ]
+    page_images = {
+        1: Image.new("RGB", (200, 100), (255, 255, 255)),
+        2: Image.new("RGB", (200, 100), (255, 255, 255)),
+    }
+
+    extractor = PdfArtifactExtractor()
+
+    class _FakeTSR:
+        def __call__(self, images, thr=0.2):
+            # 合成图 180x40：两行两列
+            return [[
+                {"label": "table row", "x0": 0, "x1": 180, "top": 0, "bottom": 20},
+                {"label": "table row", "x0": 0, "x1": 180, "top": 20, "bottom": 40},
+                {"label": "table column", "x0": 0, "x1": 90, "top": 0, "bottom": 40},
+                {"label": "table column", "x0": 90, "x1": 180, "top": 0, "bottom": 40},
+            ]]
+
+    monkeypatch.setattr(extractor, "_get_tsr_recognizer", lambda: _FakeTSR())
+
+    artifacts = extractor.extract(boxes, page_images=page_images, zoom=1.0)
+    struct = artifacts["tables"][0]["table_structure"]
+
+    by_text = {b["text"]: (int(b["R"]), int(b["C"])) for b in struct["structured_boxes"]}
+    # 同列跨页 C 一致：A0/B0 → C=0；A1/B1 → C=1
+    assert by_text["A0"][1] == by_text["B0"][1] == 0
+    assert by_text["A1"][1] == by_text["B1"][1] == 1
+    # 跨页行连续：page1 两 box R=0，page2 两 box R=1
+    assert by_text["A0"][0] == by_text["A1"][0] == 0
+    assert by_text["B0"][0] == by_text["B1"][0] == 1
+
+
+@pytest.mark.unit
+def test_cross_page_composite_disabled_falls_back_to_per_page(monkeypatch):
+    """DEEPDOC_CROSSPAGE_COMPOSITE=false 时退回 per-page row_offset 缝合。"""
+    from dataclasses import dataclass
+
+    @dataclass
+    class _FakeBox:
+        page: int
+        x0: float
+        x1: float
+        top: float
+        bottom: float
+        text: str
+        layout_type: str
+
+    box1 = _FakeBox(1, 10, 90, 10, 30, "A", "table")
+    box2 = _FakeBox(2, 10, 90, 10, 30, "B", "table")
+    page_images = {
+        1: Image.new("RGB", (100, 100), (255, 255, 255)),
+        2: Image.new("RGB", (100, 100), (255, 255, 255)),
+    }
+
+    extractor = PdfArtifactExtractor()
+    monkeypatch.setenv("DEEPDOC_CROSSPAGE_COMPOSITE", "false")
+
+    class _FakeTSR:
+        def __call__(self, images, thr=0.2):
+            # per-page：两张图各返回一行一列
+            return [
+                [
+                    {"label": "table row", "x0": 0, "x1": 80, "top": 0, "bottom": 20},
+                    {"label": "table column", "x0": 0, "x1": 80, "top": 0, "bottom": 20},
+                ],
+                [
+                    {"label": "table row", "x0": 0, "x1": 80, "top": 0, "bottom": 20},
+                    {"label": "table column", "x0": 0, "x1": 80, "top": 0, "bottom": 20},
+                ],
+            ]
+
+    monkeypatch.setattr(extractor, "_get_tsr_recognizer", lambda: _FakeTSR())
+
+    artifacts = extractor.extract([box1, box2], page_images=page_images, zoom=1.0)
+    struct = artifacts["tables"][0]["table_structure"]
+
+    assert struct.get("composite") is None, "禁用合成图后不应走 composite 路径"
+    rs = sorted(int(b["R"]) for b in struct["structured_boxes"])
+    assert rs == [0, 1], "per-page row_offset 缝合仍应保证 R 连续"
+    assert struct["crosspage_row_offset"] == [1, 2], "per-page 语义：累计 row_offset"

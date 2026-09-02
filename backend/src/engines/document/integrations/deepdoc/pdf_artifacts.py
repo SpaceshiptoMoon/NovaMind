@@ -198,6 +198,25 @@ class PdfArtifactExtractor:
             if rotated_content_boxes:
                 content_boxes = rotated_content_boxes
 
+        # 跨页表格物理拼接对齐上游：所有页旋转角均为 0（正向）时，把各页 crop 竖向
+        # 拼成一张合成图，TSR 跑一次，R/C 在合成图坐标系天然全局连续（对齐上游
+        # cropout + construct_table 跨页分支 sort_X_firstly）。任一页需旋转则退回
+        # per-page row_offset 缝合（旋转 + 合成图坐标映射复杂，跨页旋转表属边缘情况）。
+        angles = [int(descriptor.get("rotation_angle", 0)) for descriptor in crop_descriptors]
+        modal_angle = max(set(angles), key=angles.count) if angles else 0
+        composite_enabled = os.environ.get("DEEPDOC_CROSSPAGE_COMPOSITE", "true").lower() != "false"
+        composite_image: Image.Image | None = None
+        y_offsets: list[int] = []
+        eligible_crops = [descriptor["crop"] for descriptor in crop_descriptors if descriptor.get("crop") is not None]
+        is_cross_page = len({int(descriptor["page"]) for descriptor in crop_descriptors}) > 1
+        if (
+            composite_enabled
+            and is_cross_page
+            and len(eligible_crops) == len(crop_descriptors)
+            and all(angle == 0 for angle in angles)
+        ):
+            composite_image, y_offsets, _ = self._stack_crops_vertical(eligible_crops)
+
         content_text = "\n".join(getattr(item, "text", "").strip() for item in content_boxes if getattr(item, "text", "").strip())
         html, html_source, table_structure = self._table_html_from_boxes(
             content_boxes,
@@ -205,6 +224,8 @@ class PdfArtifactExtractor:
             crop_descriptors=crop_descriptors,
             zoom=zoom,
             zoom_map=zoom_map,
+            composite_image=composite_image,
+            y_offsets=y_offsets,
         )
         image = self._encode_group_crops(crop_descriptors)
         return {
@@ -220,7 +241,7 @@ class PdfArtifactExtractor:
             "image": image,
             "has_image": bool(image),
             "members": [asdict(item) for item in ordered],
-            "rotation_angle": crop_descriptors[0].get("rotation_angle", 0) if crop_descriptors else 0,
+            "rotation_angle": modal_angle,
         }
 
     def _build_figure_artifact(
@@ -276,12 +297,16 @@ class PdfArtifactExtractor:
         crop_descriptors: Sequence[dict[str, Any]] | None = None,
         zoom: float = 1.0,
         zoom_map: dict[int, float] | None = None,
+        composite_image: Image.Image | None = None,
+        y_offsets: Sequence[int] | None = None,
     ) -> tuple[str, str, dict[str, Any]]:
         tsr_structured_boxes, tsr_meta = self._infer_structured_boxes_from_tsr_model(
             content_boxes,
             crop_descriptors=crop_descriptors,
             zoom=zoom,
             zoom_map=zoom_map,
+            composite_image=composite_image,
+            y_offsets=y_offsets,
         )
         if tsr_structured_boxes:
             try:
@@ -323,10 +348,23 @@ class PdfArtifactExtractor:
         crop_descriptors: Sequence[dict[str, Any]] | None = None,
         zoom: float = 1.0,
         zoom_map: dict[int, float] | None = None,
+        composite_image: Image.Image | None = None,
+        y_offsets: Sequence[int] | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         recognizer = self._get_tsr_recognizer()
         if recognizer is None or not crop_descriptors or not content_boxes:
             return [], {"source": "unavailable", "prediction_pages": 0, "prediction_count": 0}
+
+        if composite_image is not None:
+            return self._infer_structured_boxes_composite(
+                recognizer,
+                content_boxes,
+                crop_descriptors=crop_descriptors,
+                zoom=zoom,
+                zoom_map=zoom_map,
+                composite_image=composite_image,
+                y_offsets=list(y_offsets or []),
+            )
 
         images = [np.array(descriptor["crop"]) for descriptor in crop_descriptors if descriptor.get("crop") is not None]
         if not images:
@@ -376,6 +414,65 @@ class PdfArtifactExtractor:
             "prediction_pages": len(images),
             "prediction_count": prediction_count,
             "crosspage_row_offset": crosspage_row_offset,
+        }
+
+    def _infer_structured_boxes_composite(
+        self,
+        recognizer: Any,
+        content_boxes: Sequence[Any],
+        *,
+        crop_descriptors: Sequence[dict[str, Any]],
+        zoom: float,
+        zoom_map: dict[int, float] | None,
+        composite_image: Image.Image,
+        y_offsets: list[int],
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """跨页合成图模式：TSR 在竖向拼接的合成图上跑一次，R/C 全局连续。
+
+        各页 box 经 ``y_offsets[p]`` 平移到合成图像素坐标后，匹配同一份全局
+        row/column 预测；``crosspage_row_offset`` 记录每页首行的全局 R 起点（诊断用）。
+        对齐上游 ``cropout`` + ``construct_table`` 跨页分支。
+        """
+        try:
+            predictions = recognizer([np.array(composite_image)], thr=0.2)
+        except Exception as exc:
+            return [], {"source": "error", "prediction_pages": 1, "prediction_count": 0, "error": str(exc)}
+        page_predictions = predictions[0] if predictions else []
+
+        structured_boxes: list[dict[str, Any]] = []
+        crosspage_row_offset: list[int] = []
+        for index, descriptor in enumerate(crop_descriptors):
+            y_offset = int(y_offsets[index]) if index < len(y_offsets) else 0
+            page_zoom = float(zoom_map.get(int(descriptor["page"]), zoom) if zoom_map else zoom)
+            page_boxes = self._assign_tsr_predictions_to_boxes(
+                descriptor=descriptor,
+                content_boxes=content_boxes,
+                predictions=page_predictions,
+                zoom=page_zoom,
+                angle=0,
+                rotated_size=None,
+                y_offset=y_offset,
+            )
+            if page_boxes:
+                crosspage_row_offset.append(min(int(box["R"]) for box in page_boxes))
+                structured_boxes.extend(page_boxes)
+            else:
+                crosspage_row_offset.append(-1)
+
+        if not structured_boxes:
+            return [], {
+                "source": "empty",
+                "prediction_pages": 1,
+                "prediction_count": len(page_predictions),
+                "crosspage_row_offset": crosspage_row_offset,
+                "composite": True,
+            }
+        return structured_boxes, {
+            "source": "tsr_model",
+            "prediction_pages": 1,
+            "prediction_count": len(page_predictions),
+            "crosspage_row_offset": crosspage_row_offset,
+            "composite": True,
         }
 
     def _infer_structured_table_boxes(
@@ -618,6 +715,7 @@ class PdfArtifactExtractor:
         zoom: float,
         angle: int = 0,
         rotated_size: tuple[int, int] | None = None,
+        y_offset: int = 0,
     ) -> list[dict[str, Any]]:
         page = int(descriptor["page"])
         bbox = descriptor["bbox"]
@@ -642,6 +740,10 @@ class PdfArtifactExtractor:
         structured_boxes: list[dict[str, Any]] = []
         for box in page_boxes:
             local_box = self._to_local_box(box, bbox=bbox, zoom=zoom)
+            # 合成图模式：把页内 crop 坐标平移到合成图像素坐标，匹配合成图预测。
+            if y_offset:
+                local_box["top"] += y_offset
+                local_box["bottom"] += y_offset
             row_index = self._best_prediction_index(local_box, rows)
             col_index = self._best_prediction_index(local_box, columns)
             if row_index is None or col_index is None:
@@ -649,6 +751,9 @@ class PdfArtifactExtractor:
 
             row_pred = rows[row_index]
             col_pred = columns[col_index]
+            # R_top/R_bott 存页面坐标：合成图预测的 y 减回 y_offset 再 /zoom + bbox.top。
+            row_top_page = float(row_pred["top"]) - y_offset
+            row_bottom_page = float(row_pred["bottom"]) - y_offset
             structured_box = {
                 "text": getattr(box, "text", "").strip(),
                 "x0": float(getattr(box, "x0", 0.0)),
@@ -658,20 +763,22 @@ class PdfArtifactExtractor:
                 "page_number": page - 1,
                 "R": str(row_index),
                 "C": str(col_index),
-                "R_top": self._from_local_coord(row_pred["top"], bbox["top"], zoom),
-                "R_bott": self._from_local_coord(row_pred["bottom"], bbox["top"], zoom),
-                "R_btm": self._from_local_coord(row_pred["bottom"], bbox["top"], zoom),
+                "R_top": self._from_local_coord(row_top_page, bbox["top"], zoom),
+                "R_bott": self._from_local_coord(row_bottom_page, bbox["top"], zoom),
+                "R_btm": self._from_local_coord(row_bottom_page, bbox["top"], zoom),
                 "C_left": self._from_local_coord(col_pred["x0"], bbox["x0"], zoom),
                 "C_right": self._from_local_coord(col_pred["x1"], bbox["x0"], zoom),
                 "H": any(self._prediction_overlap(local_box, header) > 0.3 for header in headers),
             }
             span_pred = self._best_prediction(local_box, spans)
             if span_pred is not None and self._prediction_overlap(local_box, span_pred) > 0.3:
+                span_top_page = float(span_pred["top"]) - y_offset
+                span_bottom_page = float(span_pred["bottom"]) - y_offset
                 structured_box["SP"] = True
                 structured_box["H_left"] = self._from_local_coord(span_pred["x0"], bbox["x0"], zoom)
                 structured_box["H_right"] = self._from_local_coord(span_pred["x1"], bbox["x0"], zoom)
-                structured_box["H_top"] = self._from_local_coord(span_pred["top"], bbox["top"], zoom)
-                structured_box["H_bott"] = self._from_local_coord(span_pred["bottom"], bbox["top"], zoom)
+                structured_box["H_top"] = self._from_local_coord(span_top_page, bbox["top"], zoom)
+                structured_box["H_bott"] = self._from_local_coord(span_bottom_page, bbox["top"], zoom)
             structured_boxes.append(structured_box)
         return structured_boxes
 
@@ -878,6 +985,31 @@ class PdfArtifactExtractor:
                         latin += 1
         return total > 0 and latin / total > 0.5
 
+    @staticmethod
+    def _stack_crops_vertical(
+        crops: Sequence[Image.Image],
+    ) -> tuple[Image.Image, list[int], list[int]]:
+        """竖向拼接 crops：width=max, height=sum, paste at (0, cursor_y)。
+
+        返回 ``(composite, y_offsets, page_heights)``：``y_offsets[p]`` 为第 p 张 crop
+        在合成图中的顶端 y 像素，用于把 TSR 在合成图上的预测框映射回各页 crop 坐标。
+        对齐上游 RAGFlow ``cropout`` 的跨页拼接方式。
+        """
+        if not crops:
+            raise ValueError("_stack_crops_vertical 至少需要一张 crop")
+        composite_width = max(image.size[0] for image in crops)
+        composite_height = sum(image.size[1] for image in crops)
+        composite = Image.new("RGB", (composite_width, composite_height), (245, 245, 245))
+        y_offsets: list[int] = []
+        page_heights: list[int] = []
+        cursor_y = 0
+        for crop in crops:
+            y_offsets.append(cursor_y)
+            page_heights.append(crop.size[1])
+            composite.paste(crop, (0, cursor_y))
+            cursor_y += crop.size[1]
+        return composite, y_offsets, page_heights
+
     def _encode_crops(self, crops: Sequence[Image.Image]) -> list[bytes]:
         if not crops:
             return []
@@ -889,14 +1021,7 @@ class PdfArtifactExtractor:
             ordered_crops[0].save(buffer, format="PNG")
             return [buffer.getvalue()]
 
-        composite_width = max(image.size[0] for image in ordered_crops)
-        composite_height = sum(image.size[1] for image in ordered_crops)
-        composite = Image.new("RGB", (composite_width, composite_height), (245, 245, 245))
-        cursor_y = 0
-        for crop in ordered_crops:
-            composite.paste(crop, (0, cursor_y))
-            cursor_y += crop.size[1]
-
+        composite, _, _ = self._stack_crops_vertical(ordered_crops)
         composite_buffer = BytesIO()
         composite.save(composite_buffer, format="PNG")
         blobs.append(composite_buffer.getvalue())
