@@ -133,6 +133,9 @@
                   <el-tooltip v-if="canProcess(row)" content="处理" placement="top">
                     <el-button :icon="VideoPlay" circle size="small" type="primary" @click="handleProcessSingle(row)" />
                   </el-tooltip>
+                  <el-tooltip v-if="canReprocess(row)" content="重新处理" placement="top">
+                    <el-button :icon="VideoPlay" circle size="small" type="primary" @click="handleProcessSingle(row)" />
+                  </el-tooltip>
                   <el-tooltip v-if="canCancel(row)" content="取消" placement="top">
                     <el-button :icon="Close" circle size="small" type="warning" @click="handleCancelSingle(row)" />
                   </el-tooltip>
@@ -142,8 +145,8 @@
                   <el-tooltip content="详情" placement="top">
                     <el-button :icon="View" circle size="small" @click="goToDetail(row.id)" />
                   </el-tooltip>
-                  <el-tooltip content="删除" placement="top">
-                    <el-button :icon="Delete" circle size="small" @click="handleDelete(row)" />
+                  <el-tooltip v-if="canDelete(row)" content="删除" placement="top">
+                    <el-button :icon="Delete" circle size="small" type="danger" @click="handleDelete(row)" />
                   </el-tooltip>
                 </div>
               </template>
@@ -538,19 +541,44 @@ function getStatusConfig(status: number | undefined) {
   return taskStatusMap[status ?? 0] ?? { text: '未知', type: 'info' as const }
 }
 
+// 文档状态枚举（与后端 TaskStatus / 前端 taskStatusMap 对齐：
+// 0 待处理 / 1 处理中 / 2 已完成 / 3 失败 / 4 已取消）
+const DOC_STATUS = {
+  PENDING: 0,
+  PROCESSING: 1,
+  COMPLETED: 2,
+  FAILED: 3,
+  CANCELLED: 4,
+} as const
+
+/**
+ * 各状态可执行操作（与后端校验严格对齐，避免按钮可见却报错）：
+ * - 0 待处理：处理 / 详情 / 删除
+ * - 1 处理中：取消 / 详情            （delete 被后端 DocumentAlreadyProcessingError 拒绝）
+ * - 2 已完成：重新处理 / 详情 / 删除
+ * - 3 失败：重试 / 详情 / 删除
+ * - 4 已取消：处理 / 详情 / 删除
+ */
 function canProcess(doc: DocType): boolean {
   const s = doc.status ?? 0
-  return s === 0 || s === 2 || s === 3
+  return s === DOC_STATUS.PENDING || s === DOC_STATUS.CANCELLED
+}
+
+function canReprocess(doc: DocType): boolean {
+  return (doc.status ?? 0) === DOC_STATUS.COMPLETED
 }
 
 function canCancel(doc: DocType): boolean {
-  const s = doc.status ?? 0
-  return s === 0 || s === 1
+  return (doc.status ?? 0) === DOC_STATUS.PROCESSING
 }
 
 function canRetry(doc: DocType): boolean {
-  const s = doc.status ?? 0
-  return s === 3
+  return (doc.status ?? 0) === DOC_STATUS.FAILED
+}
+
+function canDelete(doc: DocType): boolean {
+  // 处理中的文档后端拒绝删除（有活跃任务），其余状态可删
+  return (doc.status ?? 0) !== DOC_STATUS.PROCESSING
 }
 
 async function handleProcessSingle(doc: DocType) {
