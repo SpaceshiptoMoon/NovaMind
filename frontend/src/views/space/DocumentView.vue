@@ -127,27 +127,15 @@
                 <span class="text-muted">{{ formatDate(row.created_at) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="" width="170" fixed="right" align="right">
+            <el-table-column label="" width="260" fixed="right" align="right">
               <template #default="{ row }">
                 <div class="action-buttons">
-                  <el-tooltip v-if="canProcess(row)" content="首次处理" placement="top">
-                    <el-button :icon="VideoPlay" circle size="small" type="primary" @click="handleProcessSingle(row)" />
-                  </el-tooltip>
-                  <el-tooltip v-if="canReprocess(row)" content="重新处理" placement="top">
-                    <el-button :icon="RefreshRight" circle size="small" type="primary" @click="handleProcessSingle(row)" />
-                  </el-tooltip>
-                  <el-tooltip v-if="canCancel(row)" content="取消" placement="top">
-                    <el-button :icon="Close" circle size="small" type="warning" @click="handleCancelSingle(row)" />
-                  </el-tooltip>
-                  <el-tooltip v-if="canRetry(row)" content="重试" placement="top">
-                    <el-button :icon="RefreshRight" circle size="small" type="success" @click="handleRetrySingle(row)" />
-                  </el-tooltip>
-                  <el-tooltip content="详情" placement="top">
-                    <el-button :icon="View" circle size="small" @click="goToDetail(row.id)" />
-                  </el-tooltip>
-                  <el-tooltip v-if="canDelete(row)" content="删除" placement="top">
-                    <el-button :icon="Delete" circle size="small" type="danger" @click="handleDelete(row)" />
-                  </el-tooltip>
+                  <el-button v-if="canProcess(row)" size="small" type="primary" :icon="VideoPlay" @click="handleProcessSingle(row)">首次处理</el-button>
+                  <el-button v-if="canReprocess(row)" size="small" type="primary" :icon="RefreshRight" @click="handleProcessSingle(row)">重新处理</el-button>
+                  <el-button v-if="canCancel(row)" size="small" type="warning" :icon="Close" @click="handleCancelSingle(row)">取消</el-button>
+                  <el-button v-if="canRetry(row)" size="small" type="warning" :icon="RefreshRight" @click="handleRetrySingle(row)">重试</el-button>
+                  <el-button size="small" :icon="View" @click="goToDetail(row.id)">详情</el-button>
+                  <el-button v-if="canDelete(row)" size="small" type="danger" :icon="Delete" @click="handleDelete(row)">删除</el-button>
                 </div>
               </template>
             </el-table-column>
@@ -905,6 +893,7 @@ onMounted(async () => {
   display: flex;
   gap: var(--space-1);
   justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .upload-area :deep(.el-upload-dragger) {
