@@ -24,9 +24,20 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="时间" width="200">
+      <el-table-column label="时间" width="190">
         <template #default="{ row }">
           <span class="node-time">{{ row.timeText }}</span>
+        </template>
+      </el-table-column>
+
+      <el-table-column label="错误" min-width="220">
+        <template #default="{ row }">
+          <span v-if="row.error" class="node-error">
+            <el-tooltip :content="row.error" placement="top" :show-after="150">
+              <span class="node-error-text">{{ row.error }}</span>
+            </el-tooltip>
+          </span>
+          <span v-else class="node-metrics is-empty">-</span>
         </template>
       </el-table-column>
     </el-table>
@@ -39,7 +50,6 @@
 import { computed } from 'vue'
 
 import type { TaskNodeLog } from '@/api/types'
-import { formatDate } from '@/utils/format'
 
 const props = defineProps<{
   stepProgress?: Record<string, TaskNodeLog | string> | null
@@ -86,6 +96,7 @@ interface NodeRow {
   durationText: string
   metricsText: string
   timeText: string
+  error: string | null
 }
 
 function normalizeEntry(entry: TaskNodeLog | string | undefined): TaskNodeLog | null {
@@ -132,10 +143,37 @@ function formatMetrics(metrics?: Record<string, unknown>): string {
     .join(' · ')
 }
 
+function pad2(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+// 紧凑时间范围：同一天省略第二个日期，避免「2026/9/2 17:02 → 2026/9/2 17:26」
+// 在窄列里折行。同天：09-02 17:02→17:26；跨天：09-02 17:02 → 09-03 08:00。
+function formatCompactHM(date: Date): string {
+  return `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+}
+
 function formatTimeRange(started?: string | null, finished?: string | null): string {
-  if (started && finished) return `${formatDate(started)} → ${formatDate(finished)}`
-  if (started) return `${formatDate(started)} →`
-  if (finished) return `→ ${formatDate(finished)}`
+  const toDate = (s?: string | null): Date | null => {
+    if (!s) return null
+    const d = new Date(s)
+    return Number.isNaN(d.getTime()) ? null : d
+  }
+  const st = toDate(started)
+  const fi = toDate(finished)
+  if (st && fi) {
+    const sameDay =
+      st.getFullYear() === fi.getFullYear() &&
+      st.getMonth() === fi.getMonth() &&
+      st.getDate() === fi.getDate()
+    if (sameDay) {
+      const hm = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+      return `${formatCompactHM(st)}→${hm(fi)}`
+    }
+    return `${formatCompactHM(st)} → ${formatCompactHM(fi)}`
+  }
+  if (st) return `${formatCompactHM(st)} →`
+  if (fi) return `→ ${formatCompactHM(fi)}`
   return '-'
 }
 
@@ -161,6 +199,7 @@ const rows = computed<NodeRow[]>(() => {
       durationText: formatDurationMs(node.duration_ms),
       metricsText: formatMetrics(node.metrics),
       timeText: formatTimeRange(node.started_at, node.finished_at),
+      error: node.error ?? null,
     })
   }
 
@@ -177,6 +216,7 @@ const rows = computed<NodeRow[]>(() => {
       durationText: formatDurationMs(node.duration_ms),
       metricsText: formatMetrics(node.metrics),
       timeText: formatTimeRange(node.started_at, node.finished_at),
+      error: node.error ?? null,
     })
   }
 
@@ -220,5 +260,18 @@ const rows = computed<NodeRow[]>(() => {
 .node-time {
   color: var(--color-text-muted);
   font-size: 12px;
+  white-space: nowrap;
+}
+
+.node-error-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  color: var(--el-color-danger, #f56c6c);
+  font-size: 12px;
+  cursor: default;
 }
 </style>
