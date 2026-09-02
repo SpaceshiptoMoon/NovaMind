@@ -161,34 +161,43 @@
           @update:page-size="(s: number) => { pageSize = s; currentPage = 1; fetchDocuments() }"
         />
 
-        <el-dialog v-model="uploadDialogVisible" title="上传文档" width="680px" destroy-on-close>
-          <el-form label-width="80px">
-            <el-form-item label="选择文件">
-              <el-upload
-                ref="uploadRef"
-                :auto-upload="false"
-                :limit="20"
-                multiple
-                :file-list="fileList"
-                :on-change="handleFileChange"
-                :on-remove="handleFileRemove"
-                :on-exceed="handleExceed"
-                :accept="uploadAccept"
-                drag
-                class="upload-area"
-              >
-                <div class="upload-inner">
-                  <el-icon class="upload-icon"><UploadFilled /></el-icon>
-                  <div class="upload-text">
-                    拖拽文件到此处，或<em>点击上传</em>
-                  </div>
-                  <div class="upload-tip">
-                    {{ uploadTipText }}
-                  </div>
-                </div>
-              </el-upload>
-            </el-form-item>
-          </el-form>
+        <el-dialog v-model="uploadDialogVisible" title="上传文档" width="680px" destroy-on-close class="upload-dialog">
+          <el-upload
+            ref="uploadRef"
+            :auto-upload="false"
+            :limit="200"
+            multiple
+            :file-list="fileList"
+            :on-change="handleFileChange"
+            :on-remove="handleFileRemove"
+            :on-exceed="handleExceed"
+            :accept="uploadAccept"
+            drag
+            class="upload-area"
+          >
+            <div class="upload-inner">
+              <el-icon class="upload-icon"><UploadFilled /></el-icon>
+              <div class="upload-text">
+                拖拽文件到此处，或<em>点击上传</em>
+              </div>
+              <div class="upload-tip">
+                {{ uploadTipText }}
+              </div>
+              <el-button text type="primary" class="upload-folder-btn" @click.stop="triggerFolderPick">
+                <el-icon><FolderOpened /></el-icon>
+                选择文件夹
+              </el-button>
+            </div>
+          </el-upload>
+          <input
+            ref="folderInputRef"
+            type="file"
+            multiple
+            hidden
+            class="hidden-folder-input"
+            v-bind="{ webkitdirectory: true, directory: true }"
+            @change="handleFolderChange"
+          />
           <template #footer>
             <el-button @click="uploadDialogVisible = false">取消</el-button>
             <el-button type="primary" :loading="uploadLoading" @click="handleUpload" :disabled="selectedFiles.length === 0">
@@ -217,7 +226,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, DataAnalysis, Delete, Document, List, RefreshRight, Search, Upload, UploadFilled, VideoPlay, View } from '@element-plus/icons-vue'
+import { Close, DataAnalysis, Delete, Document, FolderOpened, List, RefreshRight, Search, Upload, UploadFilled, VideoPlay, View } from '@element-plus/icons-vue'
 import type { UploadFile } from 'element-plus'
 
 import { documentApi, knowledgeBaseApi } from '@/api/knowledge'
@@ -271,6 +280,11 @@ const currentPage = ref(1)
 const pageSize = ref(20)
 const fileList = ref<UploadFile[]>([])
 const selectedFiles = ref<File[]>([])
+const folderInputRef = ref<HTMLInputElement | null>(null)
+// 单次上传文件数上限（与后端 MAX_BATCH_FILE_COUNT 对齐，支持文件夹整体上传）
+const MAX_UPLOAD_COUNT = 200
+// 文件夹选择时手动入队的 uid 基数，取负值避免与 el-upload 内部正序 uid 冲突
+let folderFileUid = -1
 const selectedIds = ref<number[]>([])
 const processTargetIds = ref<number[]>([])
 const statusFilter = ref<number | undefined>(undefined)
@@ -284,6 +298,8 @@ const statusOptions = [
 ]
 
 const uploadAccept = computed(() => getUploadAccept(spaceTypes.value))
+// 文件夹选择不接受 accept 属性，需按扩展名白名单手动过滤
+const allowedExtensions = computed(() => new Set(uploadAccept.value.split(',').map((e) => e.trim().toLowerCase())))
 const readableSpaceTypes = computed(() => {
   const labels: Record<string, string> = {
     text: '文本',
@@ -302,11 +318,27 @@ const uploadTipText = computed(() => {
   if (hasModality(spaceTypes.value, 'audio')) parts.push('MP3/WAV/FLAC/AAC/OGG/M4A')
   const maxMB = Math.max(...spaceTypes.value.map(t => ({ text: 100, image: 100, video: 500, audio: 200 })[t] || 100))
   const docHint = hasModality(spaceTypes.value, 'text') ? '，其中 .doc 会自动转换为 .docx' : ''
-  return `支持 ${parts.join(' + ')}${docHint}，视频最大 500MB，音频最大 200MB，其它最大 ${maxMB}MB，最多 20 个`
+  return `支持 ${parts.join(' + ')}${docHint}，视频最大 500MB，音频最大 200MB，其它最大 ${maxMB}MB，最多 ${MAX_UPLOAD_COUNT} 个`
 })
 
 function handleSelectionChange(rows: DocType[]) {
   selectedIds.value = rows.map((r) => r.id)
+}
+
+/**
+ * 校验单个文件（扩展名 + 大小）并加入待上传队列。
+ * el-upload 的 on-change 与文件夹选择两条路径共用，避免逻辑分叉。
+ * 返回 true 表示入队成功；失败时自行弹出提示，调用方负责回滚 fileList 展示。
+ */
+function addFile(file: File): boolean {
+  const ext = file.name.split('.').pop()?.toLowerCase() || ''
+  const maxSizeMB = getFileMaxSize(ext)
+  if (file.size > maxSizeMB * 1024 * 1024) {
+    ElMessage.error(`文件 "${file.name}" 大小不能超过 ${maxSizeMB}MB`)
+    return false
+  }
+  selectedFiles.value.push(file)
+  return true
 }
 
 function handleFileChange(file: UploadFile) {
@@ -314,14 +346,10 @@ function handleFileChange(file: UploadFile) {
     ElMessage.warning('文件读取失败，请重新选择')
     return
   }
-  const ext = file.name.split('.').pop()?.toLowerCase() || ''
-  const maxSizeMB = getFileMaxSize(ext)
-  if (file.raw.size > maxSizeMB * 1024 * 1024) {
-    ElMessage.error(`文件 "${file.name}" 大小不能超过 ${maxSizeMB}MB`)
+  if (!addFile(file.raw)) {
+    // 校验失败：el-upload 已把该项加入 fileList，这里移除展示
     fileList.value = fileList.value.filter((f) => f.uid !== file.uid)
-    return
   }
-  selectedFiles.value.push(file.raw)
 }
 
 function handleFileRemove(file: UploadFile) {
@@ -329,7 +357,56 @@ function handleFileRemove(file: UploadFile) {
 }
 
 function handleExceed() {
-  ElMessage.warning('最多只可上传 20 个文件')
+  ElMessage.warning(`最多只可上传 ${MAX_UPLOAD_COUNT} 个文件`)
+}
+
+/** 触发隐藏的文件夹选择 input。点击事件 stop 以免冒泡到 el-upload 打开普通文件选择。 */
+function triggerFolderPick() {
+  folderInputRef.value?.click()
+}
+
+/** 文件夹选择回调：递归收集文件夹下所有文件，按扩展名白名单与大小过滤后入队。 */
+function handleFolderChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  if (!files.length) return
+
+  let added = 0
+  let skippedType = 0
+  let skippedSize = 0
+  for (const file of files) {
+    if (selectedFiles.value.length >= MAX_UPLOAD_COUNT) {
+      ElMessage.warning(`已达单次上传上限 ${MAX_UPLOAD_COUNT} 个文件，其余已忽略`)
+      break
+    }
+    const ext = file.name.split('.').pop()?.toLowerCase() || ''
+    if (!allowedExtensions.value.has(`.${ext}`)) {
+      skippedType++
+      continue
+    }
+    const maxSizeMB = getFileMaxSize(ext)
+    if (file.size > maxSizeMB * 1024 * 1024) {
+      skippedSize++
+      continue
+    }
+    selectedFiles.value.push(file)
+    fileList.value.push({
+      name: file.name,
+      uid: folderFileUid--,
+      raw: file,
+      status: 'ready',
+    } as UploadFile)
+    added++
+  }
+
+  if (added) {
+    const detail = [skippedType && `${skippedType} 个不支持的类型`, skippedSize && `${skippedSize} 个超大小`].filter(Boolean).join('，')
+    ElMessage.success(`已添加 ${added} 个文件${detail ? `（跳过 ${detail}）` : ''}`)
+  } else if (skippedType || skippedSize) {
+    ElMessage.warning('所选文件夹中没有符合要求的文件')
+  }
+  // 重置 input.value，否则连续选择同一文件夹不触发 change
+  input.value = ''
 }
 
 function showUploadDialog() {
@@ -838,6 +915,21 @@ onMounted(async () => {
 .upload-tip {
   font-size: var(--text-sm);
   color: var(--color-text-faint);
+}
+
+.upload-folder-btn {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+/* el-upload 内嵌按钮触发 dragger hover 高亮，禁用其 pointer-events 干扰 */
+.upload-folder-btn :deep(span) {
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.hidden-folder-input {
+  display: none;
 }
 
 .process-desc {

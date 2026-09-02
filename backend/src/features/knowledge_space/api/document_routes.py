@@ -68,8 +68,8 @@ MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB
 # 允许上传的文件类型白名单（从 document_file_types.SUPPORTED_FILE_TYPES 派生，无需手动维护）
 ALLOWED_FILE_EXTENSIONS = {f".{t}" for t in SUPPORTED_FILE_TYPES}
 
-# 批量上传最大文件数
-MAX_BATCH_FILE_COUNT = 20
+# 批量上传最大文件数（支持文件夹整体上传，放宽到 200）
+MAX_BATCH_FILE_COUNT = 200
 
 router = APIRouter(tags=["文档管理"])
 
@@ -127,7 +127,7 @@ async def _build_chunk_response(c: dict) -> ChunkResponse:
 @router.post(
     "/{kb_id}/documents",
     summary="上传文档",
-    description="上传文档到知识库（仅存储，不触发解析）。支持单文件和多文件批量上传（最多20个）",
+    description="上传文档到知识库（仅存储，不触发解析）。支持单文件、多文件及文件夹批量上传（最多200个）",
 )
 async def upload_document(
     request: Request,
