@@ -56,16 +56,21 @@ class LayoutRecognizer(Recognizer):
         garbages: dict[str, list[str]] = {}
         assert len(image_list) == len(layouts)
 
+        scale_factors = scale_factor if isinstance(scale_factor, (list, tuple)) else [scale_factor] * len(image_list)
+        if len(scale_factors) != len(image_list):
+            scale_factors = [scale_factors[0] if scale_factors else 3] * len(image_list)
+
         for page_number, raw_layouts in enumerate(layouts):
+            page_scale = scale_factors[page_number]
             page_boxes = [dict(box) for box in ocr_res[page_number]]
             normalized_layouts = [
                 {
                     "type": item["type"],
                     "score": float(item["score"]),
-                    "x0": item["bbox"][0] / scale_factor,
-                    "x1": item["bbox"][2] / scale_factor,
-                    "top": item["bbox"][1] / scale_factor,
-                    "bottom": item["bbox"][-1] / scale_factor,
+                    "x0": item["bbox"][0] / page_scale,
+                    "x1": item["bbox"][2] / page_scale,
+                    "top": item["bbox"][1] / page_scale,
+                    "bottom": item["bbox"][-1] / page_scale,
                     "page_number": page_number,
                 }
                 for item in raw_layouts
@@ -95,8 +100,8 @@ class LayoutRecognizer(Recognizer):
                     candidates[match_index]["visited"] = True
                     image_height = image_list[page_number].shape[0] if hasattr(image_list[page_number], "shape") else image_list[page_number].size[1]
                     keep_features = [
-                        candidates[match_index]["type"] == "footer" and page_boxes[i]["bottom"] < image_height * 0.9 / scale_factor,
-                        candidates[match_index]["type"] == "header" and page_boxes[i]["top"] > image_height * 0.1 / scale_factor,
+                        candidates[match_index]["type"] == "footer" and page_boxes[i]["bottom"] < image_height * 0.9 / page_scale,
+                        candidates[match_index]["type"] == "header" and page_boxes[i]["top"] > image_height * 0.1 / page_scale,
                     ]
                     if drop and candidates[match_index]["type"] in self.garbage_layouts and not any(keep_features):
                         garbages.setdefault(candidates[match_index]["type"], []).append(page_boxes[i]["text"])
@@ -106,7 +111,7 @@ class LayoutRecognizer(Recognizer):
                     page_boxes[i]["layout_type"] = candidates[match_index]["type"] if candidates[match_index]["type"] != "equation" else "figure"
                     i += 1
 
-            for layout_type in ["footer", "header", "reference", "figure caption", "table caption", "title", "table", "text", "figure", "equation"]:
+            for layout_type in ["footer", "reference", "figure caption", "table caption", "title", "table", "text", "figure", "equation"]:
                 find_layout(layout_type)
 
             for index, layout in enumerate([lt for lt in normalized_layouts if lt["type"] in ["figure", "equation", "table"]]):

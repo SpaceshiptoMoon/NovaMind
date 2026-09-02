@@ -7,6 +7,8 @@ display-math fragments at varying x positions were interleaved out of vertical
 reading order. The fix sorts by ``(page, col_id, top, x0)`` so each column is
 read top-to-bottom before moving to the next column.
 """
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 
@@ -20,12 +22,22 @@ from novamind.engines.document.integrations.deepdoc.parsers.pdf import (
     DeepDocPdfBox,
     RAGFlowPdfParser,
 )
+from novamind.engines.document.integrations.deepdoc.pdf_layout import PdfLayoutExtractor
 from novamind.engines.document.integrations.deepdoc.updown_concat import (
     UpDownConcatMerger,
 )
 
 
-def _box(page: int, col_id: int, x0: float, top: float, text: str) -> DeepDocPdfBox:
+def _box(
+    page: int,
+    col_id: int,
+    x0: float,
+    top: float,
+    text: str,
+    *,
+    layout_type: str = "text",
+    layoutno: str = "",
+) -> DeepDocPdfBox:
     """Build a minimal text box; x1/top geometry only needs to be self-consistent."""
     width = 200.0
     height = 12.0
@@ -37,6 +49,8 @@ def _box(page: int, col_id: int, x0: float, top: float, text: str) -> DeepDocPdf
         bottom=top + height,
         text=text,
         col_id=col_id,
+        layout_type=layout_type,
+        layoutno=layoutno,
     )
 
 
@@ -93,6 +107,67 @@ def test_build_reading_order_metadata_is_column_aware():
     order = RAGFlowPdfParser._build_reading_order_metadata(boxes, [], [])
     texts = [e["text"] for e in order if e.get("kind") == "text"]
     assert texts == ["L1", "L2", "R1", "R2"]
+
+
+def test_assign_column_wires_pdf_layout(monkeypatch):
+    """_assign_column 应把 boxes 交给 PdfLayoutExtractor.assign_columns 并写回 col_id。"""
+    from novamind.engines.document.integrations.deepdoc.pdf_layout import PdfLayoutExtractor
+
+    parser = RAGFlowPdfParser.__new__(RAGFlowPdfParser)
+    parser._layout_extractor = PdfLayoutExtractor.__new__(PdfLayoutExtractor)
+
+    def fake_assign_columns(boxes):
+        for box in boxes:
+            box["col_id"] = 1 if box["x0"] > 200 else 0
+        return boxes
+
+    monkeypatch.setattr(parser._layout_extractor, "assign_columns", fake_assign_columns)
+
+    boxes = [
+        _box(1, 0, 80.0, 100.0, "left"),
+        _box(1, 0, 400.0, 100.0, "right"),
+    ]
+    assigned = parser._assign_column(boxes)
+    assert [b.col_id for b in assigned] == [0, 1]
+
+
+def test_text_merge_horizontal_text_only():
+    """同 col、同 layoutno、相邻 y 的文本碎片应横向合并；表格/图片 box 不参与。"""
+    parser = RAGFlowPdfParser.__new__(RAGFlowPdfParser)
+    parser._layout_extractor = PdfLayoutExtractor.__new__(PdfLayoutExtractor)
+    parser._assign_column = lambda boxes, zoomin=3: boxes
+
+    boxes = [
+        _box(1, 0, 80.0, 100.0, "Hello ", layoutno="L1"),
+        _box(1, 0, 300.0, 100.0, "world", layoutno="L1"),
+        _box(1, 0, 80.0, 200.0, "Second line", layoutno="L2"),
+        _box(1, 0, 80.0, 300.0, "table-cell", layout_type="table"),
+    ]
+    merged = parser._text_merge(boxes)
+    texts = [b.text for b in merged]
+    assert "Hello world" in texts
+    assert "Second line" in texts
+    assert "table-cell" in texts
+    assert texts.count("Hello world") == 1
+    assert texts.count("Second line") == 1
+    assert texts.count("table-cell") == 1
+
+
+def test_box_to_dict_round_trip_preserves_layoutno():
+    """DeepDocPdfBox.to_dict / from_dict 应保留 layoutno。"""
+    box = _box(1, 0, 80.0, 100.0, "x", layoutno="layout-1")
+    restored = DeepDocPdfBox.from_dict(box.to_dict())
+    assert restored.layoutno == "layout-1"
+    assert restored.page == box.page
+    assert restored.x0 == box.x0
+
+
+def test_updown_concat_preserves_layoutno():
+    """UpDownConcatMerger 状态转换应保留 layoutno 字段。"""
+    merger = UpDownConcatMerger()
+    boxes = [_box(1, 0, 80.0, 100.0, "a", layoutno="L1")]
+    merged = merger._heuristic_merge(boxes)
+    assert merged[0].layoutno == "L1"
 
 
 if __name__ == "__main__":

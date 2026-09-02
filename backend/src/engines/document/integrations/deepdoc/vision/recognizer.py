@@ -432,6 +432,14 @@ class Recognizer:
             logging.debug("recognizer preprocess complete for %s batch %s", self.domain, index)
             for inputs in batch_inputs:
                 outputs = self._run_model_batch(inputs)
+                if not outputs:
+                    _logger.warning(
+                        "DeepDoc 识别器模型返回空输出",
+                        domain=self.domain,
+                        batch_index=index,
+                    )
+                    results.append([])
+                    continue
                 results.append(self.postprocess(outputs[0], inputs, thr))
         return results
 

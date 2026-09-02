@@ -557,7 +557,7 @@ class OCR:
             self.load()
         return self
 
-    def get_rotate_crop_image(self, img, points):
+    def get_rotate_crop_image(self, img, points, device_id: int | None = None):
         """
         img_height, img_width = img.shape[0:2]
         left = int(np.min(points[:, 0]))
@@ -568,6 +568,9 @@ class OCR:
         points[:, 0] = points[:, 0] - left
         points[:, 1] = points[:, 1] - top
         """
+        if device_id is None:
+            device_id = 0
+        recognizer = self.text_recognizer[device_id] if device_id < len(self.text_recognizer) else self.text_recognizer[0]
         assert len(points) == 4, "shape of points must be 4*2"
         img_crop_width = int(max(np.linalg.norm(points[0] - points[1]), np.linalg.norm(points[2] - points[3])))
         img_crop_height = int(max(np.linalg.norm(points[0] - points[3]), np.linalg.norm(points[1] - points[2])))
@@ -577,14 +580,14 @@ class OCR:
         dst_img_height, dst_img_width = dst_img.shape[0:2]
         if dst_img_height * 1.0 / dst_img_width >= 1.5:
             # Try original orientation
-            rec_result = self.text_recognizer[0]([dst_img])
+            rec_result = recognizer([dst_img])
             text, score = rec_result[0][0]
             best_score = score
             best_img = dst_img
 
             # Try clockwise 90° rotation
             rotated_cw = np.rot90(dst_img, k=3)
-            rec_result = self.text_recognizer[0]([rotated_cw])
+            rec_result = recognizer([rotated_cw])
             rotated_cw_text, rotated_cw_score = rec_result[0][0]
             if rotated_cw_score > best_score:
                 best_score = rotated_cw_score
@@ -592,7 +595,7 @@ class OCR:
 
             # Try counter-clockwise 90° rotation
             rotated_ccw = np.rot90(dst_img, k=1)
-            rec_result = self.text_recognizer[0]([rotated_ccw])
+            rec_result = recognizer([rotated_ccw])
             rotated_ccw_text, rotated_ccw_score = rec_result[0][0]
             if rotated_ccw_score > best_score:
                 best_img = rotated_ccw

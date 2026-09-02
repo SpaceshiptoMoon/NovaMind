@@ -24,6 +24,7 @@ from novamind.engines.document.integrations.deepdoc.pdf_artifacts import PdfArti
 from novamind.engines.document.integrations.deepdoc.pdf_layout import PdfLayoutExtractor
 from novamind.engines.document.integrations.deepdoc.parsers.pdf_plain import RAGFlowPlainPdfParser
 from novamind.engines.document.integrations.deepdoc.updown_concat import UpDownConcatMerger
+from novamind.engines.document.integrations.deepdoc.vision.recognizer import Recognizer
 from novamind.engines.document.integrations.deepdoc.vision_runtime import get_vision_health_status
 
 # Structured logger (structlog BoundLogger) — accepts key=value context kwargs
@@ -44,6 +45,31 @@ class DeepDocPdfBox:
     position_tag: str = ""
     positions: list[list[float]] | None = None
     layout_type: str = ""
+    layoutno: str = ""
+
+    @property
+    def height(self) -> float:
+        return max(self.bottom - self.top, 0.0)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "DeepDocPdfBox":
+        positions = data.get("positions")
+        return cls(
+            page=int(data.get("page_number", data.get("page", 0))),
+            x0=float(data["x0"]),
+            x1=float(data["x1"]),
+            top=float(data["top"]),
+            bottom=float(data["bottom"]),
+            text=str(data.get("text", "")),
+            col_id=int(data.get("col_id", 0)),
+            position_tag=str(data.get("position_tag", "")),
+            positions=[list(pos) for pos in positions] if positions else None,
+            layout_type=str(data.get("layout_type", "")),
+            layoutno=str(data.get("layoutno", "")),
+        )
 
     def as_tagged_text(self) -> str:
         return f"{self.position_tag or self.line_tag()}{self.text}"
@@ -478,8 +504,52 @@ class RAGFlowPdfParser:
     def _concat_downward(self, boxes):
         return list(boxes)
 
-    def _text_merge(self, boxes):
-        return list(boxes)
+    def _text_merge(self, boxes, zoomin=3):
+        """对同栏、同版面块的纯文本行做横向拼接。
+
+        先分栏，再按行间距与水平间隙合并相邻文本行。
+        """
+        if not boxes:
+            return boxes
+        boxes = self._assign_column(boxes, zoomin)
+        boxes = Recognizer.sort_Y_firstly(
+            [b.to_dict() for b in boxes],
+            max(b.height for b in boxes) * 0.5,
+        )
+        boxes = [DeepDocPdfBox.from_dict(b) for b in boxes]
+
+        merged: list[DeepDocPdfBox] = []
+        for box in boxes:
+            if box.layout_type not in {"text", ""} or not box.text.strip():
+                merged.append(box)
+                continue
+            if not merged:
+                merged.append(box)
+                continue
+
+            last = merged[-1]
+            same_page = box.page == last.page
+            same_col = box.col_id == last.col_id
+            same_layout = box.layoutno and box.layoutno == last.layoutno
+            vertical_gap = abs(last.bottom - box.bottom)
+            horizontal_gap = box.x0 - last.x1
+            char_h = max(box.height, last.height, 1e-6)
+
+            if (
+                same_page
+                and same_col
+                and same_layout
+                and vertical_gap < char_h * 0.6
+                and horizontal_gap > 0
+                and horizontal_gap < char_h * 2.5
+            ):
+                last.text += box.text
+                last.x1 = max(last.x1, box.x1)
+                last.bottom = max(last.bottom, box.bottom)
+                last.top = min(last.top, box.top)
+                continue
+            merged.append(box)
+        return merged
 
     def _filter_forpages(self, boxes):
         return list(boxes)
@@ -506,7 +576,19 @@ class RAGFlowPdfParser:
         return self.page_layout
 
     def _assign_column(self, boxes, zoomin=3):
-        return boxes
+        """调用 PdfLayoutExtractor 的 assign_columns 给文本框标 col_id。"""
+        if not boxes:
+            return boxes
+        if self._layout_extractor is None:
+            return boxes
+
+        dict_boxes = []
+        for box in boxes:
+            d = box.to_dict()
+            d["page_number"] = box.page
+            dict_boxes.append(d)
+        assigned = self._layout_extractor.assign_columns(dict_boxes)
+        return [DeepDocPdfBox.from_dict(b) for b in assigned]
 
     def _extract_table_figure(self, *args, **kwargs):
         return [], []
@@ -598,10 +680,11 @@ class RAGFlowPdfParser:
         plain_sections, _, outlines = self._plain_parser(filename)
         image_list, fused_pages, layout_pages, fusion_meta = self._extract_fused_pages(filename)
         page_count = len(image_list)
+        effective_zooms: list[int] = fusion_meta.get("effective_zooms", [2] * page_count)
         layout_boxes, page_layout = self._get_layout_recognizer()(
             image_list,
             fused_pages,
-            scale_factor=2,
+            scale_factor=effective_zooms,
             layouts=layout_pages,
             drop=False,
         )
@@ -639,10 +722,14 @@ class RAGFlowPdfParser:
                     ]
                 ],
                 layout_type=str(box.get("layout_type", "")),
+                layoutno=str(box.get("layoutno", "")),
             )
             for box in layout_boxes
         ]
         text_boxes = [box for box in all_boxes if box.text.strip()]
+        # 先做列检测 + 横向合并，再做纵向段落合并。上游 _text_merge 负责把同行文字
+        # 碎片合并，避免双栏论文中一个标题/句子被切成多个 chunk。
+        text_boxes = self._text_merge(text_boxes)
         merged_boxes, merge_strategy = self._merge_vertical_boxes_with_strategy(text_boxes)
         filtered_boxes, filter_meta = self._filter_boxes_with_meta(merged_boxes or text_boxes, total_pages=page_count)
         chunk_boxes = filtered_boxes or merged_boxes or text_boxes
@@ -650,7 +737,11 @@ class RAGFlowPdfParser:
         # artifact 页从 fitz 按需渲染 PIL（仅含表格/图片的页，_collect_group_crops 按 page key 查）。
         # 关键：image_list 已在布局分类后整体释放，numpy 阶段与 PIL 阶段不再重叠，
         # 峰值从「全量 numpy + 工件页 PIL」双份降为单份，避免大 PDF 双倍内存 OOM（doc 565）。
-        artifacts = self._extract_artifacts(artifact_boxes, page_images=self._render_artifact_pages(filename, artifact_boxes), zoom=2.0)
+        artifacts = self._extract_artifacts(
+            artifact_boxes,
+            page_images=self._render_artifact_pages(filename, artifact_boxes, zoom_map={page: zoom for page, zoom in enumerate(effective_zooms, start=1)}),
+            zoom_map={page: zoom for page, zoom in enumerate(effective_zooms, start=1)},
+        )
         table_regions = self._build_table_regions_metadata(artifacts)
         figure_regions = self._build_figure_regions_metadata(artifacts)
         reading_order = self._build_reading_order_metadata(
@@ -702,12 +793,17 @@ class RAGFlowPdfParser:
         """上游 RAGFlow __images__+__ocr 对齐：渲染每页 → 抽 pdfplumber 文字层字符 →
         每页 OCR.detect 拿框 → 文字层字符按坐标匹配进框 → 逐框裁决（干净用文字层 /
         乱码回退 OCR / 无字符走 OCR）→ 空框 recognize_batch。产出 fused_pages 与原
-        ocr_pages 同形状，供 _get_layout_recognizer() 贴 layout_type。"""
+        ocr_pages 同形状，供 _get_layout_recognizer() 贴 layout_type。
+
+        对 zoom=2 仍无文字框的页面，按上游 zoom *= 3 递进重试（上限 9），避免低分辨率
+        扫描页漏框；每页 effective_zoom 随返回元组传出，供后续 layout/artifact 保持比例。
+        """
         fitz = self._import_fitz()
         pdf_source = str(filename) if not isinstance(filename, bytes) else BytesIO(filename)
         image_list: list[np.ndarray] = []
         fused_pages: list[list[dict[str, Any]]] = []
-        zoom = 2
+        effective_zooms: list[int] = []
+        base_zoom = 2
         doc = fitz.open(stream=filename, filetype="pdf") if isinstance(filename, bytes) else fitz.open(str(filename))
         plumber_pdf = None
         try:
@@ -719,13 +815,23 @@ class RAGFlowPdfParser:
             plumber_pages = plumber_pdf.pages if plumber_pdf is not None else []
             for page_index in range(doc.page_count):
                 page = doc.load_page(page_index)
-                pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
-                img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
-                if pix.n == 4:
-                    img = img[:, :, :3]
-                image_list.append(img)
-                page_chars = self._extract_page_chars(plumber_pages, page_index)
-                fused_pages.append(self._fuse_page(img, page_chars, page_index, zoom))
+                page_zoom = base_zoom
+                img: np.ndarray | None = None
+                fused: list[dict[str, Any]] = []
+                while page_zoom <= 9:
+                    pix = page.get_pixmap(matrix=fitz.Matrix(page_zoom, page_zoom), alpha=False)
+                    img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+                    if pix.n == 4:
+                        img = img[:, :, :3]
+                    page_chars = self._extract_page_chars(plumber_pages, page_index)
+                    fused = self._fuse_page(img, page_chars, page_index, page_zoom)
+                    if fused:
+                        break
+                    page_zoom = min(page_zoom * 3, 9)
+                    logger.info("DeepDoc 页面在 zoom=%s 未检出文字，递进重试", page_zoom, page_index=page_index)
+                image_list.append(img if img is not None else np.zeros((1, 1, 3), dtype=np.uint8))
+                fused_pages.append(fused)
+                effective_zooms.append(page_zoom)
         finally:
             if plumber_pdf is not None:
                 plumber_pdf.close()
@@ -734,12 +840,13 @@ class RAGFlowPdfParser:
         layout_pages, layout_meta = self._resolve_layout_pages(
             image_list=image_list,
             ocr_pages=fused_pages,
-            zoom=zoom,
+            zooms=effective_zooms,
         )
         layout_meta["vision_strategy"] = self._build_vision_strategy(
             self._collect_ocr_sources(fused_pages),
             layout_meta["layout_source"],
         )
+        layout_meta["effective_zooms"] = effective_zooms
         return image_list, fused_pages, layout_pages, layout_meta
 
     def _extract_page_chars(self, plumber_pages: Sequence[Any], page_index: int) -> list[dict[str, Any]]:
@@ -756,7 +863,47 @@ class RAGFlowPdfParser:
         if self._is_garbled_text(sample_text) or self._is_garbled_by_font_encoding(chars):
             logger.info("DeepDoc 检测到乱码文字层，该页改走 OCR", page_index=page_index)
             return []
-        return chars
+        return self._insert_word_spaces(chars)
+
+    def _insert_word_spaces(self, chars: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """对英文 PDF 字符层，按同行字符间隙补空格，恢复单词边界。
+
+        仅对非 CJK、非空格字符生效；避免中文文档被误插空格。
+        """
+        if not chars:
+            return chars
+
+        def _is_cjk(text: str) -> bool:
+            return any("一" <= ch <= "鿿" for ch in text)
+
+        sorted_chars = sorted(chars, key=lambda c: (float(c.get("top", 0.0)), float(c.get("x0", 0.0))))
+        widths = [max(1.0, float(c.get("width", 0.0)) or float(c.get("x1", 0.0)) - float(c.get("x0", 0.0))) for c in sorted_chars]
+        mean_width = float(np.mean(widths)) if widths else 1.0
+        result: list[dict[str, Any]] = []
+        for index, char in enumerate(sorted_chars):
+            result.append(char)
+            if index + 1 >= len(sorted_chars):
+                continue
+            next_char = sorted_chars[index + 1]
+            text = str(char.get("text", "") or "")
+            next_text = str(next_char.get("text", "") or "")
+            if not text or not next_text:
+                continue
+            if text.isspace() or next_text.isspace():
+                continue
+            if _is_cjk(text) or _is_cjk(next_text):
+                continue
+            if not re.match(r"[a-zA-Z0-9,.!?;:%]", text[-1]) or not re.match(r"[a-zA-Z0-9,.!?;:%]", next_text[0]):
+                continue
+            gap = float(next_char.get("x0", 0.0)) - float(char.get("x1", 0.0))
+            same_line = abs(float(next_char.get("top", 0.0)) - float(char.get("top", 0.0))) < mean_width * 0.8
+            if same_line and gap > mean_width * 0.6:
+                space_char = dict(char)
+                space_char["text"] = " "
+                space_char["x0"] = float(char.get("x1", 0.0))
+                space_char["x1"] = float(next_char.get("x0", 0.0))
+                result.append(space_char)
+        return result
 
     def _fuse_page(
         self,
@@ -764,6 +911,7 @@ class RAGFlowPdfParser:
         page_chars: list[dict[str, Any]],
         page_index: int,
         zoom: int,
+        device_id: int | None = None,
     ) -> list[dict[str, Any]]:
         """上游 __ocr 逐框融合：OCR.detect 拿框 → pdfplumber chars 按坐标 find_overlapped
         匹配进框 → 逐框裁决（干净用文字层 / 乱码或无字符回退 OCR）→ 空框 recognize_batch。"""
@@ -774,10 +922,15 @@ class RAGFlowPdfParser:
 
             logger.info("DeepDoc OCR 引擎首次加载模型", page_index=page_index)
             self._ocr = OCR(autoload=True)
+            self._artifact_extractor._ocr = self._ocr
+
+        if device_id is None and self._ocr.parallel_devices > 1:
+            device_id = page_index % self._ocr.parallel_devices
+        device_id = device_id or 0
 
         img_np = np.asarray(img)
         try:
-            detected = list(self._ocr.detect(img_np) or [])
+            detected = list(self._ocr.detect(img_np, device_id=device_id) or [])
         except Exception as exc:
             logger.warning("DeepDoc OCR detect 失败", page_index=page_index, error=str(exc))
             return []
@@ -866,9 +1019,9 @@ class RAGFlowPdfParser:
                     ],
                     dtype=np.float32,
                 )
-                crops.append(self._ocr.get_rotate_crop_image(img_np, pts))
+                crops.append(self._ocr.get_rotate_crop_image(img_np, pts, device_id=device_id))
             try:
-                texts = self._ocr.recognize_batch(crops) or []
+                texts = self._ocr.recognize_batch(crops, device_id=device_id) or []
             except Exception as exc:
                 logger.warning("DeepDoc OCR recognize_batch 失败", page_index=page_index, error=str(exc))
                 texts = []
@@ -902,7 +1055,7 @@ class RAGFlowPdfParser:
         *,
         image_list: list[np.ndarray],
         ocr_pages: list[list[dict[str, Any]]],
-        zoom: int,
+        zooms: list[int],
     ) -> tuple[list[list[dict[str, Any]]], dict[str, Any]]:
         health = get_vision_health_status()
         logger.info(
@@ -911,6 +1064,7 @@ class RAGFlowPdfParser:
             can_run_vendored_ocr=health.get("can_run_vendored_ocr", False),
             layout_models_available=health.get("layout_models_available", False),
             page_count=len(image_list),
+            effective_zooms=zooms,
         )
         if health.get("can_run_layout_inference"):
             try:
@@ -934,11 +1088,11 @@ class RAGFlowPdfParser:
                     "DeepDoc 布局识别 ONNX 推理失败，回退到启发式",
                     error=str(exc),
                 )
-                heuristic_pages = self._build_heuristic_layout_pages(image_list, ocr_pages, zoom=zoom)
+                heuristic_pages = self._build_heuristic_layout_pages(image_list, ocr_pages, zooms=zooms)
                 return heuristic_pages, {"layout_source": "heuristic", "layout_model_error": str(exc)}
 
         logging.info("DeepDoc 布局识别不可用，使用启发式布局")
-        heuristic_pages = self._build_heuristic_layout_pages(image_list, ocr_pages, zoom=zoom)
+        heuristic_pages = self._build_heuristic_layout_pages(image_list, ocr_pages, zooms=zooms)
         return heuristic_pages, {"layout_source": "heuristic", "layout_model_error": None}
 
     def _build_heuristic_layout_pages(
@@ -946,10 +1100,10 @@ class RAGFlowPdfParser:
         image_list: list[np.ndarray],
         ocr_pages: list[list[dict[str, Any]]],
         *,
-        zoom: int,
+        zooms: list[int],
     ) -> list[list[dict[str, Any]]]:
         layout_pages: list[list[dict[str, Any]]] = []
-        for image, blocks in zip(image_list, ocr_pages):
+        for image, blocks, zoom in zip(image_list, ocr_pages, zooms):
             height, width = image.shape[:2]
             layout_pages.append(
                 self._build_heuristic_layouts(
@@ -1080,14 +1234,15 @@ class RAGFlowPdfParser:
         boxes: Sequence[DeepDocPdfBox],
         *,
         page_images: dict[int, Image.Image] | None = None,
-        zoom: float = 1.0,
+        zoom_map: dict[int, float] | None = None,
     ) -> dict[str, list[dict[str, Any]]]:
-        return self._artifact_extractor.extract(list(boxes), page_images=page_images, zoom=zoom)
+        return self._artifact_extractor.extract(list(boxes), page_images=page_images, zoom_map=zoom_map)
 
     def _render_artifact_pages(
         self,
         filename: Union[str, bytes, Path],
         artifact_boxes: Sequence[DeepDocPdfBox],
+        zoom_map: dict[int, float] | None = None,
     ) -> dict[int, Image.Image]:
         """把含表格/图片 artifact 的页从 fitz 渲染为 PIL，只渲染这些页。
 
@@ -1101,7 +1256,8 @@ class RAGFlowPdfParser:
         doc = fitz.open(stream=filename, filetype="pdf") if isinstance(filename, bytes) else fitz.open(str(filename))
         try:
             def _page_image(page_num: int) -> Image.Image:
-                pix = doc.load_page(page_num - 1).get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                zoom = float(zoom_map.get(page_num, 2.0) if zoom_map else 2.0)
+                pix = doc.load_page(page_num - 1).get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
                 img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
                 return Image.fromarray(img[:, :, :3] if pix.n == 4 else img)
 

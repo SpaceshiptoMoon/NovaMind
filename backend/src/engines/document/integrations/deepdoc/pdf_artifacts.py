@@ -3,21 +3,25 @@ from __future__ import annotations
 
 from io import BytesIO
 from dataclasses import asdict
+import os
 import re
+from types import SimpleNamespace
 from typing import Any, Sequence
 
 import numpy as np
 from PIL import Image
 
 from novamind.engines.document.integrations.deepdoc.compat import LazyImage
+from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
 from novamind.engines.document.integrations.deepdoc.vision_runtime import get_vision_health_status
 
 
 class PdfArtifactExtractor:
     """Adapted toward RAGFlow `_extract_table_figure` grouping behavior."""
 
-    def __init__(self):
-        self._tsr: TableStructureRecognizer | None = None
+    def __init__(self, ocr=None):
+        self._ocr = ocr
+        self._tsr: "TableStructureRecognizer | None" = None
         self._tsr_attempted = False
 
     def extract(
@@ -26,6 +30,7 @@ class PdfArtifactExtractor:
         *,
         page_images: dict[int, Image.Image] | None = None,
         zoom: float = 1.0,
+        zoom_map: dict[int, float] | None = None,
     ) -> dict[str, list[dict[str, Any]]]:
         table_groups: dict[str, list[Any]] = {}
         figure_groups: dict[str, list[Any]] = {}
@@ -47,11 +52,11 @@ class PdfArtifactExtractor:
 
         return {
             "tables": [
-                self._build_table_artifact(group_key, group, page_images=page_images, zoom=zoom)
+                self._build_table_artifact(group_key, group, page_images=page_images, zoom=zoom, zoom_map=zoom_map)
                 for group_key, group in sorted(table_groups.items())
             ],
             "figures": [
-                self._build_figure_artifact(group_key, group, page_images=page_images, zoom=zoom)
+                self._build_figure_artifact(group_key, group, page_images=page_images, zoom=zoom, zoom_map=zoom_map)
                 for group_key, group in sorted(figure_groups.items())
             ],
         }
@@ -172,6 +177,7 @@ class PdfArtifactExtractor:
         *,
         page_images: dict[int, Image.Image] | None = None,
         zoom: float = 1.0,
+        zoom_map: dict[int, float] | None = None,
     ) -> dict[str, Any]:
         ordered = sorted(members, key=lambda item: (getattr(item, "page", 1), getattr(item, "top", 0.0), getattr(item, "x0", 0.0)))
         caption = "\n".join(
@@ -180,13 +186,25 @@ class PdfArtifactExtractor:
             if self._is_caption_box(item)
         ).strip()
         content_boxes = [item for item in ordered if not self._is_caption_box(item)]
+        crop_descriptors = self._collect_group_crops(ordered, page_images=page_images, zoom=zoom, zoom_map=zoom_map)
+
+        auto_rotate = os.environ.get("TABLE_AUTO_ROTATE", "true").lower() != "false"
+        if self._ocr is not None and auto_rotate and crop_descriptors:
+            rotated_content_boxes: list[Any] = []
+            for descriptor in crop_descriptors:
+                rotated = self._build_rotated_table_content_boxes(descriptor, self._ocr, zoom)
+                if rotated:
+                    rotated_content_boxes.extend(rotated)
+            if rotated_content_boxes:
+                content_boxes = rotated_content_boxes
+
         content_text = "\n".join(getattr(item, "text", "").strip() for item in content_boxes if getattr(item, "text", "").strip())
-        crop_descriptors = self._collect_group_crops(ordered, page_images=page_images, zoom=zoom)
         html, html_source, table_structure = self._table_html_from_boxes(
             content_boxes,
             caption=caption,
             crop_descriptors=crop_descriptors,
             zoom=zoom,
+            zoom_map=zoom_map,
         )
         image = self._encode_group_crops(crop_descriptors)
         return {
@@ -202,6 +220,7 @@ class PdfArtifactExtractor:
             "image": image,
             "has_image": bool(image),
             "members": [asdict(item) for item in ordered],
+            "rotation_angle": crop_descriptors[0].get("rotation_angle", 0) if crop_descriptors else 0,
         }
 
     def _build_figure_artifact(
@@ -211,6 +230,7 @@ class PdfArtifactExtractor:
         *,
         page_images: dict[int, Image.Image] | None = None,
         zoom: float = 1.0,
+        zoom_map: dict[int, float] | None = None,
     ) -> dict[str, Any]:
         ordered = sorted(members, key=lambda item: (getattr(item, "page", 1), getattr(item, "top", 0.0), getattr(item, "x0", 0.0)))
         caption = "\n".join(
@@ -223,7 +243,7 @@ class PdfArtifactExtractor:
             for item in ordered
             if not self._is_caption_box(item) and getattr(item, "text", "").strip()
         )
-        crop_descriptors = self._collect_group_crops(ordered, page_images=page_images, zoom=zoom)
+        crop_descriptors = self._collect_group_crops(ordered, page_images=page_images, zoom=zoom, zoom_map=zoom_map)
         image = self._encode_group_crops(crop_descriptors)
         return {
             "artifact_id": group_key,
@@ -255,18 +275,21 @@ class PdfArtifactExtractor:
         caption: str = "",
         crop_descriptors: Sequence[dict[str, Any]] | None = None,
         zoom: float = 1.0,
+        zoom_map: dict[int, float] | None = None,
     ) -> tuple[str, str, dict[str, Any]]:
         tsr_structured_boxes, tsr_meta = self._infer_structured_boxes_from_tsr_model(
             content_boxes,
             crop_descriptors=crop_descriptors,
             zoom=zoom,
+            zoom_map=zoom_map,
         )
         if tsr_structured_boxes:
             try:
                 from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
 
-                html = TableStructureRecognizer.construct_table(tsr_structured_boxes, html=True)
-                return html, "tsr_model", {**tsr_meta, "structured_boxes": [dict(box) for box in tsr_structured_boxes]}
+                is_english = self._estimate_is_english([box.get("text", "") for box in tsr_structured_boxes])
+                html = TableStructureRecognizer.construct_table(tsr_structured_boxes, html=True, is_english=is_english)
+                return html, "tsr_model", {**tsr_meta, "is_english": is_english, "structured_boxes": [dict(box) for box in tsr_structured_boxes]}
             except Exception:
                 pass
 
@@ -299,6 +322,7 @@ class PdfArtifactExtractor:
         *,
         crop_descriptors: Sequence[dict[str, Any]] | None = None,
         zoom: float = 1.0,
+        zoom_map: dict[int, float] | None = None,
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         recognizer = self._get_tsr_recognizer()
         if recognizer is None or not crop_descriptors or not content_boxes:
@@ -315,22 +339,44 @@ class PdfArtifactExtractor:
 
         structured_boxes: list[dict[str, Any]] = []
         prediction_count = 0
+        row_offset = 0
+        crosspage_row_offset: list[int] = []
         for descriptor, page_predictions in zip(crop_descriptors, predictions):
             page_prediction_count = len(page_predictions or [])
             prediction_count += page_prediction_count
             if not page_predictions:
+                crosspage_row_offset.append(row_offset)
                 continue
-            structured_boxes.extend(
-                self._assign_tsr_predictions_to_boxes(
-                    descriptor=descriptor,
-                    content_boxes=content_boxes,
-                    predictions=page_predictions,
-                    zoom=zoom,
-                )
+            page_zoom = float(zoom_map.get(int(descriptor["page"]), zoom) if zoom_map else zoom)
+            page_boxes = self._assign_tsr_predictions_to_boxes(
+                descriptor=descriptor,
+                content_boxes=content_boxes,
+                predictions=page_predictions,
+                zoom=page_zoom,
+                angle=int(descriptor.get("rotation_angle", 0)),
+                rotated_size=descriptor.get("rotation_size"),
             )
+            if page_boxes:
+                max_row = max(int(box.get("R", 0)) for box in page_boxes)
+                for box in page_boxes:
+                    box["R"] = str(int(box["R"]) + row_offset)
+                    if "R_top" in box:
+                        box["R_top"] = box["R_top"]
+                    if "R_bott" in box:
+                        box["R_bott"] = box["R_bott"]
+                    if "R_btm" in box:
+                        box["R_btm"] = box["R_btm"]
+                row_offset = max_row + row_offset + 1
+                structured_boxes.extend(page_boxes)
+            crosspage_row_offset.append(row_offset)
         if not structured_boxes:
-            return [], {"source": "empty", "prediction_pages": len(images), "prediction_count": prediction_count}
-        return structured_boxes, {"source": "tsr_model", "prediction_pages": len(images), "prediction_count": prediction_count}
+            return [], {"source": "empty", "prediction_pages": len(images), "prediction_count": prediction_count, "crosspage_row_offset": crosspage_row_offset}
+        return structured_boxes, {
+            "source": "tsr_model",
+            "prediction_pages": len(images),
+            "prediction_count": prediction_count,
+            "crosspage_row_offset": crosspage_row_offset,
+        }
 
     def _infer_structured_table_boxes(
         self,
@@ -510,6 +556,7 @@ class PdfArtifactExtractor:
         *,
         page_images: dict[int, Image.Image] | None = None,
         zoom: float = 1.0,
+        zoom_map: dict[int, float] | None = None,
     ) -> list[dict[str, Any]]:
         if not page_images or not members:
             return []
@@ -525,7 +572,8 @@ class PdfArtifactExtractor:
             bbox = self._group_bbox(page_members)
             if not bbox:
                 continue
-            crop = self._crop_image(image, bbox, zoom=zoom)
+            page_zoom = float(zoom_map.get(page, zoom) if zoom_map else zoom)
+            crop = self._crop_image(image, bbox, zoom=page_zoom)
             if crop is None:
                 continue
             crops.append(
@@ -568,6 +616,8 @@ class PdfArtifactExtractor:
         content_boxes: Sequence[Any],
         predictions: Sequence[dict[str, Any]],
         zoom: float,
+        angle: int = 0,
+        rotated_size: tuple[int, int] | None = None,
     ) -> list[dict[str, Any]]:
         page = int(descriptor["page"])
         bbox = descriptor["bbox"]
@@ -579,6 +629,7 @@ class PdfArtifactExtractor:
         if not page_boxes:
             return []
 
+        predictions = self._map_predictions_to_original_crop(predictions, angle=angle, rotated_size=rotated_size)
         rows = [pred for pred in predictions if pred.get("label") == "table row"]
         columns = [pred for pred in predictions if pred.get("label") == "table column"]
         headers = [pred for pred in predictions if pred.get("label") in {"table column header", "table projected row header"}]
@@ -625,6 +676,151 @@ class PdfArtifactExtractor:
         return structured_boxes
 
     @staticmethod
+    def _map_predictions_to_original_crop(
+        predictions: Sequence[dict[str, Any]],
+        *,
+        angle: int = 0,
+        rotated_size: tuple[int, int] | None = None,
+    ) -> list[dict[str, Any]]:
+        """TSR 在旋转后的 crop 上预测，把预测框坐标映射回原 crop 坐标。"""
+        if angle == 0 or not rotated_size:
+            return list(predictions)
+        orig_w, orig_h = rotated_size
+        mapped: list[dict[str, Any]] = []
+        for pred in predictions:
+            corners = [
+                (pred["x0"], pred["top"]),
+                (pred["x1"], pred["top"]),
+                (pred["x1"], pred["bottom"]),
+                (pred["x0"], pred["bottom"]),
+            ]
+            original_corners = [
+                PdfArtifactExtractor._map_rotated_point_to_original(rx, ry, angle, orig_w, orig_h)
+                for rx, ry in corners
+            ]
+            xs = [p[0] for p in original_corners]
+            ys = [p[1] for p in original_corners]
+            mapped.append(
+                {
+                    **pred,
+                    "x0": min(xs),
+                    "x1": max(xs),
+                    "top": min(ys),
+                    "bottom": max(ys),
+                }
+            )
+        return mapped
+
+    @staticmethod
+    def _map_rotated_point_to_original(
+        rx: float,
+        ry: float,
+        angle: int,
+        orig_width: int,
+        orig_height: int,
+    ) -> tuple[float, float]:
+        """顺时针旋转后图像中的点映射回原图坐标。"""
+        if angle == 90:
+            return float(ry), float(orig_height - 1 - rx)
+        if angle == 180:
+            return float(orig_width - 1 - rx), float(orig_height - 1 - ry)
+        if angle == 270:
+            return float(orig_width - 1 - ry), float(rx)
+        return float(rx), float(ry)
+
+    @staticmethod
+    def _evaluate_table_orientation(
+        crop_image: Image.Image,
+        ocr: Any,
+    ) -> tuple[int, Image.Image, dict[int, float]]:
+        """对表格 crop 评估 0/90/180/270°，选择 OCR 综合得分最高的方向。"""
+        if ocr is None:
+            return 0, crop_image, {0: 0.0}
+
+        candidates: list[tuple[int, Image.Image, float]] = []
+        scores: dict[int, float] = {}
+        for angle in (0, 90, 180, 270):
+            if angle == 0:
+                rotated = crop_image
+            else:
+                rotated = crop_image.rotate(-angle, expand=True, fillcolor=(255, 255, 255))
+            img_np = np.asarray(rotated)
+            try:
+                boxes, rec_results = ocr(img_np, device_id=0)
+            except Exception:
+                _, rec_results = [], []
+            if not rec_results:
+                scores[angle] = 0.0
+                candidates.append((angle, rotated, 0.0))
+                continue
+            mean_score = float(np.mean([float(score) for _, score in rec_results]))
+            # 综合得分 = 平均置信度 × 识别框数量，避免单个大框误胜。
+            composite = mean_score * len(rec_results)
+            scores[angle] = composite
+            candidates.append((angle, rotated, composite))
+
+        best_angle, best_image, best_score = max(candidates, key=lambda item: (item[2], -item[0]))
+        if best_score <= 0:
+            return 0, crop_image, scores
+        return best_angle, best_image, scores
+
+    def _build_rotated_table_content_boxes(
+        self,
+        descriptor: dict[str, Any],
+        ocr: Any,
+        zoom: float,
+    ) -> list[Any]:
+        """若表格 crop 需旋转，在旋转图上重 OCR，把 box 映射回页面坐标。"""
+        crop = descriptor.get("crop")
+        if crop is None or ocr is None:
+            return []
+
+        angle, rotated_image, _ = self._evaluate_table_orientation(crop, ocr)
+        if angle == 0:
+            return []
+
+        orig_w, orig_h = crop.size
+        descriptor["crop"] = rotated_image
+        descriptor["rotation_angle"] = angle
+        descriptor["rotation_size"] = (orig_w, orig_h)
+
+        img_np = np.asarray(rotated_image)
+        try:
+            rotated_boxes, rec_results = ocr(img_np, device_id=0)
+        except Exception:
+            rotated_boxes, rec_results = [], []
+
+        if not rotated_boxes or not rec_results or len(rotated_boxes) != len(rec_results):
+            return []
+
+        page = int(descriptor["page"])
+        bbox = descriptor["bbox"]
+        content_boxes: list[Any] = []
+        for quad, (text, _score) in zip(rotated_boxes, rec_results):
+            if not text or not text.strip():
+                continue
+            original_points = [
+                self._map_rotated_point_to_original(float(rx), float(ry), angle, orig_w, orig_h)
+                for rx, ry in quad
+            ]
+            xs = [p[0] for p in original_points]
+            ys = [p[1] for p in original_points]
+            x0_crop, x1_crop = min(xs), max(xs)
+            y0_crop, y1_crop = min(ys), max(ys)
+            content_boxes.append(
+                SimpleNamespace(
+                    page=page,
+                    x0=x0_crop / zoom + bbox["x0"],
+                    x1=x1_crop / zoom + bbox["x0"],
+                    top=y0_crop / zoom + bbox["top"],
+                    bottom=y1_crop / zoom + bbox["top"],
+                    text=text.strip(),
+                    layout_type="table",
+                )
+            )
+        return content_boxes
+
+    @staticmethod
     def _to_local_box(box: Any, *, bbox: dict[str, float], zoom: float) -> dict[str, float]:
         return {
             "x0": (float(getattr(box, "x0", 0.0)) - bbox["x0"]) * zoom,
@@ -668,6 +864,19 @@ class PdfArtifactExtractor:
         intersection = (right - left) * (bottom - top)
         area = max(1.0, (box["x1"] - box["x0"]) * (box["bottom"] - box["top"]))
         return float(intersection / area)
+
+    @staticmethod
+    def _estimate_is_english(texts: Sequence[str]) -> bool:
+        """根据单元格文本中英文字母比例估计表格是否为英文。"""
+        total = 0
+        latin = 0
+        for text in texts:
+            for ch in text:
+                if ch.isalpha():
+                    total += 1
+                    if ch.isascii():
+                        latin += 1
+        return total > 0 and latin / total > 0.5
 
     def _encode_crops(self, crops: Sequence[Image.Image]) -> list[bytes]:
         if not crops:

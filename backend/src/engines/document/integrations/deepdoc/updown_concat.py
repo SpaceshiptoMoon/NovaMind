@@ -301,6 +301,7 @@ class UpDownConcatMerger:
             position_tag=str(state.get("position_tag", "")),
             positions=[list(pos) for pos in positions] if positions else None,
             layout_type=str(state.get("layout_type", "")),
+            layoutno=str(state.get("layoutno", "")),
         )
 
     @staticmethod
