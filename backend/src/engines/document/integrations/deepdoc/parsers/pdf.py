@@ -185,16 +185,32 @@ class RAGFlowPdfParser:
         return bool(fontname and re.match(r"^[A-Z]{6}\+", str(fontname)))
 
     @classmethod
-    def _is_garbled_by_font_encoding(cls, page_chars):
+    def _is_garbled_by_font_encoding(cls, page_chars, *, require_garbled_chars: bool = False) -> bool:
+        """子集字体编码可疑检测。
+
+        ``require_garbled_chars=False``（默认，兼容旧行为）：子集字体 + 纯 ASCII
+        字符占比 >= 50% 即可疑，供 ``_fuse_page`` 逐框裁决时与字符级乱码特征
+        联合使用（两个信号叠加，误报率低）。
+
+        ``require_garbled_chars=True``：额外要求样本里存在字符级乱码特征
+        （PUA/CID/替换符），用于「清空整页文字层」这类重决策——单独的子集字体
+        信号对现代 LaTeX 产出的 PDF 几乎必然误报（其字体全部带 ``XXXXXX+``
+        子集前缀，表格/参考文献页又以 ASCII 为主）。
+        """
         if not page_chars:
             return False
         suspicious = 0
         sample_size = min(len(page_chars), 200)
+        has_garbled_chars = False
         for char in page_chars[:sample_size]:
             text = str(char.get("text", "") or "")
             fontname = char.get("fontname", "")
             if cls._has_subset_font_prefix(fontname) and text and all(ord(ch) < 128 for ch in text):
                 suspicious += 1
+            if any(cls._is_garbled_char(ch) for ch in text):
+                has_garbled_chars = True
+        if require_garbled_chars and not has_garbled_chars:
+            return False
         return suspicious / max(sample_size, 1) >= 0.5
 
     @staticmethod
@@ -863,8 +879,17 @@ class RAGFlowPdfParser:
         return image_list, fused_pages, layout_pages, layout_meta
 
     def _extract_page_chars(self, plumber_pages: Sequence[Any], page_index: int) -> list[dict[str, Any]]:
-        """抽该页 pdfplumber 文字层字符；乱码页（CID/PUA 或子集字体编码错乱）直接
-        清空，强制该页全走 OCR。接线上游 __images__ 的乱码预清洗。"""
+        """抽该页 pdfplumber 文字层字符；乱码页（CID/PUA 字符或子集字体编码错乱）
+        直接清空，强制该页全走 OCR。接线上游 __images__ 的乱码预清洗。
+
+        子集字体编码检测（``_is_garbled_by_font_encoding``）不能单独作为清空
+        整页的依据：现代 LaTeX 引擎（XeLaTeX/LuaLaTeX）产出的 PDF 字体几乎全部
+        是 ``XXXXXX+`` 子集字体，表格页/参考文献页恰好又以 ASCII 为主，会 100%
+        命中该检测而把本来干净的文字层整页丢弃、强制走 OCR，密集数字表格 OCR
+        出来即粘连错串。因此这里要求「字符级乱码特征」也同时命中才清空整页；
+        仅子集字体可疑时交给 ``_fuse_page`` 的逐框裁决（garbled/total >= 0.5 或
+        子集字体编码乱码）兜底，乱码框仍会回退 OCR，但干净框保留文字层。
+        """
         if not plumber_pages or page_index >= len(plumber_pages):
             return []
         try:
@@ -873,8 +898,11 @@ class RAGFlowPdfParser:
         except Exception:
             return []
         sample_text = "".join(str(c.get("text", "") or "") for c in chars[:200])
-        if self._is_garbled_text(sample_text) or self._is_garbled_by_font_encoding(chars):
-            logger.info("DeepDoc 检测到乱码文字层，该页改走 OCR", page_index=page_index)
+        if self._is_garbled_text(sample_text):
+            logger.info("DeepDoc 检测到乱码文字层（字符级特征），该页改走 OCR", page_index=page_index)
+            return []
+        if self._is_garbled_by_font_encoding(chars) and self._is_garbled_by_font_encoding(chars, require_garbled_chars=True):
+            logger.info("DeepDoc 检测到乱码文字层（子集字体编码 + 字符级乱码同时命中），该页改走 OCR", page_index=page_index)
             return []
         return self._insert_word_spaces(chars)
 
@@ -1012,8 +1040,12 @@ class RAGFlowPdfParser:
                                 garbled += 1
             box_chars = b.pop("chars", [])
             b["text"] = "".join(text_parts)
+            # 框级回退 OCR 同样要求「字符级乱码」信号：单独的子集字体信号对
+            # LaTeX 产出的 PDF（字体全带 XXXXXX+ 前缀、表格/参考文献纯 ASCII）
+            # 几乎必然误报，会把干净的参考文献/表格框清空后交给 OCR 认成粘连串。
             if total > 0 and (
-                garbled / total >= 0.5 or self._is_garbled_by_font_encoding(box_chars)
+                garbled / total >= 0.5
+                or (self._is_garbled_by_font_encoding(box_chars) and garbled > 0)
             ):
                 b["text"] = ""
                 b["ocr_source"] = "vendored_ocr"
