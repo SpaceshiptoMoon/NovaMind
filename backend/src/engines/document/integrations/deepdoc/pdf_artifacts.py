@@ -63,9 +63,12 @@ class PdfArtifactExtractor:
 
     @staticmethod
     def _group_key(box: Any) -> str:
+        # artifact_id 会以 __FIGURE_URL__{id}__ 形式嵌入 full_text，并随后被
+        # strip_position_tags（@@...## 正则）清洗。id 里不能带 position_tag 的
+        # 坐标标记，否则正文被腐蚀成 __FIGURE_URL__N:__，而 pipeline 替换用的
+        # 原始 id 永远匹配不上（占位符原样落盘）。因此改用页面坐标摘要做 id。
         page = int(getattr(box, "page", 1))
-        position = getattr(box, "position_tag", "") or f"{page}:{int(getattr(box, 'top', 0))}:{int(getattr(box, 'x0', 0))}"
-        return f"{page}:{position}"
+        return f"{page}:{int(getattr(box, 'top', 0))}:{int(getattr(box, 'x0', 0))}"
 
     def _append_to_groups(self, groups: dict[str, list[Any]], box: Any) -> None:
         for group_key, members in groups.items():
