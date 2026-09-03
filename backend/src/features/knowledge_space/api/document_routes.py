@@ -8,6 +8,7 @@
 """
 import mimetypes
 import os
+from pathlib import Path as FilePath
 from typing import Annotated, List, Optional, Union
 from urllib.parse import quote
 from fastapi import APIRouter, Depends, Request, UploadFile, File, Query, Path, Body
@@ -732,6 +733,50 @@ async def get_document_parsed_text(
         media_type="text/markdown; charset=utf-8",
         headers={
             "Cache-Control": "private, max-age=3600",
+        },
+    )
+
+
+@router.get(
+    "/{kb_id}/documents/{document_id}/parsed-text/download",
+    summary="下载文档解析全文",
+    description="以附件形式下载文档解析后的 Markdown 全文。文档未解析完成时返回 404。",
+)
+async def download_document_parsed_text(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
+    db: AsyncSession = Depends(get_db),
+):
+    """下载文档解析后的 Markdown 全文（attachment）"""
+    await validate_kb_access(kb_id, space_id, db)
+
+    document = await document_query_service.get_document(document_id)
+    if not document or document.kb_id != kb_id:
+        raise DocumentNotFoundError(document_id)
+
+    parsed_text = await document_query_service.get_parsed_text(document_id)
+    if parsed_text is None:
+        raise DocumentNotFoundError(document_id)
+
+    # 去 BOM（写入侧是 utf-8-sig），下载产物保持干净 UTF-8
+    body = parsed_text.decode("utf-8-sig").encode("utf-8")
+
+    # 文件名：原文件名去扩展名 + .md，RFC 5987 编码支持中文
+    stem = FilePath(document.filename).stem or document.filename
+    md_filename = f"{stem}.md"
+    encoded_filename = quote(md_filename)
+
+    return Response(
+        content=body,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="parsed.md"; '
+                f"filename*=UTF-8''{encoded_filename}"
+            )
         },
     )
 

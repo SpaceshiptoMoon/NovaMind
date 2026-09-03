@@ -3712,7 +3712,7 @@
                 "type": "null"
               }
             ],
-            "description": "VLM 模型名称（strategy=vlm 时可选，留空使用用户默认 VLM 模型）",
+            "description": "VLM 模型名称（strategy=vlm 时必填，留空将抛错要求显式选择，不做默认回退）",
             "title": "Vlm Model"
           }
         },
@@ -5946,8 +5946,9 @@
             "anyOf": [
               {
                 "enum": [
-                  "pdf_layout",
+                  "pdf_full",
                   "pdf_plain",
+                  "pdf_layout",
                   "pdf_vision",
                   "pdf_docling",
                   "pdf_mineru",
@@ -5978,9 +5979,8 @@
             "anyOf": [
               {
                 "enum": [
-                  "layout",
-                  "plain",
-                  "vision"
+                  "full",
+                  "plain"
                 ],
                 "type": "string"
               },
@@ -6056,8 +6056,9 @@
             "anyOf": [
               {
                 "enum": [
-                  "pdf_layout",
+                  "pdf_full",
                   "pdf_plain",
+                  "pdf_layout",
                   "pdf_vision",
                   "pdf_docling",
                   "pdf_mineru",
@@ -6088,9 +6089,8 @@
             "anyOf": [
               {
                 "enum": [
-                  "layout",
-                  "plain",
-                  "vision"
+                  "full",
+                  "plain"
                 ],
                 "type": "string"
               },
@@ -6210,9 +6210,8 @@
             "anyOf": [
               {
                 "enum": [
-                  "layout",
+                  "full",
                   "plain",
-                  "vision",
                   "docling",
                   "mineru",
                   "opendataloader",
@@ -6833,6 +6832,14 @@
             "title": "Auto Rag",
             "type": "boolean"
           },
+          "bm25_weight": {
+            "default": 0.3,
+            "description": "BM25 检索权重（hybrid 类模式下与 vector_weight 之和需=1.0）",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Bm25 Weight",
+            "type": "number"
+          },
           "grade_retry_enabled": {
             "default": false,
             "description": "是否启用检索后自评估重试",
@@ -6900,6 +6907,14 @@
             "minimum": 1.0,
             "title": "Top K",
             "type": "integer"
+          },
+          "vector_weight": {
+            "default": 0.7,
+            "description": "向量检索权重（hybrid 类模式下与 bm25_weight 之和需=1.0）",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Vector Weight",
+            "type": "number"
           }
         },
         "title": "RagBindingConfig",
@@ -18623,7 +18638,7 @@
         ]
       },
       "post": {
-        "description": "上传文档到知识库（仅存储，不触发解析）。支持单文件和多文件批量上传（最多20个）",
+        "description": "上传文档到知识库（仅存储，不触发解析）。支持单文件、多文件及文件夹批量上传（最多200个）",
         "operationId": "upload_document_api_v1_spaces__space_id__knowledge_bases__kb_id__documents_post",
         "parameters": [
           {
@@ -19366,6 +19381,77 @@
           }
         ],
         "summary": "获取文档解析全文",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/parsed-text/download": {
+      "get": {
+        "description": "以附件形式下载文档解析后的 Markdown 全文。文档未解析完成时返回 404。",
+        "operationId": "download_document_parsed_text_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__parsed_text_download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "文档ID",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "文档ID",
+              "exclusiveMinimum": 0,
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "下载文档解析全文",
         "tags": [
           "文档管理",
           "文档管理"
