@@ -22,7 +22,7 @@
             重试
           </el-button>
           <el-button type="primary" size="small" plain @click="handleDownload">
-            下载
+            下载源文件
           </el-button>
           <el-button type="danger" size="small" plain @click="handleDelete">
             删除
@@ -166,7 +166,7 @@
       <!-- 右栏：原文预览 -->
       <div v-if="showOriginalPanel" class="content-sidebar">
         <div class="sidebar-header">
-          <h4>查看原文</h4>
+          <h4>预览与导出</h4>
           <el-button text size="small" @click="showOriginalPanel = false">
             <el-icon><Close /></el-icon>
           </el-button>

@@ -100,6 +100,21 @@ export const documentApi = {
     )
   },
 
+  /** 下载文档解析后的 Markdown 全文（attachment，文件名由后端 Content-Disposition 提供） */
+  async downloadDocumentParsedText(spaceId: number, kbId: number, docId: number, filename: string) {
+    const blob = await request.download(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/parsed-text/download`
+    )
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  },
+
   /** 获取文档解析后的 Markdown 全文 */
   async getDocumentParsedText(spaceId: number, kbId: number, docId: number): Promise<string> {
     // 使用 axios 统一拦截器（自动带 token、自动刷新），获取 text/markdown 响应

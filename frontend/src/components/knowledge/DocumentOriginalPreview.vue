@@ -19,7 +19,18 @@
           @click="handleViewOriginal"
         >
           <el-icon><View /></el-icon>
-          查看原文
+          查看解析结果
+        </el-button>
+        <el-button
+          type="primary"
+          size="small"
+          plain
+          :disabled="!canViewOriginal"
+          :loading="downloadingParsed"
+          @click="handleDownloadParsed"
+        >
+          <el-icon v-if="!downloadingParsed"><Download /></el-icon>
+          下载解析 MD
         </el-button>
         <el-button
           size="small"
@@ -72,7 +83,7 @@
       <template #header>
         <div class="original-header">
           <div class="original-header__titles">
-            <span class="original-header__eyebrow">原文</span>
+            <span class="original-header__eyebrow">解析结果</span>
             <span class="original-header__filename" :title="document?.filename || ''">
               {{ document?.filename || '未知文件' }}
             </span>
@@ -92,7 +103,7 @@
       <div v-if="parsedText" class="search-bar">
         <el-input
           v-model="searchQuery"
-          placeholder="搜索原文内容..."
+          placeholder="搜索解析内容..."
           size="small"
           clearable
           @input="handleSearchInput"
@@ -117,7 +128,7 @@
       <div v-loading="textLoading" class="original-dialog-content" ref="contentRef">
         <template v-if="!textLoading">
           <MarkdownRenderer v-if="parsedText" :content="parsedText" />
-          <el-empty v-else :description="textError || '暂无原文内容'" :image-size="80" />
+          <el-empty v-else :description="textError || '暂无解析结果'" :image-size="80" />
         </template>
       </div>
     </el-dialog>
@@ -169,6 +180,7 @@ const canViewOriginal = computed(() => props.document?.status === 2)
 
 // 下载状态
 const downloadingSource = ref(false)
+const downloadingParsed = ref(false)
 
 // 原文数据（按需加载）
 const parsedText = ref('')
@@ -262,6 +274,22 @@ async function handleDownloadSource() {
     // 下载失败已在 interceptor 处理
   } finally {
     downloadingSource.value = false
+  }
+}
+
+// 下载解析后的 Markdown 全文：文件名 = 原文件名去扩展名 + .md
+async function handleDownloadParsed() {
+  if (!props.document) return
+  downloadingParsed.value = true
+  try {
+    const stem = props.document.filename?.replace(/\.[^.]*$/, '') || props.document.filename
+    await documentApi.downloadDocumentParsedText(
+      props.spaceId, props.kbId, props.document.id, `${stem}.md`
+    )
+  } catch {
+    // 下载失败已在 interceptor 处理
+  } finally {
+    downloadingParsed.value = false
   }
 }
 
