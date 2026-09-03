@@ -763,8 +763,11 @@ class RAGFlowPdfParser:
             artifacts,
             raster_images_by_page=fusion_meta.get("raster_images_by_page") or {},
         )
+        # 表格 bbox 内的文字框已随 [TABLE] entry 进入 reading_order，从正文剔除，
+        # 否则表格内容（OCR 散落数字流）在 MD 里重复出现两次。
+        reading_order_text_boxes = self._drop_boxes_covered_by_regions(chunk_boxes, table_regions)
         reading_order = self._build_reading_order_metadata(
-            chunk_boxes,
+            reading_order_text_boxes,
             table_regions,
             figure_regions,
         )
@@ -1365,6 +1368,7 @@ class RAGFlowPdfParser:
                     "text": table.get("text", ""),
                     "member_texts": member_texts,
                     "member_text_count": len(member_texts),
+                    "html": table.get("html", ""),
                     "html_source": table.get("html_source", ""),
                     "table_structure_source": table_structure.get("source", ""),
                     "prediction_pages": int(table_structure.get("prediction_pages") or 0),
@@ -1452,6 +1456,49 @@ class RAGFlowPdfParser:
         return figure_regions
 
     @staticmethod
+    def _drop_boxes_covered_by_regions(
+        text_boxes: Sequence[DeepDocPdfBox],
+        table_regions: Sequence[dict[str, Any]],
+        *,
+        overlap_threshold: float = 0.6,
+    ) -> list[DeepDocPdfBox]:
+        """剔除被 table region 覆盖的文本框（IoMin > threshold，同页判断）。
+
+        表格文字已随 [TABLE]/HTML entry 进入 reading_order，留在正文会重复两份。
+        仅对 table region 生效：figure region 的文字（如公式 OCR 碎片）保留正文
+        是既有正确行为。"""
+        if not text_boxes or not table_regions:
+            return list(text_boxes)
+        regions_by_page: dict[int, list[dict[str, Any]]] = {}
+        for region in table_regions:
+            bbox = region.get("bbox") or {}
+            if not bbox:
+                continue
+            for page in region.get("pages") or [region.get("page_start")]:
+                if page is None:
+                    continue
+                regions_by_page.setdefault(int(page), []).append(bbox)
+        kept: list[DeepDocPdfBox] = []
+        for box in text_boxes:
+            region_bboxes = regions_by_page.get(int(box.page))
+            if region_bboxes and any(
+                PdfArtifactExtractor.bbox_overlap_ratio(
+                    {
+                        "x0": box.x0,
+                        "x1": box.x1,
+                        "top": box.top,
+                        "bottom": box.bottom,
+                    },
+                    region_bbox,
+                )
+                > overlap_threshold
+                for region_bbox in region_bboxes
+            ):
+                continue
+            kept.append(box)
+        return kept
+
+    @staticmethod
     def _build_reading_order_metadata(
         text_boxes: Sequence[DeepDocPdfBox],
         table_regions: Sequence[dict[str, Any]],
@@ -1492,6 +1539,7 @@ class RAGFlowPdfParser:
                     "layout_type": "table",
                     "artifact_id": region.get("artifact_id"),
                     "source_id": region.get("artifact_id"),
+                    "html": region.get("html", ""),
                     "html_source": region.get("html_source", ""),
                     "table_structure_source": region.get("table_structure_source", ""),
                 }
@@ -1542,6 +1590,12 @@ class RAGFlowPdfParser:
             return str(entry.get("text", "")).strip()
         if kind == "table":
             caption = str(entry.get("caption", "")).strip()
+            # TSR 识别出的 HTML 表格直接内联（对齐上游 return_html 行为）；
+            # 无 HTML 时回退 [TABLE] + 成员文本，保证可读。
+            html = str(entry.get("html", "")).strip()
+            if html:
+                parts = [part for part in [caption, html] if part]
+                return "\n\n".join(parts)
             text = str(entry.get("text", "")).strip()
             prefix = "[TABLE]"
             parts = [part for part in [prefix, caption, text] if part]

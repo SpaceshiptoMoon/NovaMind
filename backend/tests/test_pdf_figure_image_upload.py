@@ -230,3 +230,80 @@ def test_build_es_chunks_figure_image_links_per_chunk_carries_all():
     assert es_chunks[0]["metadata"]["figure_image_count"] == 2
     assert es_chunks[1]["metadata"]["figure_image_links"] == expected_links
     assert es_chunks[1]["metadata"]["figure_image_count"] == 2
+
+
+# ===== 占位符 id 去坐标标记 + 表格去重/HTML 内联 回归 =====
+
+
+def test_group_key_contains_no_position_tag():
+    """_group_key 产出的 artifact_id 不得含 @@...## 坐标标记。
+
+    曾用 {page}:{position_tag} 做 id，strip_position_tags 会把正文里的占位符
+    腐蚀成 __FIGURE_URL__N:__，pipeline 替换 key 永远 miss。
+    """
+    from novamind.engines.document.integrations.deepdoc.pdf_artifacts import PdfArtifactExtractor
+
+    box = SimpleNamespace(page=3, top=150.4, x0=72.6, position_tag="@@3\t72.6\t540.0\t150.4\t300.0##", text="x")
+    key = PdfArtifactExtractor._group_key(box)
+    assert "@@" not in key and "##" not in key
+    assert key == "3:150:72"
+
+
+def test_placeholder_survives_strip_and_replacement():
+    """端到端：占位符经 strip_position_tags 清洗后仍能被 pipeline 替换命中。"""
+    from novamind.engines.document.integrations.deepdoc.core.models import strip_position_tags
+
+    artifact_id = "3:150:72"
+    text = f"正文段落\n\n![示例图](__FIGURE_URL__{artifact_id}__)\n\n尾段"
+    stripped = strip_position_tags(text)
+    result = _replace_figure_placeholders(stripped, {artifact_id: "https://minio.example.com/fig.png"})
+    assert "https://minio.example.com/fig.png" in result
+    assert "__FIGURE_URL__" not in result
+    # strip 对干净 id 无副作用
+    assert "正文段落" in result
+
+
+def test_table_boxes_deduped_from_text_stream():
+    """table region bbox 覆盖的文本框不再重复出现在正文流（IoMin > 0.6 剔除）。"""
+    table_region = {
+        "artifact_id": "1:100:70",
+        "pages": [1],
+        "page_start": 1,
+        "bbox": {"x0": 60.0, "x1": 550.0, "top": 90.0, "bottom": 200.0},
+        "caption": "表1",
+        "text": "表格内容",
+    }
+    covered = RAGFlowPdfParser._line_tag  # noqa: F841  仅确认 parser 类可用
+    boxes = [
+        # 完全落在表格 bbox 内 → 应剔除
+        SimpleNamespace(page=1, x0=70.0, x1=200.0, top=100.0, bottom=120.0, text="cell", col_id=0, position_tag="", layout_type="table", layoutno="", positions=None),
+        # 页面外区域 → 保留
+        SimpleNamespace(page=1, x0=70.0, x1=200.0, top=400.0, bottom=420.0, text="正文", col_id=0, position_tag="", layout_type="text", layoutno="", positions=None),
+    ]
+    kept = RAGFlowPdfParser._drop_boxes_covered_by_regions(boxes, [table_region])
+    assert len(kept) == 1
+    assert kept[0].text == "正文"
+
+
+def test_reading_order_table_entry_prefers_html():
+    """有 TSR HTML 时 table entry 内联 HTML；无 HTML 回退 [TABLE] 前缀旧行为。"""
+    entry_with_html = {
+        "kind": "table",
+        "caption": "表1:比较",
+        "html": "<table><tr><td>a</td></tr></table>",
+        "text": "散落数字流",
+    }
+    rendered = RAGFlowPdfParser._reading_order_entry_text(entry_with_html)
+    assert "<table>" in rendered
+    assert "[TABLE]" not in rendered
+    assert "表1:比较" in rendered
+
+    entry_without_html = {
+        "kind": "table",
+        "caption": "表1:比较",
+        "html": "",
+        "text": "散落数字流",
+    }
+    rendered = RAGFlowPdfParser._reading_order_entry_text(entry_without_html)
+    assert rendered.startswith("[TABLE]")
+    assert "表1:比较" in rendered
