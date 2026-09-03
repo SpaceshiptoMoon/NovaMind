@@ -180,6 +180,18 @@ class DocumentQueryService:
                         "删除 PDF figure 图片前缀失败（继续删主对象）",
                         document_id=document_id, error=str(figure_err),
                     )
+                # 清理解析全文目录（{base_object}_parsed/ 前缀）：parsed_text_object
+                # 指向的 full_text.md 若不清理将成为 MinIO 孤儿（DB 删除后无人引用）。
+                try:
+                    await self.minio_client.delete_objects_by_prefix(
+                        storage_info["minio_bucket"],
+                        f"{storage_info['minio_object_name']}_parsed/",
+                    )
+                except Exception as parsed_err:
+                    self.logger.warning(
+                        "删除解析全文本前缀失败（继续删主对象）",
+                        document_id=document_id, error=str(parsed_err),
+                    )
                 await self.minio_client.delete_document(
                     bucket_name=storage_info["minio_bucket"],
                     object_name=storage_info["minio_object_name"],

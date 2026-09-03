@@ -185,6 +185,16 @@ async def process_document_task(
                                 "重处理前已清理旧 PDF figure 图片", document_id=document_id,
                                 deleted_figures=deleted_figures,
                             )
+                        # 同步清理解析全文目录（{base_object}_parsed/ 前缀）：
+                        # 重处理会重新生成 full_text.md，清理避免旧解析产物残留。
+                        deleted_parsed = await minio_client.delete_objects_by_prefix(
+                            frame_bucket, f"{frame_base}_parsed/",
+                        )
+                        if deleted_parsed:
+                            logger.info(
+                                "重处理前已清理旧解析全文", document_id=document_id,
+                                deleted_parsed=deleted_parsed,
+                            )
                 except Exception as frame_cleanup_err:
                     logger.warning(
                         "重处理前清理旧视频帧/figure 图片失败", document_id=document_id, error=str(frame_cleanup_err),
