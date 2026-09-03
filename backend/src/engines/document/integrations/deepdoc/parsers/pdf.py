@@ -759,7 +759,10 @@ class RAGFlowPdfParser:
             zoom_map={page: zoom for page, zoom in enumerate(effective_zooms, start=1)},
         )
         table_regions = self._build_table_regions_metadata(artifacts)
-        figure_regions = self._build_figure_regions_metadata(artifacts)
+        figure_regions = self._build_figure_regions_metadata(
+            artifacts,
+            raster_images_by_page=fusion_meta.get("raster_images_by_page") or {},
+        )
         reading_order = self._build_reading_order_metadata(
             chunk_boxes,
             table_regions,
@@ -832,6 +835,7 @@ class RAGFlowPdfParser:
         image_list: list[np.ndarray] = []
         fused_pages: list[list[dict[str, Any]]] = []
         effective_zooms: list[int] = []
+        raster_images_by_page: dict[int, list[dict[str, Any]]] = {}
         base_zoom = 2
         doc = fitz.open(stream=filename, filetype="pdf") if isinstance(filename, bytes) else fitz.open(str(filename))
         plumber_pdf = None
@@ -844,6 +848,17 @@ class RAGFlowPdfParser:
             plumber_pages = plumber_pdf.pages if plumber_pdf is not None else []
             for page_index in range(doc.page_count):
                 page = doc.load_page(page_index)
+                # 记录该页内嵌栅格图 bbox（页面坐标），供 figure 判真使用：
+                # 真实图表是内嵌位图对象，公式区是矢量绘制、无内嵌图。
+                try:
+                    raster_images_by_page[page_index + 1] = [
+                        {"x0": float(info["bbox"][0]), "top": float(info["bbox"][1]),
+                         "x1": float(info["bbox"][2]), "bottom": float(info["bbox"][3])}
+                        for info in page.get_image_info()
+                        if info.get("width", 0) >= 32 and info.get("height", 0) >= 32
+                    ]
+                except Exception:
+                    raster_images_by_page[page_index + 1] = []
                 page_zoom = base_zoom
                 img: np.ndarray | None = None
                 fused: list[dict[str, Any]] = []
@@ -876,6 +891,7 @@ class RAGFlowPdfParser:
             layout_meta["layout_source"],
         )
         layout_meta["effective_zooms"] = effective_zooms
+        layout_meta["raster_images_by_page"] = raster_images_by_page
         return image_list, fused_pages, layout_pages, layout_meta
 
     def _extract_page_chars(self, plumber_pages: Sequence[Any], page_index: int) -> list[dict[str, Any]]:
@@ -1365,7 +1381,18 @@ class RAGFlowPdfParser:
     @staticmethod
     def _build_figure_regions_metadata(
         artifacts: dict[str, list[dict[str, Any]]],
+        *,
+        raster_images_by_page: dict[int, list[dict[str, Any]]] | None = None,
     ) -> list[dict[str, Any]]:
+        """构建 figure regions。
+
+        ``raster_images_by_page`` 提供时（full 流水线始终提供），figure 组必须与
+        该组所在某页的 PDF 内嵌栅格图有实际重叠才保留。layout 模型常把行间
+        公式区标成 figure，公式是矢量绘制、没有内嵌位图，据此把公式组降级
+        （不进 reading_order、不生成 ![Figure N:] 占位符），避免正文公式推导
+        被占位符切碎（实测一份论文里 Figure 2 占位符在公式区重复出现 7 次）。
+        未提供时（调用方拿不到栅格信息，如旧测试）退回旧行为按 has_image 判。
+        """
         figure_regions: list[dict[str, Any]] = []
         ordered_figures = sorted(
             artifacts.get("figures", []),
@@ -1376,7 +1403,23 @@ class RAGFlowPdfParser:
             ),
         )
         per_page_index: dict[int, int] = {}
+        dropped_no_image = 0
         for figure in ordered_figures:
+            image = figure.get("image")
+            image_blobs = list(getattr(image, "blobs", [])) if image is not None else []
+            keep = bool(image_blobs)
+            if keep and raster_images_by_page:
+                keep = any(
+                    PdfArtifactExtractor.bbox_overlap_ratio(
+                        dict(figure.get("bbox") or {}),
+                        raster,
+                    ) > 0.05
+                    for page in (figure.get("pages") or [])
+                    for raster in (raster_images_by_page.get(int(page)) or [])
+                )
+            if not keep:
+                dropped_no_image += 1
+                continue
             pages = list(figure.get("pages") or [])
             first_page = min(pages) if pages else 0
             region_index_on_page = per_page_index.get(first_page, 0)
@@ -1386,8 +1429,6 @@ class RAGFlowPdfParser:
                 for member in figure.get("members", [])
                 if str(member.get("text", "")).strip()
             ]
-            image = figure.get("image")
-            image_blobs = list(getattr(image, "blobs", [])) if image is not None else []
             figure_regions.append(
                 {
                     "artifact_id": figure.get("artifact_id"),
@@ -1399,9 +1440,14 @@ class RAGFlowPdfParser:
                     "text": figure.get("text", ""),
                     "member_texts": member_texts,
                     "member_text_count": len(member_texts),
-                    "has_image": bool(image_blobs),
+                    "has_image": True,
                     "image_blobs": image_blobs,
                 }
+            )
+        if dropped_no_image:
+            logger.info(
+                "DeepDoc figure 无内嵌栅格图组已降级（不生成占位符）",
+                dropped_count=dropped_no_image,
             )
         return figure_regions
 
