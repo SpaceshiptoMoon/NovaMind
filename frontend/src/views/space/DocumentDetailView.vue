@@ -11,23 +11,6 @@
             <h3 class="doc-filename">{{ document?.filename || '加载中...' }}</h3>
           </div>
         </div>
-        <div class="header-actions">
-          <el-button v-if="canProcess" type="primary" size="small" :loading="actionLoading" @click="handleProcessDoc">
-            处理
-          </el-button>
-          <el-button v-if="canCancel" type="warning" size="small" :loading="actionLoading" @click="handleCancelDoc">
-            取消
-          </el-button>
-          <el-button v-if="canRetry" type="success" size="small" :loading="actionLoading" @click="handleRetryDoc">
-            重试
-          </el-button>
-          <el-button type="primary" size="small" plain @click="handleDownload">
-            下载源文件
-          </el-button>
-          <el-button type="danger" size="small" plain @click="handleDelete">
-            删除
-          </el-button>
-        </div>
       </div>
 
       <!-- Meta grid -->
@@ -194,8 +177,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { Close, ArrowRight } from '@element-plus/icons-vue'
 import { documentApi } from '@/api/knowledge'
 import Pagination from '@/components/common/Pagination.vue'
@@ -205,14 +188,12 @@ import { chunkTypeLabels, getFileTypeStyle, taskStatusMap } from '@/components/k
 import { formatFileSize, formatDate, formatDuration } from '@/utils/format'
 
 const route = useRoute()
-const router = useRouter()
 
 const spaceId = computed(() => Number(route.params.id))
 const docId = computed(() => Number(route.params.docId))
 const kbId = computed(() => Number(route.query.kbId) || 0)
 
 const loading = ref(false)
-const actionLoading = ref(false)
 const document = ref<DocumentDetail | null>(null)
 const latestTask = ref<DocumentTaskItem | null>(null)
 const chunks = ref<Chunk[]>([])
@@ -231,9 +212,6 @@ const showOriginalPanel = ref(true)
 // 状态辅助
 const docStatus = computed(() => document.value?.status ?? 0)
 const currentStatusConfig = computed(() => taskStatusMap[docStatus.value] ?? { text: '未知', type: 'info' as const })
-const canProcess = computed(() => docStatus.value === 0 || docStatus.value === 2 || docStatus.value === 3)
-const canCancel = computed(() => docStatus.value === 0 || docStatus.value === 1)
-const canRetry = computed(() => docStatus.value === 3)
 
 function toggleChunk(index: number): void {
   expandedChunks.value[index] = !expandedChunks.value[index]
@@ -281,49 +259,6 @@ async function fetchChunks() {
   }
 }
 
-async function handleDownload() {
-  if (!document.value) return
-  try {
-    await documentApi.downloadDocument(
-      spaceId.value,
-      kbId.value,
-      docId.value,
-      document.value.filename
-    )
-    ElMessage.success('下载成功')
-  } catch (error: unknown) {
-    const err = error as { response?: { data?: { error?: { message?: string } } } }
-    ElMessage.error(err.response?.data?.error?.message || '下载失败')
-  }
-}
-
-async function handleDelete() {
-  if (!document.value) return
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除文档 "${document.value.filename}" 吗？此操作不可恢复。`,
-      '警告',
-      {
-        confirmButtonText: '确定删除',
-        cancelButtonText: '取消',
-        type: 'error',
-      }
-    )
-    await documentApi.deleteDocument(
-      spaceId.value,
-      kbId.value,
-      docId.value
-    )
-    ElMessage.success('文档已删除')
-    router.back()
-  } catch (error: unknown) {
-    if ((error as string) !== 'cancel') {
-      const err = error as { response?: { data?: { error?: { message?: string } } } }
-      ElMessage.error(err.response?.data?.error?.message || '删除失败')
-    }
-  }
-}
-
 async function fetchLatestTask() {
   if (kbId.value === 0) return
   try {
@@ -333,55 +268,6 @@ async function fetchLatestTask() {
     }
   } catch {
     // 任务信息获取失败不影响主页面
-  }
-}
-
-async function handleProcessDoc() {
-  actionLoading.value = true
-  try {
-    const res = await documentApi.batchProcessDocuments(spaceId.value, kbId.value, {
-      document_ids: [docId.value],
-    })
-    const item = res.results.find((result) => result.document_id === docId.value)
-    if (item?.status === 'processing') {
-      ElMessage.success(`已提交到任务项 #${item.task_item_id ?? '-'}`)
-    } else if (item?.message) {
-      ElMessage.warning(item.message)
-    }
-    await fetchDocument()
-    await fetchLatestTask()
-  } catch {
-    // Error already shown by interceptor
-  } finally {
-    actionLoading.value = false
-  }
-}
-
-async function handleCancelDoc() {
-  actionLoading.value = true
-  try {
-    await documentApi.cancelDocument(spaceId.value, kbId.value, docId.value)
-    ElMessage.success('已取消处理')
-    await fetchDocument()
-    await fetchLatestTask()
-  } catch {
-    // Error already shown by interceptor
-  } finally {
-    actionLoading.value = false
-  }
-}
-
-async function handleRetryDoc() {
-  actionLoading.value = true
-  try {
-    const res = await documentApi.retryDocument(spaceId.value, kbId.value, docId.value)
-    ElMessage.success(`已重新提交到任务项 #${res.task_item_id ?? '-'}`)
-    await fetchDocument()
-    await fetchLatestTask()
-  } catch {
-    // Error already shown by interceptor
-  } finally {
-    actionLoading.value = false
   }
 }
 
@@ -443,12 +329,6 @@ onMounted(() => {
   font-weight: var(--weight-semibold);
   color: var(--color-text);
   font-family: var(--font-display);
-}
-
-.header-actions {
-  display: flex;
-  gap: var(--space-2);
-  flex-shrink: 0;
 }
 
 .meta-grid {
