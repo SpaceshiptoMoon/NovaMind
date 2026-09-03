@@ -219,7 +219,7 @@ class DocumentNotFoundError(KnowledgeSpaceError):
 
 
 class DocumentAlreadyExistsError(KnowledgeSpaceError):
-    """文档已存在（同知识库内内容哈希重复）
+    """文档已存在（同知识库 + 同上传者内内容哈希重复）
 
     filename 是本次上传的文件名；existing_document_id / existing_filename 指向
     库中内容相同的已有文档，二者可能不同名（去重只看内容哈希）。existing_* 缺失时

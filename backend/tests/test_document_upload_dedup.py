@@ -84,6 +84,16 @@ def _build_service(create_side_effect, cache_mock):
     doc_repo.create = AsyncMock(side_effect=create_side_effect)
     doc_repo.cache_document_hash = cache_mock
     service.doc_repo = doc_repo
+    # 记录去重查询实参，供测试断言（kb_id, uploader_id, file_hash）过滤维度
+    service._dedup_queries: list[tuple] = []
+
+    original_get_by_hash = doc_repo.get_by_hash
+
+    async def _recording_get_by_hash(*args, **kwargs):
+        service._dedup_queries.append((args, kwargs))
+        return await original_get_by_hash(*args, **kwargs)
+
+    doc_repo.get_by_hash = _recording_get_by_hash
 
     service.minio_client = SimpleNamespace(
         upload_document=AsyncMock(
@@ -152,15 +162,49 @@ def test_upload_document_updates_hash_cache_after_create(monkeypatch):
     assert doc.filename == "doc.pdf"
     assert doc.file_size == 18
     cache_mock.assert_awaited_once()
-    # The call must mark this (kb_id, file_hash) as existing.
+    # The call must mark this (kb_id, uploader_id, file_hash) as existing.
     args = cache_mock.await_args.args
     kwargs = cache_mock.await_args.kwargs
     called_kb_id = args[0] if len(args) > 0 else kwargs["kb_id"]
-    called_hash = args[1] if len(args) > 1 else kwargs["file_hash"]
-    called_exists = args[2] if len(args) > 2 else kwargs["exists"]
+    called_uploader = args[1] if len(args) > 1 else kwargs["uploader_id"]
+    called_hash = args[2] if len(args) > 2 else kwargs["file_hash"]
+    called_exists = args[3] if len(args) > 3 else kwargs["exists"]
     assert called_kb_id == 1
+    assert called_uploader == 1
     assert called_hash == hashlib.sha256(b"file-content-bytes").hexdigest()
     assert called_exists is True
+
+
+def test_upload_document_dedup_scoped_to_uploader(monkeypatch):
+    """去重查询必须按 (kb_id, uploader_id, file_hash) 三元组过滤。
+
+    回归背景：原实现只按 kb_id+hash 过滤，同一知识库里不同成员无法
+    各自上传同一文件。
+    """
+    cache_mock = AsyncMock()
+    created = SimpleNamespace(id=1, filename="doc.pdf", file_size=18, set_minio_info=MagicMock())
+    service = _build_service(create_side_effect=lambda *a, **k: created, cache_mock=cache_mock)
+    _patch_upload_helpers(monkeypatch, service)
+
+    _run(
+        service.upload_document(
+            kb_id=1,
+            uploader_id=9,
+            file_content=b"file-content-bytes",
+            filename="doc.pdf",
+        )
+    )
+
+    assert service._dedup_queries, "上传流程应至少发起一次 get_by_hash 去重查询"
+    for args, kwargs in service._dedup_queries:
+        positional = list(args)
+        # 兼容 use_cache 关键字兜底分支的额外参数
+        called_kb = positional[0] if len(positional) > 0 else kwargs["kb_id"]
+        called_uploader = positional[1] if len(positional) > 1 else kwargs["uploader_id"]
+        called_hash = positional[2] if len(positional) > 2 else kwargs["file_hash"]
+        assert called_kb == 1
+        assert called_uploader == 9, "去重查询必须绑定本次上传的 uploader_id"
+        assert called_hash == hashlib.sha256(b"file-content-bytes").hexdigest()
 
 
 def test_upload_document_duplicate_points_to_existing_file(monkeypatch):

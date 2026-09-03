@@ -167,8 +167,8 @@ class DocumentUploadService:
         file_hash = await asyncio.to_thread(_compute_sha256, file_content)
         file_type = file_info.extension
 
-        # 8. 检查重复（同知识库内活跃文档）
-        existing = await self.doc_repo.get_by_hash(kb_id, file_hash)
+        # 8. 检查重复（去重范围：同知识库 + 同上传者的活跃文档）
+        existing = await self.doc_repo.get_by_hash(kb_id, uploader_id, file_hash)
         if existing:
             raise DocumentAlreadyExistsError(
                 filename,
@@ -176,8 +176,8 @@ class DocumentUploadService:
                 existing_filename=existing.filename,
             )
 
-        # 8.1 检查是否有同 hash 的已软删除文档（可复用记录）
-        soft_deleted = await self.doc_repo.get_deleted_by_hash(kb_id, file_hash)
+        # 8.1 检查是否有同 hash 的已软删除文档（限同上传者，可复用记录）
+        soft_deleted = await self.doc_repo.get_deleted_by_hash(kb_id, uploader_id, file_hash)
         if soft_deleted:
             # 复活已软删除记录 + 重新上传 MinIO 用 SAVEPOINT 保证原子性：
             # 若 MinIO 上传失败，undelete 的 ORM 改动随 SAVEPOINT 自动回滚，
@@ -203,7 +203,7 @@ class DocumentUploadService:
             await self.session.commit()
 
             # 更新 hash 缓存（该 hash 现在又有活跃文档了）
-            await self.doc_repo.cache_document_hash(kb_id, file_hash, exists=True)
+            await self.doc_repo.cache_document_hash(kb_id, uploader_id, file_hash, exists=True)
 
             self.logger.info(
                 "复活已删除文档",
@@ -220,7 +220,7 @@ class DocumentUploadService:
 
         # 9. 创建文档记录 + 上传 MinIO（使用 SAVEPOINT 保证原子性）
         # 注意：doc_repo.create 先 flush 出真实 document_id 再上传 MinIO，因此
-        # 唯一约束冲突（uq_kb_file_hash）发生在 flush 阶段、MinIO 上传之前，
+        # 唯一约束冲突（uq_kb_uploader_file_hash）发生在 flush 阶段、MinIO 上传之前，
         # 不会产生孤儿对象。
         try:
             async with self.session.begin_nested():
@@ -256,14 +256,16 @@ class DocumentUploadService:
 
             await self.session.commit()
         except IntegrityError:
-            # uq_kb_file_hash 冲突：同知识库已存在相同哈希的文档。正常情况下步骤 8 的
-            # 去重检查会先命中并抛出 DocumentAlreadyExistsError，这里只兜底两类漏网
-            # 场景——(a) 哈希缓存残留 exists=False 导致 get_by_hash 跳过 DB 查询，
-            # (b) 并发上传竞争。SAVEPOINT 已自动回滚，再抛业务异常避免 500。
+            # uq_kb_uploader_file_hash 冲突：同知识库同上传者已存在相同哈希的文档。
+            # 正常情况下步骤 8 的去重检查会先命中并抛出 DocumentAlreadyExistsError，
+            # 这里只兜底两类漏网场景——(a) 哈希缓存残留 exists=False 导致 get_by_hash
+            # 跳过 DB 查询，(b) 并发上传竞争。SAVEPOINT 已自动回滚，再抛业务异常避免 500。
             await self.session.rollback()
             # rollback 后重新查询冲突文档，报错时点名已有文件；查不到（竞态窗口）
             # 则退化为仅报本次文件名。
-            conflicting = await self.doc_repo.get_by_hash(kb_id, file_hash, use_cache=False)
+            conflicting = await self.doc_repo.get_by_hash(
+                kb_id, uploader_id, file_hash, use_cache=False
+            )
             raise DocumentAlreadyExistsError(
                 filename,
                 existing_document_id=conflicting.id if conflicting else None,
@@ -272,8 +274,9 @@ class DocumentUploadService:
 
         # 创建成功后同步哈希缓存为 exists=True。步骤 8 的 get_by_hash 在未命中时会
         # 缓存 exists=False，若创建后不更正，后续同哈希上传会因缓存命中而绕过去重
-        # 检查、直接撞上 uq_kb_file_hash 唯一约束（正是批量重传时的 IntegrityError）。
-        await self.doc_repo.cache_document_hash(kb_id, file_hash, exists=True)
+        # 检查、直接撞上 uq_kb_uploader_file_hash 唯一约束（正是批量重传时的
+        # IntegrityError）。
+        await self.doc_repo.cache_document_hash(kb_id, uploader_id, file_hash, exists=True)
 
         self.logger.info(
             "文档上传成功，等待拆分解析",

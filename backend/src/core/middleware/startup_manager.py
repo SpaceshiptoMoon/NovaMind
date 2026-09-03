@@ -13,7 +13,7 @@ from novamind.core.middleware.manifest_loader import get_sorted_manifests
 
 from novamind.core.database.base import create_tables, ensure_fulltext_indexes
 from novamind.core.database.database import get_engine, dispose_engine
-from novamind.core.database.schema_migrations import SCHEMA_MIGRATIONS
+from novamind.core.database.schema_migrations import CONSTRAINT_MIGRATIONS, SCHEMA_MIGRATIONS
 from novamind.shared.cache.redis_client import get_redis_client, close_redis_connection
 
 logger = get_logger(__name__)
@@ -295,12 +295,18 @@ class AppLifespanManager:
 
     async def _run_schema_migrations(self):
         """
-        幂等补列迁移。
+        幂等启动期迁移。
 
-        create_all() 只创建不存在的表，不会给已存在的表 ALTER ADD COLUMN。
-        在此集中维护「新增列」迁移：检测目标列缺失则补建，幂等可重复执行。
-        新增列时向 ``core.database.schema_migrations.SCHEMA_MIGRATIONS`` 追加
-        (表名, 列名, DDL) 即可，结构由 ``tests/test_schema_migrations.py`` 校验。
+        create_all() 只创建不存在的表，不会给已存在的表 ALTER ADD COLUMN，
+        也不会调整约束/索引。迁移分两类：
+
+        - SCHEMA_MIGRATIONS（补列）：SHOW COLUMNS 检测目标列缺失则补建。
+        - CONSTRAINT_MIGRATIONS（约束/索引变更）：information_schema 检测新索引
+          不存在时，先 drop 旧索引（若有）再按 DDL 建新索引。用于去重口径等
+          约束变更时同步存量库。
+
+        新增条目分别追加到 ``core.database.schema_migrations`` 对应注册表，
+        结构由 ``tests/test_schema_migrations.py`` 校验。
         """
         db_engine = get_engine()
         for table, column, ddl in SCHEMA_MIGRATIONS:
@@ -320,6 +326,34 @@ class AppLifespanManager:
                     "schema 迁移失败",
                     table=table,
                     column=column,
+                    error=str(e),
+                )
+
+        for table, old_index, new_index, ddl in CONSTRAINT_MIGRATIONS:
+            try:
+                async with db_engine.begin() as conn:
+                    exists = (
+                        await conn.execute(
+                            text(
+                                "SELECT 1 FROM information_schema.statistics "
+                                "WHERE table_schema = DATABASE() "
+                                "AND table_name = :t AND index_name = :i LIMIT 1"
+                            ),
+                            {"t": table, "i": new_index},
+                        )
+                    ).fetchone()
+                    if exists:
+                        continue
+                    # 先删旧索引（可能不存在于更早的库，用 IF EXISTS 语义容忍）
+                    await conn.execute(text(f"ALTER TABLE `{table}` DROP INDEX `{old_index}`"))
+                    self.logger.info("schema 迁移：删除旧索引", table=table, index=old_index)
+                    await conn.execute(text(ddl))
+                    self.logger.info("schema 迁移：新增索引", table=table, index=new_index)
+            except Exception as e:
+                self.logger.warning(
+                    "schema 迁移失败",
+                    table=table,
+                    index=new_index,
                     error=str(e),
                 )
 

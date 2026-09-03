@@ -38,7 +38,7 @@ class Document(BaseModel):
     filename = Column(String(255), nullable=False, comment="存储文件名")
     file_type = Column(String(50), nullable=False, comment="文件类型（pdf/docx/txt/md）")
     file_size = Column(BigInteger, nullable=False, comment="文件大小（字节）")
-    file_hash = Column(String(64), nullable=False, index=True, comment="文件哈希值（去重）")
+    file_hash = Column(String(64), nullable=False, index=True, comment="文件哈希值（去重，按 知识库+上传者 隔离）")
 
     # 存储信息（MinIO 路径 + parsed_text_object）
     storage = Column(JSON, nullable=False, default=dict, comment="存储信息（MinIO）")
@@ -47,7 +47,9 @@ class Document(BaseModel):
 
     # 索引和约束
     __table_args__ = (
-        UniqueConstraint("kb_id", "file_hash", name="uq_kb_file_hash"),
+        # 去重范围：同知识库 + 同上传者 + 同内容哈希。不同成员可各自上传同一文件。
+        # 存量库由 startup 期 CONSTRAINT_MIGRATIONS 把旧 uq_kb_file_hash 换成此约束。
+        UniqueConstraint("kb_id", "uploader_id", "file_hash", name="uq_kb_uploader_file_hash"),
         Index("idx_space_created", "space_id", "created_at"),
         {"comment": "文档表，存储文件元数据；处理状态见 document_task_items 表"},
     )

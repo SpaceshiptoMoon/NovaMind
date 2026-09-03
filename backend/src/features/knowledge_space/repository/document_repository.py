@@ -47,9 +47,9 @@ class DocumentRepository:
             self._cache = await get_redis_client()
         return self._cache
 
-    def _get_doc_hash_cache_key(self, kb_id: int, file_hash: str) -> str:
-        """生成文档哈希缓存键"""
-        return f"doc:hash:{kb_id}:{file_hash}"
+    def _get_doc_hash_cache_key(self, kb_id: int, uploader_id: int, file_hash: str) -> str:
+        """生成文档哈希缓存键（去重范围：知识库 + 上传者）"""
+        return f"doc:hash:{kb_id}:{uploader_id}:{file_hash}"
 
     def _get_doc_cache_key(self, document_id: int) -> str:
         """生成文档缓存键"""
@@ -58,18 +58,20 @@ class DocumentRepository:
     async def cache_document_hash(
         self,
         kb_id: int,
+        uploader_id: int,
         file_hash: str,
         exists: bool,
     ) -> None:
         """缓存文档哈希检查结果"""
         try:
             cache = await self._get_cache()
-            cache_key = self._get_doc_hash_cache_key(kb_id, file_hash)
+            cache_key = self._get_doc_hash_cache_key(kb_id, uploader_id, file_hash)
             await cache.set(cache_key, {"exists": exists}, expire=DOCUMENT_HASH_CACHE_TTL)
         except Exception as e:
             self.logger.warning(
                 "缓存文档哈希失败",
                 kb_id=kb_id,
+                uploader_id=uploader_id,
                 file_hash=file_hash[:16],
                 error=str(e),
             )
@@ -204,14 +206,18 @@ class DocumentRepository:
     async def get_by_hash(
         self,
         kb_id: int,
+        uploader_id: int,
         file_hash: str,
         use_cache: bool = True,
     ) -> Optional[Document]:
         """
         根据文件哈希获取文档（用于去重，带缓存）
 
+        去重范围：同知识库 + 同上传者。不同成员可各自上传同一文件。
+
         Args:
             kb_id: 知识库 ID
+            uploader_id: 上传者用户 ID
             file_hash: 文件哈希值
             use_cache: 是否使用缓存
 
@@ -222,16 +228,19 @@ class DocumentRepository:
         if use_cache:
             try:
                 cache = await self._get_cache()
-                cache_key = self._get_doc_hash_cache_key(kb_id, file_hash)
+                cache_key = self._get_doc_hash_cache_key(kb_id, uploader_id, file_hash)
                 cached = await cache.get(cache_key)
 
                 if cached is not None:
-                    self.logger.debug("文档哈希缓存命中", kb_id=kb_id, file_hash=file_hash[:16])
+                    self.logger.debug(
+                        "文档哈希缓存命中", kb_id=kb_id, uploader_id=uploader_id, file_hash=file_hash[:16]
+                    )
                     if not cached.get("exists", False):
                         return None
                     result = await self.session.execute(
                         select(Document).where(
                             Document.kb_id == kb_id,
+                            Document.uploader_id == uploader_id,
                             Document.file_hash == file_hash,
                             Document.deleted_at.is_(None),
                         )
@@ -241,6 +250,7 @@ class DocumentRepository:
                 self.logger.warning(
                     "读取文档哈希缓存失败",
                     kb_id=kb_id,
+                    uploader_id=uploader_id,
                     file_hash=file_hash[:16],
                     error=str(e),
                 )
@@ -249,6 +259,7 @@ class DocumentRepository:
         result = await self.session.execute(
             select(Document).where(
                 Document.kb_id == kb_id,
+                Document.uploader_id == uploader_id,
                 Document.file_hash == file_hash,
                 Document.deleted_at.is_(None),
             )
@@ -259,7 +270,7 @@ class DocumentRepository:
         if use_cache:
             try:
                 cache = await self._get_cache()
-                cache_key = self._get_doc_hash_cache_key(kb_id, file_hash)
+                cache_key = self._get_doc_hash_cache_key(kb_id, uploader_id, file_hash)
                 await cache.set(
                     cache_key,
                     {"exists": document is not None},
@@ -269,17 +280,21 @@ class DocumentRepository:
                 self.logger.warning(
                     "缓存文档哈希失败",
                     kb_id=kb_id,
+                    uploader_id=uploader_id,
                     file_hash=file_hash[:16],
                     error=str(e),
                 )
 
         return document
 
-    async def get_deleted_by_hash(self, kb_id: int, file_hash: str) -> Optional[Document]:
-        """根据文件哈希获取已软删除的文档（用于复活）"""
+    async def get_deleted_by_hash(
+        self, kb_id: int, uploader_id: int, file_hash: str
+    ) -> Optional[Document]:
+        """根据文件哈希获取已软删除的文档（用于复活，限同上传者）"""
         result = await self.session.execute(
             select(Document).where(
                 Document.kb_id == kb_id,
+                Document.uploader_id == uploader_id,
                 Document.file_hash == file_hash,
                 Document.deleted_at.isnot(None),
             ).order_by(Document.deleted_at.desc()).limit(1)
@@ -300,10 +315,12 @@ class DocumentRepository:
         if not document:
             return False
 
-        # 失效哈希缓存
+        # 失效哈希缓存（键含 uploader_id，与新唯一约束范围一致）
         try:
             cache = await self._get_cache()
-            hash_cache_key = self._get_doc_hash_cache_key(document.kb_id, document.file_hash)
+            hash_cache_key = self._get_doc_hash_cache_key(
+                document.kb_id, document.uploader_id, document.file_hash
+            )
             await cache.delete(hash_cache_key)
         except Exception as e:
             self.logger.warning(
