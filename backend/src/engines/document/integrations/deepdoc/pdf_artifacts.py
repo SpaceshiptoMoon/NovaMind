@@ -74,6 +74,15 @@ class PdfArtifactExtractor:
                 return
         groups[self._group_key(box)] = [box]
 
+    # 跨页分组的最大页跨度：组覆盖的页数超过此值即不再吸收新成员。
+    # 防止「组吸收新页成员 → 允许页范围扩张 → 又能吞下一页」的雪球式过合并
+    # （实测 18 页论文里表格/题注组一路吞掉 7 个不同页的题注与公式编号）。
+    MAX_GROUP_PAGE_SPAN = 3
+    # 跨页新成员须落在相邻页的页边界带内（按相邻成员框高折算）：页内 top/bottom
+    # 是页局部坐标，跨页直接相减没有物理意义，真实跨页表格/图片必然满足
+    # 「上一页成员贴近页底、下一页新成员贴近页顶」的物理连续性。
+    CROSS_PAGE_EDGE_BAND_RATIO = 0.5
+
     @staticmethod
     def _belongs_to_group(box: Any, members: Sequence[Any]) -> bool:
         if not members:
@@ -86,6 +95,9 @@ class PdfArtifactExtractor:
         min_page = group_pages[0]
         max_page = group_pages[-1]
         if page < min_page - 1 or page > max_page + 1:
+            return False
+        # 雪球防护：并入新成员后的组页跨度超过上限即拒绝。
+        if len({*group_pages, page}) > PdfArtifactExtractor.MAX_GROUP_PAGE_SPAN:
             return False
         horizontal_overlap = min(float(getattr(box, "x1", 0.0)), group_bbox["x1"]) - max(float(getattr(box, "x0", 0.0)), group_bbox["x0"])
         min_width = max(1.0, min(float(getattr(box, "x1", 0.0) - getattr(box, "x0", 0.0)), group_bbox["x1"] - group_bbox["x0"]))
@@ -104,14 +116,17 @@ class PdfArtifactExtractor:
                 abs(group_bbox["top"] - float(getattr(box, "bottom", 0.0))),
             )
             return vertical_gap < 48.0
+        # 跨页合并：水平须与组对齐，且只参考相邻页既有成员（不再用组整体 bbox）。
         if horizontal_overlap / min_width <= 0.2:
             return False
+        adjacent_page = page - 1 if page > max_page else page + 1
         nearest_page_members = [
             member
             for member in members
-            if int(getattr(member, "page", 1)) == (page - 1 if page > max_page else page + 1)
+            if int(getattr(member, "page", 1)) == adjacent_page
         ]
         if not nearest_page_members:
+            # 组跨度受上限约束（<= MAX_GROUP_PAGE_SPAN），此回退不会再雪球。
             nearest_page_members = [
                 member
                 for member in members
@@ -120,11 +135,27 @@ class PdfArtifactExtractor:
         adjacent_bbox = PdfArtifactExtractor._group_bbox(nearest_page_members)
         if not adjacent_bbox:
             return False
-        vertical_gap = min(
-            abs(float(getattr(box, "top", 0.0)) - adjacent_bbox["bottom"]),
-            abs(adjacent_bbox["top"] - float(getattr(box, "bottom", 0.0))),
+        # 页边界带：近似带宽 = max(48px, 边界带比例 × 相邻成员框高)。真实跨页
+        # 表格在「上一页底部 / 下一页顶部」断开，两侧成员必然各自贴近页边界；
+        # 页中间的独立表格/图片（页局部坐标远离边界）不满足，拒绝合并。
+        box_top = float(getattr(box, "top", 0.0))
+        box_bottom = float(getattr(box, "bottom", 0.0))
+        edge_band = max(
+            48.0,
+            PdfArtifactExtractor.CROSS_PAGE_EDGE_BAND_RATIO * max(
+                box_bottom - box_top,
+                adjacent_bbox["bottom"] - adjacent_bbox["top"],
+            ),
         )
-        return vertical_gap < 120.0
+        if page > max_page:
+            # 向后延续：新成员须贴近其所在页顶部。
+            if box_top > edge_band:
+                return False
+        else:
+            # 向前延续：新成员须贴近其所在页底部。
+            if box_bottom < adjacent_bbox["bottom"] - edge_band and box_top > edge_band:
+                return False
+        return True
 
     @staticmethod
     def _is_caption_box(box: Any) -> bool:
@@ -288,6 +319,20 @@ class PdfArtifactExtractor:
             "top": float(min(getattr(item, "top", 0.0) for item in members)),
             "bottom": float(max(getattr(item, "bottom", 0.0) for item in members)),
         }
+
+    @staticmethod
+    def bbox_overlap_ratio(a: dict[str, Any], b: dict[str, Any]) -> float:
+        """两个页面坐标 bbox 的交面积 / 较小框面积（IoMin）。0 表示不相交。"""
+        left = max(float(a.get("x0", 0.0)), float(b.get("x0", 0.0)))
+        right = min(float(a.get("x1", 0.0)), float(b.get("x1", 0.0)))
+        top = max(float(a.get("top", 0.0)), float(b.get("top", 0.0)))
+        bottom = min(float(a.get("bottom", 0.0)), float(b.get("bottom", 0.0)))
+        if right <= left or bottom <= top:
+            return 0.0
+        intersection = (right - left) * (bottom - top)
+        area_a = max(1e-6, (float(a.get("x1", 0.0)) - float(a.get("x0", 0.0))) * (float(a.get("bottom", 0.0)) - float(a.get("top", 0.0))))
+        area_b = max(1e-6, (float(b.get("x1", 0.0)) - float(b.get("x0", 0.0))) * (float(b.get("bottom", 0.0)) - float(b.get("top", 0.0))))
+        return float(intersection / min(area_a, area_b))
 
     def _table_html_from_boxes(
         self,

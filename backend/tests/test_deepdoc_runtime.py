@@ -2113,6 +2113,8 @@ def test_table_regions_include_page_order_and_structure_summary():
 
 
 def test_reading_order_can_include_figure_regions():
+    from novamind.engines.document.integrations.deepdoc.compat import LazyImage
+
     artifacts = {
         "tables": [],
         "figures": [
@@ -2123,6 +2125,7 @@ def test_reading_order_can_include_figure_regions():
                 "pages": [1],
                 "bbox": {"x0": 20.0, "x1": 120.0, "top": 40.0, "bottom": 140.0},
                 "has_image": True,
+                "image": LazyImage([b"\x89PNG-fake-bytes"]),
                 "members": [
                     {"text": "Figure 1 Trend"},
                     {"text": "Chart region"},
@@ -2138,6 +2141,31 @@ def test_reading_order_can_include_figure_regions():
     assert len(reading_order) == 1
     assert reading_order[0]["kind"] == "figure"
     assert reading_order[0]["global_order"] == 0
+
+
+def test_figure_regions_without_image_blobs_are_dropped():
+    """公式区降级：layout 模型把行间公式标成 figure 的组没有真实图片内容，
+    保留会在正文插入 ![Figure N:] 占位符切碎上下文，必须丢弃不进 reading_order。"""
+    artifacts = {
+        "tables": [],
+        "figures": [
+            {
+                "artifact_id": "2:eq",
+                "caption": "Figure 2:",
+                "text": "grad f(x) = PT(...)",
+                "pages": [3],
+                "bbox": {"x0": 20.0, "x1": 300.0, "top": 400.0, "bottom": 440.0},
+                "has_image": False,
+                "image": LazyImage([]),
+                "members": [{"text": "Figure 2:"}],
+            }
+        ],
+    }
+    figure_regions = RAGFlowPdfParser._build_figure_regions_metadata(artifacts)
+    reading_order = RAGFlowPdfParser._build_reading_order_metadata([], [], figure_regions)
+
+    assert figure_regions == []
+    assert reading_order == []
 
 
 def test_parser_structured_chunks_can_include_region_blocks():
