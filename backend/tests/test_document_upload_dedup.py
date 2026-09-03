@@ -163,6 +163,44 @@ def test_upload_document_updates_hash_cache_after_create(monkeypatch):
     assert called_exists is True
 
 
+def test_upload_document_duplicate_points_to_existing_file(monkeypatch):
+    """内容相同、文件名不同的重复上传，报错必须点名库中已有文档（id + 文件名）。
+
+    回归背景：原实现只报本次文件名，用户上传改名后的同一文件被拒时，
+    无从知道与库中哪个文档冲突。
+    """
+    existing = SimpleNamespace(id=7, filename="report_final.pdf")
+    cache_mock = AsyncMock()
+    service = _build_service(create_side_effect=MagicMock(), cache_mock=cache_mock)
+    service.doc_repo.get_by_hash = AsyncMock(return_value=existing)
+    _patch_upload_helpers(monkeypatch, service)
+    # 保留本次上传的文件名（默认 patch 会把它规范化成 doc.pdf）
+    monkeypatch.setattr(
+        DocumentUploadService, "_normalize_upload_file",
+        AsyncMock(return_value=("report_v2.pdf", b"file-content-bytes")),
+    )
+
+    with pytest.raises(DocumentAlreadyExistsError) as exc_info:
+        _run(
+            service.upload_document(
+                kb_id=1,
+                uploader_id=1,
+                file_content=b"file-content-bytes",
+                filename="report_v2.pdf",
+            )
+        )
+
+    err = exc_info.value
+    assert err.existing_document_id == 7
+    assert err.existing_filename == "report_final.pdf"
+    # 消息中同时出现本次文件名与已有文件名，两个不同名都可见
+    assert "report_v2.pdf" in err.message
+    assert "report_final.pdf" in err.message
+    # 序列化后携带已有文档信息（API error payload 可见）
+    assert err.to_dict()["existing_document_id"] == 7
+    assert err.to_dict()["existing_filename"] == "report_final.pdf"
+
+
 def test_upload_document_translates_integrity_error_to_already_exists(monkeypatch):
     """A uq_kb_file_hash collision (cache staleness / race) must surface as DocumentAlreadyExistsError, not IntegrityError."""
     def _raise(*a, **k):

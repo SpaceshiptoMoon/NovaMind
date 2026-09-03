@@ -170,7 +170,11 @@ class DocumentUploadService:
         # 8. 检查重复（同知识库内活跃文档）
         existing = await self.doc_repo.get_by_hash(kb_id, file_hash)
         if existing:
-            raise DocumentAlreadyExistsError(filename)
+            raise DocumentAlreadyExistsError(
+                filename,
+                existing_document_id=existing.id,
+                existing_filename=existing.filename,
+            )
 
         # 8.1 检查是否有同 hash 的已软删除文档（可复用记录）
         soft_deleted = await self.doc_repo.get_deleted_by_hash(kb_id, file_hash)
@@ -257,7 +261,14 @@ class DocumentUploadService:
             # 场景——(a) 哈希缓存残留 exists=False 导致 get_by_hash 跳过 DB 查询，
             # (b) 并发上传竞争。SAVEPOINT 已自动回滚，再抛业务异常避免 500。
             await self.session.rollback()
-            raise DocumentAlreadyExistsError(filename)
+            # rollback 后重新查询冲突文档，报错时点名已有文件；查不到（竞态窗口）
+            # 则退化为仅报本次文件名。
+            conflicting = await self.doc_repo.get_by_hash(kb_id, file_hash, use_cache=False)
+            raise DocumentAlreadyExistsError(
+                filename,
+                existing_document_id=conflicting.id if conflicting else None,
+                existing_filename=conflicting.filename if conflicting else None,
+            )
 
         # 创建成功后同步哈希缓存为 exists=True。步骤 8 的 get_by_hash 在未命中时会
         # 缓存 exists=False，若创建后不更正，后续同哈希上传会因缓存命中而绕过去重

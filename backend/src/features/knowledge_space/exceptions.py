@@ -219,15 +219,33 @@ class DocumentNotFoundError(KnowledgeSpaceError):
 
 
 class DocumentAlreadyExistsError(KnowledgeSpaceError):
-    """文档已存在"""
-    _serializable_attrs: ClassVar[List[str]] = ["filename"]
+    """文档已存在（同知识库内内容哈希重复）
 
-    def __init__(self, filename: str):
+    filename 是本次上传的文件名；existing_document_id / existing_filename 指向
+    库中内容相同的已有文档，二者可能不同名（去重只看内容哈希）。existing_* 缺失时
+    （如并发竞态下回查失败）退化为仅报本次文件名。
+    """
+    _serializable_attrs: ClassVar[List[str]] = ["filename", "existing_document_id", "existing_filename"]
+
+    def __init__(
+        self,
+        filename: str,
+        existing_document_id: Optional[int] = None,
+        existing_filename: Optional[str] = None,
+    ):
+        if existing_filename:
+            message = (
+                f"文档 '{filename}' 与已有文档 '{existing_filename}' 内容相同，无需重复上传"
+            )
+        else:
+            message = f"文档 '{filename}' 已存在"
         super().__init__(
-            message=f"文档 '{filename}' 已存在",
+            message=message,
             code="DOCUMENT_ALREADY_EXISTS",
         )
         self.filename = filename
+        self.existing_document_id = existing_document_id
+        self.existing_filename = existing_filename
 
 
 class DocumentProcessingError(KnowledgeSpaceError):
