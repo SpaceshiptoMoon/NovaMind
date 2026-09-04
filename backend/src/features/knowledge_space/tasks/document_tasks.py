@@ -132,22 +132,21 @@ async def process_document_task(
             await session.commit()
 
         try:
-            should_reset_chunks = False
+            # 全量清理仅 REPROCESS 触发：REPROCESS 语义是「配置可能已变，全部重做」，
+            # 必须清空所有旧产物（ES 分块 + MinIO 各前缀 + 快照指针）。
+            # RETRY/PROCESS/arq 自动重试/孤儿恢复不再预删任何产物——由管道指纹决定
+            # 续跑（指纹匹配复用快照）或失效重建（指纹不匹配时管道内级联失效），
+            # 保证 embedding 阶段失败的重试不重跑已成功的昂贵解析（VLM/OCR/ASR）。
+            force_full_reset = False
 
             if task.process_mode == TaskProcessMode.REPROCESS:
-                should_reset_chunks = True
-            elif task.process_mode == TaskProcessMode.RETRY:
-                should_reset_chunks = True
+                force_full_reset = True
             elif task.batch_id:
                 batch = await batch_repo.get_by_id(task.batch_id)
-                if batch and batch.action in (BatchAction.REPROCESS, BatchAction.RETRY):
-                    should_reset_chunks = True
-            if not should_reset_chunks:
-                previous_task = await task_repo.get_previous_by_document_id(document_id, task.id)
-                if previous_task and previous_task.status == TaskStatus.COMPLETED:
-                    should_reset_chunks = True
+                if batch and batch.action == BatchAction.REPROCESS:
+                    force_full_reset = True
 
-            if should_reset_chunks:
+            if force_full_reset:
                 try:
                     from novamind.shared.storage.client_factory import ClientFactory
                     es_client = await ClientFactory.get_elasticsearch_client()
@@ -155,9 +154,9 @@ async def process_document_task(
                         space_id=space_id,
                         document_id=document_id,
                     )
-                    logger.info("开始处理前已清除旧 ES 分块", document_id=document_id, job_id=job_id)
+                    logger.info("重新处理前已清除旧 ES 分块", document_id=document_id, job_id=job_id)
                 except Exception as cleanup_err:
-                    logger.warning("开始处理前清除旧 ES 分块失败", document_id=document_id, error=str(cleanup_err))
+                    logger.warning("重新处理前清除旧 ES 分块失败", document_id=document_id, error=str(cleanup_err))
 
                 # 清理 MinIO 旧帧目录（{base_object}_frames/ 前缀）：视频重处理时帧数/idx 可能
                 # 变化，主对象覆盖但高序号旧帧成孤儿；delete_document_chunks 只清 ES 不清 MinIO。
@@ -195,6 +194,22 @@ async def process_document_task(
                                 "重处理前已清理旧解析全文", document_id=document_id,
                                 deleted_parsed=deleted_parsed,
                             )
+                        # 清理管道快照目录（{base_object}_artifacts/ 前缀）+ storage 快照指针：
+                        # REPROCESS 全量重做，旧切分/向量快照不应残留。
+                        deleted_artifacts = await minio_client.delete_objects_by_prefix(
+                            frame_bucket, f"{frame_base}_artifacts/",
+                        )
+                        if deleted_artifacts:
+                            logger.info(
+                                "重处理前已清理旧管道快照", document_id=document_id,
+                                deleted_artifacts=deleted_artifacts,
+                            )
+                        if document.storage and document.storage.get("pipeline_snapshots"):
+                            document.storage = {
+                                **document.storage,
+                                "pipeline_snapshots": {},
+                            }
+                            await session.commit()
                 except Exception as frame_cleanup_err:
                     logger.warning(
                         "重处理前清理旧视频帧/figure 图片失败", document_id=document_id, error=str(frame_cleanup_err),
@@ -675,8 +690,10 @@ async def enqueue_process_document(
             "retry_count": retry_count,
             "queued_at": now_china(),
         })
-        await session.commit()
-
+        # 注意：不在 enqueue 前 commit。批次与任务项必须与入队结果原子：
+        # 若 enqueue 失败，rollback 撤销两者；若先 commit 再 enqueue 失败，
+        # 会留下永远拿不到 job_id 的 PENDING 孤儿任务（无恢复路径）。
+        # enqueue 成功后进程在 commit 前崩溃 → job 运行时发现任务不存在，正常跳过。
         job = await pool.enqueue_job(
             "process_document_task",
             document_id=document_id,

@@ -86,6 +86,7 @@ const METRIC_LABELS: Record<string, string> = {
   language: '语言',
   file_type: '类型',
   enabled: '启用',
+  resumed: '复用快照',
 }
 
 interface NodeRow {
@@ -132,12 +133,15 @@ function formatDurationMs(ms?: number | null): string {
 
 function formatMetrics(metrics?: Record<string, unknown>): string {
   if (!metrics) return ''
-  const entries = Object.entries(metrics).filter(([, v]) => v !== null && v !== undefined && v !== '')
+  const entries = Object.entries(metrics)
+    // 布尔 false 不展示（如 enabled:false / resumed:false 无信息量）；true 显示「复用快照」
+    .filter(([, v]) => v !== null && v !== undefined && v !== '' && v !== false)
   if (!entries.length) return ''
   return entries
     .map(([k, v]) => {
       const label = METRIC_LABELS[k] ?? k
       const val = typeof v === 'boolean' ? (v ? '是' : '否') : String(v)
+      if (typeof v === 'boolean') return label
       return `${label} ${val}`
     })
     .join(' · ')

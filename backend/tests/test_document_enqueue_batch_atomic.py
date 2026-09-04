@@ -18,6 +18,25 @@ from novamind.features.knowledge_space.models.document_task import DocumentTask
 from novamind.features.knowledge_space.models.document_task_batch import BatchAction, DocumentTaskBatch
 from novamind.features.knowledge_space.tasks.document_tasks import enqueue_process_document
 
+# 全量 create_all 需要所有被 FK 引用的模型已注册（否则 NoReferencedTableError）。
+# 注意 SQLite 全量建表陷阱：跨 feature 模型存在同名 Index（idx_space_status 在
+# space_member 与 deep_research 各定义一次），且导入更多模块会引入更多 FK 链，
+# 因此不做全量 create_all，改用 tables= 定向建表（仅本测试涉及的表 + FK 目标表）。
+from novamind.features.user.models.user import User  # noqa: F401
+from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace  # noqa: F401
+from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase  # noqa: F401
+
+# SQLite 中 BIGINT PRIMARY KEY 不像 INTEGER PRIMARY KEY 那样别名 rowid，
+# 模型的 BigInteger 自增主键在内存库不会自动生成 id（NOT NULL constraint failed）。
+# 编译期把 BigInteger 降为 INTEGER，仅影响本测试的 SQLite 建表，不改模型。
+from sqlalchemy import BigInteger
+from sqlalchemy.ext.compiler import compiles
+
+
+@compiles(BigInteger, "sqlite")
+def _bigint_to_integer_on_sqlite(type_, compiler, **kw):
+    return "INTEGER"
+
 
 class _FailingPool:
     async def enqueue_job(self, *args, **kwargs):
@@ -27,7 +46,17 @@ class _FailingPool:
 async def _run_atomicity_check() -> None:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        # 定向建表：documents / document_tasks(批次) / document_task_items 及其 FK 目标表。
+        # 不做全量 create_all（同名 Index 冲突 + FK 链越拉越长，见文件头注释）。
+        tables = [
+            User.__table__,
+            KnowledgeSpace.__table__,
+            KnowledgeBase.__table__,
+            Document.__table__,
+            DocumentTaskBatch.__table__,
+            DocumentTask.__table__,
+        ]
+        await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, tables=tables))
 
     Session = async_sessionmaker(engine, expire_on_commit=False)
     async with Session() as session:

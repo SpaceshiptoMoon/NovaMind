@@ -21,8 +21,13 @@
             <el-tag :type="currentStatusConfig.type" effect="plain" size="small">
               {{ currentStatusConfig.text }}
             </el-tag>
-            <span v-if="latestTask?.error_message && docStatus !== 2" class="error-hint" :title="latestTask.error_message">
-              {{ latestTask.error_message.slice(0, 60) }}{{ latestTask.error_message.length > 60 ? '...' : '' }}
+            <span
+              v-if="latestTask?.error_message && docStatus !== 2"
+              class="error-hint"
+              :title="latestTask.error_message"
+              @click="errorExpanded = !errorExpanded"
+            >
+              {{ errorDisplayText }}
             </span>
           </span>
         </div>
@@ -58,6 +63,21 @@
           <span class="meta-label">音频分段数</span>
           <span class="meta-value">{{ (document.doc_metadata as Record<string, unknown>).segment_count }}</span>
         </div>
+      </div>
+
+      <!-- 处理流程：节点级时间线（数据来自 task.step_progress） -->
+      <div v-if="hasNodeLogs" class="pipeline-timeline-section">
+        <div class="timeline-header" @click="timelineExpanded = !timelineExpanded">
+          <h4>处理流程</h4>
+          <el-icon class="timeline-toggle" :class="{ 'is-expanded': timelineExpanded }">
+            <ArrowRight />
+          </el-icon>
+        </div>
+        <el-collapse-transition>
+          <div v-show="timelineExpanded">
+            <TaskNodeLogTable :step-progress="latestTask?.step_progress ?? null" />
+          </div>
+        </el-collapse-transition>
       </div>
     </div>
 
@@ -183,6 +203,7 @@ import { Close, ArrowRight } from '@element-plus/icons-vue'
 import { documentApi } from '@/api/knowledge'
 import Pagination from '@/components/common/Pagination.vue'
 import DocumentOriginalPreview from '@/components/knowledge/DocumentOriginalPreview.vue'
+import { TaskNodeLogTable } from '@/components/knowledge'
 import type { DocumentDetail, Chunk, DocumentTaskItem } from '@/api/types'
 import { chunkTypeLabels, getFileTypeStyle, taskStatusMap } from '@/components/knowledge'
 import { formatFileSize, formatDate, formatDuration } from '@/utils/format'
@@ -208,6 +229,23 @@ const expandedChunks = ref<Record<number, boolean>>({})
 
 // 原文预览面板
 const showOriginalPanel = ref(true)
+
+// 节点级时间线 / 错误全文展开
+const timelineExpanded = ref(false)
+const errorExpanded = ref(false)
+
+// 处理状态失败/处理中时默认展开时间线，便于直接看到卡在哪个节点
+const hasNodeLogs = computed(() => {
+  const progress = latestTask.value?.step_progress
+  return !!progress && Object.keys(progress).length > 0
+})
+
+const errorDisplayText = computed(() => {
+  const msg = latestTask.value?.error_message
+  if (!msg) return ''
+  if (errorExpanded.value || msg.length <= 60) return msg
+  return msg.slice(0, 60) + '...'
+})
 
 // 状态辅助
 const docStatus = computed(() => document.value?.status ?? 0)
@@ -265,6 +303,7 @@ async function fetchLatestTask() {
     const res = await documentApi.getDocumentTasks(spaceId.value, kbId.value, docId.value)
     if (res.items && res.items.length > 0 && res.items[0]) {
       latestTask.value = res.items[0]
+      maybeAutoExpandTimeline()
     }
   } catch {
     // 任务信息获取失败不影响主页面
@@ -275,6 +314,13 @@ onMounted(() => {
   fetchDocument()
   fetchLatestTask()
 })
+
+// 任务到达后：失败/处理中的任务默认展开时间线（直接看到卡在哪个节点）
+function maybeAutoExpandTimeline() {
+  if (docStatus.value === 3 || docStatus.value === 1) {
+    timelineExpanded.value = true
+  }
+}
 </script>
 
 <style scoped>
@@ -368,6 +414,40 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+/* ===== Pipeline Timeline Section ===== */
+
+.pipeline-timeline-section {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-light);
+}
+
+.timeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  margin-bottom: var(--space-2);
+  user-select: none;
+}
+
+.timeline-header h4 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.timeline-toggle {
+  color: var(--color-text-muted);
+  transition: transform var(--transition-fast);
+}
+
+.timeline-toggle.is-expanded {
+  transform: rotate(90deg);
 }
 
 /* ===== Content Layout ===== */
