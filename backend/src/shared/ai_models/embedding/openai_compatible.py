@@ -9,6 +9,19 @@ import traceback
 
 import httpx
 from openai import AsyncOpenAI
+
+# openai SDK 会把底层 httpx 异常包装为自有类型（如超时 → APITimeoutError），
+# tenacity 重试名单必须包含这些包装类型，否则超时/连接错误会直接穿透重试。
+try:
+    from openai import APIConnectionError, APITimeoutError, RateLimitError
+
+    OPENAI_RETRY_EXCEPTIONS: tuple[type[Exception], ...] = (
+        APIConnectionError,
+        APITimeoutError,
+        RateLimitError,
+    )
+except ImportError:  # pragma: no cover - openai 未安装时降级
+    OPENAI_RETRY_EXCEPTIONS = ()
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -120,7 +133,10 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.ConnectError, httpx.TimeoutException, ConnectionError, TimeoutError, OSError)),
+        retry=retry_if_exception_type(
+            (httpx.ConnectError, httpx.TimeoutException, ConnectionError, TimeoutError, OSError)
+            + OPENAI_RETRY_EXCEPTIONS
+        ),
         reraise=True,
     )
     async def generate_embedding(self, text: str) -> list[float]:
@@ -145,15 +161,20 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
                 raise
 
     async def generate_embeddings_batch(
-        self, texts: list[str], batch_size: int = 10
+        self, texts: list[str], batch_size: int | None = None
     ) -> list[list[float]]:
-        """批次生成文本嵌入向量"""
+        """批次生成文本嵌入向量
+
+        batch_size 为 None 时使用构造器配置的 self.batch_size，
+        避免方法默认值（10）与构造器默认值（32）语义脱节。
+        """
         if not texts:
             return []
 
+        effective_batch_size = batch_size or self.batch_size
         embeddings = []
-        for i in range(0, len(texts), batch_size):
-            batch_texts = texts[i : i + batch_size]
+        for i in range(0, len(texts), effective_batch_size):
+            batch_texts = texts[i : i + effective_batch_size]
             batch_embeddings = await self._generate_batch(batch_texts)
             embeddings.extend(batch_embeddings)
 
@@ -162,7 +183,10 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.ConnectError, httpx.TimeoutException, ConnectionError, TimeoutError, OSError)),
+        retry=retry_if_exception_type(
+            (httpx.ConnectError, httpx.TimeoutException, ConnectionError, TimeoutError, OSError)
+            + OPENAI_RETRY_EXCEPTIONS
+        ),
         reraise=True,
     )
     async def _generate_batch(self, batch_texts: list[str]) -> list[list[float]]:
@@ -188,12 +212,12 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
                 )
                 raise
 
-    async def embed_batch(self, texts: list[str], batch_size: int = 32) -> list[list[float]]:
+    async def embed_batch(self, texts: list[str], batch_size: int | None = None) -> list[list[float]]:
         """批量生成嵌入向量（别名方法）"""
         return await self.generate_embeddings_batch(texts, batch_size)
 
     async def generate_embeddings_from_dict_list(
-        self, text_dicts: list[dict], text_key: str = "text", batch_size: int = 100
+        self, text_dicts: list[dict], text_key: str = "text", batch_size: int | None = None
     ) -> list[dict]:
         """从字典列表生成嵌入向量，保留原始字典结构"""
         if not text_dicts:

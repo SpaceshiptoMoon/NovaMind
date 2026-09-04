@@ -18,6 +18,7 @@ from tenacity import (
 )
 
 from novamind.shared.ai_models.base_model import BaseLLM, ToolCall, LLMResponseWithTools, StreamChunk, LLMResponse, ToolStreamEvent, PROXY_INHERIT, build_openai_http_client
+from novamind.shared.ai_models.embedding.openai_compatible import OPENAI_RETRY_EXCEPTIONS
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -98,7 +99,8 @@ class OpenAICompatibleLLM(BaseLLM):
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         retry=retry_if_exception_type(
-            (httpx.ConnectError, httpx.TimeoutException, ConnectionError, TimeoutError),
+            (httpx.ConnectError, httpx.TimeoutException, ConnectionError, TimeoutError)
+            + OPENAI_RETRY_EXCEPTIONS,
         ),
         reraise=True,
     )
@@ -347,7 +349,8 @@ class OpenAICompatibleLLM(BaseLLM):
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         retry=retry_if_exception_type(
-            (httpx.ConnectError, httpx.TimeoutException, ConnectionError, TimeoutError),
+            (httpx.ConnectError, httpx.TimeoutException, ConnectionError, TimeoutError)
+            + OPENAI_RETRY_EXCEPTIONS,
         ),
         reraise=True,
     )

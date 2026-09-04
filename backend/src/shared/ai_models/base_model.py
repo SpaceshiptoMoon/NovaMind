@@ -350,14 +350,14 @@ class BaseEmbedding(ABC):
 
     @abstractmethod
     async def generate_embeddings_batch(
-        self, texts: list[str], batch_size: int = 20
+        self, texts: list[str], batch_size: int | None = None
     ) -> list[list[float]]:
         """
         批量生成文本的嵌入向量
 
         Args:
             texts: 输入文本列表
-            batch_size: 批次大小
+            batch_size: 批次大小；None 时使用客户端构造器配置的默认批次
 
         Returns:
             嵌入向量列表
@@ -389,6 +389,7 @@ class BaseRerank(ABC):
         timeout: int = 30,
         max_retries: int = 3,
         max_concurrent: int = 5,
+        proxy: Any = PROXY_INHERIT,
     ):
         self.api_key = api_key
         self.base_url = base_url
@@ -399,6 +400,7 @@ class BaseRerank(ABC):
         self._max_concurrent = max_concurrent
         self._http_client = None
         self._http_client_lock = None
+        self.proxy = proxy
 
     def _get_lock(self) -> asyncio.Lock:
         """延迟创建 Lock，确保在事件循环内初始化"""
@@ -413,13 +415,18 @@ class BaseRerank(ABC):
         return self._semaphore
 
     async def _get_http_client(self):
-        """获取 HTTP 客户端（延迟初始化，子类共享）"""
+        """获取 HTTP 客户端（延迟初始化，子类共享）
+
+        复用 build_openai_http_client 的三态代理语义：
+        PROXY_INHERIT 继承环境变量 / None 禁用代理 / str 指定代理 URL。
+        """
         import httpx
         async with self._get_lock():
             if self._http_client is None:
-                self._http_client = httpx.AsyncClient(
-                    timeout=httpx.Timeout(self.timeout, connect=10.0),
-                    limits=httpx.Limits(max_connections=10),
+                self._http_client = build_openai_http_client(
+                    timeout=self.timeout,
+                    max_connections=10,
+                    proxy=getattr(self, "proxy", PROXY_INHERIT),
                 )
         return self._http_client
 

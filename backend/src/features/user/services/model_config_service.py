@@ -233,6 +233,7 @@ class ModelConfigService:
                 api_key=data.api_key,
                 base_url=data.base_url,
                 model_name=data.model,
+                proxy=_proxy_from_extra(data.extra_config),
             )
             if detected_dim is None:
                 raise ModelConfigTestFailedError(
@@ -327,6 +328,9 @@ class ModelConfigService:
                         api_key=raw_api_key,
                         base_url=effective_url,
                         model_name=effective_model,
+                        proxy=_proxy_from_extra(
+                            data.extra_config if data.extra_config is not None else config.extra_config
+                        ),
                     )
                     if detected_dim is not None:
                         extra_config = dict(data.extra_config or config.extra_config or {})
@@ -570,6 +574,7 @@ class ModelConfigService:
                 model_name=c.model,
                 timeout=(c.extra_config or {}).get("timeout", 30),
                 max_retries=(c.extra_config or {}).get("max_retries", 3),
+                proxy=_proxy_from_extra(c.extra_config),
             ),
         )
 
@@ -714,6 +719,7 @@ class ModelConfigService:
         base_url: str,
         model_name: str,
         fallback: Optional[int] = None,
+        proxy: Any = PROXY_INHERIT,
     ) -> Optional[int]:
         """
         调用 Embedding 模型 API 自动检测向量维度
@@ -724,6 +730,7 @@ class ModelConfigService:
             base_url: Base URL
             model_name: 模型名称
             fallback: YAML 中配置的维度（可选兜底值）
+            proxy: 代理配置，与 extra_config.proxy 三态语义一致
 
         Returns:
             检测到的维度，失败时返回 fallback
@@ -734,6 +741,7 @@ class ModelConfigService:
                 api_key=api_key,
                 base_url=base_url,
                 model_name=model_name,
+                proxy=proxy,
             )
             vector = await client.generate_embedding("test")
             dim = len(vector)
@@ -755,6 +763,7 @@ class ModelConfigService:
             api_key=request.api_key,
             base_url=request.base_url or "",
             model_name=request.model,
+            proxy=request.proxy,
         )
         await client.rerank(query="test", documents=["Hello", "World"])
 
