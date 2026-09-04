@@ -316,6 +316,43 @@ def test_batch_limit_ge_current_reraises():
     assert calls["n"] == 1
 
 
+def test_async_openai_receives_zero_internal_retries():
+    """SDK 内部重试必须为 0：外层 tenacity 已重试，双层相乘会让单批挂 12 分钟
+    （doc 574 实测 3×4 次 HTTP × 60s timeout）。与 LLM 客户端语义对齐。"""
+    import httpx
+
+    from novamind.shared.ai_models.embedding import openai_compatible as emb_mod
+
+    captured = {}
+    real_async_openai = emb_mod.AsyncOpenAI
+
+    def capturing_async_openai(**kwargs):
+        captured.update(kwargs)
+        http_client = httpx.AsyncClient(trust_env=False)
+        captured["_http_client_created"] = True
+        return real_async_openai(**{**kwargs, "http_client": http_client})
+
+    with patch(
+        "novamind.shared.ai_models.embedding.openai_compatible.AsyncOpenAI",
+        capturing_async_openai,
+    ), patch(
+        "novamind.shared.ai_models.embedding.openai_compatible.build_openai_http_client"
+    ):
+        from novamind.shared.ai_models.embedding.openai_compatible import (
+            OpenAICompatibleEmbedding,
+        )
+
+        OpenAICompatibleEmbedding(
+            api_key="k",
+            base_url="https://example.com/v1",
+            model_name="m",
+        )
+
+    assert captured.get("max_retries") == 0, (
+        f"AsyncOpenAI(max_retries=...) 应为 0，实际: {captured.get('max_retries')}"
+    )
+
+
 def test_learned_batch_limit_reused_across_calls():
     """学到的上限跨调用复用：第二个文档不再触发 400，直接按 20 切批。"""
     client = _make_client(batch_size=32)

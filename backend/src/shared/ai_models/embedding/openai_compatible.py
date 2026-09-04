@@ -134,7 +134,10 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
             base_url=self.base_url,
             http_client=http_client,
             timeout=httpx.Timeout(timeout, connect=10.0),
-            max_retries=max_retries,
+            # 重试统一交给外层 tenacity（名单含 openai 包装异常）；
+            # SDK 内部再重试会与 tenacity 相乘（3×3=9 次 HTTP × timeout，
+            # doc 574 实测单批最长挂 12 分钟）。与 LLM 客户端语义对齐。
+            max_retries=0,
         )
 
     def _validate_dimension(self, embedding: list[float]) -> None:
