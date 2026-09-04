@@ -1345,7 +1345,13 @@ async def _generate_embeddings_static(
     user_id: Optional[int] = None,
     model_config_port: Optional[ModelConfigPort] = None,
 ) -> List[List[float]]:
-    """生成文本向量（静态方法用）"""
+    """生成文本向量（静态方法用）
+
+    整文档一次性交给客户端内部分批：客户端批大小遇服务商上限 400 时自适应
+    缩批（解析报错中的上限数字原地重发），学到的批大小在全部批次间复用。
+    此处不再外层切片——外层每片都会从配置批大小重新撞一遍上限
+    （doc 574 实测：每个外层 32 条批次各付一次 400，32→25→20 反复触发）。
+    """
     if not session:
         raise DocumentProcessingError(document_id=0, error_message="生成向量需要数据库会话")
 
@@ -1355,26 +1361,21 @@ async def _generate_embeddings_static(
     )
 
     batch_size = embedding_config.get("batch_size", DEFAULT_EMBEDDING_BATCH_SIZE)
-    all_embeddings = []
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i : i + batch_size]
-        try:
-            embeddings = await embedding_client.generate_embeddings_batch(batch)
-        except Exception as e:
-            _log = get_logger(__name__)
-            _log.error(
-                "Embedding 批量生成失败",
-                model_name=model_name,
-                batch_start=i,
-                batch_size=len(batch),
-                error=str(e),
-                traceback=traceback.format_exc(),
-            )
-            raise EmbeddingError(
-                f"Embedding 生成失败: model={model_name or 'unknown'}, batch_start={i}, error={e}"
-            ) from e
-        all_embeddings.extend(embeddings)
-    return all_embeddings
+    try:
+        return await embedding_client.generate_embeddings_batch(texts, batch_size=batch_size)
+    except Exception as e:
+        _log = get_logger(__name__)
+        _log.error(
+            "Embedding 批量生成失败",
+            model_name=model_name,
+            batch_size=batch_size,
+            total_texts=len(texts),
+            error=str(e),
+            traceback=traceback.format_exc(),
+        )
+        raise EmbeddingError(
+            f"Embedding 生成失败: model={model_name or 'unknown'}, total_texts={len(texts)}, error={e}"
+        ) from e
 
 
 async def _get_embedding_client_static(

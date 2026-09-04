@@ -118,6 +118,9 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
         self.batch_size = batch_size
         self.normalize = normalize
         self.proxy = proxy
+        # 服务商批量上限的学习值（取历史最小，保守安全——部分服务商上限随请求
+        # token 数浮动，如 DashScope 同一模型观测到 20 与 25 两个值）。
+        self._learned_batch_limit: int | None = None
 
         # 通过自定义 httpx.AsyncClient 控制代理语义，避免 httpx 默认从环境变量
         # 继承代理导致直连国内服务商（如 DashScope）时 TLS 握手失败。
@@ -197,6 +200,9 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
             return []
 
         effective_batch_size = batch_size or self.batch_size
+        # 历史学到的上限优先（跨调用/跨文档复用，避免每文档重复付一次 400）
+        if self._learned_batch_limit is not None:
+            effective_batch_size = min(effective_batch_size, self._learned_batch_limit)
         embeddings = []
         i = 0
         while i < len(texts):
@@ -215,6 +221,11 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
                     error=str(e),
                 )
                 effective_batch_size = limit
+                self._learned_batch_limit = (
+                    limit
+                    if self._learned_batch_limit is None
+                    else min(self._learned_batch_limit, limit)
+                )
                 continue
             embeddings.extend(batch_embeddings)
             i += len(batch_texts)

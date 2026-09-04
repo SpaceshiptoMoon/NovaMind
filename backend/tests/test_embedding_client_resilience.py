@@ -315,6 +315,68 @@ def test_batch_limit_ge_current_reraises():
 
     assert calls["n"] == 1
 
+
+def test_learned_batch_limit_reused_across_calls():
+    """学到的上限跨调用复用：第二个文档不再触发 400，直接按 20 切批。"""
+    client = _make_client(batch_size=32)
+
+    batch_sizes = []
+
+    async def fake_create(**kwargs):
+        batch_sizes.append(len(kwargs["input"]))
+        if len(kwargs["input"]) > 20:
+            raise _make_batch_limit_error(20)
+        return MagicMock(
+            data=[MagicMock(embedding=[0.1]) for _ in kwargs["input"]]
+        )
+
+    client.client = MagicMock()
+    client.client.embeddings.create = AsyncMock(side_effect=fake_create)
+
+    # 第一个文档：撞一次 400 后学得 20
+    asyncio.run(client.generate_embeddings_batch([f"a{i}" for i in range(35)]))
+    first_call_warnings = batch_sizes.copy()
+    assert 32 in first_call_warnings, "首个文档应先以 32 条撞上限"
+
+    batch_sizes.clear()
+    # 第二个文档：直接按 20 切批，零次 400
+    result = asyncio.run(client.generate_embeddings_batch([f"b{i}" for i in range(45)]))
+
+    assert batch_sizes == [20, 20, 5], f"第二个文档应直接按 20 切批，实际: {batch_sizes}"
+    assert len(result) == 45
+
+
+def test_learned_batch_limit_takes_historical_minimum():
+    """多轮学习取历史最小值（服务商上限随 token 数浮动：先报 25 后报 20 → 稳定用 20）。"""
+    client = _make_client(batch_size=32)
+
+    batch_sizes = []
+
+    async def fake_create(**kwargs):
+        batch_sizes.append(len(kwargs["input"]))
+        # 上限随请求浮动：32 条时拒（报 25），25 条时再拒（报 20）
+        if len(kwargs["input"]) > 25:
+            raise _make_batch_limit_error(25)
+        if len(kwargs["input"]) > 20:
+            raise _make_batch_limit_error(20)
+        return MagicMock(
+            data=[MagicMock(embedding=[0.1]) for _ in kwargs["input"]]
+        )
+
+    client.client = MagicMock()
+    client.client.embeddings.create = AsyncMock(side_effect=fake_create)
+
+    asyncio.run(client.generate_embeddings_batch([f"a{i}" for i in range(60)]))
+
+    # 60 条：32(拒→25) 25(拒→20) 20 20 20（从 0 处重发）→ 学习值取历史最小 20
+    assert batch_sizes == [32, 25, 20, 20, 20], batch_sizes
+    assert client._learned_batch_limit == 20
+
+    batch_sizes.clear()
+    # 后续调用直接从 20 开始
+    asyncio.run(client.generate_embeddings_batch([f"b{i}" for i in range(40)]))
+    assert batch_sizes == [20, 20], batch_sizes
+
 def test_base_rerank_http_client_uses_proxy_semantics():
     """BaseRerank._get_http_client 复用 build_openai_http_client：
     proxy=None 时 httpx 客户端应关闭 trust_env（不读环境代理）。"""
