@@ -16,7 +16,7 @@
 
 import hashlib
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -565,3 +565,58 @@ def restore_frame_paths(raw: Optional[Dict[str, Any]]) -> Dict[int, str]:
         except (TypeError, ValueError):
             continue
     return result
+
+
+def restore_time_alignment(
+    raw: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """把快照里的 time_alignment 还原为 _run_post_parse_tail 期望的形状。
+
+    - timeline_map 的 int 键经 JSON 序列化变 str，需还原为 {int: (start, end)}
+    - frame_groups 同理还原为 {int: List[int]}
+    - is_video 透传
+    """
+    if not isinstance(raw, dict) or "timeline_map" not in raw:
+        return None
+    timeline_map: Dict[int, Any] = {}
+    for key, value in (raw.get("timeline_map") or {}).items():
+        try:
+            timeline_map[int(key)] = value
+        except (TypeError, ValueError):
+            continue
+    restored: Dict[str, Any] = {
+        "timeline_map": timeline_map,
+        "is_video": bool(raw.get("is_video", False)),
+    }
+    raw_groups = raw.get("frame_groups")
+    if isinstance(raw_groups, dict):
+        frame_groups: Dict[int, List[int]] = {}
+        for key, members in raw_groups.items():
+            try:
+                frame_groups[int(key)] = [int(m) for m in (members or [])]
+            except (TypeError, ValueError):
+                continue
+        restored["frame_groups"] = frame_groups
+    return restored
+
+
+# 快照状态里可能出现的全部键（除元数据外），parse 级失效时整体核对
+_SNAPSHOT_POINTER_KEYS = frozenset({
+    "parse_fingerprint", "parse_meta_object",
+    "split_fingerprint", "chunks_object",
+    "embed_fingerprint", "embeddings_object", "embedding_model",
+})
+
+
+def snapshot_has_level(document: Document, level: str) -> bool:
+    """storage 中是否记录了指定层级的快照指针（不含指纹是否仍有效）。"""
+    state = _snapshot_state(document)
+    key_map = {
+        "parse": ("parse_fingerprint", "parse_meta_object"),
+        "split": ("split_fingerprint", "chunks_object"),
+        "embed": ("embed_fingerprint", "embeddings_object"),
+    }
+    keys = key_map.get(level)
+    if not keys:
+        return False
+    return any(state.get(k) for k in keys)

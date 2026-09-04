@@ -52,6 +52,13 @@ def _make_task() -> SimpleNamespace:
     )
 
 
+class _FakeSession:
+    """_begin_step 会 commit（running 节点落库），测试提供空操作替身。"""
+
+    async def commit(self):
+        return None
+
+
 def _patch_tail_deps(monkeypatch):
     """mock 共享尾的外部依赖（向量化/ES/取消检查），让 _split_md_text 真实跑。"""
 
@@ -83,7 +90,7 @@ async def test_image_dirty_image_subkey_does_not_break_split(monkeypatch):
 
     result = await document_pipeline._run_post_parse_tail(
         document=_make_document(),
-        session=None,
+        session=_FakeSession(),
         task=_make_task(),
         model_config_port=None,
         logger=None,
@@ -111,7 +118,7 @@ async def test_image_description_is_splittable_into_multiple_chunks(monkeypatch)
 
     result = await document_pipeline._run_post_parse_tail(
         document=_make_document(),
-        session=None,
+        session=_FakeSession(),
         task=_make_task(),
         model_config_port=None,
         logger=None,
@@ -143,7 +150,7 @@ async def test_full_text_with_dirty_top_level_strategy_still_raises(monkeypatch)
     with pytest.raises(ValueError, match="不支持的切分策略"):
         await document_pipeline._run_post_parse_tail(
             document=_make_document(),
-            session=None,
+            session=_FakeSession(),
             task=_make_task(),
             model_config_port=None,
             logger=None,

@@ -242,6 +242,128 @@ async def execute_document_pipeline(
         tmp.write(file_content)
         tmp_path = tmp.name
 
+    # 断点续跑：解析指纹匹配即复用快照，跳过昂贵解析（VLM/OCR 可能已付费成功）。
+    # fail-open：指纹不匹配/无快照/读失败一律走全量解析路径。
+    from novamind.features.knowledge_space.services.pipeline_snapshots import (
+        SNAPSHOTS_ENABLED,
+        build_parse_snapshot_payload,
+        compute_parse_fingerprint,
+        invalidate_snapshots_from,
+        load_parse_snapshot,
+        refresh_figure_image_urls,
+        restore_frame_paths,
+        save_parse_snapshot,
+        snapshot_fingerprint,
+    )
+    from novamind.shared.storage.client_factory import ClientFactory
+
+    resume_minio_client = None
+    parse_fingerprint = ""
+    if SNAPSHOTS_ENABLED:
+        try:
+            resume_minio_client = await ClientFactory.get_minio_client()
+            parsing_config_for_fp = build_runtime_parsing_config(
+                kb_config.get("parsing", {}), document.file_type
+            )
+            parse_fingerprint = compute_parse_fingerprint(document, parsing_config_for_fp)
+        except Exception as fp_exc:
+            _logger.warning(
+                "解析指纹计算失败，本次按无快照处理", document_id=document_id, error=str(fp_exc),
+            )
+
+    parse_snapshot_payload: Optional[Dict[str, Any]] = None
+    if SNAPSHOTS_ENABLED and parse_fingerprint and resume_minio_client is not None:
+        if snapshot_fingerprint(document, "parse") == parse_fingerprint:
+            snap = await load_parse_snapshot(document, resume_minio_client, _logger)
+            if snap and isinstance(snap.get("full_text"), str) and snap["full_text"].strip():
+                parse_snapshot_payload = snap
+
+    if parse_snapshot_payload is not None:
+        # ===== 快照命中：复用解析产物，跳过解析/图片上传 =====
+        resume_meta = parse_snapshot_payload.get("parse_metadata") or {}
+        resume_prechunked = [
+            (str(text), dict(meta or {}))
+            for text, meta in (parse_snapshot_payload.get("prechunked_items") or [])
+        ]
+        resumed_time_alignment = parse_snapshot_payload.get("time_alignment")
+        resumed_frame_paths = restore_frame_paths(parse_snapshot_payload.get("frame_paths"))
+
+        # figure 图片预签名 URL 已过期，按 minio_object_name 重签并替换残留占位符
+        image_url_map: Dict[str, str] = {}
+        try:
+            image_url_map = await refresh_figure_image_urls(
+                document, parse_snapshot_payload, resume_minio_client, _logger,
+            )
+        except Exception as url_exc:
+            _logger.warning(
+                "figure 图片 URL 重签失败（保留占位符）", document_id=document_id, error=str(url_exc),
+            )
+        full_text = parse_snapshot_payload["full_text"]
+        if image_url_map:
+            full_text = _replace_figure_placeholders(full_text, image_url_map)
+
+        resume_chunks = [text for text, _meta in resume_prechunked]
+        if image_url_map:
+            resume_chunks = [_replace_figure_placeholders(c, image_url_map) for c in resume_chunks]
+
+        await _begin_step(session, task, "parsed")
+        task.finish_step("parsed", metrics={
+            "char_count": len(full_text),
+            "chunk_count": len(resume_chunks),
+            "parse_strategy": (resume_meta.get("strategy") if isinstance(resume_meta, dict) else None)
+            or "resumed",
+            "file_type": document.file_type,
+            "resumed": True,
+        })
+        _logger.info(
+            "解析快照命中，复用解析产物（跳过解析）",
+            document_id=document_id,
+            parse_fingerprint=parse_fingerprint,
+            char_count=len(full_text),
+            chunk_count=len(resume_chunks),
+        )
+        _resume_tail_result = await _run_post_parse_tail(
+            document=document,
+            session=session,
+            task=task,
+            model_config_port=model_config_port,
+            logger=_logger,
+            chunk_type=ChunkType.TEXT,
+            embedding_config=ctx.embedding_config,
+            pipeline_config=ctx.pipeline_config,
+            splitting_config=splitting_config,
+            prechunked_items=resume_prechunked,
+            parse_metadata=resume_meta if isinstance(resume_meta, dict) else {},
+            parse_fingerprint=parse_fingerprint,
+            frame_paths=resumed_frame_paths or None,
+            time_alignment=resumed_time_alignment,
+            user_id=document.uploader_id,
+        )
+        parse_summary = _extract_parse_metadata_summary(resume_meta if isinstance(resume_meta, dict) else {})
+        task.mark_completed(
+            result={
+                "chunk_count": _resume_tail_result["chunk_count"],
+                "total_tokens": sum(len(c.split()) for c in resume_chunks),
+                "parse_strategy": (resume_meta.get("strategy") if isinstance(resume_meta, dict) else None) or "",
+                "split_strategy": splitting_config.get("strategy", "recursive"),
+                "chunk_size": splitting_config.get("chunk_size", DEFAULT_CHUNK_SIZE),
+                "chunk_overlap": splitting_config.get("chunk_overlap", DEFAULT_CHUNK_OVERLAP),
+                "parser_class": parse_summary["parser_class"],
+                "pdf_mode": parse_summary["pdf_mode"],
+                "layout_source": parse_summary["layout_source"],
+                "vision_strategy": parse_summary["vision_strategy"],
+                "table_region_count": parse_summary["table_region_count"],
+                "figure_region_count": parse_summary["figure_region_count"],
+                "reading_order_count": resume_meta.get("reading_order") and len(resume_meta.get("reading_order") or []) or parse_summary["reading_order_count"],
+                "resumed_from_snapshot": True,
+                "indexed_at": now_china().isoformat(),
+            }
+        )
+        await session.commit()
+        _logger.info("文档处理完成（断点续跑）", document_id=document_id, chunk_count=len(resume_chunks))
+        return
+
+    # ===== 无快照命中：正常解析路径 =====
     try:
         # 先读取原始解析全文，避免将切块结果回拼成”伪全文”再落 MinIO。
 
@@ -330,6 +452,23 @@ async def execute_document_pipeline(
         (c, chunk_structure[i] if i < len(chunk_structure) else {})
         for i, c in enumerate(parse_result.chunks)
     ]
+
+    # 解析快照：persist 成功后保存（原始全文 + 元数据 + 结构化分块），供后续重试
+    # 在指纹匹配时跳过昂贵解析。fail-open：保存失败不影响主流程。
+    if SNAPSHOTS_ENABLED and parse_fingerprint and resume_minio_client is not None:
+        snapshot_payload = build_parse_snapshot_payload(
+            parse_fingerprint=parse_fingerprint,
+            full_text=full_text,
+            parse_metadata=parse_result.metadata,
+            prechunked_items=prechunked_items,
+        )
+        await save_parse_snapshot(
+            document, session, _logger,
+            minio_client=resume_minio_client,
+            parse_fingerprint=parse_fingerprint,
+            payload=snapshot_payload,
+        )
+
     tail_result = await _run_post_parse_tail(
         document=document,
         session=session,
@@ -342,6 +481,7 @@ async def execute_document_pipeline(
         splitting_config=splitting_config,
         prechunked_items=prechunked_items,
         parse_metadata=parse_result.metadata,
+        parse_fingerprint=parse_fingerprint,
         user_id=document.uploader_id,
     )
     parse_summary = _extract_parse_metadata_summary(parse_result.metadata)
@@ -646,6 +786,40 @@ async def _process_image_document_static(
             "description_length": len(description_text),
         })
 
+    # 断点续跑：图片解析指纹（VLM/OCR 描述昂贵，重试时指纹匹配即免重跑）。
+    # 指纹入参注入策略名，区分 vlm 与 deepdoc_ocr 产出。
+    from novamind.features.knowledge_space.services.pipeline_snapshots import (
+        SNAPSHOTS_ENABLED as _SNAP_ENABLED,
+        build_parse_snapshot_payload as _build_snap_payload,
+        compute_parse_fingerprint as _compute_parse_fp,
+        save_parse_snapshot as _save_parse_snap,
+    )
+    from novamind.shared.storage.client_factory import ClientFactory as _SnapCF
+
+    image_parse_fp = ""
+    if _SNAP_ENABLED:
+        try:
+            image_fp_cfg = dict(parsing_config)
+            image_fp_cfg["strategy"] = f"image:{image_strategy}:{parsing_config.get('vlm_model') or ''}"
+            image_parse_fp = _compute_parse_fp(document, image_fp_cfg)
+        except Exception as fp_exc:
+            _logger.warning("图片解析指纹计算失败，不启用快照", document_id=document.id, error=str(fp_exc))
+        if image_parse_fp:
+            try:
+                snap_minio = await _SnapCF.get_minio_client()
+                await _save_parse_snap(
+                    document, session, _logger,
+                    minio_client=snap_minio,
+                    parse_fingerprint=image_parse_fp,
+                    payload=_build_snap_payload(
+                        parse_fingerprint=image_parse_fp,
+                        full_text=description_text,
+                        parse_metadata={"strategy": image_strategy},
+                    ),
+                )
+            except Exception as snap_exc:
+                _logger.warning("图片解析快照保存失败（不影响主流程）", document_id=document.id, error=str(snap_exc))
+
     _logger.info(
         "图片文本提取成功",
         document_id=document.id,
@@ -690,6 +864,7 @@ async def _process_image_document_static(
         pipeline_config=ctx.pipeline_config,
         splitting_config=splitting_config,
         full_text=description_text,
+        parse_fingerprint=image_parse_fp or None,
         user_id=document.uploader_id,
     )
 
@@ -895,6 +1070,7 @@ async def _run_post_parse_tail(
     parse_metadata: Optional[Dict[str, Any]] = None,
     frame_paths: Optional[Dict[int, str]] = None,
     time_alignment: Optional[Dict[str, Any]] = None,
+    parse_fingerprint: Optional[str] = None,
     user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """共享后置尾：切分 → 构造 ES chunks → 向量化 → 问题生成 → 索引。
@@ -903,42 +1079,91 @@ async def _run_post_parse_tail(
     - 转换器若已产出结构化分块（如 DeepDoc），传 prechunked_items，尾直接采用，不再二次切分；
       否则传 full_text，尾用 _split_md_text 切分（音频/视频走此分支）。
     - QG 由 pipeline_config["question_generation"]["enabled"] 控制，失败跳过、留空，与文本管道原逻辑一致。
+    - parse_fingerprint 非 None 时启用断点续跑：split/embed 指纹匹配即复用快照产物，
+      不匹配则在完成后写快照。None = 不启用（兼容现有测试）。
 
     Returns:
         {chunk_count, indexed_count, total_questions, split_strategy}，供调用方写 mark_completed。
     """
+    from novamind.features.knowledge_space.services.pipeline_snapshots import (
+        SNAPSHOTS_ENABLED,
+        compute_split_fingerprint,
+        compute_embed_fingerprint,
+        load_split_snapshot,
+        load_embeddings_snapshot,
+        save_split_snapshot,
+        save_embeddings_snapshot,
+        snapshot_fingerprint,
+    )
+    from novamind.shared.storage.client_factory import ClientFactory
+
+    # 断点续跑前置：MinIO 客户端 + 各级指纹（懒获取，失败降级为不启用）
+    resume_minio = None
+    split_fingerprint = ""
+    embed_fingerprint = ""
+    if SNAPSHOTS_ENABLED and parse_fingerprint:
+        try:
+            resume_minio = await ClientFactory.get_minio_client()
+            split_mode = "structural" if prechunked_items is not None else str(splitting_config.get("strategy", "recursive"))
+            split_fingerprint = compute_split_fingerprint(
+                parse_fingerprint, split_mode, splitting_config,
+            )
+            embed_fingerprint = compute_embed_fingerprint(split_fingerprint, embedding_config)
+        except Exception as fp_exc:
+            logger.warning(
+                "切分/向量指纹计算失败，本次不启用快照复用",
+                document_id=document.id, error=str(fp_exc),
+            )
+
     # 1. 切分
     await _begin_step(session, task, "split")
-    if prechunked_items is not None:
-        chunk_items = list(prechunked_items)
-        split_strategy = "structural"
-    else:
-        from novamind.features.knowledge_space.services.media_processing import (
-            _split_md_text,
-            maybe_semantic_embedding_client,
-        )
-        sc = dict(splitting_config)
-        strategy = sc.pop("strategy", "recursive")
-        embedding_client = await maybe_semantic_embedding_client(
-            strategy, embedding_config, session, document.uploader_id,
-            model_config_port=model_config_port,
-        )
-        chunk_items = await _split_md_text(
-            full_text, strategy=strategy, embedding_client=embedding_client,
-            line_aware=time_alignment is not None, **sc,
-        )
-        split_strategy = strategy
+    resumed_split = False
+    chunk_items: List[Tuple[str, Dict[str, Any]]] = []
+    if split_fingerprint and resume_minio is not None:
+        if snapshot_fingerprint(document, "split") == split_fingerprint:
+            snap = await load_split_snapshot(document, resume_minio, logger)
+            if snap and snap.get("chunk_items"):
+                chunk_items = snap["chunk_items"]
+                resumed_split = True
+                logger.info(
+                    "切分快照命中，复用分块（跳过切分）",
+                    document_id=document.id,
+                    chunk_count=len(chunk_items),
+                    alignment_applied=snap.get("alignment_applied", False),
+                )
+    split_strategy = "structural" if prechunked_items is not None else str(splitting_config.get("strategy", "recursive"))
+    if not resumed_split:
+        if prechunked_items is not None:
+            chunk_items = list(prechunked_items)
+        else:
+            from novamind.features.knowledge_space.services.media_processing import (
+                _split_md_text,
+                maybe_semantic_embedding_client,
+            )
+            sc = dict(splitting_config)
+            strategy = sc.pop("strategy", "recursive")
+            embedding_client = await maybe_semantic_embedding_client(
+                strategy, embedding_config, session, document.uploader_id,
+                model_config_port=model_config_port,
+            )
+            chunk_items = await _split_md_text(
+                full_text, strategy=strategy, embedding_client=embedding_client,
+                line_aware=time_alignment is not None, **sc,
+            )
+            split_strategy = strategy
     chunk_count = len(chunk_items)
     task.finish_step("split", metrics={
         "chunk_count": chunk_count,
         "split_strategy": split_strategy,
         "chunk_size": splitting_config.get("chunk_size"),
+        **({"resumed": True} if resumed_split else {}),
     })
     await _check_document_cancelled(document.id)
 
     # 1.5. 媒体时间对齐：切分后正则反查 [HH:MM:SS#idx] 锚点 → 填 start_time/end_time/frame_indices
     # + 剥离锚点得到纯描述 content（进 embedding）。仅音视频传 time_alignment；文本/图片 None 跳过。
     # 对齐纯逻辑下沉在 engines/document/media/chunk_time_alignment.align_chunk_times。
+    alignment_applied = False
     if time_alignment:
         from novamind.engines.document.media import align_chunk_times
         chunk_items = align_chunk_times(
@@ -946,6 +1171,17 @@ async def _run_post_parse_tail(
             time_alignment["timeline_map"],
             bool(time_alignment["is_video"]),
             frame_groups=time_alignment.get("frame_groups"),
+        )
+        alignment_applied = True
+
+    # 切分快照：对齐之后写（含 alignment_applied 标记，防止 resume 时二次对齐）
+    if split_fingerprint and resume_minio is not None and not resumed_split:
+        await save_split_snapshot(
+            document, session, logger,
+            minio_client=resume_minio,
+            split_fingerprint=split_fingerprint,
+            chunk_items=chunk_items,
+            alignment_applied=alignment_applied,
         )
 
     # 2. 构造 ES chunks（文本/媒体 metadata 由 _build_es_chunks 按 chunk_type 分支处理）
@@ -956,17 +1192,41 @@ async def _run_post_parse_tail(
 
     # 3. 向量化
     await _begin_step(session, task, "embedded")
-    embeddings = await _generate_embeddings_static(
-        [c["content"] for c in es_chunks], embedding_config,
-        session=session, user_id=user_id or document.uploader_id,
-        model_config_port=model_config_port,
-    )
+    resumed_embed = False
+    embeddings: List[Optional[List[float]]] = []
+    if embed_fingerprint and resume_minio is not None:
+        if snapshot_fingerprint(document, "embed") == embed_fingerprint:
+            snap = await load_embeddings_snapshot(document, resume_minio, logger)
+            if snap and isinstance(snap.get("embeddings"), list) and len(snap["embeddings"]) == len(es_chunks):
+                embeddings = snap["embeddings"]
+                resumed_embed = True
+                logger.info(
+                    "向量快照命中，复用向量（跳过 embedding 调用）",
+                    document_id=document.id,
+                    embedding_count=len(embeddings),
+                    embedding_model=snap.get("embedding_model", ""),
+                )
+    if not resumed_embed:
+        embeddings = await _generate_embeddings_static(
+            [c["content"] for c in es_chunks], embedding_config,
+            session=session, user_id=user_id or document.uploader_id,
+            model_config_port=model_config_port,
+        )
+        if embed_fingerprint and resume_minio is not None:
+            await save_embeddings_snapshot(
+                document, session, logger,
+                minio_client=resume_minio,
+                embed_fingerprint=embed_fingerprint,
+                embeddings=embeddings,
+                embedding_model=str(embedding_config.get("model") or ""),
+            )
     for i, emb in enumerate(embeddings):
         if emb:
             es_chunks[i]["embedding"] = emb
     task.finish_step("embedded", metrics={
         "embedding_count": len(embeddings),
         "dimension": embedding_config.get("dimension"),
+        **({"resumed": True} if resumed_embed else {}),
     })
     await _check_document_cancelled(document.id)
 

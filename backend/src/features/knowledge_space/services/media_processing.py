@@ -20,6 +20,12 @@ from novamind.features.knowledge_space.services.document_pipeline import (
     persist_parsed_text,
     _run_post_parse_tail,
 )
+from novamind.features.knowledge_space.services.pipeline_snapshots import (
+    build_parse_snapshot_payload,
+    compute_parse_fingerprint,
+    save_parse_snapshot,
+    SNAPSHOTS_ENABLED,
+)
 from novamind.engines.document.media.audio import (
     AudioFileInvalidError,
     transcribe_audio_local,
@@ -383,6 +389,38 @@ async def process_video_document(
     # 帧描述全文 MD 持久化到 MinIO（立刻 commit 落库）
     await persist_parsed_text(document, full_text, session, logger)
 
+    # 断点续跑：计算解析指纹 + 保存带 time_alignment/frame_paths 的解析快照
+    # （音视频解析产物含时间对齐/帧路径，resume 时据此免重跑 VLM 描述）。
+    video_parse_fp = ""
+    if SNAPSHOTS_ENABLED:
+        try:
+            video_parse_fp = compute_parse_fingerprint(document, parsing_config)
+        except Exception as fp_exc:
+            logger.warning("视频解析指纹计算失败，不启用快照", document_id=document.id, error=str(fp_exc))
+        if video_parse_fp:
+            from novamind.shared.storage.client_factory import ClientFactory as _CF
+
+            try:
+                snap_minio = await _CF.get_minio_client()
+                await save_parse_snapshot(
+                    document, session, logger,
+                    minio_client=snap_minio,
+                    parse_fingerprint=video_parse_fp,
+                    payload=build_parse_snapshot_payload(
+                        parse_fingerprint=video_parse_fp,
+                        full_text=full_text,
+                        parse_metadata=None,
+                        time_alignment={
+                            "timeline_map": frame_timeline_map,
+                            "is_video": True,
+                            **({"frame_groups": frame_groups} if frame_groups is not None else {}),
+                        },
+                        frame_paths=frame_paths,
+                    ),
+                )
+            except Exception as snap_exc:
+                logger.warning("视频解析快照保存失败（不影响主流程）", document_id=document.id, error=str(snap_exc))
+
     if task:
         task.finish_step("descriptions_generated", metrics={"description_count": descriptions_count})
 
@@ -404,6 +442,7 @@ async def process_video_document(
             "is_video": True,
             **({"frame_groups": frame_groups} if frame_groups is not None else {}),
         },
+        parse_fingerprint=video_parse_fp or None,
         user_id=document.uploader_id,
     )
 
@@ -652,6 +691,34 @@ async def process_audio_document(
     full_text = "\n".join(transcript_lines)
     await persist_parsed_text(document, full_text, session, logger)
 
+    # 断点续跑：计算解析指纹 + 保存带 time_alignment 的解析快照（resume 时免重跑 ASR）。
+    audio_parse_fp = ""
+    if SNAPSHOTS_ENABLED:
+        audio_runtime_parsing = dict(pipeline_config.get("parsing", {}) or {})
+        audio_runtime_parsing["strategy"] = f"audio:{asr_protocol}:{asr_model}"
+        try:
+            audio_parse_fp = compute_parse_fingerprint(document, audio_runtime_parsing)
+        except Exception as fp_exc:
+            logger.warning("音频解析指纹计算失败，不启用快照", document_id=document.id, error=str(fp_exc))
+        if audio_parse_fp:
+            from novamind.shared.storage.client_factory import ClientFactory as _CF
+
+            try:
+                snap_minio = await _CF.get_minio_client()
+                await save_parse_snapshot(
+                    document, session, logger,
+                    minio_client=snap_minio,
+                    parse_fingerprint=audio_parse_fp,
+                    payload=build_parse_snapshot_payload(
+                        parse_fingerprint=audio_parse_fp,
+                        full_text=full_text,
+                        parse_metadata=None,
+                        time_alignment={"timeline_map": segment_timeline_map, "is_video": False},
+                    ),
+                )
+            except Exception as snap_exc:
+                logger.warning("音频解析快照保存失败（不影响主流程）", document_id=document.id, error=str(snap_exc))
+
     if task:
         task.finish_step("transcription_done", metrics={"segment_count": len(segments), "asr_protocol": asr_protocol, "language": language})
 
@@ -669,6 +736,7 @@ async def process_audio_document(
         splitting_config=splitting_config,
         full_text=full_text,
         time_alignment={"timeline_map": segment_timeline_map, "is_video": False},
+        parse_fingerprint=audio_parse_fp or None,
         user_id=document.uploader_id,
     )
 
