@@ -8,6 +8,7 @@ OpenAI、智谱 AI、阿里云 DashScope、硅基流动等
 import traceback
 
 import httpx
+import openai
 from openai import AsyncOpenAI
 
 # openai SDK 会把底层 httpx 异常包装为自有类型（如超时 → APITimeoutError），
@@ -28,11 +29,31 @@ from tenacity import (
     wait_exponential,
     retry_if_exception_type,
 )
+import re
 
 from novamind.shared.ai_models.base_model import BaseEmbedding, PROXY_INHERIT, build_openai_http_client
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
+
+# 服务商对单批条数的硬限制报错（如 DashScope: "batch size is invalid, it should
+# not be larger than 20"）。对这类确定性 400 重试无意义，必须自适应缩小批次重发。
+_BATCH_LIMIT_PATTERNS = (
+    re.compile(r"batch size is invalid", re.IGNORECASE),
+    re.compile(r"batch.{0,20}(too|exceed|larger than)", re.IGNORECASE),
+    re.compile(r"(too many|maximum).{0,20}input", re.IGNORECASE),
+)
+
+
+def _parse_batch_limit_error(error_text: str) -> int | None:
+    """从批量超限报错文本中解析服务商允许的最大批条数；解析不出返回 None。
+
+    示例：DashScope 报 "it should not be larger than 20" → 返回 20。
+    """
+    m = re.search(r"larger than\s+(\d+)", error_text, re.IGNORECASE) or re.search(
+        r"maximum[^0-9]{0,20}(\d+)", error_text, re.IGNORECASE
+    )
+    return int(m.group(1)) if m else None
 
 
 class EmbeddingDimensionError(Exception):
@@ -167,18 +188,46 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
 
         batch_size 为 None 时使用构造器配置的 self.batch_size，
         避免方法默认值（10）与构造器默认值（32）语义脱节。
+
+        服务商返回批量条数超限类 400 时，自适应缩小批次重发
+        （不重试原批次——确定性参数错误重试同样失败），
+        并记住可用批大小供后续批次直接使用。
         """
         if not texts:
             return []
 
         effective_batch_size = batch_size or self.batch_size
         embeddings = []
-        for i in range(0, len(texts), effective_batch_size):
+        i = 0
+        while i < len(texts):
             batch_texts = texts[i : i + effective_batch_size]
-            batch_embeddings = await self._generate_batch(batch_texts)
+            try:
+                batch_embeddings = await self._generate_batch(batch_texts)
+            except openai.BadRequestError as e:
+                limit = self._batch_limit_from_error(e)
+                if limit is None or limit >= effective_batch_size or limit < 1:
+                    raise
+                logger.warning(
+                    "批量条数超过服务商上限，自适应缩小批次",
+                    model=self.model,
+                    old_batch_size=effective_batch_size,
+                    new_batch_size=limit,
+                    error=str(e),
+                )
+                effective_batch_size = limit
+                continue
             embeddings.extend(batch_embeddings)
+            i += len(batch_texts)
 
         return embeddings
+
+    @staticmethod
+    def _batch_limit_from_error(e: Exception) -> int | None:
+        """识别批量条数超限类 400，并解析服务商允许的最大条数；非此类错误返回 None。"""
+        text = str(e)
+        if not any(p.search(text) for p in _BATCH_LIMIT_PATTERNS):
+            return None
+        return _parse_batch_limit_error(text)
 
     @retry(
         stop=stop_after_attempt(3),
