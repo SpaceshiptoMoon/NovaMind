@@ -265,14 +265,26 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
                     self._validate_dimension(embedding)
                 return batch_embeddings
             except Exception as e:
-                logger.error(
-                    "批量 Embedding 请求失败",
-                    model=self.model,
-                    base_url=self.base_url,
-                    batch_size=len(batch_texts),
-                    error=str(e),
-                    traceback=traceback.format_exc(),
-                )
+                # 批量条数超限类 400 会被上层 generate_embeddings_batch 自适应缩批
+                # 恢复，不是故障——降为 info 轻量记录，避免误导排障（error 级 +
+                # 全堆栈仅保留给真正无法恢复的失败）。
+                if self._batch_limit_from_error(e) is not None:
+                    logger.info(
+                        "批量条数超限，将由自适应缩批处理",
+                        model=self.model,
+                        base_url=self.base_url,
+                        batch_size=len(batch_texts),
+                        error=str(e),
+                    )
+                else:
+                    logger.error(
+                        "批量 Embedding 请求失败",
+                        model=self.model,
+                        base_url=self.base_url,
+                        batch_size=len(batch_texts),
+                        error=str(e),
+                        traceback=traceback.format_exc(),
+                    )
                 raise
 
     async def embed_batch(self, texts: list[str], batch_size: int | None = None) -> list[list[float]]:
