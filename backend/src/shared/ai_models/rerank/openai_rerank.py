@@ -16,7 +16,7 @@ from tenacity import (
     retry_if_exception_type,
 )
 
-from novamind.shared.ai_models.base_model import BaseRerank, PROXY_INHERIT
+from novamind.shared.ai_models.base_model import BaseRerank
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -51,7 +51,6 @@ class CompatibleRerankClient(BaseRerank):
         max_retries: int = 3,
         max_concurrent: int = 5,
         endpoint: str = "",
-        proxy: object = PROXY_INHERIT,
         **kwargs,
     ):
         """
@@ -73,8 +72,6 @@ class CompatibleRerankClient(BaseRerank):
                 base_url 配成 ``https://dashscope.aliyuncs.com/compatible-api/v1``，
                 请求体扁平，与其它兼容服务商一致；
                 其它兼容服务商（硅基流动、智谱等）用默认 ``/rerank``。
-            proxy: 代理配置。PROXY_INHERIT（默认）继承环境变量代理；
-                None / "" 显式禁用代理；str 代理 URL 则使用该代理。
         """
         super().__init__(
             api_key=api_key,
@@ -83,7 +80,6 @@ class CompatibleRerankClient(BaseRerank):
             timeout=timeout,
             max_retries=max_retries,
             max_concurrent=max_concurrent,
-            proxy=proxy,
         )
         is_dashscope = bool(base_url) and "dashscope.aliyuncs.com" in base_url
         # 原生 DashScope rerank：嵌套 body、端点 /rerank/text-rerank/text-rerank

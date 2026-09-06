@@ -6,47 +6,24 @@ import asyncio
 
 import httpx
 
-# 代理控制哨兵：表示「从环境变量继承代理」（httpx 默认行为）。
-# 与显式 None / ""（禁用代理）区分开，避免把「未配置」和「显式禁用」混为一谈。
-PROXY_INHERIT: Any = object()
-
 
 def build_openai_http_client(
     timeout: int,
     max_connections: int,
-    proxy: Any = PROXY_INHERIT,
 ) -> httpx.AsyncClient:
-    """构建传给 OpenAI SDK 的 httpx.AsyncClient，支持显式代理控制。
-
-    proxy 语义：
-      - PROXY_INHERIT（默认）：从环境变量继承代理（HTTP_PROXY / HTTPS_PROXY / ALL_PROXY
-        等）。保持与未传入 http_client 时一致的默认行为，避免影响依赖环境代理的存量配置。
-      - None 或 ""：显式禁用代理，设 trust_env=False，不读取环境代理。用于直连国内服务商
-        （如阿里云 DashScope）时绕开为访问境外端点而配置的本地代理。
-      - str（代理 URL）：使用指定代理。
+    """构建传给 OpenAI SDK 的 httpx.AsyncClient。
 
     Args:
         timeout: 请求超时（秒）。
         max_connections: 最大连接数。
-        proxy: 代理配置，见上方语义说明。
 
     Returns:
-        配置好代理语义的 httpx.AsyncClient。
+        配置好超时与连接数的 httpx.AsyncClient（代理沿用 httpx 默认环境行为）。
     """
-    client_kwargs: Dict[str, Any] = {
-        "timeout": httpx.Timeout(timeout, connect=10.0),
-        "limits": httpx.Limits(max_connections=max_connections),
-    }
-    if proxy is PROXY_INHERIT:
-        # 继承环境变量：不设置 proxy / trust_env，沿用 httpx 默认。
-        pass
-    elif proxy in (None, ""):
-        # 显式禁用代理：不再读取 HTTP_PROXY / HTTPS_PROXY / ALL_PROXY 等环境变量。
-        client_kwargs["trust_env"] = False
-    else:
-        # 使用指定代理 URL。
-        client_kwargs["proxy"] = proxy
-    return httpx.AsyncClient(**client_kwargs)
+    return httpx.AsyncClient(
+        timeout=httpx.Timeout(timeout, connect=10.0),
+        limits=httpx.Limits(max_connections=max_connections),
+    )
 
 
 @dataclass
@@ -389,7 +366,6 @@ class BaseRerank(ABC):
         timeout: int = 30,
         max_retries: int = 3,
         max_concurrent: int = 5,
-        proxy: Any = PROXY_INHERIT,
     ):
         self.api_key = api_key
         self.base_url = base_url
@@ -400,7 +376,6 @@ class BaseRerank(ABC):
         self._max_concurrent = max_concurrent
         self._http_client = None
         self._http_client_lock = None
-        self.proxy = proxy
 
     def _get_lock(self) -> asyncio.Lock:
         """延迟创建 Lock，确保在事件循环内初始化"""
@@ -415,18 +390,13 @@ class BaseRerank(ABC):
         return self._semaphore
 
     async def _get_http_client(self):
-        """获取 HTTP 客户端（延迟初始化，子类共享）
-
-        复用 build_openai_http_client 的三态代理语义：
-        PROXY_INHERIT 继承环境变量 / None 禁用代理 / str 指定代理 URL。
-        """
+        """获取 HTTP 客户端（延迟初始化，子类共享）"""
         import httpx
         async with self._get_lock():
             if self._http_client is None:
                 self._http_client = build_openai_http_client(
                     timeout=self.timeout,
                     max_connections=10,
-                    proxy=getattr(self, "proxy", PROXY_INHERIT),
                 )
         return self._http_client
 

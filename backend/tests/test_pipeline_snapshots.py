@@ -155,7 +155,7 @@ def test_embed_fingerprint_changes_on_model_or_dimension_change():
 
 
 def test_embed_fingerprint_ignores_credentials():
-    """api_key/base_url/proxy 等连接凭据不影响 embed 指纹（凭据轮换不使向量失效）。"""
+    """api_key/base_url 等连接凭据不影响 embed 指纹（凭据轮换不使向量失效）。"""
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
         compute_embed_fingerprint,
     )

@@ -5,7 +5,7 @@ Rerank 客户端包
 支持协议: OpenAI 兼容、Transformers 本地推理
 """
 
-from novamind.shared.ai_models.base_model import BaseRerank, PROXY_INHERIT
+from novamind.shared.ai_models.base_model import BaseRerank
 from novamind.shared.ai_models.rerank.openai_rerank import CompatibleRerankClient
 from novamind.shared.ai_models.rerank.transformers_rerank import TransformersRerankClient
 
@@ -18,7 +18,6 @@ def create_rerank_client(
     timeout: int = 30,
     max_retries: int = 3,
     max_concurrent: int = 5,
-    proxy: object = PROXY_INHERIT,
     **kwargs,
 ) -> BaseRerank:
     """
@@ -32,9 +31,6 @@ def create_rerank_client(
         timeout: 超时时间（秒）
         max_retries: 最大重试次数
         max_concurrent: 最大并发数
-        proxy: 代理配置。PROXY_INHERIT（默认）继承环境变量代理；
-            None / "" 显式禁用代理；str 代理 URL 则使用该代理。
-            仅 openai 协议消费该参数。
         **kwargs: 协议特定的额外参数（如 openai 的 endpoint）
 
     Returns:
@@ -53,7 +49,7 @@ def create_rerank_client(
     }
 
     if protocol == "openai":
-        return CompatibleRerankClient(**common_kwargs, proxy=proxy, **kwargs)
+        return CompatibleRerankClient(**common_kwargs, **kwargs)
     elif protocol == "transformers":
         return TransformersRerankClient(**common_kwargs, **kwargs)
 

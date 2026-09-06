@@ -85,7 +85,7 @@ def compute_split_fingerprint(
 def compute_embed_fingerprint(split_fingerprint: str, embedding_config: Dict[str, Any]) -> str:
     """向量指纹：只取向量语义相关字段 + 客户端实现签名。
 
-    刻意不纳入 api_key/base_url/proxy 等连接凭据：凭据轮换不应使已有向量失效。
+    刻意不纳入 api_key/base_url 等连接凭据：凭据轮换不应使已有向量失效。
     batch_size 虽理论上不影响单条向量取值，但部分服务商按批内文长摊派行为存在差异，
     保守纳入以避免跨批次配置的向量混用。
     """

@@ -6,7 +6,6 @@
     openai 包装类型直接穿透，超时后外层重试从不触发。
   - generate_embeddings_batch 的双层 batch_size 语义：不传 batch_size 时
     使用构造器的 self.batch_size（而非方法硬编码默认值）。
-  - BaseRerank._get_http_client 复用 build_openai_http_client 三态代理语义。
 """
 
 import asyncio
@@ -413,57 +412,3 @@ def test_learned_batch_limit_takes_historical_minimum():
     # 后续调用直接从 20 开始
     asyncio.run(client.generate_embeddings_batch([f"b{i}" for i in range(40)]))
     assert batch_sizes == [20, 20], batch_sizes
-
-def test_base_rerank_http_client_uses_proxy_semantics():
-    """BaseRerank._get_http_client 复用 build_openai_http_client：
-    proxy=None 时 httpx 客户端应关闭 trust_env（不读环境代理）。"""
-    import httpx
-
-    from novamind.shared.ai_models.rerank.openai_rerank import CompatibleRerankClient
-
-    client = CompatibleRerankClient(
-        api_key="k",
-        base_url="https://example.com",
-        model_name="m",
-        proxy=None,
-    )
-
-    http = asyncio.run(client._get_http_client())
-    try:
-        # trust_env=False 时 httpx 不从环境变量构建代理 mounts（无代理 mounts）
-        assert http.trust_env is False
-    finally:
-        asyncio.run(http.aclose())
-        client._http_client = None
-
-
-def test_base_rerank_default_proxy_inherit():
-    """默认 PROXY_INHERIT：不设置 trust_env=False，保持 httpx 默认（继承环境）。"""
-    from novamind.shared.ai_models.rerank.openai_rerank import CompatibleRerankClient
-
-    client = CompatibleRerankClient(
-        api_key="k",
-        base_url="https://example.com",
-        model_name="m",
-    )
-    assert client.proxy is not None
-    # PROXY_INHERIT 哨兵语义：_get_http_client 生成的客户端保持默认 trust_env=True
-    http = asyncio.run(client._get_http_client())
-    try:
-        assert http.trust_env is True
-    finally:
-        asyncio.run(http.aclose())
-
-
-def test_create_rerank_client_passes_proxy():
-    """rerank 工厂把 proxy 透传给 openai 协议客户端。"""
-    from novamind.shared.ai_models.rerank import create_rerank_client
-
-    client = create_rerank_client(
-        protocol="openai",
-        api_key="k",
-        base_url="https://example.com",
-        model_name="m",
-        proxy=None,
-    )
-    assert client.proxy is None
