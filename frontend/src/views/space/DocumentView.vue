@@ -66,6 +66,17 @@
             </el-button>
           </div>
           <div class="right-actions">
+            <el-input
+              v-model="searchKeyword"
+              class="search-input"
+              placeholder="搜索文件名"
+              maxlength="100"
+              clearable
+              @keyup.enter="handleSearch"
+              @clear="handleSearch"
+            >
+              <template #prefix><el-icon><Search /></el-icon></template>
+            </el-input>
             <span class="filter-label">状态</span>
             <el-select
               v-model="statusFilter"
@@ -291,6 +302,8 @@ let folderFileUid = -1
 const selectedIds = ref<number[]>([])
 const processTargetIds = ref<number[]>([])
 const statusFilter = ref<number | undefined>(undefined)
+// 文件名搜索关键词（回车或清空时提交）
+const searchKeyword = ref('')
 
 const statusOptions = [
   { label: '待处理', value: 0 },
@@ -494,6 +507,7 @@ async function fetchDocuments() {
   try {
     const data = await documentApi.getDocuments(spaceId.value, kbId.value, {
       status: statusFilter.value,
+      keyword: searchKeyword.value.trim() || undefined,
       skip: (currentPage.value - 1) * pageSize.value,
       limit: pageSize.value,
     })
@@ -505,6 +519,12 @@ async function fetchDocuments() {
 }
 
 function handleStatusFilterChange() {
+  currentPage.value = 1
+  fetchDocuments()
+}
+
+// 回车或清空时提交搜索，回到第 1 页
+function handleSearch() {
   currentPage.value = 1
   fetchDocuments()
 }
@@ -854,6 +874,10 @@ onMounted(async () => {
   width: 160px;
 }
 
+.search-input {
+  width: 220px;
+}
+
 .filename-cell {
   display: flex;
   align-items: center;
@@ -1059,6 +1083,10 @@ onMounted(async () => {
   }
 
   .status-filter {
+    width: 100%;
+  }
+
+  .search-input {
     width: 100%;
   }
 }

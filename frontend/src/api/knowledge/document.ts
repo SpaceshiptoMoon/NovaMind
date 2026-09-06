@@ -13,7 +13,7 @@ import type {
 } from '../types'
 
 export const documentApi = {
-  getDocuments(spaceId: number, kbId: number, params?: { status?: number; skip?: number; limit?: number }) {
+  getDocuments(spaceId: number, kbId: number, params?: { status?: number; keyword?: string; skip?: number; limit?: number }) {
     return request.get<DocumentListResponse>(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/documents`,
       params

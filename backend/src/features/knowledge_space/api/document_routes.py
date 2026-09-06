@@ -292,6 +292,7 @@ async def get_documents(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
     status: Annotated[Optional[int], Query(ge=0, description="状态过滤: 0-待处理 1-处理中 2-已完成 3-失败 4-已取消")] = None,
+    keyword: Annotated[Optional[str], Query(max_length=100, description="按文件名模糊搜索（子串匹配，不区分大小写）")] = None,
     skip: Annotated[int, Query(ge=0, description="跳过的记录数")] = 0,
     limit: Annotated[int, Query(ge=1, le=1000, description="返回的最大记录数")] = 100,
     member: SpaceMember = Depends(validate_space_member),
@@ -302,15 +303,19 @@ async def get_documents(
     # 验证知识库访问权限
     await validate_kb_access(kb_id, space_id, db)
 
+    # 归一化：全空格视为未过滤，避免 ilike '%%' 全表扫
+    keyword = (keyword or "").strip() or None
+
     documents = await document_query_service.get_kb_documents(
         kb_id=kb_id,
         status=status,
+        keyword=keyword,
         skip=skip,
         limit=limit,
     )
 
     # 获取符合条件的总数（用于分页）
-    total = await document_query_service.count_kb_documents(kb_id=kb_id, status=status)
+    total = await document_query_service.count_kb_documents(kb_id=kb_id, status=status, keyword=keyword)
 
     return DocumentListResponse(
         items=[DocumentResponse.model_validate(d) for d in documents],

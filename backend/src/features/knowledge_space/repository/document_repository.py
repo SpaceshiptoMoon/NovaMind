@@ -190,9 +190,10 @@ class DocumentRepository:
         skip: int = 0,
         limit: int = 100,
         status: Optional[int] = None,
+        keyword: Optional[str] = None,
     ) -> List[Document]:
-        """获取知识库内的文档列表"""
-        return await self._list_by_parent(Document.kb_id, kb_id, skip, limit, status=status)
+        """获取知识库内的文档列表（keyword 非空时按文件名子串模糊匹配）"""
+        return await self._list_by_parent(Document.kb_id, kb_id, skip, limit, status=status, keyword=keyword)
 
     async def get_by_space(
         self,
@@ -368,28 +369,30 @@ class DocumentRepository:
         )
         return result.rowcount
 
-    async def count_by_kb(self, kb_id: int, status: Optional[int] = None) -> int:
+    async def count_by_kb(self, kb_id: int, status: Optional[int] = None, keyword: Optional[str] = None) -> int:
         """
         统计知识库内的文档数量
 
         Args:
             kb_id: 知识库 ID
+            status: 状态过滤
+            keyword: 文件名模糊搜索关键词
 
         Returns:
             文档数量
         """
-        if status is None:
-            query = select(func.count(Document.id)).where(
-                Document.kb_id == kb_id,
-                Document.deleted_at.is_(None),
+        query = select(func.count(Document.id)).where(
+            Document.kb_id == kb_id,
+            Document.deleted_at.is_(None),
+        )
+        if keyword:
+            # 与 _list_by_parent 共享同一 keyword 条件，保证 list/count total 一致
+            query = query.where(
+                Document.filename.ilike(f"%{self._escape_ilike(keyword)}%", escape="\\")
             )
-        else:
+        if status is not None:
             latest = self._latest_task_status_subquery()
-            query = (
-                select(func.count(Document.id))
-                .select_from(outerjoin(Document, latest, latest.c.doc_id == Document.id))
-                .where(Document.kb_id == kb_id, Document.deleted_at.is_(None))
-            )
+            query = query.select_from(outerjoin(Document, latest, latest.c.doc_id == Document.id))
             status_value = int(status)
             if status_value == int(TaskStatus.PENDING):
                 query = query.where(
@@ -399,6 +402,11 @@ class DocumentRepository:
                 query = query.where(latest.c.task_status == status_value)
         result = await self.session.execute(query)
         return result.scalar() or 0
+
+    @staticmethod
+    def _escape_ilike(keyword: str) -> str:
+        """转义 ilike 通配符，使用户输入的 % _ \\ 按字面匹配"""
+        return keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
     async def get_storage_size(self, kb_id: int) -> int:
         """
@@ -495,42 +503,6 @@ class DocumentRepository:
             "total_size_mb": round(row.total_size_bytes / (1024 * 1024), 2),
         }
 
-    async def search_by_filename(
-        self,
-        kb_id: int,
-        keyword: str,
-        skip: int = 0,
-        limit: int = 20,
-    ) -> List[Document]:
-        """
-        按文件名搜索文档
-
-        Args:
-            kb_id: 知识库 ID
-            keyword: 搜索关键词
-            skip: 跳过数量
-            limit: 返回数量
-
-        Returns:
-            文档列表
-        """
-        # 转义通配符，防止用户输入的 % 和 _ 被当作通配符
-        escaped_keyword = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        result = await self.session.execute(
-            select(Document)
-            .where(
-                Document.kb_id == kb_id,
-                Document.deleted_at.is_(None),
-                Document.filename.ilike(f"%{escaped_keyword}%", escape="\\"),
-            )
-            .order_by(Document.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-        )
-        documents = list(result.scalars().all())
-        await self._attach_latest_tasks(documents)
-        return documents
-
     # ---------- 私有方法 ----------
 
     async def _list_by_parent(
@@ -540,12 +512,18 @@ class DocumentRepository:
         skip: int = 0,
         limit: int = 100,
         status: Optional[int] = None,
+        keyword: Optional[str] = None,
     ) -> List[Document]:
         """按父级字段（kb_id 或 space_id）查询文档列表"""
         query = select(Document).where(
             column == parent_id,
             Document.deleted_at.is_(None),
         )
+        if keyword:
+            # 转义通配符，用户输入的 % _ \ 按字面匹配
+            query = query.where(
+                Document.filename.ilike(f"%{self._escape_ilike(keyword)}%", escape="\\")
+            )
         if status is not None:
             latest = self._latest_task_status_subquery()
             status_value = int(status)

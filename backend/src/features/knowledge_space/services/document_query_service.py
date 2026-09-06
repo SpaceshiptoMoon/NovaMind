@@ -54,9 +54,10 @@ class DocumentQueryService:
         self,
         kb_id: int,
         status: Optional[int] = None,
+        keyword: Optional[str] = None,
     ) -> int:
         """统计知识库中的文档数量"""
-        return await self.doc_repo.count_by_kb(kb_id=kb_id, status=status)
+        return await self.doc_repo.count_by_kb(kb_id=kb_id, status=status, keyword=keyword)
 
     async def get_filename_map(self, document_ids: List[int]) -> Dict[int, str]:
         """按 document_id 批量取 ``Documents.filename``，供任务列表回填真实文件名。
@@ -248,6 +249,7 @@ class DocumentQueryService:
         skip: int = 0,
         limit: int = 100,
         status: Optional[int] = None,
+        keyword: Optional[str] = None,
     ) -> List[Document]:
         """
         获取知识库的文档列表
@@ -256,6 +258,8 @@ class DocumentQueryService:
             kb_id: 知识库 ID
             skip: 跳过数量
             limit: 返回数量
+            status: 状态过滤
+            keyword: 文件名模糊搜索关键词
 
         Returns:
             文档列表
@@ -265,6 +269,7 @@ class DocumentQueryService:
             skip=skip,
             limit=limit,
             status=status,
+            keyword=keyword,
         )
 
     async def get_document_chunks(
