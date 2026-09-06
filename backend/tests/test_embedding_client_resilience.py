@@ -412,3 +412,81 @@ def test_learned_batch_limit_takes_historical_minimum():
     # 后续调用直接从 20 开始
     asyncio.run(client.generate_embeddings_batch([f"b{i}" for i in range(40)]))
     assert batch_sizes == [20, 20], batch_sizes
+
+
+# ---- 控制字符清洗（2026-09-07 doc 574 NUL 黑洞故障回归）----
+#
+# DeepDoc 解析 PDF 数学公式会在分块残留 NUL（\x00）与孤立 \r；
+# DashScope 对含 NUL 的请求不报错也不返回（无限挂起直到读超时），
+# 431 块中 73 块受累 → 任务永久失败。发送前必须清洗。
+
+def test_sanitize_normalizes_control_chars():
+    """\\r\\n/孤立\\r 归一为 \\n；NUL/DEL 等控制字符替换为空格；\\t 保留。"""
+    from novamind.shared.ai_models.embedding.openai_compatible import (
+        sanitize_text_for_embedding,
+    )
+
+    assert sanitize_text_for_embedding("a\r\nb") == "a\nb"
+    assert sanitize_text_for_embedding("a\rb") == "a\nb"
+    assert sanitize_text_for_embedding("a\x00b") == "a b"
+    assert sanitize_text_for_embedding("a\x7fb") == "a b"
+    assert sanitize_text_for_embedding("a\tb") == "a\tb"
+    assert sanitize_text_for_embedding("") == ""
+    assert sanitize_text_for_embedding("正常中文") == "正常中文"
+
+
+def test_sanitize_preserves_clean_text_and_newline_semantics():
+    """干净文本零改动；多行公式的换行结构保留（向量语义损失最小化）。"""
+    from novamind.shared.ai_models.embedding.openai_compatible import (
+        sanitize_text_for_embedding,
+    )
+
+    text = "第一段\n第二段\n1. 变量 x = 1"
+    assert sanitize_text_for_embedding(text) == text
+
+
+def test_generate_batch_sanitizes_input_before_request():
+    """_generate_batch 发送给服务商的 input 已清洗（mock 捕获请求参数断言）。"""
+    from novamind.shared.ai_models.embedding.openai_compatible import (
+        OpenAICompatibleEmbedding,
+    )
+
+    client = _make_client(batch_size=20)
+    captured = {}
+
+    async def fake_create(**kwargs):
+        captured.update(kwargs)
+        return MagicMock(
+            data=[MagicMock(embedding=[0.1]) for _ in kwargs["input"]]
+        )
+
+    client.client = MagicMock()
+    client.client.embeddings.create = AsyncMock(side_effect=fake_create)
+
+    dirty = ["公式 ||∆k|| ≤ L\r\r∇f(Xk)\x00 归纳"]
+    asyncio.run(client._generate_batch(dirty))
+
+    sent = captured["input"]
+    assert sent != dirty, "发送的 input 不应包含未清洗文本"
+    assert "\r" not in sent[0] and "\x00" not in sent[0]
+    # \r\r 折叠为 \n、NUL 变空格，正文保留
+    assert "∇f(Xk)" in sent[0]
+    assert "\n" in sent[0]
+
+
+def test_generate_embedding_sanitizes_single_text():
+    """单条 generate_embedding 路径同样清洗。"""
+    client = _make_client()
+    captured = {}
+
+    async def fake_create(**kwargs):
+        captured.update(kwargs)
+        return MagicMock(data=[MagicMock(embedding=[0.1, 0.2])])
+
+    client.client = MagicMock()
+    client.client.embeddings.create = AsyncMock(side_effect=fake_create)
+
+    asyncio.run(client.generate_embedding("残留\x00文本\r\n第二行"))
+    sent = captured["input"]
+    assert "\x00" not in sent and "\r" not in sent
+    assert sent == "残留 文本\n第二行"

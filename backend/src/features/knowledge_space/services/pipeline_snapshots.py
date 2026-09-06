@@ -35,7 +35,8 @@ FINGERPRINT_VERSION = 1
 # Embedding 客户端实现签名：进入 embed 指纹。凡影响向量取值的客户端改动
 # （预处理/归一化等）必须 bump 使已有向量快照失效、强制重算；
 # 仅重试/容错类修复（不影响向量取值）不需要 bump。
-EMBEDDING_CLIENT_SIGNATURE = "openai-compatible-v1"
+# v2 (2026-09-07)：新增控制字符清洗——送入模型的文本变了，向量取值随之改变。
+EMBEDDING_CLIENT_SIGNATURE = "openai-compatible-v2-sanitize"
 
 # document.storage 中快照指针的键名
 SNAPSHOT_STORAGE_KEY = "pipeline_snapshots"

@@ -56,6 +56,39 @@ def _parse_batch_limit_error(error_text: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+def sanitize_text_for_embedding(text: str) -> str:
+    """清洗文本中的控制字符后再送 embedding 服务商。
+
+    根因（doc 574，2026-09-07）：DeepDoc 解析 PDF 数学公式时会在分块中残留
+    NUL（\\x00）、孤立 \\r 等控制字符；DashScope 对含 NUL 的 embedding 请求
+    不报错也不返回（无限挂起直到客户端读超时），431 块中 73 块受累。规则：
+    - \\r\\n 与孤立 \\r 统一归为 \\n（保留换行语义）
+    - \\n、\\t 保留（换行/缩进语义）
+    - 其余 C0 控制字符与 DEL 替换为空格
+    """
+    if not text:
+        return text
+    chars: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        code = ord(ch)
+        if ch == "\r":
+            # \r\n 折叠为 \n，孤立 \r 同样归一为 \n
+            if i + 1 < n and text[i + 1] == "\n":
+                i += 1
+            chars.append("\n")
+        elif code in (0x09, 0x0A):  # \t \n 保留
+            chars.append(ch)
+        elif code < 0x20 or code == 0x7F or 0xD800 <= code <= 0xDFFF:
+            chars.append(" ")
+        else:
+            chars.append(ch)
+        i += 1
+    return "".join(chars)
+
+
 class EmbeddingDimensionError(Exception):
     """向量维度不匹配错误"""
 
@@ -164,7 +197,7 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
             try:
                 response = await self.client.embeddings.create(
                     model=self.model,
-                    input=text,
+                    input=sanitize_text_for_embedding(text),
                 )
                 embedding = response.data[0].embedding
                 self._validate_dimension(embedding)
@@ -250,7 +283,9 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
             try:
                 response = await self.client.embeddings.create(
                     model=self.model,
-                    input=batch_texts,
+                    # 控制/NUL 字符会使部分服务商（DashScope）请求无限挂起，
+                    # 发送前必须清洗（doc 574 根因）
+                    input=[sanitize_text_for_embedding(t) for t in batch_texts],
                 )
                 batch_embeddings = [data.embedding for data in response.data]
                 for embedding in batch_embeddings:
