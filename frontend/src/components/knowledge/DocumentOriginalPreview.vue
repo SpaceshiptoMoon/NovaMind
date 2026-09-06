@@ -21,10 +21,9 @@
           <el-icon><View /></el-icon>
           查看解析结果
         </el-button>
+        <!-- 样式层级：主操作（查看）用 primary，下载类次要操作统一中性默认样式 -->
         <el-button
-          type="primary"
           size="small"
-          plain
           :disabled="!canViewOriginal"
           :loading="downloadingParsed"
           @click="handleDownloadParsed"
