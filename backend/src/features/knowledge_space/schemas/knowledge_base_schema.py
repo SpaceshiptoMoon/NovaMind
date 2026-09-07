@@ -88,12 +88,6 @@ class SplittingConfig(BaseModel):
 PdfParserName = Literal[
     "full",
     "plain",
-    "docling",
-    "mineru",
-    "opendataloader",
-    "paddleocr",
-    "somark",
-    "tcadp",
 ]
 
 LegacyDeepDocParserId = Literal[
@@ -268,6 +262,23 @@ class ParsingConfig(BaseModel):
             value = dict(value)
             value["video"] = video_cfg
 
+        # 迁移已移除的远程 PDF parser（docling/mineru/opendataloader/paddleocr/
+        # somark/tcadp）→ full。这些远程服务未实现已从 PdfParserName 收紧，旧
+        # 新格式配置 text.pdf.parser 选过远程值的降级到 full，避免反序列化 500。
+        _REMOVED_REMOTE_PDF_PARSERS = {
+            "docling", "mineru", "opendataloader", "paddleocr", "somark", "tcadp",
+        }
+        text_cfg = value.get("text")
+        if isinstance(text_cfg, dict):
+            pdf_cfg = text_cfg.get("pdf")
+            if isinstance(pdf_cfg, dict) and pdf_cfg.get("parser") in _REMOVED_REMOTE_PDF_PARSERS:
+                pdf_cfg = dict(pdf_cfg)
+                pdf_cfg["parser"] = "full"
+                text_cfg = dict(text_cfg)
+                text_cfg["pdf"] = pdf_cfg
+                value = dict(value)
+                value["text"] = text_cfg
+
         legacy_keys = {
             "strategy",
             "deepdoc_parser_id",
@@ -316,12 +327,13 @@ class ParsingConfig(BaseModel):
             "pdf_layout": ("pdf", "full"),
             "pdf_plain": ("pdf", "plain"),
             "pdf_vision": ("pdf", "full"),
-            "pdf_docling": ("pdf", "docling"),
-            "pdf_mineru": ("pdf", "mineru"),
-            "pdf_opendataloader": ("pdf", "opendataloader"),
-            "pdf_paddleocr": ("pdf", "paddleocr"),
-            "pdf_somark": ("pdf", "somark"),
-            "pdf_tcadp": ("pdf", "tcadp"),
+            # 6 个远程 parser 未实现已从 PdfParserName 移除，旧 deepdoc_parser_id 迁移到 full
+            "pdf_docling": ("pdf", "full"),
+            "pdf_mineru": ("pdf", "full"),
+            "pdf_opendataloader": ("pdf", "full"),
+            "pdf_paddleocr": ("pdf", "full"),
+            "pdf_somark": ("pdf", "full"),
+            "pdf_tcadp": ("pdf", "full"),
             "docx": ("docx", None),
             "epub": ("epub", None),
             "excel": ("excel", None),
@@ -489,12 +501,6 @@ class KnowledgeBaseConfigResponse(BaseModel):
 PDF_PARSER_TO_LEGACY_ID: Dict[str, str] = {
     "full": "pdf_full",
     "plain": "pdf_plain",
-    "docling": "pdf_docling",
-    "mineru": "pdf_mineru",
-    "opendataloader": "pdf_opendataloader",
-    "paddleocr": "pdf_paddleocr",
-    "somark": "pdf_somark",
-    "tcadp": "pdf_tcadp",
 }
 
 

@@ -55,36 +55,6 @@ export const deepdocParserOptions: Array<{ label: string; value: PdfParserName; 
     value: 'plain',
     desc: '仅抽取文字层，无版面分析、无 OCR。最快，适合结构简单的纯文字 PDF。扫描件/图片 PDF 会抽出 0 字符，需改用 full。',
   },
-  {
-    label: 'docling（远程）',
-    value: 'docling',
-    desc: '远程 Docling 解析服务。需在后端配置外部服务地址，否则解析失败。',
-  },
-  {
-    label: 'mineru（远程）',
-    value: 'mineru',
-    desc: '远程 Mineru 解析服务。需在后端配置外部服务地址，否则解析失败。',
-  },
-  {
-    label: 'opendataloader（远程）',
-    value: 'opendataloader',
-    desc: '远程 OpenDataLoader 解析服务。需在后端配置外部服务地址，否则解析失败。',
-  },
-  {
-    label: 'paddleocr（远程）',
-    value: 'paddleocr',
-    desc: '远程 PaddleOCR 解析服务。需在后端配置外部服务地址，否则解析失败。',
-  },
-  {
-    label: 'somark（远程）',
-    value: 'somark',
-    desc: '远程 SoMark 解析服务。需在后端配置外部服务地址，否则解析失败。',
-  },
-  {
-    label: 'tcadp（远程）',
-    value: 'tcadp',
-    desc: '远程 TCADP 解析服务。需在后端配置外部服务地址，否则解析失败。',
-  },
 ]
 
 export function getTextStrategyValue(value: unknown): TextStrategy {

@@ -94,7 +94,7 @@ def test_legacy_parsing_config_is_migrated_to_new_structure():
 
     dumped = config.model_dump()
     assert dumped["parsing"]["text"]["pdf"]["strategy"] == "deepdoc"
-    assert dumped["parsing"]["text"]["pdf"]["parser"] == "layout"
+    assert dumped["parsing"]["text"]["pdf"]["parser"] == "full"
     assert dumped["parsing"]["text"]["pdf"]["ocr_enabled"] is True
     assert dumped["parsing"]["image"]["strategy"] == "vlm"
     assert dumped["parsing"]["image"]["vlm_model"] == "glm-4v"
@@ -141,7 +141,7 @@ def test_runtime_parsing_config_maps_new_pdf_structure_to_legacy_keys():
             "text": {
                 "pdf": {
                     "strategy": "deepdoc",
-                    "parser": "vision",
+                    "parser": "full",
                     "ocr_enabled": True,
                 }
             }
@@ -150,8 +150,8 @@ def test_runtime_parsing_config_maps_new_pdf_structure_to_legacy_keys():
     )
 
     assert runtime["strategy"] == "deepdoc"
-    assert runtime["deepdoc_parser_id"] == "pdf_vision"
-    assert runtime["deepdoc_pdf_mode"] == "vision"
+    assert runtime["deepdoc_parser_id"] == "pdf_full"
+    assert runtime["deepdoc_pdf_mode"] == "full"
     assert runtime["ocr_enabled"] is True
 
 
@@ -161,7 +161,7 @@ def test_runtime_parsing_config_prefers_structured_pdf_settings_over_legacy_keys
             "text": {
                 "pdf": {
                     "strategy": "deepdoc",
-                    "parser": "layout",
+                    "parser": "full",
                     "ocr_enabled": True,
                 },
                 "docx": {"strategy": "deepdoc"},
@@ -174,8 +174,8 @@ def test_runtime_parsing_config_prefers_structured_pdf_settings_over_legacy_keys
     )
 
     assert runtime["strategy"] == "deepdoc"
-    assert runtime["deepdoc_parser_id"] == "pdf_layout"
-    assert runtime["deepdoc_pdf_mode"] == "layout"
+    assert runtime["deepdoc_parser_id"] == "pdf_full"
+    assert runtime["deepdoc_pdf_mode"] == "full"
     assert runtime["ocr_enabled"] is True
 
 
@@ -984,4 +984,34 @@ def test_migrate_legacy_parsing_video_dedup_grouped_to_grouped():
     parsed = ParsingConfig.model_validate({"video": {"strategy": "dedup_grouped"}})
     assert parsed.video is not None
     assert parsed.video.strategy == "grouped"
+
+
+def test_migrate_legacy_parsing_remote_pdf_parsers_to_full():
+    """已移除的 6 个远程 PDF parser 旧值迁移到 full（schema 收紧后避免反序列化 500）。"""
+    from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+        KnowledgeBaseConfig,
+        ParsingConfig,
+        PdfParsingConfig,
+    )
+
+    # 新格式 text.pdf.parser 选过远程值的降级到 full
+    for removed in ("docling", "mineru", "opendataloader", "paddleocr", "somark", "tcadp"):
+        parsed = ParsingConfig.model_validate(
+            {"text": {"pdf": {"strategy": "deepdoc", "parser": removed}}}
+        )
+        assert parsed.text is not None
+        assert parsed.text.pdf.parser == "full", f"新格式 {removed} 应迁移到 full"
+
+    # legacy deepdoc_parser_id=pdf_docling 等 → full
+    config = KnowledgeBaseConfig.model_validate(
+        {"parsing": {"strategy": "deepdoc", "deepdoc_parser_id": "pdf_mineru"}}
+    )
+    assert config.parsing.text.pdf.parser == "full"
+
+    # schema 已拒绝远程值（直接构造 PdfParsingConfig 抛 ValidationError）
+    import pytest as _pytest
+    from pydantic import ValidationError
+
+    with _pytest.raises(ValidationError):
+        PdfParsingConfig(strategy="deepdoc", parser="docling")
 

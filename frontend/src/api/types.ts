@@ -378,15 +378,7 @@ export interface AudioParsingConfig {
   language?: string
 }
 
-export type PdfParserName =
-  | 'full'
-  | 'plain'
-  | 'docling'
-  | 'mineru'
-  | 'opendataloader'
-  | 'paddleocr'
-  | 'somark'
-  | 'tcadp'
+export type PdfParserName = 'full' | 'plain'
 
 export interface TextTypeParsingConfig {
   strategy?: 'default' | 'deepdoc'
