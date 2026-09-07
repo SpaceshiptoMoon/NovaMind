@@ -82,7 +82,7 @@ def test_update_config_merges_new_nested_parsing_structure(monkeypatch):
             "text": {
                 "pdf": {
                     "strategy": "deepdoc",
-                    "parser": "layout",
+                    "parser": "full",
                     "ocr_enabled": True,
                 },
                 "excel": {"strategy": "deepdoc"},
@@ -115,7 +115,7 @@ def test_update_config_merges_new_nested_parsing_structure(monkeypatch):
     assert kb.config["splitting"]["strategy"] == "recursive"
     assert kb.config["splitting"]["chunk_size"] == 1500
     assert kb.config["parsing"]["text"]["pdf"]["strategy"] == "deepdoc"
-    assert kb.config["parsing"]["text"]["pdf"]["parser"] == "layout"
+    assert kb.config["parsing"]["text"]["pdf"]["parser"] == "full"
     assert kb.config["parsing"]["text"]["pdf"]["ocr_enabled"] is True
     assert kb.config["parsing"]["text"]["docx"]["strategy"] == "default"
     assert kb.config["parsing"]["text"]["excel"]["strategy"] == "deepdoc"

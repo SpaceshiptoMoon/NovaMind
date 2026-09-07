@@ -136,8 +136,14 @@ class PdfParsingConfig(TextTypeParsingConfig):
 
     @model_validator(mode="after")
     def validate_parser_usage(self):
+        # default 模式不用 parser（运行时 build_runtime_parsing_config 在
+        # strategy=default 时忽略 parser 字段，仅 deepdoc 时取用）。深度合并
+        # 会产生 strategy=default + 残留 parser 的组合——用户从 deepdoc 切回
+        # default 时未显式清 parser，旧值残留；运行时本就忽略该字段，此处自动
+        # 清空而非报错，避免 update 返回时 response 构造触发 500（KB 配置
+        # update 实测）。parser 原值仍在 DB，切回 deepdoc 时恢复。
         if self.strategy == "default" and self.parser is not None:
-            raise ValueError("pdf.strategy=default forbids parser")
+            self.parser = None
         return self
 
 
@@ -184,20 +190,19 @@ class ImageParsingConfig(BaseModel):
 class VideoParsingConfig(BaseModel):
     """Video parsing config.
 
-    strategy（视频解析策略，6 预设映射到抽帧/去重/描述三阶段组合）：
+    strategy（视频解析策略，5 预设映射到抽帧/去重/描述三阶段组合）：
     - "simple": 固定间隔抽帧 + 不去重 + 逐帧单图描述（默认，等价旧行为）
     - "scene": 场景切换抽帧（直方图差）+ 不去重 + 逐帧单图描述
     - "dedup": 固定间隔 + 直方图相似度去重 + 逐帧单图描述
     - "grouped": 固定间隔 + 不去重 + 多帧一组喂 VLM 多图生成连贯描述
     - "rewrite": 固定间隔 + 不去重 + 逐帧描述后 LLM 重写连贯（保留时间锚点）
-    - "dedup_grouped": 固定间隔 + 图像 embedding 去重 + 分组描述（预留，暂未实现）
     """
 
     model_config = ConfigDict(extra="ignore")
 
-    strategy: Literal["simple", "scene", "dedup", "grouped", "rewrite", "dedup_grouped"] = Field(
+    strategy: Literal["simple", "scene", "dedup", "grouped", "rewrite"] = Field(
         default="simple",
-        description="视频解析策略：6 预设（抽帧/去重/描述三阶段组合）",
+        description="视频解析策略：5 预设（抽帧/去重/描述三阶段组合）",
     )
     frame_interval: float = Field(default=5.0, ge=1.0, le=60.0)
     max_frames: int = Field(default=60, ge=1, le=200)
@@ -252,6 +257,16 @@ class ParsingConfig(BaseModel):
             image_cfg["strategy"] = "deepdoc_ocr"
             value = dict(value)
             value["image"] = image_cfg
+
+        # 迁移旧 video.strategy="dedup_grouped" → "grouped"
+        # dedup_grouped 预留未实现已移除；旧配置降级到 grouped（保留分组描述，
+        # 丢弃未实现的图像 embedding 去重），避免 schema 收紧后反序列化 500。
+        video_cfg = value.get("video")
+        if isinstance(video_cfg, dict) and video_cfg.get("strategy") == "dedup_grouped":
+            video_cfg = dict(video_cfg)
+            video_cfg["strategy"] = "grouped"
+            value = dict(value)
+            value["video"] = video_cfg
 
         legacy_keys = {
             "strategy",

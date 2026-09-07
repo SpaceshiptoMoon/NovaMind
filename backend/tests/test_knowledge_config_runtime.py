@@ -224,8 +224,8 @@ def test_runtime_parsing_config_maps_image_video_audio_sections():
 
 
 def test_runtime_parsing_config_flattens_video_strategy_presets():
-    """6 预设 strategy 均扁平化到 video_strategy 顶层键。"""
-    for preset in ("simple", "scene", "dedup", "grouped", "rewrite", "dedup_grouped"):
+    """5 预设 strategy 均扁平化到 video_strategy 顶层键。"""
+    for preset in ("simple", "scene", "dedup", "grouped", "rewrite"):
         runtime = build_runtime_parsing_config(
             {"video": {"strategy": preset, "frame_interval": 5, "max_frames": 60}},
             file_type="mp4",
@@ -963,36 +963,25 @@ async def test_process_video_document_grouped_strategy_passes_frame_groups(monke
 
 
 @pytest.mark.anyio("asyncio")
-async def test_process_video_document_dedup_grouped_strategy_not_implemented(monkeypatch):
-    """dedup_grouped 策略预留：选该策略抛 DocumentProcessingError 引导改选。"""
-    captured = {}
+async def test_video_parsing_config_rejects_dedup_grouped():
+    """dedup_grouped 预留未实现已移除：VideoParsingConfig 拒绝该值。"""
+    from pydantic import ValidationError
 
-    class FakeTask:
-        def __init__(self, pipeline_config):
-            self.pipeline_config = pipeline_config
+    from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+        VideoParsingConfig,
+    )
 
-    monkeypatch.setattr(
-        "novamind.features.knowledge_space.repository.knowledge_base_repository.KnowledgeBaseRepository.get_by_id",
-        AsyncMock(return_value=SimpleNamespace(get_config=lambda: {})),
-    )
-    session = SimpleNamespace(
-        get=AsyncMock(return_value=SimpleNamespace(embedding_config={})),
-        commit=AsyncMock(),
-    )
-    document = SimpleNamespace(
-        id=1, kb_id=1, space_id=1, uploader_id=1,
-        filename="demo.mp4", file_type="mp4",
-        storage={"minio_object_name": "spaces/1/kbs/1/documents/1/demo.mp4"},
-    )
-    task = FakeTask({
-        "parsing": {"video": {"strategy": "dedup_grouped", "vlm_model": "video-vlm"}},
-        "splitting": {"strategy": "recursive"},
-    })
+    with pytest.raises(ValidationError):
+        VideoParsingConfig(strategy="dedup_grouped")
 
-    with pytest.raises(DocumentProcessingError):
-        await process_video_document(
-            document, b"fake-video", session,
-            SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None),
-            task=task, model_config_port=None,
-        )
+
+def test_migrate_legacy_parsing_video_dedup_grouped_to_grouped():
+    """旧配置 video.strategy=dedup_grouped 迁移到 grouped（schema 收紧后避免反序列化 500）。"""
+    from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+        ParsingConfig,
+    )
+
+    parsed = ParsingConfig.model_validate({"video": {"strategy": "dedup_grouped"}})
+    assert parsed.video is not None
+    assert parsed.video.strategy == "grouped"
 

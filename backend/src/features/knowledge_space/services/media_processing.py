@@ -176,16 +176,6 @@ async def process_video_document(
     # 批次 5b：用注入的 ModelConfigPort
     mcs = model_config_port
 
-    # dedup_grouped 策略预留：图像 embedding 去重待 IMAGE_EMBEDDING 模型类型引入后实现
-    if strategy == "dedup_grouped":
-        raise DocumentProcessingError(
-            document_id=document.id,
-            error_message=(
-                f"视频 {document.filename} 选用策略 dedup_grouped 暂未实现"
-                "（图像 embedding 去重待引入），请改用 simple/scene/dedup/grouped/rewrite 策略"
-            ),
-        )
-
     # 1. 提取帧（按 strategy 路由：scene 场景抽帧，其余固定间隔）
     logger.info(
         "视频帧提取开始", document_id=document.id,

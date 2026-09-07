@@ -357,8 +357,8 @@ export interface SplittingConfig {
 }
 
 export interface VideoParsingConfig {
-  /** 视频解析策略：6 预设（抽帧/去重/描述三阶段组合） */
-  strategy?: 'simple' | 'scene' | 'dedup' | 'grouped' | 'rewrite' | 'dedup_grouped'
+  /** 视频解析策略：5 预设（抽帧/去重/描述三阶段组合） */
+  strategy?: 'simple' | 'scene' | 'dedup' | 'grouped' | 'rewrite'
   frame_interval?: number
   max_frames?: number
   vlm_description_enabled?: boolean

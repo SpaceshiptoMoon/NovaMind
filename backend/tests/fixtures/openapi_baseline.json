@@ -5542,10 +5542,6 @@
             "description": "通信协议: openai/anthropic/ollama/transformers",
             "title": "Protocol",
             "type": "string"
-          },
-          "proxy": {
-            "description": "代理配置（仅 openai 协议生效）。省略=继承环境变量代理；null / 空字符串=禁用代理（直连国内服务商时使用）；字符串=代理 URL。",
-            "title": "Proxy"
           }
         },
         "required": [
@@ -11854,7 +11850,7 @@
         "type": "object"
       },
       "VideoParsingConfig": {
-        "description": "Video parsing config.\n\nstrategy（视频解析策略，6 预设映射到抽帧/去重/描述三阶段组合）：\n- \"simple\": 固定间隔抽帧 + 不去重 + 逐帧单图描述（默认，等价旧行为）\n- \"scene\": 场景切换抽帧（直方图差）+ 不去重 + 逐帧单图描述\n- \"dedup\": 固定间隔 + 直方图相似度去重 + 逐帧单图描述\n- \"grouped\": 固定间隔 + 不去重 + 多帧一组喂 VLM 多图生成连贯描述\n- \"rewrite\": 固定间隔 + 不去重 + 逐帧描述后 LLM 重写连贯（保留时间锚点）\n- \"dedup_grouped\": 固定间隔 + 图像 embedding 去重 + 分组描述（预留，暂未实现）",
+        "description": "Video parsing config.\n\nstrategy（视频解析策略，5 预设映射到抽帧/去重/描述三阶段组合）：\n- \"simple\": 固定间隔抽帧 + 不去重 + 逐帧单图描述（默认，等价旧行为）\n- \"scene\": 场景切换抽帧（直方图差）+ 不去重 + 逐帧单图描述\n- \"dedup\": 固定间隔 + 直方图相似度去重 + 逐帧单图描述\n- \"grouped\": 固定间隔 + 不去重 + 多帧一组喂 VLM 多图生成连贯描述\n- \"rewrite\": 固定间隔 + 不去重 + 逐帧描述后 LLM 重写连贯（保留时间锚点）",
         "properties": {
           "dedup_similarity_threshold": {
             "anyOf": [
@@ -11911,14 +11907,13 @@
           },
           "strategy": {
             "default": "simple",
-            "description": "视频解析策略：6 预设（抽帧/去重/描述三阶段组合）",
+            "description": "视频解析策略：5 预设（抽帧/去重/描述三阶段组合）",
             "enum": [
               "simple",
               "scene",
               "dedup",
               "grouped",
-              "rewrite",
-              "dedup_grouped"
+              "rewrite"
             ],
             "title": "Strategy",
             "type": "string"
@@ -18574,6 +18569,25 @@
               ],
               "description": "状态过滤: 0-待处理 1-处理中 2-已完成 3-失败 4-已取消",
               "title": "Status"
+            }
+          },
+          {
+            "description": "按文件名模糊搜索（子串匹配，不区分大小写）",
+            "in": "query",
+            "name": "keyword",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按文件名模糊搜索（子串匹配，不区分大小写）",
+              "title": "Keyword"
             }
           },
           {
