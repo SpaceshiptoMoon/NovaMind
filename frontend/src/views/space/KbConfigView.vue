@@ -136,7 +136,6 @@ import type {
   KnowledgeBaseConfigResponse,
   KnowledgeBaseConfigUpdateRequest,
   ParsingConfig,
-  PdfParserName,
   SplittingConfig,
   TextParsingConfig,
   VideoParsingConfig,
@@ -170,7 +169,6 @@ const configForm = reactive({
   kbSpaceTypes: ['text'] as string[],
 
   pdfStrategy: 'default' as TextStrategy,
-  deepdocParser: 'full' as PdfParserName,
   pdfOcrEnabled: false,
   docxStrategy: 'default' as TextStrategy,
   excelStrategy: 'default' as TextStrategy,

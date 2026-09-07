@@ -15,23 +15,8 @@
               </el-select>
               <div class="field-hint">
                 {{ configForm.pdfStrategy === 'deepdoc'
-                  ? 'DeepDoc：用下方解析器，支持版面分析/OCR/远程服务，能力最全但较慢。'
+                  ? 'DeepDoc：全量流水线（每页 OCR 检测 + 逐框文字层融合 + ONNX 版面 + 表格识别），扫描件、图片 PDF、数字原生 PDF 通吃，能力最全但较慢。'
                   : '默认：PyPDF2 直出文字层，快但无版面分析；扫描件可配合下方"启用 OCR"做 Tesseract OCR。' }}
-              </div>
-            </el-form-item>
-          </el-col>
-          <el-col v-if="configForm.pdfStrategy === 'deepdoc'" :span="8">
-            <el-form-item label="PDF 解析器">
-              <el-select v-model="configForm.deepdocParser" filterable style="width: 100%">
-                <el-option
-                  v-for="option in deepdocParserOptions"
-                  :key="option.value"
-                  :label="option.label"
-                  :value="option.value"
-                />
-              </el-select>
-              <div class="field-hint">
-                {{ deepdocParserOptions.find((i) => i.value === configForm.deepdocParser)?.desc }}
               </div>
             </el-form-item>
           </el-col>
@@ -63,13 +48,11 @@
 </template>
 
 <script setup lang="ts">
-import { deepdocParserOptions, textStrategyItems } from './kbConfig'
-import type { PdfParserName } from '@/api/types'
+import { textStrategyItems } from './kbConfig'
 import type { TextStrategy } from './kbConfig'
 
 type TextParsingFormModel = {
   pdfStrategy: TextStrategy
-  deepdocParser: PdfParserName
   pdfOcrEnabled: boolean
   docxStrategy: TextStrategy
   excelStrategy: TextStrategy

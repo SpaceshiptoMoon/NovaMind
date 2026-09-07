@@ -1,4 +1,4 @@
-import type { PdfParserName, TextParsingConfig } from '@/api/types'
+import type { TextParsingConfig } from '@/api/types'
 
 export type TextStrategy = 'default' | 'deepdoc'
 export type ImageStrategy = 'vlm' | 'deepdoc_ocr'
@@ -44,19 +44,6 @@ export const textStrategyItems: Array<{ key: TextStrategyField; label: string }>
   { key: 'jsonStrategy', label: 'JSON' },
 ]
 
-export const deepdocParserOptions: Array<{ label: string; value: PdfParserName; desc: string }> = [
-  {
-    label: 'full（全量流水线·推荐）',
-    value: 'full',
-    desc: '默认模式，对齐 RAGFlow 上游：每页 OCR 检测 + 逐框文字层融合 + ONNX 版面 + 表格识别。文字层干净时优先用文字层（跳过 OCR 识别，快），乱码或无文字层时回退 OCR。扫描件、图片 PDF、数字原生 PDF 通吃。速度最慢、占内存最高。',
-  },
-  {
-    label: 'plain（纯文本）',
-    value: 'plain',
-    desc: '仅抽取文字层，无版面分析、无 OCR。最快，适合结构简单的纯文字 PDF。扫描件/图片 PDF 会抽出 0 字符，需改用 full。',
-  },
-]
-
 export function getTextStrategyValue(value: unknown): TextStrategy {
   return value === 'deepdoc' ? 'deepdoc' : 'default'
 }
@@ -91,7 +78,6 @@ export const DEFAULT_QUESTION_PROMPT_TEMPLATE = `留空则使用系统默认模�
 export function applyTextParsingConfig(
   target: {
     pdfStrategy: TextStrategy
-    deepdocParser: PdfParserName
     pdfOcrEnabled: boolean
     docxStrategy: TextStrategy
     excelStrategy: TextStrategy
@@ -105,7 +91,6 @@ export function applyTextParsingConfig(
   textConfig?: TextParsingConfig,
 ) {
   target.pdfStrategy = getTextStrategyValue(textConfig?.pdf?.strategy)
-  target.deepdocParser = textConfig?.pdf?.parser || 'full'
   target.pdfOcrEnabled = textConfig?.pdf?.ocr_enabled ?? false
   target.docxStrategy = getTextStrategyValue(textConfig?.docx?.strategy)
   target.excelStrategy = getTextStrategyValue(textConfig?.excel?.strategy)
@@ -119,7 +104,6 @@ export function applyTextParsingConfig(
 
 export function buildTextParsingConfigFromForm(source: {
   pdfStrategy: TextStrategy
-  deepdocParser: PdfParserName
   pdfOcrEnabled: boolean
   docxStrategy: TextStrategy
   excelStrategy: TextStrategy
@@ -133,7 +117,8 @@ export function buildTextParsingConfigFromForm(source: {
   return {
     pdf: {
       strategy: source.pdfStrategy,
-      parser: source.pdfStrategy === 'deepdoc' ? source.deepdocParser : undefined,
+      // 前端只暴露 default/deepdoc 两个选择；deepdoc 固定走 full（推荐模式）
+      parser: source.pdfStrategy === 'deepdoc' ? 'full' : undefined,
       ocr_enabled: source.pdfOcrEnabled,
     },
     docx: { strategy: source.docxStrategy },

@@ -20,7 +20,6 @@ export { buildKbNavItems } from './navigation'
 export {
   applyTextParsingConfig,
   buildTextParsingConfigFromForm,
-  deepdocParserOptions,
   getTextStrategyValue,
   getVideoStrategyValue,
   textStrategyItems,
