@@ -102,10 +102,14 @@ def get_session_factory():
     """
     global _session_factory
     if _session_factory is None:
+        # 先在锁外取引擎：get_engine 内部也要拿 _engine_lock，若放进下方 with 块，
+        # 同线程会对同一把非重入 threading.Lock 二次加锁自死锁（2026-09-07 独立
+        # 脚本首次调用实测踩坑；应用启动期 get_engine 先被调用过走快路径故未暴露）。
+        engine = get_engine()
         with _engine_lock:
             if _session_factory is None:
                 _session_factory = async_sessionmaker(
-                    bind=get_engine(),
+                    bind=engine,
                     class_=AsyncSession,
                     autocommit=False,
                     autoflush=False,

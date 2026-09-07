@@ -59,11 +59,13 @@ def _parse_batch_limit_error(error_text: str) -> int | None:
 def sanitize_text_for_embedding(text: str) -> str:
     """清洗文本中的乱码/控制字符后再送 embedding 服务商。
 
-    根因（doc 574，2026-09-07）：DeepDoc 解析 PDF 数学公式时会把方程组大括号等
+    背景（doc 574，2026-09-07）：DeepDoc 解析 PDF 数学公式时会把方程组大括号等
     排版符号编码到 PUA 私用区（如 U+F8F1-F8F4），并在分块中残留 NUL、C0 控制
-    字符、孤立 \r。DashScope 对含 PUA 的 embedding 请求不报错也不返回（无限
-    挂起直到客户端读超时），doc 574 首批 20 块中 chunk#16 含 5 个 PUA 即触发
-    3×60s 超时致任务 FAILED（431 块中 75 块含异类字符）。
+    字符、孤立 （431 块中 75 块含异类字符）。曾据此怀疑控制/PUA 字符导致
+    DashScope embedding 请求 60s 读超时，该假设已被对照实验证伪：清洗后同批请求
+    在后端进程内依旧超时，而相同内容、相同客户端构造在独立进程（含本地代理
+    路径）全部 <2s 成功——差异在后端进程自身状态，与文本内容无关。清洗仍保留
+    为防御措施，避免控制字符进入向量/索引污染下游检索。
 
     清洗范围对齐 DeepDoc _is_garbled_char（pdf.py:158-174）乱码标准：
     - \r\n 与孤立 \r 统一归为 \n（保留换行语义）
