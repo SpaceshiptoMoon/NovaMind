@@ -57,14 +57,19 @@ def _parse_batch_limit_error(error_text: str) -> int | None:
 
 
 def sanitize_text_for_embedding(text: str) -> str:
-    """清洗文本中的控制字符后再送 embedding 服务商。
+    """清洗文本中的乱码/控制字符后再送 embedding 服务商。
 
-    根因（doc 574，2026-09-07）：DeepDoc 解析 PDF 数学公式时会在分块中残留
-    NUL（\\x00）、孤立 \\r 等控制字符；DashScope 对含 NUL 的 embedding 请求
-    不报错也不返回（无限挂起直到客户端读超时），431 块中 73 块受累。规则：
-    - \\r\\n 与孤立 \\r 统一归为 \\n（保留换行语义）
-    - \\n、\\t 保留（换行/缩进语义）
-    - 其余 C0 控制字符与 DEL 替换为空格
+    根因（doc 574，2026-09-07）：DeepDoc 解析 PDF 数学公式时会把方程组大括号等
+    排版符号编码到 PUA 私用区（如 U+F8F1-F8F4），并在分块中残留 NUL、C0 控制
+    字符、孤立 \r。DashScope 对含 PUA 的 embedding 请求不报错也不返回（无限
+    挂起直到客户端读超时），doc 574 首批 20 块中 chunk#16 含 5 个 PUA 即触发
+    3×60s 超时致任务 FAILED（431 块中 75 块含异类字符）。
+
+    清洗范围对齐 DeepDoc _is_garbled_char（pdf.py:158-174）乱码标准：
+    - \r\n 与孤立 \r 统一归为 \n（保留换行语义）
+    - \n、\t 保留（换行/缩进语义）
+    - 其余 C0 控制字符、DEL、C1（0x80-0x9F）、孤立代理段、U+FFFD 替换符、
+      PUA（0xE000-0xF8FF、0xF0000-0x10FFFF）替换为空格
     """
     if not text:
         return text
@@ -81,7 +86,15 @@ def sanitize_text_for_embedding(text: str) -> str:
             chars.append("\n")
         elif code in (0x09, 0x0A):  # \t \n 保留
             chars.append(ch)
-        elif code < 0x20 or code == 0x7F or 0xD800 <= code <= 0xDFFF:
+        elif (
+            code < 0x20                                  # C0 控制字符
+            or code == 0x7F                              # DEL
+            or 0x80 <= code <= 0x9F                      # C1 控制字符
+            or 0xD800 <= code <= 0xDFFF                  # 孤立代理段
+            or code == 0xFFFD                            # 替换符
+            or 0xE000 <= code <= 0xF8FF                  # PUA 平面0
+            or 0xF0000 <= code <= 0x10FFFF               # PUA 平面15-16
+        ):
             chars.append(" ")
         else:
             chars.append(ch)
@@ -283,8 +296,8 @@ class OpenAICompatibleEmbedding(BaseEmbedding):
             try:
                 response = await self.client.embeddings.create(
                     model=self.model,
-                    # 控制/NUL 字符会使部分服务商（DashScope）请求无限挂起，
-                    # 发送前必须清洗（doc 574 根因）
+                    # 控制/PUA 等乱码字符会使部分服务商（DashScope）请求无限挂起，
+                    # 发送前必须清洗（doc 574 根因，对齐 DeepDoc 乱码标准）
                     input=[sanitize_text_for_embedding(t) for t in batch_texts],
                 )
                 batch_embeddings = [data.embedding for data in response.data]

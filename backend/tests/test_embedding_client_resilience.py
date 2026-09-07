@@ -414,14 +414,17 @@ def test_learned_batch_limit_takes_historical_minimum():
     assert batch_sizes == [20, 20], batch_sizes
 
 
-# ---- 控制字符清洗（2026-09-07 doc 574 NUL 黑洞故障回归）----
+# ---- 乱码/控制字符清洗（2026-09-07 doc 574 DashScope 挂起故障回归）----
 #
-# DeepDoc 解析 PDF 数学公式会在分块残留 NUL（\x00）与孤立 \r；
-# DashScope 对含 NUL 的请求不报错也不返回（无限挂起直到读超时），
-# 431 块中 73 块受累 → 任务永久失败。发送前必须清洗。
+# DeepDoc 解析 PDF 数学公式会把方程组大括号等排版符号编码到 PUA 私用区
+# （如 U+F8F1-F8F4），并在分块残留 NUL、C0 控制字符、孤立 \r。DashScope 对
+# 含 PUA 的请求不报错也不返回（无限挂起直到读超时）。doc 574 首批 20 块中
+# chunk#16 含 5 个 PUA 即触发 3×60s 超时 → 任务 FAILED。431 块中 75 块含异类
+# 字符（PUA=27 / NUL=90 / C0=89）。sanitize 范围须对齐 DeepDoc _is_garbled_char
+# （pdf.py:158-174）乱码标准，覆盖 PUA / U+FFFD / C1，仅处理 C0+NUL 不足。
 
 def test_sanitize_normalizes_control_chars():
-    """\\r\\n/孤立\\r 归一为 \\n；NUL/DEL 等控制字符替换为空格；\\t 保留。"""
+    """\\r\\n/孤立\\r 归一为 \\n；NUL/DEL/C0/C1 控制字符替换为空格；\\t 保留。"""
     from novamind.shared.ai_models.embedding.openai_compatible import (
         sanitize_text_for_embedding,
     )
@@ -430,9 +433,41 @@ def test_sanitize_normalizes_control_chars():
     assert sanitize_text_for_embedding("a\rb") == "a\nb"
     assert sanitize_text_for_embedding("a\x00b") == "a b"
     assert sanitize_text_for_embedding("a\x7fb") == "a b"
+    assert sanitize_text_for_embedding("a\x03b") == "a b"  # ETX（doc 574 chunk#0）
+    assert sanitize_text_for_embedding("a\x0cb") == "a b"  # FF（doc 574 chunk#3）
+    assert sanitize_text_for_embedding("a\x9bb") == "a b"  # C1 (CSI)
     assert sanitize_text_for_embedding("a\tb") == "a\tb"
     assert sanitize_text_for_embedding("") == ""
     assert sanitize_text_for_embedding("正常中文") == "正常中文"
+
+
+def test_sanitize_strips_pua_fffd_aligns_deepdoc_garbled_standard():
+    """PUA（DeepDoc 公式排版符号）/ U+FFFD 替换符替换为空格——doc 574 真凶。
+
+    doc 574 chunk#16 含 U+F8F1/F8F2/F8F3/F8F4（方程组左大括号），sanitize
+    旧版只处理 C0+NUL+DEL，漏 PUA → 原样发 DashScope 触发 60s 挂起。
+    此测试钉死 sanitize 范围对齐 DeepDoc _is_garbled_char（pdf.py:158-174）。
+    """
+    from novamind.shared.ai_models.embedding.openai_compatible import (
+        sanitize_text_for_embedding,
+    )
+
+    # doc 574 chunk#16 的真实 PUA 序列（方程组大括号）
+    formula = "x = 1y = 2"
+    cleaned = sanitize_text_for_embedding(formula)
+    assert "" not in cleaned and "" not in cleaned
+    assert "" not in cleaned and "" not in cleaned
+    # PUA 替换为空格，正文保留
+    assert "x = 1" in cleaned and "y = 2" in cleaned
+
+    # U+FFFD 替换符
+    assert sanitize_text_for_embedding("a�b") == "a b"
+    # PUA 平面15-16
+    assert sanitize_text_for_embedding("a\U000f0000b") == "a b"
+    assert sanitize_text_for_embedding("a\U0010ffffb") == "a b"
+    # 干净的数学符号（≤ ≥ ∇ ∆）须保留——这些不是乱码
+    clean_math = "∇f(Xk) ≤ L 且 ||∆k|| ≥ 0"
+    assert sanitize_text_for_embedding(clean_math) == clean_math
 
 
 def test_sanitize_preserves_clean_text_and_newline_semantics():
@@ -463,13 +498,14 @@ def test_generate_batch_sanitizes_input_before_request():
     client.client = MagicMock()
     client.client.embeddings.create = AsyncMock(side_effect=fake_create)
 
-    dirty = ["公式 ||∆k|| ≤ L\r\r∇f(Xk)\x00 归纳"]
+    dirty = ["公式 ||∆k|| ≤ L\r\r∇f(Xk)\x00 归纳"]
     asyncio.run(client._generate_batch(dirty))
 
     sent = captured["input"]
     assert sent != dirty, "发送的 input 不应包含未清洗文本"
     assert "\r" not in sent[0] and "\x00" not in sent[0]
-    # \r\r 折叠为 \n、NUL 变空格，正文保留
+    assert "" not in sent[0] and "" not in sent[0] and "" not in sent[0]
+    # \r\r 折叠为 \n、NUL 变空格、PUA 变空格，正文保留
     assert "∇f(Xk)" in sent[0]
     assert "\n" in sent[0]
 
