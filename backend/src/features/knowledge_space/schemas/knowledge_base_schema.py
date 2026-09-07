@@ -85,10 +85,7 @@ class SplittingConfig(BaseModel):
 # ========== Parsing config ==========
 
 
-PdfParserName = Literal[
-    "full",
-    "plain",
-]
+PdfParserName = Literal["full"]
 
 LegacyDeepDocParserId = Literal[
     "pdf_full",
@@ -122,6 +119,15 @@ class TextTypeParsingConfig(BaseModel):
     strategy: Literal["default", "deepdoc"] = Field(default="default")
 
 
+class DeepDocOnlyParsingConfig(BaseModel):
+    """Excel/PPT/EPUB 解析配置——default 模式无 reader（DocumentRegistry 未注册，
+    运行时报 Unsupported file type），仅支持 deepdoc。"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    strategy: Literal["deepdoc"] = Field(default="deepdoc")
+
+
 class PdfParsingConfig(TextTypeParsingConfig):
     """PDF parsing config."""
 
@@ -148,9 +154,9 @@ class TextParsingConfig(BaseModel):
 
     pdf: PdfParsingConfig = Field(default_factory=PdfParsingConfig)
     docx: TextTypeParsingConfig = Field(default_factory=TextTypeParsingConfig)
-    excel: TextTypeParsingConfig = Field(default_factory=TextTypeParsingConfig)
-    ppt: TextTypeParsingConfig = Field(default_factory=TextTypeParsingConfig)
-    epub: TextTypeParsingConfig = Field(default_factory=TextTypeParsingConfig)
+    excel: DeepDocOnlyParsingConfig = Field(default_factory=DeepDocOnlyParsingConfig)
+    ppt: DeepDocOnlyParsingConfig = Field(default_factory=DeepDocOnlyParsingConfig)
+    epub: DeepDocOnlyParsingConfig = Field(default_factory=DeepDocOnlyParsingConfig)
     markdown: TextTypeParsingConfig = Field(default_factory=TextTypeParsingConfig)
     html: TextTypeParsingConfig = Field(default_factory=TextTypeParsingConfig)
     txt: TextTypeParsingConfig = Field(default_factory=TextTypeParsingConfig)
@@ -262,22 +268,35 @@ class ParsingConfig(BaseModel):
             value = dict(value)
             value["video"] = video_cfg
 
-        # 迁移已移除的远程 PDF parser（docling/mineru/opendataloader/paddleocr/
-        # somark/tcadp）→ full。这些远程服务未实现已从 PdfParserName 收紧，旧
-        # 新格式配置 text.pdf.parser 选过远程值的降级到 full，避免反序列化 500。
-        _REMOVED_REMOTE_PDF_PARSERS = {
-            "docling", "mineru", "opendataloader", "paddleocr", "somark", "tcadp",
+        # 迁移已移除的 PDF parser（docling/mineru/opendataloader/paddleocr/somark/
+        # tcadp 远程服务未实现；plain 已随前端「default/deepdoc 两选」收敛移除）
+        # → full，避免 schema 收紧后旧配置反序列化 500。
+        _REMOVED_PDF_PARSERS = {
+            "docling", "mineru", "opendataloader", "paddleocr", "somark", "tcadp", "plain",
         }
+        # Excel/PPT/EPUB default 模式无 reader（DocumentRegistry 未注册，运行时
+        # 报 Unsupported file type），旧配置 default 迁移到 deepdoc。
+        _DEEPDOC_ONLY_DOC_TYPES = ("excel", "ppt", "epub")
         text_cfg = value.get("text")
         if isinstance(text_cfg, dict):
+            new_text = dict(text_cfg)
+            text_changed = False
             pdf_cfg = text_cfg.get("pdf")
-            if isinstance(pdf_cfg, dict) and pdf_cfg.get("parser") in _REMOVED_REMOTE_PDF_PARSERS:
+            if isinstance(pdf_cfg, dict) and pdf_cfg.get("parser") in _REMOVED_PDF_PARSERS:
                 pdf_cfg = dict(pdf_cfg)
                 pdf_cfg["parser"] = "full"
-                text_cfg = dict(text_cfg)
-                text_cfg["pdf"] = pdf_cfg
+                new_text["pdf"] = pdf_cfg
+                text_changed = True
+            for doc_type in _DEEPDOC_ONLY_DOC_TYPES:
+                dt_cfg = text_cfg.get(doc_type)
+                if isinstance(dt_cfg, dict) and dt_cfg.get("strategy", "default") == "default":
+                    dt_cfg = dict(dt_cfg)
+                    dt_cfg["strategy"] = "deepdoc"
+                    new_text[doc_type] = dt_cfg
+                    text_changed = True
+            if text_changed:
                 value = dict(value)
-                value["text"] = text_cfg
+                value["text"] = new_text
 
         legacy_keys = {
             "strategy",
@@ -295,8 +314,7 @@ class ParsingConfig(BaseModel):
         parser_id = legacy.get("deepdoc_parser_id")
         pdf_mode = legacy.get("deepdoc_pdf_mode")
         migrated_pdf_mode = (
-            "full" if pdf_mode in {"layout", "vision", "full"}
-            else "plain" if pdf_mode == "plain"
+            "full" if pdf_mode in {"layout", "vision", "full", "plain"}
             else None
         )
         ocr_enabled = bool(legacy.get("ocr_enabled", False))
@@ -310,9 +328,10 @@ class ParsingConfig(BaseModel):
             "text": {
                 "pdf": {"strategy": "default", "ocr_enabled": ocr_enabled},
                 "docx": {"strategy": "default"},
-                "excel": {"strategy": "default"},
-                "ppt": {"strategy": "default"},
-                "epub": {"strategy": "default"},
+                # Excel/PPT/EPUB 仅支持 deepdoc（default 模式无 reader）
+                "excel": {"strategy": "deepdoc"},
+                "ppt": {"strategy": "deepdoc"},
+                "epub": {"strategy": "deepdoc"},
                 "markdown": {"strategy": "default"},
                 "html": {"strategy": "default"},
                 "txt": {"strategy": "default"},
@@ -325,7 +344,7 @@ class ParsingConfig(BaseModel):
         parser_to_type: Dict[str, tuple[str, Optional[str]]] = {
             "pdf_full": ("pdf", "full"),
             "pdf_layout": ("pdf", "full"),
-            "pdf_plain": ("pdf", "plain"),
+            "pdf_plain": ("pdf", "full"),
             "pdf_vision": ("pdf", "full"),
             # 6 个远程 parser 未实现已从 PdfParserName 移除，旧 deepdoc_parser_id 迁移到 full
             "pdf_docling": ("pdf", "full"),
@@ -500,7 +519,6 @@ class KnowledgeBaseConfigResponse(BaseModel):
 
 PDF_PARSER_TO_LEGACY_ID: Dict[str, str] = {
     "full": "pdf_full",
-    "plain": "pdf_plain",
 }
 
 

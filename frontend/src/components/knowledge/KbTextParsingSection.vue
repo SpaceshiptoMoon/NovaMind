@@ -38,7 +38,7 @@
             <span class="text-strategy-label">{{ item.label }}</span>
           </div>
           <el-select v-model="configForm[item.key]" style="width: 180px">
-            <el-option label="默认" value="default" />
+            <el-option v-if="!item.deepdocOnly" label="默认" value="default" />
             <el-option label="DeepDoc" value="deepdoc" />
           </el-select>
         </div>

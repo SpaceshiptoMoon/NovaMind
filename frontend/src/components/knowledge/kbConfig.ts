@@ -33,11 +33,17 @@ export type TextStrategyField =
   | 'txtStrategy'
   | 'jsonStrategy'
 
-export const textStrategyItems: Array<{ key: TextStrategyField; label: string }> = [
+/** 文本类型策略选项；deepdocOnly 标记的类型（Excel/PPT/EPUB）后端 default 模式
+ * 无 reader，仅支持 DeepDoc，前端不显示「默认」选项。 */
+export const textStrategyItems: Array<{
+  key: TextStrategyField
+  label: string
+  deepdocOnly?: boolean
+}> = [
   { key: 'docxStrategy', label: 'DOCX' },
-  { key: 'excelStrategy', label: 'Excel' },
-  { key: 'pptStrategy', label: 'PPT' },
-  { key: 'epubStrategy', label: 'EPUB' },
+  { key: 'excelStrategy', label: 'Excel', deepdocOnly: true },
+  { key: 'pptStrategy', label: 'PPT', deepdocOnly: true },
+  { key: 'epubStrategy', label: 'EPUB', deepdocOnly: true },
   { key: 'markdownStrategy', label: 'Markdown' },
   { key: 'htmlStrategy', label: 'HTML' },
   { key: 'txtStrategy', label: 'TXT' },

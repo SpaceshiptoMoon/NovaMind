@@ -1641,6 +1641,19 @@
         "title": "ConversationContextResponse",
         "type": "object"
       },
+      "DeepDocOnlyParsingConfig": {
+        "description": "Excel/PPT/EPUB 解析配置——default 模式无 reader（DocumentRegistry 未注册，\n运行时报 Unsupported file type），仅支持 deepdoc。",
+        "properties": {
+          "strategy": {
+            "const": "deepdoc",
+            "default": "deepdoc",
+            "title": "Strategy",
+            "type": "string"
+          }
+        },
+        "title": "DeepDocOnlyParsingConfig",
+        "type": "object"
+      },
       "DirCreateRequest": {
         "description": "创建目录请求",
         "properties": {
@@ -6205,10 +6218,7 @@
           "parser": {
             "anyOf": [
               {
-                "enum": [
-                  "full",
-                  "plain"
-                ],
+                "const": "full",
                 "type": "string"
               },
               {
@@ -11009,10 +11019,10 @@
             "$ref": "#/components/schemas/TextTypeParsingConfig"
           },
           "epub": {
-            "$ref": "#/components/schemas/TextTypeParsingConfig"
+            "$ref": "#/components/schemas/DeepDocOnlyParsingConfig"
           },
           "excel": {
-            "$ref": "#/components/schemas/TextTypeParsingConfig"
+            "$ref": "#/components/schemas/DeepDocOnlyParsingConfig"
           },
           "html": {
             "$ref": "#/components/schemas/TextTypeParsingConfig"
@@ -11027,7 +11037,7 @@
             "$ref": "#/components/schemas/PdfParsingConfig"
           },
           "ppt": {
-            "$ref": "#/components/schemas/TextTypeParsingConfig"
+            "$ref": "#/components/schemas/DeepDocOnlyParsingConfig"
           },
           "txt": {
             "$ref": "#/components/schemas/TextTypeParsingConfig"

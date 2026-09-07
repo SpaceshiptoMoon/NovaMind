@@ -124,7 +124,7 @@ def test_legacy_parsing_config_keeps_all_supported_fields():
 
     dumped = config.model_dump()
     assert dumped["parsing"]["text"]["pdf"]["strategy"] == "deepdoc"
-    assert dumped["parsing"]["text"]["pdf"]["parser"] == "plain"
+    assert dumped["parsing"]["text"]["pdf"]["parser"] == "full"
     assert dumped["parsing"]["text"]["pdf"]["ocr_enabled"] is True
     assert dumped["parsing"]["image"]["strategy"] == "vlm"
     assert dumped["parsing"]["image"]["vlm_model"] == "glm-4v"
@@ -1014,4 +1014,57 @@ def test_migrate_legacy_parsing_remote_pdf_parsers_to_full():
 
     with _pytest.raises(ValidationError):
         PdfParsingConfig(strategy="deepdoc", parser="docling")
+
+
+def test_migrate_legacy_parsing_plain_to_full():
+    """旧配置 pdf parser=plain 迁移到 full（plain 已随前端 default/deepdoc 两选收敛移除）。"""
+    # 新格式 text.pdf.parser=plain → full
+    parsed = ParsingConfig.model_validate(
+        {"text": {"pdf": {"strategy": "deepdoc", "parser": "plain"}}}
+    )
+    assert parsed.text is not None
+    assert parsed.text.pdf.parser == "full"
+
+    # legacy deepdoc_parser_id=pdf_plain / deepdoc_pdf_mode=plain → full
+    config = KnowledgeBaseConfig.model_validate(
+        {
+            "parsing": {
+                "strategy": "deepdoc",
+                "deepdoc_parser_id": "pdf_plain",
+                "deepdoc_pdf_mode": "plain",
+            }
+        }
+    )
+    assert config.parsing.text.pdf.parser == "full"
+
+
+def test_excel_ppt_epub_reject_default_and_migrate_to_deepdoc():
+    """Excel/PPT/EPUB default 模式无 reader（DocumentRegistry 未注册，运行时报
+    Unsupported file type），仅支持 deepdoc；旧配置 default 迁移到 deepdoc，
+    避免 schema 收紧后反序列化 500。"""
+    import pytest as _pytest
+    from pydantic import ValidationError
+
+    from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+        DeepDocOnlyParsingConfig,
+    )
+
+    # schema 拒绝 default
+    with _pytest.raises(ValidationError):
+        DeepDocOnlyParsingConfig(strategy="default")
+
+    # 旧配置 default → deepdoc（新格式，含缺省 strategy 的空 dict）
+    parsed = ParsingConfig.model_validate(
+        {
+            "text": {
+                "excel": {"strategy": "default"},
+                "ppt": {"strategy": "default"},
+                "epub": {},
+            }
+        }
+    )
+    assert parsed.text is not None
+    assert parsed.text.excel.strategy == "deepdoc"
+    assert parsed.text.ppt.strategy == "deepdoc"
+    assert parsed.text.epub.strategy == "deepdoc"
 
