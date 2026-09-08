@@ -37,28 +37,25 @@ check_docker() {
   docker compose version >/dev/null 2>&1 || { error "Docker Compose V2 is required"; exit 1; }
 }
 
-generate_hex() {
-  local bytes="${1:-16}"
-  if command -v openssl >/dev/null 2>&1; then
-    openssl rand -hex "$bytes"
-  else
-    python - <<PY
-import secrets
-print(secrets.token_hex($bytes))
-PY
-  fi
-}
-
-generate_password() {
-  local length="${1:-16}"
-  python - <<PY
-import secrets, string
-alphabet = string.ascii_letters + string.digits
-print("".join(secrets.choice(alphabet) for _ in range($length)))
-PY
-}
+# 密码/密钥生成直接内联在 ensure_env 的 python heredoc 中（无独立函数）
 
 ensure_env() {
+  # Windows Git Bash 的 `python` 可能是 WindowsApps 存根（退出码 49、不执行代码），
+  # 且本脚本用 python heredoc 生成密码——先做可用性预检，避免半途死掉留下未替换的 .env。
+  if command -v python >/dev/null 2>&1; then
+    if ! python -c "import secrets" >/dev/null 2>&1; then
+      error "python is required by deploy.sh to generate secrets but is not runnable."
+      error "On Windows, use deploy.ps1 instead (pure PowerShell, no python dependency):"
+      error "  powershell -ExecutionPolicy Bypass -File deploy.ps1"
+      exit 1
+    fi
+  else
+    error "python is required by deploy.sh to generate secrets but was not found."
+    error "On Windows, use deploy.ps1 instead (pure PowerShell, no python dependency):"
+    error "  powershell -ExecutionPolicy Bypass -File deploy.ps1"
+    exit 1
+  fi
+
   if [[ -f .env ]]; then
     info ".env already exists"
     return
@@ -90,7 +87,11 @@ replacements = {
     "your-minio-secret-key": password(16),
     "your-jwt-secret-key": secrets.token_hex(32),
     "your-aes256-encryption-key": secrets.token_hex(16),
-    "your-admin-password": f"Admin@{password(4)}",
+    # 管理员密码必须满足后端强度校验（大写+小写+数字+特殊字符，8-30 位）；
+    # admin 账户已存在时 reset_password_if_exists 会在每次重启走 UserUpdate 校验，
+    # 校验失败 = 启动期 ValidationError 崩溃循环。Admin@1 前缀固定带大写/特殊字符/
+    # 数字，随机段保证小写必现（token_hex 可能全同字符类）。
+    "your-admin-password": f"Admin@1{secrets.token_hex(8)}",
 }
 
 for old, new in replacements.items():

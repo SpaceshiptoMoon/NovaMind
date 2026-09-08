@@ -263,7 +263,6 @@ NovaMind/
 |  |  `- views/
 |- docker/                         # Dockerfile、Nginx、Supervisord、配置模板
 |- docs/                           # 设计文档与导航文档
-|- test_data/                      # 样例数据与上传样本
 |- docker-compose.yml
 |- deploy.ps1
 |- deploy.sh

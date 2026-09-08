@@ -28,6 +28,7 @@ function Test-DockerEnvironment {
 }
 
 function New-RandomPassword([int]$Length = 16) {
+    # 含大小写+数字，保证生成的管理员密码满足后端强度校验（四类字符缺一不可）
     $chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".ToCharArray()
     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
     $bytes = New-Object byte[] $Length
@@ -61,7 +62,9 @@ function Ensure-EnvFile {
     $content = $content.Replace("your-minio-secret-key", (New-RandomPassword 16))
     $content = $content.Replace("your-jwt-secret-key", (New-RandomHex 32))
     $content = $content.Replace("your-aes256-encryption-key", (New-RandomHex 16))
-    $content = $content.Replace("your-admin-password", "Admin@$(New-RandomPassword 4)")
+    # Admin@ 前缀带大写+特殊字符；追加固定段保证小写与数字必现（随机 hex 可能全同字符类，
+    # 例如全小写无大写、全字母无数字），彻底满足四类字符校验。
+    $content = $content.Replace("your-admin-password", "Admin@1$(New-RandomPassword 8)")
     Set-Content ".env" $content -NoNewline
 
     Write-Info ".env created"
