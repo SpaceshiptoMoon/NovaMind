@@ -139,10 +139,9 @@ cp development.example development.yaml
 
 - `default.yaml`：共享基线配置
 - `development.yaml`：开发环境覆盖
-- `testing.yaml`：测试配置
 - `production.yaml`：生产环境覆盖
 
-加载器支持深度合并和 `${VAR_NAME}` 环境变量展开。
+加载器支持深度合并和 `${VAR_NAME}` 环境变量展开；同名 `local.yaml`（可选，无模板）优先级最高，适合本地临时覆盖。
 
 ### 启动
 

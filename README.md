@@ -348,7 +348,6 @@ src/features/{module}/
 | `default.yaml` | 基础配置，所有环境共享（Docker 部署时挂载进容器） |
 | `development.yaml` | 开发环境覆盖（`--config development`） |
 | `production.yaml` | 生产环境覆盖（`--config production`） |
-| `testing.yaml` | 测试环境配置 |
 | `docker.yaml` | Docker 运行时附加配置（挂载自 `docker/configs/docker.yaml`） |
 
 加载逻辑：
