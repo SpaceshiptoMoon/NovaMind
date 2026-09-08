@@ -15,7 +15,6 @@
 4. 子系统入口文档：
    - [`knowledge-space/README.md`](./knowledge-space/README.md)
    - [`deepdoc/deepdoc-integration.md`](./deepdoc/deepdoc-integration.md)
-   - [`frontend/FRONTEND-MULTIMODAL-DESIGN.md`](./frontend/FRONTEND-MULTIMODAL-DESIGN.md)
 
 ## 面向外部读者的主要文档
 
@@ -36,10 +35,6 @@
 
 - [`deepdoc/deepdoc-integration.md`](./deepdoc/deepdoc-integration.md)：DeepDoc 集成说明
 - [`deepdoc/deepdoc-acceptance-checklist.md`](./deepdoc/deepdoc-acceptance-checklist.md)：DeepDoc 验收清单
-
-### Frontend
-
-- [`frontend/FRONTEND-MULTIMODAL-DESIGN.md`](./frontend/FRONTEND-MULTIMODAL-DESIGN.md)：前端多模态设计说明
 
 ## 过程性文档
 

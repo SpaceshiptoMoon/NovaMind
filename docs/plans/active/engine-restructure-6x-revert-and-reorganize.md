@@ -280,6 +280,13 @@ backend/src/
 
 ## 未来计划
 
+> **状态更新（2026-09）**：下表优先级清单大部分已落地——`engines/agent/`、`engines/rag/`、
+> `engines/eval/`、`engines/resume/`、`engines/deep_research/` 均已迁入并合并 main；
+> 搜索服务落在 `shared/search/`（四 provider），文档处理实现落在 `engines/document/`
+> （由原 `shared/knowledge/*` 迁入）；`engines/skill/` 未迁（`skill_parser`/`skill_checker`
+> 仍留在 `features/skill/services/`）；共享底座维持现状（shared/ 不再二次迁移）。
+> 当前结构以 `backend/CLAUDE.md` 与 `docs/project-structure-navigation.md` 为准。
+
 ### 引擎迁移优先级
 
 按依赖拓扑和业务重要性排列：

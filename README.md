@@ -56,7 +56,7 @@ NovaMind 是一个面向团队与个人的智能知识平台，围绕知识库�
 - `混合检索`：向量检索、BM25、混合检索、Rerank、查询改写与降级策略
 - `RAG 问答`：基于知识库进行多轮问答，支持会话配置和上下文压缩
 - `深度研究`：联合内部知识库与外部搜索，分步骤生成研究结果和报告
-- `Agent`：支持 MCP Server、工具调用、浏览器内终端和技能扩展
+- `Agent`：支持 MCP Server、工具调用和技能扩展
 - `技能广场`：技能上传、审核、安装与市场化分发
 - `知识库评测`：测试集、自动评测、人工打分和结果导出
 - `应用中心`：面向具体业务场景封装 AI 能力
@@ -249,9 +249,10 @@ NovaMind/
 |  |- pyproject.toml
 |  |- src/
 |  |  |- core/                     # 应用工厂、中间件、生命周期、安全
+|  |  |- engines/                  # 引擎层：纯逻辑组件（agent/document/rag/eval/…）
 |  |  |- features/                 # 领域模块
 |  |  |- setting/                  # YAML 配置加载
-|  |  `- shared/                   # 共享知识处理基础设施
+|  |  `- shared/                   # 共享基础设施（storage/ai_models/mq/…）
 |  `- tests/
 |- frontend/                       # Vue 3 + TypeScript 前端
 |  |- src/

@@ -28,8 +28,8 @@ The current implementation is moving to a modality-first structure:
 {
   "parsing": {
     "strategy": "default | deepdoc",
-    "deepdoc_parser_id": "pdf_layout | ...",
-    "deepdoc_pdf_mode": "layout | plain | vision",
+    "deepdoc_parser_id": "pdf_full | ...",
+    "deepdoc_pdf_mode": "full | plain",
     "ocr_enabled": false,
     "vlm_description_enabled": false,
     "vlm_model": null,
@@ -126,17 +126,17 @@ This is especially important for `text`, where different document types have dif
 
 ## Text Parsing Structure
 
-Text parsing should be organized by document type:
+Text parsing is organized by document type:
 
 ```json
 {
   "parsing": {
     "text": {
-      "pdf": { "strategy": "default | deepdoc" },
+      "pdf": { "strategy": "default | deepdoc", "parser": "full", "ocr_enabled": false },
       "docx": { "strategy": "default | deepdoc" },
-      "excel": { "strategy": "default | deepdoc" },
-      "ppt": { "strategy": "default | deepdoc" },
-      "epub": { "strategy": "default | deepdoc" },
+      "excel": { "strategy": "deepdoc" },
+      "ppt": { "strategy": "deepdoc" },
+      "epub": { "strategy": "deepdoc" },
       "markdown": { "strategy": "default | deepdoc" },
       "html": { "strategy": "default | deepdoc" },
       "txt": { "strategy": "default | deepdoc" },
@@ -145,6 +145,11 @@ Text parsing should be organized by document type:
   }
 }
 ```
+
+Note: `excel` / `ppt` / `epub` only support `deepdoc` — the default mode has no
+reader registered in `DocumentRegistry`, so a `default`-strategy request fails
+at runtime with an unsupported-file-type error. The backend schema pins these
+types to `strategy = "deepdoc"`.
 
 ### Why this structure
 
@@ -157,13 +162,13 @@ Text parsing should be organized by document type:
 
 PDF is the only text subtype that currently needs a richer config model.
 
-Recommended structure:
+Current structure:
 
 ```json
 {
   "pdf": {
     "strategy": "default | deepdoc",
-    "parser": "layout | plain | vision | docling | mineru | opendataloader | paddleocr | somark | tcadp",
+    "parser": "full",
     "ocr_enabled": false
   }
 }
@@ -175,64 +180,58 @@ Recommended structure:
 - `strategy=default`
   - `parser` must not be provided.
 - `strategy=deepdoc`
-  - `parser` may be provided.
+  - `parser` is optional; currently the only valid value is `full`
+    (the upstream-aligned per-box fusion pipeline). The historical `plain`
+    mode lives on as a compatibility alias via `deepdoc_pdf_mode`.
 - `ocr_enabled` is independent and may remain available.
+
+### Parser ID history (2026-08/09 convergence)
+
+The backend previously exposed multiple PDF parser ids
+(`pdf_layout`, `pdf_vision`, `pdf_docling`, `pdf_mineru`, `pdf_opendataloader`,
+`pdf_paddleocr`, `pdf_somark`, `pdf_tcadp`). All of them are now **legacy
+values only**: the schema accepts them in `LegacyDeepDocParserId` and migrates
+them to `parser = "full"` (mode `full`/`plain`). The remote-service parser
+implementations were removed from the runtime; `pdf_layout`/`pdf_vision`
+collapse into `full` inside the DeepDoc runtime parser. Do not expose these
+legacy ids in new frontend forms.
 
 ### Why `parser` should be frontend-friendly
 
-Frontend should not expose backend internal IDs like:
-
-- `pdf_layout`
-- `pdf_plain`
-- `pdf_vision`
-- `pdf_docling`
-
-Frontend should instead expose:
-
-- `layout`
-- `plain`
-- `vision`
-- `docling`
-- `mineru`
-- `opendataloader`
-- `paddleocr`
-- `somark`
-- `tcadp`
-
-Backend should map these values to internal parser IDs.
+Frontend should not expose backend internal IDs like `pdf_full`. It should
+expose stable, user-readable values and let the backend map them to internal
+parser IDs.
 
 ## Backend Mapping Rule
 
-Recommended mapping:
+Current mapping (in `knowledge_base_schema.py`):
 
 ```python
-PDF_PARSER_MAP = {
-    "layout": "pdf_layout",
-    "plain": "pdf_plain",
-    "vision": "pdf_vision",
-    "docling": "pdf_docling",
-    "mineru": "pdf_mineru",
-    "opendataloader": "pdf_opendataloader",
-    "paddleocr": "pdf_paddleocr",
-    "somark": "pdf_somark",
-    "tcadp": "pdf_tcadp",
-}
+PdfParserName = Literal["full"]  # frontend-facing value
+
+# legacy deepdoc_parser_id values are migrated on read, e.g.:
+#   "pdf_full" | "pdf_layout" | "pdf_vision" | "pdf_docling" | "pdf_mineru"
+#   | "pdf_opendataloader" | "pdf_paddleocr" | "pdf_somark" | "pdf_tcadp"
+#     → ("pdf", "full")
+#   "pdf_plain" → ("pdf", "plain")
 ```
 
 This allows:
 
 - frontend to remain stable and readable
 - backend runtime to continue using existing parser infrastructure
+- old persisted configs to keep working without a data migration
 
 ## Image Parsing Structure
 
-Current design direction discussed for images:
+Current implemented structure:
 
 ```json
 {
   "parsing": {
     "image": {
-      "strategy": "ocr | vlm",
+      "strategy": "vlm | deepdoc_ocr",
+      "vlm_description_enabled": false,
       "vlm_model": null
     }
   }
@@ -241,10 +240,11 @@ Current design direction discussed for images:
 
 ### Rules
 
-- `strategy=ocr`
-  - `vlm_model` must not be used.
+- `strategy=deepdoc_ocr` (migrated from the historical value `ocr`)
+  - uses DeepDoc's OCR path; `vlm_model` is ignored.
 - `strategy=vlm`
-  - `vlm_model` is optional.
+  - generates a VLM description for the image; `vlm_model` is optional.
+  - image embedding always goes through VLM description + text embedding.
 
 ## Video Parsing Structure
 
@@ -386,9 +386,9 @@ Required changes:
 
 Relevant existing test files:
 
-- `backend/tests/test_knowledge_space_api.py`
-- `backend/tests/test_knowledge_config_runtime.py`
-- `backend/tests/test_deepdoc_runtime.py`
+- `backend/tests/features/knowledge_space/test_knowledge_space_api.py`
+- `backend/tests/features/knowledge_space/test_knowledge_config_runtime.py`
+- `backend/tests/engines/document/deepdoc/test_deepdoc_runtime.py`
 
 ## Recommended Migration Strategy
 
@@ -410,8 +410,9 @@ Minimum rules to enforce:
 
 - `pdf.strategy` must be one of `default | deepdoc`
 - `pdf.strategy=default` forbids `parser`
-- `pdf.strategy=deepdoc` allows `parser`
-- `image.strategy=ocr` forbids `vlm_model`
+- `pdf.strategy=deepdoc` allows `parser` (only `full` is currently valid)
+- `excel` / `ppt` / `epub` are pinned to `strategy=deepdoc`
+- `image.strategy` must be one of `vlm | deepdoc_ocr`
 - `video.frame_interval` must remain in `1.0 ~ 60.0`
 - `video.max_frames` must remain in `1 ~ 200`
 

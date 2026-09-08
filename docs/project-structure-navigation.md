@@ -32,8 +32,9 @@
 - `backend/src/core/`：应用工厂、生命周期、中间件、数据库、安全
 - `backend/src/setting/`：YAML 配置加载和环境覆盖
 - `backend/src/features/`：按领域拆分的业务模块
-- `backend/src/shared/`：共享基础设施与知识处理运行时
-- `backend/tests/`：后端自动化测试
+- `backend/src/engines/`：引擎层纯逻辑组件（features → engines → shared 单向依赖）
+- `backend/src/shared/`：共享基础设施
+- `backend/tests/`：后端自动化测试（按被测对象分层，见 `backend/tests/README.md`）
 
 ### 典型模块结构
 
@@ -51,23 +52,40 @@ schemas/
 
 | 路径 | 内容 |
 | --- | --- |
-| `backend/src/features/user/` | 认证、用户、模型配置 |
-| `backend/src/features/knowledge_space/` | 空间、知识库、文档、成员、评测 |
+| `backend/src/features/user/` | 认证、用户、模型配置、RBAC、应用门禁 |
+| `backend/src/features/knowledge_space/` | 空间、知识库、文档、成员 |
+| `backend/src/features/evaluation/` | 知识库评测（测试集、评估任务、导出） |
 | `backend/src/features/qa/` | 聊天和问答流程 |
 | `backend/src/features/deep_research/` | 深度研究和报告生成 |
 | `backend/src/features/agent/` | Agent、MCP 集成、工具编排 |
 | `backend/src/features/skill/` | 技能广场和审核 |
-| `backend/src/features/app/` | 应用中心 |
+| `backend/src/features/app/` | 应用中心（简历挖掘） |
 | `backend/src/features/notification/` | 通知和偏好设置 |
+
+### 引擎层（engines/）
+
+纯逻辑组件，不依赖 ORM / 配置 / feature 业务，由 features 经端口装配：
+
+| 路径 | 内容 |
+| --- | --- |
+| `backend/src/engines/agent/` | Agent 引擎（ReAct 循环、工具、记忆、MCP、审批） |
+| `backend/src/engines/document/` | 文档处理引擎（pipeline / splitters / converters / media / deepdoc） |
+| `backend/src/engines/deep_research/` | 深度研究引擎 |
+| `backend/src/engines/eval/` | 评测引擎（retrieval / generation / embedding / claim 评估器） |
+| `backend/src/engines/rag/` | RAG 引擎（检索引擎、Grade→Retry） |
+| `backend/src/engines/resume/` | 简历解析引擎 |
 
 ### 知识处理运行时代码
 
 如果你在处理文档解析、切分、向量化或索引，优先看这里：
 
-- `backend/src/shared/knowledge/document_processing/`
-- `backend/src/shared/knowledge/media_processing/`
-- `backend/src/shared/knowledge/integrations/deepdoc/`
-- `backend/src/shared/utils/`
+- `backend/src/features/knowledge_space/services/`：业务编排（管道入口、任务编排）
+- `backend/src/engines/document/pipeline/`：解析管道（DocumentLoader / DocumentProcessor）
+- `backend/src/engines/document/splitters/`：切分器
+- `backend/src/engines/document/media/`：音频、视频、VLM、OCR 处理
+- `backend/src/engines/document/integrations/deepdoc/`：DeepDoc（vendored，自包含）
+- `backend/src/shared/document/`：跨 feature 读取器与文件校验
+- `backend/src/shared/utils/`：通用工具
 
 ## 前端
 
@@ -107,7 +125,6 @@ schemas/
 - `docs/README.md`：文档总入口
 - `docs/knowledge-space/`：知识空间文档，已区分 `current/` 和 `process/`
 - `docs/deepdoc/`：DeepDoc 集成说明
-- `docs/frontend/`：前端专题文档
 - `docs/handover/`：交接记录，现已按历史材料管理
 - `docs/plans/`：执行计划和重构方案，已区分 active / historical 阅读方式
 

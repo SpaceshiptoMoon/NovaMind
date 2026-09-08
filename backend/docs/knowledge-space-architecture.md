@@ -1,6 +1,6 @@
 # 知识库后端组件架构（知识空间模块）
 
-> 最后更新：2026-07-21
+> 最后更新：2026-09-09
 
 ---
 
@@ -54,27 +54,32 @@ backend/src/features/knowledge_space/
 ### 外部依赖
 
 ```
-backend/src/shared/
-├── storage/
-│   └── elasticsearch_client.py   # ES 客户端（索引管理 + 9种搜索 + RRF）
-│   └── minio_client.py           # MinIO 文件存储
-├── cache/
-│   ├── redis_client.py           # Redis 客户端
-│   └── cache_service.py          # 缓存服务
-├── ai_models/
-│   ├── embedding/                # Embedding 客户端工厂
-│   ├── llm/                      # LLM 客户端
-│   └── rerank/                   # Rerank 客户端
-├── mq/
-│   ├── worker.py                 # arq Worker（文档处理任务）
-│   └── task_tracker.py           # 任务追踪
-├── utils/
-│   ├── document_readers/         # 文档解析器（PDF/DOCX/HTML/MD/TXT）
-│   │   └── splitters/            # 切片器（recursive/fixed/markdown/semantic）
-│   ├── file_validator.py         # 文件类型校验（魔数+MIME）
-│   └── crypto.py                 # AES 加密
-└── prompts/
-    └── templates.py              # PromptTemplate 枚举
+backend/src/
+├── shared/
+│   ├── storage/
+│   │   ├── elasticsearch_client.py   # ES 客户端（索引管理 + 9种搜索 + RRF）
+│   │   └── minio_client.py           # MinIO 文件存储
+│   ├── cache/
+│   │   ├── redis_client.py           # Redis 客户端
+│   │   └── cache_service.py          # 缓存服务
+│   ├── ai_models/
+│   │   ├── embedding/                # Embedding 客户端工厂
+│   │   ├── llm/                      # LLM 客户端
+│   │   └── rerank/                   # Rerank 客户端
+│   ├── mq/
+│   │   ├── worker.py                 # arq Worker（文档处理任务）
+│   │   └── task_tracker.py           # 任务追踪
+│   ├── document/
+│   │   ├── readers/                  # 跨 feature 文档读取器（PDF/DOCX/HTML/MD/TXT）
+│   │   └── validation/               # 文件类型校验（魔数+MIME，FileValidator）
+│   └── prompts/
+│       └── templates.py              # PromptTemplate 枚举
+└── engines/document/                 # 文档处理引擎（纯逻辑层）
+    ├── pipeline/                     # DocumentLoader / DocumentProcessor / DocumentRegistry
+    ├── splitters/                    # 切片器（recursive/fixed/markdown/semantic）
+    ├── converters/                   # 文档格式转换器
+    ├── media/                        # 音频 ASR / 视频抽帧 / VLM / OCR
+    └── integrations/deepdoc/         # DeepDoc（vendored，自包含）
 ```
 
 ---
@@ -181,9 +186,13 @@ _MODEL_TYPE_STR = {
 
 ---
 
-## 四、各层需要修改的组件（全模态扩展清单）
+## 四、历史扩展清单（全模态扩展，已于 2026-07 落地）
 
-### 4.1 Models — 需要修改
+> 本节是当年全模态扩展的规划清单，现仅作历史参考。音视频/图片分支均已实现，
+> 解析/切分/媒体处理实现也已从 `shared/utils` 下沉到 `engines/document/`。
+> 当前权威结构见 `docs/knowledge-space/current/knowledge-architecture-navigation.md`。
+
+### 4.1 Models — 已完成
 
 | 文件 | 修改内容 |
 |------|---------|
@@ -223,15 +232,15 @@ _MODEL_TYPE_STR = {
 |------|---------|
 | `elasticsearch_client.py` | `create_index()` 新增 `modal_type` 字段；`search_by_mode()` 注册全模态模式 |
 
-### 4.6 Shared 层 — 需要新增/修改
+### 4.6 Shared/Engines 层 — 已完成
 
 | 文件 | 修改内容 |
 |------|---------|
-| `file_validator.py` | `EXTENSION_TO_MIME` 扩展音视频类型；`MAGIC_SIGNATURES` 新增音视频魔数 |
-| `ai_models/` 模型类型 | `ModelConfigService` 需支持音频嵌入模型类型 |
-| `utils/document_readers/` | 新增音频/视频 Reader |
-| `utils/document_readers/splitters/` | 新增视频场景切割器、音频切片器 |
-| `mq/worker.py` | 文档处理任务区分音视频路径 |
+| `shared/document/validation/` | `EXTENSION_TO_MIME` 扩展音视频类型；`MAGIC_SIGNATURES` 新增音视频魔数 |
+| `ai_models/` 模型类型 | `ModelConfigService` 支持音频嵌入模型类型 |
+| `engines/document/media/` | 音频 ASR / 视频抽帧 / VLM 帧描述实现 |
+| `engines/document/splitters/` | 音视频切片（`splitting.audio` / `splitting.video`） |
+| `shared/mq/worker.py` | 文档处理任务区分音视频路径 |
 
 ### 4.7 无需修改的组件
 
@@ -251,7 +260,12 @@ _MODEL_TYPE_STR = {
 
 | 配置 | 当前值 | 来源 |
 |------|--------|------|
-| 允许上传的文件类型 | `pdf,docx,doc,txt,md,csv,xlsx,xls,pptx,ppt,html,json,jpg,jpeg,png,gif,webp,mp4,mov,avi,mkv,webm,mp3,wav,flac,aac,ogg,m4a` | `document_routes.py:60` |
-| 最大文件大小 | 100MB（视频 500MB） | `document_routes.py:57` |
+| 允许上传的文件类型 | `pdf,doc,docx,txt,md,csv,html,json,jpg,jpeg,png,gif,webp,mp4,mov,avi,mkv,webm,mp3,wav,flac,aac,ogg,m4a` | `document_file_types.py`（`SUPPORTED_FILE_TYPES`，`document_routes.py` 派生白名单） |
+| 单文件大小上限 | 文本/图片 100MB、音频 200MB、视频 500MB（KB 配置 `limits.max_file_size_mb` 可覆盖） | `document_upload_service.py`（`_MODALITY_MAX_SIZE_MB` / `_get_max_file_size`） |
+| API 层硬上限 | 100MB | `document_routes.py`（`MAX_UPLOAD_SIZE`） |
 | 图片文件类型 | `jpg,jpeg,png,gif,webp` | `document_file_types.py`（`IMAGE_FILE_TYPES`） |
-| 批量上传最大数 | 20 个 | `document_routes.py:63` |
+| 批量上传最大数 | 200 个 | `document_routes.py`（`MAX_BATCH_FILE_COUNT`） |
+
+> 注意：`SUPPORTED_FILE_TYPES` 不含 `xlsx/xls/pptx/ppt/epub`。DeepDoc 引擎虽实现了
+> 这些格式的 parser，但上传白名单尚未放开；如需支持要先扩 `SUPPORTED_FILE_TYPES`
+> 并确认解析策略配置（Excel/PPT/EPUB 仅支持 deepdoc）。

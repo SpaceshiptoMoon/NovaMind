@@ -3,7 +3,7 @@
 ## Goal
 
 This checklist records what has been concretely proven for the vendored
-`deepdoc` module under `backend/src/shared/knowledge/integrations/deepdoc/`, and what is still
+`deepdoc` module under `backend/src/engines/document/integrations/deepdoc/`, and what is still
 environment-dependent.
 
 It is intended to answer one question precisely:
@@ -17,7 +17,7 @@ It is intended to answer one question precisely:
 
 Evidence:
 
-- `backend/src/shared/knowledge/integrations/deepdoc/`
+- `backend/src/engines/document/integrations/deepdoc/`
 - upstream-aligned subpackages:
   - `parser/`
   - `vision/`
@@ -28,39 +28,39 @@ Interpretation:
 - The implementation is vendored as a real module tree, not only a thin
   wrapper around the existing document loader.
 - Source provenance is machine-auditable through:
-  - `novamind.shared.knowledge.integrations.deepdoc.compat.upstream.UPSTREAM_SOURCE_MAP`
-  - `novamind.shared.knowledge.integrations.deepdoc.compat.upstream.LOCAL_ADAPTATION_SOURCE_MAP`
+  - `novamind.engines.document.integrations.deepdoc.compat.upstream.UPSTREAM_SOURCE_MAP`
+  - `novamind.engines.document.integrations.deepdoc.compat.upstream.LOCAL_ADAPTATION_SOURCE_MAP`
   - `backend/tests/engines/document/deepdoc/test_deepdoc_upstream_mapping.py`
 
 ### 2. Standalone Python API exists
 
 Evidence:
 
-- `novamind.shared.knowledge.integrations.deepdoc.DeepDocParser`
-- `novamind.shared.knowledge.integrations.deepdoc.DeepDocEngine`
-- `novamind.shared.knowledge.integrations.deepdoc.create_deepdoc_app`
-- `novamind.shared.knowledge.integrations.deepdoc.build_doctor_payload`
+- `novamind.engines.document.integrations.deepdoc.DeepDocParser`
+- `novamind.engines.document.integrations.deepdoc.DeepDocEngine`
+- `novamind.engines.document.integrations.deepdoc.create_deepdoc_app`
+- `novamind.engines.document.integrations.deepdoc.build_doctor_payload`
 
 Primary references:
 
-- `backend/src/shared/knowledge/integrations/deepdoc/__init__.py`
-- `backend/src/shared/knowledge/integrations/deepdoc/core/engine.py`
-- `backend/src/shared/knowledge/integrations/deepdoc/server/deepdoc_server.py`
+- `backend/src/engines/document/integrations/deepdoc/__init__.py`
+- `backend/src/engines/document/integrations/deepdoc/core/engine.py`
+- `backend/src/engines/document/integrations/deepdoc/server/deepdoc_server.py`
 - `backend/tests/engines/document/deepdoc/test_deepdoc_imports.py`
 
 ### 3. Standalone CLI exists
 
 Evidence:
 
-- `python -m novamind.shared.knowledge.integrations.deepdoc capabilities`
-- `python -m novamind.shared.knowledge.integrations.deepdoc doctor`
-- `python -m novamind.shared.knowledge.integrations.deepdoc prepare`
-- `python -m novamind.shared.knowledge.integrations.deepdoc parse`
+- `python -m novamind.engines.document.integrations.deepdoc capabilities`
+- `python -m novamind.engines.document.integrations.deepdoc doctor`
+- `python -m novamind.engines.document.integrations.deepdoc prepare`
+- `python -m novamind.engines.document.integrations.deepdoc parse`
 - installed console script: `deepdoc`
 
 Primary references:
 
-- `backend/src/shared/knowledge/integrations/deepdoc/__main__.py`
+- `backend/src/engines/document/integrations/deepdoc/__main__.py`
 - `backend/pyproject.toml`
 - `backend/tests/engines/document/deepdoc/test_deepdoc_cli.py`
 - `backend/tests/engines/document/deepdoc/test_deepdoc_entrypoint.py`
@@ -82,8 +82,8 @@ Evidence:
 
 Primary references:
 
-- `backend/src/shared/knowledge/integrations/deepdoc/server/deepdoc_server.py`
-- `backend/src/shared/knowledge/integrations/deepdoc/server/endpoints/`
+- `backend/src/engines/document/integrations/deepdoc/server/deepdoc_server.py`
+- `backend/src/engines/document/integrations/deepdoc/server/endpoints/`
 - `backend/tests/engines/document/deepdoc/test_deepdoc_integration_light.py`
 - `backend/tests/engines/document/deepdoc/test_deepdoc_serve_smoke.py`
 
@@ -101,7 +101,7 @@ Primary references:
 
 - `backend/src/features/knowledge_space/schemas/knowledge_base_schema.py`
 - `backend/src/features/knowledge_space/services/knowledge_base_service.py`
-- `backend/src/shared/knowledge/document_processing/pipeline/document_loader.py`
+- `backend/src/engines/document/pipeline/document_loader.py`
 - `backend/tests/engines/document/deepdoc/test_deepdoc_runtime.py`
 - `backend/tests/engines/document/deepdoc/test_deepdoc_integration_light.py`
 
@@ -109,7 +109,7 @@ Primary references:
 
 Evidence:
 
-- `project.scripts.deepdoc = "novamind.shared.knowledge.integrations.deepdoc.__main__:main"`
+- `project.scripts.deepdoc = "novamind.engines.document.integrations.deepdoc.__main__:main"`
 - wheel includes `README.md`, `DEPLOYMENT.md`, and resume resources
 
 Primary references:
@@ -120,9 +120,8 @@ Primary references:
 
 ## Current Supported Parser IDs
 
-- `pdf_layout`
+- `pdf_full`
 - `pdf_plain`
-- `pdf_vision`
 - `pdf_docling`
 - `pdf_mineru`
 - `pdf_opendataloader`
@@ -140,9 +139,12 @@ Primary references:
 - `html`
 - `json`
 
+The historical `pdf_layout` / `pdf_vision` ids are legacy aliases of `pdf_full`
+(migrated at the KB config layer and inside the runtime parser).
+
 Primary references:
 
-- `backend/src/shared/knowledge/integrations/deepdoc/core/factory.py`
+- `backend/src/engines/document/integrations/deepdoc/core/factory.py`
 - `backend/src/features/knowledge_space/schemas/knowledge_base_schema.py`
 
 ## What Is Not Fully Proven Yet
@@ -150,7 +152,8 @@ Primary references:
 The following should still be treated as partially verified or
 environment-dependent:
 
-- full end-to-end `pdf_vision` runtime with real local model files
+- full end-to-end `full`-mode PDF runtime (with the folded-in vision path)
+  against real local model files
 - full OCR/layout/TSR inference against real ONNX assets in this environment
 - complete deployment proof for every optional external parser backend:
   - Docling
@@ -180,10 +183,10 @@ Use these as the quickest real-world checks:
 
 ```powershell
 cd backend
-python -m novamind.shared.knowledge.integrations.deepdoc capabilities
-python -m novamind.shared.knowledge.integrations.deepdoc doctor
-python -m novamind.shared.knowledge.integrations.deepdoc prepare
-python -m novamind.shared.knowledge.integrations.deepdoc serve --host 127.0.0.1 --port 8001
+python -m novamind.engines.document.integrations.deepdoc capabilities
+python -m novamind.engines.document.integrations.deepdoc doctor
+python -m novamind.engines.document.integrations.deepdoc prepare
+python -m novamind.engines.document.integrations.deepdoc serve --host 127.0.0.1 --port 8001
 ```
 
 Optional HTTP checks:

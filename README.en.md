@@ -56,7 +56,7 @@ If you want to build more than a chat window — a system that can organize know
 - `Hybrid retrieval`: vector search, BM25, hybrid search, rerank, query rewriting, and fallback strategies
 - `RAG QA`: multi-turn QA over knowledge bases, with session config and context compression
 - `Deep research`: combines internal KBs with external search, generates step-by-step research reports
-- `Agent`: supports MCP servers, tool calling, an in-browser terminal, and skill extensions
+- `Agent`: supports MCP servers, tool calling, and skill extensions
 - `Skill marketplace`: skill upload, review, install, and distribution
 - `KB evaluation`: test sets, automated evaluation, manual scoring, and result export
 - `App center`: scenario-packaged AI capabilities
@@ -238,9 +238,10 @@ NovaMind/
 |  |- pyproject.toml
 |  |- src/
 |  |  |- core/                     # app factory, middleware, lifecycle, security
+|  |  |- engines/                  # engine layer: pure-logic components (agent/document/rag/eval/…)
 |  |  |- features/                 # domain modules
 |  |  |- setting/                  # YAML config loading
-|  |  `- shared/                   # shared knowledge-processing infra
+|  |  `- shared/                   # shared infrastructure (storage/ai_models/mq/…)
 |  `- tests/
 |- frontend/                       # Vue 3 + TypeScript frontend
 |  |- src/

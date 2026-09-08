@@ -1,6 +1,6 @@
 # NovaMind 后端
 
-NovaMind 后端是一个基于 FastAPI 的应用，负责整个平台的认证、知识空间、知识库、文档处理、RAG 问答、深度研究、Agent、技能广场、通知中心、应用中心和浏览器终端等能力。
+NovaMind 后端是一个基于 FastAPI 的应用，负责整个平台的认证、知识空间、知识库、文档处理、RAG 问答、深度研究、Agent、技能广场、通知中心和应用中心等能力。
 
 后端代码按领域组织，而不是只按接口层拆分。业务模块位于 `src/features/`，共享基础设施和知识处理运行时位于 `src/core/`、`src/setting/` 和 `src/shared/`。
 
@@ -37,18 +37,26 @@ backend/
 |- pyproject.toml
 |- src/
 |  |- core/                      # 应用工厂、中间件、数据库、安全
+|  |- engines/                   # 引擎层：纯逻辑组件，零 feature/setting/core 依赖
+|  |  |- agent/                  # Agent 引擎（ReAct 循环、工具、记忆、MCP）
+|  |  |- deep_research/          # 深度研究引擎
+|  |  |- document/               # 文档处理引擎（pipeline/splitters/converters/media/deepdoc）
+|  |  |- eval/                   # 评测引擎（检索/生成/embedding/claim 评估器）
+|  |  |- rag/                    # RAG 引擎（检索引擎、Grade→Retry）
+|  |  `- resume/                 # 简历解析引擎
 |  |- features/                  # 领域模块
 |  |  |- agent/
 |  |  |- app/
 |  |  |- deep_research/
+|  |  |- evaluation/
 |  |  |- knowledge_space/
 |  |  |- notification/
 |  |  |- qa/
 |  |  |- skill/
 |  |  `- user/
 |  |- setting/                   # YAML 配置加载与环境覆盖
-|  `- shared/                    # 共享基础设施与知识处理运行时
-`- tests/
+|  `- shared/                    # 共享基础设施（storage/ai_models/cache/mq/prompts/document）
+`- tests/                        # 测试按被测对象分层（见 tests/README.md）
 ```
 
 典型模块布局：
@@ -68,11 +76,18 @@ src/features/{module}/
 
 - `src/features/knowledge_space/`
 
-共享运行时实现位于：
+文档处理引擎实现位于：
 
-- `src/shared/knowledge/document_processing/`
-- `src/shared/knowledge/media_processing/`
-- `src/shared/knowledge/integrations/deepdoc/`
+- `src/engines/document/pipeline/`（DocumentLoader / DocumentProcessor / DocumentRegistry）
+- `src/engines/document/splitters/`（recursive / semantic / fixed / markdown）
+- `src/engines/document/converters/`
+- `src/engines/document/media/`（audio / video / vlm / OCR）
+- `src/engines/document/integrations/deepdoc/`（vendored，自包含）
+
+跨 feature 复用的读取与校验位于：
+
+- `src/shared/document/readers/`（PDF / DOCX / TXT / HTML / MD）
+- `src/shared/document/validation/`
 
 相关文档入口：
 

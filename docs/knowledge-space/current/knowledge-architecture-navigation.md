@@ -6,10 +6,21 @@ This document describes the current canonical backend knowledge-base structure.
 
 ## Final Structure
 
-### Feature Layer
+### Feature Layer（业务编排）
 
 - `backend/src/features/knowledge_space/`
-  - 所有权：API、业务编排、持久化、schemas、权限、管道、切分器、转换器、媒体处理、DeepDoc 集成
+  - 所有权：API、业务编排、持久化、schemas、权限、任务（tasks/）、适配器（adapters/）
+  - 管道入口与三模态共享后置尾都在 `services/document_pipeline.py` / `services/media_processing.py`
+  - 通过端口调用 engines/document 的解析、切分、媒体处理与 DeepDoc 实现
+
+### Engine Layer（纯逻辑实现）
+
+- `backend/src/engines/document/pipeline/` — 解析管道（DocumentLoader / DocumentProcessor / DocumentRegistry）
+- `backend/src/engines/document/splitters/` — 切分器（recursive / semantic / fixed / markdown）
+- `backend/src/engines/document/converters/` — 文档格式转换器
+- `backend/src/engines/document/media/` — 音频（ASR）、视频（抽帧）、VLM、OCR 处理
+- `backend/src/engines/document/integrations/deepdoc/` — DeepDoc 集成（vendored，自包含）
+  - 依赖方向：`features → engines → shared` 单向，engines 不得反向 import features/setting/ORM
 
 ### Shared Layer（跨 feature 复用）
 
@@ -27,7 +38,7 @@ features/knowledge_space/services/
   └── _process_image_document_static (图片入口，独立通路)
 
 三模态（文本/音频/视频）管道形态：
-  解析(转换器) → persist_parsed_text(MD → MinIO)
+  解析(转换器/deepdoc) → persist_parsed_text(MD → MinIO)
                → _run_post_parse_tail(切分 → 向量化 → QG → 索引)
                    ├── _split_md_text / prechunked
                    ├── _build_es_chunks（统一 ES chunk 构造器）
@@ -46,18 +57,23 @@ features/knowledge_space/services/
 - `models/` — SQLAlchemy ORM 模型
 - `repository/` — 持久化查询
 - `schemas/` — Pydantic schemas
-- `services/` — 业务编排（包含管道入口与共享后置尾）
+- `services/` — 业务编排（管道入口、任务编排、检索、向量化、QG、成员权限、审计）
+- `tasks/` — arq worker 任务定义与异常处理
+- `adapters/` — engines 端口的 feature 侧装配
 - `prompts/` — Feature 专属 prompt 模板
-- `pipeline/` — 文档解析管道（DocumentLoader/DocumentProcessor/DocumentRegistry）
-- `splitters/` — 切分器（recursive/semantic/fixed/markdown）
+
+### `backend/src/engines/document/`
+
+- `pipeline/` — DocumentLoader / DocumentProcessor / DocumentRegistry（按文件类型路由 Reader）
+- `splitters/` — chunk 切分器
 - `converters/` — 文档格式转换器
-- `media/` — 音视频/图片多模态处理
-- `integrations/deepdoc/` — DeepDoc 集成（自包含）
+- `media/` — audio / video / vlm / OCR 多模态处理（`media/image/` 仅占位，图片理解在 `media/vlm/`）
+- `integrations/deepdoc/` — DeepDoc 集成（vendored，详见 `docs/deepdoc/deepdoc-integration.md`）
 
 ### `backend/src/shared/document/`
 
 - `readers/` — 跨 feature 文档读取器
-- `validation/` — 跨 feature 文件校验
+- `validation/` — 跨 feature 文件校验（FileValidator）
 
 ### `backend/src/shared/storage/`
 
@@ -80,6 +96,7 @@ features/knowledge_space/services/
 ## Import Guidance
 
 - `novamind.features.knowledge_space.services...` — 业务编排
+- `novamind.engines.document...` — 解析管道、切分器、媒体处理、DeepDoc
 - `novamind.shared.document.readers...` — 跨 feature 读取器
 - `novamind.shared.storage...` — 存储客户端
 - `novamind.shared.utils...` — 仅通用工具

@@ -1,5 +1,10 @@
 # Knowledge Reorg Status
 
+> **状态更新（2026-09）**：本文描述的 `shared/knowledge/*` 结构已被后续重构取代——
+> 文档处理实现下沉到 `backend/src/engines/document/`（pipeline/splitters/converters/
+> media/integrations/deepdoc），跨 feature 读取器与校验收敛到 `backend/src/shared/document/`。
+> 当前权威结构见 `docs/knowledge-space/current/knowledge-architecture-navigation.md`。
+
 ## Scope
 
 This document records the final backend status of the knowledge-base reorganization plan in

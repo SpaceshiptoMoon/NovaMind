@@ -3,7 +3,7 @@
 ## Goal
 
 This repository vendors and adapts parts of RAGFlow's `deepdoc` module into
-`backend/src/shared/knowledge/integrations/deepdoc/` and wires it into the knowledge-base
+`backend/src/engines/document/integrations/deepdoc/` and wires it into the knowledge-base
 document pipeline through `parsing.strategy = "deepdoc"`.
 
 The current upstream comparison baseline was pulled from RAGFlow commit
@@ -14,7 +14,7 @@ The current upstream comparison baseline was pulled from RAGFlow commit
 - upstream-aligned package layout
   - `parser/`
     - mirrored subpackage so code can be imported through
-      `novamind.shared.knowledge.integrations.deepdoc.parsers.upstream.*` in an upstream-like way
+      `novamind.engines.document.integrations.deepdoc.parsers.upstream.*` in an upstream-like way
     - implemented parser modules re-export the adapted runtime parsers already
       used by this project
     - unsupported upstream parser modules are mirrored as explicit stubs so the
@@ -71,7 +71,8 @@ The current upstream comparison baseline was pulled from RAGFlow commit
   - Replaces RAGFlow-internal tokenizer imports with the local deepdoc
     compatibility layer and supplies fallbacks for optional `demjson3` and
     `xpinyin` dependencies
-- `pdf_layout.py`
+- `pdf_layout.py` (in the standalone module source; superseded by the `full`
+  mode selection at runtime)
   - Local structured PDF enhancement layer
 - `compat.py`
   - Compatibility shims replacing RAGFlow-internal dependencies
@@ -159,7 +160,7 @@ Local compatibility/adaptation:
   synthetic inference path for OCR/layout/TSR when model files are present
 - upstream snapshot reporting that records which parts of upstream `deepdoc`
   are implemented, stubbed, or still missing in this standalone module
-- package-level lazy exports for `novamind.shared.knowledge.integrations.deepdoc`, `parsers`, and
+- package-level lazy exports for `novamind.engines.document.integrations.deepdoc`, `parsers`, and
   `vision`, so optional format or vision dependencies are imported only when
   the corresponding parser/runtime path is actually used
 - runtime-parser lazy parser construction, so creating `DeepDocParser()` no
@@ -217,14 +218,16 @@ Vision vendoring progress:
   and also execute the shared ONNX recognizer inference skeleton
 - layout/TSR ONNX detections are now rescaled back onto the original rendered
   page or crop dimensions before downstream assignment
-- `pdf_vision` is executable in the current standalone module, but still uses a
-  progressive hybrid path rather than the full upstream end-to-end orchestration
+- the fitz-based progressive vision path is folded into the `full` PDF mode
+  rather than being a separately selectable standalone parser
 
 Current PDF mode selection:
 
-- `deepdoc_pdf_mode = "layout"`: default, uses local layout enhancement
+- `deepdoc_pdf_mode = "full"`: default, the upstream-aligned per-box fusion
+  pipeline (local layout enhancement included)
 - `deepdoc_pdf_mode = "plain"`: closer to RAGFlow `PlainParser`
-- `vision`: executable fitz-based vision path wired into standalone deepdoc runtime
+- legacy aliases `layout` / `vision` are mapped to `full` inside the runtime
+  parser for old persisted configs
 - `deepdoc_parser_id = "pdf_docling"`: optional remote-service parser path
   backed by a Docling deployment
 - `deepdoc_parser_id = "pdf_opendataloader"`: optional external-service parser
@@ -235,6 +238,9 @@ Current PDF mode selection:
   path backed by a SoMark async job deployment
 - `deepdoc_parser_id = "pdf_tcadp"`: optional external-service parser
   path backed by Tencent Cloud Document Parsing
+- the previously listed `pdf_vision` standalone parser id has been folded into
+  the `full` mode; remote parser specs (`pdf_docling` etc.) remain in the
+  factory but are not exposed in the KB config frontend-facing parser values
 
 Current vision-mode behavior:
 
@@ -366,8 +372,8 @@ Current import/packaging behavior:
 
 - `DeepDocParser()` can now be constructed without eagerly importing Excel,
   PPT, or vision parser modules
-- `novamind.shared.knowledge.integrations.deepdoc.TxtParser` and
-  `novamind.shared.knowledge.integrations.deepdoc.DeepDocParseResult` can be imported without
+- `novamind.engines.document.integrations.deepdoc.TxtParser` and
+  `novamind.engines.document.integrations.deepdoc.DeepDocParseResult` can be imported without
   forcing `openpyxl`, `python-pptx`, or `cv2`
 - missing optional format dependencies now block only their own parser path
   instead of failing the entire vendored module at import time
@@ -382,8 +388,8 @@ Knowledge-base text documents now choose parsing strategy through:
 {
   "parsing": {
     "strategy": "deepdoc",
-    "deepdoc_parser_id": "pdf_layout",
-    "deepdoc_pdf_mode": "layout"
+    "deepdoc_parser_id": "pdf_full",
+    "deepdoc_pdf_mode": "full"
   }
 }
 ```
@@ -396,10 +402,10 @@ The vendored module is no longer tied only to the knowledge-base pipeline.
 - `DeepDocParser.parse_bytes(file_bytes, file_type="pdf")`
 - `DeepDocEngine.parse_file(path_like)`
 - installed console command: `deepdoc ...`
-- `python -m novamind.shared.knowledge.integrations.deepdoc capabilities`
-- `python -m novamind.shared.knowledge.integrations.deepdoc doctor`
-- `python -m novamind.shared.knowledge.integrations.deepdoc prepare`
-- `python -m novamind.shared.knowledge.integrations.deepdoc serve`
+- `python -m novamind.engines.document.integrations.deepdoc capabilities`
+- `python -m novamind.engines.document.integrations.deepdoc doctor`
+- `python -m novamind.engines.document.integrations.deepdoc prepare`
+- `python -m novamind.engines.document.integrations.deepdoc serve`
 - `build_doctor_payload(engine, include_smoke=False)`
   - shared diagnostic payload builder reused by CLI and HTTP service
 - `create_deepdoc_app()`
@@ -453,9 +459,9 @@ Standalone CLI behavior now includes:
 
 Current standalone deployment flow:
 
-1. run `deepdoc doctor` or `python -m novamind.shared.knowledge.integrations.deepdoc doctor`
+1. run `deepdoc doctor` or `python -m novamind.engines.document.integrations.deepdoc doctor`
 2. install missing runtime dependencies reported in `remediation.next_steps`
-3. run `deepdoc prepare` or `python -m novamind.shared.knowledge.integrations.deepdoc prepare`
+3. run `deepdoc prepare` or `python -m novamind.engines.document.integrations.deepdoc prepare`
 4. optionally run `deepdoc doctor --smoke`
 5. start `deepdoc serve --host 0.0.0.0 --port 8001`
 6. optionally query `GET /doctor` or `GET /doctor?smoke=true` from the running service
@@ -489,13 +495,13 @@ Current project integration behavior:
 
 ## Parser IDs
 
-The standalone module now exposes RAGFlow-style parser selection through a small
-factory layer.
+The standalone module exposes RAGFlow-style parser selection through a small
+factory layer (`core/factory.py`).
 
-- `pdf_layout`
+- `pdf_full`
 - `pdf_plain`
-- `pdf_vision`
 - `pdf_docling`
+- `pdf_mineru`
 - `pdf_opendataloader`
 - `pdf_paddleocr`
 - `pdf_somark`
@@ -504,23 +510,30 @@ factory layer.
 - `epub`
 - `excel`
 - `ppt`
+- `figure`
 - `text`
 - `txt`
 - `markdown`
 - `html`
 - `json`
 
+The historical `pdf_layout` / `pdf_vision` ids are no longer separate specs;
+old values are treated as legacy aliases of `pdf_full` at the KB config layer
+and inside the runtime parser.
+
 When `parsing.strategy = "deepdoc"` in the knowledge-base config, the runtime
 will honor `deepdoc_parser_id` and route through the corresponding standalone
-factory selection.
+factory selection. The KB config frontend-facing `parser` value for PDF is
+currently `full` only (see
+`docs/knowledge-space/current/knowledge-config-structure-design.md`).
 
 ## Resume Subpackage
 
 The standalone module now also mirrors RAGFlow's specialized
 `deepdoc/parser/resume/` package.
 
-- public entrypoint: `novamind.shared.knowledge.integrations.deepdoc.parsers.upstream.resume.refactor`
-- convenience export: `novamind.shared.knowledge.integrations.deepdoc.parsers.upstream.refactor_resume`
+- public entrypoint: `novamind.engines.document.integrations.deepdoc.parsers.upstream.resume.refactor`
+- convenience export: `novamind.engines.document.integrations.deepdoc.parsers.upstream.refactor_resume`
 - preserves upstream `step_one.py`, `step_two.py`, and entity dictionaries
 - bundles the upstream school, company, region, and industry resource files
 - uses local tokenizer compatibility helpers instead of RAGFlow's `rag.nlp`
@@ -547,9 +560,9 @@ standalone diagnostics instead of depending on RAGFlow's internal thread pool
 and path initialization helpers.
 
 ```powershell
-python -m novamind.shared.knowledge.integrations.deepdoc.vision.t_ocr --inputs sample.pdf --output_dir ocr_outputs
-python -m novamind.shared.knowledge.integrations.deepdoc.vision.t_recognizer --inputs pages --mode layout --output_dir layout_outputs
-python -m novamind.shared.knowledge.integrations.deepdoc.vision.t_recognizer --inputs table.png --mode tsr --output_dir tsr_outputs
+python -m novamind.engines.document.integrations.deepdoc.vision.t_ocr --inputs sample.pdf --output_dir ocr_outputs
+python -m novamind.engines.document.integrations.deepdoc.vision.t_recognizer --inputs pages --mode layout --output_dir layout_outputs
+python -m novamind.engines.document.integrations.deepdoc.vision.t_recognizer --inputs table.png --mode tsr --output_dir tsr_outputs
 ```
 
 Both commands accept a single image/PDF or a directory, create annotated JPEG
