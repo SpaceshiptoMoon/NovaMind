@@ -30,7 +30,7 @@ Interpretation:
 - Source provenance is machine-auditable through:
   - `novamind.shared.knowledge.integrations.deepdoc.compat.upstream.UPSTREAM_SOURCE_MAP`
   - `novamind.shared.knowledge.integrations.deepdoc.compat.upstream.LOCAL_ADAPTATION_SOURCE_MAP`
-  - `backend/tests/test_deepdoc_upstream_mapping.py`
+  - `backend/tests/engines/document/deepdoc/test_deepdoc_upstream_mapping.py`
 
 ### 2. Standalone Python API exists
 
@@ -46,7 +46,7 @@ Primary references:
 - `backend/src/shared/knowledge/integrations/deepdoc/__init__.py`
 - `backend/src/shared/knowledge/integrations/deepdoc/core/engine.py`
 - `backend/src/shared/knowledge/integrations/deepdoc/server/deepdoc_server.py`
-- `backend/tests/test_deepdoc_imports.py`
+- `backend/tests/engines/document/deepdoc/test_deepdoc_imports.py`
 
 ### 3. Standalone CLI exists
 
@@ -62,9 +62,9 @@ Primary references:
 
 - `backend/src/shared/knowledge/integrations/deepdoc/__main__.py`
 - `backend/pyproject.toml`
-- `backend/tests/test_deepdoc_cli.py`
-- `backend/tests/test_deepdoc_entrypoint.py`
-- `backend/tests/test_deepdoc_installed_cli.py`
+- `backend/tests/engines/document/deepdoc/test_deepdoc_cli.py`
+- `backend/tests/engines/document/deepdoc/test_deepdoc_entrypoint.py`
+- `backend/tests/engines/document/deepdoc/test_deepdoc_installed_cli.py`
 
 ### 4. Standalone HTTP service exists
 
@@ -84,8 +84,8 @@ Primary references:
 
 - `backend/src/shared/knowledge/integrations/deepdoc/server/deepdoc_server.py`
 - `backend/src/shared/knowledge/integrations/deepdoc/server/endpoints/`
-- `backend/tests/test_deepdoc_integration_light.py`
-- `backend/tests/test_deepdoc_serve_smoke.py`
+- `backend/tests/engines/document/deepdoc/test_deepdoc_integration_light.py`
+- `backend/tests/engines/document/deepdoc/test_deepdoc_serve_smoke.py`
 
 ### 5. Knowledge-base pipeline wiring exists
 
@@ -102,8 +102,8 @@ Primary references:
 - `backend/src/features/knowledge_space/schemas/knowledge_base_schema.py`
 - `backend/src/features/knowledge_space/services/knowledge_base_service.py`
 - `backend/src/shared/knowledge/document_processing/pipeline/document_loader.py`
-- `backend/tests/test_deepdoc_runtime.py`
-- `backend/tests/test_deepdoc_integration_light.py`
+- `backend/tests/engines/document/deepdoc/test_deepdoc_runtime.py`
+- `backend/tests/engines/document/deepdoc/test_deepdoc_integration_light.py`
 
 ### 6. Packaging evidence exists
 
@@ -115,8 +115,8 @@ Evidence:
 Primary references:
 
 - `backend/pyproject.toml`
-- `backend/tests/test_deepdoc_packaging.py`
-- `backend/tests/test_deepdoc_entrypoint.py`
+- `backend/tests/engines/document/deepdoc/test_deepdoc_packaging.py`
+- `backend/tests/engines/document/deepdoc/test_deepdoc_entrypoint.py`
 
 ## Current Supported Parser IDs
 
@@ -198,11 +198,11 @@ Invoke-RestMethod http://127.0.0.1:8001/doctor
 
 ```powershell
 backend\.venv\Scripts\python.exe -m pytest `
-  backend/tests/test_deepdoc_imports.py `
-  backend/tests/test_deepdoc_cli.py `
-  backend/tests/test_deepdoc_entrypoint.py `
-  backend/tests/test_deepdoc_packaging.py `
-  backend/tests/test_deepdoc_installed_cli.py `
-  backend/tests/test_deepdoc_integration_light.py `
-  backend/tests/test_deepdoc_serve_smoke.py -q
+  backend/tests/engines/document/deepdoc/test_deepdoc_imports.py `
+  backend/tests/engines/document/deepdoc/test_deepdoc_cli.py `
+  backend/tests/engines/document/deepdoc/test_deepdoc_entrypoint.py `
+  backend/tests/engines/document/deepdoc/test_deepdoc_packaging.py `
+  backend/tests/engines/document/deepdoc/test_deepdoc_installed_cli.py `
+  backend/tests/engines/document/deepdoc/test_deepdoc_integration_light.py `
+  backend/tests/engines/document/deepdoc/test_deepdoc_serve_smoke.py -q
 ```

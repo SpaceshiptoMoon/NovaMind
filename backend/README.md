@@ -161,11 +161,7 @@ pytest -m unit
 pytest -m "not slow"
 ```
 
-测试文件放在 `backend/tests/`，命名建议例如：
-
-- `test_knowledge_space_api.py`
-- `test_document_task_retry_count.py`
-- `test_knowledge_config_runtime.py`
+测试文件放在 `backend/tests/`，按**被测对象所在分层**分子目录摆放（`architecture/` 全局门禁与契约、`core/`、`shared/`、`engines/<x>/`、`features/<x>/`、`integration/` 需运行服务），详见 [`tests/README.md`](tests/README.md)。
 
 ## API 范围
 

@@ -1,0 +1,1070 @@
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
+
+BACKEND_ROOT = Path(__file__).resolve().parents[3]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+    KnowledgeBaseConfig,
+    ParsingConfig,
+    build_runtime_parsing_config,
+)
+from novamind.features.knowledge_space.services.document_pipeline import (
+    _generate_image_description,
+    _generate_questions_for_chunks_static,
+)
+from novamind.features.knowledge_space.services.knowledge_base_service import (
+    get_effective_space_types,
+)
+from novamind.features.knowledge_space.services.media_processing import (
+    _split_md_text,
+    process_audio_document,
+    process_video_document,
+)
+from novamind.features.knowledge_space.exceptions import DocumentProcessingError
+from novamind.engines.document.pipeline import DocumentProcessor, DocumentRegistry
+from novamind.engines.document.media.audio import transcribe_audio_with_timestamps
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
+
+def test_knowledge_base_config_drops_removed_fields():
+    config = KnowledgeBaseConfig.model_validate(
+        {
+            "splitting": {
+                "strategy": "recursive",
+                "image": {"strategy": "batch", "chunk_size": 2000},
+                "video": {"strategy": "fixed_size", "chunk_size": 1234},
+            },
+            "parsing": {
+                "extract_tables": True,
+                "preserve_structure": True,
+                "ocr_enabled": True,
+                "vlm_model": "glm-4v",
+                "audio": {"language": "zh"},
+            },
+        }
+    )
+
+    dumped = config.model_dump()
+    assert "image" not in dumped["splitting"]
+    assert "extract_tables" not in dumped["parsing"]
+    assert "preserve_structure" not in dumped["parsing"]
+    assert dumped["parsing"]["text"]["pdf"]["ocr_enabled"] is True
+    assert dumped["parsing"]["image"]["vlm_model"] == "glm-4v"
+    assert "video" not in dumped["splitting"]
+    assert dumped["parsing"]["audio"]["language"] == "zh"
+
+
+def test_knowledge_base_config_preserves_space_type_and_description():
+    config = KnowledgeBaseConfig.model_validate(
+        {
+            "space_type": ["text", "image", "video", "audio"],
+            "description": "knowledge base description",
+        }
+    )
+
+    dumped = config.model_dump()
+    assert dumped["space_type"] == ["text", "image", "video", "audio"]
+    assert dumped["description"] == "knowledge base description"
+    assert get_effective_space_types(dumped) == ["text", "image", "video", "audio"]
+
+
+def test_legacy_parsing_config_is_migrated_to_new_structure():
+    config = KnowledgeBaseConfig.model_validate(
+        {
+            "parsing": {
+                "strategy": "deepdoc",
+                "deepdoc_parser_id": "pdf_layout",
+                "ocr_enabled": True,
+                "vlm_description_enabled": True,
+                "vlm_model": "glm-4v",
+                "audio": {"language": "zh"},
+            }
+        }
+    )
+
+    dumped = config.model_dump()
+    assert dumped["parsing"]["text"]["pdf"]["strategy"] == "deepdoc"
+    assert dumped["parsing"]["text"]["pdf"]["parser"] == "full"
+    assert dumped["parsing"]["text"]["pdf"]["ocr_enabled"] is True
+    assert dumped["parsing"]["image"]["strategy"] == "vlm"
+    assert dumped["parsing"]["image"]["vlm_model"] == "glm-4v"
+    assert dumped["parsing"]["audio"]["language"] == "zh"
+
+
+def test_legacy_parsing_config_keeps_all_supported_fields():
+    config = KnowledgeBaseConfig.model_validate(
+        {
+            "parsing": {
+                "strategy": "deepdoc",
+                "deepdoc_parser_id": "pdf_plain",
+                "deepdoc_pdf_mode": "plain",
+                "ocr_enabled": True,
+                "vlm_description_enabled": True,
+                "vlm_model": "glm-4v",
+                "audio": {"language": "zh", "asr_model": "faster-whisper-tiny"},
+                "video": {
+                    "frame_interval": 8,
+                    "max_frames": 40,
+                    "vlm_description_enabled": True,
+                    "vlm_model": "video-vlm",
+                },
+            }
+        }
+    )
+
+    dumped = config.model_dump()
+    assert dumped["parsing"]["text"]["pdf"]["strategy"] == "deepdoc"
+    assert dumped["parsing"]["text"]["pdf"]["parser"] == "full"
+    assert dumped["parsing"]["text"]["pdf"]["ocr_enabled"] is True
+    assert dumped["parsing"]["image"]["strategy"] == "vlm"
+    assert dumped["parsing"]["image"]["vlm_model"] == "glm-4v"
+    assert dumped["parsing"]["video"]["frame_interval"] == 8
+    assert dumped["parsing"]["video"]["max_frames"] == 40
+    assert dumped["parsing"]["video"]["vlm_model"] == "video-vlm"
+    assert dumped["parsing"]["audio"]["asr_model"] == "faster-whisper-tiny"
+    assert dumped["parsing"]["audio"]["language"] == "zh"
+
+
+def test_runtime_parsing_config_maps_new_pdf_structure_to_legacy_keys():
+    runtime = build_runtime_parsing_config(
+        {
+            "text": {
+                "pdf": {
+                    "strategy": "deepdoc",
+                    "parser": "full",
+                    "ocr_enabled": True,
+                }
+            }
+        },
+        file_type="pdf",
+    )
+
+    assert runtime["strategy"] == "deepdoc"
+    assert runtime["deepdoc_parser_id"] == "pdf_full"
+    assert runtime["deepdoc_pdf_mode"] == "full"
+    assert runtime["ocr_enabled"] is True
+
+
+def test_runtime_parsing_config_prefers_structured_pdf_settings_over_legacy_keys():
+    runtime = build_runtime_parsing_config(
+        {
+            "text": {
+                "pdf": {
+                    "strategy": "deepdoc",
+                    "parser": "full",
+                    "ocr_enabled": True,
+                },
+                "docx": {"strategy": "deepdoc"},
+            },
+            "strategy": "deepdoc",
+            "deepdoc_parser_id": "docx",
+            "deepdoc_pdf_mode": None,
+        },
+        file_type="pdf",
+    )
+
+    assert runtime["strategy"] == "deepdoc"
+    assert runtime["deepdoc_parser_id"] == "pdf_full"
+    assert runtime["deepdoc_pdf_mode"] == "full"
+    assert runtime["ocr_enabled"] is True
+
+
+def test_pdf_default_strategy_rejects_parser():
+    with pytest.raises(Exception):
+        ParsingConfig.model_validate(
+            {
+                "text": {
+                    "pdf": {
+                        "strategy": "default",
+                        "parser": "layout",
+                    }
+                }
+            }
+        )
+
+
+def test_runtime_parsing_config_maps_image_video_audio_sections():
+    runtime = build_runtime_parsing_config(
+        {
+            "image": {
+                "strategy": "vlm",
+                "vlm_model": "glm-4v",
+            },
+            "video": {
+                "frame_interval": 9,
+                "max_frames": 21,
+                "vlm_description_enabled": True,
+                "vlm_model": "video-vlm",
+            },
+            "audio": {
+                "asr_model": "whisper-1",
+                "language": "zh",
+            },
+        },
+        file_type="mp4",
+    )
+
+    assert runtime["vlm_description_enabled"] is True
+    assert runtime["vlm_model"] == "video-vlm"
+    assert runtime["video"]["frame_interval"] == 9
+    assert runtime["video"]["max_frames"] == 21
+    assert runtime["video_strategy"] == "simple"  # 未显式指定 strategy 默认 simple
+    assert runtime["audio"]["asr_model"] == "whisper-1"
+    assert runtime["audio"]["language"] == "zh"
+
+
+def test_runtime_parsing_config_flattens_video_strategy_presets():
+    """5 预设 strategy 均扁平化到 video_strategy 顶层键。"""
+    for preset in ("simple", "scene", "dedup", "grouped", "rewrite"):
+        runtime = build_runtime_parsing_config(
+            {"video": {"strategy": preset, "frame_interval": 5, "max_frames": 60}},
+            file_type="mp4",
+        )
+        assert runtime["video_strategy"] == preset
+        assert runtime["video"]["strategy"] == preset  # 嵌套字典保留 strategy
+
+
+def test_runtime_parsing_config_maps_non_pdf_deepdoc_strategy():
+    runtime = build_runtime_parsing_config(
+        {
+            "text": {
+                "docx": {"strategy": "deepdoc"},
+            }
+        },
+        file_type="docx",
+    )
+
+    assert runtime["strategy"] == "deepdoc"
+    assert runtime["deepdoc_parser_id"] == "docx"
+
+
+@pytest.mark.parametrize(
+    ("file_type", "text_config", "expected_parser_id"),
+    [
+        ("docx", {"docx": {"strategy": "deepdoc"}}, "docx"),
+        ("epub", {"epub": {"strategy": "deepdoc"}}, "epub"),
+        ("xlsx", {"excel": {"strategy": "deepdoc"}}, "excel"),
+        ("pptx", {"ppt": {"strategy": "deepdoc"}}, "ppt"),
+        ("md", {"markdown": {"strategy": "deepdoc"}}, "markdown"),
+        ("html", {"html": {"strategy": "deepdoc"}}, "html"),
+        ("txt", {"txt": {"strategy": "deepdoc"}}, "txt"),
+        ("json", {"json": {"strategy": "deepdoc"}}, "json"),
+        ("csv", {"txt": {"strategy": "deepdoc"}}, "txt"),
+    ],
+)
+def test_runtime_parsing_config_maps_all_supported_text_doc_types(
+    file_type,
+    text_config,
+    expected_parser_id,
+):
+    runtime = build_runtime_parsing_config({"text": text_config}, file_type=file_type)
+
+    assert runtime["strategy"] == "deepdoc"
+    assert runtime["deepdoc_parser_id"] == expected_parser_id
+
+
+@pytest.mark.anyio("asyncio")
+async def test_generate_image_description_prefers_configured_vlm_model():
+    client = SimpleNamespace(generate_text=AsyncMock(return_value="image description"))
+    mcs = SimpleNamespace(
+        get_user_default_model_name=AsyncMock(return_value="default-vlm"),
+        get_vlm_client_by_model=AsyncMock(return_value=client),
+    )
+    document = SimpleNamespace(id=1, uploader_id=1, file_type="png")
+
+    text = await _generate_image_description(
+        file_content=b"fake-image",
+        document=document,
+        mcs=mcs,
+        _logger=SimpleNamespace(),
+        vlm_model_name="custom-vlm",
+    )
+
+    assert text == "image description"
+    mcs.get_vlm_client_by_model.assert_awaited_once_with(1, "custom-vlm")
+    mcs.get_user_default_model_name.assert_not_awaited()
+
+
+@pytest.mark.anyio("asyncio")
+async def test_pdf_ocr_fallback_is_used_when_enabled(monkeypatch, tmp_path):
+    pdf_path = tmp_path / "scan.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n")
+
+    processor = DocumentProcessor()
+    fake_reader = SimpleNamespace(load_data=AsyncMock(return_value=[]))
+    processor._readers["pdf"] = fake_reader
+
+    async def fake_ocr(path):
+        return "ocr text"
+
+    monkeypatch.setattr(processor, "_ocr_pdf_text", fake_ocr)
+
+    full_text = await processor.read_full_text(pdf_path, ocr_enabled=True)
+
+    assert full_text == "ocr text"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_transcribe_audio_with_timestamps_includes_language(monkeypatch, tmp_path):
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"segments": [{"text": "hello", "start": 0.0, "end": 1.0}]}
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, headers=None, data=None, files=None):
+            captured["url"] = url
+            captured["data"] = data
+            return FakeResponse()
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeAsyncClient)
+
+    segments = await transcribe_audio_with_timestamps(
+        file_content=b"ID3fake-mp3",
+        file_type="mp3",
+        model="whisper-1",
+        language="zh",
+    )
+
+    assert segments[0]["text"] == "hello"
+    assert captured["data"]["language"] == "zh"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_process_video_document_applies_runtime_config(monkeypatch):
+    captured = {}
+
+    class FakeTask:
+        def __init__(self, pipeline_config):
+            self.pipeline_config = pipeline_config
+            self.steps = []
+            self.completed = None
+
+        def set_step(self, step, status=None):
+            self.steps.append((step, status))
+
+        def start_step(self, step):
+            self.steps.append((step, "running"))
+
+        def finish_step(self, step, metrics=None):
+            self.steps.append((step, "done"))
+
+        def mark_completed(self, result):
+            self.completed = result
+
+    class FakeMinioClient:
+        async def upload_file(self, object_name, data, content_type):
+            captured.setdefault("frame_uploads", []).append((object_name, content_type))
+
+    async def fake_extract_frames_fixed(file_content, interval, max_frames):
+        captured["frame_interval"] = interval
+        captured["max_frames"] = max_frames
+        return [(b"frame", 1.0, 0)]
+
+    async def fake_describe_single(frames, vlm_client, prompt, *, logger, vlm_model, **kwargs):
+        captured["video_vlm_model"] = vlm_model
+        captured["video_vlm_client"] = vlm_client
+        # 逐帧描述：返回与 frames 同结构的 [(desc, ts, frame_idx)]
+        return [("frame description", frames[0][1], frames[0][2])]
+
+    async def fake_persist_parsed_text(document, full_text, session, logger):
+        captured["parsed_video_text"] = full_text
+        return "parsed/full_text.md"
+
+    async def fake_post_parse_tail(**kwargs):
+        captured["video_index_chunk_type"] = str(kwargs["chunk_type"])
+        sc = kwargs.get("splitting_config") or {}
+        captured["split_strategy"] = sc.get("strategy")
+        captured["split_kwargs"] = {"chunk_size": sc.get("chunk_size")}
+        captured["video_time_alignment"] = kwargs.get("time_alignment")
+        return {"chunk_count": 1, "indexed_count": 1, "total_questions": 0, "split_strategy": sc.get("strategy", "recursive")}
+
+    # fake ModelConfigPort：配置了 vlm_model 时不查默认，get_vlm_client_by_model 返回占位 client
+    fake_mcs = SimpleNamespace(
+        get_user_default_model_name=AsyncMock(return_value="default-vlm"),
+        get_vlm_client_by_model=AsyncMock(return_value="fake-vlm-client"),
+    )
+
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing.extract_frames_fixed",
+        fake_extract_frames_fixed,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing.describe_single",
+        fake_describe_single,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing.persist_parsed_text",
+        fake_persist_parsed_text,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing._run_post_parse_tail",
+        fake_post_parse_tail,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing._check_document_cancelled",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "novamind.shared.prompts.templates.PromptManager.get_template",
+        lambda name: "fake-prompt",
+    )
+    monkeypatch.setattr(
+        "novamind.shared.storage.client_factory.ClientFactory.get_minio_client",
+        AsyncMock(return_value=FakeMinioClient()),
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.repository.knowledge_base_repository.KnowledgeBaseRepository.get_by_id",
+        AsyncMock(return_value=SimpleNamespace(get_config=lambda: {})),
+    )
+
+    session = SimpleNamespace(
+        get=AsyncMock(return_value=SimpleNamespace(embedding_config={})),
+        commit=AsyncMock(),
+    )
+    document = SimpleNamespace(
+        id=1,
+        kb_id=1,
+        space_id=1,
+        uploader_id=1,
+        filename="demo.mp4",
+        file_type="mp4",
+        storage={"minio_object_name": "spaces/1/kbs/1/documents/1/demo.mp4"},
+    )
+    task = FakeTask(
+        {
+            "parsing": {
+                "video": {
+                    "strategy": "simple",
+                    "frame_interval": 7,
+                    "max_frames": 42,
+                    "vlm_description_enabled": True,
+                    "vlm_model": "video-vlm",
+                }
+            },
+            "splitting": {
+                "strategy": "recursive",
+                "chunk_size": 1000,
+                "video": {
+                    "strategy": "fixed_size",
+                    "chunk_size": 1400,
+                },
+            },
+        }
+    )
+
+    await process_video_document(
+        document,
+        b"fake-video",
+        session,
+        SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None),
+        task=task,
+        model_config_port=fake_mcs,
+    )
+
+    assert captured["frame_interval"] == 7
+    assert captured["max_frames"] == 42
+    assert captured["video_vlm_model"] == "video-vlm"
+    fake_mcs.get_user_default_model_name.assert_not_awaited()  # 配置了 vlm_model，不查默认
+    # 切分统一后无模态子键覆盖：顶层 strategy=recursive/chunk_size=1000 生效，
+    # 残留的 video 子键（fixed_size/1400）被忽略（SplittingConfig extra=ignore）。
+    assert captured["split_strategy"] == "recursive"
+    assert captured["split_kwargs"]["chunk_size"] == 1000
+    assert captured["video_index_chunk_type"] == "video"
+    assert "[00:00:01#0]" in captured["parsed_video_text"]  # 双锚点 [HH:MM:SS#frame_idx]
+    assert "frame description" in captured["parsed_video_text"]
+    # chunk 时间对齐：单帧 ts=1.0 idx=0，末帧 end=None（开放区间）；simple 策略无 frame_groups
+    ta = captured["video_time_alignment"]
+    assert ta is not None
+    assert ta["is_video"] is True
+    assert ta["timeline_map"][0] == (1.0, None)
+    assert "frame_groups" not in ta
+    assert task.completed["chunk_type"] == "video"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_process_audio_document_applies_runtime_config(monkeypatch):
+    captured = {}
+
+    class FakeTask:
+        def __init__(self, pipeline_config):
+            self.pipeline_config = pipeline_config
+            self.steps = []
+            self.completed = None
+
+        def set_step(self, step, status=None):
+            self.steps.append((step, status))
+
+        def start_step(self, step):
+            self.steps.append((step, "running"))
+
+        def finish_step(self, step, metrics=None):
+            self.steps.append((step, "done"))
+
+        def mark_completed(self, result):
+            self.completed = result
+
+    async def fake_transcribe(**kwargs):
+        captured["audio_model"] = kwargs["model"]
+        captured["audio_language"] = kwargs["language"]
+        return [{"text": "hello", "start": 0.0, "end": 1.0}]
+
+    async def fake_persist_parsed_text(document, full_text, session, logger):
+        captured["parsed_audio_text"] = full_text
+        return "parsed/full_text.md"
+
+    async def fake_post_parse_tail(**kwargs):
+        captured["audio_index_chunk_type"] = str(kwargs["chunk_type"])
+        sc = kwargs.get("splitting_config") or {}
+        captured["audio_split_strategy"] = sc.get("strategy")
+        captured["audio_split_kwargs"] = {"chunk_size": sc.get("chunk_size")}
+        captured["audio_time_alignment"] = kwargs.get("time_alignment")
+        return {"chunk_count": 1, "indexed_count": 1, "total_questions": 0, "split_strategy": sc.get("strategy", "recursive")}
+
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing.transcribe_audio_with_timestamps",
+        fake_transcribe,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing.persist_parsed_text",
+        fake_persist_parsed_text,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing._run_post_parse_tail",
+        fake_post_parse_tail,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing._check_document_cancelled",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.repository.knowledge_base_repository.KnowledgeBaseRepository.get_by_id",
+        AsyncMock(return_value=SimpleNamespace(get_config=lambda: {})),
+    )
+
+    fake_mcs = SimpleNamespace(
+        get_credentials_by_model=AsyncMock(return_value=None),
+        repo=SimpleNamespace(list_by_user=AsyncMock(return_value=[])),
+    )
+    # 批次 5b：media_processing 不再内部自建 ModelConfigService，改为参数注入 model_config_port
+
+    session = SimpleNamespace(
+        get=AsyncMock(return_value=SimpleNamespace(embedding_config={}, config={})),
+        commit=AsyncMock(),
+    )
+    document = SimpleNamespace(
+        id=2,
+        kb_id=1,
+        space_id=1,
+        uploader_id=1,
+        filename="demo.mp3",
+        file_type="mp3",
+        storage={"minio_object_name": "spaces/1/kbs/1/documents/2/demo.mp3"},
+    )
+    task = FakeTask(
+        {
+            "parsing": {
+                "audio": {
+                    "asr_model": "faster-whisper-tiny",
+                    "language": "zh",
+                }
+            },
+            "splitting": {
+                "strategy": "recursive",
+                "chunk_size": 1000,
+                "audio": {
+                    "strategy": "fixed_size",
+                    "chunk_size": 900,
+                },
+            },
+        }
+    )
+
+    await process_audio_document(document, b"fake-audio", session, SimpleNamespace(info=lambda *a, **k: None), task=task, model_config_port=fake_mcs)
+
+    assert captured["audio_model"] == "faster-whisper-tiny"
+    assert captured["audio_language"] == "zh"
+    # 切分统一后无模态子键覆盖：顶层 strategy=recursive/chunk_size=1000 生效，
+    # 残留的 audio 子键（fixed_size/900）被忽略（SplittingConfig extra=ignore）。
+    assert captured["audio_split_strategy"] == "recursive"
+    assert captured["audio_split_kwargs"]["chunk_size"] == 1000
+    assert captured["audio_index_chunk_type"] == "audio"
+    assert "[00:00:00#0] hello" in captured["parsed_audio_text"]  # 双锚点 [HH:MM:SS#seg_idx]
+    # chunk 时间对齐：单 segment start=0 end=1，is_video=False（不填 frame_indices）
+    ta = captured["audio_time_alignment"]
+    assert ta is not None
+    assert ta["is_video"] is False
+    assert ta["timeline_map"][0] == (0.0, 1.0)
+    assert task.completed["chunk_type"] == "audio"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_process_audio_document_loads_embedding_client_for_semantic_split(monkeypatch):
+    captured = {}
+
+    class FakeTask:
+        def __init__(self, pipeline_config):
+            self.pipeline_config = pipeline_config
+
+        def set_step(self, step, status=None):
+            return None
+
+        def start_step(self, step):
+            pass
+
+        def finish_step(self, step, metrics=None):
+            pass
+
+        def mark_completed(self, result):
+            captured["semantic_audio_result"] = result
+
+    async def fake_transcribe(**kwargs):
+        return [{"text": "hello", "start": 0.0, "end": 1.0}]
+
+    async def fake_get_embedding_client_static(session, user_id=None, model_name=None, model_config_port=None):
+        captured["semantic_user_id"] = user_id
+        captured["semantic_model_name"] = model_name
+        return "semantic-embed-client"
+
+    async def fake_split_md_text(md_text, strategy="recursive", embedding_client=None, **kwargs):
+        captured["semantic_strategy"] = strategy
+        captured["semantic_embedding_client"] = embedding_client
+        captured["semantic_split_kwargs"] = kwargs
+        return [("audio semantic chunk", {})]
+
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing.transcribe_audio_with_timestamps",
+        fake_transcribe,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.document_pipeline._get_embedding_client_static",
+        fake_get_embedding_client_static,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing._split_md_text",
+        fake_split_md_text,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing.persist_parsed_text",
+        AsyncMock(return_value="parsed/full_text.md"),
+    )
+    # 共享后置尾会调用这些叶子函数，需要 fake 掉以避免实际 DB/ES/向量化请求
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.document_pipeline._check_document_cancelled",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.document_pipeline._generate_embeddings_static",
+        AsyncMock(return_value=[None]),
+    )
+    fake_es_client = SimpleNamespace(bulk_index_chunks=AsyncMock(return_value=1))
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.document_pipeline._get_es_client_static",
+        AsyncMock(return_value=fake_es_client),
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing._check_document_cancelled",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.repository.knowledge_base_repository.KnowledgeBaseRepository.get_by_id",
+        AsyncMock(return_value=SimpleNamespace(get_config=lambda: {})),
+    )
+
+    fake_mcs = SimpleNamespace(
+        get_credentials_by_model=AsyncMock(return_value=None),
+        repo=SimpleNamespace(list_by_user=AsyncMock(return_value=[])),
+    )
+    # 批次 5b：media_processing 不再内部自建 ModelConfigService，改为参数注入 model_config_port
+
+    session = SimpleNamespace(
+        get=AsyncMock(return_value=SimpleNamespace(embedding_config={"model": "embed-model"}, config={})),
+        commit=AsyncMock(),
+    )
+    document = SimpleNamespace(
+        id=3,
+        kb_id=1,
+        space_id=1,
+        uploader_id=9,
+        filename="semantic.mp3",
+        file_type="mp3",
+        file_hash="",
+        storage={"minio_object_name": "spaces/1/kbs/1/documents/3/semantic.mp3"},
+    )
+    task = FakeTask(
+        {
+            "parsing": {
+                "audio": {
+                    "asr_model": "whisper-1",
+                    "language": "zh",
+                }
+            },
+            "splitting": {
+                "strategy": "semantic",
+                "max_chunk_size": 777,
+                "similarity_threshold": 0.61,
+                "batch_size": 13,
+            },
+        }
+    )
+
+    await process_audio_document(document, b"fake-audio", session, SimpleNamespace(info=lambda *a, **k: None), task=task, model_config_port=fake_mcs)
+
+    assert captured["semantic_strategy"] == "semantic"
+    assert captured["semantic_embedding_client"] == "semantic-embed-client"
+    assert captured["semantic_user_id"] == 9
+    assert captured["semantic_model_name"] == "embed-model"
+    assert captured["semantic_split_kwargs"]["max_chunk_size"] == 777
+    assert captured["semantic_split_kwargs"]["similarity_threshold"] == 0.61
+    assert captured["semantic_split_kwargs"]["batch_size"] == 13
+
+
+@pytest.mark.anyio("asyncio")
+async def test_split_md_text_semantic_uses_embedding_client(monkeypatch):
+    captured = {}
+
+    class FakeSemanticSplitter:
+        def __init__(self, embedding_client, max_chunk_size, similarity_threshold, batch_size):
+            captured["embedding_client"] = embedding_client
+            captured["max_chunk_size"] = max_chunk_size
+            captured["similarity_threshold"] = similarity_threshold
+            captured["batch_size"] = batch_size
+
+        async def split(self, doc_wrapper):
+            captured["doc_wrapper"] = doc_wrapper
+            return [{"text": "semantic chunk"}]
+
+    monkeypatch.setattr(DocumentRegistry, "get_splitter_class", lambda strategy: FakeSemanticSplitter)
+
+    chunks = await _split_md_text(
+        "semantic body",
+        strategy="semantic",
+        embedding_client="embed-client",
+        max_chunk_size=888,
+        similarity_threshold=0.55,
+        batch_size=11,
+    )
+
+    assert chunks == [("semantic chunk", {})]
+    assert captured["embedding_client"] == "embed-client"
+    assert captured["max_chunk_size"] == 888
+    assert captured["similarity_threshold"] == 0.55
+    assert captured["batch_size"] == 11
+    assert captured["doc_wrapper"][0]["text"] == "semantic body"
+
+
+@pytest.mark.anyio("asyncio")
+async def test_generate_questions_for_chunks_static_uses_question_generation_config(monkeypatch):
+    captured = {}
+
+    class FakeQuestion:
+        def __init__(self, question):
+            self.question = question
+
+    class FakeQGService:
+        def __init__(self, session=None, config=None, model_config_service=None):
+            captured["qg_config"] = config
+
+        async def generate_questions_batch(self, chunks, user_id=None):
+            captured["chunk_tuples"] = chunks
+            captured["qg_user_id"] = user_id
+            return [[FakeQuestion("q1"), FakeQuestion("q2")]]
+
+    async def fake_generate_embeddings_static(texts, embedding_config, session=None, user_id=None, model_config_port=None):
+        captured["question_texts"] = texts
+        captured["embedding_config"] = embedding_config
+        captured["embedding_user_id"] = user_id
+        return [[0.1], [0.2]]
+
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.question_generation_service.QuestionGenerationService",
+        FakeQGService,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.document_pipeline._generate_embeddings_static",
+        fake_generate_embeddings_static,
+    )
+
+    questions_list, embeddings_list = await _generate_questions_for_chunks_static(
+        chunks=["chunk body"],
+        document_title="Demo",
+        kb_config={
+            "question_generation": {
+                "enabled": True,
+                "llm": {
+                    "model": "test-llm-model",
+                    "temperature": 0.4,
+                    "top_p": 0.8,
+                    "max_tokens": 1024,
+                },
+                "max_questions_per_chunk": 4,
+                "prompt_template": "Prompt {{content}} / {{count}}",
+            }
+        },
+        embedding_config={"model": "embed-model"},
+        user_id=7,
+        session=SimpleNamespace(),
+    )
+
+    assert captured["qg_config"].enabled is True
+    assert captured["qg_config"].llm.model == "test-llm-model"
+    assert captured["qg_config"].llm.temperature == 0.4
+    assert captured["qg_config"].llm.top_p == 0.8
+    assert captured["qg_config"].llm.max_tokens == 1024
+    assert captured["qg_config"].max_questions_per_chunk == 4
+    assert captured["qg_config"].prompt_template == "Prompt {{content}} / {{count}}"
+    assert captured["chunk_tuples"] == [("chunk body", "Demo")]
+    assert captured["question_texts"] == ["q1", "q2"]
+    assert questions_list == [["q1", "q2"]]
+    assert embeddings_list == [[[0.1], [0.2]]]
+
+
+@pytest.mark.anyio("asyncio")
+async def test_process_video_document_grouped_strategy_passes_frame_groups(monkeypatch):
+    """grouped 策略：describe_grouped 返回多帧组 → frame_groups + 组首锚点 timeline 传到 tail。"""
+    captured = {}
+
+    class FakeTask:
+        def __init__(self, pipeline_config):
+            self.pipeline_config = pipeline_config
+            self.steps = []
+            self.completed = None
+
+        def start_step(self, step):
+            self.steps.append((step, "running"))
+
+        def finish_step(self, step, metrics=None):
+            self.steps.append((step, "done"))
+
+        def mark_completed(self, result):
+            self.completed = result
+
+    class FakeMinioClient:
+        async def upload_file(self, object_name, data, content_type):
+            pass
+
+    async def fake_extract_frames_fixed(file_content, interval, max_frames):
+        return [(b"f0", 0.0, 0), (b"f1", 5.0, 1), (b"f2", 10.0, 2), (b"f3", 15.0, 3)]
+
+    async def fake_describe_grouped(frames, group_size, vlm_client, prompt, *, logger, vlm_model, **kwargs):
+        captured["group_size"] = group_size
+        return [
+            ("group0 desc", 0.0, 5.0, [0, 1]),
+            ("group1 desc", 10.0, 15.0, [2, 3]),
+        ]
+
+    async def fake_persist_parsed_text(document, full_text, session, logger):
+        captured["parsed_video_text"] = full_text
+        return "parsed/full_text.md"
+
+    async def fake_post_parse_tail(**kwargs):
+        captured["video_time_alignment"] = kwargs.get("time_alignment")
+        return {"chunk_count": 2, "indexed_count": 2, "total_questions": 0, "split_strategy": "recursive"}
+
+    fake_mcs = SimpleNamespace(
+        get_user_default_model_name=AsyncMock(return_value="default-vlm"),
+        get_vlm_client_by_model=AsyncMock(return_value="fake-vlm-client"),
+    )
+
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing.extract_frames_fixed",
+        fake_extract_frames_fixed,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing.describe_grouped",
+        fake_describe_grouped,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing.persist_parsed_text",
+        fake_persist_parsed_text,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing._run_post_parse_tail",
+        fake_post_parse_tail,
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.media_processing._check_document_cancelled",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "novamind.shared.prompts.templates.PromptManager.get_template",
+        lambda name: "fake-prompt",
+    )
+    monkeypatch.setattr(
+        "novamind.shared.storage.client_factory.ClientFactory.get_minio_client",
+        AsyncMock(return_value=FakeMinioClient()),
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.repository.knowledge_base_repository.KnowledgeBaseRepository.get_by_id",
+        AsyncMock(return_value=SimpleNamespace(get_config=lambda: {})),
+    )
+
+    session = SimpleNamespace(
+        get=AsyncMock(return_value=SimpleNamespace(embedding_config={})),
+        commit=AsyncMock(),
+    )
+    document = SimpleNamespace(
+        id=1, kb_id=1, space_id=1, uploader_id=1,
+        filename="demo.mp4", file_type="mp4",
+        storage={"minio_object_name": "spaces/1/kbs/1/documents/1/demo.mp4"},
+    )
+    task = FakeTask({
+        "parsing": {
+            "video": {"strategy": "grouped", "group_size": 2, "vlm_model": "video-vlm"},
+        },
+        "splitting": {"strategy": "recursive", "chunk_size": 1000},
+    })
+
+    await process_video_document(
+        document, b"fake-video", session,
+        SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None),
+        task=task, model_config_port=fake_mcs,
+    )
+
+    assert captured["group_size"] == 2
+    # 拼接用组首帧锚点
+    assert "[00:00:00#0]" in captured["parsed_video_text"]  # 组0 锚点（组首 idx=0）
+    assert "[00:00:10#2]" in captured["parsed_video_text"]  # 组1 锚点（组首 idx=2）
+    # frame_groups 映射组首→组内所有帧 idx
+    ta = captured["video_time_alignment"]
+    assert ta["frame_groups"] == {0: [0, 1], 2: [2, 3]}
+    # timeline 用组首 ts：组0 (0.0, 下一组首 10.0)，组1 (10.0, None 末组)
+    assert ta["timeline_map"][0] == (0.0, 10.0)
+    assert ta["timeline_map"][2] == (10.0, None)
+
+
+@pytest.mark.anyio("asyncio")
+async def test_video_parsing_config_rejects_dedup_grouped():
+    """dedup_grouped 预留未实现已移除：VideoParsingConfig 拒绝该值。"""
+    from pydantic import ValidationError
+
+    from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+        VideoParsingConfig,
+    )
+
+    with pytest.raises(ValidationError):
+        VideoParsingConfig(strategy="dedup_grouped")
+
+
+def test_migrate_legacy_parsing_video_dedup_grouped_to_grouped():
+    """旧配置 video.strategy=dedup_grouped 迁移到 grouped（schema 收紧后避免反序列化 500）。"""
+    from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+        ParsingConfig,
+    )
+
+    parsed = ParsingConfig.model_validate({"video": {"strategy": "dedup_grouped"}})
+    assert parsed.video is not None
+    assert parsed.video.strategy == "grouped"
+
+
+def test_migrate_legacy_parsing_remote_pdf_parsers_to_full():
+    """已移除的 6 个远程 PDF parser 旧值迁移到 full（schema 收紧后避免反序列化 500）。"""
+    from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+        KnowledgeBaseConfig,
+        ParsingConfig,
+        PdfParsingConfig,
+    )
+
+    # 新格式 text.pdf.parser 选过远程值的降级到 full
+    for removed in ("docling", "mineru", "opendataloader", "paddleocr", "somark", "tcadp"):
+        parsed = ParsingConfig.model_validate(
+            {"text": {"pdf": {"strategy": "deepdoc", "parser": removed}}}
+        )
+        assert parsed.text is not None
+        assert parsed.text.pdf.parser == "full", f"新格式 {removed} 应迁移到 full"
+
+    # legacy deepdoc_parser_id=pdf_docling 等 → full
+    config = KnowledgeBaseConfig.model_validate(
+        {"parsing": {"strategy": "deepdoc", "deepdoc_parser_id": "pdf_mineru"}}
+    )
+    assert config.parsing.text.pdf.parser == "full"
+
+    # schema 已拒绝远程值（直接构造 PdfParsingConfig 抛 ValidationError）
+    import pytest as _pytest
+    from pydantic import ValidationError
+
+    with _pytest.raises(ValidationError):
+        PdfParsingConfig(strategy="deepdoc", parser="docling")
+
+
+def test_migrate_legacy_parsing_plain_to_full():
+    """旧配置 pdf parser=plain 迁移到 full（plain 已随前端 default/deepdoc 两选收敛移除）。"""
+    # 新格式 text.pdf.parser=plain → full
+    parsed = ParsingConfig.model_validate(
+        {"text": {"pdf": {"strategy": "deepdoc", "parser": "plain"}}}
+    )
+    assert parsed.text is not None
+    assert parsed.text.pdf.parser == "full"
+
+    # legacy deepdoc_parser_id=pdf_plain / deepdoc_pdf_mode=plain → full
+    config = KnowledgeBaseConfig.model_validate(
+        {
+            "parsing": {
+                "strategy": "deepdoc",
+                "deepdoc_parser_id": "pdf_plain",
+                "deepdoc_pdf_mode": "plain",
+            }
+        }
+    )
+    assert config.parsing.text.pdf.parser == "full"
+
+
+def test_excel_ppt_epub_reject_default_and_migrate_to_deepdoc():
+    """Excel/PPT/EPUB default 模式无 reader（DocumentRegistry 未注册，运行时报
+    Unsupported file type），仅支持 deepdoc；旧配置 default 迁移到 deepdoc，
+    避免 schema 收紧后反序列化 500。"""
+    import pytest as _pytest
+    from pydantic import ValidationError
+
+    from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+        DeepDocOnlyParsingConfig,
+    )
+
+    # schema 拒绝 default
+    with _pytest.raises(ValidationError):
+        DeepDocOnlyParsingConfig(strategy="default")
+
+    # 旧配置 default → deepdoc（新格式，含缺省 strategy 的空 dict）
+    parsed = ParsingConfig.model_validate(
+        {
+            "text": {
+                "excel": {"strategy": "default"},
+                "ppt": {"strategy": "default"},
+                "epub": {},
+            }
+        }
+    )
+    assert parsed.text is not None
+    assert parsed.text.excel.strategy == "deepdoc"
+    assert parsed.text.ppt.strategy == "deepdoc"
+    assert parsed.text.epub.strategy == "deepdoc"
+

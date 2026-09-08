@@ -7,7 +7,7 @@
 两张注册表：
 
 - ``SCHEMA_MIGRATIONS``：新增列 ``(表名, 列名, ALTER DDL)``，检测 ``SHOW COLUMNS``
-  缺列则补建。结构由 ``tests/test_schema_migrations.py`` 校验。
+  缺列则补建。结构由 ``tests/core/test_schema_migrations.py`` 校验。
 - ``CONSTRAINT_MIGRATIONS``：唯一约束/索引变更 ``(表名, 待删旧索引, 待建新索引,
   ADD DDL)``，检测新索引存在则跳过；不存在则先 drop 旧索引（若有）再按 DDL 建
   新索引。用于约束口径变更（如去重范围调整）时同步存量库。

@@ -297,7 +297,7 @@ class AppLifespanManager:
           约束变更时同步存量库。
 
         新增条目分别追加到 ``core.database.schema_migrations`` 对应注册表，
-        结构由 ``tests/test_schema_migrations.py`` 校验。
+        结构由 ``tests/core/test_schema_migrations.py`` 校验。
         """
         db_engine = get_engine()
         for table, column, ddl in SCHEMA_MIGRATIONS:
