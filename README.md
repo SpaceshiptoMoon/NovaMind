@@ -164,7 +164,7 @@ docker compose up -d --build
 
 - `.env` 管理基础设施密码和后端密钥
 - `docker/configs/docker.yaml` 是 Docker 运行时挂载配置
-- `default.yaml` 负责后端基础配置，敏感值通常由环境变量覆盖
+- `default.yaml` 负责后端基础配置，同样以只读方式挂载进容器；`*.yaml` 不打进镜像，防止本地真实密钥泄漏进镜像层，敏感值通常由环境变量覆盖
 
 ### 方式三：本地开发
 
@@ -345,7 +345,7 @@ src/features/{module}/
 
 | 文件 | 用途 |
 | --- | --- |
-| `default.yaml` | 基础配置，所有环境共享 |
+| `default.yaml` | 基础配置，所有环境共享（Docker 部署时挂载进容器） |
 | `development.yaml` | 开发环境覆盖（`--config development`） |
 | `production.yaml` | 生产环境覆盖（`--config production`） |
 | `testing.yaml` | 测试环境配置 |

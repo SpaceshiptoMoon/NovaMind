@@ -7,7 +7,9 @@
 #   docker compose down
 #   docker compose up -d --build
 #
-# Runtime config file mount:
+# Runtime config file mounts:
+#   ./backend/src/setting/yaml_config/yaml/default.yaml -> 容器内同路径（deploy 脚本已从
+#     default.example 生成；*.yaml 不打进镜像，防止本地真实密钥泄漏进镜像层）
 #   ./docker/configs/docker.yaml -> /app/src/setting/yaml_config/yaml/docker.yaml
 #
 # Infra ports (mysql/redis/minio/es) are bound to 127.0.0.1 so they are reachable
@@ -26,6 +28,7 @@ services:
     env_file:
       - .env
     volumes:
+      - ./backend/src/setting/yaml_config/yaml/default.yaml:/app/src/setting/yaml_config/yaml/default.yaml:ro
       - ./docker/configs/docker.yaml:/app/src/setting/yaml_config/yaml/docker.yaml:ro
     depends_on:
       mysql:
