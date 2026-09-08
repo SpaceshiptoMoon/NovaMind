@@ -256,16 +256,17 @@ async def process_document_task(
             except Exception as cache_err:
                 logger.warning("搜索缓存失效失败", kb_id=kb_id, error=str(cache_err))
 
-            # 7. 移除追踪映射
-            await unbind_job(document_id)
+            # 7. 移除追踪映射（任务已 COMMIT 成功，unbind 失败不应让 arq 把
+            #    已完成的 job 标记为失败；残留映射由活跃检查自愈）
+            await _unbind_job_safely(document_id, job_id=job_id)
             logger.info("arq 任务完成：文档处理成功", document_id=document_id, job_id=job_id)
 
         except DocumentCancelledError:
             # 用户主动取消
             logger.info("文档处理被用户取消", document_id=document_id, job_id=job_id)
-            await session.rollback()
+            await _rollback_session_safely(session, document_id=document_id, job_id=job_id)
             await _handle_cancellation(document_id, space_id)
-            await unbind_job(document_id)
+            await _unbind_job_safely(document_id, job_id=job_id)
 
         except TransientBusyError as asr_busy:
             # 本地 ASR 忙碌（正在转写其它音频），不是错误，延后重入队。
@@ -278,7 +279,7 @@ async def process_document_task(
                 job_id=job_id,
                 defer_seconds=asr_defer_seconds,
             )
-            await session.rollback()
+            await _rollback_session_safely(session, document_id=document_id, job_id=job_id)
 
             # 任务状态回退到 PENDING，不累加重试次数
             task.status = TaskStatus.PENDING
@@ -286,8 +287,8 @@ async def process_document_task(
             task.error_message = f"[ASR 忙碌，{asr_defer_seconds}s 后重试] {asr_busy.message}"
             await session.commit()
 
-            # 解绑旧 job 映射，让新 job 可以绑定
-            await unbind_job(document_id)
+            # 解绑旧 job 映射，让新 job 可以绑定（失败不阻断重新入队，残留由活跃检查自愈）
+            await _unbind_job_safely(document_id, job_id=job_id)
 
             # 延迟重新入队（用 arq 的 _defer_ 参数实现延迟投递）
             from novamind.shared.mq import get_arq_pool
@@ -330,18 +331,29 @@ async def process_document_task(
             retry_delay_seconds = ctx.get("retry_delay_seconds", _get_task_queue_retry_delay_seconds())
             retry_meta = _build_retry_observability(max_tries, task_retry_count)
             if job_try >= max_tries:
-                # 最终失败：先回滚 pipeline 残留变更，再标记 FAILED
-                await session.rollback()
+                # 最终失败：先回滚 pipeline 残留变更，再标记 FAILED。
+                # 回滚用安全版：内存耗尽时 rollback 自身可能 MemoryError，
+                # 不能让它冲掉 _ensure_mark_failed（标记走独立会话/裸 SQL，不依赖本会话）
+                await _rollback_session_safely(session, document_id=document_id, job_id=job_id)
 
-                # 强制标记 FAILED（优先用独立 session，兜底用 raw SQL）
+                # 强制标记 FAILED（优先用独立 session，兜底用 raw SQL；内部三层兜底不会抛出）
                 await _ensure_mark_failed(document_id, str(e), job_id=job_id, max_tries=max_tries, retry_count=task_retry_count)
-                if task_batch_id:
-                    refreshed = await task_repo.get_by_job_id(job_id) if job_id != "unknown" else None
-                    if not refreshed:
-                        refreshed = await task_repo.get_by_document_id(document_id)
-                    if refreshed and refreshed.batch_id:
-                        await batch_repo.refresh_summary(refreshed.batch_id)
-                        await session.commit()
+                # 批次摘要刷新走主会话，会话可能已不可用——失败只告警，不影响任务终态
+                try:
+                    if task_batch_id:
+                        refreshed = await task_repo.get_by_job_id(job_id) if job_id != "unknown" else None
+                        if not refreshed:
+                            refreshed = await task_repo.get_by_document_id(document_id)
+                        if refreshed and refreshed.batch_id:
+                            await batch_repo.refresh_summary(refreshed.batch_id)
+                            await session.commit()
+                except Exception as summary_err:
+                    logger.warning(
+                        "批次摘要刷新失败",
+                        document_id=document_id,
+                        job_id=job_id,
+                        error=str(summary_err),
+                    )
 
                 # 清理 ES 残留数据（非关键，失败不影响状态）
                 try:
@@ -354,7 +366,7 @@ async def process_document_task(
                 except Exception as cleanup_err:
                     logger.warning("清理 ES 数据失败", document_id=document_id, error=str(cleanup_err))
 
-                await unbind_job(document_id)
+                await _unbind_job_safely(document_id, job_id=job_id)
                 # 最终失败不再 raise，避免 arq 尝试无效重试
             else:
                 current_retry_count = task_retry_count + 1
@@ -367,15 +379,27 @@ async def process_document_task(
                     next_retry_at=next_retry_at,
                     **retry_meta,
                 )
-                await session.rollback()
-                await _mark_retrying(
-                    document_id=document_id,
-                    retry_count=current_retry_count,
-                    max_tries=max_tries,
-                    retry_delay_seconds=retry_delay_seconds,
-                    error_message=str(e),
-                    job_id=job_id,
-                )
+                # 回滚 + 标记重试都不允许阻断 raise Retry：doc 574 事故二中
+                # rollback 因 MemoryError 再抛，Retry 没抛出 → arq 按未声明重试的
+                # 裸异常直接终判 → 任务行卡 PROCESSING 成孤儿。标记失败也不阻断：
+                # 任务行留在 PROCESSING，下次尝试的幂等校验照样放行重跑。
+                await _rollback_session_safely(session, document_id=document_id, job_id=job_id)
+                try:
+                    await _mark_retrying(
+                        document_id=document_id,
+                        retry_count=current_retry_count,
+                        max_tries=max_tries,
+                        retry_delay_seconds=retry_delay_seconds,
+                        error_message=str(e),
+                        job_id=job_id,
+                    )
+                except Exception as mark_err:
+                    logger.warning(
+                        "标记自动重试状态失败，仍交由 arq 重试",
+                        document_id=document_id,
+                        job_id=job_id,
+                        error=str(mark_err),
+                    )
                 from arq import Retry
                 raise Retry(retry_delay_seconds)
 
@@ -413,6 +437,40 @@ async def _mark_retrying(
         if task.batch_id:
             await batch_repo.refresh_summary(task.batch_id)
         await session.commit()
+
+
+async def _rollback_session_safely(session: AsyncSession, *, document_id: int, job_id: Optional[str]) -> None:
+    """回滚会话；失败不抛出。
+
+    整机内存耗尽时 rollback 自身要分配内存，可能再抛 MemoryError（doc 574 事故二）：
+    它一旦冲出异常处理器，`raise Retry` / 标记 FAILED 都不会执行，arq 按未声明
+    重试的裸异常直接终判，任务行被留在 PROCESSING 成孤儿。故回滚只尽力而为，
+    绝不阻断后续终态动作（标记用的是独立会话/裸 SQL，不依赖本会话可用）。
+    """
+    try:
+        await session.rollback()
+    except Exception as rollback_err:
+        logger.warning(
+            "会话回滚失败，继续执行任务终态标记",
+            document_id=document_id,
+            job_id=job_id,
+            error=str(rollback_err),
+        )
+
+
+async def _unbind_job_safely(document_id: int, *, job_id: Optional[str]) -> None:
+    """移除 tracker 映射；失败不抛出（残留映射由活跃检查发现终判结果时自愈清理）。"""
+    from novamind.shared.mq.task_tracker import unbind_job
+
+    try:
+        await unbind_job(document_id)
+    except Exception as unbind_err:
+        logger.warning(
+            "移除任务映射失败，将由活跃检查自愈",
+            document_id=document_id,
+            job_id=job_id,
+            error=str(unbind_err),
+        )
 
 
 async def _ensure_mark_failed(

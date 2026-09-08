@@ -437,3 +437,115 @@ def test_enqueue_still_blocks_when_db_has_active_task():
     """真实排队场景：DB 有 PENDING 活跃任务行 → 仍按「正在处理」拒绝，不误杀。"""
     with pytest.raises(DocumentAlreadyProcessingError):
         asyncio.run(_run_enqueue_zombie_case(latest_task_status=TaskStatus.PENDING))
+
+
+# ========== process_document_task：MemoryError 雪崩不丢 Retry、不留孤儿 ==========
+
+
+class _RollbackBrokenSession:
+    """代理 AsyncSession：一切照常，唯独 rollback 抛 MemoryError。
+
+    模拟 doc 574 事故二：整机内存耗尽时 rollback 自身分配内存失败再抛，
+    曾导致 raise Retry 丢失、任务行卡 PROCESSING 成孤儿。
+    """
+
+    def __init__(self, inner):
+        self._inner = inner
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    async def rollback(self):
+        raise MemoryError("simulated rollback failure (RAM exhausted)")
+
+
+def test_memory_error_cascade_still_raises_retry_and_marks_task(monkeypatch):
+    """双重雪崩场景：pipeline 抛 MemoryError 后 rollback 也抛 MemoryError。
+
+    修复后必须：Retry 仍被抛出（arq 按声明重试），且任务行被 _mark_retrying
+    标记为 PENDING + 自动重试信息，而不是留在 PROCESSING 成孤儿。
+    """
+    from arq import Retry
+
+    from novamind.features.knowledge_space.services import document_pipeline as pipeline_module
+    from novamind.features.knowledge_space.tasks.document_tasks import process_document_task
+    from novamind.shared.storage.client_factory import ClientFactory
+
+    async def _run():
+        engine = await _setup_sqlite()
+        Session = async_sessionmaker(engine, expire_on_commit=False)
+        async with Session() as session:
+            session.add(
+                Document(
+                    id=574,
+                    space_id=2,
+                    kb_id=4,
+                    uploader_id=1,
+                    filename="a.txt",
+                    file_type="txt",
+                    file_size=1,
+                    file_hash="a" * 64,
+                    storage={"minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
+                )
+            )
+            session.add(
+                DocumentTask(
+                    id=1,
+                    batch_id=1,
+                    document_id=574,
+                    kb_id=4,
+                    space_id=2,
+                    status=TaskStatus.PENDING,
+                    job_id="job-x",
+                )
+            )
+            await session.commit()
+
+            broken = _RollbackBrokenSession(session)
+
+            @asynccontextmanager
+            async def _fake_get_db_session():
+                yield broken
+
+            monkeypatch.setattr(database_module, "get_db_session", _fake_get_db_session)
+
+            async def _fake_pipeline(**kwargs):
+                raise MemoryError("simulated parse failure (RAM exhausted)")
+
+            monkeypatch.setattr(pipeline_module, "execute_document_pipeline", _fake_pipeline)
+
+            class _FakeMinio:
+                async def download_document(self, bucket_name, object_name):
+                    return b"fake"
+
+            async def _fake_get_minio_client():
+                return _FakeMinio()
+
+            monkeypatch.setattr(ClientFactory, "get_minio_client", staticmethod(_fake_get_minio_client))
+
+            async def _fake_unbind(document_id):
+                pass
+
+            monkeypatch.setattr(task_tracker_module, "unbind_job", _fake_unbind)
+
+            ctx = {
+                "job_id": "job-x",
+                "job_try": 1,
+                "task_queue_max_tries": 3,
+                "retry_delay_seconds": 60,
+            }
+
+            with pytest.raises(Retry):
+                await process_document_task(ctx, document_id=574, kb_id=4, space_id=2)
+
+            # 任务行被 _mark_retrying 标记（独立会话路径），不再是 PROCESSING 孤儿
+            task = (await session.execute(select(DocumentTask))).scalars().one()
+            return task
+
+        await engine.dispose()
+
+    task = asyncio.run(_run())
+
+    assert task.status == TaskStatus.PENDING
+    assert task.retry_count == 1
+    assert "自动重试" in (task.error_message or "")
