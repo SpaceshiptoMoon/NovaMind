@@ -135,6 +135,85 @@ async def is_document_actively_processing(document_id: int) -> bool:
         return False
 
 
+async def purge_document_jobs(document_id: int, *, exclude_job_id: Optional[str] = None) -> list:
+    """清理 arq 层指向该文档的所有残留僵尸 job（不依赖 worker 存活）。
+
+    背景（doc 574 事故）：worker 崩溃或孤儿恢复只推进了 DB 任务状态，
+    arq 队列条目 / job 定义 / in-progress 键与 tracker 映射无人清理，
+    job 永久残留导致文档被误判「正在处理」而无法重试，且一旦被 worker
+    消费还会复活已终结的任务重跑。
+
+    arq 的 ``Job.abort()`` 依赖存活 worker 消费 abort 队列，worker 已死时
+    永远等不到结果，故此处直接做 Redis 键手术；同时写入 abort-jobs 信号，
+    若 worker 仍存活且该 job 恰在执行，可触发协作式取消。
+
+    Args:
+        document_id: 文档 ID
+        exclude_job_id: 跳过该 job（孤儿恢复重入队场景下保护新 job）
+
+    Returns:
+        被清理的 job_id 列表
+    """
+    import pickle
+    import time
+
+    import arq.constants as arq_constants
+
+    from novamind.shared.mq import get_arq_pool
+
+    pool = await get_arq_pool()
+    queue_name = getattr(pool, "queue_name", "arq:queue")
+
+    # 候选集 = tracker 当前绑定的 job（可能已不在队列、仅键残留）
+    #         ∪ 队列中指向该文档的 process_document_task job
+    #           （含 job_id 已不被任何 DB 字段引用的旧 job，如 doc-task-{task_id} 格式）
+    tracked_job_id = await doc_tracker.get_job_id(document_id)
+    candidates = {tracked_job_id} if tracked_job_id else set()
+    for raw_id in await pool.zrange(queue_name, 0, -1):
+        candidates.add(raw_id.decode() if isinstance(raw_id, bytes) else str(raw_id))
+    candidates.discard(exclude_job_id)
+
+    purged: list = []
+    now_ms = int(time.time() * 1000)
+    for job_id in sorted(candidates):
+        job_def_raw = await pool.get(arq_constants.job_key_prefix + job_id)
+        if not job_def_raw:
+            continue
+        try:
+            job_def = pickle.loads(job_def_raw)
+        except Exception as e:
+            logger.warning(
+                "残留 job 定义反序列化失败，跳过",
+                document_id=document_id,
+                job_id=job_id,
+                error=str(e),
+            )
+            continue
+        if job_def.get("f") != "process_document_task":
+            continue
+        if (job_def.get("k") or {}).get("document_id") != document_id:
+            continue
+
+        # abort 信号：worker 存活且该 job 正在执行时可触发取消
+        await pool.zadd(arq_constants.abort_jobs_ss, {job_id: now_ms})
+        # 键手术：worker 已死时 abort 队列无人消费，直接移除 arq 层键
+        await pool.zrem(queue_name, job_id)
+        await pool.delete(
+            arq_constants.job_key_prefix + job_id,
+            arq_constants.retry_key_prefix + job_id,
+            arq_constants.in_progress_key_prefix + job_id,
+        )
+        purged.append(job_id)
+
+    if purged:
+        logger.warning(
+            "已清理文档残留 arq 僵尸 job",
+            document_id=document_id,
+            purged_job_ids=purged,
+        )
+    return purged
+
+
 async def mark_document_cancelled(document_id: int) -> None:
     await doc_tracker.mark_cancelled(document_id)
 

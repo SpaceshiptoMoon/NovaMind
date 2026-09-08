@@ -564,6 +564,13 @@ async def recover_orphan_documents() -> int:
                 task.mark_failed("[自动重试次数超限，需人工介入]")
                 task.retry_count = retry_count + 1
                 await session.commit()
+                # 标记失败的同时必须清理 arq 层残留（tracker 映射 + 队列/in-progress 僵尸 job）。
+                # 此前只改 DB：job 永久残留在 arq 队列会让文档被误判「正在处理」而无法重试，
+                # 且被 worker 消费后还会复活本已失败的任务重跑（doc 574 事故）。
+                from novamind.shared.mq.task_tracker import purge_document_jobs, unbind_job
+
+                await unbind_job(task.document_id)
+                await purge_document_jobs(task.document_id)
                 logger.warning(
                     "孤儿文档恢复次数超限，已标记失败",
                     document_id=task.document_id,
@@ -594,6 +601,11 @@ async def recover_orphan_documents() -> int:
                 task.error_message = None
                 await session.commit()
                 await bind_job_to_document(task.document_id, job.job_id)
+                # 清理旧残留 job（含 job_id 已不被任何 DB 字段引用的旧 job，如 doc-task-{task_id}），
+                # 防止旧 job 复活本任务或与新 job 并发处理同一文档（doc-task-752 僵尸事故）
+                from novamind.shared.mq.task_tracker import purge_document_jobs
+
+                await purge_document_jobs(task.document_id, exclude_job_id=job.job_id)
 
                 recovered += 1
                 logger.info(

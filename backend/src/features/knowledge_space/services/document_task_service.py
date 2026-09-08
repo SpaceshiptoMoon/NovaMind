@@ -445,10 +445,22 @@ class DocumentTaskService:
         pipeline_config_override: Optional[dict] = None,
     ):
         """创建任务记录并入队文档处理。"""
-        from novamind.shared.mq.task_tracker import is_document_actively_processing
+        from novamind.shared.mq.task_tracker import is_document_actively_processing, purge_document_jobs
 
         if await is_document_actively_processing(document.id):
-            raise DocumentAlreadyProcessingError(document.id)
+            # tracker/arq 层显示活跃，但能走到这里说明调用方先做的 DB 活跃任务校验已通过。
+            # 复核 DB 区分两种情况（DB 任务行是唯一事实源）：
+            # 1. 并发竞态/真实排队——此时 DB 已出现活跃任务行 → 仍按「正在处理」拒绝；
+            # 2. job 所属任务行已终结、仅 arq 层残留僵尸 job（worker 崩溃/孤儿恢复未清理，
+            #    doc 574 事故）→ 清理后放行，避免文档被永久锁死无法重试。
+            if await DocumentTaskRepository(self.session).get_active_by_document_id(document.id):
+                raise DocumentAlreadyProcessingError(document.id)
+            purged_job_ids = await purge_document_jobs(document.id)
+            self.logger.warning(
+                "检测到已终结任务残留的僵尸 arq job，已清理并放行",
+                document_id=document.id,
+                purged_job_ids=purged_job_ids,
+            )
 
         kb = await self.kb_repo.get_by_id(document.kb_id)
         pipeline_config = (
