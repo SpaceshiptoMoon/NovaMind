@@ -427,7 +427,7 @@ npm run format
 - 总体文档入口：[`docs/README.md`](./docs/README.md)
 - 公开路线图：[`ROADMAP.md`](./ROADMAP.md)
 - 仓库结构导航：[`docs/project-structure-navigation.md`](./docs/project-structure-navigation.md)
-- 后端说明：[`backend/README.md`](./backend/README.md)
+- 后端说明：[`backend/README.md`](./backend/README.md)（API 参考在 [`backend/docs/api/`](./backend/docs/api/)，覆盖用户、空间、问答、深度研究、评测、Agent、技能、简历挖掘）
 - 前端说明：[`frontend/README.md`](./frontend/README.md)
 - 贡献指南：[`CONTRIBUTING.md`](./CONTRIBUTING.md)
 - 安全策略：[`SECURITY.md`](./SECURITY.md)

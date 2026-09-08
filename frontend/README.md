@@ -93,17 +93,16 @@ npm run preview
 
 主要路由组包括：
 
-- `/`
-- `/login`
-- `/forgot-password`
-- `/reset-password`
-- `/home`
-- `/home/spaces`
-- `/home/workspace/chat`
-- `/home/workspace/agents`
-- `/home/workspace/research`
-- `/home/workspace/skills`
-- `/home/apps`
+- `/`、`/login`、`/register`、`/forgot-password`、`/reset-password`
+- `/home` — 个人资料、通知、修改密码、模型设置
+- `/home/admin/users`、`/home/admin/roles` — 用户管理与角色授权（管理员）
+- `/home/spaces` — 空间、知识库、KB 配置、文档、任务、评测、检索
+- `/home/workspace/chat` — AI 聊天工作区
+- `/home/workspace/agents` — Agent 列表与聊天
+- `/home/workspace/research` — 深度研究与历史记录
+- `/home/workspace/skills` — 技能广场与管理审核
+- `/home/apps` — 应用中心（简历挖掘）
+- `/403` — 无权限页
 
 ## 前端协作约定
 
@@ -117,4 +116,3 @@ npm run preview
 - 项目总览：[`../README.md`](../README.md)
 - 后端说明：[`../backend/README.md`](../backend/README.md)
 - 文档总入口：[`../docs/README.md`](../docs/README.md)
-- 前端专题文档：[`../docs/frontend/FRONTEND-MULTIMODAL-DESIGN.md`](../docs/frontend/FRONTEND-MULTIMODAL-DESIGN.md)

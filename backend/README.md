@@ -182,13 +182,14 @@ pytest -m "not slow"
 
 后端对外暴露的主要接口包括：
 
-- `/api/v1/user`
-- `/api/v1/spaces`
-- `/api/v1/qa`
-- `/api/v1/ai-chat`
-- `/api/v1/agent`
-- `/api/v1/apps`
-- `/api/v1/notifications`
+- `/api/v1/user` — 认证、用户管理、RBAC 角色、模型配置、搜索配置、应用门禁
+- `/api/v1/spaces` — 空间、成员、知识库、文档、任务、检索、深度研究、评测
+- `/api/v1/qa` — 基于知识库的问答
+- `/api/v1/ai-chat` — 流式对话和附件交互
+- `/api/v1/agent` — Agent、MCP Server、工具
+- `/api/v1/skills` — 技能广场
+- `/api/v1/apps` — 应用中心（简历挖掘）
+- `/api/v1/notifications` — 站内通知和偏好设置
 
 查看实时接口详情，请启动服务后访问：
 
