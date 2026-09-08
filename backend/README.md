@@ -14,7 +14,6 @@ NovaMind 后端是一个基于 FastAPI 的应用，负责整个平台的认证�
 - `Agent 平台`：Agent、MCP Server、工具编排、安全执行
 - `技能广场`：技能上传、审核、安装和元数据管理
 - `应用与通知`：场景应用、站内通知、偏好设置
-- `ClawMate`：浏览器终端会话和 AI 辅助工作区接口
 
 ## 技术栈
 
@@ -41,7 +40,6 @@ backend/
 |  |- features/                  # 领域模块
 |  |  |- agent/
 |  |  |- app/
-|  |  |- clawmate/
 |  |  |- deep_research/
 |  |  |- knowledge_space/
 |  |  |- notification/
@@ -180,7 +178,6 @@ pytest -m "not slow"
 - `/api/v1/agent`
 - `/api/v1/apps`
 - `/api/v1/notifications`
-- `/api/v1/clawmate`
 
 查看实时接口详情，请启动服务后访问：
 

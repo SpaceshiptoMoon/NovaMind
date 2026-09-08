@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 
 _MEMORY_LIMIT_PER_USER_AGENT = 50
 # C-2：记忆条数上限改由 ToolContext 注入（context key: memory_limit_per_user_agent）。
-# 保留模块常量作 fallback 默认——feature 装配点（agent/clawmate）可经 context 覆盖，
+# 保留模块常量作 fallback 默认——feature 装配点（agent）可经 context 覆盖，
 # 引擎本身不内嵌 app 策略数值。
 
 

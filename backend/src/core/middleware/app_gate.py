@@ -1,13 +1,13 @@
 """AppGateMiddleware：应用级权限门禁（纯 ASGI 中间件）。
 
 三级权限模型的应用层执行点——管理员可禁用普通用户的具体应用
-（qa/agent/skill/app/clawmate），被禁应用的 HTTP 与 WebSocket 请求在此拦截。
+（qa/agent/skill/app），被禁应用的 HTTP 与 WebSocket 请求在此拦截。
 
-为什么是纯 ASGI 中间件而不是 router 级 ``dependencies``：agent/clawmate/qa
+为什么是纯 ASGI 中间件而不是 router 级 ``dependencies``：agent/qa
 的 WebSocket 端点用 subprotocol ``bearer.<jwt>`` 认证（浏览器 WS 无法带
 Authorization 头），FastAPI router 级依赖里的 ``HTTPBearer`` 会拒绝 WS 握手；
 纯 ASGI 中间件按 ``scope["type"]`` 分流，http/websocket 各自提取 token，
-单一收口点覆盖两个传输层，五个 feature 的路由文件零改动。
+单一收口点覆盖两个传输层，四个 feature 的路由文件零改动。
 
 安全语义：门禁是产品可见性控制，不是安全边界——认证/撤销检查仍在端点依赖
 链（get_current_user / ws_authenticate），空间内容权限仍在 space_members 表。

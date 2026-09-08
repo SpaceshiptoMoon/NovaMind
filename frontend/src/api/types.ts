@@ -56,7 +56,7 @@ export interface MyPermissionsResponse {
 }
 
 // 可门禁的应用代码（与后端 core/authorization/app_codes.AppCode 对齐）
-export const APP_CODES = ['qa', 'agent', 'skill', 'app', 'clawmate'] as const
+export const APP_CODES = ['qa', 'agent', 'skill', 'app'] as const
 export type AppCodeType = (typeof APP_CODES)[number]
 
 // 应用显示名（用户管理页勾选弹窗与侧边栏共用）
@@ -65,7 +65,6 @@ export const APP_CODE_LABELS: Record<AppCodeType, string> = {
   agent: '智能体',
   skill: '技能广场',
   app: '应用中心（简历挖掘）',
-  clawmate: 'ClawMate',
 }
 
 export interface UserAppAccess {
@@ -1734,42 +1733,6 @@ export interface NotificationPreference {
   email_enabled: boolean
   in_app_enabled: boolean
   types_enabled: string[] | null
-}
-
-// ===================== ClawMate 对话 =====================
-
-/** POST /clawmate/chat 请求 */
-export interface ClawMateChatRequest {
-  content: string
-  model?: string | null
-}
-
-/** SSE done 事件数据 */
-export interface ClawMateChatDoneData {
-  response: string
-  iterations: number
-  tool_calls_count: number
-  total_tokens: number
-}
-
-/** 工具调用追踪记录（前端维护） */
-export interface ClawMateToolCallRecord {
-  name: string
-  arguments: Record<string, unknown>
-  call_id: string
-  status: 'running' | 'completed' | 'failed'
-  result?: string
-}
-
-/** 聊天消息（前端维护） */
-export interface ClawMateChatMessage {
-  id: number
-  role: 'user' | 'assistant' | 'tool'
-  content: string
-  reasoning?: string
-  tool_call_id?: string | null
-  tool_name?: string | null
-  created_at: string
 }
 
 // ===================== 全模态常量 =====================

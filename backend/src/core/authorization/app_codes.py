@@ -16,9 +16,8 @@ class AppCode:
     AGENT = "agent"
     SKILL = "skill"
     APP = "app"  # 应用中心：简历挖掘等
-    CLAWMATE = "clawmate"
 
-    ALL = [QA, AGENT, SKILL, APP, CLAWMATE]
+    ALL = [QA, AGENT, SKILL, APP]
 
 
 # 应用代码 → 该应用的 API 路由前缀（含 manifest 挂载的 API_V1_PREFIX）
@@ -31,7 +30,6 @@ GATED_APP_PREFIXES: dict[str, tuple[str, ...]] = {
     AppCode.AGENT: ("/api/v1/agent",),
     AppCode.SKILL: ("/api/v1/skills",),
     AppCode.APP: ("/api/v1/apps",),
-    AppCode.CLAWMATE: ("/api/v1/clawmate",),
 }
 
 

@@ -1,6 +1,6 @@
 # NovaMind 前端
 
-NovaMind 前端是一个基于 Vue 3 + TypeScript 的应用，为知识空间、知识库管理、RAG 聊天、深度研究、Agent、技能广场、通知中心、应用中心和 ClawMate 提供用户界面。
+NovaMind 前端是一个基于 Vue 3 + TypeScript 的应用，为知识空间、知识库管理、RAG 聊天、深度研究、Agent、技能广场、通知中心和应用中心提供用户界面。
 
 ## 技术栈
 
@@ -24,7 +24,6 @@ NovaMind 前端是一个基于 Vue 3 + TypeScript 的应用，为知识空间、
 - `research`：深度研究与历史记录
 - `skill`：技能广场、管理审核、技能详情
 - `app`：应用中心与简历挖掘等场景页
-- `clawmate`：浏览器终端和 AI 辅助工作区
 - `user`：个人资料、通知、修改密码、模型配置、用户管理
 
 ## 目录结构
@@ -104,7 +103,6 @@ npm run preview
 - `/home/workspace/agents`
 - `/home/workspace/research`
 - `/home/workspace/skills`
-- `/home/workspace/clawmate`
 - `/home/apps`
 
 ## 前端协作约定

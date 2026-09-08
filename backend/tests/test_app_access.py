@@ -24,7 +24,6 @@ class TestMatchAppCode:
         assert match_app_code("/api/v1/qa/sessions") == "qa"
         assert match_app_code("/api/v1/skills") == "skill"
         assert match_app_code("/api/v1/apps/resume") == "app"
-        assert match_app_code("/api/v1/clawmate/ws") == "clawmate"
         assert match_app_code("/api/v1/ai-chat/history") == "qa"
 
     def test_segment_boundary_not_prefix(self):

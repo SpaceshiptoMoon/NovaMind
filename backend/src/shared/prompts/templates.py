@@ -1,7 +1,7 @@
 """
 提示词模板键枚举 PromptTemplate，作为提示词键的字符串常量引用。
 
-键按模块归属：knowledge_space / deep_research / qa / evaluation / app / agent / skill / clawmate。
+键按模块归属：knowledge_space / deep_research / qa / evaluation / app / agent / skill。
 """
 from enum import Enum
 
@@ -102,9 +102,6 @@ class PromptTemplate(Enum):
 
     # ==================== 技能 AI 搜索 ====================
     SKILL_AI_SEARCH = "skill_ai_search"
-
-    # ==================== ClawMate 终端助手 ====================
-    CLAWMATE_SYSTEM = "clawmate_system"
 
 
 # 向后兼容 re-export：PromptManager 注册表机制已迁至 prompt_manager.py。

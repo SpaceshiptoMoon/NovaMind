@@ -15,7 +15,6 @@ def register_all_prompt_templates() -> int:
     # 各 feature 的提示词数据源（纯数据模块，零 novamind 导入）
     from novamind.features.agent.agent_prompts import TEMPLATES as _ag
     from novamind.features.app.app_prompts import TEMPLATES as _app
-    from novamind.features.clawmate.clawmate_prompts import TEMPLATES as _cm
     from novamind.features.deep_research.deep_research_prompts import TEMPLATES as _dr
     from novamind.features.evaluation.evaluation_prompts import TEMPLATES as _ev
     from novamind.features.knowledge_space.prompts import TEMPLATES as _ks
@@ -23,7 +22,7 @@ def register_all_prompt_templates() -> int:
     from novamind.features.skill.skill_prompts import TEMPLATES as _sk
 
     count = 0
-    for templates in [_ks, _dr, _qa, _ev, _app, _ag, _sk, _cm]:
+    for templates in [_ks, _dr, _qa, _ev, _app, _ag, _sk]:
         PromptManager.register(templates)
         count += len(templates)
     return count

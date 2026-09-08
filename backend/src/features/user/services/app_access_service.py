@@ -4,7 +4,7 @@
 默认全开放），管理员经 ``PUT /users/{id}/app-access`` 全量替换。
 
 与 ``RbacPermissionService`` 的区别：后者查平台管理面权限码（user.manage 等），
-本类查应用入口可见性（qa/agent/skill/app/clawmate）。缓存模式互相独立
+本类查应用入口可见性（qa/agent/skill/app）。缓存模式互相独立
 （``appgate:disabled:{uid}`` vs ``rbac:user_perms:{uid}``）。
 """
 from __future__ import annotations

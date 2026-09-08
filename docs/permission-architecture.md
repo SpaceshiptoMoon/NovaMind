@@ -59,7 +59,6 @@
 | `agent` | 智能体 | /api/v1/agent |
 | `skill` | 技能广场 | /api/v1/skills |
 | `app` | 应用中心（简历挖掘） | /api/v1/apps |
-| `clawmate` | ClawMate | /api/v1/clawmate |
 
 **不进门禁**：知识空间（入口人人可见，内容由空间角色控制）、深研究/测评（空间功能）、通知/个人设置（人人可用）。新增 feature 或改挂载前缀时同步更新 `GATED_APP_PREFIXES`。
 

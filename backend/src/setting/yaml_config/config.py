@@ -24,9 +24,9 @@ class FeaturesConfig:
 
     YAML 形态（`features:` 段，可选）：
       features:
-        clawmate:
+        example_feature:
           enabled: false
-      # 或简写：clawmate: false
+      # 或简写：example_feature: false
     """
 
     flags: Dict[str, FeatureFlag] = field(default_factory=dict)

@@ -27,7 +27,6 @@ describe('permission store — hasApp（应用级权限 deny-list）', () => {
     await store.fetchPermissions()
     expect(store.hasApp('qa')).toBe(true)
     expect(store.hasApp('agent')).toBe(true)
-    expect(store.hasApp('clawmate')).toBe(true)
   })
 
   it('被禁应用不可用，其他应用不受影响（应用相互隔离）', async () => {

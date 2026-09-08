@@ -322,7 +322,6 @@ See [`ROADMAP.md`](./ROADMAP.md) for concrete phase goals.
 | Skill marketplace | `/api/v1/skills` | skill upload, review, install, browse |
 | App center | `/api/v1/apps` | scenario AI apps |
 | Notifications | `/api/v1/notifications` | in-app notifications and preferences |
-| ClawMate | `/api/v1/clawmate` | in-browser terminal and AI-assisted workspace |
 
 ## Configuration
 

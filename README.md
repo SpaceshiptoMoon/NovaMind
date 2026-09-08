@@ -333,7 +333,6 @@ src/features/{module}/
 | 技能广场 | `/api/v1/skills` | 技能上传、审核、安装、浏览 |
 | 应用中心 | `/api/v1/apps` | 场景化 AI 应用 |
 | 通知中心 | `/api/v1/notifications` | 站内通知和偏好设置 |
-| ClawMate | `/api/v1/clawmate` | 浏览器内终端和 AI 辅助工作区 |
 
 ## 配置说明
 

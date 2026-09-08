@@ -12,7 +12,7 @@
   - 各 feature 服务类（agent/chat、qa/ai_chat、qa/qa_service、deep_research、space_service、
     search_service、question_generation、knowledge_base_service、document_pipeline /
     document_upload_service / document_task_service / document_query_service、media_processing、
-    evaluation_service、clawmate/chat、skill_marketplace）不再 import
+    evaluation_service、skill_marketplace）不再 import
     ``user.services.model_config_service``（切断 ``features.<X> → features.user.services`` 导入边），
     构造器含 ``model_config_service``/``model_config_port`` 参数。
   - 装配/入口点（``features/*/api/dependencies.py``、arq worker）允许 import 具体类（白名单）。
@@ -221,7 +221,6 @@ _SERVICE_MODULES = [
     "src/features/knowledge_space/services/document_task_service.py",
     "src/features/knowledge_space/services/media_processing.py",
     "src/features/evaluation/services/evaluation_service.py",
-    "src/features/clawmate/core/chat_service.py",
     "src/features/skill/services/skill_marketplace_service.py",
 ]
 
@@ -331,7 +330,6 @@ _ASSEMBLY_MODULES = [
     "novamind.features.knowledge_space.api.dependencies",
     "novamind.features.agent.api.dependencies",
     "novamind.features.app.api.dependencies",
-    "novamind.features.clawmate.api.dependencies",
     "novamind.features.deep_research.api.dependencies",
     "novamind.features.evaluation.api.dependencies",
     "novamind.features.skill.api.dependencies",

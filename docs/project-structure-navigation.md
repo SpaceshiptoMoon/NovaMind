@@ -58,7 +58,6 @@ schemas/
 | `backend/src/features/agent/` | Agent、MCP 集成、工具编排 |
 | `backend/src/features/skill/` | 技能广场和审核 |
 | `backend/src/features/app/` | 应用中心 |
-| `backend/src/features/clawmate/` | 浏览器终端和 AI 工作区 |
 | `backend/src/features/notification/` | 通知和偏好设置 |
 
 ### 知识处理运行时代码
@@ -93,7 +92,6 @@ schemas/
 | `frontend/src/views/research/` | 深度研究页面 |
 | `frontend/src/views/skill/` | 技能广场和管理审核 |
 | `frontend/src/views/app/` | 应用中心 |
-| `frontend/src/views/clawmate/` | 浏览器终端工作区 |
 | `frontend/src/views/user/` | 个人资料、模型、通知、用户管理 |
 
 知识库相关 UI 主要集中在：

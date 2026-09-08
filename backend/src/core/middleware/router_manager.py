@@ -85,9 +85,6 @@ class RouterManager:
         # 通知模块路由
         from novamind.features.notification.api.routes import router as notification_router
 
-        # ClawMate 终端模块路由
-        from novamind.features.clawmate.api.routes import router as clawmate_router
-
         self.routers.update({
             "qa": qa_router,
             "ai_chat": ai_chat_router,
@@ -113,8 +110,6 @@ class RouterManager:
             "apps": app_router,
             # 通知模块
             "notifications": notification_router,
-            # ClawMate 终端模块
-            "clawmate": clawmate_router,
         })
 
     def _get_all_routers_legacy(self) -> List[Tuple[APIRouter, str, List[str]]]:
@@ -141,7 +136,6 @@ class RouterManager:
             "skills": f"{API_V1_PREFIX}/skills",
             "apps": f"{API_V1_PREFIX}/apps",
             "notifications": f"{API_V1_PREFIX}/notifications",
-            "clawmate": f"{API_V1_PREFIX}/clawmate",
         }
 
         tag_mapping = {
@@ -161,7 +155,6 @@ class RouterManager:
             "skills": "技能广场",
             "apps": "应用中心",
             "notifications": "通知",
-            "clawmate": "ClawMate 终端",
         }
 
         for name, router in self.routers.items():

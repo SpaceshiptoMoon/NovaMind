@@ -153,13 +153,6 @@
             <p class="info-text">发现、上传和分享 AI 技能，安装到你的智能体中。</p>
           </div>
         </template>
-
-        <!-- ClawMate -->
-        <template v-else-if="activeChannelKey === 'clawmate'">
-          <div class="sidebar-info">
-            <p class="info-text">ClawMate：AI 智能对话助手，支持工具调用和上下文分析。</p>
-          </div>
-        </template>
       </div>
     </aside>
 
@@ -229,7 +222,6 @@ const allChannels = [
   { key: 'agents', label: '智能体', icon: 'agents', group: 'primary', app: 'agent' },
   { key: 'research', label: '深度研究', icon: 'research', group: 'more', app: null },
   { key: 'skills', label: '技能广场', icon: 'apps', group: 'more', app: 'skill' },
-  { key: 'clawmate', label: 'ClawMate', icon: 'chat', group: 'more', app: 'clawmate' },
 ] as const
 
 const permStore = usePermissionStore()
@@ -319,7 +311,6 @@ function syncChannelFromRoute() {
   else if (path.includes('/workspace/agents')) activeChannelKey.value = 'agents'
   else if (path.includes('/workspace/research')) activeChannelKey.value = 'research'
   else if (path.includes('/workspace/skills')) activeChannelKey.value = 'skills'
-  else if (path.includes('/workspace/clawmate')) activeChannelKey.value = 'clawmate'
 }
 
 // 按频道执行「新建/开启」动作。chat=开启新对话；agents=进入创建；其余=跳转到对应入口
@@ -337,9 +328,6 @@ function handleNew(key: string = activeChannelKey.value) {
       break
     case 'skills':
       router.push('/home/workspace/skills')
-      break
-    case 'clawmate':
-      router.push('/home/workspace/clawmate')
       break
   }
 }

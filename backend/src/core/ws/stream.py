@@ -4,7 +4,7 @@
 ``aclose`` generator 在挂起点抛 ``GeneratorExit``（async generator 的 aclose
 抛 GeneratorExit 而非 CancelledError），触发 service 内
 ``except (asyncio.CancelledError, GeneratorExit)`` 做清理。
-4 个聊天流式端点（agent/qa/clawmate/deep_research）共用此工具。
+3 个聊天流式端点（agent/qa/deep_research）共用此工具。
 """
 from __future__ import annotations
 

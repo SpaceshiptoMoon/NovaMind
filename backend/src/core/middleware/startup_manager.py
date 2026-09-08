@@ -85,15 +85,6 @@ async def _init_notification(app):
 register_feature_initializer(_init_notification)
 
 
-async def _init_clawmate(app):
-    """ClawMate 终端模块初始化（legacy）"""
-    from novamind.features.clawmate.api.startup import init_clawmate_components
-    await init_clawmate_components(app)
-
-
-register_feature_initializer(_init_clawmate)
-
-
 def _import_models_legacy() -> None:
     """动态导入所有业务模型（legacy 硬编码，回滚用）"""
     from novamind.features.user.models.user import User  # noqa: F401
@@ -362,7 +353,7 @@ class AppLifespanManager:
 
         默认遍历 `get_sorted_manifests()`，对每个有 `init_hook` 的 enabled manifest
         按拓扑序调用，日志呈现拓扑顺序（如 user→knowledge_space→agent→
-        notification→clawmate）。`NOVAMIND_LEGACY_MANIFEST=1` 时回滚到旧的
+        notification）。`NOVAMIND_LEGACY_MANIFEST=1` 时回滚到旧的
         `_feature_initializers` 注册序。
         """
         if os.getenv("NOVAMIND_LEGACY_MANIFEST") == "1":
@@ -420,20 +411,6 @@ class AppLifespanManager:
                 self.logger.info("MCP 连接已关闭")
         except Exception as e:
             self.logger.warning("关闭 MCP 连接时出错", error=str(e))
-
-        # 清理 ClawMate sessions
-        try:
-            if hasattr(self, '_app') and hasattr(self._app.state, 'clawmate_session_manager'):
-                manager = self._app.state.clawmate_session_manager
-                count = manager.active_count
-                if count > 0:
-                    self.logger.info("正在清理 ClawMate sessions", active=count)
-                    # 清理所有 session
-                    for user_id in list(manager._sessions.keys()):
-                        manager.destroy(user_id)
-                self.logger.info("ClawMate sessions 已清理")
-        except Exception as e:
-            self.logger.warning("清理 ClawMate sessions 时出错", error=str(e))
 
         # 关闭数据库引擎连接池
         try:

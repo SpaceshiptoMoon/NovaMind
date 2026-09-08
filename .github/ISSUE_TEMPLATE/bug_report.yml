@@ -60,7 +60,6 @@ body:
         - knowledge space
         - deep research
         - evaluation
-        - clawmate
         - other
     validations:
       required: true
