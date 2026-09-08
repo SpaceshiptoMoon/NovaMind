@@ -549,3 +549,237 @@ def test_memory_error_cascade_still_raises_retry_and_marks_task(monkeypatch):
     assert task.status == TaskStatus.PENDING
     assert task.retry_count == 1
     assert "自动重试" in (task.error_message or "")
+
+
+# ========== process_document_task：MemoryError 后连接池必须重建（doc 574 事故三） ==========
+
+
+def test_memory_error_disposes_engine_pool_before_retry_marking(monkeypatch):
+    """doc 574 事故三（2026-09-08）：OOM 击穿 session.close 后连接池不可信。
+
+    事故链：pipeline 抛 MemoryError → session.close 被 greenlet 中断二次击穿 →
+    协议状态损坏的 MySQL 连接留在池内 → arq 自动重试在坏连接上首个查询永久
+    挂起（aiomysql 无查询级超时）→ 任务卡"处理中"直到 job_timeout=7200s。
+    修复要求：池重建发生在 _mark_retrying 开新会话之前（标记必须落到干净池
+    上），且不阻断 raise Retry。
+    """
+    from arq import Retry
+
+    from novamind.features.knowledge_space.services import document_pipeline as pipeline_module
+    from novamind.features.knowledge_space.tasks.document_tasks import process_document_task
+    from novamind.shared.storage.client_factory import ClientFactory
+
+    async def _run():
+        engine = await _setup_sqlite()
+        Session = async_sessionmaker(engine, expire_on_commit=False)
+        events = []
+        async with Session() as session:
+            session.add(
+                Document(
+                    id=574,
+                    space_id=2,
+                    kb_id=4,
+                    uploader_id=1,
+                    filename="a.txt",
+                    file_type="txt",
+                    file_size=1,
+                    file_hash="a" * 64,
+                    storage={"minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
+                )
+            )
+            session.add(
+                DocumentTask(
+                    id=1,
+                    batch_id=1,
+                    document_id=574,
+                    kb_id=4,
+                    space_id=2,
+                    status=TaskStatus.PENDING,
+                    job_id="job-x",
+                )
+            )
+            await session.commit()
+
+            @asynccontextmanager
+            async def _fake_get_db_session():
+                events.append("session_open")
+                yield session
+
+            monkeypatch.setattr(database_module, "get_db_session", _fake_get_db_session)
+
+            async def _fake_pipeline(**kwargs):
+                raise MemoryError("simulated parse failure (RAM exhausted)")
+
+            monkeypatch.setattr(pipeline_module, "execute_document_pipeline", _fake_pipeline)
+
+            async def _fake_dispose_engine():
+                events.append("dispose_engine")
+
+            # dispose_engine_safely 经模块全局名取 dispose_engine，桩在此生效
+            monkeypatch.setattr(database_module, "dispose_engine", _fake_dispose_engine)
+
+            class _FakeMinio:
+                async def download_document(self, bucket_name, object_name):
+                    return b"fake"
+
+            async def _fake_get_minio_client():
+                return _FakeMinio()
+
+            monkeypatch.setattr(ClientFactory, "get_minio_client", staticmethod(_fake_get_minio_client))
+
+            async def _fake_unbind(document_id):
+                pass
+
+            monkeypatch.setattr(task_tracker_module, "unbind_job", _fake_unbind)
+
+            ctx = {
+                "job_id": "job-x",
+                "job_try": 1,
+                "task_queue_max_tries": 3,
+                "retry_delay_seconds": 60,
+            }
+
+            with pytest.raises(Retry):
+                await process_document_task(ctx, document_id=574, kb_id=4, space_id=2)
+
+            return events
+
+        await engine.dispose()
+
+    events = asyncio.run(_run())
+
+    # 主会话 → 池重建 → _mark_retrying 的新会话：重建必须夹在两者之间
+    assert events == ["session_open", "dispose_engine", "session_open"]
+
+
+def test_generic_error_keeps_engine_pool_alive(monkeypatch):
+    """普通业务异常不是进程级不可信事件，不应误伤连接池。"""
+    from arq import Retry
+
+    from novamind.features.knowledge_space.services import document_pipeline as pipeline_module
+    from novamind.features.knowledge_space.tasks.document_tasks import process_document_task
+    from novamind.shared.storage.client_factory import ClientFactory
+
+    async def _run():
+        engine = await _setup_sqlite()
+        Session = async_sessionmaker(engine, expire_on_commit=False)
+        events = []
+        async with Session() as session:
+            session.add(
+                Document(
+                    id=574,
+                    space_id=2,
+                    kb_id=4,
+                    uploader_id=1,
+                    filename="a.txt",
+                    file_type="txt",
+                    file_size=1,
+                    file_hash="a" * 64,
+                    storage={"minio_object_name": "spaces/2/kbs/4/documents/574/a.txt"},
+                )
+            )
+            session.add(
+                DocumentTask(
+                    id=1,
+                    batch_id=1,
+                    document_id=574,
+                    kb_id=4,
+                    space_id=2,
+                    status=TaskStatus.PENDING,
+                    job_id="job-x",
+                )
+            )
+            await session.commit()
+
+            @asynccontextmanager
+            async def _fake_get_db_session():
+                events.append("session_open")
+                yield session
+
+            monkeypatch.setattr(database_module, "get_db_session", _fake_get_db_session)
+
+            async def _fake_pipeline(**kwargs):
+                raise ValueError("simulated ordinary business failure")
+
+            monkeypatch.setattr(pipeline_module, "execute_document_pipeline", _fake_pipeline)
+
+            async def _fake_dispose_engine():
+                events.append("dispose_engine")
+
+            monkeypatch.setattr(database_module, "dispose_engine", _fake_dispose_engine)
+
+            class _FakeMinio:
+                async def download_document(self, bucket_name, object_name):
+                    return b"fake"
+
+            async def _fake_get_minio_client():
+                return _FakeMinio()
+
+            monkeypatch.setattr(ClientFactory, "get_minio_client", staticmethod(_fake_get_minio_client))
+
+            async def _fake_unbind(document_id):
+                pass
+
+            monkeypatch.setattr(task_tracker_module, "unbind_job", _fake_unbind)
+
+            ctx = {
+                "job_id": "job-x",
+                "job_try": 1,
+                "task_queue_max_tries": 3,
+                "retry_delay_seconds": 60,
+            }
+
+            with pytest.raises(Retry):
+                await process_document_task(ctx, document_id=574, kb_id=4, space_id=2)
+
+            return events
+
+        await engine.dispose()
+
+    events = asyncio.run(_run())
+
+    assert "dispose_engine" not in events
+    assert events == ["session_open", "session_open"]
+
+
+def test_dispose_engine_safely_resets_pool_and_never_raises():
+    """dispose_engine_safely：正常时重建引擎返回 True；自身被 MemoryError
+    击穿时返回 False 绝不冒泡——不能阻断调用方既有的终态标记/重试路径。
+    """
+    from novamind.core.database.database import dispose_engine_safely
+
+    class _FakeEngine:
+        def __init__(self, calls):
+            self._calls = calls
+
+        async def dispose(self):
+            self._calls.append("disposed")
+
+    async def _run():
+        saved_engine = database_module._engine
+        saved_factory = database_module._session_factory
+        calls = []
+        try:
+            database_module._engine = _FakeEngine(calls)
+            assert await dispose_engine_safely() is True
+            assert database_module._engine is None
+            assert database_module._session_factory is None
+            assert calls == ["disposed"]
+
+            # dispose_engine 自身再抛（含 MemoryError）：返回 False，不冒泡
+            database_module._engine = None
+
+            async def _boom():
+                raise MemoryError("dispose itself failed")
+
+            saved_dispose = database_module.dispose_engine
+            database_module.dispose_engine = _boom
+            try:
+                assert await dispose_engine_safely() is False
+            finally:
+                database_module.dispose_engine = saved_dispose
+        finally:
+            database_module._engine = saved_engine
+            database_module._session_factory = saved_factory
+
+    asyncio.run(_run())

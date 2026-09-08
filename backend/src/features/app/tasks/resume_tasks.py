@@ -67,6 +67,19 @@ async def process_resume_task(
             error=str(e),
         )
 
+        if isinstance(e, MemoryError):
+            # 与 document_tasks 同构（doc 574 事故三）：OOM 击穿 session.close
+            # 会把损坏连接留在池内，重试任务在坏连接上永久挂起。简历挖掘同样
+            # 处理大文件，必须先重建连接池，再走失败标记（开新会话）。
+            from novamind.core.database.database import dispose_engine_safely
+            disposed = await dispose_engine_safely()
+            logger.error(
+                "内存耗尽，已重建数据库连接池",
+                session_id=session_id,
+                job_id=job_id,
+                disposed=disposed,
+            )
+
         job_try = ctx.get("job_try", 1)
         max_tries = ctx.get("max_tries", 3)
         if job_try >= max_tries:

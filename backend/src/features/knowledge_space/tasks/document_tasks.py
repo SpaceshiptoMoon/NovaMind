@@ -325,6 +325,21 @@ async def process_document_task(
                 traceback=traceback.format_exc(),
             )
 
+            if isinstance(e, MemoryError):
+                # doc 574 事故三（2026-09-08）：OOM 击穿 session.close（greenlet
+                # 中断）后，损坏的 MySQL 连接留在池内，下一次自动重试在坏连接
+                # 上首个查询永久挂起，任务卡"处理中"直到 job_timeout。连接池
+                # 经历过 MemoryError 即不可信，必须先重建再走重试/终态标记
+                # （两者都开新会话，正好落到重建后的干净池上）。
+                from novamind.core.database.database import dispose_engine_safely
+                disposed = await dispose_engine_safely()
+                logger.error(
+                    "内存耗尽，已重建数据库连接池",
+                    document_id=document_id,
+                    job_id=job_id,
+                    disposed=disposed,
+                )
+
             # 判断是否为最后一次重试
             job_try = ctx.get("job_try", 1)
             max_tries = ctx.get("task_queue_max_tries", ctx.get("max_tries", _get_task_queue_max_tries()))

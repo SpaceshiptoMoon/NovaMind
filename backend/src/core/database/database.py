@@ -77,6 +77,10 @@ def get_engine():
                 ssl_enabled = getattr(config.database, 'ssl', False)
                 if ssl_enabled:
                     connect_args["ssl"] = True
+                # 连接建立超时：aiomysql 无查询级 socket 超时（仅 asyncpg 等驱动有），
+                # 握手阶段至少不留死等；查询挂死的池级防护见 dispose_engine_safely
+                if db_url.startswith("mysql+aiomysql"):
+                    connect_args.setdefault("connect_timeout", 10)
 
                 _engine = create_async_engine(
                     db_url,
@@ -178,3 +182,25 @@ async def dispose_engine():
     if engine_to_dispose is not None:
         await engine_to_dispose.dispose()
         logger.info("数据库引擎已清理")
+
+
+async def dispose_engine_safely() -> bool:
+    """重建数据库引擎（尽力而为，绝不抛出）。
+
+    MemoryError 属进程级不可信事件：session.close 可能被 greenlet 中途击穿
+    （doc 574 事故三，2026-09-08），把协议状态已损坏的连接留在池内；后续
+    会话从池里拿到坏连接后，首个查询会永久挂起（aiomysql 无查询级 socket
+    超时，只有 connect_timeout），任务卡"处理中"直到 job_timeout。
+    因此捕获 MemoryError 的任务必须在标记终态/重试前重建连接池。
+    清理自身可能再抛（含 MemoryError），绝不能阻断调用方既有的
+    终态标记/重试路径，失败时返回 False 由调用方告警。
+    """
+    try:
+        await dispose_engine()
+        return True
+    except Exception as dispose_err:
+        logger.warning(
+            "数据库引擎清理失败，池内可能残留坏连接",
+            error=str(dispose_err),
+        )
+        return False
