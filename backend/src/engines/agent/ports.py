@@ -1,5 +1,5 @@
 """
-Agent 引擎端口协议，定义 LongTermMemoryStorePort、ContextSummaryStorePort、MemorySearchPort、KnowledgeSearchPort 等端口。
+Agent 引擎端口协议，定义 LongTermMemoryStorePort、ContextSummaryStorePort、MemorySearchPort、KnowledgeSearchPort、AttachmentReadPort 等端口。
 """
 from __future__ import annotations
 
@@ -114,6 +114,38 @@ class KnowledgeSearchPort(Protocol):
         page_size: int = 20,
     ) -> DocumentListResult:
         """列出知识库下的文档（含权限校验）。"""
+        ...
+
+
+# ==================== 会话附件读取 ====================
+
+
+@dataclass
+class AttachmentTextChunk:
+    """附件已提取文本的分片（read_attachment 工具返回体）"""
+
+    attachment_id: int
+    filename: str
+    file_type: str
+    total_length: int
+    offset: int
+    content: str
+    has_more: bool
+
+
+@runtime_checkable
+class AttachmentReadPort(Protocol):
+    """会话附件文本读取端口：供 read_attachment 工具调用，切断引擎对
+    features/qa 附件仓储的直接 import。归属校验由实现负责（user_id 维度）。"""
+
+    async def get_attachment_text(
+        self, attachment_id: int, user_id: int, offset: int = 0, limit: int = 8000
+    ) -> AttachmentTextChunk:
+        """按 offset/limit 分片读取附件的已提取文本。
+
+        Raises:
+            KeyError: 附件不存在或不属于该用户。
+        """
         ...
 
 
@@ -312,6 +344,8 @@ __all__ = [
     "DocumentInfo",
     "DocumentListResult",
     "KnowledgeSearchPort",
+    "AttachmentTextChunk",
+    "AttachmentReadPort",
     "ContextSummaryEntry",
     "LongTermMemoryEntry",
     "LongTermMemoryStorePort",

@@ -62,6 +62,7 @@ class AgentChatService:
         memory_store_port: Optional[HostMemoryStorePort] = None,
         memory_search_port: Optional[HostMemorySearchPort] = None,
         knowledge_search_port: Optional[HostKnowledgeSearchPort] = None,
+        attachment_read_port: Optional[Any] = None,
         web_search_port: Optional[HostWebSearchPort] = None,
         prompt_provider: Optional[HostPromptProvider] = None,
     ):
@@ -75,6 +76,7 @@ class AgentChatService:
         self._memory_store_port = memory_store_port
         self._memory_search_port = memory_search_port
         self._knowledge_search_port = knowledge_search_port
+        self._attachment_read_port = attachment_read_port
         self._web_search_port = web_search_port
         self._prompt_provider = prompt_provider
         self.msg_repo = MessageRepository(db)
@@ -167,6 +169,7 @@ class AgentChatService:
                 else None
             )
             context["knowledge_search_port"] = knowledge_search_port
+            context["attachment_read_port"] = self._attachment_read_port
             context["memory_store_port"] = memory_store
             context["memory_search_port"] = memory_search
             context["embedding_client_resolver"] = self._build_embedding_resolver(user_id)
@@ -540,6 +543,16 @@ class AgentChatService:
             except Exception:
                 pass
 
+        # 自动注入 read_attachment 工具（始终可用）：附件正文不注入上下文，
+        # 上下文里只有 <uploaded_files> 清单，模型经本工具按 offset/limit 分片读取
+        if not any(t.get("function", {}).get("name") == "read_attachment" for t in tools):
+            try:
+                read_att_def = tool_executor._resolve_tool_definition("read_attachment")
+                if read_att_def:
+                    tools.append(read_att_def.to_openai_format())
+            except Exception:
+                pass
+
         # 构建系统提示词（分层组装 + 缓存）
         formatted_prompt = self._format_base_prompt(agent.system_prompt, enabled_tools)
         frozen_memory = await self._get_frozen_memory(memory_manager, agent.id, user_id)
@@ -605,7 +618,7 @@ class AgentChatService:
         if not dry_run:
             try:
                 is_vlm = await self._is_vlm_model(model, user_id)
-                await self._inject_attachments_to_snapshot(snapshot, conv.id, user_id, is_vlm)
+                await self._inject_attachment_manifest(snapshot, conv.id, user_id, is_vlm)
             except Exception as inject_err:
                 logger.warning("附件文本注入失败，跳过注入", error=str(inject_err))
 
@@ -734,12 +747,25 @@ class AgentChatService:
                 msg["content"] = f"{memory_block}\n\n{msg['content']}"
                 break
 
-    # ==================== 附件动态注入 ====================
+    # ==================== 附件清单注入（对齐 deer-flow） ====================
+    # 设计：附件正文不注入任何消息 content（DB 消息 content 始终保持干净原文）。
+    # 每轮只把 <uploaded_files> 清单 prepend 到最后一条用户消息，模型经
+    # read_attachment 工具按 attachment_id + offset/limit 按需读取正文。
+    # 收益：多轮不累积正文 token；compaction 丢的只是历史文本，清单每轮重建、
+    # 文件永远可重读；不再有按位置索引对齐的错位问题。
 
-    async def _inject_attachments_to_snapshot(
+    MANIFEST_MAX_FILES_PER_SECTION = 10
+    MANIFEST_PREVIEW_CHARS = 500
+    IMAGE_TYPES = {"jpg", "jpeg", "png", "gif", "webp"}
+
+    async def _inject_attachment_manifest(
         self, snapshot, conversation_id: int, user_id: int, is_vlm: bool = False
     ) -> None:
-        """扫描 snapshot.messages，为有附件的用户消息动态注入文档文本或图片"""
+        """构建 <uploaded_files> 清单并 prepend 到 snapshot 最后一条用户消息。
+
+        本轮图片附件仍实时注入（VLM base64 / 非 VLM 文本占位）；
+        历史图片仅在清单中列出（工具结果只能回文本，历史图片不可重看）。
+        """
         from sqlalchemy import select
         from novamind.features.agent.models.message import AgentMessage
 
@@ -750,87 +776,142 @@ class AgentChatService:
         ).order_by(AgentMessage.created_at.asc())
         result = await self.db.execute(stmt)
         messages_with_extra = list(result.scalars().all())
-
         if not messages_with_extra:
             return
 
-        msg_att_list = []
-        all_att_ids = []
+        # 按消息顺序收集附件元数据（extra 已存 id/filename/file_type/file_size）
+        att_msgs: List[List[Dict]] = []
         for msg in messages_with_extra:
             atts = (msg.extra or {}).get("attachments") or []
             if atts:
-                ids = [a["id"] for a in atts if "id" in a]
-                msg_att_list.append(ids)
-                all_att_ids.extend(ids)
-            else:
-                msg_att_list.append([])
-
-        if not all_att_ids:
+                att_msgs.append(atts)
+        if not att_msgs:
             return
 
-        att_records = await self.attachment_repo.get_by_ids(all_att_ids, user_id=user_id)
+        # 最后一条带附件的消息 = 本轮；其余 = 历史段（同一附件多轮引用去重）
+        current_atts = att_msgs[-1]
+        seen_ids = {a.get("id") for a in current_atts if a.get("id") is not None}
+        historical_atts: List[Dict] = []
+        for atts in att_msgs[:-1]:
+            for a in atts:
+                if a.get("id") in seen_ids or a.get("id") is None:
+                    continue
+                seen_ids.add(a["id"])
+                historical_atts.append(a)
+
+        # 批量取附件记录（清单预览用 extracted_text）
+        all_ids = list(seen_ids)
+        att_records = await self.attachment_repo.get_by_ids(all_ids, user_id=user_id)
         att_by_id = {a.id: a for a in att_records}
 
-        user_msg_idx = 0
-        for item in snapshot.messages:
-            if item.get("role") != "user":
-                continue
-            if user_msg_idx >= len(msg_att_list):
+        # 找 snapshot 最后一条 user 消息（本轮消息，_prepare 刚落库）
+        last_user_idx = None
+        for idx in range(len(snapshot.messages) - 1, -1, -1):
+            if snapshot.messages[idx].get("role") == "user":
+                last_user_idx = idx
                 break
-            att_ids = msg_att_list[user_msg_idx]
-            if not att_ids:
-                user_msg_idx += 1
+        if last_user_idx is None:
+            return
+
+        item = snapshot.messages[last_user_idx]
+
+        def _is_image(a: Dict) -> bool:
+            return (a.get("file_type") or "") in self.IMAGE_TYPES
+
+        # 清单分段：本轮文档 / 历史文档（图片不进清单，本轮图片单独注入）
+        current_docs = [a for a in current_atts if not _is_image(a)]
+        current_imgs = [a for a in current_atts if _is_image(a)]
+        historical_docs = [a for a in historical_atts if not _is_image(a)]
+
+        doc_sections = [
+            ("本轮上传的文件：", current_docs),
+            ("之前轮次上传的文件（仍然可用）：", historical_docs),
+        ]
+
+        lines = ["<uploaded_files>"]
+        has_any = False
+        for section_title, atts in doc_sections:
+            if not atts:
                 continue
-            user_msg_idx += 1
-            records = [att_by_id[aid] for aid in att_ids if aid in att_by_id]
-            if not records:
-                continue
+            has_any = True
+            lines.append(section_title)
+            selected = atts[: self.MANIFEST_MAX_FILES_PER_SECTION]
+            omitted = atts[self.MANIFEST_MAX_FILES_PER_SECTION :]
+            for a in selected:
+                rec = att_by_id.get(a.get("id"))
+                size = a.get("file_size") or (rec.file_size if rec else 0) or 0
+                size_str = (
+                    f"{size / 1024:.1f} KB" if size < 1024 * 1024 else f"{size / 1024 / 1024:.1f} MB"
+                )
+                lines.append(f"- {a.get('filename')} ({size_str}) [attachment_id={a.get('id')}]")
+                if rec and rec.extracted_text:
+                    preview = rec.extracted_text[: self.MANIFEST_PREVIEW_CHARS].strip()
+                    lines.append(f"  内容预览：{preview}")
+                else:
+                    lines.append("  （无可提取文本）")
+            if omitted:
+                lines.append(
+                    f"  ...（另有 {len(omitted)} 个文件未列出，请基于已列出的文件回答）"
+                )
+        if not has_any and not current_imgs:
+            return  # 无文档类附件且无图片，无需清单
 
-            IMAGE_TYPES = {"jpg", "jpeg", "png", "gif", "webp"}
-            doc_records = [r for r in records if r.file_type not in IMAGE_TYPES]
-            img_records = [r for r in records if r.file_type in IMAGE_TYPES]
+        lines.append("如需读取文件内容，使用 read_attachment 工具：")
+        lines.append(
+            "- read_attachment(attachment_id=..., offset=0, limit=8000) 分片读取；"
+            "has_more=true 时以 offset += limit 继续"
+        )
+        lines.append("- 优先读取与当前问题相关的文件，不要一次性读取全部文件")
+        lines.append("</uploaded_files>")
+        manifest = "\n".join(lines)
 
-            parts: List[Dict] = []
-            original_content = item.get("content", "")
-
-            # 文档附件 → XML 文本
-            if doc_records:
-                xml = self._format_attachments_prompt(doc_records)
-                parts.append({"type": "text", "text": xml})
-
-            # 图片附件 → multimodal content（仅 VLM 模型）
-            if img_records and is_vlm and self._minio_client:
-                for img in img_records:
+        # 本轮图片：保持实时注入（VLM base64 / 非 VLM 文本占位）
+        img_parts: List[Dict] = []
+        if current_imgs:
+            if is_vlm and self._minio_client:
+                for a in current_imgs:
+                    rec = att_by_id.get(a.get("id"))
+                    if rec is None:
+                        continue
                     try:
-                        b64_data = await self._download_attachment_as_base64(img)
+                        b64_data = await self._download_attachment_as_base64(rec)
                         if b64_data:
-                            mime = f"image/{img.file_type}"
-                            parts.append({"type": "text", "text": f"[图片: {img.filename}]"})
-                            parts.append({
+                            mime = f"image/{rec.file_type}"
+                            img_parts.append({"type": "text", "text": f"[图片: {rec.filename}]"})
+                            img_parts.append({
                                 "type": "image_url",
                                 "image_url": {"url": f"data:{mime};base64,{b64_data}"},
                             })
                     except Exception as e:
-                        logger.warning("图片下载失败，跳过", filename=img.filename, error=str(e))
-                        parts.append({"type": "text", "text": f"[图片: {img.filename}（加载失败）]"})
-            elif img_records and not is_vlm:
-                for img in img_records:
-                    parts.append({"type": "text", "text": f"[图片: {img.filename}（当前模型不支持视觉）]"})
+                        logger.warning("图片下载失败，跳过", filename=rec.filename, error=str(e))
+                        img_parts.append({"type": "text", "text": f"[图片: {rec.filename}（加载失败）]"})
+            else:
+                for a in current_imgs:
+                    img_parts.append({
+                        "type": "text",
+                        "text": f"[图片: {a.get('filename')}（当前模型不支持视觉，无法查看）]",
+                    })
 
-            if parts:
-                parts.append({"type": "text", "text": f"\n\n用户问题：{original_content}"})
+        # 注入：字符串 content 直接 prepend；list content（多模态）prepend 为首个 text block
+        original_content = item.get("content", "")
+        if isinstance(original_content, str):
+            if img_parts:
+                parts: List[Dict] = [{"type": "text", "text": manifest}]
+                parts.extend(img_parts)
+                parts.append({"type": "text", "text": original_content})
                 item["content"] = parts
-            elif doc_records:
-                xml = self._format_attachments_prompt(doc_records)
-                item["content"] = f"{xml}\n\n用户问题：{original_content}"
-
-    def _format_attachments_prompt(self, attachments: list) -> str:
-        """将附件文本格式化为 XML 结构的 LLM 提示"""
-        docs = []
-        for att in attachments:
-            text = att.extracted_text or "(无法提取文档文本)"
-            docs.append(f'  <document filename="{att.filename}">\n{text}\n  </document>')
-        return "<documents>\n" + "\n".join(docs) + "\n</documents>"
+            else:
+                item["content"] = f"{manifest}\n\n{original_content}"
+        elif isinstance(original_content, list):
+            parts = [{"type": "text", "text": f"{manifest}\n\n"}]
+            parts.extend(img_parts)
+            parts.extend(original_content)
+            item["content"] = parts
+        else:
+            # 罕见路径：content 非 str/list，仅记录，不动原消息
+            logger.warning(
+                "用户消息 content 类型不支持清单注入", content_type=type(original_content).__name__
+            )
 
     async def _is_vlm_model(self, model_name: str, user_id: int) -> bool:
         """判断模型是否为 VLM 视觉模型"""

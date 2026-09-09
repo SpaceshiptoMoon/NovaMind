@@ -9,6 +9,9 @@ from novamind.features.agent.adapters.memory_store_adapter import (
     HostMemorySearchPort,
     HostMemoryStorePort,
 )
+from novamind.features.agent.adapters.attachment_read_adapter import (
+    HostAttachmentReadPort,
+)
 from novamind.engines.prompt_provider_adapter import HostPromptProvider
 
 __all__ = [
@@ -16,5 +19,6 @@ __all__ = [
     "HostKnowledgeSearchPort",
     "HostMemoryStorePort",
     "HostMemorySearchPort",
+    "HostAttachmentReadPort",
     "HostPromptProvider",
 ]

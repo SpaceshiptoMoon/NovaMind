@@ -21,6 +21,7 @@ from novamind.features.agent.adapters import (
     HostKnowledgeSearchPort,
     HostMemorySearchPort,
     HostMemoryStorePort,
+    HostAttachmentReadPort,
 )
 from novamind.features.agent.adapters.web_search_adapter import resolve_web_search_port
 from novamind.engines.prompt_provider_adapter import as_prompt_provider
@@ -118,6 +119,7 @@ async def _build_agent_chat_service(
         HostMemorySearchPort(repo=memory_search_repo) if memory_search_repo else None
     )
     knowledge_search_port = HostKnowledgeSearchPort(db, model_config_service)
+    attachment_read_port = HostAttachmentReadPort(db)
     prompt_provider = as_prompt_provider()
 
     # web_search_port：按数据库用户默认搜索引擎（is_primary）构造，首选失败回退 YAML 兜底
@@ -136,6 +138,7 @@ async def _build_agent_chat_service(
         memory_store_port=memory_store_port,
         memory_search_port=memory_search_port,
         knowledge_search_port=knowledge_search_port,
+        attachment_read_port=attachment_read_port,
         web_search_port=web_search_port,
         prompt_provider=prompt_provider,
     )

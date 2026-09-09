@@ -3,7 +3,7 @@ Agent 模块启动初始化
 """
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.engines.agent.tool.registry import ToolRegistry
-from novamind.engines.agent.tool.builtins import KnowledgeSearchTool, WebSearchTool, CodeExecutionTool, MemoryTool, TodoTool, TaskTool
+from novamind.engines.agent.tool.builtins import KnowledgeSearchTool, WebSearchTool, CodeExecutionTool, MemoryTool, TodoTool, TaskTool, ReadAttachmentTool
 from novamind.features.agent.tool.builtins import ReadToolResultTool
 from novamind.engines.agent.mcp.client import McpClientManager
 from novamind.engines.agent.tool.executor import ToolExecutor
@@ -49,6 +49,9 @@ async def init_agent_components(app):
     # 4. 注册工具结果读取工具（始终可用）
     registry.register(ReadToolResultTool())
     registry.register(TaskTool())
+
+    # 5. 注册会话附件按需读取工具（始终可用；正文不注入上下文，靠本工具读取）
+    registry.register(ReadAttachmentTool())
 
     logger.info("内置工具已注册", tools=registry.list_tool_names())
 
