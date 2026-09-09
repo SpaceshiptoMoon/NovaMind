@@ -1230,7 +1230,7 @@ class AgentChatService:
             cost = estimate_cost(usage, model)
             done_data["cost_usd"] = float(cost)
 
-            usage_repo = AgentUsageRepository(self.db)
+            usage_repo = AgentUsageRepository()
             await usage_repo.log_usage(
                 user_id=user_id,
                 session_id=conv.session_id,

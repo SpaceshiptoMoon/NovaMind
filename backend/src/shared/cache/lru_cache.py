@@ -3,6 +3,7 @@
 
 提供带 TTL 的内存缓存，减少数据库访问
 """
+import fnmatch
 import time
 from typing import Optional, Generic, TypeVar, Dict, Any
 from collections import OrderedDict
@@ -136,6 +137,22 @@ class LRUCache(Generic[T]):
                 del self._cache[key]
                 return True
             return False
+
+    def delete_pattern(self, pattern: str) -> int:
+        """
+        按 glob 模式批量删除缓存键（与 Redis delete_by_pattern 的 * / ? 语义一致）
+
+        Args:
+            pattern: 匹配模式（如 "user:*"）
+
+        Returns:
+            删除的键数量
+        """
+        with self._lock:
+            matched = [k for k in self._cache if fnmatch.fnmatch(k, pattern)]
+            for k in matched:
+                del self._cache[k]
+            return len(matched)
 
     @property
     def stats(self) -> Dict[str, Any]:

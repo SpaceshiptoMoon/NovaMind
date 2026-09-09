@@ -233,12 +233,19 @@ class CacheService:
         """
         批量失效匹配模式的所有缓存
 
+        L1 LRU 与 L2 Redis 同步清理：只清 Redis 会留下最长 default_ttl 的
+        进程内陈旧数据（get 回填 L1，cache_service.py get() 路径）。
+
         Args:
             pattern: 匹配模式（如 "user:*"）
 
         Returns:
             删除的键数量
         """
+        # L1: 本地缓存（glob 语义与 Redis delete_by_pattern 一致）
+        self._lru.delete_pattern(pattern)
+
+        # L2: Redis 缓存
         try:
             cache = await self._get_cache()
             return await cache.delete_by_pattern(pattern)

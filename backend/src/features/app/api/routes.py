@@ -78,33 +78,23 @@ async def upload_resume(
         raise FileSizeExceededError(MAX_RESUME_SIZE // 1024 // 1024)
     filename = file.filename or "unknown"
 
-    session_repo = ResumeSessionRepository(db)
-    session = await session_repo.create({
-        "user_id": user_id,
-        "resume_filename": filename,
-        "jd_text": jd_text or None,
-        "status": ResumeSessionStatus.PARSING,
-        "config": cfg,
-    })
-    await db.commit()
+    # 多步写入（会话创建 + MinIO + 回写）由 service 编排并收口 commit
+    from novamind.features.app.services.resume_session_service import ResumeSessionService
 
-    # 存原始文件到 MinIO
-    session_id = session.id
-    try:
-        minio_client = await get_minio_client()
-        original_path = f"resume/{session_id}/{filename}"
-        await minio_client.upload_file(original_path, file_bytes)
-        await session_repo.update(session_id, {"resume_file_url": original_path})
-        await db.commit()
-    except Exception as e:
-        logger.warning("原始文件上传 MinIO 失败", session_id=session_id, error=str(e))
-        cfg["file_upload_warning"] = "原始文件存储失败，但不影响解析"
+    service = ResumeSessionService(db)
+    session = await service.create_session(
+        user_id=user_id,
+        filename=filename,
+        jd_text=jd_text,
+        cfg=cfg,
+        file_bytes=file_bytes,
+    )
 
     # 后台异步执行 S1-S12 全流程（通过 arq 队列，支持重试和恢复）
     from novamind.features.app.tasks.resume_tasks import enqueue_process_resume
 
     await enqueue_process_resume(
-        session_id=str(session_id),
+        session_id=str(session.id),
         user_id=user_id,
         llm_model=model,
         jd_text=jd_text or None,
@@ -114,7 +104,6 @@ async def upload_resume(
     )
 
     # 立即返回会话（status=parsing）
-    session = await session_repo.get_by_id(session_id)
     return _to_session_response(session)
 
 
@@ -214,18 +203,11 @@ async def delete_resume_session(
     if not session or session.user_id != user_id:
         raise ResumeSessionNotFoundError(session_id)
 
-    # 删除 MinIO 文件
-    try:
-        minio_client = await get_minio_client()
-        if session.resume_file_url:
-            await minio_client.delete_document(minio_client.default_bucket, session.resume_file_url)
-        if session.md_report_url:
-            await minio_client.delete_document(minio_client.default_bucket, session.md_report_url)
-    except Exception as e:
-        logger.warning("删除 MinIO 文件失败", session_id=session_id, error=str(e))
+    # 多步删除（MinIO + DB）由 service 编排并收口 commit
+    from novamind.features.app.services.resume_session_service import ResumeSessionService
 
-    await repo.delete_by_id(session_id)
-    await db.commit()
+    service = ResumeSessionService(db)
+    await service.delete_session(session_id)
     return {"message": "删除成功"}
 
 
