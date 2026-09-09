@@ -44,7 +44,7 @@ export function useChatAttachments() {
   async function handleDownloadAttachment(att: { id?: number; filename: string }) {
     if (!att.id) return
     try {
-      const { default: chatApi } = await import('@/api/chat')
+      const { chatApi } = await import('@/api/chat')
       await chatApi.downloadAttachmentFile(att.id, att.filename)
     } catch {
       // API 层已处理错误

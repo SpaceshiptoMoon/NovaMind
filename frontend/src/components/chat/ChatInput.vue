@@ -37,7 +37,7 @@
       <button
         v-else
         class="send-btn"
-        :class="{ active: inputText.trim() || pendingAttachmentsCount > 0 }"
+        :class="{ active: inputText.trim() || (pendingAttachmentsCount ?? 0) > 0 }"
         :disabled="(!inputText.trim() && pendingAttachmentsCount === 0) || disabled"
         @click="handleSendClick"
       >
@@ -151,6 +151,7 @@ async function handleFileSelected(e: Event) {
   const validFiles: File[] = []
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
+    if (!file) continue
     const ext = file.name.split('.').pop()?.toLowerCase()
     if (ext === 'doc') {
       ElMessage.info(`检测到 ${file.name} 为 .doc，后端会自动转换为 .docx`)

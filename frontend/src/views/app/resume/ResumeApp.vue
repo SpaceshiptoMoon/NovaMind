@@ -278,7 +278,11 @@ function extractToc(html: string) {
   const items: TocItem[] = []
   let match
   while ((match = regex.exec(html)) !== null) {
-    items.push({ level: parseInt(match[1]), id: match[2], text: match[3].replace(/<[^>]+>/g, '') })
+    items.push({
+      level: parseInt(match[1] ?? '0'),
+      id: match[2] ?? '',
+      text: (match[3] ?? '').replace(/<[^>]+>/g, ''),
+    })
   }
   return items
 }
@@ -307,7 +311,7 @@ function setupScrollSpy() {
 }
 
 function updateActiveToc() {
-  const main = document.querySelector('.report-main')
+  const main = document.querySelector<HTMLElement>('.report-main')
   if (!main || !tocItems.value.length) return
   const scrollTop = main.scrollTop
   let active = tocItems.value[0]?.id ?? ''

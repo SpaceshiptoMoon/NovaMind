@@ -184,7 +184,7 @@ function openSessionConfig() {
   }
   configSessionId.value = ''
   nextTick(() => {
-    configSessionId.value = chatStore.currentSessionId
+    configSessionId.value = chatStore.currentSessionId ?? ''
   })
 }
 

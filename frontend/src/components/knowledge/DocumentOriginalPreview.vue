@@ -354,6 +354,7 @@ function applySearch() {
   // 从后往前替换，避免偏移
   for (let i = textNodes.length - 1; i >= 0; i--) {
     const textNode = textNodes[i]
+    if (!textNode) continue
     const text = textNode.textContent || ''
     const lowerText = text.toLowerCase()
 
@@ -389,8 +390,11 @@ function applySearch() {
   currentMatchIndex.value = matches.length > 0 ? 1 : 0
 
   if (matches.length > 0) {
-    matches[0].classList.add('search-highlight-current')
-    matches[0].scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const first = matches[0]
+    if (first) {
+      first.classList.add('search-highlight-current')
+      first.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
   }
 }
 
@@ -426,8 +430,10 @@ function navigateToMatch(index: number) {
   if (index < 0 || index >= marks.length) return
 
   marks.forEach(m => m.classList.remove('search-highlight-current'))
-  marks[index].classList.add('search-highlight-current')
-  marks[index].scrollIntoView({ behavior: 'smooth', block: 'center' })
+  const target = marks[index]
+  if (!target) return
+  target.classList.add('search-highlight-current')
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' })
   currentMatchIndex.value = index + 1
 }
 </script>

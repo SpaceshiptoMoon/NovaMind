@@ -62,8 +62,9 @@ export const useResearchStore = defineStore('research', () => {
           // mark previous progress as done
           if (lastProgressId) {
             for (let i = messages.value.length - 1; i >= 0; i--) {
-              if (messages.value[i].id === lastProgressId) {
-                messages.value[i].done = true
+              const prev = messages.value[i]
+              if (prev && prev.id === lastProgressId) {
+                prev.done = true
                 break
               }
             }
@@ -91,7 +92,10 @@ export const useResearchStore = defineStore('research', () => {
             assistantMsgIdx = messages.value.length - 1
           }
           // modify through reactive array to trigger Vue reactivity
-          messages.value[assistantMsgIdx].content += chunk || ''
+          const streamingMsg = messages.value[assistantMsgIdx]
+          if (streamingMsg) {
+            streamingMsg.content += chunk || ''
+          }
         },
         onDone(d) {
           progress.value = '研究完成'
@@ -104,8 +108,9 @@ export const useResearchStore = defineStore('research', () => {
           // mark last progress as done
           if (lastProgressId) {
             for (let i = messages.value.length - 1; i >= 0; i--) {
-              if (messages.value[i].id === lastProgressId) {
-                messages.value[i].done = true
+              const prev = messages.value[i]
+              if (prev && prev.id === lastProgressId) {
+                prev.done = true
                 break
               }
             }
@@ -113,16 +118,18 @@ export const useResearchStore = defineStore('research', () => {
           // update or create assistant message
           if (assistantMsgIdx !== -1) {
             const msg = messages.value[assistantMsgIdx]
-            msg.content = finalContent || msg.content
-            msg.stats = d.stats as ResearchStats || null
-            msg.sources = (d as { sources?: string[] }).sources || []
+            if (msg) {
+              msg.content = finalContent || msg.content
+              msg.stats = d.stats || null
+              msg.sources = d.sources || []
+            }
           } else {
             messages.value.push({
               id: nextMsgId(),
               role: 'assistant',
               content: finalContent,
-              stats: d.stats as ResearchStats || null,
-              sources: (d as { sources?: string[] }).sources || [],
+              stats: d.stats || null,
+              sources: d.sources || [],
             })
           }
           // update sources from currentResearch
@@ -137,7 +144,7 @@ export const useResearchStore = defineStore('research', () => {
             research_tasks: null,
             final_report: report.value,
             search_summary: null,
-            stats: d.stats as Research['stats'] || null,
+            stats: d.stats || null,
             created_at: new Date().toISOString(),
             completed_at: new Date().toISOString(),
           }
@@ -148,9 +155,10 @@ export const useResearchStore = defineStore('research', () => {
           // mark last progress as done with error
           if (lastProgressId) {
             for (let i = messages.value.length - 1; i >= 0; i--) {
-              if (messages.value[i].id === lastProgressId) {
-                messages.value[i].content = `研究失败: ${d.message}`
-                messages.value[i].done = true
+              const prev = messages.value[i]
+              if (prev && prev.id === lastProgressId) {
+                prev.content = `研究失败: ${d.message}`
+                prev.done = true
                 break
               }
             }
@@ -163,9 +171,10 @@ export const useResearchStore = defineStore('research', () => {
       // mark last progress as done with error
       if (lastProgressId) {
         for (let i = messages.value.length - 1; i >= 0; i--) {
-          if (messages.value[i].id === lastProgressId) {
-            messages.value[i].content = `研究失败: ${error.value}`
-            messages.value[i].done = true
+          const prev = messages.value[i]
+          if (prev && prev.id === lastProgressId) {
+            prev.content = `研究失败: ${error.value}`
+            prev.done = true
             break
           }
         }

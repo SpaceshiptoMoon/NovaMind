@@ -1,5 +1,5 @@
 import { request, createWebSocketStream } from './index'
-import type { ResearchRequest, Research, ResearchListResponse } from './types'
+import type { ResearchRequest, Research, ResearchListResponse, ResearchStats } from './types'
 
 export const researchApi = {
   startResearch(spaceId: number, data: ResearchRequest) {
@@ -18,10 +18,13 @@ export const researchApi = {
         total_tasks: number
       }) => void
       onContent?: (chunk: string) => void
+      // 与后端 deep_research_service 的 done 事件载荷对齐：
+      // stats 为 ResearchStats 形状（elapsed_seconds/internal_searches/external_searches/total_results 等）
       onDone?: (d: {
         session_id: string
         final_report: string
-        stats: Record<string, number>
+        stats: ResearchStats
+        sources?: string[]
       }) => void
       onError?: (d: { message: string; session_id: string }) => void
       signal?: AbortSignal

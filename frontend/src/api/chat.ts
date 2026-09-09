@@ -1,5 +1,5 @@
 import { request, createWebSocketStream, tokenManager } from './index'
-import type { ChatRequest, ChatResponse, ChatHistoryResponse, HealthCheckResponse, ModelsResponse, UploadChatAttachmentResponse, ChatSource } from './types'
+import type { ChatRequest, ChatResponse, ChatHistoryResponse, HealthCheckResponse, ModelsResponse, UploadChatAttachmentResponse, ChatSource, ChatAttachment } from './types'
 
 const BASE_URL = '/ai-chat'
 
@@ -35,7 +35,15 @@ export const chatApi = {
   chatStream(
     data: ChatRequest,
     callbacks: {
-      onUserMessage?: (msg: { id: number; content: string; role: string; session_id: string }) => void
+      // 与后端 ai_chat_service 的 user_message 事件载荷对齐（含 created_at / attachments）
+      onUserMessage?: (msg: {
+        id: number
+        content: string
+        role: string
+        session_id: string
+        created_at: string
+        attachments?: ChatAttachment[]
+      }) => void
       onSources?: (sources: ChatSource[]) => void
       onTrace?: (trace: Record<string, unknown>) => void
       onReasoning?: (text: string) => void

@@ -148,7 +148,7 @@ describe('api/index', () => {
     instanceCall.mockResolvedValue({ data: { ok: true } })
 
     const originalRequest = {
-      headers: {},
+      headers: {} as Record<string, unknown>,
       _retry: false,
       url: '/secure',
     }
@@ -183,8 +183,8 @@ describe('api/index', () => {
     )
     instanceCall.mockResolvedValue({ data: { ok: true } })
 
-    const firstRequest = { headers: {}, _retry: false, url: '/secure/1' }
-    const secondRequest = { headers: {}, _retry: false, url: '/secure/2' }
+    const firstRequest = { headers: {} as Record<string, unknown>, _retry: false, url: '/secure/1' }
+    const secondRequest = { headers: {} as Record<string, unknown>, _retry: false, url: '/secure/2' }
 
     const firstPromise = responseErrorHandler?.({
       config: firstRequest,

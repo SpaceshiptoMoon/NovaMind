@@ -87,7 +87,7 @@
                         <div v-else class="image-thumb image-thumb-loading">加载中...</div>
                         <div class="image-info">
                           <span class="image-name">{{ att.filename }}</span>
-                          <span class="image-size">{{ formatFileSize(att.file_size) }}</span>
+                          <span class="image-size">{{ formatFileSize(att.file_size ?? 0) }}</span>
                         </div>
                       </div>
                       <div v-else class="file-card" @click="handleDownloadAttachment(att)">
@@ -97,7 +97,7 @@
                         <div class="file-info">
                           <div class="file-name">{{ att.filename }}</div>
                           <div class="file-meta">
-                            {{ getFileExt(att.filename) }} · {{ formatFileSize(att.file_size) }}
+                            {{ getFileExt(att.filename) }} · {{ formatFileSize(att.file_size ?? 0) }}
                           </div>
                         </div>
                         <div class="file-download-btn" title="下载">
@@ -687,8 +687,10 @@ async function handleFileSelected(e: Event) {
     uploadingFiles.value = true
     const results = await Promise.allSettled(validFiles.map((f) => agentStore.uploadAttachment(f)))
     for (let i = 0; i < results.length; i++) {
-      if (results[i].status === 'rejected') {
-        ElMessage.error(`上传失败: ${validFiles[i].name}`)
+      const result = results[i]
+      const failedFile = validFiles[i]
+      if (result?.status === 'rejected') {
+        ElMessage.error(`上传失败: ${failedFile?.name ?? ''}`)
       }
     }
     uploadingFiles.value = false

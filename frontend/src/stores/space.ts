@@ -135,6 +135,7 @@ export const useSpaceStore = defineStore('space', () => {
     loading,
     error,
     searchKeyword,
+    searchResults,
     total,
     spaceCount,
     filteredSpaces,

@@ -19,7 +19,7 @@
     <div class="filter-bar">
       <button
         v-for="opt in statusOptions"
-        :key="opt.value"
+        :key="opt.value ?? 'all'"
         class="filter-chip"
         :class="{ 'is-active': activeFilter === opt.value }"
         @click="setFilter(opt.value)"

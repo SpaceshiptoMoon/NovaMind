@@ -57,7 +57,7 @@
               <div v-else class="image-thumb image-thumb-loading">加载中...</div>
               <div class="image-info">
                 <span class="image-name">{{ att.filename }}</span>
-                <span class="image-size">{{ formatFileSize(att.file_size) }}</span>
+                <span class="image-size">{{ formatFileSize(att.file_size ?? 0) }}</span>
               </div>
             </div>
             <div v-else class="file-card" @click="handleDownloadAttachment(att)">
@@ -66,7 +66,7 @@
               </div>
               <div class="file-info">
                 <div class="file-name">{{ att.filename }}</div>
-                <div class="file-meta">{{ getFileExt(att.filename) }} · {{ formatFileSize(att.file_size) }}</div>
+                <div class="file-meta">{{ getFileExt(att.filename) }} · {{ formatFileSize(att.file_size ?? 0) }}</div>
               </div>
               <div class="file-download-btn" title="下载">
                 <el-icon :size="16"><Download /></el-icon>

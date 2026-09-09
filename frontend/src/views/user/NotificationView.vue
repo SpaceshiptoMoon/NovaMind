@@ -25,7 +25,7 @@
       </div>
       <Pagination
         v-if="total > pageSize"
-        v-model:current-page="currentPage"
+        v-model:page="currentPage"
         v-model:page-size="pageSize"
         :total="total"
         @change="fetchNotifications"

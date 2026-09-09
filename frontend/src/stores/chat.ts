@@ -120,16 +120,18 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       const lastIdx = messages.value.length - 1
-      if (lastIdx >= 0) {
-        const localExtra = messages.value[lastIdx].extra
-        const localAttachments = messages.value[lastIdx].attachments
-        messages.value[lastIdx] = data.user_message
-        if (localAttachments?.length && !messages.value[lastIdx].attachments?.length) {
-          messages.value[lastIdx].attachments = localAttachments
+      const localMsg = messages.value[lastIdx]
+      if (localMsg) {
+        const localExtra = localMsg.extra
+        const localAttachments = localMsg.attachments
+        const serverMsg = data.user_message
+        if (localAttachments?.length && !serverMsg.attachments?.length) {
+          serverMsg.attachments = localAttachments
         }
-        if (localExtra?.attachments && !messages.value[lastIdx].extra?.attachments) {
-          messages.value[lastIdx].extra = localExtra
+        if (localExtra?.attachments && !serverMsg.extra?.attachments) {
+          serverMsg.extra = localExtra
         }
+        messages.value[lastIdx] = serverMsg
       }
       messages.value.push(data.ai_message)
       return data
