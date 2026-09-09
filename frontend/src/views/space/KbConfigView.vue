@@ -507,10 +507,8 @@ onMounted(() => {
 
 .config-shell {
   border: 1px solid var(--color-border-light);
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at top right, rgba(17, 24, 39, 0.1), transparent 28%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 249, 255, 0.96));
+  border-radius: var(--radius-3xl);
+  background: var(--color-bg-card);
   box-shadow: var(--shadow-lg);
 }
 
@@ -531,9 +529,9 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: 14px 16px;
+  padding: var(--space-4);
   border: 1px solid var(--color-border-light);
-  border-radius: 18px;
+  border-radius: var(--radius-2xl);
   background: var(--color-bg-card);
   text-align: left;
   cursor: pointer;
@@ -542,13 +540,13 @@ onMounted(() => {
 
 .nav-pill:hover {
   transform: translateY(-1px);
-  border-color: rgba(17, 24, 39, 0.28);
+  border-color: var(--color-border);
   box-shadow: var(--shadow-sm);
 }
 
 .nav-pill.is-active {
-  border-color: rgba(17, 24, 39, 0.4);
-  background: linear-gradient(180deg, rgba(238, 242, 255, 0.92), rgba(255, 255, 255, 0.98));
+  border-color: var(--color-border-focus);
+  background: var(--color-bg-card-elevated);
   box-shadow: var(--shadow-md);
 }
 
@@ -558,7 +556,7 @@ onMounted(() => {
   justify-content: center;
   width: 40px;
   height: 40px;
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   background: var(--color-primary-subtle);
   color: var(--color-primary);
   font-size: var(--text-sm);
@@ -598,7 +596,7 @@ onMounted(() => {
 
 .section-title {
   margin: 0;
-  font-size: 26px;
+  font-size: var(--text-3xl);
 }
 
 .section-desc {
@@ -618,22 +616,22 @@ onMounted(() => {
   align-items: flex-start;
   min-height: 120px;
   margin-right: 0;
-  padding: 18px;
+  padding: var(--space-4);
   border: 1px solid var(--color-border-light);
-  border-radius: 20px;
-  background: linear-gradient(180deg, #fff, rgba(250, 249, 255, 0.96));
+  border-radius: var(--radius-2xl);
+  background: var(--color-bg-card);
   transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
 }
 
 .modality-grid :deep(.el-checkbox:hover) {
   transform: translateY(-2px);
-  border-color: rgba(17, 24, 39, 0.26);
+  border-color: var(--color-border);
   box-shadow: var(--shadow-sm);
 }
 
 .modality-grid :deep(.el-checkbox.is-checked) {
-  border-color: rgba(17, 24, 39, 0.35);
-  background: linear-gradient(180deg, rgba(238, 242, 255, 0.95), rgba(255, 255, 255, 0.98));
+  border-color: var(--color-border-focus);
+  background: var(--color-bg-card-elevated);
   box-shadow: var(--shadow-md);
 }
 
@@ -667,7 +665,8 @@ onMounted(() => {
   gap: var(--space-4);
   padding: var(--space-6);
   border-top: 1px solid var(--color-border-light);
-  background: linear-gradient(180deg, rgba(250, 249, 255, 0.4), rgba(255, 255, 255, 0.95));
+  background: var(--color-bg-card-elevated);
+  border-radius: 0 0 var(--radius-3xl) var(--radius-3xl);
 }
 
 .footer-actions {
@@ -684,12 +683,7 @@ onMounted(() => {
 
 :deep(.config-footer .el-button) {
   min-width: 120px;
-  border-radius: var(--radius-full);
   font-weight: var(--weight-semibold);
-}
-
-:deep(.config-footer .el-button--primary) {
-  box-shadow: 0 10px 24px rgba(17, 24, 39, 0.18);
 }
 
 @media (max-width: 1024px) {
@@ -710,7 +704,7 @@ onMounted(() => {
 
 @media (max-width: 768px) {
   .config-shell {
-    border-radius: 20px;
+    border-radius: var(--radius-2xl);
   }
 
   .editor-section,
@@ -726,7 +720,7 @@ onMounted(() => {
   }
 
   .section-title {
-    font-size: 22px;
+    font-size: var(--text-2xl);
   }
 
   .footer-actions {

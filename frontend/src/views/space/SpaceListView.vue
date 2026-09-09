@@ -325,11 +325,11 @@ const visibilityMap: Record<number, { text: string; type: string }> = {
   2: { text: '公开', type: 'success' },
 }
 
-// 创建弹窗：可见性卡片选项（色点颜色与上方表格 tag 语义一致）
+// 创建弹窗：可见性卡片选项（色点颜色与上方表格 tag 语义一致，走 token 随主题反转）
 const visibilityOptions = [
-  { value: 0, label: '私有', desc: '仅你和受邀成员可见', color: '#9ca3af' },
-  { value: 1, label: '团队', desc: '组织内成员可访问', color: '#f59e0b' },
-  { value: 2, label: '公开', desc: '所有登录用户可见', color: '#10b981' },
+  { value: 0, label: '私有', desc: '仅你和受邀成员可见', color: 'var(--color-text-muted)' },
+  { value: 1, label: '团队', desc: '组织内成员可访问', color: 'var(--color-warning)' },
+  { value: 2, label: '公开', desc: '所有登录用户可见', color: 'var(--color-info)' },
 ] as const
 
 function getVisibilityText(visibility?: number): string {
@@ -824,15 +824,13 @@ onMounted(() => {
     border-color var(--transition-fast);
 }
 
-/* 实心主操作（新建知识库）：微渐变 + 轻投影，有"放下来"的质感 */
+/* 实心主操作（新建知识库）：与全局主按钮同一 token，随亮暗主题反转 */
 .header-actions :deep(.el-button.el-button--primary) {
-  background: linear-gradient(135deg, #111827, #374151);
   border: none;
   padding: 6px 14px;
   font-size: 14px;
   height: auto;
-  box-shadow: 0 1px 3px rgba(17, 24, 39, 0.18), 0 1px 0 rgba(255, 255, 255, 0.12) inset;
-  transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+  transition: background-color var(--transition-fast);
 }
 
 .header-actions :deep(.el-button.el-button--primary) span {
@@ -841,15 +839,8 @@ onMounted(() => {
   gap: 5px;
 }
 
-.header-actions :deep(.el-button.el-button--primary:hover) {
-  background: linear-gradient(135deg, #374151, #111827);
-  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.28), 0 1px 0 rgba(255, 255, 255, 0.15) inset;
-  transform: translateY(-0.5px);
-}
-
 .header-actions :deep(.el-button.el-button--primary:active) {
   transform: translateY(0);
-  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.14);
 }
 
 /* 次级按钮（新建知识空间）：描边样式，hover 浅底，层级低于主按钮 */

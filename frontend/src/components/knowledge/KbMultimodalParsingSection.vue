@@ -148,8 +148,8 @@ defineProps<{
   margin-bottom: 20px;
   padding: 22px;
   border: 1px solid var(--color-border-light);
-  border-radius: 20px;
-  background: linear-gradient(180deg, #fff, rgba(250, 249, 255, 0.96));
+  border-radius: var(--radius-2xl);
+  background: var(--color-bg-card-elevated);
   box-shadow: var(--shadow-sm);
 }
 
@@ -176,11 +176,11 @@ defineProps<{
   padding: 10px 14px;
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-full);
-  background: #fff;
+  background: var(--color-bg-card);
 }
 
 :deep(.el-radio.is-checked) {
-  border-color: rgba(17, 24, 39, 0.35);
+  border-color: var(--color-border-focus);
   background: var(--color-primary-subtle);
 }
 

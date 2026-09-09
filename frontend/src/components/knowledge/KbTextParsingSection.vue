@@ -74,8 +74,8 @@ defineProps<{
   margin-bottom: 20px;
   padding: 22px;
   border: 1px solid var(--color-border-light);
-  border-radius: 20px;
-  background: linear-gradient(180deg, #fff, rgba(250, 249, 255, 0.96));
+  border-radius: var(--radius-2xl);
+  background: var(--color-bg-card-elevated);
   box-shadow: var(--shadow-sm);
 }
 
@@ -101,9 +101,9 @@ defineProps<{
 .pdf-panel {
   margin-bottom: 18px;
   padding: 18px;
-  border: 1px solid rgba(17, 24, 39, 0.12);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg-card);
 }
 
 .panel-title {
@@ -127,7 +127,7 @@ defineProps<{
   padding: 14px 16px;
   border: 1px solid var(--color-border-light);
   border-radius: 16px;
-  background: #fff;
+  background: var(--color-bg-card);
 }
 
 .text-strategy-copy {

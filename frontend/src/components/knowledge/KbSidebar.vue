@@ -49,7 +49,7 @@ defineProps<{
 }
 
 .sidebar-item:hover {
-  color: var(--color-text-primary);
+  color: var(--color-text);
   background: var(--color-bg-hover);
 }
 

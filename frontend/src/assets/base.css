@@ -9,9 +9,9 @@
   --color-primary-subtle: #F1F3F5;
   --color-primary-muted: rgba(17, 24, 39, 0.05);
 
-  /* 实心主按钮：黑 */
-  --color-btn-primary: #111827;
-  --color-btn-primary-hover: #030712;
+  /* 实心主按钮：柔和中灰，白字对比度 4.7:1 过 AA */
+  --color-btn-primary: #6B7280;
+  --color-btn-primary-hover: #4B5563;
 
   /* Accent — 深灰，无绿色 */
   --color-accent: #374151;
@@ -28,6 +28,8 @@
   --color-bg: #F7F8FA;
   --color-bg-card: #FFFFFF;
   --color-bg-card-elevated: #FAFBFC;
+  /* 别名：供 chat/trajectory 画布引用，随 card-elevated 在暗色下反转 */
+  --color-bg-elevated: var(--color-bg-card-elevated);
   --color-bg-hover: #F1F3F5;
   --color-bg-sidebar: #FAFBFC;
   --color-bg-input: #F7F8FA;
@@ -91,6 +93,7 @@
   --radius-lg: 10px;
   --radius-xl: 14px;
   --radius-2xl: 18px;
+  --radius-3xl: 24px;
   --radius-full: 9999px;
 
   /* Chat */
@@ -115,6 +118,14 @@
   --color-file-pptx: var(--color-warning);
   --color-file-other-bg: var(--color-accent-subtle);
   --color-file-other: var(--color-accent);
+
+  /* 媒体文件类型（document.ts 徽章用，暗色下反转） */
+  --color-file-image-bg: #FEF3C7;
+  --color-file-image: #B45309;
+  --color-file-video-bg: #DBEAFE;
+  --color-file-video: #1D4ED8;
+  --color-file-audio-bg: #FCE7F3;
+  --color-file-audio: #BE185D;
 
   /* Layout */
   --header-height: 56px;
@@ -223,4 +234,123 @@ a:hover {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-text-muted);
+}
+
+/* ========================================
+   Dark Theme — [data-theme='dark'] 挂在 <html> 上
+   仅覆盖与亮色不同源的 token；经 var() 间接引用的 token 自动跟随
+   ======================================== */
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Primary 反转为浅色：图标/焦点/链接/活动态在暗底上保持可见 */
+  --color-primary: #E8EAED;
+  --color-primary-hover: #FFFFFF;
+  --color-primary-subtle: #22252B;
+  --color-primary-muted: rgba(232, 234, 237, 0.07);
+
+  /* 实心主按钮：大量调用方硬编码白字与之配对，保持深底、抬高一档与卡片区分 */
+  --color-btn-primary: #2A2E36;
+  --color-btn-primary-hover: #363B44;
+
+  /* Accent 抬亮 */
+  --color-accent: #A8AEB8;
+  --color-accent-hover: #C3C8D0;
+  --color-accent-subtle: #22252B;
+
+  /* Text */
+  --color-text: #E8EAED;
+  --color-text-secondary: #A8AEB8;
+  --color-text-muted: #6B7280;
+  --color-text-faint: #3D434D;
+
+  /* Background */
+  --color-bg: #0F1115;
+  --color-bg-card: #16181D;
+  --color-bg-card-elevated: #1B1E24;
+  --color-bg-hover: #22252B;
+  --color-bg-sidebar: #131519;
+  --color-bg-input: #1B1E24;
+
+  /* Border */
+  --color-border: #2A2E36;
+  --color-border-light: #22252B;
+  --color-border-focus: #A8AEB8;
+
+  /* Semantic — 文字色提亮、subtle 底改暗色透明底 */
+  --color-success: #9CA3AF;
+  --color-success-subtle: rgba(74, 85, 100, 0.2);
+  --color-warning: #FBBF24;
+  --color-warning-subtle: rgba(245, 158, 11, 0.12);
+  --color-danger: #F87171;
+  --color-danger-subtle: rgba(239, 68, 68, 0.12);
+  --color-info: #60A5FA;
+  --color-info-subtle: rgba(59, 130, 246, 0.12);
+
+  /* 媒体文件类型 — 暗色下浅底改透明底、文字提亮 */
+  --color-file-image-bg: rgba(245, 158, 11, 0.15);
+  --color-file-image: #FBBF24;
+  --color-file-video-bg: rgba(59, 130, 246, 0.15);
+  --color-file-video: #60A5FA;
+  --color-file-audio-bg: rgba(236, 72, 153, 0.15);
+  --color-file-audio: #F472B6;
+
+  /* Chat / 布局浮层 */
+  --color-chat-bg: #16181D;
+  --color-bg-input-bar: rgba(22, 24, 29, 0.85);
+  --color-bg-header: rgba(15, 17, 21, 0.85);
+
+  /* Shadow — 暗色下加深一档 */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.32), 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.36), 0 1px 3px rgba(0, 0, 0, 0.24);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.42), 0 2px 6px rgba(0, 0, 0, 0.28);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.32);
+  --shadow-inner: inset 0 1px 4px rgba(0, 0, 0, 0.24);
+
+  /* Element Plus — main.css :root 中硬编码的 el 色板需在此重定义；
+     经 var(--color-*) 间接映射的 el 变量自动跟随 */
+  --el-color-primary: #E8EAED;
+  --el-color-primary-light-3: #CFD3D9;
+  --el-color-primary-light-5: #AEB4BC;
+  --el-color-primary-light-7: #8F96A0;
+  --el-color-primary-light-9: #22252B;
+  --el-color-primary-dark-2: #FFFFFF;
+
+  --el-color-success: #9CA3AF;
+  --el-color-success-light-3: #B3B9C1;
+  --el-color-success-light-5: #9CA3AF;
+  --el-color-success-light-7: #6E7681;
+  --el-color-success-light-9: #22252B;
+  --el-color-success-dark-2: #D6DAE0;
+
+  --el-bg-color: var(--color-bg-card);
+  --el-bg-color-page: var(--color-bg);
+  --el-bg-color-overlay: var(--color-bg-card-elevated);
+
+  --el-fill-color-blank: var(--color-bg-card);
+  --el-fill-color: #22252B;
+  --el-fill-color-light: var(--color-bg-card-elevated);
+  --el-fill-color-lighter: #262A31;
+  --el-fill-color-extra-light: var(--color-bg-card-elevated);
+  --el-fill-color-dark: #2A2E36;
+  --el-fill-color-darker: #31353E;
+}
+
+/* Element Plus 以 primary 作「控件选中底色」的场景固定为中灰：
+   浅色 primary 底 + 白字/白点会失去对比（switch/checkbox/radio/主按钮） */
+[data-theme='dark'] .el-switch.is-checked .el-switch__core {
+  background: #6B7280;
+  border-color: #6B7280;
+}
+
+[data-theme='dark'] .el-checkbox__input.is-checked .el-checkbox__inner,
+[data-theme='dark'] .el-checkbox__input.is-indeterminate .el-checkbox__inner {
+  background: #6B7280;
+  border-color: #6B7280;
+}
+
+[data-theme='dark'] .el-radio__input.is-checked .el-radio__inner {
+  background: #6B7280;
+  border-color: #6B7280;
 }

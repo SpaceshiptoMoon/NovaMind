@@ -150,20 +150,21 @@ const formRules: FormRules = {
 
 // === 色板 ===
 
-// 单色灰阶色板（无绿色），靠明度区分图表项
+// 单色灰阶色板（无绿色），靠明度区分图表项。
+// 取值限定在「白卡与暗卡上都可见」的中灰区间，不随主题反转（色板属数据可视化常量）
 const colorPalette = [
-  '#111827',
-  '#374151',
-  '#4b5563',
+  '#566070',
+  '#8b9199',
+  '#a4acb5',
   '#6b7280',
   '#9ca3af',
-  '#1f2937',
-  '#d1d5db',
-  '#8b9199',
+  '#737b85',
+  '#b6bdc5',
+  '#848d98',
 ]
 
 function getColor(index: number): string {
-  return colorPalette[index % colorPalette.length] ?? '#4b5563'
+  return colorPalette[index % colorPalette.length] ?? '#6b7280'
 }
 
 // === 跳转配置向导页 ===

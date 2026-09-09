@@ -258,7 +258,7 @@
     >
       <div v-if="reportLoading" style="text-align: center; padding: 40px">
         <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-        <p style="margin-top: 12px; color: #8C8C8C">加载报告中...</p>
+        <p style="margin-top: 12px; color: var(--color-text-muted)">加载报告中...</p>
       </div>
 
       <div v-else-if="reportData">

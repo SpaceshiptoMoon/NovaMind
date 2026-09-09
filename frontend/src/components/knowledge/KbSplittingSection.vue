@@ -126,8 +126,8 @@ const strategyDesc = computed(() => {
   margin-bottom: 20px;
   padding: 22px;
   border: 1px solid var(--color-border-light);
-  border-radius: 20px;
-  background: linear-gradient(180deg, #fff, rgba(250, 249, 255, 0.96));
+  border-radius: var(--radius-2xl);
+  background: var(--color-bg-card-elevated);
   box-shadow: var(--shadow-sm);
 }
 
@@ -149,9 +149,9 @@ const strategyDesc = computed(() => {
   gap: 4px;
   margin-bottom: 18px;
   padding: 14px 16px;
-  border: 1px solid rgba(17, 24, 39, 0.12);
-  border-radius: 16px;
-  background: rgba(238, 242, 255, 0.5);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  background: var(--color-info-subtle);
 }
 
 .strategy-tip strong {

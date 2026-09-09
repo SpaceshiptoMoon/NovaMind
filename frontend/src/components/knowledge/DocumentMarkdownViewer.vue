@@ -136,7 +136,7 @@ defineExpose({ scrollToChunk })
 }
 
 :deep(.chunk-highlight) {
-  background: rgba(17, 24, 39, 0.1);
+  background: var(--color-primary-muted);
   border-left: 3px solid var(--color-primary);
   border-radius: var(--radius-sm);
   transition: background var(--transition-fast);

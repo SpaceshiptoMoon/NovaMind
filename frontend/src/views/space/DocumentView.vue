@@ -142,10 +142,10 @@
               <template #default="{ row }">
                 <div class="action-buttons">
                   <el-tooltip v-if="canProcess(row)" content="首次处理" placement="top">
-                    <el-button :icon="VideoPlay" circle size="small" type="info" @click="handleProcessSingle(row)" />
+                    <el-button :icon="VideoPlay" circle size="small" type="primary" @click="handleProcessSingle(row)" />
                   </el-tooltip>
                   <el-tooltip v-if="canReprocess(row)" content="重新处理" placement="top">
-                    <el-button :icon="RefreshRight" circle size="small" type="success" @click="handleProcessSingle(row)" />
+                    <el-button :icon="RefreshRight" circle size="small" type="primary" @click="handleProcessSingle(row)" />
                   </el-tooltip>
                   <el-tooltip v-if="canCancel(row)" content="取消" placement="top">
                     <el-button :icon="Close" circle size="small" type="warning" @click="handleCancelSingle(row)" />
@@ -695,22 +695,19 @@ onMounted(async () => {
   flex-direction: column;
   gap: 14px;
   padding: 20px 22px;
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  border-radius: 24px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 255, 0.96));
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 18px 40px rgba(15, 23, 42, 0.06);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-3xl);
+  background: var(--color-bg-card-elevated);
+  box-shadow: var(--shadow-md);
 }
 
 .kb-overview__eyebrow {
   display: inline-flex;
   align-self: flex-start;
   padding: 5px 10px;
-  border-radius: 999px;
-  background: rgba(59, 130, 246, 0.08);
-  color: #3156a3;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -746,13 +743,10 @@ onMounted(async () => {
   min-height: 88px;
   gap: 10px;
   padding: 14px 16px;
-  border: 1px solid rgba(226, 232, 240, 0.95);
-  border-radius: 20px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(244, 248, 255, 0.92));
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 10px 24px rgba(15, 23, 42, 0.04);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-2xl);
+  background: var(--color-bg-card-elevated);
+  box-shadow: var(--shadow-sm);
 }
 
 .kb-stat-card__label {
@@ -774,13 +768,10 @@ onMounted(async () => {
   flex-direction: column;
   gap: 12px;
   padding: 18px;
-  border: 1px solid rgba(226, 232, 240, 0.95);
-  border-radius: 24px;
-  background:
-    linear-gradient(180deg, rgba(239, 245, 255, 0.98), rgba(250, 252, 255, 0.96));
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.85) inset,
-    0 18px 40px rgba(15, 23, 42, 0.05);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-3xl);
+  background: var(--color-bg-card-elevated);
+  box-shadow: var(--shadow-md);
 }
 
 .inherit-head h2 {
@@ -805,21 +796,11 @@ onMounted(async () => {
   flex-direction: column;
   gap: 4px;
   padding: 14px;
-  border: 1px solid rgba(213, 224, 242, 0.9);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-2xl);
+  background: var(--color-bg-card);
   position: relative;
   overflow: hidden;
-  backdrop-filter: blur(8px);
-}
-
-.inherit-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.75) inset;
 }
 
 .inherit-card--wide .inherit-value {
@@ -895,18 +876,12 @@ onMounted(async () => {
   font-size: var(--text-xs);
   font-weight: var(--weight-bold);
   flex-shrink: 0;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    inset 0 -2px 3px rgba(0, 0, 0, 0.05),
-    0 1px 2px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-sm);
   transition: box-shadow var(--transition-fast);
 }
 
 .filename-cell:hover .file-icon {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.55),
-    inset 0 -2px 3px rgba(0, 0, 0, 0.06),
-    0 2px 6px rgba(15, 23, 42, 0.12);
+  box-shadow: var(--shadow-md);
 }
 
 .file-name {
@@ -930,27 +905,6 @@ onMounted(async () => {
   gap: var(--space-1);
   justify-content: flex-end;
   flex-wrap: wrap;
-}
-
-/* 操作按钮局部配色：主题把 el-color-primary 改黑、success 改灰，
-   运行类按钮会全暗无区分。在此作用域内把 info→蓝、success→绿，恢复功能色区分度。
-   warning(琥珀) / danger(红) 已是功能色，无需覆盖。 */
-.action-buttons :deep(.el-button--info) {
-  --el-color-info: var(--color-info);
-  --el-color-info-light-3: #6aa3f9;
-  --el-color-info-light-5: #9dc2fa;
-  --el-color-info-light-7: #c5d9fc;
-  --el-color-info-light-9: #eaf1fe;
-  --el-color-info-dark-2: #2f6fd4;
-}
-
-.action-buttons :deep(.el-button--success) {
-  --el-color-success: #10b981;
-  --el-color-success-light-3: #41c79a;
-  --el-color-success-light-5: #79d6b6;
-  --el-color-success-light-7: #a8e5cf;
-  --el-color-success-light-9: #d3f3e6;
-  --el-color-success-dark-2: #0c9469;
 }
 
 .upload-area :deep(.el-upload-dragger) {

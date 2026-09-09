@@ -165,7 +165,7 @@
                               :percentage="getTaskProgressPercent(row)"
                               :stroke-width="7"
                               :show-text="false"
-                              color="#4b5563"
+                              color="var(--color-success)"
                             />
                             <span>{{ getTaskProgressText(row) }}</span>
                           </div>
@@ -348,10 +348,10 @@ function getTaskTone(status?: number) {
 
 function getTaskProgressColor(status?: number) {
   const map: Record<string, string> = {
-    success: '#4b5563',
-    warning: '#d97706',
-    danger: '#dc2626',
-    neutral: '#64748b',
+    success: 'var(--color-success)',
+    warning: 'var(--color-warning)',
+    danger: 'var(--color-danger)',
+    neutral: 'var(--color-text-muted)',
   }
   return map[getTaskTone(status)]
 }
@@ -561,9 +561,9 @@ onMounted(fetchTasks)
 .dashboard-panel,
 .task-feed {
   border: 1px solid var(--color-border-light);
-  border-radius: 24px;
+  border-radius: var(--radius-3xl);
   background: var(--color-bg-card);
-  box-shadow: 0 12px 30px rgba(17, 24, 39, 0.05);
+  box-shadow: var(--shadow-lg);
 }
 
 .dashboard-panel {
@@ -602,7 +602,7 @@ onMounted(fetchTasks)
 }
 
 .dashboard-panel h1 {
-  font-size: 30px;
+  font-size: var(--text-3xl);
   line-height: 1.1;
 }
 
@@ -622,13 +622,15 @@ onMounted(fetchTasks)
   position: relative;
   overflow: hidden;
   padding: 18px 18px 16px;
-  border-radius: 18px;
+  border-radius: var(--radius-2xl);
   background: var(--color-bg-card-elevated);
   border: 1px solid var(--color-border-light);
 }
 
+/* 主统计卡走 --color-btn-primary（亮色灰-500、暗色抬高深灰），
+   两种主题下白字对比度均成立，且随主题切换自动反转 */
 .dashboard-stat--primary {
-  background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+  background: var(--color-btn-primary);
   border-color: transparent;
 }
 
@@ -640,7 +642,7 @@ onMounted(fetchTasks)
   width: 88px;
   height: 88px;
   border-radius: 50%;
-  background: rgba(17, 24, 39, 0.06);
+  background: var(--color-primary-muted);
 }
 
 .dashboard-stat--primary::after {
@@ -670,7 +672,7 @@ onMounted(fetchTasks)
   display: block;
   margin: 8px 0 6px;
   color: var(--color-text);
-  font-size: 30px;
+  font-size: var(--text-3xl);
   line-height: 1;
   font-weight: 700;
 }
@@ -710,7 +712,7 @@ onMounted(fetchTasks)
 .task-item {
   position: relative;
   border: 1px solid var(--color-border-light);
-  border-radius: 22px;
+  border-radius: var(--radius-2xl);
   background: var(--color-bg-card);
   overflow: hidden;
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
@@ -718,15 +720,15 @@ onMounted(fetchTasks)
 
 .task-item:hover {
   transform: translateY(-1px);
-  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.06);
+  box-shadow: var(--shadow-md);
 }
 
 .task-item--expanded {
-  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-lg);
 }
 
 .task-item--success {
-  border-color: rgba(17, 24, 39, 0.22);
+  border-color: var(--color-text-faint);
 }
 
 .task-item--warning {
@@ -770,14 +772,14 @@ onMounted(fetchTasks)
 .task-status-dot {
   width: 10px;
   height: 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-text-faint);
   box-shadow: 0 0 0 4px rgba(156, 163, 175, 0.14);
 }
 
 .task-status-dot--success {
   background: var(--color-success);
-  box-shadow: 0 0 0 4px rgba(17, 24, 39, 0.12);
+  box-shadow: 0 0 0 4px rgba(156, 163, 175, 0.16);
 }
 
 .task-status-dot--warning {
@@ -792,7 +794,7 @@ onMounted(fetchTasks)
 
 .task-id {
   color: var(--color-text);
-  font-size: 16px;
+  font-size: var(--text-md);
   font-weight: 700;
 }
 
@@ -801,7 +803,7 @@ onMounted(fetchTasks)
   align-items: center;
   min-height: 24px;
   padding: 0 9px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-hover);
   color: var(--color-text-secondary);
   font-size: 11px;
@@ -851,7 +853,7 @@ onMounted(fetchTasks)
   width: 6px;
   height: 6px;
   margin-right: 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-text-faint);
   flex-shrink: 0;
 }
@@ -899,7 +901,7 @@ onMounted(fetchTasks)
   display: inline-flex;
   align-items: center;
   padding: 2px 9px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-hover);
   color: var(--color-text-secondary);
   font-size: 11px;
@@ -924,7 +926,7 @@ onMounted(fetchTasks)
 .task-overview {
   width: 100%;
   padding: 10px 12px;
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   background: var(--color-bg-card-elevated);
   border: 1px solid var(--color-border-light);
 }
@@ -939,7 +941,7 @@ onMounted(fetchTasks)
   display: block;
   margin: 4px 0 8px;
   color: var(--color-text);
-  font-size: 22px;
+  font-size: var(--text-2xl);
   line-height: 1;
 }
 
@@ -955,7 +957,7 @@ onMounted(fetchTasks)
   align-items: center;
   min-height: 26px;
   padding: 0 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-hover);
   font-weight: 600;
 }
@@ -967,7 +969,7 @@ onMounted(fetchTasks)
 .task-item__notice {
   margin: 0 0 12px;
   padding: 14px 16px;
-  border-radius: 16px;
+  border-radius: var(--radius-xl);
   background: var(--color-bg-card-elevated);
   border: 1px solid var(--color-border-light);
 }
@@ -989,7 +991,7 @@ onMounted(fetchTasks)
 .detail-table {
   width: 100%;
   border: 1px solid var(--color-border-light);
-  border-radius: 16px;
+  border-radius: var(--radius-xl);
   overflow: hidden;
 }
 
@@ -1037,7 +1039,7 @@ onMounted(fetchTasks)
   align-items: center;
   gap: 3px;
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--color-bg-hover);
   font-size: 11px;
   font-weight: 600;
@@ -1067,7 +1069,7 @@ onMounted(fetchTasks)
 }
 
 .flow-seg--success {
-  background: rgba(17, 24, 39, 0.1);
+  background: var(--color-primary-muted);
 }
 
 .flow-seg--success .flow-seg__icon {

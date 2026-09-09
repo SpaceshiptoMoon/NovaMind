@@ -83,8 +83,8 @@ defineProps<{
 .sub-section {
   padding: 22px;
   border: 1px solid var(--color-border-light);
-  border-radius: 20px;
-  background: linear-gradient(180deg, #fff, rgba(250, 249, 255, 0.96));
+  border-radius: var(--radius-2xl);
+  background: var(--color-bg-card-elevated);
   box-shadow: var(--shadow-sm);
 }
 
@@ -109,10 +109,10 @@ defineProps<{
 }
 
 .qg-fieldset {
-  border: 1px solid rgba(17, 24, 39, 0.12);
-  border-radius: 18px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-2xl);
   padding: 18px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--color-bg-card);
 }
 
 .qg-fieldset[disabled] {

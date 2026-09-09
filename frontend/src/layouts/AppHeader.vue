@@ -67,6 +67,12 @@
     </nav>
 
     <div class="header-right">
+      <!-- 主题切换 -->
+      <el-icon :size="20" class="theme-toggle" @click="toggleTheme">
+        <Sunny v-if="theme === 'dark'" />
+        <Moon v-else />
+      </el-icon>
+
       <!-- 通知铃铛 -->
       <el-popover
         placement="bottom-end"
@@ -137,6 +143,8 @@ import {
   Cpu,
   Bell,
   UserFilled,
+  Moon,
+  Sunny,
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
@@ -144,11 +152,13 @@ import { notificationApi } from '@/api/notification'
 import type { Notification } from '@/api/types'
 import UnicornIcon from '@/components/common/UnicornIcon.vue'
 import NavIcon from '@/components/common/NavIcon.vue'
+import { useTheme } from '@/composables/useTheme'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 const permStore = usePermissionStore()
+const { theme, toggleTheme } = useTheme()
 
 // ==================== 通知相关 ====================
 const unreadCount = ref(0)
@@ -354,6 +364,18 @@ const handleCommand = async (command: string) => {
   font-size: var(--text-sm);
   color: var(--color-text);
   font-weight: var(--weight-medium);
+}
+
+/* ==================== 主题切换 ==================== */
+.theme-toggle {
+  margin-right: var(--space-4);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.theme-toggle:hover {
+  color: var(--color-text);
 }
 
 /* ==================== 通知铃铛 ==================== */

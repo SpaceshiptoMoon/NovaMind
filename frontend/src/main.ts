@@ -9,6 +9,10 @@ import ElementPlus from 'element-plus'
 import App from './App.vue'
 import router from './router'
 import { vPermission } from '@/directives/permission'
+import { initTheme } from '@/composables/useTheme'
+
+// 挂载前恢复主题，避免首屏亮暗闪烁
+initTheme()
 
 const app = createApp(App)
 

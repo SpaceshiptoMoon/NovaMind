@@ -53,6 +53,14 @@
 
 .el-button--primary {
   font-weight: var(--weight-medium);
+  /* 主按钮底色统一走 --color-btn-primary（亮色深灰、暗色抬高深灰），
+     与 --el-color-primary（文字/链接用）解耦 */
+  --el-button-bg-color: var(--color-btn-primary);
+  --el-button-border-color: var(--color-btn-primary);
+  --el-button-hover-bg-color: var(--color-btn-primary-hover);
+  --el-button-hover-border-color: var(--color-btn-primary-hover);
+  --el-button-active-bg-color: var(--color-btn-primary-hover);
+  --el-button-active-border-color: var(--color-btn-primary-hover);
 }
 
 .el-button--primary:hover {

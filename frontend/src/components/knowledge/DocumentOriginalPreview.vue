@@ -486,9 +486,9 @@ function navigateToMatch(index: number) {
   flex-shrink: 0;
 }
 
-.source-icon-image { color: #409eff; background: rgba(64, 158, 255, 0.1); }
-.source-icon-video { color: #e6a23c; background: rgba(230, 162, 60, 0.1); }
-.source-icon-audio { color: #4b5563; background: rgba(17, 24, 39, 0.08); }
+.source-icon-image { color: var(--color-file-image); background: var(--color-file-image-bg); }
+.source-icon-video { color: var(--color-file-video); background: var(--color-file-video-bg); }
+.source-icon-audio { color: var(--color-file-audio); background: var(--color-file-audio-bg); }
 
 .source-detail {
   display: flex;
