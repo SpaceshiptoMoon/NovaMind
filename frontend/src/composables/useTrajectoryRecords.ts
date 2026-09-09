@@ -1,11 +1,15 @@
 /**
  * 轨迹视图 record 派生：把 agentStore.messages 平铺成 TrajectoryRecord[]。
  *
+ * 概念模型（对齐 OTel GenAI / agent 评测术语）：
+ * - Session 会话 → Turn 轮（一次 user 发言 + agent 处理 + 回答）→ Trace 执行迹（轮内 span 树）
+ * - Trajectory 轨迹 = 全会话有序执行记录（本视图的对象）
+ *
  * 对齐 dsh TrajectoryView 的可追溯性：
  * - 稳定 seq：基于全量 messages 顺序分配 1-based 序号，过滤/搜索后不变
  * - 稳定 recordId：msg.id > tool_call_id > seq，用于选中态/折叠集合/hierarchy 跳转
  * - parentAssistantRecordId：tool 行回溯父 assistant 决策（按 tool_call_id 匹配 extra.tool_calls[].id）
- * - turnIndex：按 user 消息切分，供 Turns/Calls 折叠
+ * - turnIndex：按 user 消息切分（首条 user 前的 orphan 归 turn 0，分节头跳过），供 Turns/Calls 折叠
  */
 import { computed, type ComputedRef } from 'vue'
 import type {

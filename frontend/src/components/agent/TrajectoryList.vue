@@ -45,8 +45,23 @@
           </div>
         </div>
 
-        <!-- 平铺记录 -->
+        <!-- 平铺记录（Session → Turn 分节 → trace span 树） -->
         <template v-for="rec in visibleRecords" :key="rec.recordId">
+          <!-- Turn 分节头：每轮首条记录上方，承担该轮折叠 -->
+          <div
+            v-if="rec.turnIndex > 0 && isFirstInTurn(rec)"
+            class="traj-turn-header"
+            :title="`Turn ${rec.turnIndex}（点击折叠/展开）`"
+            @click="toggleTurn(rec.turnIndex)"
+          >
+            <span class="turn-chevron" :class="{ collapsed: collapsedTurns.has(rec.turnIndex) }">▾</span>
+            <span class="turn-label">Turn {{ rec.turnIndex }}</span>
+            <span class="turn-stats">
+              <span>{{ turnSpanCount(rec.turnIndex) }} spans</span>
+              <span v-if="turnTokens(rec.turnIndex)">· {{ turnTokens(rec.turnIndex) }} tok</span>
+              <span v-if="turnDuration(rec.turnIndex)">· {{ formatDurationMs(turnDuration(rec.turnIndex)) }}</span>
+            </span>
+          </div>
           <!-- compaction 行：统一序号 + 展开摘要 -->
           <div
             v-if="rec.kind === 'compaction'"
@@ -68,11 +83,11 @@
             <MarkdownRenderer :content="compactionSummary(rec)" />
           </div>
 
-          <!-- 普通记录行 -->
+          <!-- 普通记录行（tool 行若挂靠 assistant 决策则缩进，呈 span 树） -->
           <div
             v-else
             class="traj-row"
-            :class="[rec.kind, { selected: selectedRecordId === rec.recordId, error: isToolFailed(rec) }]"
+            :class="[rec.kind, { selected: selectedRecordId === rec.recordId, error: isToolFailed(rec), 'child-span': !!rec.parentAssistantRecordId }]"
             :data-record-id="rec.recordId"
             @click="selectRecord(rec.recordId)"
           >
@@ -119,15 +134,7 @@
                 <span class="traj-preview">{{ rec.summary }}</span>
               </template>
 
-              <!-- 折叠徽章 + 指标 -->
-              <span
-                v-if="rec.kind === 'user' && isTurnFolded(rec)"
-                class="traj-fold-badge"
-                @click.stop="toggleTurn(rec.turnIndex)"
-                title="展开该 Turn"
-              >
-                ⊞ {{ turnFoldedCount(rec.turnIndex) }} 步
-              </span>
+              <!-- 折叠徽章（Turn 折叠已由分节头承担，这里只留 calls 折叠） -->
               <span
                 v-if="isAssistantDecision(rec) && isCallsFolded(rec)"
                 class="traj-fold-badge"
@@ -281,19 +288,38 @@ const turnKeys = computed(() => {
   return map
 })
 
+// Turn 分节头聚合统计：span 数（非 user 记录）、token 总量、耗时总量（LLM + 工具执行）
+const turnStats = computed(() => {
+  const map = new Map<number, { spans: number; tokens: number; durationMs: number }>()
+  for (const r of records.value) {
+    const entry = map.get(r.turnIndex) ?? { spans: 0, tokens: 0, durationMs: 0 }
+    if (r.kind !== 'user') entry.spans += 1
+    entry.tokens += r.usage?.total_tokens ?? 0
+    entry.durationMs += r.durationMs ?? 0
+    entry.durationMs += r.toolCall?.durationMs ?? 0
+    map.set(r.turnIndex, entry)
+  }
+  return map
+})
+
+function turnSpanCount(turnIndex: number): number {
+  return turnStats.value.get(turnIndex)?.spans ?? 0
+}
+function turnTokens(turnIndex: number): number | null {
+  const t = turnStats.value.get(turnIndex)?.tokens ?? 0
+  return t > 0 ? t : null
+}
+function turnDuration(turnIndex: number): number | null {
+  const d = turnStats.value.get(turnIndex)?.durationMs ?? 0
+  return d > 0 ? d : null
+}
+
 function isFirstInTurn(rec: TrajectoryRecord): boolean {
   return turnKeys.value.get(rec.turnIndex)?.first === true && firstRecordOfTurn(rec.turnIndex) === rec.recordId
 }
 function firstRecordOfTurn(turnIndex: number): string | null {
   const r = records.value.find((x) => x.turnIndex === turnIndex)
   return r?.recordId ?? null
-}
-function turnFoldedCount(turnIndex: number): number {
-  const total = turnKeys.value.get(turnIndex)?.count ?? 0
-  return Math.max(0, total - 1)
-}
-function isTurnFolded(rec: TrajectoryRecord): boolean {
-  return collapsedTurns.value.has(rec.turnIndex) && isFirstInTurn(rec) && turnFoldedCount(rec.turnIndex) > 0
 }
 function isCallsFolded(rec: TrajectoryRecord): boolean {
   return isAssistantDecision(rec) && collapsedAssistants.value.has(rec.recordId) && !!rec.childToolRecordIds?.length
@@ -603,8 +629,51 @@ function cssEscape(s: string): string {
   color: var(--color-text-faint, var(--color-text-muted));
 }
 
+/* ===== Turn 分节头（Session → Turn → trace span 树） ===== */
+.traj-turn-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 var(--space-1);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  user-select: none;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.traj-turn-header:first-child {
+  margin-top: 0;
+}
+.traj-turn-header:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.turn-chevron {
+  font-size: 10px;
+  transition: transform var(--transition-fast);
+}
+.turn-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+
+.turn-label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.turn-stats {
+  color: var(--color-text-faint, var(--color-text-muted));
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
 /* ===== 记录行 ===== */
 .traj-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -623,16 +692,30 @@ function cssEscape(s: string): string {
   border-left-color: var(--color-text);
 }
 .traj-row.error {
-  background: rgba(254, 226, 226, 0.4);
+  background: var(--color-danger-subtle);
 }
 .traj-row.error:hover {
-  background: rgba(254, 226, 226, 0.7);
+  background: var(--color-bg-hover);
 }
 .traj-row.notice {
-  background: rgba(254, 243, 199, 0.4);
+  background: var(--color-warning-subtle);
 }
 .traj-row.notice:hover {
-  background: rgba(254, 243, 199, 0.7);
+  background: var(--color-bg-hover);
+}
+
+/* span 树：tool 行缩进挂靠父 assistant 决策，左侧竖轨示意层级 */
+.traj-row.child-span {
+  padding-left: 26px;
+}
+.traj-row.child-span::before {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--color-border);
 }
 
 .traj-index {
@@ -655,13 +738,14 @@ function cssEscape(s: string): string {
   background: var(--color-bg-hover);
   color: var(--color-text-secondary);
 }
-.traj-role.user { background: rgba(17, 24, 39, 0.08); color: var(--color-text); }
-.traj-role.assistant { background: rgba(99, 102, 241, 0.12); color: #4338ca; }
-.traj-role.tool { background: rgba(20, 184, 166, 0.12); color: #0f766e; }
-.traj-role.system { background: rgba(245, 158, 11, 0.12); color: #b45309; }
-.traj-role.compaction { background: rgba(107, 114, 128, 0.12); color: #4b5563; }
-.traj-role.plan { background: rgba(139, 92, 246, 0.12); color: #6d28d9; }
-.traj-role.notice { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+/* role 徽章：文字色取 500 档中间明度，亮/暗卡上都可读 */
+.traj-role.user { background: var(--color-primary-muted); color: var(--color-text); }
+.traj-role.assistant { background: rgba(99, 102, 241, 0.12); color: #6366f1; }
+.traj-role.tool { background: rgba(20, 184, 166, 0.12); color: #14b8a6; }
+.traj-role.system { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
+.traj-role.compaction { background: var(--color-primary-muted); color: var(--color-text-secondary); }
+.traj-role.plan { background: rgba(139, 92, 246, 0.12); color: #8b5cf6; }
+.traj-role.notice { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
 
 .traj-iter {
   flex-shrink: 0;
@@ -750,10 +834,10 @@ function cssEscape(s: string): string {
   border-radius: var(--radius-full);
   font-size: 10px;
 }
-.traj-tool-status.completed { background: rgba(17, 24, 39, 0.06); color: var(--color-text-secondary); }
-.traj-tool-status.running { background: #fef9c3; color: #a16207; }
-.traj-tool-status.failed { background: #fee2e2; color: #b91c1c; }
-.traj-tool-status.pending { background: rgba(17, 24, 39, 0.06); color: var(--color-text-muted); }
+.traj-tool-status.completed { background: var(--color-primary-muted); color: var(--color-text-secondary); }
+.traj-tool-status.running { background: var(--color-warning-subtle); color: var(--color-warning); }
+.traj-tool-status.failed { background: var(--color-danger-subtle); color: var(--color-danger); }
+.traj-tool-status.pending { background: var(--color-primary-muted); color: var(--color-text-muted); }
 
 /* compaction 行展开体 */
 .traj-compaction-body {
