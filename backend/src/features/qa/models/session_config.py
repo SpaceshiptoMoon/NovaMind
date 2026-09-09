@@ -132,9 +132,14 @@ class SessionConfig(BaseModel):
         val = self.get_kb_bindings().get("score_threshold")
         return val if val is not None else 0.3
 
+    # 历史非法检索模式迁移：旧版前端下拉写入过 "vector"/"bm25"（非后端合法枚举），
+    # 会触发 SearchRequest 校验失败被上层静默吃掉 → 检索无召回。读侧统一迁移到合法值。
+    _LEGACY_SEARCH_MODE = {"vector": "content_vector", "bm25": "content_bm25"}
+
     @property
     def rag_search_mode(self) -> str:
-        return self.get_kb_bindings().get("search_mode", "content_hybrid")
+        mode = self.get_kb_bindings().get("search_mode", "content_hybrid")
+        return self._LEGACY_SEARCH_MODE.get(mode, mode)
 
     @property
     def rag_top_k(self) -> int:

@@ -275,6 +275,11 @@ export interface SpaceVLMConfig {
 }
 
 export interface SpaceConfig {
+  /**
+   * 遗留字段：数据类型（space_type）已下放到知识库（KB）级配置。
+   * 后端空间配置不再返回该字段，但历史数据/过渡期 UI 可能仍携带，保持可选。
+   */
+  space_type?: string | string[]
   description?: string
   tags?: string[]
   embedding?: SpaceConfigEmbedding
@@ -854,6 +859,8 @@ export interface ChatMessage {
   created_at: string
   reasoning?: string
   attachments?: ChatAttachment[]
+  /** 兼容字段：旧版本本地生成的消息以 _id 标识，保留可选以兼容历史消息形状 */
+  _id?: string | number
 }
 
 /** 检索来源引用（RAG 命中片段或联网结果） */
@@ -873,6 +880,12 @@ export interface ChatSource {
   page?: number | null
   /** 网址（联网来源） */
   url?: string | null
+  /** 兼容字段：来源标题（部分来源形状带 title 而非 document_name） */
+  title?: string | null
+  /** 兼容字段：来源文件名 */
+  filename?: string | null
+  /** 兼容字段：来源正文片段（与 snippet 同义，部分来源形状使用 content） */
+  content?: string | null
 }
 
 export interface ChatAttachment {
@@ -958,7 +971,7 @@ export interface RagBindingConfig {
   auto_rag?: boolean
   /** 是否启用分级拒答（检索为空拒答、低分标记） */
   refusal_enabled?: boolean
-  /** 低置信度阈值（单库模式生效） */
+  /** 低置信度阈值（独立生效：低于该分的检索结果被过滤；开启分级拒答时空结果将拒答） */
   score_threshold?: number
   /** 检索模式（默认混合） */
   search_mode?: string
@@ -968,6 +981,12 @@ export interface RagBindingConfig {
   vector_weight?: number
   /** BM25 检索权重（hybrid 类模式下与 vector_weight 之和需=1.0） */
   bm25_weight?: number
+  /** 检索前查询改写策略：none/completion/synonym/decompose/hyde */
+  query_rewriting?: string
+  /** 是否启用检索后自评估重试（grade retry） */
+  grade_retry_enabled?: boolean
+  /** 检索及格分数（1-10，grade retry 用） */
+  grade_retry_passing_score?: number
 }
 
 /** 模型生成参数配置（会话级持久化；llm_model/enable_thinking 由请求传，不在此） */

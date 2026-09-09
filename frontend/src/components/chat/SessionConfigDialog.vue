@@ -70,18 +70,49 @@
           </div>
           <el-switch v-model="ragForm.refusal_enabled" size="small" />
         </div>
-        <div v-if="ragForm.refusal_enabled" class="card-row">
+        <div class="card-row">
           <span class="row-label">低置信阈值</span>
           <el-input-number v-model="ragForm.score_threshold" :min="0" :max="1" :step="0.05" :precision="2" size="small" style="width:100px" />
+          <span class="row-hint">低于该分的结果被过滤；开启拒答时空结果将拒答</span>
         </div>
         <div class="card-row">
           <span class="row-label">检索模式</span>
-          <el-select v-model="ragForm.search_mode" size="small" style="width:180px">
-            <el-option label="内容混合（推荐）" value="content_hybrid" />
-            <el-option label="向量语义" value="vector" />
-            <el-option label="关键词 BM25" value="bm25" />
-            <el-option label="问题混合" value="question_hybrid" />
+          <el-select v-model="ragForm.search_mode" size="small" style="width:200px">
+            <el-option-group label="内容检索">
+              <el-option label="内容·混合（推荐）" value="content_hybrid" />
+              <el-option label="内容·向量" value="content_vector" />
+              <el-option label="内容·关键词" value="content_bm25" />
+            </el-option-group>
+            <el-option-group label="问题检索">
+              <el-option label="问题·混合" value="question_hybrid" />
+              <el-option label="问题·向量" value="question_vector" />
+              <el-option label="问题·关键词" value="question_bm25" />
+            </el-option-group>
+            <el-option-group label="全字段">
+              <el-option label="全字段·混合" value="all_hybrid" />
+              <el-option label="全字段·向量" value="all_vector" />
+              <el-option label="全字段·关键词" value="all_bm25" />
+            </el-option-group>
           </el-select>
+        </div>
+        <div class="card-row">
+          <span class="row-label">查询改写</span>
+          <el-select v-model="ragForm.query_rewriting" size="small" style="width:200px">
+            <el-option label="不改写" value="none" />
+            <el-option label="补全（completion）" value="completion" />
+            <el-option label="同义扩展（synonym）" value="synonym" />
+            <el-option label="问题分解（decompose）" value="decompose" />
+            <el-option label="假设文档（hyde）" value="hyde" />
+          </el-select>
+        </div>
+        <div class="card-row">
+          <span class="row-label">自评估重试</span>
+          <el-switch v-model="ragForm.grade_retry_enabled" size="small" />
+          <span class="row-hint">检索后由模型自评，不达标自动重试</span>
+        </div>
+        <div v-if="ragForm.grade_retry_enabled" class="card-row">
+          <span class="row-label">及格分数</span>
+          <el-input-number v-model="ragForm.grade_retry_passing_score" :min="1" :max="10" size="small" style="width:100px" />
         </div>
         <div class="card-row">
           <span class="row-label">检索条数</span>
@@ -212,6 +243,11 @@ const ragForm = reactive({
   top_k: 5,
   // 向量检索权重（仅 hybrid 类模式消费）；BM25 权重由 1 - vector_weight 派生，提交时计算
   vector_weight: 0.7,
+  // 检索前查询改写策略（对齐后端 RagBindingConfig.query_rewriting）
+  query_rewriting: 'none',
+  // 检索后自评估重试（grade retry）
+  grade_retry_enabled: false,
+  grade_retry_passing_score: 5,
 })
 
 // 仅 hybrid 类模式消费融合权重，非 hybrid 模式隐藏输入
@@ -271,6 +307,8 @@ async function loadConfig(sessionId: string) {
   ragForm.refusal_enabled = false; ragForm.score_threshold = 0.3
   ragForm.search_mode = 'content_hybrid'; ragForm.top_k = 5
   ragForm.vector_weight = 0.7
+  ragForm.query_rewriting = 'none'
+  ragForm.grade_retry_enabled = false; ragForm.grade_retry_passing_score = 5
   llmForm.max_tokens = 2048; llmForm.temperature = 0.7
   llmForm.top_p = 0.8; llmForm.system_prompt = ''
   webSearchForm.provider = undefined; webSearchForm.max_results = 5
@@ -301,9 +339,17 @@ async function loadConfig(sessionId: string) {
       ragForm.auto_rag = !!kb.auto_rag
       ragForm.refusal_enabled = !!kb.refusal_enabled
       ragForm.score_threshold = kb.score_threshold ?? 0.3
-      ragForm.search_mode = kb.search_mode || 'content_hybrid'
+      // 历史非法枚举值迁移（旧版下拉写入了 "vector"/"bm25"，后端校验会静默失败导致无召回）
+      const LEGACY_SEARCH_MODE: Record<string, string> = {
+        vector: 'content_vector',
+        bm25: 'content_bm25',
+      }
+      ragForm.search_mode = LEGACY_SEARCH_MODE[kb.search_mode || ''] || kb.search_mode || 'content_hybrid'
       ragForm.top_k = kb.top_k ?? 5
       ragForm.vector_weight = kb.vector_weight ?? 0.7
+      ragForm.query_rewriting = kb.query_rewriting || 'none'
+      ragForm.grade_retry_enabled = !!kb.grade_retry_enabled
+      ragForm.grade_retry_passing_score = kb.grade_retry_passing_score ?? 5
       if (ragForm.space_id) {
         await handleRagFormSpaceChange(ragForm.space_id)
       }
@@ -370,6 +416,9 @@ async function handleSave() {
         top_k: ragForm.top_k,
         vector_weight: ragForm.vector_weight,
         bm25_weight: Number((1 - ragForm.vector_weight).toFixed(2)),
+        query_rewriting: ragForm.query_rewriting,
+        grade_retry_enabled: ragForm.grade_retry_enabled,
+        grade_retry_passing_score: ragForm.grade_retry_passing_score,
       },
     })
     const wsUpdated = await sessionApi.updateWebSearchConfig(props.sessionId!, {

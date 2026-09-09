@@ -278,8 +278,9 @@ class AIChatService:
                 rewrite_degraded = True
 
         if do_web or do_rag:
-            # refusal_on 启用阈值过滤
-            effective_threshold = score_threshold if refusal_on else None
+            # 阈值独立生效：配置了就作为检索低分过滤线（不再仅分级拒答开启时透传）。
+            # refusal_on 只控制"过滤后为空是否拒答"，不控制过滤本身。
+            effective_threshold = score_threshold
 
             if len(search_queries) == 1:
                 grade_retry = getattr(session_config, "rag_grade_retry_enabled", False) if session_config else False
