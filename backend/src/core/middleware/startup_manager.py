@@ -200,9 +200,15 @@ class AppLifespanManager:
                 recover_orphan_resume_sessions,
             )
             from novamind.shared.mq.worker import start_embedded_worker
+            from novamind.features.qa.tasks import cleanup_orphan_attachments
+            from arq import cron
             await start_embedded_worker(
                 functions=[process_document_task, process_resume_task],
                 task_queue=config.task_queue,
+                cron_jobs=[
+                    # 孤儿聊天附件清理：每天 03:17（上传超 7 天且无消息引用）
+                    cron(cleanup_orphan_attachments, hour=3, minute=17),
+                ],
             )
             self.logger.info("嵌入式 arq Worker 已启动")
 

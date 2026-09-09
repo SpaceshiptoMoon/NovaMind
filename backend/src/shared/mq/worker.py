@@ -2,7 +2,7 @@
 arq 通用 Worker 运行时，提供嵌入式 Worker 的创建、启动与停止。
 """
 import asyncio
-from typing import Callable, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
 from arq.worker import Worker
 
@@ -17,6 +17,7 @@ _worker_task: Optional[asyncio.Task] = None
 async def create_embedded_worker(
     functions: Sequence[Callable],
     task_queue,
+    cron_jobs: Sequence[dict[str, Any]] = (),
 ) -> Worker:
     """
     创建嵌入式 arq Worker
@@ -24,6 +25,7 @@ async def create_embedded_worker(
     Args:
         functions: arq 任务函数列表（由宿主装配点从各 feature ``tasks/`` 收集注入）
         task_queue: 宿主 ``task_queue`` 配置（queue_name/max_jobs/job_timeout/max_tries 等）
+        cron_jobs: 周期任务列表（arq.cron 构造），空列表则不启用
 
     Returns:
         arq Worker 实例（需手动调用 worker.main()）
@@ -33,7 +35,7 @@ async def create_embedded_worker(
     # 复用 ArqRedis 实例（包含 arq 特有方法如 enqueue_job）
     arq_pool = await get_arq_pool()
 
-    worker = Worker(
+    worker_kwargs: dict[str, Any] = dict(
         functions=list(functions),
         redis_pool=arq_pool,
         queue_name=task_queue.queue_name,
@@ -45,6 +47,10 @@ async def create_embedded_worker(
             "retry_delay_seconds": task_queue.retry_base_delay,
         },
     )
+    if cron_jobs:
+        worker_kwargs["cron_jobs"] = list(cron_jobs)
+
+    worker = Worker(**worker_kwargs)
 
     logger.info(
         "嵌入式 arq Worker 已创建",
@@ -60,6 +66,7 @@ async def create_embedded_worker(
 async def start_embedded_worker(
     functions: Sequence[Callable],
     task_queue,
+    cron_jobs: Sequence[dict[str, Any]] = (),
 ) -> asyncio.Task:
     """
     启动嵌入式 Worker 作为后台 asyncio.Task
@@ -67,13 +74,14 @@ async def start_embedded_worker(
     Args:
         functions: arq 任务函数列表（由宿主装配点注入）
         task_queue: 宿主 ``task_queue`` 配置
+        cron_jobs: 周期任务列表（arq.cron 构造），空列表则不启用
 
     Returns:
         Worker 的 asyncio.Task
     """
     global _worker_task
 
-    worker = await create_embedded_worker(functions, task_queue)
+    worker = await create_embedded_worker(functions, task_queue, cron_jobs=cron_jobs)
     _worker_task = asyncio.create_task(_run_worker(worker))
 
     logger.info("嵌入式 arq Worker 已启动")

@@ -185,7 +185,15 @@ async def upload_chat_attachment(
     ai_chat_service: AIChatService = Depends(get_aichat_service),
     current_user: dict = Depends(get_current_user),
 ):
-    """上传聊天附件"""
+    """上传聊天附件。
+
+    共享端点：QA 聊天（/ai-chat/ws）与 Agent 对话（/agent/agents/{id}/ws）共用。
+    物理归属在 features/qa（chat_attachments 表 + MinIO），agent 前端
+    （stores/agent.ts）与后端（features/agent/chat_service._prepare）均按
+    user_id 维度引用附件 id，不做会话级归属校验——同一用户可跨会话/跨
+    agent 复用附件，为既有设计决策，勿在单个 feature 内改动此语义。
+    孤儿回收由 cron 任务 cleanup_orphan_attachments 负责（上传超 7 天且无引用）。
+    """
     result = await ai_chat_service.upload_attachment(
         user_id=current_user["id"],
         file=files,
