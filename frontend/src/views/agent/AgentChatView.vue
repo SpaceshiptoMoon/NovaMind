@@ -109,15 +109,13 @@
                 </div>
               </div>
 
-              <!-- assistant 一轮：avatar 折叠头 + 工作过程 + 最终回复 -->
+              <!-- assistant 一轮：左 avatar + 右内容列（WorkBuddy 风格：头像随内容内联，不重复占一整行名称头） -->
               <div
                 v-if="turn.items.length || turn.finalAssistant || turn.isActive"
                 class="assistant-turn"
               >
-                <div class="avatar-row">
-                  <div class="turn-avatar">{{ agentName.charAt(0) }}</div>
-                  <div class="turn-name">{{ agentName }}</div>
-                </div>
+                <div class="turn-avatar" :title="agentName">{{ agentName.charAt(0) }}</div>
+                <div class="turn-body">
 
                 <!-- 多步 ReAct 才显示折叠头，单步平铺不折叠 -->
                 <button
@@ -251,6 +249,7 @@
                       <span class="typing-dot"></span>
                     </div>
                   </div>
+                </div>
                 </div>
               </div>
             </div>
@@ -1136,7 +1135,7 @@ onBeforeUnmount(() => {
 }
 
 .new-chat-btn:hover {
-  background: #dbeafe;
+  background: var(--color-info-subtle);
 }
 
 .conversation-list {
@@ -1252,7 +1251,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   padding: 0 var(--space-5);
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--color-bg-header);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   box-shadow: var(--shadow-xs);
@@ -1443,7 +1442,7 @@ onBeforeUnmount(() => {
 }
 
 /* ========================================
-   按轮分组：avatar 折叠头 + 工作过程 + 最终回复
+   按轮分组：左 avatar + 右内容列 + 工作过程 + 最终回复
    ======================================== */
 .chat-turn {
   margin-bottom: 32px;
@@ -1451,23 +1450,17 @@ onBeforeUnmount(() => {
 
 .assistant-turn {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  align-items: flex-start;
+  gap: var(--space-3);
   margin-top: var(--space-2);
   animation: messageIn 0.35s ease forwards;
 }
 
-.avatar-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
 .turn-avatar {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--radius-full);
-  background: var(--color-text);
+  background: var(--color-btn-primary);
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -1475,12 +1468,15 @@ onBeforeUnmount(() => {
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   flex-shrink: 0;
+  user-select: none;
 }
 
-.turn-name {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text);
+.turn-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 /* 折叠线：已完成耗时 / 生成中 */
@@ -1909,7 +1905,7 @@ onBeforeUnmount(() => {
 }
 
 .tool-status.completed {
-  background: rgba(17, 24, 39, 0.06);
+  background: var(--color-primary-muted);
   color: var(--color-text-secondary);
 }
 
@@ -2011,10 +2007,11 @@ onBeforeUnmount(() => {
 /* ========================================
    Input Area — Pill Shape
    ======================================== */
+/* WorkBuddy 风格：输入卡直接浮在对话画布上，不做白色底 band */
 .input-area {
   flex-shrink: 0;
-  padding: 0 var(--space-6) var(--space-5);
-  background: var(--color-bg-card);
+  padding: var(--space-2) var(--space-6) var(--space-5);
+  background: transparent;
   position: relative;
 }
 
@@ -2066,10 +2063,10 @@ onBeforeUnmount(() => {
   gap: 10px;
   width: 100%;
   padding: 10px 12px 6px;
-  border: 1px solid var(--color-border-light);
-  border-radius: 22px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2xl);
   background: var(--color-bg-card);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
   transition:
     border-color var(--transition-base),
     box-shadow var(--transition-base);
@@ -2196,8 +2193,8 @@ onBeforeUnmount(() => {
 }
 
 .mode-chip.active {
-  background: var(--color-text);
-  border-color: var(--color-text);
+  background: var(--color-btn-primary);
+  border-color: var(--color-btn-primary);
   color: #ffffff;
   font-weight: var(--weight-medium);
 }
@@ -2231,7 +2228,7 @@ onBeforeUnmount(() => {
 }
 
 .send-primary.active:hover {
-  background: #2563eb;
+  background: var(--color-info);
   transform: scale(1.05);
 }
 
@@ -2397,7 +2394,7 @@ onBeforeUnmount(() => {
 }
 
 .file-image {
-  background: linear-gradient(135deg, #43e97b, #38f9d7);
-  color: #fff;
+  background: var(--color-file-image-bg);
+  color: var(--color-file-image);
 }
 </style>
