@@ -1277,6 +1277,9 @@ class AgentChatService:
             ))
 
         budget = TokenBudget(model)
+        # 口径说明：此处 available = window - 4096 与 build_context 的 window - reserve(1024)
+        # 是两套语义而非不一致——溢出兜底发生在流式生成中途，必须为"剩余生成量"留足空间
+        # （该次请求可能还要输出长回复），故预留更大；build_context 的 reserve 仅是常规安全边际。
         available = context_window - 4096  # 留出生成空间
         if available < 2000:
             return messages

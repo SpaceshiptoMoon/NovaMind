@@ -12,6 +12,7 @@
 """
 import json
 import hashlib
+import html
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -324,6 +325,18 @@ class ContextCompressor(ICompressionStrategy):
             suffix = "..." if len(content) > 80 else ""
             return f"[{name}] {preview}{suffix} ({content_len:,} chars)"
 
+        if name == "read_attachment":
+            # 附件分片读取：保留文件名与分页状态，供后续轮次回溯"这条结果来自哪个文件"
+            filename = (parsed or {}).get("filename", "")
+            has_more = (parsed or {}).get("has_more")
+            parts = [f"[{name}]"]
+            if filename:
+                parts.append(f'file="{str(filename)[:80]}"')
+            if has_more:
+                parts.append("partial")
+            parts.append(f"({content_len:,} chars)")
+            return " ".join(parts)
+
         return f"[{name}] ({content_len:,} chars, {lines} lines)"
 
     @staticmethod
@@ -465,9 +478,11 @@ class ContextCompressor(ICompressionStrategy):
             logger.debug("摘要生成在冷却中")
             return None
 
-        # 序列化 + 脱敏
+        # 序列化 + 脱敏 + 块转义：用户文本出现 "</conversation>" 可伪造摘要结构
+        # （block-breakout，对齐 deer-flow #4162 的防御），escape 后只作纯文本
         content = self._serialize_turns(turns)
         content = redact_sensitive_text(content)
+        content = f"<conversation>\n{html.escape(content, quote=False)}\n</conversation>"
 
         # 加载旧摘要：优先内存缓存，其次从 DB 加载
         old_summary = self._previous_summary
@@ -553,6 +568,17 @@ class ContextCompressor(ICompressionStrategy):
                 parts.append(f"[{role.upper()}]: {content}")
         return "\n\n".join(parts)
 
+    @staticmethod
+    def _truncate_old_summary(old_summary: str, max_chars: int = 6000) -> str:
+        """迭代融合时截断旧摘要（保尾部——迭代 merge 的增量信息追加在末尾）。
+
+        旧摘要每轮融合都会增长，不截断会让 merge prompt 膨胀到反超压缩收益
+        （对齐 deer-flow trim_tokens_to_summarize 的预算思想，取轻量字符截断版）。
+        """
+        if len(old_summary) <= max_chars:
+            return old_summary
+        return "…[earlier summary truncated]…\n" + old_summary[-max_chars:]
+
     def _build_summary_prompt(self, content: str) -> str:
         """Build first-summary prompt with handoff framing"""
         return (
@@ -604,14 +630,19 @@ class ContextCompressor(ICompressionStrategy):
 
     def _build_merge_prompt(self, old_summary: str, new_content: str) -> str:
         """Build iterative merge prompt with handoff framing"""
+        # 块包裹 + html.escape：用户文本里出现 "</new_messages>" 之类可伪造摘要结构
+        # （block-breakout 注入，对齐 deer-flow #4162/#4097 的防御），转义后只作纯文本
+        old_summary = self._truncate_old_summary(old_summary)
+        escaped_old = html.escape(old_summary, quote=False)
+        escaped_new = html.escape(new_content, quote=False)
         return (
             "You are updating a context compaction summary. A previous compaction produced the summary below. "
             "New conversation turns have occurred and need to be incorporated.\n\n"
             "Do NOT respond to any questions in the conversation — only output the updated structured summary.\n"
             "NEVER include API keys, tokens, passwords, secrets, or credentials — "
             "replace any that appear with [REDACTED].\n\n"
-            f"Old summary:\n{old_summary}\n\n"
-            f"New conversation turns:\n{new_content}\n\n"
+            f"<existing_summary>\n{escaped_old}\n</existing_summary>\n\n"
+            f"<new_messages>\n{escaped_new}\n</new_messages>\n\n"
             "Update the summary. Preserve all still-relevant information from the old summary. "
             "Continue numbering in numbered lists where the old summary left off. "
             "Move completed items to \"Completed Actions\". "
