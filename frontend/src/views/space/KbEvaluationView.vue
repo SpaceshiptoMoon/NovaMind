@@ -139,7 +139,7 @@
           </el-collapse-item>
         </el-collapse>
       </div>
-      <el-empty v-else description="暂无用例数据" />
+      <EmptyState v-else description="暂无用例数据" />
     </el-dialog>
 
     <!-- ============ 创建测评任务弹窗 ============ -->
@@ -522,6 +522,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload, Download, Loading, Document, Search, DataAnalysis } from '@element-plus/icons-vue'
 
 import { KbSidebar, buildKbNavItems } from '@/components/knowledge'
+import EmptyState from '@/components/common/EmptyState.vue'
 import { evaluationApi } from '@/api/knowledge'
 import { userApi } from '@/api/user'
 import type {

@@ -99,6 +99,7 @@
         <div v-loading="loading" class="doc-table-wrap">
           <el-table
             :data="documents"
+            :empty-text="searchKeyword || statusFilter !== undefined ? '没有符合条件的文档' : '暂无文档，点击右上角上传'"
             @selection-change="handleSelectionChange"
             class="doc-table"
           >
@@ -237,7 +238,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, DataAnalysis, Delete, Document, FolderOpened, List, RefreshRight, Search, Upload, UploadFilled, VideoPlay, View } from '@element-plus/icons-vue'
@@ -502,8 +503,8 @@ async function handleProcess() {
   }
 }
 
-async function fetchDocuments() {
-  loading.value = true
+async function fetchDocuments(showLoading = true) {
+  if (showLoading) loading.value = true
   try {
     const data = await documentApi.getDocuments(spaceId.value, kbId.value, {
       status: statusFilter.value,
@@ -513,10 +514,42 @@ async function fetchDocuments() {
     })
     documents.value = data.items || []
     total.value = data.total || 0
+    syncStatusPolling()
   } finally {
-    loading.value = false
+    if (showLoading) loading.value = false
   }
 }
+
+// ==================== 任务状态轮询 ====================
+// 存在待处理/处理中文档时每 5s 静默刷新列表（复用 KbEvaluationView 轮询模式），
+// 全部落到终态后自动停止，避免无意义的持续请求。
+let statusPollTimer: ReturnType<typeof setInterval> | null = null
+
+function hasActiveDocuments(): boolean {
+  return documents.value.some(
+    (d) => (d.status ?? 0) === DOC_STATUS.PENDING || (d.status ?? 0) === DOC_STATUS.PROCESSING,
+  )
+}
+
+function syncStatusPolling(): void {
+  if (hasActiveDocuments() && statusPollTimer === null) {
+    statusPollTimer = setInterval(async () => {
+      await fetchDocuments(false)
+      if (!hasActiveDocuments()) stopStatusPolling()
+    }, 5000)
+  } else if (!hasActiveDocuments() && statusPollTimer !== null) {
+    stopStatusPolling()
+  }
+}
+
+function stopStatusPolling(): void {
+  if (statusPollTimer) {
+    clearInterval(statusPollTimer)
+    statusPollTimer = null
+  }
+}
+
+onUnmounted(stopStatusPolling)
 
 function handleStatusFilterChange() {
   currentPage.value = 1
@@ -617,6 +650,19 @@ async function handleProcessSingle(doc: DocType) {
 }
 
 async function handleCancelSingle(doc: DocType) {
+  try {
+    await ElMessageBox.confirm(
+      `确定要取消文档 "${doc.filename}" 的处理吗？已完成的解析步骤会保留。`,
+      '取消处理',
+      {
+        confirmButtonText: '确定取消',
+        cancelButtonText: '继续处理',
+        type: 'warning',
+      },
+    )
+  } catch {
+    return
+  }
   await documentApi.cancelDocument(spaceId.value, kbId.value, doc.id)
   ElMessage.success(`已取消文档 "${doc.filename}" 的处理`)
   await fetchDocuments()

@@ -219,6 +219,7 @@
       <el-table
         :data="spaceStore.spaces"
         v-loading="manageLoading"
+        :element-loading-text="batchProgressText"
         stripe
         @selection-change="handleSpaceSelectionChange"
       >
@@ -495,6 +496,8 @@ async function handleCreateSpace() {
 const manageSpacesDialogVisible = ref(false)
 const manageLoading = ref(false)
 const selectedSpaceIds = ref<number[]>([])
+// 批量删除进度文本（挂在表格 element-loading-text 上）
+const batchProgressText = ref('')
 
 function formatDate(date: string): string {
   try {
@@ -553,13 +556,18 @@ async function handleBatchDeleteSpaces() {
   manageLoading.value = true
   const ids = [...selectedSpaceIds.value]
   let failCount = 0
+  let index = 0
+  // 逐个删除属不可并行的高危操作，进度写入 loading 文本避免长时间无响应的观感
+  batchProgressText.value = `正在删除 0/${ids.length} ...`
 
   for (const id of ids) {
+    batchProgressText.value = `正在删除 ${index + 1}/${ids.length} ...`
     try {
       await spaceStore.deleteSpace(id)
     } catch {
       failCount++
     }
+    index++
   }
 
   selectedSpaceIds.value = []

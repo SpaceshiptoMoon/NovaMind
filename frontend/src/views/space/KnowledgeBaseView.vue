@@ -1,21 +1,11 @@
 <template>
   <div class="knowledge-base-view">
-    <!-- 批量操作栏 -->
-    <div v-if="selectedIds.length > 0" class="batch-bar">
-      <span class="batch-count">已选 {{ selectedIds.length }} 项</span>
-      <el-button size="small" @click="clearSelection">取消选择</el-button>
-      <el-button type="danger" size="small" @click="handleBatchDelete">
-        批量删除
-      </el-button>
-    </div>
-
     <!-- 知识库卡片网格 -->
     <div v-loading="loading" class="kb-grid">
       <div
         v-for="(kb, index) in knowledgeBases"
         :key="kb.id"
         class="kb-card"
-        :class="{ selected: selectedIds.includes(kb.id) }"
       >
         <div class="kb-card-body" @click="goToDocuments(kb.id)">
           <!-- 头部：名称 + 状态 -->
@@ -134,7 +124,6 @@ const dialogVisible = ref(false)
 const editKbId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
 const knowledgeBases = ref<KnowledgeBase[]>([])
-const selectedIds = ref<number[]>([])
 
 const formData = reactive({
   name: '',
@@ -171,22 +160,6 @@ function getColor(index: number): string {
 
 function goConfig(kb: KnowledgeBase) {
   router.push({ name: 'KbConfig', params: { id: spaceId.value, kbId: kb.id } })
-}
-
-// === 选择 ===
-
-function toggleSelect(kbId: number, checked: boolean) {
-  if (checked) {
-    if (!selectedIds.value.includes(kbId)) {
-      selectedIds.value.push(kbId)
-    }
-  } else {
-    selectedIds.value = selectedIds.value.filter((id) => id !== kbId)
-  }
-}
-
-function clearSelection() {
-  selectedIds.value = []
 }
 
 // === 知识库列表 ===
@@ -268,47 +241,6 @@ async function handleUnarchive(kb: KnowledgeBase) {
   }
 }
 
-// === 批量删除 ===
-
-async function handleBatchDelete() {
-  if (selectedIds.value.length === 0) return
-
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除选中的 ${selectedIds.value.length} 个知识库吗？此操作将删除所有关联文档，且不可恢复。`,
-      '批量删除',
-      {
-        confirmButtonText: '确定删除',
-        cancelButtonText: '取消',
-        type: 'error',
-      },
-    )
-  } catch {
-    return
-  }
-
-  const ids = [...selectedIds.value]
-  let failCount = 0
-
-  for (const id of ids) {
-    try {
-      await knowledgeBaseApi.deleteKnowledgeBase(spaceId.value, id)
-    } catch {
-      failCount++
-    }
-  }
-
-  selectedIds.value = []
-
-  if (failCount === 0) {
-    ElMessage.success(`已删除 ${ids.length} 个知识库`)
-  } else {
-    ElMessage.warning(`${ids.length - failCount} 个删除成功，${failCount} 个删除失败`)
-  }
-
-  fetchKnowledgeBases()
-}
-
 // === 单个删除 ===
 
 async function handleDeleteSingle(kb: KnowledgeBase) {
@@ -368,23 +300,6 @@ onMounted(() => {
   padding-top: var(--space-2);
 }
 
-.batch-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-danger-subtle);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--color-danger-subtle);
-}
-
-.batch-count {
-  font-size: var(--text-sm);
-  color: var(--color-danger);
-  font-weight: var(--weight-medium);
-}
-
 .kb-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -411,11 +326,6 @@ onMounted(() => {
   border-color: var(--color-text-faint);
   background: var(--color-bg-card-elevated);
   box-shadow: var(--shadow-sm);
-}
-
-.kb-card.selected {
-  border-color: var(--color-primary);
-  background: var(--color-primary-muted);
 }
 
 .kb-card-body {

@@ -55,7 +55,12 @@
           </header>
 
           <div v-loading="loading" class="task-feed__body">
-            <el-empty v-if="!tasks.length" description="暂无任务" />
+            <EmptyState
+              v-if="!tasks.length"
+              variant="data"
+              headline="暂无处理任务"
+              description="上传文档或发起批量处理后，任务会显示在这里"
+            />
             <template v-else>
               <div class="task-list">
                 <article
@@ -223,7 +228,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { DataAnalysis, Document, List, RefreshRight, Search } from '@element-plus/icons-vue'
 
@@ -231,6 +236,7 @@ import { documentApi } from '@/api/knowledge'
 import type { DocumentTask, TaskNodeLog } from '@/api/types'
 import { KbSidebar, TaskNodeLogTable, buildKbNavItems, taskStatusMap } from '@/components/knowledge'
 import Pagination from '@/components/common/Pagination.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 import { formatDate } from '@/utils/format'
 
 const route = useRoute()
@@ -265,8 +271,8 @@ const currentPageFailedCount = computed(() =>
   tasks.value.reduce((sum, task) => sum + (task.task_summary?.failed ?? 0), 0)
 )
 
-async function fetchTasks() {
-  loading.value = true
+async function fetchTasks(silent = false) {
+  if (!silent) loading.value = true
   try {
     const data = await documentApi.getDocumentTasksOverview(spaceId.value, kbId.value, {
       skip: (page.value - 1) * pageSize.value,
@@ -275,12 +281,43 @@ async function fetchTasks() {
 
     tasks.value = data.items || []
     total.value = data.total || 0
-    // 任务列表默认全部收起，不自动展开第一个任务
-    expandedTaskIds.value = []
+    // 任务列表默认全部收起，不自动展开第一个任务（轮询静默刷新时保留用户展开状态）
+    if (!silent) expandedTaskIds.value = []
+    syncTaskPolling()
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
+
+// ==================== 任务状态轮询 ====================
+// 存在 pending/processing 任务时每 5s 静默刷新（保留用户展开状态），全部到终态自动停止
+let taskPollTimer: ReturnType<typeof setInterval> | null = null
+
+function hasActiveTasks(): boolean {
+  return tasks.value.some(
+    (t) => t.status === 0 || t.status === 1,
+  )
+}
+
+function syncTaskPolling(): void {
+  if (hasActiveTasks() && taskPollTimer === null) {
+    taskPollTimer = setInterval(async () => {
+      await fetchTasks(true)
+      if (!hasActiveTasks()) stopTaskPolling()
+    }, 5000)
+  } else if (!hasActiveTasks() && taskPollTimer !== null) {
+    stopTaskPolling()
+  }
+}
+
+function stopTaskPolling(): void {
+  if (taskPollTimer) {
+    clearInterval(taskPollTimer)
+    taskPollTimer = null
+  }
+}
+
+onUnmounted(stopTaskPolling)
 
 function toggleTask(taskId: number) {
   expandedTaskIds.value = expandedTaskIds.value.includes(taskId)
