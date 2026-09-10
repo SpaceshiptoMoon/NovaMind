@@ -2,6 +2,7 @@
 深度研究 API 路由
 """
 
+import asyncio
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Path, Query, WebSocket, WebSocketDisconnect
@@ -14,7 +15,14 @@ from novamind.core.ws import run_stream_to_ws
 from novamind.features.knowledge_space.api.dependencies import validate_space_access
 from novamind.features.knowledge_space.exceptions import SpaceAccessDeniedError, SpaceNotFoundError
 from novamind.features.deep_research.api.dependencies import get_deep_research_service
-from novamind.features.deep_research.services.deep_research_service import DeepResearchService
+from novamind.features.deep_research.services.deep_research_service import (
+    DeepResearchService,
+    parse_plan_json,
+    _plan_to_event_data,
+)
+from novamind.features.deep_research.services.plan_feedback_registry import (
+    PlanFeedbackRegistry,
+)
 from novamind.features.deep_research.schemas.research_schema import (
     ResearchMode,
     SearchSource,
@@ -70,9 +78,30 @@ def _get_research_topic(research) -> Optional[str]:
 
 
 def _get_research_tasks(research) -> Optional[list]:
-    """从 research 的 plan 中获取研究任务"""
+    """从 research 的 plan 中获取研究任务（旧形状兼容：v2 steps 派生 / v1 tasks 原样）"""
     plan = research.plan or {}
+    if plan.get("version") == 2:
+        return [
+            {
+                "task_id": s.get("step_id", f"step_{i + 1}"),
+                "description": s.get("description", ""),
+                "priority": i + 1,
+            }
+            for i, s in enumerate(plan.get("steps") or [])
+            if isinstance(s, dict)
+        ]
     return plan.get("tasks")
+
+
+def _get_research_plan(research) -> Optional[dict]:
+    """从 research 的 plan 中获取 v2 结构化计划（旧形状返回 None）。"""
+    plan = research.plan or {}
+    if plan.get("version") != 2:
+        return None
+    parsed = parse_plan_json(plan)
+    if parsed is None:
+        return None
+    return _plan_to_event_data(parsed)
 
 
 def _get_final_report(research) -> Optional[str]:
@@ -175,7 +204,7 @@ async def research_ws(
     resolver: UserStatusResolver = Depends(get_user_status_resolver),
     research_service: DeepResearchService = Depends(get_deep_research_service),
 ):
-    """深度研究（WebSocket 流式）。
+    """深度研究（WebSocket 流式，支持计划确认双向交互）。
 
     路由前缀 ``/api/v1/spaces/{space_id}/deep-research`` + ``/ws`` →
     ``/api/v1/spaces/{space_id}/deep-research/ws``。
@@ -184,8 +213,11 @@ async def research_ws(
     空间权限：ws_authenticate 拿到 user 后，用 ``space_id`` + ``user["id"]`` 复用
     ``validate_space_access`` 校验空间访问权限（失败 close 4403，握手前 close 由
     Starlette 回 403）。客户端连接后发 ``{"action": "research", "payload": ResearchRequest}``，
-    服务端推送 ``{"type": ..., "data": ...}`` 事件流（progress/content/done/error）。
-    客户端 close 触发 service ``asyncio.CancelledError`` → 研究记录标记 CANCELLED。
+    服务端推送 ``{"type": ..., "data": ...}`` 事件流（progress/plan_generated/content/
+    done/error）。``auto_accepted_plan=false`` 时计划生成后服务端挂起，客户端发
+    ``{"action": "plan_feedback", "decision": "accepted"|"edit_plan", "feedback": "..."}"
+    继续（edit_plan 携 feedback 重规划；超时自动接受）。客户端 close 触发 service
+    ``asyncio.CancelledError`` → 研究记录标记 CANCELLED。
     """
     user, close_code = await ws_authenticate(websocket, resolver)
     token = ws_extract_token(websocket)
@@ -222,12 +254,46 @@ async def research_ws(
         await websocket.close()
         return
 
+    # 计划确认双向通道：locked_send（并发 send 加锁）+ send/recv 双 task
+    # （deer-flow human_feedback 对齐；参照 agent ApprovalRegistry 先例）
+    registry = PlanFeedbackRegistry()
+    send_lock = asyncio.Lock()
+
+    async def locked_send(event):
+        async with send_lock:
+            await websocket.send_json(event)
+
     gen = research_service.research_stream(
         space_id=space_id,
         user_id=user["id"],
         request=data,
+        feedback_registry=registry,
     )
-    await run_stream_to_ws(websocket, gen)
+
+    async def recv_plan_feedback():
+        """并发收用户 WS 消息（计划反馈 → registry.resolve）。"""
+        while True:
+            try:
+                msg = await websocket.receive_json()
+            except WebSocketDisconnect:
+                break
+            if (
+                isinstance(msg, dict)
+                and msg.get("action") == "plan_feedback"
+            ):
+                registry.resolve(
+                    str(msg.get("decision", "accepted")),
+                    str(msg.get("feedback", "") or ""),
+                )
+
+    send_task = asyncio.create_task(
+        run_stream_to_ws(websocket, gen, send_fn=locked_send)
+    )
+    recv_task = asyncio.create_task(recv_plan_feedback())
+    try:
+        await send_task
+    finally:
+        recv_task.cancel()
 
 
 @router.get(
@@ -324,6 +390,7 @@ async def get_research(
         status=_map_status_to_schema(research.status),
         research_topic=_get_research_topic(research),
         research_tasks=_get_research_tasks(research),
+        research_plan=_get_research_plan(research),
         final_report=_get_final_report(research),
         search_summary=_get_search_summary(research),
         stats=research.stats or {},

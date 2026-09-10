@@ -5927,6 +5927,55 @@
         "title": "PersonalInfo",
         "type": "object"
       },
+      "PlanStepModel": {
+        "description": "研究计划步骤（deer-flow Step 对齐，plan_generated 事件与响应用）",
+        "properties": {
+          "description": {
+            "description": "步骤描述（要收集什么数据）",
+            "title": "Description",
+            "type": "string"
+          },
+          "execution_res": {
+            "default": "",
+            "description": "执行结果（完成后回填）",
+            "title": "Execution Res",
+            "type": "string"
+          },
+          "need_search": {
+            "default": true,
+            "description": "是否需要检索",
+            "title": "Need Search",
+            "type": "boolean"
+          },
+          "step_id": {
+            "description": "步骤 ID",
+            "title": "Step Id",
+            "type": "string"
+          },
+          "step_type": {
+            "default": "research",
+            "description": "步骤类型：research(检索)/processing(纯分析)",
+            "enum": [
+              "research",
+              "processing"
+            ],
+            "title": "Step Type",
+            "type": "string"
+          },
+          "title": {
+            "description": "步骤标题",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step_id",
+          "title",
+          "description"
+        ],
+        "title": "PlanStepModel",
+        "type": "object"
+      },
       "ProjectExperience": {
         "properties": {
           "achievements": {
@@ -6684,9 +6733,60 @@
         "title": "ResearchMode",
         "type": "string"
       },
+      "ResearchPlanModel": {
+        "description": "研究计划（deer-flow Plan 对齐，plan_generated 事件与响应用）",
+        "properties": {
+          "has_enough_context": {
+            "default": false,
+            "description": "背景信息是否已足够（true 时跳过检索直接生成报告）",
+            "title": "Has Enough Context",
+            "type": "boolean"
+          },
+          "iteration": {
+            "default": 0,
+            "description": "规划轮次（0=首轮）",
+            "title": "Iteration",
+            "type": "integer"
+          },
+          "steps": {
+            "description": "步骤列表",
+            "items": {
+              "$ref": "#/components/schemas/PlanStepModel"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "thought": {
+            "default": "",
+            "description": "规划思考一句话",
+            "title": "Thought",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "description": "计划标题",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "title": "ResearchPlanModel",
+        "type": "object"
+      },
       "ResearchRequest": {
         "description": "研究请求\n\n支持细粒度配置内部检索、外部搜索、LLM 模型等",
         "properties": {
+          "auto_accepted_plan": {
+            "default": true,
+            "description": "自动接受研究计划。true=计划生成后直接执行（旧行为，非流式强制 true）；false=生成计划后暂停，等待 WS plan_feedback 确认/编辑再执行",
+            "title": "Auto Accepted Plan",
+            "type": "boolean"
+          },
+          "enable_background_investigation": {
+            "default": true,
+            "description": "规划前背景调查：先按 search_source 做一轮检索，结果注入规划 prompt 提升计划质量",
+            "title": "Enable Background Investigation",
+            "type": "boolean"
+          },
           "external_search": {
             "$ref": "#/components/schemas/ExternalSearchConfig",
             "description": "外部 Web 搜索配置"
@@ -6704,6 +6804,18 @@
             "maxLength": 2000,
             "minLength": 5,
             "title": "Query",
+            "type": "string"
+          },
+          "report_style": {
+            "default": "default",
+            "description": "报告风格：academic(学术)/popular_science(科普)/news(新闻)/default(通用)",
+            "enum": [
+              "academic",
+              "popular_science",
+              "news",
+              "default"
+            ],
+            "title": "Report Style",
             "type": "string"
           },
           "research_mode": {
@@ -6777,6 +6889,17 @@
             "$ref": "#/components/schemas/ResearchMode",
             "description": "研究模式"
           },
+          "research_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResearchPlanModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "研究计划（v2 结构化形状）"
+          },
           "research_tasks": {
             "anyOf": [
               {
@@ -6789,7 +6912,7 @@
                 "type": "null"
               }
             ],
-            "description": "子任务列表",
+            "description": "子任务列表（从计划 steps 派生的旧形状）",
             "title": "Research Tasks"
           },
           "research_topic": {

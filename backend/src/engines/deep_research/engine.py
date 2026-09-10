@@ -57,7 +57,6 @@ EXECUTION_RES_MAX_CHARS = 1000
 
 # Prompt key 常量（防 key 漂移；模板留 feature 侧 deep_research_prompts.py，经 PromptProvider 解析）
 KEY_ANALYZE_QUERY = "research_analyze_query"
-KEY_DECOMPOSE_TASKS = "research_decompose_tasks"  # 批次 2 删除（被 KEY_PLAN 替代）
 KEY_PLAN = "research_plan"
 KEY_PROCESSING_STEP = "research_processing_step"
 KEY_SYNTHESIZE_REPORT = "research_synthesize_report"
@@ -306,7 +305,6 @@ __all__ = [
     "BACKGROUND_RESULT_SNIPPET_CHARS",
     "EXECUTION_RES_MAX_CHARS",
     "KEY_ANALYZE_QUERY",
-    "KEY_DECOMPOSE_TASKS",
     "KEY_PLAN",
     "KEY_PROCESSING_STEP",
     "KEY_SYNTHESIZE_REPORT",
@@ -354,55 +352,6 @@ class DeepResearchEngine:
             enable_thinking=False,
         )
         return result.strip()
-
-    async def decompose_tasks(
-        self,
-        llm_client: BaseLLM,
-        prompt_provider: PromptProvider,
-        query: str,
-        topic: str,
-        depth: int,
-    ) -> List[Dict[str, Any]]:
-        prompt = prompt_provider.format(
-            KEY_DECOMPOSE_TASKS,
-            research_topic=topic,
-            query=query,
-            depth=depth,
-        )
-        result = await llm_client.generate_text(
-            prompt=prompt,
-            max_tokens=1000,
-            temperature=0.5,
-            enable_thinking=False,
-        )
-        try:
-            json_pattern = r"\[[\s\S]*\]"
-            matches = re.findall(json_pattern, result)
-            if not matches:
-                raise json.JSONDecodeError("未找到 JSON 数组", result, 0)
-            json_match = matches[0]
-            tasks = json.loads(json_match)
-            validated_tasks: List[Dict[str, Any]] = []
-            for i, task in enumerate(tasks[:depth]):
-                validated_tasks.append({
-                    "task_id": task.get("task_id") or task.get("id") or f"task_{i+1}",
-                    "description": task.get("description", f"研究 {topic} 的第 {i+1} 个方面"),
-                    "priority": task.get("priority", i + 1),
-                })
-            return validated_tasks
-        except (json.JSONDecodeError, ValueError) as e:
-            if self._logger is not None:
-                self._logger.warning(
-                    "LLM 任务分解 JSON 解析失败，使用默认任务", error=str(e)
-                )
-            return [
-                {
-                    "task_id": f"task_{i+1}",
-                    "description": f"研究 {topic} 的第 {i+1} 个方面",
-                    "priority": i + 1,
-                }
-                for i in range(depth)
-            ]
 
     async def analyze_plan(
         self,

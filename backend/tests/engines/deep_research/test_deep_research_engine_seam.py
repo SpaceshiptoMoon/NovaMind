@@ -162,12 +162,14 @@ def test_engine_pure_functions_present_and_pure():
         "format_search_context",
         "summarize_observations_for_llm",
         "parse_query_decision",
+        "parse_plan",
     ):
         assert hasattr(dr_engine, name), f"engine.py 缺少纯函数: {name}"
 
     for key in (
         "KEY_ANALYZE_QUERY",
-        "KEY_DECOMPOSE_TASKS",
+        "KEY_PLAN",
+        "KEY_PROCESSING_STEP",
         "KEY_SYNTHESIZE_REPORT",
         "KEY_SYNTHESIZE_REPORT_STREAM",
         "KEY_GENERATE_QUERY",
@@ -220,12 +222,13 @@ def test_deep_research_service_reexports_search_source_from_engine():
 
 
 def test_deep_research_engine_methods_present():
-    """DeepResearchEngine 暴露 analyze_query/decompose_tasks/synthesize_report/synthesize_report_stream。"""
+    """DeepResearchEngine 暴露 analyze_query/analyze_plan/background_investigation/synthesize_report[_stream]。"""
     from novamind.engines.deep_research.engine import DeepResearchEngine
 
     for name in (
         "analyze_query",
-        "decompose_tasks",
+        "analyze_plan",
+        "background_investigation",
         "synthesize_report",
         "synthesize_report_stream",
     ):
@@ -235,12 +238,11 @@ def test_deep_research_engine_methods_present():
 
 
 def test_deep_research_engine_llm_methods_accept_llm_and_prompt_provider():
-    """analyze_query/decompose_tasks/synthesize_report[_stream] 按调用接 llm_client + prompt_provider（AgentEngine 风格）。"""
+    """analyze_query/analyze_plan/synthesize_report[_stream] 按调用接 llm_client + prompt_provider（AgentEngine 风格）。"""
     from novamind.engines.deep_research.engine import DeepResearchEngine
-    from novamind.shared.ai_models.llm import BaseLLM
     from novamind.engines.ports import PromptProvider
 
-    for name in ("analyze_query", "decompose_tasks", "synthesize_report", "synthesize_report_stream"):
+    for name in ("analyze_query", "analyze_plan", "synthesize_report", "synthesize_report_stream"):
         fn = getattr(DeepResearchEngine, name)
         params = inspect.signature(fn).parameters
         # 首参 self（unbound method），次参 llm_client（位置），再次 prompt_provider（位置）；其余 keyword-only
@@ -253,16 +255,17 @@ def test_deep_research_engine_llm_methods_accept_llm_and_prompt_provider():
         )
 
 
-def test_deep_research_engine_decompose_tasks_takes_depth_int():
-    """decompose_tasks 接 depth（int），不接 ResearchMode（feature DTO）。"""
+def test_deep_research_engine_analyze_plan_takes_depth_int_and_feedback():
+    """analyze_plan 接 depth（int）与 feedback/iteration（重规划），不接 ResearchMode（feature DTO）。"""
     from novamind.engines.deep_research.engine import DeepResearchEngine
 
-    fn = DeepResearchEngine.decompose_tasks
+    fn = DeepResearchEngine.analyze_plan
     params = inspect.signature(fn).parameters
-    assert "depth" in params, "decompose_tasks 应接 depth 参数"
+    for name in ("depth", "iteration", "feedback", "background_results"):
+        assert name in params, f"analyze_plan 应接 {name} 参数"
     # 不应有 research_mode 参数
     assert "research_mode" not in params, (
-        "decompose_tasks 不应接 research_mode（feature DTO，引擎不感知业务枚举）"
+        "analyze_plan 不应接 research_mode（feature DTO，引擎不感知业务枚举）"
     )
 
 
@@ -305,13 +308,14 @@ def test_deep_research_engine_ctor_no_business_context():
 
 
 def test_deep_research_service_proxies_llm_methods():
-    """service 的 _analyze_query/_decompose_tasks/_synthesize_report[_stream] 薄委托 DeepResearchEngine。
+    """service 的 _analyze_query/_plan_phase/_synthesize_report[_stream] 薄委托 DeepResearchEngine。
 
-    service 方法仍保留原签名（调用点不变），体内 sanitize + 取 llm + 委托 engine。
+    service 体内 sanitize + 取 llm + 委托 engine；规划阶段经 _plan_phase 编排
+    （背景调查 + analyze_plan + 可选 human_feedback 挂起）。
     """
     from novamind.features.deep_research.services.deep_research_service import DeepResearchService
 
-    for name in ("_analyze_query", "_decompose_tasks", "_synthesize_report", "_synthesize_report_stream"):
+    for name in ("_analyze_query", "_plan_phase", "_synthesize_report", "_synthesize_report_stream"):
         assert hasattr(DeepResearchService, name), (
             f"DeepResearchService 缺少薄委托方法: {name}"
         )
@@ -437,18 +441,19 @@ def test_web_search_result_has_optional_content_and_score():
 
 
 def test_prompt_keys_resolvable_via_prompt_provider():
-    """6 prompt key 经注入 PromptProvider.format 可解析（防 key 漂移）。
+    """7 prompt key 经注入 PromptProvider.format 可解析（防 key 漂移）。
 
     注册 deep_research prompts 模板（幂等）后，as_prompt_provider() 返回的 HostPromptProvider
-    应能解析 KEY_ANALYZE_QUERY/KEY_DECOMPOSE_TASKS/KEY_SYNTHESIZE_REPORT/
-    KEY_SYNTHESIZE_REPORT_STREAM/KEY_GENERATE_QUERY/KEY_TASK_FINDING。
+    应能解析 KEY_ANALYZE_QUERY/KEY_PLAN/KEY_SYNTHESIZE_REPORT/
+    KEY_SYNTHESIZE_REPORT_STREAM/KEY_GENERATE_QUERY/KEY_TASK_FINDING/KEY_PROCESSING_STEP。
     """
     from novamind.shared.prompts.prompt_manager import PromptManager
     from novamind.features.deep_research.deep_research_prompts import TEMPLATES as DR_TEMPLATES
     from novamind.engines.prompt_provider_adapter import as_prompt_provider
     from novamind.engines.deep_research.engine import (
         KEY_ANALYZE_QUERY,
-        KEY_DECOMPOSE_TASKS,
+        KEY_PLAN,
+        KEY_PROCESSING_STEP,
         KEY_SYNTHESIZE_REPORT,
         KEY_SYNTHESIZE_REPORT_STREAM,
         KEY_GENERATE_QUERY,
@@ -459,7 +464,12 @@ def test_prompt_keys_resolvable_via_prompt_provider():
     provider = as_prompt_provider()
     # 各模板所需参数最少集（format 不抛 KeyError 即通过）
     provider.format(KEY_ANALYZE_QUERY, query="q")
-    provider.format(KEY_DECOMPOSE_TASKS, research_topic="t", query="q", depth=2)
+    provider.format(
+        KEY_PLAN,
+        research_topic="t", query="q", depth=2,
+        background_results="b", feedback="f", iteration="0",
+    )
+    provider.format(KEY_PROCESSING_STEP, step_title="s", task_description="d", prior_findings="p")
     provider.format(KEY_SYNTHESIZE_REPORT, query="q", research_topic="t", context="c", key_sources="k")
     provider.format(KEY_SYNTHESIZE_REPORT_STREAM, query="q", research_topic="t", context="c", key_sources="k")
     provider.format(

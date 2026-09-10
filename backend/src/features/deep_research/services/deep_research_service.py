@@ -25,9 +25,12 @@ from novamind.engines.deep_research.types import SearchSource
 from novamind.engines.deep_research.types import (
     EngineResearchParams,
     IterationProgress,
+    PlanStep,
+    ResearchPlan,
     SearchComplete,
     TaskFailed,
     TaskFinding,
+    StepType,
 )
 from novamind.engines.deep_research.errors import EngineInvalidResearchQueryError
 from novamind.features.deep_research.repository.research_repository import ResearchRepository
@@ -55,6 +58,9 @@ from novamind.features.deep_research.adapters.web_search_port_adapter import (
 from novamind.features.deep_research.adapters.internal_search_port_adapter import (
     as_internal_search_port,
 )
+from novamind.features.deep_research.services.plan_feedback_registry import (
+    DECISION_ACCEPTED,
+)
 
 
 # 研究模式参数映射（业务配置，留 feature；与 setting/yaml_config/config.py 重复）
@@ -63,6 +69,108 @@ RESEARCH_MODE_CONFIG = {
     ResearchMode.STANDARD: {"depth": 3, "iterations": 5},
     ResearchMode.DEEP: {"depth": 5, "iterations": 7},
 }
+
+# 计划规划轮次上限（deer-flow max_plan_iterations 对齐，默认 1：首轮计划可被
+# EDIT_PLAN 修订一次，再编辑自动按现计划继续）。消费者是 feature 管线，不入引擎参数。
+DEFAULT_MAX_PLAN_ITERATIONS = 1
+
+# 计划确认等待超时（秒）；超时 auto-accept（见 PlanFeedbackRegistry）
+PLAN_FEEDBACK_TIMEOUT_SECONDS = 300
+
+
+def parse_plan_json(plan: dict) -> Optional[ResearchPlan]:
+    """DB plan JSON → ResearchPlan（v2 新形状 / v1 旧形状兼容读）。
+
+    - v2：{"version": 2, "title", "thought", "has_enough_context", "steps": [...]}
+    - v1（旧）：{"tasks": [{task_id, description, priority}]} → 全 research 步骤映射
+    """
+    if not isinstance(plan, dict):
+        return None
+    steps: List[PlanStep] = []
+    if plan.get("version") == 2:
+        for i, s in enumerate(plan.get("steps") or []):
+            if not isinstance(s, dict):
+                continue
+            raw_type = str(s.get("step_type", "research")).lower()
+            steps.append(PlanStep(
+                step_id=str(s.get("step_id", f"step_{i + 1}")),
+                title=str(s.get("title", "")),
+                description=str(s.get("description", "")),
+                step_type=StepType.PROCESSING if raw_type == "processing" else StepType.RESEARCH,
+                need_search=bool(s.get("need_search", True)),
+                execution_res=str(s.get("execution_res", "")),
+            ))
+        return ResearchPlan(
+            title=str(plan.get("title", "")),
+            thought=str(plan.get("thought", "")),
+            has_enough_context=bool(plan.get("has_enough_context", False)),
+            steps=steps,
+            iteration=int(plan.get("iteration", 0)),
+            background_investigation_results=list(plan.get("background_investigation_results") or []),
+        )
+    # v1 旧形状
+    for i, t in enumerate(plan.get("tasks") or []):
+        if not isinstance(t, dict):
+            continue
+        steps.append(PlanStep(
+            step_id=str(t.get("task_id", f"step_{i + 1}")),
+            title=str(t.get("title", t.get("description", ""))),
+            description=str(t.get("description", "")),
+            step_type=StepType.RESEARCH,
+            need_search=True,
+        ))
+    return ResearchPlan(steps=steps) if steps else None
+
+
+def plan_to_json(plan: ResearchPlan, background_results: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    """ResearchPlan → DB plan JSON v2（execution_res 截 1000 字，background 复用/覆盖）。"""
+    return {
+        "version": 2,
+        "title": plan.title,
+        "thought": plan.thought,
+        "has_enough_context": plan.has_enough_context,
+        "iteration": plan.iteration,
+        "background_investigation_results": (
+            background_results if background_results is not None
+            else plan.background_investigation_results
+        ),
+        "steps": [
+            {
+                "step_id": s.step_id,
+                "title": s.title,
+                "description": s.description,
+                "step_type": s.step_type.value if isinstance(s.step_type, StepType) else str(s.step_type),
+                "need_search": s.need_search,
+                "execution_res": s.execution_res[:1000],
+            }
+            for s in plan.steps
+        ],
+    }
+
+
+def _plan_to_event_data(plan: ResearchPlan) -> Dict[str, Any]:
+    """ResearchPlan → plan_generated 事件 data 的 plan 部分（不回填执行结果）。"""
+    return {
+        "title": plan.title,
+        "thought": plan.thought,
+        "has_enough_context": plan.has_enough_context,
+        "iteration": plan.iteration,
+        "steps": [
+            {
+                "step_id": s.step_id,
+                "title": s.title,
+                "description": s.description,
+                "step_type": s.step_type.value if isinstance(s.step_type, StepType) else str(s.step_type),
+                "need_search": s.need_search,
+            }
+            for s in plan.steps
+        ],
+    }
+
+
+def plan_iteration_count(ctx: "ResearchContext") -> int:
+    """当前计划轮次（ctx.plan 未生成时为 -1，即首轮前的初始值）。"""
+    return ctx.plan.iteration if ctx.plan is not None else -1
 
 
 # 纯检索辅助函数自 engines/deep_research 反向引用（feature -> engine 合法）。
@@ -125,6 +233,18 @@ def _extract_research_params(request) -> ResearchParams:
     )
 
 
+def _extract_flow_policy(request) -> tuple:
+    """从 ResearchRequest 提取流程策略（auto_accepted_plan/背景调查/报告风格）。
+
+    非流式无双向通道，强制 auto_accepted_plan=True（调用方按 stream 与否传值）。
+    """
+    return (
+        bool(getattr(request, "auto_accepted_plan", True)),
+        bool(getattr(request, "enable_background_investigation", True)),
+        str(getattr(request, "report_style", "default") or "default"),
+    )
+
+
 @dataclass
 class ResearchContext:
     """研究管线上下文（贯穿整个流程，替代多方法间的参数传递）"""
@@ -136,11 +256,18 @@ class ResearchContext:
     params: Optional[ResearchParams] = None
     mode_config: Optional[Dict[str, Any]] = None
 
+    # 流程策略（deer-flow 对齐）
+    auto_accepted_plan: bool = True
+    enable_background_investigation: bool = True
+    report_style: str = "default"
+
     # ORM 对象
     research: Optional[Any] = None
 
     # 管线逐步填充
     research_topic: Optional[str] = None
+    plan: Optional[ResearchPlan] = None
+    background_results: Optional[List[Dict[str, Any]]] = None
     tasks: Optional[List[Dict[str, Any]]] = None
     search_results: Optional[Dict[str, Any]] = None
     report: Optional[str] = None
@@ -148,6 +275,7 @@ class ResearchContext:
 
     # 流式检索统计（仅 research_stream 使用）
     all_results: Optional[List[Dict[str, Any]]] = None
+    task_findings: Optional[List[Dict[str, str]]] = None
     internal_count: int = 0
     external_count: int = 0
 
@@ -445,6 +573,10 @@ class DeepResearchService:
         """
         执行深度研究（非流式）
 
+        管线（deer-flow 对齐）：create_session → analyze_topic → background
+        investigation → analyze_plan（非流式无双向通道，强制 auto-accept，
+        has_enough_context=true 时跳过检索）→ execute_search → synthesize。
+
         Args:
             space_id: 知识空间 ID
             user_id: 用户 ID
@@ -456,11 +588,16 @@ class DeepResearchService:
         if request.research_mode not in RESEARCH_MODE_CONFIG:
             raise ResearchModeNotSupportedError(request.research_mode)
 
+        auto_accept, enable_bg, report_style = _extract_flow_policy(request)
         ctx = ResearchContext(
             space_id=space_id,
             user_id=user_id,
             params=_extract_research_params(request),
             mode_config=RESEARCH_MODE_CONFIG[request.research_mode],
+            # 非流式 POST 无双向通道，计划确认不可用 → 强制 auto-accept
+            auto_accepted_plan=True,
+            enable_background_investigation=enable_bg,
+            report_style=report_style,
         )
 
         try:
@@ -469,7 +606,7 @@ class DeepResearchService:
             if ctx.params.search_source != SearchSource.EXTERNAL:
                 _ = self.search_port
             await self._analyze_and_save_topic(ctx)
-            await self._decompose_and_save_tasks(ctx)
+            await self._plan_phase(ctx, feedback_registry=None, emit=None)
             await self._execute_research_search(ctx)
             await self._synthesize_and_save_report(ctx)
             return self._build_research_result(ctx)
@@ -488,6 +625,7 @@ class DeepResearchService:
         space_id: int,
         user_id: int,
         request: ResearchRequest,
+        feedback_registry: Optional[Any] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         执行深度研究（流式）
@@ -496,19 +634,30 @@ class DeepResearchService:
 
         事件类型：
         - progress: 进度更新
+        - plan_generated: 计划已生成（deer-flow human_feedback 对齐，仅
+          auto_accepted_plan=false 且提供 feedback_registry 时挂起等待）
         - content: 报告内容片段
         - error: 错误信息
         - done: 研究完成
+
+        Args:
+            feedback_registry: 计划反馈注册表（routes 层构造注入；None=计划
+                自动接受，不挂起）
         """
         if request.research_mode not in RESEARCH_MODE_CONFIG:
             raise ResearchModeNotSupportedError(request.research_mode)
 
+        auto_accept, enable_bg, report_style = _extract_flow_policy(request)
         ctx = ResearchContext(
             space_id=space_id,
             user_id=user_id,
             params=_extract_research_params(request),
             mode_config=RESEARCH_MODE_CONFIG[request.research_mode],
             all_results=[],
+            task_findings=[],
+            auto_accepted_plan=auto_accept,
+            enable_background_investigation=enable_bg,
+            report_style=report_style,
         )
 
         try:
@@ -522,20 +671,31 @@ class DeepResearchService:
             yield self._emit("progress", {
                 "status": "analyzing",
                 "current_step": "分析查询，提取研究主题",
-                "progress_percent": 10.0,
+                "progress_percent": 5.0,
                 "completed_tasks": 0,
                 "total_tasks": 0,
             })
             await self._analyze_and_save_topic(ctx)
 
-            # 2. 分解任务
-            await self._decompose_and_save_tasks(ctx)
+            # 2. 规划阶段（背景调查 + 计划 + 可选确认循环；deer-flow planner/
+            #    human_feedback 对齐）。feedback_registry=None 或 auto_accept 时
+            #    不挂起，等价旧行为。
+            wait_feedback = (
+                not ctx.auto_accepted_plan and feedback_registry is not None
+            )
+            plan_gen = self._plan_phase_stream(
+                ctx,
+                feedback_registry=feedback_registry if wait_feedback else None,
+            )
+            async for event in plan_gen:
+                yield event
+
             yield self._emit("progress", {
-                "status": "analyzing",
-                "current_step": f"研究主题：{ctx.research_topic}，正在分解子任务",
+                "status": "planning",
+                "current_step": f"研究主题：{ctx.research_topic}，计划就绪（{len(ctx.tasks or [])} 步）",
                 "progress_percent": 20.0,
                 "completed_tasks": 0,
-                "total_tasks": len(ctx.tasks),
+                "total_tasks": len(ctx.tasks or []),
             })
 
             # 3. 逐任务执行检索（消费 DeepResearchEngine.search 事件流，yield 进度事件）
@@ -590,6 +750,7 @@ class DeepResearchService:
                     )
                 elif isinstance(event, SearchComplete):
                     ctx.all_results = event.all_results
+                    ctx.task_findings = event.task_findings
                     ctx.search_results = {
                         "results": event.all_results,
                         "summary": event.summary,
@@ -611,6 +772,7 @@ class DeepResearchService:
                     "external_count": 0,
                 }
                 ctx.all_results = []
+                ctx.task_findings = []
 
             # 4. 流式综合报告
             yield self._emit("progress", {
@@ -732,25 +894,6 @@ class DeepResearchService:
         llm = await self._get_llm_client(user_id, llm_model)
         return await self._engine.analyze_query(llm, self._prompt_provider, safe_query)
 
-    async def _decompose_tasks(
-        self,
-        query: str,
-        research_topic: str,
-        depth: int,
-        user_id: int = None,
-        llm_model: str = None,
-    ) -> List[Dict[str, Any]]:
-        """分解研究任务（薄委托 DeepResearchEngine.decompose_tasks）。
-
-        feature 入口 sanitize query/topic；引擎接 depth 整数与已 sanitize 输入。
-        """
-        safe_query = _sanitize_user_input(query)
-        safe_topic = _sanitize_user_input(research_topic)
-        llm = await self._get_llm_client(user_id, llm_model)
-        return await self._engine.decompose_tasks(
-            llm, self._prompt_provider, safe_query, safe_topic, depth
-        )
-
     # ==================== 管线方法 ====================
 
     async def _create_research_session(self, ctx: ResearchContext) -> None:
@@ -797,16 +940,177 @@ class DeepResearchService:
         await self.session.flush()
         self.logger.debug("研究主题提取完成", session_id=ctx.session_id, topic=ctx.research_topic)
 
-    async def _decompose_and_save_tasks(self, ctx: ResearchContext) -> None:
-        """分解研究任务并持久化"""
+    async def _plan_phase(
+        self,
+        ctx: ResearchContext,
+        *,
+        feedback_registry: Optional[Any],
+        emit: Optional[Any],
+    ) -> None:
+        """规划阶段（deer-flow planner + human_feedback 对齐）。
+
+        流程：背景调查（可关）→ analyze_plan → 可选计划确认循环（EDIT_PLAN 携
+        feedback 重规划，iteration < DEFAULT_MAX_PLAN_ITERATIONS 才允许）→
+        has_enough_context=true 时跳过检索（steps 置空）→ 持久化 plan JSON v2 +
+        tasks 旧形状（详情接口兼容）。
+
+        Args:
+            ctx: 研究上下文
+            feedback_registry: PlanFeedbackRegistry（None=不等待反馈，直接继续）
+            emit: 事件发射函数（None=非流式静默）
+        """
         depth = ctx.mode_config["depth"]
-        ctx.tasks = await self._decompose_tasks(
-            ctx.params.query, ctx.research_topic, depth,
-            user_id=ctx.user_id, llm_model=ctx.params.llm_config.llm_model,
+        llm = await self._get_llm_client(ctx.user_id, ctx.params.llm_config.llm_model)
+        max_plan_iterations = DEFAULT_MAX_PLAN_ITERATIONS
+
+        # 1. 背景调查（deer-flow background_investigator：单轮检索不调 LLM，失败降级空）
+        ctx.background_results = []
+        if ctx.enable_background_investigation:
+            engine_params = self._build_engine_params(ctx)
+            web_port, internal_port = self._build_search_ports(ctx)
+            bg_query = ctx.research_topic or ctx.params.query
+            ctx.background_results = await self._engine.background_investigation(
+                web_search_port=web_port,
+                internal_search_port=internal_port,
+                query=bg_query,
+                params=engine_params,
+            )
+            self.logger.info(
+                "背景调查完成",
+                session_id=ctx.session_id,
+                results_count=len(ctx.background_results),
+            )
+
+        # 2. 规划 + 可选确认循环
+        feedback = ""
+        while True:
+            plan = await self._engine.analyze_plan(
+                llm, self._prompt_provider,
+                query=ctx.params.query,
+                topic=ctx.research_topic or ctx.params.query,
+                background_results=ctx.background_results,
+                depth=depth,
+                iteration=plan_iteration_count(ctx),
+                feedback=feedback,
+            )
+            ctx.plan = plan
+            await self._save_plan(ctx)
+
+            has_enough = plan.has_enough_context or not plan.steps
+            if has_enough or feedback_registry is None or emit is None:
+                break  # 自动接受（或非流式/无事件通道）
+
+            # 3. human_feedback：发计划事件并挂起等待（deer-flow 计划确认）
+            emit("plan_generated", {
+                "session_id": ctx.session_id,
+                "plan": _plan_to_event_data(plan),
+                "wait_feedback": True,
+                "feedback_timeout_seconds": PLAN_FEEDBACK_TIMEOUT_SECONDS,
+            })
+            feedback_registry.register()
+            decision, feedback = await feedback_registry.wait(timeout=PLAN_FEEDBACK_TIMEOUT_SECONDS)
+            feedback_registry.clear()
+            if decision == DECISION_ACCEPTED:
+                break
+            # EDIT_PLAN：超上限则按现计划继续（deer-flow max_plan_iterations 熔断）
+            if plan_iteration_count(ctx) >= max_plan_iterations:
+                self.logger.info(
+                    "计划修订达上限，按当前计划继续",
+                    session_id=ctx.session_id,
+                    iteration=plan_iteration_count(ctx),
+                )
+                emit("progress", {
+                    "status": "planning",
+                    "current_step": "计划修订次数已达上限，按当前计划执行",
+                    "progress_percent": 20.0,
+                    "completed_tasks": 0,
+                    "total_tasks": len(plan.steps),
+                })
+                break
+            emit("progress", {
+                "status": "planning",
+                "current_step": "正在根据反馈修订计划",
+                "progress_percent": 15.0,
+                "completed_tasks": 0,
+                "total_tasks": len(plan.steps),
+            })
+
+        # 4. has_enough_context：背景已足够 → 清空检索步骤，直接进报告
+        if ctx.plan.has_enough_context and ctx.plan.steps:
+            self.logger.info(
+                "planner 判定背景信息已足够，跳过检索",
+                session_id=ctx.session_id,
+            )
+            ctx.plan.steps = []
+            await self._save_plan(ctx)
+
+        # 5. tasks 旧形状同步（详情接口 research_tasks 兼容 + 检索循环消费）
+        ctx.tasks = [
+            {
+                "task_id": s.step_id,
+                "title": s.title,
+                "description": s.description,
+                "step_type": s.step_type.value if isinstance(s.step_type, StepType) else str(s.step_type),
+                "need_search": s.need_search,
+            }
+            for s in ctx.plan.steps
+        ]
+
+    async def _save_plan(self, ctx: ResearchContext) -> None:
+        """持久化 plan JSON v2。"""
+        await self.research_repo.update_plan(
+            ctx.research_id,
+            plan_to_json(ctx.plan, background_results=ctx.background_results),
         )
-        await self.research_repo.update_tasks(ctx.research_id, ctx.tasks)
         await self.session.flush()
-        self.logger.debug("任务分解完成", session_id=ctx.session_id, tasks_count=len(ctx.tasks))
+
+    async def _plan_phase_stream(
+        self,
+        ctx: ResearchContext,
+        *,
+        feedback_registry: Optional[Any],
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """流式版规划阶段：包装 _plan_phase，把 progress/plan_generated 事件透出。
+
+        _plan_phase 的 emit 回调不能直接 yield（普通函数 vs 生成器），故用队列桥接：
+        emit 把事件放进队列，本生成器逐个 yield；_plan_phase 返回后冲刷残余事件。
+        """
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+
+        def emit(event_type: str, data: dict) -> None:
+            queue.put_nowait((event_type, data))
+
+        plan_task = loop.create_task(
+            self._plan_phase(ctx, feedback_registry=feedback_registry, emit=emit)
+        )
+        get_task: Optional[asyncio.Task] = None
+        try:
+            while True:
+                # done 回调尚未实现：轮询任务完成态 + 带超时取队列，避免死等
+                get_task = loop.create_task(queue.get())
+                done, _ = await asyncio.wait(
+                    {plan_task, get_task}, return_when=asyncio.FIRST_COMPLETED
+                )
+                if get_task in done:
+                    event_type, data = get_task.result()
+                    yield self._emit(event_type, data)
+                if plan_task in done:
+                    # 冲刷队列中残余事件
+                    while not queue.empty():
+                        event_type, data = queue.get_nowait()
+                        yield self._emit(event_type, data)
+                    # 抛出规划阶段异常（如有）
+                    plan_task.result()
+                    break
+                if plan_task.done():
+                    # 任务已完但本轮 wait 只醒了 get_task：下轮循环会走 plan_task in done 分支
+                    continue
+        finally:
+            if not plan_task.done():
+                plan_task.cancel()
+            if get_task is not None and not get_task.done():
+                get_task.cancel()
 
     async def _execute_research_search(self, ctx: ResearchContext) -> None:
         """执行迭代检索（薄委托 DeepResearchEngine.search 事件流）。

@@ -272,8 +272,56 @@ class ResearchRequest(BaseModel):
         description="LLM 模型配置",
     )
 
+    # ========== 流程策略（deer-flow 对齐） ==========
+    auto_accepted_plan: bool = Field(
+        default=True,
+        description=(
+            "自动接受研究计划。true=计划生成后直接执行（旧行为，非流式强制 true）；"
+            "false=生成计划后暂停，等待 WS plan_feedback 确认/编辑再执行"
+        ),
+    )
+    enable_background_investigation: bool = Field(
+        default=True,
+        description="规划前背景调查：先按 search_source 做一轮检索，结果注入规划 prompt 提升计划质量",
+    )
+    report_style: Literal["academic", "popular_science", "news", "default"] = Field(
+        default="default",
+        description="报告风格：academic(学术)/popular_science(科普)/news(新闻)/default(通用)",
+    )
+
 
 # ==================== 响应模型 ====================
+
+class PlanStepModel(BaseModel):
+    """研究计划步骤（deer-flow Step 对齐，plan_generated 事件与响应用）"""
+    step_id: str = Field(..., description="步骤 ID")
+    title: str = Field(..., description="步骤标题")
+    description: str = Field(..., description="步骤描述（要收集什么数据）")
+    step_type: Literal["research", "processing"] = Field(
+        default="research",
+        description="步骤类型：research(检索)/processing(纯分析)",
+    )
+    need_search: bool = Field(default=True, description="是否需要检索")
+    execution_res: str = Field(default="", description="执行结果（完成后回填）")
+
+
+class ResearchPlanModel(BaseModel):
+    """研究计划（deer-flow Plan 对齐，plan_generated 事件与响应用）"""
+    title: str = Field(default="", description="计划标题")
+    thought: str = Field(default="", description="规划思考一句话")
+    has_enough_context: bool = Field(
+        default=False,
+        description="背景信息是否已足够（true 时跳过检索直接生成报告）",
+    )
+    iteration: int = Field(default=0, description="规划轮次（0=首轮）")
+    steps: List[PlanStepModel] = Field(default_factory=list, description="步骤列表")
+
+
+class CitationItem(BaseModel):
+    """报告引用条目"""
+    title: str = Field(default="", description="来源标题")
+    url: str = Field(default="", description="来源 URL（外部）或文档名（内部）")
+    source_type: str = Field(default="", description="来源类型：internal/external")
 
 class ResearchTask(BaseModel):
     """子任务定义"""
@@ -332,8 +380,9 @@ class ResearchResponse(BaseModel):
     # 研究结果
     status: ResearchStatus = Field(..., description="研究状态")
     research_topic: Optional[str] = Field(None, description="研究主题")
-    research_tasks: Optional[List[ResearchTask]] = Field(None, description="子任务列表")
+    research_tasks: Optional[List[ResearchTask]] = Field(None, description="子任务列表（从计划 steps 派生的旧形状）")
     final_report: Optional[str] = Field(None, description="最终研究报告")
+    research_plan: Optional[ResearchPlanModel] = Field(None, description="研究计划（v2 结构化形状）")
 
     # 检索结果摘要
     search_summary: Optional[Dict[str, Any]] = Field(None, description="搜索摘要信息")

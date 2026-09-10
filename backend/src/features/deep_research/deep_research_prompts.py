@@ -18,25 +18,6 @@ TEMPLATES = {
         "Research topic:"
     ),
 
-    "research_decompose_tasks": (
-        "You are a professional research task planner. Decompose the following research topic "
-        "into {depth} specific sub-tasks.\n\n"
-        "Requirements:\n"
-        "1. Each task should be independently researchable\n"
-        "2. Tasks should follow a logical order (foundational before advanced)\n"
-        "3. Tasks should be complementary, covering different dimensions of the topic\n"
-        "4. Return JSON format directly with no other content\n\n"
-        "JSON format:\n"
-        "[\n"
-        '  {{"task_id": "task_1", "description": "Task description", "priority": 1}},\n'
-        '  {{"task_id": "task_2", "description": "Task description", "priority": 2}}\n'
-        "]\n\n"
-        "Research topic: {research_topic}\n"
-        "User query: {query}\n"
-        "Number of tasks: {depth}\n\n"
-        "Return the task list (JSON):"
-    ),
-
     "research_synthesize_report": (
         "You are an expert research report writer. Based on the information below, "
         "write a comprehensive research report.\n\n"

@@ -26,7 +26,6 @@ from novamind.engines.deep_research.errors import EngineInvalidResearchQueryErro
 from novamind.engines.deep_research.ports import InternalSearchPort
 from novamind.engines.deep_research.engine import (
     KEY_ANALYZE_QUERY,
-    KEY_DECOMPOSE_TASKS,
     KEY_GENERATE_QUERY,
     KEY_PLAN,
     KEY_PROCESSING_STEP,
@@ -66,7 +65,6 @@ __all__ = [
     "SUFFICIENT_RESULT_COUNT",
     "MAX_ITERATION_THRESHOLD",
     "KEY_ANALYZE_QUERY",
-    "KEY_DECOMPOSE_TASKS",
     "KEY_PLAN",
     "KEY_PROCESSING_STEP",
     "KEY_SYNTHESIZE_REPORT",

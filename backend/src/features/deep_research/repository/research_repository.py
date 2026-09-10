@@ -281,11 +281,29 @@ class ResearchRepository:
         tasks: List[Dict[str, Any]],
     ) -> Optional[ResearchSession]:
         """
-        更新研究任务列表
+        更新研究任务列表（旧形状，兼容保留；新代码用 update_plan）
 
         Args:
             research_id: 研究会话 ID
             tasks: 任务列表
+
+        Returns:
+            更新后的研究会话
+        """
+        return await self.update_plan(research_id, {"version": 1, "tasks": tasks})
+
+    async def update_plan(
+        self,
+        research_id: int,
+        plan_json: Dict[str, Any],
+    ) -> Optional[ResearchSession]:
+        """
+        写入研究计划（deer-flow 对齐 v2 形状）
+
+        Args:
+            research_id: 研究会话 ID
+            plan_json: 完整 plan JSON（{"version": 2, "title", "thought",
+                "has_enough_context", "steps": [...], ...}）
 
         Returns:
             更新后的研究会话
@@ -295,7 +313,7 @@ class ResearchRepository:
             if not research:
                 return None
 
-            research.plan = {"tasks": tasks}
+            research.plan = plan_json
             flag_modified(research, "plan")
             await self.session.flush()
             await self.session.refresh(research)
@@ -303,8 +321,8 @@ class ResearchRepository:
         except DeepResearchError:
             raise
         except Exception as e:
-            logger.error("更新研究任务失败", research_id=research_id, error=str(e))
-            raise DeepResearchError(f"更新研究任务失败: {str(e)}")
+            logger.error("更新研究计划失败", research_id=research_id, error=str(e))
+            raise DeepResearchError(f"更新研究计划失败: {str(e)}")
 
     async def update_search_results(
         self,
@@ -345,6 +363,7 @@ class ResearchRepository:
         report: str,
         stats: Dict[str, Any],
         sources: Optional[List[str]] = None,
+        citations: Optional[List[Dict[str, Any]]] = None,
     ) -> Optional[ResearchSession]:
         """
         完成研究
@@ -353,7 +372,8 @@ class ResearchRepository:
             research_id: 研究会话 ID
             report: 最终报告
             stats: 统计信息
-            sources: 关键来源列表
+            sources: 关键来源列表（≤5 条字符串，旧形状保留）
+            citations: 全量引用列表（[{title, url, source_type}]，deer-flow 对齐）
 
         Returns:
             更新后的研究会话
@@ -364,6 +384,11 @@ class ResearchRepository:
                 return None
 
             research.mark_completed(answer=report, sources=sources, stats=stats)
+            if citations is not None:
+                if not research.result:
+                    research.result = {}
+                research.result["citations"] = citations
+                flag_modified(research, "result")
             await self.session.flush()
             await self.session.refresh(research)
             return research
