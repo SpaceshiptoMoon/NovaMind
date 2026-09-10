@@ -57,7 +57,8 @@ export const useResearchStore = defineStore('research', () => {
       await researchApi.streamResearch(spaceId, data, {
         signal: controller.signal,
         onProgress(d) {
-          progress.value = d.current_step || '处理中...'
+          // deer-flow 对齐观察驱动模式：进度文案优先展示本轮实际 query（演化后）
+          progress.value = d.current_query || d.current_step || '处理中...'
           progressPercent.value = d.progress_percent ?? 0
           // mark previous progress as done
           if (lastProgressId) {
@@ -73,7 +74,7 @@ export const useResearchStore = defineStore('research', () => {
           const newProgress: ResearchMessage = {
             id: nextMsgId(),
             role: 'progress',
-            content: d.current_step || '处理中...',
+            content: d.current_query || d.current_step || '处理中...',
             progressPercent: d.progress_percent ?? 0,
             done: false,
           }

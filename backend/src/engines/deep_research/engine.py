@@ -5,10 +5,12 @@ Deep Research 核心引擎：可复用的研究机制（查询分析/任务分�
 ORM 模型 / ``core.database``。LLM 客户端、prompt 提供者、检索端口、日志均按调用注入
 （AgentEngine 风格）；引擎类无状态。
 
-- 纯模块函数：检索结果清洗/外部搜索决策/充分性/去重/关键来源/上下文格式化 + 常量 + prompt key。
+- 纯模块函数：检索结果清洗/外部搜索决策/充分性/去重/关键来源/上下文格式化/
+  观察摘要/query 决策解析 + 常量 + prompt key。
 - ``DeepResearchEngine`` 类：``analyze_query``/``decompose_tasks``/``synthesize_report[_stream]``
   （按调用接 llm_client + prompt_provider）+ ``search``（迭代检索循环，AsyncIterator[SearchEvent]，
-  签名不含 llm/prompt；按调用接 web_search_port/internal_search_port）。
+  按调用接 web_search_port/internal_search_port；llm_client/prompt_provider 可选注入——
+  注入即启用 deer-flow 对齐的观察驱动模式）。
 """
 from __future__ import annotations
 
@@ -28,6 +30,7 @@ from novamind.engines.deep_research.types import (
     SearchEvent,
     SearchSource,
     TaskFailed,
+    TaskFinding,
     TaskStarted,
 )
 
@@ -36,11 +39,17 @@ from novamind.engines.deep_research.types import (
 SUFFICIENT_RESULT_COUNT = 10  # 结果数量阈值
 MAX_ITERATION_THRESHOLD = 3  # 最大迭代阈值
 
+# 观察驱动模式（deer-flow 对齐）：喂给 LLM 的观察条数与单条内容截断长度
+OBSERVATION_FEED_LIMIT = 8
+OBSERVATION_SNIPPET_CHARS = 200
+
 # Prompt key 常量（防 key 漂移；模板留 feature 侧 deep_research_prompts.py，经 PromptProvider 解析）
 KEY_ANALYZE_QUERY = "research_analyze_query"
 KEY_DECOMPOSE_TASKS = "research_decompose_tasks"
 KEY_SYNTHESIZE_REPORT = "research_synthesize_report"
 KEY_SYNTHESIZE_REPORT_STREAM = "research_synthesize_report_stream"
+KEY_GENERATE_QUERY = "research_generate_query"
+KEY_TASK_FINDING = "research_task_finding"
 
 
 def _sanitize_search_field(text: str) -> str:
@@ -133,18 +142,73 @@ def format_search_context(results: List[Any]) -> str:
     return "\n".join(context_parts)
 
 
+def summarize_observations_for_llm(results: List[Any]) -> str:
+    """将本任务已得检索结果压缩为观察摘要（喂 query 生成 LLM，防 token 爆炸）。
+
+    只取前 OBSERVATION_FEED_LIMIT 条，每条 content 截 OBSERVATION_SNIPPET_CHARS 字符。
+    """
+    lines: List[str] = []
+    for i, r in enumerate(results[:OBSERVATION_FEED_LIMIT], start=1):
+        title = _sanitize_search_field(str(r.get("title") or r.get("document_name") or ""))[:80]
+        content = _sanitize_search_field(str(r.get("content", "")))[:OBSERVATION_SNIPPET_CHARS]
+        source = r.get("url") or r.get("document_name") or ""
+        label = f"观察{i}: " + (f"[{title}] " if title else "")
+        if source:
+            label += f"({source}) "
+        lines.append(label + content)
+    return "\n".join(lines) if lines else "（暂无观察结果）"
+
+
+def parse_query_decision(raw: str) -> tuple:
+    """解析 query 生成 LLM 的 JSON 决策输出 → (sufficient, next_query, reason)。
+
+    容错降级：非 JSON / 缺字段 / 字段类型错 → (False, "", reason 含错误说明)，
+    调用方以空 next_query 降级为固定 query 继续。
+    """
+    if not raw or not raw.strip():
+        return False, "", "LLM 返回为空"
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        # 容忍 LLM 把 JSON 包在代码块或前后文字里：抓第一个 {...}
+        match = re.search(r"\{[\s\S]*\}", raw)
+        if not match:
+            return False, "", "LLM 返回不含 JSON"
+        try:
+            data = json.loads(match.group(0))
+        except (json.JSONDecodeError, ValueError):
+            return False, "", "LLM 返回 JSON 解析失败"
+    if not isinstance(data, dict):
+        return False, "", "LLM 返回非 JSON 对象"
+    sufficient = bool(data.get("sufficient", False))
+    next_query = data.get("next_query")
+    if not isinstance(next_query, str):
+        next_query = ""
+    next_query = _sanitize_search_field(next_query)
+    reason = data.get("reason")
+    if not isinstance(reason, str):
+        reason = ""
+    return sufficient, next_query, reason
+
+
 __all__ = [
     "SUFFICIENT_RESULT_COUNT",
     "MAX_ITERATION_THRESHOLD",
+    "OBSERVATION_FEED_LIMIT",
+    "OBSERVATION_SNIPPET_CHARS",
     "KEY_ANALYZE_QUERY",
     "KEY_DECOMPOSE_TASKS",
     "KEY_SYNTHESIZE_REPORT",
     "KEY_SYNTHESIZE_REPORT_STREAM",
+    "KEY_GENERATE_QUERY",
+    "KEY_TASK_FINDING",
     "should_use_external_search",
     "is_sufficient_results",
     "deduplicate_results",
     "extract_key_sources",
     "format_search_context",
+    "summarize_observations_for_llm",
+    "parse_query_decision",
     "DeepResearchEngine",
 ]
 
@@ -314,27 +378,41 @@ class DeepResearchEngine:
         tasks: List[Dict[str, Any]],
         params: EngineResearchParams,
         logger: Optional[Logger] = None,
+        llm_client: Optional[BaseLLM] = None,
+        prompt_provider: Optional[PromptProvider] = None,
     ) -> AsyncIterator[SearchEvent]:
         """迭代检索循环（AsyncIterator[SearchEvent]），流式与非流式共用。
 
-        忠实复现原非流 ``_execute_research_search`` 语义（R1）：
+        两种模式（llm_client=None 时走降级路径，行为与历史版本一致）：
 
-        - 逐任务串行（共享 SQLAlchemy session 不保证并发安全）；
-        - 每任务多轮迭代，按 ``should_use_external_search`` 决策外部/内部；
-        - 每任务内按 URL/标题/chunk_id 去重（``deduplicate_results`` 原地）；
-        - ``is_sufficient_results`` 命中则提前结束本任务迭代；
-        - 单任务抛错 → ``TaskFailed``，catch-and-continue，本任务结果不计入 all_results；
-        - 任务的 task_results 再去重并入 all_results（全局去重），累计 internal/external 调用计数；
-        - 末尾 ``SearchComplete`` 携带 all_results + summary（含计数与 key_sources）。
+        **降级模式**（llm_client 未注入）：忠实复现原非流 ``_execute_research_search``
+        语义（R1）——逐任务串行；每任务多轮迭代按 ``should_use_external_search``
+        决策外部/内部；固定 query（任务描述）重复检索；每任务内按 URL/标题/chunk_id
+        去重（``deduplicate_results`` 原地）；``is_sufficient_results`` 命中则提前结束；
+        单任务抛错 → ``TaskFailed``，catch-and-continue。
 
-        签名不含 ``llm_client``/``prompt_provider``：循环不调 LLM/prompt。
-        归一化外部 ``WebSearchResult`` 与内部 dict 结果为统一 dict 形状（与纯函数及 feature 持久化一致）。
+        **观察驱动模式**（deer-flow 对齐，llm_client + prompt_provider 注入）：
+        - 每轮检索后 LLM 反思（``research_generate_query``）：输出
+          ``{sufficient, next_query, reason}``——sufficient=true 提前结束本任务
+          （信息已足够），false 则下一轮改用 ``next_query``（观察驱动 query 演化）；
+        - 前序任务的 finding 摘要（``research_task_finding``）注入后续任务的
+          query 生成 prompt（跨任务信息流，避免重复检索）；
+        - 每任务完成产出 ``TaskFinding`` 事件；LLM 调用失败降级为固定 query 继续
+          （不中断研究）；
+        - 机械阈值 ``is_sufficient_results`` 保留为成本兜底（先于 LLM 反思判断）。
+
+        签名除新增可空 ``llm_client``/``prompt_provider`` 外不含其它 LLM 参数：
+        循环本体不接 feature DTO。归一化外部 ``WebSearchResult`` 与内部 dict
+        结果为统一 dict 形状（与纯函数及 feature 持久化一致）。
         """
         all_results: List[Dict[str, Any]] = []
         total_internal = 0
         total_external = 0
         total_steps = len(tasks) * params.iterations
         step_count = 0
+        aligned = llm_client is not None and prompt_provider is not None
+        # 跨任务信息流（deer-flow 对齐）：前序任务 finding 摘要累积
+        prior_findings: List[str] = []
 
         for task in tasks:
             task_id = str(task.get("task_id", ""))
@@ -358,6 +436,7 @@ class DeepResearchEngine:
                         step_count=step_count,
                         total_steps=total_steps,
                         current_results_count=len(task_results),
+                        current_query=task_query,
                     )
                     if use_external:
                         if web_search_port is None:
@@ -384,12 +463,48 @@ class DeepResearchEngine:
                         )
                         internal_count += 1
                     deduplicate_results(task_results, results)
+                    # 机械充分性优先（成本兜底）：结果数达标直接收尾，不再花 LLM 反思
                     if is_sufficient_results(task_results, iteration):
                         break
+                    if not aligned:
+                        continue
+                    # deer-flow 对齐：观察驱动反思——LLM 判充分性 + 产出下一 query
+                    sufficient, next_query, reason = await self._reflect_and_generate_query(
+                        llm_client,
+                        prompt_provider,
+                        task_description=task.get("description", "") or task_query,
+                        task_query=task_query,
+                        observations=task_results,
+                        prior_findings=prior_findings,
+                        iteration=iteration,
+                    )
+                    if logger is not None:
+                        logger.info(
+                            "检索反思决策",
+                            task_id=task_id,
+                            iteration=iteration,
+                            sufficient=sufficient,
+                            next_query=next_query[:50] if next_query else "",
+                            reason=reason[:80] if reason else "",
+                        )
+                    if sufficient:
+                        break
+                    if next_query:
+                        task_query = next_query
                 # 任务成功：去重并入 all_results，累计计数
                 deduplicate_results(all_results, task_results)
                 total_internal += internal_count
                 total_external += external_count
+                # deer-flow 对齐：产出本任务 finding 摘要，供后续任务参考
+                if aligned and task_results:
+                    finding = await self._generate_task_finding(
+                        llm_client,
+                        prompt_provider,
+                        task_description=task.get("description", "") or task_query,
+                        observations=task_results,
+                    )
+                    prior_findings.append(finding)
+                    yield TaskFinding(task_id=task_id, finding=finding)
             except Exception as e:
                 if logger is not None:
                     logger.warning("任务检索失败", task_id=task_id, error=str(e))
@@ -402,3 +517,82 @@ class DeepResearchEngine:
             "key_sources": extract_key_sources(all_results),
         }
         yield SearchComplete(all_results=all_results, summary=summary)
+
+    async def _reflect_and_generate_query(
+        self,
+        llm_client: BaseLLM,
+        prompt_provider: PromptProvider,
+        *,
+        task_description: str,
+        task_query: str,
+        observations: List[Any],
+        prior_findings: List[str],
+        iteration: int,
+    ) -> tuple:
+        """观察驱动反思（deer-flow 对齐）：判断信息是否足够 + 产出下一 query。
+
+        返回 (sufficient, next_query, reason)。LLM 调用/解析失败 → 降级为
+        (False, "", 错误说明)，调用方以原 query 继续（不中断研究）。
+        """
+        try:
+            findings_block = (
+                "\n".join(f"- {f}" for f in prior_findings) if prior_findings else "（无）"
+            )
+            prompt = prompt_provider.format(
+                KEY_GENERATE_QUERY,
+                task_description=task_description,
+                current_query=task_query,
+                observations=summarize_observations_for_llm(observations),
+                prior_findings=findings_block,
+                iteration=str(iteration + 1),
+            )
+            raw = await llm_client.generate_text(
+                prompt=prompt,
+                max_tokens=200,
+                temperature=0.3,
+                enable_thinking=False,
+            )
+            sufficient, next_query, reason = parse_query_decision(raw)
+            if sufficient or next_query:
+                return sufficient, next_query, reason
+            # sufficient=false 且无有效 query：视为降级（避免空 query 空转）
+            return False, "", reason or "LLM 未产出有效 query"
+        except Exception as e:
+            return False, "", f"反思调用失败: {e}"
+
+    async def _generate_task_finding(
+        self,
+        llm_client: BaseLLM,
+        prompt_provider: PromptProvider,
+        *,
+        task_description: str,
+        observations: List[Any],
+    ) -> str:
+        """生成任务 finding 摘要（deer-flow 对齐：要点+结论，供后续任务参考）。
+
+        LLM 调用失败返回机械摘要（前 3 条结果标题/来源拼接），不中断研究。
+        """
+        try:
+            prompt = prompt_provider.format(
+                KEY_TASK_FINDING,
+                task_description=task_description,
+                observations=summarize_observations_for_llm(observations),
+            )
+            raw = await llm_client.generate_text(
+                prompt=prompt,
+                max_tokens=300,
+                temperature=0.3,
+                enable_thinking=False,
+            )
+            finding = _sanitize_search_field(raw)
+            if finding:
+                return finding[:1000]
+        except Exception:
+            pass
+        # 降级：机械拼接前 3 条来源
+        parts = []
+        for r in observations[:3]:
+            label = r.get("title") or r.get("document_name") or r.get("url") or ""
+            if label:
+                parts.append(str(label))
+        return "；".join(parts) if parts else "（本任务无有效发现）"

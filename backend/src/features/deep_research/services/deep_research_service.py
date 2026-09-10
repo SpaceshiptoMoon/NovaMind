@@ -27,6 +27,7 @@ from novamind.engines.deep_research.types import (
     IterationProgress,
     SearchComplete,
     TaskFailed,
+    TaskFinding,
 )
 from novamind.engines.deep_research.errors import EngineInvalidResearchQueryError
 from novamind.features.deep_research.repository.research_repository import ResearchRepository
@@ -393,6 +394,20 @@ class DeepResearchService:
             llm_model=llm_cfg.llm_model,
         )
 
+    async def _resolve_search_llm(self, ctx: ResearchContext) -> tuple:
+        """解析迭代检索反思用的 LLM（deer-flow 对齐观察驱动模式）。
+
+        复用请求配置的 llm_model（用户选择什么模型，检索反思就用什么）。
+        解析失败（未配置模型）返回 (None, None)——引擎降级为固定 query 循环，
+        不让反思层阻断检索本体。
+        """
+        try:
+            llm = await self._get_llm_client(ctx.user_id, ctx.params.llm_config.llm_model)
+            return llm, self._prompt_provider
+        except DeepResearchError as e:
+            self.logger.warning("检索反思 LLM 解析失败，降级固定 query 模式", error=str(e))
+            return None, None
+
     def _build_search_ports(self, ctx: ResearchContext) -> tuple:
         """按 search_source 构造引擎检索端口（web/internal，未用的一侧为 None）。
 
@@ -527,6 +542,9 @@ class DeepResearchService:
             # A-3：流式与非流式共用引擎迭代循环（按任务去重+充分性+catch-and-continue），
             # 消除原 research_stream 内联重复循环。单任务失败 → TaskFailed（catch-and-continue），
             # 与非流式行为统一（原流式此处无 per-task try/except，单任务失败会中止整个研究）。
+            # deer-flow 对齐：注入 llm_client + prompt_provider 启用观察驱动模式
+            # （每轮反思充分性 + query 演化 + 跨任务 finding 注入）；LLM 未配置时引擎
+            # 自动降级固定 query 循环。
             total_steps = len(ctx.tasks) * ctx.mode_config["iterations"]
             task_desc_by_id = {
                 str(t.get("task_id", "")): t.get("description", "")
@@ -534,6 +552,7 @@ class DeepResearchService:
             }
             engine_params = self._build_engine_params(ctx)
             web_port, internal_port = self._build_search_ports(ctx)
+            reflect_llm, reflect_provider = await self._resolve_search_llm(ctx)
 
             async for event in self._engine.search(
                 web_search_port=web_port,
@@ -541,9 +560,11 @@ class DeepResearchService:
                 tasks=ctx.tasks,
                 params=engine_params,
                 logger=self.logger,
+                llm_client=reflect_llm,
+                prompt_provider=reflect_provider,
             ):
                 if isinstance(event, IterationProgress):
-                    task_query = task_desc_by_id.get(event.task_id, "")
+                    task_query = event.current_query or task_desc_by_id.get(event.task_id, "")
                     step_desc = f"{'外部搜索' if event.use_external else '内部检索'}：{task_query[:50]}"
                     yield self._emit("progress", {
                         "status": "searching",
@@ -551,7 +572,15 @@ class DeepResearchService:
                         "progress_percent": 20.0 + (event.step_count / total_steps) * 60.0,
                         "completed_tasks": event.step_count,
                         "total_tasks": total_steps,
+                        "current_query": task_query,
                     })
+                elif isinstance(event, TaskFinding):
+                    # finding 已在引擎内注入后续任务 prompt；此处仅记录
+                    self.logger.debug(
+                        "研究任务 finding 已产出",
+                        task_id=event.task_id,
+                        finding_len=len(event.finding),
+                    )
                 elif isinstance(event, TaskFailed):
                     # 引擎已 log；feature 仅记录，catch-and-continue（与非流式统一）
                     self.logger.warning(
@@ -784,10 +813,13 @@ class DeepResearchService:
 
         A-3：可复用迭代循环（按任务去重+充分性+catch-and-continue）已迁入引擎，
         feature 仅消费事件并在 SearchComplete 时填充 ctx.search_results。TaskStarted/
-        IterationProgress/TaskFailed 在非流式路径下静默（引擎内部已 log TaskFailed）。
+        IterationProgress/TaskFailed/TaskFinding 在非流式路径下静默（引擎内部已 log）。
+        deer-flow 对齐：注入 llm_client + prompt_provider 启用观察驱动模式（query 演化
+        + 充分性反思 + 跨任务 finding）；LLM 未配置时引擎自动降级固定 query 循环。
         """
         engine_params = self._build_engine_params(ctx)
         web_port, internal_port = self._build_search_ports(ctx)
+        reflect_llm, reflect_provider = await self._resolve_search_llm(ctx)
 
         async for event in self._engine.search(
             web_search_port=web_port,
@@ -795,6 +827,8 @@ class DeepResearchService:
             tasks=ctx.tasks,
             params=engine_params,
             logger=self.logger,
+            llm_client=reflect_llm,
+            prompt_provider=reflect_provider,
         ):
             if isinstance(event, SearchComplete):
                 ctx.all_results = event.all_results

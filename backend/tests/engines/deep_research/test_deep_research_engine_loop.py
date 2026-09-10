@@ -29,6 +29,7 @@ from novamind.engines.deep_research.types import (
     SearchComplete,
     SearchSource,
     TaskFailed,
+    TaskFinding,
     TaskStarted,
 )
 from novamind.engines.search_ports import WebSearchResult
@@ -37,6 +38,37 @@ pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 
 
 # ---- fakes ----
+
+
+class FakeLLM:
+    """反思 LLM 桩：按脚本依次返回决策 JSON。"""
+
+    def __init__(self, responses=None, raise_on_calls: Optional[set] = None):
+        self.responses = list(responses or [])
+        self.raise_on_calls = raise_on_calls or set()  # 第 N 次调用抛错（1-based）
+        self.prompts: list = []
+        self._calls = 0
+
+    async def generate_text(self, *, prompt, max_tokens=100, temperature=0.3,
+                            top_p=0.9, enable_thinking=False, **kw):
+        self._calls += 1
+        self.prompts.append(prompt)
+        if self._calls in self.raise_on_calls:
+            raise RuntimeError("llm fail")
+        if self.responses:
+            return self.responses.pop(0)
+        return '{"sufficient": true, "next_query": "", "reason": "enough"}'
+
+
+class FakePromptProvider:
+    """prompt 桩：记录 (key, kwargs) 并返回可识别字符串。"""
+
+    def __init__(self):
+        self.calls: list = []
+
+    def format(self, key, **kwargs):
+        self.calls.append((key, kwargs))
+        return f"PROMPT[{key}] {kwargs}"
 
 
 class FakeWebPort:
@@ -353,3 +385,193 @@ async def test_search_summary_includes_key_sources():
     sc = next(e for e in events if isinstance(e, SearchComplete))
     assert "key_sources" in sc.summary
     assert len(sc.summary["key_sources"]) >= 1
+
+
+# ---- deer-flow 对齐：观察驱动模式（llm_client + prompt_provider 注入） ----
+
+
+async def test_aligned_mode_query_evolution_uses_next_query():
+    """反思 insufficient + next_query → 第二轮检索使用演化后的 query。"""
+    engine = DeepResearchEngine()
+    llm = FakeLLM(responses=[
+        '{"sufficient": false, "next_query": "RAG 架构 演进 2024", "reason": "缺少最新数据"}',
+    ])
+    provider = FakePromptProvider()
+    internal = FakeInternalPort(
+        results_per_query={
+            "t1": [_internal_result("ic1", "ck1", "d1", 0.9)],
+            "RAG 架构 演进 2024": [_internal_result("ic2", "ck2", "d2", 0.8)],
+        }
+    )
+    events = await _collect(
+        engine,
+        web_search_port=FakeWebPort(),
+        internal_search_port=internal,
+        tasks=[{"task_id": "t1", "description": "t1"}],
+        params=_params(search_source=SearchSource.INTERNAL, iterations=3),
+        llm_client=llm,
+        prompt_provider=provider,
+    )
+    # 两轮检索：query 依次为 t1 → 演化 query
+    assert [q for (q, _) in internal.calls] == ["t1", "RAG 架构 演进 2024"]
+    sc = next(e for e in events if isinstance(e, SearchComplete))
+    assert sc.summary["total_results"] == 2
+    # IterationProgress.current_query 反映实际 query
+    progress = [e for e in events if isinstance(e, IterationProgress)]
+    assert progress[0].current_query == "t1"
+    assert progress[1].current_query == "RAG 架构 演进 2024"
+
+
+async def test_aligned_mode_reflection_sufficient_stops_early():
+    """反思 sufficient=true → 提前结束本任务迭代，不再检索。"""
+    engine = DeepResearchEngine()
+    llm = FakeLLM(responses=[
+        '{"sufficient": true, "next_query": "", "reason": "已覆盖"}',
+    ])
+    provider = FakePromptProvider()
+    internal = FakeInternalPort(
+        results_per_query={"t1": [_internal_result("ic", "ck1", "d", 0.9)]}
+    )
+    events = await _collect(
+        engine,
+        web_search_port=FakeWebPort(),
+        internal_search_port=internal,
+        tasks=[{"task_id": "t1", "description": "t1"}],
+        params=_params(search_source=SearchSource.INTERNAL, iterations=5),
+        llm_client=llm,
+        prompt_provider=provider,
+    )
+    # 1 轮检索后反思即判充分 → 仅 1 次内部调用
+    assert len(internal.calls) == 1
+    progress = [e for e in events if isinstance(e, IterationProgress)]
+    assert len(progress) == 1
+    sc = next(e for e in events if isinstance(e, SearchComplete))
+    assert sc.summary["total_results"] == 1
+
+
+async def test_aligned_mode_finding_emitted_and_injected_into_next_task():
+    """跨任务信息流：任务 1 产出 TaskFinding，任务 2 的反思 prompt 含该 finding。"""
+    engine = DeepResearchEngine()
+    llm = FakeLLM(responses=[
+        # 任务 t1 第一轮反思 → sufficient（收尾并产出 finding）
+        '{"sufficient": true, "next_query": "", "reason": "ok"}',
+        # 任务 t1 的 finding 摘要
+        "任务一结论：RAG 检索准确率 90%",
+        # 任务 t2 第一轮反思 → sufficient（便于断言 prompt 内容）
+        '{"sufficient": true, "next_query": "", "reason": "ok"}',
+        # 任务 t2 的 finding 摘要
+        "任务二结论",
+    ])
+    provider = FakePromptProvider()
+    internal = FakeInternalPort(
+        results_per_query={
+            "t1": [_internal_result("ic1", "ck1", "d1", 0.9)],
+            "t2": [_internal_result("ic2", "ck2", "d2", 0.8)],
+        }
+    )
+    events = await _collect(
+        engine,
+        web_search_port=FakeWebPort(),
+        internal_search_port=internal,
+        tasks=[{"task_id": "t1", "description": "t1"}, {"task_id": "t2", "description": "t2"}],
+        params=_params(search_source=SearchSource.INTERNAL, iterations=2),
+        llm_client=llm,
+        prompt_provider=provider,
+    )
+    findings = [e for e in events if isinstance(e, TaskFinding)]
+    assert len(findings) == 2
+    assert findings[0].finding == "任务一结论：RAG 检索准确率 90%"
+    # 任务 t2 的反思 prompt 应包含 t1 的 finding
+    reflect_kwargs = [kw for (key, kw) in provider.calls if key == "research_generate_query"]
+    assert len(reflect_kwargs) == 2
+    assert "RAG 检索准确率 90%" in reflect_kwargs[1]["prior_findings"]
+
+
+async def test_aligned_mode_llm_failure_degrades_to_fixed_query():
+    """反思 LLM 调用失败 → 降级固定 query 继续（不中断研究，不算 TaskFailed）。"""
+    engine = DeepResearchEngine()
+    llm = FakeLLM(raise_on_calls={1, 2, 3})  # 反思×2 与 finding 调用全抛错
+    provider = FakePromptProvider()
+    internal = FakeInternalPort(
+        results_per_query={
+            "t1": [_internal_result("ic", "ck1", "docA", 0.9)],
+        }
+    )
+    events = await _collect(
+        engine,
+        web_search_port=FakeWebPort(),
+        internal_search_port=internal,
+        tasks=[{"task_id": "t1", "description": "t1"}],
+        params=_params(search_source=SearchSource.INTERNAL, iterations=2),
+        llm_client=llm,
+        prompt_provider=provider,
+    )
+    # 两轮都用固定 query（降级），无 TaskFailed（反思失败不算任务失败）
+    assert [q for (q, _) in internal.calls] == ["t1", "t1"]
+    failed = [e for e in events if isinstance(e, TaskFailed)]
+    assert failed == []
+    sc = next(e for e in events if isinstance(e, SearchComplete))
+    assert sc.summary["total_results"] == 1
+    # finding 走机械降级（LLM 全挂）→ 仍产出 TaskFinding
+    findings = [e for e in events if isinstance(e, TaskFinding)]
+    assert len(findings) == 1
+    assert "docA" in findings[0].finding  # 机械摘要含文档名
+
+
+async def test_aligned_mode_mechanical_threshold_skips_reflection():
+    """机械充分性（结果数达标）优先于 LLM 反思——反思调用不发生（finding 摘要仍会调）。"""
+    from novamind.engines.deep_research.engine import SUFFICIENT_RESULT_COUNT
+
+    engine = DeepResearchEngine()
+    llm = FakeLLM()  # 若被调用会返回 sufficient=true；但机械阈值应先命中
+    provider = FakePromptProvider()
+    internal = FakeInternalPort(
+        results_per_query={
+            "t1": [
+                _internal_result(f"ic{i}", f"ck{i}", f"d{i}", 0.9 - i * 0.01)
+                for i in range(SUFFICIENT_RESULT_COUNT)
+            ],
+        }
+    )
+    events = await _collect(
+        engine,
+        web_search_port=FakeWebPort(),
+        internal_search_port=internal,
+        tasks=[{"task_id": "t1", "description": "t1"}],
+        params=_params(search_source=SearchSource.INTERNAL, iterations=3),
+        llm_client=llm,
+        prompt_provider=provider,
+    )
+    # 反思 prompt 不应被调用（机械充分性先于反思）；finding 摘要调用正常发生
+    reflect_kwargs = [kw for (key, kw) in provider.calls if key == "research_generate_query"]
+    assert reflect_kwargs == [], "机械充分性命中后不应调用反思 LLM"
+    assert [key for (key, _) in provider.calls] == ["research_task_finding"]
+    sc = next(e for e in events if isinstance(e, SearchComplete))
+    assert sc.summary["total_results"] == SUFFICIENT_RESULT_COUNT
+
+
+async def test_parse_query_decision_variants():
+    """parse_query_decision 纯函数：合法/包裹/非 JSON/缺字段/类型错。"""
+    from novamind.engines.deep_research.engine import parse_query_decision
+
+    # 合法 JSON
+    assert parse_query_decision('{"sufficient": true, "next_query": "", "reason": "ok"}') == (
+        True, "", "ok"
+    )
+    # 代码块包裹
+    s, q, _ = parse_query_decision('```json\n{"sufficient": false, "next_query": "向量权重 调优", "reason": "r"}\n```')
+    assert s is False and q == "向量权重 调优"
+    # 前后杂文字
+    s2, q2, _ = parse_query_decision('好的。{"sufficient": false, "next_query": "bm25 调参"} 完成判断')
+    assert s2 is False and q2 == "bm25 调参"
+    # 非 JSON
+    s3, q3, _ = parse_query_decision("我觉得信息已经足够了")
+    assert s3 is False and q3 == ""
+    # 缺字段 → 默认 insufficient + 空 query
+    s4, q4, _ = parse_query_decision('{"sufficient": false}')
+    assert s4 is False and q4 == ""
+    # 字段类型错 → 容错（sufficient 取真值，next_query 非 str 归空）
+    s5, q5, _ = parse_query_decision('{"sufficient": "yes", "next_query": 123}')
+    assert s5 is True and q5 == ""
+    # 空输入
+    assert parse_query_decision("") == (False, "", "LLM 返回为空")

@@ -16,6 +16,8 @@ export const researchApi = {
         progress_percent: number
         completed_tasks: number
         total_tasks: number
+        // deer-flow 对齐观察驱动模式：本轮实际使用的检索 query（演化后）
+        current_query?: string
       }) => void
       onContent?: (chunk: string) => void
       // 与后端 deep_research_service 的 done 事件载荷对齐：

@@ -160,6 +160,8 @@ def test_engine_pure_functions_present_and_pure():
         "deduplicate_results",
         "extract_key_sources",
         "format_search_context",
+        "summarize_observations_for_llm",
+        "parse_query_decision",
     ):
         assert hasattr(dr_engine, name), f"engine.py 缺少纯函数: {name}"
 
@@ -168,6 +170,8 @@ def test_engine_pure_functions_present_and_pure():
         "KEY_DECOMPOSE_TASKS",
         "KEY_SYNTHESIZE_REPORT",
         "KEY_SYNTHESIZE_REPORT_STREAM",
+        "KEY_GENERATE_QUERY",
+        "KEY_TASK_FINDING",
     ):
         assert hasattr(dr_engine, key), f"engine.py 缺少 prompt key 常量: {key}"
 
@@ -180,15 +184,16 @@ def test_engine_pure_functions_present_and_pure():
 
 
 def test_search_event_variants_present():
-    """SearchEvent 四变体（TaskStarted/IterationProgress/TaskFailed/SearchComplete）在 types.py。"""
+    """SearchEvent 五变体（TaskStarted/IterationProgress/TaskFailed/TaskFinding/SearchComplete）在 types.py。"""
     from novamind.engines.deep_research.types import (
         IterationProgress,
         SearchComplete,
         TaskFailed,
+        TaskFinding,
         TaskStarted,
     )
 
-    for cls in (TaskStarted, IterationProgress, TaskFailed, SearchComplete):
+    for cls in (TaskStarted, IterationProgress, TaskFailed, TaskFinding, SearchComplete):
         # dataclass
         assert hasattr(cls, "__dataclass_fields__"), f"{cls.__name__} 应为 dataclass"
 
@@ -341,19 +346,28 @@ def test_deep_research_service_maps_engine_error_to_feature_error():
 
 
 def test_deep_research_engine_search_signature():
-    """search 签名无 llm_client/prompt_provider；接 web/internal 端口 + tasks + params + logger（全 keyword-only）。"""
+    """search 接 web/internal 端口 + tasks + params + logger + 可选 llm_client/prompt_provider（全 keyword-only）。
+
+    deer-flow 对齐：llm_client/prompt_provider 为可选参数（默认 None = 降级固定 query
+    循环），注入即启用观察驱动模式（反思充分性 + query 演化 + 跨任务 finding）。
+    """
     from novamind.engines.deep_research.engine import DeepResearchEngine
 
     fn = DeepResearchEngine.search
     params = inspect.signature(fn).parameters
-    expected = {"web_search_port", "internal_search_port", "tasks", "params", "logger"}
+    expected = {
+        "web_search_port", "internal_search_port", "tasks", "params", "logger",
+        "llm_client", "prompt_provider",
+    }
     found = set(params.keys()) - {"self"}
     assert expected <= found, (
         f"DeepResearchEngine.search 缺少参数: {expected - found}"
     )
-    # 循环不调 LLM/prompt
-    assert "llm_client" not in params, "search 不应接 llm_client（循环不调 LLM）"
-    assert "prompt_provider" not in params, "search 不应接 prompt_provider（循环不调 prompt）"
+    # llm_client/prompt_provider 必须有默认值 None（可选降级路径）
+    for name in ("llm_client", "prompt_provider"):
+        assert params[name].default is None, (
+            f"{name} 应默认 None（降级固定 query 模式）"
+        )
     # web_search_port/internal_search_port/tasks/params/logger 均为 keyword-only
     for name in expected:
         assert params[name].kind == inspect.Parameter.KEYWORD_ONLY, (
@@ -423,10 +437,11 @@ def test_web_search_result_has_optional_content_and_score():
 
 
 def test_prompt_keys_resolvable_via_prompt_provider():
-    """4 prompt key 经注入 PromptProvider.format 可解析（防 key 漂移）。
+    """6 prompt key 经注入 PromptProvider.format 可解析（防 key 漂移）。
 
     注册 deep_research prompts 模板（幂等）后，as_prompt_provider() 返回的 HostPromptProvider
-    应能解析 KEY_ANALYZE_QUERY/KEY_DECOMPOSE_TASKS/KEY_SYNTHESIZE_REPORT/KEY_SYNTHESIZE_REPORT_STREAM。
+    应能解析 KEY_ANALYZE_QUERY/KEY_DECOMPOSE_TASKS/KEY_SYNTHESIZE_REPORT/
+    KEY_SYNTHESIZE_REPORT_STREAM/KEY_GENERATE_QUERY/KEY_TASK_FINDING。
     """
     from novamind.shared.prompts.prompt_manager import PromptManager
     from novamind.features.deep_research.deep_research_prompts import TEMPLATES as DR_TEMPLATES
@@ -436,6 +451,8 @@ def test_prompt_keys_resolvable_via_prompt_provider():
         KEY_DECOMPOSE_TASKS,
         KEY_SYNTHESIZE_REPORT,
         KEY_SYNTHESIZE_REPORT_STREAM,
+        KEY_GENERATE_QUERY,
+        KEY_TASK_FINDING,
     )
 
     PromptManager.register(DR_TEMPLATES)  # 幂等：重复注册同一份无副作用
@@ -445,3 +462,9 @@ def test_prompt_keys_resolvable_via_prompt_provider():
     provider.format(KEY_DECOMPOSE_TASKS, research_topic="t", query="q", depth=2)
     provider.format(KEY_SYNTHESIZE_REPORT, query="q", research_topic="t", context="c", key_sources="k")
     provider.format(KEY_SYNTHESIZE_REPORT_STREAM, query="q", research_topic="t", context="c", key_sources="k")
+    provider.format(
+        KEY_GENERATE_QUERY,
+        task_description="t", current_query="q", observations="o",
+        prior_findings="p", iteration="1",
+    )
+    provider.format(KEY_TASK_FINDING, task_description="t", observations="o")

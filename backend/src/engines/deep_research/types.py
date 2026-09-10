@@ -62,7 +62,11 @@ class TaskStarted:
 
 @dataclass
 class IterationProgress:
-    """单次迭代进度事件。"""
+    """单次迭代进度事件。
+
+    ``current_query`` 为本轮实际使用的检索 query：固定 query 模式（无 LLM）下等于
+    任务描述；观察驱动模式（deer-flow 对齐）下是 LLM 基于已有观察演化出的新 query。
+    """
 
     task_id: str
     iteration: int
@@ -70,6 +74,7 @@ class IterationProgress:
     step_count: int
     total_steps: int
     current_results_count: int
+    current_query: str = ""
 
 
 @dataclass
@@ -78,6 +83,19 @@ class TaskFailed:
 
     task_id: str
     error: str
+
+
+@dataclass
+class TaskFinding:
+    """单任务完成后的 finding 摘要事件（deer-flow 对齐）。
+
+    LLM 将该任务检索结果压缩为一段要点+结论式摘要，注入后续任务的 query 生成
+    prompt（跨任务信息流：后执行任务知道前面已查明什么，避免重复检索）。
+    host 可选择忽略该事件（不影响现有消费方）。
+    """
+
+    task_id: str
+    finding: str
 
 
 @dataclass
@@ -93,7 +111,7 @@ class SearchComplete:
     summary: Dict[str, Any] = field(default_factory=dict)
 
 
-SearchEvent = Union[TaskStarted, IterationProgress, TaskFailed, SearchComplete]
+SearchEvent = Union[TaskStarted, IterationProgress, TaskFailed, TaskFinding, SearchComplete]
 
 
 __all__ = [
@@ -102,6 +120,7 @@ __all__ = [
     "TaskStarted",
     "IterationProgress",
     "TaskFailed",
+    "TaskFinding",
     "SearchComplete",
     "SearchEvent",
 ]
