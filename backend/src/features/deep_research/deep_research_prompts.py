@@ -80,6 +80,65 @@ TEMPLATES = {
         "Write the research report:"
     ),
 
+    # ==================== 结构化规划（deer-flow planner 对齐） ====================
+
+    "research_plan": (
+        "You are a professional Deep Researcher. Study the research topic and produce a "
+        "structured information-gathering plan.\n\n"
+        "The final goal is a thorough, detailed report, so collect abundant information "
+        "across multiple aspects. Insufficient information yields an inadequate report.\n\n"
+        "Research topic: {research_topic}\n"
+        "User query: {query}\n"
+        "Max number of steps: {depth}\n"
+        "Planning iteration: {iteration}\n\n"
+        "Background investigation results of the user query:\n"
+        "<background_results>\n{background_results}\n</background_results>\n\n"
+        "User feedback on the previous plan (apply it when revising):\n"
+        "<feedback>\n{feedback}\n</feedback>\n\n"
+        "## Context Assessment (apply very strict criteria)\n"
+        "Set \"has_enough_context\" to true ONLY IF the background investigation results "
+        "already fully answer ALL aspects of the query with specific, reliable details. "
+        "Even if you're 90% certain, choose to gather more. When in doubt, set false.\n\n"
+        "## Step Types\n"
+        "1. Research steps (\"step_type\": \"research\", \"need_search\": true): gather "
+        "data — market info, historical facts, statistics, current events, comparisons.\n"
+        "2. Processing steps (\"step_type\": \"processing\", \"need_search\": false): pure "
+        "analysis — cross-validate findings, synthesize insights, compare perspectives, "
+        "draw conclusions. Use SPARINGLY: at most one per plan, placed last.\n"
+        "The plan MUST include at least one research step — without retrieval the report "
+        "will contain fabricated data.\n\n"
+        "## Output\n"
+        "Return STRICT JSON only (no markdown fences, no extra text):\n"
+        "{{\n"
+        "  \"has_enough_context\": false,\n"
+        "  \"thought\": \"one-sentence reasoning about the plan\",\n"
+        "  \"title\": \"plan title\",\n"
+        "  \"steps\": [\n"
+        "    {{\"need_search\": true, \"title\": \"step title\", \"description\": "
+        "\"exactly what data to collect\", \"step_type\": \"research\"}}\n"
+        "  ]\n"
+        "}}\n"
+        "Steps must be independently researchable, logically ordered (foundational "
+        "before advanced), and cover different dimensions. Max {depth} steps.\n\n"
+        "Return the plan (JSON):"
+    ),
+
+    "research_processing_step": (
+        "You are a research analyst executing a PURE ANALYSIS step (no retrieval "
+        "available). Synthesize the findings from already-completed research steps "
+        "into the conclusion this step asks for.\n\n"
+        "Step title: {step_title}\n"
+        "Step description: {task_description}\n\n"
+        "Findings from completed steps:\n"
+        "<findings>\n{prior_findings}\n</findings>\n\n"
+        "Requirements:\n"
+        "1. Base your analysis STRICTLY on the findings above — do not invent data\n"
+        "2. Note explicitly if the findings are insufficient for a solid conclusion\n"
+        "3. Use the same language as the step description\n"
+        "4. Max 400 words, structured output\n\n"
+        "Analysis conclusion:"
+    ),
+
     # ==================== 迭代检索反思（deer-flow 对齐） ====================
 
     "research_generate_query": (

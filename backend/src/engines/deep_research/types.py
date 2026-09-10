@@ -33,6 +33,53 @@ class SearchSource(str, PyEnum):
     HYBRID = "hybrid"           # 混合检索
 
 
+class StepType(str, PyEnum):
+    """研究步骤类型（deer-flow 对齐）。
+
+    - RESEARCH：检索型步骤（调检索端口迭代收集信息）
+    - PROCESSING：纯分析步骤（不调检索，LLM 综合前序发现产出结论；
+      对应 deer-flow 的 processing/analyst 步骤语义）
+    """
+
+    RESEARCH = "research"
+    PROCESSING = "processing"
+
+
+@dataclass
+class PlanStep:
+    """研究计划单步骤（deer-flow Step 对齐）。
+
+    ``execution_res`` 为执行后回填的结果（research 路径为该步骤的 finding
+    摘要；processing 路径为 LLM 分析结论），持久化时截 1000 字符。
+    """
+
+    step_id: str
+    title: str
+    description: str
+    step_type: StepType = StepType.RESEARCH
+    need_search: bool = True
+    execution_res: str = ""
+
+
+@dataclass
+class ResearchPlan:
+    """研究计划（deer-flow Plan 对齐）。
+
+    - ``has_enough_context``：planner 看到 background 调查结果后的 Context
+      Assessment 判定——true 时 steps 可为空，管线跳过检索直接 reporter。
+    - ``locale``：仅形状对齐 deer-flow，NovaMind 不填（报告语言跟 query 走）。
+    - ``iteration``：规划轮次（0=首轮；EDIT_PLAN 重规划 +1）。
+    """
+
+    title: str = ""
+    thought: str = ""
+    has_enough_context: bool = False
+    locale: str = ""
+    steps: List["PlanStep"] = field(default_factory=list)
+    iteration: int = 0
+    background_investigation_results: List[Dict[str, Any]] = field(default_factory=list)
+
+
 @dataclass
 class EngineResearchParams:
     """引擎研究参数（纯 dataclass，host 从 feature ``ResearchRequest`` 装配后注入）。
@@ -104,11 +151,14 @@ class SearchComplete:
 
     ``all_results`` 为归一化检索结果字典列表（内部/外部两路统一形状），
     feature 侧据此持久化与综合报告。``summary`` 含 internal_count/external_count/
-    total_results/key_sources。
+    total_results/key_sources。``task_findings`` 为各任务 finding 摘要累积
+    （[{task_id, finding}]，deer-flow observations 的对应物，喂 reporter 提升
+    报告 grounding）。
     """
 
     all_results: List[Dict[str, Any]] = field(default_factory=list)
     summary: Dict[str, Any] = field(default_factory=dict)
+    task_findings: List[Dict[str, str]] = field(default_factory=list)
 
 
 SearchEvent = Union[TaskStarted, IterationProgress, TaskFailed, TaskFinding, SearchComplete]
@@ -116,6 +166,9 @@ SearchEvent = Union[TaskStarted, IterationProgress, TaskFailed, TaskFinding, Sea
 
 __all__ = [
     "SearchSource",
+    "StepType",
+    "PlanStep",
+    "ResearchPlan",
     "EngineResearchParams",
     "TaskStarted",
     "IterationProgress",

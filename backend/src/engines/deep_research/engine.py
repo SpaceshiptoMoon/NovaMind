@@ -6,11 +6,13 @@ ORM 模型 / ``core.database``。LLM 客户端、prompt 提供者、检索端口
 （AgentEngine 风格）；引擎类无状态。
 
 - 纯模块函数：检索结果清洗/外部搜索决策/充分性/去重/关键来源/上下文格式化/
-  观察摘要/query 决策解析 + 常量 + prompt key。
-- ``DeepResearchEngine`` 类：``analyze_query``/``decompose_tasks``/``synthesize_report[_stream]``
-  （按调用接 llm_client + prompt_provider）+ ``search``（迭代检索循环，AsyncIterator[SearchEvent]，
-  按调用接 web_search_port/internal_search_port；llm_client/prompt_provider 可选注入——
-  注入即启用 deer-flow 对齐的观察驱动模式）。
+  观察摘要/query 决策解析/计划解析 + 常量 + prompt key。
+- ``DeepResearchEngine`` 类：``analyze_query``/``analyze_plan``（deer-flow planner
+  对齐）/``synthesize_report[_stream]``（按调用接 llm_client + prompt_provider）+
+  ``background_investigation``（规划前单轮背景检索）+ ``search``（迭代检索循环，
+  AsyncIterator[SearchEvent]，按调用接 web_search_port/internal_search_port；
+  llm_client/prompt_provider 可选注入——注入即启用 deer-flow 对齐的观察驱动模式；
+  循环内按 step_type 路由 research/processing 步骤）。
 """
 from __future__ import annotations
 
@@ -26,9 +28,12 @@ from novamind.engines.deep_research.ports import InternalSearchPort
 from novamind.engines.deep_research.types import (
     EngineResearchParams,
     IterationProgress,
+    PlanStep,
+    ResearchPlan,
     SearchComplete,
     SearchEvent,
     SearchSource,
+    StepType,
     TaskFailed,
     TaskFinding,
     TaskStarted,
@@ -43,9 +48,18 @@ MAX_ITERATION_THRESHOLD = 3  # 最大迭代阈值
 OBSERVATION_FEED_LIMIT = 8
 OBSERVATION_SNIPPET_CHARS = 200
 
+# 背景调查（deer-flow background_investigation 对齐）：单轮检索上限
+BACKGROUND_INVESTIGATION_MAX_RESULTS = 8
+BACKGROUND_RESULT_SNIPPET_CHARS = 500
+
+# Plan 执行结果回填截断长度（持久化前）
+EXECUTION_RES_MAX_CHARS = 1000
+
 # Prompt key 常量（防 key 漂移；模板留 feature 侧 deep_research_prompts.py，经 PromptProvider 解析）
 KEY_ANALYZE_QUERY = "research_analyze_query"
-KEY_DECOMPOSE_TASKS = "research_decompose_tasks"
+KEY_DECOMPOSE_TASKS = "research_decompose_tasks"  # 批次 2 删除（被 KEY_PLAN 替代）
+KEY_PLAN = "research_plan"
+KEY_PROCESSING_STEP = "research_processing_step"
 KEY_SYNTHESIZE_REPORT = "research_synthesize_report"
 KEY_SYNTHESIZE_REPORT_STREAM = "research_synthesize_report_stream"
 KEY_GENERATE_QUERY = "research_generate_query"
@@ -191,13 +205,110 @@ def parse_query_decision(raw: str) -> tuple:
     return sufficient, next_query, reason
 
 
+def _extract_json_block(raw: str):
+    """从 LLM 输出中提取 JSON 对象/数组（容忍代码块包裹与前后杂文字）。"""
+    if not raw or not raw.strip():
+        return None
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        pass
+    # 数组优先（decompose 兼容）再对象
+    for pattern in (r"\[[\s\S]*\]", r"\{[\s\S]*\}"):
+        match = re.search(pattern, raw)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except (json.JSONDecodeError, ValueError):
+                continue
+    return None
+
+
+def parse_plan(raw: str, *, depth: int, topic: str, iteration: int) -> ResearchPlan:
+    """解析 planner LLM 输出为 ResearchPlan（deer-flow Plan 对齐）。
+
+    容错降级：非 JSON / 缺 steps / 类型错 → 默认计划（按 depth 生成全 research
+    步骤，沿用 decompose_tasks 降级风格）。守卫：全 processing 计划强制首步转
+    research（避免零检索纯空谈计划）。
+    """
+    data = _extract_json_block(raw)
+
+    def _default_plan() -> ResearchPlan:
+        return ResearchPlan(
+            title=topic,
+            thought="",
+            has_enough_context=False,
+            steps=[
+                PlanStep(
+                    step_id=f"step_{i + 1}",
+                    title=f"{topic} 第 {i + 1} 方面",
+                    description=f"研究 {topic} 的第 {i + 1} 个方面",
+                    step_type=StepType.RESEARCH,
+                    need_search=True,
+                )
+                for i in range(depth)
+            ],
+            iteration=iteration,
+        )
+
+    if not isinstance(data, dict):
+        # 兼容旧 decompose 数组形状（[{task_id/description/priority}]）
+        if isinstance(data, list) and data:
+            data = {"steps": data}
+        else:
+            return _default_plan()
+
+    raw_steps = data.get("steps")
+    if not isinstance(raw_steps, list):
+        return _default_plan()
+
+    steps: List[PlanStep] = []
+    for i, s in enumerate(raw_steps[:depth]):
+        if not isinstance(s, dict):
+            continue
+        # step_type 容错：非法值一律归 research
+        raw_type = str(s.get("step_type", "research")).lower()
+        step_type = StepType.PROCESSING if raw_type == "processing" else StepType.RESEARCH
+        need_search = bool(s.get("need_search", True))
+        steps.append(PlanStep(
+            step_id=str(s.get("step_id") or s.get("task_id") or f"step_{len(steps) + 1}"),
+            title=str(s.get("title", f"步骤 {len(steps) + 1}")),
+            description=str(s.get("description", f"研究 {topic} 的第 {len(steps) + 1} 个方面")),
+            step_type=step_type,
+            need_search=need_search,
+        ))
+
+    # 全 processing 守卫：强制首步转 research（planner 滥用 processing 的防呆）
+    if steps and all(s.step_type == StepType.PROCESSING or not s.need_search for s in steps):
+        steps[0].step_type = StepType.RESEARCH
+        steps[0].need_search = True
+
+    has_enough = bool(data.get("has_enough_context", False))
+    if not steps and not has_enough:
+        # 无步骤且未判足够 → 降级默认计划；has_enough=true 时空 steps 合法
+        # （planner 判定背景已足够，管线跳过检索直接 reporter）
+        return _default_plan()
+    return ResearchPlan(
+        title=str(data.get("title", topic)),
+        thought=str(data.get("thought", "")),
+        has_enough_context=has_enough,
+        steps=steps,
+        iteration=iteration,
+    )
+
+
 __all__ = [
     "SUFFICIENT_RESULT_COUNT",
     "MAX_ITERATION_THRESHOLD",
     "OBSERVATION_FEED_LIMIT",
     "OBSERVATION_SNIPPET_CHARS",
+    "BACKGROUND_INVESTIGATION_MAX_RESULTS",
+    "BACKGROUND_RESULT_SNIPPET_CHARS",
+    "EXECUTION_RES_MAX_CHARS",
     "KEY_ANALYZE_QUERY",
     "KEY_DECOMPOSE_TASKS",
+    "KEY_PLAN",
+    "KEY_PROCESSING_STEP",
     "KEY_SYNTHESIZE_REPORT",
     "KEY_SYNTHESIZE_REPORT_STREAM",
     "KEY_GENERATE_QUERY",
@@ -209,6 +320,7 @@ __all__ = [
     "format_search_context",
     "summarize_observations_for_llm",
     "parse_query_decision",
+    "parse_plan",
     "DeepResearchEngine",
 ]
 
@@ -251,10 +363,6 @@ class DeepResearchEngine:
         topic: str,
         depth: int,
     ) -> List[Dict[str, Any]]:
-        """分解研究任务（接已 sanitize 的 query/topic；``depth`` 为整数，不接 ResearchMode）。
-
-        LLM 返回 JSON 解析失败时降级为默认任务（按 depth 生成），并经注入 logger 告警。
-        """
         prompt = prompt_provider.format(
             KEY_DECOMPOSE_TASKS,
             research_topic=topic,
@@ -295,6 +403,96 @@ class DeepResearchEngine:
                 }
                 for i in range(depth)
             ]
+
+    async def analyze_plan(
+        self,
+        llm_client: BaseLLM,
+        prompt_provider: PromptProvider,
+        *,
+        query: str,
+        topic: str,
+        background_results: List[Dict[str, Any]],
+        depth: int,
+        iteration: int = 0,
+        feedback: str = "",
+    ) -> ResearchPlan:
+        """生成结构化研究计划（deer-flow planner 对齐，替代 decompose_tasks）。
+
+        输入背景调查结果与（重规划时的）用户反馈，输出
+        ``ResearchPlan{title, thought, has_enough_context, steps[PlanStep]}``。
+        解析失败降级默认计划（parse_plan 内部处理），不抛异常。
+        """
+        bg_block = (
+            "\n".join(
+                f"- [{r.get('title', '')}]({r.get('url', '') or r.get('document_name', '')}) "
+                f"{str(r.get('content', ''))[:BACKGROUND_RESULT_SNIPPET_CHARS]}"
+                for r in background_results[:BACKGROUND_INVESTIGATION_MAX_RESULTS]
+            )
+            if background_results
+            else "（无背景调查结果）"
+        )
+        prompt = prompt_provider.format(
+            KEY_PLAN,
+            research_topic=topic,
+            query=query,
+            depth=depth,
+            background_results=bg_block,
+            feedback=feedback or "（无，首轮规划）",
+            iteration=str(iteration),
+        )
+        raw = await llm_client.generate_text(
+            prompt=prompt,
+            max_tokens=2000,
+            temperature=0.5,
+            enable_thinking=False,
+        )
+        return parse_plan(raw, depth=depth, topic=topic, iteration=iteration)
+
+    async def background_investigation(
+        self,
+        *,
+        web_search_port: Optional[WebSearchPort],
+        internal_search_port: Optional[InternalSearchPort],
+        query: str,
+        params: EngineResearchParams,
+        max_results: int = BACKGROUND_INVESTIGATION_MAX_RESULTS,
+    ) -> List[Dict[str, Any]]:
+        """规划前背景调查（deer-flow background_investigator 对齐）。
+
+        单轮检索（不调 LLM）：按 ``should_use_external_search(source, iteration=0)``
+        路由数据源（hybrid 首轮内部优先，与主循环语义一致），结果归一化 + 去重。
+        任何异常降级返回 []，不阻断规划。
+        """
+        deduped: List[Dict[str, Any]] = []
+        try:
+            use_external = should_use_external_search(params.search_source, iteration=0)
+            if use_external:
+                if web_search_port is None:
+                    return []
+                raw = await web_search_port.search(query, max_results=max_results)
+                results = [
+                    {
+                        "source_type": "external",
+                        "content": getattr(r, "content", "") or getattr(r, "snippet", ""),
+                        "url": getattr(r, "url", ""),
+                        "title": getattr(r, "title", ""),
+                        "score": getattr(r, "score", 0.0),
+                    }
+                    for r in raw
+                ]
+            else:
+                if internal_search_port is None:
+                    return []
+                results = await internal_search_port.search(query, top_k=max_results)
+            deduplicate_results(deduped, results)
+        except Exception:
+            # 背景调查失败不影响主流程（planner 拿到空背景照样规划）
+            return []
+        # content 截断（防 plan JSON 膨胀）
+        for r in deduped:
+            if len(r.get("content", "")) > BACKGROUND_RESULT_SNIPPET_CHARS:
+                r["content"] = r["content"][:BACKGROUND_RESULT_SNIPPET_CHARS]
+        return deduped
 
     async def synthesize_report(
         self,
@@ -413,16 +611,41 @@ class DeepResearchEngine:
         aligned = llm_client is not None and prompt_provider is not None
         # 跨任务信息流（deer-flow 对齐）：前序任务 finding 摘要累积
         prior_findings: List[str] = []
+        # 各任务 finding 累积（随 SearchComplete 产出，供 reporter grounding）
+        task_findings_acc: List[Dict[str, str]] = []
 
         for task in tasks:
             task_id = str(task.get("task_id", ""))
             task_query = task.get("description", "") or ""
+            # step_type 路由（deer-flow 对齐）：research+need_search 走检索迭代；
+            # processing（或 need_search=False）走纯 LLM 分析。旧形状 dict（无
+            # step_type 字段）默认 research 路径，向后兼容。
+            raw_step_type = str(task.get("step_type", "research")).lower()
+            need_search = bool(task.get("need_search", True))
+            is_processing = raw_step_type == "processing" or not need_search
+            step_title = str(task.get("title", "")) or task_query
             yield TaskStarted(
                 task_id=task_id,
                 description=task_query,
                 total_iterations=params.iterations,
             )
             try:
+                if is_processing:
+                    step_count += 1
+                    # processing 纯分析步骤：LLM 综合前序发现产出结论（不调检索）。
+                    # 未对齐模式（无 LLM）下降级为跳过（不产出 finding）。
+                    if aligned:
+                        conclusion = await self._run_processing_step(
+                            llm_client,
+                            prompt_provider,
+                            task_description=task_query,
+                            step_title=step_title,
+                            prior_findings=prior_findings,
+                        )
+                        prior_findings.append(conclusion)
+                        task_findings_acc.append({"task_id": task_id, "finding": conclusion})
+                        yield TaskFinding(task_id=task_id, finding=conclusion)
+                    continue
                 task_results: List[Dict[str, Any]] = []
                 internal_count = 0
                 external_count = 0
@@ -504,6 +727,7 @@ class DeepResearchEngine:
                         observations=task_results,
                     )
                     prior_findings.append(finding)
+                    task_findings_acc.append({"task_id": task_id, "finding": finding})
                     yield TaskFinding(task_id=task_id, finding=finding)
             except Exception as e:
                 if logger is not None:
@@ -516,7 +740,45 @@ class DeepResearchEngine:
             "total_results": len(all_results),
             "key_sources": extract_key_sources(all_results),
         }
-        yield SearchComplete(all_results=all_results, summary=summary)
+        yield SearchComplete(
+            all_results=all_results, summary=summary, task_findings=task_findings_acc
+        )
+
+    async def _run_processing_step(
+        self,
+        llm_client: BaseLLM,
+        prompt_provider: PromptProvider,
+        *,
+        task_description: str,
+        step_title: str,
+        prior_findings: List[str],
+    ) -> str:
+        """processing 纯分析步骤（deer-flow processing/analyst 对齐）。
+
+        LLM 综合前序发现产出该步骤结论（不调检索）。调用失败返回降级文本。
+        """
+        try:
+            findings_block = (
+                "\n".join(f"- {f}" for f in prior_findings) if prior_findings else "（无）"
+            )
+            prompt = prompt_provider.format(
+                KEY_PROCESSING_STEP,
+                step_title=step_title,
+                task_description=task_description,
+                prior_findings=findings_block,
+            )
+            raw = await llm_client.generate_text(
+                prompt=prompt,
+                max_tokens=600,
+                temperature=0.4,
+                enable_thinking=False,
+            )
+            conclusion = _sanitize_search_field(raw)
+            if conclusion:
+                return conclusion[:EXECUTION_RES_MAX_CHARS]
+        except Exception:
+            pass
+        return f"（分析步骤 {step_title} 执行失败，跳过）"
 
     async def _reflect_and_generate_query(
         self,
