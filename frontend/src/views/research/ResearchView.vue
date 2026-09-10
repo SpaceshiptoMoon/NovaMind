@@ -126,21 +126,13 @@
       <!-- 输入区域 -->
       <div class="input-area" :class="{ 'is-welcome': isWelcomeMode }">
         <div class="input-area-inner" :class="{ 'welcome-center': isWelcomeMode }">
-          <!-- 欢迎问候 (仅欢迎模式) -->
+          <!-- 欢迎问候 (仅欢迎模式)：emoji 挥手 + 渐变流光标题 + 副标题（deer-flow 对齐） -->
           <div v-if="isWelcomeMode" class="welcome-greeting">
-            <h2 class="welcome-title">深度研究</h2>
-            <p class="welcome-subtitle">输入研究问题，AI 将自动搜索、分析并生成研究报告</p>
-            <div class="welcome-prompts">
-              <button
-                v-for="(prompt, i) in quickPrompts"
-                :key="i"
-                class="prompt-card"
-                @click="handleQuickPrompt(prompt.text)"
-              >
-                <span class="prompt-icon">{{ prompt.icon }}</span>
-                <span class="prompt-text">{{ prompt.text }}</span>
-              </button>
+            <div class="welcome-heading">
+              <span class="welcome-emoji" :class="{ waved: emojiWaved }">🦌</span>
+              <span class="welcome-title aurora-text">深度研究</span>
             </div>
+            <p class="welcome-subtitle">输入研究问题，AI 将自动规划、检索并生成结构化研究报告</p>
           </div>
 
           <div class="input-pill">
@@ -243,6 +235,20 @@
           </button>
         </div>
         <div class="input-hint">按 Enter 发送，Shift + Enter 换行</div>
+
+        <!-- 建议 pill 列表 (仅欢迎模式，输入框下方，deer-flow Suggestion 对齐) -->
+        <div v-if="isWelcomeMode" class="suggestion-list">
+          <span
+            v-for="(prompt, i) in quickPrompts"
+            :key="i"
+            class="suggestion-item"
+            :style="{ animationDelay: `${250 + i * 60}ms` }"
+            @click="handleQuickPrompt(prompt.text)"
+          >
+            <span class="suggestion-icon">{{ prompt.icon }}</span>
+            <span class="suggestion-text">{{ prompt.text }}</span>
+          </span>
+        </div>
         </div>
       </div>
     </div>
@@ -335,6 +341,14 @@ const quickPrompts = [
   { icon: '📋', text: '调研行业最新研究报告' },
   { icon: '💡', text: '总结某领域的前沿研究方向' },
 ]
+
+// 欢迎态 emoji 挥手动画（首次渲染播一次，deer-flow animate-wave 对齐）
+const emojiWaved = ref(false)
+onMounted(() => {
+  setTimeout(() => {
+    emojiWaved.value = true
+  }, 1200)
+})
 
 // 历史研究
 const recentHistory = ref<Research[]>([])
@@ -726,81 +740,129 @@ watch(spaceId, () => {
 }
 
 /* ========================================
-   Welcome Greeting (inside input-area)
+   Welcome Greeting (deer-flow 对齐：居中标题 + 渐变流光 + 挥手)
    ======================================== */
 .welcome-greeting {
-  text-align: center;
-  margin-bottom: var(--space-6);
-}
-
-.welcome-inner {
   display: flex;
   flex-direction: column;
   align-items: center;
-  max-width: var(--container-width-sm);
-  width: 100%;
+  gap: var(--space-2);
+  text-align: center;
+  margin-bottom: var(--space-5);
+  animation: fade-in-up 0.4s ease both;
+}
+
+.welcome-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.welcome-emoji {
+  display: inline-block;
+  font-size: var(--text-2xl);
+  transform-origin: 70% 70%;
+}
+
+.welcome-emoji:not(.waved) {
+  animation: wave 0.6s ease-in-out 2;
 }
 
 .welcome-title {
   font-family: var(--font-display);
-  font-size: var(--text-4xl);
+  font-size: var(--text-2xl);
   font-weight: var(--weight-bold);
-  color: var(--color-text);
-  margin-bottom: var(--space-3);
   letter-spacing: var(--tracking-tight);
-  text-align: center;
+}
+
+/* 渐变流光文字（deer-flow AuroraText 对齐：135deg 渐变 + 背景位移动画） */
+.aurora-text {
+  background-image: linear-gradient(
+    135deg,
+    var(--aurora-c1, #4b5563),
+    var(--aurora-c2, #6b7280) 35%,
+    var(--aurora-c3, #374151) 70%,
+    var(--aurora-c4, #6b7280)
+  );
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: aurora 8s ease infinite;
 }
 
 .welcome-subtitle {
-  font-size: var(--text-base);
-  color: var(--color-text-muted);
-  margin-bottom: var(--space-8);
-  text-align: center;
-  line-height: var(--leading-relaxed);
-}
-
-.welcome-prompts {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-3);
-  width: 100%;
-}
-
-.prompt-card {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid transparent;
-  border-radius: var(--radius-lg);
-  background: transparent;
-  cursor: pointer;
-  transition: all var(--transition-base);
-  text-align: left;
-  font-family: var(--font-body);
-}
-
-.prompt-card:hover {
-  border-color: var(--color-border);
-  background: var(--color-bg-card);
-  box-shadow: var(--shadow-sm);
-}
-
-.prompt-card:hover .prompt-text {
-  color: var(--color-text);
-}
-
-.prompt-icon {
-  font-size: var(--text-xl);
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-
-.prompt-text {
   font-size: var(--text-sm);
   color: var(--color-text-muted);
-  line-height: var(--leading-normal);
+  line-height: var(--leading-relaxed);
+  max-width: 32rem;
+}
+
+@keyframes wave {
+  0% { transform: rotate(0deg); }
+  25% { transform: rotate(18deg); }
+  50% { transform: rotate(0deg); }
+  75% { transform: rotate(18deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes aurora {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ========================================
+   Suggestion Pills (deer-flow Suggestion 对齐：输入框下方一排胶囊)
+   ======================================== */
+.suggestion-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: 0 var(--space-2);
+}
+
+.suggestion-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-full);
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  transition: all var(--transition-base);
+  animation: fade-in-up 0.15s ease both;
+}
+
+.suggestion-item:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-muted);
+}
+
+.suggestion-icon {
+  font-size: var(--text-sm);
+  line-height: 1;
+}
+
+.suggestion-text {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
   transition: color var(--transition-fast);
+}
+
+.suggestion-item:hover .suggestion-text {
+  color: var(--color-text);
 }
 
 /* ========================================
@@ -987,20 +1049,22 @@ watch(spaceId, () => {
 .input-pill {
   display: flex;
   align-items: flex-end;
-  padding: 8px 8px 8px 4px;
+  padding: 10px 10px 10px 4px;
   gap: var(--space-2);
   background: var(--color-bg-input-bar);
   backdrop-filter: blur(var(--blur-input));
   -webkit-backdrop-filter: blur(var(--blur-input));
   border: 1px solid var(--color-border-light);
-  border-radius: 24px;
-  box-shadow: var(--shadow-sm);
+  /* deer-flow 对齐：rounded-2xl 圆角卡片（18px）而非 pill */
+  border-radius: 18px;
+  box-shadow: var(--shadow-xs);
   transition: border-color var(--transition-base), box-shadow var(--transition-base);
 }
 
 .input-pill:focus-within {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-muted), var(--shadow-sm);
+  /* deer-flow 对齐：聚焦 3px 淡色光环 */
+  box-shadow: 0 0 0 3px var(--color-primary-muted), var(--shadow-xs);
 }
 
 .input-action-btn {
