@@ -269,21 +269,13 @@
       <!-- 输入区域（dsh 风格单一浮动卡片：附件栏 → 文本框 → 底部左右工具行） -->
       <div v-if="viewMode === 'chat'" class="input-area" :class="{ 'is-welcome': isWelcomeMode }">
         <div class="input-area-inner" :class="{ 'welcome-center': isWelcomeMode }">
-          <!-- 欢迎问候 (仅欢迎模式)：headline + 单行提示 chip -->
+          <!-- 欢迎问候 (仅欢迎模式)：emoji 挥手 + 渐变流光标题 + 描述（deer-flow 对齐） -->
           <div v-if="isWelcomeMode" class="welcome-greeting">
-            <div class="welcome-avatar">{{ agentName.charAt(0) }}</div>
-            <h2 class="welcome-title">{{ agentName }}</h2>
-            <p class="welcome-desc">{{ agentStore.currentAgent?.description || '智能体对话' }}</p>
-            <div class="welcome-prompts-row">
-              <button
-                v-for="(prompt, i) in quickPrompts"
-                :key="i"
-                class="prompt-chip"
-                @click="handleQuickPrompt(prompt)"
-              >
-                {{ prompt }}
-              </button>
+            <div class="welcome-heading">
+              <span class="welcome-emoji" :class="{ waved: emojiWaved }">🤖</span>
+              <span class="welcome-title aurora-text">{{ agentName }}</span>
             </div>
+            <p class="welcome-desc">{{ agentStore.currentAgent?.description || '智能体对话' }}</p>
           </div>
 
           <div class="input-card">
@@ -397,6 +389,19 @@
                 </button>
               </div>
             </div>
+          </div>
+
+          <!-- 快捷提示 pill（仅欢迎模式，输入卡下方，deer-flow Suggestion 对齐） -->
+          <div v-if="isWelcomeMode" class="suggestion-list">
+            <button
+              v-for="(prompt, i) in quickPrompts"
+              :key="i"
+              class="suggestion-item"
+              :style="{ animationDelay: `${250 + i * 60}ms` }"
+              @click="handleQuickPrompt(prompt)"
+            >
+              {{ prompt }}
+            </button>
           </div>
 
           <!-- 键盘提示（卡外微 caption，仅非欢迎态显示） -->
@@ -1049,9 +1054,15 @@ async function fetchModels() {
   }
 }
 
+// 欢迎态 emoji 挥手动画（首次渲染播一次，deer-flow animate-wave 对齐）
+const emojiWaved = ref(false)
+
 onMounted(async () => {
   await agentStore.initForAgent(agentId.value)
   fetchModels()
+  setTimeout(() => {
+    emojiWaved.value = true
+  }, 1200)
 })
 
 onBeforeUnmount(() => {
@@ -1332,65 +1343,100 @@ onBeforeUnmount(() => {
 }
 
 /* ========================================
-   Welcome Greeting (inside input-area)
+   Welcome Greeting (deer-flow 对齐：emoji 挥手 + 渐变流光标题，与深度研究页同款)
    ======================================== */
 .welcome-greeting {
-  text-align: center;
-  margin-bottom: var(--space-6);
-}
-
-.welcome-inner {
   display: flex;
   flex-direction: column;
   align-items: center;
-  max-width: 720px;
-  width: 100%;
+  gap: var(--space-2);
+  text-align: center;
+  margin-bottom: var(--space-5);
+  animation: welcome-fade-in-up 0.4s ease both;
 }
 
-.welcome-avatar {
-  width: 64px;
-  height: 64px;
-  border-radius: var(--radius-xl);
-  background: var(--color-primary-subtle);
+.welcome-heading {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-display);
+  gap: var(--space-2);
+}
+
+.welcome-emoji {
+  display: inline-block;
   font-size: var(--text-2xl);
-  font-weight: var(--weight-bold);
-  color: var(--color-primary);
-  margin-bottom: var(--space-5);
-  box-shadow: var(--shadow-md);
+  transform-origin: 70% 70%;
+}
+
+.welcome-emoji:not(.waved) {
+  animation: welcome-wave 0.6s ease-in-out 2;
 }
 
 .welcome-title {
   font-family: var(--font-display);
-  font-size: 32px;
+  font-size: var(--text-2xl);
   font-weight: var(--weight-bold);
-  color: var(--color-text);
-  margin-bottom: var(--space-3);
   letter-spacing: var(--tracking-tight);
-  text-align: center;
+}
+
+/* 渐变流光文字（与深度研究页 aurora-text 同款） */
+.aurora-text {
+  background-image: linear-gradient(
+    135deg,
+    var(--aurora-c1, #4b5563),
+    var(--aurora-c2, #6b7280) 35%,
+    var(--aurora-c3, #374151) 70%,
+    var(--aurora-c4, #6b7280)
+  );
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: welcome-aurora 8s ease infinite;
 }
 
 .welcome-desc {
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   color: var(--color-text-muted);
-  margin-bottom: var(--space-8);
   text-align: center;
+  line-height: var(--leading-relaxed);
+  max-width: 32rem;
+  margin: 0;
 }
 
-/* 欢迎态快捷提示：单行居中 chip（对齐 dsh 简洁风，非 2×2 大卡） */
-.welcome-prompts-row {
+@keyframes welcome-wave {
+  0% { transform: rotate(0deg); }
+  25% { transform: rotate(18deg); }
+  50% { transform: rotate(0deg); }
+  75% { transform: rotate(18deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes welcome-aurora {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes welcome-fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ========================================
+   Suggestion Pills (deer-flow Suggestion 对齐：输入卡下方一排胶囊，stagger 入场)
+   ======================================== */
+.suggestion-list {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 8px;
+  gap: var(--space-2);
   margin-top: var(--space-4);
+  padding: 0 var(--space-2);
 }
 
-.prompt-chip {
-  padding: 6px 14px;
+.suggestion-item {
+  padding: 8px 16px;
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-full);
   background: transparent;
@@ -1398,12 +1444,14 @@ onBeforeUnmount(() => {
   font-size: var(--text-xs);
   font-family: var(--font-body);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  user-select: none;
+  transition: all var(--transition-base);
+  animation: welcome-fade-in-up 0.15s ease both;
 }
 
-.prompt-chip:hover {
-  background: var(--color-bg-hover);
-  border-color: var(--color-border);
+.suggestion-item:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-muted);
   color: var(--color-text);
 }
 
