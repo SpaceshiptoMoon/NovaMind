@@ -496,8 +496,10 @@ class ContextCompressor(ICompressionStrategy):
                 logger.warning("加载旧摘要失败", error=str(e))
 
         if old_summary:
-            prompt = self._build_merge_prompt(old_summary, content)
+            prompt = self._build_merge_prompt(old_summary, content, token_budget=token_budget)
         else:
+            # 首次摘要：输入限 4000 token（头尾兼顾——Active Task 依赖末尾的最近消息）
+            content = self._bound_text_head_tail(content, token_budget, 4000)
             prompt = self._build_summary_prompt(content)
 
         try:
@@ -569,15 +571,57 @@ class ContextCompressor(ICompressionStrategy):
         return "\n\n".join(parts)
 
     @staticmethod
-    def _truncate_old_summary(old_summary: str, max_chars: int = 6000) -> str:
-        """迭代融合时截断旧摘要（保尾部——迭代 merge 的增量信息追加在末尾）。
+    def _bound_text_head_tail(
+        text: str, token_budget: Optional[TokenBudget], max_tokens: int
+    ) -> str:
+        """确定性截断兜底：保留头部 2/3 + 尾部 1/3（token 不可用时按 4 chars/token 折算）。"""
+        if not text:
+            return text
+        cap = max_tokens * 4 if token_budget is None else max_tokens
+        if len(text) <= cap:
+            return text
+        if cap <= 5:
+            return text[:cap]
+        marker = "\n…[truncated]…\n"
+        head = cap * 2 // 3
+        tail = cap - head - len(marker)
+        if tail <= 0:
+            return text[:cap]
+        return f"{text[:head]}{marker}{text[-tail:]}"
 
-        旧摘要每轮融合都会增长，不截断会让 merge prompt 膨胀到反超压缩收益
-        （对齐 deer-flow trim_tokens_to_summarize 的预算思想，取轻量字符截断版）。
+    def _trim_to_tokens(
+        self, text: str, token_budget: Optional[TokenBudget], max_tokens: int, keep: str
+    ) -> str:
+        """按 token 预算截断文本；无计数器时按 4 chars/token 字符近似。
+
+        keep="tail" 保尾部（迭代摘要的增量信息追加在末尾）；
+        keep="head" 保头部（对话摘要把最新内容放在前面）。
+        超预算时从近似上限（×4 字符）起按 0.8 几何收缩，兼顾精确性与收敛速度。
         """
-        if len(old_summary) <= max_chars:
-            return old_summary
-        return "…[earlier summary truncated]…\n" + old_summary[-max_chars:]
+        if not text:
+            return text
+
+        approx_cap = max_tokens * 4
+
+        def _over(s: str) -> bool:
+            if token_budget is not None:
+                return token_budget.count_text_tokens(s) > max_tokens
+            return len(s) > approx_cap
+
+        if not _over(text):
+            return text
+
+        if keep == "tail":
+            candidate = text[-approx_cap:] if len(text) > approx_cap else text
+            while candidate and _over(candidate):
+                candidate = candidate[len(candidate) - max(1, int(len(candidate) * 0.8)):]
+            return "…[earlier summary truncated]…\n" + candidate
+        if keep == "head":
+            candidate = text[:approx_cap]
+            while candidate and _over(candidate):
+                candidate = candidate[: max(1, int(len(candidate) * 0.8))]
+            return candidate + "\n…[later content truncated]…\n"
+        return self._bound_text_head_tail(text, token_budget, max_tokens)
 
     def _build_summary_prompt(self, content: str) -> str:
         """Build first-summary prompt with handoff framing"""
@@ -628,13 +672,22 @@ class ContextCompressor(ICompressionStrategy):
             "[Values, error messages, config details that would be lost if not explicitly preserved]"
         )
 
-    def _build_merge_prompt(self, old_summary: str, new_content: str) -> str:
-        """Build iterative merge prompt with handoff framing"""
-        # 块包裹 + html.escape：用户文本里出现 "</new_messages>" 之类可伪造摘要结构
-        # （block-breakout 注入，对齐 deer-flow #4162/#4097 的防御），转义后只作纯文本
-        old_summary = self._truncate_old_summary(old_summary)
-        escaped_old = html.escape(old_summary, quote=False)
-        escaped_new = html.escape(new_content, quote=False)
+    def _build_merge_prompt(
+        self, old_summary: str, new_content: str,
+        token_budget: Optional[TokenBudget] = None,
+    ) -> str:
+        """Build iterative merge prompt with handoff framing.
+
+        迭代融合有 token 预算（对齐 deer-flow trim_tokens_to_summarize 的对半分配思想）：
+        总预算 4000，旧摘要保尾 2000（增量信息在末尾）、新内容保头尾 2000
+        （Active Task 依赖最近的对话）。块包裹 + html.escape：用户文本里出现
+        "</new_messages>" 之类可伪造摘要结构（block-breakout 注入，对齐
+        deer-flow #4162/#4097 的防御），转义后只作纯文本。
+        """
+        trimmed_old = self._trim_to_tokens(old_summary, token_budget, 2000, keep="tail")
+        trimmed_new = self._bound_text_head_tail(new_content, token_budget, 2000)
+        escaped_old = html.escape(trimmed_old, quote=False)
+        escaped_new = html.escape(trimmed_new, quote=False)
         return (
             "You are updating a context compaction summary. A previous compaction produced the summary below. "
             "New conversation turns have occurred and need to be incorporated.\n\n"

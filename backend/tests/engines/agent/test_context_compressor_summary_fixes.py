@@ -49,12 +49,37 @@ def test_merge_prompt_escapes_user_text_and_wraps_blocks():
 
 
 def test_merge_prompt_truncates_old_summary_keep_tail():
+    """merge prompt 无 token 计数器时按 4 chars/token 近似截断，保尾部。"""
     c = _compressor()
     old = "A" * 8000 + "TAIL_MARKER"
     prompt = c._build_merge_prompt(old, "新内容")
     assert "[earlier summary truncated]" in prompt
     assert "TAIL_MARKER" in prompt  # 尾部保留
-    assert "A" * 6000 not in prompt  # 头部被截
+    assert "A" * 8000 not in prompt  # 头部被截
+
+
+def test_merge_prompt_token_budget_halves_old_and_new():
+    """有 token 计数器时 merge prompt 预算对半（旧 2000 保尾 / 新 2000 保头尾）。"""
+    from novamind.engines.agent.memory.token_budget import TokenBudget
+
+    budget = TokenBudget("gpt-4")
+    c = _compressor()
+    # 每段 ~10000 token 级超预算内容
+    old = "旧摘要句。" * 3000
+    new = "新消息内容。" * 3000
+    prompt = c._build_merge_prompt(old, new, token_budget=budget)
+    # 预算后总输入应远小于未截断规模（2000+2000 token 段 + prompt 骨架）
+    assert budget.count_text_tokens(prompt) < 8000
+    assert "[earlier summary truncated]" in prompt  # 旧摘要保尾截断生效
+    assert "[truncated]" in prompt  # 新内容头尾截断生效
+
+
+def test_trim_to_tokens_no_budget_falls_back_to_chars():
+    """token_budget=None 时按 4 chars/token 字符近似截断。"""
+    c = _compressor()
+    out = c._trim_to_tokens("x" * 20000, None, 100, keep="head")
+    assert len(out) <= 4 * 100 + len("\n…[later content truncated]…\n") + 10
+    assert out.startswith("x")
 
 
 def test_summary_prompt_wraps_conversation_block():

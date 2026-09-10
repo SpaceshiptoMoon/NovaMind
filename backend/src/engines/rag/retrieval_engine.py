@@ -58,6 +58,7 @@ class RetrievalQuery:
         "rerank_enabled",
         "rerank_top_k",
         "rerank_model",
+        "user_id",
     )
 
     def __init__(
@@ -80,6 +81,7 @@ class RetrievalQuery:
         rerank_enabled: bool,
         rerank_top_k: int,
         rerank_model: Optional[str],
+        user_id: Optional[int] = None,
     ) -> None:
         self.space_id = space_id
         self.kb_id = kb_id
@@ -98,6 +100,9 @@ class RetrievalQuery:
         self.rerank_enabled = rerank_enabled
         self.rerank_top_k = rerank_top_k
         self.rerank_model = rerank_model
+        # 可选：缓存键的用户维度。当前文档级权限未落地、同 KB 成员结果一致，
+        # 权限落地后此字段必须由宿主传入（None 时缓存键不含用户段，行为同旧版）
+        self.user_id = user_id
 
 
 class RetrievalEngine:
@@ -166,7 +171,7 @@ class RetrievalEngine:
                 score_threshold=q.score_threshold,
                 query_rewrite_sig="none",
             )
-            cache_key = self._get_search_cache_key(q.kb_id, q.search_mode, query_hash)
+            cache_key = self._get_search_cache_key(q.kb_id, q.search_mode, query_hash, user_id=q.user_id)
             cached_results = await self._get_cached_search(cache_key)
             if cached_results is not None:
                 # 缓存命中：不解析 embedding/rerank，直接返回（逐字对齐原 L730-732 早返回）
@@ -475,8 +480,16 @@ class RetrievalEngine:
         )
         return hashlib.md5(key_content.encode('utf-8')).hexdigest()[:32]
 
-    def _get_search_cache_key(self, kb_id: int, search_type: str, query_hash: str) -> str:
-        """生成检索缓存键"""
+    def _get_search_cache_key(
+        self, kb_id: int, search_type: str, query_hash: str, user_id: Optional[int] = None
+    ) -> str:
+        """生成检索缓存键。
+
+        user_id 非空时附带用户段：为文档级权限（custom_permissions）落地预留的
+        隔离维度——权限生效后不同用户的可见结果不同，禁止共享缓存。
+        """
+        if user_id is not None:
+            return f"search:{kb_id}:{search_type}:u{user_id}:{query_hash}"
         return f"search:{kb_id}:{search_type}:{query_hash}"
 
     async def _get_cached_search(self, cache_key: str) -> Optional[List[Dict[str, Any]]]:

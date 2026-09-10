@@ -597,6 +597,7 @@ class SearchService:
             rerank_enabled=rerank_enabled,
             rerank_top_k=rerank_top_k,
             rerank_model=rerank_model,
+            user_id=user_id,
         )
         # query_rewrite 改写结果非确定，不入缓存——启用改写时跳过缓存读写
         use_cache_for_engine = use_cache and request.query_rewrite is None

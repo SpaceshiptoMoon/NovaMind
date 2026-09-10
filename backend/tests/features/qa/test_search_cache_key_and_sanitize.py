@@ -66,6 +66,17 @@ def test_cache_key_differs_by_rrf_k():
     assert low != high, "不同 rrf_k 必须产生不同缓存键"
 
 
+def test_cache_key_user_dimension():
+    """缓存键用户维度：user_id 非空时键含 u{user_id} 段且互不共享；None 时行为同旧版。"""
+    engine = RetrievalEngine(es_client=object())
+    key_u1 = engine._get_search_cache_key(1, "content_hybrid", "hash", user_id=1)
+    key_u2 = engine._get_search_cache_key(1, "content_hybrid", "hash", user_id=2)
+    key_none = engine._get_search_cache_key(1, "content_hybrid", "hash")
+    assert key_u1 != key_u2, "不同用户不得共享检索缓存"
+    assert "u1" in key_u1 and "u2" in key_u2
+    assert key_none == "search:1:content_hybrid:hash"  # 无用户段时与旧版格式一致
+
+
 def test_sub_query_rrf_k_param_is_used_not_hardcoded():
     """S3-D3: _search_with_sub_queries 必须使用传入的 rrf_k，不得硬编码 60 覆盖。
 
