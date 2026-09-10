@@ -1083,6 +1083,31 @@ export interface ResearchRequest {
   internal_search?: ResearchInternalSearch
   external_search?: ResearchExternalSearch
   llm?: ResearchLLM
+  // ===== 流程策略（deer-flow 对齐） =====
+  // false=生成计划后暂停，等 plan_feedback 确认/编辑再执行（默认 true 自动接受）
+  auto_accepted_plan?: boolean
+  // 规划前背景调查（默认开启）
+  enable_background_investigation?: boolean
+  // 报告风格
+  report_style?: 'academic' | 'popular_science' | 'news' | 'default'
+}
+
+// 研究计划步骤（deer-flow Step 对齐）
+export interface ResearchPlanStep {
+  step_id: string
+  title: string
+  description: string
+  step_type: 'research' | 'processing'
+  need_search: boolean
+}
+
+// 研究计划（plan_generated 事件与详情接口）
+export interface ResearchPlan {
+  title: string
+  thought: string
+  has_enough_context: boolean
+  iteration: number
+  steps: ResearchPlanStep[]
 }
 
 export interface ResearchTask {

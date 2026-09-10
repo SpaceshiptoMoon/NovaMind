@@ -403,6 +403,9 @@ export async function createWebSocketStream(
     onMessage: (event: { type: string; data: unknown }) => void
     onError?: (error: string) => void
     signal?: AbortSignal
+    // 握手完成（初始 action 已发送）后回调，注入流中发送通道。
+    // 用于双向协议（如深度研究计划确认 plan_feedback）；不传则行为同旧版单向流。
+    onReady?: (send: (msg: unknown) => void) => void
   },
   action: string = 'chat',
 ): Promise<void> {
@@ -454,6 +457,7 @@ export async function createWebSocketStream(
 
     ws.onopen = () => {
       ws.send(JSON.stringify({ action, payload: body }))
+      callbacks.onReady?.((msg) => ws.send(JSON.stringify(msg)))
     }
 
     ws.onmessage = (evt: MessageEvent) => {

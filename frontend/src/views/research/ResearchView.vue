@@ -75,6 +75,17 @@
               </div>
             </div>
 
+            <!-- 计划确认卡片（deer-flow human_feedback 对齐） -->
+            <div v-else-if="msg.role === 'plan'" class="message-row plan">
+              <div class="message-body">
+                <ResearchPlanCard
+                  :plan="msg.plan!"
+                  :status="msg.planStatus || 'skipped'"
+                  @submit="(decision, feedback) => researchStore.submitPlanFeedback(decision, feedback)"
+                />
+              </div>
+            </div>
+
             <!-- 研究报告消息 -->
             <div v-else-if="msg.role === 'assistant'" class="message-row assistant">
               <div class="message-body">
@@ -173,6 +184,23 @@
                   />
                 </el-select>
               </div>
+              <div class="setting-item">
+                <span>报告风格</span>
+                <el-select v-model="reportStyle" size="small" style="width: 110px">
+                  <el-option label="通用" value="default" />
+                  <el-option label="学术" value="academic" />
+                  <el-option label="科普" value="popular_science" />
+                  <el-option label="新闻" value="news" />
+                </el-select>
+              </div>
+              <div class="setting-item">
+                <span>规划前背景调查</span>
+                <el-switch v-model="enableBackground" size="small" />
+              </div>
+              <div class="setting-item">
+                <span>自动确认计划</span>
+                <el-switch v-model="autoAcceptPlan" size="small" />
+              </div>
               <button class="setting-item clickable" @click="advancedDialogVisible = true">
                 <span>高级设置</span>
                 <el-icon :size="12"><ArrowRight /></el-icon>
@@ -265,6 +293,7 @@ import { researchApi } from '@/api/research'
 import { userApi } from '@/api/user'
 import type { AvailableModelItem, Research } from '@/api/types'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
+import ResearchPlanCard from '@/components/research/ResearchPlanCard.vue'
 
 const route = useRoute()
 const researchStore = useResearchStore()
@@ -281,6 +310,10 @@ const sidebarVisible = ref(true)
 const researchMode = ref<'quick' | 'standard' | 'deep'>('standard')
 const searchSource = ref<'internal' | 'external' | 'hybrid'>('hybrid')
 const selectedModel = ref('')
+// 流程策略设置（deer-flow 对齐）
+const reportStyle = ref<'default' | 'academic' | 'popular_science' | 'news'>('default')
+const enableBackground = ref(true)
+const autoAcceptPlan = ref(true)
 const messagesRef = ref<HTMLElement>()
 const textareaRef = ref<HTMLTextAreaElement>()
 
@@ -419,6 +452,10 @@ async function handleSend() {
         temperature: advancedSettings.temperature / 10,
         max_tokens: advancedSettings.max_tokens,
       },
+      // 流程策略（deer-flow 对齐）：计划确认/背景调查/报告风格
+      auto_accepted_plan: autoAcceptPlan.value,
+      enable_background_investigation: enableBackground.value,
+      report_style: reportStyle.value,
     })
     ElMessage.success('研究完成')
   } catch {
