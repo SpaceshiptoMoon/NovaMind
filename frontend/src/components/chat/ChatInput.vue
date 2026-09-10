@@ -214,7 +214,9 @@ function handleSendClick() {
 }
 
 .input-pill {
-  max-width: 100%;
+  /* 与智能体/深度研究页输入卡同宽（--container-width-md = 816px），三页统一 */
+  max-width: var(--container-width-md);
+  margin: 0 auto;
   display: flex;
   align-items: flex-end;
   padding: 8px 12px;
@@ -457,7 +459,7 @@ function handleSendClick() {
    Quick Prompts
    ======================================== */
 .quick-prompts {
-  max-width: 860px;
+  max-width: var(--container-width-md);
   margin: 0 auto 8px;
   display: flex;
   flex-wrap: wrap;
