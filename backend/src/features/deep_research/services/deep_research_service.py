@@ -173,10 +173,47 @@ def plan_iteration_count(ctx: "ResearchContext") -> int:
     return ctx.plan.iteration if ctx.plan is not None else -1
 
 
+# 报告风格指令块（deer-flow report_style 对齐；feature 侧枚举知识，预格式化为
+# 指令文本注入引擎——str.format 无法条件分支，引擎只接纯字符串）
+_STYLE_INSTRUCTIONS: Dict[str, str] = {
+    "default": "",
+    "academic": (
+        "Report style: ACADEMIC. Write with the rigor of a peer-reviewed journal "
+        "article: precise terminology, methodological transparency, logical argument "
+        "structure, complete objectivity, explicit limitations.\n\n"
+    ),
+    "popular_science": (
+        "Report style: POPULAR SCIENCE. Write as an engaging science communicator: "
+        "vivid analogies, relatable examples, storytelling techniques; accessible "
+        "language without sacrificing accuracy.\n\n"
+    ),
+    "news": (
+        "Report style: NEWS. Write as an investigative journalist: inverted pyramid "
+        "structure, authoritative and accessible language, balanced perspectives, "
+        "facts first.\n\n"
+    ),
+}
+
+
+def _get_style_block(report_style: str) -> str:
+    """报告风格 → 指令块（未知值归 default）。"""
+    return _STYLE_INSTRUCTIONS.get(report_style, "")
+
+
+def _format_findings_block(task_findings: Optional[List[Dict[str, str]]]) -> str:
+    """任务 findings 列表 → reporter prompt 的 findings 块。"""
+    if not task_findings:
+        return "（无）"
+    return "\n".join(
+        f"- [{f.get('task_id', '')}] {f.get('finding', '')}" for f in task_findings
+    )
+
+
 # 纯检索辅助函数自 engines/deep_research 反向引用（feature -> engine 合法）。
 # A-3：迭代循环（去重/充分性/外部决策）已迁入 DeepResearchEngine.search；
 # feature 仅保留综合上下文/关键来源两个纯函数代理（synthesize 路径用）。
 from novamind.engines.deep_research.engine import (  # noqa: E402
+    extract_citations as _extract_citations_fn,
     extract_key_sources as _extract_key_sources_fn,
     format_search_context as _format_search_context_fn,
 )
@@ -786,6 +823,7 @@ class DeepResearchService:
             full_report = ""
             context_str = self._format_search_context(ctx.all_results)
             key_sources = ctx.search_results["summary"].get("key_sources", [])
+            citations = _extract_citations_fn(ctx.all_results)
             raw_stream = self._synthesize_report_stream(
                 query=ctx.params.query,
                 research_topic=ctx.research_topic,
@@ -796,6 +834,8 @@ class DeepResearchService:
                 top_p=ctx.params.llm_config.top_p,
                 user_id=ctx.user_id,
                 llm_model=ctx.params.llm_config.llm_model,
+                report_style=ctx.report_style,
+                task_findings=ctx.task_findings,
             )
 
             # WS 端不走 SSE 心跳包装：直接消费 LLM 原始 chunk 流，每个 chunk 包成 content 事件。
@@ -813,7 +853,9 @@ class DeepResearchService:
                 "total_results": len(ctx.all_results),
             }
             await self.research_repo.update_search_results(ctx.research_id, ctx.all_results)
-            await self.research_repo.complete_research(ctx.research_id, full_report, stats, key_sources)
+            await self.research_repo.complete_research(
+                ctx.research_id, full_report, stats, key_sources, citations=citations
+            )
             await self.session.commit()
 
             yield self._emit("done", {
@@ -821,6 +863,7 @@ class DeepResearchService:
                 "final_report": full_report,
                 "stats": stats,
                 "sources": key_sources,
+                "citations": citations,
             })
 
         except EngineInvalidResearchQueryError as e:
@@ -1169,6 +1212,8 @@ class DeepResearchService:
             top_p=ctx.params.llm_config.top_p,
             user_id=ctx.user_id,
             llm_model=ctx.params.llm_config.llm_model,
+            report_style=ctx.report_style,
+            task_findings=ctx.task_findings,
         )
         ctx.report = report
 
@@ -1182,12 +1227,14 @@ class DeepResearchService:
             **metadata,
         }
 
-        # 持久化搜索结果
-        await self.research_repo.update_search_results(
-            ctx.research_id, ctx.search_results.get("results", [])
+        # 持久化搜索结果 + citations（deer-flow Key Citations 对齐）
+        all_results = ctx.search_results.get("results", [])
+        await self.research_repo.update_search_results(ctx.research_id, all_results)
+        key_sources = self._extract_key_sources(all_results)
+        citations = _extract_citations_fn(all_results)
+        await self.research_repo.complete_research(
+            ctx.research_id, ctx.report, ctx.stats, key_sources, citations=citations
         )
-        key_sources = self._extract_key_sources(ctx.search_results.get("results", []))
-        await self.research_repo.complete_research(ctx.research_id, ctx.report, ctx.stats, key_sources)
         await self.session.commit()
 
         self.logger.info(
@@ -1275,10 +1322,13 @@ class DeepResearchService:
         top_p: float,
         user_id: int = None,
         llm_model: str = None,
+        report_style: str = "default",
+        task_findings: Optional[List[Dict[str, str]]] = None,
     ) -> tuple:
         """综合信息生成报告（非流式，薄委托 DeepResearchEngine.synthesize_report）。
 
         feature 入口 sanitize query/topic；引擎自 results 格式化 context。
+        ``report_style``/``task_findings`` 预格式化为 style_block/findings_block 注入。
         """
         safe_query = _sanitize_user_input(query)
         safe_topic = _sanitize_user_input(research_topic)
@@ -1294,6 +1344,8 @@ class DeepResearchService:
             max_tokens=max_tokens,
             temperature=temperature,
             top_p=top_p,
+            style_block=_get_style_block(report_style),
+            findings_block=_format_findings_block(task_findings),
         )
 
     async def _synthesize_report_stream(
@@ -1307,11 +1359,14 @@ class DeepResearchService:
         top_p: float,
         user_id: int = None,
         llm_model: str = None,
+        report_style: str = "default",
+        task_findings: Optional[List[Dict[str, str]]] = None,
     ) -> AsyncGenerator[str, None]:
         """综合信息生成报告（流式，薄委托 DeepResearchEngine.synthesize_report_stream）。
 
         feature 入口 sanitize query/topic（topic sanitize 失败降级原始值）；context 由
         调用方预格式化（stream 路径在调用前已格式化），引擎直接消费。
+        ``report_style``/``task_findings`` 预格式化为 style_block/findings_block 注入。
         """
         safe_query = _sanitize_user_input(query)
         try:
@@ -1329,5 +1384,7 @@ class DeepResearchService:
             max_tokens=max_tokens,
             temperature=temperature,
             top_p=top_p,
+            style_block=_get_style_block(report_style),
+            findings_block=_format_findings_block(task_findings),
         ):
             yield chunk

@@ -470,8 +470,14 @@ def test_prompt_keys_resolvable_via_prompt_provider():
         background_results="b", feedback="f", iteration="0",
     )
     provider.format(KEY_PROCESSING_STEP, step_title="s", task_description="d", prior_findings="p")
-    provider.format(KEY_SYNTHESIZE_REPORT, query="q", research_topic="t", context="c", key_sources="k")
-    provider.format(KEY_SYNTHESIZE_REPORT_STREAM, query="q", research_topic="t", context="c", key_sources="k")
+    provider.format(
+        KEY_SYNTHESIZE_REPORT, query="q", research_topic="t", context="c", key_sources="k",
+        report_style="", findings_block="f",
+    )
+    provider.format(
+        KEY_SYNTHESIZE_REPORT_STREAM, query="q", research_topic="t", context="c", key_sources="k",
+        report_style="", findings_block="f",
+    )
     provider.format(
         KEY_GENERATE_QUERY,
         task_description="t", current_query="q", observations="o",

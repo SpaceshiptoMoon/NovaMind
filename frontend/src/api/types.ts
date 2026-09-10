@@ -1092,6 +1092,12 @@ export interface ResearchTask {
   dependencies: string[]
 }
 
+export interface CitationItem {
+  title: string
+  url: string
+  source_type: string
+}
+
 export interface ResearchSearchSummary {
   search_results?: Array<{
     source_type: string
@@ -1105,6 +1111,8 @@ export interface ResearchSearchSummary {
     kb_name: string | null
   }>
   sources?: string[]
+  // deer-flow 对齐：全量引用列表（title/url/source_type）
+  citations?: CitationItem[]
 }
 
 export interface ResearchStats {

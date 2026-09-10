@@ -111,12 +111,13 @@ def _get_final_report(research) -> Optional[str]:
 
 
 def _get_search_summary(research) -> Optional[dict]:
-    """从 research 的 result 中获取搜索摘要"""
+    """从 research 的 result 中获取搜索摘要（含全量引用 citations）"""
     result = research.result or {}
     if result:
         return {
             "search_results": result.get("search_results", []),
             "sources": result.get("sources", []),
+            "citations": result.get("citations", []),
         }
     return None
 

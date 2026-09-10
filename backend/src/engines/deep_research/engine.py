@@ -140,6 +140,30 @@ def extract_key_sources(results: List[Any]) -> List[str]:
     return sources[:5]
 
 
+def extract_citations(results: List[Any]) -> List[Dict[str, str]]:
+    """提取全量引用列表（deer-flow Key Citations 对齐，不截断）。
+
+    每条 {title, url, source_type}：url 为空（内部文档）时以 document_name 兜底
+    填 url 字段；按 (url, title) 去重。
+    """
+    citations: List[Dict[str, str]] = []
+    seen: set = set()
+    for r in results:
+        title = str(r.get("title") or r.get("document_name") or "").strip()
+        url = str(r.get("url") or "").strip()
+        if not url:
+            url = str(r.get("document_name") or "").strip()
+        source_type = str(r.get("source_type") or "").strip()
+        if not title and not url:
+            continue
+        key = (url, title)
+        if key in seen:
+            continue
+        seen.add(key)
+        citations.append({"title": title, "url": url, "source_type": source_type})
+    return citations
+
+
 def format_search_context(results: List[Any]) -> str:
     """格式化检索结果为上下文（清理内容防止 prompt 注入）。"""
     context_parts: List[str] = []
@@ -315,6 +339,7 @@ __all__ = [
     "is_sufficient_results",
     "deduplicate_results",
     "extract_key_sources",
+    "extract_citations",
     "format_search_context",
     "summarize_observations_for_llm",
     "parse_query_decision",
@@ -455,8 +480,14 @@ class DeepResearchEngine:
         max_tokens: int,
         temperature: float,
         top_p: float,
+        style_block: str = "",
+        findings_block: str = "（无）",
     ) -> tuple:
-        """综合信息生成报告（非流式）。``results`` 经 ``format_search_context`` 格式化为上下文。"""
+        """综合信息生成报告（非流式）。``results`` 经 ``format_search_context`` 格式化为上下文。
+
+        ``style_block`` 为 feature 预格式化的报告风格指令块（deer-flow report_style
+        对齐）；``findings_block`` 为各研究步骤 finding 摘要（提升报告 grounding）。
+        """
         context = format_search_context(results)
         key_sources_str = (
             chr(10).join(f"- {s}" for s in key_sources) if key_sources else "无外部来源"
@@ -467,6 +498,8 @@ class DeepResearchEngine:
             research_topic=research_topic,
             context=context,
             key_sources=key_sources_str,
+            report_style=style_block,
+            findings_block=findings_block,
         )
         report = await llm_client.generate_text(
             prompt=prompt,
@@ -493,10 +526,13 @@ class DeepResearchEngine:
         max_tokens: int,
         temperature: float,
         top_p: float,
+        style_block: str = "",
+        findings_block: str = "（无）",
     ) -> AsyncIterator[str]:
         """综合信息生成报告（流式，yield 原始 chunk，不含 heartbeat）。
 
         与非流式不同，接收 feature 预格式化的 ``context``（stream 路径在调用前已格式化）。
+        ``style_block``/``findings_block`` 语义同 ``synthesize_report``。
         """
         key_sources_str = (
             chr(10).join(f"- {s}" for s in key_sources) if key_sources else "无外部来源"
@@ -507,6 +543,8 @@ class DeepResearchEngine:
             research_topic=research_topic,
             context=context,
             key_sources=key_sources_str,
+            report_style=style_block,
+            findings_block=findings_block,
         )
         async for chunk in llm_client.generate_text_stream(
             prompt=prompt,

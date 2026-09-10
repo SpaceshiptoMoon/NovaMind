@@ -298,6 +298,53 @@ async def test_background_investigation_truncates_content():
     assert len(results[0]["content"]) <= 500
 
 
+# ---- extract_citations 纯函数 ----
+
+
+class TestExtractCitations:
+    def test_full_dedup_with_mixed_sources(self):
+        from novamind.engines.deep_research.engine import extract_citations
+
+        results = [
+            {"source_type": "external", "title": "T1", "url": "http://a", "content": "c"},
+            {"source_type": "external", "title": "T1", "url": "http://a", "content": "dup"},
+            {"source_type": "internal", "title": "", "url": "", "document_name": "年报.pdf", "content": "c"},
+        ]
+        citations = extract_citations(results)
+        assert len(citations) == 2
+        assert citations[0] == {"title": "T1", "url": "http://a", "source_type": "external"}
+        # 内部文档：url 为空时以 document_name 兜底
+        assert citations[1]["url"] == "年报.pdf"
+        assert citations[1]["source_type"] == "internal"
+
+    def test_empty_and_blank_entries_skipped(self):
+        from novamind.engines.deep_research.engine import extract_citations
+
+        assert extract_citations([]) == []
+        assert extract_citations([{"title": "", "url": ""}, {"content": "no ids"}]) == []
+
+
+async def test_report_style_and_findings_flow_into_prompt():
+    """style_block/findings_block 经 feature 预格式化注入引擎 synthesize prompt。"""
+    engine = DeepResearchEngine()
+    llm = FakeLLM(responses=["报告内容"])
+    provider = FakePromptProvider()
+    report, _ = await engine.synthesize_report(
+        llm, provider,
+        query="q", research_topic="t",
+        results=[{"source_type": "external", "title": "T", "url": "u", "content": "c"}],
+        key_sources=["u"],
+        max_tokens=100, temperature=0.3, top_p=0.9,
+        style_block="ACADEMIC STYLE\n",
+        findings_block="- [s1] 关键发现",
+    )
+    assert report == "报告内容"
+    key, kwargs = provider.calls[0]
+    assert key == "research_synthesize_report"
+    assert "ACADEMIC STYLE" in kwargs["report_style"]
+    assert "关键发现" in kwargs["findings_block"]
+
+
 # ---- search processing 路由 ----
 
 
