@@ -243,12 +243,6 @@ a:hover {
 [data-theme='dark'] {
   color-scheme: dark;
 
-  /* 欢迎页渐变流光文字（deer-flow aurora 对齐）：暗色下提亮灰阶 */
-  --aurora-c1: #C3C8D0;
-  --aurora-c2: #E8EAED;
-  --aurora-c3: #A8AEB8;
-  --aurora-c4: #E8EAED;
-
   /* Primary 反转为浅色：图标/焦点/链接/活动态在暗底上保持可见 */
   --color-primary: #E8EAED;
   --color-primary-hover: #FFFFFF;

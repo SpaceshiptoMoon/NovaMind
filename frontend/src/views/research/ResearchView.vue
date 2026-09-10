@@ -126,12 +126,9 @@
       <!-- 输入区域 -->
       <div class="input-area" :class="{ 'is-welcome': isWelcomeMode }">
         <div class="input-area-inner" :class="{ 'welcome-center': isWelcomeMode }">
-          <!-- 欢迎问候 (仅欢迎模式)：emoji 挥手 + 渐变流光标题 + 副标题（deer-flow 对齐） -->
+          <!-- 欢迎问候 (仅欢迎模式)：功能性标题 + 灰字说明（克制排版） -->
           <div v-if="isWelcomeMode" class="welcome-greeting">
-            <div class="welcome-heading">
-              <span class="welcome-emoji" :class="{ waved: emojiWaved }">🦌</span>
-              <span class="welcome-title aurora-text">深度研究</span>
-            </div>
+            <h2 class="welcome-title">你想研究什么？</h2>
             <p class="welcome-subtitle">输入研究问题，AI 将自动规划、检索并生成结构化研究报告</p>
           </div>
 
@@ -236,13 +233,13 @@
         </div>
         <div class="input-hint">按 Enter 发送，Shift + Enter 换行</div>
 
-        <!-- 建议 pill 列表 (仅欢迎模式，输入框下方，deer-flow Suggestion 对齐) -->
+        <!-- 建议 pill 列表 (仅欢迎模式，输入框下方) -->
         <div v-if="isWelcomeMode" class="suggestion-list">
           <span
             v-for="(prompt, i) in quickPrompts"
             :key="i"
             class="suggestion-item"
-            :style="{ animationDelay: `${250 + i * 60}ms` }"
+            :style="{ animationDelay: `${i * 40}ms` }"
             @click="handleQuickPrompt(prompt.text)"
           >
             <span class="suggestion-icon">{{ prompt.icon }}</span>
@@ -341,14 +338,6 @@ const quickPrompts = [
   { icon: '📋', text: '调研行业最新研究报告' },
   { icon: '💡', text: '总结某领域的前沿研究方向' },
 ]
-
-// 欢迎态 emoji 挥手动画（首次渲染播一次，deer-flow animate-wave 对齐）
-const emojiWaved = ref(false)
-onMounted(() => {
-  setTimeout(() => {
-    emojiWaved.value = true
-  }, 1200)
-})
 
 // 历史研究
 const recentHistory = ref<Research[]>([])
@@ -740,7 +729,7 @@ watch(spaceId, () => {
 }
 
 /* ========================================
-   Welcome Greeting (deer-flow 对齐：居中标题 + 渐变流光 + 挥手)
+   Welcome Greeting（克制排版：纯色标题 + 灰字说明，无动画噱头）
    ======================================== */
 .welcome-greeting {
   display: flex;
@@ -749,47 +738,16 @@ watch(spaceId, () => {
   gap: var(--space-2);
   text-align: center;
   margin-bottom: var(--space-5);
-  animation: fade-in-up 0.4s ease both;
-}
-
-.welcome-heading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-}
-
-.welcome-emoji {
-  display: inline-block;
-  font-size: var(--text-2xl);
-  transform-origin: 70% 70%;
-}
-
-.welcome-emoji:not(.waved) {
-  animation: wave 0.6s ease-in-out 2;
+  animation: welcome-fade-in 0.25s ease both;
 }
 
 .welcome-title {
   font-family: var(--font-display);
   font-size: var(--text-2xl);
-  font-weight: var(--weight-bold);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
   letter-spacing: var(--tracking-tight);
-}
-
-/* 渐变流光文字（deer-flow AuroraText 对齐：135deg 渐变 + 背景位移动画） */
-.aurora-text {
-  background-image: linear-gradient(
-    135deg,
-    var(--aurora-c1, #4b5563),
-    var(--aurora-c2, #6b7280) 35%,
-    var(--aurora-c3, #374151) 70%,
-    var(--aurora-c4, #6b7280)
-  );
-  background-size: 200% 200%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: aurora 8s ease infinite;
+  margin: 0;
 }
 
 .welcome-subtitle {
@@ -797,29 +755,16 @@ watch(spaceId, () => {
   color: var(--color-text-muted);
   line-height: var(--leading-relaxed);
   max-width: 32rem;
+  margin: 0;
 }
 
-@keyframes wave {
-  0% { transform: rotate(0deg); }
-  25% { transform: rotate(18deg); }
-  50% { transform: rotate(0deg); }
-  75% { transform: rotate(18deg); }
-  100% { transform: rotate(0deg); }
-}
-
-@keyframes aurora {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
-@keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes welcome-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* ========================================
-   Suggestion Pills (deer-flow Suggestion 对齐：输入框下方一排胶囊)
+   Suggestion Pills（输入框下方一排胶囊）
    ======================================== */
 .suggestion-list {
   display: flex;
@@ -841,7 +786,7 @@ watch(spaceId, () => {
   cursor: pointer;
   user-select: none;
   transition: all var(--transition-base);
-  animation: fade-in-up 0.15s ease both;
+  animation: welcome-fade-in 0.2s ease both;
 }
 
 .suggestion-item:hover {

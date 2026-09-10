@@ -269,13 +269,12 @@
       <!-- 输入区域（dsh 风格单一浮动卡片：附件栏 → 文本框 → 底部左右工具行） -->
       <div v-if="viewMode === 'chat'" class="input-area" :class="{ 'is-welcome': isWelcomeMode }">
         <div class="input-area-inner" :class="{ 'welcome-center': isWelcomeMode }">
-          <!-- 欢迎问候 (仅欢迎模式)：emoji 挥手 + 渐变流光标题 + 描述（deer-flow 对齐） -->
+          <!-- 欢迎问候 (仅欢迎模式)：功能性提问 + agent 名（克制排版，无 emoji/渐变噱头） -->
           <div v-if="isWelcomeMode" class="welcome-greeting">
-            <div class="welcome-heading">
-              <span class="welcome-emoji" :class="{ waved: emojiWaved }">🤖</span>
-              <span class="welcome-title aurora-text">{{ agentName }}</span>
-            </div>
-            <p class="welcome-desc">{{ agentStore.currentAgent?.description || '智能体对话' }}</p>
+            <h2 class="welcome-title">有什么可以帮你？</h2>
+            <p class="welcome-desc">
+              {{ agentName }}<template v-if="agentStore.currentAgent?.description"> · {{ agentStore.currentAgent.description }}</template>
+            </p>
           </div>
 
           <div class="input-card">
@@ -397,7 +396,7 @@
               v-for="(prompt, i) in quickPrompts"
               :key="i"
               class="suggestion-item"
-              :style="{ animationDelay: `${250 + i * 60}ms` }"
+              :style="{ animationDelay: `${i * 40}ms` }"
               @click="handleQuickPrompt(prompt)"
             >
               {{ prompt }}
@@ -1054,15 +1053,9 @@ async function fetchModels() {
   }
 }
 
-// 欢迎态 emoji 挥手动画（首次渲染播一次，deer-flow animate-wave 对齐）
-const emojiWaved = ref(false)
-
 onMounted(async () => {
   await agentStore.initForAgent(agentId.value)
   fetchModels()
-  setTimeout(() => {
-    emojiWaved.value = true
-  }, 1200)
 })
 
 onBeforeUnmount(() => {
@@ -1343,7 +1336,7 @@ onBeforeUnmount(() => {
 }
 
 /* ========================================
-   Welcome Greeting (deer-flow 对齐：emoji 挥手 + 渐变流光标题，与深度研究页同款)
+   Welcome Greeting（克制排版：纯色标题 + 灰字描述，无动画噱头）
    ======================================== */
 .welcome-greeting {
   display: flex;
@@ -1352,47 +1345,16 @@ onBeforeUnmount(() => {
   gap: var(--space-2);
   text-align: center;
   margin-bottom: var(--space-5);
-  animation: welcome-fade-in-up 0.4s ease both;
-}
-
-.welcome-heading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-}
-
-.welcome-emoji {
-  display: inline-block;
-  font-size: var(--text-2xl);
-  transform-origin: 70% 70%;
-}
-
-.welcome-emoji:not(.waved) {
-  animation: welcome-wave 0.6s ease-in-out 2;
+  animation: welcome-fade-in 0.25s ease both;
 }
 
 .welcome-title {
   font-family: var(--font-display);
   font-size: var(--text-2xl);
-  font-weight: var(--weight-bold);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
   letter-spacing: var(--tracking-tight);
-}
-
-/* 渐变流光文字（与深度研究页 aurora-text 同款） */
-.aurora-text {
-  background-image: linear-gradient(
-    135deg,
-    var(--aurora-c1, #4b5563),
-    var(--aurora-c2, #6b7280) 35%,
-    var(--aurora-c3, #374151) 70%,
-    var(--aurora-c4, #6b7280)
-  );
-  background-size: 200% 200%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: welcome-aurora 8s ease infinite;
+  margin: 0;
 }
 
 .welcome-desc {
@@ -1404,23 +1366,9 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
-@keyframes welcome-wave {
-  0% { transform: rotate(0deg); }
-  25% { transform: rotate(18deg); }
-  50% { transform: rotate(0deg); }
-  75% { transform: rotate(18deg); }
-  100% { transform: rotate(0deg); }
-}
-
-@keyframes welcome-aurora {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
-@keyframes welcome-fade-in-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes welcome-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* ========================================
@@ -1446,7 +1394,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
   user-select: none;
   transition: all var(--transition-base);
-  animation: welcome-fade-in-up 0.15s ease both;
+  animation: welcome-fade-in 0.2s ease both;
 }
 
 .suggestion-item:hover {
