@@ -103,6 +103,10 @@
                 <ArrowDown />
               </el-icon>
             </button>
+            <button class="section-new-btn" @click="openCreateAgentDialog">
+              <el-icon :size="14"><Plus /></el-icon>
+              <span>创建智能体</span>
+            </button>
             <div v-show="!sectionCollapsed.agents" class="list-area">
               <div
                 v-for="agent in agentStore.agents"
@@ -194,7 +198,7 @@
 import { ref, computed, reactive, onMounted, provide, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Delete, DArrowLeft, DArrowRight, More, Expand, ArrowDown } from '@element-plus/icons-vue'
+import { Delete, DArrowLeft, DArrowRight, More, Expand, ArrowDown, Plus } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { useSpaceStore } from '@/stores/space'
 import { useChatStore } from '@/stores/chat'
@@ -330,6 +334,11 @@ function handleNew(key: string = activeChannelKey.value) {
       router.push('/home/workspace/skills')
       break
   }
+}
+
+// 侧栏「创建智能体」常驻按钮：复用 handleNew 的 action=create 链路
+function openCreateAgentDialog() {
+  router.push({ path: '/home/workspace/agents', query: { action: 'create' } })
 }
 
 // ===================== Chat =====================
@@ -547,6 +556,31 @@ onMounted(async () => {
 
 .list-section-chevron.collapsed {
   transform: rotate(-90deg);
+}
+
+/* 侧栏分区常驻新建按钮（如「创建智能体」）：虚线框，hover 主色 */
+.section-new-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1, 4px);
+  margin: 2px var(--space-3) 6px;
+  padding: 6px 10px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.section-new-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-muted);
 }
 
 /* 折叠时 list-area 隐藏，section 收成一条 header */

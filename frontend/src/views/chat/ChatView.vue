@@ -543,7 +543,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  max-width: 720px;
+  max-width: var(--container-width-sm);
   width: 100%;
 }
 
@@ -620,7 +620,7 @@ onBeforeUnmount(() => {
 }
 
 .messages-inner {
-  max-width: 860px;
+  max-width: var(--container-width-md);
   margin: 0 auto;
   padding: var(--space-6) var(--space-6) var(--space-4);
 }
@@ -785,7 +785,7 @@ onBeforeUnmount(() => {
 }
 
 .input-pill {
-  max-width: 860px;
+  max-width: var(--container-width-md);
   margin: 0 auto;
   display: flex;
   align-items: flex-end;
@@ -867,7 +867,7 @@ onBeforeUnmount(() => {
    Input Footer — Settings Toggle
    ======================================== */
 .input-footer {
-  max-width: 860px;
+  max-width: var(--container-width-md);
   margin: 6px auto 0;
   display: flex;
   align-items: center;
@@ -932,7 +932,7 @@ onBeforeUnmount(() => {
 }
 
 .settings-bar {
-  max-width: 860px;
+  max-width: var(--container-width-md);
   margin: 6px auto 0;
   padding: 8px 12px;
   background: var(--color-bg-card-elevated);
@@ -1006,7 +1006,7 @@ onBeforeUnmount(() => {
    Attachment Preview Bar
    ======================================== */
 .attachment-preview-bar {
-  max-width: 860px;
+  max-width: var(--container-width-md);
   margin: 6px auto 0;
   display: flex;
   flex-wrap: wrap;
