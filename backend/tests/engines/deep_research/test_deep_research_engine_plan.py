@@ -6,8 +6,8 @@
   完全垃圾 → 默认计划 / 非法 step_type 容错 / 全 processing 守卫强制首步 research /
   step 数量按 depth 截断。
 - ``analyze_plan``：prompt 含 background/feedback 块；降级计划兜底。
-- ``background_investigation``：hybrid 首轮内部优先 / external 走 web /
-  端口异常降级 [] / content 截断。
+- ``background_investigation``：逐启用源查询（每轮查全部源语义）/
+  per-source 失败降级跳过 / 全部失败 → [] / content 截断。
 - ``search`` processing 路由：processing 步骤零检索调用 + 产出 TaskFinding +
   注入后续步骤 findings；旧形状 dict 走 research 路径；SearchComplete.task_findings。
 """
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 import pytest
 
@@ -24,16 +24,17 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.engines.deep_research.engine import DeepResearchEngine, parse_plan
+from novamind.engines.deep_research.sources import SearchSourceBinding
 from novamind.engines.deep_research.types import (
     EngineResearchParams,
     PlanStep,
     ResearchPlan,
     SearchComplete,
     SearchSource,
+    SourceType,
     StepType,
     TaskFinding,
 )
-from novamind.engines.search_ports import WebSearchResult
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 
@@ -65,38 +66,25 @@ class FakePromptProvider:
         return f"PROMPT[{key}] {kwargs}"
 
 
-class FakeWebPort:
-    def __init__(self, results=None, raise_all=False):
+class FakeSourcePort:
+    """统一 dict 返回源端口桩（归一化已在 feature 适配器完成）。"""
+
+    def __init__(self, source_type: str, results=None, raise_all=False):
+        self.source_type = source_type
         self.results = results or []
         self.raise_all = raise_all
         self.calls: List[Tuple[str, int]] = []
 
-    async def search(self, query: str, max_results: int = 5):
-        self.calls.append((query, max_results))
-        if self.raise_all:
-            raise RuntimeError("web fail")
-        return [
-            WebSearchResult(title=t, url=u, snippet=s, content=c, score=sc)
-            for (t, u, s, c, sc) in self.results[:max_results]
-        ]
-
-
-class FakeInternalPort:
-    def __init__(self, results=None, raise_all=False):
-        self.results = results or []
-        self.raise_all = raise_all
-        self.calls: List[Tuple[str, int]] = []
-
-    async def search(self, query: str, *, top_k: int = 10):
+    async def search(self, query: str, *, top_k: int):
         self.calls.append((query, top_k))
         if self.raise_all:
-            raise RuntimeError("internal fail")
+            raise RuntimeError(f"{self.source_type} fail")
         return [dict(r) for r in self.results[:top_k]]
 
 
 def _internal_result(content: str, chunk_id: str, doc_name: str, score: float) -> Dict[str, Any]:
     return {
-        "source_type": "internal",
+        "source_type": SourceType.INTERNAL.value,
         "content": content,
         "document_id": 1,
         "chunk_id": chunk_id,
@@ -105,6 +93,20 @@ def _internal_result(content: str, chunk_id: str, doc_name: str, score: float) -
         "kb_name": "kb1",
         "score": score,
     }
+
+
+def _external_result(title: str, url: str, content: str, score: float) -> Dict[str, Any]:
+    return {
+        "source_type": SourceType.EXTERNAL.value,
+        "content": content,
+        "url": url,
+        "title": title,
+        "score": score,
+    }
+
+
+def _bindings(*ports: FakeSourcePort, top_k: int = 10) -> List[SearchSourceBinding]:
+    return [SearchSourceBinding(source_type=p.source_type, port=p, top_k=top_k) for p in ports]
 
 
 def _params(search_source: SearchSource = SearchSource.HYBRID) -> EngineResearchParams:
@@ -249,50 +251,70 @@ async def test_analyze_plan_has_enough_context_passthrough():
 # ---- background_investigation ----
 
 
-async def test_background_investigation_hybrid_uses_internal_first():
-    """hybrid 首轮内部优先（与主循环 iteration=0 语义一致）。"""
+async def test_background_investigation_queries_all_enabled_sources():
+    """背景调查逐启用源查询（hybrid 双源各 1 次），结果合并去重。"""
     engine = DeepResearchEngine()
-    internal = FakeInternalPort(results=[_internal_result("ic", "ck1", "docA", 0.9)])
-    web = FakeWebPort(results=[("t", "u", "s", "c", 0.5)])
+    internal = FakeSourcePort(
+        SourceType.INTERNAL.value, results=[_internal_result("ic", "ck1", "docA", 0.9)]
+    )
+    external = FakeSourcePort(
+        SourceType.EXTERNAL.value, results=[_external_result("t", "u", "c", 0.5)]
+    )
     results = await engine.background_investigation(
-        web_search_port=web, internal_search_port=internal,
+        sources=_bindings(internal, external),
         query="主题", params=_params(SearchSource.HYBRID),
     )
     assert len(internal.calls) == 1
-    assert web.calls == []
-    assert len(results) == 1
-    assert results[0]["source_type"] == "internal"
+    assert len(external.calls) == 1
+    assert len(results) == 2
+    types = {r["source_type"] for r in results}
+    assert types == {"internal", "external"}
 
 
-async def test_background_investigation_external_uses_web():
+async def test_background_investigation_external_only():
+    """仅注入 external binding → 仅外部源被查询。"""
     engine = DeepResearchEngine()
-    internal = FakeInternalPort()
-    web = FakeWebPort(results=[("t", "u", "s", "c", 0.5)])
+    external = FakeSourcePort(
+        SourceType.EXTERNAL.value, results=[_external_result("t", "u", "c", 0.5)]
+    )
     results = await engine.background_investigation(
-        web_search_port=web, internal_search_port=internal,
+        sources=_bindings(external),
         query="主题", params=_params(SearchSource.EXTERNAL),
     )
-    assert len(web.calls) == 1
-    assert internal.calls == []
     assert results[0]["source_type"] == "external"
 
 
-async def test_background_investigation_failure_degrades_to_empty():
+async def test_background_investigation_single_source_failure_degrades():
+    """单源失败降级跳过（健康源结果保留）；全部失败 → []。"""
     engine = DeepResearchEngine()
-    internal = FakeInternalPort(raise_all=True)
+    # 单源失败 → []
+    internal = FakeSourcePort(SourceType.INTERNAL.value, raise_all=True)
     results = await engine.background_investigation(
-        web_search_port=None, internal_search_port=internal,
+        sources=_bindings(internal),
         query="主题", params=_params(SearchSource.INTERNAL),
     )
     assert results == []
+    # 双源一败一成 → 健康源结果保留
+    internal2 = FakeSourcePort(
+        SourceType.INTERNAL.value, results=[_internal_result("ic", "ck1", "docA", 0.9)]
+    )
+    external2 = FakeSourcePort(SourceType.EXTERNAL.value, raise_all=True)
+    results2 = await engine.background_investigation(
+        sources=_bindings(internal2, external2),
+        query="主题", params=_params(SearchSource.HYBRID),
+    )
+    assert len(results2) == 1
+    assert results2[0]["source_type"] == "internal"
 
 
 async def test_background_investigation_truncates_content():
     engine = DeepResearchEngine()
     long_content = "x" * 5000
-    internal = FakeInternalPort(results=[_internal_result(long_content, "ck1", "docA", 0.9)])
+    internal = FakeSourcePort(
+        SourceType.INTERNAL.value, results=[_internal_result(long_content, "ck1", "docA", 0.9)]
+    )
     results = await engine.background_investigation(
-        web_search_port=None, internal_search_port=internal,
+        sources=_bindings(internal),
         query="主题", params=_params(SearchSource.INTERNAL),
     )
     assert len(results[0]["content"]) <= 500
@@ -353,15 +375,14 @@ async def test_search_processing_step_skips_retrieval_and_emits_finding():
     engine = DeepResearchEngine()
     llm = FakeLLM(responses=["综合结论：RAG 架构以向量检索为核心"])
     provider = FakePromptProvider()
-    internal = FakeInternalPort()
+    internal = FakeSourcePort(SourceType.INTERNAL.value)
     tasks = [
         {"task_id": "s1", "title": "分析", "description": "综合前序发现",
          "step_type": "processing", "need_search": False},
     ]
     events = await _collect(
         engine,
-        web_search_port=FakeWebPort(),
-        internal_search_port=internal,
+        sources=_bindings(internal),
         tasks=tasks,
         params=_params(),
         llm_client=llm,
@@ -380,11 +401,12 @@ async def test_search_legacy_dict_shape_defaults_to_research_path():
     engine = DeepResearchEngine()
     llm = FakeLLM(responses=['{"sufficient": true, "next_query": "", "reason": "ok"}'])
     provider = FakePromptProvider()
-    internal = FakeInternalPort(results=[_internal_result("ic", "ck1", "d", 0.9)])
+    internal = FakeSourcePort(
+        SourceType.INTERNAL.value, results=[_internal_result("ic", "ck1", "d", 0.9)]
+    )
     events = await _collect(
         engine,
-        web_search_port=FakeWebPort(),
-        internal_search_port=internal,
+        sources=_bindings(internal),
         tasks=[{"task_id": "t1", "description": "t1"}],
         params=_params(SearchSource.INTERNAL),
         llm_client=llm,
@@ -403,7 +425,9 @@ async def test_search_processing_finding_injected_into_next_research_step():
         '{"sufficient": true, "next_query": "", "reason": "ok"}',
     ])
     provider = FakePromptProvider()
-    internal = FakeInternalPort(results=[_internal_result("ic", "ck1", "d", 0.9)])
+    internal = FakeSourcePort(
+        SourceType.INTERNAL.value, results=[_internal_result("ic", "ck1", "d", 0.9)]
+    )
     tasks = [
         {"task_id": "s1", "title": "分析", "description": "先分析",
          "step_type": "processing", "need_search": False},
@@ -412,8 +436,7 @@ async def test_search_processing_finding_injected_into_next_research_step():
     ]
     events = await _collect(
         engine,
-        web_search_port=FakeWebPort(),
-        internal_search_port=internal,
+        sources=_bindings(internal),
         tasks=tasks,
         params=_params(SearchSource.INTERNAL),
         llm_client=llm,
@@ -427,11 +450,10 @@ async def test_search_processing_finding_injected_into_next_research_step():
 async def test_search_processing_without_llm_skips_silently():
     """降级模式（无 LLM）下 processing 步骤静默跳过，不产出 finding。"""
     engine = DeepResearchEngine()
-    internal = FakeInternalPort()
+    internal = FakeSourcePort(SourceType.INTERNAL.value)
     events = await _collect(
         engine,
-        web_search_port=FakeWebPort(),
-        internal_search_port=internal,
+        sources=_bindings(internal),
         tasks=[{"task_id": "s1", "description": "d", "step_type": "processing", "need_search": False}],
         params=_params(),
     )
@@ -448,11 +470,12 @@ async def test_search_research_step_finding_accumulates_in_task_findings():
         "任务发现：核心结论 X",
     ])
     provider = FakePromptProvider()
-    internal = FakeInternalPort(results=[_internal_result("ic", "ck1", "d", 0.9)])
+    internal = FakeSourcePort(
+        SourceType.INTERNAL.value, results=[_internal_result("ic", "ck1", "d", 0.9)]
+    )
     events = await _collect(
         engine,
-        web_search_port=FakeWebPort(),
-        internal_search_port=internal,
+        sources=_bindings(internal),
         tasks=[{"task_id": "t1", "description": "t1"}],
         params=_params(SearchSource.INTERNAL),
         llm_client=llm,

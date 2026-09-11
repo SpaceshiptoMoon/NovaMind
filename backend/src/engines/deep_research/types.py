@@ -26,11 +26,26 @@ from typing import Any, Dict, List, Optional, Union
 
 
 class SearchSource(str, PyEnum):
-    """检索来源枚举"""
+    """检索来源枚举
+
+    作为"预设组合"使用：feature 装配点按它映射为启用的数据源类型列表
+    （INTERNAL→[internal]、EXTERNAL→[external]、HYBRID→[internal, external]），
+    见 ``sources.py`` 的可插拔数据源抽象。
+    """
 
     INTERNAL = "internal"      # 内部知识库
     EXTERNAL = "external"       # 外部网络搜索
     HYBRID = "hybrid"           # 混合检索
+
+
+class SourceType(str, PyEnum):
+    """数据源类型标识（builtin 已知源；新源可自定义字符串，引擎不枚举校验）。
+
+    值与结果 dict 的 ``source_type`` 字面量一致（历史契约）。
+    """
+
+    INTERNAL = "internal"      # 内部知识库
+    EXTERNAL = "external"      # 外部网络搜索
 
 
 class StepType(str, PyEnum):
@@ -113,6 +128,10 @@ class IterationProgress:
 
     ``current_query`` 为本轮实际使用的检索 query：固定 query 模式（无 LLM）下等于
     任务描述；观察驱动模式（deer-flow 对齐）下是 LLM 基于已有观察演化出的新 query。
+
+    ``source_types`` 为本轮实际查询的源类型列表（可插拔数据源，每轮查全部启用源）；
+    ``use_external`` 为兼容字段（= EXTERNAL 是否在 source_types 中），历史消费方
+    （service 进度文案）已改用 source_types，新代码勿依赖。
     """
 
     task_id: str
@@ -122,6 +141,7 @@ class IterationProgress:
     total_steps: int
     current_results_count: int
     current_query: str = ""
+    source_types: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -166,6 +186,7 @@ SearchEvent = Union[TaskStarted, IterationProgress, TaskFailed, TaskFinding, Sea
 
 __all__ = [
     "SearchSource",
+    "SourceType",
     "StepType",
     "PlanStep",
     "ResearchPlan",

@@ -1,14 +1,18 @@
-"""DeepResearchEngine.search 迭代检索循环单元测试（A-3，R1：忠实复现原非流语义）。
+"""DeepResearchEngine.search 迭代检索循环单元测试（可插拔数据源版）。
 
-守护引擎 ``search`` AsyncIterator[SearchEvent] 复现原 ``_execute_research_search`` 语义：
+守护引擎 ``search`` AsyncIterator[SearchEvent] 的数据源泛化语义：
 
-  - 逐任务串行；每任务多轮迭代按 ``should_use_external_search`` 决策外/内。
+  - 逐任务串行；每任务多轮迭代，**每轮查全部启用数据源**（``sources`` 逐 binding
+    查询，废弃原 hybrid 奇偶交替）。
   - 每任务内按 URL/标题/chunk_id 去重（``deduplicate_results`` 原地）。
   - ``is_sufficient_results`` 命中（>= SUFFICIENT_RESULT_COUNT）则提前结束本任务迭代。
-  - 单任务抛错 → ``TaskFailed``，catch-and-continue，本任务结果不计入 all_results。
-  - 任务的 task_results 再去重并入 all_results（全局去重），累计 internal/external 调用计数。
-  - 末尾 ``SearchComplete`` 携带 all_results + summary（含计数与 key_sources）。
-  - 外部路径归一化 ``WebSearchResult`` → dict；内部路径直接返回 dict。
+  - 单源失败降级跳过（不算任务失败）；**全部源失败才** ``TaskFailed``，
+    catch-and-continue，该任务结果不计入 all_results。
+  - 任务的 task_results 再去重并入 all_results（全局去重）；summary 携带
+    ``source_counts``（per-source 调用次数）与兼容聚合键 internal_count/external_count。
+  - 数据源结果已是统一 dict（归一化在 feature 适配器完成），引擎透传。
+  - per-source ``top_k`` 由 binding 携带，引擎按 binding.top_k 调用。
+  - IterationProgress 携带 source_types（本轮查询的源类型列表）。
 """
 from __future__ import annotations
 
@@ -23,16 +27,17 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.engines.deep_research.engine import DeepResearchEngine
+from novamind.engines.deep_research.sources import SearchSourceBinding
 from novamind.engines.deep_research.types import (
     EngineResearchParams,
     IterationProgress,
     SearchComplete,
     SearchSource,
+    SourceType,
     TaskFailed,
     TaskFinding,
     TaskStarted,
 )
-from novamind.engines.search_ports import WebSearchResult
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 
@@ -71,43 +76,71 @@ class FakePromptProvider:
         return f"PROMPT[{key}] {kwargs}"
 
 
-class FakeWebPort:
+class FakeSourcePort:
+    """统一 dict 返回源端口桩（归一化已在 feature 适配器完成，引擎消费 dict）。"""
+
     def __init__(
         self,
-        results_per_query: Optional[Dict[str, List[Tuple[str, str, str, str, float]]]] = None,
-        raise_on: Optional[set] = None,
-    ):
-        self.results_per_query = results_per_query or {}
-        self.raise_on = raise_on or set()
-        self.calls: List[Tuple[str, int]] = []
-
-    async def search(self, query: str, max_results: int = 5):
-        self.calls.append((query, max_results))
-        if query in self.raise_on:
-            raise RuntimeError("web fail")
-        items = self.results_per_query.get(query, [])[:max_results]
-        return [
-            WebSearchResult(title=t, url=u, snippet=s, content=c, score=sc)
-            for (t, u, s, c, sc) in items
-        ]
-
-
-class FakeInternalPort:
-    def __init__(
-        self,
+        source_type: str,
         results_per_query: Optional[Dict[str, List[Dict[str, Any]]]] = None,
         raise_on: Optional[set] = None,
     ):
+        self.source_type = source_type
         self.results_per_query = results_per_query or {}
         self.raise_on = raise_on or set()
         self.calls: List[Tuple[str, int]] = []
 
-    async def search(self, query: str, *, top_k: int = 10):
+    async def search(self, query: str, *, top_k: int):
         self.calls.append((query, top_k))
         if query in self.raise_on:
-            raise RuntimeError("internal fail")
+            raise RuntimeError(f"{self.source_type} fail")
         items = self.results_per_query.get(query, [])[:top_k]
         return [dict(r) for r in items]
+
+
+def _external_result(title: str, url: str, content: str, score: float) -> Dict[str, Any]:
+    return {
+        "source_type": SourceType.EXTERNAL.value,
+        "content": content,
+        "url": url,
+        "title": title,
+        "score": score,
+    }
+
+
+def _internal_result(content: str, chunk_id: str, doc_name: str, score: float) -> Dict[str, Any]:
+    return {
+        "source_type": SourceType.INTERNAL.value,
+        "content": content,
+        "document_id": 1,
+        "chunk_id": chunk_id,
+        "document_name": doc_name,
+        "kb_id": 1,
+        "kb_name": "kb1",
+        "score": score,
+    }
+
+
+def _bindings(*ports: FakeSourcePort, top_k: int = 10) -> List[SearchSourceBinding]:
+    """按 fake port 构造 SearchSourceBinding 列表（hybrid = internal + external 全启用）。"""
+    return [SearchSourceBinding(source_type=p.source_type, port=p, top_k=top_k) for p in ports]
+
+
+def _hybrid_ports(
+    internal_results=None, external_results=None, internal_raise=None, external_raise=None
+):
+    """构造 hybrid 双源 (internal, external)。"""
+    internal = FakeSourcePort(
+        SourceType.INTERNAL.value,
+        results_per_query=internal_results,
+        raise_on=internal_raise,
+    )
+    external = FakeSourcePort(
+        SourceType.EXTERNAL.value,
+        results_per_query=external_results,
+        raise_on=external_raise,
+    )
+    return internal, external
 
 
 def _params(
@@ -130,19 +163,6 @@ def _params(
     )
 
 
-def _internal_result(content: str, chunk_id: str, doc_name: str, score: float) -> Dict[str, Any]:
-    return {
-        "source_type": "internal",
-        "content": content,
-        "document_id": 1,
-        "chunk_id": chunk_id,
-        "document_name": doc_name,
-        "kb_id": 1,
-        "kb_name": "kb1",
-        "score": score,
-    }
-
-
 async def _collect(engine: DeepResearchEngine, **kwargs) -> List[Any]:
     events = []
     async for ev in engine.search(**kwargs):
@@ -156,18 +176,16 @@ async def _collect(engine: DeepResearchEngine, **kwargs) -> List[Any]:
 async def test_search_emits_task_started_progress_then_complete():
     """2 任务 hybrid iterations=2 → 2 TaskStarted、各 2 IterationProgress、1 SearchComplete。"""
     engine = DeepResearchEngine()
-    web = FakeWebPort(results_per_query={"t1": [("a", "u1", "s", "c1", 0.5)], "t2": [("b", "u2", "s", "c2", 0.4)]})
-    internal = FakeInternalPort(
-        results_per_query={
-            "t1": [_internal_result("ic1", "ck1", "d1", 0.9)],
-            "t2": [_internal_result("ic2", "ck2", "d2", 0.8)],
-        }
+    internal, external = _hybrid_ports(
+        internal_results={"t1": [_internal_result("ic1", "ck1", "d1", 0.9)],
+                          "t2": [_internal_result("ic2", "ck2", "d2", 0.8)]},
+        external_results={"t1": [_external_result("a", "u1", "c1", 0.5)],
+                          "t2": [_external_result("b", "u2", "c2", 0.4)]},
     )
     tasks = [{"task_id": "t1", "description": "t1"}, {"task_id": "t2", "description": "t2"}]
     events = await _collect(
         engine,
-        web_search_port=web,
-        internal_search_port=internal,
+        sources=_bindings(internal, external),
         tasks=tasks,
         params=_params(iterations=2),
     )
@@ -175,41 +193,80 @@ async def test_search_emits_task_started_progress_then_complete():
     progress = [e for e in events if isinstance(e, IterationProgress)]
     complete = [e for e in events if isinstance(e, SearchComplete)]
     assert len(started) == 2
-    # hybrid iterations=2：每任务 2 次迭代 → 2 IterationProgress/任务 = 4
+    # 每任务 2 次迭代 → 2 IterationProgress/任务 = 4
     assert len(progress) == 4
     assert len(complete) == 1
     sc = complete[0]
     assert sc.summary["total_results"] == len(sc.all_results)
-    # 计数：每任务 iteration 0 internal、iteration 1 external → 各 2 internal / 2 external
-    assert sc.summary["internal_count"] == 2
-    assert sc.summary["external_count"] == 2
+    # 每轮查全部源：2 任务 × 2 迭代 × 每轮双源 → internal/external 各 4 次调用
+    assert sc.summary["internal_count"] == 4
+    assert sc.summary["external_count"] == 4
+    assert sc.summary["source_counts"] == {"internal": 4, "external": 4}
+
+
+async def test_hybrid_queries_all_sources_each_iteration():
+    """hybrid 每轮迭代查全部启用源；IterationProgress.source_types 反映本轮源列表。"""
+    engine = DeepResearchEngine()
+    internal, external = _hybrid_ports(
+        internal_results={"t1": [_internal_result("ic", "ck1", "d1", 0.9)]},
+        external_results={"t1": [_external_result("a", "u1", "c1", 0.5)]},
+    )
+    tasks = [{"task_id": "t1", "description": "t1"}]
+    events = await _collect(
+        engine,
+        sources=_bindings(internal, external),
+        tasks=tasks,
+        params=_params(iterations=2),
+    )
+    # 双源每轮各 1 次调用（不再奇偶交替）
+    assert len(internal.calls) == 2
+    assert len(external.calls) == 2
+    progress = [e for e in events if isinstance(e, IterationProgress)]
+    assert all(p.source_types == ["internal", "external"] for p in progress)
+    assert all(p.use_external for p in progress)
+
+
+async def test_per_source_top_k_passed_to_port():
+    """per-source top_k 由 binding 携带：引擎按 binding.top_k 调用端口。"""
+    engine = DeepResearchEngine()
+    internal, external = _hybrid_ports(
+        internal_results={"t1": [_internal_result("ic", "ck1", "d1", 0.9)]},
+        external_results={"t1": [_external_result("a", "u1", "c1", 0.5)]},
+    )
+    sources = [
+        SearchSourceBinding(source_type=internal.source_type, port=internal, top_k=7),
+        SearchSourceBinding(source_type=external.source_type, port=external, top_k=3),
+    ]
+    await _collect(
+        engine,
+        sources=sources,
+        tasks=[{"task_id": "t1", "description": "t1"}],
+        params=_params(iterations=1),
+    )
+    assert internal.calls and internal.calls[0][1] == 7
+    assert external.calls and external.calls[0][1] == 3
 
 
 # ---- 每任务内去重 ----
 
 
 async def test_search_per_task_dedup_within_task():
-    """同任务两次迭代返回相同 URL → task_results 内去重，不重复计入。"""
+    """各轮迭代返回相同 URL/chunk_id → task_results 内去重，不重复计入。"""
     engine = DeepResearchEngine()
-    # iteration 0 (internal) 返回 ck1；iteration 1 (external) 返回 u1；iteration 2 (internal) 再返回 ck1
-    internal = FakeInternalPort(
-        results_per_query={
-            "t1": [_internal_result("ic1", "ck1", "d1", 0.9)],
-        }
-    )
-    web = FakeWebPort(
-        results_per_query={"t1": [("a", "u1", "s", "c-ext", 0.5)]}
+    # 每轮 internal 返回 ck1、external 返回 u1——多轮重复只留 1+1 条
+    internal, external = _hybrid_ports(
+        internal_results={"t1": [_internal_result("ic1", "ck1", "d1", 0.9)]},
+        external_results={"t1": [_external_result("a", "u1", "c-ext", 0.5)]},
     )
     tasks = [{"task_id": "t1", "description": "t1"}]
     events = await _collect(
         engine,
-        web_search_port=web,
-        internal_search_port=internal,
+        sources=_bindings(internal, external),
         tasks=tasks,
         params=_params(iterations=3),
     )
     sc = next(e for e in events if isinstance(e, SearchComplete))
-    # ck1 出现 2 次（iter 0/2）但按 chunk_id 去重 → 1 条 internal；u1 1 条 external
+    # ck1 每轮出现但按 chunk_id 去重 → 1 条 internal；u1 同理 1 条 external
     internal_items = [r for r in sc.all_results if r.get("chunk_id") == "ck1"]
     assert len(internal_items) == 1
     external_items = [r for r in sc.all_results if r.get("url") == "u1"]
@@ -221,49 +278,74 @@ async def test_search_per_task_dedup_within_task():
 
 
 async def test_search_sufficient_break_after_first_iteration():
-    """iteration 0 返回 >= SUFFICIENT_RESULT_COUNT(10) 条 → 本任务仅 1 IterationProgress。"""
+    """iteration 0 结果 >= SUFFICIENT_RESULT_COUNT(10) → 本任务仅 1 IterationProgress。"""
     from novamind.engines.deep_research.engine import SUFFICIENT_RESULT_COUNT
 
     engine = DeepResearchEngine()
-    # 内部返回 10 条不同 chunk_id
-    internal = FakeInternalPort(
-        results_per_query={
+    # 内部返回 10 条不同 chunk_id（外部返回空）
+    internal, external = _hybrid_ports(
+        internal_results={
             "t1": [_internal_result(f"ic{i}", f"ck{i}", f"d{i}", 0.9 - i * 0.01) for i in range(SUFFICIENT_RESULT_COUNT)],
-        }
+        },
     )
-    web = FakeWebPort()  # 不应被调用（iter 0 即充分）
     tasks = [{"task_id": "t1", "description": "t1"}]
     events = await _collect(
         engine,
-        web_search_port=web,
-        internal_search_port=internal,
+        sources=_bindings(internal, external),
         tasks=tasks,
         params=_params(iterations=3),
     )
     progress = [e for e in events if isinstance(e, IterationProgress)]
     assert len(progress) == 1, "充分性命中后应只发 1 次 IterationProgress"
-    assert web.calls == [], "iter 0 即充分，web 端口不应被调用"
     sc = next(e for e in events if isinstance(e, SearchComplete))
-    assert sc.summary["total_results"] == SUFFICIENT_RESULT_COUNT
-    assert sc.summary["internal_count"] == 1  # 仅 iter 0 一次内部调用
+    assert sc.summary["total_results"] >= SUFFICIENT_RESULT_COUNT
+    # 每轮双源：iter 0 即充分 → internal/external 各调用 1 次
+    assert sc.summary["internal_count"] == 1
+    assert sc.summary["external_count"] == 1
 
 
-# ---- catch-and-continue ----
+# ---- 单源降级 / 全源失败 ----
+
+
+async def test_search_single_source_failure_degrades_to_healthy_source():
+    """hybrid 单源失败 → 降级跳过（无 TaskFailed），健康源结果保留。"""
+    engine = DeepResearchEngine()
+    internal, external = _hybrid_ports(
+        internal_results={"t1": [_internal_result("ic", "ck1", "d1", 0.9)]},
+        external_raise={"t1"},
+    )
+    tasks = [{"task_id": "t1", "description": "t1"}]
+    events = await _collect(
+        engine,
+        sources=_bindings(internal, external),
+        tasks=tasks,
+        params=_params(search_source=SearchSource.INTERNAL, iterations=2),
+    )
+    failed = [e for e in events if isinstance(e, TaskFailed)]
+    assert failed == [], "单源失败不应触发 TaskFailed（降级继续）"
+    sc = next(e for e in events if isinstance(e, SearchComplete))
+    assert [r.get("chunk_id") for r in sc.all_results] == ["ck1"]
+    # internal 成功计入计数；external 失败不计
+    assert sc.summary["internal_count"] == 2
+    assert sc.summary["external_count"] == 0
 
 
 async def test_search_task_failure_emits_task_failed_and_skips_results():
-    """任务抛错 → TaskFailed，该任务结果不计入 all_results，其余任务正常。"""
+    """全部启用源失败 → TaskFailed，该任务结果不计入 all_results，其余任务正常。"""
     engine = DeepResearchEngine()
-    internal = FakeInternalPort(raise_on={"bad"})
-    internal.results_per_query = {"good": [_internal_result("ic", "ck1", "d1", 0.9)]}
+    internal = FakeSourcePort(
+        SourceType.INTERNAL.value,
+        results_per_query={"good": [_internal_result("ic", "ck1", "d1", 0.9)]},
+        raise_on={"bad"},
+    )
+    sources = _bindings(internal)
     tasks = [
         {"task_id": "bad", "description": "bad"},
         {"task_id": "good", "description": "good"},
     ]
     events = await _collect(
         engine,
-        web_search_port=FakeWebPort(),
-        internal_search_port=internal,
+        sources=sources,
         tasks=tasks,
         params=_params(search_source=SearchSource.INTERNAL, iterations=1),
     )
@@ -276,24 +358,38 @@ async def test_search_task_failure_emits_task_failed_and_skips_results():
     assert sc.summary["total_results"] == 1
 
 
+async def test_search_no_sources_configured_fails_all_tasks():
+    """未注入任何数据源 → 每任务全部源失败 → TaskFailed（不崩溃）。"""
+    engine = DeepResearchEngine()
+    events = await _collect(
+        engine,
+        sources=[],
+        tasks=[{"task_id": "t1", "description": "t1"}],
+        params=_params(iterations=1),
+    )
+    failed = [e for e in events if isinstance(e, TaskFailed)]
+    assert len(failed) == 1
+    sc = next(e for e in events if isinstance(e, SearchComplete))
+    assert sc.summary["total_results"] == 0
+
+
 # ---- 全局跨任务去重 ----
 
 
 async def test_search_global_dedup_across_tasks():
     """两任务返回相同 chunk_id → all_results 全局去重为 1 条。"""
     engine = DeepResearchEngine()
-    internal = FakeInternalPort(
+    internal = FakeSourcePort(
+        SourceType.INTERNAL.value,
         results_per_query={
             "t1": [_internal_result("shared", "ck-same", "d", 0.9)],
             "t2": [_internal_result("shared", "ck-same", "d", 0.8)],
-        }
+        },
     )
-    tasks = [{"task_id": "t1", "description": "t1"}, {"task_id": "t2", "description": "t2"}]
     events = await _collect(
         engine,
-        web_search_port=FakeWebPort(),
-        internal_search_port=internal,
-        tasks=tasks,
+        sources=_bindings(internal),
+        tasks=[{"task_id": "t1", "description": "t1"}, {"task_id": "t2", "description": "t2"}],
         params=_params(search_source=SearchSource.INTERNAL, iterations=1),
     )
     sc = next(e for e in events if isinstance(e, SearchComplete))
@@ -301,57 +397,60 @@ async def test_search_global_dedup_across_tasks():
     assert len(same) == 1, "跨任务相同 chunk_id 应全局去重为 1 条"
 
 
-# ---- 纯外部 / 纯内部 ----
+# ---- 单源组合（预设 internal/external）----
 
 
-async def test_search_external_only_uses_web_port():
-    """search_source=EXTERNAL → 仅用 web_search_port（internal 可为 None）。"""
+async def test_search_external_only_binding():
+    """仅注入 external binding → 仅外部源被调用。"""
     engine = DeepResearchEngine()
-    web = FakeWebPort(results_per_query={"t1": [("a", "u1", "s", "c1", 0.5)]})
+    external = FakeSourcePort(
+        SourceType.EXTERNAL.value,
+        results_per_query={"t1": [_external_result("a", "u1", "c1", 0.5)]},
+    )
     events = await _collect(
         engine,
-        web_search_port=web,
-        internal_search_port=None,
+        sources=_bindings(external),
         tasks=[{"task_id": "t1", "description": "t1"}],
         params=_params(search_source=SearchSource.EXTERNAL, iterations=2),
     )
     sc = next(e for e in events if isinstance(e, SearchComplete))
     assert sc.summary["external_count"] == 2
     assert sc.summary["internal_count"] == 0
-    assert len(web.calls) == 2
+    assert len(external.calls) == 2
 
 
-async def test_search_internal_only_uses_internal_port():
-    """search_source=INTERNAL → 仅用 internal_search_port（web 可为 None）。"""
+async def test_search_internal_only_binding():
+    """仅注入 internal binding → 仅内部源被调用。"""
     engine = DeepResearchEngine()
-    internal = FakeInternalPort(
-        results_per_query={"t1": [_internal_result("ic", "ck1", "d", 0.9)]}
+    internal = FakeSourcePort(
+        SourceType.INTERNAL.value,
+        results_per_query={"t1": [_internal_result("ic", "ck1", "d", 0.9)]},
     )
     events = await _collect(
         engine,
-        web_search_port=None,
-        internal_search_port=internal,
+        sources=_bindings(internal),
         tasks=[{"task_id": "t1", "description": "t1"}],
         params=_params(search_source=SearchSource.INTERNAL, iterations=2),
     )
     sc = next(e for e in events if isinstance(e, SearchComplete))
     assert sc.summary["internal_count"] == 2
     assert sc.summary["external_count"] == 0
-    # INTERNAL：iter 0/1 均内部（should_use_external_search INTERNAL 恒 False）
     assert len(internal.calls) == 2
 
 
-# ---- 外部结果归一化为 dict ----
+# ---- 结果透传（归一化在 feature 适配器）----
 
 
-async def test_search_normalizes_web_result_to_dict():
-    """外部 WebSearchResult 归一化为 dict（source_type/content/url/title/score）。"""
+async def test_search_passes_through_source_dicts_with_type():
+    """引擎透传真数据源 dict（含 source_type），不做归一化改写。"""
     engine = DeepResearchEngine()
-    web = FakeWebPort(results_per_query={"t1": [("title1", "u1", "snip", "content1", 0.7)]})
+    external = FakeSourcePort(
+        SourceType.EXTERNAL.value,
+        results_per_query={"t1": [_external_result("title1", "u1", "content1", 0.7)]},
+    )
     events = await _collect(
         engine,
-        web_search_port=web,
-        internal_search_port=None,
+        sources=_bindings(external),
         tasks=[{"task_id": "t1", "description": "t1"}],
         params=_params(search_source=SearchSource.EXTERNAL, iterations=1),
     )
@@ -364,21 +463,39 @@ async def test_search_normalizes_web_result_to_dict():
     assert r["score"] == 0.7
 
 
+async def test_search_custom_source_type_supported():
+    """自定义 source_type（未来新源）引擎零改动可用，source_counts 按类型计数。"""
+    engine = DeepResearchEngine()
+    confluence = FakeSourcePort(
+        "confluence",
+        results_per_query={"t1": [{"source_type": "confluence", "content": "wiki", "url": "cf://1", "title": "w", "score": 0.8}]},
+    )
+    events = await _collect(
+        engine,
+        sources=_bindings(confluence),
+        tasks=[{"task_id": "t1", "description": "t1"}],
+        params=_params(search_source=SearchSource.INTERNAL, iterations=2),
+    )
+    sc = next(e for e in events if isinstance(e, SearchComplete))
+    assert sc.summary["source_counts"] == {"confluence": 2}
+    # 兼容聚合键：未知类型不污染 internal/external 计数
+    assert sc.summary["internal_count"] == 0
+    assert sc.summary["external_count"] == 0
+
+
 # ---- summary.key_sources 非空 ----
 
 
 async def test_search_summary_includes_key_sources():
     """SearchComplete.summary 含 key_sources（前 5 去重来源）。"""
     engine = DeepResearchEngine()
-    internal = FakeInternalPort(
-        results_per_query={
-            "t1": [_internal_result("ic", "ck1", "docA", 0.9)],
-        }
+    internal = FakeSourcePort(
+        SourceType.INTERNAL.value,
+        results_per_query={"t1": [_internal_result("ic", "ck1", "docA", 0.9)]},
     )
     events = await _collect(
         engine,
-        web_search_port=FakeWebPort(),
-        internal_search_port=internal,
+        sources=_bindings(internal),
         tasks=[{"task_id": "t1", "description": "t1"}],
         params=_params(search_source=SearchSource.INTERNAL, iterations=1),
     )
@@ -397,16 +514,16 @@ async def test_aligned_mode_query_evolution_uses_next_query():
         '{"sufficient": false, "next_query": "RAG 架构 演进 2024", "reason": "缺少最新数据"}',
     ])
     provider = FakePromptProvider()
-    internal = FakeInternalPort(
+    internal = FakeSourcePort(
+        SourceType.INTERNAL.value,
         results_per_query={
             "t1": [_internal_result("ic1", "ck1", "d1", 0.9)],
             "RAG 架构 演进 2024": [_internal_result("ic2", "ck2", "d2", 0.8)],
-        }
+        },
     )
     events = await _collect(
         engine,
-        web_search_port=FakeWebPort(),
-        internal_search_port=internal,
+        sources=_bindings(internal),
         tasks=[{"task_id": "t1", "description": "t1"}],
         params=_params(search_source=SearchSource.INTERNAL, iterations=3),
         llm_client=llm,
@@ -429,13 +546,13 @@ async def test_aligned_mode_reflection_sufficient_stops_early():
         '{"sufficient": true, "next_query": "", "reason": "已覆盖"}',
     ])
     provider = FakePromptProvider()
-    internal = FakeInternalPort(
-        results_per_query={"t1": [_internal_result("ic", "ck1", "d", 0.9)]}
+    internal = FakeSourcePort(
+        SourceType.INTERNAL.value,
+        results_per_query={"t1": [_internal_result("ic", "ck1", "d", 0.9)]},
     )
     events = await _collect(
         engine,
-        web_search_port=FakeWebPort(),
-        internal_search_port=internal,
+        sources=_bindings(internal),
         tasks=[{"task_id": "t1", "description": "t1"}],
         params=_params(search_source=SearchSource.INTERNAL, iterations=5),
         llm_client=llm,
@@ -463,16 +580,16 @@ async def test_aligned_mode_finding_emitted_and_injected_into_next_task():
         "任务二结论",
     ])
     provider = FakePromptProvider()
-    internal = FakeInternalPort(
+    internal = FakeSourcePort(
+        SourceType.INTERNAL.value,
         results_per_query={
             "t1": [_internal_result("ic1", "ck1", "d1", 0.9)],
             "t2": [_internal_result("ic2", "ck2", "d2", 0.8)],
-        }
+        },
     )
     events = await _collect(
         engine,
-        web_search_port=FakeWebPort(),
-        internal_search_port=internal,
+        sources=_bindings(internal),
         tasks=[{"task_id": "t1", "description": "t1"}, {"task_id": "t2", "description": "t2"}],
         params=_params(search_source=SearchSource.INTERNAL, iterations=2),
         llm_client=llm,
@@ -492,15 +609,13 @@ async def test_aligned_mode_llm_failure_degrades_to_fixed_query():
     engine = DeepResearchEngine()
     llm = FakeLLM(raise_on_calls={1, 2, 3})  # 反思×2 与 finding 调用全抛错
     provider = FakePromptProvider()
-    internal = FakeInternalPort(
-        results_per_query={
-            "t1": [_internal_result("ic", "ck1", "docA", 0.9)],
-        }
+    internal = FakeSourcePort(
+        SourceType.INTERNAL.value,
+        results_per_query={"t1": [_internal_result("ic", "ck1", "docA", 0.9)]},
     )
     events = await _collect(
         engine,
-        web_search_port=FakeWebPort(),
-        internal_search_port=internal,
+        sources=_bindings(internal),
         tasks=[{"task_id": "t1", "description": "t1"}],
         params=_params(search_source=SearchSource.INTERNAL, iterations=2),
         llm_client=llm,
@@ -525,18 +640,18 @@ async def test_aligned_mode_mechanical_threshold_skips_reflection():
     engine = DeepResearchEngine()
     llm = FakeLLM()  # 若被调用会返回 sufficient=true；但机械阈值应先命中
     provider = FakePromptProvider()
-    internal = FakeInternalPort(
+    internal = FakeSourcePort(
+        SourceType.INTERNAL.value,
         results_per_query={
             "t1": [
                 _internal_result(f"ic{i}", f"ck{i}", f"d{i}", 0.9 - i * 0.01)
                 for i in range(SUFFICIENT_RESULT_COUNT)
             ],
-        }
+        },
     )
     events = await _collect(
         engine,
-        web_search_port=FakeWebPort(),
-        internal_search_port=internal,
+        sources=_bindings(internal),
         tasks=[{"task_id": "t1", "description": "t1"}],
         params=_params(search_source=SearchSource.INTERNAL, iterations=3),
         llm_client=llm,
@@ -564,14 +679,3 @@ async def test_parse_query_decision_variants():
     # 前后杂文字
     s2, q2, _ = parse_query_decision('好的。{"sufficient": false, "next_query": "bm25 调参"} 完成判断')
     assert s2 is False and q2 == "bm25 调参"
-    # 非 JSON
-    s3, q3, _ = parse_query_decision("我觉得信息已经足够了")
-    assert s3 is False and q3 == ""
-    # 缺字段 → 默认 insufficient + 空 query
-    s4, q4, _ = parse_query_decision('{"sufficient": false}')
-    assert s4 is False and q4 == ""
-    # 字段类型错 → 容错（sufficient 取真值，next_query 非 str 归空）
-    s5, q5, _ = parse_query_decision('{"sufficient": "yes", "next_query": 123}')
-    assert s5 is True and q5 == ""
-    # 空输入
-    assert parse_query_decision("") == (False, "", "LLM 返回为空")

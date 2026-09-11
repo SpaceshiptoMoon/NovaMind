@@ -2,17 +2,18 @@
 Deep Research 核心引擎：可复用的研究机制（查询分析/任务分解/迭代检索/综合）。
 
 本模块为纯逻辑层，不得 import ``novamind.features.*`` / ``novamind.setting.*`` /
-ORM 模型 / ``core.database``。LLM 客户端、prompt 提供者、检索端口、日志均按调用注入
+ORM 模型 / ``core.database``。LLM 客户端、prompt 提供者、检索数据源、日志均按调用注入
 （AgentEngine 风格）；引擎类无状态。
 
-- 纯模块函数：检索结果清洗/外部搜索决策/充分性/去重/关键来源/上下文格式化/
-  观察摘要/query 决策解析/计划解析 + 常量 + prompt key。
+- 纯模块函数：检索结果清洗/充分性/去重/关键来源/上下文格式化/观察摘要/
+  query 决策解析/计划解析 + 常量 + prompt key。
 - ``DeepResearchEngine`` 类：``analyze_query``/``analyze_plan``（deer-flow planner
   对齐）/``synthesize_report[_stream]``（按调用接 llm_client + prompt_provider）+
   ``background_investigation``（规划前单轮背景检索）+ ``search``（迭代检索循环，
-  AsyncIterator[SearchEvent]，按调用接 web_search_port/internal_search_port；
-  llm_client/prompt_provider 可选注入——注入即启用 deer-flow 对齐的观察驱动模式；
-  循环内按 step_type 路由 research/processing 步骤）。
+  AsyncIterator[SearchEvent]，按调用接 ``sources: List[SearchSourceBinding]``——
+  可插拔数据源，每轮迭代查全部启用源；llm_client/prompt_provider 可选注入——
+  注入即启用 deer-flow 对齐的观察驱动模式；循环内按 step_type 路由
+  research/processing 步骤）。
 """
 from __future__ import annotations
 
@@ -23,8 +24,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.engines.ports import PromptProvider
-from novamind.engines.search_ports import WebSearchPort
-from novamind.engines.deep_research.ports import InternalSearchPort
+from novamind.engines.deep_research.sources import SearchSourceBinding
 from novamind.engines.deep_research.types import (
     EngineResearchParams,
     IterationProgress,
@@ -33,6 +33,7 @@ from novamind.engines.deep_research.types import (
     SearchComplete,
     SearchEvent,
     SearchSource,
+    SourceType,
     StepType,
     TaskFailed,
     TaskFinding,
@@ -74,23 +75,6 @@ def _sanitize_search_field(text: str) -> str:
     for marker in markers:
         sanitized = sanitized.replace(marker, "")
     return sanitized.strip()
-
-
-def should_use_external_search(search_source: SearchSource, iteration: int) -> bool:
-    """动态决策是否使用外部搜索。
-
-    - external：始终外部
-    - internal：始终内部
-    - hybrid：首次迭代内部优先，后续交替（奇数迭代外部）
-    """
-    if search_source == SearchSource.EXTERNAL:
-        return True
-    if search_source == SearchSource.INTERNAL:
-        return False
-    # hybrid
-    if iteration == 0:
-        return False
-    return iteration % 2 == 1
 
 
 def is_sufficient_results(results: List[Any], iteration: int) -> bool:
@@ -425,43 +409,25 @@ class DeepResearchEngine:
     async def background_investigation(
         self,
         *,
-        web_search_port: Optional[WebSearchPort],
-        internal_search_port: Optional[InternalSearchPort],
+        sources: List[SearchSourceBinding],
         query: str,
         params: EngineResearchParams,
         max_results: int = BACKGROUND_INVESTIGATION_MAX_RESULTS,
     ) -> List[Dict[str, Any]]:
         """规划前背景调查（deer-flow background_investigator 对齐）。
 
-        单轮检索（不调 LLM）：按 ``should_use_external_search(source, iteration=0)``
-        路由数据源（hybrid 首轮内部优先，与主循环语义一致），结果归一化 + 去重。
-        任何异常降级返回 []，不阻断规划。
+        单轮检索（不调 LLM）：逐启用数据源查询（每轮查全部源语义），结果归一化 +
+        去重。per-source 失败跳过（与主循环单源降级一致）；全部源失败或无启用源
+        降级返回 []，不阻断规划。
         """
         deduped: List[Dict[str, Any]] = []
-        try:
-            use_external = should_use_external_search(params.search_source, iteration=0)
-            if use_external:
-                if web_search_port is None:
-                    return []
-                raw = await web_search_port.search(query, max_results=max_results)
-                results = [
-                    {
-                        "source_type": "external",
-                        "content": getattr(r, "content", "") or getattr(r, "snippet", ""),
-                        "url": getattr(r, "url", ""),
-                        "title": getattr(r, "title", ""),
-                        "score": getattr(r, "score", 0.0),
-                    }
-                    for r in raw
-                ]
-            else:
-                if internal_search_port is None:
-                    return []
-                results = await internal_search_port.search(query, top_k=max_results)
-            deduplicate_results(deduped, results)
-        except Exception:
-            # 背景调查失败不影响主流程（planner 拿到空背景照样规划）
-            return []
+        for binding in sources:
+            try:
+                results = await binding.port.search(query, top_k=max_results)
+                deduplicate_results(deduped, results)
+            except Exception:
+                # 单源失败降级跳过，不影响其余源与主流程
+                continue
         # content 截断（防 plan JSON 膨胀）
         for r in deduped:
             if len(r.get("content", "")) > BACKGROUND_RESULT_SNIPPET_CHARS:
@@ -558,8 +524,7 @@ class DeepResearchEngine:
     async def search(
         self,
         *,
-        web_search_port: Optional[WebSearchPort],
-        internal_search_port: Optional[InternalSearchPort],
+        sources: List[SearchSourceBinding],
         tasks: List[Dict[str, Any]],
         params: EngineResearchParams,
         logger: Optional[Logger] = None,
@@ -570,11 +535,11 @@ class DeepResearchEngine:
 
         两种模式（llm_client=None 时走降级路径，行为与历史版本一致）：
 
-        **降级模式**（llm_client 未注入）：忠实复现原非流 ``_execute_research_search``
-        语义（R1）——逐任务串行；每任务多轮迭代按 ``should_use_external_search``
-        决策外部/内部；固定 query（任务描述）重复检索；每任务内按 URL/标题/chunk_id
-        去重（``deduplicate_results`` 原地）；``is_sufficient_results`` 命中则提前结束；
-        单任务抛错 → ``TaskFailed``，catch-and-continue。
+        **降级模式**（llm_client 未注入）：逐任务串行；每任务多轮迭代，每轮查
+        **全部启用数据源**（``sources`` 逐 binding 查询）；固定 query（任务描述）
+        重复检索；每任务内按 URL/标题/chunk_id 去重（``deduplicate_results`` 原地）；
+        ``is_sufficient_results`` 命中则提前结束；单源失败降级跳过，全部源失败才
+        ``TaskFailed``，catch-and-continue。
 
         **观察驱动模式**（deer-flow 对齐，llm_client + prompt_provider 注入）：
         - 每轮检索后 LLM 反思（``research_generate_query``）：输出
@@ -587,12 +552,12 @@ class DeepResearchEngine:
         - 机械阈值 ``is_sufficient_results`` 保留为成本兜底（先于 LLM 反思判断）。
 
         签名除新增可空 ``llm_client``/``prompt_provider`` 外不含其它 LLM 参数：
-        循环本体不接 feature DTO。归一化外部 ``WebSearchResult`` 与内部 dict
-        结果为统一 dict 形状（与纯函数及 feature 持久化一致）。
+        循环本体不接 feature DTO。数据源经 ``sources`` 注入（可插拔，binding.port
+        产出统一 dict 形状结果，归一化在 feature 适配器完成），与纯函数及 feature
+        持久化一致。
         """
         all_results: List[Dict[str, Any]] = []
-        total_internal = 0
-        total_external = 0
+        source_counts: Dict[str, int] = {}
         total_steps = len(tasks) * params.iterations
         step_count = 0
         aligned = llm_client is not None and prompt_provider is not None
@@ -634,45 +599,43 @@ class DeepResearchEngine:
                         yield TaskFinding(task_id=task_id, finding=conclusion)
                     continue
                 task_results: List[Dict[str, Any]] = []
-                internal_count = 0
-                external_count = 0
                 for iteration in range(params.iterations):
                     step_count += 1
-                    use_external = should_use_external_search(params.search_source, iteration)
+                    # 每轮查全部启用源：逐源查询、逐源去重入 task_results；
+                    # per-source 失败降级跳过（失败源计数），全部源失败才抛错。
                     yield IterationProgress(
                         task_id=task_id,
                         iteration=iteration,
-                        use_external=use_external,
+                        use_external=any(
+                            b.source_type == SourceType.EXTERNAL.value for b in sources
+                        ),
                         step_count=step_count,
                         total_steps=total_steps,
                         current_results_count=len(task_results),
                         current_query=task_query,
+                        source_types=[b.source_type for b in sources],
                     )
-                    if use_external:
-                        if web_search_port is None:
-                            raise RuntimeError("外部检索未配置 web_search_port")
-                        raw = await web_search_port.search(
-                            task_query, max_results=params.external_max_results
-                        )
-                        results = [
-                            {
-                                "source_type": "external",
-                                "content": getattr(r, "content", "") or getattr(r, "snippet", ""),
-                                "url": getattr(r, "url", ""),
-                                "title": getattr(r, "title", ""),
-                                "score": getattr(r, "score", 0.0),
-                            }
-                            for r in raw
-                        ]
-                        external_count += 1
-                    else:
-                        if internal_search_port is None:
-                            raise RuntimeError("内部检索未配置 internal_search_port")
-                        results = await internal_search_port.search(
-                            task_query, top_k=params.top_k
-                        )
-                        internal_count += 1
-                    deduplicate_results(task_results, results)
+                    source_errors = 0
+                    for binding in sources:
+                        try:
+                            results = await binding.port.search(
+                                task_query, top_k=binding.top_k
+                            )
+                            deduplicate_results(task_results, results)
+                            source_counts[binding.source_type] = (
+                                source_counts.get(binding.source_type, 0) + 1
+                            )
+                        except Exception as e:
+                            source_errors += 1
+                            if logger is not None:
+                                logger.warning(
+                                    "数据源检索失败（降级跳过）",
+                                    task_id=task_id,
+                                    source_type=binding.source_type,
+                                    error=str(e),
+                                )
+                    if source_errors >= len(sources):
+                        raise RuntimeError("全部数据源检索失败")
                     # 机械充分性优先（成本兜底）：结果数达标直接收尾，不再花 LLM 反思
                     if is_sufficient_results(task_results, iteration):
                         break
@@ -701,10 +664,8 @@ class DeepResearchEngine:
                         break
                     if next_query:
                         task_query = next_query
-                # 任务成功：去重并入 all_results，累计计数
+                # 任务成功：去重并入 all_results
                 deduplicate_results(all_results, task_results)
-                total_internal += internal_count
-                total_external += external_count
                 # deer-flow 对齐：产出本任务 finding 摘要，供后续任务参考
                 if aligned and task_results:
                     finding = await self._generate_task_finding(
@@ -722,8 +683,9 @@ class DeepResearchEngine:
                 yield TaskFailed(task_id=task_id, error=str(e))
 
         summary = {
-            "internal_count": total_internal,
-            "external_count": total_external,
+            "internal_count": source_counts.get(SourceType.INTERNAL.value, 0),
+            "external_count": source_counts.get(SourceType.EXTERNAL.value, 0),
+            "source_counts": dict(source_counts),
             "total_results": len(all_results),
             "key_sources": extract_key_sources(all_results),
         }

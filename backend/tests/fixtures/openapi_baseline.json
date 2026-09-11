@@ -8105,7 +8105,7 @@
         "type": "object"
       },
       "SearchSource": {
-        "description": "检索来源枚举",
+        "description": "检索来源枚举\n\n作为\"预设组合\"使用：feature 装配点按它映射为启用的数据源类型列表\n（INTERNAL→[internal]、EXTERNAL→[external]、HYBRID→[internal, external]），\n见 ``sources.py`` 的可插拔数据源抽象。",
         "enum": [
           "internal",
           "external",

@@ -36,6 +36,7 @@ pytestmark = pytest.mark.unit
 # ---- deep_research 引擎侧模块 ----
 _ENGINE_DR_MODULES = [
     "novamind.engines.deep_research.types",
+    "novamind.engines.deep_research.sources",
     "novamind.engines.deep_research.ports",
     "novamind.engines.deep_research.errors",
     "novamind.engines.deep_research.engine",
@@ -155,7 +156,6 @@ def test_engine_pure_functions_present_and_pure():
     from novamind.engines.deep_research import engine as dr_engine
 
     for name in (
-        "should_use_external_search",
         "is_sufficient_results",
         "deduplicate_results",
         "extract_key_sources",
@@ -165,6 +165,11 @@ def test_engine_pure_functions_present_and_pure():
         "parse_plan",
     ):
         assert hasattr(dr_engine, name), f"engine.py 缺少纯函数: {name}"
+
+    # 已废弃：hybrid 奇偶交替决策函数（数据源泛化后每轮查全部启用源）
+    assert not hasattr(dr_engine, "should_use_external_search"), (
+        "should_use_external_search 已随数据源可插拔改造删除"
+    )
 
     for key in (
         "KEY_ANALYZE_QUERY",
@@ -350,8 +355,10 @@ def test_deep_research_service_maps_engine_error_to_feature_error():
 
 
 def test_deep_research_engine_search_signature():
-    """search 接 web/internal 端口 + tasks + params + logger + 可选 llm_client/prompt_provider（全 keyword-only）。
+    """search 接可插拔数据源列表 sources + tasks + params + logger + 可选 llm_client/prompt_provider（全 keyword-only）。
 
+    数据源泛化（可插拔）：原 web_search_port/internal_search_port 双参数由
+    ``sources: List[SearchSourceBinding]`` 取代，每轮迭代查全部启用源。
     deer-flow 对齐：llm_client/prompt_provider 为可选参数（默认 None = 降级固定 query
     循环），注入即启用观察驱动模式（反思充分性 + query 演化 + 跨任务 finding）。
     """
@@ -360,23 +367,39 @@ def test_deep_research_engine_search_signature():
     fn = DeepResearchEngine.search
     params = inspect.signature(fn).parameters
     expected = {
-        "web_search_port", "internal_search_port", "tasks", "params", "logger",
+        "sources", "tasks", "params", "logger",
         "llm_client", "prompt_provider",
     }
     found = set(params.keys()) - {"self"}
     assert expected <= found, (
         f"DeepResearchEngine.search 缺少参数: {expected - found}"
     )
+    assert "web_search_port" not in found, (
+        "search 不应再接 web_search_port（已由 sources 取代）"
+    )
+    assert "internal_search_port" not in found, (
+        "search 不应再接 internal_search_port（已由 sources 取代）"
+    )
     # llm_client/prompt_provider 必须有默认值 None（可选降级路径）
     for name in ("llm_client", "prompt_provider"):
         assert params[name].default is None, (
             f"{name} 应默认 None（降级固定 query 模式）"
         )
-    # web_search_port/internal_search_port/tasks/params/logger 均为 keyword-only
+    # sources/tasks/params/logger 均为 keyword-only
     for name in expected:
         assert params[name].kind == inspect.Parameter.KEYWORD_ONLY, (
             f"{name} 应为 keyword-only"
         )
+
+
+def test_background_investigation_signature():
+    """background_investigation 接 sources（可插拔数据源列表），不再接双端口。"""
+    from novamind.engines.deep_research.engine import DeepResearchEngine
+
+    params = inspect.signature(DeepResearchEngine.background_investigation).parameters
+    assert "sources" in params, "background_investigation 应接 sources 参数"
+    assert "web_search_port" not in params
+    assert "internal_search_port" not in params
 
 
 def test_host_internal_search_port_adapter_location():
