@@ -143,17 +143,54 @@
               <div class="setting-item">
                 <span>研究模式</span>
                 <el-select v-model="researchMode" size="small" style="width: 90px">
-                  <el-option label="快速" value="quick" />
-                  <el-option label="标准" value="standard" />
-                  <el-option label="深度" value="deep" />
+                  <el-option
+                    v-for="opt in RESEARCH_MODE_OPTIONS"
+                    :key="opt.value"
+                    :label="opt.label"
+                    :value="opt.value"
+                  />
                 </el-select>
               </div>
               <div class="setting-item">
                 <span>搜索源</span>
                 <el-select v-model="searchSource" size="small" style="width: 110px">
-                  <el-option label="混合搜索" value="hybrid" />
-                  <el-option label="仅知识库" value="internal" />
-                  <el-option label="仅网络" value="external" />
+                  <el-option
+                    v-for="opt in SOURCE_OPTIONS"
+                    :key="opt.value"
+                    :label="opt.label"
+                    :value="opt.value"
+                  />
+                </el-select>
+              </div>
+              <!-- KB 多选：空选 = 搜索空间下全部知识库（与后端 kb_ids 空语义一致） -->
+              <div v-if="searchSource !== 'external'" class="setting-item">
+                <span>知识库</span>
+                <el-select
+                  v-model="selectedKbIds"
+                  multiple
+                  collapse-tags
+                  placeholder="全部知识库"
+                  size="small"
+                  style="width: 150px"
+                >
+                  <el-option
+                    v-for="kb in spaceKbList"
+                    :key="kb.id"
+                    :label="kb.name"
+                    :value="kb.id"
+                  />
+                </el-select>
+              </div>
+              <!-- 外部 provider 选择：仅知识库模式不显示 -->
+              <div v-if="searchSource !== 'internal'" class="setting-item">
+                <span>搜索引擎</span>
+                <el-select v-model="selectedProvider" size="small" style="width: 110px">
+                  <el-option
+                    v-for="opt in PROVIDER_OPTIONS"
+                    :key="opt.value"
+                    :label="opt.label"
+                    :value="opt.value"
+                  />
                 </el-select>
               </div>
               <div class="setting-item">
@@ -294,6 +331,7 @@ import {
 import { useResearchStore } from '@/stores/research'
 import { researchApi } from '@/api/research'
 import { userApi } from '@/api/user'
+import { knowledgeBaseApi } from '@/api/knowledge/knowledgeBase'
 import type { AvailableModelItem, Research } from '@/api/types'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import ResearchPlanCard from '@/components/research/ResearchPlanCard.vue'
@@ -313,6 +351,45 @@ const sidebarVisible = ref(true)
 const researchMode = ref<'quick' | 'standard' | 'deep'>('standard')
 const searchSource = ref<'internal' | 'external' | 'hybrid'>('hybrid')
 const selectedModel = ref('')
+
+// 数据源选项（常量数组渲染：新数据源接入点在此加一行 + 后端注册对应工厂）
+const RESEARCH_MODE_OPTIONS = [
+  { label: '快速', value: 'quick' },
+  { label: '标准', value: 'standard' },
+  { label: '深度', value: 'deep' },
+] as const
+const SOURCE_OPTIONS = [
+  { label: '知识库 + 网络', value: 'hybrid' },
+  { label: '仅知识库', value: 'internal' },
+  { label: '仅网络', value: 'external' },
+] as const
+const PROVIDER_OPTIONS = [
+  { label: 'DuckDuckGo', value: 'duckduckgo' },
+  { label: 'Tavily', value: 'tavily' },
+  { label: 'SerpAPI', value: 'serpapi' },
+] as const
+// 外部搜索 provider（默认免费 DuckDuckGo）
+const selectedProvider = ref<'duckduckgo' | 'tavily' | 'serpapi'>('duckduckgo')
+// KB 多选（空数组 = 全部知识库）
+const selectedKbIds = ref<number[]>([])
+const spaceKbList = ref<{ id: number; name: string }[]>([])
+
+async function fetchSpaceKbs() {
+  if (!spaceId.value) return
+  try {
+    // status=1（活跃）与后端检索白名单 KnowledgeBaseStatus.ACTIVE 一致
+    const data = await knowledgeBaseApi.getKnowledgeBases(spaceId.value, { status: 1, limit: 100 })
+    spaceKbList.value = (data.items || []).map((kb) => ({ id: kb.id, name: kb.name }))
+  } catch {
+    // ignore
+  }
+}
+
+watch(spaceId, (id) => {
+  selectedKbIds.value = []
+  if (id) fetchSpaceKbs()
+}, { immediate: true })
+
 // 流程策略设置（deer-flow 对齐）
 const reportStyle = ref<'default' | 'academic' | 'popular_science' | 'news'>('default')
 const enableBackground = ref(true)
@@ -448,8 +525,11 @@ async function handleSend() {
       search_source: searchSource.value,
       internal_search: {
         top_k: advancedSettings.retrieval_top_k,
+        kb_ids: selectedKbIds.value.length > 0 ? selectedKbIds.value : undefined,
       },
-      external_search: {},
+      external_search: {
+        provider: selectedProvider.value,
+      },
       llm: {
         llm_model: selectedModel.value || undefined,
         temperature: advancedSettings.temperature / 10,

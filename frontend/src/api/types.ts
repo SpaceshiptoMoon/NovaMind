@@ -1065,8 +1065,6 @@ export interface ResearchExternalSearch {
   provider?: 'tavily' | 'serpapi' | 'duckduckgo'
   max_results?: number
   search_depth?: 'basic' | 'advanced'
-  time_range?: 'day' | 'week' | 'month' | 'year'
-  region?: string
 }
 
 export interface ResearchLLM {
