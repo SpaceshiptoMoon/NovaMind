@@ -4,19 +4,19 @@
    主按钮软黑（hover 提亮），全 UI 无纯 #000/纯 #FFF 大平面
    ======================================== */
 :root {
-  /* Primary — 软黑（亮度 9%，shadcn neutral primary 同级）；图标/焦点/链接/活动态 */
-  --color-primary: #171717;
-  --color-primary-hover: #2E2E2E;
+  /* Primary — 深灰（zinc-700，介于中灰与软黑之间的「有质感的深」）；图标/焦点/链接/活动态 */
+  --color-primary: #3F3F46;
+  --color-primary-hover: #52525B;
   --color-primary-subtle: #F5F5F5;
-  --color-primary-muted: rgba(23, 23, 23, 0.05);
+  --color-primary-muted: rgba(63, 63, 70, 0.06);
 
-  /* 实心主按钮：软黑，hover 提亮（黑按钮 hover 变更黑会"下陷"） */
-  --color-btn-primary: #171717;
-  --color-btn-primary-hover: #2E2E2E;
+  /* 实心主按钮：深灰，hover 提亮（深按钮 hover 变更深会"下陷"） */
+  --color-btn-primary: #3F3F46;
+  --color-btn-primary-hover: #52525B;
 
-  /* Accent — 与主色统一软黑 */
-  --color-accent: #171717;
-  --color-accent-hover: #2E2E2E;
+  /* Accent — 与主色统一深灰 */
+  --color-accent: #3F3F46;
+  --color-accent-hover: #52525B;
   --color-accent-subtle: #F5F5F5;
 
   /* Text — 中性灰阶（shadcn neutral：前景 9%、次级 45%、弱化 64%） */
@@ -38,7 +38,7 @@
   /* Border — 中性灰 */
   --color-border: #E5E5E5;
   --color-border-light: #EFEFEF;
-  --color-border-focus: #171717;
+  --color-border-focus: #3F3F46;
 
   /* Semantic */
   --color-success: #16A34A;

@@ -9,14 +9,14 @@
    Element Plus Theme Overrides — Clean Modern
    ======================================== */
 :root {
-  /* Element Plus 主色切中性软黑：所有 el-button--primary / el-link / el-switch /
-     el-tabs / el-pagination / el-checkbox 等组件统一 #171717 系灰阶 */
-  --el-color-primary: #171717;
-  --el-color-primary-light-3: #4A4A4A;
-  --el-color-primary-light-5: #7A7A7A;
-  --el-color-primary-light-7: #ABABAB;
-  --el-color-primary-light-9: #F5F5F5;
-  --el-color-primary-dark-2: #2E2E2E;
+  /* Element Plus 主色切中性深灰：所有 el-button--primary / el-link / el-switch /
+     el-tabs / el-pagination / el-checkbox 等组件统一 #3F3F46 系灰阶 */
+  --el-color-primary: #3F3F46;
+  --el-color-primary-light-3: #6B6B73;
+  --el-color-primary-light-5: #97979D;
+  --el-color-primary-light-7: #C3C3C6;
+  --el-color-primary-light-9: #F0F0F1;
+  --el-color-primary-dark-2: #333338;
 
   /* Element Plus success 恢复功能绿（el-tag / el-message / 校验状态）；
      warning 琥珀、danger 红保留为功能色 */
