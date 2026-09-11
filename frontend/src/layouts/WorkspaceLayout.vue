@@ -161,8 +161,9 @@
       </template>
     </aside>
 
-    <!-- Collapse toggle -->
+    <!-- Collapse toggle（仅工作台路由，侧栏存在时才有意义） -->
     <button
+      v-if="isWorkspaceRoute"
       class="sidebar-toggle"
       :class="{ 'is-collapsed': sidebarCollapsed }"
       @click="sidebarCollapsed = !sidebarCollapsed"
@@ -757,10 +758,11 @@ onMounted(async () => {
    Sidebar Toggle — fixed 定位
    ======================================== */
 .sidebar-toggle {
+  /* 吸附在侧栏右缘垂直居中：fixed 相对视口，配合左侧栏宽度定位 */
   position: fixed;
   top: 50%;
   transform: translateY(-50%);
-  z-index: var(--z-raised);
+  z-index: var(--z-sticky); /* 与顶栏同级，避免被不透明浮层盖住热区 */
   width: 20px;
   height: 40px;
   display: flex;
