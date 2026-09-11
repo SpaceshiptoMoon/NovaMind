@@ -1,61 +1,58 @@
 <template>
   <div class="knowledge-base-view">
-    <!-- 知识库卡片网格 -->
+    <!-- 知识库卡片网格（ima 竖卡：色块缩略区 + 名称 + 描述 + 元信息条） -->
     <div v-loading="loading" class="kb-grid">
       <div
         v-for="(kb, index) in knowledgeBases"
         :key="kb.id"
         class="kb-card"
+        @click="goToDocuments(kb.id)"
       >
-        <div class="kb-card-body" @click="goToDocuments(kb.id)">
-          <!-- 头部：名称 + 状态 -->
-          <div class="kb-card-header">
-            <div class="kb-card-title-row">
-              <div class="kb-color-dot" :style="{ background: getColor(index) }" />
-              <h4 class="kb-name">{{ kb.name }}</h4>
-            </div>
-            <span class="kb-status-label">{{ kb.status === 1 ? '活跃' : '已归档' }}</span>
-          </div>
-
-          <!-- 描述 -->
-          <p class="kb-desc">{{ kb.config?.description || '暂无描述' }}</p>
-
-          <!-- 元信息 -->
-          <div class="kb-meta">
-            <span class="meta-item">
-              <el-icon :size="14"><Document /></el-icon>
-              {{ kb.stats?.document_count ?? 0 }} 文档
-            </span>
-          </div>
+        <!-- 缩略区：首字 + 状态角标 -->
+        <div class="kb-card-cover" :style="{ ...getCoverBg(index), color: getCoverFg(index) }">
+          <span class="kb-cover-initial">{{ kb.name.charAt(0) }}</span>
+          <span class="kb-status-label">{{ kb.status === 1 ? '活跃' : '已归档' }}</span>
         </div>
 
-        <!-- 操作按钮（hover 显示） -->
-        <div class="kb-actions">
-          <el-tooltip content="编辑" placement="top">
-            <el-button size="small" circle aria-label="编辑" @click.stop="showEditDialog(kb)">
-              <el-icon><Edit /></el-icon>
-            </el-button>
-          </el-tooltip>
-          <el-tooltip content="配置" placement="top">
-            <el-button size="small" circle aria-label="配置" @click.stop="goConfig(kb)">
-              <el-icon><Setting /></el-icon>
-            </el-button>
-          </el-tooltip>
-          <el-tooltip v-if="kb.status === 1" content="归档" placement="top">
-            <el-button size="small" circle aria-label="归档" @click.stop="handleArchive(kb)">
-              <el-icon><FolderOpened /></el-icon>
-            </el-button>
-          </el-tooltip>
-          <el-tooltip v-else content="激活" placement="top">
-            <el-button size="small" circle aria-label="激活" @click.stop="handleUnarchive(kb)">
-              <el-icon><FolderAdd /></el-icon>
-            </el-button>
-          </el-tooltip>
-          <el-tooltip content="删除" placement="top">
-            <el-button size="small" circle aria-label="删除" @click.stop="handleDeleteSingle(kb)">
-              <el-icon><Delete /></el-icon>
-            </el-button>
-          </el-tooltip>
+        <!-- 主体 -->
+        <div class="kb-card-body">
+          <h4 class="kb-name">{{ kb.name }}</h4>
+          <p class="kb-desc">{{ kb.config?.description || '暂无描述' }}</p>
+
+          <!-- 元信息条 + hover 操作 -->
+          <div class="kb-card-footer">
+            <span class="meta-item">
+              <el-icon :size="13"><Document /></el-icon>
+              {{ kb.stats?.document_count ?? 0 }} 文档
+            </span>
+            <div class="kb-actions" @click.stop>
+              <el-tooltip content="编辑" placement="top">
+                <el-button size="small" circle text aria-label="编辑" @click="showEditDialog(kb)">
+                  <el-icon><Edit /></el-icon>
+                </el-button>
+              </el-tooltip>
+              <el-tooltip content="配置" placement="top">
+                <el-button size="small" circle text aria-label="配置" @click="goConfig(kb)">
+                  <el-icon><Setting /></el-icon>
+                </el-button>
+              </el-tooltip>
+              <el-tooltip v-if="kb.status === 1" content="归档" placement="top">
+                <el-button size="small" circle text aria-label="归档" @click="handleArchive(kb)">
+                  <el-icon><FolderOpened /></el-icon>
+                </el-button>
+              </el-tooltip>
+              <el-tooltip v-else content="激活" placement="top">
+                <el-button size="small" circle text aria-label="激活" @click="handleUnarchive(kb)">
+                  <el-icon><FolderAdd /></el-icon>
+                </el-button>
+              </el-tooltip>
+              <el-tooltip content="删除" placement="top">
+                <el-button size="small" circle text aria-label="删除" @click="handleDeleteSingle(kb)">
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </el-tooltip>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -139,21 +136,24 @@ const formRules: FormRules = {
 
 // === 色板 ===
 
-// 单色灰阶色板（无绿色），靠明度区分图表项。
-// 取值限定在「白卡与暗卡上都可见」的中灰区间，不随主题反转（色板属数据可视化常量）
-const colorPalette = [
-  '#566070',
-  '#8b9199',
-  '#a4acb5',
-  '#6b7280',
-  '#9ca3af',
-  '#737b85',
-  '#b6bdc5',
-  '#848d98',
+// KB 缩略区柔和底色（ima 文件卡片同款思路：低饱和浅色底 + 深色首字）
+const coverPalette = [
+  { bg: '#EEF2FF', fg: '#4F46E5' }, // 靛
+  { bg: '#ECFEFF', fg: '#0E7490' }, // 青
+  { bg: '#F0FDF4', fg: '#15803D' }, // 绿
+  { bg: '#FFF7ED', fg: '#C2410C' }, // 橙
+  { bg: '#FDF4FF', fg: '#7E22CE' }, // 紫
+  { bg: '#FEF2F2', fg: '#B91C1C' }, // 红
+  { bg: '#F8FAFC', fg: '#475569' }, // 灰蓝
 ]
 
-function getColor(index: number): string {
-  return colorPalette[index % colorPalette.length] ?? '#6b7280'
+function getCoverBg(index: number): { background: string } {
+  const c = coverPalette[index % coverPalette.length] ?? coverPalette[0]
+  return { background: c?.bg ?? '#F8FAFC' }
+}
+
+function getCoverFg(index: number): string {
+  return coverPalette[index % coverPalette.length]?.fg ?? '#475569'
 }
 
 // === 跳转配置向导页 ===
@@ -302,114 +302,113 @@ onMounted(() => {
 
 .kb-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: var(--space-4);
 }
 
-/* 空状态需横跨所有列，否则只占一个 280px 单元格、图标视觉偏左不居中 */
+/* 空状态需横跨所有列，否则只占一个单元格、图标视觉偏左不居中 */
 .kb-grid > :deep(.empty-state) {
   grid-column: 1 / -1;
 }
 
+/* ima 竖卡：缩略区在上 + 主体在下 */
 .kb-card {
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
   overflow: hidden;
   box-shadow: var(--shadow-xs);
-  transition: border-color var(--transition-fast), background-color var(--transition-fast), box-shadow var(--transition-fast);
-  display: flex;
-  flex-direction: row;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast),
+    transform var(--transition-base);
 }
 
 .kb-card:hover {
-  border-color: var(--color-text-faint);
-  background: var(--color-bg-card-elevated);
-  box-shadow: var(--shadow-sm);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
 }
 
-.kb-card-body {
-  padding: var(--space-4) var(--space-5);
-  cursor: pointer;
-  flex: 1;
-  min-width: 0;
-}
-
-.kb-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: var(--space-3);
-}
-
-.kb-card-title-row {
+/* 缩略区：低饱和色底 + 大号首字 + 状态角标 */
+.kb-card-cover {
+  position: relative;
+  height: 96px;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  flex: 1;
+  justify-content: center;
 }
 
-.kb-color-dot {
-  width: 8px;
-  height: 8px;
+.kb-cover-initial {
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  user-select: none;
+}
+
+.kb-status-label {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 11px;
+  font-weight: var(--weight-medium);
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(0, 0, 0, 0.28);
+  padding: 2px 8px;
   border-radius: var(--radius-full);
-  flex-shrink: 0;
+  backdrop-filter: blur(4px);
+}
+
+/* 主体 */
+.kb-card-body {
+  padding: var(--space-3) var(--space-4) var(--space-2);
 }
 
 .kb-name {
-  margin: 0;
+  margin: 0 0 4px;
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: color var(--transition-fast);
-}
-
-.kb-card:hover .kb-name {
-  color: var(--color-primary);
-}
-
-.kb-status-label {
-  flex-shrink: 0;
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  font-weight: var(--weight-medium);
 }
 
 .kb-desc {
   margin: 0 0 var(--space-3);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   color: var(--color-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-  line-height: var(--leading-relaxed);
+  line-height: var(--leading-normal);
+  min-height: calc(var(--leading-normal) * 2 * var(--text-xs));
 }
 
-.kb-meta {
+/* 底部：元信息 + hover 操作 */
+.kb-card-footer {
   display: flex;
-  gap: var(--space-4);
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border-light);
 }
 
 .meta-item {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
 }
 
 .kb-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
-  border-top: 1px solid var(--color-border-light);
+  gap: 0;
   opacity: 0;
   transition: opacity var(--transition-base);
 }

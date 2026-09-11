@@ -96,74 +96,72 @@
           </div>
         </div>
 
-        <div v-loading="loading" class="doc-table-wrap">
-          <el-table
-            :data="documents"
-            :empty-text="searchKeyword || statusFilter !== undefined ? '没有符合条件的文档' : '暂无文档，点击右上角上传'"
-            @selection-change="handleSelectionChange"
-            class="doc-table"
+        <!-- 文档卡片网格（ima 式：类型色块 + 文件名 + 元信息 + hover 操作） -->
+        <div v-loading="loading" class="doc-grid-wrap">
+          <div v-if="documents.length === 0 && !loading" class="doc-grid-empty">
+            {{ searchKeyword || statusFilter !== undefined ? '没有符合条件的文档' : '暂无文档，点击左上角上传' }}
+          </div>
+          <div
+            v-for="doc in documents"
+            :key="doc.id"
+            class="doc-card"
+            @click="goToDetail(doc.id)"
           >
-            <el-table-column type="selection" width="45" />
-            <el-table-column prop="filename" label="文件名" min-width="220">
-              <template #default="{ row }">
-                <div class="filename-cell" @click="goToDetail(row.id)">
-                  <div
-                    class="file-icon"
-                    :style="{ background: getFileTypeStyle(row.file_type).bg, color: getFileTypeStyle(row.file_type).color }"
-                  >
-                    {{ row.file_type.toUpperCase().slice(0, 3) }}
-                  </div>
-                  <span class="file-name">{{ row.filename }}</span>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="file_size" label="大小" min-width="80" align="center">
-              <template #default="{ row }">
-                <span class="text-muted">{{ formatFileSize(row.file_size) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="chunk_count" label="分块" min-width="64" align="center">
-              <template #default="{ row }">
-                <span class="text-muted">{{ row.chunk_count ?? '-' }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="status" label="状态" min-width="80" align="center">
-              <template #default="{ row }">
-                <el-tag :type="getStatusConfig(row.status).type" effect="plain" size="small">
-                  {{ getStatusConfig(row.status).text }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="created_at" label="上传时间" min-width="140">
-              <template #default="{ row }">
-                <span class="text-muted">{{ formatDate(row.created_at) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="" min-width="120" fixed="right" align="right">
-              <template #default="{ row }">
-                <div class="action-buttons">
-                  <el-tooltip v-if="canProcess(row)" content="首次处理" placement="top">
-                    <el-button :icon="VideoPlay" circle size="small" type="primary" @click="handleProcessSingle(row)" />
-                  </el-tooltip>
-                  <el-tooltip v-if="canReprocess(row)" content="重新处理" placement="top">
-                    <el-button :icon="RefreshRight" circle size="small" type="primary" @click="handleProcessSingle(row)" />
-                  </el-tooltip>
-                  <el-tooltip v-if="canCancel(row)" content="取消" placement="top">
-                    <el-button :icon="Close" circle size="small" type="warning" @click="handleCancelSingle(row)" />
-                  </el-tooltip>
-                  <el-tooltip v-if="canRetry(row)" content="重试" placement="top">
-                    <el-button :icon="RefreshRight" circle size="small" type="warning" @click="handleRetrySingle(row)" />
-                  </el-tooltip>
-                  <el-tooltip content="详情" placement="top">
-                    <el-button :icon="View" circle size="small" @click="goToDetail(row.id)" />
-                  </el-tooltip>
-                  <el-tooltip v-if="canDelete(row)" content="删除" placement="top">
-                    <el-button :icon="Delete" circle size="small" type="danger" @click="handleDelete(row)" />
-                  </el-tooltip>
-                </div>
-              </template>
-            </el-table-column>
-          </el-table>
+            <!-- 选择复选框（hover / 已选显示） -->
+            <el-checkbox
+              class="doc-card-check"
+              :model-value="selectedIds.includes(doc.id)"
+              @click.stop
+              @change="toggleDocSelection(doc)"
+            />
+
+            <!-- 类型色块（ima 缩略区语言） -->
+            <div
+              class="doc-card-cover"
+              :style="{ background: getFileTypeStyle(doc.file_type).bg, color: getFileTypeStyle(doc.file_type).color }"
+            >
+              {{ doc.file_type.toUpperCase().slice(0, 3) }}
+            </div>
+
+            <!-- 主体 -->
+            <div class="doc-card-body">
+              <div class="doc-card-name" :title="doc.filename">{{ doc.filename }}</div>
+              <div class="doc-card-meta">
+                <span>{{ formatFileSize(doc.file_size) }}</span>
+                <span class="meta-dot">·</span>
+                <span>{{ doc.chunk_count ?? 0 }} 分块</span>
+                <span class="meta-dot">·</span>
+                <span>{{ formatDate(doc.created_at) }}</span>
+              </div>
+            </div>
+
+            <!-- 状态 + 操作 -->
+            <div class="doc-card-side">
+              <el-tag :type="getStatusConfig(doc.status).type" effect="plain" size="small">
+                {{ getStatusConfig(doc.status).text }}
+              </el-tag>
+              <div class="doc-card-actions" @click.stop>
+                <el-tooltip v-if="canProcess(doc)" content="首次处理" placement="top">
+                  <el-button :icon="VideoPlay" circle size="small" type="primary" @click="handleProcessSingle(doc)" />
+                </el-tooltip>
+                <el-tooltip v-if="canReprocess(doc)" content="重新处理" placement="top">
+                  <el-button :icon="RefreshRight" circle size="small" type="primary" @click="handleProcessSingle(doc)" />
+                </el-tooltip>
+                <el-tooltip v-if="canCancel(doc)" content="取消" placement="top">
+                  <el-button :icon="Close" circle size="small" type="warning" @click="handleCancelSingle(doc)" />
+                </el-tooltip>
+                <el-tooltip v-if="canRetry(doc)" content="重试" placement="top">
+                  <el-button :icon="RefreshRight" circle size="small" type="warning" @click="handleRetrySingle(doc)" />
+                </el-tooltip>
+                <el-tooltip content="详情" placement="top">
+                  <el-button :icon="View" circle size="small" @click="goToDetail(doc.id)" />
+                </el-tooltip>
+                <el-tooltip v-if="canDelete(doc)" content="删除" placement="top">
+                  <el-button :icon="Delete" circle size="small" type="danger" @click="handleDelete(doc)" />
+                </el-tooltip>
+              </div>
+            </div>
+          </div>
         </div>
 
         <Pagination
@@ -340,6 +338,16 @@ const uploadTipText = computed(() => {
 
 function handleSelectionChange(rows: DocType[]) {
   selectedIds.value = rows.map((r) => r.id)
+}
+
+// 卡片网格的选择切换（替代 el-table selection 事件）
+function toggleDocSelection(doc: DocType) {
+  const idx = selectedIds.value.indexOf(doc.id)
+  if (idx >= 0) {
+    selectedIds.value.splice(idx, 1)
+  } else {
+    selectedIds.value.push(doc.id)
+  }
 }
 
 /**
@@ -905,52 +913,9 @@ onMounted(async () => {
   width: 220px;
 }
 
-.filename-cell {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  cursor: pointer;
-}
-
-.file-icon {
-  width: 32px;
-  height: 38px;
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-bold);
-  flex-shrink: 0;
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow var(--transition-fast);
-}
-
-.filename-cell:hover .file-icon {
-  box-shadow: var(--shadow-md);
-}
-
-.file-name {
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  font-weight: var(--weight-medium);
-  transition: color var(--transition-fast);
-}
-
-.filename-cell:hover .file-name {
-  color: var(--color-primary);
-}
-
 .text-muted {
   font-size: var(--text-sm);
   color: var(--color-text-muted);
-}
-
-.action-buttons {
-  display: flex;
-  gap: var(--space-1);
-  justify-content: flex-end;
-  flex-wrap: wrap;
 }
 
 .upload-area :deep(.el-upload-dragger) {
@@ -1015,35 +980,124 @@ onMounted(async () => {
   line-height: var(--leading-relaxed);
 }
 
-.doc-table-wrap {
-  border: 1px solid var(--color-border);
+/* ========================================
+   文档卡片网格（ima 式：类型色块 + 文件名 + 元信息 + hover 操作）
+   ======================================== */
+.doc-grid-wrap {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-3);
+  min-height: 200px;
+}
+
+.doc-grid-empty {
+  grid-column: 1 / -1;
+  padding: var(--space-10) var(--space-4);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-text-faint);
+}
+
+.doc-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border-light);
   border-radius: var(--radius-lg);
-  overflow: hidden;
-  box-shadow: var(--shadow-xs);
-}
-
-.doc-table-wrap :deep(.el-table) {
-  --el-table-border-color: transparent;
-}
-
-.doc-table-wrap :deep(.el-table th.el-table__cell) {
   background: var(--color-bg-card);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast),
+    transform var(--transition-base);
+}
+
+.doc-card:hover {
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* 选择复选框：hover / 已选时可见 */
+.doc-card-check {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.doc-card:hover .doc-card-check,
+.doc-card-check.is-checked {
+  opacity: 1;
+}
+
+/* 类型色块（缩略区语言） */
+.doc-card-cover {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-lg);
+  font-size: 12px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+/* 主体 */
+.doc-card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.doc-card-name {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: var(--text-xs);
   color: var(--color-text-muted);
-  font-weight: var(--weight-medium);
-  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+  overflow: hidden;
 }
 
-.doc-table-wrap :deep(.el-table td.el-table__cell) {
-  border-bottom: 1px solid var(--color-border-light);
+.meta-dot {
+  color: var(--color-text-faint);
 }
 
-.doc-table-wrap :deep(.el-table__body tr:last-child td.el-table__cell) {
-  border-bottom: none;
+/* 状态 + hover 操作 */
+.doc-card-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
-.doc-table-wrap :deep(.el-table tr:hover > td.el-table__cell) {
-  background: var(--color-bg-hover) !important;
+.doc-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--transition-base);
+}
+
+.doc-card:hover .doc-card-actions {
+  opacity: 1;
 }
 
 .document-view :deep(.el-upload-list) {
@@ -1061,7 +1115,7 @@ onMounted(async () => {
     max-width: 100%;
   }
 
-  /* 中窄视口：内容区左右留白收紧，给表格让位 */
+  /* 中窄视口：内容区留白收紧 */
   .kb-content {
     padding: var(--space-4) var(--space-3);
   }
@@ -1073,9 +1127,8 @@ onMounted(async () => {
 }
 
 @media (max-width: 900px) {
-  /* 窄视口：收掉次要列宽，表格总宽降到 ~600px 内不再需要横向滚动 */
-  .doc-table-wrap :deep(.el-table) {
-    font-size: var(--text-xs);
+  .doc-grid-wrap {
+    grid-template-columns: 1fr;
   }
 
   .action-bar {
