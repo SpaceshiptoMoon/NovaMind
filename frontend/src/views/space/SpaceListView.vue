@@ -1054,6 +1054,13 @@ onMounted(() => {
   overflow-y: auto;
 }
 
+/* 窄视口：内容区留白收紧，给双侧栏让位 */
+@media (max-width: 1100px) {
+  .content-body {
+    padding: var(--space-4) var(--space-3);
+  }
+}
+
 .welcome-state {
   flex: 1;
   display: flex;

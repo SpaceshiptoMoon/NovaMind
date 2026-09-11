@@ -117,29 +117,29 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column prop="file_size" label="大小" width="90" align="center">
+            <el-table-column prop="file_size" label="大小" min-width="80" align="center">
               <template #default="{ row }">
                 <span class="text-muted">{{ formatFileSize(row.file_size) }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="chunk_count" label="分块" width="70" align="center">
+            <el-table-column prop="chunk_count" label="分块" min-width="64" align="center">
               <template #default="{ row }">
                 <span class="text-muted">{{ row.chunk_count ?? '-' }}</span>
               </template>
             </el-table-column>
-            <el-table-column prop="status" label="状态" width="90" align="center">
+            <el-table-column prop="status" label="状态" min-width="80" align="center">
               <template #default="{ row }">
                 <el-tag :type="getStatusConfig(row.status).type" effect="plain" size="small">
                   {{ getStatusConfig(row.status).text }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="created_at" label="上传时间" width="160">
+            <el-table-column prop="created_at" label="上传时间" min-width="140">
               <template #default="{ row }">
                 <span class="text-muted">{{ formatDate(row.created_at) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="" width="170" fixed="right" align="right">
+            <el-table-column label="" min-width="120" fixed="right" align="right">
               <template #default="{ row }">
                 <div class="action-buttons">
                   <el-tooltip v-if="canProcess(row)" content="首次处理" placement="top">
@@ -1059,6 +1059,43 @@ onMounted(async () => {
   .kb-overview__stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     max-width: 100%;
+  }
+
+  /* 中窄视口：内容区左右留白收紧，给表格让位 */
+  .kb-content {
+    padding: var(--space-4) var(--space-3);
+  }
+
+  .kb-overview__copy,
+  .kb-overview__inherit {
+    padding: var(--space-4);
+  }
+}
+
+@media (max-width: 900px) {
+  /* 窄视口：收掉次要列宽，表格总宽降到 ~600px 内不再需要横向滚动 */
+  .doc-table-wrap :deep(.el-table) {
+    font-size: var(--text-xs);
+  }
+
+  .action-bar {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .right-actions {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .search-input {
+    width: 100%;
+    min-width: 140px;
+    flex: 1;
+  }
+
+  .status-filter {
+    width: 120px;
   }
 }
 
