@@ -28,31 +28,58 @@
         @input="autoResize"
       />
 
-      <!-- 取消流式按钮 -->
-      <button v-if="disabled" class="cancel-btn" title="停止回答" @click="$emit('cancel-stream')">
-        <el-icon :size="18"><VideoPause /></el-icon>
-      </button>
-
-      <!-- 发送按钮 -->
-      <button
-        v-else
-        class="send-btn"
-        :class="{ active: inputText.trim() || (pendingAttachmentsCount ?? 0) > 0 }"
-        :disabled="(!inputText.trim() && pendingAttachmentsCount === 0) || disabled"
-        @click="handleSendClick"
-      >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <path d="M22 2L11 13" />
-          <path d="M22 2L15 22L11 13L2 9L22 2Z" />
-        </svg>
-      </button>
+      <!-- 底部工具行（agent 输入卡对齐）：左 = 模式 chips；右 = 发送/停止 -->
+      <div class="input-row">
+        <div class="input-tools">
+          <button
+            class="mode-chip"
+            :class="{ active: enableThinking }"
+            @click="enableThinking = !enableThinking"
+          >
+            <el-icon :size="14" class="mode-chip-icon"><MagicStick /></el-icon>
+            <span>深度思考</span>
+          </button>
+          <button
+            class="mode-chip"
+            :class="{ active: enableWebSearch }"
+            @click="enableWebSearch = !enableWebSearch"
+          >
+            <el-icon :size="14" class="mode-chip-icon"><Search /></el-icon>
+            <span>联网搜索</span>
+          </button>
+          <button
+            class="mode-chip"
+            :class="{ active: useStream }"
+            @click="useStream = !useStream"
+          >
+            <el-icon :size="14" class="mode-chip-icon"><Lightning /></el-icon>
+            <span>流式输出</span>
+          </button>
+        </div>
+        <div class="input-trailing">
+          <!-- 原右上发送/停止按钮移入工具行右端 -->
+          <button v-if="disabled" class="send-primary stop-primary" title="停止" @click="$emit('cancel-stream')">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
+              <rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor" />
+            </svg>
+          </button>
+          <button
+            v-else
+            class="send-primary"
+            :class="{ active: inputText.trim() || (pendingAttachmentsCount ?? 0) > 0 }"
+            :disabled="(!inputText.trim() && pendingAttachmentsCount === 0) || disabled"
+            title="发送"
+            @click="handleSendClick"
+          >
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
+              <path
+                d="M8.3125 0.980183C8.66767 1.0531 8.97902 1.20418 9.2627 1.43233C9.48724 1.61297 9.73029 1.85793 9.97949 2.10714L14.707 6.83468L13.293 8.24874L9 3.95577V15.0417H7V3.95577L2.70703 8.24874L1.29297 6.83468L6.02051 2.10714C6.26971 1.85793 6.51277 1.61297 6.7373 1.43233C6.97662 1.23986 7.28445 1.04402 7.6875 0.980183C7.8973 0.947006 8.1031 0.95516 8.3125 0.980183Z"
+                fill="currentColor"
+              />
+            </svg>
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- 附件预览 -->
@@ -66,37 +93,13 @@
         </button>
       </div>
     </div>
-
-    <!-- 快捷操作 chips：线条图标卡片风 -->
-    <div class="quick-actions">
-      <button
-        class="action-chip"
-        :class="{ active: enableThinking }"
-        @click="enableThinking = !enableThinking"
-      >
-        <el-icon :size="14" class="action-icon"><MagicStick /></el-icon>
-        <span>深度思考</span>
-      </button>
-      <button
-        class="action-chip"
-        :class="{ active: enableWebSearch }"
-        @click="enableWebSearch = !enableWebSearch"
-      >
-        <el-icon :size="14" class="action-icon"><Search /></el-icon>
-        <span>联网搜索</span>
-      </button>
-      <button class="action-chip" :class="{ active: useStream }" @click="useStream = !useStream">
-        <el-icon :size="14" class="action-icon"><Lightning /></el-icon>
-        <span>流式输出</span>
-      </button>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Paperclip, VideoPause, Close, MagicStick, Search, Lightning } from '@element-plus/icons-vue'
+import { Paperclip, Close, MagicStick, Search, Lightning } from '@element-plus/icons-vue'
 import { useChatStore } from '@/stores/chat'
 import { useChatAttachments } from '@/composables/useChatAttachments'
 
@@ -217,13 +220,14 @@ function handleSendClick() {
   /* 与智能体/深度研究页输入卡同宽（--container-width-md = 816px），三页统一 */
   max-width: var(--container-width-md);
   margin: 0 auto;
+  /* agent 输入卡对齐：纵向三段（附件 → 文本 → 工具行），18px 圆角卡片 */
   display: flex;
-  align-items: flex-end;
-  padding: 8px 12px;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px 6px;
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
-  border-radius: 24px;
+  border-radius: 18px;
   transition:
     border-color var(--transition-base),
     box-shadow var(--transition-base);
@@ -232,6 +236,98 @@ function handleSendClick() {
 .input-pill:focus-within {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-primary-muted);
+}
+
+/* 底部工具行：左模式 chips + 右发送（agent 输入卡 .input-row 同构） */
+.input-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 4px 0;
+}
+
+.input-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mode-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.mode-chip:hover {
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.mode-chip.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-muted);
+  color: var(--color-primary);
+}
+
+.mode-chip-icon {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.input-trailing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* 发送/停止：36px 圆形实心按钮（agent .send-primary 同款） */
+.send-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  color: var(--color-text-faint);
+  cursor: not-allowed;
+  transition: all var(--transition-base);
+  flex-shrink: 0;
+}
+
+.send-primary.active {
+  background: var(--color-btn-primary);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.send-primary.active:hover {
+  background: var(--color-btn-primary-hover);
+  transform: scale(1.05);
+}
+
+.stop-primary {
+  background: var(--color-warning);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.stop-primary:hover {
+  background: var(--color-accent);
 }
 
 .chat-textarea {
@@ -255,107 +351,6 @@ function handleSendClick() {
 
 .chat-textarea:disabled {
   opacity: 0.5;
-}
-
-.send-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: var(--radius-full);
-  background: var(--color-border);
-  color: var(--color-text-faint);
-  cursor: not-allowed;
-  transition: all var(--transition-base);
-  flex-shrink: 0;
-}
-
-.send-btn.active {
-  background: var(--color-btn-primary);
-  color: #ffffff;
-  cursor: pointer;
-}
-
-.send-btn.active:hover {
-  background: var(--color-btn-primary-hover);
-  transform: scale(1.05);
-}
-
-.stop-btn {
-  background: var(--color-warning);
-  color: #ffffff;
-  cursor: pointer;
-}
-
-.stop-btn:hover {
-  background: var(--color-accent);
-}
-
-.cancel-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: var(--radius-full);
-  background: var(--color-warning);
-  color: #ffffff;
-  cursor: pointer;
-  transition: all var(--transition-base);
-  flex-shrink: 0;
-}
-
-.cancel-btn:hover {
-  background: var(--color-accent);
-}
-
-/* ========================================
-   Quick Actions — Visible Chips
-   ======================================== */
-.quick-actions {
-  margin: 8px 0 0;
-  display: flex;
-  gap: 8px;
-  padding: 0 4px;
-  flex-wrap: wrap;
-}
-
-.action-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-lg);
-  background: var(--color-bg-card);
-  color: var(--color-text-secondary);
-  font-size: var(--text-xs);
-  font-family: var(--font-body);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.action-chip:hover {
-  background: var(--color-bg-hover);
-  border-color: var(--color-border);
-  color: var(--color-text);
-}
-
-.action-chip.active {
-  background: var(--color-text);
-  border-color: var(--color-text);
-  color: #ffffff;
-  font-weight: var(--weight-medium);
-}
-
-.action-icon {
-  display: inline-flex;
-  align-items: center;
-  font-size: 14px;
-  line-height: 1;
 }
 
 /* ========================================
