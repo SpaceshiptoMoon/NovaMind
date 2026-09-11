@@ -853,6 +853,37 @@ onMounted(() => {
   color: var(--color-text);
 }
 
+/* 窄视口：空间侧栏收窄为图标态，内容区让位 */
+@media (max-width: 900px) {
+  .space-sidebar {
+    width: 56px;
+    padding: var(--space-2);
+  }
+
+  .new-space-btn span,
+  .space-sidebar-item .item-title,
+  .space-sidebar-label,
+  .manage-spaces-btn span {
+    display: none;
+  }
+
+  .new-space-btn,
+  .manage-spaces-btn {
+    justify-content: center;
+    padding: 6px;
+  }
+
+  .space-sidebar-item {
+    justify-content: center;
+    padding: 6px;
+  }
+
+  .space-item-avatar {
+    width: 26px;
+    height: 26px;
+  }
+}
+
 /* ===== Header（空间操作栏） ===== */
 
 .header-left {

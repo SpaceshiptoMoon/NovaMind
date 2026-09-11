@@ -449,6 +449,8 @@ function handleSelectResearchSpace(spaceId: number) {
 
 onMounted(async () => {
   syncChannelFromRoute()
+  // 窄视口（开发者工具/小窗）默认折叠侧栏，避免遮挡内容
+  if (window.innerWidth < 900) sidebarCollapsed.value = true
   await Promise.all([
     agentStore.fetchAgents(),
     agentStore.fetchTools(),
@@ -1000,13 +1002,18 @@ onMounted(async () => {
   top: var(--space-2);
 }
 
-/* Responsive: auto-collapse sidebar below 900px */
+/* Responsive: 窄视口（开发者工具/小窗）——侧栏收窄为浮层，默认折叠态不遮挡 */
 @media (max-width: 900px) {
-  .sidebar-gap {
-    display: none;
+  .workspace-layout {
+    /* 触发全局 sidebarCollapsed 初始值无法用 CSS——改为窄视口下侧栏变浮层 */
   }
 
   .workspace-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: var(--z-overlay);
     box-shadow: var(--shadow-lg);
   }
 

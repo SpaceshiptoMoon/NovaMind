@@ -277,7 +277,8 @@ const handleCommand = async (command: string) => {
 }
 
 .user-avatar {
-  background: var(--color-btn-primary);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
   color: var(--color-user-bubble-text);
   font-size: var(--text-sm);
 }
@@ -387,5 +388,30 @@ const handleCommand = async (command: string) => {
   padding: 8px 16px;
   text-align: center;
   border-top: 1px solid var(--color-border-light);
+}
+
+/* ==================== 窄视口自适应（开发者工具/小窗） ==================== */
+@media (max-width: 768px) {
+  .app-header {
+    padding: 0 var(--space-3);
+  }
+
+  .brand-name {
+    display: none;
+  }
+
+  .theme-toggle,
+  .notification-badge {
+    margin-right: var(--space-2);
+  }
+
+  .user-trigger {
+    gap: 0;
+    padding: var(--space-2);
+  }
+
+  .user-name {
+    display: none;
+  }
 }
 </style>

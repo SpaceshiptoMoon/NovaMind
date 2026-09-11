@@ -79,4 +79,25 @@ defineProps<{
 .sidebar-label {
   white-space: nowrap;
 }
+
+/* 窄视口：KB 侧栏收窄为图标态 */
+@media (max-width: 1100px) {
+  .kb-sidebar {
+    width: 56px;
+    padding: var(--space-3) var(--space-2);
+  }
+
+  .sidebar-item {
+    justify-content: center;
+    padding: var(--space-2);
+  }
+
+  .sidebar-label {
+    display: none;
+  }
+
+  .sidebar-item.active::before {
+    left: -8px;
+  }
+}
 </style>
