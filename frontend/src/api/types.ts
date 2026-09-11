@@ -1080,6 +1080,14 @@ export interface ResearchRequest {
   search_source?: 'internal' | 'external' | 'hybrid'
   internal_search?: ResearchInternalSearch
   external_search?: ResearchExternalSearch
+  // ===== 可插拔数据源（扩展入口） =====
+  // enabled：显式源组合（覆盖 search_source 预设映射）；extra：扩展源配置段
+  sources?: {
+    enabled?: string[]
+    internal?: ResearchInternalSearch
+    external?: ResearchExternalSearch
+    extra?: Record<string, Record<string, unknown>>
+  }
   llm?: ResearchLLM
   // ===== 流程策略（deer-flow 对齐） =====
   // false=生成计划后暂停，等 plan_feedback 确认/编辑再执行（默认 true 自动接受）
@@ -1088,6 +1096,12 @@ export interface ResearchRequest {
   enable_background_investigation?: boolean
   // 报告风格
   report_style?: 'academic' | 'popular_science' | 'news' | 'default'
+}
+
+// 已注册数据源元数据（GET /deep-research/sources 响应项，源发现接口）
+export interface SearchSourceInfo {
+  source_type: string
+  display_name: string
 }
 
 // 研究计划步骤（deer-flow Step 对齐）

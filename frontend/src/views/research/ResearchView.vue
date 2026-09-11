@@ -151,19 +151,28 @@
                   />
                 </el-select>
               </div>
+              <!-- 数据源多选（源发现接口动态渲染：新源注册后自动出现，前端零改动）。
+                   空选 = 默认 hybrid（知识库+网络） -->
               <div class="setting-item">
-                <span>搜索源</span>
-                <el-select v-model="searchSource" size="small" style="width: 110px">
+                <span>数据源</span>
+                <el-select
+                  v-model="selectedSourceTypes"
+                  multiple
+                  collapse-tags
+                  placeholder="默认（知识库 + 网络）"
+                  size="small"
+                  style="width: 150px"
+                >
                   <el-option
-                    v-for="opt in SOURCE_OPTIONS"
-                    :key="opt.value"
-                    :label="opt.label"
-                    :value="opt.value"
+                    v-for="src in availableSources"
+                    :key="src.source_type"
+                    :label="src.display_name"
+                    :value="src.source_type"
                   />
                 </el-select>
               </div>
               <!-- KB 多选：空选 = 搜索空间下全部知识库（与后端 kb_ids 空语义一致） -->
-              <div v-if="searchSource !== 'external'" class="setting-item">
+              <div v-if="isSourceEnabled('internal')" class="setting-item">
                 <span>知识库</span>
                 <el-select
                   v-model="selectedKbIds"
@@ -181,8 +190,8 @@
                   />
                 </el-select>
               </div>
-              <!-- 外部 provider 选择：仅知识库模式不显示 -->
-              <div v-if="searchSource !== 'internal'" class="setting-item">
+              <!-- 外部 provider 选择：仅网络源启用时显示 -->
+              <div v-if="isSourceEnabled('external')" class="setting-item">
                 <span>搜索引擎</span>
                 <el-select v-model="selectedProvider" size="small" style="width: 110px">
                   <el-option
@@ -332,7 +341,7 @@ import { useResearchStore } from '@/stores/research'
 import { researchApi } from '@/api/research'
 import { userApi } from '@/api/user'
 import { knowledgeBaseApi } from '@/api/knowledge/knowledgeBase'
-import type { AvailableModelItem, Research } from '@/api/types'
+import type { AvailableModelItem, Research, SearchSourceInfo } from '@/api/types'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import ResearchPlanCard from '@/components/research/ResearchPlanCard.vue'
 
@@ -349,7 +358,6 @@ const inputText = ref('')
 const isWelcomeMode = computed(() => researchStore.messages.length === 0 && !researchStore.isResearching)
 const sidebarVisible = ref(true)
 const researchMode = ref<'quick' | 'standard' | 'deep'>('standard')
-const searchSource = ref<'internal' | 'external' | 'hybrid'>('hybrid')
 const selectedModel = ref('')
 
 // 数据源选项（常量数组渲染：新数据源接入点在此加一行 + 后端注册对应工厂）
@@ -358,21 +366,40 @@ const RESEARCH_MODE_OPTIONS = [
   { label: '标准', value: 'standard' },
   { label: '深度', value: 'deep' },
 ] as const
-const SOURCE_OPTIONS = [
-  { label: '知识库 + 网络', value: 'hybrid' },
-  { label: '仅知识库', value: 'internal' },
-  { label: '仅网络', value: 'external' },
-] as const
 const PROVIDER_OPTIONS = [
   { label: 'DuckDuckGo', value: 'duckduckgo' },
   { label: 'Tavily', value: 'tavily' },
   { label: 'SerpAPI', value: 'serpapi' },
 ] as const
+// 可用数据源（源发现接口动态获取，internal/external 为 builtin，新源自动出现）
+const availableSources = ref<SearchSourceInfo[]>([])
+// 已启用的数据源类型多选（空数组 = 默认 hybrid 预设：知识库 + 网络）
+const selectedSourceTypes = ref<string[]>([])
 // 外部搜索 provider（默认免费 DuckDuckGo）
 const selectedProvider = ref<'duckduckgo' | 'tavily' | 'serpapi'>('duckduckgo')
 // KB 多选（空数组 = 全部知识库）
 const selectedKbIds = ref<number[]>([])
 const spaceKbList = ref<{ id: number; name: string }[]>([])
+
+function isSourceEnabled(type: string): boolean {
+  // 空选 = hybrid 预设（internal + external 都启用）
+  if (selectedSourceTypes.value.length === 0) return true
+  return selectedSourceTypes.value.includes(type)
+}
+
+async function fetchAvailableSources() {
+  if (!spaceId.value) return
+  try {
+    const data = await researchApi.listSearchSources(spaceId.value)
+    availableSources.value = data.sources || []
+  } catch {
+    // 源发现失败退回 builtin 两项（与研究请求的预设组合语义一致）
+    availableSources.value = [
+      { source_type: 'internal', display_name: '知识库检索' },
+      { source_type: 'external', display_name: '网络搜索' },
+    ]
+  }
+}
 
 async function fetchSpaceKbs() {
   if (!spaceId.value) return
@@ -387,7 +414,11 @@ async function fetchSpaceKbs() {
 
 watch(spaceId, (id) => {
   selectedKbIds.value = []
-  if (id) fetchSpaceKbs()
+  selectedSourceTypes.value = []
+  if (id) {
+    fetchAvailableSources()
+    fetchSpaceKbs()
+  }
 }, { immediate: true })
 
 // 流程策略设置（deer-flow 对齐）
@@ -519,10 +550,21 @@ async function handleSend() {
 
   try {
     currentSessionId.value = ''
+    // 源选择语义：显式多选 → sources.enabled（可插拔入口，新源在此生效）；
+    // 空选 → 默认 hybrid（不发 sources，后端按 search_source 预设映射）
+    const explicitSources = selectedSourceTypes.value
+    const searchSourceValue: 'internal' | 'external' | 'hybrid' =
+      explicitSources.length === 0
+        ? 'hybrid'
+        : !explicitSources.includes('external')
+          ? 'internal'
+          : !explicitSources.includes('internal') && explicitSources.length === 1
+            ? 'external'
+            : 'hybrid'
     await researchStore.startResearchStream(spaceId.value!, {
       query: content,
       research_mode: researchMode.value,
-      search_source: searchSource.value,
+      search_source: searchSourceValue,
       internal_search: {
         top_k: advancedSettings.retrieval_top_k,
         kb_ids: selectedKbIds.value.length > 0 ? selectedKbIds.value : undefined,
@@ -530,6 +572,7 @@ async function handleSend() {
       external_search: {
         provider: selectedProvider.value,
       },
+      sources: explicitSources.length > 0 ? { enabled: [...explicitSources] } : undefined,
       llm: {
         llm_model: selectedModel.value || undefined,
         temperature: advancedSettings.temperature / 10,
