@@ -1,41 +1,46 @@
 <template>
   <div class="space-list-view">
-    <!-- 主内容区（全宽，空间切换收进顶部下拉） -->
+    <!-- 左侧栏：空间列表（原下拉选择升级，Dify/FastGPT 侧栏形态） -->
+    <aside class="space-sidebar" aria-label="空间列表">
+      <button class="new-space-btn" @click="showCreateSpaceDialog">
+        <el-icon :size="14"><Plus /></el-icon>
+        <span>新建空间</span>
+      </button>
+
+      <div class="space-sidebar-label">我的空间</div>
+      <div class="space-sidebar-list">
+        <button
+          v-for="space in spaceStore.spaces"
+          :key="space.id"
+          class="space-sidebar-item"
+          :class="{ active: selectedSpaceId === space.id }"
+          :title="space.name"
+          @click="handleSpaceClick(space.id)"
+        >
+          <span class="space-item-avatar">{{ space.name.charAt(0) }}</span>
+          <span class="item-title">{{ space.name }}</span>
+        </button>
+        <div v-if="spaceStore.spaces.length === 0" class="space-sidebar-empty">
+          暂无空间
+        </div>
+      </div>
+
+      <div class="space-sidebar-footer">
+        <button class="manage-spaces-btn" @click="showManageSpacesDialog">
+          <el-icon :size="14"><Collection /></el-icon>
+          <span>管理空间</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- 主内容区 -->
     <main class="main-content">
       <!-- 空间首页（KB 列表）：完整空间栏 -->
       <div v-if="isSpaceHome" class="content-header content-header--full">
         <div class="header-left">
-          <el-select
-            :model-value="selectedSpaceId"
-            placeholder="选择知识空间"
-            class="space-select"
-            filterable
-            @change="handleSpaceChange"
-          >
-            <el-option-group v-if="spaceStore.spaces.length" label="我的空间">
-              <el-option
-                v-for="space in spaceStore.spaces"
-                :key="space.id"
-                :label="space.name"
-                :value="space.id"
-              >
-                <span class="space-option-name">{{ space.name }}</span>
-              </el-option>
-            </el-option-group>
-          </el-select>
           <BreadcrumbNav v-if="selectedSpaceId" />
         </div>
         <div class="header-actions">
-          <!-- 空间级操作（始终可用） -->
-          <el-button size="small" @click="showCreateSpaceDialog">
-            <el-icon><Plus /></el-icon>
-            新建知识空间
-          </el-button>
-          <el-button size="small" text @click="showManageSpacesDialog">
-            <el-icon><Collection /></el-icon>
-            管理空间
-          </el-button>
-          <span v-if="selectedSpaceId" class="action-divider" />
           <!-- 当前空间操作（选中空间后可用） -->
           <el-button
             v-if="selectedSpaceId"
@@ -343,14 +348,10 @@ function getVisibilityType(visibility?: number): string {
   return visibilityMap[visibility]?.type || 'info'
 }
 
-// === 空间选择 ===
+// === 空间选择（侧栏列表） ===
 
 function handleSpaceClick(spaceId: number) {
   router.push(`/home/spaces/${spaceId}/knowledge-bases`)
-}
-
-function handleSpaceChange(spaceId: number) {
-  handleSpaceClick(spaceId)
 }
 
 // === Tab 导航 ===
@@ -711,41 +712,154 @@ onMounted(() => {
   height: 100%;
 }
 
-/* ===== Header（空间下拉） ===== */
+/* ===== 空间侧栏（原下拉选择升级） ===== */
+
+.space-sidebar {
+  width: 216px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--color-border-light);
+  background: var(--color-bg-sidebar);
+  padding: var(--space-3);
+}
+
+.new-space-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-btn-primary);
+  color: #ffffff;
+  font-size: var(--text-sm);
+  font-family: var(--font-body);
+  font-weight: var(--weight-medium, 500);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.new-space-btn:hover {
+  background: var(--color-btn-primary-hover);
+}
+
+.space-sidebar-label {
+  font-size: 11px;
+  font-weight: var(--weight-semibold, 600);
+  color: var(--color-text-muted);
+  letter-spacing: 0.04em;
+  padding: var(--space-4) var(--space-1) var(--space-2);
+  flex-shrink: 0;
+}
+
+.space-sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+}
+
+.space-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 6px var(--space-2);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-family: var(--font-body);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.space-sidebar-item:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.space-sidebar-item.active {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+  font-weight: var(--weight-medium, 500);
+}
+
+.space-item-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-muted);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: var(--weight-semibold, 600);
+  flex-shrink: 0;
+}
+
+.space-sidebar-item.active .space-item-avatar {
+  background: var(--color-primary);
+  color: var(--color-bg-card);
+}
+
+.space-sidebar-item .item-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.space-sidebar-empty {
+  padding: var(--space-4) var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+  text-align: center;
+}
+
+.space-sidebar-footer {
+  flex-shrink: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border-light);
+}
+
+.manage-spaces-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px var(--space-2);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.manage-spaces-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+/* ===== Header（空间操作栏） ===== */
 
 .header-left {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   min-width: 0;
-}
-
-.space-select {
-  width: 220px;
-  flex-shrink: 0;
-}
-
-/* 空间下拉：发丝线（Linear 风） */
-.space-select :deep(.el-select__wrapper) {
-  border-radius: var(--radius-md);
-  box-shadow: 0 0 0 1px var(--color-border) inset;
-  transition: box-shadow var(--transition-fast);
-}
-
-.space-select :deep(.el-select__wrapper:hover) {
-  box-shadow: 0 0 0 1px var(--color-text-faint) inset;
-}
-
-.space-select :deep(.el-select__wrapper.is-focused) {
-  box-shadow: 0 0 0 1px var(--color-primary) inset;
-}
-
-.space-option-name {
-  margin-right: var(--space-2);
-}
-
-.space-option-tag {
-  flex-shrink: 0;
 }
 
 /* ===== Main Content ===== */
@@ -877,14 +991,6 @@ onMounted(() => {
   box-shadow: none;
 }
 
-/* 操作分组分隔线 */
-.action-divider {
-  display: inline-block;
-  width: 1px;
-  height: 20px;
-  background: var(--color-border);
-  flex-shrink: 0;
-}
 
 /* 圆形图标按钮：发丝线，透明底，hover 浅底 */
 .header-actions :deep(.el-button.is-circle) {

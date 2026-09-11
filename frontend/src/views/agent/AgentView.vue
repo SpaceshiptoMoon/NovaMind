@@ -51,7 +51,7 @@
         </div>
       </div>
 
-      <!-- Agent 详情 + 对话入口 -->
+      <!-- Agent 详情 + 对话入口（配置收进右侧抽屉，主区聚焦对话入口） -->
       <div v-else class="agent-detail">
         <div class="detail-header">
           <div class="detail-avatar">{{ currentAgent?.name.charAt(0) }}</div>
@@ -60,6 +60,10 @@
             <p class="detail-desc">{{ currentAgent?.description || '暂无描述' }}</p>
           </div>
           <div class="detail-actions">
+            <button class="action-btn" @click="configDrawerVisible = true">
+              <el-icon :size="14"><Setting /></el-icon>
+              <span>配置</span>
+            </button>
             <button class="action-btn" @click="openEditDialog(currentAgent!)">
               <el-icon :size="14"><EditPen /></el-icon>
               <span>编辑</span>
@@ -70,57 +74,63 @@
             </button>
           </div>
         </div>
+      </div>
 
-        <!-- Agent 配置信息 -->
-        <div class="detail-body">
-          <div class="config-grid">
-            <div class="config-card">
-              <div class="config-label">系统提示词</div>
-              <div class="config-value system-prompt">{{ currentAgent?.system_prompt || '-' }}</div>
-            </div>
-            <div class="config-card">
-              <div class="config-label">模型</div>
-              <div class="config-value">{{ currentAgent?.llm_model || '默认' }}</div>
-            </div>
-            <div class="config-card">
-              <div class="config-label">最大生成 Token</div>
-              <div class="config-value">{{ currentAgent?.max_tokens ?? '-' }}</div>
-            </div>
-            <div class="config-card">
-              <div class="config-label">上下文窗口</div>
-              <div class="config-value">{{ currentAgent?.context_window ?? '-' }}</div>
-            </div>
-            <div class="config-card">
-              <div class="config-label">Temperature</div>
-              <div class="config-value">{{ currentAgent?.temperature ?? '-' }}</div>
-            </div>
-            <div class="config-card">
-              <div class="config-label">Top P</div>
-              <div class="config-value">{{ currentAgent?.top_p ?? '-' }}</div>
-            </div>
-            <div class="config-card">
-              <div class="config-label">工具</div>
-              <div class="config-value">
-                <template v-if="currentAgent?.enabled_tools?.length">
-                  <span v-for="s in currentAgent.enabled_tools" :key="s" class="tag">{{ s }}</span>
-                </template>
-                <template v-else>未启用</template>
-              </div>
-            </div>
-            <div class="config-card">
-              <div class="config-label">MCP 服务器</div>
-              <div class="config-value">
-                <template v-if="currentAgent?.enabled_mcp_servers?.length">
-                  <span v-for="m in currentAgent.enabled_mcp_servers" :key="m" class="tag"
-                    >Server #{{ m }}</span
-                  >
-                </template>
-                <template v-else>未启用</template>
-              </div>
-            </div>
+    <!-- Agent 配置抽屉（详情八卡片自平铺主区收编） -->
+    <el-drawer
+      v-model="configDrawerVisible"
+      :title="`${currentAgent?.name || '智能体'} · 配置`"
+      direction="rtl"
+      size="420px"
+      :append-to-body="true"
+    >
+      <div class="config-drawer-body">
+        <div class="config-card config-card--full">
+          <div class="config-label">系统提示词</div>
+          <div class="config-value system-prompt">{{ currentAgent?.system_prompt || '-' }}</div>
+        </div>
+        <div class="config-card">
+          <div class="config-label">模型</div>
+          <div class="config-value">{{ currentAgent?.llm_model || '默认' }}</div>
+        </div>
+        <div class="config-card">
+          <div class="config-label">最大生成 Token</div>
+          <div class="config-value">{{ currentAgent?.max_tokens ?? '-' }}</div>
+        </div>
+        <div class="config-card">
+          <div class="config-label">上下文窗口</div>
+          <div class="config-value">{{ currentAgent?.context_window ?? '-' }}</div>
+        </div>
+        <div class="config-card">
+          <div class="config-label">Temperature</div>
+          <div class="config-value">{{ currentAgent?.temperature ?? '-' }}</div>
+        </div>
+        <div class="config-card">
+          <div class="config-label">Top P</div>
+          <div class="config-value">{{ currentAgent?.top_p ?? '-' }}</div>
+        </div>
+        <div class="config-card config-card--full">
+          <div class="config-label">工具</div>
+          <div class="config-value">
+            <template v-if="currentAgent?.enabled_tools?.length">
+              <span v-for="s in currentAgent.enabled_tools" :key="s" class="tag">{{ s }}</span>
+            </template>
+            <template v-else>未启用</template>
+          </div>
+        </div>
+        <div class="config-card config-card--full">
+          <div class="config-label">MCP 服务器</div>
+          <div class="config-value">
+            <template v-if="currentAgent?.enabled_mcp_servers?.length">
+              <span v-for="m in currentAgent.enabled_mcp_servers" :key="m" class="tag"
+                >Server #{{ m }}</span
+              >
+            </template>
+            <template v-else>未启用</template>
           </div>
         </div>
       </div>
+    </el-drawer>
 
       <!-- 子路由出口（仅在非工作台模式下使用） -->
       <router-view v-if="!isInWorkspace" />
@@ -275,7 +285,7 @@
 import { ref, reactive, computed, onMounted, inject, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete, EditPen, ChatDotRound } from '@element-plus/icons-vue'
+import { Plus, Delete, EditPen, ChatDotRound, Setting } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useAgentStore } from '@/stores/agent'
 import { chatApi } from '@/api/chat'
@@ -344,6 +354,8 @@ async function fetchModels() {
 
 // 弹窗
 const dialogVisible = ref(false)
+// Agent 配置抽屉（详情八卡片收编）
+const configDrawerVisible = ref(false)
 const isEditing = ref(false)
 const editingId = ref<number | null>(null)
 const submitLoading = ref(false)
@@ -873,6 +885,7 @@ onMounted(async () => {
   flex: 1;
   display: flex;
   flex-direction: column;
+  justify-content: flex-start;
   padding: var(--space-6);
   max-width: 900px;
   width: 100%;
@@ -961,30 +974,30 @@ onMounted(async () => {
 }
 
 /* ========================================
-   Config Grid
+   Config Drawer（配置抽屉；drawer append-to-body，样式非 scoped）
    ======================================== */
-.detail-body {
-  flex: 1;
+</style>
+
+<style>
+/* Agent 配置抽屉内容（append-to-body 需全局） */
+.config-drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
-.config-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-4);
-}
-
-.config-card {
-  padding: var(--space-4);
+.config-drawer-body .config-card {
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-lg);
   background: var(--color-bg-card);
 }
 
-.config-card:first-child {
-  grid-column: 1 / -1;
+.config-drawer-body .config-card--full {
+  /* 单列布局下与普通卡片同宽，保留类名仅为语义 */
 }
 
-.config-label {
+.config-drawer-body .config-label {
   font-size: var(--text-xs);
   color: var(--color-text-muted);
   text-transform: uppercase;
@@ -992,20 +1005,20 @@ onMounted(async () => {
   margin-bottom: var(--space-2);
 }
 
-.config-value {
+.config-drawer-body .config-value {
   font-size: var(--text-sm);
   color: var(--color-text);
   line-height: var(--leading-relaxed);
-}
-
-.system-prompt {
-  max-height: 120px;
-  overflow-y: auto;
-  white-space: pre-wrap;
   word-break: break-word;
 }
 
-.tag {
+.config-drawer-body .system-prompt {
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.config-drawer-body .tag {
   display: inline-block;
   padding: 2px 8px;
   border-radius: var(--radius-full);
