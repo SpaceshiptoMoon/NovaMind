@@ -91,7 +91,7 @@ def test_binding_and_context_are_pure_dataclasses():
     assert binding_fields == {"source_type", "port", "top_k"}
 
     ctx_fields = {f.name for f in fields(SearchSourceContext)}
-    assert ctx_fields == {"space_id", "user_id", "config"}
+    assert ctx_fields == {"space_id", "user_id", "config", "deps"}
 
 
 def test_sourcetype_values_match_legacy_literals():

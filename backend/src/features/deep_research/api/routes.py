@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from novamind.core.auth import UserStatusResolver, get_current_user, get_user_status_resolver
 from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
 from novamind.core.database.database import get_db
-from novamind.core.ws import run_stream_to_ws
+from novamind.core.ws import run_stream_to_ws, send_event
 from novamind.features.knowledge_space.api.dependencies import validate_space_access
 from novamind.features.knowledge_space.exceptions import SpaceAccessDeniedError, SpaceNotFoundError
 from novamind.features.deep_research.api.dependencies import get_deep_research_service
@@ -262,7 +262,7 @@ async def research_ws(
 
     async def locked_send(event):
         async with send_lock:
-            await websocket.send_json(event)
+            await send_event(websocket, event)
 
     gen = research_service.research_stream(
         space_id=space_id,

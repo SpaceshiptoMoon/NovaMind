@@ -15,6 +15,7 @@ from novamind.features.deep_research.schemas.research_schema import (
     ResearchStatus,
     # 请求
     ResearchRequest,
+    SourcesConfig,
     # 响应
     ResearchTask,
     ResearchProgress,
@@ -33,6 +34,7 @@ __all__ = [
     "ResearchStatus",
     # 请求
     "ResearchRequest",
+    "SourcesConfig",
     # 响应
     "ResearchTask",
     "ResearchProgress",

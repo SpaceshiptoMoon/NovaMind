@@ -40,7 +40,6 @@ from novamind.features.deep_research.schemas.research_schema import (
 from novamind.features.knowledge_space.services.search_service import SearchService
 from novamind.shared.retrieval_port import RetrievalPort
 from novamind.features.knowledge_space.adapters.retrieval_adapter import HostRetrievalPort
-from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.deep_research.exceptions import (
     DeepResearchError,
@@ -51,12 +50,6 @@ from novamind.features.deep_research.exceptions import (
     ResearchSpaceAccessDeniedError,
     InvalidResearchQueryError,
     ResearchModeNotSupportedError,
-)
-from novamind.features.deep_research.adapters.web_search_port_adapter import (
-    build_web_search_port_for_provider,
-)
-from novamind.features.deep_research.adapters.internal_search_port_adapter import (
-    as_internal_search_port,
 )
 from novamind.features.deep_research.services.plan_feedback_registry import (
     DECISION_ACCEPTED,
@@ -254,19 +247,43 @@ class ResearchParams:
     llm_config: Any
     retrieval_top_k: int
     retrieval_weight: float
+    # 可插拔数据源扩展（SourcesConfig 归并产物；默认与平铺路径等价）
+    enabled_sources: Optional[List[str]] = None
+    extra_source_configs: Optional[Dict[str, Dict[str, Any]]] = None
 
 
 def _extract_research_params(request) -> ResearchParams:
-    """从 ResearchRequest 中提取参数"""
+    """从 ResearchRequest 中提取参数（归并 sources 嵌套段）。
+
+    兼容规则：``sources.internal``/``sources.external`` 非空时覆盖同名平铺字段
+    （internal_search/external_search）；``sources.enabled`` 透传为显式源组合；
+    ``sources.extra`` 透传为扩展源配置段。旧请求（无 sources）归并结果与历史逐字段一致。
+    """
+    internal_config = request.internal_search
+    external_config = request.external_search
+    enabled_sources = None
+    extra_source_configs = None
+    sources = getattr(request, "sources", None)
+    if sources is not None:
+        if sources.internal is not None:
+            internal_config = sources.internal
+        if sources.external is not None:
+            external_config = sources.external
+        if sources.enabled:
+            enabled_sources = list(sources.enabled)
+        if sources.extra:
+            extra_source_configs = dict(sources.extra)
     return ResearchParams(
         query=request.query,
         research_mode=request.research_mode,
         search_source=request.search_source,
-        internal_config=request.internal_search,
-        external_config=request.external_search,
+        internal_config=internal_config,
+        external_config=external_config,
         llm_config=request.llm,
-        retrieval_top_k=request.internal_search.top_k,
-        retrieval_weight=request.internal_search.vector_weight,
+        retrieval_top_k=internal_config.top_k,
+        retrieval_weight=internal_config.vector_weight,
+        enabled_sources=enabled_sources,
+        extra_source_configs=extra_source_configs,
     )
 
 
@@ -351,6 +368,8 @@ class DeepResearchService:
         # A-3：web_search_port 按请求 provider 构造（build_web_search_port_for_provider），
         # 在 cleanup() 关闭。每请求一个 DeepResearchService 实例（见 api/dependencies）。
         self._web_search_port: Optional[Any] = None
+        # 可插拽数据源：本次请求构造的外部源适配器（可能多个，cleanup 全部关闭）
+        self._web_source_adapters: List[Any] = []
 
         self.logger = get_logger(__name__)
 
@@ -389,7 +408,16 @@ class DeepResearchService:
         return self._search_port
 
     async def cleanup(self) -> None:
-        """清理外部搜索服务资源（关闭按请求构造的 web_search_port）"""
+        """清理外部数据源资源（关闭按请求构造的 web 适配器，含多次构造）"""
+        for adapter in self._web_source_adapters:
+            try:
+                close = getattr(adapter, "close", None)
+                if close is not None:
+                    await close()
+            except Exception as e:
+                self.logger.warning("关闭 web 数据源适配器失败", error=str(e))
+        self._web_source_adapters.clear()
+        # 兼容旧字段（build_web_search_port_for_provider 直构路径已废，保留兜底）
         if self._web_search_port is not None:
             try:
                 close = getattr(self._web_search_port, "close", None)
@@ -573,33 +601,60 @@ class DeepResearchService:
             self.logger.warning("检索反思 LLM 解析失败，降级固定 query 模式", error=str(e))
             return None, None
 
-    def _build_search_ports(self, ctx: ResearchContext) -> tuple:
-        """按 search_source 构造引擎检索端口（web/internal，未用的一侧为 None）。
+    def _enabled_source_types(self, ctx: ResearchContext) -> List[str]:
+        """解析启用的数据源类型列表。
 
-        - EXTERNAL：仅 web_search_port（按 request.provider 构造，存 self._web_search_port 供 cleanup）。
-        - INTERNAL：仅 internal_search_port（绑定 space_id/user_id/internal_config）。
-        - HYBRID：两者皆构造。
+        优先 ``request.sources.enabled``（显式指定，未来新源入口）；为空按
+        ``search_source`` 预设组合映射：
+        INTERNAL→[internal]、EXTERNAL→[external]、HYBRID→[internal, external]。
         """
+        explicit = getattr(ctx.params, "enabled_sources", None)
+        if explicit:
+            return list(explicit)
         search_source = ctx.params.search_source
-        web_port = None
-        internal_port = None
-        if search_source != SearchSource.INTERNAL:
-            # 按请求 provider 构造；未配置/不可用抛 SearchProvider*Error（DeepResearchError 子类）
-            self._web_search_port = build_web_search_port_for_provider(
-                ctx.params.external_config.provider
-            )
-            web_port = self._web_search_port
-        if search_source != SearchSource.EXTERNAL:
-            kb_repo = KnowledgeBaseRepository(self.session)
-            internal_port = as_internal_search_port(
-                search_port=self.search_port,
-                kb_repo=kb_repo,
+        if search_source == SearchSource.INTERNAL:
+            return ["internal"]
+        if search_source == SearchSource.EXTERNAL:
+            return ["external"]
+        return ["internal", "external"]
+
+    def _build_source_bindings(self, ctx: ResearchContext) -> List[Any]:
+        """按启用的数据源类型经注册表构造 ``SearchSourceBinding`` 列表。
+
+        每源一个 ``SearchSourceContext``（租户上下文 + 请求级配置段 + 宿主依赖容器），
+        工厂构造绑定实例（不跨请求复用）。注册表 build 抛的中立异常已在工厂内映射为
+        feature 异常（DeepResearchError 子类），此处透传。
+        """
+        from novamind.engines.deep_research.sources import SearchSourceBinding
+        from novamind.features.deep_research.adapters.source_registry import source_registry
+
+        deps = {"retrieval_port": self.search_port, "session": self.session, "logger": self.logger}
+        internal_cfg = ctx.params.internal_config
+        external_cfg = ctx.params.external_config
+        bindings = []
+        for source_type in self._enabled_source_types(ctx):
+            if source_type == "internal":
+                config = internal_cfg.model_dump() if hasattr(internal_cfg, "model_dump") else {}
+                top_k = internal_cfg.top_k
+            elif source_type == "external":
+                config = external_cfg.model_dump() if hasattr(external_cfg, "model_dump") else {}
+                top_k = external_cfg.max_results
+            else:
+                # 未来新源：配置段取 sources.extra[source_type]，top_k 沿用内部检索 top_k
+                config = (ctx.params.extra_source_configs or {}).get(source_type, {})
+                top_k = internal_cfg.top_k
+            context = SearchSourceContext(
                 space_id=ctx.space_id,
                 user_id=ctx.user_id,
-                internal_config=ctx.params.internal_config,
-                logger=self.logger,
+                config=config,
+                deps=deps,
             )
-        return web_port, internal_port
+            port = source_registry.build(source_type, context)
+            if source_type == "external":
+                # 记录 web 适配器供 cleanup（WebSearchSourceAdapter.close 委托底层 port）
+                self._web_source_adapters.append(port)
+            bindings.append(SearchSourceBinding(source_type=source_type, port=port, top_k=top_k))
+        return bindings
 
     async def research(
         self,
@@ -640,7 +695,7 @@ class DeepResearchService:
         try:
             await self._create_research_session(ctx)
             # DR-1: 提前触发 search_service 初始化，尽早暴露 ES 配置问题
-            if ctx.params.search_source != SearchSource.EXTERNAL:
+            if "internal" in self._enabled_source_types(ctx):
                 _ = self.search_port
             await self._analyze_and_save_topic(ctx)
             await self._plan_phase(ctx, feedback_registry=None, emit=None)
@@ -701,7 +756,7 @@ class DeepResearchService:
             # 0. 创建会话
             await self._create_research_session(ctx)
             # DR-1: 提前触发 search_service 初始化，尽早暴露 ES 配置问题
-            if ctx.params.search_source != SearchSource.EXTERNAL:
+            if "internal" in self._enabled_source_types(ctx):
                 _ = self.search_port
 
             # 1. 分析查询
@@ -748,12 +803,11 @@ class DeepResearchService:
                 for t in ctx.tasks
             }
             engine_params = self._build_engine_params(ctx)
-            web_port, internal_port = self._build_search_ports(ctx)
+            sources = self._build_source_bindings(ctx)
             reflect_llm, reflect_provider = await self._resolve_search_llm(ctx)
 
             async for event in self._engine.search(
-                web_search_port=web_port,
-                internal_search_port=internal_port,
+                sources=sources,
                 tasks=ctx.tasks,
                 params=engine_params,
                 logger=self.logger,
@@ -762,7 +816,9 @@ class DeepResearchService:
             ):
                 if isinstance(event, IterationProgress):
                     task_query = event.current_query or task_desc_by_id.get(event.task_id, "")
-                    step_desc = f"{'外部搜索' if event.use_external else '内部检索'}：{task_query[:50]}"
+                    step_desc = (
+                        f"检索源[{','.join(event.source_types) or '无'}]：{task_query[:50]}"
+                    )
                     yield self._emit("progress", {
                         "status": "searching",
                         "current_step": step_desc,
@@ -1010,11 +1066,10 @@ class DeepResearchService:
         ctx.background_results = []
         if ctx.enable_background_investigation:
             engine_params = self._build_engine_params(ctx)
-            web_port, internal_port = self._build_search_ports(ctx)
+            sources = self._build_source_bindings(ctx)
             bg_query = ctx.research_topic or ctx.params.query
             ctx.background_results = await self._engine.background_investigation(
-                web_search_port=web_port,
-                internal_search_port=internal_port,
+                sources=sources,
                 query=bg_query,
                 params=engine_params,
             )
@@ -1165,12 +1220,11 @@ class DeepResearchService:
         + 充分性反思 + 跨任务 finding）；LLM 未配置时引擎自动降级固定 query 循环。
         """
         engine_params = self._build_engine_params(ctx)
-        web_port, internal_port = self._build_search_ports(ctx)
+        sources = self._build_source_bindings(ctx)
         reflect_llm, reflect_provider = await self._resolve_search_llm(ctx)
 
         async for event in self._engine.search(
-            web_search_port=web_port,
-            internal_search_port=internal_port,
+            sources=sources,
             tasks=ctx.tasks,
             params=engine_params,
             logger=self.logger,

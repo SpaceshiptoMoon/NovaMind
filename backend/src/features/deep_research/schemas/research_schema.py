@@ -174,19 +174,7 @@ class ExternalSearchConfig(BaseModel):
     # ========== 搜索深度 ==========
     search_depth: Literal["basic", "advanced"] = Field(
         default="basic",
-        description="搜索深度（仅 Tavily 支持）：basic(快速)/advanced(深度)",
-    )
-
-    # ========== 时间范围 ==========
-    time_range: Optional[Literal["day", "week", "month", "year"]] = Field(
-        default=None,
-        description="时间范围过滤（可选）",
-    )
-
-    # ========== 区域设置 ==========
-    region: str = Field(
-        default="us-en",
-        description="搜索区域/语言设置",
+        description="搜索深度（仅 Tavily 支持）：basic(快速)/advanced(深度)，覆盖部署级 YAML 默认",
     )
 
 
@@ -223,6 +211,38 @@ class ResearchLLMConfig(BaseModel):
         ge=1024,
         le=16384,
         description="最大生成 Token 数",
+    )
+
+
+# ==================== 数据源组合配置（可插拔扩展段） ====================
+
+class SourcesConfig(BaseModel):
+    """
+    数据源组合配置（可选嵌套段，可插拽数据源入口）
+
+    - ``enabled``：显式指定启用的数据源类型列表（如 ["internal", "external"]，
+      未来 ["internal", "confluence"]）；为空按 ``search_source`` 预设组合映射
+      （INTERNAL→[internal]、EXTERNAL→[external]、HYBRID→[internal, external]）
+    - ``internal``/``external``：非空时覆盖同名平铺字段（internal_search/external_search）
+    - ``extra``：未来新数据源的配置段（如 sources.extra.confluence），经
+      ``SearchSourceContext.config`` 透传对应工厂，schema 侧免改
+    """
+
+    enabled: Optional[List[str]] = Field(
+        default=None,
+        description="显式启用的数据源类型列表（为空按 search_source 预设映射）",
+    )
+    internal: Optional[InternalSearchConfig] = Field(
+        default=None,
+        description="内部检索配置（非空覆盖平铺 internal_search）",
+    )
+    external: Optional[ExternalSearchConfig] = Field(
+        default=None,
+        description="外部搜索配置（非空覆盖平铺 external_search）",
+    )
+    extra: Dict[str, Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="扩展数据源配置段（type → 配置 dict），透传对应源工厂",
     )
 
 
@@ -264,6 +284,12 @@ class ResearchRequest(BaseModel):
     external_search: ExternalSearchConfig = Field(
         default_factory=ExternalSearchConfig,
         description="外部 Web 搜索配置",
+    )
+
+    # ========== 数据源组合（可选嵌套段，非空字段覆盖同名平铺配置） ==========
+    sources: Optional[SourcesConfig] = Field(
+        default=None,
+        description="可插拔数据源组合配置（新源扩展入口；不传时按平铺字段 + search_source 预设）",
     )
 
     # ========== LLM 配置 ==========

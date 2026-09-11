@@ -10,6 +10,11 @@
 from typing import Any, Dict, List, Optional
 
 from novamind.engines.deep_research.ports import InternalSearchPort
+from novamind.engines.deep_research.sources import (
+    SearchSourceContext,
+    SearchSourcePort,
+)
+from novamind.engines.deep_research.types import SourceType
 from novamind.features.deep_research.exceptions import DeepResearchError
 from novamind.features.deep_research.schemas.research_schema import InternalSearchConfig
 from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
@@ -114,7 +119,7 @@ class HostInternalSearchPort:
             for kb, search_result in zip(kbs, search_results):
                 for r in search_result.get("results", []):
                     all_results.append({
-                        "source_type": "internal",
+                        "source_type": SourceType.INTERNAL.value,
                         "content": r.get("content", ""),
                         "document_id": r.get("document_id"),
                         "chunk_id": r.get("chunk_id"),
@@ -152,4 +157,30 @@ def as_internal_search_port(
     )
 
 
-__all__ = ["HostInternalSearchPort", "as_internal_search_port"]
+def build_internal_source(context: SearchSourceContext) -> SearchSourcePort:
+    """内部知识库数据源注册表工厂：ctx → HostInternalSearchPort。
+
+    - ``ctx.config``：InternalSearchConfig dump（kb_ids/search_mode/top_k/...）
+    - ``ctx.deps``：宿主依赖容器，须含 ``retrieval_port``（service 装配点延迟构造的
+      RetrievalPort）与可选 ``kb_repo``（缺省自建 KnowledgeBaseRepository）及 ``logger``
+    - HostInternalSearchPort.search 签名与统一 ``SearchSourcePort`` 同形，天然满足
+    """
+    config = InternalSearchConfig(**(context.config or {}))
+    kb_repo = context.deps.get("kb_repo") or KnowledgeBaseRepository(
+        context.deps["session"]
+    )
+    return as_internal_search_port(
+        search_port=context.deps["retrieval_port"],
+        kb_repo=kb_repo,
+        space_id=context.space_id,
+        user_id=context.user_id,
+        internal_config=config,
+        logger=context.deps.get("logger"),
+    )
+
+
+__all__ = [
+    "HostInternalSearchPort",
+    "as_internal_search_port",
+    "build_internal_source",
+]

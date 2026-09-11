@@ -122,10 +122,6 @@ class ResearchSession(BaseModel):
         """获取研究配置"""
         return self.config or {}
 
-    def get_search_depth(self) -> int:
-        """获取搜索深度"""
-        return self.get_config().get("search_depth", 3)
-
     # ========== Status Info 访问方法 ==========
 
     def get_status_info(self) -> dict:

@@ -52,11 +52,15 @@ class SearchSourceContext:
     - ``config``：该源的请求级配置段（schema dump 的 dict，如 kb_ids/top_k 或
       provider/max_results）；未来新源的配置经 schema ``sources.extra`` 透传，
       引擎与注册表不感知具体字段
+    - ``deps``：宿主依赖容器（如已装配的 ``RetrievalPort``、logger）。部分源的
+      工厂需要宿主运行时对象（内部源复用 service 的检索 port），经此注入而非
+      工厂内自建；engines 层仅透传，不感知其内容
     """
 
     space_id: int
     user_id: int
     config: Dict[str, Any]
+    deps: Dict[str, Any]
 
 
 @dataclass
