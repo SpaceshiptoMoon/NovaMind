@@ -2,19 +2,46 @@
   <div class="workspace-layout">
     <a href="#workspace-main" class="skip-link">跳到主内容</a>
 
-    <!-- 侧栏（仅工作台路由显示：频道 + 上下文列表；全局导航在顶部 AppHeader） -->
-    <aside
-      v-if="isWorkspaceRoute"
-      class="workspace-sidebar"
-      :class="{ collapsed: sidebarCollapsed }"
-      role="navigation"
-      aria-label="工作台侧边栏"
-    >
-      <!-- 展开模式：上下文列表（频道 tabs 已移至顶栏） -->
-      <template v-if="!sidebarCollapsed">
-        <!-- Chat: session list（可折叠） -->
-        <div class="sidebar-body">
-          <template v-if="activeChannelKey === 'chat'">
+    <!-- 顶栏：全宽置顶（全局导航 + 工作台频道分段 + 全局项） -->
+    <AppHeader
+      :workspace-channels="isWorkspaceRoute ? channels : []"
+      :active-channel="activeChannelKey"
+      :sidebar-collapsed="isWorkspaceRoute ? sidebarCollapsed : undefined"
+      @channel-select="activateChannel"
+      @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
+    />
+
+    <!-- 下方：侧栏（频道分段 + 上下文列表，可折叠；仅工作台路由） + 主内容 -->
+    <div class="workspace-body">
+      <aside
+        v-if="isWorkspaceRoute"
+        class="workspace-sidebar"
+        :class="{ collapsed: sidebarCollapsed }"
+        role="navigation"
+        aria-label="工作台侧边栏"
+      >
+        <!-- 频道分段（侧栏顶部，展开态显示） -->
+        <nav v-if="!sidebarCollapsed" class="channel-segments" role="tablist" aria-label="工作台频道">
+          <button
+            v-for="ch in channels"
+            :key="ch.key"
+            class="channel-seg"
+            :class="{ active: activeChannelKey === ch.key }"
+            role="tab"
+            :aria-selected="activeChannelKey === ch.key"
+            :title="ch.label"
+            @click="activateChannel(ch.key)"
+          >
+            <NavIcon :name="ch.icon" :size="15" />
+            <span class="channel-seg-label">{{ ch.label }}</span>
+          </button>
+        </nav>
+
+        <!-- 展开模式：上下文列表 -->
+        <template v-if="!sidebarCollapsed">
+          <!-- Chat: session list（可折叠） -->
+          <div class="sidebar-body">
+            <template v-if="activeChannelKey === 'chat'">
             <div class="list-section">
               <button class="list-section-header" @click="toggleSection('chat')">
                 <span class="list-section-title">最近对话</span>
@@ -112,7 +139,7 @@
       <template v-else>
         <div class="channel-icons">
           <button
-            v-for="ch in primaryChannels"
+            v-for="ch in channels"
             :key="ch.key"
             class="channel-icon-btn"
             :class="{ active: activeChannelKey === ch.key }"
@@ -121,52 +148,10 @@
           >
             <NavIcon :name="ch.icon" :size="20" />
           </button>
-          <button
-            class="channel-icon-btn more-toggle"
-            :class="{ active: moreChannels.some(c => c.key === activeChannelKey) }"
-            :title="moreExpanded ? '收起更多' : '更多功能'"
-            @click="moreExpanded = !moreExpanded"
-          >
-            <el-icon :size="20"><More /></el-icon>
-          </button>
-          <template v-if="moreExpanded">
-            <button
-              v-for="ch in moreChannels"
-              :key="ch.key"
-              class="channel-icon-btn"
-              :class="{ active: activeChannelKey === ch.key }"
-              :title="ch.label"
-              @click="activateChannel(ch.key)"
-            >
-              <NavIcon :name="ch.icon" :size="20" />
-            </button>
-          </template>
         </div>
       </template>
     </aside>
 
-    <!-- Collapse toggle（仅工作台路由，侧栏存在时才有意义） -->
-    <button
-      v-if="isWorkspaceRoute"
-      class="sidebar-toggle"
-      :class="{ 'is-collapsed': sidebarCollapsed }"
-      @click="sidebarCollapsed = !sidebarCollapsed"
-      :aria-label="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
-      :aria-expanded="!sidebarCollapsed"
-    >
-      <el-icon :size="14">
-        <DArrowLeft v-if="!sidebarCollapsed" />
-        <DArrowRight v-else />
-      </el-icon>
-    </button>
-
-    <!-- 右侧：顶栏（全局导航 + 工作台频道分段） + 主内容 -->
-    <div class="workspace-right">
-      <AppHeader
-        :workspace-channels="isWorkspaceRoute ? channels : []"
-        :active-channel="activeChannelKey"
-        @channel-select="activateChannel"
-      />
       <main class="workspace-main" id="workspace-main" role="main">
         <div class="workspace-content" :class="{ 'is-page': !isWorkspaceRoute }">
           <router-view v-slot="{ Component }">
@@ -195,7 +180,7 @@
 import { ref, computed, reactive, onMounted, provide, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Delete, DArrowLeft, DArrowRight, More, Expand, ArrowDown, Plus } from '@element-plus/icons-vue'
+import { Delete, More, Expand, ArrowDown, Plus } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/stores/agent'
 import { useSpaceStore } from '@/stores/space'
 import { useChatStore } from '@/stores/chat'
@@ -391,6 +376,7 @@ onMounted(async () => {
 <style scoped>
 .workspace-layout {
   display: flex;
+  flex-direction: column;
   height: 100vh;
   min-height: 0;
   background: var(--color-bg);
@@ -399,7 +385,17 @@ onMounted(async () => {
 }
 
 /* ========================================
-   Sidebar — flex 首列（全站唯一导航）
+   Body — 顶栏下方：侧栏 + 主内容
+   ======================================== */
+.workspace-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ========================================
+   Sidebar — 顶栏下方首列（频道分段 + 上下文列表）
    ======================================== */
 .workspace-sidebar {
   width: var(--sidebar-width);
@@ -440,6 +436,59 @@ onMounted(async () => {
   align-items: center;
   gap: var(--space-2);
   color: var(--color-text);
+}
+
+/* ========================================
+   Channel Segments — 侧栏纵排胶囊分段
+   ======================================== */
+.channel-segments {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border-light);
+  flex-shrink: 0;
+}
+
+.channel-seg {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px var(--space-2);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-family: var(--font-body);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.channel-seg:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.channel-seg.active {
+  background: var(--color-bg-card);
+  color: var(--color-text);
+  font-weight: var(--weight-medium, 500);
+  box-shadow: var(--shadow-xs);
+}
+
+.channel-seg.active :deep(svg) {
+  color: var(--color-primary);
+}
+
+.channel-seg-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ========================================
@@ -689,51 +738,6 @@ onMounted(async () => {
   color: var(--color-text-muted);
   margin: 0;
   line-height: var(--leading-relaxed);
-}
-
-/* ========================================
-   Sidebar Toggle — fixed 定位
-   ======================================== */
-.sidebar-toggle {
-  /* 吸附在侧栏右缘垂直居中：fixed 相对视口，配合左侧栏宽度定位 */
-  position: fixed;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: var(--z-sticky); /* 与顶栏同级，避免被不透明浮层盖住热区 */
-  width: 20px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--color-border-light);
-  border-left: none;
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
-  background: var(--color-bg-card);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: left var(--transition-slow);
-  left: var(--sidebar-width);
-}
-
-.sidebar-toggle:hover {
-  color: var(--color-text-secondary);
-  background: var(--color-bg-hover);
-}
-
-.sidebar-toggle.is-collapsed {
-  left: var(--sidebar-width-collapsed);
-}
-
-/* ========================================
-   Right Column — 顶栏 + 主内容
-   ======================================== */
-.workspace-right {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
 }
 
 /* ========================================
