@@ -2,32 +2,11 @@
   <div class="workspace-layout">
     <a href="#workspace-main" class="skip-link">跳到主内容</a>
 
-    <!-- Gap div: 在文档流中占位，防止 fixed 侧边栏遮挡主内容 -->
-    <div class="sidebar-gap" :class="{ collapsed: sidebarCollapsed }"></div>
-
-    <!-- Fixed sidebar -->
+    <!-- 侧栏（全站唯一导航：全局导航 + 工作台频道 + 上下文列表） -->
     <aside class="workspace-sidebar" :class="{ collapsed: sidebarCollapsed }" role="navigation" aria-label="工作台侧边栏">
       <div class="sidebar-header">
-        <!-- 展开模式：WorkBuddy 风格频道 pill tabs。点击 tab 即「新建/开启」对应频道 -->
-        <template v-if="!sidebarCollapsed">
-          <nav class="channel-tabs" role="tablist" aria-label="工作台频道">
-            <button
-              v-for="ch in channels"
-              :key="ch.key"
-              class="channel-tab"
-              :class="{ active: activeChannelKey === ch.key }"
-              role="tab"
-              :aria-selected="activeChannelKey === ch.key"
-              :title="ch.label"
-              @click="activateChannel(ch.key)"
-            >
-              <NavIcon :name="ch.icon" :size="16" />
-              <span class="channel-tab-label">{{ ch.label }}</span>
-            </button>
-          </nav>
-        </template>
-        <!-- 折叠模式：频道 icon 列表 -->
-        <template v-else>
+        <!-- 折叠模式：工作台频道 icon 列表（展开模式的频道 tabs 在全局导航下方） -->
+        <template v-if="sidebarCollapsed && isWorkspaceRoute">
           <div class="channel-icons">
             <button
               v-for="ch in primaryChannels"
@@ -63,10 +42,56 @@
         </template>
       </div>
 
-      <!-- Sidebar content -->
+      <!-- 全局导航区块（原顶部横导航收编，Dify/FastGPT 单一导航） -->
+      <nav v-show="!sidebarCollapsed" class="global-nav" aria-label="全局导航">
+        <button
+          v-for="item in globalNavItems"
+          :key="item.key"
+          class="global-nav-item"
+          :class="{ active: activeGlobalNav === item.key }"
+          :title="item.label"
+          @click="handleGlobalNav(item.key)"
+        >
+          <NavIcon :name="item.icon" :size="16" />
+          <span>{{ item.label }}</span>
+        </button>
+      </nav>
+
+      <!-- 折叠模式：全局导航 icon 列（置顶） -->
+      <nav v-show="sidebarCollapsed" class="global-nav-icons" aria-label="全局导航">
+        <button
+          v-for="item in globalNavItems"
+          :key="item.key"
+          class="channel-icon-btn"
+          :class="{ active: activeGlobalNav === item.key }"
+          :title="item.label"
+          @click="handleGlobalNav(item.key)"
+        >
+          <NavIcon :name="item.icon" :size="20" />
+        </button>
+      </nav>
+
+      <!-- Sidebar content（工作台频道内容，仅 workspace 路由显示） -->
       <div class="sidebar-body" v-show="!sidebarCollapsed">
+        <!-- 工作台频道 tabs（仅 workspace 路由显示；频道 tab 点击 = 激活并新建/开启） -->
+        <nav v-if="isWorkspaceRoute" class="channel-tabs" role="tablist" aria-label="工作台频道">
+          <button
+            v-for="ch in channels"
+            :key="ch.key"
+            class="channel-tab"
+            :class="{ active: activeChannelKey === ch.key }"
+            role="tab"
+            :aria-selected="activeChannelKey === ch.key"
+            :title="ch.label"
+            @click="activateChannel(ch.key)"
+          >
+            <NavIcon :name="ch.icon" :size="16" />
+            <span class="channel-tab-label">{{ ch.label }}</span>
+          </button>
+        </nav>
+
         <!-- Chat: session list（可折叠） -->
-        <template v-if="activeChannelKey === 'chat'">
+        <template v-if="isWorkspaceRoute && activeChannelKey === 'chat'">
           <div class="list-section">
             <button class="list-section-header" @click="toggleSection('chat')">
               <span class="list-section-title">最近对话</span>
@@ -94,7 +119,7 @@
         </template>
 
         <!-- Agents: agent list（可折叠） -->
-        <template v-else-if="activeChannelKey === 'agents'">
+        <template v-else-if="isWorkspaceRoute && activeChannelKey === 'agents'">
           <div class="list-section">
             <button class="list-section-header" @click="toggleSection('agents')">
               <span class="list-section-title">我的智能体</span>
@@ -127,7 +152,7 @@
         </template>
 
         <!-- Research: space list（可折叠） -->
-        <template v-else-if="activeChannelKey === 'research'">
+        <template v-else-if="isWorkspaceRoute && activeChannelKey === 'research'">
           <div class="list-section">
             <button class="list-section-header" @click="toggleSection('research')">
               <span class="list-section-title">知识空间</span>
@@ -152,7 +177,7 @@
         </template>
 
         <!-- Skills -->
-        <template v-else-if="activeChannelKey === 'skills'">
+        <template v-else-if="isWorkspaceRoute && activeChannelKey === 'skills'">
           <div class="sidebar-info">
             <p class="info-text">发现、上传和分享 AI 技能，安装到你的智能体中。</p>
           </div>
@@ -174,23 +199,30 @@
       </el-icon>
     </button>
 
-    <!-- Main content -->
-    <main class="workspace-main" id="workspace-main" role="main">
-      <div class="workspace-content">
-        <router-view />
-      </div>
-      <!-- 右抽屉：引用来源 / 工具结果。折叠态 width:0 不占位 -->
-      <WorkbenchDrawer :sources="drawerSources" :tool-calls="drawerToolCalls" />
-      <!-- 抽屉展开按钮（抽屉关闭时浮在主区右上角） -->
-      <button
-        v-if="!workbench.drawerOpen"
-        class="drawer-toggle"
-        title="打开引用面板"
-        @click="workbench.openDrawer('overview')"
-      >
-        <el-icon :size="14"><Expand /></el-icon>
-      </button>
-    </main>
+    <!-- 右侧：顶栏（仅全局项） + 主内容 -->
+    <div class="workspace-right">
+      <AppHeader />
+      <main class="workspace-main" id="workspace-main" role="main">
+        <div class="workspace-content" :class="{ 'is-page': !isWorkspaceRoute }">
+          <router-view v-slot="{ Component }">
+            <transition name="fade" mode="out-in">
+              <component :is="Component" />
+            </transition>
+          </router-view>
+        </div>
+        <!-- 右抽屉：引用来源 / 工具结果（仅工作台路由）。折叠态 width:0 不占位 -->
+        <WorkbenchDrawer v-if="isWorkspaceRoute" :sources="drawerSources" :tool-calls="drawerToolCalls" />
+        <!-- 抽屉展开按钮（抽屉关闭时浮在主区右上角） -->
+        <button
+          v-if="isWorkspaceRoute && !workbench.drawerOpen"
+          class="drawer-toggle"
+          title="打开引用面板"
+          @click="workbench.openDrawer('overview')"
+        >
+          <el-icon :size="14"><Expand /></el-icon>
+        </button>
+      </main>
+    </div>
   </div>
 </template>
 
@@ -205,6 +237,7 @@ import { useChatStore } from '@/stores/chat'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { usePermissionStore } from '@/stores/permission'
 import NavIcon from '@/components/common/NavIcon.vue'
+import AppHeader from './AppHeader.vue'
 import WorkbenchDrawer from '@/components/workbench/WorkbenchDrawer.vue'
 import type { Agent, ChatSource, SourceRef, ToolCallRecord } from '@/api/types'
 
@@ -220,6 +253,48 @@ provide('isInWorkspace', true)
 const sidebarCollapsed = ref(false)
 const selectedAgentId = ref<number | null>(null)
 
+// ===================== 全局导航（原顶部横导航收编） =====================
+// key 对应 /home 下的路由；system 组含权限过滤项（下拉由 AppHeader 头像菜单承接）
+const allGlobalNavItems = [
+  { key: 'home', label: '首页', icon: 'home', to: '/home', app: null },
+  { key: 'spaces', label: '知识空间', icon: 'spaces', to: '/home/spaces', app: null },
+  { key: 'workspace', label: '工作台', icon: 'chat', to: '/home/workspace', app: null },
+  { key: 'apps', label: '应用', icon: 'apps', to: '/home/apps', app: 'app' },
+] as const
+
+const permStore = usePermissionStore()
+
+const globalNavItems = computed(() =>
+  allGlobalNavItems.filter((item) => item.app === null || permStore.hasApp(item.app))
+)
+
+const isWorkspaceRoute = computed(() => route.path.startsWith('/home/workspace'))
+
+const activeGlobalNav = computed(() => {
+  const path = route.path
+  if (path.startsWith('/home/workspace')) return 'workspace'
+  if (path.startsWith('/home/spaces')) return 'spaces'
+  if (path.startsWith('/home/apps')) return 'apps'
+  if (
+    path.startsWith('/home/settings') ||
+    path.startsWith('/home/admin') ||
+    path.startsWith('/home/profile') ||
+    path.startsWith('/home/notifications') ||
+    path.startsWith('/home/change-password')
+  ) {
+    return 'system'
+  }
+  if (path === '/home') return 'home'
+  return ''
+})
+
+// 系统类子页（模型配置/用户/角色/个人/通知）没有独立入口项，落在工作台或首页就近高亮：
+// system 高亮由样式处理（无对应 item 时不亮任何项），这里仅做路由跳转
+function handleGlobalNav(key: string) {
+  const item = allGlobalNavItems.find((i) => i.key === key)
+  if (item) router.push(item.to)
+}
+
 // 频道清单：app 键对应应用门禁代码（AppCode）；research 属空间功能不进门禁（常驻）
 const allChannels = [
   { key: 'chat', label: 'AI 对话', icon: 'chat', group: 'primary', app: 'qa' },
@@ -227,8 +302,6 @@ const allChannels = [
   { key: 'research', label: '深度研究', icon: 'research', group: 'more', app: null },
   { key: 'skills', label: '技能广场', icon: 'apps', group: 'more', app: 'skill' },
 ] as const
-
-const permStore = usePermissionStore()
 
 // 应用级权限过滤（admin 短路全过；被禁应用的频道不渲染）
 const channels = computed(() =>
@@ -389,7 +462,7 @@ onMounted(async () => {
 <style scoped>
 .workspace-layout {
   display: flex;
-  flex: 1;
+  height: 100vh;
   min-height: 0;
   background: var(--color-bg);
   overflow: hidden;
@@ -397,28 +470,12 @@ onMounted(async () => {
 }
 
 /* ========================================
-   Sidebar Gap — 在文档流中占位
-   ======================================== */
-.sidebar-gap {
-  width: var(--sidebar-width);
-  flex-shrink: 0;
-  transition: width var(--transition-slow);
-}
-
-.sidebar-gap.collapsed {
-  width: var(--sidebar-width-collapsed);
-}
-
-/* ========================================
-   Sidebar — fixed 覆盖层
+   Sidebar — flex 首列（全站唯一导航）
    ======================================== */
 .workspace-sidebar {
-  position: fixed;
-  top: var(--header-height);
-  left: 0;
-  bottom: 0;
   width: var(--sidebar-width);
-  z-index: var(--z-raised);
+  flex-shrink: 0;
+  height: 100%;
   background: var(--color-bg-sidebar);
   border-right: 1px solid var(--color-border-light);
   display: flex;
@@ -505,6 +562,61 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ========================================
+   Global Nav（全局导航区块，原顶部横导航收编）
+   ======================================== */
+.global-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 var(--space-3) var(--space-2);
+  border-bottom: 1px solid var(--color-border-light);
+  flex-shrink: 0;
+}
+
+.global-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-2);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  width: 100%;
+  text-align: left;
+}
+
+.global-nav-item:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.global-nav-item.active {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+  font-weight: var(--weight-medium, 500);
+}
+
+.global-nav-item.active :deep(svg) {
+  color: var(--color-primary);
+}
+
+/* 折叠态：全局导航 icon 列 */
+.global-nav-icons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border-light);
+  flex-shrink: 0;
 }
 
 /* ========================================
@@ -788,6 +900,18 @@ onMounted(async () => {
 }
 
 /* ========================================
+   Right Column — 顶栏 + 主内容
+   ======================================== */
+.workspace-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ========================================
    Main Content
    ======================================== */
 .workspace-main {
@@ -806,6 +930,29 @@ onMounted(async () => {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+/* 非工作台页面（首页/知识空间/系统等）：页内滚动（各页面自管 padding，
+   原 MainLayout .main-content 的 padding 由页面自身样式承接） */
+.workspace-content.is-page {
+  overflow-y: auto;
+}
+
+.fade-enter-active {
+  transition: opacity var(--transition-base), transform var(--transition-base);
+}
+
+.fade-leave-active {
+  transition: opacity var(--transition-fast);
+}
+
+.fade-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.fade-leave-to {
+  opacity: 0;
 }
 
 /* 抽屉折叠时浮在主区右上角的展开按钮 */

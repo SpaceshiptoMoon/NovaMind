@@ -635,6 +635,8 @@ onMounted(() => {
 <style scoped>
 .model-config-view {
   max-width: 1000px;
+  padding: var(--space-5);
+  margin: 0 auto;
 }
 
 .page-header {

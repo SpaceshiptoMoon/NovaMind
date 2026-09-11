@@ -3,8 +3,8 @@ import { setupRouterGuards } from './guards'
 
 // 布局组件
 import AuthLayout from '@/layouts/AuthLayout.vue'
-import MainLayout from '@/layouts/MainLayout.vue'
 import WorkspaceLayout from '@/layouts/WorkspaceLayout.vue'
+import WorkspacePassThrough from '@/layouts/WorkspacePassThrough.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -67,10 +67,10 @@ const router = createRouter({
       ],
     },
 
-    // 主应用路由（使用 MainLayout，需要登录）
+    // 主应用路由（WorkspaceLayout = 全站唯一布局：侧栏导航 + 顶栏，需要登录）
     {
       path: '/home',
-      component: MainLayout,
+      component: WorkspaceLayout,
       meta: { requiresAuth: true },
       children: [
         {
@@ -221,10 +221,10 @@ const router = createRouter({
           component: () => import('@/views/app/resume/ResumeApp.vue'),
           meta: { title: '简历挖掘', requiresApp: 'app' },
         },
-        // 统一工作台
+        // 统一工作台：WorkspaceLayout 已在 /home 顶层，此节点仅承载 children 嵌套与 redirect
         {
           path: 'workspace',
-          component: WorkspaceLayout,
+          component: WorkspacePassThrough,
           redirect: '/home/workspace/chat',
           meta: { title: '工作台' },
           children: [
