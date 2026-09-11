@@ -15,6 +15,22 @@
           <NavIcon :name="item.icon" />
           {{ item.label }}
         </span>
+        <!-- 工作台频道分段（仅工作台路由传入时显示；横向胶囊分段控件） -->
+        <nav v-if="(workspaceChannels ?? []).length" class="channel-segments" role="tablist" aria-label="工作台频道">
+          <button
+            v-for="ch in workspaceChannels"
+            :key="ch.key"
+            class="channel-seg"
+            :class="{ active: activeChannel === ch.key }"
+            role="tab"
+            :aria-selected="activeChannel === ch.key"
+            :title="ch.label"
+            @click="emit('channel-select', ch.key)"
+          >
+            <NavIcon :name="ch.icon" :size="14" />
+            <span>{{ ch.label }}</span>
+          </button>
+        </nav>
         <el-dropdown trigger="hover" @command="handleNavCommand">
           <span :class="['nav-item', { active: isSystemActive }]">
             <NavIcon name="settings" />
@@ -156,6 +172,14 @@ const router = useRouter()
 const userStore = useUserStore()
 const permStore = usePermissionStore()
 const { theme, toggleTheme } = useTheme()
+
+// 工作台频道分段（父级 WorkspaceLayout 传入；空数组 = 非工作台路由不显示）
+defineProps<{
+  workspaceChannels?: Array<{ key: string; label: string; icon: string }>
+  activeChannel?: string
+}>()
+
+const emit = defineEmits<{ 'channel-select': [key: string] }>()
 
 // ==================== 顶部导航（全局） ====================
 const allNavItems = [
@@ -378,6 +402,50 @@ const handleCommand = async (command: string) => {
   transform: translateX(-50%) scaleX(1);
 }
 
+/* ==================== 工作台频道分段（横向胶囊） ==================== */
+/* 灰胶囊底 + 选中白卡浮起；贴顶栏白底用 --color-bg-hover 有足够对比 */
+.channel-segments {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: var(--space-3);
+  padding: 3px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-hover);
+}
+
+.channel-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-family: var(--font-body);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--transition-fast), background var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.channel-seg:hover {
+  color: var(--color-text);
+}
+
+.channel-seg.active {
+  background: var(--color-bg-card);
+  color: var(--color-text);
+  font-weight: var(--weight-medium, 500);
+  box-shadow: var(--shadow-sm);
+}
+
+.channel-seg.active svg {
+  color: var(--color-primary);
+}
+
 .header-right {
   display: flex;
   align-items: center;
@@ -524,6 +592,15 @@ const handleCommand = async (command: string) => {
 @media (max-width: 1200px) {
   .nav-item {
     padding: var(--space-2);
+  }
+
+  /* 频道分段收文字只留图标 */
+  .channel-seg span {
+    display: none;
+  }
+
+  .channel-seg {
+    padding: 5px 8px;
   }
 }
 

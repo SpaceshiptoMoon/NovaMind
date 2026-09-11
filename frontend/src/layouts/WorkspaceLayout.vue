@@ -10,24 +10,8 @@
       role="navigation"
       aria-label="工作台侧边栏"
     >
-      <!-- 展开模式：频道 tabs + 上下文列表 -->
+      <!-- 展开模式：上下文列表（频道 tabs 已移至顶栏） -->
       <template v-if="!sidebarCollapsed">
-        <nav class="channel-tabs" role="tablist" aria-label="工作台频道">
-          <button
-            v-for="ch in channels"
-            :key="ch.key"
-            class="channel-tab"
-            :class="{ active: activeChannelKey === ch.key }"
-            role="tab"
-            :aria-selected="activeChannelKey === ch.key"
-            :title="ch.label"
-            @click="activateChannel(ch.key)"
-          >
-            <NavIcon :name="ch.icon" :size="16" />
-            <span class="channel-tab-label">{{ ch.label }}</span>
-          </button>
-        </nav>
-
         <!-- Chat: session list（可折叠） -->
         <div class="sidebar-body">
           <template v-if="activeChannelKey === 'chat'">
@@ -176,9 +160,13 @@
       </el-icon>
     </button>
 
-    <!-- 右侧：顶栏（仅全局项） + 主内容 -->
+    <!-- 右侧：顶栏（全局导航 + 工作台频道分段） + 主内容 -->
     <div class="workspace-right">
-      <AppHeader />
+      <AppHeader
+        :workspace-channels="isWorkspaceRoute ? channels : []"
+        :active-channel="activeChannelKey"
+        @channel-select="activateChannel"
+      />
       <main class="workspace-main" id="workspace-main" role="main">
         <div class="workspace-content" :class="{ 'is-page': !isWorkspaceRoute }">
           <router-view v-slot="{ Component }">
@@ -452,61 +440,6 @@ onMounted(async () => {
   align-items: center;
   gap: var(--space-2);
   color: var(--color-text);
-}
-
-/* ========================================
-   Channel Tabs — 胶囊分段控件（米哈游"切换到校招"语言）
-   容器灰胶囊底 + 选中项白卡浮起，纵向排列适配侧栏
-   ======================================== */
-.channel-tabs {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  padding: 4px;
-  border-radius: var(--radius-lg);
-  background: var(--color-bg-hover);
-}
-
-.channel-tab {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 7px var(--space-3);
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  width: 100%;
-  text-align: left;
-}
-
-.channel-tab:hover {
-  color: var(--color-text);
-}
-
-.channel-tab.active {
-  background: var(--color-bg-card);
-  color: var(--color-text);
-  font-weight: var(--weight-medium, 500);
-  box-shadow: var(--shadow-xs);
-}
-
-/* active tab：文字黑、图标主色点缀 */
-.channel-tab.active :deep(svg) {
-  color: var(--color-primary);
-}
-
-.channel-tab-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ========================================
