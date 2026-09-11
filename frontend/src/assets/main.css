@@ -18,14 +18,14 @@
   --el-color-primary-light-9: #F1F3F5;
   --el-color-primary-dark-2: #030712;
 
-  /* Element Plus success 也去绿 → 中性灰（el-tag / el-message / 校验不再绿）；
+  /* Element Plus success 恢复功能绿（el-tag / el-message / 校验状态）；
      warning 琥珀、danger 红保留为功能色 */
-  --el-color-success: #4b5563;
-  --el-color-success-light-3: #6b7280;
-  --el-color-success-light-5: #9ca3af;
-  --el-color-success-light-7: #c4c9cf;
-  --el-color-success-light-9: #F1F3F5;
-  --el-color-success-dark-2: #374151;
+  --el-color-success: #16A34A;
+  --el-color-success-light-3: #4ADE80;
+  --el-color-success-light-5: #86EFAC;
+  --el-color-success-light-7: #C8F7D8;
+  --el-color-success-light-9: #ECFDF5;
+  --el-color-success-dark-2: #15803D;
 
   --el-font-family: var(--font-body);
   --el-border-radius-base: var(--radius-md);

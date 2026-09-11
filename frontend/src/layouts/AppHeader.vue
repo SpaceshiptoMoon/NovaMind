@@ -435,7 +435,7 @@ const handleCommand = async (command: string) => {
 }
 
 .notification-item.unread {
-  background: var(--color-primary-muted, rgba(64, 158, 255, 0.06));
+  background: var(--color-primary-muted);
 }
 
 .notification-item-title {

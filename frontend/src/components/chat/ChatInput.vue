@@ -267,9 +267,9 @@ function handleSendClick() {
 }
 
 .input-card:focus-within {
-  border-color: var(--color-info);
+  border-color: var(--color-primary);
   box-shadow:
-    0 0 0 3px var(--color-info-subtle),
+    0 0 0 3px var(--color-primary-muted),
     var(--shadow-sm);
 }
 
@@ -405,16 +405,16 @@ function handleSendClick() {
   height: 34px;
   border: none;
   border-radius: var(--radius-full);
-  background: var(--color-border-light);
-  color: #ffffff;
+  background: var(--color-bg-hover);
+  color: var(--color-text-faint);
   cursor: not-allowed;
   transition: all var(--transition-base);
 }
 
 .send-primary.active {
-  background: var(--color-info);
+  background: var(--color-btn-primary);
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
 .stop-primary {

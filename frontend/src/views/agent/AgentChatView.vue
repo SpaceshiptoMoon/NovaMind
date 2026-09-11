@@ -117,14 +117,18 @@
                 <div class="turn-avatar" :title="agentName">{{ agentName.charAt(0) }}</div>
                 <div class="turn-body">
 
-                <!-- 多步 ReAct 才显示折叠头，单步平铺不折叠 -->
+                <!-- 有工作过程（ReAct 步骤或思考过程）即显示折叠头；完成后默认折叠，进行中默认展开 -->
                 <button
-                  v-if="turn.steps.length > 1"
+                  v-if="turn.steps.length > 0 || turn.finalAssistant?.reasoning"
                   class="fold-line"
-                  @click="toggleTurn(turn.key)"
+                  @click="toggleTurn(turn)"
                 >
                   <span class="fold-status">{{
-                    turn.isActive ? '生成中…' : `已完成 ${turn.steps.length} 步`
+                    turn.isActive
+                      ? '生成中…'
+                      : turn.steps.length > 0
+                        ? `已完成 ${turn.steps.length} 步 · ${turnDurationLabel(turn)}`
+                        : '思考过程'
                   }}</span>
                   <el-icon :size="12" class="fold-chevron" :class="{ expanded: isTurnExpanded(turn) }">
                     <ArrowDown />
@@ -141,11 +145,11 @@
                   @toggle="toggleCompaction(c.id)"
                 />
 
-                <!-- 工作过程：按 ReAct 步骤渲染。多步默认折叠，单步/流式平铺。
+                <!-- 工作过程：按 ReAct 步骤渲染。完成后默认折叠，进行中默认展开（实时看工具进度）。
                      无步骤且无思考过程时不渲染空容器 -->
                 <div
                   v-if="turn.steps.length > 0 || turn.finalAssistant?.reasoning"
-                  v-show="turn.steps.length <= 1 || isTurnExpanded(turn)"
+                  v-show="turn.isActive || isTurnExpanded(turn)"
                   class="work-trail"
                 >
                   <template v-for="(step, si) in turn.steps" :key="si">
@@ -470,6 +474,8 @@ const availableModels = ref<
 const expandedReasoning = ref(new Set<number>())
 // 工作过程折叠态：按 turn.key 记忆（历史轮默认折叠；当前流式轮自动展开）
 const expandedTurns = ref(new Set<string>())
+// 用户手动点过折叠条的轮次（这些轮次不再走 isActive 默认态）
+const manualTurnOverrides = ref(new Set<string>())
 // 压缩标记行就地展开态：按 compaction 消息 id 记忆（dsh 就地 disclosure，与 expandedReasoning 同模式）
 const expandedCompactions = ref(new Set<number>())
 function toggleCompaction(id: number) {
@@ -639,24 +645,30 @@ const turns = computed<ChatTurn[]>(() => {
 })
 
 function isTurnExpanded(turn: ChatTurn): boolean {
-  // 多步 ReAct 默认折叠（用户点击展开看中间步骤）；单步由 v-show 的 steps.length<=1 平铺
-  return expandedTurns.value.has(turn.key)
+  // 默认态：进行中展开（实时看工具进度）、完成后折叠（只看最终回复）；
+  // 用户点过折叠条后以手动意图为准（manualOverrides 记住该轮被显式展开/收起）
+  if (manualTurnOverrides.value.has(turn.key)) {
+    return expandedTurns.value.has(turn.key)
+  }
+  return turn.isActive
 }
 
-function toggleTurn(key: string) {
-  if (expandedTurns.value.has(key)) expandedTurns.value.delete(key)
-  else expandedTurns.value.add(key)
+function toggleTurn(turn: ChatTurn) {
+  const next = !isTurnExpanded(turn)
+  manualTurnOverrides.value.add(turn.key)
+  if (next) expandedTurns.value.add(turn.key)
+  else expandedTurns.value.delete(turn.key)
 }
 
-function turnStatusLabel(turn: ChatTurn): string {
-  if (turn.isActive && !turn.finalAssistant?.content) return '生成中…'
-  if (turn.isActive) return '生成中…'
+// 该轮总耗时标签（无时间戳数据时退化为「已完成」）
+function turnDurationLabel(turn: ChatTurn): string {
   if (turn.endTime && turn.startTime) {
     const ms = turn.endTime - turn.startTime
-    if (ms > 0) return `已完成 ${formatDuration(ms)}`
+    if (ms > 0) return formatDuration(ms)
   }
   return '已完成'
 }
+
 const messagesRef = ref<HTMLElement>()
 const fileInputRef = ref<HTMLInputElement>()
 const uploadingFiles = ref(false)
@@ -2069,9 +2081,9 @@ onBeforeUnmount(() => {
 }
 
 .input-card:focus-within {
-  border-color: var(--color-info);
+  border-color: var(--color-primary);
   box-shadow:
-    0 0 0 3px var(--color-info-subtle),
+    0 0 0 3px var(--color-primary-muted),
     var(--shadow-sm);
 }
 
@@ -2202,7 +2214,7 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 
-/* 发送 / 停止主按钮（dsh 风格 34px 蓝色圆形） */
+/* 发送 / 停止主按钮（34px 圆形，active 纯黑） */
 .send-primary {
   display: grid;
   place-items: center;
@@ -2211,20 +2223,20 @@ onBeforeUnmount(() => {
   height: 34px;
   border: none;
   border-radius: var(--radius-full);
-  background: var(--color-border-light);
-  color: #ffffff;
+  background: var(--color-bg-hover);
+  color: var(--color-text-faint);
   cursor: not-allowed;
   transition: all var(--transition-base);
 }
 
 .send-primary.active {
-  background: var(--color-info);
+  background: var(--color-btn-primary);
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
 .send-primary.active:hover {
-  background: var(--color-info);
+  background: var(--color-btn-primary-hover);
   transform: scale(1.05);
 }
 

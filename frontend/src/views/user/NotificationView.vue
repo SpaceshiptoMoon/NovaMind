@@ -154,7 +154,7 @@ onMounted(() => {
 }
 
 .notification-card.unread {
-  background: var(--color-primary-muted, rgba(64, 158, 255, 0.06));
+  background: var(--color-primary-muted);
   border-left: 3px solid var(--color-primary);
 }
 

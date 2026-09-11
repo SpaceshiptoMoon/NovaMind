@@ -9,13 +9,13 @@
   --color-primary-subtle: #F1F3F5;
   --color-primary-muted: rgba(17, 24, 39, 0.05);
 
-  /* 实心主按钮：柔和中灰，白字对比度 4.7:1 过 AA */
-  --color-btn-primary: #6B7280;
-  --color-btn-primary-hover: #4B5563;
+  /* 实心主按钮：纯黑（Vercel/Linear 风），白字对比 ~15:1 */
+  --color-btn-primary: #111827;
+  --color-btn-primary-hover: #000000;
 
-  /* Accent — 深灰，无绿色 */
-  --color-accent: #374151;
-  --color-accent-hover: #1f2937;
+  /* Accent — 与主色统一纯黑 */
+  --color-accent: #111827;
+  --color-accent-hover: #000000;
   --color-accent-subtle: #F1F3F5;
 
   /* Text — 冷色 */
@@ -24,8 +24,8 @@
   --color-text-muted: #9CA3AF;
   --color-text-faint: #D1D5DB;
 
-  /* Background — 中性灰白底 */
-  --color-bg: #F7F8FA;
+  /* Background — 纯白底（Vercel 风：card 同色，靠发丝线/阴影分层） */
+  --color-bg: #FFFFFF;
   --color-bg-card: #FFFFFF;
   --color-bg-card-elevated: #FAFBFC;
   /* 别名：供 chat/trajectory 画布引用，随 card-elevated 在暗色下反转 */
@@ -37,11 +37,11 @@
   /* Border — 冷灰 */
   --color-border: #E5E7EB;
   --color-border-light: #EEF0F3;
-  --color-border-focus: #4b5563;
+  --color-border-focus: #111827;
 
   /* Semantic */
-  --color-success: #4b5563;
-  --color-success-subtle: #F1F3F5;
+  --color-success: #16A34A;
+  --color-success-subtle: #ECFDF5;
   --color-warning: #F59E0B;
   --color-warning-subtle: #FFFBEB;
   --color-danger: #EF4444;
@@ -143,7 +143,7 @@
 
   /* Auth gradient */
   --color-gradient-start: var(--color-primary);
-  --color-gradient-end: var(--color-danger);
+  --color-gradient-end: var(--color-primary);
 
   /* Shadow — 冷灰 */
   --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -275,11 +275,11 @@ a:hover {
   /* Border */
   --color-border: #2A2E36;
   --color-border-light: #22252B;
-  --color-border-focus: #A8AEB8;
+  --color-border-focus: #E8EAED;
 
-  /* Semantic — 文字色提亮、subtle 底改暗色透明底 */
-  --color-success: #9CA3AF;
-  --color-success-subtle: rgba(74, 85, 100, 0.2);
+  /* Semantic — 文字色提亮、subtle 底改暗色透明底；success 恢复功能绿（提亮变体） */
+  --color-success: #4ADE80;
+  --color-success-subtle: rgba(34, 197, 94, 0.14);
   --color-warning: #FBBF24;
   --color-warning-subtle: rgba(245, 158, 11, 0.12);
   --color-danger: #F87171;
@@ -317,12 +317,12 @@ a:hover {
   --el-color-primary-light-9: #22252B;
   --el-color-primary-dark-2: #FFFFFF;
 
-  --el-color-success: #9CA3AF;
-  --el-color-success-light-3: #B3B9C1;
-  --el-color-success-light-5: #9CA3AF;
-  --el-color-success-light-7: #6E7681;
-  --el-color-success-light-9: #22252B;
-  --el-color-success-dark-2: #D6DAE0;
+  --el-color-success: #4ADE80;
+  --el-color-success-light-3: #6EE7A0;
+  --el-color-success-light-5: #86EFAC;
+  --el-color-success-light-7: #A7F3D0;
+  --el-color-success-light-9: rgba(34, 197, 94, 0.12);
+  --el-color-success-dark-2: #22C55E;
 
   --el-bg-color: var(--color-bg-card);
   --el-bg-color-page: var(--color-bg);

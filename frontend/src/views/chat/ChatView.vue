@@ -38,15 +38,8 @@
 
     <!-- 主聊天区域 -->
     <div class="chat-main">
-      <!-- 顶部栏：模型（左） + 设置（右） -->
+      <!-- 顶部栏：设置入口（模型选择已移入输入卡内，与智能体页统一用 ModelTrigger） -->
       <div class="chat-header">
-        <ModelFanSelector
-          v-if="Object.keys(availableModels).length"
-          :model-value="selectedModel"
-          :models="availableModels"
-          :default-model-name="defaultModelName"
-          @update:model-value="selectedModel = $event"
-        />
         <div class="header-right">
           <button class="setting-group clickable" @click="openSessionConfig">
             <el-icon :size="14"><Setting /></el-icon>
@@ -92,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount, watch, inject } from 'vue'
+import { ref, reactive, nextTick, onMounted, onBeforeUnmount, watch, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Plus,
@@ -116,7 +109,6 @@ import { sessionApi } from '@/api/session'
 import { useSpaceStore } from '@/stores/space'
 import { knowledgeBaseApi } from '@/api/knowledge'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
-import ModelFanSelector from '@/components/common/ModelFanSelector.vue'
 import SourceList from '@/components/chat/SourceList.vue'
 import type { ChatMessage, ChatSource } from '@/api/types'
 import { useChatAttachments } from '@/composables/useChatAttachments'
@@ -232,8 +224,8 @@ async function handleSend(
 ) {
   const attachmentIds = chatStore.pendingAttachments.map((a) => a.id)
   const opts = {
-    // 卡内模型选择优先（''=Auto 时回落页头选择，兼容旧入口）
-    llm_model: options.llmModel || selectedModel.value || undefined,
+    // 模型选择在输入卡内（''=Auto 表示不指定，由后端走默认配置）
+    llm_model: options.llmModel || undefined,
     enable_thinking: options.enableThinking,
     enable_web_search: options.enableWebSearch || undefined,
     attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
@@ -254,12 +246,11 @@ function handleCancelStream() {
   chatStore.cancelStream()
 }
 
-// 模型选择
+// 模型选择（输入卡内 ModelTrigger，'' = Auto）
 const selectedModel = ref('')
 const availableModels = ref<
   Record<string, { max_tokens: number; temperature: number; top_p: number; model_type: string }>
 >({})
-const defaultModelName = computed(() => Object.keys(availableModels.value)[0] || '')
 
 const {
   isImageFile,
@@ -371,7 +362,7 @@ onBeforeUnmount(() => {
   font-family: var(--font-body);
 }
 .new-chat-btn:hover {
-  background: #dbeafe;
+  background: var(--color-primary-muted);
 }
 .new-chat-icon {
   font-size: 16px;
@@ -476,7 +467,7 @@ onBeforeUnmount(() => {
 .chat-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end; /* 仅剩设置入口，保持靠右 */
   padding: 8px 16px;
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
@@ -938,9 +929,9 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
-/* ===== Image file icon ===== */
+/* ===== Image file icon（黑白化：与其余 file-* 徽章统一灰阶） ===== */
 .file-image {
-  background: linear-gradient(135deg, #43e97b, #38f9d7);
+  background: var(--color-text-muted);
   color: #fff;
 }
 
