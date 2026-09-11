@@ -62,6 +62,11 @@
       <circle cx="12" cy="8" r="4" />
       <path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1" />
     </template>
+
+    <!-- 技能：闪电 -->
+    <template v-else-if="name === 'skill'">
+      <path d="M13 2L4.5 13.5H11L9.5 22L18.5 10.5H12L13 2z" />
+    </template>
   </svg>
 </template>
 

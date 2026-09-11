@@ -239,7 +239,7 @@ const allChannels = [
   { key: 'chat', label: 'AI 对话', icon: 'chat', group: 'primary', app: 'qa' },
   { key: 'agents', label: '智能体', icon: 'agents', group: 'primary', app: 'agent' },
   { key: 'research', label: '深度研究', icon: 'research', group: 'more', app: null },
-  { key: 'skills', label: '技能广场', icon: 'apps', group: 'more', app: 'skill' },
+  { key: 'skills', label: '技能广场', icon: 'skill', group: 'more', app: 'skill' },
 ] as const
 
 // 应用级权限过滤（admin 短路全过；被禁应用的频道不渲染）
@@ -455,22 +455,26 @@ onMounted(async () => {
 }
 
 /* ========================================
-   Channel Tabs (WorkBuddy 风格 pill tabs)
+   Channel Tabs — 胶囊分段控件（米哈游"切换到校招"语言）
+   容器灰胶囊底 + 选中项白卡浮起，纵向排列适配侧栏
    ======================================== */
 .channel-tabs {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 4px;
   min-width: 0;
+  padding: 4px;
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-hover);
 }
 
 .channel-tab {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid transparent;
+  padding: 7px var(--space-3);
+  border: none;
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--color-text-secondary);
@@ -482,17 +486,17 @@ onMounted(async () => {
 }
 
 .channel-tab:hover {
-  background: var(--color-bg-hover);
   color: var(--color-text);
 }
 
 .channel-tab.active {
-  background: var(--color-bg-hover);
+  background: var(--color-bg-card);
   color: var(--color-text);
   font-weight: var(--weight-medium, 500);
+  box-shadow: var(--shadow-xs);
 }
 
-/* active tab：文字黑、图标保留青绿点缀 */
+/* active tab：文字黑、图标主色点缀 */
 .channel-tab.active :deep(svg) {
   color: var(--color-primary);
 }

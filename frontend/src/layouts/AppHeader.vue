@@ -334,12 +334,12 @@ const handleCommand = async (command: string) => {
 }
 
 .nav-item {
-  padding: var(--space-2) var(--space-3);
+  position: relative;
+  padding: var(--space-2) var(--space-1);
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
   cursor: pointer;
-  border-radius: var(--radius-md);
-  transition: color var(--transition-fast), background var(--transition-fast);
+  transition: color var(--transition-fast);
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -347,15 +347,35 @@ const handleCommand = async (command: string) => {
   white-space: nowrap;
 }
 
+/* 米哈游招聘站语言：hover/active 底部短横线（从中间展开） */
+.nav-item::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -2px;
+  transform: translateX(-50%) scaleX(0);
+  width: 24px;
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  transition: transform var(--transition-base);
+}
+
 .nav-item:hover {
   color: var(--color-text);
-  background: var(--color-bg-hover);
+}
+
+.nav-item:hover::after {
+  transform: translateX(-50%) scaleX(1);
 }
 
 .nav-item.active {
   color: var(--color-text);
-  background: var(--color-primary-muted);
   font-weight: var(--weight-medium);
+}
+
+.nav-item.active::after {
+  transform: translateX(-50%) scaleX(1);
 }
 
 .header-right {
@@ -396,10 +416,19 @@ const handleCommand = async (command: string) => {
   color: var(--color-text-secondary);
   cursor: pointer;
   transition: color var(--transition-fast);
+  /* 米哈游语言：图标操作位胶囊化 hover（圆形浅底） */
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--transition-fast), background var(--transition-fast);
 }
 
 .theme-toggle:hover {
   color: var(--color-text);
+  background: var(--color-bg-hover);
 }
 
 /* ==================== 通知铃铛 ==================== */
