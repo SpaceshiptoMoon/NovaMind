@@ -5,6 +5,45 @@
         <UnicornIcon :size="36" />
         <span class="brand-name">NovaMind</span>
       </div>
+      <div class="nav-links">
+        <span
+          v-for="item in navItems"
+          :key="item.key"
+          :class="['nav-item', { active: activeNav === item.key }]"
+          @click="router.push(item.to)"
+        >
+          <NavIcon :name="item.icon" />
+          {{ item.label }}
+        </span>
+        <el-dropdown trigger="hover" @command="handleNavCommand">
+          <span :class="['nav-item', { active: isSystemActive }]">
+            <NavIcon name="settings" />
+            系统
+          </span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="settings/models">
+                <el-icon><Cpu /></el-icon>
+                模型配置
+              </el-dropdown-item>
+              <el-dropdown-item
+                v-if="permStore.hasPermission('user.manage')"
+                command="admin/users"
+              >
+                <el-icon><User /></el-icon>
+                用户管理
+              </el-dropdown-item>
+              <el-dropdown-item
+                v-if="permStore.hasPermission('role.manage')"
+                command="admin/roles"
+              >
+                <el-icon><UserFilled /></el-icon>
+                角色管理
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </div>
     </nav>
 
     <div class="header-right">
@@ -110,12 +149,43 @@ import { usePermissionStore } from '@/stores/permission'
 import { notificationApi } from '@/api/notification'
 import type { Notification } from '@/api/types'
 import UnicornIcon from '@/components/common/UnicornIcon.vue'
+import NavIcon from '@/components/common/NavIcon.vue'
 import { useTheme } from '@/composables/useTheme'
 
 const router = useRouter()
 const userStore = useUserStore()
 const permStore = usePermissionStore()
 const { theme, toggleTheme } = useTheme()
+
+// ==================== 顶部导航（全局） ====================
+const allNavItems = [
+  { key: 'home', label: '首页', icon: 'home', to: '/home', app: null },
+  { key: 'spaces', label: '知识空间', icon: 'spaces', to: '/home/spaces', app: null },
+  { key: 'workspace', label: '工作台', icon: 'chat', to: '/home/workspace', app: null },
+  { key: 'apps', label: '应用', icon: 'apps', to: '/home/apps', app: 'app' },
+] as const
+
+const navItems = computed(() =>
+  allNavItems.filter((item) => item.app === null || permStore.hasApp(item.app)),
+)
+
+const activeNav = computed(() => {
+  const path = router.currentRoute.value.path
+  if (path.startsWith('/home/workspace')) return 'workspace'
+  if (path.startsWith('/home/spaces')) return 'spaces'
+  if (path.startsWith('/home/apps')) return 'apps'
+  if (path === '/home') return 'home'
+  return ''
+})
+
+const isSystemActive = computed(() => {
+  const path = router.currentRoute.value.path
+  return path.startsWith('/home/settings') || path.startsWith('/home/admin')
+})
+
+function handleNavCommand(path: string) {
+  router.push(`/home/${path}`)
+}
 
 // ==================== 通知相关 ====================
 const unreadCount = ref(0)
@@ -257,6 +327,37 @@ const handleCommand = async (command: string) => {
   letter-spacing: var(--tracking-tight);
 }
 
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.nav-item {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: color var(--transition-fast), background var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.nav-item:hover {
+  color: var(--color-text);
+  background: var(--color-bg-hover);
+}
+
+.nav-item.active {
+  color: var(--color-text);
+  background: var(--color-primary-muted);
+  font-weight: var(--weight-medium);
+}
+
 .header-right {
   display: flex;
   align-items: center;
@@ -391,6 +492,27 @@ const handleCommand = async (command: string) => {
 }
 
 /* ==================== 窄视口自适应（开发者工具/小窗） ==================== */
+@media (max-width: 1200px) {
+  .nav-item {
+    padding: var(--space-2);
+  }
+}
+
+@media (max-width: 992px) {
+  .nav-links {
+    gap: 0;
+  }
+
+  .nav-item span,
+  .nav-item {
+    font-size: var(--text-xs);
+  }
+
+  .header-nav {
+    gap: var(--space-3);
+  }
+}
+
 @media (max-width: 768px) {
   .app-header {
     padding: 0 var(--space-3);
@@ -398,6 +520,18 @@ const handleCommand = async (command: string) => {
 
   .brand-name {
     display: none;
+  }
+
+  /* 极窄：导航文字隐藏只留图标 */
+  .nav-item {
+    padding: var(--space-2);
+    font-size: 0;
+    gap: 0;
+  }
+
+  .nav-item svg {
+    width: 18px;
+    height: 18px;
   }
 
   .theme-toggle,

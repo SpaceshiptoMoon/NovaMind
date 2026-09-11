@@ -2,79 +2,17 @@
   <div class="workspace-layout">
     <a href="#workspace-main" class="skip-link">跳到主内容</a>
 
-    <!-- 侧栏（全站唯一导航：全局导航 + 工作台频道 + 上下文列表） -->
-    <aside class="workspace-sidebar" :class="{ collapsed: sidebarCollapsed }" role="navigation" aria-label="工作台侧边栏">
-      <div class="sidebar-header">
-        <!-- 折叠模式：工作台频道 icon 列表（展开模式的频道 tabs 在全局导航下方） -->
-        <template v-if="sidebarCollapsed && isWorkspaceRoute">
-          <div class="channel-icons">
-            <button
-              v-for="ch in primaryChannels"
-              :key="ch.key"
-              class="channel-icon-btn"
-              :class="{ active: activeChannelKey === ch.key }"
-              :title="ch.label"
-              @click="activateChannel(ch.key)"
-            >
-              <NavIcon :name="ch.icon" :size="20" />
-            </button>
-            <button
-              class="channel-icon-btn more-toggle"
-              :class="{ active: moreChannels.some(c => c.key === activeChannelKey) }"
-              :title="moreExpanded ? '收起更多' : '更多功能'"
-              @click="moreExpanded = !moreExpanded"
-            >
-              <el-icon :size="20"><More /></el-icon>
-            </button>
-            <template v-if="moreExpanded">
-              <button
-                v-for="ch in moreChannels"
-                :key="ch.key"
-                class="channel-icon-btn"
-                :class="{ active: activeChannelKey === ch.key }"
-                :title="ch.label"
-                @click="activateChannel(ch.key)"
-              >
-                <NavIcon :name="ch.icon" :size="20" />
-              </button>
-            </template>
-          </div>
-        </template>
-      </div>
-
-      <!-- 全局导航区块（原顶部横导航收编，Dify/FastGPT 单一导航） -->
-      <nav v-show="!sidebarCollapsed" class="global-nav" aria-label="全局导航">
-        <button
-          v-for="item in globalNavItems"
-          :key="item.key"
-          class="global-nav-item"
-          :class="{ active: activeGlobalNav === item.key }"
-          :title="item.label"
-          @click="handleGlobalNav(item.key)"
-        >
-          <NavIcon :name="item.icon" :size="16" />
-          <span>{{ item.label }}</span>
-        </button>
-      </nav>
-
-      <!-- 折叠模式：全局导航 icon 列（置顶） -->
-      <nav v-show="sidebarCollapsed" class="global-nav-icons" aria-label="全局导航">
-        <button
-          v-for="item in globalNavItems"
-          :key="item.key"
-          class="channel-icon-btn"
-          :class="{ active: activeGlobalNav === item.key }"
-          :title="item.label"
-          @click="handleGlobalNav(item.key)"
-        >
-          <NavIcon :name="item.icon" :size="20" />
-        </button>
-      </nav>
-
-      <!-- Sidebar content（工作台频道内容，仅 workspace 路由显示） -->
-      <div class="sidebar-body" v-show="!sidebarCollapsed">
-        <!-- 工作台频道 tabs（仅 workspace 路由显示；频道 tab 点击 = 激活并新建/开启） -->
-        <nav v-if="isWorkspaceRoute" class="channel-tabs" role="tablist" aria-label="工作台频道">
+    <!-- 侧栏（仅工作台路由显示：频道 + 上下文列表；全局导航在顶部 AppHeader） -->
+    <aside
+      v-if="isWorkspaceRoute"
+      class="workspace-sidebar"
+      :class="{ collapsed: sidebarCollapsed }"
+      role="navigation"
+      aria-label="工作台侧边栏"
+    >
+      <!-- 展开模式：频道 tabs + 上下文列表 -->
+      <template v-if="!sidebarCollapsed">
+        <nav class="channel-tabs" role="tablist" aria-label="工作台频道">
           <button
             v-for="ch in channels"
             :key="ch.key"
@@ -91,32 +29,33 @@
         </nav>
 
         <!-- Chat: session list（可折叠） -->
-        <template v-if="isWorkspaceRoute && activeChannelKey === 'chat'">
-          <div class="list-section">
-            <button class="list-section-header" @click="toggleSection('chat')">
-              <span class="list-section-title">最近对话</span>
-              <span class="list-section-count">{{ chatStore.sessions.length }}</span>
-              <el-icon :size="12" class="list-section-chevron" :class="{ collapsed: sectionCollapsed.chat }">
-                <ArrowDown />
-              </el-icon>
-            </button>
-            <div v-show="!sectionCollapsed.chat" class="list-area">
-              <div
-                v-for="session in chatStore.sessions"
-                :key="session.session_id"
-                class="list-item"
-                :class="{ active: chatStore.currentSessionId === session.session_id }"
-                @click="handleSelectChatSession(session.session_id)"
-              >
-                <span class="item-title">{{ session.preview || '新对话' }}</span>
-                <button class="item-delete" @click.stop="handleDeleteChatSession(session.session_id)">
-                  <el-icon :size="12"><Delete /></el-icon>
-                </button>
+        <div class="sidebar-body">
+          <template v-if="activeChannelKey === 'chat'">
+            <div class="list-section">
+              <button class="list-section-header" @click="toggleSection('chat')">
+                <span class="list-section-title">最近对话</span>
+                <span class="list-section-count">{{ chatStore.sessions.length }}</span>
+                <el-icon :size="12" class="list-section-chevron" :class="{ collapsed: sectionCollapsed.chat }">
+                  <ArrowDown />
+                </el-icon>
+              </button>
+              <div v-show="!sectionCollapsed.chat" class="list-area">
+                <div
+                  v-for="session in chatStore.sessions"
+                  :key="session.session_id"
+                  class="list-item"
+                  :class="{ active: chatStore.currentSessionId === session.session_id }"
+                  @click="handleSelectChatSession(session.session_id)"
+                >
+                  <span class="item-title">{{ session.preview || '新对话' }}</span>
+                  <button class="item-delete" @click.stop="handleDeleteChatSession(session.session_id)">
+                    <el-icon :size="12"><Delete /></el-icon>
+                  </button>
+                </div>
+                <div v-if="chatStore.sessions.length === 0" class="list-empty">暂无对话记录</div>
               </div>
-              <div v-if="chatStore.sessions.length === 0" class="list-empty">暂无对话记录</div>
             </div>
-          </div>
-        </template>
+          </template>
 
         <!-- Agents: agent list（可折叠） -->
         <template v-else-if="isWorkspaceRoute && activeChannelKey === 'agents'">
@@ -152,7 +91,7 @@
         </template>
 
         <!-- Research: space list（可折叠） -->
-        <template v-else-if="isWorkspaceRoute && activeChannelKey === 'research'">
+        <template v-else-if="activeChannelKey === 'research'">
           <div class="list-section">
             <button class="list-section-header" @click="toggleSection('research')">
               <span class="list-section-title">知识空间</span>
@@ -177,12 +116,49 @@
         </template>
 
         <!-- Skills -->
-        <template v-else-if="isWorkspaceRoute && activeChannelKey === 'skills'">
+        <template v-else-if="activeChannelKey === 'skills'">
           <div class="sidebar-info">
             <p class="info-text">发现、上传和分享 AI 技能，安装到你的智能体中。</p>
           </div>
         </template>
-      </div>
+        </div>
+      </template>
+
+      <!-- 折叠模式：频道 icon 列表 -->
+      <template v-else>
+        <div class="channel-icons">
+          <button
+            v-for="ch in primaryChannels"
+            :key="ch.key"
+            class="channel-icon-btn"
+            :class="{ active: activeChannelKey === ch.key }"
+            :title="ch.label"
+            @click="activateChannel(ch.key)"
+          >
+            <NavIcon :name="ch.icon" :size="20" />
+          </button>
+          <button
+            class="channel-icon-btn more-toggle"
+            :class="{ active: moreChannels.some(c => c.key === activeChannelKey) }"
+            :title="moreExpanded ? '收起更多' : '更多功能'"
+            @click="moreExpanded = !moreExpanded"
+          >
+            <el-icon :size="20"><More /></el-icon>
+          </button>
+          <template v-if="moreExpanded">
+            <button
+              v-for="ch in moreChannels"
+              :key="ch.key"
+              class="channel-icon-btn"
+              :class="{ active: activeChannelKey === ch.key }"
+              :title="ch.label"
+              @click="activateChannel(ch.key)"
+            >
+              <NavIcon :name="ch.icon" :size="20" />
+            </button>
+          </template>
+        </div>
+      </template>
     </aside>
 
     <!-- Collapse toggle -->
@@ -253,47 +229,9 @@ provide('isInWorkspace', true)
 const sidebarCollapsed = ref(false)
 const selectedAgentId = ref<number | null>(null)
 
-// ===================== 全局导航（原顶部横导航收编） =====================
-// key 对应 /home 下的路由；system 组含权限过滤项（下拉由 AppHeader 头像菜单承接）
-const allGlobalNavItems = [
-  { key: 'home', label: '首页', icon: 'home', to: '/home', app: null },
-  { key: 'spaces', label: '知识空间', icon: 'spaces', to: '/home/spaces', app: null },
-  { key: 'workspace', label: '工作台', icon: 'chat', to: '/home/workspace', app: null },
-  { key: 'apps', label: '应用', icon: 'apps', to: '/home/apps', app: 'app' },
-] as const
-
 const permStore = usePermissionStore()
 
-const globalNavItems = computed(() =>
-  allGlobalNavItems.filter((item) => item.app === null || permStore.hasApp(item.app))
-)
-
 const isWorkspaceRoute = computed(() => route.path.startsWith('/home/workspace'))
-
-const activeGlobalNav = computed(() => {
-  const path = route.path
-  if (path.startsWith('/home/workspace')) return 'workspace'
-  if (path.startsWith('/home/spaces')) return 'spaces'
-  if (path.startsWith('/home/apps')) return 'apps'
-  if (
-    path.startsWith('/home/settings') ||
-    path.startsWith('/home/admin') ||
-    path.startsWith('/home/profile') ||
-    path.startsWith('/home/notifications') ||
-    path.startsWith('/home/change-password')
-  ) {
-    return 'system'
-  }
-  if (path === '/home') return 'home'
-  return ''
-})
-
-// 系统类子页（模型配置/用户/角色/个人/通知）没有独立入口项，落在工作台或首页就近高亮：
-// system 高亮由样式处理（无对应 item 时不亮任何项），这里仅做路由跳转
-function handleGlobalNav(key: string) {
-  const item = allGlobalNavItems.find((i) => i.key === key)
-  if (item) router.push(item.to)
-}
 
 // 频道清单：app 键对应应用门禁代码（AppCode）；research 属空间功能不进门禁（常驻）
 const allChannels = [
@@ -564,61 +502,6 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* ========================================
-   Global Nav（全局导航区块，原顶部横导航收编）
-   ======================================== */
-.global-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--space-2) var(--space-3) var(--space-3);
-  border-bottom: 1px solid var(--color-border-light);
-  flex-shrink: 0;
-}
-
-.global-nav-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 6px var(--space-2);
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
-  font-family: var(--font-body);
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
-  width: 100%;
-  text-align: left;
-}
-
-.global-nav-item:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text);
-}
-
-.global-nav-item.active {
-  background: var(--color-bg-hover);
-  color: var(--color-text);
-  font-weight: var(--weight-medium, 500);
-}
-
-.global-nav-item.active :deep(svg) {
-  color: var(--color-primary);
-}
-
-/* 折叠态：全局导航 icon 列 */
-.global-nav-icons {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--color-border-light);
-  flex-shrink: 0;
 }
 
 /* ========================================
