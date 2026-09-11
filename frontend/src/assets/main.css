@@ -9,14 +9,14 @@
    Element Plus Theme Overrides — Clean Modern
    ======================================== */
 :root {
-  /* Element Plus 主色切中性黑：所有 el-button--primary / el-link / el-switch /
-     el-tabs / el-pagination / el-checkbox 等组件不再纯绿，统一黑白 */
-  --el-color-primary: #111827;
-  --el-color-primary-light-3: #4b5563;
-  --el-color-primary-light-5: #6b7280;
-  --el-color-primary-light-7: #9ca3af;
-  --el-color-primary-light-9: #F1F3F5;
-  --el-color-primary-dark-2: #030712;
+  /* Element Plus 主色切中性软黑：所有 el-button--primary / el-link / el-switch /
+     el-tabs / el-pagination / el-checkbox 等组件统一 #171717 系灰阶 */
+  --el-color-primary: #171717;
+  --el-color-primary-light-3: #4A4A4A;
+  --el-color-primary-light-5: #7A7A7A;
+  --el-color-primary-light-7: #ABABAB;
+  --el-color-primary-light-9: #F5F5F5;
+  --el-color-primary-dark-2: #2E2E2E;
 
   /* Element Plus success 恢复功能绿（el-tag / el-message / 校验状态）；
      warning 琥珀、danger 红保留为功能色 */
@@ -49,6 +49,29 @@
   font-family: var(--font-body);
   border-radius: var(--radius-md);
   transition: all var(--transition-base);
+}
+
+/* 控件尺寸统一：默认按钮 32px（竞品紧凑一致感；small 保持 24px，large 40px） */
+.el-button--default,
+.el-button--primary {
+  height: 32px;
+  padding: 0 var(--space-4);
+}
+
+.el-button--small {
+  height: 24px;
+  padding: 0 10px;
+}
+
+.el-button--large {
+  height: 40px;
+  padding: 0 var(--space-5);
+}
+
+/* 圆形图标按钮（space 设置齿轮等）不受 height 约束 */
+.el-button.is-circle {
+  height: auto;
+  padding: 8px;
 }
 
 .el-button--primary {

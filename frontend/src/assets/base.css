@@ -1,43 +1,44 @@
 /* ========================================
-   Design Tokens — Clean Modern AI
-   (对齐 WorkBuddy：青绿主色 + 中性灰白底)
+   Design Tokens — Neutral Minimal（shadcn 灰底白卡 + 软黑主按钮）
+   参考：shadcn/ui neutral / LobeChat / Linear——灰底托白卡分层，
+   主按钮软黑（hover 提亮），全 UI 无纯 #000/纯 #FFF 大平面
    ======================================== */
 :root {
-  /* Primary — 纯黑白灰主题，无绿色；用于图标/焦点/链接/活动态 */
-  --color-primary: #111827;
-  --color-primary-hover: #030712;
-  --color-primary-subtle: #F1F3F5;
-  --color-primary-muted: rgba(17, 24, 39, 0.05);
+  /* Primary — 软黑（亮度 9%，shadcn neutral primary 同级）；图标/焦点/链接/活动态 */
+  --color-primary: #171717;
+  --color-primary-hover: #2E2E2E;
+  --color-primary-subtle: #F5F5F5;
+  --color-primary-muted: rgba(23, 23, 23, 0.05);
 
-  /* 实心主按钮：纯黑（Vercel/Linear 风），白字对比 ~15:1 */
-  --color-btn-primary: #111827;
-  --color-btn-primary-hover: #000000;
+  /* 实心主按钮：软黑，hover 提亮（黑按钮 hover 变更黑会"下陷"） */
+  --color-btn-primary: #171717;
+  --color-btn-primary-hover: #2E2E2E;
 
-  /* Accent — 与主色统一纯黑 */
-  --color-accent: #111827;
-  --color-accent-hover: #000000;
-  --color-accent-subtle: #F1F3F5;
+  /* Accent — 与主色统一软黑 */
+  --color-accent: #171717;
+  --color-accent-hover: #2E2E2E;
+  --color-accent-subtle: #F5F5F5;
 
-  /* Text — 冷色 */
-  --color-text: #111827;
-  --color-text-secondary: #4B5563;
-  --color-text-muted: #9CA3AF;
-  --color-text-faint: #D1D5DB;
+  /* Text — 中性灰阶（shadcn neutral：前景 9%、次级 45%、弱化 64%） */
+  --color-text: #171717;
+  --color-text-secondary: #616161;
+  --color-text-muted: #8F8F8F;
+  --color-text-faint: #C9C9C9;
 
-  /* Background — 纯白底（Vercel 风：card 同色，靠发丝线/阴影分层） */
-  --color-bg: #FFFFFF;
+  /* Background — 灰底托白卡（shadcn：背景 96.1% 亮度、卡片纯白自然浮起） */
+  --color-bg: #F5F5F5;
   --color-bg-card: #FFFFFF;
-  --color-bg-card-elevated: #FAFBFC;
+  --color-bg-card-elevated: #FAFAFA;
   /* 别名：供 chat/trajectory 画布引用，随 card-elevated 在暗色下反转 */
   --color-bg-elevated: var(--color-bg-card-elevated);
-  --color-bg-hover: #F1F3F5;
-  --color-bg-sidebar: #FAFBFC;
-  --color-bg-input: #F7F8FA;
+  --color-bg-hover: #EFEFEF;
+  --color-bg-sidebar: #FAFAFA;
+  --color-bg-input: #F5F5F5;
 
-  /* Border — 冷灰 */
-  --color-border: #E5E7EB;
-  --color-border-light: #EEF0F3;
-  --color-border-focus: #111827;
+  /* Border — 中性灰 */
+  --color-border: #E5E5E5;
+  --color-border-light: #EFEFEF;
+  --color-border-focus: #171717;
 
   /* Semantic */
   --color-success: #16A34A;
@@ -145,13 +146,13 @@
   --color-gradient-start: var(--color-primary);
   --color-gradient-end: var(--color-primary);
 
-  /* Shadow — 冷灰 */
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.07), 0 1px 3px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.09), 0 2px 6px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
-  --shadow-inner: inset 0 1px 4px rgba(0, 0, 0, 0.05);
+  /* Shadow — 极轻（Linear 扁平气质：卡片靠底色差+发丝线，阴影只给浮层一档） */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.07), 0 1px 4px rgba(0, 0, 0, 0.04);
+  --shadow-xl: 0 12px 40px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.05);
+  --shadow-inner: inset 0 1px 3px rgba(0, 0, 0, 0.04);
 
   /* Transition */
   --transition-fast: 120ms ease;
@@ -244,30 +245,32 @@ a:hover {
   color-scheme: dark;
 
   /* Primary 反转为浅色：图标/焦点/链接/活动态在暗底上保持可见 */
-  --color-primary: #E8EAED;
+  --color-primary: #EDEDED;
   --color-primary-hover: #FFFFFF;
   --color-primary-subtle: #22252B;
-  --color-primary-muted: rgba(232, 234, 237, 0.07);
+  --color-primary-muted: rgba(237, 237, 237, 0.07);
 
-  /* 实心主按钮：大量调用方硬编码白字与之配对，保持深底、抬高一档与卡片区分 */
-  --color-btn-primary: #2A2E36;
-  --color-btn-primary-hover: #363B44;
+  /* 实心主按钮：大量调用方硬编码白字与之配对，抬亮一档与卡片区分 */
+  --color-btn-primary: #2E323A;
+  --color-btn-primary-hover: #3A3F48;
 
   /* Accent 抬亮 */
   --color-accent: #A8AEB8;
   --color-accent-hover: #C3C8D0;
   --color-accent-subtle: #22252B;
 
-  /* Text */
-  --color-text: #E8EAED;
-  --color-text-secondary: #A8AEB8;
-  --color-text-muted: #6B7280;
-  --color-text-faint: #3D434D;
+  /* Text — 中性灰阶 */
+  --color-text: #EDEDED;
+  --color-text-secondary: #A6A6A6;
+  --color-text-muted: #737373;
+  --color-text-faint: #404040;
 
-  /* Background */
+  /* Background — 灰底托白卡（暗色反转：底更深、卡抬半档） */
   --color-bg: #0F1115;
   --color-bg-card: #16181D;
   --color-bg-card-elevated: #1B1E24;
+  /* 别名：供 chat/trajectory 画布引用，随 card-elevated 在暗色下反转 */
+  --color-bg-elevated: var(--color-bg-card-elevated);
   --color-bg-hover: #22252B;
   --color-bg-sidebar: #131519;
   --color-bg-input: #1B1E24;
@@ -275,7 +278,7 @@ a:hover {
   /* Border */
   --color-border: #2A2E36;
   --color-border-light: #22252B;
-  --color-border-focus: #E8EAED;
+  --color-border-focus: #EDEDED;
 
   /* Semantic — 文字色提亮、subtle 底改暗色透明底；success 恢复功能绿（提亮变体） */
   --color-success: #4ADE80;
@@ -310,10 +313,10 @@ a:hover {
 
   /* Element Plus — main.css :root 中硬编码的 el 色板需在此重定义；
      经 var(--color-*) 间接映射的 el 变量自动跟随 */
-  --el-color-primary: #E8EAED;
-  --el-color-primary-light-3: #CFD3D9;
-  --el-color-primary-light-5: #AEB4BC;
-  --el-color-primary-light-7: #8F96A0;
+  --el-color-primary: #EDEDED;
+  --el-color-primary-light-3: #D4D4D4;
+  --el-color-primary-light-5: #B5B5B5;
+  --el-color-primary-light-7: #8F8F8F;
   --el-color-primary-light-9: #22252B;
   --el-color-primary-dark-2: #FFFFFF;
 

@@ -541,6 +541,8 @@ onBeforeUnmount(() => {
   align-items: center;
   max-width: var(--container-width-sm);
   width: 100%;
+  /* 呼吸感：整体重心略上移（LobeChat welcome 对齐），标题-副题留白加大 */
+  margin-top: -8vh;
 }
 
 .welcome-title {
@@ -548,7 +550,7 @@ onBeforeUnmount(() => {
   font-size: 32px;
   font-weight: var(--weight-bold);
   color: var(--color-text);
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
   letter-spacing: var(--tracking-tight);
   text-align: center;
 }
@@ -556,7 +558,7 @@ onBeforeUnmount(() => {
 .welcome-subtitle {
   font-size: var(--text-base);
   color: var(--color-text-muted);
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-10);
   text-align: center;
   line-height: var(--leading-relaxed);
 }

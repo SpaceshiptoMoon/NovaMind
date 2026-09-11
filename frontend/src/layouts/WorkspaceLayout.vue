@@ -571,7 +571,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 0 var(--space-3) var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
   border-bottom: 1px solid var(--color-border-light);
   flex-shrink: 0;
 }
@@ -744,6 +744,7 @@ onMounted(async () => {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  padding-top: var(--space-2); /* 频道 tabs 与上下文列表的分区呼吸感 */
 }
 
 .list-area {
