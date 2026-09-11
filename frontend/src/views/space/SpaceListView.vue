@@ -17,7 +17,10 @@
           :title="space.name"
           @click="handleSpaceClick(space.id)"
         >
-          <span class="space-item-avatar">{{ space.name.charAt(0) }}</span>
+          <span
+            class="space-item-avatar"
+            :style="{ background: avatarColor(space.name) }"
+          >{{ space.name.charAt(0) }}</span>
           <span class="item-title">{{ space.name }}</span>
         </button>
         <div v-if="spaceStore.spaces.length === 0" class="space-sidebar-empty">
@@ -349,6 +352,27 @@ function getVisibilityType(visibility?: number): string {
 }
 
 // === 空间选择（侧栏列表） ===
+
+// 空间头像柔和彩色（GitHub 团队头像同款思路：按名称哈希从低饱和色板取色，
+// 同名空间永远同色，视觉上可区分又不刺眼）
+const AVATAR_PALETTE: readonly string[] = [
+  '#6366F1', // 靛
+  '#0EA5E9', // 天蓝
+  '#10B981', // 翠绿
+  '#F59E0B', // 琥珀
+  '#F97316', // 橙
+  '#EC4899', // 粉
+  '#8B5CF6', // 紫
+  '#14B8A6', // 青
+]
+
+function avatarColor(name: string): string {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) | 0
+  }
+  return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length] ?? '#6366F1'
+}
 
 function handleSpaceClick(spaceId: number) {
   router.push(`/home/spaces/${spaceId}/knowledge-bases`)
@@ -799,16 +823,16 @@ onMounted(() => {
   width: 22px;
   height: 22px;
   border-radius: var(--radius-sm);
-  background: var(--color-primary-muted);
-  color: var(--color-text-secondary);
+  /* 按空间名哈希取柔和彩色底（GitHub/Linear 团队头像同款），白字 */
+  color: #ffffff;
   font-size: 11px;
   font-weight: var(--weight-semibold, 600);
   flex-shrink: 0;
 }
 
+/* 选中态：头像本体不变色，外圈发丝环强调（避免整行花） */
 .space-sidebar-item.active .space-item-avatar {
-  background: var(--color-primary);
-  color: var(--color-bg-card);
+  box-shadow: 0 0 0 2px var(--color-bg-sidebar), 0 0 0 3.5px var(--color-primary);
 }
 
 .space-sidebar-item .item-title {
