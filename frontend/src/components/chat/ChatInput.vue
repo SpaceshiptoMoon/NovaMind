@@ -1,64 +1,90 @@
 <template>
   <div class="input-area">
-    <!-- 输入药丸 -->
-    <div class="input-pill">
-      <button
-        class="attach-btn"
-        :disabled="disabled || uploadingFiles"
-        @click="triggerFileSelect"
-        title="上传文档"
-      >
-        <el-icon :size="16"><Paperclip /></el-icon>
-      </button>
-      <input
-        ref="fileInputRef"
-        type="file"
-        accept=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.gif,.webp"
-        style="display: none"
-        @change="handleFileSelected"
-      />
-      <textarea
-        ref="textareaRef"
-        v-model="inputText"
-        class="chat-textarea"
-        placeholder="输入你的问题..."
-        :rows="1"
-        :disabled="disabled"
-        @keydown="handleKeydown"
-        @input="autoResize"
-      />
+    <!-- 输入卡（agent .input-card 逐字同构）：附件栏 → 文本区 → 底部工具行 -->
+    <div class="input-card">
+      <!-- 附件缩略图栏（卡内顶部，有附件才渲染） -->
+      <div v-if="chatStore.pendingAttachments.length > 0" class="input-attachments">
+        <div v-for="att in chatStore.pendingAttachments" :key="att.id" class="attachment-chip">
+          <span class="att-type-badge">{{ getFileExt(att.filename) }}</span>
+          <span class="att-name">{{ att.filename }}</span>
+          <span class="att-size">{{ formatFileSize(att.file_size) }}</span>
+          <button class="att-remove" @click="removeUploadFile(att.id)">
+            <el-icon :size="10"><Close /></el-icon>
+          </button>
+        </div>
+      </div>
 
-      <!-- 底部工具行（agent 输入卡对齐）：左 = 模式 chips；右 = 发送/停止 -->
+      <!-- 文本框区 -->
+      <div class="input-scroll">
+        <textarea
+          ref="textareaRef"
+          v-model="inputText"
+          class="chat-textarea"
+          placeholder="输入你的问题..."
+          :rows="1"
+          :disabled="disabled"
+          @keydown="handleKeydown"
+          @input="autoResize"
+        />
+      </div>
+
+      <!-- 底部工具行：左 = + 附件 + 模式 chip；右 = 模型 + 发送/停止 -->
       <div class="input-row">
         <div class="input-tools">
           <button
-            class="mode-chip"
-            :class="{ active: enableThinking }"
-            @click="enableThinking = !enableThinking"
+            class="input-add-btn"
+            :disabled="disabled || uploadingFiles"
+            @click="triggerFileSelect"
+            title="上传文档"
           >
-            <el-icon :size="14" class="mode-chip-icon"><MagicStick /></el-icon>
-            <span>深度思考</span>
+            <el-icon :size="14"><Plus /></el-icon>
           </button>
-          <button
-            class="mode-chip"
-            :class="{ active: enableWebSearch }"
-            @click="enableWebSearch = !enableWebSearch"
-          >
-            <el-icon :size="14" class="mode-chip-icon"><Search /></el-icon>
-            <span>联网搜索</span>
-          </button>
-          <button
-            class="mode-chip"
-            :class="{ active: useStream }"
-            @click="useStream = !useStream"
-          >
-            <el-icon :size="14" class="mode-chip-icon"><Lightning /></el-icon>
-            <span>流式输出</span>
-          </button>
+          <input
+            ref="fileInputRef"
+            type="file"
+            accept=".pdf,.docx,.txt,.md,.jpg,.jpeg,.png,.gif,.webp"
+            style="display: none"
+            @change="handleFileSelected"
+          />
+          <div class="input-modes">
+            <button
+              class="mode-chip"
+              :class="{ active: enableThinking }"
+              @click="enableThinking = !enableThinking"
+            >
+              <el-icon :size="14" class="mode-chip-icon"><MagicStick /></el-icon>
+              <span>深度思考</span>
+            </button>
+            <button
+              class="mode-chip"
+              :class="{ active: enableWebSearch }"
+              @click="enableWebSearch = !enableWebSearch"
+            >
+              <el-icon :size="14" class="mode-chip-icon"><Search /></el-icon>
+              <span>联网搜索</span>
+            </button>
+            <button
+              class="mode-chip"
+              :class="{ active: useStream }"
+              @click="useStream = !useStream"
+            >
+              <el-icon :size="14" class="mode-chip-icon"><Lightning /></el-icon>
+              <span>流式输出</span>
+            </button>
+          </div>
         </div>
         <div class="input-trailing">
-          <!-- 原右上发送/停止按钮移入工具行右端 -->
-          <button v-if="disabled" class="send-primary stop-primary" title="停止" @click="$emit('cancel-stream')">
+          <ModelTrigger
+            v-if="Object.keys(models).length"
+            v-model="selectedModel"
+            :models="models"
+          />
+          <button
+            v-if="disabled"
+            class="send-primary stop-primary"
+            title="停止"
+            @click="$emit('cancel-stream')"
+          >
             <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
               <rect x="3" y="3" width="10" height="10" rx="3" fill="currentColor" />
             </svg>
@@ -81,31 +107,26 @@
         </div>
       </div>
     </div>
-
-    <!-- 附件预览 -->
-    <div v-if="uploadingFiles || (pendingAttachmentsCount ?? 0) > 0" class="attachment-preview-bar">
-      <div v-for="att in chatStore.pendingAttachments" :key="att.id" class="attachment-chip">
-        <span class="att-type-badge">{{ getFileExt(att.filename) }}</span>
-        <span class="att-name">{{ att.filename }}</span>
-        <span class="att-size">{{ formatFileSize(att.file_size) }}</span>
-        <button class="att-remove" @click="removeUploadFile(att.id)">
-          <el-icon :size="10"><Close /></el-icon>
-        </button>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Paperclip, Close, MagicStick, Search, Lightning } from '@element-plus/icons-vue'
+import { Plus, Close, MagicStick, Search, Lightning } from '@element-plus/icons-vue'
 import { useChatStore } from '@/stores/chat'
 import { useChatAttachments } from '@/composables/useChatAttachments'
+import ModelTrigger from '@/components/common/ModelTrigger.vue'
+
+type ModelMeta = { max_tokens: number; temperature: number; top_p: number; model_type: string }
 
 const props = defineProps<{
   disabled: boolean
   pendingAttachmentsCount?: number
+  /** 可选模型表（qa 侧由 ChatView 传入；空表隐藏模型选择器） */
+  models?: Record<string, ModelMeta>
+  /** 页头模型选择初值（可选，卡内选择独立） */
+  selectedModel?: string
 }>()
 
 const emit = defineEmits<{
@@ -115,10 +136,12 @@ const emit = defineEmits<{
       useStream: boolean
       enableThinking: boolean
       enableWebSearch: boolean
+      llmModel?: string
       attachmentIds?: number[]
     },
   ]
   'cancel-stream': []
+  'update:selectedModel': [value: string]
 }>()
 
 const chatStore = useChatStore()
@@ -129,7 +152,11 @@ const useStream = ref(true)
 const enableThinking = ref(false)
 const enableWebSearch = ref(false)
 const uploadingFiles = ref(false)
+// 卡内模型选择（'' = Auto；初值取页头选择），变化经 update:selectedModel 通知父级
+const selectedModel = ref(props.selectedModel ?? '')
 const { getFileExt, formatFileSize } = useChatAttachments()
+
+const models = computed<Record<string, ModelMeta>>(() => props.models ?? {})
 
 function autoResize() {
   if (!textareaRef.value) return
@@ -202,43 +229,87 @@ function handleSendClick() {
     useStream: useStream.value,
     enableThinking: enableThinking.value,
     enableWebSearch: enableWebSearch.value,
+    llmModel: selectedModel.value || undefined,
   })
 }
 </script>
 
 <style scoped>
 /* ========================================
-   Input Area — Pill Shape
+   Input Area（agent 卡同款外层）
    ======================================== */
 .input-area {
   flex-shrink: 0;
-  padding: 0 48px 16px;
-  background: var(--color-bg-card);
+  padding: var(--space-2) 48px 16px;
+  background: transparent;
 }
 
-.input-pill {
+/* ========================================
+   输入卡（agent .input-card 逐字复刻）：附件栏 → 文本区 → 底部工具行
+   ======================================== */
+.input-card {
   /* 与智能体/深度研究页输入卡同宽（--container-width-md = 816px），三页统一 */
-  max-width: var(--container-width-md);
-  margin: 0 auto;
-  /* agent 输入卡对齐：纵向三段（附件 → 文本 → 工具行），18px 圆角卡片 */
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px 12px 6px;
-  background: var(--color-bg-card);
+  gap: 10px;
+  width: 100%;
+  max-width: var(--container-width-md);
+  margin: 0 auto;
+  padding: 10px 12px 6px;
   border: 1px solid var(--color-border);
-  border-radius: 18px;
+  border-radius: var(--radius-2xl);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-md);
   transition:
     border-color var(--transition-base),
     box-shadow var(--transition-base);
 }
 
-.input-pill:focus-within {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--color-primary-muted);
+.input-card:focus-within {
+  border-color: var(--color-info);
+  box-shadow:
+    0 0 0 3px var(--color-info-subtle),
+    var(--shadow-sm);
 }
 
-/* 底部工具行：左模式 chips + 右发送（agent 输入卡 .input-row 同构） */
+/* 附件缩略图栏（卡内顶部，有附件才渲染） */
+.input-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 4px 0;
+}
+
+/* 文本框区 */
+.input-scroll {
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.chat-textarea {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--color-text);
+  background: transparent;
+  padding: 4px 8px 0 12px;
+}
+
+.chat-textarea::placeholder {
+  color: var(--color-text-faint);
+}
+
+.chat-textarea:disabled {
+  opacity: 0.5;
+}
+
+/* 底部工具行：左 = + 附件 + 模式 chips；右 = 模型 + 发送/停止（agent .input-row 同构） */
 .input-row {
   display: flex;
   align-items: center;
@@ -251,18 +322,49 @@ function handleSendClick() {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+.input-add-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.input-add-btn:hover:not(:disabled) {
+  background: var(--color-bg-sidebar);
+}
+
+.input-add-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.input-modes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
 .mode-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 10px;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
   border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-md);
   background: transparent;
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   font-size: var(--text-xs);
   font-family: var(--font-body);
   cursor: pointer;
@@ -271,13 +373,13 @@ function handleSendClick() {
 
 .mode-chip:hover {
   border-color: var(--color-border);
-  color: var(--color-text-secondary);
 }
 
 .mode-chip.active {
-  border-color: var(--color-primary);
-  background: var(--color-primary-muted);
-  color: var(--color-primary);
+  background: var(--color-btn-primary);
+  border-color: var(--color-btn-primary);
+  color: #ffffff;
+  font-weight: var(--weight-medium);
 }
 
 .mode-chip-icon {
@@ -289,40 +391,34 @@ function handleSendClick() {
 .input-trailing {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+  flex: none;
+  gap: 12px;
+  min-width: 0;
 }
 
-/* 发送/停止：36px 圆形实心按钮（agent .send-primary 同款） */
+/* 发送/停止：34px 圆形（agent .send-primary 逐字复刻） */
 .send-primary {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
   border: none;
   border-radius: var(--radius-full);
-  background: var(--color-border);
-  color: var(--color-text-faint);
+  background: var(--color-border-light);
+  color: #ffffff;
   cursor: not-allowed;
   transition: all var(--transition-base);
-  flex-shrink: 0;
 }
 
 .send-primary.active {
-  background: var(--color-btn-primary);
-  color: #ffffff;
+  background: var(--color-info);
   cursor: pointer;
-}
-
-.send-primary.active:hover {
-  background: var(--color-btn-primary-hover);
-  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
 }
 
 .stop-primary {
   background: var(--color-warning);
-  color: #ffffff;
   cursor: pointer;
 }
 
@@ -330,68 +426,7 @@ function handleSendClick() {
   background: var(--color-accent);
 }
 
-.chat-textarea {
-  flex: 1;
-  border: none;
-  outline: none;
-  resize: none;
-  font-family: var(--font-body);
-  font-size: var(--text-base);
-  line-height: var(--leading-normal);
-  color: var(--color-text);
-  background: transparent;
-  padding: var(--space-2) var(--space-2);
-  max-height: 160px;
-  overflow-y: auto;
-}
-
-.chat-textarea::placeholder {
-  color: var(--color-text-faint);
-}
-
-.chat-textarea:disabled {
-  opacity: 0.5;
-}
-
-/* ========================================
-   Attachment Button
-   ======================================== */
-.attach-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.attach-btn:hover:not(:disabled) {
-  background: var(--color-bg-hover);
-  color: var(--color-primary);
-}
-
-.attach-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* ========================================
-   Attachment Preview Bar
-   ======================================== */
-.attachment-preview-bar {
-  margin: 6px 0 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 0 4px;
-}
-
+/* 附件 chip（agent .attachment-chip 同构） */
 .attachment-chip {
   display: inline-flex;
   align-items: center;
@@ -448,36 +483,5 @@ function handleSendClick() {
 .att-remove:hover {
   background: var(--color-danger-subtle);
   color: var(--color-danger);
-}
-
-/* ========================================
-   Quick Prompts
-   ======================================== */
-.quick-prompts {
-  max-width: var(--container-width-md);
-  margin: 0 auto 8px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 0 4px;
-}
-
-.quick-prompt-btn {
-  padding: 6px 14px;
-  font-size: var(--text-xs);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
-  background: var(--color-bg-card);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  white-space: nowrap;
-  font-family: var(--font-body);
-}
-
-.quick-prompt-btn:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-  background: var(--color-primary-muted);
 }
 </style>

@@ -73,10 +73,13 @@
         />
       </div>
 
-      <!-- 输入区域 -->
+      <!-- 输入区域（agent 输入卡同构；模型选择器移入卡内工具行） -->
       <ChatInput
         :disabled="chatStore.isStreaming || chatStore.loading"
         :pending-attachments-count="chatStore.pendingAttachments.length"
+        :models="availableModels"
+        :selected-model="selectedModel"
+        @update:selected-model="selectedModel = $event"
         @send="handleSend"
         @cancel-stream="handleCancelStream"
         @open-config="openSessionConfig"
@@ -224,11 +227,13 @@ async function handleSend(
     useStream: boolean
     enableThinking: boolean
     enableWebSearch: boolean
+    llmModel?: string
   },
 ) {
   const attachmentIds = chatStore.pendingAttachments.map((a) => a.id)
   const opts = {
-    llm_model: selectedModel.value || undefined,
+    // 卡内模型选择优先（''=Auto 时回落页头选择，兼容旧入口）
+    llm_model: options.llmModel || selectedModel.value || undefined,
     enable_thinking: options.enableThinking,
     enable_web_search: options.enableWebSearch || undefined,
     attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
