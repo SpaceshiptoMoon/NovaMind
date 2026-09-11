@@ -127,3 +127,36 @@ def test_sources_config_defaults():
     assert s.internal is None
     assert s.external is None
     assert s.extra == {}
+
+
+def test_extra_source_config_with_independent_top_k():
+    """extra 源配置段可携带独立 top_k（装配点 config.get("top_k") 消费）。"""
+    req = ResearchRequest(
+        query="独立 top_k 测试查询示例",
+        sources={
+            "enabled": ["internal", "confluence"],
+            "extra": {"confluence": {"base_url": "https://c.example.com", "top_k": 4}},
+        },
+    )
+    params = _extract_research_params(req)
+    cfg = params.extra_source_configs["confluence"]
+    assert cfg["top_k"] == 4
+    assert cfg["base_url"] == "https://c.example.com"
+
+
+# ---- 源发现接口 schema ----
+
+
+def test_search_source_info_schema():
+    """SearchSourceInfo/ListResponse 形状（GET /deep-research/sources 响应契约）。"""
+    from novamind.features.deep_research.schemas.research_schema import (
+        SearchSourceInfo,
+        SearchSourceListResponse,
+    )
+
+    info = SearchSourceInfo(source_type="confluence", display_name="Confluence")
+    resp = SearchSourceListResponse(sources=[info])
+    assert resp.sources[0].source_type == "confluence"
+    assert resp.sources[0].display_name == "Confluence"
+    # 空列表合法（注册表为空时不炸）
+    assert SearchSourceListResponse().sources == []

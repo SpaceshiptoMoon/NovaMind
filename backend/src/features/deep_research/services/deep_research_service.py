@@ -625,7 +625,10 @@ class DeepResearchService:
         工厂构造绑定实例（不跨请求复用）。注册表 build 抛的中立异常已在工厂内映射为
         feature 异常（DeepResearchError 子类），此处透传。
         """
-        from novamind.engines.deep_research.sources import SearchSourceBinding
+        from novamind.engines.deep_research.sources import (
+            SearchSourceBinding,
+            SearchSourceContext,
+        )
         from novamind.features.deep_research.adapters.source_registry import source_registry
 
         deps = {"retrieval_port": self.search_port, "session": self.session, "logger": self.logger}
@@ -640,9 +643,10 @@ class DeepResearchService:
                 config = external_cfg.model_dump() if hasattr(external_cfg, "model_dump") else {}
                 top_k = external_cfg.max_results
             else:
-                # 未来新源：配置段取 sources.extra[source_type]，top_k 沿用内部检索 top_k
-                config = (ctx.params.extra_source_configs or {}).get(source_type, {})
-                top_k = internal_cfg.top_k
+                # 扩展源：配置段取 sources.extra[source_type]；top_k 优先取配置内
+                # 的独立 top_k，缺省回落内部检索 top_k
+                config = dict((ctx.params.extra_source_configs or {}).get(source_type, {}))
+                top_k = int(config.get("top_k") or internal_cfg.top_k)
             context = SearchSourceContext(
                 space_id=ctx.space_id,
                 user_id=ctx.user_id,

@@ -24,6 +24,8 @@ from novamind.features.deep_research.schemas.research_schema import (
     ResearchResponse,
     ResearchListItem,
     ResearchListResponse,
+    SearchSourceInfo,
+    SearchSourceListResponse,
 )
 
 __all__ = [
@@ -43,4 +45,6 @@ __all__ = [
     "ResearchResponse",
     "ResearchListItem",
     "ResearchListResponse",
+    "SearchSourceInfo",
+    "SearchSourceListResponse",
 ]

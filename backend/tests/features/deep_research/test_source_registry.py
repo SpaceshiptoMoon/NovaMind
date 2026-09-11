@@ -277,3 +277,68 @@ def test_search_depth_passthrough_in_config():
     """请求级 search_depth 进入工厂 config（tavily 分支消费；此处验证 config 透传形状）。"""
     ctx = _ctx({"provider": "tavily", "max_results": 5, "search_depth": "advanced"})
     assert ctx.config["search_depth"] == "advanced"
+
+
+# ---- 装配点 binding top_k 语义 ----
+
+
+def test_build_source_bindings_extra_source_independent_top_k():
+    """扩展源 top_k 优先取 extra 配置内独立值，缺省回落内部检索 top_k。"""
+    from novamind.features.deep_research.services.deep_research_service import (
+        DeepResearchService,
+    )
+
+    # stub 源工厂：捕获 build 时收到的 binding 由调用方检查（注册表只管产出 port）
+    captured: Dict[str, Any] = {}
+
+    class _StubPort:
+        async def search(self, query, *, top_k):
+            return []
+
+    def _stub_factory(ctx):
+        captured["config"] = ctx.config
+        return _StubPort()
+
+    reg = DataSearchSourceRegistry()
+    reg.register("stubsrc", _stub_factory, "桩源")
+
+    # 直接测 _build_source_bindings 的 top_k 计算逻辑（service 依赖 stub 化）
+    service = DeepResearchService.__new__(DeepResearchService)
+    service.session = object()
+    service._search_port = object()  # 预置避免 property 走真实 SearchService 构造
+    service.logger = None
+    service._web_source_adapters = []
+
+    # 用独立注册表不行——方法内部 import 全局 source_registry；
+    # 改为 patch 全局注册表仅此一源（避免触碰真实 internal/external 工厂）
+    from novamind.features.deep_research.adapters import source_registry as sr_mod
+    from novamind.features.deep_research.adapters.source_registry import (
+        DataSearchSourceRegistry as _Reg,
+    )
+
+    fresh = _Reg()
+    fresh.register("stubsrc", _stub_factory, "桩源")
+    with patch.object(sr_mod, "source_registry", fresh):
+        # enabled 只含扩展源，避开 internal 工厂的 deps 依赖
+        params = type("P", (), {})()
+        params.search_source = None
+        params.enabled_sources = ["stubsrc"]
+        params.extra_source_configs = {"stubsrc": {"top_k": 3}}
+        params.internal_config = type("I", (), {"top_k": 10})()
+        params.external_config = type("E", (), {"max_results": 5})()
+        ctx = type("C", (), {})()
+        ctx.space_id = 1
+        ctx.user_id = 1
+        ctx.params = params
+
+        bindings = service._build_source_bindings(ctx)
+        assert len(bindings) == 1
+        assert bindings[0].source_type == "stubsrc"
+        # 独立 top_k 生效（extra 配置内 top_k=3 覆盖 internal 的 10）
+        assert bindings[0].top_k == 3
+        assert captured["config"] == {"top_k": 3}
+
+        # 缺省回落：extra 配置无 top_k → 用 internal top_k=10
+        params.extra_source_configs = {"stubsrc": {}}
+        bindings2 = service._build_source_bindings(ctx)
+        assert bindings2[0].top_k == 10

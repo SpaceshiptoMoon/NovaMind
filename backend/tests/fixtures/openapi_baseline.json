@@ -8101,6 +8101,42 @@
         "title": "SearchSource",
         "type": "string"
       },
+      "SearchSourceInfo": {
+        "description": "已注册数据源元数据（源发现接口，供前端动态渲染源选项）",
+        "properties": {
+          "display_name": {
+            "description": "展示名（中文）",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "source_type": {
+            "description": "源类型标识（请求 sources.enabled 用）",
+            "title": "Source Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_type",
+          "display_name"
+        ],
+        "title": "SearchSourceInfo",
+        "type": "object"
+      },
+      "SearchSourceListResponse": {
+        "description": "已注册数据源列表",
+        "properties": {
+          "sources": {
+            "description": "注册表中的全部数据源（builtin + 自定义）",
+            "items": {
+              "$ref": "#/components/schemas/SearchSourceInfo"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "title": "SearchSourceListResponse",
+        "type": "object"
+      },
       "SearchTestRequest": {
         "description": "搜索连接测试请求（提交凭据实搜一次验证，不入库）",
         "properties": {
@@ -16903,6 +16939,54 @@
           }
         ],
         "summary": "执行深度研究（非流式）",
+        "tags": [
+          "深度研究"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/deep-research/sources": {
+      "get": {
+        "description": "返回数据源注册表中的全部数据源（type + 展示名），供前端动态渲染源选项。新数据源注册工厂后自动出现在此列表，前端零改动。",
+        "operationId": "list_search_sources_api_v1_spaces__space_id__deep_research_sources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchSourceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "获取已注册数据源列表",
         "tags": [
           "深度研究"
         ]

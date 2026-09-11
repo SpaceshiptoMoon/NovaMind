@@ -318,6 +318,22 @@ class ResearchRequest(BaseModel):
 
 # ==================== 响应模型 ====================
 
+class SearchSourceInfo(BaseModel):
+    """已注册数据源元数据（源发现接口，供前端动态渲染源选项）"""
+
+    source_type: str = Field(..., description="源类型标识（请求 sources.enabled 用）")
+    display_name: str = Field(..., description="展示名（中文）")
+
+
+class SearchSourceListResponse(BaseModel):
+    """已注册数据源列表"""
+
+    sources: List[SearchSourceInfo] = Field(
+        default_factory=list,
+        description="注册表中的全部数据源（builtin + 自定义）",
+    )
+
+
 class PlanStepModel(BaseModel):
     """研究计划步骤（deer-flow Step 对齐，plan_generated 事件与响应用）"""
     step_id: str = Field(..., description="步骤 ID")

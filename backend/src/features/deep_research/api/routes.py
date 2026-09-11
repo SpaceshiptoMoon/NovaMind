@@ -23,6 +23,7 @@ from novamind.features.deep_research.services.deep_research_service import (
 from novamind.features.deep_research.services.plan_feedback_registry import (
     PlanFeedbackRegistry,
 )
+from novamind.features.deep_research.adapters.source_registry import source_registry
 from novamind.features.deep_research.schemas.research_schema import (
     ResearchMode,
     SearchSource,
@@ -32,6 +33,8 @@ from novamind.features.deep_research.schemas.research_schema import (
     ResearchListResponse,
     ResearchListItem,
     ResearchStatus,
+    SearchSourceInfo,
+    SearchSourceListResponse,
 )
 from novamind.features.deep_research.models.research_session import (
     ResearchStatus as ModelResearchStatus,
@@ -123,6 +126,29 @@ def _get_search_summary(research) -> Optional[dict]:
 
 
 # ==================== API 路由 ====================
+
+@router.get(
+    "/sources",
+    response_model=SearchSourceListResponse,
+    summary="获取已注册数据源列表",
+    description="返回数据源注册表中的全部数据源（type + 展示名），供前端动态渲染源选项。新数据源注册工厂后自动出现在此列表，前端零改动。",
+)
+async def list_search_sources(
+    validated: tuple = Depends(validate_space_access),
+    current_user: dict = Depends(get_current_user),
+):
+    """获取已注册数据源列表（源发现接口）。
+
+    挂在空间前缀下并复用 ``validate_space_access``：源注册表虽是全局的，
+    但源发现需登录 + 空间成员资格，防未授权枚举部署能力。
+    """
+    space, _member = validated
+    sources = [
+        SearchSourceInfo(source_type=st, display_name=source_registry.display_name(st))
+        for st in source_registry.known_types()
+    ]
+    return SearchSourceListResponse(sources=sources)
+
 
 @router.post(
     "",
