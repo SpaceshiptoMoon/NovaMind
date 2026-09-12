@@ -13,45 +13,21 @@
         <el-icon :size="14"><Plus /></el-icon>
         添加智能体
       </button>
-
-      <!-- 空列表时给出更明确的引导 -->
-      <div v-if="agentStore.agents.length > 0" class="agent-quick-list">
-        <button
-          v-for="agent in agentStore.agents"
-          :key="agent.id"
-          class="quick-item"
-          @click="startChat(agent)"
-        >
-          <span class="quick-avatar">{{ agent.name.charAt(0) }}</span>
-          <span class="quick-name">{{ agent.name }}</span>
-        </button>
-      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { inject } from 'vue'
-import { useRouter } from 'vue-router'
 import { Plus } from '@element-plus/icons-vue'
-import { useAgentStore } from '@/stores/agent'
 import NavIcon from '@/components/common/NavIcon.vue'
 import type { Agent } from '@/api/types'
-
-const router = useRouter()
-const agentStore = useAgentStore()
 
 // 创建弹窗逻辑收编在 WorkspaceLayout，经 inject 调用
 const openAgentDialog = inject<(agent?: Agent) => void>('openAgentDialog', () => {})
 
 function openCreate() {
   openAgentDialog()
-}
-
-function startChat(agent: Agent) {
-  agentStore.currentAgent = agent
-  agentStore.fetchConversations(agent.id)
-  router.push({ name: 'WorkspaceAgentChat', params: { agentId: agent.id } })
 }
 </script>
 
@@ -119,55 +95,5 @@ function startChat(agent: Agent) {
 
 .placeholder-action:hover {
   background: var(--color-btn-primary-hover);
-}
-
-/* 已有智能体时的快捷入口（纵向列表，点即进对话） */
-.agent-quick-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin-top: var(--space-8);
-  width: 100%;
-}
-
-.quick-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-lg);
-  background: var(--color-bg-card);
-  cursor: pointer;
-  text-align: left;
-  transition: all var(--transition-base);
-}
-
-.quick-item:hover {
-  border-color: var(--color-border);
-  background: var(--color-bg-hover);
-}
-
-.quick-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-md);
-  background: var(--color-primary-subtle);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-display);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  color: var(--color-primary);
-  flex-shrink: 0;
-}
-
-.quick-name {
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 </style>
