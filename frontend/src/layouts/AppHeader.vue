@@ -355,7 +355,7 @@ const handleCommand = async (command: string) => {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: var(--space-5);
+  gap: var(--space-8);
 }
 
 .nav-item {
