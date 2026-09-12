@@ -408,11 +408,8 @@ const handleCommand = async (command: string) => {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-}
-
-/* 折叠按钮是描边样式，与右侧图标位留一档呼吸 */
-.sidebar-collapse-btn {
-  margin-right: var(--space-2);
+  /* 顶栏右侧操作键统一 hover 浮起阴影（就近定义便于整体调档） */
+  --header-hover-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
 /* ==================== 侧栏折叠按钮 ==================== */
@@ -422,38 +419,29 @@ const handleCommand = async (command: string) => {
   justify-content: center;
   width: 32px;
   height: 32px;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md);
+  margin-right: var(--space-2);
+  border: none;
+  border-radius: var(--radius-full);
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
   transition: color var(--transition-fast), background var(--transition-fast),
-    border-color var(--transition-fast);
-}
-
-.sidebar-collapse-btn:hover {
-  color: var(--color-text);
-  background: var(--color-bg-hover);
-  border-color: var(--color-border);
+    box-shadow var(--transition-base);
 }
 
 /* ==================== 主题切换 ==================== */
 .theme-toggle {
   color: var(--color-text-secondary);
   cursor: pointer;
-  /* 与折叠按钮/铃铛同规格 32px 圆形 hover 位 */
+  /* 与折叠按钮/铃铛同规格 32px 圆形操作位 */
   width: 32px;
   height: 32px;
   border-radius: var(--radius-full);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: color var(--transition-fast), background var(--transition-fast);
-}
-
-.theme-toggle:hover {
-  color: var(--color-text);
-  background: var(--color-bg-hover);
+  transition: color var(--transition-fast), background var(--transition-fast),
+    box-shadow var(--transition-base);
 }
 
 /* ==================== 通知铃铛 ==================== */
@@ -466,11 +454,7 @@ const handleCommand = async (command: string) => {
   width: 32px;
   height: 32px;
   border-radius: var(--radius-full);
-  transition: background var(--transition-fast);
-}
-
-.notification-badge:hover {
-  background: var(--color-bg-hover);
+  transition: background var(--transition-fast), box-shadow var(--transition-base);
 }
 
 .notification-bell {
@@ -480,6 +464,17 @@ const handleCommand = async (command: string) => {
 
 .notification-badge:hover .notification-bell {
   color: var(--color-text);
+}
+
+/* 顶栏操作键统一 hover 态：浅灰圆底 + 浮起阴影 */
+.sidebar-collapse-btn:hover,
+.theme-toggle:hover,
+.notification-badge:hover,
+.user-trigger:hover,
+.user-trigger:focus-visible {
+  color: var(--color-text);
+  background: var(--color-bg-hover);
+  box-shadow: var(--header-hover-shadow);
 }
 
 .notification-panel {
@@ -564,13 +559,7 @@ const handleCommand = async (command: string) => {
   padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
   border-radius: var(--radius-full);
   cursor: pointer;
-  transition: background var(--transition-fast);
   outline: none;
-}
-
-.user-trigger:hover,
-.user-trigger:focus-visible {
-  background: var(--color-bg-hover);
 }
 
 /* 头像透明底：独角兽图案直接浮在页面上，仅 hover 时有浅底托住 */
