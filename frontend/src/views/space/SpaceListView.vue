@@ -438,8 +438,8 @@ function handleNavBack() {
   if (navBack.value) router.push(navBack.value.to)
 }
 
-// 分段面包屑链：空间实体名 → KB 实体名（有 kbId 时）→ 当前页模块名。
-// 全部用实体名，不再用「空间/知识库/文档」通用段名占位（同名链接冗余且层级含混）
+// 分段面包屑链：所有 KB 子页面统一三段「空间名 → KB 实体名 → 功能名」，
+// 空间级页面两段「空间名 → 功能名」——同类页面链路长度一致，头部布局稳定
 const crumbItems = computed(() => {
   const items: Array<{ label: string; to?: string }> = []
   const sid = selectedSpaceId.value
@@ -456,16 +456,18 @@ const crumbItems = computed(() => {
     to: isKbHome ? undefined : kbBase,
   })
 
+  // KB 级页面：统一插入 KB 实体段（真实名；映射未命中时异步拉取后自动更新）
   if (kbIdParam) {
+    const kbIdNum = Number(kbIdParam)
     items.push({
-      label: route.name === 'Documents' || route.name === 'DocumentDetail' ? (currentKbName.value || '知识库') : '知识库',
+      label: kbNameMap.value[kbIdNum] || currentKbName.value || '知识库',
       to: kbBase,
     })
   }
 
   if (route.name === 'Documents') items.push({ label: '文档管理' })
   if (route.name === 'DocumentDetail') items.push({ label: currentDocName.value || '文档详情' })
-  if (route.name === 'Search') items.push({ label: '知识搜索' })
+  if (route.name === 'Search') items.push({ label: '知识检索' })
   if (route.name === 'SpaceSettings') items.push({ label: '空间设置' })
   if (route.name === 'KbEvaluation') items.push({ label: '评估' })
   if (route.name === 'DocumentTasks') items.push({ label: '任务列表' })
@@ -474,9 +476,30 @@ const crumbItems = computed(() => {
   return items
 })
 
-// 当前 KB/文档名（详情页由自身传查询参数回列表页的场景从简，先从 store/route 取）
+// KB 名映射（直跳子页面时异步拉取；DocumentView/KbConfigView 自行取名不受影响）
+const kbNameMap = ref<Record<number, string>>({})
 const currentKbName = ref('')
 const currentDocName = ref('')
+
+async function ensureKbName(kbId: number) {
+  if (kbNameMap.value[kbId]) return
+  try {
+    const kb = await knowledgeBaseApi.getKnowledgeBase(selectedSpaceId.value!, kbId)
+    kbNameMap.value = { ...kbNameMap.value, [kbId]: kb.name }
+  } catch {
+    // 拉取失败保留兜底文案
+  }
+}
+
+watch(
+  () => route.params.kbId,
+  (kbId) => {
+    if (kbId && selectedSpaceId.value) {
+      ensureKbName(Number(kbId))
+    }
+  },
+  { immediate: true },
+)
 
 // === 创建空间 ===
 
