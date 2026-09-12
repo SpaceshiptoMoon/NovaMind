@@ -994,12 +994,11 @@ onMounted(async () => {
    ======================================== */
 .doc-grid-wrap {
   display: grid;
-  /* 轨道最宽 420px：文档少时不拉伸占满整行，多余空间留白、卡片左对齐 */
-  grid-template-columns: repeat(auto-fill, minmax(300px, min(420px, 100%)));
+  /* 轨道均分整行宽度（无右侧留白），但卡片本体 max-width 420px 居中不拉伸 */
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: var(--space-3);
   min-height: 200px;
   align-content: start;
-  justify-content: start;
 }
 
 .doc-grid-empty {
@@ -1015,6 +1014,10 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  /* 轨道宽但卡片不跟宽：max-width 封顶 + 水平居中（视觉均匀，无大留白） */
+  max-width: 420px;
+  width: 100%;
+  margin: 0 auto;
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-lg);
