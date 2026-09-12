@@ -169,6 +169,21 @@
   --z-overlay: 300;
   --z-modal: 400;
   --z-toast: 500;
+
+  /* Tbox 点睛渐变 — 仅 agent/chat 页局部引用（主 CTA/发送按钮/头像/氛围底），
+     全局主色仍为灰阶；Tbox 原色 linear-gradient(100deg,#4446ff,#bc57ff) */
+  --color-gradient-accent: linear-gradient(100deg, #4446ff 0%, #bc57ff 100%);
+  --color-gradient-accent-hover: linear-gradient(100deg, #5b5dff 0%, #c96bff 100%);
+  --color-gradient-soft: linear-gradient(106deg, #f5f3ff 33%, #fee7ff 122%);
+  /* 渐变上的前景文字色（渐变底按钮的白字） */
+  --color-gradient-contrast: #ffffff;
+}
+
+/* 暗色主题下提亮渐变、氛围底改深紫透明 */
+[data-theme='dark'] {
+  --color-gradient-accent: linear-gradient(100deg, #6365ff 0%, #c46bff 100%);
+  --color-gradient-accent-hover: linear-gradient(100deg, #7678ff 0%, #d07eff 100%);
+  --color-gradient-soft: linear-gradient(106deg, rgba(99, 101, 255, 0.16) 33%, rgba(196, 107, 255, 0.12) 122%);
 }
 
 /* ========================================

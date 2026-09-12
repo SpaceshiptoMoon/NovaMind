@@ -1,43 +1,35 @@
 <template>
   <div class="agent-view">
-    <!-- 左侧边栏：Agent 列表（仅在非工作台模式显示） -->
-    <div v-if="!isChatRoute && !isInWorkspace" class="agent-sidebar">
-      <div class="sidebar-top">
-        <button class="create-agent-btn" @click="openCreateDialog">
-          <el-icon :size="16"><Plus /></el-icon>
+    <!-- 智能体广场（Tbox 社区风：渐变 CTA + 灰底搜索 + 白卡网格；工作台态同样展示，侧栏列表由 WorkspaceLayout 承载） -->
+    <div class="plaza">
+      <div class="plaza-header">
+        <div class="plaza-heading">
+          <h1 class="plaza-title">智能体广场</h1>
+          <p class="plaza-subtitle">按你的指令自主调用工具、检索知识库，完成复杂任务</p>
+        </div>
+        <button class="plaza-cta" @click="openCreateDialog">
+          <el-icon :size="14"><Plus /></el-icon>
           <span>创建智能体</span>
         </button>
       </div>
-      <div class="agent-list">
-        <div
-          v-for="agent in agentStore.agents"
-          :key="agent.id"
-          class="agent-item"
-          :class="{ active: selectedAgentId === agent.id }"
-          @click="handleSelectAgent(agent)"
-        >
-          <div class="agent-avatar">{{ agent.name.charAt(0) }}</div>
-          <div class="agent-info">
-            <div class="agent-name">{{ agent.name }}</div>
-            <div class="agent-desc">{{ agent.description || '暂无描述' }}</div>
-          </div>
-          <button class="agent-delete" @click.stop="handleDeleteAgent(agent)">
-            <el-icon :size="12"><Delete /></el-icon>
+
+      <div class="plaza-toolbar">
+        <div class="plaza-search">
+          <el-icon :size="14" class="search-icon"><Search /></el-icon>
+          <input
+            v-model="searchKeyword"
+            class="search-input"
+            type="text"
+            placeholder="搜索智能体名称或描述..."
+          />
+          <button v-if="searchKeyword" class="search-clear" @click="searchKeyword = ''">
+            <el-icon :size="12"><Close /></el-icon>
           </button>
         </div>
-        <div
-          v-if="agentStore.agents.length === 0 && !agentStore.agentsLoading"
-          class="sidebar-empty"
-        >
-          <span>暂无智能体</span>
-        </div>
       </div>
-    </div>
 
-    <!-- 右侧主区域 -->
-    <div class="agent-main">
-      <!-- 空状态 -->
-      <div v-if="!currentAgent" class="empty-state">
+      <!-- 空状态：无任何智能体 -->
+      <div v-if="agentStore.agents.length === 0 && !agentStore.agentsLoading" class="empty-state">
         <div class="empty-inner">
           <div class="empty-icon">
             <NavIcon name="agents" :size="36" />
@@ -51,30 +43,51 @@
         </div>
       </div>
 
-      <!-- Agent 详情 + 对话入口（配置收进右侧抽屉，主区聚焦对话入口） -->
-      <div v-else class="agent-detail">
-        <div class="detail-header">
-          <div class="detail-avatar">{{ currentAgent?.name.charAt(0) }}</div>
-          <div class="detail-meta">
-            <h2 class="detail-name">{{ currentAgent?.name }}</h2>
-            <p class="detail-desc">{{ currentAgent?.description || '暂无描述' }}</p>
+      <!-- 搜索无结果 -->
+      <div v-else-if="filteredAgents.length === 0" class="empty-state">
+        <div class="empty-inner">
+          <h2 class="empty-title">未找到匹配的智能体</h2>
+          <p class="empty-desc">换个关键词试试，或清空搜索查看全部</p>
+        </div>
+      </div>
+
+      <!-- Agent 卡片网格 -->
+      <div v-else class="agent-grid">
+        <div
+          v-for="agent in filteredAgents"
+          :key="agent.id"
+          class="agent-card"
+          @click="startChat(agent)"
+        >
+          <div class="card-top">
+            <div class="card-avatar">{{ agent.name.charAt(0) }}</div>
+            <button class="card-delete" title="删除" @click.stop="handleDeleteAgent(agent)">
+              <el-icon :size="12"><Delete /></el-icon>
+            </button>
           </div>
-          <div class="detail-actions">
-            <button class="action-btn" @click="configDrawerVisible = true">
-              <el-icon :size="14"><Setting /></el-icon>
-              <span>配置</span>
-            </button>
-            <button class="action-btn" @click="openEditDialog(currentAgent!)">
-              <el-icon :size="14"><EditPen /></el-icon>
-              <span>编辑</span>
-            </button>
-            <button class="action-btn primary" @click="startChat(currentAgent!)">
-              <el-icon :size="14"><ChatDotRound /></el-icon>
+          <div class="card-name">{{ agent.name }}</div>
+          <div class="card-desc">{{ agent.description || '暂无描述' }}</div>
+          <div v-if="agent.enabled_tools?.length" class="card-tags">
+            <span v-for="s in agent.enabled_tools.slice(0, 3)" :key="s" class="card-tag">{{ s }}</span>
+            <span v-if="agent.enabled_tools.length > 3" class="card-tag card-tag--more">
+              +{{ agent.enabled_tools.length - 3 }}
+            </span>
+          </div>
+          <div class="card-actions">
+            <button class="card-btn card-btn--chat" @click.stop="startChat(agent)">
+              <el-icon :size="12"><ChatDotRound /></el-icon>
               <span>开始对话</span>
+            </button>
+            <button class="card-btn" title="配置" @click.stop="openConfig(agent)">
+              <el-icon :size="12"><Setting /></el-icon>
+            </button>
+            <button class="card-btn" title="编辑" @click.stop="openEditDialog(agent)">
+              <el-icon :size="12"><EditPen /></el-icon>
             </button>
           </div>
         </div>
       </div>
+    </div>
 
     <!-- Agent 配置抽屉（详情八卡片自平铺主区收编） -->
     <el-drawer
@@ -131,10 +144,6 @@
         </div>
       </div>
     </el-drawer>
-
-      <!-- 子路由出口（仅在非工作台模式下使用） -->
-      <router-view v-if="!isInWorkspace" />
-    </div>
 
     <!-- 创建/编辑 Agent 弹窗 -->
     <el-dialog
@@ -282,10 +291,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, inject, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete, EditPen, ChatDotRound, Setting } from '@element-plus/icons-vue'
+import {
+  Plus,
+  Delete,
+  EditPen,
+  ChatDotRound,
+  Setting,
+  Search,
+  Close,
+} from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useAgentStore } from '@/stores/agent'
 import { chatApi } from '@/api/chat'
@@ -301,14 +318,31 @@ import type {
 const route = useRoute()
 const router = useRouter()
 const agentStore = useAgentStore()
-const isInWorkspace = inject('isInWorkspace', false)
 
-const isChatRoute = computed(() => route.name === 'AgentChat')
-
+// 配置抽屉展示目标
 const selectedAgentId = ref<number | null>(null)
 const currentAgent = computed(
   () => agentStore.agents.find((a) => a.id === selectedAgentId.value) || agentStore.currentAgent,
 )
+
+// ===================== 广场搜索 =====================
+// 前端本地过滤（名称/描述），智能体量级小，无需后端分页
+const searchKeyword = ref('')
+const filteredAgents = computed(() => {
+  const kw = searchKeyword.value.trim().toLowerCase()
+  if (!kw) return agentStore.agents
+  return agentStore.agents.filter(
+    (a) =>
+      a.name.toLowerCase().includes(kw) || (a.description || '').toLowerCase().includes(kw),
+  )
+})
+
+// 卡片「配置」按钮：就地设置抽屉展示目标，避免误带出 store.currentAgent
+function openConfig(agent: Agent) {
+  selectedAgentId.value = agent.id
+  agentStore.currentAgent = agent
+  configDrawerVisible.value = true
+}
 
 // 工具展示：高频工具加 emoji 前缀并置顶，提升辨识度（value 仍用原始 name，保证后端匹配）
 const PRIORITY_TOOLS = ['knowledge_search', 'web_search']
@@ -477,17 +511,9 @@ async function handleDeleteAgent(agent: Agent) {
   }
 }
 
-function handleSelectAgent(agent: Agent) {
-  selectedAgentId.value = agent.id
-  agentStore.currentAgent = agent
-}
-
 function startChat(agent: Agent) {
-  if (isInWorkspace) {
-    router.push({ name: 'WorkspaceAgentChat', params: { agentId: agent.id } })
-  } else {
-    router.push({ name: 'AgentChat', params: { agentId: agent.id } })
-  }
+  // /home/agents 等旧路径已重定向到工作台，统一走工作台对话路由
+  router.push({ name: 'WorkspaceAgentChat', params: { agentId: agent.id } })
 }
 
 // ===================== MCP 服务器管理 =====================
@@ -645,6 +671,9 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* ========================================
+   Plaza — 智能体广场（Tbox 社区风：白卡大圆角 + 渐变 CTA + 灰底搜索）
+   ======================================== */
 .agent-view {
   position: absolute;
   inset: 0;
@@ -653,122 +682,186 @@ onMounted(async () => {
   overflow: hidden;
 }
 
-/* ========================================
-   Sidebar
-   ======================================== */
-.agent-sidebar {
-  width: 280px;
-  border-right: 1px solid var(--color-border-light);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  background: var(--color-bg-card);
-}
-
-.sidebar-top {
-  padding: var(--space-4);
-  border-bottom: 1px solid var(--color-border-light);
-}
-
-.create-agent-btn {
+.plaza {
+  flex: 1;
   width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6) var(--space-10);
+  overflow-y: auto;
+}
+
+.plaza-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.plaza-heading {
+  min-width: 0;
+}
+
+/* 米哈游式左对齐排版层级：大标题 + 灰字副题 */
+.plaza-title {
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: var(--weight-bold);
+  color: var(--color-text);
+  letter-spacing: var(--tracking-tight);
+  margin: 0 0 var(--space-2);
+}
+
+.plaza-subtitle {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  line-height: var(--leading-normal);
+}
+
+/* 渐变主 CTA（Tbox 点睛：紫蓝→紫胶囊，hover 提亮上浮） */
+.plaza-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-gradient-accent);
+  color: var(--color-gradient-contrast);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(90, 80, 255, 0.25);
+}
+
+.plaza-cta:hover {
+  background: var(--color-gradient-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(90, 80, 255, 0.32);
+}
+
+/* ========================================
+   Toolbar — 灰底无边框搜索框（Tbox search-input 语言）
+   ======================================== */
+.plaza-toolbar {
+  margin-bottom: var(--space-6);
+}
+
+.plaza-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 40px;
+  max-width: 440px;
+  padding: 0 var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-input);
+  transition: all var(--transition-base);
+}
+
+.plaza-search:focus-within {
+  background: var(--color-bg-card);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.search-icon {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.search-input {
+  flex: 1;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.search-input::placeholder {
+  color: var(--color-text-faint);
+}
+
+.search-clear {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-lg);
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--color-text-secondary);
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.search-clear:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+/* ========================================
+   Agent Grid — 白卡网格（Tbox card：15px 圆角 + 极浅边框 + hover 上浮）
+   ======================================== */
+.agent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-4);
+}
+
+.agent-card {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border-light);
+  border-radius: 15px;
+  background: var(--color-bg-card);
   cursor: pointer;
   transition: all var(--transition-base);
 }
 
-.create-agent-btn:hover {
-  border-color: var(--color-text);
-  color: var(--color-text);
-  background: var(--color-primary-muted);
+.agent-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-md);
 }
 
-.agent-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-2);
-}
-
-.agent-item {
+.card-top {
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-  margin-bottom: 2px;
-  position: relative;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
 }
 
-.agent-item:hover {
-  background: var(--color-bg-hover);
-}
-
-.agent-item.active {
-  background: var(--color-primary-muted);
-}
-
-.agent-item.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--color-btn-primary);
-}
-
-.agent-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-lg);
-  background: var(--color-primary-subtle);
+/* 头像：淡紫渐变底 + 首字（Tbox 点睛之一） */
+.card-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--color-gradient-soft);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-display);
   font-size: var(--text-lg);
-  font-weight: var(--weight-semibold);
-  color: var(--color-primary);
-  flex-shrink: 0;
-}
-
-.agent-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.agent-name {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-bold);
   color: var(--color-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex-shrink: 0;
+  user-select: none;
 }
 
-.agent-desc {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-top: 2px;
-}
-
-.agent-delete {
+.card-delete {
   opacity: 0;
   display: flex;
   align-items: center;
@@ -784,42 +877,120 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 
-.agent-item:hover .agent-delete {
+.agent-card:hover .card-delete {
   opacity: 1;
 }
 
-.agent-delete:hover {
+.card-delete:hover {
   background: var(--color-danger-subtle);
   color: var(--color-danger);
 }
 
-.sidebar-empty {
+.card-name {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+  margin-bottom: var(--space-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-desc {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  line-height: var(--leading-normal);
+  margin-bottom: var(--space-3);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: calc(var(--leading-normal) * var(--text-sm) * 2);
+  flex: 1;
+}
+
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: var(--space-3);
+}
+
+.card-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-muted);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-tag--more {
+  background: var(--color-bg-hover);
+  color: var(--color-text-muted);
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* 开始对话：渐变小胶囊（与页头 CTA 同语言） */
+.card-btn--chat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-gradient-accent);
+  color: var(--color-gradient-contrast);
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.card-btn--chat:hover {
+  background: var(--color-gradient-accent-hover);
+}
+
+/* 配置/编辑：ghost 圆钮 */
+.card-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-8) var(--space-4);
-  font-size: var(--text-sm);
-  color: var(--color-text-faint);
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.card-btn:hover {
+  border-color: var(--color-border);
+  background: var(--color-bg-hover);
+  color: var(--color-text);
 }
 
 /* ========================================
-   Main Area — Empty State
+   Empty State
    ======================================== */
-.agent-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  overflow-y: auto;
-  position: relative;
-}
-
 .empty-state {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-8);
+  padding: var(--space-16, 64px) var(--space-8);
 }
 
 .empty-inner {
@@ -876,101 +1047,6 @@ onMounted(async () => {
   border-color: var(--color-primary);
   color: var(--color-primary);
   background: var(--color-primary-muted);
-}
-
-/* ========================================
-   Agent Detail
-   ======================================== */
-.agent-detail {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  padding: var(--space-6);
-  max-width: 900px;
-  width: 100%;
-  margin: 0 auto;
-}
-
-.detail-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  margin-bottom: var(--space-6);
-  padding-bottom: var(--space-5);
-  border-bottom: 1px solid var(--color-border-light);
-}
-
-.detail-avatar {
-  width: 52px;
-  height: 52px;
-  border-radius: var(--radius-xl);
-  background: var(--color-primary-subtle);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-display);
-  font-size: var(--text-2xl);
-  font-weight: var(--weight-bold);
-  color: var(--color-primary);
-  flex-shrink: 0;
-}
-
-.detail-meta {
-  flex: 1;
-  min-width: 0;
-}
-
-.detail-name {
-  font-size: var(--text-xl);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text);
-  margin: 0;
-}
-
-.detail-desc {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  margin-top: var(--space-1);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.detail-actions {
-  display: flex;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-
-.action-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-bg-card);
-  color: var(--color-text-secondary);
-  font-family: var(--font-body);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: all var(--transition-base);
-}
-
-.action-btn:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-
-.action-btn.primary {
-  background: var(--color-btn-primary);
-  border-color: var(--color-primary);
-  color: #ffffff;
-}
-
-.action-btn.primary:hover {
-  background: var(--color-btn-primary-hover);
 }
 
 /* ========================================

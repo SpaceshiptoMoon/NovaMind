@@ -1468,8 +1468,8 @@ onBeforeUnmount(() => {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-full);
-  background: var(--color-btn-primary);
-  color: #ffffff;
+  background: var(--color-gradient-accent);
+  color: var(--color-gradient-contrast);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2044,7 +2044,7 @@ onBeforeUnmount(() => {
   transform: translateY(calc(-50vh + 80px));
 }
 
-/* dsh 风格 hero 光晕：输入卡背后的柔和蓝色椭圆，CSS radial-gradient + blur 近似 dsh SVG gaussian */
+/* dsh 风格 hero 光晕：输入卡背后的柔和紫晕（Tbox 淡紫氛围），CSS radial-gradient 近似 */
 .input-area-inner.welcome-center::before {
   content: '';
   position: absolute;
@@ -2055,8 +2055,9 @@ onBeforeUnmount(() => {
   transform: translateX(-50%);
   background: radial-gradient(
     ellipse at center,
-    rgba(99, 102, 241, 0.1),
-    transparent 70%
+    rgba(139, 92, 246, 0.12),
+    rgba(217, 130, 255, 0.06) 55%,
+    transparent 75%
   );
   filter: blur(40px);
   pointer-events: none;
@@ -2230,13 +2231,13 @@ onBeforeUnmount(() => {
 }
 
 .send-primary.active {
-  background: var(--color-btn-primary);
+  background: var(--color-gradient-accent);
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 2px 8px rgba(90, 80, 255, 0.28);
 }
 
 .send-primary.active:hover {
-  background: var(--color-btn-primary-hover);
+  background: var(--color-gradient-accent-hover);
   transform: scale(1.05);
 }
 
