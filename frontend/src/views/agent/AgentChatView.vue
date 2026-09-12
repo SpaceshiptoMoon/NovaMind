@@ -859,10 +859,11 @@ watch(
 )
 
 function goBack() {
+  // 广场页已删：工作台内返回智能体占位页，否则回首页
   if (isInWorkspace) {
     router.push({ name: 'WorkspaceAgents' })
   } else {
-    router.push({ name: 'Agents' })
+    router.push('/home')
   }
 }
 

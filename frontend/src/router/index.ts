@@ -183,7 +183,7 @@ const router = createRouter({
         },
         {
           path: 'agents',
-          redirect: '/home/workspace/agents',
+          redirect: '/home/workspace/chat',
         },
         {
           path: 'agents/:agentId/chat',
@@ -237,7 +237,7 @@ const router = createRouter({
             {
               path: 'agents',
               name: 'WorkspaceAgents',
-              component: () => import('@/views/agent/AgentView.vue'),
+              component: () => import('@/views/agent/AgentWorkspaceView.vue'),
               meta: { title: '智能体', requiresApp: 'agent' },
             },
             {
