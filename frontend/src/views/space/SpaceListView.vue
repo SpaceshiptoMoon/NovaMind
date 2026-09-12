@@ -802,21 +802,34 @@ onMounted(() => {
 
 /* 收缩态：56px 头像窄条（进入 KB 子页面自动收缩） */
 .space-sidebar.collapsed {
-  width: 56px;
-  padding: var(--space-3) var(--space-2);
+  width: 64px;
+  padding: var(--space-4) var(--space-2);
+  gap: var(--space-3);
 }
 
 .space-sidebar.collapsed .new-space-btn,
 .space-sidebar.collapsed .manage-spaces-btn {
-  /* 窄条内按钮收成图标位 */
+  /* 窄条内按钮收成 36px 图标位，与头像同宽对齐 */
+  width: 36px;
+  height: 36px;
+  margin: 0 auto;
   padding: 0;
   gap: 0;
   justify-content: center;
+  border-radius: var(--radius-lg);
+}
+
+.space-sidebar.collapsed .space-sidebar-list {
+  gap: var(--space-2);
 }
 
 .space-sidebar.collapsed .space-sidebar-item {
   justify-content: center;
-  padding: 6px 0;
+  width: 36px;
+  height: 36px;
+  margin: 0 auto;
+  padding: 0;
+  border-radius: var(--radius-lg);
 }
 
 .new-space-btn {
