@@ -502,7 +502,7 @@ function syncChannelFromRoute() {
   else if (path.includes('/workspace/skills')) activeChannelKey.value = 'skills'
 }
 
-// 按频道执行「新建/开启」动作。chat=开启新对话；agents=弹创建智能体；其余=跳转到对应入口
+// 按频道执行「新建/开启」动作。chat=开启新对话；agents=进入智能体页（添加入口在页面内）；其余=跳转
 function handleNew(key: string = activeChannelKey.value) {
   switch (key) {
     case 'chat':
@@ -510,7 +510,7 @@ function handleNew(key: string = activeChannelKey.value) {
       router.push('/home/workspace/chat')
       break
     case 'agents':
-      openAgentDialog()
+      router.push('/home/workspace/agents')
       break
     case 'research':
       router.push('/home/workspace/research')
@@ -546,23 +546,15 @@ function isAgentChatRoute(agentId: number): boolean {
   )
 }
 
+// 占位页经 inject 调用创建弹窗（广场页已删，创建入口收编在布局层）
+provide('openAgentDialog', openAgentDialog)
+
 // 点 agent 条目：直接进对话页（广场页已删，对话即详情）
 function handleSelectAgent(agent: Agent) {
   agentStore.currentAgent = agent
   agentStore.fetchConversations(agent.id)
   router.push({ name: 'WorkspaceAgentChat', params: { agentId: agent.id } })
 }
-
-// 占位页「创建智能体」按钮经 query action 触发创建弹窗（自原 AgentView 收编）
-watch(
-  () => route.query.action,
-  (action) => {
-    if (action === 'create') {
-      openAgentDialog()
-      router.replace({ query: {} })
-    }
-  },
-)
 
 // ===================== Agent 创建/编辑弹窗（原广场页逻辑收编） =====================
 
