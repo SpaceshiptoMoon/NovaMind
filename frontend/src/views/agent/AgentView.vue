@@ -59,31 +59,35 @@
           class="agent-card"
           @click="startChat(agent)"
         >
-          <div class="card-top">
-            <div class="card-avatar">{{ agent.name.charAt(0) }}</div>
+          <div class="card-cover" :class="`cover-hue-${agent.id % 4}`">
             <button class="card-delete" title="删除" @click.stop="handleDeleteAgent(agent)">
               <el-icon :size="12"><Delete /></el-icon>
             </button>
+            <div class="card-avatar">{{ agent.name.charAt(0) }}</div>
           </div>
-          <div class="card-name">{{ agent.name }}</div>
-          <div class="card-desc">{{ agent.description || '暂无描述' }}</div>
-          <div v-if="agent.enabled_tools?.length" class="card-tags">
-            <span v-for="s in agent.enabled_tools.slice(0, 3)" :key="s" class="card-tag">{{ s }}</span>
-            <span v-if="agent.enabled_tools.length > 3" class="card-tag card-tag--more">
-              +{{ agent.enabled_tools.length - 3 }}
-            </span>
-          </div>
-          <div class="card-actions">
-            <button class="card-btn card-btn--chat" @click.stop="startChat(agent)">
-              <el-icon :size="12"><ChatDotRound /></el-icon>
-              <span>开始对话</span>
-            </button>
-            <button class="card-btn" title="配置" @click.stop="openConfig(agent)">
-              <el-icon :size="12"><Setting /></el-icon>
-            </button>
-            <button class="card-btn" title="编辑" @click.stop="openEditDialog(agent)">
-              <el-icon :size="12"><EditPen /></el-icon>
-            </button>
+          <div class="card-body">
+            <div class="card-name">{{ agent.name }}</div>
+            <div class="card-desc">{{ agent.description || '暂无描述' }}</div>
+            <div v-if="agent.enabled_tools?.length" class="card-tags">
+              <span v-for="s in agent.enabled_tools.slice(0, 2)" :key="s" class="card-tag">{{
+                toolLabel(s)
+              }}</span>
+              <span v-if="agent.enabled_tools.length > 2" class="card-tag card-tag--more">
+                +{{ agent.enabled_tools.length - 2 }}
+              </span>
+            </div>
+            <div class="card-actions">
+              <button class="card-chat-btn" @click.stop="startChat(agent)">
+                <el-icon :size="13"><ChatDotRound /></el-icon>
+                <span>开始对话</span>
+              </button>
+              <button class="card-icon-btn" title="配置" @click.stop="openConfig(agent)">
+                <el-icon :size="13"><Setting /></el-icon>
+              </button>
+              <button class="card-icon-btn" title="编辑" @click.stop="openEditDialog(agent)">
+                <el-icon :size="13"><EditPen /></el-icon>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -346,6 +350,15 @@ function openConfig(agent: Agent) {
 
 // 工具展示：高频工具加 emoji 前缀并置顶，提升辨识度（value 仍用原始 name，保证后端匹配）
 const PRIORITY_TOOLS = ['knowledge_search', 'web_search']
+// 卡片标签用中文短词（蛇形 ID 直接裸露太工程味）
+const TOOL_LABELS: Record<string, string> = {
+  knowledge_search: '📚 知识库',
+  web_search: '🌐 联网',
+  memory: '🧠 记忆',
+}
+function toolLabel(name: string): string {
+  return TOOL_LABELS[name] || name
+}
 function toolDisplayName(name: string): string {
   if (name === 'knowledge_search') return '📚 knowledge_search'
   if (name === 'web_search') return '🌐 web_search'
@@ -816,65 +829,89 @@ onMounted(async () => {
    ======================================== */
 .agent-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: var(--space-4);
 }
 
+/* 卡片：顶部渐变色盖 + 白底内容区（Tbox card + cover 语言） */
 .agent-card {
   display: flex;
   flex-direction: column;
-  padding: var(--space-4);
   border: 1px solid var(--color-border-light);
-  border-radius: 15px;
+  border-radius: 16px;
   background: var(--color-bg-card);
+  overflow: hidden;
   cursor: pointer;
   transition: all var(--transition-base);
 }
 
 .agent-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
   border-color: var(--color-border);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
 }
 
-.card-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: var(--space-3);
+/* 色盖：低饱和透明渐变叠在卡底色上，亮暗两主题通用；按 agent.id 轮换 4 色相 */
+.card-cover {
+  position: relative;
+  height: 64px;
+  flex-shrink: 0;
 }
 
-/* 头像：淡紫渐变底 + 首字（Tbox 点睛之一） */
+.cover-hue-0 {
+  background: linear-gradient(120deg, rgba(99, 101, 255, 0.18), rgba(188, 87, 255, 0.1));
+}
+
+.cover-hue-1 {
+  background: linear-gradient(120deg, rgba(59, 130, 246, 0.16), rgba(99, 101, 255, 0.08));
+}
+
+.cover-hue-2 {
+  background: linear-gradient(120deg, rgba(236, 72, 153, 0.14), rgba(188, 87, 255, 0.08));
+}
+
+.cover-hue-3 {
+  background: linear-gradient(120deg, rgba(20, 184, 166, 0.14), rgba(59, 130, 246, 0.08));
+}
+
+/* 头像：白底圆角方压在色盖下缘（悬浮锚点） */
 .card-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  background: var(--color-gradient-soft);
+  position: absolute;
+  left: var(--space-4);
+  bottom: -23px;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-display);
-  font-size: var(--text-lg);
+  font-size: 20px;
   font-weight: var(--weight-bold);
   color: var(--color-text);
-  flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
   user-select: none;
 }
 
 .card-delete {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
   opacity: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-xs);
   color: var(--color-text-muted);
   cursor: pointer;
   transition: all var(--transition-fast);
-  flex-shrink: 0;
 }
 
 .agent-card:hover .card-delete {
@@ -886,8 +923,15 @@ onMounted(async () => {
   color: var(--color-danger);
 }
 
+.card-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 31px var(--space-4) var(--space-4);
+}
+
 .card-name {
-  font-size: var(--text-md);
+  font-size: 15px;
   font-weight: var(--weight-semibold);
   color: var(--color-text);
   margin-bottom: var(--space-1);
@@ -920,9 +964,9 @@ onMounted(async () => {
   display: inline-block;
   padding: 2px 8px;
   border-radius: var(--radius-full);
-  background: var(--color-primary-muted);
+  background: var(--color-bg-hover);
   color: var(--color-text-secondary);
-  font-size: var(--text-xs);
+  font-size: 11px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -930,7 +974,6 @@ onMounted(async () => {
 }
 
 .card-tag--more {
-  background: var(--color-bg-hover);
   color: var(--color-text-muted);
 }
 
@@ -940,16 +983,18 @@ onMounted(async () => {
   gap: var(--space-2);
 }
 
-/* 开始对话：渐变小胶囊（与页头 CTA 同语言） */
-.card-btn--chat {
+/* 开始对话：默认灰底，卡片 hover 时点亮渐变（Tbox mask-reveal 语言） */
+.card-chat-btn {
+  flex: 1;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 14px;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
   border: none;
-  border-radius: var(--radius-full);
-  background: var(--color-gradient-accent);
-  color: var(--color-gradient-contrast);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
   font-family: var(--font-body);
   font-size: var(--text-xs);
   font-weight: var(--weight-medium);
@@ -957,29 +1002,35 @@ onMounted(async () => {
   transition: all var(--transition-base);
 }
 
-.card-btn--chat:hover {
-  background: var(--color-gradient-accent-hover);
+.agent-card:hover .card-chat-btn {
+  background: var(--color-gradient-accent);
+  color: var(--color-gradient-contrast);
 }
 
-/* 配置/编辑：ghost 圆钮 */
-.card-btn {
+.card-chat-btn:hover {
+  background: var(--color-gradient-accent-hover) !important;
+}
+
+/* 配置/编辑：ghost 方钮 */
+.card-icon-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-md);
-  background: transparent;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-hover);
   color: var(--color-text-muted);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
 
-.card-btn:hover {
-  border-color: var(--color-border);
-  background: var(--color-bg-hover);
+.card-icon-btn:hover {
+  background: var(--color-bg-card-elevated);
   color: var(--color-text);
+  box-shadow: var(--shadow-xs);
 }
 
 /* ========================================
