@@ -355,12 +355,12 @@ const handleCommand = async (command: string) => {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-5);
 }
 
 .nav-item {
   position: relative;
-  padding: var(--space-2) var(--space-1);
+  padding: var(--space-2) 0;
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -592,7 +592,7 @@ const handleCommand = async (command: string) => {
 /* ==================== 窄视口自适应（开发者工具/小窗） ==================== */
 @media (max-width: 1200px) {
   .nav-item {
-    padding: var(--space-2);
+    padding: var(--space-2) 0;
   }
 
 }
