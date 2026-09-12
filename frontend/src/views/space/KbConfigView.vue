@@ -158,8 +158,9 @@ const currentStep = ref(0)
 const loading = ref(false)
 const saving = ref(false)
 const dirty = ref(false)
-const saved = ref(false)
 const kbName = ref('')
+// 基线快照：加载完成后记录 buildPayload() 的序列化结果；dirty = 当前 payload 与基线的真实差异
+let baselinePayload = ''
 
 const llmModels = ref<AvailableModelItem[]>([])
 const vlmModels = ref<AvailableModelItem[]>([])
@@ -219,7 +220,10 @@ const hasAudio = computed(() => hasModality(configForm.kbSpaceTypes, 'audio'))
 watch(
   configForm,
   () => {
-    dirty.value = true
+    // 以「保存时实际提交的 payload」比对基线：加载时的程序化赋值、模态开关
+    // 联动归一不会误报 dirty；用户改回原值也会自动恢复非 dirty
+    if (!baselinePayload) return
+    dirty.value = JSON.stringify(buildPayload()) !== baselinePayload
   },
   { deep: true },
 )
@@ -352,6 +356,8 @@ async function onLoad() {
     }
 
     dirty.value = false
+    // 表单回填完成，记录基线快照（此后 watch 才开始比对）
+    baselinePayload = JSON.stringify(buildPayload())
   } catch (error: unknown) {
     const err = error as { response?: { data?: { error?: { message?: string } } } }
     ElMessage.error(err.response?.data?.error?.message || '获取知识库配置失败')
@@ -461,8 +467,11 @@ async function onSave() {
 
   saving.value = true
   try {
-    await knowledgeBaseApi.updateConfig(spaceId.value, kbId.value, buildPayload())
-    saved.value = true
+    const payload = buildPayload()
+    await knowledgeBaseApi.updateConfig(spaceId.value, kbId.value, payload)
+    // 基线同步为刚保存的 payload：保存后离开不再触发确认弹窗
+    baselinePayload = JSON.stringify(payload)
+    dirty.value = false
     ElMessage.success('知识库配置已保存')
     router.push(goListPath.value)
   } catch (error: unknown) {
@@ -474,7 +483,8 @@ async function onSave() {
 }
 
 onBeforeRouteLeave(async () => {
-  if (!dirty.value || saved.value) {
+  // 与基线一致（未修改或已改回原值）直接放行；有真实改动才确认
+  if (!dirty.value) {
     return true
   }
 
