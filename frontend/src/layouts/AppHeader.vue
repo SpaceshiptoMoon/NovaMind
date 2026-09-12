@@ -403,6 +403,18 @@ const handleCommand = async (command: string) => {
   transform: translateX(-50%) scaleX(1);
 }
 
+/* ==================== Header Right ==================== */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* 折叠按钮是描边样式，与右侧图标位留一档呼吸 */
+.sidebar-collapse-btn {
+  margin-right: var(--space-2);
+}
+
 /* ==================== 侧栏折叠按钮 ==================== */
 .sidebar-collapse-btn {
   display: inline-flex;
@@ -410,7 +422,6 @@ const handleCommand = async (command: string) => {
   justify-content: center;
   width: 32px;
   height: 32px;
-  margin-right: var(--space-2);
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-md);
   background: transparent;
@@ -428,11 +439,9 @@ const handleCommand = async (command: string) => {
 
 /* ==================== 主题切换 ==================== */
 .theme-toggle {
-  margin-right: var(--space-4);
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: color var(--transition-fast);
-  /* 米哈游语言：图标操作位胶囊化 hover（圆形浅底） */
+  /* 与折叠按钮/铃铛同规格 32px 圆形 hover 位 */
   width: 32px;
   height: 32px;
   border-radius: var(--radius-full);
@@ -448,9 +457,20 @@ const handleCommand = async (command: string) => {
 }
 
 /* ==================== 通知铃铛 ==================== */
+/* el-badge 包裹层撑成 32px 对齐位，与主题切换/折叠按钮同基线 */
 .notification-badge {
-  margin-right: var(--space-4);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  transition: background var(--transition-fast);
+}
+
+.notification-badge:hover {
+  background: var(--color-bg-hover);
 }
 
 .notification-bell {
@@ -458,7 +478,7 @@ const handleCommand = async (command: string) => {
   transition: color var(--transition-fast);
 }
 
-.notification-bell:hover {
+.notification-badge:hover .notification-bell {
   color: var(--color-text);
 }
 
@@ -534,6 +554,39 @@ const handleCommand = async (command: string) => {
   padding: 8px 16px;
   text-align: center;
   border-top: 1px solid var(--color-border-light);
+}
+
+/* ==================== 用户头像触发器 ==================== */
+.user-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  outline: none;
+}
+
+.user-trigger:hover,
+.user-trigger:focus-visible {
+  background: var(--color-bg-hover);
+}
+
+/* 头像透明底：独角兽图案直接浮在页面上，仅 hover 时有浅底托住 */
+.user-trigger .user-avatar {
+  background: transparent;
+}
+
+.user-avatar .unicorn-icon {
+  /* 头像容器裁切下稍留呼吸，防阴影贴边 */
+  margin: 2px;
+}
+
+.user-name {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
 }
 
 /* ==================== 窄视口自适应（开发者工具/小窗） ==================== */
