@@ -410,7 +410,8 @@ function handleCollapsedSpaceClick(spaceId: number) {
   sidebarCollapsed.value = false
 }
 
-// 子页面极简返回栏的返回目标（按路由名精确判定，不依赖 activeTab 字符串匹配）
+// 子页面极简返回栏的返回目标（按路由名精确判定，不依赖 activeTab 字符串匹配）。
+// 规则统一：空间级页面返回 KB 列表；KB 级页面返回 KB 列表；文档详情返回文档列表
 const navBack = computed<{ label: string; to: string } | null>(() => {
   const sid = selectedSpaceId.value
   if (!sid) return null
@@ -420,8 +421,7 @@ const navBack = computed<{ label: string; to: string } | null>(() => {
   const kbBase = `/home/spaces/${sid}/knowledge-bases`
   const docBase = kbIdParam ? `${kbBase}/${kbIdParam}/documents` : ''
   const name = route.name
-  if (name === 'Documents') return { label: '返回知识库', to: kbBase }
-  if (name === 'KbEvaluation' || name === 'DocumentDetail' || name === 'Search') {
+  if (name === 'DocumentDetail') {
     // 从文档详情返回时，带上进入详情时的页码（详情页通过 query.fromPage 透传），
     // 让列表页恢复到进入时的页，而不是第 1 页。
     const fromPage = route.query.fromPage
@@ -430,8 +430,8 @@ const navBack = computed<{ label: string; to: string } | null>(() => {
       ? { label: '返回文档管理', to: `${docBase}${pageSuffix}` }
       : { label: '返回知识库', to: kbBase }
   }
-  if (name === 'SpaceSettings') return { label: '返回知识库', to: kbBase }
-  return null
+  // 其余全部子页面（文档管理/任务列表/知识检索/评估/配置向导/空间设置）统一返回 KB 列表
+  return { label: '返回知识库', to: kbBase }
 })
 
 function handleNavBack() {
