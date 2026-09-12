@@ -327,18 +327,18 @@ const loading = ref(false)
 const selectedSpaceId = ref<number | null>(null)
 const kbRefreshKey = ref(0)
 
-// 可见性映射
+// 可见性映射（标签统一中性灰：语义靠文字传达，不用彩色区分）
 const visibilityMap: Record<number, { text: string; type: string }> = {
   0: { text: '私有', type: 'info' },
-  1: { text: '团队', type: 'warning' },
-  2: { text: '公开', type: 'success' },
+  1: { text: '团队', type: 'info' },
+  2: { text: '公开', type: 'info' },
 }
 
-// 创建弹窗：可见性卡片选项（色点颜色与上方表格 tag 语义一致，走 token 随主题反转）
+// 创建弹窗：可见性卡片选项（色点统一中性灰，语义靠文字与描述传达）
 const visibilityOptions = [
   { value: 0, label: '私有', desc: '仅你和受邀成员可见', color: 'var(--color-text-muted)' },
-  { value: 1, label: '团队', desc: '组织内成员可访问', color: 'var(--color-warning)' },
-  { value: 2, label: '公开', desc: '所有登录用户可见', color: 'var(--color-info)' },
+  { value: 1, label: '团队', desc: '组织内成员可访问', color: 'var(--color-text-muted)' },
+  { value: 2, label: '公开', desc: '所有登录用户可见', color: 'var(--color-text-muted)' },
 ] as const
 
 function getVisibilityText(visibility?: number): string {
@@ -353,17 +353,11 @@ function getVisibilityType(visibility?: number): string {
 
 // === 空间选择（侧栏列表） ===
 
-// 空间头像柔和彩色（GitHub 团队头像同款思路：按名称哈希从低饱和色板取色，
-// 同名空间永远同色，视觉上可区分又不刺眼）
+// 空间头像中性灰底（全站 Neutral Minimal 语言：不按名称上彩色，
+// 靠首字与位置辨识；哈希取色逻辑保留但色板收敛为灰阶档位）
 const AVATAR_PALETTE: readonly string[] = [
-  '#6366F1', // 靛
-  '#0EA5E9', // 天蓝
-  '#10B981', // 翠绿
-  '#F59E0B', // 琥珀
-  '#F97316', // 橙
-  '#EC4899', // 粉
-  '#8B5CF6', // 紫
-  '#14B8A6', // 青
+  'var(--color-bg-hover)',
+  'var(--color-bg-card-elevated)',
 ]
 
 function avatarColor(name: string): string {
@@ -371,7 +365,7 @@ function avatarColor(name: string): string {
   for (let i = 0; i < name.length; i++) {
     hash = (hash * 31 + name.charCodeAt(i)) | 0
   }
-  return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length] ?? '#6366F1'
+  return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length] ?? 'var(--color-bg-hover)'
 }
 
 function handleSpaceClick(spaceId: number) {
@@ -823,8 +817,8 @@ onMounted(() => {
   width: 22px;
   height: 22px;
   border-radius: var(--radius-sm);
-  /* 按空间名哈希取柔和彩色底（GitHub/Linear 团队头像同款），白字 */
-  color: #ffffff;
+  /* 中性灰底（暗色主题 token 自动反转），灰字 */
+  color: var(--color-text-secondary);
   font-size: 11px;
   font-weight: var(--weight-semibold, 600);
   flex-shrink: 0;
