@@ -736,7 +736,8 @@ onMounted(async () => {
 
 .kb-overview {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 400px);
+  /* 右列下限降至 300px，且 1280px 以下提前折单列，避免统计卡被挤爆 */
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 400px);
   align-items: stretch;
   width: 100%;
   margin: 0 0 var(--space-5);
@@ -753,6 +754,7 @@ onMounted(async () => {
   border-radius: var(--radius-3xl);
   background: var(--color-bg-card-elevated);
   box-shadow: var(--shadow-md);
+  min-width: 0;
 }
 
 .kb-overview__eyebrow {
@@ -784,7 +786,8 @@ onMounted(async () => {
 
 .kb-overview__stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* auto-fit：视口收窄时卡片自动换行（2 列/1 列），不再强撑 4 列挤爆数字 */
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 12px;
   max-width: 100%;
   margin-top: 2px;
@@ -801,17 +804,22 @@ onMounted(async () => {
   border-radius: var(--radius-2xl);
   background: var(--color-bg-card-elevated);
   box-shadow: var(--shadow-sm);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .kb-stat-card__label {
   color: var(--color-text-muted);
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .kb-stat-card strong {
   color: var(--color-text);
-  font-size: clamp(24px, 2.8vw, 30px);
+  font-size: clamp(20px, 2.4vw, 30px);
   line-height: 1;
   letter-spacing: -0.035em;
   font-family: var(--font-display);
@@ -826,6 +834,7 @@ onMounted(async () => {
   border-radius: var(--radius-3xl);
   background: var(--color-bg-card-elevated);
   box-shadow: var(--shadow-md);
+  min-width: 0;
 }
 
 .inherit-head h2 {
@@ -1018,11 +1027,11 @@ onMounted(async () => {
   transform: translateY(-2px);
 }
 
-/* 选择复选框：hover / 已选时可见 */
+/* 选择复选框：hover / 已选时可见，贴卡片左上角 */
 .doc-card-check {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 5px;
+  left: 6px;
   opacity: 0;
   transition: opacity var(--transition-fast);
 }
@@ -1105,16 +1114,13 @@ onMounted(async () => {
   overflow-y: auto;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1280px) {
   .kb-overview {
     grid-template-columns: 1fr;
   }
+}
 
-  .kb-overview__stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    max-width: 100%;
-  }
-
+@media (max-width: 1100px) {
   /* 中窄视口：内容区留白收紧 */
   .kb-content {
     padding: var(--space-4) var(--space-3);
@@ -1155,11 +1161,6 @@ onMounted(async () => {
 @media (max-width: 768px) {
   .kb-content {
     padding: var(--space-3);
-  }
-
-  .kb-overview__stats {
-    grid-template-columns: 1fr;
-    max-width: 100%;
   }
 
   .action-bar {
