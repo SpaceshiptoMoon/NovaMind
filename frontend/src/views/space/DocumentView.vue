@@ -994,9 +994,12 @@ onMounted(async () => {
    ======================================== */
 .doc-grid-wrap {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  /* 轨道最宽 420px：文档少时不拉伸占满整行，多余空间留白、卡片左对齐 */
+  grid-template-columns: repeat(auto-fill, minmax(300px, min(420px, 100%)));
   gap: var(--space-3);
   min-height: 200px;
+  align-content: start;
+  justify-content: start;
 }
 
 .doc-grid-empty {
