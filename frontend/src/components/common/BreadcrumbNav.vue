@@ -1,58 +1,59 @@
 <template>
-  <el-breadcrumb separator="/" class="breadcrumb-nav">
-    <el-breadcrumb-item :to="{ path: spaceId ? `/home/spaces/${spaceId}/knowledge-bases` : `/home/spaces` }">
-      空间
-    </el-breadcrumb-item>
-    <el-breadcrumb-item v-if="spaceId" :to="{ path: `/home/spaces/${spaceId}/knowledge-bases` }">
-      {{ spaceName }}
-    </el-breadcrumb-item>
-    <el-breadcrumb-item v-if="kbId" :to="kbLink">
-      知识库
-    </el-breadcrumb-item>
-    <el-breadcrumb-item v-if="showDocuments && kbId">
-      文档
-    </el-breadcrumb-item>
-    <el-breadcrumb-item v-if="moduleLabel">
-      {{ moduleLabel }}
-    </el-breadcrumb-item>
-    <el-breadcrumb-item v-if="docName">
-      {{ docName }}
-    </el-breadcrumb-item>
-  </el-breadcrumb>
+  <!-- 分段面包屑：返回键（圆形 hover 位）+ 实体名链段 + 当前段灰底强调 -->
+  <nav class="crumb-nav" aria-label="面包屑">
+    <button
+      v-if="backLabel"
+      class="crumb-back"
+      :title="backLabel"
+      :aria-label="backLabel"
+      @click="$emit('back')"
+    >
+      <el-icon :size="14"><ArrowLeft /></el-icon>
+    </button>
+
+    <template v-for="(item, i) in items" :key="`${item.label}-${i}`">
+      <el-icon v-if="i > 0" :size="12" class="crumb-sep"><ArrowRight /></el-icon>
+      <component
+        :is="i < items.length - 1 && item.to ? 'button' : 'span'"
+        class="crumb-item"
+        :class="i < items.length - 1 && item.to ? 'crumb-item--link' : 'crumb-item--current'"
+        :aria-current="i === items.length - 1 ? 'page' : undefined"
+        @click="i < items.length - 1 && item.to && $emit('navigate', item.to)"
+      >
+        {{ item.label }}
+      </component>
+    </template>
+  </nav>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import { useSpaceStore } from '@/stores/space'
 
-const props = defineProps<{
-  kbName?: string
-  docName?: string
+export interface CrumbItem {
+  label: string
+  to?: string
+}
+
+// 面包屑链段必传（最后一项为当前页，渲染为灰底当前态）；backLabel 不传则不渲染返回键
+defineProps<{
+  items: CrumbItem[]
+  backLabel?: string
+}>()
+
+defineEmits<{
+  back: []
+  navigate: [to: string]
 }>()
 
 const route = useRoute()
 const spaceStore = useSpaceStore()
 
 const spaceId = computed(() => String(route.params.id ?? ''))
-const kbId = computed(() => {
-  if (route.params.kbId) return String(route.params.kbId)
-  if (route.query.kbId) return String(route.query.kbId)
-  return ''
-})
 
-const spaceName = computed(() => spaceStore.currentSpace?.name || '知识空间')
-const kbLink = computed(() => `/home/spaces/${spaceId.value}/knowledge-bases`)
-const showDocuments = computed(() => !props.docName && (route.name === 'Documents' || route.name === 'DocumentDetail'))
-const moduleLabel = computed(() => {
-  const name = route.name
-  if (name === 'Search') return '知识搜索'
-  if (name === 'SpaceSettings') return '空间设置'
-  if (name === 'KbEvaluation') return '评估'
-  if (name === 'DocumentTasks') return '任务列表'
-  return ''
-})
-
+// 空间名由 store 预热（调用方渲染 items 时通常已取到 currentSpace）
 onMounted(async () => {
   if (spaceId.value && !spaceStore.currentSpace) {
     try {
@@ -65,38 +66,72 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.breadcrumb-nav {
-  font-size: var(--text-sm);
-  line-height: 1;
-}
-
-.breadcrumb-nav :deep(.el-breadcrumb__inner) {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  transition: color var(--transition-fast);
-  padding: 2px 0;
-}
-
-.breadcrumb-nav :deep(.el-breadcrumb__inner.is-link) {
-  font-weight: var(--weight-normal);
-  color: var(--color-text-muted);
+.crumb-nav {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: 2px;
+  min-width: 0;
 }
 
-.breadcrumb-nav :deep(.el-breadcrumb__inner.is-link:hover) {
-  color: var(--color-primary);
-}
-
-.breadcrumb-nav :deep(.el-breadcrumb__item:last-child .el-breadcrumb__inner) {
+/* 返回键：28px 圆形操作位（与顶栏右侧按键同语言） */
+.crumb-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: var(--space-2);
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
   color: var(--color-text-secondary);
-  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast),
+    box-shadow var(--transition-base);
 }
 
-.breadcrumb-nav :deep(.el-breadcrumb__separator) {
-  color: var(--color-border);
-  margin: 0 2px;
-  font-weight: var(--weight-normal);
+.crumb-back:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+  box-shadow: var(--shadow-xs);
+}
+
+.crumb-item {
+  display: inline-flex;
+  align-items: center;
+  max-width: 220px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.crumb-item--link {
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.crumb-item--link:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+/* 当前段：灰底强调（不可点） */
+.crumb-item--current {
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+  background: var(--color-bg-hover);
+}
+
+.crumb-sep {
+  color: var(--color-text-faint);
+  flex-shrink: 0;
 }
 </style>

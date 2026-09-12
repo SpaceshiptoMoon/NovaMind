@@ -41,7 +41,7 @@
       <!-- 空间首页（KB 列表）：完整空间栏 -->
       <div v-if="isSpaceHome" class="content-header content-header--full">
         <div class="header-left">
-          <BreadcrumbNav v-if="selectedSpaceId" />
+          <BreadcrumbNav v-if="selectedSpaceId" :items="crumbItems" />
         </div>
         <div class="header-actions">
           <!-- 当前空间操作（选中空间后可用） -->
@@ -67,14 +67,14 @@
         </div>
       </div>
 
-      <!-- 子页面：极简返回栏（仅 返回 + 面包屑） -->
+      <!-- 子页面：极简返回栏（返回键 + 分段面包屑） -->
       <div v-else class="content-header content-header--slim">
-        <button v-if="navBack" class="slim-back" @click="handleNavBack">
-          <el-icon class="slim-back-icon"><ArrowLeft /></el-icon>
-          <span>{{ navBack.label }}</span>
-        </button>
-        <span v-if="navBack" class="slim-divider" />
-        <BreadcrumbNav />
+        <BreadcrumbNav
+          :items="crumbItems"
+          :back-label="navBack?.label"
+          @back="handleNavBack"
+          @navigate="(to: string) => router.push(to)"
+        />
       </div>
 
       <!-- 子路由内容 -->
@@ -307,7 +307,6 @@ import {
   Plus,
   Setting,
   Collection,
-  ArrowLeft,
   Check,
 } from '@element-plus/icons-vue'
 
@@ -420,6 +419,46 @@ const navBack = computed<{ label: string; to: string } | null>(() => {
 function handleNavBack() {
   if (navBack.value) router.push(navBack.value.to)
 }
+
+// 分段面包屑链：空间实体名 → KB 实体名（有 kbId 时）→ 当前页模块名。
+// 全部用实体名，不再用「空间/知识库/文档」通用段名占位（同名链接冗余且层级含混）
+const crumbItems = computed(() => {
+  const items: Array<{ label: string; to?: string }> = []
+  const sid = selectedSpaceId.value
+  if (!sid) return items
+
+  const kbIdParam =
+    (route.params.kbId as string | undefined) ??
+    (route.query.kbId as string | undefined)
+  const kbBase = `/home/spaces/${sid}/knowledge-bases`
+
+  const isKbHome = route.name === 'KnowledgeBases'
+  items.push({
+    label: spaceStore.currentSpace?.name || '知识空间',
+    to: isKbHome ? undefined : kbBase,
+  })
+
+  if (kbIdParam) {
+    items.push({
+      label: route.name === 'Documents' || route.name === 'DocumentDetail' ? (currentKbName.value || '知识库') : '知识库',
+      to: kbBase,
+    })
+  }
+
+  if (route.name === 'Documents') items.push({ label: '文档管理' })
+  if (route.name === 'DocumentDetail') items.push({ label: currentDocName.value || '文档详情' })
+  if (route.name === 'Search') items.push({ label: '知识搜索' })
+  if (route.name === 'SpaceSettings') items.push({ label: '空间设置' })
+  if (route.name === 'KbEvaluation') items.push({ label: '评估' })
+  if (route.name === 'DocumentTasks') items.push({ label: '任务列表' })
+  if (route.name === 'KbConfig') items.push({ label: '配置向导' })
+
+  return items
+})
+
+// 当前 KB/文档名（详情页由自身传查询参数回列表页的场景从简，先从 store/route 取）
+const currentKbName = ref('')
+const currentDocName = ref('')
 
 // === 创建空间 ===
 
@@ -942,39 +981,6 @@ onMounted(() => {
   gap: var(--space-3);
   padding: 0 var(--space-6);
   height: 44px;
-}
-
-/* 返回按钮：简洁文本链接，无边框 */
-.slim-back {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  background: transparent;
-  border: none;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  padding: 0;
-  transition: color var(--transition-fast);
-  white-space: nowrap;
-}
-
-.slim-back-icon {
-  font-size: var(--text-base);
-}
-
-.slim-back:hover {
-  color: var(--color-primary);
-}
-
-/* 分隔线：细竖线 */
-.slim-divider {
-  display: inline-block;
-  width: 1px;
-  height: 18px;
-  background: var(--color-border);
-  flex-shrink: 0;
 }
 
 .header-actions {
