@@ -1,13 +1,17 @@
 <template>
   <div class="space-list-view">
-    <!-- 左侧栏：空间列表（原下拉选择升级，Dify/FastGPT 侧栏形态） -->
-    <aside class="space-sidebar" aria-label="空间列表">
-      <button class="new-space-btn" @click="showCreateSpaceDialog">
+    <!-- 左侧栏：空间列表（原下拉选择升级，Dify/FastGPT 侧栏形态）；进入 KB 子页面自动收成窄条，点头像展开 -->
+    <aside
+      class="space-sidebar"
+      :class="{ collapsed: sidebarCollapsed }"
+      aria-label="空间列表"
+    >
+      <button class="new-space-btn" :title="sidebarCollapsed ? '新建空间' : ''" @click="showCreateSpaceDialog">
         <el-icon :size="14"><Plus /></el-icon>
-        <span>新建空间</span>
+        <span v-if="!sidebarCollapsed">新建空间</span>
       </button>
 
-      <div class="space-sidebar-label">我的空间</div>
+      <div v-if="!sidebarCollapsed" class="space-sidebar-label">我的空间</div>
       <div class="space-sidebar-list">
         <button
           v-for="space in spaceStore.spaces"
@@ -15,23 +19,23 @@
           class="space-sidebar-item"
           :class="{ active: selectedSpaceId === space.id }"
           :title="space.name"
-          @click="handleSpaceClick(space.id)"
+          @click="sidebarCollapsed ? handleCollapsedSpaceClick(space.id) : handleSpaceClick(space.id)"
         >
           <span
             class="space-item-avatar"
             :style="{ background: avatarColor(space.name) }"
           >{{ space.name.charAt(0) }}</span>
-          <span class="item-title">{{ space.name }}</span>
+          <span v-if="!sidebarCollapsed" class="item-title">{{ space.name }}</span>
         </button>
-        <div v-if="spaceStore.spaces.length === 0" class="space-sidebar-empty">
+        <div v-if="spaceStore.spaces.length === 0 && !sidebarCollapsed" class="space-sidebar-empty">
           暂无空间
         </div>
       </div>
 
       <div class="space-sidebar-footer">
-        <button class="manage-spaces-btn" @click="showManageSpacesDialog">
+        <button class="manage-spaces-btn" :title="sidebarCollapsed ? '管理空间' : ''" @click="showManageSpacesDialog">
           <el-icon :size="14"><Collection /></el-icon>
-          <span>管理空间</span>
+          <span v-if="!sidebarCollapsed">管理空间</span>
         </button>
       </div>
     </aside>
@@ -391,6 +395,20 @@ const kbId = computed(() => {
 const isSpaceHome = computed(
   () => !selectedSpaceId.value || route.name === 'KnowledgeBases',
 )
+
+// 空间侧栏收缩态：进入 KB 子页面（选中知识库）自动收成头像窄条，回 KB 列表自动展开；
+// 用户在窄条态也可点当前空间头像手动展开
+const sidebarCollapsed = ref(false)
+
+watch(isSpaceHome, (home) => {
+  sidebarCollapsed.value = !home
+})
+
+// 窄条态点空间头像：先切空间再展开侧栏
+function handleCollapsedSpaceClick(spaceId: number) {
+  handleSpaceClick(spaceId)
+  sidebarCollapsed.value = false
+}
 
 // 子页面极简返回栏的返回目标（按路由名精确判定，不依赖 activeTab 字符串匹配）
 const navBack = computed<{ label: string; to: string } | null>(() => {
@@ -779,6 +797,26 @@ onMounted(() => {
   border-right: 1px solid var(--color-border-light);
   background: var(--color-bg-sidebar);
   padding: var(--space-3);
+  transition: width var(--transition-slow);
+}
+
+/* 收缩态：56px 头像窄条（进入 KB 子页面自动收缩） */
+.space-sidebar.collapsed {
+  width: 56px;
+  padding: var(--space-3) var(--space-2);
+}
+
+.space-sidebar.collapsed .new-space-btn,
+.space-sidebar.collapsed .manage-spaces-btn {
+  /* 窄条内按钮收成图标位 */
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+}
+
+.space-sidebar.collapsed .space-sidebar-item {
+  justify-content: center;
+  padding: 6px 0;
 }
 
 .new-space-btn {
@@ -861,11 +899,6 @@ onMounted(() => {
   font-size: 11px;
   font-weight: var(--weight-semibold, 600);
   flex-shrink: 0;
-}
-
-/* 选中态：头像本体不变色，外圈发丝环强调（避免整行花） */
-.space-sidebar-item.active .space-item-avatar {
-  box-shadow: 0 0 0 2px var(--color-bg-sidebar), 0 0 0 3.5px var(--color-primary);
 }
 
 .space-sidebar-item .item-title {

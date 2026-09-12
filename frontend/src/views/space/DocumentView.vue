@@ -1030,8 +1030,8 @@ onMounted(async () => {
 /* 选择复选框：hover / 已选时可见，贴卡片左上角 */
 .doc-card-check {
   position: absolute;
-  top: 5px;
-  left: 6px;
+  top: 2px;
+  left: 3px;
   opacity: 0;
   transition: opacity var(--transition-fast);
 }
