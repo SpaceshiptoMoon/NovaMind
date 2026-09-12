@@ -412,13 +412,9 @@ function handleSendClick() {
 }
 
 .send-primary.active {
-  background: var(--color-gradient-accent);
+  background: var(--color-btn-primary);
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(90, 80, 255, 0.28);
-}
-
-.send-primary.active:hover {
-  background: var(--color-gradient-accent-hover);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
 .stop-primary {

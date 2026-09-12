@@ -353,18 +353,17 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 6px;
   padding: 8px 12px;
-  background: var(--color-gradient-accent);
-  color: var(--color-gradient-contrast);
+  background: var(--color-primary-muted);
+  color: var(--color-primary);
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   font-family: var(--font-body);
-  transition: all var(--transition-base);
 }
 .new-chat-btn:hover {
-  background: var(--color-gradient-accent-hover);
+  background: var(--color-primary-muted);
 }
 .new-chat-icon {
   font-size: 16px;
@@ -535,26 +534,6 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   padding: var(--space-8);
-  position: relative;
-}
-
-/* Tbox 淡紫氛围底：仅欢迎态渲染，柔和晕染不抢内容 */
-.welcome-screen::before {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 130%;
-  height: 420px;
-  transform: translate(-50%, -58%);
-  background: radial-gradient(
-    ellipse at center,
-    rgba(139, 92, 246, 0.1),
-    rgba(217, 130, 255, 0.05) 55%,
-    transparent 75%
-  );
-  filter: blur(40px);
-  pointer-events: none;
 }
 
 .welcome-inner {
