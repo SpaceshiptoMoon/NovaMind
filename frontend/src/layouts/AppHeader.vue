@@ -355,52 +355,39 @@ const handleCommand = async (command: string) => {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: var(--space-8);
+  gap: var(--space-2);
+  /* 与 header-right 同款 hover 阴影变量 */
+  --header-hover-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
+/* 导航项：胶囊造型，hover 浅灰圆底 + 浮起阴影（与顶栏右侧操作键同语言） */
 .nav-item {
-  position: relative;
-  padding: var(--space-2) 0;
+  padding: var(--space-2) var(--space-4);
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: color var(--transition-fast);
+  transition: color var(--transition-fast), background var(--transition-fast),
+    box-shadow var(--transition-base);
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   user-select: none;
   white-space: nowrap;
-}
-
-/* 米哈游招聘站语言：hover/active 底部短横线（从中间展开） */
-.nav-item::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: -2px;
-  transform: translateX(-50%) scaleX(0);
-  width: 24px;
-  height: 2px;
   border-radius: var(--radius-full);
-  background: var(--color-primary);
-  transition: transform var(--transition-base);
+  outline: none;
 }
 
-.nav-item:hover {
+.nav-item:hover,
+.nav-item:focus-visible {
   color: var(--color-text);
-}
-
-.nav-item:hover::after {
-  transform: translateX(-50%) scaleX(1);
+  background: var(--color-bg-hover);
+  box-shadow: var(--header-hover-shadow);
 }
 
 .nav-item.active {
   color: var(--color-text);
   font-weight: var(--weight-medium);
-}
-
-.nav-item.active::after {
-  transform: translateX(-50%) scaleX(1);
+  background: var(--color-bg-hover);
 }
 
 /* ==================== Header Right ==================== */
@@ -588,10 +575,9 @@ const handleCommand = async (command: string) => {
 
 @media (max-width: 992px) {
   .nav-links {
-    gap: 0;
+    gap: var(--space-1);
   }
 
-  .nav-item span,
   .nav-item {
     font-size: var(--text-xs);
   }
@@ -610,21 +596,19 @@ const handleCommand = async (command: string) => {
     display: none;
   }
 
-  /* 极窄：导航文字隐藏只留图标 */
+  /* 极窄：导航文字隐藏，胶囊收成 32px 图标位 */
   .nav-item {
-    padding: var(--space-2);
+    padding: 0;
     font-size: 0;
     gap: 0;
+    width: 32px;
+    height: 32px;
+    justify-content: center;
   }
 
   .nav-item svg {
     width: 18px;
     height: 18px;
-  }
-
-  .theme-toggle,
-  .notification-badge {
-    margin-right: var(--space-2);
   }
 
   .user-trigger {
