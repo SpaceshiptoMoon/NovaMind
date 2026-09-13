@@ -63,7 +63,9 @@ async def get_current_user_id(current_user: dict = Depends(get_current_user)) ->
     summary="上传技能 ZIP 包",
     description="上传包含 SKILL.md 的技能 ZIP 包，创建新技能",
 )
+@get_limiter().limit(RateLimits.UPLOAD)
 async def upload_skill(
+    request: Request,
     file: UploadFile = File(..., description="技能 ZIP 包（含 SKILL.md）"),
     user_id: int = Depends(get_current_user_id),
     service: SkillMarketplaceService = Depends(get_skill_service),
@@ -83,7 +85,9 @@ async def upload_skill(
     summary="更新技能（上传新版本 ZIP）",
     description="为已有技能上传新版本的 ZIP 包",
 )
+@get_limiter().limit(RateLimits.UPLOAD)
 async def update_skill_version(
+    request: Request,
     skill_id: Annotated[int, Path(gt=0, description="技能ID")],
     file: UploadFile = File(..., description="新版技能 ZIP 包"),
     user_id: int = Depends(get_current_user_id),
