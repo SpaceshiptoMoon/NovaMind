@@ -946,11 +946,12 @@ class AgentChatService:
             if not skill_ref.startswith("skill__"):
                 continue
             try:
-                # 格式: skill__{id}_{name}
-                parts = skill_ref.split("_", 2)
-                if len(parts) < 3:
+                # 格式: skill__{id}_{name}；name 可含下划线/连字符，须先剥前缀再按首个 _ 切
+                body = skill_ref[len("skill__"):]
+                parts = body.split("_", 1)
+                if len(parts) < 2:
                     continue
-                skill_id = int(parts[1])
+                skill_id = int(parts[0])
                 from novamind.features.skill.repository.skill_repository import SkillRepository
                 repo = SkillRepository(self.db)
                 skill_def = await repo.get_by_id(skill_id)
