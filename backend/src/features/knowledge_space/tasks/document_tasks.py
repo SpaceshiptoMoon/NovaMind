@@ -42,6 +42,52 @@ def _build_retry_observability(max_tries: int, retry_count: int) -> dict:
     }
 
 
+async def _notify_document_terminal(
+    status: str,
+    *,
+    user_id: int,
+    document_id: int,
+    space_id: int,
+    kb_id: int,
+    filename: str,
+    detail: str = "",
+) -> None:
+    """文档解析终态通知上传者（成功/失败/取消，重试中间态不发）。
+
+    arq 任务侧调用：经独立会话版 NotificationPort，失败仅记日志不打断任务编排。
+    """
+    from novamind.features.notification.adapters.notification_port_adapter import (
+        as_notification_port,
+    )
+
+    if status == "completed":
+        title = f"文档「{filename}」解析完成"
+        content = "文档已解析完成并可检索问答。"
+    elif status == "failed":
+        title = f"文档「{filename}」解析失败"
+        content = detail or "解析失败，请检查文件内容或稍后重试。"
+    else:  # cancelled
+        title = f"文档「{filename}」已取消处理"
+        content = "文档解析已被用户取消。"
+
+    try:
+        await as_notification_port(None).send(
+            user_id=user_id,
+            type="document_ready",
+            title=title,
+            content=content,
+            link=f"/home/spaces/{space_id}/documents/{document_id}",
+            extra_data={
+                "document_id": document_id,
+                "kb_id": kb_id,
+                "space_id": space_id,
+                "status": status,
+            },
+        )
+    except Exception as e:
+        logger.warning("文档终态通知发送失败", document_id=document_id, error=str(e))
+
+
 async def process_document_task(
     ctx: dict,
     document_id: int,
@@ -260,6 +306,15 @@ async def process_document_task(
             #    已完成的 job 标记为失败；残留映射由活跃检查自愈）
             await _unbind_job_safely(document_id, job_id=job_id)
             logger.info("arq 任务完成：文档处理成功", document_id=document_id, job_id=job_id)
+            # 终态通知上传者（commit 后）
+            await _notify_document_terminal(
+                "completed",
+                user_id=document.uploader_id,
+                document_id=document_id,
+                space_id=space_id,
+                kb_id=kb_id,
+                filename=document.filename,
+            )
 
         except DocumentCancelledError:
             # 用户主动取消
@@ -267,6 +322,15 @@ async def process_document_task(
             await _rollback_session_safely(session, document_id=document_id, job_id=job_id)
             await _handle_cancellation(document_id, space_id)
             await _unbind_job_safely(document_id, job_id=job_id)
+            # 终态通知上传者
+            await _notify_document_terminal(
+                "cancelled",
+                user_id=document.uploader_id,
+                document_id=document_id,
+                space_id=space_id,
+                kb_id=kb_id,
+                filename=document.filename,
+            )
 
         except TransientBusyError as asr_busy:
             # 本地 ASR 忙碌（正在转写其它音频），不是错误，延后重入队。
@@ -383,6 +447,16 @@ async def process_document_task(
 
                 await _unbind_job_safely(document_id, job_id=job_id)
                 # 最终失败不再 raise，避免 arq 尝试无效重试
+                # 终态通知上传者（重试中间态不发，只在最终失败时发）
+                await _notify_document_terminal(
+                    "failed",
+                    user_id=document.uploader_id,
+                    document_id=document_id,
+                    space_id=space_id,
+                    kb_id=kb_id,
+                    filename=document.filename,
+                    detail=str(e)[:200],
+                )
             else:
                 current_retry_count = task_retry_count + 1
                 next_retry_at = now_china() + timedelta(seconds=retry_delay_seconds)

@@ -6,7 +6,9 @@
 
 from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Body, Path, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from novamind.core.database.database import get_db
 from novamind.features.knowledge_space.models.space_member import SpaceRole, SpaceMember
 from novamind.features.knowledge_space.schemas.member_schema import (
     MemberInvite,
@@ -33,10 +35,49 @@ from novamind.features.knowledge_space.exceptions import (
 )
 from novamind.features.knowledge_space.services.member_service import MemberService
 from novamind.features.knowledge_space.services.audit_service import AuditService
+from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
+from novamind.features.notification.adapters.notification_port_adapter import as_notification_port
 from novamind.features.user.repository.user_repository import UserRepository
 from novamind.features.user.models.user import UserStatus
 
 router = APIRouter(tags=["空间成员"])
+
+
+async def _notify_space_invite(
+    db, user_id: int, space_id: int, role_value: str,
+    *, direct: bool = False, invite_token: str = None,
+) -> None:
+    """邀请/直加成员后通知目标用户（失败静默，不打断主流程）。"""
+    try:
+        space = await SpaceRepository(db).get_by_id(space_id)
+        space_name = (space.name if space else None) or f"空间 {space_id}"
+        port = as_notification_port(db)
+        if direct:
+            await port.send(
+                user_id=user_id,
+                type="space_invite",
+                title=f"你已被加入空间「{space_name}」",
+                content="空间管理员已将你添加为成员，点击查看空间。",
+                link=f"/home/spaces/{space_id}",
+                extra_data={"space_id": space_id, "space_name": space_name, "role": role_value},
+            )
+        else:
+            await port.send(
+                user_id=user_id,
+                type="space_invite",
+                title=f"您被邀请加入空间「{space_name}」",
+                content="点击通知接受邀请并在有效期内加入空间。",
+                link=f"/home/spaces/{space_id}/join?token={invite_token}",
+                extra_data={
+                    "space_id": space_id,
+                    "space_name": space_name,
+                    "role": role_value,
+                    "invite_token": invite_token,
+                },
+            )
+    except Exception as e:
+        from novamind.core.middleware.structured_logging import get_logger
+        get_logger(__name__).warning("空间邀请通知发送失败", user_id=user_id, error=str(e))
 
 
 @router.get(
@@ -79,6 +120,7 @@ async def invite_member(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     data: Annotated[MemberInvite, Body(...)],
     user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
     member_service: MemberService = Depends(get_member_service),
     audit_service: AuditService = Depends(get_audit_service),
     user_repo: UserRepository = Depends(get_user_repository),
@@ -109,6 +151,12 @@ async def invite_member(
         invited_user_id=member.user_id,
         role=data.role.value,
         request=request,
+    )
+
+    # 通知被邀请人（member_service 内已 commit，通知取完整 token）
+    await _notify_space_invite(
+        db, target_user.id, space_id, data.role.value,
+        invite_token=member.invite_token,
     )
 
     # 完整 token 仅在创建时一次性返回——前端据此拼邀请链接，
@@ -169,6 +217,7 @@ async def add_member_direct(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     data: Annotated[MemberDirectAdd, Body(...)],
     user_id: int = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
     member_service: MemberService = Depends(get_member_service),
     audit_service: AuditService = Depends(get_audit_service),
     user_repo: UserRepository = Depends(get_user_repository),
@@ -199,6 +248,11 @@ async def add_member_direct(
         resource_id=target_user.id,
         details={"identifier": data.identifier, "role": data.role.value},
         request=request,
+    )
+
+    # 通知被直加的成员
+    await _notify_space_invite(
+        db, target_user.id, space_id, data.role.value, direct=True,
     )
 
     return MemberResponse.model_validate(member)
