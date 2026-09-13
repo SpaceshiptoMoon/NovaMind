@@ -8,6 +8,7 @@
    与 uninstall_skill 的管理口径一致 —— 否则任意用户可篡改系统 Agent 的
    enabled_tools。
 """
+import asyncio
 import io
 import zipfile
 from types import SimpleNamespace
@@ -233,3 +234,62 @@ async def test_reject_merges_admin_reason_into_existing_result():
     result = repo.updates["review_result"]
     assert result["admin_reason"] == "人工确认"
     assert result["llm"]["level"] == "suspicious", "原 LLM 审查数据应保留"
+
+
+# ==================== 后台审查失败兜底 ====================
+
+class _ExplodingChecker:
+    """check 必抛异常的审查器"""
+
+    async def check(self, body_markdown, frontmatter_raw):
+        raise RuntimeError("LLM 连接失败")
+
+
+class _CapturingRepo:
+    """捕获 update kwargs 的桩仓储"""
+
+    last_update: dict = {}
+
+    async def update(self, skill_id, **kwargs):
+        type(self).last_update = {"skill_id": skill_id, **kwargs}
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_background_review_failure_marks_suspicious(monkeypatch):
+    """后台审查任务异常时技能转 SUSPICIOUS（人工出口），而非永久卡 PENDING"""
+    import novamind.features.skill.services.skill_marketplace_service as svc_mod
+
+    updated: dict = {}
+
+    class _Repo:
+        async def update(self, skill_id, **kwargs):
+            updated.update(kwargs)
+
+    class _SessionFactory:
+        def __call__(self):
+            return self
+
+        async def __aenter__(self):
+            return SimpleNamespace()
+
+        async def __aexit__(self, *args):
+            return False
+
+    monkeypatch.setattr(
+        svc_mod, "SkillRepository", lambda db: _Repo(), raising=False,
+    )
+    monkeypatch.setattr(
+        "novamind.core.database.database.get_session_factory", lambda: _SessionFactory(),
+    )
+
+    svc = _make_service(_make_skill(), _FakeAgentRegistryPort({}))
+    svc.checker = _ExplodingChecker()
+
+    svc._start_background_review(1, "body", "frontmatter")
+    # _start_background_review 用 ensure_future 起任务，取到它并等待完成
+    pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    await asyncio.gather(*pending)
+
+    assert updated.get("review_status") == ReviewStatus.SUSPICIOUS
+    assert "自动审查失败" in updated.get("review_result", {}).get("error", "")

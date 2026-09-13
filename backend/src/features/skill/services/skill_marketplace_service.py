@@ -693,7 +693,20 @@ class SkillMarketplaceService:
                     await db.commit()
                     logger.info("技能后台审查完成", skill_id=skill_id, review_status=review_result.status)
                 except Exception as e:
-                    logger.error("技能后台审查失败", skill_id=skill_id, error=str(e))
+                    # 审查任务本身失败：转 SUSPICIOUS 交人工审核，避免永久卡 PENDING
+                    # （PENDING 会阻断发布且不出现在管理员待审核列表，无人工出口）
+                    logger.error("技能后台审查失败，转人工审核", skill_id=skill_id, error=str(e))
+                    try:
+                        repo = SkillRepository(db)
+                        await repo.update(
+                            skill_id,
+                            review_status=ReviewStatus.SUSPICIOUS,
+                            review_result={"error": f"自动审查失败: {e}"},
+                            reviewed_at=now_china(),
+                        )
+                        await db.commit()
+                    except Exception as e2:
+                        logger.error("技能审查失败状态回写也失败", skill_id=skill_id, error=str(e2))
 
         task = asyncio.ensure_future(_do_review())
         task.add_done_callback(lambda t: t.exception() if not t.cancelled() and t.exception() else None)
