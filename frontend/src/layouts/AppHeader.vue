@@ -91,7 +91,7 @@
             >
               <div class="notification-item-title">{{ n.title }}</div>
               <div class="notification-item-content">{{ n.content }}</div>
-              <div class="notification-item-time">{{ formatTime(n.created_at) }}</div>
+              <div class="notification-item-time">{{ formatRelativeTime(n.created_at) }}</div>
             </div>
           </div>
           <div v-if="notifStore.items.length > 0" class="notification-footer">
@@ -160,6 +160,7 @@ import {
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
 import { useNotificationStore } from '@/stores/notification'
+import { formatRelativeTime } from '@/utils/format'
 import type { Notification } from '@/api/types'
 import UnicornIcon from '@/components/common/UnicornIcon.vue'
 import NavIcon from '@/components/common/NavIcon.vue'
@@ -235,20 +236,6 @@ function handleNotificationClick(n: Notification) {
   if (n.link) {
     router.push(n.link)
   }
-}
-
-function formatTime(dateStr: string): string {
-  const d = new Date(dateStr)
-  const now = new Date()
-  const diff = now.getTime() - d.getTime()
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return '刚刚'
-  if (minutes < 60) return `${minutes}分钟前`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}小时前`
-  const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}天前`
-  return d.toLocaleDateString()
 }
 
 const handleCommand = async (command: string) => {

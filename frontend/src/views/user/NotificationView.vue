@@ -1,6 +1,44 @@
 <template>
   <div class="notification-view">
-    <PageHeader title="通知中心" />
+    <PageHeader title="通知中心">
+      <el-button text @click="settingsOpen = !settingsOpen">
+        <el-icon><Setting /></el-icon>
+        通知偏好
+      </el-button>
+    </PageHeader>
+
+    <!-- 通知偏好设置 -->
+    <div v-if="settingsOpen" v-loading="prefsLoading" class="prefs-card">
+      <div class="prefs-row">
+        <div class="prefs-label">
+          <span class="prefs-title">站内通知</span>
+          <span class="prefs-desc">在通知中心与顶栏铃铛接收通知</span>
+        </div>
+        <el-switch v-model="prefs.in_app_enabled" @change="handleSavePrefs" />
+      </div>
+      <div class="prefs-row">
+        <div class="prefs-label">
+          <span class="prefs-title">邮件通知</span>
+          <span class="prefs-desc">重要事件同步发送到账户邮箱</span>
+        </div>
+        <el-switch v-model="prefs.email_enabled" @change="handleSavePrefs" />
+      </div>
+      <div class="prefs-row prefs-column">
+        <div class="prefs-label">
+          <span class="prefs-title">接收类型</span>
+          <span class="prefs-desc">不勾选任何类型时接收全部类型</span>
+        </div>
+        <el-checkbox-group v-model="prefs.types_enabled" @change="handleSavePrefs">
+          <el-checkbox
+            v-for="(label, type) in typeLabels"
+            :key="type"
+            :value="type"
+            :label="label"
+          >{{ label }}</el-checkbox>
+        </el-checkbox-group>
+      </div>
+    </div>
+
     <div class="notification-toolbar">
       <el-button type="primary" link :disabled="notifStore.unreadCount === 0" @click="handleMarkAllRead">
         全部标记为已读
@@ -17,7 +55,7 @@
         >
           <div class="card-header">
             <StatusTag :label="getTypeLabel(n.type)" :status="n.is_read ? 'default' : 'primary'" />
-            <span class="card-time">{{ formatTime(n.created_at) }}</span>
+            <span class="card-time">{{ formatRelativeTime(n.created_at) }}</span>
           </div>
           <div class="card-title">{{ n.title }}</div>
           <div class="card-content">{{ n.content }}</div>
@@ -35,11 +73,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Setting } from '@element-plus/icons-vue'
 import { notificationApi } from '@/api/notification'
 import { useNotificationStore } from '@/stores/notification'
+import { formatRelativeTime } from '@/utils/format'
 import type { Notification } from '@/api/types'
 import PageHeader from '@/components/common/PageHeader.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
@@ -53,6 +93,15 @@ const items = ref<Notification[]>([])
 const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(20)
+
+// 通知偏好（展开区，展开时拉取）
+const settingsOpen = ref(false)
+const prefsLoading = ref(false)
+const prefs = reactive({
+  in_app_enabled: true,
+  email_enabled: true,
+  types_enabled: [] as string[],
+})
 
 const typeLabels: Record<string, string> = {
   system: '系统',
@@ -68,18 +117,35 @@ function getTypeLabel(type: string): string {
   return typeLabels[type] || '通知'
 }
 
-function formatTime(dateStr: string): string {
-  const d = new Date(dateStr)
-  const now = new Date()
-  const diff = now.getTime() - d.getTime()
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return '刚刚'
-  if (minutes < 60) return `${minutes}分钟前`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}小时前`
-  const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}天前`
-  return d.toLocaleDateString()
+async function fetchPrefs() {
+  prefsLoading.value = true
+  try {
+    const res = await notificationApi.getPreferences()
+    prefs.in_app_enabled = res.in_app_enabled
+    prefs.email_enabled = res.email_enabled
+    prefs.types_enabled = res.types_enabled || []
+  } catch {
+    // 静默：偏好加载失败不阻塞通知列表
+  } finally {
+    prefsLoading.value = false
+  }
+}
+
+async function handleSavePrefs() {
+  try {
+    const res = await notificationApi.updatePreferences({
+      in_app_enabled: prefs.in_app_enabled,
+      email_enabled: prefs.email_enabled,
+      types_enabled: prefs.types_enabled,
+    })
+    // 以服务端返回为准回填（防并发覆盖）
+    prefs.in_app_enabled = res.in_app_enabled
+    prefs.email_enabled = res.email_enabled
+    prefs.types_enabled = res.types_enabled || []
+    ElMessage.success('偏好已保存')
+  } catch {
+    ElMessage.error('保存偏好失败')
+  }
 }
 
 async function fetchNotifications() {
@@ -123,11 +189,54 @@ async function handleClick(n: Notification) {
 onMounted(() => {
   fetchNotifications()
 })
+
+// 偏好区懒加载：首次展开时拉取
+watch(settingsOpen, (open) => {
+  if (open && !prefsLoading.value) fetchPrefs()
+})
 </script>
 
 <style scoped>
 .notification-view {
   padding: var(--space-6);
+}
+
+.prefs-card {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  margin-bottom: var(--space-4);
+}
+
+.prefs-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) 0;
+}
+
+.prefs-column {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.prefs-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.prefs-title {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+.prefs-desc {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
 }
 
 .notification-toolbar {
