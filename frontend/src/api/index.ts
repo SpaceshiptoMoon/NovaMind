@@ -390,6 +390,18 @@ export async function createSSEStream(
   }
 }
 
+// WS URL 拼接：http(s):// → ws(s)://；相对路径（如 /api/v1）用当前页协议+host
+// 拼绝对 WS URL。createWebSocketStream 与通知常驻订阅共用。
+export function createWsUrl(url: string): string {
+  const apiBase = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+  const wsBase = apiBase.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
+  if (/^wss?:\/\//.test(wsBase)) {
+    return wsBase + url
+  }
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${proto}//${window.location.host}${wsBase}${url}`
+}
+
 // WebSocket 流式请求工具（取代聊天流式的 SSE，双向通道）
 // 接口与 createSSEStream 一致：onMessage({type,data}) / onError / signal，
 // 4 个聊天 api 模块零改接口即可切换。
@@ -409,17 +421,8 @@ export async function createWebSocketStream(
   },
   action: string = 'chat',
 ): Promise<void> {
-  const apiBase = import.meta.env.VITE_API_BASE_URL || '/api/v1'
   const token = tokenManager.getToken()
-  // http(s):// → ws(s)://；相对路径（如 /api/v1）→ 用当前页协议+host 拼绝对 WS URL
-  const wsBase = apiBase.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
-  let fullUrl: string
-  if (/^wss?:\/\//.test(wsBase)) {
-    fullUrl = wsBase + url
-  } else {
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    fullUrl = `${proto}//${window.location.host}${wsBase}${url}`
-  }
+  const fullUrl = createWsUrl(url)
   const subprotocols = token ? [`bearer.${token}`] : []
 
   return new Promise<void>((resolve, reject) => {
