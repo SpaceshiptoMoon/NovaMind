@@ -177,8 +177,17 @@ class SkillMarketplaceService:
             review_status=ReviewStatus.PENDING,
             review_result=None,
             reviewed_at=None,
-            # 已发布状态下更新版本后变回 DRAFT
-            **({"status": SkillStatus.DRAFT} if skill.status == SkillStatus.PUBLISHED else {}),
+            # 已发布状态下更新版本后变回 DRAFT，并同步回收 PUBLIC 可见性：
+            # 新版内容未经审查，若保持 PUBLIC，get_skill/download_skill 仅按
+            # visibility 判定可见性，任何人仍可查看/下载审查中的新版资源。
+            **(
+                {
+                    "status": SkillStatus.DRAFT,
+                    "visibility": SkillVisibility.PRIVATE,
+                }
+                if skill.status == SkillStatus.PUBLISHED
+                else {}
+            ),
         )
 
         # 创建版本记录
@@ -243,6 +252,7 @@ class SkillMarketplaceService:
 
     async def install_skill(
         self, user_id: int, skill_id: int, agent_id: int,
+        is_admin: bool = False,
     ) -> SkillInstallation:
         """安装技能到 Agent
 
@@ -255,12 +265,16 @@ class SkillMarketplaceService:
         if skill.status != SkillStatus.PUBLISHED and skill.skill_source != SkillSource.BUILTIN:
             raise SkillNotPublishedError(skill_id)
 
-        # 校验 Agent 归属
+        # 校验 Agent 归属：user_id=None 为系统级预置 Agent，仅管理员可安装
+        # （与 uninstall_skill 的管理口径一致），普通用户不得篡改其 enabled_tools
         if self._agent_registry_port is not None:
             agent = await self._agent_registry_port.get_agent(agent_id)
             if not agent:
                 raise SkillTargetAgentNotFoundError(agent_id)
-            if agent.user_id is not None and agent.user_id != user_id:
+            if agent.user_id is None:
+                if not is_admin:
+                    raise SkillAccessDeniedError(skill_id)
+            elif agent.user_id != user_id:
                 raise SkillAccessDeniedError(skill_id)
 
         # 检查是否已安装

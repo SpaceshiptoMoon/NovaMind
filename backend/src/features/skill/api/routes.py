@@ -431,9 +431,13 @@ async def install_skill(
     skill_id: Annotated[int, Path(gt=0, description="技能ID")],
     data: SkillInstallRequest,
     user_id: int = Depends(get_current_user_id),
+    current_user: dict = Depends(get_current_user),
     service: SkillMarketplaceService = Depends(get_skill_service),
 ):
-    return await service.install_skill(user_id, skill_id, data.agent_id)
+    return await service.install_skill(
+        user_id, skill_id, data.agent_id,
+        is_admin=current_user.get("is_admin", False),
+    )
 
 
 @router.delete(
