@@ -38,3 +38,39 @@ def test_validate_skill_md_reports_invalid_name(bad_name: str) -> None:
     result = validate_skill_md(_skill_md(bad_name))
     assert not result.valid
     assert any("name 格式无效" in e for e in result.errors)
+
+
+# ==================== ZIP 解压炸弹防护 ====================
+
+import io
+import zipfile
+
+from novamind.features.skill.services.skill_parser import extract_skill_zip
+
+
+def _zip_with_entry(filename: str, data: bytes) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(filename, data)
+    return buf.getvalue()
+
+
+@pytest.mark.unit
+def test_extract_zip_rejects_bomb_total_uncompressed() -> None:
+    """高压缩比条目解压后超总大小上限 → ValueError，不实际解压"""
+    # ~120MB 的可压缩内容（'0' 重复，DEFLATED 后极小）
+    bomb = _zip_with_entry("SKILL.md", b"---\nname: ok\ndescription: d\n---\n\n" + b"0" * (120 * 1024 * 1024))
+    with pytest.raises(ValueError, match="超过限制"):
+        extract_skill_zip(bomb)
+
+
+@pytest.mark.unit
+def test_extract_zip_allows_normal_size() -> None:
+    """正常大小 ZIP 不触发上限（1MB 内容远低于 100MB 限）"""
+    data = _zip_with_entry(
+        "SKILL.md",
+        b"---\nname: ok\ndescription: d\n---\n\n" + b"x" * (1024 * 1024),
+    )
+    extracted = extract_skill_zip(data)
+    assert extracted.parsed.name == "ok"
+    assert len(extracted.skill_md_content) > 1024 * 1024

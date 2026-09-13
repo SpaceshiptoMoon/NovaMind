@@ -29,6 +29,10 @@ _RESOURCE_DIRS = {
 # 允许的资源文件最大大小 (10MB)
 _MAX_RESOURCE_SIZE = 10 * 1024 * 1024
 
+# ZIP 解压后总大小上限 (100MB)：防解压炸弹——50MB 压缩包可膨胀出 GB 级内容，
+# 依据 central directory 的未解压大小判定，不解压即可校验
+_MAX_TOTAL_UNCOMPRESSED = 100 * 1024 * 1024
+
 
 @dataclass
 class ParsedSkill:
@@ -238,6 +242,14 @@ def extract_skill_zip(
 
     if not names:
         raise ValueError("ZIP 包为空")
+
+    # 解压炸弹防护：按 central directory 声明的未解压大小累计校验（不解压）
+    total_uncompressed = sum(info.file_size for info in zf.infolist())
+    if total_uncompressed > _MAX_TOTAL_UNCOMPRESSED:
+        raise ValueError(
+            f"ZIP 解压后总大小 {total_uncompressed // (1024 * 1024)}MB 超过限制 "
+            f"{_MAX_TOTAL_UNCOMPRESSED // (1024 * 1024)}MB"
+        )
 
     # 定位 SKILL.md（根目录或一级子目录）
     skill_md_path = None
