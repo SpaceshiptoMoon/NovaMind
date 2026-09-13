@@ -37,6 +37,7 @@ from novamind.shared.utils.time_utils import now_china
 from novamind.shared.prompts import PromptManager
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.registry_ports import AgentRegistryPort
+from novamind.shared.notification_ports import NotificationPort
 
 logger = get_logger(__name__)
 
@@ -51,6 +52,7 @@ class SkillMarketplaceService:
         security_checker: Optional[SkillSecurityChecker] = None,
         model_config_service: Optional[ModelConfigPort] = None,
         agent_registry_port: Optional[AgentRegistryPort] = None,
+        notification_port: Optional[NotificationPort] = None,
     ):
         self.db = db
         self.minio = minio_client
@@ -61,6 +63,7 @@ class SkillMarketplaceService:
         self.review_repo = SkillReviewRepository(db)
         self.install_repo = SkillInstallationRepository(db)
         self._agent_registry_port = agent_registry_port
+        self._notification_port = notification_port
 
     async def cleanup(self):
         pass
@@ -586,6 +589,9 @@ class SkillMarketplaceService:
             reviewed_at=now_china(),
         )
         await self.db.commit()
+        # commit 后通知作者（独立会话 port：通知独立于审核事务成败）
+        if updated:
+            await self._notify_review_result(updated, ReviewStatus.APPROVED, None)
         return updated
 
     async def reject_skill(self, skill_id: int, reason: Optional[str] = None) -> SkillDefinition:
@@ -603,6 +609,8 @@ class SkillMarketplaceService:
             update_kwargs["review_result"] = result
         updated = await self.skill_repo.update(skill_id, **update_kwargs)
         await self.db.commit()
+        if updated:
+            await self._notify_review_result(updated, ReviewStatus.REJECTED, reason)
         return updated
 
     # ==================== 下载 ====================
@@ -684,7 +692,7 @@ class SkillMarketplaceService:
                         },
                     }
                     repo = SkillRepository(db)
-                    await repo.update(
+                    skill = await repo.update(
                         skill_id,
                         review_status=review_result.status,
                         review_result=review_data,
@@ -692,24 +700,67 @@ class SkillMarketplaceService:
                     )
                     await db.commit()
                     logger.info("技能后台审查完成", skill_id=skill_id, review_status=review_result.status)
+                    # commit 后通知作者（独立会话版 port：后台任务的请求会话不可信）
+                    if skill:
+                        await self._notify_review_result(skill, review_result.status, None)
                 except Exception as e:
                     # 审查任务本身失败：转 SUSPICIOUS 交人工审核，避免永久卡 PENDING
                     # （PENDING 会阻断发布且不出现在管理员待审核列表，无人工出口）
                     logger.error("技能后台审查失败，转人工审核", skill_id=skill_id, error=str(e))
                     try:
                         repo = SkillRepository(db)
-                        await repo.update(
+                        skill = await repo.update(
                             skill_id,
                             review_status=ReviewStatus.SUSPICIOUS,
                             review_result={"error": f"自动审查失败: {e}"},
                             reviewed_at=now_china(),
                         )
                         await db.commit()
+                        if skill:
+                            await self._notify_review_result(skill, ReviewStatus.SUSPICIOUS, None)
                     except Exception as e2:
                         logger.error("技能审查失败状态回写也失败", skill_id=skill_id, error=str(e2))
 
         task = asyncio.ensure_future(_do_review())
         task.add_done_callback(lambda t: t.exception() if not t.cancelled() and t.exception() else None)
+
+    async def _notify_review_result(
+        self, skill, review_status: int, admin_reason: Optional[str],
+    ) -> None:
+        """审核结果通知技能作者（commit 后调用；经独立会话 port，失败不影响审核流程）。"""
+        if skill.user_id is None or self._notification_port is None:
+            return
+        display = getattr(skill, "display_name", None) or skill.name
+        if review_status == ReviewStatus.APPROVED:
+            title = f"技能「{display}」已通过审核"
+            content = "安全审核通过，技能已可发布到广场。"
+        elif review_status == ReviewStatus.SUSPICIOUS:
+            title = f"技能「{display}」需人工复核"
+            content = (
+                f"自动审查未完成或存疑（{admin_reason or '已转交管理员人工审核'}），"
+                "请耐心等待管理员复核结果。"
+            )
+        elif review_status == ReviewStatus.REJECTED:
+            title = f"技能「{display}」未通过审核"
+            content = admin_reason or "内容存在安全风险，请修改后重新上传。"
+        else:
+            return
+        try:
+            await self._notification_port.send(
+                user_id=skill.user_id,
+                type="skill_review",
+                title=title,
+                content=content,
+                link=f"/home/workspace/skills/{skill.id}",
+                extra_data={
+                    "skill_id": skill.id,
+                    "skill_name": display,
+                    "review_status": int(review_status),
+                },
+            )
+        except Exception as e:
+            # 双保险：审核状态已 commit，通知失败仅记日志
+            logger.warning("技能审核通知发送失败", skill_id=skill.id, error=str(e))
 
     async def _upload_skill_files(
         self, skill_id: int, version: int, extracted: ExtractedSkill,

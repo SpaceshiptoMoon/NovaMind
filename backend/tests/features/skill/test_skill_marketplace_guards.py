@@ -96,6 +96,7 @@ def _make_service(skill, port) -> SkillMarketplaceService:
     svc.install_repo = _FakeInstallRepo()
     svc.db = _FakeDB()
     svc._agent_registry_port = port
+    svc._notification_port = None
     svc.checker = None
     svc.minio = None
     svc.model_config_service = None
