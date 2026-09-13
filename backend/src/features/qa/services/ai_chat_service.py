@@ -1134,13 +1134,15 @@ class AIChatService:
             await self.qa_service.commit()
             self.logger.info("预处理数据已提交，数据库锁已释放（流式）", session_id=session_id)
 
-            # 发送用户消息信息
+            # 发送用户消息信息（created_at 转 ISO 字符串：WS 推送是裸 json.dumps，
+            # datetime 直塞会 TypeError 打崩连接；前端类型契约也是 string）
             yield self._emit("user_message", {
                 "id": prep.user_message.id,
                 "content": prep.user_message.content,
                 "role": prep.user_message.role,
                 "session_id": session_id,
-                "created_at": prep.user_message.created_at,
+                "created_at": prep.user_message.created_at.isoformat()
+                if prep.user_message.created_at else None,
                 "attachments": prep.attachments_info,
             })
 
@@ -1220,7 +1222,8 @@ class AIChatService:
                 "id": ai_message.id,
                 "content": full_response,
                 "role": ai_message.role,
-                "created_at": ai_message.created_at,
+                "created_at": ai_message.created_at.isoformat()
+                if ai_message.created_at else None,
                 "session_id": session_id,
                 "llm_model": llm_model,
                 "sources": prep.sources,

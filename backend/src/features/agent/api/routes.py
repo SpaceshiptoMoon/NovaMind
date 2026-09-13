@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from novamind.core.auth import UserStatusResolver, get_current_user, get_user_status_resolver
 from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
 from novamind.core.database.database import get_db
-from novamind.core.ws import run_stream_to_ws
+from novamind.core.ws import run_stream_to_ws, send_event
 from novamind.engines.agent.safety import ApprovalRegistry
 from novamind.features.agent.api.dependencies import (
     _build_agent_chat_service,
@@ -206,7 +206,7 @@ async def chat_ws(
 
     async def locked_send(event):
         async with send_lock:
-            await websocket.send_json(event)
+            await send_event(websocket, event)
 
     gen = service.chat_stream(
         user_id=user["id"],
