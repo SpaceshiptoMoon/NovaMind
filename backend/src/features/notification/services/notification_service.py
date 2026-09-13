@@ -20,6 +20,8 @@ from novamind.features.notification.schemas.notification_schema import (
     NotificationPreferenceResponse,
 )
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.core.ws import envelope
+from novamind.core.ws.connection_manager import manager as ws_manager
 
 logger = get_logger(__name__)
 
@@ -68,6 +70,7 @@ class NotificationService:
                     "link": link,
                     "extra_data": extra_data,
                 })
+                await self._push_ws(user_id, notification)
                 logger.info("站内通知已发送", user_id=user_id, type=type, title=title)
 
         # 3. 邮件通知（异步，失败不影响站内通知）
@@ -159,3 +162,27 @@ class NotificationService:
             return user.email if user else None
         except Exception:
             return None
+
+    async def _push_ws(self, user_id: int, notification: Notification) -> None:
+        """WS 实时推送（fire-and-forget 语义：失败静默，绝不影响通知落库结果）。
+
+        推送完整通知对象——前端收到直接 prepend 不回源 GET，规避「推送先到、
+        commit 可见性后到」的读不到 race。直接 await 而非 create_task：
+        send_to_user 内部逐连接吞错、无连接是空查，await 开销可忽略。
+        """
+        try:
+            await ws_manager.send_to_user(user_id, envelope("notification.new", {
+                "id": notification.id,
+                "type": notification.type,
+                "title": notification.title,
+                "content": notification.content,
+                "link": notification.link,
+                "extra_data": notification.extra_data,
+                "is_read": False,
+                "created_at": (
+                    notification.created_at.isoformat()
+                    if notification.created_at else None
+                ),
+            }))
+        except Exception as e:
+            logger.warning("WS 通知推送失败（已忽略）", user_id=user_id, error=str(e))

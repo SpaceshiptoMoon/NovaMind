@@ -1,8 +1,12 @@
 """
 通知模块路由
 """
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 
+from novamind.core.auth import UserStatusResolver, get_user_status_resolver
+from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
+from novamind.core.ws import envelope, send_event
+from novamind.core.ws.connection_manager import manager as ws_manager
 from novamind.features.knowledge_space.api.dependencies import get_current_user_id
 from novamind.features.notification.api.dependencies import get_notification_service
 from novamind.features.notification.api.exceptions import NotificationNotFoundError
@@ -100,3 +104,36 @@ async def update_preferences(
     """更新当前用户的通知偏好设置"""
     update_data = data.model_dump(exclude_unset=True, exclude_none=True)
     return await service.update_preferences(user_id, update_data)
+
+
+@router.websocket("/ws")
+async def notification_ws(
+    websocket: WebSocket,
+    resolver: UserStatusResolver = Depends(get_user_status_resolver),
+):
+    """通知常驻订阅通道：``/api/v1/notifications/ws``。
+
+    认证：subprotocol ``bearer.<jwt>``（ws_authenticate 校验，失败 close 4401/4403）。
+    连接注册进 per-user ConnectionManager（同一用户多标签页 = 多连接，推送全达）。
+    客户端保活：定期发 ``{"action": "ping"}``，服务端回 ``pong``。服务端经此通道
+    推送 ``notification.new`` 事件（完整通知对象，前端直接 prepend 不回源）。
+    断连静默：DB 是事实源，30s 轮询兜底收敛。
+    """
+    user, close_code = await ws_authenticate(websocket, resolver)
+    token = ws_extract_token(websocket)
+    await websocket.accept(subprotocol=f"bearer.{token}" if token else None)
+    if close_code is not None:
+        await websocket.close(code=close_code)
+        return
+
+    user_id = user["id"]
+    await ws_manager.connect(user_id, websocket)
+    try:
+        while True:
+            msg = await websocket.receive_json()
+            if isinstance(msg, dict) and msg.get("action") == "ping":
+                await send_event(websocket, envelope("pong", {}))
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await ws_manager.disconnect(user_id, websocket)
