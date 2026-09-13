@@ -20,6 +20,10 @@ async def _notify_resume_terminal(
         title = "简历挖掘已完成"
         content = f"「{filename}」的分析报告已生成，点击查看。"
         link = f"/home/apps/resume/session/{session_id}"
+    elif status == "cancelled":
+        title = "简历挖掘已取消"
+        content = f"「{filename}」的处理已被取消。"
+        link = "/home/apps/resume/history"
     else:
         title = "简历挖掘失败"
         content = f"「{filename}」的处理未成功，请返回列表重试。"
@@ -76,6 +80,10 @@ async def process_resume_task(
         await _ensure_mark_resume_failed(session_id, "[用户取消] 简历挖掘已被用户取消")
         await clear_resume_cancel_flag(session_id)
         await unbind_resume_job(session_id)
+        # 终态通知用户（与 document_tasks 取消口径对齐）
+        await _notify_resume_terminal(
+            "cancelled", user_id=user_id, session_id=session_id, filename=filename,
+        )
         return
 
     try:

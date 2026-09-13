@@ -129,3 +129,17 @@ async def test_notify_resume_failed(capture):
     assert "失败" in call["title"]
     assert call["link"] == "/home/apps/resume/history"
     assert call["extra_data"]["status"] == "failed"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_notify_resume_cancelled(capture):
+    """取消终态：与 document_tasks 取消口径对齐"""
+    await resume_tasks._notify_resume_terminal(
+        "cancelled", user_id=11, session_id="rs-1", filename="张三简历.pdf",
+    )
+
+    call = capture.calls[0]
+    assert "取消" in call["title"]
+    assert call["link"] == "/home/apps/resume/history"
+    assert call["extra_data"]["status"] == "cancelled"
