@@ -2,7 +2,7 @@
   <div class="notification-view">
     <PageHeader title="通知中心" />
     <div class="notification-toolbar">
-      <el-button type="primary" link :disabled="unreadCount === 0" @click="handleMarkAllRead">
+      <el-button type="primary" link :disabled="notifStore.unreadCount === 0" @click="handleMarkAllRead">
         全部标记为已读
       </el-button>
     </div>
@@ -39,6 +39,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { notificationApi } from '@/api/notification'
+import { useNotificationStore } from '@/stores/notification'
 import type { Notification } from '@/api/types'
 import PageHeader from '@/components/common/PageHeader.vue'
 import StatusTag from '@/components/common/StatusTag.vue'
@@ -46,10 +47,10 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import Pagination from '@/components/common/Pagination.vue'
 
 const router = useRouter()
+const notifStore = useNotificationStore()
 const loading = ref(false)
 const items = ref<Notification[]>([])
 const total = ref(0)
-const unreadCount = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(20)
 
@@ -90,7 +91,8 @@ async function fetchNotifications() {
     })
     items.value = res.items
     total.value = res.total
-    unreadCount.value = res.unread_count
+    // 未读数经 store 同步（header 徽标同源收敛）
+    notifStore.unreadCount = res.unread_count
   } catch {
     ElMessage.error('加载通知失败')
   } finally {
@@ -100,7 +102,7 @@ async function fetchNotifications() {
 
 async function handleMarkAllRead() {
   try {
-    await notificationApi.markAllRead()
+    await notifStore.markAllRead()
     ElMessage.success('已全部标记为已读')
     await fetchNotifications()
   } catch {
@@ -110,13 +112,8 @@ async function handleMarkAllRead() {
 
 async function handleClick(n: Notification) {
   if (!n.is_read) {
-    try {
-      await notificationApi.markRead(n.id)
-      n.is_read = true
-      unreadCount.value = Math.max(0, unreadCount.value - 1)
-    } catch {
-      // 静默处理
-    }
+    await notifStore.markRead(n.id)
+    n.is_read = true
   }
   if (n.link) {
     router.push(n.link)

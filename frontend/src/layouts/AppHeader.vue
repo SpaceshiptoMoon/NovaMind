@@ -69,22 +69,22 @@
         placement="bottom-end"
         :width="360"
         trigger="click"
-        @show="loadNotifications"
+        @show="notifStore.loadRecent()"
       >
         <template #reference>
-          <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99" class="notification-badge">
+          <el-badge :value="notifStore.unreadCount" :hidden="notifStore.unreadCount === 0" :max="99" class="notification-badge">
             <el-icon :size="20" class="notification-bell"><Bell /></el-icon>
           </el-badge>
         </template>
         <div class="notification-panel">
           <div class="notification-header">
             <span class="notification-title">通知</span>
-            <el-button v-if="unreadCount > 0" link type="primary" size="small" @click="handleMarkAllRead">全部已读</el-button>
+            <el-button v-if="notifStore.unreadCount > 0" link type="primary" size="small" @click="notifStore.markAllRead()">全部已读</el-button>
           </div>
-          <div v-if="notifications.length === 0" class="notification-empty">暂无通知</div>
+          <div v-if="notifStore.items.length === 0" class="notification-empty">暂无通知</div>
           <div v-else class="notification-list">
             <div
-              v-for="n in notifications"
+              v-for="n in notifStore.items"
               :key="n.id"
               :class="['notification-item', { unread: !n.is_read }]"
               @click="handleNotificationClick(n)"
@@ -94,7 +94,7 @@
               <div class="notification-item-time">{{ formatTime(n.created_at) }}</div>
             </div>
           </div>
-          <div v-if="notifications.length > 0" class="notification-footer">
+          <div v-if="notifStore.items.length > 0" class="notification-footer">
             <el-button link type="primary" @click="router.push('/home/notifications')">查看全部</el-button>
           </div>
         </div>
@@ -143,9 +143,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessageBox, ElMessage } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
 import {
   User,
   SwitchButton,
@@ -159,7 +159,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
-import { notificationApi } from '@/api/notification'
+import { useNotificationStore } from '@/stores/notification'
 import type { Notification } from '@/api/types'
 import UnicornIcon from '@/components/common/UnicornIcon.vue'
 import NavIcon from '@/components/common/NavIcon.vue'
@@ -212,48 +212,25 @@ function handleNavCommand(path: string) {
   router.push(`/home/${path}`)
 }
 
-// ==================== 通知相关 ====================
-const unreadCount = ref(0)
-const notifications = ref<Notification[]>([])
-let pollTimer: ReturnType<typeof setInterval> | null = null
+// ==================== 通知相关（经 notifStore：WS 实时 + 30s 轮询兜底） ====================
+const notifStore = useNotificationStore()
 
-async function fetchUnreadCount() {
-  try {
-    const res = await notificationApi.getUnreadCount()
-    unreadCount.value = res.unread_count
-  } catch {
-    // 静默处理
-  }
-}
-
-async function loadNotifications() {
-  try {
-    const res = await notificationApi.getNotifications({ limit: 5, unread_only: false })
-    notifications.value = res.items
-    unreadCount.value = res.unread_count
-  } catch {
-    // 静默处理
-  }
-}
-
-async function handleMarkAllRead() {
-  try {
-    await notificationApi.markAllRead()
-    await loadNotifications()
-  } catch {
-    ElMessage.error('操作失败')
-  }
-}
-
-async function handleNotificationClick(n: Notification) {
-  if (!n.is_read) {
-    try {
-      await notificationApi.markRead(n.id)
-      n.is_read = true
-      unreadCount.value = Math.max(0, unreadCount.value - 1)
-    } catch {
-      // 静默处理
+// 登录态驱动：登录后初始化订阅与轮询，登出后清理
+watch(
+  () => userStore.isLoggedIn,
+  (loggedIn) => {
+    if (loggedIn) {
+      notifStore.init()
+    } else {
+      notifStore.stop()
     }
+  },
+  { immediate: true },
+)
+
+function handleNotificationClick(n: Notification) {
+  if (!n.is_read) {
+    notifStore.markRead(n.id)
   }
   if (n.link) {
     router.push(n.link)
@@ -273,18 +250,6 @@ function formatTime(dateStr: string): string {
   if (days < 30) return `${days}天前`
   return d.toLocaleDateString()
 }
-
-onMounted(() => {
-  fetchUnreadCount()
-  pollTimer = setInterval(fetchUnreadCount, 30000)
-})
-
-onUnmounted(() => {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
-})
 
 const handleCommand = async (command: string) => {
   switch (command) {
