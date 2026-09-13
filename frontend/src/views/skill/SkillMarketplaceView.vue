@@ -148,7 +148,9 @@ const aiSearchMode = ref(false)
 
 const currentSkills = computed(() => {
   if (activeTab.value === 'mine') return skillStore.mySkills
-  return aiSearchMode.value && skillStore.aiSearchResults.length > 0
+  // AI 搜索模式以 parsedQuery 为准（而非 results.length），
+  // 否则零结果时会错误回落显示广场列表而非空状态
+  return aiSearchMode.value && skillStore.aiSearchParsedQuery
     ? skillStore.aiSearchResults
     : skillStore.marketplaceSkills
 })

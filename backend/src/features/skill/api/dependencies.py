@@ -62,13 +62,36 @@ async def _get_review_llm_client(
     user_id: int,
     model_config_service: ModelConfigService,
 ) -> Optional[BaseLLM]:
-    """获取审查用的 LLM 客户端"""
+    """获取审查用的 LLM 客户端
+
+    管理员指定了审查模型时，按初始管理员账号（YAML ``admin.username``）取
+    凭证构建 client —— ``admin/models`` 列出的就是该账号的模型配置；回退到
+    用户默认模型时才使用传入的 ``user_id``。
+    """
     model_name = await _get_llm_review_model()
-    if not model_name:
-        model_name = await model_config_service.get_user_default_model_name(user_id, "llm")
+    if model_name:
+        owner_id = await _get_review_model_owner_id()
+        if owner_id is None:
+            return None
+        return await model_config_service.get_llm_client_by_model(owner_id, model_name)
+    model_name = await model_config_service.get_user_default_model_name(user_id, "llm")
     if not model_name:
         return None
     return await model_config_service.get_llm_client_by_model(user_id, model_name)
+
+
+async def _get_review_model_owner_id() -> Optional[int]:
+    """解析审查模型凭证归属用户：初始管理员（YAML admin.username）"""
+    from novamind.setting.yaml_config.loader import get_config
+
+    admin_username = get_config().admin.username
+    from novamind.features.user.repository.user_repository import UserRepository
+    from novamind.core.database.database import get_session_factory
+
+    session_factory = get_session_factory()
+    async with session_factory() as db:
+        admin = await UserRepository(db).get_user_by_username(admin_username)
+        return admin.id if admin else None
 
 
 def _get_model_config_service(db: AsyncSession = Depends(get_db)) -> ModelConfigService:

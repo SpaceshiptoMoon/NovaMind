@@ -201,3 +201,35 @@ async def test_install_to_own_agent_appends_skill_ref():
 
     await svc.install_skill(user_id=100, skill_id=1, agent_id=9, is_admin=False)
     assert port.updated_tools[9] == ["skill__1_code-reviewer"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_reject_persists_admin_reason_without_review_result():
+    """review_result 为 None 时管理员拒绝原因不丢失（原实现静默丢弃）"""
+    skill = _make_skill(review_status=ReviewStatus.SUSPICIOUS, review_result=None)
+    svc = _make_service(skill, _FakeAgentRegistryPort({}))
+
+    await svc.reject_skill(skill_id=1, reason="包含可疑注入模式")
+
+    repo: _FakeSkillRepo = svc.skill_repo
+    assert repo.updates["review_status"] == ReviewStatus.REJECTED
+    assert repo.updates["review_result"] == {"admin_reason": "包含可疑注入模式"}
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_reject_merges_admin_reason_into_existing_result():
+    """已有 review_result 时管理员原因合并写入，原审查数据保留"""
+    skill = _make_skill(
+        review_status=ReviewStatus.SUSPICIOUS,
+        review_result={"rules": {"passed": True, "matches": []}, "llm": {"level": "suspicious", "reason": "r"}},
+    )
+    svc = _make_service(skill, _FakeAgentRegistryPort({}))
+
+    await svc.reject_skill(skill_id=1, reason="人工确认")
+
+    repo: _FakeSkillRepo = svc.skill_repo
+    result = repo.updates["review_result"]
+    assert result["admin_reason"] == "人工确认"
+    assert result["llm"]["level"] == "suspicious", "原 LLM 审查数据应保留"

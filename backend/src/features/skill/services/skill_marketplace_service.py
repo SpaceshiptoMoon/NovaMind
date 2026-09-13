@@ -597,8 +597,8 @@ class SkillMarketplaceService:
             "review_status": ReviewStatus.REJECTED,
             "reviewed_at": now_china(),
         }
-        if reason and skill.review_result:
-            result = dict(skill.review_result)
+        if reason:
+            result = dict(skill.review_result) if skill.review_result else {}
             result["admin_reason"] = reason
             update_kwargs["review_result"] = result
         updated = await self.skill_repo.update(skill_id, **update_kwargs)
