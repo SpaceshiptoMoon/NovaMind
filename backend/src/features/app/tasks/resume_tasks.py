@@ -8,6 +8,40 @@ from novamind.shared.logging import get_logger
 logger = get_logger(__name__)
 
 
+async def _notify_resume_terminal(
+    status: str, *, user_id: int, session_id: str, filename: str,
+) -> None:
+    """简历挖掘终态通知用户（成功/最终失败；重试中间态不发）。"""
+    from novamind.features.notification.adapters.notification_port_adapter import (
+        as_notification_port,
+    )
+
+    if status == "completed":
+        title = "简历挖掘已完成"
+        content = f"「{filename}」的分析报告已生成，点击查看。"
+        link = f"/home/apps/resume/session/{session_id}"
+    else:
+        title = "简历挖掘失败"
+        content = f"「{filename}」的处理未成功，请返回列表重试。"
+        link = "/home/apps/resume/history"
+
+    try:
+        await as_notification_port(None).send(
+            user_id=user_id,
+            type="resume_completed",
+            title=title,
+            content=content,
+            link=link,
+            extra_data={
+                "session_id": session_id,
+                "filename": filename,
+                "status": status,
+            },
+        )
+    except Exception as e:
+        logger.warning("简历终态通知发送失败", session_id=session_id, error=str(e))
+
+
 async def process_resume_task(
     ctx: dict,
     session_id: str,
@@ -58,6 +92,10 @@ async def process_resume_task(
 
         await unbind_resume_job(session_id)
         logger.info("arq 任务完成：简历挖掘成功", session_id=session_id, job_id=job_id)
+        # 终态通知用户
+        await _notify_resume_terminal(
+            "completed", user_id=user_id, session_id=session_id, filename=filename,
+        )
 
     except Exception as e:
         logger.error(
@@ -85,6 +123,10 @@ async def process_resume_task(
         if job_try >= max_tries:
             await _ensure_mark_resume_failed(session_id, str(e))
             await unbind_resume_job(session_id)
+            # 最终失败通知用户（重试中间态不发）
+            await _notify_resume_terminal(
+                "failed", user_id=user_id, session_id=session_id, filename=filename,
+            )
         else:
             raise
 

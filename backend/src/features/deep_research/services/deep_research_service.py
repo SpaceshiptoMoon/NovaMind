@@ -358,6 +358,7 @@ class DeepResearchService:
         model_config_service: Optional[ModelConfigPort] = None,
         search_service: Optional[SearchService] = None,
         es_client: Optional[Any] = None,
+        notification_port: Optional[Any] = None,
     ):
         self.session = session
         self.research_repo = ResearchRepository(session)
@@ -368,8 +369,10 @@ class DeepResearchService:
         # A-3：web_search_port 按请求 provider 构造（build_web_search_port_for_provider），
         # 在 cleanup() 关闭。每请求一个 DeepResearchService 实例（见 api/dependencies）。
         self._web_search_port: Optional[Any] = None
-        # 可插拽数据源：本次请求构造的外部源适配器（可能多个，cleanup 全部关闭）
+        # 可插拂数据源：本次请求构造的外部源适配器（可能多个，cleanup 全部关闭）
         self._web_source_adapters: List[Any] = []
+        # 研究完成通知端口（独立会话版：流式可能取消回滚，不复用本 session）
+        self._notification_port = notification_port
 
         self.logger = get_logger(__name__)
 
@@ -918,6 +921,9 @@ class DeepResearchService:
             )
             await self.session.commit()
 
+            # commit 后通知发起用户（流式路径：唯一主动提醒渠道，前端无研究历史轮询）
+            await self._notify_research_done(ctx, elapsed_seconds)
+
             yield self._emit("done", {
                 "session_id": ctx.session_id,
                 "final_report": full_report,
@@ -1300,6 +1306,30 @@ class DeepResearchService:
             session_id=ctx.session_id,
             elapsed_seconds=elapsed_seconds,
         )
+        # commit 后通知发起用户（非流式路径）
+        await self._notify_research_done(ctx, elapsed_seconds)
+
+    async def _notify_research_done(self, ctx: ResearchContext, elapsed_seconds: int) -> None:
+        """研究完成通知发起用户（commit 后调用；失败静默不影响主流程）。"""
+        if self._notification_port is None:
+            return
+        topic = ctx.research_topic or ctx.params.query
+        try:
+            await self._notification_port.send(
+                user_id=ctx.user_id,
+                type="research_done",
+                title=f"深度研究「{topic}」已完成",
+                content=f"研究耗时 {elapsed_seconds} 秒，报告已生成，点击查看完整内容。",
+                link=f"/home/workspace/research/{ctx.space_id}/history",
+                extra_data={
+                    "session_id": ctx.session_id,
+                    "space_id": ctx.space_id,
+                    "research_topic": topic,
+                    "elapsed_seconds": elapsed_seconds,
+                },
+            )
+        except Exception as e:
+            self.logger.warning("研究完成通知发送失败", session_id=ctx.session_id, error=str(e))
 
     def _build_research_result(self, ctx: ResearchContext) -> Dict[str, Any]:
         """构建返回字典（纯数据组装，无 IO）"""

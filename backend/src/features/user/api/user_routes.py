@@ -580,6 +580,24 @@ async def forgot_password(
                 except Exception:
                     pass  # 邮件发送失败不暴露给用户
 
+                # 站内通知记录（用户此刻未登录无 WS 连接，纯审计记录；
+                # link=None：任何需登录页都会被 guard 截走）
+                try:
+                    from novamind.features.notification.adapters.notification_port_adapter import (
+                        as_notification_port,
+                    )
+                    await as_notification_port(db).send(
+                        user_id=user.id,
+                        type="password_reset",
+                        title="密码重置请求已发送",
+                        content=(
+                            "我们已向您的邮箱发送密码重置链接，链接有效期有限，请尽快处理。"
+                            "若非本人操作请忽略本通知。"
+                        ),
+                    )
+                except Exception:
+                    pass  # 通知失败不暴露给用户
+
     except Exception:
         pass  # 任何异常都不暴露给用户
 
