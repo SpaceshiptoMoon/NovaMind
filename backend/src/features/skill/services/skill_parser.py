@@ -102,6 +102,13 @@ def parse_skill_md(content: str) -> ParsedSkill:
     name = frontmatter.get("name")
     if not name:
         raise ValueError("缺少必填字段: name")
+    # name 须为 kebab-case：与 validate_skill_md 同一规则。
+    # 上传走 parse_skill_md，缺失此校验会让大写/下划线 name 入库，
+    # 下划线 name 还会加剧 skill__{id}_{name} 引用解析歧义。
+    if not _NAME_RE.match(str(name)):
+        raise ValueError(
+            f"name 格式无效 '{name}'，需要 kebab-case（小写字母、数字、连字符，以字母开头）"
+        )
 
     description = frontmatter.get("description")
     if not description:
