@@ -131,8 +131,13 @@ class SkillRepository:
                 # 字段权重配置
                 FIELD_WEIGHTS = {"name": 3, "display_name": 2, "description": 1}
 
-                # 尝试 FULLTEXT（需要 ngram 索引）
-                try:
+                # FULLTEXT 索引仅在 MySQL 上创建（见 core/database/base.py
+                # ensure_fulltext_indexes），按连接方言判定而非 try/except——
+                # 表达式构建阶段不会抛兼容性错误，try/except 捕不到 execute
+                # 阶段的错误，原降级路径是永不触发的 dead code。
+                dialect_name = self.session.bind.dialect.name if self.session.bind is not None else ""
+
+                if dialect_name == "mysql":
                     # 布尔模式 WHERE：每个 token 前加 + 表示必须包含
                     ft_tokens = " ".join(
                         f"+{_sanitize_ft_token(t)}" for t in tokens
@@ -169,9 +174,9 @@ class SkillRepository:
                         ft_score + name_bonus + display_bonus + desc_bonus
                     ).label("_relevance")
 
-                except Exception:
-                    # FULLTEXT 不可用 → ILIKE 降级
-                    logger.debug("FULLTEXT 不可用，使用 ILIKE 降级搜索")
+                else:
+                    # 非 MySQL（如 SQLite 测试环境）→ ILIKE 降级
+                    logger.debug("非 MySQL 方言，使用 ILIKE 降级搜索", dialect=dialect_name)
                     base, relevance_expr = _build_ilike_relevance(
                         SkillDefinition, tokens, FIELD_WEIGHTS, base
                     )
