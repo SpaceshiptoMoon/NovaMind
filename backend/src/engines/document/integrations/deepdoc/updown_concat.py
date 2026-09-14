@@ -197,6 +197,11 @@ class UpDownConcatMerger:
         mean_width: dict[int, float],
         model,
     ) -> list[dict[str, Any]]:
+        # xgboost 模型路径此前从未真正执行过（二进制模型格式在 xgboost 3.1 被移除，
+        # 长期静默回退 heuristic），xgb 名字从未绑定。此处显式导入供下方 DMatrix 使用。
+        _import_xgboost()
+        import xgboost as xgb
+
         remaining = [dict(state) for state in states]
         blocks: list[list[dict[str, Any]]] = []
 
