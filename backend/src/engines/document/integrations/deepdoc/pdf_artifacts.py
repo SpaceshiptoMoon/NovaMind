@@ -12,8 +12,11 @@ import numpy as np
 from PIL import Image
 
 from novamind.engines.document.integrations.deepdoc.compat import LazyImage
+from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
 from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
 from novamind.engines.document.integrations.deepdoc.vision_runtime import get_vision_health_status
+
+logger = get_logger(__name__)
 
 
 class PdfArtifactExtractor:
@@ -57,12 +60,30 @@ class PdfArtifactExtractor:
 
         self._attach_captions(table_groups, figure_groups, captions)
 
+        # 质量门降级必须可见：假表降级数量进日志，静默丢弃不可审计。
+        built_tables: list[dict[str, Any]] = []
+        dropped_tables = 0
+        for group_key, group in sorted(table_groups.items()):
+            artifact = self._maybe_build_table_artifact(
+                group_key,
+                group,
+                page_images=page_images,
+                zoom=zoom,
+                zoom_map=zoom_map,
+            )
+            if artifact is None:
+                dropped_tables += 1
+                continue
+            built_tables.append(artifact)
+        if dropped_tables:
+            logger.info(
+                "DeepDoc 表格质量门降级（1x1/无内容假表不进 reading_order，文本保留正文）",
+                dropped_count=dropped_tables,
+                kept_count=len(built_tables),
+            )
+
         return {
-            "tables": [
-                artifact
-                for group_key, group in sorted(table_groups.items())
-                if (artifact := self._maybe_build_table_artifact(group_key, group, page_images=page_images, zoom=zoom, zoom_map=zoom_map)) is not None
-            ],
+            "tables": built_tables,
             "figures": [
                 self._build_figure_artifact(group_key, group, page_images=page_images, zoom=zoom, zoom_map=zoom_map)
                 for group_key, group in sorted(figure_groups.items())

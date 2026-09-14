@@ -7,11 +7,14 @@ from statistics import median
 from typing import Any, Sequence
 
 from novamind.engines.document.integrations.deepdoc.compat import rag_tokenizer
+from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
 from novamind.engines.document.integrations.deepdoc.text_concat_model import (
     _import_xgboost,
     get_text_concat_model_status,
     load_text_concat_model,
 )
+
+logger = get_logger(__name__)
 
 
 class UpDownConcatMerger:
@@ -53,10 +56,21 @@ class UpDownConcatMerger:
         if not boxes:
             return [], "empty"
         if not self.model_available():
+            # xgboost 段落合并模型长期静默回退启发式（二进制模型格式被
+            # xgboost 3.1 移除，加载必败但无任何日志），修复历史教训：回退必须可见。
+            logger.warning(
+                "DeepDoc 段落合并模型不可用，回退启发式合并（段落边界质量下降）",
+                model_path=self.model_status().get("path"),
+            )
             return self._heuristic_merge(boxes), "heuristic"
         try:
             model = self.load_model()
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "DeepDoc 段落合并模型加载失败，回退启发式合并（段落边界质量下降）",
+                error=str(exc),
+                model_path=self.model_status().get("path"),
+            )
             return self._heuristic_merge(boxes), "heuristic"
         return self._xgb_merge(boxes, model), "xgboost"
 
