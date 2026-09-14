@@ -207,9 +207,12 @@ def test_legacy_layout_vision_migrate_to_full():
 
 
 @pytest.mark.unit
-def test_legacy_plain_stays_plain():
+def test_legacy_plain_migrates_to_full():
+    """6b45384 移除 PDF plain 模式后，旧 plain 配置一律迁移到 full。"""
     m = ParsingConfig.model_validate({"strategy": "deepdoc", "deepdoc_parser_id": "pdf_plain"})
-    assert m.text.pdf.parser == "plain"
+    assert m.text.pdf.parser == "full"
+    m = ParsingConfig.model_validate({"strategy": "deepdoc", "deepdoc_pdf_mode": "plain"})
+    assert m.text.pdf.parser == "full"
 
 def test_insert_word_spaces_adds_english_gaps():
     """英文单词字符间隙过大时应补空格，中文不应被插空格。"""

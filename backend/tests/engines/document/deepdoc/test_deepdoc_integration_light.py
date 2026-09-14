@@ -66,8 +66,9 @@ def test_knowledge_base_config_accepts_deepdoc_strategy():
 
     dumped = config.model_dump(by_alias=True)
     assert dumped["parsing"]["text"]["pdf"]["strategy"] == "deepdoc"
-    # deepdoc_pdf_mode="plain" 经 migrate_legacy_parsing 回填 text.pdf.parser="plain"
-    assert dumped["parsing"]["text"]["pdf"]["parser"] == "plain"
+    # 6b45384 移除 PDF plain 模式：deepdoc_pdf_mode="plain" 经 migrate_legacy_parsing
+    # 迁移到 text.pdf.parser="full"
+    assert dumped["parsing"]["text"]["pdf"]["parser"] == "full"
 
 
 def test_knowledge_base_service_accepts_all_deepdoc_vision_options():
