@@ -53,6 +53,27 @@ def test_filter_removes_dirty_page_when_more_than_three():
     assert meta["dirty_pages"] == [1]
 
 
+def test_dirty_pattern_matches_toc_dot_leaders():
+    """目录点线语义（对齐上游 _filter_forpages）：TOC 引导行的中点/省略号/ASCII
+    点串应命中；正文句末 3 个 ASCII 点不应命中（避免正文页误删）。"""
+    assert DIRTY_TEXT_PATTERN.search("第一章 概述 ··········· 12") is not None
+    assert DIRTY_TEXT_PATTERN.search("第二章 方法 …… 25") is not None
+    assert DIRTY_TEXT_PATTERN.search("3.1 数据模型 ........ 31") is not None
+    assert DIRTY_TEXT_PATTERN.search("正文里的省略号...") is None
+
+
+def test_toc_dot_leader_page_dropped():
+    """一页 >3 个含点线引导的框 → 整页剔除（扫描版目录页残留的修复）。"""
+    toc_lines = [f"第{i}章 标题{i} ········· {i * 10}" for i in range(1, 6)]
+    boxes = [_box(1, text) for text in toc_lines]
+    boxes += [_box(2, "正文内容") for _ in range(3)]
+    filtered, meta = PageNoiseFilter().filter_boxes(boxes, total_pages=2)
+    pages = {int(b.page) for b in filtered}
+    assert 1 not in pages
+    assert 2 in pages
+    assert meta["dirty_pages"] == [1]
+
+
 def test_toc_heading_pattern_matches_chinese():
     """TOC_HEADING_PATTERN 的中文项曾是 GB18030 乱码（目录→鐩綍 等），永远匹配
     不到中文目录页。修复后应匹配「目录/目次/致谢」。"""
