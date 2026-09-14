@@ -401,6 +401,7 @@ def test_artifact_extractor_rotated_table_html(monkeypatch):
         bottom: float
         text: str
         layout_type: str
+        layoutno: str = "table-0"
 
     table_box = _FakeBox(
         page=1,
@@ -414,14 +415,27 @@ def test_artifact_extractor_rotated_table_html(monkeypatch):
 
     page_image = Image.new("RGB", (400, 600), color=(255, 255, 255))
 
-    extractor = PdfArtifactExtractor(ocr=_FakeRotatingOCR())
+    class _FakeTwoCellRotatingOCR(_FakeRotatingOCR):
+        """旋转后返回两个不同行的 cell——1 个 cell 会因结构 1x1 被质量门降级。"""
+
+        def __call__(self, img, device_id=0):
+            h, w = img.shape[:2]
+            if h > w:
+                return None, None, {}
+            box1 = np.array([[10, 10], [90, 10], [90, 30], [10, 30]], dtype=np.float32)
+            box2 = np.array([[10, 60], [90, 60], [90, 80], [10, 80]], dtype=np.float32)
+            return [(box1, ("cell", 0.95)), (box2, ("cell2", 0.9))]
+
+    extractor = PdfArtifactExtractor(ocr=_FakeTwoCellRotatingOCR())
 
     class _FakeTSR:
         def __call__(self, images, thr=0.2):
-            # 返回一个 table row + 一个 table column，覆盖 cell box 区域
+            # 旋转后 crop 为 200x100：两行两列（1x1 结构会被质量门降级）
             return [[
-                {"label": "table row", "x0": 5.0, "x1": 95.0, "top": 5.0, "bottom": 35.0},
-                {"label": "table column", "x0": 5.0, "x1": 95.0, "top": 5.0, "bottom": 35.0},
+                {"label": "table row", "x0": 0.0, "x1": 200.0, "top": 0.0, "bottom": 50.0},
+                {"label": "table row", "x0": 0.0, "x1": 200.0, "top": 50.0, "bottom": 100.0},
+                {"label": "table column", "x0": 0.0, "x1": 100.0, "top": 0.0, "bottom": 100.0},
+                {"label": "table column", "x0": 100.0, "x1": 200.0, "top": 0.0, "bottom": 100.0},
             ]]
 
     monkeypatch.setattr(extractor, "_get_tsr_recognizer", lambda: _FakeTSR())
@@ -494,9 +508,11 @@ def test_cross_page_table_composite_row_continuity(monkeypatch):
         bottom: float
         text: str
         layout_type: str
+        layoutno: str = "table-0"
 
-    box1 = _FakeBox(1, 10, 90, 10, 30, "A", "table")
-    box2 = _FakeBox(2, 10, 90, 10, 30, "B", "table")
+    # 跨页物理连续：前组贴页底（bottom 90 >= 100-24）、后组贴页顶（top 0 <= 24）
+    box1 = _FakeBox(1, 10, 90, 70, 90, "A", "table")
+    box2 = _FakeBox(2, 10, 90, 0, 20, "B", "table")
     page_images = {
         1: Image.new("RGB", (100, 100), (255, 255, 255)),
         2: Image.new("RGB", (100, 100), (255, 255, 255)),
@@ -542,13 +558,14 @@ def test_cross_page_composite_columns_aligned(monkeypatch):
         bottom: float
         text: str
         layout_type: str
+        layoutno: str = "table-0"
 
     # 每页两列：col0 x∈[10,90]，col1 x∈[110,190]
     boxes = [
-        _FakeBox(1, 10, 90, 10, 30, "A0", "table"),
-        _FakeBox(1, 110, 190, 10, 30, "A1", "table"),
-        _FakeBox(2, 10, 90, 10, 30, "B0", "table"),
-        _FakeBox(2, 110, 190, 10, 30, "B1", "table"),
+        _FakeBox(1, 10, 90, 70, 90, "A0", "table"),
+        _FakeBox(1, 110, 190, 70, 90, "A1", "table"),
+        _FakeBox(2, 10, 90, 0, 20, "B0", "table"),
+        _FakeBox(2, 110, 190, 0, 20, "B1", "table"),
     ]
     page_images = {
         1: Image.new("RGB", (200, 100), (255, 255, 255)),
@@ -595,9 +612,11 @@ def test_cross_page_composite_disabled_falls_back_to_per_page(monkeypatch):
         bottom: float
         text: str
         layout_type: str
+        layoutno: str = "table-0"
 
-    box1 = _FakeBox(1, 10, 90, 10, 30, "A", "table")
-    box2 = _FakeBox(2, 10, 90, 10, 30, "B", "table")
+    # 跨页物理连续：前组贴页底（bottom 90 >= 100-24）、后组贴页顶（top 0 <= 24）
+    box1 = _FakeBox(1, 10, 90, 70, 90, "A", "table")
+    box2 = _FakeBox(2, 10, 90, 0, 20, "B", "table")
     page_images = {
         1: Image.new("RGB", (100, 100), (255, 255, 255)),
         2: Image.new("RGB", (100, 100), (255, 255, 255)),

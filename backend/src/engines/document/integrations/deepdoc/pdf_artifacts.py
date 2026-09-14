@@ -44,16 +44,24 @@ class PdfArtifactExtractor:
                 captions.append(box)
                 continue
             if layout_type == "table":
-                self._append_to_groups(table_groups, box)
+                table_groups.setdefault(self._group_key(box), []).append(box)
             elif layout_type == "figure":
-                self._append_to_groups(figure_groups, box)
+                figure_groups.setdefault(self._group_key(box), []).append(box)
+
+        # 上游 lout_no = page-layoutno 是区域身份：同区域框天然同组，不同区域永不
+        # 相并。此前用几何邻近重造分组，把版面模型标好的 6 个表格区域撕成 22 个
+        # 碎组并跨页粘连（实测 18 页论文：表1/表3 题注跨页混挂、单字格碎片表）。
+        # 跨页延续只经 _merge_cross_page_groups 的物理边界带判据合并。
+        table_groups = self._merge_cross_page_groups(table_groups, page_images=page_images, zoom_map=zoom_map)
+        figure_groups = self._merge_cross_page_groups(figure_groups, page_images=page_images, zoom_map=zoom_map)
 
         self._attach_captions(table_groups, figure_groups, captions)
 
         return {
             "tables": [
-                self._build_table_artifact(group_key, group, page_images=page_images, zoom=zoom, zoom_map=zoom_map)
+                artifact
                 for group_key, group in sorted(table_groups.items())
+                if (artifact := self._maybe_build_table_artifact(group_key, group, page_images=page_images, zoom=zoom, zoom_map=zoom_map)) is not None
             ],
             "figures": [
                 self._build_figure_artifact(group_key, group, page_images=page_images, zoom=zoom, zoom_map=zoom_map)
@@ -66,99 +74,108 @@ class PdfArtifactExtractor:
         # artifact_id 会以 __FIGURE_URL__{id}__ 形式嵌入 full_text，并随后被
         # strip_position_tags（@@...## 正则）清洗。id 里不能带 position_tag 的
         # 坐标标记，否则正文被腐蚀成 __FIGURE_URL__N:__，而 pipeline 替换用的
-        # 原始 id 永远匹配不上（占位符原样落盘）。因此改用页面坐标摘要做 id。
+        # 原始 id 永远匹配不上（占位符原样落盘）。
+        # 优先 layoutno 区域身份（上游 lout_no = page-layoutno，apply_layouts 已给
+        # 每个版面框打上区域号）；无 layoutno 的合成框回退坐标摘要。
         page = int(getattr(box, "page", 1))
+        layoutno = str(getattr(box, "layoutno", "") or "").strip()
+        if layoutno:
+            return f"{page}:{layoutno}"
         return f"{page}:{int(getattr(box, 'top', 0))}:{int(getattr(box, 'x0', 0))}"
 
-    def _append_to_groups(self, groups: dict[str, list[Any]], box: Any) -> None:
-        for group_key, members in groups.items():
-            if self._belongs_to_group(box, members):
-                members.append(box)
-                return
-        groups[self._group_key(box)] = [box]
+    @classmethod
+    def _merge_cross_page_groups(
+        cls,
+        groups: dict[str, list[Any]],
+        *,
+        page_images: dict[int, Image.Image] | None = None,
+        zoom_map: dict[int, float] | None = None,
+    ) -> dict[str, list[Any]]:
+        """相邻页同名区域的组，仅当物理连续（后继组首成员贴近页顶）时合并。
 
-    # 跨页分组的最大页跨度：组覆盖的页数超过此值即不再吸收新成员。
-    # 防止「组吸收新页成员 → 允许页范围扩张 → 又能吞下一页」的雪球式过合并
-    # （实测 18 页论文里表格/题注组一路吞掉 7 个不同页的题注与公式编号）。
-    MAX_GROUP_PAGE_SPAN = 3
-    # 跨页新成员须落在相邻页的页边界带内（按相邻成员框高折算）：页内 top/bottom
-    # 是页局部坐标，跨页直接相减没有物理意义，真实跨页表格/图片必然满足
-    # 「上一页成员贴近页底、下一页新成员贴近页顶」的物理连续性。
-    CROSS_PAGE_EDGE_BAND_RATIO = 0.5
-
-    @staticmethod
-    def _belongs_to_group(box: Any, members: Sequence[Any]) -> bool:
-        if not members:
-            return False
-        page = int(getattr(box, "page", 1))
-        group_bbox = PdfArtifactExtractor._group_bbox(members)
-        if not group_bbox:
-            return False
-        group_pages = sorted({int(getattr(member, "page", 1)) for member in members})
-        min_page = group_pages[0]
-        max_page = group_pages[-1]
-        if page < min_page - 1 or page > max_page + 1:
-            return False
-        # 雪球防护：并入新成员后的组页跨度超过上限即拒绝。
-        if len({*group_pages, page}) > PdfArtifactExtractor.MAX_GROUP_PAGE_SPAN:
-            return False
-        horizontal_overlap = min(float(getattr(box, "x1", 0.0)), group_bbox["x1"]) - max(float(getattr(box, "x0", 0.0)), group_bbox["x0"])
-        min_width = max(1.0, min(float(getattr(box, "x1", 0.0) - getattr(box, "x0", 0.0)), group_bbox["x1"] - group_bbox["x0"]))
-        if page in group_pages:
-            row_overlap = min(float(getattr(box, "bottom", 0.0)), group_bbox["bottom"]) - max(float(getattr(box, "top", 0.0)), group_bbox["top"])
-            min_height = max(1.0, min(float(getattr(box, "bottom", 0.0) - getattr(box, "top", 0.0)), group_bbox["bottom"] - group_bbox["top"]))
-            horizontal_gap = min(
-                abs(float(getattr(box, "x0", 0.0)) - group_bbox["x1"]),
-                abs(group_bbox["x0"] - float(getattr(box, "x1", 0.0))),
-            )
-            if horizontal_overlap / min_width <= 0.2:
-                if row_overlap / min_height <= 0.6 or horizontal_gap > max(36.0, min_width * 0.75):
-                    return False
-            vertical_gap = min(
-                abs(float(getattr(box, "top", 0.0)) - group_bbox["bottom"]),
-                abs(group_bbox["top"] - float(getattr(box, "bottom", 0.0))),
-            )
-            return vertical_gap < 48.0
-        # 跨页合并：水平须与组对齐，且只参考相邻页既有成员（不再用组整体 bbox）。
-        if horizontal_overlap / min_width <= 0.2:
-            return False
-        adjacent_page = page - 1 if page > max_page else page + 1
-        nearest_page_members = [
-            member
-            for member in members
-            if int(getattr(member, "page", 1)) == adjacent_page
-        ]
-        if not nearest_page_members:
-            # 组跨度受上限约束（<= MAX_GROUP_PAGE_SPAN），此回退不会再雪球。
-            nearest_page_members = [
-                member
-                for member in members
-                if int(getattr(member, "page", 1)) in {min_page, max_page}
-            ]
-        adjacent_bbox = PdfArtifactExtractor._group_bbox(nearest_page_members)
-        if not adjacent_bbox:
-            return False
-        # 页边界带：近似带宽 = max(48px, 边界带比例 × 相邻成员框高)。真实跨页
-        # 表格在「上一页底部 / 下一页顶部」断开，两侧成员必然各自贴近页边界；
-        # 页中间的独立表格/图片（页局部坐标远离边界）不满足，拒绝合并。
-        box_top = float(getattr(box, "top", 0.0))
-        box_bottom = float(getattr(box, "bottom", 0.0))
-        edge_band = max(
-            48.0,
-            PdfArtifactExtractor.CROSS_PAGE_EDGE_BAND_RATIO * max(
-                box_bottom - box_top,
-                adjacent_bbox["bottom"] - adjacent_bbox["top"],
+        对齐上游 merge table on different pages 的保守意图（相邻页 + 物理距离
+        限制），但用页边界带替代其全局 y_dis 判据——我们的框是页局部坐标，
+        跨页 y 相减无物理意义。边界带按真实页高折算（page_images 可得页像素高
+        /zoom），不能按组框高折算：大表组高可达半页，按组高折算会把页中部
+        的独立表格也判成"页顶延续"（实测每页 table-0 被串成 pages=[1..5] 怪组）。"""
+        if not groups:
+            return groups
+        page_heights = cls._page_heights(page_images=page_images, zoom_map=zoom_map)
+        ordered_keys = sorted(
+            groups,
+            key=lambda k: (
+                int(k.split(":", 1)[0]),
+                min(float(getattr(m, "top", 0.0)) for m in groups[k]),
             ),
         )
-        if page > max_page:
-            # 向后延续：新成员须贴近其所在页顶部。
-            if box_top > edge_band:
-                return False
-        else:
-            # 向前延续：新成员须贴近其所在页底部。
-            if box_bottom < adjacent_bbox["bottom"] - edge_band and box_top > edge_band:
-                return False
-        return True
+        consumed: set[str] = set()
+        result: dict[str, list[Any]] = {}
+        for key in ordered_keys:
+            if key in consumed:
+                continue
+            members = list(groups[key])
+            page, _, name = key.partition(":")
+            current_page = max(int(getattr(m, "page", 1)) for m in members)
+            while True:
+                next_key = f"{current_page + 1}:{name}"
+                candidate = groups.get(next_key)
+                if candidate is None or next_key in consumed:
+                    break
+                adjacent_members = [m for m in members if int(getattr(m, "page", 1)) == current_page]
+                if not adjacent_members or not cls._cross_page_continues(
+                    adjacent_members,
+                    candidate,
+                    previous_page_height=page_heights.get(current_page),
+                    next_page_height=page_heights.get(current_page + 1),
+                ):
+                    break
+                members.extend(candidate)
+                consumed.add(next_key)
+                current_page += 1
+            result[key] = members
+        return result
+
+    @staticmethod
+    def _page_heights(
+        *,
+        page_images: dict[int, Image.Image] | None,
+        zoom_map: dict[int, float] | None,
+    ) -> dict[int, float]:
+        heights: dict[int, float] = {}
+        if not page_images:
+            return heights
+        for page, image in page_images.items():
+            zoom = float(zoom_map.get(int(page), 1.0)) if zoom_map else 1.0
+            heights[int(page)] = float(image.size[1]) / max(zoom, 1e-6)
+        return heights
+
+    @classmethod
+    def _cross_page_continues(
+        cls,
+        previous_members: Sequence[Any],
+        next_members: Sequence[Any],
+        *,
+        previous_page_height: float | None = None,
+        next_page_height: float | None = None,
+    ) -> bool:
+        prev_bbox = PdfArtifactExtractor._group_bbox(previous_members)
+        next_bbox = PdfArtifactExtractor._group_bbox(next_members)
+        if not prev_bbox or not next_bbox:
+            return False
+        prev_width = max(1.0, prev_bbox["x1"] - prev_bbox["x0"])
+        next_width = max(1.0, next_bbox["x1"] - next_bbox["x0"])
+        horizontal_overlap = min(prev_bbox["x1"], next_bbox["x1"]) - max(prev_bbox["x0"], next_bbox["x0"])
+        if horizontal_overlap / min(prev_width, next_width) <= 0.2:
+            return False
+        # 页边界带按真实页高折算（缺页高时退保守固定值）。跨页延续须两侧同时
+        # 满足物理连续：前组贴页底 + 后继组贴页顶。只判后一半会把「每页顶部
+        # 各排一张独立表格」的排版误判成跨页延续（实测论文表1-表6 恰好都在
+        # 各页顶部，被串成 pages=[1..5] 怪组）。
+        prev_edge_band = max(24.0, 0.12 * float(previous_page_height)) if previous_page_height else 48.0
+        next_edge_band = max(24.0, 0.12 * float(next_page_height)) if next_page_height else 48.0
+        if prev_bbox["bottom"] < float(previous_page_height or 1e9) - prev_edge_band:
+            return False
+        return next_bbox["top"] <= next_edge_band
 
     @staticmethod
     def _is_caption_box(box: Any) -> bool:
@@ -195,14 +212,67 @@ class PdfArtifactExtractor:
 
     @staticmethod
     def _caption_distance(caption: Any, members: Sequence[Any]) -> float:
+        """题注到组的距离。页内坐标跨页比较无物理意义：同页成员优先，组在题注
+        所在页无成员时（跨页区域）才回退全成员比较——修复表1/表3 题注跨页混挂。"""
         if not members:
             return float("inf")
-        distances = []
-        for member in members:
-            vertical = abs(((getattr(caption, "top", 0.0) + getattr(caption, "bottom", 0.0)) / 2) - ((getattr(member, "top", 0.0) + getattr(member, "bottom", 0.0)) / 2))
-            horizontal = abs(((getattr(caption, "x0", 0.0) + getattr(caption, "x1", 0.0)) / 2) - ((getattr(member, "x0", 0.0) + getattr(member, "x1", 0.0)) / 2))
-            distances.append(vertical * vertical + horizontal * horizontal)
-        return min(distances)
+
+        def _min_distance(target_members: Sequence[Any]) -> float:
+            distances = []
+            for member in target_members:
+                vertical = abs(((getattr(caption, "top", 0.0) + getattr(caption, "bottom", 0.0)) / 2) - ((getattr(member, "top", 0.0) + getattr(member, "bottom", 0.0)) / 2))
+                horizontal = abs(((getattr(caption, "x0", 0.0) + getattr(caption, "x1", 0.0)) / 2) - ((getattr(member, "x0", 0.0) + getattr(member, "x1", 0.0)) / 2))
+                distances.append(vertical * vertical + horizontal * horizontal)
+            return min(distances)
+
+        same_page = [
+            member
+            for member in members
+            if int(getattr(member, "page", 1)) == int(getattr(caption, "page", 1))
+        ]
+        if same_page:
+            return _min_distance(same_page)
+        # 跨页回退加惩罚：页局部坐标跨页比较是数值撞车（p5 某框 top 与 p1 题注
+        # top 可任意接近），不惩罚时无同页成员的组会以更小的伪距离抢走题注
+        # （实测表1 题注被 p5 组以 1087 < 1441 抢走，真组在同页）。
+        return _min_distance(members) + 1e9
+
+    def _maybe_build_table_artifact(
+        self,
+        group_key: str,
+        members: Sequence[Any],
+        *,
+        page_images: dict[int, Image.Image] | None = None,
+        zoom: float = 1.0,
+        zoom_map: dict[int, float] | None = None,
+    ) -> dict[str, Any] | None:
+        """质量门：结构识别后仅 1x1（行列都 ≤1）的"表"降级为 None（不进
+        table_regions），其成员文本自然保留在正文流中。
+
+        降级对象是版面模型把公式碎片/孤立行误标成 table 的小区域——此前这类
+        假表以单字格 <table> 形式混进 MD（实测 22 个抽取"表"里 16 个是假表）。
+        真表至少有 2 行或 2 列结构。"""
+        artifact = self._build_table_artifact(
+            group_key,
+            members,
+            page_images=page_images,
+            zoom=zoom,
+            zoom_map=zoom_map,
+        )
+        if not artifact:
+            return None
+        structured = artifact.get("table_structure") or {}
+        structured_boxes = list(structured.get("structured_boxes") or [])
+        if structured_boxes:
+            row_count = len({str(box.get("R")) for box in structured_boxes if box.get("R") is not None})
+            col_count = len({str(box.get("C")) for box in structured_boxes if box.get("C") is not None})
+            if row_count < 2 and col_count < 2:
+                return None
+        # 无 TSR 结构时按产出内容判定（不能看原始 members：旋转表的内容框来自
+        # 旋转 OCR 重识别，members 里可能是空文本框）。
+        elif not (artifact.get("text") or "").strip():
+            return None
+        return artifact
 
     def _build_table_artifact(
         self,

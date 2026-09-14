@@ -1077,10 +1077,10 @@ def test_pdf_artifact_extractor_groups_tables_and_figures():
     page_image = Image.new("RGB", (400, 200), color=(255, 255, 255))
     boxes = [
         DeepDocPdfBox(page=1, x0=20, x1=180, top=20, bottom=35, text="Table 1 Results", layout_type="table caption"),
-        DeepDocPdfBox(page=1, x0=20, x1=100, top=40, bottom=55, text="Metric | Value", layout_type="table"),
-        DeepDocPdfBox(page=1, x0=20, x1=100, top=58, bottom=72, text="Recall | 0.88", layout_type="table"),
+        DeepDocPdfBox(page=1, x0=20, x1=100, top=40, bottom=55, text="Metric | Value", layout_type="table", layoutno="table-0"),
+        DeepDocPdfBox(page=1, x0=20, x1=100, top=58, bottom=72, text="Recall | 0.88", layout_type="table", layoutno="table-0"),
         DeepDocPdfBox(page=1, x0=220, x1=360, top=20, bottom=35, text="Figure 1 Trend", layout_type="figure caption"),
-        DeepDocPdfBox(page=1, x0=220, x1=360, top=40, bottom=140, text="Chart region", layout_type="figure"),
+        DeepDocPdfBox(page=1, x0=220, x1=360, top=40, bottom=140, text="Chart region", layout_type="figure", layoutno="figure-0"),
     ]
 
     artifacts = extractor.extract(boxes, page_images={1: page_image}, zoom=1.0)
@@ -1110,8 +1110,8 @@ def test_pdf_artifact_extractor_stitches_cross_page_crops():
     page1 = Image.new("RGB", (240, 200), color=(255, 255, 255))
     page2 = Image.new("RGB", (240, 200), color=(240, 240, 240))
     boxes = [
-        DeepDocPdfBox(page=1, x0=20, x1=180, top=40, bottom=90, text="Part A", layout_type="figure"),
-        DeepDocPdfBox(page=2, x0=20, x1=180, top=20, bottom=70, text="Part B", layout_type="figure"),
+        DeepDocPdfBox(page=1, x0=20, x1=180, top=150, bottom=190, text="Part A", layout_type="figure", layoutno="figure-0"),
+        DeepDocPdfBox(page=2, x0=20, x1=180, top=10, bottom=70, text="Part B", layout_type="figure", layoutno="figure-0"),
     ]
 
     artifacts = extractor.extract(boxes, page_images={1: page1, 2: page2}, zoom=1.0)
@@ -1131,10 +1131,10 @@ def test_pdf_artifact_extractor_constructs_table_html_from_aligned_boxes():
     _skip_if_vision_runtime_unavailable()
     extractor = PdfArtifactExtractor()
     boxes = [
-        DeepDocPdfBox(page=1, x0=20, x1=80, top=40, bottom=55, text="Metric", layout_type="table"),
-        DeepDocPdfBox(page=1, x0=90, x1=150, top=40, bottom=55, text="Value", layout_type="table"),
-        DeepDocPdfBox(page=1, x0=20, x1=80, top=60, bottom=75, text="Recall", layout_type="table"),
-        DeepDocPdfBox(page=1, x0=90, x1=150, top=60, bottom=75, text="0.88", layout_type="table"),
+        DeepDocPdfBox(page=1, x0=20, x1=80, top=40, bottom=55, text="Metric", layout_type="table", layoutno="table-0"),
+        DeepDocPdfBox(page=1, x0=90, x1=150, top=40, bottom=55, text="Value", layout_type="table", layoutno="table-0"),
+        DeepDocPdfBox(page=1, x0=20, x1=80, top=60, bottom=75, text="Recall", layout_type="table", layoutno="table-0"),
+        DeepDocPdfBox(page=1, x0=90, x1=150, top=60, bottom=75, text="0.88", layout_type="table", layoutno="table-0"),
     ]
 
     artifacts = extractor.extract(boxes)
@@ -1151,10 +1151,10 @@ def test_pdf_artifact_extractor_can_use_mocked_tsr_model():
     extractor = PdfArtifactExtractor()
     page_image = Image.new("RGB", (220, 160), color=(255, 255, 255))
     boxes = [
-        DeepDocPdfBox(page=1, x0=20, x1=80, top=40, bottom=55, text="Metric", layout_type="table"),
-        DeepDocPdfBox(page=1, x0=90, x1=150, top=40, bottom=55, text="Value", layout_type="table"),
-        DeepDocPdfBox(page=1, x0=20, x1=80, top=60, bottom=75, text="Recall", layout_type="table"),
-        DeepDocPdfBox(page=1, x0=90, x1=150, top=60, bottom=75, text="0.88", layout_type="table"),
+        DeepDocPdfBox(page=1, x0=20, x1=80, top=40, bottom=55, text="Metric", layout_type="table", layoutno="table-0"),
+        DeepDocPdfBox(page=1, x0=90, x1=150, top=40, bottom=55, text="Value", layout_type="table", layoutno="table-0"),
+        DeepDocPdfBox(page=1, x0=20, x1=80, top=60, bottom=75, text="Recall", layout_type="table", layoutno="table-0"),
+        DeepDocPdfBox(page=1, x0=90, x1=150, top=60, bottom=75, text="0.88", layout_type="table", layoutno="table-0"),
     ]
 
     class _FakeTsr:
