@@ -10,7 +10,14 @@ TOC_HEADING_PATTERN = re.compile(
     r"(contents|目录|目次|table of contents|致谢|acknowledge(?:ment)?s?)$",
     re.IGNORECASE,
 )
-DIRTY_TEXT_PATTERN = re.compile(r"\(cid\s*:\s*\d+\s*\)|[\uE000-\uF8FF]|锟斤苟|锟")
+# 乱码文字层残留（cid/PUA/锟，doc 566 回归）+ 目录点线（上游 _filter_forpages
+# 的脏页语义：TOC 引导行在文字层常渲染为连续中点，OCR 路径常见省略号/ASCII
+# 点串；上游原版只认 U+00B7×2，这里补齐 OCR 变体——省略号与 4+ 连续 ASCII 点，
+# 避开正文句末省略号 "..."）。一页内命中 >3 个框即判脏页整页剔除。
+DIRTY_TEXT_PATTERN = re.compile(
+    r"\(cid\s*:\s*\d+\s*\)|[\uE000-\uF8FF]|锟斤苟|锟"
+    r"|··|…|\.{4,}"
+)
 
 
 class PageNoiseFilter:
