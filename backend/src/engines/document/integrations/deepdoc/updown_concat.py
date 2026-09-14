@@ -31,7 +31,25 @@ class UpDownConcatMerger:
             self._model = load_text_concat_model()
         return self._model
 
+    def _drop_page_number_boxes(self, boxes: Sequence[Any]) -> list[Any]:
+        """上游 _naive_vertical_merge 的页码框清理：按阅读顺序相邻、跨页边界上、
+        且纯页码样式（数字/空格/圆点/破折号）的框是页脚页码，剔除后不进正文。"""
+        ordered = sorted(
+            enumerate(boxes),
+            key=lambda pair: (pair[1].page, pair[1].col_id, pair[1].top, pair[1].x0),
+        )
+        drop_indices: set[int] = set()
+        for (index, box), (_, next_box) in zip(ordered, ordered[1:]):
+            if box.page < next_box.page and self._PAGE_NUMBER_PATTERN.match((box.text or "").strip()):
+                drop_indices.add(index)
+        if not drop_indices:
+            return list(boxes)
+        return [box for i, box in enumerate(boxes) if i not in drop_indices]
+
     def merge(self, boxes: Sequence[Any]) -> tuple[list[Any], str]:
+        if not boxes:
+            return [], "empty"
+        boxes = self._drop_page_number_boxes(boxes)
         if not boxes:
             return [], "empty"
         if not self.model_available():
@@ -62,19 +80,37 @@ class UpDownConcatMerger:
     def _y_dis(a: dict[str, Any], b: dict[str, Any]) -> float:
         return (b["top"] + b["bottom"] - a["top"] - a["bottom"]) / 2
 
-    @staticmethod
-    def _match_proj(text: str) -> bool:
-        proj_patt = [
-            r"绗琜闆朵竴浜屼笁鍥涗簲鍏竷鍏節鍗佺櫨]+绔?",
-            r"绗琜闆朵竴浜屼笁鍥涗簲鍏竷鍏節鍗佺櫨]+[鏉¤妭]",
-            r"[闆朵竴浜屼笁鍥涗簲鍏竷鍏節鍗佺櫨]+[銆佹槸 銆€]",
-            r"[\(锛圿[闆朵竴浜屼笁鍥涗簲鍏竷鍏節鍗佺櫨]+[锛塡)]",
-            r"[\(锛圿[0-9]+[锛塡)]",
-            r"[0-9]+(銆亅\.[銆€ ]|锛墊\.[^0-9./a-zA-Z_%><-]{4,})",
-            r"[0-9]+\.[0-9.]+(銆亅\.[ 銆€])",
-            r"[鈿€⑩灑飦垛憼鈶?]",
-        ]
-        return any(re.match(pattern, text or "") for pattern in proj_patt)
+    # 上游 pdf_parser.proj_match 的完整编号/标题模式。5c29484 曾把本组正则整体
+    # 乱码成 UTF-8→GBK 形态（绗琜闆朵竴=第一二三四），中文标题边界保护全失效，
+    # 2026-09 按上游原版逐字修复。
+    _PROJ_PATTERNS = [
+        r"第[零一二三四五六七八九十百]+章",
+        r"第[零一二三四五六七八九十百]+[条节]",
+        r"[零一二三四五六七八九十百]+[、 　]",
+        r"[\(（][零一二三四五六七八九十百]+[）\)]",
+        r"[\(（][0-9]+[）\)]",
+        r"[0-9]+(、|\.[　 ]|\.[^0-9])",
+        r"[0-9]+\.[0-9]+(、|[. 　]|[^0-9])",
+        r"[0-9]+\.[0-9]+\.[0-9]+(、|[ 　]|[^0-9])",
+        r"[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(、|[ 　]|[^0-9])",
+        r".{,48}[：:?？]$",
+        r"[0-9]+）",
+        r"[零一二三四五六七八九十百]+是",
+        r"[⚫•➢✓]",
+    ]
+
+    # 上游 _naive_vertical_merge 的跨页页码框清理：纯数字/空格/圆点/破折号样式的框
+    # 出现在跨页边界上是页脚页码，不进正文。
+    _PAGE_NUMBER_PATTERN = re.compile(r"[0-9  •一—-]+$")
+
+    @classmethod
+    def _match_proj(cls, text: str) -> bool:
+        text = (text or "").strip()
+        if len(text) <= 2:
+            return False
+        if re.match(r"[0-9 ().,%+/-]+$", text):
+            return False
+        return any(re.match(pattern, text) for pattern in cls._PROJ_PATTERNS)
 
     def _updown_concat_features(self, up: dict[str, Any], down: dict[str, Any]) -> list[Any]:
         w = max(self._char_width(up), self._char_width(down))
@@ -100,13 +136,13 @@ class UpDownConcatMerger:
             down_layout == "text",
             up_layout == "table",
             down_layout == "table",
-            bool(re.search(r"([銆傦紵锛侊紱!?;+)锛塢|[a-z]\.)$", up_text)),
-            bool(re.search(r"[锛岋細鈥樷€溿€?-9锛?\-]$", up_text)),
-            bool(re.search(r"(^.?[/,?;:\]锛屻€傦紱锛氣€欌€濓紵锛併€嬨€戯級-])", down_text)),
-            bool(re.match(r"[\(锛圿[^\(\)锛堬級]+[锛塡)]$", up_text)),
-            bool(re.search(r"[锛?][^銆?]+$", up_text)),
-            bool(re.search(r"[锛?][^銆?]+$", up_text)),
-            bool(re.search(r"[\(锛圿[^\)锛塢+$", up_text) and re.search(r"[\)锛塢", down_text)),
+            bool(re.search(r"([。？！；!?;+)）]|[a-z]\.)$", up_text)),
+            bool(re.search(r"[，：‘“、0-9（+-]$", up_text)),
+            bool(re.search(r"(^.?[/,?;:\]，。；：’”？！》】）-])", down_text)),
+            bool(re.match(r"[\(（][^\(\)（）]+[）\)]$", up_text)),
+            bool(re.search(r"[，,][^。.]+$", up_text)),
+            bool(re.search(r"[，,][^。.]+$", up_text)),
+            bool(re.search(r"[\(（][^\)）]+$", up_text) and re.search(r"[\)）]", down_text)),
             self._match_proj(down_text),
             bool(re.match(r"[A-Z]", down_text)),
             bool(up_text and re.match(r"[A-Z]", up_text[-1])),
@@ -270,13 +306,13 @@ class UpDownConcatMerger:
         if self._match_proj(upper.text) or self._match_proj(lower.text):
             return False
         concatting_features = [
-            upper.text.strip()[-1] in ",;:'\"锛屻€佲€滐紱(",
-            len(upper.text.strip()) > 1 and upper.text.strip()[-2] in ",;:'\"锛屸€欌€濄€侊紱(",
-            bool(lower.text.strip()) and lower.text.strip()[0] in "銆傦紱锛氾紵锛屻€嬨€戯級),锛屻€?",
+            upper.text.strip()[-1] in ",;:'\"，、‘“；：-",
+            len(upper.text.strip()) > 1 and upper.text.strip()[-2] in ",;:'\"，‘“、；：",
+            bool(lower.text.strip()) and lower.text.strip()[0] in "。；：？！?”）),，、：",
         ]
         break_features = [
-            upper.text.strip()[-1] in "銆傦紵锛?",
-            vertical_gap > mean_height * 1.2,
+            upper.text.strip()[-1] in "。？！?",
+            vertical_gap > mean_height * 1.5,  # 对齐上游 _naive_vertical_merge 阈值（原 1.2 更早断段）
         ]
         detach_features = [upper.x1 < lower.x0, upper.x0 > lower.x1]
         return not ((any(break_features) and not any(concatting_features)) or any(detach_features))
