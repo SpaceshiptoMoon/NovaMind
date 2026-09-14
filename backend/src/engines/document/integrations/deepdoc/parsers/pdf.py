@@ -630,7 +630,11 @@ class RAGFlowPdfParser:
             fused_pages,
             scale_factor=effective_zooms,
             layouts=layout_pages,
-            drop=False,
+            # drop=True 对齐上游 _layouts_rec 默认行为：页眉/页脚/参考文献框
+            # （garbage_layouts）从正文剔除，否则每页重复的页眉页脚垃圾全部进 MD。
+            # keep_features 例外已与上游一致（footer 不在页底 90% 下方、header
+            # 不在页顶 10% 上方时保留）。
+            drop=True,
         )
         # 布局分类已消费 image_list，立即释放整份渲染 buffer：大 PDF 逐页 OCR 检测
         # 用的 numpy 页 + 后续 artifact 的 PIL 页若同时存活会双倍内存（doc 565 实测 OOM）。
