@@ -972,7 +972,10 @@ def test_text_concat_model_status_reports_missing_model_by_default():
     assert "available" in status
 
 
-def test_updown_concat_merger_falls_back_without_model():
+def test_updown_concat_merger_falls_back_without_model(monkeypatch):
+    # 显式强制无模型路径——xgboost 收紧到 <3.1 后二进制模型可正常加载，
+    # 不再能依赖“测试机上模型必然加载失败”这个旧环境事实
+    monkeypatch.setattr(UpDownConcatMerger, "model_available", lambda self: False)
     merger = UpDownConcatMerger()
     boxes = [
         RAGFlowPdfParser().parse_into_bboxes(_build_positioned_pdf_bytes([(72, 700, "Line One"), (72, 684, "Line Two")]))
