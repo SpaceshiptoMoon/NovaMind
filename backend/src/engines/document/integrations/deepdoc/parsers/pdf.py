@@ -758,8 +758,10 @@ class RAGFlowPdfParser:
         乱码回退 OCR / 无字符走 OCR）→ 空框 recognize_batch。产出 fused_pages 与原
         ocr_pages 同形状，供 _get_layout_recognizer() 贴 layout_type。
 
-        对 zoom=2 仍无文字框的页面，按上游 zoom *= 3 递进重试（上限 9），避免低分辨率
-        扫描页漏框；每页 effective_zoom 随返回元组传出，供后续 layout/artifact 保持比例。
+        对无文字层的页（扫描页）直接以 zoom=3（216 DPI，对齐上游 zoomin=3）起检，
+        OCR 是其唯一文本来源，低清渲染会直接伤识别精度；有文字层的页维持 zoom=2。
+        仍未检出文字框的页面按上游 zoom *= 3 递进重试（上限 9）；每页 effective_zoom
+        随返回元组传出，供后续 layout/artifact 保持比例。
         """
         fitz = self._import_fitz()
         pdf_source = str(filename) if not isinstance(filename, bytes) else BytesIO(filename)
@@ -790,7 +792,14 @@ class RAGFlowPdfParser:
                     ]
                 except Exception:
                     raster_images_by_page[page_index + 1] = []
-                page_zoom = base_zoom
+                # 无文字层的页（扫描页/乱码清空页）OCR 是唯一文本来源，按上游
+                # zoomin=3（216 DPI）渲染：144 DPI 下五号字仅 ~21px 高，rec 模型
+                # 要拉到 48px 需 2 倍上采样糊化笔画，中文形近字错误率高（扫描版
+                # 错字的主因）。有文字层的页文本来自 pdfplumber 字符，像素仅供
+                # det 检测，维持 zoom=2 控内存（doc 565 OOM 教训：全量 numpy 渲染
+                # buffer 是内存大头）。
+                page_chars = self._extract_page_chars(plumber_pages, page_index)
+                page_zoom = 3 if not page_chars else base_zoom
                 img: np.ndarray | None = None
                 fused: list[dict[str, Any]] = []
                 while page_zoom <= 9:
@@ -798,7 +807,6 @@ class RAGFlowPdfParser:
                     img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
                     if pix.n == 4:
                         img = img[:, :, :3]
-                    page_chars = self._extract_page_chars(plumber_pages, page_index)
                     fused = self._fuse_page(img, page_chars, page_index, page_zoom)
                     if fused:
                         break
