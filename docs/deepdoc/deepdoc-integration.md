@@ -157,6 +157,12 @@ Local compatibility/adaptation:
 - formula-recognition helpers that download `breezedeus/pix2text-mfr` (with
   INT8 quantization) and expose its local status; the direct-download fallback
   defaults to the domestic mirror `hf-mirror.com` (`HF_ENDPOINT` overrides)
+- shared mirror-aware download in `vision/model_manager.py`: `hf_model_endpoint()`
+  (default `hf-mirror.com`) + `direct_download_files()` serve both the OCR/layout/
+  TSR groups and the formula model — the mirror endpoint bypasses
+  `snapshot_download` entirely (hub 1.x metadata validation rejects mirror
+  responses), the explicit official endpoint keeps `snapshot_download` with a
+  direct-download fallback
 - page-filter helpers that remove TOC-like sections and heavily garbled pages
   before chunk emission
 - PDF artifact helpers that group layout-tagged table/figure regions and expose
@@ -478,6 +484,25 @@ Current standalone deployment flow:
 4. optionally run `deepdoc doctor --smoke`
 5. start `deepdoc serve --host 0.0.0.0 --port 8001`
 6. optionally query `GET /doctor` or `GET /doctor?smoke=true` from the running service
+
+Docker deployment (deploy.sh / deploy.ps1) downloads all DeepDoc models at
+deploy time; runtime download is only a fallback:
+
+- `docker-compose.yml` mounts `./backend/.cache/deepdoc -> /app/.cache/deepdoc`
+  on the app service, so models survive container rebuilds
+- both deploy scripts run
+  `docker compose run --rm --no-deps --user 0 -e PYTHONPATH=/app/src
+  -e HF_ENDPOINT=... app python -m novamind.engines.document.integrations.deepdoc
+  prepare --include-text-concat --include-formula`
+  after `docker compose up -d --build` (HF endpoint defaults to
+  `https://hf-mirror.com`; `--user 0` tolerates host-dir ownership differences
+  on Linux, files land world-readable)
+- the image builder installs `.[deepdoc-vision]` so the container carries the
+  `onnx` package needed for INT8 quantization during the download step
+- a failed download does not abort deployment: it prints a visible warning with
+  the manual remediation command — at runtime a missing formula model soft-degrades
+  (formula recognition skipped with WARNING), missing vision models disable
+  deepdoc full mode
 
 Current deployment diagnostics behavior:
 

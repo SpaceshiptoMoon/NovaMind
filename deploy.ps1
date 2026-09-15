@@ -113,6 +113,31 @@ function Show-Summary {
     Write-Host ""
 }
 
+function Invoke-PrepareDeepdocModels {
+    # 模型必须在部署期就绪（运行期下载仅是兜底）：deepdoc prepare 下载 OCR/版面/表格
+    # 视觉模型 + 段落合并 XGBoost + 公式识别 pix2text-mfr（含 INT8 量化），落宿主机
+    # ./backend/.cache/deepdoc（compose 已挂载为 /app/.cache/deepdoc，容器重建不丢）。
+    Write-Step "Preparing DeepDoc models (deploy-time download)"
+    New-Item -ItemType Directory -Force -Path "backend/.cache/deepdoc" | Out-Null
+
+    # 国内默认走 hf-mirror.com（HF_ENDPOINT 可覆盖为官方源/其它镜像）。
+    # --user 0：宿主机目录属主 uid 与容器 appuser 不同也能写入；文件默认 644，
+    # 运行容器 appuser 只读即可。--no-deps：模型下载不依赖 mysql/redis 等基础设施。
+    $hfEndpoint = if ($env:HF_ENDPOINT) { $env:HF_ENDPOINT } else { "https://hf-mirror.com" }
+    docker compose run --rm --no-deps --user 0 `
+        -e PYTHONPATH=/app/src `
+        -e HF_ENDPOINT=$hfEndpoint `
+        app python -m novamind.engines.document.integrations.deepdoc `
+        prepare --include-text-concat --include-formula
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn "DeepDoc model download failed — parsing will degrade (formula recognition skipped,"
+        Write-Warn "deepdoc full mode unavailable). Retry manually after fixing the network:"
+        Write-Warn "  HF_ENDPOINT=https://hf-mirror.com docker compose run --rm --no-deps --user 0 -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com app python -m novamind.engines.document.integrations.deepdoc prepare --include-text-concat --include-formula"
+    } else {
+        Write-Info "DeepDoc models ready under ./backend/.cache/deepdoc"
+    }
+}
+
 function Invoke-Deploy {
     Show-Banner
     Test-DockerEnvironment
@@ -120,6 +145,7 @@ function Invoke-Deploy {
     Ensure-ConfigFiles
     Write-Step "Building and starting services"
     docker compose up -d --build
+    Invoke-PrepareDeepdocModels
     Wait-AppHealth 180
     Show-Summary
 }
@@ -129,6 +155,7 @@ function Invoke-Update {
     Test-DockerEnvironment
     Write-Step "Rebuilding app service"
     docker compose up -d --build app
+    Invoke-PrepareDeepdocModels
     Wait-AppHealth 120
     Show-Summary
 }

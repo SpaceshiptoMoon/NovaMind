@@ -107,6 +107,7 @@ bash deploy.sh
 - 创建 `docker/configs/docker.yaml`
 - 创建 `backend/src/setting/yaml_config/yaml/default.yaml`
 - 构建并启动完整服务栈
+- **部署期下载 DeepDoc 模型**（OCR / 版面 / 表格 / 段落合并 XGBoost / 公式识别 pix2text-mfr）到 `backend/.cache/deepdoc`，经 compose 卷挂载进容器（`/app/.cache/deepdoc`），容器重建不丢；下载源默认国内镜像 `hf-mirror.com`（`HF_ENDPOINT` 可覆盖）
 - 轮询 `http://localhost/health` 做健康检查
 
 部署完成后，管理员初始密码可在根目录 `.env` 的 `ADMIN_PASSWORD` 中查看。

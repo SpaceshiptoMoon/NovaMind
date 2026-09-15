@@ -34,7 +34,9 @@ WORKDIR /app
 COPY backend/pyproject.toml backend/README.md ./
 COPY backend/src/ ./src/
 COPY backend/main.py ./
-RUN pip install --no-cache-dir .
+# deepdoc-vision extras：仅多装 onnx（量化用，其余与 core 重复）——deploy 期下载
+# 公式模型时容器内需具备 onnx 包做 INT8 动态量化（112MB→30MB），缺则 fp32 入库。
+RUN pip install --no-cache-dir ".[deepdoc-vision]"
 
 # ---- Stage 3: runtime (no gcc, non-root) ----
 FROM python:3.12.13-slim

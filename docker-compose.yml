@@ -11,6 +11,9 @@
 #   ./backend/src/setting/yaml_config/yaml/default.yaml -> 容器内同路径（deploy 脚本已从
 #     default.example 生成；*.yaml 不打进镜像，防止本地真实密钥泄漏进镜像层）
 #   ./docker/configs/docker.yaml -> /app/src/setting/yaml_config/yaml/docker.yaml
+#   ./backend/.cache/deepdoc -> /app/.cache/deepdoc（deepdoc 模型持久化卷：deploy 脚本
+#     在部署期下载模型到此卷，容器重建不丢；缺失时运行期公式识别 WARNING 降级、
+#     full 模式不可用）
 #
 # Infra ports (mysql/redis/minio/es) are bound to 127.0.0.1 so they are reachable
 # only from the host, not exposed publicly. The app container reaches them over
@@ -30,6 +33,7 @@ services:
     volumes:
       - ./backend/src/setting/yaml_config/yaml/default.yaml:/app/src/setting/yaml_config/yaml/default.yaml:ro
       - ./docker/configs/docker.yaml:/app/src/setting/yaml_config/yaml/docker.yaml:ro
+      - ./backend/.cache/deepdoc:/app/.cache/deepdoc
     depends_on:
       mysql:
         condition: service_healthy

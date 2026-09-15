@@ -148,6 +148,31 @@ print_summary() {
   echo ""
 }
 
+prepare_deepdoc_models() {
+  # 模型必须在部署期就绪（运行期下载仅是兜底）：deepdoc prepare 下载 OCR/版面/表格
+  # 视觉模型 + 段落合并 XGBoost + 公式识别 pix2text-mfr（含 INT8 量化），落宿主机
+  # ./backend/.cache/deepdoc（compose 已挂载为 /app/.cache/deepdoc，容器重建不丢）。
+  step "Preparing DeepDoc models (deploy-time download)"
+  mkdir -p backend/.cache/deepdoc
+
+  # 国内默认走 hf-mirror.com（HF_ENDPOINT 可覆盖为官方源/其它镜像）。
+  # --user 0：宿主机目录属主 uid 与容器 appuser 不同也能写入；文件默认 644，
+  # 运行容器 appuser 只读即可。--no-deps：模型下载不依赖 mysql/redis 等基础设施。
+  if docker compose run --rm --no-deps --user 0 \
+      -e PYTHONPATH=/app/src \
+      -e HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}" \
+      app python -m novamind.engines.document.integrations.deepdoc \
+      prepare --include-text-concat --include-formula; then
+    info "DeepDoc models ready under ./backend/.cache/deepdoc"
+  else
+    warn "DeepDoc model download failed — parsing will degrade (formula recognition skipped,"
+    warn "deepdoc full mode unavailable). Retry manually after fixing the network:"
+    warn "  HF_ENDPOINT=https://hf-mirror.com docker compose run --rm --no-deps --user 0 \\"
+    warn "    -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com \\"
+    warn "    app python -m novamind.engines.document.integrations.deepdoc prepare --include-text-concat --include-formula"
+  fi
+}
+
 cmd_deploy() {
   banner
   check_docker
@@ -155,6 +180,7 @@ cmd_deploy() {
   ensure_configs
   step "Building and starting services"
   docker compose up -d --build
+  prepare_deepdoc_models
   wait_for_health 180 || true
   print_summary
 }
@@ -164,6 +190,7 @@ cmd_update() {
   check_docker
   step "Rebuilding app service"
   docker compose up -d --build app
+  prepare_deepdoc_models
   wait_for_health 120 || true
   print_summary
 }
