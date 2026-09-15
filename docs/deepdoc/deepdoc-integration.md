@@ -155,7 +155,8 @@ Local compatibility/adaptation:
 - text-concat model helpers that manage the upstream
   `InfiniFlow/text_concat_xgb_v1.0` artifact and expose its local status
 - formula-recognition helpers that download `breezedeus/pix2text-mfr` (with
-  INT8 quantization) and expose its local status
+  INT8 quantization) and expose its local status; the direct-download fallback
+  defaults to the domestic mirror `hf-mirror.com` (`HF_ENDPOINT` overrides)
 - page-filter helpers that remove TOC-like sections and heavily garbled pages
   before chunk emission
 - PDF artifact helpers that group layout-tagged table/figure regions and expose

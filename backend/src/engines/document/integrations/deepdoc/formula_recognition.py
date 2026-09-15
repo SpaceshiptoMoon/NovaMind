@@ -116,10 +116,27 @@ def _quantize_to_int8(model_dir: Path) -> bool:
     return True
 
 
+def formula_model_endpoint() -> str:
+    """公式模型下载源：**默认国内镜像 hf-mirror.com**。
+
+    huggingface.co 直连在国内不可达，且 huggingface_hub 1.x 的元数据校验
+    （x-repo-commit 头）会拒绝 hf-mirror 的响应，snapshot_download 在镜像场景
+    必败。直链下载走此函数取源：HF_ENDPOINT 环境变量可覆盖为官方源或其它镜像。
+    """
+    return (os.getenv("HF_ENDPOINT") or "https://hf-mirror.com").rstrip("/")
+
+
 def download_formula_model(model_dir: str | os.PathLike[str] | None = None) -> Path:
     base_dir = Path(model_dir) if model_dir is not None else default_formula_model_dir()
     base_dir.mkdir(parents=True, exist_ok=True)
-    # 国内网络需镜像：export HF_ENDPOINT=https://hf-mirror.com（huggingface_hub 原生支持）
+    endpoint = formula_model_endpoint()  # 默认国内镜像 hf-mirror.com
+    if endpoint != "https://huggingface.co":
+        # 镜像源直连直链下载：huggingface_hub 1.x 的元数据校验（x-repo-commit 头）
+        # 拒绝镜像响应，snapshot_download 走镜像必败，直接省掉必败的一跳。
+        _direct_download_files(base_dir)
+        _quantize_to_int8(base_dir)
+        return base_dir
+
     from huggingface_hub import snapshot_download
 
     try:
@@ -130,9 +147,8 @@ def download_formula_model(model_dir: str | os.PathLike[str] | None = None) -> P
             allow_patterns=list(FORMULA_MODEL_FILES),
         )
     except Exception as exc:
-        # huggingface_hub 1.x 的元数据校验（x-repo-commit 头）会拒绝 hf-mirror 的
-        # 响应（FileMetadataError → LocalEntryNotFoundError），直连 huggingface.co
-        # 又被墙。回退到按 HF_ENDPOINT 直链下载（requests 分块落盘），镜像可用。
+        # 官方源直连偶发不可达（被墙/瞬时网络故障），回退直链下载
+        # （此时仍指向官方源 endpoint）。
         logger.info(
             "DeepDoc 公式模型 snapshot_download 失败，回退直链下载",
             error=str(exc),
@@ -147,10 +163,10 @@ def _direct_download_files(base_dir: Path) -> None:
     import time
 
     import requests
-    from huggingface_hub import constants
 
+    endpoint = formula_model_endpoint()
     for name in FORMULA_MODEL_FILES:
-        url = f"{constants.ENDPOINT.rstrip('/')}/{FORMULA_MODEL_REPO_ID}/resolve/main/{name}"
+        url = f"{endpoint}/{FORMULA_MODEL_REPO_ID}/resolve/main/{name}"
         target = base_dir / name
         if target.exists() and target.stat().st_size > 0:
             continue

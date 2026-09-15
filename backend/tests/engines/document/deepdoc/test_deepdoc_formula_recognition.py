@@ -17,6 +17,7 @@ from novamind.engines.document.integrations.deepdoc.formula_recognition import (
     FORMULA_EOS_TOKEN_ID,
     FormulaRecognizer,
     ensure_formula_model_available,
+    formula_model_endpoint,
     get_formula_model_status,
 )
 from novamind.engines.document.integrations.deepdoc.parsers.pdf import (
@@ -44,6 +45,15 @@ def _region(page=1, x0=40, x1=360, top=100, bottom=140, score=0.9):
 # ----------------------------------------------------------------------
 # 1. 模型管理层
 # ----------------------------------------------------------------------
+
+@pytest.mark.unit
+def test_formula_model_endpoint_defaults_to_domestic_mirror(monkeypatch):
+    """直链下载源默认国内镜像 hf-mirror.com；HF_ENDPOINT 可覆盖。"""
+    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+    assert formula_model_endpoint() == "https://hf-mirror.com"
+    monkeypatch.setenv("HF_ENDPOINT", "https://huggingface.co/")
+    assert formula_model_endpoint() == "https://huggingface.co"
+
 
 @pytest.mark.unit
 def test_formula_model_status_missing_dir(tmp_path, monkeypatch):
