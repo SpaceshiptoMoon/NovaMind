@@ -154,7 +154,7 @@ def test_call_alias_layout_vision_routes_to_full(monkeypatch):
     """__call__("layout")/("vision") 兼容别名 → _parse_full。"""
     parser = RAGFlowPdfParser()
     calls = []
-    monkeypatch.setattr(parser, "_parse_full", lambda filename, *, chunk_size: calls.append(("full", chunk_size)) or _fake_result())
+    monkeypatch.setattr(parser, "_parse_full", lambda filename, *, chunk_size, formula_recognition=None: calls.append(("full", chunk_size)) or _fake_result())
     monkeypatch.setattr(parser, "_parse_plain", lambda filename, *, chunk_size: calls.append(("plain", chunk_size)) or _fake_result())
     parser(b"pdf", pdf_mode="layout", chunk_size=500)
     parser(b"pdf", pdf_mode="vision", chunk_size=500)

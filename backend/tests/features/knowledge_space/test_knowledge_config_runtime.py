@@ -155,6 +155,23 @@ def test_runtime_parsing_config_maps_new_pdf_structure_to_legacy_keys():
     assert runtime["ocr_enabled"] is True
 
 
+def test_runtime_parsing_config_passes_formula_recognition_flag():
+    """公式识别开关（None=默认开）必须从 ParsingConfig 透传到 runtime dict。"""
+    # 显式 False → 透传关闭
+    runtime = build_runtime_parsing_config(
+        {"deepdoc_formula_recognition": False}, file_type="pdf"
+    )
+    assert runtime["deepdoc_formula_recognition"] is False
+    # 未配置 → 不落键（解析器按默认开启处理）
+    runtime = build_runtime_parsing_config({}, file_type="pdf")
+    assert "deepdoc_formula_recognition" not in runtime
+    # 显式 True → 透传开启
+    runtime = build_runtime_parsing_config(
+        {"deepdoc_formula_recognition": True}, file_type="pdf"
+    )
+    assert runtime["deepdoc_formula_recognition"] is True
+
+
 def test_runtime_parsing_config_prefers_structured_pdf_settings_over_legacy_keys():
     runtime = build_runtime_parsing_config(
         {
