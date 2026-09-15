@@ -20,6 +20,7 @@ from novamind.engines.document.integrations.deepdoc.formula_recognition import (
     formula_model_endpoint,
     get_formula_model_status,
 )
+from novamind.engines.document.integrations.deepdoc.vision import model_manager
 from novamind.engines.document.integrations.deepdoc.parsers.pdf import (
     DeepDocPdfBox,
     RAGFlowPdfParser,
@@ -128,6 +129,93 @@ def test_recognize_generation_loop_with_fake_sessions():
     assert latex == "x _ { 2 }"
     assert recognizer.tokenizer.decoded == [5]
     assert recognizer.decoder.calls == 2
+
+
+# ----------------------------------------------------------------------
+# 2b. 下载链路（vision 与 formula 共用的镜像直链下载）
+# ----------------------------------------------------------------------
+
+@pytest.mark.unit
+def test_download_model_group_mirror_uses_direct_download(tmp_path, monkeypatch):
+    """默认镜像源必须走直链下载（hub 1.x 元数据校验拒绝镜像，snapshot 必败）。"""
+    calls = []
+    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+    monkeypatch.setattr(
+        model_manager, "direct_download_files",
+        lambda base_dir, repo_id, files: calls.append((repo_id, list(files))),
+    )
+    model_manager.download_model_group("layout", model_dir=tmp_path)
+    assert calls == [(model_manager.MODEL_REPO_ID, ["layout.onnx"])]
+
+
+@pytest.mark.unit
+def test_download_model_group_official_snapshot_falls_back_to_direct(tmp_path, monkeypatch):
+    """显式官方源先走 snapshot；失败（被墙/瞬时故障）回退直链，不抛错。"""
+    monkeypatch.setenv("HF_ENDPOINT", "https://huggingface.co")
+
+    import huggingface_hub
+
+    monkeypatch.setattr(
+        huggingface_hub, "snapshot_download",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("network down")),
+    )
+    fallback = []
+    monkeypatch.setattr(
+        model_manager, "direct_download_files",
+        lambda base_dir, repo_id, files: fallback.append(list(files)),
+    )
+    model_manager.download_model_group(None, model_dir=tmp_path)
+    assert fallback and "det.onnx" in fallback[0] and "tsr.onnx" in fallback[0]
+
+
+@pytest.mark.unit
+def test_direct_download_files_skip_existing_and_atomic_write(tmp_path, monkeypatch):
+    """已存在的非空文件跳过（幂等）；新文件经 .part 原子落盘。"""
+    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+    (tmp_path / "det.onnx").write_bytes(b"already-here")
+
+    class _FakeResp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size):
+            yield b"rec"
+
+    urls = []
+
+    def fake_get(url, stream, timeout):
+        urls.append(url)
+        return _FakeResp()
+
+    monkeypatch.setattr("requests.get", fake_get)
+    model_manager.direct_download_files(tmp_path, "some/repo", ["det.onnx", "rec.onnx"])
+    assert urls == ["https://hf-mirror.com/some/repo/resolve/main/rec.onnx"]
+    assert (tmp_path / "rec.onnx").read_bytes() == b"rec"
+    assert not (tmp_path / "rec.onnx.part").exists()
+
+
+@pytest.mark.unit
+def test_download_text_concat_model_mirror_uses_direct_download(tmp_path, monkeypatch):
+    """text-concat 模型镜像源同样必须走直链下载（部署容器内 HF_ENDPOINT 指镜像）。"""
+    from novamind.engines.document.integrations.deepdoc import text_concat_model
+
+    calls = []
+    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+    monkeypatch.setattr(
+        text_concat_model, "direct_download_files",
+        lambda base_dir, repo_id, files: calls.append((repo_id, list(files))),
+    )
+    path = text_concat_model.download_text_concat_model(model_dir=tmp_path)
+    assert calls == [
+        (text_concat_model.TEXT_CONCAT_MODEL_REPO_ID, [text_concat_model.TEXT_CONCAT_MODEL_FILENAME])
+    ]
+    assert path.name == text_concat_model.TEXT_CONCAT_MODEL_FILENAME
 
 
 # ----------------------------------------------------------------------

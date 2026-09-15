@@ -21,7 +21,11 @@ from typing import Any
 import numpy as np
 
 from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
-from novamind.engines.document.integrations.deepdoc.vision.model_manager import default_model_dir
+from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
+    default_model_dir,
+    direct_download_files,
+    hf_model_endpoint,
+)
 
 logger = get_logger(__name__)
 
@@ -117,13 +121,8 @@ def _quantize_to_int8(model_dir: Path) -> bool:
 
 
 def formula_model_endpoint() -> str:
-    """公式模型下载源：**默认国内镜像 hf-mirror.com**。
-
-    huggingface.co 直连在国内不可达，且 huggingface_hub 1.x 的元数据校验
-    （x-repo-commit 头）会拒绝 hf-mirror 的响应，snapshot_download 在镜像场景
-    必败。直链下载走此函数取源：HF_ENDPOINT 环境变量可覆盖为官方源或其它镜像。
-    """
-    return (os.getenv("HF_ENDPOINT") or "https://hf-mirror.com").rstrip("/")
+    """公式模型下载源：与 vision 模型共用 hf_model_endpoint()（默认国内镜像）。"""
+    return hf_model_endpoint()
 
 
 def download_formula_model(model_dir: str | os.PathLike[str] | None = None) -> Path:
@@ -133,7 +132,7 @@ def download_formula_model(model_dir: str | os.PathLike[str] | None = None) -> P
     if endpoint != "https://huggingface.co":
         # 镜像源直连直链下载：huggingface_hub 1.x 的元数据校验（x-repo-commit 头）
         # 拒绝镜像响应，snapshot_download 走镜像必败，直接省掉必败的一跳。
-        _direct_download_files(base_dir)
+        direct_download_files(base_dir, FORMULA_MODEL_REPO_ID, FORMULA_MODEL_FILES)
         _quantize_to_int8(base_dir)
         return base_dir
 
@@ -154,44 +153,9 @@ def download_formula_model(model_dir: str | os.PathLike[str] | None = None) -> P
             error=str(exc),
             repo_id=FORMULA_MODEL_REPO_ID,
         )
-        _direct_download_files(base_dir)
+        direct_download_files(base_dir, FORMULA_MODEL_REPO_ID, FORMULA_MODEL_FILES)
     _quantize_to_int8(base_dir)
     return base_dir
-
-
-def _direct_download_files(base_dir: Path) -> None:
-    import time
-
-    import requests
-
-    endpoint = formula_model_endpoint()
-    for name in FORMULA_MODEL_FILES:
-        url = f"{endpoint}/{FORMULA_MODEL_REPO_ID}/resolve/main/{name}"
-        target = base_dir / name
-        if target.exists() and target.stat().st_size > 0:
-            continue
-        # 大文件走 CDN 重定向，偶发读超时——重试 3 次再放弃。
-        last_exc: Exception | None = None
-        for attempt in range(1, 4):
-            try:
-                tmp = target.with_suffix(target.suffix + ".part")
-                with requests.get(url, stream=True, timeout=60) as resp:
-                    resp.raise_for_status()
-                    with open(tmp, "wb") as fh:
-                        for chunk in resp.iter_content(chunk_size=1 << 20):
-                            fh.write(chunk)
-                tmp.replace(target)
-                logger.info("DeepDoc 公式模型文件直链下载完成", file=name, attempt=attempt)
-                last_exc = None
-                break
-            except requests.RequestException as exc:
-                last_exc = exc
-                logger.warning(
-                    "DeepDoc 公式模型直链下载重试", file=name, attempt=attempt, error=str(exc)
-                )
-                time.sleep(3 * attempt)
-        if last_exc is not None:
-            raise last_exc
 
 
 class FormulaRecognizer:
