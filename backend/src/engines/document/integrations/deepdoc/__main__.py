@@ -61,6 +61,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Also download the text-concat XGBoost model",
     )
+    prepare_parser.add_argument(
+        "--include-formula",
+        action="store_true",
+        help="Also download the formula-recognition model (pix2text-mfr)",
+    )
 
     serve_parser = subparsers.add_parser("serve", help="Run the standalone DeepDoc FastAPI service")
     serve_parser.add_argument("--host", default="127.0.0.1", help="Bind host")
@@ -113,12 +118,16 @@ def main(argv: list[str] | None = None) -> int:
                 text_concat_target = None
                 if args.include_text_concat:
                     text_concat_target = engine.download_text_concat_model()
+                formula_target = None
+                if args.include_formula:
+                    formula_target = engine.download_formula_model()
         except Exception as exc:
             payload = {
                 "error": "deepdoc_prepare_failed",
                 "message": str(exc),
                 "vision_group": args.vision_group,
                 "include_text_concat": bool(args.include_text_concat),
+                "include_formula": bool(args.include_formula),
             }
             print(json.dumps(payload, ensure_ascii=False, indent=2), file=sys.stderr)
             return 1
@@ -126,6 +135,7 @@ def main(argv: list[str] | None = None) -> int:
             "vision_model_dir": str(vision_target),
             "vision_group": args.vision_group,
             "text_concat_model_path": str(text_concat_target) if text_concat_target is not None else None,
+            "formula_model_dir": str(formula_target) if formula_target is not None else None,
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0

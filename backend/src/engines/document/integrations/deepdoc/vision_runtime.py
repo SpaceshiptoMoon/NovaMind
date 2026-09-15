@@ -9,6 +9,7 @@ from novamind.engines.document.integrations.deepdoc.diagnostics.dependencies imp
     get_deepdoc_runtime_report,
     get_missing_runtime_dependencies,
 )
+from novamind.engines.document.integrations.deepdoc.formula_recognition import get_formula_model_status
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import get_model_status
 from novamind.engines.document.integrations.deepdoc.vision.package_status import get_vendored_vision_package_status
 
@@ -70,6 +71,8 @@ def get_vision_runtime_status() -> Dict[str, Any]:
         "ocr_models_available": bool(model_status["groups"]["ocr"]["available"]),
         "layout_models_available": bool(model_status["groups"]["layout"]["available"]),
         "tsr_models_available": bool(model_status["groups"]["tsr"]["available"]),
+        # 公式识别是可选增强：不可用时 full 模式 WARNING 软降级，不参与 available 判定。
+        "formula_model_status": get_formula_model_status(),
         "upstream_modules": [
             "deepdoc/vision/__init__.py",
             "deepdoc/vision/recognizer.py",

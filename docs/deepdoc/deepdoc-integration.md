@@ -78,6 +78,8 @@ The current upstream comparison baseline was pulled from RAGFlow commit
   - Compatibility shims replacing RAGFlow-internal dependencies
 - `text_concat_model.py`
   - Vendored/adapted support for RAGFlow `updown_concat_xgb.model`
+- `formula_recognition.py`
+  - Formula recognition (`pix2text-mfr`, ONNX INT8): equation layout regions are cropped from the rendered page, recognized to LaTeX, and emitted as `$$...$$` (block) / `$...$` (inline) boxes; model download supports `HF_ENDPOINT` mirrors with a direct-download fallback
 - `updown_concat.py`
   - Adapted paragraph concat logic from RAGFlow PDF parser
 - `page_filter.py`
@@ -152,6 +154,8 @@ Local compatibility/adaptation:
   download entrypoint for OCR/layout/TSR groups
 - text-concat model helpers that manage the upstream
   `InfiniFlow/text_concat_xgb_v1.0` artifact and expose its local status
+- formula-recognition helpers that download `breezedeus/pix2text-mfr` (with
+  INT8 quantization) and expose its local status
 - page-filter helpers that remove TOC-like sections and heavily garbled pages
   before chunk emission
 - PDF artifact helpers that group layout-tagged table/figure regions and expose
@@ -364,6 +368,11 @@ Current model management behavior:
 - table-structure expects `tsr.onnx`
 - text-concat expects `text_concat/updown_concat_xgb.model` unless
   `DEEPDOC_TEXT_CONCAT_MODEL_DIR` is set
+- formula recognition expects `pix2text_mfr/{encoder_model.onnx, decoder_model.onnx, tokenizer.json}`
+  unless `DEEPDOC_FORMULA_MODEL_DIR` is set; INT8 quantized variants
+  (`*_int8.onnx`) are preferred at runtime when present. Formula recognition is
+  optional: when the model is missing, `full` mode logs a WARNING and keeps OCR
+  fragments for equation regions instead of LaTeX
 - vendored package status now surfaces per-group model availability
 - vision smoke check now reports readiness flags, per-component load attempts,
   and per-component minimal inference attempts when model groups are present
@@ -439,6 +448,7 @@ do not break service startup by default.
 - `DeepDocEngine.ensure_vision_model_group("ocr" | "layout" | "tsr")`
 - `DeepDocEngine.download_vision_models(group=None)`
 - `DeepDocEngine.download_text_concat_model()`
+- `DeepDocEngine.download_formula_model()`
 - `DeepDocEngine.parse_with_parser_id(parser_id="pdf_plain", ...)`
 
 This makes it easier to reuse for upload streams, MinIO downloads, and future
@@ -452,6 +462,8 @@ Standalone CLI behavior now includes:
   - prints deployment diagnostics, model availability, and remediation hints
 - `prepare`
   - downloads DeepDoc vision model groups and optionally the text-concat model
+    (`--include-text-concat`) and the formula-recognition model
+    (`--include-formula`)
 - `parse`
   - parses a local file and returns JSON or plain text
 - `serve`

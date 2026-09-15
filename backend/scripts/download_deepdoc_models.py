@@ -44,6 +44,7 @@ GROUP_KEYS: dict[str, str | None] = {
     "layout": "layout",
     "tsr": "tsr",
     "text_concat": "__text_concat__",  # 走 text_concat_model 独立路径
+    "formula": "__formula__",  # 走 formula_recognition 独立路径（pix2text-mfr）
     "all": None,
 }
 
@@ -68,6 +69,17 @@ def _print_status(model_dir: Path) -> None:
     flag = "✅" if tc["available"] else "❌"
     print(f"  [{flag}] text_concat: {tc['filename']}（仓库 {tc['repo_id']}）", flush=True)
     print(f"         路径: {tc['path']}", flush=True)
+
+    from novamind.engines.document.integrations.deepdoc.formula_recognition import (
+        get_formula_model_status,
+    )
+
+    fm = get_formula_model_status(model_dir / "pix2text_mfr")
+    flag = "✅" if fm["available"] else "❌"
+    precision = "，INT8 已量化" if fm["quantized"] else ""
+    missing = f"（缺 {', '.join(fm['missing'])}）" if fm["missing"] else ""
+    print(f"  [{flag}] formula: {', '.join(fm['files'])}{precision}（仓库 {fm['repo_id']}）{missing}", flush=True)
+    print(f"         路径: {fm['model_dir']}", flush=True)
 
 
 def main() -> int:
@@ -109,7 +121,7 @@ def main() -> int:
         return 0
 
     targets = (
-        ["ocr", "layout", "tsr", "text_concat"]
+        ["ocr", "layout", "tsr", "text_concat", "formula"]
         if args.group == "all"
         else [args.group]
     )
@@ -119,6 +131,13 @@ def main() -> int:
         if group == "text_concat":
             path = download_text_concat_model(model_dir / "text_concat")
             print(f"  text_concat 模型就位: {path}", flush=True)
+        elif group == "formula":
+            from novamind.engines.document.integrations.deepdoc.formula_recognition import (
+                download_formula_model,
+            )
+
+            path = download_formula_model(model_dir / "pix2text_mfr")
+            print(f"  formula 模型就位: {path}", flush=True)
         else:
             path = download_model_group(group, model_dir)
             print(f"  {group} 组就位: {path}", flush=True)

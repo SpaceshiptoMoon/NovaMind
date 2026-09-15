@@ -59,6 +59,10 @@ dependencies = [
     "opencv-python-headless>=4.8.0",
     "shapely>=2.0.0",
     "pyclipper>=1.4.0",
+    # 公式识别（pix2text-mfr，full 模式默认开启）：此前仅是 faster-whisper 的
+    # 传递依赖，公式识别直接 import 它们，显式声明防漂移。
+    "onnxruntime>=1.19.0",
+    "tokenizers>=0.20.0",
 ]
 
 [project.optional-dependencies]
@@ -88,6 +92,9 @@ test = [
 deepdoc-vision = [
     "xgboost>=2.0.0,<3.1",
     "opencv-python-headless>=4.8.0",
+    # 公式模型 INT8 量化（download_formula_model 内动态量化，112MB→30MB）；
+    # 缺此包时跳过量化回退 fp32，不阻断下载。
+    "onnx>=1.16.0",
 ]
 
 [project.scripts]

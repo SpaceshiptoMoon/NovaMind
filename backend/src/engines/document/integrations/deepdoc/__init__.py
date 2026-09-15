@@ -63,6 +63,8 @@ _EXPORT_MAP = {
     "deepdoc_ensure_model_group_available": ("novamind.engines.document.integrations.deepdoc.vision", "ensure_model_group_available"),
     "deepdoc_expected_model_files": ("novamind.engines.document.integrations.deepdoc.vision", "expected_model_files"),
     "deepdoc_get_model_status": ("novamind.engines.document.integrations.deepdoc.vision", "get_model_status"),
+    "deepdoc_get_formula_model_status": ("novamind.engines.document.integrations.deepdoc.formula_recognition", "get_formula_model_status"),
+    "deepdoc_download_formula_model": ("novamind.engines.document.integrations.deepdoc.formula_recognition", "download_formula_model"),
     "get_vendored_vision_package_status": ("novamind.engines.document.integrations.deepdoc.vision", "get_vendored_vision_package_status"),
     "get_upstream_deepdoc_snapshot": ("novamind.engines.document.integrations.deepdoc.compat.upstream", "get_upstream_deepdoc_snapshot"),
 }

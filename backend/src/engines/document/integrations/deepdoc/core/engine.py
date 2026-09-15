@@ -81,6 +81,12 @@ class DeepDocEngine:
 
         return download_text_concat_model_artifact()
 
+    @staticmethod
+    def download_formula_model():
+        from novamind.engines.document.integrations.deepdoc.formula_recognition import download_formula_model as download_formula_model_artifact
+
+        return download_formula_model_artifact()
+
     @classmethod
     def available_pdf_modes(cls) -> dict:
         return dict(get_deepdoc_capabilities()["pdf_modes"])
