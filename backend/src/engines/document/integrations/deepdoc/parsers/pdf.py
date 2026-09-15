@@ -18,6 +18,10 @@ from PIL import Image
 
 from novamind.engines.document.integrations.deepdoc.compat import MAXIMUM_PAGE_NUMBER
 from novamind.engines.document.integrations.deepdoc.core.models import DeepDocParseResult, strip_position_tags
+from novamind.engines.document.integrations.deepdoc.formula_recognition import (
+    get_formula_model_status,
+    load_formula_recognizer,
+)
 from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
 from novamind.engines.document.integrations.deepdoc.page_filter import PageNoiseFilter
 from novamind.engines.document.integrations.deepdoc.pdf_artifacts import PdfArtifactExtractor
@@ -80,6 +84,14 @@ class DeepDocPdfBox:
 
 class RAGFlowPdfParser:
     """Vendored PDF parser facade modeled after RAGFlowPdfParser."""
+
+    # 公式识别（pix2text-mfr）：layout 的 equation 区域 → LaTeX。
+    # 这些阈值在 2026-09-15 spike 中用真实论文（62 个公式区域）标定。
+    FORMULA_LAYOUT_SCORE_THR = 0.3  # equation 区域置信度低于此值不识别
+    FORMULA_INLINE_WIDTH_RATIO = 0.3  # 区域宽度 < 30% 页宽 → 行内公式 $..$，否则块级 $$..$$
+    FORMULA_BOX_CONTAIN_RATIO = 0.7  # 文字框 ≥70% 面积落入公式区域 → 视为公式内碎片剔除
+    FORMULA_REGION_DEDUPE_RATIO = 0.8  # 区域 ≥80% 面积嵌套进另一区域 → 去重（整块+逐行拆分并存）
+    FORMULA_CROP_PADDING = 4.0  # 公式裁剪外扩（PDF 点，防止笔画贴边被切）
 
     def __init__(self):
         self._plain_parser = RAGFlowPlainPdfParser()
@@ -245,18 +257,29 @@ class RAGFlowPdfParser:
         *,
         pdf_mode: str = "full",
         chunk_size: int = 1000,
+        formula_recognition: bool | None = None,
     ) -> DeepDocParseResult:
         source_desc = str(filename) if isinstance(filename, (str, Path)) else "<bytes>"
-        logger.info("DeepDoc PDF 解析器开始", pdf_mode=pdf_mode, chunk_size=chunk_size, source=source_desc)
+        logger.info(
+            "DeepDoc PDF 解析器开始",
+            pdf_mode=pdf_mode,
+            chunk_size=chunk_size,
+            formula_recognition=formula_recognition,
+            source=source_desc,
+        )
         if pdf_mode == "plain":
             result = self._parse_plain(filename, chunk_size=chunk_size)
         elif pdf_mode == "full":
-            result = self._parse_full(filename, chunk_size=chunk_size)
+            result = self._parse_full(
+                filename, chunk_size=chunk_size, formula_recognition=formula_recognition
+            )
         elif pdf_mode in ("layout", "vision"):
             # 兼容别名：layout/vision 已并入 full（上游对齐的逐框融合流水线），
             # 保留一个发布周期，防止旧 runtime config / 测试漏迁移。
             logger.info("DeepDoc PDF 模式别名映射到 full", alias=pdf_mode)
-            result = self._parse_full(filename, chunk_size=chunk_size)
+            result = self._parse_full(
+                filename, chunk_size=chunk_size, formula_recognition=formula_recognition
+            )
         else:
             raise ValueError(f"Unsupported DeepDoc PDF mode: {pdf_mode}")
         logger.info(
@@ -617,6 +640,7 @@ class RAGFlowPdfParser:
         filename: Union[str, bytes, Path],
         *,
         chunk_size: int,
+        formula_recognition: bool | None = None,
     ) -> DeepDocParseResult:
         """上游对齐的默认全量流水线：每页 OCR 检测 + 逐框文字层融合 + 乱码回退 OCR
         （_extract_fused_pages）→ ONNX 版面贴标签 → 段落合并 → 页眉过滤 → 表格/图片
@@ -674,6 +698,19 @@ class RAGFlowPdfParser:
             )
             for box in layout_boxes
         ]
+        # 公式识别：layout 的 equation 区域跑 pix2text-mfr → LaTeX box，
+        # 同时剔除区域内的 OCR 碎片框（rec 模型把公式读成的乱码短串）。
+        # 模型缺失时 WARNING 软降级（公式保留 OCR 碎片，与 layout/text_concat 回退口径一致）。
+        page_zoom_map = {page: zoom for page, zoom in enumerate(effective_zooms, start=1)}
+        formula_results, formula_meta = self._recognize_equation_regions(
+            filename,
+            page_layout,
+            zoom_map=page_zoom_map,
+            enabled=formula_recognition,
+        )
+        if formula_results:
+            all_boxes, replaced_fragments = self._apply_formula_boxes(all_boxes, formula_results)
+            formula_meta["replaced_fragment_boxes"] = replaced_fragments
         text_boxes = [box for box in all_boxes if box.text.strip()]
         # 先做列检测 + 横向合并，再做纵向段落合并。上游 _text_merge 负责把同行文字
         # 碎片合并，避免双栏论文中一个标题/句子被切成多个 chunk。
@@ -687,8 +724,8 @@ class RAGFlowPdfParser:
         # 峰值从「全量 numpy + 工件页 PIL」双份降为单份，避免大 PDF 双倍内存 OOM（doc 565）。
         artifacts = self._extract_artifacts(
             artifact_boxes,
-            page_images=self._render_artifact_pages(filename, artifact_boxes, zoom_map={page: zoom for page, zoom in enumerate(effective_zooms, start=1)}),
-            zoom_map={page: zoom for page, zoom in enumerate(effective_zooms, start=1)},
+            page_images=self._render_artifact_pages(filename, artifact_boxes, zoom_map=page_zoom_map),
+            zoom_map=page_zoom_map,
         )
         table_regions = self._build_table_regions_metadata(artifacts)
         figure_regions = self._build_figure_regions_metadata(
@@ -741,6 +778,7 @@ class RAGFlowPdfParser:
                 "artifacts": artifacts,
                 "table_regions": table_regions,
                 "figure_regions": figure_regions,
+                "formula_recognition": formula_meta,
                 "reading_order": reading_order,
                 "chunk_structure": chunk_structure,
                 "text_concat_model": self._updown_concat.model_status(),
@@ -1254,7 +1292,17 @@ class RAGFlowPdfParser:
         避免大 PDF 同时持有全量渲染 buffer 与 artifact PIL 页导致双倍内存 OOM。
         """
         artifact_pages = sorted({box.page for box in artifact_boxes if box.page >= 1})
-        if not artifact_pages:
+        return self._render_pages(filename, artifact_pages, zoom_map=zoom_map)
+
+    def _render_pages(
+        self,
+        filename: Union[str, bytes, Path],
+        pages: Sequence[int],
+        *,
+        zoom_map: dict[int, float] | None = None,
+    ) -> dict[int, Image.Image]:
+        """按需把指定页（1-based）从 fitz 渲染为 PIL，其余页零开销。"""
+        if not pages:
             return {}
         fitz = self._import_fitz()
         doc = fitz.open(stream=filename, filetype="pdf") if isinstance(filename, bytes) else fitz.open(str(filename))
@@ -1265,9 +1313,249 @@ class RAGFlowPdfParser:
                 img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
                 return Image.fromarray(img[:, :, :3] if pix.n == 4 else img)
 
-            return {page_num: _page_image(page_num) for page_num in artifact_pages}
+            return {page_num: _page_image(page_num) for page_num in pages}
         finally:
             doc.close()
+
+    # ------------------------------------------------------------------
+    # 公式识别（pix2text-mfr）：layout equation 区域 → LaTeX box
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _collect_equation_regions(cls, page_layout: Sequence[Sequence[dict[str, Any]]]) -> list[dict[str, Any]]:
+        """从 page_layout 收集 equation 区域（PDF 点坐标，1-based 页码）。
+
+        page_layout 是 apply_layouts 返回的逐页 normalized_layouts，type 大小写
+        不稳定（YOLOv10 类定义是 "Equation"、forward 输出实测为小写 "equation"），
+        统一 lower() 比较。同时做嵌套去重：layout 模型对同一公式常同时给出
+        整块框与逐行拆分框，子区域 ≥80% 面积嵌套进另一区域时丢弃子区域。
+        """
+        regions: list[dict[str, Any]] = []
+        for page_index, layouts in enumerate(page_layout):
+            for item in layouts or []:
+                if str(item.get("type", "")).lower() != "equation":
+                    continue
+                if float(item.get("score", 0.0)) < cls.FORMULA_LAYOUT_SCORE_THR:
+                    continue
+                regions.append(
+                    {
+                        "page": page_index + 1,
+                        "x0": float(item["x0"]),
+                        "x1": float(item["x1"]),
+                        "top": float(item["top"]),
+                        "bottom": float(item["bottom"]),
+                    }
+                )
+        return cls._dedupe_equation_regions(regions)
+
+    @classmethod
+    def _dedupe_equation_regions(cls, regions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """嵌套区域去重：保留外围大框（整块公式），丢弃被包住 ≥80% 的逐行碎框。"""
+        kept: list[dict[str, Any]] = []
+        for region in regions:
+            if any(
+                other is not region
+                and other["page"] == region["page"]
+                and cls._region_contain_ratio(region, other) >= cls.FORMULA_REGION_DEDUPE_RATIO
+                for other in regions
+            ):
+                continue
+            kept.append(region)
+        return kept
+
+    @staticmethod
+    def _region_contain_ratio(inner: dict[str, Any], outer: dict[str, Any]) -> float:
+        """inner 面积落入 outer 的比例（同页局部坐标；跨页恒为 0）。"""
+        if inner["page"] != outer["page"]:
+            return 0.0
+        overlap_w = min(inner["x1"], outer["x1"]) - max(inner["x0"], outer["x0"])
+        overlap_h = min(inner["bottom"], outer["bottom"]) - max(inner["top"], outer["top"])
+        if overlap_w <= 0 or overlap_h <= 0:
+            return 0.0
+        inner_area = max((inner["x1"] - inner["x0"]) * (inner["bottom"] - inner["top"]), 1e-6)
+        return (overlap_w * overlap_h) / inner_area
+
+    @staticmethod
+    def _box_in_region_ratio(box: DeepDocPdfBox, region: dict[str, Any]) -> float:
+        """box 面积落入公式区域的比例。"""
+        overlap_w = min(box.x1, region["x1"]) - max(box.x0, region["x0"])
+        overlap_h = min(box.bottom, region["bottom"]) - max(box.top, region["top"])
+        if overlap_w <= 0 or overlap_h <= 0:
+            return 0.0
+        box_area = max((box.x1 - box.x0) * (box.bottom - box.top), 1e-6)
+        return (overlap_w * overlap_h) / box_area
+
+    def _recognize_equation_regions(
+        self,
+        filename: Union[str, bytes, Path],
+        page_layout: Sequence[Sequence[dict[str, Any]]],
+        *,
+        zoom_map: dict[int, float] | None = None,
+        enabled: bool | None = None,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """equation 区域 → LaTeX 识别结果 + 元信息。
+
+        返回的每个 result dict 含 page/bbox/latex/inline/text（text 已带 $ 格式），
+        供 _apply_formula_boxes 合成 box。模型缺失/识别失败均软降级，不抛错。
+        """
+        if enabled is False:
+            return [], {"source": "disabled", "equation_regions": 0}
+        regions = self._collect_equation_regions(page_layout)
+        if not regions:
+            return [], {"source": "none", "equation_regions": 0}
+        status = get_formula_model_status()
+        if not status["available"]:
+            # 回退必须可见（历史教训：xgboost 静默回退 4 个月无人知）。
+            logger.warning(
+                "DeepDoc 公式识别模型不可用，公式区域保留 OCR 文本（公式输出质量下降）",
+                model_dir=status["model_dir"],
+                missing=", ".join(status["missing"]),
+                equation_regions=len(regions),
+            )
+            return [], {
+                "source": "skipped_model_unavailable",
+                "equation_regions": len(regions),
+                "missing": status["missing"],
+            }
+        recognizer = load_formula_recognizer()
+
+        page_images = self._render_pages(
+            filename, sorted({region["page"] for region in regions}), zoom_map=zoom_map
+        )
+        results: list[dict[str, Any]] = []
+        failed = 0
+        for region in regions:
+            page_image = page_images.get(region["page"])
+            if page_image is None:
+                failed += 1
+                continue
+            zoom = float(zoom_map.get(region["page"], 2.0) if zoom_map else 2.0)
+            crop = self._crop_formula_image(page_image, region, zoom)
+            if crop is None:
+                failed += 1
+                continue
+            try:
+                latex = recognizer.recognize(crop)
+            except Exception as exc:
+                # 单个公式失败不阻断整篇解析；该区域保留 OCR 碎片。
+                logger.warning(
+                    "DeepDoc 公式识别失败（该区域保留 OCR 文本）",
+                    error=str(exc),
+                    page=region["page"],
+                )
+                failed += 1
+                continue
+            if not latex:
+                failed += 1
+                continue
+            inline = (region["x1"] - region["x0"]) < self.FORMULA_INLINE_WIDTH_RATIO * page_image.size[0] / zoom
+            results.append(
+                {
+                    **region,
+                    "latex": latex,
+                    "inline": inline,
+                    "text": f"${latex}$" if inline else f"$$\n{latex}\n$$",
+                }
+            )
+        meta = {
+            "source": "pix2text_mfr",
+            "precision": recognizer.precision,
+            "equation_regions": len(regions),
+            "recognized": len(results),
+            "failed": failed,
+        }
+        logger.info(
+            "DeepDoc 公式识别完成",
+            equation_regions=len(regions),
+            recognized=len(results),
+            failed=failed,
+            precision=recognizer.precision,
+        )
+        return results, meta
+
+    def _crop_formula_image(
+        self,
+        page_image: Image.Image,
+        region: dict[str, Any],
+        zoom: float,
+    ) -> np.ndarray | None:
+        """按 PDF 点坐标（含 padding）从渲染页图裁出公式区域 numpy 图。"""
+        pad = self.FORMULA_CROP_PADDING
+        img_h, img_w = page_image.size[1], page_image.size[0]
+        x0 = max(0, int((region["x0"] - pad) * zoom))
+        x1 = min(img_w, int((region["x1"] + pad) * zoom))
+        top = max(0, int((region["top"] - pad) * zoom))
+        bottom = min(img_h, int((region["bottom"] + pad) * zoom))
+        if x1 - x0 < 12 or bottom - top < 8:
+            return None
+        return np.asarray(page_image)[top:bottom, x0:x1]
+
+    def _apply_formula_boxes(
+        self,
+        all_boxes: List[DeepDocPdfBox],
+        formula_results: Sequence[dict[str, Any]],
+    ) -> tuple[List[DeepDocPdfBox], int]:
+        """把公式识别结果合成为文本 box，并剔除区域内的 OCR 碎片框。
+
+        合成 box 的 layout_type 沿用 "figure"（与公式内 OCR 碎片现状一致，
+        _text_merge 只横向合并 {"text",""}，figure 框独立成行不被并入段落），
+        layoutno 用 "equation-synth-N" 前缀：_collect_artifact_boxes 据此把
+        公式 box 挡在 artifact 流外（公式不是图片，无需 crop/判真）。
+        col_id 取被剔除碎片框的多数列（双栏论文阅读顺序依赖列号）。
+        """
+        kept: List[DeepDocPdfBox] = []
+        # 先把所有区域内碎片框标记待剔除；被剔除框的 col_id 用于合成 box 列号。
+        removed: List[DeepDocPdfBox] = []
+        for box in all_boxes:
+            if (box.layout_type or "").lower() == "table":
+                kept.append(box)
+                continue
+            if any(
+                self._box_in_region_ratio(box, region) >= self.FORMULA_BOX_CONTAIN_RATIO
+                for region in formula_results
+            ):
+                removed.append(box)
+                continue
+            kept.append(box)
+        for index, result in enumerate(formula_results):
+            col_counter: dict[int, int] = {}
+            for box in removed:
+                if self._box_in_region_ratio(box, result) >= self.FORMULA_BOX_CONTAIN_RATIO:
+                    col_counter[box.col_id] = col_counter.get(box.col_id, 0) + 1
+            col_id = max(col_counter, key=col_counter.get) if col_counter else 0
+            kept.append(
+                DeepDocPdfBox(
+                    page=result["page"],
+                    x0=result["x0"],
+                    x1=result["x1"],
+                    top=result["top"],
+                    bottom=result["bottom"],
+                    text=result["text"],
+                    col_id=col_id,
+                    position_tag=self._line_tag(
+                        {
+                            "page_number": result["page"],
+                            "x0": result["x0"],
+                            "x1": result["x1"],
+                            "top": result["top"],
+                            "bottom": result["bottom"],
+                        }
+                    ),
+                    positions=[
+                        [
+                            float(result["page"]),
+                            result["x0"],
+                            result["x1"],
+                            result["top"],
+                            result["bottom"],
+                        ]
+                    ],
+                    layout_type="figure",
+                    layoutno=f"equation-synth-{index}",
+                )
+            )
+        # 合成 box 插回原 all_boxes 顺序位置不必要：下游统一按 (page, col, top, x0) 排序。
+        return kept, len(removed)
 
     @staticmethod
     def _build_table_regions_metadata(
@@ -1638,6 +1926,9 @@ class RAGFlowPdfParser:
         return [
             box
             for box in all_boxes
+            # layoutno "equation-*"（公式内 OCR 碎片 + 公式识别合成 box）不是图片
+            # artifact：进 artifact 流只会被栅格判真丢弃，白付 crop 成本。
             if box.page in kept_pages
+            and not (box.layoutno or "").lower().startswith("equation")
             and (box.text.strip() or (box.layout_type or "").lower() in {"table", "figure", "figure caption", "table caption"})
         ]

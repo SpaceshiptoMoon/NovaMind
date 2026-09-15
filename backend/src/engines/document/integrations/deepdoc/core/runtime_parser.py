@@ -253,7 +253,15 @@ class DeepDocParser:
             parser_id=parser_id or "(full/default)",
         )
         pdf_input = str(source) if isinstance(source, Path) else source
-        result = self._pdf_parser(pdf_input, pdf_mode=pdf_mode, chunk_size=int(splitting_config.get("chunk_size", 1000)))
+        # 公式识别（pix2text-mfr）：None = 默认开启（模型在时识别 equation 区域），
+        # 显式 False 关闭。模型缺失时解析器内部 WARNING 软降级，不影响可用性。
+        formula_recognition = parsing_config.get("deepdoc_formula_recognition")
+        result = self._pdf_parser(
+            pdf_input,
+            pdf_mode=pdf_mode,
+            chunk_size=int(splitting_config.get("chunk_size", 1000)),
+            formula_recognition=None if formula_recognition is None else bool(formula_recognition),
+        )
         logger.info(
             "DeepDoc PDF 解析完成",
             pdf_mode=pdf_mode,

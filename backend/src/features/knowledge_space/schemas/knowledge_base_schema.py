@@ -239,6 +239,9 @@ class ParsingConfig(BaseModel):
     strategy: Optional[Literal["default", "deepdoc"]] = Field(default=None)
     deepdoc_parser_id: Optional[LegacyDeepDocParserId] = Field(default=None)
     deepdoc_pdf_mode: Optional[Literal["full", "plain"]] = Field(default=None)
+    # 公式识别（pix2text-mfr）：None = 默认开启（模型就绪时识别 equation 区域输出 LaTeX），
+    # 显式 False 关闭。模型缺失时解析器 WARNING 软降级（公式保留 OCR 文本）。
+    deepdoc_formula_recognition: Optional[bool] = Field(default=None)
     text: Optional[TextParsingConfig] = Field(default=None)
     image: Optional[ImageParsingConfig] = Field(default=None)
     video: Optional[VideoParsingConfig] = Field(default=None)
@@ -302,6 +305,7 @@ class ParsingConfig(BaseModel):
             "strategy",
             "deepdoc_parser_id",
             "deepdoc_pdf_mode",
+            "deepdoc_formula_recognition",
             "ocr_enabled",
             "vlm_description_enabled",
             "vlm_model",
@@ -325,6 +329,7 @@ class ParsingConfig(BaseModel):
             "strategy": strategy,
             "deepdoc_parser_id": parser_id,
             "deepdoc_pdf_mode": migrated_pdf_mode,
+            "deepdoc_formula_recognition": legacy.get("deepdoc_formula_recognition"),
             "text": {
                 "pdf": {"strategy": "default", "ocr_enabled": ocr_enabled},
                 "docx": {"strategy": "default"},
@@ -545,6 +550,8 @@ def build_runtime_parsing_config(parsing: Optional[Dict[str, Any]], file_type: O
         result["deepdoc_parser_id"] = parsed.deepdoc_parser_id
     if parsed.deepdoc_pdf_mode is not None:
         result["deepdoc_pdf_mode"] = parsed.deepdoc_pdf_mode
+    if parsed.deepdoc_formula_recognition is not None:
+        result["deepdoc_formula_recognition"] = parsed.deepdoc_formula_recognition
 
     normalized_file_type = (file_type or "").lower()
     text = parsed.text or TextParsingConfig()
