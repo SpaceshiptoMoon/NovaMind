@@ -1329,23 +1329,42 @@ class RAGFlowPdfParser:
         不稳定（YOLOv10 类定义是 "Equation"、forward 输出实测为小写 "equation"），
         统一 lower() 比较。同时做嵌套去重：layout 模型对同一公式常同时给出
         整块框与逐行拆分框，子区域 ≥80% 面积嵌套进另一区域时丢弃子区域。
+
+        表题/图题行常被误检成 equation（表题里满是斜体数学符号，如
+        "不同m,n,r,OS下算法迭代步数比"）：与 caption 类版面区域 ≥70% 重叠的
+        equation 区域直接跳过，避免表题被识别成乱 LaTeX（重复且丢表题）。
         """
         regions: list[dict[str, Any]] = []
         for page_index, layouts in enumerate(page_layout):
+            caption_layouts = [
+                {
+                    "page": page_index + 1,
+                    "x0": float(item["x0"]),
+                    "x1": float(item["x1"]),
+                    "top": float(item["top"]),
+                    "bottom": float(item["bottom"]),
+                }
+                for item in (layouts or [])
+                if "caption" in str(item.get("type", "")).lower()
+            ]
             for item in layouts or []:
                 if str(item.get("type", "")).lower() != "equation":
                     continue
                 if float(item.get("score", 0.0)) < cls.FORMULA_LAYOUT_SCORE_THR:
                     continue
-                regions.append(
-                    {
-                        "page": page_index + 1,
-                        "x0": float(item["x0"]),
-                        "x1": float(item["x1"]),
-                        "top": float(item["top"]),
-                        "bottom": float(item["bottom"]),
-                    }
-                )
+                region = {
+                    "page": page_index + 1,
+                    "x0": float(item["x0"]),
+                    "x1": float(item["x1"]),
+                    "top": float(item["top"]),
+                    "bottom": float(item["bottom"]),
+                }
+                if any(
+                    cls._region_contain_ratio(region, caption) >= cls.FORMULA_BOX_CONTAIN_RATIO
+                    for caption in caption_layouts
+                ):
+                    continue
+                regions.append(region)
         return cls._dedupe_equation_regions(regions)
 
     @classmethod
@@ -1505,9 +1524,19 @@ class RAGFlowPdfParser:
         """
         kept: List[DeepDocPdfBox] = []
         # 先把所有区域内碎片框标记待剔除；被剔除框的 col_id 用于合成 box 列号。
+        # caption/title 框不剔：layout 常把公式编号行（如 "(19)"）检成 equation，
+        # 其区域与表题/图题行高度重叠，误剔会把表题从 MD 里整行抹掉（实测回
+        # 归：一份论文 6 个表题全部消失）。剔除目标只是公式区内部的 OCR 碎片。
         removed: List[DeepDocPdfBox] = []
         for box in all_boxes:
-            if (box.layout_type or "").lower() == "table":
+            layout_type = (box.layout_type or "").lower()
+            layoutno = (box.layoutno or "").lower()
+            if (
+                layout_type == "table"
+                or "caption" in layout_type
+                or "caption" in layoutno
+                or layout_type == "title"
+            ):
                 kept.append(box)
                 continue
             if any(

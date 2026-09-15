@@ -148,6 +148,18 @@ def test_collect_equation_regions_type_case_insensitive():
 
 
 @pytest.mark.unit
+def test_collect_equation_regions_skips_caption_overlaps():
+    """表题行常被 layout 误检成 equation（表题满是斜体数学符号）——与 caption
+    版面区域 ≥70% 重叠的 equation 区域不得进识别，否则表题变乱 LaTeX。"""
+    caption = {**_region(x0=40, x1=360, top=100, bottom=140), "type": "table caption"}
+    eq_inside_caption = {**_region(x0=45, x1=355, top=102, bottom=138), "type": "equation"}
+    eq_outside = {**_region(x0=40, x1=360, top=200, bottom=260), "type": "equation"}
+    regions = RAGFlowPdfParser._collect_equation_regions([[caption, eq_inside_caption, eq_outside]])
+    assert len(regions) == 1
+    assert regions[0]["top"] == 200.0
+
+
+@pytest.mark.unit
 def test_region_contain_ratio_cross_page_is_zero():
     a, b = _region(page=1), _region(page=2)
     assert RAGFlowPdfParser._region_contain_ratio(a, b) == 0.0
@@ -228,15 +240,18 @@ def test_apply_formula_boxes_removes_fragments_and_synthesizes():
     fragment_b = _box(x0=150, x1=300, top=110, bottom=130, text="+1", layout_type="figure", layoutno="equation-0", col_id=1)
     outside_text = _box(x0=0, x1=380, top=300, bottom=320, text="正文段落。", layout_type="text")
     table_box = _box(x0=40, x1=360, top=100, bottom=140, text="[TABLE]", layout_type="table", layoutno="table-0")
+    # 回归：公式编号行区域与表题高度重叠时，表题框不得被当公式碎片剔除
+    caption_box = _box(x0=45, x1=355, top=105, bottom=135, text="表1: 算法性能比较", layout_type="table caption", layoutno="table caption-0")
     region = {**_region(x0=40, x1=360, top=100, bottom=140), "latex": "x _ { 2 } + 1", "inline": False, "text": "$$\nx _ { 2 } + 1\n$$"}
     kept, replaced = parser._apply_formula_boxes(
-        [fragment_a, fragment_b, outside_text, table_box], [region]
+        [fragment_a, fragment_b, outside_text, table_box, caption_box], [region]
     )
     assert replaced == 2
     texts = {box.text for box in kept}
     assert region["text"] in texts
     assert "正文段落。" in texts  # 区域外正文保留
     assert "[TABLE]" in texts  # 表格框即使几何重叠也不被当公式碎片剔除
+    assert "表1: 算法性能比较" in texts  # 表题框不剔（公式编号区域重叠的误伤回归）
     assert "x2" not in texts and "+1" not in texts  # OCR 碎片被 LaTeX box 取代
     synth = [box for box in kept if box.layoutno == "equation-synth-0"]
     assert len(synth) == 1
