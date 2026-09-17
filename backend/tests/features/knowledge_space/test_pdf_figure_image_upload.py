@@ -281,7 +281,7 @@ def test_table_boxes_deduped_from_text_stream():
         # 页面外区域 → 保留
         SimpleNamespace(page=1, x0=70.0, x1=200.0, top=400.0, bottom=420.0, text="正文", col_id=0, position_tag="", layout_type="text", layoutno="", positions=None),
     ]
-    kept = RAGFlowPdfParser._drop_boxes_consumed_by_tables(boxes, [table_region])
+    kept = RAGFlowPdfParser._drop_boxes_consumed_by_artifacts(boxes, [table_region])
     assert len(kept) == 1
     assert kept[0].text == "正文"
 
@@ -313,9 +313,40 @@ def test_table_member_bboxes_do_not_swallow_other_pages_prose():
         # p13 表格外正文 → 保留
         SimpleNamespace(page=13, x0=80.0, x1=500.0, top=100.0, bottom=160.0, text="页眉段落", col_id=0, position_tag="", layout_type="text", layoutno="", positions=None),
     ]
-    kept = RAGFlowPdfParser._drop_boxes_consumed_by_tables(boxes, [poisoned_region])
+    kept = RAGFlowPdfParser._drop_boxes_consumed_by_artifacts(boxes, [poisoned_region])
     kept_texts = [box.text for box in kept]
     assert kept_texts == ["§1 引言正文", "§3 收敛性证明", "页眉段落"]
+
+
+def test_figure_member_boxes_deduped_from_text_stream():
+    """回归：保留 figure 组的成员框（图内 OCR 文字/图例/轴标签）从正文流剔除——
+    图片文本已随占位符进入 reading_order，留在正文是纯数字噪声（实测 18 页论文
+    图1 图例「OS=5/OS=10/m=100…」13 框全留在正文，embedding 被数字流污染）。
+    对齐上游 _extract_table_figure：figure 框与 table 框同样 pop 出正文流。"""
+    figure_region = {
+        "artifact_id": "9:figure-0",
+        "pages": [9],
+        "page_start": 9,
+        "bbox": {"x0": 69.0, "x1": 526.0, "top": 476.0, "bottom": 701.0},
+        "caption": "图1:不同算法迭代次数比较",
+        "text": "昌 m=100,n=100,r ...",
+        "member_bboxes": [
+            {"page": 9, "x0": 156.0, "x1": 170.0, "top": 476.0, "bottom": 496.0},
+            {"page": 9, "x0": 69.0, "x1": 162.0, "top": 558.0, "bottom": 569.0},
+            {"page": 9, "x0": 69.0, "x1": 98.0, "top": 572.0, "bottom": 584.0},
+        ],
+    }
+    boxes = [
+        # 图例成员覆盖区内 → 剔除
+        SimpleNamespace(page=9, x0=70.0, x1=95.0, top=574.0, bottom=582.0, text="OS=5", col_id=0, position_tag="", layout_type="figure", layoutno="", positions=None),
+        # 图下方真实正文段落 → 保留
+        SimpleNamespace(page=9, x0=70.0, x1=500.0, top=720.0, bottom=760.0, text="图1 之后的正文段落", col_id=0, position_tag="", layout_type="text", layoutno="", positions=None),
+        # 另一页正文 → 保留
+        SimpleNamespace(page=10, x0=70.0, x1=500.0, top=100.0, bottom=140.0, text="p10 正文", col_id=0, position_tag="", layout_type="text", layoutno="", positions=None),
+    ]
+    kept = RAGFlowPdfParser._drop_boxes_consumed_by_artifacts(boxes, [], [figure_region])
+    kept_texts = [box.text for box in kept]
+    assert kept_texts == ["图1 之后的正文段落", "p10 正文"]
 
 
 def test_reading_order_table_entry_prefers_html():

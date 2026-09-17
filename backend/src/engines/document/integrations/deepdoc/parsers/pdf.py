@@ -732,10 +732,14 @@ class RAGFlowPdfParser:
             artifacts,
             raster_images_by_page=fusion_meta.get("raster_images_by_page") or {},
         )
-        # 被保留 table artifact 的成员框已随 [TABLE]/HTML entry 进入 reading_order，
-        # 从正文按成员逐框剔除（对齐上游 tag-pop 语义），否则表格内容（OCR 散落
-        # 数字流）在 MD 里重复出现两份；非成员正文不因 region bbox 误判被删。
-        reading_order_text_boxes = self._drop_boxes_consumed_by_tables(chunk_boxes, table_regions)
+        # 被保留 table/figure artifact 的成员框已随 [TABLE]/HTML entry 或图片
+        # 占位符进入 reading_order，从正文按成员逐框剔除（对齐上游 tag-pop 语义
+        # 对 table/figure 双类型生效），否则表格内容（OCR 散落数字流）与图内
+        # 文字（图例/轴标签）在 MD 里重复出现两份；非成员正文不因 region bbox
+        # 误判被删。
+        reading_order_text_boxes = self._drop_boxes_consumed_by_artifacts(
+            chunk_boxes, table_regions, figure_regions
+        )
         # 已挂载题注的框从正文 pop（对齐上游 caption 出正文流）：题注文本已随
         # table/figure entry 的 caption 字段输出，留正文则重复两份。
         reading_order_text_boxes = self._drop_attached_caption_boxes(
@@ -1719,6 +1723,16 @@ class RAGFlowPdfParser:
                 for member in figure.get("members", [])
                 if str(member.get("text", "")).strip()
             ]
+            member_bboxes = [
+                {
+                    "page": int(member.get("page", 0) or 0),
+                    "x0": float(member.get("x0", 0.0)),
+                    "x1": float(member.get("x1", 0.0)),
+                    "top": float(member.get("top", 0.0)),
+                    "bottom": float(member.get("bottom", 0.0)),
+                }
+                for member in figure.get("members", [])
+            ]
             figure_regions.append(
                 {
                     "artifact_id": figure.get("artifact_id"),
@@ -1730,6 +1744,7 @@ class RAGFlowPdfParser:
                     "text": figure.get("text", ""),
                     "member_texts": member_texts,
                     "member_text_count": len(member_texts),
+                    "member_bboxes": member_bboxes,
                     "has_image": True,
                     "image_blobs": image_blobs,
                     "caption_boxes": list(figure.get("caption_boxes") or []),
@@ -1743,27 +1758,29 @@ class RAGFlowPdfParser:
         return figure_regions
 
     @staticmethod
-    def _drop_boxes_consumed_by_tables(
+    def _drop_boxes_consumed_by_artifacts(
         text_boxes: Sequence[DeepDocPdfBox],
         table_regions: Sequence[dict[str, Any]],
+        figure_regions: Sequence[dict[str, Any]] = (),
         *,
         overlap_threshold: float = 0.6,
     ) -> list[DeepDocPdfBox]:
-        """剔除「被保留 table artifact 的成员框」覆盖的正文框（同页 IoMin > threshold）。
+        """剔除「被保留 table/figure artifact 的成员框」覆盖的正文框（同页 IoMin > threshold）。
 
-        对齐上游 _extract_table_figure 的标签语义：上游只把 layout_type=="table"
-        的框 pop 出正文流，正文不因几何误判被删。我们的等价物是按**成员框逐框
-        匹配**（成员即 layout 打标的 table 框），而不是把组联合 bbox 应用到
-        region["pages"] 的全部页——联合 bbox 在误检时不具备整页代表性（实测
-        误标题注曾把表组撑成 6 页近全页 bbox，几何剔除整章删除 §1-§3）。
-        region 缺 member_bboxes（旧调用方）时回退联合 bbox 口径。
-        表格文字已随 [TABLE]/HTML entry 进入 reading_order，留在正文会重复两份；
-        质量门降级的假表不进 table_regions，其文本自然保留正文。"""
-        if not text_boxes or not table_regions:
-            return list(text_boxes)
+        对齐上游 _extract_table_figure 的标签语义：上游把 layout_type 为
+        table/figure 的框都 pop 出正文流，正文不因几何误判被删。我们的等价物
+        是按**成员框逐框匹配**（成员即 layout 打标的 table/figure 框），而不是
+        把组联合 bbox 应用到 region["pages"] 的全部页——联合 bbox 在误检时不
+        具备整页代表性（实测误标题注曾把表组撑成 6 页近全页 bbox，几何剔除
+        整章删除 §1-§3）。region 缺 member_bboxes（旧调用方）时回退联合 bbox 口径。
+
+        只对「保留的」artifact 剔成员：表格文字/图内 OCR 文字已随 [TABLE]/HTML
+        entry 或图片占位符进入 reading_order，留在正文重复两份（实测图 1 图例
+        「OS=5/OS=10/m=100…」数字流留在正文，embedding 全是噪声）；质量门降级
+        的假表/无栅格假 figure 不进 regions，其文本自然保留正文。"""
         member_bboxes_by_page: dict[int, list[dict[str, Any]]] = {}
         fallback_regions_by_page: dict[int, list[dict[str, Any]]] = {}
-        for region in table_regions:
+        for region in (*table_regions, *figure_regions):
             member_bboxes = list(region.get("member_bboxes") or [])
             if member_bboxes:
                 for member in member_bboxes:
@@ -1776,6 +1793,8 @@ class RAGFlowPdfParser:
                 if page is None:
                     continue
                 fallback_regions_by_page.setdefault(int(page), []).append(bbox)
+        if not text_boxes or not (member_bboxes_by_page or fallback_regions_by_page):
+            return list(text_boxes)
         kept: list[DeepDocPdfBox] = []
         for box in text_boxes:
             page = int(box.page)
