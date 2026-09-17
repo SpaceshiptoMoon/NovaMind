@@ -18,6 +18,17 @@ from novamind.engines.document.integrations.deepdoc.vision_runtime import get_vi
 
 logger = get_logger(__name__)
 
+# 纯公式编号框（如 "(3)"，允许内侧空白）：常被版面模型误标成 "figure caption"，
+# 但它不是题注，绝不能挂进表/图组。
+_EQUATION_NUMBER_RE = re.compile(r"^\(\s*\d+\s*\)$")
+
+# 题注挂载约束：同页 + 紧贴组内容边缘（垂直间距 ≤40pt）+ 水平重叠 ≥30%。
+# 上游用全局累计 Y 的最近邻；我们是页局部坐标，跨页比较无物理意义，
+# 用显式几何约束替代"最近邻抽签"——误标框挂不进远页组。
+_CAPTION_MAX_GAP = 40.0
+_CAPTION_EDGE_TOL = 12.0
+_CAPTION_MIN_HOVERLAP = 0.3
+
 
 class PdfArtifactExtractor:
     """Adapted toward RAGFlow `_extract_table_figure` grouping behavior."""
@@ -44,6 +55,11 @@ class PdfArtifactExtractor:
             if not layout_type:
                 continue
             if self._is_caption_box(box):
+                # 纯公式编号框（"(3)"）常被版面模型误标成 "figure caption"（斜体
+                # 数学符号风）。它不是题注：放回正文流，且绝不挂进表/图组的
+                # caption 字段（实测表2 caption 变成 "(22)表2:...(31)(32)" 混挂）。
+                if _EQUATION_NUMBER_RE.match(getattr(box, "text", "").strip()):
+                    continue
                 captions.append(box)
                 continue
             if layout_type == "table":
@@ -223,54 +239,73 @@ class PdfArtifactExtractor:
         figure_groups: dict[str, list[Any]],
         captions: list[Any],
     ) -> dict[str, list[Any]]:
-        """题注挂到最近组，返回 ``group_key -> [caption box]`` 映射。
+        """题注挂到满足几何约束的最近组，返回 ``group_key -> [caption box]`` 映射。
 
         对齐上游 _extract_table_figure 的语义：caption 框被 pop 出正文流、文本
         挂到最近表/图组，但**从不作为组成员参与组的 bbox/pages 联合计算**。
         此前把题注 insert 进成员列表：版面模型把整页正文误标成 "figure caption"
         时（实测 18 页论文 37 个误标框），远页题注把表组撑成 pages=[2..13]、
-        bbox 近全页，下游按 bbox 剔正文即整章删除。"""
+        bbox 近全页，下游按 bbox 剔正文即整章删除。
+        挂载判据（上游全局累计 Y 最近邻的页局部坐标等价物）：同页 + 紧贴组内容
+        边缘 + 水平重叠。跨页/悬空题注不挂载、保留正文——误标框不污染任何组。"""
+        group_page_bboxes: dict[str, dict[int, dict[str, float]]] = {}
+        for kind, groups in (("table", table_groups), ("figure", figure_groups)):
+            for group_key, members in groups.items():
+                by_page: dict[int, list[Any]] = {}
+                for member in members:
+                    by_page.setdefault(int(getattr(member, "page", 1)), []).append(member)
+                page_bboxes = {
+                    page: self._group_bbox(page_members)
+                    for page, page_members in by_page.items()
+                }
+                page_bboxes = {page: bbox for page, bbox in page_bboxes.items() if bbox}
+                if page_bboxes:
+                    group_page_bboxes[group_key] = page_bboxes
+
         attached: dict[str, list[Any]] = {}
         for caption in captions:
-            best_group = None
-            best_distance = float("inf")
-            for kind, groups in (("table", table_groups), ("figure", figure_groups)):
-                for group_key, members in groups.items():
-                    distance = self._caption_distance(caption, members)
-                    if distance < best_distance:
-                        best_distance = distance
-                        best_group = group_key
-            if best_group is None:
-                continue
-            attached.setdefault(best_group, []).append(caption)
+            cap_page = int(getattr(caption, "page", 1))
+            best_key = None
+            best_gap = float("inf")
+            for group_key, page_bboxes in group_page_bboxes.items():
+                # 页局部坐标跨页比较无物理意义：题注只挂到同页有成员的组。
+                bbox = page_bboxes.get(cap_page)
+                if bbox is None:
+                    continue
+                gap = self._caption_attachment_gap(caption, bbox)
+                if gap is None:
+                    continue
+                if gap < best_gap:
+                    best_gap = gap
+                    best_key = group_key
+            if best_key is not None:
+                attached.setdefault(best_key, []).append(caption)
         return attached
 
     @staticmethod
-    def _caption_distance(caption: Any, members: Sequence[Any]) -> float:
-        """题注到组的距离。页内坐标跨页比较无物理意义：同页成员优先，组在题注
-        所在页无成员时（跨页区域）才回退全成员比较——修复表1/表3 题注跨页混挂。"""
-        if not members:
-            return float("inf")
+    def _caption_attachment_gap(caption: Any, group_bbox: dict[str, float]) -> float | None:
+        """题注到同页组内容边缘的间距；不满足挂载约束时返回 None。
 
-        def _min_distance(target_members: Sequence[Any]) -> float:
-            distances = []
-            for member in target_members:
-                vertical = abs(((getattr(caption, "top", 0.0) + getattr(caption, "bottom", 0.0)) / 2) - ((getattr(member, "top", 0.0) + getattr(member, "bottom", 0.0)) / 2))
-                horizontal = abs(((getattr(caption, "x0", 0.0) + getattr(caption, "x1", 0.0)) / 2) - ((getattr(member, "x0", 0.0) + getattr(member, "x1", 0.0)) / 2))
-                distances.append(vertical * vertical + horizontal * horizontal)
-            return min(distances)
-
-        same_page = [
-            member
-            for member in members
-            if int(getattr(member, "page", 1)) == int(getattr(caption, "page", 1))
-        ]
-        if same_page:
-            return _min_distance(same_page)
-        # 跨页回退加惩罚：页局部坐标跨页比较是数值撞车（p5 某框 top 与 p1 题注
-        # top 可任意接近），不惩罚时无同页成员的组会以更小的伪距离抢走题注
-        # （实测表1 题注被 p5 组以 1087 < 1441 抢走，真组在同页）。
-        return _min_distance(members) + 1e9
+        题注必须：位于组上/下边缘外侧紧邻处、水平方向与组有实质重叠。
+        悬空（与组垂直区间交叠但不贴边、或完全远离）不算邻接。"""
+        cap_top = float(getattr(caption, "top", 0.0))
+        cap_bottom = float(getattr(caption, "bottom", 0.0))
+        cap_x0 = float(getattr(caption, "x0", 0.0))
+        cap_x1 = float(getattr(caption, "x1", 0.0))
+        # 水平重叠（题注宽度的占比）
+        overlap = min(cap_x1, float(group_bbox["x1"])) - max(cap_x0, float(group_bbox["x0"]))
+        cap_width = max(1e-6, cap_x1 - cap_x0)
+        if overlap / cap_width < _CAPTION_MIN_HOVERLAP:
+            return None
+        # 题注在组上方：题注底贴组顶；在组下方：题注顶贴组底。悬空（与组垂直
+        # 区间交叠但不贴边、或完全远离）不算邻接。
+        gap_above = float(group_bbox["top"]) - cap_bottom
+        gap_below = cap_top - float(group_bbox["bottom"])
+        if -_CAPTION_EDGE_TOL <= gap_above <= _CAPTION_MAX_GAP:
+            return max(0.0, gap_above)
+        if -_CAPTION_EDGE_TOL <= gap_below <= _CAPTION_MAX_GAP:
+            return max(0.0, gap_below)
+        return None
 
     def _maybe_build_table_artifact(
         self,
@@ -380,6 +415,18 @@ class PdfArtifactExtractor:
             "has_image": bool(image),
             "members": [asdict(item) for item in ordered],
             "rotation_angle": modal_angle,
+            # 已挂载题注的页级坐标：正文流 pop 用（对齐上游 caption 框出正文流）。
+            "caption_boxes": [
+                {
+                    "page": int(getattr(item, "page", 1)),
+                    "x0": float(getattr(item, "x0", 0.0)),
+                    "x1": float(getattr(item, "x1", 0.0)),
+                    "top": float(getattr(item, "top", 0.0)),
+                    "bottom": float(getattr(item, "bottom", 0.0)),
+                    "text": str(getattr(item, "text", "")),
+                }
+                for item in captions
+            ],
         }
 
     def _build_figure_artifact(
@@ -411,6 +458,18 @@ class PdfArtifactExtractor:
             "image": image,
             "has_image": bool(image),
             "members": [asdict(item) for item in ordered],
+            # 已挂载题注的页级坐标：正文流 pop 用（对齐上游 caption 框出正文流）。
+            "caption_boxes": [
+                {
+                    "page": int(getattr(item, "page", 1)),
+                    "x0": float(getattr(item, "x0", 0.0)),
+                    "x1": float(getattr(item, "x1", 0.0)),
+                    "top": float(getattr(item, "top", 0.0)),
+                    "bottom": float(getattr(item, "bottom", 0.0)),
+                    "text": str(getattr(item, "text", "")),
+                }
+                for item in captions
+            ],
         }
 
     @staticmethod

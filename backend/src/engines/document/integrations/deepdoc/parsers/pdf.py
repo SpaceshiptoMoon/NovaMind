@@ -736,6 +736,13 @@ class RAGFlowPdfParser:
         # 从正文按成员逐框剔除（对齐上游 tag-pop 语义），否则表格内容（OCR 散落
         # 数字流）在 MD 里重复出现两份；非成员正文不因 region bbox 误判被删。
         reading_order_text_boxes = self._drop_boxes_consumed_by_tables(chunk_boxes, table_regions)
+        # 已挂载题注的框从正文 pop（对齐上游 caption 出正文流）：题注文本已随
+        # table/figure entry 的 caption 字段输出，留正文则重复两份。
+        reading_order_text_boxes = self._drop_attached_caption_boxes(
+            reading_order_text_boxes,
+            table_regions,
+            figure_regions,
+        )
         reading_order = self._build_reading_order_metadata(
             reading_order_text_boxes,
             table_regions,
@@ -1649,6 +1656,7 @@ class RAGFlowPdfParser:
                     "structured_box_count": len(structured_boxes),
                     "structured_boxes": structured_boxes,
                     "has_image": bool(table.get("has_image")),
+                    "caption_boxes": list(table.get("caption_boxes") or []),
                 }
             )
         return table_regions
@@ -1717,6 +1725,7 @@ class RAGFlowPdfParser:
                     "member_text_count": len(member_texts),
                     "has_image": True,
                     "image_blobs": image_blobs,
+                    "caption_boxes": list(figure.get("caption_boxes") or []),
                 }
             )
         if dropped_no_image:
@@ -1776,6 +1785,47 @@ class RAGFlowPdfParser:
                 )
                 > overlap_threshold
                 for region_bbox in candidates_by_page
+            ):
+                continue
+            kept.append(box)
+        return kept
+
+    @staticmethod
+    def _drop_attached_caption_boxes(
+        text_boxes: Sequence[DeepDocPdfBox],
+        table_regions: Sequence[dict[str, Any]],
+        figure_regions: Sequence[dict[str, Any]],
+        *,
+        overlap_threshold: float = 0.5,
+    ) -> list[DeepDocPdfBox]:
+        """把已挂载到表/图组的题注框从正文流剔除（对齐上游 caption 框出正文流）。
+
+        题注文本已随 table/figure entry 的 caption 字段进入 reading_order，留在
+        正文会重复（且与组内公式编号混排）。只剔「挂载成功」的题注坐标：未挂载
+        的题注（跨页/悬空/误标框）保留正文，绝不按 layout_type 几何批量删——
+        上游的 caption pop 也只针对真实挂载的那几个框。"""
+        caption_bboxes_by_page: dict[int, list[dict[str, Any]]] = {}
+        for regions in (table_regions, figure_regions):
+            for region in regions:
+                for cap in region.get("caption_boxes") or []:
+                    caption_bboxes_by_page.setdefault(int(cap.get("page", 0)), []).append(cap)
+        if not caption_bboxes_by_page or not text_boxes:
+            return list(text_boxes)
+        kept: list[DeepDocPdfBox] = []
+        for box in text_boxes:
+            caps = caption_bboxes_by_page.get(int(box.page))
+            if caps and any(
+                PdfArtifactExtractor.bbox_overlap_ratio(
+                    {
+                        "x0": box.x0,
+                        "x1": box.x1,
+                        "top": box.top,
+                        "bottom": box.bottom,
+                    },
+                    {"x0": cap["x0"], "x1": cap["x1"], "top": cap["top"], "bottom": cap["bottom"]},
+                )
+                > overlap_threshold
+                for cap in caps
             ):
                 continue
             kept.append(box)
