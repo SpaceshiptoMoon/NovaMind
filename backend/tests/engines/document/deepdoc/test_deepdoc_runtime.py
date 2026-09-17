@@ -202,8 +202,10 @@ def test_knowledge_base_config_accepts_deepdoc_strategy():
         }
     )
 
-    assert config.model_dump()["parsing"]["strategy"] == "deepdoc"
-    assert config.model_dump()["parsing"]["deepdoc_pdf_mode"] == "plain"
+    dumped = config.model_dump()
+    assert dumped["parsing"]["strategy"] == "deepdoc"
+    # 6b45384 移除 PDF plain 模式：deepdoc_pdf_mode="plain" 迁移到 full
+    assert dumped["parsing"]["deepdoc_pdf_mode"] == "full"
 
 
 def test_knowledge_base_service_accepts_all_deepdoc_full_options():
@@ -1101,7 +1103,34 @@ def test_pdf_artifact_extractor_groups_tables_and_figures():
     assert len(figure_regions) == 1
     assert figure_regions[0]["page_start"] == 1
     assert figure_regions[0]["region_index_on_page"] == 0
-    assert figure_regions[0]["member_text_count"] == 2
+    # 题注挂载后是组级元数据（caption），不是组成员：member_texts 只含图区框。
+    assert figure_regions[0]["member_text_count"] == 1
+
+
+def test_pdf_artifact_captions_do_not_extend_group_geometry():
+    """题注不得撑大组 pages/bbox：版面模型把整页正文误标成 "figure caption" 时
+    （18 页论文实测 37 框），题注若作为组成员参与联合计算，远页题注会把表组
+    撑成 6 页近全页 bbox，下游剔除即整章删除。"""
+    _skip_if_vision_runtime_unavailable()
+    extractor = PdfArtifactExtractor()
+    page_image = Image.new("RGB", (400, 200), color=(255, 255, 255))
+    boxes = [
+        DeepDocPdfBox(page=1, x0=20, x1=100, top=40, bottom=55, text="Metric | Value", layout_type="table", layoutno="table-0"),
+        DeepDocPdfBox(page=1, x0=20, x1=100, top=58, bottom=72, text="Recall | 0.88", layout_type="table", layoutno="table-0"),
+        # 远页"题注"（实际是被误标的正文）：同页无组成员 → 1e9 惩罚后仍是唯一
+        # 组最近 → 挂到 p1 表组，但绝不能把组边界卷到 p5。
+        DeepDocPdfBox(page=5, x0=10, x1=500, top=100, bottom=700, text="图 1: 误标正文", layout_type="figure caption", layoutno="figure caption-0"),
+    ]
+
+    artifacts = extractor.extract(boxes, page_images={1: page_image}, zoom=1.0)
+
+    assert len(artifacts["tables"]) == 1
+    table = artifacts["tables"][0]
+    assert table["pages"] == [1]
+    assert table["bbox"]["top"] >= 40.0 and table["bbox"]["bottom"] <= 72.0
+    # 题注文本仍挂载（nearest 语义保留），但成员列表不含题注
+    assert "误标正文" in (table["caption"] or "")
+    assert "误标正文" not in [str(member.get("text", "")) for member in table["members"]]
 
 
 def test_pdf_artifact_extractor_stitches_cross_page_crops():
@@ -1821,6 +1850,8 @@ def test_vendored_layout_recognizer_can_apply_layouts():
 
 
 def test_vendored_layout_recognizer_keeps_unmatched_table_regions():
+    """对齐上游：未访问区域只合成 figure 框（figure/equation），table 区域
+    不再合成空 table 框——合成会造出上游不存在的幻影表组。"""
     _skip_if_vision_runtime_unavailable()
     from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
 
@@ -1836,7 +1867,7 @@ def test_vendored_layout_recognizer_keeps_unmatched_table_regions():
 
     boxes, _ = recognizer.apply_layouts([image], ocr_res, layouts, scale_factor=1)
 
-    assert any(box["layout_type"] == "table" and box["text"] == "" for box in boxes)
+    assert not any(box["layout_type"] == "table" for box in boxes)
 
 
 def test_vendored_layout_recognizer_can_decode_mock_forward(monkeypatch):

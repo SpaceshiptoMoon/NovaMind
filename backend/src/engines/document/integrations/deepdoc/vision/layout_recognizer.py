@@ -114,14 +114,17 @@ class LayoutRecognizer(Recognizer):
             for layout_type in ["footer", "reference", "figure caption", "table caption", "title", "table", "text", "figure", "equation"]:
                 find_layout(layout_type)
 
-            for index, layout in enumerate([lt for lt in normalized_layouts if lt["type"] in ["figure", "equation", "table"]]):
+            # 上游只给未访问的 figure/equation 区域合成占位框（layout_type="figure"）；
+            # table 区域不合成——空 table 框会造出上游不存在的幻影表组，凭空生成
+            # table_regions 并把整页正文卷进组 bbox。
+            for index, layout in enumerate([lt for lt in normalized_layouts if lt["type"] in ["figure", "equation"]]):
                 if layout.get("visited"):
                     continue
                 region_box = deepcopy(layout)
-                layout_type = region_box.pop("type")
+                region_box.pop("type")
                 region_box["text"] = ""
-                region_box["layout_type"] = "figure" if layout_type in {"figure", "equation"} else "table"
-                region_box["layoutno"] = f"{region_box['layout_type']}-{index}"
+                region_box["layout_type"] = "figure"
+                region_box["layoutno"] = f"figure-{index}"
                 page_boxes.append(region_box)
 
             boxes.extend(page_boxes)

@@ -58,7 +58,7 @@ class PdfArtifactExtractor:
         table_groups = self._merge_cross_page_groups(table_groups, page_images=page_images, zoom_map=zoom_map)
         figure_groups = self._merge_cross_page_groups(figure_groups, page_images=page_images, zoom_map=zoom_map)
 
-        self._attach_captions(table_groups, figure_groups, captions)
+        group_captions = self._attach_captions(table_groups, figure_groups, captions)
 
         # 质量门降级必须可见：假表降级数量进日志，静默丢弃不可审计。
         built_tables: list[dict[str, Any]] = []
@@ -67,6 +67,7 @@ class PdfArtifactExtractor:
             artifact = self._maybe_build_table_artifact(
                 group_key,
                 group,
+                captions=group_captions.get(group_key) or [],
                 page_images=page_images,
                 zoom=zoom,
                 zoom_map=zoom_map,
@@ -85,7 +86,14 @@ class PdfArtifactExtractor:
         return {
             "tables": built_tables,
             "figures": [
-                self._build_figure_artifact(group_key, group, page_images=page_images, zoom=zoom, zoom_map=zoom_map)
+                self._build_figure_artifact(
+                    group_key,
+                    group,
+                    captions=group_captions.get(group_key) or [],
+                    page_images=page_images,
+                    zoom=zoom,
+                    zoom_map=zoom_map,
+                )
                 for group_key, group in sorted(figure_groups.items())
             ],
         }
@@ -214,10 +222,17 @@ class PdfArtifactExtractor:
         table_groups: dict[str, list[Any]],
         figure_groups: dict[str, list[Any]],
         captions: list[Any],
-    ) -> None:
+    ) -> dict[str, list[Any]]:
+        """题注挂到最近组，返回 ``group_key -> [caption box]`` 映射。
+
+        对齐上游 _extract_table_figure 的语义：caption 框被 pop 出正文流、文本
+        挂到最近表/图组，但**从不作为组成员参与组的 bbox/pages 联合计算**。
+        此前把题注 insert 进成员列表：版面模型把整页正文误标成 "figure caption"
+        时（实测 18 页论文 37 个误标框），远页题注把表组撑成 pages=[2..13]、
+        bbox 近全页，下游按 bbox 剔正文即整章删除。"""
+        attached: dict[str, list[Any]] = {}
         for caption in captions:
             best_group = None
-            best_kind = None
             best_distance = float("inf")
             for kind, groups in (("table", table_groups), ("figure", figure_groups)):
                 for group_key, members in groups.items():
@@ -225,11 +240,10 @@ class PdfArtifactExtractor:
                     if distance < best_distance:
                         best_distance = distance
                         best_group = group_key
-                        best_kind = kind
             if best_group is None:
                 continue
-            target_groups = table_groups if best_kind == "table" else figure_groups
-            target_groups[best_group].insert(0, caption)
+            attached.setdefault(best_group, []).append(caption)
+        return attached
 
     @staticmethod
     def _caption_distance(caption: Any, members: Sequence[Any]) -> float:
@@ -263,6 +277,7 @@ class PdfArtifactExtractor:
         group_key: str,
         members: Sequence[Any],
         *,
+        captions: Sequence[Any] = (),
         page_images: dict[int, Image.Image] | None = None,
         zoom: float = 1.0,
         zoom_map: dict[int, float] | None = None,
@@ -276,6 +291,7 @@ class PdfArtifactExtractor:
         artifact = self._build_table_artifact(
             group_key,
             members,
+            captions=captions,
             page_images=page_images,
             zoom=zoom,
             zoom_map=zoom_map,
@@ -300,16 +316,13 @@ class PdfArtifactExtractor:
         group_key: str,
         members: Sequence[Any],
         *,
+        captions: Sequence[Any] = (),
         page_images: dict[int, Image.Image] | None = None,
         zoom: float = 1.0,
         zoom_map: dict[int, float] | None = None,
     ) -> dict[str, Any]:
         ordered = sorted(members, key=lambda item: (getattr(item, "page", 1), getattr(item, "top", 0.0), getattr(item, "x0", 0.0)))
-        caption = "\n".join(
-            getattr(item, "text", "").strip()
-            for item in ordered
-            if self._is_caption_box(item)
-        ).strip()
+        caption = "\n".join(getattr(item, "text", "").strip() for item in captions).strip()
         content_boxes = [item for item in ordered if not self._is_caption_box(item)]
         crop_descriptors = self._collect_group_crops(ordered, page_images=page_images, zoom=zoom, zoom_map=zoom_map)
 
@@ -374,16 +387,13 @@ class PdfArtifactExtractor:
         group_key: str,
         members: Sequence[Any],
         *,
+        captions: Sequence[Any] = (),
         page_images: dict[int, Image.Image] | None = None,
         zoom: float = 1.0,
         zoom_map: dict[int, float] | None = None,
     ) -> dict[str, Any]:
         ordered = sorted(members, key=lambda item: (getattr(item, "page", 1), getattr(item, "top", 0.0), getattr(item, "x0", 0.0)))
-        caption = "\n".join(
-            getattr(item, "text", "").strip()
-            for item in ordered
-            if self._is_caption_box(item)
-        ).strip()
+        caption = "\n".join(getattr(item, "text", "").strip() for item in captions).strip()
         content_text = "\n".join(
             getattr(item, "text", "").strip()
             for item in ordered

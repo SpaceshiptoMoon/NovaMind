@@ -264,7 +264,8 @@ def test_placeholder_survives_strip_and_replacement():
 
 
 def test_table_boxes_deduped_from_text_stream():
-    """table region bbox 覆盖的文本框不再重复出现在正文流（IoMin > 0.6 剔除）。"""
+    """table region（无 member_bboxes 的旧口径）bbox 覆盖的文本框不再重复出现在
+    正文流（IoMin > 0.6 剔除）。"""
     table_region = {
         "artifact_id": "1:100:70",
         "pages": [1],
@@ -280,9 +281,41 @@ def test_table_boxes_deduped_from_text_stream():
         # 页面外区域 → 保留
         SimpleNamespace(page=1, x0=70.0, x1=200.0, top=400.0, bottom=420.0, text="正文", col_id=0, position_tag="", layout_type="text", layoutno="", positions=None),
     ]
-    kept = RAGFlowPdfParser._drop_boxes_covered_by_regions(boxes, [table_region])
+    kept = RAGFlowPdfParser._drop_boxes_consumed_by_tables(boxes, [table_region])
     assert len(kept) == 1
     assert kept[0].text == "正文"
+
+
+def test_table_member_bboxes_do_not_swallow_other_pages_prose():
+    """成员制剔除回归：region pages 被误标题注撑爆（pages=[2..6,13]）时，
+    只有成员框所在页的成员覆盖区被剔除，其它页正文必须存活——
+    此前按联合 bbox 应用到 pages 全部页，18 页论文 §1-§3 整章被删。"""
+    poisoned_region = {
+        "artifact_id": "13:table-0",
+        # 误检时代的 pages 联合（历史现场：题注成员把 p2-6 卷进表组）
+        "pages": [2, 3, 4, 5, 6, 13],
+        "page_start": 13,
+        "bbox": {"x0": 76.0, "x1": 526.0, "top": 114.0, "bottom": 763.0},
+        "caption": "",
+        "text": "",
+        # 成员框只在 p13（真实表格格框）
+        "member_bboxes": [
+            {"page": 13, "x0": 100.0, "x1": 480.0, "top": 300.0, "bottom": 400.0},
+        ],
+    }
+    boxes = [
+        # p13 表格成员覆盖区内 → 剔除
+        SimpleNamespace(page=13, x0=110.0, x1=470.0, top=310.0, bottom=390.0, text="表格内容", col_id=0, position_tag="", layout_type="table", layoutno="", positions=None),
+        # p2 正文——坐标完全落在被污染的联合 bbox 内 → 必须保留
+        SimpleNamespace(page=2, x0=80.0, x1=520.0, top=200.0, bottom=700.0, text="§1 引言正文", col_id=0, position_tag="", layout_type="text", layoutno="", positions=None),
+        # p5 正文 → 保留
+        SimpleNamespace(page=5, x0=100.0, x1=500.0, top=150.0, bottom=650.0, text="§3 收敛性证明", col_id=0, position_tag="", layout_type="text", layoutno="", positions=None),
+        # p13 表格外正文 → 保留
+        SimpleNamespace(page=13, x0=80.0, x1=500.0, top=100.0, bottom=160.0, text="页眉段落", col_id=0, position_tag="", layout_type="text", layoutno="", positions=None),
+    ]
+    kept = RAGFlowPdfParser._drop_boxes_consumed_by_tables(boxes, [poisoned_region])
+    kept_texts = [box.text for box in kept]
+    assert kept_texts == ["§1 引言正文", "§3 收敛性证明", "页眉段落"]
 
 
 def test_reading_order_table_entry_prefers_html():
