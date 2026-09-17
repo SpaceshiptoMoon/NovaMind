@@ -62,7 +62,8 @@ def test_deepdoc_cli_serve_exposes_health_and_capabilities():
         assert health["engine"] == "deepdoc"
         assert health["upstream"]["commit"] == "4060cd144003602dd227d8aab2b1dc1b9d740cdc"
         assert "pdf_modes" in capabilities
-        assert "vision" in capabilities["pdf_modes"]
+        assert "full" in capabilities["pdf_modes"]
+        assert capabilities["pdf_modes"]["full"]["available"] is True
     finally:
         process.terminate()
         try:

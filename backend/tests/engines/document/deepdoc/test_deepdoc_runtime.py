@@ -272,8 +272,10 @@ def test_document_processor_uses_deepdoc_strategy(monkeypatch, tmp_path):
         )
     )
 
-    assert full_text.startswith("@@1")
-    assert chunks == ["@@1\t0\t10\t0\t10##hello"]
+    # full_text 的 @@..## 版面坐标标记在返回前被剥离（位置信息进 chunk metadata）
+    assert full_text == "hello"
+    # chunks 按用户 splitting 配置重新切分（单段短文本 → 单 chunk）
+    assert chunks == ["hello"]
 
 
 def test_document_processor_uses_deepdoc_parser_id(monkeypatch, tmp_path):
@@ -392,10 +394,11 @@ def test_deepdoc_parser_parses_real_pdf(tmp_path):
 
     assert result.metadata["source"] == "ragflow-adapted"
     assert result.metadata["file_type"] == "pdf"
-    assert "@@1\t" in result.full_text
     assert "Hello DeepDoc" in result.full_text
-    assert result.chunks
+    assert result.chunks == ["Hello DeepDoc"]
     assert result.metadata["parser_class"] == "RAGFlowPdfParser"
+    position_tag = result.metadata["reading_order"][0]["position_tag"]
+    assert position_tag.startswith("@@1\t") and position_tag.endswith("##")
     assert result.metadata["paragraph_merge_strategy"] in {"heuristic", "xgboost"}
     assert "text_concat_model" in result.metadata
 
@@ -1108,17 +1111,19 @@ def test_pdf_artifact_extractor_groups_tables_and_figures():
 
 
 def test_pdf_artifact_captions_do_not_extend_group_geometry():
-    """题注不得撑大组 pages/bbox：版面模型把整页正文误标成 "figure caption" 时
-    （18 页论文实测 37 框），题注若作为组成员参与联合计算，远页题注会把表组
-    撑成 6 页近全页 bbox，下游剔除即整章删除。"""
+    """题注挂载约束：远页"题注"（实际是被误标的正文）不挂载、不污染组几何。
+
+    版面模型把整页正文误标成 "figure caption" 时（18 页论文实测 37 框），题注
+    若作为组成员参与联合计算，远页题注会把表组撑成 6 页近全页 bbox，下游剔除
+    即整章删除；即便只作元数据挂载，caption 字段也会混入整页正文。挂载判据
+    （同页 + 贴边 + 水平重叠）下跨页题注一律不挂载、保留正文。"""
     _skip_if_vision_runtime_unavailable()
     extractor = PdfArtifactExtractor()
     page_image = Image.new("RGB", (400, 200), color=(255, 255, 255))
     boxes = [
         DeepDocPdfBox(page=1, x0=20, x1=100, top=40, bottom=55, text="Metric | Value", layout_type="table", layoutno="table-0"),
         DeepDocPdfBox(page=1, x0=20, x1=100, top=58, bottom=72, text="Recall | 0.88", layout_type="table", layoutno="table-0"),
-        # 远页"题注"（实际是被误标的正文）：同页无组成员 → 1e9 惩罚后仍是唯一
-        # 组最近 → 挂到 p1 表组，但绝不能把组边界卷到 p5。
+        # 远页"题注"：同页无组成员 → 不挂载（保留正文流）
         DeepDocPdfBox(page=5, x0=10, x1=500, top=100, bottom=700, text="图 1: 误标正文", layout_type="figure caption", layoutno="figure caption-0"),
     ]
 
@@ -1128,9 +1133,80 @@ def test_pdf_artifact_captions_do_not_extend_group_geometry():
     table = artifacts["tables"][0]
     assert table["pages"] == [1]
     assert table["bbox"]["top"] >= 40.0 and table["bbox"]["bottom"] <= 72.0
-    # 题注文本仍挂载（nearest 语义保留），但成员列表不含题注
-    assert "误标正文" in (table["caption"] or "")
+    # 未挂载：caption 为空、caption_boxes 不含远页框（题注留在正文流）
+    assert (table["caption"] or "") == ""
+    assert table["caption_boxes"] == []
     assert "误标正文" not in [str(member.get("text", "")) for member in table["members"]]
+
+
+def test_pdf_artifact_caption_adjacent_on_same_page_attaches():
+    """同页紧贴组边缘的题注正常挂载（贴上方边缘 + 水平重叠），且携带
+    caption_boxes 供正文流 pop；悬空题注（垂直远离）不挂载。"""
+    _skip_if_vision_runtime_unavailable()
+    extractor = PdfArtifactExtractor()
+    page_image = Image.new("RGB", (400, 300), color=(255, 255, 255))
+    boxes = [
+        # 真题注：紧贴表组上方（bottom=35 → 组 top=40，gap=5），水平重叠 50%
+        DeepDocPdfBox(page=1, x0=20, x1=100, top=20, bottom=35, text="表1: 结果", layout_type="table caption", layoutno="table caption-0"),
+        DeepDocPdfBox(page=1, x0=20, x1=100, top=40, bottom=55, text="Metric | Value", layout_type="table", layoutno="table-0"),
+        DeepDocPdfBox(page=1, x0=20, x1=100, top=58, bottom=72, text="Recall | 0.88", layout_type="table", layoutno="table-0"),
+        # 悬空"题注"：同页但垂直远离组（gap > 40pt）→ 不挂载
+        DeepDocPdfBox(page=1, x0=20, x1=100, top=250, bottom=265, text="表2: 远处的假题注", layout_type="table caption", layoutno="table caption-1"),
+    ]
+
+    artifacts = extractor.extract(boxes, page_images={1: page_image}, zoom=1.0)
+
+    assert len(artifacts["tables"]) == 1
+    table = artifacts["tables"][0]
+    assert "表1: 结果" in (table["caption"] or "")
+    assert "远处的假题注" not in (table["caption"] or "")
+    assert len(table["caption_boxes"]) == 1
+    assert table["caption_boxes"][0]["text"] == "表1: 结果"
+
+
+def test_pdf_artifact_equation_number_boxes_not_captions():
+    """纯公式编号框（"(31)"）常被误标成 figure caption——不得挂进组 caption
+    字段（实测表2 caption 变成 "(22)表2:...(31)(32)" 混挂），保留正文流。"""
+    _skip_if_vision_runtime_unavailable()
+    extractor = PdfArtifactExtractor()
+    page_image = Image.new("RGB", (400, 300), color=(255, 255, 255))
+    boxes = [
+        DeepDocPdfBox(page=1, x0=20, x1=100, top=40, bottom=55, text="Metric | Value", layout_type="table", layoutno="table-0"),
+        DeepDocPdfBox(page=1, x0=20, x1=100, top=58, bottom=72, text="Recall | 0.88", layout_type="table", layoutno="table-0"),
+        # 表组上方紧贴的公式编号框：贴边+重叠都满足，但文本是纯编号 → 不当题注
+        DeepDocPdfBox(page=1, x0=20, x1=100, top=20, bottom=35, text="(31)", layout_type="figure caption", layoutno="figure caption-0"),
+    ]
+
+    artifacts = extractor.extract(boxes, page_images={1: page_image}, zoom=1.0)
+
+    table = artifacts["tables"][0]
+    assert (table["caption"] or "") == ""
+    assert table["caption_boxes"] == []
+
+
+def test_drop_attached_caption_boxes_removes_only_attached():
+    """正文流 pop：只剔「已挂载」题注坐标覆盖的框；未挂载题注/正文保留。"""
+    caption = SimpleNamespace(page=1, x0=20.0, x1=100.0, top=20.0, bottom=35.0, text="表1: 结果")
+    table_region = {
+        "artifact_id": "1:table-0",
+        "pages": [1],
+        "page_start": 1,
+        "bbox": {"x0": 20.0, "x1": 100.0, "top": 40.0, "bottom": 72.0},
+        "caption": "表1: 结果",
+        "text": "",
+        "caption_boxes": [
+            {"page": 1, "x0": 20.0, "x1": 100.0, "top": 20.0, "bottom": 35.0, "text": "表1: 结果"},
+        ],
+    }
+    figure_region = {"caption_boxes": []}
+    boxes = [
+        SimpleNamespace(page=1, x0=22.0, x1=98.0, top=22.0, bottom=34.0, text="表1: 结果", col_id=0, position_tag="", layout_type="table caption", layoutno="", positions=None),
+        SimpleNamespace(page=1, x0=22.0, x1=98.0, top=250.0, bottom=265.0, text="表2: 未挂载题注", col_id=0, position_tag="", layout_type="table caption", layoutno="", positions=None),
+        SimpleNamespace(page=1, x0=22.0, x1=98.0, top=100.0, bottom=120.0, text="普通正文", col_id=0, position_tag="", layout_type="text", layoutno="", positions=None),
+    ]
+    kept = RAGFlowPdfParser._drop_attached_caption_boxes(boxes, [table_region], [figure_region])
+    kept_texts = [box.text for box in kept]
+    assert kept_texts == ["表2: 未挂载题注", "普通正文"]
 
 
 def test_pdf_artifact_extractor_stitches_cross_page_crops():
@@ -1571,7 +1647,13 @@ def test_attempt_component_inference_supports_mocked_layout_and_tsr(monkeypatch)
             assert len(images) == 1
             return [[{"type": "table row", "score": 0.9, "bbox": [0, 0, 10, 10]}]]
 
-    monkeypatch.setitem(sys.modules, "novamind.engines.document.integrations.deepdoc.vision.layout_recognizer", SimpleNamespace(LayoutRecognizer=_FakeLayoutRecognizer))
+    monkeypatch.setitem(
+        sys.modules,
+        "novamind.engines.document.integrations.deepdoc.vision.layout_recognizer",
+        # vision_runtime 实际 import 的是 YOLOv10 变体（LayoutRecognizer4YOLOv10），
+        # fake 模块须同时暴露两个名字
+        SimpleNamespace(LayoutRecognizer=_FakeLayoutRecognizer, LayoutRecognizer4YOLOv10=_FakeLayoutRecognizer),
+    )
     monkeypatch.setitem(
         sys.modules,
         "novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer",
@@ -1875,19 +1957,31 @@ def test_vendored_layout_recognizer_can_decode_mock_forward(monkeypatch):
     from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
 
     recognizer = LayoutRecognizer()
+    # ensure_loaded 校验 loaded/ort_sess/input_name；preprocess 用 input_names[0]
     recognizer.loaded = True
-    recognizer.session = object()
+    recognizer.ort_sess = object()
     recognizer.input_name = "images"
+    recognizer.input_names = ["images"]
+    # YOLOv8 输出契约 (1, 4+nc, N)：行 0-3 为 cxcywh，行 4+ 为各类别分数。
+    # 期望反推：scale=(160/640, 80/640)，raw [60,20,120,40] → bbox [0,0,30,5]；
+    # "Title" 是 labels[2] → 分数行 4+2=6 处 0.95。
+    scores = [0.0] * len(LayoutRecognizer.labels)
+    scores[2] = 0.95
+    # 双锚点（第二锚点全 0 分数被 thr 过滤）：单锚点会被 np.squeeze 压成一维
+    _layout_raw = np.array(
+        [[60.0, 20.0, 120.0, 40.0] + scores, [0.0, 0.0, 0.0, 0.0] + [0.0] * len(scores)],
+        dtype=np.float32,
+    )
     monkeypatch.setattr(
         recognizer,
         "_run_model_batch",
-        lambda batch: [np.array([[[0.0, 0.0, 120.0, 40.0, 0.95, 2.0]]], dtype=np.float32)],
+        lambda batch: [_layout_raw.T.reshape(1, 4 + len(scores), 2)],
     )
 
     layouts = recognizer.forward([np.zeros((80, 160, 3), dtype=np.uint8)], thr=0.2, batch_size=1)
 
     assert len(layouts) == 1
-    assert layouts[0][0]["type"] == "Title"
+    assert layouts[0][0]["type"] == "title"
     assert layouts[0][0]["score"] == pytest.approx(0.95, rel=1e-6)
     assert layouts[0][0]["bbox"] == [0.0, 0.0, 30.0, 5.0]
 
@@ -1917,13 +2011,23 @@ def test_vendored_table_structure_recognizer_can_decode_mock_forward(monkeypatch
     from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
 
     recognizer = TableStructureRecognizer()
+    # ensure_loaded 校验 loaded/ort_sess/input_name；preprocess 用 input_names[0]
     recognizer.loaded = True
-    recognizer.session = object()
+    recognizer.ort_sess = object()
     recognizer.input_name = "images"
+    recognizer.input_names = ["images"]
+    # YOLOv8 输出契约 (1, 4+nc, N)；"table row" 是 labels[2] → 分数行 4+2=6 处 0.9。
+    scores = [0.0] * len(TableStructureRecognizer.labels)
+    scores[2] = 0.9
+    # 双锚点（第二锚点全 0 分数被 thr 过滤）：单锚点会被 np.squeeze 压成一维
+    _tsr_raw = np.array(
+        [[60.0, 20.0, 100.0, 20.0] + scores, [0.0, 0.0, 0.0, 0.0] + [0.0] * len(scores)],
+        dtype=np.float32,
+    )
     monkeypatch.setattr(
         recognizer,
         "_run_model_batch",
-        lambda batch: [np.array([[[10.0, 10.0, 110.0, 30.0, 0.9, 2.0]]], dtype=np.float32)],
+        lambda batch: [_tsr_raw.T.reshape(1, 4 + len(scores), 2)],
     )
 
     predictions = recognizer.forward([np.zeros((80, 160, 3), dtype=np.uint8)], thr=0.2, batch_size=1)

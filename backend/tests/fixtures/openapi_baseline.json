@@ -5507,6 +5507,17 @@
               }
             ]
           },
+          "deepdoc_formula_recognition": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deepdoc Formula Recognition"
+          },
           "deepdoc_parser_id": {
             "anyOf": [
               {
@@ -5616,6 +5627,17 @@
                 "type": "null"
               }
             ]
+          },
+          "deepdoc_formula_recognition": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deepdoc Formula Recognition"
           },
           "deepdoc_parser_id": {
             "anyOf": [
