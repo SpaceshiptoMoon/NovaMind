@@ -18,6 +18,7 @@ class NotificationType(str, Enum):
     RESEARCH_DONE = "research_done"
     SKILL_REVIEW = "skill_review"
     PASSWORD_RESET = "password_reset"
+    WIKI_READY = "wiki_ready"
 
 
 class Notification(BaseModel):
@@ -39,7 +40,7 @@ class Notification(BaseModel):
     type = Column(
         String(30),
         nullable=False,
-        comment="通知类型: system/space_invite/document_ready/resume_completed/research_done/skill_review/password_reset",
+        comment="通知类型: system/space_invite/document_ready/resume_completed/research_done/skill_review/password_reset/wiki_ready",
     )
     title = Column(String(200), nullable=False, comment="通知标题")
     content = Column(Text, nullable=False, comment="通知内容")

@@ -425,6 +425,45 @@ class QuestionGenerationError(KnowledgeSpaceError):
         )
 
 
+# ==================== Wiki 相关异常 ====================
+
+class WikiPageNotFoundError(KnowledgeSpaceError):
+    """Wiki 页面不存在"""
+    _serializable_attrs: ClassVar[List[str]] = ["slug"]
+
+    def __init__(self, slug: str):
+        super().__init__(
+            message=f"Wiki 页面 {slug} 不存在",
+            code="WIKI_PAGE_NOT_FOUND",
+        )
+        self.slug = slug
+
+
+class WikiPageVersionConflictError(KnowledgeSpaceError):
+    """Wiki 页面版本冲突（乐观锁）"""
+    _serializable_attrs: ClassVar[List[str]] = ["slug", "expected_version", "current_version"]
+    http_status_code: ClassVar[int] = 409
+
+    def __init__(self, slug: str, expected_version: int, current_version: int):
+        super().__init__(
+            message=f"Wiki 页面 {slug} 已被他人更新（期望版本 {expected_version}，当前版本 {current_version}），请刷新后重试",
+            code="WIKI_PAGE_VERSION_CONFLICT",
+        )
+        self.slug = slug
+        self.expected_version = expected_version
+        self.current_version = current_version
+
+
+class WikiGenerationError(KnowledgeSpaceError):
+    """Wiki 生成错误"""
+
+    def __init__(self, message: str):
+        super().__init__(
+            message=message,
+            code="WIKI_GENERATION_ERROR",
+        )
+
+
 # ==================== 通用异常 ====================
 
 class UserNotFoundError(KnowledgeSpaceError):
@@ -494,6 +533,9 @@ __all__ = [
     "InvalidSearchWeightError",
     "RerankError",
     "QuestionGenerationError",
+    "WikiPageNotFoundError",
+    "WikiPageVersionConflictError",
+    "WikiGenerationError",
     "UserNotFoundError",
     "InvalidParameterError",
     "InvalidDocumentStatusError",

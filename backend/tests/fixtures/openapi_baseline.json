@@ -3492,6 +3492,9 @@
           },
           "splitting": {
             "$ref": "#/components/schemas/SplittingConfig"
+          },
+          "wiki": {
+            "$ref": "#/components/schemas/WikiGenerationConfig"
           }
         },
         "title": "KnowledgeBaseConfig",
@@ -3528,6 +3531,9 @@
           },
           "splitting": {
             "$ref": "#/components/schemas/SplittingConfig"
+          },
+          "wiki": {
+            "$ref": "#/components/schemas/WikiGenerationConfig"
           }
         },
         "title": "KnowledgeBaseConfig",
@@ -11756,6 +11762,548 @@
           }
         },
         "title": "WeightConfig",
+        "type": "object"
+      },
+      "WikiGenerationConfig": {
+        "description": "Wiki 自动生成配置（文档解析完成后 LLM 整理互链 Markdown 页面）。\n\n引用接地/合并/去重等系统规则不开放自定义；content_instructions 只控制\n语气、结构与侧重点，extraction_instructions 只控制抽取侧重。",
+        "properties": {
+          "content_instructions": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Instructions"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "extraction_instructions": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extraction Instructions"
+          },
+          "granularity": {
+            "default": "standard",
+            "description": "抽取粒度：focused=仅主要主题, standard=主题+实质性讨论的实体概念, exhaustive=穷举",
+            "enum": [
+              "focused",
+              "standard",
+              "exhaustive"
+            ],
+            "title": "Granularity",
+            "type": "string"
+          },
+          "llm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuestionLLMConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_pages_per_ingest": {
+            "default": 50,
+            "description": "单文档生成/更新的页面上限",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Max Pages Per Ingest",
+            "type": "integer"
+          }
+        },
+        "title": "WikiGenerationConfig",
+        "type": "object"
+      },
+      "WikiIndexGroup": {
+        "description": "按类型分组的索引条目",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WikiPageListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page_type": {
+            "title": "Page Type",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page_type",
+          "total",
+          "items"
+        ],
+        "title": "WikiIndexGroup",
+        "type": "object"
+      },
+      "WikiIndexResponse": {
+        "description": "Wiki 首页索引（轻量列，40k 页 KB 也不传正文）",
+        "properties": {
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/WikiIndexGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "is_active": {
+            "default": false,
+            "title": "Is Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "groups"
+        ],
+        "title": "WikiIndexResponse",
+        "type": "object"
+      },
+      "WikiIngestStatusResponse": {
+        "description": "生成状态（前端「生成中」轮询）",
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "pages_created": {
+            "default": 0,
+            "title": "Pages Created",
+            "type": "integer"
+          },
+          "pages_updated": {
+            "default": 0,
+            "title": "Pages Updated",
+            "type": "integer"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "step_progress": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Progress"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "WikiIngestStatusResponse",
+        "type": "object"
+      },
+      "WikiPageListItem": {
+        "description": "Wiki 页面列表项（轻量投影，不含正文）",
+        "properties": {
+          "aliases": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "category_path": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Category Path",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "in_links": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "In Links",
+            "type": "array"
+          },
+          "last_edit_source": {
+            "default": "",
+            "title": "Last Edit Source",
+            "type": "string"
+          },
+          "out_links": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Out Links",
+            "type": "array"
+          },
+          "page_type": {
+            "title": "Page Type",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "page_type",
+          "status",
+          "summary",
+          "version",
+          "updated_at"
+        ],
+        "title": "WikiPageListItem",
+        "type": "object"
+      },
+      "WikiPageListResponse": {
+        "properties": {
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/WikiPageListItem"
+            },
+            "title": "Pages",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pages",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "WikiPageListResponse",
+        "type": "object"
+      },
+      "WikiPageResponse": {
+        "description": "Wiki 页面（含正文，详情接口用）",
+        "properties": {
+          "aliases": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "category_path": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Category Path",
+            "type": "array"
+          },
+          "chunk_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Chunk Refs",
+            "type": "array"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "in_links": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "In Links",
+            "type": "array"
+          },
+          "last_edit_source": {
+            "default": "",
+            "title": "Last Edit Source",
+            "type": "string"
+          },
+          "out_links": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Out Links",
+            "type": "array"
+          },
+          "page_type": {
+            "title": "Page Type",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "source_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "title",
+          "page_type",
+          "status",
+          "content",
+          "summary",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WikiPageResponse",
+        "type": "object"
+      },
+      "WikiPageSearchItem": {
+        "properties": {
+          "page_type": {
+            "title": "Page Type",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "title",
+          "page_type",
+          "summary"
+        ],
+        "title": "WikiPageSearchItem",
+        "type": "object"
+      },
+      "WikiPageSourcesResponse": {
+        "description": "页面来源证据（文档级 + chunk 级）",
+        "properties": {
+          "chunk_refs": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Chunk Refs",
+            "type": "array"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "source_documents": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Source Documents",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "title"
+        ],
+        "title": "WikiPageSourcesResponse",
+        "type": "object"
+      },
+      "WikiSearchResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WikiPageSearchItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "query"
+        ],
+        "title": "WikiSearchResponse",
+        "type": "object"
+      },
+      "WikiStatsResponse": {
+        "properties": {
+          "is_active": {
+            "default": false,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "orphan_count": {
+            "title": "Orphan Count",
+            "type": "integer"
+          },
+          "pages_by_type": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "title": "Pages By Type",
+            "type": "object"
+          },
+          "total_links": {
+            "title": "Total Links",
+            "type": "integer"
+          },
+          "total_pages": {
+            "title": "Total Pages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_pages",
+          "total_links",
+          "orphan_count"
+        ],
+        "title": "WikiStatsResponse",
         "type": "object"
       },
       "WorkExperience": {
@@ -20191,6 +20739,567 @@
         "tags": [
           "知识检索",
           "知识检索"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/index": {
+      "get": {
+        "operationId": "get_index_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_index_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "每组返回条数",
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "每组返回条数",
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Per Page",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiIndexResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Wiki 索引（按类型分组）",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/ingest/status": {
+      "get": {
+        "operationId": "get_ingest_status_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_ingest_status_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/WikiIngestStatusResponse"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Ingest Status Api V1 Spaces  Space Id  Knowledge Bases  Kb Id  Wiki Ingest Status Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "最近一次生成状态",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/pages": {
+      "get": {
+        "operationId": "list_pages_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_pages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Page Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "description": "目录标签过滤（命中 category_path 任一项）",
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "目录标签过滤（命中 category_path 任一项）",
+              "title": "Category"
+            }
+          },
+          {
+            "description": "标题/摘要/slug 关键词",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "标题/摘要/slug 关键词",
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiPageListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Wiki 页面列表",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/pages/{slug}": {
+      "get": {
+        "operationId": "get_page_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_pages__slug__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Wiki 页面详情",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/pages/{slug}/sources": {
+      "get": {
+        "operationId": "get_page_sources_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_pages__slug__sources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiPageSourcesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "页面来源证据",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/search": {
+      "get": {
+        "operationId": "search_pages_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_search_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Wiki 页面搜索",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/stats": {
+      "get": {
+        "operationId": "get_stats_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_stats_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiStatsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Wiki 统计",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
         ]
       }
     },

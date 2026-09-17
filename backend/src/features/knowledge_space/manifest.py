@@ -29,6 +29,7 @@ def manifest() -> FeatureManifest:
     from novamind.features.knowledge_space.api.document_routes import router as document_router
     from novamind.features.knowledge_space.api.member_routes import router as member_router
     from novamind.features.knowledge_space.api.search_routes import router as search_router
+    from novamind.features.knowledge_space.api.wiki_routes import router as wiki_router
 
     return FeatureManifest(
         name="knowledge_space",
@@ -57,6 +58,12 @@ def manifest() -> FeatureManifest:
                 search_router,
                 f"{API_V1_PREFIX}/spaces/{{space_id}}/knowledge-bases/{{kb_id}}/search",
                 "知识检索",
+            ),
+            RouterSpec(
+                "space_wiki",
+                wiki_router,
+                f"{API_V1_PREFIX}/spaces/{{space_id}}/knowledge-bases/{{kb_id}}/wiki",
+                "知识库 Wiki",
             ),
         ],
         depends_on=["user"],

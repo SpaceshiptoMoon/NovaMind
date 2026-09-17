@@ -44,6 +44,10 @@ from novamind.features.knowledge_space.exceptions import (
     InvalidSearchWeightError,
     RerankError,
     QuestionGenerationError,
+    # Wiki 相关
+    WikiPageNotFoundError,
+    WikiPageVersionConflictError,
+    WikiGenerationError,
     # 通用
     UserNotFoundError,
     InvalidParameterError,
@@ -103,6 +107,10 @@ def setup_knowledge_space_exception_handlers(app: FastAPI) -> None:
         InvalidSearchWeightError: 400,
         RerankError: 400,
         QuestionGenerationError: 400,
+        # Wiki 相关
+        WikiPageNotFoundError: 404,
+        WikiPageVersionConflictError: 409,
+        WikiGenerationError: 400,
         # 通用
         UserNotFoundError: 404,
         InvalidParameterError: 400,

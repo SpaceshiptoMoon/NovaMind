@@ -88,6 +88,32 @@ async def _notify_document_terminal(
         logger.warning("文档终态通知发送失败", document_id=document_id, error=str(e))
 
 
+async def _trigger_wiki_ingest_if_enabled(*, kb_id: int, space_id: int, document_id: int) -> None:
+    """文档解析成功后触发 wiki 生成（KB.config.wiki.enabled 才入队）。
+
+    独立短会话读 KB 配置；REPROCESS/RETRY 成功同样到达此处，增量合并幂等。
+    """
+    from novamind.core.database.database import get_db_session
+    from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
+    from novamind.features.knowledge_space.repository.knowledge_base_repository import (
+        KnowledgeBaseRepository,
+    )
+
+    async with get_db_session() as session:
+        kb = await KnowledgeBaseRepository(session).get_by_id(kb_id)
+        if not kb or kb.status != KnowledgeBaseStatus.ACTIVE:
+            return
+        wiki_config = (kb.get_config() or {}).get("wiki") or {}
+        if not wiki_config.get("enabled"):
+            return
+
+    from novamind.features.knowledge_space.tasks.wiki_tasks import enqueue_wiki_ingest
+
+    job_id = await enqueue_wiki_ingest(kb_id=kb_id, space_id=space_id, document_id=document_id)
+    if job_id:
+        logger.info("wiki 生成已入队", kb_id=kb_id, document_id=document_id, job_id=job_id)
+
+
 async def process_document_task(
     ctx: dict,
     document_id: int,
@@ -315,6 +341,17 @@ async def process_document_task(
                 kb_id=kb_id,
                 filename=document.filename,
             )
+
+            # 8. Wiki 生成触发（KB 开启 wiki 才入队；失败不影响文档任务终态）
+            try:
+                await _trigger_wiki_ingest_if_enabled(
+                    kb_id=kb_id, space_id=space_id, document_id=document_id,
+                )
+            except Exception as wiki_err:
+                logger.warning(
+                    "wiki 生成入队失败（不影响文档任务）",
+                    document_id=document_id, kb_id=kb_id, error=str(wiki_err),
+                )
 
         except DocumentCancelledError:
             # 用户主动取消
