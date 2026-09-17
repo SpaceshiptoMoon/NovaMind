@@ -117,3 +117,48 @@ class WikiSearchResponse(BaseModel):
     items: List[WikiPageSearchItem]
     total: int
     query: str
+
+
+# ==================== 写请求（P2） ====================
+
+
+class WikiPageCreateRequest(BaseModel):
+    """人工/Agent 创建页面"""
+
+    slug: str = Field(..., min_length=1, max_length=255, description="KB 内唯一 slug，如 entity/acme 或 synthesis/xx")
+    title: str = Field(..., min_length=1, max_length=512)
+    content: str = Field(default="", max_length=500_000)
+    summary: str = Field(default="", max_length=2000)
+    page_type: str = Field(default="concept", description="entity/concept/synthesis/comparison（summary 由管道管理）")
+    aliases: List[str] = Field(default_factory=list, max_length=50)
+    category_path: List[str] = Field(default_factory=list, max_length=10)
+
+
+class WikiPageUpdateRequest(BaseModel):
+    """部分更新：缺席字段保持原值；version>0 时乐观锁校验"""
+
+    title: Optional[str] = Field(default=None, min_length=1, max_length=512)
+    content: Optional[str] = Field(default=None, max_length=500_000)
+    summary: Optional[str] = Field(default=None, max_length=2000)
+    page_type: Optional[str] = Field(default=None)
+    status: Optional[str] = Field(default=None, description="draft/published/archived")
+    aliases: Optional[List[str]] = Field(default=None, max_length=50)
+    category_path: Optional[List[str]] = Field(default=None, max_length=10)
+    version: int = Field(default=0, ge=0, description="乐观锁：>0 时版本不符返回 409")
+
+
+class WikiRevertRequest(BaseModel):
+    slug: str = Field(..., min_length=1, max_length=255)
+    version: int = Field(..., ge=1)
+
+
+class WikiRevertResponse(BaseModel):
+    slug: str
+    reverted_to_version: int
+    new_version: int
+
+
+class WikiRebuildRequest(BaseModel):
+    """存量文档补算：不传 document_ids 则遍历 KB 全部已完成文档"""
+
+    document_ids: Optional[List[int]] = Field(default=None, max_length=500)

@@ -259,6 +259,96 @@ class WikiPageRepository:
         self.session.add(revision)
         await self.session.flush()
 
+    async def update_page_with_lock(
+        self,
+        page: WikiPage,
+        *,
+        title: Optional[str] = None,
+        content: Optional[str] = None,
+        summary: Optional[str] = None,
+        page_type: Optional[str] = None,
+        status: Optional[str] = None,
+        aliases: Optional[List[str]] = None,
+        category_path: Optional[List[str]] = None,
+        edit_source: str = "user",
+        editor_id: Optional[int] = None,
+        expected_version: int = 0,
+    ) -> None:
+        """人工/Agent 编辑：乐观锁 + 写前快照。
+
+        expected_version > 0 时与当前版本不符抛 WikiPageVersionConflictError；
+        内容字段有实际变化才递增 version 并快照。
+        """
+        from novamind.features.knowledge_space.exceptions import WikiPageVersionConflictError
+
+        if expected_version > 0 and page.version != expected_version:
+            raise WikiPageVersionConflictError(page.slug, expected_version, page.version)
+
+        new_values = {
+            "title": title if title is not None else page.title,
+            "content": content if content is not None else page.content,
+            "summary": summary if summary is not None else page.summary,
+            "page_type": page_type if page_type is not None else page.page_type,
+            "status": status if status is not None else page.status,
+        }
+        content_changed = page.content_signature_changed(**new_values)
+
+        if content_changed:
+            async with self.session.begin_nested():
+                await self._snapshot_revision(page)
+            page.version = (page.version or 1) + 1
+
+        page.title = new_values["title"]
+        page.content = new_values["content"]
+        page.summary = new_values["summary"]
+        page.page_type = new_values["page_type"]
+        page.status = new_values["status"]
+        if aliases is not None:
+            page.aliases = aliases
+        if category_path is not None:
+            page.category_path = category_path
+        page.last_edit_source = edit_source
+        page.last_editor_id = editor_id
+        await self.session.flush()
+
+    async def revert_page(
+        self,
+        page: WikiPage,
+        revision: WikiPageRevision,
+        *,
+        editor_id: Optional[int] = None,
+    ) -> int:
+        """回滚到指定快照：以该版本内容创建新版本（version 继续递增）。
+
+        回滚到当前版本内容时（无变化）返回当前版本号且不递增。
+        返回回滚后的版本号。
+        """
+        from novamind.features.knowledge_space.exceptions import WikiPageVersionConflictError
+
+        unchanged = (
+            page.title == revision.title
+            and page.content == revision.content
+            and page.summary == revision.summary
+            and page.page_type == revision.page_type
+            and page.status == revision.status
+        )
+        if unchanged:
+            return page.version
+
+        async with self.session.begin_nested():
+            await self._snapshot_revision(page)
+        page.version = (page.version or 1) + 1
+        page.title = revision.title
+        page.content = revision.content
+        page.summary = revision.summary
+        page.page_type = revision.page_type
+        page.status = revision.status
+        page.aliases = revision.aliases or []
+        page.last_edit_source = "revert"
+        page.last_editor_id = editor_id
+        await self.session.flush()
+        return page.version
+
     async def prune_revisions(self, page_id: str) -> int:
         """两级保留裁剪：软上限只清机器写的快照，硬上限一律裁剪。返回清理数。"""
         # 倒序取快照，按版本从新到旧保留

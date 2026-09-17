@@ -11949,6 +11949,64 @@
         "title": "WikiIngestStatusResponse",
         "type": "object"
       },
+      "WikiPageCreateRequest": {
+        "description": "人工/Agent 创建页面",
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Aliases",
+            "type": "array"
+          },
+          "category_path": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Category Path",
+            "type": "array"
+          },
+          "content": {
+            "default": "",
+            "maxLength": 500000,
+            "title": "Content",
+            "type": "string"
+          },
+          "page_type": {
+            "default": "concept",
+            "description": "entity/concept/synthesis/comparison（summary 由管道管理）",
+            "title": "Page Type",
+            "type": "string"
+          },
+          "slug": {
+            "description": "KB 内唯一 slug，如 entity/acme 或 synthesis/xx",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Slug",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "title"
+        ],
+        "title": "WikiPageCreateRequest",
+        "type": "object"
+      },
       "WikiPageListItem": {
         "description": "Wiki 页面列表项（轻量投影，不含正文）",
         "properties": {
@@ -12242,6 +12300,176 @@
           "title"
         ],
         "title": "WikiPageSourcesResponse",
+        "type": "object"
+      },
+      "WikiPageUpdateRequest": {
+        "description": "部分更新：缺席字段保持原值；version>0 时乐观锁校验",
+        "properties": {
+          "aliases": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 50,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aliases"
+          },
+          "category_path": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 10,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Path"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "maxLength": 500000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "page_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Type"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "draft/published/archived",
+            "title": "Status"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "version": {
+            "default": 0,
+            "description": "乐观锁：>0 时版本不符返回 409",
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "title": "WikiPageUpdateRequest",
+        "type": "object"
+      },
+      "WikiRebuildRequest": {
+        "description": "存量文档补算：不传 document_ids 则遍历 KB 全部已完成文档",
+        "properties": {
+          "document_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "maxItems": 500,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Ids"
+          }
+        },
+        "title": "WikiRebuildRequest",
+        "type": "object"
+      },
+      "WikiRevertRequest": {
+        "properties": {
+          "slug": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Slug",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slug",
+          "version"
+        ],
+        "title": "WikiRevertRequest",
+        "type": "object"
+      },
+      "WikiRevertResponse": {
+        "properties": {
+          "new_version": {
+            "title": "New Version",
+            "type": "integer"
+          },
+          "reverted_to_version": {
+            "title": "Reverted To Version",
+            "type": "integer"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "reverted_to_version",
+          "new_version"
+        ],
+        "title": "WikiRevertResponse",
         "type": "object"
       },
       "WikiSearchResponse": {
@@ -21028,9 +21256,131 @@
           "知识库 Wiki",
           "知识库 Wiki"
         ]
+      },
+      "post": {
+        "operationId": "create_page_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_pages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiPageCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "创建页面",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
       }
     },
     "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/pages/{slug}": {
+      "delete": {
+        "operationId": "delete_page_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_pages__slug__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "软删页面",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      },
       "get": {
         "operationId": "get_page_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_pages__slug__get",
         "parameters": [
@@ -21091,6 +21441,80 @@
           }
         ],
         "summary": "Wiki 页面详情",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      },
+      "put": {
+        "operationId": "update_page_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_pages__slug__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiPageUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "更新页面（乐观锁）",
         "tags": [
           "知识库 Wiki",
           "知识库 Wiki"
@@ -21158,6 +21582,286 @@
           }
         ],
         "summary": "页面来源证据",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/rebuild": {
+      "post": {
+        "description": "对 KB 内已完成解析的文档逐个入队 wiki 生成。\n\ndocument_ids 缺省时遍历 KB 全部文档（有 parsed_text 的才真正入队）。",
+        "operationId": "rebuild_wiki_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_rebuild_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiRebuildRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "存量文档 wiki 补算（逐文档入队）",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/revert": {
+      "post": {
+        "operationId": "revert_page_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_revert_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiRevertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiRevertResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "回滚到指定版本",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/revisions/{slug}": {
+      "get": {
+        "operationId": "list_revisions_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_revisions__slug__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Revisions Api V1 Spaces  Space Id  Knowledge Bases  Kb Id  Wiki Revisions  Slug  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "版本历史列表",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/revisions/{slug}/{version}": {
+      "get": {
+        "operationId": "get_revision_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_revisions__slug___version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Revision Api V1 Spaces  Space Id  Knowledge Bases  Kb Id  Wiki Revisions  Slug   Version  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "版本详情（含正文，供 diff）",
         "tags": [
           "知识库 Wiki",
           "知识库 Wiki"
