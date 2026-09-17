@@ -359,6 +359,27 @@ def test_apply_formula_boxes_removes_fragments_and_synthesizes():
 
 
 @pytest.mark.unit
+def test_apply_formula_boxes_cross_page_region_does_not_remove_boxes():
+    """回归：页坐标是页内局部系，无页码守卫时 p5 的巨型误检 equation 区域
+    会以高覆盖率吞掉 p1 摘要框（实测 0.82 ≥ 0.7），p1 只剩 title/caption。"""
+    parser = RAGFlowPdfParser()
+    abstract = _box(page=1, x0=141, x1=525, top=310, bottom=368, text="摘要：本文研究……", layout_type="text")
+    body_p1 = _box(page=1, x0=69, x1=526, top=571, bottom=767, text="引言正文段落。", layout_type="text")
+    # p5 误检的巨型 equation 区域，坐标与 p1 摘要/正文在局部坐标系下高度重叠
+    region = {
+        **_region(page=5, x0=85, x1=491, top=316, bottom=386),
+        "latex": "X", "inline": False, "text": "$$\nX\n$$",
+    }
+    kept, replaced = parser._apply_formula_boxes([abstract, body_p1], [region])
+    assert replaced == 0
+    texts = {box.text for box in kept}
+    assert "摘要：本文研究……" in texts
+    assert "引言正文段落。" in texts
+    assert region["text"] in texts  # 公式合成 box 仍在
+    assert len(kept) == 3
+
+
+@pytest.mark.unit
 def test_collect_artifact_boxes_excludes_equation_prefix():
     eq_fragment = _box(text="x2", layout_type="figure", layoutno="equation-0")
     eq_synth = _box(text="$$x$$", layout_type="figure", layoutno="equation-synth-0")

@@ -1404,7 +1404,14 @@ class RAGFlowPdfParser:
 
     @staticmethod
     def _box_in_region_ratio(box: DeepDocPdfBox, region: dict[str, Any]) -> float:
-        """box 面积落入公式区域的比例。"""
+        """box 面积落入公式区域的比例（同页局部坐标；跨页恒为 0）。
+
+        页码守卫必需：页坐标是页内局部系，不同页同坐标即重叠。无守卫时
+        误检的巨型 equation 区域会跨页吞掉别页正文（实测：p5 的 405×71
+        误检区域以 0.82 覆盖率吞掉 p1 摘要框，p1 只剩 title/caption）。
+        """
+        if int(box.page) != int(region.get("page", -1)):
+            return 0.0
         overlap_w = min(box.x1, region["x1"]) - max(box.x0, region["x0"])
         overlap_h = min(box.bottom, region["bottom"]) - max(box.top, region["top"])
         if overlap_w <= 0 or overlap_h <= 0:
