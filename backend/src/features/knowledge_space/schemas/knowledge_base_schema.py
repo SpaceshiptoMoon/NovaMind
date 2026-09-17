@@ -434,6 +434,27 @@ class QuestionGenerationConfig(BaseModel):
     prompt_template: Optional[str] = Field(default=None, max_length=4000)
 
 
+# ========== Wiki generation ==========
+
+
+class WikiGenerationConfig(BaseModel):
+    """Wiki 自动生成配置（文档解析完成后 LLM 整理互链 Markdown 页面）。
+
+    引用接地/合并/去重等系统规则不开放自定义；content_instructions 只控制
+    语气、结构与侧重点，extraction_instructions 只控制抽取侧重。
+    """
+
+    enabled: bool = Field(default=False)
+    llm: Optional[QuestionLLMConfig] = Field(default=None)
+    granularity: Literal["focused", "standard", "exhaustive"] = Field(
+        default="standard",
+        description="抽取粒度：focused=仅主要主题, standard=主题+实质性讨论的实体概念, exhaustive=穷举",
+    )
+    max_pages_per_ingest: int = Field(default=50, ge=1, le=500, description="单文档生成/更新的页面上限")
+    content_instructions: Optional[str] = Field(default=None, max_length=2000)
+    extraction_instructions: Optional[str] = Field(default=None, max_length=2000)
+
+
 # ========== Full KB config ==========
 
 
@@ -448,6 +469,7 @@ class KnowledgeBaseConfig(BaseModel):
     splitting: SplittingConfig = Field(default_factory=SplittingConfig)
     parsing: ParsingConfig = Field(default_factory=ParsingConfig)
     question_generation: QuestionGenerationConfig = Field(default_factory=QuestionGenerationConfig)
+    wiki: WikiGenerationConfig = Field(default_factory=WikiGenerationConfig)
 
 
 # ========== Request / response schemas ==========

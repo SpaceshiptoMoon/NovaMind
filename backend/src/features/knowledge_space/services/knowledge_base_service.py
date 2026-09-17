@@ -167,6 +167,19 @@ class KnowledgeBaseService:
                     model=default_llm_name,
                 )
 
+        # wiki 生成同样回填默认 LLM（enabled 由用户显式开启，模型缺失时先占位）
+        wiki_config = kb_config.get("wiki") or {}
+        wiki_llm_config = wiki_config.get("llm") or {}
+        if not wiki_llm_config.get("model") and model_config_service:
+            default_llm_name = await model_config_service.get_user_default_model_name(creator_id, "llm")
+            if default_llm_name:
+                if not kb_config.get("wiki"):
+                    kb_config["wiki"] = {}
+                if not kb_config["wiki"].get("llm"):
+                    kb_config["wiki"]["llm"] = {}
+                kb_config["wiki"]["llm"]["model"] = default_llm_name
+                config_updated = True
+
         if config_updated:
             # SQLAlchemy 的 JSON 列存在「可变对象陷阱」：
             # kb_config 与 kb.config 是同一个 dict 对象（由 get_config() 返回）
