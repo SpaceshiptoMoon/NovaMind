@@ -1952,6 +1952,79 @@ def test_vendored_layout_recognizer_keeps_unmatched_table_regions():
     assert not any(box["layout_type"] == "table" for box in boxes)
 
 
+def test_vendored_layout_recognizer_suppresses_nested_phantom_figure_region():
+    """回归：未访问 figure 区域被同页已访问 table/figure 区域联合覆盖 ≥60% 时
+    不合成占位框。实测 18 页论文 p12：布局模型输出一个罩住「1 表 + 2 图」的
+    整页 figure 区域，无 OCR 框可挂，照上游语义合成空占位框后幻影组抢走
+    表3 题注、把整页 crop 成重复图（同图出现 3 次）。"""
+    _skip_if_vision_runtime_unavailable()
+    from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
+
+    recognizer = LayoutRecognizer()
+    image = np.zeros((600, 600, 3), dtype=np.uint8)
+    # 页内 1 表 + 2 图区域（table 框有 OCR 成员，两个 figure 框各有合成兜底）
+    ocr_res = [[
+        {"text": "Method 0.50", "x0": 100, "x1": 250, "top": 200, "bottom": 220},
+    ]]
+    layouts = [[
+        {"type": "table", "score": 0.95, "bbox": [80, 160, 580, 560]},
+        {"type": "figure", "score": 0.9, "bbox": [80, 440, 280, 560]},
+        {"type": "figure", "score": 0.9, "bbox": [340, 440, 520, 560]},
+        # 幻影：罩住上述全部区域的整页 figure，无 OCR 框匹配 → 未访问
+        {"type": "figure", "score": 0.85, "bbox": [60, 140, 600, 580]},
+    ]]
+
+    boxes, _ = recognizer.apply_layouts([image], ocr_res, layouts, scale_factor=1)
+
+    # 幻影区域被已访问区域联合覆盖 ≥60%，不再合成第四个 figure 占位框；
+    # 两个真 figure 区域仍正常合成
+    assert len([box for box in boxes if box["layout_type"] == "figure"]) == 2
+
+
+def test_vendored_layout_recognizer_keeps_independent_unmatched_figure_region():
+    """对照：未访问 figure 区域与已访问区域无实质重叠时仍正常合成——收口
+    只吞嵌套幻影，不伤上游「空图区域补占位」的本职行为。"""
+    _skip_if_vision_runtime_unavailable()
+    from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
+
+    recognizer = LayoutRecognizer()
+    image = np.zeros((600, 600, 3), dtype=np.uint8)
+    ocr_res = [[
+        {"text": "Body text", "x0": 30, "x1": 200, "top": 30, "bottom": 50},
+    ]]
+    layouts = [[
+        {"type": "text", "score": 0.95, "bbox": [20, 20, 220, 60]},
+        # 页底独立 figure 区域，无 OCR 框、无重叠 → 正常合成占位框
+        {"type": "figure", "score": 0.9, "bbox": [100, 460, 500, 580]},
+    ]]
+
+    boxes, _ = recognizer.apply_layouts([image], ocr_res, layouts, scale_factor=1)
+
+    assert len([box for box in boxes if box["layout_type"] == "figure"]) == 1
+
+
+def test_region_consumed_by_visited_coverage_math():
+    """覆盖判据的纯几何语义：双向覆盖才吞（嵌套单向不吞）、跨页忽略、空区域不吞。"""
+    from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
+
+    f = LayoutRecognizer._region_consumed_by_visited
+    big = {"x0": 69, "x1": 527, "top": 137, "bottom": 523, "page_number": 11}
+    consumed = [
+        {"x0": 73, "x1": 521, "top": 146, "bottom": 517, "page_number": 11},
+        {"x0": 82, "x1": 259, "top": 417, "bottom": 518, "page_number": 11},
+        {"x0": 332, "x1": 509, "top": 417, "bottom": 517, "page_number": 11},
+    ]
+    # p12 真实几何：整页 figure 与表区域互相覆盖 94%，重复检出
+    assert f(big, consumed) is True
+    # 嵌套单向覆盖不吞：真图区域被表 bbox 覆盖 100% 但反向 <10%
+    fig_inside = {"x0": 82, "x1": 259, "top": 417, "bottom": 518, "page_number": 11}
+    assert f(fig_inside, [consumed[0]]) is False
+    # 跨页候选不参与
+    assert f(big, [dict(c, page_number=5) for c in consumed]) is False
+    # 零面积区域不吞
+    assert f({"x0": 0, "x1": 0, "top": 0, "bottom": 0, "page_number": 0}, consumed) is False
+
+
 def test_vendored_layout_recognizer_can_decode_mock_forward(monkeypatch):
     _skip_if_vision_runtime_unavailable()
     from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer

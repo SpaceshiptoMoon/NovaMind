@@ -45,6 +45,40 @@ class LayoutRecognizer(Recognizer):
         if autoload:
             self.load()
 
+    @staticmethod
+    def _region_consumed_by_visited(layout: dict, consumed_regions: list[dict], threshold: float = 0.6) -> bool:
+        """未访问 figure/equation 区域与某已访问区域**互相**覆盖 ≥ threshold 时视为重复检出。
+
+        布局模型偶尔对「表+图混合页」输出一个罩住全部内容的巨型 figure 区域
+        （实测 p12：整页 figure 与表区域双向覆盖 94%）。它是同一内容的重复
+        检出，合成占位框会造出幻影 figure 组——抢走邻近题注、把整页 crop 成
+        重复图。判据必须**双向**：单向覆盖会把表格内部嵌套的真图区域也吞掉
+        （真图被表 bbox 单向覆盖 100%，但表被真图仅覆盖 <10%——内容不同，
+        不是重复检出）。"""
+
+        def overlap_area(a: dict, b: dict) -> float:
+            w = min(a["x1"], b["x1"]) - max(a["x0"], b["x0"])
+            h = min(a["bottom"], b["bottom"]) - max(a["top"], b["top"])
+            return (w * h) if (w > 0 and h > 0) else 0.0
+
+        def area(box: dict) -> float:
+            return max(0.0, box["x1"] - box["x0"]) * max(0.0, box["bottom"] - box["top"])
+
+        region_area = area(layout)
+        if region_area <= 0:
+            return False
+        page = layout.get("page_number")
+        for candidate in consumed_regions:
+            if candidate is layout or candidate.get("page_number") != page:
+                continue
+            inter = overlap_area(layout, candidate)
+            if inter <= 0:
+                continue
+            candidate_area = area(candidate)
+            if inter / region_area >= threshold and inter / max(candidate_area, 1e-6) >= threshold:
+                return True
+        return False
+
     def apply_layouts(self, image_list, ocr_res, layouts, scale_factor=3, drop=True):
         def is_garbage(box):
             patterns = [r"\(cid\s*:\s*\d+\s*\)"]
@@ -117,8 +151,16 @@ class LayoutRecognizer(Recognizer):
             # 上游只给未访问的 figure/equation 区域合成占位框（layout_type="figure"）；
             # table 区域不合成——空 table 框会造出上游不存在的幻影表组，凭空生成
             # table_regions 并把整页正文卷进组 bbox。
+            # figure 合成同样收口：未访问区域若与同页已访问 table/figure/equation
+            # 区域**互相**覆盖 ≥ 阈值，是同一内容的重复检出（实测：整页 figure 区域
+            # 与表区域双向覆盖 94%），合成占位框会造出幻影 figure 组——抢走邻近
+            # 题注、把整页 crop 成一张重复图。双向判据不伤表格内部嵌套的真图区域
+            # （真图被表 bbox 单向覆盖 100% 但反向 <10%，内容不同不算重复）。
+            consumed_regions = [lt for lt in normalized_layouts if lt.get("visited") and lt["type"] in ["table", "figure", "equation"]]
             for index, layout in enumerate([lt for lt in normalized_layouts if lt["type"] in ["figure", "equation"]]):
                 if layout.get("visited"):
+                    continue
+                if self._region_consumed_by_visited(layout, consumed_regions):
                     continue
                 region_box = deepcopy(layout)
                 region_box.pop("type")
