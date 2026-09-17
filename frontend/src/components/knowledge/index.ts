@@ -4,6 +4,7 @@ export { default as KbMultimodalParsingSection } from './KbMultimodalParsingSect
 export { default as KbQuestionGenerationSection } from './KbQuestionGenerationSection.vue'
 export { default as KbSplittingSection } from './KbSplittingSection.vue'
 export { default as KbTextParsingSection } from './KbTextParsingSection.vue'
+export { default as KbWikiSection } from './KbWikiSection.vue'
 export {
   chunkTypeLabels,
   docStatusMap,
@@ -18,6 +19,9 @@ export {
 export type { KbNavItem } from './navigation'
 export { buildKbNavItems } from './navigation'
 export {
+  applyWikiConfig,
+  buildWikiConfigFromForm,
+  wikiGranularityItems,
   applyTextParsingConfig,
   buildTextParsingConfigFromForm,
   getTextStrategyValue,
@@ -27,6 +31,7 @@ export {
 } from './kbConfig'
 export type {
   ImageStrategy,
+  WikiGranularity,
   TextStrategy,
   TextStrategyField,
   VideoStrategy,

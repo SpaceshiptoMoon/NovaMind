@@ -329,7 +329,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Search, Document, DataAnalysis } from '@element-plus/icons-vue'
+import { Search, Document, DataAnalysis, Collection } from '@element-plus/icons-vue'
 import { knowledgeBaseApi, searchApi } from '@/api/knowledge'
 import { KbSidebar, buildKbNavItems } from '@/components/knowledge'
 import type { KnowledgeBase, SearchMode, SearchResultItem, SearchResponse } from '@/api/types'
@@ -356,6 +356,7 @@ const kbNavItems = computed(() =>
       list: DataAnalysis,
       search: Search,
       evaluation: DataAnalysis,
+      wiki: Collection,
     },
   })
 )

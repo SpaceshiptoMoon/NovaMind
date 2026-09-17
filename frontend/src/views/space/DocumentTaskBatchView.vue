@@ -230,7 +230,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { DataAnalysis, Document, List, RefreshRight, Search } from '@element-plus/icons-vue'
+import { Collection, DataAnalysis, Document, List, RefreshRight, Search } from '@element-plus/icons-vue'
 
 import { documentApi } from '@/api/knowledge'
 import type { DocumentTask, TaskNodeLog } from '@/api/types'
@@ -262,6 +262,7 @@ const kbNavItems = computed(() =>
       list: List,
       search: Search,
       evaluation: DataAnalysis,
+      wiki: Collection,
     },
   })
 )

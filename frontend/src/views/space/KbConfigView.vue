@@ -101,6 +101,19 @@
         <KbQuestionGenerationSection :config-form="configForm" :llm-models="llmModels" />
       </section>
 
+      <section v-show="currentStep === 3" class="editor-section">
+        <div class="section-heading">
+          <div>
+            <h3 class="section-title">设置 Wiki 自动生成</h3>
+          </div>
+          <p class="section-desc">
+            文档解析完成后自动整理互链知识页面。
+          </p>
+        </div>
+
+        <KbWikiSection :config-form="configForm" :llm-models="llmModels" />
+      </section>
+
       <div class="config-footer">
         <div class="footer-actions">
           <el-button @click="goList">取消</el-button>
@@ -119,15 +132,18 @@ import PageHeader from '@/components/common/PageHeader.vue'
 import { knowledgeBaseApi } from '@/api/knowledge'
 import {
   applyTextParsingConfig,
+  applyWikiConfig,
   buildTextParsingConfigFromForm,
+  buildWikiConfigFromForm,
   hasModality,
   KbMultimodalParsingSection,
   KbQuestionGenerationSection,
   KbSplittingSection,
   KbTextParsingSection,
+  KbWikiSection,
   normalizeSpaceTypes,
 } from '@/components/knowledge'
-import type { ImageStrategy, TextStrategy, VideoStrategy } from '@/components/knowledge'
+import type { ImageStrategy, TextStrategy, VideoStrategy, WikiGranularity } from '@/components/knowledge'
 import { getVideoStrategyValue } from '@/components/knowledge'
 import { spaceApi } from '@/api/space'
 import { userApi } from '@/api/user'
@@ -152,6 +168,7 @@ const steps = [
   { title: '解析策略', desc: 'parsing' },
   { title: '切分策略', desc: 'splitting' },
   { title: '问题生成', desc: 'question_generation' },
+  { title: 'Wiki 生成', desc: 'wiki' },
 ]
 
 const currentStep = ref(0)
@@ -210,6 +227,13 @@ const configForm = reactive({
   qgLlmMaxTokens: 2048,
   qgMaxQuestions: 5,
   qgPromptTemplate: '',
+
+  wikiEnabled: false,
+  wikiLlmModel: '',
+  wikiGranularity: 'standard' as WikiGranularity,
+  wikiMaxPages: 50,
+  wikiContentInstructions: '',
+  wikiExtractionInstructions: '',
 })
 
 const hasText = computed(() => configForm.kbSpaceTypes.length === 0 || hasModality(configForm.kbSpaceTypes, 'text'))
@@ -334,6 +358,8 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
   configForm.qgLlmMaxTokens = qg?.llm?.max_tokens ?? 2048
   configForm.qgMaxQuestions = qg?.max_questions_per_chunk ?? 5
   configForm.qgPromptTemplate = qg?.prompt_template || ''
+
+  applyWikiConfig(configForm, kbConfig?.wiki)
 }
 
 async function onLoad() {
@@ -455,6 +481,7 @@ function buildPayload(): KnowledgeBaseConfigUpdateRequest {
       max_questions_per_chunk: configForm.qgEnabled ? configForm.qgMaxQuestions : undefined,
       prompt_template: configForm.qgEnabled ? (configForm.qgPromptTemplate || undefined) : undefined,
     },
+    wiki: buildWikiConfigFromForm(configForm),
   }
 }
 

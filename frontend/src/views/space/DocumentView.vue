@@ -239,7 +239,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, DataAnalysis, Delete, Document, FolderOpened, List, RefreshRight, Search, Upload, UploadFilled, VideoPlay, View } from '@element-plus/icons-vue'
+import { Close, Collection, DataAnalysis, Delete, Document, FolderOpened, List, RefreshRight, Search, Upload, UploadFilled, VideoPlay, View } from '@element-plus/icons-vue'
 import type { UploadFile } from 'element-plus'
 
 import { documentApi, knowledgeBaseApi } from '@/api/knowledge'
@@ -265,6 +265,7 @@ const kbNavItems = computed(() =>
       list: List,
       search: Search,
       evaluation: DataAnalysis,
+      wiki: Collection,
     },
   })
 )

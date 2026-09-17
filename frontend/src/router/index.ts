@@ -146,6 +146,12 @@ const router = createRouter({
               meta: { title: '任务列表' },
             },
             {
+              path: ':id/knowledge-bases/:kbId/wiki',
+              name: 'KbWiki',
+              component: () => import('@/views/space/WikiBrowserView.vue'),
+              meta: { title: '知识库 Wiki' },
+            },
+            {
               path: ':id/knowledge-bases/:kbId/evaluation',
               name: 'KbEvaluation',
               component: () => import('@/views/space/KbEvaluationView.vue'),

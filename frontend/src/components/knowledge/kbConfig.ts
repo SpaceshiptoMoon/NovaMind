@@ -1,4 +1,4 @@
-import type { TextParsingConfig } from '@/api/types'
+import type { TextParsingConfig, WikiGenerationConfig } from '@/api/types'
 
 export type TextStrategy = 'default' | 'deepdoc'
 export type ImageStrategy = 'vlm' | 'deepdoc_ocr'
@@ -135,5 +135,61 @@ export function buildTextParsingConfigFromForm(source: {
     html: { strategy: source.htmlStrategy },
     txt: { strategy: source.txtStrategy },
     json: { strategy: source.jsonStrategy },
+  }
+}
+
+// ==================== Wiki 生成配置（表单 ↔ 后端 config 双向转换） ====================
+
+export type WikiGranularity = 'focused' | 'standard' | 'exhaustive'
+
+export const wikiGranularityItems: Array<{ value: WikiGranularity; label: string; desc: string }> = [
+  { value: 'focused', label: '聚焦', desc: '仅提取文档主要主题（3-7 项）' },
+  { value: 'standard', label: '标准', desc: '主要主题 + 实质性讨论的实体与概念（默认）' },
+  { value: 'exhaustive', label: '穷举', desc: '穷举所有命名实体与概念，适合做术语库' },
+]
+
+/** 后端 config.wiki → 表单字段 */
+export function applyWikiConfig(
+  target: {
+    wikiEnabled: boolean
+    wikiLlmModel: string
+    wikiGranularity: WikiGranularity
+    wikiMaxPages: number
+    wikiContentInstructions: string
+    wikiExtractionInstructions: string
+  },
+  wikiConfig?: WikiGenerationConfig
+) {
+  target.wikiEnabled = wikiConfig?.enabled ?? false
+  target.wikiLlmModel = wikiConfig?.llm?.model ?? ''
+  const granularity = wikiConfig?.granularity ?? 'standard'
+  target.wikiGranularity =
+    granularity === 'focused' || granularity === 'exhaustive' ? granularity : 'standard'
+  target.wikiMaxPages = wikiConfig?.max_pages_per_ingest ?? 50
+  target.wikiContentInstructions = wikiConfig?.content_instructions ?? ''
+  target.wikiExtractionInstructions = wikiConfig?.extraction_instructions ?? ''
+}
+
+/** 表单字段 → 后端 config.wiki；关闭时仅保留开关状态 */
+export function buildWikiConfigFromForm(source: {
+  wikiEnabled: boolean
+  wikiLlmModel: string
+  wikiGranularity: WikiGranularity
+  wikiMaxPages: number
+  wikiContentInstructions: string
+  wikiExtractionInstructions: string
+}): WikiGenerationConfig {
+  if (!source.wikiEnabled) {
+    return { enabled: false }
+  }
+  return {
+    enabled: true,
+    llm: source.wikiLlmModel
+      ? { model: source.wikiLlmModel }
+      : undefined,
+    granularity: source.wikiGranularity,
+    max_pages_per_ingest: source.wikiMaxPages,
+    content_instructions: source.wikiContentInstructions || null,
+    extraction_instructions: source.wikiExtractionInstructions || null,
   }
 }

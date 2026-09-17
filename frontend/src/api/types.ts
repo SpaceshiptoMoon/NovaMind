@@ -442,12 +442,22 @@ export interface QuestionGenerationConfig {
   prompt_template?: string
 }
 
+export interface WikiGenerationConfig {
+  enabled?: boolean
+  llm?: QuestionGenerationLLMConfig
+  granularity?: 'focused' | 'standard' | 'exhaustive'
+  max_pages_per_ingest?: number
+  content_instructions?: string | null
+  extraction_instructions?: string | null
+}
+
 export interface KBConfig {
   space_type?: string[] // text/image/video/audio，KB 支持的数据模态
   description?: string
   splitting?: SplittingConfig
   parsing?: ParsingConfig
   question_generation?: QuestionGenerationConfig
+  wiki?: WikiGenerationConfig
 }
 
 export interface KnowledgeBase {
@@ -493,6 +503,7 @@ export interface KnowledgeBaseConfigUpdateRequest {
   splitting?: SplittingConfig
   parsing?: ParsingConfig
   question_generation?: QuestionGenerationConfig
+  wiki?: WikiGenerationConfig
 }
 
 // ===================== 文档相关 =====================
@@ -1815,4 +1826,154 @@ export const MODALITY_MAX_SIZE_MB: Record<string, number> = {
   image: 100,
   video: 500,
   audio: 200,
+}
+
+// ===================== Wiki =====================
+
+/** Wiki 页面（详情，含正文） */
+export interface WikiPage {
+  id: string
+  slug: string
+  title: string
+  page_type: string // summary/entity/concept/synthesis/comparison
+  status: string // draft/published/archived
+  content: string
+  summary: string
+  aliases: string[]
+  category_path: string[]
+  source_refs: string[] // "<document_id>|<filename>" 列表
+  chunk_refs: string[]
+  in_links: string[]
+  out_links: string[]
+  version: number
+  last_edit_source: string // pipeline/user/agent/revert
+  created_at: string
+  updated_at: string
+}
+
+/** Wiki 页面列表项（轻量，无正文） */
+export interface WikiPageListItem {
+  id: string
+  slug: string
+  title: string
+  page_type: string
+  status: string
+  summary: string
+  aliases: string[]
+  category_path: string[]
+  in_links: string[]
+  out_links: string[]
+  version: number
+  last_edit_source: string
+  updated_at: string
+}
+
+export interface WikiPageListResponse {
+  pages: WikiPageListItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface WikiIndexGroup {
+  page_type: string
+  total: number
+  items: WikiPageListItem[]
+}
+
+export interface WikiIndexResponse {
+  groups: WikiIndexGroup[]
+  is_active: boolean
+}
+
+export interface WikiStatsResponse {
+  total_pages: number
+  pages_by_type: Record<string, number>
+  total_links: number
+  orphan_count: number
+  is_active: boolean
+}
+
+export interface WikiIngestStatusResponse {
+  status: string // pending/running/done/failed
+  step_progress: Record<string, { status: string; started_at?: string; finished_at?: string; metrics?: Record<string, unknown>; error?: string }> | null
+  pages_created: number
+  pages_updated: number
+  error_message: string | null
+  started_at: string | null
+  completed_at: string | null
+}
+
+export interface WikiPageSourceDocument {
+  document_id: number
+  filename: string
+  deleted: boolean
+}
+
+export interface WikiPageSourcesResponse {
+  slug: string
+  title: string
+  source_documents: WikiPageSourceDocument[]
+  chunk_refs: string[]
+}
+
+export interface WikiSearchResponse {
+  items: Array<{
+    slug: string
+    title: string
+    page_type: string
+    summary: string
+  }>
+  total: number
+  query: string
+}
+
+export interface WikiRevisionSummary {
+  version: number
+  title: string
+  page_type: string
+  status: string
+  summary: string
+  edit_source: string
+  editor_id: number | null
+  edited_at: string
+}
+
+export interface WikiRevisionListResponse {
+  slug: string
+  current_version: number
+  total: number
+  revisions: WikiRevisionSummary[]
+}
+
+export interface WikiRevisionDetail extends WikiRevisionSummary {
+  content: string
+  aliases: string[]
+}
+
+export interface WikiPageUpdateRequest {
+  title?: string
+  content?: string
+  summary?: string
+  page_type?: string
+  status?: string
+  aliases?: string[]
+  category_path?: string[]
+  version?: number
+}
+
+export interface WikiPageCreateRequest {
+  slug: string
+  title: string
+  content?: string
+  summary?: string
+  page_type?: string
+  aliases?: string[]
+  category_path?: string[]
+}
+
+export interface WikiRevertResponse {
+  slug: string
+  reverted_to_version: number
+  new_version: number
 }

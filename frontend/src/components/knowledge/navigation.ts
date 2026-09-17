@@ -17,6 +17,7 @@ export function buildKbNavItems(options: {
     list: Component
     search: Component
     evaluation: Component
+    wiki: Component
   }
 }): KbNavItem[] {
   const { spaceId, kbId, currentRouteName, icons } = options
@@ -35,6 +36,13 @@ export function buildKbNavItems(options: {
       route: 'DocumentTasks',
       active: currentRouteName === 'DocumentTasks',
       icon: icons.list,
+    },
+    {
+      label: 'Wiki',
+      to: `/home/spaces/${spaceId}/knowledge-bases/${kbId}/wiki`,
+      route: 'KbWiki',
+      active: currentRouteName === 'KbWiki',
+      icon: icons.wiki,
     },
     {
       label: '知识检索',

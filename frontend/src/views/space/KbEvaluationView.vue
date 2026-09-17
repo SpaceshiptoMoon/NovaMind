@@ -519,7 +519,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload, Download, Loading, Document, Search, DataAnalysis } from '@element-plus/icons-vue'
+import { Upload, Download, Loading, Collection, Document, Search, DataAnalysis } from '@element-plus/icons-vue'
 
 import { KbSidebar, buildKbNavItems } from '@/components/knowledge'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -555,6 +555,7 @@ const kbNavItems = computed(() =>
       list: DataAnalysis,
       search: Search,
       evaluation: DataAnalysis,
+      wiki: Collection,
     },
   })
 )
