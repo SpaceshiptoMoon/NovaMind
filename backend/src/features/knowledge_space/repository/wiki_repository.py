@@ -8,7 +8,7 @@ Wiki 页面仓储
 from typing import Optional, List, Dict, Any, Tuple
 
 from sqlalchemy import select, func, or_, String, delete as sa_delete
-from sqlalchemy.orm import load_only
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.middleware.structured_logging import get_logger
@@ -153,6 +153,7 @@ class WikiPageRepository:
         kb_id: int,
         slug: str,
         *,
+        space_id: Optional[int] = None,
         title: str,
         content: str,
         summary: str,
@@ -168,14 +169,15 @@ class WikiPageRepository:
     ) -> Tuple[WikiPage, bool]:
         """先快照旧版本再更新/创建页面，返回 (page, created)。
 
-        幂等性：快照 (page_id, version) 唯一约束冲突时跳过（任务重试场景）。
-        version 仅在用户可见内容字段实际变化时递增。
+        新建页面必须传 space_id。幂等性：快照 (page_id, version) 唯一约束
+        冲突时跳过（任务重试场景）。version 仅在用户可见内容字段实际变化时递增。
         """
         page = await self.get_by_slug(kb_id, slug)
         now_slugs = link_slugs or []
 
         if page is None:
             page = await self.create_page({
+                "space_id": space_id,
                 "kb_id": kb_id,
                 "slug": slug,
                 "title": title,
@@ -290,19 +292,19 @@ class WikiPageRepository:
         self,
         page_id: str,
         *,
-        include_content: bool = False,
+        include_content: bool = True,
     ) -> List[WikiPageRevision]:
-        """按版本倒序列快照（列表模式不含正文省流量）"""
-        query = select(WikiPageRevision).where(WikiPageRevision.page_id == page_id)
-        if not include_content:
-            query = query.options(load_only(
-                WikiPageRevision.id, WikiPageRevision.page_id, WikiPageRevision.kb_id,
-                WikiPageRevision.version, WikiPageRevision.slug, WikiPageRevision.title,
-                WikiPageRevision.page_type, WikiPageRevision.status, WikiPageRevision.summary,
-                WikiPageRevision.aliases, WikiPageRevision.edit_source, WikiPageRevision.editor_id,
-                WikiPageRevision.edited_at, WikiPageRevision.created_at,
-            ))
-        result = await self.session.execute(query.order_by(WikiPageRevision.version.desc()))
+        """按版本倒序列快照。
+
+        快照量受两级保留上限约束（50/200），直接整行返回；async 懒加载
+        不可用，不做列裁剪以免访问未加载列触发 MissingGreenlet。
+        include_content 参数保留语义占位，调用方可据此决定是否向前端透传正文。
+        """
+        result = await self.session.execute(
+            select(WikiPageRevision)
+            .where(WikiPageRevision.page_id == page_id)
+            .order_by(WikiPageRevision.version.desc())
+        )
         return list(result.scalars().all())
 
     async def get_revision(self, page_id: str, version: int) -> Optional[WikiPageRevision]:
