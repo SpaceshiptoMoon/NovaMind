@@ -5,14 +5,10 @@ import os
 from pathlib import Path
 from typing import Any
 
-from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
     default_model_dir,
-    direct_download_files,
-    hf_model_endpoint,
+    download_hf_files,
 )
-
-logger = get_logger(__name__)
 
 TEXT_CONCAT_MODEL_REPO_ID = os.getenv(
     "DEEPDOC_TEXT_CONCAT_MODEL_REPO_ID",
@@ -64,32 +60,12 @@ def ensure_text_concat_model_available(model_dir: str | os.PathLike[str] | None 
 
 def download_text_concat_model(model_dir: str | os.PathLike[str] | None = None) -> Path:
     model_path = text_concat_model_path(model_dir)
-    model_path.parent.mkdir(parents=True, exist_ok=True)
-    endpoint = hf_model_endpoint()  # 默认国内镜像 hf-mirror.com
-    if endpoint != "https://huggingface.co":
-        # 镜像源直连直链下载：huggingface_hub 1.x 的元数据校验（x-repo-commit 头）
-        # 拒绝镜像响应，snapshot_download 走镜像必败，直接省掉必败的一跳。
-        direct_download_files(model_path.parent, TEXT_CONCAT_MODEL_REPO_ID, [TEXT_CONCAT_MODEL_FILENAME])
-        return model_path
-
-    from huggingface_hub import snapshot_download
-
-    try:
-        snapshot_download(
-            repo_id=TEXT_CONCAT_MODEL_REPO_ID,
-            local_dir=str(model_path.parent),
-            local_dir_use_symlinks=False,
-            allow_patterns=[TEXT_CONCAT_MODEL_FILENAME],
-        )
-    except Exception as exc:
-        # 官方源直连偶发不可达（被墙/瞬时网络故障），回退直链下载
-        # （此时仍指向官方源 endpoint）。
-        logger.info(
-            "DeepDoc text-concat 模型 snapshot_download 失败，回退直链下载",
-            error=str(exc),
-            repo_id=TEXT_CONCAT_MODEL_REPO_ID,
-        )
-        direct_download_files(model_path.parent, TEXT_CONCAT_MODEL_REPO_ID, [TEXT_CONCAT_MODEL_FILENAME])
+    # 统一走 model_manager 共享下载实现（镜像直链 / 官方 snapshot+直链兜底，幂等）
+    download_hf_files(
+        model_path.parent,
+        TEXT_CONCAT_MODEL_REPO_ID,
+        [TEXT_CONCAT_MODEL_FILENAME],
+    )
     return model_path
 
 

@@ -202,13 +202,17 @@ def test_direct_download_files_skip_existing_and_atomic_write(tmp_path, monkeypa
 
 @pytest.mark.unit
 def test_download_text_concat_model_mirror_uses_direct_download(tmp_path, monkeypatch):
-    """text-concat 模型镜像源同样必须走直链下载（部署容器内 HF_ENDPOINT 指镜像）。"""
+    """text-concat 模型镜像源同样必须走直链下载（部署容器内 HF_ENDPOINT 指镜像）。
+
+    下载实现已收敛到 model_manager.download_hf_files（单一事实源），
+    故 patch 点在 model_manager。
+    """
     from novamind.engines.document.integrations.deepdoc import text_concat_model
 
     calls = []
     monkeypatch.delenv("HF_ENDPOINT", raising=False)
     monkeypatch.setattr(
-        text_concat_model, "direct_download_files",
+        model_manager, "direct_download_files",
         lambda base_dir, repo_id, files: calls.append((repo_id, list(files))),
     )
     path = text_concat_model.download_text_concat_model(model_dir=tmp_path)

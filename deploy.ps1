@@ -133,6 +133,7 @@ function Invoke-PrepareDeepdocModels {
         Write-Warn "DeepDoc model download failed — parsing will degrade (formula recognition skipped,"
         Write-Warn "deepdoc full mode unavailable). Retry manually after fixing the network:"
         Write-Warn "  HF_ENDPOINT=https://hf-mirror.com docker compose run --rm --no-deps --user 0 -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com app python -m novamind.engines.document.integrations.deepdoc prepare --include-text-concat --include-formula"
+        Write-Warn "After the app is up, verify via: curl -s http://localhost/health/detailed (see deepdoc_models)"
     } else {
         Write-Info "DeepDoc models ready under ./backend/.cache/deepdoc"
     }

@@ -19,7 +19,13 @@ import copy
 import time
 import os
 
-from novamind.engines.document.integrations.deepdoc.vision.model_manager import default_model_dir
+from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
+from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
+    default_model_dir,
+    download_model_group,
+)
+
+logger = get_logger(__name__)
 
 def pip_install_torch(*args, **kwargs):
     try:
@@ -539,14 +545,19 @@ class OCR:
         model_dir = self.model_dir
         try:
             self._build_runtimes(model_dir)
-        except Exception:
-            from huggingface_hub import snapshot_download
-
-            model_dir = snapshot_download(
-                repo_id="InfiniFlow/deepdoc",
-                local_dir=str(default_model_dir()),
+        except Exception as exc:
+            # 运行期兜底下载：统一走 model_manager.download_model_group("ocr")
+            # （镜像直链 + 每文件 3 次重试 + .part 原子替换）。此前这里直接调
+            # huggingface_hub.snapshot_download——镜像 endpoint 下元数据校验必败、
+            # 官方源直连常不可达，且 Linux bind-mount 下容器内无写权限，三级皆废，
+            # 等于没有兜底。下载仍失败则异常向上抛，由调用方软降级。
+            logger.warning(
+                "DeepDoc OCR 模型本地加载失败，尝试运行期下载（download_model_group）",
+                model_dir=str(model_dir),
+                error=str(exc),
             )
-            self.model_dir = str(model_dir)
+            download_model_group("ocr")
+            self.model_dir = str(default_model_dir())
             self._build_runtimes(self.model_dir)
 
         self.loaded = True

@@ -128,36 +128,51 @@ def direct_download_files(base_dir: Path, repo_id: str, files: Iterable[str]) ->
             raise last_exc
 
 
-def download_model_group(group: str | None = None, model_dir: str | os.PathLike[str] | None = None) -> Path:
-    base_dir = Path(model_dir) if model_dir is not None else default_model_dir()
-    allow_patterns = expected_model_files(group)
-    if not allow_patterns:
-        allow_patterns = expected_model_files(None)
+def download_hf_files(
+    base_dir: Path,
+    repo_id: str,
+    files: list[str],
+) -> Path:
+    """单仓库多文件下载的统一入口（三处模型下载的共享实现，单一事实源）。
+
+    策略：
+    - 镜像 endpoint（默认 hf-mirror.com）：直接直链下载——huggingface_hub 1.x
+      的元数据校验（x-repo-commit 头）拒绝镜像响应，snapshot_download 走镜像必败，
+      省掉必败的一跳。
+    - 官方 endpoint：先 snapshot_download（按 etag 断点跳过），失败（被墙/瞬时
+      网络故障）回退直链下载。
+
+    direct_download_files 自带幂等（已存在的完整文件跳过）与每文件 3 次重试。
+    """
     base_dir.mkdir(parents=True, exist_ok=True)
-    endpoint = hf_model_endpoint()  # 默认国内镜像 hf-mirror.com
+    endpoint = hf_model_endpoint()
     if endpoint != "https://huggingface.co":
-        # 镜像源直连直链下载：huggingface_hub 1.x 的元数据校验（x-repo-commit 头）
-        # 拒绝镜像响应，snapshot_download 走镜像必败，直接省掉必败的一跳。
-        direct_download_files(base_dir, MODEL_REPO_ID, allow_patterns)
+        direct_download_files(base_dir, repo_id, files)
         return base_dir
 
     from huggingface_hub import snapshot_download
 
     try:
         snapshot_download(
-            repo_id=MODEL_REPO_ID,
+            repo_id=repo_id,
             local_dir=str(base_dir),
-            allow_patterns=allow_patterns,
+            allow_patterns=files,
             etag_timeout=int(os.getenv("DEEPDOC_HF_ETAG_TIMEOUT", "60")),
             max_workers=int(os.getenv("DEEPDOC_HF_MAX_WORKERS", "4")),
         )
     except Exception as exc:
-        # 官方源直连偶发不可达（被墙/瞬时网络故障），回退直链下载
-        # （此时仍指向官方源 endpoint）。
         logger.info(
-            "DeepDoc vision 模型 snapshot_download 失败，回退直链下载",
+            "DeepDoc 模型 snapshot_download 失败，回退直链下载",
             error=str(exc),
-            repo_id=MODEL_REPO_ID,
+            repo_id=repo_id,
         )
-        direct_download_files(base_dir, MODEL_REPO_ID, allow_patterns)
+        direct_download_files(base_dir, repo_id, files)
     return base_dir
+
+
+def download_model_group(group: str | None = None, model_dir: str | os.PathLike[str] | None = None) -> Path:
+    base_dir = Path(model_dir) if model_dir is not None else default_model_dir()
+    allow_patterns = expected_model_files(group)
+    if not allow_patterns:
+        allow_patterns = expected_model_files(None)
+    return download_hf_files(base_dir, MODEL_REPO_ID, allow_patterns)

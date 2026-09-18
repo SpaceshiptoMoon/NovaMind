@@ -23,7 +23,7 @@ import numpy as np
 from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
     default_model_dir,
-    direct_download_files,
+    download_hf_files,
     hf_model_endpoint,
 )
 
@@ -127,33 +127,8 @@ def formula_model_endpoint() -> str:
 
 def download_formula_model(model_dir: str | os.PathLike[str] | None = None) -> Path:
     base_dir = Path(model_dir) if model_dir is not None else default_formula_model_dir()
-    base_dir.mkdir(parents=True, exist_ok=True)
-    endpoint = formula_model_endpoint()  # 默认国内镜像 hf-mirror.com
-    if endpoint != "https://huggingface.co":
-        # 镜像源直连直链下载：huggingface_hub 1.x 的元数据校验（x-repo-commit 头）
-        # 拒绝镜像响应，snapshot_download 走镜像必败，直接省掉必败的一跳。
-        direct_download_files(base_dir, FORMULA_MODEL_REPO_ID, FORMULA_MODEL_FILES)
-        _quantize_to_int8(base_dir)
-        return base_dir
-
-    from huggingface_hub import snapshot_download
-
-    try:
-        snapshot_download(
-            repo_id=FORMULA_MODEL_REPO_ID,
-            local_dir=str(base_dir),
-            local_dir_use_symlinks=False,
-            allow_patterns=list(FORMULA_MODEL_FILES),
-        )
-    except Exception as exc:
-        # 官方源直连偶发不可达（被墙/瞬时网络故障），回退直链下载
-        # （此时仍指向官方源 endpoint）。
-        logger.info(
-            "DeepDoc 公式模型 snapshot_download 失败，回退直链下载",
-            error=str(exc),
-            repo_id=FORMULA_MODEL_REPO_ID,
-        )
-        direct_download_files(base_dir, FORMULA_MODEL_REPO_ID, FORMULA_MODEL_FILES)
+    # 统一走 model_manager 共享下载实现（镜像直链 / 官方 snapshot+直链兜底，幂等）
+    download_hf_files(base_dir, FORMULA_MODEL_REPO_ID, list(FORMULA_MODEL_FILES))
     _quantize_to_int8(base_dir)
     return base_dir
 

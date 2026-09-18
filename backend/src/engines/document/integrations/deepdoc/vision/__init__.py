@@ -11,6 +11,7 @@ _EXPORT_MAP = {
     "LayoutRecognizer": ("novamind.engines.document.integrations.deepdoc.vision.layout_recognizer", "LayoutRecognizer"),
     "LayoutRecognizer4YOLOv10": ("novamind.engines.document.integrations.deepdoc.vision.layout_recognizer", "LayoutRecognizer4YOLOv10"),
     "default_model_dir": ("novamind.engines.document.integrations.deepdoc.vision.model_manager", "default_model_dir"),
+    "download_hf_files": ("novamind.engines.document.integrations.deepdoc.vision.model_manager", "download_hf_files"),
     "download_model_group": ("novamind.engines.document.integrations.deepdoc.vision.model_manager", "download_model_group"),
     "ensure_model_group_available": ("novamind.engines.document.integrations.deepdoc.vision.model_manager", "ensure_model_group_available"),
     "expected_model_files": ("novamind.engines.document.integrations.deepdoc.vision.model_manager", "expected_model_files"),

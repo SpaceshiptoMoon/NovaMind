@@ -170,6 +170,7 @@ prepare_deepdoc_models() {
     warn "  HF_ENDPOINT=https://hf-mirror.com docker compose run --rm --no-deps --user 0 \\"
     warn "    -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com \\"
     warn "    app python -m novamind.engines.document.integrations.deepdoc prepare --include-text-concat --include-formula"
+    warn "After the app is up, verify via: curl -s http://localhost/health/detailed | grep -A3 deepdoc_models"
   fi
 }
 

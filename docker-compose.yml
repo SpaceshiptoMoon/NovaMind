@@ -30,6 +30,10 @@ services:
       - "80:8080"
     env_file:
       - .env
+    environment:
+      # 运行期模型兜底下载源（部署期下载失败时才触达）；默认镜像 hf-mirror.com，
+      # 海外部署可设 HF_ENDPOINT=https://huggingface.co 切官方源。
+      HF_ENDPOINT: "${HF_ENDPOINT:-https://hf-mirror.com}"
     volumes:
       - ./backend/src/setting/yaml_config/yaml/default.yaml:/app/src/setting/yaml_config/yaml/default.yaml:ro
       - ./docker/configs/docker.yaml:/app/src/setting/yaml_config/yaml/docker.yaml:ro

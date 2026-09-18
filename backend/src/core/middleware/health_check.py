@@ -88,6 +88,42 @@ async def _check_minio_component(config) -> dict:
     return {"bucket_exists": True}
 
 
+def _check_deepdoc_models_component() -> dict:
+    """检查 DeepDoc 本地模型组可用性（非关键：缺失仅降级解析质量，不影响服务）。
+
+    部署期 `prepare` 下载失败时这里会让 /health/detailed 变为 degraded，
+    避免模型缺失只静静躺在解析 WARNING 里无人发现。
+    """
+    from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
+        get_model_status,
+    )
+    from novamind.engines.document.integrations.deepdoc.formula_recognition import (
+        get_formula_model_status,
+    )
+    from novamind.engines.document.integrations.deepdoc.text_concat_model import (
+        get_text_concat_model_status,
+    )
+
+    vision = get_model_status()
+    formula = get_formula_model_status()
+    text_concat = get_text_concat_model_status()
+    groups = {name: info["available"] for name, info in vision["groups"].items()}
+    missing = [
+        f"vision.{name}: {', '.join(info['missing'])}"
+        for name, info in vision["groups"].items()
+        if not info["available"]
+    ]
+    if not formula["available"]:
+        groups["formula"] = False
+        missing.append(f"formula: {', '.join(formula['missing'])}")
+    if not text_concat["available"]:
+        groups["text_concat"] = False
+        missing.append(f"text_concat: {text_concat['filename']}")
+    if missing:
+        raise Exception("模型缺失: " + "; ".join(missing))
+    return {"model_dir": vision["model_dir"], "groups": groups}
+
+
 @router.get("/health")
 async def health_check() -> Dict[str, Any]:
     """
@@ -134,6 +170,8 @@ async def detailed_health_check() -> Dict[str, Any]:
         ("redis", _check_redis_component(), False),
         ("elasticsearch", _check_es_component(), True),
         ("minio", _check_minio_component(config), False),
+        # 非关键：DeepDoc 模型缺失只降级解析质量（公式跳过/full 不可用），服务照常
+        ("deepdoc_models", asyncio.to_thread(_check_deepdoc_models_component), False),
     ]
 
     for name, coro, is_critical in checks:
