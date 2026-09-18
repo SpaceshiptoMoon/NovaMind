@@ -11,6 +11,7 @@ This document describes the current canonical backend knowledge-base structure.
 - `backend/src/features/knowledge_space/`
   - 所有权：API、业务编排、持久化、schemas、权限、任务（tasks/）、适配器（adapters/）
   - 管道入口与三模态共享后置尾都在 `services/document_pipeline.py` / `services/media_processing.py`
+  - Wiki 生成管道在 `services/wiki_ingest_service.py`（解析完成后 LLM 整理互链页面，详见 `wiki-architecture.md`）
   - 通过端口调用 engines/document 的解析、切分、媒体处理与 DeepDoc 实现
 
 ### Engine Layer（纯逻辑实现）
@@ -47,6 +48,10 @@ features/knowledge_space/services/
                    └── _get_es_client_static → bulk_index_chunks
 
 图片管道独立，不走共享后置尾（单 chunk、无 QG、es_chunk 形状不同）。
+
+文档成功终态后（可选）触发 Wiki 生成：`tasks/document_tasks.py` → `tasks/wiki_tasks.py`
+→ `services/wiki_ingest_service.py` 四阶段 Map-Reduce（候选 → 引文标注 → 写页 → 收链）。
+Wiki 页面不入 ES 检索。
 ```
 
 ## Directory Guide

@@ -1,6 +1,6 @@
 # 知识库后端组件架构（知识空间模块）
 
-> 最后更新：2026-09-09
+> 最后更新：2026-09-18
 
 ---
 
@@ -15,19 +15,26 @@ backend/src/features/knowledge_space/
 │   ├── search_routes.py          # 文本搜索
 │   ├── member_routes.py          # 空间成员管理
 │   ├── dependencies.py           # DI 工厂 + 权限校验
-│   ├── exceptions.py             # 28 种异常定义
+│   ├── wiki_routes.py            # Wiki 只读/编辑/版本/回滚/图谱/lint API
+│   ├── exceptions.py             # 37 种异常定义
 │   └── startup.py                # 模块初始化 + 异常注册
 ├── models/                       # ORM 模型
 │   ├── knowledge_space.py        # KnowledgeSpace（主模型）
 │   ├── knowledge_base.py         # KnowledgeBase（子模型）
 │   ├── document.py               # Document（文档）
+│   ├── document_task.py          # DocumentTask（任务项）
+│   ├── document_task_batch.py    # DocumentTaskBatch（批次头）
+│   ├── document_task_item.py     # DocumentTaskItem（批次成员）
 │   ├── space_member.py           # SpaceMember（成员关系）
-│   └── space_audit_log.py        # SpaceAuditLog（审计日志）
+│   ├── space_audit_log.py        # SpaceAuditLog（审计日志）
+│   └── wiki.py                   # WikiPage / WikiPageRevision / WikiPageIssue / WikiIngestRecord
 ├── schemas/                      # Pydantic v2 Schema
 │   ├── space_schema.py           # SpaceConfig / SpaceCreate / SpaceUpdate
 │   ├── knowledge_base_schema.py  # KBCreate / KBUpdate
 │   ├── document_schema.py        # DocumentUpload / DocumentResponse / Chunk
 │   ├── search_schema.py          # SearchRequest
+│   ├── document_task_schema.py   # 任务/批次 schema
+│   ├── wiki_schema.py            # WikiPage / Revision / Issue / Graph 等 schema
 │   └── member_schema.py          # Member / Invite
 ├── services/                     # 业务逻辑
 │   ├── space_service.py          # 空间创建/配置/ES索引管理
@@ -38,8 +45,10 @@ backend/src/features/knowledge_space/
 │   ├── document_task_service.py  # 文档任务/批次编排（入队/取消/状态）
 │   ├── document_query_service.py # 文档 CRUD/下载/级联删除
 │   ├── search_service.py         # 检索服务（9 种模式）
-│   ├── embedding_service.py      # 向量化服务（Redis缓存）
+│   ├── media_processing.py       # 音频/视频/图片多模态处理
 │   ├── question_generation_service.py  # 假设问题生成
+│   ├── pipeline_snapshots.py     # 解析管道指纹快照（断点续跑）
+│   ├── wiki_ingest_service.py    # Wiki 四阶段生成管道（候选→引文→写页→收链）
 │   ├── member_service.py         # 成员管理
 │   ├── permission_service.py     # RBAC 权限
 │   └── audit_service.py          # 审计日志
@@ -48,6 +57,9 @@ backend/src/features/knowledge_space/
     ├── knowledge_base_repository.py  # 知识库
     ├── document_repository.py    # 文档（Redis 缓存）
     ├── member_repository.py      # 成员
+    ├── document_task_repository.py / document_task_batch_repository.py  # 任务与批次
+    ├── wiki_repository.py        # WikiPage / Revision（快照、乐观锁、两级裁剪）
+    ├── wiki_issue_repository.py  # WikiPageIssue
     └── audit_repository.py       # 审计
 ```
 
@@ -269,3 +281,25 @@ _MODEL_TYPE_STR = {
 > 注意：`SUPPORTED_FILE_TYPES` 不含 `xlsx/xls/pptx/ppt/epub`。DeepDoc 引擎虽实现了
 > 这些格式的 parser，但上传白名单尚未放开；如需支持要先扩 `SUPPORTED_FILE_TYPES`
 > 并确认解析策略配置（Excel/PPT/EPUB 仅支持 deepdoc）。
+## 六、Wiki 自动生成（2026-09 落地）
+
+文档解析成功终态后自动触发（`tasks/document_tasks.py` → `tasks/wiki_tasks.py` 入队，
+REPROCESS 复用同一路径），由 `wiki_ingest_service.py` 四阶段 Map-Reduce 生成互相链接、
+带 chunk 引文溯源的 Markdown 页面。**Wiki 页面不入 ES 检索**，是独立浏览层。
+
+- 数据：`models/wiki.py` 四表（WikiPage / WikiPageRevision / WikiPageIssue / WikiIngestRecord）；
+  软删唯一约束 `(kb_id, slug, deleted_flag)`；版本两级保留（软 50 只清 pipeline 来源 / 硬 200 全清）
+- 并发：per-KB Redis 锁 + `TransientBusyError` 延后重入队；LLM 信号量只在
+  `_call_llm_text/_call_llm_json` 单层获取（嵌套获取死锁教训见 `docs/knowledge-space/current/wiki-architecture.md`）
+- API：`api/wiki_routes.py`（注意 `:path` 路由遮蔽——带后缀的路由要注册在贪婪路由之前）
+- Agent 工具：`features/agent/tool/builtins/wiki_tools.py`（search / read / write / flag_issue）
+- 前端：`WikiBrowserView.vue` 三页签 + `WikiGraphPanel.vue` 图谱 + `KbWikiSection.vue` 配置段
+
+详见 `docs/knowledge-space/current/wiki-architecture.md`。
+
+## 相关文档
+
+- Wiki 架构：`docs/knowledge-space/current/wiki-architecture.md`
+- 知识配置结构：`docs/knowledge-space/current/knowledge-config-structure-design.md`
+- 事务边界约定：`docs/transaction-boundary-conventions.md`
+- ES 索引结构：`docs/elasticsearch-index-structure.md`

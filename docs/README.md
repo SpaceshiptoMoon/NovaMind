@@ -30,17 +30,25 @@
 - [`knowledge-space/current/knowledge-architecture-navigation.md`](./knowledge-space/current/knowledge-architecture-navigation.md)：知识相关模块导航
 - [`knowledge-space/current/document-processing-flow.md`](./knowledge-space/current/document-processing-flow.md)：文档处理流程摘要
 - [`knowledge-space/current/knowledge-config-structure-design.md`](./knowledge-space/current/knowledge-config-structure-design.md)：知识配置结构设计
+- [`knowledge-space/current/wiki-architecture.md`](./knowledge-space/current/wiki-architecture.md)：Wiki 自动生成与浏览架构
 
 ### DeepDoc
 
 - [`deepdoc/deepdoc-integration.md`](./deepdoc/deepdoc-integration.md)：DeepDoc 集成说明
 - [`deepdoc/deepdoc-acceptance-checklist.md`](./deepdoc/deepdoc-acceptance-checklist.md)：DeepDoc 验收清单
 
+### 平台级架构
+
+- [`notification-architecture.md`](./notification-architecture.md)：通知系统架构（端口、WS 推送、轮询兜底）
+- [`permission-architecture.md`](./permission-architecture.md)：权限体系架构（认证、三级身份、应用门禁、空间角色）
+- [`transaction-boundary-conventions.md`](./transaction-boundary-conventions.md)：仓储写操作 `begin_nested()` 事务边界约定
+- [`multi-agent-parallel-development-workflow.md`](./multi-agent-parallel-development-workflow.md)：多 Agent 并行开发的 worktree 工作流
+
 ## 过程性文档
 
 以下目录更多用于保留研发背景，不建议作为首次阅读入口：
 
-- `handover/`：阶段性交接记录，入口见 [`handover/README.md`](./handover/README.md)，并已分为 `active/` 与 `historical/`
+- `handover/`：阶段性交接记录（均已归档至 [`handover/historical/`](./handover/historical/)），入口见 [`handover/README.md`](./handover/README.md)
 - `plans/`：重构、清理和执行计划，入口见 [`plans/README.md`](./plans/README.md)，并已分为 `active/` 与 `historical/`
 - `superpowers/`：专项实验与方案草稿
 - `knowledge-space/process/`：知识模块重组和改造过程文档

@@ -53,7 +53,7 @@ schemas/
 | 路径 | 内容 |
 | --- | --- |
 | `backend/src/features/user/` | 认证、用户、模型配置、RBAC、应用门禁 |
-| `backend/src/features/knowledge_space/` | 空间、知识库、文档、成员 |
+| `backend/src/features/knowledge_space/` | 空间、知识库、文档、成员、Wiki 生成与浏览 |
 | `backend/src/features/evaluation/` | 知识库评测（测试集、评估任务、导出） |
 | `backend/src/features/qa/` | 聊天和问答流程 |
 | `backend/src/features/deep_research/` | 深度研究和报告生成 |
@@ -124,8 +124,11 @@ schemas/
 
 - `docs/README.md`：文档总入口
 - `docs/knowledge-space/`：知识空间文档，已区分 `current/` 和 `process/`
+- `docs/knowledge-space/current/wiki-architecture.md`：Wiki 自动生成与浏览架构
 - `docs/deepdoc/`：DeepDoc 集成说明
-- `docs/handover/`：交接记录，现已按历史材料管理
+- `docs/notification-architecture.md`：通知系统架构（NotificationPort / WS 推送 / 轮询兜底）
+- `docs/permission-architecture.md`：权限体系架构（认证 / 三级全局身份 / 应用门禁 / 空间角色）
+- `docs/handover/`：交接记录，均已归档至 `historical/`
 - `docs/plans/`：执行计划和重构方案，已区分 active / historical 阅读方式
 
 如果你是公开仓库读者，优先从 `README.md` 和 `docs/README.md` 开始，而不是直接进入历史计划目录。

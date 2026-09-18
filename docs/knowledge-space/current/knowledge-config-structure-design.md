@@ -301,6 +301,37 @@ Recommended to keep:
 
 Current image splitting overrides were previously removed and should not be reintroduced without a concrete runtime need.
 
+## Wiki Generation Structure
+
+The `wiki` config section (2026-09) controls post-parse wiki page generation
+(see `docs/knowledge-space/current/wiki-architecture.md` for the full pipeline).
+
+```json
+{
+  "wiki": {
+    "enabled": false,
+    "llm": null,
+    "granularity": "focused | standard | exhaustive",
+    "max_pages_per_ingest": 50,
+    "content_instructions": null,
+    "extraction_instructions": null
+  }
+}
+```
+
+Rules:
+
+- `enabled` gates the whole feature; documents ingested while disabled never
+  trigger wiki generation (re-enabling only affects future parses; use
+  `POST .../wiki/rebuild` to backfill existing documents).
+- `llm` reuses `QuestionLLMConfig`; when null the KB-level default LLM applies.
+- `granularity` controls candidate extraction density (focused=main topics
+  only, standard=substantive entities/concepts, exhaustive=exhaustive).
+- `content_instructions` / `extraction_instructions` only steer tone, structure
+  and extraction focus. Citation grounding, merge and dedup rules are NOT
+  user-configurable.
+- Wiki pages live in MySQL only and are NOT indexed into Elasticsearch.
+
 ## What Already Exists in the Project
 
 The following logic already exists and can be reused:
@@ -314,6 +345,7 @@ The following logic already exists and can be reused:
 - video frame extraction config
 - audio ASR config
 - question generation config
+- wiki generation config (`config.wiki`, gated by `enabled`)
 
 Relevant files:
 

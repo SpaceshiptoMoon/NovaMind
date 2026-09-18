@@ -12,13 +12,10 @@
 
 - [`engine-restructure-6x-revert-and-reorganize.md`](./engine-restructure-6x-revert-and-reorganize.md)：引擎抽库方案变更与 6x 批次执行记录（engines/ 目录分层已落地；agent/rag/eval/resume/deep_research 已迁入）
 - [`agent-capability-enhancement-plan.md`](./agent-capability-enhancement-plan.md)：Agent 能力增强（loop detection / 审批 / 观测 / planning flow）
-- [`repository-structure-cleanup-plan.md`](./repository-structure-cleanup-plan.md)：整体清理方向
-- [`repository-structure-cleanup-implementation.md`](./repository-structure-cleanup-implementation.md)：偏实施视角的版本
-- [`repository-structure-cleanup-execution-plan.md`](./repository-structure-cleanup-execution-plan.md)：按批次展开的执行计划
-- [`repository-structure-cleanup-thorough-implementation.md`](./repository-structure-cleanup-thorough-implementation.md)：更彻底的清理版本
-- [`REFACTOR-qa-rag-pipeline.md`](./REFACTOR-qa-rag-pipeline.md)：QA 检索增强问答管道重构
-- [`agent-capability-pluggable-plan.md`](./agent-capability-pluggable-plan.md)：Agent 能力可插拔化（MCP / 搜索 / 工具，创建页可选 + 聊天页开关与供应商选择）
-- [`fix-upload-chunk-media-issues-2026-07.md`](./fix-upload-chunk-media-issues-2026-07.md)：媒体上传与切块问题修复记录（2026-07）
+- [`REFACTOR-qa-rag-pipeline.md`](./REFACTOR-qa-rag-pipeline.md)：QA 检索增强问答管道重构（已实施，作架构记录保留）
+- [`agent-capability-pluggable-plan.md`](./agent-capability-pluggable-plan.md)：Agent 能力可插拔化（MCP / 搜索 / 工具；G2/G3 已被 2026-08 用户决策推翻，仅保留参考价值）
+
+已完成的仓库结构清理四部曲与媒体问题修复记录（2026-07）已移入 [`../historical/`](../historical/)。
 
 ## 使用约定
 

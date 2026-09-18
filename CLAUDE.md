@@ -204,6 +204,6 @@ These are non-negotiable. They override convenience and override anything softer
 - `docs/project-structure-navigation.md`
 - `docs/knowledge-space/current/knowledge-architecture-navigation.md`
 - `docs/knowledge-space/current/knowledge-config-structure-design.md`
-- `docs/plans/active/repository-structure-cleanup-plan.md`
+- `docs/knowledge-space/current/wiki-architecture.md`
 - `docs/multi-agent-parallel-development-workflow.md`
 - `docs/transaction-boundary-conventions.md` — authoritative source for the `begin_nested()` SAVEPOINT rule used by repository write operations

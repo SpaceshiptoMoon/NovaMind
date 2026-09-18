@@ -9,6 +9,36 @@ document pipeline through `parsing.strategy = "deepdoc"`.
 The current upstream comparison baseline was pulled from RAGFlow commit
 `4060cd144003602dd227d8aab2b1dc1b9d740cdc`.
 
+## Vendored PDF Parser Architecture (2026-09)
+
+The PDF path used to be a parallel re-implementation of the upstream
+`pdf_parser.py`, which silently no-op'd critical stages (vertical merging
+etc.) and produced cut-off sentences. It has been replaced by a literal
+vendor + thin adaptation architecture:
+
+- `vendor/ragflow/` — upstream `pdf_parser.py` vendored verbatim (commit
+  `2a83ad6`, two-line provenance header only), loaded through an idempotent
+  stub layer that registers the RAGFlow-internal imports (`common`, `rag.nlp`,
+  `deepdoc.vision`, ...) into `sys.modules`, with `SimpleTokenizer` replacing
+  the infinity-sdk dependency — same approach as upstream's own
+  `docker_stubs.py`.
+- `parsers/pdf.py` — the runtime parser now inherits from the vendored class
+  instead of re-implementing its stages. Fork-specific merge stubs
+  (`_text_merge` / `_concat_downward` / `_naive_vertical_merge` /
+  `_filter_forpages`, ...) were deleted. A cumulative Y-domain bridge
+  (`page_cum_height` + infinite-page image proxy) handles box<->dict
+  round-trips; `__init__` still skips the vendored `super()` so model loading
+  stays lazy. The full vendored chain is also exposed under
+  `parse_into_bboxes_full` for A/B comparison.
+- `pdf_layout.assign_columns` takes a `force` flag: after the bridge, dicts
+  carrying `col_id` override the vendored KMeans skip-guard in favor of the
+  stronger local column assignment.
+- `pdf_artifacts` ports the upstream rotated-table absolute-threshold guard.
+- `compat/upstream.py` records the real layout (`parsers/upstream/`), the
+  vendored entries, and `VENDORED_PDF_PARSER_COMMIT`.
+- Tests: vendored contract tests (attribute coverage / laziness / real
+  inheritance / bridge round-trip) guard against drift.
+
 ## Current Structure
 
 - upstream-aligned package layout
