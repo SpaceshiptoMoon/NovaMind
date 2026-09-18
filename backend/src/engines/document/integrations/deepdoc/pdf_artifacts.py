@@ -1082,6 +1082,12 @@ class PdfArtifactExtractor:
         best_angle, best_image, best_score = max(candidates, key=lambda item: (item[2], -item[0]))
         if best_score <= 0:
             return 0, crop_image, scores
+        # 上游绝对阈值守卫（vendored pdf_parser._evaluate_table_orientation L392-398）：
+        # 0° 得分本就不高（<0.8）且非 0° 方向明显更优（超出 0.2）才旋转，否则
+        # OCR 置信度噪声会把方向正确的表误转 90°。
+        score_0 = scores.get(0, 0.0)
+        if best_angle != 0 and not (best_score - score_0 > 0.2 and score_0 < 0.8):
+            return 0, crop_image, scores
         return best_angle, best_image, scores
 
     def _build_rotated_table_content_boxes(

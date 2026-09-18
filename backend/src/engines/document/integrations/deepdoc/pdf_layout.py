@@ -74,11 +74,11 @@ class PdfLayoutExtractor:
         lines = self.assign_columns(lines)
         return self.final_reading_order(lines)
 
-    def assign_columns(self, boxes: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def assign_columns(self, boxes: Sequence[Dict[str, Any]], *, force: bool = False) -> List[Dict[str, Any]]:
         boxes = [dict(box) for box in boxes]
         if not boxes:
             return boxes
-        if all("col_id" in box for box in boxes):
+        if not force and all("col_id" in box for box in boxes):
             return boxes
 
         try:

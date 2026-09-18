@@ -113,6 +113,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "engines.document.integrations.deepdoc" = ["README.md", "DEPLOYMENT.md"]
 "engines.document.integrations.deepdoc.parsers.upstream.resume.entities" = ["res/*"]
+"engines.document.integrations.deepdoc.vendor.ragflow" = ["*.py"]
 
 [tool.ruff]
 line-length = 100

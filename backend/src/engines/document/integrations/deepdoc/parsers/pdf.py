@@ -10,6 +10,7 @@ from pathlib import Path
 import logging
 import re
 from statistics import median
+from types import SimpleNamespace
 from typing import Any, Dict, List, Sequence, Union
 
 import numpy as np
@@ -28,6 +29,9 @@ from novamind.engines.document.integrations.deepdoc.pdf_artifacts import PdfArti
 from novamind.engines.document.integrations.deepdoc.pdf_layout import PdfLayoutExtractor
 from novamind.engines.document.integrations.deepdoc.parsers.pdf_plain import RAGFlowPlainPdfParser
 from novamind.engines.document.integrations.deepdoc.updown_concat import UpDownConcatMerger
+from novamind.engines.document.integrations.deepdoc.vendor.ragflow.pdf_parser import (
+    RAGFlowPdfParser as _VendoredRAGFlowPdfParser,
+)
 from novamind.engines.document.integrations.deepdoc.vision.recognizer import Recognizer
 from novamind.engines.document.integrations.deepdoc.vision_runtime import get_vision_health_status
 
@@ -82,8 +86,26 @@ class DeepDocPdfBox:
         return f"@@{self.page}\t{self.x0:.1f}\t{self.x1:.1f}\t{self.top:.1f}\t{self.bottom:.1f}##"
 
 
-class RAGFlowPdfParser:
-    """Vendored PDF parser facade modeled after RAGFlowPdfParser."""
+class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
+    """上游 RAGFlow PDF 解析器的适配层。
+
+    基类是 RAGFlow `deepdoc/parser/pdf_parser.py` 的逐字 vendor
+    （`vendor/ragflow/pdf_parser.py`，stub 装载见该包 `__init__`）：
+    `_text_merge` / `_concat_downward` / `_naive_vertical_merge` /
+    `_filter_forpages` / `_merge_with_same_bullet` / `__filterout_scraps` /
+    `crop` / `get_position` 等直接继承上游真实现。
+
+    本适配层保留 fork 特有能力并组装 `_parse_full` 流水线：
+    文字层融合（`_extract_fused_pages`，逐页 zoom + 内存释放）、公式识别
+    （pix2text-mfr）、表格/图 artifact 抽取（PdfArtifactExtractor，
+    替代上游 `_extract_table_figure`）、reading_order/chunk_structure
+    metadata 契约、UpDownConcatMerger（xgb 段落合并真跑）与
+    PageNoiseFilter（上游 `_filter_forpages` 之外的第二道脏页过滤）。
+
+    对外契约（`__call__` 签名、DeepDocParseResult metadata、
+    `__FIGURE_URL__` 占位符）保持与重构前一致；document_pipeline 与
+    knowledge_space 侧零改动。
+    """
 
     # 公式识别（pix2text-mfr）：layout 的 equation 区域 → LaTeX。
     # 这些阈值在 2026-09-15 spike 中用真实论文（62 个公式区域）标定。
@@ -94,6 +116,11 @@ class RAGFlowPdfParser:
     FORMULA_CROP_PADDING = 4.0  # 公式裁剪外扩（PDF 点，防止笔画贴边被切）
 
     def __init__(self):
+        # 有意不调 vendored super().__init__()：它会同步加载 OCR（构造即载
+        # det/rec）与 xgb 模型并可能联网 snapshot_download。适配层保持惰性
+        # 模型加载与「回退必须可见」语义，改为自行落齐 vendored 属性契约
+        # （对照 vendored __init__ L70-104；有对齐测试防漂移）。xgb 真跑
+        # 路径由 UpDownConcatMerger 承担（text_concat_model 懒加载）。
         self._plain_parser = RAGFlowPlainPdfParser()
         self._layout_extractor = PdfLayoutExtractor()
         self._layout_recognizer = None
@@ -101,7 +128,7 @@ class RAGFlowPdfParser:
         self._updown_concat = UpDownConcatMerger()
         self._page_filter = PageNoiseFilter()
         self._artifact_extractor = PdfArtifactExtractor()
-        self.page_images: list[Image.Image] = []
+        self.page_images: list[Any] = []
         self.page_from = 0
         self.page_cum_height: list[float] = [0.0]
         self.page_layout: list[list[dict[str, Any]]] = []
@@ -112,6 +139,23 @@ class RAGFlowPdfParser:
         self.boxes: list[dict[str, Any]] = []
         self.lefted_chars: list[Any] = []
         self.garbages: dict[str, Any] = {}
+        # vendored 属性契约：merges/filter 阶段读取的实例状态
+        self.parallel_limiter = None
+        self.column_num = 1
+        self.is_english = False
+        # 上游 `_extract_table_figure`/`_table_transformer_job`/`_ocr_rotated_tables`
+        # 的表格任务状态（本适配层被 PdfArtifactExtractor 替代，保持为空即可）
+        self.tb_cpns: list[Any] = []
+        self.table_rotations: dict[Any, Any] = {}
+        self.rotated_table_imgs: dict[Any, Any] = {}
+        # vendored 全链（parse_into_bboxes_full / vendored __call__）才用的属性；
+        # 主链 _parse_full 不触达。_ensure_vendored_runtime() 惰性装配前保持 None。
+        self.ocr = None
+        self.layouter = None
+        self.tbl_det = None
+        self.updown_cnt_mdl = None
+        self.page_chars: list[list[dict[str, Any]]] = []
+        self.total_page = 0
 
     def _get_layout_recognizer(self):
         if self._layout_recognizer is None:
@@ -225,32 +269,6 @@ class RAGFlowPdfParser:
             return False
         return suspicious / max(sample_size, 1) >= 0.5
 
-    @staticmethod
-    def proj_match(line: str):
-        if len(line) <= 2:
-            return None
-        if re.match(r"[0-9 ().,%%+/-]+$", line):
-            return False
-        patterns = [
-            (r"第[零一二三四五六七八九十百]+章", 1),
-            (r"第[零一二三四五六七八九十百]+[条节]", 2),
-            (r"[零一二三四五六七八九十百]+[、 　]", 3),
-            (r"[\(（][零一二三四五六七八九十百]+[）\)]", 4),
-            (r"[0-9]+(、|\.[　 ]|\.[^0-9])", 5),
-            (r"[0-9]+\.[0-9]+(、|[. 　]|[^0-9])", 6),
-            (r"[0-9]+\.[0-9]+\.[0-9]+(、|[ 　]|[^0-9])", 7),
-            (r"[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(、|[ 　]|[^0-9])", 8),
-            (r".{,48}[：:?？]$", 9),
-            (r"[0-9]+）", 10),
-            (r"[\(（][0-9]+[）\)]", 11),
-            (r"[零一二三四五六七八九十百]+是", 12),
-            (r"[⚫•➢✓]", 12),
-        ]
-        for pattern, level in patterns:
-            if re.match(pattern, line):
-                return level
-        return None
-
     def __call__(
         self,
         filename: Union[str, bytes, Path],
@@ -349,6 +367,38 @@ class RAGFlowPdfParser:
                     )
         return boxes
 
+    def parse_into_bboxes_full(self, filename, callback=None, zoomin=3, from_page=0, to_page=None):
+        """vendored 全链版 `parse_into_bboxes`（__images__+__ocr→layouts→merges→
+        _extract_table_figure），供对拍/调试；主链走 `_parse_full`（fork 融合+
+        artifact 流水线）。注意它会同步加载 OCR/layout/xgb 模型。
+        vendored 基类期望 ocr/layouter/tbl_det/updown_cnt_mdl 实例属性，此处惰性装配。"""
+        self._ensure_vendored_runtime()
+        if to_page is None:
+            from novamind.engines.document.integrations.deepdoc.compat import MAXIMUM_PAGE_NUMBER as _MPN
+
+            to_page = _MPN
+        return super().parse_into_bboxes(filename, callback=callback, zoomin=zoomin, from_page=from_page, to_page=to_page)
+
+    def _ensure_vendored_runtime(self):
+        """按需补齐 vendored `__init__` 会同步装配、而适配层 `__init__` 有意跳过的
+        模型属性（ocr/layouter/tbl_det/updown_cnt_mdl）。仅在走 vendored 全链
+        （parse_into_bboxes_full / vendored __call__）时调用；主链 `_parse_full`
+        不触达这些属性。"""
+        if getattr(self, "ocr", None) is None:
+            from novamind.engines.document.integrations.deepdoc.vision.ocr import OCR
+
+            self.ocr = OCR(autoload=True)
+        if getattr(self, "layouter", None) is None:
+            self.layouter = self._get_layout_recognizer()
+        if getattr(self, "tbl_det", None) is None:
+            from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
+                TableStructureRecognizer,
+            )
+
+            self.tbl_det = TableStructureRecognizer(autoload=True)
+        if getattr(self, "updown_cnt_mdl", None) is None:
+            self.updown_cnt_mdl = self._updown_concat.load_model()
+
     def crop(self, text: str, ZM: int = 3, need_position: bool = False):
         poss = self.extract_positions(text)
         if not poss:
@@ -436,118 +486,12 @@ class RAGFlowPdfParser:
             poss.append((pn, bx["x0"], bx["x1"], top, min(bott, self.page_images[pn - 1].size[1] / ZM)))
         return poss
 
-    def __height(self, box):
-        if isinstance(box, dict):
-            return float(box.get("bottom", 0.0)) - float(box.get("top", 0.0))
-        return float(getattr(box, "bottom", 0.0)) - float(getattr(box, "top", 0.0))
-
-    def __char_width(self, box):
-        if isinstance(box, dict):
-            return float(box.get("x1", 0.0)) - float(box.get("x0", 0.0))
-        return float(getattr(box, "x1", 0.0)) - float(getattr(box, "x0", 0.0))
-
-    def _x_dis(self, a, b):
-        return max(0.0, float(b["x0"]) - float(a["x1"]))
-
-    def _y_dis(self, a, b):
-        return max(0.0, float(b["top"]) - float(a["bottom"]))
-
-    def _updown_concat_features(self, upper, lower):
-        return {
-            "x_gap": self._x_dis(upper, lower),
-            "y_gap": self._y_dis(upper, lower),
-            "same_page": int(upper["page_number"] == lower["page_number"]),
-        }
-
-    def _match_proj(self, line):
-        return self.proj_match(line)
-
-    def _merge_with_same_bullet(self, boxes):
-        return list(boxes)
-
-    def _naive_vertical_merge(self, boxes):
-        return list(boxes)
-
-    def _concat_downward(self, boxes):
-        return list(boxes)
-
-    def _text_merge(self, boxes, zoomin=3):
-        """对同栏、同版面块的纯文本行做横向拼接。
-
-        先分栏，再按行间距与水平间隙合并相邻文本行。
-        """
+    def _assign_column_boxes(self, boxes: Sequence[DeepDocPdfBox]) -> List[DeepDocPdfBox]:
+        """调用 PdfLayoutExtractor 的 assign_columns 给文本框标 col_id（box 域）。"""
         if not boxes:
-            return boxes
-        boxes = self._assign_column(boxes, zoomin)
-        boxes = Recognizer.sort_Y_firstly(
-            [b.to_dict() for b in boxes],
-            max(b.height for b in boxes) * 0.5,
-        )
-        boxes = [DeepDocPdfBox.from_dict(b) for b in boxes]
-
-        merged: list[DeepDocPdfBox] = []
-        for box in boxes:
-            if box.layout_type not in {"text", ""} or not box.text.strip():
-                merged.append(box)
-                continue
-            if not merged:
-                merged.append(box)
-                continue
-
-            last = merged[-1]
-            same_page = box.page == last.page
-            same_col = box.col_id == last.col_id
-            same_layout = box.layoutno and box.layoutno == last.layoutno
-            vertical_gap = abs(last.bottom - box.bottom)
-            horizontal_gap = box.x0 - last.x1
-            char_h = max(box.height, last.height, 1e-6)
-
-            if (
-                same_page
-                and same_col
-                and same_layout
-                and vertical_gap < char_h * 0.6
-                and horizontal_gap > 0
-                and horizontal_gap < char_h * 2.5
-            ):
-                last.text += box.text
-                last.x1 = max(last.x1, box.x1)
-                last.bottom = max(last.bottom, box.bottom)
-                last.top = min(last.top, box.top)
-                continue
-            merged.append(box)
-        return merged
-
-    def _filter_forpages(self, boxes):
-        return list(boxes)
-
-    def __filterout_scraps(self, boxes, ZM):
-        return list(boxes)
-
-    def _offset_position_tag(self, box, offset):
-        return box
-
-    def _parse_loaded_window_into_bboxes(self, *args, **kwargs):
-        return []
-
-    def _evaluate_table_orientation(self, *args, **kwargs):
-        return 0
-
-    def _ocr_rotated_tables(self, *args, **kwargs):
-        return []
-
-    def __ocr(self, *args, **kwargs):
-        return []
-
-    def _layouts_rec(self, ZM, drop=True):
-        return self.page_layout
-
-    def _assign_column(self, boxes, zoomin=3):
-        """调用 PdfLayoutExtractor 的 assign_columns 给文本框标 col_id。"""
-        if not boxes:
-            return boxes
+            return list(boxes)
         if self._layout_extractor is None:
-            return boxes
+            return list(boxes)
 
         dict_boxes = []
         for box in boxes:
@@ -557,14 +501,60 @@ class RAGFlowPdfParser:
         assigned = self._layout_extractor.assign_columns(dict_boxes)
         return [DeepDocPdfBox.from_dict(b) for b in assigned]
 
-    def _extract_table_figure(self, *args, **kwargs):
-        return [], []
+    def _boxes_to_vendored_domain(self, boxes: Sequence[DeepDocPdfBox]) -> List[Dict[str, Any]]:
+        """fork box → vendored dict 桥：page-local top/bottom 加 page_cum_height 偏移
+        进入累积 Y 域（vendored `_layouts_rec` 之后的合并阶段全部在累积域运行），
+        page(1-based) 写为 page_number，保留 layout_type/layoutno/col_id。"""
+        converted: List[Dict[str, Any]] = []
+        for box in boxes:
+            offset = self.page_cum_height[box.page - 1] if 0 < box.page <= len(self.page_cum_height) - 1 else 0.0
+            d = box.to_dict()
+            d["page_number"] = box.page
+            d["top"] = float(d["top"]) + offset
+            d["bottom"] = float(d["bottom"]) + offset
+            converted.append(d)
+        return converted
 
-    def _table_transformer_job(self, ZM, auto_rotate=True):
-        self.tb_cpns = []
-        self.table_rotations = {}
-        self.rotated_table_imgs = {}
-        return []
+    def _boxes_from_vendored_domain(self, boxes: Sequence[Dict[str, Any]]) -> List[DeepDocPdfBox]:
+        """vendored dict → fork box 桥：减回累积 Y 偏移回到 page-local，并重算
+        position_tag/positions（合并阶段改写了 bbox，tag 里存的旧坐标已失效；
+        上游先例 VEN L1831-1834：`__call__` 尾部同样在合并后重算 position_tag）。"""
+        restored: List[DeepDocPdfBox] = []
+        for d in boxes:
+            page_number = int(d.get("page_number", 1))
+            offset = self.page_cum_height[page_number - 1] if 0 < page_number <= len(self.page_cum_height) - 1 else 0.0
+            local_top = float(d["top"]) - offset
+            local_bottom = float(d["bottom"]) - offset
+            box = DeepDocPdfBox(
+                page=page_number,
+                x0=float(d["x0"]),
+                x1=float(d["x1"]),
+                top=local_top,
+                bottom=local_bottom,
+                text=str(d.get("text", "")),
+                col_id=int(d.get("col_id", 0)),
+                layout_type=str(d.get("layout_type", "")),
+                layoutno=str(d.get("layoutno", "")),
+            )
+            box.position_tag = self._line_tag(
+                {
+                    "page_number": page_number,
+                    "x0": box.x0,
+                    "x1": box.x1,
+                    "top": box.top,
+                    "bottom": box.bottom,
+                }
+            )
+            box.positions = [[float(page_number), box.x0, box.x1, box.top, box.bottom]]
+            restored.append(box)
+        return restored
+
+    def _layouts_rec(self, ZM, drop=True):
+        # fork 保留 override：`_parse_full` 主链在 _extract_fused_pages +
+        # _get_layout_recognizer 内完成版面识别（逐页 zoom、幻影 figure 抑制、
+        # 布局后释放 image_list），boxes 不落 self.boxes、不加累积 Y 偏移。
+        # 本方法仅供 vendored parse_into_bboxes_full 链路调用时兜底。
+        return self.page_layout
 
     def _to_global_boxes(self, boxes):
         global_boxes = []
@@ -712,10 +702,39 @@ class RAGFlowPdfParser:
             all_boxes, replaced_fragments = self._apply_formula_boxes(all_boxes, formula_results)
             formula_meta["replaced_fragment_boxes"] = replaced_fragments
         text_boxes = [box for box in all_boxes if box.text.strip()]
-        # 先做列检测 + 横向合并，再做纵向段落合并。上游 _text_merge 负责把同行文字
-        # 碎片合并，避免双栏论文中一个标题/句子被切成多个 chunk。
-        text_boxes = self._text_merge(text_boxes)
-        merged_boxes, merge_strategy = self._merge_vertical_boxes_with_strategy(text_boxes)
+        # ── vendored 合并段（上游 _parse_loaded_window_into_bboxes L1757-1759 同序）──
+        # box→dict 桥后按 vendored 约定走 self.boxes；合并全程在**累积 Y 域**运行
+        # （上游 _layouts_rec L804-806 给每 box 加 page_cum_height 偏移），vendored
+        # `_concat_downward` 的全局 sort_Y_firstly(boxes, 0) 依赖累积 Y 保证跨页顺序。
+        # 桥入口把 page-local top/bottom 加偏移，桥出口减回 + 重算 position_tag/positions
+        # （上游先例 VEN L1831-1834）。
+        self.page_images = [
+            SimpleNamespace(size=(float("inf"), float("inf"))) for _ in range(page_count)
+        ]
+        self.page_cum_height = [0.0] * (page_count + 1)
+        for page_index in range(1, page_count + 1):
+            self.page_cum_height[page_index] = self.page_cum_height[page_index - 1] + 1e6
+        self.mean_height = [
+            float(fusion_meta.get("mean_height_by_page", {}).get(page, 0.0))
+            for page in range(1, page_count + 1)
+        ]
+        self.mean_width = [
+            float(fusion_meta.get("mean_width_by_page", {}).get(page, 8.0))
+            for page in range(1, page_count + 1)
+        ]
+        self.is_english = bool(fusion_meta.get("is_english", False))
+        # 桥出的 dict 带 col_id=0 占位，vendored _assign_column 的 all("col_id" in b)
+        # 守卫会直接跳过 KMeans；fork 的 PdfLayoutExtractor.assign_columns 列检测
+        # 更强（distinct_x0 防退化、异常降级），force=True 重算后再进 vendored 合并。
+        self.boxes = self._boxes_to_vendored_domain(text_boxes)
+        if self._layout_extractor is not None:
+            self.boxes = self._layout_extractor.assign_columns(self.boxes, force=True)
+        self._text_merge()
+        self._concat_downward()
+        self._naive_vertical_merge()
+        self._filter_forpages()
+        merged_vendored = self._boxes_from_vendored_domain(self.boxes)
+        merged_boxes, merge_strategy = self._merge_vertical_boxes_with_strategy(merged_vendored)
         filtered_boxes, filter_meta = self._filter_boxes_with_meta(merged_boxes or text_boxes, total_pages=page_count)
         chunk_boxes = filtered_boxes or merged_boxes or text_boxes
         artifact_boxes = self._collect_artifact_boxes(all_boxes, chunk_boxes)
@@ -759,6 +778,7 @@ class RAGFlowPdfParser:
             page_count=page_count,
             layout_chars_by_page=self._chars_by_page(all_boxes),
             text_merge_chars_by_page=self._chars_by_page(text_boxes),
+            vendored_merge_chars_by_page=self._chars_by_page(merged_vendored),
             vertical_merge_chars_by_page=self._chars_by_page(merged_boxes),
             filter_chars_by_page=self._chars_by_page(filtered_boxes),
             filter_meta=filter_meta,
@@ -823,6 +843,11 @@ class RAGFlowPdfParser:
         fused_pages: list[list[dict[str, Any]]] = []
         effective_zooms: list[int] = []
         raster_images_by_page: dict[int, list[dict[str, Any]]] = {}
+        # 上游 __ocr_preprocess（VEN L1618-1623）每页填 mean_height/mean_width：
+        # 字符高中位数；无字符页回退 OCR 框高中位数（__ocr L796-797）→ 0。
+        # fork 无 page_chars 常驻，这里在逐页循环里同口径累计。
+        mean_height_by_page: dict[int, float] = {}
+        mean_width_by_page: dict[int, float] = {}
         base_zoom = 2
         doc = fitz.open(stream=filename, filetype="pdf") if isinstance(filename, bytes) else fitz.open(str(filename))
         plumber_pdf = None
@@ -869,6 +894,33 @@ class RAGFlowPdfParser:
                 image_list.append(img if img is not None else np.zeros((1, 1, 3), dtype=np.uint8))
                 fused_pages.append(fused)
                 effective_zooms.append(page_zoom)
+                # 上游 __ocr_preprocess：有字符页用字符高/宽中位数；无字符页（纯
+                # OCR）先记 0，__ocr 兜底用 OCR 框高中位数回填（VEN L796-797）。
+                if page_chars:
+                    mean_height_by_page[page_index + 1] = float(
+                        np.median([float(c.get("height", 0.0)) for c in page_chars]) or 0.0
+                    )
+                    mean_width_by_page[page_index + 1] = float(
+                        np.median(
+                            [
+                                max(
+                                    1.0,
+                                    float(c.get("width", 0.0))
+                                    or float(c.get("x1", 0.0)) - float(c.get("x0", 0.0)),
+                                )
+                                for c in page_chars
+                            ]
+                        )
+                        or 8.0
+                    )
+                elif fused:
+                    mean_height_by_page[page_index + 1] = float(
+                        np.median([float(b["bottom"]) - float(b["top"]) for b in fused]) or 0.0
+                    )
+                    mean_width_by_page[page_index + 1] = 8.0
+                else:
+                    mean_height_by_page[page_index + 1] = 0.0
+                    mean_width_by_page[page_index + 1] = 8.0
         finally:
             if plumber_pdf is not None:
                 plumber_pdf.close()
@@ -885,6 +937,19 @@ class RAGFlowPdfParser:
         )
         layout_meta["effective_zooms"] = effective_zooms
         layout_meta["raster_images_by_page"] = raster_images_by_page
+        layout_meta["mean_height_by_page"] = mean_height_by_page
+        layout_meta["mean_width_by_page"] = mean_width_by_page
+        # is_english 照上游 __images__ L1585-1592：采样字符文本跑 30+ 英文串正则，
+        # 命中页过半即全文英文。fork 无 page_chars 常驻，用 fused_pages 文本采样等价替换。
+        page_text_samples = [
+            "".join(str(b.get("text", "")) for b in page_boxes[:50]) for page_boxes in fused_pages
+        ]
+        english_pages = sum(
+            1
+            for sample in page_text_samples
+            if sample and re.search(r"[ a-zA-Z0-9,;:'\[\]\(\)!@#$%^&*\"?<>._-]{30,}", sample)
+        )
+        layout_meta["is_english"] = page_text_samples and english_pages > len(page_text_samples) / 2
         return image_list, fused_pages, layout_pages, layout_meta
 
     def _extract_page_chars(self, plumber_pages: Sequence[Any], page_index: int) -> list[dict[str, Any]]:
@@ -965,8 +1030,6 @@ class RAGFlowPdfParser:
     ) -> list[dict[str, Any]]:
         """上游 __ocr 逐框融合：OCR.detect 拿框 → pdfplumber chars 按坐标 find_overlapped
         匹配进框 → 逐框裁决（干净用文字层 / 乱码或无字符回退 OCR）→ 空框 recognize_batch。"""
-        from novamind.engines.document.integrations.deepdoc.vision.recognizer import Recognizer
-
         if self._ocr is None:
             from novamind.engines.document.integrations.deepdoc.vision.ocr import OCR
 

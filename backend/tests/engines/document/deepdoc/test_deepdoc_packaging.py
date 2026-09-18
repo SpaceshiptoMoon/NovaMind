@@ -22,3 +22,17 @@ def test_deepdoc_packaging_includes_resume_resources_and_docs():
 
     assert "engines/document/integrations/deepdoc/parsers/upstream/resume/entities/res/schools.csv" in normalized_names
     assert "engines/document/integrations/deepdoc/parsers/upstream/resume/entities/res/good_sch.json" in normalized_names
+
+
+def test_deepdoc_packaging_includes_vendored_ragflow_pdf_parser():
+    dist_dir = BACKEND_ROOT / "dist"
+    wheels = sorted(dist_dir.glob("novamind-*.whl"))
+    if not wheels:
+        return
+
+    wheel_path = max(wheels, key=lambda path: path.stat().st_mtime)
+    with zipfile.ZipFile(wheel_path) as wheel:
+        names = {name.replace("\\", "/") for name in wheel.namelist()}
+
+    assert "engines/document/integrations/deepdoc/vendor/ragflow/pdf_parser.py" in names
+    assert "engines/document/integrations/deepdoc/vendor/ragflow/__init__.py" in names

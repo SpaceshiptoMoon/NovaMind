@@ -110,13 +110,13 @@ def test_build_reading_order_metadata_is_column_aware():
 
 
 def test_assign_column_wires_pdf_layout(monkeypatch):
-    """_assign_column 应把 boxes 交给 PdfLayoutExtractor.assign_columns 并写回 col_id。"""
+    """_assign_column_boxes 应把 boxes 交给 PdfLayoutExtractor.assign_columns 并写回 col_id。"""
     from novamind.engines.document.integrations.deepdoc.pdf_layout import PdfLayoutExtractor
 
     parser = RAGFlowPdfParser.__new__(RAGFlowPdfParser)
     parser._layout_extractor = PdfLayoutExtractor.__new__(PdfLayoutExtractor)
 
-    def fake_assign_columns(boxes):
+    def fake_assign_columns(boxes, **kwargs):
         for box in boxes:
             box["col_id"] = 1 if box["x0"] > 200 else 0
         return boxes
@@ -127,15 +127,20 @@ def test_assign_column_wires_pdf_layout(monkeypatch):
         _box(1, 0, 80.0, 100.0, "left"),
         _box(1, 0, 400.0, 100.0, "right"),
     ]
-    assigned = parser._assign_column(boxes)
+    assigned = parser._assign_column_boxes(boxes)
     assert [b.col_id for b in assigned] == [0, 1]
 
 
 def test_text_merge_horizontal_text_only():
-    """同 col、同 layoutno、相邻 y 的文本碎片应横向合并；表格/图片 box 不参与。"""
+    """同 col、同 layoutno、相邻 y 的文本碎片应横向合并；表格/图片 box 不参与。
+
+    vendored _text_merge 在 self.boxes（dict 域）上运行，此处按桥后域构造实例状态。
+    """
     parser = RAGFlowPdfParser.__new__(RAGFlowPdfParser)
-    parser._layout_extractor = PdfLayoutExtractor.__new__(PdfLayoutExtractor)
-    parser._assign_column = lambda boxes, zoomin=3: boxes
+    parser.mean_height = [10.0]
+    parser.mean_width = [8.0]
+    parser.is_english = False
+    parser.page_cum_height = [0.0, 1e6]
 
     boxes = [
         _box(1, 0, 80.0, 100.0, "Hello ", layoutno="L1"),
@@ -143,8 +148,9 @@ def test_text_merge_horizontal_text_only():
         _box(1, 0, 80.0, 200.0, "Second line", layoutno="L2"),
         _box(1, 0, 80.0, 300.0, "table-cell", layout_type="table"),
     ]
-    merged = parser._text_merge(boxes)
-    texts = [b.text for b in merged]
+    parser.boxes = parser._boxes_to_vendored_domain(boxes)
+    parser._text_merge()
+    texts = [b.text for b in parser._boxes_from_vendored_domain(parser.boxes)]
     assert "Hello world" in texts
     assert "Second line" in texts
     assert "table-cell" in texts
