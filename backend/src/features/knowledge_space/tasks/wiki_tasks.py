@@ -120,7 +120,7 @@ async def process_wiki_ingest_task(
             full_text = await _load_parsed_text(document)
 
             from novamind.shared.storage.client_factory import ClientFactory
-            es_client = await ClientFactory.get_es_client()
+            es_client = await ClientFactory.get_elasticsearch_client()
             chunks_result = await es_client.get_document_chunks(space_id, document_id, skip=0, limit=1000)
             chunks = chunks_result.get("items") or []
 

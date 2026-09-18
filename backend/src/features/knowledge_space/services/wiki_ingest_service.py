@@ -205,6 +205,9 @@ class WikiIngestService:
             self.kb_id, [c.slug for c in cited]
         )
 
+        # 并发控制收敛到 _call_llm_text/_call_llm_json 内部单层获取信号量；
+        # 这里不得再在外层嵌套获取同一 Semaphore（嵌套获取会死锁：外层持锁者
+        # 等内层许可，许可被只持一半的协程占死，端到端实测已复现）。
         generated = await asyncio.gather(*[
             self._generate_page_content(
                 c, chunk_id_map, valid_link_slugs, custom_content,
@@ -413,43 +416,44 @@ class WikiIngestService:
 
         返回 (summary, content, out_links)；失败或无素材返回 None。
         DB 写入由调用方在 gather 之后串行执行。
+        注意：本函数不得再获取 self._semaphore——并发控制由 _call_llm_text
+        统一负责（外层+内层嵌套获取同一 Semaphore 会死锁）。
         """
-        async with self._semaphore:
-            # 取引用 chunk 的 verbatim 文本（无映射的引用 id 剔除）
-            cited_texts: List[str] = []
-            for cid in item.cited_chunk_ids:
-                chunk = chunk_id_map.get(cid)
-                if chunk and str(chunk.get("content") or "").strip():
-                    cited_texts.append(f"<chunk id=\"{cid}\">\n{str(chunk.get('content'))[:3000]}\n</chunk>")
-            if not cited_texts and not existing:
-                # 既无引用文本又无已有内容 → 没有写作素材，跳过（强制接地）
-                return None
+        # 取引用 chunk 的 verbatim 文本（无映射的引用 id 剔除）
+        cited_texts: List[str] = []
+        for cid in item.cited_chunk_ids:
+            chunk = chunk_id_map.get(cid)
+            if chunk and str(chunk.get("content") or "").strip():
+                cited_texts.append(f"<chunk id=\"{cid}\">\n{str(chunk.get('content'))[:3000]}\n</chunk>")
+        if not cited_texts and not existing:
+            # 既无引用文本又无已有内容 → 没有写作素材，跳过（强制接地）
+            return None
 
-            shared_ctx = f"<document_sources>\n  <doc id=\"{self.document_id}\">本次处理文档</doc>\n</document_sources>\n"
-            prompt = PromptManager.format_prompt(
-                "wiki_page_modify_user",
-                shared_source_contexts=shared_ctx,
-                page_slug=item.slug,
-                page_title=item.name,
-                page_type=item.type,
-                existing_content=(existing.content if existing else ""),
-                new_content="\n\n".join(cited_texts) if cited_texts else "（本次无新增引用，仅基于现有内容整理）",
-                valid_links="\n".join(f"- {s}" for s in valid_link_slugs if s != item.slug),
-                custom_instructions=custom_content or "（无自定义要求）",
-                language=self.language,
-            )
+        shared_ctx = f"<document_sources>\n  <doc id=\"{self.document_id}\">本次处理文档</doc>\n</document_sources>\n"
+        prompt = PromptManager.format_prompt(
+            "wiki_page_modify_user",
+            shared_source_contexts=shared_ctx,
+            page_slug=item.slug,
+            page_title=item.name,
+            page_type=item.type,
+            existing_content=(existing.content if existing else ""),
+            new_content="\n\n".join(cited_texts) if cited_texts else "（本次无新增引用，仅基于现有内容整理）",
+            valid_links="\n".join(f"- {s}" for s in valid_link_slugs if s != item.slug),
+            custom_instructions=custom_content or "（无自定义要求）",
+            language=self.language,
+        )
 
-            raw = await self._call_llm_text(PromptManager.get_template("wiki_page_modify_system"), prompt)
-            if not raw:
-                return None
+        raw = await self._call_llm_text(PromptManager.get_template("wiki_page_modify_system"), prompt)
+        if not raw:
+            return None
 
-            summary, content = self._split_summary_line(raw)
-            if not content.strip():
-                return None
+        summary, content = self._split_summary_line(raw)
+        if not content.strip():
+            return None
 
-            # 只保留指向有效 slug 且非自指的 [[slug|title]] 链接
-            out_links = self._extract_wiki_links(content, item.slug, set(valid_link_slugs))
-            return summary, content, out_links
+        # 只保留指向有效 slug 且非自指的 [[slug|title]] 链接
+        out_links = self._extract_wiki_links(content, item.slug, set(valid_link_slugs))
+        return summary, content, out_links
 
     async def _finalize(self) -> None:
         """链接双向对齐 + 死链清理 + 快照裁剪（纯代码，无 LLM）"""

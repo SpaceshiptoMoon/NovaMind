@@ -290,6 +290,71 @@ async def test_reduce_failure_does_not_block_others(wiki_db):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_reduce_no_semaphore_deadlock_under_many_candidates(wiki_db):
+    """回归：Reduce 并发控制收敛到 _call_llm_text 单层信号量。
+
+    历史缺陷：_generate_page_content 外层持有 self._semaphore，内部
+    _call_llm_text 再次获取同一 Semaphore。并发数 N、候选数 > N 时，
+    许可被「外层已获取、内层在等待」的协程占死 → gather 永久挂起
+    （端到端实测：4 并发 14 候选，2 个 LLM 调用完成后全场停滞）。
+    本测试用超过 LLM_CONCURRENCY 的候选数跑完整管道，超时即判死锁。
+    """
+    import asyncio as _asyncio
+
+    n_candidates = 15  # > LLM_CONCURRENCY(4)，旧代码必然死锁
+
+    entities = []
+    cite_map = {}
+    for i in range(n_candidates):
+        slug = f"entity/e{i}"
+        entities.append({"name": f"实体{i}", "slug": slug, "aliases": [],
+                         "description": "d", "details": "x"})
+        cite_map[slug] = ["100_0"]
+    cand_json = json.dumps({"entities": entities, "concepts": []}, ensure_ascii=False)
+    cite_json = json.dumps({"citations": cite_map, "new_slugs": []}, ensure_ascii=False)
+
+    class SlowLLM:
+        """真实异步延迟，逼出信号量交错；记录同时在途的调用数"""
+
+        def __init__(self):
+            self.in_flight = 0
+            self.peak = 0
+
+        async def generate_text(self, *, prompt, **kwargs):
+            self.in_flight += 1
+            self.peak = max(self.peak, self.in_flight)
+            await _asyncio.sleep(0.05)
+            self.in_flight -= 1
+            return _page_md("页")
+
+    llm = SlowLLM()
+    llm.responses = None  # 兼容 MockLLM 字段约定（未使用）
+
+    class CandLLM:
+        """前两次调用（extract/cite）返回 JSON，其余返回页面正文"""
+
+        def __init__(self):
+            self.calls = 0
+            self.inner = SlowLLM()
+
+        async def generate_text(self, *, prompt, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return cand_json
+            if self.calls == 2:
+                return cite_json
+            return await self.inner.generate_text(prompt=prompt, **kwargs)
+
+    svc = _make_service(wiki_db, CandLLM())
+    outcome = await _asyncio.wait_for(
+        svc.ingest_document(full_text="正文", chunks=_CHUNKS),
+        timeout=10,
+    )
+    assert outcome.pages_created == n_candidates
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_prune_revisions_two_tier(wiki_db):
     """快照两级保留：软上限只清 pipeline 来源，user 来源保留到硬上限"""
     repo = WikiPageRepository(wiki_db)

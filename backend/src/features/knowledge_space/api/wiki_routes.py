@@ -123,6 +123,42 @@ async def list_pages(
     )
 
 
+@router.get("/pages/{slug:path}/sources", response_model=WikiPageSourcesResponse, summary="页面来源证据")
+async def get_page_sources(
+    space_id: Annotated[int, Path(gt=0)],
+    kb_id: Annotated[int, Path(gt=0)],
+    slug: str,
+    _user_id: int = Depends(get_current_user_id),
+    _access: tuple = Depends(validate_space_access),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_kb_or_404(kb_id, space_id, db)
+    repo = WikiPageRepository(db)
+    page = await repo.get_by_slug(kb_id, slug)
+    if not page:
+        raise WikiPageNotFoundError(slug)
+
+    # 展开文档级来源为 {document_id, filename}
+    doc_repo = DocumentRepository(db)
+    source_documents = []
+    for ref in page.source_refs or []:
+        doc_id_str = str(ref).split("|", 1)[0].strip()
+        if not doc_id_str.isdigit():
+            continue
+        document = await doc_repo.get_by_id(int(doc_id_str))
+        source_documents.append({
+            "document_id": int(doc_id_str),
+            "filename": document.filename if document else (str(ref).split("|", 1)[1] if "|" in str(ref) else ""),
+            "deleted": document is None,
+        })
+
+    return WikiPageSourcesResponse(
+        slug=page.slug, title=page.title,
+        source_documents=source_documents,
+        chunk_refs=page.chunk_refs or [],
+    )
+
+
 @router.get("/pages/{slug:path}", response_model=WikiPageResponse, summary="Wiki 页面详情")
 async def get_page(
     space_id: Annotated[int, Path(gt=0)],
@@ -224,42 +260,6 @@ async def get_ingest_status(
         error_message=record.error_message,
         started_at=record.started_at,
         completed_at=record.completed_at,
-    )
-
-
-@router.get("/pages/{slug:path}/sources", response_model=WikiPageSourcesResponse, summary="页面来源证据")
-async def get_page_sources(
-    space_id: Annotated[int, Path(gt=0)],
-    kb_id: Annotated[int, Path(gt=0)],
-    slug: str,
-    _user_id: int = Depends(get_current_user_id),
-    _access: tuple = Depends(validate_space_access),
-    db: AsyncSession = Depends(get_db),
-):
-    await _get_kb_or_404(kb_id, space_id, db)
-    repo = WikiPageRepository(db)
-    page = await repo.get_by_slug(kb_id, slug)
-    if not page:
-        raise WikiPageNotFoundError(slug)
-
-    # 展开文档级来源为 {document_id, filename}
-    doc_repo = DocumentRepository(db)
-    source_documents = []
-    for ref in page.source_refs or []:
-        doc_id_str = str(ref).split("|", 1)[0].strip()
-        if not doc_id_str.isdigit():
-            continue
-        document = await doc_repo.get_by_id(int(doc_id_str))
-        source_documents.append({
-            "document_id": int(doc_id_str),
-            "filename": document.filename if document else (str(ref).split("|", 1)[1] if "|" in str(ref) else ""),
-            "deleted": document is None,
-        })
-
-    return WikiPageSourcesResponse(
-        slug=page.slug, title=page.title,
-        source_documents=source_documents,
-        chunk_refs=page.chunk_refs or [],
     )
 
 
@@ -401,6 +401,38 @@ async def _finalize_links(repo: WikiPageRepository, kb_id: int) -> None:
             page.in_links = aligned
 
 
+@router.get("/revisions/{slug:path}/{version:int}", response_model=dict, summary="版本详情（含正文，供 diff）")
+async def get_revision(
+    space_id: Annotated[int, Path(gt=0)],
+    kb_id: Annotated[int, Path(gt=0)],
+    slug: str,
+    version: int,
+    _user_id: int = Depends(get_current_user_id),
+    _access: tuple = Depends(validate_space_access),
+    db: AsyncSession = Depends(get_db),
+):
+    repo = WikiPageRepository(db)
+    page = await repo.get_by_slug(kb_id, slug)
+    if not page:
+        raise WikiPageNotFoundError(slug)
+    revision = await repo.get_revision(page.id, version)
+    if not revision:
+        raise WikiPageNotFoundError(f"{slug}@v{version}")
+    return {
+        "version": revision.version,
+        "slug": revision.slug,
+        "title": revision.title,
+        "page_type": revision.page_type,
+        "status": revision.status,
+        "summary": revision.summary,
+        "content": revision.content,
+        "aliases": revision.aliases or [],
+        "edit_source": revision.edit_source or "pipeline",
+        "editor_id": revision.editor_id,
+        "edited_at": revision.edited_at,
+    }
+
+
 @router.get("/revisions/{slug:path}", response_model=dict, summary="版本历史列表")
 async def list_revisions(
     space_id: Annotated[int, Path(gt=0)],
@@ -432,38 +464,6 @@ async def list_revisions(
             }
             for r in revisions
         ],
-    }
-
-
-@router.get("/revisions/{slug:path}/{version}", response_model=dict, summary="版本详情（含正文，供 diff）")
-async def get_revision(
-    space_id: Annotated[int, Path(gt=0)],
-    kb_id: Annotated[int, Path(gt=0)],
-    slug: str,
-    version: int,
-    _user_id: int = Depends(get_current_user_id),
-    _access: tuple = Depends(validate_space_access),
-    db: AsyncSession = Depends(get_db),
-):
-    repo = WikiPageRepository(db)
-    page = await repo.get_by_slug(kb_id, slug)
-    if not page:
-        raise WikiPageNotFoundError(slug)
-    revision = await repo.get_revision(page.id, version)
-    if not revision:
-        raise WikiPageNotFoundError(f"{slug}@v{version}")
-    return {
-        "version": revision.version,
-        "slug": revision.slug,
-        "title": revision.title,
-        "page_type": revision.page_type,
-        "status": revision.status,
-        "summary": revision.summary,
-        "content": revision.content,
-        "aliases": revision.aliases or [],
-        "edit_source": revision.edit_source or "pipeline",
-        "editor_id": revision.editor_id,
-        "edited_at": revision.edited_at,
     }
 
 
