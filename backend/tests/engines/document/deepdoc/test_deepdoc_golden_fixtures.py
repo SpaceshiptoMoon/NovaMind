@@ -17,7 +17,9 @@
 """
 from __future__ import annotations
 
+import json
 import logging
+import os
 from pathlib import Path
 
 import pytest
@@ -115,6 +117,32 @@ def _parse(pdf_path: Path) -> tuple[str, dict]:
     return result.full_text, result.metadata
 
 
+def _maybe_snapshot(name: str, full_text: str, meta: dict) -> None:
+    """金样快照钩子：env DEEPDOC_GOLDEN_SNAPSHOT_DIR 时落盘 full_text + 关键 metadata。
+
+    用于重构前后 diff：设同一目录跑重构前/后各一次，对比 *_full_text.txt 即可
+    核对段落边界/顺序/清理行为变化。
+    """
+    out_dir = os.environ.get("DEEPDOC_GOLDEN_SNAPSHOT_DIR")
+    if not out_dir:
+        return
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / f"{name}_full_text.txt").write_text(full_text, encoding="utf-8")
+    keys = (
+        "vision_strategy",
+        "ocr_sources",
+        "paragraph_merge_strategy",
+        "table_regions",
+        "figure_regions",
+        "page_count",
+    )
+    payload = {k: meta.get(k) for k in keys if k in meta}
+    (out / f"{name}_meta.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
+
+
 def _no_standalone_page_number_lines(full_text: str) -> bool:
     """输出中不得出现孤立页码行（页码框清理的宏观断言）。"""
     for line in full_text.split("\n"):
@@ -130,6 +158,7 @@ def test_golden_text_pdf_baseline(golden_pdfs):
         pytest.skip("DeepDoc vision runtime unavailable")
     text_pdf, _ = golden_pdfs
     full_text, meta = _parse(text_pdf)
+    _maybe_snapshot("golden_text", full_text, meta)
 
     # 文字版必须走文字层融合（误判成 OCR 说明乱码检测过激）
     assert meta["vision_strategy"] == "text-layer+onnx-layout", meta["vision_strategy"]
@@ -162,6 +191,7 @@ def test_golden_scanned_pdf_baseline(golden_pdfs):
         pytest.skip("DeepDoc vision runtime unavailable")
     _, scanned_pdf = golden_pdfs
     full_text, meta = _parse(scanned_pdf)
+    _maybe_snapshot("golden_scanned", full_text, meta)
 
     # 扫描页无文字层 → 必须走 vendored OCR（zoom 自适应 3 起检的间接证据）
     assert meta["vision_strategy"] == "vendored-ocr+onnx-layout", meta["vision_strategy"]
