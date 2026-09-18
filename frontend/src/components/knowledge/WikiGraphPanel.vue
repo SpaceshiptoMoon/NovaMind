@@ -211,7 +211,7 @@ defineExpose({ reload: loadGraph })
 }
 
 .graph-node text {
-  fill: var(--color-text-primary, #333);
+  fill: var(--color-text, #333);
   font-size: 11px;
   pointer-events: none;
 }
