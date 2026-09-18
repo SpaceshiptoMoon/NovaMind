@@ -50,6 +50,10 @@ async def init_agent_components(app):
     registry.register(ReadToolResultTool())
     registry.register(TaskTool())
 
+    # 4.1 注册 Wiki 工具（读取/搜索/撰写/问题标记，权限在工具内校验）
+    from novamind.features.agent.tool.builtins import WikiTool
+    registry.register(WikiTool())
+
     # 5. 注册会话附件按需读取工具（始终可用；正文不注入上下文，靠本工具读取）
     registry.register(ReadAttachmentTool())
 
