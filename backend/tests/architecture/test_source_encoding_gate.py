@@ -28,11 +28,13 @@ SCAN_ROOTS = [BACKEND_ROOT / "src", BACKEND_ROOT / "tests"]
 # allowlist：字符串常量中合法包含 PUA/乱码特征的文件。
 # - pdf.py：上游 proj_match 的 [⚫•➢✓]（PUA 是待匹配的真实输入，vendored 保真）
 # - page_filter.py：DIRTY_TEXT_PATTERN 需要匹配 PDF 里的锟斤拷类乱码特征串
+# - vendor/ragflow/pdf_parser.py：vendored 上游源码，proj_match 同含 PUA bullet 输入
 # - 回归测试：断言/文档字符串需要复现乱码形态
 # - 本文件：检测器自检样本
 STRINGS_ALLOWED_FILES = {
     "src/engines/document/integrations/deepdoc/parsers/pdf.py",
     "src/engines/document/integrations/deepdoc/page_filter.py",
+    "src/engines/document/integrations/deepdoc/vendor/ragflow/pdf_parser.py",
     "tests/shared/test_embedding_client_resilience.py",
     "tests/engines/document/deepdoc/test_deepdoc_pdf_fusion.py",
     "tests/engines/document/deepdoc/test_page_filter_dirty_pattern.py",

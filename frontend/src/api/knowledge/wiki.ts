@@ -12,6 +12,10 @@ import type {
   WikiPageUpdateRequest,
   WikiPageCreateRequest,
   WikiRevertResponse,
+  WikiGraphResponse,
+  WikiLintResponse,
+  WikiIssue,
+  WikiIssueCreateRequest,
 } from '../types'
 
 /** Wiki API — 前缀 /spaces/{spaceId}/knowledge-bases/{kbId}/wiki */
@@ -120,6 +124,46 @@ export const wikiApi = {
     return request.post<{ enqueued: number; candidates: number }>(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/wiki/rebuild`,
       documentIds ? { document_ids: documentIds } : {}
+    )
+  },
+
+  // ==================== P3：图谱 / lint / 问题 ====================
+
+  getGraph(
+    spaceId: number,
+    kbId: number,
+    params?: { mode?: string; center?: string; depth?: number; limit?: number }
+  ) {
+    return request.get<WikiGraphResponse>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/wiki/graph`,
+      params
+    )
+  },
+
+  lint(spaceId: number, kbId: number) {
+    return request.get<WikiLintResponse>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/wiki/lint`
+    )
+  },
+
+  listIssues(spaceId: number, kbId: number, status?: string) {
+    return request.get<WikiIssue[]>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/wiki/issues`,
+      status ? { status } : undefined
+    )
+  },
+
+  createIssue(spaceId: number, kbId: number, data: WikiIssueCreateRequest) {
+    return request.post<WikiIssue>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/wiki/issues`,
+      data
+    )
+  },
+
+  updateIssueStatus(spaceId: number, kbId: number, issueId: string, status: string) {
+    return request.put<WikiIssue>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/wiki/issues/${issueId}/status`,
+      { status }
     )
   },
 }

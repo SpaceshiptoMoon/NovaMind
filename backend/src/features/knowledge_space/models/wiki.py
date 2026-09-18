@@ -252,3 +252,31 @@ class WikiIngestRecord(BaseModel):
         node["finished_at"] = now_china().isoformat()
         progress[step_name] = node
         self.step_progress = progress
+
+
+class WikiPageIssue(BaseModel):
+    """Wiki 页面问题登记（lint 检测 / Agent 与人工报告，处理闭环）"""
+    __tablename__ = "wiki_page_issues"
+
+    id = Column(String(36), primary_key=True, default=new_wiki_id, comment="问题 UUID")
+    space_id = Column(BigInteger, ForeignKey("knowledge_spaces.id", ondelete="CASCADE"), nullable=False, index=True, comment="所属空间ID")
+    kb_id = Column(BigInteger, ForeignKey("knowledge_bases.id", ondelete="CASCADE"), nullable=False, index=True, comment="所属知识库ID")
+    slug = Column(String(255), nullable=False, comment="页面 slug")
+    issue_type = Column(String(50), nullable=False, comment="问题类型：mixed_entities/contradictory_facts/out_of_date/dead_link/orphan/other")
+    description = Column(Text, nullable=False, default="", comment="问题描述")
+    status = Column(String(20), nullable=False, default="pending", index=True, comment="状态：pending/ignored/resolved")
+    reported_by = Column(String(100), nullable=False, default="", comment="报告者：user:{id} / agent:{id} / lint")
+
+    __table_args__ = (
+        Index("idx_wiki_issue_kb_status", "kb_id", "status"),
+        {"comment": "Wiki 页面问题表"},
+    )
+
+    def resolve(self) -> None:
+        self.status = "resolved"
+
+    def ignore(self) -> None:
+        self.status = "ignored"
+
+    def reopen(self) -> None:
+        self.status = "pending"

@@ -1977,3 +1977,58 @@ export interface WikiRevertResponse {
   reverted_to_version: number
   new_version: number
 }
+
+// ===================== Wiki 图谱 / lint / 问题（P3） =====================
+
+export interface WikiGraphNode {
+  slug: string
+  title: string
+  page_type: string
+  link_count: number
+}
+
+export interface WikiGraphEdge {
+  source: string
+  target: string
+}
+
+export interface WikiGraphResponse {
+  nodes: WikiGraphNode[]
+  edges: WikiGraphEdge[]
+  meta: {
+    mode: string
+    total: number
+    returned: number
+    truncated: boolean
+    center?: string | null
+    depth?: number | null
+  }
+}
+
+export interface WikiLintIssue {
+  slug: string
+  issue_type: string // dead_link / orphan / empty_content
+  description: string
+}
+
+export interface WikiLintResponse {
+  issues: WikiLintIssue[]
+  checked_pages: number
+}
+
+export interface WikiIssue {
+  id: string
+  slug: string
+  issue_type: string
+  description: string
+  status: string // pending/ignored/resolved
+  reported_by: string
+  created_at: string
+}
+
+export interface WikiIssueCreateRequest {
+  slug: string
+  issue_type: string
+  description: string
+  reported_by?: string
+}

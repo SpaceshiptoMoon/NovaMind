@@ -10,7 +10,74 @@
       <span>最近一次 Wiki 生成失败：{{ ingestStatus.error_message || '未知原因' }}</span>
     </div>
 
-    <div class="wiki-layout">
+    <!-- 视图切换：浏览 / 图谱 / 问题 -->
+    <el-tabs v-model="activeView" class="wiki-view-tabs" @tab-change="onActiveViewChange">
+      <el-tab-pane label="浏览" name="browse" />
+      <el-tab-pane label="图谱" name="graph" />
+      <el-tab-pane :label="`问题${pendingIssueCount ? `（${pendingIssueCount}）` : ''}`" name="issues" />
+    </el-tabs>
+
+    <!-- 图谱视图 -->
+    <div v-show="activeView === 'graph'" class="graph-wrap">
+      <WikiGraphPanel
+        :space-id="spaceId"
+        :kb-id="kbId"
+        :initial-center="selectedSlug || undefined"
+        @select="selectPageFromPanel"
+      />
+    </div>
+
+    <!-- 问题视图 -->
+    <div v-show="activeView === 'issues'" class="issues-wrap">
+      <div class="issues-toolbar">
+        <el-radio-group v-model="issueFilter" size="small" @change="loadIssues">
+          <el-radio-button value="pending">待处理</el-radio-button>
+          <el-radio-button value="resolved">已解决</el-radio-button>
+          <el-radio-button value="ignored">已忽略</el-radio-button>
+        </el-radio-group>
+        <el-button size="small" @click="runLint">运行质量检查</el-button>
+      </div>
+
+      <!-- lint 检出问题（派生，非持久化） -->
+      <div v-if="lintIssues.length" class="lint-section">
+        <h4 class="lint-heading">质量检查（{{ lintIssues.length }} 项）</h4>
+        <div v-for="(issue, index) in lintIssues" :key="`l${index}`" class="issue-row">
+          <el-tag size="small" type="warning">{{ lintTypeLabel(issue.issue_type) }}</el-tag>
+          <span class="issue-slug" @click="selectPageFromPanel(issue.slug)">{{ issue.slug }}</span>
+          <span class="issue-desc">{{ issue.description }}</span>
+        </div>
+      </div>
+
+      <!-- 持久化问题列表 -->
+      <h4 class="lint-heading">问题登记（{{ issues.length }} 项）</h4>
+      <div v-for="issue in issues" :key="issue.id" class="issue-row">
+        <el-tag size="small">{{ issueTypeLabel(issue.issue_type) }}</el-tag>
+        <span class="issue-slug" @click="selectPageFromPanel(issue.slug)">{{ issue.slug }}</span>
+        <span class="issue-desc">{{ issue.description }}</span>
+        <span class="issue-meta">{{ issue.reported_by }}</span>
+        <el-button
+          v-if="issue.status === 'pending'"
+          size="small"
+          text
+          type="success"
+          @click="setIssueStatus(issue, 'resolved')"
+        >
+          解决
+        </el-button>
+        <el-button
+          v-if="issue.status === 'pending'"
+          size="small"
+          text
+          @click="setIssueStatus(issue, 'ignored')"
+        >
+          忽略
+        </el-button>
+      </div>
+      <el-empty v-if="!issues.length && !lintIssues.length" description="没有问题" />
+    </div>
+
+    <!-- 浏览视图（原有布局） -->
+    <div v-show="activeView === 'browse'" class="wiki-layout">
       <!-- 左侧：页面列表 -->
       <aside class="wiki-sidebar">
         <div class="sidebar-search">
@@ -207,9 +274,12 @@ import { Document, Loading, MoreFilled, Search, WarningFilled } from '@element-p
 import { wikiApi } from '@/api/knowledge'
 import { renderMarkdown } from '@/utils/markdown'
 import { diffLines as computeDiff, diffStats as diffStatsOf } from '@/utils/wikiDiff'
+import WikiGraphPanel from '@/components/knowledge/WikiGraphPanel.vue'
 import type {
   WikiIngestStatusResponse,
   WikiIndexGroup,
+  WikiIssue,
+  WikiLintIssue,
   WikiPage,
   WikiPageSourceDocument,
   WikiRevisionSummary,
@@ -290,6 +360,84 @@ const SOURCE_LABELS: Record<string, string> = {
 }
 function sourceLabel(source: string): string {
   return SOURCE_LABELS[source] ?? '自动生成'
+}
+
+// ============ 视图切换（浏览/图谱/问题） ============
+const activeView = ref<'browse' | 'graph' | 'issues'>('browse')
+
+// 问题页签首次切入时拉取列表（角标计数依赖 pending 列表）
+let issuesLoaded = false
+
+function onActiveViewChange(view: string | number) {
+  if (view === 'issues' && !issuesLoaded) {
+    issuesLoaded = true
+    void loadIssues()
+  }
+}
+
+// 图谱/问题视图里点 slug → 切回浏览视图并定位页面
+function selectPageFromPanel(slug: string) {
+  activeView.value = 'browse'
+  void selectPage(slug)
+}
+
+// ---- 问题登记 ----
+const issues = ref<WikiIssue[]>([])
+const issueFilter = ref('pending')
+const pendingIssueCount = computed(
+  () => issues.value.filter((i) => i.status === 'pending').length
+)
+
+const ISSUE_TYPE_LABELS: Record<string, string> = {
+  mixed_entities: '实体混淆',
+  contradictory_facts: '事实矛盾',
+  out_of_date: '内容过期',
+  dead_link: '死链',
+  orphan: '孤儿页',
+  other: '其他',
+}
+function issueTypeLabel(type: string): string {
+  return ISSUE_TYPE_LABELS[type] ?? type
+}
+const LINT_TYPE_LABELS: Record<string, string> = {
+  dead_link: '死链',
+  orphan: '孤儿页',
+  empty_content: '空页面',
+}
+function lintTypeLabel(type: string): string {
+  return LINT_TYPE_LABELS[type] ?? type
+}
+
+async function loadIssues() {
+  try {
+    issues.value = await wikiApi.listIssues(spaceId.value, kbId.value, issueFilter.value)
+  } catch {
+    issues.value = []
+  }
+}
+
+async function setIssueStatus(issue: WikiIssue, status: string) {
+  try {
+    await wikiApi.updateIssueStatus(spaceId.value, kbId.value, issue.id, status)
+    await loadIssues()
+  } catch {
+    ElMessage.error('状态更新失败')
+  }
+}
+
+// ---- lint 检查 ----
+const lintIssues = ref<WikiLintIssue[]>([])
+
+async function runLint() {
+  try {
+    const data = await wikiApi.lint(spaceId.value, kbId.value)
+    lintIssues.value = data.issues
+    if (!data.issues.length) {
+      ElMessage.success(`检查完成（${data.checked_pages} 页），未发现问题`)
+    }
+  } catch {
+    ElMessage.error('质量检查失败')
+  }
 }
 
 // ============ [[slug|title]] 链接预处理 ============

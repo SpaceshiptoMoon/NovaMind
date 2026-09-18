@@ -14,6 +14,7 @@ def _import_models() -> None:
         WikiPage,
         WikiPageRevision,
         WikiIngestRecord,
+        WikiPageIssue,
     )
 
 

@@ -11829,6 +11829,130 @@
         "title": "WikiGenerationConfig",
         "type": "object"
       },
+      "WikiGraphEdge": {
+        "properties": {
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "target"
+        ],
+        "title": "WikiGraphEdge",
+        "type": "object"
+      },
+      "WikiGraphMeta": {
+        "properties": {
+          "center": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Center"
+          },
+          "depth": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Depth"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "returned": {
+            "title": "Returned",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "mode",
+          "total",
+          "returned",
+          "truncated"
+        ],
+        "title": "WikiGraphMeta",
+        "type": "object"
+      },
+      "WikiGraphNode": {
+        "properties": {
+          "link_count": {
+            "title": "Link Count",
+            "type": "integer"
+          },
+          "page_type": {
+            "title": "Page Type",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "title",
+          "page_type",
+          "link_count"
+        ],
+        "title": "WikiGraphNode",
+        "type": "object"
+      },
+      "WikiGraphResponse": {
+        "properties": {
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/WikiGraphEdge"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/WikiGraphMeta"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/WikiGraphNode"
+            },
+            "title": "Nodes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "nodes",
+          "edges",
+          "meta"
+        ],
+        "title": "WikiGraphResponse",
+        "type": "object"
+      },
       "WikiIndexGroup": {
         "description": "按类型分组的索引条目",
         "properties": {
@@ -11947,6 +12071,144 @@
           "status"
         ],
         "title": "WikiIngestStatusResponse",
+        "type": "object"
+      },
+      "WikiIssueCreateRequest": {
+        "description": "人工/Agent 报告页面问题",
+        "properties": {
+          "description": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "issue_type": {
+            "description": "mixed_entities/contradictory_facts/out_of_date/dead_link/orphan/other",
+            "title": "Issue Type",
+            "type": "string"
+          },
+          "reported_by": {
+            "default": "user",
+            "maxLength": 100,
+            "title": "Reported By",
+            "type": "string"
+          },
+          "slug": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "issue_type",
+          "description"
+        ],
+        "title": "WikiIssueCreateRequest",
+        "type": "object"
+      },
+      "WikiIssueResponse": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "issue_type": {
+            "title": "Issue Type",
+            "type": "string"
+          },
+          "reported_by": {
+            "title": "Reported By",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "issue_type",
+          "description",
+          "status",
+          "reported_by",
+          "created_at"
+        ],
+        "title": "WikiIssueResponse",
+        "type": "object"
+      },
+      "WikiIssueStatusUpdateRequest": {
+        "properties": {
+          "status": {
+            "description": "pending/ignored/resolved",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "WikiIssueStatusUpdateRequest",
+        "type": "object"
+      },
+      "WikiLintIssueItem": {
+        "description": "lint 检出的问题（派生自页面状态，非持久化）",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "issue_type": {
+            "title": "Issue Type",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "issue_type",
+          "description"
+        ],
+        "title": "WikiLintIssueItem",
+        "type": "object"
+      },
+      "WikiLintResponse": {
+        "properties": {
+          "checked_pages": {
+            "title": "Checked Pages",
+            "type": "integer"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/WikiLintIssueItem"
+            },
+            "title": "Issues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "issues",
+          "checked_pages"
+        ],
+        "title": "WikiLintResponse",
         "type": "object"
       },
       "WikiPageCreateRequest": {
@@ -20970,6 +21232,112 @@
         ]
       }
     },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/graph": {
+      "get": {
+        "operationId": "get_graph_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_graph_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "default": "overview",
+              "pattern": "^(overview|ego)$",
+              "title": "Mode",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ego 模式中心 slug",
+            "in": "query",
+            "name": "center",
+            "required": false,
+            "schema": {
+              "description": "ego 模式中心 slug",
+              "title": "Center",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ego BFS 深度",
+            "in": "query",
+            "name": "depth",
+            "required": false,
+            "schema": {
+              "default": 2,
+              "description": "ego BFS 深度",
+              "maximum": 5,
+              "minimum": 1,
+              "title": "Depth",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiGraphResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "链接图（overview/ego）",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      }
+    },
     "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/index": {
       "get": {
         "operationId": "get_index_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_index_get",
@@ -21102,6 +21470,290 @@
           }
         ],
         "summary": "最近一次生成状态",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/issues": {
+      "get": {
+        "operationId": "list_issues_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_issues_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "pattern": "^(pending|ignored|resolved)$",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WikiIssueResponse"
+                  },
+                  "title": "Response List Issues Api V1 Spaces  Space Id  Knowledge Bases  Kb Id  Wiki Issues Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "问题列表",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      },
+      "post": {
+        "operationId": "create_issue_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_issues_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiIssueCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiIssueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "报告页面问题",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/issues/{issue_id}/status": {
+      "put": {
+        "operationId": "update_issue_status_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_issues__issue_id__status_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "issue_id",
+            "required": true,
+            "schema": {
+              "title": "Issue Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiIssueStatusUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiIssueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "更新问题状态",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/lint": {
+      "get": {
+        "operationId": "lint_wiki_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_lint_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiLintResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "质量检查（死链/孤儿/空页）",
         "tags": [
           "知识库 Wiki",
           "知识库 Wiki"

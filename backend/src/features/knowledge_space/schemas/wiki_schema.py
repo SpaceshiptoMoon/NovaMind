@@ -162,3 +162,71 @@ class WikiRebuildRequest(BaseModel):
     """存量文档补算：不传 document_ids 则遍历 KB 全部已完成文档"""
 
     document_ids: Optional[List[int]] = Field(default=None, max_length=500)
+
+
+# ==================== 图谱 / lint 闭环（P3） ====================
+
+
+class WikiGraphNode(BaseModel):
+    slug: str
+    title: str
+    page_type: str
+    link_count: int
+
+
+class WikiGraphEdge(BaseModel):
+    source: str
+    target: str
+
+
+class WikiGraphMeta(BaseModel):
+    mode: str
+    total: int
+    returned: int
+    truncated: bool
+    center: Optional[str] = None
+    depth: Optional[int] = None
+
+
+class WikiGraphResponse(BaseModel):
+    nodes: List[WikiGraphNode]
+    edges: List[WikiGraphEdge]
+    meta: WikiGraphMeta
+
+
+class WikiLintIssueItem(BaseModel):
+    """lint 检出的问题（派生自页面状态，非持久化）"""
+
+    slug: str
+    issue_type: str  # dead_link / orphan / empty_content
+    description: str
+
+
+class WikiLintResponse(BaseModel):
+    issues: List[WikiLintIssueItem]
+    checked_pages: int
+
+
+class WikiIssueCreateRequest(BaseModel):
+    """人工/Agent 报告页面问题"""
+
+    slug: str = Field(..., min_length=1, max_length=255)
+    issue_type: str = Field(..., description="mixed_entities/contradictory_facts/out_of_date/dead_link/orphan/other")
+    description: str = Field(..., min_length=1, max_length=2000)
+    reported_by: str = Field(default="user", max_length=100)
+
+
+class WikiIssueResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    slug: str
+    issue_type: str
+    description: str
+    status: str
+    reported_by: str
+    created_at: datetime
+
+
+class WikiIssueStatusUpdateRequest(BaseModel):
+    status: str = Field(..., description="pending/ignored/resolved")

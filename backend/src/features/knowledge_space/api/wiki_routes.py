@@ -1,8 +1,9 @@
 """
-Wiki 路由（P1 只读 + P2 编辑/版本/回滚）
+Wiki 路由（P1 只读 + P2 编辑/版本/回滚 + P3 图谱/lint 闭环）
 
 浏览层接口：页面列表/详情/索引/搜索/统计/生成状态/来源证据。
 写接口：创建/更新（乐观锁）/软删/版本历史/回滚/存量重建。
+图谱与质量：链接图（overview/ego）、lint 检测、问题登记与状态流转。
 读操作走 validate_space_access + validate_kb_access；
 写操作走 validate_kb_writable（额外拒归档 KB）。
 """
@@ -37,6 +38,11 @@ from novamind.features.knowledge_space.repository.wiki_repository import (
     WikiPageRepository,
 )
 from novamind.features.knowledge_space.schemas.wiki_schema import (
+    WikiGraphResponse,
+    WikiIssueCreateRequest,
+    WikiIssueResponse,
+    WikiIssueStatusUpdateRequest,
+    WikiLintResponse,
     WikiIndexGroup,
     WikiIndexResponse,
     WikiIngestStatusResponse,
@@ -535,3 +541,210 @@ async def rebuild_wiki(
             logger.warning("wiki 补算入队失败", document_id=document.id, error=str(e))
     await db.commit()
     return {"enqueued": enqueued, "candidates": len(documents)}
+
+# ==================== 图谱 / lint 闭环（P3） ====================
+
+
+@router.get("/graph", response_model=WikiGraphResponse, summary="链接图（overview/ego）")
+async def get_graph(
+    space_id: Annotated[int, Path(gt=0)],
+    kb_id: Annotated[int, Path(gt=0)],
+    mode: str = Query("overview", pattern="^(overview|ego)$"),
+    center: str = Query(None, description="ego 模式中心 slug"),
+    depth: int = Query(2, ge=1, le=5, description="ego BFS 深度"),
+    limit: int = Query(100, ge=1, le=500),
+    _user_id: int = Depends(get_current_user_id),
+    _access: tuple = Depends(validate_space_access),
+    db: AsyncSession = Depends(get_db),
+):
+    from collections import deque
+
+    from novamind.features.knowledge_space.exceptions import InvalidParameterError
+    from novamind.features.knowledge_space.schemas.wiki_schema import (
+        WikiGraphEdge,
+        WikiGraphMeta,
+        WikiGraphNode,
+    )
+
+    await _get_kb_or_404(kb_id, space_id, db)
+    pages = await WikiPageRepository(db).all_live_pages(kb_id)
+
+    if mode == "ego":
+        if not center:
+            raise InvalidParameterError("ego 模式必须提供 center slug", field="center")
+        slug_map = {p.slug: p for p in pages}
+        if center not in slug_map:
+            raise WikiPageNotFoundError(center)
+        # BFS 收集邻域
+        visited = {center}
+        queue = deque([(center, 0)])
+        while queue:
+            slug, d = queue.popleft()
+            if d >= depth:
+                continue
+            page = slug_map.get(slug)
+            if not page:
+                continue
+            neighbors = set(page.out_links or []) | set(page.in_links or [])
+            for n in neighbors:
+                if n in slug_map and n not in visited:
+                    visited.add(n)
+                    queue.append((n, d + 1))
+        selected_slugs = set(list(visited)[:limit])
+    else:
+        # overview：按连通度（in+out）取 top-N
+        ranked = sorted(
+            pages,
+            key=lambda p: len(p.out_links or []) + len(p.in_links or []),
+            reverse=True,
+        )
+        selected_slugs = {p.slug for p in ranked[:limit]}
+
+    slug_map = {p.slug: p for p in pages}
+    nodes = [
+        WikiGraphNode(
+            slug=p.slug,
+            title=p.title,
+            page_type=p.page_type,
+            link_count=len(p.out_links or []) + len(p.in_links or []),
+        )
+        for p in pages
+        if p.slug in selected_slugs
+    ]
+    edges = [
+        WikiGraphEdge(source=p.slug, target=target)
+        for p in pages
+        if p.slug in selected_slugs
+        for target in (p.out_links or [])
+        if target in selected_slugs and target != p.slug
+    ]
+    return WikiGraphResponse(
+        nodes=nodes,
+        edges=edges,
+        meta=WikiGraphMeta(
+            mode=mode,
+            total=len(pages),
+            returned=len(nodes),
+            truncated=len(nodes) < len(pages),
+            center=center if mode == "ego" else None,
+            depth=depth if mode == "ego" else None,
+        ),
+    )
+
+
+@router.get("/lint", response_model=WikiLintResponse, summary="质量检查（死链/孤儿/空页）")
+async def lint_wiki(
+    space_id: Annotated[int, Path(gt=0)],
+    kb_id: Annotated[int, Path(gt=0)],
+    _user_id: int = Depends(get_current_user_id),
+    _access: tuple = Depends(validate_space_access),
+    db: AsyncSession = Depends(get_db),
+):
+    from novamind.features.knowledge_space.schemas.wiki_schema import WikiLintIssueItem
+
+    await _get_kb_or_404(kb_id, space_id, db)
+    pages = await WikiPageRepository(db).all_live_pages(kb_id)
+    live_slugs = {p.slug for p in pages}
+
+    issues = []
+    for page in pages:
+        for target in page.out_links or []:
+            if target not in live_slugs or target == page.slug:
+                issues.append(WikiLintIssueItem(
+                    slug=page.slug,
+                    issue_type="dead_link",
+                    description="指向不存在页面的链接：[[" + target + "]]",
+                ))
+        if not (page.out_links or []) and not (page.in_links or []):
+            issues.append(WikiLintIssueItem(
+                slug=page.slug,
+                issue_type="orphan",
+                description="孤儿页面：没有任何入链或出链",
+            ))
+        if not (page.content or "").strip():
+            issues.append(WikiLintIssueItem(
+                slug=page.slug,
+                issue_type="empty_content",
+                description="空页面：正文为空",
+            ))
+
+    return WikiLintResponse(issues=issues, checked_pages=len(pages))
+
+
+@router.get("/issues", response_model=List[WikiIssueResponse], summary="问题列表")
+async def list_issues(
+    space_id: Annotated[int, Path(gt=0)],
+    kb_id: Annotated[int, Path(gt=0)],
+    status: str = Query(None, pattern="^(pending|ignored|resolved)$"),
+    limit: int = Query(50, ge=1, le=200),
+    _user_id: int = Depends(get_current_user_id),
+    _access: tuple = Depends(validate_space_access),
+    db: AsyncSession = Depends(get_db),
+):
+    from novamind.features.knowledge_space.repository.wiki_issue_repository import WikiIssueRepository
+
+    await _get_kb_or_404(kb_id, space_id, db)
+    issues = await WikiIssueRepository(db).list_by_kb(kb_id, status=status, limit=limit)
+    return issues
+
+
+@router.post("/issues", response_model=WikiIssueResponse, status_code=201, summary="报告页面问题")
+async def create_issue(
+    space_id: Annotated[int, Path(gt=0)],
+    kb_id: Annotated[int, Path(gt=0)],
+    body: WikiIssueCreateRequest,
+    user_id: int = Depends(get_current_user_id),
+    _access: tuple = Depends(validate_space_access),
+    db: AsyncSession = Depends(get_db),
+):
+    from novamind.features.knowledge_space.exceptions import InvalidParameterError
+    from novamind.features.knowledge_space.repository.wiki_issue_repository import WikiIssueRepository
+
+    allowed_types = {"mixed_entities", "contradictory_facts", "out_of_date", "dead_link", "orphan", "other"}
+    if body.issue_type not in allowed_types:
+        raise InvalidParameterError("issue_type 须为 " + str(sorted(allowed_types)), field="issue_type")
+
+    kb = await _get_kb_or_404(kb_id, space_id, db)
+    page = await WikiPageRepository(db).get_by_slug(kb_id, body.slug)
+    if not page:
+        raise WikiPageNotFoundError(body.slug)
+
+    issue = await WikiIssueRepository(db).create({
+        "space_id": kb.space_id,
+        "kb_id": kb_id,
+        "slug": body.slug,
+        "issue_type": body.issue_type,
+        "description": body.description,
+        "reported_by": "user:" + str(user_id) if body.reported_by == "user" else body.reported_by,
+    })
+    await db.commit()
+    return issue
+
+
+@router.put("/issues/{issue_id}/status", response_model=WikiIssueResponse, summary="更新问题状态")
+async def update_issue_status(
+    space_id: Annotated[int, Path(gt=0)],
+    kb_id: Annotated[int, Path(gt=0)],
+    issue_id: str,
+    body: WikiIssueStatusUpdateRequest,
+    user_id: int = Depends(get_current_user_id),
+    _access: tuple = Depends(validate_space_access),
+    _kb=Depends(validate_kb_writable),
+    db: AsyncSession = Depends(get_db),
+):
+    from novamind.features.knowledge_space.exceptions import InvalidParameterError, KnowledgeSpaceError
+    from novamind.features.knowledge_space.repository.wiki_issue_repository import WikiIssueRepository
+
+    transitions = {"pending": "reopen", "ignored": "ignore", "resolved": "resolve"}
+    method_name = transitions.get(body.status)
+    if not method_name:
+        raise InvalidParameterError("status 须为 pending/ignored/resolved", field="status")
+
+    await _get_kb_or_404(kb_id, space_id, db)
+    repo = WikiIssueRepository(db)
+    issue = await repo.get_by_id(issue_id)
+    if not issue or issue.kb_id != kb_id:
+        raise KnowledgeSpaceError("问题 " + issue_id + " 不存在", code="WIKI_ISSUE_NOT_FOUND")
+    getattr(issue, method_name)()
+    await db.commit()
+    return issue
