@@ -6,8 +6,7 @@ from typing import Any, Dict, Optional
 
 import yaml
 
-from .config import (
-    AdminConfig,
+from .config import (    AdminConfig,
     AppConfig,
     DatabaseConfig,
     DeepResearchConfig,
@@ -44,6 +43,10 @@ class ConfigLoader:
 
     def load(self, environment: Optional[str] = None) -> Dict[str, Any]:
         env = environment or os.getenv("ENVIRONMENT", "development")
+        # 加载仓库根 .env 作为占位符取值源（幂等：已存在的进程环境变量优先）。
+        # 本地开发时密钥只写 .env 一份，YAML 侧用 ${VAR} 占位符引用；
+        # Docker 部署时 .env 由 compose 注入容器环境，此处加载为空操作。
+        self._load_dotenv()
         default_config = self._load_yaml("default.yaml")
         env_config = self._load_yaml(f"{env}.yaml")
         local_config = self._load_yaml("local.yaml")
@@ -55,6 +58,23 @@ class ConfigLoader:
         self._config = self._replace_env_vars(self._config)
         self._config["environment"] = env
         return self._config
+
+    def _load_dotenv(self) -> None:
+        """从仓库根（backend/ 的上一级）加载 .env，供 ${VAR} 占位符解析取值。
+
+        load_dotenv 默认不覆盖已存在的进程环境变量（容器/CI 注入优先于文件）。
+        .env 缺失时静默跳过——YAML 占位符此时回落到 _replace_env_vars 的默认值。
+        """
+        try:
+            from dotenv import load_dotenv
+
+            # 本文件位于 <repo>/backend/src/setting/yaml_config/，
+            # 仓库根 = 上四级（yaml_config → setting → src → backend → repo）
+            repo_root = Path(__file__).resolve().parents[4]
+            load_dotenv(repo_root / ".env", override=False)
+        except ImportError:
+            # python-dotenv 为核心依赖，缺失仅在实际有 .env 时才有影响
+            pass
 
     def _load_yaml(self, filename: str) -> Dict[str, Any]:
         filepath = self.config_dir / filename

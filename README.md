@@ -337,7 +337,7 @@ src/features/{module}/
 
 ## 配置说明
 
-配置系统分两层：**YAML 文件**（实际读入的配置）和 **`.env` 文件**（Docker 专用）。
+配置系统分两层：**YAML 文件**（结构与环境差异）和 **`.env` 文件**（唯一密钥源）。
 
 ### YAML 配置（实际生效）
 
@@ -354,39 +354,47 @@ src/features/{module}/
 
 - `default.yaml` 作为基线 → 加载指定环境的 YAML 做深度合并
 - YAML 中 `${VAR_NAME}` 形式的占位符，由 **操作系统环境变量** 在运行时解析（`os.getenv`）
-- 后端**不会自动加载根目录的 `.env` 文件**，`.env` 仅由 Docker Compose 使用
+- 后端启动时 **自动加载仓库根 `.env`**（进程环境变量优先，`.env` 不会覆盖已 export 的变量），
+  因此本地开发时 YAML 占位符直接从 `.env` 取值，无需手动 export
 
-### `.env`（Docker 部署专用）
+### `.env`（唯一密钥源）
 
-根目录 `.env` 由 `docker compose` 读取，用于向容器注入环境变量，会被 Docker Compose 中的 `env_file: .env` 加载。
+根目录 `.env` 有两个消费方：
 
-| 变量 | 说明 | Docker Compose 消费方 |
+1. `docker compose`：插值容器环境变量（`${MYSQL_ROOT_PASSWORD}` 等）并通过 `env_file: .env` 注入 `app` 容器
+2. 后端 `ConfigLoader`：本地开发时启动自动加载，解析 YAML 中的 `${VAR_NAME}` 占位符
+
+| 变量 | 说明 | 消费方 |
 | --- | --- | --- |
-| `MYSQL_ROOT_PASSWORD` | MySQL root 密码 | `mysql` 容器 |
-| `MYSQL_DATABASE` | 默认数据库名 | `mysql` 容器 |
-| `MINIO_ROOT_USER` | MinIO 访问账号 | `minio` 容器 |
-| `MINIO_ROOT_PASSWORD` | MinIO 访问密码 | `minio` 容器 |
+| `MYSQL_ROOT_PASSWORD` | MySQL root 密码 | `mysql` 容器 + YAML `database.password` |
+| `MYSQL_DATABASE` | 默认数据库名 | `mysql` 容器 + YAML `database.database` |
+| `MINIO_ROOT_USER` | MinIO 访问账号 | `minio` 容器 + YAML `minio.access_key` |
+| `MINIO_ROOT_PASSWORD` | MinIO 访问密码 | `minio` 容器 + YAML `minio.secret_key` |
 | `ES_JAVA_OPTS` | Elasticsearch JVM 参数 | `elasticsearch` 容器 |
-| `SECRET_KEY` | JWT 签名密钥 | `app` 容器（→ 对应 YAML 配置） |
-| `ENCRYPTION_KEY` | 加密密钥 | `app` 容器（→ 对应 YAML 配置） |
-| `ADMIN_PASSWORD` | 管理员初始密码 | `app` 容器（→ 对应 YAML 配置） |
+| `ES_PASSWORD` | Elasticsearch 密码 | YAML `elasticsearch.password` |
+| `SECRET_KEY` | JWT 签名密钥 | YAML `security.secret_key` |
+| `ENCRYPTION_KEY` | 加密密钥 | YAML `security.encryption_key` |
+| `ADMIN_PASSWORD` | 管理员初始密码 | YAML `admin.password` |
 
 ### 本地开发如何配
 
 本地开发时（无 Docker），配置流程：
 
-1. 从模板复制 YAML 文件（首次仅需一次）：
+1. 从模板复制 YAML 文件与 `.env`（首次仅需一次）：
    ```bash
+   cp .env.example .env                      # 仓库根，填入实际密钥
    cd backend/src/setting/yaml_config/yaml
    cp default.example default.yaml
    cp development.example development.yaml
    ```
 
-2. 编辑 YAML 文件，将数据库、MinIO、Elasticsearch 等密码填入实际值。有两种方式：
-   - **方式 A**：把值直接写进 YAML（简单直接）
-   - **方式 B**：保持 `${VAR_NAME}` 占位符，在启动前 `export VAR_NAME=value` 设置环境变量
+2. 编辑 `.env`，将数据库、MinIO、Elasticsearch 等密码填入实际值。
+   模板 YAML 中的敏感字段已全部是 `${VAR_NAME}` 占位符，后端启动时自动从 `.env`
+   取值，无需再改 YAML。仍可直接把值写进 YAML（会覆盖占位符），或启动前
+   `export VAR_NAME=value`（优先级最高：进程环境变量 > `.env` 文件）。
 
-3. 如果使用了 Docker Compose 启动基础设施（`docker compose up -d mysql redis minio elasticsearch`），`.env` 中的密码会自动以环境变量形式传递给 `app` 容器。但本地开发时后端进程不在容器内，不会读取 `.env`。
+3. 如果使用 Docker Compose 启动基础设施（`docker compose up -d mysql redis minio elasticsearch`），
+   容器内服务与 `.env` 密码自动保持一致——`.env` 是唯一密钥源，改密码只改这一处。
 
 ## 模型接入建议
 

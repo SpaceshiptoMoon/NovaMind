@@ -15,6 +15,9 @@ dependencies = [
     "pdfplumber>=0.11.9",
     "pydantic[email]>=2.12.5",
     "pydantic-settings>=2.12.0",
+    # ConfigLoader 加载仓库根 .env 供 YAML ${VAR} 占位符解析（此前仅是
+    # pydantic-settings 的传递依赖，dotenv 是直接消费点，显式声明防漂移）
+    "python-dotenv>=1.0.0",
     "pyjwt>=2.10.1",
     "redis[asyncio]>=5.2.0",
     "pypdf>=4.0.0",
