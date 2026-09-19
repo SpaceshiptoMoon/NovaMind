@@ -722,6 +722,28 @@ onBeforeUnmount(stopPolling)
   min-height: 0;
 }
 
+/* 图谱 / 问题视图与浏览视图共用剩余高度；三视图互斥显示 */
+.graph-wrap,
+.issues-wrap {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+/* 问题视图工具栏：radio 组与按钮垂直居中，检查按钮靠右 */
+.issues-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg-card);
+}
+
 .wiki-sidebar {
   width: 280px;
   flex-shrink: 0;

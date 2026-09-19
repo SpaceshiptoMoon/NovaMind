@@ -19,42 +19,28 @@
       <span v-if="graph?.meta.truncated" class="truncated-hint">
         显示 {{ graph.meta.returned }}/{{ graph.meta.total }} 节点
       </span>
+      <span class="toolbar-hint">拖拽节点 / 滚轮缩放，点击节点打开页面</span>
     </div>
 
-    <div v-if="!graph" v-loading="loading" class="graph-canvas is-empty">
-      <el-empty v-if="!loading" description="暂无图数据" />
+    <div ref="canvasRef" class="graph-canvas">
+      <div v-if="!graph && !loading" class="graph-empty">
+        <el-empty description="暂无图数据" />
+      </div>
+      <div v-else-if="loading" v-loading="true" class="graph-empty" />
     </div>
-    <svg v-else class="graph-canvas" :viewBox="`0 0 ${width} ${height}`" preserveAspectRatio="xMidYMid meet">
-      <!-- 边 -->
-      <line
-        v-for="(edge, index) in visibleEdges"
-        :key="`e${index}`"
-        :x1="nodePos(edge.source)?.x"
-        :y1="nodePos(edge.source)?.y"
-        :x2="nodePos(edge.target)?.x"
-        :y2="nodePos(edge.target)?.y"
-        class="graph-edge"
-      />
-      <!-- 节点 -->
-      <g
-        v-for="node in graph.nodes"
-        :key="node.slug"
-        class="graph-node"
-        :class="[`is-${node.page_type}`, { 'is-center': node.slug === centerSlug }]"
-        :transform="`translate(${nodePos(node.slug)?.x ?? 0},${nodePos(node.slug)?.y ?? 0})`"
-        @click="$emit('select', node.slug)"
-      >
-        <circle :r="nodeRadius(node)" />
-        <text :y="nodeRadius(node) + 12" text-anchor="middle">{{ node.title.slice(0, 8) }}</text>
-      </g>
-    </svg>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import * as echarts from 'echarts/core'
+import { GraphChart } from 'echarts/charts'
+import { LegendComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
 import { wikiApi } from '@/api/knowledge'
 import type { WikiGraphResponse } from '@/api/types'
+
+echarts.use([GraphChart, TooltipComponent, LegendComponent, CanvasRenderer])
 
 const props = defineProps<{
   spaceId: number
@@ -62,10 +48,7 @@ const props = defineProps<{
   initialCenter?: string
 }>()
 
-defineEmits<{ select: [slug: string] }>()
-
-const width = 800
-const height = 520
+const emit = defineEmits<{ select: [slug: string] }>()
 
 const mode = ref<'overview' | 'ego'>(props.initialCenter ? 'ego' : 'overview')
 const centerSlug = ref(props.initialCenter ?? '')
@@ -75,45 +58,122 @@ const loading = ref(false)
 // 全部节点（供 ego 中心下拉；overview 图不完整时回退索引接口）
 const allNodes = ref<Array<{ slug: string; title: string }>>([])
 
-/** 圆形布局：按 page_type 分三环，slug 哈希决定起始角，避免每次刷新跳动 */
-const layout = computed(() => {
-  const positions = new Map<string, { x: number; y: number }>()
-  if (!graph.value) return positions
-  const groups: Record<string, string[]> = {}
-  for (const node of graph.value.nodes) {
-    ;(groups[node.page_type] ??= []).push(node.slug)
+const canvasRef = ref<HTMLDivElement | null>(null)
+let chart: echarts.ECharts | null = null
+let resizeObserver: ResizeObserver | null = null
+
+const TYPE_LABELS: Record<string, string> = {
+  entity: '实体',
+  concept: '概念',
+  summary: '摘要',
+  synthesis: '综合',
+  comparison: '对比',
+}
+
+// 类型 → Element Plus 语义色（读 CSS 变量，暗色主题自动适配）
+const TYPE_COLOR_VARS: Record<string, string> = {
+  entity: '--el-color-primary',
+  concept: '--el-color-success',
+  summary: '--el-color-warning',
+  synthesis: '--el-color-danger',
+  comparison: '--el-color-info',
+}
+
+function cssVar(name: string, fallback: string): string {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return value || fallback
+}
+
+function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
+  const categories = [...new Set(data.nodes.map((n) => n.page_type))]
+  const textColor = cssVar('--color-text', '#303133')
+  const edgeColor = cssVar('--color-border-light', '#dcdfe6')
+
+  const nodes = data.nodes.map((node) => {
+    const color = cssVar(TYPE_COLOR_VARS[node.page_type] ?? '--el-color-primary', '#409eff')
+    return {
+      id: node.slug,
+      name: node.title,
+      slug: node.slug,
+      category: categories.indexOf(node.page_type),
+      symbolSize: Math.min(22 + node.link_count * 4, 64),
+      itemStyle: node.slug === centerSlug.value ? { borderWidth: 4, borderColor: color } : undefined,
+      label: { show: true, fontSize: 11, color: textColor },
+      tooltip: {
+        title: node.title,
+        pageType: TYPE_LABELS[node.page_type] ?? node.page_type,
+        linkCount: node.link_count,
+      },
+    }
+  })
+
+  const edges = data.edges
+    .filter((e) => {
+      const slugs = new Set(data.nodes.map((n) => n.slug))
+      return slugs.has(e.source) && slugs.has(e.target)
+    })
+    .map((e) => ({
+      source: e.source,
+      target: e.target,
+      lineStyle: { color: edgeColor, width: 1, opacity: 0.55, curveness: 0.12 },
+    }))
+
+  return {
+    tooltip: {
+      confine: true,
+      formatter: (params: { dataType: string; data: { tooltip: { title: string; pageType: string; linkCount: number } } }) => {
+        if (params.dataType !== 'node') return ''
+        const info = params.data.tooltip
+        return `<strong>${info.title}</strong><br/>类型：${info.pageType}<br/>链接数：${info.linkCount}`
+      },
+    },
+    legend: [
+      {
+        top: 8,
+        right: 12,
+        data: categories.map((type) => ({ name: TYPE_LABELS[type] ?? type })),
+        textStyle: { color: textColor, fontSize: 11 },
+        itemWidth: 12,
+        itemHeight: 12,
+      },
+    ],
+    series: [
+      {
+        type: 'graph',
+        layout: 'force',
+        data: nodes,
+        links: edges,
+        categories: categories.map((type) => ({
+          name: TYPE_LABELS[type] ?? type,
+          itemStyle: { color: cssVar(TYPE_COLOR_VARS[type] ?? '--el-color-primary', '#409eff') },
+        })),
+        roam: true,
+        draggable: true,
+        force: {
+          repulsion: 320,
+          edgeLength: [70, 170],
+          gravity: 0.08,
+          layoutAnimation: true,
+        },
+        label: { position: 'bottom', distance: 6 },
+        emphasis: { focus: 'adjacency', lineStyle: { width: 2.5, opacity: 1 } },
+        scaleLimit: { min: 0.4, max: 4 },
+      },
+    ],
   }
-  const radii: Record<string, number> = {
-    summary: 120, concept: 190, entity: 230, synthesis: 160, comparison: 160,
-  }
-  for (const [type, slugs] of Object.entries(groups)) {
-    const radius = radii[type] ?? 180
-    slugs.forEach((slug, index) => {
-      const angle = (2 * Math.PI * index) / Math.max(slugs.length, 1) + type.length
-      positions.set(slug, {
-        x: width / 2 + radius * Math.cos(angle),
-        y: height / 2 + radius * Math.sin(angle),
-      })
+}
+
+function renderChart(data: WikiGraphResponse) {
+  if (!canvasRef.value) return
+  if (!chart) {
+    chart = echarts.init(canvasRef.value)
+    chart.on('click', (params) => {
+      const slug = (params.data as { slug?: string } | undefined)?.slug
+      if (params.dataType === 'node' && slug) emit('select', slug)
     })
   }
-  return positions
-})
-
-function nodePos(slug: string) {
-  return layout.value.get(slug)
+  chart.setOption(buildOption(data), true)
 }
-
-function nodeRadius(node: { link_count: number }) {
-  return Math.min(6 + node.link_count * 1.5, 18)
-}
-
-const visibleEdges = computed(() => {
-  if (!graph.value) return []
-  return graph.value.edges.filter(
-    (e: { source: string; target: string }) =>
-      layout.value.has(e.source) && layout.value.has(e.target)
-  )
-})
 
 async function loadGraph() {
   loading.value = true
@@ -122,16 +182,31 @@ async function loadGraph() {
       mode.value === 'ego' && centerSlug.value
         ? { mode: 'ego', center: centerSlug.value, depth: 2, limit: 80 }
         : { mode: 'overview', limit: 80 }
-    graph.value = await wikiApi.getGraph(props.spaceId, props.kbId, params)
+    const data = await wikiApi.getGraph(props.spaceId, props.kbId, params)
+    graph.value = data
+    renderChart(data)
   } catch {
     graph.value = null
+    chart?.clear()
   } finally {
     loading.value = false
   }
 }
 
+watch(
+  () => props.initialCenter,
+  (slug) => {
+    if (slug && slug !== centerSlug.value) {
+      centerSlug.value = slug
+      if (mode.value === 'ego') void loadGraph()
+    }
+  }
+)
+
 onMounted(async () => {
   await loadGraph()
+  resizeObserver = new ResizeObserver(() => chart?.resize())
+  if (canvasRef.value) resizeObserver.observe(canvasRef.value)
   // ego 中心下拉数据源：全量页面轻量列表
   try {
     const data = await wikiApi.listPages(props.spaceId, props.kbId, { page_size: 100 })
@@ -139,6 +214,12 @@ onMounted(async () => {
   } catch {
     allNodes.value = []
   }
+})
+
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  chart?.dispose()
+  chart = null
 })
 
 defineExpose({ reload: loadGraph })
@@ -149,7 +230,8 @@ defineExpose({ reload: loadGraph })
   display: flex;
   flex-direction: column;
   gap: 12px;
-  height: 100%;
+  min-height: 0;
+  flex: 1;
 }
 
 .graph-toolbar {
@@ -167,56 +249,27 @@ defineExpose({ reload: loadGraph })
   font-size: var(--text-xs);
 }
 
+.toolbar-hint {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
 .graph-canvas {
+  position: relative;
   flex: 1;
-  min-height: 380px;
+  min-height: 420px;
+  overflow: hidden;
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-2xl);
   background: var(--color-bg-card);
 }
 
-.graph-canvas.is-empty {
+.graph-empty {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.graph-edge {
-  stroke: var(--color-border-light, #ddd);
-  stroke-width: 1;
-}
-
-.graph-node {
-  cursor: pointer;
-}
-
-.graph-node circle {
-  fill: var(--el-color-primary-light-7);
-  stroke: var(--el-color-primary);
-  stroke-width: 1.5;
-}
-
-.graph-node.is-concept circle {
-  fill: var(--el-color-success-light-7);
-  stroke: var(--el-color-success);
-}
-
-.graph-node.is-summary circle {
-  fill: var(--el-color-warning-light-7);
-  stroke: var(--el-color-warning);
-}
-
-.graph-node.is-center circle {
-  stroke-width: 3;
-}
-
-.graph-node text {
-  fill: var(--color-text, #333);
-  font-size: 11px;
-  pointer-events: none;
-}
-
-.graph-node:hover circle {
-  stroke-width: 3;
 }
 </style>

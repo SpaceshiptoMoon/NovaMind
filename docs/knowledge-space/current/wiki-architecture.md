@@ -73,7 +73,7 @@ Finalize 收尾     in/out_links 双向对齐、死链剔除、revision 两级�
 ## 前端
 
 - **`views/space/WikiBrowserView.vue`**：三页签（浏览/图谱/问题）。浏览 = 左列表 + 右 MD 正文 + 来源折叠面板；`[[slug|title]]` 渲染前正则替换为 `<a data-slug>` 再 `renderMarkdown`；编辑抽屉（乐观锁 409 提示）+ 历史抽屉（行级 diff + 回滚，diff 在 `utils/wikiDiff.ts`）；生成中顶部横幅轮询 `/ingest/status`。
-- **`components/knowledge/WikiGraphPanel.vue`**：零依赖 SVG 图谱（overview / ego 邻域），按 page_type 着色分环布局，点击跳页面。
+- **`components/knowledge/WikiGraphPanel.vue`**：ECharts 力导向图谱（overview / ego 邻域），按 page_type 着色 + 图例过滤、拖拽/缩放、悬停提示、点击跳页面；颜色读 Element Plus CSS 变量适配暗色主题；echarts 按需引入（Graph/Tooltip/Legend），仅随 Wiki 懒加载 chunk 下载。
 - **`components/knowledge/KbWikiSection.vue`**：KB 配置「Wiki 生成」步骤（`kbConfig.ts` 的 `applyWikiConfig` / `buildWikiConfigFromForm` 双向转换）。
 
 ## slug 规范化
