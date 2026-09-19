@@ -65,6 +65,7 @@ Do not place feature business logic in `core/`.
 Allowed categories:
 
 - `shared/storage/`: external service clients (ES/MinIO/Redis, via `client_factory/`)
+- `shared/search/`: external search vendor clients (tavily/serpapi/duckduckgo)
 - `shared/cache/`: cache access
 - `shared/mq/`: async task runtime
 - `shared/prompts/`: shared prompts
@@ -127,7 +128,7 @@ Guidelines:
   - `tests/core/` / `tests/shared/` / `tests/engines/<x>/` / `tests/features/<x>/`: mirror the `src/` layer of the tested module
   - `tests/integration/`: tests marked `integration` that need a running :8100 service
 - Add focused regression tests for parsing bugs
-- Use `test_data/` fixtures when validating multimodal handling
+- Multimodal sample files: repo-root `test_data/` if it exists locally (untracked convention, may not exist); otherwise put fixtures in `tests/fixtures/`
 - When fixing pipeline issues, prefer at least one test that reproduces the original failure mode
 
 ## Knowledge Processing Notes
@@ -135,7 +136,6 @@ Guidelines:
 - Document parsing config and runtime config conversion must stay aligned
 - Media parsing should degrade gracefully when metadata is incomplete
 - External integrations like DeepDoc should be isolated behind shared adapters
-- Sample files under `test_data/output/` should remain usable for local verification
 
 ## When Editing Backend Code
 

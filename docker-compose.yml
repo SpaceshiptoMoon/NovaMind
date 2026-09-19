@@ -1,11 +1,14 @@
 # ========================================
 # NovaMind - One-Command Docker Compose
 # ========================================
-# Usage:
-#   docker compose up -d
+# 推荐：用部署脚本一键部署（会先生成 .env / docker.yaml / default.yaml 再启动）
+#   bash deploy.sh deploy        # Windows: powershell -ExecutionPolicy Bypass -File deploy.ps1
+# 其他命令：bash deploy.sh status|logs|stop|clean
+#
+# 仅当上述配置文件已存在时才可直接：
+#   docker compose up -d --build
 #   docker compose logs -f
 #   docker compose down
-#   docker compose up -d --build
 #
 # Runtime config file mounts:
 #   ./backend/src/setting/yaml_config/yaml/default.yaml -> 容器内同路径（deploy 脚本已从

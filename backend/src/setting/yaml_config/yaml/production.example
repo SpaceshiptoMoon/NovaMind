@@ -1,5 +1,9 @@
 environment: production
 
+# 生产必须收敛为前端实际域名列表（逗号分隔字符串或 YAML 数组），
+# 继承 default.yaml 的 "*" 会禁用 credentials 且不满足生产安全要求
+cors_origins: https://your-frontend-domain.com
+
 minio:
   endpoint: your-minio-endpoint
   access_key: your-minio-access-key

@@ -8,7 +8,10 @@ NovaMind is a full-stack intelligent knowledge-base platform.
 - `frontend/`: Vue 3 + TypeScript frontend, workspace UI, knowledge-base UI, agent UI
 - `docs/`: architecture, design decisions, restructuring plans, handover notes
 - `docker/`: container build and runtime assets
-- `test_data/`: local fixtures for text, image, audio, and video processing
+
+Note: `test_data/` (repo-root sample fixtures for text/image/audio/video) is a convention,
+not a tracked directory — it currently does not exist. Create it locally when adding
+large sample files; reference it via `parents[N]` from `backend/tests/`.
 
 ## Repository Layout
 
@@ -17,7 +20,6 @@ backend/
 frontend/
 docs/
 docker/
-test_data/
 deploy.ps1
 deploy.sh
 docker-compose.yml
@@ -156,7 +158,7 @@ Generic helpers that are not knowledge-specific belong under:
 - Do not move files casually; preserve stable import boundaries unless there is a real structure fix.
 - Do not add new top-level folders without a strong reason.
 - When reorganizing folders, update docs and import paths in the same change.
-- For parsing pipeline changes, verify both runtime code and sample fixtures in `test_data/`.
+- For parsing pipeline changes, verify both runtime code and sample fixtures (repo-root `test_data/` if present, else `backend/tests/fixtures/`).
 - For knowledge-base config changes, keep backend schema, frontend forms, and persisted config structure aligned.
 
 ## Hard Rules

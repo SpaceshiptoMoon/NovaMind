@@ -25,6 +25,11 @@ backend/src/setting/yaml_config/yaml/*.yaml
 
 # Node.js
 frontend/node_modules/
+# 前端本地 env 不得进构建上下文：vite 构建时会读取 frontend/.env 并把
+# VITE_API_BASE_URL（本机开发直连 8100）烘焙进生产 bundle，部署后打不到 nginx 反代
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
 
 # 文档（构建不需要）
 *.md

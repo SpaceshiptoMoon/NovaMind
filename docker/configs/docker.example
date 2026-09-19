@@ -7,6 +7,10 @@
 
 environment: docker
 
+# 生产/公网部署时改为前端实际域名列表（逗号分隔字符串或 YAML 数组）；
+# 留空继承 default.yaml 的 "*"（此时后端自动禁用 credentials 并告警）。
+cors_origins: "*"
+
 redis:
   enabled: true
   host: redis
