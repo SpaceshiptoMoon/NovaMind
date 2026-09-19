@@ -21,12 +21,14 @@ from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.wiki import (
     WikiEditSource,
     WikiIngestStatus,
+    WikiPageStatus,
     WikiPageType,
 )
 from novamind.features.knowledge_space.repository.wiki_repository import (
     WikiIngestRecordRepository,
     WikiPageRepository,
 )
+from novamind.features.knowledge_space.services.wiki_handles import HandleTable
 from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.utils.llm_response import extract_json_obj
 
@@ -200,6 +202,13 @@ class WikiIngestService:
         existing_slugs = set(old_slugs)
         valid_link_slugs = sorted(s for s in (valid_slugs | existing_slugs) if s)
 
+        # slug 句柄表（对齐 WeKnora wiki_slug_handles.go）：模型不复述高熵 slug，
+        # 只抄 ref-N 短句柄，生成后 decode 还原——防 UUID slug 被改错一个字符
+        slug_handles = HandleTable(prefix="ref-", start=1, width=1)
+        link_handle_lines = [
+            f"- {slug_handles.register(s)} = {s}" for s in valid_link_slugs if s
+        ]
+
         chunk_id_map = {str(c.get("chunk_id")): c for c in chunks}
         existing_map = await self.page_repo.list_by_slugs(
             self.kb_id, [c.slug for c in cited]
@@ -210,12 +219,14 @@ class WikiIngestService:
         # 等内层许可，许可被只持一半的协程占死，端到端实测已复现）。
         generated = await asyncio.gather(*[
             self._generate_page_content(
-                c, chunk_id_map, valid_link_slugs, custom_content,
-                existing_map.get(c.slug),
+                c, chunk_id_map, valid_link_slugs, link_handle_lines, slug_handles,
+                custom_content, existing_map.get(c.slug),
             )
             for c in cited
         ])
 
+        # 本批写入的 slug（draft→publish 范围）
+        batch_slugs: List[str] = []
         for item, gen in zip(cited, generated):
             if gen is None:
                 continue  # 生成失败或无素材，跳过（强制接地）
@@ -230,12 +241,14 @@ class WikiIngestService:
                         content=content,
                         summary=summary,
                         page_type=item.type,
+                        status=WikiPageStatus.DRAFT,
                         aliases=item.aliases or None,
                         source_refs=[f"{self.document_id}|"],
                         chunk_refs=[f"{self.document_id}_{cid}" for cid in item.cited_chunk_ids],
                         edit_source=WikiEditSource.PIPELINE,
                         link_slugs=out_links,
                     )
+                batch_slugs.append(item.slug)
                 if created:
                     outcome.pages_created += 1
                 else:
@@ -249,6 +262,11 @@ class WikiIngestService:
             "pages_created": outcome.pages_created, "pages_updated": outcome.pages_updated,
         })
         await self._commit()
+
+        # 批尾发布（对齐 WeKnora publishDraftPages）：draft→published 簿记写，
+        # 不递增 version；用户不见半成品页
+        if batch_slugs:
+            await self.page_repo.publish_draft_pages(self.kb_id, batch_slugs)
 
         # ---- Finalize: 链接重建 / 死链清理 / 快照裁剪（纯代码） ----
         self._record.start_step("finalize")
@@ -319,7 +337,12 @@ class WikiIngestService:
         candidates: List[ExtractedItem],
         chunks: List[Dict[str, Any]],
     ) -> Tuple[Dict[str, List[str]], List[ExtractedItem]]:
-        """分批标注引文，返回 ({slug: [chunk_id]}, 新发现的候选)"""
+        """分批标注引文，返回 ({slug: [chunk_id]}, 新发现的候选)
+
+        chunk 句柄（对齐 WeKnora splitChunksIntoCitationBatches）：每批给 chunk
+        分配 c000/c001 短句柄，prompt 中只出现句柄；模型返回句柄，批内还原为
+        真实 chunk_id，未知句柄丢弃——防模型复述长 UUID 时打错字符。
+        """
         usable = [
             c for c in chunks
             if str(c.get("content") or "").strip()
@@ -333,10 +356,11 @@ class WikiIngestService:
         new_candidates: List[ExtractedItem] = []
         lock = asyncio.Lock()
 
-        async def run_batch(batch: List[Dict[str, Any]]) -> None:
+        async def run_batch(batch: List[Tuple[HandleTable, Dict[str, Any]]]) -> None:
+            handles, chunk_list = batch
             chunks_xml = "\n".join(
-                f'<c id="{str(c.get("chunk_id"))}">{str(c.get("content"))[:2000]}</c>'
-                for c in batch
+                f'<c id="{handles.register(str(c.get("chunk_id")))}">{str(c.get("content"))[:2000]}</c>'
+                for c in chunk_list
             )
             prompt = PromptManager.format_prompt(
                 "wiki_chunk_citation_user",
@@ -350,15 +374,17 @@ class WikiIngestService:
             batch_citations = raw.get("citations") or {}
             batch_new = raw.get("new_slugs") or []
             async with lock:
-                for slug, chunk_ids in batch_citations.items():
+                for slug, chunk_handles in batch_citations.items():
                     clean_slug = normalize_slug(str(slug))
-                    if not clean_slug or not chunk_ids:
+                    if not clean_slug or not chunk_handles:
                         continue
                     holdings = citations.setdefault(clean_slug, [])
-                    for cid in chunk_ids:
-                        cid = str(cid)
-                        if cid not in holdings:
-                            holdings.append(cid)
+                    for h in chunk_handles:
+                        # 句柄还原；未知句柄丢弃（模型幻觉的 id）
+                        real_id = handles.resolve(str(h))
+                        if real_id is None or real_id in holdings:
+                            continue
+                        holdings.append(real_id)
                 for entry in batch_new:
                     if not isinstance(entry, dict):
                         continue
@@ -368,6 +394,12 @@ class WikiIngestService:
                         continue
                     if "/" not in slug:
                         slug = f"{entry.get('type', 'concept')}/{slug}"
+                    # 新候选自带的 source_chunks 同样过句柄还原
+                    cited_ids: List[str] = []
+                    for h in entry.get("source_chunks") or []:
+                        real_id = handles.resolve(str(h))
+                        if real_id is not None and real_id not in cited_ids:
+                            cited_ids.append(real_id)
                     new_candidates.append(ExtractedItem(
                         type=str(entry.get("type") or "concept"),
                         name=name,
@@ -375,11 +407,13 @@ class WikiIngestService:
                         aliases=[str(a) for a in (entry.get("aliases") or []) if str(a).strip()],
                         description=str(entry.get("description") or "").strip(),
                         details=str(entry.get("details") or "").strip(),
-                        cited_chunk_ids=[str(x) for x in (entry.get("source_chunks") or [])],
+                        cited_chunk_ids=cited_ids,
                     ))
 
-        if batches:
-            await asyncio.gather(*[run_batch(b) for b in batches])
+        # 每批独立句柄表（编号从 0 起，批间不串）
+        prepared = [(HandleTable(prefix="c", start=0, width=3), b) for b in batches]
+        if prepared:
+            await asyncio.gather(*[run_batch(pb) for pb in prepared])
 
         # 回填引文到候选
         for c in candidates:
@@ -409,6 +443,8 @@ class WikiIngestService:
         item: ExtractedItem,
         chunk_id_map: Dict[str, Dict[str, Any]],
         valid_link_slugs: List[str],
+        link_handle_lines: List[str],
+        slug_handles: HandleTable,
         custom_content: str,
         existing: Optional[Any],
     ) -> Optional[Tuple[str, str, List[str]]]:
@@ -438,7 +474,7 @@ class WikiIngestService:
             page_type=item.type,
             existing_content=(existing.content if existing else ""),
             new_content="\n\n".join(cited_texts) if cited_texts else "（本次无新增引用，仅基于现有内容整理）",
-            valid_links="\n".join(f"- {s}" for s in valid_link_slugs if s != item.slug),
+            valid_links="\n".join(link_handle_lines) if link_handle_lines else "（无可用链接）",
             custom_instructions=custom_content or "（无自定义要求）",
             language=self.language,
         )
@@ -450,6 +486,10 @@ class WikiIngestService:
         summary, content = self._split_summary_line(raw)
         if not content.strip():
             return None
+
+        # slug 句柄还原（对齐 WeKnora decodeContent）：[[ref-N|显示名]] → [[real|显示名]]。
+        # 无映射句柄原样保留，由下方白名单校验当作死链剔除。
+        content = slug_handles.decode_text(content, r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]")
 
         # 只保留指向有效 slug 且非自指的 [[slug|title]] 链接
         out_links = self._extract_wiki_links(content, item.slug, set(valid_link_slugs))

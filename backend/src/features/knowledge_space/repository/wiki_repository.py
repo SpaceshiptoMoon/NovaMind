@@ -7,7 +7,7 @@ Wiki 页面仓储
 
 from typing import Optional, List, Dict, Any, Tuple
 
-from sqlalchemy import select, func, or_, String, delete as sa_delete
+from sqlalchemy import select, func, or_, String, update, delete as sa_delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -198,9 +198,13 @@ class WikiPageRepository:
             return page, True
 
         # 已存在：内容变化才递增 version；变化前快照旧版本
+        # status 比较对 draft 豁免：管道写页一律带 status=draft（WeKnora 语义），
+        # draft→published 由批尾 publish_draft_pages 簿记翻转；已存在页若是
+        # published（前一轮或人工发布），draft 入参不应判为内容变化。
+        status_for_compare = "published" if status == "draft" else status
         content_changed = page.content_signature_changed(
             title=title, content=content, summary=summary,
-            page_type=page_type, status=status,
+            page_type=page_type, status=status_for_compare,
         )
         if content_changed:
             async with self.session.begin_nested():
@@ -210,7 +214,7 @@ class WikiPageRepository:
             page.content = content
             page.summary = summary
             page.page_type = page_type
-            page.status = status
+            page.status = status if status != "draft" else page.status
             page.aliases = aliases or page.aliases or []
             page.last_edit_source = edit_source
             page.last_editor_id = editor_id
@@ -225,6 +229,27 @@ class WikiPageRepository:
         page.out_links = now_slugs
         await self.session.flush()
         return page, False
+
+    async def publish_draft_pages(self, kb_id: int, slugs: List[str]) -> int:
+        """批尾把本批 draft 页翻转为 published（对齐 WeKnora publishDraftPages）。
+
+        簿记写：不快照、不递增 version（status 翻转不属用户可见内容变化——
+        draft→published 是管道生命周期的固定一步，不是编辑）。
+        返回翻转的页面数。
+        """
+        if not slugs:
+            return 0
+        result = await self.session.execute(
+            update(WikiPage)
+            .where(
+                WikiPage.kb_id == kb_id,
+                WikiPage.deleted_flag == 0,
+                WikiPage.status == "draft",
+                WikiPage.slug.in_(list(slugs)),
+            )
+            .values(status="published")
+        )
+        return int(result.rowcount or 0)
 
     async def _snapshot_revision(self, page: WikiPage) -> None:
         """把页面当前版本整份快照进 wiki_page_revisions。

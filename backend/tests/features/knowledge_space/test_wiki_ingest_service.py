@@ -102,11 +102,13 @@ def _cand_json():
     }, ensure_ascii=False)
 
 
+# 句柄机制（对齐 WeKnora）：引文批内 chunk 以 c000/c001 短句柄呈现，
+# 模型（mock）返回句柄，管道还原为真实 chunk_id
 _CITE_JSON = json.dumps({
     "citations": {
-        "entity/jia-gong-si": ["100_0"],
-        "entity/yi-chan-pin": ["100_0", "100_1"],
-        "concept/rag": ["100_1"],
+        "entity/jia-gong-si": ["c000"],
+        "entity/yi-chan-pin": ["c000", "c001"],
+        "concept/rag": ["c001"],
     },
     "new_slugs": [],
 }, ensure_ascii=False)
@@ -309,7 +311,7 @@ async def test_reduce_no_semaphore_deadlock_under_many_candidates(wiki_db):
         slug = f"entity/e{i}"
         entities.append({"name": f"实体{i}", "slug": slug, "aliases": [],
                          "description": "d", "details": "x"})
-        cite_map[slug] = ["100_0"]
+        cite_map[slug] = ["c000"]  # chunk 句柄（批内 c000 = chunk 100_0）
     cand_json = json.dumps({"entities": entities, "concepts": []}, ensure_ascii=False)
     cite_json = json.dumps({"citations": cite_map, "new_slugs": []}, ensure_ascii=False)
 
@@ -389,3 +391,127 @@ def test_normalize_slug_edge_cases():
     assert normalize_slug('concept/--x--') == 'concept/x'
     assert normalize_slug('///') == ''
     assert normalize_slug('概念/RAG 检索') == '概念/rag-检索'
+
+
+# ==================== 批1 对齐：句柄防错 + draft→publish ====================
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_ingest_slug_handles_in_valid_links_prompt(wiki_db):
+    """Reduce 的 valid_links 以 ref-N = slug 句柄形式喂给模型（防 slug 复述错误）"""
+    llm = MockLLM([_cand_json(), _CITE_JSON, _page_md("甲公司"), _page_md("乙产品"), _page_md("检索增强生成")])
+    svc = _make_service(wiki_db, llm)
+    await svc.ingest_document(full_text="正文", chunks=_CHUNKS)
+
+    # Reduce 阶段的 prompt（第 3 个起）应含句柄行而不含裸 slug 清单
+    reduce_prompts = llm.prompts[2:]
+    assert any("- ref-1 = " in p for p in reduce_prompts)
+    assert all("<valid_links>" in p for p in reduce_prompts)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_ingest_model_handle_output_decoded(wiki_db):
+    """模型返回 [[ref-N|显示名]] → 管道 decode 还原为真实 slug 并进 out_links。
+
+    valid_link_slugs 排序后 concept/rag 居首 → rag = ref-1。生成正文引用
+    ref-1（有效）与 ref-99（幻觉），前者还原并保留出链，后者无映射被白名单剔除。
+    """
+    rag_handle_md = "SUMMARY: 乙产品测试页\n\n# 乙产品\n\n平台能力见 [[ref-1|检索增强生成]]与[[ref-99|幻觉]]。"
+
+    llm = MockLLM([_cand_json(), _CITE_JSON, _page_md("甲公司"), rag_handle_md, _page_md("检索增强生成")])
+    svc = _make_service(wiki_db, llm)
+    outcome = await svc.ingest_document(full_text="正文", chunks=_CHUNKS)
+    assert outcome.pages_created == 3
+
+    repo = WikiPageRepository(wiki_db)
+    page = await repo.get_by_slug(1, "entity/yi-chan-pin")
+    # ref-3 → concept/rag 还原成功且在白名单内 → 出链保留
+    assert "concept/rag" in (page.out_links or [])
+    # ref-99 无映射 → 白名单剔除，不出链
+    assert "ref-99" not in (page.out_links or [])
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_ingest_citation_unknown_chunk_handle_dropped(wiki_db):
+    """引文阶段模型返回未知句柄 → 丢弃，不产生幽灵 chunk_id"""
+    bad_cite = json.dumps({
+        "citations": {
+            "entity/jia-gong-si": ["c000", "c777"],  # c777 幻觉句柄
+        },
+        "new_slugs": [],
+    }, ensure_ascii=False)
+    llm = MockLLM([
+        _cand_json(), bad_cite,
+        _page_md("甲公司"), _page_md("乙产品"), _page_md("检索增强生成"),
+    ])
+    svc = _make_service(wiki_db, llm)
+    outcome = await svc.ingest_document(full_text="正文", chunks=_CHUNKS)
+
+    repo = WikiPageRepository(wiki_db)
+    page = await repo.get_by_slug(1, "entity/jia-gong-si")
+    # 只有 c000（真实 100_0）被还原；c777 丢弃后只剩一个 chunk 引用
+    assert page.chunk_refs == ["100_100_0"]
+    # 乙产品/RAG 无引用 → 不写页（强制接地）
+    assert outcome.pages_created == 1
+    assert outcome.skipped_no_citation == 2
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_ingest_pages_published_after_batch(wiki_db):
+    """批尾发布：reduce 落库 draft → publish 后全部 published"""
+    llm = MockLLM([_cand_json(), _CITE_JSON, _page_md("甲公司"), _page_md("乙产品"), _page_md("检索增强生成")])
+    svc = _make_service(wiki_db, llm)
+    await svc.ingest_document(full_text="正文", chunks=_CHUNKS)
+
+    repo = WikiPageRepository(wiki_db)
+    for slug in ("entity/jia-gong-si", "entity/yi-chan-pin", "concept/rag"):
+        page = await repo.get_by_slug(1, slug)
+        assert page is not None
+        assert page.status == "published", f"{slug} 应在批尾翻转为 published"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_ingest_unchanged_published_page_status_not_downgraded(wiki_db):
+    """已存在 published 页内容无变化：draft 入参不应触发快照/版本递增/状态回退"""
+    repo = WikiPageRepository(wiki_db)
+    stable_md = "SUMMARY: 甲公司的测试页面\n\n# 甲公司\n\n详见 [[concept/rag|检索增强生成]]。"
+    await repo.create_page({"space_id": 1, "kb_id": 1, "slug": "entity/jia-gong-si", "title": "甲公司",
+                            "page_type": "entity", "content": stable_md.split("\n\n", 1)[1],
+                            "summary": "甲公司的测试页面", "status": "published"})
+    await repo.create_page({"space_id": 1, "kb_id": 1, "slug": "concept/rag", "title": "检索增强生成",
+                            "page_type": "concept", "content": "x"})
+
+    llm = MockLLM([_cand_json(), _CITE_JSON, stable_md, _page_md("乙产品"), _page_md("检索增强生成")])
+    svc = _make_service(wiki_db, llm)
+    await svc.ingest_document(full_text="正文", chunks=_CHUNKS)
+
+    page = await repo.get_by_slug(1, "entity/jia-gong-si")
+    # 内容无变化 → 不递增不快照；状态不被 draft 化
+    assert page.version == 1
+    assert page.status == "published"
+    assert await repo.list_revisions(page.id) == []
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_publish_draft_pages_meta_write_only(wiki_db):
+    """publish_draft_pages：只翻转 draft→published，不动 published/其他页，不递增 version"""
+    repo = WikiPageRepository(wiki_db)
+    d1 = await repo.create_page({"space_id": 1, "kb_id": 1, "slug": "entity/d1", "title": "D1",
+                                 "page_type": "entity", "content": "x", "status": "draft"})
+    p1 = await repo.create_page({"space_id": 1, "kb_id": 1, "slug": "entity/p1", "title": "P1",
+                                 "page_type": "entity", "content": "x", "status": "published"})
+
+    flipped = await repo.publish_draft_pages(1, ["entity/d1", "entity/p1", "entity/ghost"])
+    assert flipped == 1
+
+    await wiki_db.refresh(d1)
+    await wiki_db.refresh(p1)
+    assert d1.status == "published"
+    assert p1.status == "published"   # 已发布页不受影响
+    assert d1.version == 1            # 簿记写不递增 version
