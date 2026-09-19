@@ -53,6 +53,7 @@ If you want to build more than a chat window — a system that can organize know
 ## Core capabilities
 
 - `Knowledge spaces & knowledge bases`: multi-space isolation, member collaboration, access control, KB configuration, full document lifecycle
+- `Knowledge-base Wiki`: auto-generated structured Wiki from KB content, with navigation browsing and agent tool integration
 - `Hybrid retrieval`: vector search, BM25, hybrid search, rerank, query rewriting, and fallback strategies
 - `RAG QA`: multi-turn QA over knowledge bases, with session config and context compression
 - `Deep research`: combines internal KBs with external search, generates step-by-step research reports
@@ -110,6 +111,7 @@ The deploy script will automatically:
 - Create `docker/configs/docker.yaml`
 - Create `backend/src/setting/yaml_config/yaml/default.yaml`
 - Build and start the full stack
+- Download DeepDoc models at deploy time (OCR / layout / table / paragraph-merge XGBoost / formula recognition pix2text-mfr) into `backend/.cache/deepdoc`, mounted into the container via a compose volume (`/app/.cache/deepdoc`) so they survive container recreation; defaults to the `hf-mirror.com` mirror (`HF_ENDPOINT` overridable)
 - Poll `http://localhost/health` for a health check
 
 After deploy, the initial admin password is in `ADMIN_PASSWORD` in the root `.env`.
@@ -181,25 +183,39 @@ cp default.example default.yaml
 cp development.example development.yaml
 ```
 
-2. Start the backend
+2. Start the infrastructure
+
+Local development needs the following services running on `localhost`:
+
+| Service | Purpose | Default port |
+| --- | --- | --- |
+| **MySQL 8.4** | business data persistence | 3306 |
+| **Redis 7** | cache and async task queue | 6379 |
+| **MinIO** | object storage for document originals and parse results | 9005 |
+| **Elasticsearch 9.3** | vector + BM25 full-text retrieval | 9200 |
+
+Recommended: start the infrastructure via Docker Compose (no app containers built):
+
+```bash
+docker compose up -d mysql redis minio elasticsearch
+```
+
+If you already run these services locally, just make sure their connection info matches the YAML config.
+
+3. Start the backend
 
 ```bash
 cd backend
-python -m venv .venv
-
-# Linux / macOS
-source .venv/bin/activate
-
-# Windows PowerShell
-.venv\Scripts\Activate.ps1
-
-pip install .
-python main.py --config development --reload
+uv sync           # install dependencies (skippable if .venv already exists)
+uv run python main.py --config development --reload
 ```
+
+> **Config note**: all backend config is read from YAML files (`backend/src/setting/yaml_config/yaml/`); `${VAR_NAME}` placeholders in YAML are resolved from environment variables at runtime.
+> The backend auto-loads the repo-root `.env` at startup (process environment variables take precedence), so placeholders resolve straight from `.env` — no manual export needed. See [Configuration](#configuration).
 
 Default backend address: `http://localhost:8100`
 
-3. Start the frontend
+4. Start the frontend
 
 ```bash
 cd frontend
@@ -315,6 +331,7 @@ See [`ROADMAP.md`](./ROADMAP.md) for concrete phase goals.
 | Knowledge spaces | `/api/v1/spaces` | space management, members, permission isolation |
 | Knowledge bases | `/api/v1/spaces/{space_id}/knowledge-bases` | KB create, config, document management |
 | Knowledge retrieval | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/search` | search modes, retrieval, rerank |
+| Knowledge-base Wiki | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki` | structured Wiki generation and browsing over a KB |
 | QA | `/api/v1/qa` | multi-turn QA over KBs |
 | AI chat | `/api/v1/ai-chat` | streaming chat and attachments |
 | Deep research | `/api/v1/spaces/{space_id}/deep-research` | multi-source search and research reports |
@@ -340,10 +357,13 @@ development the backend `ConfigLoader` auto-loads it at startup to resolve
 | `MINIO_ROOT_USER` | MinIO access account |
 | `MINIO_ROOT_PASSWORD` | MinIO access password |
 | `ES_JAVA_OPTS` | Elasticsearch JVM args |
-| `ES_PASSWORD` | Elasticsearch password |
+| `ES_PASSWORD` | Elasticsearch password (consumed by local-dev YAML; Docker deploy runs ES with security features disabled, no actual auth) |
 | `SECRET_KEY` | JWT signing key |
 | `ENCRYPTION_KEY` | Encryption key |
 | `ADMIN_PASSWORD` | Initial admin password |
+| `HF_ENDPOINT` | Primary download source for DeepDoc models (defaults to hf-mirror.com) |
+| `DEEPDOC_MIRRORS` | Fallback mirror list for model downloads (optional, JSON array; tried in order after the primary source fails, see `.env.example`) |
+| `DEEPDOC_DISABLE_MIRRORS` | Set `1` to disable fallback mirroring |
 
 ### YAML config
 
@@ -352,8 +372,7 @@ Config files live in `backend/src/setting/yaml_config/yaml/`:
 - `default.yaml`: base config
 - `development.yaml`: dev overrides
 - `production.yaml`: prod overrides
-- `testing.yaml`: test config
-- `docker.yaml`: Docker runtime附加 config, mounted from `docker/configs/docker.yaml`
+- `docker.yaml`: Docker runtime config, mounted from `docker/configs/docker.yaml`
 
 Loading logic:
 
