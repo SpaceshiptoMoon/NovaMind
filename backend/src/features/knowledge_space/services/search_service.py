@@ -579,6 +579,19 @@ class SearchService:
             rerank_client_resolver = _resolve_rerank
 
         # 7. 构造纯检索入参并委托引擎
+        # wiki 页加权（对齐 WeKnora wiki_boost ×1.3）：KB 启用 wiki 且 KB 级
+        # 未显式关闭时生效；factor 入缓存键（见引擎 _generate_query_hash）
+        wiki_boost_factor = 1.0
+        try:
+            kb_cfg = kb.get_config() or {}
+            wiki_cfg = kb_cfg.get("wiki") or {}
+            if wiki_cfg.get("enabled") and wiki_cfg.get("boost_factor") is not None:
+                wiki_boost_factor = float(wiki_cfg.get("boost_factor") or 1.3)
+            elif wiki_cfg.get("enabled"):
+                wiki_boost_factor = 1.3
+        except Exception:
+            wiki_boost_factor = 1.0
+
         rq = RetrievalQuery(
             space_id=space_id,
             kb_id=kb_id,
@@ -598,6 +611,7 @@ class SearchService:
             rerank_top_k=rerank_top_k,
             rerank_model=rerank_model,
             user_id=user_id,
+            wiki_boost_factor=wiki_boost_factor,
         )
         # query_rewrite 改写结果非确定，不入缓存——启用改写时跳过缓存读写
         use_cache_for_engine = use_cache and request.query_rewrite is None

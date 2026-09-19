@@ -113,6 +113,10 @@ class DefaultIndexSchema:
                     "char_start": {"type": "integer"},
                     "char_end": {"type": "integer"},
                     "content_hash": {"type": "keyword"},
+                    # wiki 页同步（chunk_type=wiki_page）：slug 关键字供过滤/回链
+                    "wiki_slug": {"type": "keyword"},
+                    "wiki_title": {"type": "keyword"},
+                    "wiki_page_type": {"type": "keyword"},
                     "start_time": {"type": "float"},
                     "end_time": {"type": "float"},
                     "duration": {"type": "float"},

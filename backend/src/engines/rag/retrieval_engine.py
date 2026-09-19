@@ -59,6 +59,7 @@ class RetrievalQuery:
         "rerank_top_k",
         "rerank_model",
         "user_id",
+        "wiki_boost_factor",
     )
 
     def __init__(
@@ -82,6 +83,7 @@ class RetrievalQuery:
         rerank_top_k: int,
         rerank_model: Optional[str],
         user_id: Optional[int] = None,
+        wiki_boost_factor: float = 1.0,
     ) -> None:
         self.space_id = space_id
         self.kb_id = kb_id
@@ -103,6 +105,10 @@ class RetrievalQuery:
         # 可选：缓存键的用户维度。当前文档级权限未落地、同 KB 成员结果一致，
         # 权限落地后此字段必须由宿主传入（None 时缓存键不含用户段，行为同旧版）
         self.user_id = user_id
+        # wiki 页加权（对齐 WeKnora wiki_boost）：chunk_type=wiki_page 的结果
+        # 分数 ×factor 后稳定重排；1.0 = 关闭。宿主按 KB config wiki.enabled
+        # 计算；factor 影响排序故必须参与缓存键（见 _build_cache_key）
+        self.wiki_boost_factor = wiki_boost_factor
 
 
 class RetrievalEngine:
@@ -170,6 +176,7 @@ class RetrievalEngine:
                 rerank_model=q.rerank_model or "",
                 score_threshold=q.score_threshold,
                 query_rewrite_sig="none",
+                wiki_boost_factor=q.wiki_boost_factor,
             )
             cache_key = self._get_search_cache_key(q.kb_id, q.search_mode, query_hash, user_id=q.user_id)
             cached_results = await self._get_cached_search(cache_key)
@@ -312,6 +319,29 @@ class RetrievalEngine:
                     error=str(e),
                     rerank_model=q.rerank_model,
                     fallback_to_original=True,
+                )
+
+        # 7.5 Wiki 页加权（对齐 WeKnora PluginWikiBoost）：LLM 预合成的互链
+        # 知识优先于原始 chunk。rerank 之后执行（对齐 CHUNK_RERANK 相位顺序）；
+        # rerank 关闭时同样生效。factor=1.0 恒等跳过。
+        if q.wiki_boost_factor != 1.0 and results:
+            wiki_boosted = [
+                (i, r) for i, r in enumerate(results)
+                if r.get("chunk_type") == "wiki_page"
+            ]
+            if wiki_boosted:
+                for _, r in wiki_boosted:
+                    r["original_score"] = r.get("score")
+                    r["score"] = min(1.0, r.get("score", 0) * q.wiki_boost_factor)
+                # 稳定重排：仅 wiki 命中的相对顺序提升，其余保持原相对顺序。
+                # 按 (是否wiki, 原分数) 降序稳定排序——非 wiki 项之间、wiki 项
+                # 之间的相对顺序均不因排序算法而变。
+                results.sort(key=lambda r: (r.get("chunk_type") == "wiki_page", r.get("score", 0)), reverse=True)
+                self.logger.info(
+                    "Wiki 页加权完成",
+                    boosted=len(wiki_boosted),
+                    factor=q.wiki_boost_factor,
+                    total=len(results),
                 )
 
         # 8. 缓存结果
@@ -461,6 +491,7 @@ class RetrievalEngine:
         rerank_model: str = "",
         score_threshold: float = 0.0,
         query_rewrite_sig: str = "",
+        wiki_boost_factor: float = 1.0,
     ) -> str:
         """
         生成查询哈希（用于缓存键）
@@ -469,6 +500,7 @@ class RetrievalEngine:
         rrf_k 影响 RRF 融合排名，必须入键，否则改 rrf_k 会命中旧缓存；
         score_threshold 影响结果过滤；query_rewrite 改写实际检索 query，必须入键，
         否则仅阈值或改写配置不同的请求会共享缓存，导致跨配置缓存污染。
+        wiki_boost_factor 改变排序，必须入键（同 query 不同 factor 不共享缓存）。
         """
         normalized_query = query.strip().lower()
         key_content = (
@@ -476,7 +508,8 @@ class RetrievalEngine:
             f"{vector_weight:.2f}:{bm25_weight:.2f}:{content_weight:.2f}:{question_weight:.2f}:"
             f"rrf_{rrf_k}:"
             f"rerank_{rerank_enabled}_{rerank_top_k}_{rerank_model}:"
-            f"st_{score_threshold:.4f}:qw_{query_rewrite_sig}"
+            f"st_{score_threshold:.4f}:qw_{query_rewrite_sig}:"
+            f"wb_{wiki_boost_factor:.2f}"
         )
         return hashlib.md5(key_content.encode('utf-8')).hexdigest()[:32]
 
@@ -552,6 +585,8 @@ class RetrievalEngine:
                 "metadata": source.get("metadata", {}),
                 "file_info": file_info,
                 "questions": source.get("questions"),
+                # chunk_type 透传（wiki_page 类型的结果供加权/前端分支展示）
+                "chunk_type": source.get("chunk_type"),
             }
 
             enriched_results.append(enriched)

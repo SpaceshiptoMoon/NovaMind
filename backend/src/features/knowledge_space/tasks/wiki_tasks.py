@@ -142,6 +142,10 @@ async def process_wiki_ingest_task(
             svc.bind_record(record)
             outcome = await svc.ingest_document(full_text=full_text, chunks=chunks)
 
+            # 6.5 wiki 页 ES 同步（批5 检索对齐：published 页进向量库参与检索）。
+            # best-effort：embedding 模型缺失/同步失败不影响管道结果。
+            es_synced = await _sync_wiki_pages_to_es(session, kb_id, space_id)
+
             record.mark_done(outcome.pages_created, outcome.pages_updated)
             await session.commit()
             logger.info(
@@ -190,6 +194,85 @@ async def _find_pending_record(record_repo, kb_id: int, document_id: int):
         if r.document_id == document_id and r.status in (WikiIngestStatus.PENDING, WikiIngestStatus.RUNNING):
             return r
     return None
+
+
+async def _sync_wiki_pages_to_es(session, kb_id: int, space_id: int) -> int:
+    """把本 KB 的 published wiki 页同步进 ES（全量收敛，幂等）。
+
+    逐页生成 embedding 后 upsert（wp-{page_id}）；embedding 模型缺失时整体
+    跳过（可装配语义）。完成后失效该 KB 的检索缓存。
+    """
+    try:
+        from novamind.features.knowledge_space.models.wiki import WikiPageStatus
+        from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
+        from novamind.features.knowledge_space.services.wiki_es_sync import WikiEsSyncService
+        from novamind.features.user.services.model_config_service import ModelConfigService
+        from novamind.shared.storage.client_factory import ClientFactory
+
+        repo = WikiPageRepository(session)
+        pages = [
+            p for p in await repo.all_live_pages(kb_id)
+            if p.status == WikiPageStatus.PUBLISHED and (p.content or "").strip()
+        ]
+        if not pages:
+            return 0
+
+        # 页面向量：用空间 embedding 模型对「title+summary+content 摘样」生成。
+        # 内容采样 2000 字符（embedding 输入有长度上限，采样足够检索定位）。
+        space_repo = None
+        try:
+            from novamind.features.knowledge_space.repository.knowledge_space_repository import (
+                KnowledgeSpaceRepository,
+            )
+            space_repo = KnowledgeSpaceRepository(session)
+            space = await space_repo.get_by_id(space_id, use_cache=True)
+            embedding_model = space.embedding_model if space else None
+        except Exception:
+            embedding_model = None
+        if not embedding_model:
+            logger.info("wiki ES 同步跳过：空间未配置 embedding 模型", kb_id=kb_id)
+            return 0
+
+        model_config_service = ModelConfigService(session)
+        embedding_client = await model_config_service.get_embedding_client_by_model(
+            user_id=0, model=embedding_model,
+        )
+        if not embedding_client:
+            logger.info("wiki ES 同步跳过：embedding 客户端解析失败", kb_id=kb_id)
+            return 0
+
+        es_client = await ClientFactory.get_elasticsearch_client()
+        sync_svc = WikiEsSyncService(session, es_client)
+
+        synced = 0
+        for p in pages:
+            text = f"{p.title}\n{p.summary or ''}\n{(p.content or '')[:2000]}"
+            try:
+                vector = await embedding_client.generate_embedding(text)
+                ok = await sync_svc.sync_page(space_id, p, embedding=vector)
+                if ok:
+                    synced += 1
+            except Exception as e:
+                logger.warning("wiki 页 embedding/同步失败", slug=p.slug, error=str(e))
+
+        if synced:
+            await _invalidate_search_cache(kb_id)
+            logger.info("wiki 页 ES 同步完成", kb_id=kb_id, synced=synced, total=len(pages))
+        return synced
+    except Exception as e:
+        logger.warning("wiki 页 ES 同步失败（不影响管道）", kb_id=kb_id, error=str(e))
+        return 0
+
+
+async def _invalidate_search_cache(kb_id: int) -> None:
+    """失效 KB 级检索缓存（best-effort）"""
+    try:
+        from novamind.shared.cache.redis_client import get_redis_client
+
+        cache = await get_redis_client()
+        await cache.delete_by_pattern(f"search:{kb_id}:*", batch_size=100)
+    except Exception as e:
+        logger.warning("wiki 检索缓存失效失败", kb_id=kb_id, error=str(e))
 
 
 async def _load_parsed_text(document) -> str:
@@ -340,6 +423,26 @@ async def process_wiki_retract_task(
         svc = WikiRetractService(session, kb_id=kb_id, space_id=space_id)
         result = await svc.reconcile_document_removal(document_id)
         await session.commit()
+
+        # 被删页面的 ES 文档一并清理（best-effort）
+        if result["deleted"]:
+            try:
+                from novamind.shared.storage.client_factory import ClientFactory
+                from novamind.features.knowledge_space.services.wiki_es_sync import (
+                    WikiEsSyncService,
+                    wiki_chunk_id,
+                )
+
+                es_client = await ClientFactory.get_elasticsearch_client()
+                sync_svc = WikiEsSyncService(session, es_client)
+                for slug in result["deleted"]:
+                    # slug → page_id：软删页需 include_deleted 才查得到
+                    page = await svc.page_repo.get_by_slug(kb_id, slug, include_deleted=True)
+                    if page:
+                        await sync_svc.delete_page(space_id, page.id)
+            except Exception as e:
+                logger.warning("wiki retract ES 清理失败", kb_id=kb_id, error=str(e))
+
         if result["deleted"] or result["stripped"]:
             logger.info(
                 "wiki retract 对账完成",

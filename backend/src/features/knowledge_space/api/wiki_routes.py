@@ -222,12 +222,12 @@ async def search_pages(
 ):
     await _get_kb_or_404(kb_id, space_id, db)
     repo = WikiPageRepository(db)
-    pages, total = await repo.list_pages(kb_id, query=q, page=1, page_size=limit)
+    # 排序搜索（对齐 WeKnora）：rank 分级 + snippet + aliases
+    ranked = await repo.search_pages_ranked(kb_id, q, limit=limit)
     return WikiSearchResponse(
-        items=[WikiPageSearchItem(
-            slug=p.slug, title=p.title, page_type=p.page_type, summary=p.summary or "",
-        ) for p in pages],
-        total=total, query=q,
+        items=[WikiPageSearchItem(**r) for r in ranked],
+        total=len(ranked),
+        query=q,
     )
 
 

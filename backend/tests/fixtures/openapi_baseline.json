@@ -11764,6 +11764,28 @@
         "title": "WeightConfig",
         "type": "object"
       },
+      "WikiAutoFixResponse": {
+        "description": "AutoFix 执行结果",
+        "properties": {
+          "details": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Details",
+            "type": "array"
+          },
+          "fixed": {
+            "title": "Fixed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fixed"
+        ],
+        "title": "WikiAutoFixResponse",
+        "type": "object"
+      },
       "WikiGenerationConfig": {
         "description": "Wiki 自动生成配置（文档解析完成后 LLM 整理互链 Markdown 页面）。\n\n引用接地/合并/去重等系统规则不开放自定义；content_instructions 只控制\n语气、结构与侧重点，extraction_instructions 只控制抽取侧重。",
         "properties": {
@@ -11990,6 +12012,11 @@
             "title": "Groups",
             "type": "array"
           },
+          "intro": {
+            "default": "",
+            "title": "Intro",
+            "type": "string"
+          },
           "is_active": {
             "default": false,
             "title": "Is Active",
@@ -12167,8 +12194,13 @@
         "type": "object"
       },
       "WikiLintIssueItem": {
-        "description": "lint 检出的问题（派生自页面状态，非持久化）",
+        "description": "lint 检出的问题",
         "properties": {
+          "auto_fixable": {
+            "default": false,
+            "title": "Auto Fixable",
+            "type": "boolean"
+          },
           "description": {
             "title": "Description",
             "type": "string"
@@ -12177,8 +12209,18 @@
             "title": "Issue Type",
             "type": "string"
           },
+          "severity": {
+            "default": "warning",
+            "title": "Severity",
+            "type": "string"
+          },
           "slug": {
             "title": "Slug",
+            "type": "string"
+          },
+          "target_slug": {
+            "default": "",
+            "title": "Target Slug",
             "type": "string"
           }
         },
@@ -12196,12 +12238,22 @@
             "title": "Checked Pages",
             "type": "integer"
           },
+          "health_score": {
+            "default": 100,
+            "title": "Health Score",
+            "type": "integer"
+          },
           "issues": {
             "items": {
               "$ref": "#/components/schemas/WikiLintIssueItem"
             },
             "title": "Issues",
             "type": "array"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
           }
         },
         "required": [
@@ -12503,12 +12555,30 @@
       },
       "WikiPageSearchItem": {
         "properties": {
+          "aliases": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
           "page_type": {
             "title": "Page Type",
             "type": "string"
           },
+          "rank": {
+            "default": 0,
+            "title": "Rank",
+            "type": "integer"
+          },
           "slug": {
             "title": "Slug",
+            "type": "string"
+          },
+          "snippet": {
+            "default": "",
+            "title": "Snippet",
             "type": "string"
           },
           "summary": {
@@ -21753,7 +21823,64 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "质量检查（死链/孤儿/空页）",
+        "summary": "质量检查（六类问题+健康分）",
+        "tags": [
+          "知识库 Wiki",
+          "知识库 Wiki"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki/lint/autofix": {
+      "post": {
+        "operationId": "auto_fix_wiki_api_v1_spaces__space_id__knowledge_bases__kb_id__wiki_lint_autofix_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiAutoFixResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "自动修复（死链剥除/空页归档/失效来源回收）",
         "tags": [
           "知识库 Wiki",
           "知识库 Wiki"

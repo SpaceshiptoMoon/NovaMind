@@ -128,6 +128,82 @@ class WikiPageRepository:
         )
         return list(result.scalars().all()), total
 
+    async def search_pages_ranked(
+        self, kb_id: int, query: str, limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """排序搜索（对齐 WeKnora wiki_page.go Search 的 rank 语义）。
+
+        MySQL LIKE 预筛（content 也参与命中）+ Python 侧分级排序：
+        title=4 / slug=3 / summary=2 / content=1（多字段命中取最高），别名
+        参与匹配（title 级）。附 snippet（命中位置前后各 60 字符）。
+        """
+        query = (query or "").strip()
+        if not query:
+            return []
+        limit = max(1, min(limit, 50))
+        kw = f"%{self._escape_like(query)}%"
+        q_lower = query.lower()
+
+        result = await self.session.execute(
+            select(WikiPage).where(
+                WikiPage.kb_id == kb_id,
+                WikiPage.deleted_flag == 0,
+                WikiPage.status != "archived",
+                or_(
+                    WikiPage.title.like(kw),
+                    WikiPage.summary.like(kw),
+                    WikiPage.slug.like(kw),
+                    WikiPage.content.like(kw),
+                    # aliases JSON 数组序列化后匹配
+                    func.lower(func.cast(WikiPage.aliases, String)).like(kw),
+                ),
+            ).limit(limit * 4)  # 预筛放宽，排序后截断
+        )
+        pages = list(result.scalars().all())
+
+        def rank_of(p: WikiPage) -> int:
+            if query.lower() in (p.title or "").lower():
+                return 4
+            if q_lower in (p.slug or "").lower():
+                return 3
+            if q_lower in (p.summary or "").lower():
+                return 2
+            if q_lower in (p.content or "").lower():
+                return 1
+            # 别名命中按 title 级
+            for alias in p.aliases or []:
+                if q_lower in str(alias).lower():
+                    return 4
+            return 0
+
+        scored = sorted(
+            ((rank_of(p), p.updated_at or p.created_at, p) for p in pages),
+            key=lambda t: (-t[0], t[1]),
+        )[:limit]
+
+        def snippet(p: WikiPage) -> str:
+            for field in (p.title, p.summary, p.content):
+                text = field or ""
+                idx = text.lower().find(q_lower)
+                if idx >= 0:
+                    start = max(0, idx - 60)
+                    end = min(len(text), idx + len(query) + 60)
+                    prefix = "…" if start > 0 else ""
+                    suffix = "…" if end < len(text) else ""
+                    return f"{prefix}{text[start:end]}{suffix}"
+            return ""
+
+        return [{
+            "slug": p.slug,
+            "title": p.title,
+            "page_type": p.page_type,
+            "summary": p.summary or "",
+            "aliases": list(p.aliases or []),
+            "rank": rank,
+            "snippet": snippet(p),
+            "version": p.version,
+        } for rank, _, p in scored]
+
     async def list_by_source_document(self, kb_id: int, document_id: int) -> List[WikiPage]:
         """按来源文档反查页面（source_refs 存 "docid|filename"，LIKE 前缀匹配）"""
         prefix = f"{document_id}|"

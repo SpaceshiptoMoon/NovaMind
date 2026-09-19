@@ -332,17 +332,21 @@ class WikiTool(BaseTool):
 
         from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
 
-        pages, total = await WikiPageRepository(db).list_pages(kb_id, query=query, page=1, page_size=limit)
+        # 排序搜索（对齐 WeKnora）：rank 分级 + snippet + 别名参与匹配
+        ranked = await WikiPageRepository(db).search_pages_ranked(kb_id, query, limit=limit)
         return json.dumps({
-            "total": total,
+            "total": len(ranked),
             "items": [
                 {
-                    "slug": p.slug,
-                    "title": p.title,
-                    "page_type": p.page_type,
-                    "summary": p.summary,
+                    "slug": r["slug"],
+                    "title": r["title"],
+                    "page_type": r["page_type"],
+                    "summary": r["summary"],
+                    "aliases": r["aliases"],
+                    "match_rank": r["rank"],
+                    "match_snippet": r["snippet"],
                 }
-                for p in pages
+                for r in ranked
             ],
         }, ensure_ascii=False)
 

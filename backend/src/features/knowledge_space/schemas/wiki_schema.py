@@ -113,6 +113,10 @@ class WikiPageSearchItem(BaseModel):
     title: str
     page_type: str
     summary: str
+    # 批5 排序搜索新增（对齐 WeKnora rank/snippet 语义）
+    aliases: List[str] = []
+    rank: int = 0  # title=4 / slug=3 / summary=2 / content=1
+    snippet: str = ""  # 命中位置前后各 60 字符
 
 
 class WikiSearchResponse(BaseModel):
