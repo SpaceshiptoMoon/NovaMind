@@ -24,8 +24,10 @@
           />
         </el-tabs>
 
-        <!-- 图谱视图 -->
-        <div v-show="activeView === 'graph'" class="graph-wrap">
+        <!-- 图谱视图：惰性挂载（首次切入才渲染）。避免面板在 v-show 隐藏（0×0 容器）
+             下初始化 ECharts——初始化/patch 期抛错会中止父组件更新循环，导致 vdom
+             与 DOM 永久失同步（表现：点了实体右侧内容区停留在空状态不再刷新） -->
+        <div v-if="graphMounted" v-show="activeView === 'graph'" class="graph-wrap">
           <WikiGraphPanel
             :space-id="spaceId"
             :kb-id="kbId"
@@ -413,10 +415,16 @@ function sourceLabel(source: string): string {
 // ============ 视图切换（浏览/图谱/问题） ============
 const activeView = ref<'browse' | 'graph' | 'issues'>('browse')
 
+// 图谱面板惰性挂载标记：首次切入图谱页签时置 true 并保留实例
+const graphMounted = ref(false)
+
 // 问题页签首次切入时拉取列表（角标计数依赖 pending 列表）
 let issuesLoaded = false
 
 function onActiveViewChange(view: string | number) {
+  if (view === 'graph') {
+    graphMounted.value = true
+  }
   if (view === 'issues' && !issuesLoaded) {
     issuesLoaded = true
     void loadIssues()

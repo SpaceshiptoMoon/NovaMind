@@ -66,6 +66,8 @@ const allNodes = ref<Array<{ slug: string; title: string }>>([])
 const canvasRef = ref<HTMLDivElement | null>(null)
 let chart: echarts.ECharts | null = null
 let resizeObserver: ResizeObserver | null = null
+// 容器尚无尺寸时暂存的待渲染数据（ResizeObserver 首次回调消费）
+let pendingRender: WikiGraphResponse | null = null
 
 const TYPE_LABELS: Record<string, string> = {
   entity: '实体',
@@ -174,6 +176,12 @@ function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
 
 function renderChart(data: WikiGraphResponse) {
   if (!canvasRef.value) return
+  // 0×0 容器（如面板尚不可见）初始化 ECharts 会告警/渲染异常；
+  // 跳过本次，等 ResizeObserver 首次回调（拿到真实尺寸）后再渲染
+  if (canvasRef.value.clientWidth === 0 || canvasRef.value.clientHeight === 0) {
+    pendingRender = data
+    return
+  }
   if (!chart) {
     chart = echarts.init(canvasRef.value)
     chart.on('click', (params) => {
@@ -213,9 +221,17 @@ watch(
 )
 
 onMounted(async () => {
-  await loadGraph()
-  resizeObserver = new ResizeObserver(() => chart?.resize())
+  resizeObserver = new ResizeObserver(() => {
+    // 首次拿到非零尺寸时，补渲染此前被暂存的图数据
+    if (pendingRender && canvasRef.value && canvasRef.value.clientWidth > 0) {
+      const data = pendingRender
+      pendingRender = null
+      renderChart(data)
+    }
+    chart?.resize()
+  })
   if (canvasRef.value) resizeObserver.observe(canvasRef.value)
+  await loadGraph()
   // ego 中心下拉数据源：全量页面轻量列表
   try {
     const data = await wikiApi.listPages(props.spaceId, props.kbId, { page_size: 100 })
