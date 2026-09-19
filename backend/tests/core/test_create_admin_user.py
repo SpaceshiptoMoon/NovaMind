@@ -25,6 +25,21 @@ def admin_config():
     return cfg
 
 
+def _make_mock_session() -> MagicMock:
+    """构造支持 `async with db.begin_nested()` + `await db.execute()` 的 mock session。
+
+    startup.create_admin_user 在管理员已存在分支会执行幂等超管标记置位
+    （ed20767 引入），session 需提供异步的 begin_nested/execute。
+    """
+    session = MagicMock()
+    nested = MagicMock()
+    nested.__aenter__ = AsyncMock(return_value=None)
+    nested.__aexit__ = AsyncMock(return_value=False)
+    session.begin_nested = MagicMock(return_value=nested)
+    session.execute = AsyncMock(return_value=MagicMock())
+    return session
+
+
 @pytest.mark.asyncio
 async def test_create_admin_user_when_existing_admin_resets_password_without_role_code(
     admin_config,
@@ -68,7 +83,7 @@ async def test_create_admin_user_when_existing_admin_resets_password_without_rol
         ) as mock_blacklist,
     ):
         mock_db_session_ctx.return_value.__aenter__ = AsyncMock(
-            return_value=MagicMock()
+            return_value=_make_mock_session()
         )
         mock_db_session_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
 
@@ -124,7 +139,7 @@ async def test_create_admin_user_creates_new_admin_with_role_code(admin_config):
         ) as mock_svc_cls,
     ):
         mock_db_session_ctx.return_value.__aenter__ = AsyncMock(
-            return_value=MagicMock()
+            return_value=_make_mock_session()
         )
         mock_db_session_ctx.return_value.__aexit__ = AsyncMock(return_value=False)
 
