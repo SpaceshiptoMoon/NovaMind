@@ -60,6 +60,7 @@ function Ensure-EnvFile {
     $content = $content.Replace("your-mysql-password", (New-RandomHex 16))
     $content = $content.Replace("your-minio-access-key", (New-RandomPassword 8))
     $content = $content.Replace("your-minio-secret-key", (New-RandomPassword 16))
+    $content = $content.Replace("your-es-password", (New-RandomHex 16))
     $content = $content.Replace("your-jwt-secret-key", (New-RandomHex 32))
     $content = $content.Replace("your-aes256-encryption-key", (New-RandomHex 16))
     # Admin@ 前缀带大写+特殊字符；追加固定段保证小写与数字必现（随机 hex 可能全同字符类，

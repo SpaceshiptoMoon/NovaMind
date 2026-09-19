@@ -85,6 +85,7 @@ replacements = {
     "your-mysql-password": secrets.token_hex(16),
     "your-minio-access-key": password(8),
     "your-minio-secret-key": password(16),
+    "your-es-password": secrets.token_hex(16),
     "your-jwt-secret-key": secrets.token_hex(32),
     "your-aes256-encryption-key": secrets.token_hex(16),
     # 管理员密码必须满足后端强度校验（大写+小写+数字+特殊字符，8-30 位）；

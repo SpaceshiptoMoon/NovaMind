@@ -53,6 +53,7 @@ NovaMind 是一个面向团队与个人的智能知识平台，围绕知识库�
 ## 核心能力
 
 - `知识空间与知识库管理`：多空间隔离、成员协作、权限控制、知识库配置和文档全生命周期管理
+- `知识库 Wiki`：基于知识库内容自动生成结构化 Wiki，支持导航浏览和 Agent 工具联动
 - `混合检索`：向量检索、BM25、混合检索、Rerank、查询改写与降级策略
 - `RAG 问答`：基于知识库进行多轮问答，支持会话配置和上下文压缩
 - `深度研究`：联合内部知识库与外部搜索，分步骤生成研究结果和报告
@@ -211,7 +212,7 @@ uv run python main.py --config development --reload
 
 默认后端地址：`http://localhost:8100`
 
-3. 启动前端
+4. 启动前端
 
 ```bash
 cd frontend
@@ -326,6 +327,7 @@ src/features/{module}/
 | 知识空间 | `/api/v1/spaces` | 空间管理、成员管理、权限隔离 |
 | 知识库管理 | `/api/v1/spaces/{space_id}/knowledge-bases` | 知识库创建、配置、文档管理 |
 | 知识检索 | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/search` | 搜索模式、检索、Rerank |
+| 知识库 Wiki | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki` | 知识库结构化 Wiki 生成与浏览 |
 | 智能问答 | `/api/v1/qa` | 基于知识库的多轮问答 |
 | AI 聊天 | `/api/v1/ai-chat` | 流式对话和附件交互 |
 | 深度研究 | `/api/v1/spaces/{space_id}/deep-research` | 多源搜索和研究报告 |
@@ -371,7 +373,7 @@ src/features/{module}/
 | `MINIO_ROOT_USER` | MinIO 访问账号 | `minio` 容器 + YAML `minio.access_key` |
 | `MINIO_ROOT_PASSWORD` | MinIO 访问密码 | `minio` 容器 + YAML `minio.secret_key` |
 | `ES_JAVA_OPTS` | Elasticsearch JVM 参数 | `elasticsearch` 容器 |
-| `ES_PASSWORD` | Elasticsearch 密码 | YAML `elasticsearch.password` |
+| `ES_PASSWORD` | Elasticsearch 密码（本地开发 YAML 消费；Docker 部署关闭了 ES 安全特性，实际不做鉴权） | `default.yaml` `elasticsearch.password` |
 | `SECRET_KEY` | JWT 签名密钥 | YAML `security.secret_key` |
 | `ENCRYPTION_KEY` | 加密密钥 | YAML `security.encryption_key` |
 | `ADMIN_PASSWORD` | 管理员初始密码 | YAML `admin.password` |
