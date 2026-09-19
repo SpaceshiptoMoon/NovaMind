@@ -156,6 +156,8 @@ prepare_deepdoc_models() {
   mkdir -p backend/.cache/deepdoc
 
   # 国内默认走 hf-mirror.com（HF_ENDPOINT 可覆盖为官方源/其它镜像）。
+  # HF 侧源全部失败时代码内自动降级 ModelScope 国内镜像（pix2text-mfr 除外，
+  # 该模型无 ModelScope 镜像）。
   # --user 0：宿主机目录属主 uid 与容器 appuser 不同也能写入；文件默认 644，
   # 运行容器 appuser 只读即可。--no-deps：模型下载不依赖 mysql/redis 等基础设施。
   if docker compose run --rm --no-deps --user 0 \
