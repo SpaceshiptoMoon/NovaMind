@@ -40,6 +40,10 @@ def _bigint_to_integer_on_sqlite(type_, compiler, **kw):
 
 
 def _make_service(session: AsyncSession, llm, wiki_config=None) -> WikiIngestService:
+    # 默认给 mock LLM 挂 taxonomy/dedup 前缀路由（无感应答，不占序列槽位）；
+    # 显式构造 MockLLM 不传 keyword_routes 的自定义 LLM 类不受影响
+    if isinstance(llm, MockLLM) and not llm.keyword_routes:
+        llm.keyword_routes = _route_kwargs()["keyword_routes"]
     svc = WikiIngestService(
         session,
         llm_client=llm,
@@ -59,18 +63,39 @@ def _make_service(session: AsyncSession, llm, wiki_config=None) -> WikiIngestSer
 
 
 class MockLLM:
-    """按调用序返回预设响应；记录 prompt 供断言"""
+    """按调用序返回预设响应；记录 prompt 供断言。
 
-    def __init__(self, responses):
+    批2 起 pipeline 会插入 taxonomy/dedup LLM 调用，固定序列对它们无感——
+    用 keyword_routes 按 prompt 前缀路由响应，命中则不消耗序列槽位。
+    """
+
+    def __init__(self, responses, keyword_routes=None):
         self.responses = list(responses)
         self.prompts = []
+        self.keyword_routes = keyword_routes or {}  # {prompt前缀: 响应}
 
     async def generate_text(self, *, prompt, **kwargs):
         self.prompts.append(prompt)
+        for prefix, resp in self.keyword_routes.items():
+            if prompt.startswith(prefix):
+                if isinstance(resp, Exception):
+                    raise resp
+                return resp
         item = self.responses.pop(0)
         if isinstance(item, Exception):
             raise item
         return item
+
+
+# taxonomy/dedup 的固定响应（按 prompt 前缀路由，不占序列槽位）
+_TAXONOMY_ROUTE_KEY = "You are organizing a wiki knowledge base"
+_DEDUP_ROUTE_KEY = "You are a strict deduplication system"
+_TAXONOMY_JSON = json.dumps({"assignments": []})
+_DEDUP_JSON = json.dumps({"merges": {}})
+
+
+def _route_kwargs():
+    return {"keyword_routes": {_TAXONOMY_ROUTE_KEY: _TAXONOMY_JSON, _DEDUP_ROUTE_KEY: _DEDUP_JSON}}
 
 
 @pytest_asyncio.fixture
@@ -404,9 +429,11 @@ async def test_ingest_slug_handles_in_valid_links_prompt(wiki_db):
     svc = _make_service(wiki_db, llm)
     await svc.ingest_document(full_text="正文", chunks=_CHUNKS)
 
-    # Reduce 阶段的 prompt（第 3 个起）应含句柄行而不含裸 slug 清单
-    reduce_prompts = llm.prompts[2:]
-    assert any("- ref-1 = " in p for p in reduce_prompts)
+    # Reduce 阶段的 prompt 以 <page_metadata> 为特征（taxonomy/dedup prompt
+    # 也在 prompts 里但不含该标记），它们都应含句柄行
+    reduce_prompts = [p for p in llm.prompts if "<page_metadata>" in p]
+    assert reduce_prompts, "应存在 reduce 阶段 prompt"
+    assert all("- ref-1 = " in p for p in reduce_prompts)
     assert all("<valid_links>" in p for p in reduce_prompts)
 
 
@@ -515,3 +542,73 @@ async def test_publish_draft_pages_meta_write_only(wiki_db):
     assert d1.status == "published"
     assert p1.status == "published"   # 已发布页不受影响
     assert d1.version == 1            # 簿记写不递增 version
+
+
+# ==================== 批2 对齐：dedup + taxonomy ====================
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_ingest_exact_title_dedup_merges_into_existing(wiki_db):
+    """已有同型同题页：新候选 exact-title 归并 → 不建新页，来源合并进已有页。
+
+    归并后候选 slug 变为 entity/acme-old，cite 阶段模型（mock）按 prompt 里
+    看到的新 slug 返回引文——即「模型永远只抄管道给的 slug」这一句柄机制
+    的直接推论。
+    """
+    repo = WikiPageRepository(wiki_db)
+    await repo.create_page({"space_id": 1, "kb_id": 1, "slug": "entity/acme-old", "title": "甲公司",
+                            "page_type": "entity", "content": "旧内容", "version": 2})
+
+    # 新文档抽出的候选 slug 不同（entity/jia-gong-si）但标题同为「甲公司」
+    # → exact-title 确定性归并到 entity/acme-old
+    cite_after_merge = json.dumps({
+        "citations": {
+            "entity/acme-old": ["c000"],
+            "entity/yi-chan-pin": ["c000", "c001"],
+            "concept/rag": ["c001"],
+        },
+        "new_slugs": [],
+    }, ensure_ascii=False)
+    llm = MockLLM([_cand_json(), cite_after_merge, _page_md("甲公司"), _page_md("乙产品"), _page_md("检索增强生成")])
+    svc = _make_service(wiki_db, llm)
+    outcome = await svc.ingest_document(full_text="正文", chunks=_CHUNKS)
+
+    assert outcome.merged_into_existing >= 1
+    old = await repo.get_by_slug(1, "entity/acme-old")
+    assert old is not None
+    # 新 slug 页不应存在
+    assert await repo.get_by_slug(1, "entity/jia-gong-si") is None
+    # 内容更新 + 来源合并进已有页
+    assert "甲公司" in old.content
+    assert "100|" in (old.source_refs or [])
+    # 其余两个候选正常建页（3 候选 - 1 归并 = 2 新建）
+    assert outcome.pages_created == 2
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_ingest_taxonomy_assigns_category_path(wiki_db):
+    """taxonomy 规划返回分配 → 落库页面携带 category_path"""
+    taxonomy_json = json.dumps({"assignments": [
+        {"slug": "entity/jia-gong-si", "path": ["组织", "公司"]},
+        {"slug": "concept/rag", "path": ["技术"]},
+    ]}, ensure_ascii=False)
+    llm = MockLLM(
+        [_cand_json(), _CITE_JSON, _page_md("甲公司"), _page_md("乙产品"), _page_md("检索增强生成")],
+        keyword_routes={
+            "You are organizing a wiki knowledge base": taxonomy_json,
+            "You are a strict deduplication system": json.dumps({"merges": {}}),
+        },
+    )
+    svc = _make_service(wiki_db, llm)
+    await svc.ingest_document(full_text="正文", chunks=_CHUNKS)
+
+    repo = WikiPageRepository(wiki_db)
+    page = await repo.get_by_slug(1, "entity/jia-gong-si")
+    assert page.category_path == ["组织", "公司"]
+    rag = await repo.get_by_slug(1, "concept/rag")
+    assert rag.category_path == ["技术"]
+    # 无分配的候选不受影响
+    other = await repo.get_by_slug(1, "entity/yi-chan-pin")
+    assert other.category_path == []

@@ -13,7 +13,7 @@ Wiki 生成管道服务
 import asyncio
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +29,18 @@ from novamind.features.knowledge_space.repository.wiki_repository import (
     WikiPageRepository,
 )
 from novamind.features.knowledge_space.services.wiki_handles import HandleTable
+from novamind.features.knowledge_space.services.wiki_dedup import (
+    DEDUP_CANDIDATE_SCORE_FLOOR,
+    DEDUP_CORPUS_HARD_LIMIT,
+    DedupCandidate,
+    dedup_pair_score,
+    exact_identity_target,
+    grams_per_surface,
+    merge_reject_reason,
+    select_dedup_candidate_pages,
+    slug_base_tokens,
+    stabilize_extracted_items,
+)
 from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.utils.llm_response import extract_json_obj
 
@@ -85,6 +97,7 @@ class IngestOutcome:
     candidates: int = 0
     cited_slugs: int = 0
     skipped_no_citation: int = 0
+    merged_into_existing: int = 0
     truncated: bool = False
 
 
@@ -163,6 +176,8 @@ class WikiIngestService:
             full_text[:MAX_CONTENT_CHARS_FOR_EXTRACT], old_slugs, granularity,
             custom_extract, outcome,
         )
+        # dedup：新候选 vs 已有页面的归并（对齐 WeKnora deduplicateExtractedBatch）
+        candidates = await self._deduplicate_candidates(candidates, outcome)
         self._record.finish_step("extract", {"candidates": len(candidates)})
         await self._commit()
 
@@ -177,8 +192,15 @@ class WikiIngestService:
         # ---- Pass 1: 分块引文标注 ----
         self._record.start_step("cite")
         citations, new_candidates = await self._annotate_citations(candidates, chunks)
+        fresh: List[ExtractedItem] = []
         for c in new_candidates:
             if c.slug not in {x.slug for x in candidates}:
+                fresh.append(c)
+        # 引文新 slug 跳过了 extract 期 dedup（对齐 WeKnora reclaimExtractedIdentities）：
+        # 补一轮 exact-title 归并，防引文阶段二次建同题页
+        if fresh:
+            fresh = await self._reclaim_exact_identities(candidates, fresh)
+            for c in fresh:
                 candidates.append(c)
         self._record.finish_step("cite", {"cited_slugs": len(citations)})
         await self._commit()
@@ -208,6 +230,10 @@ class WikiIngestService:
         link_handle_lines = [
             f"- {slug_handles.register(s)} = {s}" for s in valid_link_slugs if s
         ]
+
+        # 批级 taxonomy 规划（对齐 WeKnora planBatchTaxonomy）：一次 LLM 调用为
+        # 整批 entity/concept 分配 ≤2 级 category_path。串行调用，在 gather 之前。
+        category_plans = await self._plan_taxonomy(cited)
 
         chunk_id_map = {str(c.get("chunk_id")): c for c in chunks}
         existing_map = await self.page_repo.list_by_slugs(
@@ -243,6 +269,9 @@ class WikiIngestService:
                         page_type=item.type,
                         status=WikiPageStatus.DRAFT,
                         aliases=item.aliases or None,
+                        # taxonomy 只规划 entity/concept；只填空目录
+                        # （upsert 对非 None 才覆盖；规划缺失传 None 保用户已填）
+                        category_path=category_plans.get(item.slug),
                         source_refs=[f"{self.document_id}|"],
                         chunk_refs=[f"{self.document_id}_{cid}" for cid in item.cited_chunk_ids],
                         edit_source=WikiEditSource.PIPELINE,
@@ -331,6 +360,208 @@ class WikiIngestService:
             seen.add(it.slug)
             deduped.append(it)
         return deduped
+
+    async def _deduplicate_candidates(
+        self,
+        candidates: List[ExtractedItem],
+        outcome: IngestOutcome,
+    ) -> List[ExtractedItem]:
+        """dedup 管线（对齐 WeKnora deduplicateExtractedBatch）。
+
+        三层：相似度预筛（纯 Python，MySQL 无 trigram）→ exact-title 确定性
+        归并（免 LLM）→ LLM 语义判断（逐 item 候选分组 + 双守卫）。重定向后
+        批内同 slug 折叠合并。所有 LLM 调用串行（在 gather 之外）。
+        """
+        if not candidates:
+            return candidates
+
+        existing_lite = await self.page_repo.list_entity_concept_lite(self.kb_id)
+
+        # 语料硬顶：跳过 LLM dedup 只做批内 identity 收敛（保守不误并）
+        if len(existing_lite) > DEDUP_CORPUS_HARD_LIMIT:
+            logger.warning(
+                "wiki dedup：已有页语料超硬顶，退化为仅 exact-title 归并",
+                kb_id=self.kb_id, existing=len(existing_lite),
+            )
+            existing_lite = []
+
+        candidate_pages = [DedupCandidate(
+            slug=p["slug"], title=p["title"], aliases=p["aliases"], page_type=p["page_type"],
+        ) for p in existing_lite]
+        item_dicts = [self._item_dict(c) for c in candidates]
+
+        # 1) 相似度预筛（top-K + floor + small-corpus bypass 模块内实现）
+        selected_pages = select_dedup_candidate_pages(item_dicts, candidate_pages)
+        pages_by_slug = {p.slug: p for p in selected_pages}
+
+        # 2) per-item 候选集（LLM dedup 双守卫的数据基础）
+        item_candidates: Dict[str, Set[str]] = {}
+        for it in item_dicts:
+            own: Set[str] = set()
+            for p in selected_pages:
+                surfaces = [it.get("name") or "", *(it.get("aliases") or [])]
+                for q in surfaces:
+                    if not q:
+                        continue
+                    # 判定 q 是否与该页面命中（复用同一相似度信号）
+                    score = dedup_pair_score(
+                        grams_per_surface([q]), slug_base_tokens(it.get("slug") or ""),
+                        grams_per_surface([p.title, *p.aliases]), slug_base_tokens(p.slug),
+                    )
+                    if score >= DEDUP_CANDIDATE_SCORE_FLOOR or score > 0:
+                        own.add(p.slug)
+                        break
+            item_candidates[it["slug"]] = own
+
+        # 3) exact-title 确定性归并（免 LLM）
+        exact_targets: Dict[str, str] = {}
+        merge_targets: Dict[str, str] = {}
+        for it in item_dicts:
+            target = exact_identity_target(
+                it.get("name") or "", it.get("type") or "",
+                item_candidates.get(it["slug"]) or set(), pages_by_slug,
+                own_slug=it["slug"],
+            )
+            if target:
+                exact_targets[it["slug"]] = target
+        if exact_targets:
+            outcome.merged_into_existing = len(exact_targets)
+
+        # 4) LLM 语义 dedup（有候选且非全部 exact 命中才调）
+        llm_groups = self._render_dedup_groups(
+            candidates, item_candidates, pages_by_slug, exact_targets,
+        )
+        if llm_groups:
+            prompt = PromptManager.format_prompt("wiki_dedup_user", candidates=llm_groups)
+            raw = await self._call_llm_json(prompt)
+            merges = (raw or {}).get("merges") or {}
+            for src, dst in merges.items():
+                src, dst = str(src).strip(), str(dst).strip()
+                if src in exact_targets:
+                    continue
+                reason = merge_reject_reason(src, dst, item_candidates.get(src) or set())
+                if reason:
+                    logger.warning("wiki dedup 拒绝合并", src=src, dst=dst, reason=reason)
+                    continue
+                merge_targets[src] = dst
+            if merge_targets:
+                outcome.merged_into_existing = outcome.merged_into_existing + len(
+                    [s for s in merge_targets if s not in exact_targets]
+                )
+
+        # 5) 应用重定向 + 批内 identity 收敛 + 同 slug 折叠
+        stabilized = stabilize_extracted_items(item_dicts, merge_targets, exact_targets)
+        return [self._dict_item(d) for d in stabilized]
+
+    async def _reclaim_exact_identities(
+        self,
+        existing_candidates: List[ExtractedItem],
+        fresh: List[ExtractedItem],
+    ) -> List[ExtractedItem]:
+        """引文新 slug 的 exact-title 归并回收（对齐 WeKnora reclaimExtractedIdentities）。
+
+        引文 new_slugs 跳过 extract 期 dedup，不回收会二次建同题页。轻量路径：
+        只在已有页 title 精确（归一化）匹配新条目时重定向。
+        """
+        if not fresh:
+            return fresh
+        existing_lite = await self.page_repo.list_entity_concept_lite(self.kb_id)
+        pages_by_slug = {
+            p["slug"]: DedupCandidate(p["slug"], p["title"], p["aliases"], p["page_type"])
+            for p in existing_lite
+        }
+        items = [self._item_dict(c) for c in fresh]
+        exact_targets: Dict[str, str] = {}
+        for it in items:
+            # 候选集=全部已有页（exact match 自带严格约束，无需预筛）
+            target = exact_identity_target(
+                it.get("name") or "", it.get("type") or "",
+                set(pages_by_slug.keys()), pages_by_slug,
+                own_slug=it["slug"],
+            )
+            if target:
+                exact_targets[it["slug"]] = target
+        stabilized = stabilize_extracted_items(items, {}, exact_targets)
+        return [self._dict_item(d) for d in stabilized]
+
+    async def _plan_taxonomy(self, cited: List[ExtractedItem]) -> Dict[str, List[str]]:
+        """批级目录规划（对齐 WeKnora planBatchTaxonomy）。失败不阻断页面生成。"""
+        from novamind.features.knowledge_space.services.wiki_taxonomy import (
+            TAXONOMY_FOLDER_POOL_MAX,
+            plan_batch_taxonomy,
+        )
+
+        items = [
+            {"slug": c.slug, "title": c.name, "page_type": c.type, "about": c.description}
+            for c in cited if c.type in ("entity", "concept")
+        ]
+        if not items:
+            return {}
+        try:
+            paths = await self.page_repo.list_distinct_category_paths(self.kb_id)
+            return await plan_batch_taxonomy(
+                items, paths[:TAXONOMY_FOLDER_POOL_MAX], self.language, self._call_llm_json,
+            )
+        except Exception as e:
+            logger.warning("wiki taxonomy 规划失败，本批无目录", kb_id=self.kb_id, error=str(e))
+            return {}
+
+    @staticmethod
+    def _item_dict(c: ExtractedItem) -> Dict[str, Any]:
+        return {
+            "type": c.type, "name": c.name, "slug": c.slug,
+            "aliases": list(c.aliases), "description": c.description,
+            "details": c.details, "cited_chunk_ids": list(c.cited_chunk_ids),
+        }
+
+    @staticmethod
+    def _dict_item(d: Dict[str, Any]) -> ExtractedItem:
+        return ExtractedItem(
+            type=d.get("type") or "concept", name=d.get("name") or "",
+            slug=d.get("slug") or "", aliases=d.get("aliases") or [],
+            description=d.get("description") or "", details=d.get("details") or "",
+            cited_chunk_ids=d.get("cited_chunk_ids") or [],
+        )
+
+    @staticmethod
+    def _render_dedup_groups(
+        candidates: List[ExtractedItem],
+        item_candidates: Dict[str, Set[str]],
+        pages_by_slug: Dict[str, DedupCandidate],
+        exact_targets: Dict[str, str],
+    ) -> str:
+        """渲染逐 item 候选分组（对齐 WeKnora writeDedupCandidateGroup）。
+
+        exact 命中或无候选的 item 不进 prompt（无合并可能只添幻觉面）。
+        """
+        blocks: List[str] = []
+        for c in candidates:
+            if c.slug in exact_targets:
+                continue
+            slugs = sorted(s for s in (item_candidates.get(c.slug) or set()) if s != c.slug and s in pages_by_slug)
+            if not slugs:
+                continue
+
+            def esc(s: str) -> str:
+                return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+            lines = [f'  <item slug="{esc(c.slug)}" type="{esc(c.type)}">', f"    <name>{esc(c.name)}</name>"]
+            for alias in c.aliases:
+                if alias:
+                    lines.append(f"    <alias>{esc(alias)}</alias>")
+            lines.append("    <candidates>")
+            for slug in slugs:
+                p = pages_by_slug[slug]
+                lines.append(f'      <page slug="{esc(p.slug)}" type="{esc(p.page_type)}">')
+                lines.append(f"        <name>{esc(p.title)}</name>")
+                for alias in p.aliases:
+                    if alias:
+                        lines.append(f"        <alias>{esc(alias)}</alias>")
+                lines.append("      </page>")
+            lines.append("    </candidates>")
+            lines.append("  </item>")
+            blocks.append("\n".join(lines))
+        return "\n".join(blocks)
 
     async def _annotate_citations(
         self,

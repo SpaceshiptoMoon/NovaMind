@@ -141,6 +141,42 @@ class WikiPageRepository:
         )
         return list(result.scalars().all())
 
+    async def list_entity_concept_lite(self, kb_id: int) -> List[Dict[str, Any]]:
+        """entity/concept 页轻量投影（dedup 预筛用，不拉 content/大字段）
+
+        返回 [{slug, title, aliases, page_type}]，保持 page_type+title 排序
+        使下游 prompt 稳定。
+        """
+        result = await self.session.execute(
+            select(
+                WikiPage.slug, WikiPage.title, WikiPage.aliases, WikiPage.page_type,
+            ).where(
+                WikiPage.kb_id == kb_id,
+                WikiPage.deleted_flag == 0,
+                WikiPage.page_type.in_(["entity", "concept"]),
+            ).order_by(WikiPage.page_type, WikiPage.title)
+        )
+        return [
+            {"slug": s, "title": t, "aliases": a or [], "page_type": pt}
+            for s, t, a, pt in result.all()
+        ]
+
+    async def list_distinct_category_paths(self, kb_id: int) -> List[List[str]]:
+        """KB 内 distinct category_path（taxonomy 目录池；空路径剔除）"""
+        result = await self.session.execute(
+            select(WikiPage.category_path).where(
+                WikiPage.kb_id == kb_id,
+                WikiPage.deleted_flag == 0,
+            ).distinct()
+        )
+        seen: set = set()
+        out: List[List[str]] = []
+        for (path,) in result.all():
+            if path and path not in seen:
+                seen.add(path)
+                out.append(list(path))
+        return out
+
     async def create_page(self, data: Dict[str, Any]) -> WikiPage:
         """新建页面"""
         page = WikiPage(**data)
