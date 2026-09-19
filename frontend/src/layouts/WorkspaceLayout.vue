@@ -115,10 +115,7 @@
                       <button
                         class="item-action-btn"
                         title="配置"
-                        @click.stop="
-                          configAgent = agent
-                          configDrawerVisible = true
-                        "
+                        @click.stop="openAgentConfig(agent)"
                       >
                         <el-icon :size="12"><Setting /></el-icon>
                       </button>
@@ -705,6 +702,11 @@ async function handleDeleteAgent(agent: Agent) {
 
 const configAgent = ref<Agent | null>(null)
 const configDrawerVisible = ref(false)
+
+function openAgentConfig(agent: Agent) {
+  configAgent.value = agent
+  configDrawerVisible.value = true
+}
 
 // ===================== 模型可选项（创建/编辑弹窗用） =====================
 
