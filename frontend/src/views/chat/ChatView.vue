@@ -85,45 +85,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, nextTick, onMounted, onBeforeUnmount, watch, inject } from 'vue'
+import { ref, nextTick, onMounted, onBeforeUnmount, watch, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  Plus,
-  Delete,
-  Setting,
-  Promotion,
-  VideoPause,
-  DocumentCopy,
-  ArrowRight,
-  ArrowDown,
-  Paperclip,
-  Close,
-  Document,
-  Download,
-  WarningFilled,
-} from '@element-plus/icons-vue'
-// Note: Setting is still used in settings toggle button
+import { Setting } from '@element-plus/icons-vue'
 import { useChatStore } from '@/stores/chat'
 import { chatApi } from '@/api/chat'
-import { sessionApi } from '@/api/session'
-import { useSpaceStore } from '@/stores/space'
-import { knowledgeBaseApi } from '@/api/knowledge'
-import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
-import SourceList from '@/components/chat/SourceList.vue'
-import type { ChatMessage, ChatSource } from '@/api/types'
 import { useChatAttachments } from '@/composables/useChatAttachments'
 import SessionConfigDialog from '@/components/chat/SessionConfigDialog.vue'
 import MessageList from '@/components/chat/MessageList.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
 
 const chatStore = useChatStore()
-const spaceStore = useSpaceStore()
 const isInWorkspace = inject('isInWorkspace', false)
 
-const inputText = ref('')
-const useStream = ref(true)
-const enableThinking = ref(false)
-const enableWebSearch = ref(false)
 const messagesRef = ref<HTMLElement>()
 
 function scrollToBottom() {
@@ -252,16 +226,7 @@ const availableModels = ref<
   Record<string, { max_tokens: number; temperature: number; top_p: number; model_type: string }>
 >({})
 
-const {
-  isImageFile,
-  imageBlobCache,
-  loadAttachmentImage,
-  getImagePreviewUrl,
-  getFileExt,
-  handleDownloadAttachment,
-  formatFileSize,
-  revokeBlobUrls,
-} = useChatAttachments()
+const { isImageFile, imageBlobCache, loadAttachmentImage, revokeBlobUrls } = useChatAttachments()
 
 async function fetchModels() {
   try {

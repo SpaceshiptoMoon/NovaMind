@@ -12,7 +12,14 @@ interface StatusConfig {
   type: 'success' | 'warning' | 'danger' | 'info' | 'primary'
 }
 
-type StatusType = 'active' | 'inactive' | 'pending' | 'processing' | 'completed' | 'failed' | 'custom'
+type StatusType =
+  | 'active'
+  | 'inactive'
+  | 'pending'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'custom'
 
 interface Props {
   status: StatusType | string

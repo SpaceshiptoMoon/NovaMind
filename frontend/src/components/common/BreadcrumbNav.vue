@@ -86,7 +86,9 @@ onMounted(async () => {
   background: transparent;
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast),
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
     box-shadow var(--transition-base);
 }
 
@@ -115,7 +117,9 @@ onMounted(async () => {
 .crumb-item--link {
   color: var(--color-text-muted);
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .crumb-item--link:hover {

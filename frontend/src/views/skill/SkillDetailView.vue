@@ -17,7 +17,9 @@
             <div class="meta-tags">
               <el-tag v-if="skill.skill_source === 'builtin'" type="warning">内置</el-tag>
               <el-tag v-else>{{ skill.category || '通用' }}</el-tag>
-              <el-tag v-for="tag in (skill.tags || [])" :key="tag" size="small" type="info">{{ tag }}</el-tag>
+              <el-tag v-for="tag in skill.tags || []" :key="tag" size="small" type="info">{{
+                tag
+              }}</el-tag>
               <span class="meta-stat">v{{ skill.version }}</span>
               <el-tag :type="reviewStatusType" size="small">{{ reviewStatusLabel }}</el-tag>
             </div>
@@ -27,7 +29,13 @@
         <p class="skill-description">{{ skill.description }}</p>
 
         <!-- 审查结果 -->
-        <div v-if="skill.review_result && (skill.review_result.llm?.reason || skill.review_result.admin_reason)" class="review-notice">
+        <div
+          v-if="
+            skill.review_result &&
+            (skill.review_result.llm?.reason || skill.review_result.admin_reason)
+          "
+          class="review-notice"
+        >
           <div v-if="skill.review_result.admin_reason" class="review-line">
             <span class="review-label">管理员备注：</span>
             <span>{{ skill.review_result.admin_reason }}</span>
@@ -40,8 +48,15 @@
 
         <div class="meta-actions">
           <div class="meta-stats">
-            <span><el-icon><Download /></el-icon> {{ skill.install_count }} 次安装</span>
-            <span><el-icon><Star /></el-icon> {{ skill.rating_avg.toFixed(1) }} ({{ skill.rating_count }} 评价)</span>
+            <span
+              ><el-icon><Download /></el-icon> {{ skill.install_count }} 次安装</span
+            >
+            <span
+              ><el-icon><Star /></el-icon> {{ skill.rating_avg.toFixed(1) }} ({{
+                skill.rating_count
+              }}
+              评价)</span
+            >
           </div>
           <div class="action-buttons">
             <template v-if="isOwner && fromMine">
@@ -83,8 +98,19 @@
         <h3>评价 ({{ reviewsTotal }})</h3>
         <div class="review-form" v-if="!isOwner">
           <el-rate v-model="newReviewRating" :colors="['#F7BA2A', '#F7BA2A', '#F7BA2A']" />
-          <el-input v-model="newReviewContent" type="textarea" :rows="2" placeholder="写点评价..." />
-          <el-button type="primary" size="small" @click="handleSubmitReview" :disabled="!newReviewRating">提交</el-button>
+          <el-input
+            v-model="newReviewContent"
+            type="textarea"
+            :rows="2"
+            placeholder="写点评价..."
+          />
+          <el-button
+            type="primary"
+            size="small"
+            @click="handleSubmitReview"
+            :disabled="!newReviewRating"
+            >提交</el-button
+          >
         </div>
         <div class="review-list">
           <div v-for="review in skillStore.reviews" :key="review.id" class="review-item">
@@ -126,7 +152,13 @@
       </div>
       <template #footer>
         <el-button @click="installDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="installing" :disabled="!selectedAgentId" @click="handleInstall">安装</el-button>
+        <el-button
+          type="primary"
+          :loading="installing"
+          :disabled="!selectedAgentId"
+          @click="handleInstall"
+          >安装</el-button
+        >
       </template>
     </el-dialog>
   </div>
@@ -141,7 +173,6 @@ import { useSkillStore } from '@/stores/skill'
 import { useAgentStore } from '@/stores/agent'
 import { useUserStore } from '@/stores/user'
 import { skillApi } from '@/api/skill'
-import type { Agent } from '@/api/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -173,10 +204,10 @@ const canPublish = computed(() => {
 
 const reviewStatusType = computed(() => {
   const map: Record<number, 'success' | 'warning' | 'danger' | 'info'> = {
-    0: 'info',    // PENDING
+    0: 'info', // PENDING
     1: 'success', // APPROVED
     2: 'warning', // SUSPICIOUS
-    3: 'danger',  // REJECTED
+    3: 'danger', // REJECTED
   }
   return map[skill.value?.review_status ?? 0] || 'info'
 })
@@ -194,23 +225,23 @@ const reviewStatusLabel = computed(() => {
 onMounted(async () => {
   const skillId = Number(route.params.skillId)
   loading.value = true
-  await Promise.all([
-    skillStore.fetchSkillDetail(skillId),
-    skillStore.fetchReviews(skillId),
-  ])
+  await Promise.all([skillStore.fetchSkillDetail(skillId), skillStore.fetchReviews(skillId)])
   loading.value = false
 })
 
-watch(() => route.params.skillId, async (newId) => {
-  if (newId) {
-    loading.value = true
-    await Promise.all([
-      skillStore.fetchSkillDetail(Number(newId)),
-      skillStore.fetchReviews(Number(newId)),
-    ])
-    loading.value = false
-  }
-})
+watch(
+  () => route.params.skillId,
+  async (newId) => {
+    if (newId) {
+      loading.value = true
+      await Promise.all([
+        skillStore.fetchSkillDetail(Number(newId)),
+        skillStore.fetchReviews(Number(newId)),
+      ])
+      loading.value = false
+    }
+  },
+)
 
 async function handlePublish() {
   if (!skill.value) return
@@ -218,8 +249,8 @@ async function handlePublish() {
     await skillStore.publishSkill(skill.value.id)
     ElMessage.success('技能已发布')
     skillStore.fetchSkillDetail(skill.value.id)
-  } catch (e: any) {
-    ElMessage.error(e?.message || '发布失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '发布失败')
   }
 }
 
@@ -229,8 +260,8 @@ async function handleUnpublish() {
     await skillStore.unpublishSkill(skill.value.id)
     ElMessage.success('已取消发布')
     skillStore.fetchSkillDetail(skill.value.id)
-  } catch (e: any) {
-    ElMessage.error(e?.message || '操作失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '操作失败')
   }
 }
 
@@ -253,8 +284,8 @@ async function handleUpdateVersion(file: File) {
     await skillStore.updateSkillVersion(skill.value.id, file)
     ElMessage.success('版本更新成功')
     skillStore.fetchSkillDetail(skill.value.id)
-  } catch (e: any) {
-    ElMessage.error(e?.message || '更新失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '更新失败')
   }
   return false
 }
@@ -269,7 +300,7 @@ async function handleDownload() {
     a.download = `${skill.value.name}.zip`
     a.click()
     URL.revokeObjectURL(url)
-  } catch (e: any) {
+  } catch {
     ElMessage.error('下载失败')
   }
 }
@@ -277,13 +308,17 @@ async function handleDownload() {
 async function handleSubmitReview() {
   if (!skill.value || !newReviewRating.value) return
   try {
-    await skillStore.submitReview(skill.value.id, newReviewRating.value, newReviewContent.value || undefined)
+    await skillStore.submitReview(
+      skill.value.id,
+      newReviewRating.value,
+      newReviewContent.value || undefined,
+    )
     ElMessage.success('评价已提交')
     newReviewRating.value = 0
     newReviewContent.value = ''
     skillStore.fetchReviews(skill.value.id)
-  } catch (e: any) {
-    ElMessage.error(e?.message || '评价失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '评价失败')
   }
 }
 
@@ -309,8 +344,8 @@ async function handleInstall() {
     await skillStore.installSkill(skill.value.id, selectedAgentId.value)
     ElMessage.success('安装成功')
     installDialogVisible.value = false
-  } catch (e: any) {
-    ElMessage.error(e?.message || '安装失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '安装失败')
   } finally {
     installing.value = false
   }

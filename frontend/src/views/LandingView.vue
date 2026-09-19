@@ -19,13 +19,15 @@
     <section class="hero">
       <div class="hero-inner">
         <div class="hero-badge">AI-Powered Knowledge Platform</div>
-        <h1 class="hero-title">
-          问而知，知而行
-        </h1>
+        <h1 class="hero-title">问而知，知而行</h1>
         <p class="hero-subtitle">Ask. Know. Act.</p>
-        <p class="hero-desc">用对话唤醒沉睡的知识 — 集知识管理、AI 对话、深度研究于一体的智能平台</p>
+        <p class="hero-desc">
+          用对话唤醒沉睡的知识 — 集知识管理、AI 对话、深度研究于一体的智能平台
+        </p>
         <div class="hero-actions">
-          <router-link v-if="!hasToken" to="/login" class="hero-btn hero-btn-primary">开始使用</router-link>
+          <router-link v-if="!hasToken" to="/login" class="hero-btn hero-btn-primary"
+            >开始使用</router-link
+          >
           <router-link v-else to="/home" class="hero-btn hero-btn-primary">进入控制台</router-link>
           <a class="hero-btn hero-btn-ghost" @click="scrollToFeatures">了解更多</a>
         </div>
@@ -47,7 +49,10 @@
               <NavIcon name="spaces" :size="28" />
             </div>
             <h3>知识空间</h3>
-            <p>多租户知识管理，支持 PDF、Word 等多种文档格式。自动分段、向量化、精准检索，构建团队专属知识体系。</p>
+            <p>
+              多租户知识管理，支持 PDF、Word
+              等多种文档格式。自动分段、向量化、精准检索，构建团队专属知识体系。
+            </p>
           </div>
 
           <div class="feature-card">
@@ -83,7 +88,9 @@
         <h2 class="cta-title">准备好唤醒你的知识了吗？</h2>
         <p class="cta-desc">几分钟内即可上手，无需复杂配置</p>
         <div class="cta-actions">
-          <router-link v-if="!hasToken" to="/login" class="hero-btn hero-btn-primary">免费开始使用</router-link>
+          <router-link v-if="!hasToken" to="/login" class="hero-btn hero-btn-primary"
+            >免费开始使用</router-link
+          >
           <router-link v-else to="/home" class="hero-btn hero-btn-primary">进入控制台</router-link>
         </div>
       </div>
@@ -188,7 +195,7 @@ function scrollToFeatures() {
   padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-full);
   background: var(--color-btn-primary);
-  color: #FFFFFF;
+  color: #ffffff;
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   text-decoration: none;
@@ -198,7 +205,7 @@ function scrollToFeatures() {
 
 .nav-cta:hover {
   background: var(--color-btn-primary-hover);
-  color: #FFFFFF;
+  color: #ffffff;
   box-shadow: 0 4px 12px rgba(17, 24, 39, 0.3);
   transform: translateY(-1px);
 }
@@ -228,8 +235,14 @@ function scrollToFeatures() {
 }
 
 @keyframes heroIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .hero-badge {
@@ -293,13 +306,13 @@ function scrollToFeatures() {
 
 .hero-btn-primary {
   background: var(--color-btn-primary);
-  color: #FFFFFF;
+  color: #ffffff;
   box-shadow: 0 4px 16px rgba(17, 24, 39, 0.25);
 }
 
 .hero-btn-primary:hover {
   background: var(--color-btn-primary-hover);
-  color: #FFFFFF;
+  color: #ffffff;
   box-shadow: 0 6px 20px rgba(17, 24, 39, 0.35);
   transform: translateY(-1px);
 }
@@ -342,9 +355,16 @@ function scrollToFeatures() {
 }
 
 @keyframes floatGlow {
-  0%, 100% { transform: translate(0, 0); }
-  33% { transform: translate(20px, -15px); }
-  66% { transform: translate(-15px, 10px); }
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  33% {
+    transform: translate(20px, -15px);
+  }
+  66% {
+    transform: translate(-15px, 10px);
+  }
 }
 
 /* ========================================
@@ -414,10 +434,22 @@ function scrollToFeatures() {
   margin-bottom: var(--space-4);
 }
 
-.feature-icon-blue { background: var(--color-info-subtle); color: var(--color-info); }
-.feature-icon-coral { background: var(--color-danger-subtle); color: var(--color-danger); }
-.feature-icon-violet { background: var(--color-accent-subtle); color: var(--color-accent); }
-.feature-icon-teal { background: var(--color-success-subtle); color: var(--color-success); }
+.feature-icon-blue {
+  background: var(--color-info-subtle);
+  color: var(--color-info);
+}
+.feature-icon-coral {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+.feature-icon-violet {
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+}
+.feature-icon-teal {
+  background: var(--color-success-subtle);
+  color: var(--color-success);
+}
 
 .feature-card h3 {
   font-family: var(--font-display);

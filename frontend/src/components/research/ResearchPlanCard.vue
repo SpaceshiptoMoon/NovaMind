@@ -89,7 +89,12 @@ function handleRevise() {
         class="plan-card-feedback"
       />
       <div class="plan-card-buttons">
-        <el-button size="small" :icon="RefreshRight" @click="handleRevise" :disabled="!feedback.trim()">
+        <el-button
+          size="small"
+          :icon="RefreshRight"
+          @click="handleRevise"
+          :disabled="!feedback.trim()"
+        >
           修订计划
         </el-button>
         <el-button type="primary" size="small" :icon="Check" @click="handleAccept">

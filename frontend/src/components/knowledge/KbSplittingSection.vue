@@ -19,35 +19,65 @@
           <span>{{ strategyDesc }}</span>
         </div>
 
-        <template v-if="configForm.splittingStrategy === 'recursive' || configForm.splittingStrategy === 'fixed_size'">
+        <template
+          v-if="
+            configForm.splittingStrategy === 'recursive' ||
+            configForm.splittingStrategy === 'fixed_size'
+          "
+        >
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item label="分块大小">
-                <el-input-number v-model="configForm.splittingChunkSize" :min="100" :max="4000" style="width: 100%" />
+                <el-input-number
+                  v-model="configForm.splittingChunkSize"
+                  :min="100"
+                  :max="4000"
+                  style="width: 100%"
+                />
               </el-form-item>
             </el-col>
             <el-col :span="12">
               <el-form-item label="分块重叠">
-                <el-input-number v-model="configForm.splittingChunkOverlap" :min="0" :max="500" style="width: 100%" />
+                <el-input-number
+                  v-model="configForm.splittingChunkOverlap"
+                  :min="0"
+                  :max="500"
+                  style="width: 100%"
+                />
               </el-form-item>
             </el-col>
           </el-row>
         </template>
 
         <el-form-item v-if="configForm.splittingStrategy === 'recursive'" label="最小分块大小">
-          <el-input-number v-model="configForm.splittingMinChunkSize" :min="0" :max="2000" style="width: 260px" />
+          <el-input-number
+            v-model="configForm.splittingMinChunkSize"
+            :min="0"
+            :max="2000"
+            style="width: 260px"
+          />
         </el-form-item>
 
         <template v-if="configForm.splittingStrategy === 'markdown'">
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item label="最大分块大小">
-                <el-input-number v-model="configForm.splittingMaxChunkSize" :min="100" :max="8000" style="width: 100%" />
+                <el-input-number
+                  v-model="configForm.splittingMaxChunkSize"
+                  :min="100"
+                  :max="8000"
+                  style="width: 100%"
+                />
               </el-form-item>
             </el-col>
             <el-col :span="12">
               <el-form-item label="最小分块大小">
-                <el-input-number v-model="configForm.splittingMinChunkSize" :min="0" :max="2000" style="width: 100%" />
+                <el-input-number
+                  v-model="configForm.splittingMinChunkSize"
+                  :min="0"
+                  :max="2000"
+                  style="width: 100%"
+                />
               </el-form-item>
             </el-col>
           </el-row>
@@ -57,12 +87,22 @@
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item label="最大分块大小">
-                <el-input-number v-model="configForm.splittingMaxChunkSize" :min="100" :max="8000" style="width: 100%" />
+                <el-input-number
+                  v-model="configForm.splittingMaxChunkSize"
+                  :min="100"
+                  :max="8000"
+                  style="width: 100%"
+                />
               </el-form-item>
             </el-col>
             <el-col :span="12">
               <el-form-item label="批次大小">
-                <el-input-number v-model="configForm.splittingBatchSize" :min="1" :max="100" style="width: 100%" />
+                <el-input-number
+                  v-model="configForm.splittingBatchSize"
+                  :min="1"
+                  :max="100"
+                  style="width: 100%"
+                />
               </el-form-item>
             </el-col>
           </el-row>

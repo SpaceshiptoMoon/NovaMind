@@ -9,7 +9,9 @@
 
       <el-table-column label="状态" width="96" align="center">
         <template #default="{ row }">
-          <el-tag :type="row.statusType" effect="plain" round size="small">{{ row.statusText }}</el-tag>
+          <el-tag :type="row.statusType" effect="plain" round size="small">{{
+            row.statusText
+          }}</el-tag>
         </template>
       </el-table-column>
 

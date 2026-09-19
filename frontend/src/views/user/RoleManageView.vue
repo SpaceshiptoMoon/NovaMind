@@ -51,10 +51,22 @@
             <el-button type="primary" link size="small" @click="showPermissionDialog(row)">
               权限配置
             </el-button>
-            <el-button type="primary" link size="small" @click="showEditDialog(row)" v-if="!row.is_system">
+            <el-button
+              type="primary"
+              link
+              size="small"
+              @click="showEditDialog(row)"
+              v-if="!row.is_system"
+            >
               编辑
             </el-button>
-            <el-button type="danger" link size="small" @click="handleDelete(row)" v-if="!row.is_system">
+            <el-button
+              type="danger"
+              link
+              size="small"
+              @click="handleDelete(row)"
+              v-if="!row.is_system"
+            >
               删除
             </el-button>
           </template>
@@ -92,9 +104,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitLoading" @click="handleSubmit">
-          确定
-        </el-button>
+        <el-button type="primary" :loading="submitLoading" @click="handleSubmit"> 确定 </el-button>
       </template>
     </el-dialog>
 
@@ -117,10 +127,7 @@
                 <div class="perm-category">
                   <h4 class="category-title">{{ cat }}</h4>
                   <template v-for="perm in getCategoryPermissions(cat)" :key="perm.code">
-                    <el-checkbox
-                      :label="perm.code"
-                      :disabled="currentRole?.is_system"
-                    >
+                    <el-checkbox :label="perm.code" :disabled="currentRole?.is_system">
                       {{ perm.name }} <span class="perm-code">({{ perm.code }})</span>
                     </el-checkbox>
                   </template>
@@ -132,7 +139,12 @@
       </div>
       <template #footer>
         <el-button @click="permDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="permSubmitLoading" @click="handlePermSubmit" :disabled="currentRole?.is_system">
+        <el-button
+          type="primary"
+          :loading="permSubmitLoading"
+          @click="handlePermSubmit"
+          :disabled="currentRole?.is_system"
+        >
           保存权限
         </el-button>
       </template>
@@ -184,9 +196,7 @@ const formRules: FormRules = {
     { required: true, message: '请输入角色名称', trigger: 'blur' },
     { max: 100, message: '角色名称最多 100 字符', trigger: 'blur' },
   ],
-  description: [
-    { max: 255, message: '描述最多 255 字符', trigger: 'blur' },
-  ],
+  description: [{ max: 255, message: '描述最多 255 字符', trigger: 'blur' }],
 }
 
 // 权限分类映射
@@ -216,9 +226,7 @@ const filteredRoles = computed(() => {
   if (searchKeyword.value) {
     const keyword = searchKeyword.value.toLowerCase()
     list = list.filter(
-      (r) =>
-        r.code.toLowerCase().includes(keyword) ||
-        r.name.toLowerCase().includes(keyword)
+      (r) => r.code.toLowerCase().includes(keyword) || r.name.toLowerCase().includes(keyword),
     )
   }
   if (systemFilter.value !== '') {
@@ -342,11 +350,15 @@ async function handleSubmit() {
 // ===================== 删除 =====================
 async function handleDelete(role: Role) {
   try {
-    await ElMessageBox.confirm(`确定要删除角色 "${role.name} (${role.code})" 吗？此操作不可恢复。`, '警告', {
-      confirmButtonText: '确定删除',
-      cancelButtonText: '取消',
-      type: 'error',
-    })
+    await ElMessageBox.confirm(
+      `确定要删除角色 "${role.name} (${role.code})" 吗？此操作不可恢复。`,
+      '警告',
+      {
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+        type: 'error',
+      },
+    )
     await userApi.deleteRole(role.id)
     ElMessage.success('角色已删除')
     fetchRoles()

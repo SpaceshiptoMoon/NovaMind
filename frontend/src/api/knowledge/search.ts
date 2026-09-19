@@ -17,13 +17,13 @@ export const searchApi = {
 
   getSearchModes(spaceId: number, kbId: number) {
     return request.get<SearchModeListResponse>(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/search/modes`
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/search/modes`,
     )
   },
 
   getModelConfig(spaceId: number, kbId: number) {
     return request.get<SearchModelConfigResponse>(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/search/model-config`
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/search/model-config`,
     )
   },
 }

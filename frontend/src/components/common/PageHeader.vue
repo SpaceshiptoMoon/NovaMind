@@ -18,15 +18,18 @@
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 
-const props = withDefaults(defineProps<{
-  title?: string
-  showBack?: boolean
-  backTo?: string
-}>(), {
-  title: '',
-  showBack: false,
-  backTo: '',
-})
+const props = withDefaults(
+  defineProps<{
+    title?: string
+    showBack?: boolean
+    backTo?: string
+  }>(),
+  {
+    title: '',
+    showBack: false,
+    backTo: '',
+  },
+)
 
 const router = useRouter()
 

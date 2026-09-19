@@ -4,7 +4,11 @@
       <template #header>
         <div class="card-header">
           <span>用户管理</span>
-          <el-button type="primary" @click="showCreateDialog" v-if="permStore.hasPermission('user.manage')">
+          <el-button
+            type="primary"
+            @click="showCreateDialog"
+            v-if="permStore.hasPermission('user.manage')"
+          >
             <el-icon><Plus /></el-icon>
             新建用户
           </el-button>
@@ -62,7 +66,13 @@
             <el-button type="primary" link size="small" @click="handleViewDetail(row)">
               查看
             </el-button>
-            <el-button type="primary" link size="small" @click="showEditDialog(row)" v-if="permStore.hasPermission('user.manage')">
+            <el-button
+              type="primary"
+              link
+              size="small"
+              @click="showEditDialog(row)"
+              v-if="permStore.hasPermission('user.manage')"
+            >
               编辑
             </el-button>
             <el-button
@@ -94,10 +104,24 @@
             >
               {{ row.status === 1 ? '停用' : '启用' }}
             </el-button>
-            <el-button type="info" link size="small" @click="handleForceLogout(row)" v-if="permStore.hasPermission('user.manage')" :disabled="row.is_super_admin">
+            <el-button
+              type="info"
+              link
+              size="small"
+              @click="handleForceLogout(row)"
+              v-if="permStore.hasPermission('user.manage')"
+              :disabled="row.is_super_admin"
+            >
               下线
             </el-button>
-            <el-button type="danger" link size="small" @click="showResetPasswordDialog(row)" v-if="permStore.hasPermission('user.manage')" :disabled="row.is_super_admin">
+            <el-button
+              type="danger"
+              link
+              size="small"
+              @click="showResetPasswordDialog(row)"
+              v-if="permStore.hasPermission('user.manage')"
+              :disabled="row.is_super_admin"
+            >
               重置密码
             </el-button>
             <el-button
@@ -156,9 +180,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitLoading" @click="handleSubmit">
-          确定
-        </el-button>
+        <el-button type="primary" :loading="submitLoading" @click="handleSubmit"> 确定 </el-button>
       </template>
     </el-dialog>
 
@@ -186,7 +208,9 @@
               {{ getStatusText(detailUser.status) }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="注册时间">{{ formatDate(detailUser.created_at) }}</el-descriptions-item>
+          <el-descriptions-item label="注册时间">{{
+            formatDate(detailUser.created_at)
+          }}</el-descriptions-item>
           <el-descriptions-item label="最后登录">
             {{ detailUser.last_login_at ? formatDate(detailUser.last_login_at) : '从未登录' }}
           </el-descriptions-item>
@@ -206,8 +230,15 @@
       destroy-on-close
       @closed="resetPwdForm"
     >
-      <p class="reset-tip">为用户 <strong>{{ resetPwdUser?.username }}</strong> 设置新密码</p>
-      <el-form ref="resetPwdFormRef" :model="resetPwdData" :rules="resetPwdRules" label-width="90px">
+      <p class="reset-tip">
+        为用户 <strong>{{ resetPwdUser?.username }}</strong> 设置新密码
+      </p>
+      <el-form
+        ref="resetPwdFormRef"
+        :model="resetPwdData"
+        :rules="resetPwdRules"
+        label-width="90px"
+      >
         <el-form-item label="新密码" prop="newPassword">
           <el-input
             v-model="resetPwdData.newPassword"
@@ -328,9 +359,7 @@ const filteredUsers = computed(() => {
   if (searchKeyword.value) {
     const keyword = searchKeyword.value.toLowerCase()
     list = list.filter(
-      (u) =>
-        u.username.toLowerCase().includes(keyword) ||
-        u.email.toLowerCase().includes(keyword)
+      (u) => u.username.toLowerCase().includes(keyword) || u.email.toLowerCase().includes(keyword),
     )
   }
   if (statusFilter.value !== '') {
@@ -364,7 +393,11 @@ function formatDate(date: string | null): string {
   if (!date) return '-'
   try {
     const d = new Date(date)
-    return d.toLocaleDateString('zh-CN') + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    return (
+      d.toLocaleDateString('zh-CN') +
+      ' ' +
+      d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    )
   } catch {
     return '-'
   }
@@ -419,7 +452,7 @@ async function handleForceLogout(user: User) {
     await ElMessageBox.confirm(
       `确定要将用户 "${user.username}" 强制下线吗？该用户的所有会话将被注销。`,
       '强制下线',
-      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' },
     )
     await userApi.logoutAll(user.id)
     ElMessage.success(`用户 "${user.username}" 已被强制下线`)
@@ -446,7 +479,11 @@ const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>
 const resetPwdRules: FormRules = {
   newPassword: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
-    { pattern: passwordRegex, message: '密码需8-30字符，含大小写字母、数字和特殊字符', trigger: 'blur' },
+    {
+      pattern: passwordRegex,
+      message: '密码需8-30字符，含大小写字母、数字和特殊字符',
+      trigger: 'blur',
+    },
   ],
   confirmPassword: [
     { required: true, message: '请确认密码', trigger: 'blur' },
@@ -517,12 +554,14 @@ const formRules: FormRules = {
     { required: true, message: '请输入邮箱', trigger: 'blur' },
     { type: 'email', message: '请输入有效的邮箱地址', trigger: 'blur' },
   ],
-  phone: [
-    { pattern: /^1[3-9]\d{9}$/, message: '请输入有效的手机号', trigger: 'blur' },
-  ],
+  phone: [{ pattern: /^1[3-9]\d{9}$/, message: '请输入有效的手机号', trigger: 'blur' }],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
-    { pattern: passwordRegex, message: '密码需8-30字符，含大小写字母、数字和特殊字符', trigger: 'blur' },
+    {
+      pattern: passwordRegex,
+      message: '密码需8-30字符，含大小写字母、数字和特殊字符',
+      trigger: 'blur',
+    },
   ],
 }
 

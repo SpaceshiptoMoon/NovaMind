@@ -21,9 +21,7 @@
       <span class="ctx-pct">{{ percent }}%</span>
     </button>
     <div v-if="open" class="ctx-panel" role="dialog">
-      <div class="ctx-head">
-        上下文已用 {{ percent }}% · ~{{ fmt(used) }} / {{ fmt(window) }}
-      </div>
+      <div class="ctx-head">上下文已用 {{ percent }}% · ~{{ fmt(used) }} / {{ fmt(window) }}</div>
       <div class="ctx-bar">
         <span class="ctx-seg seg-system" :style="{ width: segWidth('system') }" />
         <span class="ctx-seg seg-tools" :style="{ width: segWidth('tools') }" />

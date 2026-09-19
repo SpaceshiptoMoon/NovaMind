@@ -1,12 +1,12 @@
 <template>
   <div class="space-list-view">
     <!-- 左侧栏：空间列表（原下拉选择升级，Dify/FastGPT 侧栏形态）；进入 KB 子页面自动收成窄条，点头像展开 -->
-    <aside
-      class="space-sidebar"
-      :class="{ collapsed: sidebarCollapsed }"
-      aria-label="空间列表"
-    >
-      <button class="new-space-btn" :title="sidebarCollapsed ? '新建空间' : ''" @click="showCreateSpaceDialog">
+    <aside class="space-sidebar" :class="{ collapsed: sidebarCollapsed }" aria-label="空间列表">
+      <button
+        class="new-space-btn"
+        :title="sidebarCollapsed ? '新建空间' : ''"
+        @click="showCreateSpaceDialog"
+      >
         <el-icon :size="14"><Plus /></el-icon>
         <span v-if="!sidebarCollapsed">新建空间</span>
       </button>
@@ -19,12 +19,13 @@
           class="space-sidebar-item"
           :class="{ active: selectedSpaceId === space.id }"
           :title="space.name"
-          @click="sidebarCollapsed ? handleCollapsedSpaceClick(space.id) : handleSpaceClick(space.id)"
+          @click="
+            sidebarCollapsed ? handleCollapsedSpaceClick(space.id) : handleSpaceClick(space.id)
+          "
         >
-          <span
-            class="space-item-avatar"
-            :style="{ background: avatarColor(space.name) }"
-          >{{ space.name.charAt(0) }}</span>
+          <span class="space-item-avatar" :style="{ background: avatarColor(space.name) }">{{
+            space.name.charAt(0)
+          }}</span>
           <span v-if="!sidebarCollapsed" class="item-title">{{ space.name }}</span>
         </button>
         <div v-if="spaceStore.spaces.length === 0 && !sidebarCollapsed" class="space-sidebar-empty">
@@ -33,7 +34,11 @@
       </div>
 
       <div class="space-sidebar-footer">
-        <button class="manage-spaces-btn" :title="sidebarCollapsed ? '管理空间' : ''" @click="showManageSpacesDialog">
+        <button
+          class="manage-spaces-btn"
+          :title="sidebarCollapsed ? '管理空间' : ''"
+          @click="showManageSpacesDialog"
+        >
           <el-icon :size="14"><Collection /></el-icon>
           <span v-if="!sidebarCollapsed">管理空间</span>
         </button>
@@ -49,12 +54,7 @@
         </div>
         <div class="header-actions">
           <!-- 当前空间操作（选中空间后可用） -->
-          <el-button
-            v-if="selectedSpaceId"
-            type="primary"
-            size="small"
-            @click="showCreateKbDialog"
-          >
+          <el-button v-if="selectedSpaceId" type="primary" size="small" @click="showCreateKbDialog">
             <el-icon><Plus /></el-icon>
             新建知识库
           </el-button>
@@ -93,9 +93,7 @@
           headline="选择知识空间"
           description="从顶部下拉选择或创建一个知识空间，开始管理知识库"
         >
-          <el-button type="primary" @click="showCreateSpaceDialog">
-            新建知识空间
-          </el-button>
+          <el-button type="primary" @click="showCreateSpaceDialog"> 新建知识空间 </el-button>
         </EmptyState>
       </div>
     </main>
@@ -119,11 +117,7 @@
         <div class="form-section">
           <div class="section-label">基础信息</div>
           <el-form-item label="名称" prop="name">
-            <el-input
-              v-model="createSpaceForm.name"
-              placeholder="请输入空间名称"
-              maxlength="100"
-            />
+            <el-input v-model="createSpaceForm.name" placeholder="请输入空间名称" maxlength="100" />
           </el-form-item>
           <el-form-item label="可见性" prop="visibility">
             <div class="visibility-options">
@@ -188,7 +182,8 @@
               <span class="advanced-label">批处理大小</span>
               <el-input-number
                 v-model="createSpaceForm.embedding_batch_size"
-                :min="1" :max="128"
+                :min="1"
+                :max="128"
                 size="small"
                 controls-position="right"
                 style="width: 120px"
@@ -203,23 +198,14 @@
       </el-form>
       <template #footer>
         <el-button @click="createSpaceDialogVisible = false">取消</el-button>
-        <el-button
-          type="primary"
-          :loading="createSpaceLoading"
-          @click="handleCreateSpace"
-        >
+        <el-button type="primary" :loading="createSpaceLoading" @click="handleCreateSpace">
           创建空间
         </el-button>
       </template>
     </el-dialog>
 
     <!-- 管理空间弹窗 -->
-    <el-dialog
-      v-model="manageSpacesDialogVisible"
-      title="管理空间"
-      width="640px"
-      destroy-on-close
-    >
+    <el-dialog v-model="manageSpacesDialogVisible" title="管理空间" width="640px" destroy-on-close>
       <div v-if="selectedSpaceIds.length > 0" class="batch-bar">
         <span class="batch-count">已选 {{ selectedSpaceIds.length }} 项</span>
         <el-button size="small" @click="selectedSpaceIds = []">取消选择</el-button>
@@ -260,12 +246,7 @@
     </el-dialog>
 
     <!-- 新建知识库弹窗 -->
-    <el-dialog
-      v-model="createKbDialogVisible"
-      title="新建知识库"
-      width="480px"
-      destroy-on-close
-    >
+    <el-dialog v-model="createKbDialogVisible" title="新建知识库" width="480px" destroy-on-close>
       <el-form
         ref="createKbFormRef"
         :model="createKbForm"
@@ -273,11 +254,7 @@
         label-width="80px"
       >
         <el-form-item label="名称" prop="name">
-          <el-input
-            v-model="createKbForm.name"
-            placeholder="请输入知识库名称"
-            maxlength="100"
-          />
+          <el-input v-model="createKbForm.name" placeholder="请输入知识库名称" maxlength="100" />
         </el-form-item>
         <el-form-item label="描述" prop="description">
           <el-input
@@ -291,11 +268,7 @@
       </el-form>
       <template #footer>
         <el-button @click="createKbDialogVisible = false">取消</el-button>
-        <el-button
-          type="primary"
-          :loading="createKbLoading"
-          @click="handleCreateKb"
-        >
+        <el-button type="primary" :loading="createKbLoading" @click="handleCreateKb">
           创建
         </el-button>
       </template>
@@ -307,18 +280,13 @@
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  Plus,
-  Setting,
-  Collection,
-  Check,
-} from '@element-plus/icons-vue'
+import { Plus, Setting, Collection, Check } from '@element-plus/icons-vue'
 
 import { useSpaceStore } from '@/stores/space'
 import { knowledgeBaseApi } from '@/api/knowledge'
 import { userApi } from '@/api/user'
 import type { FormInstance, FormRules } from 'element-plus'
-import type { Space, AvailableModelItem } from '@/api/types'
+import type { Space, AvailableModelItem, SpaceConfig } from '@/api/types'
 import BreadcrumbNav from '@/components/common/BreadcrumbNav.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 
@@ -358,10 +326,7 @@ function getVisibilityType(visibility?: number): string {
 
 // 空间头像中性灰底（全站 Neutral Minimal 语言：不按名称上彩色，
 // 靠首字与位置辨识；哈希取色逻辑保留但色板收敛为灰阶档位）
-const AVATAR_PALETTE: readonly string[] = [
-  'var(--color-bg-hover)',
-  'var(--color-bg-card-elevated)',
-]
+const AVATAR_PALETTE: readonly string[] = ['var(--color-bg-hover)', 'var(--color-bg-card-elevated)']
 
 function avatarColor(name: string): string {
   let hash = 0
@@ -385,16 +350,8 @@ function switchTab(tab: string) {
 
 // === 知识库上下文 ===
 
-const kbId = computed(() => {
-  if (route.params.kbId) return Number(route.params.kbId)
-  if (route.query.kbId) return Number(route.query.kbId)
-  return null
-})
-
 // 是否处于空间首页（KB 列表）——决定显示完整空间栏还是极简返回栏
-const isSpaceHome = computed(
-  () => !selectedSpaceId.value || route.name === 'KnowledgeBases',
-)
+const isSpaceHome = computed(() => !selectedSpaceId.value || route.name === 'KnowledgeBases')
 
 // 空间侧栏收缩态：进入 KB 子页面（选中知识库）自动收成头像窄条，回 KB 列表自动展开；
 // 用户在窄条态也可点当前空间头像手动展开
@@ -416,8 +373,7 @@ const navBack = computed<{ label: string; to: string } | null>(() => {
   const sid = selectedSpaceId.value
   if (!sid) return null
   const kbIdParam =
-    (route.params.kbId as string | undefined) ??
-    (route.query.kbId as string | undefined)
+    (route.params.kbId as string | undefined) ?? (route.query.kbId as string | undefined)
   const kbBase = `/home/spaces/${sid}/knowledge-bases`
   const docBase = kbIdParam ? `${kbBase}/${kbIdParam}/documents` : ''
   const name = route.name
@@ -446,8 +402,7 @@ const crumbItems = computed(() => {
   if (!sid) return items
 
   const kbIdParam =
-    (route.params.kbId as string | undefined) ??
-    (route.query.kbId as string | undefined)
+    (route.params.kbId as string | undefined) ?? (route.query.kbId as string | undefined)
   const kbBase = `/home/spaces/${sid}/knowledge-bases`
 
   const isKbHome = route.name === 'KnowledgeBases'
@@ -562,7 +517,7 @@ async function handleCreateSpace() {
 
     createSpaceLoading.value = true
     try {
-      const config: Record<string, any> = {
+      const config: SpaceConfig = {
         space_type: createSpaceForm.space_types,
         description: createSpaceForm.description || undefined,
         embedding: createSpaceForm.embedding_model
@@ -600,8 +555,11 @@ const batchProgressText = ref('')
 
 function formatDate(date: string): string {
   try {
-    return new Date(date).toLocaleDateString('zh-CN') + ' ' +
+    return (
+      new Date(date).toLocaleDateString('zh-CN') +
+      ' ' +
       new Date(date).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    )
   } catch {
     return '-'
   }
@@ -716,9 +674,7 @@ async function handleCreateKb() {
     try {
       await knowledgeBaseApi.createKnowledgeBase(selectedSpaceId.value!, {
         name: createKbForm.name,
-        config: createKbForm.description
-          ? { description: createKbForm.description }
-          : undefined,
+        config: createKbForm.description ? { description: createKbForm.description } : undefined,
       })
       ElMessage.success('知识库创建成功')
       createKbDialogVisible.value = false
@@ -754,9 +710,7 @@ watch(
 
       if (route.params.id === id) {
         await router.replace(
-          exists
-            ? `/home/spaces/${nextSpaceId}/knowledge-bases`
-            : '/home/spaces',
+          exists ? `/home/spaces/${nextSpaceId}/knowledge-bases` : '/home/spaces',
         )
       }
     }
@@ -781,10 +735,7 @@ watch(
 async function init() {
   loading.value = true
   try {
-    await Promise.all([
-      spaceStore.fetchSpaces(),
-      spaceStore.fetchPublicSpaces(),
-    ])
+    await Promise.all([spaceStore.fetchSpaces(), spaceStore.fetchPublicSpaces()])
     if (!route.params.id && spaceStore.spaces.length > 0) {
       router.replace(`/home/spaces/${spaceStore.spaces[0]!.id}/knowledge-bases`)
     }
@@ -909,7 +860,9 @@ onMounted(() => {
   font-family: var(--font-body);
   cursor: pointer;
   text-align: left;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .space-sidebar-item:hover {
@@ -971,7 +924,9 @@ onMounted(() => {
   font-size: var(--text-xs);
   font-family: var(--font-body);
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .manage-spaces-btn:hover {
@@ -1066,7 +1021,9 @@ onMounted(() => {
 .header-actions :deep(.el-button) {
   border-radius: var(--radius-md);
   font-weight: var(--weight-medium);
-  transition: background-color var(--transition-fast), color var(--transition-fast),
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast),
     border-color var(--transition-fast);
 }
 
@@ -1098,7 +1055,10 @@ onMounted(() => {
   font-size: 14px;
   height: auto;
   box-shadow: none;
-  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
 .header-actions :deep(.el-button:not(.is-text):not(.is-circle):not(.el-button--primary) span) {
@@ -1114,7 +1074,6 @@ onMounted(() => {
   transform: none;
   box-shadow: none;
 }
-
 
 /* 圆形图标按钮：发丝线，透明底，hover 浅底 */
 .header-actions :deep(.el-button.is-circle) {
@@ -1139,7 +1098,6 @@ onMounted(() => {
   color: var(--color-text);
   background: var(--color-bg-hover);
 }
-
 
 .content-body {
   flex: 1;
@@ -1258,7 +1216,9 @@ onMounted(() => {
   border-radius: var(--radius-md);
   background: var(--color-bg-card);
   cursor: pointer;
-  transition: border-color var(--transition-fast), background var(--transition-fast),
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
     box-shadow var(--transition-fast);
   min-width: 0;
 }

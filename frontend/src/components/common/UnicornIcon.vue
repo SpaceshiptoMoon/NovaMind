@@ -31,11 +31,18 @@
       <!-- TAIL -->
       <path
         d="M8 26 C2 30 0 36 2 42 C4 46 6 44 5 38 C4 32 6 28 10 26"
-        stroke="url(#u-tail)" stroke-width="4" fill="none" stroke-linecap="round"
+        stroke="url(#u-tail)"
+        stroke-width="4"
+        fill="none"
+        stroke-linecap="round"
       />
       <path
         d="M10 28 C4 32 2 38 4 44 C6 48 8 46 7 40 C6 34 8 30 12 28"
-        stroke="#F48FB1" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.5"
+        stroke="#F48FB1"
+        stroke-width="2.5"
+        fill="none"
+        stroke-linecap="round"
+        opacity="0.5"
       />
 
       <!-- BACK LEGS (slightly shaded) -->
@@ -80,11 +87,18 @@
       <!-- MANE -->
       <path
         d="M34 6 C30 10 26 16 24 24"
-        stroke="url(#u-mane)" stroke-width="3.5" fill="none" stroke-linecap="round"
+        stroke="url(#u-mane)"
+        stroke-width="3.5"
+        fill="none"
+        stroke-linecap="round"
       />
       <path
         d="M36 8 C32 12 28 18 26 26"
-        stroke="#F48FB1" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.5"
+        stroke="#F48FB1"
+        stroke-width="2"
+        fill="none"
+        stroke-linecap="round"
+        opacity="0.5"
       />
     </g>
   </svg>

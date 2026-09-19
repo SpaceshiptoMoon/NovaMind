@@ -9,7 +9,9 @@
             <div>
               <p class="dashboard-panel__eyebrow">Task Dashboard</p>
               <h1>任务列表</h1>
-              <p class="dashboard-panel__desc">这里展示知识库文档处理的完整流水。按任务查看批次状态，展开后追踪到每个文档子项。</p>
+              <p class="dashboard-panel__desc">
+                这里展示知识库文档处理的完整流水。按任务查看批次状态，展开后追踪到每个文档子项。
+              </p>
             </div>
 
             <el-button class="refresh-button" plain :loading="loading" @click="fetchTasks">
@@ -75,9 +77,17 @@
                   <button class="task-item__summary" type="button" @click="toggleTask(task.id)">
                     <div class="task-item__main">
                       <div class="task-item__title-row">
-                        <span class="task-status-dot" :class="`task-status-dot--${getTaskTone(task.status)}`" />
+                        <span
+                          class="task-status-dot"
+                          :class="`task-status-dot--${getTaskTone(task.status)}`"
+                        />
                         <span class="task-id">任务 {{ task.id }}</span>
-                        <el-tag :type="getTaskStatusConfig(task.status).type" effect="plain" round size="small">
+                        <el-tag
+                          :type="getTaskStatusConfig(task.status).type"
+                          effect="plain"
+                          round
+                          size="small"
+                        >
                           {{ getTaskStatusConfig(task.status).text }}
                         </el-tag>
                         <span class="task-action">{{ getTaskActionText(task.action) }}</span>
@@ -86,15 +96,30 @@
                       <div class="task-item__meta">
                         <span>文档数 {{ task.total_count }}</span>
                         <span>创建于 {{ formatDateTime(task.created_at) }}</span>
-                        <span>完成于 {{ task.completed_at ? formatDateTime(task.completed_at) : '未完成' }}</span>
+                        <span
+                          >完成于
+                          {{
+                            task.completed_at ? formatDateTime(task.completed_at) : '未完成'
+                          }}</span
+                        >
                       </div>
 
                       <div class="task-breakdown">
-                        <span class="task-breakdown__item">待处理 {{ task.task_summary?.pending ?? 0 }}</span>
-                        <span class="task-breakdown__item is-processing">处理中 {{ task.task_summary?.processing ?? 0 }}</span>
-                        <span class="task-breakdown__item is-success">已完成 {{ task.task_summary?.completed ?? 0 }}</span>
-                        <span class="task-breakdown__item is-danger">失败 {{ task.task_summary?.failed ?? 0 }}</span>
-                        <span class="task-breakdown__item is-muted">取消 {{ task.task_summary?.cancelled ?? 0 }}</span>
+                        <span class="task-breakdown__item"
+                          >待处理 {{ task.task_summary?.pending ?? 0 }}</span
+                        >
+                        <span class="task-breakdown__item is-processing"
+                          >处理中 {{ task.task_summary?.processing ?? 0 }}</span
+                        >
+                        <span class="task-breakdown__item is-success"
+                          >已完成 {{ task.task_summary?.completed ?? 0 }}</span
+                        >
+                        <span class="task-breakdown__item is-danger"
+                          >失败 {{ task.task_summary?.failed ?? 0 }}</span
+                        >
+                        <span class="task-breakdown__item is-muted"
+                          >取消 {{ task.task_summary?.cancelled ?? 0 }}</span
+                        >
                       </div>
 
                       <div v-if="getTaskNodeSummary(task).length" class="task-node-summary">
@@ -111,23 +136,32 @@
                     <div class="task-item__side">
                       <div class="task-overview">
                         <span class="task-overview__label">成功率</span>
-                        <strong class="task-overview__value">{{ getTaskSuccessPercent(task) }}%</strong>
+                        <strong class="task-overview__value"
+                          >{{ getTaskSuccessPercent(task) }}%</strong
+                        >
                         <el-progress
                           :percentage="getTaskSuccessPercent(task)"
                           :stroke-width="8"
                           :show-text="false"
                           :color="getTaskProgressColor(task.status)"
                         />
-                        <span class="task-overview__meta">已处理 {{ getTaskProcessedCount(task) }} / {{ task.total_count || 0 }}</span>
+                        <span class="task-overview__meta"
+                          >已处理 {{ getTaskProcessedCount(task) }} /
+                          {{ task.total_count || 0 }}</span
+                        >
                       </div>
-                      <span class="task-item__toggle">{{ expandedTaskIds.includes(task.id) ? '收起详情' : '展开详情' }}</span>
+                      <span class="task-item__toggle">{{
+                        expandedTaskIds.includes(task.id) ? '收起详情' : '展开详情'
+                      }}</span>
                     </div>
                   </button>
 
                   <div v-if="expandedTaskIds.includes(task.id)" class="task-item__detail">
                     <div v-if="task.note || task.error_message" class="task-item__notice">
                       <p v-if="task.note">{{ task.note }}</p>
-                      <p v-if="task.error_message" class="task-item__error">{{ task.error_message }}</p>
+                      <p v-if="task.error_message" class="task-item__error">
+                        {{ task.error_message }}
+                      </p>
                     </div>
 
                     <el-table :data="task.items" row-key="id" class="detail-table">
@@ -150,14 +184,25 @@
                       <el-table-column label="文档" min-width="250">
                         <template #default="{ row }">
                           <div class="doc-cell">
-                            <span class="doc-name">{{ getTaskDocumentName(row.document_id, row.pipeline_result, row.document_name) }}</span>
+                            <span class="doc-name">{{
+                              getTaskDocumentName(
+                                row.document_id,
+                                row.pipeline_result,
+                                row.document_name,
+                              )
+                            }}</span>
                           </div>
                         </template>
                       </el-table-column>
 
                       <el-table-column label="状态" width="120" align="center">
                         <template #default="{ row }">
-                          <el-tag :type="getItemStatusConfig(row.status).type" effect="plain" round size="small">
+                          <el-tag
+                            :type="getItemStatusConfig(row.status).type"
+                            effect="plain"
+                            round
+                            size="small"
+                          >
                             {{ getItemStatusConfig(row.status).text }}
                           </el-tag>
                         </template>
@@ -180,7 +225,9 @@
                       <el-table-column prop="retry_count" label="重试" width="84" align="center" />
 
                       <el-table-column label="完成时间" width="180">
-                        <template #default="{ row }">{{ row.completed_at ? formatDateTime(row.completed_at) : '-' }}</template>
+                        <template #default="{ row }">{{
+                          row.completed_at ? formatDateTime(row.completed_at) : '-'
+                        }}</template>
                       </el-table-column>
 
                       <el-table-column label="流程日志" min-width="380">
@@ -198,9 +245,15 @@
                             >
                               <span class="flow-seg" :class="`flow-seg--${seg.tone}`">
                                 <span class="flow-seg__icon">{{ seg.icon }}</span>
-                                <span v-if="seg.label" class="flow-seg__label">{{ seg.label }}</span>
-                                <span v-if="seg.duration" class="flow-seg__dur">{{ seg.duration }}</span>
-                                <span v-if="seg.error" class="flow-seg__err">: {{ getErrorPreview(seg.error) }}</span>
+                                <span v-if="seg.label" class="flow-seg__label">{{
+                                  seg.label
+                                }}</span>
+                                <span v-if="seg.duration" class="flow-seg__dur">{{
+                                  seg.duration
+                                }}</span>
+                                <span v-if="seg.error" class="flow-seg__err"
+                                  >: {{ getErrorPreview(seg.error) }}</span
+                                >
                               </span>
                             </el-tooltip>
                           </div>
@@ -230,7 +283,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Collection, DataAnalysis, Document, List, RefreshRight, Search } from '@element-plus/icons-vue'
+import {
+  Collection,
+  DataAnalysis,
+  Document,
+  List,
+  RefreshRight,
+  Search,
+} from '@element-plus/icons-vue'
 
 import { documentApi } from '@/api/knowledge'
 import type { DocumentTask, TaskNodeLog } from '@/api/types'
@@ -264,12 +324,14 @@ const kbNavItems = computed(() =>
       evaluation: DataAnalysis,
       wiki: Collection,
     },
-  })
+  }),
 )
 
-const currentPageDocumentCount = computed(() => tasks.value.reduce((sum, task) => sum + (task.total_count || 0), 0))
+const currentPageDocumentCount = computed(() =>
+  tasks.value.reduce((sum, task) => sum + (task.total_count || 0), 0),
+)
 const currentPageFailedCount = computed(() =>
-  tasks.value.reduce((sum, task) => sum + (task.task_summary?.failed ?? 0), 0)
+  tasks.value.reduce((sum, task) => sum + (task.task_summary?.failed ?? 0), 0),
 )
 
 async function fetchTasks(silent = false) {
@@ -295,9 +357,7 @@ async function fetchTasks(silent = false) {
 let taskPollTimer: ReturnType<typeof setInterval> | null = null
 
 function hasActiveTasks(): boolean {
-  return tasks.value.some(
-    (t) => t.status === 0 || t.status === 1,
-  )
+  return tasks.value.some((t) => t.status === 0 || t.status === 1)
 }
 
 function syncTaskPolling(): void {
@@ -322,7 +382,7 @@ onUnmounted(stopTaskPolling)
 
 function toggleTask(taskId: number) {
   expandedTaskIds.value = expandedTaskIds.value.includes(taskId)
-    ? expandedTaskIds.value.filter(id => id !== taskId)
+    ? expandedTaskIds.value.filter((id) => id !== taskId)
     : [...expandedTaskIds.value, taskId]
 }
 
@@ -466,7 +526,11 @@ function formatDurationMs(ms?: number | null): string {
   return `${minutes}m${rest}s`
 }
 
-function _segmentFromStatus(label: string, status: string | undefined, node: TaskNodeLog | null): FlowSegment {
+function _segmentFromStatus(
+  label: string,
+  status: string | undefined,
+  node: TaskNodeLog | null,
+): FlowSegment {
   let icon = '·'
   let tone: FlowSegment['tone'] = 'muted'
   let duration: string | undefined
@@ -495,9 +559,10 @@ function _segmentFromStatus(label: string, status: string | undefined, node: Tas
  * 解析✓2s · 切分✓0.3s · 向量化✓5s · 索引✗ ES写入失败
  * 无节点日志但有 task 级 error_message 时，用一条失败段兜底显示。
  */
-function getTaskFlowSegments(
-  row?: { step_progress?: Record<string, unknown>; error_message?: string | null },
-): FlowSegment[] {
+function getTaskFlowSegments(row?: {
+  step_progress?: Record<string, unknown>
+  error_message?: string | null
+}): FlowSegment[] {
   const sp = row?.step_progress
   if (!sp || !Object.keys(sp).length) {
     if (row?.error_message) {
@@ -533,13 +598,16 @@ function getTaskSuccessPercent(task: DocumentTask) {
   return Math.min(100, Math.round((completedCount / totalCount) * 100))
 }
 
-function getTaskProgressPercent(row?: { status?: number; step_progress?: Record<string, unknown> }) {
+function getTaskProgressPercent(row?: {
+  status?: number
+  step_progress?: Record<string, unknown>
+}) {
   // 终态优先：已完成则满格，避免 step_progress 为空或媒体步骤键不被识别时显示 0%。
   if (row?.status === 2) return 100
   const stepProgress = row?.step_progress
   if (!stepProgress) return 0
   const steps = ['parsed', 'split', 'embedded', 'indexed']
-  const doneCount = steps.filter(step => getNodeStatus(stepProgress, step) === 'done').length
+  const doneCount = steps.filter((step) => getNodeStatus(stepProgress, step) === 'done').length
   return Math.round((doneCount / steps.length) * 100)
 }
 
@@ -753,7 +821,10 @@ onMounted(fetchTasks)
   border-radius: var(--radius-2xl);
   background: var(--color-bg-card);
   overflow: hidden;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
 }
 
 .task-item:hover {

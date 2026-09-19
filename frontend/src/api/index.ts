@@ -106,9 +106,7 @@ instance.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
     const { response } = error
-    const isAuthEndpoint = AUTH_ENDPOINTS.some((ep) =>
-      (originalRequest?.url || '').includes(ep),
-    )
+    const isAuthEndpoint = AUTH_ENDPOINTS.some((ep) => (originalRequest?.url || '').includes(ep))
 
     // 401 且非认证端点且有 refresh_token → 尝试静默刷新
     if (response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {

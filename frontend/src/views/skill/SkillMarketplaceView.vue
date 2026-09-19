@@ -1,7 +1,10 @@
 <template>
   <div class="skill-marketplace">
     <PageHeader title="技能广场">
-      <el-button v-if="permStore.hasPermission('skill.config')" @click="router.push('/home/workspace/skills/admin')">
+      <el-button
+        v-if="permStore.hasPermission('skill.config')"
+        @click="router.push('/home/workspace/skills/admin')"
+      >
         <el-icon><Setting /></el-icon>
         审核管理
       </el-button>
@@ -20,8 +23,16 @@
 
     <!-- Tab 切换 -->
     <div class="tab-bar">
-      <button class="tab-btn" :class="{ active: activeTab === 'marketplace' }" @click="switchTab('marketplace')">广场</button>
-      <button class="tab-btn" :class="{ active: activeTab === 'mine' }" @click="switchTab('mine')">我的技能</button>
+      <button
+        class="tab-btn"
+        :class="{ active: activeTab === 'marketplace' }"
+        @click="switchTab('marketplace')"
+      >
+        广场
+      </button>
+      <button class="tab-btn" :class="{ active: activeTab === 'mine' }" @click="switchTab('mine')">
+        我的技能
+      </button>
     </div>
 
     <!-- 搜索和过滤（仅广场模式） -->
@@ -34,18 +45,29 @@
           style="width: 320px"
           @keyup.enter="handleSearch"
         >
-          <template #prefix><el-icon><Search /></el-icon></template>
+          <template #prefix
+            ><el-icon><Search /></el-icon
+          ></template>
         </el-input>
         <el-button :type="aiSearchMode ? 'primary' : 'default'" @click="handleSearch">
           {{ aiSearchMode ? 'AI 搜索' : '搜索' }}
         </el-button>
-        <el-tooltip :content="aiSearchMode ? '切换到普通搜索' : '切换到 AI 智能搜索'" placement="top">
+        <el-tooltip
+          :content="aiSearchMode ? '切换到普通搜索' : '切换到 AI 智能搜索'"
+          placement="top"
+        >
           <el-button @click="toggleAISearch" :type="aiSearchMode ? 'primary' : ''" circle>
             <el-icon><MagicStick /></el-icon>
           </el-button>
         </el-tooltip>
       </div>
-      <el-select v-model="selectedCategory" placeholder="全部分类" clearable style="width: 150px" @change="handleSearch">
+      <el-select
+        v-model="selectedCategory"
+        placeholder="全部分类"
+        clearable
+        style="width: 150px"
+        @change="handleSearch"
+      >
         <el-option v-for="cat in skillStore.categories" :key="cat" :label="cat" :value="cat" />
       </el-select>
       <el-select
@@ -96,17 +118,26 @@
         <p class="card-desc">{{ skill.description }}</p>
         <div class="card-footer">
           <div class="card-stats">
-            <span class="stat"><el-icon><Download /></el-icon> {{ skill.install_count }}</span>
-            <span class="stat"><el-icon><Star /></el-icon> {{ skill.rating_avg.toFixed(1) }}</span>
+            <span class="stat"
+              ><el-icon><Download /></el-icon> {{ skill.install_count }}</span
+            >
+            <span class="stat"
+              ><el-icon><Star /></el-icon> {{ skill.rating_avg.toFixed(1) }}</span
+            >
           </div>
           <div v-if="skill.tags?.length" class="card-tags">
-            <el-tag v-for="tag in skill.tags.slice(0, 3)" :key="tag" size="small" type="info">{{ tag }}</el-tag>
+            <el-tag v-for="tag in skill.tags.slice(0, 3)" :key="tag" size="small" type="info">{{
+              tag
+            }}</el-tag>
           </div>
         </div>
         <div v-if="skill.author_name" class="card-author">by {{ skill.author_name }}</div>
       </div>
 
-      <el-empty v-if="!currentLoading && currentSkills.length === 0" :description="activeTab === 'mine' ? '你还没有上传技能' : '暂无技能'" />
+      <el-empty
+        v-if="!currentLoading && currentSkills.length === 0"
+        :description="activeTab === 'mine' ? '你还没有上传技能' : '暂无技能'"
+      />
     </div>
 
     <!-- 分页 -->
@@ -128,13 +159,11 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Upload, Search, Download, Star, Setting, MagicStick } from '@element-plus/icons-vue'
 import { useSkillStore } from '@/stores/skill'
-import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
 import PageHeader from '@/components/common/PageHeader.vue'
 
 const router = useRouter()
 const skillStore = useSkillStore()
-const userStore = useUserStore()
 const permStore = usePermissionStore()
 
 const activeTab = ref<'marketplace' | 'mine'>('marketplace')
@@ -259,8 +288,8 @@ async function handleUpload(file: File) {
     } else {
       skillStore.fetchMarketplace({ sort: sortBy.value, limit: pageSize, offset: 0 })
     }
-  } catch (e: any) {
-    ElMessage.error(e?.message || '上传失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '上传失败')
   }
   return false
 }

@@ -3,9 +3,7 @@
     <div class="section-head">
       <div>
         <h4 class="sub-title">问题生成参数</h4>
-        <p class="sub-desc">
-          关闭后仅保留开关状态，开启时才会提交问题数量和提示词。
-        </p>
+        <p class="sub-desc">关闭后仅保留开关状态，开启时才会提交问题数量和提示词。</p>
       </div>
       <el-switch v-model="configForm.qgEnabled" />
     </div>
@@ -15,14 +13,30 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="LLM 模型">
-              <el-select v-model="configForm.qgLlmModel" clearable filterable placeholder="留空时继承空间默认模型" style="width: 100%">
-                <el-option v-for="model in llmModels" :key="model.model" :label="model.model" :value="model.model" />
+              <el-select
+                v-model="configForm.qgLlmModel"
+                clearable
+                filterable
+                placeholder="留空时继承空间默认模型"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="model in llmModels"
+                  :key="model.model"
+                  :label="model.model"
+                  :value="model.model"
+                />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="每个分块问题数">
-              <el-input-number v-model="configForm.qgMaxQuestions" :min="1" :max="20" style="width: 100%" />
+              <el-input-number
+                v-model="configForm.qgMaxQuestions"
+                :min="1"
+                :max="20"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
         </el-row>
@@ -30,17 +44,34 @@
         <el-row :gutter="20">
           <el-col :span="8">
             <el-form-item label="温度">
-              <el-input-number v-model="configForm.qgLlmTemperature" :min="0" :max="2" :step="0.1" style="width: 100%" />
+              <el-input-number
+                v-model="configForm.qgLlmTemperature"
+                :min="0"
+                :max="2"
+                :step="0.1"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="Top P">
-              <el-input-number v-model="configForm.qgLlmTopP" :min="0" :max="1" :step="0.1" style="width: 100%" />
+              <el-input-number
+                v-model="configForm.qgLlmTopP"
+                :min="0"
+                :max="1"
+                :step="0.1"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="最大 Token 数">
-              <el-input-number v-model="configForm.qgLlmMaxTokens" :min="100" :max="8192" style="width: 100%" />
+              <el-input-number
+                v-model="configForm.qgLlmMaxTokens"
+                :min="100"
+                :max="8192"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
         </el-row>

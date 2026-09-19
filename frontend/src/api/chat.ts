@@ -1,5 +1,14 @@
 import { request, createWebSocketStream, tokenManager } from './index'
-import type { ChatRequest, ChatResponse, ChatHistoryResponse, HealthCheckResponse, ModelsResponse, UploadChatAttachmentResponse, ChatSource, ChatAttachment } from './types'
+import type {
+  ChatRequest,
+  ChatResponse,
+  ChatHistoryResponse,
+  HealthCheckResponse,
+  ModelsResponse,
+  UploadChatAttachmentResponse,
+  ChatSource,
+  ChatAttachment,
+} from './types'
 
 const BASE_URL = '/ai-chat'
 
@@ -9,7 +18,11 @@ export const chatApi = {
   },
 
   uploadAttachment(file: File, onProgress?: (percent: number) => void) {
-    return request.upload<UploadChatAttachmentResponse>(`${BASE_URL}/chat-attachments`, file, onProgress)
+    return request.upload<UploadChatAttachmentResponse>(
+      `${BASE_URL}/chat-attachments`,
+      file,
+      onProgress,
+    )
   },
 
   downloadAttachment(attachmentId: number) {
@@ -93,7 +106,9 @@ export const chatApi = {
           }
         }
       },
-      onError: callbacks.onError ? (msg) => callbacks.onError!({ code: 'STREAM_ERROR', message: msg }) : undefined,
+      onError: callbacks.onError
+        ? (msg) => callbacks.onError!({ code: 'STREAM_ERROR', message: msg })
+        : undefined,
       signal: callbacks.signal,
     })
   },

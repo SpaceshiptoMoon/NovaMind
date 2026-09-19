@@ -36,5 +36,17 @@ export default defineConfigWithVueTs(
     },
   },
 
+  {
+    name: 'allow-underscore-unused-vars',
+    // 下划线前缀 = 有意不用（如解构排除字段），不视为死代码
+    files: ['**/*.{vue,ts,mts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
+    },
+  },
+
   skipFormatting,
 )

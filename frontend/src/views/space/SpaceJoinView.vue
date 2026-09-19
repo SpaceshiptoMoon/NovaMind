@@ -15,12 +15,7 @@
         </template>
       </el-result>
 
-      <el-result
-        v-else
-        icon="warning"
-        title="无法加入空间"
-        :sub-title="errorText"
-      >
+      <el-result v-else icon="warning" title="无法加入空间" :sub-title="errorText">
         <template #extra>
           <el-button type="primary" @click="goHome">返回首页</el-button>
         </template>

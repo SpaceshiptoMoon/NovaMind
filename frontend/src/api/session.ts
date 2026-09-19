@@ -29,7 +29,10 @@ export const sessionApi = {
   },
 
   getContext(sessionId: string, limit?: number) {
-    return request.get<QAContextResponse>(`${BASE_URL}/context/${sessionId}`, limit ? { limit } : undefined)
+    return request.get<QAContextResponse>(
+      `${BASE_URL}/context/${sessionId}`,
+      limit ? { limit } : undefined,
+    )
   },
 
   getSessionMessages(sessionId: string) {
@@ -51,7 +54,10 @@ export const sessionApi = {
 
   // 更新压缩配置（支持反复修改，不影响知识库绑定）
   updateCompressionConfig(sessionId: string, data: SessionConfigCompressionUpdate) {
-    return request.patch<SessionConfigResponse>(`/sessions/${sessionId}/config/compression-config`, data)
+    return request.patch<SessionConfigResponse>(
+      `/sessions/${sessionId}/config/compression-config`,
+      data,
+    )
   },
 
   // 更新模型生成参数配置（max_tokens/temperature/top_p/system_prompt，支持反复修改）
@@ -74,6 +80,9 @@ export const sessionApi = {
 
   // 更新联网搜索引擎配置（provider/max_results，启用开关由请求级 enable_web_search 控制）
   updateWebSearchConfig(sessionId: string, data: SessionConfigWebSearchUpdate) {
-    return request.patch<SessionConfigResponse>(`/sessions/${sessionId}/config/web-search-config`, data)
+    return request.patch<SessionConfigResponse>(
+      `/sessions/${sessionId}/config/web-search-config`,
+      data,
+    )
   },
 }

@@ -403,9 +403,11 @@ export const useAgentStore = defineStore('agent', () => {
               messages.value.push(msg)
               planMsg.value = msg
             } else if (planMsg.value) {
-              const plan = (planMsg.value.extra as {
-                plan?: { statuses?: string[]; summary?: string }
-              }).plan
+              const plan = (
+                planMsg.value.extra as {
+                  plan?: { statuses?: string[]; summary?: string }
+                }
+              ).plan
               if (plan?.statuses) {
                 if (type === 'plan.step_started' && d.step_index != null) {
                   plan.statuses[d.step_index] = 'in_progress'
@@ -672,9 +674,11 @@ export const useAgentStore = defineStore('agent', () => {
               messages.value.push(msg)
               planMsg.value = msg
             } else if (planMsg.value) {
-              const plan = (planMsg.value.extra as {
-                plan?: { statuses?: string[]; summary?: string }
-              }).plan
+              const plan = (
+                planMsg.value.extra as {
+                  plan?: { statuses?: string[]; summary?: string }
+                }
+              ).plan
               if (plan?.statuses) {
                 if (type === 'plan.step_started' && d.step_index != null) {
                   plan.statuses[d.step_index] = 'in_progress'

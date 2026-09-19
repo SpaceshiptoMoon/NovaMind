@@ -37,11 +37,17 @@
 
       <!-- 数据条 -->
       <section class="stats-bar">
-        <span class="stat-item"><strong>{{ spaceStore.spaces.length }}</strong> 个知识空间</span>
+        <span class="stat-item"
+          ><strong>{{ spaceStore.spaces.length }}</strong> 个知识空间</span
+        >
         <span class="stat-divider" />
-        <span class="stat-item"><strong>{{ chatStore.sessions.length }}</strong> 段对话</span>
+        <span class="stat-item"
+          ><strong>{{ chatStore.sessions.length }}</strong> 段对话</span
+        >
         <span class="stat-divider" />
-        <span class="stat-item"><strong>{{ agentStore.agents.length }}</strong> 个智能体</span>
+        <span class="stat-item"
+          ><strong>{{ agentStore.agents.length }}</strong> 个智能体</span
+        >
       </section>
     </div>
   </div>
@@ -141,8 +147,14 @@ onMounted(() => {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ========================================

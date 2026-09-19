@@ -22,17 +22,13 @@ export const skillApi = {
   uploadSkill(file: File) {
     const formData = new FormData()
     formData.append('file', file)
-    return instance
-      .post<SkillDefinition>('/skills/upload', formData)
-      .then((r) => r.data)
+    return instance.post<SkillDefinition>('/skills/upload', formData).then((r) => r.data)
   },
 
   updateSkillVersion(skillId: number, file: File) {
     const formData = new FormData()
     formData.append('file', file)
-    return instance
-      .put<SkillDefinition>(`/skills/${skillId}/upload`, formData)
-      .then((r) => r.data)
+    return instance.put<SkillDefinition>(`/skills/${skillId}/upload`, formData).then((r) => r.data)
   },
 
   getSkill(skillId: number) {
@@ -40,7 +36,10 @@ export const skillApi = {
   },
 
   listMySkills(params?: { status?: number; limit?: number; offset?: number }) {
-    return request.get<SkillMarketplaceListResponse>('/skills/mine', params as Record<string, unknown>)
+    return request.get<SkillMarketplaceListResponse>(
+      '/skills/mine',
+      params as Record<string, unknown>,
+    )
   },
 
   listMarketplace(params?: {
@@ -51,7 +50,10 @@ export const skillApi = {
     limit?: number
     offset?: number
   }) {
-    return request.get<SkillMarketplaceListResponse>('/skills/marketplace', params as Record<string, unknown>)
+    return request.get<SkillMarketplaceListResponse>(
+      '/skills/marketplace',
+      params as Record<string, unknown>,
+    )
   },
 
   deleteSkill(skillId: number) {
@@ -75,7 +77,9 @@ export const skillApi = {
   },
 
   uninstallSkill(skillId: number, agentId: number) {
-    return request.delete<{ success: boolean; message: string }>(`/skills/${skillId}/install/${agentId}`)
+    return request.delete<{ success: boolean; message: string }>(
+      `/skills/${skillId}/install/${agentId}`,
+    )
   },
 
   listInstalled(agentId: number) {
@@ -87,7 +91,10 @@ export const skillApi = {
   },
 
   listReviews(skillId: number, params?: { limit?: number; offset?: number }) {
-    return request.get<SkillReviewListResponse>(`/skills/${skillId}/reviews`, params as Record<string, unknown>)
+    return request.get<SkillReviewListResponse>(
+      `/skills/${skillId}/reviews`,
+      params as Record<string, unknown>,
+    )
   },
 
   deleteReview(skillId: number) {
@@ -113,15 +120,23 @@ export const skillApi = {
   },
 
   listPendingReviews(params?: { limit?: number; offset?: number }) {
-    return request.get<SkillPendingReviewListResponse>('/skills/admin/reviews', params as Record<string, unknown>)
+    return request.get<SkillPendingReviewListResponse>(
+      '/skills/admin/reviews',
+      params as Record<string, unknown>,
+    )
   },
 
   approveSkill(skillId: number) {
-    return request.post<{ success: boolean; review_status: number }>(`/skills/admin/reviews/${skillId}/approve`)
+    return request.post<{ success: boolean; review_status: number }>(
+      `/skills/admin/reviews/${skillId}/approve`,
+    )
   },
 
   rejectSkill(skillId: number, data?: SkillAdminReviewAction) {
-    return request.post<{ success: boolean; review_status: number }>(`/skills/admin/reviews/${skillId}/reject`, data || {})
+    return request.post<{ success: boolean; review_status: number }>(
+      `/skills/admin/reviews/${skillId}/reject`,
+      data || {},
+    )
   },
 
   // ==================== 分类和标签 ====================

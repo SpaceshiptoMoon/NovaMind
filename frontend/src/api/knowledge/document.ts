@@ -13,37 +13,51 @@ import type {
 } from '../types'
 
 export const documentApi = {
-  getDocuments(spaceId: number, kbId: number, params?: { status?: number; keyword?: string; skip?: number; limit?: number }) {
+  getDocuments(
+    spaceId: number,
+    kbId: number,
+    params?: { status?: number; keyword?: string; skip?: number; limit?: number },
+  ) {
     return request.get<DocumentListResponse>(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/documents`,
-      params
+      params,
     )
   },
 
-  uploadDocument(spaceId: number, kbId: number, file: File | File[], onProgress?: (percent: number) => void) {
+  uploadDocument(
+    spaceId: number,
+    kbId: number,
+    file: File | File[],
+    onProgress?: (percent: number) => void,
+  ) {
     return request.upload<UploadDocumentResponse | BatchUploadResponse>(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/documents`,
       file,
-      onProgress
+      onProgress,
     )
   },
 
   getDocument(spaceId: number, kbId: number, docId: number) {
     return request.get<DocumentDetail>(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}`
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}`,
     )
   },
 
-  getDocumentChunks(spaceId: number, kbId: number, docId: number, params?: { skip?: number; limit?: number }) {
+  getDocumentChunks(
+    spaceId: number,
+    kbId: number,
+    docId: number,
+    params?: { skip?: number; limit?: number },
+  ) {
     return request.get<ChunkListResponse>(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/chunks`,
-      params as Record<string, unknown>
+      params as Record<string, unknown>,
     )
   },
 
   async downloadDocument(spaceId: number, kbId: number, docId: number, filename: string) {
     const blob = await request.download(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/download`
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/download`,
     )
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -57,53 +71,57 @@ export const documentApi = {
 
   deleteDocument(spaceId: number, kbId: number, docId: number) {
     return request.delete<{ success: boolean; message: string }>(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}`
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}`,
     )
   },
 
   batchProcessDocuments(spaceId: number, kbId: number, data?: { document_ids?: number[] }) {
     return request.post<BatchProcessResponse>(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/process`,
-      data
+      data,
     )
   },
 
   cancelDocument(spaceId: number, kbId: number, docId: number) {
     return request.post<{ document_id: number; status: string; message: string }>(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/cancel`
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/cancel`,
     )
   },
 
   retryDocument(spaceId: number, kbId: number, docId: number) {
     return request.post<ProcessDocumentResponse>(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/retry`
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/retry`,
     )
   },
 
   async getDocumentImage(spaceId: number, kbId: number, docId: number): Promise<string> {
     const blob = await request.download(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/image`
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/image`,
     )
     return window.URL.createObjectURL(blob)
   },
 
   getDocumentTasks(spaceId: number, kbId: number, docId: number) {
     return request.get<DocumentTaskItemListResponse>(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/tasks`
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/tasks`,
     )
   },
 
-  getDocumentTasksOverview(spaceId: number, kbId: number, params?: { skip?: number; limit?: number }) {
+  getDocumentTasksOverview(
+    spaceId: number,
+    kbId: number,
+    params?: { skip?: number; limit?: number },
+  ) {
     return request.get<DocumentTaskListResponse>(
       `/spaces/${spaceId}/knowledge-bases/${kbId}/document-tasks`,
-      params as Record<string, unknown>
+      params as Record<string, unknown>,
     )
   },
 
   /** 下载文档解析后的 Markdown 全文（attachment，文件名由后端 Content-Disposition 提供） */
   async downloadDocumentParsedText(spaceId: number, kbId: number, docId: number, filename: string) {
     const blob = await request.download(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/parsed-text/download`
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/parsed-text/download`,
     )
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -128,14 +146,14 @@ export const documentApi = {
   /** 获取文档视频帧预签名 URL 列表 */
   getDocumentFrames(spaceId: number, kbId: number, docId: number) {
     return request.get<DocumentFramesResponse>(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/frames`
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/frames`,
     )
   },
 
   /** 获取文档原始文件预览 Blob URL（带认证） */
   async getDocumentPreviewBlobUrl(spaceId: number, kbId: number, docId: number): Promise<string> {
     const blob = await request.download(
-      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/preview`
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/preview`,
     )
     return window.URL.createObjectURL(blob)
   },

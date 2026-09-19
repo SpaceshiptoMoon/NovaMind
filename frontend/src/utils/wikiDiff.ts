@@ -39,7 +39,9 @@ export function diffLines(oldText: string, newText: string): DiffLine[] {
     const oldLine = oldLines[i] as string
     for (let j = m - 1; j >= 0; j--) {
       dpRow[j] =
-        oldLine === newLines[j] ? (dpNext[j + 1] ?? 0) + 1 : Math.max(dpNext[j] ?? 0, dpRow[j + 1] ?? 0)
+        oldLine === newLines[j]
+          ? (dpNext[j + 1] ?? 0) + 1
+          : Math.max(dpNext[j] ?? 0, dpRow[j + 1] ?? 0)
     }
   }
 

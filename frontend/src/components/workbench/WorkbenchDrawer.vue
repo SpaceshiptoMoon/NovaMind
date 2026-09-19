@@ -18,7 +18,9 @@
             @click="workbench.setView(v.key)"
           >
             {{ v.label }}
-            <span v-if="v.key === 'sources' && sources.length" class="pill-badge">{{ sources.length }}</span>
+            <span v-if="v.key === 'sources' && sources.length" class="pill-badge">{{
+              sources.length
+            }}</span>
           </button>
         </div>
         <button class="drawer-close" title="收起右栏" @click="workbench.closeDrawer()">
@@ -46,7 +48,11 @@
               <span class="preview-index">{{ s.index }}</span>
               <span class="preview-name">{{ displayName(s) }}</span>
             </div>
-            <button v-if="sources.length > 3" class="preview-more" @click="workbench.setView('sources')">
+            <button
+              v-if="sources.length > 3"
+              class="preview-more"
+              @click="workbench.setView('sources')"
+            >
               查看全部 {{ sources.length }} 条
             </button>
           </div>
@@ -74,7 +80,9 @@
                   <span class="source-kind web">联网</span>
                 </div>
                 <div class="source-sub">
-                  <span v-if="s.score != null" class="source-score">相关度 {{ formatScore(s.score) }}</span>
+                  <span v-if="s.score != null" class="source-score"
+                    >相关度 {{ formatScore(s.score) }}</span
+                  >
                   <a
                     v-if="s.url"
                     :href="s.url"
@@ -82,7 +90,8 @@
                     rel="noopener"
                     class="source-link"
                     @click.stop
-                  >链接 ↗</a>
+                    >链接 ↗</a
+                  >
                 </div>
                 <div v-if="s.snippet" class="source-snippet">{{ s.snippet }}</div>
               </div>
@@ -104,7 +113,9 @@
                   <span class="source-kind kb">知识库</span>
                 </div>
                 <div class="source-sub">
-                  <span v-if="s.score != null" class="source-score">相关度 {{ formatScore(s.score) }}</span>
+                  <span v-if="s.score != null" class="source-score"
+                    >相关度 {{ formatScore(s.score) }}</span
+                  >
                   <span v-if="s.page != null" class="source-page">第 {{ s.page }} 页</span>
                 </div>
                 <div v-if="s.snippet" class="source-snippet">{{ s.snippet }}</div>
@@ -119,17 +130,21 @@
         <div v-if="!selectedToolCall" class="drawer-empty">未选中工具调用</div>
         <div v-else class="tool-detail">
           <div class="tool-detail-header">
-            <span class="tool-detail-icon"><el-icon :size="14"><SetUp /></el-icon></span>
+            <span class="tool-detail-icon"
+              ><el-icon :size="14"><SetUp /></el-icon
+            ></span>
             <span class="tool-detail-name">{{ selectedToolCall.toolName }}</span>
-            <span
-              class="tool-detail-status"
-              :class="selectedToolCall.status"
-            >{{ statusLabel(selectedToolCall.status) }}</span>
+            <span class="tool-detail-status" :class="selectedToolCall.status">{{
+              statusLabel(selectedToolCall.status)
+            }}</span>
             <span v-if="selectedToolCall.durationMs" class="tool-detail-duration">
               {{ selectedToolCall.durationMs }}ms
             </span>
           </div>
-          <div v-if="Object.keys(selectedToolCall.arguments || {}).length" class="tool-detail-section">
+          <div
+            v-if="Object.keys(selectedToolCall.arguments || {}).length"
+            class="tool-detail-section"
+          >
             <div class="tool-detail-label">参数</div>
             <pre class="tool-detail-json">{{ formatJson(selectedToolCall.arguments) }}</pre>
           </div>
@@ -149,16 +164,24 @@
         <div v-if="!selectedMessage" class="drawer-empty">未选中消息</div>
         <div v-else class="message-detail">
           <div class="message-detail-header">
-            <span class="message-detail-role" :class="selectedMessage.role">{{ roleLabel(selectedMessage.role) }}</span>
-            <span v-if="selectedMessage.iteration != null" class="message-detail-iter">第 {{ selectedMessage.iteration }} 轮</span>
+            <span class="message-detail-role" :class="selectedMessage.role">{{
+              roleLabel(selectedMessage.role)
+            }}</span>
+            <span v-if="selectedMessage.iteration != null" class="message-detail-iter"
+              >第 {{ selectedMessage.iteration }} 轮</span
+            >
           </div>
           <div v-if="selectedMessage.reasoning" class="message-detail-section">
             <div class="tool-detail-label">思考过程</div>
-            <div class="message-detail-md"><MarkdownRenderer :content="selectedMessage.reasoning" /></div>
+            <div class="message-detail-md">
+              <MarkdownRenderer :content="selectedMessage.reasoning" />
+            </div>
           </div>
           <div v-if="selectedMessage.content" class="message-detail-section">
             <div class="tool-detail-label">内容</div>
-            <div class="message-detail-md"><MarkdownRenderer :content="selectedMessage.content" /></div>
+            <div class="message-detail-md">
+              <MarkdownRenderer :content="selectedMessage.content" />
+            </div>
           </div>
           <div v-if="!selectedMessage.content && !selectedMessage.reasoning" class="drawer-empty">
             该消息无文本内容
@@ -210,13 +233,20 @@ const selectedMessage = computed(
 
 function roleLabel(role: AgentMessage['role']): string {
   switch (role) {
-    case 'user': return 'USER'
-    case 'assistant': return 'ASSISTANT'
-    case 'system': return 'SYSTEM'
-    case 'tool': return 'TOOL'
-    case 'compaction': return 'COMPACTED'
-    case 'plan': return 'PLAN'
-    case 'notice': return 'NOTICE'
+    case 'user':
+      return 'USER'
+    case 'assistant':
+      return 'ASSISTANT'
+    case 'system':
+      return 'SYSTEM'
+    case 'tool':
+      return 'TOOL'
+    case 'compaction':
+      return 'COMPACTED'
+    case 'plan':
+      return 'PLAN'
+    case 'notice':
+      return 'NOTICE'
   }
 }
 
@@ -237,10 +267,14 @@ function formatScore(score: number): string {
 
 function statusLabel(status: ToolCallRecord['status']): string {
   switch (status) {
-    case 'completed': return '完成'
-    case 'running': return '执行中'
-    case 'pending': return '等待中'
-    case 'failed': return '失败'
+    case 'completed':
+      return '完成'
+    case 'running':
+      return '执行中'
+    case 'pending':
+      return '等待中'
+    case 'failed':
+      return '失败'
   }
 }
 
@@ -260,7 +294,9 @@ function formatJson(obj: Record<string, unknown>): string {
   overflow: hidden;
   border-left: 1px solid transparent;
   background: var(--color-bg-sidebar);
-  transition: width var(--transition-slow), border-color var(--transition-slow);
+  transition:
+    width var(--transition-slow),
+    border-color var(--transition-slow);
   display: flex;
 }
 

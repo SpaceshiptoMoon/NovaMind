@@ -13,7 +13,10 @@ import type {
 export const memberApi = {
   // 获取成员列表
   getMembers(spaceId: number, params?: { skip?: number; limit?: number }) {
-    return request.get<MemberListResponse>(`/spaces/${spaceId}/members`, params as Record<string, unknown>)
+    return request.get<MemberListResponse>(
+      `/spaces/${spaceId}/members`,
+      params as Record<string, unknown>,
+    )
   },
 
   // 获取我的成员信息
@@ -23,10 +26,7 @@ export const memberApi = {
 
   // 邀请成员
   inviteMember(spaceId: number, data: InviteMemberRequest) {
-    return request.post<InviteMemberResponse>(
-      `/spaces/${spaceId}/members`,
-      data
-    )
+    return request.post<InviteMemberResponse>(`/spaces/${spaceId}/members`, data)
   },
 
   // 加入空间
@@ -40,33 +40,23 @@ export const memberApi = {
   },
 
   // 更新成员角色
-  updateMemberRole(
-    spaceId: number,
-    targetUserId: number,
-    data: UpdateMemberRoleRequest
-  ) {
-    return request.put<Member>(
-      `/spaces/${spaceId}/members/${targetUserId}`,
-      data
-    )
+  updateMemberRole(spaceId: number, targetUserId: number, data: UpdateMemberRoleRequest) {
+    return request.put<Member>(`/spaces/${spaceId}/members/${targetUserId}`, data)
   },
 
   // 更新成员细粒度权限（custom_permissions 全量替换）
   updateMemberPermissions(
     spaceId: number,
     targetUserId: number,
-    data: UpdateMemberPermissionsRequest
+    data: UpdateMemberPermissionsRequest,
   ) {
-    return request.put<Member>(
-      `/spaces/${spaceId}/members/${targetUserId}/permissions`,
-      data
-    )
+    return request.put<Member>(`/spaces/${spaceId}/members/${targetUserId}/permissions`, data)
   },
 
   // 移除成员
   removeMember(spaceId: number, targetUserId: number) {
     return request.delete<{ success: boolean; message: string }>(
-      `/spaces/${spaceId}/members/${targetUserId}`
+      `/spaces/${spaceId}/members/${targetUserId}`,
     )
   },
 

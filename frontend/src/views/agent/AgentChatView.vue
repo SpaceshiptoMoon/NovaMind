@@ -63,7 +63,11 @@
       </header>
 
       <!-- 消息列表 (仅对话模式)：按轮分组，工作过程折叠 -->
-      <div v-if="!isWelcomeMode && viewMode === 'chat'" ref="messagesRef" class="messages-container">
+      <div
+        v-if="!isWelcomeMode && viewMode === 'chat'"
+        ref="messagesRef"
+        class="messages-container"
+      >
         <div class="messages-inner">
           <template v-for="turn in turns" :key="turn.key">
             <div class="chat-turn">
@@ -71,8 +75,14 @@
               <div v-if="turn.userMsg" class="message-row user">
                 <div class="message-body">
                   <div class="message-text">{{ turn.userMsg.content }}</div>
-                  <div v-if="getMessageAttachments(turn.userMsg).length" class="message-attachments">
-                    <template v-for="att in getMessageAttachments(turn.userMsg)" :key="att.filename">
+                  <div
+                    v-if="getMessageAttachments(turn.userMsg).length"
+                    class="message-attachments"
+                  >
+                    <template
+                      v-for="att in getMessageAttachments(turn.userMsg)"
+                      :key="att.filename"
+                    >
                       <div
                         v-if="isImageFile(att.file_type) && att.id"
                         class="image-card"
@@ -97,7 +107,8 @@
                         <div class="file-info">
                           <div class="file-name">{{ att.filename }}</div>
                           <div class="file-meta">
-                            {{ getFileExt(att.filename) }} · {{ formatFileSize(att.file_size ?? 0) }}
+                            {{ getFileExt(att.filename) }} ·
+                            {{ formatFileSize(att.file_size ?? 0) }}
                           </div>
                         </div>
                         <div class="file-download-btn" title="下载">
@@ -116,144 +127,153 @@
               >
                 <div class="turn-avatar" :title="agentName">{{ agentName.charAt(0) }}</div>
                 <div class="turn-body">
+                  <!-- 有工作过程（ReAct 步骤或思考过程）即显示折叠头；完成后默认折叠，进行中默认展开 -->
+                  <button
+                    v-if="turn.steps.length > 0 || turn.finalAssistant?.reasoning"
+                    class="fold-line"
+                    @click="toggleTurn(turn)"
+                  >
+                    <span class="fold-status">{{
+                      turn.isActive
+                        ? '生成中…'
+                        : turn.steps.length > 0
+                          ? `已完成 ${turn.steps.length} 步 · ${turnDurationLabel(turn)}`
+                          : '思考过程'
+                    }}</span>
+                    <el-icon
+                      :size="12"
+                      class="fold-chevron"
+                      :class="{ expanded: isTurnExpanded(turn) }"
+                    >
+                      <ArrowDown />
+                    </el-icon>
+                  </button>
 
-                <!-- 有工作过程（ReAct 步骤或思考过程）即显示折叠头；完成后默认折叠，进行中默认展开 -->
-                <button
-                  v-if="turn.steps.length > 0 || turn.finalAssistant?.reasoning"
-                  class="fold-line"
-                  @click="toggleTurn(turn)"
-                >
-                  <span class="fold-status">{{
-                    turn.isActive
-                      ? '生成中…'
-                      : turn.steps.length > 0
-                        ? `已完成 ${turn.steps.length} 步 · ${turnDurationLabel(turn)}`
-                        : '思考过程'
-                  }}</span>
-                  <el-icon :size="12" class="fold-chevron" :class="{ expanded: isTurnExpanded(turn) }">
-                    <ArrowDown />
-                  </el-icon>
-                </button>
-
-                <!-- 压缩标记行（CompactionItem）：压缩发生位置的「已压缩 N 条」可展开看摘要。
+                  <!-- 压缩标记行（CompactionItem）：压缩发生位置的「已压缩 N 条」可展开看摘要。
                      dsh shadowed 语义：不移除历史消息，仅标记 model 在此停止看到之前历史 -->
-                <CompactionItem
-                  v-for="c in turn.compactionItems"
-                  :key="`compaction-${c.id}`"
-                  :data="(c.extra as Record<string, unknown>)?.compaction as AgentCompactionData | undefined"
-                  :expanded="expandedCompactions.has(c.id)"
-                  @toggle="toggleCompaction(c.id)"
-                />
+                  <CompactionItem
+                    v-for="c in turn.compactionItems"
+                    :key="`compaction-${c.id}`"
+                    :data="getCompactionData(c)"
+                    :expanded="expandedCompactions.has(c.id)"
+                    @toggle="toggleCompaction(c.id)"
+                  />
 
-                <!-- 工作过程：按 ReAct 步骤渲染。完成后默认折叠，进行中默认展开（实时看工具进度）。
+                  <!-- 工作过程：按 ReAct 步骤渲染。完成后默认折叠，进行中默认展开（实时看工具进度）。
                      无步骤且无思考过程时不渲染空容器 -->
-                <div
-                  v-if="turn.steps.length > 0 || turn.finalAssistant?.reasoning"
-                  v-show="turn.isActive || isTurnExpanded(turn)"
-                  class="work-trail"
-                >
-                  <template v-for="(step, si) in turn.steps" :key="si">
-                    <!-- AI 输出（LLM 一次响应原样还原：按 ContentBlock 分发 reasoning/text/tool_call） -->
-                    <div v-if="step.ai && toContentBlocks(step.ai).length" class="ai-output">
-                      <template v-for="(block, bi) in toContentBlocks(step.ai)" :key="bi">
-                        <div v-if="block.kind === 'reasoning'" class="ai-reasoning">
-                          <MarkdownRenderer :content="block.text" />
-                        </div>
-                        <div v-else-if="block.kind === 'text'" class="ai-content">
-                          <MarkdownRenderer :content="block.text" />
-                        </div>
-                        <div v-else-if="block.kind === 'tool_call'" class="ai-tool-call">
-                          <span class="ai-tool-name">{{ block.name }}</span>
-                          <pre v-if="block.arguments" class="ai-tool-args">{{
-                            formatToolArgs(block.arguments)
-                          }}</pre>
-                        </div>
-                      </template>
-                    </div>
-                    <!-- 工具实际执行（结果与 AI 输出分离；参数已在 AI 输出的 tool_calls 展示） -->
-                    <div v-for="tool in step.tools" :key="tool.id" class="tool-card-row">
-                      <div class="tool-card">
-                        <div class="tool-header" @click="toggleToolExpand(tool.id)">
-                          <div class="tool-info">
-                            <span class="tool-icon">
-                              <el-icon :size="14"><SetUp /></el-icon>
-                            </span>
-                            <span class="tool-name">{{ tool.tool_name || 'Tool' }}</span>
-                            <span v-if="getToolDuration(tool.tool_call_id)" class="tool-duration">
-                              {{ getToolDuration(tool.tool_call_id) }}ms
-                            </span>
-                            <span class="tool-status" :class="getToolStatus(tool.tool_call_id)">
-                              {{ getToolStatusLabel(tool.tool_call_id) }}
-                            </span>
+                  <div
+                    v-if="turn.steps.length > 0 || turn.finalAssistant?.reasoning"
+                    v-show="turn.isActive || isTurnExpanded(turn)"
+                    class="work-trail"
+                  >
+                    <template v-for="(step, si) in turn.steps" :key="si">
+                      <!-- AI 输出（LLM 一次响应原样还原：按 ContentBlock 分发 reasoning/text/tool_call） -->
+                      <div v-if="step.ai && toContentBlocks(step.ai).length" class="ai-output">
+                        <template v-for="(block, bi) in toContentBlocks(step.ai)" :key="bi">
+                          <div v-if="block.kind === 'reasoning'" class="ai-reasoning">
+                            <MarkdownRenderer :content="block.text" />
                           </div>
-                          <div class="tool-header-actions">
-                            <button
-                              class="tool-drawer-btn"
-                              title="在右侧抽屉查看"
-                              @click.stop="openToolInDrawer(tool.tool_call_id)"
-                            >
-                              <el-icon :size="12"><Expand /></el-icon>
-                            </button>
-                            <el-icon
-                              :size="12"
-                              class="expand-icon"
-                              :class="{ expanded: expandedTools.has(tool.id) }"
-                            >
-                              <ArrowDown />
-                            </el-icon>
+                          <div v-else-if="block.kind === 'text'" class="ai-content">
+                            <MarkdownRenderer :content="block.text" />
                           </div>
-                        </div>
-                        <div v-if="expandedTools.has(tool.id)" class="tool-body">
-                          <div v-if="tool.content" class="tool-section">
-                            <div class="tool-section-label">结果</div>
-                            <pre class="tool-json">{{ truncateResult(tool.content) }}</pre>
+                          <div v-else-if="block.kind === 'tool_call'" class="ai-tool-call">
+                            <span class="ai-tool-name">{{ block.name }}</span>
+                            <pre v-if="block.arguments" class="ai-tool-args">{{
+                              formatToolArgs(block.arguments)
+                            }}</pre>
+                          </div>
+                        </template>
+                      </div>
+                      <!-- 工具实际执行（结果与 AI 输出分离；参数已在 AI 输出的 tool_calls 展示） -->
+                      <div v-for="tool in step.tools" :key="tool.id" class="tool-card-row">
+                        <div class="tool-card">
+                          <div class="tool-header" @click="toggleToolExpand(tool.id)">
+                            <div class="tool-info">
+                              <span class="tool-icon">
+                                <el-icon :size="14"><SetUp /></el-icon>
+                              </span>
+                              <span class="tool-name">{{ tool.tool_name || 'Tool' }}</span>
+                              <span v-if="getToolDuration(tool.tool_call_id)" class="tool-duration">
+                                {{ getToolDuration(tool.tool_call_id) }}ms
+                              </span>
+                              <span class="tool-status" :class="getToolStatus(tool.tool_call_id)">
+                                {{ getToolStatusLabel(tool.tool_call_id) }}
+                              </span>
+                            </div>
+                            <div class="tool-header-actions">
+                              <button
+                                class="tool-drawer-btn"
+                                title="在右侧抽屉查看"
+                                @click.stop="openToolInDrawer(tool.tool_call_id)"
+                              >
+                                <el-icon :size="12"><Expand /></el-icon>
+                              </button>
+                              <el-icon
+                                :size="12"
+                                class="expand-icon"
+                                :class="{ expanded: expandedTools.has(tool.id) }"
+                              >
+                                <ArrowDown />
+                              </el-icon>
+                            </div>
+                          </div>
+                          <div v-if="expandedTools.has(tool.id)" class="tool-body">
+                            <div v-if="tool.content" class="tool-section">
+                              <div class="tool-section-label">结果</div>
+                              <pre class="tool-json">{{ truncateResult(tool.content) }}</pre>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  </template>
+                    </template>
 
-                  <!-- 思考过程（来自最终 assistant 的 reasoning） -->
-                  <div v-if="turn.finalAssistant?.reasoning" class="reasoning-section">
-                    <div class="reasoning-header" @click="toggleReasoning(turn.finalAssistant.id)">
-                      <span class="reasoning-label">思考过程</span>
-                      <el-icon
-                        :size="12"
-                        class="expand-icon"
-                        :class="{ expanded: expandedReasoning.has(turn.finalAssistant.id) }"
+                    <!-- 思考过程（来自最终 assistant 的 reasoning） -->
+                    <div v-if="turn.finalAssistant?.reasoning" class="reasoning-section">
+                      <div
+                        class="reasoning-header"
+                        @click="toggleReasoning(turn.finalAssistant.id)"
                       >
-                        <ArrowDown />
-                      </el-icon>
-                    </div>
-                    <div v-if="expandedReasoning.has(turn.finalAssistant.id)" class="reasoning-body">
-                      <MarkdownRenderer :content="turn.finalAssistant.reasoning" />
+                        <span class="reasoning-label">思考过程</span>
+                        <el-icon
+                          :size="12"
+                          class="expand-icon"
+                          :class="{ expanded: expandedReasoning.has(turn.finalAssistant.id) }"
+                        >
+                          <ArrowDown />
+                        </el-icon>
+                      </div>
+                      <div
+                        v-if="expandedReasoning.has(turn.finalAssistant.id)"
+                        class="reasoning-body"
+                      >
+                        <MarkdownRenderer :content="turn.finalAssistant.reasoning" />
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <!-- 最终回复（始终显示） -->
-                <div v-if="turn.finalAssistant?.content" class="final-answer">
-                  <MarkdownRenderer :content="turn.finalAssistant.content" class="message-text" />
-                  <div class="message-actions">
-                    <button
-                      class="msg-copy-btn"
-                      @click="handleCopyMessage(turn.finalAssistant.content!, $event)"
-                    >
-                      <el-icon :size="13"><DocumentCopy /></el-icon>
-                      <span>复制</span>
-                    </button>
-                  </div>
-                </div>
-                <!-- 流式/加载中：暂无最终回复时的占位 -->
-                <div v-else-if="turn.isActive" class="typing-row">
-                  <div class="message-body">
-                    <div class="typing-bubble">
-                      <span class="typing-dot"></span>
-                      <span class="typing-dot"></span>
-                      <span class="typing-dot"></span>
+                  <!-- 最终回复（始终显示） -->
+                  <div v-if="turn.finalAssistant?.content" class="final-answer">
+                    <MarkdownRenderer :content="turn.finalAssistant.content" class="message-text" />
+                    <div class="message-actions">
+                      <button
+                        class="msg-copy-btn"
+                        @click="handleCopyMessage(turn.finalAssistant.content!, $event)"
+                      >
+                        <el-icon :size="13"><DocumentCopy /></el-icon>
+                        <span>复制</span>
+                      </button>
                     </div>
                   </div>
-                </div>
+                  <!-- 流式/加载中：暂无最终回复时的占位 -->
+                  <div v-else-if="turn.isActive" class="typing-row">
+                    <div class="message-body">
+                      <div class="typing-bubble">
+                        <span class="typing-dot"></span>
+                        <span class="typing-dot"></span>
+                        <span class="typing-dot"></span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -277,14 +297,21 @@
           <div v-if="isWelcomeMode" class="welcome-greeting">
             <h2 class="welcome-title">有什么可以帮你？</h2>
             <p class="welcome-desc">
-              {{ agentName }}<template v-if="agentStore.currentAgent?.description"> · {{ agentStore.currentAgent.description }}</template>
+              {{ agentName
+              }}<template v-if="agentStore.currentAgent?.description">
+                · {{ agentStore.currentAgent.description }}</template
+              >
             </p>
           </div>
 
           <div class="input-card">
             <!-- 附件缩略图栏（卡内顶部，有附件才渲染） -->
             <div v-if="agentStore.pendingAttachments.length > 0" class="input-attachments">
-              <div v-for="att in agentStore.pendingAttachments" :key="att.id" class="attachment-chip">
+              <div
+                v-for="att in agentStore.pendingAttachments"
+                :key="att.id"
+                class="attachment-chip"
+              >
                 <img
                   v-if="isImageFile(att.file_type) && getImagePreviewUrl(att)"
                   :src="getImagePreviewUrl(att)"
@@ -746,6 +773,13 @@ function getMessageAttachments(msg: AgentMessage): Array<{
   )
 }
 
+// 压缩标记的 extra.compaction 提取（模板内不做复杂类型断言）
+function getCompactionData(msg: AgentMessage): AgentCompactionData | undefined {
+  return (msg.extra as Record<string, unknown> | null | undefined)?.compaction as
+    | AgentCompactionData
+    | undefined
+}
+
 function getFileIconClass(type?: string): string {
   if (!type) return 'file-default'
   const t = type.toLowerCase()
@@ -1032,23 +1066,11 @@ function getToolStatusLabel(callId: string | null) {
   return map[status] || status
 }
 
-function getToolArgs(callId: string | null) {
-  return getToolRecord(callId)?.arguments
-}
-
 function toggleToolExpand(msgId: number) {
   if (expandedTools.value.has(msgId)) {
     expandedTools.value.delete(msgId)
   } else {
     expandedTools.value.add(msgId)
-  }
-}
-
-function formatJson(obj: Record<string, unknown>): string {
-  try {
-    return JSON.stringify(obj, null, 2)
-  } catch {
-    return String(obj)
   }
 }
 
@@ -1380,8 +1402,12 @@ onBeforeUnmount(() => {
 }
 
 @keyframes welcome-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* ========================================
@@ -2054,11 +2080,7 @@ onBeforeUnmount(() => {
   width: 110%;
   height: 320px;
   transform: translateX(-50%);
-  background: radial-gradient(
-    ellipse at center,
-    rgba(99, 102, 241, 0.1),
-    transparent 70%
-  );
+  background: radial-gradient(ellipse at center, rgba(99, 102, 241, 0.1), transparent 70%);
   filter: blur(40px);
   pointer-events: none;
   z-index: -1;

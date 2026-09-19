@@ -25,7 +25,7 @@ describe('userApi', () => {
   it('maps login, refresh, and logout to auth endpoints', async () => {
     const { userApi } = await loadUserApi()
 
-    await userApi.login({ username: 'nova', password: 'secret' } as any)
+    await userApi.login({ username: 'nova', password: 'secret' })
     await userApi.refreshToken('refresh-token')
     await userApi.logout('refresh-token')
     await userApi.logout()
@@ -48,15 +48,19 @@ describe('userApi', () => {
 
     await userApi.getUsers({ skip: 10, limit: 20 })
     await userApi.getUser(7)
-    await userApi.createUser({ username: 'nova' } as any)
-    await userApi.updateUser(7, { email: 'nova@example.com' } as any)
+    await userApi.createUser({ username: 'nova', email: 'nova@example.com', password: 'secret' })
+    await userApi.updateUser(7, { email: 'nova@example.com' })
     await userApi.deleteUser(7)
     await userApi.toggleUserStatus(7)
     await userApi.logoutAll(7)
 
     expect(request.get).toHaveBeenNthCalledWith(1, '/user/users', { skip: 10, limit: 20 })
     expect(request.get).toHaveBeenNthCalledWith(2, '/user/users/7')
-    expect(request.post).toHaveBeenNthCalledWith(1, '/user/users', { username: 'nova' })
+    expect(request.post).toHaveBeenNthCalledWith(1, '/user/users', {
+      username: 'nova',
+      email: 'nova@example.com',
+      password: 'secret',
+    })
     expect(request.put).toHaveBeenNthCalledWith(1, '/user/users/7', { email: 'nova@example.com' })
     expect(request.delete).toHaveBeenNthCalledWith(1, '/user/users/7')
     expect(request.patch).toHaveBeenNthCalledWith(1, '/user/users/7/status')

@@ -12,9 +12,7 @@
           <div>
             <h3 class="section-title">选择知识库要启用的数据类型</h3>
           </div>
-          <p class="section-desc">
-            选择这个知识库需要处理的内容类型。
-          </p>
+          <p class="section-desc">选择这个知识库需要处理的内容类型。</p>
         </div>
 
         <el-checkbox-group v-model="configForm.kbSpaceTypes" class="modality-grid">
@@ -59,9 +57,7 @@
           <div>
             <h3 class="section-title">配置主切分策略和模态覆盖参数</h3>
           </div>
-          <p class="section-desc">
-            不同策略只显示会生效的参数。
-          </p>
+          <p class="section-desc">不同策略只显示会生效的参数。</p>
         </div>
 
         <KbSplittingSection :config-form="configForm" />
@@ -72,9 +68,7 @@
           <div>
             <h3 class="section-title">按文档类型和模态配置解析方式</h3>
           </div>
-          <p class="section-desc">
-            已按后端约束自动收口无效字段。
-          </p>
+          <p class="section-desc">已按后端约束自动收口无效字段。</p>
         </div>
 
         <KbTextParsingSection v-if="hasText" :config-form="configForm" />
@@ -93,9 +87,7 @@
           <div>
             <h3 class="section-title">设置问题生成开关和 LLM 参数</h3>
           </div>
-          <p class="section-desc">
-            开启后用于生成辅助问题，增强检索召回。
-          </p>
+          <p class="section-desc">开启后用于生成辅助问题，增强检索召回。</p>
         </div>
 
         <KbQuestionGenerationSection :config-form="configForm" :llm-models="llmModels" />
@@ -106,9 +98,7 @@
           <div>
             <h3 class="section-title">设置 Wiki 自动生成</h3>
           </div>
-          <p class="section-desc">
-            文档解析完成后自动整理互链知识页面。
-          </p>
+          <p class="section-desc">文档解析完成后自动整理互链知识页面。</p>
         </div>
 
         <KbWikiSection :config-form="configForm" :llm-models="llmModels" />
@@ -143,7 +133,12 @@ import {
   KbWikiSection,
   normalizeSpaceTypes,
 } from '@/components/knowledge'
-import type { ImageStrategy, TextStrategy, VideoStrategy, WikiGranularity } from '@/components/knowledge'
+import type {
+  ImageStrategy,
+  TextStrategy,
+  VideoStrategy,
+  WikiGranularity,
+} from '@/components/knowledge'
 import { getVideoStrategyValue } from '@/components/knowledge'
 import { spaceApi } from '@/api/space'
 import { userApi } from '@/api/user'
@@ -236,7 +231,9 @@ const configForm = reactive({
   wikiExtractionInstructions: '',
 })
 
-const hasText = computed(() => configForm.kbSpaceTypes.length === 0 || hasModality(configForm.kbSpaceTypes, 'text'))
+const hasText = computed(
+  () => configForm.kbSpaceTypes.length === 0 || hasModality(configForm.kbSpaceTypes, 'text'),
+)
 const hasImage = computed(() => hasModality(configForm.kbSpaceTypes, 'image'))
 const hasVideo = computed(() => hasModality(configForm.kbSpaceTypes, 'video'))
 const hasAudio = computed(() => hasModality(configForm.kbSpaceTypes, 'audio'))
@@ -345,7 +342,9 @@ function applyKbResponse(response: KnowledgeBaseConfigResponse) {
   configForm.videoSceneThreshold =
     parsing?.video?.scene_threshold === undefined ? null : parsing.video.scene_threshold
   configForm.videoDedupSimilarityThreshold =
-    parsing?.video?.dedup_similarity_threshold === undefined ? null : parsing.video.dedup_similarity_threshold
+    parsing?.video?.dedup_similarity_threshold === undefined
+      ? null
+      : parsing.video.dedup_similarity_threshold
   configForm.videoGroupSize =
     parsing?.video?.group_size === undefined ? null : parsing.video.group_size
   configForm.audioAsrModel = parsing?.audio?.asr_model || ''
@@ -431,7 +430,8 @@ function buildParsingConfig(): ParsingConfig {
   if (hasImage.value) {
     parsing.image = {
       strategy: configForm.imageStrategy,
-      vlm_model: configForm.imageStrategy === 'vlm' ? (configForm.imageVlmModel || undefined) : undefined,
+      vlm_model:
+        configForm.imageStrategy === 'vlm' ? configForm.imageVlmModel || undefined : undefined,
     }
   }
 
@@ -441,7 +441,9 @@ function buildParsingConfig(): ParsingConfig {
       frame_interval: configForm.videoFrameInterval,
       max_frames: configForm.videoMaxFrames,
       vlm_description_enabled: configForm.videoVlmDescriptionEnabled,
-      vlm_model: configForm.videoVlmDescriptionEnabled ? (configForm.videoVlmModel || undefined) : undefined,
+      vlm_model: configForm.videoVlmDescriptionEnabled
+        ? configForm.videoVlmModel || undefined
+        : undefined,
     }
     if (configForm.videoSceneThreshold !== null) {
       video.scene_threshold = configForm.videoSceneThreshold
@@ -479,7 +481,7 @@ function buildPayload(): KnowledgeBaseConfigUpdateRequest {
         max_tokens: configForm.qgLlmMaxTokens,
       },
       max_questions_per_chunk: configForm.qgEnabled ? configForm.qgMaxQuestions : undefined,
-      prompt_template: configForm.qgEnabled ? (configForm.qgPromptTemplate || undefined) : undefined,
+      prompt_template: configForm.qgEnabled ? configForm.qgPromptTemplate || undefined : undefined,
     },
     wiki: buildWikiConfigFromForm(configForm),
   }
@@ -572,7 +574,10 @@ onMounted(() => {
   background: var(--color-bg-card);
   text-align: left;
   cursor: pointer;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
 .nav-pill:hover {
@@ -657,7 +662,10 @@ onMounted(() => {
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-2xl);
   background: var(--color-bg-card);
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
 .modality-grid :deep(.el-checkbox:hover) {

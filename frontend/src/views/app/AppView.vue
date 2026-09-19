@@ -6,12 +6,7 @@
     </div>
 
     <div class="app-grid">
-      <div
-        v-for="app in apps"
-        :key="app.id"
-        class="app-card"
-        @click="navigateTo(app)"
-      >
+      <div v-for="app in apps" :key="app.id" class="app-card" @click="navigateTo(app)">
         <div class="app-icon" :style="{ background: app.bgColor }">
           <el-icon :size="28" :color="app.iconColor">
             <component :is="app.iconComponent" />

@@ -2,18 +2,9 @@
   <div class="forgot-password-view">
     <h2 class="forgot-title">找回密码</h2>
     <p class="forgot-desc">输入邮箱地址以接收重置链接</p>
-    <el-form
-      ref="formRef"
-      :model="form"
-      :rules="rules"
-      @submit.prevent="handleSubmit"
-    >
+    <el-form ref="formRef" :model="form" :rules="rules" @submit.prevent="handleSubmit">
       <el-form-item prop="email">
-        <el-input
-          v-model="form.email"
-          placeholder="邮箱地址"
-          size="large"
-        />
+        <el-input v-model="form.email" placeholder="邮箱地址" size="large" />
       </el-form-item>
       <el-button
         type="primary"

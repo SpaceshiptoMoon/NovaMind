@@ -2,12 +2,7 @@
   <div class="knowledge-base-view">
     <!-- 知识库卡片网格（中性横卡：头像 + 名称/描述 + 元信息，与全站 Neutral Minimal 同语言） -->
     <div v-loading="loading" class="kb-grid">
-      <div
-        v-for="kb in knowledgeBases"
-        :key="kb.id"
-        class="kb-card"
-        @click="goToDocuments(kb.id)"
-      >
+      <div v-for="kb in knowledgeBases" :key="kb.id" class="kb-card" @click="goToDocuments(kb.id)">
         <!-- 左：首字头像（中性灰底） -->
         <div class="kb-avatar">{{ kb.name.charAt(0) }}</div>
 
@@ -61,19 +56,12 @@
         headline="暂无知识库"
         description="创建知识库，上传文档，开始构建你的知识体系"
       >
-        <el-button type="primary" @click="handleQuickCreateKb">
-          新建知识库
-        </el-button>
+        <el-button type="primary" @click="handleQuickCreateKb"> 新建知识库 </el-button>
       </EmptyState>
     </div>
 
     <!-- 编辑知识库弹窗 -->
-    <el-dialog
-      v-model="dialogVisible"
-      title="编辑知识库"
-      width="480px"
-      destroy-on-close
-    >
+    <el-dialog v-model="dialogVisible" title="编辑知识库" width="480px" destroy-on-close>
       <el-form ref="formRef" :model="formData" :rules="formRules" label-width="80px">
         <el-form-item label="名称" prop="name">
           <el-input v-model="formData.name" placeholder="请输入知识库名称" maxlength="100" />
@@ -90,9 +78,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitLoading" @click="handleSubmit">
-          保存
-        </el-button>
+        <el-button type="primary" :loading="submitLoading" @click="handleSubmit"> 保存 </el-button>
       </template>
     </el-dialog>
   </div>
@@ -298,7 +284,9 @@ onMounted(() => {
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-xl);
   cursor: pointer;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast),
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
     transform var(--transition-base);
 }
 

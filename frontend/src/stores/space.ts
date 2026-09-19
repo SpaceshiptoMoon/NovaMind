@@ -78,7 +78,10 @@ export const useSpaceStore = defineStore('space', () => {
     return newSpace
   }
 
-  async function updateSpace(spaceId: number, data: { name?: string; visibility?: number; config?: SpaceConfig }) {
+  async function updateSpace(
+    spaceId: number,
+    data: { name?: string; visibility?: number; config?: SpaceConfig },
+  ) {
     const updatedSpace = patchSpace(await spaceApi.updateSpace(spaceId, data))
     const index = spaces.value.findIndex((s) => s.id === spaceId)
     if (index !== -1) {

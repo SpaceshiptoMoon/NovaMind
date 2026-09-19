@@ -22,7 +22,9 @@
           <div class="conv-info">
             <span class="conv-title">{{ item.query }}</span>
             <div class="conv-meta">
-              <el-tag size="small" :type="getModeTagType(item.research_mode)">{{ getModeText(item.research_mode) }}</el-tag>
+              <el-tag size="small" :type="getModeTagType(item.research_mode)">{{
+                getModeText(item.research_mode)
+              }}</el-tag>
               <span class="conv-time">{{ formatTime(item.created_at) }}</span>
             </div>
           </div>
@@ -36,7 +38,11 @@
     <!-- 右侧：对话区域 -->
     <div class="chat-main">
       <!-- 展开侧边栏按钮 -->
-      <button v-if="spaceId && !sidebarVisible" class="open-sidebar-btn" @click="sidebarVisible = true">
+      <button
+        v-if="spaceId && !sidebarVisible"
+        class="open-sidebar-btn"
+        @click="sidebarVisible = true"
+      >
         <el-icon :size="16"><Expand /></el-icon>
       </button>
 
@@ -67,8 +73,16 @@
               <div class="message-body">
                 <div class="progress-card" :class="{ 'is-done': msg.done }">
                   <div class="progress-header">
-                    <el-icon v-if="!msg.done" class="is-loading" :size="16" color="var(--color-primary)"><Loading /></el-icon>
-                    <el-icon v-else :size="16" color="var(--color-success)"><CircleCheck /></el-icon>
+                    <el-icon
+                      v-if="!msg.done"
+                      class="is-loading"
+                      :size="16"
+                      color="var(--color-primary)"
+                      ><Loading
+                    /></el-icon>
+                    <el-icon v-else :size="16" color="var(--color-success)"
+                      ><CircleCheck
+                    /></el-icon>
                     <span class="progress-text">{{ msg.content }}</span>
                   </div>
                 </div>
@@ -81,7 +95,9 @@
                 <ResearchPlanCard
                   :plan="msg.plan!"
                   :status="msg.planStatus || 'skipped'"
-                  @submit="(decision, feedback) => researchStore.submitPlanFeedback(decision, feedback)"
+                  @submit="
+                    (decision, feedback) => researchStore.submitPlanFeedback(decision, feedback)
+                  "
                 />
               </div>
             </div>
@@ -91,19 +107,25 @@
               <div class="message-body">
                 <!-- 研究统计 -->
                 <div v-if="msg.stats" class="report-stats">
-                  <span><el-icon :size="12"><Timer /></el-icon> {{ msg.stats.elapsed_seconds }}s</span>
-                  <span><el-icon :size="12"><FolderOpened /></el-icon> 内部 {{ msg.stats.internal_searches }} 次</span>
-                  <span><el-icon :size="12"><Link /></el-icon> 外部 {{ msg.stats.external_searches }} 次</span>
-                  <span><el-icon :size="12"><Document /></el-icon> {{ msg.stats.total_results }} 来源</span>
+                  <span
+                    ><el-icon :size="12"><Timer /></el-icon> {{ msg.stats.elapsed_seconds }}s</span
+                  >
+                  <span
+                    ><el-icon :size="12"><FolderOpened /></el-icon> 内部
+                    {{ msg.stats.internal_searches }} 次</span
+                  >
+                  <span
+                    ><el-icon :size="12"><Link /></el-icon> 外部
+                    {{ msg.stats.external_searches }} 次</span
+                  >
+                  <span
+                    ><el-icon :size="12"><Document /></el-icon>
+                    {{ msg.stats.total_results }} 来源</span
+                  >
                 </div>
                 <!-- 来源标签 -->
                 <div v-if="msg.sources?.length" class="report-sources">
-                  <el-tag
-                    v-for="source in msg.sources"
-                    :key="source"
-                    size="small"
-                    type="info"
-                  >
+                  <el-tag v-for="source in msg.sources" :key="source" size="small" type="info">
                     {{ source }}
                   </el-tag>
                 </div>
@@ -133,180 +155,203 @@
           </div>
 
           <div class="input-pill">
-          <el-popover trigger="click" :width="220" placement="top-start">
-            <template #reference>
-              <button class="input-action-btn" :disabled="researchStore.isResearching">
-                <el-icon :size="16"><Setting /></el-icon>
-              </button>
-            </template>
-            <div class="settings-popover">
-              <div class="setting-item">
-                <span>研究模式</span>
-                <el-select v-model="researchMode" size="small" style="width: 90px">
-                  <el-option
-                    v-for="opt in RESEARCH_MODE_OPTIONS"
-                    :key="opt.value"
-                    :label="opt.label"
-                    :value="opt.value"
-                  />
-                </el-select>
-              </div>
-              <!-- 数据源多选（源发现接口动态渲染：新源注册后自动出现，前端零改动）。
+            <el-popover trigger="click" :width="220" placement="top-start">
+              <template #reference>
+                <button class="input-action-btn" :disabled="researchStore.isResearching">
+                  <el-icon :size="16"><Setting /></el-icon>
+                </button>
+              </template>
+              <div class="settings-popover">
+                <div class="setting-item">
+                  <span>研究模式</span>
+                  <el-select v-model="researchMode" size="small" style="width: 90px">
+                    <el-option
+                      v-for="opt in RESEARCH_MODE_OPTIONS"
+                      :key="opt.value"
+                      :label="opt.label"
+                      :value="opt.value"
+                    />
+                  </el-select>
+                </div>
+                <!-- 数据源多选（源发现接口动态渲染：新源注册后自动出现，前端零改动）。
                    空选 = 默认 hybrid（知识库+网络） -->
-              <div class="setting-item">
-                <span>数据源</span>
-                <el-select
-                  v-model="selectedSourceTypes"
-                  multiple
-                  collapse-tags
-                  placeholder="默认（知识库 + 网络）"
-                  size="small"
-                  style="width: 150px"
+                <div class="setting-item">
+                  <span>数据源</span>
+                  <el-select
+                    v-model="selectedSourceTypes"
+                    multiple
+                    collapse-tags
+                    placeholder="默认（知识库 + 网络）"
+                    size="small"
+                    style="width: 150px"
+                  >
+                    <el-option
+                      v-for="src in availableSources"
+                      :key="src.source_type"
+                      :label="src.display_name"
+                      :value="src.source_type"
+                    />
+                  </el-select>
+                </div>
+                <!-- KB 多选：空选 = 搜索空间下全部知识库（与后端 kb_ids 空语义一致） -->
+                <div v-if="isSourceEnabled('internal')" class="setting-item">
+                  <span>知识库</span>
+                  <el-select
+                    v-model="selectedKbIds"
+                    multiple
+                    collapse-tags
+                    placeholder="全部知识库"
+                    size="small"
+                    style="width: 150px"
+                  >
+                    <el-option
+                      v-for="kb in spaceKbList"
+                      :key="kb.id"
+                      :label="kb.name"
+                      :value="kb.id"
+                    />
+                  </el-select>
+                </div>
+                <!-- 外部 provider 选择：仅网络源启用时显示 -->
+                <div v-if="isSourceEnabled('external')" class="setting-item">
+                  <span>搜索引擎</span>
+                  <el-select v-model="selectedProvider" size="small" style="width: 110px">
+                    <el-option
+                      v-for="opt in PROVIDER_OPTIONS"
+                      :key="opt.value"
+                      :label="opt.label"
+                      :value="opt.value"
+                    />
+                  </el-select>
+                </div>
+                <div class="setting-item">
+                  <span>模型</span>
+                  <el-select
+                    v-model="selectedModel"
+                    :placeholder="defaultModelName || '默认'"
+                    clearable
+                    size="small"
+                    style="width: 120px"
+                  >
+                    <el-option
+                      v-for="m in llmModels"
+                      :key="m.model"
+                      :label="m.model"
+                      :value="m.model"
+                    />
+                  </el-select>
+                </div>
+                <div class="setting-item">
+                  <span>报告风格</span>
+                  <el-select v-model="reportStyle" size="small" style="width: 110px">
+                    <el-option label="通用" value="default" />
+                    <el-option label="学术" value="academic" />
+                    <el-option label="科普" value="popular_science" />
+                    <el-option label="新闻" value="news" />
+                  </el-select>
+                </div>
+                <div class="setting-item">
+                  <span>规划前背景调查</span>
+                  <el-switch v-model="enableBackground" size="small" />
+                </div>
+                <div class="setting-item">
+                  <span>自动确认计划</span>
+                  <el-switch v-model="autoAcceptPlan" size="small" />
+                </div>
+                <button class="setting-item clickable" @click="advancedDialogVisible = true">
+                  <span>高级设置</span>
+                  <el-icon :size="12"><ArrowRight /></el-icon>
+                </button>
+                <router-link
+                  v-if="spaceId"
+                  :to="`/home/workspace/research/${spaceId}/history`"
+                  class="setting-item clickable"
                 >
-                  <el-option
-                    v-for="src in availableSources"
-                    :key="src.source_type"
-                    :label="src.display_name"
-                    :value="src.source_type"
-                  />
-                </el-select>
+                  <span>历史记录</span>
+                  <el-icon :size="12"><ArrowRight /></el-icon>
+                </router-link>
               </div>
-              <!-- KB 多选：空选 = 搜索空间下全部知识库（与后端 kb_ids 空语义一致） -->
-              <div v-if="isSourceEnabled('internal')" class="setting-item">
-                <span>知识库</span>
-                <el-select
-                  v-model="selectedKbIds"
-                  multiple
-                  collapse-tags
-                  placeholder="全部知识库"
-                  size="small"
-                  style="width: 150px"
-                >
-                  <el-option
-                    v-for="kb in spaceKbList"
-                    :key="kb.id"
-                    :label="kb.name"
-                    :value="kb.id"
-                  />
-                </el-select>
-              </div>
-              <!-- 外部 provider 选择：仅网络源启用时显示 -->
-              <div v-if="isSourceEnabled('external')" class="setting-item">
-                <span>搜索引擎</span>
-                <el-select v-model="selectedProvider" size="small" style="width: 110px">
-                  <el-option
-                    v-for="opt in PROVIDER_OPTIONS"
-                    :key="opt.value"
-                    :label="opt.label"
-                    :value="opt.value"
-                  />
-                </el-select>
-              </div>
-              <div class="setting-item">
-                <span>模型</span>
-                <el-select
-                  v-model="selectedModel"
-                  :placeholder="defaultModelName || '默认'"
-                  clearable
-                  size="small"
-                  style="width: 120px"
-                >
-                  <el-option
-                    v-for="m in llmModels"
-                    :key="m.model"
-                    :label="m.model"
-                    :value="m.model"
-                  />
-                </el-select>
-              </div>
-              <div class="setting-item">
-                <span>报告风格</span>
-                <el-select v-model="reportStyle" size="small" style="width: 110px">
-                  <el-option label="通用" value="default" />
-                  <el-option label="学术" value="academic" />
-                  <el-option label="科普" value="popular_science" />
-                  <el-option label="新闻" value="news" />
-                </el-select>
-              </div>
-              <div class="setting-item">
-                <span>规划前背景调查</span>
-                <el-switch v-model="enableBackground" size="small" />
-              </div>
-              <div class="setting-item">
-                <span>自动确认计划</span>
-                <el-switch v-model="autoAcceptPlan" size="small" />
-              </div>
-              <button class="setting-item clickable" @click="advancedDialogVisible = true">
-                <span>高级设置</span>
-                <el-icon :size="12"><ArrowRight /></el-icon>
-              </button>
-              <router-link
-                v-if="spaceId"
-                :to="`/home/workspace/research/${spaceId}/history`"
-                class="setting-item clickable"
-              >
-                <span>历史记录</span>
-                <el-icon :size="12"><ArrowRight /></el-icon>
-              </router-link>
-            </div>
-          </el-popover>
-          <textarea
-            ref="textareaRef"
-            v-model="inputText"
-            class="chat-textarea"
-            :placeholder="spaceId ? '输入研究问题...' : '请先在左侧选择一个知识空间'"
-            :rows="1"
-            :disabled="researchStore.isResearching || !spaceId"
-            @keydown="handleKeydown"
-            @input="autoResize"
-          />
-          <button
-            v-if="researchStore.isResearching"
-            class="send-btn stop-btn"
-            @click="handleCancel"
-          >
-            <el-icon :size="16"><VideoPause /></el-icon>
-          </button>
-          <button
-            v-else
-            class="send-btn"
-            :class="{ active: inputText.trim() && spaceId }"
-            :disabled="!inputText.trim() || !spaceId"
-            @click="handleSend"
-          >
-            <el-icon :size="16"><Promotion /></el-icon>
-          </button>
-        </div>
-        <div class="input-hint">按 Enter 发送，Shift + Enter 换行</div>
+            </el-popover>
+            <textarea
+              ref="textareaRef"
+              v-model="inputText"
+              class="chat-textarea"
+              :placeholder="spaceId ? '输入研究问题...' : '请先在左侧选择一个知识空间'"
+              :rows="1"
+              :disabled="researchStore.isResearching || !spaceId"
+              @keydown="handleKeydown"
+              @input="autoResize"
+            />
+            <button
+              v-if="researchStore.isResearching"
+              class="send-btn stop-btn"
+              @click="handleCancel"
+            >
+              <el-icon :size="16"><VideoPause /></el-icon>
+            </button>
+            <button
+              v-else
+              class="send-btn"
+              :class="{ active: inputText.trim() && spaceId }"
+              :disabled="!inputText.trim() || !spaceId"
+              @click="handleSend"
+            >
+              <el-icon :size="16"><Promotion /></el-icon>
+            </button>
+          </div>
+          <div class="input-hint">按 Enter 发送，Shift + Enter 换行</div>
 
-        <!-- 建议 pill 列表 (仅欢迎模式，输入框下方) -->
-        <div v-if="isWelcomeMode" class="suggestion-list">
-          <span
-            v-for="(prompt, i) in quickPrompts"
-            :key="i"
-            class="suggestion-item"
-            :style="{ animationDelay: `${i * 40}ms` }"
-            @click="handleQuickPrompt(prompt.text)"
-          >
-            <span class="suggestion-icon">{{ prompt.icon }}</span>
-            <span class="suggestion-text">{{ prompt.text }}</span>
-          </span>
-        </div>
+          <!-- 建议 pill 列表 (仅欢迎模式，输入框下方) -->
+          <div v-if="isWelcomeMode" class="suggestion-list">
+            <span
+              v-for="(prompt, i) in quickPrompts"
+              :key="i"
+              class="suggestion-item"
+              :style="{ animationDelay: `${i * 40}ms` }"
+              @click="handleQuickPrompt(prompt.text)"
+            >
+              <span class="suggestion-icon">{{ prompt.icon }}</span>
+              <span class="suggestion-text">{{ prompt.text }}</span>
+            </span>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- 高级设置弹窗 -->
-    <el-dialog v-model="advancedDialogVisible" title="高级设置" width="420px" append-to-body destroy-on-close>
+    <el-dialog
+      v-model="advancedDialogVisible"
+      title="高级设置"
+      width="420px"
+      append-to-body
+      destroy-on-close
+    >
       <el-form label-width="90px">
         <el-form-item label="温度">
-          <el-slider v-model="advancedSettings.temperature" :min="0" :max="20" :step="1" :format-tooltip="(v: number) => (v / 10).toFixed(1)" />
+          <el-slider
+            v-model="advancedSettings.temperature"
+            :min="0"
+            :max="20"
+            :step="1"
+            :format-tooltip="(v: number) => (v / 10).toFixed(1)"
+          />
         </el-form-item>
         <el-form-item label="最大 Token">
-          <el-input-number v-model="advancedSettings.max_tokens" :min="1024" :max="16384" :step="1024" style="width: 100%" />
+          <el-input-number
+            v-model="advancedSettings.max_tokens"
+            :min="1024"
+            :max="16384"
+            :step="1024"
+            style="width: 100%"
+          />
         </el-form-item>
         <el-form-item label="检索数量">
-          <el-input-number v-model="advancedSettings.retrieval_top_k" :min="1" :max="50" style="width: 100%" />
+          <el-input-number
+            v-model="advancedSettings.retrieval_top_k"
+            :min="1"
+            :max="50"
+            style="width: 100%"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -321,7 +366,6 @@ import { ref, reactive, computed, nextTick, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
-  Search,
   Plus,
   Promotion,
   VideoPause,
@@ -355,7 +399,9 @@ const spaceId = computed(() => {
 
 // 输入状态
 const inputText = ref('')
-const isWelcomeMode = computed(() => researchStore.messages.length === 0 && !researchStore.isResearching)
+const isWelcomeMode = computed(
+  () => researchStore.messages.length === 0 && !researchStore.isResearching,
+)
 const sidebarVisible = ref(true)
 const researchMode = ref<'quick' | 'standard' | 'deep'>('standard')
 const selectedModel = ref('')
@@ -412,14 +458,18 @@ async function fetchSpaceKbs() {
   }
 }
 
-watch(spaceId, (id) => {
-  selectedKbIds.value = []
-  selectedSourceTypes.value = []
-  if (id) {
-    fetchAvailableSources()
-    fetchSpaceKbs()
-  }
-}, { immediate: true })
+watch(
+  spaceId,
+  (id) => {
+    selectedKbIds.value = []
+    selectedSourceTypes.value = []
+    if (id) {
+      fetchAvailableSources()
+      fetchSpaceKbs()
+    }
+  },
+  { immediate: true },
+)
 
 // 流程策略设置（deer-flow 对齐）
 const reportStyle = ref<'default' | 'academic' | 'popular_science' | 'news'>('default')
@@ -528,9 +578,18 @@ function autoResize() {
   })
 }
 
-watch(() => researchStore.messages.length, () => scrollToBottom())
-watch(() => researchStore.isResearching, () => scrollToBottom())
-watch(() => researchStore.loading, () => scrollToBottom())
+watch(
+  () => researchStore.messages.length,
+  () => scrollToBottom(),
+)
+watch(
+  () => researchStore.isResearching,
+  () => scrollToBottom(),
+)
+watch(
+  () => researchStore.loading,
+  () => scrollToBottom(),
+)
 
 function handleQuickPrompt(text: string) {
   inputText.value = text
@@ -882,8 +941,12 @@ watch(spaceId, () => {
 }
 
 @keyframes welcome-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* ========================================
@@ -957,8 +1020,14 @@ watch(spaceId, () => {
 }
 
 @keyframes messageIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .message-row.user {
@@ -1126,13 +1195,17 @@ watch(spaceId, () => {
   /* deer-flow 对齐：rounded-2xl 圆角卡片（18px）而非 pill */
   border-radius: 18px;
   box-shadow: var(--shadow-xs);
-  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .input-pill:focus-within {
   border-color: var(--color-primary);
   /* deer-flow 对齐：聚焦 3px 淡色光环 */
-  box-shadow: 0 0 0 3px var(--color-primary-muted), var(--shadow-xs);
+  box-shadow:
+    0 0 0 3px var(--color-primary-muted),
+    var(--shadow-xs);
 }
 
 .input-action-btn {
@@ -1195,7 +1268,7 @@ watch(spaceId, () => {
 
 .send-btn.active {
   background: var(--color-btn-primary);
-  color: #FFFFFF;
+  color: #ffffff;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(17, 24, 39, 0.25);
 }
@@ -1207,7 +1280,7 @@ watch(spaceId, () => {
 
 .stop-btn {
   background: var(--color-warning);
-  color: #FFFFFF;
+  color: #ffffff;
   cursor: pointer;
 }
 

@@ -13,14 +13,19 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-const props = withDefaults(defineProps<{
-  value: string | number
-  label: string
-  icon?: any
-  color?: string
-}>(), {
-  color: '',
-})
+import type { Component } from 'vue'
+
+const props = withDefaults(
+  defineProps<{
+    value: string | number
+    label: string
+    icon?: Component
+    color?: string
+  }>(),
+  {
+    color: '',
+  },
+)
 
 const accentStyle = computed(() => {
   if (!props.color) return {}

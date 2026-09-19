@@ -68,7 +68,8 @@ vi.mock('@/stores/permission', () => ({
 
 import { setupRouterGuards } from '../guards'
 
-type Guard = (to: any, from: any) => any
+type RouteLike = { path?: string; fullPath?: string; meta?: Record<string, unknown> }
+type Guard = (to: RouteLike, from: RouteLike) => void
 
 function createMockRouter() {
   let beforeGuard: Guard | undefined
@@ -104,7 +105,7 @@ describe('setupRouterGuards', () => {
   it('redirects unauthenticated users to login with redirect query', async () => {
     getToken.mockReturnValue(null)
     const router = createMockRouter()
-    setupRouterGuards(router as any)
+    setupRouterGuards(router as unknown as Parameters<typeof setupRouterGuards>[0])
 
     const result = await router.getBeforeGuard()(
       { path: '/home/spaces', fullPath: '/home/spaces', meta: { title: 'Spaces' } },
@@ -118,7 +119,7 @@ describe('setupRouterGuards', () => {
   it('redirects logged-in users away from login page', async () => {
     getToken.mockReturnValue('token')
     const router = createMockRouter()
-    setupRouterGuards(router as any)
+    setupRouterGuards(router as unknown as Parameters<typeof setupRouterGuards>[0])
 
     const result = await router.getBeforeGuard()(
       { path: '/login', fullPath: '/login', meta: { requiresAuth: false, title: 'Login' } },
@@ -131,7 +132,7 @@ describe('setupRouterGuards', () => {
   it('blocks non-admin users from admin routes', async () => {
     getToken.mockReturnValue('token')
     const router = createMockRouter()
-    setupRouterGuards(router as any)
+    setupRouterGuards(router as unknown as Parameters<typeof setupRouterGuards>[0])
 
     const result = await router.getBeforeGuard()(
       { path: '/home/admin/users', fullPath: '/home/admin/users', meta: { requiresAdmin: true } },
@@ -145,7 +146,7 @@ describe('setupRouterGuards', () => {
     getToken.mockReturnValue('token')
     configureMockPermissionStore({ loaded: false, isAdmin: true, permissions: new Set() })
     const router = createMockRouter()
-    setupRouterGuards(router as any)
+    setupRouterGuards(router as unknown as Parameters<typeof setupRouterGuards>[0])
 
     const result = await router.getBeforeGuard()(
       { path: '/home/admin/users', fullPath: '/home/admin/users', meta: { requiresAdmin: true } },
@@ -167,7 +168,7 @@ describe('setupRouterGuards', () => {
     })
     localStorage.setItem('user', JSON.stringify({ is_admin: true }))
     const router = createMockRouter()
-    setupRouterGuards(router as any)
+    setupRouterGuards(router as unknown as Parameters<typeof setupRouterGuards>[0])
 
     const result = await router.getBeforeGuard()(
       { path: '/home/spaces', fullPath: '/home/spaces', meta: { requiresAdmin: true } },
@@ -183,10 +184,14 @@ describe('setupRouterGuards', () => {
     getToken.mockReturnValue('token')
     configureMockPermissionStore({ loaded: true, isAdmin: false, permissions: new Set() })
     const router = createMockRouter()
-    setupRouterGuards(router as any)
+    setupRouterGuards(router as unknown as Parameters<typeof setupRouterGuards>[0])
 
     const result = await router.getBeforeGuard()(
-      { path: '/home/admin/roles', fullPath: '/home/admin/roles', meta: { requiresPermission: 'role.manage' } },
+      {
+        path: '/home/admin/roles',
+        fullPath: '/home/admin/roles',
+        meta: { requiresPermission: 'role.manage' },
+      },
       {},
     )
 
@@ -195,12 +200,20 @@ describe('setupRouterGuards', () => {
 
   it('allows users with required permission', async () => {
     getToken.mockReturnValue('token')
-    configureMockPermissionStore({ loaded: true, isAdmin: false, permissions: new Set(['role.manage']) })
+    configureMockPermissionStore({
+      loaded: true,
+      isAdmin: false,
+      permissions: new Set(['role.manage']),
+    })
     const router = createMockRouter()
-    setupRouterGuards(router as any)
+    setupRouterGuards(router as unknown as Parameters<typeof setupRouterGuards>[0])
 
     const result = await router.getBeforeGuard()(
-      { path: '/home/admin/roles', fullPath: '/home/admin/roles', meta: { requiresPermission: 'role.manage' } },
+      {
+        path: '/home/admin/roles',
+        fullPath: '/home/admin/roles',
+        meta: { requiresPermission: 'role.manage' },
+      },
       {},
     )
 
@@ -210,7 +223,7 @@ describe('setupRouterGuards', () => {
   it('scrolls to top after each navigation', () => {
     getToken.mockReturnValue('token')
     const router = createMockRouter()
-    setupRouterGuards(router as any)
+    setupRouterGuards(router as unknown as Parameters<typeof setupRouterGuards>[0])
 
     router.getAfterGuard()()
 

@@ -37,7 +37,9 @@ export const useResearchStore = defineStore('research', () => {
   // 聊天式消息列表
   const messages = ref<ResearchMessage[]>([])
   // 当前研究流的计划反馈提交通道（onPlanGenerated 第二参注入，submitPlanFeedback 消费）
-  const submitFeedbackRef = ref<((decision: 'accepted' | 'edit_plan', feedback?: string) => void) | null>(null)
+  const submitFeedbackRef = ref<
+    ((decision: 'accepted' | 'edit_plan', feedback?: string) => void) | null
+  >(null)
 
   function submitPlanFeedback(decision: 'accepted' | 'edit_plan', feedback?: string) {
     if (!submitFeedbackRef.value) return

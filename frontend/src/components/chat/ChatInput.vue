@@ -184,10 +184,7 @@ async function handleFileSelected(e: Event) {
     if (!file) continue
     const ext = file.name.split('.').pop()?.toLowerCase()
     // 与后端 ALLOWED_FILE_TYPES 对齐（无 doc：后端不支持 .doc 解析，不提供"自动转换"）
-    if (
-      !ext ||
-      !['pdf', 'docx', 'txt', 'md', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)
-    ) {
+    if (!ext || !['pdf', 'docx', 'txt', 'md', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
       ElMessage.warning(`不支持的文件类型: .${ext}`)
       continue
     }

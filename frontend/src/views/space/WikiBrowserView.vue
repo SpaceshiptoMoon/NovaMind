@@ -14,7 +14,10 @@
     <el-tabs v-model="activeView" class="wiki-view-tabs" @tab-change="onActiveViewChange">
       <el-tab-pane label="浏览" name="browse" />
       <el-tab-pane label="图谱" name="graph" />
-      <el-tab-pane :label="`问题${pendingIssueCount ? `（${pendingIssueCount}）` : ''}`" name="issues" />
+      <el-tab-pane
+        :label="`问题${pendingIssueCount ? `（${pendingIssueCount}）` : ''}`"
+        name="issues"
+      />
     </el-tabs>
 
     <!-- 图谱视图 -->
@@ -103,7 +106,9 @@
             @click="selectPage(item.slug)"
           >
             <span class="page-title">{{ item.title }}</span>
-            <span class="page-type-badge" :data-type="item.page_type">{{ typeLabel(item.page_type) }}</span>
+            <span class="page-type-badge" :data-type="item.page_type">{{
+              typeLabel(item.page_type)
+            }}</span>
           </button>
           <p v-if="!searchResults.length" class="empty-hint">无匹配页面</p>
         </div>
@@ -138,7 +143,9 @@
             <div class="page-header-main">
               <h2 class="page-title-main">{{ currentPage.title }}</h2>
               <div class="page-meta">
-                <span class="page-type-badge" :data-type="currentPage.page_type">{{ typeLabel(currentPage.page_type) }}</span>
+                <span class="page-type-badge" :data-type="currentPage.page_type">{{
+                  typeLabel(currentPage.page_type)
+                }}</span>
                 <span class="meta-item">v{{ currentPage.version }}</span>
                 <span class="meta-item">{{ sourceLabel(currentPage.last_edit_source) }}</span>
                 <span class="meta-item">{{ formatDate(currentPage.updated_at) }}</span>
@@ -162,7 +169,11 @@
           </div>
 
           <!-- 正文：[[slug|title]] 链接预处理后渲染 -->
-          <div class="page-body markdown-body" v-html="renderedContent" @click="onContentClick"></div>
+          <div
+            class="page-body markdown-body"
+            v-html="renderedContent"
+            @click="onContentClick"
+          ></div>
 
           <!-- 来源折叠面板 -->
           <el-collapse v-if="sources.length" class="sources-panel">
@@ -170,7 +181,10 @@
               <div v-for="source in sources" :key="source.document_id" class="source-row">
                 <el-icon><Document /></el-icon>
                 <template v-if="!source.deleted">
-                  <RouterLink :to="`/home/spaces/${spaceId}/documents/${source.document_id}`" class="source-link">
+                  <RouterLink
+                    :to="`/home/spaces/${spaceId}/documents/${source.document_id}`"
+                    class="source-link"
+                  >
                     {{ source.filename }}
                   </RouterLink>
                 </template>
@@ -182,7 +196,11 @@
 
         <template v-else>
           <div class="wiki-empty">
-            <el-empty :description="hasAnyPage || searchQuery ? '选择左侧页面查看' : '此知识库还没有 Wiki 页面'" />
+            <el-empty
+              :description="
+                hasAnyPage || searchQuery ? '选择左侧页面查看' : '此知识库还没有 Wiki 页面'
+              "
+            />
           </div>
         </template>
       </main>
@@ -222,12 +240,16 @@
         <div v-for="revision in revisions" :key="revision.version" class="revision-row">
           <div class="revision-info">
             <strong>v{{ revision.version }}</strong>
-            <span class="revision-source" :data-source="revision.edit_source">{{ sourceLabel(revision.edit_source) }}</span>
+            <span class="revision-source" :data-source="revision.edit_source">{{
+              sourceLabel(revision.edit_source)
+            }}</span>
             <span class="revision-title">{{ revision.title }}</span>
             <small class="revision-time">{{ formatDate(revision.edited_at) }}</small>
           </div>
           <div class="revision-actions">
-            <el-button size="small" text @click="viewRevisionDiff(revision.version)">对比</el-button>
+            <el-button size="small" text @click="viewRevisionDiff(revision.version)"
+              >对比</el-button
+            >
             <el-button
               size="small"
               text
@@ -257,7 +279,9 @@
             class="diff-line"
             :class="`is-${line.type}`"
           >
-            <span class="diff-marker">{{ line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' ' }}</span>
+            <span class="diff-marker">{{
+              line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' '
+            }}</span>
             <span class="diff-text">{{ line.text || ' ' }}</span>
           </div>
         </div>
@@ -294,22 +318,27 @@ const kbId = computed(() => Number(route.params.kbId))
 const indexGroups = ref<WikiIndexGroup[]>([])
 const hasAnyPage = computed(() => indexGroups.value.some((g) => g.total > 0))
 const searchQuery = ref('')
-const searchResults = ref<Array<{ slug: string; title: string; page_type: string; summary: string }>>([])
+const searchResults = ref<
+  Array<{ slug: string; title: string; page_type: string; summary: string }>
+>([])
 const selectedSlug = ref('')
 const currentPage = ref<WikiPage | null>(null)
 const sources = ref<WikiPageSourceDocument[]>([])
 
 // ============ 生成状态轮询 ============
 const ingestStatus = ref<WikiIngestStatusResponse | null>(null)
-const ingestActive = computed(() =>
-  ingestStatus.value?.status === 'pending' || ingestStatus.value?.status === 'running'
+const ingestActive = computed(
+  () => ingestStatus.value?.status === 'pending' || ingestStatus.value?.status === 'running',
 )
 const ingestStatusText = computed(() => {
   const progress = ingestStatus.value?.step_progress
   if (!progress) return '准备中'
   const steps = ['extract', 'cite', 'reduce', 'finalize']
   const labels: Record<string, string> = {
-    extract: '候选抽取', cite: '引文标注', reduce: '页面生成', finalize: '收尾',
+    extract: '候选抽取',
+    cite: '引文标注',
+    reduce: '页面生成',
+    finalize: '收尾',
   }
   for (const step of steps) {
     if (progress[step]?.status === 'running') return labels[step]
@@ -384,9 +413,7 @@ function selectPageFromPanel(slug: string) {
 // ---- 问题登记 ----
 const issues = ref<WikiIssue[]>([])
 const issueFilter = ref('pending')
-const pendingIssueCount = computed(
-  () => issues.value.filter((i) => i.status === 'pending').length
-)
+const pendingIssueCount = computed(() => issues.value.filter((i) => i.status === 'pending').length)
 
 const ISSUE_TYPE_LABELS: Record<string, string> = {
   mixed_entities: '实体混淆',
@@ -445,7 +472,7 @@ const renderedContent = computed(() => {
   if (!currentPage.value) return ''
   const md = currentPage.value.content.replace(
     /\[\[([^\]|]+)\|([^\]]+)\]\]/g,
-    '<a class="wiki-link" data-slug="$1">$2</a>'
+    '<a class="wiki-link" data-slug="$1">$2</a>',
   )
   return renderMarkdown(md)
 })
@@ -642,7 +669,7 @@ async function confirmDelete() {
     await ElMessageBox.confirm(
       `确认删除页面「${currentPage.value.title}」？历史版本将一并不可见。`,
       '删除确认',
-      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
     )
   } catch {
     return
@@ -687,7 +714,6 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(stopPolling)
-
 </script>
 
 <style scoped>

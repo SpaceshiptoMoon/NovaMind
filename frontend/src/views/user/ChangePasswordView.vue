@@ -42,9 +42,7 @@
               show-password
             />
           </el-form-item>
-          <el-button type="primary" :loading="loading" @click="handleSubmit">
-            确认修改
-          </el-button>
+          <el-button type="primary" :loading="loading" @click="handleSubmit"> 确认修改 </el-button>
         </el-form>
       </el-card>
     </div>
@@ -75,9 +73,7 @@ const form = reactive({
 })
 
 const rules: FormRules = {
-  oldPassword: [
-    { required: true, message: '请输入当前密码', trigger: 'blur' },
-  ],
+  oldPassword: [{ required: true, message: '请输入当前密码', trigger: 'blur' }],
   newPassword: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
     { min: 8, max: 30, message: '密码长度为8-30位', trigger: 'blur' },

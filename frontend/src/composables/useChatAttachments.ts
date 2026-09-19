@@ -58,7 +58,7 @@ export function useChatAttachments() {
   }
 
   function revokeBlobUrls() {
-    imageBlobCache.forEach(url => URL.revokeObjectURL(url))
+    imageBlobCache.forEach((url) => URL.revokeObjectURL(url))
     imageBlobCache.clear()
   }
 

@@ -168,15 +168,11 @@ export const agentApi = {
   },
 
   getContextUsage(sessionId: string) {
-    return request.get<AgentContextUsageData>(
-      `/agent/sessions/${sessionId}/context-usage`,
-    )
+    return request.get<AgentContextUsageData>(`/agent/sessions/${sessionId}/context-usage`)
   },
 
   getSystemPrompt(sessionId: string) {
-    return request.get<SystemPromptResponse>(
-      `/agent/sessions/${sessionId}/system-prompt`,
-    )
+    return request.get<SystemPromptResponse>(`/agent/sessions/${sessionId}/system-prompt`)
   },
 
   deleteSession(sessionId: string) {

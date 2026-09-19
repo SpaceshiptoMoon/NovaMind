@@ -21,7 +21,12 @@
         aria-label="工作台侧边栏"
       >
         <!-- 频道分段（侧栏顶部，展开态显示） -->
-        <nav v-if="!sidebarCollapsed" class="channel-segments" role="tablist" aria-label="工作台频道">
+        <nav
+          v-if="!sidebarCollapsed"
+          class="channel-segments"
+          role="tablist"
+          aria-label="工作台频道"
+        >
           <button
             v-for="ch in channels"
             :key="ch.key"
@@ -42,299 +47,325 @@
           <!-- Chat: session list（可折叠） -->
           <div class="sidebar-body">
             <template v-if="activeChannelKey === 'chat'">
-            <div class="list-section">
-              <button class="list-section-header" @click="toggleSection('chat')">
-                <span class="list-section-title">最近对话</span>
-                <span class="list-section-count">{{ chatStore.sessions.length }}</span>
-                <el-icon :size="12" class="list-section-chevron" :class="{ collapsed: sectionCollapsed.chat }">
-                  <ArrowDown />
-                </el-icon>
-              </button>
-              <div v-show="!sectionCollapsed.chat" class="list-area">
-                <div
-                  v-for="session in chatStore.sessions"
-                  :key="session.session_id"
-                  class="list-item"
-                  :class="{ active: chatStore.currentSessionId === session.session_id }"
-                  @click="handleSelectChatSession(session.session_id)"
+              <div class="list-section">
+                <button class="list-section-header" @click="toggleSection('chat')">
+                  <span class="list-section-title">最近对话</span>
+                  <span class="list-section-count">{{ chatStore.sessions.length }}</span>
+                  <el-icon
+                    :size="12"
+                    class="list-section-chevron"
+                    :class="{ collapsed: sectionCollapsed.chat }"
+                  >
+                    <ArrowDown />
+                  </el-icon>
+                </button>
+                <div v-show="!sectionCollapsed.chat" class="list-area">
+                  <div
+                    v-for="session in chatStore.sessions"
+                    :key="session.session_id"
+                    class="list-item"
+                    :class="{ active: chatStore.currentSessionId === session.session_id }"
+                    @click="handleSelectChatSession(session.session_id)"
+                  >
+                    <span class="item-title">{{ session.preview || '新对话' }}</span>
+                    <button
+                      class="item-delete"
+                      @click.stop="handleDeleteChatSession(session.session_id)"
+                    >
+                      <el-icon :size="12"><Delete /></el-icon>
+                    </button>
+                  </div>
+                  <div v-if="chatStore.sessions.length === 0" class="list-empty">暂无对话记录</div>
+                </div>
+              </div>
+            </template>
+
+            <!-- Agents: agent list（可折叠；点条目进对话，hover 出配置/编辑/删除动作） -->
+            <template v-else-if="isWorkspaceRoute && activeChannelKey === 'agents'">
+              <div class="list-section">
+                <button class="list-section-header" @click="toggleSection('agents')">
+                  <span class="list-section-title">我的智能体</span>
+                  <span class="list-section-count">{{ agentStore.agents.length }}</span>
+                  <el-icon
+                    :size="12"
+                    class="list-section-chevron"
+                    :class="{ collapsed: sectionCollapsed.agents }"
+                  >
+                    <ArrowDown />
+                  </el-icon>
+                </button>
+                <button class="section-new-btn" @click="openAgentDialog()">
+                  <el-icon :size="14"><Plus /></el-icon>
+                  <span>创建智能体</span>
+                </button>
+                <div v-show="!sectionCollapsed.agents" class="list-area">
+                  <div
+                    v-for="agent in agentStore.agents"
+                    :key="agent.id"
+                    class="list-item"
+                    :class="{ active: isAgentChatRoute(agent.id) }"
+                    @click="handleSelectAgent(agent)"
+                  >
+                    <div class="agent-avatar-sm">{{ agent.name.charAt(0) }}</div>
+                    <div class="item-info">
+                      <span class="item-title">{{ agent.name }}</span>
+                      <span class="item-desc">{{ agent.description || '暂无描述' }}</span>
+                    </div>
+                    <div class="item-actions">
+                      <button
+                        class="item-action-btn"
+                        title="配置"
+                        @click.stop="
+                          configAgent = agent
+                          configDrawerVisible = true
+                        "
+                      >
+                        <el-icon :size="12"><Setting /></el-icon>
+                      </button>
+                      <button
+                        class="item-action-btn"
+                        title="编辑"
+                        @click.stop="openAgentDialog(agent)"
+                      >
+                        <el-icon :size="12"><EditPen /></el-icon>
+                      </button>
+                      <button
+                        class="item-action-btn item-action-btn--danger"
+                        title="删除"
+                        @click.stop="handleDeleteAgent(agent)"
+                      >
+                        <el-icon :size="12"><Delete /></el-icon>
+                      </button>
+                    </div>
+                  </div>
+                  <div v-if="agentStore.agents.length === 0" class="list-empty">暂无智能体</div>
+                </div>
+              </div>
+            </template>
+
+            <!-- Research: space list（可折叠） -->
+            <template v-else-if="activeChannelKey === 'research'">
+              <div class="list-section">
+                <button class="list-section-header" @click="toggleSection('research')">
+                  <span class="list-section-title">知识空间</span>
+                  <span class="list-section-count">{{ researchSpaces.length }}</span>
+                  <el-icon
+                    :size="12"
+                    class="list-section-chevron"
+                    :class="{ collapsed: sectionCollapsed.research }"
+                  >
+                    <ArrowDown />
+                  </el-icon>
+                </button>
+                <div v-show="!sectionCollapsed.research" class="list-area">
+                  <div
+                    v-for="space in researchSpaces"
+                    :key="space.id"
+                    class="list-item"
+                    :class="{ active: currentResearchSpaceId === String(space.id) }"
+                    @click="handleSelectResearchSpace(space.id)"
+                  >
+                    <span class="item-title">{{ space.name }}</span>
+                  </div>
+                  <div v-if="researchSpaces.length === 0" class="list-empty">暂无知识空间</div>
+                </div>
+              </div>
+            </template>
+
+            <!-- Skills -->
+            <template v-else-if="activeChannelKey === 'skills'">
+              <div class="sidebar-info">
+                <p class="info-text">发现、上传和分享 AI 技能，安装到你的智能体中。</p>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <!-- 折叠模式：频道 icon 列表 -->
+        <template v-else>
+          <div class="channel-icons">
+            <button
+              v-for="ch in channels"
+              :key="ch.key"
+              class="channel-icon-btn"
+              :class="{ active: activeChannelKey === ch.key }"
+              :title="ch.label"
+              @click="activateChannel(ch.key)"
+            >
+              <NavIcon :name="ch.icon" :size="20" />
+            </button>
+          </div>
+        </template>
+      </aside>
+
+      <!-- Agent 创建/编辑弹窗 + 配置抽屉（广场页已删，管理动作收编侧栏；append-to-body 需挂布局层） -->
+      <el-dialog
+        v-model="agentDialogVisible"
+        :title="agentEditingId ? '编辑智能体' : '创建智能体'"
+        width="600px"
+        destroy-on-close
+        append-to-body
+      >
+        <el-form :model="agentForm" :rules="agentFormRules" ref="agentFormRef" label-width="100px">
+          <el-form-item label="名称" prop="name">
+            <el-input v-model="agentForm.name" placeholder="为智能体起个名字" maxlength="50" />
+          </el-form-item>
+          <el-form-item label="描述" prop="description">
+            <el-input
+              v-model="agentForm.description"
+              type="textarea"
+              :rows="2"
+              placeholder="简要描述智能体的用途"
+              maxlength="200"
+            />
+          </el-form-item>
+          <el-form-item label="系统提示词" prop="system_prompt">
+            <el-input
+              v-model="agentForm.system_prompt"
+              type="textarea"
+              :rows="5"
+              placeholder="定义智能体的行为、角色和能力"
+              maxlength="4000"
+            />
+          </el-form-item>
+          <el-form-item label="LLM 模型">
+            <el-select
+              v-model="agentForm.llm_model"
+              placeholder="留空使用默认模型"
+              clearable
+              style="width: 100%"
+            >
+              <el-option-group v-if="llmModelNames.length" label="LLM 文本模型">
+                <el-option v-for="name in llmModelNames" :key="name" :label="name" :value="name" />
+              </el-option-group>
+              <el-option-group v-if="vlmModelNames.length" label="VLM 视觉模型">
+                <el-option v-for="name in vlmModelNames" :key="name" :label="name" :value="name" />
+              </el-option-group>
+            </el-select>
+          </el-form-item>
+          <el-form-item label="Temperature">
+            <el-slider v-model="agentForm.temperature" :min="0" :max="2" :step="0.1" show-input />
+          </el-form-item>
+          <el-form-item label="Top P">
+            <el-slider v-model="agentForm.top_p" :min="0" :max="1" :step="0.1" show-input />
+          </el-form-item>
+          <el-form-item label="最大生成 Token">
+            <el-input-number v-model="agentForm.max_tokens" :min="1" :max="32768" :step="256" />
+          </el-form-item>
+          <el-form-item label="上下文窗口">
+            <el-input-number
+              v-model="agentForm.context_window"
+              :min="2048"
+              :max="1048576"
+              :step="4096"
+            />
+          </el-form-item>
+          <el-form-item label="最大工具调用">
+            <el-input-number v-model="agentForm.max_tool_calls_per_turn" :min="1" :max="50" />
+          </el-form-item>
+          <el-form-item label="启用工具">
+            <el-select
+              v-model="agentForm.enabled_tools"
+              multiple
+              placeholder="选择要启用的工具"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="tool in orderedTools"
+                :key="tool.name"
+                :label="tool.name"
+                :value="tool.name"
+              >
+                <span>{{ tool.name }}</span>
+                <span style="color: var(--color-text-muted); font-size: 12px; margin-left: 8px">{{
+                  tool.description
+                }}</span>
+              </el-option>
+            </el-select>
+          </el-form-item>
+          <el-form-item label="MCP 服务器">
+            <el-select
+              v-model="agentForm.enabled_mcp_servers"
+              multiple
+              placeholder="选择要启用的 MCP 服务器"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="server in agentStore.mcpServers"
+                :key="server.id"
+                :label="server.name"
+                :value="server.id"
+              >
+                <span>{{ server.name }}</span>
+                <span style="color: var(--color-text-muted); font-size: 12px; margin-left: 8px">{{
+                  server.status
+                }}</span>
+              </el-option>
+            </el-select>
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="agentDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="agentSubmitLoading" @click="handleAgentSubmit"
+            >确定</el-button
+          >
+        </template>
+      </el-dialog>
+
+      <el-drawer
+        v-model="configDrawerVisible"
+        :title="`${configAgent?.name || '智能体'} · 配置`"
+        direction="rtl"
+        size="420px"
+        :append-to-body="true"
+      >
+        <div class="config-drawer-body">
+          <div class="config-card config-card--full">
+            <div class="config-label">系统提示词</div>
+            <div class="config-value system-prompt">{{ configAgent?.system_prompt || '-' }}</div>
+          </div>
+          <div class="config-card">
+            <div class="config-label">模型</div>
+            <div class="config-value">{{ configAgent?.llm_model || '默认' }}</div>
+          </div>
+          <div class="config-card">
+            <div class="config-label">最大生成 Token</div>
+            <div class="config-value">{{ configAgent?.max_tokens ?? '-' }}</div>
+          </div>
+          <div class="config-card">
+            <div class="config-label">上下文窗口</div>
+            <div class="config-value">{{ configAgent?.context_window ?? '-' }}</div>
+          </div>
+          <div class="config-card">
+            <div class="config-label">Temperature</div>
+            <div class="config-value">{{ configAgent?.temperature ?? '-' }}</div>
+          </div>
+          <div class="config-card">
+            <div class="config-label">Top P</div>
+            <div class="config-value">{{ configAgent?.top_p ?? '-' }}</div>
+          </div>
+          <div class="config-card config-card--full">
+            <div class="config-label">工具</div>
+            <div class="config-value">
+              <template v-if="configAgent?.enabled_tools?.length">
+                <span v-for="s in configAgent.enabled_tools" :key="s" class="tag">{{ s }}</span>
+              </template>
+              <template v-else>未启用</template>
+            </div>
+          </div>
+          <div class="config-card config-card--full">
+            <div class="config-label">MCP 服务器</div>
+            <div class="config-value">
+              <template v-if="configAgent?.enabled_mcp_servers?.length">
+                <span v-for="m in configAgent.enabled_mcp_servers" :key="m" class="tag"
+                  >Server #{{ m }}</span
                 >
-                  <span class="item-title">{{ session.preview || '新对话' }}</span>
-                  <button class="item-delete" @click.stop="handleDeleteChatSession(session.session_id)">
-                    <el-icon :size="12"><Delete /></el-icon>
-                  </button>
-                </div>
-                <div v-if="chatStore.sessions.length === 0" class="list-empty">暂无对话记录</div>
-              </div>
-            </div>
-          </template>
-
-        <!-- Agents: agent list（可折叠；点条目进对话，hover 出配置/编辑/删除动作） -->
-        <template v-else-if="isWorkspaceRoute && activeChannelKey === 'agents'">
-          <div class="list-section">
-            <button class="list-section-header" @click="toggleSection('agents')">
-              <span class="list-section-title">我的智能体</span>
-              <span class="list-section-count">{{ agentStore.agents.length }}</span>
-              <el-icon :size="12" class="list-section-chevron" :class="{ collapsed: sectionCollapsed.agents }">
-                <ArrowDown />
-              </el-icon>
-            </button>
-            <button class="section-new-btn" @click="openAgentDialog()">
-              <el-icon :size="14"><Plus /></el-icon>
-              <span>创建智能体</span>
-            </button>
-            <div v-show="!sectionCollapsed.agents" class="list-area">
-              <div
-                v-for="agent in agentStore.agents"
-                :key="agent.id"
-                class="list-item"
-                :class="{ active: isAgentChatRoute(agent.id) }"
-                @click="handleSelectAgent(agent)"
-              >
-                <div class="agent-avatar-sm">{{ agent.name.charAt(0) }}</div>
-                <div class="item-info">
-                  <span class="item-title">{{ agent.name }}</span>
-                  <span class="item-desc">{{ agent.description || '暂无描述' }}</span>
-                </div>
-                <div class="item-actions">
-                  <button class="item-action-btn" title="配置" @click.stop="configAgent = agent; configDrawerVisible = true">
-                    <el-icon :size="12"><Setting /></el-icon>
-                  </button>
-                  <button class="item-action-btn" title="编辑" @click.stop="openAgentDialog(agent)">
-                    <el-icon :size="12"><EditPen /></el-icon>
-                  </button>
-                  <button class="item-action-btn item-action-btn--danger" title="删除" @click.stop="handleDeleteAgent(agent)">
-                    <el-icon :size="12"><Delete /></el-icon>
-                  </button>
-                </div>
-              </div>
-              <div v-if="agentStore.agents.length === 0" class="list-empty">暂无智能体</div>
+              </template>
+              <template v-else>未启用</template>
             </div>
           </div>
-        </template>
-
-        <!-- Research: space list（可折叠） -->
-        <template v-else-if="activeChannelKey === 'research'">
-          <div class="list-section">
-            <button class="list-section-header" @click="toggleSection('research')">
-              <span class="list-section-title">知识空间</span>
-              <span class="list-section-count">{{ researchSpaces.length }}</span>
-              <el-icon :size="12" class="list-section-chevron" :class="{ collapsed: sectionCollapsed.research }">
-                <ArrowDown />
-              </el-icon>
-            </button>
-            <div v-show="!sectionCollapsed.research" class="list-area">
-              <div
-                v-for="space in researchSpaces"
-                :key="space.id"
-                class="list-item"
-                :class="{ active: currentResearchSpaceId === String(space.id) }"
-                @click="handleSelectResearchSpace(space.id)"
-              >
-                <span class="item-title">{{ space.name }}</span>
-              </div>
-              <div v-if="researchSpaces.length === 0" class="list-empty">暂无知识空间</div>
-            </div>
-          </div>
-        </template>
-
-        <!-- Skills -->
-        <template v-else-if="activeChannelKey === 'skills'">
-          <div class="sidebar-info">
-            <p class="info-text">发现、上传和分享 AI 技能，安装到你的智能体中。</p>
-          </div>
-        </template>
         </div>
-      </template>
-
-      <!-- 折叠模式：频道 icon 列表 -->
-      <template v-else>
-        <div class="channel-icons">
-          <button
-            v-for="ch in channels"
-            :key="ch.key"
-            class="channel-icon-btn"
-            :class="{ active: activeChannelKey === ch.key }"
-            :title="ch.label"
-            @click="activateChannel(ch.key)"
-          >
-            <NavIcon :name="ch.icon" :size="20" />
-          </button>
-        </div>
-      </template>
-    </aside>
-
-    <!-- Agent 创建/编辑弹窗 + 配置抽屉（广场页已删，管理动作收编侧栏；append-to-body 需挂布局层） -->
-    <el-dialog
-      v-model="agentDialogVisible"
-      :title="agentEditingId ? '编辑智能体' : '创建智能体'"
-      width="600px"
-      destroy-on-close
-      append-to-body
-    >
-      <el-form :model="agentForm" :rules="agentFormRules" ref="agentFormRef" label-width="100px">
-        <el-form-item label="名称" prop="name">
-          <el-input v-model="agentForm.name" placeholder="为智能体起个名字" maxlength="50" />
-        </el-form-item>
-        <el-form-item label="描述" prop="description">
-          <el-input
-            v-model="agentForm.description"
-            type="textarea"
-            :rows="2"
-            placeholder="简要描述智能体的用途"
-            maxlength="200"
-          />
-        </el-form-item>
-        <el-form-item label="系统提示词" prop="system_prompt">
-          <el-input
-            v-model="agentForm.system_prompt"
-            type="textarea"
-            :rows="5"
-            placeholder="定义智能体的行为、角色和能力"
-            maxlength="4000"
-          />
-        </el-form-item>
-        <el-form-item label="LLM 模型">
-          <el-select
-            v-model="agentForm.llm_model"
-            placeholder="留空使用默认模型"
-            clearable
-            style="width: 100%"
-          >
-            <el-option-group v-if="llmModelNames.length" label="LLM 文本模型">
-              <el-option v-for="name in llmModelNames" :key="name" :label="name" :value="name" />
-            </el-option-group>
-            <el-option-group v-if="vlmModelNames.length" label="VLM 视觉模型">
-              <el-option v-for="name in vlmModelNames" :key="name" :label="name" :value="name" />
-            </el-option-group>
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Temperature">
-          <el-slider v-model="agentForm.temperature" :min="0" :max="2" :step="0.1" show-input />
-        </el-form-item>
-        <el-form-item label="Top P">
-          <el-slider v-model="agentForm.top_p" :min="0" :max="1" :step="0.1" show-input />
-        </el-form-item>
-        <el-form-item label="最大生成 Token">
-          <el-input-number v-model="agentForm.max_tokens" :min="1" :max="32768" :step="256" />
-        </el-form-item>
-        <el-form-item label="上下文窗口">
-          <el-input-number
-            v-model="agentForm.context_window"
-            :min="2048"
-            :max="1048576"
-            :step="4096"
-          />
-        </el-form-item>
-        <el-form-item label="最大工具调用">
-          <el-input-number
-            v-model="agentForm.max_tool_calls_per_turn"
-            :min="1"
-            :max="50"
-          />
-        </el-form-item>
-        <el-form-item label="启用工具">
-          <el-select
-            v-model="agentForm.enabled_tools"
-            multiple
-            placeholder="选择要启用的工具"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="tool in orderedTools"
-              :key="tool.name"
-              :label="tool.name"
-              :value="tool.name"
-            >
-              <span>{{ tool.name }}</span>
-              <span style="color: var(--color-text-muted); font-size: 12px; margin-left: 8px">{{
-                tool.description
-              }}</span>
-            </el-option>
-          </el-select>
-        </el-form-item>
-        <el-form-item label="MCP 服务器">
-          <el-select
-            v-model="agentForm.enabled_mcp_servers"
-            multiple
-            placeholder="选择要启用的 MCP 服务器"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="server in agentStore.mcpServers"
-              :key="server.id"
-              :label="server.name"
-              :value="server.id"
-            >
-              <span>{{ server.name }}</span>
-              <span style="color: var(--color-text-muted); font-size: 12px; margin-left: 8px">{{
-                server.status
-              }}</span>
-            </el-option>
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="agentDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="agentSubmitLoading" @click="handleAgentSubmit"
-          >确定</el-button
-        >
-      </template>
-    </el-dialog>
-
-    <el-drawer
-      v-model="configDrawerVisible"
-      :title="`${configAgent?.name || '智能体'} · 配置`"
-      direction="rtl"
-      size="420px"
-      :append-to-body="true"
-    >
-      <div class="config-drawer-body">
-        <div class="config-card config-card--full">
-          <div class="config-label">系统提示词</div>
-          <div class="config-value system-prompt">{{ configAgent?.system_prompt || '-' }}</div>
-        </div>
-        <div class="config-card">
-          <div class="config-label">模型</div>
-          <div class="config-value">{{ configAgent?.llm_model || '默认' }}</div>
-        </div>
-        <div class="config-card">
-          <div class="config-label">最大生成 Token</div>
-          <div class="config-value">{{ configAgent?.max_tokens ?? '-' }}</div>
-        </div>
-        <div class="config-card">
-          <div class="config-label">上下文窗口</div>
-          <div class="config-value">{{ configAgent?.context_window ?? '-' }}</div>
-        </div>
-        <div class="config-card">
-          <div class="config-label">Temperature</div>
-          <div class="config-value">{{ configAgent?.temperature ?? '-' }}</div>
-        </div>
-        <div class="config-card">
-          <div class="config-label">Top P</div>
-          <div class="config-value">{{ configAgent?.top_p ?? '-' }}</div>
-        </div>
-        <div class="config-card config-card--full">
-          <div class="config-label">工具</div>
-          <div class="config-value">
-            <template v-if="configAgent?.enabled_tools?.length">
-              <span v-for="s in configAgent.enabled_tools" :key="s" class="tag">{{ s }}</span>
-            </template>
-            <template v-else>未启用</template>
-          </div>
-        </div>
-        <div class="config-card config-card--full">
-          <div class="config-label">MCP 服务器</div>
-          <div class="config-value">
-            <template v-if="configAgent?.enabled_mcp_servers?.length">
-              <span v-for="m in configAgent.enabled_mcp_servers" :key="m" class="tag"
-                >Server #{{ m }}</span
-              >
-            </template>
-            <template v-else>未启用</template>
-          </div>
-        </div>
-      </div>
-    </el-drawer>
+      </el-drawer>
 
       <main class="workspace-main" id="workspace-main" role="main">
         <div class="workspace-content" :class="{ 'is-page': !isWorkspaceRoute }">
@@ -345,7 +376,11 @@
           </router-view>
         </div>
         <!-- 右抽屉：引用来源 / 工具结果（仅工作台路由）。折叠态 width:0 不占位 -->
-        <WorkbenchDrawer v-if="isWorkspaceRoute" :sources="drawerSources" :tool-calls="drawerToolCalls" />
+        <WorkbenchDrawer
+          v-if="isWorkspaceRoute"
+          :sources="drawerSources"
+          :tool-calls="drawerToolCalls"
+        />
         <!-- 抽屉展开按钮（抽屉关闭时浮在主区右上角） -->
         <button
           v-if="isWorkspaceRoute && !workbench.drawerOpen"
@@ -361,18 +396,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, provide, watch, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, provide, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  Delete,
-  More,
-  Expand,
-  ArrowDown,
-  Plus,
-  Setting,
-  EditPen,
-} from '@element-plus/icons-vue'
+import { Delete, Expand, ArrowDown, Plus, Setting, EditPen } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useAgentStore } from '@/stores/agent'
 import { useSpaceStore } from '@/stores/space'
@@ -417,14 +444,10 @@ const allChannels = [
 
 // 应用级权限过滤（admin 短路全过；被禁应用的频道不渲染）
 const channels = computed(() =>
-  allChannels.filter((c) => c.app === null || permStore.hasApp(c.app))
+  allChannels.filter((c) => c.app === null || permStore.hasApp(c.app)),
 )
 
-const primaryChannels = computed(() => channels.value.filter((c) => c.group === 'primary'))
-const moreChannels = computed(() => channels.value.filter((c) => c.group === 'more'))
-
 const activeChannelKey = ref('chat')
-const moreExpanded = ref(false)
 
 // 下方列表的折叠态：每个频道独立记忆
 const sectionCollapsed = reactive({
@@ -541,9 +564,7 @@ async function handleDeleteChatSession(sessionId: string) {
 
 // 当前路由是否正处某 agent 的对话页（侧栏列表 active 态）
 function isAgentChatRoute(agentId: number): boolean {
-  return (
-    route.name === 'WorkspaceAgentChat' && Number(route.params.agentId) === agentId
-  )
+  return route.name === 'WorkspaceAgentChat' && Number(route.params.agentId) === agentId
 }
 
 // 占位页经 inject 调用创建弹窗（广场页已删，创建入口收编在布局层）
@@ -838,7 +859,9 @@ onMounted(async () => {
   cursor: pointer;
   width: 100%;
   text-align: left;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .channel-seg:hover {
@@ -1181,7 +1204,9 @@ onMounted(async () => {
 }
 
 .fade-enter-active {
-  transition: opacity var(--transition-base), transform var(--transition-base);
+  transition:
+    opacity var(--transition-base),
+    transform var(--transition-base);
 }
 
 .fade-leave-active {
@@ -1229,7 +1254,7 @@ onMounted(async () => {
   left: var(--space-4);
   padding: var(--space-2) var(--space-4);
   background: var(--color-btn-primary);
-  color: #FFFFFF;
+  color: #ffffff;
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   z-index: var(--z-toast);

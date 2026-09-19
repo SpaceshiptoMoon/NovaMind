@@ -15,8 +15,11 @@ export function formatFileSize(bytes: number): string {
 export function formatDate(date?: string | null): string {
   if (!date) return '-'
   try {
-    return new Date(date).toLocaleDateString('zh-CN') + ' ' +
+    return (
+      new Date(date).toLocaleDateString('zh-CN') +
+      ' ' +
       new Date(date).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    )
   } catch {
     return '-'
   }

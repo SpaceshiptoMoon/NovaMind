@@ -1,7 +1,11 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { ElNotification } from 'element-plus'
-import { notificationApi, connectNotificationWs, disconnectNotificationWs } from '@/api/notification'
+import {
+  notificationApi,
+  connectNotificationWs,
+  disconnectNotificationWs,
+} from '@/api/notification'
 import type { Notification } from '@/api/types'
 
 /** header 下拉与徽标的单一事实源：WS 实时推送 + 30s 轮询兜底收敛 */

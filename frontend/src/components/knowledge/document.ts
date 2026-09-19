@@ -4,7 +4,10 @@
 import type { SpaceConfig } from '@/api/types'
 import { MODALITY_ACCEPT_MAP, MODALITY_MAX_SIZE_MB } from '@/api/types'
 
-export const taskStatusMap: Record<number, { text: string; type: 'success' | 'warning' | 'danger' | 'info' | 'primary' }> = {
+export const taskStatusMap: Record<
+  number,
+  { text: string; type: 'success' | 'warning' | 'danger' | 'info' | 'primary' }
+> = {
   0: { text: '待处理', type: 'info' },
   1: { text: '处理中', type: 'warning' },
   2: { text: '已完成', type: 'success' },
@@ -12,7 +15,10 @@ export const taskStatusMap: Record<number, { text: string; type: 'success' | 'wa
   4: { text: '已取消', type: 'info' },
 }
 
-export const docStatusMap: Record<string, { text: string; type: 'success' | 'warning' | 'danger' | 'info' | 'primary' }> = {
+export const docStatusMap: Record<
+  string,
+  { text: string; type: 'success' | 'warning' | 'danger' | 'info' | 'primary' }
+> = {
   pending: { text: '待处理', type: 'info' },
   processing: { text: '处理中', type: 'warning' },
   completed: { text: '已完成', type: 'success' },
@@ -72,14 +78,14 @@ export function getUploadAccept(spaceTypes: string[]): string {
   const exts = new Set<string>()
   for (const t of spaceTypes) {
     const accept = MODALITY_ACCEPT_MAP[t]
-    if (accept) accept.split(',').forEach(e => exts.add(e))
+    if (accept) accept.split(',').forEach((e) => exts.add(e))
   }
   return [...exts].join(',')
 }
 
 export function getFileMaxSize(ext: string): number {
   for (const [modality, accept] of Object.entries(MODALITY_ACCEPT_MAP)) {
-    const exts = accept.split(',').map(e => e.replace('.', '').trim())
+    const exts = accept.split(',').map((e) => e.replace('.', '').trim())
     if (exts.includes(ext.toLowerCase())) return MODALITY_MAX_SIZE_MB[modality] || 100
   }
   return 100

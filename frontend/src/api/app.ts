@@ -131,7 +131,12 @@ export const appApi = {
   },
 
   // 上传简历（使用 axios 实例，自动处理 token 刷新）
-  async uploadResume(file: File, jdText?: string, config?: Record<string, unknown>, llmModel?: string) {
+  async uploadResume(
+    file: File,
+    jdText?: string,
+    config?: Record<string, unknown>,
+    llmModel?: string,
+  ) {
     const formData = new FormData()
     formData.append('file', file)
     if (jdText) formData.append('jd_text', jdText)
@@ -149,7 +154,11 @@ export const appApi = {
 
   // 会话列表
   listSessions(limit = 20, offset = 0, status?: number) {
-    return request.get<ResumeSessionListResponse>(`${BASE_URL}/resume/sessions`, { limit, offset, status })
+    return request.get<ResumeSessionListResponse>(`${BASE_URL}/resume/sessions`, {
+      limit,
+      offset,
+      status,
+    })
   },
 
   // 会话详情

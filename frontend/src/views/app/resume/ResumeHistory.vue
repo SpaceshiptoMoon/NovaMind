@@ -24,7 +24,11 @@
         :class="{ 'is-active': activeFilter === opt.value }"
         @click="setFilter(opt.value)"
       >
-        <span v-if="opt.value !== null" class="filter-dot" :style="{ background: statusConfig(opt.value).dotColor }" />
+        <span
+          v-if="opt.value !== null"
+          class="filter-dot"
+          :style="{ background: statusConfig(opt.value).dotColor }"
+        />
         {{ opt.label }}
       </button>
     </div>
@@ -89,9 +93,16 @@
     <EmptyState
       v-else-if="!loading"
       headline="暂无记录"
-      :description="activeFilter !== null ? '该状态下没有记录' : '还没有简历分析记录，快去上传一份简历吧'"
+      :description="
+        activeFilter !== null ? '该状态下没有记录' : '还没有简历分析记录，快去上传一份简历吧'
+      "
     >
-      <el-button v-if="activeFilter === null" type="primary" @click="router.push('/home/apps/resume')">上传简历</el-button>
+      <el-button
+        v-if="activeFilter === null"
+        type="primary"
+        @click="router.push('/home/apps/resume')"
+        >上传简历</el-button
+      >
       <el-button v-else @click="setFilter(null)">查看全部</el-button>
     </EmptyState>
 
@@ -101,8 +112,19 @@
       :page-size="pageSize"
       :total="total"
       :page-sizes="[10, 20, 50]"
-      @update:page="(p: number) => { currentPage = p; fetchData() }"
-      @update:page-size="(s: number) => { pageSize = s; currentPage = 1; fetchData() }"
+      @update:page="
+        (p: number) => {
+          currentPage = p
+          fetchData()
+        }
+      "
+      @update:page-size="
+        (s: number) => {
+          pageSize = s
+          currentPage = 1
+          fetchData()
+        }
+      "
     />
   </div>
 </template>
@@ -150,7 +172,14 @@ const statusConfigMap: Record<number, StatusStyle> = {
 }
 
 function statusConfig(status: number): StatusStyle {
-  return statusConfigMap[status] || { label: '未知', dotColor: '#9CA3AF', textColor: '#9CA3AF', bgColor: '#F9FAFB' }
+  return (
+    statusConfigMap[status] || {
+      label: '未知',
+      dotColor: '#9CA3AF',
+      textColor: '#9CA3AF',
+      bgColor: '#F9FAFB',
+    }
+  )
 }
 
 function setFilter(value: number | null) {
@@ -166,8 +195,11 @@ function getCandidateName(row: ResumeSession): string {
 function formatDate(date: string | null): string {
   if (!date) return '-'
   try {
-    return new Date(date).toLocaleDateString('zh-CN') + ' ' +
+    return (
+      new Date(date).toLocaleDateString('zh-CN') +
+      ' ' +
       new Date(date).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    )
   } catch {
     return '-'
   }

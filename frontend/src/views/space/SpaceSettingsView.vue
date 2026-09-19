@@ -77,9 +77,7 @@
                     @keyup.enter="addTag"
                     @blur="addTag"
                   />
-                  <el-button v-else size="small" @click="showTagInput">
-                    + 添加标签
-                  </el-button>
+                  <el-button v-else size="small" @click="showTagInput"> + 添加标签 </el-button>
                 </div>
               </el-form-item>
               <el-form-item>
@@ -100,15 +98,28 @@
             </p>
 
             <!-- 模态展示 -->
-            <div class="model-section-label" style="display:none">
+            <div class="model-section-label" style="display: none">
               <span class="label-text">空间模态（已下放到知识库）</span>
             </div>
             <div class="modality-badges">
               <el-tag
                 v-for="mt in spaceTypes"
                 :key="mt"
-                :type="mt === 'image' || mt === 'video' ? 'primary' : mt === 'audio' ? 'danger' : 'info'"
-              >{{ mt === 'text' ? '📄 文本' : mt === 'image' ? '🖼 图片' : mt === 'video' ? '🎬 视频' : mt === 'audio' ? '🎵 音频' : mt }}</el-tag>
+                :type="
+                  mt === 'image' || mt === 'video' ? 'primary' : mt === 'audio' ? 'danger' : 'info'
+                "
+                >{{
+                  mt === 'text'
+                    ? '📄 文本'
+                    : mt === 'image'
+                      ? '🖼 图片'
+                      : mt === 'video'
+                        ? '🎬 视频'
+                        : mt === 'audio'
+                          ? '🎵 音频'
+                          : mt
+                }}</el-tag
+              >
             </div>
 
             <!-- ─── Embedding 模型 ─── -->
@@ -117,10 +128,14 @@
                 <span class="model-card-icon">📝</span>
                 <div class="model-card-title-wrap">
                   <h4 class="model-card-title">Embedding 模型</h4>
-                  <p class="model-card-desc">将文本块转换为向量，用于语义检索和相似度匹配。所有空间必需。</p>
+                  <p class="model-card-desc">
+                    将文本块转换为向量，用于语义检索和相似度匹配。所有空间必需。
+                  </p>
                 </div>
                 <el-tag
-                  :type="embeddingForm.model ? 'success' : effectiveEmbeddingModel ? 'warning' : 'info'"
+                  :type="
+                    embeddingForm.model ? 'success' : effectiveEmbeddingModel ? 'warning' : 'info'
+                  "
                   size="small"
                   effect="plain"
                   class="model-status-tag"
@@ -149,7 +164,9 @@
                   show-icon
                   class="embedding-locked-alert"
                 >
-                  本空间已有 {{ documentCount }} 个文档，Embedding 模型已锁定，无法修改（不同模型的向量不兼容，更改会导致检索失效）。如需更换 Embedding 模型，请新建空间。
+                  本空间已有 {{ documentCount }} 个文档，Embedding
+                  模型已锁定，无法修改（不同模型的向量不兼容，更改会导致检索失效）。如需更换
+                  Embedding 模型，请新建空间。
                 </el-alert>
                 <el-form-item label="文本 Embedding">
                   <el-select
@@ -179,7 +196,12 @@
                   <span class="dimension-display">{{ embeddingForm.dimension }}（自动检测）</span>
                 </el-form-item>
                 <el-form-item label="批处理大小">
-                  <el-input-number v-model="embeddingForm.batch_size" :min="1" :max="128" style="width: 200px" />
+                  <el-input-number
+                    v-model="embeddingForm.batch_size"
+                    :min="1"
+                    :max="128"
+                    style="width: 200px"
+                  />
                 </el-form-item>
                 <el-form-item label="向量归一化">
                   <el-switch v-model="embeddingForm.normalize" />
@@ -193,7 +215,9 @@
                 <span class="model-card-icon">🤖</span>
                 <div class="model-card-title-wrap">
                   <h4 class="model-card-title">LLM 模型</h4>
-                  <p class="model-card-desc">用于问题生成（HyDE）、查询改写、摘要生成等通用语言任务。</p>
+                  <p class="model-card-desc">
+                    用于问题生成（HyDE）、查询改写、摘要生成等通用语言任务。
+                  </p>
                 </div>
                 <el-tag
                   :type="modelForm.llm_model ? 'success' : 'info'"
@@ -237,7 +261,9 @@
                 <span class="model-card-icon">🎤</span>
                 <div class="model-card-title-wrap">
                   <h4 class="model-card-title">ASR 模型</h4>
-                  <p class="model-card-desc">用于音频文件转文字（语音识别），仅含「音频」模态的空间需要。</p>
+                  <p class="model-card-desc">
+                    用于音频文件转文字（语音识别），仅含「音频」模态的空间需要。
+                  </p>
                 </div>
                 <el-tag
                   :type="modelForm.asr_model ? 'success' : 'info'"
@@ -281,7 +307,9 @@
                 <span class="model-card-icon">👁</span>
                 <div>
                   <h4 class="model-card-title">VLM 模型</h4>
-                  <p class="model-card-desc">用于图片/视频帧转文字描述，将视觉内容转为可检索的文本。</p>
+                  <p class="model-card-desc">
+                    用于图片/视频帧转文字描述，将视觉内容转为可检索的文本。
+                  </p>
                 </div>
                 <el-tag type="warning" size="small" effect="plain">开发中</el-tag>
               </div>
@@ -372,7 +400,12 @@
 
           <!-- 邀请成员弹窗 -->
           <el-dialog v-model="inviteDialogVisible" title="邀请成员" width="480px">
-            <el-form ref="inviteFormRef" :model="inviteForm" :rules="inviteRules" label-width="80px">
+            <el-form
+              ref="inviteFormRef"
+              :model="inviteForm"
+              :rules="inviteRules"
+              label-width="80px"
+            >
               <el-form-item label="邮箱" prop="email">
                 <el-input v-model="inviteForm.email" placeholder="请输入被邀请人邮箱" />
               </el-form-item>
@@ -402,9 +435,7 @@
           <!-- 邀请成功弹窗 -->
           <el-dialog v-model="inviteResultVisible" title="邀请成功" width="480px">
             <el-alert type="success" :closable="false" show-icon>
-              <template #title>
-                邀请链接已生成
-              </template>
+              <template #title> 邀请链接已生成 </template>
             </el-alert>
             <div class="invite-link-wrapper">
               <el-input v-model="inviteLink" readonly>
@@ -421,17 +452,17 @@
 
           <!-- 直接添加成员弹窗 -->
           <el-dialog v-model="directAddDialogVisible" title="直接添加成员" width="480px">
-            <el-alert
-              type="info"
-              :closable="false"
-              show-icon
-              style="margin-bottom: 16px"
-            >
+            <el-alert type="info" :closable="false" show-icon style="margin-bottom: 16px">
               <template #title>
                 输入用户的<strong>用户名</strong>或<strong>邮箱</strong>，直接将其加为本空间成员（无需邀请链接，立即生效）。
               </template>
             </el-alert>
-            <el-form ref="directAddFormRef" :model="directAddForm" :rules="directAddRules" label-width="80px">
+            <el-form
+              ref="directAddFormRef"
+              :model="directAddForm"
+              :rules="directAddRules"
+              label-width="80px"
+            >
               <el-form-item label="用户" prop="identifier">
                 <el-input v-model="directAddForm.identifier" placeholder="用户名或邮箱" />
               </el-form-item>
@@ -475,12 +506,7 @@
 
           <!-- 细粒度权限弹窗 -->
           <el-dialog v-model="permDialogVisible" title="细粒度权限" width="560px">
-            <el-alert
-              type="info"
-              :closable="false"
-              show-icon
-              style="margin-bottom: 16px"
-            >
+            <el-alert type="info" :closable="false" show-icon style="margin-bottom: 16px">
               <template #title>
                 每项可设为<strong>继承</strong>（按角色，默认）、<strong>允许</strong>、<strong>拒绝</strong>。
                 显式允许/拒绝会覆盖角色默认；未列出项保持继承。
@@ -527,6 +553,7 @@ import type {
   SpaceConfigStats,
   AvailableModelItem,
   Member,
+  SpaceConfigUpdateRequest,
 } from '@/api/types'
 import type { FormInstance, FormRules } from 'element-plus'
 
@@ -593,7 +620,7 @@ const asrModels = ref<AvailableModelItem[]>([])
 
 const tagInputVisible = ref(false)
 const tagInputValue = ref('')
-const tagInputRef = ref<InstanceType<typeof import('element-plus')['ElInput']>>()
+const tagInputRef = ref<InstanceType<(typeof import('element-plus'))['ElInput']>>()
 
 function showTagInput() {
   tagInputVisible.value = true
@@ -775,11 +802,9 @@ async function handleSavePermissions() {
   }
   permLoading.value = true
   try {
-    await memberApi.updateMemberPermissions(
-      spaceId.value,
-      permMember.value.user_id,
-      { custom_permissions },
-    )
+    await memberApi.updateMemberPermissions(spaceId.value, permMember.value.user_id, {
+      custom_permissions,
+    })
     ElMessage.success('细粒度权限已更新')
     permDialogVisible.value = false
     fetchMembers()
@@ -850,15 +875,11 @@ async function handleUpdateRole() {
 
 async function handleRemove(member: Member) {
   try {
-    await ElMessageBox.confirm(
-      `确定要将 "${member.username}" 移除出空间吗？`,
-      '提示',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }
-    )
+    await ElMessageBox.confirm(`确定要将 "${member.username}" 移除出空间吗？`, '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
     await memberApi.removeMember(spaceId.value, member.user_id)
     ElMessage.success('成员已移除')
     fetchMembers()
@@ -952,7 +973,7 @@ async function handleSaveInfo() {
 async function handleSaveModels() {
   modelsSaving.value = true
   try {
-    const payload: Record<string, any> = {
+    const payload: SpaceConfigUpdateRequest = {
       embedding: {
         model: embeddingForm.model || undefined,
         batch_size: embeddingForm.batch_size,

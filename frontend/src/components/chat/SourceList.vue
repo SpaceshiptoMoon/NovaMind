@@ -28,7 +28,9 @@
                 <span class="source-kind web">联网</span>
               </div>
               <div class="source-sub">
-                <span v-if="s.score != null" class="source-score">相关度 {{ formatScore(s.score) }}</span>
+                <span v-if="s.score != null" class="source-score"
+                  >相关度 {{ formatScore(s.score) }}</span
+                >
                 <a
                   v-if="s.url"
                   :href="s.url"
@@ -36,13 +38,16 @@
                   rel="noopener"
                   class="source-link"
                   @click.stop
-                >链接 ↗</a>
+                  >链接 ↗</a
+                >
               </div>
               <div
                 v-if="s.snippet"
                 class="source-snippet"
                 :class="{ expanded: isExpanded(s.index) }"
-              >{{ s.snippet }}</div>
+              >
+                {{ s.snippet }}
+              </div>
             </div>
           </div>
         </template>
@@ -67,14 +72,18 @@
                 <span class="source-kind kb">知识库</span>
               </div>
               <div class="source-sub">
-                <span v-if="s.score != null" class="source-score">相关度 {{ formatScore(s.score) }}</span>
+                <span v-if="s.score != null" class="source-score"
+                  >相关度 {{ formatScore(s.score) }}</span
+                >
                 <span v-if="s.page != null" class="source-page">第 {{ s.page }} 页</span>
               </div>
               <div
                 v-if="s.snippet"
                 class="source-snippet"
                 :class="{ expanded: isExpanded(s.index) }"
-              >{{ s.snippet }}</div>
+              >
+                {{ s.snippet }}
+              </div>
             </div>
           </div>
         </template>

@@ -50,9 +50,7 @@ export function renderMarkdown(text: string): string {
   // 1. 暂存代码块
   const codeStore: string[] = []
   const stash = (m: string) => `${CODE_TOKEN_START}${codeStore.push(m) - 1}${CODE_TOKEN_END}`
-  const protectedText = text
-    .replace(/```[\s\S]*?```/g, stash)
-    .replace(/`[^`\n]+`/g, stash)
+  const protectedText = text.replace(/```[\s\S]*?```/g, stash).replace(/`[^`\n]+`/g, stash)
 
   // 2. 引用角标 → 占位符（排除 [n](url) 链接形式）
   const citedText = protectedText.replace(/\[(\d{1,3})\](?!\()/g, (_m, n) => `@@CITE_${n}@@`)
@@ -64,7 +62,8 @@ export function renderMarkdown(text: string): string {
   const html = marked.parse(restored) as string
 
   // 5. 占位符 → 角标 sup（事件代理在 ChatView 统一接管 hover/click）
-  return html.replace(/@@CITE_(\d{1,3})@@/g, (_m, n) =>
-    `<sup class="cite-marker" data-cite="${n}">[${n}]</sup>`,
+  return html.replace(
+    /@@CITE_(\d{1,3})@@/g,
+    (_m, n) => `<sup class="cite-marker" data-cite="${n}">[${n}]</sup>`,
   )
 }

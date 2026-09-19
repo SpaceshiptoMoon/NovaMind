@@ -59,11 +59,7 @@ export const evaluationApi = {
     return request.put(`${BASE(spaceId, kbId)}/test-sets/${testSetId}`, data)
   },
 
-  getTestSetCases(
-    spaceId: number,
-    kbId: number,
-    testSetId: number,
-  ): Promise<TestSetCasesResponse> {
+  getTestSetCases(spaceId: number, kbId: number, testSetId: number): Promise<TestSetCasesResponse> {
     return request.get(`${BASE(spaceId, kbId)}/test-sets/${testSetId}/cases`)
   },
 
@@ -75,11 +71,7 @@ export const evaluationApi = {
     return request.get(`${BASE(spaceId, kbId)}/tasks`, params as Record<string, unknown>)
   },
 
-  getTask(
-    spaceId: number,
-    kbId: number,
-    taskId: number,
-  ): Promise<EvaluationTask> {
+  getTask(spaceId: number, kbId: number, taskId: number): Promise<EvaluationTask> {
     return request.get(`${BASE(spaceId, kbId)}/tasks/${taskId}`)
   },
 
@@ -99,27 +91,15 @@ export const evaluationApi = {
     return request.delete(`${BASE(spaceId, kbId)}/tasks/${taskId}`)
   },
 
-  cancelTask(
-    spaceId: number,
-    kbId: number,
-    taskId: number,
-  ): Promise<TaskCancelResponse> {
+  cancelTask(spaceId: number, kbId: number, taskId: number): Promise<TaskCancelResponse> {
     return request.post(`${BASE(spaceId, kbId)}/tasks/${taskId}/cancel`)
   },
 
-  getTaskProgress(
-    spaceId: number,
-    kbId: number,
-    taskId: number,
-  ): Promise<TaskProgressResponse> {
+  getTaskProgress(spaceId: number, kbId: number, taskId: number): Promise<TaskProgressResponse> {
     return request.get(`${BASE(spaceId, kbId)}/tasks/${taskId}/progress`)
   },
 
-  getReport(
-    spaceId: number,
-    kbId: number,
-    taskId: number,
-  ): Promise<EvaluationReport> {
+  getReport(spaceId: number, kbId: number, taskId: number): Promise<EvaluationReport> {
     return request.get(`${BASE(spaceId, kbId)}/tasks/${taskId}/report`)
   },
 

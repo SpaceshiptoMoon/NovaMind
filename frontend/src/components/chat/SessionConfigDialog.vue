@@ -14,7 +14,7 @@
       <template v-if="configForm.enable_compression">
         <div class="card-row">
           <span class="row-label">策略</span>
-          <el-select v-model="configForm.strategy" size="small" style="width:180px">
+          <el-select v-model="configForm.strategy" size="small" style="width: 180px">
             <el-option label="摘要压缩" value="summary" />
             <el-option label="滑动窗口" value="sliding_window" />
             <el-option label="保留最近" value="keep_recent" />
@@ -23,22 +23,49 @@
         </div>
         <div class="card-row">
           <span class="row-label">触发阈值</span>
-          <el-input-number v-model="configForm.threshold" :min="500" :max="200000" :step="1000" size="small" style="width:160px" />
+          <el-input-number
+            v-model="configForm.threshold"
+            :min="500"
+            :max="200000"
+            :step="1000"
+            size="small"
+            style="width: 160px"
+          />
           <span class="row-hint">token</span>
         </div>
         <div class="card-row">
           <span class="row-label">保留消息</span>
-          <el-input-number v-model="configForm.keep_recent" :min="0" :max="10" size="small" style="width:100px" />
+          <el-input-number
+            v-model="configForm.keep_recent"
+            :min="0"
+            :max="10"
+            size="small"
+            style="width: 100px"
+          />
           <span class="row-hint">条</span>
         </div>
         <div v-if="configForm.strategy === 'summary'" class="card-row">
           <span class="row-label">目标长度</span>
-          <el-input-number v-model="configForm.target_tokens" :min="100" :max="2000" :step="100" size="small" style="width:140px" />
+          <el-input-number
+            v-model="configForm.target_tokens"
+            :min="100"
+            :max="2000"
+            :step="100"
+            size="small"
+            style="width: 140px"
+          />
           <span class="row-hint">token</span>
         </div>
         <div v-if="configForm.strategy === 'summary'" class="card-row-block">
           <div class="row-label">自定义提示词</div>
-          <el-input v-model="configForm.custom_prompt" type="textarea" :rows="2" placeholder="留空使用默认" maxlength="2000" size="small" />
+          <el-input
+            v-model="configForm.custom_prompt"
+            type="textarea"
+            :rows="2"
+            placeholder="留空使用默认"
+            maxlength="2000"
+            size="small"
+          />
         </div>
       </template>
     </div>
@@ -53,31 +80,60 @@
       <template v-if="ragForm.auto_rag">
         <div class="card-row">
           <span class="row-label">空间</span>
-          <el-select v-model="ragForm.space_id" placeholder="选择空间" filterable clearable size="small" style="width:180px" @change="handleRagFormSpaceChange">
+          <el-select
+            v-model="ragForm.space_id"
+            placeholder="选择空间"
+            filterable
+            clearable
+            size="small"
+            style="width: 180px"
+            @change="handleRagFormSpaceChange"
+          >
             <el-option v-for="s in spaceStore.spaces" :key="s.id" :label="s.name" :value="s.id" />
           </el-select>
         </div>
         <div class="card-row">
           <span class="row-label">知识库</span>
-          <el-select v-model="ragForm.kb_ids" multiple filterable placeholder="可多选" size="small" style="width:180px" :disabled="!ragForm.space_id">
-            <el-option v-for="kb in ragFormKbOptions" :key="kb.id" :label="kb.name" :value="kb.id" />
+          <el-select
+            v-model="ragForm.kb_ids"
+            multiple
+            filterable
+            placeholder="可多选"
+            size="small"
+            style="width: 180px"
+            :disabled="!ragForm.space_id"
+          >
+            <el-option
+              v-for="kb in ragFormKbOptions"
+              :key="kb.id"
+              :label="kb.name"
+              :value="kb.id"
+            />
           </el-select>
         </div>
         <div class="card-row-between">
           <div>
             <span class="row-label">分级拒答</span>
-            <div class="row-hint" style="margin-top:2px">过滤低相关结果，检索为空时直接拒答</div>
+            <div class="row-hint" style="margin-top: 2px">过滤低相关结果，检索为空时直接拒答</div>
           </div>
           <el-switch v-model="ragForm.refusal_enabled" size="small" />
         </div>
         <div class="card-row">
           <span class="row-label">低置信阈值</span>
-          <el-input-number v-model="ragForm.score_threshold" :min="0" :max="1" :step="0.05" :precision="2" size="small" style="width:100px" />
+          <el-input-number
+            v-model="ragForm.score_threshold"
+            :min="0"
+            :max="1"
+            :step="0.05"
+            :precision="2"
+            size="small"
+            style="width: 100px"
+          />
           <span class="row-hint">低于该分的结果被过滤；开启拒答时空结果将拒答</span>
         </div>
         <div class="card-row">
           <span class="row-label">检索模式</span>
-          <el-select v-model="ragForm.search_mode" size="small" style="width:200px">
+          <el-select v-model="ragForm.search_mode" size="small" style="width: 200px">
             <el-option-group label="内容检索">
               <el-option label="内容·混合（推荐）" value="content_hybrid" />
               <el-option label="内容·向量" value="content_vector" />
@@ -97,7 +153,7 @@
         </div>
         <div class="card-row">
           <span class="row-label">查询改写</span>
-          <el-select v-model="ragForm.query_rewriting" size="small" style="width:200px">
+          <el-select v-model="ragForm.query_rewriting" size="small" style="width: 200px">
             <el-option label="不改写" value="none" />
             <el-option label="补全（completion）" value="completion" />
             <el-option label="同义扩展（synonym）" value="synonym" />
@@ -112,11 +168,23 @@
         </div>
         <div v-if="ragForm.grade_retry_enabled" class="card-row">
           <span class="row-label">及格分数</span>
-          <el-input-number v-model="ragForm.grade_retry_passing_score" :min="1" :max="10" size="small" style="width:100px" />
+          <el-input-number
+            v-model="ragForm.grade_retry_passing_score"
+            :min="1"
+            :max="10"
+            size="small"
+            style="width: 100px"
+          />
         </div>
         <div class="card-row">
           <span class="row-label">检索条数</span>
-          <el-input-number v-model="ragForm.top_k" :min="1" :max="20" size="small" style="width:100px" />
+          <el-input-number
+            v-model="ragForm.top_k"
+            :min="1"
+            :max="20"
+            size="small"
+            style="width: 100px"
+          />
         </div>
         <div class="card-row" v-if="isHybridSearchMode">
           <span class="row-label">向量权重</span>
@@ -172,28 +240,58 @@
 
     <!-- === 模型卡片 === -->
     <div class="config-card">
-      <div class="card-row-between" @click="modelExpanded = !modelExpanded" style="cursor:pointer">
+      <div class="card-row-between" @click="modelExpanded = !modelExpanded" style="cursor: pointer">
         <div class="card-label">模型生成参数</div>
-        <el-icon :size="12" class="card-arrow" :class="{ expanded: modelExpanded }"><ArrowDown /></el-icon>
+        <el-icon :size="12" class="card-arrow" :class="{ expanded: modelExpanded }"
+          ><ArrowDown
+        /></el-icon>
       </div>
 
       <template v-if="modelExpanded">
         <div class="card-row">
           <span class="row-label">温度</span>
-          <el-input-number v-model="llmForm.temperature" :min="0" :max="2" :step="0.1" size="small" style="width:120px" />
+          <el-input-number
+            v-model="llmForm.temperature"
+            :min="0"
+            :max="2"
+            :step="0.1"
+            size="small"
+            style="width: 120px"
+          />
           <span class="row-hint">越高越随机</span>
         </div>
         <div class="card-row">
           <span class="row-label">Top-P</span>
-          <el-input-number v-model="llmForm.top_p" :min="0" :max="1" :step="0.1" size="small" style="width:120px" />
+          <el-input-number
+            v-model="llmForm.top_p"
+            :min="0"
+            :max="1"
+            :step="0.1"
+            size="small"
+            style="width: 120px"
+          />
         </div>
         <div class="card-row">
           <span class="row-label">最大 Tokens</span>
-          <el-input-number v-model="llmForm.max_tokens" :min="1" :max="8192" :step="256" size="small" style="width:140px" />
+          <el-input-number
+            v-model="llmForm.max_tokens"
+            :min="1"
+            :max="8192"
+            :step="256"
+            size="small"
+            style="width: 140px"
+          />
         </div>
         <div class="card-row-block">
           <div class="row-label">系统提示词</div>
-          <el-input v-model="llmForm.system_prompt" type="textarea" :rows="2" placeholder="留空使用后端模板" maxlength="4000" size="small" />
+          <el-input
+            v-model="llmForm.system_prompt"
+            type="textarea"
+            :rows="2"
+            placeholder="留空使用后端模板"
+            maxlength="4000"
+            size="small"
+          />
         </div>
       </template>
     </div>
@@ -290,12 +388,15 @@ async function fetchSearchEngineConfigs() {
   }
 }
 
-watch(() => props.sessionId, (newId) => {
-  if (newId) {
-    visible.value = true
-    loadConfig(newId)
-  }
-})
+watch(
+  () => props.sessionId,
+  (newId) => {
+    if (newId) {
+      visible.value = true
+      loadConfig(newId)
+    }
+  },
+)
 
 function handleClose() {
   visible.value = false
@@ -303,22 +404,34 @@ function handleClose() {
 
 async function loadConfig(sessionId: string) {
   // 重置表单
-  ragForm.space_id = null; ragForm.kb_ids = []; ragForm.auto_rag = false
-  ragForm.refusal_enabled = false; ragForm.score_threshold = 0.3
-  ragForm.search_mode = 'content_hybrid'; ragForm.top_k = 5
+  ragForm.space_id = null
+  ragForm.kb_ids = []
+  ragForm.auto_rag = false
+  ragForm.refusal_enabled = false
+  ragForm.score_threshold = 0.3
+  ragForm.search_mode = 'content_hybrid'
+  ragForm.top_k = 5
   ragForm.vector_weight = 0.7
   ragForm.query_rewriting = 'none'
-  ragForm.grade_retry_enabled = false; ragForm.grade_retry_passing_score = 5
-  llmForm.max_tokens = 2048; llmForm.temperature = 0.7
-  llmForm.top_p = 0.8; llmForm.system_prompt = ''
-  webSearchForm.provider = undefined; webSearchForm.max_results = 5
+  ragForm.grade_retry_enabled = false
+  ragForm.grade_retry_passing_score = 5
+  llmForm.max_tokens = 2048
+  llmForm.temperature = 0.7
+  llmForm.top_p = 0.8
+  llmForm.system_prompt = ''
+  webSearchForm.provider = undefined
+  webSearchForm.max_results = 5
   ragFormKbOptions.value = []
 
   // 拉取用户已配的搜索引擎列表（供下拉选择）
   await fetchSearchEngineConfigs()
 
   if (spaceStore.spaces.length === 0) {
-    try { await spaceStore.fetchSpaces() } catch { /* 忽略 */ }
+    try {
+      await spaceStore.fetchSpaces()
+    } catch {
+      /* 忽略 */
+    }
   }
 
   try {
@@ -344,7 +457,8 @@ async function loadConfig(sessionId: string) {
         vector: 'content_vector',
         bm25: 'content_bm25',
       }
-      ragForm.search_mode = LEGACY_SEARCH_MODE[kb.search_mode || ''] || kb.search_mode || 'content_hybrid'
+      ragForm.search_mode =
+        LEGACY_SEARCH_MODE[kb.search_mode || ''] || kb.search_mode || 'content_hybrid'
       ragForm.top_k = kb.top_k ?? 5
       ragForm.vector_weight = kb.vector_weight ?? 0.7
       ragForm.query_rewriting = kb.query_rewriting || 'none'

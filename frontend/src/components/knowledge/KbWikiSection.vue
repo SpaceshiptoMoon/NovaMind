@@ -16,8 +16,19 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="LLM 模型">
-              <el-select v-model="configForm.wikiLlmModel" clearable filterable placeholder="留空时使用知识库默认模型" style="width: 100%">
-                <el-option v-for="model in llmModels" :key="model.model" :label="model.model" :value="model.model" />
+              <el-select
+                v-model="configForm.wikiLlmModel"
+                clearable
+                filterable
+                placeholder="留空时使用知识库默认模型"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="model in llmModels"
+                  :key="model.model"
+                  :label="model.model"
+                  :value="model.model"
+                />
               </el-select>
             </el-form-item>
           </el-col>
@@ -41,7 +52,12 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="单文档页数上限">
-              <el-input-number v-model="configForm.wikiMaxPages" :min="1" :max="500" style="width: 100%" />
+              <el-input-number
+                v-model="configForm.wikiMaxPages"
+                :min="1"
+                :max="500"
+                style="width: 100%"
+              />
             </el-form-item>
           </el-col>
         </el-row>

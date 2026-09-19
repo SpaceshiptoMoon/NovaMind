@@ -1448,7 +1448,7 @@ export interface AgentMessage {
   tool_call_id: string | null
   tool_name: string | null
   token_count: number | null
-  extra?: Record<string, any> | null
+  extra?: Record<string, unknown> | null
   created_at: string
   reasoning?: string
   sources?: SourceRef[]
@@ -1896,7 +1896,16 @@ export interface WikiStatsResponse {
 
 export interface WikiIngestStatusResponse {
   status: string // pending/running/done/failed
-  step_progress: Record<string, { status: string; started_at?: string; finished_at?: string; metrics?: Record<string, unknown>; error?: string }> | null
+  step_progress: Record<
+    string,
+    {
+      status: string
+      started_at?: string
+      finished_at?: string
+      metrics?: Record<string, unknown>
+      error?: string
+    }
+  > | null
   pages_created: number
   pages_updated: number
   error_message: string | null

@@ -35,7 +35,12 @@ const showHeader = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(160deg, var(--color-bg) 0%, var(--color-bg-card-elevated) 50%, var(--color-bg) 100%);
+  background: linear-gradient(
+    160deg,
+    var(--color-bg) 0%,
+    var(--color-bg-card-elevated) 50%,
+    var(--color-bg) 100%
+  );
   padding: var(--space-6);
 }
 

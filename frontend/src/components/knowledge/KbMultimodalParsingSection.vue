@@ -2,7 +2,10 @@
   <div>
     <div v-if="hasImage" class="sub-section">
       <h4 class="sub-title">图片解析</h4>
-      <p class="sub-desc">选择 `VLM 描述` 使用视觉语言模型生成图片描述；选择 `DeepDoc OCR` 使用本地 OCR 提取图片中的文字。</p>
+      <p class="sub-desc">
+        选择 `VLM 描述` 使用视觉语言模型生成图片描述；选择 `DeepDoc OCR` 使用本地 OCR
+        提取图片中的文字。
+      </p>
 
       <el-form :model="configForm" label-width="120px" class="config-form">
         <el-form-item label="解析策略">
@@ -12,8 +15,19 @@
           </el-radio-group>
         </el-form-item>
         <el-form-item v-if="configForm.imageStrategy === 'vlm'" label="VLM 模型">
-          <el-select v-model="configForm.imageVlmModel" clearable filterable placeholder="留空时继承空间默认模型" style="width: 100%">
-            <el-option v-for="model in vlmModels" :key="model.model" :label="model.model" :value="model.model" />
+          <el-select
+            v-model="configForm.imageVlmModel"
+            clearable
+            filterable
+            placeholder="留空时继承空间默认模型"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="model in vlmModels"
+              :key="model.model"
+              :label="model.model"
+              :value="model.model"
+            />
           </el-select>
         </el-form-item>
       </el-form>
@@ -33,17 +47,29 @@
               :key="item.value"
               :value="item.value"
               :disabled="item.disabled"
-            >{{ item.label }}</el-radio>
+              >{{ item.label }}</el-radio
+            >
           </el-radio-group>
           <div class="strategy-desc">
             {{ videoStrategyItems.find((i) => i.value === configForm.videoStrategy)?.desc }}
           </div>
         </el-form-item>
         <el-form-item v-if="configForm.videoStrategy !== 'scene'" label="抽帧间隔">
-          <el-slider v-model="configForm.videoFrameInterval" :min="1" :max="60" show-input :show-input-controls="false" />
+          <el-slider
+            v-model="configForm.videoFrameInterval"
+            :min="1"
+            :max="60"
+            show-input
+            :show-input-controls="false"
+          />
         </el-form-item>
         <el-form-item label="最大帧数">
-          <el-input-number v-model="configForm.videoMaxFrames" :min="1" :max="200" style="width: 100%" />
+          <el-input-number
+            v-model="configForm.videoMaxFrames"
+            :min="1"
+            :max="200"
+            style="width: 100%"
+          />
         </el-form-item>
         <el-form-item v-if="configForm.videoStrategy === 'scene'" label="场景阈值">
           <el-input-number
@@ -83,8 +109,19 @@
           <el-switch v-model="configForm.videoVlmDescriptionEnabled" />
         </el-form-item>
         <el-form-item v-if="configForm.videoVlmDescriptionEnabled" label="VLM 模型">
-          <el-select v-model="configForm.videoVlmModel" clearable filterable placeholder="必选：留空将报错要求显式选择" style="width: 100%">
-            <el-option v-for="model in vlmModels" :key="model.model" :label="model.model" :value="model.model" />
+          <el-select
+            v-model="configForm.videoVlmModel"
+            clearable
+            filterable
+            placeholder="必选：留空将报错要求显式选择"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="model in vlmModels"
+              :key="model.model"
+              :label="model.model"
+              :value="model.model"
+            />
           </el-select>
         </el-form-item>
       </el-form>
@@ -96,12 +133,28 @@
 
       <el-form :model="configForm" label-width="120px" class="config-form">
         <el-form-item label="ASR 模型">
-          <el-select v-model="configForm.audioAsrModel" clearable filterable placeholder="默认 whisper-1" style="width: 100%">
-            <el-option v-for="model in asrModels" :key="model.model" :label="model.model" :value="model.model" />
+          <el-select
+            v-model="configForm.audioAsrModel"
+            clearable
+            filterable
+            placeholder="默认 whisper-1"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="model in asrModels"
+              :key="model.model"
+              :label="model.model"
+              :value="model.model"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="语言">
-          <el-select v-model="configForm.audioAsrLanguage" clearable placeholder="自动检测" style="width: 100%">
+          <el-select
+            v-model="configForm.audioAsrLanguage"
+            clearable
+            placeholder="自动检测"
+            style="width: 100%"
+          >
             <el-option label="自动检测" value="" />
             <el-option label="中文" value="zh" />
             <el-option label="英文" value="en" />

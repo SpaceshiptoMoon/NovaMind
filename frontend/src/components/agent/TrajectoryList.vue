@@ -54,12 +54,16 @@
             :title="`Turn ${rec.turnIndex}（点击折叠/展开）`"
             @click="toggleTurn(rec.turnIndex)"
           >
-            <span class="turn-chevron" :class="{ collapsed: collapsedTurns.has(rec.turnIndex) }">▾</span>
+            <span class="turn-chevron" :class="{ collapsed: collapsedTurns.has(rec.turnIndex) }"
+              >▾</span
+            >
             <span class="turn-label">Turn {{ rec.turnIndex }}</span>
             <span class="turn-stats">
               <span>{{ turnSpanCount(rec.turnIndex) }} spans</span>
               <span v-if="turnTokens(rec.turnIndex)">· {{ turnTokens(rec.turnIndex) }} tok</span>
-              <span v-if="turnDuration(rec.turnIndex)">· {{ formatDurationMs(turnDuration(rec.turnIndex)) }}</span>
+              <span v-if="turnDuration(rec.turnIndex)"
+                >· {{ formatDurationMs(turnDuration(rec.turnIndex)) }}</span
+              >
             </span>
           </div>
           <!-- compaction 行：统一序号 + 展开摘要 -->
@@ -74,12 +78,19 @@
             <span class="traj-role compaction">COMPACTED</span>
             <div class="traj-content">
               <button class="compaction-toggle" @click.stop="toggleCompaction(rec.recordId)">
-                <span class="compaction-chevron" :class="{ expanded: expandedCompactions.has(rec.recordId) }">▶</span>
+                <span
+                  class="compaction-chevron"
+                  :class="{ expanded: expandedCompactions.has(rec.recordId) }"
+                  >▶</span
+                >
                 <span class="compaction-label">{{ rec.summary }}</span>
               </button>
             </div>
           </div>
-          <div v-if="rec.kind === 'compaction' && expandedCompactions.has(rec.recordId)" class="traj-compaction-body">
+          <div
+            v-if="rec.kind === 'compaction' && expandedCompactions.has(rec.recordId)"
+            class="traj-compaction-body"
+          >
             <MarkdownRenderer :content="compactionSummary(rec)" />
           </div>
 
@@ -87,7 +98,14 @@
           <div
             v-else
             class="traj-row"
-            :class="[rec.kind, { selected: selectedRecordId === rec.recordId, error: isToolFailed(rec), 'child-span': !!rec.parentAssistantRecordId }]"
+            :class="[
+              rec.kind,
+              {
+                selected: selectedRecordId === rec.recordId,
+                error: isToolFailed(rec),
+                'child-span': !!rec.parentAssistantRecordId,
+              },
+            ]"
             :data-record-id="rec.recordId"
             @click="selectRecord(rec.recordId)"
           >
@@ -103,8 +121,12 @@
 
               <!-- assistant 决策 -->
               <template v-else-if="rec.kind === 'assistant' && rec.toolCalls?.length">
-                <span v-if="rec.isToolCallOnly" class="traj-preview traj-muted">(tool call only)</span>
-                <span v-else-if="rec.msg.reasoning" class="traj-preview traj-reasoning">{{ firstLine(rec.msg.reasoning) }}</span>
+                <span v-if="rec.isToolCallOnly" class="traj-preview traj-muted"
+                  >(tool call only)</span
+                >
+                <span v-else-if="rec.msg.reasoning" class="traj-preview traj-reasoning">{{
+                  firstLine(rec.msg.reasoning)
+                }}</span>
                 <span v-else class="traj-preview">{{ firstLine(rec.msg.content) }}</span>
                 <span class="traj-tools">→ {{ toolCallNames(rec.toolCalls) }}</span>
               </template>
@@ -116,15 +138,25 @@
 
               <!-- tool -->
               <template v-else-if="rec.kind === 'tool'">
-                <span class="traj-tool-name">{{ rec.msg.tool_name || rec.toolCall?.toolName }}</span>
-                <span class="traj-preview traj-args">{{ compactArgs(rec.toolCall?.arguments) }}</span>
-                <span v-if="rec.toolCall?.result" class="traj-result">→ {{ firstLine(rec.toolCall.result, 60) }}</span>
+                <span class="traj-tool-name">{{
+                  rec.msg.tool_name || rec.toolCall?.toolName
+                }}</span>
+                <span class="traj-preview traj-args">{{
+                  compactArgs(rec.toolCall?.arguments)
+                }}</span>
+                <span v-if="rec.toolCall?.result" class="traj-result"
+                  >→ {{ firstLine(rec.toolCall.result, 60) }}</span
+                >
               </template>
 
               <!-- plan -->
               <template v-else-if="rec.kind === 'plan'">
                 <button class="compaction-toggle" @click.stop="togglePlan(rec.recordId)">
-                  <span class="compaction-chevron" :class="{ expanded: expandedPlans.has(rec.recordId) }">▶</span>
+                  <span
+                    class="compaction-chevron"
+                    :class="{ expanded: expandedPlans.has(rec.recordId) }"
+                    >▶</span
+                  >
                   <span class="compaction-label">{{ rec.summary }}</span>
                 </button>
               </template>
@@ -144,10 +176,21 @@
                 ⊞ {{ rec.childToolRecordIds?.length || 0 }} calls
               </span>
 
-              <span v-if="rec.durationMs != null" class="traj-duration">{{ formatDurationMs(rec.durationMs) }}</span>
-              <span v-if="rec.toolCall?.durationMs != null" class="traj-duration">{{ formatDurationMs(rec.toolCall.durationMs) }}</span>
-              <span v-if="totalTokensOf(rec)" class="traj-duration">{{ totalTokensOf(rec) }} tok</span>
-              <span v-if="rec.kind === 'tool'" class="traj-tool-status" :class="rec.toolCall?.status">{{ toolStatusLabel(rec) }}</span>
+              <span v-if="rec.durationMs != null" class="traj-duration">{{
+                formatDurationMs(rec.durationMs)
+              }}</span>
+              <span v-if="rec.toolCall?.durationMs != null" class="traj-duration">{{
+                formatDurationMs(rec.toolCall.durationMs)
+              }}</span>
+              <span v-if="totalTokensOf(rec)" class="traj-duration"
+                >{{ totalTokensOf(rec) }} tok</span
+              >
+              <span
+                v-if="rec.kind === 'tool'"
+                class="traj-tool-status"
+                :class="rec.toolCall?.status"
+                >{{ toolStatusLabel(rec) }}</span
+              >
             </div>
           </div>
           <!-- plan 行展开体：步骤清单 + 状态符号 -->
@@ -315,14 +358,21 @@ function turnDuration(turnIndex: number): number | null {
 }
 
 function isFirstInTurn(rec: TrajectoryRecord): boolean {
-  return turnKeys.value.get(rec.turnIndex)?.first === true && firstRecordOfTurn(rec.turnIndex) === rec.recordId
+  return (
+    turnKeys.value.get(rec.turnIndex)?.first === true &&
+    firstRecordOfTurn(rec.turnIndex) === rec.recordId
+  )
 }
 function firstRecordOfTurn(turnIndex: number): string | null {
   const r = records.value.find((x) => x.turnIndex === turnIndex)
   return r?.recordId ?? null
 }
 function isCallsFolded(rec: TrajectoryRecord): boolean {
-  return isAssistantDecision(rec) && collapsedAssistants.value.has(rec.recordId) && !!rec.childToolRecordIds?.length
+  return (
+    isAssistantDecision(rec) &&
+    collapsedAssistants.value.has(rec.recordId) &&
+    !!rec.childToolRecordIds?.length
+  )
 }
 function isAssistantDecision(rec: TrajectoryRecord): boolean {
   return rec.kind === 'assistant' && !!rec.toolCalls?.length
@@ -333,9 +383,13 @@ const allTurnsCollapsed = computed(
   () => records.value.length > 0 && collapsedTurns.value.size >= turnKeys.value.size,
 )
 const hasAssistantDecisions = computed(() => records.value.some(isAssistantDecision))
-const allAssistantDecisionIds = computed(() => records.value.filter(isAssistantDecision).map((r) => r.recordId))
+const allAssistantDecisionIds = computed(() =>
+  records.value.filter(isAssistantDecision).map((r) => r.recordId),
+)
 const allCallsCollapsed = computed(
-  () => hasAssistantDecisions.value && allAssistantDecisionIds.value.every((id) => collapsedAssistants.value.has(id)),
+  () =>
+    hasAssistantDecisions.value &&
+    allAssistantDecisionIds.value.every((id) => collapsedAssistants.value.has(id)),
 )
 function toggleAllTurns() {
   if (allTurnsCollapsed.value) {
@@ -393,7 +447,11 @@ const visibleRecords = computed<TrajectoryRecord[]>(() => {
     // turn 折叠：隐藏 turn 内非首条
     if (collapsedTurns.value.has(rec.turnIndex) && !isFirstInTurn(rec)) continue
     // calls 折叠：隐藏 assistant 决策下的 tool 记录
-    if (rec.kind === 'tool' && rec.parentAssistantRecordId && collapsedAssistants.value.has(rec.parentAssistantRecordId)) {
+    if (
+      rec.kind === 'tool' &&
+      rec.parentAssistantRecordId &&
+      collapsedAssistants.value.has(rec.parentAssistantRecordId)
+    ) {
       continue
     }
     out.push(rec)
@@ -404,14 +462,18 @@ const visibleRecords = computed<TrajectoryRecord[]>(() => {
 // ===== hierarchy 跳转 =====
 function selectRecord(recordId: string) {
   // auto un-fold：目标所在 turn / 父 assistant calls 折叠则先展开
-  const target = recordId === 'system' ? systemRecord.value : records.value.find((r) => r.recordId === recordId)
+  const target =
+    recordId === 'system' ? systemRecord.value : records.value.find((r) => r.recordId === recordId)
   if (target && target.kind !== 'system') {
     if (collapsedTurns.value.has(target.turnIndex)) {
       const next = new Set(collapsedTurns.value)
       next.delete(target.turnIndex)
       collapsedTurns.value = next
     }
-    if (target.parentAssistantRecordId && collapsedAssistants.value.has(target.parentAssistantRecordId)) {
+    if (
+      target.parentAssistantRecordId &&
+      collapsedAssistants.value.has(target.parentAssistantRecordId)
+    ) {
       const next = new Set(collapsedAssistants.value)
       next.delete(target.parentAssistantRecordId)
       collapsedAssistants.value = next
@@ -477,13 +539,20 @@ function onResizeKey(e: KeyboardEvent) {
 // ===== helpers =====
 function roleLabel(kind: TrajectoryRecord['kind']): string {
   switch (kind) {
-    case 'user': return 'USER'
-    case 'assistant': return 'ASSISTANT'
-    case 'tool': return 'TOOL'
-    case 'compaction': return 'COMPACTED'
-    case 'system': return 'SYSTEM'
-    case 'plan': return 'PLAN'
-    case 'notice': return 'NOTICE'
+    case 'user':
+      return 'USER'
+    case 'assistant':
+      return 'ASSISTANT'
+    case 'tool':
+      return 'TOOL'
+    case 'compaction':
+      return 'COMPACTED'
+    case 'system':
+      return 'SYSTEM'
+    case 'plan':
+      return 'PLAN'
+    case 'notice':
+      return 'NOTICE'
   }
 }
 function firstLine(text: string | null | undefined, max = 120): string {
@@ -511,11 +580,16 @@ function isToolFailed(rec: TrajectoryRecord): boolean {
 }
 function toolStatusLabel(rec: TrajectoryRecord): string {
   switch (rec.toolCall?.status) {
-    case 'running': return '执行中'
-    case 'completed': return '完成'
-    case 'failed': return '失败'
-    case 'pending': return '等待'
-    default: return ''
+    case 'running':
+      return '执行中'
+    case 'completed':
+      return '完成'
+    case 'failed':
+      return '失败'
+    case 'pending':
+      return '等待'
+    default:
+      return ''
   }
 }
 function compactionSummary(rec: TrajectoryRecord): string {
@@ -641,7 +715,9 @@ function cssEscape(s: string): string {
   user-select: none;
   font-size: var(--text-xs);
   color: var(--color-text-muted);
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 .traj-turn-header:first-child {
   margin-top: 0;
@@ -739,13 +815,34 @@ function cssEscape(s: string): string {
   color: var(--color-text-secondary);
 }
 /* role 徽章：文字色取 500 档中间明度，亮/暗卡上都可读 */
-.traj-role.user { background: var(--color-primary-muted); color: var(--color-text); }
-.traj-role.assistant { background: rgba(99, 102, 241, 0.12); color: #6366f1; }
-.traj-role.tool { background: rgba(20, 184, 166, 0.12); color: #14b8a6; }
-.traj-role.system { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
-.traj-role.compaction { background: var(--color-primary-muted); color: var(--color-text-secondary); }
-.traj-role.plan { background: rgba(139, 92, 246, 0.12); color: #8b5cf6; }
-.traj-role.notice { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
+.traj-role.user {
+  background: var(--color-primary-muted);
+  color: var(--color-text);
+}
+.traj-role.assistant {
+  background: rgba(99, 102, 241, 0.12);
+  color: #6366f1;
+}
+.traj-role.tool {
+  background: rgba(20, 184, 166, 0.12);
+  color: #14b8a6;
+}
+.traj-role.system {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+.traj-role.compaction {
+  background: var(--color-primary-muted);
+  color: var(--color-text-secondary);
+}
+.traj-role.plan {
+  background: rgba(139, 92, 246, 0.12);
+  color: #8b5cf6;
+}
+.traj-role.notice {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
 
 .traj-iter {
   flex-shrink: 0;
@@ -834,10 +931,22 @@ function cssEscape(s: string): string {
   border-radius: var(--radius-full);
   font-size: 10px;
 }
-.traj-tool-status.completed { background: var(--color-primary-muted); color: var(--color-text-secondary); }
-.traj-tool-status.running { background: var(--color-warning-subtle); color: var(--color-warning); }
-.traj-tool-status.failed { background: var(--color-danger-subtle); color: var(--color-danger); }
-.traj-tool-status.pending { background: var(--color-primary-muted); color: var(--color-text-muted); }
+.traj-tool-status.completed {
+  background: var(--color-primary-muted);
+  color: var(--color-text-secondary);
+}
+.traj-tool-status.running {
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
+}
+.traj-tool-status.failed {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+.traj-tool-status.pending {
+  background: var(--color-primary-muted);
+  color: var(--color-text-muted);
+}
 
 /* compaction 行展开体 */
 .traj-compaction-body {

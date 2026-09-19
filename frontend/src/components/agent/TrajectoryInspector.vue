@@ -45,11 +45,26 @@
           <!-- assistant 决策 -->
           <template v-else-if="record.kind === 'assistant' && record.toolCalls?.length">
             <dl class="insp-overview">
-              <div class="ov-row"><dt>类型</dt><dd>决策（调用 {{ record.toolCalls.length }} 个工具）</dd></div>
-              <div v-if="record.isToolCallOnly" class="ov-row"><dt>文本</dt><dd class="ov-muted">（tool call only，无 reasoning/content）</dd></div>
-              <div v-if="record.msg.iteration != null" class="ov-row"><dt>轮次</dt><dd>L{{ record.msg.iteration }}</dd></div>
-              <div v-if="record.durationMs != null" class="ov-row"><dt>耗时</dt><dd>{{ formatDurationMs(record.durationMs) }}</dd></div>
-              <div v-if="totalTokens" class="ov-row"><dt>Tokens</dt><dd>{{ totalTokens }}</dd></div>
+              <div class="ov-row">
+                <dt>类型</dt>
+                <dd>决策（调用 {{ record.toolCalls.length }} 个工具）</dd>
+              </div>
+              <div v-if="record.isToolCallOnly" class="ov-row">
+                <dt>文本</dt>
+                <dd class="ov-muted">（tool call only，无 reasoning/content）</dd>
+              </div>
+              <div v-if="record.msg.iteration != null" class="ov-row">
+                <dt>轮次</dt>
+                <dd>L{{ record.msg.iteration }}</dd>
+              </div>
+              <div v-if="record.durationMs != null" class="ov-row">
+                <dt>耗时</dt>
+                <dd>{{ formatDurationMs(record.durationMs) }}</dd>
+              </div>
+              <div v-if="totalTokens" class="ov-row">
+                <dt>Tokens</dt>
+                <dd>{{ totalTokens }}</dd>
+              </div>
             </dl>
             <div v-if="record.msg.reasoning" class="insp-section">
               <div class="insp-label">思考预览</div>
@@ -64,10 +79,22 @@
           <!-- assistant 最终 -->
           <template v-else-if="record.kind === 'assistant'">
             <dl class="insp-overview">
-              <div class="ov-row"><dt>类型</dt><dd>最终回答</dd></div>
-              <div v-if="record.msg.iteration != null" class="ov-row"><dt>轮次</dt><dd>L{{ record.msg.iteration }}</dd></div>
-              <div v-if="record.durationMs != null" class="ov-row"><dt>耗时</dt><dd>{{ formatDurationMs(record.durationMs) }}</dd></div>
-              <div v-if="totalTokens" class="ov-row"><dt>Tokens</dt><dd>{{ totalTokens }}</dd></div>
+              <div class="ov-row">
+                <dt>类型</dt>
+                <dd>最终回答</dd>
+              </div>
+              <div v-if="record.msg.iteration != null" class="ov-row">
+                <dt>轮次</dt>
+                <dd>L{{ record.msg.iteration }}</dd>
+              </div>
+              <div v-if="record.durationMs != null" class="ov-row">
+                <dt>耗时</dt>
+                <dd>{{ formatDurationMs(record.durationMs) }}</dd>
+              </div>
+              <div v-if="totalTokens" class="ov-row">
+                <dt>Tokens</dt>
+                <dd>{{ totalTokens }}</dd>
+              </div>
             </dl>
             <div v-if="record.msg.content" class="insp-section">
               <div class="insp-label">回答预览</div>
@@ -78,12 +105,26 @@
           <!-- tool -->
           <template v-else-if="record.kind === 'tool'">
             <dl class="insp-overview">
-              <div class="ov-row"><dt>工具</dt><dd class="ov-mono">{{ record.msg.tool_name || record.toolCall?.toolName }}</dd></div>
-              <div class="ov-row"><dt>状态</dt><dd><span class="status-pill" :class="toolStatus">{{ toolStatusLabel }}</span></dd></div>
-              <div v-if="record.toolCall?.durationMs != null" class="ov-row"><dt>耗时</dt><dd>{{ formatDurationMs(record.toolCall.durationMs) }}</dd></div>
+              <div class="ov-row">
+                <dt>工具</dt>
+                <dd class="ov-mono">{{ record.msg.tool_name || record.toolCall?.toolName }}</dd>
+              </div>
+              <div class="ov-row">
+                <dt>状态</dt>
+                <dd>
+                  <span class="status-pill" :class="toolStatus">{{ toolStatusLabel }}</span>
+                </dd>
+              </div>
+              <div v-if="record.toolCall?.durationMs != null" class="ov-row">
+                <dt>耗时</dt>
+                <dd>{{ formatDurationMs(record.toolCall.durationMs) }}</dd>
+              </div>
             </dl>
             <div v-if="record.parentAssistantRecordId" class="insp-section">
-              <button class="hierarchy-btn" @click="$emit('select-record', record.parentAssistantRecordId)">
+              <button
+                class="hierarchy-btn"
+                @click="$emit('select-record', record.parentAssistantRecordId)"
+              >
                 <el-icon :size="12"><Top /></el-icon>
                 <span>跳转到父 Assistant 决策</span>
               </button>
@@ -101,8 +142,14 @@
           <!-- plan -->
           <template v-else-if="record.kind === 'plan'">
             <dl class="insp-overview">
-              <div class="ov-row"><dt>标题</dt><dd>{{ planTitle || '—' }}</dd></div>
-              <div class="ov-row"><dt>步数</dt><dd>{{ planStepsList.length }}</dd></div>
+              <div class="ov-row">
+                <dt>标题</dt>
+                <dd>{{ planTitle || '—' }}</dd>
+              </div>
+              <div class="ov-row">
+                <dt>步数</dt>
+                <dd>{{ planStepsList.length }}</dd>
+              </div>
             </dl>
             <div class="insp-section">
               <div class="insp-label">计划步骤</div>
@@ -129,7 +176,9 @@
           <div class="insp-label">System Prompt 全文</div>
           <div v-if="systemPromptLoading" class="insp-hint">加载中…</div>
           <div v-else-if="systemPromptError" class="insp-hint error">{{ systemPromptError }}</div>
-          <div v-else-if="systemPromptText" class="insp-md"><MarkdownRenderer :content="systemPromptText" /></div>
+          <div v-else-if="systemPromptText" class="insp-md">
+            <MarkdownRenderer :content="systemPromptText" />
+          </div>
           <div v-else class="insp-hint">暂无 system prompt</div>
         </section>
 
@@ -154,14 +203,18 @@
         <!-- ===== Thinking ===== -->
         <section v-else-if="activeTab === 'thinking'" class="insp-section">
           <div class="insp-label">思考过程</div>
-          <div v-if="record.msg.reasoning" class="insp-md"><MarkdownRenderer :content="record.msg.reasoning" /></div>
+          <div v-if="record.msg.reasoning" class="insp-md">
+            <MarkdownRenderer :content="record.msg.reasoning" />
+          </div>
           <div v-else class="insp-hint">无思考内容</div>
         </section>
 
         <!-- ===== Content ===== -->
         <section v-else-if="activeTab === 'content'" class="insp-section">
           <div class="insp-label">内容</div>
-          <div v-if="record.msg.content" class="insp-md"><MarkdownRenderer :content="record.msg.content" /></div>
+          <div v-if="record.msg.content" class="insp-md">
+            <MarkdownRenderer :content="record.msg.content" />
+          </div>
           <div v-else class="insp-hint">无文本内容</div>
         </section>
 
@@ -171,7 +224,11 @@
           <div v-for="tc in record.toolCalls" :key="tc.id" class="tc-block">
             <div class="tc-head">
               <span class="tc-name">{{ tc.function.name }}</span>
-              <button class="tc-jump" title="跳转到工具记录" @click="$emit('select-tool-call', tc.id)">
+              <button
+                class="tc-jump"
+                title="跳转到工具记录"
+                @click="$emit('select-tool-call', tc.id)"
+              >
                 <el-icon :size="11"><Right /></el-icon>
                 <span>记录</span>
               </button>
@@ -190,10 +247,19 @@
         <!-- ===== Result（tool 结果） ===== -->
         <section v-else-if="activeTab === 'result'" class="insp-section">
           <div class="insp-label">结果</div>
-          <div v-if="toolStatus === 'running' && !record.toolCall?.result" class="insp-hint">执行中…</div>
+          <div v-if="toolStatus === 'running' && !record.toolCall?.result" class="insp-hint">
+            执行中…
+          </div>
           <template v-else-if="record.toolCall?.result">
-            <JsonTree v-if="parsedResult" :data="parsedResult" :default-expanded="2" :class="{ error: toolStatus === 'failed' }" />
-            <pre v-else class="insp-pre" :class="{ error: toolStatus === 'failed' }">{{ record.toolCall.result }}</pre>
+            <JsonTree
+              v-if="parsedResult"
+              :data="parsedResult"
+              :default-expanded="2"
+              :class="{ error: toolStatus === 'failed' }"
+            />
+            <pre v-else class="insp-pre" :class="{ error: toolStatus === 'failed' }">{{
+              record.toolCall.result
+            }}</pre>
           </template>
           <div v-else class="insp-hint">无结果</div>
         </section>
@@ -202,19 +268,18 @@
         <section v-else-if="activeTab === 'sources'" class="insp-section">
           <div class="insp-label">引用来源（{{ record.msg.sources?.length || 0 }}）</div>
           <div v-if="!record.msg.sources?.length" class="insp-hint">无引用</div>
-          <div
-            v-for="s in record.msg.sources"
-            :key="s.index"
-            class="source-card"
-            :class="s.kind"
-          >
+          <div v-for="s in record.msg.sources" :key="s.index" class="source-card" :class="s.kind">
             <span class="source-idx">{{ s.index }}</span>
             <div class="source-meta">
               <div class="source-name-row">
                 <span class="source-name">{{ s.document_name || s.url || `来源 ${s.index}` }}</span>
-                <span class="source-kind-tag" :class="s.kind">{{ s.kind === 'web' ? '联网' : '知识库' }}</span>
+                <span class="source-kind-tag" :class="s.kind">{{
+                  s.kind === 'web' ? '联网' : '知识库'
+                }}</span>
               </div>
-              <div v-if="s.score != null" class="source-sub">相关度 {{ Math.round(s.score * 100) }}%</div>
+              <div v-if="s.score != null" class="source-sub">
+                相关度 {{ Math.round(s.score * 100) }}%
+              </div>
               <div v-if="s.snippet" class="source-snippet">{{ s.snippet }}</div>
             </div>
           </div>
@@ -227,7 +292,9 @@
           <div v-for="att in attachments" :key="att.filename" class="att-card">
             <span class="att-ext">{{ fileExt(att.filename) }}</span>
             <span class="att-name">{{ att.filename }}</span>
-            <span v-if="att.file_size != null" class="att-size">{{ formatFileSize(att.file_size) }}</span>
+            <span v-if="att.file_size != null" class="att-size">{{
+              formatFileSize(att.file_size)
+            }}</span>
           </div>
         </section>
 
@@ -235,14 +302,38 @@
         <section v-else-if="activeTab === 'timing'" class="insp-section">
           <div class="insp-label">耗时与 Token</div>
           <dl class="insp-overview">
-            <div v-if="record.durationMs != null" class="ov-row"><dt>LLM 耗时</dt><dd>{{ formatDurationMs(record.durationMs) }}</dd></div>
-            <div v-if="record.toolCall?.durationMs != null" class="ov-row"><dt>工具耗时</dt><dd>{{ formatDurationMs(record.toolCall.durationMs) }}</dd></div>
-            <div v-if="record.usage?.input_tokens != null" class="ov-row"><dt>Input</dt><dd>{{ record.usage.input_tokens }}</dd></div>
-            <div v-if="record.usage?.cache_read_tokens != null" class="ov-row"><dt>Cache Read</dt><dd>{{ record.usage.cache_read_tokens }}</dd></div>
-            <div v-if="record.usage?.cache_write_tokens != null" class="ov-row"><dt>Cache Write</dt><dd>{{ record.usage.cache_write_tokens }}</dd></div>
-            <div v-if="record.usage?.output_tokens != null" class="ov-row"><dt>Output</dt><dd>{{ record.usage.output_tokens }}</dd></div>
-            <div v-if="record.usage?.reasoning_tokens != null" class="ov-row"><dt>Reasoning</dt><dd>{{ record.usage.reasoning_tokens }}</dd></div>
-            <div v-if="totalTokens" class="ov-row"><dt>Total</dt><dd>{{ totalTokens }}</dd></div>
+            <div v-if="record.durationMs != null" class="ov-row">
+              <dt>LLM 耗时</dt>
+              <dd>{{ formatDurationMs(record.durationMs) }}</dd>
+            </div>
+            <div v-if="record.toolCall?.durationMs != null" class="ov-row">
+              <dt>工具耗时</dt>
+              <dd>{{ formatDurationMs(record.toolCall.durationMs) }}</dd>
+            </div>
+            <div v-if="record.usage?.input_tokens != null" class="ov-row">
+              <dt>Input</dt>
+              <dd>{{ record.usage.input_tokens }}</dd>
+            </div>
+            <div v-if="record.usage?.cache_read_tokens != null" class="ov-row">
+              <dt>Cache Read</dt>
+              <dd>{{ record.usage.cache_read_tokens }}</dd>
+            </div>
+            <div v-if="record.usage?.cache_write_tokens != null" class="ov-row">
+              <dt>Cache Write</dt>
+              <dd>{{ record.usage.cache_write_tokens }}</dd>
+            </div>
+            <div v-if="record.usage?.output_tokens != null" class="ov-row">
+              <dt>Output</dt>
+              <dd>{{ record.usage.output_tokens }}</dd>
+            </div>
+            <div v-if="record.usage?.reasoning_tokens != null" class="ov-row">
+              <dt>Reasoning</dt>
+              <dd>{{ record.usage.reasoning_tokens }}</dd>
+            </div>
+            <div v-if="totalTokens" class="ov-row">
+              <dt>Total</dt>
+              <dd>{{ totalTokens }}</dd>
+            </div>
           </dl>
         </section>
       </div>
@@ -416,10 +507,16 @@ const toolStatus = computed<ToolCallRecord['status']>(() => {
 })
 const toolStatusLabel = computed(() => {
   switch (toolStatus.value) {
-    case 'running': return '执行中'
-    case 'completed': return '完成'
-    case 'failed': return '失败'
-    case 'pending': return '等待中'
+    case 'running':
+      return '执行中'
+    case 'completed':
+      return '完成'
+    case 'failed':
+      return '失败'
+    case 'pending':
+      return '等待中'
+    default:
+      return toolStatus.value
   }
 })
 
@@ -435,22 +532,31 @@ const parsedResult = computed(() => {
 
 const attachments = computed(
   () =>
-    (props.record?.msg.extra?.attachments as Array<{
-      filename: string
-      file_size?: number
-      file_type?: string
-    }> | undefined) ?? [],
+    (props.record?.msg.extra?.attachments as
+      | Array<{
+          filename: string
+          file_size?: number
+          file_type?: string
+        }>
+      | undefined) ?? [],
 )
 
 function kindLabel(kind: TrajectoryRecord['kind'] | 'system'): string {
   switch (kind) {
-    case 'user': return 'USER'
-    case 'assistant': return 'ASSISTANT'
-    case 'tool': return 'TOOL'
-    case 'compaction': return 'COMPACTED'
-    case 'system': return 'SYSTEM'
-    case 'plan': return 'PLAN'
-    case 'notice': return 'NOTICE'
+    case 'user':
+      return 'USER'
+    case 'assistant':
+      return 'ASSISTANT'
+    case 'tool':
+      return 'TOOL'
+    case 'compaction':
+      return 'COMPACTED'
+    case 'system':
+      return 'SYSTEM'
+    case 'plan':
+      return 'PLAN'
+    case 'notice':
+      return 'NOTICE'
   }
 }
 
@@ -500,7 +606,12 @@ async function loadSystemPrompt() {
 watch(
   () => [props.record?.kind, activeTab.value] as const,
   ([kind, tab]) => {
-    if (kind === 'system' && tab === 'system-prompt' && !systemPromptText.value && !systemPromptLoading.value) {
+    if (
+      kind === 'system' &&
+      tab === 'system-prompt' &&
+      !systemPromptText.value &&
+      !systemPromptLoading.value
+    ) {
       loadSystemPrompt()
     }
   },
@@ -566,13 +677,34 @@ if (!agentStore.tools.length) {
   background: var(--color-bg-hover);
   color: var(--color-text-secondary);
 }
-.inspector-kind.user { background: rgba(17, 24, 39, 0.08); color: var(--color-text); }
-.inspector-kind.assistant { background: rgba(99, 102, 241, 0.12); color: #4338ca; }
-.inspector-kind.tool { background: rgba(20, 184, 166, 0.12); color: #0f766e; }
-.inspector-kind.system { background: rgba(245, 158, 11, 0.12); color: #b45309; }
-.inspector-kind.compaction { background: rgba(107, 114, 128, 0.12); color: #4b5563; }
-.inspector-kind.plan { background: rgba(139, 92, 246, 0.12); color: #6d28d9; }
-.inspector-kind.notice { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+.inspector-kind.user {
+  background: rgba(17, 24, 39, 0.08);
+  color: var(--color-text);
+}
+.inspector-kind.assistant {
+  background: rgba(99, 102, 241, 0.12);
+  color: #4338ca;
+}
+.inspector-kind.tool {
+  background: rgba(20, 184, 166, 0.12);
+  color: #0f766e;
+}
+.inspector-kind.system {
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+}
+.inspector-kind.compaction {
+  background: rgba(107, 114, 128, 0.12);
+  color: #4b5563;
+}
+.inspector-kind.plan {
+  background: rgba(139, 92, 246, 0.12);
+  color: #6d28d9;
+}
+.inspector-kind.notice {
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+}
 
 .inspector-loc {
   flex: 1;
@@ -719,8 +851,13 @@ if (!agentStore.tools.length) {
 .ov-row dd {
   color: var(--color-text);
 }
-.ov-row .ov-muted { color: var(--color-text-muted); font-style: italic; }
-.ov-mono { font-family: var(--font-mono, ui-monospace, monospace); }
+.ov-row .ov-muted {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+.ov-mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
 
 .status-pill {
   font-size: 10px;
@@ -729,8 +866,14 @@ if (!agentStore.tools.length) {
   background: rgba(17, 24, 39, 0.06);
   color: var(--color-text-secondary);
 }
-.status-pill.running { background: #fef9c3; color: #a16207; }
-.status-pill.failed { background: #fee2e2; color: #b91c1c; }
+.status-pill.running {
+  background: #fef9c3;
+  color: #a16207;
+}
+.status-pill.failed {
+  background: #fee2e2;
+  color: #b91c1c;
+}
 
 /* hierarchy 跳转按钮 */
 .hierarchy-btn {
@@ -777,8 +920,12 @@ if (!agentStore.tools.length) {
   font-size: var(--text-xs);
   list-style: none;
 }
-.tool-summary::-webkit-details-marker { display: none; }
-.tool-glyph { flex-shrink: 0; }
+.tool-summary::-webkit-details-marker {
+  display: none;
+}
+.tool-glyph {
+  flex-shrink: 0;
+}
 .tool-name-mono {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-weight: 600;
@@ -895,8 +1042,14 @@ if (!agentStore.tools.length) {
   border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
-.source-kind-tag.web { background: rgba(17, 24, 39, 0.12); color: var(--color-text); }
-.source-kind-tag.kb { background: rgba(17, 24, 39, 0.08); color: var(--color-text-secondary); }
+.source-kind-tag.web {
+  background: rgba(17, 24, 39, 0.12);
+  color: var(--color-text);
+}
+.source-kind-tag.kb {
+  background: rgba(17, 24, 39, 0.08);
+  color: var(--color-text-secondary);
+}
 .source-sub {
   font-size: var(--text-xs);
   color: var(--color-text-muted);

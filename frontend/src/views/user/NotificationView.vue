@@ -34,13 +34,19 @@
             :key="type"
             :value="type"
             :label="label"
-          >{{ label }}</el-checkbox>
+            >{{ label }}</el-checkbox
+          >
         </el-checkbox-group>
       </div>
     </div>
 
     <div class="notification-toolbar">
-      <el-button type="primary" link :disabled="notifStore.unreadCount === 0" @click="handleMarkAllRead">
+      <el-button
+        type="primary"
+        link
+        :disabled="notifStore.unreadCount === 0"
+        @click="handleMarkAllRead"
+      >
         全部标记为已读
       </el-button>
     </div>
@@ -251,7 +257,9 @@ watch(settingsOpen, (open) => {
   border: 1px solid var(--color-border-light);
   margin-bottom: var(--space-3);
   cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
 .notification-card:hover {

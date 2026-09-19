@@ -184,7 +184,11 @@ describe('api/index', () => {
     instanceCall.mockResolvedValue({ data: { ok: true } })
 
     const firstRequest = { headers: {} as Record<string, unknown>, _retry: false, url: '/secure/1' }
-    const secondRequest = { headers: {} as Record<string, unknown>, _retry: false, url: '/secure/2' }
+    const secondRequest = {
+      headers: {} as Record<string, unknown>,
+      _retry: false,
+      url: '/secure/2',
+    }
 
     const firstPromise = responseErrorHandler?.({
       config: firstRequest,
@@ -299,9 +303,9 @@ describe('api/index', () => {
 
     const { createSSEStream } = await loadApiModule()
 
-    await expect(
-      createSSEStream('/chat/stream', {}, { onMessage: vi.fn() }),
-    ).rejects.toThrow('stream failed')
+    await expect(createSSEStream('/chat/stream', {}, { onMessage: vi.fn() })).rejects.toThrow(
+      'stream failed',
+    )
   })
 
   // ===== createWebSocketStream =====
@@ -334,11 +338,7 @@ describe('api/index', () => {
     const onMessage = vi.fn()
     const body = { message: 'hi' }
 
-    const promise = createWebSocketStream(
-      '/agent/agents/1/ws',
-      body,
-      { onMessage },
-    )
+    const promise = createWebSocketStream('/agent/agents/1/ws', body, { onMessage })
 
     const ws = MockWebSocket.instances[0]!
 
@@ -371,11 +371,7 @@ describe('api/index', () => {
     const { createWebSocketStream } = await loadApiModule()
     const onMessage = vi.fn()
 
-    const promise = createWebSocketStream(
-      '/agent/agents/1/ws',
-      { message: 'hi' },
-      { onMessage },
-    )
+    const promise = createWebSocketStream('/agent/agents/1/ws', { message: 'hi' }, { onMessage })
 
     const ws = MockWebSocket.instances[0]!
     // 直接 close 4401（握手期认证失败，未 onopen）

@@ -150,7 +150,8 @@ const rules = {
   ],
   confirmPassword: [
     { required: true, message: '请确认密码', trigger: 'blur' },
-    { validator: (_rule: unknown, value: string, callback: (e?: Error) => void) => {
+    {
+      validator: (_rule: unknown, value: string, callback: (e?: Error) => void) => {
         if (value !== form.password) {
           callback(new Error('两次输入的密码不一致'))
         } else {
@@ -164,11 +165,16 @@ const rules = {
 
 function extractErrorMessage(error: unknown): string {
   const err = error as {
-    response?: { data?: { error?: { message?: string; details?: Array<{ field?: string; message?: string }> } } }
+    response?: {
+      data?: { error?: { message?: string; details?: Array<{ field?: string; message?: string }> } }
+    }
   }
   const apiError = err?.response?.data?.error
   if (apiError?.details?.length) {
-    return apiError.details.map((d) => d.message).filter(Boolean).join('；')
+    return apiError.details
+      .map((d) => d.message)
+      .filter(Boolean)
+      .join('；')
   }
   return apiError?.message || '注册失败'
 }
@@ -181,7 +187,7 @@ const handleRegister = async () => {
 
     loading.value = true
     try {
-      const { confirmPassword: _omit, ...registerData } = form
+      const { confirmPassword: _confirmPassword, ...registerData } = form
       const payload: RegisterRequest = registerData.phone
         ? registerData
         : { ...registerData, phone: undefined }

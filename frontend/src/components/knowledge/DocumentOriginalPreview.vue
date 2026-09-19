@@ -8,7 +8,10 @@
         </div>
         <div class="source-detail">
           <p class="source-filename">{{ document?.filename }}</p>
-          <p class="source-meta">{{ formatFileSize(document?.file_size || 0) }} · {{ (document?.file_type || 'FILE').toUpperCase() }}</p>
+          <p class="source-meta">
+            {{ formatFileSize(document?.file_size || 0) }} ·
+            {{ (document?.file_type || 'FILE').toUpperCase() }}
+          </p>
         </div>
       </div>
       <div class="file-actions">
@@ -31,11 +34,7 @@
           <el-icon v-if="!downloadingParsed"><Download /></el-icon>
           下载解析 MD
         </el-button>
-        <el-button
-          size="small"
-          :loading="downloadingSource"
-          @click="handleDownloadSource"
-        >
+        <el-button size="small" :loading="downloadingSource" @click="handleDownloadSource">
           <el-icon><Download /></el-icon>
           下载源文件
         </el-button>
@@ -113,7 +112,9 @@
           </template>
         </el-input>
         <div v-if="searchQuery" class="search-nav">
-          <span class="search-count">{{ totalMatches > 0 ? currentMatchIndex : 0 }}/{{ totalMatches }}</span>
+          <span class="search-count"
+            >{{ totalMatches > 0 ? currentMatchIndex : 0 }}/{{ totalMatches }}</span
+          >
           <el-button size="small" circle :disabled="totalMatches === 0" @click="prevMatch">
             <el-icon><ArrowUp /></el-icon>
           </el-button>
@@ -140,14 +141,28 @@
       class="image-preview-dialog"
       destroy-on-close
     >
-      <img v-if="previewUrl" :src="previewUrl" style="max-width: 90vw; max-height: 80vh; object-fit: contain; display: block; margin: auto" />
+      <img
+        v-if="previewUrl"
+        :src="previewUrl"
+        style="max-width: 90vw; max-height: 80vh; object-fit: contain; display: block; margin: auto"
+      />
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { Close, Download, Document, Headset, VideoCamera, View, Search, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
+import {
+  Close,
+  Download,
+  Document,
+  Headset,
+  VideoCamera,
+  View,
+  Search,
+  ArrowUp,
+  ArrowDown,
+} from '@element-plus/icons-vue'
 import { documentApi } from '@/api/knowledge'
 import { getFileTypeCategory } from './document'
 import { formatFileSize } from '@/utils/format'
@@ -167,10 +182,14 @@ const category = computed(() => {
 
 const sourceIcon = computed(() => {
   switch (category.value) {
-    case 'image': return Document
-    case 'video': return VideoCamera
-    case 'audio': return Headset
-    default: return Document
+    case 'image':
+      return Document
+    case 'video':
+      return VideoCamera
+    case 'audio':
+      return Headset
+    default:
+      return Document
   }
 })
 
@@ -208,7 +227,9 @@ async function loadPreviewUrl() {
   }
   try {
     previewUrl.value = await documentApi.getDocumentPreviewBlobUrl(
-      props.spaceId, props.kbId, props.document.id
+      props.spaceId,
+      props.kbId,
+      props.document.id,
     )
   } catch {
     previewUrl.value = ''
@@ -217,13 +238,16 @@ async function loadPreviewUrl() {
 
 onMounted(loadPreviewUrl)
 
-watch(() => props.document?.id, () => {
-  loadPreviewUrl()
-  // 文档切换时重置原文数据
-  parsedText.value = ''
-  textError.value = ''
-  originalDialogVisible.value = false
-})
+watch(
+  () => props.document?.id,
+  () => {
+    loadPreviewUrl()
+    // 文档切换时重置原文数据
+    parsedText.value = ''
+    textError.value = ''
+    originalDialogVisible.value = false
+  },
+)
 
 onUnmounted(() => {
   if (previewUrl.value) {
@@ -246,7 +270,9 @@ async function handleViewOriginal() {
   textError.value = ''
   try {
     parsedText.value = await documentApi.getDocumentParsedText(
-      props.spaceId, props.kbId, props.document!.id
+      props.spaceId,
+      props.kbId,
+      props.document!.id,
     )
   } catch (err: unknown) {
     const status = (err as { response?: { status?: number } })?.response?.status
@@ -267,7 +293,10 @@ async function handleDownloadSource() {
   downloadingSource.value = true
   try {
     await documentApi.downloadDocument(
-      props.spaceId, props.kbId, props.document.id, props.document.filename
+      props.spaceId,
+      props.kbId,
+      props.document.id,
+      props.document.filename,
     )
   } catch {
     // 下载失败已在 interceptor 处理
@@ -283,7 +312,10 @@ async function handleDownloadParsed() {
   try {
     const stem = props.document.filename?.replace(/\.[^.]*$/, '') || props.document.filename
     await documentApi.downloadDocumentParsedText(
-      props.spaceId, props.kbId, props.document.id, `${stem}.md`
+      props.spaceId,
+      props.kbId,
+      props.document.id,
+      `${stem}.md`,
     )
   } catch {
     // 下载失败已在 interceptor 处理
@@ -346,7 +378,11 @@ function applySearch() {
     const parent = node.parentElement
     if (!parent) continue
     if (parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE') continue
-    if (parent.classList.contains('search-highlight') || parent.classList.contains('search-highlight-current')) continue
+    if (
+      parent.classList.contains('search-highlight') ||
+      parent.classList.contains('search-highlight-current')
+    )
+      continue
     if (!node.textContent) continue
     textNodes.push(node)
   }
@@ -400,8 +436,10 @@ function applySearch() {
 
 function clearHighlights() {
   if (!contentRef.value) return
-  const marks = contentRef.value.querySelectorAll('mark.search-highlight, mark.search-highlight-current')
-  marks.forEach(mark => {
+  const marks = contentRef.value.querySelectorAll(
+    'mark.search-highlight, mark.search-highlight-current',
+  )
+  marks.forEach((mark) => {
     const parent = mark.parentNode
     if (parent) {
       parent.replaceChild(document.createTextNode(mark.textContent || ''), mark)
@@ -426,10 +464,12 @@ function prevMatch() {
 
 function navigateToMatch(index: number) {
   if (!contentRef.value) return
-  const marks = contentRef.value.querySelectorAll('mark.search-highlight, mark.search-highlight-current')
+  const marks = contentRef.value.querySelectorAll(
+    'mark.search-highlight, mark.search-highlight-current',
+  )
   if (index < 0 || index >= marks.length) return
 
-  marks.forEach(m => m.classList.remove('search-highlight-current'))
+  marks.forEach((m) => m.classList.remove('search-highlight-current'))
   const target = marks[index]
   if (!target) return
   target.classList.add('search-highlight-current')
@@ -492,9 +532,18 @@ function navigateToMatch(index: number) {
   flex-shrink: 0;
 }
 
-.source-icon-image { color: var(--color-file-image); background: var(--color-file-image-bg); }
-.source-icon-video { color: var(--color-file-video); background: var(--color-file-video-bg); }
-.source-icon-audio { color: var(--color-file-audio); background: var(--color-file-audio-bg); }
+.source-icon-image {
+  color: var(--color-file-image);
+  background: var(--color-file-image-bg);
+}
+.source-icon-video {
+  color: var(--color-file-video);
+  background: var(--color-file-video-bg);
+}
+.source-icon-audio {
+  color: var(--color-file-audio);
+  background: var(--color-file-audio-bg);
+}
 
 .source-detail {
   display: flex;
@@ -610,7 +659,9 @@ function navigateToMatch(index: number) {
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .original-header__close:hover {

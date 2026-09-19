@@ -14,7 +14,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch } from 'vue'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import type { Chunk } from '@/api/types'
 
@@ -75,7 +75,7 @@ const annotatedMarkdown = computed(() => {
 
   // 按位置逆序排列，从后往前插入标记以避免位置偏移
   const sorted = [...chunkRanges.value]
-    .filter(r => r.start >= 0 && r.end > r.start)
+    .filter((r) => r.start >= 0 && r.end > r.start)
     .sort((a, b) => b.start - a.start)
 
   let text = props.markdown
@@ -99,20 +99,23 @@ function scrollToChunk(chunkIndex: number) {
 }
 
 /** 高亮指定 chunk */
-watch(() => props.hoveredChunkIndex, (newIdx) => {
-  if (!viewerRef.value) return
+watch(
+  () => props.hoveredChunkIndex,
+  (newIdx) => {
+    if (!viewerRef.value) return
 
-  // 清除所有高亮
-  viewerRef.value.querySelectorAll('.chunk-highlight').forEach(el => {
-    el.classList.remove('chunk-highlight')
-  })
+    // 清除所有高亮
+    viewerRef.value.querySelectorAll('.chunk-highlight').forEach((el) => {
+      el.classList.remove('chunk-highlight')
+    })
 
-  // 设置新高亮
-  if (newIdx != null) {
-    const chunkEl = viewerRef.value.querySelectorAll(`[data-chunk-index="${newIdx}"]`)
-    chunkEl.forEach(el => el.classList.add('chunk-highlight'))
-  }
-})
+    // 设置新高亮
+    if (newIdx != null) {
+      const chunkEl = viewerRef.value.querySelectorAll(`[data-chunk-index="${newIdx}"]`)
+      chunkEl.forEach((el) => el.classList.add('chunk-highlight'))
+    }
+  },
+)
 
 defineExpose({ scrollToChunk })
 </script>

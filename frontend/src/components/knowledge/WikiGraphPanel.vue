@@ -14,7 +14,12 @@
         class="center-select"
         @change="loadGraph"
       >
-        <el-option v-for="node in allNodes" :key="node.slug" :label="node.title" :value="node.slug" />
+        <el-option
+          v-for="node in allNodes"
+          :key="node.slug"
+          :label="node.title"
+          :value="node.slug"
+        />
       </el-select>
       <span v-if="graph?.meta.truncated" class="truncated-hint">
         显示 {{ graph.meta.returned }}/{{ graph.meta.total }} 节点
@@ -97,7 +102,8 @@ function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
       slug: node.slug,
       category: categories.indexOf(node.page_type),
       symbolSize: Math.min(22 + node.link_count * 4, 64),
-      itemStyle: node.slug === centerSlug.value ? { borderWidth: 4, borderColor: color } : undefined,
+      itemStyle:
+        node.slug === centerSlug.value ? { borderWidth: 4, borderColor: color } : undefined,
       label: { show: true, fontSize: 11, color: textColor },
       tooltip: {
         title: node.title,
@@ -121,7 +127,10 @@ function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
   return {
     tooltip: {
       confine: true,
-      formatter: (params: { dataType: string; data: { tooltip: { title: string; pageType: string; linkCount: number } } }) => {
+      formatter: (params: {
+        dataType: string
+        data: { tooltip: { title: string; pageType: string; linkCount: number } }
+      }) => {
         if (params.dataType !== 'node') return ''
         const info = params.data.tooltip
         return `<strong>${info.title}</strong><br/>类型：${info.pageType}<br/>链接数：${info.linkCount}`
@@ -200,7 +209,7 @@ watch(
       centerSlug.value = slug
       if (mode.value === 'ego') void loadGraph()
     }
-  }
+  },
 )
 
 onMounted(async () => {

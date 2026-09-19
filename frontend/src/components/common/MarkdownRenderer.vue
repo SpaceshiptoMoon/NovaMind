@@ -15,14 +15,18 @@ const rendered = ref(props.content ? renderMarkdown(props.content) : '')
 let rafId: number | null = null
 let latestContent = props.content
 
-watch(() => props.content, (newVal) => {
-  latestContent = newVal
-  if (rafId !== null) return
-  rafId = requestAnimationFrame(() => {
-    rendered.value = renderMarkdown(latestContent)
-    rafId = null
-  })
-}, { flush: 'sync' })
+watch(
+  () => props.content,
+  (newVal) => {
+    latestContent = newVal
+    if (rafId !== null) return
+    rafId = requestAnimationFrame(() => {
+      rendered.value = renderMarkdown(latestContent)
+      rafId = null
+    })
+  },
+  { flush: 'sync' },
+)
 
 onUnmounted(() => {
   if (rafId !== null) cancelAnimationFrame(rafId)
@@ -47,11 +51,19 @@ onUnmounted(() => {
   color: var(--color-text);
 }
 
-.markdown-body h1 { font-size: var(--text-xl); }
-.markdown-body h2 { font-size: var(--text-xl); }
-.markdown-body h3 { font-size: var(--text-lg); }
+.markdown-body h1 {
+  font-size: var(--text-xl);
+}
+.markdown-body h2 {
+  font-size: var(--text-xl);
+}
+.markdown-body h3 {
+  font-size: var(--text-lg);
+}
 
-.markdown-body p { margin: var(--space-1) 0; }
+.markdown-body p {
+  margin: var(--space-1) 0;
+}
 
 .markdown-body ul,
 .markdown-body ol {
@@ -59,7 +71,9 @@ onUnmounted(() => {
   margin: var(--space-1) 0;
 }
 
-.markdown-body li { margin: var(--space-1) 0; }
+.markdown-body li {
+  margin: var(--space-1) 0;
+}
 
 .markdown-body blockquote {
   margin: var(--space-2) 0;

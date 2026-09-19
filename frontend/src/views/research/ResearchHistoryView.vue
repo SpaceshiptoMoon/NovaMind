@@ -20,7 +20,13 @@
 
     <!-- 筛选 -->
     <div class="filter-bar">
-      <el-select v-model="statusFilter" placeholder="状态筛选" clearable class="status-filter-select" @change="fetchData">
+      <el-select
+        v-model="statusFilter"
+        placeholder="状态筛选"
+        clearable
+        class="status-filter-select"
+        @change="fetchData"
+      >
         <el-option label="全部" value="" />
         <el-option label="进行中" value="running" />
         <el-option label="已完成" value="completed" />
@@ -69,9 +75,7 @@
           <el-button type="primary" link size="small" @click="handleView(row)">
             查看报告
           </el-button>
-          <el-button type="danger" link size="small" @click="handleDelete(row)">
-            删除
-          </el-button>
+          <el-button type="danger" link size="small" @click="handleDelete(row)"> 删除 </el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -82,8 +86,19 @@
       :page-size="pageSize"
       :total="researchStore.total"
       :page-sizes="[10, 20, 50]"
-      @update:page="(p: number) => { currentPage = p; fetchData() }"
-      @update:page-size="(s: number) => { pageSize = s; currentPage = 1; fetchData() }"
+      @update:page="
+        (p: number) => {
+          currentPage = p
+          fetchData()
+        }
+      "
+      @update:page-size="
+        (s: number) => {
+          pageSize = s
+          currentPage = 1
+          fetchData()
+        }
+      "
     />
 
     <!-- 报告详情弹窗 -->
@@ -92,7 +107,12 @@
         <div class="detail-meta">
           <span>问题: {{ detailData.query }}</span>
           <span>模式: {{ getModeText(detailData.research_mode) }}</span>
-          <span>耗时: {{ detailData.stats?.elapsed_seconds ? `${detailData.stats.elapsed_seconds}s` : '-' }}</span>
+          <span
+            >耗时:
+            {{
+              detailData.stats?.elapsed_seconds ? `${detailData.stats.elapsed_seconds}s` : '-'
+            }}</span
+          >
         </div>
 
         <div v-if="detailData.search_summary?.sources?.length" class="detail-sources">
@@ -156,7 +176,10 @@ function getModeType(mode: string): string {
 }
 
 // 状态映射
-const researchStatusMap: Record<string, { text: string; type: 'success' | 'warning' | 'danger' | 'info' | 'primary' }> = {
+const researchStatusMap: Record<
+  string,
+  { text: string; type: 'success' | 'warning' | 'danger' | 'info' | 'primary' }
+> = {
   pending: { text: '等待中', type: 'info' },
   running: { text: '进行中', type: 'warning' },
   completed: { text: '已完成', type: 'success' },
@@ -166,8 +189,11 @@ const researchStatusMap: Record<string, { text: string; type: 'success' | 'warni
 
 function formatDate(date: string): string {
   try {
-    return new Date(date).toLocaleDateString('zh-CN') + ' ' +
+    return (
+      new Date(date).toLocaleDateString('zh-CN') +
+      ' ' +
       new Date(date).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    )
   } catch {
     return '-'
   }
@@ -203,15 +229,11 @@ async function handleView(row: Research) {
 
 async function handleDelete(row: Research) {
   try {
-    await ElMessageBox.confirm(
-      `确定要删除研究记录 "${row.query.slice(0, 30)}..." 吗？`,
-      '提示',
-      {
-        confirmButtonText: '确定删除',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }
-    )
+    await ElMessageBox.confirm(`确定要删除研究记录 "${row.query.slice(0, 30)}..." 吗？`, '提示', {
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
     await researchStore.deleteResearch(spaceId.value, row.session_id)
     ElMessage.success('已删除')
   } catch {

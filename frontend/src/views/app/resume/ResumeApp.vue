@@ -7,7 +7,9 @@
       </span>
       <h2>简历挖掘</h2>
       <span class="top-spacer" />
-      <el-button text size="small" @click="router.push('/home/apps/resume/history')">历史记录</el-button>
+      <el-button text size="small" @click="router.push('/home/apps/resume/history')"
+        >历史记录</el-button
+      >
     </div>
 
     <!-- ========== Step 0: 上传 ========== -->
@@ -20,8 +22,8 @@
             :auto-upload="false"
             :limit="1"
             accept=".pdf,.docx,.doc,.txt,.md"
-            :on-change="(f: UploadFile) => selectedFile = f.raw ?? null"
-            :on-remove="() => selectedFile = null"
+            :on-change="(f: UploadFile) => (selectedFile = f.raw ?? null)"
+            :on-remove="() => (selectedFile = null)"
             class="upload-dragger"
           >
             <div class="upload-icon-circle">
@@ -55,18 +57,35 @@
         <div class="config-row">
           <div class="config-item">
             <label>追问广度</label>
-            <el-input-number v-model="formConfig.breadth" :min="1" :max="5" size="small" controls-position="right" />
+            <el-input-number
+              v-model="formConfig.breadth"
+              :min="1"
+              :max="5"
+              size="small"
+              controls-position="right"
+            />
             <span class="config-label">衍生子话题数</span>
           </div>
           <div class="config-item">
             <label>追问深度</label>
-            <el-input-number v-model="formConfig.depth" :min="1" :max="5" size="small" controls-position="right" />
+            <el-input-number
+              v-model="formConfig.depth"
+              :min="1"
+              :max="5"
+              size="small"
+              controls-position="right"
+            />
             <span class="config-label">每个话题追问轮数</span>
           </div>
           <div class="config-item">
             <label>LLM 模型</label>
             <el-select v-model="selectedModel" size="small" placeholder="默认模型" clearable>
-              <el-option v-for="(_, name) in availableModels" :key="name" :label="name" :value="name" />
+              <el-option
+                v-for="(_, name) in availableModels"
+                :key="name"
+                :label="name"
+                :value="name"
+              />
             </el-select>
           </div>
         </div>
@@ -109,9 +128,13 @@
             </div>
           </div>
           <div class="loading-bottom">
-            <el-icon class="is-loading" :size="20" color="var(--color-primary)"><Loading /></el-icon>
+            <el-icon class="is-loading" :size="20" color="var(--color-primary)"
+              ><Loading
+            /></el-icon>
             <p class="loading-text">{{ statusText }}</p>
-            <p v-if="session?.status === 4" class="loading-hint">全自动追问中，预计 2-5 分钟，请耐心等待...</p>
+            <p v-if="session?.status === 4" class="loading-hint">
+              全自动追问中，预计 2-5 分钟，请耐心等待...
+            </p>
           </div>
         </div>
       </div>
@@ -130,7 +153,11 @@
 
           <div v-if="session.structured_resume?.work_experience?.length" class="aside-section">
             <h4>工作经历</h4>
-            <div v-for="w in session.structured_resume.work_experience" :key="w.company" class="timeline-item">
+            <div
+              v-for="w in session.structured_resume.work_experience"
+              :key="w.company"
+              class="timeline-item"
+            >
               <div class="timeline-dot" />
               <div class="timeline-content">
                 <div class="timeline-title">{{ w.company }}</div>
@@ -142,13 +169,27 @@
 
           <div v-if="session.structured_resume?.project_experience?.length" class="aside-section">
             <h4>项目经历</h4>
-            <div v-for="p in session.structured_resume.project_experience" :key="p.name" class="timeline-item">
+            <div
+              v-for="p in session.structured_resume.project_experience"
+              :key="p.name"
+              class="timeline-item"
+            >
               <div class="timeline-dot" />
               <div class="timeline-content">
                 <div class="timeline-title">{{ p.name }}</div>
                 <div class="timeline-sub">{{ p.role }}</div>
                 <div class="timeline-tags">
-                  <el-tag v-for="t in [...p.tech_stack?.languages?.slice(0, 2) ?? [], ...p.tech_stack?.middleware?.slice(0, 1) ?? []]" :key="t" size="small" type="info" effect="plain">{{ t }}</el-tag>
+                  <el-tag
+                    v-for="t in [
+                      ...(p.tech_stack?.languages?.slice(0, 2) ?? []),
+                      ...(p.tech_stack?.middleware?.slice(0, 1) ?? []),
+                    ]"
+                    :key="t"
+                    size="small"
+                    type="info"
+                    effect="plain"
+                    >{{ t }}</el-tag
+                  >
                 </div>
               </div>
             </div>
@@ -157,7 +198,14 @@
           <div v-if="allSkills.length" class="aside-section">
             <h4>技能</h4>
             <div class="skill-cloud">
-              <el-tag v-for="s in allSkills.slice(0, 15)" :key="s" size="small" effect="plain" round>{{ s }}</el-tag>
+              <el-tag
+                v-for="s in allSkills.slice(0, 15)"
+                :key="s"
+                size="small"
+                effect="plain"
+                round
+                >{{ s }}</el-tag
+              >
             </div>
           </div>
         </aside>
@@ -191,7 +239,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { UploadFilled, ArrowLeft, ArrowRight, Loading, Download, Check } from '@element-plus/icons-vue'
+import { UploadFilled, ArrowLeft, ArrowRight, Loading, Check } from '@element-plus/icons-vue'
 import { ElMessage, type UploadFile } from 'element-plus'
 import { marked } from 'marked'
 import { appApi, type ResumeSession } from '@/api/app'
@@ -207,35 +255,54 @@ const jdText = ref('')
 const jdExpanded = ref(false)
 const formConfig = ref({ breadth: 3, depth: 3 })
 const selectedModel = ref('')
-const availableModels = ref<Record<string, { max_tokens: number; temperature: number; top_p: number }>>({})
+const availableModels = ref<
+  Record<string, { max_tokens: number; temperature: number; top_p: number }>
+>({})
 const session = ref<ResumeSession | null>(null)
 const reportContent = ref('')
 const activeTocId = ref('')
 let pollingTimer: ReturnType<typeof setTimeout> | null = null
 
 // ==================== 计算属性 ====================
-const pi = computed(() => session.value?.structured_resume?.personal_info ?? { name: '', email: '', phone: '', summary: '' })
+const pi = computed(
+  () =>
+    session.value?.structured_resume?.personal_info ?? {
+      name: '',
+      email: '',
+      phone: '',
+      summary: '',
+    },
+)
 
 const allSkills = computed(() => {
   const groups = session.value?.structured_resume?.skills?.skill_groups ?? []
-  return groups.flatMap(g => g.items.map(i => `${i.name}${i.proficiency ? '(' + i.proficiency + ')' : ''}`))
+  return groups.flatMap((g) =>
+    g.items.map((i) => `${i.name}${i.proficiency ? '(' + i.proficiency + ')' : ''}`),
+  )
 })
 
 function enhanceReportHtml(html: string): string {
   // 将 Q/A/评分段落包装成可区分的容器
-  return html
-    // 匹配 **Q1:** question → qa-question
-    .replace(/<p><strong>(Q\d+:)<\/strong>(.*?)<\/p>/gi,
-      '<div class="qa-question"><span class="qa-tag qa-tag-q">$1</span>$2</div>')
-    // 匹配 **A1:** answer → qa-answer (学习 Q&A 格式)
-    .replace(/<p><strong>(A\d+:)<\/strong>(.*?)<\/p>/gi,
-      '<div class="qa-answer"><span class="qa-tag qa-tag-a">$1</span>$2</div>')
-    // 匹配 **A:** answer → qa-answer
-    .replace(/<p><strong>(A:)<\/strong>(.*?)<\/p>/gi,
-      '<div class="qa-answer"><span class="qa-tag qa-tag-a">$1</span>$2</div>')
-    // 匹配 *深度评分: 0.7* → qa-score
-    .replace(/<p><em>(深度评分:\s*[\d.]+)<\/em><\/p>/gi,
-      '<div class="qa-score">$1</div>')
+  return (
+    html
+      // 匹配 **Q1:** question → qa-question
+      .replace(
+        /<p><strong>(Q\d+:)<\/strong>(.*?)<\/p>/gi,
+        '<div class="qa-question"><span class="qa-tag qa-tag-q">$1</span>$2</div>',
+      )
+      // 匹配 **A1:** answer → qa-answer (学习 Q&A 格式)
+      .replace(
+        /<p><strong>(A\d+:)<\/strong>(.*?)<\/p>/gi,
+        '<div class="qa-answer"><span class="qa-tag qa-tag-a">$1</span>$2</div>',
+      )
+      // 匹配 **A:** answer → qa-answer
+      .replace(
+        /<p><strong>(A:)<\/strong>(.*?)<\/p>/gi,
+        '<div class="qa-answer"><span class="qa-tag qa-tag-a">$1</span>$2</div>',
+      )
+      // 匹配 *深度评分: 0.7* → qa-score
+      .replace(/<p><em>(深度评分:\s*[\d.]+)<\/em><\/p>/gi, '<div class="qa-score">$1</div>')
+  )
 }
 
 const renderedMd = computed(() => {
@@ -270,7 +337,11 @@ const currentStepIndex = computed(() => {
 })
 
 // ==================== TOC 目录 ====================
-interface TocItem { id: string; text: string; level: number }
+interface TocItem {
+  id: string
+  text: string
+  level: number
+}
 const tocItems = ref<TocItem[]>([])
 
 function extractToc(html: string) {
@@ -329,7 +400,9 @@ onMounted(async () => {
   try {
     const data = await appApi.getModels()
     availableModels.value = data.models || {}
-  } catch { /* 忽略 */ }
+  } catch {
+    /* 忽略 */
+  }
 
   const sid = route.params.sessionId as string
   if (sid) {
@@ -354,7 +427,12 @@ async function doUpload() {
   if (!selectedFile.value) return
   uploading.value = true
   try {
-    await appApi.uploadResume(selectedFile.value, jdText.value, formConfig.value, selectedModel.value)
+    await appApi.uploadResume(
+      selectedFile.value,
+      jdText.value,
+      formConfig.value,
+      selectedModel.value,
+    )
     uploading.value = false
     ElMessage.success('已提交解析，后台处理中，可在历史记录中查看进度')
     router.push('/home/apps/resume/history')
@@ -398,15 +476,6 @@ async function fetchReport() {
   }
 }
 
-async function doDownload() {
-  if (!session.value) return
-  try {
-    await appApi.downloadReport(session.value.id)
-  } catch {
-    ElMessage.error('下载失败')
-  }
-}
-
 function stopPolling() {
   if (pollingTimer) {
     clearTimeout(pollingTimer)
@@ -447,7 +516,9 @@ onUnmounted(() => {
   transition: color var(--transition-fast);
 }
 
-.back-btn:hover { color: var(--color-primary); }
+.back-btn:hover {
+  color: var(--color-primary);
+}
 
 .top-bar h2 {
   margin: 0;
@@ -457,7 +528,9 @@ onUnmounted(() => {
   color: var(--color-text);
 }
 
-.top-spacer { flex: 1; }
+.top-spacer {
+  flex: 1;
+}
 
 /* ========== 上传页 ========== */
 .upload-page {
@@ -925,7 +998,6 @@ onUnmounted(() => {
   padding-left: 20px;
 }
 
-
 /* ========== Markdown 渲染样式 ========== */
 .markdown-body {
   font-family: var(--font-body);
@@ -1035,7 +1107,7 @@ onUnmounted(() => {
 
 .markdown-body :deep(.qa-tag-q) {
   background: var(--color-btn-primary);
-  color: #FFF;
+  color: #fff;
 }
 
 .markdown-body :deep(.qa-tag-a) {
@@ -1140,11 +1212,11 @@ onUnmounted(() => {
   background: var(--color-bg-hover);
   padding: 2px var(--space-2);
   border-radius: var(--radius-sm);
-  color: #C7254E;
+  color: #c7254e;
 }
 
 .markdown-body :deep(pre) {
-  background: #1E1E1E;
+  background: #1e1e1e;
   border-radius: var(--radius-lg);
   padding: var(--space-4);
   margin: var(--space-4) 0;
@@ -1153,7 +1225,7 @@ onUnmounted(() => {
 
 .markdown-body :deep(pre code) {
   background: none;
-  color: #D4D4D4;
+  color: #d4d4d4;
   padding: 0;
 }
 

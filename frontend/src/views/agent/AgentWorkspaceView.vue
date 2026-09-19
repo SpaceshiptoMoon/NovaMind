@@ -6,9 +6,7 @@
         <NavIcon name="agents" :size="36" />
       </div>
       <h2 class="placeholder-title">智能体</h2>
-      <p class="placeholder-desc">
-        从左侧列表选择智能体开始对话，或创建一个新的智能体
-      </p>
+      <p class="placeholder-desc">从左侧列表选择智能体开始对话，或创建一个新的智能体</p>
       <button class="placeholder-action" @click="openCreate">
         <el-icon :size="14"><Plus /></el-icon>
         添加智能体

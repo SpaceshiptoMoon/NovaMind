@@ -32,27 +32,32 @@
 
     <!-- 待审核列表 -->
     <h3 class="section-title section-spacing">待审核技能</h3>
-    <div v-loading="skillStore.marketplaceLoading" class="review-list" v-permission="'skill.config'">
+    <div
+      v-loading="skillStore.marketplaceLoading"
+      class="review-list"
+      v-permission="'skill.config'"
+    >
       <div v-for="skill in skillStore.pendingReviews" :key="skill.id" class="review-card">
         <div class="review-main">
           <div class="review-icon">{{ skill.icon || '⚡' }}</div>
           <div class="review-info">
             <h4>{{ skill.display_name }}</h4>
             <p>{{ skill.description }}</p>
-            <span class="review-meta">by {{ skill.author_name || '未知' }} · 版本 {{ skill.version }}</span>
+            <span class="review-meta"
+              >by {{ skill.author_name || '未知' }} · 版本 {{ skill.version }}</span
+            >
           </div>
         </div>
         <div class="review-actions">
-          <el-button type="success" size="small" @click="handleApprove(skill.id)">
-            批准
-          </el-button>
-          <el-button type="danger" size="small" @click="handleReject(skill.id)">
-            拒绝
-          </el-button>
+          <el-button type="success" size="small" @click="handleApprove(skill.id)"> 批准 </el-button>
+          <el-button type="danger" size="small" @click="handleReject(skill.id)"> 拒绝 </el-button>
         </div>
       </div>
 
-      <el-empty v-if="!skillStore.marketplaceLoading && skillStore.pendingReviews.length === 0" description="暂无待审核技能" />
+      <el-empty
+        v-if="!skillStore.marketplaceLoading && skillStore.pendingReviews.length === 0"
+        description="暂无待审核技能"
+      />
     </div>
 
     <!-- 分页 -->
@@ -74,12 +79,10 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { useSkillStore } from '@/stores/skill'
-import { usePermissionStore } from '@/stores/permission'
 import PageHeader from '@/components/common/PageHeader.vue'
 
 const router = useRouter()
 const skillStore = useSkillStore()
-const permStore = usePermissionStore()
 
 const llmReviewEnabled = ref(false)
 const llmReviewModel = ref<string | null>(null)
@@ -111,8 +114,8 @@ async function handleSaveSettings() {
   try {
     await skillStore.updateAdminSettings(llmReviewEnabled.value, llmReviewModel.value)
     ElMessage.success('设置已更新')
-  } catch (e: any) {
-    ElMessage.error(e?.message || '更新失败')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : '更新失败')
   }
 }
 

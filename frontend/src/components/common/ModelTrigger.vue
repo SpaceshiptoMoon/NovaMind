@@ -45,7 +45,9 @@
           @click="choose(m.name)"
         >
           <span class="model-menu-name">{{ m.name }}</span>
-          <el-icon v-if="modelValue === m.name" :size="14" class="model-menu-check"><Check /></el-icon>
+          <el-icon v-if="modelValue === m.name" :size="14" class="model-menu-check"
+            ><Check
+          /></el-icon>
         </button>
       </template>
 
@@ -60,13 +62,13 @@
           @click="choose(m.name)"
         >
           <span class="model-menu-name">{{ m.name }}</span>
-          <el-icon v-if="modelValue === m.name" :size="14" class="model-menu-check"><Check /></el-icon>
+          <el-icon v-if="modelValue === m.name" :size="14" class="model-menu-check"
+            ><Check
+          /></el-icon>
         </button>
       </template>
 
-      <div v-if="!llmModels.length && !vlmModels.length" class="model-menu-empty">
-        暂无可用模型
-      </div>
+      <div v-if="!llmModels.length && !vlmModels.length" class="model-menu-empty">暂无可用模型</div>
     </div>
   </el-popover>
 </template>

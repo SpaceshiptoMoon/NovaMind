@@ -9,7 +9,8 @@
       <span class="compaction-sep" aria-hidden />
       <span class="compaction-summary">
         已压缩 {{ data?.summarized_count ?? 0 }} 条消息<template v-if="ratioPercent != null">
-          · 节省 {{ ratioPercent }}%</template>
+          · 节省 {{ ratioPercent }}%</template
+        >
       </span>
     </button>
     <div v-if="expanded && data?.summary" class="compaction-body">

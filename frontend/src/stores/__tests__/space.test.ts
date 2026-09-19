@@ -1,23 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Space } from '@/api/types'
 import { createPinia, setActivePinia } from 'pinia'
 
-const spaceApi = {
-  getSpaces: vi.fn(),
-  getPublicSpaces: vi.fn(),
-  searchSpaces: vi.fn(),
-  createSpace: vi.fn(),
-  getSpace: vi.fn(),
-  updateSpace: vi.fn(),
-  deleteSpace: vi.fn(),
-}
-
-const normalizeSpaceTypes = vi.fn((config: any) => {
-  const value = config?.space_type
-  return Array.isArray(value) ? value : value ? [value] : []
-})
+// vi.mock 工厂会被提升到文件顶部，工厂引用的变量必须经 vi.hoisted 同步提升，
+// 否则 mock 装配时机早于 const 声明 → "Cannot access 'spaceApi' before initialization"
+const { spaceApi } = vi.hoisted(() => ({
+  spaceApi: {
+    getSpaces: vi.fn(),
+    getPublicSpaces: vi.fn(),
+    searchSpaces: vi.fn(),
+    createSpace: vi.fn(),
+    getSpace: vi.fn(),
+    updateSpace: vi.fn(),
+    deleteSpace: vi.fn(),
+  },
+}))
 
 vi.mock('@/api/space', () => ({ spaceApi }))
-vi.mock('@/components/knowledge', () => ({ normalizeSpaceTypes }))
 
 import { useSpaceStore } from '../space'
 
@@ -40,10 +39,11 @@ describe('useSpaceStore', () => {
     const spaces = await store.fetchSpaces()
 
     expect(spaceApi.getSpaces).toHaveBeenCalledWith(undefined)
-    expect(normalizeSpaceTypes).toHaveBeenCalledTimes(2)
     expect(spaces).toHaveLength(2)
     expect(store.total).toBe(2)
-    expect(store.spaces[0]?.config?.space_type).toEqual(['team'])
+    // space_type 已下放 KB 级配置：patchSpace 剔除空间配置中的遗留 space_type
+    expect(store.spaces[0]?.config?.space_type).toBeUndefined()
+    expect(store.spaces[1]?.config?.space_type).toBeUndefined()
   })
 
   it('updates both list and currentSpace after updateSpace', async () => {
@@ -54,8 +54,13 @@ describe('useSpaceStore', () => {
     })
 
     const store = useSpaceStore()
-    store.spaces = [{ id: 1, name: 'Alpha', config: { space_type: 'team' } }] as any
-    store.currentSpace = { id: 1, name: 'Alpha', config: { space_type: 'team' } } as any
+    const fakeSpace = {
+      id: 1,
+      name: 'Alpha',
+      config: { space_type: 'team' },
+    } as unknown as Space
+    store.spaces = [fakeSpace]
+    store.currentSpace = fakeSpace
 
     const result = await store.updateSpace(1, { name: 'Alpha Updated' })
 
@@ -63,12 +68,12 @@ describe('useSpaceStore', () => {
     expect(result.name).toBe('Alpha Updated')
     expect(store.spaces[0]?.name).toBe('Alpha Updated')
     expect(store.currentSpace?.name).toBe('Alpha Updated')
-    expect(store.currentSpace?.config?.space_type).toEqual(['public'])
+    expect(store.currentSpace?.config?.space_type).toBeUndefined()
   })
 
   it('clears search results immediately when keyword is empty', async () => {
     const store = useSpaceStore()
-    store.searchResults = [{ id: 1, name: 'Old' }] as any
+    store.searchResults = [{ id: 1, name: 'Old' } as unknown as Space]
 
     await store.searchSpaces('')
 

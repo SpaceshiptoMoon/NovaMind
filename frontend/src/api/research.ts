@@ -11,9 +11,7 @@ import type {
 export const researchApi = {
   /** 源发现：返回注册表全部数据源（新源注册后自动出现，前端零改动） */
   listSearchSources(spaceId: number) {
-    return request.get<{ sources: SearchSourceInfo[] }>(
-      `/spaces/${spaceId}/deep-research/sources`,
-    )
+    return request.get<{ sources: SearchSourceInfo[] }>(`/spaces/${spaceId}/deep-research/sources`)
   },
 
   startResearch(spaceId: number, data: ResearchRequest) {

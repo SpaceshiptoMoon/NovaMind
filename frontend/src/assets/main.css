@@ -11,21 +11,21 @@
 :root {
   /* Element Plus 主色切中性深灰：所有 el-button--primary / el-link / el-switch /
      el-tabs / el-pagination / el-checkbox 等组件统一 #3F3F46 系灰阶 */
-  --el-color-primary: #3F3F46;
-  --el-color-primary-light-3: #6B6B73;
-  --el-color-primary-light-5: #97979D;
-  --el-color-primary-light-7: #C3C3C6;
-  --el-color-primary-light-9: #F0F0F1;
+  --el-color-primary: #3f3f46;
+  --el-color-primary-light-3: #6b6b73;
+  --el-color-primary-light-5: #97979d;
+  --el-color-primary-light-7: #c3c3c6;
+  --el-color-primary-light-9: #f0f0f1;
   --el-color-primary-dark-2: #333338;
 
   /* Element Plus success 恢复功能绿（el-tag / el-message / 校验状态）；
      warning 琥珀、danger 红保留为功能色 */
-  --el-color-success: #16A34A;
-  --el-color-success-light-3: #4ADE80;
-  --el-color-success-light-5: #86EFAC;
-  --el-color-success-light-7: #C8F7D8;
-  --el-color-success-light-9: #ECFDF5;
-  --el-color-success-dark-2: #15803D;
+  --el-color-success: #16a34a;
+  --el-color-success-light-3: #4ade80;
+  --el-color-success-light-5: #86efac;
+  --el-color-success-light-7: #c8f7d8;
+  --el-color-success-light-9: #ecfdf5;
+  --el-color-success-dark-2: #15803d;
 
   --el-font-family: var(--font-body);
   --el-border-radius-base: var(--radius-md);
@@ -113,7 +113,9 @@
   border: 1px solid var(--color-border-light) !important;
   border-radius: var(--radius-md) !important;
   box-shadow: none !important;
-  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .el-input__wrapper:hover {
@@ -129,7 +131,9 @@
   border-radius: var(--radius-md) !important;
   background: var(--color-bg-input);
   border-color: var(--color-border-light);
-  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+  transition:
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
 .el-textarea__inner:focus {
@@ -144,7 +148,9 @@
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-light);
   box-shadow: var(--shadow-xs);
-  transition: box-shadow var(--transition-base), border-color var(--transition-base);
+  transition:
+    box-shadow var(--transition-base),
+    border-color var(--transition-base);
 }
 
 .el-card:hover {
@@ -236,28 +242,50 @@
   animation: fadeSlideUp 0.4s ease forwards;
 }
 
-.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
-.stagger-children > *:nth-child(2) { animation-delay: 60ms; }
-.stagger-children > *:nth-child(3) { animation-delay: 120ms; }
-.stagger-children > *:nth-child(4) { animation-delay: 180ms; }
-.stagger-children > *:nth-child(5) { animation-delay: 240ms; }
-.stagger-children > *:nth-child(6) { animation-delay: 300ms; }
-.stagger-children > *:nth-child(7) { animation-delay: 360ms; }
-.stagger-children > *:nth-child(8) { animation-delay: 420ms; }
+.stagger-children > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+.stagger-children > *:nth-child(2) {
+  animation-delay: 60ms;
+}
+.stagger-children > *:nth-child(3) {
+  animation-delay: 120ms;
+}
+.stagger-children > *:nth-child(4) {
+  animation-delay: 180ms;
+}
+.stagger-children > *:nth-child(5) {
+  animation-delay: 240ms;
+}
+.stagger-children > *:nth-child(6) {
+  animation-delay: 300ms;
+}
+.stagger-children > *:nth-child(7) {
+  animation-delay: 360ms;
+}
+.stagger-children > *:nth-child(8) {
+  animation-delay: 420ms;
+}
 
 /* ========================================
    Utility: Skeleton Loading
    ======================================== */
 @keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .skeleton {
-  background: linear-gradient(90deg,
+  background: linear-gradient(
+    90deg,
     var(--color-bg-card-elevated) 25%,
     var(--color-bg-hover) 50%,
-    var(--color-bg-card-elevated) 75%);
+    var(--color-bg-card-elevated) 75%
+  );
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
   border-radius: var(--radius-md);
@@ -274,8 +302,14 @@
    Typing Indicator (Chat)
    ======================================== */
 @keyframes bounceDot {
-  0%, 60%, 100% { transform: translateY(0); }
-  30% { transform: translateY(-4px); }
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-4px);
+  }
 }
 
 .typing-dot {
@@ -287,5 +321,9 @@
   animation: bounceDot 1.4s infinite;
 }
 
-.typing-dot:nth-child(2) { animation-delay: 0.2s; }
-.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}

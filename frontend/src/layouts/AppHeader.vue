@@ -26,17 +26,11 @@
                 <el-icon><Cpu /></el-icon>
                 模型配置
               </el-dropdown-item>
-              <el-dropdown-item
-                v-if="permStore.hasPermission('user.manage')"
-                command="admin/users"
-              >
+              <el-dropdown-item v-if="permStore.hasPermission('user.manage')" command="admin/users">
                 <el-icon><User /></el-icon>
                 用户管理
               </el-dropdown-item>
-              <el-dropdown-item
-                v-if="permStore.hasPermission('role.manage')"
-                command="admin/roles"
-              >
+              <el-dropdown-item v-if="permStore.hasPermission('role.manage')" command="admin/roles">
                 <el-icon><UserFilled /></el-icon>
                 角色管理
               </el-dropdown-item>
@@ -72,14 +66,26 @@
         @show="notifStore.loadRecent()"
       >
         <template #reference>
-          <el-badge :value="notifStore.unreadCount" :hidden="notifStore.unreadCount === 0" :max="99" class="notification-badge">
+          <el-badge
+            :value="notifStore.unreadCount"
+            :hidden="notifStore.unreadCount === 0"
+            :max="99"
+            class="notification-badge"
+          >
             <el-icon :size="20" class="notification-bell"><Bell /></el-icon>
           </el-badge>
         </template>
         <div class="notification-panel">
           <div class="notification-header">
             <span class="notification-title">通知</span>
-            <el-button v-if="notifStore.unreadCount > 0" link type="primary" size="small" @click="notifStore.markAllRead()">全部已读</el-button>
+            <el-button
+              v-if="notifStore.unreadCount > 0"
+              link
+              type="primary"
+              size="small"
+              @click="notifStore.markAllRead()"
+              >全部已读</el-button
+            >
           </div>
           <div v-if="notifStore.items.length === 0" class="notification-empty">暂无通知</div>
           <div v-else class="notification-list">
@@ -95,7 +101,9 @@
             </div>
           </div>
           <div v-if="notifStore.items.length > 0" class="notification-footer">
-            <el-button link type="primary" @click="router.push('/home/notifications')">查看全部</el-button>
+            <el-button link type="primary" @click="router.push('/home/notifications')"
+              >查看全部</el-button
+            >
           </div>
         </div>
       </el-popover>
@@ -117,17 +125,11 @@
               <el-icon><Cpu /></el-icon>
               模型配置
             </el-dropdown-item>
-            <el-dropdown-item
-              v-if="permStore.hasPermission('user.manage')"
-              command="admin/users"
-            >
+            <el-dropdown-item v-if="permStore.hasPermission('user.manage')" command="admin/users">
               <el-icon><User /></el-icon>
               用户管理
             </el-dropdown-item>
-            <el-dropdown-item
-              v-if="permStore.hasPermission('role.manage')"
-              command="admin/roles"
-            >
+            <el-dropdown-item v-if="permStore.hasPermission('role.manage')" command="admin/roles">
               <el-icon><UserFilled /></el-icon>
               角色管理
             </el-dropdown-item>
@@ -318,7 +320,9 @@ const handleCommand = async (command: string) => {
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: color var(--transition-fast), background var(--transition-fast),
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast),
     box-shadow var(--transition-base);
   display: inline-flex;
   align-items: center;
@@ -364,7 +368,9 @@ const handleCommand = async (command: string) => {
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
-  transition: color var(--transition-fast), background var(--transition-fast),
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast),
     box-shadow var(--transition-base);
 }
 
@@ -379,7 +385,9 @@ const handleCommand = async (command: string) => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: color var(--transition-fast), background var(--transition-fast),
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast),
     box-shadow var(--transition-base);
 }
 
@@ -393,7 +401,9 @@ const handleCommand = async (command: string) => {
   width: 32px;
   height: 32px;
   border-radius: var(--radius-full);
-  transition: background var(--transition-fast), box-shadow var(--transition-base);
+  transition:
+    background var(--transition-fast),
+    box-shadow var(--transition-base);
 }
 
 .notification-bell {
@@ -522,7 +532,6 @@ const handleCommand = async (command: string) => {
   .nav-item {
     padding: var(--space-2) 0;
   }
-
 }
 
 @media (max-width: 992px) {

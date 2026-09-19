@@ -12,14 +12,17 @@
  * - turnIndex：按 user 消息切分（首条 user 前的 orphan 归 turn 0，分节头跳过），供 Turns/Calls 折叠
  */
 import { computed, type ComputedRef } from 'vue'
-import type {
-  AgentMessage,
-  OpenAICompatToolCall,
-  ToolCallRecord,
-} from '@/api/types'
+import type { AgentMessage, OpenAICompatToolCall, ToolCallRecord } from '@/api/types'
 
 // system 行不在 messages 里（按需拉全文），由 TrajectoryList 构造伪 record 传给 inspector
-export type TrajectoryKind = 'user' | 'assistant' | 'tool' | 'compaction' | 'system' | 'plan' | 'notice'
+export type TrajectoryKind =
+  | 'user'
+  | 'assistant'
+  | 'tool'
+  | 'compaction'
+  | 'system'
+  | 'plan'
+  | 'notice'
 
 export interface TrajectoryRecord {
   /** 稳定身份：msg.id > tool_call_id > 'system' > seq */
@@ -126,8 +129,7 @@ export function useTrajectoryRecords(
 
       // assistant 决策判定：role=assistant 且带 tool_calls
       const isAssistantDecision = msg.role === 'assistant' && !!extraToolCalls?.length
-      const isToolCallOnly =
-        isAssistantDecision && !msg.content && !msg.reasoning
+      const isToolCallOnly = isAssistantDecision && !msg.content && !msg.reasoning
 
       if (isAssistantDecision) {
         lastAssistantDecisionId = recordId
@@ -157,10 +159,7 @@ export function useTrajectoryRecords(
         summary = firstLine(msg.content)
       } else if (kind === 'assistant') {
         if (isAssistantDecision) {
-          summary =
-            firstLine(msg.reasoning) ||
-            firstLine(msg.content) ||
-            '(tool call only)'
+          summary = firstLine(msg.reasoning) || firstLine(msg.content) || '(tool call only)'
         } else {
           summary = firstLine(msg.content) || firstLine(msg.reasoning)
         }
@@ -172,12 +171,16 @@ export function useTrajectoryRecords(
           ? `${name} ${argsRaw} → ${resultPreview}`.trim()
           : `${name} ${argsRaw}`.trim()
       } else if (kind === 'compaction') {
-        const comp = extra?.compaction as { summarized_count?: number; summary?: string } | undefined
+        const comp = extra?.compaction as
+          | { summarized_count?: number; summary?: string }
+          | undefined
         summary = comp?.summarized_count
           ? `已压缩 ${comp.summarized_count} 条`
           : firstLine(comp?.summary) || '上下文已压缩'
       } else if (kind === 'plan') {
-        const plan = extra?.plan as { title?: string; steps?: string[]; step_count?: number } | undefined
+        const plan = extra?.plan as
+          | { title?: string; steps?: string[]; step_count?: number }
+          | undefined
         const stepN = plan?.steps?.length ?? plan?.step_count ?? 0
         summary = plan?.title ? `计划: ${plan.title} (${stepN}步)` : `计划 (${stepN}步)`
       } else if (kind === 'notice') {

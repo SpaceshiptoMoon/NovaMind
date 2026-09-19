@@ -39,11 +39,13 @@ function _notification(id: number, is_read = false) {
   }
 }
 
-
 function _wsHandlers() {
   const call = connectNotificationWs.mock.calls[0]?.[0]
   if (!call) throw new Error('connectNotificationWs 未被调用')
-  return call as { onEvent: (n: ReturnType<typeof _notification>) => void; onStateChange?: (up: boolean) => void }
+  return call as {
+    onEvent: (n: ReturnType<typeof _notification>) => void
+    onStateChange?: (up: boolean) => void
+  }
 }
 
 describe('notification store — WS 推送 + 轮询兜底', () => {

@@ -1,7 +1,9 @@
 <template>
   <div class="sub-section">
     <h4 class="sub-title">文本解析</h4>
-    <p class="sub-desc">按文件类型设置解析策略。PDF 额外支持解析器与 OCR，其他文本类型仅支持默认 / DeepDoc。</p>
+    <p class="sub-desc">
+      按文件类型设置解析策略。PDF 额外支持解析器与 OCR，其他文本类型仅支持默认 / DeepDoc。
+    </p>
 
     <el-form :model="configForm" label-width="120px" class="config-form">
       <div class="pdf-panel">
@@ -14,9 +16,11 @@
                 <el-option label="DeepDoc" value="deepdoc" />
               </el-select>
               <div class="field-hint">
-                {{ configForm.pdfStrategy === 'deepdoc'
-                  ? 'DeepDoc：全量流水线（每页 OCR 检测 + 逐框文字层融合 + ONNX 版面 + 表格识别），扫描件、图片 PDF、数字原生 PDF 通吃，能力最全但较慢。'
-                  : '默认：PyPDF2 直出文字层，快但无版面分析；扫描件可配合下方"启用 OCR"做 Tesseract OCR。' }}
+                {{
+                  configForm.pdfStrategy === 'deepdoc'
+                    ? 'DeepDoc：全量流水线（每页 OCR 检测 + 逐框文字层融合 + ONNX 版面 + 表格识别），扫描件、图片 PDF、数字原生 PDF 通吃，能力最全但较慢。'
+                    : '默认：PyPDF2 直出文字层，快但无版面分析；扫描件可配合下方"启用 OCR"做 Tesseract OCR。'
+                }}
               </div>
             </el-form-item>
           </el-col>
@@ -24,8 +28,8 @@
             <el-form-item label="启用 OCR">
               <el-switch v-model="configForm.pdfOcrEnabled" />
               <div class="field-hint">
-                仅"默认（PyPDF2）"策略生效：文字层抽空时用 Tesseract 对图片页 OCR。选
-                DeepDoc 时 OCR 由 full 解析器内建（逐框融合，plain 无 OCR），无需此开关。
+                仅"默认（PyPDF2）"策略生效：文字层抽空时用 Tesseract 对图片页 OCR。选 DeepDoc 时 OCR
+                由 full 解析器内建（逐框融合，plain 无 OCR），无需此开关。
               </div>
             </el-form-item>
           </el-col>

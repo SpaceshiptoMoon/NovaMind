@@ -77,7 +77,12 @@
 
     <!-- 修改密码弹窗 -->
     <el-dialog v-model="passwordDialogVisible" title="修改密码" width="440px">
-      <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" label-width="100px">
+      <el-form
+        ref="passwordFormRef"
+        :model="passwordForm"
+        :rules="passwordRules"
+        label-width="100px"
+      >
         <el-form-item label="当前密码" prop="old_password">
           <el-input
             v-model="passwordForm.old_password"
@@ -173,9 +178,7 @@ const editRules: FormRules = {
     { required: true, message: '请输入邮箱', trigger: 'blur' },
     { type: 'email', message: '请输入有效的邮箱地址', trigger: 'blur' },
   ],
-  phone: [
-    { pattern: /^1[3-9]\d{9}$/, message: '请输入有效的手机号', trigger: 'blur' },
-  ],
+  phone: [{ pattern: /^1[3-9]\d{9}$/, message: '请输入有效的手机号', trigger: 'blur' }],
 }
 
 function showEditDialog() {
@@ -220,7 +223,11 @@ const passwordForm = reactive({
 
 const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*(),.?":{}|<>]).{8,30}$/
 
-const validateConfirmPassword = (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+const validateConfirmPassword = (
+  _rule: unknown,
+  value: string,
+  callback: (error?: Error) => void,
+) => {
   if (value !== passwordForm.new_password) {
     callback(new Error('两次输入的密码不一致'))
   } else {
@@ -232,7 +239,11 @@ const passwordRules: FormRules = {
   old_password: [{ required: true, message: '请输入当前密码', trigger: 'blur' }],
   new_password: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
-    { pattern: passwordRegex, message: '密码需8-30字符，含大小写字母、数字和特殊字符', trigger: 'blur' },
+    {
+      pattern: passwordRegex,
+      message: '密码需8-30字符，含大小写字母、数字和特殊字符',
+      trigger: 'blur',
+    },
   ],
   confirm_password: [
     { required: true, message: '请再次输入新密码', trigger: 'blur' },

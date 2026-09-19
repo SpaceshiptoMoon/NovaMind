@@ -40,7 +40,9 @@
               <div class="inherit-card">
                 <span class="inherit-label">文本向量模型</span>
                 <strong class="inherit-value">{{ embeddingInfo.textModel || '未配置' }}</strong>
-                <span class="inherit-meta">{{ embeddingInfo.textDimension ? `维度 ${embeddingInfo.textDimension}` : '维度待检测' }}</span>
+                <span class="inherit-meta">{{
+                  embeddingInfo.textDimension ? `维度 ${embeddingInfo.textDimension}` : '维度待检测'
+                }}</span>
               </div>
 
               <div class="inherit-card inherit-card--wide">
@@ -58,10 +60,7 @@
               <el-icon><Upload /></el-icon>
               上传文档
             </el-button>
-            <el-button
-              v-if="selectedIds.length > 0"
-              @click="showProcessDialog(selectedIds)"
-            >
+            <el-button v-if="selectedIds.length > 0" @click="showProcessDialog(selectedIds)">
               批量处理 ({{ selectedIds.length }})
             </el-button>
           </div>
@@ -75,7 +74,9 @@
               @keyup.enter="handleSearch"
               @clear="handleSearch"
             >
-              <template #prefix><el-icon><Search /></el-icon></template>
+              <template #prefix
+                ><el-icon><Search /></el-icon
+              ></template>
             </el-input>
             <span class="filter-label">状态</span>
             <el-select
@@ -99,14 +100,13 @@
         <!-- 文档卡片网格（ima 式：类型色块 + 文件名 + 元信息 + hover 操作） -->
         <div v-loading="loading" class="doc-grid-wrap">
           <div v-if="documents.length === 0 && !loading" class="doc-grid-empty">
-            {{ searchKeyword || statusFilter !== undefined ? '没有符合条件的文档' : '暂无文档，点击左上角上传' }}
+            {{
+              searchKeyword || statusFilter !== undefined
+                ? '没有符合条件的文档'
+                : '暂无文档，点击左上角上传'
+            }}
           </div>
-          <div
-            v-for="doc in documents"
-            :key="doc.id"
-            class="doc-card"
-            @click="goToDetail(doc.id)"
-          >
+          <div v-for="doc in documents" :key="doc.id" class="doc-card" @click="goToDetail(doc.id)">
             <!-- 选择复选框（hover / 已选显示） -->
             <el-checkbox
               class="doc-card-check"
@@ -118,7 +118,10 @@
             <!-- 类型色块（ima 缩略区语言） -->
             <div
               class="doc-card-cover"
-              :style="{ background: getFileTypeStyle(doc.file_type).bg, color: getFileTypeStyle(doc.file_type).color }"
+              :style="{
+                background: getFileTypeStyle(doc.file_type).bg,
+                color: getFileTypeStyle(doc.file_type).color,
+              }"
             >
               {{ doc.file_type.toUpperCase().slice(0, 3) }}
             </div>
@@ -142,22 +145,52 @@
               </el-tag>
               <div class="doc-card-actions" @click.stop>
                 <el-tooltip v-if="canProcess(doc)" content="首次处理" placement="top">
-                  <el-button :icon="VideoPlay" circle size="small" type="primary" @click="handleProcessSingle(doc)" />
+                  <el-button
+                    :icon="VideoPlay"
+                    circle
+                    size="small"
+                    type="primary"
+                    @click="handleProcessSingle(doc)"
+                  />
                 </el-tooltip>
                 <el-tooltip v-if="canReprocess(doc)" content="重新处理" placement="top">
-                  <el-button :icon="RefreshRight" circle size="small" type="primary" @click="handleProcessSingle(doc)" />
+                  <el-button
+                    :icon="RefreshRight"
+                    circle
+                    size="small"
+                    type="primary"
+                    @click="handleProcessSingle(doc)"
+                  />
                 </el-tooltip>
                 <el-tooltip v-if="canCancel(doc)" content="取消" placement="top">
-                  <el-button :icon="Close" circle size="small" type="warning" @click="handleCancelSingle(doc)" />
+                  <el-button
+                    :icon="Close"
+                    circle
+                    size="small"
+                    type="warning"
+                    @click="handleCancelSingle(doc)"
+                  />
                 </el-tooltip>
                 <el-tooltip v-if="canRetry(doc)" content="重试" placement="top">
-                  <el-button :icon="RefreshRight" circle size="small" type="warning" @click="handleRetrySingle(doc)" />
+                  <el-button
+                    :icon="RefreshRight"
+                    circle
+                    size="small"
+                    type="warning"
+                    @click="handleRetrySingle(doc)"
+                  />
                 </el-tooltip>
                 <el-tooltip content="详情" placement="top">
                   <el-button :icon="View" circle size="small" @click="goToDetail(doc.id)" />
                 </el-tooltip>
                 <el-tooltip v-if="canDelete(doc)" content="删除" placement="top">
-                  <el-button :icon="Delete" circle size="small" type="danger" @click="handleDelete(doc)" />
+                  <el-button
+                    :icon="Delete"
+                    circle
+                    size="small"
+                    type="danger"
+                    @click="handleDelete(doc)"
+                  />
                 </el-tooltip>
               </div>
             </div>
@@ -170,11 +203,28 @@
           :total="total"
           :page-sizes="[10, 20, 50, 100]"
           layout="total, sizes, prev, pager, next"
-          @update:page="(p: number) => { currentPage = p; fetchDocuments() }"
-          @update:page-size="(s: number) => { pageSize = s; currentPage = 1; fetchDocuments() }"
+          @update:page="
+            (p: number) => {
+              currentPage = p
+              fetchDocuments()
+            }
+          "
+          @update:page-size="
+            (s: number) => {
+              pageSize = s
+              currentPage = 1
+              fetchDocuments()
+            }
+          "
         />
 
-        <el-dialog v-model="uploadDialogVisible" title="上传文档" width="680px" destroy-on-close class="upload-dialog">
+        <el-dialog
+          v-model="uploadDialogVisible"
+          title="上传文档"
+          width="680px"
+          destroy-on-close
+          class="upload-dialog"
+        >
           <el-upload
             ref="uploadRef"
             :auto-upload="false"
@@ -190,13 +240,16 @@
           >
             <div class="upload-inner">
               <el-icon class="upload-icon"><UploadFilled /></el-icon>
-              <div class="upload-text">
-                拖拽文件到此处，或<em>点击上传</em>
-              </div>
+              <div class="upload-text">拖拽文件到此处，或<em>点击上传</em></div>
               <div class="upload-tip">
                 {{ uploadTipText }}
               </div>
-              <el-button text type="primary" class="upload-folder-btn" @click.stop="triggerFolderPick">
+              <el-button
+                text
+                type="primary"
+                class="upload-folder-btn"
+                @click.stop="triggerFolderPick"
+              >
                 <el-icon><FolderOpened /></el-icon>
                 选择文件夹
               </el-button>
@@ -213,7 +266,12 @@
           />
           <template #footer>
             <el-button @click="uploadDialogVisible = false">取消</el-button>
-            <el-button type="primary" :loading="uploadLoading" @click="handleUpload" :disabled="selectedFiles.length === 0">
+            <el-button
+              type="primary"
+              :loading="uploadLoading"
+              @click="handleUpload"
+              :disabled="selectedFiles.length === 0"
+            >
               上传 ({{ selectedFiles.length }})
             </el-button>
           </template>
@@ -239,13 +297,36 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, Collection, DataAnalysis, Delete, Document, FolderOpened, List, RefreshRight, Search, Upload, UploadFilled, VideoPlay, View } from '@element-plus/icons-vue'
+import {
+  Close,
+  Collection,
+  DataAnalysis,
+  Delete,
+  Document,
+  FolderOpened,
+  List,
+  RefreshRight,
+  Search,
+  Upload,
+  UploadFilled,
+  VideoPlay,
+  View,
+} from '@element-plus/icons-vue'
 import type { UploadFile } from 'element-plus'
 
 import { documentApi, knowledgeBaseApi } from '@/api/knowledge'
 import { spaceApi } from '@/api/space'
 import type { BatchUploadResponse, Document as DocType } from '@/api/types'
-import { KbSidebar, buildKbNavItems, getFileMaxSize, getFileTypeStyle, getUploadAccept, hasModality, normalizeSpaceTypes, taskStatusMap } from '@/components/knowledge'
+import {
+  KbSidebar,
+  buildKbNavItems,
+  getFileMaxSize,
+  getFileTypeStyle,
+  getUploadAccept,
+  hasModality,
+  normalizeSpaceTypes,
+  taskStatusMap,
+} from '@/components/knowledge'
 import Pagination from '@/components/common/Pagination.vue'
 import { formatDate, formatFileSize } from '@/utils/format'
 
@@ -267,7 +348,7 @@ const kbNavItems = computed(() =>
       evaluation: DataAnalysis,
       wiki: Collection,
     },
-  })
+  }),
 )
 
 const loading = ref(false)
@@ -315,7 +396,9 @@ const statusOptions = [
 
 const uploadAccept = computed(() => getUploadAccept(spaceTypes.value))
 // 文件夹选择不接受 accept 属性，需按扩展名白名单手动过滤
-const allowedExtensions = computed(() => new Set(uploadAccept.value.split(',').map((e) => e.trim().toLowerCase())))
+const allowedExtensions = computed(
+  () => new Set(uploadAccept.value.split(',').map((e) => e.trim().toLowerCase())),
+)
 const readableSpaceTypes = computed(() => {
   const labels: Record<string, string> = {
     text: '文本',
@@ -332,14 +415,12 @@ const uploadTipText = computed(() => {
   if (hasModality(spaceTypes.value, 'image')) parts.push('JPG/PNG/GIF/WebP')
   if (hasModality(spaceTypes.value, 'video')) parts.push('MP4/MOV/AVI/MKV/WebM')
   if (hasModality(spaceTypes.value, 'audio')) parts.push('MP3/WAV/FLAC/AAC/OGG/M4A')
-  const maxMB = Math.max(...spaceTypes.value.map(t => ({ text: 100, image: 100, video: 500, audio: 200 })[t] || 100))
+  const maxMB = Math.max(
+    ...spaceTypes.value.map((t) => ({ text: 100, image: 100, video: 500, audio: 200 })[t] || 100),
+  )
   const docHint = hasModality(spaceTypes.value, 'text') ? '，其中 .doc 会自动转换为 .docx' : ''
   return `支持 ${parts.join(' + ')}${docHint}，视频最大 500MB，音频最大 200MB，其它最大 ${maxMB}MB，最多 ${MAX_UPLOAD_COUNT} 个`
 })
-
-function handleSelectionChange(rows: DocType[]) {
-  selectedIds.value = rows.map((r) => r.id)
-}
 
 // 卡片网格的选择切换（替代 el-table selection 事件）
 function toggleDocSelection(doc: DocType) {
@@ -379,7 +460,9 @@ function handleFileChange(file: UploadFile) {
 }
 
 function handleFileRemove(file: UploadFile) {
-  selectedFiles.value = selectedFiles.value.filter((f) => f.name !== file.name || f.lastModified !== file.raw?.lastModified)
+  selectedFiles.value = selectedFiles.value.filter(
+    (f) => f.name !== file.name || f.lastModified !== file.raw?.lastModified,
+  )
 }
 
 function handleExceed() {
@@ -426,7 +509,12 @@ function handleFolderChange(e: Event) {
   }
 
   if (added) {
-    const detail = [skippedType && `${skippedType} 个不支持的类型`, skippedSize && `${skippedSize} 个超大小`].filter(Boolean).join('，')
+    const detail = [
+      skippedType && `${skippedType} 个不支持的类型`,
+      skippedSize && `${skippedSize} 个超大小`,
+    ]
+      .filter(Boolean)
+      .join('，')
     ElMessage.success(`已添加 ${added} 个文件${detail ? `（跳过 ${detail}）` : ''}`)
   } else if (skippedType || skippedSize) {
     ElMessage.warning('所选文件夹中没有符合要求的文件')
@@ -580,15 +668,11 @@ function goToDetail(docId: number) {
 
 async function handleDelete(doc: DocType) {
   try {
-    await ElMessageBox.confirm(
-      `确定要删除文档 "${doc.filename}" 吗？此操作不可恢复。`,
-      '警告',
-      {
-        confirmButtonText: '确定删除',
-        cancelButtonText: '取消',
-        type: 'error',
-      },
-    )
+    await ElMessageBox.confirm(`确定要删除文档 "${doc.filename}" 吗？此操作不可恢复。`, '警告', {
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消',
+      type: 'error',
+    })
     await documentApi.deleteDocument(spaceId.value, kbId.value, doc.id)
     ElMessage.success('文档已删除')
     await fetchDocuments()
@@ -699,12 +783,20 @@ onMounted(async () => {
       completed_documents: kbConfig.stats?.completed_documents ?? 0,
       processing_documents: kbConfig.stats?.processing_documents ?? 0,
     }
-    if (kbConfig.config?.space_type && Array.isArray(kbConfig.config.space_type) && kbConfig.config.space_type.length > 0) {
+    if (
+      kbConfig.config?.space_type &&
+      Array.isArray(kbConfig.config.space_type) &&
+      kbConfig.config.space_type.length > 0
+    ) {
       spaceTypes.value = kbConfig.config.space_type
     }
 
     const space = await spaceApi.getSpace(spaceId.value)
-    if (!kbConfig.config?.space_type || !Array.isArray(kbConfig.config.space_type) || kbConfig.config.space_type.length === 0) {
+    if (
+      !kbConfig.config?.space_type ||
+      !Array.isArray(kbConfig.config.space_type) ||
+      kbConfig.config.space_type.length === 0
+    ) {
       spaceTypes.value = normalizeSpaceTypes(space.config)
     }
     embeddingInfo.value = {
@@ -1024,7 +1116,9 @@ onMounted(async () => {
   border-radius: var(--radius-lg);
   background: var(--color-bg-card);
   cursor: pointer;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast),
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
     transform var(--transition-base);
 }
 
@@ -1189,5 +1283,3 @@ onMounted(async () => {
   }
 }
 </style>
-
-
