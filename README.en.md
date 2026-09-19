@@ -88,19 +88,27 @@ If your goal is just a minimal chat demo, this repo will feel heavy; if you want
 
 ## Quick start
 
+> [!IMPORTANT]
+> **Prerequisites common to all three options**:
+>
+> - **On Linux self-hosting you must set `vm.max_map_count`**: Elasticsearch requires `vm.max_map_count >= 262144`; most Linux distributions default to 65530, which makes the ES container exit immediately on boot (log: `max virtual memory areas vm.max_map_count [...] is too low`). This applies to all three options whenever Elasticsearch runs in Docker.
+>   ```bash
+>   sudo sysctl -w vm.max_map_count=262144              # temporary (lost on reboot)
+>   echo 'vm.max_map_count=262144' | sudo tee -a /etc/sysctl.conf  # permanent
+>   ```
+>   Docker Desktop (macOS / Windows) already handles this inside its Linux VM — no action needed.
+> - **Prefer the HTTPS clone URL** (no SSH key setup needed): `git clone https://github.com/SpaceshiptoMoon/NovaMind.git`; use `git clone git@github.com:SpaceshiptoMoon/NovaMind.git` only if you have an SSH key configured.
+
 ### Option 1: one-command deploy
 
 Recommended for a first run.
 
 ```bash
-git clone git@github.com:SpaceshiptoMoon/NovaMind.git
-cd NovaMind
-
 # Linux / macOS / Git Bash
 bash deploy.sh
 
-# Windows PowerShell
-.\deploy.ps1
+# Windows PowerShell (the default execution policy Restricted blocks script execution — use this command)
+powershell -ExecutionPolicy Bypass -File deploy.ps1
 ```
 
 The deploy script will automatically:
@@ -111,35 +119,26 @@ The deploy script will automatically:
 - Create `docker/configs/docker.yaml`
 - Create `backend/src/setting/yaml_config/yaml/default.yaml`
 - Build and start the full stack
-- Download DeepDoc models at deploy time (OCR / layout / table / paragraph-merge XGBoost / formula recognition pix2text-mfr) into `backend/.cache/deepdoc`, mounted into the container via a compose volume (`/app/.cache/deepdoc`) so they survive container recreation; defaults to the `hf-mirror.com` mirror (`HF_ENDPOINT` overridable)
+- Download DeepDoc models at deploy time (OCR / layout / table / paragraph-merge XGBoost / formula recognition pix2text-mfr, several hundred MB total) into `backend/.cache/deepdoc`, mounted into the container via a compose volume (`/app/.cache/deepdoc`) so they survive container recreation; defaults to the `hf-mirror.com` mirror (`HF_ENDPOINT` overridable). **A failure here does not abort the deploy** — parsing degrades gracefully (formula recognition skipped, DeepDoc full mode unavailable) and you can retry later per the script's warning
 - Poll `http://localhost/health` for a health check
 
-After deploy, the initial admin password is in `ADMIN_PASSWORD` in the root `.env`.
+After deploy, the initial admin password is in `ADMIN_PASSWORD` in the root `.env`; **the default username is `admin`**.
 
 Requirements:
 
-- Docker 20.10+
+- Docker 20.10+ (on Windows, Docker Desktop must be running)
 - Docker Compose V2+
-- At least 2 CPU cores / 4 GB RAM / 20 GB disk (Elasticsearch uses a 512MB JVM heap by default; tune via `ES_JAVA_OPTS` in `.env`)
-
-> [!IMPORTANT]
-> **On Linux self-hosting you must set `vm.max_map_count`**. Elasticsearch requires `vm.max_map_count >= 262144`; most Linux distributions default to 65530, which makes the ES container exit immediately on boot (log: `max virtual memory areas vm.max_map_count [...] is too low`).
->
-> ```bash
-> sudo sysctl -w vm.max_map_count=262144              # temporary (lost on reboot)
-> echo 'vm.max_map_count=262144' | sudo tee -a /etc/sysctl.conf  # permanent
-> ```
->
-> Docker Desktop (macOS / Windows) already handles this inside its Linux VM — no action needed.
+- One-command deploy via `deploy.sh` needs a working `python` command on the host (to generate random secrets; the script probes for it and offers an alternative when missing). `deploy.ps1` has no such dependency
+- At least 2 CPU cores / 4 GB RAM / 20 GB disk (Elasticsearch uses a 512MB JVM heap by default; tune via `ES_JAVA_OPTS` in `.env`. The `--build` phase peaks higher — close other memory-heavy apps on small machines)
 
 Common commands:
 
 ```bash
 bash deploy.sh status
-bash deploy.sh logs
+bash deploy.sh logs      # follows the app container only; add services to follow more (e.g. docker compose logs -f mysql)
 bash deploy.sh update
 bash deploy.sh stop
-bash deploy.sh clean
+bash deploy.sh clean   # ⚠️ removes ALL data volumes (knowledge bases, documents, user data are lost); interactive confirmation included
 ```
 
 ```powershell
@@ -147,7 +146,7 @@ bash deploy.sh clean
 .\deploy.ps1 logs
 .\deploy.ps1 update
 .\deploy.ps1 stop
-.\deploy.ps1 clean
+.\deploy.ps1 clean   # ⚠️ same as above — removes all data volumes
 ```
 
 ### Option 2: manual Docker deploy
@@ -155,7 +154,7 @@ bash deploy.sh clean
 If you prefer to control config files and passwords yourself:
 
 ```bash
-git clone git@github.com:SpaceshiptoMoon/NovaMind.git
+git clone https://github.com/SpaceshiptoMoon/NovaMind.git
 cd NovaMind
 
 cp .env.example .env
@@ -165,22 +164,40 @@ cp backend/src/setting/yaml_config/yaml/default.example backend/src/setting/yaml
 docker compose up -d --build
 ```
 
+> [!WARNING]
+> **After `cp .env.example .env` you MUST edit `.env` and replace every `your-*` placeholder before starting**, otherwise:
+>
+> - The `ADMIN_PASSWORD` placeholder contains no uppercase letter / digit / special character. The first boot succeeds (with a weak password), but **the second restart enters a container crash loop** because the backend enforces password strength on the reset path. Admin password requirements: 8–30 chars with at least one uppercase letter, one lowercase letter, one digit, and one special character.
+> - `SECRET_KEY` / `ENCRYPTION_KEY` placeholders are publicly known values from this repo — leaving them unchanged lets anyone forge JWTs and decrypt stored model API keys.
+>
+> Variables to replace: `MYSQL_ROOT_PASSWORD`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `ES_PASSWORD`, `SECRET_KEY`, `ENCRYPTION_KEY`, `ADMIN_PASSWORD`.
+
 Notes:
 
 - `.env` holds infrastructure passwords and backend secrets
 - `docker/configs/docker.yaml` is the Docker runtime mount config
-- `default.yaml` holds base backend config; sensitive values are usually overridden by env vars
+- `default.yaml` holds base backend config, mounted read-only into the container; `*.yaml` files are not baked into the image (only `*.example` templates are), so local real secrets never leak into image layers — sensitive values are usually overridden by environment variables
+- Option 2 skips the deploy script's model download step: after first boot, DeepDoc models are missing and parsing degrades (formula recognition skipped, full mode unavailable, `/health/detailed` shows degraded). For full parsing capability, run the download manually:
+  ```bash
+  docker compose run --rm --no-deps --user 0 \
+    -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com \
+    app python -m novamind.engines.document.integrations.deepdoc prepare --include-text-concat --include-formula
+  ```
 
 ### Option 3: local development
 
 For frontend/backend co-development or secondary development.
 
-1. Prepare backend config
+1. Prepare config files (both `.env` and YAML templates)
 
 ```bash
+# from the repo root
+cp .env.example .env                      # required: compose and the backend both read it; infra won't start without it
+
 cd backend/src/setting/yaml_config/yaml
 cp default.example default.yaml
 cp development.example development.yaml
+cd -                                      # back to the repo root
 ```
 
 2. Start the infrastructure
@@ -206,7 +223,7 @@ If you already run these services locally, just make sure their connection info 
 
 ```bash
 cd backend
-uv sync           # install dependencies (skippable if .venv already exists)
+uv sync           # install dependencies (install uv first: pip install uv, or curl -LsSf https://astral.sh/uv/install.sh | sh)
 uv run python main.py --config development --reload
 ```
 
@@ -229,13 +246,13 @@ Default frontend address: `http://localhost:5173`
 
 Docker deploy:
 
-| Service | Address |
-| --- | --- |
-| Frontend | `http://localhost` |
-| Backend API docs | `http://localhost/docs` |
-| Health check | `http://localhost/health` |
-| MinIO console | `http://localhost:9001` |
-| Elasticsearch | `http://localhost:9200` |
+| Service | Address | Credentials |
+| --- | --- | --- |
+| Frontend | `http://localhost` | admin account `admin`, initial password in `ADMIN_PASSWORD` in `.env` |
+| Backend API docs | `http://localhost/docs` | same as above |
+| Health check | `http://localhost/health` | none (process-liveness only; dependency health is at `/health/detailed`) |
+| MinIO console | `http://localhost:9001` | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` from `.env` |
+| Elasticsearch | `http://localhost:9200` | none (ES security features are disabled in Docker deploy) |
 
 Local dev:
 
@@ -353,7 +370,7 @@ development the backend `ConfigLoader` auto-loads it at startup to resolve
 | Variable | Description |
 | --- | --- |
 | `MYSQL_ROOT_PASSWORD` | MySQL root password |
-| `MYSQL_DATABASE` | Default database name |
+| `MYSQL_DATABASE` | Default database name; consumed by the `mysql` container and `docker.yaml` `database.database`. Note: local-dev `default.yaml` hard-codes `novamind_db` and does not read this variable — keep the default name in local development |
 | `MINIO_ROOT_USER` | MinIO access account |
 | `MINIO_ROOT_PASSWORD` | MinIO access password |
 | `ES_JAVA_OPTS` | Elasticsearch JVM args |
@@ -397,13 +414,12 @@ If your use case is Chinese-heavy, multi-tool, or long-context, prioritize model
 
 ## Testing & quality checks
 
-Backend:
+Backend (in `backend/`, with dependencies installed via `uv sync`):
 
 ```bash
-cd backend
-pytest
-pytest -m unit
-pytest -m "not slow"
+uv run pytest
+uv run pytest -m unit
+uv run pytest -m "not slow"
 ```
 
 Frontend:
@@ -411,7 +427,7 @@ Frontend:
 ```bash
 cd frontend
 npm run type-check
-npm run test:unit
+npm run test:unit -- --run   # --run exits after the run; without it vitest enters watch mode
 npm run lint
 npm run format
 ```

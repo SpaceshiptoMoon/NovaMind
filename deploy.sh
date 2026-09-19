@@ -42,17 +42,19 @@ check_docker() {
 ensure_env() {
   # Windows Git Bash 的 `python` 可能是 WindowsApps 存根（退出码 49、不执行代码），
   # 且本脚本用 python heredoc 生成密码——先做可用性预检，避免半途死掉留下未替换的 .env。
-  if command -v python >/dev/null 2>&1; then
-    if ! python -c "import secrets" >/dev/null 2>&1; then
-      error "python is required by deploy.sh to generate secrets but is not runnable."
-      error "On Windows, use deploy.ps1 instead (pure PowerShell, no python dependency):"
-      error "  powershell -ExecutionPolicy Bypass -File deploy.ps1"
-      exit 1
+  # Linux 新装机常常只有 python3 没有 python，按 python → python3 顺序探测。
+  PYTHON_BIN=""
+  for candidate in python python3; do
+    if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c "import secrets" >/dev/null 2>&1; then
+      PYTHON_BIN="$candidate"
+      break
     fi
-  else
-    error "python is required by deploy.sh to generate secrets but was not found."
+  done
+  if [[ -z "$PYTHON_BIN" ]]; then
+    error "python is required by deploy.sh to generate secrets but was not found or is not runnable."
     error "On Windows, use deploy.ps1 instead (pure PowerShell, no python dependency):"
     error "  powershell -ExecutionPolicy Bypass -File deploy.ps1"
+    error "On Linux/Debian/Ubuntu, install it with: sudo apt-get install python3"
     exit 1
   fi
 
@@ -69,7 +71,7 @@ ensure_env() {
   step "Creating .env from .env.example"
   cp .env.example .env
 
-  python - <<'PY'
+  "$PYTHON_BIN" - <<'PY'
 from pathlib import Path
 import secrets
 import string
@@ -136,17 +138,23 @@ wait_for_health() {
   done
 
   warn "Health check did not pass within ${timeout}s"
+  warn "The app may still be starting (model downloads, DB migrations). Inspect with: bash deploy.sh logs"
   return 1
 }
 
 print_summary() {
+  local healthy="${1:-}"
   echo ""
   docker compose ps
   echo ""
-  echo "Frontend: http://localhost"
-  echo "API docs: http://localhost/docs"
-  echo "MinIO:    http://localhost:9001"
-  echo ""
+  if [[ "$healthy" == "unhealthy" ]]; then
+    warn "Deployment finished but the health check did NOT pass — do not treat this as a success."
+    warn "Check logs: bash deploy.sh logs   Detailed component status: curl -s http://localhost/health/detailed"
+  else
+    echo "Frontend: http://localhost"
+    echo "API docs: http://localhost/docs"
+    echo "MinIO:    http://localhost:9001 (credentials in .env: MINIO_ROOT_USER / MINIO_ROOT_PASSWORD)"
+  fi
 }
 
 prepare_deepdoc_models() {
@@ -184,8 +192,11 @@ cmd_deploy() {
   step "Building and starting services"
   docker compose up -d --build
   prepare_deepdoc_models
-  wait_for_health 180 || true
-  print_summary
+  if wait_for_health 180; then
+    print_summary
+  else
+    print_summary unhealthy
+  fi
 }
 
 cmd_update() {
@@ -194,8 +205,11 @@ cmd_update() {
   step "Rebuilding app service"
   docker compose up -d --build app
   prepare_deepdoc_models
-  wait_for_health 120 || true
-  print_summary
+  if wait_for_health 120; then
+    print_summary
+  else
+    print_summary unhealthy
+  fi
 }
 
 cmd_status() {

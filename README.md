@@ -85,19 +85,27 @@ NovaMind 是一个面向团队与个人的智能知识平台，围绕知识库�
 
 ## 快速开始
 
+> [!IMPORTANT]
+> **所有部署方式通用前置条件**：
+>
+> - **Linux 自托管必须设置 `vm.max_map_count`**：Elasticsearch 要求内核 `vm.max_map_count >= 262144`，多数 Linux 发行版默认 65530，会导致 ES 容器启动即退出（日志报 `max virtual memory areas vm.max_map_count [...] is too low`）。三种方式（一键/手动/本地开发）只要用 Docker 起 Elasticsearch 都受影响。
+>   ```bash
+>   sudo sysctl -w vm.max_map_count=262144              # 临时生效（重启失效）
+>   echo 'vm.max_map_count=262144' | sudo tee -a /etc/sysctl.conf  # 永久生效
+>   ```
+>   Docker Desktop（macOS / Windows）在其 Linux VM 内已自动处理，无需此步。
+> - **克隆仓库建议用 HTTPS 地址**（无需配置 SSH key）：`git clone https://github.com/SpaceshiptoMoon/NovaMind.git`；已配置 SSH key 的用户可用 `git clone git@github.com:SpaceshiptoMoon/NovaMind.git`。
+
 ### 方式一：一键部署
 
 推荐第一次体验时使用。
 
 ```bash
-git clone git@github.com:SpaceshiptoMoon/NovaMind.git
-cd NovaMind
-
 # Linux / macOS / Git Bash
 bash deploy.sh
 
-# Windows PowerShell
-.\deploy.ps1
+# Windows PowerShell（默认执行策略 Restricted 会拒绝运行脚本，用这条命令）
+powershell -ExecutionPolicy Bypass -File deploy.ps1
 ```
 
 部署脚本会自动完成：
@@ -108,26 +116,17 @@ bash deploy.sh
 - 创建 `docker/configs/docker.yaml`
 - 创建 `backend/src/setting/yaml_config/yaml/default.yaml`
 - 构建并启动完整服务栈
-- **部署期下载 DeepDoc 模型**（OCR / 版面 / 表格 / 段落合并 XGBoost / 公式识别 pix2text-mfr）到 `backend/.cache/deepdoc`，经 compose 卷挂载进容器（`/app/.cache/deepdoc`），容器重建不丢；下载源默认国内镜像 `hf-mirror.com`（`HF_ENDPOINT` 可覆盖）
+- **部署期下载 DeepDoc 模型**（OCR / 版面 / 表格 / 段落合并 XGBoost / 公式识别 pix2text-mfr，共数百 MB）到 `backend/.cache/deepdoc`，经 compose 卷挂载进容器（`/app/.cache/deepdoc`），容器重建不丢；下载源默认国内镜像 `hf-mirror.com`（`HF_ENDPOINT` 可覆盖）。**此步失败不会中断部署**，仅解析能力降级（公式识别跳过、DeepDoc full 模式不可用），可事后按脚本提示重试
 - 轮询 `http://localhost/health` 做健康检查
 
-部署完成后，管理员初始密码可在根目录 `.env` 的 `ADMIN_PASSWORD` 中查看。
+部署完成后，管理员初始密码可在根目录 `.env` 的 `ADMIN_PASSWORD` 中查看，**默认用户名为 `admin`**。
 
 环境要求：
 
-- Docker 20.10+
+- Docker 20.10+（Windows 需 Docker Desktop 已启动）
 - Docker Compose V2+
-- 最低 2 核 CPU / 4 GB 内存 / 20 GB 磁盘（Elasticsearch 默认占 512MB JVM 堆，可在 `.env` 的 `ES_JAVA_OPTS` 调整）
-
-> [!IMPORTANT]
-> **Linux 自托管必须设置 `vm.max_map_count`**：Elasticsearch 要求内核 `vm.max_map_count >= 262144`，多数 Linux 发行版默认 65530，会导致 ES 容器启动即退出（日志报 `max virtual memory areas vm.max_map_count [...] is too low`）。
->
-> ```bash
-> sudo sysctl -w vm.max_map_count=262144              # 临时生效（重启失效）
-> echo 'vm.max_map_count=262144' | sudo tee -a /etc/sysctl.conf  # 永久生效
-> ```
->
-> Docker Desktop（macOS / Windows）在其 Linux VM 内已自动处理，无需此步。
+- 一键部署（`deploy.sh`）需要宿主机有可用的 `python` 命令（用于生成随机密码；脚本会自动探测，不可用时给出替代方案）。`deploy.ps1` 无此依赖
+- 最低 2 核 CPU / 4 GB 内存 / 20 GB 磁盘（Elasticsearch 默认占 512MB JVM 堆，可在 `.env` 的 `ES_JAVA_OPTS` 调整；构建期 `--build` 峰值内存更高，低内存机器建议先关闭其他大内存应用）
 
 常用命令：
 
@@ -136,7 +135,7 @@ bash deploy.sh status
 bash deploy.sh logs
 bash deploy.sh update
 bash deploy.sh stop
-bash deploy.sh clean
+bash deploy.sh clean   # ⚠️ 会删除全部数据卷（知识库、文档、用户数据全部丢失），脚本内有交互确认
 ```
 
 ```powershell
@@ -144,7 +143,7 @@ bash deploy.sh clean
 .\deploy.ps1 logs
 .\deploy.ps1 update
 .\deploy.ps1 stop
-.\deploy.ps1 clean
+.\deploy.ps1 clean   # ⚠️ 同上，删除全部数据卷
 ```
 
 ### 方式二：手动 Docker 部署
@@ -152,7 +151,7 @@ bash deploy.sh clean
 如果你希望手动控制配置文件和密码：
 
 ```bash
-git clone git@github.com:SpaceshiptoMoon/NovaMind.git
+git clone https://github.com/SpaceshiptoMoon/NovaMind.git
 cd NovaMind
 
 cp .env.example .env
@@ -162,22 +161,40 @@ cp backend/src/setting/yaml_config/yaml/default.example backend/src/setting/yaml
 docker compose up -d --build
 ```
 
+> [!WARNING]
+> **`cp .env.example .env` 后必须编辑 `.env`，替换全部 `your-*` 占位符再启动**，否则：
+>
+> - `ADMIN_PASSWORD` 占位值不含大写字母/数字/特殊字符，首次启动能成功（初始密码弱），但**第二次重启会因后端密码强度校验失败陷入容器崩溃循环**——管理员密码要求：8-30 位，必须同时包含大写字母、小写字母、数字、特殊字符
+> - `SECRET_KEY` / `ENCRYPTION_KEY` 占位值是公开仓库里的已知值，不改则 JWT 可被伪造、已加密的模型 API Key 可被解密
+>
+> 需要替换的变量：`MYSQL_ROOT_PASSWORD`、`MINIO_ROOT_USER`、`MINIO_ROOT_PASSWORD`、`ES_PASSWORD`、`SECRET_KEY`、`ENCRYPTION_KEY`、`ADMIN_PASSWORD`。
+
 说明：
 
 - `.env` 管理基础设施密码和后端密钥
 - `docker/configs/docker.yaml` 是 Docker 运行时挂载配置
 - `default.yaml` 负责后端基础配置，同样以只读方式挂载进容器；`*.yaml` 不打进镜像，防止本地真实密钥泄漏进镜像层，敏感值通常由环境变量覆盖
+- 方式二跳过了部署脚本的模型下载步骤：首次启动后 DeepDoc 模型缺失，解析能力会降级（公式识别跳过、full 模式不可用，`/health/detailed` 显示 degraded）。如需完整解析能力，参照方式一的模型下载命令手动执行：
+  ```bash
+  docker compose run --rm --no-deps --user 0 \
+    -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com \
+    app python -m novamind.engines.document.integrations.deepdoc prepare --include-text-concat --include-formula
+  ```
 
 ### 方式三：本地开发
 
 适合前后端联调或二次开发。
 
-1. 准备后端配置文件
+1. 准备配置文件（`.env` 和 YAML 模板都要）
 
 ```bash
+# 在仓库根目录执行
+cp .env.example .env                      # 必需：compose 和后端都要读它，缺了基础设施起不来
+
 cd backend/src/setting/yaml_config/yaml
 cp default.example default.yaml
 cp development.example development.yaml
+cd -                                      # 回到仓库根目录
 ```
 
 2. 启动基础设施
@@ -203,7 +220,7 @@ cp development.example development.yaml
 
 ```bash
 cd backend
-uv sync           # 安装依赖（已有 .venv 可省略）
+uv sync           # 安装依赖（需先安装 uv：pip install uv 或 curl -LsSf https://astral.sh/uv/install.sh | sh）
 uv run python main.py --config development --reload
 ```
 
@@ -226,13 +243,13 @@ npm run dev
 
 Docker 部署模式：
 
-| 服务 | 地址 |
-| --- | --- |
-| 前端首页 | `http://localhost` |
-| 后端 API 文档 | `http://localhost/docs` |
-| 健康检查 | `http://localhost/health` |
-| MinIO 控制台 | `http://localhost:9001` |
-| Elasticsearch | `http://localhost:9200` |
+| 服务 | 地址 | 凭据 |
+| --- | --- | --- |
+| 前端首页 | `http://localhost` | 管理员账号 `admin`，初始密码见 `.env` 的 `ADMIN_PASSWORD` |
+| 后端 API 文档 | `http://localhost/docs` | 同上 |
+| 健康检查 | `http://localhost/health` | 无（进程存活检查，不校验依赖；依赖健康看 `/health/detailed`） |
+| MinIO 控制台 | `http://localhost:9001` | `.env` 的 `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` |
+| Elasticsearch | `http://localhost:9200` | 无（Docker 部署关闭了 ES 安全特性） |
 
 本地开发模式：
 
@@ -369,7 +386,7 @@ src/features/{module}/
 | 变量 | 说明 | 消费方 |
 | --- | --- | --- |
 | `MYSQL_ROOT_PASSWORD` | MySQL root 密码 | `mysql` 容器 + YAML `database.password` |
-| `MYSQL_DATABASE` | 默认数据库名 | `mysql` 容器 + YAML `database.database` |
+| `MYSQL_DATABASE` | 默认数据库名 | `mysql` 容器 + `docker.yaml` `database.database`。注意：本地开发的 `default.yaml` 中数据库名是硬编码 `novamind_db`，不走此变量——本地开发时保持默认库名即可 |
 | `MINIO_ROOT_USER` | MinIO 访问账号 | `minio` 容器 + YAML `minio.access_key` |
 | `MINIO_ROOT_PASSWORD` | MinIO 访问密码 | `minio` 容器 + YAML `minio.secret_key` |
 | `ES_JAVA_OPTS` | Elasticsearch JVM 参数 | `elasticsearch` 容器 |
@@ -393,7 +410,7 @@ src/features/{module}/
    cp development.example development.yaml
    ```
 
-2. 编辑 `.env`，将数据库、MinIO、Elasticsearch 等密码填入实际值。
+2. 编辑 `.env`，将数据库、MinIO、Elasticsearch 等密码填入实际值（至少替换全部 `your-*` 占位符）。
    模板 YAML 中的敏感字段已全部是 `${VAR_NAME}` 占位符，后端启动时自动从 `.env`
    取值，无需再改 YAML。仍可直接把值写进 YAML（会覆盖占位符），或启动前
    `export VAR_NAME=value`（优先级最高：进程环境变量 > `.env` 文件）。
@@ -415,13 +432,12 @@ NovaMind 对模型供应方没有强绑定，只要实现 OpenAI 兼容接口，
 
 ## 测试与质量检查
 
-后端：
+后端（在 `backend/` 目录下，依赖已通过 `uv sync` 安装时）：
 
 ```bash
-cd backend
-pytest
-pytest -m unit
-pytest -m "not slow"
+uv run pytest
+uv run pytest -m unit
+uv run pytest -m "not slow"
 ```
 
 前端：
@@ -429,7 +445,7 @@ pytest -m "not slow"
 ```bash
 cd frontend
 npm run type-check
-npm run test:unit
+npm run test:unit -- --run   # 加 --run 跑完退出；不加会进入 vitest watch 模式
 npm run lint
 npm run format
 ```

@@ -23,8 +23,28 @@ function Test-Command($Name) {
 function Test-DockerEnvironment {
     Write-Step "Checking Docker environment"
     Test-Command "docker"
-    docker info *> $null
+    # EAP=Stop 下 `docker info *> $null` 会把 stderr 记录升级为 terminating error，
+    # daemon 未启动时用户看到的是裸 NativeCommandError——改为先取输出再判退出码，
+    # daemon 停止/Compose 缺失时给出对齐 deploy.sh 的友好提示。
+    $dockerInfo = docker info 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Docker daemon is not running. Start Docker Desktop first, then retry."
+    }
     docker compose version *> $null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Docker Compose V2 is required (docker compose version failed)."
+    }
+}
+
+function Invoke-ComposeStep {
+    param([string]$Description, [string[]]$ArgumentList)
+    # 关键 compose 步骤统一走这里：检查 $LASTEXITCODE，失败即终止，
+    # 避免 build 失败后仍继续跑模型下载和健康轮询（对齐 deploy.sh 的 set -e 语义）。
+    Write-Step $Description
+    & docker @ArgumentList
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Description failed (docker compose exit code $LASTEXITCODE)."
+    }
 }
 
 function New-RandomPassword([int]$Length = 16) {
@@ -95,22 +115,30 @@ function Wait-AppHealth([int]$TimeoutSeconds = 180) {
         try {
             Invoke-WebRequest -Uri "http://localhost/health" -UseBasicParsing -TimeoutSec 5 *> $null
             Write-Info "Application health check passed"
-            return
+            return $true
         } catch {
             Start-Sleep -Seconds 5
         }
     }
 
     Write-Warn "Health check did not pass within $TimeoutSeconds seconds"
+    Write-Warn "The app may still be starting (model downloads, DB migrations). Inspect with: .\deploy.ps1 logs"
+    return $false
 }
 
 function Show-Summary {
+    param([bool]$Healthy = $true)
     Write-Host ""
     docker compose ps
     Write-Host ""
-    Write-Host "Frontend: http://localhost"
-    Write-Host "API docs: http://localhost/docs"
-    Write-Host "MinIO:    http://localhost:9001"
+    if (-not $Healthy) {
+        Write-Warn "Deployment finished but the health check did NOT pass — do not treat this as a success."
+        Write-Warn "Check logs: .\deploy.ps1 logs   Detailed component status: Invoke-WebRequest http://localhost/health/detailed"
+    } else {
+        Write-Host "Frontend: http://localhost"
+        Write-Host "API docs: http://localhost/docs"
+        Write-Host "MinIO:    http://localhost:9001 (credentials in .env: MINIO_ROOT_USER / MINIO_ROOT_PASSWORD)"
+    }
     Write-Host ""
 }
 
@@ -146,21 +174,19 @@ function Invoke-Deploy {
     Test-DockerEnvironment
     Ensure-EnvFile
     Ensure-ConfigFiles
-    Write-Step "Building and starting services"
-    docker compose up -d --build
+    Invoke-ComposeStep -Description "Building and starting services" -ArgumentList @("compose", "up", "-d", "--build")
     Invoke-PrepareDeepdocModels
-    Wait-AppHealth 180
-    Show-Summary
+    $healthy = Wait-AppHealth 180
+    Show-Summary -Healthy $healthy
 }
 
 function Invoke-Update {
     Show-Banner
     Test-DockerEnvironment
-    Write-Step "Rebuilding app service"
-    docker compose up -d --build app
+    Invoke-ComposeStep -Description "Rebuilding app service" -ArgumentList @("compose", "up", "-d", "--build", "app")
     Invoke-PrepareDeepdocModels
-    Wait-AppHealth 120
-    Show-Summary
+    $healthy = Wait-AppHealth 120
+    Show-Summary -Healthy $healthy
 }
 
 function Invoke-Status {
