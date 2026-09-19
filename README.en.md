@@ -396,6 +396,9 @@ Loading logic:
 - `default.yaml` is the baseline
 - Pick an environment via `python main.py --config development` or `--config production`
 - The loader deep-merges configs
+- An optional third layer **`local.yaml`** (same directory as `default.yaml`) is merged
+  last, on top of the environment config — useful for overriding individual settings
+  locally without touching any template files; skipped when absent
 - `${VAR_NAME}` placeholders are resolved from environment variables; the backend
   auto-loads the repo-root `.env` at startup (process environment variables take
   precedence), so in local development placeholders resolve straight from `.env`

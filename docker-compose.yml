@@ -52,7 +52,9 @@ services:
         condition: service_started
       elasticsearch:
         condition: service_healthy
-    restart: on-failure
+    # 与基础设施服务保持一致的常驻语义：宿主机重启后自动拉起；
+    # 崩溃时 Docker 自带指数退避重启，无需 on-failure 的额外重试语义
+    restart: unless-stopped
     networks:
       - app-network
 
@@ -68,7 +70,9 @@ services:
       --character-set-server=utf8mb4
       --collation-server=utf8mb4_unicode_ci
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
+      # 不把密码写进 healthcheck 命令（docker inspect 可见）；mysqladmin ping 在
+      # 未认证时也返回 "mysqld is alive"（服务器存活探测不依赖认证通过）
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 5s
       timeout: 3s
       retries: 15
@@ -96,7 +100,10 @@ services:
       - app-network
 
   minio:
-    image: minio/minio
+    # MinIO 社区版自 2025-10 起停止发布官方 Docker 镜像（12 月进入维护模式，
+    # 仅源码分发），官方源为 quay.io。此处钉在 cutoff 前最后可拉取的 release，
+    # 升级需自行从源码构建或改用商业镜像，见 https://github.com/minio/minio/releases
+    image: quay.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
     container_name: novamind-minio
     ports:
       - "127.0.0.1:9005:9005"
