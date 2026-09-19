@@ -73,6 +73,8 @@ class WikiIndexResponse(BaseModel):
 
     groups: List[WikiIndexGroup]
     is_active: bool = False
+    # index 页 intro（KB 简介，管道维护；目录列表本体按需装配不持久化）
+    intro: str = ""
 
 
 class WikiStatsResponse(BaseModel):

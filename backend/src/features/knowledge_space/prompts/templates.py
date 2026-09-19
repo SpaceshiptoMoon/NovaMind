@@ -443,4 +443,35 @@ TEMPLATES = {
         "  ]\n"
         "}}"
     ),
+
+    # Index intro 首建（对齐 WeKnora WikiIndexIntroPrompt）：基于页面摘要
+    # 生成知识库简介
+    "wiki_index_intro_user": (
+        "You are writing a short introduction for a wiki knowledge base, based on the "
+        "summaries of its pages below.\n\n"
+        "<page_summaries>\n{summaries}\n</page_summaries>\n\n"
+        "<instructions>\n"
+        "Write a 2-4 paragraph introduction in {language} describing what this knowledge "
+        "base covers, its main topics, and what a reader can find here. Ground every claim "
+        "in the summaries above — do NOT invent topics that are not represented. Do NOT "
+        "list the pages one by one (the directory listing is rendered separately).\n\n"
+        "The first line must be: SUMMARY: {{one sentence, 15-40 words}}\n"
+        "</instructions>\n\n"
+        "Output the SUMMARY line first, then the introduction. No other preamble."
+    ),
+
+    # Index intro 增量更新（对齐 WeKnora WikiIndexIntroUpdatePrompt）
+    "wiki_index_intro_update_user": (
+        "You are maintaining the introduction of a wiki knowledge base. Below are the "
+        "current introduction and a description of what recently changed.\n\n"
+        "<current_intro>\n{existing_intro}\n</current_intro>\n\n"
+        "<recent_changes>\n{changes}\n</recent_changes>\n\n"
+        "<instructions>\n"
+        "Update the introduction so it stays accurate in {language}. Keep it concise "
+        "(2-4 paragraphs). Preserve existing wording where it is still accurate; adjust "
+        "only what the changes require. Do NOT list pages one by one.\n\n"
+        "The first line must be: SUMMARY: {{one sentence, 15-40 words}}\n"
+        "</instructions>\n\n"
+        "Output the SUMMARY line first, then the updated introduction. No other preamble."
+    ),
 }

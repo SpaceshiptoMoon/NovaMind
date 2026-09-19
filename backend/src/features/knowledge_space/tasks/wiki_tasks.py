@@ -320,3 +320,53 @@ async def enqueue_wiki_ingest(
         record.job_id = job.job_id
         await session.commit()
         return job.job_id
+
+
+async def process_wiki_retract_task(
+    ctx: dict,
+    kb_id: int,
+    space_id: int,
+    document_id: int,
+) -> dict:
+    """wiki 来源回收任务（arq worker 入口，幂等可重试）。
+
+    删除文档时 delete_document 已同步对账一次；本任务作为异步兜底再跑一遍
+    （覆盖同步路径失败/竞态窗口漏网的页面）。失败由 arq 重试，对账幂等。
+    """
+    from novamind.core.database.database import get_db_session
+    from novamind.features.knowledge_space.services.wiki_retract_service import WikiRetractService
+
+    async with get_db_session() as session:
+        svc = WikiRetractService(session, kb_id=kb_id, space_id=space_id)
+        result = await svc.reconcile_document_removal(document_id)
+        await session.commit()
+        if result["deleted"] or result["stripped"]:
+            logger.info(
+                "wiki retract 对账完成",
+                kb_id=kb_id, document_id=document_id,
+                deleted=len(result["deleted"]), stripped=len(result["stripped"]),
+            )
+        return result
+
+
+async def enqueue_wiki_retract(
+    kb_id: int,
+    space_id: int,
+    document_id: int,
+) -> Optional[str]:
+    """入队 wiki retract 任务（fire-and-forget：删除主流程不因入队失败阻断）"""
+    from novamind.shared.mq import get_arq_pool
+
+    try:
+        pool = await get_arq_pool()
+        job = await pool.enqueue_job(
+            "process_wiki_retract_task",
+            kb_id=kb_id, space_id=space_id, document_id=document_id,
+        )
+        return job.job_id if job else None
+    except Exception as e:
+        logger.warning(
+            "wiki retract 入队失败（同步对账仍在）",
+            kb_id=kb_id, document_id=document_id, error=str(e),
+        )
+        return None

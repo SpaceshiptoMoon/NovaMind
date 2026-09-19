@@ -4,6 +4,7 @@ Wiki 页面仓储
 处理 wiki_pages / wiki_page_revisions / wiki_ingest_records 的数据访问。
 写操作遵循 begin_nested() SAVEPOINT 约定（见 docs/transaction-boundary-conventions.md）。
 """
+import re
 
 from typing import Optional, List, Dict, Any, Tuple
 
@@ -286,6 +287,45 @@ class WikiPageRepository:
             .values(status="published")
         )
         return int(result.rowcount or 0)
+
+    async def update_auto_linked_content(self, page: WikiPage, new_content: str) -> None:
+        """机器链接维护专写路径（对齐 WeKnora UpdateAutoLinkedContent）。
+
+        改 content + 重解析 out_links + in_links 双向对齐；不快照、不递增
+        version（链接簿记不是用户可见内容编辑——WikiPage.version 注释声明
+        的语义在此落地）。KB 内自建页表用于精确双向对齐。
+        """
+        page.content = new_content
+        parsed = self._parse_out_links(new_content, page.slug)
+        live = await self.all_live_pages(page.kb_id)
+        live_slugs = {p.slug for p in live}
+        new_out = [s for s in parsed if s in live_slugs and s != page.slug]
+
+        removed = set(page.out_links or []) - set(new_out)
+        added = set(new_out) - set(page.out_links or [])
+        page.out_links = new_out
+        slug_map = {p.slug: p for p in live}
+        for slug in removed:
+            target = slug_map.get(slug)
+            if target and page.slug in (target.in_links or []):
+                target.in_links = [s for s in target.in_links if s != page.slug]
+        for slug in added:
+            target = slug_map.get(slug)
+            if target is not None and page.slug not in (target.in_links or []):
+                target.in_links = sorted(set(target.in_links or []) | {page.slug})
+        await self.session.flush()
+
+    @staticmethod
+    def _parse_out_links(content: str, self_slug: str) -> List[str]:
+        """从正文解析 [[slug|title]] 出链（规范化、去自指、保序去重）"""
+        from novamind.features.knowledge_space.services.wiki_ingest_service import normalize_slug
+
+        links: List[str] = []
+        for m in re.finditer(r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]", content):
+            slug = normalize_slug(m.group(1))
+            if slug and slug != self_slug and slug not in links:
+                links.append(slug)
+        return links
 
     async def _snapshot_revision(self, page: WikiPage) -> None:
         """把页面当前版本整份快照进 wiki_page_revisions。

@@ -201,7 +201,12 @@ async def get_index(
 
     latest = await record_repo.get_latest_for_kb(kb_id)
     is_active = bool(latest and latest.status in (WikiIngestStatus.PENDING, WikiIngestStatus.RUNNING))
-    return WikiIndexResponse(groups=groups, is_active=is_active)
+
+    # index 页 intro（KB 简介；无页面或已删则为空）
+    index_page = await repo.get_by_slug(kb_id, "index")
+    intro = (index_page.content if index_page and not index_page.is_deleted else "") or ""
+
+    return WikiIndexResponse(groups=groups, is_active=is_active, intro=intro)
 
 
 @router.get("/search", response_model=WikiSearchResponse, summary="Wiki 页面搜索")

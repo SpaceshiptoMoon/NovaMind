@@ -129,6 +129,31 @@ class DocumentQueryService:
                     "只能删除自己上传的文档，删除他人文档需要管理员权限",
                 )
 
+        # 3.5 wiki 来源回收（对齐 WeKnora cleanupWikiOnKnowledgeDelete，best-effort）：
+        # 先写 tombstone 防「删除 vs 生成中」竞态，再同步对账（唯一来源页软删、
+        # 多来源页剥引用），并入队异步 retract 任务兜底。任何失败不阻断文档删除。
+        try:
+            from novamind.features.knowledge_space.services.wiki_retract_service import (
+                WikiRetractService,
+                write_tombstone,
+            )
+            from novamind.features.knowledge_space.tasks.wiki_tasks import enqueue_wiki_retract
+
+            await write_tombstone(kb_id, document_id)
+            retract_svc = WikiRetractService(self.session, kb_id=kb_id, space_id=document.space_id)
+            result = await retract_svc.reconcile_document_removal(document_id)
+            if result["deleted"] or result["stripped"]:
+                self.logger.info(
+                    "wiki 来源回收完成",
+                    kb_id=kb_id, document_id=document_id,
+                    deleted=len(result["deleted"]), stripped=len(result["stripped"]),
+                )
+            await enqueue_wiki_retract(kb_id, document.space_id, document_id)
+        except Exception as e:
+            self.logger.warning(
+                "wiki 来源回收失败（不影响文档删除）", kb_id=kb_id, document_id=document_id, error=str(e),
+            )
+
         # 4. 删除文档记录（先数据库操作，确保事务一致性）
         await self.doc_repo.delete(document_id)
 

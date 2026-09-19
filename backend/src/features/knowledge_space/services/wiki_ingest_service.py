@@ -29,6 +29,7 @@ from novamind.features.knowledge_space.repository.wiki_repository import (
     WikiPageRepository,
 )
 from novamind.features.knowledge_space.services.wiki_handles import HandleTable
+from novamind.features.knowledge_space.services.wiki_retract_service import tombstone_exists
 from novamind.features.knowledge_space.services.wiki_dedup import (
     DEDUP_CANDIDATE_SCORE_FLOOR,
     DEDUP_CORPUS_HARD_LIMIT,
@@ -158,6 +159,15 @@ class WikiIngestService:
         """执行四阶段管道。full_text 与 chunks 由任务层准备好后传入。"""
         outcome = IngestOutcome()
 
+        # 删除竞态守卫（检查点 1，对齐 WeKnora isKnowledgeGone）：
+        # 文档在排队/执行窗口被删 → 直接放弃，不留幽灵 source_ref
+        if await tombstone_exists(self.kb_id, self.document_id):
+            logger.info(
+                "wiki 生成：文档已删除（tombstone 命中），放弃",
+                document_id=self.document_id, kb_id=self.kb_id,
+            )
+            return outcome
+
         if not full_text or not full_text.strip():
             logger.info("wiki 生成：解析全文为空，跳过", document_id=self.document_id, kb_id=self.kb_id)
             return outcome
@@ -253,6 +263,16 @@ class WikiIngestService:
 
         # 本批写入的 slug（draft→publish 范围）
         batch_slugs: List[str] = []
+        # 删除竞态守卫（检查点 2）：落库前文档又被删了 → 本批全部放弃。
+        # 重跑无害（幂等），继续写会留下幽灵 source_ref。
+        if await tombstone_exists(self.kb_id, self.document_id):
+            logger.warning(
+                "wiki 生成：落库前文档被删除（tombstone 命中），本批放弃",
+                document_id=self.document_id, kb_id=self.kb_id,
+            )
+            self._record.finish_step("reduce", {"aborted": "tombstone"})
+            await self._commit()
+            return outcome
         for item, gen in zip(cited, generated):
             if gen is None:
                 continue  # 生成失败或无素材，跳过（强制接地）
@@ -297,8 +317,22 @@ class WikiIngestService:
         if batch_slugs:
             await self.page_repo.publish_draft_pages(self.kb_id, batch_slugs)
 
-        # ---- Finalize: 链接重建 / 死链清理 / 快照裁剪（纯代码） ----
+        # ---- Finalize 前的补链与延伸页 ----
         self._record.start_step("finalize")
+
+        # linkify 自动互链（对齐 WeKnora injectCrossLinks）：正文提及其他页
+        # 标题/别名 → 注入 [[slug|title]]。纯文本替换，走不 bump version 的
+        # 机器写通道
+        await self._inject_cross_links(cited, batch_slugs)
+
+        # summary 摘要页（对齐 WeKnora WikiSummaryPrompt 路径）：每文档一页，
+        # slug 固定 summary/{document_id}——是 retract 的主要删除对象与
+        # index intro 的语料
+        await self._generate_summary_page(full_text, slug_handles)
+
+        # index 页 intro 维护（对齐 WeKnora rebuildIndexPage）：首建/增量更新
+        await self._update_index_intro(outcome)
+
         await self._finalize()
         self._record.finish_step("finalize")
         await self._commit()
@@ -725,6 +759,155 @@ class WikiIngestService:
         # 只保留指向有效 slug 且非自指的 [[slug|title]] 链接
         out_links = self._extract_wiki_links(content, item.slug, set(valid_link_slugs))
         return summary, content, out_links
+
+    async def _inject_cross_links(
+        self,
+        cited: List[ExtractedItem],
+        batch_slugs: List[str],
+    ) -> None:
+        """linkify 自动互链（对齐 WeKnora injectCrossLinks）。
+
+        候选 refs = 本批新写页面的 (title+aliases) + 受影响页自身已有
+        out_links 解析出的 title。只改本批受影响页的正文（不碰用户手写页），
+        走 update_auto_linked_content 机器写（不快照不递增 version）。
+        """
+        from novamind.features.knowledge_space.services.wiki_linkify import linkify_content
+
+        if not batch_slugs:
+            return
+        try:
+            affected = await self.page_repo.list_by_slugs(self.kb_id, batch_slugs)
+            if not affected:
+                return
+
+            # refs 池：本批页面的 title+aliases（批内互链）
+            fresh_refs: List[Tuple[str, str]] = []
+            for p in affected.values():
+                if p.title:
+                    fresh_refs.append((p.slug, p.title))
+                for alias in p.aliases or []:
+                    if alias:
+                        fresh_refs.append((p.slug, alias))
+
+            for page in affected.values():
+                if page.page_type == "index":
+                    continue
+                # refs = 批内池 + 该页已有 out_links 对应页的 title
+                refs = list(fresh_refs)
+                if page.out_links:
+                    linked = await self.page_repo.list_by_slugs(self.kb_id, list(page.out_links))
+                    for p in linked.values():
+                        if p.title:
+                            refs.append((p.slug, p.title))
+                new_content, changed = linkify_content(page.content, refs, page.slug)
+                if changed:
+                    await self.page_repo.update_auto_linked_content(page, new_content)
+        except Exception as e:
+            logger.warning("wiki linkify 失败（不阻断）", kb_id=self.kb_id, error=str(e))
+
+    async def _generate_summary_page(self, full_text: str, slug_handles: HandleTable) -> None:
+        """每文档摘要页（对齐 WeKnora WikiSummaryPrompt 路径）。
+
+        slug 固定 summary/{document_id}；draft 生命周期与实体/概念页一致
+        （本批 publish 已跑，summary 页单独 publish）。文件名不喂给 LLM——
+        扫描件常以扫描仪型号命名，喂了只会诱发幻觉。
+        """
+        summary_slug = f"summary/{self.document_id}"
+        existing = await self.page_repo.get_by_slug(self.kb_id, summary_slug)
+
+        # 可用链接清单（句柄化，同 Reduce 机制）
+        old_slugs = await self.page_repo.list_slugs_by_kb(self.kb_id)
+        handles = HandleTable(prefix="ref-", start=1, width=1)
+        available_lines = [f"- [[{handles.register(s)}]] = {s}" for s in old_slugs if s]
+
+        prompt = PromptManager.format_prompt(
+            "wiki_summary_page_user",
+            content=(full_text or "")[:MAX_CONTENT_CHARS_FOR_EXTRACT],
+            available_slugs="\n".join(available_lines) if available_lines else "（暂无其他 wiki 页面）",
+            language=self.language,
+        )
+        raw = await self._call_llm_text(PromptManager.get_template("wiki_page_modify_system"), prompt)
+        if not raw:
+            return
+        summary, content = self._split_summary_line(raw)
+        if not content.strip():
+            return
+        # 句柄还原 + 白名单链接提取
+        content = handles.decode_text(content, r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]")
+        out_links = self._extract_wiki_links(content, summary_slug, set(old_slugs))
+
+        try:
+            async with self.session.begin_nested():
+                _, _ = await self.page_repo.upsert_with_snapshot(
+                    self.kb_id, summary_slug,
+                    space_id=self.space_id,
+                    title=summary or "文档摘要",
+                    content=content,
+                    summary=summary,
+                    page_type=WikiPageType.SUMMARY,
+                    status=WikiPageStatus.DRAFT,
+                    source_refs=[f"{self.document_id}|"],
+                    edit_source=WikiEditSource.PIPELINE,
+                    link_slugs=out_links,
+                )
+            await self.page_repo.publish_draft_pages(self.kb_id, [summary_slug])
+        except Exception as e:
+            logger.warning("wiki 摘要页写入失败", kb_id=self.kb_id, error=str(e))
+
+    async def _update_index_intro(self, outcome: IngestOutcome) -> None:
+        """index 页 intro 维护（对齐 WeKnora rebuildIndexPage 的 intro 部分）。
+
+        首建：用最近 200 条 summary 生成；增量：只喂现有 intro + 本批变更。
+        目录列表本体不持久化（GET /index 按需装配）。失败不阻断。
+        """
+        try:
+            index_page = await self.page_repo.get_by_slug(self.kb_id, "index")
+            existing_intro = (index_page.content if index_page and not index_page.is_deleted else "")
+
+            if existing_intro.strip():
+                # 增量：现有 intro + 本批变更描述
+                change_desc = f"本次更新：新增 {outcome.pages_created} 页、更新 {outcome.pages_updated} 页。"
+                prompt = PromptManager.format_prompt(
+                    "wiki_index_intro_update_user",
+                    existing_intro=existing_intro,
+                    changes=change_desc,
+                    language=self.language,
+                )
+            else:
+                # 首建：最近 200 条页面 summary 作为语料
+                pages = await self.page_repo.all_live_pages(self.kb_id)
+                pages = [p for p in pages if p.page_type != "index"]
+                pages.sort(key=lambda p: p.updated_at or p.created_at, reverse=True)
+                summaries = [
+                    f"- {p.title}: {p.summary}" for p in pages[:200] if p.summary
+                ]
+                if not summaries:
+                    return
+                prompt = PromptManager.format_prompt(
+                    "wiki_index_intro_user",
+                    summaries="\n".join(summaries),
+                    language=self.language,
+                )
+
+            raw = await self._call_llm_text(PromptManager.get_template("wiki_page_modify_system"), prompt)
+            if not raw:
+                return
+            _, intro = self._split_summary_line(raw)
+            intro = intro.split("\n## ", 1)[0].strip()  # 防目录回流（对齐 WeKnora 截断）
+            if not intro.strip():
+                return
+
+            if index_page is None:
+                await self.page_repo.create_page({
+                    "space_id": self.space_id, "kb_id": self.kb_id, "slug": "index",
+                    "title": "知识库索引", "content": intro, "summary": "",
+                    "page_type": WikiPageType.SUMMARY, "status": WikiPageStatus.PUBLISHED,
+                })
+            else:
+                index_page.content = intro  # intro 更新是簿记，不走版本快照
+                await self.session.flush()
+        except Exception as e:
+            logger.warning("wiki index intro 更新失败", kb_id=self.kb_id, error=str(e))
 
     async def _finalize(self) -> None:
         """链接双向对齐 + 死链清理 + 快照裁剪（纯代码，无 LLM）"""
