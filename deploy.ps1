@@ -121,7 +121,7 @@ function Invoke-PrepareDeepdocModels {
     New-Item -ItemType Directory -Force -Path "backend/.cache/deepdoc" | Out-Null
 
     # 国内默认走 hf-mirror.com（HF_ENDPOINT 可覆盖为官方源/其它镜像）。
-    # HF 侧源全部失败时代码内自动降级 ModelScope 国内镜像（pix2text-mfr 除外）。
+    # 主源失败后的降级换源清单由 .env 的 DEEPDOC_MIRRORS 配置（见 .env.example）。
     # --user 0：宿主机目录属主 uid 与容器 appuser 不同也能写入；文件默认 644，
     # 运行容器 appuser 只读即可。--no-deps：模型下载不依赖 mysql/redis 等基础设施。
     $hfEndpoint = if ($env:HF_ENDPOINT) { $env:HF_ENDPOINT } else { "https://hf-mirror.com" }

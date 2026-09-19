@@ -80,18 +80,65 @@ def hf_model_endpoint() -> str:
     return (os.getenv("HF_ENDPOINT") or "https://hf-mirror.com").rstrip("/")
 
 
-# ── 国内兜底源（ModelScope 镜像）────────────────────────────────────
-# HF 侧全部源不可达时的第二跳。仓库 id 映射：ModelScope 无 InfiniFlow 官方
-# 组织，社区镜像挂在 AI-ModelScope 名下（文件清单已逐一核对一致）。
-# pix2text-mfr 在 ModelScope 无镜像（breezedeus 官方仅发布 HF），映射为 None
-# ——该仓库只有 HF 一条路，靠 hf-mirror 官方源互备兜底。
-MODELSCOPE_MIRROR_REPO_IDS: dict[str, str | None] = {
-    "InfiniFlow/deepdoc": "AI-ModelScope/deepdoc",
-    "InfiniFlow/text_concat_xgb_v1.0": "AI-ModelScope/text_concat_xgb_v1.0",
-    "breezedeus/pix2text-mfr": None,
-}
+# ── 降级换源机制（地址全部来自部署配置，代码不含任何具体镜像地址）──
+# 配置入口：环境变量 DEEPDOC_MIRRORS（JSON 数组，由 .env / 容器环境注入）：
+#   [{"name": "modelscope",
+#     "url": "https://<mirror-host>/<path>/{repo}/<branch>/{file}",
+#     "repo_map": {"<hf仓库名>": "<镜像站仓库名>", ...}},
+#    ...更多源按序排列...]
+# 引擎只认机制：url 模板中的 {repo}/{file} 占位符按当前仓库与文件名替换，
+# repo_map 可选（镜像站仓库命名与 HF 不一致时映射，未命中按原 id 替换）；
+# 主源失败后按数组顺序逐源补齐缺失文件，任一源补齐即止。
+MIRRORS_ENV_VAR = "DEEPDOC_MIRRORS"
+DISABLE_MIRRORS_ENV_VAR = "DEEPDOC_DISABLE_MIRRORS"
 
-MODELSCOPE_BASE_URL = "https://modelscope.cn/models"
+
+def get_mirror_sources() -> list[dict[str, Any]]:
+    """解析部署配置注入的降级源清单。
+
+    空配置/非法 JSON/非法条目一律告警并按「无降级源」处理——降级配置坏了
+    只影响兜底能力，绝不影响主源下载。本函数只解析结构，不内置任何地址。
+    """
+    raw = (os.getenv(MIRRORS_ENV_VAR) or "").strip()
+    if not raw:
+        return []
+    import json
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        logger.warning(
+            "DeepDoc 模型降级源配置不是合法 JSON，忽略降级",
+            env_var=MIRRORS_ENV_VAR,
+            error=str(exc),
+        )
+        return []
+    if not isinstance(data, list):
+        logger.warning(
+            "DeepDoc 模型降级源配置应为 JSON 数组，忽略降级",
+            env_var=MIRRORS_ENV_VAR,
+            got=type(data).__name__,
+        )
+        return []
+    sources: list[dict[str, Any]] = []
+    for i, entry in enumerate(data):
+        if not isinstance(entry, dict) or not entry.get("url"):
+            logger.warning("DeepDoc 模型降级源条目缺少 url，跳过该条", index=i)
+            continue
+        sources.append(entry)
+    return sources
+
+
+def _mirror_url(source: dict[str, Any], repo_id: str, file_name: str) -> str:
+    """按降级源配置把 url 模板实例化为具体文件地址（手工替换，不忍受 format
+    对模板中意外花括号的 KeyError）。"""
+    repo_map = source.get("repo_map") or {}
+    mapped_repo = repo_map.get(repo_id, repo_id)
+    return (
+        str(source["url"])
+        .replace("{repo}", mapped_repo)
+        .replace("{file}", file_name)
+    )
 
 
 def _direct_download_from_url(url: str, target: Path, attempts: int = 3) -> None:
@@ -148,30 +195,48 @@ def direct_download_files(base_dir: Path, repo_id: str, files: Iterable[str]) ->
         _direct_download_from_url(url, target)
 
 
-def download_from_modelscope(base_dir: Path, repo_id: str, files: Iterable[str]) -> Path:
-    """ModelScope 镜像仓库直链下载（HF 全部源不可达时的国内兜底第二跳）。
+def download_from_mirrors(base_dir: Path, repo_id: str, files: Iterable[str]) -> Path:
+    """按部署配置的降级源清单逐源补齐缺失文件（主源全败后的兜底）。
 
-    已存在的完整文件跳过（幂等）；仓库无 ModelScope 镜像时抛 LookupError。
+    每个源只补仍缺的文件（幂等），某源连不上/文件 404 就换下一个源；
+    全部源跑完仍有缺失则抛最后一个错误。未配置降级源时抛 LookupError。
     """
-    mirror_repo = MODELSCOPE_MIRROR_REPO_IDS.get(repo_id, _UNMAPPED)
-    if mirror_repo is None:
+    sources = get_mirror_sources()
+    if not sources:
         raise LookupError(
-            f"repo '{repo_id}' has no ModelScope mirror; HF endpoint is the only source"
+            f"no fallback mirror configured (set {MIRRORS_ENV_VAR} to enable fallback)"
         )
-    if mirror_repo is _UNMAPPED:
-        # 未登记映射的仓库按同 id 探测（AI-ModelScope 之外的官方组织同名仓库）
-        mirror_repo = repo_id
     base_dir.mkdir(parents=True, exist_ok=True)
-    for name in files:
-        target = base_dir / name
-        if target.exists() and target.stat().st_size > 0:
-            continue
-        url = f"{MODELSCOPE_BASE_URL}/{mirror_repo}/resolve/master/{name}"
-        _direct_download_from_url(url, target)
+    remaining = [
+        name for name in files
+        if not (base_dir / name).exists() or (base_dir / name).stat().st_size == 0
+    ]
+    last_exc: Exception | None = None
+    for source in sources:
+        if not remaining:
+            break
+        name_label = source.get("name") or f"mirror#{sources.index(source) + 1}"
+        still_missing: list[str] = []
+        for name in remaining:
+            target = base_dir / name
+            try:
+                _direct_download_from_url(_mirror_url(source, repo_id, name), target)
+            except Exception as exc:
+                logger.warning(
+                    "DeepDoc 模型降级源下载失败，换下一源",
+                    mirror=name_label,
+                    repo_id=repo_id,
+                    file=name,
+                    error=str(exc),
+                )
+                last_exc = exc
+                still_missing.append(name)
+        remaining = still_missing
+    if remaining:
+        raise last_exc or LookupError(
+            f"all configured mirrors exhausted for {repo_id}: {remaining}"
+        )
     return base_dir
-
-
-_UNMAPPED = object()
 
 
 def download_hf_files(
@@ -185,13 +250,13 @@ def download_hf_files(
     1. 镜像 endpoint（默认 hf-mirror.com）直链下载——huggingface_hub 1.x
        的元数据校验（x-repo-commit 头）拒绝镜像响应，snapshot_download 走镜像必败，
        省掉必败的一跳；
-    2. HF 直链整体失败 → ModelScope 镜像仓库逐文件补齐（国内源兜底；
-       pix2text-mfr 无 ModelScope 镜像，该仓库跳过此跳）；
+    2. HF 直链整体失败 → 按部署配置的降级源清单（DEEPDOC_MIRRORS，JSON 数组）
+       逐源补齐——地址全部在部署配置里，代码只有换源机制；
     3. 官方 endpoint（HF_ENDPOINT=https://huggingface.co）：先 snapshot_download
-       （按 etag 断点跳过），失败回退直链 → 再失败同样落 ModelScope 兜底。
+       （按 etag 断点跳过），失败回退直链 → 再失败同样落降级源兜底。
 
     direct_download_files 自带幂等（已存在的完整文件跳过）与每文件 3 次重试；
-    ModelScope 兜底只下载 HF 跳失败后仍缺的文件，不重复传输。
+    降级源只下载主源失败后仍缺的文件，不重复传输。
     """
     base_dir.mkdir(parents=True, exist_ok=True)
     endpoint = hf_model_endpoint()
@@ -220,16 +285,16 @@ def download_hf_files(
             direct_download_files(base_dir, repo_id, files)
             return base_dir
     except Exception as exc:
-        # HF 侧全部源（镜像直链/官方 snapshot/官方直链）均失败 → 国内源兜底
-        if os.getenv("DEEPDOC_DISABLE_MODELSCOPE_FALLBACK", "") == "1":
+        # HF 侧全部源（镜像直链/官方 snapshot/官方直链）均失败 → 按部署配置降级换源
+        if os.getenv(DISABLE_MIRRORS_ENV_VAR, "") == "1":
             raise
         logger.warning(
-            "DeepDoc 模型 HF 源下载失败，回退 ModelScope 国内源兜底",
+            "DeepDoc 模型 HF 源下载失败，按部署配置降级换源",
             error=str(exc),
             repo_id=repo_id,
             files=list(files),
         )
-        download_from_modelscope(base_dir, repo_id, files)
+        download_from_mirrors(base_dir, repo_id, files)
         return base_dir
 
 

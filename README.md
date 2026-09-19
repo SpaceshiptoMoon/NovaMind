@@ -375,6 +375,9 @@ src/features/{module}/
 | `SECRET_KEY` | JWT 签名密钥 | YAML `security.secret_key` |
 | `ENCRYPTION_KEY` | 加密密钥 | YAML `security.encryption_key` |
 | `ADMIN_PASSWORD` | 管理员初始密码 | YAML `admin.password` |
+| `HF_ENDPOINT` | DeepDoc 模型主下载源（默认 hf-mirror.com） | 模型下载直链 |
+| `DEEPDOC_MIRRORS` | 模型降级源清单（可选，JSON 数组，主源失败后按序换源，格式见 `.env.example`） | 模型下载降级 |
+| `DEEPDOC_DISABLE_MIRRORS` | 置 `1` 禁用降级换源 | 模型下载降级 |
 
 ### 本地开发如何配
 
