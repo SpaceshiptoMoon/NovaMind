@@ -117,8 +117,7 @@ class WikiTool(BaseTool):
                 "type": "function",
                 "function": {
                     "name": "wiki_flag_issue",
-                    "description": (
-                        "Report a content problem on a wiki page, e.g. mixed_entities "
+                    "description": (                        "Report a content problem on a wiki page, e.g. mixed_entities "
                         "(page mixes two similarly-named things), contradictory_facts, "
                         "out_of_date. Issues are surfaced to humans for review."
                     ),
@@ -138,6 +137,89 @@ class WikiTool(BaseTool):
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "wiki_replace_text",
+                    "description": (
+                        "Replace ALL occurrences of exact text in ONE wiki page. Ideal for "
+                        "consistent minor corrections (renamed terms, fixed numbers). The "
+                        "page version is bumped and old content snapshotted."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "kb_id": {"type": "integer", "description": "知识库 ID"},
+                            "slug": {"type": "string", "description": "页面 slug"},
+                            "old_text": {"type": "string", "description": "要替换的精确原文"},
+                            "new_text": {"type": "string", "description": "替换后的新文本"},
+                        },
+                        "required": ["kb_id", "slug", "old_text", "new_text"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "wiki_rename_page",
+                    "description": (
+                        "Rename a wiki page to a new slug. All pages linking to the old slug "
+                        "have their [[old]] / [[old|display]] links rewritten to the new slug "
+                        "automatically. Use for merging conventions or fixing wrong slugs."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "kb_id": {"type": "integer", "description": "知识库 ID"},
+                            "slug": {"type": "string", "description": "当前 slug"},
+                            "new_slug": {"type": "string", "description": "新 slug（同类型前缀）"},
+                        },
+                        "required": ["kb_id", "slug", "new_slug"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "wiki_read_issue",
+                    "description": (
+                        "Read wiki issues: one by id, or list pending issues (optionally for "
+                        "one page slug). Use before fixing to understand what was reported."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "kb_id": {"type": "integer", "description": "知识库 ID"},
+                            "issue_id": {"type": "string", "description": "问题 ID（UUID 字符串，与 slug 二选一）"},
+                            "slug": {"type": "string", "description": "按页面 slug 列 pending 问题"},
+                        },
+                        "required": ["kb_id"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "wiki_update_issue",
+                    "description": (
+                        "Update a wiki issue's status: 'resolved' (fixed), 'ignored' "
+                        "(won't fix), or 'pending' (reopen). Complete the loop after fixing a page."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "kb_id": {"type": "integer", "description": "知识库 ID"},
+                            "issue_id": {"type": "string", "description": "问题 ID（UUID 字符串）"},
+                            "status": {
+                                "type": "string",
+                                "enum": ["resolved", "ignored", "pending"],
+                                "description": "目标状态",
+                            },
+                        },
+                        "required": ["kb_id", "issue_id", "status"],
+                    },
+                },
+            },
         ]
 
     async def execute_tool(
@@ -153,6 +235,10 @@ class WikiTool(BaseTool):
             "wiki_search": self._search,
             "wiki_write_page": self._write_page,
             "wiki_flag_issue": self._flag_issue,
+            "wiki_replace_text": self._replace_text,
+            "wiki_rename_page": self._rename_page,
+            "wiki_read_issue": self._read_issue,
+            "wiki_update_issue": self._update_issue,
         }
         handler = dispatch.get(tool_name)
         if not handler:
@@ -224,6 +310,7 @@ class WikiTool(BaseTool):
                 "title": page.title,
                 "page_type": page.page_type,
                 "status": page.status,
+                "aliases": page.aliases or [],
                 "summary": page.summary,
                 "content": page.content[:_MAX_PAGE_CONTENT_CHARS],
                 "content_truncated": len(page.content) > _MAX_PAGE_CONTENT_CHARS,
@@ -363,3 +450,201 @@ class WikiTool(BaseTool):
             await db.rollback()
             logger.warning("wiki_flag_issue 失败", kb_id=kb_id, slug=slug, error=str(e))
             return _err(f"问题登记失败：{e}")
+
+    # ==================== 批4 新增：维护闭环工具 ====================
+
+    async def _replace_text(self, db, user_id: int, args: Dict[str, Any]) -> str:
+        """精确文本替换（对齐 WeKnora wiki_replace_text）：小修正不动全文。
+
+        正经编辑通道：快照 + version 递增 + edit_source=agent。
+        """
+        kb_id = args.get("kb_id")
+        slug = (args.get("slug") or "").strip()
+        old_text = args.get("old_text")
+        new_text = args.get("new_text")
+
+        if not kb_id or not slug or not old_text or new_text is None:
+            return _err("缺少必要参数（kb_id/slug/old_text/new_text）")
+        if old_text == new_text:
+            return _err("old_text 与 new_text 相同")
+
+        kb, error = await self._check_kb_access(db, kb_id, user_id, write=True)
+        if error:
+            return _err(error)
+
+        from novamind.features.knowledge_space.models.wiki import WikiEditSource
+        from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
+
+        repo = WikiPageRepository(db)
+        page = await repo.get_by_slug(kb_id, slug)
+        if not page:
+            return _err(f"页面 {slug} 不存在")
+
+        count = page.content.count(old_text)
+        if count == 0:
+            return _err(f"未找到目标文本（{old_text[:50]}…），请用 wiki_read_page 核对原文")
+
+        try:
+            async with db.begin_nested():
+                await repo.update_page_with_lock(
+                    page,
+                    content=page.content.replace(old_text, new_text),
+                    edit_source=WikiEditSource.AGENT,
+                    editor_id=user_id,
+                )
+            await db.commit()
+            return json.dumps({
+                "slug": slug, "replacements": count,
+                "version": page.version,
+            }, ensure_ascii=False)
+        except Exception as e:
+            await db.rollback()
+            logger.warning("wiki_replace_text 失败", kb_id=kb_id, slug=slug, error=str(e))
+            return _err(f"替换失败：{e}")
+
+    async def _rename_page(self, db, user_id: int, args: Dict[str, Any]) -> str:
+        """slug 重命名（对齐 WeKnora wiki_rename_page）。
+
+        新 slug 建页（全字段拷贝）→ in_links 页正文 [[old]] 级联替换 →
+        软删旧页。级联替换走机器写通道（不 bump version）。
+        """
+        kb_id = args.get("kb_id")
+        slug = (args.get("slug") or "").strip()
+        new_slug_raw = (args.get("new_slug") or "").strip()
+
+        if not kb_id or not slug or not new_slug_raw:
+            return _err("缺少必要参数（kb_id/slug/new_slug）")
+
+        kb, error = await self._check_kb_access(db, kb_id, user_id, write=True)
+        if error:
+            return _err(error)
+
+        from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
+        from novamind.features.knowledge_space.services.wiki_ingest_service import normalize_slug
+
+        new_slug = normalize_slug(new_slug_raw)
+        if not new_slug:
+            return _err("new_slug 清洗后为空")
+        # 类型前缀必须一致（entity/x → concept/y 是类型变更不是重命名）
+        if slug.split("/", 1)[0] != new_slug.split("/", 1)[0]:
+            return _err("new_slug 必须保持与原 slug 相同的类型前缀")
+
+        repo = WikiPageRepository(db)
+        page = await repo.get_by_slug(kb_id, slug)
+        if not page:
+            return _err(f"页面 {slug} 不存在")
+        if await repo.get_by_slug(kb_id, new_slug):
+            return _err(f"新 slug {new_slug} 已被占用")
+
+        try:
+            async with db.begin_nested():
+                # 1) 新 slug 建页：全字段拷贝，version 重置为 1
+                new_page = await repo.create_page({
+                    "space_id": page.space_id, "kb_id": kb_id, "slug": new_slug,
+                    "title": page.title, "content": page.content,
+                    "summary": page.summary, "page_type": page.page_type,
+                    "status": page.status, "aliases": list(page.aliases or []),
+                    "category_path": list(page.category_path or []),
+                    "source_refs": list(page.source_refs or []),
+                    "chunk_refs": list(page.chunk_refs or []),
+                    "in_links": [],  # 下面级联后统一重算
+                    "out_links": list(page.out_links or []),
+                })
+
+                # 2) 级联：所有入链页正文 [[old]] / [[old|display]] → 新 slug
+                in_link_pages = await repo.list_by_slugs(kb_id, list(page.in_links or []))
+                rewritten = 0
+                for p in in_link_pages.values():
+                    if slug not in (p.out_links or []):
+                        continue
+                    content = p.content.replace(f"[[{slug}]]", f"[[{new_slug}]]")
+                    content = re.sub(
+                        r"\[\[" + re.escape(slug) + r"\|", f"[[{new_slug}|", content,
+                    )
+                    if content != p.content:
+                        # 机器链接维护：不快照不递增
+                        await repo.update_auto_linked_content(p, content)
+                        rewritten += 1
+
+                # 3) 新页 in_links 继承 + 旧页软删
+                new_page.in_links = list(page.in_links or [])
+                await repo.soft_delete_page(page)
+            await db.commit()
+            return json.dumps({
+                "old_slug": slug, "new_slug": new_slug,
+                "links_rewritten": rewritten,
+            }, ensure_ascii=False)
+        except Exception as e:
+            await db.rollback()
+            logger.warning("wiki_rename_page 失败", kb_id=kb_id, slug=slug, error=str(e))
+            return _err(f"重命名失败：{e}")
+
+    async def _read_issue(self, db, user_id: int, args: Dict[str, Any]) -> str:
+        """读问题详情或按条件列 pending（对齐 WeKnora wiki_read_issue）"""
+        kb_id = args.get("kb_id")
+        issue_id = args.get("issue_id")
+        slug = (args.get("slug") or "").strip()
+        if not kb_id or (not issue_id and not slug):
+            return _err("缺少必要参数（issue_id 或 slug 二选一）")
+
+        kb, error = await self._check_kb_access(db, kb_id, user_id)
+        if error:
+            return _err(error)
+
+        from novamind.features.knowledge_space.repository.wiki_issue_repository import WikiIssueRepository
+
+        issue_repo = WikiIssueRepository(db)
+        if issue_id:
+            issue = await issue_repo.get_by_id(str(issue_id))
+            if not issue or issue.kb_id != kb_id:
+                return _err(f"问题 {issue_id} 不存在")
+            return json.dumps({
+                "id": issue.id, "slug": issue.slug, "issue_type": issue.issue_type,
+                "description": issue.description, "status": issue.status,
+                "reported_by": issue.reported_by,
+                "created_at": issue.created_at.isoformat() if issue.created_at else None,
+            }, ensure_ascii=False, default=str)
+
+        issues = await issue_repo.list_by_kb(kb_id, status="pending", limit=50)
+        if slug:
+            issues = [i for i in issues if i.slug == slug]
+        return json.dumps({
+            "pending_count": len(issues),
+            "issues": [{
+                "id": i.id, "slug": i.slug, "issue_type": i.issue_type,
+                "description": i.description[:300],
+            } for i in issues],
+        }, ensure_ascii=False)
+
+    async def _update_issue(self, db, user_id: int, args: Dict[str, Any]) -> str:
+        """问题状态流转（对齐 WeKnora wiki_update_issue）：修复后闭环"""
+        kb_id = args.get("kb_id")
+        issue_id = args.get("issue_id")
+        status = args.get("status")
+        if not kb_id or not issue_id or status not in ("resolved", "ignored", "pending"):
+            return _err("缺少必要参数或 status 不合法")
+
+        kb, error = await self._check_kb_access(db, kb_id, user_id, write=True)
+        if error:
+            return _err(error)
+
+        from novamind.features.knowledge_space.repository.wiki_issue_repository import WikiIssueRepository
+
+        issue_repo = WikiIssueRepository(db)
+        issue = await issue_repo.get_by_id(str(issue_id))
+        if not issue or issue.kb_id != kb_id:
+            return _err(f"问题 {issue_id} 不存在")
+
+        try:
+            if status == "resolved":
+                issue.resolve()
+            elif status == "ignored":
+                issue.ignore()
+            else:
+                issue.reopen()
+            await db.commit()
+            return json.dumps({"id": issue.id, "status": issue.status}, ensure_ascii=False)
+        except Exception as e:
+            await db.rollback()
+            logger.warning("wiki_update_issue 失败", kb_id=kb_id, issue_id=issue_id, error=str(e))
+            return _err(f"状态更新失败：{e}")

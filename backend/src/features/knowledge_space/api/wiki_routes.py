@@ -38,6 +38,7 @@ from novamind.features.knowledge_space.repository.wiki_repository import (
     WikiPageRepository,
 )
 from novamind.features.knowledge_space.schemas.wiki_schema import (
+    WikiAutoFixResponse,
     WikiGraphResponse,
     WikiIssueCreateRequest,
     WikiIssueResponse,
@@ -637,7 +638,7 @@ async def get_graph(
     )
 
 
-@router.get("/lint", response_model=WikiLintResponse, summary="质量检查（死链/孤儿/空页）")
+@router.get("/lint", response_model=WikiLintResponse, summary="质量检查（六类问题+健康分）")
 async def lint_wiki(
     space_id: Annotated[int, Path(gt=0)],
     kb_id: Annotated[int, Path(gt=0)],
@@ -646,34 +647,39 @@ async def lint_wiki(
     db: AsyncSession = Depends(get_db),
 ):
     from novamind.features.knowledge_space.schemas.wiki_schema import WikiLintIssueItem
+    from novamind.features.knowledge_space.services.wiki_lint_service import WikiLintService
 
     await _get_kb_or_404(kb_id, space_id, db)
-    pages = await WikiPageRepository(db).all_live_pages(kb_id)
-    live_slugs = {p.slug for p in pages}
+    report = await WikiLintService(db, kb_id=kb_id, space_id=space_id).run_lint()
+    return WikiLintResponse(
+        issues=[WikiLintIssueItem(
+            slug=i.slug,
+            issue_type=i.issue_type,
+            severity=i.severity,
+            description=i.description,
+            target_slug=i.target_slug,
+            auto_fixable=i.auto_fixable,
+        ) for i in report["issues"]],
+        checked_pages=report["stats"].get("total_pages", 0),
+        health_score=report["health_score"],
+        summary=report["summary"],
+    )
 
-    issues = []
-    for page in pages:
-        for target in page.out_links or []:
-            if target not in live_slugs or target == page.slug:
-                issues.append(WikiLintIssueItem(
-                    slug=page.slug,
-                    issue_type="dead_link",
-                    description="指向不存在页面的链接：[[" + target + "]]",
-                ))
-        if not (page.out_links or []) and not (page.in_links or []):
-            issues.append(WikiLintIssueItem(
-                slug=page.slug,
-                issue_type="orphan",
-                description="孤儿页面：没有任何入链或出链",
-            ))
-        if not (page.content or "").strip():
-            issues.append(WikiLintIssueItem(
-                slug=page.slug,
-                issue_type="empty_content",
-                description="空页面：正文为空",
-            ))
 
-    return WikiLintResponse(issues=issues, checked_pages=len(pages))
+@router.post("/lint/autofix", response_model=WikiAutoFixResponse, summary="自动修复（死链剥除/空页归档/失效来源回收）")
+async def auto_fix_wiki(
+    space_id: Annotated[int, Path(gt=0)],
+    kb_id: Annotated[int, Path(gt=0)],
+    _user_id: int = Depends(get_current_user_id),
+    _writable: tuple = Depends(validate_kb_writable),
+    db: AsyncSession = Depends(get_db),
+):
+    from novamind.features.knowledge_space.services.wiki_lint_service import WikiLintService
+
+    await _get_kb_or_404(kb_id, space_id, db)
+    result = await WikiLintService(db, kb_id=kb_id, space_id=space_id).auto_fix()
+    await db.commit()
+    return WikiAutoFixResponse(fixed=result["fixed"], details=result["details"])
 
 
 @router.get("/issues", response_model=List[WikiIssueResponse], summary="问题列表")
@@ -704,8 +710,12 @@ async def create_issue(
 ):
     from novamind.features.knowledge_space.exceptions import InvalidParameterError
     from novamind.features.knowledge_space.repository.wiki_issue_repository import WikiIssueRepository
+    from novamind.features.knowledge_space.services.wiki_lint_service import LINT_ISSUE_TYPES
 
-    allowed_types = {"mixed_entities", "contradictory_facts", "out_of_date", "dead_link", "orphan", "other"}
+    # 人工/agent 类型 + lint 六类（单一来源，消除两处字面量漂移）
+    allowed_types = {
+        "mixed_entities", "contradictory_facts", "out_of_date", "other",
+    } | LINT_ISSUE_TYPES
     if body.issue_type not in allowed_types:
         raise InvalidParameterError("issue_type 须为 " + str(sorted(allowed_types)), field="issue_type")
 

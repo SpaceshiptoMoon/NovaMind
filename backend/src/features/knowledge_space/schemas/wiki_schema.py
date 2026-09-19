@@ -197,16 +197,33 @@ class WikiGraphResponse(BaseModel):
 
 
 class WikiLintIssueItem(BaseModel):
-    """lint 检出的问题（派生自页面状态，非持久化）"""
+    """lint 检出的问题"""
 
     slug: str
-    issue_type: str  # dead_link / orphan / empty_content
+    # 对齐 WeKnora 六类：orphan_page / broken_link / stale_ref /
+    # missing_cross_ref / empty_content / duplicate_slug（末者 MySQL 唯一
+    # 约束下不可达，保留常量壳）
+    issue_type: str
+    severity: str = "warning"  # info / warning / error
     description: str
+    # 另一方 slug（broken_link 的目标 / stale_ref 的文档标识）——AutoFix 用
+    target_slug: str = ""
+    auto_fixable: bool = False
 
 
 class WikiLintResponse(BaseModel):
     issues: List[WikiLintIssueItem]
     checked_pages: int
+    # 0-100 健康分（对齐 WeKnora HealthScore）
+    health_score: int = 100
+    summary: str = ""
+
+
+class WikiAutoFixResponse(BaseModel):
+    """AutoFix 执行结果"""
+
+    fixed: int
+    details: List[str] = []
 
 
 class WikiIssueCreateRequest(BaseModel):

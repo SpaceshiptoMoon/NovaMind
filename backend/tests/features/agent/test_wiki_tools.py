@@ -211,3 +211,111 @@ async def test_flag_issue_missing_page(db, tool, seeded_page):
         _ctx(db, 8),
     )
     assert "error" in json.loads(result)
+
+
+# ==================== 批4：维护闭环工具 ====================
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_replace_text_bumps_version(db, tool, seeded_page):
+    """精确替换：命中计数 + version 递增 + agent 归因"""
+    result = json.loads(await tool.execute_tool(
+        "wiki_replace_text",
+        {"kb_id": 1, "slug": "concept/rag", "old_text": "RAG", "new_text": "检索增强生成"},
+        _ctx(db, 8),
+    ))
+    assert result["replacements"] == 1  # seeded content = "RAG 正文"
+
+    repo = WikiPageRepository(db)
+    page = await repo.get_by_slug(1, "concept/rag")
+    assert "检索增强生成 正文" in page.content
+    assert page.last_edit_source == "agent"
+    assert page.version == 2  # seeded v1 → 替换后 v2
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_replace_text_no_match_errors(db, tool, seeded_page):
+    result = await tool.execute_tool(
+        "wiki_replace_text",
+        {"kb_id": 1, "slug": "concept/rag", "old_text": "不存在的文本", "new_text": "x"},
+        _ctx(db, 8),
+    )
+    assert "未找到目标文本" in json.loads(result)["error"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_rename_page_rewrites_in_link_content(db, tool, seeded_page):
+    """重命名：新 slug 页出现、旧页软删、入链页正文级联改写"""
+    # seeded_page 已建 concept/rag；再造一个引用它的页面
+    repo = WikiPageRepository(db)
+    await repo.create_page({
+        "space_id": 1, "kb_id": 1, "slug": "entity/acme", "title": "Acme",
+        "page_type": "entity", "content": "使用 [[concept/rag|RAG]] 的公司。",
+        "out_links": ["concept/rag"],
+    })
+    rag = await repo.get_by_slug(1, "concept/rag")
+    rag.in_links = ["entity/acme"]
+    await db.flush()
+
+    result = json.loads(await tool.execute_tool(
+        "wiki_rename_page",
+        {"kb_id": 1, "slug": "concept/rag", "new_slug": "concept/retrieval-augmented-generation"},
+        _ctx(db, 8),
+    ))
+    assert result["links_rewritten"] == 1
+
+    old = await repo.get_by_slug(1, "concept/rag")
+    assert old is None or old.deleted_flag != 0  # 旧页软删
+    new = await repo.get_by_slug(1, "concept/retrieval-augmented-generation")
+    assert new is not None
+    # 入链页正文已改写为新 slug
+    acme = await repo.get_by_slug(1, "entity/acme")
+    assert "[[concept/retrieval-augmented-generation|RAG]]" in acme.content
+    assert "[[concept/rag" not in acme.content
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_rename_page_prefix_mismatch_rejected(db, tool, seeded_page):
+    result = await tool.execute_tool(
+        "wiki_rename_page",
+        {"kb_id": 1, "slug": "concept/rag", "new_slug": "entity/rag"},
+        _ctx(db, 8),
+    )
+    assert "类型前缀" in json.loads(result)["error"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_issue_read_and_update_loop(db, tool, seeded_page):
+    """flag → read pending → resolve → read 空（闭环）"""
+    tool2 = WikiTool()
+    await tool2.execute_tool(
+        "wiki_flag_issue",
+        {"kb_id": 1, "slug": "concept/rag", "issue_type": "out_of_date", "description": "信息过期"},
+        _ctx(db, 8),
+    )
+
+    listing = json.loads(await tool2.execute_tool(
+        "wiki_read_issue", {"kb_id": 1, "slug": "concept/rag"}, _ctx(db, 8),
+    ))
+    assert listing["pending_count"] == 1
+    issue_id = listing["issues"][0]["id"]
+
+    detail = json.loads(await tool2.execute_tool(
+        "wiki_read_issue", {"kb_id": 1, "issue_id": issue_id}, _ctx(db, 8),
+    ))
+    assert detail["issue_type"] == "out_of_date"
+
+    updated = json.loads(await tool2.execute_tool(
+        "wiki_update_issue", {"kb_id": 1, "issue_id": issue_id, "status": "resolved"}, _ctx(db, 8),
+    ))
+    assert updated["status"] == "resolved"
+
+    listing2 = json.loads(await tool2.execute_tool(
+        "wiki_read_issue", {"kb_id": 1, "slug": "concept/rag"}, _ctx(db, 8),
+    ))
+    assert listing2["pending_count"] == 0
