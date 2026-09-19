@@ -172,7 +172,8 @@ async function handleSubmit() {
     try {
       await knowledgeBaseApi.updateKnowledgeBase(spaceId.value, editKbId.value!, {
         name: formData.name,
-        config: formData.description ? { description: formData.description } : undefined,
+        // 描述为空也要显式传 ""，否则 config 整个不发送，清空操作静默失效
+        config: { description: formData.description },
       })
       ElMessage.success('知识库更新成功')
       dialogVisible.value = false
