@@ -207,7 +207,7 @@ uv run python main.py --config development --reload
 ```
 
 > **配置说明**：后端所有配置从 YAML 文件读取（`backend/src/setting/yaml_config/yaml/`），YAML 中 `${VAR_NAME}` 占位符由运行时环境变量解析。
-> 如果你把密码写在了 `.env` 文件里，需要手动导出到环境变量，或直接把值填入 YAML 文件。参考下文[配置说明](#配置说明)。
+> 后端启动时自动加载仓库根 `.env`（进程环境变量优先），因此占位符直接从 `.env` 取值，无需手动 export。参考下文[配置说明](#配置说明)。
 
 默认后端地址：`http://localhost:8100`
 

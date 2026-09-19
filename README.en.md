@@ -328,7 +328,10 @@ See [`ROADMAP.md`](./ROADMAP.md) for concrete phase goals.
 
 ### `.env`
 
-Holds infrastructure passwords and backend security keys.
+The single source of truth for secrets: Docker Compose interpolates container
+environment variables from it and injects it into the `app` container; in local
+development the backend `ConfigLoader` auto-loads it at startup to resolve
+`${VAR_NAME}` placeholders in YAML (no manual export needed).
 
 | Variable | Description |
 | --- | --- |
@@ -337,6 +340,7 @@ Holds infrastructure passwords and backend security keys.
 | `MINIO_ROOT_USER` | MinIO access account |
 | `MINIO_ROOT_PASSWORD` | MinIO access password |
 | `ES_JAVA_OPTS` | Elasticsearch JVM args |
+| `ES_PASSWORD` | Elasticsearch password |
 | `SECRET_KEY` | JWT signing key |
 | `ENCRYPTION_KEY` | Encryption key |
 | `ADMIN_PASSWORD` | Initial admin password |
@@ -356,7 +360,9 @@ Loading logic:
 - `default.yaml` is the baseline
 - Pick an environment via `python main.py --config development` or `--config production`
 - The loader deep-merges configs
-- `${VAR_NAME}` placeholders are resolved from environment variables
+- `${VAR_NAME}` placeholders are resolved from environment variables; the backend
+  auto-loads the repo-root `.env` at startup (process environment variables take
+  precedence), so in local development placeholders resolve straight from `.env`
 
 ## Model integration
 

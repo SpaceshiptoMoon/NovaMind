@@ -49,6 +49,12 @@ htmlcov/
 *.tmp
 backend/tests/
 
+# 本地大目录：模型缓存在部署期由 deploy 脚本经容器下载到宿主机
+# backend/.cache/deepdoc（compose 卷挂载），构建期不需要；.tmp 是上游
+# 快照等临时材料。不排除会把几百 MB 上下文白白传给 Docker daemon。
+backend/.cache/
+.tmp/
+
 # 数据目录
 data/
 logs/
