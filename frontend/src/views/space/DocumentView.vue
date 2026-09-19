@@ -299,12 +299,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Close,
-  Collection,
-  DataAnalysis,
   Delete,
-  Document,
   FolderOpened,
-  List,
   RefreshRight,
   Search,
   Upload,
@@ -341,13 +337,6 @@ const kbNavItems = computed(() =>
     spaceId: spaceId.value,
     kbId: kbId.value,
     currentRouteName: route.name,
-    icons: {
-      document: Document,
-      list: List,
-      search: Search,
-      evaluation: DataAnalysis,
-      wiki: Collection,
-    },
   }),
 )
 

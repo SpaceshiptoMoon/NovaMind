@@ -682,10 +682,6 @@ import {
   Upload,
   Download,
   Loading,
-  Collection,
-  Document,
-  Search,
-  DataAnalysis,
 } from '@element-plus/icons-vue'
 
 import { KbSidebar, buildKbNavItems } from '@/components/knowledge'
@@ -715,13 +711,6 @@ const kbNavItems = computed(() =>
     spaceId: spaceId.value,
     kbId: kbId.value,
     currentRouteName: route.name,
-    icons: {
-      document: Document,
-      list: DataAnalysis,
-      search: Search,
-      evaluation: DataAnalysis,
-      wiki: Collection,
-    },
   }),
 )
 

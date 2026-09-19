@@ -427,6 +427,7 @@ const crumbItems = computed(() => {
   if (route.name === 'KbEvaluation') items.push({ label: '评估' })
   if (route.name === 'DocumentTasks') items.push({ label: '任务列表' })
   if (route.name === 'KbConfig') items.push({ label: '配置向导' })
+  if (route.name === 'KbWiki') items.push({ label: 'Wiki' })
 
   return items
 })

@@ -7,7 +7,6 @@
       class="sidebar-item"
       :class="{ active: item.active }"
     >
-      <el-icon class="sidebar-icon"><component :is="item.icon" /></el-icon>
       <span class="sidebar-label">{{ item.label }}</span>
     </router-link>
     <slot name="bottom" />
@@ -24,7 +23,7 @@ defineProps<{
 
 <style scoped>
 .kb-sidebar {
-  width: 220px;
+  width: 148px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -71,33 +70,7 @@ defineProps<{
   border-radius: 0 3px 3px 0;
 }
 
-.sidebar-icon {
-  font-size: var(--text-base);
-  flex-shrink: 0;
-}
-
 .sidebar-label {
   white-space: nowrap;
-}
-
-/* 窄视口：KB 侧栏收窄为图标态 */
-@media (max-width: 1100px) {
-  .kb-sidebar {
-    width: 56px;
-    padding: var(--space-3) var(--space-2);
-  }
-
-  .sidebar-item {
-    justify-content: center;
-    padding: var(--space-2);
-  }
-
-  .sidebar-label {
-    display: none;
-  }
-
-  .sidebar-item.active::before {
-    left: -8px;
-  }
 }
 </style>

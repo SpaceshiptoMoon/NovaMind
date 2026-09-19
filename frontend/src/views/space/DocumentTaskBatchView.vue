@@ -284,12 +284,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  Collection,
-  DataAnalysis,
-  Document,
-  List,
   RefreshRight,
-  Search,
 } from '@element-plus/icons-vue'
 
 import { documentApi } from '@/api/knowledge'
@@ -317,13 +312,6 @@ const kbNavItems = computed(() =>
     spaceId: spaceId.value,
     kbId: kbId.value,
     currentRouteName: route.name,
-    icons: {
-      document: Document,
-      list: List,
-      search: Search,
-      evaluation: DataAnalysis,
-      wiki: Collection,
-    },
   }),
 )
 
