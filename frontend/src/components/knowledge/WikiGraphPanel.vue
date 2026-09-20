@@ -1,16 +1,12 @@
 <template>
   <div class="wiki-graph-panel">
     <div class="graph-toolbar">
-      <el-radio-group v-model="mode" size="small" @change="loadGraph">
-        <el-radio-button value="overview">概览</el-radio-button>
-        <el-radio-button value="ego">邻域</el-radio-button>
-      </el-radio-group>
       <el-select
-        v-if="mode === 'ego'"
         v-model="centerSlug"
         size="small"
         filterable
-        placeholder="选择中心页面"
+        clearable
+        placeholder="全图概览 · 选择页面聚焦邻域"
         class="center-select"
         @change="loadGraph"
       >
@@ -24,7 +20,6 @@
       <span v-if="graph?.meta.truncated" class="truncated-hint">
         显示 {{ graph.meta.returned }}/{{ graph.meta.total }} 节点
       </span>
-      <span class="toolbar-hint">拖拽节点 / 滚轮缩放，点击节点打开页面</span>
     </div>
 
     <div ref="canvasRef" class="graph-canvas">
@@ -55,7 +50,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ select: [slug: string] }>()
 
-const mode = ref<'overview' | 'ego'>(props.initialCenter ? 'ego' : 'overview')
+// 模式由 centerSlug 推导：选中即邻域（ego），清空即概览（overview）
 const centerSlug = ref(props.initialCenter ?? '')
 const graph = ref<WikiGraphResponse | null>(null)
 const loading = ref(false)
@@ -195,10 +190,9 @@ function renderChart(data: WikiGraphResponse) {
 async function loadGraph() {
   loading.value = true
   try {
-    const params =
-      mode.value === 'ego' && centerSlug.value
-        ? { mode: 'ego', center: centerSlug.value, depth: 2, limit: 80 }
-        : { mode: 'overview', limit: 80 }
+    const params = centerSlug.value
+      ? { mode: 'ego', center: centerSlug.value, depth: 2, limit: 80 }
+      : { mode: 'overview', limit: 80 }
     const data = await wikiApi.getGraph(props.spaceId, props.kbId, params)
     graph.value = data
     renderChart(data)
@@ -215,7 +209,7 @@ watch(
   (slug) => {
     if (slug && slug !== centerSlug.value) {
       centerSlug.value = slug
-      if (mode.value === 'ego') void loadGraph()
+      void loadGraph()
     }
   },
 )
@@ -266,16 +260,10 @@ defineExpose({ reload: loadGraph })
 }
 
 .center-select {
-  width: 220px;
+  width: 260px;
 }
 
 .truncated-hint {
-  color: var(--color-text-muted);
-  font-size: var(--text-xs);
-}
-
-.toolbar-hint {
-  margin-left: auto;
   color: var(--color-text-muted);
   font-size: var(--text-xs);
 }
