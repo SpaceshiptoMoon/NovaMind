@@ -39,12 +39,14 @@
         <!-- 问题视图 -->
         <div v-show="activeView === 'issues'" class="issues-wrap">
           <div class="issues-toolbar">
-            <el-radio-group v-model="issueFilter" size="small" @change="loadIssues">
+            <el-radio-group v-model="issueFilter" size="small" :disabled="issuesLoading" @change="loadIssues">
               <el-radio-button value="pending">待处理</el-radio-button>
               <el-radio-button value="resolved">已解决</el-radio-button>
               <el-radio-button value="ignored">已忽略</el-radio-button>
             </el-radio-group>
-            <el-button size="small" @click="runLint">运行质量检查</el-button>
+            <el-button size="small" :loading="lintRunning" :disabled="issuesLoading" @click="runLint">
+              运行质量检查
+            </el-button>
           </div>
 
           <!-- lint 检出问题（派生，非持久化） -->
@@ -73,6 +75,7 @@
               size="small"
               text
               type="success"
+              :loading="updatingIssueId === issue.id"
               @click="setIssueStatus(issue, 'resolved')"
             >
               解决
@@ -81,6 +84,7 @@
               v-if="issue.status === 'pending'"
               size="small"
               text
+              :loading="updatingIssueId === issue.id"
               @click="setIssueStatus(issue, 'ignored')"
             >
               忽略
@@ -439,6 +443,9 @@ function selectPageFromPanel(slug: string) {
 
 // ---- 问题登记 ----
 const issues = ref<WikiIssue[]>([])
+// 列表加载态与竞态序号（切 tab / 行操作后重载共用）
+const issuesLoading = ref(false)
+let issuesLoadSeq = 0
 const issueFilter = ref('pending')
 const pendingIssueCount = computed(() => issues.value.filter((i) => i.status === 'pending').length)
 
@@ -463,26 +470,48 @@ function lintTypeLabel(type: string): string {
 }
 
 async function loadIssues() {
+  // 竞态保护：快速切换过滤 tab 时只采纳最后一次请求的结果
+  const seq = ++issuesLoadSeq
+  issuesLoading.value = true
   try {
-    issues.value = await wikiApi.listIssues(spaceId.value, kbId.value, issueFilter.value)
+    const data = await wikiApi.listIssues(spaceId.value, kbId.value, issueFilter.value)
+    if (seq === issuesLoadSeq) {
+      issues.value = data
+    }
   } catch {
-    issues.value = []
+    if (seq === issuesLoadSeq) {
+      issues.value = []
+    }
+  } finally {
+    if (seq === issuesLoadSeq) {
+      issuesLoading.value = false
+    }
   }
 }
 
+// 行级在途标记：解决/忽略按钮的 loading（仅该行转圈，不锁整列表）
+const updatingIssueId = ref('')
+
 async function setIssueStatus(issue: WikiIssue, status: string) {
+  if (updatingIssueId.value) return  // 已有在途操作，防重复提交
+  updatingIssueId.value = issue.id
   try {
     await wikiApi.updateIssueStatus(spaceId.value, kbId.value, issue.id, status)
     await loadIssues()
   } catch {
     ElMessage.error('状态更新失败')
+  } finally {
+    updatingIssueId.value = ''
   }
 }
 
 // ---- lint 检查 ----
 const lintIssues = ref<WikiLintIssue[]>([])
+const lintRunning = ref(false)
 
 async function runLint() {
+  if (lintRunning.value) return  // 防重复点击
+  lintRunning.value = true
   try {
     const data = await wikiApi.lint(spaceId.value, kbId.value)
     lintIssues.value = data.issues
@@ -491,6 +520,8 @@ async function runLint() {
     }
   } catch {
     ElMessage.error('质量检查失败')
+  } finally {
+    lintRunning.value = false
   }
 }
 
