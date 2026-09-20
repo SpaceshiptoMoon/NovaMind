@@ -11,6 +11,7 @@ Embedding 模型配置存储在 config.embedding 中：
 from enum import IntEnum
 
 from novamind.core.database.base import BaseModel
+from novamind.features.knowledge_space.schemas.search_schema import SearchMode
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy import (
     JSON,
@@ -108,7 +109,7 @@ class KnowledgeBase(BaseModel):
     def get_available_search_modes(self) -> list:
         """获取可用的检索模式列表"""
         # 仅内容模式始终可用
-        content_modes = ["content_bm25", "content_vector", "content_hybrid"]
+        content_modes = [SearchMode.CONTENT_BM25.value, SearchMode.CONTENT_VECTOR.value, SearchMode.CONTENT_HYBRID.value]
 
         if self.is_question_generation_enabled():
             # 启用问题生成，所有模式可用

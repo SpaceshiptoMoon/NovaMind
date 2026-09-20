@@ -16,6 +16,7 @@ from novamind.features.deep_research.models.research_session import (
     ExternalSearchProvider,
     ResearchMode,
 )
+from novamind.features.knowledge_space.schemas.search_schema import SearchMode
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ==================== 枚举类型 ====================
@@ -56,7 +57,7 @@ class InternalSearchConfig(BaseModel):
         "all_vector",
         "all_hybrid",
     ] = Field(
-        default="content_hybrid",
+        default=SearchMode.CONTENT_HYBRID.value,
         description="""
 检索模式：{target}_{algorithm}
 - content_bm25: 内容全文检索

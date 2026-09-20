@@ -16,6 +16,7 @@ from uuid import uuid4
 from fastapi import UploadFile
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.core.ws import envelope
+from novamind.features.knowledge_space.schemas.search_schema import SearchMode
 from novamind.shared.utils.text_utils.token_counter import TokenCounter
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,7 +49,7 @@ REFUSAL_ANSWER_TEXT = (
 
 # Grade-Retry fallback 检索模式序列（feature 业务策略；C-1：原 engines/rag/grade_retrier
 # 内嵌的 default_modes 已上移至此，引擎不再持有 knowledge_space SearchMode 字面量）。
-_GRADE_RETRY_FALLBACK_MODES = ["content_hybrid", "content_bm25", "all_hybrid"]
+_GRADE_RETRY_FALLBACK_MODES = [SearchMode.CONTENT_HYBRID.value, SearchMode.CONTENT_BM25.value, SearchMode.ALL_HYBRID.value]
 
 
 @dataclass

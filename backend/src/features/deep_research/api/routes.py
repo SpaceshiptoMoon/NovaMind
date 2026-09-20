@@ -175,7 +175,7 @@ async def execute_research(
         "search_source": "hybrid",
         "internal_search": {
             "kb_ids": [1, 2],
-            "search_mode": "content_hybrid",
+            "search_mode": SearchMode.CONTENT_HYBRID.value,
             "top_k": 10,
             "vector_weight": 0.7,
             "rerank_enabled": true,

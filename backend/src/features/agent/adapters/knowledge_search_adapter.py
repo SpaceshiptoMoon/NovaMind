@@ -12,6 +12,7 @@ from novamind.engines.agent.ports import (
     KnowledgeSearchItem,
     SpaceInfo,
 )
+from novamind.features.knowledge_space.schemas.search_schema import SearchMode
 
 
 class HostKnowledgeSearchPort:
@@ -154,7 +155,7 @@ class HostKnowledgeSearchPort:
         user_id: int,
         query: str,
         top_k: int = 5,
-        search_mode: str = "content_hybrid",
+        search_mode: str = SearchMode.CONTENT_HYBRID.value,
         kb_id: int | None = None,
         score_threshold: float | None = None,
     ) -> list[KnowledgeSearchItem]:

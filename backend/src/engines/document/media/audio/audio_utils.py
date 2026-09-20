@@ -197,10 +197,12 @@ def _resolve_local_whisper_model_dir(
     if configured:
         return Path(str(configured)).expanduser()
 
-    # 2. 环境变量
-    env_dir = os.environ.get("NOVAMIND_LOCAL_WHISPER_MODEL_DIR")
-    if env_dir:
-        return Path(env_dir).expanduser()
+    # 2. 配置中心（asr.local_whisper_model_dir；值可来自 env var 的 ${VAR} 占位）
+    from novamind.setting.yaml_config import get_config
+
+    cfg_dir = get_config().asr.local_whisper_model_dir
+    if cfg_dir:
+        return Path(cfg_dir).expanduser()
 
     # 3. 默认：用户缓存目录 ~/.cache/faster-whisper/tiny
     return Path.home() / ".cache" / "faster-whisper" / "tiny"
@@ -548,13 +550,14 @@ async def transcribe_audio_with_timestamps(
     """
     import httpx
 
-    if not api_key:
-        api_key = os.environ.get("OPENAI_API_KEY", "")
-    if not api_key:
-        raise RuntimeError("未配置 OPENAI_API_KEY，无法使用 Whisper API")
+    if not api_key or not base_url:
+        from novamind.setting.yaml_config import get_config
 
-    if not base_url:
-        base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+        asr_cfg = get_config().asr
+        api_key = api_key or asr_cfg.openai_api_key
+        base_url = base_url or asr_cfg.openai_base_url
+    if not api_key:
+        raise RuntimeError("未配置 OPENAI_API_KEY（asr.openai_api_key），无法使用 Whisper API")
 
     # 通过 Magic Bytes 检测真实音频格式，不再依赖文件扩展名
     ext, mime_type = _detect_audio_format(file_content)
@@ -637,8 +640,13 @@ async def transcribe_audio_with_dashscope(
 
     if api_key:
         dashscope.api_key = api_key
-    elif not os.environ.get("DASHSCOPE_API_KEY"):
-        raise RuntimeError("未配置 DASHSCOPE_API_KEY，无法使用 DashScope Paraformer API")
+    else:
+        from novamind.setting.yaml_config import get_config
+
+        env_key = get_config().asr.dashscope_api_key
+        if not env_key:
+            raise RuntimeError("未配置 DASHSCOPE_API_KEY（asr.dashscope_api_key），无法使用 DashScope Paraformer API")
+        dashscope.api_key = env_key
 
     # 百炼平台需要设置 workspace 级别的 base URL
     if base_url:

@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
+from novamind.features.knowledge_space.schemas.search_schema import SearchMode
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -115,7 +116,7 @@ class KnowledgeSearchTool(BaseTool):
                             "search_mode": {
                                 "type": "string",
                                 "description": "Search mode: content_vector (semantic), content_bm25 (keyword), content_hybrid (both, recommended)",
-                                "default": "content_hybrid",
+                                "default": SearchMode.CONTENT_HYBRID.value,
                             },
                         },
                         "required": ["space_id", "query"],
@@ -272,7 +273,7 @@ class KnowledgeSearchTool(BaseTool):
             query = args["query"]
             kb_id = args.get("kb_id")
             top_k = args.get("top_k", 5)
-            search_mode = args.get("search_mode", "content_hybrid")
+            search_mode = args.get("search_mode", SearchMode.CONTENT_HYBRID.value)
 
             items = await port.search(
                 space_id=space_id,

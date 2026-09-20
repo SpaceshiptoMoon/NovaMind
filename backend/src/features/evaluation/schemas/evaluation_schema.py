@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from novamind.features.evaluation.models.evaluation_task import EvaluationStatus
+from novamind.features.knowledge_space.schemas.search_schema import SearchMode
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ========== 配置 Schema ==========
@@ -12,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class EvaluationConfig(BaseModel):
     """测评配置"""
     # 检索配置
-    search_mode: str = Field(default="content_hybrid", description="检索模式")
+    search_mode: str = Field(default=SearchMode.CONTENT_HYBRID.value, description="检索模式")
     top_k: int = Field(default=5, ge=1, le=50, description="检索返回数量")
     score_threshold: float = Field(default=0.0, ge=0.0, le=1.0, description="检索分数阈值")
 

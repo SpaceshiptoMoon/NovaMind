@@ -93,7 +93,7 @@ async def search(
     ```json
     {
         "query": "如何使用 FastAPI",
-        "search_mode": "content_hybrid",
+        "search_mode": SearchMode.CONTENT_HYBRID.value,
         "top_k": 10,
         "weights": {
             "vector_weight": 0.7,

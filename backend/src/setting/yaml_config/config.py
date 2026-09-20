@@ -211,6 +211,20 @@ class ExternalSearchConfig:
 
 
 @dataclass
+class ASRConfig:
+    """云端 ASR 凭据（批次 4.7：audio_utils 环境变量直读改配置中心统一入口）。
+
+    值仍可来自环境变量（ConfigLoader 的 ${VAR} 占位符），但读取点收敛到
+    ``get_config().asr``，audio_utils 不再各自 ``os.environ.get``。
+    """
+
+    openai_api_key: str = ""
+    openai_base_url: str = "https://api.openai.com/v1"
+    dashscope_api_key: str = ""
+    local_whisper_model_dir: str = ""
+
+
+@dataclass
 class DeepResearchModeConfig:
     depth: int = 3
     iterations: int = 5
@@ -276,6 +290,7 @@ class AppConfig:
     admin: AdminConfig = field(default_factory=AdminConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
     external_search: ExternalSearchConfig = field(default_factory=ExternalSearchConfig)
+    asr: ASRConfig = field(default_factory=ASRConfig)
     deep_research: DeepResearchConfig = field(default_factory=DeepResearchConfig)
     task_queue: TaskQueueConfig = field(default_factory=TaskQueueConfig)
     smtp: SmtpConfig = field(default_factory=SmtpConfig)
