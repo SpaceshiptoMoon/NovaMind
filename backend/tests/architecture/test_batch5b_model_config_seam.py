@@ -275,21 +275,28 @@ def test_service_ctor_accepts_model_config_port(mod_name: str, cls_name: str):
 _STATIC_HELPERS_DOCUMENT = [
     "_process_image_document_static",
     "_get_document_processor_static",
-    "_get_embedding_client_static",
-    "_generate_embeddings_static",
-    "_generate_single_embedding_static",
-    "_generate_questions_for_chunks_static",
+    # 下列助手已下沉 pipeline_steps（dp/mp 解环），签名仍要求 model_config_port
+    # —— 改从新模块取函数对象。
+    "pipeline_steps:get_embedding_client",
+    "pipeline_steps:generate_embeddings",
+    "pipeline_steps:generate_single_embedding",
+    "pipeline_steps:generate_questions_for_chunks",
     # 共享后置尾（切分/向量化/QG/索引）接收 model_config_port，由三模态管道注入
-    "_run_post_parse_tail",
+    "pipeline_steps:run_post_parse_tail",
 ]
 
 
 @pytest.mark.parametrize("helper_name", _STATIC_HELPERS_DOCUMENT)
 def test_document_static_helpers_accept_model_config_port(helper_name: str):
-    """document_pipeline 模块级静态助手接收 model_config_port 参数（调用方注入，不自建）。"""
+    """document_pipeline / pipeline_steps 助手接收 model_config_port 参数（调用方注入，不自建）。"""
     from novamind.features.knowledge_space.services import document_pipeline as ds
+    from novamind.features.knowledge_space.services import pipeline_steps
 
-    fn = getattr(ds, helper_name)
+    if ":" in helper_name:
+        mod_name, fn_name = helper_name.split(":")
+        fn = getattr(pipeline_steps, fn_name)
+    else:
+        fn = getattr(ds, helper_name)
     params = inspect.signature(fn).parameters
     assert "model_config_port" in params, f"{helper_name} 缺少 model_config_port 参数"
 
@@ -297,16 +304,21 @@ def test_document_static_helpers_accept_model_config_port(helper_name: str):
 _MEDIA_HELPERS = [
     "process_video_document",
     "process_audio_document",
-    "maybe_semantic_embedding_client",
+    "pipeline_steps:maybe_semantic_embedding_client",
 ]
 
 
 @pytest.mark.parametrize("helper_name", _MEDIA_HELPERS)
 def test_media_processing_helpers_accept_model_config_port(helper_name: str):
-    """media_processing 模块函数接收 model_config_port 参数（调用方注入，不自建）。"""
+    """media_processing / pipeline_steps 模块函数接收 model_config_port 参数（调用方注入，不自建）。"""
     from novamind.features.knowledge_space.services import media_processing as mp
+    from novamind.features.knowledge_space.services import pipeline_steps
 
-    fn = getattr(mp, helper_name)
+    if ":" in helper_name:
+        _, fn_name = helper_name.split(":")
+        fn = getattr(pipeline_steps, fn_name)
+    else:
+        fn = getattr(mp, helper_name)
     params = inspect.signature(fn).parameters
     assert "model_config_port" in params, f"{helper_name} 缺少 model_config_port 参数"
 

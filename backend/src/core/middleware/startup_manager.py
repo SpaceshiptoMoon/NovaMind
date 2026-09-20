@@ -11,7 +11,7 @@ from novamind.core.database.schema_migrations import CONSTRAINT_MIGRATIONS, SCHE
 from novamind.core.middleware.manifest_loader import get_sorted_manifests
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.setting.yaml_config import get_config
-from novamind.shared.cache.redis_client import close_redis_connection, get_redis_client
+from novamind.shared.storage.client_factory import close_redis_connection, get_redis_client
 from sqlalchemy import text
 
 logger = get_logger(__name__)

@@ -23,7 +23,7 @@ async def get_arq_pool() -> "arq.ArqRedis":  # noqa: F821
         return _arq_pool
 
     import arq
-    from novamind.shared.cache.redis_client import get_redis_client
+    from novamind.shared.storage.client_factory import get_redis_client
 
     redis_cache = await get_redis_client()
 

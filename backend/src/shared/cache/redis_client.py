@@ -724,21 +724,3 @@ class RedisCache:
             else:
                 logger.error(f"创建Redis向量索引失败: {e}")
                 return False
-
-
-async def get_redis_client() -> RedisCache:
-    """
-    获取全局Redis客户端实例（支持单机、哨兵、集群模式）
-
-    委托给 ClientFactory 统一管理单例
-    """
-    from novamind.shared.storage.client_factory import ClientFactory
-    return await ClientFactory.get_redis_client()
-
-
-async def close_redis_connection():
-    """
-    关闭全局Redis连接
-    """
-    from novamind.shared.storage.client_factory import ClientFactory
-    await ClientFactory.close_all()

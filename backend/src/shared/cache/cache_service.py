@@ -138,7 +138,7 @@ class CacheService:
 
     async def _get_cache(self):
         """获取 Redis 客户端"""
-        from novamind.shared.cache.redis_client import get_redis_client
+        from novamind.shared.storage.client_factory import get_redis_client
 
         if self._cache is None:
             self._cache = await get_redis_client()

@@ -1,12 +1,12 @@
 """图片管道切分回归测试。
 
-History: 23f424d 图片路径接入共享尾 ``_run_post_parse_tail`` 时模仿 audio/video 调
+History: 23f424d 图片路径接入共享尾 ``run_post_parse_tail`` 时模仿 audio/video 调
 ``apply_modality_splitting_override(splitting_config, "image")`` + ``full_text`` 走
-``_split_md_text``。但 splitting schema 无 image 子键（只有 audio/video），且
+``split_md_text``。但 splitting schema 无 image 子键（只有 audio/video），且
 ``kb.get_config()`` 返回原始存储 dict 不经 Pydantic 校验，遗留脏值
 ``splitting.image.strategy="single"``（旧版前端图片专属切分选项，现 schema 已移除但
 旧 KB 配置 DB 残留）经 ``apply_modality_splitting_override`` 合并到顶层后被
-``_split_md_text`` 拒绝 → ``ValueError``「不支持的切分策略」，图片文档处理整个失败
+``split_md_text`` 拒绝 → ``ValueError``「不支持的切分策略」，图片文档处理整个失败
 （document_id=61, job_id=doc-task-233）。
 
 Fix: 图片描述文本与 MD 文档同构，按顶层通用切分策略（recursive/markdown/fixed_size/semantic）
@@ -27,6 +27,8 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from novamind.features.knowledge_space.schemas.enums import ChunkType
 from novamind.features.knowledge_space.services import document_pipeline
+from novamind.features.knowledge_space.services import media_processing
+from novamind.features.knowledge_space.services import pipeline_steps
 
 pytestmark = pytest.mark.unit
 
@@ -53,14 +55,14 @@ def _make_task() -> SimpleNamespace:
 
 
 class _FakeSession:
-    """_begin_step 会 commit（running 节点落库），测试提供空操作替身。"""
+    """begin_step 会 commit（running 节点落库），测试提供空操作替身。"""
 
     async def commit(self):
         return None
 
 
 def _patch_tail_deps(monkeypatch):
-    """mock 共享尾的外部依赖（向量化/ES/取消检查），让 _split_md_text 真实跑。"""
+    """mock 共享尾的外部依赖（向量化/ES/取消检查），让 split_md_text 真实跑。"""
 
     async def _no_cancel(doc_id: int) -> None:
         return None
@@ -74,9 +76,9 @@ def _patch_tail_deps(monkeypatch):
 
         return SimpleNamespace(bulk_index_chunks=_bulk)
 
-    monkeypatch.setattr(document_pipeline, "_check_document_cancelled", _no_cancel)
-    monkeypatch.setattr(document_pipeline, "_generate_embeddings_static", _fake_embed)
-    monkeypatch.setattr(document_pipeline, "_get_es_client_static", _fake_es)
+    monkeypatch.setattr(pipeline_steps, "check_document_cancelled", _no_cancel)
+    monkeypatch.setattr(pipeline_steps, "generate_embeddings", _fake_embed)
+    monkeypatch.setattr(pipeline_steps, "get_es_client", _fake_es)
 
 
 @pytest.mark.asyncio
@@ -88,7 +90,7 @@ async def test_image_dirty_image_subkey_does_not_break_split(monkeypatch):
     """
     _patch_tail_deps(monkeypatch)
 
-    result = await document_pipeline._run_post_parse_tail(
+    result = await pipeline_steps.run_post_parse_tail(
         document=_make_document(),
         session=_FakeSession(),
         task=_make_task(),
@@ -116,7 +118,7 @@ async def test_image_description_is_splittable_into_multiple_chunks(monkeypatch)
 
     long_description = "这是一张图片的描述。" * 60  # 约 600 字
 
-    result = await document_pipeline._run_post_parse_tail(
+    result = await pipeline_steps.run_post_parse_tail(
         document=_make_document(),
         session=_FakeSession(),
         task=_make_task(),
@@ -145,10 +147,10 @@ async def test_full_text_with_dirty_top_level_strategy_still_raises(monkeypatch)
     async def _no_cancel(doc_id: int) -> None:
         return None
 
-    monkeypatch.setattr(document_pipeline, "_check_document_cancelled", _no_cancel)
+    monkeypatch.setattr(pipeline_steps, "check_document_cancelled", _no_cancel)
 
     with pytest.raises(ValueError, match="不支持的切分策略"):
-        await document_pipeline._run_post_parse_tail(
+        await pipeline_steps.run_post_parse_tail(
             document=_make_document(),
             session=_FakeSession(),
             task=_make_task(),

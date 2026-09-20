@@ -25,7 +25,9 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from novamind.features.knowledge_space.services import media_processing
 from novamind.engines.document.pipeline.document_loader import DocumentProcessor
+from novamind.features.knowledge_space.services import pipeline_steps
 from novamind.features.knowledge_space.exceptions import DocumentProcessingError
 from novamind.features.knowledge_space.services import document_pipeline
 from novamind.shared.storage import elasticsearch_client as es_module
@@ -119,7 +121,7 @@ async def test_image_vlm_raises_when_vlm_model_empty(monkeypatch):
     （无法从配置看出实际用了哪个模型）。留空即抛错，要求用户在解析配置中显式选择。
     """
 
-    ctx = document_pipeline.PipelineContext(
+    ctx = pipeline_steps.PipelineContext(
         space=SimpleNamespace(owner_id=1),
         kb=None,
         pipeline_config={"parsing": {"image": {"strategy": "vlm"}}},
@@ -137,7 +139,7 @@ async def test_image_vlm_raises_when_vlm_model_empty(monkeypatch):
         document_pipeline, "build_runtime_parsing_config", lambda parsing, ft: {"image_strategy": "vlm"}
     )
     monkeypatch.setattr(document_pipeline, "load_pipeline_context", _fake_load_ctx)
-    monkeypatch.setattr(document_pipeline, "_check_document_cancelled", _no_cancel)
+    monkeypatch.setattr(document_pipeline, "check_document_cancelled", _no_cancel)
 
     class _MCSWithDefault:
         async def get_user_default_model_name(self, user_id, model_type):

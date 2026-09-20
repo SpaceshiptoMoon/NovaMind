@@ -9,7 +9,9 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from novamind.features.knowledge_space.services import media_processing
 from novamind.engines.document.media.audio import transcribe_audio_with_timestamps
+from novamind.features.knowledge_space.services import pipeline_steps
 from novamind.engines.document.pipeline import DocumentProcessor, DocumentRegistry
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     KnowledgeBaseConfig,
@@ -18,15 +20,19 @@ from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
 )
 from novamind.features.knowledge_space.services.document_pipeline import (
     _generate_image_description,
-    _generate_questions_for_chunks_static,
+)
+from novamind.features.knowledge_space.services.pipeline_steps import (
+    generate_questions_for_chunks,
 )
 from novamind.features.knowledge_space.services.knowledge_base_service import (
     get_effective_space_types,
 )
 from novamind.features.knowledge_space.services.media_processing import (
-    _split_md_text,
     process_audio_document,
     process_video_document,
+)
+from novamind.features.knowledge_space.services.pipeline_steps import (
+    split_md_text,
 )
 
 pytestmark = pytest.mark.unit
@@ -445,11 +451,11 @@ async def test_process_video_document_applies_runtime_config(monkeypatch):
         fake_persist_parsed_text,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing._run_post_parse_tail",
+        "novamind.features.knowledge_space.services.media_processing.run_post_parse_tail",
         fake_post_parse_tail,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing._check_document_cancelled",
+        "novamind.features.knowledge_space.services.media_processing.check_document_cancelled",
         AsyncMock(),
     )
     monkeypatch.setattr(
@@ -577,11 +583,11 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
         fake_persist_parsed_text,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing._run_post_parse_tail",
+        "novamind.features.knowledge_space.services.media_processing.run_post_parse_tail",
         fake_post_parse_tail,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing._check_document_cancelled",
+        "novamind.features.knowledge_space.services.media_processing.check_document_cancelled",
         AsyncMock(),
     )
     monkeypatch.setattr(
@@ -684,11 +690,11 @@ async def test_process_audio_document_loads_embedding_client_for_semantic_split(
         fake_transcribe,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.document_pipeline._get_embedding_client_static",
+        "novamind.features.knowledge_space.services.pipeline_steps.get_embedding_client",
         fake_get_embedding_client_static,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing._split_md_text",
+        "novamind.features.knowledge_space.services.pipeline_steps.split_md_text",
         fake_split_md_text,
     )
     monkeypatch.setattr(
@@ -697,20 +703,24 @@ async def test_process_audio_document_loads_embedding_client_for_semantic_split(
     )
     # 共享后置尾会调用这些叶子函数，需要 fake 掉以避免实际 DB/ES/向量化请求
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.document_pipeline._check_document_cancelled",
+        "novamind.features.knowledge_space.services.media_processing.check_document_cancelled",
         AsyncMock(),
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.document_pipeline._generate_embeddings_static",
+        "novamind.features.knowledge_space.services.pipeline_steps.check_document_cancelled",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "novamind.features.knowledge_space.services.pipeline_steps.generate_embeddings",
         AsyncMock(return_value=[None]),
     )
     fake_es_client = SimpleNamespace(bulk_index_chunks=AsyncMock(return_value=1))
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.document_pipeline._get_es_client_static",
+        "novamind.features.knowledge_space.services.pipeline_steps.get_es_client",
         AsyncMock(return_value=fake_es_client),
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing._check_document_cancelled",
+        "novamind.features.knowledge_space.services.media_processing.check_document_cancelled",
         AsyncMock(),
     )
     monkeypatch.setattr(
@@ -783,7 +793,7 @@ async def test_split_md_text_semantic_uses_embedding_client(monkeypatch):
 
     monkeypatch.setattr(DocumentRegistry, "get_splitter_class", lambda strategy: FakeSemanticSplitter)
 
-    chunks = await _split_md_text(
+    chunks = await split_md_text(
         "semantic body",
         strategy="semantic",
         embedding_client="embed-client",
@@ -828,11 +838,11 @@ async def test_generate_questions_for_chunks_static_uses_question_generation_con
         FakeQGService,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.document_pipeline._generate_embeddings_static",
+        "novamind.features.knowledge_space.services.pipeline_steps.generate_embeddings",
         fake_generate_embeddings_static,
     )
 
-    questions_list, embeddings_list = await _generate_questions_for_chunks_static(
+    questions_list, embeddings_list = await generate_questions_for_chunks(
         chunks=["chunk body"],
         document_title="Demo",
         kb_config={
@@ -926,11 +936,11 @@ async def test_process_video_document_grouped_strategy_passes_frame_groups(monke
         fake_persist_parsed_text,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing._run_post_parse_tail",
+        "novamind.features.knowledge_space.services.media_processing.run_post_parse_tail",
         fake_post_parse_tail,
     )
     monkeypatch.setattr(
-        "novamind.features.knowledge_space.services.media_processing._check_document_cancelled",
+        "novamind.features.knowledge_space.services.media_processing.check_document_cancelled",
         AsyncMock(),
     )
     monkeypatch.setattr(

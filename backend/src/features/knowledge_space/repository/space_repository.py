@@ -14,7 +14,7 @@ from novamind.features.knowledge_space.models.knowledge_space import (
     SpaceVisibility,
 )
 from novamind.features.knowledge_space.models.space_member import MemberStatus, SpaceMember
-from novamind.shared.cache.redis_client import get_redis_client
+from novamind.shared.storage.client_factory import get_redis_client
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession

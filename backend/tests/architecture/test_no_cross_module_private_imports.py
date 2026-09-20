@@ -67,12 +67,6 @@ def _private_imports_in(path: Path) -> set[str]:
 KNOWN_VIOLATIONS: dict[str, set[str]] = {
     "src/features/knowledge_space/services/media_processing.py": {
         "novamind.engines.document.media.audio._asr_busy_lock",
-        "novamind.features.knowledge_space.services.document_pipeline._get_embedding_client_static",
-        "novamind.features.knowledge_space.services.document_pipeline._run_post_parse_tail",
-        "novamind.features.knowledge_space.services.document_pipeline._check_document_cancelled",
-    },
-    "src/features/knowledge_space/services/document_pipeline.py": {
-        "novamind.features.knowledge_space.services.media_processing._split_md_text",
     },
     "src/engines/agent/agent_engine.py": {
         "novamind.engines.agent.retry._is_retryable_error",

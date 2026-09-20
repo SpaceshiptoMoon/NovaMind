@@ -12,7 +12,7 @@ from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.user.models.role import Role
 from novamind.features.user.models.user import User, UserStatus
 from novamind.features.user.schemas.user_schema import UserUpdate
-from novamind.shared.cache.redis_client import get_redis_client
+from novamind.shared.storage.client_factory import get_redis_client
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession

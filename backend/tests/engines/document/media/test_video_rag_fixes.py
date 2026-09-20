@@ -2,10 +2,10 @@
 
 覆盖本轮修复的 8 个视频管道 bug，均为单元级复现原失败模式：
 
-- B1+B6 ``_build_es_chunks``：frame_paths 改 Dict[int,str] 后抽帧空洞不错位；
+- B1+B6 ``build_es_chunks``：frame_paths 改 Dict[int,str] 后抽帧空洞不错位；
   VIDEO chunk image_url 取首帧 path，IMAGE chunk 维持 media_url。
 - B2 ``describe_grouped``：全组配额失败时 quota_failures 累计真实值，不再硬编码 0。
-- B3+B4 ``_split_line_aware`` / ``_split_md_text`` recursive：line_aware 扩展到 recursive，
+- B3+B4 ``split_line_aware`` / ``split_md_text`` recursive：line_aware 扩展到 recursive，
   超长锚点行不被切分家。
 - B5 ``MinioClient.delete_objects_by_prefix``：递归 list+remove 清前缀。
 - B9 ``describe_single``：有界并发（Semaphore+gather）保序、in-flight ≤ concurrency。
@@ -27,6 +27,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.engines.document.media.video import frame_description as fd
+from novamind.features.knowledge_space.services import pipeline_steps
 from novamind.engines.document.media.video.frame_description import (
     AllFrameDescriptionsFailedError,
     describe_grouped,
@@ -77,7 +78,7 @@ def test_build_es_chunks_frame_paths_dict_no_misalign_on_hole():
         3: "obj_frames/frame_0003.jpg",
     }
     chunk_items = [("[00:00:09#3] 描述", {"frame_indices": [3], "start_time": 9.0, "end_time": 12.0})]
-    chunks = document_pipeline._build_es_chunks(
+    chunks = pipeline_steps.build_es_chunks(
         document, chunk_items, ChunkType.VIDEO, frame_paths=frame_paths
     )
     # 取到 frame_idx=3 的真实路径，不是位置 3（越界丢弃）也不是位置错位
@@ -93,7 +94,7 @@ def test_build_es_chunks_image_url_is_media_url_for_image():
         id=72, space_id=1, kb_id=1, file_hash="h", filename="i.png", file_type="png",
         storage={"minio_object_name": "img.png"}, uploader_id=1,
     )
-    chunks = document_pipeline._build_es_chunks(document, [("描述", {})], ChunkType.IMAGE)
+    chunks = pipeline_steps.build_es_chunks(document, [("描述", {})], ChunkType.IMAGE)
     assert chunks[0]["image_url"] == "img.png"
     assert "frame_paths" not in chunks[0]["metadata"]
 
@@ -101,7 +102,7 @@ def test_build_es_chunks_image_url_is_media_url_for_image():
 def test_build_es_chunks_video_no_frames_image_url_empty():
     """B6：VIDEO chunk 无 frame_indices 时 image_url 空串，不误导指向视频文件。"""
     document = _make_video_document()
-    chunks = document_pipeline._build_es_chunks(
+    chunks = pipeline_steps.build_es_chunks(
         document, [("描述", {})], ChunkType.VIDEO, frame_paths={0: "obj_frames/frame_0000.jpg"}
     )
     assert chunks[0]["image_url"] == ""
@@ -148,7 +149,7 @@ def test_split_line_aware_preserves_anchors():
     不被 recursive 分隔符层级切到行内导致锚点分家。"""
     long_desc = "x" * 600
     text = f"[00:00:05#3] {long_desc}\n\n[00:00:10#4] short"
-    chunks = media_processing._split_line_aware(text, chunk_size=200, chunk_overlap=0)
+    chunks = pipeline_steps.split_line_aware(text, chunk_size=200, chunk_overlap=0)
     assert len(chunks) >= 2
     # 两个锚点均完整出现在某 chunk 中
     joined = "\n".join(chunks)
@@ -163,7 +164,7 @@ async def test_split_md_text_recursive_line_aware_honored():
     """B4：recursive 分支 line_aware=True 时走行边界切分（原忽略 line_aware）。"""
     long_desc = "x" * 600
     text = f"[00:00:05#3] {long_desc}\n\n[00:00:10#4] short"
-    items = await media_processing._split_md_text(
+    items = await pipeline_steps.split_md_text(
         text, strategy="recursive", line_aware=True, chunk_size=200, chunk_overlap=0
     )
     anchors: list[str] = []
@@ -282,7 +283,7 @@ async def test_video_vlm_model_empty_raises_no_fallback(monkeypatch):
         return _FakeMinio()
 
     monkeypatch.setattr(media_processing, "load_pipeline_context", fake_load)
-    monkeypatch.setattr(media_processing, "_check_document_cancelled", fake_cancel)
+    monkeypatch.setattr(media_processing, "check_document_cancelled", fake_cancel)
     monkeypatch.setattr(media_processing, "extract_frames_fixed", fake_extract)
     monkeypatch.setattr(
         "novamind.shared.storage.client_factory.ClientFactory.get_minio_client",
@@ -316,7 +317,7 @@ async def test_video_vlm_model_empty_raises_no_fallback(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_storage_frames_persisted_before_tail(monkeypatch):
-    """B12：_run_post_parse_tail 抛错时，storage["frames"] 已在帧上传后写入并 commit，
+    """B12：run_post_parse_tail 抛错时，storage["frames"] 已在帧上传后写入并 commit，
     帧可追踪（配合 B5 清理避免孤儿）。"""
     document = _make_video_document()
     document.storage = {"minio_object_name": "obj"}
@@ -347,7 +348,7 @@ async def test_storage_frames_persisted_before_tail(monkeypatch):
         raise RuntimeError("tail boom")
 
     monkeypatch.setattr(media_processing, "load_pipeline_context", fake_load)
-    monkeypatch.setattr(media_processing, "_check_document_cancelled", fake_cancel)
+    monkeypatch.setattr(media_processing, "check_document_cancelled", fake_cancel)
     monkeypatch.setattr(media_processing, "extract_frames_fixed", fake_extract)
     monkeypatch.setattr(
         "novamind.shared.storage.client_factory.ClientFactory.get_minio_client",
@@ -355,7 +356,7 @@ async def test_storage_frames_persisted_before_tail(monkeypatch):
     )
     monkeypatch.setattr(media_processing, "describe_single", fake_describe_single)
     monkeypatch.setattr(media_processing, "persist_parsed_text", fake_persist)
-    monkeypatch.setattr(media_processing, "_run_post_parse_tail", fake_tail)
+    monkeypatch.setattr(media_processing, "run_post_parse_tail", fake_tail)
     monkeypatch.setattr(
         "novamind.shared.prompts.templates.PromptManager.get_template", lambda name: "prompt"
     )
@@ -433,7 +434,7 @@ async def test_video_vlm_concurrency_read_from_yaml_config(monkeypatch):
     )
 
     monkeypatch.setattr(media_processing, "load_pipeline_context", fake_load)
-    monkeypatch.setattr(media_processing, "_check_document_cancelled", fake_cancel)
+    monkeypatch.setattr(media_processing, "check_document_cancelled", fake_cancel)
     monkeypatch.setattr(media_processing, "extract_frames_fixed", fake_extract)
     monkeypatch.setattr(
         "novamind.shared.storage.client_factory.ClientFactory.get_minio_client",
@@ -441,7 +442,7 @@ async def test_video_vlm_concurrency_read_from_yaml_config(monkeypatch):
     )
     monkeypatch.setattr(media_processing, "describe_single", fake_describe_single)
     monkeypatch.setattr(media_processing, "persist_parsed_text", fake_persist)
-    monkeypatch.setattr(media_processing, "_run_post_parse_tail", fake_tail)
+    monkeypatch.setattr(media_processing, "run_post_parse_tail", fake_tail)
     monkeypatch.setattr(
         "novamind.shared.prompts.templates.PromptManager.get_template", lambda name: "prompt"
     )
@@ -505,7 +506,7 @@ async def test_video_vlm_concurrency_clamped_to_range(monkeypatch):
     )
 
     monkeypatch.setattr(media_processing, "load_pipeline_context", fake_load)
-    monkeypatch.setattr(media_processing, "_check_document_cancelled", fake_cancel)
+    monkeypatch.setattr(media_processing, "check_document_cancelled", fake_cancel)
     monkeypatch.setattr(media_processing, "extract_frames_fixed", fake_extract)
     monkeypatch.setattr(
         "novamind.shared.storage.client_factory.ClientFactory.get_minio_client",
@@ -513,7 +514,7 @@ async def test_video_vlm_concurrency_clamped_to_range(monkeypatch):
     )
     monkeypatch.setattr(media_processing, "describe_single", fake_describe_single)
     monkeypatch.setattr(media_processing, "persist_parsed_text", fake_persist)
-    monkeypatch.setattr(media_processing, "_run_post_parse_tail", fake_tail)
+    monkeypatch.setattr(media_processing, "run_post_parse_tail", fake_tail)
     monkeypatch.setattr(
         "novamind.shared.prompts.templates.PromptManager.get_template", lambda name: "prompt"
     )

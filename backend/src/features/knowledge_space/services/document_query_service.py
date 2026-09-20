@@ -162,7 +162,7 @@ class DocumentQueryService:
 
         # 6. 失效该知识库的搜索缓存
         try:
-            from novamind.shared.cache.redis_client import get_redis_client
+            from novamind.shared.storage.client_factory import get_redis_client
 
             cache = await get_redis_client()
             await cache.delete_by_pattern(f"search:{kb_id}:*", batch_size=100)

@@ -3,7 +3,7 @@
 验证方式 1（时间戳锚点 + 切分后反查对齐）：
 - `align_chunk_times`：正则提 `[HH:MM:SS#idx]` → 查 timeline_map 填 start_time/end_time/frame_indices
   + 剥离锚点得到进 embedding 的纯描述 content。
-- `_split_md_text` 的 `fixed_size` 行边界适配：按行累积，不切进「[锚点] 描述」行内部。
+- `split_md_text` 的 `fixed_size` 行边界适配：按行累积，不切进「[锚点] 描述」行内部。
 """
 import sys
 from pathlib import Path
@@ -15,7 +15,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.engines.document.media.chunk_time_alignment import align_chunk_times
-from novamind.features.knowledge_space.services.media_processing import _split_md_text
+from novamind.features.knowledge_space.services.pipeline_steps import split_md_text
 
 pytestmark = pytest.mark.unit
 
@@ -147,14 +147,14 @@ def test_align_without_frame_groups_keeps_single_idx_behavior():
     assert meta["frame_indices"] == [3, 5]  # 不展开
 
 
-# ==================== _split_md_text fixed_size 行边界 ====================
+# ==================== split_md_text fixed_size 行边界 ====================
 
 
 @pytest.mark.anyio("asyncio")
 async def test_split_fixed_size_keeps_anchor_line_intact():
     """fixed_size 行边界：单行不超 chunk_size 不被切分，锚点段完整保留。"""
     md = "[00:00:15#3] 主讲人介绍 RAG 架构\n\n[00:00:20#4] 其次讲解背景"
-    chunks = await _split_md_text(md, strategy="fixed_size", chunk_size=200, chunk_overlap=0, line_aware=True)
+    chunks = await split_md_text(md, strategy="fixed_size", chunk_size=200, chunk_overlap=0, line_aware=True)
 
     # 整体不超 chunk_size，应为单块，两行同在一块（锚点不分家）
     assert len(chunks) == 1
@@ -168,7 +168,7 @@ async def test_split_fixed_size_breaks_at_line_boundary():
     """fixed_size 行边界：多行累积超 chunk_size 时在行间切，不切进 [锚点] 描述行内部。"""
     # 每行约 20 字符，chunk_size=30 强制在行间切（不会出现「[00:00:15#3] 主讲人介 | 绍」）
     md = "[00:00:15#3] 主讲人介绍架构\n[00:00:20#4] 其次讲解背景知识\n[00:00:25#5] 最后总结要点"
-    chunks = await _split_md_text(md, strategy="fixed_size", chunk_size=30, chunk_overlap=0, line_aware=True)
+    chunks = await split_md_text(md, strategy="fixed_size", chunk_size=30, chunk_overlap=0, line_aware=True)
 
     assert len(chunks) >= 2
     for text, _ in chunks:
@@ -188,7 +188,7 @@ async def test_split_fixed_size_breaks_at_line_boundary():
 async def test_split_fixed_size_no_anchor_split_mid_line():
     """fixed_size 行边界：锚点标记本身绝不会被字符切分到两块（锚点原子性）。"""
     md = "[00:00:15#3] 描述一\n[00:00:20#4] 描述二"
-    chunks = await _split_md_text(md, strategy="fixed_size", chunk_size=15, chunk_overlap=0, line_aware=True)
+    chunks = await split_md_text(md, strategy="fixed_size", chunk_size=15, chunk_overlap=0, line_aware=True)
 
     # 收集所有块文本拼接，应能还原所有完整锚点（无半截 [00:00 或 #3] 残片）
     full = "".join(t for t, _ in chunks)

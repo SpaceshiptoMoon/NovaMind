@@ -147,8 +147,10 @@ async def process_document_task(
         DocumentTaskRepository,
     )
     from novamind.features.knowledge_space.services.document_pipeline import (
-        DocumentCancelledError,
         execute_document_pipeline,
+    )
+    from novamind.features.knowledge_space.services.pipeline_steps import (
+        DocumentCancelledError,
     )
     from novamind.features.user.services.model_config_service import ModelConfigService
     from novamind.shared.mq.task_tracker import unbind_job
@@ -323,7 +325,7 @@ async def process_document_task(
 
             # 6. 失效搜索缓存
             try:
-                from novamind.shared.cache.redis_client import get_redis_client
+                from novamind.shared.storage.client_factory import get_redis_client
                 cache = await get_redis_client()
                 await cache.delete_by_pattern(f"search:{kb_id}:*", batch_size=100)
                 logger.info("搜索缓存已失效", kb_id=kb_id)

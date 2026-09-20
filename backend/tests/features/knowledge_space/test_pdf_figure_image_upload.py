@@ -16,9 +16,11 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
 from novamind.features.knowledge_space.services.document_pipeline import (
-    _build_es_chunks,
     _replace_figure_placeholders,
     _upload_figure_images_to_minio,
+)
+from novamind.features.knowledge_space.services.pipeline_steps import (
+    build_es_chunks as _build_es_chunks,
 )
 
 pytestmark = pytest.mark.unit

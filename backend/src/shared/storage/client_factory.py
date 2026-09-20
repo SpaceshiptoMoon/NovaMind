@@ -235,3 +235,17 @@ async def get_elasticsearch_client():
     return await ClientFactory.get_elasticsearch_client()
 
 
+async def get_redis_client() -> "RedisCache":
+    """获取全局 Redis 客户端实例（支持单机、哨兵、集群模式）。
+
+    门面定义在 client_factory 而非 cache.redis_client：避免
+    cache.redis_client ↔ storage.client_factory 互相 import 成环（R1 无环门禁）。
+    """
+    return await ClientFactory.get_redis_client()
+
+
+async def close_redis_connection():
+    """关闭全局 Redis 连接"""
+    await ClientFactory.close_all()
+
+

@@ -34,17 +34,18 @@ from novamind.features.knowledge_space.schemas.enums import ChunkType
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     build_runtime_parsing_config,
 )
-from novamind.features.knowledge_space.services.document_pipeline import (
-    _check_document_cancelled,
-    _run_post_parse_tail,
-    load_pipeline_context,
-    persist_parsed_text,
-)
 from novamind.features.knowledge_space.services.pipeline_snapshots import (
     SNAPSHOTS_ENABLED,
     build_parse_snapshot_payload,
     compute_parse_fingerprint,
     save_parse_snapshot,
+)
+from novamind.features.knowledge_space.services.pipeline_steps import (
+    begin_step,
+    check_document_cancelled,
+    load_pipeline_context,
+    persist_parsed_text,
+    run_post_parse_tail,
 )
 from novamind.shared.config import AudioConfig
 from novamind.shared.model_config_ports import ModelConfigPort
@@ -67,19 +68,6 @@ async def _find_cloud_asr_credentials(mcs, uploader_id: int, exclude_protocol: s
             return creds
     return None
 
-
-async def _begin_step(session: AsyncSession, task: DocumentTask | None, name: str) -> None:
-    """记录节点开始并立即落库。
-
-    `task.start_step` 只改内存对象的 step_progress；若不在节点开始时立即 commit，
-    一旦该节点执行中崩溃，内存里的 running 节点会随异常丢失，`_ensure_mark_failed`
-    用独立 session 重载 task 时 step_progress 仍为 null，`mark_last_running_step_failed`
-    找不到 running 节点 → 前端节点日志空白。每个 start_step 后立即 commit 保证 running 节点落库。
-    """
-    if task is None:
-        return
-    task.start_step(name)
-    await session.commit()
 
 
 # VLM 配额/鉴权类错误的特征串。这类错误通常不会因重试而恢复，应触发回退或跳过降级，
@@ -104,31 +92,6 @@ def _is_vlm_quota_or_auth_error(exc: BaseException) -> bool:
     text = str(exc).lower()
     return any(marker in text for marker in _VLM_QUOTA_OR_AUTH_MARKERS)
 
-
-async def maybe_semantic_embedding_client(
-    strategy: str,
-    embedding_config: dict[str, Any],
-    session: AsyncSession,
-    user_id: int,
-    model_config_port: ModelConfigPort | None = None,
-):
-    """strategy == "semantic" 时返回语义切分所需的 embedding_client，否则返回 None。
-
-    延迟导入 _get_embedding_client_static 以避免 document_pipeline ↔ media_processing 循环导入。
-    批次 5b：model_config_port 由调用方注入，透传至 _get_embedding_client_static。
-    """
-    if strategy != "semantic":
-        return None
-    from novamind.features.knowledge_space.services.document_pipeline import (
-        _get_embedding_client_static,
-    )
-
-    return await _get_embedding_client_static(
-        session=session,
-        user_id=user_id,
-        model_name=embedding_config.get("model"),
-        model_config_port=model_config_port,
-    )
 
 
 async def process_video_document(
@@ -182,7 +145,7 @@ async def process_video_document(
         strategy=strategy, interval=frame_interval, max_frames=max_frames,
     )
     if task:
-        await _begin_step(session, task, "frames_extracted")
+        await begin_step(session, task, "frames_extracted")
     if strategy == "scene":
         scene_kwargs: dict[str, Any] = {}
         if scene_threshold is not None:
@@ -195,7 +158,7 @@ async def process_video_document(
     )
 
     # 检查点1：帧提取完成
-    await _check_document_cancelled(document.id)
+    await check_document_cancelled(document.id)
 
     if not frames:
         raise DocumentProcessingError(
@@ -228,7 +191,7 @@ async def process_video_document(
     # frame_idx 空洞：engines 抽帧在 _read_frame_at 返回 None 或抛错时跳过该帧但 frame_idx
     # 仍递增（video_utils.py / frame_extraction.py 的 enumerate+continue 模式），若 frame_paths
     # 按位置 append 会与 frame_idx 错位 → ES chunk 帧图指向错误帧或丢失。dict 映射让
-    # _build_es_chunks 按 frame_idx 精确取帧，空洞 idx 自动跳过。dedup 策略因 dedup_frame_diff
+    # build_es_chunks 按 frame_idx 精确取帧，空洞 idx 自动跳过。dedup 策略因 dedup_frame_diff
     # 已用 len(kept) 重映射连续 idx 而天然免疫，此处 dict 同样兼容。
     frame_paths: dict[int, str] = {}
     for frame_bytes, ts, frame_idx in frames:
@@ -243,7 +206,7 @@ async def process_video_document(
             # 上传失败占位保留 frame_idx→空映射，不丢 idx 对应关系，不阻塞整体
             frame_paths[frame_idx] = ""
 
-    # 帧上传后立即持久化 storage["frames"]，确保后续切分/嵌入/索引（_run_post_parse_tail）
+    # 帧上传后立即持久化 storage["frames"]，确保后续切分/嵌入/索引（run_post_parse_tail）
     # 失败时帧仍可追踪，配合重处理/删除的 MinIO 前缀清理避免孤儿。storage["frames"] 保持
     # "按 frame_idx 升序的非空 path 列表"格式（get_document_frames 按列表 enumerate 消费）。
     document.storage = {
@@ -256,7 +219,7 @@ async def process_video_document(
         task.finish_step("frames_extracted", metrics={"frame_count": len(frames)})
 
     if task:
-        await _begin_step(session, task, "descriptions_generated")
+        await begin_step(session, task, "descriptions_generated")
     # 2. 装配 VLM client + prompt（features 装配点注入引擎 describe_* 函数）
     # 从视频自身嵌套配置读 vlm_model（video_config = pipeline_config["parsing"]["video"]），
     # 不读扁平 parsing_config["vlm_model"]：build_runtime_parsing_config 把 image.vlm_model
@@ -281,7 +244,7 @@ async def process_video_document(
     from novamind.shared.prompts.templates import PromptManager
 
     def cancelled_check() -> bool:
-        return _check_document_cancelled(document.id)
+        return check_document_cancelled(document.id)
     base_log_ctx: dict[str, Any] = {"document_id": document.id}
 
     # 双锚点 [HH:MM:SS#frame_idx]：时间戳给人看，#frame_idx 给切分后反查唯一映射回帧时间区间。
@@ -416,7 +379,7 @@ async def process_video_document(
         task.finish_step("descriptions_generated", metrics={"description_count": descriptions_count})
 
     # 3-5. 切分/向量化/问题生成/索引：交由共享后置尾
-    tail_result = await _run_post_parse_tail(
+    tail_result = await run_post_parse_tail(
         document=document,
         session=session,
         task=task,
@@ -489,7 +452,7 @@ async def process_audio_document(
     from novamind.engines.document.media.audio import transcribe_audio_with_dashscope
 
     # 检查点：ASR 调用前（转写可能耗时较长，允许用户在此处取消）
-    await _check_document_cancelled(document.id)
+    await check_document_cancelled(document.id)
 
     # 批次 5b：用注入的 ModelConfigPort，不再内部自建 ModelConfigService
     mcs = model_config_port
@@ -556,7 +519,7 @@ async def process_audio_document(
         )
 
     if task:
-        await _begin_step(session, task, "transcription_done")
+        await begin_step(session, task, "transcription_done")
     if asr_protocol == "local":
         # 本地 faster-whisper 模型 — 无需 API Key，无需网络。
         # 模型缺失/解码失败时，若用户配了云端 ASR，则回退云端，避免整任务硬失败。
@@ -630,7 +593,7 @@ async def process_audio_document(
     )
 
     # 检查点1：ASR 转写完成
-    await _check_document_cancelled(document.id)
+    await check_document_cancelled(document.id)
 
     if not segments:
         # 转写结果为空不是错误——模型能力不足、音频质量差等都是正常情况。
@@ -715,7 +678,7 @@ async def process_audio_document(
 
     # 2-4. 切分/向量化/问题生成/索引：交由共享后置尾
     splitting_config = dict(pipeline_config.get("splitting", {}))
-    tail_result = await _run_post_parse_tail(
+    tail_result = await run_post_parse_tail(
         document=document,
         session=session,
         task=task,
@@ -750,159 +713,4 @@ async def process_audio_document(
 # ========== 统一文本切分 ==========
 
 
-def _split_line_aware(md_text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
-    """按行累积切分，绝不切进「[HH:MM:SS#idx] 描述」行内部，保证锚点不分家。
 
-    供 fixed_size 与 recursive 在 line_aware=True 时共用（音视频带时间锚点文本）。
-    单行超 chunk_size 时整行成一块（oversized），正确性优先于尺寸软上限。
-    overlap 用「保留尾部若干行使其字符和 ≈ chunk_overlap」实现（行单位 overlap）。
-    抽自原 fixed_size line_aware 内联实现，供 recursive 复用修复 B3/B4：
-    grouped 组描述 >chunk_size 时原 recursive 分隔符层级退到行内，把行首锚点切到
-    上一个 chunk、描述切到下一个 chunk，导致 align_chunk_times 丢时间对齐。
-    """
-    lines = md_text.split("\n")
-    chunks: list[str] = []
-    buf: list[str] = []
-    buf_len = 0
-    for line in lines:
-        addition = len(line) + (1 if buf else 0)  # 非首行加 \n 连接符长度
-        if buf and buf_len + addition > chunk_size:
-            chunks.append("\n".join(buf))
-            # overlap：从尾部回溯取若干行，使其字符和 ≥ chunk_overlap 即停
-            tail: list[str] = []
-            tail_len = 0
-            for tl in reversed(buf):
-                if tail and tail_len + len(tl) >= chunk_overlap:
-                    break
-                tail.insert(0, tl)
-                tail_len += len(tl) + (1 if len(tail) > 1 else 0)
-            buf = tail
-            buf_len = sum(len(tl) for tl in tail) + max(0, len(tail) - 1)
-        buf.append(line)
-        buf_len += addition
-    if buf:
-        chunks.append("\n".join(buf))
-    return [c for c in chunks if c.strip()]
-
-
-async def _split_md_text(
-    md_text: str,
-    strategy: str = "recursive",
-    embedding_client=None,
-    line_aware: bool = False,
-    **kwargs,
-) -> list[tuple[str, dict[str, Any]]]:
-    """
-    将 MD/纯文本按指定策略切分为 chunks
-
-    Args:
-        md_text: 待切分的文本内容
-        strategy: 切分策略 (recursive / markdown / fixed_size / semantic)
-        line_aware: 仅 fixed_size / recursive 生效——True 时按行累积切分（音视频带
-            [HH:MM:SS#idx] 锚点文本，避免切进「[锚点] 描述」行内部导致锚点分家）；
-            False 时按字符/分隔符切（图片等无锚点文本）。由调用方据 time_alignment
-            是否非空决定（音视频 True，图片/文本 False）。
-        **kwargs: 策略相关参数 (chunk_size, chunk_overlap, min_chunk_size, max_chunk_size 等)
-
-    Returns:
-        [(text, metadata_dict), ...] — metadata 目前为空 dict，后续可扩展携带标题/层级
-    """
-    from novamind.engines.document.pipeline import DocumentRegistry
-
-    splitter_class = DocumentRegistry.get_splitter_class(strategy)
-    if splitter_class is None:
-        raise ValueError(
-            f"不支持的切分策略: {strategy}，可用策略: {DocumentRegistry.get_available_strategies()}"
-        )
-
-    if strategy == "recursive":
-        chunk_size = kwargs.get("chunk_size", 2000)
-        chunk_overlap = kwargs.get("chunk_overlap", 50)
-        min_chunk_size = kwargs.get("min_chunk_size", 500)
-        if line_aware:
-            # 音视频带 [HH:MM:SS#idx] 锚点文本：按行边界切，避免组描述 >chunk_size 时
-            # recursive 分隔符层级退到行内把锚点切分家（B3/B4）。min_chunk_size 不适用行模式。
-            return [(c, {}) for c in _split_line_aware(md_text, chunk_size, chunk_overlap)]
-        splitter = splitter_class(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            min_chunk_size=min_chunk_size,
-        )
-        chunk_texts = await splitter._split_text(md_text)
-        return [(text, {}) for text in chunk_texts if text.strip()]
-
-    elif strategy == "markdown":
-        from novamind.engines.document.splitters import MarkdownSplitter
-        max_chunk_size = kwargs.get("max_chunk_size", 1000)
-        min_chunk_size = kwargs.get("min_chunk_size", 50)
-        splitter = MarkdownSplitter(
-            max_chunk_size=max_chunk_size,
-            min_chunk_size=min_chunk_size,
-        )
-        doc_wrapper = [{
-            "text": md_text,
-            "source": "media_pipeline",
-            "page": 1,
-            "doc_id": "0",
-            "type": "markdown",
-            "title": "",
-        }]
-        results = await splitter.split(doc_wrapper)
-        return [(r["text"], {}) for r in results if r.get("text", "").strip()]
-
-    elif strategy == "fixed_size":
-        chunk_size = kwargs.get("chunk_size", 500)
-        chunk_overlap = kwargs.get("chunk_overlap", 0)
-        if line_aware:
-            # 行边界对齐版（音视频带 [HH:MM:SS#idx] 锚点文本）：抽公共 _split_line_aware，
-            # 与 recursive 共用，绝不切进「[锚点] 描述」行内部，保证锚点反查不错位。
-            return [(c, {}) for c in _split_line_aware(md_text, chunk_size, chunk_overlap)]
-        # 字符切（图片等无锚点文本）：原 FixedSizeSplitter 行为
-        splitter = splitter_class(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-        )
-        doc_wrapper = [{
-            "text": md_text,
-            "source": "media_pipeline",
-            "page": 1,
-            "doc_id": "0",
-            "type": "text",
-        }]
-        results = await splitter.split(doc_wrapper)
-        return [(r["text"], {}) for r in results if r.get("text", "").strip()]
-
-    elif strategy == "semantic":
-        max_chunk_size = kwargs.get("max_chunk_size", 1000)
-        similarity_threshold = kwargs.get("similarity_threshold", 0.7)
-        batch_size = kwargs.get("batch_size", 20)
-        if embedding_client is None:
-            raise ValueError("semantic splitting requires embedding_client")
-        splitter = splitter_class(
-            embedding_client=embedding_client,
-            max_chunk_size=max_chunk_size,
-            similarity_threshold=similarity_threshold,
-            batch_size=batch_size,
-        )
-        doc_wrapper = [{
-            "text": md_text,
-            "source": "media_pipeline",
-            "page": 1,
-            "doc_id": "0",
-            "type": "text",
-        }]
-        results = await splitter.split(doc_wrapper)
-        return [(r["text"], {}) for r in results if r.get("text", "").strip()]
-
-    else:
-        # 其他策略兜底：尝试作为文档切分器处理
-        doc_wrapper = [{
-            "text": md_text,
-            "source": "media_pipeline",
-            "page": 1,
-            "doc_id": "0",
-            "type": "text",
-        }]
-        splitter = splitter_class(**kwargs)
-        results = await splitter.split(doc_wrapper)
-        return [(r["text"], {}) for r in results if r.get("text", "").strip()]

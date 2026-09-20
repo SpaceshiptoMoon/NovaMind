@@ -8,7 +8,7 @@ get_current_user 认证链路需要这两个读操作；token 撤销等写操作
 from __future__ import annotations
 
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.shared.cache.redis_client import get_redis_client
+from novamind.shared.storage.client_factory import get_redis_client
 
 logger = get_logger(__name__)
 

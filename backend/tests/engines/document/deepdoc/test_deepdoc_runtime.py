@@ -69,9 +69,9 @@ from novamind.engines.document.integrations.deepdoc.vision_runtime import (
 )
 from novamind.engines.document.pipeline import DocumentProcessor
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
-from novamind.features.knowledge_space.services.document_pipeline import (
-    _extract_parse_metadata_summary,
-    _prepare_es_chunks_static,
+from novamind.features.knowledge_space.services.pipeline_steps import (
+    extract_parse_metadata_summary,
+    prepare_es_chunks,
 )
 from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
 
@@ -2459,7 +2459,7 @@ def test_prepare_es_chunks_static_includes_deepdoc_chunk_metadata():
         storage={"minio_object_name": "kb/demo.pdf"},
     )
 
-    es_chunks = _prepare_es_chunks_static(
+    es_chunks = prepare_es_chunks(
         document,
         ["chunk text"],
         parse_metadata={
@@ -2497,7 +2497,7 @@ def test_prepare_es_chunks_static_includes_deepdoc_chunk_metadata():
 
 
 def test_extract_parse_metadata_summary_counts_regions():
-    summary = _extract_parse_metadata_summary(
+    summary = extract_parse_metadata_summary(
         {
             "parser_class": "RAGFlowPdfParser",
             "pdf_mode": "vision",

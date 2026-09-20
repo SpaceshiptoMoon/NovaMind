@@ -282,7 +282,7 @@ async def create_page(
     _kb=Depends(validate_kb_writable),
     db: AsyncSession = Depends(get_db),
 ):
-    from novamind.features.knowledge_space.services.wiki_ingest_service import normalize_slug
+    from novamind.features.knowledge_space.services.wiki_slug import normalize_slug
 
     slug = normalize_slug(body.slug)
     if not slug:

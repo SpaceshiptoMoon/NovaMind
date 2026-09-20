@@ -1,6 +1,6 @@
-"""管道断点续跑接入测试：_run_post_parse_tail 的 split/embed 快照命中与回写。
+"""管道断点续跑接入测试：run_post_parse_tail 的 split/embed 快照命中与回写。
 
-monkeypatch 内部依赖（切分/嵌入/ES/取消检查/ClientFactory），真实执行 _run_post_parse_tail：
+monkeypatch 内部依赖（切分/嵌入/ES/取消检查/ClientFactory），真实执行 run_post_parse_tail：
 - 快照命中 → 跳过切分/embedding 调用 + metrics 带 resumed 标记
 - 指纹失效（storage 指纹 ≠ 当前指纹）→ 重做并写回快照
 - parse_fingerprint=None → 完全不启用快照（兼容既有行为）
@@ -94,6 +94,8 @@ def _run_tail_coro(document, task, session, *, parse_fp, minio,
     """构造 tail 协程：全部外部依赖已由调用方的 with 块 patch。"""
     from novamind.features.knowledge_space.schemas.enums import ChunkType
     from novamind.features.knowledge_space.services import document_pipeline as dp
+    from novamind.features.knowledge_space.services import media_processing
+    from novamind.features.knowledge_space.services import pipeline_steps
 
     async def fake_split(*args, **kwargs):
         split_calls.append(1)
@@ -103,7 +105,7 @@ def _run_tail_coro(document, task, session, *, parse_fp, minio,
         embed_calls.append(len(texts))
         return [[0.1, 0.2] for _ in texts]
 
-    return dp._run_post_parse_tail(
+    return dp.run_post_parse_tail(
         document=document, session=session, task=task,
         model_config_port=MagicMock(), logger=_logger(),
         chunk_type=ChunkType.TEXT,
@@ -135,23 +137,23 @@ def _tail_patches(minio, split_mock, embed_mock):
             "novamind.shared.storage.client_factory.ClientFactory", _FakeCF,
         ),
         patch(
-            "novamind.features.knowledge_space.services.document_pipeline._check_document_cancelled",
+            "novamind.features.knowledge_space.services.pipeline_steps.check_document_cancelled",
             AsyncMock(return_value=None),
         ),
         patch(
-            "novamind.features.knowledge_space.services.document_pipeline._get_es_client_static",
+            "novamind.features.knowledge_space.services.pipeline_steps.get_es_client",
             AsyncMock(return_value=es_client),
         ),
         patch(
-            "novamind.features.knowledge_space.services.document_pipeline._generate_embeddings_static",
+            "novamind.features.knowledge_space.services.pipeline_steps.generate_embeddings",
             embed_mock,
         ),
         patch(
-            "novamind.features.knowledge_space.services.media_processing._split_md_text",
+            "novamind.features.knowledge_space.services.pipeline_steps.split_md_text",
             split_mock,
         ),
         patch(
-            "novamind.features.knowledge_space.services.media_processing.maybe_semantic_embedding_client",
+            "novamind.features.knowledge_space.services.pipeline_steps.maybe_semantic_embedding_client",
             AsyncMock(return_value=None),
         ),
     ], es_client
@@ -169,6 +171,8 @@ def _do_run(document, task, session, *, parse_fp, minio,
             splitting_config=None, es_indexed=3):
     """受控依赖下执行 tail，返回 (result, split_calls, embed_calls, es_client)。"""
     from novamind.features.knowledge_space.services import document_pipeline as dp
+    from novamind.features.knowledge_space.services import media_processing
+    from novamind.features.knowledge_space.services import pipeline_steps
 
     split_calls, embed_calls = [], []
 
@@ -188,17 +192,17 @@ def _do_run(document, task, session, *, parse_fp, minio,
     from novamind.features.knowledge_space.schemas.enums import ChunkType
 
     with patch("novamind.shared.storage.client_factory.ClientFactory", _FakeCF), \
-         patch.object(dp, "_check_document_cancelled", AsyncMock(return_value=None)), \
-         patch.object(dp, "_get_es_client_static", AsyncMock(return_value=es_client)), \
-         patch.object(dp, "_generate_embeddings_static", AsyncMock(side_effect=fake_embeddings)), \
+         patch.object(pipeline_steps, "check_document_cancelled", AsyncMock(return_value=None)), \
+         patch.object(pipeline_steps, "get_es_client", AsyncMock(return_value=es_client)), \
+         patch.object(pipeline_steps, "generate_embeddings", AsyncMock(side_effect=fake_embeddings)), \
          patch(
-             "novamind.features.knowledge_space.services.media_processing._split_md_text",
+             "novamind.features.knowledge_space.services.pipeline_steps.split_md_text",
              AsyncMock(side_effect=fake_split),
          ), patch(
-             "novamind.features.knowledge_space.services.media_processing.maybe_semantic_embedding_client",
+             "novamind.features.knowledge_space.services.pipeline_steps.maybe_semantic_embedding_client",
              AsyncMock(return_value=None),
          ):
-        result = asyncio.run(dp._run_post_parse_tail(
+        result = asyncio.run(dp.run_post_parse_tail(
             document=document, session=session, task=task,
             model_config_port=MagicMock(), logger=_logger(),
             chunk_type=ChunkType.TEXT,

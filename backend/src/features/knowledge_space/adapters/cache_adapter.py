@@ -22,7 +22,7 @@ class HostCachePort:
     async def _ensure(self) -> Any:
         """惰性获取宿主 Redis 客户端单例（首次缓存操作时触发）。"""
         if self._redis is None:
-            from novamind.shared.cache.redis_client import get_redis_client
+            from novamind.shared.storage.client_factory import get_redis_client
 
             self._redis = await get_redis_client()
         return self._redis

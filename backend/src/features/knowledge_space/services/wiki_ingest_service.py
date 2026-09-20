@@ -39,6 +39,7 @@ from novamind.features.knowledge_space.services.wiki_dedup import (
 )
 from novamind.features.knowledge_space.services.wiki_handles import HandleTable
 from novamind.features.knowledge_space.services.wiki_retract_service import tombstone_exists
+from novamind.features.knowledge_space.services.wiki_slug import normalize_slug
 from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.utils.llm_response import extract_json_obj
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,7 +72,6 @@ _GRANULARITY_GUIDANCE = {
 }
 
 # slug 允许字符：字母数字下划线、CJK、连字符、类型分隔符 /
-_SLUG_RE = re.compile(r"[^\w一-鿿/-]+")
 
 
 @dataclass
@@ -100,18 +100,6 @@ class IngestOutcome:
     truncated: bool = False
 
 
-def normalize_slug(slug: str) -> str:
-    """清洗模型产出的 slug：小写、剔除空白与危险字符、保留 CJK 与连字符。
-
-    中文 slug 保守方案：保留原字符（不引 pypinyin），仅清洗空白与非法符号。
-    """
-    slug = (slug or "").strip().lower()
-    slug = re.sub(r"\s+", "-", slug)
-    slug = _SLUG_RE.sub("", slug)
-    slug = re.sub(r"-{2,}", "-", slug)
-    slug = re.sub(r"-+/", "/", slug)   # 分隔符前不允许连字符
-    slug = re.sub(r"/-+", "/", slug)   # 分隔符后不允许连字符
-    return slug.strip("-/")
 
 
 class WikiGenerationError(Exception):

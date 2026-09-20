@@ -14,7 +14,7 @@ from typing import Any
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
-from novamind.shared.cache.redis_client import get_redis_client
+from novamind.shared.storage.client_factory import get_redis_client
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy import Integer, case, cast, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession

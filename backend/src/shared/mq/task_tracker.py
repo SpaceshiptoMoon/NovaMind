@@ -23,7 +23,7 @@ class TaskTracker:
         self._tracker_ttl = tracker_ttl
 
     async def _get_redis(self):
-        from novamind.shared.cache.redis_client import get_redis_client
+        from novamind.shared.storage.client_factory import get_redis_client
         return await get_redis_client()
 
     async def bind(self, entity_id: int | str, job_id: str) -> None:

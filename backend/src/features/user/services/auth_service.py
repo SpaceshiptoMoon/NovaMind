@@ -90,7 +90,7 @@ class AuthService:
         Returns:
             Redis 客户端实例
         """
-        from novamind.shared.cache.redis_client import get_redis_client
+        from novamind.shared.storage.client_factory import get_redis_client
         return get_redis_client
 
     @classmethod

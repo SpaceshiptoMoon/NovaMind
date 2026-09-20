@@ -26,7 +26,7 @@ async def acquire_kb_lock(kb_id: int) -> str | None:
     """拿 per-KB wiki 生成锁（Redis SET NX EX）。成功返回锁值，失败 None。"""
     import uuid
 
-    from novamind.shared.cache.redis_client import get_redis_client
+    from novamind.shared.storage.client_factory import get_redis_client
 
     redis = await get_redis_client()
     raw_client = redis.redis_client
@@ -37,7 +37,7 @@ async def acquire_kb_lock(kb_id: int) -> str | None:
 
 async def release_kb_lock(kb_id: int, token: str) -> None:
     """释放 per-KB 锁（校验 token 防误删他人锁）"""
-    from novamind.shared.cache.redis_client import get_redis_client
+    from novamind.shared.storage.client_factory import get_redis_client
 
     redis = await get_redis_client()
     raw_client = redis.redis_client
@@ -265,7 +265,7 @@ async def _sync_wiki_pages_to_es(session, kb_id: int, space_id: int) -> int:
 async def _invalidate_search_cache(kb_id: int) -> None:
     """失效 KB 级检索缓存（best-effort）"""
     try:
-        from novamind.shared.cache.redis_client import get_redis_client
+        from novamind.shared.storage.client_factory import get_redis_client
 
         cache = await get_redis_client()
         await cache.delete_by_pattern(f"search:{kb_id}:*", batch_size=100)

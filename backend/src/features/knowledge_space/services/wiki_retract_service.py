@@ -34,7 +34,7 @@ def tombstone_key(kb_id: int, document_id: int) -> str:
 async def write_tombstone(kb_id: int, document_id: int) -> bool:
     """写删除墓碑。Redis 不可用时返回 False（调用方降级为仅同步对账）。"""
     try:
-        from novamind.shared.cache.redis_client import get_redis_client
+        from novamind.shared.storage.client_factory import get_redis_client
 
         redis = await get_redis_client()
         raw = redis.redis_client
@@ -48,7 +48,7 @@ async def write_tombstone(kb_id: int, document_id: int) -> bool:
 async def tombstone_exists(kb_id: int, document_id: int) -> bool:
     """ingest 管道检查点：该文档是否已被删除（删除竞态守卫）"""
     try:
-        from novamind.shared.cache.redis_client import get_redis_client
+        from novamind.shared.storage.client_factory import get_redis_client
 
         redis = await get_redis_client()
         raw = redis.redis_client

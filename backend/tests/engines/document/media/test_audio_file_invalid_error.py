@@ -23,6 +23,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.engines.document.media.audio import AudioFileInvalidError, audio_utils
+from novamind.features.knowledge_space.services import pipeline_steps
 from novamind.features.knowledge_space.exceptions import DocumentProcessingError
 from novamind.features.knowledge_space.services import media_processing
 
@@ -105,7 +106,7 @@ async def test_process_audio_does_not_fallback_cloud_on_invalid_file(monkeypatch
     # mock 取消检查
     async def _no_cancel(doc_id):
         return None
-    monkeypatch.setattr(media_processing, "_check_document_cancelled", _no_cancel)
+    monkeypatch.setattr(media_processing, "check_document_cancelled", _no_cancel)
 
     # mock acquire_asr_or_busy：返回 True（拿到锁，进转写分支）
     async def _acquire_true():

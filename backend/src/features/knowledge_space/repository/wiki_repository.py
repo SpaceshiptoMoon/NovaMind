@@ -16,6 +16,7 @@ from novamind.features.knowledge_space.models.wiki import (
     WikiPage,
     WikiPageRevision,
 )
+from novamind.features.knowledge_space.services.wiki_slug import normalize_slug
 from sqlalchemy import String, func, or_, select, update
 from sqlalchemy import delete as sa_delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -391,8 +392,6 @@ class WikiPageRepository:
     @staticmethod
     def _parse_out_links(content: str, self_slug: str) -> list[str]:
         """从正文解析 [[slug|title]] 出链（规范化、去自指、保序去重）"""
-        from novamind.features.knowledge_space.services.wiki_ingest_service import normalize_slug
-
         links: list[str] = []
         for m in re.finditer(r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]", content):
             slug = normalize_slug(m.group(1))
