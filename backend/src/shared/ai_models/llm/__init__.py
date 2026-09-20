@@ -2,7 +2,11 @@
 LLM 客户端包
 
 提供多协议的文本生成功能，统一接口规范。
-支持协议: OpenAI 兼容、Anthropic、Ollama、Transformers 本地推理
+支持协议: OpenAI 兼容、Anthropic、Ollama、Transformers 本地推理。
+
+R5 工厂自注册：client 类挂 ``_FACTORY_PROTOCOL`` 属性入注册表，
+``create_llm_client`` 查表构造；新增协议 = 新 client 文件 + 类挂属性，
+不再维护 if-elif 分支链。
 """
 
 from novamind.shared.ai_models.base_model import BaseLLM
@@ -10,6 +14,16 @@ from novamind.shared.ai_models.llm.anthropic_llm import AnthropicLLM
 from novamind.shared.ai_models.llm.ollama_llm import OllamaLLM
 from novamind.shared.ai_models.llm.openai_compatible import OpenAICompatibleLLM
 from novamind.shared.ai_models.llm.transformers_llm import TransformersLLM
+
+AnthropicLLM._FACTORY_PROTOCOL = "anthropic"
+OllamaLLM._FACTORY_PROTOCOL = "ollama"
+OpenAICompatibleLLM._FACTORY_PROTOCOL = "openai"
+TransformersLLM._FACTORY_PROTOCOL = "transformers"
+
+_LLM_REGISTRY: dict[str, type[BaseLLM]] = {
+    cls._FACTORY_PROTOCOL: cls  # type: ignore[attr-defined]
+    for cls in (OpenAICompatibleLLM, AnthropicLLM, OllamaLLM, TransformersLLM)
+}
 
 
 def create_llm_client(
@@ -23,7 +37,7 @@ def create_llm_client(
     **kwargs,
 ) -> BaseLLM:
     """
-    根据 protocol 创建对应的 LLM 客户端
+    根据 protocol 从注册表创建对应的 LLM 客户端
 
     Args:
         protocol: 协议类型 (openai / anthropic / ollama / transformers)
@@ -50,16 +64,10 @@ def create_llm_client(
         "max_concurrent": max_concurrent,
     }
 
-    if protocol == "openai":
-        return OpenAICompatibleLLM(**common_kwargs, **kwargs)
-    elif protocol == "anthropic":
-        return AnthropicLLM(**common_kwargs, **kwargs)
-    elif protocol == "ollama":
-        return OllamaLLM(**common_kwargs, **kwargs)
-    elif protocol == "transformers":
-        return TransformersLLM(**common_kwargs, **kwargs)
-
-    raise ValueError(f"不支持的 LLM 协议: {protocol}")
+    cls = _LLM_REGISTRY.get(protocol or "")
+    if cls is None:
+        raise ValueError(f"不支持的 LLM 协议: {protocol}")
+    return cls(**common_kwargs, **kwargs)
 
 
 __all__ = [

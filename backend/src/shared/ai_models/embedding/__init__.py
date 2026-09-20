@@ -2,13 +2,23 @@
 Embedding 客户端包
 
 提供多协议的文本向量化功能，统一接口规范。
-支持协议: OpenAI 兼容、Ollama、Transformers 本地推理
+支持协议: OpenAI 兼容、Ollama、Transformers 本地推理。
+R5 工厂自注册：client 类挂 ``_FACTORY_PROTOCOL`` 入注册表（见 llm/__init__.py 同款）。
 """
 
 from novamind.shared.ai_models.base_model import BaseEmbedding
 from novamind.shared.ai_models.embedding.ollama_embedding import OllamaEmbedding
 from novamind.shared.ai_models.embedding.openai_compatible import OpenAICompatibleEmbedding
 from novamind.shared.ai_models.embedding.transformers_embedding import TransformersEmbedding
+
+OllamaEmbedding._FACTORY_PROTOCOL = "ollama"
+OpenAICompatibleEmbedding._FACTORY_PROTOCOL = "openai"
+TransformersEmbedding._FACTORY_PROTOCOL = "transformers"
+
+_EMBEDDING_REGISTRY: dict[str, type[BaseEmbedding]] = {
+    cls._FACTORY_PROTOCOL: cls  # type: ignore[attr-defined]
+    for cls in (OpenAICompatibleEmbedding, OllamaEmbedding, TransformersEmbedding)
+}
 
 
 def create_embedding_client(
@@ -23,7 +33,7 @@ def create_embedding_client(
     **kwargs,
 ) -> BaseEmbedding:
     """
-    根据 protocol 创建对应的 Embedding 客户端
+    根据 protocol 从注册表创建对应的 Embedding 客户端
 
     Args:
         protocol: 协议类型 (openai / ollama / transformers)
@@ -51,14 +61,10 @@ def create_embedding_client(
         "max_concurrent": max_concurrent,
     }
 
-    if protocol == "openai":
-        return OpenAICompatibleEmbedding(**common_kwargs, **kwargs)
-    elif protocol == "ollama":
-        return OllamaEmbedding(**common_kwargs, **kwargs)
-    elif protocol == "transformers":
-        return TransformersEmbedding(**common_kwargs, **kwargs)
-
-    raise ValueError(f"不支持的 Embedding 协议: {protocol}")
+    cls = _EMBEDDING_REGISTRY.get(protocol or "")
+    if cls is None:
+        raise ValueError(f"不支持的 Embedding 协议: {protocol}")
+    return cls(**common_kwargs, **kwargs)
 
 
 __all__ = [
