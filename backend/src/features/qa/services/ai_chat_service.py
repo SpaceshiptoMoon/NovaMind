@@ -38,6 +38,7 @@ from novamind.features.user.services.model_config_service import ModelConfigServ
 from novamind.features.user.services.search_config_service import SearchConfigService
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.prompts.prompt_manager import PromptManager
+from novamind.shared.prompts.sanitize import sanitize_prompt_input as _sanitize_input
 from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
 from novamind.shared.utils.heartbeat import stream_with_heartbeat_structured
 
@@ -685,9 +686,9 @@ class AIChatService:
         sources: list[dict] = []
         lines: list[str] = ["<web-search-results>"]
         for i, r in enumerate(results, start=1):
-            title = self._sanitize(getattr(r, "title", ""))
+            title = _sanitize_input(getattr(r, "title", ""))
             url = getattr(r, "url", "")
-            snippet = self._sanitize(getattr(r, "content", ""))
+            snippet = _sanitize_input(getattr(r, "content", ""))
             score = float(getattr(r, "score", 0.0) or 0.0)
             sources.append({
                 "index": i,
@@ -790,7 +791,7 @@ class AIChatService:
             file_info = r.get("file_info") or {}
             metadata = r.get("metadata") or {}
             filename = file_info.get("filename", "")
-            snippet = self._sanitize(r.get("content", ""))[:800]
+            snippet = _sanitize_input(r.get("content", ""))[:800]
             sources.append({
                 "index": i,
                 "kind": "kb",
@@ -806,20 +807,6 @@ class AIChatService:
             lines.append(f"{header}\n{snippet}")
         lines.append("</knowledge-base-context>")
         return "\n".join(lines), sources
-
-    @staticmethod
-    def _sanitize(text: Any) -> str:
-        """清理检索文本，剥离 XML 分隔标记以防 prompt 注入"""
-        if not text:
-            return ""
-        if not isinstance(text, str):
-            text = str(text)
-        for tag in (
-            "<web-search-results>", "</web-search-results>",
-            "<knowledge-base-context>", "</knowledge-base-context>",
-        ):
-            text = text.replace(tag, "")
-        return text.strip()
 
     async def chat(self,
                    user_id: int,

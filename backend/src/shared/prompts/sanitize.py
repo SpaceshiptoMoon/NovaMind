@@ -10,7 +10,7 @@
 """
 from typing import Any
 
-# 已知的结构性分隔标签（与 ai_chat_service._sanitize 保持一致，便于共用）
+# 已知的结构性分隔标签（唯一实现——qa 的本地 _sanitize 已于批次 5.3 删除收敛到本模块）
 _STRUCTURE_TAGS = (
     "<web-search-results>", "</web-search-results>",
     "<knowledge-base-context>", "</knowledge-base-context>",
