@@ -114,7 +114,7 @@ async def test_get_system_prompt_returns_full_prompt() -> None:
     )
     svc.agent_service = SimpleNamespace(
         get_session=AsyncMock(return_value=conv),
-        _get_agent_or_fail=AsyncMock(return_value=agent),
+        get_agent_or_fail=AsyncMock(return_value=agent),
     )
     svc._resolve_model = AsyncMock(return_value="gpt-4")  # type: ignore[assignment]
     svc._memory_store_port = None
