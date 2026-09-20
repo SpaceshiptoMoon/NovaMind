@@ -363,6 +363,10 @@ async def test_transcribe_audio_with_timestamps_includes_language(monkeypatch, t
             return FakeResponse()
 
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    # 批次 4.7：audio_utils 改读 get_config().asr——patch 配置对象而非纯 env
+    from novamind.setting.yaml_config import get_config
+    cfg = get_config()
+    cfg.asr.openai_api_key = "test-key"
 
     import httpx
 
