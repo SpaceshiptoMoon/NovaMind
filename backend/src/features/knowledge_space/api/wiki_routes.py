@@ -444,6 +444,10 @@ async def rebuild_wiki(
     _kb=Depends(validate_kb_writable),
     db: AsyncSession = Depends(get_db),
 ):
+    """对 KB 内已完成解析的文档逐个入队 wiki 生成。
+
+    document_ids 缺省时遍历 KB 全部文档（有 parsed_text 的才真正入队）。
+    """
     from novamind.features.knowledge_space.services.wiki_page_service import WikiPageService
 
     return await WikiPageService(db).rebuild_wiki(
