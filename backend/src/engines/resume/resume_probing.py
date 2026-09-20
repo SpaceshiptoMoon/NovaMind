@@ -6,7 +6,6 @@ prompt/log/降级LLM 经注入端口获取。
 import asyncio
 import json
 
-from novamind.engines.ports import FallbackLLMProvider, PromptProvider
 from novamind.engines.resume.schemas import (
     JDAnalysis,
     KnowledgePoint,
@@ -14,8 +13,10 @@ from novamind.engines.resume.schemas import (
     StructuredResume,
     WorkProjectUnit,
 )
+from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.logging import Logger
+from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.utils.llm_response import extract_json_str
 
 # ==================== 常量 ====================
@@ -41,10 +42,10 @@ class AutoProbingEngine:
         self,
         llm_client: BaseLLM,
         *,
-        prompt_provider: PromptProvider,
+        prompt_provider: PromptManager,
         logger: Logger,
         user_id: int = 0,
-        fallback_llm_provider: FallbackLLMProvider | None = None,
+        fallback_llm_provider: ModelConfigService | None = None,
         max_concurrent: int = 3,
     ):
         self.llm = llm_client
@@ -57,16 +58,25 @@ class AutoProbingEngine:
         self._fallback_models_loaded = False
 
     async def _load_fallback_models(self):
-        """经注入的 FallbackLLMProvider 加载用户其他可用 LLM 客户端，排除当前主模型"""
+        """经注入的 ModelConfigService 加载用户其他可用 LLM 客户端，排除当前主模型"""
         if self._fallback_models_loaded or self._fallback_llm_provider is None:
             return
 
         self._fallback_models_loaded = True
         try:
             current_model = getattr(self.llm, 'model', '')
-            clients = await self._fallback_llm_provider.load_fallback_clients(
-                self.user_id, current_model,
-            )
+            # 原 HostFallbackLLMProvider 逻辑随迁（批次 3.3 去适配器）：
+            # 列出用户 LLM 模型、排除主模型、逐个构造客户端、失败静默跳过
+            svc = self._fallback_llm_provider
+            configs = await svc.repo.list_by_user(self.user_id, "llm")
+            clients = []
+            for cfg in configs:
+                if cfg.model == current_model:
+                    continue
+                try:
+                    clients.append(await svc.get_llm_client_by_model(self.user_id, cfg.model))
+                except Exception:
+                    continue
             for client in clients:
                 model_name = getattr(client, 'model', '') or repr(client)
                 self._fallback_clients[model_name] = client

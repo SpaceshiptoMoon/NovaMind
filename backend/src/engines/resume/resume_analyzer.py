@@ -5,7 +5,6 @@ prompt/log/WebSearch/降级LLM 经注入端口获取。
 """
 import json
 
-from novamind.engines.ports import PromptProvider
 from novamind.engines.resume.schemas import (
     JDAnalysis,
     KnowledgePoint,
@@ -18,6 +17,7 @@ from novamind.engines.resume.schemas import (
 from novamind.engines.search_ports import WebSearchPort, WebSearchResult
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.logging import Logger
+from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.utils.llm_response import extract_json_str
 
 
@@ -28,7 +28,7 @@ class ResumeAnalyzer:
         self,
         llm_client: BaseLLM,
         *,
-        prompt_provider: PromptProvider,
+        prompt_provider: PromptManager,
         logger: Logger,
         web_search_port: WebSearchPort | None = None,
     ):

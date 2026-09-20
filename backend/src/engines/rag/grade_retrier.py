@@ -1,14 +1,14 @@
 """
 检索后自评估 + 自动重试组件（Grade → Retry）。
 LLM 对检索结果打分，低于阈值时自动切换模式/改写查询/降低阈值；
-prompt 经 PromptProvider 注入，日志经 Logger 注入。
+prompt 经 PromptManager 实例注入，日志经 Logger 注入。
 """
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from novamind.engines.ports import PromptProvider
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
+from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.utils.llm_response import extract_json_obj
 
 
@@ -27,7 +27,7 @@ class GradeRetrier:
         self,
         llm_client: BaseLLM,
         *,
-        prompt_provider: PromptProvider,
+        prompt_provider: PromptManager,
         logger: Logger,
     ):
         self._llm = llm_client

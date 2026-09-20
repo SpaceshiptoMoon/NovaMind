@@ -1,19 +1,19 @@
 """
 Claim 拆解与验证器。LLM 将回答拆解为独立 claims 并逐条验证上下文支撑。
-prompt 经 PromptProvider 注入，日志经 Logger 注入。
+prompt 经 PromptManager 实例注入，日志经 Logger 注入。
 """
 import json
 from typing import Any
 
-from novamind.engines.ports import PromptProvider
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
+from novamind.shared.prompts.prompt_manager import PromptManager
 
 
 class ClaimDecomposer:
     """Claim 拆解与验证器"""
 
-    def __init__(self, llm_client: BaseLLM, *, prompt_provider: PromptProvider, logger: Logger):
+    def __init__(self, llm_client: BaseLLM, *, prompt_provider: PromptManager, logger: Logger):
         self.llm_client = llm_client
         self._prompt_provider = prompt_provider
         self._logger = logger

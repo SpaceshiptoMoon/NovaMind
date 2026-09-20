@@ -8,11 +8,11 @@ import json
 import os
 import tempfile
 
-from novamind.engines.ports import PromptProvider
 from novamind.engines.resume.schemas import StructuredResume
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.document.readers import DocxReader, PDFReader
 from novamind.shared.logging import Logger
+from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.utils.llm_response import extract_json_str
 
 
@@ -23,7 +23,7 @@ class ResumeParser:
         self,
         llm_client: BaseLLM,
         *,
-        prompt_provider: PromptProvider,
+        prompt_provider: PromptManager,
         logger: Logger,
     ):
         self.llm = llm_client

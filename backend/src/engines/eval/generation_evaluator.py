@@ -1,15 +1,15 @@
 """
 生成质量评估器。LLM-as-Judge 打分、反向问题法等评估策略。
-prompt 经 PromptProvider 注入，日志经 Logger 注入。
+prompt 经 PromptManager 实例注入，日志经 Logger 注入。
 """
 import json
 from typing import Any
 
 from novamind.engines.eval.claim_decomposer import ClaimDecomposer
 from novamind.engines.eval.embedding_evaluator import EmbeddingEvaluator
-from novamind.engines.ports import PromptProvider
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
+from novamind.shared.prompts.prompt_manager import PromptManager
 
 
 class GenerationEvaluator:
@@ -21,7 +21,7 @@ class GenerationEvaluator:
         embedding_evaluator: EmbeddingEvaluator | None = None,
         claim_decomposer: ClaimDecomposer | None = None,
         *,
-        prompt_provider: PromptProvider,
+        prompt_provider: PromptManager,
         logger: Logger,
     ):
         self.llm_client = llm_client

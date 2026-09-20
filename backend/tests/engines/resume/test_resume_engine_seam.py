@@ -73,15 +73,11 @@ def _imported_modules(mod):
     return imported
 
 
-@pytest.mark.parametrize("mod_name", _ENGINE_RESUME_MODULES)
-def test_resume_engine_no_forbidden_imports(mod_name: str):
-    """resume 引擎不得 import 宿主 PromptManager / get_logger / deep_research 服务 / ModelConfigService / setting。"""
-    mod = importlib.import_module(mod_name)
-    imported = _imported_modules(mod)
-    for imp in imported:
-        assert imp not in _FORBIDDEN_RESUME_IMPORTS, (
-            f"{mod_name} 导入了禁止模块: {imp}"
-        )
+def test_resume_engine_imports_acyclic():
+    """批次 3 后：resume 引擎 import 任意方向合法（R1），由无环门禁统一守护。"""
+    import novamind.engines.resume.resume_analyzer  # noqa: F401
+    import novamind.engines.resume.resume_parser  # noqa: F401
+    import novamind.engines.resume.resume_probing  # noqa: F401
 
 
 def test_resume_engines_require_port_injection():
@@ -178,22 +174,15 @@ def test_agent_core_ports_reexports_web_search_port():
     assert agent_ports.WebSearchResult is WebSearchResult
 
 
-def test_fallback_llm_provider_protocol_location():
-    """FallbackLLMProvider 协议位于 engines/ports.py。"""
-    from novamind.engines.ports import FallbackLLMProvider
-    from novamind.features.app.adapters.host_fallback_llm_provider import HostFallbackLLMProvider
+def test_fallback_llm_provider_replaced_by_direct_mcs():
+    """批次 3.3：FallbackLLMProvider 适配器已删，AutoProbingEngine 直收 ModelConfigService。"""
+    import inspect
 
-    class _FakeSvc:
-        class repo:
-            @staticmethod
-            async def list_by_user(user_id, kind):
-                return []
+    from novamind.engines.resume.resume_probing import AutoProbingEngine
 
-        async def get_llm_client_by_model(self, *a, **kw):
-            return None
-
-    provider = HostFallbackLLMProvider(_FakeSvc())
-    assert isinstance(provider, FallbackLLMProvider)
+    sig = inspect.signature(AutoProbingEngine.__init__)
+    ann = sig.parameters["fallback_llm_provider"].annotation
+    assert "ModelConfigService" in str(ann), f"应直收 ModelConfigService，实际 {ann}"
 
 
 def test_resume_pipeline_service_assembles_ports():
@@ -203,7 +192,7 @@ def test_resume_pipeline_service_assembles_ports():
     imported = _imported_modules(svc_mod)
     # 批次 2.1/2.3 后装配点 import：PromptManager 直用 + 共享 web 搜索工厂
     assert any("prompt_manager" in imp for imp in imported), "应 import prompt_manager"
-    assert any("host_fallback_llm_provider" in imp for imp in imported), "应 import host_fallback_llm_provider（批次 3.3 处置）"
+    assert any("model_config_service" in imp for imp in imported), "应 import ModelConfigService（批次 3.3 直传）"
     assert any("web_search_factory" in imp for imp in imported), "应 import web_search_factory"
 
     src = inspect.getsource(svc_mod)

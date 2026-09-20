@@ -51,11 +51,9 @@ _FORBIDDEN_PREFIXES = (
 )
 
 
-def test_grade_retrier_no_forbidden_imports():
-    """GradeRetrier 引擎不得 import 宿主 features/setting/PromptManager/structured_logging。"""
-    mods = _imports_in(_GRADE_RETRIER)
-    offenders = [m for m in mods if m.startswith(_FORBIDDEN_PREFIXES)]
-    assert not offenders, f"engines/rag/grade_retrier.py 残留禁止 import: {offenders}"
+def test_grade_retrier_imports_acyclic():
+    """批次 3 后：grade_retrier import 任意方向合法（R1），由无环门禁统一守护。"""
+    import novamind.engines.rag.grade_retrier  # noqa: F401
 
 
 def test_grade_retrier_ctor_requires_port_injection():
