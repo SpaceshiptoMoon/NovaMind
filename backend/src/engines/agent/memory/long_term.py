@@ -1,6 +1,17 @@
 """
 长期记忆管理器，提取、去重、持久化对话中的关键信息，搜索相关记忆注入上下文。
 """
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # 批次 3.6：宿主类仅注解用（防 adapters/__init__ ↔ memory 包 import 环）
+    from novamind.features.agent.adapters.memory_store_adapter import (
+        HostMemorySearchPort,
+        HostMemoryStorePort,
+    )
 from collections.abc import Callable
 from typing import Any
 
@@ -9,7 +20,6 @@ from novamind.engines.agent.memory.interfaces import (
     LongTermMemoryEntry,
     MemoryMessage,
 )
-from novamind.features.agent.adapters import HostMemorySearchPort, HostMemoryStorePort
 from novamind.shared.logging import get_logger
 from novamind.shared.prompts.prompt_manager import PromptManager
 

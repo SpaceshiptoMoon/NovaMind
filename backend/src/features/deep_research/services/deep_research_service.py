@@ -60,7 +60,7 @@ from novamind.features.deep_research.services.plan_feedback_registry import (
     DECISION_ACCEPTED,
 )
 from novamind.features.knowledge_space.services.search_service import SearchService
-from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -355,7 +355,7 @@ class DeepResearchService:
     def __init__(
         self,
         session: AsyncSession,
-        model_config_service: ModelConfigPort | None = None,
+        model_config_service: ModelConfigService | None = None,
         search_service: SearchService | None = None,
         es_client: Any | None = None,
         notification_port: Any | None = None,

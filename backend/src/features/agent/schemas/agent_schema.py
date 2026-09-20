@@ -1,6 +1,7 @@
 """
 Agent 模块 Pydantic 数据模型
 """
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -309,3 +310,12 @@ class MemoryStatsResponse(BaseModel):
     total_memories: int
     by_category: dict[str, int]
     recently_created: list[MemoryResponse] = Field(default_factory=list)
+
+
+@dataclass
+class AgentSummary:
+    """Agent 概要（skill 侧安装/卸载/列表所需的最小字段集）。批次 3.6 从 shared/registry_ports.py 迁入。"""
+
+    id: int
+    user_id: int | None = None
+    enabled_tools: list[str] = field(default_factory=list)

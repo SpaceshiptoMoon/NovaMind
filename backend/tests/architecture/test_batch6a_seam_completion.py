@@ -197,35 +197,6 @@ def test_6a2_retrieval_engine_ctor_accepts_cache_port():
 
 # ---------- 6a-3：RetrievalPort 去 SearchRequest schema 绑定 ----------
 
-def test_6a3_retrieval_port_has_no_search_schema_import():
-    """6a-3：retrieval_port 不得 import ``features.knowledge_space.schemas``（端口不绑宿主 schema）。"""
-    p = SRC / "shared" / "retrieval_port.py"
-    bad = [m for m in _imports_in(p) if m.startswith("novamind.features.knowledge_space.schemas")]
-    assert not bad, f"retrieval_port 残留 schemas import: {bad}"
-
-
-def test_6a3_retrieval_port_search_request_param_is_opaque():
-    """6a-3：RetrievalPort.search 的 ``request`` 参数去类型化为 ``Any``（不绑 SearchRequest）。
-
-    注：docstring 中作为说明文字提及 ``SearchRequest`` 是允许的（解释 host payload 来源），
-    接缝不变式只在 AST 层面：无 import + 参数注解为 ``Any``。
-    """
-    src = (SRC / "shared" / "retrieval_port.py").read_text(
-        encoding="utf-8"
-    )
-    tree = ast.parse(src)
-    search_method = None
-    for node in ast.walk(tree):
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "search":
-            search_method = node
-            break
-    assert search_method is not None, "RetrievalPort 应定义 async search"
-    request_arg = next(a for a in search_method.args.args if a.arg == "request")
-    # 注解应为 Name(id="Any")，而非属性/字符串 SearchRequest
-    ann = request_arg.annotation
-    assert isinstance(ann, ast.Name) and ann.id == "Any", "search(request) 注解应为 Any"
-
-
 # ---------- 6a-4：skill_checker ReviewStatus 枚举下沉 ----------
 
 def test_6a4_skill_checker_has_no_skill_models_import():

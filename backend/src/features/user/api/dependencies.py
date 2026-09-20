@@ -7,7 +7,6 @@ from novamind.features.user.services.model_config_service import ModelConfigServ
 from novamind.features.user.services.permission_service import RbacPermissionService
 from novamind.features.user.services.role_service import RoleService
 from novamind.features.user.services.search_config_service import SearchConfigService
-from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.shared.storage.client_factory import ClientFactory
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,10 +30,10 @@ async def get_role_service(db: AsyncSession = Depends(get_db)) -> RoleService:
     return RoleService(db, permission_checker)
 
 
-async def get_model_config_service(db: AsyncSession = Depends(get_db)) -> ModelConfigPort:
+async def get_model_config_service(db: AsyncSession = Depends(get_db)) -> ModelConfigService:
     """获取模型配置服务（装配点：构造具体 ModelConfigService 并注入 KnowledgeSpaceInfoPort，
 
-    以解开 user → knowledge_space.models 的反向依赖；对消费方以 ModelConfigPort 端口暴露）。
+    以解开 user → knowledge_space.models 的反向依赖；对消费方以 ModelConfigService 端口暴露）。
 
     adapter 采用函数内懒导入：顶部 import 会触发
     ``user.api.dependencies → user.adapters.knowledge_space_info_adapter →
@@ -52,7 +51,7 @@ async def get_search_config_service(db: AsyncSession = Depends(get_db)) -> Searc
     """获取搜索配置服务（路由装配点）。
 
     返回具体 ``SearchConfigService``（CRUD 面）；qa 装配点用
-    ``as_search_config_port`` 以 ``SearchConfigPort`` 端口注入 AIChatService。
+    以 ``SearchConfigService`` 直构注入 AIChatService（批次 3.6 去端口）。
     """
     return SearchConfigService(db)
 

@@ -5,7 +5,7 @@ import asyncio
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, WebSocket, WebSocketDisconnect
-from novamind.core.auth import UserStatusResolver, get_current_user, get_user_status_resolver
+from novamind.core.auth import get_current_user, get_user_status_resolver
 from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
 from novamind.core.database.database import get_db
 from novamind.core.ws import run_stream_to_ws, send_event
@@ -50,6 +50,7 @@ from novamind.features.agent.schemas.agent_schema import (
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.agent.services.chat_service import AgentChatService
 from novamind.features.agent.services.mcp_server_service import McpServerService
+from novamind.features.user.adapters.auth_user_resolver_adapter import UserStatusResolverAdapter
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.storage.attachment_presign import enrich_attachments_with_presigned_urls
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -151,7 +152,7 @@ async def chat_ws(
     websocket: WebSocket,
     agent_id: Annotated[int, Path(gt=0, description="Agent ID")],
     db: AsyncSession = Depends(get_db),
-    resolver: UserStatusResolver = Depends(get_user_status_resolver),
+    resolver: UserStatusResolverAdapter = Depends(get_user_status_resolver),
     agent_service: AgentService = Depends(get_agent_service),
     model_config_service: ModelConfigService = Depends(get_model_config_service),
     agent_engine: AgentEngine = Depends(get_agent_engine_ws),

@@ -18,8 +18,8 @@ from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     QuestionGenerationConfig,
     QuestionLLMConfig,
 )
+from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.shared.prompts import PromptManager
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,7 +57,7 @@ class QuestionGenerationService:
     def __init__(
         self,
         session: AsyncSession | None = None,
-        model_config_service: ModelConfigPort | None = None,
+        model_config_service: ModelConfigService | None = None,
         config: QuestionGenerationConfig | None = None,
     ):
         """

@@ -137,18 +137,8 @@ def test_evaluation_service_uses_ports_and_factories():
     assert "search_service" not in params, "EvaluationService 不应再接收 search_service"
 
 
-def test_evaluation_service_no_cross_feature_imports():
-    """evaluation_service 模块级 import 不得直接依赖 knowledge_space.services.search_service /
-    shared.clients.get_elasticsearch_client / user.services.model_config_service（已下沉到 dependencies 装配点）。"""
-    from novamind.features.evaluation.services import evaluation_service as svc_mod
+def test_evaluation_service_imports_acyclic():
+    """批次 3.6 后：evaluation service import 任意 feature 合法（R1），无环门禁守护。"""
+    import novamind.features.evaluation.services.evaluation_service  # noqa: F401
 
-    imported = _imported_modules(svc_mod)
-    cross_feature_forbidden = {
-        "novamind.features.knowledge_space.services.search_service",
-        "novamind.features.user.services.model_config_service",
-        "novamind.shared.clients",
-    }
-    for imp in imported:
-        assert imp not in cross_feature_forbidden, (
-            f"evaluation_service 模块级仍 import 了跨 feature 实现模块: {imp}"
-        )
+

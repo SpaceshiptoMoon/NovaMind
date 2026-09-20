@@ -87,7 +87,7 @@ async def test_retrieve_web_user_config_hit(monkeypatch):
     import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
-    from novamind.shared.search_config_ports import SearchCredentials
+    from novamind.features.user.schemas.search_config_schema import SearchCredentials
 
     creds = SearchCredentials(provider="tavily", api_key="tvly-x", extra_config=None)
     scp = _FakeSearchConfigPort(creds=creds)
@@ -118,7 +118,7 @@ async def test_retrieve_web_user_config_hit_uses_provider_and_key(monkeypatch):
     """构造端口时应透传用户级 provider / api_key / extra_config。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
-    from novamind.shared.search_config_ports import SearchCredentials
+    from novamind.features.user.schemas.search_config_schema import SearchCredentials
 
     creds = SearchCredentials(provider="serpapi", api_key="serp-key", extra_config={"num": 7})
     scp = _FakeSearchConfigPort(creds=creds)
@@ -190,7 +190,7 @@ async def test_retrieve_web_search_failure_returns_none(monkeypatch):
     """port.search 抛异常 → 降级返回 None，不向上抛。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
-    from novamind.shared.search_config_ports import SearchCredentials
+    from novamind.features.user.schemas.search_config_schema import SearchCredentials
 
     creds = SearchCredentials(provider="tavily", api_key="k", extra_config=None)
     scp = _FakeSearchConfigPort(creds=creds)
@@ -213,7 +213,7 @@ async def test_retrieve_web_no_results_returns_none(monkeypatch):
     """port.search 返回空列表 → 返回 None。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
-    from novamind.shared.search_config_ports import SearchCredentials
+    from novamind.features.user.schemas.search_config_schema import SearchCredentials
 
     creds = SearchCredentials(provider="tavily", api_key="k", extra_config=None)
     scp = _FakeSearchConfigPort(creds=creds)
@@ -238,7 +238,7 @@ async def test_retrieve_web_user_build_fails_falls_back_yaml(monkeypatch):
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_errors import WebSearchError
     from novamind.engines.search_ports import WebSearchResult
-    from novamind.shared.search_config_ports import SearchCredentials
+    from novamind.features.user.schemas.search_config_schema import SearchCredentials
 
     creds = SearchCredentials(provider="tavily", api_key="bad-key", extra_config=None)
     scp = _FakeSearchConfigPort(creds=creds)
@@ -292,7 +292,7 @@ async def test_retrieve_web_all_fail_returns_none(monkeypatch):
     import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_errors import WebSearchError
-    from novamind.shared.search_config_ports import SearchCredentials
+    from novamind.features.user.schemas.search_config_schema import SearchCredentials
 
     creds = SearchCredentials(provider="tavily", api_key="bad", extra_config=None)
     scp = _FakeSearchConfigPort(creds=creds)
@@ -338,7 +338,7 @@ async def test_retrieve_web_explicit_provider_hit(monkeypatch):
     import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
-    from novamind.shared.search_config_ports import SearchCredentials
+    from novamind.features.user.schemas.search_config_schema import SearchCredentials
 
     by_provider = {
         "serpapi": SearchCredentials(provider="serpapi", api_key="serp-key", extra_config={"num": 7}),
@@ -375,7 +375,7 @@ async def test_retrieve_web_explicit_provider_not_configured_falls_back(monkeypa
     import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
-    from novamind.shared.search_config_ports import SearchCredentials
+    from novamind.features.user.schemas.search_config_schema import SearchCredentials
 
     # by_provider 不含 tavily → get_search_config_by_provider 返回 None
     # primary 返回 duckduckgo 兜底
@@ -406,7 +406,7 @@ async def test_retrieve_web_explicit_provider_build_fails_falls_back(monkeypatch
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_errors import WebSearchError
     from novamind.engines.search_ports import WebSearchResult
-    from novamind.shared.search_config_ports import SearchCredentials
+    from novamind.features.user.schemas.search_config_schema import SearchCredentials
 
     by_provider = {
         "tavily": SearchCredentials(provider="tavily", api_key="bad-key", extra_config=None),
@@ -440,7 +440,7 @@ async def test_retrieve_web_explicit_provider_port_exception_falls_back(monkeypa
     import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
-    from novamind.shared.search_config_ports import SearchCredentials
+    from novamind.features.user.schemas.search_config_schema import SearchCredentials
 
     by_provider = {"tavily": RuntimeError("db down")}
     primary_creds = SearchCredentials(provider="duckduckgo", api_key=None, extra_config=None)
@@ -465,7 +465,7 @@ async def test_retrieve_web_search_provider_none_uses_primary(monkeypatch):
     import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
-    from novamind.shared.search_config_ports import SearchCredentials
+    from novamind.features.user.schemas.search_config_schema import SearchCredentials
 
     primary_creds = SearchCredentials(provider="tavily", api_key="primary-key", extra_config=None)
     scp = _FakeSearchConfigPort(creds=primary_creds, by_provider={"tavily": "should-not-be-used"})

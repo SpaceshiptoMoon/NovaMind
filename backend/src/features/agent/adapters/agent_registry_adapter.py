@@ -1,13 +1,13 @@
 """
-AgentRegistryPort 宿主适配器，桥接 AgentRepository 实现 Agent 查询与工具更新。
+HostAgentRegistryPort 宿主适配器，桥接 AgentRepository 实现 Agent 查询与工具更新。
 """
 from novamind.features.agent.repository.agent_repository import AgentRepository
-from novamind.shared.registry_ports import AgentRegistryPort, AgentSummary
+from novamind.features.agent.schemas.agent_schema import AgentSummary
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class HostAgentRegistryPort:
-    """AgentRegistryPort 宿主实现：委托 ``AgentRepository``。"""
+    """HostAgentRegistryPort 宿主实现：委托 ``AgentRepository``。"""
 
     def __init__(self, repo: AgentRepository):
         self._repo = repo
@@ -26,6 +26,6 @@ class HostAgentRegistryPort:
         await self._repo.update(agent_id, enabled_tools=enabled_tools)
 
 
-def as_agent_registry_port(db: AsyncSession) -> AgentRegistryPort:
-    """构造 AgentRegistryPort 实例（供 skill 依赖装配点注入）。"""
+def as_agent_registry_port(db: AsyncSession) -> HostAgentRegistryPort:
+    """构造 HostAgentRegistryPort 实例（供 skill 依赖装配点注入）。"""
     return HostAgentRegistryPort(AgentRepository(db))  # type: ignore[return-value]

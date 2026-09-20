@@ -24,7 +24,7 @@ from novamind.features.knowledge_space.repository.knowledge_base_repository impo
 from novamind.features.knowledge_space.repository.member_repository import MemberRepository
 from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
 from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
-from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.storage.minio_client import MinioClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,7 +49,7 @@ class SpaceService:
         session: AsyncSession,
         es_client: ElasticsearchClient = None,
         minio_client: MinioClient = None,
-        model_config_service: ModelConfigPort | None = None,
+        model_config_service: ModelConfigService | None = None,
     ):
         self.session = session
         self.space_repo = SpaceRepository(session)

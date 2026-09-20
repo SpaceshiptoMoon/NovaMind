@@ -47,8 +47,8 @@ from novamind.features.knowledge_space.services.pipeline_steps import (
     persist_parsed_text,
     run_post_parse_tail,
 )
+from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.config import AudioConfig
-from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -100,7 +100,7 @@ async def process_video_document(
     session: AsyncSession,
     logger,
     task: DocumentTask | None = None,
-    model_config_port: ModelConfigPort | None = None,
+    model_config_port: ModelConfigService | None = None,
 ) -> None:
     """
     视频文档处理管道
@@ -136,7 +136,7 @@ async def process_video_document(
     dedup_similarity_threshold = video_config.get("dedup_similarity_threshold")
     group_size = video_config.get("group_size") or 3
 
-    # 批次 5b：用注入的 ModelConfigPort
+    # 批次 5b：用注入的 ModelConfigService
     mcs = model_config_port
 
     # 1. 提取帧（按 strategy 路由：scene 场景抽帧，其余固定间隔）
@@ -422,7 +422,7 @@ async def process_audio_document(
     session: AsyncSession,
     logger,
     task: DocumentTask | None = None,
-    model_config_port: ModelConfigPort | None = None,
+    model_config_port: ModelConfigService | None = None,
 ) -> None:
     """
     音频文档处理管道
@@ -454,7 +454,7 @@ async def process_audio_document(
     # 检查点：ASR 调用前（转写可能耗时较长，允许用户在此处取消）
     await check_document_cancelled(document.id)
 
-    # 批次 5b：用注入的 ModelConfigPort，不再内部自建 ModelConfigService
+    # 批次 5b：用注入的 ModelConfigService，不再内部自建 ModelConfigService
     mcs = model_config_port
 
     # 从模型配置系统查找 ASR 凭证（优先精确匹配，找不到用该用户任意 ASR 配置兜底）

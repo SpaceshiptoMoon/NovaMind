@@ -1,7 +1,7 @@
 """
 技能广场服务 — 上传、发布、安装、评价、搜索。
 
-对 Agent 的访问经 AgentRegistryPort 端口，与 agent repository 解耦。
+对 Agent 的访问经 HostAgentRegistryPort 端口，与 agent repository 解耦。
 """
 import asyncio
 import io
@@ -10,6 +10,7 @@ import zipfile
 from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.agent.adapters.agent_registry_adapter import HostAgentRegistryPort
 from novamind.features.skill.exceptions import (
     InvalidSkillFormatError,
     SkillAccessDeniedError,
@@ -38,11 +39,10 @@ from novamind.features.skill.repository.skill_repository import (
 )
 from novamind.features.skill.services.skill_checker import SkillSecurityChecker
 from novamind.features.skill.services.skill_parser import ExtractedSkill, extract_skill_zip
+from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.shared.notification_ports import NotificationPort
 from novamind.shared.prompts import PromptManager
-from novamind.shared.registry_ports import AgentRegistryPort
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,8 +57,8 @@ class SkillMarketplaceService:
         db: AsyncSession,
         minio_client=None,
         security_checker: SkillSecurityChecker | None = None,
-        model_config_service: ModelConfigPort | None = None,
-        agent_registry_port: AgentRegistryPort | None = None,
+        model_config_service: ModelConfigService | None = None,
+        agent_registry_port: HostAgentRegistryPort | None = None,
         notification_port: NotificationPort | None = None,
     ):
         self.db = db
@@ -266,8 +266,8 @@ class SkillMarketplaceService:
     ) -> SkillInstallation:
         """安装技能到 Agent
 
-        Agent 归属校验与 enabled_tools 更新经注入的 ``AgentRegistryPort`` 完成
-        （见 ``shared/registry_ports.py``），不再接收/直接构造 ``AgentRepository``。
+        Agent 归属校验与 enabled_tools 更新经注入的 ``HostAgentRegistryPort`` 完成
+        （批次 3.6 改注解宿主类），不再接收/直接构造 ``AgentRepository``。
         """
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
@@ -326,7 +326,7 @@ class SkillMarketplaceService:
     ) -> bool:
         """从 Agent 卸载技能
 
-        Agent 归属校验与 enabled_tools 更新经注入的 ``AgentRegistryPort`` 完成。
+        Agent 归属校验与 enabled_tools 更新经注入的 ``HostAgentRegistryPort`` 完成。
         """
         # 校验 Agent 归属，防止越权卸载/篡改他人 Agent（含系统级预置 Agent）
         if self._agent_registry_port is None:

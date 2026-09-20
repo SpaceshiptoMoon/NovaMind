@@ -41,7 +41,7 @@ from novamind.features.agent.schemas.agent_schema import (
 )
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
-from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,7 +58,7 @@ class AgentChatService:
         self,
         db: AsyncSession,
         agent_service: AgentService,
-        model_config_service: ModelConfigPort,
+        model_config_service: ModelConfigService,
         agent_engine: AgentEngine,
         todo_store: Any | None = None,
         memory_search_repo: MemorySearchRepository | None = None,

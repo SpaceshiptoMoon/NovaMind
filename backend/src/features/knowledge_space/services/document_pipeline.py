@@ -61,7 +61,7 @@ from novamind.features.knowledge_space.services.pipeline_steps import (
     persist_parsed_text,
     run_post_parse_tail,
 )
-from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.features.user.services.model_config_service import ModelConfigService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -112,7 +112,7 @@ async def execute_document_pipeline(
     file_content: bytes,
     filename: str,
     task: Optional["DocumentTask"] = None,
-    model_config_port: ModelConfigPort | None = None,
+    model_config_port: ModelConfigService | None = None,
 ) -> None:
     """
     执行文档处理的核心 pipeline（独立函数，可被 arq worker 或直接调用）
@@ -595,7 +595,7 @@ async def _process_image_document_static(
     session,
     _logger,
     task=None,
-    model_config_port: ModelConfigPort | None = None,
+    model_config_port: ModelConfigService | None = None,
 ):
     """处理图片类型文档
 
@@ -654,7 +654,7 @@ async def _process_image_document_static(
                 error_message="图片文档处理需要 VLM（视觉语言模型）来生成描述文本，请在知识库解析配置中启用 VLM 描述并选择模型",
             )
 
-        # 批次 5b：用注入的 ModelConfigPort，不再内部自建 ModelConfigService
+        # 批次 5b：用注入的 ModelConfigService，不再内部自建 ModelConfigService
         mcs = model_config_port
         description_text = await _generate_image_description(
             file_content=file_content,
@@ -850,7 +850,7 @@ async def _get_document_processor_static(
     session: AsyncSession,
     user_id: int | None = None,
     model_name: str | None = None,
-    model_config_port: ModelConfigPort | None = None,
+    model_config_port: ModelConfigService | None = None,
 ) -> DocumentProcessor:
     """获取文档处理器（静态方法用）
 

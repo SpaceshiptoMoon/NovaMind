@@ -8,6 +8,7 @@
 - provider 白名单校验 ``{tavily, serpapi, duckduckgo}``
 - 更新时 api_key 留空（None）= 不改，与 model_config 约定一致
 """
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -116,3 +117,15 @@ class SearchTestResponse(BaseModel):
     message: str = Field(..., description="测试结果消息")
     latency_ms: float | None = Field(None, description="响应延迟（毫秒）")
     results_count: int = Field(0, description="返回结果数")
+
+
+@dataclass
+class SearchCredentials:
+    """搜索凭证（用于构造 WebSearchPort）。批次 3.6 从 shared/search_config_ports.py 迁入。
+
+    ``api_key`` 为解密后的明文；duckduckgo 可为 ``None``。
+    """
+
+    provider: str
+    api_key: str | None = None
+    extra_config: dict | None = None

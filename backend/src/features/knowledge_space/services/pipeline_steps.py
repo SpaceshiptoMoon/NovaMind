@@ -20,8 +20,8 @@ from novamind.features.knowledge_space.schemas.enums import ChunkType
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     DEFAULT_EMBEDDING_BATCH_SIZE,
 )
+from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.ai_models.embedding import OpenAICompatibleEmbedding as EmbeddingClient
-from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -431,7 +431,7 @@ async def maybe_semantic_embedding_client(
     embedding_config: dict[str, Any],
     session: AsyncSession,
     user_id: int,
-    model_config_port: ModelConfigPort | None = None,
+    model_config_port: ModelConfigService | None = None,
 ):
     """strategy == "semantic" 时返回语义切分所需的 embedding_client，否则返回 None。
 
@@ -458,7 +458,7 @@ async def get_embedding_client(
     session: AsyncSession,
     user_id: int | None = None,
     model_name: str | None = None,
-    model_config_port: ModelConfigPort | None = None,
+    model_config_port: ModelConfigService | None = None,
 ) -> EmbeddingClient:
     """获取 Embedding 客户端（静态方法用）
 
@@ -483,7 +483,7 @@ async def generate_embeddings(
     embedding_config: dict[str, Any],
     session: AsyncSession | None = None,
     user_id: int | None = None,
-    model_config_port: ModelConfigPort | None = None,
+    model_config_port: ModelConfigService | None = None,
 ) -> list[list[float]]:
     """生成文本向量（静态方法用）
 
@@ -523,7 +523,7 @@ async def generate_single_embedding(
     embedding_config: dict[str, Any],
     session: AsyncSession,
     user_id: int | None = None,
-    model_config_port: ModelConfigPort | None = None,
+    model_config_port: ModelConfigService | None = None,
 ) -> list[float] | None:
     """生成单条文本的嵌入向量（用于 VLM 描述文本）
 
@@ -556,7 +556,7 @@ async def generate_questions_for_chunks(
     embedding_config: dict[str, Any],
     user_id: int | None = None,
     session: AsyncSession | None = None,
-    model_config_port: ModelConfigPort | None = None,
+    model_config_port: ModelConfigService | None = None,
 ) -> tuple:
     """
     为所有分块生成假设问题，并生成问题向量
@@ -635,7 +635,7 @@ async def run_post_parse_tail(
     document: Document,
     session: AsyncSession,
     task: DocumentTask,
-    model_config_port: ModelConfigPort | None,
+    model_config_port: ModelConfigService | None,
     logger,
     chunk_type: ChunkType,
     embedding_config: dict[str, Any],

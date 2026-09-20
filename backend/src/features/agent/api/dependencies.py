@@ -122,8 +122,8 @@ async def _build_agent_chat_service(
     prompt_provider = PromptManager()
 
     # web_search_port：按数据库用户默认搜索引擎（is_primary）构造，首选失败回退 YAML 兜底
-    from novamind.features.user.adapters.search_config_port_adapter import as_search_config_port
-    search_config_port = as_search_config_port(db)
+    from novamind.features.user.services.search_config_service import SearchConfigService
+    search_config_port = SearchConfigService(db)
     web_search_port = await resolve_web_search_port(search_config_port, user_id)
 
     return AgentChatService(

@@ -44,10 +44,10 @@ from novamind.features.knowledge_space.schemas.search_schema import (
     SearchLLMConfig,
     SearchRequest,
 )
+from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.ai_models.embedding import BaseEmbedding
 from novamind.shared.ai_models.rerank import BaseRerank
-from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -76,7 +76,7 @@ class SearchService:
         self,
         session: AsyncSession,
         es_client: ElasticsearchClient,
-        model_config_service: ModelConfigPort | None = None,  # ModelConfigPort
+        model_config_service: ModelConfigService | None = None,  # ModelConfigService
         retrieval_engine: RetrievalEngine | None = None,
     ):
         self.session = session

@@ -36,11 +36,11 @@ from novamind.features.evaluation.services.result_exporter import (
     result_to_json_bytes,
 )
 from novamind.features.evaluation.services.test_set_parser import parse_test_set
+from novamind.features.knowledge_space.services.search_service import SearchService
+from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
-from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.shared.prompts.prompt_manager import PromptManager
-from novamind.shared.retrieval_port import RetrievalPort
 from novamind.shared.storage.minio_client import MinioClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
@@ -71,10 +71,10 @@ class EvaluationService:
     def __init__(
         self,
         db: AsyncSession,
-        retrieval_port: RetrievalPort,
-        model_config_service: ModelConfigPort,
+        retrieval_port: SearchService,
+        model_config_service: ModelConfigService,
         minio_client: MinioClient,
-        retrieval_factory: Callable[[AsyncSession], RetrievalPort],
+        retrieval_factory: Callable[[AsyncSession], SearchService],
         session_factory: Callable[[], Any],
     ):
         self.db = db
@@ -431,7 +431,7 @@ class EvaluationService:
                 if llm_client is None or embedding_client is None:
                     logger.warning("部分模型客户端获取失败", has_llm=llm_client is not None, has_embedding=embedding_client is not None)
 
-                # 后台任务用独立 session 经工厂构造 RetrievalPort，避免共享请求级 session
+                # 后台任务用独立 session 经工厂构造 SearchService，避免共享请求级 session
                 # （工厂内部封装 SearchService + ES client + ModelConfigService 的装配，
                 #   evaluation 不再直接 import knowledge_space.services.search_service /
                 #   shared.clients.get_elasticsearch_client / user.services.model_config_service）
@@ -647,7 +647,7 @@ class EvaluationService:
         embedding_evaluator: EmbeddingEvaluator | None,
         llm_client: BaseLLM | None,
         user_id: int,
-        retrieval_port: RetrievalPort | None = None,
+        retrieval_port: SearchService | None = None,
     ) -> dict[str, Any]:
         detail: dict[str, Any] = {
             "index": index, "question": question, "expected_answer": expected_answer,

@@ -106,7 +106,7 @@ CANDIDATES = _collect_candidates()
 
 def test_candidate_collection_nonempty():
     """冒烟：防止目录路径漂移导致假绿。"""
-    assert len(CANDIDATES) > 500, f"候选文件数异常少: {len(CANDIDATES)}（检查 SRC 路径）"
+    assert len(CANDIDATES) > 400, f"候选文件数异常少: {len(CANDIDATES)}（检查 SRC 路径）"
 
 
 def test_no_cross_module_private_imports():

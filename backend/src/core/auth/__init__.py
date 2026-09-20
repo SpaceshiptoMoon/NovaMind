@@ -2,7 +2,7 @@
 """core/auth：认证基础设施（JWT 解码、黑名单、FastAPI 认证依赖）。
 
 认证是横切基础设施，归 core 层；import 方向遵守 R1 无环约束。
-user feature 经 UserStatusResolver 端口 + app.dependency_overrides 注入
+批次 3.6 起直接使用 UserStatusResolverAdapter（别名导出兼容）
 DB 用户状态解析实现。
 """
 from novamind.core.auth.dependencies import (
@@ -12,7 +12,6 @@ from novamind.core.auth.dependencies import (
     require_active_user,
     require_admin,
 )
-from novamind.core.auth.ports import UserStatusResolver
 from novamind.core.auth.token import TokenClaims
 
 __all__ = [
@@ -21,6 +20,5 @@ __all__ = [
     "require_admin",
     "require_active_user",
     "get_user_status_resolver",
-    "UserStatusResolver",
     "TokenClaims",
 ]

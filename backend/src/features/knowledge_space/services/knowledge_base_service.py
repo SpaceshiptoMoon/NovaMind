@@ -29,7 +29,7 @@ from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     KnowledgeBaseConfigUpdate,
 )
 from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
-from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.storage.minio_client import MinioClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,7 +63,7 @@ class KnowledgeBaseService:
         session: AsyncSession,
         es_client: ElasticsearchClient,
         minio_client: MinioClient,
-        model_config_service: ModelConfigPort | None = None,
+        model_config_service: ModelConfigService | None = None,
     ):
         self.session = session
         self.kb_repo = KnowledgeBaseRepository(session)
@@ -150,7 +150,7 @@ class KnowledgeBaseService:
         kb_config = kb.get_config()
         config_updated = False
 
-        # 批次 5b：用注入的 ModelConfigPort，不再内部自建 ModelConfigService
+        # 批次 5b：用注入的 ModelConfigService，不再内部自建 ModelConfigService
         model_config_service = self.model_config_service
         qg_config = kb_config.get("question_generation") or {}
         qg_llm_config = qg_config.get("llm") or {}

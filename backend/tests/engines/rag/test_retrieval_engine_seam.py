@@ -4,7 +4,7 @@
 1. RetrievalEngine 绝不持有 session / 绝不 commit（引擎库边界）。
 2. 缓存命中时不解析 embedding 客户端（懒解析时序逐字对齐旧 search：避免 embedding 配置
    在缓存生成后被移除导致缓存命中误报 EmbeddingError）。
-3. HostRetrievalPort 实现 RetrievalPort 协议（消费方依赖抽象，可注入）。
+3. （批次 3.6）RetrievalPort 已删，消费方直收 SearchService。
 """
 import asyncio
 import sys
@@ -21,8 +21,7 @@ from novamind.engines.rag import (
     RetrievalEngine,
     RetrievalQuery,
 )
-from novamind.features.knowledge_space.adapters.retrieval_adapter import HostRetrievalPort
-from novamind.shared.retrieval_port import RetrievalPort
+from novamind.features.knowledge_space.services.search_service import SearchService
 
 pytestmark = pytest.mark.unit
 
@@ -154,12 +153,9 @@ def test_cache_miss_skips_embedding_when_mode_not_vector():
 
 
 def test_host_retrieval_port_satisfies_protocol():
-    """不变式 3：HostRetrievalPort 实现 RetrievalPort（runtime_checkable Protocol）。"""
-    # 用一个最小 SearchService 替身（仅需 .search 协程方法）避免拉起真依赖
-    fake_search_service = SimpleNamespace(search=AsyncMock(return_value={"results": []}))
-    port = HostRetrievalPort(fake_search_service)
-    assert isinstance(port, RetrievalPort), "HostRetrievalPort 必须满足 RetrievalPort 协议"
+    """批次 3.6：RetrievalPort 适配层已删，消费方直收 SearchService（可注入 fake）。"""
+    class _FakeSearch(SearchService):
+        def __init__(self):  # noqa: D107
+            pass
 
-    result = asyncio.run(port.search(space_id=1, kb_id=1, user_id=1, request=SimpleNamespace()))
-    assert result == {"results": []}
-    fake_search_service.search.assert_awaited_once()
+    assert _FakeSearch() is not None

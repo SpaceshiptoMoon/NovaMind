@@ -1,6 +1,17 @@
 """
 MemoryManager — 记忆系统统一门面，编排长期记忆和短期记忆的生命周期。
 """
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # 批次 3.6：宿主类仅注解用（防 adapters/__init__ ↔ memory 包 import 环）
+    from novamind.features.agent.adapters.memory_store_adapter import (
+        HostMemorySearchPort,
+        HostMemoryStorePort,
+    )
 from collections.abc import Callable
 from typing import Any
 
@@ -12,7 +23,6 @@ from novamind.engines.agent.memory.interfaces import (
 from novamind.engines.agent.memory.long_term import LongTermMemory
 from novamind.engines.agent.memory.short_term import ShortTermMemory
 from novamind.engines.agent.memory.token_budget import TokenBudget
-from novamind.features.agent.adapters import HostMemorySearchPort, HostMemoryStorePort
 from novamind.shared.logging import get_logger
 from novamind.shared.prompts.prompt_manager import PromptManager
 
@@ -56,7 +66,7 @@ class MemoryManager:
         agent_id: int | None = None,
         user_id: int | None = None,
         auxiliary_llm_factory: Callable | None = None,
-    ) -> "MemoryManager":
+    ) -> MemoryManager:
         """工厂方法：创建完整配置的 MemoryManager"""
         # 先创建 LongTermMemory（ContextCompressor 需要访问）
         long_term = LongTermMemory(

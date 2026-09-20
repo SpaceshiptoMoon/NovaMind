@@ -8,24 +8,28 @@ feature 直连 import。归位 core/auth 后切断了 feature 对 user 内部的
 依赖链：
   HTTPBearer 凭证 → ``core/auth/token.decode_access_token`` 解码 →
   ``core/auth/blacklist.is_user_blacklisted`` 用户级黑名单 →
-  ``UserStatusResolver`` 端口取 DB 最新用户状态（由 user feature 装配注入）。
+  ``UserStatusResolverAdapter`` 端口取 DB 最新用户状态（由 user feature 装配注入）。
 
-``UserStatusResolver`` 经 FastAPI ``app.dependency_overrides`` 注入：
+``UserStatusResolverAdapter`` 经 FastAPI ``app.dependency_overrides`` 注入：
 core/auth 定义 ``get_user_status_resolver`` 抽象依赖，user feature 在 startup
 注册 ``as_user_status_resolver`` 为其覆盖实现。
 """
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from novamind.core.auth.blacklist import is_token_revoked, is_user_blacklisted
 from novamind.core.auth.exceptions import PasswordChangeRequiredError
-from novamind.core.auth.ports import UserStatusResolver
 from novamind.core.auth.token import decode_access_token
 from novamind.core.authorization.exceptions import PermissionDeniedError
 from novamind.core.database.database import get_db
 from novamind.core.middleware.manifest import API_V1_PREFIX
 from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from novamind.features.user.adapters.auth_user_resolver_adapter import UserStatusResolverAdapter
 
 security = HTTPBearer()
 # 可选认证 bearer：缺 token 不报错（由依赖自行决定匿名放行）
@@ -54,22 +58,17 @@ def _password_change_exempt(request: Request) -> bool:
 
 async def get_user_status_resolver(
     db: AsyncSession = Depends(get_db),
-) -> UserStatusResolver:
-    """UserStatusResolver 端口装配点（抽象依赖）。
+) -> UserStatusResolverAdapter:
+    """认证用户状态解析器（批次 3.6 直连实现，R1 下 core→features 合法）。
 
-    core/auth 不感知 user ORM；由 user feature 在 ``app.dependency_overrides``
-    注册 ``as_user_status_resolver`` 为覆盖实现。未注册时此依赖抛
-    ``NotImplementedError``——首次认证请求即暴露装配缺失。
+    原经 Protocol + dependency_overrides 注册的装配舞蹈删除；
+    实现仍是 user feature 的 ``UserStatusResolverAdapter``（枚举语义留在 user 侧）。
     """
-    raise NotImplementedError(
-        "UserStatusResolver 未装配：需在 user feature startup 用 "
-        "app.dependency_overrides[get_user_status_resolver] 注册 "
-        "features/user/adapters/auth_user_resolver_adapter.as_user_status_resolver"
-    )
+    return UserStatusResolverAdapter(db)
 
 
 async def _resolve_user_from_token(
-    token: str, resolver: UserStatusResolver, *, enforce_password_change: bool = False, request: Request | None = None
+    token: str, resolver: UserStatusResolverAdapter, *, enforce_password_change: bool = False, request: Request | None = None
 ) -> dict:
     """校验 token 并返回用户信息（共享核心，供必选/可选认证复用）。
 
@@ -146,7 +145,7 @@ async def _resolve_user_from_token(
 async def get_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    resolver: UserStatusResolver = Depends(get_user_status_resolver),
+    resolver: UserStatusResolverAdapter = Depends(get_user_status_resolver),
 ) -> dict:
     """获取当前用户（带数据库状态验证）。
 
@@ -169,7 +168,7 @@ async def get_current_user(
 
 async def get_current_user_optional(
     credentials: HTTPAuthorizationCredentials | None = Depends(_optional_security),
-    resolver: UserStatusResolver = Depends(get_user_status_resolver),
+    resolver: UserStatusResolverAdapter = Depends(get_user_status_resolver),
 ) -> dict | None:
     """可选认证：匿名（无 token）返回 None；携带 token 则校验并返回用户。
 

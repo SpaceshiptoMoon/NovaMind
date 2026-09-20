@@ -3,7 +3,7 @@
 
 核心职责：
 1. 搜索配置 CRUD（加密入库 / 解密读取 / 脱敏响应）
-2. 实现 ``shared.search_config_ports.SearchConfigPort``：``get_primary_search_config``
+2. 提供 ``get_primary_search_config``
    返回解密后凭证，供宿主构造 ``WebSearchPort``
 3. 搜索连接测试（调 ``engines.build_web_search_port_from_provider`` 实搜验证）
 
@@ -29,11 +29,11 @@ from novamind.features.user.schemas.search_config_schema import (
     SearchConfigListResponse,
     SearchConfigResponse,
     SearchConfigUpdate,
+    SearchCredentials,
     SearchTestRequest,
     SearchTestResponse,
 )
 from novamind.shared.search.web_search_factory import build_web_search_port_from_provider
-from novamind.shared.search_config_ports import SearchCredentials
 from novamind.shared.utils.crypto import decrypt_api_key_async, encrypt_api_key_async
 from sqlalchemy.ext.asyncio import AsyncSession
 

@@ -14,8 +14,10 @@ from __future__ import annotations
 
 from fastapi import WebSocket
 from novamind.core.auth.blacklist import is_token_revoked, is_user_blacklisted
-from novamind.core.auth.ports import UserStatusResolver
 from novamind.core.auth.token import decode_access_token
+from novamind.features.user.adapters.auth_user_resolver_adapter import (
+    UserStatusResolverAdapter as UserStatusResolver,
+)
 
 _BEARER_PREFIX = "bearer."
 

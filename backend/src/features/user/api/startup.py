@@ -283,15 +283,12 @@ def setup_auth_port_wiring(app: FastAPI) -> None:
     供各 feature 路由守卫注入使用。
     """
     # 懒导入规避启动期循环依赖
-    from novamind.core.auth.dependencies import get_user_status_resolver
+    # （批次 3.6：UserStatusResolver 的 dependency_overrides 注册已删，
+    #  core/auth 直接构造 UserStatusResolverAdapter）
     from novamind.core.authorization.dependencies import get_permission_checker_dep
     from novamind.core.authorization.ports import PermissionCheckerPort
-    from novamind.features.user.adapters.auth_user_resolver_adapter import (
-        as_user_status_resolver,
-    )
     from novamind.features.user.api.dependencies import get_permission_checker
 
-    app.dependency_overrides[get_user_status_resolver] = as_user_status_resolver
     app.dependency_overrides[PermissionCheckerPort] = get_permission_checker
     app.dependency_overrides[get_permission_checker_dep] = get_permission_checker
 

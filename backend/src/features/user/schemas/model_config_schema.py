@@ -6,6 +6,7 @@
 - 模型名称引用：前端传模型名称（如 llm_model="gpt-4o"），后端根据名称查找凭证
 - 扩展配置存储在 extra_config 中（如 dimension、timeout 等）
 """
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -173,3 +174,14 @@ class AvailableModelsWithInfoResponse(BaseModel):
     rerank: list[ModelInfo] = Field(default_factory=list, description="Rerank 模型列表")
     vlm: list[ModelInfo] = Field(default_factory=list, description="VLM 视觉模型列表")
     asr: list[ModelInfo] = Field(default_factory=list, description="ASR 语音识别模型列表")
+
+
+@dataclass
+class ModelCredentials:
+    """模型凭证（用于创建 AI 客户端）。批次 3.6 从 shared/model_config_ports.py 迁入。"""
+
+    protocol: str
+    model: str
+    api_key: str | None = None
+    base_url: str | None = None
+    extra_config: dict | None = None

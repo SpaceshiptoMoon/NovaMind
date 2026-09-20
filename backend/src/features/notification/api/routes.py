@@ -2,7 +2,7 @@
 通知模块路由
 """
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
-from novamind.core.auth import UserStatusResolver, get_user_status_resolver
+from novamind.core.auth import get_user_status_resolver
 from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
 from novamind.core.ws import envelope, send_event
 from novamind.core.ws.connection_manager import manager as ws_manager
@@ -17,6 +17,7 @@ from novamind.features.notification.schemas.notification_schema import (
     UnreadCountResponse,
 )
 from novamind.features.notification.services.notification_service import NotificationService
+from novamind.features.user.adapters.auth_user_resolver_adapter import UserStatusResolverAdapter
 
 router = APIRouter()
 
@@ -108,7 +109,7 @@ async def update_preferences(
 @router.websocket("/ws")
 async def notification_ws(
     websocket: WebSocket,
-    resolver: UserStatusResolver = Depends(get_user_status_resolver),
+    resolver: UserStatusResolverAdapter = Depends(get_user_status_resolver),
 ):
     """通知常驻订阅通道：``/api/v1/notifications/ws``。
 

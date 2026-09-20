@@ -1,18 +1,10 @@
-"""UserStatusResolver 端口的 user feature 实现。
+"""认证用户状态解析器（批次 3.6 去 Protocol：core/auth 直接构造本类）。
 
-core/auth 的认证依赖经 ``UserStatusResolver`` 端口取 DB 最新用户状态，
-不感知 user ORM / UserStatus 枚举；本 adapter 在装配点把 UserRepository
-封装成端口实现，并按 ``UserStatus`` 计算 ``is_active`` / ``is_deleted`` 布尔，
-把枚举语义留在 user 侧。
-
-装配：user feature startup 用
-``app.dependency_overrides[core.auth.dependencies.get_user_status_resolver] = as_user_status_resolver``
-注入。
+按 ``UserStatus`` 计算 ``is_active`` / ``is_deleted`` 布尔，枚举语义留在 user 侧。
 """
 from __future__ import annotations
 
 from fastapi import Depends
-from novamind.core.auth.ports import UserStatusResolver
 from novamind.core.database.database import get_db
 from novamind.features.user.models.user import UserStatus
 from novamind.features.user.repository.user_repository import UserRepository
@@ -50,7 +42,7 @@ class UserStatusResolverAdapter:
 
 async def as_user_status_resolver(
     db: AsyncSession = Depends(get_db),
-) -> UserStatusResolver:
+) -> UserStatusResolverAdapter:
     """装配点依赖：构造 UserStatusResolverAdapter（供 dependency_overrides 注册）。"""
     return UserStatusResolverAdapter(db)
 

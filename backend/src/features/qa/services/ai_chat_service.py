@@ -33,10 +33,10 @@ from novamind.features.qa.exceptions import (
 from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
 from novamind.features.qa.schemas.qa import QARequest
 from novamind.features.qa.services.qa_service import QAService
+from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.features.user.services.search_config_service import SearchConfigService
 from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.shared.prompts.prompt_manager import PromptManager
-from novamind.shared.search_config_ports import SearchConfigPort
 from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
 from novamind.shared.utils.heartbeat import stream_with_heartbeat_structured
 
@@ -79,12 +79,12 @@ class AIChatService:
     def __init__(
         self,
         qa_service: QAService,
-        model_config_service: ModelConfigPort | None = None,
+        model_config_service: ModelConfigService | None = None,
         db: AsyncSession | None = None,
         minio_client: Optional["MinioClient"] = None,
         retrieval_port: Optional["RetrievalPort"] = None,
         document_ingestion_port: Optional["DocumentIngestionPort"] = None,
-        search_config_port: SearchConfigPort | None = None,
+        search_config_port: SearchConfigService | None = None,
     ):
         """
         初始化 AI Chat 服务

@@ -4,7 +4,6 @@ from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.adapters.document_ingestion_adapter import (
     as_document_ingestion_port,
 )
-from novamind.features.knowledge_space.adapters.retrieval_adapter import as_retrieval_port
 from novamind.features.knowledge_space.services.search_service import SearchService
 from novamind.features.qa.repository.question_answer_repository import QuestionAnswerRepository
 from novamind.features.qa.repository.session_config_repository import SessionConfigRepository
@@ -12,8 +11,8 @@ from novamind.features.qa.repository.session_summary_repository import SessionSu
 from novamind.features.qa.services.ai_chat_service import AIChatService
 from novamind.features.qa.services.qa_cache_service import QACacheService
 from novamind.features.qa.services.qa_service import QAService
-from novamind.features.user.adapters.search_config_port_adapter import as_search_config_port
 from novamind.features.user.api.dependencies import get_model_config_service
+from novamind.features.user.services.search_config_service import SearchConfigService
 from novamind.shared.cache.cache_service import CacheService
 from novamind.shared.storage.client_factory import get_elasticsearch_client, get_minio_client
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -82,9 +81,9 @@ async def get_aichat_service(
     minio_client = await get_minio_client()
     es_client = await get_elasticsearch_client()
     search_service = SearchService(db, es_client, model_config_service)
-    retrieval_port = as_retrieval_port(search_service)
+    retrieval_port = search_service
     ingestion_port = as_document_ingestion_port()
-    search_config_port = as_search_config_port(db)
+    search_config_port = SearchConfigService(db)
     return AIChatService(
         qa_service=qa_service,
         model_config_service=model_config_service,

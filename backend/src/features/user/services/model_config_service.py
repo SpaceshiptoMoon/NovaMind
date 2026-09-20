@@ -28,13 +28,13 @@ from novamind.features.user.schemas.model_config_schema import (
     ModelConfigListResponse,
     ModelConfigResponse,
     ModelConfigUpdate,
+    ModelCredentials,
     ModelTestRequest,
     ModelTestResponse,
 )
 from novamind.shared.ai_models.embedding import BaseEmbedding, create_embedding_client
 from novamind.shared.ai_models.llm import BaseLLM, create_llm_client
 from novamind.shared.ai_models.rerank import BaseRerank, create_rerank_client
-from novamind.shared.model_config_ports import ModelCredentials
 from novamind.shared.utils.crypto import decrypt_api_key_async, encrypt_api_key_async
 from sqlalchemy.ext.asyncio import AsyncSession
 

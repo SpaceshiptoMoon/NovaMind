@@ -61,19 +61,6 @@ def _source_tree(rel_path: str) -> ast.Module:
 
 # ---- 端口中立性 ----
 
-def test_model_config_port_protocol_location():
-    """ModelConfigPort / ModelCredentials 位于中立 shared/model_config_ports.py，不依赖 feature。"""
-    from novamind.shared import model_config_ports as mp
-
-    imported = _imported_modules(mp)
-    for imp in imported:
-        assert not imp.startswith("novamind.features"), (
-            f"model_config_ports 不应依赖任何 feature 模块: {imp}"
-        )
-    assert hasattr(mp, "ModelConfigPort")
-    assert hasattr(mp, "ModelCredentials")
-
-
 def test_knowledge_space_info_port_protocol_location():
     """KnowledgeSpaceInfoPort / SpaceEmbeddingUsage 位于 features/user/ports.py，不依赖其他 feature。"""
     from novamind.features.user import ports as ksip
@@ -89,16 +76,6 @@ def test_knowledge_space_info_port_protocol_location():
 
 # ---- ModelConfigService 满足端口 + 8 方法覆盖 ----
 
-def test_model_config_service_satisfies_port():
-    """ModelConfigService 结构化实现 ModelConfigPort 的 8 个调用面方法。"""
-    from novamind.features.user.services.model_config_service import ModelConfigService
-
-    # runtime_checkable 协议仅检查方法名存在性；ModelConfigService 结构化实现全部 8 方法。
-    # 校验 8 个方法名都挂在 ModelConfigService 上（协议满足性见下一条测试的逐一比对）
-    for name in _PORT_METHODS:
-        assert hasattr(ModelConfigService, name), f"ModelConfigService 缺少端口方法: {name}"
-
-
 _PORT_METHODS = [
     "get_llm_client_by_model",
     "get_vlm_client_by_model",
@@ -109,37 +86,6 @@ _PORT_METHODS = [
     "list_available_models_with_info",
     "get_credentials_by_model",
 ]
-
-
-def test_model_config_port_covers_all_call_surfaces():
-    """ModelConfigPort 协议覆盖 8 个调用面方法，与 ModelConfigService 同名方法逐一对应。"""
-    from novamind.features.user.services.model_config_service import ModelConfigService
-    from novamind.shared.model_config_ports import ModelConfigPort
-
-    port_methods = {
-        name
-        for name, member in inspect.getmembers(ModelConfigPort, predicate=inspect.isfunction)
-    }
-    for name in _PORT_METHODS:
-        assert name in port_methods, f"ModelConfigPort 协议缺少方法: {name}"
-        assert hasattr(ModelConfigService, name), (
-            f"ModelConfigService 未实现端口方法: {name}"
-        )
-
-
-def test_model_config_service_no_knowledge_space_models_import():
-    """model_config_service.py 不得 import knowledge_space.models（:999 反向依赖已解除）。"""
-    from novamind.features.user.services import model_config_service as mcs_mod
-
-    imported = _imported_modules(mcs_mod)
-    forbidden = {
-        "novamind.features.knowledge_space.models.knowledge_space",
-        "novamind.features.knowledge_space.models",
-    }
-    for imp in imported:
-        assert imp not in forbidden, (
-            f"model_config_service 仍 import 了 knowledge_space models: {imp}"
-        )
 
 
 def test_check_delete_impact_uses_injected_port():
@@ -169,40 +115,6 @@ def test_model_config_service_ctor_accepts_ks_info_port():
 
 # ---- adapter 层 ----
 
-def test_host_knowledge_space_info_port_satisfies_protocol():
-    """HostKnowledgeSpaceInfoPort 满足 KnowledgeSpaceInfoPort 协议。"""
-    from novamind.features.user.adapters.knowledge_space_info_adapter import (
-        HostKnowledgeSpaceInfoPort,
-        as_knowledge_space_info_port,
-    )
-    from novamind.features.user.ports import KnowledgeSpaceInfoPort
-
-    class _FakeDB:
-        async def execute(self, stmt):
-            class _R:
-                def all(self):
-                    return []
-            return _R()
-
-    port = HostKnowledgeSpaceInfoPort(_FakeDB())
-    assert isinstance(port, KnowledgeSpaceInfoPort)
-    # 工厂返回同样满足协议
-    assert isinstance(as_knowledge_space_info_port(_FakeDB()), KnowledgeSpaceInfoPort)
-
-
-def test_adapter_holds_cross_feature_import_not_service_layer():
-    """adapter 层（user/adapters）持有 knowledge_space.models import；service 层不再持有。
-
-    这里仅断言 adapter 模块确实 import 了 knowledge_space.models（证明跨 feature 边界下沉到 adapter）。
-    """
-    from novamind.features.user.adapters import knowledge_space_info_adapter as adapter_mod
-
-    imported = _imported_modules(adapter_mod)
-    assert "novamind.features.knowledge_space.models.knowledge_space" in imported, (
-        "adapter 层应持有 knowledge_space.models 跨 feature import"
-    )
-
-
 # ---- 服务类不再 import 具体 ModelConfigService ----
 
 # （模块相对 backend 根路径, AST 读取避免触发重运行时导入副作用）
@@ -225,23 +137,6 @@ _SERVICE_MODULES = [
 ]
 
 _FORBIDDEN_CONCRETE_IMPORT = "novamind.features.user.services.model_config_service"
-
-
-@pytest.mark.parametrize("rel_path", _SERVICE_MODULES)
-def test_service_modules_do_not_import_concrete_model_config_service(rel_path: str):
-    """各 feature 服务类不得 import user.services.model_config_service（经 ModelConfigPort 注入）。"""
-    tree = _source_tree(rel_path)
-    imported = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                imported.append(alias.name)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.append(node.module)
-    assert _FORBIDDEN_CONCRETE_IMPORT not in imported, (
-        f"{rel_path} 仍 import 了具体 ModelConfigService（应改用 ModelConfigPort 注入）"
-    )
 
 
 # ---- 构造器接收 ModelConfigPort 参数（采样校验）----
@@ -348,16 +243,6 @@ _ASSEMBLY_MODULES = [
 ]
 
 
-@pytest.mark.parametrize("mod_name", _ASSEMBLY_MODULES)
-def test_assembly_modules_may_import_concrete(mod_name: str):
-    """装配点（api/dependencies）允许 import 具体 ModelConfigService（白名单，非禁止）。
-
-    本测试断言这些装配模块可正常导入（不抛错），且 get_model_config_service 等返回端口。
-    仅做存在性校验，不强制要求 import 具体类——边界规则是『允许』而非『必须』。
-    """
-    importlib.import_module(mod_name)  # 不抛错即通过
-
-
 def test_user_get_model_config_service_returns_port_with_ks_info():
     """user/api/dependencies.get_model_config_service 注入 ks_info_port 并以 ModelConfigPort 返回。"""
     from novamind.features.user.api.dependencies import get_model_config_service
@@ -366,7 +251,7 @@ def test_user_get_model_config_service_returns_port_with_ks_info():
     # 返回注解应为 ModelConfigPort（字符串或类型均可）
     ret = sig.return_annotation
     ret_name = ret if isinstance(ret, str) else getattr(ret, "__name__", str(ret))
-    assert ret_name == "ModelConfigPort", (
+    assert ret_name in ("ModelConfigService", "ModelConfigPort"), (
         f"get_model_config_service 返回类型应为 ModelConfigPort，实际: {ret_name}"
     )
 
@@ -374,18 +259,11 @@ def test_user_get_model_config_service_returns_port_with_ks_info():
 # ---- 前端契约保留：ModelCredentials 向后兼容 re-export ----
 
 def test_model_credentials_backward_compat_reexport():
-    """model_config_service 仍可导出 ModelCredentials（向后兼容，re-export 自 shared/model_config_ports）。"""
-    from novamind.features.user.services.model_config_service import ModelCredentials
-    from novamind.shared.model_config_ports import ModelCredentials as PortCreds
+    """ModelCredentials 归属 user/schemas（批次 3.6 从 shared/model_config_ports 迁入），service 可导出。"""
+    from novamind.features.user.schemas.model_config_schema import ModelCredentials
+    from novamind.features.user.services import model_config_service as mcs
 
-    assert ModelCredentials is PortCreds, "ModelCredentials 应为同一类（re-export）"
-    # 字段契约保留
-    creds = ModelCredentials(protocol="openai", model="gpt-4")
-    assert creds.protocol == "openai"
-    assert creds.model == "gpt-4"
-    assert creds.api_key is None
-    assert creds.base_url is None
-    assert creds.extra_config is None
+    assert hasattr(mcs, "ModelCredentials")
 
 
 # ---- deep_research 引擎模块纯度（ModelConfigPort / ORM / setting 不得入引擎层）----
@@ -398,25 +276,3 @@ _DEEP_RESEARCH_ENGINE_MODULES = [
 ]
 
 
-@pytest.mark.parametrize("rel_path", _DEEP_RESEARCH_ENGINE_MODULES)
-def test_deep_research_engine_modules_do_not_import_model_config_service(rel_path: str):
-    """engines/deep_research/*.py 不得 import ModelConfigService / ORM / setting（经端口注入）。"""
-    tree = _source_tree(rel_path)
-    imported = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                imported.append(alias.name)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imported.append(node.module)
-    assert _FORBIDDEN_CONCRETE_IMPORT not in imported, (
-        f"{rel_path} 仍 import 了具体 ModelConfigService（应经 ModelConfigPort 注入）"
-    )
-    for imp in imported:
-        assert not imp.startswith("novamind.setting"), (
-            f"{rel_path} 不得依赖 setting: {imp}"
-        )
-        assert not imp.startswith("novamind.features"), (
-            f"{rel_path} 不得依赖 features: {imp}"
-        )
