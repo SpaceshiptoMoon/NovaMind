@@ -597,3 +597,23 @@ class SpaceRepository:
                 )
         except Exception as e:
             self.logger.warning("清理空间检索缓存失败", space_id=space_id, error=str(e))
+
+
+    async def find_spaces_using_embedding(self, model_name: str) -> list[dict]:
+        """查未删除且空间配置 ``embedding.model == model_name`` 的空间（批次 4.5 下沉）。
+
+        供 user feature 删除 embedding 模型前的依赖检查（R2 防环：user 经
+        repository/models 直查，不 import ks services）。
+        返回 [{space_id, space_name}]。
+        """
+        stmt = select(
+            KnowledgeSpace.id, KnowledgeSpace.name, KnowledgeSpace.config
+        ).where(KnowledgeSpace.deleted_at.is_(None))
+        result = await self.session.execute(stmt)
+        usages: list[dict] = []
+        for space_id, space_name, space_config in result.all():
+            space_config = space_config or {}
+            embedding_model = (space_config.get("embedding") or {}).get("model")
+            if embedding_model == model_name:
+                usages.append({"space_id": space_id, "space_name": space_name})
+        return usages

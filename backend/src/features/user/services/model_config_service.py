@@ -17,7 +17,6 @@ from novamind.features.user.exceptions import (
     ModelConfigTestFailedError,
 )
 from novamind.features.user.models.user_model_config import ModelType, UserModelConfig
-from novamind.features.user.ports import KnowledgeSpaceInfoPort
 from novamind.features.user.repository.model_config_repository import (
     ModelConfigRepository,
     model_type_int_to_enum,
@@ -107,12 +106,10 @@ class ModelConfigService:
     def __init__(
         self,
         db: AsyncSession,
-        knowledge_space_info_port: KnowledgeSpaceInfoPort | None = None,
     ):
         self.db = db
         self.repo = ModelConfigRepository(db)
         # 删除 embedding 模型配置时的空间绑定查询端口（解 :999 反向依赖）
-        self._ks_info_port = knowledge_space_info_port
         # 使用模块级缓存（实例引用）
         # 注意：不再创建新的缓存实例，而是引用模块级缓存
 
@@ -883,21 +880,24 @@ class ModelConfigService:
 
         if model_type == ModelType.EMBEDDING:
             # 检查空间绑定（Embedding 配置由空间级别统一管理）
-            # 批次 5b：经注入的 KnowledgeSpaceInfoPort 查询，不再 import knowledge_space.models
-            if self._ks_info_port is not None:
-                try:
-                    usages = await self._ks_info_port.find_spaces_using_embedding_model(
-                        config.model
-                    )
-                    for usage in usages:
-                        impacts.append({
-                            "type": "space",
-                            "id": usage.space_id,
-                            "name": usage.space_name,
-                            "reason": f"空间 '{usage.space_name}' 正在使用此 Embedding 模型",
-                        })
-                except Exception as e:
-                    logger.error("检查删除影响失败，可能返回不完整结果", error=str(e))
+            # 批次 4.5：经 ks repository 公共方法直查（R2 防环——user 不 import ks services）
+            try:
+                from novamind.features.knowledge_space.repository.space_repository import (
+                    SpaceRepository,
+                )
+
+                usages = await SpaceRepository(self.session).find_spaces_using_embedding(
+                    config.model
+                )
+                for usage in usages:
+                    impacts.append({
+                        "type": "space",
+                        "id": usage["space_id"],
+                        "name": usage["space_name"],
+                        "reason": f"空间 '{usage['space_name']}' 正在使用此 Embedding 模型",
+                    })
+            except Exception as e:
+                logger.error("检查删除影响失败，可能返回不完整结果", error=str(e))
 
         elif model_type == ModelType.LLM:
             # LLM 模型仅警告，不阻止删除（会话使用已缓存客户端）

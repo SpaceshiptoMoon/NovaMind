@@ -62,18 +62,10 @@ def _source_tree(rel_path: str) -> ast.Module:
 # ---- 端口中立性 ----
 
 def test_knowledge_space_info_port_protocol_location():
-    """KnowledgeSpaceInfoPort / SpaceEmbeddingUsage 位于 features/user/ports.py，不依赖其他 feature。"""
-    from novamind.features.user import ports as ksip
+    """批次 4.5：KnowledgeSpaceInfoPort 已删，ks repository 提供公共查询方法。"""
+    from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
 
-    imported = _imported_modules(ksip)
-    for imp in imported:
-        assert not imp.startswith("novamind.features"), (
-            f"user.ports 不应依赖任何 feature 模块: {imp}"
-        )
-    assert hasattr(ksip, "KnowledgeSpaceInfoPort")
-    assert hasattr(ksip, "SpaceEmbeddingUsage")
-
-
+    assert hasattr(SpaceRepository, "find_spaces_using_embedding")
 # ---- ModelConfigService 满足端口 + 8 方法覆盖 ----
 
 _PORT_METHODS = [
@@ -89,30 +81,21 @@ _PORT_METHODS = [
 
 
 def test_check_delete_impact_uses_injected_port():
-    """_check_delete_impact 经注入的 _ks_info_port 查询，不内联 import KnowledgeSpace。"""
-    from novamind.features.user.services import model_config_service as mcs_mod
+    """批次 4.5：删除影响检查直查 ks repository（不再经注入端口）。"""
+    import inspect
 
-    src = inspect.getsource(mcs_mod.ModelConfigService._check_delete_impact)
-    assert "self._ks_info_port" in src, "_check_delete_impact 应使用注入的 _ks_info_port"
-    assert "find_spaces_using_embedding_model" in src, (
-        "_check_delete_impact 应经 port 查询 find_spaces_using_embedding_model"
-    )
-    assert "knowledge_space.models.knowledge_space" not in src, (
-        "_check_delete_impact 不得内联 import knowledge_space.models"
-    )
+    from novamind.features.user.services.model_config_service import ModelConfigService
 
-
+    src = inspect.getsource(ModelConfigService.check_delete_impact)
+    assert "find_spaces_using_embedding" in src
 def test_model_config_service_ctor_accepts_ks_info_port():
-    """ModelConfigService.__init__ 接收可选 knowledge_space_info_port 参数。"""
+    """批次 4.5：构造器不再接收 ks 信息端口（改为方法内直查）。"""
+    import inspect
+
     from novamind.features.user.services.model_config_service import ModelConfigService
 
     params = inspect.signature(ModelConfigService.__init__).parameters
-    assert "knowledge_space_info_port" in params, (
-        "ModelConfigService.__init__ 缺少 knowledge_space_info_port 参数"
-    )
-    assert params["knowledge_space_info_port"].default is None
-
-
+    assert "knowledge_space_info_port" not in params
 # ---- adapter 层 ----
 
 # ---- 服务类不再 import 具体 ModelConfigService ----

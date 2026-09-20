@@ -70,7 +70,7 @@ def test_build_response_deprecated_type_does_not_crash():
     from novamind.features.user.services.model_config_service import ModelConfigService
 
     # _build_response 不访问 db / port，传 None 即可
-    svc = ModelConfigService(db=None, knowledge_space_info_port=None)
+    svc = ModelConfigService(db=None)
     resp = svc._build_response(_make_config(5))
 
     assert resp.model_type == "unknown"
@@ -82,7 +82,7 @@ def test_build_response_known_type_still_resolves():
     """正常编号不受影响，避免回归。"""
     from novamind.features.user.services.model_config_service import ModelConfigService
 
-    svc = ModelConfigService(db=None, knowledge_space_info_port=None)
+    svc = ModelConfigService(db=None)
     assert svc._build_response(_make_config(2)).model_type == "embedding"
     assert svc._build_response(_make_config(6)).model_type == "asr"
 
@@ -105,7 +105,7 @@ async def test_list_configs_with_deprecated_type_does_not_500():
     """list_configs 在结果集中含 model_type=5 脏行时应正常返回，不抛 ValueError。"""
     from novamind.features.user.services.model_config_service import ModelConfigService
 
-    svc = ModelConfigService(db=None, knowledge_space_info_port=None)
+    svc = ModelConfigService(db=None)
     svc.repo = _FakeRepo([_make_config(5), _make_config(2)])
 
     result = await svc.list_configs(user_id=10, model_type=None)
