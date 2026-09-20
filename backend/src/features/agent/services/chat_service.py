@@ -493,10 +493,11 @@ class AgentChatService:
         if attachment_ids:
             attachments = await self.attachment_repo.get_by_ids_and_user(attachment_ids, user_id)
             if attachments:
-                extra = {"attachments": [
+                from novamind.shared.message_attachments import write_attachment_ids
+                extra = write_attachment_ids(None, [
                     {"id": a.id, "filename": a.filename, "file_type": a.file_type, "file_size": a.file_size, "storage_path": a.storage_path}
                     for a in attachments
-                ]}
+                ])
 
         user_msg = await self.agent_service.save_message(
             conversation_id=conv.id,
@@ -786,7 +787,8 @@ class AgentChatService:
         # 按消息顺序收集附件元数据（extra 已存 id/filename/file_type/file_size）
         att_msgs: list[list[dict]] = []
         for msg in messages_with_extra:
-            atts = (msg.extra or {}).get("attachments") or []
+            from novamind.shared.message_attachments import ATTACHMENT_EXTRA_KEY
+            atts = (msg.extra or {}).get(ATTACHMENT_EXTRA_KEY) or []
             if atts:
                 att_msgs.append(atts)
         if not att_msgs:

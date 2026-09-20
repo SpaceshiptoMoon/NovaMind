@@ -18,15 +18,15 @@ ORPHAN_CUTOFF_DAYS = 7
 
 
 def _collect_referenced_ids(extras) -> set[int]:
-    """从消息 extra 列表收集被引用的附件 id 集合"""
+    """从消息 extra 列表收集被引用的附件 id 集合（契约模块统一解析，批次 4.3）"""
+    from novamind.shared.message_attachments import read_attachment_ids
+
     referenced: set[int] = set()
     for row in extras:
         extra = row[0]
         if not isinstance(extra, dict):
             continue
-        for att in extra.get("attachments") or []:
-            if isinstance(att, dict) and isinstance(att.get("id"), int):
-                referenced.add(att["id"])
+        referenced.update(read_attachment_ids(extra))
     return referenced
 
 
