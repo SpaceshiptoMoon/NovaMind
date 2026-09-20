@@ -15,8 +15,8 @@ from typing import Any
 
 from novamind.engines.agent.agent_engine import AgentEngine
 from novamind.engines.agent.tool.executor import ToolExecutor
+from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.logging import get_logger
-from novamind.shared.model_config_ports import ModelConfigPort
 
 logger = get_logger(__name__)
 
@@ -31,7 +31,7 @@ class SubAgentRunner:
         self,
         agent_engine: AgentEngine,
         tool_executor: ToolExecutor,
-        model_config_service: ModelConfigPort,
+        model_config_service: ModelConfigService,
         user_id: int,
         model: str,
         enabled_tools: list[str],

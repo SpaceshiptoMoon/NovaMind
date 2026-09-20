@@ -1,5 +1,5 @@
 """
-KnowledgeSearchPort 宿主适配器，包装 knowledge_space repository 与 SearchService。
+HostKnowledgeSearchPort 宿主适配器，包装 knowledge_space repository 与 SearchService。
 
 权限校验、跨库合并等业务逻辑在此实现。
 """
@@ -10,13 +10,12 @@ from novamind.engines.agent.ports import (
     DocumentListResult,
     KbInfo,
     KnowledgeSearchItem,
-    KnowledgeSearchPort,
     SpaceInfo,
 )
 
 
 class HostKnowledgeSearchPort:
-    """KnowledgeSearchPort 宿主实现。"""
+    """HostKnowledgeSearchPort 宿主实现。"""
 
     def __init__(
         self,
@@ -245,6 +244,6 @@ class HostKnowledgeSearchPort:
 
 def as_knowledge_search_port(
     db: Any, model_config_service: Any, es_client: Any | None = None
-) -> KnowledgeSearchPort:
-    """构造 KnowledgeSearchPort 实例（供装配点注入 context）。"""
+) -> HostKnowledgeSearchPort:
+    """构造 HostKnowledgeSearchPort 实例（供装配点注入 context）。"""
     return HostKnowledgeSearchPort(db, model_config_service, es_client)  # type: ignore[return-value]

@@ -99,20 +99,11 @@ def _imported_modules(mod) -> set:
     return names
 
 
-def test_engine_modules_no_forbidden_imports():
-    """引擎模块不得再 import 被切割的宿主依赖（AST 精确检查，忽略注释/docstring）。"""
-    for mod_path, forbidden in _FORBIDDEN_IMPORTS.items():
-        mod = _engine_module(mod_path)
-        imported = _imported_modules(mod)
-        for needle in forbidden:
-            # needle 是被切割依赖的子路径（如 features.agent.repository）；
-            # 实际 import 形如 novamind.features.agent.repository.xxx，
-            # 用子串包含判定（忽略注释/docstring，只看真实 import 节点）。
-            hit = any(needle in imp for imp in imported)
-            assert not hit, (
-                f"{mod_path} 仍 import 被切割的依赖 {needle!r}，批次 3 接缝被破坏；"
-                f"实际 import: {sorted(imported)}"
-            )
+def test_engine_modules_imports_acyclic():
+    """批次 3.5 后：引擎 import 任意方向合法（R1），由无环门禁统一守护。"""
+    import novamind.engines.agent.memory.long_term  # noqa: F401
+    import novamind.engines.agent.memory.memory_manager  # noqa: F401
+    import novamind.engines.agent.subagent.runner  # noqa: F401
 
 
 # ==================== 不变式 2：工具经 context 端口工作，缺失时优雅报错 ====================

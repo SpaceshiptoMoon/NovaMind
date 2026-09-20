@@ -1,20 +1,20 @@
 """
 会话附件读取端口宿主适配器。
 
-实现引擎侧 AttachmentReadPort 协议（engines/agent/ports.py），内部延迟
+实现引擎侧 HostAttachmentReadPort 协议（engines/agent/ports.py），内部延迟
 import features/qa 的 ChatAttachmentRepository——features 层引用合法，
 引擎层经端口消费，满足单向依赖铁律（engines → 端口，不 import features）。
 """
 from typing import Any
 
-from novamind.engines.agent.ports import AttachmentReadPort, AttachmentTextChunk
+from novamind.engines.agent.ports import AttachmentTextChunk
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
 
 class HostAttachmentReadPort:
-    """AttachmentReadPort 宿主实现：按 offset/limit 分片读附件提取文本"""
+    """HostAttachmentReadPort 宿主实现：按 offset/limit 分片读附件提取文本"""
 
     def __init__(self, db: Any):
         self._db = db
@@ -51,6 +51,6 @@ class HostAttachmentReadPort:
         )
 
 
-def as_attachment_read_port(db: Any) -> AttachmentReadPort | None:
+def as_attachment_read_port(db: Any) -> HostAttachmentReadPort | None:
     """端口工厂：供 dependencies.py 装配"""
     return HostAttachmentReadPort(db)  # type: ignore[return-value]

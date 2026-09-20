@@ -12,13 +12,9 @@ from novamind.engines.agent.memory.interfaces import (
 from novamind.engines.agent.memory.long_term import LongTermMemory
 from novamind.engines.agent.memory.short_term import ShortTermMemory
 from novamind.engines.agent.memory.token_budget import TokenBudget
-from novamind.engines.agent.ports import (
-    ContextSummaryStorePort,
-    LongTermMemoryStorePort,
-    MemorySearchPort,
-)
-from novamind.engines.ports import PromptProvider
+from novamind.features.agent.adapters import HostMemorySearchPort, HostMemoryStorePort
 from novamind.shared.logging import get_logger
+from novamind.shared.prompts.prompt_manager import PromptManager
 
 logger = get_logger(__name__)
 
@@ -30,8 +26,8 @@ class MemoryManager:
         self,
         short_term: ShortTermMemory,
         long_term: LongTermMemory,
-        long_term_store: LongTermMemoryStorePort,
-        summary_store: ContextSummaryStorePort,
+        long_term_store: HostMemoryStorePort,
+        summary_store: HostMemoryStorePort,
         message_repository: Any,
     ):
         self._short_term = short_term
@@ -48,12 +44,12 @@ class MemoryManager:
         message_repository: Any,
         tool_call_repository: Any,
         session_repository: Any,
-        long_term_store: LongTermMemoryStorePort,
-        summary_store: ContextSummaryStorePort,
-        prompt_provider: PromptProvider,
+        long_term_store: HostMemoryStorePort,
+        summary_store: HostMemoryStorePort,
+        prompt_provider: PromptManager,
         model: str,
         llm_client_factory: Callable,
-        memory_search: MemorySearchPort | None = None,
+        memory_search: HostMemorySearchPort | None = None,
         embedding_factory: Callable | None = None,
         todo_store: Any | None = None,
         conversation_id: int | None = None,

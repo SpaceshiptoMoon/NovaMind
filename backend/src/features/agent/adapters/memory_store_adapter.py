@@ -1,5 +1,5 @@
 """
-LongTermMemoryStorePort / ContextSummaryStorePort / MemorySearchPort 宿主适配器，
+HostMemoryStorePort / HostMemoryStorePort / HostMemorySearchPort 宿主适配器，
 桥接记忆 ORM 与 ES 检索。
 """
 from datetime import datetime
@@ -8,9 +8,6 @@ from typing import Any
 from novamind.engines.agent.memory.interfaces import LongTermMemoryEntry
 from novamind.engines.agent.ports import (
     ContextSummaryEntry,
-    ContextSummaryStorePort,
-    LongTermMemoryStorePort,
-    MemorySearchPort,
 )
 
 
@@ -43,7 +40,7 @@ def _to_summary(summary: Any) -> ContextSummaryEntry:
 
 
 class HostMemoryStorePort:
-    """LongTermMemoryStorePort + ContextSummaryStorePort 宿主实现：委托
+    """HostMemoryStorePort + HostMemoryStorePort 宿主实现：委托
     MemoryRepository + ContextSummaryRepository（单类双实现，db 会话唯一、flush 语义
     不割裂）。"""
 
@@ -166,7 +163,7 @@ class HostMemoryStorePort:
 
 
 class HostMemorySearchPort:
-    """MemorySearchPort 宿主实现：委托 MemorySearchRepository。
+    """HostMemorySearchPort 宿主实现：委托 MemorySearchRepository。
 
     可注入已有 MemorySearchRepository（复用宿主装配的实例）或经 es_client 构造。
     """
@@ -230,12 +227,12 @@ class HostMemorySearchPort:
         return await self._repo.delete_memory(agent_id, memory_id)
 
 
-def as_memory_store_port(db: Any) -> LongTermMemoryStorePort:
+def as_memory_store_port(db: Any) -> HostMemoryStorePort:
     """构造长期记忆端口实例（供 memory 工具 / MemoryManager 长期记忆路径注入）。"""
     return HostMemoryStorePort(db)  # type: ignore[return-value]
 
 
-def as_context_summary_store_port(db: Any) -> ContextSummaryStorePort:
+def as_context_summary_store_port(db: Any) -> HostMemoryStorePort:
     """构造上下文摘要端口实例（供 ContextCompressor / ShortTermMemory 注入）。
 
     与 ``as_memory_store_port`` 返回同一 ``HostMemoryStorePort`` 类型（单类双实现
@@ -247,6 +244,6 @@ def as_context_summary_store_port(db: Any) -> ContextSummaryStorePort:
 
 def as_memory_search_port(
     repo: Any | None = None, es_client: Any | None = None
-) -> MemorySearchPort:
-    """构造 MemorySearchPort 实例。"""
+) -> HostMemorySearchPort:
+    """构造 HostMemorySearchPort 实例。"""
     return HostMemorySearchPort(repo=repo, es_client=es_client)  # type: ignore[return-value]
