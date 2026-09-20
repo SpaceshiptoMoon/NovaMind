@@ -638,7 +638,7 @@ class AgentChatService:
         事件一致，前端切历史会话即可显示仪表初始值。
         """
         conv = await self.agent_service.get_session(user_id, session_id)
-        agent = await self.agent_service._get_agent_or_fail(user_id, conv.agent_id)
+        agent = await self.agent_service.get_agent_or_fail(user_id, conv.agent_id)
         model = await self._resolve_model(user_id, agent, None)
         memory_manager = self._create_memory_manager(
             agent, user_id, model, conv.id,
@@ -667,7 +667,7 @@ class AgentChatService:
         fragments + frozen_memory），与实际发给 LLM 的 system prompt 一致。
         """
         conv = await self.agent_service.get_session(user_id, session_id)
-        agent = await self.agent_service._get_agent_or_fail(user_id, conv.agent_id)
+        agent = await self.agent_service.get_agent_or_fail(user_id, conv.agent_id)
         model = await self._resolve_model(user_id, agent, None)
         memory_manager = self._create_memory_manager(
             agent, user_id, model, conv.id,

@@ -80,16 +80,16 @@ class AgentService:
         return AgentDetailResponse.model_validate(agent)
 
     async def get_agent(self, user_id: int, agent_id: int) -> AgentDetailResponse:
-        agent = await self._get_agent_or_fail(user_id, agent_id)
+        agent = await self.get_agent_or_fail(user_id, agent_id)
         return AgentDetailResponse.model_validate(agent)
 
     async def get_agent_definition(
         self, user_id: int, agent_id: int
     ) -> "AgentDefinition":
         """获取 Agent ORM 对象（供 chat_service 等需要原始模型的场景使用）"""
-        return await self._get_agent_or_fail(user_id, agent_id)
+        return await self.get_agent_or_fail(user_id, agent_id)
 
-    async def _get_agent_or_fail(self, user_id: int, agent_id: int) -> "AgentDefinition":
+    async def get_agent_or_fail(self, user_id: int, agent_id: int) -> "AgentDefinition":
         agent = await self.agent_repo.get_by_id(agent_id)
         if not agent or (agent.user_id is not None and agent.user_id != user_id):
             raise AgentNotFoundError(agent_id)
@@ -325,7 +325,7 @@ class AgentService:
         offset: int = 0,
     ) -> MemoryListResponse:
         """列出 Agent 的长期记忆"""
-        await self._get_agent_or_fail(user_id, agent_id)
+        await self.get_agent_or_fail(user_id, agent_id)
         memories, total = await self.memory_repo.list_by_agent(
             agent_id, user_id, category=category, limit=limit, offset=offset,
         )
@@ -340,7 +340,7 @@ class AgentService:
         self, user_id: int, agent_id: int, memory_id: int
     ) -> None:
         """删除指定记忆（MySQL + ES）"""
-        await self._get_agent_or_fail(user_id, agent_id)
+        await self.get_agent_or_fail(user_id, agent_id)
         memory = await self.memory_repo.get_by_id(memory_id)
         if not memory or memory.agent_id != agent_id or memory.user_id != user_id:
             raise MemoryNotFoundError(memory_id)
@@ -364,7 +364,7 @@ class AgentService:
         self, user_id: int, agent_id: int
     ) -> MemoryStatsResponse:
         """获取记忆统计"""
-        await self._get_agent_or_fail(user_id, agent_id)
+        await self.get_agent_or_fail(user_id, agent_id)
         memories, total = await self.memory_repo.list_by_agent(
             agent_id, user_id, limit=1000,
         )

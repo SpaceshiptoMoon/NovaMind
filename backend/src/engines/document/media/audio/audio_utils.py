@@ -154,6 +154,16 @@ async def acquire_asr_or_busy() -> bool:
         return False
 
 
+def force_release_asr_slot() -> None:
+    """强制释放 ASR 忙碌锁（供云端 ASR 回退路径的 finally 清理）。
+
+    幂等：未持锁时无操作（locked 检查防 RuntimeError）。
+    批次 4.4：替代上游直接 import ``_asr_busy_lock`` 私有锁的写法。
+    """
+    if _asr_busy_lock.locked():
+        _asr_busy_lock.release()
+
+
 def _segments_to_dict(segments_result) -> list[dict]:
     """将 faster-whisper 的 segments 迭代器转为标准字典列表。"""
     result = []

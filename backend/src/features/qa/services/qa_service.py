@@ -689,7 +689,7 @@ class QAService:
             session_id, user_id, context_messages, config, keep_recent, total_tokens,
         )
 
-    async def _get_compression_llm_client(self, user_id: int):
+    async def get_compression_llm_client(self, user_id: int):
         """获取用于压缩摘要的 LLM 客户端（用户默认 LLM）"""
         if not self.model_config_service:
             raise QAError("未配置 ModelConfigService，无法执行压缩")
@@ -713,7 +713,7 @@ class QAService:
         只把「旧摘要 + 自上次边界之后的新消息」喂给 LLM 生成更新摘要，
         不再把全部历史重新压缩——省 LLM 调用，且基于旧摘要融合，信息保留更连贯。
         """
-        llm_client = await self._get_compression_llm_client(user_id)
+        llm_client = await self.get_compression_llm_client(user_id)
         compressor = TextCompressor(
             llm_client=llm_client,
             custom_prompt=config.custom_summary_prompt,
@@ -809,7 +809,7 @@ class QAService:
 
         有摘要的「组合判断 / 增量压缩」由 _get_summary_context 处理，本方法只负责全量。
         """
-        llm_client = await self._get_compression_llm_client(user_id)
+        llm_client = await self.get_compression_llm_client(user_id)
         compressor = TextCompressor(
             llm_client=llm_client,
             custom_prompt=config.custom_summary_prompt,

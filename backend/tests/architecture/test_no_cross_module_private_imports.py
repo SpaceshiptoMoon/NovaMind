@@ -65,19 +65,10 @@ def _private_imports_in(path: Path) -> set[str]:
 # 注：实例属性调用私有方法（如 self.qa_service._get_xxx()）不属本门禁管辖
 #（AST import 扫描不覆盖属性访问），由任务 4.6 转公共方法解决。
 KNOWN_VIOLATIONS: dict[str, set[str]] = {
-    "src/features/knowledge_space/services/media_processing.py": {
-        "novamind.engines.document.media.audio._asr_busy_lock",
-    },
     "src/engines/agent/agent_engine.py": {
         "novamind.engines.agent.retry._is_retryable_error",
         "novamind.engines.agent.retry._is_non_retryable",
         "novamind.engines.agent.retry._is_context_overflow",
-    },
-    "src/engines/document/media/__init__.py": {
-        "novamind.engines.document.media.audio._asr_busy_lock",
-    },
-    "src/engines/document/media/audio/__init__.py": {
-        "novamind.engines.document.media.audio.audio_utils._asr_busy_lock",
     },
     "src/engines/document/media/video/frame_dedup.py": {
         "novamind.engines.document.media.video.frame_extraction._histogram_chi_square",

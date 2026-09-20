@@ -583,9 +583,8 @@ async def process_audio_document(
                 )
             finally:
                 # 无论成功失败都释放 ASR 锁，让下一个任务可以进入
-                from novamind.engines.document.media.audio import _asr_busy_lock
-                if _asr_busy_lock.locked():
-                    _asr_busy_lock.release()
+                from novamind.engines.document.media.audio import force_release_asr_slot
+                force_release_asr_slot()
     else:
         segments = await _run_asr(asr_protocol, asr_model, asr_api_key, asr_base_url)
     logger.info(

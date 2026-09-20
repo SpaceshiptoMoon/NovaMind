@@ -255,7 +255,7 @@ class AIChatService:
         rewrite_degraded = False  # 用户开了改写但实际降级（LLM 失败/不可用）→ 透传到 trace
         if rewrite_strategy != "none" and (do_web or do_rag):
             from novamind.features.qa.services.query_rewriter import QueryRewriter, RewriteStrategy
-            llm_for_rewrite = await self.qa_service._get_compression_llm_client(user_id) if self.qa_service else None
+            llm_for_rewrite = await self.qa_service.get_compression_llm_client(user_id) if self.qa_service else None
             if llm_for_rewrite:
                 rewriter = QueryRewriter(llm_for_rewrite)
                 ctx_history = [
@@ -282,7 +282,7 @@ class AIChatService:
                 grade_retry = getattr(session_config, "rag_grade_retry_enabled", False) if session_config else False
                 if grade_retry:
                     from novamind.engines.rag import GradeRetrier
-                    llm_for_grade = await self.qa_service._get_compression_llm_client(user_id) if self.qa_service else None
+                    llm_for_grade = await self.qa_service.get_compression_llm_client(user_id) if self.qa_service else None
                     if llm_for_grade:
                         retrier = GradeRetrier(
                             llm_for_grade,
@@ -341,7 +341,7 @@ class AIChatService:
             else:
                 # DECOMPOSE：多子查询并发检索 + 合并去重；开启 grade 时整体打分 + 重试（设计A）
                 grade_retry = getattr(session_config, "rag_grade_retry_enabled", False) if session_config else False
-                llm_for_grade = (await self.qa_service._get_compression_llm_client(user_id) if self.qa_service else None) if grade_retry else None
+                llm_for_grade = (await self.qa_service.get_compression_llm_client(user_id) if self.qa_service else None) if grade_retry else None
 
                 if grade_retry and llm_for_grade:
                     # grade 开 + 有 grade LLM：循环「检索所有子查询→合并→用原问题整体打分」，不通过则切 mode + 降阈值重检索

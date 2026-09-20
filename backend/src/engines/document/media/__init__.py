@@ -1,6 +1,5 @@
 """多模态媒体处理模块（音频 / 视频 / VLM / 图像）。"""
 from novamind.engines.document.media.audio import (
-    _asr_busy_lock,
     acquire_asr_or_busy,
     is_local_asr_busy,
     transcribe_audio_local,
@@ -34,7 +33,6 @@ from novamind.engines.document.media.vlm import (
 )
 
 __all__ = [
-    "_asr_busy_lock",
     "acquire_asr_or_busy",
     "extract_video_frames",
     "extract_frames_fixed",
