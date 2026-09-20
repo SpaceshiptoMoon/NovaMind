@@ -1,10 +1,8 @@
 """直接 raise HTTPException 门禁（Hard Rule「Never raise HTTPException」的机器化执行）。
 
 业务异常必须经 BaseAPIError 体系（feature exceptions.py 注册 handler）。
-当前白名单：
-
-  - ``core/auth/dependencies.py``：认证链 6 处 → 任务 4.9 收敛为 BaseAPIError 子类后清空
-  - vendored DeepDoc server 端点 15 处：独立子服务，上游结构原样保留，永久豁免
+当前白名单：空（任务 4.9 已收敛 core/auth 认证链 6 处为 BaseAPIError 子类）。
+vendored DeepDoc server 端点：独立子服务，上游结构原样保留，永久豁免。
 
 实现复用 test_unidirectional_dependency_gate.py 的 AST 扫描框架。
 """
@@ -22,9 +20,7 @@ SRC = BACKEND_ROOT / "src"
 
 # 白名单：rel_path → 允许的 raise HTTPException 次数上限（精确对账）。
 # core/auth/dependencies.py 6 处收敛后（任务 4.9）从白名单删除。
-KNOWN_VIOLATIONS: dict[str, int] = {
-    "src/core/auth/dependencies.py": 6,
-}
+KNOWN_VIOLATIONS: dict[str, int] = {}
 
 # 永久豁免：vendored DeepDoc 独立子服务（dla/ocr/parse/tsr endpoints），
 # 上游逐字镜像禁止修改。

@@ -46,10 +46,11 @@ def test_default_model_dir_points_to_user_cache(monkeypatch):
 
 
 def test_env_var_overrides_default(monkeypatch, tmp_path):
-    """NOVAMIND_LOCAL_WHISPER_MODEL_DIR 必须覆盖默认路径。"""
+    """asr.local_whisper_model_dir（配置中心，值可来自 env 占位）覆盖默认路径。"""
     _clear_env(monkeypatch)
     fake = tmp_path / "custom-whisper"
-    monkeypatch.setenv("NOVAMIND_LOCAL_WHISPER_MODEL_DIR", str(fake))
+    from novamind.setting.yaml_config import get_config
+    get_config().asr.local_whisper_model_dir = str(fake)
     model_dir = _resolve_local_whisper_model_dir()
     assert model_dir == fake
 
@@ -66,9 +67,10 @@ def test_audio_config_overrides_env(monkeypatch, tmp_path):
 
 
 def test_audio_config_none_falls_back_to_env(monkeypatch, tmp_path):
-    """AudioConfig.local_whisper_model_dir 为 None 时回退到环境变量。"""
+    """AudioConfig.local_whisper_model_dir 为 None 时回退 asr.local_whisper_model_dir。"""
     env_dir = tmp_path / "env-whisper"
-    monkeypatch.setenv("NOVAMIND_LOCAL_WHISPER_MODEL_DIR", str(env_dir))
+    from novamind.setting.yaml_config import get_config
+    get_config().asr.local_whisper_model_dir = str(env_dir)
     model_dir = _resolve_local_whisper_model_dir(
         AudioConfig(local_whisper_model_dir=None)
     )

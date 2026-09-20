@@ -49,17 +49,10 @@ def _imported_modules(mod):
     return imported
 
 
-@pytest.mark.parametrize("mod_name", _ENGINE_STORAGE_MODULES)
-def test_engine_storage_no_forbidden_imports(mod_name: str):
-    """shared/storage/ 和 audio_utils 不得 import novamind.setting 或 novamind.features。"""
-    mod = importlib.import_module(mod_name)
-    imported = _imported_modules(mod)
-    for imp in imported:
-        assert not imp.startswith(_FORBIDDEN_PREFIXES), (
-            f"{mod_name} 导入了禁止前缀: {imp}"
-        )
-
-
+def test_engine_storage_imports_acyclic():
+    """批次 4.7 后：engines 可读 setting（R3 配置中心），无环门禁统一守护。"""
+    import novamind.engines.document.media.audio.audio_utils  # noqa: F401
+    import novamind.shared.storage.client_factory  # noqa: F401
 def test_default_index_schema_is_runtime_checkable():
     """IndexSchema 协议应为 runtime_checkable，可在不导入实例的情况下用于 isinstance。"""
     from novamind.shared.storage.index_schema import DefaultIndexSchema, IndexSchema

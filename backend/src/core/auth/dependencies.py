@@ -18,10 +18,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from novamind.core.auth.blacklist import is_token_revoked, is_user_blacklisted
-from novamind.core.auth.exceptions import PasswordChangeRequiredError
+from novamind.core.auth.exceptions import (
+    AuthenticationError,
+    AuthenticationRevokedError,
+    AuthorizationError,
+    PasswordChangeRequiredError,
+)
 from novamind.core.auth.token import decode_access_token
 from novamind.core.authorization.exceptions import PermissionDeniedError
 from novamind.core.database.database import get_db
@@ -73,52 +78,36 @@ async def _resolve_user_from_token(
     """校验 token 并返回用户信息（共享核心，供必选/可选认证复用）。
 
     Raises:
-        HTTPException: token 无效/黑名单/用户不存在/被删除/被禁用
+        AuthenticationError/AuthenticationRevokedError/AuthorizationError: 认证授权失败
         PasswordChangeRequiredError: 强制改密状态访问非豁免端点
     """
     # 1. 解码 + 校验 access token
     claims = decode_access_token(token)
     if not claims or not getattr(claims, "user_id", None):
-        raise HTTPException(
-            status_code=401,
-            detail="无效的认证凭证",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise AuthenticationError("无效的认证凭证")
 
     # 2. token 级黑名单（登出/刷新轮换后该 jti 立即失效）
     if claims.jti and await is_token_revoked(claims.jti):
-        raise HTTPException(
-            status_code=401,
-            detail="登录凭证已撤销，请重新登录",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise AuthenticationRevokedError("登录凭证已撤销，请重新登录")
 
     # 3. 用户级黑名单（用户被软删除/停用时所有 Token 立即失效）
     if await is_user_blacklisted(claims.user_id, token_iat=claims.iat):
-        raise HTTPException(
-            status_code=401,
-            detail="用户凭证已失效，请重新登录",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise AuthenticationRevokedError("用户凭证已失效，请重新登录")
 
     # 4. 从 DB 取最新用户状态（经端口，core 不碰 user ORM）
     user = await resolver.get_user_for_auth(claims.user_id)
     if not user:
-        raise HTTPException(
-            status_code=401,
-            detail="用户不存在",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise AuthenticationError("用户不存在")
 
     # 5. 状态检查（is_active/is_deleted 由 user adapter 按 UserStatus 枚举计算）
     #    - 已删除：一律拒绝
     #    - 非活跃：仅系统管理员（role_code == 'admin'）放行
     if user.get("is_deleted"):
-        raise HTTPException(status_code=403, detail="用户已被删除")
+        raise AuthorizationError("用户已被删除")
     role_code = user.get("role_code")
     is_admin = role_code == "admin"
     if not user.get("is_active") and not is_admin:
-        raise HTTPException(status_code=403, detail="用户已被禁用")
+        raise AuthorizationError("用户已被禁用")
 
     # 6. 强制改密门禁：管理员重置过密码的用户，除豁免端点外一律拒绝
     #    （豁免端点由 request 路径判断；enforce 由依赖层控制，供可选认证跳过）
@@ -153,7 +142,7 @@ async def get_current_user(
         dict: 用户信息（id/username/email/role_code/is_admin/status/jti/must_change_password）
 
     Raises:
-        HTTPException: token 无效或用户被删除/禁用
+        AuthenticationError/AuthorizationError: 认证授权失败
         PasswordChangeRequiredError: 强制改密状态访问非豁免端点
     """
     user = await _resolve_user_from_token(
