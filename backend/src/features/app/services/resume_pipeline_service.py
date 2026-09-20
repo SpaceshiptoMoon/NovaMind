@@ -4,7 +4,6 @@
 
 from novamind.core.database.database import get_db_session
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.engines.prompt_provider_adapter import as_prompt_provider
 from novamind.engines.resume import AutoProbingEngine, ResumeAnalyzer, ResumeParser
 from novamind.features.app.adapters.host_fallback_llm_provider import (
     as_fallback_llm_provider,
@@ -13,6 +12,7 @@ from novamind.features.app.models.resume import ResumeSessionStatus
 from novamind.features.app.repository.resume_repository import ResumeSessionRepository
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.mq.task_tracker import is_resume_cancelled
+from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.search.web_search_factory import (
     build_web_search_port_from_yaml,
 )
@@ -55,7 +55,7 @@ class ResumePipelineService:
             repo = ResumeSessionRepository(db)
 
             # 装配 resume 引擎端口（宿主 -> 引擎端口实现）
-            prompt_provider = as_prompt_provider()
+            prompt_provider = PromptManager()
             engine_logger = get_logger("resume.engine").bind()
             web_search_port = build_web_search_port_from_yaml()
             fallback_llm_provider = as_fallback_llm_provider(bg_model_config_service)

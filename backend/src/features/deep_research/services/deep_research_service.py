@@ -379,11 +379,11 @@ class DeepResearchService:
         self.logger = get_logger(__name__)
 
         # A-2/A-3：核心研究机制（查询分析/任务分解/迭代检索/综合）委托无状态 DeepResearchEngine；
-        # prompt 经注入的 PromptProvider（HostPromptProvider 委托 PromptManager）取模板。
+        # prompt 经注入的 PromptManager 实例取模板（批次 2.3 起直用，不再经适配器）。
         from novamind.engines.deep_research import DeepResearchEngine
-        from novamind.engines.prompt_provider_adapter import as_prompt_provider
+        from novamind.shared.prompts.prompt_manager import PromptManager
 
-        self._prompt_provider = as_prompt_provider()
+        self._prompt_provider = PromptManager()
         self._engine = DeepResearchEngine(logger=self.logger)
 
     @property

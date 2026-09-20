@@ -21,8 +21,8 @@ pytestmark = pytest.mark.unit
 
 def test_duckduckgo_no_key_constructs():
     """duckduckgo 无 api_key 应构造成功（免费、无需 key）。"""
-    from novamind.engines.search_ports import (
-        WebSearchPort,
+    from novamind.engines.search_ports import WebSearchPort
+    from novamind.shared.search.web_search_factory import (
         build_web_search_port_from_provider,
     )
 
@@ -33,7 +33,7 @@ def test_duckduckgo_no_key_constructs():
 def test_tavily_no_key_raises_not_configured():
     """tavily 无 api_key 应抛 WebSearchProviderNotConfiguredError。"""
     from novamind.engines.search_errors import WebSearchProviderNotConfiguredError
-    from novamind.engines.search_ports import build_web_search_port_from_provider
+    from novamind.shared.search.web_search_factory import build_web_search_port_from_provider
 
     with pytest.raises(WebSearchProviderNotConfiguredError) as exc:
         build_web_search_port_from_provider("tavily", None, None)
@@ -43,7 +43,7 @@ def test_tavily_no_key_raises_not_configured():
 def test_serpapi_no_key_raises_not_configured():
     """serpapi 无 api_key 应抛 WebSearchProviderNotConfiguredError。"""
     from novamind.engines.search_errors import WebSearchProviderNotConfiguredError
-    from novamind.engines.search_ports import build_web_search_port_from_provider
+    from novamind.shared.search.web_search_factory import build_web_search_port_from_provider
 
     with pytest.raises(WebSearchProviderNotConfiguredError):
         build_web_search_port_from_provider("serpapi", None, None)
@@ -52,7 +52,7 @@ def test_serpapi_no_key_raises_not_configured():
 def test_unknown_provider_raises_not_configured():
     """未知 provider 应抛 WebSearchProviderNotConfiguredError。"""
     from novamind.engines.search_errors import WebSearchProviderNotConfiguredError
-    from novamind.engines.search_ports import build_web_search_port_from_provider
+    from novamind.shared.search.web_search_factory import build_web_search_port_from_provider
 
     with pytest.raises(WebSearchProviderNotConfiguredError):
         build_web_search_port_from_provider("bogus", "k", None)
@@ -60,8 +60,8 @@ def test_unknown_provider_raises_not_configured():
 
 def test_tavily_with_key_constructs():
     """tavily 带 api_key 应构造成功（service.is_available() 为 True）。"""
-    from novamind.engines.search_ports import (
-        WebSearchPort,
+    from novamind.engines.search_ports import WebSearchPort
+    from novamind.shared.search.web_search_factory import (
         build_web_search_port_from_provider,
     )
 

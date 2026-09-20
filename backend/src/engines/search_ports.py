@@ -80,22 +80,8 @@ class ProviderWebSearchPort:
         await close()  # type: ignore[misc]
 
 
-def build_web_search_port_from_provider(
-    provider: str,
-    api_key: str | None,
-    extra_config: dict | None = None,
-) -> WebSearchPort:
-    """转发 ``shared/search/web_search_factory``（批次 2.1 构造逻辑收敛后的唯一实现）。"""
-    from novamind.shared.search.web_search_factory import (
-        build_web_search_port_from_provider as _build,
-    )
-
-    return _build(provider, api_key, extra_config)
-
-
 __all__ = [
     "WebSearchResult",
     "WebSearchPort",
     "ProviderWebSearchPort",
-    "build_web_search_port_from_provider",
 ]

@@ -23,7 +23,6 @@ if TYPE_CHECKING:
     from novamind.shared.document.ports import DocumentIngestionPort
     from novamind.shared.retrieval_port import RetrievalPort
     from novamind.shared.storage.minio_client import MinioClient
-from novamind.engines.prompt_provider_adapter import HostPromptProvider
 from novamind.engines.search_ports import WebSearchPort
 from novamind.features.qa.exceptions import (
     InvalidMessageContentError,
@@ -36,7 +35,7 @@ from novamind.features.qa.schemas.qa import QARequest
 from novamind.features.qa.services.qa_service import QAService
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.model_config_ports import ModelConfigPort
-from novamind.shared.prompts.templates import PromptManager
+from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.search_config_ports import SearchConfigPort
 from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
 from novamind.shared.utils.heartbeat import stream_with_heartbeat_structured
@@ -112,7 +111,7 @@ class AIChatService:
         self._retrieval_port = retrieval_port
         self._document_ingestion_port = document_ingestion_port
         self._search_config_port = search_config_port
-        self._prompt_provider = HostPromptProvider()
+        self._prompt_provider = PromptManager()
 
     async def _get_llm_client(
         self,

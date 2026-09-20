@@ -16,8 +16,6 @@ from novamind.engines.eval import (
     GenerationEvaluator,
     RetrievalEvaluator,
 )
-from novamind.engines.ports import PromptProvider
-from novamind.engines.prompt_provider_adapter import as_prompt_provider
 from novamind.features.evaluation.exceptions import (
     EvaluationTaskNotCancellableError,
     EvaluationTaskNotCompletedError,
@@ -41,6 +39,7 @@ from novamind.features.evaluation.services.test_set_parser import parse_test_set
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.retrieval_port import RetrievalPort
 from novamind.shared.storage.minio_client import MinioClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,7 +49,7 @@ logger = get_logger(__name__)
 
 # 宿主侧端口实例：PromptProvider 包 PromptManager；Logger 复用 structlog BoundLogger。
 # 模块级构造一次，供所有后台评估任务注入 evaluator。
-_HOST_PROMPT_PROVIDER: PromptProvider = as_prompt_provider()
+_HOST_PROMPT_PROVIDER: PromptManager = PromptManager()
 _HOST_LOGGER: Logger = get_logger("evaluation.evaluators")
 
 MAX_ERROR_LENGTH = 2000

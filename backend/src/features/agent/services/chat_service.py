@@ -23,7 +23,6 @@ from novamind.features.agent.adapters import (
     HostKnowledgeSearchPort,
     HostMemorySearchPort,
     HostMemoryStorePort,
-    HostPromptProvider,
     HostWebSearchPort,
 )
 from novamind.features.agent.exceptions import AgentError, AgentNotFoundError
@@ -43,6 +42,7 @@ from novamind.features.agent.schemas.agent_schema import (
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
 from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -68,7 +68,7 @@ class AgentChatService:
         knowledge_search_port: HostKnowledgeSearchPort | None = None,
         attachment_read_port: Any | None = None,
         web_search_port: HostWebSearchPort | None = None,
-        prompt_provider: HostPromptProvider | None = None,
+        prompt_provider: PromptManager | None = None,
     ):
         self.db = db
         self.agent_service = agent_service
@@ -410,7 +410,7 @@ class AgentChatService:
         conversation_id: int,
         memory_store: HostMemoryStorePort,
         memory_search: HostMemorySearchPort | None,
-        prompt_provider: HostPromptProvider,
+        prompt_provider: PromptManager,
     ) -> MemoryManager:
         """创建请求级 MemoryManager 实例（端口由 chat_stream 注入）"""
         async def llm_factory():

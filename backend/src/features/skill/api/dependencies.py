@@ -7,7 +7,6 @@ import pathlib
 from fastapi import Depends
 from novamind.core.database.database import get_db
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.engines.prompt_provider_adapter import as_prompt_provider
 from novamind.features.agent.adapters.agent_registry_adapter import as_agent_registry_port
 from novamind.features.knowledge_space.api.dependencies import get_current_user_id
 from novamind.features.notification.adapters.notification_port_adapter import as_notification_port
@@ -16,6 +15,7 @@ from novamind.features.skill.services.skill_marketplace_service import SkillMark
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.setting.yaml_config.loader import get_config_value
 from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.storage.client_factory import get_minio_client
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -110,7 +110,7 @@ async def get_skill_service(
     llm_client = await _get_review_llm_client(user_id, model_config_service) if enabled else None
     checker = SkillSecurityChecker(
         llm_client=llm_client,
-        prompt_provider=as_prompt_provider(),
+        prompt_provider=PromptManager(),
         logger=get_logger("skill.security_checker").bind(),
     )
 

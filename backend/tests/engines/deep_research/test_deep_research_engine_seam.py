@@ -465,8 +465,7 @@ def test_web_search_result_has_optional_content_and_score():
 def test_prompt_keys_resolvable_via_prompt_provider():
     """7 prompt key 经注入 PromptProvider.format 可解析（防 key 漂移）。
 
-    注册 deep_research prompts 模板（幂等）后，as_prompt_provider() 返回的 HostPromptProvider
-    应能解析 KEY_ANALYZE_QUERY/KEY_PLAN/KEY_SYNTHESIZE_REPORT/
+    注册 deep_research prompts 模板（幂等）后，PromptManager 实例应能解析 KEY_ANALYZE_QUERY/KEY_PLAN/KEY_SYNTHESIZE_REPORT/
     KEY_SYNTHESIZE_REPORT_STREAM/KEY_GENERATE_QUERY/KEY_TASK_FINDING/KEY_PROCESSING_STEP。
     """
     from novamind.engines.deep_research.engine import (
@@ -478,12 +477,11 @@ def test_prompt_keys_resolvable_via_prompt_provider():
         KEY_SYNTHESIZE_REPORT_STREAM,
         KEY_TASK_FINDING,
     )
-    from novamind.engines.prompt_provider_adapter import as_prompt_provider
     from novamind.features.deep_research.deep_research_prompts import TEMPLATES as DR_TEMPLATES
     from novamind.shared.prompts.prompt_manager import PromptManager
 
     PromptManager.register(DR_TEMPLATES)  # 幂等：重复注册同一份无副作用
-    provider = as_prompt_provider()
+    provider = PromptManager()
     # 各模板所需参数最少集（format 不抛 KeyError 即通过）
     provider.format(KEY_ANALYZE_QUERY, query="q")
     provider.format(

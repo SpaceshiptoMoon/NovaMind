@@ -113,14 +113,12 @@ def test_probe_all_no_bg_db_param():
     assert "bg_db" not in params
 
 
-def test_host_prompt_provider_satisfies_protocol():
-    """app HostPromptProvider 实现 PromptProvider 协议。"""
-    from novamind.engines.ports import PromptProvider
-    from novamind.engines.prompt_provider_adapter import HostPromptProvider
+def test_prompt_manager_direct_use_satisfies_engine_surface():
+    """批次 2.3：装配点直用 PromptManager 实例（.get/.format 满足引擎消费面）。"""
+    from novamind.shared.prompts.prompt_manager import PromptManager
 
-    provider = HostPromptProvider()
-    assert isinstance(provider, PromptProvider)
-    # 用真实存在的 resume prompt 键验证 format 委托 PromptManager
+    provider = PromptManager()
+    # 用真实存在的 resume prompt 键验证 format 可用
     formatted = provider.format("resume_summary", resume_data="测试简历")
     assert isinstance(formatted, str)
     assert len(formatted) > 0
@@ -153,8 +151,8 @@ def test_web_search_adapter_lives_in_deep_research():
     from novamind.features.deep_research.adapters import web_search_port_adapter as adapter_mod
 
     assert hasattr(adapter_mod, "HostWebSearchPort")
-    assert hasattr(adapter_mod, "build_web_search_port")
     assert hasattr(adapter_mod, "as_web_search_port")
+    # 批次 2.1：build_web_search_port* 构造逻辑收敛 shared/search/web_search_factory
 
     # adapter 桥接到 deep_research.services（intra-feature，允许）
     imported = _imported_modules(adapter_mod)
@@ -164,12 +162,11 @@ def test_web_search_adapter_lives_in_deep_research():
 
 
 def test_agent_web_search_adapter_reexports():
-    """agent/adapters/web_search_adapter.py 重导出 deep_research 适配器（批次3 零改动）。"""
+    """批次 2.1 后 agent adapter 薄转发共享工厂的 resolve。"""
     from novamind.features.agent.adapters import web_search_adapter as agent_adapter
-    from novamind.features.deep_research.adapters import web_search_port_adapter as dr_adapter
+    from novamind.shared.search import web_search_factory
 
-    assert agent_adapter.HostWebSearchPort is dr_adapter.HostWebSearchPort
-    assert agent_adapter.build_web_search_port is dr_adapter.build_web_search_port
+    assert agent_adapter.resolve_web_search_port is web_search_factory.resolve_web_search_port
 
 
 def test_agent_core_ports_reexports_web_search_port():
@@ -204,10 +201,10 @@ def test_resume_pipeline_service_assembles_ports():
     from novamind.features.app.services import resume_pipeline_service as svc_mod
 
     imported = _imported_modules(svc_mod)
-    # 装配点 import 端口适配器
-    assert any("prompt_provider_adapter" in imp for imp in imported), "应 import prompt_provider_adapter"
-    assert any("host_fallback_llm_provider" in imp for imp in imported), "应 import host_fallback_llm_provider"
-    assert any("web_search_port_adapter" in imp for imp in imported), "应 import web_search_port_adapter"
+    # 批次 2.1/2.3 后装配点 import：PromptManager 直用 + 共享 web 搜索工厂
+    assert any("prompt_manager" in imp for imp in imported), "应 import prompt_manager"
+    assert any("host_fallback_llm_provider" in imp for imp in imported), "应 import host_fallback_llm_provider（批次 3.3 处置）"
+    assert any("web_search_factory" in imp for imp in imported), "应 import web_search_factory"
 
     src = inspect.getsource(svc_mod)
     assert "prompt_provider=prompt_provider" in src

@@ -10,7 +10,6 @@ from novamind.engines.agent.agent_engine import AgentEngine
 from novamind.engines.agent.mcp.client import McpClientManager
 from novamind.engines.agent.memory.todo_store import TodoStore
 from novamind.engines.agent.tool.registry import ToolRegistry
-from novamind.engines.prompt_provider_adapter import as_prompt_provider
 from novamind.features.agent.adapters import (
     HostAttachmentReadPort,
     HostKnowledgeSearchPort,
@@ -22,6 +21,7 @@ from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.agent.services.chat_service import AgentChatService
 from novamind.features.agent.services.mcp_server_service import McpServerService
 from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.search.web_search_factory import resolve_web_search_port
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -119,7 +119,7 @@ async def _build_agent_chat_service(
     )
     knowledge_search_port = HostKnowledgeSearchPort(db, model_config_service)
     attachment_read_port = HostAttachmentReadPort(db)
-    prompt_provider = as_prompt_provider()
+    prompt_provider = PromptManager()
 
     # web_search_port：按数据库用户默认搜索引擎（is_primary）构造，首选失败回退 YAML 兜底
     from novamind.features.user.adapters.search_config_port_adapter import as_search_config_port

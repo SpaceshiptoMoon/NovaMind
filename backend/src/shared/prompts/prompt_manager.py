@@ -43,6 +43,14 @@ class PromptManager:
         except KeyError as e:
             raise ValueError(f"模板 '{template_name}' 缺少参数: {e}") from None
 
+    # 实例方法（引擎消费面统一走 .get()/.format()；批次 2.3 起消费引擎直收
+    # PromptManager 实例，不再经 HostPromptProvider 适配器）
+    def get(self, key: str) -> str:
+        return self.get_template(key)
+
+    def format(self, key: str, **kwargs: str) -> str:
+        return self.format_prompt(key, **kwargs)
+
 
 # 便捷函数
 def get_prompt(template_name: str) -> str:
