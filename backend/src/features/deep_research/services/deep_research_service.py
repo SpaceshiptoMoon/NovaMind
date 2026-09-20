@@ -59,10 +59,8 @@ from novamind.features.deep_research.schemas.research_schema import (
 from novamind.features.deep_research.services.plan_feedback_registry import (
     DECISION_ACCEPTED,
 )
-from novamind.features.knowledge_space.adapters.retrieval_adapter import HostRetrievalPort
 from novamind.features.knowledge_space.services.search_service import SearchService
 from novamind.shared.model_config_ports import ModelConfigPort
-from novamind.shared.retrieval_port import RetrievalPort
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -367,7 +365,7 @@ class DeepResearchService:
         self._es_client = es_client
         self._model_config_service = model_config_service
         self._search_service = search_service
-        self._search_port: RetrievalPort | None = None
+        self._search_service_lazy: SearchService | None = None
         # A-3：web_search_port 按请求 provider 构造（build_web_search_port_for_provider），
         # 在 cleanup() 关闭。每请求一个 DeepResearchService 实例（见 api/dependencies）。
         self._web_search_port: Any | None = None
@@ -387,30 +385,27 @@ class DeepResearchService:
         self._engine = DeepResearchEngine(logger=self.logger)
 
     @property
-    def search_port(self) -> RetrievalPort:
-        """延迟获取检索端口（HostRetrievalPort 包 SearchService）。
+    def search_service_lazy(self) -> SearchService:
+        """延迟获取检索服务（批次 3.4：直持 SearchService，不再包 RetrievalPort）。
 
-        批次 2 接缝：本服务依赖 RetrievalPort 抽象而非直接依赖 SearchService。
-        构造函数中不调用异步工厂；若调用方传入 SearchService 则包为 HostRetrievalPort，
-        否则按需构造 SearchService(self.session, es_client, model_config_service) 再包。
+        构造函数中不调用异步工厂；若调用方传入 SearchService 则直接复用，
+        否则按需构造 SearchService(self.session, es_client, model_config_service)。
         """
-        if self._search_port is None:
+        if self._search_service_lazy is None:
             if self._search_service is not None:
-                self._search_port = HostRetrievalPort(self._search_service)
+                self._search_service_lazy = self._search_service
             else:
                 if self._es_client is None:
                     raise RuntimeError(
                         "DeepResearchService 需要通过 es_client 参数传入 Elasticsearch 客户端，"
                         "请使用依赖注入方式创建实例"
                     )
-                self._search_port = HostRetrievalPort(
-                    SearchService(
-                        self.session,
-                        es_client=self._es_client,
-                        model_config_service=self._model_config_service,
-                    )
+                self._search_service_lazy = SearchService(
+                    self.session,
+                    es_client=self._es_client,
+                    model_config_service=self._model_config_service,
                 )
-        return self._search_port
+        return self._search_service_lazy
 
     async def cleanup(self) -> None:
         """清理外部数据源资源（关闭按请求构造的 web 适配器，含多次构造）"""
@@ -636,7 +631,7 @@ class DeepResearchService:
         )
         from novamind.features.deep_research.adapters.source_registry import source_registry
 
-        deps = {"retrieval_port": self.search_port, "session": self.session, "logger": self.logger}
+        deps = {"search_service": self.search_service_lazy, "session": self.session, "logger": self.logger}
         internal_cfg = ctx.params.internal_config
         external_cfg = ctx.params.external_config
         bindings = []
@@ -705,7 +700,7 @@ class DeepResearchService:
             await self._create_research_session(ctx)
             # DR-1: 提前触发 search_service 初始化，尽早暴露 ES 配置问题
             if "internal" in self._enabled_source_types(ctx):
-                _ = self.search_port
+                _ = self.search_service_lazy
             await self._analyze_and_save_topic(ctx)
             await self._plan_phase(ctx, feedback_registry=None, emit=None)
             await self._execute_research_search(ctx)
@@ -766,7 +761,7 @@ class DeepResearchService:
             await self._create_research_session(ctx)
             # DR-1: 提前触发 search_service 初始化，尽早暴露 ES 配置问题
             if "internal" in self._enabled_source_types(ctx):
-                _ = self.search_port
+                _ = self.search_service_lazy
 
             # 1. 分析查询
             yield self._emit("progress", {

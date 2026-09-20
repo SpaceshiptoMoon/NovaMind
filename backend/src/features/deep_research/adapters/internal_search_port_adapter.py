@@ -1,6 +1,6 @@
 """InternalSearchPort 宿主适配器。
 
-引擎 ``DeepResearchEngine.search`` 经 ``InternalSearchPort`` 调宿主多租户 KB 检索，
+引擎 ``DeepResearchEngine.search`` 经本宿主类调多租户 KB 检索（批次 3.4 去 Protocol，直收 SearchService），
 切断引擎对 ORM/setting/knowledge_space 的依赖。本适配器下沉所有跨 feature / ORM import
 （``knowledge_space`` models/schemas/repository、``KnowledgeBaseStatus``、
 ``SearchRequest``/``WeightConfig``/``RerankConfig``/``SearchMode``），引擎层零宿主依赖。
@@ -9,7 +9,6 @@
 """
 from typing import Any
 
-from novamind.engines.deep_research.ports import InternalSearchPort
 from novamind.engines.deep_research.sources import (
     SearchSourceContext,
     SearchSourcePort,
@@ -27,11 +26,11 @@ from novamind.features.knowledge_space.schemas.search_schema import (
     SearchRequest,
     WeightConfig,
 )
-from novamind.shared.retrieval_port import RetrievalPort
+from novamind.features.knowledge_space.services.search_service import SearchService
 
 
 class HostInternalSearchPort:
-    """``InternalSearchPort`` 宿主实现：委托 ``RetrievalPort``（包 SearchService）做
+    """``InternalSearchPort`` 宿主实现：委托 ``SearchService``（包 SearchService）做
     多租户 KB 检索，归一化结果为统一 dict 形状（与引擎纯函数及 feature 持久化一致）。
 
     体等价于原 ``DeepResearchService._execute_internal_search``：按 ``space_id`` 过滤
@@ -41,7 +40,7 @@ class HostInternalSearchPort:
 
     def __init__(
         self,
-        search_port: RetrievalPort,
+        search_port: "SearchService",
         kb_repo: KnowledgeBaseRepository,
         space_id: int,
         user_id: int,
@@ -139,14 +138,14 @@ class HostInternalSearchPort:
 
 
 def as_internal_search_port(
-    search_port: RetrievalPort,
+    search_port: SearchService,
     kb_repo: KnowledgeBaseRepository,
     space_id: int,
     user_id: int,
     internal_config: InternalSearchConfig,
     logger: object | None = None,
-) -> InternalSearchPort:
-    """构造 InternalSearchPort 实例（供装配点注入引擎）。"""
+) -> HostInternalSearchPort:
+    """构造内部检索宿主实例（供装配点注入引擎）。"""
     return HostInternalSearchPort(  # type: ignore[return-value]
         search_port=search_port,
         kb_repo=kb_repo,
@@ -161,8 +160,8 @@ def build_internal_source(context: SearchSourceContext) -> SearchSourcePort:
     """内部知识库数据源注册表工厂：ctx → HostInternalSearchPort。
 
     - ``ctx.config``：InternalSearchConfig dump（kb_ids/search_mode/top_k/...）
-    - ``ctx.deps``：宿主依赖容器，须含 ``retrieval_port``（service 装配点延迟构造的
-      RetrievalPort）与可选 ``kb_repo``（缺省自建 KnowledgeBaseRepository）及 ``logger``
+    - ``ctx.deps``：宿主依赖容器，须含 ``search_service``（service 装配点延迟构造的
+      SearchService）与可选 ``kb_repo``（缺省自建 KnowledgeBaseRepository）及 ``logger``
     - HostInternalSearchPort.search 签名与统一 ``SearchSourcePort`` 同形，天然满足
     """
     config = InternalSearchConfig(**(context.config or {}))
@@ -170,7 +169,7 @@ def build_internal_source(context: SearchSourceContext) -> SearchSourcePort:
         context.deps["session"]
     )
     return as_internal_search_port(
-        search_port=context.deps["retrieval_port"],
+        search_port=context.deps["search_service"],
         kb_repo=kb_repo,
         space_id=context.space_id,
         user_id=context.user_id,

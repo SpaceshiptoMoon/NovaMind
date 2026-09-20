@@ -36,9 +36,9 @@ from novamind.engines.deep_research.types import (
     TaskFinding,
     TaskStarted,
 )
-from novamind.engines.ports import PromptProvider
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.logging import Logger
+from novamind.shared.prompts.prompt_manager import PromptManager
 
 # 结果充分性阈值常量
 SUFFICIENT_RESULT_COUNT = 10  # 结果数量阈值
@@ -55,7 +55,7 @@ BACKGROUND_RESULT_SNIPPET_CHARS = 500
 # Plan 执行结果回填截断长度（持久化前）
 EXECUTION_RES_MAX_CHARS = 1000
 
-# Prompt key 常量（防 key 漂移；模板留 feature 侧 deep_research_prompts.py，经 PromptProvider 解析）
+# Prompt key 常量（防 key 漂移；模板留 feature 侧 deep_research_prompts.py，经 PromptManager 解析）
 KEY_ANALYZE_QUERY = "research_analyze_query"
 KEY_PLAN = "research_plan"
 KEY_PROCESSING_STEP = "research_processing_step"
@@ -347,7 +347,7 @@ class DeepResearchEngine:
     async def analyze_query(
         self,
         llm_client: BaseLLM,
-        prompt_provider: PromptProvider,
+        prompt_provider: PromptManager,
         query: str,
     ) -> str:
         """分析查询，提取研究主题（接已 sanitize 的 query）。"""
@@ -363,7 +363,7 @@ class DeepResearchEngine:
     async def analyze_plan(
         self,
         llm_client: BaseLLM,
-        prompt_provider: PromptProvider,
+        prompt_provider: PromptManager,
         *,
         query: str,
         topic: str,
@@ -435,7 +435,7 @@ class DeepResearchEngine:
     async def synthesize_report(
         self,
         llm_client: BaseLLM,
-        prompt_provider: PromptProvider,
+        prompt_provider: PromptManager,
         *,
         query: str,
         research_topic: str,
@@ -481,7 +481,7 @@ class DeepResearchEngine:
     async def synthesize_report_stream(
         self,
         llm_client: BaseLLM,
-        prompt_provider: PromptProvider,
+        prompt_provider: PromptManager,
         *,
         query: str,
         research_topic: str,
@@ -527,7 +527,7 @@ class DeepResearchEngine:
         params: EngineResearchParams,
         logger: Logger | None = None,
         llm_client: BaseLLM | None = None,
-        prompt_provider: PromptProvider | None = None,
+        prompt_provider: PromptManager | None = None,
     ) -> AsyncIterator[SearchEvent]:
         """迭代检索循环（AsyncIterator[SearchEvent]），流式与非流式共用。
 
@@ -694,7 +694,7 @@ class DeepResearchEngine:
     async def _run_processing_step(
         self,
         llm_client: BaseLLM,
-        prompt_provider: PromptProvider,
+        prompt_provider: PromptManager,
         *,
         task_description: str,
         step_title: str,
@@ -730,7 +730,7 @@ class DeepResearchEngine:
     async def _reflect_and_generate_query(
         self,
         llm_client: BaseLLM,
-        prompt_provider: PromptProvider,
+        prompt_provider: PromptManager,
         *,
         task_description: str,
         task_query: str,
@@ -772,7 +772,7 @@ class DeepResearchEngine:
     async def _generate_task_finding(
         self,
         llm_client: BaseLLM,
-        prompt_provider: PromptProvider,
+        prompt_provider: PromptManager,
         *,
         task_description: str,
         observations: list[Any],

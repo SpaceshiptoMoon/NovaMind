@@ -116,7 +116,7 @@ def test_custom_registry_isolated():
 def test_internal_source_factory_builds_protocol_satisfying_port():
     """internal 工厂经 ctx.deps 注入依赖，产出满足 SearchSourcePort 的 port。"""
     deps = {
-        "retrieval_port": _FakeRetrievalPort(),
+        "search_service": _FakeRetrievalPort(),
         "session": object(),
         "kb_repo": _FakeKBRepo(),
         "logger": None,
@@ -304,7 +304,7 @@ def test_build_source_bindings_extra_source_independent_top_k():
     # 直接测 _build_source_bindings 的 top_k 计算逻辑（service 依赖 stub 化）
     service = DeepResearchService.__new__(DeepResearchService)
     service.session = object()
-    service._search_port = object()  # 预置避免 property 走真实 SearchService 构造
+    service._search_service_lazy = object()  # 预置避免 property 走真实 SearchService 构造
     service.logger = None
     service._web_source_adapters = []
 
