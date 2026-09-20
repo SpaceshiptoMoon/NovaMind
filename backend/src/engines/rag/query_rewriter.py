@@ -138,6 +138,6 @@ class QueryRewriter:
                 prompt=prompt, max_tokens=512, temperature=0.3,
             )
         except Exception as e:
-            from novamind.core.middleware.structured_logging import get_logger
-            get_logger(__name__).warning("QueryRewriter LLM 调用失败", error=str(e))
+            import logging
+            logging.getLogger(__name__).warning("QueryRewriter LLM 调用失败", error=str(e))
             return None

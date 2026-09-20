@@ -1,7 +1,6 @@
 """
 启动管理器，负责应用启动和关闭时的组件管理。
 """
-import os
 import time
 from contextlib import asynccontextmanager
 
@@ -23,106 +22,13 @@ logger = get_logger(__name__)
 def _import_models() -> None:
     """动态导入所有业务模型，确保在创建表之前注册到 SQLAlchemy metadata。
 
-    遍历各 feature manifest 的 `models_loader`；legacy 路径
-    （`NOVAMIND_LEGACY_MANIFEST=1`）走 `_import_models_legacy` 硬编码导入。
+    遍历各 feature manifest 的 `models_loader`（批次 6.2：legacy 双路径已删，
+    manifest 为唯一路径）。
     """
-    if os.getenv("NOVAMIND_LEGACY_MANIFEST") == "1":
-        _import_models_legacy()
-        return
     for m in get_sorted_manifests():
         if not m.enabled or m.models_loader is None:
             continue
         m.models_loader()
-
-
-# ==================== legacy 硬编码路径（回滚用） ====================
-
-# 功能模块初始化注册表（legacy）
-_feature_initializers = []
-
-
-def register_feature_initializer(init_func):
-    """注册功能模块初始化函数（legacy）"""
-    _feature_initializers.append(init_func)
-
-
-# 注册已知的功能模块（统一接受 app 参数，legacy）
-async def _init_user(app):
-    """用户模块初始化（legacy，不使用 app 参数）"""
-    from novamind.features.user.api.startup import init_user_components
-    await init_user_components()
-
-
-register_feature_initializer(_init_user)
-
-
-async def _init_knowledge_space(app):
-    """知识空间模块初始化（legacy）"""
-    from novamind.features.knowledge_space.api.startup import init_knowledge_space_components
-    await init_knowledge_space_components(app)
-
-
-register_feature_initializer(_init_knowledge_space)
-
-
-async def _init_agent(app):
-    """Agent 模块初始化（legacy）"""
-    from novamind.features.agent.api.startup import init_agent_components
-    await init_agent_components(app)
-
-
-register_feature_initializer(_init_agent)
-
-
-async def _init_notification(app):
-    """通知模块初始化（legacy）"""
-    from novamind.features.notification.api.startup import init_notification_components
-    await init_notification_components(app)
-
-
-register_feature_initializer(_init_notification)
-
-
-def _import_models_legacy() -> None:
-    """动态导入所有业务模型（legacy 硬编码，回滚用）"""
-    from novamind.features.agent.models.agent import AgentDefinition  # noqa: F401
-    from novamind.features.agent.models.context_summary import AgentContextSummary  # noqa: F401
-    from novamind.features.agent.models.mcp_server import AgentMcpServer  # noqa: F401
-    from novamind.features.agent.models.memory import AgentMemory  # noqa: F401
-    from novamind.features.agent.models.message import AgentMessage  # noqa: F401
-    from novamind.features.agent.models.session import AgentSession  # noqa: F401
-    from novamind.features.agent.models.tool_call import AgentToolCall  # noqa: F401
-    from novamind.features.app.models.resume import ResumeSession  # noqa: F401
-    from novamind.features.deep_research.models.research_session import (
-        ResearchSession,  # noqa: F401
-    )
-    from novamind.features.evaluation.models.evaluation_task import (  # noqa: F401
-        EvaluationTask,
-        EvaluationTestSet,
-    )
-    from novamind.features.knowledge_space.models.document import Document  # noqa: F401
-    from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase  # noqa: F401
-    from novamind.features.knowledge_space.models.knowledge_space import (
-        KnowledgeSpace,  # noqa: F401
-    )
-    from novamind.features.knowledge_space.models.space_audit_log import SpaceAuditLog  # noqa: F401
-    from novamind.features.knowledge_space.models.space_member import SpaceMember  # noqa: F401
-    from novamind.features.notification.models.notification import Notification  # noqa: F401
-    from novamind.features.notification.models.notification_preference import (
-        NotificationPreference,  # noqa: F401
-    )
-    from novamind.features.qa.models.question_answer import QuestionAnswer  # noqa: F401
-    from novamind.features.qa.models.session_config import SessionConfig  # noqa: F401
-    from novamind.features.qa.models.session_summary import SessionSummary  # noqa: F401
-    from novamind.features.skill.models.skill import (  # noqa: F401
-        SkillDefinition,
-        SkillInstallation,
-        SkillReview,
-        SkillVersion,
-    )
-    from novamind.features.user.models.user import User  # noqa: F401
-    from novamind.features.user.models.user_disabled_app import UserDisabledApp  # noqa: F401
-    from novamind.features.user.models.user_model_config import UserModelConfig  # noqa: F401
 
 
 class AppLifespanManager:
@@ -372,14 +278,8 @@ class AppLifespanManager:
 
         默认遍历 `get_sorted_manifests()`，对每个有 `init_hook` 的 enabled manifest
         按拓扑序调用，日志呈现拓扑顺序（如 user→knowledge_space→agent→
-        notification）。`NOVAMIND_LEGACY_MANIFEST=1` 时回滚到旧的
-        `_feature_initializers` 注册序。
+        notification）。批次 6.2：legacy 双路径已删，manifest 为唯一路径。
         """
-        if os.getenv("NOVAMIND_LEGACY_MANIFEST") == "1":
-            for init_func in _feature_initializers:
-                await init_func(app)
-            self.logger.info("各功能模块初始化完成（legacy）")
-            return
         for m in get_sorted_manifests():
             if not m.enabled or m.init_hook is None:
                 continue

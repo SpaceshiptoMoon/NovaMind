@@ -9,7 +9,6 @@ from typing import Any
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import get_logger
 from novamind.shared.prompts.templates import PromptManager
-
 from novamind.shared.utils.text_utils.token_counter import TokenCounter
 
 
