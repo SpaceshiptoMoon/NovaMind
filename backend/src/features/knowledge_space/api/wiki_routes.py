@@ -20,10 +20,8 @@ from novamind.features.knowledge_space.api.dependencies import (
 from novamind.features.knowledge_space.exceptions import (
     KnowledgeBaseNotFoundError,
     WikiPageNotFoundError,
-    WikiPageVersionConflictError,
 )
 from novamind.features.knowledge_space.models.wiki import (
-    WikiEditSource,
     WikiIngestStatus,
     WikiPage,
     WikiPageStatus,
@@ -282,41 +280,13 @@ async def create_page(
     _kb=Depends(validate_kb_writable),
     db: AsyncSession = Depends(get_db),
 ):
-    from novamind.features.knowledge_space.services.wiki_slug import normalize_slug
+    from novamind.features.knowledge_space.services.wiki_page_service import WikiPageService
 
-    slug = normalize_slug(body.slug)
-    if not slug:
-        from novamind.features.knowledge_space.exceptions import InvalidParameterError
-
-        raise InvalidParameterError("slug 清洗后为空", field="slug")
-    if body.page_type not in _ALLOWED_CREATE_TYPES:
-        from novamind.features.knowledge_space.exceptions import InvalidParameterError
-
-        raise InvalidParameterError(f"page_type 须为 {sorted(_ALLOWED_CREATE_TYPES)}，summary 页由管道管理", field="page_type")
-
-    repo = WikiPageRepository(db)
-    existing = await repo.get_by_slug(kb_id, slug)
-    if existing:
-        from novamind.features.knowledge_space.exceptions import InvalidParameterError
-
-        raise InvalidParameterError(f"slug {slug} 已存在", field="slug")
-    page, _created = await repo.upsert_with_snapshot(
-        kb_id, slug,
-        space_id=space_id,
-        title=body.title,
-        content=body.content,
-        summary=body.summary,
-        page_type=body.page_type,
-        aliases=body.aliases,
-        category_path=body.category_path,
-        source_refs=[],
-        chunk_refs=[],
-        edit_source=WikiEditSource.USER,
-        editor_id=user_id,
-        link_slugs=[],
+    return await WikiPageService(db).create_page(
+        space_id=space_id, kb_id=kb_id, slug_raw=body.slug, title=body.title,
+        content=body.content, summary=body.summary, page_type=body.page_type,
+        aliases=body.aliases, category_path=body.category_path, user_id=user_id,
     )
-    await db.commit()
-    return page
 
 
 @router.put("/pages/{slug:path}", response_model=WikiPageResponse, summary="更新页面（乐观锁）")
@@ -330,38 +300,15 @@ async def update_page(
     _kb=Depends(validate_kb_writable),
     db: AsyncSession = Depends(get_db),
 ):
-    repo = WikiPageRepository(db)
-    page = await repo.get_by_slug(kb_id, slug)
-    if not page:
-        raise WikiPageNotFoundError(slug)
-    if body.status is not None and body.status not in _ALLOWED_STATUSES:
-        from novamind.features.knowledge_space.exceptions import InvalidParameterError
+    from novamind.features.knowledge_space.services.wiki_page_service import WikiPageService
 
-        raise InvalidParameterError(f"status 须为 {sorted(_ALLOWED_STATUSES)}", field="status")
-    if body.page_type is not None and body.page_type not in (WikiPageType.SUMMARY, *_ALLOWED_CREATE_TYPES):
-        from novamind.features.knowledge_space.exceptions import InvalidParameterError
-
-        raise InvalidParameterError("page_type 不合法", field="page_type")
-
-    try:
-        await repo.update_page_with_lock(
-            page,
-            title=body.title,
-            content=body.content,
-            summary=body.summary,
-            page_type=body.page_type,
-            status=body.status,
-            aliases=body.aliases,
-            category_path=body.category_path,
-            edit_source=WikiEditSource.USER,
-            editor_id=user_id,
-            expected_version=body.version,
-        )
-    except WikiPageVersionConflictError:
-        await db.rollback()
-        raise
-    await db.commit()
-    return page
+    return await WikiPageService(db).update_page(
+        kb_id=kb_id, slug=slug,
+        body_title=body.title, body_content=body.content, body_summary=body.summary,
+        body_page_type=body.page_type, body_status=body.status,
+        body_aliases=body.aliases, body_category_path=body.category_path,
+        expected_version=body.version, user_id=user_id,
+    )
 
 
 @router.delete("/pages/{slug:path}", status_code=204, summary="软删页面")
@@ -374,14 +321,9 @@ async def delete_page(
     _kb=Depends(validate_kb_writable),
     db: AsyncSession = Depends(get_db),
 ):
-    repo = WikiPageRepository(db)
-    page = await repo.get_by_slug(kb_id, slug)
-    if not page:
-        raise WikiPageNotFoundError(slug)
-    await repo.soft_delete_page(page)
-    # Finalize 语义：清理指向被删页面的死链 + 重对齐 in_links
-    await _finalize_links(repo, kb_id)
-    await db.commit()
+    from novamind.features.knowledge_space.services.wiki_page_service import WikiPageService
+
+    await WikiPageService(db).delete_page(kb_id=kb_id, slug=slug)
     return None
 
 
@@ -480,23 +422,14 @@ async def revert_page(
     _kb=Depends(validate_kb_writable),
     db: AsyncSession = Depends(get_db),
 ):
-    from novamind.features.knowledge_space.exceptions import InvalidParameterError
+    from novamind.features.knowledge_space.services.wiki_page_service import WikiPageService
 
-    repo = WikiPageRepository(db)
-    page = await repo.get_by_slug(kb_id, body.slug)
-    if not page:
-        raise WikiPageNotFoundError(body.slug)
-    if body.version == page.version:
-        raise InvalidParameterError("回滚目标即当前版本，无需回滚", field="version")
-    revision = await repo.get_revision(page.id, body.version)
-    if not revision:
-        raise WikiPageNotFoundError(f"{body.slug}@v{body.version}")
-
-    new_version = await repo.revert_page(page, revision, editor_id=user_id)
-    await db.commit()
+    page, reverted_to, new_version = await WikiPageService(db).revert_page(
+        kb_id=kb_id, slug=body.slug, version=body.version, user_id=user_id
+    )
     return WikiRevertResponse(
         slug=page.slug,
-        reverted_to_version=body.version,
+        reverted_to_version=reverted_to,
         new_version=new_version,
     )
 
@@ -511,38 +444,11 @@ async def rebuild_wiki(
     _kb=Depends(validate_kb_writable),
     db: AsyncSession = Depends(get_db),
 ):
-    """对 KB 内已完成解析的文档逐个入队 wiki 生成。
+    from novamind.features.knowledge_space.services.wiki_page_service import WikiPageService
 
-    document_ids 缺省时遍历 KB 全部文档（有 parsed_text 的才真正入队）。
-    """
-    from novamind.features.knowledge_space.tasks.wiki_tasks import enqueue_wiki_ingest
-
-    doc_repo = DocumentRepository(db)
-    if body.document_ids:
-        documents = [d for d in await doc_repo.get_by_ids(body.document_ids)
-                     if d and d.kb_id == kb_id]
-    else:
-        from novamind.features.knowledge_space.models.document import Document
-        from sqlalchemy import select
-
-        result = await db.execute(
-            select(Document).where(
-                Document.kb_id == kb_id, Document.deleted_at.is_(None)
-            ).limit(500)
-        )
-        documents = list(result.scalars().all())
-
-    enqueued = 0
-    for document in documents:
-        if not (document.get_storage_info() or {}).get("parsed_text_object"):
-            continue  # 未完成解析的文档跳过
-        try:
-            await enqueue_wiki_ingest(kb_id=kb_id, space_id=space_id, document_id=document.id)
-            enqueued += 1
-        except Exception as e:
-            logger.warning("wiki 补算入队失败", document_id=document.id, error=str(e))
-    await db.commit()
-    return {"enqueued": enqueued, "candidates": len(documents)}
+    return await WikiPageService(db).rebuild_wiki(
+        space_id=space_id, kb_id=kb_id, document_ids=body.document_ids
+    )
 
 # ==================== 图谱 / lint 闭环（P3） ====================
 
@@ -559,79 +465,14 @@ async def get_graph(
     _access: tuple = Depends(validate_space_access),
     db: AsyncSession = Depends(get_db),
 ):
-    from collections import deque
-
-    from novamind.features.knowledge_space.exceptions import InvalidParameterError
-    from novamind.features.knowledge_space.schemas.wiki_schema import (
-        WikiGraphEdge,
-        WikiGraphMeta,
-        WikiGraphNode,
+    from novamind.features.knowledge_space.services.wiki_graph_service import (
+        WikiGraphService,
     )
 
-    await _get_kb_or_404(kb_id, space_id, db)
-    pages = await WikiPageRepository(db).all_live_pages(kb_id)
-
-    if mode == "ego":
-        if not center:
-            raise InvalidParameterError("ego 模式必须提供 center slug", field="center")
-        slug_map = {p.slug: p for p in pages}
-        if center not in slug_map:
-            raise WikiPageNotFoundError(center)
-        # BFS 收集邻域
-        visited = {center}
-        queue = deque([(center, 0)])
-        while queue:
-            slug, d = queue.popleft()
-            if d >= depth:
-                continue
-            page = slug_map.get(slug)
-            if not page:
-                continue
-            neighbors = set(page.out_links or []) | set(page.in_links or [])
-            for n in neighbors:
-                if n in slug_map and n not in visited:
-                    visited.add(n)
-                    queue.append((n, d + 1))
-        selected_slugs = set(list(visited)[:limit])
-    else:
-        # overview：按连通度（in+out）取 top-N
-        ranked = sorted(
-            pages,
-            key=lambda p: len(p.out_links or []) + len(p.in_links or []),
-            reverse=True,
-        )
-        selected_slugs = {p.slug for p in ranked[:limit]}
-
-    slug_map = {p.slug: p for p in pages}
-    nodes = [
-        WikiGraphNode(
-            slug=p.slug,
-            title=p.title,
-            page_type=p.page_type,
-            link_count=len(p.out_links or []) + len(p.in_links or []),
-        )
-        for p in pages
-        if p.slug in selected_slugs
-    ]
-    edges = [
-        WikiGraphEdge(source=p.slug, target=target)
-        for p in pages
-        if p.slug in selected_slugs
-        for target in (p.out_links or [])
-        if target in selected_slugs and target != p.slug
-    ]
-    return WikiGraphResponse(
-        nodes=nodes,
-        edges=edges,
-        meta=WikiGraphMeta(
-            mode=mode,
-            total=len(pages),
-            returned=len(nodes),
-            truncated=len(nodes) < len(pages),
-            center=center if mode == "ego" else None,
-            depth=depth if mode == "ego" else None,
-        ),
+    nodes, edges, meta = await WikiGraphService(db).build_graph(
+        kb_id=kb_id, mode=mode, center=center, depth=depth, limit=limit
     )
+    return WikiGraphResponse(nodes=nodes, edges=edges, meta=meta)
 
 
 @router.get("/lint", response_model=WikiLintResponse, summary="质量检查（六类问题+健康分）")
@@ -706,34 +547,13 @@ async def create_issue(
     _access: tuple = Depends(validate_space_access),
     db: AsyncSession = Depends(get_db),
 ):
-    from novamind.features.knowledge_space.exceptions import InvalidParameterError
-    from novamind.features.knowledge_space.repository.wiki_issue_repository import (
-        WikiIssueRepository,
-    )
-    from novamind.features.knowledge_space.services.wiki_lint_service import LINT_ISSUE_TYPES
-
-    # 人工/agent 类型 + lint 六类（单一来源，消除两处字面量漂移）
-    allowed_types = {
-        "mixed_entities", "contradictory_facts", "out_of_date", "other",
-    } | LINT_ISSUE_TYPES
-    if body.issue_type not in allowed_types:
-        raise InvalidParameterError("issue_type 须为 " + str(sorted(allowed_types)), field="issue_type")
+    from novamind.features.knowledge_space.services.wiki_page_service import WikiPageService
 
     kb = await _get_kb_or_404(kb_id, space_id, db)
-    page = await WikiPageRepository(db).get_by_slug(kb_id, body.slug)
-    if not page:
-        raise WikiPageNotFoundError(body.slug)
-
-    issue = await WikiIssueRepository(db).create({
-        "space_id": kb.space_id,
-        "kb_id": kb_id,
-        "slug": body.slug,
-        "issue_type": body.issue_type,
-        "description": body.description,
-        "reported_by": "user:" + str(user_id) if body.reported_by == "user" else body.reported_by,
-    })
-    await db.commit()
-    return issue
+    return await WikiPageService(db).create_issue(
+        kb=kb, kb_id=kb_id, slug=body.slug, issue_type=body.issue_type,
+        description=body.description, reported_by=body.reported_by, user_id=user_id,
+    )
 
 
 @router.put("/issues/{issue_id}/status", response_model=WikiIssueResponse, summary="更新问题状态")
@@ -747,24 +567,9 @@ async def update_issue_status(
     _kb=Depends(validate_kb_writable),
     db: AsyncSession = Depends(get_db),
 ):
-    from novamind.features.knowledge_space.exceptions import (
-        InvalidParameterError,
-        KnowledgeSpaceError,
-    )
-    from novamind.features.knowledge_space.repository.wiki_issue_repository import (
-        WikiIssueRepository,
-    )
-
-    transitions = {"pending": "reopen", "ignored": "ignore", "resolved": "resolve"}
-    method_name = transitions.get(body.status)
-    if not method_name:
-        raise InvalidParameterError("status 须为 pending/ignored/resolved", field="status")
+    from novamind.features.knowledge_space.services.wiki_page_service import WikiPageService
 
     await _get_kb_or_404(kb_id, space_id, db)
-    repo = WikiIssueRepository(db)
-    issue = await repo.get_by_id(issue_id)
-    if not issue or issue.kb_id != kb_id:
-        raise KnowledgeSpaceError("问题 " + issue_id + " 不存在", code="WIKI_ISSUE_NOT_FOUND")
-    getattr(issue, method_name)()
-    await db.commit()
-    return issue
+    return await WikiPageService(db).update_issue_status(
+        issue_id=issue_id, status=body.status
+    )
