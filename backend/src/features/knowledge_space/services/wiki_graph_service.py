@@ -7,13 +7,10 @@ from __future__ import annotations
 
 from collections import deque
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.features.knowledge_space.exceptions import (
     InvalidParameterError,
     WikiPageNotFoundError,
 )
-from novamind.features.knowledge_space.models.wiki import WikiPage
 from novamind.features.knowledge_space.repository.wiki_repository import (
     WikiPageRepository,
 )
@@ -22,6 +19,7 @@ from novamind.features.knowledge_space.schemas.wiki_schema import (
     WikiGraphMeta,
     WikiGraphNode,
 )
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def finalize_links(repo: WikiPageRepository, kb_id: int) -> None:

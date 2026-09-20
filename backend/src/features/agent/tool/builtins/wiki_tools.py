@@ -245,44 +245,13 @@ class WikiTool(BaseTool):
             return _err(f"未知工具：{tool_name}")
         return await handler(db, user_id, arguments)
 
-    # ==================== 权限辅助 ====================
+    # ==================== 权限辅助（批次 4.2：与路由 Depends 链共用 access_service） ====================
 
     async def _check_kb_access(self, db, kb_id: int, user_id: int, write: bool = False):
-        """校验 KB 存在且用户可访问空间；write 额外要求 EDITOR+ 角色。
+        """委托 knowledge_space.access_service（消除平行权限实现）。"""
+        from novamind.features.knowledge_space.services.access_service import check_kb_access
 
-        返回 (kb, None) 或 (None, 错误消息)。
-        """
-        from novamind.features.knowledge_space.repository.knowledge_base_repository import (
-            KnowledgeBaseRepository,
-        )
-        from novamind.features.knowledge_space.repository.member_repository import MemberRepository
-        from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
-
-        kb_repo = KnowledgeBaseRepository(db)
-        kb = await kb_repo.get_by_id(kb_id)
-        if not kb or kb.space_id is None:
-            return None, f"知识库 {kb_id} 不存在"
-
-        member = await MemberRepository(db).get_by_space_and_user(kb.space_id, user_id)
-        is_admin_user = await self._is_admin(db, user_id)
-        if member is None and not is_admin_user:
-            return None, "无权访问该知识库所在空间"
-
-        if write:
-            checker = SpaceAccessChecker()
-            if member is None or not checker.is_editor_or_above(member):
-                return None, "写 Wiki 页面需要空间编辑者或更高权限"
-
-        return kb, None
-
-    async def _is_admin(self, db, user_id: int) -> bool:
-        try:
-            from novamind.features.user.models.user import User
-
-            user = await db.get(User, user_id)
-            return bool(user and user.is_admin)
-        except Exception:
-            return False
+        return await check_kb_access(db, kb_id, user_id, write=write)
 
     # ==================== 工具实现 ====================
 
