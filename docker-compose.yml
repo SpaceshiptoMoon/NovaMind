@@ -49,7 +49,7 @@ services:
       redis:
         condition: service_healthy
       minio:
-        condition: service_started
+        condition: service_healthy
       elasticsearch:
         condition: service_healthy
     # 与基础设施服务保持一致的常驻语义：宿主机重启后自动拉起；
@@ -111,7 +111,18 @@ services:
     environment:
       MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
       MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
+      # mc ready 用的别名：指向本机 API 端口（凭据同上，不额外引入新密钥）
+      MC_HOST_local: "http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@localhost:9005"
     command: server /data --address ":9005" --console-address ":9001"
+    # 官方镜像不含 curl；用镜像内捆绑的 mc ready 做就绪探测（等 API 端口
+    # 可服务，比 liveness 的 /minio/health/live 更贴合 depends_on 语义）。
+    # MC_HOST 别名指向本机服务，凭据来自启动环境变量。
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     volumes:
       - minio-data:/data
     restart: unless-stopped

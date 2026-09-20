@@ -17,6 +17,10 @@ backend/venv/
 backend/.env
 backend/.env.*
 
+# 根 .env（唯一密钥源，由 compose env_file 注入容器；随上下文发给
+# Docker daemon 无任何用途，排除以免泄漏）
+.env
+
 # 后端 YAML 配置（*.yaml 是 gitignored 的本地真实配置，含密码/密钥，
 # 绝不能打进镜像；容器通过 compose 挂载 default.yaml 与 docker.yaml，
 # 见 docker-compose.yml 的 app.volumes）
