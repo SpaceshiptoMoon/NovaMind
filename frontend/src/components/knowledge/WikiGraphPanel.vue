@@ -6,7 +6,7 @@
         size="small"
         filterable
         clearable
-        placeholder="全图概览 · 选择页面聚焦邻域"
+        placeholder="搜索页面，仅显示与其相连的节点"
         class="center-select"
         @change="loadGraph"
       >
@@ -50,7 +50,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{ select: [slug: string] }>()
 
-// 模式由 centerSlug 推导：选中即邻域（ego），清空即概览（overview）
+// 模式由 centerSlug 推导：选中即邻域（ego，仅直接相连一层，对齐 WeKnora
+// GRAPH_EGO_DEFAULT_DEPTH=1），清空即概览（overview）
 const centerSlug = ref(props.initialCenter ?? '')
 const graph = ref<WikiGraphResponse | null>(null)
 const loading = ref(false)
@@ -191,7 +192,7 @@ async function loadGraph() {
   loading.value = true
   try {
     const params = centerSlug.value
-      ? { mode: 'ego', center: centerSlug.value, depth: 2, limit: 80 }
+      ? { mode: 'ego', center: centerSlug.value, depth: 1, limit: 80 }
       : { mode: 'overview', limit: 80 }
     const data = await wikiApi.getGraph(props.spaceId, props.kbId, params)
     graph.value = data
