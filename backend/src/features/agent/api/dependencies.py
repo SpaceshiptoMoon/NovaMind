@@ -17,12 +17,12 @@ from novamind.features.agent.adapters import (
     HostMemorySearchPort,
     HostMemoryStorePort,
 )
-from novamind.features.agent.adapters.web_search_adapter import resolve_web_search_port
 from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.agent.services.chat_service import AgentChatService
 from novamind.features.agent.services.mcp_server_service import McpServerService
 from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.shared.search.web_search_factory import resolve_web_search_port
 from sqlalchemy.ext.asyncio import AsyncSession
 
 

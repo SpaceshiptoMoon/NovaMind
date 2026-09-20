@@ -12,7 +12,7 @@ from novamind.features.agent.adapters.memory_store_adapter import (
     HostMemorySearchPort,
     HostMemoryStorePort,
 )
-from novamind.features.agent.adapters.web_search_adapter import HostWebSearchPort
+from novamind.features.deep_research.adapters.web_search_port_adapter import HostWebSearchPort
 
 __all__ = [
     "HostWebSearchPort",

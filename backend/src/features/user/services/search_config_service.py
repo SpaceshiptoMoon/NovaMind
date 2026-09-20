@@ -17,7 +17,6 @@ from novamind.engines.search_errors import (
     WebSearchError,
     WebSearchProviderNotConfiguredError,
 )
-from novamind.engines.search_ports import build_web_search_port_from_provider
 from novamind.features.user.exceptions import (
     SearchConfigAlreadyExistsError,
     SearchConfigNotFoundError,
@@ -33,6 +32,7 @@ from novamind.features.user.schemas.search_config_schema import (
     SearchTestRequest,
     SearchTestResponse,
 )
+from novamind.shared.search.web_search_factory import build_web_search_port_from_provider
 from novamind.shared.search_config_ports import SearchCredentials
 from novamind.shared.utils.crypto import decrypt_api_key_async, encrypt_api_key_async
 from sqlalchemy.ext.asyncio import AsyncSession

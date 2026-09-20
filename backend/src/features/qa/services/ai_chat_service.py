@@ -24,8 +24,7 @@ if TYPE_CHECKING:
     from novamind.shared.retrieval_port import RetrievalPort
     from novamind.shared.storage.minio_client import MinioClient
 from novamind.engines.prompt_provider_adapter import HostPromptProvider
-from novamind.engines.search_errors import WebSearchError
-from novamind.engines.search_ports import WebSearchPort, build_web_search_port_from_provider
+from novamind.engines.search_ports import WebSearchPort
 from novamind.features.qa.exceptions import (
     InvalidMessageContentError,
     LLMServiceError,
@@ -707,102 +706,16 @@ class AIChatService:
         user_id: int,
         search_provider: str | None = None,
     ) -> WebSearchPort | None:
-        """按用户级配置择优构造 WebSearchPort，未命中/失败则回退 YAML 全局配置，均失败返回 None。
+        """按用户级配置择优构造 WebSearchPort（共享工厂唯一实现）。
 
-        ``search_provider`` 非空时优先用该 provider 的用户配置（聊天时显式选）；
-        未配置/构造失败回退自动择优（首选 → YAML 兜底）。
+        完整择优链见 ``shared/search/web_search_factory.resolve_web_search_port``：
+        用户显式指定 → 用户首选 → YAML 全局兜底，均失败返回 None。
         """
-        # 0. 用户显式指定 provider：优先用该 provider 的用户配置
-        if search_provider and self._search_config_port is not None:
-            try:
-                creds = await self._search_config_port.get_search_config_by_provider(
-                    user_id, search_provider
-                )
-            except Exception as e:
-                self.logger.warning(
-                    "读取指定 provider 搜索配置失败，回退自动择优",
-                    provider=search_provider, error=str(e),
-                )
-                creds = None
-            if creds is not None:
-                try:
-                    return build_web_search_port_from_provider(
-                        creds.provider, creds.api_key, creds.extra_config
-                    )
-                except WebSearchError as e:
-                    self.logger.warning(
-                        "指定 provider 构造端口失败，回退自动择优",
-                        provider=creds.provider, error=str(e),
-                    )
-                except Exception as e:
-                    self.logger.warning(
-                        "指定 provider 构造端口异常，回退自动择优",
-                        provider=creds.provider, error=str(e),
-                    )
-            else:
-                self.logger.info(
-                    "用户未配置指定 provider，回退自动择优",
-                    provider=search_provider, user_id=user_id,
-                )
-        # 1. 自动择优：用户首选配置（SearchConfigPort 注入；解密后明文 key）
-        if self._search_config_port is not None:
-            try:
-                creds = await self._search_config_port.get_primary_search_config(user_id)
-            except Exception as e:
-                self.logger.warning("读取用户搜索配置失败，回退 YAML", error=str(e))
-                creds = None
-            if creds is not None:
-                try:
-                    return build_web_search_port_from_provider(
-                        creds.provider, creds.api_key, creds.extra_config
-                    )
-                except WebSearchError as e:
-                    self.logger.warning(
-                        "用户级搜索配置构造端口失败，回退 YAML",
-                        provider=creds.provider, error=str(e),
-                    )
-                except Exception as e:
-                    self.logger.warning(
-                        "用户级搜索配置构造端口异常，回退 YAML",
-                        provider=creds.provider, error=str(e),
-                    )
-        # 2. YAML 全局兜底
-        return self._build_yaml_fallback_port()
+        from novamind.shared.search.web_search_factory import resolve_web_search_port
 
-    def _build_yaml_fallback_port(self) -> WebSearchPort | None:
-        """按 YAML external_search 全局配置构造 WebSearchPort 兜底。
-
-        优先 Tavily（配了 api_key），否则 DuckDuckGo（免费）。复用 engines builder，
-        不 import deep_research feature。均失败返回 None。
-        """
-        from novamind.setting.yaml_config import get_config
-
-        es_cfg = get_config().external_search
-        if es_cfg.tavily.api_key:
-            try:
-                return build_web_search_port_from_provider(
-                    "tavily",
-                    es_cfg.tavily.api_key,
-                    {
-                        "max_results": es_cfg.tavily.max_results,
-                        "search_depth": es_cfg.tavily.search_depth,
-                        "timeout": es_cfg.tavily.timeout,
-                    },
-                )
-            except WebSearchError as e:
-                self.logger.warning("YAML Tavily 兜底构造失败，试 DuckDuckGo", error=str(e))
-        try:
-            return build_web_search_port_from_provider(
-                "duckduckgo",
-                None,
-                {
-                    "max_results": es_cfg.duckduckgo.max_results,
-                    "timeout": es_cfg.duckduckgo.timeout,
-                },
-            )
-        except WebSearchError as e:
-            self.logger.warning("YAML DuckDuckGo 兜底构造失败，联网搜索不可用", error=str(e))
-            return None
+        return await resolve_web_search_port(
+            self._search_config_port, user_id, search_provider=search_provider
+        )
 
     async def _retrieve_knowledge(
         self,

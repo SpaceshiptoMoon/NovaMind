@@ -85,73 +85,12 @@ def build_web_search_port_from_provider(
     api_key: str | None,
     extra_config: dict | None = None,
 ) -> WebSearchPort:
-    """按 provider 字符串 + 明文 api_key + extra_config 构造 ``WebSearchPort``。
-
-    纯 engines 层，**不读 YAML**（api_key 由调用方——用户级配置解密后——传入）。
-    供宿主按用户级配置构造搜索端口：
-
-    - ``duckduckgo``：忽略 ``api_key``（免费、无需 key）。
-    - ``tavily`` / ``serpapi``：无 ``api_key`` 抛
-      ``WebSearchProviderNotConfiguredError``。
-    - 未知 provider 抛 ``WebSearchProviderNotConfiguredError``。
-    - service 不可用（``is_available()`` 返回 False）抛
-      ``WebSearchProviderUnavailableError``。
-
-    与 ``features/deep_research/adapters/web_search_port_adapter.build_web_search_port_for_provider``
-    的区别：后者按 ``ExternalSearchProvider`` 枚举 + YAML 配置构造（deep_research 每请求注入）；
-    本函数按字符串 provider + 显式 api_key 构造（用户级配置注入），不依赖 features/setting。
-    """
-    from novamind.engines.search_errors import (
-        WebSearchProviderNotConfiguredError,
-        WebSearchProviderUnavailableError,
+    """转发 ``shared/search/web_search_factory``（批次 2.1 构造逻辑收敛后的唯一实现）。"""
+    from novamind.shared.search.web_search_factory import (
+        build_web_search_port_from_provider as _build,
     )
-    from novamind.shared.config import (
-        DuckDuckGoSearchConfig,
-        SerpApiSearchConfig,
-        TavilySearchConfig,
-    )
-    from novamind.shared.search.duckduckgo_service import DuckDuckGoSearchService
-    from novamind.shared.search.serpapi_service import SerpAPISearchService
-    from novamind.shared.search.tavily_service import TavilySearchService
 
-    extra = extra_config or {}
-    p = (provider or "").lower()
-
-    if p == "duckduckgo":
-        svc = DuckDuckGoSearchService(
-            DuckDuckGoSearchConfig(
-                max_results=int(extra.get("max_results", 10)),
-                timeout=int(extra.get("timeout", 15)),
-            )
-        )
-    elif p == "tavily":
-        if not api_key:
-            raise WebSearchProviderNotConfiguredError("tavily")
-        svc = TavilySearchService(
-            TavilySearchConfig(
-                api_key=api_key,
-                max_results=int(extra.get("max_results", 10)),
-                search_depth=str(extra.get("search_depth", "basic")),
-                timeout=int(extra.get("timeout", 30)),
-            )
-        )
-    elif p == "serpapi":
-        if not api_key:
-            raise WebSearchProviderNotConfiguredError("serpapi")
-        svc = SerpAPISearchService(
-            SerpApiSearchConfig(
-                api_key=api_key,
-                max_results=int(extra.get("max_results", 10)),
-                timeout=int(extra.get("timeout", 30)),
-                engine=str(extra.get("engine", "google")),
-            )
-        )
-    else:
-        raise WebSearchProviderNotConfiguredError(p or "unknown")
-
-    if not svc.is_available():
-        raise WebSearchProviderUnavailableError(p, "服务不可用或未配置")
-    return ProviderWebSearchPort(service=svc)  # type: ignore[return-value]
+    return _build(provider, api_key, extra_config)
 
 
 __all__ = [

@@ -76,108 +76,6 @@ def as_web_search_port(service: object | None = None) -> WebSearchPort:
     return HostWebSearchPort(service=service)  # type: ignore[return-value]
 
 
-def build_web_search_port(prefer_tavily: bool = True) -> WebSearchPort:
-    """按 ``setting.external_search`` 配置择优构造 WebSearchPort。
-
-    优先级：Tavily（配了 api_key 且 ``prefer_tavily``）> DuckDuckGo（免费兜底）。
-    供 agent web_search 工具与 resume 等消费方注入，避免各自直接 import
-    deep_research 搜索服务。
-    """
-    from novamind.setting.yaml_config import get_config
-    from novamind.shared.config import DuckDuckGoSearchConfig, TavilySearchConfig
-
-    es_cfg = get_config().external_search
-
-    if prefer_tavily and es_cfg.tavily.api_key:
-        from novamind.shared.search.tavily_service import TavilySearchService
-
-        svc = TavilySearchService(
-            TavilySearchConfig(
-                api_key=es_cfg.tavily.api_key,
-                max_results=es_cfg.tavily.max_results,
-                search_depth=es_cfg.tavily.search_depth,
-                timeout=es_cfg.tavily.timeout,
-            )
-        )
-        if svc.is_available():
-            return HostWebSearchPort(service=svc)  # type: ignore[return-value]
-
-    from novamind.shared.search.duckduckgo_service import DuckDuckGoSearchService
-
-    svc = DuckDuckGoSearchService(
-        DuckDuckGoSearchConfig(
-            max_results=es_cfg.duckduckgo.max_results,
-            timeout=es_cfg.duckduckgo.timeout,
-        )
-    )
-    return HostWebSearchPort(service=svc)  # type: ignore[return-value]
-
-
-def build_web_search_port_for_provider(provider) -> WebSearchPort:
-    """按指定 ``ExternalSearchProvider`` 构造 WebSearchPort（deep_research 每请求注入）。
-
-    支持 Tavily / SerpAPI / DuckDuckGo。provider 未配置 api_key →
-    ``SearchProviderNotConfiguredError``；service 不可用 →
-    ``SearchProviderUnavailableError``。
-    """
-    from novamind.features.deep_research.exceptions import (
-        SearchProviderNotConfiguredError,
-        SearchProviderUnavailableError,
-    )
-    from novamind.features.deep_research.models.research_session import (
-        ExternalSearchProvider,
-    )
-    from novamind.setting.yaml_config import get_config
-    from novamind.shared.config import (
-        DuckDuckGoSearchConfig,
-        SerpApiSearchConfig,
-        TavilySearchConfig,
-    )
-    from novamind.shared.search.duckduckgo_service import DuckDuckGoSearchService
-    from novamind.shared.search.serpapi_service import SerpAPISearchService
-    from novamind.shared.search.tavily_service import TavilySearchService
-
-    es_cfg = get_config().external_search
-
-    if provider == ExternalSearchProvider.TAVILY:
-        if not es_cfg.tavily.api_key:
-            raise SearchProviderNotConfiguredError(provider.value)
-        svc = TavilySearchService(
-            TavilySearchConfig(
-                api_key=es_cfg.tavily.api_key,
-                max_results=es_cfg.tavily.max_results,
-                search_depth=es_cfg.tavily.search_depth,
-                timeout=es_cfg.tavily.timeout,
-            )
-        )
-    elif provider == ExternalSearchProvider.SERPAPI:
-        if not es_cfg.serpapi.api_key:
-            raise SearchProviderNotConfiguredError(provider.value)
-        svc = SerpAPISearchService(
-            SerpApiSearchConfig(
-                api_key=es_cfg.serpapi.api_key,
-                max_results=es_cfg.serpapi.max_results,
-                timeout=es_cfg.serpapi.timeout,
-                engine=es_cfg.serpapi.engine,
-            )
-        )
-    elif provider == ExternalSearchProvider.DUCKDUCKGO:
-        svc = DuckDuckGoSearchService(
-            DuckDuckGoSearchConfig(
-                max_results=es_cfg.duckduckgo.max_results,
-                timeout=es_cfg.duckduckgo.timeout,
-            )
-        )
-    else:
-        raise SearchProviderNotConfiguredError(
-            getattr(provider, "value", str(provider))
-        )
-
-    if not svc.is_available():
-        raise SearchProviderUnavailableError(
-            getattr(provider, "value", str(provider)), "服务不可用或未配置"
-        )
-    return HostWebSearchPort(service=svc)  # type: ignore[return-value]
 
 
 # ==================== 可插拔外部数据源（SearchSourcePort） ====================
@@ -303,8 +201,6 @@ def build_web_search_source(context: SearchSourceContext) -> SearchSourcePort:
 __all__ = [
     "HostWebSearchPort",
     "as_web_search_port",
-    "build_web_search_port",
-    "build_web_search_port_for_provider",
     "WebSearchSourceAdapter",
     "build_web_search_source",
 ]

@@ -85,6 +85,7 @@ def _make_chat_service(search_config_port=None):
 async def test_retrieve_web_user_config_hit(monkeypatch):
     """用户级配置命中 → 用对应 provider port 搜，结果含 score。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
     from novamind.shared.search_config_ports import SearchCredentials
 
@@ -96,7 +97,7 @@ async def test_retrieve_web_user_config_hit(monkeypatch):
         results=[WebSearchResult(title="T", url="https://e.com", snippet="s", score=0.9)]
     )
     monkeypatch.setattr(
-        chat_mod, "build_web_search_port_from_provider",
+        factory_mod, "build_web_search_port_from_provider",
         lambda provider, api_key, extra_config: fake_port,
     )
 
@@ -116,6 +117,7 @@ async def test_retrieve_web_user_config_hit(monkeypatch):
 async def test_retrieve_web_user_config_hit_uses_provider_and_key(monkeypatch):
     """构造端口时应透传用户级 provider / api_key / extra_config。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    import novamind.shared.search.web_search_factory as factory_mod
     from novamind.shared.search_config_ports import SearchCredentials
 
     creds = SearchCredentials(provider="serpapi", api_key="serp-key", extra_config={"num": 7})
@@ -130,7 +132,7 @@ async def test_retrieve_web_user_config_hit_uses_provider_and_key(monkeypatch):
         captured["extra_config"] = extra_config
         return _FakePort(results=[])
 
-    monkeypatch.setattr(chat_mod, "build_web_search_port_from_provider", _build)
+    monkeypatch.setattr(factory_mod, "build_web_search_port_from_provider", _build)
 
     await svc._retrieve_web(query="q", user_id=10, max_results=3)
     assert captured["provider"] == "serpapi"
@@ -144,6 +146,7 @@ async def test_retrieve_web_user_config_hit_uses_provider_and_key(monkeypatch):
 async def test_retrieve_web_no_user_config_falls_back_yaml(monkeypatch):
     """用户级返回 None → 回退 YAML 兜底构造端口。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
 
     scp = _FakeSearchConfigPort(creds=None)  # 无用户级配置
@@ -151,7 +154,7 @@ async def test_retrieve_web_no_user_config_falls_back_yaml(monkeypatch):
 
     fake_port = _FakePort(results=[WebSearchResult(title="Y", url="https://y.com", snippet="")])
     monkeypatch.setattr(
-        chat_mod, "build_web_search_port_from_provider",
+        factory_mod, "build_web_search_port_from_provider",
         lambda provider, api_key, extra_config: fake_port,
     )
 
@@ -164,13 +167,14 @@ async def test_retrieve_web_no_user_config_falls_back_yaml(monkeypatch):
 async def test_retrieve_web_no_search_config_port_falls_back_yaml(monkeypatch):
     """SearchConfigPort 未注入（None）→ 直接走 YAML 兜底。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
 
     svc = _make_chat_service(search_config_port=None)
 
     fake_port = _FakePort(results=[WebSearchResult(title="F", url="https://f.com", snippet="")])
     monkeypatch.setattr(
-        chat_mod, "build_web_search_port_from_provider",
+        factory_mod, "build_web_search_port_from_provider",
         lambda provider, api_key, extra_config: fake_port,
     )
 
@@ -185,6 +189,7 @@ async def test_retrieve_web_no_search_config_port_falls_back_yaml(monkeypatch):
 async def test_retrieve_web_search_failure_returns_none(monkeypatch):
     """port.search 抛异常 → 降级返回 None，不向上抛。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    import novamind.shared.search.web_search_factory as factory_mod
     from novamind.shared.search_config_ports import SearchCredentials
 
     creds = SearchCredentials(provider="tavily", api_key="k", extra_config=None)
@@ -193,7 +198,7 @@ async def test_retrieve_web_search_failure_returns_none(monkeypatch):
 
     fake_port = _FakePort(raise_exc=RuntimeError("network down"))
     monkeypatch.setattr(
-        chat_mod, "build_web_search_port_from_provider",
+        factory_mod, "build_web_search_port_from_provider",
         lambda provider, api_key, extra_config: fake_port,
     )
 
@@ -207,6 +212,7 @@ async def test_retrieve_web_search_failure_returns_none(monkeypatch):
 async def test_retrieve_web_no_results_returns_none(monkeypatch):
     """port.search 返回空列表 → 返回 None。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    import novamind.shared.search.web_search_factory as factory_mod
     from novamind.shared.search_config_ports import SearchCredentials
 
     creds = SearchCredentials(provider="tavily", api_key="k", extra_config=None)
@@ -215,7 +221,7 @@ async def test_retrieve_web_no_results_returns_none(monkeypatch):
 
     fake_port = _FakePort(results=[])
     monkeypatch.setattr(
-        chat_mod, "build_web_search_port_from_provider",
+        factory_mod, "build_web_search_port_from_provider",
         lambda provider, api_key, extra_config: fake_port,
     )
 
@@ -229,6 +235,7 @@ async def test_retrieve_web_no_results_returns_none(monkeypatch):
 async def test_retrieve_web_user_build_fails_falls_back_yaml(monkeypatch):
     """用户级 build_web_search_port_from_provider 抛 WebSearchError → 回退 YAML 兜底。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_errors import WebSearchError
     from novamind.engines.search_ports import WebSearchResult
     from novamind.shared.search_config_ports import SearchCredentials
@@ -248,7 +255,7 @@ async def test_retrieve_web_user_build_fails_falls_back_yaml(monkeypatch):
         # 第二次（YAML 兜底）成功
         return yaml_port
 
-    monkeypatch.setattr(chat_mod, "build_web_search_port_from_provider", _build)
+    monkeypatch.setattr(factory_mod, "build_web_search_port_from_provider", _build)
 
     res = await svc._retrieve_web(query="q", user_id=10)
     assert res is not None
@@ -260,6 +267,7 @@ async def test_retrieve_web_user_build_fails_falls_back_yaml(monkeypatch):
 async def test_retrieve_web_search_config_port_exception_falls_back_yaml(monkeypatch):
     """SearchConfigPort.get_primary_search_config 抛异常 → 回退 YAML 兜底。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
 
     scp = _FakeSearchConfigPort(raise_exc=RuntimeError("db down"))
@@ -267,7 +275,7 @@ async def test_retrieve_web_search_config_port_exception_falls_back_yaml(monkeyp
 
     yaml_port = _FakePort(results=[WebSearchResult(title="Y", url="https://y.com", snippet="")])
     monkeypatch.setattr(
-        chat_mod, "build_web_search_port_from_provider",
+        factory_mod, "build_web_search_port_from_provider",
         lambda provider, api_key, extra_config: yaml_port,
     )
 
@@ -282,6 +290,7 @@ async def test_retrieve_web_search_config_port_exception_falls_back_yaml(monkeyp
 async def test_retrieve_web_all_fail_returns_none(monkeypatch):
     """用户级 + YAML 兜底都失败 → 返回 None。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_errors import WebSearchError
     from novamind.shared.search_config_ports import SearchCredentials
 
@@ -292,7 +301,7 @@ async def test_retrieve_web_all_fail_returns_none(monkeypatch):
     def _build(provider, api_key, extra_config):
         raise WebSearchError("no provider available")
 
-    monkeypatch.setattr(chat_mod, "build_web_search_port_from_provider", _build)
+    monkeypatch.setattr(factory_mod, "build_web_search_port_from_provider", _build)
 
     res = await svc._retrieve_web(query="q", user_id=10)
     assert res is None
@@ -304,6 +313,7 @@ async def test_retrieve_web_all_fail_returns_none(monkeypatch):
 async def test_retrieve_web_score_defaults_to_zero(monkeypatch):
     """WebSearchResult 无 score 时，source score 默认 0.0。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
 
     svc = _make_chat_service(search_config_port=None)
@@ -311,7 +321,7 @@ async def test_retrieve_web_score_defaults_to_zero(monkeypatch):
     # WebSearchResult score 默认 0.0
     fake_port = _FakePort(results=[WebSearchResult(title="T", url="https://e.com", snippet="s")])
     monkeypatch.setattr(
-        chat_mod, "build_web_search_port_from_provider",
+        factory_mod, "build_web_search_port_from_provider",
         lambda provider, api_key, extra_config: fake_port,
     )
 
@@ -326,6 +336,7 @@ async def test_retrieve_web_score_defaults_to_zero(monkeypatch):
 async def test_retrieve_web_explicit_provider_hit(monkeypatch):
     """显式指定 provider 且用户已配 → 用该 provider 的配置构造端口（透传 provider+key）。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
     from novamind.shared.search_config_ports import SearchCredentials
 
@@ -344,7 +355,7 @@ async def test_retrieve_web_explicit_provider_hit(monkeypatch):
         captured["extra_config"] = extra_config
         return fake_port
 
-    monkeypatch.setattr(chat_mod, "build_web_search_port_from_provider", _build)
+    monkeypatch.setattr(factory_mod, "build_web_search_port_from_provider", _build)
 
     res = await svc._retrieve_web(query="q", user_id=10, search_provider="serpapi")
     assert res is not None
@@ -362,6 +373,7 @@ async def test_retrieve_web_explicit_provider_hit(monkeypatch):
 async def test_retrieve_web_explicit_provider_not_configured_falls_back(monkeypatch):
     """显式指定 provider 但用户未配该 provider → 回退自动择优（primary/YAML）。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
     from novamind.shared.search_config_ports import SearchCredentials
 
@@ -377,7 +389,7 @@ async def test_retrieve_web_explicit_provider_not_configured_falls_back(monkeypa
         captured.append(provider)
         return _FakePort(results=[WebSearchResult(title="F", url="https://f.com", snippet="")])
 
-    monkeypatch.setattr(chat_mod, "build_web_search_port_from_provider", _build)
+    monkeypatch.setattr(factory_mod, "build_web_search_port_from_provider", _build)
 
     res = await svc._retrieve_web(query="q", user_id=10, search_provider="tavily")
     assert res is not None
@@ -391,6 +403,7 @@ async def test_retrieve_web_explicit_provider_not_configured_falls_back(monkeypa
 async def test_retrieve_web_explicit_provider_build_fails_falls_back(monkeypatch):
     """显式 provider 构造端口失败（WebSearchError）→ 回退自动择优。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_errors import WebSearchError
     from novamind.engines.search_ports import WebSearchResult
     from novamind.shared.search_config_ports import SearchCredentials
@@ -413,7 +426,7 @@ async def test_retrieve_web_explicit_provider_build_fails_falls_back(monkeypatch
         # 第二次（primary duckduckgo）成功
         return yaml_port
 
-    monkeypatch.setattr(chat_mod, "build_web_search_port_from_provider", _build)
+    monkeypatch.setattr(factory_mod, "build_web_search_port_from_provider", _build)
 
     res = await svc._retrieve_web(query="q", user_id=10, search_provider="tavily")
     assert res is not None
@@ -425,6 +438,7 @@ async def test_retrieve_web_explicit_provider_build_fails_falls_back(monkeypatch
 async def test_retrieve_web_explicit_provider_port_exception_falls_back(monkeypatch):
     """get_search_config_by_provider 抛异常 → 回退自动择优。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
     from novamind.shared.search_config_ports import SearchCredentials
 
@@ -435,7 +449,7 @@ async def test_retrieve_web_explicit_provider_port_exception_falls_back(monkeypa
 
     yaml_port = _FakePort(results=[WebSearchResult(title="F", url="https://f.com", snippet="")])
     monkeypatch.setattr(
-        chat_mod, "build_web_search_port_from_provider",
+        factory_mod, "build_web_search_port_from_provider",
         lambda provider, api_key, extra_config: yaml_port,
     )
 
@@ -449,6 +463,7 @@ async def test_retrieve_web_explicit_provider_port_exception_falls_back(monkeypa
 async def test_retrieve_web_search_provider_none_uses_primary(monkeypatch):
     """search_provider=None → 走原自动择优（不调 get_search_config_by_provider）。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
     from novamind.shared.search_config_ports import SearchCredentials
 
@@ -464,7 +479,7 @@ async def test_retrieve_web_search_provider_none_uses_primary(monkeypatch):
         captured["api_key"] = api_key
         return fake_port
 
-    monkeypatch.setattr(chat_mod, "build_web_search_port_from_provider", _build)
+    monkeypatch.setattr(factory_mod, "build_web_search_port_from_provider", _build)
 
     res = await svc._retrieve_web(query="q", user_id=10, search_provider=None)
     assert res is not None
@@ -479,13 +494,14 @@ async def test_retrieve_web_search_provider_none_uses_primary(monkeypatch):
 async def test_retrieve_web_explicit_provider_no_port_falls_back_yaml(monkeypatch):
     """显式 provider 但 SearchConfigPort 未注入（None）→ 直接走 YAML 兜底（不抛）。"""
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
 
     svc = _make_chat_service(search_config_port=None)
 
     yaml_port = _FakePort(results=[WebSearchResult(title="Y", url="https://y.com", snippet="")])
     monkeypatch.setattr(
-        chat_mod, "build_web_search_port_from_provider",
+        factory_mod, "build_web_search_port_from_provider",
         lambda provider, api_key, extra_config: yaml_port,
     )
 
