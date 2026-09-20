@@ -153,23 +153,12 @@ def test_skill_marketplace_service_no_agent_imports():
         )
 
 
-def test_agent_registry_port_protocol_location():
-    """AgentRegistryPort 协议位于中立的 shared/registry_ports.py，纯、无 feature 导入。"""
-    from novamind.shared import registry_ports as rp_mod
-
-    imported = _imported_modules(rp_mod)
-    for imp in imported:
-        assert not imp.startswith("novamind.features"), (
-            f"registry_ports 不应依赖任何 feature 模块: {imp}"
-        )
-    assert hasattr(rp_mod, "AgentRegistryPort")
-    assert hasattr(rp_mod, "AgentSummary")
-
-
-def test_host_agent_registry_port_satisfies_protocol():
-    """HostAgentRegistryPort 满足 AgentRegistryPort 协议。"""
+def test_agent_summary_migrated_and_registry_host_class():
+    """批次 3.6：AgentRegistryPort 已删；AgentSummary 归 agent/schemas，宿主类直用。"""
     from novamind.features.agent.adapters.agent_registry_adapter import HostAgentRegistryPort
-    from novamind.shared.registry_ports import AgentRegistryPort
+    from novamind.features.agent.schemas.agent_schema import AgentSummary
+
+    assert AgentSummary.__name__ == "AgentSummary"
 
     class _FakeRepo:
         async def get_by_id(self, agent_id):
@@ -179,7 +168,7 @@ def test_host_agent_registry_port_satisfies_protocol():
             return None
 
     port = HostAgentRegistryPort(_FakeRepo())
-    assert isinstance(port, AgentRegistryPort)
+    assert port is not None
 
 
 def test_skill_target_agent_not_found_preserves_contract():
