@@ -91,7 +91,6 @@ KNOWN_VIOLATIONS: dict[str, set[str]] = {
     },
     "src/engines/document/media/video/frame_extraction.py": {
         "novamind.engines.document.media.video.video_utils._read_video_metadata",
-        "novamind.engines.document.media.video.video_utils._extract_frames_from_path",
         "novamind.engines.document.media.video.video_utils._read_frame_at",
     },
     "src/features/agent/api/routes.py": {
