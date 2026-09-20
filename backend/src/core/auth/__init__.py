@@ -1,7 +1,7 @@
 # Authentication components package
 """core/auth：认证基础设施（JWT 解码、黑名单、FastAPI 认证依赖）。
 
-认证是横切基础设施，归 core 层；不 import 任何 features（单向依赖铁律）。
+认证是横切基础设施，归 core 层；import 方向遵守 R1 无环约束。
 user feature 经 UserStatusResolver 端口 + app.dependency_overrides 注入
 DB 用户状态解析实现。
 """

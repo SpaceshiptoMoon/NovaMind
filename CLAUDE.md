@@ -182,7 +182,7 @@ These are non-negotiable. They override convenience and override anything softer
 - **Route registration:** new routes must be registered manually in `router_manager.py`. There is no auto-discovery.
 - **Module init:** new modules must register `register_feature_initializer` in `startup_manager.py`.
 - **Config files:** all `*.yaml` are gitignored; commit only `*.example` templates.
-- **单向依赖铁律：** 分层为 `features → engines → shared`，单向不可逆。`engines/` 与 `shared/` 严禁 import `novamind.features.*`、`novamind.setting.*`、任何 SQLAlchemy ORM 模型、`core.database` ORM 会话；所有持久化/配置/多租户/外部资源必须经端口在 `features/` 装配点注入。结构门禁测试 `backend/tests/architecture/test_unidirectional_dependency_gate.py` 以 AST 扫描强制此规则；收口已完成，白名单已清空。详见 `backend/CLAUDE.md`。
+- **import 依赖规则（ragflow 务实单体风格）：** 分层间允许任意方向 import（含 engines→features、core→features），硬约束是整个 `src/` import 图**无环**（Tarjan SCC 门禁 `test_import_acyclic_gate.py`）+ 跨 feature 只走对方公共面（services 公共类/schemas/models，禁 repository 内部与下划线私有，门禁 `test_no_cross_module_private_imports.py`）。防环细则：需要对方数据但对方 service 已依赖自己时，import 对方 models 直查而非 services。规则全文 R1–R6 见 `backend/CLAUDE.md`。
 
 ### Frontend Coding Rules
 

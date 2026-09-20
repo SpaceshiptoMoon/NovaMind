@@ -3,7 +3,7 @@ Deep Research 引擎核心数据类型。
 
 承载可复用研究机制的纯数据契约：检索来源枚举、引擎研究参数、搜索事件流变体。
 本模块不得 import ``novamind.features.*`` / ``novamind.setting.*`` /
-ORM 模型 / ``core.database``（分层铁律：engines 是纯逻辑层）。
+（R1 无环约束下的引擎层边界说明，端口化已在迁移批次 3 移除）。
 
 - ``SearchSource``：检索来源枚举（internal/external/hybrid）。此前定义在 ORM 模型
   ``features/deep_research/models/research_session.py``，但它是引擎决策

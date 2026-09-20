@@ -6,7 +6,7 @@ MCP 数据源等）经同一 ``SearchSourcePort`` 注入引擎，``search`` 迭�
 无感知——每轮迭代逐 ``SearchSourceBinding`` 查询、去重，单源失败降级不中断。
 
 本模块不得 import ``novamind.features.*`` / ``novamind.setting.*`` /
-ORM 模型 / ``core.database``（分层铁律：engines 是纯逻辑层）。
+（R1 无环约束下的引擎层边界说明，端口化已在迁移批次 3 移除）。
 
 结果 dict 形状契约（与纯函数 ``deduplicate_results`` / ``extract_citations`` /
 ``format_search_context`` 的 ``.get`` 宽松访问一致）：

@@ -259,7 +259,7 @@ PlanningFlow.execute(input_text, ...):
 - [ ] E7：plan_mode 生成计划；步骤逐个执行 + mark_step；动态重规划保留已完成；`plan.*` SSE 事件；进度百分比
 - [ ] E8：OTel span 导出（turn + tool 子 span）；Prometheus 指标暴露
 
-每批次：`pytest` 相关测试 + 单向依赖门禁 + 手动 SSE 验证。
+每批次：`pytest` 相关测试 + 无环门禁（已过时：原单向依赖门禁已删除）+ 手动 SSE 验证。
 
 ---
 
@@ -272,4 +272,4 @@ PlanningFlow.execute(input_text, ...):
 | 子 agent SSE 事件交错（E6） | 中 | 事件带 subagent_session_id，前端分流 |
 | OTel 新依赖（E8） | 低 | 可选启用，yaml 开关 |
 | 价格表维护（E1） | 低 | cost 标 `status=estimated`，tokens 为准 |
-| 单向依赖铁律 | — | 新模块归 engines/（纯逻辑），装配在 features/，门禁守护 |
+| import 无环 | — | 新模块归 engines/，import 任意方向但无环（R1），无环门禁守护 |

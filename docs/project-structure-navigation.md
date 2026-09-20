@@ -32,7 +32,7 @@
 - `backend/src/core/`：应用工厂、生命周期、中间件、数据库、安全
 - `backend/src/setting/`：YAML 配置加载和环境覆盖
 - `backend/src/features/`：按领域拆分的业务模块
-- `backend/src/engines/`：引擎层纯逻辑组件（features → engines → shared 单向依赖）
+- `backend/src/engines/`：引擎层可复用组件（ragflow 风格：import 无环门禁 + 跨模块走公共面，无单向分层限制）
 - `backend/src/shared/`：共享基础设施
 - `backend/tests/`：后端自动化测试（按被测对象分层，见 `backend/tests/README.md`）
 

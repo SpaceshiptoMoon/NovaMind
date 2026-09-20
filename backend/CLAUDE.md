@@ -105,13 +105,16 @@ Do not duplicate parsing logic under both `shared/document/` and `engines/docume
 - Raise domain-meaningful errors instead of generic `Exception`
 - Log enough context for task failures, especially in parsing and MQ workflows
 
-## 单向依赖铁律（硬规则）
+## import 依赖规则（硬规则，ragflow 务实单体风格）
 
-分层为 `features → engines → shared`，单向不可逆。
+R1–R6（详版见 `docs/plans/active/REFACTOR-ragflow-style-migration.md` §1）：
 
-- `engines/` 与 `shared/` 严禁 import `novamind.features.*`、`novamind.setting.*`、任何 SQLAlchemy ORM 模型、`core.database` ORM 会话。所有持久化/配置/多租户/外部资源必须经端口在 `features/` 装配点注入。端口归属：engine 专属端口（`engines/ports.py`、`engines/search_ports.py`、`engines/agent/ports.py`、`engines/rag/cache_port.py`、`engines/rag/errors.py`）归 `engines/`；feature 间公共端口（`shared/model_config_ports.py`、`shared/registry_ports.py`）留 `shared/` 中立位置；单 feature 内部端口（如 `features/user/ports.py`、`features/skill/ports.py`）下沉对应 feature。engines/ 端口位置判据：跨多引擎复用的端口放 `engines/` 顶层（`ports.py` 的 PromptProvider/FallbackLLMProvider、`search_ports.py` 的 WebSearchPort），仅服务单一引擎的端口放进该引擎子目录（`agent/ports.py`、`rag/cache_port.py`、`rag/errors.py`）。
-- `engines/` 是纯逻辑层；`shared/` 是中立能力层；业务编排归属 `features/`。`shared/` 不得反向依赖 `features/` 或 `setting/`。
-- 结构门禁测试 `tests/architecture/test_unidirectional_dependency_gate.py` 以 AST 扫描强制此规则，新增违规会被测试拦截。收口已完成，白名单已清空。
+- **R1 import 无环**：`features`/`engines`/`shared`/`setting`/`core` 之间允许任意方向 import（含 engines→features、core→features），但整个 `src/` 模块级 import 图（含函数内懒 import）必须无环。机器门禁：`tests/architecture/test_import_acyclic_gate.py`（AST 全图收集 + Tarjan SCC）。
+- **R2 跨 feature 走公共面**：允许 import 对方 `services/` 公共类、`schemas/`、`models/` 中显式导出的枚举与行级只读访问；不 import 对方 `repository/` 内部、不下划线私有成员（机器门禁：`tests/architecture/test_no_cross_module_private_imports.py`）。**防环细则**：需要对方数据但对方 service 已依赖自己时，import 对方 `models/` 直查，不 import 对方 `services/`（典型：user ↔ knowledge_space）。
+- **R3 全局中心清单**（只进不改，热点文件串行编辑）：`setting/` 的 `get_config()`、`shared/prompts/prompt_manager.py` 的 PromptManager、`shared/ai_models/` 模型客户端工厂、`shared/storage/client_factory.py`（ES/MinIO/Redis 单例）、`shared/search/external_search_service.py`（web 搜索唯一工厂）、`shared/mq/`。
+- **R4 引擎不定义 Protocol 端口**：引擎需要宿主能力时直接收具体类实例（PromptManager/ModelConfigService 等）或普通参数传值；引擎 import features 具体类在 R1 下合法。
+- **R5 工厂自注册**：模型客户端（llm/embedding/rerank/asr）与 web 搜索源用 `_FACTORY_NAME` 属性 + 模块扫描注册，消灭 if-else 供应商分支链。
+- **R6 安全硬规则全部保留**：BaseAPIError 体系、`begin_nested()` SAVEPOINT、密钥加密、异步密码哈希、JWT 黑名单、FileValidator 魔数校验、参数化查询、路由手动注册、模块 init 注册。
 
 ## Testing Rules
 

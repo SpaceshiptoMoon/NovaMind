@@ -103,7 +103,7 @@ Agent 的能力（工具 / MCP / 搜索）应当全部**可配置、可插拔**�
 
 1. **向后兼容**：所有新增字段均为可选（`Optional` / 默认值），旧请求、旧 Agent 配置行为不变。
 2. ~~**per-request 覆盖，不持久化**：聊天页开关仅影响本次请求（已与用户确认「仅当前请求生效」），不新增会话级存储。~~ **已作废（决策 D1）**：聊天页不做能力开关。
-3. **宿主层负责连接保障**：MCP 懒连接在 `features/agent`（宿主）做，不违反 `features → engines → shared` 单向依赖铁律（engines 不得访问 ORM/DB）。
+3. **宿主层负责连接保障**：MCP 懒连接在 `features/agent`（宿主）做（原单向依赖铁律已废止，现为 R1 无环约束；连接归宿主的组织原则不变）。
 4. **能力即注册表项**：内置工具仍走 `ToolRegistry`；MCP 走 `McpClientManager` + `agent_mcp_servers` 表；搜索供应商走 `SearchConfigPort`。三者统一由「能力目录」端点暴露给前端。
 
 ### 4.2 后端设计

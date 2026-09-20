@@ -2,7 +2,7 @@
 
 跨 feature 共用的展示层策略（被 agent / qa 等多 feature 的消息列表端点使用），
 只依赖 ``shared/storage/minio_client``，无 ORM / feature 依赖，故归 ``shared``
-中立位置——调用方经 ``features → shared`` 单向依赖取用，避免 feature 间互相直连。
+中立位置——多 feature 共享的附件预签名助手（R3 中心清单精神）。
 
 历史：曾住在 ``shared/storage/minio_client.py``，后以"宿主展示策略"为由迁至
 ``features/knowledge_space/adapters/``；但 knowledge_space 自身并不使用它，
