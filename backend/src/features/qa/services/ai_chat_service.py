@@ -255,7 +255,7 @@ class AIChatService:
         rewrite_strategy = getattr(session_config, "rag_query_rewriting", "none") if session_config else "none"
         rewrite_degraded = False  # 用户开了改写但实际降级（LLM 失败/不可用）→ 透传到 trace
         if rewrite_strategy != "none" and (do_web or do_rag):
-            from novamind.features.qa.services.query_rewriter import QueryRewriter, RewriteStrategy
+            from novamind.engines.rag.query_rewriter import QueryRewriter, RewriteStrategy
             llm_for_rewrite = await self.qa_service.get_compression_llm_client(user_id) if self.qa_service else None
             if llm_for_rewrite:
                 rewriter = QueryRewriter(llm_for_rewrite)

@@ -41,7 +41,7 @@ class PromptTemplate(Enum):
     QA_COMPRESSION_SUMMARY = "qa_compression_summary"
     QA_AI_CHAT_SYSTEM = "qa_ai_chat_system"
 
-    # QueryRewriter 可插拔查询改写（4 种策略，与 search_service 的查询改写是两条独立路径）
+    # QueryRewriter（engines/rag）可插拔查询改写（4 种策略，与 search_service 的查询改写是两条独立路径）
     QA_RW_COMPLETION = "qa_rw_completion"
     QA_RW_SYNONYM = "qa_rw_synonym"
     QA_RW_DECOMPOSE = "qa_rw_decompose"
