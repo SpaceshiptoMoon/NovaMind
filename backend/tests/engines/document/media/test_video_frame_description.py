@@ -69,6 +69,39 @@ def _frames(n: int):
     return [(b"\xff\xd8\xff", i * 5.0, i) for i in range(n)]
 
 
+class ShapeRoutedVlmClient:
+    """按消息形状路由响应的假 VLM client（顺序无关）。
+
+    ``generate_text(prompt)`` 收到的 prompt 是消息列表：含 ≥2 个 image_url 的
+    记 multi_calls 并消费 ``multi_responses``，否则记 single_calls 消费
+    ``single_responses``。用于并发场景下不依赖调用顺序的响应脚本。
+    """
+
+    def __init__(self, multi_responses, single_responses):
+        self.multi_responses = list(multi_responses)
+        self.single_responses = list(single_responses)
+        self.multi_calls = []
+        self.single_calls = []
+
+    async def generate_text(self, prompt, max_tokens=None, temperature=None, **kwargs):
+        content = prompt[0].get("content", []) if isinstance(prompt, list) else []
+        image_count = sum(
+            1 for c in content if isinstance(c, dict) and c.get("type") == "image_url"
+        )
+        if image_count >= 2:
+            self.multi_calls.append(prompt)
+            responses = self.multi_responses
+        else:
+            self.single_calls.append(prompt)
+            responses = self.single_responses
+        if not responses:
+            raise RuntimeError("ShapeRoutedVlmClient: no more responses")
+        r = responses.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+
 def _quota_predicate(exc: BaseException) -> bool:
     return "quota" in str(exc).lower()
 
@@ -156,12 +189,15 @@ async def test_describe_grouped_multi_image_messages():
 
 @pytest.mark.anyio("asyncio")
 async def test_describe_grouped_degrades_on_multi_image_error():
-    """某组多图调用失败 → 该组降级逐帧 single，不阻塞整体。"""
-    # 调用顺序：group0 多图(异常) → group0 逐帧 f0,f1 → group1 多图
-    vlm = FakeVlmClient([
-        Exception("multi image not supported"),
-        "g0f0", "g0f1", "group1_desc",
-    ])
+    """某组多图调用失败 → 该组降级逐帧 single，不阻塞整体。
+
+    ea5f8e7 并发化后组间调用顺序不再确定（group0 的 single 降级 await 会让
+    group1 的多图调用先执行），故按消息形状路由响应而非按调用顺序。
+    """
+    vlm = ShapeRoutedVlmClient(
+        multi_responses=[Exception("multi image not supported"), "group1_desc"],
+        single_responses=["g0f0", "g0f1"],
+    )
     out = await describe_grouped(_frames(4), group_size=2, vlm_client=vlm, prompt="p", logger=fake_log)
 
     # group0 降级为 2 条 single，group1 1 条 grouped → 共 3 条
@@ -172,6 +208,10 @@ async def test_describe_grouped_degrades_on_multi_image_error():
     # group1 仍为 grouped
     assert out[2][3] == [2, 3]
     assert out[2][0] == "group1_desc"
+    assert out[0][0] == "g0f0"
+    assert out[1][0] == "g0f1"
+    # 多图调用共 2 次（group0 失败一次 + group1 成功一次）
+    assert len(vlm.multi_calls) == 2
 
 
 @pytest.mark.anyio("asyncio")
