@@ -2,10 +2,16 @@
 共享客户端工厂，提供 MinIO、Elasticsearch、Redis 等客户端的单例管理。
 """
 
+from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 
 from novamind.shared.logging import get_logger
+
+if TYPE_CHECKING:
+    # 仅类型注解用（运行时在 get_redis_client 单例内懒 import，避免初始化环）
+    from novamind.shared.cache.redis_client import RedisCache
 
 logger = get_logger(__name__)
 
@@ -235,7 +241,7 @@ async def get_elasticsearch_client():
     return await ClientFactory.get_elasticsearch_client()
 
 
-async def get_redis_client() -> "RedisCache":
+async def get_redis_client() -> RedisCache:
     """获取全局 Redis 客户端实例（支持单机、哨兵、集群模式）。
 
     门面定义在 client_factory 而非 cache.redis_client：避免

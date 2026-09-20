@@ -94,8 +94,6 @@ def _run_tail_coro(document, task, session, *, parse_fp, minio,
     """构造 tail 协程：全部外部依赖已由调用方的 with 块 patch。"""
     from novamind.features.knowledge_space.schemas.enums import ChunkType
     from novamind.features.knowledge_space.services import document_pipeline as dp
-    from novamind.features.knowledge_space.services import media_processing
-    from novamind.features.knowledge_space.services import pipeline_steps
 
     async def fake_split(*args, **kwargs):
         split_calls.append(1)
@@ -171,7 +169,6 @@ def _do_run(document, task, session, *, parse_fp, minio,
             splitting_config=None, es_indexed=3):
     """受控依赖下执行 tail，返回 (result, split_calls, embed_calls, es_client)。"""
     from novamind.features.knowledge_space.services import document_pipeline as dp
-    from novamind.features.knowledge_space.services import media_processing
     from novamind.features.knowledge_space.services import pipeline_steps
 
     split_calls, embed_calls = [], []

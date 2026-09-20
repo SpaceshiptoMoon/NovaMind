@@ -69,11 +69,11 @@ from novamind.engines.document.integrations.deepdoc.vision_runtime import (
 )
 from novamind.engines.document.pipeline import DocumentProcessor
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
+from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
 from novamind.features.knowledge_space.services.pipeline_steps import (
     extract_parse_metadata_summary,
     prepare_es_chunks,
 )
-from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
 
 pytestmark = pytest.mark.unit
 

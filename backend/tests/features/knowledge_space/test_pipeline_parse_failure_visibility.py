@@ -25,11 +25,9 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.features.knowledge_space.services import media_processing
 from novamind.engines.document.pipeline.document_loader import DocumentProcessor
-from novamind.features.knowledge_space.services import pipeline_steps
 from novamind.features.knowledge_space.exceptions import DocumentProcessingError
-from novamind.features.knowledge_space.services import document_pipeline
+from novamind.features.knowledge_space.services import document_pipeline, pipeline_steps
 from novamind.shared.storage import elasticsearch_client as es_module
 
 pytestmark = pytest.mark.unit

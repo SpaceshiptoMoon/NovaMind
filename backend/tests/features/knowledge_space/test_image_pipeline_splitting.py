@@ -26,9 +26,9 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.features.knowledge_space.schemas.enums import ChunkType
-from novamind.features.knowledge_space.services import document_pipeline
-from novamind.features.knowledge_space.services import media_processing
-from novamind.features.knowledge_space.services import pipeline_steps
+from novamind.features.knowledge_space.services import (
+    pipeline_steps,
+)
 
 pytestmark = pytest.mark.unit
 

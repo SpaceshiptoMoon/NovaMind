@@ -27,7 +27,6 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.engines.document.media.video import frame_description as fd
-from novamind.features.knowledge_space.services import pipeline_steps
 from novamind.engines.document.media.video.frame_description import (
     AllFrameDescriptionsFailedError,
     describe_grouped,
@@ -35,7 +34,10 @@ from novamind.engines.document.media.video.frame_description import (
 )
 from novamind.features.knowledge_space.exceptions import DocumentProcessingError
 from novamind.features.knowledge_space.schemas.enums import ChunkType
-from novamind.features.knowledge_space.services import document_pipeline, media_processing
+from novamind.features.knowledge_space.services import (
+    media_processing,
+    pipeline_steps,
+)
 
 pytestmark = pytest.mark.unit
 

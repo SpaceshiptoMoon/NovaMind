@@ -14,10 +14,10 @@ from typing import Any
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.shared.storage.client_factory import get_redis_client
 from novamind.shared.storage.client_factory import (
     get_elasticsearch_client,
     get_minio_client,
+    get_redis_client,
 )
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy import text

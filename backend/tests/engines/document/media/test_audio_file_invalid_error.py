@@ -23,7 +23,6 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.engines.document.media.audio import AudioFileInvalidError, audio_utils
-from novamind.features.knowledge_space.services import pipeline_steps
 from novamind.features.knowledge_space.exceptions import DocumentProcessingError
 from novamind.features.knowledge_space.services import media_processing
 
