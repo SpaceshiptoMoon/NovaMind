@@ -6,8 +6,6 @@ Deep Research 引擎包：可复用的深度研究机制（查询分析/计划�
 
 - ``types``：纯数据契约（SearchSource/SourceType/StepType/PlanStep/ResearchPlan/EngineResearchParams/SearchEvent）
 - ``sources``：可插拔数据源抽象（SearchSourcePort/SearchSourceContext/SearchSourceBinding）
-- ``ports``：（批次 3.7 协议已删，文件保留空壳待清理）
-  ``engines/ports.py`` / ``engines/search_ports.py``
 - ``errors``：引擎级异常（feature 边界映射为 feature 异常）
 - ``engine``：``DeepResearchEngine`` 无状态方法（analyze_query/analyze_plan/background_investigation/
   search/synthesize_report[_stream]）+ 纯模块函数

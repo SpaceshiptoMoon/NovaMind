@@ -37,10 +37,8 @@ from novamind.shared.ai_models.rerank import BaseRerank, create_rerank_client
 from novamind.shared.utils.crypto import decrypt_api_key_async, encrypt_api_key_async
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# 批次 5b：本服务结构化满足 ``shared.model_config_ports.ModelConfigPort``（客户端创建/查询面
-# 8 方法）。:999 原对 ``knowledge_space.models.KnowledgeSpace`` 的反向依赖经构造器注入的
-# ``KnowledgeSpaceInfoPort`` 解除——service 层不再 import knowledge_space，adapter 层
-# （``features/user/adapters/knowledge_space_info_adapter.py``）持有跨 feature import。
+# 批次 5b 历史：原对 ``knowledge_space.models.KnowledgeSpace`` 的反向依赖已按 R2 防环细则
+# 解除（需要空间绑定时 import 对方 models 直查）；ModelConfigPort 协议已随 R4 去 Protocol 删除。
 
 
 logger = get_logger(__name__)

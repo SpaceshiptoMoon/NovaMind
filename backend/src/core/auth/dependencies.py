@@ -8,11 +8,10 @@ feature 直连 import。归位 core/auth 后切断了 feature 对 user 内部的
 依赖链：
   HTTPBearer 凭证 → ``core/auth/token.decode_access_token`` 解码 →
   ``core/auth/blacklist.is_user_blacklisted`` 用户级黑名单 →
-  ``UserStatusResolverAdapter`` 端口取 DB 最新用户状态（由 user feature 装配注入）。
+  ``UserStatusResolverAdapter`` 取 DB 最新用户状态。
 
-``UserStatusResolverAdapter`` 经 FastAPI ``app.dependency_overrides`` 注入：
-core/auth 定义 ``get_user_status_resolver`` 抽象依赖，user feature 在 startup
-注册 ``as_user_status_resolver`` 为其覆盖实现。
+``get_user_status_resolver`` 直接构造 user feature 的 ``UserStatusResolverAdapter``
+（R4 去端口：懒 import 防 core 启动链成环，枚举语义留在 user 侧计算）。
 """
 from __future__ import annotations
 

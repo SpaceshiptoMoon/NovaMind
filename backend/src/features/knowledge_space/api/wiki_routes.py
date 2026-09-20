@@ -327,25 +327,6 @@ async def delete_page(
     return None
 
 
-async def _finalize_links(repo: WikiPageRepository, kb_id: int) -> None:
-    """死链清理 + in/out 双向对齐（软删页面后调用）"""
-    pages = await repo.all_live_pages(kb_id)
-    live_slugs = {p.slug for p in pages}
-    slug_map = {p.slug: p for p in pages}
-    in_map = {p.slug: [] for p in pages}
-    for page in pages:
-        cleaned = [s for s in (page.out_links or []) if s in live_slugs and s != page.slug]
-        if cleaned != (page.out_links or []):
-            page.out_links = cleaned
-        for target in page.out_links or []:
-            if target in slug_map and target != page.slug:
-                in_map[target].append(page.slug)
-    for slug, page in slug_map.items():
-        aligned = sorted(set(in_map.get(slug, [])))
-        if aligned != (page.in_links or []):
-            page.in_links = aligned
-
-
 @router.get("/revisions/{slug:path}/{version:int}", response_model=dict, summary="版本详情（含正文，供 diff）")
 async def get_revision(
     space_id: Annotated[int, Path(gt=0)],

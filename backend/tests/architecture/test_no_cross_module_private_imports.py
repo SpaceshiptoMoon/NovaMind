@@ -59,38 +59,11 @@ def _private_imports_in(path: Path) -> set[str]:
 
 
 # 历史违规白名单：rel_path → 该文件当前已知违规私有 import 全名集合。
-# 清理计划（批次 4 收口）：
-#   - media_processing 的 _asr_busy_lock 等 4 条 → 任务 4.4（ASR 锁公开 API 化）
-#   - 其余为扫描发现的存量（兄弟模块借用私有助手），随批次 4/5 消重顺带清理。
+# 2026-09-20 全部清零（原 11 条：agent retry 三函数、video utils 四函数、
+# 路由/异常四私有引用，均已重命名转公共）。
 # 注：实例属性调用私有方法（如 self.qa_service._get_xxx()）不属本门禁管辖
-#（AST import 扫描不覆盖属性访问），由任务 4.6 转公共方法解决。
-KNOWN_VIOLATIONS: dict[str, set[str]] = {
-    "src/engines/agent/agent_engine.py": {
-        "novamind.engines.agent.retry._is_retryable_error",
-        "novamind.engines.agent.retry._is_non_retryable",
-        "novamind.engines.agent.retry._is_context_overflow",
-    },
-    "src/engines/document/media/video/frame_dedup.py": {
-        "novamind.engines.document.media.video.frame_extraction._histogram_chi_square",
-        "novamind.engines.document.media.video.frame_extraction._compute_gray_histogram",
-    },
-    "src/engines/document/media/video/frame_extraction.py": {
-        "novamind.engines.document.media.video.video_utils._read_video_metadata",
-        "novamind.engines.document.media.video.video_utils._read_frame_at",
-    },
-    "src/features/agent/api/routes.py": {
-        "novamind.features.agent.api.dependencies._build_agent_chat_service",
-    },
-    "src/features/app/api/routes.py": {
-        "novamind.features.app.api.dependencies._get_model_config_service",
-    },
-    "src/features/deep_research/api/routes.py": {
-        "novamind.features.deep_research.services.deep_research_service._plan_to_event_data",
-    },
-    "src/features/qa/api/exception_handlers.py": {
-        "novamind.core.middleware.base_exception_handler._build_trace_context",
-    },
-}
+#（AST import 扫描不覆盖属性访问）。
+KNOWN_VIOLATIONS: dict[str, set[str]] = {}
 
 CANDIDATES = _collect_candidates()
 

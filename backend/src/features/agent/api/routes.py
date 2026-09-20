@@ -14,7 +14,7 @@ from novamind.engines.agent.memory.todo_store import TodoStore
 from novamind.engines.agent.safety import ApprovalRegistry
 from novamind.engines.agent.tool.registry import ToolRegistry
 from novamind.features.agent.api.dependencies import (
-    _build_agent_chat_service,
+    build_agent_chat_service,
     get_agent_chat_service,
     get_agent_engine_ws,
     get_agent_service,
@@ -194,7 +194,7 @@ async def chat_ws(
         await websocket.close()
         return
 
-    service = await _build_agent_chat_service(
+    service = await build_agent_chat_service(
         db, user["id"], agent_service, model_config_service, agent_engine,
         todo_store, memory_search_repo, None,
     )

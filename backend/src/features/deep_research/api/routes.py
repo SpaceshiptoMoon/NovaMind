@@ -30,7 +30,7 @@ from novamind.features.deep_research.schemas.research_schema import (
 )
 from novamind.features.deep_research.services.deep_research_service import (
     DeepResearchService,
-    _plan_to_event_data,
+    plan_to_event_data,
     parse_plan_json,
 )
 from novamind.features.deep_research.services.plan_feedback_registry import (
@@ -104,7 +104,7 @@ def _get_research_plan(research) -> dict | None:
     parsed = parse_plan_json(plan)
     if parsed is None:
         return None
-    return _plan_to_event_data(parsed)
+    return plan_to_event_data(parsed)
 
 
 def _get_final_report(research) -> str | None:

@@ -55,7 +55,7 @@ async def extract_video_frames(
 
 
 def _extract_frames_from_path(filepath: str, interval: float, max_frames: int) -> list[tuple[bytes, float, int]]:
-    metadata = _read_video_metadata(filepath)
+    metadata = read_video_metadata(filepath)
     duration = metadata.get("duration", 0) or 0
     fps = metadata.get("fps", 30) or 30
     n_images = metadata.get("n_images", 0) or 0
@@ -79,7 +79,7 @@ def _extract_frames_from_path(filepath: str, interval: float, max_frames: int) -
     last_frame_error: Exception | None = None
     for frame_idx, ts in enumerate(timestamps):
         try:
-            frame = _read_frame_at(filepath, ts, fps)
+            frame = read_frame_at(filepath, ts, fps)
             if frame is not None:
                 buf = io.BytesIO()
                 frame.save(buf, format="JPEG", quality=85)
@@ -110,7 +110,7 @@ def _extract_frames_from_path(filepath: str, interval: float, max_frames: int) -
     return frames
 
 
-def _read_video_metadata(filepath: str) -> dict:
+def read_video_metadata(filepath: str) -> dict:
     import imageio.v3 as iio
 
     try:
@@ -125,7 +125,7 @@ def _read_video_metadata(filepath: str) -> dict:
     return {"duration": duration, "fps": fps, "n_images": n_images}
 
 
-def _read_frame_at(filepath: str, timestamp: float, fps: float):
+def read_frame_at(filepath: str, timestamp: float, fps: float):
     import imageio.v3 as iio
     import numpy as np
     from PIL import Image

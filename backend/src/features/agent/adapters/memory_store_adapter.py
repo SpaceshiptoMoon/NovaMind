@@ -229,23 +229,3 @@ class HostMemorySearchPort:
         return await self._repo.delete_memory(agent_id, memory_id)
 
 
-def as_memory_store_port(db: Any) -> HostMemoryStorePort:
-    """构造长期记忆端口实例（供 memory 工具 / MemoryManager 长期记忆路径注入）。"""
-    return HostMemoryStorePort(db)  # type: ignore[return-value]
-
-
-def as_context_summary_store_port(db: Any) -> HostMemoryStorePort:
-    """构造上下文摘要端口实例（供 ContextCompressor / ShortTermMemory 注入）。
-
-    与 ``as_memory_store_port`` 返回同一 ``HostMemoryStorePort`` 类型（单类双实现
-    两个端口）；装配点如需单实例同时承担两个端口，应构造一次 ``HostMemoryStorePort``
-    并复用，而非分别调用这两个工厂（避免重复建 repo）。
-    """
-    return HostMemoryStorePort(db)  # type: ignore[return-value]
-
-
-def as_memory_search_port(
-    repo: Any | None = None, es_client: Any | None = None
-) -> HostMemorySearchPort:
-    """构造 HostMemorySearchPort 实例。"""
-    return HostMemorySearchPort(repo=repo, es_client=es_client)  # type: ignore[return-value]

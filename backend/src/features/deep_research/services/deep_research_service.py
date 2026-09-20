@@ -149,7 +149,7 @@ def plan_to_json(plan: ResearchPlan, background_results: list[dict[str, Any]] | 
     }
 
 
-def _plan_to_event_data(plan: ResearchPlan) -> dict[str, Any]:
+def plan_to_event_data(plan: ResearchPlan) -> dict[str, Any]:
     """ResearchPlan → plan_generated 事件 data 的 plan 部分（不回填执行结果）。"""
     return {
         "title": plan.title,
@@ -1108,7 +1108,7 @@ class DeepResearchService:
             # 3. human_feedback：发计划事件并挂起等待（deer-flow 计划确认）
             emit("plan_generated", {
                 "session_id": ctx.session_id,
-                "plan": _plan_to_event_data(plan),
+                "plan": plan_to_event_data(plan),
                 "wait_feedback": True,
                 "feedback_timeout_seconds": PLAN_FEEDBACK_TIMEOUT_SECONDS,
             })

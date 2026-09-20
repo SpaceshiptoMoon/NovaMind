@@ -15,7 +15,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 import pytest
-from novamind.features.knowledge_space.api.exceptions import DocumentNotFoundError
+from novamind.features.knowledge_space.exceptions import DocumentNotFoundError
 from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
 
 pytestmark = pytest.mark.unit

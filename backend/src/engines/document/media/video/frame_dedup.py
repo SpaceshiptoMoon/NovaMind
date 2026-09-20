@@ -14,8 +14,8 @@ import logging
 from typing import Any
 
 from novamind.engines.document.media.video.frame_extraction import (
-    _compute_gray_histogram,
-    _histogram_chi_square,
+    compute_gray_histogram,
+    histogram_chi_square,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ def dedup_frame_diff(
     for frame_bytes, ts, _orig_idx in frames:
         try:
             pil = _decode_jpeg(frame_bytes)
-            hist = _compute_gray_histogram(pil)
+            hist = compute_gray_histogram(pil)
         except Exception as e:
             logger.warning("去重时帧解码失败，保留该帧", error=str(e))
             # 解码失败不能判定相似性，安全起见保留
@@ -67,7 +67,7 @@ def dedup_frame_diff(
             last_hist = hist
             continue
 
-        dist = _histogram_chi_square(last_hist, hist)
+        dist = histogram_chi_square(last_hist, hist)
         if dist <= distance_cutoff:
             # 相似，丢弃后者
             logger.debug("帧去重：相似帧丢弃", distance=round(dist, 4), ts=ts)

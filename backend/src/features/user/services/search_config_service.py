@@ -43,8 +43,8 @@ logger = get_logger(__name__)
 class SearchConfigService:
     """用户搜索配置服务。
 
-    结构化满足 ``shared.search_config_ports.SearchConfigPort``（查询面
-    ``get_primary_search_config``）；CRUD 面供路由层使用。
+    查询面供 web 搜索装配点（``shared/search/web_search_factory.resolve_web_search_port``）
+    按用户级配置择优 provider；CRUD 面供路由层使用。
     """
 
     def __init__(self, db: AsyncSession):

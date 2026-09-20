@@ -50,7 +50,7 @@ class BaseAPIError(Exception):
         return result
 
 
-def _build_trace_context(request: Request) -> dict:
+def build_trace_context(request: Request) -> dict:
     """提取请求公共上下文（供异常处理器和日志使用）"""
     return {
         "endpoint": str(request.url.path),

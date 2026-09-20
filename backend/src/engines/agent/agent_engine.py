@@ -16,9 +16,9 @@ from novamind.engines.agent.loop_detection import LoopDetectionConfig, LoopDetec
 from novamind.engines.agent.retry import (
     ContextOverflowError,
     RetryConfig,
-    _is_context_overflow,
-    _is_non_retryable,
-    _is_retryable_error,
+    is_context_overflow,
+    is_non_retryable,
+    is_retryable_error,
     retry_llm_call,
 )
 from novamind.engines.agent.tool.executor import ToolExecutor
@@ -283,11 +283,11 @@ class AgentEngine:
                 if first_chunk_received:
                     raise  # 流已开始，不重试
 
-                if _is_context_overflow(exc):
+                if is_context_overflow(exc):
                     raise ContextOverflowError(str(exc)) from exc
-                if _is_non_retryable(exc):
+                if is_non_retryable(exc):
                     raise
-                if not _is_retryable_error(exc):
+                if not is_retryable_error(exc):
                     raise
                 if attempt >= cfg.max_retries:
                     raise

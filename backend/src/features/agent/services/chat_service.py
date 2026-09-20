@@ -19,11 +19,11 @@ from novamind.engines.agent.memory.interfaces import MemorySnapshot
 from novamind.engines.agent.memory.memory_manager import MemoryManager
 from novamind.engines.agent.prompt_builder import SystemPromptBuilder
 from novamind.engines.agent.tool.base import ToolContext
+from novamind.engines.search_ports import WebSearchPort
 from novamind.features.agent.adapters import (
     HostKnowledgeSearchPort,
     HostMemorySearchPort,
     HostMemoryStorePort,
-    HostWebSearchPort,
 )
 from novamind.features.agent.exceptions import AgentError, AgentNotFoundError
 from novamind.features.agent.models.agent import AgentDefinition
@@ -67,7 +67,7 @@ class AgentChatService:
         memory_search_port: HostMemorySearchPort | None = None,
         knowledge_search_port: HostKnowledgeSearchPort | None = None,
         attachment_read_port: Any | None = None,
-        web_search_port: HostWebSearchPort | None = None,
+        web_search_port: WebSearchPort | None = None,
         prompt_provider: PromptManager | None = None,
     ):
         self.db = db

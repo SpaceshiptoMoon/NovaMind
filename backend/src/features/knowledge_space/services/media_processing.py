@@ -188,7 +188,7 @@ async def process_video_document(
     base_object = storage_info.get("minio_object_name", "")
 
     # frame_paths 用 Dict[int, str]（frame_idx → MinIO path），根治抽帧解码失败导致的
-    # frame_idx 空洞：engines 抽帧在 _read_frame_at 返回 None 或抛错时跳过该帧但 frame_idx
+    # frame_idx 空洞：engines 抽帧在 read_frame_at 返回 None 或抛错时跳过该帧但 frame_idx
     # 仍递增（video_utils.py / frame_extraction.py 的 enumerate+continue 模式），若 frame_paths
     # 按位置 append 会与 frame_idx 错位 → ES chunk 帧图指向错误帧或丢失。dict 映射让
     # build_es_chunks 按 frame_idx 精确取帧，空洞 idx 自动跳过。dedup 策略因 dedup_frame_diff

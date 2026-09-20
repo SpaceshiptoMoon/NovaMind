@@ -10,7 +10,7 @@ from fastapi.responses import Response
 from novamind.core.database.database import get_db
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.engines.resume.schemas import StructuredResume
-from novamind.features.app.api.dependencies import _get_model_config_service
+from novamind.features.app.api.dependencies import get_model_config_service
 from novamind.features.app.api.exceptions import (
     FileSizeExceededError,
     InvalidConfigError,
@@ -48,7 +48,7 @@ async def upload_resume(
     llm_model: str = Form(""),
     user_id: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
-    model_config_service: ModelConfigService = Depends(_get_model_config_service),
+    model_config_service: ModelConfigService = Depends(get_model_config_service),
 ):
     # 解析 LLM 模型：前端传入 > 用户默认
     model = llm_model or await model_config_service.get_user_default_model_name(user_id, "llm")

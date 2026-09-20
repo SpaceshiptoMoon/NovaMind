@@ -178,7 +178,7 @@ def test_update_config_denies_without_manage_permission():
     service.member_repo = SimpleNamespace(get_by_space_and_user=AsyncMock(return_value=inactive_member))
     service.permission_service = SimpleNamespace(can_manage_knowledge_base=lambda m: True)
 
-    from novamind.features.knowledge_space.api.exceptions import KnowledgeBaseAccessDeniedError
+    from novamind.features.knowledge_space.exceptions import KnowledgeBaseAccessDeniedError
 
     with pytest.raises(KnowledgeBaseAccessDeniedError):
         _run(service.update_config(3, 99, {"splitting": {"chunk_size": 500}}))

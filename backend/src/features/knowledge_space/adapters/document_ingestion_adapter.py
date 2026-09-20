@@ -37,8 +37,3 @@ def as_document_ingestion_port(
 ) -> DocumentIngestionPort:
     """工厂：构造 ``HostDocumentIngestionPort`` 并以 ``DocumentIngestionPort`` 返回。"""
     return HostDocumentIngestionPort(processor)
-
-
-def is_document_ingestion_port(obj: object) -> bool:
-    """``runtime_checkable`` isinstance 校验。"""
-    return isinstance(obj, DocumentIngestionPort)

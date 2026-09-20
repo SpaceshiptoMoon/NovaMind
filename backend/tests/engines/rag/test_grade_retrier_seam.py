@@ -3,11 +3,9 @@
 守护 GradeRetrier 从 ``features/qa/services/`` 迁入 ``engines/rag/`` 后的接缝不变式：
 
   - ``engines/rag/grade_retrier.py`` 不得 import 宿主 ``features`` / ``setting`` /
-    ``shared.prompts.PromptManager`` / ``core.middleware.structured_logging``（端口化后
-    prompt 经注入的 ``PromptProvider``、日志经注入的 ``Logger``，切断引擎 -> 宿主导入边）。
-  - ``GradeRetrier.__init__`` 必须接收 ``prompt_provider`` + ``logger`` 端口注入。
-  - ``PromptManager`` 实例（批次 2.3 直用，结构化满足协议面）
-    ``engines.ports.PromptProvider`` 协议。
+    ``shared.prompts.PromptManager`` / ``core.middleware.structured_logging``（注入化后
+    prompt 经注入的 ``PromptManager``、日志经注入的 ``Logger``，切断引擎 -> 宿主导入边）。
+  - ``GradeRetrier.__init__`` 必须接收 ``prompt_provider`` + ``logger`` 注入。
 
 断言方式：AST 扫描 import 模块名（精确，不受 docstring 文本干扰）+ 运行时协议检查。
 """

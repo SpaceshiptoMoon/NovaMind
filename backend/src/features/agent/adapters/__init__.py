@@ -11,14 +11,10 @@ from novamind.features.agent.adapters.memory_store_adapter import (
     HostMemorySearchPort,
     HostMemoryStorePort,
 )
-from novamind.features.deep_research.adapters.web_search_port_adapter import HostWebSearchPort
-from novamind.shared.prompts.prompt_manager import PromptManager as HostPromptProvider
 
 __all__ = [
-    "HostWebSearchPort",
     "HostKnowledgeSearchPort",
     "HostMemoryStorePort",
     "HostMemorySearchPort",
     "HostAttachmentReadPort",
-    "HostPromptProvider",
 ]

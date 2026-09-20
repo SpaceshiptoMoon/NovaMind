@@ -1,3 +1,3 @@
 """
-user feature 宿主适配器，实现 KnowledgeSpaceInfoPort 解耦跨 feature 反向依赖。
+user feature 宿主适配器：认证用户状态解析（UserStatusResolverAdapter）。
 """

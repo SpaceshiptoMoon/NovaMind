@@ -19,8 +19,8 @@ from novamind.engines.document.media.video.video_normalizer import (
 )
 from novamind.engines.document.media.video.video_utils import (
     VideoMetadataError,
-    _read_frame_at,
-    _read_video_metadata,
+    read_frame_at,
+    read_video_metadata,
     extract_video_frames,
 )
 
@@ -116,7 +116,7 @@ def _extract_scene_from_path(
     sample_step: float | None,
 ) -> list[tuple[bytes, float, int]]:
     """场景抽帧的同步实现（在 to_thread 中执行）。"""
-    metadata = _read_video_metadata(filepath)
+    metadata = read_video_metadata(filepath)
     duration = metadata.get("duration", 0) or 0
     fps = metadata.get("fps", 30) or 30
     n_images = metadata.get("n_images", 0) or 0
@@ -145,10 +145,10 @@ def _extract_scene_from_path(
     histograms: list[np.ndarray] = []
     valid_ts: list[float] = []
     for ts in candidate_ts:
-        pil = _read_frame_at(filepath, ts, fps)
+        pil = read_frame_at(filepath, ts, fps)
         if pil is None:
             continue
-        histograms.append(_compute_gray_histogram(pil))
+        histograms.append(compute_gray_histogram(pil))
         valid_ts.append(ts)
 
     if not valid_ts:
@@ -157,7 +157,7 @@ def _extract_scene_from_path(
     # 相邻候选帧卡方距离。
     distances: list[float] = []
     for i in range(1, len(histograms)):
-        distances.append(_histogram_chi_square(histograms[i - 1], histograms[i]))
+        distances.append(histogram_chi_square(histograms[i - 1], histograms[i]))
 
     # 选切换点索引（基于候选帧 idx）。
     selected_candidate_idx = _select_scene_keyframes(
@@ -177,7 +177,7 @@ def _extract_scene_from_path(
     frames: list[tuple[bytes, float, int]] = []
     for frame_idx, cand_idx in enumerate(selected_candidate_idx):
         ts = valid_ts[cand_idx]
-        pil = _read_frame_at(filepath, ts, fps)
+        pil = read_frame_at(filepath, ts, fps)
         if pil is None:
             continue
         buf = io.BytesIO()
@@ -193,7 +193,7 @@ def _extract_scene_from_path(
 # ========== 纯函数：直方图 + 切换点选择（无 IO，供单测） ==========
 
 
-def _compute_gray_histogram(pil_image) -> np.ndarray:  # noqa: F821
+def compute_gray_histogram(pil_image) -> np.ndarray:  # noqa: F821
     """算 PIL 图像的归一化灰度直方图（256 bin，和为 1）。"""
     import numpy as np
 
@@ -206,7 +206,7 @@ def _compute_gray_histogram(pil_image) -> np.ndarray:  # noqa: F821
     return arr / total
 
 
-def _histogram_chi_square(h1: np.ndarray, h2: np.ndarray) -> float:  # noqa: F821
+def histogram_chi_square(h1: np.ndarray, h2: np.ndarray) -> float:  # noqa: F821
     """两归一化直方图的卡方距离，归一化到 [0, 1] 区间近似。
 
     卡方距离 ``sum((h1-h2)^2 / (h1+h2))``，分母为 0 的 bin 跳过；

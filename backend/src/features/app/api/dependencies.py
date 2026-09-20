@@ -9,13 +9,13 @@ from novamind.shared.ai_models.base_model import BaseLLM
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
-def _get_model_config_service(db: AsyncSession = Depends(get_db)) -> ModelConfigService:
+def get_model_config_service(db: AsyncSession = Depends(get_db)) -> ModelConfigService:
     return ModelConfigService(db)
 
 
 async def _get_llm_client(
     user_id: int = Depends(get_current_user_id),
-    model_config_service: ModelConfigService = Depends(_get_model_config_service),
+    model_config_service: ModelConfigService = Depends(get_model_config_service),
 ) -> BaseLLM:
     model_name = await model_config_service.get_user_default_model_name(user_id, "llm")
     if not model_name:

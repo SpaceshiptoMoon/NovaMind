@@ -11,8 +11,8 @@
     经端口访问 Agent，不再接收 ``agent_repository`` 参数。
   - ``skill_marketplace_service`` 模块级不再 import ``agent.repository.agent_repository`` 或
     ``agent.api.exceptions``（skill -> agent 服务层导入边已断）。
-  - ``AgentRegistryPort`` 协议位于中立 ``shared/registry_ports.py``，宿主适配器
-    ``HostAgentRegistryPort`` 满足协议。
+  - 宿主适配器 ``HostAgentRegistryPort``（``features/agent/adapters/agent_registry_adapter.py``）
+    是 skill 消费的具体类。
   - 前端契约保留：``SkillTargetAgentNotFoundError`` code=``AGENT_NOT_FOUND``，且在 skill
     异常处理器 ``status_map`` 中映射 404（否则落入 SkillError:500）。
 """

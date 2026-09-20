@@ -93,14 +93,14 @@ async def _get_review_model_owner_id() -> int | None:
         return admin.id if admin else None
 
 
-def _get_model_config_service(db: AsyncSession = Depends(get_db)) -> ModelConfigService:
+def get_model_config_service(db: AsyncSession = Depends(get_db)) -> ModelConfigService:
     return ModelConfigService(db)
 
 
 async def get_skill_service(
     db: AsyncSession = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
-    model_config_service: ModelConfigService = Depends(_get_model_config_service),
+    model_config_service: ModelConfigService = Depends(get_model_config_service),
 ) -> SkillMarketplaceService:
     minio = await get_minio_client()
 

@@ -28,7 +28,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.features.knowledge_space.api.exceptions import (
+from novamind.features.knowledge_space.exceptions import (
     DocumentAlreadyExistsError,
 )
 from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService

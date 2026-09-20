@@ -149,13 +149,13 @@ def test_6a2_retrieval_engine_has_no_feature_exceptions_import():
 def test_6a2_rag_errors_are_neutral_and_isolated_from_host_tree():
     """6a-2：中立 rag_errors 异常树与宿主 KnowledgeSpaceError 树隔离。"""
     from novamind.engines.rag.errors import EmbeddingError, RagError, SearchError
-    from novamind.features.knowledge_space.api.exceptions import (
+    from novamind.features.knowledge_space.exceptions import (
         EmbeddingError as HostEmbeddingError,
     )
-    from novamind.features.knowledge_space.api.exceptions import (
+    from novamind.features.knowledge_space.exceptions import (
         KnowledgeSpaceError as HostKSE,
     )
-    from novamind.features.knowledge_space.api.exceptions import (
+    from novamind.features.knowledge_space.exceptions import (
         SearchError as HostSearchError,
     )
 

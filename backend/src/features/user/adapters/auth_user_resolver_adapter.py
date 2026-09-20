@@ -4,8 +4,6 @@
 """
 from __future__ import annotations
 
-from fastapi import Depends
-from novamind.core.database.database import get_db
 from novamind.features.user.models.user import UserStatus
 from novamind.features.user.repository.user_repository import UserRepository
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,11 +38,4 @@ class UserStatusResolverAdapter:
         }
 
 
-async def as_user_status_resolver(
-    db: AsyncSession = Depends(get_db),
-) -> UserStatusResolverAdapter:
-    """装配点依赖：构造 UserStatusResolverAdapter（供 dependency_overrides 注册）。"""
-    return UserStatusResolverAdapter(db)
-
-
-__all__ = ["UserStatusResolverAdapter", "as_user_status_resolver"]
+__all__ = ["UserStatusResolverAdapter"]

@@ -15,9 +15,7 @@
     feature 侧 API DTO（``ResumeSessionResponse`` / ``ResumeSessionListResponse``）
     留 ``features/app/schemas/resume_schema.py`` 反向引用（feature -> engine 合法）。
   - ``WebSearchPort`` / ``WebSearchResult`` 位于中立的 ``engines/search_ports.py``，
-    搜索 provider 实现位于 ``shared/clients/search/``（基础外部服务客户端，非引擎），
-    宿主适配器归属 ``features/deep_research/adapters/``。
-  - ``FallbackLLMProvider`` 协议位于 ``engines/ports.py``。
+    provider 构造唯一入口 ``shared/search/web_search_factory.py``（R3 中心清单）。
   - ``resume_pipeline_service`` 装配点构造并注入上述端口；``probe_all`` 不再接收
     ``bg_db`` 参数。
 """
@@ -142,27 +140,17 @@ def test_web_search_port_neutral_location():
     assert hasattr(sp_mod, "WebSearchResult")
 
 
-def test_web_search_adapter_lives_in_deep_research():
-    """WebSearchPort 宿主适配器归属 deep_research/adapters（DDD：搜索服务实现归属）。"""
-    from novamind.features.deep_research.adapters import web_search_port_adapter as adapter_mod
-
-    assert hasattr(adapter_mod, "HostWebSearchPort")
-    assert hasattr(adapter_mod, "as_web_search_port")
-    # 批次 2.1：build_web_search_port* 构造逻辑收敛 shared/search/web_search_factory
-
-    # adapter 桥接到 deep_research.services（intra-feature，允许）
-    imported = _imported_modules(adapter_mod)
-    # 至少引用了 deep_research 搜索服务（延迟 import 不在顶层 AST，故只校验类存在）
-    from novamind.engines.search_ports import WebSearchPort
-    assert isinstance(adapter_mod.HostWebSearchPort(), WebSearchPort)
-
-
-def test_agent_web_search_adapter_reexports():
-    """批次 2.1 后 agent adapter 薄转发共享工厂的 resolve。"""
-    from novamind.features.agent.adapters import web_search_adapter as agent_adapter
+def test_web_search_port_construction_is_centralized():
+    """web 搜索端口构造唯一入口是 shared/search/web_search_factory（R3 中心清单）。"""
+    from novamind.engines.search_ports import ProviderWebSearchPort, WebSearchPort
     from novamind.shared.search import web_search_factory
 
-    assert agent_adapter.resolve_web_search_port is web_search_factory.resolve_web_search_port
+    # 工厂可调用 + 默认宿主实现满足 Protocol（无参语义由 from_yaml 路径覆盖）
+    assert callable(web_search_factory.build_web_search_port_from_provider)
+    assert callable(web_search_factory.build_web_search_port_from_yaml)
+    assert callable(web_search_factory.resolve_web_search_port)
+    port = ProviderWebSearchPort(service=object())
+    assert isinstance(port, WebSearchPort)
 
 
 def test_agent_core_ports_reexports_web_search_port():

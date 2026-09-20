@@ -98,30 +98,6 @@ def test_model_config_service_ctor_accepts_ks_info_port():
     assert "knowledge_space_info_port" not in params
 # ---- adapter 层 ----
 
-# ---- 服务类不再 import 具体 ModelConfigService ----
-
-# （模块相对 backend 根路径, AST 读取避免触发重运行时导入副作用）
-_SERVICE_MODULES = [
-    "src/features/agent/services/chat_service.py",
-    "src/features/qa/services/ai_chat_service.py",
-    "src/features/qa/services/qa_service.py",
-    "src/features/deep_research/services/deep_research_service.py",
-    "src/features/knowledge_space/services/space_service.py",
-    "src/features/knowledge_space/services/search_service.py",
-    "src/features/knowledge_space/services/question_generation_service.py",
-    "src/features/knowledge_space/services/knowledge_base_service.py",
-    "src/features/knowledge_space/services/document_query_service.py",
-    "src/features/knowledge_space/services/document_pipeline.py",
-    "src/features/knowledge_space/services/document_upload_service.py",
-    "src/features/knowledge_space/services/document_task_service.py",
-    "src/features/knowledge_space/services/media_processing.py",
-    "src/features/evaluation/services/evaluation_service.py",
-    "src/features/skill/services/skill_marketplace_service.py",
-]
-
-_FORBIDDEN_CONCRETE_IMPORT = "novamind.features.user.services.model_config_service"
-
-
 # ---- 构造器接收 ModelConfigPort 参数（采样校验）----
 
 _DI_SERVICE_CLASSES = [
@@ -213,19 +189,6 @@ def test_execute_document_pipeline_module_level_with_port_param():
     assert "model_config_port" in params, "execute_document_pipeline 缺少 model_config_port 参数"
 
 
-# ---- 装配层白名单允许具体类 ----
-
-_ASSEMBLY_MODULES = [
-    "novamind.features.user.api.dependencies",
-    "novamind.features.knowledge_space.api.dependencies",
-    "novamind.features.agent.api.dependencies",
-    "novamind.features.app.api.dependencies",
-    "novamind.features.deep_research.api.dependencies",
-    "novamind.features.evaluation.api.dependencies",
-    "novamind.features.skill.api.dependencies",
-]
-
-
 def test_user_get_model_config_service_returns_port_with_ks_info():
     """user/api/dependencies.get_model_config_service 注入 ks_info_port 并以 ModelConfigPort 返回。"""
     from novamind.features.user.api.dependencies import get_model_config_service
@@ -247,15 +210,3 @@ def test_model_credentials_backward_compat_reexport():
     from novamind.features.user.services import model_config_service as mcs
 
     assert hasattr(mcs, "ModelCredentials")
-
-
-# ---- deep_research 引擎模块纯度（ModelConfigPort / ORM / setting 不得入引擎层）----
-
-_DEEP_RESEARCH_ENGINE_MODULES = [
-    "src/engines/deep_research/types.py",
-    "src/engines/deep_research/ports.py",
-    "src/engines/deep_research/errors.py",
-    "src/engines/deep_research/engine.py",
-]
-
-

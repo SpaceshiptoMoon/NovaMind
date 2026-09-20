@@ -89,7 +89,7 @@ async def get_agent_service(
     return AgentService(db)
 
 
-async def _build_agent_chat_service(
+async def build_agent_chat_service(
     db: AsyncSession,
     user_id: int,
     agent_service: AgentService,
@@ -153,7 +153,7 @@ async def get_agent_chat_service(
     memory_search_repo: MemorySearchRepository | None = Depends(get_memory_search_repo),
     minio_client: Any | None = None,
 ) -> AgentChatService:
-    return await _build_agent_chat_service(
+    return await build_agent_chat_service(
         db, user_id, agent_service, model_config_service, agent_engine,
         todo_store, memory_search_repo, minio_client,
     )

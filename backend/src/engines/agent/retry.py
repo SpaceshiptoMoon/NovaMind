@@ -38,7 +38,7 @@ class RetryConfig:
     jitter_max: float = 0.5
 
 
-def _is_retryable_error(exc: Exception) -> bool:
+def is_retryable_error(exc: Exception) -> bool:
     """判断异常是否可重试"""
     status_code = getattr(exc, "status_code", None)
 
@@ -58,13 +58,13 @@ def _is_retryable_error(exc: Exception) -> bool:
     return False
 
 
-def _is_context_overflow(exc: Exception) -> bool:
+def is_context_overflow(exc: Exception) -> bool:
     """判断是否为上下文溢出错误"""
     msg = str(exc).lower()
     return any(p in msg for p in _CONTEXT_OVERFLOW_PATTERNS)
 
 
-def _is_non_retryable(exc: Exception) -> bool:
+def is_non_retryable(exc: Exception) -> bool:
     """判断是否为明确不可重试的错误"""
     status_code = getattr(exc, "status_code", None)
     if status_code in (401, 403):
@@ -103,13 +103,13 @@ async def retry_llm_call(
         except Exception as exc:
             last_exc = exc
 
-            if _is_context_overflow(exc):
+            if is_context_overflow(exc):
                 raise ContextOverflowError(str(exc)) from exc
 
-            if _is_non_retryable(exc):
+            if is_non_retryable(exc):
                 raise
 
-            if not _is_retryable_error(exc):
+            if not is_retryable_error(exc):
                 raise
 
             if attempt >= cfg.max_retries:

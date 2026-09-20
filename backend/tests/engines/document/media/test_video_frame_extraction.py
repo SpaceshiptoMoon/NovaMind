@@ -1,8 +1,8 @@
 """视频帧提取引擎纯函数测试（不依赖视频解码）。
 
 覆盖场景抽帧的核心判断逻辑：
-- ``_compute_gray_histogram``：归一化灰度直方图；
-- ``_histogram_chi_square``：卡方距离归一化；
+- ``compute_gray_histogram``：归一化灰度直方图；
+- ``histogram_chi_square``：卡方距离归一化；
 - ``_select_scene_keyframes``：切换点检测 + min_interval 保护 + max_frames 均匀抽样；
 - ``_uniform_sample_indices``：均匀抽样辅助。
 
@@ -20,8 +20,8 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.engines.document.media.video.frame_extraction import (
-    _compute_gray_histogram,
-    _histogram_chi_square,
+    compute_gray_histogram,
+    histogram_chi_square,
     _select_scene_keyframes,
     _uniform_sample_indices,
 )
@@ -32,37 +32,37 @@ pytestmark = pytest.mark.unit
 def _solid_gray_hist(value: int) -> np.ndarray:
     """构造一张纯灰度图的归一化直方图。"""
     pil = Image.new("L", (8, 8), value)
-    return _compute_gray_histogram(pil)
+    return compute_gray_histogram(pil)
 
 
 # ==================== 直方图 + 卡方距离 ====================
 
 
-def test_compute_gray_histogram_normalized_to_one():
+def testcompute_gray_histogram_normalized_to_one():
     """归一化直方图各 bin 之和为 1，纯色图对应 bin = 1。"""
     hist = _solid_gray_hist(128)
     assert pytest.approx(hist.sum()) == 1.0
     assert hist[128] == 1.0
 
 
-def test_histogram_chi_square_identical_is_zero():
+def testhistogram_chi_square_identical_is_zero():
     """相同直方图卡方距离为 0。"""
     h = _solid_gray_hist(100)
-    assert _histogram_chi_square(h, h) == 0.0
+    assert histogram_chi_square(h, h) == 0.0
 
 
-def test_histogram_chi_square_different_is_positive():
+def testhistogram_chi_square_different_is_positive():
     """差异显著的两直方图卡方距离 > 0 且 <= 1（归一化区间）。"""
     h_white = _solid_gray_hist(255)
     h_black = _solid_gray_hist(0)
-    dist = _histogram_chi_square(h_white, h_black)
+    dist = histogram_chi_square(h_white, h_black)
     assert 0.0 < dist <= 1.0
 
 
-def test_histogram_chi_square_zero_denominator_returns_zero():
+def testhistogram_chi_square_zero_denominator_returns_zero():
     """两全零直方图（分母全 0）返回 0，不报错。"""
     h = np.zeros(256, dtype=np.float64)
-    assert _histogram_chi_square(h, h) == 0.0
+    assert histogram_chi_square(h, h) == 0.0
 
 
 # ==================== _select_scene_keyframes ====================

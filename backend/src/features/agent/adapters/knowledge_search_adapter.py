@@ -241,10 +241,3 @@ class HostKnowledgeSearchPort:
             for doc in documents
         ]
         return DocumentListResult(total=total, documents=docs)
-
-
-def as_knowledge_search_port(
-    db: Any, model_config_service: Any, es_client: Any | None = None
-) -> HostKnowledgeSearchPort:
-    """构造 HostKnowledgeSearchPort 实例（供装配点注入 context）。"""
-    return HostKnowledgeSearchPort(db, model_config_service, es_client)  # type: ignore[return-value]

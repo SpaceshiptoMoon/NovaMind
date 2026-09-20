@@ -49,8 +49,3 @@ class HostAttachmentReadPort:
             content=chunk,
             has_more=has_more,
         )
-
-
-def as_attachment_read_port(db: Any) -> HostAttachmentReadPort | None:
-    """端口工厂：供 dependencies.py 装配"""
-    return HostAttachmentReadPort(db)  # type: ignore[return-value]
