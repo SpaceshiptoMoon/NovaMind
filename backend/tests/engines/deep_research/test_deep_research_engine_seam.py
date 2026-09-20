@@ -434,19 +434,19 @@ def test_host_internal_search_port_satisfies_protocol():
 
 
 def test_host_web_search_port_has_close_and_provider_factory():
-    """HostWebSearchPort.close() 存在；build_web_search_port_for_provider 存在（A-3 D1/D2）。"""
+    """HostWebSearchPort.close() 存在；构造收敛后共享工厂提供 builder（批次 2.1）。"""
     from novamind.features.deep_research.adapters.web_search_port_adapter import (
         HostWebSearchPort,
-        build_web_search_port,
-        build_web_search_port_for_provider,
+    )
+    from novamind.shared.search.web_search_factory import (
+        build_web_search_port_from_yaml,
+        resolve_web_search_port,
     )
 
     assert hasattr(HostWebSearchPort, "close"), "HostWebSearchPort 应有 close() 方法"
-    # 保留无参 build_web_search_port（resume/agent 依赖）
-    assert callable(build_web_search_port), "build_web_search_port 应保留（resume/agent 依赖）"
-    assert callable(build_web_search_port_for_provider), (
-        "build_web_search_port_for_provider 应存在（deep_research 每请求注入）"
-    )
+    # 批次 2.1：build_web_search_port* 收敛到共享工厂（resume/agent/deep_research 共用）
+    assert callable(build_web_search_port_from_yaml), "共享工厂应提供 YAML 择优构造"
+    assert callable(resolve_web_search_port), "共享工厂应提供用户级择优构造"
 
 
 def test_web_search_result_has_optional_content_and_score():

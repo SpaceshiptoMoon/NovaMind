@@ -5,7 +5,7 @@
     ``claim_decomposer.py`` 不再 import ``shared.prompts.templates.PromptManager`` 或
     ``core.middleware.structured_logging.get_logger``（切断引擎 -> 宿主 prompt/log 导入边）。
   - 4 个 evaluator 经构造器接收 ``PromptProvider`` + ``Logger`` 端口（EmbeddingEvaluator 仅
-    依赖注入的 ``BaseEmbedding``，无日志需求），且 ``HostPromptProvider`` 满足
+    依赖注入的 ``BaseEmbedding``，无日志需求），且 ``PromptManager`` 满足
     ``PromptProvider`` 协议、structlog BoundLogger 满足 ``Logger`` 协议。
   - ``EvaluationService`` 构造器接收 ``retrieval_port``/``retrieval_factory``/``session_factory``
     而非 ``search_service``，不再直接 import ``knowledge_space.services.search_service`` /
@@ -74,12 +74,12 @@ def test_evaluator_no_forbidden_imports(mod_name: str):
 
 
 def test_host_prompt_provider_satisfies_protocol():
-    """HostPromptProvider 实现 PromptProvider 协议（get/format）。"""
+    """PromptManager 实例提供 get/format（批次 2.3 直用）。"""
     from novamind.engines.ports import PromptProvider
-    from novamind.engines.prompt_provider_adapter import HostPromptProvider
+    from novamind.shared.prompts.prompt_manager import PromptManager
 
-    provider = HostPromptProvider()
-    assert isinstance(provider, PromptProvider)
+    provider = PromptManager()
+    assert isinstance(provider, PromptProvider)  # 结构化满足（duck-typed .get/.format）
     # format 实际委托 PromptManager.format_prompt；用一个真实存在的 eval prompt 键验证
     formatted = provider.format(
         "eval_claim_decompose", generated_answer="测试回答"
