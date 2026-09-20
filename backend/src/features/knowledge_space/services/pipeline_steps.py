@@ -55,7 +55,10 @@ async def check_document_cancelled(document_id: int) -> None:
 
     在 pipeline 关键节点调用，实现提前终止。
     """
-    from novamind.shared.mq.task_tracker import is_document_cancelled
+    from novamind.features.knowledge_space.services.document_task_tracking import (
+        is_document_cancelled,
+    )
+
 
     if await is_document_cancelled(document_id):
         raise DocumentCancelledError(f"文档 {document_id} 处理已被用户取消")

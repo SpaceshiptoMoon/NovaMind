@@ -223,7 +223,8 @@ async def cancel_resume_session(
     db: AsyncSession = Depends(get_db),
 ):
     """取消正在处理的简历会话"""
-    from novamind.shared.mq.task_tracker import mark_resume_cancelled
+    from novamind.features.app.tasks.resume_task_tracking import mark_resume_cancelled
+
 
     repo = ResumeSessionRepository(db)
     session = await repo.get_by_id(session_id)

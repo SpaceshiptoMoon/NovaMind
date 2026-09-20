@@ -7,8 +7,8 @@ from novamind.core.middleware.structured_logging import get_logger
 from novamind.engines.resume import AutoProbingEngine, ResumeAnalyzer, ResumeParser
 from novamind.features.app.models.resume import ResumeSessionStatus
 from novamind.features.app.repository.resume_repository import ResumeSessionRepository
+from novamind.features.app.tasks.resume_task_tracking import is_resume_cancelled
 from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.shared.mq.task_tracker import is_resume_cancelled
 from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.search.web_search_factory import (
     build_web_search_port_from_yaml,
@@ -168,7 +168,8 @@ async def _mark_cancelled(
     db,
 ) -> None:
     """标记简历会话为已取消"""
-    from novamind.shared.mq.task_tracker import clear_resume_cancel_flag
+    from novamind.features.app.tasks.resume_task_tracking import clear_resume_cancel_flag
+
 
     await clear_resume_cancel_flag(session_id)
     await repo.update(session_id, {

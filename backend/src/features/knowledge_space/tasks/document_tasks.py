@@ -149,11 +149,12 @@ async def process_document_task(
     from novamind.features.knowledge_space.services.document_pipeline import (
         execute_document_pipeline,
     )
+    from novamind.features.knowledge_space.services.document_task_tracking import unbind_job
     from novamind.features.knowledge_space.services.pipeline_steps import (
         DocumentCancelledError,
     )
     from novamind.features.user.services.model_config_service import ModelConfigService
-    from novamind.shared.mq.task_tracker import unbind_job
+
 
     job_id = ctx.get("job_id", "unknown")
 
@@ -396,8 +397,11 @@ async def process_document_task(
             await _unbind_job_safely(document_id, job_id=job_id)
 
             # 延迟重新入队（用 arq 的 _defer_ 参数实现延迟投递）
+            from novamind.features.knowledge_space.services.document_task_tracking import (
+                bind_job_to_document,
+            )
             from novamind.shared.mq import get_arq_pool
-            from novamind.shared.mq.task_tracker import bind_job_to_document
+
             pool = await get_arq_pool()
             new_job = await pool.enqueue_job(
                 "process_document_task",
@@ -594,7 +598,8 @@ async def _rollback_session_safely(session: AsyncSession, *, document_id: int, j
 
 async def _unbind_job_safely(document_id: int, *, job_id: str | None) -> None:
     """移除 tracker 映射；失败不抛出（残留映射由活跃检查发现终判结果时自愈清理）。"""
-    from novamind.shared.mq.task_tracker import unbind_job
+    from novamind.features.knowledge_space.services.document_task_tracking import unbind_job
+
 
     try:
         await unbind_job(document_id)
@@ -704,7 +709,8 @@ async def _handle_cancellation(document_id: int, space_id: int) -> None:
     """
     用户取消文档处理后的事务补偿
     """
-    from novamind.shared.mq.task_tracker import clear_cancel_flag
+    from novamind.features.knowledge_space.services.document_task_tracking import clear_cancel_flag
+
 
     # 清除取消标记
     await clear_cancel_flag(document_id)
@@ -765,7 +771,11 @@ async def recover_orphan_documents() -> int:
                 # 标记失败的同时必须清理 arq 层残留（tracker 映射 + 队列/in-progress 僵尸 job）。
                 # 此前只改 DB：job 永久残留在 arq 队列会让文档被误判「正在处理」而无法重试，
                 # 且被 worker 消费后还会复活本已失败的任务重跑（doc 574 事故）。
-                from novamind.shared.mq.task_tracker import purge_document_jobs, unbind_job
+                from novamind.features.knowledge_space.services.document_task_tracking import (
+                    purge_document_jobs,
+                    unbind_job,
+                )
+
 
                 await unbind_job(task.document_id)
                 await purge_document_jobs(task.document_id)
@@ -778,8 +788,11 @@ async def recover_orphan_documents() -> int:
                 continue
 
             try:
+                from novamind.features.knowledge_space.services.document_task_tracking import (
+                    bind_job_to_document,
+                )
                 from novamind.shared.mq import get_arq_pool
-                from novamind.shared.mq.task_tracker import bind_job_to_document
+
 
                 pool = await get_arq_pool()
                 job = await pool.enqueue_job(
@@ -801,7 +814,10 @@ async def recover_orphan_documents() -> int:
                 await bind_job_to_document(task.document_id, job.job_id)
                 # 清理旧残留 job（含 job_id 已不被任何 DB 字段引用的旧 job，如 doc-task-{task_id}），
                 # 防止旧 job 复活本任务或与新 job 并发处理同一文档（doc-task-752 僵尸事故）
-                from novamind.shared.mq.task_tracker import purge_document_jobs
+                from novamind.features.knowledge_space.services.document_task_tracking import (
+                    purge_document_jobs,
+                )
+
 
                 await purge_document_jobs(task.document_id, exclude_job_id=job.job_id)
 
@@ -861,8 +877,10 @@ async def enqueue_process_document(
     from novamind.features.knowledge_space.repository.document_task_repository import (
         DocumentTaskRepository,
     )
+    from novamind.features.knowledge_space.services.document_task_tracking import (
+        bind_job_to_document,
+    )
     from novamind.shared.mq import get_arq_pool
-    from novamind.shared.mq.task_tracker import bind_job_to_document
     from novamind.shared.utils.time_utils import now_china
 
     pool = await get_arq_pool()

@@ -5,7 +5,6 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from novamind.core.compat.starlette_multipart_patch import apply_starlette_multipart_patch
 from novamind.core.security.config_validator import validate_security_config
 from novamind.setting.yaml_config import get_config
 from slowapi.errors import RateLimitExceeded
@@ -26,7 +25,6 @@ def create_app() -> FastAPI:
     """
     # 设置结构化日志
     setup_structured_logging()
-    apply_starlette_multipart_patch()
 
     # 加载配置
     config = get_config()

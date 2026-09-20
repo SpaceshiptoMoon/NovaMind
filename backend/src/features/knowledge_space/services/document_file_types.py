@@ -8,7 +8,7 @@
 收敛到唯一定义，避免常量在 service / route / pipeline 各写一份而漂移。
 """
 
-from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
+from novamind.shared.document.file_types import IMAGE_FILE_TYPES
 
 # 文件大小限制（默认 100MB）
 MAX_FILE_SIZE = 100 * 1024 * 1024
@@ -41,8 +41,7 @@ SUPPORTED_FILE_TYPES = [
     "m4a",
 ]
 
-# 图片文件类型（从 MinIO 工具收敛到唯一定义）
-IMAGE_FILE_TYPES = IMAGE_FILE_TYPES
+# 图片文件类型（唯一定义 shared/document/file_types.py）
 
 # 视频文件类型
 VIDEO_FILE_TYPES = frozenset({"mp4", "mov", "avi", "mkv", "webm"})

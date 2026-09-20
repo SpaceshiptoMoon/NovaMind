@@ -63,8 +63,11 @@ class DocumentTaskService:
         Returns:
             状态字符串: "queued" | "in_progress" | "not_found"
         """
+        from novamind.features.knowledge_space.services.document_task_tracking import (
+            get_job_id_for_document,
+        )
         from novamind.shared.mq import get_arq_pool
-        from novamind.shared.mq.task_tracker import get_job_id_for_document
+
 
         job_id = await get_job_id_for_document(document_id)
         if not job_id:
@@ -153,11 +156,12 @@ class DocumentTaskService:
         if not active_task:
             raise InvalidParameterError("只能取消处理中的文档", field="document_id")
 
-        from novamind.shared.mq import get_arq_pool
-        from novamind.shared.mq.task_tracker import (
+        from novamind.features.knowledge_space.services.document_task_tracking import (
             get_job_id_for_document,
             mark_document_cancelled,
         )
+        from novamind.shared.mq import get_arq_pool
+
 
         # 设置取消标记（pipeline 会在检查点检测到）
         await mark_document_cancelled(document_id)
@@ -185,7 +189,10 @@ class DocumentTaskService:
         Returns:
             正在处理的数量
         """
-        from novamind.shared.mq.task_tracker import get_active_document_count
+        from novamind.features.knowledge_space.services.document_task_tracking import (
+            get_active_document_count,
+        )
+
 
         return await get_active_document_count()
 
@@ -444,10 +451,11 @@ class DocumentTaskService:
         pipeline_config_override: dict | None = None,
     ):
         """创建任务记录并入队文档处理。"""
-        from novamind.shared.mq.task_tracker import (
+        from novamind.features.knowledge_space.services.document_task_tracking import (
             is_document_actively_processing,
             purge_document_jobs,
         )
+
 
         if await is_document_actively_processing(document.id):
             # tracker/arq 层显示活跃，但能走到这里说明调用方先做的 DB 活跃任务校验已通过。
@@ -498,8 +506,12 @@ class DocumentTaskService:
 
     async def _enqueue_precreated_tasks(self, tasks: list["DocumentTask"]) -> dict[int, str]:
         from arq.jobs import Job
+        from novamind.features.knowledge_space.services.document_task_tracking import (
+            bind_job_to_document,
+            unbind_job,
+        )
         from novamind.shared.mq import get_arq_pool
-        from novamind.shared.mq.task_tracker import bind_job_to_document, unbind_job
+
 
         if not tasks:
             return {}

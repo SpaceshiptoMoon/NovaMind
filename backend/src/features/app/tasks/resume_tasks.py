@@ -64,11 +64,12 @@ async def process_resume_task(
     3. 成功时移除追踪映射
     4. 失败时 arq 自动重试，最终失败执行三层兜底
     """
-    from novamind.shared.mq.task_tracker import (
+    from novamind.features.app.tasks.resume_task_tracking import (
         clear_resume_cancel_flag,
         is_resume_cancelled,
         unbind_resume_job,
     )
+
 
     job_id = ctx.get("job_id", "unknown")
 
@@ -307,8 +308,9 @@ async def enqueue_process_resume(
     Returns:
         job_id: arq 任务 ID
     """
+    from novamind.features.app.tasks.resume_task_tracking import bind_job_to_resume
     from novamind.shared.mq import get_arq_pool
-    from novamind.shared.mq.task_tracker import bind_job_to_resume
+
 
     pool = await get_arq_pool()
 

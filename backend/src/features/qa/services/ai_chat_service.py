@@ -33,6 +33,7 @@ from novamind.features.qa.exceptions import (
 )
 from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
 from novamind.features.qa.schemas.qa import QARequest
+from novamind.features.qa.services.heartbeat import stream_with_heartbeat_structured
 from novamind.features.qa.services.qa_service import QAService
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.features.user.services.search_config_service import SearchConfigService
@@ -40,7 +41,6 @@ from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.prompts.sanitize import sanitize_prompt_input as _sanitize_input
 from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
-from novamind.shared.utils.heartbeat import stream_with_heartbeat_structured
 
 # 分级拒答：检索为空时的固定兜底文案（跳过 LLM 调用）
 REFUSAL_ANSWER_TEXT = (

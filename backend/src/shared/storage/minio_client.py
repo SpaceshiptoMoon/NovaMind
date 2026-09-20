@@ -27,6 +27,7 @@ from typing import Any, BinaryIO
 
 from minio import Minio
 from minio.error import S3Error
+from novamind.shared.document.file_types import IMAGE_FILE_TYPES  # noqa: F401 归位后 re-export
 from novamind.shared.logging import get_logger
 from novamind.shared.storage.path_strategy import DefaultPathStrategy, PathStrategy
 
@@ -966,8 +967,7 @@ class MinioClient:
 
 
 # ========== 模块级常量 ==========
-
-IMAGE_FILE_TYPES = frozenset({"jpg", "jpeg", "png", "gif", "webp"})
+# IMAGE_FILE_TYPES 已归位 shared/document/file_types.py（批次 6.6），本模块 re-export 见顶部 import
 
 # 注：``enrich_attachments_with_presigned_urls`` 住在
 # ``shared/storage/attachment_presign.py``——附件预签名 URL 注入是跨 feature

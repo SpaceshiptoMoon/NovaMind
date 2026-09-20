@@ -30,7 +30,7 @@ pytest.importorskip("aiosqlite")
 
 import arq.constants as arq_constants
 import novamind.shared.mq as mq_module
-import novamind.shared.mq.task_tracker as task_tracker_module
+import novamind.features.knowledge_space.services.document_task_tracking as task_tracker_module
 from novamind.core.database import database as database_module
 from novamind.core.database.base import Base
 from novamind.features.knowledge_space.exceptions import DocumentAlreadyProcessingError
@@ -42,13 +42,13 @@ from novamind.features.knowledge_space.models.document_task_batch import (
 from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase  # noqa: F401
 from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace  # noqa: F401
 from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
+from novamind.features.knowledge_space.services.document_task_tracking import purge_document_jobs
 from novamind.features.knowledge_space.tasks import document_tasks as document_tasks_module
 from novamind.features.knowledge_space.tasks.document_tasks import recover_orphan_documents
 
 # 定向建表所需的 FK 目标表（见 test_document_enqueue_batch_atomic.py 的全量建表陷阱注释）
 from novamind.features.user.models.user import User  # noqa: F401
 from novamind.setting import yaml_config as yaml_config_module
-from novamind.shared.mq.task_tracker import purge_document_jobs
 
 # SQLite 中 BIGINT PRIMARY KEY 不自增（见 test_document_enqueue_batch_atomic.py 注释），
 # 编译期把 BigInteger 降为 INTEGER，仅影响本测试的 SQLite 建表。
