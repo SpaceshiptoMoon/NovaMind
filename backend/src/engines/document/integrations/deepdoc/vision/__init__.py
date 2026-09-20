@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from importlib import import_module
 
-
 _EXPORT_MAP = {
     "get_vendored_vision_package_status": ("novamind.engines.document.integrations.deepdoc.vision.package_status", "get_vendored_vision_package_status"),
     "OCR": ("novamind.engines.document.integrations.deepdoc.vision.ocr", "OCR"),

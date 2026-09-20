@@ -8,46 +8,48 @@
 通过 ModelConfigService 获取凭证并创建客户端。
 """
 
-from typing import List, Optional, Dict, Any
-from novamind.shared.model_config_ports import ModelConfigPort
 import os
 import time
+from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-from novamind.features.knowledge_space.repository.member_repository import MemberRepository
-from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
-from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
-from novamind.shared.ai_models.embedding import BaseEmbedding
-from novamind.shared.ai_models.rerank import BaseRerank
-from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.knowledge_space.exceptions import (
-    KnowledgeBaseNotFoundError,
-    KnowledgeBaseAccessDeniedError,
-    SpaceAccessDeniedError,
-    SearchError,
-    EmbeddingError,
-    InvalidSearchModeError,
-    InvalidSearchWeightError,
-)
-from novamind.engines.rag.errors import (
-    EmbeddingError as RagEmbeddingError,
-    SearchError as RagSearchError,
-)
-from novamind.features.knowledge_space.schemas.search_schema import (
-    SEARCH_MODE_FALLBACK,
-    SearchRequest,
-    SearchLLMConfig,
-    QueryRewriteConfig,
-)
-from novamind.features.knowledge_space.models.knowledge_space import SpaceVisibility
 from novamind.engines.rag import (
     RetrievalEngine,
     RetrievalQuery,
 )
-
+from novamind.engines.rag.errors import (
+    EmbeddingError as RagEmbeddingError,
+)
+from novamind.engines.rag.errors import (
+    SearchError as RagSearchError,
+)
+from novamind.features.knowledge_space.exceptions import (
+    EmbeddingError,
+    InvalidSearchModeError,
+    InvalidSearchWeightError,
+    KnowledgeBaseAccessDeniedError,
+    KnowledgeBaseNotFoundError,
+    SearchError,
+    SpaceAccessDeniedError,
+)
+from novamind.features.knowledge_space.models.knowledge_space import SpaceVisibility
+from novamind.features.knowledge_space.repository.knowledge_base_repository import (
+    KnowledgeBaseRepository,
+)
+from novamind.features.knowledge_space.repository.member_repository import MemberRepository
+from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
+from novamind.features.knowledge_space.schemas.search_schema import (
+    SEARCH_MODE_FALLBACK,
+    QueryRewriteConfig,
+    SearchLLMConfig,
+    SearchRequest,
+)
+from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.ai_models.embedding import BaseEmbedding
+from novamind.shared.ai_models.rerank import BaseRerank
+from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # 默认配置常量
 DEFAULT_TOP_K = 10
@@ -74,8 +76,8 @@ class SearchService:
         self,
         session: AsyncSession,
         es_client: ElasticsearchClient,
-        model_config_service: Optional[ModelConfigPort] = None,  # ModelConfigPort
-        retrieval_engine: Optional[RetrievalEngine] = None,
+        model_config_service: ModelConfigPort | None = None,  # ModelConfigPort
+        retrieval_engine: RetrievalEngine | None = None,
     ):
         self.session = session
         self.kb_repo = KnowledgeBaseRepository(session)
@@ -142,7 +144,7 @@ class SearchService:
         self,
         user_id: int,
         model: str
-    ) -> Optional[BaseRerank]:
+    ) -> BaseRerank | None:
         """
         获取 Rerank 客户端
 
@@ -198,10 +200,10 @@ class SearchService:
     async def _generate_llm_answer(
         self,
         query: str,
-        results: List[Dict[str, Any]],
+        results: list[dict[str, Any]],
         llm_config: SearchLLMConfig,
         user_id: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         使用 LLM 基于检索结果生成回答
 
@@ -230,8 +232,8 @@ class SearchService:
             context = "\n\n".join(context_parts)
 
             # 构建提示词
-            from novamind.shared.prompts.templates import PromptManager
             from novamind.shared.prompts.sanitize import sanitize_prompt_input
+            from novamind.shared.prompts.templates import PromptManager
             # 净化用户 query，剥离 markdown 标题/分隔标签，降低 prompt 注入风险
             safe_query = sanitize_prompt_input(query)
             prompt = PromptManager.format_prompt(
@@ -284,7 +286,7 @@ class SearchService:
         query: str,
         rewrite_config: "QueryRewriteConfig",
         user_id: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         查询改写
 
@@ -304,8 +306,9 @@ class SearchService:
                 "sub_queries": sub_query 时的子问题列表（内部使用，用于多路检索）
             }
         """
-        from novamind.shared.prompts.templates import PromptManager
         import json
+
+        from novamind.shared.prompts.templates import PromptManager
 
         strategy = rewrite_config.strategy
 
@@ -415,7 +418,7 @@ class SearchService:
         kb_id: int,
         user_id: int,
         request: SearchRequest,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         执行检索
 
@@ -445,7 +448,7 @@ class SearchService:
         kb_id: int,
         user_id: int,
         request: SearchRequest,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """新路径：宿主做权限/配置/改写/生成，纯检索委托 RetrievalEngine.retrieve_raw。"""
         # 从 schema 中提取参数
         query = request.query
@@ -567,14 +570,14 @@ class SearchService:
         needs_vector = "vector" in search_mode or "hybrid" in search_mode
         embedding_client_resolver = None
         if needs_vector:
-            async def _resolve_embedding() -> Optional[BaseEmbedding]:
+            async def _resolve_embedding() -> BaseEmbedding | None:
                 space = await self.space_repo.get_by_id(kb.space_id, use_cache=True)
                 embedding_model = space.embedding_model if space else None
                 return await self._get_embedding_client(user_id, embedding_model)
             embedding_client_resolver = _resolve_embedding
         rerank_client_resolver = None
         if rerank_enabled:
-            async def _resolve_rerank() -> Optional[BaseRerank]:
+            async def _resolve_rerank() -> BaseRerank | None:
                 return await self._get_rerank_client(user_id, rerank_model)
             rerank_client_resolver = _resolve_rerank
 
@@ -707,7 +710,7 @@ class SearchService:
         kb_id: int,
         user_id: int,
         request: SearchRequest,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """旧内联编排（NOVAMIND_LEGACY_RETRIEVAL=1 时使用，保留作回滚）。
 
         与批次 2 前的 search() 逐字等价：权限/模式/改写/向量/检索/enrich/归一化/阈值/rerank/
@@ -1095,7 +1098,7 @@ class SearchService:
     async def get_available_modes(
         self,
         kb_id: int,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         获取知识库可用的检索模式
 

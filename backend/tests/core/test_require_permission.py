@@ -1,14 +1,15 @@
 """require_permission 依赖测试（用 FastAPI TestClient + 依赖覆盖）。"""
 
 import pytest
-from fastapi import FastAPI, Depends
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-
-from novamind.core.authorization.dependencies import require_permission, get_permission_checker_dep
 from novamind.core.auth.dependencies import get_current_user
+from novamind.core.authorization.dependencies import get_permission_checker_dep, require_permission
 from novamind.core.authorization.exceptions import PermissionDeniedError
 from novamind.core.authorization.ports import PermissionCheckerPort
 from novamind.core.middleware.base_exception_handler import create_error_handler
+
+pytestmark = pytest.mark.unit
 
 
 class FakeChecker(PermissionCheckerPort):

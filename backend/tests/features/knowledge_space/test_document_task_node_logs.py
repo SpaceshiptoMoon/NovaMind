@@ -8,8 +8,8 @@
 - mark_last_running_step_failed：把最后一个 running 节点置 failed，无 running 则 noop
 """
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -17,7 +17,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
+from novamind.features.knowledge_space.models.document_task import DocumentTask
 
 pytestmark = pytest.mark.unit
 

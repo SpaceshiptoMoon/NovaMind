@@ -6,7 +6,7 @@
 
 import asyncio
 import time
-from typing import AsyncIterator, AsyncGenerator, Union
+from collections.abc import AsyncGenerator, AsyncIterator
 
 from novamind.shared.ai_models.base_model import StreamChunk
 from novamind.shared.logging import get_logger
@@ -48,7 +48,7 @@ async def stream_with_heartbeat(
             )
             last_activity = time.monotonic()
             yield chunk
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.debug(
                 "SSE 心跳发送",
                 elapsed=time.monotonic() - last_activity,
@@ -61,7 +61,7 @@ async def stream_with_heartbeat(
 async def stream_with_heartbeat_structured(
     source: AsyncIterator[StreamChunk],
     interval: float = 15.0,
-) -> AsyncGenerator[Union[StreamChunk, str], None]:
+) -> AsyncGenerator[StreamChunk | str, None]:
     """Structured 版心跳包装器——用于 StreamChunk 类型的流
 
     Yields:
@@ -84,7 +84,7 @@ async def stream_with_heartbeat_structured(
             )
             last_activity = time.monotonic()
             yield chunk
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.debug(
                 "SSE 心跳发送（structured）",
                 elapsed=time.monotonic() - last_activity,

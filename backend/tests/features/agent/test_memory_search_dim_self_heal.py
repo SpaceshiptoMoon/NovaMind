@@ -6,14 +6,14 @@
 3. search 查询向量维度与索引不一致时跳过 KNN，直接 BM25（不抛 400）
 4. 维度一致时走 KNN hybrid
 """
-from typing import Any, Dict, List
-from unittest.mock import AsyncMock
+from typing import Any
 
 import pytest
-
 from novamind.features.agent.repository.memory_search_repository import (
     MemorySearchRepository,
 )
+
+pytestmark = pytest.mark.unit
 
 
 class _FakeIndices:
@@ -21,14 +21,14 @@ class _FakeIndices:
 
     def __init__(self, exists: bool, mapping_dims: int | None):
         self._existing: set[str] = {"agent_memory_1"} if exists else set()
-        self._mapping_dims: Dict[str, int | None] = {"agent_memory_1": mapping_dims}
-        self.deleted: List[str] = []
-        self.created: List[Dict[str, Any]] = []
+        self._mapping_dims: dict[str, int | None] = {"agent_memory_1": mapping_dims}
+        self.deleted: list[str] = []
+        self.created: list[dict[str, Any]] = []
 
     async def exists(self, index: str) -> bool:
         return index in self._existing
 
-    async def get_mapping(self, index: str) -> Dict[str, Any]:
+    async def get_mapping(self, index: str) -> dict[str, Any]:
         return {
             index: {
                 "mappings": {
@@ -43,7 +43,7 @@ class _FakeIndices:
         self._existing.discard(index)
         self.deleted.append(index)
 
-    async def create(self, index: str, body: Dict[str, Any]) -> None:
+    async def create(self, index: str, body: dict[str, Any]) -> None:
         dims = body["mappings"]["properties"]["content_vector"]["dims"]
         self.created.append({"index": index, "dims": dims})
         self._existing.add(index)
@@ -55,14 +55,14 @@ class _FakeES:
 
     def __init__(self, exists: bool = True, mapping_dims: int | None = 1536):
         self.indices = _FakeIndices(exists, mapping_dims)
-        self.indexed: List[Dict[str, Any]] = []
-        self.search_calls: List[Dict[str, Any]] = []
-        self._search_result: Dict[str, Any] = {"hits": {"hits": []}}
+        self.indexed: list[dict[str, Any]] = []
+        self.search_calls: list[dict[str, Any]] = []
+        self._search_result: dict[str, Any] = {"hits": {"hits": []}}
 
-    async def index(self, index: str, id: str, document: Dict[str, Any]) -> None:
+    async def index(self, index: str, id: str, document: dict[str, Any]) -> None:
         self.indexed.append({"index": index, "id": id, "doc": document})
 
-    async def search(self, index: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    async def search(self, index: str, body: dict[str, Any]) -> dict[str, Any]:
         self.search_calls.append({"index": index, "body": body})
         return self._search_result
 

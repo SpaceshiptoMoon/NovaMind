@@ -1,7 +1,7 @@
 from novamind.features.evaluation.models.evaluation_task import (
-    EvaluationTestSet,
-    EvaluationTask,
     EvaluationStatus,
+    EvaluationTask,
+    EvaluationTestSet,
 )
 
 __all__ = ["EvaluationTestSet", "EvaluationTask", "EvaluationStatus"]

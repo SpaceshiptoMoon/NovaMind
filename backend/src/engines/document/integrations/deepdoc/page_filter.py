@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import asdict
-from typing import Any, Sequence
-
+from typing import Any
 
 TOC_HEADING_PATTERN = re.compile(
     r"(contents|目录|目次|table of contents|致谢|acknowledge(?:ment)?s?)$",

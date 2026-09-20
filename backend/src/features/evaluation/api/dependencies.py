@@ -2,18 +2,17 @@
 测评模块依赖注入，构造 EvaluationService 所需端口与工厂。
 """
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.core.database.database import get_db, get_db_session
+from novamind.features.evaluation.services.evaluation_service import EvaluationService
+from novamind.features.knowledge_space.adapters.retrieval_adapter import as_retrieval_port
 from novamind.features.knowledge_space.api.dependencies import (
     get_search_service,
 )
-from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.features.evaluation.services.evaluation_service import EvaluationService
 from novamind.features.knowledge_space.services.search_service import SearchService
-from novamind.features.knowledge_space.adapters.retrieval_adapter import as_retrieval_port
+from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.retrieval_port import RetrievalPort
 from novamind.shared.storage.client_factory import get_elasticsearch_client, get_minio_client
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def get_evaluation_service(

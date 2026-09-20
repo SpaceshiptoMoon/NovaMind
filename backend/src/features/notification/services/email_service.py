@@ -47,9 +47,10 @@ class EmailService:
             return False
 
         try:
-            import aiosmtplib
             from email.mime.multipart import MIMEMultipart
             from email.mime.text import MIMEText
+
+            import aiosmtplib
 
             message = MIMEMultipart("alternative")
             message["From"] = smtp_config.from_email

@@ -5,9 +5,10 @@ token/space_name 降级）与异常静默语义。不碰真实 DB。
 """
 from types import SimpleNamespace
 
+import novamind.features.knowledge_space.api.member_routes as routes
 import pytest
 
-import novamind.features.knowledge_space.api.member_routes as routes
+pytestmark = pytest.mark.unit
 
 
 class _RecordingPort:

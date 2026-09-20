@@ -2,12 +2,11 @@
 应用中心依赖注入
 """
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.core.database.database import get_db
-from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.features.knowledge_space.api.dependencies import get_current_user_id
+from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.shared.ai_models.base_model import BaseLLM
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def _get_model_config_service(db: AsyncSession = Depends(get_db)) -> ModelConfigService:

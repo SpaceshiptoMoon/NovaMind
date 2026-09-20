@@ -1,17 +1,20 @@
 """
 技能广场仓储层
 """
-from typing import List, Optional, Tuple
 
-from sqlalchemy import select, func, delete, update, or_, case, text
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.skill.models.skill import (
+    ReviewStatus,
+    SkillDefinition,
+    SkillInstallation,
+    SkillReview,
+    SkillStatus,
+    SkillVersion,
+    SkillVisibility,
+)
+from sqlalchemy import case, delete, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.features.skill.models.skill import (
-    SkillDefinition, SkillVersion, SkillReview, SkillInstallation,
-    SkillVisibility, SkillStatus, ReviewStatus,
-)
-from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -49,7 +52,7 @@ class SkillRepository:
         await self.session.refresh(skill)
         return skill
 
-    async def get_by_id(self, skill_id: int) -> Optional[SkillDefinition]:
+    async def get_by_id(self, skill_id: int) -> SkillDefinition | None:
         result = await self.session.execute(
             select(SkillDefinition).where(
                 SkillDefinition.id == skill_id,
@@ -68,7 +71,7 @@ class SkillRepository:
             )
         )
 
-    async def get_by_name(self, user_id: Optional[int], name: str) -> Optional[SkillDefinition]:
+    async def get_by_name(self, user_id: int | None, name: str) -> SkillDefinition | None:
         query = select(SkillDefinition).where(
             SkillDefinition.name == name,
             SkillDefinition.deleted_at.is_(None),
@@ -81,9 +84,9 @@ class SkillRepository:
         return result.scalar_one_or_none()
 
     async def list_by_user(
-        self, user_id: int, status: Optional[int] = None,
+        self, user_id: int, status: int | None = None,
         limit: int = 20, offset: int = 0,
-    ) -> Tuple[List[SkillDefinition], int]:
+    ) -> tuple[list[SkillDefinition], int]:
         base = select(SkillDefinition).where(
             SkillDefinition.user_id == user_id,
             SkillDefinition.deleted_at.is_(None),
@@ -103,10 +106,10 @@ class SkillRepository:
         return result.scalars().all(), total
 
     async def list_marketplace(
-        self, keyword: Optional[str] = None, category: Optional[str] = None,
-        tags: Optional[List[str]] = None, sort: str = "newest",
+        self, keyword: str | None = None, category: str | None = None,
+        tags: list[str] | None = None, sort: str = "newest",
         limit: int = 20, offset: int = 0,
-    ) -> Tuple[List[SkillDefinition], int]:
+    ) -> tuple[list[SkillDefinition], int]:
         """技能广场搜索
 
         搜索策略：
@@ -231,7 +234,7 @@ class SkillRepository:
             )
         return result.scalars().all(), total
 
-    async def update(self, skill_id: int, **kwargs) -> Optional[SkillDefinition]:
+    async def update(self, skill_id: int, **kwargs) -> SkillDefinition | None:
         skill = await self.get_by_id(skill_id)
         if not skill:
             return None
@@ -266,7 +269,7 @@ class SkillRepository:
             .values(install_count=func.greatest(SkillDefinition.install_count - 1, 0))
         )
 
-    async def get_published_by_name(self, name: str) -> Optional[SkillDefinition]:
+    async def get_published_by_name(self, name: str) -> SkillDefinition | None:
         result = await self.session.execute(
             select(SkillDefinition).where(
                 SkillDefinition.name == name,
@@ -278,7 +281,7 @@ class SkillRepository:
 
     async def list_by_review_status(
         self, review_status: int, limit: int = 20, offset: int = 0,
-    ) -> Tuple[List[SkillDefinition], int]:
+    ) -> tuple[list[SkillDefinition], int]:
         """按审查状态列出技能"""
         base = select(SkillDefinition).where(
             SkillDefinition.deleted_at.is_(None),
@@ -294,7 +297,7 @@ class SkillRepository:
         )
         return result.scalars().all(), total
 
-    async def get_distinct_categories(self) -> List[str]:
+    async def get_distinct_categories(self) -> list[str]:
         """获取所有已上架技能的去重分类列表"""
         result = await self.session.execute(
             select(SkillDefinition.category)
@@ -310,7 +313,7 @@ class SkillRepository:
         )
         return [row[0] for row in result.all()]
 
-    async def get_common_tags(self, limit: int = 50) -> List[str]:
+    async def get_common_tags(self, limit: int = 50) -> list[str]:
         """获取所有已上架技能的常用标签（按出现频率降序）"""
         result = await self.session.execute(
             select(SkillDefinition.tags)
@@ -415,7 +418,7 @@ class SkillVersionRepository:
 
     async def list_by_skill(
         self, skill_id: int, limit: int = 20, offset: int = 0,
-    ) -> Tuple[List[SkillVersion], int]:
+    ) -> tuple[list[SkillVersion], int]:
         base = select(SkillVersion).where(SkillVersion.skill_id == skill_id)
         count_result = await self.session.execute(
             select(func.count()).select_from(base.subquery())
@@ -427,7 +430,7 @@ class SkillVersionRepository:
         )
         return result.scalars().all(), total
 
-    async def get_version(self, skill_id: int, version: int) -> Optional[SkillVersion]:
+    async def get_version(self, skill_id: int, version: int) -> SkillVersion | None:
         result = await self.session.execute(
             select(SkillVersion).where(
                 SkillVersion.skill_id == skill_id,
@@ -444,7 +447,7 @@ class SkillReviewRepository:
         self.session = session
 
     async def create_or_update(
-        self, skill_id: int, user_id: int, rating: int, content: Optional[str],
+        self, skill_id: int, user_id: int, rating: int, content: str | None,
     ) -> SkillReview:
         existing = await self.get_by_user_and_skill(user_id, skill_id)
         if existing:
@@ -461,7 +464,7 @@ class SkillReviewRepository:
         await self.session.refresh(review)
         return review
 
-    async def get_by_user_and_skill(self, user_id: int, skill_id: int) -> Optional[SkillReview]:
+    async def get_by_user_and_skill(self, user_id: int, skill_id: int) -> SkillReview | None:
         result = await self.session.execute(
             select(SkillReview).where(
                 SkillReview.user_id == user_id,
@@ -472,7 +475,7 @@ class SkillReviewRepository:
 
     async def list_by_skill(
         self, skill_id: int, limit: int = 20, offset: int = 0,
-    ) -> Tuple[List[SkillReview], int]:
+    ) -> tuple[list[SkillReview], int]:
         base = select(SkillReview).where(SkillReview.skill_id == skill_id)
         count_result = await self.session.execute(
             select(func.count()).select_from(base.subquery())
@@ -493,7 +496,7 @@ class SkillReviewRepository:
         )
         return result.rowcount > 0
 
-    async def get_rating_stats(self, skill_id: int) -> Tuple[float, int]:
+    async def get_rating_stats(self, skill_id: int) -> tuple[float, int]:
         result = await self.session.execute(
             select(
                 func.avg(SkillReview.rating),
@@ -517,7 +520,7 @@ class SkillInstallationRepository:
         await self.session.refresh(installation)
         return installation
 
-    async def get_by_skill_and_agent(self, skill_id: int, agent_id: int) -> Optional[SkillInstallation]:
+    async def get_by_skill_and_agent(self, skill_id: int, agent_id: int) -> SkillInstallation | None:
         result = await self.session.execute(
             select(SkillInstallation).where(
                 SkillInstallation.skill_id == skill_id,
@@ -526,7 +529,7 @@ class SkillInstallationRepository:
         )
         return result.scalar_one_or_none()
 
-    async def list_by_agent(self, agent_id: int) -> List[SkillInstallation]:
+    async def list_by_agent(self, agent_id: int) -> list[SkillInstallation]:
         result = await self.session.execute(
             select(SkillInstallation).where(SkillInstallation.agent_id == agent_id)
         )

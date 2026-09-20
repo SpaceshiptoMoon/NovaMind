@@ -22,11 +22,11 @@ MinIO 存储路径规范:
 import asyncio
 import io
 import re
-from typing import Optional, BinaryIO, List, Dict, Any
 from datetime import timedelta
+from typing import Any, BinaryIO
+
 from minio import Minio
 from minio.error import S3Error
-
 from novamind.shared.logging import get_logger
 from novamind.shared.storage.path_strategy import DefaultPathStrategy, PathStrategy
 
@@ -56,7 +56,7 @@ class MinioClient:
         region: str = "us-east-1",
         default_bucket: str = "knowledge-base",
         public_endpoint: str = None,
-        path_strategy: Optional[PathStrategy] = None,
+        path_strategy: PathStrategy | None = None,
     ):
         """
         初始化 MinIO 客户端
@@ -139,9 +139,9 @@ class MinioClient:
         file_data: bytes,
         filename: str,
         file_hash: str = "",
-        content_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        content_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """同步上传文档（内部方法）"""
         bucket_name = self.default_bucket
         storage_name = self._generate_storage_name(file_hash, filename)
@@ -182,9 +182,9 @@ class MinioClient:
         file_data: bytes,
         filename: str,
         file_hash: str = "",
-        content_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        content_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
         异步上传文档到 MinIO
 
@@ -228,9 +228,9 @@ class MinioClient:
         file_size: int,
         filename: str,
         file_hash: str = "",
-        content_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        content_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """同步流式上传文档（内部方法）"""
         bucket_name = self.default_bucket
         storage_name = self._generate_storage_name(file_hash, filename)
@@ -271,9 +271,9 @@ class MinioClient:
         file_size: int,
         filename: str,
         file_hash: str = "",
-        content_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        content_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
         异步流式上传文档
 
@@ -550,7 +550,7 @@ class MinioClient:
 
     # ========== 头像上传 ==========
 
-    def _upload_avatar(self, user_id: int, file_data: bytes, extension: str = "jpg") -> Dict[str, Any]:
+    def _upload_avatar(self, user_id: int, file_data: bytes, extension: str = "jpg") -> dict[str, Any]:
         """同步上传用户头像（内部方法）"""
         bucket_name = self.default_bucket
         # 删除旧头像
@@ -581,7 +581,7 @@ class MinioClient:
         user_id: int,
         file_data: bytes,
         extension: str = "jpg",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         异步上传用户头像
 
@@ -616,7 +616,7 @@ class MinioClient:
 
     # ========== 临时文件 ==========
 
-    def _upload_temp_file(self, session_id: str, file_data: bytes, filename: str) -> Dict[str, Any]:
+    def _upload_temp_file(self, session_id: str, file_data: bytes, filename: str) -> dict[str, Any]:
         """同步上传临时文件（内部方法）"""
         bucket_name = self.default_bucket
         safe_filename = self._sanitize_filename(filename)
@@ -642,7 +642,7 @@ class MinioClient:
         session_id: str,
         file_data: bytes,
         filename: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         异步上传临时文件
 
@@ -774,7 +774,7 @@ class MinioClient:
         self,
         bucket_name: str,
         object_name: str,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         异步获取文件信息
 
@@ -808,7 +808,7 @@ class MinioClient:
         self,
         bucket_name: str,
         prefix: str = "",
-    ) -> List[str]:
+    ) -> list[str]:
         """
         异步列出存储桶中的文件
 

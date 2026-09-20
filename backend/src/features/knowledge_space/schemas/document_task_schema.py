@@ -2,7 +2,7 @@
 Document task schemas.
 """
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
@@ -13,18 +13,18 @@ class DocumentTaskItemResponse(BaseModel):
     id: int = Field(..., description="任务项ID")
     task_id: int = Field(..., description="任务ID")
     document_id: int = Field(..., description="文档ID")
-    document_name: Optional[str] = Field(None, description="文档名（由后端按 document_id 关联 Documents.filename 填充，前端展示用）")
+    document_name: str | None = Field(None, description="文档名（由后端按 document_id 关联 Documents.filename 填充，前端展示用）")
     kb_id: int = Field(..., description="知识库ID")
     space_id: int = Field(..., description="空间ID")
     status: int = Field(..., description="任务项状态")
-    job_id: Optional[str] = Field(None, description="arq job ID")
-    step_progress: Optional[Dict[str, Any]] = Field(None, description="步骤进度")
-    pipeline_result: Optional[Dict[str, Any]] = Field(None, description="处理结果")
-    error_message: Optional[str] = Field(None, description="错误信息")
+    job_id: str | None = Field(None, description="arq job ID")
+    step_progress: dict[str, Any] | None = Field(None, description="步骤进度")
+    pipeline_result: dict[str, Any] | None = Field(None, description="处理结果")
+    error_message: str | None = Field(None, description="错误信息")
     retry_count: int = Field(default=0, description="自动重试次数")
-    queued_at: Optional[datetime] = Field(None, description="入队时间")
-    started_at: Optional[datetime] = Field(None, description="开始处理时间")
-    completed_at: Optional[datetime] = Field(None, description="完成时间")
+    queued_at: datetime | None = Field(None, description="入队时间")
+    started_at: datetime | None = Field(None, description="开始处理时间")
+    completed_at: datetime | None = Field(None, description="完成时间")
     created_at: datetime = Field(..., description="创建时间")
     updated_at: datetime = Field(..., description="更新时间")
 
@@ -44,17 +44,17 @@ class DocumentTaskResponse(BaseModel):
     creator_id: int = Field(..., description="创建人ID")
     action: int = Field(..., description="任务动作")
     status: int = Field(..., description="任务状态")
-    pipeline_config: Optional[Dict[str, Any]] = Field(None, description="处理配置快照")
+    pipeline_config: dict[str, Any] | None = Field(None, description="处理配置快照")
     total_count: int = Field(..., description="文档总数")
-    processed_count: Optional[int] = Field(None, description="已处理文档数 completed+failed+cancelled")
-    task_summary: Optional[Dict[str, Any]] = Field(None, description="任务汇总")
-    note: Optional[str] = Field(None, description="任务说明")
-    error_message: Optional[str] = Field(None, description="任务级错误")
-    started_at: Optional[datetime] = Field(None, description="开始时间")
-    completed_at: Optional[datetime] = Field(None, description="完成时间")
+    processed_count: int | None = Field(None, description="已处理文档数 completed+failed+cancelled")
+    task_summary: dict[str, Any] | None = Field(None, description="任务汇总")
+    note: str | None = Field(None, description="任务说明")
+    error_message: str | None = Field(None, description="任务级错误")
+    started_at: datetime | None = Field(None, description="开始时间")
+    completed_at: datetime | None = Field(None, description="完成时间")
     created_at: datetime = Field(..., description="创建时间")
     updated_at: datetime = Field(..., description="更新时间")
-    items: List[DocumentTaskItemResponse] = Field(default_factory=list, description="任务子项")
+    items: list[DocumentTaskItemResponse] = Field(default_factory=list, description="任务子项")
 
     @field_serializer("action", "status")
     def serialize_int_enum(self, value) -> int:
@@ -64,12 +64,12 @@ class DocumentTaskResponse(BaseModel):
 
 
 class DocumentTaskListResponse(BaseModel):
-    items: List[DocumentTaskResponse] = Field(..., description="任务列表")
+    items: list[DocumentTaskResponse] = Field(..., description="任务列表")
     total: int = Field(..., description="总数")
 
 
 class DocumentTaskItemListResponse(BaseModel):
-    items: List[DocumentTaskItemResponse] = Field(..., description="任务项列表")
+    items: list[DocumentTaskItemResponse] = Field(..., description="任务项列表")
     total: int = Field(..., description="总数")
 
 
@@ -85,5 +85,5 @@ class TaskStatusResponse(BaseModel):
     document_id: int = Field(..., description="文档ID")
     status: int = Field(..., description="当前状态")
     status_name: str = Field(..., description="状态名")
-    step_progress: Optional[Dict[str, Any]] = Field(None, description="步骤进度")
-    error_message: Optional[str] = Field(None, description="错误信息")
+    step_progress: dict[str, Any] | None = Field(None, description="步骤进度")
+    error_message: str | None = Field(None, description="错误信息")

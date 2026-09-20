@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import ast
 import inspect
-import sys
 from pathlib import Path
 
 import pytest
@@ -73,7 +72,7 @@ def test_grade_retrier_ctor_requires_port_injection():
 
 def test_grade_retrier_exports_from_engines_rag():
     """GradeRetrier / GradeResult 从 engines.rag 公共面导出。"""
-    from novamind.engines.rag import GradeRetrier, GradeResult
+    from novamind.engines.rag import GradeResult, GradeRetrier
 
     assert GradeRetrier.__name__ == "GradeRetrier"
     assert GradeResult.__name__ == "GradeResult"

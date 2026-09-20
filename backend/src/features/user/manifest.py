@@ -6,9 +6,9 @@ from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, Ro
 
 def _import_models() -> None:
     from novamind.features.user.models.user import User  # noqa: F401
+    from novamind.features.user.models.user_disabled_app import UserDisabledApp  # noqa: F401
     from novamind.features.user.models.user_model_config import UserModelConfig  # noqa: F401
     from novamind.features.user.models.user_search_config import UserSearchConfig  # noqa: F401
-    from novamind.features.user.models.user_disabled_app import UserDisabledApp  # noqa: F401
 
 
 async def _init(app) -> None:
@@ -18,10 +18,10 @@ async def _init(app) -> None:
 
 
 def manifest() -> FeatureManifest:
-    from novamind.features.user.api.user_routes import router as user_router
-    from novamind.features.user.api.role_routes import router as role_router
     from novamind.features.user.api.model_config_routes import router as model_config_router
+    from novamind.features.user.api.role_routes import router as role_router
     from novamind.features.user.api.search_config_routes import router as search_config_router
+    from novamind.features.user.api.user_routes import router as user_router
 
     return FeatureManifest(
         name="user",

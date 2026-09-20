@@ -1,6 +1,6 @@
 """语义切分器：经 embedding 相似度检测语义断点切分。"""
+
 import numpy as np
-from typing import List, Dict
 from novamind.engines.document.splitters.base_splitter import BaseSplitter
 from novamind.shared.ai_models.base_model import BaseEmbedding
 
@@ -25,7 +25,7 @@ class SemanticSplitter(BaseSplitter):
         self.similarity_threshold = similarity_threshold
         self.batch_size = batch_size
 
-    async def split(self, documents: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    async def split(self, documents: list[dict[str, str]]) -> list[dict[str, str]]:
         """
         切分文档列表
         :param documents: 原始文档列表
@@ -53,14 +53,16 @@ class SemanticSplitter(BaseSplitter):
         
         return split_docs
 
-    async def _split_text_semantically(self, text: str) -> List[str]:
+    async def _split_text_semantically(self, text: str) -> list[str]:
         """
         基于语义的文本切分
         :param text: 输入文本
         :return: 切分后的文本块列表
         """
         # 首先使用递归字符切分器进行初步切分
-        from novamind.engines.document.splitters.recursive_splitter import RecursiveCharacterSplitter
+        from novamind.engines.document.splitters.recursive_splitter import (
+            RecursiveCharacterSplitter,
+        )
         
         # 使用较小的块大小进行初步切分，以确保不超过最大限制
         preliminary_splitter = RecursiveCharacterSplitter(

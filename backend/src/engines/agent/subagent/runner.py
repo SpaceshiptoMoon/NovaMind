@@ -11,7 +11,7 @@
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from novamind.engines.agent.agent_engine import AgentEngine
 from novamind.engines.agent.tool.executor import ToolExecutor
@@ -34,9 +34,9 @@ class SubAgentRunner:
         model_config_service: ModelConfigPort,
         user_id: int,
         model: str,
-        enabled_tools: List[str],
-        enabled_mcp_ids: List[int],
-        parent_context: Dict[str, Any],
+        enabled_tools: list[str],
+        enabled_mcp_ids: list[int],
+        parent_context: dict[str, Any],
     ) -> None:
         self._agent_engine = agent_engine
         self._tool_executor = tool_executor
@@ -51,7 +51,7 @@ class SubAgentRunner:
 
     async def run_subagent(
         self, prompt: str, description: str = ""
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """跑子 agent，返回 ``{summary, session_id, description}``。"""
         # LLM 客户端（优先 LLM，fallback VLM）
         try:
@@ -69,7 +69,7 @@ class SubAgentRunner:
         )
 
         # 独立 messages（不继承父上下文）
-        messages: List[Dict[str, Any]] = [{"role": "user", "content": prompt}]
+        messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
 
         # 子 context：复用父端口，但 subagent_runner=None（双保险防递归）
         sub_context = dict(self._parent_context)

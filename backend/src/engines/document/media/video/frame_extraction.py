@@ -13,18 +13,14 @@ import asyncio
 import io
 import logging
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from novamind.engines.document.media.video.video_normalizer import (
     normalize_video_for_frame_extraction,
 )
 from novamind.engines.document.media.video.video_utils import (
     VideoMetadataError,
-    _extract_frames_from_path,
-    _read_video_metadata,
     _read_frame_at,
-)
-from novamind.engines.document.media.video.video_utils import (
+    _read_video_metadata,
     extract_video_frames,
 )
 
@@ -38,7 +34,7 @@ async def extract_frames_fixed(
     file_content: bytes,
     interval: float = 5.0,
     max_frames: int = 60,
-) -> List[Tuple[bytes, float, int]]:
+) -> list[tuple[bytes, float, int]]:
     """固定间隔抽帧（= 现有 ``extract_video_frames`` 行为，策略化别名）。
 
     返回 ``[(jpeg_bytes, timestamp, frame_idx), ...]``，frame_idx 从 0 递增。
@@ -52,8 +48,8 @@ async def extract_frames_scene(
     *,
     scene_threshold: float = 0.3,
     min_interval: float = 2.0,
-    sample_step: Optional[float] = None,
-) -> List[Tuple[bytes, float, int]]:
+    sample_step: float | None = None,
+) -> list[tuple[bytes, float, int]]:
     """场景切换抽帧：按相邻帧灰度直方图卡方距离检测镜头切换点。
 
     流程：
@@ -75,7 +71,7 @@ async def extract_frames_scene(
         tmp.write(file_content)
         tmp_path = tmp.name
 
-    normalized_path: Optional[str] = None
+    normalized_path: str | None = None
     try:
         try:
             return await asyncio.to_thread(
@@ -117,8 +113,8 @@ def _extract_scene_from_path(
     max_frames: int,
     scene_threshold: float,
     min_interval: float,
-    sample_step: Optional[float],
-) -> List[Tuple[bytes, float, int]]:
+    sample_step: float | None,
+) -> list[tuple[bytes, float, int]]:
     """场景抽帧的同步实现（在 to_thread 中执行）。"""
     metadata = _read_video_metadata(filepath)
     duration = metadata.get("duration", 0) or 0
@@ -137,18 +133,17 @@ def _extract_scene_from_path(
     if sample_step is None:
         sample_step = max(1.0, duration / _MAX_CANDIDATE_FRAMES)
 
-    candidate_ts: List[float] = []
+    candidate_ts: list[float] = []
     t = 0.0
     while t < duration and len(candidate_ts) < _MAX_CANDIDATE_FRAMES:
         candidate_ts.append(t)
         t += sample_step
 
     # 逐候选帧解码 + 算灰度直方图。
-    from PIL import Image
     import numpy as np
 
-    histograms: List[np.ndarray] = []
-    valid_ts: List[float] = []
+    histograms: list[np.ndarray] = []
+    valid_ts: list[float] = []
     for ts in candidate_ts:
         pil = _read_frame_at(filepath, ts, fps)
         if pil is None:
@@ -160,7 +155,7 @@ def _extract_scene_from_path(
         raise RuntimeError("场景抽帧未能解码任何候选帧")
 
     # 相邻候选帧卡方距离。
-    distances: List[float] = []
+    distances: list[float] = []
     for i in range(1, len(histograms)):
         distances.append(_histogram_chi_square(histograms[i - 1], histograms[i]))
 
@@ -179,7 +174,7 @@ def _extract_scene_from_path(
         selected_candidate_idx = _uniform_sample_indices(len(valid_ts), max_frames)
 
     # 导出选中帧为 JPEG。
-    frames: List[Tuple[bytes, float, int]] = []
+    frames: list[tuple[bytes, float, int]] = []
     for frame_idx, cand_idx in enumerate(selected_candidate_idx):
         ts = valid_ts[cand_idx]
         pil = _read_frame_at(filepath, ts, fps)
@@ -198,7 +193,7 @@ def _extract_scene_from_path(
 # ========== 纯函数：直方图 + 切换点选择（无 IO，供单测） ==========
 
 
-def _compute_gray_histogram(pil_image) -> "np.ndarray":
+def _compute_gray_histogram(pil_image) -> np.ndarray:  # noqa: F821
     """算 PIL 图像的归一化灰度直方图（256 bin，和为 1）。"""
     import numpy as np
 
@@ -211,7 +206,7 @@ def _compute_gray_histogram(pil_image) -> "np.ndarray":
     return arr / total
 
 
-def _histogram_chi_square(h1: "np.ndarray", h2: "np.ndarray") -> float:
+def _histogram_chi_square(h1: np.ndarray, h2: np.ndarray) -> float:  # noqa: F821
     """两归一化直方图的卡方距离，归一化到 [0, 1] 区间近似。
 
     卡方距离 ``sum((h1-h2)^2 / (h1+h2))``，分母为 0 的 bin 跳过；
@@ -229,13 +224,13 @@ def _histogram_chi_square(h1: "np.ndarray", h2: "np.ndarray") -> float:
 
 
 def _select_scene_keyframes(
-    distances: List[float],
+    distances: list[float],
     num_candidates: int,
     threshold: float,
     min_interval: float,
     sample_step: float,
     max_frames: int,
-) -> List[int]:
+) -> list[int]:
     """从相邻候选帧距离序列选场景切换关键帧，返回候选帧索引列表。
 
     - ``distances`` 长度 = ``num_candidates - 1``，``distances[i]`` 是候选帧 i 与 i+1 的距离；
@@ -247,7 +242,7 @@ def _select_scene_keyframes(
     if num_candidates <= 0:
         return []
 
-    selected: List[int] = [0]  # 首帧必选
+    selected: list[int] = [0]  # 首帧必选
     last_ts = 0.0
     for i, dist in enumerate(distances):
         if dist < threshold:
@@ -268,8 +263,8 @@ def _uniform_sample_indices(
     total: int,
     max_frames: int,
     *,
-    base: Optional[List[int]] = None,
-) -> List[int]:
+    base: list[int] | None = None,
+) -> list[int]:
     """从 ``total`` 个候选中均匀抽 ``max_frames`` 个，返回其在 ``base``（或 range(total)）中的索引。
 
     ``base`` 为 None 时候选即 ``range(total)``；非 None 时从 ``base`` 列表里按均匀步长抽样。

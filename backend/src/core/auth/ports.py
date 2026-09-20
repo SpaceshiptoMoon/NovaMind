@@ -10,14 +10,14 @@
 """
 from __future__ import annotations
 
-from typing import Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 
 @runtime_checkable
 class UserStatusResolver(Protocol):
     """按 user_id 取最新用户状态（供认证依赖判断删除/停用）。"""
 
-    async def get_user_for_auth(self, user_id: int) -> Optional[dict]:
+    async def get_user_for_auth(self, user_id: int) -> dict | None:
         """返回用户状态 dict；用户不存在返回 None。
 
         约定字段：``id`` / ``username`` / ``email`` / ``is_admin`` / ``status`` /

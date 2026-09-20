@@ -84,9 +84,9 @@ def _make_chat_service(search_config_port=None):
 @pytest.mark.asyncio
 async def test_retrieve_web_user_config_hit(monkeypatch):
     """用户级配置命中 → 用对应 provider port 搜，结果含 score。"""
+    import novamind.features.qa.services.ai_chat_service as chat_mod
     from novamind.engines.search_ports import WebSearchResult
     from novamind.shared.search_config_ports import SearchCredentials
-    import novamind.features.qa.services.ai_chat_service as chat_mod
 
     creds = SearchCredentials(provider="tavily", api_key="tvly-x", extra_config=None)
     scp = _FakeSearchConfigPort(creds=creds)
@@ -115,8 +115,8 @@ async def test_retrieve_web_user_config_hit(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_user_config_hit_uses_provider_and_key(monkeypatch):
     """构造端口时应透传用户级 provider / api_key / extra_config。"""
-    from novamind.shared.search_config_ports import SearchCredentials
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    from novamind.shared.search_config_ports import SearchCredentials
 
     creds = SearchCredentials(provider="serpapi", api_key="serp-key", extra_config={"num": 7})
     scp = _FakeSearchConfigPort(creds=creds)
@@ -143,8 +143,8 @@ async def test_retrieve_web_user_config_hit_uses_provider_and_key(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_no_user_config_falls_back_yaml(monkeypatch):
     """用户级返回 None → 回退 YAML 兜底构造端口。"""
-    from novamind.engines.search_ports import WebSearchResult
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    from novamind.engines.search_ports import WebSearchResult
 
     scp = _FakeSearchConfigPort(creds=None)  # 无用户级配置
     svc = _make_chat_service(search_config_port=scp)
@@ -163,8 +163,8 @@ async def test_retrieve_web_no_user_config_falls_back_yaml(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_no_search_config_port_falls_back_yaml(monkeypatch):
     """SearchConfigPort 未注入（None）→ 直接走 YAML 兜底。"""
-    from novamind.engines.search_ports import WebSearchResult
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    from novamind.engines.search_ports import WebSearchResult
 
     svc = _make_chat_service(search_config_port=None)
 
@@ -184,8 +184,8 @@ async def test_retrieve_web_no_search_config_port_falls_back_yaml(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_search_failure_returns_none(monkeypatch):
     """port.search 抛异常 → 降级返回 None，不向上抛。"""
-    from novamind.shared.search_config_ports import SearchCredentials
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    from novamind.shared.search_config_ports import SearchCredentials
 
     creds = SearchCredentials(provider="tavily", api_key="k", extra_config=None)
     scp = _FakeSearchConfigPort(creds=creds)
@@ -206,8 +206,8 @@ async def test_retrieve_web_search_failure_returns_none(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_no_results_returns_none(monkeypatch):
     """port.search 返回空列表 → 返回 None。"""
-    from novamind.shared.search_config_ports import SearchCredentials
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    from novamind.shared.search_config_ports import SearchCredentials
 
     creds = SearchCredentials(provider="tavily", api_key="k", extra_config=None)
     scp = _FakeSearchConfigPort(creds=creds)
@@ -228,10 +228,10 @@ async def test_retrieve_web_no_results_returns_none(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_user_build_fails_falls_back_yaml(monkeypatch):
     """用户级 build_web_search_port_from_provider 抛 WebSearchError → 回退 YAML 兜底。"""
+    import novamind.features.qa.services.ai_chat_service as chat_mod
     from novamind.engines.search_errors import WebSearchError
     from novamind.engines.search_ports import WebSearchResult
     from novamind.shared.search_config_ports import SearchCredentials
-    import novamind.features.qa.services.ai_chat_service as chat_mod
 
     creds = SearchCredentials(provider="tavily", api_key="bad-key", extra_config=None)
     scp = _FakeSearchConfigPort(creds=creds)
@@ -259,8 +259,8 @@ async def test_retrieve_web_user_build_fails_falls_back_yaml(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_search_config_port_exception_falls_back_yaml(monkeypatch):
     """SearchConfigPort.get_primary_search_config 抛异常 → 回退 YAML 兜底。"""
-    from novamind.engines.search_ports import WebSearchResult
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    from novamind.engines.search_ports import WebSearchResult
 
     scp = _FakeSearchConfigPort(raise_exc=RuntimeError("db down"))
     svc = _make_chat_service(search_config_port=scp)
@@ -281,9 +281,9 @@ async def test_retrieve_web_search_config_port_exception_falls_back_yaml(monkeyp
 @pytest.mark.asyncio
 async def test_retrieve_web_all_fail_returns_none(monkeypatch):
     """用户级 + YAML 兜底都失败 → 返回 None。"""
+    import novamind.features.qa.services.ai_chat_service as chat_mod
     from novamind.engines.search_errors import WebSearchError
     from novamind.shared.search_config_ports import SearchCredentials
-    import novamind.features.qa.services.ai_chat_service as chat_mod
 
     creds = SearchCredentials(provider="tavily", api_key="bad", extra_config=None)
     scp = _FakeSearchConfigPort(creds=creds)
@@ -303,8 +303,8 @@ async def test_retrieve_web_all_fail_returns_none(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_score_defaults_to_zero(monkeypatch):
     """WebSearchResult 无 score 时，source score 默认 0.0。"""
-    from novamind.engines.search_ports import WebSearchResult
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    from novamind.engines.search_ports import WebSearchResult
 
     svc = _make_chat_service(search_config_port=None)
 
@@ -325,9 +325,9 @@ async def test_retrieve_web_score_defaults_to_zero(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_explicit_provider_hit(monkeypatch):
     """显式指定 provider 且用户已配 → 用该 provider 的配置构造端口（透传 provider+key）。"""
+    import novamind.features.qa.services.ai_chat_service as chat_mod
     from novamind.engines.search_ports import WebSearchResult
     from novamind.shared.search_config_ports import SearchCredentials
-    import novamind.features.qa.services.ai_chat_service as chat_mod
 
     by_provider = {
         "serpapi": SearchCredentials(provider="serpapi", api_key="serp-key", extra_config={"num": 7}),
@@ -361,9 +361,9 @@ async def test_retrieve_web_explicit_provider_hit(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_explicit_provider_not_configured_falls_back(monkeypatch):
     """显式指定 provider 但用户未配该 provider → 回退自动择优（primary/YAML）。"""
+    import novamind.features.qa.services.ai_chat_service as chat_mod
     from novamind.engines.search_ports import WebSearchResult
     from novamind.shared.search_config_ports import SearchCredentials
-    import novamind.features.qa.services.ai_chat_service as chat_mod
 
     # by_provider 不含 tavily → get_search_config_by_provider 返回 None
     # primary 返回 duckduckgo 兜底
@@ -390,10 +390,10 @@ async def test_retrieve_web_explicit_provider_not_configured_falls_back(monkeypa
 @pytest.mark.asyncio
 async def test_retrieve_web_explicit_provider_build_fails_falls_back(monkeypatch):
     """显式 provider 构造端口失败（WebSearchError）→ 回退自动择优。"""
+    import novamind.features.qa.services.ai_chat_service as chat_mod
     from novamind.engines.search_errors import WebSearchError
     from novamind.engines.search_ports import WebSearchResult
     from novamind.shared.search_config_ports import SearchCredentials
-    import novamind.features.qa.services.ai_chat_service as chat_mod
 
     by_provider = {
         "tavily": SearchCredentials(provider="tavily", api_key="bad-key", extra_config=None),
@@ -424,9 +424,9 @@ async def test_retrieve_web_explicit_provider_build_fails_falls_back(monkeypatch
 @pytest.mark.asyncio
 async def test_retrieve_web_explicit_provider_port_exception_falls_back(monkeypatch):
     """get_search_config_by_provider 抛异常 → 回退自动择优。"""
+    import novamind.features.qa.services.ai_chat_service as chat_mod
     from novamind.engines.search_ports import WebSearchResult
     from novamind.shared.search_config_ports import SearchCredentials
-    import novamind.features.qa.services.ai_chat_service as chat_mod
 
     by_provider = {"tavily": RuntimeError("db down")}
     primary_creds = SearchCredentials(provider="duckduckgo", api_key=None, extra_config=None)
@@ -448,9 +448,9 @@ async def test_retrieve_web_explicit_provider_port_exception_falls_back(monkeypa
 @pytest.mark.asyncio
 async def test_retrieve_web_search_provider_none_uses_primary(monkeypatch):
     """search_provider=None → 走原自动择优（不调 get_search_config_by_provider）。"""
+    import novamind.features.qa.services.ai_chat_service as chat_mod
     from novamind.engines.search_ports import WebSearchResult
     from novamind.shared.search_config_ports import SearchCredentials
-    import novamind.features.qa.services.ai_chat_service as chat_mod
 
     primary_creds = SearchCredentials(provider="tavily", api_key="primary-key", extra_config=None)
     scp = _FakeSearchConfigPort(creds=primary_creds, by_provider={"tavily": "should-not-be-used"})
@@ -478,8 +478,8 @@ async def test_retrieve_web_search_provider_none_uses_primary(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_explicit_provider_no_port_falls_back_yaml(monkeypatch):
     """显式 provider 但 SearchConfigPort 未注入（None）→ 直接走 YAML 兜底（不抛）。"""
-    from novamind.engines.search_ports import WebSearchResult
     import novamind.features.qa.services.ai_chat_service as chat_mod
+    from novamind.engines.search_ports import WebSearchResult
 
     svc = _make_chat_service(search_config_port=None)
 
@@ -605,9 +605,8 @@ def test_build_retrieval_context_contains_sources_without_system_prompt_prefix()
 
 def test_rag_binding_config_rejects_weights_sum_not_one():
     """RagBindingConfig schema 层校验：vector_weight + bm25_weight ≠ 1.0 → ValidationError。"""
-    from pydantic import ValidationError
-
     from novamind.features.qa.schemas.session_config import RagBindingConfig
+    from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
         RagBindingConfig(vector_weight=0.8, bm25_weight=0.3)  # 和=1.1

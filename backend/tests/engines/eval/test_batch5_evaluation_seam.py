@@ -96,8 +96,8 @@ def test_structlog_logger_satisfies_protocol():
     会误判，故先 ``.bind()`` 触发绑定再校验。生产中 evaluator 调用 ``self._logger``
     的方法时同样会触发绑定。
     """
-    from novamind.shared.logging import Logger
     from novamind.core.middleware.structured_logging import get_logger
+    from novamind.shared.logging import Logger
 
     host_logger = get_logger("evaluation.evaluators").bind()
     assert isinstance(host_logger, Logger)
@@ -107,10 +107,10 @@ def test_evaluators_require_port_injection():
     """4 个 evaluator 构造器均要求注入 PromptProvider + Logger（EmbeddingEvaluator 除外，仅 BaseEmbedding）。"""
     import inspect
 
-    from novamind.engines.eval.retrieval_evaluator import RetrievalEvaluator
-    from novamind.engines.eval.generation_evaluator import GenerationEvaluator
     from novamind.engines.eval.claim_decomposer import ClaimDecomposer
     from novamind.engines.eval.embedding_evaluator import EmbeddingEvaluator
+    from novamind.engines.eval.generation_evaluator import GenerationEvaluator
+    from novamind.engines.eval.retrieval_evaluator import RetrievalEvaluator
 
     for cls in (RetrievalEvaluator, GenerationEvaluator, ClaimDecomposer):
         params = inspect.signature(cls.__init__).parameters

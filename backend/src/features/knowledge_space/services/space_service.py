@@ -5,29 +5,31 @@
 支持多租户和 RBAC 权限控制
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Any
 
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.exceptions import (
+    InvalidParameterError,
+    SpaceAccessDeniedError,
+    SpaceAlreadyExistsError,
+    SpaceNotFoundError,
+)
+from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
+from novamind.features.knowledge_space.models.space_member import SpaceRole
+from novamind.features.knowledge_space.repository.audit_repository import AuditRepository
+from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
+from novamind.features.knowledge_space.repository.knowledge_base_repository import (
+    KnowledgeBaseRepository,
+)
+from novamind.features.knowledge_space.repository.member_repository import MemberRepository
+from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
+from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
+from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
+from novamind.shared.storage.minio_client import MinioClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
-from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
-from novamind.features.knowledge_space.models.space_member import SpaceRole
-from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
-from novamind.features.knowledge_space.repository.member_repository import MemberRepository
-from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
-from novamind.features.knowledge_space.repository.audit_repository import AuditRepository
-from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
-from novamind.features.knowledge_space.exceptions import (
-    SpaceNotFoundError,
-    SpaceAlreadyExistsError,
-    SpaceAccessDeniedError,
-    InvalidParameterError,
-)
-from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
-from novamind.shared.storage.minio_client import MinioClient
-from novamind.core.middleware.structured_logging import get_logger
-from novamind.shared.model_config_ports import ModelConfigPort
 
 def _resolve_model_type(modalities=None) -> str:
     """决定嵌入模型类型，统一用 embedding"""
@@ -47,7 +49,7 @@ class SpaceService:
         session: AsyncSession,
         es_client: ElasticsearchClient = None,
         minio_client: MinioClient = None,
-        model_config_service: Optional[ModelConfigPort] = None,
+        model_config_service: ModelConfigPort | None = None,
     ):
         self.session = session
         self.space_repo = SpaceRepository(session)
@@ -64,9 +66,9 @@ class SpaceService:
         self,
         model_name: str,
         owner_id: int,
-        fallback: Optional[int] = None,
+        fallback: int | None = None,
         model_type: str = "embedding",
-    ) -> Optional[int]:
+    ) -> int | None:
         """
         从数据库模型配置表读取 Embedding 模型的检测维度
 
@@ -119,7 +121,7 @@ class SpaceService:
         name: str,
         owner_id: int,
         visibility: int = 0,
-        config: Optional[Dict[str, Any]] = None,
+        config: dict[str, Any] | None = None,
     ) -> KnowledgeSpace:
         """
         创建知识空间
@@ -360,7 +362,7 @@ class SpaceService:
     async def get_space(
         self,
         space_id: int,
-    ) -> Optional[KnowledgeSpace]:
+    ) -> KnowledgeSpace | None:
         """
         获取空间信息
 
@@ -376,8 +378,8 @@ class SpaceService:
         self,
         space_id: int,
         user_id: int,
-        data: Dict[str, Any],
-    ) -> Optional[KnowledgeSpace]:
+        data: dict[str, Any],
+    ) -> KnowledgeSpace | None:
         """
         更新空间信息
 
@@ -427,7 +429,7 @@ class SpaceService:
         user_id: int,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[KnowledgeSpace]:
+    ) -> list[KnowledgeSpace]:
         """
         获取用户的空间列表
 
@@ -461,7 +463,7 @@ class SpaceService:
         self,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[KnowledgeSpace]:
+    ) -> list[KnowledgeSpace]:
         """
         获取公开空间列表
 
@@ -489,10 +491,10 @@ class SpaceService:
     async def search_spaces(
         self,
         keyword: str,
-        user_id: Optional[int] = None,
+        user_id: int | None = None,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[KnowledgeSpace]:
+    ) -> list[KnowledgeSpace]:
         """
         搜索知识空间
 
@@ -515,7 +517,7 @@ class SpaceService:
     async def count_search_spaces(
         self,
         keyword: str,
-        user_id: Optional[int] = None,
+        user_id: int | None = None,
     ) -> int:
         """
         统计搜索结果数量
@@ -535,7 +537,7 @@ class SpaceService:
     async def get_space_stats(
         self,
         space_id: int,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         获取空间统计信息
 
@@ -551,8 +553,8 @@ class SpaceService:
         if not space:
             raise SpaceNotFoundError(space_id)
 
-        from sqlalchemy import func, select
         from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
+        from sqlalchemy import func, select
 
         # 知识库数量
         kb_count_result = await self.session.execute(
@@ -615,7 +617,7 @@ class SpaceService:
             and embedding_update.get("model") != current_embedding.get("model")
         )
 
-    async def get_config(self, space_id: int) -> Dict[str, Any]:
+    async def get_config(self, space_id: int) -> dict[str, Any]:
         """
         获取空间配置及统计信息
 
@@ -641,7 +643,7 @@ class SpaceService:
     async def update_config(
         self,
         space_id: int,
-        config_updates: Dict[str, Any],
+        config_updates: dict[str, Any],
     ) -> KnowledgeSpace:
         """
         部分更新空间配置（深度合并 + 校验）
@@ -736,6 +738,6 @@ class SpaceService:
         flag_modified(space, "config")
 
     @staticmethod
-    def _build_es_create_kwargs(space_id: int, embedding_dim: int) -> Dict[str, Any]:
+    def _build_es_create_kwargs(space_id: int, embedding_dim: int) -> dict[str, Any]:
         """构建 ES 索引创建参数。"""
         return {"space_id": space_id, "embedding_dim": embedding_dim}

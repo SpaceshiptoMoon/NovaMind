@@ -3,17 +3,15 @@ Agent 模块仓储层
 """
 import uuid
 from datetime import datetime
-from typing import List, Optional, Tuple
 
-from sqlalchemy import select, func, delete, update
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.features.agent.models.agent import AgentDefinition
-from novamind.features.agent.models.session import AgentSession
-from novamind.features.agent.models.message import AgentMessage
-from novamind.features.agent.models.tool_call import AgentToolCall
-from novamind.features.agent.models.mcp_server import AgentMcpServer
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.agent.models.agent import AgentDefinition
+from novamind.features.agent.models.mcp_server import AgentMcpServer
+from novamind.features.agent.models.message import AgentMessage
+from novamind.features.agent.models.session import AgentSession
+from novamind.features.agent.models.tool_call import AgentToolCall
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -37,7 +35,7 @@ class AgentRepository:
         await self.session.refresh(agent)
         return agent
 
-    async def get_by_id(self, agent_id: int) -> Optional[AgentDefinition]:
+    async def get_by_id(self, agent_id: int) -> AgentDefinition | None:
         result = await self.session.execute(
             select(AgentDefinition).where(AgentDefinition.id == agent_id)
         )
@@ -45,7 +43,7 @@ class AgentRepository:
 
     async def list_by_user(
         self, user_id: int, limit: int = 20, offset: int = 0
-    ) -> Tuple[List[AgentDefinition], int]:
+    ) -> tuple[list[AgentDefinition], int]:
         # 系统级 + 用户自己的
         base = select(AgentDefinition).where(
             (AgentDefinition.user_id == user_id) | (AgentDefinition.user_id.is_(None))
@@ -60,7 +58,7 @@ class AgentRepository:
         )
         return result.scalars().all(), total
 
-    async def update(self, agent_id: int, **kwargs) -> Optional[AgentDefinition]:
+    async def update(self, agent_id: int, **kwargs) -> AgentDefinition | None:
         agent = await self.get_by_id(agent_id)
         if not agent:
             return None
@@ -85,7 +83,7 @@ class SessionRepository:
         self.session = session
 
     async def create(
-        self, user_id: int, agent_id: int, session_id: Optional[str] = None
+        self, user_id: int, agent_id: int, session_id: str | None = None
     ) -> AgentSession:
         conv = AgentSession(
             user_id=user_id,
@@ -97,7 +95,7 @@ class SessionRepository:
         await self.session.refresh(conv)
         return conv
 
-    async def get_by_id(self, conversation_id: int) -> Optional[AgentSession]:
+    async def get_by_id(self, conversation_id: int) -> AgentSession | None:
         result = await self.session.execute(
             select(AgentSession).where(
                 AgentSession.id == conversation_id,
@@ -106,7 +104,7 @@ class SessionRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_by_session_id(self, session_id: str) -> Optional[AgentSession]:
+    async def get_by_session_id(self, session_id: str) -> AgentSession | None:
         result = await self.session.execute(
             select(AgentSession).where(
                 AgentSession.session_id == session_id,
@@ -116,8 +114,8 @@ class SessionRepository:
         return result.scalar_one_or_none()
 
     async def list_by_user(
-        self, user_id: int, agent_id: Optional[int] = None, limit: int = 20, offset: int = 0
-    ) -> Tuple[List[AgentSession], int]:
+        self, user_id: int, agent_id: int | None = None, limit: int = 20, offset: int = 0
+    ) -> tuple[list[AgentSession], int]:
         base = select(AgentSession).where(
             AgentSession.user_id == user_id,
             AgentSession.status == "active",
@@ -172,7 +170,7 @@ class MessageRepository:
 
     async def list_by_conversation(
         self, conversation_id: int, limit: int = 50, offset: int = 0
-    ) -> Tuple[List[AgentMessage], int]:
+    ) -> tuple[list[AgentMessage], int]:
         base = select(AgentMessage).where(AgentMessage.conversation_id == conversation_id)
 
         count_result = await self.session.execute(
@@ -190,7 +188,7 @@ class MessageRepository:
         conversation_id: int,
         after: datetime,
         limit: int = 200,
-    ) -> Tuple[List[AgentMessage], int]:
+    ) -> tuple[list[AgentMessage], int]:
         """加载对话中 ``created_at > after`` 的消息（摘要 cutoff 之后的增量加载）。
 
         供 ShortTermMemory 在命中摘要后增量加载消息使用——把原生 SQL 查询
@@ -235,8 +233,8 @@ class ToolCallRepository:
     async def list_by_conversation(
         self,
         conversation_id: int,
-        after: Optional[datetime] = None,
-    ) -> List[AgentToolCall]:
+        after: datetime | None = None,
+    ) -> list[AgentToolCall]:
         """加载会话工具调用记录。
 
         after: 命中摘要时传 summary_cutoff，仅加载 cutoff 之后的记录，避免 cutoff 前
@@ -266,13 +264,13 @@ class McpServerRepository:
         await self.session.refresh(server)
         return server
 
-    async def get_by_id(self, server_id: int) -> Optional[AgentMcpServer]:
+    async def get_by_id(self, server_id: int) -> AgentMcpServer | None:
         result = await self.session.execute(
             select(AgentMcpServer).where(AgentMcpServer.id == server_id)
         )
         return result.scalar_one_or_none()
 
-    async def list_by_user(self, user_id: int) -> List[AgentMcpServer]:
+    async def list_by_user(self, user_id: int) -> list[AgentMcpServer]:
         result = await self.session.execute(
             select(AgentMcpServer).where(
                 (AgentMcpServer.user_id == user_id) | (AgentMcpServer.user_id.is_(None))
@@ -280,7 +278,7 @@ class McpServerRepository:
         )
         return result.scalars().all()
 
-    async def update(self, server_id: int, **kwargs) -> Optional[AgentMcpServer]:
+    async def update(self, server_id: int, **kwargs) -> AgentMcpServer | None:
         server = await self.get_by_id(server_id)
         if not server:
             return None
@@ -297,12 +295,12 @@ class McpServerRepository:
         )
         return result.rowcount > 0
 
-    async def list_enabled_system_servers(self) -> List[AgentMcpServer]:
+    async def list_enabled_system_servers(self) -> list[AgentMcpServer]:
         """列出所有系统级启用的 MCP 服务器"""
         result = await self.session.execute(
             select(AgentMcpServer).where(
                 AgentMcpServer.user_id.is_(None),
-                AgentMcpServer.enabled == True,
+                AgentMcpServer.enabled.is_(True),
             )
         )
         return result.scalars().all()

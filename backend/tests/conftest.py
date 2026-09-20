@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from novamind.core.database.base import Base
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
@@ -66,7 +66,7 @@ def pytest_collection_modifyitems(config, items):
 @pytest_asyncio.fixture
 async def tmp_db():
     """SQLite 内存库，定向建表，每测试独立。"""
-    from novamind.features.user.models.role import Role, Permission, RolePermission
+    from novamind.features.user.models.role import Permission, Role, RolePermission
     from novamind.features.user.models.user import User
 
     rbac_tables = [

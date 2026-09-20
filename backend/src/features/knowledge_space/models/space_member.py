@@ -5,13 +5,23 @@
 支持角色枚举（简单场景）和 RBAC（复杂场景）两种模式
 """
 
-from enum import IntEnum
-from sqlalchemy import Column, BigInteger, SmallInteger, String, DateTime, ForeignKey, JSON, Index, UniqueConstraint
-from datetime import timedelta
 import secrets
+from datetime import timedelta
+from enum import IntEnum
 
 from novamind.core.database.base import BaseModel
 from novamind.shared.utils.time_utils import now_china
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    SmallInteger,
+    String,
+    UniqueConstraint,
+)
 
 
 class SpaceRole(IntEnum):

@@ -9,13 +9,10 @@
 """
 from __future__ import annotations
 
-from typing import Optional
-
-from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.user.models.user_disabled_app import UserDisabledApp
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 APPGATE_CACHE_PREFIX = "appgate:disabled:"  # Redis key 前缀
 APPGATE_TTL = 300  # 5 分钟（与 RBAC 权限缓存对齐）
@@ -63,7 +60,7 @@ class AppAccessService:
         self,
         user_id: int,
         app_codes: set[str],
-        operator_id: Optional[int] = None,
+        operator_id: int | None = None,
     ) -> None:
         """全量替换用户的禁用应用集合（delete + insert，单个 SAVEPOINT）。"""
         # SQLite 下 BigInteger 主键不自动分配，手动分配自增 ID

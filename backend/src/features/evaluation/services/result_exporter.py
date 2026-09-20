@@ -6,8 +6,7 @@
 import csv
 import io
 import json
-from typing import Any, Dict
-
+from typing import Any
 
 CSV_COLUMNS = [
     "index",
@@ -25,7 +24,7 @@ CSV_COLUMNS = [
 ]
 
 
-def result_to_csv(result_data: Dict[str, Any]) -> str:
+def result_to_csv(result_data: dict[str, Any]) -> str:
     """将测评结果 JSON 转换为 CSV 字符串"""
     details = result_data.get("details", [])
     output = io.StringIO()
@@ -39,12 +38,12 @@ def result_to_csv(result_data: Dict[str, Any]) -> str:
     return output.getvalue()
 
 
-def result_to_json_bytes(result_data: Dict[str, Any]) -> bytes:
+def result_to_json_bytes(result_data: dict[str, Any]) -> bytes:
     """将测评结果序列化为 JSON bytes"""
     return json.dumps(result_data, ensure_ascii=False, indent=2).encode("utf-8")
 
 
-def _flatten_detail(detail: Dict[str, Any]) -> Dict[str, Any]:
+def _flatten_detail(detail: dict[str, Any]) -> dict[str, Any]:
     """将单条详情扁平化为 CSV 行"""
     gen_scores = detail.get("generation_scores", {})
     end_to_end = detail.get("end_to_end", {})

@@ -5,16 +5,15 @@
 支持空间层级
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Any
 
-from sqlalchemy import select, delete, func
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.knowledge_base import (
     KnowledgeBase,
     KnowledgeBaseStatus,
 )
-from novamind.core.middleware.structured_logging import get_logger
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -35,7 +34,7 @@ class KnowledgeBaseRepository:
         """转义 ilike 查询中的通配符（% 和 _）"""
         return keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
-    async def create(self, data: Dict[str, Any]) -> KnowledgeBase:
+    async def create(self, data: dict[str, Any]) -> KnowledgeBase:
         """
         创建知识库
 
@@ -55,7 +54,7 @@ class KnowledgeBaseRepository:
         self,
         kb_id: int,
         include_documents: bool = False,
-    ) -> Optional[KnowledgeBase]:
+    ) -> KnowledgeBase | None:
         """
         根据 ID 获取知识库
 
@@ -77,10 +76,10 @@ class KnowledgeBaseRepository:
     async def get_by_space(
         self,
         space_id: int,
-        status: Optional[KnowledgeBaseStatus] = None,
+        status: KnowledgeBaseStatus | None = None,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[KnowledgeBase]:
+    ) -> list[KnowledgeBase]:
         """
         获取空间内的知识库列表
 
@@ -111,7 +110,7 @@ class KnowledgeBaseRepository:
         self,
         space_id: int,
         name: str,
-    ) -> Optional[KnowledgeBase]:
+    ) -> KnowledgeBase | None:
         """
         根据名称获取知识库（同一空间内名称唯一，不含软删除）
 
@@ -135,7 +134,7 @@ class KnowledgeBaseRepository:
         self,
         space_id: int,
         name: str,
-    ) -> List[KnowledgeBase]:
+    ) -> list[KnowledgeBase]:
         """
         根据名称获取已软删除的知识库（用于释放唯一约束占位）
 
@@ -158,8 +157,8 @@ class KnowledgeBaseRepository:
     async def update(
         self,
         kb_id: int,
-        data: Dict[str, Any],
-    ) -> Optional[KnowledgeBase]:
+        data: dict[str, Any],
+    ) -> KnowledgeBase | None:
         """
         更新知识库
 
@@ -186,8 +185,8 @@ class KnowledgeBaseRepository:
     async def update_config(
         self,
         kb_id: int,
-        config: Dict[str, Any],
-    ) -> Optional[KnowledgeBase]:
+        config: dict[str, Any],
+    ) -> KnowledgeBase | None:
         """
         更新知识库配置
 
@@ -243,7 +242,7 @@ class KnowledgeBaseRepository:
         )
         return result.rowcount > 0
 
-    async def restore(self, kb_id: int) -> Optional[KnowledgeBase]:
+    async def restore(self, kb_id: int) -> KnowledgeBase | None:
         """
         恢复已删除的知识库
 
@@ -269,7 +268,7 @@ class KnowledgeBaseRepository:
     async def count_by_space(
         self,
         space_id: int,
-        status: Optional[KnowledgeBaseStatus] = None,
+        status: KnowledgeBaseStatus | None = None,
     ) -> int:
         """
         统计空间内的知识库数量
@@ -297,7 +296,7 @@ class KnowledgeBaseRepository:
         keyword: str,
         skip: int = 0,
         limit: int = 20,
-    ) -> List[KnowledgeBase]:
+    ) -> list[KnowledgeBase]:
         """
         按名称搜索知识库
 
@@ -325,10 +324,10 @@ class KnowledgeBaseRepository:
     async def get_by_creator(
         self,
         creator_id: int,
-        status: Optional[KnowledgeBaseStatus] = None,
+        status: KnowledgeBaseStatus | None = None,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[KnowledgeBase]:
+    ) -> list[KnowledgeBase]:
         """
         获取用户创建的知识库列表
 

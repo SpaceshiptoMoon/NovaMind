@@ -1,12 +1,11 @@
 """DeepDoc Excel 解析器。"""
 from __future__ import annotations
 
-from io import BytesIO
 import logging
 import re
+from io import BytesIO
 
 import pandas as pd
-
 from novamind.engines.document.integrations.deepdoc.compat import LazyImage, find_codec
 
 # Adapted from RAGFlow deepdoc/parser/excel_parser.py

@@ -4,7 +4,7 @@ Web 搜索端口 WebSearchPort，定义 WebSearchResult 数据类。
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 
 @dataclass
@@ -31,7 +31,7 @@ class WebSearchPort(Protocol):
 
     async def search(
         self, query: str, max_results: int = 5
-    ) -> List[WebSearchResult]:
+    ) -> list[WebSearchResult]:
         """执行联网搜索，返回标题/URL/摘要列表。"""
         ...
 
@@ -47,13 +47,13 @@ class ProviderWebSearchPort:
     无兜底，``service`` 为 ``None`` 时 ``search`` 抛 ``WebSearchError``。
     """
 
-    def __init__(self, service: Optional[object] = None):
+    def __init__(self, service: object | None = None):
         # service 应为 ExternalSearchService 实例。
         self._service = service
 
     async def search(
         self, query: str, max_results: int = 5
-    ) -> List[WebSearchResult]:
+    ) -> list[WebSearchResult]:
         if self._service is None:
             from novamind.engines.search_errors import WebSearchError
 
@@ -82,8 +82,8 @@ class ProviderWebSearchPort:
 
 def build_web_search_port_from_provider(
     provider: str,
-    api_key: Optional[str],
-    extra_config: Optional[dict] = None,
+    api_key: str | None,
+    extra_config: dict | None = None,
 ) -> WebSearchPort:
     """按 provider 字符串 + 明文 api_key + extra_config 构造 ``WebSearchPort``。
 

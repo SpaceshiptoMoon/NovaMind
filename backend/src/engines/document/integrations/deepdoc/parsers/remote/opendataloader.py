@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import requests
-
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.opendataloader_parser import OpenDataLoaderParser
+from novamind.engines.document.integrations.deepdoc.parsers.upstream.opendataloader_parser import (
+    OpenDataLoaderParser,
+)
 
 
 class RAGFlowOpenDataLoaderParser(OpenDataLoaderParser):

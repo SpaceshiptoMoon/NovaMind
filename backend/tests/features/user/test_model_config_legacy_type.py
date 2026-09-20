@@ -36,10 +36,10 @@ def test_model_type_int_to_str_deprecated_value_safe():
 
 def test_model_type_int_to_enum_deprecated_value_none():
     """编号 5 应返回 None，使后续 == ModelType.X 比较自然不命中。"""
+    from novamind.features.user.models.user_model_config import ModelType
     from novamind.features.user.repository.model_config_repository import (
         model_type_int_to_enum,
     )
-    from novamind.features.user.models.user_model_config import ModelType
 
     assert model_type_int_to_enum(5) is None
     assert model_type_int_to_enum(2) == ModelType.EMBEDDING

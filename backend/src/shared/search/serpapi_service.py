@@ -5,15 +5,14 @@ SerpAPI 提供 Google 搜索结果 API
 官网: https://serpapi.com
 """
 
-from typing import List, Optional
-import httpx
 
-from novamind.shared.search.external_search_service import (
-    ExternalSearchService,
-    ExternalSearchResult,
-)
+import httpx
 from novamind.shared.config import SerpApiSearchConfig
 from novamind.shared.logging import get_logger
+from novamind.shared.search.external_search_service import (
+    ExternalSearchResult,
+    ExternalSearchService,
+)
 
 
 class SerpAPISearchService(ExternalSearchService):
@@ -29,7 +28,7 @@ class SerpAPISearchService(ExternalSearchService):
 
     def __init__(
         self,
-        config: Optional[SerpApiSearchConfig] = None,
+        config: SerpApiSearchConfig | None = None,
         logger=None,
     ):
         self.logger = logger or get_logger(__name__)
@@ -38,7 +37,7 @@ class SerpAPISearchService(ExternalSearchService):
         self.max_results = cfg.max_results
         self.timeout = cfg.timeout
         self.engine = cfg.engine
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     @property
     def provider_name(self) -> str:
@@ -52,10 +51,10 @@ class SerpAPISearchService(ExternalSearchService):
         self,
         query: str,
         max_results: int = 10,
-        engine: Optional[str] = None,
-        location: Optional[str] = None,
+        engine: str | None = None,
+        location: str | None = None,
         **kwargs,
-    ) -> List[ExternalSearchResult]:
+    ) -> list[ExternalSearchResult]:
         """
         执行 SerpAPI 搜索
 

@@ -9,6 +9,8 @@ ActionResponse / SessionListResponse / LLMConfig）散落在多个 feature，Fas
 """
 import pytest
 
+pytestmark = pytest.mark.unit
+
 
 def _build_openapi_components() -> set:
     from novamind.core.middleware.app_factory import create_app

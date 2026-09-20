@@ -3,7 +3,7 @@
 RetrievalPort 提供 search 方法，消费方依赖此抽象；宿主在 adapter 提供
 HostRetrievalPort（包 SearchService）。
 """
-from typing import Any, Dict, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -16,7 +16,7 @@ class RetrievalPort(Protocol):
         kb_id: int,
         user_id: int,
         request: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """执行检索，返回完整响应 dict（results / answer / rewritten_queries 等）。
 
         实现负责权限校验、模式可用性、查询改写、模型客户端解析、LLM 回答生成。

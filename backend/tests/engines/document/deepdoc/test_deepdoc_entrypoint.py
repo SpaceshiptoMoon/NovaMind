@@ -3,6 +3,10 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.unit
+
 
 BACKEND_ROOT = Path(__file__).resolve().parents[4]
 

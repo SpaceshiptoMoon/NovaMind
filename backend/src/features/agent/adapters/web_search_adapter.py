@@ -6,8 +6,6 @@ WebSearchPort 宿主适配器（向后兼容重导出）+ 按数据库默认搜�
 """
 from __future__ import annotations
 
-from typing import Optional
-
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.deep_research.adapters.web_search_port_adapter import (  # noqa: F401
     HostWebSearchPort,
@@ -20,8 +18,8 @@ logger = get_logger(__name__)
 
 
 async def resolve_web_search_port(
-    search_config_port: Optional[SearchConfigPort], user_id: int
-) -> Optional[HostWebSearchPort]:
+    search_config_port: SearchConfigPort | None, user_id: int
+) -> HostWebSearchPort | None:
     """按数据库用户默认搜索引擎（is_primary）构造 WebSearchPort。
 
     1. 用户首选配置 → ``SearchConfigPort.get_primary_search_config()``

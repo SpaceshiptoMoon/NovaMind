@@ -5,14 +5,15 @@
 - 仍拦截路径遍历（../、/、\）
 """
 import pytest
-
+from novamind.features.knowledge_space.exceptions import (
+    DocumentInvalidTypeError,
+    InvalidParameterError,
+)
 from novamind.features.knowledge_space.services.document_upload_service import (
     DocumentUploadService,
 )
-from novamind.features.knowledge_space.exceptions import (
-    InvalidParameterError,
-    DocumentInvalidTypeError,
-)
+
+pytestmark = pytest.mark.unit
 
 
 def _get_file_type(filename: str) -> str:

@@ -6,10 +6,10 @@
 """
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from novamind.shared.logging import get_logger
 from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.logging import get_logger
 from novamind.shared.prompts.templates import PromptManager
 
 from .token_counter import TokenCounter
@@ -27,15 +27,15 @@ class CompressionResult:
     summary: str
     compressed_tokens: int
     original_tokens: int
-    kept_messages: List[Dict[str, Any]]
+    kept_messages: list[dict[str, Any]]
     compression_ratio: float
 
 
 class TextCompressor:
     def __init__(
         self,
-        llm_client: Optional[BaseLLM] = None,
-        custom_prompt: Optional[str] = None,
+        llm_client: BaseLLM | None = None,
+        custom_prompt: str | None = None,
     ):
         self.llm_client = llm_client
         self.custom_prompt = custom_prompt
@@ -48,7 +48,7 @@ class TextCompressor:
             "qa_compression_summary"
         )
 
-    def _message_text(self, message: Dict[str, Any]) -> str:
+    def _message_text(self, message: dict[str, Any]) -> str:
         content = message.get("content", "")
         if isinstance(content, str):
             return content
@@ -62,12 +62,12 @@ class TextCompressor:
             return "\n".join(parts)
         return str(content)
 
-    def _messages_tokens(self, messages: List[Dict[str, Any]]) -> int:
+    def _messages_tokens(self, messages: list[dict[str, Any]]) -> int:
         return self.token_counter.count_messages_tokens(messages)
 
     async def compress_messages(
         self,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         *,
         target_tokens: int = 500,
         keep_recent: int = 4,
@@ -82,7 +82,7 @@ class TextCompressor:
     async def compress_with_base_summary(
         self,
         base_summary: str,
-        new_messages: List[Dict[str, Any]],
+        new_messages: list[dict[str, Any]],
         target_tokens: int = 500,
     ) -> CompressionResult:
         existing = base_summary.strip()
@@ -102,7 +102,7 @@ class TextCompressor:
 
     async def compress_with_strategy(
         self,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         *,
         strategy: str = "summary",
         target_tokens: int = 500,
@@ -134,8 +134,8 @@ class TextCompressor:
             compression_ratio=(compressed_tokens / max(original_tokens, 1)),
         )
 
-    def _truncate_to_target(self, messages: List[Dict[str, Any]], target_tokens: int) -> List[Dict[str, Any]]:
-        kept: List[Dict[str, Any]] = []
+    def _truncate_to_target(self, messages: list[dict[str, Any]], target_tokens: int) -> list[dict[str, Any]]:
+        kept: list[dict[str, Any]] = []
         total = 0
         for msg in reversed(messages):
             msg_tokens = self.token_counter.count_tokens(self._message_text(msg))
@@ -147,7 +147,7 @@ class TextCompressor:
                 break
         return list(reversed(kept))
 
-    async def _build_summary(self, messages: List[Dict[str, Any]]) -> str:
+    async def _build_summary(self, messages: list[dict[str, Any]]) -> str:
         if not messages:
             return ""
         if self.llm_client is None:

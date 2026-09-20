@@ -4,7 +4,7 @@ Agent 模块异常定义
 异常类放在模块顶层，供 API 层、服务层、仓储层共同使用，
 避免仓储层反向依赖 API 层（违反 DDD 分层原则）。
 """
-from typing import ClassVar, List
+from typing import ClassVar
 
 from novamind.core.middleware.base_exception_handler import BaseAPIError
 
@@ -110,7 +110,7 @@ class UnsupportedLanguageError(SandboxError):
     """不支持的语言"""
     _serializable_attrs: ClassVar[tuple[str, ...]] = ("language", "supported")
 
-    def __init__(self, language: str, supported: List[str]):
+    def __init__(self, language: str, supported: list[str]):
         super().__init__(
             message=f"不支持的语言 '{language}'，支持的语言: {', '.join(supported)}",
             code="SANDBOX_UNSUPPORTED_LANGUAGE",

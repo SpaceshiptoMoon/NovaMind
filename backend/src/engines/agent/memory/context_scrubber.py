@@ -10,7 +10,6 @@ StreamingContextScrubber — SSE 输出标签清洗器
 有状态设计，处理跨 SSE chunk 的标签分割情况。
 """
 import re
-from typing import FrozenSet, Optional
 
 # 匹配系统提示行
 _SYSTEM_NOTE_PATTERN = re.compile(
@@ -34,10 +33,10 @@ class StreamingContextScrubber:
 
     def __init__(
         self,
-        extra_tags: Optional[FrozenSet[str]] = None,
+        extra_tags: frozenset[str] | None = None,
     ) -> None:
         self._buffer = ""
-        self._in_tag: Optional[str] = None  # 当前正在清洗的 open tag
+        self._in_tag: str | None = None  # 当前正在清洗的 open tag
         self._in_think = False
 
     def feed(self, chunk: str) -> str:

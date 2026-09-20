@@ -4,10 +4,8 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 from novamind.shared.logging import get_logger
-
 
 logger = get_logger(__name__)
 
@@ -16,7 +14,7 @@ class DocConversionError(RuntimeError):
     """Raised when a legacy .doc file cannot be converted to .docx."""
 
 
-def _find_soffice() -> Optional[str]:
+def _find_soffice() -> str | None:
     candidates = [
         shutil.which("soffice"),
         shutil.which("libreoffice"),
@@ -29,7 +27,7 @@ def _find_soffice() -> Optional[str]:
     return None
 
 
-def _convert_with_soffice(source_path: Path, target_dir: Path) -> Optional[bytes]:
+def _convert_with_soffice(source_path: Path, target_dir: Path) -> bytes | None:
     soffice = _find_soffice()
     if not soffice:
         return None
@@ -56,7 +54,7 @@ def _convert_with_soffice(source_path: Path, target_dir: Path) -> Optional[bytes
     return output_path.read_bytes()
 
 
-def _convert_with_win32com(source_path: Path, target_dir: Path) -> Optional[bytes]:
+def _convert_with_win32com(source_path: Path, target_dir: Path) -> bytes | None:
     try:
         import pythoncom
         import win32com.client  # type: ignore[import-not-found]

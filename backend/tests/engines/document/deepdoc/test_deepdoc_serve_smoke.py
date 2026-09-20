@@ -9,6 +9,10 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
 
+import pytest
+
+pytestmark = pytest.mark.unit
+
 
 BACKEND_ROOT = Path(__file__).resolve().parents[4]
 

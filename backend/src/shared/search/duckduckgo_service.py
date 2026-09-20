@@ -5,17 +5,16 @@ DuckDuckGo 搜索服务
 使用 DuckDuckGo HTML 搜索接口
 """
 
-from typing import List, Optional
-import httpx
-from bs4 import BeautifulSoup
 from urllib.parse import parse_qs, unquote
 
-from novamind.shared.search.external_search_service import (
-    ExternalSearchService,
-    ExternalSearchResult,
-)
+import httpx
+from bs4 import BeautifulSoup
 from novamind.shared.config import DuckDuckGoSearchConfig
 from novamind.shared.logging import get_logger
+from novamind.shared.search.external_search_service import (
+    ExternalSearchResult,
+    ExternalSearchService,
+)
 
 
 class DuckDuckGoSearchService(ExternalSearchService):
@@ -31,14 +30,14 @@ class DuckDuckGoSearchService(ExternalSearchService):
 
     def __init__(
         self,
-        config: Optional[DuckDuckGoSearchConfig] = None,
+        config: DuckDuckGoSearchConfig | None = None,
         logger=None,
     ):
         self.logger = logger or get_logger(__name__)
         cfg = config or DuckDuckGoSearchConfig()
         self.max_results = cfg.max_results
         self.timeout = cfg.timeout
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     @property
     def provider_name(self) -> str:
@@ -53,7 +52,7 @@ class DuckDuckGoSearchService(ExternalSearchService):
         query: str,
         max_results: int = 10,
         **kwargs,
-    ) -> List[ExternalSearchResult]:
+    ) -> list[ExternalSearchResult]:
         """
         执行 DuckDuckGo 搜索
 

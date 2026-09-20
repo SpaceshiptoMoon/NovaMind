@@ -25,6 +25,10 @@ sys.path.insert(0, r"{SRC_DIR}")
 
 import novamind.core.database.database as db
 
+import pytest
+
+pytestmark = pytest.mark.unit
+
 
 class _FakeDatabase:
     url = "mysql+aiomysql://user:pass@localhost:3306/pytest_no_connect"

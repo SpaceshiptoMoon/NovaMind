@@ -1,39 +1,42 @@
 """DeepDoc PDF 解析器：含 OCR / 版面分析的完整 PDF 处理。"""
 from __future__ import annotations
 
-# Adapted around RAGFlow deepdoc/parser/pdf_parser.py class layout.
-
-from dataclasses import asdict, dataclass
 import gc
-from io import BytesIO
-from pathlib import Path
 import logging
 import re
+from collections.abc import Sequence
+
+# Adapted around RAGFlow deepdoc/parser/pdf_parser.py class layout.
+from dataclasses import asdict, dataclass
+from io import BytesIO
+from pathlib import Path
 from statistics import median
 from types import SimpleNamespace
-from typing import Any, Dict, List, Sequence, Union
+from typing import Any
 
 import numpy as np
 import pdfplumber
-from PIL import Image
-
 from novamind.engines.document.integrations.deepdoc.compat import MAXIMUM_PAGE_NUMBER
-from novamind.engines.document.integrations.deepdoc.core.models import DeepDocParseResult, strip_position_tags
+from novamind.engines.document.integrations.deepdoc.core.models import (
+    DeepDocParseResult,
+    strip_position_tags,
+)
 from novamind.engines.document.integrations.deepdoc.formula_recognition import (
     get_formula_model_status,
     load_formula_recognizer,
 )
 from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
 from novamind.engines.document.integrations.deepdoc.page_filter import PageNoiseFilter
+from novamind.engines.document.integrations.deepdoc.parsers.pdf_plain import RAGFlowPlainPdfParser
 from novamind.engines.document.integrations.deepdoc.pdf_artifacts import PdfArtifactExtractor
 from novamind.engines.document.integrations.deepdoc.pdf_layout import PdfLayoutExtractor
-from novamind.engines.document.integrations.deepdoc.parsers.pdf_plain import RAGFlowPlainPdfParser
 from novamind.engines.document.integrations.deepdoc.updown_concat import UpDownConcatMerger
 from novamind.engines.document.integrations.deepdoc.vendor.ragflow.pdf_parser import (
     RAGFlowPdfParser as _VendoredRAGFlowPdfParser,
 )
 from novamind.engines.document.integrations.deepdoc.vision.recognizer import Recognizer
 from novamind.engines.document.integrations.deepdoc.vision_runtime import get_vision_health_status
+from PIL import Image
 
 # Structured logger (structlog BoundLogger) — accepts key=value context kwargs
 # and renders JSON. Do NOT use stdlib ``logging.info(msg, key=val)`` here: stdlib
@@ -63,7 +66,7 @@ class DeepDocPdfBox:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "DeepDocPdfBox":
+    def from_dict(cls, data: dict[str, Any]) -> DeepDocPdfBox:
         positions = data.get("positions")
         return cls(
             page=int(data.get("page_number", data.get("page", 0))),
@@ -187,7 +190,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             return 0
 
     @staticmethod
-    def sort_x_by_page(boxes: Sequence[DeepDocPdfBox], threshold: float) -> List[DeepDocPdfBox]:
+    def sort_x_by_page(boxes: Sequence[DeepDocPdfBox], threshold: float) -> list[DeepDocPdfBox]:
         ordered = sorted(boxes, key=lambda item: (item.page, item.x0, item.top))
         for index in range(len(ordered) - 1):
             for cursor in range(index, -1, -1):
@@ -271,7 +274,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     def __call__(
         self,
-        filename: Union[str, bytes, Path],
+        filename: str | bytes | Path,
         *,
         pdf_mode: str = "full",
         chunk_size: int = 1000,
@@ -330,10 +333,10 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     def parse_into_bboxes(
         self,
-        filename: Union[str, bytes, Path],
-    ) -> List[DeepDocPdfBox]:
+        filename: str | bytes | Path,
+    ) -> list[DeepDocPdfBox]:
         pdf_source = str(filename) if not isinstance(filename, bytes) else BytesIO(filename)
-        boxes: List[DeepDocPdfBox] = []
+        boxes: list[DeepDocPdfBox] = []
         with pdfplumber.open(pdf_source) as pdf:
             for page_index, page in enumerate(pdf.pages, start=1):
                 words = page.extract_words(
@@ -374,7 +377,9 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         vendored 基类期望 ocr/layouter/tbl_det/updown_cnt_mdl 实例属性，此处惰性装配。"""
         self._ensure_vendored_runtime()
         if to_page is None:
-            from novamind.engines.document.integrations.deepdoc.compat import MAXIMUM_PAGE_NUMBER as _MPN
+            from novamind.engines.document.integrations.deepdoc.compat import (
+                MAXIMUM_PAGE_NUMBER as _MPN,
+            )
 
             to_page = _MPN
         return super().parse_into_bboxes(filename, callback=callback, zoomin=zoomin, from_page=from_page, to_page=to_page)
@@ -486,7 +491,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             poss.append((pn, bx["x0"], bx["x1"], top, min(bott, self.page_images[pn - 1].size[1] / ZM)))
         return poss
 
-    def _assign_column_boxes(self, boxes: Sequence[DeepDocPdfBox]) -> List[DeepDocPdfBox]:
+    def _assign_column_boxes(self, boxes: Sequence[DeepDocPdfBox]) -> list[DeepDocPdfBox]:
         """调用 PdfLayoutExtractor 的 assign_columns 给文本框标 col_id（box 域）。"""
         if not boxes:
             return list(boxes)
@@ -501,11 +506,11 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         assigned = self._layout_extractor.assign_columns(dict_boxes)
         return [DeepDocPdfBox.from_dict(b) for b in assigned]
 
-    def _boxes_to_vendored_domain(self, boxes: Sequence[DeepDocPdfBox]) -> List[Dict[str, Any]]:
+    def _boxes_to_vendored_domain(self, boxes: Sequence[DeepDocPdfBox]) -> list[dict[str, Any]]:
         """fork box → vendored dict 桥：page-local top/bottom 加 page_cum_height 偏移
         进入累积 Y 域（vendored `_layouts_rec` 之后的合并阶段全部在累积域运行），
         page(1-based) 写为 page_number，保留 layout_type/layoutno/col_id。"""
-        converted: List[Dict[str, Any]] = []
+        converted: list[dict[str, Any]] = []
         for box in boxes:
             offset = self.page_cum_height[box.page - 1] if 0 < box.page <= len(self.page_cum_height) - 1 else 0.0
             d = box.to_dict()
@@ -515,11 +520,11 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             converted.append(d)
         return converted
 
-    def _boxes_from_vendored_domain(self, boxes: Sequence[Dict[str, Any]]) -> List[DeepDocPdfBox]:
+    def _boxes_from_vendored_domain(self, boxes: Sequence[dict[str, Any]]) -> list[DeepDocPdfBox]:
         """vendored dict → fork box 桥：减回累积 Y 偏移回到 page-local，并重算
         position_tag/positions（合并阶段改写了 bbox，tag 里存的旧坐标已失效；
         上游先例 VEN L1831-1834：`__call__` 尾部同样在合并后重算 position_tag）。"""
-        restored: List[DeepDocPdfBox] = []
+        restored: list[DeepDocPdfBox] = []
         for d in boxes:
             page_number = int(d.get("page_number", 1))
             offset = self.page_cum_height[page_number - 1] if 0 < page_number <= len(self.page_cum_height) - 1 else 0.0
@@ -592,7 +597,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         return positions
 
     @staticmethod
-    def _line_tag(line: Dict[str, Any]) -> str:
+    def _line_tag(line: dict[str, Any]) -> str:
         return "@@{}\t{:.1f}\t{:.1f}\t{:.1f}\t{:.1f}##".format(
             int(line.get("page_number", 1)),
             float(line["x0"]),
@@ -603,7 +608,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     def _parse_plain(
         self,
-        filename: Union[str, bytes, Path],
+        filename: str | bytes | Path,
         *,
         chunk_size: int,
     ) -> DeepDocParseResult:
@@ -627,7 +632,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     def _parse_full(
         self,
-        filename: Union[str, bytes, Path],
+        filename: str | bytes | Path,
         *,
         chunk_size: int,
         formula_recognition: bool | None = None,
@@ -825,7 +830,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     def _extract_fused_pages(
         self,
-        filename: Union[str, bytes, Path],
+        filename: str | bytes | Path,
     ) -> tuple[list[np.ndarray], list[list[dict[str, Any]]], list[list[dict[str, Any]]], dict[str, Any]]:
         """上游 RAGFlow __images__+__ocr 对齐：渲染每页 → 抽 pdfplumber 文字层字符 →
         每页 OCR.detect 拿框 → 文字层字符按坐标匹配进框 → 逐框裁决（干净用文字层 /
@@ -1302,9 +1307,9 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         return f"{text_source}+{layout_part}"
 
     @staticmethod
-    def _chunk_blocks(blocks: Sequence[str], chunk_size: int) -> List[str]:
-        chunks: List[str] = []
-        current_parts: List[str] = []
+    def _chunk_blocks(blocks: Sequence[str], chunk_size: int) -> list[str]:
+        chunks: list[str] = []
+        current_parts: list[str] = []
         current_length = 0
 
         for block in blocks:
@@ -1326,14 +1331,14 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             chunks.append("\n\n".join(current_parts))
         return chunks
 
-    def _merge_vertical_boxes(self, boxes: Sequence[DeepDocPdfBox]) -> List[DeepDocPdfBox]:
+    def _merge_vertical_boxes(self, boxes: Sequence[DeepDocPdfBox]) -> list[DeepDocPdfBox]:
         merged, _ = self._merge_vertical_boxes_with_strategy(boxes)
         return merged
 
     def _merge_vertical_boxes_with_strategy(
         self,
         boxes: Sequence[DeepDocPdfBox],
-    ) -> tuple[List[DeepDocPdfBox], str]:
+    ) -> tuple[list[DeepDocPdfBox], str]:
         merged, strategy = self._updown_concat.merge(list(boxes))
         return list(merged), strategy
 
@@ -1342,7 +1347,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         boxes: Sequence[DeepDocPdfBox],
         *,
         total_pages: int | None = None,
-    ) -> tuple[List[DeepDocPdfBox], dict[str, Any]]:
+    ) -> tuple[list[DeepDocPdfBox], dict[str, Any]]:
         filtered, meta = self._page_filter.filter_boxes(list(boxes), total_pages=total_pages)
         return list(filtered), meta
 
@@ -1357,7 +1362,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     def _render_artifact_pages(
         self,
-        filename: Union[str, bytes, Path],
+        filename: str | bytes | Path,
         artifact_boxes: Sequence[DeepDocPdfBox],
         zoom_map: dict[int, float] | None = None,
     ) -> dict[int, Image.Image]:
@@ -1371,7 +1376,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     def _render_pages(
         self,
-        filename: Union[str, bytes, Path],
+        filename: str | bytes | Path,
         pages: Sequence[int],
         *,
         zoom_map: dict[int, float] | None = None,
@@ -1488,7 +1493,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     def _recognize_equation_regions(
         self,
-        filename: Union[str, bytes, Path],
+        filename: str | bytes | Path,
         page_layout: Sequence[Sequence[dict[str, Any]]],
         *,
         zoom_map: dict[int, float] | None = None,
@@ -1593,9 +1598,9 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
 
     def _apply_formula_boxes(
         self,
-        all_boxes: List[DeepDocPdfBox],
+        all_boxes: list[DeepDocPdfBox],
         formula_results: Sequence[dict[str, Any]],
-    ) -> tuple[List[DeepDocPdfBox], int]:
+    ) -> tuple[list[DeepDocPdfBox], int]:
         """把公式识别结果合成为文本 box，并剔除区域内的 OCR 碎片框。
 
         合成 box 的 layout_type 沿用 "figure"（与公式内 OCR 碎片现状一致，
@@ -1604,12 +1609,12 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         公式 box 挡在 artifact 流外（公式不是图片，无需 crop/判真）。
         col_id 取被剔除碎片框的多数列（双栏论文阅读顺序依赖列号）。
         """
-        kept: List[DeepDocPdfBox] = []
+        kept: list[DeepDocPdfBox] = []
         # 先把所有区域内碎片框标记待剔除；被剔除框的 col_id 用于合成 box 列号。
         # caption/title 框不剔：layout 常把公式编号行（如 "(19)"）检成 equation，
         # 其区域与表题/图题行高度重叠，误剔会把表题从 MD 里整行抹掉（实测回
         # 归：一份论文 6 个表题全部消失）。剔除目标只是公式区内部的 OCR 碎片。
-        removed: List[DeepDocPdfBox] = []
+        removed: list[DeepDocPdfBox] = []
         for box in all_boxes:
             layout_type = (box.layout_type or "").lower()
             layoutno = (box.layoutno or "").lower()

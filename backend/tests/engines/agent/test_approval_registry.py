@@ -2,7 +2,6 @@
 import asyncio
 
 import pytest
-
 from novamind.engines.agent.safety.approval_registry import ApprovalRegistry
 
 pytestmark = pytest.mark.unit

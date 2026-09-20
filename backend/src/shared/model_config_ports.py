@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol, TYPE_CHECKING, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:  # 仅类型注解用，避免端口模块运行时依赖 ai_models 实现
     from novamind.shared.ai_models.base_model import BaseEmbedding, BaseLLM, BaseRerank
@@ -14,9 +14,9 @@ class ModelCredentials:
 
     protocol: str
     model: str
-    api_key: Optional[str] = None
-    base_url: Optional[str] = None
-    extra_config: Optional[Dict[str, Any]] = None
+    api_key: str | None = None
+    base_url: str | None = None
+    extra_config: dict[str, Any] | None = None
 
 
 @runtime_checkable
@@ -25,37 +25,37 @@ class ModelConfigPort(Protocol):
 
     async def get_llm_client_by_model(
         self, user_id: int, model: str
-    ) -> "BaseLLM":
+    ) -> BaseLLM:
         """根据模型名称获取 LLM 客户端。"""
         ...
 
     async def get_vlm_client_by_model(
         self, user_id: int, model: str
-    ) -> "BaseLLM":
+    ) -> BaseLLM:
         """根据模型名称获取 VLM 客户端（复用 LLM 工厂）。"""
         ...
 
     async def get_embedding_client_by_model(
         self, user_id: int, model: str
-    ) -> "BaseEmbedding":
+    ) -> BaseEmbedding:
         """根据模型名称获取 Embedding 客户端。"""
         ...
 
     async def get_rerank_client_by_model(
         self, user_id: int, model: str
-    ) -> "BaseRerank":
+    ) -> BaseRerank:
         """根据模型名称获取 Rerank 客户端。"""
         ...
 
     async def get_user_default_model_name(
         self, user_id: int, model_type: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """获取用户在指定类型下配置的第一个模型名（作为用户默认）。"""
         ...
 
     async def list_available_models(
         self, user_id: int, model_type: str
-    ) -> List[str]:
+    ) -> list[str]:
         """获取用户可用的模型名称列表（用于前端下拉框）。"""
         ...
 
@@ -70,7 +70,7 @@ class ModelConfigPort(Protocol):
         user_id: int,
         model_type: str,
         model: str,
-    ) -> Optional[ModelCredentials]:
+    ) -> ModelCredentials | None:
         """根据模型名称获取凭证（含解密后的明文 api_key）。"""
         ...
 

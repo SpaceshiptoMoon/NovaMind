@@ -13,14 +13,11 @@ Wiki 生成管道服务
 import asyncio
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, Tuple
-
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.wiki import (
     WikiEditSource,
-    WikiIngestStatus,
     WikiPageStatus,
     WikiPageType,
 )
@@ -28,8 +25,6 @@ from novamind.features.knowledge_space.repository.wiki_repository import (
     WikiIngestRecordRepository,
     WikiPageRepository,
 )
-from novamind.features.knowledge_space.services.wiki_handles import HandleTable
-from novamind.features.knowledge_space.services.wiki_retract_service import tombstone_exists
 from novamind.features.knowledge_space.services.wiki_dedup import (
     DEDUP_CANDIDATE_SCORE_FLOOR,
     DEDUP_CORPUS_HARD_LIMIT,
@@ -42,8 +37,11 @@ from novamind.features.knowledge_space.services.wiki_dedup import (
     slug_base_tokens,
     stabilize_extracted_items,
 )
+from novamind.features.knowledge_space.services.wiki_handles import HandleTable
+from novamind.features.knowledge_space.services.wiki_retract_service import tombstone_exists
 from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.utils.llm_response import extract_json_obj
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -83,10 +81,10 @@ class ExtractedItem:
     type: str          # entity | concept
     name: str
     slug: str
-    aliases: List[str] = field(default_factory=list)
+    aliases: list[str] = field(default_factory=list)
     description: str = ""
     details: str = ""
-    cited_chunk_ids: List[str] = field(default_factory=list)
+    cited_chunk_ids: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -130,7 +128,7 @@ class WikiIngestService:
         llm_client: Any,
         minio_client: Any,
         es_client: Any,
-        wiki_config: Dict[str, Any],
+        wiki_config: dict[str, Any],
         kb_id: int,
         space_id: int,
         document_id: int,
@@ -154,7 +152,7 @@ class WikiIngestService:
         self,
         *,
         full_text: str,
-        chunks: List[Dict[str, Any]],
+        chunks: list[dict[str, Any]],
     ) -> IngestOutcome:
         """执行四阶段管道。full_text 与 chunks 由任务层准备好后传入。"""
         outcome = IngestOutcome()
@@ -202,7 +200,7 @@ class WikiIngestService:
         # ---- Pass 1: 分块引文标注 ----
         self._record.start_step("cite")
         citations, new_candidates = await self._annotate_citations(candidates, chunks)
-        fresh: List[ExtractedItem] = []
+        fresh: list[ExtractedItem] = []
         for c in new_candidates:
             if c.slug not in {x.slug for x in candidates}:
                 fresh.append(c)
@@ -262,7 +260,7 @@ class WikiIngestService:
         ])
 
         # 本批写入的 slug（draft→publish 范围）
-        batch_slugs: List[str] = []
+        batch_slugs: list[str] = []
         # 删除竞态守卫（检查点 2）：落库前文档又被删了 → 本批全部放弃。
         # 重跑无害（幂等），继续写会留下幽灵 source_ref。
         if await tombstone_exists(self.kb_id, self.document_id):
@@ -344,11 +342,11 @@ class WikiIngestService:
     async def _extract_candidates(
         self,
         content: str,
-        old_slugs: List[str],
+        old_slugs: list[str],
         granularity: str,
         custom_instructions: str,
         outcome: IngestOutcome,
-    ) -> List[ExtractedItem]:
+    ) -> list[ExtractedItem]:
         prev_text = "\n".join(f"- {s}" for s in old_slugs) if old_slugs else "(none — this is a new document)"
         prompt = PromptManager.format_prompt(
             "wiki_candidate_slug_user",
@@ -365,7 +363,7 @@ class WikiIngestService:
         if not raw:
             return []
 
-        items: List[ExtractedItem] = []
+        items: list[ExtractedItem] = []
         for arr, item_type in ((raw.get("entities") or [], "entity"), (raw.get("concepts") or [], "concept")):
             for entry in arr:
                 if not isinstance(entry, dict):
@@ -397,9 +395,9 @@ class WikiIngestService:
 
     async def _deduplicate_candidates(
         self,
-        candidates: List[ExtractedItem],
+        candidates: list[ExtractedItem],
         outcome: IngestOutcome,
-    ) -> List[ExtractedItem]:
+    ) -> list[ExtractedItem]:
         """dedup 管线（对齐 WeKnora deduplicateExtractedBatch）。
 
         三层：相似度预筛（纯 Python，MySQL 无 trigram）→ exact-title 确定性
@@ -429,9 +427,9 @@ class WikiIngestService:
         pages_by_slug = {p.slug: p for p in selected_pages}
 
         # 2) per-item 候选集（LLM dedup 双守卫的数据基础）
-        item_candidates: Dict[str, Set[str]] = {}
+        item_candidates: dict[str, set[str]] = {}
         for it in item_dicts:
-            own: Set[str] = set()
+            own: set[str] = set()
             for p in selected_pages:
                 surfaces = [it.get("name") or "", *(it.get("aliases") or [])]
                 for q in surfaces:
@@ -448,8 +446,8 @@ class WikiIngestService:
             item_candidates[it["slug"]] = own
 
         # 3) exact-title 确定性归并（免 LLM）
-        exact_targets: Dict[str, str] = {}
-        merge_targets: Dict[str, str] = {}
+        exact_targets: dict[str, str] = {}
+        merge_targets: dict[str, str] = {}
         for it in item_dicts:
             target = exact_identity_target(
                 it.get("name") or "", it.get("type") or "",
@@ -489,9 +487,9 @@ class WikiIngestService:
 
     async def _reclaim_exact_identities(
         self,
-        existing_candidates: List[ExtractedItem],
-        fresh: List[ExtractedItem],
-    ) -> List[ExtractedItem]:
+        existing_candidates: list[ExtractedItem],
+        fresh: list[ExtractedItem],
+    ) -> list[ExtractedItem]:
         """引文新 slug 的 exact-title 归并回收（对齐 WeKnora reclaimExtractedIdentities）。
 
         引文 new_slugs 跳过 extract 期 dedup，不回收会二次建同题页。轻量路径：
@@ -505,7 +503,7 @@ class WikiIngestService:
             for p in existing_lite
         }
         items = [self._item_dict(c) for c in fresh]
-        exact_targets: Dict[str, str] = {}
+        exact_targets: dict[str, str] = {}
         for it in items:
             # 候选集=全部已有页（exact match 自带严格约束，无需预筛）
             target = exact_identity_target(
@@ -518,7 +516,7 @@ class WikiIngestService:
         stabilized = stabilize_extracted_items(items, {}, exact_targets)
         return [self._dict_item(d) for d in stabilized]
 
-    async def _plan_taxonomy(self, cited: List[ExtractedItem]) -> Dict[str, List[str]]:
+    async def _plan_taxonomy(self, cited: list[ExtractedItem]) -> dict[str, list[str]]:
         """批级目录规划（对齐 WeKnora planBatchTaxonomy）。失败不阻断页面生成。"""
         from novamind.features.knowledge_space.services.wiki_taxonomy import (
             TAXONOMY_FOLDER_POOL_MAX,
@@ -541,7 +539,7 @@ class WikiIngestService:
             return {}
 
     @staticmethod
-    def _item_dict(c: ExtractedItem) -> Dict[str, Any]:
+    def _item_dict(c: ExtractedItem) -> dict[str, Any]:
         return {
             "type": c.type, "name": c.name, "slug": c.slug,
             "aliases": list(c.aliases), "description": c.description,
@@ -549,7 +547,7 @@ class WikiIngestService:
         }
 
     @staticmethod
-    def _dict_item(d: Dict[str, Any]) -> ExtractedItem:
+    def _dict_item(d: dict[str, Any]) -> ExtractedItem:
         return ExtractedItem(
             type=d.get("type") or "concept", name=d.get("name") or "",
             slug=d.get("slug") or "", aliases=d.get("aliases") or [],
@@ -559,16 +557,16 @@ class WikiIngestService:
 
     @staticmethod
     def _render_dedup_groups(
-        candidates: List[ExtractedItem],
-        item_candidates: Dict[str, Set[str]],
-        pages_by_slug: Dict[str, DedupCandidate],
-        exact_targets: Dict[str, str],
+        candidates: list[ExtractedItem],
+        item_candidates: dict[str, set[str]],
+        pages_by_slug: dict[str, DedupCandidate],
+        exact_targets: dict[str, str],
     ) -> str:
         """渲染逐 item 候选分组（对齐 WeKnora writeDedupCandidateGroup）。
 
         exact 命中或无候选的 item 不进 prompt（无合并可能只添幻觉面）。
         """
-        blocks: List[str] = []
+        blocks: list[str] = []
         for c in candidates:
             if c.slug in exact_targets:
                 continue
@@ -599,9 +597,9 @@ class WikiIngestService:
 
     async def _annotate_citations(
         self,
-        candidates: List[ExtractedItem],
-        chunks: List[Dict[str, Any]],
-    ) -> Tuple[Dict[str, List[str]], List[ExtractedItem]]:
+        candidates: list[ExtractedItem],
+        chunks: list[dict[str, Any]],
+    ) -> tuple[dict[str, list[str]], list[ExtractedItem]]:
         """分批标注引文，返回 ({slug: [chunk_id]}, 新发现的候选)
 
         chunk 句柄（对齐 WeKnora splitChunksIntoCitationBatches）：每批给 chunk
@@ -617,11 +615,11 @@ class WikiIngestService:
             f"- {c.slug} = {c.name}" for c in candidates
         )
 
-        citations: Dict[str, List[str]] = {}
-        new_candidates: List[ExtractedItem] = []
+        citations: dict[str, list[str]] = {}
+        new_candidates: list[ExtractedItem] = []
         lock = asyncio.Lock()
 
-        async def run_batch(batch: List[Tuple[HandleTable, Dict[str, Any]]]) -> None:
+        async def run_batch(batch: list[tuple[HandleTable, dict[str, Any]]]) -> None:
             handles, chunk_list = batch
             chunks_xml = "\n".join(
                 f'<c id="{handles.register(str(c.get("chunk_id")))}">{str(c.get("content"))[:2000]}</c>'
@@ -660,7 +658,7 @@ class WikiIngestService:
                     if "/" not in slug:
                         slug = f"{entry.get('type', 'concept')}/{slug}"
                     # 新候选自带的 source_chunks 同样过句柄还原
-                    cited_ids: List[str] = []
+                    cited_ids: list[str] = []
                     for h in entry.get("source_chunks") or []:
                         real_id = handles.resolve(str(h))
                         if real_id is not None and real_id not in cited_ids:
@@ -687,9 +685,9 @@ class WikiIngestService:
         return citations, new_candidates
 
     @staticmethod
-    def _build_citation_batches(chunks: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
-        batches: List[List[Dict[str, Any]]] = []
-        current: List[Dict[str, Any]] = []
+    def _build_citation_batches(chunks: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+        batches: list[list[dict[str, Any]]] = []
+        current: list[dict[str, Any]] = []
         current_chars = 0
         for chunk in chunks:
             clen = len(str(chunk.get("content") or ""))
@@ -706,13 +704,13 @@ class WikiIngestService:
     async def _generate_page_content(
         self,
         item: ExtractedItem,
-        chunk_id_map: Dict[str, Dict[str, Any]],
-        valid_link_slugs: List[str],
-        link_handle_lines: List[str],
+        chunk_id_map: dict[str, dict[str, Any]],
+        valid_link_slugs: list[str],
+        link_handle_lines: list[str],
         slug_handles: HandleTable,
         custom_content: str,
-        existing: Optional[Any],
-    ) -> Optional[Tuple[str, str, List[str]]]:
+        existing: Any | None,
+    ) -> tuple[str, str, list[str]] | None:
         """单个 slug 的页面内容生成（只调 LLM，不碰 DB）。
 
         返回 (summary, content, out_links)；失败或无素材返回 None。
@@ -721,7 +719,7 @@ class WikiIngestService:
         统一负责（外层+内层嵌套获取同一 Semaphore 会死锁）。
         """
         # 取引用 chunk 的 verbatim 文本（无映射的引用 id 剔除）
-        cited_texts: List[str] = []
+        cited_texts: list[str] = []
         for cid in item.cited_chunk_ids:
             chunk = chunk_id_map.get(cid)
             if chunk and str(chunk.get("content") or "").strip():
@@ -762,8 +760,8 @@ class WikiIngestService:
 
     async def _inject_cross_links(
         self,
-        cited: List[ExtractedItem],
-        batch_slugs: List[str],
+        cited: list[ExtractedItem],
+        batch_slugs: list[str],
     ) -> None:
         """linkify 自动互链（对齐 WeKnora injectCrossLinks）。
 
@@ -781,7 +779,7 @@ class WikiIngestService:
                 return
 
             # refs 池：本批页面的 title+aliases（批内互链）
-            fresh_refs: List[Tuple[str, str]] = []
+            fresh_refs: list[tuple[str, str]] = []
             for p in affected.values():
                 if p.title:
                     fresh_refs.append((p.slug, p.title))
@@ -813,7 +811,6 @@ class WikiIngestService:
         扫描件常以扫描仪型号命名，喂了只会诱发幻觉。
         """
         summary_slug = f"summary/{self.document_id}"
-        existing = await self.page_repo.get_by_slug(self.kb_id, summary_slug)
 
         # 可用链接清单（句柄化，同 Reduce 机制）
         old_slugs = await self.page_repo.list_slugs_by_kb(self.kb_id)
@@ -922,7 +919,7 @@ class WikiIngestService:
 
         # 双向对齐 in_links
         slug_map = {p.slug: p for p in pages}
-        in_map: Dict[str, List[str]] = {p.slug: [] for p in pages}
+        in_map: dict[str, list[str]] = {p.slug: [] for p in pages}
         for page in pages:
             for target in page.out_links or []:
                 if target in slug_map and target != page.slug:
@@ -941,7 +938,7 @@ class WikiIngestService:
 
     # ========== LLM 与工具方法 ==========
 
-    async def _call_llm_json(self, prompt: str) -> Optional[dict]:
+    async def _call_llm_json(self, prompt: str) -> dict | None:
         """JSON mode 调用 + 解析重试"""
         for attempt in range(MAX_PARSE_RETRY + 1):
             try:
@@ -965,7 +962,7 @@ class WikiIngestService:
                 )
         return None
 
-    async def _call_llm_text(self, system_prompt: str, user_prompt: str) -> Optional[str]:
+    async def _call_llm_text(self, system_prompt: str, user_prompt: str) -> str | None:
         """页面正文生成（非 JSON）"""
         try:
             async with self._semaphore:
@@ -980,7 +977,7 @@ class WikiIngestService:
             return None
 
     @staticmethod
-    def _split_summary_line(raw: str) -> Tuple[str, str]:
+    def _split_summary_line(raw: str) -> tuple[str, str]:
         """拆分「SUMMARY: ...」首行与正文"""
         text = (raw or "").strip()
         m = re.match(r"^SUMMARY:\s*(.+?)\n", text, flags=re.IGNORECASE | re.DOTALL)
@@ -991,7 +988,7 @@ class WikiIngestService:
         return first_para, text
 
     @staticmethod
-    def _extract_wiki_links(content: str, self_slug: str, valid_slugs: set) -> List[str]:
+    def _extract_wiki_links(content: str, self_slug: str, valid_slugs: set) -> list[str]:
         """从正文中提取 [[slug|title]] 形式的有效链接（去重、去自指、剔无效）"""
         links = []
         for m in re.finditer(r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]", content):

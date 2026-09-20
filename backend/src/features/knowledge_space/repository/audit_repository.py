@@ -4,13 +4,12 @@
 处理空间审计日志的数据访问操作
 """
 
-from typing import Optional, List, Dict, Any
 from datetime import datetime
-
-from sqlalchemy import select, delete, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
 
 from novamind.features.knowledge_space.models.space_audit_log import SpaceAuditLog
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class AuditRepository:
@@ -23,7 +22,7 @@ class AuditRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create(self, data: Dict[str, Any]) -> SpaceAuditLog:
+    async def create(self, data: dict[str, Any]) -> SpaceAuditLog:
         """
         创建审计日志
 
@@ -42,7 +41,7 @@ class AuditRepository:
     async def get_by_id(
         self,
         log_id: int,
-    ) -> Optional[SpaceAuditLog]:
+    ) -> SpaceAuditLog | None:
         """
         根据 ID 获取审计日志
 
@@ -60,14 +59,14 @@ class AuditRepository:
     async def get_by_space(
         self,
         space_id: int,
-        action: Optional[str] = None,
-        user_id: Optional[int] = None,
-        resource_type: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        action: str | None = None,
+        user_id: int | None = None,
+        resource_type: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[SpaceAuditLog]:
+    ) -> list[SpaceAuditLog]:
         """
         获取空间的审计日志列表
 
@@ -109,7 +108,7 @@ class AuditRepository:
     async def get_by_trace_id(
         self,
         trace_id: str,
-    ) -> List[SpaceAuditLog]:
+    ) -> list[SpaceAuditLog]:
         """
         根据追踪 ID 获取审计日志（用于请求链路追踪）
 
@@ -130,10 +129,10 @@ class AuditRepository:
         self,
         resource_type: str,
         resource_id: int,
-        space_id: Optional[int] = None,
+        space_id: int | None = None,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[SpaceAuditLog]:
+    ) -> list[SpaceAuditLog]:
         """
         获取资源的审计日志
 
@@ -168,10 +167,10 @@ class AuditRepository:
     async def get_by_user(
         self,
         user_id: int,
-        space_id: Optional[int] = None,
+        space_id: int | None = None,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[SpaceAuditLog]:
+    ) -> list[SpaceAuditLog]:
         """
         获取用户的操作日志
 
@@ -213,7 +212,7 @@ class AuditRepository:
     async def count_by_space(
         self,
         space_id: int,
-        action: Optional[str] = None,
+        action: str | None = None,
     ) -> int:
         """
         统计空间的审计日志数量
@@ -238,9 +237,9 @@ class AuditRepository:
     async def get_action_stats(
         self,
         space_id: int,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-    ) -> Dict[str, int]:
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> dict[str, int]:
         """
         获取空间操作统计
 

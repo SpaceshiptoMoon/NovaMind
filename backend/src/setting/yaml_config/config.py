@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 from urllib.parse import quote_plus
 
 
@@ -29,13 +28,13 @@ class FeaturesConfig:
       # 或简写：example_feature: false
     """
 
-    flags: Dict[str, FeatureFlag] = field(default_factory=dict)
+    flags: dict[str, FeatureFlag] = field(default_factory=dict)
 
 
 @dataclass
 class MinioConfig:
     endpoint: str = "localhost:9000"
-    public_endpoint: Optional[str] = None  # 外部服务可访问的公网地址，如 https://minio.example.com
+    public_endpoint: str | None = None  # 外部服务可访问的公网地址，如 https://minio.example.com
     access_key: str = ""
     secret_key: str = ""
     secure: bool = False
@@ -45,14 +44,14 @@ class MinioConfig:
 
 @dataclass
 class ElasticsearchConfig:
-    hosts: List[str] = field(default_factory=lambda: ["http://localhost:9200"])
-    username: Optional[str] = None
-    password: Optional[str] = None
+    hosts: list[str] = field(default_factory=lambda: ["http://localhost:9200"])
+    username: str | None = None
+    password: str | None = None
     index_prefix: str = "kb"
     default_embedding_dim: int = 1024
     analyzer: str = "ik_max_word"
     verify_certs: bool = False
-    ca_certs: Optional[str] = None
+    ca_certs: str | None = None
 
 
 @dataclass
@@ -80,11 +79,11 @@ class ParsingConfig:
     vlm_description_enabled: bool = False
     # 本地 faster-whisper ASR 模型目录（绝对路径）。为空时回退到环境变量
     # NOVAMIND_LOCAL_WHISPER_MODEL_DIR，再为空时用默认 ~/.cache/faster-whisper/tiny。
-    local_whisper_model_dir: Optional[str] = None
+    local_whisper_model_dir: str | None = None
     # 本地 faster-whisper 转写 CPU 线程数。None 时按物理核自动取保守值（留至少 1
     # 物理核给事件循环）。转写期间其它请求仍卡顿就调小（如 2）；ASR 太慢可调大，
     # 但勿超过 (物理核 - 1)，否则会重新饿死事件循环。
-    local_whisper_cpu_threads: Optional[int] = None
+    local_whisper_cpu_threads: int | None = None
     # 视频 VLM 逐帧/逐组描述并发数（1=串行，默认 4，范围 1~20）。长视频 60 帧串行
     # 易逼近 arq job_timeout=1800s，有界并发降时延；过高可能触发 VLM 配额限流，
     # 配合 vlm_fallback_model / vlm_skip_on_quota_error（KB 级）降级。
@@ -141,7 +140,7 @@ class RedisConfig:
     host: str = "localhost"
     port: int = 6379
     db: int = 0
-    password: Optional[str] = None
+    password: str | None = None
     max_connections: int = 10
     sentinel_hosts: str = ""
     sentinel_master: str = "mymaster"
@@ -155,7 +154,7 @@ class LLMConfig:
     keep_recent_messages: int = 6
     compression_target_tokens: int = 2000
     enable_compression: bool = True
-    custom_summary_prompt: Optional[str] = None
+    custom_summary_prompt: str | None = None
 
 
 @dataclass
@@ -169,7 +168,7 @@ class AdminConfig:
     username: str = "admin"
     email: str = "admin@example.com"
     password: str = ""
-    phone: Optional[str] = None
+    phone: str | None = None
     create_on_startup: bool = True
     reset_password_if_exists: bool = False
 

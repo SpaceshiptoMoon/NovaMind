@@ -5,10 +5,8 @@
 - UserRegister 密码强度与「密码不含用户名」校验
 """
 import pytest
-
 from novamind.features.user.schemas.user_schema import UserCreate, UserRegister
 from novamind.features.user.schemas.validators import validate_phone_format
-
 
 pytestmark = pytest.mark.unit
 

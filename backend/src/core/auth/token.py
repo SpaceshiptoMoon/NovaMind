@@ -10,13 +10,10 @@
 """
 from __future__ import annotations
 
-from typing import Optional
-
 import jwt
-from pydantic import BaseModel
-
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.setting.yaml_config import get_config
+from pydantic import BaseModel
 
 logger = get_logger(__name__)
 
@@ -31,17 +28,17 @@ class TokenClaims(BaseModel):
     必须以数据库实时状态为准（由 ``UserStatusResolver`` 端口在认证依赖中补齐）。
     """
 
-    user_id: Optional[int] = None
-    username: Optional[str] = None
-    email: Optional[str] = None
-    role_code: Optional[str] = None
+    user_id: int | None = None
+    username: str | None = None
+    email: str | None = None
+    role_code: str | None = None
     is_admin: bool = False
     status: int = 1
-    jti: Optional[str] = None
-    iat: Optional[int] = None
+    jti: str | None = None
+    iat: int | None = None
 
 
-def decode_token_payload(token: str) -> Optional[dict]:
+def decode_token_payload(token: str) -> dict | None:
     """解码 token 为 payload dict（不校验 token 类型）。
 
     供 logout / refresh 等需要读取任意类型 token 载荷的业务使用。
@@ -59,7 +56,7 @@ def decode_token_payload(token: str) -> Optional[dict]:
         return None
 
 
-def decode_access_token(token: str) -> Optional[TokenClaims]:
+def decode_access_token(token: str) -> TokenClaims | None:
     """校验并解码 access token 为 TokenClaims。
 
     校验项：签名、过期、token 类型为 access、存在 username（sub）。

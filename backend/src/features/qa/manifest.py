@@ -11,8 +11,8 @@ def _import_models() -> None:
 
 
 def manifest() -> FeatureManifest:
-    from novamind.features.qa.api.qa_routes import router as qa_router
     from novamind.features.qa.api.ai_chat_routes import router as ai_chat_router
+    from novamind.features.qa.api.qa_routes import router as qa_router
     from novamind.features.qa.api.session_config_routes import router as session_config_router
 
     return FeatureManifest(

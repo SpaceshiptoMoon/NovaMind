@@ -4,16 +4,15 @@
 处理用户模型配置的数据访问操作
 每条配置绑定具体用户
 """
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, func
-from typing import Optional, List
 
-from novamind.features.user.models.user_model_config import UserModelConfig, ModelType
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.user.models.user_model_config import ModelType, UserModelConfig
 from novamind.features.user.schemas.model_config_schema import (
     ModelConfigCreate,
     ModelConfigUpdate,
 )
-from novamind.core.middleware.structured_logging import get_logger
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -50,7 +49,7 @@ def model_type_int_to_str(value: int, default: str = "unknown") -> str:
         return default
 
 
-def model_type_int_to_enum(value: int) -> Optional[ModelType]:
+def model_type_int_to_enum(value: int) -> ModelType | None:
     """ORM ``model_type`` 整数 → 枚举，已废弃编号返回 ``None``。
 
     供需要按枚举分支（如 EMBEDDING 重探维度、删除影响检查）的调用方使用；
@@ -70,7 +69,7 @@ class ModelConfigRepository:
 
     # ========== 基础查询 ==========
 
-    async def get_by_id(self, config_id: int) -> Optional[UserModelConfig]:
+    async def get_by_id(self, config_id: int) -> UserModelConfig | None:
         """根据配置 ID 获取"""
         stmt = select(UserModelConfig).where(UserModelConfig.id == config_id)
         result = await self.db.execute(stmt)
@@ -83,7 +82,7 @@ class ModelConfigRepository:
         user_id: int,
         model_type: str,
         model: str
-    ) -> Optional[UserModelConfig]:
+    ) -> UserModelConfig | None:
         """
         获取用户的指定模型配置
 
@@ -111,7 +110,7 @@ class ModelConfigRepository:
         self,
         user_id: int,
         model_type: str
-    ) -> List[UserModelConfig]:
+    ) -> list[UserModelConfig]:
         """
         获取用户的可用配置
 
@@ -136,8 +135,8 @@ class ModelConfigRepository:
     async def list_by_user(
         self,
         user_id: int,
-        model_type: Optional[str] = None
-    ) -> List[UserModelConfig]:
+        model_type: str | None = None
+    ) -> list[UserModelConfig]:
         """
         获取用户的模型配置列表
 
@@ -159,7 +158,7 @@ class ModelConfigRepository:
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
-    async def count_by_user(self, user_id: int, model_type: Optional[str] = None) -> int:
+    async def count_by_user(self, user_id: int, model_type: str | None = None) -> int:
         """统计用户配置数量"""
         stmt = select(func.count(UserModelConfig.id)).where(UserModelConfig.user_id == user_id)
 

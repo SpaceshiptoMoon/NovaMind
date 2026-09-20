@@ -2,16 +2,15 @@
 from __future__ import annotations
 
 # Unified text-family router backed by RAGFlow parser adaptations.
-
 from pathlib import Path
 
 from novamind.engines.document.integrations.deepdoc.parsers.html import RAGFlowHtmlParser
 from novamind.engines.document.integrations.deepdoc.parsers.json import RAGFlowJsonParser
+from novamind.engines.document.integrations.deepdoc.parsers.txt import RAGFlowTxtParser
 from novamind.engines.document.integrations.deepdoc.parsers.upstream.markdown_parser import (
     MarkdownElementExtractor,
     RAGFlowMarkdownParser,
 )
-from novamind.engines.document.integrations.deepdoc.parsers.txt import RAGFlowTxtParser
 from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import get_text
 
 

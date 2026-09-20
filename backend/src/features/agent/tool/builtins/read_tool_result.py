@@ -2,7 +2,7 @@
 内置工具：读取截断的完整工具结果，从 agent_tool_calls 表取回原始数据。
 """
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
 from novamind.shared.logging import get_logger
@@ -21,7 +21,7 @@ class ReadToolResultTool(BaseTool):
     def description(self) -> str:
         return "读取之前被截断的工具调用完整结果"
 
-    def get_tools(self) -> List[Dict[str, Any]]:
+    def get_tools(self) -> list[dict[str, Any]]:
         return [
             {
                 "type": "function",
@@ -57,7 +57,7 @@ class ReadToolResultTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: Dict[str, Any], context: Dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
         tc_id = arguments.get("tool_call_id")
         offset = arguments.get("offset", 0)
@@ -70,8 +70,8 @@ class ReadToolResultTool(BaseTool):
         if not db:
             return json.dumps({"error": "无法访问数据库"})
 
-        from sqlalchemy import select
         from novamind.features.agent.models.tool_call import AgentToolCall
+        from sqlalchemy import select
 
         stmt = select(AgentToolCall).where(AgentToolCall.id == tc_id)
         result = await db.execute(stmt)

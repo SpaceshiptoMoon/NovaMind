@@ -5,12 +5,13 @@
 UserStatusResolver 装配链），close code 契约保持真实。
 """
 import pytest
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 from novamind.core.auth import get_user_status_resolver
 from novamind.core.ws.connection_manager import manager as ws_manager
 from novamind.features.notification.api.routes import router as notification_router
+
+pytestmark = pytest.mark.unit
 
 _FAKE_USER = {"id": 7, "username": "alice", "email": "a@b.c", "is_admin": False}
 

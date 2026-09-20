@@ -11,7 +11,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
 from novamind.engines.agent.agent_engine import AgentEvent
 from novamind.engines.agent.memory.interfaces import MemorySnapshot
 from novamind.features.agent.models.context_summary import AgentContextSummary
@@ -22,6 +21,8 @@ from novamind.features.agent.schemas.agent_schema import (
 )
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.agent.services.chat_service import AgentChatService
+
+pytestmark = pytest.mark.unit
 
 
 def _msg(id_, role, content=None, created_at=None, conversation_id=7):

@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 @dataclass
@@ -22,8 +22,8 @@ class SearchCredentials:
     """
 
     provider: str
-    api_key: Optional[str] = None
-    extra_config: Optional[Dict[str, Any]] = None
+    api_key: str | None = None
+    extra_config: dict[str, Any] | None = None
 
 
 @runtime_checkable
@@ -34,7 +34,7 @@ class SearchConfigPort(Protocol):
     features/user 服务。
     """
 
-    async def get_primary_search_config(self, user_id: int) -> Optional[SearchCredentials]:
+    async def get_primary_search_config(self, user_id: int) -> SearchCredentials | None:
         """获取用户首选搜索配置（``is_primary=True`` 那条），无则返回 ``None``。
 
         返回的 ``api_key`` 为解密后明文，供宿主构造 ``WebSearchPort``。
@@ -43,7 +43,7 @@ class SearchConfigPort(Protocol):
 
     async def get_search_config_by_provider(
         self, user_id: int, provider: str
-    ) -> Optional[SearchCredentials]:
+    ) -> SearchCredentials | None:
         """按 (user_id, provider) 取该用户的指定 provider 配置，无则返回 ``None``。
 
         供聊天时显式选 provider：命中返回解密后明文凭证，宿主构造 ``WebSearchPort``；

@@ -1,6 +1,12 @@
 from novamind.features.skill.models.skill import (
-    SkillDefinition, SkillVersion, SkillReview, SkillInstallation,
-    SkillSource, SkillVisibility, SkillStatus, ReviewStatus,
+    ReviewStatus,
+    SkillDefinition,
+    SkillInstallation,
+    SkillReview,
+    SkillSource,
+    SkillStatus,
+    SkillVersion,
+    SkillVisibility,
 )
 
 __all__ = [

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 # Adapted from RAGFlow deepdoc/vision/layout_recognizer.py
-
 import os
 import re
 from collections import Counter
@@ -10,7 +9,6 @@ from copy import deepcopy
 from pathlib import Path
 
 import numpy as np
-
 from novamind.engines.document.integrations.deepdoc.vision.recognizer import Recognizer
 
 

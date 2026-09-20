@@ -3,10 +3,9 @@
 
 管理所有已注册的工具，提供工具发现和路由功能。
 """
-from typing import Dict, List, Optional
 
-from novamind.shared.logging import get_logger
 from novamind.engines.agent.tool.base import BaseTool
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -25,8 +24,8 @@ class ToolRegistry:
     """工具注册表"""
 
     def __init__(self):
-        self._tools: Dict[str, BaseTool] = {}
-        self._tool_name_to_provider: Dict[str, str] = {}  # tool_name -> provider_name
+        self._tools: dict[str, BaseTool] = {}
+        self._tool_name_to_provider: dict[str, str] = {}  # tool_name -> provider_name
 
     def register(self, tool: BaseTool) -> None:
         """注册工具"""
@@ -38,21 +37,21 @@ class ToolRegistry:
                 self._tool_name_to_provider[tool_name] = tool.name
         logger.info("工具已注册", tool_name=tool.name)
 
-    def get_tool(self, name: str) -> Optional[BaseTool]:
+    def get_tool(self, name: str) -> BaseTool | None:
         """获取工具"""
         return self._tools.get(name)
 
-    def find_tool_provider(self, tool_name: str) -> Optional[BaseTool]:
+    def find_tool_provider(self, tool_name: str) -> BaseTool | None:
         """根据工具名查找所属工具提供者"""
         provider_name = self._tool_name_to_provider.get(tool_name)
         if provider_name:
             return self._tools.get(provider_name)
         return None
 
-    def list_tools(self) -> List[ToolInfo]:
+    def list_tools(self) -> list[ToolInfo]:
         """列出所有已注册的工具"""
         return [ToolInfo(tool) for tool in self._tools.values()]
 
-    def list_tool_names(self) -> List[str]:
+    def list_tool_names(self) -> list[str]:
         """列出所有已注册的工具名称"""
         return list(self._tools.keys())

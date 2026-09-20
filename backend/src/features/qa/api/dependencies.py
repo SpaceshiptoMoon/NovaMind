@@ -1,22 +1,22 @@
-from novamind.core.database.database import get_db
-from novamind.features.qa.services.qa_service import QAService
-from novamind.features.qa.services.qa_cache_service import QACacheService
-from novamind.shared.cache.cache_service import CacheService
-from novamind.features.qa.repository.question_answer_repository import QuestionAnswerRepository
-from novamind.features.qa.repository.session_config_repository import SessionConfigRepository
-from novamind.features.qa.repository.session_summary_repository import SessionSummaryRepository
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from novamind.features.qa.services.ai_chat_service import AIChatService
-from novamind.features.user.api.dependencies import get_model_config_service
+from novamind.core.database.database import get_db
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.shared.storage.client_factory import get_minio_client, get_elasticsearch_client
-from novamind.features.knowledge_space.services.search_service import SearchService
-from novamind.features.knowledge_space.adapters.retrieval_adapter import as_retrieval_port
 from novamind.features.knowledge_space.adapters.document_ingestion_adapter import (
     as_document_ingestion_port,
 )
+from novamind.features.knowledge_space.adapters.retrieval_adapter import as_retrieval_port
+from novamind.features.knowledge_space.services.search_service import SearchService
+from novamind.features.qa.repository.question_answer_repository import QuestionAnswerRepository
+from novamind.features.qa.repository.session_config_repository import SessionConfigRepository
+from novamind.features.qa.repository.session_summary_repository import SessionSummaryRepository
+from novamind.features.qa.services.ai_chat_service import AIChatService
+from novamind.features.qa.services.qa_cache_service import QACacheService
+from novamind.features.qa.services.qa_service import QAService
 from novamind.features.user.adapters.search_config_port_adapter import as_search_config_port
+from novamind.features.user.api.dependencies import get_model_config_service
+from novamind.shared.cache.cache_service import CacheService
+from novamind.shared.storage.client_factory import get_elasticsearch_client, get_minio_client
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 

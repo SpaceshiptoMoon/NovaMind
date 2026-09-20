@@ -1,7 +1,9 @@
 """User.is_admin() 从 role 派生测试。"""
 import pytest
-from novamind.features.user.models.user import User
 from novamind.features.user.models.role import Role
+from novamind.features.user.models.user import User
+
+pytestmark = pytest.mark.unit
 
 
 @pytest.mark.asyncio

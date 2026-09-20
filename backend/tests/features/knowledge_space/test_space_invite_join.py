@@ -5,27 +5,29 @@
 整个邀请流程端到端失效。本测试在服务层验证：invite 返回完整 token、join 后转
 ACTIVE、角色可变更。
 """
+from typing import Any
+
 import pytest
 import pytest_asyncio
-from typing import Any, Dict, Optional
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-
 from novamind.core.database.base import Base
-from novamind.features.user.models.role import Role
-from novamind.features.user.models.user import User, UserStatus
 from novamind.features.knowledge_space.models.knowledge_space import (
     KnowledgeSpace,
-    SpaceVisibility,
     SpaceStatus,
+    SpaceVisibility,
 )
 from novamind.features.knowledge_space.models.space_member import (
+    MemberStatus,
     SpaceMember,
     SpaceRole,
-    MemberStatus,
 )
 from novamind.features.knowledge_space.repository.member_repository import MemberRepository
 from novamind.features.knowledge_space.services.member_service import MemberService
+from novamind.features.user.models.role import Role
+from novamind.features.user.models.user import User, UserStatus
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+pytestmark = pytest.mark.unit
 
 _TEST_TABLES = [
     Role.__table__,
@@ -52,6 +54,7 @@ def _patch_create_invite_with_manual_id(db: AsyncSession):
     服务层调用这两个方法全用关键字参数，这里按关键字取值。
     """
     from datetime import timedelta
+
     from novamind.shared.utils.time_utils import now_china
 
     async def _create_invite_wrapped(
@@ -85,8 +88,8 @@ def _patch_create_invite_with_manual_id(db: AsyncSession):
         space_id: int,
         user_id: int,
         role: SpaceRole = SpaceRole.VIEWER,
-        invited_by: Optional[int] = None,
-        custom_permissions: Optional[Dict[str, Any]] = None,
+        invited_by: int | None = None,
+        custom_permissions: dict[str, Any] | None = None,
     ) -> SpaceMember:
         member = SpaceMember(
             space_id=space_id,

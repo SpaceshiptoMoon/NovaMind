@@ -5,19 +5,17 @@
 支持 Redis 缓存
 """
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
-from sqlalchemy.exc import IntegrityError
-from typing import Optional
 import time
 
-from novamind.features.user.models.user import User, UserStatus
-from novamind.features.user.models.role import Role
-from novamind.features.user.schemas.user_schema import UserUpdate
 from novamind.core.auth.hashing import verify_password_async
-from novamind.shared.cache.redis_client import get_redis_client
 from novamind.core.middleware.structured_logging import get_logger
-
+from novamind.features.user.models.role import Role
+from novamind.features.user.models.user import User, UserStatus
+from novamind.features.user.schemas.user_schema import UserUpdate
+from novamind.shared.cache.redis_client import get_redis_client
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # 缓存 TTL 常量
 USER_CACHE_TTL = 7200  # 2 小时
@@ -119,7 +117,7 @@ class UserRepository:
             # 嵌套事务会自动回滚 SAVEPOINT，无需手动 rollback
             raise ValueError("用户名或邮箱已被注册")
 
-    async def get_role_by_code(self, code: str) -> Optional[Role]:
+    async def get_role_by_code(self, code: str) -> Role | None:
         """根据角色编码获取角色（带缓存）。"""
         if not self.db:
             raise ValueError("数据库会话未设置")
@@ -128,7 +126,7 @@ class UserRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_user_by_username(self, username: str, use_cache: bool = True, include_deleted: bool = False) -> Optional[User]:
+    async def get_user_by_username(self, username: str, use_cache: bool = True, include_deleted: bool = False) -> User | None:
         """根据用户名获取用户（带缓存）
 
         Args:
@@ -182,7 +180,7 @@ class UserRepository:
 
         return user
 
-    async def get_user_by_id(self, user_id: int, use_cache: bool = True) -> Optional[User]:
+    async def get_user_by_id(self, user_id: int, use_cache: bool = True) -> User | None:
         """根据用户ID获取用户（带缓存）"""
         if not self.db:
             raise ValueError("数据库会话未设置")
@@ -236,7 +234,7 @@ class UserRepository:
 
     async def update_user(
         self, user_id: int, user_update: UserUpdate
-    ) -> Optional[User]:
+    ) -> User | None:
         """
         更新用户信息（同时失效缓存）
 
@@ -281,7 +279,7 @@ class UserRepository:
         # 重新获取更新后的用户（不使用缓存）
         return await self.get_user_by_id(user_id, use_cache=False)
 
-    async def authenticate_user(self, username: str, password: str) -> Optional[User]:
+    async def authenticate_user(self, username: str, password: str) -> User | None:
         """
         验证用户身份
 
@@ -340,7 +338,7 @@ class UserRepository:
 
         return result.rowcount > 0, new_status
 
-    async def get_user_by_phone(self, phone: str, include_deleted: bool = False) -> Optional[User]:
+    async def get_user_by_phone(self, phone: str, include_deleted: bool = False) -> User | None:
         """
         根据手机号获取用户（排除已删除用户）
 
@@ -361,7 +359,7 @@ class UserRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_user_by_email(self, email: str, use_cache: bool = True, include_deleted: bool = False) -> Optional[User]:
+    async def get_user_by_email(self, email: str, use_cache: bool = True, include_deleted: bool = False) -> User | None:
         """
         根据邮箱获取用户（排除已删除用户）
 

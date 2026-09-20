@@ -6,26 +6,8 @@
 - 音频: ASR转写 → MD文本 → 统一文本切分 → Embedding → ES
 """
 
-from typing import List, Tuple, Dict, Any, Optional
+from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.features.knowledge_space.exceptions import DocumentProcessingError, LocalASRBusyError
-from novamind.features.knowledge_space.models.document import Document
-from novamind.features.knowledge_space.models.document_task import DocumentTask
-from novamind.shared.model_config_ports import ModelConfigPort
-from novamind.features.knowledge_space.services.document_pipeline import (
-    _check_document_cancelled,
-    load_pipeline_context,
-    persist_parsed_text,
-    _run_post_parse_tail,
-)
-from novamind.features.knowledge_space.services.pipeline_snapshots import (
-    build_parse_snapshot_payload,
-    compute_parse_fingerprint,
-    save_parse_snapshot,
-    SNAPSHOTS_ENABLED,
-)
 from novamind.engines.document.media.audio import (
     AudioFileInvalidError,
     transcribe_audio_local,
@@ -44,12 +26,30 @@ from novamind.engines.document.media.video import (
     describe_single,
     extract_frames_fixed,
     extract_frames_scene,
-    extract_video_frames,
 )
-from novamind.shared.utils.time_utils import now_china
-from novamind.features.knowledge_space.schemas.knowledge_base_schema import build_runtime_parsing_config
+from novamind.features.knowledge_space.exceptions import DocumentProcessingError, LocalASRBusyError
+from novamind.features.knowledge_space.models.document import Document
+from novamind.features.knowledge_space.models.document_task import DocumentTask
 from novamind.features.knowledge_space.schemas.enums import ChunkType
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+    build_runtime_parsing_config,
+)
+from novamind.features.knowledge_space.services.document_pipeline import (
+    _check_document_cancelled,
+    _run_post_parse_tail,
+    load_pipeline_context,
+    persist_parsed_text,
+)
+from novamind.features.knowledge_space.services.pipeline_snapshots import (
+    SNAPSHOTS_ENABLED,
+    build_parse_snapshot_payload,
+    compute_parse_fingerprint,
+    save_parse_snapshot,
+)
 from novamind.shared.config import AudioConfig
+from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.shared.utils.time_utils import now_china
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def _find_cloud_asr_credentials(mcs, uploader_id: int, exclude_protocol: str = "local"):
@@ -68,7 +68,7 @@ async def _find_cloud_asr_credentials(mcs, uploader_id: int, exclude_protocol: s
     return None
 
 
-async def _begin_step(session: AsyncSession, task: Optional[DocumentTask], name: str) -> None:
+async def _begin_step(session: AsyncSession, task: DocumentTask | None, name: str) -> None:
     """记录节点开始并立即落库。
 
     `task.start_step` 只改内存对象的 step_progress；若不在节点开始时立即 commit，
@@ -107,10 +107,10 @@ def _is_vlm_quota_or_auth_error(exc: BaseException) -> bool:
 
 async def maybe_semantic_embedding_client(
     strategy: str,
-    embedding_config: Dict[str, Any],
+    embedding_config: dict[str, Any],
     session: AsyncSession,
     user_id: int,
-    model_config_port: Optional[ModelConfigPort] = None,
+    model_config_port: ModelConfigPort | None = None,
 ):
     """strategy == "semantic" 时返回语义切分所需的 embedding_client，否则返回 None。
 
@@ -136,8 +136,8 @@ async def process_video_document(
     file_content: bytes,
     session: AsyncSession,
     logger,
-    task: Optional[DocumentTask] = None,
-    model_config_port: Optional[ModelConfigPort] = None,
+    task: DocumentTask | None = None,
+    model_config_port: ModelConfigPort | None = None,
 ) -> None:
     """
     视频文档处理管道
@@ -184,7 +184,7 @@ async def process_video_document(
     if task:
         await _begin_step(session, task, "frames_extracted")
     if strategy == "scene":
-        scene_kwargs: Dict[str, Any] = {}
+        scene_kwargs: dict[str, Any] = {}
         if scene_threshold is not None:
             scene_kwargs["scene_threshold"] = scene_threshold
         frames = await extract_frames_scene(file_content, max_frames, **scene_kwargs)
@@ -205,7 +205,7 @@ async def process_video_document(
 
     # 1.5 去重（dedup 策略：相邻帧直方图相似度去重，frame_idx 重映射为连续序号）
     if strategy == "dedup":
-        dedup_kwargs: Dict[str, Any] = {}
+        dedup_kwargs: dict[str, Any] = {}
         if dedup_similarity_threshold is not None:
             dedup_kwargs["similarity_threshold"] = dedup_similarity_threshold
         frames = dedup_frame_diff(frames, **dedup_kwargs)
@@ -230,7 +230,7 @@ async def process_video_document(
     # 按位置 append 会与 frame_idx 错位 → ES chunk 帧图指向错误帧或丢失。dict 映射让
     # _build_es_chunks 按 frame_idx 精确取帧，空洞 idx 自动跳过。dedup 策略因 dedup_frame_diff
     # 已用 len(kept) 重映射连续 idx 而天然免疫，此处 dict 同样兼容。
-    frame_paths: Dict[int, str] = {}
+    frame_paths: dict[int, str] = {}
     for frame_bytes, ts, frame_idx in frames:
         object_name = f"{base_object}_frames/frame_{frame_idx:04d}.jpg"
         try:
@@ -280,15 +280,16 @@ async def process_video_document(
 
     from novamind.shared.prompts.templates import PromptManager
 
-    cancelled_check = lambda: _check_document_cancelled(document.id)
-    base_log_ctx: Dict[str, Any] = {"document_id": document.id}
+    def cancelled_check() -> bool:
+        return _check_document_cancelled(document.id)
+    base_log_ctx: dict[str, Any] = {"document_id": document.id}
 
     # 双锚点 [HH:MM:SS#frame_idx]：时间戳给人看，#frame_idx 给切分后反查唯一映射回帧时间区间。
     # 帧时间线 {frame_idx: (start_sec, end_sec)}，end = 下一帧 ts（末帧 end=None，末尾开放区间）。
     # 切分后 align_chunk_times 据此把 chunk 反查到的 #idx 映射成 start_time/end_time。
     full_text = ""
-    frame_timeline_map: Dict[int, Tuple[Optional[float], Optional[float]]] = {}
-    frame_groups: Optional[Dict[int, List[int]]] = None
+    frame_timeline_map: dict[int, tuple[float | None, float | None]] = {}
+    frame_groups: dict[int, list[int]] | None = None
     descriptions_count = 0
 
     try:
@@ -303,9 +304,9 @@ async def process_video_document(
                 log_context=base_log_ctx, cancelled_check=cancelled_check,
                 concurrency=vlm_concurrency,
             )
-            lines: List[str] = []
+            lines: list[str] = []
             frame_groups = {}
-            timeline_input: List[Tuple[str, float, int]] = []
+            timeline_input: list[tuple[str, float, int]] = []
             for desc, start_ts, _end_ts, idx_list in grouped_descs:
                 anchor_idx = idx_list[0]
                 lines.append(f"{format_time_anchor(start_ts, anchor_idx)} {desc}")
@@ -457,8 +458,8 @@ async def process_audio_document(
     file_content: bytes,
     session: AsyncSession,
     logger,
-    task: Optional[DocumentTask] = None,
-    model_config_port: Optional[ModelConfigPort] = None,
+    task: DocumentTask | None = None,
+    model_config_port: ModelConfigPort | None = None,
 ) -> None:
     """
     音频文档处理管道
@@ -494,8 +495,8 @@ async def process_audio_document(
     mcs = model_config_port
 
     # 从模型配置系统查找 ASR 凭证（优先精确匹配，找不到用该用户任意 ASR 配置兜底）
-    asr_api_key: Optional[str] = None
-    asr_base_url: Optional[str] = None
+    asr_api_key: str | None = None
+    asr_base_url: str | None = None
     asr_protocol = "openai"  # 默认
 
     asr_creds = await mcs.get_credentials_by_model(document.uploader_id, "asr", asr_model)
@@ -519,8 +520,8 @@ async def process_audio_document(
     async def _run_asr(
         protocol: str,
         model: str,
-        api_key: Optional[str],
-        base_url: Optional[str],
+        api_key: str | None,
+        base_url: str | None,
     ) -> list:
         if protocol == "local":
             return await transcribe_audio_local(
@@ -749,7 +750,7 @@ async def process_audio_document(
 # ========== 统一文本切分 ==========
 
 
-def _split_line_aware(md_text: str, chunk_size: int, chunk_overlap: int) -> List[str]:
+def _split_line_aware(md_text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
     """按行累积切分，绝不切进「[HH:MM:SS#idx] 描述」行内部，保证锚点不分家。
 
     供 fixed_size 与 recursive 在 line_aware=True 时共用（音视频带时间锚点文本）。
@@ -760,15 +761,15 @@ def _split_line_aware(md_text: str, chunk_size: int, chunk_overlap: int) -> List
     上一个 chunk、描述切到下一个 chunk，导致 align_chunk_times 丢时间对齐。
     """
     lines = md_text.split("\n")
-    chunks: List[str] = []
-    buf: List[str] = []
+    chunks: list[str] = []
+    buf: list[str] = []
     buf_len = 0
     for line in lines:
         addition = len(line) + (1 if buf else 0)  # 非首行加 \n 连接符长度
         if buf and buf_len + addition > chunk_size:
             chunks.append("\n".join(buf))
             # overlap：从尾部回溯取若干行，使其字符和 ≥ chunk_overlap 即停
-            tail: List[str] = []
+            tail: list[str] = []
             tail_len = 0
             for tl in reversed(buf):
                 if tail and tail_len + len(tl) >= chunk_overlap:
@@ -776,7 +777,7 @@ def _split_line_aware(md_text: str, chunk_size: int, chunk_overlap: int) -> List
                 tail.insert(0, tl)
                 tail_len += len(tl) + (1 if len(tail) > 1 else 0)
             buf = tail
-            buf_len = sum(len(l) for l in tail) + max(0, len(tail) - 1)
+            buf_len = sum(len(tl) for tl in tail) + max(0, len(tail) - 1)
         buf.append(line)
         buf_len += addition
     if buf:
@@ -790,7 +791,7 @@ async def _split_md_text(
     embedding_client=None,
     line_aware: bool = False,
     **kwargs,
-) -> List[Tuple[str, Dict[str, Any]]]:
+) -> list[tuple[str, dict[str, Any]]]:
     """
     将 MD/纯文本按指定策略切分为 chunks
 

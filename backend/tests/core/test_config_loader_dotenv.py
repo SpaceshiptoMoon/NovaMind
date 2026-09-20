@@ -12,8 +12,9 @@ import os
 from pathlib import Path
 
 import pytest
-
 from novamind.setting.yaml_config.loader import ConfigLoader
+
+pytestmark = pytest.mark.unit
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEEPDOC_ROOT = REPO_ROOT / "backend" / "src" / "setting" / "yaml_config" / "yaml"

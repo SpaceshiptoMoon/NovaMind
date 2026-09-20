@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import List, Set, Tuple
 
 import pytest
 
@@ -21,7 +20,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 FEATURES_API_DIR = BACKEND_ROOT / "src" / "features"
 
 # 鉴权依赖白名单（函数名/标识符）
-AUTH_DEPENDENCIES: Set[str] = {
+AUTH_DEPENDENCIES: set[str] = {
     "require_permission",
     "require_active_user",
     "get_current_user",
@@ -69,14 +68,14 @@ EXEMPT_PATTERNS = (
 )
 
 # 白名单：特定文件+路径组合，极少数无需鉴权的写端点（如内部回调、健康检查等）
-EXPLICIT_EXEMPTS: List[Tuple[str, str]] = [
+EXPLICIT_EXEMPTS: list[tuple[str, str]] = [
     # (相对路径, 路径前缀)
 ]
 
 
-def _collect_route_files() -> List[Path]:
+def _collect_route_files() -> list[Path]:
     """收集 features 下所有 api/*.py 文件。"""
-    files: List[Path] = []
+    files: list[Path] = []
     if FEATURES_API_DIR.is_dir():
         for p in sorted(FEATURES_API_DIR.rglob("*.py")):
             if "__pycache__" in p.parts:
@@ -85,7 +84,7 @@ def _collect_route_files() -> List[Path]:
     return files
 
 
-def _get_decorator_methods(node: ast.Call) -> List[str]:
+def _get_decorator_methods(node: ast.Call) -> list[str]:
     """从 router.post/put/patch/delete 装饰器提取 HTTP 方法名。"""
     if isinstance(node.func, ast.Attribute) and node.func.attr in WRITE_METHODS:
         return [node.func.attr]
@@ -99,9 +98,9 @@ def _extract_path_from_decorator(node: ast.Call) -> str | None:
     return None
 
 
-def _extract_depends_names(func_def: ast.AsyncFunctionDef | ast.FunctionDef) -> Set[str]:
+def _extract_depends_names(func_def: ast.AsyncFunctionDef | ast.FunctionDef) -> set[str]:
     """从函数参数默认值中提取 Depends(xxx) 的 xxx 标识符名。"""
-    names: Set[str] = set()
+    names: set[str] = set()
     for arg in func_def.args.args:
         if arg.default:
             # 形如 current_user: dict = Depends(require_permission("..."))
@@ -114,9 +113,9 @@ def _extract_depends_names(func_def: ast.AsyncFunctionDef | ast.FunctionDef) -> 
     return names
 
 
-def _extract_depends_from_expr(expr: ast.expr) -> Set[str]:
+def _extract_depends_from_expr(expr: ast.expr) -> set[str]:
     """递归从表达式中提取 Depends(...) 的参数标识符名。"""
-    names: Set[str] = set()
+    names: set[str] = set()
     if isinstance(expr, ast.Call):
         # Depends(require_permission("user.manage"))
         if isinstance(expr.func, ast.Name) and expr.func.id == "Depends":
@@ -146,9 +145,9 @@ def _extract_depends_from_expr(expr: ast.expr) -> Set[str]:
     return names
 
 
-def _get_name_from_expr(expr: ast.expr) -> Set[str]:
+def _get_name_from_expr(expr: ast.expr) -> set[str]:
     """从表达式提取标识符名（Name/Attribute 调用链首名）。"""
-    names: Set[str] = set()
+    names: set[str] = set()
     if isinstance(expr, ast.Name):
         names.add(expr.id)
     elif isinstance(expr, ast.Call):
@@ -184,7 +183,7 @@ class AuthCoverageVisitor(ast.NodeVisitor):
     def __init__(self, file_path: Path):
         self.file_path = file_path
         self.rel_path = str(file_path.relative_to(BACKEND_ROOT)).replace("\\", "/")
-        self.findings: List[dict] = []
+        self.findings: list[dict] = []
         self._current_class: str | None = None
 
     def visit_ClassDef(self, node: ast.ClassDef):
@@ -230,7 +229,7 @@ class AuthCoverageVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def _scan_file(file_path: Path) -> List[dict]:
+def _scan_file(file_path: Path) -> list[dict]:
     """扫描单文件，返回缺失鉴权的端点列表。"""
     try:
         source = file_path.read_text(encoding="utf-8")
@@ -268,7 +267,7 @@ def test_auth_coverage_summary():
     """汇总报告：打印全项目写端点鉴权覆盖统计。"""
     total_endpoints = 0
     total_missing = 0
-    all_findings: List[dict] = []
+    all_findings: list[dict] = []
 
     for f in CANDIDATE_FILES:
         findings = _scan_file(f)
@@ -306,7 +305,7 @@ def test_auth_coverage_summary():
     covered = total_endpoints - total_missing
     pct = (covered / total_endpoints * 100) if total_endpoints else 100
 
-    print(f"\n=== 鉴权覆盖统计 ===")
+    print("\n=== 鉴权覆盖统计 ===")
     print(f"扫描文件数: {len(CANDIDATE_FILES)}")
     print(f"写端点总数: {total_endpoints}")
     print(f"已覆盖: {covered} ({pct:.1f}%)")

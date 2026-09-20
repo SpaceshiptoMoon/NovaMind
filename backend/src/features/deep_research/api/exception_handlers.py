@@ -5,19 +5,18 @@
 """
 
 from fastapi import FastAPI
-
 from novamind.core.middleware.base_exception_handler import register_module_exceptions
 from novamind.features.deep_research.exceptions import (
     DeepResearchError,
-    ResearchNotFoundError,
-    ResearchFailedError,
     InvalidResearchQueryError,
+    ResearchAccessDeniedError,
+    ResearchFailedError,
+    ResearchModeNotSupportedError,
+    ResearchNotFoundError,
+    ResearchRunningError,
+    ResearchSpaceAccessDeniedError,
     SearchProviderNotConfiguredError,
     SearchProviderUnavailableError,
-    ResearchSpaceAccessDeniedError,
-    ResearchModeNotSupportedError,
-    ResearchRunningError,
-    ResearchAccessDeniedError,
 )
 
 

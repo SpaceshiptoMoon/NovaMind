@@ -18,7 +18,6 @@ Authorization 头），FastAPI router 级依赖里的 ``HTTPBearer`` 会拒绝 W
 from __future__ import annotations
 
 import json
-from typing import Optional
 
 from novamind.core.authorization.app_codes import match_app_code
 from novamind.core.middleware.structured_logging import get_logger
@@ -53,7 +52,7 @@ class AppGateMiddleware:
             await self.app(scope, receive, send)
             return
 
-        user_id: Optional[int] = None
+        user_id: int | None = None
         try:
             user_id, denied = await self._check(scope, app_code)
         except Exception as e:  # fail-open：门禁是可见性控制，故障不放行为拒绝
@@ -77,7 +76,7 @@ class AppGateMiddleware:
 
     # ==================== 内部 ====================
 
-    async def _check(self, scope, app_code: str) -> tuple[Optional[int], bool]:
+    async def _check(self, scope, app_code: str) -> tuple[int | None, bool]:
         """返回 (user_id, denied)。无 token/解码失败→(None, False)，
         由端点认证层自行 401/4401，中间件不重复报错。"""
         from novamind.core.auth.token import decode_access_token
@@ -108,7 +107,7 @@ class AppGateMiddleware:
         return claims.user_id, denied
 
     @staticmethod
-    def _extract_token(scope) -> Optional[str]:
+    def _extract_token(scope) -> str | None:
         """http 取 Authorization 头；websocket 取 sec-websocket-protocol 的 bearer. 前缀。"""
         headers = {
             k.decode("latin-1").lower(): v.decode("latin-1")

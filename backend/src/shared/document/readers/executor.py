@@ -6,7 +6,6 @@
 """
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional
 
 from novamind.shared.logging import get_logger
 
@@ -14,7 +13,7 @@ logger = get_logger(__name__)
 
 # 全局共享线程池
 # 默认 4 个工作线程，足够处理大多数文档读取场景
-_shared_executor: Optional[ThreadPoolExecutor] = None
+_shared_executor: ThreadPoolExecutor | None = None
 
 
 def get_shared_executor(max_workers: int = 4) -> ThreadPoolExecutor:

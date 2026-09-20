@@ -2,14 +2,21 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict
+from typing import Any
 
-from novamind.engines.document.integrations.deepdoc.diagnostics.dependencies import get_deepdoc_runtime_report
-from novamind.engines.document.integrations.deepdoc.compat.upstream import get_upstream_deepdoc_snapshot
-from novamind.engines.document.integrations.deepdoc.vision_runtime import get_vision_health_status, get_vision_runtime_status
+from novamind.engines.document.integrations.deepdoc.compat.upstream import (
+    get_upstream_deepdoc_snapshot,
+)
+from novamind.engines.document.integrations.deepdoc.diagnostics.dependencies import (
+    get_deepdoc_runtime_report,
+)
+from novamind.engines.document.integrations.deepdoc.vision_runtime import (
+    get_vision_health_status,
+    get_vision_runtime_status,
+)
 
 
-def get_deepdoc_capabilities() -> Dict[str, Any]:
+def get_deepdoc_capabilities() -> dict[str, Any]:
     runtime_report = get_deepdoc_runtime_report()
     vision_status = get_vision_runtime_status()
     vision_health = get_vision_health_status()
@@ -23,7 +30,9 @@ def get_deepdoc_capabilities() -> Dict[str, Any]:
         and (os.getenv("TCADP_SECRET_KEY") or os.getenv("TENCENTCLOUD_SECRET_KEY"))
     )
     try:
-        from novamind.engines.document.integrations.deepdoc.parsers.remote.tcadp import TENCENTCLOUD_SDK_AVAILABLE
+        from novamind.engines.document.integrations.deepdoc.parsers.remote.tcadp import (
+            TENCENTCLOUD_SDK_AVAILABLE,
+        )
     except Exception:
         TENCENTCLOUD_SDK_AVAILABLE = False
     tcadp_configured = bool(tcadp_credentials_configured and TENCENTCLOUD_SDK_AVAILABLE)

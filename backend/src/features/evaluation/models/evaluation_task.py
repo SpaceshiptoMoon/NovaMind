@@ -5,13 +5,21 @@
 - evaluation_test_sets: 测试集（可复用，文件存 MinIO）
 - evaluation_tasks: 测评任务（每次执行一条记录，结果存 MinIO）
 """
-from typing import Optional
 from enum import IntEnum
 
-from sqlalchemy import Column, BigInteger, SmallInteger, Integer, String, Text, JSON, ForeignKey, Index
-from sqlalchemy.orm import relationship
-
 from novamind.core.database.base import BaseModel
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Column,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+)
+from sqlalchemy.orm import relationship
 
 
 class EvaluationStatus(IntEnum):
@@ -60,13 +68,13 @@ class EvaluationTestSet(BaseModel):
     def __repr__(self) -> str:
         return f"<EvaluationTestSet(id={self.id}, name='{self.name}', cases={self.total_cases})>"
 
-    def get_minio_bucket(self) -> Optional[str]:
+    def get_minio_bucket(self) -> str | None:
         return (self.storage or {}).get("minio_bucket")
 
-    def get_minio_object_name(self) -> Optional[str]:
+    def get_minio_object_name(self) -> str | None:
         return (self.storage or {}).get("minio_object_name")
 
-    def set_minio_info(self, bucket: str, object_name: str, etag: Optional[str] = None) -> None:
+    def set_minio_info(self, bucket: str, object_name: str, etag: str | None = None) -> None:
         self.storage = {
             **(self.storage or {}),
             "minio_bucket": bucket,
@@ -111,13 +119,13 @@ class EvaluationTask(BaseModel):
     def __repr__(self) -> str:
         return f"<EvaluationTask(id={self.id}, name='{self.name}', status={self.status})>"
 
-    def get_result_minio_bucket(self) -> Optional[str]:
+    def get_result_minio_bucket(self) -> str | None:
         return (self.result_storage or {}).get("minio_bucket")
 
-    def get_result_minio_object_name(self) -> Optional[str]:
+    def get_result_minio_object_name(self) -> str | None:
         return (self.result_storage or {}).get("minio_object_name")
 
-    def set_result_minio_info(self, bucket: str, object_name: str, etag: Optional[str] = None) -> None:
+    def set_result_minio_info(self, bucket: str, object_name: str, etag: str | None = None) -> None:
         self.result_storage = {
             **(self.result_storage or {}),
             "minio_bucket": bucket,

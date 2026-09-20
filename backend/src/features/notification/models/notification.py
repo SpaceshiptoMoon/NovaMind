@@ -3,10 +3,9 @@
 """
 from enum import Enum
 
-from sqlalchemy import Column, BigInteger, String, Text, Boolean, JSON, DateTime, ForeignKey, Index
-
 from novamind.core.database.base import BaseModel
 from novamind.shared.utils.time_utils import now_china
+from sqlalchemy import JSON, BigInteger, Boolean, Column, DateTime, ForeignKey, Index, String, Text
 
 
 class NotificationType(str, Enum):

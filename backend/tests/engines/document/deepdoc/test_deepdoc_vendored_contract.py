@@ -17,6 +17,8 @@ if str(BACKEND_ROOT) not in sys.path:
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 VENDORED_PDF_PARSER = (
     BACKEND_ROOT
     / "src"
@@ -87,7 +89,9 @@ def test_adapter_lazy_models_stay_unloaded():
 def test_inherited_vendored_merges_are_real():
     """删 stub 后继承到的必须是 vendored 真实现（函数模块可鉴别），而非 fork no-op。"""
     from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
-    from novamind.engines.document.integrations.deepdoc.vendor.ragflow import pdf_parser as vendored_mod
+    from novamind.engines.document.integrations.deepdoc.vendor.ragflow import (
+        pdf_parser as vendored_mod,
+    )
 
     for name in (
         "_text_merge",

@@ -21,7 +21,6 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from novamind.features.deep_research.schemas.research_schema import (
     ExternalSearchConfig,
-    InternalSearchConfig,
     ResearchRequest,
     SourcesConfig,
 )

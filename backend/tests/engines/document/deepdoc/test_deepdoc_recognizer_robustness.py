@@ -19,6 +19,8 @@ from novamind.engines.document.integrations.deepdoc.vision_runtime import (
     get_vision_runtime_status,
 )
 
+pytestmark = pytest.mark.unit
+
 
 def _skip_if_vision_runtime_unavailable():
     status = get_vision_runtime_status()
@@ -29,7 +31,9 @@ def _skip_if_vision_runtime_unavailable():
 def test_recognizer_call_handles_empty_model_output(monkeypatch):
     """Recognizer.__call__ 在 _run_model_batch 返回空列表时不应 IndexError。"""
     _skip_if_vision_runtime_unavailable()
-    from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+    from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
+        TableStructureRecognizer,
+    )
 
     recognizer = TableStructureRecognizer()
     recognizer.loaded = True

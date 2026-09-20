@@ -4,29 +4,51 @@
 路由前缀: /api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation
 """
 import io
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, UploadFile, File, Form, Path, Query
+from fastapi import APIRouter, Depends, File, Form, Path, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.core.database.database import get_db
-from novamind.features.knowledge_space.models.space_member import SpaceMember
-from novamind.features.knowledge_space.api.dependencies import (
-    get_current_user_id,
-    validate_space_member,
-    validate_space_editor,
-    validate_kb_access,
-)
 from novamind.features.evaluation.api.dependencies import get_evaluation_service
 from novamind.features.evaluation.exceptions import (
-    EvaluationTestSetNotFoundError,
+    EvaluationAccessDeniedError,
+    EvaluationTaskNotCompletedError,
     EvaluationTaskNotFoundError,
     EvaluationTaskPendingError,
-    EvaluationTaskNotCompletedError,
-    EvaluationAccessDeniedError,
+    EvaluationTestSetNotFoundError,
 )
+from novamind.features.evaluation.models.evaluation_task import EvaluationStatus
+from novamind.features.evaluation.schemas.evaluation_schema import (
+    EvaluationReportResponse,
+    EvaluationTaskCancelResponse,
+    EvaluationTaskCreateResponse,
+    EvaluationTaskDetailResponse,
+    EvaluationTaskListItem,
+    EvaluationTaskListResponse,
+    EvaluationTaskProgressResponse,
+    HumanScoreRequest,
+    HumanScoreResponse,
+    TaskCreateRequest,
+    TestCase,
+    TestSetCasesResponse,
+    TestSetCreateResponse,
+    TestSetDetailResponse,
+    TestSetListItem,
+    TestSetListResponse,
+    TestSetUpdateRequest,
+)
+from novamind.features.evaluation.services.evaluation_service import EvaluationService
+from novamind.features.evaluation.services.test_set_parser import parse_test_set
+from novamind.features.knowledge_space.api.dependencies import (
+    get_current_user_id,
+    validate_kb_access,
+    validate_space_editor,
+    validate_space_member,
+)
+from novamind.features.knowledge_space.models.space_member import SpaceMember
+from novamind.features.knowledge_space.schemas.member_schema import MemberActionResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def _check_task_owner(task, member: SpaceMember) -> None:
@@ -37,29 +59,7 @@ def _check_task_owner(task, member: SpaceMember) -> None:
     """
     if task.user_id != member.user_id and not member.is_admin():
         raise EvaluationAccessDeniedError(task.id, member.user_id)
-from novamind.features.evaluation.schemas.evaluation_schema import (
-    EvaluationTaskCreateResponse,
-    EvaluationTaskListItem,
-    EvaluationTaskListResponse,
-    EvaluationTaskDetailResponse,
-    EvaluationReportResponse,
-    EvaluationTaskCancelResponse,
-    EvaluationTaskProgressResponse,
-    HumanScoreRequest,
-    HumanScoreResponse,
-    TestSetCreateResponse,
-    TestSetListItem,
-    TestSetListResponse,
-    TestSetDetailResponse,
-    TestSetUpdateRequest,
-    TestSetCasesResponse,
-    TaskCreateRequest,
-    TestCase,
-)
-from novamind.features.evaluation.models.evaluation_task import EvaluationStatus
-from novamind.features.evaluation.services.evaluation_service import EvaluationService
-from novamind.features.evaluation.services.test_set_parser import parse_test_set
-from novamind.features.knowledge_space.schemas.member_schema import MemberActionResponse
+
 
 router = APIRouter(tags=["知识库测评"])
 
@@ -278,7 +278,7 @@ async def list_evaluation_tasks(
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
-    status: Annotated[Optional[int], Query(description="按状态过滤: 1-pending 2-completed 3-failed 5-running 6-cancelled")] = None,
+    status: Annotated[int | None, Query(description="按状态过滤: 1-pending 2-completed 3-failed 5-running 6-cancelled")] = None,
     member: SpaceMember = Depends(validate_space_member),
     evaluation_service: EvaluationService = Depends(get_evaluation_service),
     db: AsyncSession = Depends(get_db),

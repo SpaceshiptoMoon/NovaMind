@@ -7,7 +7,7 @@
 
 每请求构造（绑定 ``space_id``/``user_id``/``internal_config``），不跨请求复用。
 """
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from novamind.engines.deep_research.ports import InternalSearchPort
 from novamind.engines.deep_research.sources import (
@@ -46,7 +46,7 @@ class HostInternalSearchPort:
         space_id: int,
         user_id: int,
         internal_config: InternalSearchConfig,
-        logger: Optional[object] = None,
+        logger: object | None = None,
     ):
         self._search_port = search_port
         self._kb_repo = kb_repo
@@ -55,7 +55,7 @@ class HostInternalSearchPort:
         self._config = internal_config
         self._logger = logger
 
-    async def search(self, query: str, *, top_k: int = 10) -> List[Dict[str, Any]]:
+    async def search(self, query: str, *, top_k: int = 10) -> list[dict[str, Any]]:
         """执行内部 RAG 检索，返回归一化结果字典列表。"""
         config = self._config
         space_id = self._space_id
@@ -144,7 +144,7 @@ def as_internal_search_port(
     space_id: int,
     user_id: int,
     internal_config: InternalSearchConfig,
-    logger: Optional[object] = None,
+    logger: object | None = None,
 ) -> InternalSearchPort:
     """构造 InternalSearchPort 实例（供装配点注入引擎）。"""
     return HostInternalSearchPort(  # type: ignore[return-value]

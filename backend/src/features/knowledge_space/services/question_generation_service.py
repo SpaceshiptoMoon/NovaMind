@@ -4,28 +4,24 @@
 使用 LLM 为文档分块生成假设性问题，提升检索召回率
 """
 
+import asyncio
 import json
 import re
-from typing import List, Optional, Tuple
 from dataclasses import dataclass
 
-import asyncio
-
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.prompts import PromptManager
-from novamind.shared.model_config_ports import ModelConfigPort
-from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
-    QuestionGenerationConfig,
-    QuestionLLMConfig,
-)
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.exceptions import (
     InvalidParameterError,
     QuestionGenerationError,
 )
-
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+    QuestionGenerationConfig,
+    QuestionLLMConfig,
+)
+from novamind.shared.ai_models.llm import BaseLLM
+from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.shared.prompts import PromptManager
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -38,7 +34,7 @@ class GeneratedQuestion:
     """生成的问题"""
     index: int
     question: str
-    category: Optional[str] = None  # 问题类别: factual, conceptual, procedural
+    category: str | None = None  # 问题类别: factual, conceptual, procedural
 
 
 class QuestionGenerationService:
@@ -60,9 +56,9 @@ class QuestionGenerationService:
 
     def __init__(
         self,
-        session: Optional[AsyncSession] = None,
-        model_config_service: Optional[ModelConfigPort] = None,
-        config: Optional[QuestionGenerationConfig] = None,
+        session: AsyncSession | None = None,
+        model_config_service: ModelConfigPort | None = None,
+        config: QuestionGenerationConfig | None = None,
     ):
         """
         初始化问题生成服务
@@ -80,9 +76,9 @@ class QuestionGenerationService:
         self.model_config_service = model_config_service
 
         # LLM 客户端缓存
-        self._llm_client: Optional[BaseLLM] = None
+        self._llm_client: BaseLLM | None = None
 
-    async def _get_llm_client(self, user_id: Optional[int] = None) -> BaseLLM:
+    async def _get_llm_client(self, user_id: int | None = None) -> BaseLLM:
         """
         获取 LLM 客户端
 
@@ -126,10 +122,10 @@ class QuestionGenerationService:
     async def generate_questions(
         self,
         chunk_content: str,
-        document_title: Optional[str] = None,
-        user_id: Optional[int] = None,
+        document_title: str | None = None,
+        user_id: int | None = None,
         raise_on_error: bool = False,
-    ) -> List[GeneratedQuestion]:
+    ) -> list[GeneratedQuestion]:
         """
         为单个分块生成假设问题
 
@@ -216,11 +212,11 @@ class QuestionGenerationService:
 
     async def generate_questions_batch(
         self,
-        chunks: List[Tuple[str, Optional[str]]],
-        user_id: Optional[int] = None,
+        chunks: list[tuple[str, str | None]],
+        user_id: int | None = None,
         raise_on_error: bool = False,
         batch_size: int = 3,
-    ) -> List[List[GeneratedQuestion]]:
+    ) -> list[list[GeneratedQuestion]]:
         """
         批量为多个分块生成假设问题
 
@@ -246,7 +242,7 @@ class QuestionGenerationService:
         # 批量场景输出为简洁 JSON，不需要过多 token
         max_tokens = min(llm_config.max_tokens, 2048)
 
-        results: List[List[GeneratedQuestion]] = [[] for _ in chunks]
+        results: list[list[GeneratedQuestion]] = [[] for _ in chunks]
         import time as _time
         total_start = _time.monotonic()
 
@@ -269,7 +265,7 @@ class QuestionGenerationService:
                 )
                 for i, questions in enumerate(batch_questions):
                     results[batch_start + i] = questions
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 batch_elapsed = _time.monotonic() - batch_start_time
                 self.logger.warning(
                     "批量问题生成超时，跳过",
@@ -292,11 +288,11 @@ class QuestionGenerationService:
     async def _generate_batch_questions(
         self,
         llm_client: BaseLLM,
-        batch: List[Tuple[str, Optional[str]]],
+        batch: list[tuple[str, str | None]],
         temperature: float,
         top_p: float,
         max_tokens: int,
-    ) -> List[List[GeneratedQuestion]]:
+    ) -> list[list[GeneratedQuestion]]:
         """单次 LLM 调用为多个 chunk 生成问题"""
         import time as _time
         prompt = self._build_batch_prompt(batch)
@@ -356,7 +352,7 @@ class QuestionGenerationService:
 
     def _build_batch_prompt(
         self,
-        batch: List[Tuple[str, Optional[str]]],
+        batch: list[tuple[str, str | None]],
     ) -> str:
         """为多个 chunk 构建合并的提示词"""
         count = self.config.max_questions_per_chunk
@@ -389,7 +385,7 @@ category 可选值: factual(事实性), conceptual(概念性), procedural(操作
         self,
         response: str,
         expected_count: int,
-    ) -> Optional[List[List[GeneratedQuestion]]]:
+    ) -> list[list[GeneratedQuestion]] | None:
         """解析批量 LLM 响应为每个 chunk 的问题列表"""
         try:
             data = json.loads(response)
@@ -430,7 +426,7 @@ category 可选值: factual(事实性), conceptual(概念性), procedural(操作
     def _build_prompt(
         self,
         chunk_content: str,
-        document_title: Optional[str] = None,
+        document_title: str | None = None,
     ) -> str:
         """
         构建提示词
@@ -462,7 +458,7 @@ category 可选值: factual(事实性), conceptual(概念性), procedural(操作
 
         return prompt
 
-    def _parse_response(self, response: str) -> List[GeneratedQuestion]:
+    def _parse_response(self, response: str) -> list[GeneratedQuestion]:
         """
         解析 LLM 响应
 
@@ -540,9 +536,9 @@ category 可选值: factual(事实性), conceptual(概念性), procedural(操作
     async def generate_questions_simple(
         self,
         chunk_content: str,
-        user_id: Optional[int] = None,
+        user_id: int | None = None,
         raise_on_error: bool = False,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         生成问题（简化版，仅返回问题文本列表）
 
@@ -565,11 +561,11 @@ category 可选值: factual(事实性), conceptual(概念性), procedural(操作
 # 便捷函数
 async def generate_hypothetical_questions(
     chunk_content: str,
-    document_title: Optional[str] = None,
+    document_title: str | None = None,
     max_questions: int = 5,
-    user_id: Optional[int] = None,
-    config: Optional[QuestionGenerationConfig] = None,
-) -> List[str]:
+    user_id: int | None = None,
+    config: QuestionGenerationConfig | None = None,
+) -> list[str]:
     """
     为分块生成假设问题（便捷函数）
 

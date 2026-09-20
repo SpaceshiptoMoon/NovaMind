@@ -13,11 +13,11 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import copy
 import gc
 import logging
-import copy
-import time
 import os
+import time
 
 from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
@@ -37,13 +37,14 @@ class _Settings:
     PARALLEL_DEVICES = int(os.environ.get("PARALLEL_DEVICES", "0"))
 
 settings = _Settings()
-from .operators import *  # noqa: F403
-from . import operators
 import math
-import numpy as np
+
 import cv2
+import numpy as np
 import onnxruntime as ort
 
+from . import operators
+from .operators import *  # noqa: F403
 from .postprocess import build_post_process
 
 loaded_models = {}
@@ -91,7 +92,7 @@ def load_model(model_dir, nm, device_id: int | None = None):
         return loaded_model
 
     if not os.path.exists(model_file_path):
-        raise ValueError("not find model file path {}".format(model_file_path))
+        raise ValueError(f"not find model file path {model_file_path}")
 
     def cuda_is_available():
         try:
@@ -152,7 +153,7 @@ class TextRecognizer:
         imgC, imgH, imgW = self.rec_image_shape
 
         assert imgC == img.shape[2]
-        imgW = int((imgH * max_wh_ratio))
+        imgW = int(imgH * max_wh_ratio)
         w = self.input_tensor.shape[3:][0]
         if isinstance(w, str):
             pass

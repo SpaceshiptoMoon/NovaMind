@@ -6,11 +6,12 @@
 import asyncio
 from types import SimpleNamespace
 
-import pytest
-
 import novamind.features.skill.services.skill_marketplace_service as svc_mod
+import pytest
 from novamind.features.skill.models.skill import ReviewStatus
 from novamind.features.skill.services.skill_marketplace_service import SkillMarketplaceService
+
+pytestmark = pytest.mark.unit
 
 
 def _make_skill(**overrides) -> SimpleNamespace:

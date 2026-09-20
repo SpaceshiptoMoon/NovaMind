@@ -14,17 +14,22 @@
 #  limitations under the License.
 #
 
-from docx import Document
-import re
-import pandas as pd
-from collections import Counter
-from novamind.engines.document.integrations.deepdoc.compat import MAXIMUM_PAGE_NUMBER, LazyImage, rag_tokenizer
-from io import BytesIO
 import logging
+import re
+from collections import Counter
+from io import BytesIO
+
+import pandas as pd
+from docx import Document
 from docx.image.exceptions import (
     InvalidImageStreamError,
     UnexpectedEndOfFileError,
     UnrecognizedImageError,
+)
+from novamind.engines.document.integrations.deepdoc.compat import (
+    MAXIMUM_PAGE_NUMBER,
+    LazyImage,
+    rag_tokenizer,
 )
 
 

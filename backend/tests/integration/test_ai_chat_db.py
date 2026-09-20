@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 AI 聊天数据库持久化测试
 
@@ -19,8 +18,8 @@ import random
 import string
 import sys
 
-import requests
 import pytest
+import requests
 
 pytestmark = pytest.mark.integration
 
@@ -58,7 +57,7 @@ def login() -> str:
         print(f"  登录失败: {resp.text}")
         sys.exit(1)
     token = resp.json()["access_token"]
-    print(f"  登录成功")
+    print("  登录成功")
     return token
 
 
@@ -121,7 +120,7 @@ def test_non_stream(token: str) -> bool:
         "session_id": session_id,
     }
     print(f"  session_id: {session_id}")
-    print(f"  发送请求...")
+    print("  发送请求...")
 
     try:
         resp = requests.post(
@@ -159,7 +158,7 @@ def test_stream(token: str) -> bool:
         "session_id": session_id,
     }
     print(f"  session_id: {session_id}")
-    print(f"  发送流式请求...")
+    print("  发送流式请求...")
 
     try:
         resp = requests.post(
@@ -201,7 +200,7 @@ def test_stream(token: str) -> bool:
     print(f"  AI 回复内容: {full_content[:200] if full_content else '(无)'}")
 
     if not got_done:
-        print(f"  [失败] 未收到 done 事件，流式对话可能未正常完成")
+        print("  [失败] 未收到 done 事件，流式对话可能未正常完成")
         return False
 
     # 查询历史验证持久化

@@ -18,8 +18,8 @@
 """
 
 import ast
-import inspect
 import importlib
+import inspect
 import sys
 from pathlib import Path
 
@@ -168,8 +168,8 @@ def test_agent_registry_port_protocol_location():
 
 def test_host_agent_registry_port_satisfies_protocol():
     """HostAgentRegistryPort 满足 AgentRegistryPort 协议。"""
-    from novamind.shared.registry_ports import AgentRegistryPort
     from novamind.features.agent.adapters.agent_registry_adapter import HostAgentRegistryPort
+    from novamind.shared.registry_ports import AgentRegistryPort
 
     class _FakeRepo:
         async def get_by_id(self, agent_id):

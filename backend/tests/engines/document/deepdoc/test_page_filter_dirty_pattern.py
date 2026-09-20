@@ -1,12 +1,15 @@
 """PageNoiseFilter 回归测试：覆盖 DIRTY_TEXT_PATTERN 空匹配 bug 与脏页过滤。"""
 import re
 
+import pytest
 from novamind.engines.document.integrations.deepdoc.page_filter import (
     DIRTY_TEXT_PATTERN,
-    PageNoiseFilter,
     TOC_HEADING_PATTERN,
+    PageNoiseFilter,
 )
 from novamind.engines.document.integrations.deepdoc.parsers.pdf import DeepDocPdfBox
+
+pytestmark = pytest.mark.unit
 
 
 def _box(page: int, text: str) -> DeepDocPdfBox:

@@ -1,8 +1,7 @@
 """DeepDoc 数据模型：解析请求 / 响应 / 版面 / 区块等核心数据结构。"""
-from dataclasses import dataclass, field
-from typing import Any, Dict, List
 import re
-
+from dataclasses import dataclass, field
+from typing import Any
 
 # DeepDoc 各 parser 在 full_text 里以 ``@@<page>\t<x0>\t<x1>\t<top>\t<bottom>##``
 # 标记每个文本行的版面坐标（layout/vision 模式）。这些标记只应作为位置元数据
@@ -25,11 +24,11 @@ def strip_position_tags(text: str) -> str:
 @dataclass(slots=True)
 class DeepDocParseResult:
     full_text: str
-    chunks: List[str]
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    chunks: list[str]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_documents(self, source: str = "") -> List[Dict[str, Any]]:
-        documents: List[Dict[str, Any]] = []
+    def to_documents(self, source: str = "") -> list[dict[str, Any]]:
+        documents: list[dict[str, Any]] = []
         for index, chunk in enumerate(self.chunks):
             documents.append(
                 {

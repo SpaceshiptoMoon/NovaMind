@@ -6,8 +6,9 @@ Agent 重试工具
 """
 import asyncio
 import random
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
-from typing import Any, Callable, Coroutine
+from typing import Any
 
 from novamind.shared.logging import get_logger
 

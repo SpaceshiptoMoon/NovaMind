@@ -5,21 +5,29 @@ OpenAI 兼容 LLM 客户端
 OpenAI、智谱 AI、阿里云 DashScope、硅基流动、本地 vLLM/Ollama 等
 """
 
-from typing import Optional, AsyncGenerator, Any, Dict
 import time
+from collections.abc import AsyncGenerator
+from typing import Any
 
 import httpx
+from novamind.shared.ai_models.base_model import (
+    BaseLLM,
+    LLMResponse,
+    LLMResponseWithTools,
+    StreamChunk,
+    ToolCall,
+    ToolStreamEvent,
+    build_openai_http_client,
+)
+from novamind.shared.ai_models.embedding.openai_compatible import OPENAI_RETRY_EXCEPTIONS
+from novamind.shared.logging import get_logger
 from openai import AsyncOpenAI
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
-
-from novamind.shared.ai_models.base_model import BaseLLM, ToolCall, LLMResponseWithTools, StreamChunk, LLMResponse, ToolStreamEvent, build_openai_http_client
-from novamind.shared.ai_models.embedding.openai_compatible import OPENAI_RETRY_EXCEPTIONS
-from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -102,7 +110,7 @@ class OpenAICompatibleLLM(BaseLLM):
         max_tokens: int = 16384,
         temperature: float = 0.7,
         top_p: float = 0.8,
-        response_format: Optional[dict] = None,
+        response_format: dict | None = None,
         enable_thinking: bool = False,
     ) -> str:
         """
@@ -173,7 +181,7 @@ class OpenAICompatibleLLM(BaseLLM):
         prompt: str | list,
         max_tokens: int = 2048,
         temperature: float = 0.7,
-        top_p: Optional[float] = 0.8,
+        top_p: float | None = 0.8,
         enable_thinking: bool = False,
     ) -> AsyncGenerator[str, None]:
         """
@@ -238,7 +246,7 @@ class OpenAICompatibleLLM(BaseLLM):
         max_tokens: int = 2048,
         temperature: float = 0.7,
         top_p: float = 0.8,
-        response_format: Optional[dict] = None,
+        response_format: dict | None = None,
         enable_thinking: bool = False,
     ) -> LLMResponse:
         """非流式结构化生成——提取 reasoning_content"""
@@ -431,7 +439,7 @@ class OpenAICompatibleLLM(BaseLLM):
         """
         async with self._get_semaphore():
             messages = self._build_messages(prompt)
-            kwargs: Dict[str, Any] = {
+            kwargs: dict[str, Any] = {
                 "model": self.model,
                 "messages": messages,
                 "max_completion_tokens": max_tokens,
@@ -448,7 +456,7 @@ class OpenAICompatibleLLM(BaseLLM):
             stream = await self.client.chat.completions.create(**kwargs)
 
             # 收集器：index -> {id, name, arguments}
-            active_tool_calls: Dict[int, dict] = {}
+            active_tool_calls: dict[int, dict] = {}
 
             async for chunk in stream:
                 # usage-only chunk（最后一个 chunk 可能只有 usage）

@@ -2,20 +2,19 @@
 技能广场异常处理器
 """
 from fastapi import FastAPI
-
 from novamind.core.middleware.base_exception_handler import register_module_exceptions
 from novamind.features.skill.exceptions import (
-    SkillError,
-    SkillNotFoundError,
-    SkillAlreadyExistsError,
-    SkillNotPublishedError,
-    SkillAccessDeniedError,
-    SkillAlreadyInstalledError,
-    SkillNotInstalledError,
-    SkillTargetAgentNotFoundError,
     InvalidSkillFormatError,
-    SkillReviewRejectedError,
+    SkillAccessDeniedError,
+    SkillAlreadyExistsError,
+    SkillAlreadyInstalledError,
+    SkillError,
     SkillFileSizeExceededError,
+    SkillNotFoundError,
+    SkillNotInstalledError,
+    SkillNotPublishedError,
+    SkillReviewRejectedError,
+    SkillTargetAgentNotFoundError,
 )
 
 

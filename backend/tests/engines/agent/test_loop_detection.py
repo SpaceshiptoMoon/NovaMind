@@ -1,6 +1,5 @@
 """LoopDetector 单测（E3 loop_detection）。"""
 import pytest
-
 from novamind.engines.agent.loop_detection import LoopDetectionConfig, LoopDetector
 
 pytestmark = pytest.mark.unit

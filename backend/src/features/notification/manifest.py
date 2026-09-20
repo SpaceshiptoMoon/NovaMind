@@ -8,7 +8,9 @@ from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, Ro
 
 def _import_models() -> None:
     from novamind.features.notification.models.notification import Notification  # noqa: F401
-    from novamind.features.notification.models.notification_preference import NotificationPreference  # noqa: F401
+    from novamind.features.notification.models.notification_preference import (
+        NotificationPreference,  # noqa: F401
+    )
 
 
 async def _init(app) -> None:

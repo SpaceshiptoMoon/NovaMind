@@ -4,12 +4,12 @@
 定义空间成员的请求和响应模型
 """
 
-from typing import Optional, List, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from typing import Any
 
 # 从模型层导入枚举（避免重复定义）
 from novamind.features.knowledge_space.models.space_member import SpaceRole
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class MemberInvite(BaseModel):
@@ -35,7 +35,7 @@ class MemberDirectAdd(BaseModel):
 
 class MemberUpdate(BaseModel):
     """更新成员请求"""
-    role: Optional[SpaceRole] = Field(None, description="角色")
+    role: SpaceRole | None = Field(None, description="角色")
 
 
 class MemberPermissionsUpdate(BaseModel):
@@ -45,7 +45,7 @@ class MemberPermissionsUpdate(BaseModel):
     未列出的 (resource, action) 回退到角色默认。PUT 为全量替换语义。
     合法键见 SpaceAccessChecker.CAPABILITY_KEYS。
     """
-    custom_permissions: Dict[str, Dict[str, bool]] = Field(
+    custom_permissions: dict[str, dict[str, bool]] = Field(
         default_factory=dict, description="细粒度权限覆盖（resource→action→bool）"
     )
 
@@ -58,20 +58,20 @@ class MemberResponse(BaseModel):
     space_id: int = Field(..., description="空间ID")
     user_id: int = Field(..., description="用户ID")
     role: int = Field(..., description="角色")
-    custom_permissions: Optional[Dict[str, Any]] = Field(None, description="细粒度权限")
+    custom_permissions: dict[str, Any] | None = Field(None, description="细粒度权限")
     status: int = Field(..., description="成员状态")
-    invited_by: Optional[int] = Field(None, description="邀请人ID")
+    invited_by: int | None = Field(None, description="邀请人ID")
     joined_at: datetime = Field(..., description="加入时间")
     created_at: datetime = Field(..., description="创建时间")
 
     # 用户信息（可选，从关联查询获取）
-    username: Optional[str] = Field(None, description="用户名")
-    email: Optional[str] = Field(None, description="用户邮箱")
+    username: str | None = Field(None, description="用户名")
+    email: str | None = Field(None, description="用户邮箱")
 
 
 class MemberListResponse(BaseModel):
     """成员列表响应"""
-    items: List[MemberResponse] = Field(..., description="成员列表")
+    items: list[MemberResponse] = Field(..., description="成员列表")
     total: int = Field(..., description="总数")
     skip: int = Field(..., description="跳过数量")
     limit: int = Field(..., description="返回数量")
@@ -87,5 +87,5 @@ class InviteResponse(BaseModel):
     """邀请响应"""
     member_id: int = Field(..., description="成员记录ID")
     invite_token: str = Field(..., description="邀请令牌")
-    invite_expires_at: Optional[datetime] = Field(None, description="邀请过期时间")
+    invite_expires_at: datetime | None = Field(None, description="邀请过期时间")
     message: str = Field(default="邀请已发送", description="消息")

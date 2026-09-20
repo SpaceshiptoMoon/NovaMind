@@ -1,10 +1,9 @@
 """
 简历挖掘 Repository
 """
-from sqlalchemy import select, func, update, delete
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.features.app.models.resume import ResumeSession
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class ResumeSessionRepository:
@@ -62,8 +61,8 @@ class ResumeSessionRepository:
         直接 commit 独立连接（紧急路径，非正常写流程，绕过 begin_nested/SAVEPOINT 约定）。
         逐字保真原 ``_ensure_mark_resume_failed`` 第 2 层 raw SQL。
         """
-        from sqlalchemy import text
         from novamind.core.database.database import get_engine
+        from sqlalchemy import text
 
         async with get_engine().connect() as conn:
             await conn.execute(

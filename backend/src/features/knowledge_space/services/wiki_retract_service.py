@@ -14,13 +14,11 @@
 异步兜底：删除入口同步对账一次 + 入队 arq retract 任务再跑一遍
 （幂等，重试安全）。
 """
-from typing import Any, List, Optional
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.wiki import WikiPage
 from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -80,8 +78,8 @@ class WikiRetractService:
         返回 {deleted: [slug], stripped: [slug]}。
         """
         pages = await self.page_repo.list_by_source_document(self.kb_id, document_id)
-        deleted: List[str] = []
-        stripped: List[str] = []
+        deleted: list[str] = []
+        stripped: list[str] = []
 
         for page in pages:
             if not _source_ref_matches(page, document_id):

@@ -3,7 +3,7 @@
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, List, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     # 仅用于类型注解（配合 `from __future__ import annotations` 惰性求值），
@@ -45,7 +45,7 @@ class FallbackLLMProvider(Protocol):
 
     async def load_fallback_clients(
         self, user_id: int, exclude_model: str
-    ) -> List["BaseLLM"]:
+    ) -> list[BaseLLM]:
         """加载用户可用的降级 LLM 客户端列表（排除主模型）。"""
         ...
 

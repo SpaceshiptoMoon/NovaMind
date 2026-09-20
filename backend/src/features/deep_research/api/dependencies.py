@@ -3,13 +3,12 @@
 """
 
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.core.database.database import get_db
 from novamind.features.deep_research.services.deep_research_service import DeepResearchService
 from novamind.features.notification.adapters.notification_port_adapter import as_notification_port
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.storage.client_factory import get_elasticsearch_client
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def get_deep_research_service(

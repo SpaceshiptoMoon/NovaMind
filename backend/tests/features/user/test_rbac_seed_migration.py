@@ -1,8 +1,10 @@
 """RBAC seed 与 is_admin→role 迁移测试。"""
 import pytest
-from novamind.features.user.models.user import User
-from novamind.features.user.models.role import Role, Permission
 from novamind.features.user.api.startup import _init_rbac_seed, _migrate_is_admin_to_role
+from novamind.features.user.models.role import Permission, Role
+from novamind.features.user.models.user import User
+
+pytestmark = pytest.mark.unit
 
 
 @pytest.mark.asyncio

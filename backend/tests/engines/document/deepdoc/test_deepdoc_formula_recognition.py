@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from PIL import Image
-
 from novamind.engines.document.integrations.deepdoc.formula_recognition import (
     FORMULA_EOS_TOKEN_ID,
     FormulaRecognizer,
@@ -20,11 +18,14 @@ from novamind.engines.document.integrations.deepdoc.formula_recognition import (
     formula_model_endpoint,
     get_formula_model_status,
 )
-from novamind.engines.document.integrations.deepdoc.vision import model_manager
 from novamind.engines.document.integrations.deepdoc.parsers.pdf import (
     DeepDocPdfBox,
     RAGFlowPdfParser,
 )
+from novamind.engines.document.integrations.deepdoc.vision import model_manager
+from PIL import Image
+
+pytestmark = pytest.mark.unit
 
 PDF_PARSER_MODULE = "novamind.engines.document.integrations.deepdoc.parsers.pdf"
 
@@ -402,7 +403,9 @@ def test_runtime_formula_flag_passthrough(tmp_path, monkeypatch):
     class _FakePdfParser:
         def __call__(self, filename, *, pdf_mode, chunk_size, formula_recognition=None):
             captured["formula_recognition"] = formula_recognition
-            from novamind.engines.document.integrations.deepdoc.core.models import DeepDocParseResult
+            from novamind.engines.document.integrations.deepdoc.core.models import (
+                DeepDocParseResult,
+            )
             return DeepDocParseResult(full_text="", chunks=[], metadata={})
 
     from novamind.engines.document.integrations.deepdoc.core.runtime_parser import DeepDocParser

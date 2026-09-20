@@ -5,16 +5,19 @@ H4 背景：search_service._generate_query_hash 原本遗漏 score_threshold 与
 sanitize 背景：_generate_llm_answer 把用户 query 原样拼入 SEARCH_ANSWER 模板，
 现经 sanitize_prompt_input 剥离 markdown 标题与分隔标签，降低 prompt 注入风险。
 """
-from pathlib import Path
 import sys
+from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+import pytest
 from novamind.engines.rag import RetrievalEngine
 from novamind.features.knowledge_space.schemas.search_schema import QueryRewriteConfig
 from novamind.shared.prompts.sanitize import sanitize_prompt_input
+
+pytestmark = pytest.mark.unit
 
 
 def _hash(**kw):
@@ -88,6 +91,7 @@ def test_sub_query_rrf_k_param_is_used_not_hardcoded():
     import asyncio
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
+
     from novamind.engines.rag import RetrievalEngine
 
     # 固定子查询结果（两个子查询，各返回同一个 chunk，rank=1）

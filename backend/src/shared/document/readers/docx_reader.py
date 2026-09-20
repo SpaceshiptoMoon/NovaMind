@@ -1,10 +1,10 @@
 """DOCX 文档读取器。"""
 import os
-from typing import List, Dict
+
+from docx import Document
 from novamind.shared.document.readers.base_reader import BaseReader
 from novamind.shared.document.readers.executor import run_in_executor
 from novamind.shared.logging import get_logger
-from docx import Document
 
 logger = get_logger(__name__)
 
@@ -15,7 +15,7 @@ class DocxReader(BaseReader):
     def __init__(self):
         super().__init__()
 
-    def _load_data_sync(self, file_path: str) -> List[Dict[str, str]]:
+    def _load_data_sync(self, file_path: str) -> list[dict[str, str]]:
         """
         同步读取 DOCX 文件（在线程池中执行）
         :param file_path: DOCX文件路径
@@ -52,7 +52,7 @@ class DocxReader(BaseReader):
 
         return documents
 
-    async def load_data(self, file_path: str) -> List[Dict[str, str]]:
+    async def load_data(self, file_path: str) -> list[dict[str, str]]:
         """
         从DOCX文件加载数据（异步，在共享线程池中执行）
         :param file_path: DOCX文件路径

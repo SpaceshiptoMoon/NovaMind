@@ -13,7 +13,6 @@
 import re
 
 import pytest
-
 from novamind.core.database.schema_migrations import (
     CONSTRAINT_MIGRATIONS,
     SCHEMA_MIGRATIONS,

@@ -23,16 +23,16 @@ try:
     )
 except ImportError:  # pragma: no cover - openai 未安装时降级
     OPENAI_RETRY_EXCEPTIONS = ()
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_exponential,
-    retry_if_exception_type,
-)
 import re
 
 from novamind.shared.ai_models.base_model import BaseEmbedding, build_openai_http_client
 from novamind.shared.logging import get_logger
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 logger = get_logger(__name__)
 

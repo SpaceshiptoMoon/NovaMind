@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 智能问答模块 API 接口测试脚本
 
@@ -15,11 +14,11 @@ import json
 import os
 import random
 import string
-import time
 import sys
+import time
 
-import requests
 import pytest
+import requests
 
 pytestmark = pytest.mark.integration
 
@@ -271,7 +270,7 @@ def test_ai_chat_apis(token: str) -> dict:
         "session_id": session_id,
     }
     print(f"  请求参数: {chat_payload}")
-    print(f"  [调试] 开始发送请求, 超时=60s, 等待 LLM 响应...")
+    print("  [调试] 开始发送请求, 超时=60s, 等待 LLM 响应...")
     try:
         resp = requests.post(
             f"{BASE_URL}/api/v1/ai-chat/chat",
@@ -294,11 +293,11 @@ def test_ai_chat_apis(token: str) -> dict:
         else:
             print(f"  [跳过] AI 对话接口返回非 200，可能 LLM 服务不可用: {resp.text[:300]}")
     except requests.exceptions.ReadTimeout as e:
-        print(f"  [调试] 读取超时! 服务器60秒内未返回完整响应")
-        print(f"  [调试] 说明: 后端收到了请求，但 LLM API 调用超时未返回")
+        print("  [调试] 读取超时! 服务器60秒内未返回完整响应")
+        print("  [调试] 说明: 后端收到了请求，但 LLM API 调用超时未返回")
         print(f"  [调试] 异常: {e}")
     except requests.exceptions.ConnectTimeout as e:
-        print(f"  [调试] 连接超时! 后端服务不可达")
+        print("  [调试] 连接超时! 后端服务不可达")
         print(f"  [调试] 异常: {e}")
     except requests.exceptions.RequestException as e:
         print(f"  [跳过] AI 对话请求异常: {type(e).__name__}: {e}")
@@ -368,13 +367,13 @@ def test_ai_chat_apis(token: str) -> dict:
             print(f"  [调试] 共读取 {raw_line_count} 行原始数据, {event_count} 个 SSE 事件")
             print(f"  AI 回复内容: {full_content[:500] if full_content else '(无内容)'}")
             if event_count == 0:
-                print(f"  [调试] 未收到任何 SSE 事件! LLM 可能未调用成功")
+                print("  [调试] 未收到任何 SSE 事件! LLM 可能未调用成功")
             assert event_count > 0, "未接收到任何 SSE 事件"
         else:
             print(f"  [跳过] 流式接口返回非 200，可能 LLM 服务不可用: {resp.text[:300]}")
     except requests.exceptions.ReadTimeout as e:
         print(f"  [调试] 读取超时! 服务器在 {STREAM_TIMEOUT}s 内未完成 SSE 流")
-        print(f"  [调试] 说明: SSE 连接已建立(200)，但 LLM 未返回任何数据")
+        print("  [调试] 说明: SSE 连接已建立(200)，但 LLM 未返回任何数据")
         print(f"  [调试] 异常: {e}")
     except requests.exceptions.RequestException as e:
         print(f"  [跳过] 流式请求异常: {type(e).__name__}: {e}")
@@ -434,7 +433,7 @@ def test_session_config_apis(token: str) -> dict:
     print(f"\n  使用会话 ID: {session_id}")
 
     # 先通过 QA 添加消息接口创建会话（让 session_id 在系统中存在）
-    print(f"\n  [准备] 先创建消息让会话存在...")
+    print("\n  [准备] 先创建消息让会话存在...")
     msg_resp = requests.post(
         f"{BASE_URL}/api/v1/qa/message",
         json={"content": "会话配置测试消息", "role": "user", "session_id": session_id},
@@ -484,7 +483,7 @@ def test_session_config_apis(token: str) -> dict:
     )
     print_result("重复创建会话配置", resp.status_code)
     assert resp.status_code == 409, f"重复创建应返回 409，实际: {resp.status_code}"
-    print(f"  正确返回 409 Conflict")
+    print("  正确返回 409 Conflict")
 
     # --- 测试 15: GET /api/v1/sessions/{session_id}/config - 获取会话配置 ---
     print_header("测试 15: 获取会话配置 (GET /api/v1/sessions/{session_id}/config)")
@@ -585,7 +584,7 @@ def test_delete_session(token: str, session_id: str) -> None:
         timeout=TIMEOUT,
     )
     assert verify_resp.status_code == 404, f"删除后查询应返回 404，实际: {verify_resp.status_code}"
-    print(f"  验证: 删除后查询返回 404，确认会话已彻底删除")
+    print("  验证: 删除后查询返回 404，确认会话已彻底删除")
 
 
 # ========================================
@@ -645,8 +644,8 @@ def main():
     # 最终汇总
     print_header("测试结果汇总")
     print("  所有测试通过!")
-    print(f"  测试接口数: 16")
-    print(f"  包含: 智能问答(7个) + AI聊天(6个) + 会话配置(3个)")
+    print("  测试接口数: 16")
+    print("  包含: 智能问答(7个) + AI聊天(6个) + 会话配置(3个)")
     print("=" * 60)
 
 

@@ -4,9 +4,8 @@
 用户在 AI 对话中上传的文档附件，仅记录文件存储信息。
 上传后取消发送的附件会成为孤儿记录。
 """
-from sqlalchemy import Column, BigInteger, String, Text, ForeignKey
-
 from novamind.core.database.base import BaseModel
+from sqlalchemy import BigInteger, Column, ForeignKey, String, Text
 
 
 class ChatAttachment(BaseModel):

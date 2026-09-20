@@ -6,8 +6,8 @@
 使该 bug 长期隐藏。本测试直接驱动 execute_document_pipeline 的视频分支，确保其正常返回、不抛 NameError。
 """
 import asyncio
-from pathlib import Path
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -16,8 +16,11 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 import novamind.features.knowledge_space.services.document_pipeline as ds_module
-from novamind.features.knowledge_space.services.document_pipeline import execute_document_pipeline
+import pytest
 from novamind.features.knowledge_space.models.document_task import TaskStatus
+from novamind.features.knowledge_space.services.document_pipeline import execute_document_pipeline
+
+pytestmark = pytest.mark.unit
 
 
 def test_execute_pipeline_video_branch_returns_cleanly():

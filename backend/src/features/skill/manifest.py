@@ -7,9 +7,9 @@ from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, Ro
 def _import_models() -> None:
     from novamind.features.skill.models.skill import (  # noqa: F401
         SkillDefinition,
-        SkillVersion,
-        SkillReview,
         SkillInstallation,
+        SkillReview,
+        SkillVersion,
     )
 
 

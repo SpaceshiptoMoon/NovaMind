@@ -7,7 +7,6 @@
   已 commit/关闭），每次 send 经 ``get_db_session()`` 开独立短会话，对照
   ``skill_marketplace_service._do_review`` 先例。
 """
-from typing import Optional
 
 from novamind.core.database.database import get_db_session
 from novamind.core.middleware.structured_logging import get_logger
@@ -19,7 +18,7 @@ logger = get_logger(__name__)
 class HostNotificationPort:
     """NotificationPort 宿主实现：委托 NotificationService，吞掉一切发送异常。"""
 
-    def __init__(self, db: Optional[object] = None):
+    def __init__(self, db: object | None = None):
         self._db = db
 
     async def send(
@@ -28,8 +27,8 @@ class HostNotificationPort:
         type: str,
         title: str,
         content: str,
-        link: Optional[str] = None,
-        extra_data: Optional[dict] = None,
+        link: str | None = None,
+        extra_data: dict | None = None,
     ) -> None:
         try:
             # 延迟 import：避免 notification feature 模块级反向依赖爆发点前移
@@ -56,7 +55,7 @@ class HostNotificationPort:
             )
 
 
-def as_notification_port(db: Optional[object] = None) -> NotificationPort:
+def as_notification_port(db: object | None = None) -> NotificationPort:
     """构造 NotificationPort 实例（供各 feature 装配点注入）。"""
     return HostNotificationPort(db)  # type: ignore[return-value]
 

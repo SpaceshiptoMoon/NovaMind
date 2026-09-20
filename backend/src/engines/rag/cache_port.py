@@ -3,7 +3,7 @@
 """
 from __future__ import annotations
 
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 __all__ = ["CachePort"]
 
@@ -16,11 +16,11 @@ class CachePort(Protocol):
     返回的 ``RedisCache``；嵌入方亦可注入内存实现。``None`` 注入表示禁用缓存。
     """
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         """按键取缓存值；不存在返回 ``None``。"""
         ...
 
-    async def set(self, key: str, value: Any, expire: Optional[int] = None) -> bool:
+    async def set(self, key: str, value: Any, expire: int | None = None) -> bool:
         """写入缓存值；``expire`` 为 TTL 秒数，``None`` 表示永不过期。"""
         ...
 

@@ -1,20 +1,22 @@
 """PDF 版面产物：页面级解析中间产物（文本块 / 表格 / 图像区域）的数据结构。"""
 from __future__ import annotations
 
-from io import BytesIO
-from dataclasses import asdict
 import os
 import re
+from collections.abc import Sequence
+from dataclasses import asdict
+from io import BytesIO
 from types import SimpleNamespace
-from typing import Any, Sequence
+from typing import Any
 
 import numpy as np
-from PIL import Image
-
 from novamind.engines.document.integrations.deepdoc.compat import LazyImage
 from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
-from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
+    TableStructureRecognizer,
+)
 from novamind.engines.document.integrations.deepdoc.vision_runtime import get_vision_health_status
+from PIL import Image
 
 logger = get_logger(__name__)
 
@@ -35,7 +37,7 @@ class PdfArtifactExtractor:
 
     def __init__(self, ocr=None):
         self._ocr = ocr
-        self._tsr: "TableStructureRecognizer | None" = None
+        self._tsr: TableStructureRecognizer | None = None
         self._tsr_attempted = False
 
     def extract(
@@ -224,7 +226,9 @@ class PdfArtifactExtractor:
 
     @staticmethod
     def _is_caption_box(box: Any) -> bool:
-        from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+        from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
+            TableStructureRecognizer,
+        )
 
         return TableStructureRecognizer.is_caption(
             {
@@ -518,7 +522,9 @@ class PdfArtifactExtractor:
         )
         if tsr_structured_boxes:
             try:
-                from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+                from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
+                    TableStructureRecognizer,
+                )
 
                 is_english = self._estimate_is_english([box.get("text", "") for box in tsr_structured_boxes])
                 html = TableStructureRecognizer.construct_table(tsr_structured_boxes, html=True, is_english=is_english)
@@ -529,7 +535,9 @@ class PdfArtifactExtractor:
         structured_boxes = self._infer_structured_table_boxes(content_boxes, caption=caption)
         if structured_boxes:
             try:
-                from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+                from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
+                    TableStructureRecognizer,
+                )
 
                 return (
                     TableStructureRecognizer.construct_table(structured_boxes, html=True),
@@ -907,7 +915,9 @@ class PdfArtifactExtractor:
         if not health.get("can_run_tsr_inference"):
             return None
         try:
-            from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+            from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
+                TableStructureRecognizer,
+            )
 
             self._tsr = TableStructureRecognizer(autoload=True)
         except Exception:

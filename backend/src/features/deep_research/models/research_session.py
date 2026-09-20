@@ -4,14 +4,24 @@
 存储深度研究的会话信息、研究任务和结果
 """
 
-from typing import Optional
-from sqlalchemy import Column, BigInteger, SmallInteger, String, Text, DateTime, JSON, Index, ForeignKey
-from sqlalchemy.orm.attributes import flag_modified
-from enum import Enum as PyEnum, IntEnum
 import uuid
+from enum import Enum as PyEnum
+from enum import IntEnum
 
 from novamind.core.database.base import BaseModel
 from novamind.shared.utils.time_utils import now_china
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    SmallInteger,
+    String,
+    Text,
+)
+from sqlalchemy.orm.attributes import flag_modified
 
 
 class ResearchStatus(IntEnum):
@@ -128,7 +138,7 @@ class ResearchSession(BaseModel):
         """获取状态详情"""
         return self.status_info or {}
 
-    def get_error_message(self) -> Optional[str]:
+    def get_error_message(self) -> str | None:
         """获取错误信息"""
         return self.get_status_info().get("error_message")
 

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import pytest
 
@@ -48,7 +48,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 class FakeLLM:
     """反思 LLM 桩：按脚本依次返回决策 JSON。"""
 
-    def __init__(self, responses=None, raise_on_calls: Optional[set] = None):
+    def __init__(self, responses=None, raise_on_calls: set | None = None):
         self.responses = list(responses or [])
         self.raise_on_calls = raise_on_calls or set()  # 第 N 次调用抛错（1-based）
         self.prompts: list = []
@@ -82,13 +82,13 @@ class FakeSourcePort:
     def __init__(
         self,
         source_type: str,
-        results_per_query: Optional[Dict[str, List[Dict[str, Any]]]] = None,
-        raise_on: Optional[set] = None,
+        results_per_query: dict[str, list[dict[str, Any]]] | None = None,
+        raise_on: set | None = None,
     ):
         self.source_type = source_type
         self.results_per_query = results_per_query or {}
         self.raise_on = raise_on or set()
-        self.calls: List[Tuple[str, int]] = []
+        self.calls: list[tuple[str, int]] = []
 
     async def search(self, query: str, *, top_k: int):
         self.calls.append((query, top_k))
@@ -98,7 +98,7 @@ class FakeSourcePort:
         return [dict(r) for r in items]
 
 
-def _external_result(title: str, url: str, content: str, score: float) -> Dict[str, Any]:
+def _external_result(title: str, url: str, content: str, score: float) -> dict[str, Any]:
     return {
         "source_type": SourceType.EXTERNAL.value,
         "content": content,
@@ -108,7 +108,7 @@ def _external_result(title: str, url: str, content: str, score: float) -> Dict[s
     }
 
 
-def _internal_result(content: str, chunk_id: str, doc_name: str, score: float) -> Dict[str, Any]:
+def _internal_result(content: str, chunk_id: str, doc_name: str, score: float) -> dict[str, Any]:
     return {
         "source_type": SourceType.INTERNAL.value,
         "content": content,
@@ -121,7 +121,7 @@ def _internal_result(content: str, chunk_id: str, doc_name: str, score: float) -
     }
 
 
-def _bindings(*ports: FakeSourcePort, top_k: int = 10) -> List[SearchSourceBinding]:
+def _bindings(*ports: FakeSourcePort, top_k: int = 10) -> list[SearchSourceBinding]:
     """按 fake port 构造 SearchSourceBinding 列表（hybrid = internal + external 全启用）。"""
     return [SearchSourceBinding(source_type=p.source_type, port=p, top_k=top_k) for p in ports]
 
@@ -163,7 +163,7 @@ def _params(
     )
 
 
-async def _collect(engine: DeepResearchEngine, **kwargs) -> List[Any]:
+async def _collect(engine: DeepResearchEngine, **kwargs) -> list[Any]:
     events = []
     async for ev in engine.search(**kwargs):
         events.append(ev)

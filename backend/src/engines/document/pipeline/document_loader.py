@@ -1,20 +1,25 @@
 """文档解析管道：DocumentLoader（按扩展名路由解析器） + DocumentProcessor（编排解析 / 切分 / 元数据） + DocumentRegistry（解析器注册表）。"""
 import asyncio
-from typing import List, Dict, Optional, Union, Type
 from pathlib import Path
-from novamind.shared.document.readers.base_reader import BaseReader
-from novamind.shared.document.readers.pdf_reader import PDFReader
-from novamind.shared.document.readers.docx_reader import DocxReader
-from novamind.shared.document.readers.txt_reader import TxtReader
-from novamind.shared.document.readers.html_reader import HTMLReader
-from novamind.shared.document.readers.md_reader import MarkdownReader
+
+from novamind.engines.document.integrations.deepdoc import (
+    DeepDocEngine,
+    DeepDocParser,
+    DeepDocParseResult,
+    strip_position_tags,
+)
 from novamind.engines.document.splitters.base_splitter import BaseSplitter
-from novamind.engines.document.splitters.recursive_splitter import RecursiveCharacterSplitter
-from novamind.engines.document.splitters.semantic_splitter import SemanticSplitter
 from novamind.engines.document.splitters.fixed_size_splitter import FixedSizeSplitter
 from novamind.engines.document.splitters.markdown_splitter import MarkdownSplitter
-from novamind.engines.document.integrations.deepdoc import DeepDocEngine, DeepDocParser, DeepDocParseResult, strip_position_tags
+from novamind.engines.document.splitters.recursive_splitter import RecursiveCharacterSplitter
+from novamind.engines.document.splitters.semantic_splitter import SemanticSplitter
 from novamind.shared.ai_models.base_model import BaseEmbedding
+from novamind.shared.document.readers.base_reader import BaseReader
+from novamind.shared.document.readers.docx_reader import DocxReader
+from novamind.shared.document.readers.html_reader import HTMLReader
+from novamind.shared.document.readers.md_reader import MarkdownReader
+from novamind.shared.document.readers.pdf_reader import PDFReader
+from novamind.shared.document.readers.txt_reader import TxtReader
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -24,18 +29,18 @@ class DocumentRegistry:
     """文档组件注册器，用于统一管理文档读取器和切分器"""
     
     # 注册表：文档读取器
-    _readers_registry: Dict[str, Type[BaseReader]] = {}
+    _readers_registry: dict[str, type[BaseReader]] = {}
     
     # 注册表：文档切分器
-    _splitters_registry: Dict[str, Type[BaseSplitter]] = {}
+    _splitters_registry: dict[str, type[BaseSplitter]] = {}
 
     @classmethod
-    def register_reader(cls, extension: str, reader_class: Type[BaseReader] = None):
+    def register_reader(cls, extension: str, reader_class: type[BaseReader] = None):
         """
         注册文档读取器的装饰器/直接调用函数
         可以作为装饰器使用 @register_reader('ext') 或直接调用 register_reader('ext', ReaderClass)
         """
-        def decorator(actual_reader_class: Type[BaseReader]):
+        def decorator(actual_reader_class: type[BaseReader]):
             cls._readers_registry[extension] = actual_reader_class
             return actual_reader_class
         
@@ -54,12 +59,12 @@ class DocumentRegistry:
             del cls._readers_registry[extension]
 
     @classmethod
-    def register_splitter(cls, name: str, splitter_class: Type[BaseSplitter] = None):
+    def register_splitter(cls, name: str, splitter_class: type[BaseSplitter] = None):
         """
         注册文档切分器的装饰器/直接调用函数
         可以作为装饰器使用 @register_splitter('name') 或直接调用 register_splitter('name', SplitterClass)
         """
-        def decorator(actual_splitter_class: Type[BaseSplitter]):
+        def decorator(actual_splitter_class: type[BaseSplitter]):
             cls._splitters_registry[name] = actual_splitter_class
             return actual_splitter_class
         
@@ -78,22 +83,22 @@ class DocumentRegistry:
             del cls._splitters_registry[name]
 
     @classmethod
-    def get_reader_class(cls, extension: str) -> Optional[Type[BaseReader]]:
+    def get_reader_class(cls, extension: str) -> type[BaseReader] | None:
         """获取指定扩展名的读取器类"""
         return cls._readers_registry.get(extension)
 
     @classmethod
-    def get_splitter_class(cls, name: str) -> Optional[Type[BaseSplitter]]:
+    def get_splitter_class(cls, name: str) -> type[BaseSplitter] | None:
         """获取指定名称的切分器类"""
         return cls._splitters_registry.get(name)
 
     @classmethod
-    def get_supported_formats(cls) -> List[str]:
+    def get_supported_formats(cls) -> list[str]:
         """获取支持的文件格式"""
         return list(cls._readers_registry.keys())
 
     @classmethod
-    def get_available_strategies(cls) -> List[str]:
+    def get_available_strategies(cls) -> list[str]:
         """获取可用的切分策略"""
         return list(cls._splitters_registry.keys())
 
@@ -132,7 +137,7 @@ class DocumentLoader:
             # 其他文件类型使用默认的递归字符切分器
             return RecursiveCharacterSplitter()
 
-    async def load_and_split(self, file_path: Union[str, Path]) -> List[Dict[str, str]]:
+    async def load_and_split(self, file_path: str | Path) -> list[dict[str, str]]:
         """
         加载并切分文档
         :param file_path: 文件路径
@@ -163,7 +168,7 @@ class DocumentLoader:
         
         return split_documents
 
-    async def load_multiple_files(self, file_paths: List[Union[str, Path]]) -> List[Dict[str, str]]:
+    async def load_multiple_files(self, file_paths: list[str | Path]) -> list[dict[str, str]]:
         """
         加载并切分多个文件
         :param file_paths: 文件路径列表
@@ -177,7 +182,7 @@ class DocumentLoader:
         return all_documents
 
     @staticmethod
-    async def get_supported_formats() -> List[str]:
+    async def get_supported_formats() -> list[str]:
         """
         获取支持的文件格式
         :return: 支持的文件格式列表
@@ -194,18 +199,18 @@ class DocumentProcessor:
     3. load_with_strategy() — 一键读+切（为兼容旧调用保留）
     """
 
-    def __init__(self, embedding_client: Optional[BaseEmbedding] = None):
+    def __init__(self, embedding_client: BaseEmbedding | None = None):
         self.embedding_client = embedding_client
         self._deepdoc_parser = DeepDocParser()
         self._deepdoc_engine = DeepDocEngine(parser=self._deepdoc_parser)
         # 初始化各种读取器（从注册表获取）
-        self._readers: Dict[str, BaseReader] = {}
+        self._readers: dict[str, BaseReader] = {}
         for ext, reader_class in DocumentRegistry._readers_registry.items():
             self._readers[ext] = reader_class()
 
     async def read_full_text(
         self,
-        file_path: Union[str, Path],
+        file_path: str | Path,
         ocr_enabled: bool = False,
     ) -> str:
         """
@@ -277,7 +282,7 @@ class DocumentProcessor:
                 "无法对扫描版 PDF 做 OCR。请安装 Tesseract 或在 KB 配置中关闭 ocr_enabled"
             )
 
-        page_texts: List[str] = []
+        page_texts: list[str] = []
         try:
             with fitz.open(file_path) as pdf:
                 for page in pdf:
@@ -305,7 +310,7 @@ class DocumentProcessor:
         text: str,
         strategy: str = 'recursive',
         **kwargs,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Splitter-only：对纯文本进行切分，返回 chunk 文本列表
 
@@ -383,10 +388,10 @@ class DocumentProcessor:
 
     async def parse_document(
         self,
-        file_path: Union[str, Path],
-        parsing_config: Optional[Dict[str, object]] = None,
-        splitting_config: Optional[Dict[str, object]] = None,
-    ) -> tuple[str, List[str]]:
+        file_path: str | Path,
+        parsing_config: dict[str, object] | None = None,
+        splitting_config: dict[str, object] | None = None,
+    ) -> tuple[str, list[str]]:
         result = await self.parse_document_result(
             file_path,
             parsing_config=parsing_config,
@@ -396,9 +401,9 @@ class DocumentProcessor:
 
     async def parse_document_result(
         self,
-        file_path: Union[str, Path],
-        parsing_config: Optional[Dict[str, object]] = None,
-        splitting_config: Optional[Dict[str, object]] = None,
+        file_path: str | Path,
+        parsing_config: dict[str, object] | None = None,
+        splitting_config: dict[str, object] | None = None,
     ) -> DeepDocParseResult:
         parsing_config = dict(parsing_config or {})
         splitting_config = dict(splitting_config or {})
@@ -521,8 +526,8 @@ class DocumentProcessor:
             },
         )
 
-    async def load_with_strategy(self, file_path: Union[str, Path], strategy: Optional[str] = 'recursive',
-                          **kwargs) -> List[Dict[str, str]]:
+    async def load_with_strategy(self, file_path: str | Path, strategy: str | None = 'recursive',
+                          **kwargs) -> list[dict[str, str]]:
         """
         使用指定策略加载文档
         :param file_path: 文件路径
@@ -576,8 +581,8 @@ class DocumentProcessor:
         loader = DocumentLoader(splitter=splitter, embedding_client=self.embedding_client)  # 使用共享的客户端实例
         return await loader.load_and_split(file_path)
 
-    async def process_directory(self, directory_path: Union[str, Path], strategy: Optional[str] = 'recursive',
-                         **kwargs) -> List[Dict[str, str]]:
+    async def process_directory(self, directory_path: str | Path, strategy: str | None = 'recursive',
+                         **kwargs) -> list[dict[str, str]]:
         """
         处理目录中的所有支持的文档
         :param directory_path: 目录路径

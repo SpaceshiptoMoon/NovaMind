@@ -30,19 +30,21 @@ import sys
 import tempfile
 import threading
 import time
+from collections.abc import Callable
+from enum import StrEnum
 from io import BytesIO
 from os import PathLike
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 import numpy as np
 import pdfplumber
 import requests
-from PIL import Image
-from enum import StrEnum
-
 from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import extract_pdf_outlines
+from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import (
+    extract_pdf_outlines,
+)
+from PIL import Image
 
 MAXIMUM_PAGE_NUMBER = 99999
 
@@ -193,7 +195,7 @@ class RAGFlowSoMarkParser(RAGFlowPdfParser):
         file_bytes: bytes,
         *,
         file_name: str = "input.pdf",
-        parsing_config: Optional[dict[str, Any]] = None,
+        parsing_config: dict[str, Any] | None = None,
     ) -> tuple[str, list[str], dict[str, Any]]:
         if not self.base_url:
             raise RuntimeError("[SoMark] SOMARK_BASE_URL is not configured.")
@@ -333,7 +335,7 @@ class RAGFlowSoMarkParser(RAGFlowPdfParser):
         """
         return {"api_key": self.api_key} if self.api_key else {}
 
-    def _submit_task(self, pdf_path: Path, callback: Optional[Callable] = None) -> str:
+    def _submit_task(self, pdf_path: Path, callback: Callable | None = None) -> str:
         url = f"{self.base_url}{self.SUBMIT_PATH}"
         data = {
             "output_formats": ["json"],
@@ -414,7 +416,7 @@ class RAGFlowSoMarkParser(RAGFlowPdfParser):
             # Any other non-zero code: not retryable.
             raise SoMarkAPIError(f"[SoMark] submit business error code={code} message={body.get('message')}")
 
-    def _poll_task(self, task_id: str, callback: Optional[Callable] = None) -> dict:
+    def _poll_task(self, task_id: str, callback: Callable | None = None) -> dict:
         url = f"{self.base_url}{self.CHECK_PATH}"
         deadline = time.monotonic() + self.POLL_BUDGET_SECONDS
         interval = self.POLL_INTERVAL_BASE_SECONDS
@@ -662,7 +664,7 @@ class RAGFlowSoMarkParser(RAGFlowPdfParser):
     # ---------------------------------------------------------------------
     # SoMark JSON -> RAGFlow sections
     # ---------------------------------------------------------------------
-    def _resolve_internal_type(self, block_type: str) -> Optional[str]:
+    def _resolve_internal_type(self, block_type: str) -> str | None:
         """Resolve the RAGFlow internal layout type, or ``None`` to discard.
 
         Header/footer obey ``keep_header_footer``; cate/cate_item/blank always drop.
@@ -691,7 +693,7 @@ class RAGFlowSoMarkParser(RAGFlowPdfParser):
                 content = ("#" * level) + " " + content
         return content
 
-    def _transfer_to_sections(self, pages: list[dict], parse_method: Optional[str] = None) -> list[tuple]:
+    def _transfer_to_sections(self, pages: list[dict], parse_method: str | None = None) -> list[tuple]:
         # MinerU contract: manual/pipeline callers (the rag/flow DAG) want typed
         # 3-tuples ``(text, layout_type, line_tag)`` so the consumer can set
         # box["layout_type"] and crop via the separate position field; every other
@@ -762,14 +764,14 @@ class RAGFlowSoMarkParser(RAGFlowPdfParser):
         self,
         filepath: str | PathLike[str],
         binary: BytesIO | bytes | None = None,
-        callback: Optional[Callable] = None,
-        parse_method: Optional[str] = None,
+        callback: Callable | None = None,
+        parse_method: str | None = None,
         **kwargs,
     ) -> tuple:
         self.outlines = extract_pdf_outlines(binary if binary is not None else filepath)
 
         # Normalize input to a real PDF file on disk.
-        temp_pdf: Optional[Path] = None
+        temp_pdf: Path | None = None
         if binary:
             tmp_dir = Path(tempfile.mkdtemp(prefix="somark_bin_pdf_"))
             file_name = Path(filepath).stem.replace(" ", "") + ".pdf"

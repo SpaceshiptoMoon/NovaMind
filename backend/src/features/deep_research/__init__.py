@@ -14,33 +14,33 @@ from novamind.features.deep_research.models import (
     ResearchStatus,
 )
 
+# 仓储层
+from novamind.features.deep_research.repository import ResearchRepository
+
 # Schema（包含枚举定义）
 from novamind.features.deep_research.schemas import (
-    ResearchMode,
-    SearchSource,
     ExternalSearchProvider,
-    ResearchRequest,
-    ResearchTask,
-    ResearchProgress,
-    SearchResultItem,
-    ResearchStats,
-    ResearchResponse,
     ResearchListItem,
     ResearchListResponse,
+    ResearchMode,
+    ResearchProgress,
+    ResearchRequest,
+    ResearchResponse,
+    ResearchStats,
+    ResearchTask,
+    SearchResultItem,
+    SearchSource,
 )
 
 # 服务层
 from novamind.features.deep_research.services import (
-    ExternalSearchService,
-    ExternalSearchResult,
-    TavilySearchService,
-    SerpAPISearchService,
-    DuckDuckGoSearchService,
     DeepResearchService,
+    DuckDuckGoSearchService,
+    ExternalSearchResult,
+    ExternalSearchService,
+    SerpAPISearchService,
+    TavilySearchService,
 )
-
-# 仓储层
-from novamind.features.deep_research.repository import ResearchRepository
 
 # API 层 - 使用延迟导入避免循环依赖
 # 请直接从以下路径导入：

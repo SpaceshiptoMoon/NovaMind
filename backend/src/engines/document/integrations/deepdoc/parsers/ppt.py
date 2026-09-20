@@ -1,8 +1,8 @@
 """DeepDoc PPT 解析器。"""
 from __future__ import annotations
 
-from io import BytesIO
 import logging
+from io import BytesIO
 
 # Adapted from RAGFlow deepdoc/parser/ppt_parser.py
 

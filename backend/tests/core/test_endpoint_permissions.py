@@ -10,10 +10,8 @@ from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 from novamind.core.auth.dependencies import get_current_user
 from novamind.core.authorization.dependencies import (
-    require_permission,
     get_permission_checker_dep,
 )
 from novamind.core.authorization.exceptions import PermissionDeniedError
@@ -21,15 +19,17 @@ from novamind.core.authorization.ports import PermissionCheckerPort
 from novamind.core.database.database import get_db
 from novamind.core.middleware.base_exception_handler import create_error_handler
 from novamind.core.middleware.manifest import API_V1_PREFIX
-from novamind.features.user.api.user_routes import router as user_router
-from novamind.features.user.api.dependencies import get_user_service
-from novamind.features.skill.api.routes import router as skill_router
 from novamind.features.skill.api import routes as skill_routes_module
 from novamind.features.skill.api.dependencies import (
-    get_skill_service,
     get_llm_review_settings,
+    get_skill_service,
     update_llm_review_settings,
 )
+from novamind.features.skill.api.routes import router as skill_router
+from novamind.features.user.api.dependencies import get_user_service
+from novamind.features.user.api.user_routes import router as user_router
+
+pytestmark = pytest.mark.unit
 
 
 USER_PREFIX = f"{API_V1_PREFIX}/user"
@@ -122,10 +122,9 @@ _fake_db_engine = None
 async def _fake_get_db():
     """SQLite 内存库 session（建 user_disabled_apps 表；其他查询走空库即可）。"""
     global _fake_db_engine
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
     from novamind.core.database.base import Base
     from novamind.features.user.models.user_disabled_app import UserDisabledApp
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     if _fake_db_engine is None:
         _fake_db_engine = create_async_engine("sqlite+aiosqlite:///:memory:")

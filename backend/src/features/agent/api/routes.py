@@ -2,58 +2,57 @@
 Agent 模块 API 路由
 """
 import asyncio
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, WebSocket, WebSocketDisconnect
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.core.auth import UserStatusResolver, get_current_user, get_user_status_resolver
 from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
 from novamind.core.database.database import get_db
 from novamind.core.ws import run_stream_to_ws, send_event
+from novamind.engines.agent.agent_engine import AgentEngine
+from novamind.engines.agent.memory.todo_store import TodoStore
 from novamind.engines.agent.safety import ApprovalRegistry
+from novamind.engines.agent.tool.registry import ToolRegistry
 from novamind.features.agent.api.dependencies import (
     _build_agent_chat_service,
+    get_agent_chat_service,
     get_agent_engine_ws,
     get_agent_service,
-    get_agent_chat_service,
+    get_mcp_server_service,
     get_memory_search_repo,
     get_minio_client_for_presign,
-    get_mcp_server_service,
     get_model_config_service,
     get_todo_store_ws,
     get_tool_registry,
 )
-from novamind.features.agent.services.agent_service import AgentService
-from novamind.features.agent.services.chat_service import AgentChatService
-from novamind.features.agent.services.mcp_server_service import McpServerService
-from novamind.engines.agent.agent_engine import AgentEngine
-from novamind.engines.agent.memory.todo_store import TodoStore
-from novamind.engines.agent.tool.registry import ToolRegistry
 from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
-from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.shared.storage.attachment_presign import enrich_attachments_with_presigned_urls
 from novamind.features.agent.schemas.agent_schema import (
+    AgentActionResponse,
+    AgentChatRequest,
     AgentCreate,
-    AgentUpdate,
     AgentDetailResponse,
     AgentListResponse,
-    SessionResponse,
     AgentSessionListResponse,
-    MessageListResponse,
+    AgentUpdate,
     ContextUsageResponse,
-    SystemPromptResponse,
-    AgentChatRequest,
     McpServerCreate,
-    McpServerUpdate,
     McpServerResponse,
-    ToolProviderResponse,
-    ToolFunctionResponse,
-    AgentActionResponse,
+    McpServerUpdate,
     McpToolsRefreshResponse,
     MemoryListResponse,
     MemoryStatsResponse,
+    MessageListResponse,
+    SessionResponse,
+    SystemPromptResponse,
+    ToolFunctionResponse,
+    ToolProviderResponse,
 )
+from novamind.features.agent.services.agent_service import AgentService
+from novamind.features.agent.services.chat_service import AgentChatService
+from novamind.features.agent.services.mcp_server_service import McpServerService
+from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.shared.storage.attachment_presign import enrich_attachments_with_presigned_urls
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 
@@ -157,7 +156,7 @@ async def chat_ws(
     model_config_service: ModelConfigService = Depends(get_model_config_service),
     agent_engine: AgentEngine = Depends(get_agent_engine_ws),
     todo_store: TodoStore = Depends(get_todo_store_ws),
-    memory_search_repo: Optional[MemorySearchRepository] = Depends(get_memory_search_repo),
+    memory_search_repo: MemorySearchRepository | None = Depends(get_memory_search_repo),
 ):
     """Agent 对话（WebSocket 流式）。
 
@@ -532,7 +531,7 @@ async def get_tool(
 )
 async def list_memories(
     agent_id: Annotated[int, Path(gt=0, description="Agent ID")],
-    category: Optional[str] = Query(None, description="按类别过滤"),
+    category: str | None = Query(None, description="按类别过滤"),
     limit: Annotated[int, Query(ge=1, le=100, description="每页数量")] = 20,
     offset: Annotated[int, Query(ge=0, description="偏移量")] = 0,
     user_id: int = Depends(get_current_user_id),

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import List, Optional
 
 
 class SimpleTokenizer:
@@ -68,9 +67,9 @@ def find_codec(binary: bytes) -> str:
 
 @dataclass(slots=True)
 class LazyImage:
-    blobs: List[bytes]
+    blobs: list[bytes]
 
-    def first(self) -> Optional[bytes]:
+    def first(self) -> bytes | None:
         return self.blobs[0] if self.blobs else None
 
     def __bool__(self) -> bool:

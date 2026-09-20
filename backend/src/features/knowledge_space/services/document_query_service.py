@@ -11,9 +11,15 @@
 ``document_pipeline.execute_document_pipeline`` 分别承担。
 """
 
-from typing import Optional, List, Dict, Any
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
 
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.exceptions import (
+    DocumentAlreadyProcessingError,
+    DocumentNotFoundError,
+    KnowledgeBaseNotFoundError,
+    SpaceAccessDeniedError,
+)
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
 from novamind.features.knowledge_space.repository.knowledge_base_repository import (
@@ -21,15 +27,9 @@ from novamind.features.knowledge_space.repository.knowledge_base_repository impo
 )
 from novamind.features.knowledge_space.repository.member_repository import MemberRepository
 from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
-from novamind.features.knowledge_space.exceptions import (
-    KnowledgeBaseNotFoundError,
-    DocumentNotFoundError,
-    DocumentAlreadyProcessingError,
-    SpaceAccessDeniedError,
-)
-from novamind.shared.storage.minio_client import MinioClient
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.storage.minio_client import MinioClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class DocumentQueryService:
@@ -53,13 +53,13 @@ class DocumentQueryService:
     async def count_kb_documents(
         self,
         kb_id: int,
-        status: Optional[int] = None,
-        keyword: Optional[str] = None,
+        status: int | None = None,
+        keyword: str | None = None,
     ) -> int:
         """统计知识库中的文档数量"""
         return await self.doc_repo.count_by_kb(kb_id=kb_id, status=status, keyword=keyword)
 
-    async def get_filename_map(self, document_ids: List[int]) -> Dict[int, str]:
+    async def get_filename_map(self, document_ids: list[int]) -> dict[int, str]:
         """按 document_id 批量取 ``Documents.filename``，供任务列表回填真实文件名。
 
         将「路由层直接 new DocumentRepository」的层级泄漏收敛到 service；
@@ -252,7 +252,7 @@ class DocumentQueryService:
         self,
         document_id: int,
         raise_not_found: bool = False,
-    ) -> Optional[Document]:
+    ) -> Document | None:
         """
         获取文档
 
@@ -273,9 +273,9 @@ class DocumentQueryService:
         kb_id: int,
         skip: int = 0,
         limit: int = 100,
-        status: Optional[int] = None,
-        keyword: Optional[str] = None,
-    ) -> List[Document]:
+        status: int | None = None,
+        keyword: str | None = None,
+    ) -> list[Document]:
         """
         获取知识库的文档列表
 
@@ -303,7 +303,7 @@ class DocumentQueryService:
         document_id: int,
         skip: int = 0,
         limit: int = 10,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         获取文档的分块列表（从 Elasticsearch 获取，分页）
 
@@ -349,7 +349,7 @@ class DocumentQueryService:
             object_name=storage_info.get("minio_object_name"),
         )
 
-    async def get_parsed_text(self, document_id: int) -> Optional[bytes]:
+    async def get_parsed_text(self, document_id: int) -> bytes | None:
         """获取文档解析后的 Markdown 全文。
 
         从 MinIO 读取 document.storage["parsed_text_object"] 指向的文件。

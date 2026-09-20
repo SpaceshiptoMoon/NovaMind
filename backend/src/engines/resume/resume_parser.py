@@ -8,12 +8,12 @@ import json
 import os
 import tempfile
 
-from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.logging import Logger
 from novamind.engines.ports import PromptProvider
-from novamind.shared.document.readers import PDFReader, DocxReader
-from novamind.shared.utils.llm_response import extract_json_str
 from novamind.engines.resume.schemas import StructuredResume
+from novamind.shared.ai_models.llm import BaseLLM
+from novamind.shared.document.readers import DocxReader, PDFReader
+from novamind.shared.logging import Logger
+from novamind.shared.utils.llm_response import extract_json_str
 
 
 class ResumeParser:
@@ -121,7 +121,7 @@ class ResumeParser:
                 reader = DocxReader()
                 docs = await reader.load_data(tmp_path)
             elif ext in (".txt", ".md"):
-                with open(tmp_path, "r", encoding="utf-8", errors="ignore") as f:
+                with open(tmp_path, encoding="utf-8", errors="ignore") as f:
                     return f.read()
             else:
                 raise ValueError(f"不支持的文件格式: {ext}")
@@ -238,9 +238,21 @@ class ResumeParser:
         publications: dict,
     ) -> StructuredResume:
         from novamind.engines.resume.schemas import (
-            PersonalInfo, WorkExperience as WE, ProjectExperience as PE,
-            EducationExperience, SkillsData as SD, PublicationsData as PD,
+            EducationExperience,
+            PersonalInfo,
             ResumeMetadata,
+        )
+        from novamind.engines.resume.schemas import (
+            ProjectExperience as PE,
+        )
+        from novamind.engines.resume.schemas import (
+            PublicationsData as PD,
+        )
+        from novamind.engines.resume.schemas import (
+            SkillsData as SD,
+        )
+        from novamind.engines.resume.schemas import (
+            WorkExperience as WE,
         )
 
         # 清理 LLM 输出中的 None 值

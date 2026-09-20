@@ -7,17 +7,17 @@ import asyncio
 import base64
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 from uuid import uuid4
 
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.agent.sandbox.config import LANGUAGE_EXTENSIONS, SandboxConfig
 from novamind.features.agent.exceptions import (
     SandboxExecutionError,
     SandboxNotAvailableError,
     SandboxTimeoutError,
     UnsupportedLanguageError,
 )
+from novamind.features.agent.sandbox.config import LANGUAGE_EXTENSIONS, SandboxConfig
 
 logger = get_logger(__name__)
 
@@ -47,8 +47,8 @@ class DockerSandbox:
     def __init__(self, config: SandboxConfig):
         self.config = config
         self._client: Any = None
-        self._containers: Dict[str, Any] = {}
-        self._exec_counts: Dict[str, int] = {}
+        self._containers: dict[str, Any] = {}
+        self._exec_counts: dict[str, int] = {}
         self._lock = asyncio.Lock()
         self._started = False
 
@@ -162,7 +162,7 @@ class DockerSandbox:
         self,
         language: str,
         code: str,
-        timeout: Optional[int] = None,
+        timeout: int | None = None,
     ) -> ExecutionResult:
         """
         执行代码
@@ -253,7 +253,7 @@ class DockerSandbox:
                     ),
                     timeout=effective_timeout,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 timed_out = True
                 raise SandboxTimeoutError(effective_timeout, language)
 

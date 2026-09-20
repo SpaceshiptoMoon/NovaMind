@@ -13,70 +13,70 @@
 
 # API 路由
 from novamind.features.knowledge_space.api import (
-    space_router,
-    knowledge_base_router,
     document_router,
+    knowledge_base_router,
     member_router,
     search_router,
+    space_router,
 )
 
 # 数据模型
 from novamind.features.knowledge_space.models import (
-    KnowledgeSpace,
-    SpaceVisibility,
-    SpaceStatus,
-    SpaceMember,
-    SpaceRole,
-    MemberStatus,
-    KnowledgeBase,
-    KnowledgeBaseStatus,
+    AuditAction,
     Document,
     DocumentStatus,
+    KnowledgeBase,
+    KnowledgeBaseStatus,
+    KnowledgeSpace,
+    MemberStatus,
     SpaceAuditLog,
-    AuditAction,
-)
-
-# 服务层
-from novamind.features.knowledge_space.services import (
-    SpaceAccessChecker,
-    SpaceService,
-    MemberService,
-    KnowledgeBaseService,
-    DocumentUploadService,
-    DocumentTaskService,
-    DocumentQueryService,
-    SearchService,
-    AuditService,
+    SpaceMember,
+    SpaceRole,
+    SpaceStatus,
+    SpaceVisibility,
 )
 
 # Schema
 from novamind.features.knowledge_space.schemas import (
-    SpaceCreate,
-    SpaceUpdate,
-    SpaceResponse,
-    SpaceListResponse,
-    KnowledgeBaseCreate,
-    KnowledgeBaseUpdate,
-    KnowledgeBaseResponse,
-    KnowledgeBaseListResponse,
-    DocumentResponse,
-    DocumentListResponse,
-    DocumentDetailResponse,
-    DocumentUploadResponse,
-    DocumentBatchUploadResponse,
     ChunkResponse,
+    DocumentBatchUploadResponse,
+    DocumentDetailResponse,
+    DocumentListResponse,
+    DocumentResponse,
+    DocumentUploadResponse,
+    InviteResponse,
+    KnowledgeBaseCreate,
+    KnowledgeBaseListResponse,
+    KnowledgeBaseResponse,
+    KnowledgeBaseUpdate,
     MemberInvite,
     MemberJoin,
-    MemberUpdate,
-    MemberResponse,
     MemberListResponse,
-    InviteResponse,
-    SearchRequest,
-    SearchResult,
-    SearchResponse,
-    WeightConfig,
-    RerankConfig,
+    MemberResponse,
+    MemberUpdate,
     QueryRewriteConfig,
+    RerankConfig,
+    SearchRequest,
+    SearchResponse,
+    SearchResult,
+    SpaceCreate,
+    SpaceListResponse,
+    SpaceResponse,
+    SpaceUpdate,
+    WeightConfig,
+)
+
+# 服务层
+from novamind.features.knowledge_space.services import (
+    AuditService,
+    DocumentQueryService,
+    DocumentTaskService,
+    DocumentUploadService,
+    KnowledgeBaseService,
+    MemberService,
+    SearchService,
+    SpaceAccessChecker,
+    SpaceService,
 )
 
 __all__ = [

@@ -1,11 +1,11 @@
 """
 检索端口宿主适配器，包装 SearchService 实现 RetrievalPort 协议。
 """
-from typing import Any, Dict
+from typing import Any
 
 from novamind.features.knowledge_space.schemas.search_schema import SearchRequest
-from novamind.shared.retrieval_port import RetrievalPort
 from novamind.features.knowledge_space.services.search_service import SearchService
+from novamind.shared.retrieval_port import RetrievalPort
 
 
 class HostRetrievalPort:
@@ -25,7 +25,7 @@ class HostRetrievalPort:
         kb_id: int,
         user_id: int,
         request: SearchRequest,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         return await self._search_service.search(
             space_id=space_id,
             kb_id=kb_id,

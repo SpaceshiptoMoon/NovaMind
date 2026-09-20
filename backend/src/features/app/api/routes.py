@@ -3,26 +3,31 @@
 """
 import json
 import os
-from typing import Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, UploadFile, File, Form, Query
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import Response
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.features.knowledge_space.api.dependencies import get_current_user_id
 from novamind.core.database.database import get_db
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.engines.resume.schemas import StructuredResume
 from novamind.features.app.api.dependencies import _get_model_config_service
-from novamind.features.app.api.exceptions import ResumeSessionNotFoundError, ResumeParseError, InvalidFileTypeError, InvalidConfigError, FileSizeExceededError
+from novamind.features.app.api.exceptions import (
+    FileSizeExceededError,
+    InvalidConfigError,
+    InvalidFileTypeError,
+    ResumeParseError,
+    ResumeSessionNotFoundError,
+)
 from novamind.features.app.models.resume import ResumeSessionStatus
 from novamind.features.app.repository.resume_repository import ResumeSessionRepository
-from novamind.engines.resume.schemas import StructuredResume
 from novamind.features.app.schemas.resume_schema import (
-    ResumeSessionResponse, ResumeSessionListResponse,
+    ResumeSessionListResponse,
+    ResumeSessionResponse,
 )
+from novamind.features.knowledge_space.api.dependencies import get_current_user_id
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.storage.client_factory import get_minio_client
-from novamind.core.middleware.structured_logging import get_logger
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -111,7 +116,7 @@ async def upload_resume(
 async def list_resume_sessions(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    status: Optional[int] = Query(None, description="按状态筛选"),
+    status: int | None = Query(None, description="按状态筛选"),
     user_id: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):

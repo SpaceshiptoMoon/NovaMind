@@ -10,11 +10,11 @@
 简化（有意，标注于代码）：WeKnora 在文件夹池 >60 时用 embedding 余弦
 相似度筛相关子集；NovaMind 目录规模小，直接 cap 截断。
 """
-from typing import Any, Dict, List, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.prompts.prompt_manager import PromptManager
-from novamind.features.knowledge_space.services.wiki_dedup import append_unique
 
 logger = get_logger(__name__)
 
@@ -28,9 +28,9 @@ TAXONOMY_EMPTY_TREE_HINT = "（暂无目录——本知识库还没有分类，�
 CATEGORY_MAX_DEPTH = 2
 
 
-def clean_category_path(parts: Sequence[str]) -> List[str]:
+def clean_category_path(parts: Sequence[str]) -> list[str]:
     """清洗路径标签：去空白、去重、保序、截断到最大深度。"""
-    cleaned: List[str] = []
+    cleaned: list[str] = []
     for part in parts or []:
         label = (part or "").strip()
         if not label or label in cleaned:
@@ -47,7 +47,7 @@ def clean_category_path(parts: Sequence[str]) -> List[str]:
     return cleaned
 
 
-def format_existing_taxonomy(paths: List[List[str]]) -> str:
+def format_existing_taxonomy(paths: list[list[str]]) -> str:
     """distinct category_path 渲染为缩进目录树（供 prompt 复用）。
 
     ["节日","传统节日"] →
@@ -57,7 +57,7 @@ def format_existing_taxonomy(paths: List[List[str]]) -> str:
     """
     if not paths:
         return ""
-    root: Dict[str, Any] = {}
+    root: dict[str, Any] = {}
     for path in paths:
         node = root
         for label in path:
@@ -66,9 +66,9 @@ def format_existing_taxonomy(paths: List[List[str]]) -> str:
             node = node.setdefault(label, {})
     if not root:
         return ""
-    lines: List[str] = []
+    lines: list[str] = []
 
-    def _walk(node: Dict[str, Any], depth: int) -> None:
+    def _walk(node: dict[str, Any], depth: int) -> None:
         for label in sorted(node.keys()):
             lines.append(f"{'  ' * depth}{label}")
             _walk(node[label], depth + 1)
@@ -77,7 +77,7 @@ def format_existing_taxonomy(paths: List[List[str]]) -> str:
     return "\n".join(lines).strip()
 
 
-def parse_taxonomy_assignments(parsed: Any) -> Dict[str, List[str]]:
+def parse_taxonomy_assignments(parsed: Any) -> dict[str, list[str]]:
     """解析 LLM 输出 {"assignments": [{slug, path[]}]} → {slug: path}
 
     parsed 为 _call_llm_json 已解析的 dict（或原始字符串——容错二次解析）。
@@ -89,7 +89,7 @@ def parse_taxonomy_assignments(parsed: Any) -> Dict[str, List[str]]:
         parsed = extract_json_obj(parsed)
         if not isinstance(parsed, dict):
             return {}
-    out: Dict[str, List[str]] = {}
+    out: dict[str, list[str]] = {}
     for a in parsed.get("assignments") or []:
         if not isinstance(a, dict):
             continue
@@ -101,11 +101,11 @@ def parse_taxonomy_assignments(parsed: Any) -> Dict[str, List[str]]:
 
 
 async def plan_batch_taxonomy(
-    items: List[dict],
-    existing_paths: List[List[str]],
+    items: list[dict],
+    existing_paths: list[list[str]],
     language: str,
     call_llm_json,
-) -> Dict[str, List[str]]:
+) -> dict[str, list[str]]:
     """批级目录规划：一次调用（分块 feed-forward）为整批分配 category_path。
 
     Args:
@@ -125,7 +125,7 @@ async def plan_batch_taxonomy(
     # 目录规模小、截断足够）
     existing = [list(p) for p in (existing_paths or [])][:TAXONOMY_FOLDER_POOL_MAX]
 
-    result: Dict[str, List[str]] = {}
+    result: dict[str, list[str]] = {}
     for start in range(0, len(items), TAXONOMY_PLAN_CHUNK_SIZE):
         chunk = items[start:start + TAXONOMY_PLAN_CHUNK_SIZE]
 
@@ -153,7 +153,7 @@ async def plan_batch_taxonomy(
     return result
 
 
-def append_unique_tree(existing: List[List[str]], path: List[str]) -> List[List[str]]:
+def append_unique_tree(existing: list[list[str]], path: list[str]) -> list[list[str]]:
     """把新路径加入目录池（去重）——feed-forward 用"""
     if path and path not in existing:
         existing.append(list(path))

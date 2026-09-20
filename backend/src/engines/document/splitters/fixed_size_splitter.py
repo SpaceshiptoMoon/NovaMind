@@ -1,5 +1,5 @@
 """固定大小切分器：按字符数 / 重叠量切分。"""
-from typing import List, Dict
+
 from novamind.engines.document.splitters.base_splitter import BaseSplitter
 
 
@@ -16,7 +16,7 @@ class FixedSizeSplitter(BaseSplitter):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
-    async def split(self, documents: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    async def split(self, documents: list[dict[str, str]]) -> list[dict[str, str]]:
         """
         按固定大小切分文档
         :param documents: 原始文档列表
@@ -44,7 +44,7 @@ class FixedSizeSplitter(BaseSplitter):
 
         return split_docs
 
-    def _split_text_fixed_size(self, text: str) -> List[str]:
+    def _split_text_fixed_size(self, text: str) -> list[str]:
         """
         按固定大小切分文本
         :param text: 输入文本

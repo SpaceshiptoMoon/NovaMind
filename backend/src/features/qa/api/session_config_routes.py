@@ -2,30 +2,29 @@
 会话配置 API 路由
 """
 from typing import Annotated
-from fastapi import APIRouter, Depends, Path, Body, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from sqlalchemy.exc import IntegrityError
-
-from novamind.core.database.database import get_db
+from fastapi import APIRouter, Body, Depends, Path, status
 from novamind.core.auth import get_current_user
+from novamind.core.database.database import get_db
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.qa.api.dependencies import get_qa_service
 from novamind.features.qa.exceptions import (
     SessionConfigAlreadyExistsError,
     UnauthorizedAccessException,
 )
-from novamind.features.qa.repository.session_config_repository import SessionConfigRepository
 from novamind.features.qa.repository.question_answer_repository import QuestionAnswerRepository
-from novamind.features.qa.services.qa_service import QAService
-from novamind.features.qa.api.dependencies import get_qa_service
+from novamind.features.qa.repository.session_config_repository import SessionConfigRepository
 from novamind.features.qa.schemas.session_config import (
-    SessionConfigCreate,
     SessionConfigCompressionUpdate,
+    SessionConfigCreate,
     SessionConfigLlmUpdate,
-    SessionConfigResponse,
     SessionConfigRagUpdate,
+    SessionConfigResponse,
     SessionConfigWebSearchUpdate,
 )
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.qa.services.qa_service import QAService
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["会话配置"])
 logger = get_logger(__name__)

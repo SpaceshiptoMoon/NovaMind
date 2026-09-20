@@ -27,6 +27,8 @@ from novamind.engines.document.integrations.deepdoc.updown_concat import (
     UpDownConcatMerger,
 )
 
+pytestmark = pytest.mark.unit
+
 
 def _box(
     page: int,
@@ -111,7 +113,6 @@ def test_build_reading_order_metadata_is_column_aware():
 
 def test_assign_column_wires_pdf_layout(monkeypatch):
     """_assign_column_boxes 应把 boxes 交给 PdfLayoutExtractor.assign_columns 并写回 col_id。"""
-    from novamind.engines.document.integrations.deepdoc.pdf_layout import PdfLayoutExtractor
 
     parser = RAGFlowPdfParser.__new__(RAGFlowPdfParser)
     parser._layout_extractor = PdfLayoutExtractor.__new__(PdfLayoutExtractor)

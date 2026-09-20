@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -31,14 +31,13 @@ from novamind.features.deep_research.adapters.source_registry import (
     source_registry,
 )
 from novamind.features.deep_research.exceptions import (
-    DeepResearchError,
     SearchProviderNotConfiguredError,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 
 
-def _ctx(config: Dict[str, Any], deps: Dict[str, Any] = None) -> SearchSourceContext:
+def _ctx(config: dict[str, Any], deps: dict[str, Any] = None) -> SearchSourceContext:
     return SearchSourceContext(space_id=1, user_id=1, config=config, deps=deps or {})
 
 
@@ -289,7 +288,7 @@ def test_build_source_bindings_extra_source_independent_top_k():
     )
 
     # stub 源工厂：捕获 build 时收到的 binding 由调用方检查（注册表只管产出 port）
-    captured: Dict[str, Any] = {}
+    captured: dict[str, Any] = {}
 
     class _StubPort:
         async def search(self, query, *, top_k):

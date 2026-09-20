@@ -3,11 +3,11 @@ Claim 拆解与验证器。LLM 将回答拆解为独立 claims 并逐条验证�
 prompt 经 PromptProvider 注入，日志经 Logger 注入。
 """
 import json
-from typing import Any, Dict, List
+from typing import Any
 
+from novamind.engines.ports import PromptProvider
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
-from novamind.engines.ports import PromptProvider
 
 
 class ClaimDecomposer:
@@ -18,7 +18,7 @@ class ClaimDecomposer:
         self._prompt_provider = prompt_provider
         self._logger = logger
 
-    async def decompose(self, generated_answer: str) -> List[str]:
+    async def decompose(self, generated_answer: str) -> list[str]:
         """
         将 AI 回答拆解为独立 claims
 
@@ -45,7 +45,7 @@ class ClaimDecomposer:
             self._logger.warning("Claim 拆解失败", error=str(e))
             return None
 
-    async def verify_claim(self, claim: str, context: str) -> Dict[str, Any]:
+    async def verify_claim(self, claim: str, context: str) -> dict[str, Any]:
         """
         验证单个 claim 是否可由上下文支撑
 
@@ -76,8 +76,8 @@ class ClaimDecomposer:
     async def evaluate(
         self,
         generated_answer: str,
-        context_chunks: List[Dict[str, Any]],
-    ) -> Dict[str, Any]:
+        context_chunks: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         """
         完整的 Faithfulness decompose 评估流程
 

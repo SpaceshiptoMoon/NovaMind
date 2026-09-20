@@ -2,20 +2,27 @@
 QA API路由 - 用户会话消息管理
 """
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Path, Query
 from fastapi.responses import Response
-from typing import Annotated, List
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.features.qa.api.dependencies import get_qa_service, get_minio_client_for_presign
 from novamind.core.auth import get_current_user
-from novamind.features.qa.services.qa_service import QAService
-from novamind.features.qa.schemas.qa import QARequest, QAResponse, QAUpdateRequest, SessionPreviewResponse, ChatSessionListResponse, ConversationContextResponse
-from novamind.features.qa.exceptions import MessageNotFoundError
-from novamind.features.knowledge_space.api.dependencies import validate_space_access
 from novamind.core.database.database import get_db
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.api.dependencies import validate_space_access
+from novamind.features.qa.api.dependencies import get_minio_client_for_presign, get_qa_service
+from novamind.features.qa.exceptions import MessageNotFoundError
+from novamind.features.qa.schemas.qa import (
+    ChatSessionListResponse,
+    ConversationContextResponse,
+    QARequest,
+    QAResponse,
+    QAUpdateRequest,
+    SessionPreviewResponse,
+)
+from novamind.features.qa.services.qa_service import QAService
 from novamind.shared.storage.attachment_presign import enrich_attachments_with_presigned_urls
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -52,7 +59,7 @@ async def add_message(
 
 @router.get(
     "/session/{session_id}",
-    response_model=List[QAResponse],
+    response_model=list[QAResponse],
     summary="获取会话消息",
     description="获取指定会话的所有消息列表",
 )

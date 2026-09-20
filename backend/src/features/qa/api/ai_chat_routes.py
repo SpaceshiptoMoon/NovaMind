@@ -2,28 +2,45 @@
 AI对话API路由
 """
 
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, Query, UploadFile, File, Path, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse, Response
-from urllib.parse import quote
 import io
+from typing import Annotated
+from urllib.parse import quote
 
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Path,
+    Query,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.responses import Response, StreamingResponse
 from novamind.core.auth import UserStatusResolver, get_current_user, get_user_status_resolver
 from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
 from novamind.core.ws import run_stream_to_ws
-from novamind.features.qa.api.dependencies import get_aichat_service, get_qa_service, get_model_config_service, get_minio_client_for_presign
-from novamind.features.qa.services.ai_chat_service import AIChatService
-from novamind.features.qa.services.qa_service import QAService
-from novamind.features.qa.api.constants import DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TOP_P
+from novamind.features.qa.api.constants import (
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_TEMPERATURE,
+    DEFAULT_TOP_P,
+)
+from novamind.features.qa.api.dependencies import (
+    get_aichat_service,
+    get_minio_client_for_presign,
+    get_model_config_service,
+    get_qa_service,
+)
 from novamind.features.qa.schemas.ai_chat import (
+    ChatAvailableModelsResponse,
+    ChatHistoryResponse,
     ChatRequest,
     ChatResponse,
-    ChatHistoryResponse,
     HealthCheckResponse,
-    ChatAvailableModelsResponse,
     UploadChatAttachmentResponse,
 )
+from novamind.features.qa.services.ai_chat_service import AIChatService
+from novamind.features.qa.services.qa_service import QAService
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.storage.attachment_presign import enrich_attachments_with_presigned_urls
 

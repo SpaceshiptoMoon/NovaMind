@@ -12,7 +12,8 @@
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any
 from uuid import uuid4
 
 from novamind.engines.agent.safety.patterns import detect_dangerous_code
@@ -46,9 +47,9 @@ class ApprovalHook(ToolHook):
     async def before_execute(
         self,
         tool: ToolDefinition,
-        arguments: Dict[str, Any],
-        context: Dict[str, Any],
-    ) -> Optional[Dict[str, Any]]:
+        arguments: dict[str, Any],
+        context: dict[str, Any],
+    ) -> dict[str, Any] | None:
         if tool.name not in self._targets:
             return None
         code = arguments.get("code") or ""
@@ -61,7 +62,7 @@ class ApprovalHook(ToolHook):
             raise ApprovalRejectedError(f"已阻止危险操作：{desc}")
         # E5: DANGEROUS → WS 异步审批（若有审批通道），否则告警放行
         registry = context.get("approval_registry")
-        event_sink: Optional[Callable] = context.get("event_sink")
+        event_sink: Callable | None = context.get("event_sink")
         if not registry or not event_sink:
             logger.warning(
                 "检测到危险操作但无审批通道，告警放行",
@@ -94,9 +95,9 @@ class ApprovalHook(ToolHook):
     async def after_execute(
         self,
         tool: ToolDefinition,
-        arguments: Dict[str, Any],
+        arguments: dict[str, Any],
         result: ToolResult,
-        context: Dict[str, Any],
+        context: dict[str, Any],
     ) -> ToolResult:
         return result
 

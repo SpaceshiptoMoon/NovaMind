@@ -3,54 +3,58 @@
 """
 
 
-from typing import Optional, Annotated
+# ========== 请求级缓存 ==========
+import contextvars
+from typing import Annotated, Any
 
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.core.database.database import get_db
 from novamind.core.auth import get_current_user, get_current_user_optional
-from novamind.features.user.repository.user_repository import UserRepository
-from novamind.features.knowledge_space.models.space_member import SpaceMember, MemberStatus, SpaceRole
-from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase, KnowledgeBaseStatus
-from novamind.features.knowledge_space.models.knowledge_space import SpaceVisibility, SpaceStatus
-from novamind.features.user.models.user import User
-from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
-from novamind.features.knowledge_space.repository.member_repository import MemberRepository
-from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-from novamind.features.knowledge_space.services.space_service import SpaceService
-from novamind.features.knowledge_space.services.member_service import MemberService
-from novamind.features.knowledge_space.services.document_query_service import DocumentQueryService
-from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
-from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
-from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
-from novamind.features.knowledge_space.services.search_service import SearchService
-from novamind.features.knowledge_space.services.audit_service import AuditService
-from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.shared.utils.time_utils import now_china
-from novamind.features.knowledge_space.exceptions import (
-    SpaceNotFoundError,
-    SpaceAccessDeniedError,
-    MemberNotFoundError,
-    KnowledgeBaseNotFoundError,
-    KnowledgeBaseArchivedError,
-)
-from novamind.shared.storage.client_factory import (
-    get_minio_client,
-    get_elasticsearch_client,
-)
+from novamind.core.database.database import get_db
+from novamind.core.middleware.structured_logging import get_logger
 from novamind.engines.rag import RetrievalEngine
 from novamind.features.knowledge_space.adapters.cache_adapter import HostCachePort
-from novamind.core.middleware.structured_logging import get_logger
-
-
-# ========== 请求级缓存 ==========
-
-import contextvars
-from typing import Dict, Any
+from novamind.features.knowledge_space.exceptions import (
+    KnowledgeBaseArchivedError,
+    KnowledgeBaseNotFoundError,
+    MemberNotFoundError,
+    SpaceAccessDeniedError,
+    SpaceNotFoundError,
+)
+from novamind.features.knowledge_space.models.knowledge_base import (
+    KnowledgeBase,
+    KnowledgeBaseStatus,
+)
+from novamind.features.knowledge_space.models.knowledge_space import SpaceStatus, SpaceVisibility
+from novamind.features.knowledge_space.models.space_member import (
+    MemberStatus,
+    SpaceMember,
+    SpaceRole,
+)
+from novamind.features.knowledge_space.repository.knowledge_base_repository import (
+    KnowledgeBaseRepository,
+)
+from novamind.features.knowledge_space.repository.member_repository import MemberRepository
+from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
+from novamind.features.knowledge_space.services.audit_service import AuditService
+from novamind.features.knowledge_space.services.document_query_service import DocumentQueryService
+from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
+from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
+from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
+from novamind.features.knowledge_space.services.member_service import MemberService
+from novamind.features.knowledge_space.services.search_service import SearchService
+from novamind.features.knowledge_space.services.space_service import SpaceService
+from novamind.features.user.models.user import User
+from novamind.features.user.repository.user_repository import UserRepository
+from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.shared.storage.client_factory import (
+    get_elasticsearch_client,
+    get_minio_client,
+)
+from novamind.shared.utils.time_utils import now_china
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # 使用 contextvars 实现请求级别的用户信息缓存
-_request_user_cache: contextvars.ContextVar[Dict[int, Any]] = contextvars.ContextVar(
+_request_user_cache: contextvars.ContextVar[dict[int, Any]] = contextvars.ContextVar(
     "request_user_cache", default=None
 )
 
@@ -58,7 +62,7 @@ _request_user_cache: contextvars.ContextVar[Dict[int, Any]] = contextvars.Contex
 async def _get_cached_user(
     user_id: int,
     db: AsyncSession,
-) -> Optional[User]:
+) -> User | None:
     """
     获取缓存的用户信息（请求级别）
 
@@ -180,8 +184,8 @@ async def get_current_user_id(
 
 
 async def get_optional_current_user_id(
-    current_user: Optional[dict] = Depends(get_current_user_optional),
-) -> Optional[int]:
+    current_user: dict | None = Depends(get_current_user_optional),
+) -> int | None:
     """
     可选认证：匿名返回 None；携带有效 token 返回 user_id。
 

@@ -4,7 +4,7 @@
 所有 Agent 工具必须继承此类并实现其抽象方法。
 """
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any
 
 
 class ToolContext:
@@ -27,7 +27,7 @@ class ToolContext:
         self.user_id = user_id
         self.agent_id = agent_id
         self.session_id = session_id
-        self._extra: Dict[str, Any] = {}
+        self._extra: dict[str, Any] = {}
 
     def set(self, key: str, value: Any) -> None:
         self._extra[key] = value
@@ -35,8 +35,8 @@ class ToolContext:
     def get(self, key: str, default: Any = None) -> Any:
         return self._extra.get(key, default)
 
-    def to_dict(self) -> Dict[str, Any]:
-        d: Dict[str, Any] = {
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {
             "db_session": self.db_session,
             "user_id": self.user_id,
             "agent_id": self.agent_id,
@@ -62,7 +62,7 @@ class BaseTool(ABC):
         pass
 
     @abstractmethod
-    def get_tools(self) -> List[Dict[str, Any]]:
+    def get_tools(self) -> list[dict[str, Any]]:
         """
         返回 OpenAI function calling 格式的工具定义列表
 
@@ -84,7 +84,7 @@ class BaseTool(ABC):
 
     @abstractmethod
     async def execute_tool(
-        self, tool_name: str, arguments: Dict[str, Any], context: Dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
         """
         执行指定工具，返回结果文本

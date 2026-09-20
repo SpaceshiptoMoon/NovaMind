@@ -4,28 +4,32 @@ from __future__ import annotations
 import logging
 import os
 import re
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import Enum
 from io import BytesIO
 from os import PathLike
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional
+from typing import Any
 
 import pdfplumber
 import requests
+from novamind.engines.document.integrations.deepdoc.compat import MAXIMUM_PAGE_NUMBER
 from PIL import Image
 
-from novamind.engines.document.integrations.deepdoc.compat import MAXIMUM_PAGE_NUMBER
-
 try:
-    from novamind.engines.document.integrations.deepdoc.parsers.upstream.pdf_parser import RAGFlowPdfParser
+    from novamind.engines.document.integrations.deepdoc.parsers.upstream.pdf_parser import (
+        RAGFlowPdfParser,
+    )
 except Exception:
 
     class RAGFlowPdfParser:
         pass
 
 
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import extract_pdf_outlines
+from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import (
+    extract_pdf_outlines,
+)
 
 
 class OpenDataLoaderContentType(str, Enum):
@@ -50,14 +54,14 @@ _IMAGE_TYPES = {"image", "picture", "figure"}
 _FORMULA_TYPES = {"formula", "equation"}
 
 
-def _as_float(v) -> Optional[float]:
+def _as_float(v) -> float | None:
     try:
         return float(v)
     except Exception:
         return None
 
 
-def _bbox_from_element(el: dict) -> Optional[_BBox]:
+def _bbox_from_element(el: dict) -> _BBox | None:
     bb = el.get("bounding box") or el.get("bounding_box") or el.get("bbox")
     pn = el.get("page number")
     if pn is None:
@@ -182,7 +186,7 @@ class OpenDataLoaderParser(RAGFlowPdfParser):
         _, page_height = self.page_images[bbox.page_no - 1].size
         top = page_height - bbox.y1
         bott = page_height - bbox.y0
-        return "@@{}\t{:.1f}\t{:.1f}\t{:.1f}\t{:.1f}##".format(bbox.page_no, x0, x1, top, bott)
+        return f"@@{bbox.page_no}\t{x0:.1f}\t{x1:.1f}\t{top:.1f}\t{bott:.1f}##"
 
     @staticmethod
     def extract_positions(txt: str) -> list[tuple[list[int], float, float, float, float]]:
@@ -330,12 +334,12 @@ class OpenDataLoaderParser(RAGFlowPdfParser):
         self,
         filepath: str | PathLike[str],
         binary: BytesIO | bytes | None = None,
-        callback: Optional[Callable] = None,
+        callback: Callable | None = None,
         *,
         parse_method: str = "raw",
-        hybrid: Optional[str] = None,
-        image_output: Optional[str] = None,
-        sanitize: Optional[bool] = None,
+        hybrid: str | None = None,
+        image_output: str | None = None,
+        sanitize: bool | None = None,
     ):
         self.outlines = extract_pdf_outlines(binary if binary is not None else filepath)
 

@@ -5,7 +5,7 @@
 避免仓储层反向依赖 API 层（违反 DDD 分层原则）。
 """
 
-from typing import ClassVar, List
+from typing import ClassVar
 
 from novamind.core.middleware.base_exception_handler import BaseAPIError
 
@@ -19,7 +19,7 @@ class DeepResearchError(BaseAPIError):
 
 class ResearchNotFoundError(DeepResearchError):
     """研究会话不存在"""
-    _serializable_attrs: ClassVar[List[str]] = ["session_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["session_id"]
 
     def __init__(self, session_id: str):
         super().__init__(
@@ -31,7 +31,7 @@ class ResearchNotFoundError(DeepResearchError):
 
 class ResearchFailedError(DeepResearchError):
     """研究执行失败"""
-    _serializable_attrs: ClassVar[List[str]] = ["session_id", "error_message"]
+    _serializable_attrs: ClassVar[list[str]] = ["session_id", "error_message"]
 
     def __init__(self, session_id: str, error_message: str):
         super().__init__(
@@ -44,7 +44,7 @@ class ResearchFailedError(DeepResearchError):
 
 class InvalidResearchQueryError(DeepResearchError):
     """无效的研究查询"""
-    _serializable_attrs: ClassVar[List[str]] = ["reason"]
+    _serializable_attrs: ClassVar[list[str]] = ["reason"]
 
     def __init__(self, reason: str):
         super().__init__(
@@ -56,7 +56,7 @@ class InvalidResearchQueryError(DeepResearchError):
 
 class SearchProviderNotConfiguredError(DeepResearchError):
     """搜索服务商未配置"""
-    _serializable_attrs: ClassVar[List[str]] = ["provider"]
+    _serializable_attrs: ClassVar[list[str]] = ["provider"]
 
     def __init__(self, provider: str):
         super().__init__(
@@ -68,7 +68,7 @@ class SearchProviderNotConfiguredError(DeepResearchError):
 
 class SearchProviderUnavailableError(DeepResearchError):
     """搜索服务商不可用"""
-    _serializable_attrs: ClassVar[List[str]] = ["provider", "reason"]
+    _serializable_attrs: ClassVar[list[str]] = ["provider", "reason"]
 
     def __init__(self, provider: str, reason: str):
         super().__init__(
@@ -81,7 +81,7 @@ class SearchProviderUnavailableError(DeepResearchError):
 
 class ResearchSpaceAccessDeniedError(DeepResearchError):
     """无权访问知识空间"""
-    _serializable_attrs: ClassVar[List[str]] = ["space_id", "user_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["space_id", "user_id"]
 
     def __init__(self, space_id: int, user_id: int):
         super().__init__(
@@ -94,7 +94,7 @@ class ResearchSpaceAccessDeniedError(DeepResearchError):
 
 class ResearchModeNotSupportedError(DeepResearchError):
     """不支持的研究模式"""
-    _serializable_attrs: ClassVar[List[str]] = ["mode"]
+    _serializable_attrs: ClassVar[list[str]] = ["mode"]
 
     def __init__(self, mode: str):
         super().__init__(
@@ -106,7 +106,7 @@ class ResearchModeNotSupportedError(DeepResearchError):
 
 class ResearchRunningError(DeepResearchError):
     """研究正在运行中，无法删除"""
-    _serializable_attrs: ClassVar[List[str]] = ["session_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["session_id"]
 
     def __init__(self, session_id: str):
         super().__init__(
@@ -118,7 +118,7 @@ class ResearchRunningError(DeepResearchError):
 
 class ResearchAccessDeniedError(DeepResearchError):
     """无权操作此研究记录"""
-    _serializable_attrs: ClassVar[List[str]] = ["session_id", "user_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["session_id", "user_id"]
 
     def __init__(self, session_id: str, user_id: int):
         super().__init__(

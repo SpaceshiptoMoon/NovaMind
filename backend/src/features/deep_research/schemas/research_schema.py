@@ -4,19 +4,19 @@
 定义深度研究的请求和响应 Pydantic 模型
 """
 
-from typing import Optional, List, Dict, Any, Literal
-from enum import Enum
-from pydantic import BaseModel, Field, ConfigDict, model_validator
 from datetime import datetime
+from enum import Enum
+from typing import Any, Literal
+
+from novamind.engines.deep_research.types import SearchSource
 
 # 从模型层导入字符串枚举（值完全一致，无需重复定义）。
 # SearchSource 自 engines/deep_research/types 反向 re-export（feature -> engine 合法）。
 from novamind.features.deep_research.models.research_session import (
-    ResearchMode,
     ExternalSearchProvider,
+    ResearchMode,
 )
-from novamind.engines.deep_research.types import SearchSource
-
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ==================== 枚举类型 ====================
 
@@ -39,7 +39,7 @@ class InternalSearchConfig(BaseModel):
     """
 
     # ========== 知识库选择 ==========
-    kb_ids: Optional[List[int]] = Field(
+    kb_ids: list[int] | None = Field(
         default=None,
         description="指定知识库 ID 列表（为空则搜索空间下所有知识库）",
     )
@@ -110,7 +110,7 @@ class InternalSearchConfig(BaseModel):
         le=20,
         description="Rerank 后返回的结果数量",
     )
-    rerank_model: Optional[str] = Field(
+    rerank_model: str | None = Field(
         default=None,
         description="Rerank 模型名称，为空使用用户默认",
     )
@@ -130,7 +130,7 @@ class InternalSearchConfig(BaseModel):
         le=5,
         description="子问题拆分数量（strategy=sub_query 时生效）",
     )
-    query_rewrite_llm_model: Optional[str] = Field(
+    query_rewrite_llm_model: str | None = Field(
         default=None,
         description="查询改写使用的 LLM 模型名称，为空使用用户默认",
     )
@@ -188,7 +188,7 @@ class ResearchLLMConfig(BaseModel):
     """
 
     # ========== 模型选择 ==========
-    llm_model: Optional[str] = Field(
+    llm_model: str | None = Field(
         default=None,
         description="LLM 模型名称（如 gpt-4o），为空使用默认配置",
     )
@@ -228,19 +228,19 @@ class SourcesConfig(BaseModel):
       ``SearchSourceContext.config`` 透传对应工厂，schema 侧免改
     """
 
-    enabled: Optional[List[str]] = Field(
+    enabled: list[str] | None = Field(
         default=None,
         description="显式启用的数据源类型列表（为空按 search_source 预设映射）",
     )
-    internal: Optional[InternalSearchConfig] = Field(
+    internal: InternalSearchConfig | None = Field(
         default=None,
         description="内部检索配置（非空覆盖平铺 internal_search）",
     )
-    external: Optional[ExternalSearchConfig] = Field(
+    external: ExternalSearchConfig | None = Field(
         default=None,
         description="外部搜索配置（非空覆盖平铺 external_search）",
     )
-    extra: Dict[str, Dict[str, Any]] = Field(
+    extra: dict[str, dict[str, Any]] = Field(
         default_factory=dict,
         description="扩展数据源配置段（type → 配置 dict），透传对应源工厂",
     )
@@ -287,7 +287,7 @@ class ResearchRequest(BaseModel):
     )
 
     # ========== 数据源组合（可选嵌套段，非空字段覆盖同名平铺配置） ==========
-    sources: Optional[SourcesConfig] = Field(
+    sources: SourcesConfig | None = Field(
         default=None,
         description="可插拔数据源组合配置（新源扩展入口；不传时按平铺字段 + search_source 预设）",
     )
@@ -328,7 +328,7 @@ class SearchSourceInfo(BaseModel):
 class SearchSourceListResponse(BaseModel):
     """已注册数据源列表"""
 
-    sources: List[SearchSourceInfo] = Field(
+    sources: list[SearchSourceInfo] = Field(
         default_factory=list,
         description="注册表中的全部数据源（builtin + 自定义）",
     )
@@ -356,7 +356,7 @@ class ResearchPlanModel(BaseModel):
         description="背景信息是否已足够（true 时跳过检索直接生成报告）",
     )
     iteration: int = Field(default=0, description="规划轮次（0=首轮）")
-    steps: List[PlanStepModel] = Field(default_factory=list, description="步骤列表")
+    steps: list[PlanStepModel] = Field(default_factory=list, description="步骤列表")
 
 
 class CitationItem(BaseModel):
@@ -370,7 +370,7 @@ class ResearchTask(BaseModel):
     task_id: str = Field(..., description="任务 ID")
     description: str = Field(..., description="任务描述")
     priority: int = Field(default=0, description="优先级")
-    dependencies: List[str] = Field(default_factory=list, description="依赖的任务 ID")
+    dependencies: list[str] = Field(default_factory=list, description="依赖的任务 ID")
 
 
 class ResearchProgress(BaseModel):
@@ -388,13 +388,13 @@ class SearchResultItem(BaseModel):
     """单个搜索结果"""
     source_type: str = Field(..., description="来源类型：internal/external")
     content: str = Field(..., description="内容摘要")
-    url: Optional[str] = Field(None, description="URL（外部搜索）")
+    url: str | None = Field(None, description="URL（外部搜索）")
     score: float = Field(default=0.0, description="相关性分数")
-    document_id: Optional[int] = Field(None, description="文档 ID（内部搜索）")
-    chunk_id: Optional[int] = Field(None, description="分块 ID（内部搜索）")
-    document_name: Optional[str] = Field(None, description="文档名称")
-    kb_id: Optional[int] = Field(None, description="知识库 ID（内部搜索）")
-    kb_name: Optional[str] = Field(None, description="知识库名称")
+    document_id: int | None = Field(None, description="文档 ID（内部搜索）")
+    chunk_id: int | None = Field(None, description="分块 ID（内部搜索）")
+    document_name: str | None = Field(None, description="文档名称")
+    kb_id: int | None = Field(None, description="知识库 ID（内部搜索）")
+    kb_name: str | None = Field(None, description="知识库名称")
 
 
 class ResearchStats(BaseModel):
@@ -417,24 +417,24 @@ class ResearchResponse(BaseModel):
     # 研究策略
     research_mode: ResearchMode = Field(..., description="研究模式")
     search_source: SearchSource = Field(..., description="搜索来源")
-    external_provider: Optional[ExternalSearchProvider] = Field(None, description="外部搜索提供商")
+    external_provider: ExternalSearchProvider | None = Field(None, description="外部搜索提供商")
 
     # 研究结果
     status: ResearchStatus = Field(..., description="研究状态")
-    research_topic: Optional[str] = Field(None, description="研究主题")
-    research_tasks: Optional[List[ResearchTask]] = Field(None, description="子任务列表（从计划 steps 派生的旧形状）")
-    final_report: Optional[str] = Field(None, description="最终研究报告")
-    research_plan: Optional[ResearchPlanModel] = Field(None, description="研究计划（v2 结构化形状）")
+    research_topic: str | None = Field(None, description="研究主题")
+    research_tasks: list[ResearchTask] | None = Field(None, description="子任务列表（从计划 steps 派生的旧形状）")
+    final_report: str | None = Field(None, description="最终研究报告")
+    research_plan: ResearchPlanModel | None = Field(None, description="研究计划（v2 结构化形状）")
 
     # 检索结果摘要
-    search_summary: Optional[Dict[str, Any]] = Field(None, description="搜索摘要信息")
+    search_summary: dict[str, Any] | None = Field(None, description="搜索摘要信息")
 
     # 统计信息
-    stats: Dict[str, Any] = Field(default_factory=dict, description="统计信息")
+    stats: dict[str, Any] = Field(default_factory=dict, description="统计信息")
 
     # 时间信息
     created_at: datetime = Field(..., description="创建时间")
-    completed_at: Optional[datetime] = Field(None, description="完成时间")
+    completed_at: datetime | None = Field(None, description="完成时间")
 
 
 class ResearchListItem(BaseModel):
@@ -443,16 +443,16 @@ class ResearchListItem(BaseModel):
 
     session_id: str = Field(..., description="会话 ID")
     query: str = Field(..., description="研究查询")
-    research_topic: Optional[str] = Field(None, description="研究主题")
+    research_topic: str | None = Field(None, description="研究主题")
     status: ResearchStatus = Field(..., description="研究状态")
     research_mode: ResearchMode = Field(..., description="研究模式")
     created_at: datetime = Field(..., description="创建时间")
-    completed_at: Optional[datetime] = Field(None, description="完成时间")
+    completed_at: datetime | None = Field(None, description="完成时间")
 
 
 class ResearchListResponse(BaseModel):
     """研究列表响应"""
-    items: List[ResearchListItem] = Field(..., description="研究列表")
+    items: list[ResearchListItem] = Field(..., description="研究列表")
     total: int = Field(..., description="总数")
     limit: int = Field(..., description="每页数量")
     offset: int = Field(..., description="偏移量")

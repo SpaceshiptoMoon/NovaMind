@@ -2,10 +2,8 @@
 路由管理器，负责注册所有应用路由，支持 API 版本控制。
 """
 import os
-from typing import Dict, List, Tuple
 
 from fastapi import APIRouter
-
 from novamind.core.middleware.manifest import API_V1_PREFIX
 from novamind.core.middleware.manifest_loader import get_route_sorted_manifests
 
@@ -14,7 +12,7 @@ class RouterManager:
     """路由管理器"""
 
     def __init__(self):
-        self.routers: Dict[str, APIRouter] = {}
+        self.routers: dict[str, APIRouter] = {}
         if os.getenv("NOVAMIND_LEGACY_MANIFEST") == "1":
             self._register_routers_legacy()
         # manifest 路径无需在此预加载 router 对象；get_all_routers 时按需聚合
@@ -25,7 +23,7 @@ class RouterManager:
         """获取指定的路由（仅 legacy 路径填充 self.routers；manifest 路径返回 None）"""
         return self.routers.get(name)
 
-    def get_all_routers(self) -> List[Tuple[APIRouter, str, List[str]]]:
+    def get_all_routers(self) -> list[tuple[APIRouter, str, list[str]]]:
         """
         获取所有路由及其配置。
 
@@ -40,7 +38,7 @@ class RouterManager:
         if os.getenv("NOVAMIND_LEGACY_MANIFEST") == "1" and self.routers:
             return self._get_all_routers_legacy()
 
-        router_configs: List[Tuple[APIRouter, str, List[str]]] = []
+        router_configs: list[tuple[APIRouter, str, list[str]]] = []
         for m in get_route_sorted_manifests():
             if not m.enabled:
                 continue
@@ -53,37 +51,39 @@ class RouterManager:
     def _register_routers_legacy(self):
         """旧硬编码路由注册（仅 NOVAMIND_LEGACY_MANIFEST=1 时使用，保留作回滚）"""
         # 功能模块路由
-        from novamind.features.qa.api.qa_routes import router as qa_router
-        from novamind.features.qa.api.ai_chat_routes import router as ai_chat_router
-        from novamind.features.qa.api.session_config_routes import router as session_config_router
-        from novamind.features.user.api.user_routes import router as user_router
-        from novamind.features.user.api.model_config_routes import router as model_config_router
         from novamind.core.middleware.health_check import router as health_router
 
-        # 知识空间模块路由
-        from novamind.features.knowledge_space.api.space_router import router as space_router
-        from novamind.features.knowledge_space.api.knowledge_base_routes import router as knowledge_base_router
-        from novamind.features.knowledge_space.api.document_routes import router as document_router
-        from novamind.features.knowledge_space.api.member_routes import router as member_router
-        from novamind.features.knowledge_space.api.search_routes import router as search_router
+        # Agent 模块路由
+        from novamind.features.agent.api.routes import router as agent_router
+
+        # 应用中心路由
+        from novamind.features.app.api.routes import router as app_router
 
         # 深度研究模块路由
         from novamind.features.deep_research.api.routes import router as deep_research_router
 
         # 测评模块路由
         from novamind.features.evaluation.api.routes import router as evaluation_router
+        from novamind.features.knowledge_space.api.document_routes import router as document_router
+        from novamind.features.knowledge_space.api.knowledge_base_routes import (
+            router as knowledge_base_router,
+        )
+        from novamind.features.knowledge_space.api.member_routes import router as member_router
+        from novamind.features.knowledge_space.api.search_routes import router as search_router
 
-        # Agent 模块路由
-        from novamind.features.agent.api.routes import router as agent_router
-
-        # 技能广场路由
-        from novamind.features.skill.api.routes import router as skill_router
-
-        # 应用中心路由
-        from novamind.features.app.api.routes import router as app_router
+        # 知识空间模块路由
+        from novamind.features.knowledge_space.api.space_router import router as space_router
 
         # 通知模块路由
         from novamind.features.notification.api.routes import router as notification_router
+        from novamind.features.qa.api.ai_chat_routes import router as ai_chat_router
+        from novamind.features.qa.api.qa_routes import router as qa_router
+        from novamind.features.qa.api.session_config_routes import router as session_config_router
+
+        # 技能广场路由
+        from novamind.features.skill.api.routes import router as skill_router
+        from novamind.features.user.api.model_config_routes import router as model_config_router
+        from novamind.features.user.api.user_routes import router as user_router
 
         self.routers.update({
             "qa": qa_router,
@@ -112,9 +112,9 @@ class RouterManager:
             "notifications": notification_router,
         })
 
-    def _get_all_routers_legacy(self) -> List[Tuple[APIRouter, str, List[str]]]:
+    def _get_all_routers_legacy(self) -> list[tuple[APIRouter, str, list[str]]]:
         """旧 get_all_routers 实现（仅 legacy 路径使用）"""
-        router_configs: List[Tuple[APIRouter, str, List[str]]] = []
+        router_configs: list[tuple[APIRouter, str, list[str]]] = []
 
         # 系统路由（无版本前缀）
         router_configs.append((self.routers.get("health"), "", ["健康检查"]))

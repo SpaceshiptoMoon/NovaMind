@@ -3,13 +3,13 @@
 prompt 经 PromptProvider 注入，日志经 Logger 注入。
 """
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
+from novamind.engines.eval.claim_decomposer import ClaimDecomposer
+from novamind.engines.eval.embedding_evaluator import EmbeddingEvaluator
+from novamind.engines.ports import PromptProvider
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
-from novamind.engines.ports import PromptProvider
-from novamind.engines.eval.embedding_evaluator import EmbeddingEvaluator
-from novamind.engines.eval.claim_decomposer import ClaimDecomposer
 
 
 class GenerationEvaluator:
@@ -18,8 +18,8 @@ class GenerationEvaluator:
     def __init__(
         self,
         llm_client: BaseLLM,
-        embedding_evaluator: Optional[EmbeddingEvaluator] = None,
-        claim_decomposer: Optional[ClaimDecomposer] = None,
+        embedding_evaluator: EmbeddingEvaluator | None = None,
+        claim_decomposer: ClaimDecomposer | None = None,
         *,
         prompt_provider: PromptProvider,
         logger: Logger,
@@ -35,9 +35,9 @@ class GenerationEvaluator:
         question: str,
         expected_answer: str,
         generated_answer: str,
-        context_chunks: List[Dict[str, Any]],
-        config: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        context_chunks: list[dict[str, Any]],
+        config: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         执行完整的生成阶段评估
 
@@ -52,7 +52,7 @@ class GenerationEvaluator:
             生成评估结果
         """
         dimensions = config.get("scoring_dimensions", ["correctness", "faithfulness", "relevance", "quality"])
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
 
         # Correctness
         if "correctness" in dimensions:
@@ -105,7 +105,7 @@ class GenerationEvaluator:
         expected_answer: str,
         generated_answer: str,
         strategy: str,
-    ) -> Optional[int]:
+    ) -> int | None:
         """评估 Correctness，失败返回 None"""
         if strategy == "llm":
             return await self._score_with_llm(
@@ -149,9 +149,9 @@ class GenerationEvaluator:
         self,
         question: str,
         generated_answer: str,
-        context_chunks: List[Dict[str, Any]],
+        context_chunks: list[dict[str, Any]],
         strategy: str,
-    ) -> tuple[Optional[int], Optional[Dict[str, Any]]]:
+    ) -> tuple[int | None, dict[str, Any] | None]:
         """
         评估 Faithfulness，失败返回 (None, None)
 
@@ -183,7 +183,7 @@ class GenerationEvaluator:
         question: str,
         generated_answer: str,
         strategy: str,
-    ) -> tuple[Optional[int], Optional[Dict[str, Any]]]:
+    ) -> tuple[int | None, dict[str, Any] | None]:
         """
         评估 Answer Relevance，失败返回 (None, None)
 
@@ -215,7 +215,7 @@ class GenerationEvaluator:
             )
             return score, None
 
-    async def _evaluate_quality(self, question: str, generated_answer: str) -> Optional[int]:
+    async def _evaluate_quality(self, question: str, generated_answer: str) -> int | None:
         """评估 Quality，失败返回 None"""
         return await self._score_with_llm(
             self._prompt_provider.format(
@@ -226,7 +226,7 @@ class GenerationEvaluator:
             "quality",
         )
 
-    async def _score_with_llm(self, prompt: str, score_key: str) -> Optional[int]:
+    async def _score_with_llm(self, prompt: str, score_key: str) -> int | None:
         """使用 LLM 评分，失败返回 None"""
         try:
             response = await self.llm_client.generate_text(
@@ -242,7 +242,7 @@ class GenerationEvaluator:
             self._logger.warning("LLM 评分失败", error=str(e))
             return None
 
-    async def _generate_reverse_questions(self, generated_answer: str) -> List[str]:
+    async def _generate_reverse_questions(self, generated_answer: str) -> list[str]:
         """从回答反向生成候选问题"""
         prompt = self._prompt_provider.format(
             "eval_reverse_question",

@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from collections.abc import AsyncGenerator
+from typing import Any
 
 from novamind.engines.agent.agent_engine import AgentEngine, AgentEvent
 from novamind.shared.ai_models.base_model import BaseLLM
@@ -50,9 +51,9 @@ class PlanningFlow:
     async def execute(
         self,
         llm_client: BaseLLM,
-        messages: List[Dict[str, Any]],
-        tools: List[Dict[str, Any]],
-        context: Dict[str, Any],
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        context: dict[str, Any],
         user_query: str,
         max_tokens: int = 4096,
         temperature: float = 0.7,
@@ -64,8 +65,8 @@ class PlanningFlow:
         plan = await self._create_initial_plan(
             llm_client, user_query, max_tokens, temperature, top_p
         )
-        steps: List[str] = plan.get("steps", [])
-        statuses: List[str] = [NOT_STARTED] * len(steps)
+        steps: list[str] = plan.get("steps", [])
+        statuses: list[str] = [NOT_STARTED] * len(steps)
         yield AgentEvent(
             "plan.created",
             {"title": plan.get("title", ""), "steps": steps, "step_count": len(steps)},
@@ -139,7 +140,7 @@ class PlanningFlow:
 
     async def _create_initial_plan(
         self, llm_client: BaseLLM, query: str, max_tokens: int, temperature: float, top_p: float
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """LLM 生成步骤列表，失败兜底默认 3 步。"""
         try:
             raw = await llm_client.generate_text(
@@ -164,7 +165,7 @@ class PlanningFlow:
         }
 
     async def _finalize(
-        self, llm_client: BaseLLM, query: str, steps: List[str], max_tokens: int, temperature: float, top_p: float
+        self, llm_client: BaseLLM, query: str, steps: list[str], max_tokens: int, temperature: float, top_p: float
     ) -> str:
         """LLM 总结最终答案。"""
         try:
@@ -186,7 +187,7 @@ class PlanningFlow:
             return f"计划已完成（{len(steps)} 步），但总结生成失败：{str(e)}"
 
     def _build_step_prompt(
-        self, query: str, steps: List[str], statuses: List[str], current: int
+        self, query: str, steps: list[str], statuses: list[str], current: int
     ) -> str:
         """构造单步执行 prompt（含计划进度 + 当前步骤）。"""
         return (
@@ -196,7 +197,7 @@ class PlanningFlow:
             "请完成这一步。如需调整后续计划请说明。"
         )
 
-    def _plan_status(self, steps: List[str], statuses: List[str]) -> str:
+    def _plan_status(self, steps: list[str], statuses: list[str]) -> str:
         """格式化计划进度（带状态符号）。"""
         symbols = {
             NOT_STARTED: "[ ]",
@@ -209,7 +210,7 @@ class PlanningFlow:
         )
 
     @staticmethod
-    def _parse_plan_json(raw: str) -> Optional[Dict[str, Any]]:
+    def _parse_plan_json(raw: str) -> dict[str, Any] | None:
         """从 LLM 输出解析 JSON 计划（容忍前后非 JSON 文本）。"""
         if not raw:
             return None

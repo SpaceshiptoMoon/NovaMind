@@ -3,25 +3,23 @@
 
 核心业务逻辑：发送通知、查询通知、管理偏好
 """
-from typing import Optional, List
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.features.notification.models.notification import Notification
-from novamind.features.notification.repository.notification_repository import (
-    NotificationRepository,
-    NotificationPreferenceRepository,
-)
-from novamind.features.notification.services.email_service import EmailService
-from novamind.features.notification.schemas.notification_schema import (
-    NotificationResponse,
-    NotificationListResponse,
-    UnreadCountResponse,
-    NotificationPreferenceResponse,
-)
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.core.ws import envelope
 from novamind.core.ws.connection_manager import manager as ws_manager
+from novamind.features.notification.models.notification import Notification
+from novamind.features.notification.repository.notification_repository import (
+    NotificationPreferenceRepository,
+    NotificationRepository,
+)
+from novamind.features.notification.schemas.notification_schema import (
+    NotificationListResponse,
+    NotificationPreferenceResponse,
+    NotificationResponse,
+    UnreadCountResponse,
+)
+from novamind.features.notification.services.email_service import EmailService
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -40,8 +38,8 @@ class NotificationService:
         type: str,
         title: str,
         content: str,
-        link: Optional[str] = None,
-        extra_data: Optional[dict] = None,
+        link: str | None = None,
+        extra_data: dict | None = None,
     ) -> Notification:
         """
         发送站内通知 + 可选邮件
@@ -87,12 +85,12 @@ class NotificationService:
 
     async def send_bulk_notifications(
         self,
-        user_ids: List[int],
+        user_ids: list[int],
         type: str,
         title: str,
         content: str,
-        link: Optional[str] = None,
-        extra_data: Optional[dict] = None,
+        link: str | None = None,
+        extra_data: dict | None = None,
     ) -> int:
         """
         批量发送通知
@@ -153,7 +151,7 @@ class NotificationService:
         pref = await self._pref_repo.update(user_id, data)
         return NotificationPreferenceResponse.model_validate(pref)
 
-    async def _get_user_email(self, user_id: int) -> Optional[str]:
+    async def _get_user_email(self, user_id: int) -> str | None:
         """获取用户邮箱"""
         try:
             from novamind.features.user.repository.user_repository import UserRepository

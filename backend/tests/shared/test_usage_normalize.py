@@ -2,7 +2,6 @@
 from decimal import Decimal
 
 import pytest
-
 from novamind.shared.ai_models.usage import CanonicalUsage, estimate_cost, normalize_usage
 
 pytestmark = pytest.mark.unit

@@ -2,12 +2,13 @@
 from types import SimpleNamespace
 
 import pytest
-
-from novamind.shared.notification_ports import NotificationPort
 from novamind.features.notification.adapters.notification_port_adapter import (
     HostNotificationPort,
     as_notification_port,
 )
+from novamind.shared.notification_ports import NotificationPort
+
+pytestmark = pytest.mark.unit
 
 
 @pytest.mark.unit

@@ -9,6 +9,8 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from novamind.engines.document.media.audio import transcribe_audio_with_timestamps
+from novamind.engines.document.pipeline import DocumentProcessor, DocumentRegistry
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     KnowledgeBaseConfig,
     ParsingConfig,
@@ -26,9 +28,8 @@ from novamind.features.knowledge_space.services.media_processing import (
     process_audio_document,
     process_video_document,
 )
-from novamind.features.knowledge_space.exceptions import DocumentProcessingError
-from novamind.engines.document.pipeline import DocumentProcessor, DocumentRegistry
-from novamind.engines.document.media.audio import transcribe_audio_with_timestamps
+
+pytestmark = pytest.mark.unit
 
 
 @pytest.fixture
@@ -626,7 +627,7 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
         }
     )
 
-    await process_audio_document(document, b"fake-audio", session, SimpleNamespace(info=lambda *a, **k: None), task=task, model_config_port=fake_mcs)
+    await process_audio_document(document, b"fake-audio", session, SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None, error=lambda *a, **k: None), task=task, model_config_port=fake_mcs)
 
     assert captured["audio_model"] == "faster-whisper-tiny"
     assert captured["audio_language"] == "zh"
@@ -754,7 +755,7 @@ async def test_process_audio_document_loads_embedding_client_for_semantic_split(
         }
     )
 
-    await process_audio_document(document, b"fake-audio", session, SimpleNamespace(info=lambda *a, **k: None), task=task, model_config_port=fake_mcs)
+    await process_audio_document(document, b"fake-audio", session, SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None, error=lambda *a, **k: None), task=task, model_config_port=fake_mcs)
 
     assert captured["semantic_strategy"] == "semantic"
     assert captured["semantic_embedding_client"] == "semantic-embed-client"
@@ -982,11 +983,10 @@ async def test_process_video_document_grouped_strategy_passes_frame_groups(monke
 @pytest.mark.anyio("asyncio")
 async def test_video_parsing_config_rejects_dedup_grouped():
     """dedup_grouped 预留未实现已移除：VideoParsingConfig 拒绝该值。"""
-    from pydantic import ValidationError
-
     from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
         VideoParsingConfig,
     )
+    from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
         VideoParsingConfig(strategy="dedup_grouped")
@@ -1060,11 +1060,10 @@ def test_excel_ppt_epub_reject_default_and_migrate_to_deepdoc():
     Unsupported file type），仅支持 deepdoc；旧配置 default 迁移到 deepdoc，
     避免 schema 收紧后反序列化 500。"""
     import pytest as _pytest
-    from pydantic import ValidationError
-
     from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
         DeepDocOnlyParsingConfig,
     )
+    from pydantic import ValidationError
 
     # schema 拒绝 default
     with _pytest.raises(ValidationError):

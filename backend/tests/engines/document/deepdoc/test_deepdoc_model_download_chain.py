@@ -6,9 +6,10 @@
 （镜像直链 + 重试 + 原子替换），本文件锁死该契约。
 """
 import pytest
-
 from novamind.engines.document.integrations.deepdoc.vision import model_manager
 from novamind.engines.document.integrations.deepdoc.vision.ocr import OCR
+
+pytestmark = pytest.mark.unit
 
 
 @pytest.mark.unit

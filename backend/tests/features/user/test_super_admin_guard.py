@@ -5,15 +5,16 @@
 """
 import pytest
 import pytest_asyncio
+from novamind.features.user.api.startup import _deprecate_editor_role, _init_rbac_seed
+from novamind.features.user.exceptions import PermissionDeniedError
+from novamind.features.user.models.role import Role
+from novamind.features.user.models.user import User
+from novamind.features.user.repository.user_repository import UserRepository
+from novamind.features.user.services.role_service import RoleService
+from novamind.features.user.services.user_service import UserService
 from sqlalchemy import select
 
-from novamind.features.user.exceptions import PermissionDeniedError
-from novamind.features.user.models.user import User
-from novamind.features.user.models.role import Role
-from novamind.features.user.repository.user_repository import UserRepository
-from novamind.features.user.services.user_service import UserService
-from novamind.features.user.services.role_service import RoleService
-from novamind.features.user.api.startup import _init_rbac_seed, _deprecate_editor_role
+pytestmark = pytest.mark.unit
 
 
 async def _make_user(db, username: str, role_code: str, *, super_admin: bool = False, uid: int) -> User:

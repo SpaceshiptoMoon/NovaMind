@@ -3,8 +3,7 @@ from __future__ import annotations
 
 from importlib import import_module
 from importlib.util import find_spec
-from typing import Any, Dict
-
+from typing import Any
 
 RUNTIME_MODULES = {
     "pdfplumber": "pdfplumber",
@@ -25,7 +24,7 @@ RUNTIME_MODULES = {
 }
 
 
-def probe_module(module_name: str) -> Dict[str, Any]:
+def probe_module(module_name: str) -> dict[str, Any]:
     if find_spec(module_name) is None:
         return {"available": False, "version": None}
     try:
@@ -35,7 +34,7 @@ def probe_module(module_name: str) -> Dict[str, Any]:
         return {"available": False, "version": None, "error": str(exc)}
 
 
-def get_deepdoc_runtime_report() -> Dict[str, Dict[str, Any]]:
+def get_deepdoc_runtime_report() -> dict[str, dict[str, Any]]:
     return {
         runtime_name: probe_module(module_name)
         for runtime_name, module_name in RUNTIME_MODULES.items()

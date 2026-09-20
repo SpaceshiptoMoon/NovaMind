@@ -6,19 +6,17 @@
 - EvaluationTaskRepository: 测评任务 CRUD
 """
 from datetime import timedelta
-from typing import Optional, List
 
-from sqlalchemy import select, func, or_
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.evaluation.models.evaluation_task import (
+    EvaluationStatus,
+    EvaluationTask,
+    EvaluationTestSet,
+)
+from novamind.shared.utils.time_utils import now_china
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
-from novamind.features.evaluation.models.evaluation_task import (
-    EvaluationTestSet,
-    EvaluationTask,
-    EvaluationStatus,
-)
-from novamind.core.middleware.structured_logging import get_logger
-from novamind.shared.utils.time_utils import now_china
 
 logger = get_logger(__name__)
 
@@ -62,9 +60,9 @@ class EvaluationTestSetRepository:
     async def get_by_id(
         self,
         test_set_id: int,
-        space_id: Optional[int] = None,
-        kb_id: Optional[int] = None,
-    ) -> Optional[EvaluationTestSet]:
+        space_id: int | None = None,
+        kb_id: int | None = None,
+    ) -> EvaluationTestSet | None:
         query = select(EvaluationTestSet).where(EvaluationTestSet.id == test_set_id)
         if space_id is not None:
             query = query.where(EvaluationTestSet.space_id == space_id)
@@ -75,7 +73,7 @@ class EvaluationTestSetRepository:
 
     async def get_by_id_and_kb(
         self, test_set_id: int, space_id: int, kb_id: int
-    ) -> Optional[EvaluationTestSet]:
+    ) -> EvaluationTestSet | None:
         result = await self.session.execute(
             select(EvaluationTestSet).where(
                 EvaluationTestSet.id == test_set_id,
@@ -91,7 +89,7 @@ class EvaluationTestSetRepository:
         space_id: int,
         skip: int = 0,
         limit: int = 20,
-    ) -> List[EvaluationTestSet]:
+    ) -> list[EvaluationTestSet]:
         result = await self.session.execute(
             select(EvaluationTestSet)
             .where(
@@ -146,7 +144,7 @@ class EvaluationTaskRepository:
         test_set_id: int,
         user_id: int,
         name: str,
-        config: Optional[dict] = None,
+        config: dict | None = None,
     ) -> EvaluationTask:
         task = EvaluationTask(
             test_set_id=test_set_id,
@@ -160,7 +158,7 @@ class EvaluationTaskRepository:
         await self.session.refresh(task)
         return task
 
-    async def get_by_id(self, task_id: int) -> Optional[EvaluationTask]:
+    async def get_by_id(self, task_id: int) -> EvaluationTask | None:
         result = await self.session.execute(
             select(EvaluationTask)
             .options(selectinload(EvaluationTask.test_set))
@@ -170,7 +168,7 @@ class EvaluationTaskRepository:
 
     async def get_by_id_and_kb(
         self, task_id: int, space_id: int, kb_id: int
-    ) -> Optional[EvaluationTask]:
+    ) -> EvaluationTask | None:
         result = await self.session.execute(
             select(EvaluationTask)
             .join(EvaluationTestSet)
@@ -189,8 +187,8 @@ class EvaluationTaskRepository:
         space_id: int,
         skip: int = 0,
         limit: int = 20,
-        status: Optional[int] = None,
-    ) -> List[EvaluationTask]:
+        status: int | None = None,
+    ) -> list[EvaluationTask]:
         query = (
             select(EvaluationTask)
             .join(EvaluationTestSet)
@@ -210,7 +208,7 @@ class EvaluationTaskRepository:
         self,
         kb_id: int,
         space_id: int,
-        status: Optional[int] = None,
+        status: int | None = None,
     ) -> int:
         query = (
             select(func.count(EvaluationTask.id))
@@ -258,7 +256,7 @@ class EvaluationTaskRepository:
             return True
         return False
 
-    async def list_by_test_set(self, test_set_id: int) -> List[EvaluationTask]:
+    async def list_by_test_set(self, test_set_id: int) -> list[EvaluationTask]:
         """查询测试集下的所有任务"""
         result = await self.session.execute(
             select(EvaluationTask).where(EvaluationTask.test_set_id == test_set_id)
@@ -269,7 +267,7 @@ class EvaluationTaskRepository:
         self,
         pending_timeout_minutes: int = 10,
         running_timeout_minutes: int = 30,
-    ) -> List[EvaluationTask]:
+    ) -> list[EvaluationTask]:
         """查询超时的 PENDING / RUNNING 任务（用于启动时恢复）"""
         pending_cutoff = now_china() - timedelta(minutes=pending_timeout_minutes)
         running_cutoff = now_china() - timedelta(minutes=running_timeout_minutes)

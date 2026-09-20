@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum as PyEnum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 
 class SearchSource(str, PyEnum):
@@ -90,9 +90,9 @@ class ResearchPlan:
     thought: str = ""
     has_enough_context: bool = False
     locale: str = ""
-    steps: List["PlanStep"] = field(default_factory=list)
+    steps: list[PlanStep] = field(default_factory=list)
     iteration: int = 0
-    background_investigation_results: List[Dict[str, Any]] = field(default_factory=list)
+    background_investigation_results: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -110,7 +110,7 @@ class EngineResearchParams:
     llm_max_tokens: int
     llm_temperature: float
     llm_top_p: float
-    llm_model: Optional[str] = None
+    llm_model: str | None = None
 
 
 @dataclass
@@ -141,7 +141,7 @@ class IterationProgress:
     total_steps: int
     current_results_count: int
     current_query: str = ""
-    source_types: List[str] = field(default_factory=list)
+    source_types: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -176,12 +176,12 @@ class SearchComplete:
     报告 grounding）。
     """
 
-    all_results: List[Dict[str, Any]] = field(default_factory=list)
-    summary: Dict[str, Any] = field(default_factory=dict)
-    task_findings: List[Dict[str, str]] = field(default_factory=list)
+    all_results: list[dict[str, Any]] = field(default_factory=list)
+    summary: dict[str, Any] = field(default_factory=dict)
+    task_findings: list[dict[str, str]] = field(default_factory=list)
 
 
-SearchEvent = Union[TaskStarted, IterationProgress, TaskFailed, TaskFinding, SearchComplete]
+SearchEvent = TaskStarted | IterationProgress | TaskFailed | TaskFinding | SearchComplete
 
 
 __all__ = [

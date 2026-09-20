@@ -3,12 +3,12 @@
 prompt 经 PromptProvider 注入，日志经 Logger 注入。
 """
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
+from novamind.engines.eval.embedding_evaluator import EmbeddingEvaluator
+from novamind.engines.ports import PromptProvider
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
-from novamind.engines.ports import PromptProvider
-from novamind.engines.eval.embedding_evaluator import EmbeddingEvaluator
 
 
 class RetrievalEvaluator:
@@ -16,8 +16,8 @@ class RetrievalEvaluator:
 
     def __init__(
         self,
-        llm_client: Optional[BaseLLM] = None,
-        embedding_evaluator: Optional[EmbeddingEvaluator] = None,
+        llm_client: BaseLLM | None = None,
+        embedding_evaluator: EmbeddingEvaluator | None = None,
         *,
         prompt_provider: PromptProvider,
         logger: Logger,
@@ -30,9 +30,9 @@ class RetrievalEvaluator:
     async def evaluate(
         self,
         question: str,
-        chunks: List[Dict[str, Any]],
+        chunks: list[dict[str, Any]],
         strategy: str = "llm",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         评估单个查询的检索结果
 
@@ -80,9 +80,9 @@ class RetrievalEvaluator:
         self,
         question: str,
         expected_answer: str,
-        chunks: List[Dict[str, Any]],
+        chunks: list[dict[str, Any]],
         strategy: str = "llm",
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         评估 Context Recall（检索是否覆盖了回答所需的所有信息）
 
@@ -108,9 +108,9 @@ class RetrievalEvaluator:
     async def _judge_relevance(
         self,
         question: str,
-        chunks: List[Dict[str, Any]],
+        chunks: list[dict[str, Any]],
         strategy: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """判断每条检索结果的相关性"""
         results = []
 
@@ -169,7 +169,7 @@ class RetrievalEvaluator:
             self._logger.warning("LLM 判断检索相关性失败", error=str(e))
             return False, f"LLM 判断失败: {e}", True
 
-    async def _context_recall_llm(self, expected_answer: str, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def _context_recall_llm(self, expected_answer: str, chunks: list[dict[str, Any]]) -> dict[str, Any]:
         """使用 LLM 评估 Context Recall"""
         context_text = "\n".join(
             f"[{i + 1}] {chunk.get('content', '')}"
@@ -202,7 +202,7 @@ class RetrievalEvaluator:
             self._logger.warning("LLM 评估 Context Recall 失败", error=str(e))
             return {"context_recall": None, "error": str(e)}
 
-    async def _context_recall_embedding(self, expected_answer: str, chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def _context_recall_embedding(self, expected_answer: str, chunks: list[dict[str, Any]]) -> dict[str, Any]:
         """使用 Embedding 相似度评估 Context Recall"""
         chunk_contents = [c.get("content", "") for c in chunks]
         pairs = [(expected_answer, content) for content in chunk_contents]
@@ -215,9 +215,9 @@ class RetrievalEvaluator:
 
     @staticmethod
     def compute_aggregate_metrics(
-        per_case_results: List[Dict[str, Any]],
+        per_case_results: list[dict[str, Any]],
         enable_mrr: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """汇总多条测试用例的检索指标"""
         total = len(per_case_results)
 

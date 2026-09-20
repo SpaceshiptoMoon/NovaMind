@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 知识库测评模块 API 接口测试脚本
 
@@ -23,8 +22,8 @@ import os
 import sys
 import time
 
-import requests
 import pytest
+import requests
 
 pytestmark = pytest.mark.integration
 
@@ -260,9 +259,9 @@ def step_0_login():
 
     if resp.status_code == 200 and data:
         access_token = data.get("access_token")
-        print(f"  [成功] 管理员登录成功")
+        print("  [成功] 管理员登录成功")
     else:
-        print(f"  [失败] 无法登录")
+        print("  [失败] 无法登录")
         sys.exit(1)
 
 
@@ -326,7 +325,7 @@ def step_4_process_document():
     print_response_info(resp)
     assert resp.status_code in (200, 202), f"触发解析失败：{resp.status_code}"
 
-    print(f"  等待文档解析完成...")
+    print("  等待文档解析完成...")
     status_url = f"{BASE_URL}/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}"
 
     for attempt in range(MAX_POLL_ATTEMPTS):
@@ -336,14 +335,14 @@ def step_4_process_document():
             status = data.get("status")
             print(f"  第 {attempt + 1} 次轮询：status={status}")
             if status == 2:
-                print(f"  [成功] 文档解析完成")
+                print("  [成功] 文档解析完成")
                 return
             if status == 3:
-                print(f"  [警告] 文档解析失败")
+                print("  [警告] 文档解析失败")
                 return
         time.sleep(10)
 
-    print(f"  [警告] 文档解析轮询超时")
+    print("  [警告] 文档解析轮询超时")
 
 
 # ==================== 测试用例 ====================
@@ -419,7 +418,7 @@ def test_4_get_test_set_detail():
     assert resp.status_code == 200, f"获取详情失败：{resp.status_code}"
     assert data["id"] == test_set_id_json, "id 不匹配"
     assert data["total_cases"] == 5, "total_cases 不匹配"
-    print(f"  [断言通过] 详情正确")
+    print("  [断言通过] 详情正确")
 
 
 def test_5_upload_invalid_file():
@@ -434,7 +433,7 @@ def test_5_upload_invalid_file():
     print_response_info(resp)
 
     assert resp.status_code == 400, f"期望 400，实际 {resp.status_code}"
-    print(f"  [断言通过] 正确返回 400")
+    print("  [断言通过] 正确返回 400")
 
 
 def test_6_create_task_from_json():
@@ -544,7 +543,7 @@ def test_10_task_not_found():
     print_response_info(resp)
 
     assert resp.status_code == 404, f"期望 404，实际 {resp.status_code}"
-    print(f"  [断言通过] 正确返回 404")
+    print("  [断言通过] 正确返回 404")
 
 
 def test_11_wait_for_completion():
@@ -568,7 +567,7 @@ def test_11_wait_for_completion():
         print(f"  第 {attempt + 1} 次轮询：status={status}")
 
         if status == 2:  # COMPLETED
-            print(f"  [成功] 测评任务已完成！")
+            print("  [成功] 测评任务已完成！")
             return
         elif status == 3:  # FAILED
             error_msg = data.get("error_message", "未知错误")
@@ -577,7 +576,7 @@ def test_11_wait_for_completion():
 
         time.sleep(10)
 
-    print(f"  [跳过] 轮询超时")
+    print("  [跳过] 轮询超时")
 
 
 def test_12_get_report():
@@ -618,7 +617,7 @@ def test_12_get_report():
         if gen_scores:
             print(f"  生成评分：correctness={gen_scores.get('correctness')}, faithfulness={gen_scores.get('faithfulness')}")
 
-    print(f"  [断言通过] 报告结构完整")
+    print("  [断言通过] 报告结构完整")
 
 
 def test_13_submit_human_scores():
@@ -712,7 +711,7 @@ def test_16_delete_task():
     data = print_response_info(resp)
 
     if resp.status_code == 409:
-        print(f"  [跳过] 任务执行中（409）")
+        print("  [跳过] 任务执行中（409）")
         return
 
     assert resp.status_code == 200, f"删除失败：{resp.status_code}"
@@ -722,7 +721,7 @@ def test_16_delete_task():
     assert verify_resp.status_code == 404, f"删除后应 404，实际 {verify_resp.status_code}"
 
     created_task_ids.remove(task_id)
-    print(f"  [断言通过] 任务已删除，再次获取返回 404")
+    print("  [断言通过] 任务已删除，再次获取返回 404")
 
 
 def test_17_delete_task_not_found():
@@ -734,7 +733,7 @@ def test_17_delete_task_not_found():
     print_response_info(resp)
 
     assert resp.status_code == 404, f"期望 404，实际 {resp.status_code}"
-    print(f"  [断言通过] 正确返回 404")
+    print("  [断言通过] 正确返回 404")
 
 
 def test_18_submit_scores_not_found():
@@ -748,7 +747,7 @@ def test_18_submit_scores_not_found():
     print_response_info(resp)
 
     assert resp.status_code == 404, f"期望 404，实际 {resp.status_code}"
-    print(f"  [断言通过] 正确返回 404")
+    print("  [断言通过] 正确返回 404")
 
 
 def test_19_report_not_found():
@@ -760,7 +759,7 @@ def test_19_report_not_found():
     print_response_info(resp)
 
     assert resp.status_code == 404, f"期望 404，实际 {resp.status_code}"
-    print(f"  [断言通过] 正确返回 404")
+    print("  [断言通过] 正确返回 404")
 
 
 def test_20_upload_empty_file():
@@ -775,7 +774,7 @@ def test_20_upload_empty_file():
     print_response_info(resp)
 
     assert resp.status_code == 400, f"期望 400，实际 {resp.status_code}"
-    print(f"  [断言通过] 正确返回 400")
+    print("  [断言通过] 正确返回 400")
 
 
 def test_21_cancel_task():
@@ -803,7 +802,7 @@ def test_21_cancel_task():
     assert resp.status_code == 200, f"期望 200，实际 {resp.status_code}"
     data = resp.json()
     assert data["status"] == "cancelled", f"期望 cancelled，实际 {data['status']}"
-    print(f"  [断言通过] 任务状态为 cancelled")
+    print("  [断言通过] 任务状态为 cancelled")
 
 
 def test_22_get_task_progress():

@@ -6,9 +6,6 @@
 """
 import pytest
 import pytest_asyncio
-from sqlalchemy import BigInteger, select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.ext.compiler import compiles
 from novamind.core.database.base import Base
 from novamind.features.knowledge_space.exceptions import (
     WikiPageVersionConflictError,
@@ -21,6 +18,11 @@ from novamind.features.knowledge_space.models.wiki import (
 from novamind.features.knowledge_space.repository.wiki_repository import (
     WikiPageRepository,
 )
+from sqlalchemy import BigInteger
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.compiler import compiles
+
+pytestmark = pytest.mark.unit
 
 
 @compiles(BigInteger, "sqlite")

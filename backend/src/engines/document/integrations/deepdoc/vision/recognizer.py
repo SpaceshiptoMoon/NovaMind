@@ -2,17 +2,18 @@
 from __future__ import annotations
 
 # Adapted toward RAGFlow deepdoc/vision/recognizer.py
-
 import gc
-from functools import cmp_to_key
 import logging
 import math
+from collections.abc import Sequence
+from functools import cmp_to_key
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import numpy as np
-
-from novamind.engines.document.integrations.deepdoc.vision.model_manager import ensure_model_group_available
+from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
+    ensure_model_group_available,
+)
 from novamind.shared.logging import get_logger
 
 _logger = get_logger(__name__)

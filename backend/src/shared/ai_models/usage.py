@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -36,7 +36,7 @@ class CanonicalUsage:
     def total_tokens(self) -> int:
         return self.prompt_tokens + self.output_tokens
 
-    def __add__(self, other: "CanonicalUsage") -> "CanonicalUsage":
+    def __add__(self, other: CanonicalUsage) -> CanonicalUsage:
         return CanonicalUsage(
             input_tokens=self.input_tokens + other.input_tokens,
             output_tokens=self.output_tokens + other.output_tokens,
@@ -46,7 +46,7 @@ class CanonicalUsage:
         )
 
 
-def _get_nested(d: Dict[str, Any], *keys: str) -> int:
+def _get_nested(d: dict[str, Any], *keys: str) -> int:
     """取嵌套字段，缺省 0。"""
     cur: Any = d
     for k in keys:
@@ -61,7 +61,7 @@ def _get_nested(d: Dict[str, Any], *keys: str) -> int:
         return 0
 
 
-def normalize_usage(raw: Optional[Dict[str, Any]]) -> CanonicalUsage:
+def normalize_usage(raw: dict[str, Any] | None) -> CanonicalUsage:
     """归一化 Anthropic/OpenAI/通用 三种 usage 形态为 CanonicalUsage。"""
     if not raw or not isinstance(raw, dict):
         return CanonicalUsage()
@@ -111,7 +111,7 @@ class PricingEntry:
 
 # 默认价格表（per 1M tokens, USD）。key=(provider_lower, model_lower)。
 # 仅含常见模型；未命中返回 cost=0（status="unknown"），可由 yaml/DB 覆盖扩展。
-_DEFAULT_PRICING: Dict[Tuple[str, str], PricingEntry] = {
+_DEFAULT_PRICING: dict[tuple[str, str], PricingEntry] = {
     ("openai", "gpt-4o"): PricingEntry(Decimal("2.5"), Decimal("10"), Decimal("1.25")),
     ("openai", "gpt-4o-mini"): PricingEntry(Decimal("0.15"), Decimal("0.6"), Decimal("0.075")),
     ("openai", "gpt-4.1"): PricingEntry(Decimal("2"), Decimal("8"), Decimal("0.5")),
@@ -124,7 +124,7 @@ _DEFAULT_PRICING: Dict[Tuple[str, str], PricingEntry] = {
 }
 
 
-def _lookup_pricing(model: str, provider: Optional[str]) -> Optional[PricingEntry]:
+def _lookup_pricing(model: str, provider: str | None) -> PricingEntry | None:
     """按 (provider, model) 查价格，model 名做点号→横杠归一化。"""
     if not model:
         return None
@@ -141,7 +141,7 @@ def _lookup_pricing(model: str, provider: Optional[str]) -> Optional[PricingEntr
     return None
 
 
-def estimate_cost(usage: CanonicalUsage, model: str, provider: Optional[str] = None) -> Decimal:
+def estimate_cost(usage: CanonicalUsage, model: str, provider: str | None = None) -> Decimal:
     """按内置价格表估算 USD 成本；未命中价格表返回 Decimal('0')。"""
     entry = _lookup_pricing(model, provider)
     if entry is None:

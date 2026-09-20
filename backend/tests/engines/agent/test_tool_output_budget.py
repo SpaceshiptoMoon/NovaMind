@@ -1,6 +1,5 @@
 """ToolOutputBudgetHook 单测（E2 tool_output_budget）。"""
 import pytest
-
 from novamind.engines.agent.tool.definition import ToolDefinition, ToolSource
 from novamind.engines.agent.tool.hooks import ToolOutputBudgetHook
 from novamind.engines.agent.tool.result import ToolResult

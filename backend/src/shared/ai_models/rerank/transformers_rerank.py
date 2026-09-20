@@ -5,7 +5,7 @@ Transformers 本地 Rerank 客户端
 """
 
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 from novamind.shared.ai_models.base_model import BaseRerank
 from novamind.shared.logging import get_logger
@@ -58,7 +58,7 @@ class TransformersRerankClient(BaseRerank):
         )
         self.device = device
         self.max_length = max_length
-        self._model: Optional[Any] = None
+        self._model: Any | None = None
 
     async def _load_model(self) -> Any:
         """延迟加载 CrossEncoder 模型（异步，避免阻塞事件循环）"""
@@ -88,9 +88,9 @@ class TransformersRerankClient(BaseRerank):
     async def rerank(
         self,
         query: str,
-        documents: List[str],
+        documents: list[str],
         top_k: int = 3,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         对文档列表进行重排序
 

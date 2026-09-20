@@ -4,26 +4,25 @@
 提供用户自定义 LLM/Embedding/Rerank 模型配置的接口
 所有配置绑定到具体用户
 """
-from fastapi import APIRouter, Depends, Body, Query, Path
-from typing import Annotated, Optional
+from typing import Annotated
 
-from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.features.user.schemas.model_config_schema import (
-    ModelConfigCreate,
-    ModelConfigUpdate,
-    ModelConfigResponse,
-    ModelConfigListResponse,
-    ModelTestRequest,
-    ModelTestResponse,
-    ModelConfigAvailableModelsResponse,
-    AvailableModelsWithInfoResponse,
-)
-from novamind.features.user.schemas.user_schema import UserMessageResponse
+from fastapi import APIRouter, Body, Depends, Path, Query, Request
 from novamind.core.auth import require_active_user
+from novamind.core.middleware.rate_limit import get_limiter
 from novamind.features.user.api.dependencies import get_model_config_service
 from novamind.features.user.exceptions import ModelConfigDeleteConflictError
-from novamind.core.middleware.rate_limit import get_limiter
-from fastapi import Request
+from novamind.features.user.schemas.model_config_schema import (
+    AvailableModelsWithInfoResponse,
+    ModelConfigAvailableModelsResponse,
+    ModelConfigCreate,
+    ModelConfigListResponse,
+    ModelConfigResponse,
+    ModelConfigUpdate,
+    ModelTestRequest,
+    ModelTestResponse,
+)
+from novamind.features.user.schemas.user_schema import UserMessageResponse
+from novamind.features.user.services.model_config_service import ModelConfigService
 
 router = APIRouter()
 
@@ -92,7 +91,7 @@ async def get_available_models_detail(
 async def list_model_configs(
     current_user: Annotated[dict, Depends(require_active_user)],
     model_config_service: Annotated[ModelConfigService, Depends(get_model_config_service)],
-    model_type: Annotated[Optional[str], Query(description="模型类型筛选: llm/embedding/rerank")] = None,
+    model_type: Annotated[str | None, Query(description="模型类型筛选: llm/embedding/rerank")] = None,
 ):
     """
     获取用户的私有模型配置列表

@@ -2,14 +2,19 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from functools import cached_property
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any
 
-from novamind.engines.document.integrations.deepdoc.core.capabilities import get_deepdoc_capabilities
-from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
+from novamind.engines.document.integrations.deepdoc.core.capabilities import (
+    get_deepdoc_capabilities,
+)
 from novamind.engines.document.integrations.deepdoc.core.models import DeepDocParseResult
-from novamind.engines.document.integrations.deepdoc.vision_runtime import ensure_vision_parser_available
+from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
+from novamind.engines.document.integrations.deepdoc.vision_runtime import (
+    ensure_vision_parser_available,
+)
 
 logger = get_logger(__name__)
 
@@ -37,43 +42,57 @@ class DeepDocParser:
 
     @cached_property
     def _figure_parser(self):
-        from novamind.engines.document.integrations.deepdoc.parsers.figure import RAGFlowFigureParser
+        from novamind.engines.document.integrations.deepdoc.parsers.figure import (
+            RAGFlowFigureParser,
+        )
 
         return RAGFlowFigureParser()
 
     @cached_property
     def _docling_parser(self):
-        from novamind.engines.document.integrations.deepdoc.parsers.remote.docling import RAGFlowDoclingParser
+        from novamind.engines.document.integrations.deepdoc.parsers.remote.docling import (
+            RAGFlowDoclingParser,
+        )
 
         return RAGFlowDoclingParser()
 
     @cached_property
     def _mineru_parser(self):
-        from novamind.engines.document.integrations.deepdoc.parsers.remote.mineru import RAGFlowMinerUParser
+        from novamind.engines.document.integrations.deepdoc.parsers.remote.mineru import (
+            RAGFlowMinerUParser,
+        )
 
         return RAGFlowMinerUParser()
 
     @cached_property
     def _opendataloader_parser(self):
-        from novamind.engines.document.integrations.deepdoc.parsers.remote.opendataloader import RAGFlowOpenDataLoaderParser
+        from novamind.engines.document.integrations.deepdoc.parsers.remote.opendataloader import (
+            RAGFlowOpenDataLoaderParser,
+        )
 
         return RAGFlowOpenDataLoaderParser()
 
     @cached_property
     def _paddleocr_parser(self):
-        from novamind.engines.document.integrations.deepdoc.parsers.remote.paddleocr import RAGFlowPaddleOCRParser
+        from novamind.engines.document.integrations.deepdoc.parsers.remote.paddleocr import (
+            RAGFlowPaddleOCRParser,
+        )
 
         return RAGFlowPaddleOCRParser()
 
     @cached_property
     def _somark_parser(self):
-        from novamind.engines.document.integrations.deepdoc.parsers.remote.somark import RAGFlowSoMarkParser
+        from novamind.engines.document.integrations.deepdoc.parsers.remote.somark import (
+            RAGFlowSoMarkParser,
+        )
 
         return RAGFlowSoMarkParser()
 
     @cached_property
     def _tcadp_parser(self):
-        from novamind.engines.document.integrations.deepdoc.parsers.remote.tcadp import RAGFlowTCADPParser
+        from novamind.engines.document.integrations.deepdoc.parsers.remote.tcadp import (
+            RAGFlowTCADPParser,
+        )
 
         return RAGFlowTCADPParser()
 
@@ -100,15 +119,15 @@ class DeepDocParser:
         return {"pdf", "docx", "epub", "txt", "md", "markdown", "csv", "json", "html", "xls", "xlsx", "ppt", "pptx", "jpg", "jpeg", "png", "gif", "webp", "bmp"}
 
     @staticmethod
-    def supported_pdf_modes() -> Dict[str, Dict[str, Any]]:
+    def supported_pdf_modes() -> dict[str, dict[str, Any]]:
         return dict(get_deepdoc_capabilities()["pdf_modes"])
 
     async def parse(
         self,
-        file_path: Union[str, Path],
+        file_path: str | Path,
         *,
-        parsing_config: Optional[Dict[str, Any]] = None,
-        splitting_config: Optional[Dict[str, Any]] = None,
+        parsing_config: dict[str, Any] | None = None,
+        splitting_config: dict[str, Any] | None = None,
     ) -> DeepDocParseResult:
         file_path = Path(file_path)
         extension = file_path.suffix.lower().lstrip(".")
@@ -121,8 +140,8 @@ class DeepDocParser:
         file_bytes: bytes,
         *,
         file_type: str,
-        parsing_config: Optional[Dict[str, Any]] = None,
-        splitting_config: Optional[Dict[str, Any]] = None,
+        parsing_config: dict[str, Any] | None = None,
+        splitting_config: dict[str, Any] | None = None,
     ) -> DeepDocParseResult:
         extension = file_type.lower().lstrip(".")
         parsing_config = parsing_config or {}
@@ -131,10 +150,10 @@ class DeepDocParser:
 
     async def _parse_source(
         self,
-        source: Union[Path, bytes],
+        source: Path | bytes,
         extension: str,
-        parsing_config: Dict[str, Any],
-        splitting_config: Dict[str, Any],
+        parsing_config: dict[str, Any],
+        splitting_config: dict[str, Any],
     ) -> DeepDocParseResult:
         logger.info(
             "DeepDoc 解析路由",
@@ -161,9 +180,9 @@ class DeepDocParser:
 
     def _parse_pdf_sync(
         self,
-        source: Union[Path, bytes],
-        parsing_config: Dict[str, Any],
-        splitting_config: Dict[str, Any],
+        source: Path | bytes,
+        parsing_config: dict[str, Any],
+        splitting_config: dict[str, Any],
     ) -> DeepDocParseResult:
         parser_id = str(parsing_config.get("deepdoc_parser_id", "") or "")
         logger.info(
@@ -272,10 +291,10 @@ class DeepDocParser:
 
     def _parse_text_sync(
         self,
-        source: Union[Path, bytes],
+        source: Path | bytes,
         extension: str,
-        parsing_config: Dict[str, Any],
-        splitting_config: Dict[str, Any],
+        parsing_config: dict[str, Any],
+        splitting_config: dict[str, Any],
     ) -> DeepDocParseResult:
         logger.info("DeepDoc 文本解析开始", extension=extension, deepdoc_parser_id=parsing_config.get("deepdoc_parser_id"))
         if isinstance(source, Path):
@@ -292,12 +311,12 @@ class DeepDocParser:
             metadata={"parser": "deepdoc", "file_type": file_type, "source": "ragflow-adapted", **parser_metadata},
         )
 
-    def _parse_docx_sync(self, source: Union[Path, bytes], splitting_config: Dict[str, Any]) -> DeepDocParseResult:
+    def _parse_docx_sync(self, source: Path | bytes, splitting_config: dict[str, Any]) -> DeepDocParseResult:
         logger.info("DeepDoc DOCX 解析开始")
         parser_input = str(source) if isinstance(source, Path) else source
         sections, tables = self._docx_parser(parser_input)
-        blocks: List[str] = []
-        heading_stack: List[str] = []
+        blocks: list[str] = []
+        heading_stack: list[str] = []
         image_count = 0
 
         for section in sections:
@@ -316,7 +335,7 @@ class DeepDocParser:
             else:
                 blocks.append(text)
 
-        flattened_tables: List[str] = []
+        flattened_tables: list[str] = []
         for group in tables:
             for item in group:
                 item = item.strip()
@@ -342,9 +361,9 @@ class DeepDocParser:
 
     def _parse_excel_sync(
         self,
-        source: Union[Path, bytes],
+        source: Path | bytes,
         extension: str,
-        splitting_config: Dict[str, Any],
+        splitting_config: dict[str, Any],
     ) -> DeepDocParseResult:
         logger.info("DeepDoc Excel 解析开始", extension=extension)
         parser_input = str(source) if isinstance(source, Path) else source
@@ -364,7 +383,7 @@ class DeepDocParser:
             },
         )
 
-    def _parse_epub_sync(self, source: Union[Path, bytes], splitting_config: Dict[str, Any]) -> DeepDocParseResult:
+    def _parse_epub_sync(self, source: Path | bytes, splitting_config: dict[str, Any]) -> DeepDocParseResult:
         logger.info("DeepDoc EPUB 解析开始")
         if isinstance(source, Path):
             sections = self._epub_parser(str(source))
@@ -387,9 +406,9 @@ class DeepDocParser:
 
     def _parse_ppt_sync(
         self,
-        source: Union[Path, bytes],
+        source: Path | bytes,
         extension: str,
-        splitting_config: Dict[str, Any],
+        splitting_config: dict[str, Any],
     ) -> DeepDocParseResult:
         logger.info("DeepDoc PPT 解析开始", extension=extension)
         parser_input = str(source) if isinstance(source, Path) else source
@@ -412,9 +431,9 @@ class DeepDocParser:
 
     def _parse_figure_sync(
         self,
-        source: Union[Path, bytes],
+        source: Path | bytes,
         extension: str,
-        splitting_config: Dict[str, Any],
+        splitting_config: dict[str, Any],
     ) -> DeepDocParseResult:
         logger.info("DeepDoc 图片解析开始", extension=extension)
         if isinstance(source, Path):
@@ -445,9 +464,9 @@ class DeepDocParser:
         return "<table>" + "".join(html_rows) + "</table>"
 
     @staticmethod
-    def _chunk_blocks(blocks: Sequence[str], chunk_size: int) -> List[str]:
-        chunks: List[str] = []
-        current_parts: List[str] = []
+    def _chunk_blocks(blocks: Sequence[str], chunk_size: int) -> list[str]:
+        chunks: list[str] = []
+        current_parts: list[str] = []
         current_length = 0
         for block in blocks:
             block = block.strip()

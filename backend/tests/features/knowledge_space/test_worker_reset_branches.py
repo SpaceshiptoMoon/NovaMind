@@ -13,7 +13,6 @@ import asyncio
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -75,7 +74,6 @@ def test_batch_action_reprocess_triggers_full_reset():
 def test_retry_mode_does_not_reset():
     """process_mode=RETRY → 不再预删（管道指纹接管续跑/失效）。"""
     from novamind.features.knowledge_space.models.document_task import TaskProcessMode
-    from novamind.features.knowledge_space.models.document_task_batch import BatchAction
 
     assert evaluate_reset(_make_task(TaskProcessMode.RETRY), None) is False
 
@@ -124,7 +122,6 @@ def test_reprocess_cleans_artifacts_prefix_and_snapshot_state():
 
     模拟 process_document_task force_full_reset 分支的 MinIO 清理序列。
     """
-    from novamind.features.knowledge_space.models.document_task import TaskProcessMode
 
     deleted_prefixes = []
 
@@ -211,5 +208,5 @@ def test_delete_document_includes_artifacts_prefix():
 
     asyncio.run(run())
 
-    assert f"spaces/1/kb/2/docs/9/report.pdf_artifacts/" in deleted
+    assert "spaces/1/kb/2/docs/9/report.pdf_artifacts/" in deleted
     assert len(deleted) == 4

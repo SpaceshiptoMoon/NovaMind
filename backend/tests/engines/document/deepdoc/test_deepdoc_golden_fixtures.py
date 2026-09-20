@@ -26,9 +26,13 @@ import pytest
 
 pytest.importorskip("fitz")
 
-from novamind.engines.document.integrations.deepdoc.text_concat_model import get_text_concat_model_status
-from novamind.engines.document.integrations.deepdoc.vision_runtime import get_vision_runtime_status
 from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
+from novamind.engines.document.integrations.deepdoc.text_concat_model import (
+    get_text_concat_model_status,
+)
+from novamind.engines.document.integrations.deepdoc.vision_runtime import get_vision_runtime_status
+
+pytestmark = pytest.mark.unit
 
 TITLE_P1 = "第一章数据处理方法"
 TITLE_P2 = "第二章实验结果"

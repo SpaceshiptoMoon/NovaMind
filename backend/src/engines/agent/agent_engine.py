@@ -8,19 +8,24 @@ ReAct 循环引擎
 import asyncio
 import json
 import time
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import Any
 
-from novamind.shared.logging import get_logger
-from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.engines.agent.loop_detection import LoopDetectionConfig, LoopDetector
+from novamind.engines.agent.retry import (
+    ContextOverflowError,
+    RetryConfig,
+    _is_context_overflow,
+    _is_non_retryable,
+    _is_retryable_error,
+    retry_llm_call,
+)
 from novamind.engines.agent.tool.executor import ToolExecutor
 from novamind.engines.agent.tool.result import ToolResult, ToolResultStatus
-from novamind.engines.agent.retry import (
-    RetryConfig, ContextOverflowError, retry_llm_call,
-    _is_retryable_error, _is_context_overflow, _is_non_retryable,
-)
+from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.ai_models.usage import CanonicalUsage, normalize_usage
-from novamind.engines.agent.loop_detection import LoopDetectionConfig, LoopDetector
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -29,10 +34,10 @@ logger = get_logger(__name__)
 class AgentEvent:
     """Agent 事件"""
     event_type: str
-    data: Dict[str, Any]
+    data: dict[str, Any]
 
 
-def _usage_dict(usage: Optional[CanonicalUsage]) -> Optional[Dict[str, Any]]:
+def _usage_dict(usage: CanonicalUsage | None) -> dict[str, Any] | None:
     """CanonicalUsage → dict（供事件 data 携带 per-iteration usage，前端轨迹视图展示）"""
     if usage is None:
         return None
@@ -52,8 +57,8 @@ class AgentEngine:
     def __init__(
         self,
         tool_executor: ToolExecutor,
-        retry_config: Optional[RetryConfig] = None,
-        loop_detection: Optional[LoopDetectionConfig] = None,
+        retry_config: RetryConfig | None = None,
+        loop_detection: LoopDetectionConfig | None = None,
     ):
         self.tool_executor = tool_executor
         self._retry_config = retry_config or RetryConfig()
@@ -62,16 +67,16 @@ class AgentEngine:
     async def run(
         self,
         llm_client: BaseLLM,
-        messages: List[Dict[str, Any]],
-        tools: List[Dict[str, Any]],
-        context: Dict[str, Any],
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        context: dict[str, Any],
         max_iterations: int = 10,
         max_tokens: int = 4096,
         temperature: float = 0.7,
         top_p: float = 0.8,
         enable_thinking: bool = False,
         stream: bool = True,
-        compress_fn: Optional[Any] = None,
+        compress_fn: Any | None = None,
     ) -> AsyncGenerator[AgentEvent, None]:
         """执行 Agent 对话循环，产出事件流
 
@@ -90,9 +95,9 @@ class AgentEngine:
             if (self._loop_detection and self._loop_detection.enabled)
             else None
         )
-        pending_warning: Optional[str] = None
-        last_iter_usage: Optional[CanonicalUsage] = None
-        last_iter_duration_ms: Optional[int] = None
+        pending_warning: str | None = None
+        last_iter_usage: CanonicalUsage | None = None
+        last_iter_duration_ms: int | None = None
 
         if not tools:
             async for event in self._generate_without_tools(
@@ -111,7 +116,7 @@ class AgentEngine:
                     "content": pending_warning, "iteration": iteration,
                 })
                 pending_warning = None
-            meta: Dict[str, Any] = {}
+            meta: dict[str, Any] = {}
             iteration_had_tools = False
             hard_stop = False
 
@@ -248,8 +253,8 @@ class AgentEngine:
     async def _retry_generate_stream(
         self,
         agent_llm: Any,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]],
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
         max_tokens: int,
         temperature: float,
         top_p: float,
@@ -304,14 +309,14 @@ class AgentEngine:
     async def _run_iteration_stream(
         self,
         llm_client: BaseLLM,
-        messages: List[Dict[str, Any]],
-        tools: List[Dict[str, Any]],
-        context: Dict[str, Any],
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        context: dict[str, Any],
         max_tokens: int,
         temperature: float,
         top_p: float,
         enable_thinking: bool,
-        meta: Dict[str, Any],
+        meta: dict[str, Any],
         iteration: int,
     ) -> AsyncGenerator[AgentEvent, None]:
         """流式迭代：逐 token 产出事件，不缓存（含重试）
@@ -324,8 +329,8 @@ class AgentEngine:
         from novamind.engines.agent.llm.agent_llm import AgentLLM, CollectedToolCall
 
         agent_llm = AgentLLM(llm_client)
-        content_parts: List[str] = []
-        collected: Dict[str, CollectedToolCall] = {}
+        content_parts: list[str] = []
+        collected: dict[str, CollectedToolCall] = {}
         total_tokens = 0
         t0 = time.monotonic()
 
@@ -388,14 +393,14 @@ class AgentEngine:
     async def _run_iteration_batch(
         self,
         llm_client: BaseLLM,
-        messages: List[Dict[str, Any]],
-        tools: List[Dict[str, Any]],
-        context: Dict[str, Any],
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        context: dict[str, Any],
         max_tokens: int,
         temperature: float,
         top_p: float,
         enable_thinking: bool,
-        meta: Dict[str, Any],
+        meta: dict[str, Any],
         iteration: int,
     ) -> AsyncGenerator[AgentEvent, None]:
         """非流式迭代：使用 generate_with_tools() 等待完整响应
@@ -463,7 +468,7 @@ class AgentEngine:
     async def _generate_without_tools(
         self,
         llm_client: BaseLLM,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         max_tokens: int,
         temperature: float,
         top_p: float,
@@ -488,7 +493,7 @@ class AgentEngine:
     async def _generate_without_tools_stream(
         self,
         llm_client: BaseLLM,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         max_tokens: int,
         temperature: float,
         top_p: float,
@@ -524,7 +529,7 @@ class AgentEngine:
     async def _generate_without_tools_batch(
         self,
         llm_client: BaseLLM,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         max_tokens: int,
         temperature: float,
         top_p: float,
@@ -568,8 +573,8 @@ class AgentEngine:
         tool_name: str,
         raw_arguments: Any,
         call_id: str,
-        context: Dict[str, Any],
-    ) -> Tuple[AgentEvent, AgentEvent, Dict[str, Any], Dict[str, Any]]:
+        context: dict[str, Any],
+    ) -> tuple[AgentEvent, AgentEvent, dict[str, Any], dict[str, Any]]:
         """执行单个工具调用（含 JSON 解析守卫 + 异常隔离）
 
         Returns: (tool_call_event, tool_result_event, assistant_tc_dict, tool_result_msg)
@@ -638,9 +643,9 @@ class AgentEngine:
 
     async def _process_tool_calls(
         self,
-        tool_calls: List[Any],
-        context: Dict[str, Any],
-    ) -> Tuple[List[AgentEvent], Dict[str, Any], List[Dict[str, Any]]]:
+        tool_calls: list[Any],
+        context: dict[str, Any],
+    ) -> tuple[list[AgentEvent], dict[str, Any], list[dict[str, Any]]]:
         """处理非流式路径的工具调用（并行执行，单工具故障隔离）"""
         import uuid
 
@@ -678,9 +683,9 @@ class AgentEngine:
 
     async def _process_tool_calls_collected(
         self,
-        collected: Dict[str, Any],
-        context: Dict[str, Any],
-    ) -> Tuple[List[AgentEvent], Dict[str, Any], List[Dict[str, Any]]]:
+        collected: dict[str, Any],
+        context: dict[str, Any],
+    ) -> tuple[list[AgentEvent], dict[str, Any], list[dict[str, Any]]]:
         """处理流式路径收集到的工具调用（并行执行，单工具故障隔离）"""
         import uuid
 
@@ -719,7 +724,7 @@ class AgentEngine:
 
     @staticmethod
     def _apply_turn_budget(
-        tool_result_messages: List[Dict[str, Any]],
+        tool_result_messages: list[dict[str, Any]],
         budget: int = 100_000,
     ) -> None:
         """Layer 3: 单轮工具结果总量超出预算时，裁剪最大结果的内存上下文"""

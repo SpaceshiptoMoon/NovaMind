@@ -1,16 +1,14 @@
 """
 文档处理 arq 任务函数与宿主编排。
 """
-import asyncio
 import traceback
 from datetime import timedelta
-from typing import Optional, Dict, Any
-
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
 
 from novamind.shared.logging import get_logger
 from novamind.shared.mq.exceptions import TransientBusyError
 from novamind.shared.utils.time_utils import now_china
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -139,14 +137,18 @@ async def process_document_task(
         space_id: 空间 ID
     """
     from novamind.core.database.database import get_db_session
+    from novamind.features.knowledge_space.models.document_task import TaskProcessMode, TaskStatus
     from novamind.features.knowledge_space.models.document_task_batch import BatchAction
-    from novamind.features.knowledge_space.models.document_task import TaskStatus, TaskProcessMode
-    from novamind.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
     from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
-    from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+    from novamind.features.knowledge_space.repository.document_task_batch_repository import (
+        DocumentTaskBatchRepository,
+    )
+    from novamind.features.knowledge_space.repository.document_task_repository import (
+        DocumentTaskRepository,
+    )
     from novamind.features.knowledge_space.services.document_pipeline import (
-        execute_document_pipeline,
         DocumentCancelledError,
+        execute_document_pipeline,
     )
     from novamind.features.user.services.model_config_service import ModelConfigService
     from novamind.shared.mq.task_tracker import unbind_job
@@ -537,13 +539,17 @@ async def _mark_retrying(
     retry_delay_seconds: int,
     error_message: str,
     *,
-    job_id: Optional[str] = None,
+    job_id: str | None = None,
 ) -> None:
     """把任务项更新为自动重试中的可见状态。"""
     from novamind.core.database.database import get_db_session
     from novamind.features.knowledge_space.models.document_task import TaskStatus
-    from novamind.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
-    from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+    from novamind.features.knowledge_space.repository.document_task_batch_repository import (
+        DocumentTaskBatchRepository,
+    )
+    from novamind.features.knowledge_space.repository.document_task_repository import (
+        DocumentTaskRepository,
+    )
 
     async with get_db_session() as session:
         repo = DocumentTaskRepository(session)
@@ -565,7 +571,7 @@ async def _mark_retrying(
         await session.commit()
 
 
-async def _rollback_session_safely(session: AsyncSession, *, document_id: int, job_id: Optional[str]) -> None:
+async def _rollback_session_safely(session: AsyncSession, *, document_id: int, job_id: str | None) -> None:
     """回滚会话；失败不抛出。
 
     整机内存耗尽时 rollback 自身要分配内存，可能再抛 MemoryError（doc 574 事故二）：
@@ -584,7 +590,7 @@ async def _rollback_session_safely(session: AsyncSession, *, document_id: int, j
         )
 
 
-async def _unbind_job_safely(document_id: int, *, job_id: Optional[str]) -> None:
+async def _unbind_job_safely(document_id: int, *, job_id: str | None) -> None:
     """移除 tracker 映射；失败不抛出（残留映射由活跃检查发现终判结果时自愈清理）。"""
     from novamind.shared.mq.task_tracker import unbind_job
 
@@ -603,9 +609,9 @@ async def _ensure_mark_failed(
     document_id: int,
     error_message: str,
     *,
-    job_id: Optional[str] = None,
-    max_tries: Optional[int] = None,
-    retry_count: Optional[int] = None,
+    job_id: str | None = None,
+    max_tries: int | None = None,
+    retry_count: int | None = None,
 ) -> None:
     """
     强制将文档标记为 FAILED，三层兜底确保状态一定更新
@@ -614,15 +620,18 @@ async def _ensure_mark_failed(
     2. ORM 失败则用 raw SQL 更新
     3. 都失败则记录严重告警（等待 recover_orphan_documents 在下次启动时处理）
     """
-    from novamind.features.knowledge_space.models.document_task import TaskStatus
 
     failed_msg = f"[已重试最大次数] {error_message}"
 
     # 第 1 层：ORM 独立 session
     try:
         from novamind.core.database.database import get_db_session
-        from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-        from novamind.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
+        from novamind.features.knowledge_space.repository.document_task_batch_repository import (
+            DocumentTaskBatchRepository,
+        )
+        from novamind.features.knowledge_space.repository.document_task_repository import (
+            DocumentTaskRepository,
+        )
 
         async with get_db_session() as independent_session:
             repo = DocumentTaskRepository(independent_session)
@@ -653,7 +662,9 @@ async def _ensure_mark_failed(
 
     # 第 2 层：Raw SQL（下沉 DocumentTaskRepository.mark_failed_independent）
     try:
-        from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+        from novamind.features.knowledge_space.repository.document_task_repository import (
+            DocumentTaskRepository,
+        )
 
         failed_at = now_china()
         await DocumentTaskRepository.mark_failed_independent(
@@ -722,10 +733,11 @@ async def recover_orphan_documents() -> int:
         恢复的文档数量
     """
     from novamind.core.database.database import get_db_session
+    from novamind.features.knowledge_space.models.document_task import TaskStatus
+    from novamind.features.knowledge_space.repository.document_task_repository import (
+        DocumentTaskRepository,
+    )
     from novamind.setting.yaml_config import get_config
-    from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
-    from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
-    from sqlalchemy import select
 
     recovered = 0
     max_tries = get_config().task_queue.max_tries
@@ -816,12 +828,12 @@ async def enqueue_process_document(
     kb_id: int,
     space_id: int,
     *,
-    batch_id: Optional[int] = None,
+    batch_id: int | None = None,
     process_mode: int = 0,
-    pipeline_config: Optional[dict] = None,
+    pipeline_config: dict | None = None,
     retry_count: int = 0,
-    session: Optional[AsyncSession] = None,
-    batch_data: Optional[Dict[str, Any]] = None,
+    session: AsyncSession | None = None,
+    batch_data: dict[str, Any] | None = None,
 ) -> dict:
     """
     将文档处理任务入队
@@ -835,11 +847,18 @@ async def enqueue_process_document(
         job_id: arq 任务 ID
     """
     from novamind.core.database.database import get_db_session
-    from novamind.features.knowledge_space.repository.document_task_batch_repository import DocumentTaskBatchRepository
-    from novamind.features.knowledge_space.exceptions import DocumentAlreadyProcessingError, DocumentNotFoundError
+    from novamind.features.knowledge_space.exceptions import (
+        DocumentAlreadyProcessingError,
+        DocumentNotFoundError,
+    )
     from novamind.features.knowledge_space.models.document_task import TaskStatus
     from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
-    from novamind.features.knowledge_space.repository.document_task_repository import DocumentTaskRepository
+    from novamind.features.knowledge_space.repository.document_task_batch_repository import (
+        DocumentTaskBatchRepository,
+    )
+    from novamind.features.knowledge_space.repository.document_task_repository import (
+        DocumentTaskRepository,
+    )
     from novamind.shared.mq import get_arq_pool
     from novamind.shared.mq.task_tracker import bind_job_to_document
     from novamind.shared.utils.time_utils import now_china

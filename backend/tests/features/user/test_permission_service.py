@@ -1,10 +1,12 @@
 """RbacPermissionService 权限查询与缓存测试。"""
 import pytest
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.mark.asyncio
 async def test_get_user_permissions_returns_role_permissions(tmp_db):
-    from novamind.features.user.models.role import Role, Permission, RolePermission
+    from novamind.features.user.models.role import Permission, Role, RolePermission
     from novamind.features.user.models.user import User
     # SQLite 下 BigInteger 主键不会自增，测试时显式指定主键
     role = Role(id=1, code="editor", name="编辑者", is_system=True)
@@ -26,10 +28,10 @@ async def test_get_user_permissions_returns_role_permissions(tmp_db):
 @pytest.mark.asyncio
 async def test_admin_role_returns_all_permissions_marker(tmp_db):
     """admin 角色返回所有权限（或标记 admin 放行，由 require_permission 判 role_code=='admin'）"""
-    from novamind.features.user.models.role import Role, Permission, RolePermission
-    from novamind.features.user.models.user import User
     from novamind.core.authorization.permission_codes import SystemPermission
     from novamind.features.user.api.startup import _init_rbac_seed
+    from novamind.features.user.models.role import Role
+    from novamind.features.user.models.user import User
     await _init_rbac_seed(tmp_db)
     admin_role = (await tmp_db.execute(__import__("sqlalchemy").select(Role).where(Role.code == "admin"))).scalar_one()
     user = User(id=1, username="a", email="a@e.com", password_hash="h", phone=None, status=1, role_id=admin_role.id)

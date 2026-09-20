@@ -4,10 +4,19 @@
 存储上传到知识空间的文档元数据。
 处理状态与生命周期追踪已迁移至 DocumentTaskItem 模型。
 """
-from typing import Optional
 from enum import IntEnum
-from sqlalchemy import Column, BigInteger, String, DateTime, JSON, ForeignKey, Index, UniqueConstraint
+
 from novamind.core.database.base import BaseModel
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    UniqueConstraint,
+)
 
 
 # 保留此枚举用于过渡期兼容 — 旧代码仍可导入，但 Document 模型本身不再使用
@@ -65,11 +74,11 @@ class Document(BaseModel):
         """获取存储信息"""
         return self.storage or {}
 
-    def get_minio_bucket(self) -> Optional[str]:
+    def get_minio_bucket(self) -> str | None:
         """获取 MinIO 桶名"""
         return self.get_storage_info().get("minio_bucket")
 
-    def set_minio_info(self, bucket: str, object_name: str, etag: Optional[str] = None) -> None:
+    def set_minio_info(self, bucket: str, object_name: str, etag: str | None = None) -> None:
         """设置 MinIO 信息"""
         self.storage = {
             **(self.storage or {}),

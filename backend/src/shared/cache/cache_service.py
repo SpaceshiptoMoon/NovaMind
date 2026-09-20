@@ -9,15 +9,15 @@
 - 统一缓存接口
 """
 
+import asyncio
 import hashlib
 import json
 import random
-import asyncio
+from collections.abc import Awaitable, Callable
+from functools import wraps
+from typing import Any
 
 from novamind.shared.cache.lru_cache import default_cache as _lru
-from typing import Optional, Any, Dict, List, Callable, Awaitable, Union
-from functools import wraps
-
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -144,7 +144,7 @@ class CacheService:
             self._cache = await get_redis_client()
         return self._cache
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         """
         获取缓存值（L1 LRU → L2 Redis）
 
@@ -174,7 +174,7 @@ class CacheService:
         self,
         key: str,
         value: Any,
-        ttl: Optional[int] = None,
+        ttl: int | None = None,
         jitter: bool = True,
     ) -> bool:
         """
@@ -256,8 +256,8 @@ class CacheService:
     async def get_or_set(
         self,
         key: str,
-        factory: Union[Callable[[], Any], Callable[[], Awaitable[Any]]],
-        ttl: Optional[int] = None,
+        factory: Callable[[], Any] | Callable[[], Awaitable[Any]],
+        ttl: int | None = None,
     ) -> Any:
         """
         获取缓存，不存在则通过 factory 函数生成并缓存
@@ -309,12 +309,12 @@ class CacheService:
 
     # ========== 用户缓存 ==========
 
-    async def cache_user(self, user_id: int, user_data: Dict) -> bool:
+    async def cache_user(self, user_id: int, user_data: dict) -> bool:
         """缓存用户信息"""
         key = CacheKeyBuilder.user_key(user_id)
         return await self.set(key, user_data, ttl=self.DEFAULT_TTLS["user"])
 
-    async def get_cached_user(self, user_id: int) -> Optional[Dict]:
+    async def get_cached_user(self, user_id: int) -> dict | None:
         """获取缓存的用户信息"""
         key = CacheKeyBuilder.user_key(user_id)
         return await self.get(key)
@@ -335,22 +335,22 @@ class CacheService:
 
     # ========== 空间缓存 ==========
 
-    async def cache_space(self, space_id: int, space_data: Dict) -> bool:
+    async def cache_space(self, space_id: int, space_data: dict) -> bool:
         """缓存空间信息"""
         key = CacheKeyBuilder.space_key(space_id)
         return await self.set(key, space_data, ttl=self.DEFAULT_TTLS["space"])
 
-    async def get_cached_space(self, space_id: int) -> Optional[Dict]:
+    async def get_cached_space(self, space_id: int) -> dict | None:
         """获取缓存的空间信息"""
         key = CacheKeyBuilder.space_key(space_id)
         return await self.get(key)
 
-    async def cache_space_stats(self, space_id: int, stats: Dict) -> bool:
+    async def cache_space_stats(self, space_id: int, stats: dict) -> bool:
         """缓存空间统计信息"""
         key = CacheKeyBuilder.space_stats_key(space_id)
         return await self.set(key, stats, ttl=600)  # 10 分钟
 
-    async def get_cached_space_stats(self, space_id: int) -> Optional[Dict]:
+    async def get_cached_space_stats(self, space_id: int) -> dict | None:
         """获取缓存的空间统计信息"""
         key = CacheKeyBuilder.space_stats_key(space_id)
         return await self.get(key)
@@ -369,12 +369,12 @@ class CacheService:
 
     # ========== 知识库缓存 ==========
 
-    async def cache_kb(self, kb_id: int, kb_data: Dict) -> bool:
+    async def cache_kb(self, kb_id: int, kb_data: dict) -> bool:
         """缓存知识库信息"""
         key = CacheKeyBuilder.kb_key(kb_id)
         return await self.set(key, kb_data, ttl=self.DEFAULT_TTLS["kb"])
 
-    async def get_cached_kb(self, kb_id: int) -> Optional[Dict]:
+    async def get_cached_kb(self, kb_id: int) -> dict | None:
         """获取缓存的知识库信息"""
         key = CacheKeyBuilder.kb_key(kb_id)
         return await self.get(key)
@@ -396,7 +396,7 @@ class CacheService:
         self,
         kb_id: int,
         query_hash: str,
-        results: List[Dict],
+        results: list[dict],
         user_id: int = None,
     ) -> bool:
         """
@@ -416,7 +416,7 @@ class CacheService:
         kb_id: int,
         query_hash: str,
         user_id: int = None,
-    ) -> Optional[List[Dict]]:
+    ) -> list[dict] | None:
         """
         获取缓存的搜索结果
 
@@ -459,7 +459,7 @@ class CacheService:
 # ========== 缓存装饰器 ==========
 
 # 缓存装饰器复用的全局实例
-_decorator_cache_service_instance: Optional[CacheService] = None
+_decorator_cache_service_instance: CacheService | None = None
 
 
 def _get_cache_service() -> CacheService:
@@ -473,7 +473,7 @@ def _get_cache_service() -> CacheService:
 def cached(
     prefix: str,
     ttl: int = 300,
-    key_builder: Optional[Callable] = None,
+    key_builder: Callable | None = None,
 ):
     """
     缓存装饰器
@@ -525,7 +525,7 @@ def cached(
 
 
 # 全局缓存服务实例
-_cache_service_instance: Optional[CacheService] = None
+_cache_service_instance: CacheService | None = None
 
 
 async def get_cache_service() -> CacheService:

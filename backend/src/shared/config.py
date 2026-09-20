@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -22,7 +21,7 @@ class AudioConfig:
       3. 默认 ``~/.cache/faster-whisper/tiny``
     """
 
-    local_whisper_model_dir: Optional[str] = None
+    local_whisper_model_dir: str | None = None
     # 本地 faster-whisper 转写使用的 CPU 线程数（对应 YAML
     # ``knowledge_base.parsing.local_whisper_cpu_threads``）。为 None 时按机器
     # 物理核数自动取保守值（见 audio_utils._resolve_cpu_threads），保留至少
@@ -30,7 +29,7 @@ class AudioConfig:
     # 注：ASR 推理在独立子进程跑（ProcessPoolExecutor），OS 级 CPU/GIL 隔离，
     # 主进程事件循环已不受影响；cpu_threads 仅约束子进程 CPU。
     # 仍卡顿可调小（如 2）；ASR 太慢可调大，但不要超过 (物理核 - 1)。
-    local_whisper_cpu_threads: Optional[int] = None
+    local_whisper_cpu_threads: int | None = None
 
 
 # ==================== 外部搜索（联网搜索）====================

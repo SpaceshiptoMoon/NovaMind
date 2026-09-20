@@ -1,10 +1,6 @@
 """批5 检索对齐测试：WikiBoost 加权、ES 同步、wiki_search 排序"""
 import pytest
 import pytest_asyncio
-from sqlalchemy import BigInteger
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlalchemy.ext.compiler import compiles
-
 from novamind.core.database.base import Base
 from novamind.engines.rag.retrieval_engine import RetrievalEngine, RetrievalQuery
 from novamind.features.knowledge_space.services.wiki_es_sync import (
@@ -12,6 +8,11 @@ from novamind.features.knowledge_space.services.wiki_es_sync import (
     WikiEsSyncService,
     wiki_chunk_id,
 )
+from sqlalchemy import BigInteger
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.compiler import compiles
+
+pytestmark = pytest.mark.unit
 
 
 @compiles(BigInteger, "sqlite")
@@ -21,8 +22,12 @@ def _bi(type_, compiler, **kw):
 
 @pytest_asyncio.fixture
 async def db_session():
-    from novamind.features.knowledge_space.models.wiki import WikiPage, WikiPageRevision, WikiIngestRecord
     from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
+    from novamind.features.knowledge_space.models.wiki import (
+        WikiIngestRecord,
+        WikiPage,
+        WikiPageRevision,
+    )
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
@@ -113,7 +118,6 @@ class TestWikiEsSync:
     @pytest.mark.asyncio
     async def test_sync_page_builds_doc(self):
         """sync_page 构造 wp- 前缀文档：chunk_type/document_id=0/metadata"""
-        import asyncio
 
         class FakeSession:
             pass

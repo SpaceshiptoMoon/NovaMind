@@ -12,16 +12,22 @@
 ``document_pipeline.execute_document_pipeline`` 在 worker 侧经端口注入完成。
 """
 
-from typing import Optional, List, Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     # 仅用于类型注解（``Optional["DocumentTask"]`` 前向引用），避免运行期循环 import。
     from novamind.features.knowledge_space.models.document_task import DocumentTask
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.exceptions import (
+    DocumentAlreadyProcessingError,
+    DocumentNotFoundError,
+    InvalidParameterError,
+    KnowledgeBaseNotFoundError,
+)
 from novamind.features.knowledge_space.models.document import Document
-from novamind.features.knowledge_space.models.document_task import TaskStatus, TaskProcessMode
+from novamind.features.knowledge_space.models.document_task import TaskProcessMode, TaskStatus
+from novamind.features.knowledge_space.models.document_task_batch import BatchAction
 from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
 from novamind.features.knowledge_space.repository.document_task_batch_repository import (
     DocumentTaskBatchRepository,
@@ -32,15 +38,8 @@ from novamind.features.knowledge_space.repository.document_task_repository impor
 from novamind.features.knowledge_space.repository.knowledge_base_repository import (
     KnowledgeBaseRepository,
 )
-from novamind.features.knowledge_space.exceptions import (
-    KnowledgeBaseNotFoundError,
-    DocumentNotFoundError,
-    DocumentAlreadyProcessingError,
-    InvalidParameterError,
-)
-from novamind.features.knowledge_space.models.document_task_batch import BatchAction
 from novamind.shared.utils.time_utils import now_china
-from novamind.core.middleware.structured_logging import get_logger
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class DocumentTaskService:
@@ -64,8 +63,8 @@ class DocumentTaskService:
         Returns:
             状态字符串: "queued" | "in_progress" | "not_found"
         """
-        from novamind.shared.mq.task_tracker import get_job_id_for_document
         from novamind.shared.mq import get_arq_pool
+        from novamind.shared.mq.task_tracker import get_job_id_for_document
 
         job_id = await get_job_id_for_document(document_id)
         if not job_id:
@@ -154,11 +153,11 @@ class DocumentTaskService:
         if not active_task:
             raise InvalidParameterError("只能取消处理中的文档", field="document_id")
 
+        from novamind.shared.mq import get_arq_pool
         from novamind.shared.mq.task_tracker import (
             get_job_id_for_document,
             mark_document_cancelled,
         )
-        from novamind.shared.mq import get_arq_pool
 
         # 设置取消标记（pipeline 会在检查点检测到）
         await mark_document_cancelled(document_id)
@@ -196,8 +195,8 @@ class DocumentTaskService:
         self,
         kb_id: int,
         user_id: int,
-        document_ids: Optional[List[int]] = None,
-    ) -> Dict[str, Any]:
+        document_ids: list[int] | None = None,
+    ) -> dict[str, Any]:
         """
         批量触发文档拆分解析。
         单文档失败不影响其他文档。
@@ -211,7 +210,7 @@ class DocumentTaskService:
         """
         results = []
 
-        documents: List[Document] = []
+        documents: list[Document] = []
         if not document_ids:
             documents = await self.doc_repo.get_by_kb(kb_id)
             document_ids = [doc.id for doc in documents]
@@ -241,9 +240,9 @@ class DocumentTaskService:
         active_task_map = await task_repo.get_active_by_document_ids(existing_doc_ids)
         latest_task_map = await task_repo.get_latest_by_document_ids(existing_doc_ids)
 
-        eligible_documents: List[Document] = []
-        task_payloads: List[Dict[str, Any]] = []
-        task_modes: Dict[int, str] = {}
+        eligible_documents: list[Document] = []
+        task_payloads: list[dict[str, Any]] = []
+        task_modes: dict[int, str] = {}
 
         for doc_id in document_ids:
             document = document_map.get(doc_id)
@@ -382,10 +381,10 @@ class DocumentTaskService:
         *,
         kb_id: int,
         space_id: int,
-        batch_id: Optional[int] = None,
-        batch_creator_id: Optional[int] = None,
-        batch_note: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        batch_id: int | None = None,
+        batch_creator_id: int | None = None,
+        batch_note: str | None = None,
+    ) -> dict[str, Any]:
         """重试文档处理，支持 FAILED 和 COMPLETED 状态。"""
         document = await self._validate_document_not_processing(document_id)
         if document.kb_id != kb_id or document.space_id != space_id:
@@ -436,16 +435,19 @@ class DocumentTaskService:
         document: Document,
         log_label: str = "处理",
         *,
-        batch_id: Optional[int] = None,
-        batch_creator_id: Optional[int] = None,
+        batch_id: int | None = None,
+        batch_creator_id: int | None = None,
         batch_action: BatchAction = BatchAction.PROCESS,
         process_mode: TaskProcessMode = TaskProcessMode.PROCESS,
-        batch_note: Optional[str] = None,
+        batch_note: str | None = None,
         retry_count: int = 0,
-        pipeline_config_override: Optional[dict] = None,
+        pipeline_config_override: dict | None = None,
     ):
         """创建任务记录并入队文档处理。"""
-        from novamind.shared.mq.task_tracker import is_document_actively_processing, purge_document_jobs
+        from novamind.shared.mq.task_tracker import (
+            is_document_actively_processing,
+            purge_document_jobs,
+        )
 
         if await is_document_actively_processing(document.id):
             # tracker/arq 层显示活跃，但能走到这里说明调用方先做的 DB 活跃任务校验已通过。
@@ -494,7 +496,7 @@ class DocumentTaskService:
             batch_data=batch_data,
         )
 
-    async def _enqueue_precreated_tasks(self, tasks: List["DocumentTask"]) -> Dict[int, str]:
+    async def _enqueue_precreated_tasks(self, tasks: list["DocumentTask"]) -> dict[int, str]:
         from arq.jobs import Job
         from novamind.shared.mq import get_arq_pool
         from novamind.shared.mq.task_tracker import bind_job_to_document, unbind_job
@@ -503,7 +505,7 @@ class DocumentTaskService:
             return {}
 
         pool = await get_arq_pool()
-        enqueued: List[tuple[int, int, str]] = []
+        enqueued: list[tuple[int, int, str]] = []
         try:
             for task in tasks:
                 job_id = f"doc-task-{task.id}"
@@ -544,15 +546,15 @@ class DocumentTaskService:
             raise
 
     async def _cancel_batch_enqueue(
-        self, batch_id: int, task_ids: List[int], error_message: str
+        self, batch_id: int, task_ids: list[int], error_message: str
     ) -> None:
-        from sqlalchemy import update
         from novamind.core.database.database import get_db_session
         from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
         from novamind.features.knowledge_space.models.document_task_batch import (
-            DocumentTaskBatch,
             BatchStatus,
+            DocumentTaskBatch,
         )
+        from sqlalchemy import update
 
         async with get_db_session() as session:
             if task_ids:

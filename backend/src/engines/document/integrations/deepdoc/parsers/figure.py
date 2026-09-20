@@ -6,12 +6,13 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from PIL import Image
-
 from novamind.engines.document.integrations.deepdoc.compat import LazyImage
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.figure_parser import VisionFigureParser
-from novamind.engines.document.integrations.deepdoc.vision.ocr import OCR
+from novamind.engines.document.integrations.deepdoc.parsers.upstream.figure_parser import (
+    VisionFigureParser,
+)
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import get_model_status
+from novamind.engines.document.integrations.deepdoc.vision.ocr import OCR
+from PIL import Image
 
 
 class RAGFlowFigureParser(VisionFigureParser):

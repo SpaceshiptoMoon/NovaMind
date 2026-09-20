@@ -5,7 +5,9 @@ from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, Ro
 
 
 def _import_models() -> None:
-    from novamind.features.deep_research.models.research_session import ResearchSession  # noqa: F401
+    from novamind.features.deep_research.models.research_session import (
+        ResearchSession,  # noqa: F401
+    )
 
 
 def manifest() -> FeatureManifest:

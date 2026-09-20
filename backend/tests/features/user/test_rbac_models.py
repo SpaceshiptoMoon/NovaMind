@@ -1,9 +1,9 @@
 """RBAC 三表 ORM 模型测试。"""
 import pytest
-from sqlalchemy import select
+from novamind.features.user.models.role import Permission, Role, RolePermission
 from sqlalchemy.exc import IntegrityError
-from novamind.core.database.base import Base
-from novamind.features.user.models.role import Role, Permission, RolePermission
+
+pytestmark = pytest.mark.unit
 
 
 @pytest.mark.asyncio

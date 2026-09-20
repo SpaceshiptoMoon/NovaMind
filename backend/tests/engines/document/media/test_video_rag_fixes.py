@@ -19,7 +19,6 @@ import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import pytest
 
@@ -27,15 +26,15 @@ BACKEND_ROOT = Path(__file__).resolve().parents[4]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.features.knowledge_space.exceptions import DocumentProcessingError
-from novamind.features.knowledge_space.schemas.enums import ChunkType
-from novamind.features.knowledge_space.services import document_pipeline, media_processing
 from novamind.engines.document.media.video import frame_description as fd
 from novamind.engines.document.media.video.frame_description import (
     AllFrameDescriptionsFailedError,
     describe_grouped,
     describe_single,
 )
+from novamind.features.knowledge_space.exceptions import DocumentProcessingError
+from novamind.features.knowledge_space.schemas.enums import ChunkType
+from novamind.features.knowledge_space.services import document_pipeline, media_processing
 
 pytestmark = pytest.mark.unit
 

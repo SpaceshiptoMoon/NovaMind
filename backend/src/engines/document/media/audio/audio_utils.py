@@ -6,14 +6,14 @@
 """
 
 import asyncio
+import logging
 import multiprocessing as mp
 import os
-import logging
 import tempfile
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
-from typing import List, Tuple, Dict, Any, Optional, Set
+from typing import Any
 
 from novamind.shared.config import AudioConfig
 
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 # 音频格式 Magic Bytes 检测表
-_AUDIO_MAGIC_BYTES: List[Tuple[bytes, str, str]] = [
+_AUDIO_MAGIC_BYTES: list[tuple[bytes, str, str]] = [
     (b"RIFF", "wav", "audio/wav"),       # WAV
     (b"OggS", "ogg", "audio/ogg"),       # OGG Vorbis
     (b"fLaC", "flac", "audio/flac"),     # FLAC
@@ -48,7 +48,7 @@ _FTYP_MIME = {
 }
 
 
-def _detect_audio_format(file_content: bytes) -> Tuple[str, str]:
+def _detect_audio_format(file_content: bytes) -> tuple[str, str]:
     """
     通过 Magic Bytes 检测音频真实格式，不依赖文件扩展名
 
@@ -86,7 +86,7 @@ def _detect_audio_format(file_content: bytes) -> Tuple[str, str]:
 
 # faster-whisper 通过 PyAV (FFmpeg) 解码，支持的音频格式
 # 参考: https://github.com/SYSTRAN/faster-whisper
-_LOCAL_ASR_SUPPORTED_EXTENSIONS: Set[str] = {
+_LOCAL_ASR_SUPPORTED_EXTENSIONS: set[str] = {
     "wav", "mp3", "flac", "ogg", "m4a", "aac", "wma", "opus", "webm",
 }
 # Magic bytes 与扩展名的映射（仅包含 _detect_audio_format 能识别的）
@@ -150,11 +150,11 @@ async def acquire_asr_or_busy() -> bool:
     try:
         await asyncio.wait_for(_asr_busy_lock.acquire(), timeout=0.05)
         return True
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return False
 
 
-def _segments_to_dict(segments_result) -> List[Dict]:
+def _segments_to_dict(segments_result) -> list[dict]:
     """将 faster-whisper 的 segments 迭代器转为标准字典列表。"""
     result = []
     for seg in segments_result:
@@ -169,7 +169,7 @@ def _segments_to_dict(segments_result) -> List[Dict]:
 
 
 def _resolve_local_whisper_model_dir(
-    audio_config: Optional[AudioConfig] = None,
+    audio_config: AudioConfig | None = None,
 ) -> Path:
     """解析本地 faster-whisper 模型目录。
 
@@ -196,7 +196,7 @@ def _resolve_local_whisper_model_dir(
     return Path.home() / ".cache" / "faster-whisper" / "tiny"
 
 
-def _resolve_cpu_threads(audio_config: Optional[AudioConfig] = None) -> int:
+def _resolve_cpu_threads(audio_config: AudioConfig | None = None) -> int:
     """解析本地 ASR 推理使用的 CPU 线程数。
 
     优先级：
@@ -226,10 +226,10 @@ _subprocess_model = None
 
 def _transcribe_in_subprocess(
     tmp_path: str,
-    language: Optional[str],
+    language: str | None,
     model_dir: str,
     cpu_threads: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """子进程内执行：加载模型（子进程全局缓存）+ transcribe + 返回可 pickle 结果。
 
     必须是模块级函数（spawn worker 经 pickle 引用，需可 import）。
@@ -297,7 +297,7 @@ async def _rebuild_asr_executor() -> None:
         logger.warning("ASR 进程池已重建（前一个子进程崩溃）")
 
 
-def _validate_audio_for_local_asr(file_content: bytes) -> Tuple[str, str]:
+def _validate_audio_for_local_asr(file_content: bytes) -> tuple[str, str]:
     """
     在调用本地 ASR 前校验音频格式
 
@@ -330,9 +330,9 @@ def _validate_audio_for_local_asr(file_content: bytes) -> Tuple[str, str]:
 async def transcribe_audio_local(
     file_content: bytes,
     file_type: str = "mp3",
-    language: Optional[str] = None,
-    audio_config: Optional[AudioConfig] = None,
-) -> List[Dict]:
+    language: str | None = None,
+    audio_config: AudioConfig | None = None,
+) -> list[dict]:
     """
     使用本地 faster-whisper 模型转写音频，返回带时间戳的段落
 
@@ -517,10 +517,10 @@ async def transcribe_audio_with_timestamps(
     file_content: bytes,
     file_type: str = "mp3",
     model: str = "whisper-1",
-    api_key: Optional[str] = None,
-    base_url: Optional[str] = None,
-    language: Optional[str] = None,
-) -> List[Dict]:
+    api_key: str | None = None,
+    base_url: str | None = None,
+    language: str | None = None,
+) -> list[dict]:
     """
     使用 httpx 直调 OpenAI Whisper API 转写音频，返回带时间戳的段落
 
@@ -593,13 +593,13 @@ async def transcribe_audio_with_dashscope(
     file_content: bytes,
     file_type: str = "mp3",
     model: str = "paraformer-v2",
-    api_key: Optional[str] = None,
-    base_url: Optional[str] = None,
-    minio_bucket: Optional[str] = None,
-    language_hints: Optional[List[str]] = None,
+    api_key: str | None = None,
+    base_url: str | None = None,
+    minio_bucket: str | None = None,
+    language_hints: list[str] | None = None,
     *,
     minio_client,
-) -> List[Dict]:
+) -> list[dict]:
     """
     使用 DashScope SDK 调用 Paraformer 转写音频，返回带时间戳的段落
 
@@ -619,8 +619,9 @@ async def transcribe_audio_with_dashscope(
     Returns:
         [{"text": "...", "start": 0.0, "end": 5.2}, ...]
     """
-    from http import HTTPStatus
     import uuid
+    from http import HTTPStatus
+
     import dashscope
     from dashscope.audio.asr import Transcription
 
@@ -662,7 +663,7 @@ async def transcribe_audio_with_dashscope(
         logger.info("音频已上传 MinIO 临时位置: %s, url=%s...", temp_object_name, uploaded_url[:80])
 
         # 3. 提交转写任务（使用 HTTP URL，不是 fileid://）
-        call_kwargs: Dict = {
+        call_kwargs: dict = {
             "model": model,
             "file_urls": [uploaded_url],
         }

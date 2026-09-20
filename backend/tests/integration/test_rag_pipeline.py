@@ -11,10 +11,9 @@ RAG 全链路测试脚本
 import os
 import sys
 import time
-import requests
-from typing import Optional
 
 import pytest
+import requests
 
 pytestmark = pytest.mark.integration
 
@@ -42,11 +41,11 @@ ALL_SEARCH_MODES = [
 
 # ======================== 全局状态 ========================
 session = requests.Session()
-token: Optional[str] = None
+token: str | None = None
 headers: dict = {}
-created_space_id: Optional[int] = None
-created_kb_id: Optional[int] = None
-created_document_id: Optional[int] = None
+created_space_id: int | None = None
+created_kb_id: int | None = None
+created_document_id: int | None = None
 
 
 # ======================== 工具函数 ========================
@@ -340,7 +339,7 @@ def step_7_all_search_modes():
 
     # 汇总
     print(f"\n  {'='*50}")
-    print(f"  检索模式测试汇总")
+    print("  检索模式测试汇总")
     print(f"  {'='*50}")
     print(f"  总计: {len(ALL_SEARCH_MODES)} 种模式")
     print(f"  成功: {success_count} 种")

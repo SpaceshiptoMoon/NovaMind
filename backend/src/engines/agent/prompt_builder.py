@@ -4,7 +4,6 @@
 支持 Token 预算保护：超限时按优先级从低到高丢弃层。
 """
 
-from typing import List, Optional, Tuple
 
 from novamind.engines.agent.tool.registry import ToolRegistry
 from novamind.shared.logging import get_logger
@@ -12,7 +11,7 @@ from novamind.shared.logging import get_logger
 logger = get_logger(__name__)
 
 # 模型名关键词 → 适配提示
-_MODEL_ADAPTATION: List[Tuple[Tuple[str, ...], str]] = [
+_MODEL_ADAPTATION: list[tuple[tuple[str, ...], str]] = [
     (
         ("gpt", "o1", "o3", "o4"),
         (
@@ -100,11 +99,11 @@ class SystemPromptBuilder:
     async def build(
         self,
         base_prompt: str,
-        enabled_tools: List[str],
-        skill_fragments: List[str],
+        enabled_tools: list[str],
+        skill_fragments: list[str],
         frozen_memory: str = "",
         model_name: str = "",
-        max_prompt_tokens: Optional[int] = None,
+        max_prompt_tokens: int | None = None,
     ) -> str:
         """按层组装完整系统提示（含 Token 预算保护）"""
         # 收集各层内容
@@ -144,9 +143,9 @@ class SystemPromptBuilder:
 
         return result
 
-    def _collect_tool_guidance(self, enabled_tools: List[str]) -> str:
+    def _collect_tool_guidance(self, enabled_tools: list[str]) -> str:
         """收集已启用工具的 system_prompt_fragment"""
-        fragments: List[str] = []
+        fragments: list[str] = []
         for tool_name in enabled_tools:
             if tool_name.startswith("skill__"):
                 continue

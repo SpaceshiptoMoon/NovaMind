@@ -8,9 +8,8 @@
 qa_rw_completion / qa_rw_synonym / qa_rw_decompose / qa_rw_hyde。
 """
 import re
-from enum import Enum
-from typing import Optional, List
 from dataclasses import dataclass, field
+from enum import Enum
 
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.prompts.templates import PromptManager
@@ -28,7 +27,7 @@ class RewriteStrategy(str, Enum):
 @dataclass
 class RewriteResult:
     """改写结果"""
-    queries: List[str] = field(default_factory=list)  # 检索用的 query 列表
+    queries: list[str] = field(default_factory=list)  # 检索用的 query 列表
     strategy: str = "none"
     original_query: str = ""
     degraded: bool = False  # True=LLM 改写失败/不可用，已回退到原 query（透传到 trace 告知用户）
@@ -42,7 +41,7 @@ _SUBQ_PREFIX_RE = re.compile(r"^\s*(?:\d+[\.\)]|[-•*·])\s*")
 _SUBQ_HEADER_RE = re.compile(r"^(?:子问题|子问题列表|子问题分解|分解|以下|如下|结果)[：:]")
 
 
-def _clean_sub_query(line: str) -> Optional[str]:
+def _clean_sub_query(line: str) -> str | None:
     """清洗 DECOMPOSE 单行：去列表编号/项目符号前缀，过滤标题/说明行；返回 None 表示该行应丢弃。"""
     line = line.strip()
     if not line:
@@ -61,7 +60,7 @@ class QueryRewriter:
 
     async def rewrite(
         self, query: str, strategy: RewriteStrategy,
-        history: Optional[List[dict]] = None,
+        history: list[dict] | None = None,
     ) -> RewriteResult:
         """按指定策略改写查询"""
         if strategy == RewriteStrategy.COMPLETION:
@@ -75,7 +74,7 @@ class QueryRewriter:
         else:
             return RewriteResult(queries=[query], strategy=strategy.value, original_query=query)
 
-    async def _completion(self, query: str, history: List[dict]) -> RewriteResult:
+    async def _completion(self, query: str, history: list[dict]) -> RewriteResult:
         # 只取最近 3 轮对话作为上下文
         recent = history[-6:] if len(history) > 6 else history
         formatted = "\n".join(
@@ -132,7 +131,7 @@ class QueryRewriter:
             degraded=not hypothetical,
         )
 
-    async def _call_llm(self, prompt: str) -> Optional[str]:
+    async def _call_llm(self, prompt: str) -> str | None:
         """调 LLM 生成文本，失败时返回 None（fallback 到原 query）"""
         try:
             return await self._llm.generate_text(

@@ -5,16 +5,14 @@ import os
 import time
 from contextlib import asynccontextmanager
 
-from sqlalchemy import text
-
-from novamind.setting.yaml_config import get_config
-from novamind.core.middleware.structured_logging import get_logger
-from novamind.core.middleware.manifest_loader import get_sorted_manifests
-
 from novamind.core.database.base import create_tables, ensure_fulltext_indexes
-from novamind.core.database.database import get_engine, dispose_engine
+from novamind.core.database.database import dispose_engine, get_engine
 from novamind.core.database.schema_migrations import CONSTRAINT_MIGRATIONS, SCHEMA_MIGRATIONS
-from novamind.shared.cache.redis_client import get_redis_client, close_redis_connection
+from novamind.core.middleware.manifest_loader import get_sorted_manifests
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.setting.yaml_config import get_config
+from novamind.shared.cache.redis_client import close_redis_connection, get_redis_client
+from sqlalchemy import text
 
 logger = get_logger(__name__)
 
@@ -87,30 +85,44 @@ register_feature_initializer(_init_notification)
 
 def _import_models_legacy() -> None:
     """动态导入所有业务模型（legacy 硬编码，回滚用）"""
-    from novamind.features.user.models.user import User  # noqa: F401
-    from novamind.features.user.models.user_model_config import UserModelConfig  # noqa: F401
-    from novamind.features.user.models.user_disabled_app import UserDisabledApp  # noqa: F401
-    from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace  # noqa: F401
-    from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase  # noqa: F401
+    from novamind.features.agent.models.agent import AgentDefinition  # noqa: F401
+    from novamind.features.agent.models.context_summary import AgentContextSummary  # noqa: F401
+    from novamind.features.agent.models.mcp_server import AgentMcpServer  # noqa: F401
+    from novamind.features.agent.models.memory import AgentMemory  # noqa: F401
+    from novamind.features.agent.models.message import AgentMessage  # noqa: F401
+    from novamind.features.agent.models.session import AgentSession  # noqa: F401
+    from novamind.features.agent.models.tool_call import AgentToolCall  # noqa: F401
+    from novamind.features.app.models.resume import ResumeSession  # noqa: F401
+    from novamind.features.deep_research.models.research_session import (
+        ResearchSession,  # noqa: F401
+    )
+    from novamind.features.evaluation.models.evaluation_task import (  # noqa: F401
+        EvaluationTask,
+        EvaluationTestSet,
+    )
     from novamind.features.knowledge_space.models.document import Document  # noqa: F401
-    from novamind.features.knowledge_space.models.space_member import SpaceMember  # noqa: F401
+    from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase  # noqa: F401
+    from novamind.features.knowledge_space.models.knowledge_space import (
+        KnowledgeSpace,  # noqa: F401
+    )
     from novamind.features.knowledge_space.models.space_audit_log import SpaceAuditLog  # noqa: F401
+    from novamind.features.knowledge_space.models.space_member import SpaceMember  # noqa: F401
+    from novamind.features.notification.models.notification import Notification  # noqa: F401
+    from novamind.features.notification.models.notification_preference import (
+        NotificationPreference,  # noqa: F401
+    )
     from novamind.features.qa.models.question_answer import QuestionAnswer  # noqa: F401
     from novamind.features.qa.models.session_config import SessionConfig  # noqa: F401
     from novamind.features.qa.models.session_summary import SessionSummary  # noqa: F401
-    from novamind.features.deep_research.models.research_session import ResearchSession  # noqa: F401
-    from novamind.features.evaluation.models.evaluation_task import EvaluationTestSet, EvaluationTask  # noqa: F401
-    from novamind.features.agent.models.agent import AgentDefinition  # noqa: F401
-    from novamind.features.agent.models.session import AgentSession  # noqa: F401
-    from novamind.features.agent.models.message import AgentMessage  # noqa: F401
-    from novamind.features.agent.models.tool_call import AgentToolCall  # noqa: F401
-    from novamind.features.agent.models.mcp_server import AgentMcpServer  # noqa: F401
-    from novamind.features.agent.models.memory import AgentMemory  # noqa: F401
-    from novamind.features.agent.models.context_summary import AgentContextSummary  # noqa: F401
-    from novamind.features.skill.models.skill import SkillDefinition, SkillVersion, SkillReview, SkillInstallation  # noqa: F401
-    from novamind.features.app.models.resume import ResumeSession  # noqa: F401
-    from novamind.features.notification.models.notification import Notification  # noqa: F401
-    from novamind.features.notification.models.notification_preference import NotificationPreference  # noqa: F401
+    from novamind.features.skill.models.skill import (  # noqa: F401
+        SkillDefinition,
+        SkillInstallation,
+        SkillReview,
+        SkillVersion,
+    )
+    from novamind.features.user.models.user import User  # noqa: F401
+    from novamind.features.user.models.user_disabled_app import UserDisabledApp  # noqa: F401
+    from novamind.features.user.models.user_model_config import UserModelConfig  # noqa: F401
 
 
 class AppLifespanManager:
@@ -191,18 +203,18 @@ class AppLifespanManager:
 
         # 启动嵌入式 arq Worker（任务函数从各 feature tasks 收集注入；shared/mq 只提供通用运行时）
         try:
+            from arq import cron
+            from novamind.features.app.tasks.resume_tasks import (
+                process_resume_task,
+                recover_orphan_resume_sessions,
+            )
             from novamind.features.knowledge_space.tasks.document_tasks import (
                 process_document_task,
                 recover_orphan_documents,
             )
             from novamind.features.knowledge_space.tasks.wiki_tasks import process_wiki_ingest_task
-            from novamind.features.app.tasks.resume_tasks import (
-                process_resume_task,
-                recover_orphan_resume_sessions,
-            )
-            from novamind.shared.mq.worker import start_embedded_worker
             from novamind.features.qa.tasks import cleanup_orphan_attachments
-            from arq import cron
+            from novamind.shared.mq.worker import start_embedded_worker
             await start_embedded_worker(
                 functions=[process_document_task, process_resume_task, process_wiki_ingest_task],
                 task_queue=config.task_queue,

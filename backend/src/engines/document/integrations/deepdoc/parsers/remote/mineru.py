@@ -13,8 +13,8 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-import json
 import html
+import json
 import logging
 import os
 import re
@@ -23,20 +23,22 @@ import sys
 import tempfile
 import threading
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from io import BytesIO
 from os import PathLike
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 import numpy as np
 import pdfplumber
 import requests
-from PIL import Image
-from enum import StrEnum
-
 from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import extract_pdf_outlines
+from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import (
+    extract_pdf_outlines,
+)
+from PIL import Image
 
 MAXIMUM_PAGE_NUMBER = 99999
 
@@ -132,9 +134,9 @@ class MinerUParseOptions:
     """Options for MinerU PDF parsing."""
 
     backend: MinerUBackend = MinerUBackend.PIPELINE
-    lang: Optional[MinerULanguage] = None  # language for OCR (pipeline backend only)
+    lang: MinerULanguage | None = None  # language for OCR (pipeline backend only)
     method: MinerUParseMethod = MinerUParseMethod.AUTO
-    server_url: Optional[str] = None
+    server_url: str | None = None
     delete_output: bool = True
     parse_method: str = "raw"
     formula_enable: bool = True
@@ -161,7 +163,7 @@ class RAGFlowMinerUParser(RAGFlowPdfParser):
         file_bytes: bytes,
         *,
         file_name: str = "input.pdf",
-        parsing_config: Optional[dict[str, Any]] = None,
+        parsing_config: dict[str, Any] | None = None,
     ) -> tuple[str, list[str], dict[str, Any]]:
         if not self.mineru_api:
             raise RuntimeError("[MinerU] MINERU_APISERVER is not configured.")
@@ -284,7 +286,7 @@ class RAGFlowMinerUParser(RAGFlowPdfParser):
         section = re.sub(r"[ \t]{2,}", " ", section)
         return section.strip()
 
-    def check_installation(self, backend: str = "pipeline", server_url: Optional[str] = None) -> tuple[bool, str]:
+    def check_installation(self, backend: str = "pipeline", server_url: str | None = None) -> tuple[bool, str]:
         reason = ""
 
         valid_backends = ["pipeline", "vlm-http-client", "vlm-transformers", "vlm-vllm-engine", "vlm-mlx-engine", "vlm-vllm-async-engine", "vlm-lmdeploy-engine"]
@@ -324,10 +326,10 @@ class RAGFlowMinerUParser(RAGFlowPdfParser):
 
         return True, reason
 
-    def _run_mineru(self, input_path: Path, output_dir: Path, options: MinerUParseOptions, callback: Optional[Callable] = None) -> Path:
+    def _run_mineru(self, input_path: Path, output_dir: Path, options: MinerUParseOptions, callback: Callable | None = None) -> Path:
         return self._run_mineru_api(input_path, output_dir, options, callback)
 
-    def _run_mineru_api(self, input_path: Path, output_dir: Path, options: MinerUParseOptions, callback: Optional[Callable] = None) -> Path:
+    def _run_mineru_api(self, input_path: Path, output_dir: Path, options: MinerUParseOptions, callback: Callable | None = None) -> Path:
         pdf_file_path = str(input_path)
 
         if not os.path.exists(pdf_file_path):
@@ -690,7 +692,7 @@ class RAGFlowMinerUParser(RAGFlowPdfParser):
         if not json_file:
             raise FileNotFoundError(f"[MinerU] Missing output file, tried: {', '.join(str(p) for p in attempted)}")
 
-        with open(json_file, "r", encoding="utf-8") as f:
+        with open(json_file, encoding="utf-8") as f:
             data = json.load(f)
 
         for item in data:
@@ -746,7 +748,7 @@ class RAGFlowMinerUParser(RAGFlowPdfParser):
     def _transfer_to_tables(self, outputs: list[dict[str, Any]]):
         return []
 
-    def _enhance_images_with_vlm(self, outputs: list[dict[str, Any]], vision_model, callback: Optional[Callable] = None):
+    def _enhance_images_with_vlm(self, outputs: list[dict[str, Any]], vision_model, callback: Callable | None = None):
         """Generate semantic descriptions for image blocks via the tenant's
         IMAGE2TEXT model, mirroring deepdoc's VisionFigureParser. Each
         IMAGE block with a readable img_path gets a ``vlm_description``
@@ -754,6 +756,7 @@ class RAGFlowMinerUParser(RAGFlowPdfParser):
         text — closing issue #14869.
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
+
         from rag.app.picture import vision_llm_chunk
         from rag.prompts.generator import vision_llm_figure_describe_prompt
 
@@ -787,11 +790,11 @@ class RAGFlowMinerUParser(RAGFlowPdfParser):
         self,
         filepath: str | PathLike[str],
         binary: BytesIO | bytes,
-        callback: Optional[Callable] = None,
+        callback: Callable | None = None,
         *,
-        output_dir: Optional[str] = None,
+        output_dir: str | None = None,
         backend: str = "pipeline",
-        server_url: Optional[str] = None,
+        server_url: str | None = None,
         delete_output: bool = True,
         parse_method: str = "raw",
         **kwargs,

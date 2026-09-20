@@ -1,24 +1,22 @@
 """
 MCP 服务器管理服务
 """
-from typing import List, Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.features.agent.repository.agent_repository import McpServerRepository
+from novamind.core.middleware.structured_logging import get_logger
 from novamind.engines.agent.mcp.client import McpClientManager
 from novamind.engines.agent.mcp.config import McpConnectionConfig
+from novamind.features.agent.exceptions import (
+    McpConnectionError,
+    McpServerNotFoundError,
+)
 from novamind.features.agent.models.mcp_server import AgentMcpServer
+from novamind.features.agent.repository.agent_repository import McpServerRepository
 from novamind.features.agent.schemas.agent_schema import (
     McpServerCreate,
-    McpServerUpdate,
     McpServerResponse,
+    McpServerUpdate,
 )
-from novamind.features.agent.exceptions import (
-    McpServerNotFoundError,
-    McpConnectionError,
-)
-from novamind.core.middleware.structured_logging import get_logger
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -32,7 +30,7 @@ class McpServerService:
         self.mcp_manager = mcp_client_manager
 
     async def create_server(
-        self, user_id: Optional[int], data: McpServerCreate
+        self, user_id: int | None, data: McpServerCreate
     ) -> McpServerResponse:
         server = await self.repo.create(
             user_id=user_id,
@@ -53,7 +51,7 @@ class McpServerService:
 
         return McpServerResponse.model_validate(server)
 
-    async def list_servers(self, user_id: int) -> List[McpServerResponse]:
+    async def list_servers(self, user_id: int) -> list[McpServerResponse]:
         servers = await self.repo.list_by_user(user_id)
         return [McpServerResponse.model_validate(s) for s in servers]
 
@@ -113,7 +111,7 @@ class McpServerService:
 
     async def refresh_tools(
         self, user_id: int, server_id: int, *, is_admin: bool = False
-    ) -> List[dict]:
+    ) -> list[dict]:
         server = await self._get_and_validate(user_id, server_id, is_admin=is_admin)
         if not self.mcp_manager.is_connected(server_id):
             raise McpConnectionError(f"服务器 {server.name} 未连接")

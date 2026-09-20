@@ -7,13 +7,13 @@ P0 修复背景：``skill__{id}_{name}`` 的 name 可含下划线/连字符（�
 """
 from contextlib import contextmanager
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
-
-import pytest
 
 import novamind.features.skill.repository.skill_repository as skill_repo_mod
+import pytest
 from novamind.features.agent.services.chat_service import AgentChatService
-from novamind.features.skill.models.skill import SkillStatus, ReviewStatus
+from novamind.features.skill.models.skill import ReviewStatus, SkillStatus
+
+pytestmark = pytest.mark.unit
 
 
 def _make_skill(skill_id: int, name: str, display_name: str = "技能"):

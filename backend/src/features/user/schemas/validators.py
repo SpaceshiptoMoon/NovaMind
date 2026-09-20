@@ -5,7 +5,6 @@
 """
 
 import re
-from typing import Optional
 
 
 def validate_username_format(v: str) -> str:
@@ -17,14 +16,14 @@ def validate_username_format(v: str) -> str:
     return v
 
 
-def validate_username_optional(v: Optional[str]) -> Optional[str]:
+def validate_username_optional(v: str | None) -> str | None:
     """验证用户名格式（可选字段，None 时跳过）"""
     if v is None:
         return v
     return validate_username_format(v)
 
 
-def validate_phone_format(v: Optional[str]) -> Optional[str]:
+def validate_phone_format(v: str | None) -> str | None:
     """验证手机号格式（空字符串规范化为 None，避免空值撞 phone 唯一约束）"""
     if not v:
         return None
@@ -48,14 +47,14 @@ def validate_password_strength(v: str) -> str:
     return v
 
 
-def validate_password_strength_optional(v: Optional[str]) -> Optional[str]:
+def validate_password_strength_optional(v: str | None) -> str | None:
     """验证密码强度（可选字段，None 时跳过）"""
     if v is None:
         return v
     return validate_password_strength(v)
 
 
-def validate_password_not_username(username: Optional[str], password: Optional[str]) -> None:
+def validate_password_not_username(username: str | None, password: str | None) -> None:
     """验证密码不能包含用户名"""
     if username and password:
         if username.lower() in password.lower():

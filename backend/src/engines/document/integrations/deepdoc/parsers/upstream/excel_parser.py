@@ -17,9 +17,8 @@ import sys
 from io import BytesIO
 
 import pandas as pd
-from openpyxl import Workbook, load_workbook
-
 from novamind.engines.document.integrations.deepdoc.compat import LazyImage, find_codec
+from openpyxl import Workbook, load_workbook
 
 # copied from `/openpyxl/cell/cell.py`
 ILLEGAL_CHARACTERS_RE = re.compile(r"[\000-\010]|[\013-\014]|[\016-\037]")

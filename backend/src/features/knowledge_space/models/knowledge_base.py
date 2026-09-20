@@ -8,11 +8,20 @@ Embedding 模型配置存储在 config.embedding 中：
 - embedding_config_version: 配置版本号
 - vector_index_status: 向量索引状态
 """
-from typing import Optional
 from enum import IntEnum
-from sqlalchemy import Column, BigInteger, SmallInteger, String, JSON, DateTime, ForeignKey, UniqueConstraint
+
 from novamind.core.database.base import BaseModel
 from novamind.shared.utils.time_utils import now_china
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Column,
+    DateTime,
+    ForeignKey,
+    SmallInteger,
+    String,
+    UniqueConstraint,
+)
 
 
 class KnowledgeBaseStatus(IntEnum):
@@ -112,7 +121,7 @@ class KnowledgeBase(BaseModel):
             # 未启用问题生成，仅内容模式可用
             return content_modes
 
-    def get_description(self) -> Optional[str]:
+    def get_description(self) -> str | None:
         """获取描述"""
         return (self.config or {}).get("description")
 

@@ -4,31 +4,27 @@
 处理研究会话的数据库操作
 """
 
-from typing import Optional, List, Dict, Any
+from typing import Any
 
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm.attributes import flag_modified
-
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.engines.deep_research.types import SearchSource
+from novamind.features.deep_research.exceptions import DeepResearchError
 from novamind.features.deep_research.models.research_session import (
+    ExternalSearchProvider,
+    ResearchMode,
     ResearchSession,
     ResearchStatus,
-    ResearchMode,
-    ExternalSearchProvider,
 )
-from novamind.engines.deep_research.types import SearchSource
 from novamind.shared.utils.time_utils import now_china
-
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 # update_status 允许更新的字段白名单
 _UPDATABLE_FIELDS = frozenset({
     "status_info", "plan", "result", "stats",
     "completed_at", "started_at", "external_provider",
 })
-from novamind.features.deep_research.exceptions import (
-    DeepResearchError,
-)
-from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -47,7 +43,7 @@ class ResearchRepository:
         mode: ResearchMode = ResearchMode.STANDARD,
         search_source: SearchSource = SearchSource.HYBRID,
         external_provider: ExternalSearchProvider = ExternalSearchProvider.DUCKDUCKGO,
-        config: Optional[Dict[str, Any]] = None,
+        config: dict[str, Any] | None = None,
     ) -> ResearchSession:
         """
         创建研究会话
@@ -86,7 +82,7 @@ class ResearchRepository:
             logger.error("创建研究会话失败", error=str(e))
             raise DeepResearchError(f"创建研究会话失败: {str(e)}")
 
-    async def get_by_id(self, research_id: int) -> Optional[ResearchSession]:
+    async def get_by_id(self, research_id: int) -> ResearchSession | None:
         """
         通过 ID 获取研究会话（内部使用，不检查 space 状态）
 
@@ -108,8 +104,8 @@ class ResearchRepository:
         return result.scalar_one_or_none()
 
     async def get_by_session_id(
-        self, session_id: str, user_id: Optional[int] = None
-    ) -> Optional[ResearchSession]:
+        self, session_id: str, user_id: int | None = None
+    ) -> ResearchSession | None:
         """
         通过会话 ID 获取研究会话（检查关联 space 未删除）
 
@@ -140,11 +136,11 @@ class ResearchRepository:
     async def get_by_space(
         self,
         space_id: int,
-        user_id: Optional[int] = None,
-        status: Optional[ResearchStatus] = None,
+        user_id: int | None = None,
+        status: ResearchStatus | None = None,
         limit: int = 10,
         offset: int = 0,
-    ) -> List[ResearchSession]:
+    ) -> list[ResearchSession]:
         """
         获取空间的研究会话列表
 
@@ -177,8 +173,8 @@ class ResearchRepository:
     async def count_by_space(
         self,
         space_id: int,
-        user_id: Optional[int] = None,
-        status: Optional[ResearchStatus] = None,
+        user_id: int | None = None,
+        status: ResearchStatus | None = None,
     ) -> int:
         """
         统计空间的研究会话数量
@@ -210,7 +206,7 @@ class ResearchRepository:
         research_id: int,
         status: ResearchStatus,
         **kwargs,
-    ) -> Optional[ResearchSession]:
+    ) -> ResearchSession | None:
         """
         更新研究状态
 
@@ -246,7 +242,7 @@ class ResearchRepository:
         self,
         research_id: int,
         topic: str,
-    ) -> Optional[ResearchSession]:
+    ) -> ResearchSession | None:
         """
         更新研究主题（存储到 config 中）
 
@@ -278,8 +274,8 @@ class ResearchRepository:
     async def update_tasks(
         self,
         research_id: int,
-        tasks: List[Dict[str, Any]],
-    ) -> Optional[ResearchSession]:
+        tasks: list[dict[str, Any]],
+    ) -> ResearchSession | None:
         """
         更新研究任务列表（旧形状，兼容保留；新代码用 update_plan）
 
@@ -295,8 +291,8 @@ class ResearchRepository:
     async def update_plan(
         self,
         research_id: int,
-        plan_json: Dict[str, Any],
-    ) -> Optional[ResearchSession]:
+        plan_json: dict[str, Any],
+    ) -> ResearchSession | None:
         """
         写入研究计划（deer-flow 对齐 v2 形状）
 
@@ -327,8 +323,8 @@ class ResearchRepository:
     async def update_search_results(
         self,
         research_id: int,
-        results: List[Dict[str, Any]],
-    ) -> Optional[ResearchSession]:
+        results: list[dict[str, Any]],
+    ) -> ResearchSession | None:
         """
         更新检索结果（存储到 result 中）
 
@@ -361,10 +357,10 @@ class ResearchRepository:
         self,
         research_id: int,
         report: str,
-        stats: Dict[str, Any],
-        sources: Optional[List[str]] = None,
-        citations: Optional[List[Dict[str, Any]]] = None,
-    ) -> Optional[ResearchSession]:
+        stats: dict[str, Any],
+        sources: list[str] | None = None,
+        citations: list[dict[str, Any]] | None = None,
+    ) -> ResearchSession | None:
         """
         完成研究
 
@@ -402,7 +398,7 @@ class ResearchRepository:
         self,
         research_id: int,
         error_message: str,
-    ) -> Optional[ResearchSession]:
+    ) -> ResearchSession | None:
         """
         标记研究失败
 

@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import importlib
 import pkgutil
-from typing import Dict, List
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.setting.yaml_config import FeatureFlag, get_config
@@ -37,14 +36,14 @@ _FEATURES_PACKAGE = "novamind.features"
 _SYSTEM_MANIFEST_MODULE = "novamind.core.middleware.system_manifest"
 
 
-def _load_feature_manifests() -> List[FeatureManifest]:
+def _load_feature_manifests() -> list[FeatureManifest]:
     """扫描 `features/*/manifest.py`，调用 `manifest()` 收集 FeatureManifest。
 
     用 pkgutil 遍历 features 包的所有子模块，对每个子包尝试 import
     `.manifest` 子模块并调用其 `manifest()` 工厂。无 manifest.py 的 feature
     （暂未迁移）被跳过并记录，不影响其余 feature。
     """
-    manifests: List[FeatureManifest] = []
+    manifests: list[FeatureManifest] = []
     try:
         features_pkg = importlib.import_module(_FEATURES_PACKAGE)
     except ImportError as e:  # pragma: no cover - features 包必存在
@@ -98,13 +97,13 @@ def _load_system_manifest() -> FeatureManifest | None:
     return factory()
 
 
-def _resolve_enabled(manifests: List[FeatureManifest], config_features: FeaturesConfig) -> None:
+def _resolve_enabled(manifests: list[FeatureManifest], config_features: FeaturesConfig) -> None:
     """从 FeaturesConfig 解析每个 manifest 的 enabled 并注入。"""
     for m in manifests:
         m.enabled = config_features.flags.get(m.name, FeatureFlag()).enabled
 
 
-def _topo_sort(manifests: List[FeatureManifest]) -> List[FeatureManifest]:
+def _topo_sort(manifests: list[FeatureManifest]) -> list[FeatureManifest]:
     """Kahn 拓扑排序 + 环检测，按 `order` 升序作稳定 tiebreaker。
 
     - 仅对 enabled 的 manifest 排序；disabled 的不参与（也不被依赖）。
@@ -113,11 +112,11 @@ def _topo_sort(manifests: List[FeatureManifest]) -> List[FeatureManifest]:
     - 检测到环则抛 RuntimeError（启动期 fail-fast，避免静默错误顺序）。
     """
     enabled = [m for m in manifests if m.enabled]
-    by_name: Dict[str, FeatureManifest] = {m.name: m for m in enabled}
+    by_name: dict[str, FeatureManifest] = {m.name: m for m in enabled}
 
     # 入度表（仅统计存在的依赖）
-    in_degree: Dict[str, int] = {m.name: 0 for m in enabled}
-    adj: Dict[str, List[str]] = {m.name: [] for m in enabled}
+    in_degree: dict[str, int] = {m.name: 0 for m in enabled}
+    adj: dict[str, list[str]] = {m.name: [] for m in enabled}
     for m in enabled:
         for dep in m.depends_on:
             if dep not in by_name:
@@ -131,7 +130,7 @@ def _topo_sort(manifests: List[FeatureManifest]) -> List[FeatureManifest]:
 
     # 就绪队列：入度为 0 的节点，按 order 升序稳定挑选
     ready = sorted([m for m in enabled if in_degree[m.name] == 0], key=lambda x: x.order)
-    result: List[FeatureManifest] = []
+    result: list[FeatureManifest] = []
     while ready:
         # 取 order 最小的就绪节点
         ready.sort(key=lambda x: x.order)
@@ -150,12 +149,12 @@ def _topo_sort(manifests: List[FeatureManifest]) -> List[FeatureManifest]:
     return result
 
 
-def discover_feature_manifests() -> List[FeatureManifest]:
+def discover_feature_manifests() -> list[FeatureManifest]:
     """发现全部 feature manifest（不含 enabled 过滤，enabled 字段已注入但未排序）。"""
     return _load_feature_manifests()
 
 
-def _resolve_all() -> List[FeatureManifest]:
+def _resolve_all() -> list[FeatureManifest]:
     """发现全部 manifest（features + system）并从 FeaturesConfig 注入 enabled。
 
     供 `get_sorted_manifests`（拓扑序，用于 init）与 `get_route_sorted_manifests`
@@ -173,7 +172,7 @@ def _resolve_all() -> List[FeatureManifest]:
     return all_manifests
 
 
-def get_sorted_manifests() -> List[FeatureManifest]:
+def get_sorted_manifests() -> list[FeatureManifest]:
     """发现 + 解析 enabled + 拓扑排序，返回有序 FeatureManifest 列表（含 system manifest 在前）。
 
     用于初始化（`startup_manager._init_features` / `_import_models`）：按依赖拓扑序
@@ -184,7 +183,7 @@ def get_sorted_manifests() -> List[FeatureManifest]:
     return _topo_sort(_resolve_all())
 
 
-def get_route_sorted_manifests() -> List[FeatureManifest]:
+def get_route_sorted_manifests() -> list[FeatureManifest]:
     """发现 + 解析 enabled + 按 `route_order` 升序排序，返回 FeatureManifest 列表。
 
     用于路由注册（`router_manager.get_all_routers`）：路由注册顺序决定 FastAPI 对

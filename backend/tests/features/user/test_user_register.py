@@ -1,11 +1,13 @@
 """用户注册/创建角色绑定测试。"""
-import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
-from novamind.features.user.services.user_service import UserService
-from novamind.features.user.repository.user_repository import UserRepository
+import pytest
 from novamind.features.user.models.role import Role
 from novamind.features.user.models.user import User
+from novamind.features.user.repository.user_repository import UserRepository
+from novamind.features.user.services.user_service import UserService
+
+pytestmark = pytest.mark.unit
 
 
 @pytest.mark.asyncio

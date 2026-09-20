@@ -10,7 +10,7 @@
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
 
@@ -19,9 +19,9 @@ if TYPE_CHECKING:
 
 
 async def enrich_attachments_with_presigned_urls(
-    extra: Optional[dict],
-    minio_client: "MinioClient",
-    bucket: Optional[str] = None,
+    extra: dict | None,
+    minio_client: MinioClient,
+    bucket: str | None = None,
     expires: int = 3600,
 ) -> None:
     """为 extra["attachments"] 中的图片附件注入 preview_url（MinIO presigned URL）"""

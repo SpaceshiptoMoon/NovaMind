@@ -10,17 +10,18 @@
 
 容错：反抖动保护、摘要模型降级、失败冷却、静态降级标记
 """
-import json
 import hashlib
 import html
+import json
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
+from novamind.engines.agent.memory.compress import ICompressionStrategy
 from novamind.engines.agent.memory.interfaces import MemoryMessage
 from novamind.engines.agent.memory.token_budget import TokenBudget
-from novamind.engines.agent.memory.compress import ICompressionStrategy
-from novamind.shared.utils.redact import redact_sensitive_text
 from novamind.shared.logging import get_logger
+from novamind.shared.utils.redact import redact_sensitive_text
 
 logger = get_logger(__name__)
 
@@ -45,15 +46,15 @@ class ContextCompressor(ICompressionStrategy):
 
     def __init__(
         self,
-        llm_client_factory: Optional[Callable] = None,
+        llm_client_factory: Callable | None = None,
         tail_ratio: float = 0.20,
-        summary_store: Optional[Any] = None,
-        todo_store: Optional[Any] = None,
-        conversation_id: Optional[int] = None,
-        long_term_memory: Optional[Any] = None,
-        agent_id: Optional[int] = None,
-        user_id: Optional[int] = None,
-        auxiliary_llm_factory: Optional[Callable] = None,
+        summary_store: Any | None = None,
+        todo_store: Any | None = None,
+        conversation_id: int | None = None,
+        long_term_memory: Any | None = None,
+        agent_id: int | None = None,
+        user_id: int | None = None,
+        auxiliary_llm_factory: Callable | None = None,
     ):
         self._llm_factory = llm_client_factory
         self._aux_llm_factory = auxiliary_llm_factory
@@ -66,22 +67,22 @@ class ContextCompressor(ICompressionStrategy):
         self._user_id = user_id
 
         # 迭代摘要状态
-        self._previous_summary: Optional[str] = None
+        self._previous_summary: str | None = None
 
         # 反抖动
         self._ineffective_count: int = 0
 
         # 冷却
         self._cooldown_until: float = 0.0
-        self._last_error: Optional[str] = None
+        self._last_error: str | None = None
 
     async def compress(
         self,
-        messages: List[MemoryMessage],
+        messages: list[MemoryMessage],
         available_tokens: int,
         token_budget: TokenBudget,
-        conversation_id: Optional[int] = None,
-    ) -> Tuple[List[MemoryMessage], bool, float]:
+        conversation_id: int | None = None,
+    ) -> tuple[list[MemoryMessage], bool, float]:
         """执行五阶段压缩"""
         if len(messages) <= 4:
             return messages, False, 1.0
@@ -194,8 +195,8 @@ class ContextCompressor(ICompressionStrategy):
     # ==================== Phase 1: 工具结果信息性剪枝 ====================
 
     def _prune_tool_results(
-        self, messages: List[MemoryMessage]
-    ) -> Tuple[List[MemoryMessage], int]:
+        self, messages: list[MemoryMessage]
+    ) -> tuple[list[MemoryMessage], int]:
         """剪枝旧工具结果：信息性摘要 + 去重 + 参数截断"""
         if not messages:
             return messages, 0
@@ -208,7 +209,7 @@ class ContextCompressor(ICompressionStrategy):
         prune_boundary = max(0, len(result) - protect_count)
 
         # Pass 1: 去重相同工具输出
-        content_hashes: Dict[str, int] = {}
+        content_hashes: dict[str, int] = {}
         for i in range(len(result) - 1, -1, -1):
             msg = result[i]
             if msg.role != "tool" or not msg.content or len(msg.content) < 200:
@@ -270,7 +271,7 @@ class ContextCompressor(ICompressionStrategy):
         return result, pruned
 
     @staticmethod
-    def _summarize_tool_result(tool_name: Optional[str], content: str) -> str:
+    def _summarize_tool_result(tool_name: str | None, content: str) -> str:
         """为工具结果生成语义化一行摘要"""
         name = tool_name or "unknown"
         content_len = len(content)
@@ -361,8 +362,8 @@ class ContextCompressor(ICompressionStrategy):
     # ==================== Phase 2: Token 预算尾部保护 ====================
 
     def _find_tail_cut(
-        self, messages: List[MemoryMessage], tail_token_budget: int,
-        token_budget: Optional[TokenBudget] = None,
+        self, messages: list[MemoryMessage], tail_token_budget: int,
+        token_budget: TokenBudget | None = None,
     ) -> int:
         """从末尾向前累加 token，找到压缩边界（使用精确 token 计数）"""
         n = len(messages)
@@ -411,7 +412,7 @@ class ContextCompressor(ICompressionStrategy):
 
         return cut_idx
 
-    def _align_boundary(self, messages: List[MemoryMessage], cut_idx: int) -> int:
+    def _align_boundary(self, messages: list[MemoryMessage], cut_idx: int) -> int:
         """将压缩边界对齐到 tool 组边界，避免拆散 tool_call/result 配对。
 
         向前扫描：如果 cut_idx 落在一个 tool 组内部，向前推到该组的起始位置，
@@ -449,8 +450,8 @@ class ContextCompressor(ICompressionStrategy):
 
     @staticmethod
     def _pick_summary_role(
-        head_last_role: Optional[str], tail_first_role: Optional[str]
-    ) -> Optional[str]:
+        head_last_role: str | None, tail_first_role: str | None
+    ) -> str | None:
         """选择摘要消息角色，避免和前后消息连续同角色。
 
         Returns:
@@ -466,9 +467,9 @@ class ContextCompressor(ICompressionStrategy):
     # ==================== Phase 3/4: 结构化 LLM 摘要 ====================
 
     async def _generate_summary(
-        self, turns: List[MemoryMessage], token_budget: TokenBudget,
-        conversation_id: Optional[int] = None,
-    ) -> Optional[str]:
+        self, turns: list[MemoryMessage], token_budget: TokenBudget,
+        conversation_id: int | None = None,
+    ) -> str | None:
         """生成结构化摘要（首次或迭代更新）"""
         if not self._llm_factory:
             return None
@@ -529,7 +530,7 @@ class ContextCompressor(ICompressionStrategy):
             logger.warning("摘要生成失败", error=str(e)[:200])
             return None
 
-    def _serialize_turns(self, turns: List[MemoryMessage]) -> str:
+    def _serialize_turns(self, turns: list[MemoryMessage]) -> str:
         """序列化消息为文本供摘要器使用"""
         parts = []
         for msg in turns:
@@ -572,7 +573,7 @@ class ContextCompressor(ICompressionStrategy):
 
     @staticmethod
     def _bound_text_head_tail(
-        text: str, token_budget: Optional[TokenBudget], max_tokens: int
+        text: str, token_budget: TokenBudget | None, max_tokens: int
     ) -> str:
         """确定性截断兜底：保留头部 2/3 + 尾部 1/3（token 不可用时按 4 chars/token 折算）。"""
         if not text:
@@ -590,7 +591,7 @@ class ContextCompressor(ICompressionStrategy):
         return f"{text[:head]}{marker}{text[-tail:]}"
 
     def _trim_to_tokens(
-        self, text: str, token_budget: Optional[TokenBudget], max_tokens: int, keep: str
+        self, text: str, token_budget: TokenBudget | None, max_tokens: int, keep: str
     ) -> str:
         """按 token 预算截断文本；无计数器时按 4 chars/token 字符近似。
 
@@ -674,7 +675,7 @@ class ContextCompressor(ICompressionStrategy):
 
     def _build_merge_prompt(
         self, old_summary: str, new_content: str,
-        token_budget: Optional[TokenBudget] = None,
+        token_budget: TokenBudget | None = None,
     ) -> str:
         """Build iterative merge prompt with handoff framing.
 
@@ -709,8 +710,8 @@ class ContextCompressor(ICompressionStrategy):
     # ==================== Phase 5: 工具对清理 ====================
 
     def _sanitise_tool_pairs_mem(
-        self, messages: List[MemoryMessage]
-    ) -> List[MemoryMessage]:
+        self, messages: list[MemoryMessage]
+    ) -> list[MemoryMessage]:
         """MemoryMessage 版工具对清理"""
         # 收集所有存在的 tool_call_id
         surviving_call_ids: set = set()
@@ -738,7 +739,7 @@ class ContextCompressor(ICompressionStrategy):
         # 方向 2: 为孤儿 tool_call 插入 stub result
         missing_results = surviving_call_ids - result_call_ids
         if missing_results:
-            patched: List[MemoryMessage] = []
+            patched: list[MemoryMessage] = []
             for msg in messages:
                 patched.append(msg)
                 if msg.role == "assistant" and msg.tool_calls:
@@ -755,8 +756,8 @@ class ContextCompressor(ICompressionStrategy):
         return messages
 
     def _sanitise_tool_pairs(
-        self, messages: List[MemoryMessage]
-    ) -> List[MemoryMessage]:
+        self, messages: list[MemoryMessage]
+    ) -> list[MemoryMessage]:
         """公开的工具对清理（无摘要时使用）"""
         return self._sanitise_tool_pairs_mem(messages)
 
@@ -764,8 +765,8 @@ class ContextCompressor(ICompressionStrategy):
 
     async def _extract_memories(
         self,
-        turns: List[MemoryMessage],
-        conversation_id: Optional[int],
+        turns: list[MemoryMessage],
+        conversation_id: int | None,
     ) -> None:
         """从即将被压缩丢弃的轮次中提取长期记忆（write-before-compaction）"""
         if not self._long_term or not self._agent_id or not self._user_id:

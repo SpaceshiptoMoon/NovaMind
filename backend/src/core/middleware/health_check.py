@@ -9,19 +9,18 @@
 """
 
 import asyncio
-from typing import Dict, Any
+from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
-
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.shared.utils.time_utils import now_china
+from novamind.shared.cache.redis_client import get_redis_client
 from novamind.shared.storage.client_factory import (
     get_elasticsearch_client,
     get_minio_client,
 )
-from novamind.shared.cache.redis_client import get_redis_client
+from novamind.shared.utils.time_utils import now_china
+from sqlalchemy import text
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["健康检查"])
@@ -41,7 +40,7 @@ async def _check_with_timeout(coro, timeout: float = _HEALTH_CHECK_TIMEOUT):
     try:
         result = await asyncio.wait_for(coro, timeout=timeout)
         return result
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return None
 
 
@@ -94,14 +93,14 @@ def _check_deepdoc_models_component() -> dict:
     部署期 `prepare` 下载失败时这里会让 /health/detailed 变为 degraded，
     避免模型缺失只静静躺在解析 WARNING 里无人发现。
     """
-    from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
-        get_model_status,
-    )
     from novamind.engines.document.integrations.deepdoc.formula_recognition import (
         get_formula_model_status,
     )
     from novamind.engines.document.integrations.deepdoc.text_concat_model import (
         get_text_concat_model_status,
+    )
+    from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
+        get_model_status,
     )
 
     vision = get_model_status()
@@ -125,7 +124,7 @@ def _check_deepdoc_models_component() -> dict:
 
 
 @router.get("/health")
-async def health_check() -> Dict[str, Any]:
+async def health_check() -> dict[str, Any]:
     """
     基础健康检查
 
@@ -142,7 +141,7 @@ async def health_check() -> Dict[str, Any]:
 
 
 @router.get("/health/detailed")
-async def detailed_health_check() -> Dict[str, Any]:
+async def detailed_health_check() -> dict[str, Any]:
     """
     详细健康检查
 
@@ -199,7 +198,7 @@ async def detailed_health_check() -> Dict[str, Any]:
 
 
 @router.get("/health/ready")
-async def readiness_check() -> Dict[str, Any]:
+async def readiness_check() -> dict[str, Any]:
     """
     就绪检查（Kubernetes）
 
@@ -218,7 +217,7 @@ async def readiness_check() -> Dict[str, Any]:
 
 
 @router.get("/health/live")
-async def liveness_check() -> Dict[str, Any]:
+async def liveness_check() -> dict[str, Any]:
     """
     存活检查（Kubernetes）
 
@@ -229,7 +228,7 @@ async def liveness_check() -> Dict[str, Any]:
 
 
 @router.get("/")
-async def root_info() -> Dict[str, Any]:
+async def root_info() -> dict[str, Any]:
     """
     根路径信息
     """

@@ -2,12 +2,11 @@
 通知模块异常处理器注册
 """
 from fastapi import FastAPI
-
 from novamind.core.middleware.base_exception_handler import register_module_exceptions
 from novamind.features.notification.api.exceptions import (
     NotificationError,
-    NotificationNotFoundError,
     NotificationForbiddenError,
+    NotificationNotFoundError,
 )
 
 

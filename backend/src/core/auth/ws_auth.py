@@ -12,10 +12,7 @@ close frame 传到客户端；accept 后 close 才能把 4401/4403 精准传给�
 """
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import WebSocket
-
 from novamind.core.auth.blacklist import is_token_revoked, is_user_blacklisted
 from novamind.core.auth.ports import UserStatusResolver
 from novamind.core.auth.token import decode_access_token
@@ -27,7 +24,7 @@ WS_CLOSE_UNAUTHENTICATED = 4401
 WS_CLOSE_FORBIDDEN = 4403
 
 
-def ws_extract_token(websocket: WebSocket) -> Optional[str]:
+def ws_extract_token(websocket: WebSocket) -> str | None:
     """从 ``Sec-WebSocket-Protocol`` 子协议解析 bearer token。
 
     客户端可传多个子协议（逗号分隔），取首个 ``bearer.`` 前缀的。
@@ -42,7 +39,7 @@ def ws_extract_token(websocket: WebSocket) -> Optional[str]:
 
 async def ws_authenticate(
     websocket: WebSocket, resolver: UserStatusResolver
-) -> tuple[Optional[dict], Optional[int]]:
+) -> tuple[dict | None, int | None]:
     """WS 握手认证：subprotocol JWT → 黑名单 → 用户状态。
 
     返回 ``(user, close_code)``：

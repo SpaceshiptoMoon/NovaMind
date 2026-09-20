@@ -1,8 +1,7 @@
 """Agent 对话 token/cost 用量记录（可观测性 E1）。"""
-from sqlalchemy import Column, String, Integer, Numeric, DateTime, Index
-
 from novamind.core.database.base import BaseModel
 from novamind.shared.utils.time_utils import now_china
+from sqlalchemy import Column, DateTime, Index, Integer, Numeric, String
 
 
 class AgentUsage(BaseModel):

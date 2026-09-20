@@ -21,7 +21,6 @@
 索引语义：Go 版按字节偏移，Python 版按字符偏移——对 UTF-8 文本两者
 在「同一字符边界切分」的意义上行为等价（ASCII 词边界判定用 ord<128）。
 """
-from typing import Dict, List, Optional, Set, Tuple
 
 
 class _Span:
@@ -34,9 +33,9 @@ class _Span:
 
 def linkify_content(
     content: str,
-    refs: List[Tuple[str, str]],
+    refs: list[tuple[str, str]],
     self_slug: str = "",
-) -> Tuple[str, bool]:
+) -> tuple[str, bool]:
     """为 refs 中每个 (slug, match_text) 注入首个安全命中的 wiki 链接。
 
     Args:
@@ -80,7 +79,7 @@ def linkify_content(
     return content, changed
 
 
-def _find_first_safe_match(haystack: str, needle: str, forbidden: List[_Span]) -> int:
+def _find_first_safe_match(haystack: str, needle: str, forbidden: list[_Span]) -> int:
     """首个「不在禁区内 + ASCII 词边界合法」的 needle 出现位置；无则 -1。"""
     if not needle:
         return -1
@@ -131,11 +130,11 @@ def _has_word_boundary(s: str, pos: int, end: int) -> bool:
     return True
 
 
-def _span_contains(spans: List[_Span], pos: int, end: int) -> bool:
+def _span_contains(spans: list[_Span], pos: int, end: int) -> bool:
     return any(pos < sp.end and end > sp.start for sp in spans)
 
 
-def _shift_spans_after(spans: List[_Span], pivot: int, delta: int) -> List[_Span]:
+def _shift_spans_after(spans: list[_Span], pivot: int, delta: int) -> list[_Span]:
     if delta == 0:
         return spans
     for sp in spans:
@@ -145,18 +144,18 @@ def _shift_spans_after(spans: List[_Span], pivot: int, delta: int) -> List[_Span
     return spans
 
 
-def _sort_spans(spans: List[_Span]) -> None:
+def _sort_spans(spans: list[_Span]) -> None:
     spans.sort(key=lambda sp: (sp.start, sp.end))
 
 
-def compute_forbidden_spans(s: str) -> Tuple[List[_Span], Dict[str, bool]]:
+def compute_forbidden_spans(s: str) -> tuple[list[_Span], dict[str, bool]]:
     """返回 s 的禁区列表 + 已引用 wiki slug 集合（used）。
 
     覆盖：围栏代码块、行内代码、既有 wiki 链接（记 used）、行内 markdown
     链接/图片、引用式链接、引用定义行、autolink。
     """
-    spans: List[_Span] = []
-    used: Dict[str, bool] = {}
+    spans: list[_Span] = []
+    used: dict[str, bool] = {}
     n = len(s)
 
     # Pass 1: 引用定义行（[label]: url ...）——必须先记录，
@@ -244,7 +243,7 @@ def _extract_wiki_slug(inner: str) -> str:
     return inner.strip()
 
 
-def _match_reference_style_link(s: str, i: int) -> Optional[int]:
+def _match_reference_style_link(s: str, i: int) -> int | None:
     """``[text][label]`` → 闭括号后偏移；不匹配返回 None。"""
     if i >= len(s) or s[i] != "[":
         return None
@@ -259,7 +258,7 @@ def _match_reference_style_link(s: str, i: int) -> Optional[int]:
     return label_end + 1
 
 
-def _find_closing_bracket(s: str, i: int) -> Optional[int]:
+def _find_closing_bracket(s: str, i: int) -> int | None:
     """i 处 ``[`` 的配对 ``]`` 偏移；支持 ``\\[`` 转义；跨行放弃。"""
     if i >= len(s) or s[i] != "[":
         return None
@@ -282,12 +281,12 @@ def _find_closing_bracket(s: str, i: int) -> Optional[int]:
     return None
 
 
-def _scan_reference_definitions(s: str) -> List[_Span]:
+def _scan_reference_definitions(s: str) -> list[_Span]:
     """``[label]: url ...`` 定义行整行禁区（含行尾换行）。
 
     首个非空格字符为 ``[`` 即候选（缩进 ≤3 空格，对齐 CommonMark）。
     """
-    out: List[_Span] = []
+    out: list[_Span] = []
     line_start = 0
     while line_start < len(s):
         nl = s.find("\n", line_start)
@@ -319,7 +318,7 @@ def _is_fence_start(s: str, i: int) -> bool:
     return s[i + 1] == c and s[i + 2] == c
 
 
-def _fence_run(s: str, i: int) -> Tuple[int, str]:
+def _fence_run(s: str, i: int) -> tuple[int, str]:
     c = s[i]
     j = i
     while j < len(s) and s[j] == c:
@@ -370,7 +369,7 @@ def _find_inline_code_close(s: str, start: int, run_len: int) -> int:
     return -1
 
 
-def _match_markdown_link(s: str, i: int) -> Optional[int]:
+def _match_markdown_link(s: str, i: int) -> int | None:
     """``[text](url)`` → 闭括号后偏移；不匹配 None。"""
     if i >= len(s) or s[i] != "[":
         return None
@@ -413,7 +412,7 @@ def _match_markdown_link(s: str, i: int) -> Optional[int]:
     return None
 
 
-def _match_autolink(s: str, i: int) -> Optional[int]:
+def _match_autolink(s: str, i: int) -> int | None:
     """``<scheme://...>`` / ``<mailto:...>`` → 闭合后偏移；不匹配 None。"""
     if i >= len(s) or s[i] != "<":
         return None

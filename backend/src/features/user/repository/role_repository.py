@@ -1,21 +1,19 @@
 """角色与权限仓储"""
-from typing import Optional
 
-from sqlalchemy import select, delete
+from novamind.features.user.models.role import Permission, Role, RolePermission
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
-from novamind.features.user.models.role import Role, Permission, RolePermission
 
 
 class RoleRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def get_role_by_id(self, role_id: int) -> Optional[Role]:
+    async def get_role_by_id(self, role_id: int) -> Role | None:
         return await self.db.get(Role, role_id)
 
-    async def get_role_by_code(self, code: str) -> Optional[Role]:
+    async def get_role_by_code(self, code: str) -> Role | None:
         stmt = select(Role).where(Role.code == code)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
@@ -43,7 +41,7 @@ class RoleRepository:
             await self.db.refresh(role)
         return role
 
-    async def update_role(self, role_id: int, data: dict) -> Optional[Role]:
+    async def update_role(self, role_id: int, data: dict) -> Role | None:
         role = await self.get_role_by_id(role_id)
         if role is None:
             return None

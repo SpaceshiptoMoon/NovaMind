@@ -6,9 +6,9 @@ LLM 客户端包
 """
 
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.ai_models.llm.openai_compatible import OpenAICompatibleLLM
 from novamind.shared.ai_models.llm.anthropic_llm import AnthropicLLM
 from novamind.shared.ai_models.llm.ollama_llm import OllamaLLM
+from novamind.shared.ai_models.llm.openai_compatible import OpenAICompatibleLLM
 from novamind.shared.ai_models.llm.transformers_llm import TransformersLLM
 
 

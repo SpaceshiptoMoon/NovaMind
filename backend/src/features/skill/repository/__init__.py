@@ -1,8 +1,8 @@
 from novamind.features.skill.repository.skill_repository import (
-    SkillRepository,
-    SkillVersionRepository,
-    SkillReviewRepository,
     SkillInstallationRepository,
+    SkillRepository,
+    SkillReviewRepository,
+    SkillVersionRepository,
 )
 
 __all__ = [

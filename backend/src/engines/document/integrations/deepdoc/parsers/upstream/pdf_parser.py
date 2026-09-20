@@ -1,16 +1,17 @@
 """DeepDoc PDF 上游解析器适配：委托上游 RAGFlow PDF 解析逻辑。"""
 from __future__ import annotations
 
+import logging
 from io import BytesIO
 
-import logging
 import pdfplumber
-
 from novamind.engines.document.integrations.deepdoc.compat import MAXIMUM_PAGE_NUMBER
 from novamind.engines.document.integrations.deepdoc.figure_support import picture_vision_llm_chunk
 from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
 from novamind.engines.document.integrations.deepdoc.parsers.pdf_plain import RAGFlowPlainPdfParser
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import extract_pdf_outlines
+from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import (
+    extract_pdf_outlines,
+)
 
 
 def vision_llm_describe_prompt(*, page: int) -> str:

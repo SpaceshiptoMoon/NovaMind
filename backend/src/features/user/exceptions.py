@@ -6,7 +6,7 @@
 """
 
 
-from typing import Optional, ClassVar, List
+from typing import ClassVar
 
 from novamind.core.middleware.base_exception_handler import BaseAPIError
 
@@ -20,9 +20,9 @@ class UserError(BaseAPIError):
 
 class UserNotFoundError(UserError):
     """用户未找到错误"""
-    _serializable_attrs: ClassVar[List[str]] = ["user_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["user_id"]
 
-    def __init__(self, user_id: Optional[int] = None, message: str = "用户不存在"):
+    def __init__(self, user_id: int | None = None, message: str = "用户不存在"):
         if user_id:
             message = f"用户ID {user_id} 不存在"
         super().__init__(message=message, code="USER_NOT_FOUND")
@@ -31,9 +31,9 @@ class UserNotFoundError(UserError):
 
 class UserAlreadyExistsError(UserError):
     """用户已存在错误"""
-    _serializable_attrs: ClassVar[List[str]] = ["field"]
+    _serializable_attrs: ClassVar[list[str]] = ["field"]
 
-    def __init__(self, message: str = "用户已存在", field: Optional[str] = None):
+    def __init__(self, message: str = "用户已存在", field: str | None = None):
         super().__init__(message=message, code="USER_ALREADY_EXISTS")
         self.field = field
 
@@ -63,10 +63,10 @@ class RoleError(UserError):
 
 class RoleNotFoundError(RoleError):
     """角色不存在错误"""
-    _serializable_attrs: ClassVar[List[str]] = ["role_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["role_id"]
     http_status_code: ClassVar[int] = 404
 
-    def __init__(self, role_id: Optional[int] = None, message: Optional[str] = None):
+    def __init__(self, role_id: int | None = None, message: str | None = None):
         if message is None:
             message = f"角色 {role_id} 不存在" if role_id else "角色不存在"
         super().__init__(message=message, code="ROLE_NOT_FOUND")
@@ -82,9 +82,9 @@ class AuthenticationError(UserError):
 
 class PermissionDeniedError(UserError):
     """权限不足错误"""
-    _serializable_attrs: ClassVar[List[str]] = ["resource"]
+    _serializable_attrs: ClassVar[list[str]] = ["resource"]
 
-    def __init__(self, message: str = "权限不足", resource: Optional[str] = None):
+    def __init__(self, message: str = "权限不足", resource: str | None = None):
         if resource:
             message = f"无权访问资源: {resource}"
         super().__init__(message=message, code="PERMISSION_DENIED")
@@ -123,9 +123,9 @@ class ModelConfigError(UserError):
 
 class ModelConfigNotFoundError(ModelConfigError):
     """模型配置不存在错误"""
-    _serializable_attrs: ClassVar[List[str]] = ["config_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["config_id"]
 
-    def __init__(self, config_id: Optional[int] = None, message: Optional[str] = None):
+    def __init__(self, config_id: int | None = None, message: str | None = None):
         if message:
             pass
         elif config_id:
@@ -138,7 +138,7 @@ class ModelConfigNotFoundError(ModelConfigError):
 
 class ModelConfigAlreadyExistsError(ModelConfigError):
     """模型配置名称已存在错误"""
-    _serializable_attrs: ClassVar[List[str]] = ["name"]
+    _serializable_attrs: ClassVar[list[str]] = ["name"]
 
     def __init__(self, name: str):
         super().__init__(
@@ -150,7 +150,7 @@ class ModelConfigAlreadyExistsError(ModelConfigError):
 
 class ModelConfigTestFailedError(ModelConfigError):
     """模型配置测试失败错误"""
-    _serializable_attrs: ClassVar[List[str]] = ["model_type", "error"]
+    _serializable_attrs: ClassVar[list[str]] = ["model_type", "error"]
 
     def __init__(self, model_type: str, error: str):
         super().__init__(
@@ -163,7 +163,7 @@ class ModelConfigTestFailedError(ModelConfigError):
 
 class ModelConfigDeleteConflictError(ModelConfigError):
     """模型配置删除冲突（存在关联资源）"""
-    _serializable_attrs: ClassVar[List[str]] = ["impacts"]
+    _serializable_attrs: ClassVar[list[str]] = ["impacts"]
 
     def __init__(self, impacts: list):
         super().__init__(
@@ -186,10 +186,10 @@ class SearchConfigError(UserError):
 
 class SearchConfigNotFoundError(SearchConfigError):
     """搜索配置不存在错误"""
-    _serializable_attrs: ClassVar[List[str]] = ["config_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["config_id"]
     http_status_code: ClassVar[int] = 404
 
-    def __init__(self, config_id: Optional[int] = None, message: Optional[str] = None):
+    def __init__(self, config_id: int | None = None, message: str | None = None):
         if message is None:
             message = f"搜索配置 {config_id} 不存在" if config_id else "搜索配置不存在"
         super().__init__(message=message, code="SEARCH_CONFIG_NOT_FOUND")
@@ -198,7 +198,7 @@ class SearchConfigNotFoundError(SearchConfigError):
 
 class SearchConfigAlreadyExistsError(SearchConfigError):
     """搜索配置已存在错误（同 user 同 provider 重复）"""
-    _serializable_attrs: ClassVar[List[str]] = ["provider"]
+    _serializable_attrs: ClassVar[list[str]] = ["provider"]
     http_status_code: ClassVar[int] = 409
 
     def __init__(self, provider: str):
@@ -211,7 +211,7 @@ class SearchConfigAlreadyExistsError(SearchConfigError):
 
 class SearchConfigTestFailedError(SearchConfigError):
     """搜索配置测试失败错误"""
-    _serializable_attrs: ClassVar[List[str]] = ["provider", "error"]
+    _serializable_attrs: ClassVar[list[str]] = ["provider", "error"]
     http_status_code: ClassVar[int] = 400
 
     def __init__(self, provider: str, error: str):

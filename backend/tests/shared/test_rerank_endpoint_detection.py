@@ -9,7 +9,6 @@ DashScope 有两套 rerank 入口，按 base_url 自动区分：
 """
 
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import pytest

@@ -3,12 +3,11 @@
 
 处理会话摘要的 CRUD 操作
 """
-from typing import Optional, List
-from sqlalchemy import select, desc, delete
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from novamind.features.qa.models.session_summary import SessionSummary
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.qa.models.session_summary import SessionSummary
+from sqlalchemy import delete, desc, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class SessionSummaryRepository:
@@ -20,7 +19,7 @@ class SessionSummaryRepository:
 
     async def get_latest_summary(
         self, session_id: str
-    ) -> Optional[SessionSummary]:
+    ) -> SessionSummary | None:
         """
         获取会话的最新摘要
 
@@ -47,7 +46,7 @@ class SessionSummaryRepository:
 
     async def get_summary_history(
         self, session_id: str, limit: int = 10
-    ) -> List[SessionSummary]:
+    ) -> list[SessionSummary]:
         """
         获取会话的摘要历史
 
@@ -144,7 +143,7 @@ class SessionSummaryRepository:
         compressed_message_count: int,
         original_tokens: int,
         last_compressed_message_id: int,
-    ) -> Optional[SessionSummary]:
+    ) -> SessionSummary | None:
         """
         更新摘要内容（通常用于修正或追加）
 

@@ -3,13 +3,11 @@
 
 Append-only 操作：INSERT + SELECT 最新一条。
 """
-from typing import List, Optional
 
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.agent.models.context_summary import AgentContextSummary
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.features.agent.models.context_summary import AgentContextSummary
-from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -20,7 +18,7 @@ class ContextSummaryRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_latest(self, conversation_id: int) -> Optional[AgentContextSummary]:
+    async def get_latest(self, conversation_id: int) -> AgentContextSummary | None:
         """获取某个会话的最新一条摘要"""
         stmt = (
             select(AgentContextSummary)
@@ -33,7 +31,7 @@ class ContextSummaryRepository:
 
     async def list_by_conversation(
         self, conversation_id: int
-    ) -> List[AgentContextSummary]:
+    ) -> list[AgentContextSummary]:
         """列出某个会话的全部压缩摘要（按 created_at 升序）。
 
         供 get_messages 历史回放合并 compaction 标记行——每条摘要派生一条

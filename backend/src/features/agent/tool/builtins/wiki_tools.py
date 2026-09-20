@@ -11,7 +11,7 @@ Wiki Agent 工具
 """
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
 from novamind.shared.logging import get_logger
@@ -37,7 +37,7 @@ class WikiTool(BaseTool):
     def description(self) -> str:
         return "读取、搜索、撰写知识库 Wiki 页面并标记问题"
 
-    def get_tools(self) -> List[Dict[str, Any]]:
+    def get_tools(self) -> list[dict[str, Any]]:
         return [
             {
                 "type": "function",
@@ -223,7 +223,7 @@ class WikiTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: Dict[str, Any], context: Dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
         db = context.get("db_session")
         user_id = context.get("user_id")
@@ -286,7 +286,7 @@ class WikiTool(BaseTool):
 
     # ==================== 工具实现 ====================
 
-    async def _read_pages(self, db, user_id: int, args: Dict[str, Any]) -> str:
+    async def _read_pages(self, db, user_id: int, args: dict[str, Any]) -> str:
         kb_id = args.get("kb_id")
         slugs = args.get("slugs") or []
         if not kb_id or not slugs:
@@ -319,7 +319,7 @@ class WikiTool(BaseTool):
             })
         return json.dumps({"pages": results}, ensure_ascii=False)
 
-    async def _search(self, db, user_id: int, args: Dict[str, Any]) -> str:
+    async def _search(self, db, user_id: int, args: dict[str, Any]) -> str:
         kb_id = args.get("kb_id")
         query = (args.get("query") or "").strip()
         limit = min(int(args.get("limit") or 10), 30)
@@ -350,7 +350,7 @@ class WikiTool(BaseTool):
             ],
         }, ensure_ascii=False)
 
-    async def _write_page(self, db, user_id: int, args: Dict[str, Any]) -> str:
+    async def _write_page(self, db, user_id: int, args: dict[str, Any]) -> str:
         kb_id = args.get("kb_id")
         raw_slug = (args.get("slug") or "").strip()
         title = (args.get("title") or "").strip()
@@ -418,7 +418,7 @@ class WikiTool(BaseTool):
             logger.warning("wiki_write_page 失败", kb_id=kb_id, slug=slug, error=str(e))
             return _err(f"页面写入失败：{e}")
 
-    async def _flag_issue(self, db, user_id: int, args: Dict[str, Any]) -> str:
+    async def _flag_issue(self, db, user_id: int, args: dict[str, Any]) -> str:
         kb_id = args.get("kb_id")
         slug = (args.get("slug") or "").strip()
         issue_type = args.get("issue_type")
@@ -433,7 +433,9 @@ class WikiTool(BaseTool):
         if error:
             return _err(error)
 
-        from novamind.features.knowledge_space.repository.wiki_issue_repository import WikiIssueRepository
+        from novamind.features.knowledge_space.repository.wiki_issue_repository import (
+            WikiIssueRepository,
+        )
         from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
 
         repo = WikiPageRepository(db)
@@ -457,7 +459,7 @@ class WikiTool(BaseTool):
 
     # ==================== 批4 新增：维护闭环工具 ====================
 
-    async def _replace_text(self, db, user_id: int, args: Dict[str, Any]) -> str:
+    async def _replace_text(self, db, user_id: int, args: dict[str, Any]) -> str:
         """精确文本替换（对齐 WeKnora wiki_replace_text）：小修正不动全文。
 
         正经编辑通道：快照 + version 递增 + edit_source=agent。
@@ -506,7 +508,7 @@ class WikiTool(BaseTool):
             logger.warning("wiki_replace_text 失败", kb_id=kb_id, slug=slug, error=str(e))
             return _err(f"替换失败：{e}")
 
-    async def _rename_page(self, db, user_id: int, args: Dict[str, Any]) -> str:
+    async def _rename_page(self, db, user_id: int, args: dict[str, Any]) -> str:
         """slug 重命名（对齐 WeKnora wiki_rename_page）。
 
         新 slug 建页（全字段拷贝）→ in_links 页正文 [[old]] 级联替换 →
@@ -583,7 +585,7 @@ class WikiTool(BaseTool):
             logger.warning("wiki_rename_page 失败", kb_id=kb_id, slug=slug, error=str(e))
             return _err(f"重命名失败：{e}")
 
-    async def _read_issue(self, db, user_id: int, args: Dict[str, Any]) -> str:
+    async def _read_issue(self, db, user_id: int, args: dict[str, Any]) -> str:
         """读问题详情或按条件列 pending（对齐 WeKnora wiki_read_issue）"""
         kb_id = args.get("kb_id")
         issue_id = args.get("issue_id")
@@ -595,7 +597,9 @@ class WikiTool(BaseTool):
         if error:
             return _err(error)
 
-        from novamind.features.knowledge_space.repository.wiki_issue_repository import WikiIssueRepository
+        from novamind.features.knowledge_space.repository.wiki_issue_repository import (
+            WikiIssueRepository,
+        )
 
         issue_repo = WikiIssueRepository(db)
         if issue_id:
@@ -620,7 +624,7 @@ class WikiTool(BaseTool):
             } for i in issues],
         }, ensure_ascii=False)
 
-    async def _update_issue(self, db, user_id: int, args: Dict[str, Any]) -> str:
+    async def _update_issue(self, db, user_id: int, args: dict[str, Any]) -> str:
         """问题状态流转（对齐 WeKnora wiki_update_issue）：修复后闭环"""
         kb_id = args.get("kb_id")
         issue_id = args.get("issue_id")
@@ -632,7 +636,9 @@ class WikiTool(BaseTool):
         if error:
             return _err(error)
 
-        from novamind.features.knowledge_space.repository.wiki_issue_repository import WikiIssueRepository
+        from novamind.features.knowledge_space.repository.wiki_issue_repository import (
+            WikiIssueRepository,
+        )
 
         issue_repo = WikiIssueRepository(db)
         issue = await issue_repo.get_by_id(str(issue_id))

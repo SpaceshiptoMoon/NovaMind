@@ -7,10 +7,9 @@ import io
 import re
 import zipfile
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
+from typing import Any
 
 import yaml
-
 from novamind.shared.logging import Logger
 
 # frontmatter 分隔符
@@ -42,11 +41,11 @@ class ParsedSkill:
     display_name: str
     body_markdown: str
     frontmatter_raw: str
-    license: Optional[str] = None
-    allowed_tools: Optional[List[str]] = None
-    category: Optional[str] = None
-    tags: Optional[List[str]] = None
-    metadata: Optional[Dict[str, Any]] = None
+    license: str | None = None
+    allowed_tools: list[str] | None = None
+    category: str | None = None
+    tags: list[str] | None = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -63,16 +62,16 @@ class ExtractedSkill:
     """解压后的完整技能"""
     skill_md_content: str
     parsed: ParsedSkill
-    resources: List[ResourceFile] = field(default_factory=list)
+    resources: list[ResourceFile] = field(default_factory=list)
 
 
 @dataclass
 class ValidationResult:
     """验证结果"""
     valid: bool
-    errors: List[str] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    parsed: Optional[ParsedSkill] = None
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    parsed: ParsedSkill | None = None
 
 
 def parse_skill_md(content: str) -> ParsedSkill:
@@ -158,8 +157,8 @@ def validate_skill_md(content: str) -> ValidationResult:
     Returns:
         ValidationResult 含 valid 标志和错误列表
     """
-    errors: List[str] = []
-    warnings: List[str] = []
+    errors: list[str] = []
+    warnings: list[str] = []
 
     match = _FRONTMATTER_RE.match(content)
     if not match:
@@ -208,7 +207,7 @@ def validate_skill_md(content: str) -> ValidationResult:
 
 def extract_skill_zip(
     zip_bytes: bytes,
-    logger: Optional[Logger] = None,
+    logger: Logger | None = None,
 ) -> ExtractedSkill:
     """
     解压技能 ZIP 包，提取 SKILL.md 和资源文件
@@ -272,7 +271,7 @@ def extract_skill_zip(
     parsed = parse_skill_md(skill_md_content)
 
     # 收集资源文件
-    resources: List[ResourceFile] = []
+    resources: list[ResourceFile] = []
     for name in names:
         if name == skill_md_path:
             continue

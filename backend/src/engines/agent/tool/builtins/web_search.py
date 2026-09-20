@@ -4,7 +4,7 @@
 提供 DuckDuckGo 网页搜索功能。
 """
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
 from novamind.shared.logging import get_logger
@@ -23,7 +23,7 @@ class WebSearchTool(BaseTool):
     def description(self) -> str:
         return "使用 DuckDuckGo 搜索引擎搜索互联网信息"
 
-    def get_tools(self) -> List[Dict[str, Any]]:
+    def get_tools(self) -> list[dict[str, Any]]:
         return [
             {
                 "type": "function",
@@ -60,13 +60,13 @@ class WebSearchTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: Dict[str, Any], context: Dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
         if tool_name == "web_search":
             return await self._search(arguments, context)
         return f"未知工具：{tool_name}"
 
-    async def _search(self, args: Dict[str, Any], context: Dict[str, Any]) -> str:
+    async def _search(self, args: dict[str, Any], context: dict[str, Any]) -> str:
         """执行网页搜索"""
         port = None
         try:

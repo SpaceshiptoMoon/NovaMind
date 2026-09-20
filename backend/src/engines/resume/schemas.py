@@ -3,9 +3,8 @@
 
 所有字段均有默认值，兼容各种格式的简历和 LLM 输出。
 """
-from typing import Optional
-from pydantic import BaseModel, Field, ConfigDict
 
+from pydantic import BaseModel, ConfigDict, Field
 
 # ==================== 结构化简历数据模型 ====================
 
@@ -16,10 +15,10 @@ class PersonalInfo(BaseModel):
     phone: str = ""
     email: str = ""
     location: str = ""
-    age: Optional[int] = None
+    age: int | None = None
     gender: str = ""
     summary: str = ""
-    job_intention: Optional[dict] = None
+    job_intention: dict | None = None
     social_links: list[dict] = []
 
 
@@ -247,7 +246,7 @@ class StructuredResume(BaseModel):
     project_experience: list[ProjectExperience] = []
     skills: SkillsData = Field(default_factory=SkillsData)
     publications: PublicationsData = Field(default_factory=PublicationsData)
-    metadata: Optional[ResumeMetadata] = None
+    metadata: ResumeMetadata | None = None
     validation_warnings: list[ValidationWarning] = []
     resume_summary: str = ""
 

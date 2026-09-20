@@ -5,7 +5,6 @@
 基于 SpaceRole 枚举实现简单权限判断，支持 custom_permissions 字段覆盖角色默认权限
 """
 
-from typing import Optional
 
 from novamind.features.knowledge_space.models.space_member import SpaceMember, SpaceRole
 
@@ -28,7 +27,7 @@ class SpaceAccessChecker:
     }
 
     @classmethod
-    def validate_custom_permissions(cls, perms: Optional[dict]) -> Optional[dict]:
+    def validate_custom_permissions(cls, perms: dict | None) -> dict | None:
         """校验并归一 custom_permissions：只允许 CAPABILITY_KEYS 内的 resource→action→bool。
 
         Args:
@@ -63,8 +62,8 @@ class SpaceAccessChecker:
         return normalized
 
     def _check_custom_permission(
-        self, member: Optional[SpaceMember], resource: str, action: str
-    ) -> Optional[bool]:
+        self, member: SpaceMember | None, resource: str, action: str
+    ) -> bool | None:
         """
         检查自定义细粒度权限
 
@@ -98,7 +97,7 @@ class SpaceAccessChecker:
 
     def _check_permission_with_override(
         self,
-        member: Optional[SpaceMember],
+        member: SpaceMember | None,
         resource: str,
         action: str,
         role_check_result: bool,
@@ -124,60 +123,60 @@ class SpaceAccessChecker:
 
         return role_check_result
 
-    def _role_at_least(self, member: Optional[SpaceMember], min_role: SpaceRole) -> bool:
+    def _role_at_least(self, member: SpaceMember | None, min_role: SpaceRole) -> bool:
         """检查成员角色是否达到最低要求"""
         if member is None or not member.is_active():
             return False
         return member.role >= min_role
 
-    def can_manage_knowledge_base(self, member: Optional[SpaceMember]) -> bool:
+    def can_manage_knowledge_base(self, member: SpaceMember | None) -> bool:
         """检查成员是否可以管理知识库（需要 EDITOR 及以上）"""
         return self._check_permission_with_override(
             member, "knowledge_bases", "manage",
             self._role_at_least(member, SpaceRole.EDITOR),
         )
 
-    def can_upload_document(self, member: Optional[SpaceMember]) -> bool:
+    def can_upload_document(self, member: SpaceMember | None) -> bool:
         """检查成员是否可以上传文档（需要 EDITOR 及以上）"""
         return self._check_permission_with_override(
             member, "documents", "upload",
             self._role_at_least(member, SpaceRole.EDITOR),
         )
 
-    def can_delete_document(self, member: Optional[SpaceMember]) -> bool:
+    def can_delete_document(self, member: SpaceMember | None) -> bool:
         """检查成员是否可以删除任意文档（需要 EDITOR 及以上）"""
         return self._check_permission_with_override(
             member, "documents", "delete",
             self._role_at_least(member, SpaceRole.EDITOR),
         )
 
-    def can_delete_any_document(self, member: Optional[SpaceMember]) -> bool:
+    def can_delete_any_document(self, member: SpaceMember | None) -> bool:
         """检查成员是否可以删除任意文档（需要 ADMIN 权限）"""
         return self._check_permission_with_override(
             member, "documents", "delete_any",
             self._role_at_least(member, SpaceRole.ADMIN),
         )
 
-    def can_invite_member(self, member: Optional[SpaceMember]) -> bool:
+    def can_invite_member(self, member: SpaceMember | None) -> bool:
         """检查成员是否可以邀请其他成员（需要 ADMIN）"""
         return self._check_permission_with_override(
             member, "members", "invite",
             self.is_admin(member),
         )
 
-    def is_admin(self, member: Optional[SpaceMember]) -> bool:
+    def is_admin(self, member: SpaceMember | None) -> bool:
         """检查成员是否是管理员"""
         if member is None or not member.is_active():
             return False
         return member.role >= SpaceRole.ADMIN
 
-    def is_editor_or_above(self, member: Optional[SpaceMember]) -> bool:
+    def is_editor_or_above(self, member: SpaceMember | None) -> bool:
         """检查成员是否是编辑或更高权限"""
         if member is None or not member.is_active():
             return False
         return member.role in (SpaceRole.ADMIN, SpaceRole.EDITOR)
 
-    def can_manage_members(self, member: Optional[SpaceMember]) -> bool:
+    def can_manage_members(self, member: SpaceMember | None) -> bool:
         """检查成员是否可以管理其他成员（需要 ADMIN）"""
         return self._check_permission_with_override(
             member, "members", "manage",

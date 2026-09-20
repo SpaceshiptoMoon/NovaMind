@@ -3,9 +3,8 @@
 
 支持知识库关联和空间关联
 """
-from sqlalchemy import Column, BigInteger, String, Text, JSON, ForeignKey, Index
-
 from novamind.core.database.base import BaseModel
+from sqlalchemy import JSON, BigInteger, Column, ForeignKey, Index, String, Text
 
 
 class QuestionAnswer(BaseModel):

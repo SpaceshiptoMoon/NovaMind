@@ -16,8 +16,8 @@
 
 import re
 
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import get_text
 from novamind.engines.document.integrations.deepdoc.compat import num_tokens_from_string
+from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import get_text
 
 
 class RAGFlowTxtParser:

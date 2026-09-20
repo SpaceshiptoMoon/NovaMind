@@ -6,18 +6,17 @@ Ollama 原生 LLM 客户端
 
 import asyncio
 import json
-from typing import Optional, AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import httpx
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_exponential,
-    retry_if_exception_type,
-)
-
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import get_logger
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 logger = get_logger(__name__)
 
@@ -62,8 +61,8 @@ class OllamaLLM(BaseLLM):
             max_concurrent=max_concurrent,
         )
         self.default_system_prompt = default_system_prompt
-        self._http_client: Optional[httpx.AsyncClient] = None
-        self._http_client_lock: Optional[asyncio.Lock] = None
+        self._http_client: httpx.AsyncClient | None = None
+        self._http_client_lock: asyncio.Lock | None = None
 
     def _get_lock(self) -> asyncio.Lock:
         """延迟创建 Lock，确保在事件循环内初始化"""
@@ -102,7 +101,7 @@ class OllamaLLM(BaseLLM):
         max_tokens: int = 2048,
         temperature: float = 0.7,
         top_p: float = 0.8,
-        response_format: Optional[dict] = None,
+        response_format: dict | None = None,
         enable_thinking: bool = False,
     ) -> str:
         """

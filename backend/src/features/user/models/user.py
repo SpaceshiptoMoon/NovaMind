@@ -1,14 +1,24 @@
 """
 用户模型
 """
-from typing import Dict, Any
 from enum import IntEnum
-from sqlalchemy import Column, BigInteger, String, SmallInteger, JSON, DateTime, Boolean, UniqueConstraint, ForeignKey
-from sqlalchemy.orm import relationship
+from typing import Any
 
-from novamind.core.database.base import BaseModel
 from novamind.core.auth.hashing import verify_password
+from novamind.core.database.base import BaseModel
 from novamind.shared.utils.time_utils import now_china
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    SmallInteger,
+    String,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import relationship
 
 
 class UserStatus(IntEnum):
@@ -132,7 +142,7 @@ class User(BaseModel):
         profile = self.profile or {}
         return profile.get(key, default)
 
-    def get_security_info(self) -> Dict[str, Any]:
+    def get_security_info(self) -> dict[str, Any]:
         """获取安全信息"""
         return self.get_profile_value("security", {})
 

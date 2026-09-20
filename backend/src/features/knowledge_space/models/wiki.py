@@ -13,12 +13,21 @@ Markdown wiki 页面（实体页/概念页/摘要页）。移植自 WeKnora 的 
 """
 import uuid
 from enum import IntEnum
-from typing import Optional
-
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, JSON, SmallInteger, String, Text, UniqueConstraint
 
 from novamind.core.database.base import BaseModel
 from novamind.shared.utils.time_utils import now_china
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+)
 
 
 class WikiPageType:
@@ -232,7 +241,7 @@ class WikiIngestRecord(BaseModel):
         progress[step_name] = {"status": "running", "started_at": now_china().isoformat()}
         self.step_progress = progress
 
-    def finish_step(self, step_name: str, metrics: Optional[dict] = None) -> None:
+    def finish_step(self, step_name: str, metrics: dict | None = None) -> None:
         """记录阶段完成"""
         progress = dict(self.step_progress or {})
         node = progress.get(step_name) if isinstance(progress.get(step_name), dict) else {}

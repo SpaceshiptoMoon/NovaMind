@@ -5,26 +5,26 @@ QA业务逻辑服务层
 集成多级缓存（L1 本地 + L2 Redis）减少数据库访问
 """
 import uuid
-from typing import List, Optional, Dict, Any, Tuple, TYPE_CHECKING
-from novamind.shared.model_config_ports import ModelConfigPort
 from datetime import datetime
-from sqlalchemy.exc import SQLAlchemyError
+from typing import TYPE_CHECKING, Any, Optional
 
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.qa.exceptions import (
+    DatabaseOperationError,
+    InvalidMessageContentError,
+    MessageNotFoundError,
+    QAError,
+    SessionNotFoundError,
+)
 from novamind.features.qa.repository.question_answer_repository import QuestionAnswerRepository
 from novamind.features.qa.repository.session_config_repository import SessionConfigRepository
 from novamind.features.qa.repository.session_summary_repository import SessionSummaryRepository
-from novamind.features.qa.services.qa_cache_service import QACacheService
 from novamind.features.qa.schemas.qa import QARequest, QAResponse, QAUpdateRequest
-from novamind.features.qa.exceptions import (
-    QAError,
-    DatabaseOperationError,
-    SessionNotFoundError,
-    MessageNotFoundError,
-    InvalidMessageContentError,
-)
+from novamind.features.qa.services.qa_cache_service import QACacheService
+from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.shared.utils.text_utils import TextCompressor
 from novamind.shared.utils.text_utils.token_counter import TokenCounter
+from sqlalchemy.exc import SQLAlchemyError
 
 if TYPE_CHECKING:
     from novamind.features.qa.models.session_config import SessionConfig
@@ -39,8 +39,8 @@ class QAService:
         repository: QuestionAnswerRepository,
         session_config_repo: SessionConfigRepository,
         session_summary_repo: SessionSummaryRepository,
-        cache_service: Optional[QACacheService] = None,
-        model_config_service: Optional[ModelConfigPort] = None,
+        cache_service: QACacheService | None = None,
+        model_config_service: ModelConfigPort | None = None,
     ):
         self.repository = repository
         self.session_config_repo = session_config_repo
@@ -99,7 +99,7 @@ class QAService:
 
     async def get_session_messages(
         self, session_id: str, user_id: int
-    ) -> List[QAResponse]:
+    ) -> list[QAResponse]:
         """获取用户特定会话的所有消息（带缓存）"""
         try:
             if not session_id:
@@ -159,7 +159,7 @@ class QAService:
 
     async def get_user_sessions(
         self, user_id: int, limit: int = 20, offset: int = 0
-    ) -> Tuple[List[Dict[str, str]], int]:
+    ) -> tuple[list[dict[str, str]], int]:
         """获取用户的所有会话列表（含预览，支持分页）"""
         try:
             return await self.repository.get_user_sessions_with_preview(user_id, limit, offset)
@@ -176,7 +176,7 @@ class QAService:
         message_id: int,
         request: QAUpdateRequest,
         user_id: int,
-    ) -> Optional[QAResponse]:
+    ) -> QAResponse | None:
         """更新消息"""
         try:
             message = await self.repository.get_by_id(message_id)
@@ -529,11 +529,11 @@ class QAService:
         self,
         session_id: str,
         user_id: int,
-        limit: Optional[int] = None,
-        enable_compression: Optional[bool] = None,
-        compression_threshold: Optional[int] = None,
-        keep_recent_messages: Optional[int] = None,
-    ) -> List[dict]:
+        limit: int | None = None,
+        enable_compression: bool | None = None,
+        compression_threshold: int | None = None,
+        keep_recent_messages: int | None = None,
+    ) -> list[dict]:
         """
         获取对话上下文，用于 AI 对话
 
@@ -633,13 +633,13 @@ class QAService:
 
     async def _get_summary_context(
         self,
-        messages: List[Any],
+        messages: list[Any],
         config: Any,
         user_id: int,
         session_id: str,
         threshold: int,
         keep_recent: int,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """
         summary 策略的上下文获取：先组合(摘要+新消息)再判断阈值。
 
@@ -705,8 +705,8 @@ class QAService:
         config: Any,
         keep_recent: int,
         cached_summary: Any,
-        recent_msgs: List[dict],
-    ) -> List[dict]:
+        recent_msgs: list[dict],
+    ) -> list[dict]:
         """
         增量压缩：旧摘要 + 新消息 → 新摘要。
 
@@ -799,11 +799,11 @@ class QAService:
         self,
         session_id: str,
         user_id: int,
-        context_messages: List[dict],
+        context_messages: list[dict],
         config: Any,
         keep_recent: int,
         total_tokens: int,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """
         全量压缩：把全部对话消息压成摘要（首次压缩、尚无摘要时使用）。
 
@@ -908,10 +908,10 @@ class QAService:
     async def _compress_with_sliding_window(
         self,
         session_id: str,
-        context_messages: List[dict],
+        context_messages: list[dict],
         keep_recent: int,
         total_tokens: int,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """
         SLIDING_WINDOW 策略：滑动窗口
 
@@ -941,10 +941,10 @@ class QAService:
     async def _compress_with_keep_recent(
         self,
         session_id: str,
-        context_messages: List[dict],
+        context_messages: list[dict],
         keep_recent: int,
         total_tokens: int,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """
         KEEP_RECENT 策略：仅保留最近消息
 
@@ -959,10 +959,10 @@ class QAService:
     async def _compress_with_truncate(
         self,
         session_id: str,
-        context_messages: List[dict],
+        context_messages: list[dict],
         target_tokens: int,
         total_tokens: int,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """
         TRUNCATE 策略：按 token 数截断
 

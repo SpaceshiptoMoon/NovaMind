@@ -4,45 +4,43 @@ AI对话服务层
 支持用户配置的 LLM 模型
 支持文档附件上传和分析
 """
-from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any, AsyncGenerator, Tuple, TYPE_CHECKING
-from uuid import uuid4
 import asyncio
 import base64
-import tempfile
-
-from novamind.shared.utils.text_utils.token_counter import TokenCounter
 import os
+import tempfile
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Optional
+from uuid import uuid4
 
 from fastapi import UploadFile
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.core.ws import envelope
+from novamind.shared.utils.text_utils.token_counter import TokenCounter
+from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
-    from novamind.shared.storage.minio_client import MinioClient
-    from novamind.shared.retrieval_port import RetrievalPort
     from novamind.shared.document.ports import DocumentIngestionPort
-from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.model_config_ports import ModelConfigPort
-from novamind.shared.search_config_ports import SearchConfigPort
-from novamind.shared.prompts.templates import PromptManager
-from novamind.shared.utils.heartbeat import stream_with_heartbeat_structured
-from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
-from novamind.features.qa.services.qa_service import QAService
+    from novamind.shared.retrieval_port import RetrievalPort
+    from novamind.shared.storage.minio_client import MinioClient
 from novamind.engines.prompt_provider_adapter import HostPromptProvider
 from novamind.engines.search_errors import WebSearchError
 from novamind.engines.search_ports import WebSearchPort, build_web_search_port_from_provider
-from novamind.features.qa.schemas.qa import QARequest
-from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
 from novamind.features.qa.exceptions import (
-    QAError,
-    LLMServiceError,
     InvalidMessageContentError,
+    LLMServiceError,
+    QAError,
     SessionManagementError,
 )
-
+from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
+from novamind.features.qa.schemas.qa import QARequest
+from novamind.features.qa.services.qa_service import QAService
+from novamind.shared.ai_models.llm import BaseLLM
+from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.shared.prompts.templates import PromptManager
+from novamind.shared.search_config_ports import SearchConfigPort
+from novamind.shared.storage.minio_client import IMAGE_FILE_TYPES
+from novamind.shared.utils.heartbeat import stream_with_heartbeat_structured
 
 # 分级拒答：检索为空时的固定兜底文案（跳过 LLM 调用）
 REFUSAL_ANSWER_TEXT = (
@@ -63,12 +61,12 @@ class ChatPreparation:
     conversation_history: list
     llm_client: BaseLLM
     context: list
-    attachment_ids: Optional[List[int]] = None
-    attachments: Optional[list] = None
-    attachments_info: Optional[list] = None
+    attachment_ids: list[int] | None = None
+    attachments: list | None = None
+    attachments_info: list | None = None
     sources: list = field(default_factory=list)  # 检索来源引用（与正文 [1][2] 角标对齐）
     answer_status: str = "answered"  # answered / refused / low_confidence
-    confidence: Optional[float] = None
+    confidence: float | None = None
     refused: bool = False  # 检索为空时短路跳过 LLM
     # 生效的生成参数（请求 > 会话表 llm_config > 默认，由 _prepare_chat 合并）
     max_tokens: int = 2048
@@ -83,12 +81,12 @@ class AIChatService:
     def __init__(
         self,
         qa_service: QAService,
-        model_config_service: Optional[ModelConfigPort] = None,
-        db: Optional[AsyncSession] = None,
+        model_config_service: ModelConfigPort | None = None,
+        db: AsyncSession | None = None,
         minio_client: Optional["MinioClient"] = None,
         retrieval_port: Optional["RetrievalPort"] = None,
         document_ingestion_port: Optional["DocumentIngestionPort"] = None,
-        search_config_port: Optional[SearchConfigPort] = None,
+        search_config_port: SearchConfigPort | None = None,
     ):
         """
         初始化 AI Chat 服务
@@ -120,7 +118,7 @@ class AIChatService:
     async def _get_llm_client(
         self,
         user_id: int,
-        llm_model: Optional[str]
+        llm_model: str | None
     ) -> BaseLLM:
         """
         获取 LLM 客户端
@@ -158,12 +156,12 @@ class AIChatService:
     async def _prepare_chat(
         self,
         user_id: int,
-        session_id: Optional[str],
+        session_id: str | None,
         content: str,
-        llm_model: Optional[str],
-        attachment_ids: Optional[List[int]] = None,
+        llm_model: str | None,
+        attachment_ids: list[int] | None = None,
         enable_web_search: bool = False,
-        search_provider: Optional[str] = None,
+        search_provider: str | None = None,
     ) -> ChatPreparation:
         """
         流式/非流式对话共享的预处理逻辑
@@ -246,12 +244,12 @@ class AIChatService:
         web_search_max_results = getattr(session_config, "web_search_max_results", 5) if session_config else 5
         effective_web_provider = search_provider or web_search_provider
 
-        prep_sources: List[dict] = []
+        prep_sources: list[dict] = []
         prep_refused = False
         prep_status = "answered"
-        prep_confidence: Optional[float] = None
+        prep_confidence: float | None = None
         prep_raw_count = 0             # 过滤前原始检索数量（trace 区分“无结果”vs“被阈值过滤”）
-        grade_traces: List[dict] = []  # grade→retry 每轮打分记录
+        grade_traces: list[dict] = []  # grade→retry 每轮打分记录
 
         # ===== Query Rewriting（可插拔组件） =====
         search_queries = [content]
@@ -359,7 +357,7 @@ class AIChatService:
                     # mode 序列：用户配的 search_mode 首轮优先（复用单查询 search_with_retry 的语义）
                     modes = [search_mode] + [m for m in _GRADE_RETRY_FALLBACK_MODES if m != search_mode]
                     max_retries = 2
-                    last_deduped: List[dict] = []
+                    last_deduped: list[dict] = []
                     last_raw_count = 0
                     for attempt in range(max_retries + 1):
                         mode = modes[min(attempt, len(modes) - 1)]
@@ -478,7 +476,7 @@ class AIChatService:
             traces=traces,
         )
 
-    def _build_retrieval_context(self, sources: List[dict]) -> str:
+    def _build_retrieval_context(self, sources: list[dict]) -> str:
         """构造检索上下文文本（引用规则 + web/kb 资料块），作为独立 system message 紧贴当前 user 前。
 
         资料属于"为回答当前问题临时查的"上下文，不污染会话级 system_prompt；
@@ -490,7 +488,7 @@ class AIChatService:
             return ""
         web_items = [s for s in sources if s.get("kind") == "web"]
         kb_items = [s for s in sources if s.get("kind") == "kb"]
-        ref_lines: List[str] = []
+        ref_lines: list[str] = []
         if web_items:
             ref_lines.append("<web-search-results>")
             for s in web_items:
@@ -522,16 +520,16 @@ class AIChatService:
         user_id: int,
         enable_web_search: bool,
         enable_rag: bool,
-        space_id: Optional[int],
-        kb_ids: Optional[List[int]] = None,
+        space_id: int | None,
+        kb_ids: list[int] | None = None,
         top_k: int = 5,
         search_mode: str = "content_hybrid",
-        score_threshold: Optional[float] = None,
+        score_threshold: float | None = None,
         vector_weight: float = 0.7,
         bm25_weight: float = 0.3,
-        search_provider: Optional[str] = None,
+        search_provider: str | None = None,
         max_results: int = 5,
-    ) -> Tuple[str, List[dict], int]:
+    ) -> tuple[str, list[dict], int]:
         """执行联网/知识库检索，返回 (原始 system_prompt, 统一编号的来源列表, 过滤前数量)。
 
         system_prompt 不在此增强——检索资料由调用方用 _build_retrieval_context 构造为独立
@@ -541,7 +539,7 @@ class AIChatService:
         score_threshold 非空时（refusal_on 启用阈值过滤），丢弃得分低于阈值的 KB 来源——
         低相关噪声不注入上下文，LLM 只看高质量结果。
         """
-        raw_sources: List[dict] = []
+        raw_sources: list[dict] = []
 
         if enable_web_search:
             try:
@@ -583,7 +581,7 @@ class AIChatService:
             return system_prompt, [], raw_count
 
         # 统一重新编号（web + kb 合并后 index 连续，与正文角标一致）
-        sources: List[dict] = []
+        sources: list[dict] = []
         for i, s in enumerate(raw_sources, start=1):
             s["index"] = i
             sources.append(s)
@@ -592,21 +590,21 @@ class AIChatService:
 
     async def _decompose_retrieve(
         self,
-        search_queries: List[str],
+        search_queries: list[str],
         system_prompt: str,
         user_id: int,
         enable_web_search: bool,
         enable_rag: bool,
-        space_id: Optional[int],
-        kb_ids: Optional[List[int]],
+        space_id: int | None,
+        kb_ids: list[int] | None,
         top_k: int,
         search_mode: str,
-        score_threshold: Optional[float],
-        search_provider: Optional[str] = None,
+        score_threshold: float | None,
+        search_provider: str | None = None,
         vector_weight: float = 0.7,
         bm25_weight: float = 0.3,
         max_results: int = 5,
-    ) -> Tuple[List[dict], int]:
+    ) -> tuple[list[dict], int]:
         """DECOMPOSE：并发检索所有子查询，合并去重 + 全局重编号。
 
         返回 (去重重编号后的 sources, 各子查询过滤前数量之和)。
@@ -627,7 +625,7 @@ class AIChatService:
             for sq in search_queries
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        all_sources: List[dict] = []
+        all_sources: list[dict] = []
         raw_count = 0
         for r in results:
             if isinstance(r, Exception):
@@ -637,7 +635,7 @@ class AIChatService:
                 raw_count += r[2]  # 各子查询过滤前数量之和
         # 跨子查询去重（web 按 url、kb 按 chunk_id），避免同一资料被重复编号/注入
         seen: set = set()
-        deduped: List[dict] = []
+        deduped: list[dict] = []
         for s in all_sources:
             key = s.get("url") if s.get("kind") == "web" else s.get("chunk_id")
             if key is not None and key in seen:
@@ -654,9 +652,9 @@ class AIChatService:
         self,
         query: str,
         user_id: int,
-        search_provider: Optional[str] = None,
+        search_provider: str | None = None,
         max_results: int = 5,
-    ) -> Optional[Tuple[str, List[dict]]]:
+    ) -> tuple[str, list[dict]] | None:
         """联网搜索，返回 (参考资料块文本, 结构化来源列表)。
 
         按用户级搜索配置择优 provider，未命中则回退 YAML 全局配置；任一失败降级返回 None。
@@ -685,8 +683,8 @@ class AIChatService:
         if not results:
             return None
 
-        sources: List[dict] = []
-        lines: List[str] = ["<web-search-results>"]
+        sources: list[dict] = []
+        lines: list[str] = ["<web-search-results>"]
         for i, r in enumerate(results, start=1):
             title = self._sanitize(getattr(r, "title", ""))
             url = getattr(r, "url", "")
@@ -707,8 +705,8 @@ class AIChatService:
     async def _resolve_web_search_port(
         self,
         user_id: int,
-        search_provider: Optional[str] = None,
-    ) -> Optional[WebSearchPort]:
+        search_provider: str | None = None,
+    ) -> WebSearchPort | None:
         """按用户级配置择优构造 WebSearchPort，未命中/失败则回退 YAML 全局配置，均失败返回 None。
 
         ``search_provider`` 非空时优先用该 provider 的用户配置（聊天时显式选）；
@@ -771,7 +769,7 @@ class AIChatService:
         # 2. YAML 全局兜底
         return self._build_yaml_fallback_port()
 
-    def _build_yaml_fallback_port(self) -> Optional[WebSearchPort]:
+    def _build_yaml_fallback_port(self) -> WebSearchPort | None:
         """按 YAML external_search 全局配置构造 WebSearchPort 兜底。
 
         优先 Tavily（配了 api_key），否则 DuckDuckGo（免费）。复用 engines builder，
@@ -810,14 +808,14 @@ class AIChatService:
         self,
         query: str,
         user_id: int,
-        space_id: Optional[int],
-        kb_ids: Optional[List[int]] = None,
+        space_id: int | None,
+        kb_ids: list[int] | None = None,
         top_k: int = 5,
         search_mode: str = "content_hybrid",
-        score_threshold: Optional[float] = None,
+        score_threshold: float | None = None,
         vector_weight: float = 0.7,
         bm25_weight: float = 0.3,
-    ) -> Optional[Tuple[str, List[dict]]]:
+    ) -> tuple[str, list[dict]] | None:
         """知识库检索，返回 (参考资料块文本, 结构化来源列表)。复用 knowledge_space 的 SearchService
 
         score_threshold 非空时下推到 SearchRequest，在检索服务层预过滤低分块，
@@ -828,7 +826,10 @@ class AIChatService:
             self.logger.warning("RAG 开关已开但未指定 space_id，跳过知识库检索")
             return None
 
-        from novamind.features.knowledge_space.schemas.search_schema import SearchRequest, WeightConfig
+        from novamind.features.knowledge_space.schemas.search_schema import (
+            SearchRequest,
+            WeightConfig,
+        )
 
         search_request = SearchRequest(
             query=query,
@@ -842,7 +843,7 @@ class AIChatService:
 
         # 确定检索的知识库列表：kb_ids > 空间下全部（前 3 个）
         if kb_ids:
-            target_kb_ids: List[int] = list(kb_ids)
+            target_kb_ids: list[int] = list(kb_ids)
         else:
             from novamind.features.knowledge_space.repository.knowledge_base_repository import (
                 KnowledgeBaseRepository,
@@ -854,7 +855,7 @@ class AIChatService:
         if not target_kb_ids:
             return None
 
-        all_results: List[Dict[str, Any]] = []
+        all_results: list[dict[str, Any]] = []
         for tid in target_kb_ids:
             try:
                 r = await retrieval_port.search(
@@ -870,8 +871,8 @@ class AIChatService:
         all_results.sort(key=lambda x: x.get("score", 0), reverse=True)
         results = all_results[:top_k]
 
-        sources: List[dict] = []
-        lines: List[str] = ["<knowledge-base-context>"]
+        sources: list[dict] = []
+        lines: list[str] = ["<knowledge-base-context>"]
         for i, r in enumerate(results, start=1):
             file_info = r.get("file_info") or {}
             metadata = r.get("metadata") or {}
@@ -909,13 +910,13 @@ class AIChatService:
 
     async def chat(self,
                    user_id: int,
-                   session_id: Optional[str] = None,
-                   content: Optional[str] = None,
-                   llm_model: Optional[str] = None,
+                   session_id: str | None = None,
+                   content: str | None = None,
+                   llm_model: str | None = None,
                    enable_thinking: bool = False,
-                   attachment_ids: Optional[List[int]] = None,
+                   attachment_ids: list[int] | None = None,
                    enable_web_search: bool = False,
-                   search_provider: Optional[str] = None) -> Dict[str, Any]:
+                   search_provider: str | None = None) -> dict[str, Any]:
         """
         执行AI对话
 
@@ -1037,7 +1038,7 @@ class AIChatService:
 
     async def get_chat_history(
         self, session_id: str, user_id: int
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         获取会话的聊天历史
 
@@ -1098,14 +1099,14 @@ class AIChatService:
     async def chat_stream(
         self,
         user_id: int,
-        session_id: Optional[str] = None,
-        content: Optional[str] = None,
-        llm_model: Optional[str] = None,
+        session_id: str | None = None,
+        content: str | None = None,
+        llm_model: str | None = None,
         enable_thinking: bool = False,
-        attachment_ids: Optional[List[int]] = None,
+        attachment_ids: list[int] | None = None,
         enable_web_search: bool = False,
-        search_provider: Optional[str] = None,
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+        search_provider: str | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """
         流式执行AI对话，返回事件流（dict 事件，经 WS 推送）
 
@@ -1261,7 +1262,7 @@ class AIChatService:
             await self._cleanup_user_message(user_message)
             yield self._emit("error", {"content": error_msg})
 
-    def _build_ai_extra(self, prep: ChatPreparation) -> Optional[dict]:
+    def _build_ai_extra(self, prep: ChatPreparation) -> dict | None:
         """构造 AI 消息 extra（sources/answer_status/confidence）。
 
         拒答/低置信/有检索来源时落库；正常回答且无来源时返回 None（不写 extra）。
@@ -1305,7 +1306,7 @@ class AIChatService:
         self,
         user_id: int,
         file: UploadFile,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         上传聊天附件
 
@@ -1383,7 +1384,7 @@ class AIChatService:
             "message": "附件上传成功" if extracted_text else "附件上传成功，但文本提取失败",
         }
 
-    async def _extract_text_from_bytes(self, file_data: bytes, file_type: str) -> Optional[str]:
+    async def _extract_text_from_bytes(self, file_data: bytes, file_type: str) -> str | None:
         """从文件字节中提取文本"""
         if file_type in ("txt", "md"):
             # 文本文件直接解码
@@ -1414,7 +1415,7 @@ class AIChatService:
             os.unlink(tmp_path)
 
     def _format_attachments_prompt(
-        self, attachments: list, max_tokens: Optional[int] = None,
+        self, attachments: list, max_tokens: int | None = None,
     ) -> str:
         """将附件文本格式化为 XML 结构的 LLM 提示。
 
@@ -1441,14 +1442,14 @@ class AIChatService:
         return "<documents>\n" + "\n".join(docs) + "\n</documents>"
 
     async def _inject_attachments_to_context(
-        self, session_id: str, context: list, user_id: Optional[int] = None, is_vlm: bool = False
+        self, session_id: str, context: list, user_id: int | None = None, is_vlm: bool = False
     ) -> list:
         """扫描上下文中所有消息，为有附件的用户消息动态注入文档文本或图片"""
         if not self.attachment_repo or not self.db:
             return context
 
-        from sqlalchemy import select
         from novamind.features.qa.models.question_answer import QuestionAnswer
+        from sqlalchemy import select
 
         stmt = select(QuestionAnswer).where(
             QuestionAnswer.session_id == session_id,
@@ -1574,7 +1575,7 @@ class AIChatService:
         except Exception:
             return False
 
-    async def _download_attachment_as_base64(self, attachment) -> Optional[str]:
+    async def _download_attachment_as_base64(self, attachment) -> str | None:
         """从 MinIO 下载附件并转为 base64"""
         if not self.minio_client:
             return None
@@ -1588,6 +1589,6 @@ class AIChatService:
 
     # ========== 事件 envelope（WS 推送用，取代 SSE 帧） ==========
 
-    def _emit(self, event_type: str, data: Dict[str, Any]) -> dict:
+    def _emit(self, event_type: str, data: dict[str, Any]) -> dict:
         """构造统一事件 envelope ``{"type": ..., "data": ...}``（WS 推送用，取代 SSE 帧）"""
         return envelope(event_type, data)

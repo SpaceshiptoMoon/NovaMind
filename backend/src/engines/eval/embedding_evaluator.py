@@ -2,7 +2,6 @@
 基于 Embedding 的评估器。余弦相似度计算，依赖注入的 BaseEmbedding。
 """
 import math
-from typing import List
 
 from novamind.shared.ai_models.base_model import BaseEmbedding
 
@@ -18,7 +17,7 @@ class EmbeddingEvaluator:
         embeddings = await self.embedding_client.generate_embeddings_batch([text_a, text_b])
         return _cosine_similarity(embeddings[0], embeddings[1])
 
-    async def compute_similarity_batch(self, text_pairs: List[tuple[str, str]]) -> List[float]:
+    async def compute_similarity_batch(self, text_pairs: list[tuple[str, str]]) -> list[float]:
         """批量计算文本对的余弦相似度"""
         all_texts = []
         for a, b in text_pairs:
@@ -37,7 +36,7 @@ class EmbeddingEvaluator:
         sim = await self.compute_similarity(text_a, text_b)
         return _similarity_to_10(sim)
 
-    async def avg_similarity_to_score(self, reference: str, candidates: List[str]) -> tuple[float, int]:
+    async def avg_similarity_to_score(self, reference: str, candidates: list[str]) -> tuple[float, int]:
         """计算 reference 与所有 candidates 的平均相似度，映射到 1-10 分"""
         pairs = [(reference, c) for c in candidates]
         similarities = await self.compute_similarity_batch(pairs)
@@ -45,7 +44,7 @@ class EmbeddingEvaluator:
         return avg_sim, _similarity_to_10(avg_sim)
 
 
-def _cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float:
+def _cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     """计算两个向量的余弦相似度"""
     dot = sum(a * b for a, b in zip(vec_a, vec_b))
     norm_a = math.sqrt(sum(a * a for a in vec_a))

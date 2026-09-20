@@ -2,9 +2,9 @@
 Agent 模块 Pydantic 数据模型
 """
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # 敏感字段关键词（不区分大小写匹配 key 名）
 _SENSITIVE_KEYWORDS = frozenset({
@@ -13,7 +13,7 @@ _SENSITIVE_KEYWORDS = frozenset({
 })
 
 
-def _sanitize_config(config: Dict[str, Any]) -> Dict[str, Any]:
+def _sanitize_config(config: dict[str, Any]) -> dict[str, Any]:
     """递归脱敏字典中的敏感字段"""
     sanitized = {}
     for k, v in config.items():
@@ -32,33 +32,33 @@ def _sanitize_config(config: Dict[str, Any]) -> Dict[str, Any]:
 class AgentCreate(BaseModel):
     """创建 Agent"""
     name: str = Field(..., min_length=1, max_length=100, description="Agent 名称")
-    description: Optional[str] = Field(None, description="Agent 描述")
+    description: str | None = Field(None, description="Agent 描述")
     system_prompt: str = Field(..., min_length=1, description="系统提示词")
-    llm_model: Optional[str] = Field(None, description="使用的 LLM 模型")
+    llm_model: str | None = Field(None, description="使用的 LLM 模型")
     max_tokens: int = Field(4096, ge=1, le=32768, description="最大生成 token 数")
     context_window: int = Field(32768, ge=2048, le=1048576, description="上下文窗口大小")
     temperature: float = Field(0.7, ge=0.0, le=2.0, description="温度参数")
     top_p: float = Field(0.8, ge=0.0, le=1.0, description="top_p 参数")
     max_tool_calls_per_turn: int = Field(10, ge=1, le=50, description="每轮最大工具调用次数")
-    enabled_tools: Optional[List[str]] = Field(None, description="启用的工具列表")
-    enabled_mcp_servers: Optional[List[int]] = Field(None, description="启用的 MCP 服务器 ID")
-    extra_config: Optional[Dict[str, Any]] = Field(None, description="额外配置")
+    enabled_tools: list[str] | None = Field(None, description="启用的工具列表")
+    enabled_mcp_servers: list[int] | None = Field(None, description="启用的 MCP 服务器 ID")
+    extra_config: dict[str, Any] | None = Field(None, description="额外配置")
 
 
 class AgentUpdate(BaseModel):
     """更新 Agent"""
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = None
-    system_prompt: Optional[str] = Field(None, min_length=1)
-    llm_model: Optional[str] = None
-    max_tokens: Optional[int] = Field(None, ge=1, le=32768)
-    context_window: Optional[int] = Field(None, ge=2048, le=1048576)
-    temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
-    top_p: Optional[float] = Field(None, ge=0.0, le=1.0)
-    max_tool_calls_per_turn: Optional[int] = Field(None, ge=1, le=50)
-    enabled_tools: Optional[List[str]] = None
-    enabled_mcp_servers: Optional[List[int]] = None
-    extra_config: Optional[Dict[str, Any]] = None
+    name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = None
+    system_prompt: str | None = Field(None, min_length=1)
+    llm_model: str | None = None
+    max_tokens: int | None = Field(None, ge=1, le=32768)
+    context_window: int | None = Field(None, ge=2048, le=1048576)
+    temperature: float | None = Field(None, ge=0.0, le=2.0)
+    top_p: float | None = Field(None, ge=0.0, le=1.0)
+    max_tool_calls_per_turn: int | None = Field(None, ge=1, le=50)
+    enabled_tools: list[str] | None = None
+    enabled_mcp_servers: list[int] | None = None
+    extra_config: dict[str, Any] | None = None
 
 
 class AgentResponse(BaseModel):
@@ -66,30 +66,30 @@ class AgentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    user_id: Optional[int] = None
+    user_id: int | None = None
     name: str
-    description: Optional[str] = None
-    llm_model: Optional[str] = None
+    description: str | None = None
+    llm_model: str | None = None
     max_tokens: int = 4096
     context_window: int = 32768
     temperature: float = 0.7
     top_p: float = 0.8
     max_tool_calls_per_turn: int = 10
-    enabled_tools: Optional[List[str]] = None
-    enabled_mcp_servers: Optional[List[int]] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    enabled_tools: list[str] | None = None
+    enabled_mcp_servers: list[int] | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class AgentDetailResponse(AgentResponse):
     """Agent 详情响应（包含 system_prompt，仅详情/创建/更新接口使用）"""
     system_prompt: str
-    extra_config: Optional[Dict[str, Any]] = None
+    extra_config: dict[str, Any] | None = None
 
 
 class AgentListResponse(BaseModel):
     """Agent 列表响应"""
-    items: List[AgentResponse]
+    items: list[AgentResponse]
     total: int
     limit: int
     offset: int
@@ -105,17 +105,17 @@ class SessionResponse(BaseModel):
     user_id: int
     agent_id: int
     session_id: str
-    title: Optional[str] = None
+    title: str | None = None
     status: str = "active"
     message_count: int = 0
     total_tokens_used: int = 0
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class AgentSessionListResponse(BaseModel):
     """会话列表响应"""
-    items: List[SessionResponse]
+    items: list[SessionResponse]
     total: int
     limit: int
     offset: int
@@ -130,14 +130,14 @@ class AgentMessageResponse(BaseModel):
     id: int
     conversation_id: int
     role: str
-    content: Optional[str] = None
-    tool_call_id: Optional[str] = None
-    tool_name: Optional[str] = None
-    token_count: Optional[int] = None
-    extra: Optional[Dict[str, Any]] = None
-    reasoning: Optional[str] = None
-    iteration: Optional[int] = None
-    created_at: Optional[datetime] = None
+    content: str | None = None
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+    token_count: int | None = None
+    extra: dict[str, Any] | None = None
+    reasoning: str | None = None
+    iteration: int | None = None
+    created_at: datetime | None = None
 
 
 class ToolCallResponse(BaseModel):
@@ -145,22 +145,22 @@ class ToolCallResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    call_id: Optional[str] = None
+    call_id: str | None = None
     tool_name: str
     tool_source: str
-    arguments: Dict[str, Any] = Field(default_factory=dict)
+    arguments: dict[str, Any] = Field(default_factory=dict)
     status: str
-    duration_ms: Optional[int] = None
-    error_message: Optional[str] = None
-    result: Optional[str] = None
-    iteration: Optional[int] = None
+    duration_ms: int | None = None
+    error_message: str | None = None
+    result: str | None = None
+    iteration: int | None = None
 
 
 class MessageListResponse(BaseModel):
     """消息列表响应"""
-    items: List[AgentMessageResponse]
+    items: list[AgentMessageResponse]
     total: int
-    tool_calls: List[ToolCallResponse] = Field(default_factory=list)
+    tool_calls: list[ToolCallResponse] = Field(default_factory=list)
 
 
 class ContextUsageResponse(BaseModel):
@@ -196,11 +196,11 @@ class SystemPromptResponse(BaseModel):
 class AgentChatRequest(BaseModel):
     """Agent 对话请求"""
     content: str = Field(..., min_length=1, description="用户消息内容")
-    session_id: Optional[str] = Field(None, description="会话 ID，不传则创建新会话")
-    llm_model: Optional[str] = Field(None, description="覆盖 Agent 的 LLM 模型")
+    session_id: str | None = Field(None, description="会话 ID，不传则创建新会话")
+    llm_model: str | None = Field(None, description="覆盖 Agent 的 LLM 模型")
     enable_thinking: bool = Field(default=False, description="是否开启深度思考模式")
     stream: bool = Field(default=True, description="是否流式输出")
-    attachment_ids: Optional[List[int]] = Field(default=None, description="附件ID列表")
+    attachment_ids: list[int] | None = Field(default=None, description="附件ID列表")
 
 
 # ==================== MCP 服务器 ====================
@@ -208,19 +208,19 @@ class AgentChatRequest(BaseModel):
 class McpServerCreate(BaseModel):
     """创建 MCP 服务器配置"""
     name: str = Field(..., min_length=1, max_length=100, description="服务器名称")
-    description: Optional[str] = Field(None, description="服务器描述")
+    description: str | None = Field(None, description="服务器描述")
     transport_type: str = Field(..., pattern=r"^(stdio|streamable_http)$", description="传输类型")
-    connection_config: Dict[str, Any] = Field(..., description="连接配置")
+    connection_config: dict[str, Any] = Field(..., description="连接配置")
     enabled: bool = Field(True, description="是否启用")
 
 
 class McpServerUpdate(BaseModel):
     """更新 MCP 服务器配置"""
-    name: Optional[str] = Field(None, max_length=100)
-    description: Optional[str] = None
-    transport_type: Optional[str] = Field(None, pattern=r"^(stdio|streamable_http)$")
-    connection_config: Optional[Dict[str, Any]] = None
-    enabled: Optional[bool] = None
+    name: str | None = Field(None, max_length=100)
+    description: str | None = None
+    transport_type: str | None = Field(None, pattern=r"^(stdio|streamable_http)$")
+    connection_config: dict[str, Any] | None = None
+    enabled: bool | None = None
 
 
 class McpServerResponse(BaseModel):
@@ -228,17 +228,17 @@ class McpServerResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    user_id: Optional[int] = None
+    user_id: int | None = None
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     transport_type: str
-    connection_config: Dict[str, Any]
+    connection_config: dict[str, Any]
     enabled: bool = True
     status: str = "disconnected"
-    last_error: Optional[str] = None
-    available_tools: Optional[List[Dict[str, Any]]] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    last_error: str | None = None
+    available_tools: list[dict[str, Any]] | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     @model_validator(mode="after")
     def _sanitize_connection_config(self) -> "McpServerResponse":
@@ -253,14 +253,14 @@ class ToolFunctionResponse(BaseModel):
     """工具函数响应"""
     name: str
     description: str
-    parameters: Dict[str, Any]
+    parameters: dict[str, Any]
 
 
 class ToolProviderResponse(BaseModel):
     """工具提供者响应"""
     name: str
     description: str
-    tools: List[ToolFunctionResponse]
+    tools: list[ToolFunctionResponse]
     system_prompt_fragment: str = ""
 
 
@@ -275,7 +275,7 @@ class AgentActionResponse(BaseModel):
 class McpToolsRefreshResponse(BaseModel):
     """MCP 工具刷新响应"""
     success: bool
-    tools: List[Dict[str, Any]]
+    tools: list[dict[str, Any]]
 
 
 # ==================== 记忆管理 ====================
@@ -290,15 +290,15 @@ class MemoryResponse(BaseModel):
     category: str
     content: str
     source_type: str = "consolidate"
-    source_conversation_id: Optional[int] = None
+    source_conversation_id: int | None = None
     access_count: int = 0
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class MemoryListResponse(BaseModel):
     """记忆列表响应"""
-    items: List[MemoryResponse]
+    items: list[MemoryResponse]
     total: int
     limit: int
     offset: int
@@ -307,5 +307,5 @@ class MemoryListResponse(BaseModel):
 class MemoryStatsResponse(BaseModel):
     """记忆统计响应"""
     total_memories: int
-    by_category: Dict[str, int]
-    recently_created: List[MemoryResponse] = Field(default_factory=list)
+    by_category: dict[str, int]
+    recently_created: list[MemoryResponse] = Field(default_factory=list)

@@ -3,11 +3,11 @@
 验证 _notify_document_terminal：三终态文案/link/extra_data 正确、重试中间态
 不调用通知、失败静默。
 """
-from types import SimpleNamespace
-
-import pytest
 
 import novamind.features.knowledge_space.tasks.document_tasks as tasks
+import pytest
+
+pytestmark = pytest.mark.unit
 
 
 class _RecordingPort:

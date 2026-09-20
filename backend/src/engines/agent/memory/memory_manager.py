@@ -1,16 +1,17 @@
 """
 MemoryManager — 记忆系统统一门面，编排长期记忆和短期记忆的生命周期。
 """
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
+from novamind.engines.agent.memory.context_compressor import ContextCompressor
 from novamind.engines.agent.memory.interfaces import (
     LongTermMemoryEntry,
     MemorySnapshot,
 )
-from novamind.engines.agent.memory.short_term import ShortTermMemory
 from novamind.engines.agent.memory.long_term import LongTermMemory
+from novamind.engines.agent.memory.short_term import ShortTermMemory
 from novamind.engines.agent.memory.token_budget import TokenBudget
-from novamind.engines.agent.memory.context_compressor import ContextCompressor
 from novamind.engines.agent.ports import (
     ContextSummaryStorePort,
     LongTermMemoryStorePort,
@@ -39,7 +40,7 @@ class MemoryManager:
         self._summary_store = summary_store
         self._msg_repo = message_repository
         # 冻结快照缓存
-        self._frozen_snapshot_cache: Dict[str, str] = {}
+        self._frozen_snapshot_cache: dict[str, str] = {}
 
     @classmethod
     def create(
@@ -52,13 +53,13 @@ class MemoryManager:
         prompt_provider: PromptProvider,
         model: str,
         llm_client_factory: Callable,
-        memory_search: Optional[MemorySearchPort] = None,
-        embedding_factory: Optional[Callable] = None,
-        todo_store: Optional[Any] = None,
-        conversation_id: Optional[int] = None,
-        agent_id: Optional[int] = None,
-        user_id: Optional[int] = None,
-        auxiliary_llm_factory: Optional[Callable] = None,
+        memory_search: MemorySearchPort | None = None,
+        embedding_factory: Callable | None = None,
+        todo_store: Any | None = None,
+        conversation_id: int | None = None,
+        agent_id: int | None = None,
+        user_id: int | None = None,
+        auxiliary_llm_factory: Callable | None = None,
     ) -> "MemoryManager":
         """工厂方法：创建完整配置的 MemoryManager"""
         # 先创建 LongTermMemory（ContextCompressor 需要访问）
@@ -134,7 +135,7 @@ class MemoryManager:
         agent_id: int,
         user_id: int,
         top_k: int = 3,
-    ) -> List[LongTermMemoryEntry]:
+    ) -> list[LongTermMemoryEntry]:
         """动态预取相关记忆（Phase 1: MySQL LIKE，Phase 2 添加 ES）"""
         try:
             return await self._long_term.search(
@@ -154,7 +155,7 @@ class MemoryManager:
         system_prompt: str,
         conversation_id: int,
         max_tokens: int,
-        tools: Optional[List[Dict[str, Any]]] = None,
+        tools: list[dict[str, Any]] | None = None,
         dry_run: bool = False,
     ) -> MemorySnapshot:
         """构建发送给 LLM 的完整上下文快照"""

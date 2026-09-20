@@ -4,22 +4,22 @@
 提供用户自定义联网搜索 provider（Tavily/SerpAPI/DuckDuckGo）凭证配置的接口。
 所有配置绑定到具体用户，无 admin 区分（对齐 model_config 路由）。
 """
-from fastapi import APIRouter, Depends, Body, Path, Request
 from typing import Annotated
 
-from novamind.features.user.services.search_config_service import SearchConfigService
+from fastapi import APIRouter, Body, Depends, Path, Request
+from novamind.core.auth import require_active_user
+from novamind.core.middleware.rate_limit import get_limiter
+from novamind.features.user.api.dependencies import get_search_config_service
 from novamind.features.user.schemas.search_config_schema import (
     SearchConfigCreate,
-    SearchConfigUpdate,
-    SearchConfigResponse,
     SearchConfigListResponse,
+    SearchConfigResponse,
+    SearchConfigUpdate,
     SearchTestRequest,
     SearchTestResponse,
 )
 from novamind.features.user.schemas.user_schema import UserMessageResponse
-from novamind.core.auth import require_active_user
-from novamind.features.user.api.dependencies import get_search_config_service
-from novamind.core.middleware.rate_limit import get_limiter
+from novamind.features.user.services.search_config_service import SearchConfigService
 
 router = APIRouter()
 

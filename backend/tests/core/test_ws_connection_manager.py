@@ -3,21 +3,20 @@
 通知常驻订阅通道的 per-user 连接注册表：多连接注册/摘除、全连接推送、
 单连接异常摘除、无连接零开销、datetime 事件经 dumps_event 兜底。
 """
-import asyncio
 import datetime
-from typing import List
 
 import pytest
-
 from novamind.core.ws.connection_manager import ConnectionManager
 from novamind.core.ws.stream import envelope
+
+pytestmark = pytest.mark.unit
 
 
 class FakeWebSocket:
     """记录 send_text 调用的桩 WebSocket；可注入发送异常。"""
 
     def __init__(self, fail: bool = False):
-        self.sent: List[str] = []
+        self.sent: list[str] = []
         self.fail = fail
 
     async def send_text(self, payload: str) -> None:

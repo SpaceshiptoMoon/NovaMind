@@ -14,19 +14,26 @@
 #  limitations under the License.
 #
 
+import copy
+import datetime
 import logging
 import re
-import copy
-import time
-import datetime
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.resume.support import demjson3
-import traceback
 import signal
-import numpy as np
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.resume.entities import degrees, schools, corporations
-from novamind.engines.document.integrations.deepdoc.compat import rag_tokenizer, surname
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.resume.support import Pinyin
+import time
+import traceback
 from contextlib import contextmanager
+
+import numpy as np
+from novamind.engines.document.integrations.deepdoc.compat import rag_tokenizer, surname
+from novamind.engines.document.integrations.deepdoc.parsers.upstream.resume.entities import (
+    corporations,
+    degrees,
+    schools,
+)
+from novamind.engines.document.integrations.deepdoc.parsers.upstream.resume.support import (
+    Pinyin,
+    demjson3,
+)
 
 
 class TimeoutException(Exception):
@@ -560,7 +567,7 @@ def parse(cv):
                     cv[f"{t}_kwd"] = nms
                     cv[f"{t}_tks"] = rag_tokenizer.tokenize(" ".join(nms))
             except Exception:
-                logging.exception("parse {} {}".format(str(traceback.format_exc()), cv[k]))
+                logging.exception(f"parse {str(traceback.format_exc())} {cv[k]}")
                 cv[k] = []
 
         # tokenize fields

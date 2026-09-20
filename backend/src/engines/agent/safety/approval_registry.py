@@ -10,7 +10,6 @@ WS 双向审批：``ApprovalHook`` 检测到 DANGEROUS 操作 → 注册 pending
 from __future__ import annotations
 
 import asyncio
-from typing import Dict, Optional
 
 from novamind.shared.logging import get_logger
 
@@ -21,7 +20,7 @@ class ApprovalRegistry:
     """单次 WS 连接的审批决策注册表（per-connection，非线程共享）。"""
 
     def __init__(self) -> None:
-        self._pending: Dict[str, dict] = {}
+        self._pending: dict[str, dict] = {}
 
     def register(self, approval_id: str) -> asyncio.Event:
         """注册一个待审批请求，返回 Event（决策到达时 set。"""
@@ -45,7 +44,7 @@ class ApprovalRegistry:
             return "deny"
         try:
             await asyncio.wait_for(entry["event"].wait(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("审批超时，fail-closed 拒绝", approval_id=approval_id)
             return "deny"
         return entry["decision"] or "deny"

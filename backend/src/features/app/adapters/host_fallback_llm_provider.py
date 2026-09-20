@@ -3,10 +3,9 @@ FallbackLLMProvider 宿主适配器，包装 ModelConfigService 供 AutoProbingE
 
 行为对齐原 _load_fallback_models：列出用户 LLM 模型，排除主模型，逐个构造客户端。
 """
-from typing import List
 
-from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.engines.ports import FallbackLLMProvider
+from novamind.shared.ai_models.base_model import BaseLLM
 
 
 class HostFallbackLLMProvider:
@@ -17,10 +16,10 @@ class HostFallbackLLMProvider:
 
     async def load_fallback_clients(
         self, user_id: int, exclude_model: str
-    ) -> List[BaseLLM]:
+    ) -> list[BaseLLM]:
         svc = self._svc  # type: ignore[attr-defined]
         configs = await svc.repo.list_by_user(user_id, "llm")
-        clients: List[BaseLLM] = []
+        clients: list[BaseLLM] = []
         for cfg in configs:
             if cfg.model == exclude_model:
                 continue

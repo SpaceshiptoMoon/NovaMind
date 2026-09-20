@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """鉴权体系安全修复回归测试。
 
 覆盖 2026-08-30 审计修复批次：
@@ -12,7 +11,6 @@ from __future__ import annotations
 import pytest
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
-
 from novamind.core.auth.dependencies import (
     get_current_user,
     get_current_user_optional,
@@ -96,11 +94,10 @@ async def _create_token(user_id: int = 42) -> str:
 
 
 async def _seed_user(tmp_db, username: str, password: str, must_change: bool = False):
-    from sqlalchemy import func, select
-
     from novamind.core.auth.hashing import get_password_hash_async
     from novamind.features.user.models.role import Role
     from novamind.features.user.models.user import User, UserStatus
+    from sqlalchemy import func, select
 
     # SQLite 下 BigInteger 主键不自增，手动分配 ID
     next_id = (await tmp_db.execute(select(func.max(Role.id)))).scalar() or 0
@@ -282,11 +279,10 @@ class _RecordingChecker(PermissionCheckerPort):
 @pytest.mark.asyncio
 async def test_update_role_invalidates_role_users_cache(tmp_db):
     """角色权限变更后，该角色下所有用户的权限缓存被失效。"""
-    from sqlalchemy import func, select
-
     from novamind.features.user.models.role import Permission, Role
     from novamind.features.user.models.user import User, UserStatus
     from novamind.features.user.services.role_service import RoleService
+    from sqlalchemy import func, select
 
     # 预置权限码（set_role_permissions 校验 code 必须存在）；SQLite 手动分配 ID
     next_perm_id = (await tmp_db.execute(select(func.max(Permission.id)))).scalar() or 0

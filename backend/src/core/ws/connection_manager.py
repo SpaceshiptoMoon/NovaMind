@@ -10,10 +10,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Dict, Set
 
 from fastapi import WebSocket
-
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.core.ws.stream import dumps_event
 
@@ -24,7 +22,7 @@ class ConnectionManager:
     """user_id → WebSocket 集合的进程内注册表。"""
 
     def __init__(self) -> None:
-        self._connections: Dict[int, Set[WebSocket]] = {}
+        self._connections: dict[int, set[WebSocket]] = {}
         self._lock = asyncio.Lock()  # 注册表增删互斥（同一事件循环内实际无竞争，防御性）
 
     def connections_count(self, user_id: int) -> int:
@@ -46,7 +44,7 @@ class ConnectionManager:
             if not conns:
                 self._connections.pop(user_id, None)
 
-    async def send_to_user(self, user_id: int, event: Dict) -> bool:
+    async def send_to_user(self, user_id: int, event: dict) -> bool:
         """向用户的所有活跃连接推送事件。
 
         经 ``dumps_event`` 序列化（datetime 等兜底 ``default=str``）；

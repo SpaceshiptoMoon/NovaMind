@@ -4,36 +4,37 @@
 处理空间成员的管理操作
 """
 
-from typing import Optional, List, Dict, Any
 from datetime import timedelta
-from novamind.shared.utils.time_utils import now_china
+from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.exceptions import (
+    CannotModifySelfRoleError,
+    CannotRemoveLastAdminError,
+    InvalidParameterError,
+    InviteExpiredError,
+    InviteInvalidError,
+    MemberAlreadyExistsError,
+    MemberNotFoundError,
+    SpaceAccessDeniedError,
+)
 from novamind.features.knowledge_space.models.space_member import (
+    MemberStatus,
     SpaceMember,
     SpaceRole,
-    MemberStatus,
+)
+from novamind.features.knowledge_space.repository.audit_repository import AuditRepository
+from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
+from novamind.features.knowledge_space.repository.knowledge_base_repository import (
+    KnowledgeBaseRepository,
 )
 from novamind.features.knowledge_space.repository.member_repository import MemberRepository
 from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
-from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
-from novamind.features.knowledge_space.repository.audit_repository import AuditRepository
 from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
-from novamind.features.knowledge_space.exceptions import (
-    SpaceAccessDeniedError,
-    MemberNotFoundError,
-    MemberAlreadyExistsError,
-    InviteExpiredError,
-    InviteInvalidError,
-    CannotRemoveLastAdminError,
-    CannotModifySelfRoleError,
-    InvalidParameterError,
-)
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.storage.minio_client import MinioClient
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.utils.time_utils import now_china
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class MemberService:
@@ -46,8 +47,8 @@ class MemberService:
     def __init__(
         self,
         session: AsyncSession,
-        es_client: Optional[ElasticsearchClient] = None,
-        minio_client: Optional[MinioClient] = None,
+        es_client: ElasticsearchClient | None = None,
+        minio_client: MinioClient | None = None,
     ):
         self.session = session
         self.member_repo = MemberRepository(session)
@@ -197,7 +198,7 @@ class MemberService:
         operator_id: int,
         user_id: int,
         role: SpaceRole = SpaceRole.VIEWER,
-        custom_permissions: Optional[Dict[str, Any]] = None,
+        custom_permissions: dict[str, Any] | None = None,
     ) -> SpaceMember:
         """
         直接添加成员（无需邀请）
@@ -266,7 +267,7 @@ class MemberService:
         operator_id: int,
         user_id: int,
         new_role: SpaceRole,
-    ) -> Optional[SpaceMember]:
+    ) -> SpaceMember | None:
         """
         更新成员角色（线程安全）
 
@@ -325,8 +326,8 @@ class MemberService:
         space_id: int,
         operator_id: int,
         user_id: int,
-        custom_permissions: Optional[Dict[str, Any]],
-    ) -> Optional[SpaceMember]:
+        custom_permissions: dict[str, Any] | None,
+    ) -> SpaceMember | None:
         """
         更新成员细粒度权限（custom_permissions 全量替换，线程安全）
 
@@ -437,7 +438,7 @@ class MemberService:
         user_id: int,
         skip: int = 0,
         limit: int = 100,
-    ) -> tuple[List[SpaceMember], int]:
+    ) -> tuple[list[SpaceMember], int]:
         """
         获取空间成员列表
 
@@ -474,7 +475,7 @@ class MemberService:
         self,
         space_id: int,
         user_id: int,
-    ) -> Optional[SpaceMember]:
+    ) -> SpaceMember | None:
         """
         获取成员信息
 

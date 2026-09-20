@@ -6,18 +6,17 @@
 注意：OpenAI 官方不提供 Rerank API，此客户端不调用 OpenAI 服务。
 """
 
-from typing import List, Dict, Any
+from typing import Any
 
 import httpx
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_exponential,
-    retry_if_exception_type,
-)
-
 from novamind.shared.ai_models.base_model import BaseRerank
 from novamind.shared.logging import get_logger
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 logger = get_logger(__name__)
 
@@ -104,9 +103,9 @@ class CompatibleRerankClient(BaseRerank):
     async def rerank(
         self,
         query: str,
-        documents: List[str],
+        documents: list[str],
         top_k: int = 3,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         对文档列表进行重排序
 

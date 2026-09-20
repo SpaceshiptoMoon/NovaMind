@@ -4,19 +4,18 @@
 处理空间成员的数据访问操作
 """
 
-from typing import Optional, List, Dict, Any
 from datetime import timedelta
-from novamind.shared.utils.time_utils import now_china
-
-from sqlalchemy import select, delete, func, and_
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
 
 from novamind.features.knowledge_space.models.space_member import (
+    MemberStatus,
     SpaceMember,
     SpaceRole,
-    MemberStatus,
 )
 from novamind.features.user.models.user import User
+from novamind.shared.utils.time_utils import now_china
+from sqlalchemy import and_, delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class MemberRepository:
@@ -34,8 +33,8 @@ class MemberRepository:
         space_id: int,
         user_id: int,
         role: SpaceRole = SpaceRole.VIEWER,
-        invited_by: Optional[int] = None,
-        custom_permissions: Optional[Dict[str, Any]] = None,
+        invited_by: int | None = None,
+        custom_permissions: dict[str, Any] | None = None,
     ) -> SpaceMember:
         """
         添加空间成员
@@ -101,7 +100,7 @@ class MemberRepository:
     async def get_by_id(
         self,
         member_id: int,
-    ) -> Optional[SpaceMember]:
+    ) -> SpaceMember | None:
         """
         根据 ID 获取成员
 
@@ -121,7 +120,7 @@ class MemberRepository:
         space_id: int,
         user_id: int,
         include_inactive: bool = False,
-    ) -> Optional[SpaceMember]:
+    ) -> SpaceMember | None:
         """
         根据空间 ID 和用户 ID 获取成员
 
@@ -151,7 +150,7 @@ class MemberRepository:
         self,
         space_id: int,
         user_id: int,
-    ) -> Optional[SpaceMember]:
+    ) -> SpaceMember | None:
         """
         根据空间 ID 和用户 ID 获取成员（加行锁，防止竞态条件）
 
@@ -177,7 +176,7 @@ class MemberRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_by_invite_token(self, token: str) -> Optional[SpaceMember]:
+    async def get_by_invite_token(self, token: str) -> SpaceMember | None:
         """
         根据邀请令牌获取成员
 
@@ -198,10 +197,10 @@ class MemberRepository:
     async def get_space_members(
         self,
         space_id: int,
-        status: Optional[MemberStatus] = None,
+        status: MemberStatus | None = None,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[SpaceMember]:
+    ) -> list[SpaceMember]:
         """
         获取空间成员列表
 
@@ -240,7 +239,7 @@ class MemberRepository:
     async def count_space_members(
         self,
         space_id: int,
-        status: Optional[MemberStatus] = None,
+        status: MemberStatus | None = None,
     ) -> int:
         """
         统计空间成员数量
@@ -263,10 +262,10 @@ class MemberRepository:
     async def get_user_spaces(
         self,
         user_id: int,
-        status: Optional[MemberStatus] = MemberStatus.ACTIVE,
+        status: MemberStatus | None = MemberStatus.ACTIVE,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[SpaceMember]:
+    ) -> list[SpaceMember]:
         """
         获取用户所属的空间成员关系列表
 
@@ -324,7 +323,7 @@ class MemberRepository:
         )
         return result.rowcount
 
-    async def accept_invite(self, token: str) -> Optional[SpaceMember]:
+    async def accept_invite(self, token: str) -> SpaceMember | None:
         """
         接受邀请
 
@@ -381,7 +380,7 @@ class MemberRepository:
         )
         return (result.scalar() or 0) > 0
 
-    async def get_admins(self, space_id: int) -> List[SpaceMember]:
+    async def get_admins(self, space_id: int) -> list[SpaceMember]:
         """
         获取空间管理员列表
 
@@ -400,7 +399,7 @@ class MemberRepository:
         )
         return list(result.scalars().all())
 
-    async def get_admins_for_update(self, space_id: int) -> List[SpaceMember]:
+    async def get_admins_for_update(self, space_id: int) -> list[SpaceMember]:
         """
         获取空间管理员列表（加行锁，用于并发安全检查）
 

@@ -1,6 +1,6 @@
 import asyncio
-from pathlib import Path
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -8,8 +8,11 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+import pytest
 from novamind.features.knowledge_space.models.document_task import TaskStatus
 from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
+
+pytestmark = pytest.mark.unit
 
 
 def test_retry_document_reuses_latest_task_pipeline_config():

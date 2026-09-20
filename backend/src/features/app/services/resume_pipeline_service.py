@@ -1,23 +1,22 @@
 """
 简历挖掘 Pipeline 服务，支持 S1-S12 全流程执行与阶段间取消检查。
 """
-from typing import Optional
 
 from novamind.core.database.database import get_db_session
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.app.models.resume import ResumeSessionStatus
-from novamind.features.app.repository.resume_repository import ResumeSessionRepository
-from novamind.engines.resume import ResumeParser, ResumeAnalyzer, AutoProbingEngine
 from novamind.engines.prompt_provider_adapter import as_prompt_provider
+from novamind.engines.resume import AutoProbingEngine, ResumeAnalyzer, ResumeParser
 from novamind.features.app.adapters.host_fallback_llm_provider import (
     as_fallback_llm_provider,
 )
+from novamind.features.app.models.resume import ResumeSessionStatus
+from novamind.features.app.repository.resume_repository import ResumeSessionRepository
 from novamind.features.deep_research.adapters.web_search_port_adapter import (
     build_web_search_port,
 )
 from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.shared.storage.client_factory import get_minio_client
 from novamind.shared.mq.task_tracker import is_resume_cancelled
+from novamind.shared.storage.client_factory import get_minio_client
 
 logger = get_logger(__name__)
 
@@ -30,7 +29,7 @@ class ResumePipelineService:
         session_id: str,
         user_id: int,
         llm_model: str,
-        jd_text: Optional[str],
+        jd_text: str | None,
         config: dict,
         file_bytes: bytes,
         filename: str,

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 # Adapted from RAGFlow deepdoc/vision/table_structure_recognizer.py
-
 import logging
 import os
 import re
@@ -11,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-
 from novamind.engines.document.integrations.deepdoc.compat import rag_tokenizer
 from novamind.engines.document.integrations.deepdoc.vision.recognizer import Recognizer
 

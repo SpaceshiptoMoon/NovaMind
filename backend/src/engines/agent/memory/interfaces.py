@@ -3,11 +3,9 @@
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from novamind.engines.agent.ports import LongTermMemoryEntry  # noqa: F401
-
 
 # ==================== 数据模型 ====================
 
@@ -16,12 +14,12 @@ class MemoryMessage:
     """统一的内部消息模型"""
 
     role: str  # user / assistant / system / tool
-    content: Union[str, List[Dict[str, Any]]]
-    tool_call_id: Optional[str] = None
-    tool_name: Optional[str] = None
-    tool_calls: Optional[List[Dict[str, Any]]] = None
-    token_count: Optional[int] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    content: str | list[dict[str, Any]]
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+    tool_calls: list[dict[str, Any]] | None = None
+    token_count: int | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -33,7 +31,7 @@ class MemorySnapshot:
     AgentEngine 消费 snapshot.messages 构建请求。
     """
 
-    messages: List[Dict[str, Any]]  # OpenAI 格式消息列表
+    messages: list[dict[str, Any]]  # OpenAI 格式消息列表
     total_tokens: int
     compressed: bool = False
     compression_ratio: float = 1.0
@@ -68,7 +66,7 @@ class IShortTermMemory(ABC):
         conversation_id: int,
         max_tokens: int,
         reserve_tokens: int = 1024,
-        tools: Optional[List[Dict[str, Any]]] = None,
+        tools: list[dict[str, Any]] | None = None,
         dry_run: bool = False,
     ) -> MemorySnapshot:
         """
@@ -117,7 +115,7 @@ class ILongTermMemory(ABC):
         user_id: int,
         category: str,
         content: str,
-        source_conversation_id: Optional[int] = None,
+        source_conversation_id: int | None = None,
     ) -> LongTermMemoryEntry:
         """存储一条长期记忆"""
         ...
@@ -129,8 +127,8 @@ class ILongTermMemory(ABC):
         user_id: int,
         query: str,
         top_k: int = 5,
-        categories: Optional[List[str]] = None,
-    ) -> List[LongTermMemoryEntry]:
+        categories: list[str] | None = None,
+    ) -> list[LongTermMemoryEntry]:
         """根据查询搜索相关的长期记忆"""
         ...
 
@@ -140,7 +138,7 @@ class ILongTermMemory(ABC):
         agent_id: int,
         user_id: int,
         conversation_id: int,
-        messages: List[MemoryMessage],
+        messages: list[MemoryMessage],
     ) -> int:
         """
         从对话消息中提取并存储有价值的长期记忆

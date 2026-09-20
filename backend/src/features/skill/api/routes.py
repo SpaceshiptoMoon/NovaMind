@@ -1,49 +1,52 @@
 """
 技能广场 API 路由
 """
-from typing import Annotated, Optional
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Path, UploadFile, File, Request
+from fastapi import APIRouter, Depends, File, Path, Query, Request, UploadFile
 from fastapi.responses import Response
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.core.auth import get_current_user, require_active_user
 from novamind.core.authorization.dependencies import require_permission
 from novamind.core.database.database import get_db
-from novamind.core.middleware.rate_limit import get_limiter, RateLimits
-from novamind.features.user.models.user import User
-from novamind.features.skill.api.dependencies import get_skill_service, update_llm_review_settings, get_llm_review_settings
-from novamind.features.skill.services.skill_marketplace_service import SkillMarketplaceService
-from novamind.features.skill.services.skill_parser import validate_skill_md
-from novamind.features.skill.schemas.skill_schema import (
-    SkillResponse,
-    SkillListItemResponse,
-    SkillMarketplaceListResponse,
-    SkillReviewResponse,
-    SkillReviewListResponse,
-    SkillInstallationResponse,
-    SkillValidateResponse,
-    SkillInstallRequest,
-    SkillReviewCreate,
-    SkillValidateRequest,
-    SkillAdminSettingsUpdate,
-    SkillAdminSettingsResponse,
-    SkillAdminReviewAction,
-    SkillActionResponse,
-    SkillReviewActionResultResponse,
-    SkillPendingReviewListResponse,
-    SkillAISearchRequest,
-    SkillAISearchResponse,
-    SkillAISearchParsedQuery,
-    SkillCategoriesResponse,
-    SkillTagsResponse,
+from novamind.core.middleware.rate_limit import RateLimits, get_limiter
+from novamind.features.skill.api.dependencies import (
+    get_llm_review_settings,
+    get_skill_service,
+    update_llm_review_settings,
 )
 from novamind.features.skill.exceptions import (
-    SkillNotFoundError,
     InvalidSkillFormatError,
     SkillFileSizeExceededError,
+    SkillNotFoundError,
 )
+from novamind.features.skill.schemas.skill_schema import (
+    SkillActionResponse,
+    SkillAdminReviewAction,
+    SkillAdminSettingsResponse,
+    SkillAdminSettingsUpdate,
+    SkillAISearchParsedQuery,
+    SkillAISearchRequest,
+    SkillAISearchResponse,
+    SkillCategoriesResponse,
+    SkillInstallationResponse,
+    SkillInstallRequest,
+    SkillListItemResponse,
+    SkillMarketplaceListResponse,
+    SkillPendingReviewListResponse,
+    SkillResponse,
+    SkillReviewActionResultResponse,
+    SkillReviewCreate,
+    SkillReviewListResponse,
+    SkillReviewResponse,
+    SkillTagsResponse,
+    SkillValidateRequest,
+    SkillValidateResponse,
+)
+from novamind.features.skill.services.skill_marketplace_service import SkillMarketplaceService
+from novamind.features.skill.services.skill_parser import validate_skill_md
+from novamind.features.user.models.user import User
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 
@@ -111,7 +114,7 @@ async def update_skill_version(
     description="获取当前用户上传的所有技能列表",
 )
 async def list_my_skills(
-    status: Annotated[Optional[int], Query(description="状态过滤")] = None,
+    status: Annotated[int | None, Query(description="状态过滤")] = None,
     limit: Annotated[int, Query(ge=1, le=100, description="每页数量")] = 20,
     offset: Annotated[int, Query(ge=0, description="偏移量")] = 0,
     user_id: int = Depends(get_current_user_id),
@@ -131,9 +134,9 @@ async def list_my_skills(
     description="浏览技能广场中所有已发布的技能，支持搜索、分类和排序",
 )
 async def list_marketplace(
-    keyword: Annotated[Optional[str], Query(max_length=200, description="搜索关键词")] = None,
-    category: Annotated[Optional[str], Query(max_length=50, description="分类筛选")] = None,
-    tags: Annotated[Optional[str], Query(description="标签筛选")] = None,
+    keyword: Annotated[str | None, Query(max_length=200, description="搜索关键词")] = None,
+    category: Annotated[str | None, Query(max_length=50, description="分类筛选")] = None,
+    tags: Annotated[str | None, Query(description="标签筛选")] = None,
     sort: Annotated[str, Query(pattern="^(popular|rating|newest|name)$", description="排序方式: popular/rating/newest/name")] = "newest",
     limit: Annotated[int, Query(ge=1, le=100, description="每页数量")] = 20,
     offset: Annotated[int, Query(ge=0, description="偏移量")] = 0,

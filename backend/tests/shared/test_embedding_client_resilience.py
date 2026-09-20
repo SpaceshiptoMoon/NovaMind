@@ -23,7 +23,7 @@ if str(BACKEND_ROOT) not in sys.path:
 pytestmark = pytest.mark.unit
 
 
-def _make_client(**kwargs) -> "OpenAICompatibleEmbedding":
+def _make_client(**kwargs) -> "OpenAICompatibleEmbedding":  # noqa: F821 懒 import 字符串注解
     """构造绕过真实 AsyncOpenAI 初始化的客户端实例。"""
     from novamind.shared.ai_models.embedding.openai_compatible import (
         OpenAICompatibleEmbedding,
@@ -62,8 +62,8 @@ def test_retry_list_contains_openai_wrapped_exceptions():
 def test_embedding_batch_timeout_is_retried():
     """模拟 DashScope ReadTimeout：_generate_batch 抛 APITimeoutError 两次后成功，
     tenacity 应重试并最终返回结果（修复前直接穿透抛出）。"""
-    from openai import APITimeoutError
     import httpx
+    from openai import APITimeoutError
 
     # 构造真实的 APITimeoutError（需要 message 参数和 request 属性）
     request = httpx.Request("POST", "https://example.com/v1/embeddings")
@@ -92,8 +92,8 @@ def test_embedding_batch_timeout_is_retried():
 
 def test_embedding_batch_timeout_exhausts_retries_and_reraises():
     """连续超时 3 次后，tenacity 应停止重试并原样抛出（reraise=True 不包 RetryError）。"""
-    from openai import APITimeoutError
     import httpx
+    from openai import APITimeoutError
 
     request = httpx.Request("POST", "https://example.com/v1/embeddings")
     exc = APITimeoutError(request=request)
@@ -319,7 +319,6 @@ def test_async_openai_receives_zero_internal_retries():
     """SDK 内部重试必须为 0：外层 tenacity 已重试，双层相乘会让单批挂 12 分钟
     （doc 574 实测 3×4 次 HTTP × 60s timeout）。与 LLM 客户端语义对齐。"""
     import httpx
-
     from novamind.shared.ai_models.embedding import openai_compatible as emb_mod
 
     captured = {}
@@ -482,9 +481,6 @@ def test_sanitize_preserves_clean_text_and_newline_semantics():
 
 def test_generate_batch_sanitizes_input_before_request():
     """_generate_batch 发送给服务商的 input 已清洗（mock 捕获请求参数断言）。"""
-    from novamind.shared.ai_models.embedding.openai_compatible import (
-        OpenAICompatibleEmbedding,
-    )
 
     client = _make_client(batch_size=20)
     captured = {}

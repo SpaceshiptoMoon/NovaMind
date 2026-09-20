@@ -53,7 +53,7 @@ class PlanFeedbackRegistry:
             return DECISION_ACCEPTED, ""
         try:
             await asyncio.wait_for(self._event.wait(), timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("计划确认超时，自动接受", timeout=timeout)
             return DECISION_ACCEPTED, ""
         return self._decision or DECISION_ACCEPTED, self._feedback

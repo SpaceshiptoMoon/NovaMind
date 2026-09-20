@@ -1,6 +1,6 @@
 """VLM 工具：图像 data URL 构建 + VLM 消息构造 + 多模型 fallback 调用。"""
 import base64
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 def build_image_data_url(file_bytes: bytes, mime_type: str) -> str:
@@ -9,7 +9,7 @@ def build_image_data_url(file_bytes: bytes, mime_type: str) -> str:
     return f"data:{mime_type};base64,{base64_data}"
 
 
-def build_vlm_image_messages(file_bytes: bytes, mime_type: str, text_prompt: str) -> List[Dict[str, Any]]:
+def build_vlm_image_messages(file_bytes: bytes, mime_type: str, text_prompt: str) -> list[dict[str, Any]]:
     """构建 OpenAI 兼容格式的图片多模态消息。"""
     return [{
         "role": "user",
@@ -27,16 +27,16 @@ def build_vlm_image_messages(file_bytes: bytes, mime_type: str, text_prompt: str
 
 
 def build_vlm_multi_image_messages(
-    frames_bytes: List[bytes],
+    frames_bytes: list[bytes],
     mime_type: str,
     text_prompt: str,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """构建 OpenAI 兼容格式的多图多模态消息（grouped 策略用）。
 
     content 列表含多个 ``image_url`` 项（按帧顺序）+ 一个 ``text`` 项。
     部分 VLM 提供商不支持多图输入，调用方捕获异常后应降级为逐帧单图描述。
     """
-    content: List[Dict[str, Any]] = [
+    content: list[dict[str, Any]] = [
         {
             "type": "image_url",
             "image_url": {"url": build_image_data_url(fb, mime_type)},
@@ -49,13 +49,13 @@ def build_vlm_multi_image_messages(
 
 async def generate_vlm_text_with_fallback(
     vlm_client,
-    messages: List[Dict[str, Any]],
+    messages: list[dict[str, Any]],
     *,
     max_tokens: int,
     temperature: float,
     logger,
     vlm_model: str,
-    log_context: Optional[Dict[str, Any]] = None,
+    log_context: dict[str, Any] | None = None,
 ) -> str:
     """兼容部分 VLM 提供商要求显式开启 thinking 的场景。"""
     try:

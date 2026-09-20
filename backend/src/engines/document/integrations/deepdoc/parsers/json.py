@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 # Adapted from RAGFlow deepdoc/parser/json_parser.py
-
 import json
 from typing import Any
 

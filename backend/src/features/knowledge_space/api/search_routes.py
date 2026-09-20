@@ -6,29 +6,28 @@
 """
 
 from typing import Annotated
-from fastapi import APIRouter, Depends, Request, Body, Path
 
-from novamind.setting.yaml_config import get_config
-from novamind.features.knowledge_space.schemas.search_schema import (
-    SearchRequest,
-    SearchResponse,
-    SearchModesResponse,
-    KnowledgeBaseModelConfigResponse,
-    SEARCH_MODES,
-)
+from fastapi import APIRouter, Body, Depends, Path, Request
 from novamind.features.knowledge_space.api.dependencies import (
-    get_search_service,
     get_audit_service,
     get_current_user_id,
+    get_search_service,
     validate_space_access,
 )
 from novamind.features.knowledge_space.exceptions import KnowledgeBaseNotFoundError
-from novamind.features.knowledge_space.services.search_service import SearchService
+from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
+from novamind.features.knowledge_space.schemas.search_schema import (
+    SEARCH_MODES,
+    KnowledgeBaseModelConfigResponse,
+    SearchModesResponse,
+    SearchRequest,
+    SearchResponse,
+)
 from novamind.features.knowledge_space.services.audit_service import AuditService
+from novamind.features.knowledge_space.services.search_service import SearchService
 from novamind.features.user.api.dependencies import get_model_config_service
 from novamind.features.user.services.model_config_service import ModelConfigService
-
-from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
+from novamind.setting.yaml_config import get_config
 
 router = APIRouter(tags=["知识检索"])
 
@@ -178,7 +177,7 @@ async def get_search_modes(
     space, _ = validated
 
     # 验证 kb_id 属于当前空间并获取 KB
-    kb = await _validate_active_kb(kb_id, space_id, search_service)
+    await _validate_active_kb(kb_id, space_id, search_service)
 
     # 获取知识库可用的检索模式
     available_modes = await search_service.get_available_modes(

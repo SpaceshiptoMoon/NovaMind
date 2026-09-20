@@ -7,18 +7,19 @@ import json
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import BigInteger
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.ext.compiler import compiles
-
 from novamind.core.database.base import Base
+from novamind.features.agent.tool.builtins.wiki_tools import WikiTool
 from novamind.features.knowledge_space.models.wiki import (
     WikiPage,
     WikiPageIssue,
     WikiPageRevision,
 )
 from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
-from novamind.features.agent.tool.builtins.wiki_tools import WikiTool
+from sqlalchemy import BigInteger
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.compiler import compiles
+
+pytestmark = pytest.mark.unit
 
 
 @compiles(BigInteger, "sqlite")
@@ -192,9 +193,8 @@ async def test_flag_issue_creates_record(db, tool, seeded_page):
     ))
     assert result["status"] == "pending"
 
-    from sqlalchemy import select
-
     from novamind.features.knowledge_space.models.wiki import WikiPageIssue as Issue
+    from sqlalchemy import select
 
     rows = (await db.execute(select(Issue))).scalars().all()
     assert len(rows) == 1

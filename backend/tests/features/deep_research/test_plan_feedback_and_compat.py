@@ -23,14 +23,14 @@ from novamind.engines.deep_research.types import (
     ResearchPlan,
     StepType,
 )
+from novamind.features.deep_research.services.deep_research_service import (
+    parse_plan_json,
+    plan_to_json,
+)
 from novamind.features.deep_research.services.plan_feedback_registry import (
     DECISION_ACCEPTED,
     DECISION_EDIT_PLAN,
     PlanFeedbackRegistry,
-)
-from novamind.features.deep_research.services.deep_research_service import (
-    parse_plan_json,
-    plan_to_json,
 )
 
 pytestmark = pytest.mark.unit

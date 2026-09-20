@@ -7,37 +7,44 @@ import asyncio
 import io
 import json
 import zipfile
-from typing import Any, Dict, List, Optional, Tuple
-from novamind.shared.model_config_ports import ModelConfigPort
-
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.skill.models.skill import (
-    SkillDefinition, SkillReview, SkillInstallation,
-    SkillSource, SkillVisibility, SkillStatus, ReviewStatus,
-)
 from novamind.features.skill.exceptions import (
-    SkillNotFoundError,
-    SkillAlreadyExistsError,
-    SkillNotPublishedError,
-    SkillAccessDeniedError,
-    SkillAlreadyInstalledError,
-    SkillNotInstalledError,
-    SkillTargetAgentNotFoundError,
     InvalidSkillFormatError,
+    SkillAccessDeniedError,
+    SkillAlreadyExistsError,
+    SkillAlreadyInstalledError,
+    SkillNotFoundError,
+    SkillNotInstalledError,
+    SkillNotPublishedError,
     SkillReviewRejectedError,
+    SkillTargetAgentNotFoundError,
+)
+from novamind.features.skill.models.skill import (
+    ReviewStatus,
+    SkillDefinition,
+    SkillInstallation,
+    SkillReview,
+    SkillSource,
+    SkillStatus,
+    SkillVisibility,
 )
 from novamind.features.skill.repository.skill_repository import (
-    SkillRepository, SkillVersionRepository, SkillReviewRepository, SkillInstallationRepository,
+    SkillInstallationRepository,
+    SkillRepository,
+    SkillReviewRepository,
+    SkillVersionRepository,
 )
-from novamind.features.skill.services.skill_parser import extract_skill_zip, ExtractedSkill
 from novamind.features.skill.services.skill_checker import SkillSecurityChecker
-from novamind.shared.utils.time_utils import now_china
-from novamind.shared.prompts import PromptManager
+from novamind.features.skill.services.skill_parser import ExtractedSkill, extract_skill_zip
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.registry_ports import AgentRegistryPort
+from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.shared.notification_ports import NotificationPort
+from novamind.shared.prompts import PromptManager
+from novamind.shared.registry_ports import AgentRegistryPort
+from novamind.shared.utils.time_utils import now_china
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -49,10 +56,10 @@ class SkillMarketplaceService:
         self,
         db: AsyncSession,
         minio_client=None,
-        security_checker: Optional[SkillSecurityChecker] = None,
-        model_config_service: Optional[ModelConfigPort] = None,
-        agent_registry_port: Optional[AgentRegistryPort] = None,
-        notification_port: Optional[NotificationPort] = None,
+        security_checker: SkillSecurityChecker | None = None,
+        model_config_service: ModelConfigPort | None = None,
+        agent_registry_port: AgentRegistryPort | None = None,
+        notification_port: NotificationPort | None = None,
     ):
         self.db = db
         self.minio = minio_client
@@ -369,7 +376,7 @@ class SkillMarketplaceService:
 
     # ==================== 查询 ====================
 
-    async def get_skill(self, skill_id: int, user_id: int = None) -> Optional[SkillDefinition]:
+    async def get_skill(self, skill_id: int, user_id: int = None) -> SkillDefinition | None:
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
             return None
@@ -379,30 +386,30 @@ class SkillMarketplaceService:
         return skill
 
     async def list_my_skills(
-        self, user_id: int, status: Optional[int] = None,
+        self, user_id: int, status: int | None = None,
         limit: int = 20, offset: int = 0,
-    ) -> Tuple[List[SkillDefinition], int]:
+    ) -> tuple[list[SkillDefinition], int]:
         return await self.skill_repo.list_by_user(user_id, status, limit, offset)
 
     async def list_marketplace(
-        self, keyword: Optional[str] = None, category: Optional[str] = None,
-        tags: Optional[str] = None, sort: str = "newest",
+        self, keyword: str | None = None, category: str | None = None,
+        tags: str | None = None, sort: str = "newest",
         limit: int = 20, offset: int = 0,
-    ) -> Tuple[List[SkillDefinition], int]:
+    ) -> tuple[list[SkillDefinition], int]:
         tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
         return await self.skill_repo.list_marketplace(keyword, category, tag_list, sort, limit, offset)
 
-    async def list_categories(self) -> List[str]:
+    async def list_categories(self) -> list[str]:
         """获取所有已上架技能的去重分类列表"""
         return await self.skill_repo.get_distinct_categories()
 
-    async def list_tags(self) -> List[str]:
+    async def list_tags(self) -> list[str]:
         """获取所有已上架技能的常用标签列表"""
         return await self.skill_repo.get_common_tags()
 
     async def ai_search(
         self, query: str, user_id: int, limit: int = 20, offset: int = 0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """AI 智能搜索：LLM 理解自然语言意图 → 结构化参数搜索"""
         llm_client = await self._get_llm_client(user_id)
         if not llm_client:
@@ -433,7 +440,7 @@ class SkillMarketplaceService:
                 timeout=15,
             )
             parsed = json.loads(response)
-        except (json.JSONDecodeError, asyncio.TimeoutError, Exception) as e:
+        except (TimeoutError, json.JSONDecodeError, Exception) as e:
             logger.warning("AI 搜索 LLM 解析失败，降级为关键词搜索", error=str(e))
             return await self._fallback_ai_search(
                 query, limit, offset,
@@ -495,7 +502,7 @@ class SkillMarketplaceService:
 
     async def _fallback_ai_search(
         self, query: str, limit: int, offset: int, explanation: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """AI 搜索降级：使用关键词搜索"""
         skills, total = await self.skill_repo.list_marketplace(
             keyword=query, limit=limit, offset=offset,
@@ -515,7 +522,7 @@ class SkillMarketplaceService:
             },
         }
 
-    async def list_installed(self, agent_id: int, user_id: int) -> List[SkillInstallation]:
+    async def list_installed(self, agent_id: int, user_id: int) -> list[SkillInstallation]:
         if self._agent_registry_port is None:
             # 无 port 无法校验归属，保守返回空（正常 HTTP 入口总会注入 agent_registry_port）
             return []
@@ -528,7 +535,7 @@ class SkillMarketplaceService:
     # ==================== 评价 ====================
 
     async def create_review(
-        self, user_id: int, skill_id: int, rating: int, content: Optional[str],
+        self, user_id: int, skill_id: int, rating: int, content: str | None,
     ) -> SkillReview:
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
@@ -545,7 +552,7 @@ class SkillMarketplaceService:
 
     async def list_reviews(
         self, skill_id: int, limit: int = 20, offset: int = 0,
-    ) -> Tuple[List[SkillReview], int]:
+    ) -> tuple[list[SkillReview], int]:
         return await self.review_repo.list_by_skill(skill_id, limit, offset)
 
     async def delete_review(self, user_id: int, skill_id: int) -> bool:
@@ -572,7 +579,7 @@ class SkillMarketplaceService:
 
     async def list_pending_review(
         self, limit: int = 20, offset: int = 0,
-    ) -> Tuple[List[SkillDefinition], int]:
+    ) -> tuple[list[SkillDefinition], int]:
         """列出待人工审核的技能（SUSPICIOUS 状态）"""
         return await self.skill_repo.list_by_review_status(
             ReviewStatus.SUSPICIOUS, limit, offset,
@@ -594,7 +601,7 @@ class SkillMarketplaceService:
             await self._notify_review_result(updated, ReviewStatus.APPROVED, None)
         return updated
 
-    async def reject_skill(self, skill_id: int, reason: Optional[str] = None) -> SkillDefinition:
+    async def reject_skill(self, skill_id: int, reason: str | None = None) -> SkillDefinition:
         """管理员拒绝技能（SUSPICIOUS → REJECTED）"""
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
@@ -653,7 +660,7 @@ class SkillMarketplaceService:
 
     # ==================== 内部方法 ====================
 
-    async def _get_llm_client(self, user_id: int, model_name: Optional[str] = None) -> Optional[BaseLLM]:
+    async def _get_llm_client(self, user_id: int, model_name: str | None = None) -> BaseLLM | None:
         """获取用户的 LLM 客户端（用于 AI 搜索）
 
         优先使用指定模型，否则使用用户默认模型
@@ -725,7 +732,7 @@ class SkillMarketplaceService:
         task.add_done_callback(lambda t: t.exception() if not t.cancelled() and t.exception() else None)
 
     async def _notify_review_result(
-        self, skill, review_status: int, admin_reason: Optional[str],
+        self, skill, review_status: int, admin_reason: str | None,
     ) -> None:
         """审核结果通知技能作者（commit 后调用；经独立会话 port，失败不影响审核流程）。"""
         if skill.user_id is None or self._notification_port is None:
@@ -764,7 +771,7 @@ class SkillMarketplaceService:
 
     async def _upload_skill_files(
         self, skill_id: int, version: int, extracted: ExtractedSkill,
-    ) -> List[dict]:
+    ) -> list[dict]:
         """上传技能文件到 MinIO，返回 resource_manifest"""
         manifest = []
         prefix = f"skills/{skill_id}/v{version}"

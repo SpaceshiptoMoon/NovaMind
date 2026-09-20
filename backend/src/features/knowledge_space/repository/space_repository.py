@@ -5,21 +5,19 @@
 支持 Redis 缓存
 """
 
-from typing import Optional, List, Dict, Any
-from novamind.shared.utils.time_utils import now_china
+from typing import Any
 
-from sqlalchemy import select, update, delete, func
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.knowledge_space import (
     KnowledgeSpace,
     SpaceStatus,
     SpaceVisibility,
 )
-from novamind.features.knowledge_space.models.space_member import SpaceMember, MemberStatus
+from novamind.features.knowledge_space.models.space_member import MemberStatus, SpaceMember
 from novamind.shared.cache.redis_client import get_redis_client
-from novamind.core.middleware.structured_logging import get_logger
-
+from novamind.shared.utils.time_utils import now_china
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # 缓存 TTL 常量
 SPACE_CACHE_TTL = 7200  # 2 小时
@@ -78,7 +76,7 @@ class SpaceRepository:
         except Exception as e:
             self.logger.warning("失效空间缓存失败", space_id=space_id, error=str(e))
 
-    async def create(self, data: Dict[str, Any]) -> KnowledgeSpace:
+    async def create(self, data: dict[str, Any]) -> KnowledgeSpace:
         """
         创建知识空间
 
@@ -98,7 +96,7 @@ class SpaceRepository:
         self,
         space_id: int,
         use_cache: bool = True,
-    ) -> Optional[KnowledgeSpace]:
+    ) -> KnowledgeSpace | None:
         """
         根据 ID 获取知识空间（带缓存）
 
@@ -148,7 +146,7 @@ class SpaceRepository:
         self,
         name: str,
         owner_id: int,
-    ) -> Optional[KnowledgeSpace]:
+    ) -> KnowledgeSpace | None:
         """
         根据名称和所有者获取知识空间
 
@@ -171,7 +169,7 @@ class SpaceRepository:
     async def get_by_name(
         self,
         name: str,
-    ) -> Optional[KnowledgeSpace]:
+    ) -> KnowledgeSpace | None:
         """
         根据名称获取知识空间
 
@@ -195,7 +193,7 @@ class SpaceRepository:
         include_deleted: bool = False,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[KnowledgeSpace]:
+    ) -> list[KnowledgeSpace]:
         """
         获取用户创建的空间列表
 
@@ -227,7 +225,7 @@ class SpaceRepository:
         user_id: int,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[KnowledgeSpace]:
+    ) -> list[KnowledgeSpace]:
         """
         获取用户的空间列表（通过成员关系）
 
@@ -290,7 +288,7 @@ class SpaceRepository:
         self,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[KnowledgeSpace]:
+    ) -> list[KnowledgeSpace]:
         """
         获取公开空间列表
 
@@ -331,10 +329,10 @@ class SpaceRepository:
     async def search(
         self,
         keyword: str,
-        user_id: Optional[int] = None,
+        user_id: int | None = None,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[KnowledgeSpace]:
+    ) -> list[KnowledgeSpace]:
         """
         搜索知识空间
 
@@ -374,7 +372,7 @@ class SpaceRepository:
     async def count_search(
         self,
         keyword: str,
-        user_id: Optional[int] = None,
+        user_id: int | None = None,
     ) -> int:
         """
         统计搜索结果数量
@@ -408,8 +406,8 @@ class SpaceRepository:
     async def update(
         self,
         space_id: int,
-        data: Dict[str, Any],
-    ) -> Optional[KnowledgeSpace]:
+        data: dict[str, Any],
+    ) -> KnowledgeSpace | None:
         """
         更新知识空间（同时失效缓存）
 
@@ -511,7 +509,7 @@ class SpaceRepository:
         user_id: int,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[KnowledgeSpace]:
+    ) -> list[KnowledgeSpace]:
         """
         获取用户所属的空间列表（使用 JOIN 避免 N+1 查询）
 

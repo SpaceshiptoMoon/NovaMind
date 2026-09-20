@@ -5,7 +5,10 @@
 2. 迭代 merge prompt 的旧摘要截断（保尾部）与块包裹 + html.escape
 3. 摘要输入 <conversation> 块转义（block-breakout 防御）
 """
+import pytest
 from novamind.engines.agent.memory.context_compressor import ContextCompressor
+
+pytestmark = pytest.mark.unit
 
 
 def _compressor() -> ContextCompressor:

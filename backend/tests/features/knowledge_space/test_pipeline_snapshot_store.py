@@ -8,7 +8,6 @@ import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -390,7 +389,7 @@ def test_invalidate_embed_only_removes_embeddings():
     asyncio.run(invalidate_snapshots_from(doc, minio, session, _logger(), level="embed"))
 
     assert minio.deleted == [
-        f"spaces/1/kb/2/docs/574/report.pdf_artifacts/embeddings.json"
+        "spaces/1/kb/2/docs/574/report.pdf_artifacts/embeddings.json"
     ]
     state = doc.storage[SNAPSHOT_STORAGE_KEY]
     assert state["parse_fingerprint"] == "p-fp"

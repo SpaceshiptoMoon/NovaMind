@@ -2,7 +2,6 @@
 import json
 
 import pytest
-
 from novamind.engines.agent.tool.builtins.task import TaskTool
 
 pytestmark = pytest.mark.unit

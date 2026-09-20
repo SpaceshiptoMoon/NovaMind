@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 用户管理模块 API 接口测试脚本
 
@@ -19,8 +18,8 @@ import string
 import sys
 import time
 
-import requests
 import pytest
+import requests
 
 pytestmark = pytest.mark.integration
 
@@ -127,7 +126,7 @@ def ensure_admin_and_login() -> dict:
         return {}
     if resp.status_code not in (200, 201):
         print(f"  [错误] 管理员登录失败 ({resp.status_code}): {resp.text}")
-        print(f"  请确认后端服务已启动（会自动创建 admin 账号）")
+        print("  请确认后端服务已启动（会自动创建 admin 账号）")
         return {}
 
     data = resp.json()
@@ -221,7 +220,7 @@ def test_03_refresh_token(refresh_token: str) -> dict | None:
     print_separator("测试 3：刷新令牌")
 
     payload = {"refresh_token": refresh_token}
-    print(f"  请求参数: {{'refresh_token': '...'}}")
+    print("  请求参数: {'refresh_token': '...'}")
 
     resp = safe_request(
         "POST",
@@ -258,7 +257,7 @@ def test_04_logout(user_token: str) -> bool:
     print_separator("测试 4：用户登出")
 
     headers = {"Authorization": f"Bearer {user_token}"}
-    print(f"  请求: POST /users/logout（携带 Bearer Token）")
+    print("  请求: POST /users/logout（携带 Bearer Token）")
 
     resp = safe_request(
         "POST",
@@ -393,7 +392,7 @@ def test_07_update_user(headers: dict, user_id: int) -> bool:
     if resp.status_code == 200:
         data = resp.json()
         try:
-            assert data["id"] == user_id, f"ID 不匹配"
+            assert data["id"] == user_id, "ID 不匹配"
             assert data["email"] == update_data["email"], "邮箱未更新"
             record_result("更新用户信息", True)
             return True
@@ -545,7 +544,7 @@ def test_11_get_available_models(headers: dict) -> dict | None:
     """GET /api/v1/user/model-configs/available — 获取可用模型列表"""
     print_separator("测试 11：获取可用模型列表")
 
-    print(f"  请求: GET /model-configs/available")
+    print("  请求: GET /model-configs/available")
 
     resp = safe_request(
         "GET",
@@ -585,7 +584,7 @@ def test_12_get_available_models_detail(headers: dict) -> dict | None:
     """GET /api/v1/user/model-configs/available/detail — 获取可用模型详情"""
     print_separator("测试 12：获取可用模型详细信息")
 
-    print(f"  请求: GET /model-configs/available/detail")
+    print("  请求: GET /model-configs/available/detail")
 
     resp = safe_request(
         "GET",
@@ -967,7 +966,7 @@ def main():
         print(f"  服务可用 (状态码: {resp.status_code})")
     except requests.exceptions.ConnectionError:
         print(f"\n  [错误] 无法连接到 {BASE_URL}")
-        print(f"  请确认后端服务已启动，例如: python main.py")
+        print("  请确认后端服务已启动，例如: python main.py")
         sys.exit(1)
     except Exception as e:
         print(f"\n  [警告] 健康检查异常: {e}，尝试继续测试...")

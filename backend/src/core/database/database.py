@@ -1,19 +1,18 @@
 import asyncio
 import threading
 from contextlib import asynccontextmanager
-from typing import Optional
 from urllib.parse import urlparse, urlunparse
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from novamind.setting.yaml_config import get_config
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.setting.yaml_config import get_config
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 logger = get_logger(__name__)
 
 # 延迟初始化：避免模块导入时就创建连接
 _engine = None
 _session_factory = None
-_async_engine_lock: Optional[asyncio.Lock] = None
+_async_engine_lock: asyncio.Lock | None = None
 _engine_lock = threading.Lock()  # 同步函数使用的线程锁
 
 
@@ -134,6 +133,7 @@ async def get_db_session():
     需静默处理以避免未捕获异常污染日志。
     """
     import asyncio
+
     from sqlalchemy.exc import InterfaceError
 
     async with get_session_factory()() as session:

@@ -2,14 +2,13 @@
 简历会话服务：承接路由层的多步原子写与事务边界（commit 归 service 控制，
 对齐 docs/transaction-boundary-conventions.md——路由层不做 commit）。
 """
-from typing import Any, Dict, Optional
+from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.app.models.resume import ResumeSessionStatus
 from novamind.features.app.repository.resume_repository import ResumeSessionRepository
-from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.storage.client_factory import get_minio_client
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -25,8 +24,8 @@ class ResumeSessionService:
         self,
         user_id: int,
         filename: str,
-        jd_text: Optional[str],
-        cfg: Dict[str, Any],
+        jd_text: str | None,
+        cfg: dict[str, Any],
         file_bytes: bytes,
     ):
         """创建会话（commit）→ 上传原始文件到 MinIO → 回写 file_url（commit）。

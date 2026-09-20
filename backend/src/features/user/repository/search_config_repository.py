@@ -7,16 +7,15 @@
 ``docs/transaction-boundary-conventions.md`` 铁律——``model_config_repository`` 未用
 SAVEPOINT 是历史偏离特例，不照抄。
 """
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, update, func
-from typing import Optional, List
 
+from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.user.models.user_search_config import UserSearchConfig
 from novamind.features.user.schemas.search_config_schema import (
     SearchConfigCreate,
     SearchConfigUpdate,
 )
-from novamind.core.middleware.structured_logging import get_logger
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -29,7 +28,7 @@ class SearchConfigRepository:
 
     # ========== 基础查询 ==========
 
-    async def get_by_id(self, config_id: int) -> Optional[UserSearchConfig]:
+    async def get_by_id(self, config_id: int) -> UserSearchConfig | None:
         """根据配置 ID 获取（不限定用户，由 service 层校验归属）"""
         stmt = select(UserSearchConfig).where(UserSearchConfig.id == config_id)
         result = await self.db.execute(stmt)
@@ -39,7 +38,7 @@ class SearchConfigRepository:
         self,
         user_id: int,
         provider: str,
-    ) -> Optional[UserSearchConfig]:
+    ) -> UserSearchConfig | None:
         """获取用户指定 provider 的配置（唯一性检查用）"""
         stmt = select(UserSearchConfig).where(
             UserSearchConfig.user_id == user_id,
@@ -48,7 +47,7 @@ class SearchConfigRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_primary(self, user_id: int) -> Optional[UserSearchConfig]:
+    async def get_primary(self, user_id: int) -> UserSearchConfig | None:
         """获取用户首选搜索配置（is_primary=True）"""
         stmt = select(UserSearchConfig).where(
             UserSearchConfig.user_id == user_id,
@@ -57,7 +56,7 @@ class SearchConfigRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def list_by_user(self, user_id: int) -> List[UserSearchConfig]:
+    async def list_by_user(self, user_id: int) -> list[UserSearchConfig]:
         """获取用户的搜索配置列表（按创建时间倒序）"""
         stmt = select(UserSearchConfig).where(
             UserSearchConfig.user_id == user_id
@@ -139,7 +138,7 @@ class SearchConfigRepository:
             await self.db.flush()
             return result.rowcount
 
-    async def set_primary(self, user_id: int, config_id: int) -> Optional[UserSearchConfig]:
+    async def set_primary(self, user_id: int, config_id: int) -> UserSearchConfig | None:
         """原子切换用户首选：先清所有 is_primary，再设目标为 primary（单个 SAVEPOINT）。
 
         目标不存在或不属于该用户返回 None（由 service 层抛 NotFound）。

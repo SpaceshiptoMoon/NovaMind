@@ -9,8 +9,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from novamind.engines.document.integrations.deepdoc.diagnostics.doctor import build_doctor_payload
 from novamind.engines.document.integrations.deepdoc.core.engine import DeepDocEngine
+from novamind.engines.document.integrations.deepdoc.diagnostics.doctor import build_doctor_payload
 
 
 def build_parser() -> argparse.ArgumentParser:

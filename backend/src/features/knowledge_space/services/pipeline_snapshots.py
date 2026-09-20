@@ -16,13 +16,12 @@
 
 import hashlib
 import json
-from typing import Any, Dict, List, Optional, Tuple, Tuple
-
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
 
 from novamind.features.knowledge_space.models.document import Document
 from novamind.shared.logging import get_logger
 from novamind.shared.utils.time_utils import now_china
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -57,7 +56,7 @@ def canonical_sha256(payload: Any) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def compute_parse_fingerprint(document: Document, parsing_config: Dict[str, Any]) -> str:
+def compute_parse_fingerprint(document: Document, parsing_config: dict[str, Any]) -> str:
     """解析指纹：文件内容哈希/类型 + 解析配置任一变化即失效。"""
     return canonical_sha256({
         "v": FINGERPRINT_VERSION,
@@ -71,7 +70,7 @@ def compute_parse_fingerprint(document: Document, parsing_config: Dict[str, Any]
 def compute_split_fingerprint(
     parse_fingerprint: str,
     split_mode: str,
-    splitting_config: Dict[str, Any],
+    splitting_config: dict[str, Any],
 ) -> str:
     """切分指纹：解析指纹进入计算，parse 失效自动级联 split。"""
     return canonical_sha256({
@@ -83,7 +82,7 @@ def compute_split_fingerprint(
     })
 
 
-def compute_embed_fingerprint(split_fingerprint: str, embedding_config: Dict[str, Any]) -> str:
+def compute_embed_fingerprint(split_fingerprint: str, embedding_config: dict[str, Any]) -> str:
     """向量指纹：只取向量语义相关字段 + 客户端实现签名。
 
     刻意不纳入 api_key/base_url 等连接凭据：凭据轮换不应使已有向量失效。
@@ -105,7 +104,7 @@ def compute_embed_fingerprint(split_fingerprint: str, embedding_config: Dict[str
 # ========== storage 指针读取 ==========
 
 
-def _snapshot_state(document: Document) -> Dict[str, Any]:
+def _snapshot_state(document: Document) -> dict[str, Any]:
     storage = getattr(document, "storage", None) or {}
     state = storage.get(SNAPSHOT_STORAGE_KEY)
     return state if isinstance(state, dict) else {}
@@ -143,12 +142,12 @@ def snapshot_fingerprint(document: Document, level: str) -> str:
 # ========== MinIO JSON 存取 ==========
 
 
-async def _upload_json(minio_client, object_name: str, payload: Dict[str, Any]) -> None:
+async def _upload_json(minio_client, object_name: str, payload: dict[str, Any]) -> None:
     data = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
     await minio_client.upload_file(object_name, data, "application/json; charset=utf-8")
 
 
-async def _download_json(document: Document, minio_client, object_name: str) -> Dict[str, Any]:
+async def _download_json(document: Document, minio_client, object_name: str) -> dict[str, Any]:
     """下载并反序列化快照 JSON。对象缺失/网络错误向上抛，由调用方 fail-open。"""
     bucket = document.get_minio_bucket()
     if not bucket:
@@ -170,8 +169,8 @@ async def _save_snapshot(
     *,
     minio_client,
     object_name: str,
-    payload: Dict[str, Any],
-    state_patch: Dict[str, Any],
+    payload: dict[str, Any],
+    state_patch: dict[str, Any],
 ) -> bool:
     """上传快照 JSON → 更新 storage 指针 → commit。失败返回 False 不影响主流程。"""
     if not SNAPSHOTS_ENABLED:
@@ -205,18 +204,18 @@ def build_parse_snapshot_payload(
     *,
     parse_fingerprint: str,
     full_text: str,
-    parse_metadata: Optional[Dict[str, Any]] = None,
-    prechunked_items: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
-    time_alignment: Optional[Dict[str, Any]] = None,
-    frame_paths: Optional[Dict[int, str]] = None,
-) -> Dict[str, Any]:
+    parse_metadata: dict[str, Any] | None = None,
+    prechunked_items: list[tuple[str, dict[str, Any]]] | None = None,
+    time_alignment: dict[str, Any] | None = None,
+    frame_paths: dict[int, str] | None = None,
+) -> dict[str, Any]:
     """构造 parse_meta.json payload，各模态分支共用同一结构。
 
     - full_text：占位符未替换的解析全文（figure 占位符在 resume 时重签 URL 后再替换）
     - prechunked_items：结构化分块 [[text, per_chunk_meta], ...]（DeepDoc 等）
     - time_alignment / frame_paths：音视频的时间对齐与帧路径
     """
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "version": SNAPSHOT_VERSION,
         "parse_fingerprint": parse_fingerprint,
         "full_text": full_text,
@@ -238,7 +237,7 @@ async def save_parse_snapshot(
     *,
     minio_client,
     parse_fingerprint: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
 ) -> bool:
     """保存解析快照到 ``{base}_parsed/parse_meta.json`` 并记录指针。"""
     object_name = parse_meta_object_name(document)
@@ -261,7 +260,7 @@ async def save_split_snapshot(
     *,
     minio_client,
     split_fingerprint: str,
-    chunk_items: List[Tuple[str, Dict[str, Any]]],
+    chunk_items: list[tuple[str, dict[str, Any]]],
     alignment_applied: bool = False,
 ) -> bool:
     """保存切分快照到 ``{base}_artifacts/chunks.json``。
@@ -288,9 +287,9 @@ async def save_split_snapshot(
     )
 
 
-def _round_embeddings(embeddings: List[Optional[List[float]]]) -> List[Optional[List[float]]]:
+def _round_embeddings(embeddings: list[list[float] | None]) -> list[list[float] | None]:
     """向量降精度到 6 位小数：1k×1024 维约 10-12MB，肉眼无损召回，显著省存储。"""
-    rounded: List[Optional[List[float]]] = []
+    rounded: list[list[float] | None] = []
     for vec in embeddings:
         if vec is None:
             rounded.append(None)
@@ -306,7 +305,7 @@ async def save_embeddings_snapshot(
     *,
     minio_client,
     embed_fingerprint: str,
-    embeddings: List[Optional[List[float]]],
+    embeddings: list[list[float] | None],
     embedding_model: str = "",
 ) -> bool:
     """保存向量快照到 ``{base}_artifacts/embeddings.json``。"""
@@ -337,7 +336,7 @@ async def load_parse_snapshot(
     document: Document,
     minio_client,
     logger,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """读取解析快照 payload。指针缺失/下载失败/坏 JSON → warning + None。"""
     state = _snapshot_state(document)
     object_name = state.get("parse_meta_object")
@@ -359,7 +358,7 @@ async def load_split_snapshot(
     document: Document,
     minio_client,
     logger,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """读取切分快照，返回 {split_fingerprint, alignment_applied, chunk_items} 或 None。"""
     state = _snapshot_state(document)
     object_name = state.get("chunks_object")
@@ -390,7 +389,7 @@ async def load_embeddings_snapshot(
     document: Document,
     minio_client,
     logger,
-) -> Optional[Dict[str, Any]]:
+) -> dict[str, Any] | None:
     """读取向量快照，返回 {embed_fingerprint, embedding_model, embeddings} 或 None。"""
     state = _snapshot_state(document)
     object_name = state.get("embeddings_object")
@@ -512,12 +511,12 @@ async def invalidate_snapshots_from(
 
 async def refresh_figure_image_urls(
     document: Document,
-    parse_meta_payload: Dict[str, Any],
+    parse_meta_payload: dict[str, Any],
     minio_client,
     logger,
     *,
     expires: int = 3600,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """按 minio_object_name 重新签发 figure 图片的预签名 URL。
 
     快照保存的 parse_metadata.figure_regions 带有各图片的 minio_object_name 与
@@ -525,7 +524,7 @@ async def refresh_figure_image_urls(
     原地更新 payload 中 figure_regions 的 image_url，返回 {artifact_id: new_url}，
     供调用方对全文/分块里的残留占位符做二次替换。
     """
-    url_map: Dict[str, str] = {}
+    url_map: dict[str, str] = {}
     metadata = parse_meta_payload.get("parse_metadata")
     regions = metadata.get("figure_regions") if isinstance(metadata, dict) else None
     if not isinstance(regions, list):
@@ -557,9 +556,9 @@ async def refresh_figure_image_urls(
     return url_map
 
 
-def restore_frame_paths(raw: Optional[Dict[str, Any]]) -> Dict[int, str]:
+def restore_frame_paths(raw: dict[str, Any] | None) -> dict[int, str]:
     """把 JSON 里 str 键的 frame_paths 还原为 {int: str}（视频帧索引）。"""
-    result: Dict[int, str] = {}
+    result: dict[int, str] = {}
     for key, value in (raw or {}).items():
         try:
             result[int(key)] = str(value)
@@ -569,8 +568,8 @@ def restore_frame_paths(raw: Optional[Dict[str, Any]]) -> Dict[int, str]:
 
 
 def restore_time_alignment(
-    raw: Optional[Dict[str, Any]],
-) -> Optional[Dict[str, Any]]:
+    raw: dict[str, Any] | None,
+) -> dict[str, Any] | None:
     """把快照里的 time_alignment 还原为 _run_post_parse_tail 期望的形状。
 
     - timeline_map 的 int 键经 JSON 序列化变 str，需还原为 {int: (start, end)}
@@ -579,19 +578,19 @@ def restore_time_alignment(
     """
     if not isinstance(raw, dict) or "timeline_map" not in raw:
         return None
-    timeline_map: Dict[int, Any] = {}
+    timeline_map: dict[int, Any] = {}
     for key, value in (raw.get("timeline_map") or {}).items():
         try:
             timeline_map[int(key)] = value
         except (TypeError, ValueError):
             continue
-    restored: Dict[str, Any] = {
+    restored: dict[str, Any] = {
         "timeline_map": timeline_map,
         "is_video": bool(raw.get("is_video", False)),
     }
     raw_groups = raw.get("frame_groups")
     if isinstance(raw_groups, dict):
-        frame_groups: Dict[int, List[int]] = {}
+        frame_groups: dict[int, list[int]] = {}
         for key, members in raw_groups.items():
             try:
                 frame_groups[int(key)] = [int(m) for m in (members or [])]

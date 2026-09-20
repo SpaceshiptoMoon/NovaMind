@@ -7,16 +7,13 @@ Wiki 路由（P1 只读 + P2 编辑/版本/回滚 + P3 图谱/lint 闭环）
 读操作走 validate_space_access + validate_kb_access；
 写操作走 validate_kb_writable（额外拒归档 KB）。
 """
-from typing import Annotated, List, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.core.database.database import get_db
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.api.dependencies import (
     get_current_user_id,
-    validate_kb_access,
     validate_kb_writable,
     validate_space_access,
 )
@@ -40,13 +37,13 @@ from novamind.features.knowledge_space.repository.wiki_repository import (
 from novamind.features.knowledge_space.schemas.wiki_schema import (
     WikiAutoFixResponse,
     WikiGraphResponse,
+    WikiIndexGroup,
+    WikiIndexResponse,
+    WikiIngestStatusResponse,
     WikiIssueCreateRequest,
     WikiIssueResponse,
     WikiIssueStatusUpdateRequest,
     WikiLintResponse,
-    WikiIndexGroup,
-    WikiIndexResponse,
-    WikiIngestStatusResponse,
     WikiPageCreateRequest,
     WikiPageListItem,
     WikiPageListResponse,
@@ -60,6 +57,7 @@ from novamind.features.knowledge_space.schemas.wiki_schema import (
     WikiSearchResponse,
     WikiStatsResponse,
 )
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -76,7 +74,6 @@ _STATUS_NAMES = {
 async def _get_kb_or_404(kb_id: int, space_id: int, db: AsyncSession):
     """校验 KB 归属（validate_kb_access 为直接调用版）"""
     from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
-
     from novamind.features.knowledge_space.repository.knowledge_base_repository import (
         KnowledgeBaseRepository,
     )
@@ -104,10 +101,10 @@ async def list_pages(
     kb_id: Annotated[int, Path(gt=0)],
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    page_type: Optional[str] = Query(None),
-    status: Optional[str] = Query(None),
-    category: Optional[str] = Query(None, description="目录标签过滤（命中 category_path 任一项）"),
-    q: Optional[str] = Query(None, max_length=100, description="标题/摘要/slug 关键词"),
+    page_type: str | None = Query(None),
+    status: str | None = Query(None),
+    category: str | None = Query(None, description="目录标签过滤（命中 category_path 任一项）"),
+    q: str | None = Query(None, max_length=100, description="标题/摘要/slug 关键词"),
     _user_id: int = Depends(get_current_user_id),
     _access: tuple = Depends(validate_space_access),
     db: AsyncSession = Depends(get_db),
@@ -189,7 +186,7 @@ async def get_index(
     repo = WikiPageRepository(db)
     record_repo = WikiIngestRecordRepository(db)
 
-    groups: List[WikiIndexGroup] = []
+    groups: list[WikiIndexGroup] = []
     for page_type in ("entity", "concept", "summary"):
         items, total = await repo.list_pages(
             kb_id, page_type=page_type, status=WikiPageStatus.PUBLISHED,
@@ -246,7 +243,7 @@ async def get_stats(
     return WikiStatsResponse(is_active=is_active, **stats)
 
 
-@router.get("/ingest/status", response_model=Optional[WikiIngestStatusResponse], summary="最近一次生成状态")
+@router.get("/ingest/status", response_model=WikiIngestStatusResponse | None, summary="最近一次生成状态")
 async def get_ingest_status(
     space_id: Annotated[int, Path(gt=0)],
     kb_id: Annotated[int, Path(gt=0)],
@@ -525,9 +522,8 @@ async def rebuild_wiki(
         documents = [d for d in await doc_repo.get_by_ids(body.document_ids)
                      if d and d.kb_id == kb_id]
     else:
-        from sqlalchemy import select
-
         from novamind.features.knowledge_space.models.document import Document
+        from sqlalchemy import select
 
         result = await db.execute(
             select(Document).where(
@@ -682,7 +678,7 @@ async def auto_fix_wiki(
     return WikiAutoFixResponse(fixed=result["fixed"], details=result["details"])
 
 
-@router.get("/issues", response_model=List[WikiIssueResponse], summary="问题列表")
+@router.get("/issues", response_model=list[WikiIssueResponse], summary="问题列表")
 async def list_issues(
     space_id: Annotated[int, Path(gt=0)],
     kb_id: Annotated[int, Path(gt=0)],
@@ -692,7 +688,9 @@ async def list_issues(
     _access: tuple = Depends(validate_space_access),
     db: AsyncSession = Depends(get_db),
 ):
-    from novamind.features.knowledge_space.repository.wiki_issue_repository import WikiIssueRepository
+    from novamind.features.knowledge_space.repository.wiki_issue_repository import (
+        WikiIssueRepository,
+    )
 
     await _get_kb_or_404(kb_id, space_id, db)
     issues = await WikiIssueRepository(db).list_by_kb(kb_id, status=status, limit=limit)
@@ -709,7 +707,9 @@ async def create_issue(
     db: AsyncSession = Depends(get_db),
 ):
     from novamind.features.knowledge_space.exceptions import InvalidParameterError
-    from novamind.features.knowledge_space.repository.wiki_issue_repository import WikiIssueRepository
+    from novamind.features.knowledge_space.repository.wiki_issue_repository import (
+        WikiIssueRepository,
+    )
     from novamind.features.knowledge_space.services.wiki_lint_service import LINT_ISSUE_TYPES
 
     # 人工/agent 类型 + lint 六类（单一来源，消除两处字面量漂移）
@@ -747,8 +747,13 @@ async def update_issue_status(
     _kb=Depends(validate_kb_writable),
     db: AsyncSession = Depends(get_db),
 ):
-    from novamind.features.knowledge_space.exceptions import InvalidParameterError, KnowledgeSpaceError
-    from novamind.features.knowledge_space.repository.wiki_issue_repository import WikiIssueRepository
+    from novamind.features.knowledge_space.exceptions import (
+        InvalidParameterError,
+        KnowledgeSpaceError,
+    )
+    from novamind.features.knowledge_space.repository.wiki_issue_repository import (
+        WikiIssueRepository,
+    )
 
     transitions = {"pending": "reopen", "ignored": "ignore", "resolved": "resolve"}
     method_name = transitions.get(body.status)

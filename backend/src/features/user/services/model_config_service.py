@@ -8,37 +8,35 @@
 """
 import asyncio
 import time
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.features.user.models.user_model_config import UserModelConfig, ModelType
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.user.exceptions import (
+    ModelConfigAlreadyExistsError,
+    ModelConfigNotFoundError,
+    ModelConfigTestFailedError,
+)
+from novamind.features.user.models.user_model_config import ModelType, UserModelConfig
+from novamind.features.user.ports import KnowledgeSpaceInfoPort
 from novamind.features.user.repository.model_config_repository import (
     ModelConfigRepository,
-    model_type_int_to_str,
     model_type_int_to_enum,
+    model_type_int_to_str,
 )
 from novamind.features.user.schemas.model_config_schema import (
     ModelConfigCreate,
-    ModelConfigUpdate,
-    ModelConfigResponse,
     ModelConfigListResponse,
+    ModelConfigResponse,
+    ModelConfigUpdate,
     ModelTestRequest,
     ModelTestResponse,
 )
-from novamind.shared.ai_models.llm import create_llm_client, BaseLLM
-from novamind.shared.ai_models.embedding import create_embedding_client, BaseEmbedding
-from novamind.shared.ai_models.rerank import create_rerank_client, BaseRerank
+from novamind.shared.ai_models.embedding import BaseEmbedding, create_embedding_client
+from novamind.shared.ai_models.llm import BaseLLM, create_llm_client
+from novamind.shared.ai_models.rerank import BaseRerank, create_rerank_client
 from novamind.shared.model_config_ports import ModelCredentials
-from novamind.features.user.ports import KnowledgeSpaceInfoPort
-
-from novamind.shared.utils.crypto import encrypt_api_key_async, decrypt_api_key_async
-from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.user.exceptions import (
-    ModelConfigNotFoundError,
-    ModelConfigAlreadyExistsError,
-    ModelConfigTestFailedError,
-)
+from novamind.shared.utils.crypto import decrypt_api_key_async, encrypt_api_key_async
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # 批次 5b：本服务结构化满足 ``shared.model_config_ports.ModelConfigPort``（客户端创建/查询面
 # 8 方法）。:999 原对 ``knowledge_space.models.KnowledgeSpace`` 的反向依赖经构造器注入的
@@ -61,7 +59,7 @@ logger = get_logger(__name__)
 # 4. _cleanup_expired_cache() 仅在已持有 _cache_lock 的上下文中调用，
 #    不可单独加锁（asyncio.Lock 不可重入，会导致死锁）。
 # ---------------------------------------------------------------------------
-_client_cache: Dict[str, Tuple[float, Any]] = {}  # key -> (timestamp, client)
+_client_cache: dict[str, tuple[float, Any]] = {}  # key -> (timestamp, client)
 _CACHE_TTL = 3600  # 客户端缓存 TTL（秒）
 _MAX_CACHE_SIZE = 100  # 最大缓存条数
 _cache_lock = asyncio.Lock()  # 缓存操作锁，防止并发协程的竞态条件
@@ -109,7 +107,7 @@ class ModelConfigService:
     def __init__(
         self,
         db: AsyncSession,
-        knowledge_space_info_port: Optional[KnowledgeSpaceInfoPort] = None,
+        knowledge_space_info_port: KnowledgeSpaceInfoPort | None = None,
     ):
         self.db = db
         self.repo = ModelConfigRepository(db)
@@ -125,7 +123,7 @@ class ModelConfigService:
         user_id: int,
         model_type: str,
         model: str,
-    ) -> Optional[ModelCredentials]:
+    ) -> ModelCredentials | None:
         """
         根据模型名称获取凭证
 
@@ -162,7 +160,7 @@ class ModelConfigService:
         self,
         user_id: int,
         model_type: str,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         获取用户可用的模型名称列表（用于前端下拉框）
 
@@ -176,7 +174,7 @@ class ModelConfigService:
     async def list_configs(
         self,
         user_id: int,
-        model_type: Optional[str] = None
+        model_type: str | None = None
     ) -> ModelConfigListResponse:
         """获取用户的模型配置列表"""
         configs = await self.repo.list_by_user(user_id, model_type)
@@ -383,7 +381,7 @@ class ModelConfigService:
         self,
         user_id: int,
         config_id: int,
-    ) -> tuple[bool, Optional[list[dict]]]:
+    ) -> tuple[bool, list[dict] | None]:
         """带影响检查的删除配置
 
         Args:
@@ -697,8 +695,8 @@ class ModelConfigService:
         api_key: str,
         base_url: str,
         model_name: str,
-        fallback: Optional[int] = None,
-    ) -> Optional[int]:
+        fallback: int | None = None,
+    ) -> int | None:
         """
         调用 Embedding 模型 API 自动检测向量维度
 
@@ -775,8 +773,9 @@ class ModelConfigService:
 
         # 快速验证模型可以加载（不执行实际推理）
         try:
-            from faster_whisper import WhisperModel
             import asyncio
+
+            from faster_whisper import WhisperModel
             model = await asyncio.to_thread(
                 WhisperModel,
                 str(model_dir),
@@ -790,9 +789,10 @@ class ModelConfigService:
 
     async def _test_asr_openai(self, request: ModelTestRequest) -> None:
         """测试 ASR 连接（OpenAI Whisper API）"""
-        import httpx
         import io
         import struct
+
+        import httpx
 
         # 生成最小有效 WAV：0.1 秒 8000Hz 16-bit 单声道静音
         sample_rate = 8000
@@ -835,6 +835,7 @@ class ModelConfigService:
     async def _test_asr_dashscope(self, request: ModelTestRequest) -> None:
         """测试 ASR 连接（DashScope Paraformer API，HTTP URL → async_call → wait）"""
         from http import HTTPStatus
+
         import dashscope
         from dashscope.audio.asr import Transcription
 
@@ -914,11 +915,11 @@ class ModelConfigService:
     async def list_available_models_with_info(
         self,
         user_id: int
-    ) -> "AvailableModelsWithInfoResponse":
+    ) -> "AvailableModelsWithInfoResponse":  # noqa: F821 懒 import schema 名作字符串注解
         """获取可用模型的详细信息"""
         from novamind.features.user.schemas.model_config_schema import (
-            ModelInfo,
             AvailableModelsWithInfoResponse,
+            ModelInfo,
         )
 
         result = AvailableModelsWithInfoResponse()
@@ -942,7 +943,7 @@ class ModelConfigService:
 
     # ========== 默认模型动态获取 ==========
 
-    async def get_user_default_model_name(self, user_id: int, model_type: str) -> Optional[str]:
+    async def get_user_default_model_name(self, user_id: int, model_type: str) -> str | None:
         """
         获取用户在指定类型下配置的第一个模型名（作为用户默认）
 
@@ -963,7 +964,7 @@ class ModelConfigService:
     async def _check_delete_impact(
         self,
         config: UserModelConfig,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         检查删除模型配置的影响
 

@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Tuple
 
-from novamind.engines.document.integrations.deepdoc.core.capabilities import get_deepdoc_capabilities
+from novamind.engines.document.integrations.deepdoc.core.capabilities import (
+    get_deepdoc_capabilities,
+)
 from novamind.engines.document.integrations.deepdoc.core.runtime_parser import DeepDocParser
 
 
@@ -20,7 +21,7 @@ class DeepDocParserSpec:
 class DeepDocParserFactory:
     """RAGFlow-style parser selector for the vendored deepdoc module."""
 
-    DEFAULT_PARSER_IDS: Dict[str, str] = {
+    DEFAULT_PARSER_IDS: dict[str, str] = {
         "pdf": "pdf_full",
         "docx": "docx",
         "epub": "epub",
@@ -43,7 +44,7 @@ class DeepDocParserFactory:
     }
 
     @classmethod
-    def list_specs(cls) -> Dict[str, DeepDocParserSpec]:
+    def list_specs(cls) -> dict[str, DeepDocParserSpec]:
         capabilities = get_deepdoc_capabilities()
         pdf_modes = capabilities["pdf_modes"]
         return {
@@ -185,7 +186,7 @@ class DeepDocParserFactory:
         return specs[resolved_id]
 
     @classmethod
-    def build_configs(cls, file_type: str, parser_id: str | None = None) -> Tuple[DeepDocParser, dict]:
+    def build_configs(cls, file_type: str, parser_id: str | None = None) -> tuple[DeepDocParser, dict]:
         spec = cls.resolve_parser_id(file_type, parser_id)
         parser = DeepDocParser()
         parsing_config = {}

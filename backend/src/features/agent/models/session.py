@@ -1,9 +1,8 @@
 """
 Agent 会话模型
 """
-from sqlalchemy import Column, BigInteger, String, Integer, ForeignKey, Index
-
 from novamind.core.database.base import BaseModel
+from sqlalchemy import BigInteger, Column, ForeignKey, Index, Integer, String
 
 
 class AgentSession(BaseModel):

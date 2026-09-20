@@ -11,62 +11,62 @@
 """
 
 import json
-from typing import Optional, List, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel, Field, field_validator, ConfigDict, field_serializer
+from typing import Any
 
 # 从模型层导入枚举（避免重复定义，保持一致）
 from novamind.features.knowledge_space.models.knowledge_space import (
     SpaceVisibility,
 )
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 
 class SpaceEmbeddingConfig(BaseModel):
     """空间级 Embedding 配置（dimension 由后端自动从模型配置表读取，前端无需传入）"""
-    model: Optional[str] = Field(default=None, description="Embedding 模型名称")
+    model: str | None = Field(default=None, description="Embedding 模型名称")
     batch_size: int = Field(default=32, ge=1, le=128, description="批处理大小")
     normalize: bool = Field(default=True, description="是否归一化")
 
 
 class SpaceLLMConfig(BaseModel):
     """空间默认 LLM 配置（用于问题生成、查询改写、摘要等语言任务）"""
-    model: Optional[str] = Field(default=None, description="LLM 模型名称")
+    model: str | None = Field(default=None, description="LLM 模型名称")
 
 
 class SpaceASRConfig(BaseModel):
     """空间默认 ASR 配置（用于音频 → 文字转写）"""
-    model: Optional[str] = Field(default=None, description="ASR 模型名称（如 whisper-1）")
+    model: str | None = Field(default=None, description="ASR 模型名称（如 whisper-1）")
 
 
 class SpaceVLMConfig(BaseModel):
     """空间默认 VLM 配置（用于图片/视频帧 → 文字描述）"""
-    model: Optional[str] = Field(default=None, description="VLM 模型名称")
+    model: str | None = Field(default=None, description="VLM 模型名称")
 
 
 class SpaceConfig(BaseModel):
     """空间配置（对应模型中的 config JSON 字段）"""
-    description: Optional[str] = Field(default="", max_length=2000, description="空间描述")
-    tags: List[str] = Field(default_factory=list, max_length=20, description="标签（最多20个）")
+    description: str | None = Field(default="", max_length=2000, description="空间描述")
+    tags: list[str] = Field(default_factory=list, max_length=20, description="标签（最多20个）")
     # Embedding 配置（空间级别，所有知识库共享）
-    embedding: Optional[SpaceEmbeddingConfig] = Field(default=None, description="Embedding 配置")
+    embedding: SpaceEmbeddingConfig | None = Field(default=None, description="Embedding 配置")
     # LLM 配置（问题生成、查询改写、摘要等）
-    llm: Optional[SpaceLLMConfig] = Field(default=None, description="默认 LLM 配置")
+    llm: SpaceLLMConfig | None = Field(default=None, description="默认 LLM 配置")
     # ASR 配置（音频转文字）
-    asr: Optional[SpaceASRConfig] = Field(default=None, description="默认 ASR 配置")
+    asr: SpaceASRConfig | None = Field(default=None, description="默认 ASR 配置")
     # VLM 配置（图片/视频帧描述，暂未启用）
-    vlm: Optional[SpaceVLMConfig] = Field(default=None, description="默认 VLM 配置（暂未启用）")
+    vlm: SpaceVLMConfig | None = Field(default=None, description="默认 VLM 配置（暂未启用）")
     # 存储配置
-    storage: Optional[Dict[str, Any]] = Field(None, description="存储配置")
+    storage: dict[str, Any] | None = Field(None, description="存储配置")
     # UI 配置
-    ui: Optional[Dict[str, Any]] = Field(None, description="UI配置")
+    ui: dict[str, Any] | None = Field(None, description="UI配置")
     # 默认配置
-    defaults: Optional[Dict[str, Any]] = Field(None, description="默认配置")
+    defaults: dict[str, Any] | None = Field(None, description="默认配置")
     # 限制配置
-    limits: Optional[Dict[str, Any]] = Field(None, description="限制配置")
+    limits: dict[str, Any] | None = Field(None, description="限制配置")
 
     @field_validator('storage', 'ui', 'defaults', 'limits')
     @classmethod
-    def validate_json_field_size(cls, v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def validate_json_field_size(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
         """验证 JSON 字段序列化后不超过 10KB，防止存储超大配置"""
         if v is not None:
             serialized = json.dumps(v, ensure_ascii=False)
@@ -79,14 +79,14 @@ class SpaceCreate(BaseModel):
     """创建空间请求"""
     name: str = Field(..., min_length=1, max_length=100, description="空间名称")
     visibility: SpaceVisibility = Field(default=SpaceVisibility.PRIVATE, description="可见性: 0-私有, 1-团队, 2-公开")
-    config: Optional[SpaceConfig] = Field(None, description="空间配置")
+    config: SpaceConfig | None = Field(None, description="空间配置")
 
 
 class SpaceUpdate(BaseModel):
     """更新空间请求"""
-    name: Optional[str] = Field(None, min_length=1, max_length=100, description="空间名称")
-    visibility: Optional[SpaceVisibility] = Field(None, description="可见性: 0-私有, 1-团队, 2-公开")
-    config: Optional[SpaceConfig] = Field(None, description="空间配置")
+    name: str | None = Field(None, min_length=1, max_length=100, description="空间名称")
+    visibility: SpaceVisibility | None = Field(None, description="可见性: 0-私有, 1-团队, 2-公开")
+    config: SpaceConfig | None = Field(None, description="空间配置")
 
 
 class SpaceResponse(BaseModel):
@@ -97,7 +97,7 @@ class SpaceResponse(BaseModel):
     name: str = Field(..., description="空间名称")
     owner_id: int = Field(..., description="创建者ID")
     visibility: int = Field(..., description="可见性: 0-私有, 1-团队, 2-公开")
-    config: Optional[Dict[str, Any]] = Field(None, description="空间配置")
+    config: dict[str, Any] | None = Field(None, description="空间配置")
     status: int = Field(..., description="状态: 1-活跃, 2-归档, 3-删除")
     created_at: datetime = Field(..., description="创建时间")
     updated_at: datetime = Field(..., description="更新时间")
@@ -125,7 +125,7 @@ class SpaceResponse(BaseModel):
 
 class SpaceListResponse(BaseModel):
     """空间列表响应"""
-    items: List[SpaceResponse] = Field(..., description="空间列表")
+    items: list[SpaceResponse] = Field(..., description="空间列表")
     total: int = Field(..., description="总数")
     skip: int = Field(..., description="跳过数量")
     limit: int = Field(..., description="返回数量")
@@ -143,18 +143,18 @@ class SpaceConfigUpdate(BaseModel):
       PATCH /spaces/{space_id}/knowledge-bases/{kb_id}/config 更新。
     - 此接口不接受 parsing、splitting、question_generation 字段。
     """
-    description: Optional[str] = Field(None, max_length=2000, description="空间描述")
-    tags: Optional[List[str]] = Field(None, max_length=20, description="标签")
-    embedding: Optional[SpaceEmbeddingConfig] = Field(None, description="Embedding 配置")
-    llm: Optional[SpaceLLMConfig] = Field(None, description="默认 LLM 配置")
-    asr: Optional[SpaceASRConfig] = Field(None, description="默认 ASR 配置")
-    vlm: Optional[SpaceVLMConfig] = Field(None, description="默认 VLM 配置")
-    defaults: Optional[Dict[str, Any]] = Field(None, description="默认配置")
-    limits: Optional[Dict[str, Any]] = Field(None, description="限制配置")
+    description: str | None = Field(None, max_length=2000, description="空间描述")
+    tags: list[str] | None = Field(None, max_length=20, description="标签")
+    embedding: SpaceEmbeddingConfig | None = Field(None, description="Embedding 配置")
+    llm: SpaceLLMConfig | None = Field(None, description="默认 LLM 配置")
+    asr: SpaceASRConfig | None = Field(None, description="默认 ASR 配置")
+    vlm: SpaceVLMConfig | None = Field(None, description="默认 VLM 配置")
+    defaults: dict[str, Any] | None = Field(None, description="默认配置")
+    limits: dict[str, Any] | None = Field(None, description="限制配置")
 
     @field_validator('defaults', 'limits')
     @classmethod
-    def validate_json_field_size(cls, v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def validate_json_field_size(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
         """验证 JSON 字段序列化后不超过 10KB"""
         if v is not None:
             serialized = json.dumps(v, ensure_ascii=False)
@@ -168,4 +168,4 @@ class SpaceConfigResponse(BaseModel):
     space_id: int = Field(..., description="空间ID")
     name: str = Field(..., description="空间名称")
     config: SpaceConfig = Field(..., description="完整配置")
-    stats: Dict[str, Any] = Field(..., description="统计信息")
+    stats: dict[str, Any] = Field(..., description="统计信息")

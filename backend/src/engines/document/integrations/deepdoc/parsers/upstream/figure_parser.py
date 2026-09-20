@@ -13,14 +13,12 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
-
-from PIL import Image
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from novamind.engines.document.integrations.deepdoc.figure_support import (
-    LLMType,
     LLMBundle,
+    LLMType,
     append_context2table_image4pdf,
     ensure_pil_image,
     get_tenant_default_model_by_type,
@@ -31,6 +29,7 @@ from novamind.engines.document.integrations.deepdoc.figure_support import (
     vision_llm_figure_describe_prompt,
     vision_llm_figure_describe_prompt_with_context,
 )
+from PIL import Image
 
 
 # need to delete before pr

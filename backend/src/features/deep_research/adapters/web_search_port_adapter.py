@@ -12,7 +12,7 @@ WebSearchPort 宿主适配器，归一化搜索 provider 结果为引擎端口�
   （归一化 ``WebSearchResult`` → 统一 dict），外部数据源接入点。
 - ``build_web_search_source(ctx)``：数据源注册表工厂（per-provider builders dict）。
 """
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from novamind.engines.deep_research.sources import (
     SearchSourceContext,
@@ -25,7 +25,7 @@ from novamind.engines.search_ports import WebSearchPort, WebSearchResult
 class HostWebSearchPort:
     """WebSearchPort 宿主实现：委托任意 ExternalSearchService 实例。"""
 
-    def __init__(self, service: Optional[object] = None):
+    def __init__(self, service: object | None = None):
         # service 应为 ExternalSearchService 实例；延迟构造避免启动期强依赖配置。
         self._service = service
 
@@ -71,7 +71,7 @@ class HostWebSearchPort:
         await close()  # type: ignore[misc]
 
 
-def as_web_search_port(service: Optional[object] = None) -> WebSearchPort:
+def as_web_search_port(service: object | None = None) -> WebSearchPort:
     """构造 WebSearchPort 实例（供装配点注入 context）。"""
     return HostWebSearchPort(service=service)  # type: ignore[return-value]
 
@@ -120,6 +120,13 @@ def build_web_search_port_for_provider(provider) -> WebSearchPort:
     ``SearchProviderNotConfiguredError``；service 不可用 →
     ``SearchProviderUnavailableError``。
     """
+    from novamind.features.deep_research.exceptions import (
+        SearchProviderNotConfiguredError,
+        SearchProviderUnavailableError,
+    )
+    from novamind.features.deep_research.models.research_session import (
+        ExternalSearchProvider,
+    )
     from novamind.setting.yaml_config import get_config
     from novamind.shared.config import (
         DuckDuckGoSearchConfig,
@@ -129,13 +136,6 @@ def build_web_search_port_for_provider(provider) -> WebSearchPort:
     from novamind.shared.search.duckduckgo_service import DuckDuckGoSearchService
     from novamind.shared.search.serpapi_service import SerpAPISearchService
     from novamind.shared.search.tavily_service import TavilySearchService
-    from novamind.features.deep_research.exceptions import (
-        SearchProviderNotConfiguredError,
-        SearchProviderUnavailableError,
-    )
-    from novamind.features.deep_research.models.research_session import (
-        ExternalSearchProvider,
-    )
 
     es_cfg = get_config().external_search
 
@@ -193,7 +193,7 @@ class WebSearchSourceAdapter:
     def __init__(self, web_port: WebSearchPort):
         self._web_port = web_port
 
-    async def search(self, query: str, *, top_k: int) -> List[Dict[str, Any]]:
+    async def search(self, query: str, *, top_k: int) -> list[dict[str, Any]]:
         raw = await self._web_port.search(query, max_results=top_k)
         return [
             {

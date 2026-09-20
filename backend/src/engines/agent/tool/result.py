@@ -2,7 +2,7 @@
 结构化工具执行结果
 """
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -29,7 +29,7 @@ class ToolResult(BaseModel):
 
     status: ToolResultStatus = ToolResultStatus.SUCCESS
     content: str = ""
-    data: Optional[Dict[str, Any]] = None
+    data: dict[str, Any] | None = None
     duration_ms: int = 0
-    error_message: Optional[str] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    error_message: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)

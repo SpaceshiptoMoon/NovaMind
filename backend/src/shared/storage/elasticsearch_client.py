@@ -7,9 +7,10 @@ Elasticsearch 客户端封装
 
 import asyncio
 import re
-from typing import Optional, List, Dict, Any
-from elasticsearch import AsyncElasticsearch, NotFoundError, ConnectionError as ESConnectionError
+from typing import Any
 
+from elasticsearch import AsyncElasticsearch, NotFoundError
+from elasticsearch import ConnectionError as ESConnectionError
 from novamind.shared.logging import get_logger
 from novamind.shared.storage.index_schema import DefaultIndexSchema, IndexSchema
 
@@ -31,15 +32,15 @@ class ElasticsearchClient:
 
     def __init__(
         self,
-        hosts: List[str],
-        username: Optional[str] = None,
-        password: Optional[str] = None,
+        hosts: list[str],
+        username: str | None = None,
+        password: str | None = None,
         use_ssl: bool = False,
         verify_certs: bool = True,
-        ca_certs: Optional[str] = None,
+        ca_certs: str | None = None,
         default_embedding_dim: int = 1024,
         default_analyzer: str = "standard",
-        index_schema: Optional[IndexSchema] = None,
+        index_schema: IndexSchema | None = None,
     ):
         self.verify_certs = verify_certs
         self.ca_certs = ca_certs
@@ -112,8 +113,8 @@ class ElasticsearchClient:
     async def create_index(
         self,
         space_id: int,
-        embedding_dim: Optional[int] = None,
-        analyzer: Optional[str] = None,
+        embedding_dim: int | None = None,
+        analyzer: str | None = None,
     ) -> bool:
         """创建空间索引（幂等：索引已存在时直接返回成功）"""
         index_name = self.generate_index_name(space_id)
@@ -140,7 +141,7 @@ class ElasticsearchClient:
             raise
 
     async def ensure_index_exists(
-        self, space_id: int, embedding_dim: Optional[int] = None
+        self, space_id: int, embedding_dim: int | None = None
     ) -> str:
         """确保索引存在"""
         index_name = self.generate_index_name(space_id)
@@ -180,7 +181,7 @@ class ElasticsearchClient:
 
     # ========== 文档操作 ==========
 
-    async def index_chunk(self, space_id: int, chunk_data: Dict[str, Any]) -> bool:
+    async def index_chunk(self, space_id: int, chunk_data: dict[str, Any]) -> bool:
         """索引单个分块"""
         index_name = await self.ensure_index_exists(
             space_id, embedding_dim=chunk_data.get("embedding_dim")
@@ -197,8 +198,8 @@ class ElasticsearchClient:
     async def bulk_index_chunks(
         self,
         space_id: int,
-        chunks: List[Dict[str, Any]],
-        embedding_dim: Optional[int] = None,
+        chunks: list[dict[str, Any]],
+        embedding_dim: int | None = None,
     ) -> int:
         """批量索引分块"""
         if not chunks:
@@ -251,7 +252,7 @@ class ElasticsearchClient:
             logger.error("批量索引分块失败", index=index_name, error=str(e))
             return 0
 
-    async def get_chunk(self, space_id: int, chunk_id: str) -> Optional[Dict[str, Any]]:
+    async def get_chunk(self, space_id: int, chunk_id: str) -> dict[str, Any] | None:
         """获取分块"""
         index_name = self.generate_index_name(space_id)
         try:
@@ -287,7 +288,7 @@ class ElasticsearchClient:
 
     async def get_document_chunks(
         self, space_id: int, document_id: int, skip: int = 0, limit: int = 100
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """获取文档的分块（分页），返回 ``{"items": [...], "total": int}``。
 
         ``total`` 来自 ES ``track_total_hits``，用于前端分页控件；不再返回全量分块。
@@ -319,7 +320,7 @@ class ElasticsearchClient:
 
     # ========== 搜索辅助 ==========
 
-    def _build_kb_filter(self, kb_id: Optional[int] = None) -> List[Dict]:
+    def _build_kb_filter(self, kb_id: int | None = None) -> list[dict]:
         """构建知识库过滤条件"""
         if kb_id is not None:
             return [{"term": {self._schema.field_names.kb_id: kb_id}}]
@@ -328,11 +329,11 @@ class ElasticsearchClient:
     # ========== 搜索功能 ==========
 
     async def vector_search(
-        self, space_id: int, query_vector: List[float], top_k: int = 5,
-        kb_id: Optional[int] = None,
-        field: Optional[str] = None,
-        chunk_type_filter: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        self, space_id: int, query_vector: list[float], top_k: int = 5,
+        kb_id: int | None = None,
+        field: str | None = None,
+        chunk_type_filter: str | None = None,
+    ) -> list[dict[str, Any]]:
         """向量相似度搜索（统一入口，支持 embedding 字段）"""
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
@@ -382,7 +383,7 @@ class ElasticsearchClient:
 
     async def _execute_search(
         self, index_name: str, body: dict, log_label: str, top_k: int = 10,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """通用搜索执行：查询 ES → 结果解析 → 异常处理"""
         try:
             result = await self.es_client.search(index=index_name, size=top_k, **body)
@@ -401,8 +402,8 @@ class ElasticsearchClient:
 
     async def text_search(
         self, space_id: int, query: str, top_k: int = 5,
-        kb_id: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        kb_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         """全文搜索"""
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
@@ -417,13 +418,13 @@ class ElasticsearchClient:
         self,
         space_id: int,
         query: str,
-        query_vector: List[float],
+        query_vector: list[float],
         top_k: int = 5,
         vector_weight: float = 0.7,
         text_weight: float = 0.3,
         rrf_k: int = 60,
-        kb_id: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        kb_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         """混合搜索（向量 + 全文），使用加权 RRF 融合"""
         top_k = min(top_k, MAX_SEARCH_RESULTS)
 
@@ -443,15 +444,15 @@ class ElasticsearchClient:
 
     def rrf_fuse(
         self,
-        result_sets: List[List[Dict[str, Any]]],
-        weights: Optional[List[float]] = None,
+        result_sets: list[list[dict[str, Any]]],
+        weights: list[float] | None = None,
         k: int = 60,
         top_k: int = 10,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """加权 RRF 融合去重"""
-        chunk_scores: Dict[str, float] = {}
-        chunk_data: Dict[str, Dict] = {}
-        chunk_hit_sources: Dict[str, List[str]] = {}
+        chunk_scores: dict[str, float] = {}
+        chunk_data: dict[str, dict] = {}
+        chunk_hit_sources: dict[str, list[str]] = {}
 
         for set_idx, results in enumerate(result_sets):
             if not results:
@@ -490,23 +491,23 @@ class ElasticsearchClient:
 
     async def content_bm25_search(
         self, space_id: int, query: str, top_k: int = 10,
-        kb_id: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        kb_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         """内容 BM25 检索"""
         return await self.text_search(space_id, query, top_k, kb_id=kb_id)
 
     async def content_vector_search(
-        self, space_id: int, query_vector: List[float], top_k: int = 10,
-        kb_id: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        self, space_id: int, query_vector: list[float], top_k: int = 10,
+        kb_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         """内容向量检索"""
         return await self.vector_search(space_id, query_vector, top_k, kb_id=kb_id)
 
     async def content_hybrid_search(
-        self, space_id: int, query: str, query_vector: List[float],
+        self, space_id: int, query: str, query_vector: list[float],
         top_k: int = 10, vector_weight: float = 0.7, bm25_weight: float = 0.3,
-        rrf_k: int = 60, kb_id: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        rrf_k: int = 60, kb_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         """内容混合检索（BM25 + 向量）"""
         return await self.hybrid_search(
             space_id, query, query_vector, top_k, vector_weight, bm25_weight, rrf_k, kb_id=kb_id
@@ -514,8 +515,8 @@ class ElasticsearchClient:
 
     async def question_bm25_search(
         self, space_id: int, query: str, top_k: int = 10,
-        kb_id: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        kb_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         """问题 BM25 检索"""
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
@@ -527,9 +528,9 @@ class ElasticsearchClient:
         return await self._execute_search(index_name, body, "问题 BM25 检索", top_k)
 
     async def question_vector_search(
-        self, space_id: int, query_vector: List[float], top_k: int = 10,
-        kb_id: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        self, space_id: int, query_vector: list[float], top_k: int = 10,
+        kb_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         """问题向量检索"""
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
@@ -556,10 +557,10 @@ class ElasticsearchClient:
         return await self._execute_search(index_name, body, "问题向量检索", top_k)
 
     async def question_hybrid_search(
-        self, space_id: int, query: str, query_vector: List[float],
+        self, space_id: int, query: str, query_vector: list[float],
         top_k: int = 10, vector_weight: float = 0.7, bm25_weight: float = 0.3,
-        rrf_k: int = 60, kb_id: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        rrf_k: int = 60, kb_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         """问题混合检索（BM25 + 向量）"""
         top_k = min(top_k, MAX_SEARCH_RESULTS)
 
@@ -578,8 +579,8 @@ class ElasticsearchClient:
     async def all_bm25_search(
         self, space_id: int, query: str, top_k: int = 10,
         content_weight: float = 0.6, question_weight: float = 0.4,
-        kb_id: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        kb_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         """全字段 BM25 检索（内容 + 问题）"""
         top_k = min(top_k, MAX_SEARCH_RESULTS)
         index_name = self.generate_index_name(space_id)
@@ -615,10 +616,10 @@ class ElasticsearchClient:
             return []
 
     async def all_vector_search(
-        self, space_id: int, query_vector: List[float], top_k: int = 10,
+        self, space_id: int, query_vector: list[float], top_k: int = 10,
         content_weight: float = 0.6, question_weight: float = 0.4,
-        kb_id: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        kb_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         """全字段向量检索（内容向量 + 问题向量）"""
         top_k = min(top_k, MAX_SEARCH_RESULTS)
 
@@ -635,11 +636,11 @@ class ElasticsearchClient:
         )
 
     async def all_hybrid_search(
-        self, space_id: int, query: str, query_vector: List[float],
+        self, space_id: int, query: str, query_vector: list[float],
         top_k: int = 10, vector_weight: float = 0.7, bm25_weight: float = 0.3,
         content_weight: float = 0.6, question_weight: float = 0.4,
-        rrf_k: int = 60, kb_id: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        rrf_k: int = 60, kb_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         """全字段全算法融合检索"""
         top_k = min(top_k, MAX_SEARCH_RESULTS)
 
@@ -675,15 +676,15 @@ class ElasticsearchClient:
         space_id: int,
         mode: str,
         query: str,
-        query_vector: Optional[List[float]] = None,
+        query_vector: list[float] | None = None,
         top_k: int = 10,
         vector_weight: float = 0.7,
         bm25_weight: float = 0.3,
         content_weight: float = 0.6,
         question_weight: float = 0.4,
         rrf_k: int = 60,
-        kb_id: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        kb_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         """根据模式路由到对应的检索方法"""
         mode_handlers = {
             "content_bm25": lambda: self.content_bm25_search(space_id, query, top_k, kb_id=kb_id),

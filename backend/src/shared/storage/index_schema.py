@@ -4,7 +4,7 @@ Elasticsearch 索引 schema 端口，定义 IndexSchema 协议及 DefaultIndexSc
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 @dataclass(frozen=True)
@@ -41,7 +41,7 @@ class IndexSchema(Protocol):
         """生成空间索引名。"""
         ...
 
-    def build_create_body(self, embedding_dim: int, analyzer: str) -> Dict[str, Any]:
+    def build_create_body(self, embedding_dim: int, analyzer: str) -> dict[str, Any]:
         """构造建索引体，返回 ``{"settings": {...}, "mappings": {"properties": {...}}}``。
 
         引擎侧 ``indices.create(settings=body["settings"], mappings=body["mappings"])``。
@@ -66,11 +66,11 @@ class DefaultIndexSchema:
     def index_name(self, space_id: int) -> str:
         return f"space_{space_id}"
 
-    def build_create_body(self, embedding_dim: int, analyzer: str) -> Dict[str, Any]:
+    def build_create_body(self, embedding_dim: int, analyzer: str) -> dict[str, Any]:
         is_ik = analyzer.startswith("ik_")
         search_analyzer = "ik_smart" if is_ik else "standard"
 
-        properties: Dict[str, Any] = {
+        properties: dict[str, Any] = {
             "space_id": {"type": "long"},
             "kb_id": {"type": "long"},
             "document_id": {"type": "long"},

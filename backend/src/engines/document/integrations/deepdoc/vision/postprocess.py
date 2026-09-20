@@ -16,10 +16,11 @@
 
 import copy
 import re
-import numpy as np
+
 import cv2
-from shapely.geometry import Polygon
+import numpy as np
 import pyclipper
+from shapely.geometry import Polygon
 
 
 def build_post_process(config, global_config=None):
@@ -33,7 +34,7 @@ def build_post_process(config, global_config=None):
         config.update(global_config)
     module_class = support_dict.get(module_name)
     if module_class is None:
-        raise ValueError("post process only support {}".format(list(support_dict)))
+        raise ValueError(f"post process only support {list(support_dict)}")
     return module_class(**config)
 
 
@@ -50,7 +51,7 @@ class DBPostProcess:
         self.min_size = 3
         self.score_mode = score_mode
         self.box_type = box_type
-        assert score_mode in ["slow", "fast"], "Score mode must be in [slow, fast] but got: {}".format(score_mode)
+        assert score_mode in ["slow", "fast"], f"Score mode must be in [slow, fast] but got: {score_mode}"
 
         self.dilation_kernel = None if not use_dilation else np.array([[1, 1], [1, 1]])
 
@@ -319,7 +320,7 @@ class CTCLabelDecode(BaseRecLabelDecode):
     """Convert between text-label and text-index"""
 
     def __init__(self, character_dict_path=None, use_space_char=False, **kwargs):
-        super(CTCLabelDecode, self).__init__(character_dict_path, use_space_char)
+        super().__init__(character_dict_path, use_space_char)
 
     def __call__(self, preds, label=None, *args, **kwargs):
         if isinstance(preds, tuple) or isinstance(preds, list):

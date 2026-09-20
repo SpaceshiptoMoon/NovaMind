@@ -8,38 +8,55 @@
 - Token 黑名单（使用 Redis 存储，支持多实例部署）
 """
 
-import jwt
-from datetime import timedelta
-from typing import Optional, Tuple, Callable, Awaitable
 import secrets
 import time
+from collections.abc import Awaitable, Callable
+from datetime import timedelta
 
-from novamind.setting.yaml_config import get_config
-from novamind.shared.utils.time_utils import now_china
-from novamind.features.user.schemas.user_schema import TokenData
-from novamind.features.user.models.user import UserStatus
-from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.user.exceptions import (
-    TokenInvalidError,
-    AuthenticationError,
-    UserError,
+import jwt
+from novamind.core.auth.blacklist import (
+    BLACKLIST_DEFAULT_TTL as _CORE_BLACKLIST_DEFAULT_TTL,
 )
+from novamind.core.auth.blacklist import (
+    TOKEN_BLACKLIST_PREFIX as _CORE_TOKEN_BLACKLIST_PREFIX,
+)
+from novamind.core.auth.blacklist import (
+    USER_BLACKLIST_PREFIX as _CORE_USER_BLACKLIST_PREFIX,
+)
+from novamind.core.auth.blacklist import (
+    USER_TOKENS_PREFIX as _CORE_USER_TOKENS_PREFIX,
+)
+from novamind.core.auth.blacklist import (
+    AuthBlacklistError,
+)
+from novamind.core.auth.blacklist import (
+    is_token_revoked as _core_is_token_revoked,
+)
+from novamind.core.auth.blacklist import (
+    is_user_blacklisted as _core_is_user_blacklisted,
+)
+
 # 认证原语下沉 core/auth：JWT 解码与黑名单查询是横切基础设施，user/AuthService
 # 复用 core 实现，公开 API 不变；token 生成 / 撤销等业务仍留本类。
 from novamind.core.auth.token import (
     TOKEN_TYPE_ACCESS as _CORE_TOKEN_TYPE_ACCESS,
+)
+from novamind.core.auth.token import (
     decode_access_token as _core_decode_access_token,
+)
+from novamind.core.auth.token import (
     decode_token_payload as _core_decode_token_payload,
 )
-from novamind.core.auth.blacklist import (
-    TOKEN_BLACKLIST_PREFIX as _CORE_TOKEN_BLACKLIST_PREFIX,
-    USER_TOKENS_PREFIX as _CORE_USER_TOKENS_PREFIX,
-    USER_BLACKLIST_PREFIX as _CORE_USER_BLACKLIST_PREFIX,
-    BLACKLIST_DEFAULT_TTL as _CORE_BLACKLIST_DEFAULT_TTL,
-    is_token_revoked as _core_is_token_revoked,
-    is_user_blacklisted as _core_is_user_blacklisted,
-    AuthBlacklistError,
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.user.exceptions import (
+    AuthenticationError,
+    TokenInvalidError,
+    UserError,
 )
+from novamind.features.user.models.user import UserStatus
+from novamind.features.user.schemas.user_schema import TokenData
+from novamind.setting.yaml_config import get_config
+from novamind.shared.utils.time_utils import now_china
 
 
 class AuthService:
@@ -84,7 +101,7 @@ class AuthService:
         email: str,
         role_code: str = "viewer",
         status: int = 1,
-        expires_delta: Optional[timedelta] = None,
+        expires_delta: timedelta | None = None,
     ) -> str:
         """
         创建访问 token（包含完整用户信息）
@@ -142,8 +159,8 @@ class AuthService:
         cls,
         user_id: int,
         username: str,
-        email: Optional[str] = None,
-        role_code: Optional[str] = None,
+        email: str | None = None,
+        role_code: str | None = None,
         expires_days: int = 7,
     ) -> str:
         """
@@ -200,7 +217,7 @@ class AuthService:
         email: str,
         role_code: str = "viewer",
         status: int = 1,
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         """
         创建 Access Token 和 Refresh Token 对
 
@@ -233,8 +250,8 @@ class AuthService:
     async def refresh_access_token(
         cls,
         refresh_token: str,
-        get_user_func: Optional[Callable[[int], Awaitable[Optional[dict]]]] = None,
-    ) -> Optional[Tuple[str, str, int]]:
+        get_user_func: Callable[[int], Awaitable[dict | None]] | None = None,
+    ) -> tuple[str, str, int] | None:
         """
         使用 Refresh Token 刷新 Access Token
 
@@ -317,7 +334,7 @@ class AuthService:
         return new_access_token, new_refresh_token, user_id
 
     @classmethod
-    def verify_token(cls, token: str) -> Optional[TokenData]:
+    def verify_token(cls, token: str) -> TokenData | None:
         """
         验证 token 并提取用户信息（同步版本）
 
@@ -349,7 +366,7 @@ class AuthService:
         )
 
     @classmethod
-    def _decode_token(cls, token: str) -> Optional[dict]:
+    def _decode_token(cls, token: str) -> dict | None:
         """
         解码 token（不验证类型）
 
@@ -541,7 +558,7 @@ class AuthService:
             raise
 
     @classmethod
-    async def is_user_blacklisted(cls, user_id: int, token_iat: Optional[int] = None) -> bool:
+    async def is_user_blacklisted(cls, user_id: int, token_iat: int | None = None) -> bool:
         """
         检查用户是否在用户级黑名单中
 
@@ -584,7 +601,7 @@ class AuthService:
         return token
 
     @classmethod
-    async def verify_reset_token(cls, token: str) -> Optional[int]:
+    async def verify_reset_token(cls, token: str) -> int | None:
         """
         验证密码重置 Token
 

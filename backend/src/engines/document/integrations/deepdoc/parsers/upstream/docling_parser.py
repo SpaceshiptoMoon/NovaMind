@@ -15,27 +15,27 @@
 #
 from __future__ import annotations
 
-import logging
-import re
 import base64
+import logging
 import os
+import re
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import Enum
 from io import BytesIO
 from os import PathLike
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional
+from typing import Any
 
 import pdfplumber
 import requests
+from novamind.engines.document.integrations.deepdoc.compat import MAXIMUM_PAGE_NUMBER
 from PIL import Image
 
-from novamind.engines.document.integrations.deepdoc.compat import MAXIMUM_PAGE_NUMBER
-
 try:
-    from docling.document_converter import DocumentConverter, PdfFormatOption
     from docling.datamodel.base_models import InputFormat
     from docling.datamodel.pipeline_options import PdfPipelineOptions
+    from docling.document_converter import DocumentConverter, PdfFormatOption
 except Exception:
     DocumentConverter = None
     PdfFormatOption = None
@@ -43,14 +43,18 @@ except Exception:
     PdfPipelineOptions = None
 
 try:
-    from novamind.engines.document.integrations.deepdoc.parsers.upstream.pdf_parser import RAGFlowPdfParser
+    from novamind.engines.document.integrations.deepdoc.parsers.upstream.pdf_parser import (
+        RAGFlowPdfParser,
+    )
 except Exception:
 
     class RAGFlowPdfParser:
         pass
 
 
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import extract_pdf_outlines
+from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import (
+    extract_pdf_outlines,
+)
 
 
 class DoclingContentType(str, Enum):
@@ -69,7 +73,7 @@ class _BBox:
     y1: float
 
 
-def _extract_bbox_from_prov(item, prov_attr: str = "prov") -> Optional[_BBox]:
+def _extract_bbox_from_prov(item, prov_attr: str = "prov") -> _BBox | None:
     prov = getattr(item, prov_attr, None)
     if not prov:
         return None
@@ -97,7 +101,7 @@ class DoclingParser(RAGFlowPdfParser):
         self.docling_server_url = (docling_server_url or "").rstrip("/")
         self.request_timeout = request_timeout
 
-    def _effective_server_url(self, docling_server_url: Optional[str] = None) -> str:
+    def _effective_server_url(self, docling_server_url: str | None = None) -> str:
         return (docling_server_url or self.docling_server_url or "").rstrip("/") or (os.environ.get("DOCLING_SERVER_URL", "").rstrip("/"))
 
     @staticmethod
@@ -112,7 +116,7 @@ class DoclingParser(RAGFlowPdfParser):
             except Exception:
                 return False
 
-    def check_installation(self, docling_server_url: Optional[str] = None) -> bool:
+    def check_installation(self, docling_server_url: str | None = None) -> bool:
         server_url = self._effective_server_url(docling_server_url)
         if server_url:
             for path in ("/openapi.json", "/docs", "/v1/convert/source"):
@@ -157,7 +161,7 @@ class DoclingParser(RAGFlowPdfParser):
         if hasattr(self, "page_images") and self.page_images and len(self.page_images) >= bbox.page_no:
             _, page_height = self.page_images[bbox.page_no - 1].size
             top, bott = page_height - top, page_height - bott
-        return "@@{}\t{:.1f}\t{:.1f}\t{:.1f}\t{:.1f}##".format(bbox.page_no, x0, x1, top, bott)
+        return f"@@{bbox.page_no}\t{x0:.1f}\t{x1:.1f}\t{top:.1f}\t{bott:.1f}##"
 
     @staticmethod
     def extract_positions(txt: str) -> list[tuple[list[int], float, float, float, float]]:
@@ -220,7 +224,7 @@ class DoclingParser(RAGFlowPdfParser):
 
         return (pic, positions) if need_position else pic
 
-    def _iter_doc_items(self, doc) -> Iterable[tuple[str, Any, Optional[_BBox]]]:
+    def _iter_doc_items(self, doc) -> Iterable[tuple[str, Any, _BBox | None]]:
         for t in getattr(doc, "texts", []):
             label = getattr(t, "label", "")
             if label in ("formula",):
@@ -351,11 +355,11 @@ class DoclingParser(RAGFlowPdfParser):
         self,
         filepath: str | PathLike[str],
         binary: BytesIO | bytes | None = None,
-        callback: Optional[Callable] = None,
+        callback: Callable | None = None,
         *,
         parse_method: str = "raw",
-        docling_server_url: Optional[str] = None,
-        request_timeout: Optional[int] = None,
+        docling_server_url: str | None = None,
+        request_timeout: int | None = None,
     ):
         """
         Parses a PDF document using a remote Docling server.
@@ -513,15 +517,15 @@ class DoclingParser(RAGFlowPdfParser):
         self,
         filepath: str | PathLike[str],
         binary: BytesIO | bytes | None = None,
-        callback: Optional[Callable] = None,
+        callback: Callable | None = None,
         *,
-        output_dir: Optional[str] = None,
-        lang: Optional[str] = None,
+        output_dir: str | None = None,
+        lang: str | None = None,
         method: str = "auto",
         delete_output: bool = True,
         parse_method: str = "raw",
-        docling_server_url: Optional[str] = None,
-        request_timeout: Optional[int] = None,
+        docling_server_url: str | None = None,
+        request_timeout: int | None = None,
     ):
         self.outlines = extract_pdf_outlines(binary if binary is not None else filepath)
 

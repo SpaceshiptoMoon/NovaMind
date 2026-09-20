@@ -9,13 +9,13 @@
 - ExternalSearchProvider: 外部搜索提供商枚举
 """
 
+from novamind.engines.deep_research.types import SearchSource
 from novamind.features.deep_research.models.research_session import (
+    ExternalSearchProvider,
+    ResearchMode,
     ResearchSession,
     ResearchStatus,
-    ResearchMode,
-    ExternalSearchProvider,
 )
-from novamind.engines.deep_research.types import SearchSource
 
 __all__ = [
     "ResearchSession",

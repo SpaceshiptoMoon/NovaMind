@@ -5,7 +5,7 @@ CachePort 宿主适配器，包装 RedisCache 实现 engines.rag.cache_port.Cach
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 __all__ = ["HostCachePort"]
 
@@ -17,7 +17,7 @@ class HostCachePort:
     """
 
     def __init__(self) -> None:
-        self._redis: Optional[Any] = None
+        self._redis: Any | None = None
 
     async def _ensure(self) -> Any:
         """惰性获取宿主 Redis 客户端单例（首次缓存操作时触发）。"""
@@ -27,10 +27,10 @@ class HostCachePort:
             self._redis = await get_redis_client()
         return self._redis
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         return await (await self._ensure()).get(key)
 
-    async def set(self, key: str, value: Any, expire: Optional[int] = None) -> bool:
+    async def set(self, key: str, value: Any, expire: int | None = None) -> bool:
         return await (await self._ensure()).set(key, value, expire=expire)
 
     async def delete(self, key: str) -> int:

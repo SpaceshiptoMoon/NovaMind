@@ -6,33 +6,37 @@
 """
 
 import copy
-from typing import Optional, List, Dict, Any
+from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm.attributes import flag_modified
-
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.exceptions import (
+    InvalidParameterError,
+    KnowledgeBaseAccessDeniedError,
+    KnowledgeBaseAlreadyExistsError,
+    KnowledgeBaseLimitExceededError,
+    KnowledgeBaseNotFoundError,
+)
 from novamind.features.knowledge_space.models.knowledge_base import (
     KnowledgeBase,
     KnowledgeBaseStatus,
 )
-from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
 from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
-from novamind.features.knowledge_space.repository.member_repository import MemberRepository
-from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
-from novamind.features.knowledge_space.exceptions import (
-    KnowledgeBaseNotFoundError,
-    KnowledgeBaseAlreadyExistsError,
-    KnowledgeBaseAccessDeniedError,
-    KnowledgeBaseLimitExceededError,
-    InvalidParameterError,
+from novamind.features.knowledge_space.repository.knowledge_base_repository import (
+    KnowledgeBaseRepository,
 )
+from novamind.features.knowledge_space.repository.member_repository import MemberRepository
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+    KnowledgeBaseConfigUpdate,
+)
+from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
+from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.storage.minio_client import MinioClient
-from novamind.shared.model_config_ports import ModelConfigPort
-from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfigUpdate
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 
-def get_effective_space_types(kb_config: Optional[dict] = None) -> List[str]:
+def get_effective_space_types(kb_config: dict | None = None) -> list[str]:
     """
     获取知识库有效的数据模态列表。
 
@@ -44,7 +48,6 @@ def get_effective_space_types(kb_config: Optional[dict] = None) -> List[str]:
             return types
 
     return ["text"]
-from novamind.core.middleware.structured_logging import get_logger
 
 
 class KnowledgeBaseService:
@@ -60,7 +63,7 @@ class KnowledgeBaseService:
         session: AsyncSession,
         es_client: ElasticsearchClient,
         minio_client: MinioClient,
-        model_config_service: Optional[ModelConfigPort] = None,
+        model_config_service: ModelConfigPort | None = None,
     ):
         self.session = session
         self.kb_repo = KnowledgeBaseRepository(session)
@@ -77,7 +80,7 @@ class KnowledgeBaseService:
         space_id: int,
         creator_id: int,
         name: str,
-        config: Optional[Dict[str, Any]] = None,
+        config: dict[str, Any] | None = None,
     ) -> KnowledgeBase:
         """
         创建知识库
@@ -202,7 +205,7 @@ class KnowledgeBaseService:
     async def get_knowledge_base(
         self,
         kb_id: int,
-    ) -> Optional[KnowledgeBase]:
+    ) -> KnowledgeBase | None:
         """
         获取知识库信息
 
@@ -218,8 +221,8 @@ class KnowledgeBaseService:
         self,
         kb_id: int,
         user_id: int,
-        data: Dict[str, Any],
-    ) -> Optional[KnowledgeBase]:
+        data: dict[str, Any],
+    ) -> KnowledgeBase | None:
         """
         更新知识库信息
 
@@ -349,7 +352,7 @@ class KnowledgeBaseService:
     async def restore_knowledge_base(
         self,
         kb_id: int,
-    ) -> Optional[KnowledgeBase]:
+    ) -> KnowledgeBase | None:
         """
         恢复已删除的知识库
 
@@ -369,10 +372,10 @@ class KnowledgeBaseService:
     async def get_space_knowledge_bases(
         self,
         space_id: int,
-        status: Optional[KnowledgeBaseStatus] = None,
+        status: KnowledgeBaseStatus | None = None,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[KnowledgeBase]:
+    ) -> list[KnowledgeBase]:
         """
         获取空间内的知识库列表
 
@@ -392,7 +395,7 @@ class KnowledgeBaseService:
         keyword: str,
         skip: int = 0,
         limit: int = 20,
-    ) -> List[KnowledgeBase]:
+    ) -> list[KnowledgeBase]:
         """
         按名称搜索知识库
 
@@ -406,7 +409,7 @@ class KnowledgeBaseService:
         """
         return await self.kb_repo.search_by_name(keyword, skip, limit)
 
-    async def get_full_stats(self, kb_id: int) -> Dict[str, Any]:
+    async def get_full_stats(self, kb_id: int) -> dict[str, Any]:
         """获取知识库完整统计（实时查询，排除软删除文档）"""
         return await self.doc_repo.get_kb_realtime_stats(kb_id)
 
@@ -453,8 +456,8 @@ class KnowledgeBaseService:
         self,
         kb_id: int,
         user_id: int,
-        config_updates: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        config_updates: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         部分更新知识库配置（深度合并 + 校验）
 
@@ -500,7 +503,9 @@ class KnowledgeBaseService:
 
         return {"message": "配置更新成功，新配置将在下次拆分解析时生效"}
 
-    def _get_default_config(self) -> Dict[str, Any]:
+    def _get_default_config(self) -> dict[str, Any]:
         """获取默认知识库配置（从 Schema 统一生成）"""
-        from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
+        from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+            KnowledgeBaseConfig,
+        )
         return KnowledgeBaseConfig().model_dump()

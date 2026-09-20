@@ -4,9 +4,8 @@
 表里只存「被禁用」的记录，无记录 = 可用。应用相互隔离；知识空间不进
 此表（入口人人可见，内容靠空间成员角色）。
 """
-from sqlalchemy import Column, BigInteger, String, ForeignKey, UniqueConstraint
-
 from novamind.core.database.base import BaseModel
+from sqlalchemy import BigInteger, Column, ForeignKey, String, UniqueConstraint
 
 
 class UserDisabledApp(BaseModel):

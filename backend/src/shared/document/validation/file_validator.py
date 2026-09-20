@@ -5,10 +5,8 @@
 """
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
 
 from novamind.shared.logging import get_logger
-
 
 logger = get_logger(__name__)
 
@@ -20,8 +18,8 @@ class FileInfo:
     filename: str
     size: int
     extension: str
-    detected_mime: Optional[str] = None
-    detected_extension: Optional[str] = None
+    detected_mime: str | None = None
+    detected_extension: str | None = None
     is_valid: bool = False
     validation_message: str = ""
 
@@ -152,7 +150,7 @@ class FileValidator:
                 )
         return self._magic
 
-    def detect_mime_by_magic(self, content: bytes) -> Optional[str]:
+    def detect_mime_by_magic(self, content: bytes) -> str | None:
         magic = self._get_magic()
         if magic:
             try:
@@ -161,7 +159,7 @@ class FileValidator:
                 logger.warning("MIME detection failed", error=str(exc))
         return None
 
-    def detect_mime_by_header(self, content: bytes) -> Optional[str]:
+    def detect_mime_by_header(self, content: bytes) -> str | None:
         for signature, mime_type in self.MAGIC_SIGNATURES.items():
             if content.startswith(signature):
                 if mime_type == "audio/x-wav" and content.startswith(b"RIFF") and len(content) >= 12:
@@ -182,7 +180,7 @@ class FileValidator:
     def is_dangerous_extension(self, extension: str) -> bool:
         return extension.lower() in self.DANGEROUS_EXTENSIONS
 
-    def is_office_document(self, content: bytes) -> Tuple[bool, Optional[str]]:
+    def is_office_document(self, content: bytes) -> tuple[bool, str | None]:
         import io
         import zipfile
 
@@ -209,7 +207,7 @@ class FileValidator:
         self,
         content: bytes,
         filename: str,
-        allowed_extensions: Optional[list] = None,
+        allowed_extensions: list | None = None,
     ) -> FileInfo:
         extension = self.get_extension_from_filename(filename)
         file_size = len(content)
@@ -277,7 +275,7 @@ class FileValidator:
         return info
 
 
-_validator: Optional[FileValidator] = None
+_validator: FileValidator | None = None
 
 
 def get_file_validator(max_file_size: int = 100 * 1024 * 1024) -> FileValidator:
@@ -292,7 +290,7 @@ def get_file_validator(max_file_size: int = 100 * 1024 * 1024) -> FileValidator:
 def validate_file(
     content: bytes,
     filename: str,
-    allowed_extensions: Optional[list] = None,
+    allowed_extensions: list | None = None,
 ) -> FileInfo:
     """验证文件（便捷函数）"""
 

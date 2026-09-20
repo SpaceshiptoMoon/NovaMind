@@ -245,7 +245,6 @@ def test_deep_research_engine_methods_present():
 def test_deep_research_engine_llm_methods_accept_llm_and_prompt_provider():
     """analyze_query/analyze_plan/synthesize_report[_stream] 按调用接 llm_client + prompt_provider（AgentEngine 风格）。"""
     from novamind.engines.deep_research.engine import DeepResearchEngine
-    from novamind.engines.ports import PromptProvider
 
     for name in ("analyze_query", "analyze_plan", "synthesize_report", "synthesize_report_stream"):
         fn = getattr(DeepResearchEngine, name)
@@ -470,18 +469,18 @@ def test_prompt_keys_resolvable_via_prompt_provider():
     应能解析 KEY_ANALYZE_QUERY/KEY_PLAN/KEY_SYNTHESIZE_REPORT/
     KEY_SYNTHESIZE_REPORT_STREAM/KEY_GENERATE_QUERY/KEY_TASK_FINDING/KEY_PROCESSING_STEP。
     """
-    from novamind.shared.prompts.prompt_manager import PromptManager
-    from novamind.features.deep_research.deep_research_prompts import TEMPLATES as DR_TEMPLATES
-    from novamind.engines.prompt_provider_adapter import as_prompt_provider
     from novamind.engines.deep_research.engine import (
         KEY_ANALYZE_QUERY,
+        KEY_GENERATE_QUERY,
         KEY_PLAN,
         KEY_PROCESSING_STEP,
         KEY_SYNTHESIZE_REPORT,
         KEY_SYNTHESIZE_REPORT_STREAM,
-        KEY_GENERATE_QUERY,
         KEY_TASK_FINDING,
     )
+    from novamind.engines.prompt_provider_adapter import as_prompt_provider
+    from novamind.features.deep_research.deep_research_prompts import TEMPLATES as DR_TEMPLATES
+    from novamind.shared.prompts.prompt_manager import PromptManager
 
     PromptManager.register(DR_TEMPLATES)  # 幂等：重复注册同一份无副作用
     provider = as_prompt_provider()

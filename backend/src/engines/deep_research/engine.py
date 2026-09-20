@@ -19,11 +19,9 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, AsyncIterator, Dict, List, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
-from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.logging import Logger
-from novamind.engines.ports import PromptProvider
 from novamind.engines.deep_research.sources import SearchSourceBinding
 from novamind.engines.deep_research.types import (
     EngineResearchParams,
@@ -32,14 +30,15 @@ from novamind.engines.deep_research.types import (
     ResearchPlan,
     SearchComplete,
     SearchEvent,
-    SearchSource,
     SourceType,
     StepType,
     TaskFailed,
     TaskFinding,
     TaskStarted,
 )
-
+from novamind.engines.ports import PromptProvider
+from novamind.shared.ai_models.llm import BaseLLM
+from novamind.shared.logging import Logger
 
 # 结果充分性阈值常量
 SUFFICIENT_RESULT_COUNT = 10  # 结果数量阈值
@@ -77,7 +76,7 @@ def _sanitize_search_field(text: str) -> str:
     return sanitized.strip()
 
 
-def is_sufficient_results(results: List[Any], iteration: int) -> bool:
+def is_sufficient_results(results: list[Any], iteration: int) -> bool:
     """检查结果是否足够（达到数量阈值，或已有结果且达到最大迭代阈值）。"""
     if len(results) >= SUFFICIENT_RESULT_COUNT:
         return True
@@ -86,7 +85,7 @@ def is_sufficient_results(results: List[Any], iteration: int) -> bool:
     return False
 
 
-def deduplicate_results(all_results: List[Any], new_results: List[Any]) -> None:
+def deduplicate_results(all_results: list[Any], new_results: list[Any]) -> None:
     """基于 URL、标题或 chunk_id 过滤重复结果，将去重后的新结果追加到 all_results（原地去重）。"""
     existing_urls = {r.get("url") for r in all_results if r.get("url")}
     existing_titles = {r.get("title") for r in all_results if r.get("title")}
@@ -110,9 +109,9 @@ def deduplicate_results(all_results: List[Any], new_results: List[Any]) -> None:
             existing_chunk_ids.add(r_chunk_id)
 
 
-def extract_key_sources(results: List[Any]) -> List[str]:
+def extract_key_sources(results: list[Any]) -> list[str]:
     """提取关键来源（前 10 条去重后取前 5）。"""
-    sources: List[str] = []
+    sources: list[str] = []
     seen: set[str] = set()
 
     for r in results[:10]:
@@ -124,13 +123,13 @@ def extract_key_sources(results: List[Any]) -> List[str]:
     return sources[:5]
 
 
-def extract_citations(results: List[Any]) -> List[Dict[str, str]]:
+def extract_citations(results: list[Any]) -> list[dict[str, str]]:
     """提取全量引用列表（deer-flow Key Citations 对齐，不截断）。
 
     每条 {title, url, source_type}：url 为空（内部文档）时以 document_name 兜底
     填 url 字段；按 (url, title) 去重。
     """
-    citations: List[Dict[str, str]] = []
+    citations: list[dict[str, str]] = []
     seen: set = set()
     for r in results:
         title = str(r.get("title") or r.get("document_name") or "").strip()
@@ -148,9 +147,9 @@ def extract_citations(results: List[Any]) -> List[Dict[str, str]]:
     return citations
 
 
-def format_search_context(results: List[Any]) -> str:
+def format_search_context(results: list[Any]) -> str:
     """格式化检索结果为上下文（清理内容防止 prompt 注入）。"""
-    context_parts: List[str] = []
+    context_parts: list[str] = []
 
     for i, r in enumerate(results[:15], start=1):
         raw_source = r.get("url") or f"文档 {r.get('document_name', r.get('document_id', '未知'))}"
@@ -163,12 +162,12 @@ def format_search_context(results: List[Any]) -> str:
     return "\n".join(context_parts)
 
 
-def summarize_observations_for_llm(results: List[Any]) -> str:
+def summarize_observations_for_llm(results: list[Any]) -> str:
     """将本任务已得检索结果压缩为观察摘要（喂 query 生成 LLM，防 token 爆炸）。
 
     只取前 OBSERVATION_FEED_LIMIT 条，每条 content 截 OBSERVATION_SNIPPET_CHARS 字符。
     """
-    lines: List[str] = []
+    lines: list[str] = []
     for i, r in enumerate(results[:OBSERVATION_FEED_LIMIT], start=1):
         title = _sanitize_search_field(str(r.get("title") or r.get("document_name") or ""))[:80]
         content = _sanitize_search_field(str(r.get("content", "")))[:OBSERVATION_SNIPPET_CHARS]
@@ -269,7 +268,7 @@ def parse_plan(raw: str, *, depth: int, topic: str, iteration: int) -> ResearchP
     if not isinstance(raw_steps, list):
         return _default_plan()
 
-    steps: List[PlanStep] = []
+    steps: list[PlanStep] = []
     for i, s in enumerate(raw_steps[:depth]):
         if not isinstance(s, dict):
             continue
@@ -319,7 +318,6 @@ __all__ = [
     "KEY_SYNTHESIZE_REPORT_STREAM",
     "KEY_GENERATE_QUERY",
     "KEY_TASK_FINDING",
-    "should_use_external_search",
     "is_sufficient_results",
     "deduplicate_results",
     "extract_key_sources",
@@ -343,7 +341,7 @@ class DeepResearchEngine:
     引擎不重复 sanitize，只负责 LLM 调用与结果解析。
     """
 
-    def __init__(self, *, logger: Optional[Logger] = None):
+    def __init__(self, *, logger: Logger | None = None):
         self._logger = logger
 
     async def analyze_query(
@@ -369,7 +367,7 @@ class DeepResearchEngine:
         *,
         query: str,
         topic: str,
-        background_results: List[Dict[str, Any]],
+        background_results: list[dict[str, Any]],
         depth: int,
         iteration: int = 0,
         feedback: str = "",
@@ -409,18 +407,18 @@ class DeepResearchEngine:
     async def background_investigation(
         self,
         *,
-        sources: List[SearchSourceBinding],
+        sources: list[SearchSourceBinding],
         query: str,
         params: EngineResearchParams,
         max_results: int = BACKGROUND_INVESTIGATION_MAX_RESULTS,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """规划前背景调查（deer-flow background_investigator 对齐）。
 
         单轮检索（不调 LLM）：逐启用数据源查询（每轮查全部源语义），结果归一化 +
         去重。per-source 失败跳过（与主循环单源降级一致）；全部源失败或无启用源
         降级返回 []，不阻断规划。
         """
-        deduped: List[Dict[str, Any]] = []
+        deduped: list[dict[str, Any]] = []
         for binding in sources:
             try:
                 results = await binding.port.search(query, top_k=max_results)
@@ -441,8 +439,8 @@ class DeepResearchEngine:
         *,
         query: str,
         research_topic: str,
-        results: List[Dict[str, Any]],
-        key_sources: List[str],
+        results: list[dict[str, Any]],
+        key_sources: list[str],
         max_tokens: int,
         temperature: float,
         top_p: float,
@@ -488,7 +486,7 @@ class DeepResearchEngine:
         query: str,
         research_topic: str,
         context: str,
-        key_sources: List[str],
+        key_sources: list[str],
         max_tokens: int,
         temperature: float,
         top_p: float,
@@ -524,12 +522,12 @@ class DeepResearchEngine:
     async def search(
         self,
         *,
-        sources: List[SearchSourceBinding],
-        tasks: List[Dict[str, Any]],
+        sources: list[SearchSourceBinding],
+        tasks: list[dict[str, Any]],
         params: EngineResearchParams,
-        logger: Optional[Logger] = None,
-        llm_client: Optional[BaseLLM] = None,
-        prompt_provider: Optional[PromptProvider] = None,
+        logger: Logger | None = None,
+        llm_client: BaseLLM | None = None,
+        prompt_provider: PromptProvider | None = None,
     ) -> AsyncIterator[SearchEvent]:
         """迭代检索循环（AsyncIterator[SearchEvent]），流式与非流式共用。
 
@@ -556,15 +554,15 @@ class DeepResearchEngine:
         产出统一 dict 形状结果，归一化在 feature 适配器完成），与纯函数及 feature
         持久化一致。
         """
-        all_results: List[Dict[str, Any]] = []
-        source_counts: Dict[str, int] = {}
+        all_results: list[dict[str, Any]] = []
+        source_counts: dict[str, int] = {}
         total_steps = len(tasks) * params.iterations
         step_count = 0
         aligned = llm_client is not None and prompt_provider is not None
         # 跨任务信息流（deer-flow 对齐）：前序任务 finding 摘要累积
-        prior_findings: List[str] = []
+        prior_findings: list[str] = []
         # 各任务 finding 累积（随 SearchComplete 产出，供 reporter grounding）
-        task_findings_acc: List[Dict[str, str]] = []
+        task_findings_acc: list[dict[str, str]] = []
 
         for task in tasks:
             task_id = str(task.get("task_id", ""))
@@ -598,7 +596,7 @@ class DeepResearchEngine:
                         task_findings_acc.append({"task_id": task_id, "finding": conclusion})
                         yield TaskFinding(task_id=task_id, finding=conclusion)
                     continue
-                task_results: List[Dict[str, Any]] = []
+                task_results: list[dict[str, Any]] = []
                 for iteration in range(params.iterations):
                     step_count += 1
                     # 每轮查全部启用源：逐源查询、逐源去重入 task_results；
@@ -700,7 +698,7 @@ class DeepResearchEngine:
         *,
         task_description: str,
         step_title: str,
-        prior_findings: List[str],
+        prior_findings: list[str],
     ) -> str:
         """processing 纯分析步骤（deer-flow processing/analyst 对齐）。
 
@@ -736,8 +734,8 @@ class DeepResearchEngine:
         *,
         task_description: str,
         task_query: str,
-        observations: List[Any],
-        prior_findings: List[str],
+        observations: list[Any],
+        prior_findings: list[str],
         iteration: int,
     ) -> tuple:
         """观察驱动反思（deer-flow 对齐）：判断信息是否足够 + 产出下一 query。
@@ -777,7 +775,7 @@ class DeepResearchEngine:
         prompt_provider: PromptProvider,
         *,
         task_description: str,
-        observations: List[Any],
+        observations: list[Any],
     ) -> str:
         """生成任务 finding 摘要（deer-flow 对齐：要点+结论，供后续任务参考）。
 

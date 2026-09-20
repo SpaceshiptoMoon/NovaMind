@@ -4,9 +4,10 @@
 支持通过 --config 参数指定配置环境
 """
 import argparse
-import uvicorn
-import sys
 import os
+import sys
+
+import uvicorn
 
 _BACKEND_SRC = os.path.join(os.path.dirname(__file__), "src")
 if _BACKEND_SRC not in sys.path:
@@ -82,7 +83,7 @@ def main():
     # 统一使用 uvicorn factory 模式
     workers = args.workers
     if args.reload and workers > 1:
-        print(f"警告: 热重载模式下 workers 参数被忽略，固定为 1")
+        print("警告: 热重载模式下 workers 参数被忽略，固定为 1")
         workers = 1
 
     uvicorn.run(

@@ -6,42 +6,45 @@ import hashlib
 import json
 import time
 import traceback
-from typing import Any, Callable, Dict, List, Optional, Tuple
-from novamind.shared.model_config_ports import ModelConfigPort
+from collections.abc import Callable
+from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm.attributes import flag_modified
-
-from novamind.features.evaluation.models.evaluation_task import (
-    EvaluationStatus,
-)
-from novamind.features.evaluation.repository.evaluation_repository import (
-    EvaluationTestSetRepository,
-    EvaluationTaskRepository,
-)
-from novamind.features.evaluation.schemas.evaluation_schema import EvaluationConfig
+from novamind.core.middleware.structured_logging import get_logger
 from novamind.engines.eval import (
     ClaimDecomposer,
     EmbeddingEvaluator,
     GenerationEvaluator,
     RetrievalEvaluator,
 )
-from novamind.features.evaluation.services.test_set_parser import parse_test_set
-from novamind.features.evaluation.services.result_exporter import result_to_json_bytes, result_to_csv
+from novamind.engines.ports import PromptProvider
+from novamind.engines.prompt_provider_adapter import as_prompt_provider
 from novamind.features.evaluation.exceptions import (
-    EvaluationTaskNotFoundError,
-    EvaluationTestSetNotFoundError,
-    EvaluationTaskPendingError,
     EvaluationTaskNotCancellableError,
     EvaluationTaskNotCompletedError,
+    EvaluationTaskNotFoundError,
+    EvaluationTaskPendingError,
+    EvaluationTestSetNotFoundError,
 )
-from novamind.engines.prompt_provider_adapter import as_prompt_provider
-from novamind.shared.retrieval_port import RetrievalPort
+from novamind.features.evaluation.models.evaluation_task import (
+    EvaluationStatus,
+)
+from novamind.features.evaluation.repository.evaluation_repository import (
+    EvaluationTaskRepository,
+    EvaluationTestSetRepository,
+)
+from novamind.features.evaluation.schemas.evaluation_schema import EvaluationConfig
+from novamind.features.evaluation.services.result_exporter import (
+    result_to_csv,
+    result_to_json_bytes,
+)
+from novamind.features.evaluation.services.test_set_parser import parse_test_set
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
-from novamind.engines.ports import PromptProvider
+from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.shared.retrieval_port import RetrievalPort
 from novamind.shared.storage.minio_client import MinioClient
-from novamind.core.middleware.structured_logging import get_logger
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 logger = get_logger(__name__)
 
@@ -60,7 +63,7 @@ EVALUATION_CONCURRENCY = 5
 #   - 若不在当前 worker，数据库 status 已标记为 CANCELLED，远端 worker 的
 #     DB 检查点会自然停止任务
 # 若需要跨 worker 共享任务进度/状态（如实时进度查询），需迁移至 Redis。
-_running_tasks: Dict[int, asyncio.Task] = {}
+_running_tasks: dict[int, asyncio.Task] = {}
 
 
 class EvaluationService:
@@ -120,15 +123,15 @@ class EvaluationService:
         await self.db.commit()
         return test_set_obj
 
-    async def get_test_set(self, test_set_id: int) -> Optional[Any]:
+    async def get_test_set(self, test_set_id: int) -> Any | None:
         return await self.test_set_repo.get_by_id(test_set_id)
 
-    async def get_test_set_by_kb(self, test_set_id: int, space_id: int, kb_id: int) -> Optional[Any]:
+    async def get_test_set_by_kb(self, test_set_id: int, space_id: int, kb_id: int) -> Any | None:
         return await self.test_set_repo.get_by_id_and_kb(test_set_id, space_id, kb_id)
 
     async def list_test_sets(
         self, space_id: int, kb_id: int, skip: int = 0, limit: int = 20
-    ) -> Tuple[list, int]:
+    ) -> tuple[list, int]:
         test_sets = await self.test_set_repo.list_by_kb(kb_id, space_id, skip, limit)
         total = await self.test_set_repo.count_by_kb(kb_id, space_id)
         return test_sets, total
@@ -146,7 +149,7 @@ class EvaluationService:
 
     async def get_test_set_cases(
         self, test_set_id: int, space_id: int, kb_id: int
-    ) -> Optional[Tuple[Any, List[Dict]]]:
+    ) -> tuple[Any, list[dict]] | None:
         test_set_obj = await self.test_set_repo.get_by_id_and_kb(test_set_id, space_id, kb_id)
         if not test_set_obj:
             raise EvaluationTestSetNotFoundError(test_set_id)
@@ -206,7 +209,7 @@ class EvaluationService:
         test_set_id: int,
         user_id: int,
         name: str,
-        config: Optional[dict] = None,
+        config: dict | None = None,
     ) -> Any:
         if config:
             EvaluationConfig(**config)
@@ -232,15 +235,15 @@ class EvaluationService:
 
         return task
 
-    async def get_task(self, task_id: int) -> Optional[Any]:
+    async def get_task(self, task_id: int) -> Any | None:
         return await self.task_repo.get_by_id(task_id)
 
-    async def get_task_by_kb(self, task_id: int, space_id: int, kb_id: int) -> Optional[Any]:
+    async def get_task_by_kb(self, task_id: int, space_id: int, kb_id: int) -> Any | None:
         return await self.task_repo.get_by_id_and_kb(task_id, space_id, kb_id)
 
     async def list_tasks(
-        self, space_id: int, kb_id: int, skip: int = 0, limit: int = 20, status: Optional[int] = None
-    ) -> Tuple[list, int]:
+        self, space_id: int, kb_id: int, skip: int = 0, limit: int = 20, status: int | None = None
+    ) -> tuple[list, int]:
         tasks = await self.task_repo.list_by_kb(kb_id, space_id, skip, limit, status=status)
         total = await self.task_repo.count_by_kb(kb_id, space_id, status=status)
         return tasks, total
@@ -296,7 +299,7 @@ class EvaluationService:
 
         return task
 
-    async def get_task_progress(self, task_id: int) -> Optional[Dict[str, Any]]:
+    async def get_task_progress(self, task_id: int) -> dict[str, Any] | None:
         task = await self.task_repo.get_by_id(task_id)
         if not task:
             raise EvaluationTaskNotFoundError(task_id)
@@ -309,7 +312,7 @@ class EvaluationService:
         }
 
     async def submit_human_scores(
-        self, task_id: int, scores: List[Dict[str, Any]]
+        self, task_id: int, scores: list[dict[str, Any]]
     ) -> int:
         task = await self.task_repo.get_by_id(task_id)
         if not task:
@@ -346,7 +349,7 @@ class EvaluationService:
         await self.db.commit()
         return updated
 
-    async def get_report(self, task_id: int) -> Optional[Dict[str, Any]]:
+    async def get_report(self, task_id: int) -> dict[str, Any] | None:
         task = await self.task_repo.get_by_id(task_id)
         if not task:
             raise EvaluationTaskNotFoundError(task_id)
@@ -366,7 +369,7 @@ class EvaluationService:
             "details": details,
         }
 
-    async def export_result(self, task_id: int, format: str = "json") -> Optional[Tuple[bytes, str]]:
+    async def export_result(self, task_id: int, format: str = "json") -> tuple[bytes, str] | None:
         task = await self.task_repo.get_by_id(task_id)
         if not task:
             raise EvaluationTaskNotFoundError(task_id)
@@ -475,7 +478,7 @@ class EvaluationService:
                 semaphore = asyncio.Semaphore(EVALUATION_CONCURRENCY)
                 cancel_event = asyncio.Event()
 
-                async def evaluate_case(i: int, case: Dict) -> Tuple[int, Dict]:
+                async def evaluate_case(i: int, case: dict) -> tuple[int, dict]:
                     async with semaphore:
                         # 检查共享取消信号
                         if cancel_event.is_set():
@@ -642,16 +645,19 @@ class EvaluationService:
         config: EvaluationConfig,
         retrieval_evaluator: RetrievalEvaluator,
         generation_evaluator: GenerationEvaluator,
-        embedding_evaluator: Optional[EmbeddingEvaluator],
-        llm_client: Optional[BaseLLM],
+        embedding_evaluator: EmbeddingEvaluator | None,
+        llm_client: BaseLLM | None,
         user_id: int,
-        retrieval_port: Optional[RetrievalPort] = None,
-    ) -> Dict[str, Any]:
-        detail: Dict[str, Any] = {
+        retrieval_port: RetrievalPort | None = None,
+    ) -> dict[str, Any]:
+        detail: dict[str, Any] = {
             "index": index, "question": question, "expected_answer": expected_answer,
         }
 
-        from novamind.features.knowledge_space.schemas.search_schema import SearchRequest, SearchMode
+        from novamind.features.knowledge_space.schemas.search_schema import (
+            SearchMode,
+            SearchRequest,
+        )
 
         search_request = SearchRequest(
             query=question,
@@ -715,7 +721,7 @@ class EvaluationService:
 
     # ========== MinIO 辅助方法 ==========
 
-    async def _download_task_result(self, task: Any) -> Optional[Dict[str, Any]]:
+    async def _download_task_result(self, task: Any) -> dict[str, Any] | None:
         bucket = task.get_result_minio_bucket()
         object_name = task.get_result_minio_object_name()
         if not bucket or not object_name:
@@ -727,7 +733,7 @@ class EvaluationService:
             logger.error("下载任务结果失败（MinIO 异常）", task_id=task.id, error=str(e))
             return None
 
-    async def _upload_task_result(self, task: Any, result_data: Dict[str, Any]) -> None:
+    async def _upload_task_result(self, task: Any, result_data: dict[str, Any]) -> None:
         test_set_obj = task.test_set
         result_bytes = result_to_json_bytes(result_data)
         result_hash = hashlib.sha256(result_bytes).hexdigest()
@@ -758,9 +764,9 @@ class EvaluationService:
     async def _generate_answer(
         self,
         question: str,
-        chunks: List[Dict[str, Any]],
-        llm_client: Optional[BaseLLM] = None,
-    ) -> Optional[str]:
+        chunks: list[dict[str, Any]],
+        llm_client: BaseLLM | None = None,
+    ) -> str | None:
         if not llm_client:
             return None
 
@@ -779,7 +785,7 @@ class EvaluationService:
             logger.warning("生成回答失败", error=str(e))
             return None
 
-    async def _get_llm_client(self, user_id: int, model: Optional[str] = None) -> tuple:
+    async def _get_llm_client(self, user_id: int, model: str | None = None) -> tuple:
         try:
             if not model:
                 model = await self.model_config_service.get_user_default_model_name(user_id, "llm")
@@ -791,7 +797,7 @@ class EvaluationService:
             logger.warning("获取 LLM 客户端失败", error=str(e))
             return (None, None)
 
-    async def _get_embedding_client(self, user_id: int, model: Optional[str] = None) -> tuple:
+    async def _get_embedding_client(self, user_id: int, model: str | None = None) -> tuple:
         try:
             if not model:
                 model = await self.model_config_service.get_user_default_model_name(user_id, "embedding")

@@ -6,9 +6,10 @@
 修复后的行为，防止再次回归。
 """
 import pytest
-
 from novamind.engines.document.integrations.deepdoc.parsers.pdf import DeepDocPdfBox
 from novamind.engines.document.integrations.deepdoc.updown_concat import UpDownConcatMerger
+
+pytestmark = pytest.mark.unit
 
 
 def _box(page=1, top=0.0, bottom=10.0, text="", x0=0.0, x1=100.0, col_id=0, layout_type="text"):

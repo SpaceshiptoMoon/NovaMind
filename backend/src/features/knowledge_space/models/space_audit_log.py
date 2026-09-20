@@ -5,9 +5,9 @@
 """
 
 from enum import Enum
-from sqlalchemy import Column, BigInteger, String, JSON, ForeignKey
 
 from novamind.core.database.base import BaseModel
+from sqlalchemy import JSON, BigInteger, Column, ForeignKey, String
 
 
 class AuditAction(str, Enum):

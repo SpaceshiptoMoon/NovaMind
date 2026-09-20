@@ -121,3 +121,24 @@ where = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# vendored DeepDoc 上游逐字镜像与独立子服务，禁止修改，整体豁免。
+exclude = [
+    "src/engines/document/integrations/deepdoc/vendor",
+    "src/engines/document/integrations/deepdoc/server",
+]
+
+[tool.ruff.lint]
+# 批次0门禁基线：先开 E,F,I,UP（行为相关），W/B 第二波再补。
+# E501（行超长 1832 处存量）暂缓：line-length=100 保留供格式化参考，不做门禁，
+# 待 W/B 第二波时再评估是否逐文件清零。
+select = ["E", "F", "I", "UP"]
+# 第二波再清（机械但有行为风险/涉及 vendored）：UP042 StrEnum 迁移改 str() 语义；UP031 % 格式化大量在 vendored 区
+ignore = ["E501", "UP042", "UP031"]
+
+[tool.ruff.lint.per-file-ignores]
+# vendored DeepDoc 适配层（上游 import 结构原样保留）
+"src/engines/document/integrations/deepdoc/parsers/upstream/**" = ["E402", "UP031"]
+"src/engines/document/integrations/deepdoc/**" = ["F821", "E402"]
+# tests 普遍先 sys.path.insert(BACKEND_ROOT) 再 import novamind（E402 是该模式的必然产物）；
+# tests 的 F841（未用局部变量）第二波清
+"tests/**" = ["E402", "F841"]

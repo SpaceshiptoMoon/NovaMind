@@ -1,8 +1,11 @@
 """孤儿附件清理任务单测（引用集合收集逻辑 + 常量口径）。"""
+import pytest
 from novamind.features.qa.tasks.attachment_cleanup import (
     ORPHAN_CUTOFF_DAYS,
     _collect_referenced_ids,
 )
+
+pytestmark = pytest.mark.unit
 
 
 def test_collect_referenced_ids_merges_agent_and_qa_shapes():

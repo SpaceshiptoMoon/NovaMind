@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 
 @dataclass
@@ -12,8 +12,8 @@ class AgentSummary:
     """Agent 概要（skill 侧安装/卸载/列表所需的最小字段集）。"""
 
     id: int
-    user_id: Optional[int] = None
-    enabled_tools: List[str] = field(default_factory=list)
+    user_id: int | None = None
+    enabled_tools: list[str] = field(default_factory=list)
 
 
 @runtime_checkable
@@ -24,11 +24,11 @@ class AgentRegistryPort(Protocol):
     处理（``get_agent`` 返回 None）。
     """
 
-    async def get_agent(self, agent_id: int) -> Optional[AgentSummary]:
+    async def get_agent(self, agent_id: int) -> AgentSummary | None:
         """按 ID 取 Agent 概要；不存在返回 None。"""
         ... 
 
-    async def update_enabled_tools(self, agent_id: int, enabled_tools: List[str]) -> None:
+    async def update_enabled_tools(self, agent_id: int, enabled_tools: list[str]) -> None:
         """更新 Agent 的 enabled_tools 列表。"""
         ...
 

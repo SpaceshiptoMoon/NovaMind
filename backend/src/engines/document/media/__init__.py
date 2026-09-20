@@ -16,12 +16,12 @@ from novamind.engines.document.media.chunk_time_alignment import (
 )
 from novamind.engines.document.media.video import (
     AllFrameDescriptionsFailedError,
-    describe_grouped,
-    describe_rewrite,
-    describe_single,
     dedup_embedding,
     dedup_frame_diff,
     dedup_none,
+    describe_grouped,
+    describe_rewrite,
+    describe_single,
     extract_frames_fixed,
     extract_frames_scene,
     extract_video_frames,

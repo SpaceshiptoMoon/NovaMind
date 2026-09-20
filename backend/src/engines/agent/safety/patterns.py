@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import re
-from typing import Optional, Tuple
 
 # HARDLINE：不可绕过，直接拒绝
 HARDLINE_PATTERNS: list[tuple[str, str]] = [
@@ -41,7 +40,7 @@ _DANGEROUS_COMPILED = [
 ]
 
 
-def detect_dangerous_code(code: str) -> Tuple[bool, Optional[str], Optional[str]]:
+def detect_dangerous_code(code: str) -> tuple[bool, str | None, str | None]:
     """检测代码内容是否含危险操作。
 
     Returns:

@@ -1,30 +1,29 @@
 """
 Agent 模块依赖注入
 """
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import Depends, Request, WebSocket
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.core.auth import get_current_user
 from novamind.core.database.database import get_db
-from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.features.agent.services.agent_service import AgentService
-from novamind.features.agent.services.chat_service import AgentChatService
-from novamind.features.agent.services.mcp_server_service import McpServerService
-from novamind.engines.agent.tool.registry import ToolRegistry
-from novamind.engines.agent.mcp.client import McpClientManager
 from novamind.engines.agent.agent_engine import AgentEngine
+from novamind.engines.agent.mcp.client import McpClientManager
 from novamind.engines.agent.memory.todo_store import TodoStore
-from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
+from novamind.engines.agent.tool.registry import ToolRegistry
+from novamind.engines.prompt_provider_adapter import as_prompt_provider
 from novamind.features.agent.adapters import (
+    HostAttachmentReadPort,
     HostKnowledgeSearchPort,
     HostMemorySearchPort,
     HostMemoryStorePort,
-    HostAttachmentReadPort,
 )
 from novamind.features.agent.adapters.web_search_adapter import resolve_web_search_port
-from novamind.engines.prompt_provider_adapter import as_prompt_provider
+from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
+from novamind.features.agent.services.agent_service import AgentService
+from novamind.features.agent.services.chat_service import AgentChatService
+from novamind.features.agent.services.mcp_server_service import McpServerService
+from novamind.features.user.services.model_config_service import ModelConfigService
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def get_tool_registry(request: Request) -> ToolRegistry:
@@ -67,7 +66,7 @@ async def _current_user_id(current_user: dict = Depends(get_current_user)) -> in
     return current_user["id"]
 
 
-async def get_memory_search_repo() -> Optional[MemorySearchRepository]:
+async def get_memory_search_repo() -> MemorySearchRepository | None:
     """获取 ES 记忆检索仓储（可选，ES 不可用时返回 None）"""
     try:
         from novamind.shared.storage.client_factory import ClientFactory
@@ -97,8 +96,8 @@ async def _build_agent_chat_service(
     model_config_service: ModelConfigService,
     agent_engine: AgentEngine,
     todo_store: TodoStore,
-    memory_search_repo: Optional[MemorySearchRepository],
-    minio_client: Optional[Any],
+    memory_search_repo: MemorySearchRepository | None,
+    minio_client: Any | None,
 ) -> AgentChatService:
     """构造 AgentChatService（HTTP/WS 装配共用）。
 
@@ -151,8 +150,8 @@ async def get_agent_chat_service(
     model_config_service: ModelConfigService = Depends(get_model_config_service),
     agent_engine: AgentEngine = Depends(get_agent_engine),
     todo_store: TodoStore = Depends(get_todo_store),
-    memory_search_repo: Optional[MemorySearchRepository] = Depends(get_memory_search_repo),
-    minio_client: Optional[Any] = None,
+    memory_search_repo: MemorySearchRepository | None = Depends(get_memory_search_repo),
+    minio_client: Any | None = None,
 ) -> AgentChatService:
     return await _build_agent_chat_service(
         db, user_id, agent_service, model_config_service, agent_engine,

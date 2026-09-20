@@ -11,15 +11,12 @@ core/auth 的认证依赖经 ``UserStatusResolver`` 端口取 DB 最新用户状
 """
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.core.auth.ports import UserStatusResolver
 from novamind.core.database.database import get_db
 from novamind.features.user.models.user import UserStatus
 from novamind.features.user.repository.user_repository import UserRepository
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class UserStatusResolverAdapter:
@@ -28,7 +25,7 @@ class UserStatusResolverAdapter:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
-    async def get_user_for_auth(self, user_id: int) -> Optional[dict]:
+    async def get_user_for_auth(self, user_id: int) -> dict | None:
         repo = UserRepository(self._db)
         user = await repo.get_user_by_id(user_id)
         if not user:

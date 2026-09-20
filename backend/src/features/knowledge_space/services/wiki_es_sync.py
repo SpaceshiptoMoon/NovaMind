@@ -11,7 +11,7 @@ wiki 页以 ``chunk_type="wiki_page"`` 文档同步进 ES 向量库参与检索�
 无 embedding 模型（space.embedding_config["dimension"] 缺失）时优雅跳过
 并 warn——对齐 WeKnora chunkRepo 可空的「可装配」语义。
 """
-from typing import Any, Optional
+from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
 
@@ -32,7 +32,7 @@ class WikiEsSyncService:
         self.session = session
         self.es = es_client
 
-    async def _resolve_embedding_dim(self, space_id: int) -> Optional[int]:
+    async def _resolve_embedding_dim(self, space_id: int) -> int | None:
         """从 space.embedding_config 取维度；缺失返回 None（调用方跳过）"""
         from novamind.features.knowledge_space.repository.knowledge_space_repository import (
             KnowledgeSpaceRepository,
@@ -44,7 +44,7 @@ class WikiEsSyncService:
         dim = (space.embedding_config or {}).get("dimension")
         return int(dim) if dim else None
 
-    async def sync_page(self, space_id: int, page: Any, embedding: Optional[list] = None) -> bool:
+    async def sync_page(self, space_id: int, page: Any, embedding: list | None = None) -> bool:
         """同步单个 wiki 页到 ES。
 
         Args:

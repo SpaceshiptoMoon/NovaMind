@@ -20,7 +20,9 @@ import zipfile
 from io import BytesIO
 from xml.etree import ElementTree
 
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.html_parser import RAGFlowHtmlParser
+from novamind.engines.document.integrations.deepdoc.parsers.upstream.html_parser import (
+    RAGFlowHtmlParser,
+)
 
 # OPF XML namespaces
 _OPF_NS = "http://www.idpf.org/2007/opf"

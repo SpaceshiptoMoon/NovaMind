@@ -9,7 +9,7 @@
 （媒体解析流程）构建后注入。
 """
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 # 切分后反查用：匹配 chunk 文本里的 [HH:MM:SS#idx] 双锚点（提取 idx）。
 _ANCHOR_RE = re.compile(r"\[\d{2}:\d{2}:\d{2}#(\d+)\]")
@@ -33,7 +33,7 @@ def format_time_anchor(seconds: float, idx: int) -> str:
     return f"[{format_time(seconds)}#{idx}]"
 
 
-def extract_anchor_indices(text: str) -> List[int]:
+def extract_anchor_indices(text: str) -> list[int]:
     """提取文本中所有 ``[HH:MM:SS#idx]`` 锚点的 idx，按出现顺序返回。
 
     供 rewrite 策略后处理校验：LLM 重写后锚点 idx 集合应与输入帧 idx 一致，
@@ -43,8 +43,8 @@ def extract_anchor_indices(text: str) -> List[int]:
 
 
 def build_frame_timeline_map(
-    descriptions: List[Tuple[str, float, int]],
-) -> Dict[int, Tuple[Optional[float], Optional[float]]]:
+    descriptions: list[tuple[str, float, int]],
+) -> dict[int, tuple[float | None, float | None]]:
     """从帧描述列表构建 ``{frame_idx: (start_sec, end_sec)}``。
 
     ``descriptions`` 为 ``[(desc, timestamp, frame_idx), ...]``，按 frame_idx 升序排序后，
@@ -53,7 +53,7 @@ def build_frame_timeline_map(
     用 dict 而非 list：个别帧 VLM 失败被跳过时 frame_idx 仍递增、可能不连续，dict 按 idx 精确反查。
     """
     sorted_desc = sorted(descriptions, key=lambda d: d[2])  # 按 frame_idx 升序
-    timeline: Dict[int, Tuple[Optional[float], Optional[float]]] = {}
+    timeline: dict[int, tuple[float | None, float | None]] = {}
     for i, (_, ts, frame_idx) in enumerate(sorted_desc):
         end_ts = sorted_desc[i + 1][1] if i + 1 < len(sorted_desc) else None
         timeline[frame_idx] = (ts, end_ts)
@@ -61,14 +61,14 @@ def build_frame_timeline_map(
 
 
 def build_segment_timeline_map(
-    segments: List[Dict[str, Any]],
-) -> Dict[int, Tuple[Optional[float], Optional[float]]]:
+    segments: list[dict[str, Any]],
+) -> dict[int, tuple[float | None, float | None]]:
     """从 ASR segments 构建 ``{seg_idx: (start, end)}``。
 
     ``seg_idx`` 用 ``enumerate`` 原始 segments 顺序（跳过空文本的 seg 仍占原序号，保持与拼接锚点
     ``#seg_idx`` 一致）；ASR segment 自带 ``start``/``end``，直接取用。
     """
-    timeline: Dict[int, Tuple[Optional[float], Optional[float]]] = {}
+    timeline: dict[int, tuple[float | None, float | None]] = {}
     for seg_idx, seg in enumerate(segments):
         if not seg.get("text", "").strip():
             continue
@@ -77,12 +77,12 @@ def build_segment_timeline_map(
 
 
 def align_chunk_times(
-    chunk_items: List[Tuple[str, Dict[str, Any]]],
-    timeline_map: Dict[int, Tuple[Optional[float], Optional[float]]],
+    chunk_items: list[tuple[str, dict[str, Any]]],
+    timeline_map: dict[int, tuple[float | None, float | None]],
     is_video: bool,
     *,
-    frame_groups: Optional[Dict[int, List[int]]] = None,
-) -> List[Tuple[str, Dict[str, Any]]]:
+    frame_groups: dict[int, list[int]] | None = None,
+) -> list[tuple[str, dict[str, Any]]]:
     """切分后块到帧/segment 的时间对齐 + 剥离锚点。
 
     - 正则提取每个 chunk 文本里的 ``#idx`` 锚点 → 查 ``timeline_map`` 取 ``(start, end)``；
@@ -94,7 +94,7 @@ def align_chunk_times(
       锚点 idx 在 frame_groups 中，``frame_indices`` 展开为组内所有帧 idx（供下游映射多帧图路径）；
       否则 ``frame_indices = [idx]``（single/rewrite 行为不变）。
     """
-    aligned: List[Tuple[str, Dict[str, Any]]] = []
+    aligned: list[tuple[str, dict[str, Any]]] = []
     for text, meta in chunk_items:
         idxs = [int(m) for m in _ANCHOR_RE.findall(text)]
         new_meta = dict(meta)
@@ -112,7 +112,7 @@ def align_chunk_times(
             new_meta["start_time"] = min(starts) if starts else None
             new_meta["end_time"] = max(ends) if ends else None
             if is_video:
-                fis: List[int] = []
+                fis: list[int] = []
                 for i in idxs:
                     if i not in timeline_map:
                         continue

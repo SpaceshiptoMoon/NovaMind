@@ -7,11 +7,12 @@ import json
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select
-
-from novamind.core.authorization.app_codes import AppCode, match_app_code
+from novamind.core.authorization.app_codes import match_app_code
 from novamind.features.user.models.user_disabled_app import UserDisabledApp
 from novamind.features.user.services.app_access_service import AppAccessService
+from sqlalchemy import select
+
+pytestmark = pytest.mark.unit
 
 
 # ==================== 前缀段边界匹配 ====================

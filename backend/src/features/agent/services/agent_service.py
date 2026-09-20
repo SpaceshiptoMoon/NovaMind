@@ -3,47 +3,45 @@ Agent 管理服务
 
 负责 Agent 定义和会话的 CRUD。
 """
-from typing import Optional, Dict
-
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from datetime import datetime
 
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.agent.exceptions import (
+    AgentNotFoundError,
+    MemoryNotFoundError,
+    SessionNotFoundError,
+)
+from novamind.features.agent.models.agent import AgentDefinition
+from novamind.features.agent.models.context_summary import AgentContextSummary
+from novamind.features.agent.models.message import AgentMessage
+from novamind.features.agent.models.session import AgentSession
 from novamind.features.agent.repository.agent_repository import (
     AgentRepository,
-    SessionRepository,
     MessageRepository,
+    SessionRepository,
     ToolCallRepository,
 )
-from novamind.features.agent.repository.memory_repository import MemoryRepository
 from novamind.features.agent.repository.context_summary_repository import (
     ContextSummaryRepository,
 )
-from novamind.features.agent.models.agent import AgentDefinition
-from novamind.features.agent.models.session import AgentSession
-from novamind.features.agent.models.message import AgentMessage
-from novamind.features.agent.models.context_summary import AgentContextSummary
+from novamind.features.agent.repository.memory_repository import MemoryRepository
 from novamind.features.agent.schemas.agent_schema import (
     AgentCreate,
-    AgentUpdate,
-    AgentResponse,
     AgentDetailResponse,
     AgentListResponse,
-    SessionResponse,
-    AgentSessionListResponse,
     AgentMessageResponse,
-    MessageListResponse,
-    ToolCallResponse,
-    MemoryResponse,
+    AgentResponse,
+    AgentSessionListResponse,
+    AgentUpdate,
     MemoryListResponse,
+    MemoryResponse,
     MemoryStatsResponse,
+    MessageListResponse,
+    SessionResponse,
+    ToolCallResponse,
 )
-from novamind.features.agent.exceptions import (
-    AgentNotFoundError,
-    SessionNotFoundError,
-    MemoryNotFoundError,
-)
-from novamind.core.middleware.structured_logging import get_logger
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -129,9 +127,9 @@ class AgentService:
         return AgentDetailResponse.model_validate(agent)
 
     async def delete_agent(self, user_id: int, agent_id: int, is_admin: bool = False) -> None:
-        from novamind.features.agent.models.agent import AgentSession, AgentMessage
-        from novamind.features.agent.models.tool_call import AgentToolCall
+        from novamind.features.agent.models.agent import AgentMessage, AgentSession
         from novamind.features.agent.models.memory import AgentMemory
+        from novamind.features.agent.models.tool_call import AgentToolCall
 
         agent = await self.agent_repo.get_by_id(agent_id)
         if not agent:
@@ -167,7 +165,7 @@ class AgentService:
     # ==================== 会话管理 ====================
 
     async def get_or_create_session(
-        self, user_id: int, agent_id: int, session_id: Optional[str] = None
+        self, user_id: int, agent_id: int, session_id: str | None = None
     ) -> AgentSession:
         if session_id:
             conv = await self.session_repo.get_by_session_id(session_id)
@@ -188,7 +186,7 @@ class AgentService:
     async def list_sessions(
         self,
         user_id: int,
-        agent_id: Optional[int] = None,
+        agent_id: int | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> AgentSessionListResponse:
@@ -220,13 +218,13 @@ class AgentService:
         self,
         conversation_id: int,
         role: str,
-        content: Optional[str] = None,
-        tool_call_id: Optional[str] = None,
-        tool_name: Optional[str] = None,
-        token_count: Optional[int] = None,
-        extra: Optional[dict] = None,
-        reasoning: Optional[str] = None,
-        iteration: Optional[int] = None,
+        content: str | None = None,
+        tool_call_id: str | None = None,
+        tool_name: str | None = None,
+        token_count: int | None = None,
+        extra: dict | None = None,
+        reasoning: str | None = None,
+        iteration: int | None = None,
     ) -> AgentMessage:
         msg = await self.msg_repo.create(
             conversation_id=conversation_id,
@@ -322,7 +320,7 @@ class AgentService:
         self,
         user_id: int,
         agent_id: int,
-        category: Optional[str] = None,
+        category: str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> MemoryListResponse:
@@ -349,7 +347,9 @@ class AgentService:
 
         # 尝试从 ES 删除
         try:
-            from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
+            from novamind.features.agent.repository.memory_search_repository import (
+                MemorySearchRepository,
+            )
             from novamind.shared.storage.client_factory import ClientFactory
             es_wrapper = await ClientFactory.get_elasticsearch_client()
             search_repo = MemorySearchRepository(es_client=es_wrapper.es_client)
@@ -369,7 +369,7 @@ class AgentService:
             agent_id, user_id, limit=1000,
         )
 
-        by_category: Dict[str, int] = {}
+        by_category: dict[str, int] = {}
         for m in memories:
             by_category[m.category] = by_category.get(m.category, 0) + 1
 

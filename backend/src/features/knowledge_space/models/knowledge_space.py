@@ -3,11 +3,20 @@
 
 存储知识空间的基本信息和配置
 """
-from typing import Optional
 from enum import IntEnum
-from sqlalchemy import Column, BigInteger, Integer, SmallInteger, String, DateTime, JSON, ForeignKey, Index
 
 from novamind.core.database.base import BaseModel
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    String,
+)
 
 
 class SpaceVisibility(IntEnum):
@@ -80,7 +89,7 @@ class KnowledgeSpace(BaseModel):
         """获取完整配置"""
         return self.config or {}
 
-    def get_description(self) -> Optional[str]:
+    def get_description(self) -> str | None:
         """获取描述"""
         return self.get_config().get("description", "")
 
@@ -91,18 +100,18 @@ class KnowledgeSpace(BaseModel):
     # ========== Embedding 配置 ==========
 
     @property
-    def embedding_config(self) -> Optional[dict]:
+    def embedding_config(self) -> dict | None:
         """获取空间级别的 Embedding 配置"""
         return self.get_config().get("embedding")
 
     @property
-    def embedding_model(self) -> Optional[str]:
+    def embedding_model(self) -> str | None:
         """获取空间级别的 Embedding 模型"""
         emb = self.embedding_config
         return emb.get("model") if emb else None
 
     @property
-    def embedding_dimension(self) -> Optional[int]:
+    def embedding_dimension(self) -> int | None:
         """获取空间级别的 Embedding 维度"""
         emb = self.embedding_config
         return emb.get("dimension") if emb else None

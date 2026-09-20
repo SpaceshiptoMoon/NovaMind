@@ -2,7 +2,6 @@
 import asyncio
 
 import pytest
-
 from novamind.engines.agent.safety import ApprovalHook, ApprovalRejectedError
 from novamind.engines.agent.safety.patterns import detect_dangerous_code
 from novamind.engines.agent.tool.definition import ToolDefinition, ToolSource

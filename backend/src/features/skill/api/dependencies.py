@@ -3,23 +3,21 @@
 """
 import json
 import pathlib
-from typing import Optional
 
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.core.database.database import get_db
-from novamind.shared.storage.client_factory import get_minio_client
-from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.features.skill.services.skill_marketplace_service import SkillMarketplaceService
-from novamind.features.skill.services.skill_checker import SkillSecurityChecker
+from novamind.core.middleware.structured_logging import get_logger
 from novamind.engines.prompt_provider_adapter import as_prompt_provider
 from novamind.features.agent.adapters.agent_registry_adapter import as_agent_registry_port
-from novamind.features.notification.adapters.notification_port_adapter import as_notification_port
 from novamind.features.knowledge_space.api.dependencies import get_current_user_id
+from novamind.features.notification.adapters.notification_port_adapter import as_notification_port
+from novamind.features.skill.services.skill_checker import SkillSecurityChecker
+from novamind.features.skill.services.skill_marketplace_service import SkillMarketplaceService
+from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.setting.yaml_config.loader import get_config_value
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.storage.client_factory import get_minio_client
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -51,7 +49,7 @@ async def _get_llm_review_enabled() -> bool:
     return bool(get_config_value("skill_marketplace.llm_review_enabled") or False)
 
 
-async def _get_llm_review_model() -> Optional[str]:
+async def _get_llm_review_model() -> str | None:
     """读取 LLM 审查模型名称，优先从持久化文件读取"""
     settings = _read_settings()
     if settings.get("llm_review_model"):
@@ -62,7 +60,7 @@ async def _get_llm_review_model() -> Optional[str]:
 async def _get_review_llm_client(
     user_id: int,
     model_config_service: ModelConfigService,
-) -> Optional[BaseLLM]:
+) -> BaseLLM | None:
     """获取审查用的 LLM 客户端
 
     管理员指定了审查模型时，按初始管理员账号（YAML ``admin.username``）取
@@ -81,13 +79,13 @@ async def _get_review_llm_client(
     return await model_config_service.get_llm_client_by_model(user_id, model_name)
 
 
-async def _get_review_model_owner_id() -> Optional[int]:
+async def _get_review_model_owner_id() -> int | None:
     """解析审查模型凭证归属用户：初始管理员（YAML admin.username）"""
     from novamind.setting.yaml_config.loader import get_config
 
     admin_username = get_config().admin.username
-    from novamind.features.user.repository.user_repository import UserRepository
     from novamind.core.database.database import get_session_factory
+    from novamind.features.user.repository.user_repository import UserRepository
 
     session_factory = get_session_factory()
     async with session_factory() as db:
@@ -134,7 +132,7 @@ async def get_skill_service(
     await service.cleanup()
 
 
-async def update_llm_review_settings(enabled: bool, model: Optional[str] = None) -> None:
+async def update_llm_review_settings(enabled: bool, model: str | None = None) -> None:
     """管理员更新 LLM 审查设置"""
     settings = _read_settings()
     settings["llm_review_enabled"] = enabled

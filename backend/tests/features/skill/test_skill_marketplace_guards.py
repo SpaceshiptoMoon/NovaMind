@@ -14,12 +14,16 @@ import zipfile
 from types import SimpleNamespace
 
 import pytest
-
 from novamind.features.skill.exceptions import SkillAccessDeniedError
 from novamind.features.skill.models.skill import (
-    SkillSource, SkillStatus, SkillVisibility, ReviewStatus,
+    ReviewStatus,
+    SkillSource,
+    SkillStatus,
+    SkillVisibility,
 )
 from novamind.features.skill.services.skill_marketplace_service import SkillMarketplaceService
+
+pytestmark = pytest.mark.unit
 
 
 def _make_skill(**overrides) -> SimpleNamespace:

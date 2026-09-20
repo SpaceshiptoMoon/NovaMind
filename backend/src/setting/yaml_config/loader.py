@@ -2,11 +2,12 @@ import os
 import re
 import threading
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 
-from .config import (    AdminConfig,
+from .config import (
+    AdminConfig,
     AppConfig,
     DatabaseConfig,
     DeepResearchConfig,
@@ -24,24 +25,24 @@ from .config import (    AdminConfig,
     ParsingConfig,
     ProjectConfig,
     RedisConfig,
-    RetrievalConfig,
     RerankSettings,
+    RetrievalConfig,
     SecurityConfig,
     SerpAPIConfig,
-    SplittingConfig,
     SmtpConfig,
-    TavilyConfig,
+    SplittingConfig,
     TaskQueueConfig,
+    TavilyConfig,
     VectorDbConfig,
 )
 
 
 class ConfigLoader:
-    def __init__(self, config_dir: Optional[Path] = None):
+    def __init__(self, config_dir: Path | None = None):
         self.config_dir = config_dir or Path(__file__).parent / "yaml"
-        self._config: Dict[str, Any] = {}
+        self._config: dict[str, Any] = {}
 
-    def load(self, environment: Optional[str] = None) -> Dict[str, Any]:
+    def load(self, environment: str | None = None) -> dict[str, Any]:
         env = environment or os.getenv("ENVIRONMENT", "development")
         # 加载仓库根 .env 作为占位符取值源（幂等：已存在的进程环境变量优先）。
         # 本地开发时密钥只写 .env 一份，YAML 侧用 ${VAR} 占位符引用；
@@ -76,15 +77,15 @@ class ConfigLoader:
             # python-dotenv 为核心依赖，缺失仅在实际有 .env 时才有影响
             pass
 
-    def _load_yaml(self, filename: str) -> Dict[str, Any]:
+    def _load_yaml(self, filename: str) -> dict[str, Any]:
         filepath = self.config_dir / filename
         if filepath.exists():
-            with open(filepath, "r", encoding="utf-8") as f:
+            with open(filepath, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
                 return data if data else {}
         return {}
 
-    def _deep_merge(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+    def _deep_merge(self, base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
         result = base.copy()
         for key, value in override.items():
             if key in result and isinstance(result[key], dict) and isinstance(value, dict):
@@ -122,7 +123,7 @@ class ConfigLoader:
         return value
 
 
-def create_config_from_dict(data: Dict[str, Any]) -> AppConfig:
+def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
     config = AppConfig()
     config.environment = data.get("environment", "development")
     config.cors_origins = data.get("cors_origins", "*")
@@ -334,7 +335,7 @@ def create_config_from_dict(data: Dict[str, Any]) -> AppConfig:
     # 功能开关：features 段可选，键为 feature 名，值为 bool 或 {enabled: bool}。
     # 未列出的 feature 默认启用（由 manifest_loader 解析）。
     features_raw = data.get("features", {}) or {}
-    flags: Dict[str, FeatureFlag] = {}
+    flags: dict[str, FeatureFlag] = {}
     for name, val in features_raw.items():
         if isinstance(val, dict):
             flags[name] = FeatureFlag(enabled=bool(val.get("enabled", True)))
@@ -345,10 +346,10 @@ def create_config_from_dict(data: Dict[str, Any]) -> AppConfig:
     return config
 
 
-_loader: Optional[ConfigLoader] = None
-_config_dict: Optional[Dict[str, Any]] = None
-_config: Optional[AppConfig] = None
-_environment: Optional[str] = None
+_loader: ConfigLoader | None = None
+_config_dict: dict[str, Any] | None = None
+_config: AppConfig | None = None
+_environment: str | None = None
 _config_lock = threading.Lock()
 
 
@@ -361,7 +362,7 @@ def set_environment(env: str) -> None:
         _config = None
 
 
-def get_environment() -> Optional[str]:
+def get_environment() -> str | None:
     return _environment
 
 
@@ -377,7 +378,7 @@ def get_config() -> AppConfig:
     return _config
 
 
-def get_config_dict() -> Dict[str, Any]:
+def get_config_dict() -> dict[str, Any]:
     get_config()
     return _config_dict or {}
 
@@ -389,7 +390,7 @@ def get_config_value(key: str, default: Any = None) -> Any:
     return _loader.get(key, default)
 
 
-def reload_config(environment: Optional[str] = None) -> AppConfig:
+def reload_config(environment: str | None = None) -> AppConfig:
     global _loader, _config_dict, _config
     with _config_lock:
         _loader = ConfigLoader()

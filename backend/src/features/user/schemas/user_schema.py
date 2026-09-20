@@ -1,15 +1,15 @@
-from pydantic import BaseModel, Field, field_validator, model_validator, EmailStr, ConfigDict
-from typing import Optional, Self
 from datetime import datetime
+from typing import Self
 
 from novamind.features.user.schemas.validators import (
-    validate_username_format,
-    validate_username_optional,
-    validate_phone_format,
+    validate_password_not_username,
     validate_password_strength,
     validate_password_strength_optional,
-    validate_password_not_username,
+    validate_phone_format,
+    validate_username_format,
+    validate_username_optional,
 )
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 
 class UserBase(BaseModel):
@@ -33,7 +33,7 @@ class UserBase(BaseModel):
         description="用户邮箱地址，必须符合邮箱格式，用于找回密码等操作",
         examples=["user@example.com", "zhangsan@company.cn"]
     )
-    phone: Optional[str] = Field(
+    phone: str | None = Field(
         None,
         description="用户手机号码，可选字段，必须符合11位手机号格式",
         examples=["13800138000"]
@@ -91,39 +91,39 @@ class UserUpdate(BaseModel):
     - password: 用户登录密码，可选字段，长度8-30个字符，至少包含字母、数字和特殊字符
     - status: 用户状态，0为禁用，1为启用，默认为None表示不更新
     """
-    username: Optional[str] = Field(
+    username: str | None = Field(
         None,
         description="用户唯一标识符，长度为3-50个字符，支持字母、数字、下划线",
         min_length=3,
         max_length=50,
         examples=["zhangsan", "user_123"]
     )
-    email: Optional[EmailStr] = Field(
+    email: EmailStr | None = Field(
         None,
         description="用户邮箱地址，必须符合邮箱格式",
         examples=["user@example.com"]
     )
-    phone: Optional[str] = Field(
+    phone: str | None = Field(
         None,
         description="用户手机号码，可选字段，必须符合11位手机号格式",
         examples=["13800138000"]
     )
-    password: Optional[str] = Field(
+    password: str | None = Field(
         None,
         description="用户登录密码，长度为8-30个字符，必须包含大小写字母、数字和特殊字符",
         min_length=8,
         max_length=30,
         examples=["Secure@123"]
     )
-    is_admin: Optional[bool] = Field(
+    is_admin: bool | None = Field(
         None,
         description="是否管理员（已弃用，请使用 role_code；保留仅用于兼容旧客户端）",
     )
-    role_code: Optional[str] = Field(
+    role_code: str | None = Field(
         None,
         description="角色编码（仅限超级管理员通过专用接口修改，普通更新不传此字段；由 Task 8 专用端点处理）",
     )
-    status: Optional[int] = Field(None, description="用户状态，0为禁用，1为启用，2为封禁，3为已删除", ge=0, le=3)
+    status: int | None = Field(None, description="用户状态，0为禁用，1为启用，2为封禁，3为已删除", ge=0, le=3)
 
     @field_validator('username')
     @classmethod
@@ -223,14 +223,14 @@ class UserResponse(BaseModel):
     id: int = Field(..., description="用户唯一ID")
     username: str = Field(..., description="用户名")
     email: EmailStr = Field(..., description="用户邮箱")
-    phone: Optional[str] = Field(None, description="用户手机号码")
+    phone: str | None = Field(None, description="用户手机号码")
     role: RoleBrief = Field(..., description="用户系统角色")
     is_admin: bool = Field(default=False, description="是否系统管理员（从 role 派生）")
     is_super_admin: bool = Field(default=False, description="是否最高管理员（YAML 配置的初始账号）")
     status: int = Field(..., description="用户状态，0为禁用，1为启用，2为封禁，3为已删除")
-    last_login_at: Optional[datetime] = Field(None, description="最后登录时间")
+    last_login_at: datetime | None = Field(None, description="最后登录时间")
     created_at: datetime = Field(..., description="用户创建时间")
-    updated_at: Optional[datetime] = Field(None, description="用户最后更新时间")
+    updated_at: datetime | None = Field(None, description="用户最后更新时间")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -253,9 +253,9 @@ class Token(BaseModel):
     """
     access_token: str = Field(..., description="访问令牌，JWT格式")
     token_type: str = Field(default="bearer", description="令牌类型，通常为'bearer'")
-    refresh_token: Optional[str] = Field(None, description="刷新令牌，用于获取新的访问令牌")
-    expires_in: Optional[int] = Field(None, description="访问令牌过期时间（秒）")
-    must_change_password: Optional[bool] = Field(None, description="是否需要强制修改密码")
+    refresh_token: str | None = Field(None, description="刷新令牌，用于获取新的访问令牌")
+    expires_in: int | None = Field(None, description="访问令牌过期时间（秒）")
+    must_change_password: bool | None = Field(None, description="是否需要强制修改密码")
 
 
 class TokenRefresh(BaseModel):
@@ -272,7 +272,7 @@ class TokenRefreshResponse(BaseModel):
     access_token: str = Field(..., description="新的访问令牌")
     refresh_token: str = Field(..., description="新的刷新令牌")
     token_type: str = Field(default="bearer", description="令牌类型")
-    expires_in: Optional[int] = Field(None, description="访问令牌过期时间（秒）")
+    expires_in: int | None = Field(None, description="访问令牌过期时间（秒）")
 
 
 class UserMessageResponse(BaseModel):
@@ -296,7 +296,7 @@ class LogoutRequest(BaseModel):
     - 不传 body 或不传 refresh_token 时，仅撤销请求头中的 access token
     - 传入 refresh_token 时同时撤销，防止登出后 7 天内仍可换新 token
     """
-    refresh_token: Optional[str] = Field(None, description="刷新令牌（可选，传入则一并撤销）")
+    refresh_token: str | None = Field(None, description="刷新令牌（可选，传入则一并撤销）")
 
 
 class LogoutAllSessionsResponse(BaseModel):
@@ -322,14 +322,14 @@ class TokenData(BaseModel):
     - status: 状态
     - jti: Token 唯一标识符
     """
-    user_id: Optional[int] = Field(None, description="用户ID")
-    username: Optional[str] = Field(None, description="用户名")
-    email: Optional[str] = Field(None, description="邮箱")
-    role_code: Optional[str] = Field(None, description="角色编码")
-    is_admin: Optional[bool] = Field(default=False, description="是否管理员")
-    status: Optional[int] = Field(default=1, description="状态，1为活跃")
-    jti: Optional[str] = Field(None, description="Token 唯一标识符")
-    iat: Optional[int] = Field(None, description="Token 签发时间戳")
+    user_id: int | None = Field(None, description="用户ID")
+    username: str | None = Field(None, description="用户名")
+    email: str | None = Field(None, description="邮箱")
+    role_code: str | None = Field(None, description="角色编码")
+    is_admin: bool | None = Field(default=False, description="是否管理员")
+    status: int | None = Field(default=1, description="状态，1为活跃")
+    jti: str | None = Field(None, description="Token 唯一标识符")
+    iat: int | None = Field(None, description="Token 签发时间戳")
 
 
 # ==================== 密码重置 Schema ====================
@@ -388,7 +388,7 @@ class ResetPasswordResponse(BaseModel):
 class MyPermissionsResponse(BaseModel):
     """当前用户权限响应模型"""
     permissions: list[str] = Field(..., description="权限码列表")
-    role_code: Optional[str] = Field(None, description="角色编码")
+    role_code: str | None = Field(None, description="角色编码")
     disabled_apps: list[str] = Field(default_factory=list, description="被禁用的应用代码列表（admin 恒为空）")
 
 

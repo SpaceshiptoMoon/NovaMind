@@ -6,12 +6,16 @@ import json
 from pathlib import Path
 from typing import Any
 
-from novamind.engines.document.integrations.deepdoc.vision._diagnostic_io import iter_diagnostic_images
+from novamind.engines.document.integrations.deepdoc.vision._diagnostic_io import (
+    iter_diagnostic_images,
+)
 from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import (
     LayoutRecognizer4YOLOv10 as LayoutRecognizer,
 )
 from novamind.engines.document.integrations.deepdoc.vision.seeit import draw_box
-from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
+    TableStructureRecognizer,
+)
 
 
 def run_recognizer_diagnostics(

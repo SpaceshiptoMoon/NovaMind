@@ -4,18 +4,17 @@
 处理知识空间的审计日志记录和查询
 """
 
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Request
-
+from novamind.core.database.database import get_db_session
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.exceptions import SpaceNotFoundError
+from novamind.features.knowledge_space.models.space_audit_log import AuditAction, SpaceAuditLog
 from novamind.features.knowledge_space.repository.audit_repository import AuditRepository
 from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
-from novamind.features.knowledge_space.models.space_audit_log import SpaceAuditLog, AuditAction
-from novamind.features.knowledge_space.exceptions import SpaceNotFoundError
-from novamind.core.middleware.structured_logging import get_logger
-from novamind.core.database.database import get_db_session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class AuditService:
@@ -36,11 +35,11 @@ class AuditService:
         space_id: int,
         user_id: int,
         action: str,
-        request: Optional[Request] = None,
-        resource_type: Optional[str] = None,
-        resource_id: Optional[int] = None,
-        details: Optional[Dict[str, Any]] = None,
-        changes: Optional[Dict[str, Any]] = None,
+        request: Request | None = None,
+        resource_type: str | None = None,
+        resource_id: int | None = None,
+        details: dict[str, Any] | None = None,
+        changes: dict[str, Any] | None = None,
     ) -> Any:
         """
         记录操作日志
@@ -93,7 +92,7 @@ class AuditService:
         space_id: int,
         user_id: int,
         space_name: str,
-        request: Optional[Request] = None,
+        request: Request | None = None,
     ):
         """记录空间创建"""
         await self.log_action(
@@ -110,8 +109,8 @@ class AuditService:
         self,
         space_id: int,
         user_id: int,
-        changes: Dict[str, Any],
-        request: Optional[Request] = None,
+        changes: dict[str, Any],
+        request: Request | None = None,
     ):
         """记录空间更新"""
         await self.log_action(
@@ -128,7 +127,7 @@ class AuditService:
         self,
         space_id: int,
         user_id: int,
-        request: Optional[Request] = None,
+        request: Request | None = None,
     ):
         """记录空间删除"""
         await self.log_action(
@@ -146,7 +145,7 @@ class AuditService:
         user_id: int,
         kb_id: int,
         kb_name: str,
-        request: Optional[Request] = None,
+        request: Request | None = None,
     ):
         """记录知识库创建"""
         await self.log_action(
@@ -164,8 +163,8 @@ class AuditService:
         space_id: int,
         user_id: int,
         kb_id: int,
-        changes: Dict[str, Any],
-        request: Optional[Request] = None,
+        changes: dict[str, Any],
+        request: Request | None = None,
     ):
         """记录知识库更新"""
         await self.log_action(
@@ -184,7 +183,7 @@ class AuditService:
         user_id: int,
         kb_id: int,
         kb_name: str,
-        request: Optional[Request] = None,
+        request: Request | None = None,
     ):
         """记录知识库删除"""
         await self.log_action(
@@ -203,7 +202,7 @@ class AuditService:
         user_id: int,
         invited_user_id: int,
         role: str,
-        request: Optional[Request] = None,
+        request: Request | None = None,
     ):
         """记录成员邀请"""
         await self.log_action(
@@ -223,7 +222,7 @@ class AuditService:
         document_id: int,
         filename: str,
         file_size: int,
-        request: Optional[Request] = None,
+        request: Request | None = None,
     ):
         """记录文档上传"""
         await self.log_action(
@@ -242,7 +241,7 @@ class AuditService:
         user_id: int,
         document_id: int,
         filename: str,
-        request: Optional[Request] = None,
+        request: Request | None = None,
     ):
         """记录文档删除"""
         await self.log_action(
@@ -262,7 +261,7 @@ class AuditService:
         query: str,
         search_type: str,
         result_count: int,
-        request: Optional[Request] = None,
+        request: Request | None = None,
     ):
         """记录检索操作"""
         action_map = {
@@ -288,13 +287,13 @@ class AuditService:
         self,
         space_id: int,
         user_id: int,
-        action: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        action: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         skip: int = 0,
         limit: int = 100,
         raise_not_found: bool = False,
-    ) -> List[Any]:
+    ) -> list[Any]:
         """
         获取空间审计日志
 
@@ -332,7 +331,7 @@ class AuditService:
     async def get_trace_logs(
         self,
         trace_id: str,
-    ) -> List[Any]:
+    ) -> list[Any]:
         """
         根据追踪 ID 获取日志链路
 
@@ -347,9 +346,9 @@ class AuditService:
     async def get_action_stats(
         self,
         space_id: int,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-    ) -> Dict[str, int]:
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> dict[str, int]:
         """
         获取空间操作统计
 

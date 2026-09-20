@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from importlib import import_module
 
-
 _EXPORT_MAP = {
     "get_deepdoc_capabilities": ("novamind.engines.document.integrations.deepdoc.core.capabilities", "get_deepdoc_capabilities"),
     "DeepDocEngine": ("novamind.engines.document.integrations.deepdoc.core.engine", "DeepDocEngine"),

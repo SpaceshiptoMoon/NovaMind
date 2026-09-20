@@ -6,8 +6,9 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-
-from novamind.engines.document.integrations.deepdoc.vision._diagnostic_io import iter_diagnostic_images
+from novamind.engines.document.integrations.deepdoc.vision._diagnostic_io import (
+    iter_diagnostic_images,
+)
 from novamind.engines.document.integrations.deepdoc.vision.ocr import OCR
 from novamind.engines.document.integrations.deepdoc.vision.seeit import draw_box
 

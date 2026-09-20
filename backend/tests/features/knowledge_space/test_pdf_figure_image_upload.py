@@ -5,7 +5,6 @@ import sys
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -21,6 +20,8 @@ from novamind.features.knowledge_space.services.document_pipeline import (
     _replace_figure_placeholders,
     _upload_figure_images_to_minio,
 )
+
+pytestmark = pytest.mark.unit
 
 
 def _make_png_bytes(width: int = 64, height: int = 64) -> bytes:

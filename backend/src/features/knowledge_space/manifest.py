@@ -5,16 +5,18 @@ from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, Ro
 
 
 def _import_models() -> None:
-    from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace  # noqa: F401
-    from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase  # noqa: F401
     from novamind.features.knowledge_space.models.document import Document  # noqa: F401
-    from novamind.features.knowledge_space.models.space_member import SpaceMember  # noqa: F401
+    from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase  # noqa: F401
+    from novamind.features.knowledge_space.models.knowledge_space import (
+        KnowledgeSpace,  # noqa: F401
+    )
     from novamind.features.knowledge_space.models.space_audit_log import SpaceAuditLog  # noqa: F401
+    from novamind.features.knowledge_space.models.space_member import SpaceMember  # noqa: F401
     from novamind.features.knowledge_space.models.wiki import (  # noqa: F401
-        WikiPage,
-        WikiPageRevision,
         WikiIngestRecord,
+        WikiPage,
         WikiPageIssue,
+        WikiPageRevision,
     )
 
 
@@ -25,11 +27,13 @@ async def _init(app) -> None:
 
 
 def manifest() -> FeatureManifest:
-    from novamind.features.knowledge_space.api.space_router import router as space_router
-    from novamind.features.knowledge_space.api.knowledge_base_routes import router as knowledge_base_router
     from novamind.features.knowledge_space.api.document_routes import router as document_router
+    from novamind.features.knowledge_space.api.knowledge_base_routes import (
+        router as knowledge_base_router,
+    )
     from novamind.features.knowledge_space.api.member_routes import router as member_router
     from novamind.features.knowledge_space.api.search_routes import router as search_router
+    from novamind.features.knowledge_space.api.space_router import router as space_router
     from novamind.features.knowledge_space.api.wiki_routes import router as wiki_router
 
     return FeatureManifest(

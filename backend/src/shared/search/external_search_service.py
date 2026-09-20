@@ -5,8 +5,8 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
+from typing import Any
 
 from novamind.shared.logging import get_logger
 
@@ -20,7 +20,7 @@ class ExternalSearchResult:
     url: str                                # URL
     content: str                            # 内容摘要
     score: float = 0.0                      # 相关性分数
-    published_date: Optional[str] = None    # 发布日期
+    published_date: str | None = None    # 发布日期
     source: str = ""                        # 来源
 
 
@@ -43,7 +43,7 @@ class ExternalSearchService(ABC):
         query: str,
         max_results: int = 10,
         **kwargs,
-    ) -> List[ExternalSearchResult]:
+    ) -> list[ExternalSearchResult]:
         """
         执行搜索
 
@@ -69,8 +69,8 @@ class ExternalSearchService(ABC):
 
     def _normalize_results(
         self,
-        raw_results: List[Dict[str, Any]]
-    ) -> List[ExternalSearchResult]:
+        raw_results: list[dict[str, Any]]
+    ) -> list[ExternalSearchResult]:
         """
         标准化搜索结果
 

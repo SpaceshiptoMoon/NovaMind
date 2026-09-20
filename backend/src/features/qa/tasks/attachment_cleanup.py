@@ -5,12 +5,11 @@
 消息 extra 引用的附件视为孤儿（附件与消息无外键，引用只经 JSON extra 传递——
 agent_messages.extra 与 question_answer.extra 两处，形态均为 {"attachments": [{"id": ...}]}）。
 """
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Set
-
-from sqlalchemy import select
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from novamind.shared.logging import get_logger
+from sqlalchemy import select
 
 logger = get_logger(__name__)
 
@@ -18,9 +17,9 @@ logger = get_logger(__name__)
 ORPHAN_CUTOFF_DAYS = 7
 
 
-def _collect_referenced_ids(extras) -> Set[int]:
+def _collect_referenced_ids(extras) -> set[int]:
     """从消息 extra 列表收集被引用的附件 id 集合"""
-    referenced: Set[int] = set()
+    referenced: set[int] = set()
     for row in extras:
         extra = row[0]
         if not isinstance(extra, dict):
@@ -31,7 +30,7 @@ def _collect_referenced_ids(extras) -> Set[int]:
     return referenced
 
 
-async def cleanup_orphan_attachments(ctx: Dict[str, Any] | None = None) -> int:
+async def cleanup_orphan_attachments(ctx: dict[str, Any] | None = None) -> int:
     """删除孤儿附件（DB 记录 + MinIO 对象）。返回删除条数。
 
     cron 周期调用；任何一步失败都不中断整体（逐条容错）。
@@ -41,7 +40,7 @@ async def cleanup_orphan_attachments(ctx: Dict[str, Any] | None = None) -> int:
     from novamind.features.qa.models.chat_attachment import ChatAttachment
     from novamind.features.qa.models.question_answer import QuestionAnswer
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=ORPHAN_CUTOFF_DAYS)
+    cutoff = datetime.now(UTC) - timedelta(days=ORPHAN_CUTOFF_DAYS)
 
     async with get_db_session() as db:
         # 1. 候选：cutoff 之前上传的附件

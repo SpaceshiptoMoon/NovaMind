@@ -11,20 +11,6 @@
 注意: 分块数据仅存储在 Elasticsearch 中，不在 MySQL 中存储
 """
 
-from novamind.features.knowledge_space.models.knowledge_space import (
-    KnowledgeSpace,
-    SpaceVisibility,
-    SpaceStatus,
-)
-from novamind.features.knowledge_space.models.space_member import (
-    SpaceMember,
-    SpaceRole,
-    MemberStatus,
-)
-from novamind.features.knowledge_space.models.knowledge_base import (
-    KnowledgeBase,
-    KnowledgeBaseStatus,
-)
 from novamind.features.knowledge_space.models.document import (
     Document,
     DocumentStatus,
@@ -33,13 +19,27 @@ from novamind.features.knowledge_space.models.document_task import (
     DocumentTask,
     TaskStatus,
 )
-from novamind.features.knowledge_space.models.document_task_item import DocumentTaskItem
 from novamind.features.knowledge_space.models.document_task_batch import (
-    DocumentTaskBatch,
     BatchAction,
     BatchStatus,
+    DocumentTaskBatch,
 )
-from novamind.features.knowledge_space.models.space_audit_log import SpaceAuditLog, AuditAction
+from novamind.features.knowledge_space.models.document_task_item import DocumentTaskItem
+from novamind.features.knowledge_space.models.knowledge_base import (
+    KnowledgeBase,
+    KnowledgeBaseStatus,
+)
+from novamind.features.knowledge_space.models.knowledge_space import (
+    KnowledgeSpace,
+    SpaceStatus,
+    SpaceVisibility,
+)
+from novamind.features.knowledge_space.models.space_audit_log import AuditAction, SpaceAuditLog
+from novamind.features.knowledge_space.models.space_member import (
+    MemberStatus,
+    SpaceMember,
+    SpaceRole,
+)
 
 __all__ = [
     # 空间

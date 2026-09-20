@@ -1,9 +1,8 @@
 """
 MCP 连接配置模型
 """
-import socket
 import ipaddress
-from typing import Dict, List, Optional
+import socket
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator
@@ -12,14 +11,14 @@ from pydantic import BaseModel, Field, field_validator
 class StdioConfig(BaseModel):
     """stdio 传输配置"""
     command: str = Field(..., description="要执行的命令，如 python、node、npx")
-    args: List[str] = Field(default_factory=list, description="命令参数")
-    env: Dict[str, str] = Field(default_factory=dict, description="环境变量")
+    args: list[str] = Field(default_factory=list, description="命令参数")
+    env: dict[str, str] = Field(default_factory=dict, description="环境变量")
 
 
 class StreamableHttpConfig(BaseModel):
     """Streamable HTTP 传输配置"""
     url: str = Field(..., description="MCP 服务器 URL，如 http://localhost:8000/mcp")
-    headers: Dict[str, str] = Field(default_factory=dict, description="请求头")
+    headers: dict[str, str] = Field(default_factory=dict, description="请求头")
 
     @field_validator("url")
     @classmethod
@@ -46,8 +45,8 @@ class StreamableHttpConfig(BaseModel):
 class McpConnectionConfig(BaseModel):
     """MCP 连接配置（通用）"""
     transport_type: str = Field(..., description="传输类型：stdio 或 streamable_http")
-    stdio: Optional[StdioConfig] = Field(None, description="stdio 配置")
-    http: Optional[StreamableHttpConfig] = Field(None, description="HTTP 配置")
+    stdio: StdioConfig | None = Field(None, description="stdio 配置")
+    http: StreamableHttpConfig | None = Field(None, description="HTTP 配置")
 
     @classmethod
     def from_db_config(cls, transport_type: str, connection_config: dict) -> "McpConnectionConfig":

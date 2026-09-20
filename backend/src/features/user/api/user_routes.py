@@ -1,47 +1,47 @@
-from fastapi import APIRouter, Depends, Body, Query, Request, Path
-from typing import Annotated, List, Optional
+from typing import Annotated
 
-from novamind.features.user.services import UserService
+from fastapi import APIRouter, Body, Depends, Path, Query, Request
+from novamind.core.auth import require_active_user
+from novamind.core.authorization.dependencies import (
+    get_permission_checker_dep,
+    require_permission,
+)
+from novamind.core.authorization.ports import PermissionCheckerPort
+from novamind.core.database.database import get_db
+from novamind.core.middleware.rate_limit import RateLimits, get_limiter
+from novamind.features.user.api.dependencies import get_user_service
 from novamind.features.user.exceptions import (
     PermissionDeniedError,
     UserNotFoundError,
 )
+from novamind.features.user.models.user import User as UserModel
+from novamind.features.user.models.user import UserStatus
 from novamind.features.user.schemas.user_schema import (
-    UserCreate,
-    UserResponse,
-    UserUpdate,
-    UserLogin,
-    UserRegister,
+    AdminResetPasswordResponse,
+    ChangePasswordRequest,
+    ChangePasswordResponse,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
+    LogoutAllSessionsResponse,
+    LogoutRequest,
+    LogoutResponse,
+    MyPermissionsResponse,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
     Token,
     TokenRefresh,
     TokenRefreshResponse,
-    UserMessageResponse,
-    LogoutResponse,
-    LogoutRequest,
-    LogoutAllSessionsResponse,
-    ChangePasswordRequest,
-    ChangePasswordResponse,
-    AdminResetPasswordResponse,
-    ForgotPasswordRequest,
-    ForgotPasswordResponse,
-    ResetPasswordRequest,
-    ResetPasswordResponse,
-    MyPermissionsResponse,
     UserAppAccessResponse,
     UserAppAccessUpdateRequest,
+    UserCreate,
+    UserLogin,
+    UserMessageResponse,
+    UserRegister,
+    UserResponse,
+    UserUpdate,
 )
-from novamind.core.auth import require_active_user
-from novamind.core.authorization.dependencies import (
-    require_permission,
-    get_permission_checker_dep,
-)
-from novamind.core.authorization.ports import PermissionCheckerPort
-from novamind.features.user.api.dependencies import get_user_service
+from novamind.features.user.services import UserService
 from novamind.features.user.services.auth_service import AuthService
-from novamind.features.user.models.user import User as UserModel
-from novamind.features.user.models.user import UserStatus
-from novamind.core.database.database import get_db
-from novamind.core.middleware.rate_limit import get_limiter, RateLimits
 from novamind.setting.yaml_config import get_config
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -218,7 +218,7 @@ async def logout(
     request: Request,
     user_service: Annotated[UserService, Depends(get_user_service)],
     current_user: dict = Depends(require_active_user),
-    logout_data: Optional[LogoutRequest] = Body(default=None),
+    logout_data: LogoutRequest | None = Body(default=None),
 ):
     """
     用户登出，撤销令牌
@@ -241,7 +241,7 @@ async def logout(
 
 @router.get(
     "/users",
-    response_model=List[UserResponse],
+    response_model=list[UserResponse],
     summary="获取用户列表",
     description="管理员分页获取所有用户列表",
 )
@@ -561,8 +561,8 @@ async def forgot_password(
     忘记密码 — 无论邮箱是否存在都返回成功（防止邮箱枚举）
     """
     try:
-        from novamind.features.user.repository.user_repository import UserRepository
         from novamind.core.database.database import get_db_session
+        from novamind.features.user.repository.user_repository import UserRepository
 
         async with get_db_session() as db:
             repo = UserRepository(db)

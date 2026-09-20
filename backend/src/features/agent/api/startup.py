@@ -2,16 +2,24 @@
 Agent 模块启动初始化
 """
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.engines.agent.tool.registry import ToolRegistry
-from novamind.engines.agent.tool.builtins import KnowledgeSearchTool, WebSearchTool, CodeExecutionTool, MemoryTool, TodoTool, TaskTool, ReadAttachmentTool
-from novamind.features.agent.tool.builtins import ReadToolResultTool
-from novamind.engines.agent.mcp.client import McpClientManager
-from novamind.engines.agent.tool.executor import ToolExecutor
-from novamind.engines.agent.tool.hooks import LoggingHook, ToolOutputBudgetHook, ResultBudgetHook
-from novamind.engines.agent.safety import ApprovalHook
 from novamind.engines.agent.agent_engine import AgentEngine
 from novamind.engines.agent.loop_detection import LoopDetectionConfig
+from novamind.engines.agent.mcp.client import McpClientManager
 from novamind.engines.agent.memory.todo_store import TodoStore
+from novamind.engines.agent.safety import ApprovalHook
+from novamind.engines.agent.tool.builtins import (
+    CodeExecutionTool,
+    KnowledgeSearchTool,
+    MemoryTool,
+    ReadAttachmentTool,
+    TaskTool,
+    TodoTool,
+    WebSearchTool,
+)
+from novamind.engines.agent.tool.executor import ToolExecutor
+from novamind.engines.agent.tool.hooks import LoggingHook, ResultBudgetHook, ToolOutputBudgetHook
+from novamind.engines.agent.tool.registry import ToolRegistry
+from novamind.features.agent.tool.builtins import ReadToolResultTool
 
 logger = get_logger(__name__)
 
@@ -87,8 +95,8 @@ async def init_agent_components(app):
     # 8. 异步连接系统级 MCP 服务器（如果有）
     try:
         from novamind.core.database.database import get_db_session
-        from novamind.features.agent.repository.agent_repository import McpServerRepository
         from novamind.engines.agent.mcp.config import McpConnectionConfig
+        from novamind.features.agent.repository.agent_repository import McpServerRepository
 
         async with get_db_session() as db:
             repo = McpServerRepository(db)

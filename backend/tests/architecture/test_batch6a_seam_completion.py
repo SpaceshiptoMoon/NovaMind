@@ -26,6 +26,10 @@ import ast
 import inspect
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.unit
+
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 SRC = BACKEND_ROOT / "src"
 
@@ -144,10 +148,14 @@ def test_6a2_retrieval_engine_has_no_feature_exceptions_import():
 
 def test_6a2_rag_errors_are_neutral_and_isolated_from_host_tree():
     """6a-2：中立 rag_errors 异常树与宿主 KnowledgeSpaceError 树隔离。"""
-    from novamind.engines.rag.errors import RagError, EmbeddingError, SearchError
+    from novamind.engines.rag.errors import EmbeddingError, RagError, SearchError
+    from novamind.features.knowledge_space.api.exceptions import (
+        EmbeddingError as HostEmbeddingError,
+    )
     from novamind.features.knowledge_space.api.exceptions import (
         KnowledgeSpaceError as HostKSE,
-        EmbeddingError as HostEmbeddingError,
+    )
+    from novamind.features.knowledge_space.api.exceptions import (
         SearchError as HostSearchError,
     )
 
@@ -176,6 +184,7 @@ def test_6a2_host_cache_port_satisfies_cache_port_protocol():
 def test_6a2_retrieval_engine_ctor_accepts_cache_port():
     """6a-2：RetrievalEngine 构造器接收 cache_port 注入；未注入时 _get_cache 返回 None 降级。"""
     import asyncio
+
     from novamind.engines.rag import RetrievalEngine
 
     params = inspect.signature(RetrievalEngine.__init__).parameters
@@ -228,8 +237,8 @@ def test_6a4_skill_checker_has_no_skill_models_import():
 
 def test_6a4_review_status_identity_between_neutral_and_orm():
     """6a-4：中立 ``features.skill.ports.ReviewStatus`` 与 ORM ``skill.models.skill.ReviewStatus`` 同一对象。"""
-    from novamind.features.skill.ports import ReviewStatus as NeutralReviewStatus
     from novamind.features.skill.models.skill import ReviewStatus as ORMReviewStatus
+    from novamind.features.skill.ports import ReviewStatus as NeutralReviewStatus
 
     assert NeutralReviewStatus is ORMReviewStatus, "ReviewStatus 中立枚举与 ORM re-export 必须同一对象"
     # 值逐字对齐（DB 已存数据兼容）
@@ -255,8 +264,8 @@ def test_6a5_audio_utils_has_no_shared_clients_import():
 def test_6a5_audio_utils_minio_client_is_keyword_injected():
     """6a-5：两个函数 ``minio_client`` 为关键字必传（KEYWORD_ONLY）注入。"""
     from novamind.engines.document.media.audio.audio_utils import (
-        upload_parsed_text_to_minio,
         transcribe_audio_with_dashscope,
+        upload_parsed_text_to_minio,
     )
 
     for fn in (upload_parsed_text_to_minio, transcribe_audio_with_dashscope):

@@ -15,7 +15,12 @@
 #
 
 import json
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.resume.entities import degrees, regions, industries
+
+from novamind.engines.document.integrations.deepdoc.parsers.upstream.resume.entities import (
+    degrees,
+    industries,
+    regions,
+)
 
 FIELDS = [
     "address STRING",

@@ -1,14 +1,14 @@
 """Wiki lint 六类检查 + HealthScore + AutoFix 测试（对齐 WeKnora wiki_lint.go）"""
 import pytest
 import pytest_asyncio
-from sqlalchemy import BigInteger
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlalchemy.ext.compiler import compiles
-
 from novamind.core.database.base import Base
-from novamind.features.knowledge_space.models.wiki import WikiPage, WikiPageRevision, WikiIngestRecord
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
+from novamind.features.knowledge_space.models.wiki import (
+    WikiIngestRecord,
+    WikiPage,
+    WikiPageRevision,
+)
 from novamind.features.knowledge_space.services.wiki_lint_service import (
     LINT_BROKEN_LINK,
     LINT_DUPLICATE_SLUG,
@@ -18,6 +18,9 @@ from novamind.features.knowledge_space.services.wiki_lint_service import (
     LINT_STALE_REF,
     WikiLintService,
 )
+from sqlalchemy import BigInteger
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.compiler import compiles
 
 
 @compiles(BigInteger, "sqlite")
@@ -51,7 +54,11 @@ async def _page(session, slug, *, title=None, content="x" * 100, out_links=None,
     })
 
 
-from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository  # noqa: E402
+from novamind.features.knowledge_space.repository.wiki_repository import (
+    WikiPageRepository,  # noqa: E402
+)
+
+pytestmark = pytest.mark.unit
 
 
 @pytest.mark.unit

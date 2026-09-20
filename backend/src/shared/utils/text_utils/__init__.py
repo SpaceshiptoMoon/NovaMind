@@ -3,8 +3,8 @@
 
 提供 token 计数和文本压缩功能。
 """
+from .text_compressor import CompressionResult, CompressionStrategy, TextCompressor
 from .token_counter import TokenCounter
-from .text_compressor import TextCompressor, CompressionResult, CompressionStrategy
 
 __all__ = [
     "TokenCounter",

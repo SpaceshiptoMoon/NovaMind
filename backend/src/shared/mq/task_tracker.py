@@ -4,7 +4,6 @@
 使用 Redis Hash 维护 entity_id ↔ job_id 映射，
 支持查询处理状态、取消任务、统计活跃任务数。
 """
-from typing import Optional, Union
 
 from novamind.shared.logging import get_logger
 
@@ -27,14 +26,14 @@ class TaskTracker:
         from novamind.shared.cache.redis_client import get_redis_client
         return await get_redis_client()
 
-    async def bind(self, entity_id: Union[int, str], job_id: str) -> None:
+    async def bind(self, entity_id: int | str, job_id: str) -> None:
         """建立 entity_id → job_id 映射"""
         redis = await self._get_redis()
         await redis.hset(self._tracker_key, mapping={str(entity_id): job_id})
         await redis.expire(self._tracker_key, self._tracker_ttl)
         logger.debug("任务追踪：绑定映射", entity_id=entity_id, job_id=job_id)
 
-    async def get_job_id(self, entity_id: Union[int, str]) -> Optional[str]:
+    async def get_job_id(self, entity_id: int | str) -> str | None:
         """获取 entity_id 对应的 arq job_id"""
         redis = await self._get_redis()
         raw_client = redis.redis_client
@@ -45,7 +44,7 @@ class TaskTracker:
             return job_id.decode("utf-8")
         return str(job_id)
 
-    async def unbind(self, entity_id: Union[int, str]) -> None:
+    async def unbind(self, entity_id: int | str) -> None:
         """移除 entity_id → job_id 映射（任务完成/失败后调用）"""
         redis = await self._get_redis()
         raw_client = redis.redis_client
@@ -58,20 +57,20 @@ class TaskTracker:
         raw_client = redis.redis_client
         return (await raw_client.hlen(self._tracker_key)) or 0
 
-    async def mark_cancelled(self, entity_id: Union[int, str]) -> None:
+    async def mark_cancelled(self, entity_id: int | str) -> None:
         """设置取消标记"""
         redis = await self._get_redis()
         raw_client = redis.redis_client
         await raw_client.setex(f"{self._cancel_prefix}{entity_id}", CANCEL_KEY_TTL, "1")
         logger.info("已设置取消标记", entity_id=entity_id)
 
-    async def is_cancelled(self, entity_id: Union[int, str]) -> bool:
+    async def is_cancelled(self, entity_id: int | str) -> bool:
         """检查是否被标记为取消"""
         redis = await self._get_redis()
         raw_client = redis.redis_client
         return (await raw_client.get(f"{self._cancel_prefix}{entity_id}")) is not None
 
-    async def clear_cancel(self, entity_id: Union[int, str]) -> None:
+    async def clear_cancel(self, entity_id: int | str) -> None:
         """清除取消标记"""
         redis = await self._get_redis()
         raw_client = redis.redis_client
@@ -91,7 +90,7 @@ async def bind_job_to_document(document_id: int, job_id: str) -> None:
     await doc_tracker.bind(document_id, job_id)
 
 
-async def get_job_id_for_document(document_id: int) -> Optional[str]:
+async def get_job_id_for_document(document_id: int) -> str | None:
     return await doc_tracker.get_job_id(document_id)
 
 
@@ -135,7 +134,7 @@ async def is_document_actively_processing(document_id: int) -> bool:
         return False
 
 
-async def purge_document_jobs(document_id: int, *, exclude_job_id: Optional[str] = None) -> list:
+async def purge_document_jobs(document_id: int, *, exclude_job_id: str | None = None) -> list:
     """清理 arq 层指向该文档的所有残留僵尸 job（不依赖 worker 存活）。
 
     背景（doc 574 事故）：worker 崩溃或孤儿恢复只推进了 DB 任务状态，
@@ -158,7 +157,6 @@ async def purge_document_jobs(document_id: int, *, exclude_job_id: Optional[str]
     import time
 
     import arq.constants as arq_constants
-
     from novamind.shared.mq import get_arq_pool
 
     pool = await get_arq_pool()
@@ -230,7 +228,7 @@ async def bind_job_to_resume(session_id: str, job_id: str) -> None:
     await resume_tracker.bind(session_id, job_id)
 
 
-async def get_job_id_for_resume(session_id: str) -> Optional[str]:
+async def get_job_id_for_resume(session_id: str) -> str | None:
     return await resume_tracker.get_job_id(session_id)
 
 

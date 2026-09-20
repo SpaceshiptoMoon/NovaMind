@@ -1,6 +1,6 @@
 """递归切分器：按分隔符优先级分层（段落→句子→词），兜底固定大小。"""
 import re
-from typing import List, Dict, Optional
+
 from novamind.engines.document.splitters.base_splitter import BaseSplitter
 
 
@@ -8,7 +8,7 @@ class RecursiveCharacterSplitter(BaseSplitter):
     """递归字符切分器，按不同级别的分隔符切分文本"""
 
     def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 100,
-                 separators: Optional[List[str]] = None, min_chunk_size: int = 500):
+                 separators: list[str] | None = None, min_chunk_size: int = 500):
         """
         初始化切分器
         :param chunk_size: 块大小
@@ -26,7 +26,7 @@ class RecursiveCharacterSplitter(BaseSplitter):
         else:
             self.separators = separators
 
-    async def split(self, documents: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    async def split(self, documents: list[dict[str, str]]) -> list[dict[str, str]]:
         """
         切分文档列表
         :param documents: 原始文档列表
@@ -61,7 +61,7 @@ class RecursiveCharacterSplitter(BaseSplitter):
 
         return split_docs
 
-    async def _split_text(self, text: str) -> List[str]:
+    async def _split_text(self, text: str) -> list[str]:
         """
         实际的文本切分逻辑
         :param text: 输入文本
@@ -117,7 +117,7 @@ class RecursiveCharacterSplitter(BaseSplitter):
 
         return final_texts
 
-    def _merge_small_chunks(self, chunks: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    def _merge_small_chunks(self, chunks: list[dict[str, str]]) -> list[dict[str, str]]:
         """
         合并文本长度小于 min_chunk_size 的碎块与相邻块
 

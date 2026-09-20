@@ -10,7 +10,7 @@
 """
 from __future__ import annotations
 
-from typing import Any, List, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -23,7 +23,7 @@ class DocumentIngestionPort(Protocol):
         strategy: str = "recursive",
         chunk_size: int = 10000,
         chunk_overlap: int = 0,
-    ) -> List[dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """按策略加载文件并切分，返回文本块 dict 列表（含 text/content 等键）。"""
         ...
 

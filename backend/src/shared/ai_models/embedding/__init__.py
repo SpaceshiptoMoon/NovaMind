@@ -6,8 +6,8 @@ Embedding 客户端包
 """
 
 from novamind.shared.ai_models.base_model import BaseEmbedding
-from novamind.shared.ai_models.embedding.openai_compatible import OpenAICompatibleEmbedding
 from novamind.shared.ai_models.embedding.ollama_embedding import OllamaEmbedding
+from novamind.shared.ai_models.embedding.openai_compatible import OpenAICompatibleEmbedding
 from novamind.shared.ai_models.embedding.transformers_embedding import TransformersEmbedding
 
 

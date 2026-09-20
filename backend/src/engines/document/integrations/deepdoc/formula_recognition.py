@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-
 from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
     default_model_dir,
@@ -49,7 +48,7 @@ FORMULA_IMAGE_SIZE = 384
 FORMULA_EOS_TOKEN_ID = 2  # </s>，同时是 decoder_start_token_id
 FORMULA_MAX_NEW_TOKENS = 512  # max_position_embeddings
 
-_LOADED_RECOGNIZERS: dict[str, "FormulaRecognizer"] = {}
+_LOADED_RECOGNIZERS: dict[str, FormulaRecognizer] = {}
 
 
 def default_formula_model_dir() -> Path:

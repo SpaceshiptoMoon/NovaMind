@@ -12,13 +12,13 @@
 import asyncio
 import time
 from collections import OrderedDict
-from typing import Any, Dict, List, Optional
+from typing import Any
 
+from novamind.engines.agent.mcp.client import McpClientManager
 from novamind.engines.agent.tool.definition import ToolDefinition, ToolSource
-from novamind.engines.agent.tool.result import ToolResult, ToolResultStatus
 from novamind.engines.agent.tool.hooks import ToolHook
 from novamind.engines.agent.tool.registry import ToolRegistry
-from novamind.engines.agent.mcp.client import McpClientManager
+from novamind.engines.agent.tool.result import ToolResult, ToolResultStatus
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -43,7 +43,7 @@ class ToolExecutor:
         self,
         tool_registry: ToolRegistry,
         mcp_client_manager: McpClientManager,
-        hooks: Optional[List[ToolHook]] = None,
+        hooks: list[ToolHook] | None = None,
     ):
         self._tool_registry = tool_registry
         self._mcp_manager = mcp_client_manager
@@ -58,8 +58,8 @@ class ToolExecutor:
     async def execute(
         self,
         tool_name: str,
-        arguments: Dict[str, Any],
-        context: Dict[str, Any],
+        arguments: dict[str, Any],
+        context: dict[str, Any],
     ) -> ToolResult:
         """执行工具调用（含超时保护 + 钩子异常隔离）"""
         tool_def = self._resolve_tool_definition(tool_name)
@@ -82,7 +82,7 @@ class ToolExecutor:
             )
             status = ToolResultStatus.SUCCESS
             error_message = None
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raw_result = f"工具执行超时（{timeout_sec:.1f}s）"
             status = ToolResultStatus.TIMEOUT
             error_message = raw_result
@@ -114,11 +114,11 @@ class ToolExecutor:
 
     def resolve_tools(
         self,
-        enabled_tools: List[str],
-        enabled_mcp_server_ids: List[int],
-    ) -> List[ToolDefinition]:
+        enabled_tools: list[str],
+        enabled_mcp_server_ids: list[int],
+    ) -> list[ToolDefinition]:
         """解析完整工具定义列表"""
-        tools: List[ToolDefinition] = []
+        tools: list[ToolDefinition] = []
 
         # 内置工具
         if enabled_tools:
@@ -152,9 +152,9 @@ class ToolExecutor:
 
     def resolve_tools_openai_format(
         self,
-        enabled_tools: List[str],
-        enabled_mcp_server_ids: List[int],
-    ) -> List[Dict[str, Any]]:
+        enabled_tools: list[str],
+        enabled_mcp_server_ids: list[int],
+    ) -> list[dict[str, Any]]:
         """返回 OpenAI function calling 格式"""
         tools = self.resolve_tools(enabled_tools, enabled_mcp_server_ids)
         return [t.to_openai_format() for t in tools]
@@ -182,8 +182,8 @@ class ToolExecutor:
     async def _route_and_execute(
         self,
         tool_def: ToolDefinition,
-        arguments: Dict[str, Any],
-        context: Dict[str, Any],
+        arguments: dict[str, Any],
+        context: dict[str, Any],
     ) -> str:
         """路由到实际执行器"""
         if tool_def.name.startswith(MCP_PREFIX):
@@ -194,7 +194,7 @@ class ToolExecutor:
             )
 
     async def _execute_mcp_tool(
-        self, tool_name: str, arguments: Dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any]
     ) -> str:
         """执行 MCP 工具"""
         parts = tool_name[len(MCP_PREFIX) :].split("__", 1)
@@ -211,8 +211,8 @@ class ToolExecutor:
     async def _execute_builtin_tool(
         self,
         tool_name: str,
-        arguments: Dict[str, Any],
-        context: Dict[str, Any],
+        arguments: dict[str, Any],
+        context: dict[str, Any],
     ) -> str:
         """执行内置工具"""
         tool = self._tool_registry.find_tool_provider(tool_name)
@@ -222,7 +222,7 @@ class ToolExecutor:
 
     @staticmethod
     def _raw_to_definition(
-        raw_tool: Dict[str, Any], source: ToolSource
+        raw_tool: dict[str, Any], source: ToolSource
     ) -> ToolDefinition:
         """将 OpenAI 格式工具定义转换为 ToolDefinition"""
         from novamind.engines.agent.tool.definition import ToolParameter

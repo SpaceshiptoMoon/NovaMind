@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Any
 
 import requests
-
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.paddleocr_parser import PaddleOCRParser
+from novamind.engines.document.integrations.deepdoc.parsers.upstream.paddleocr_parser import (
+    PaddleOCRParser,
+)
 
 SUPPORTED_PADDLEOCR_ALGORITHMS: tuple[str, ...] = (
     "PaddleOCR-VL",

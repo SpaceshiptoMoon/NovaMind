@@ -1,22 +1,22 @@
-from typing import Optional, List, Dict, Any
-
-from sqlalchemy import update
+from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.user.models.user import User as UserModel, UserStatus
-from novamind.features.user.schemas.user_schema import UserUpdate
-from novamind.features.user.repository.user_repository import UserRepository
 from novamind.features.user.exceptions import (
-    UserAlreadyExistsError,
-    UserNotFoundError,
-    UserCreationError,
-    UserOperationError,
     AuthenticationError,
     PermissionDeniedError,
+    UserAlreadyExistsError,
+    UserCreationError,
     UserError,
+    UserNotFoundError,
+    UserOperationError,
 )
+from novamind.features.user.models.user import User as UserModel
+from novamind.features.user.models.user import UserStatus
+from novamind.features.user.repository.user_repository import UserRepository
+from novamind.features.user.schemas.user_schema import UserUpdate
 from novamind.features.user.services.auth_service import AuthService
 from novamind.setting.yaml_config import get_config
+from sqlalchemy import update
 
 
 class UserService:
@@ -39,10 +39,10 @@ class UserService:
         username: str,
         email: str,
         password: str,
-        phone: Optional[str] = None,
-        status: Optional[int] = 1,
+        phone: str | None = None,
+        status: int | None = 1,
         role_code: str = "viewer",
-    ) -> Optional[UserModel]:
+    ) -> UserModel | None:
         """
         创建新用户
         Args:
@@ -107,9 +107,9 @@ class UserService:
         username: str,
         email: str,
         password: str,
-        phone: Optional[str] = None,
-        status: Optional[int] = 1,
-    ) -> Optional[UserModel]:
+        phone: str | None = None,
+        status: int | None = 1,
+    ) -> UserModel | None:
         """
         用户自注册（强制 viewer 角色）
 
@@ -132,7 +132,7 @@ class UserService:
             role_code="viewer",
         )
 
-    async def get_user_by_id(self, user_id: int) -> Optional[UserModel]:
+    async def get_user_by_id(self, user_id: int) -> UserModel | None:
         """
         根据用户ID获取用户信息
         Args:
@@ -148,7 +148,7 @@ class UserService:
             raise UserNotFoundError(user_id=user_id)
         return user
 
-    async def get_user_by_username(self, username: str) -> Optional[UserModel]:
+    async def get_user_by_username(self, username: str) -> UserModel | None:
         """
         根据用户名获取用户信息
         Args:
@@ -169,7 +169,7 @@ class UserService:
             self.logger.error("获取用户失败", username=username, error=str(e))
             raise UserOperationError(f"获取用户失败: {str(e)}")
 
-    async def get_users(self, skip: int = 0, limit: int = 100) -> List[UserModel]:
+    async def get_users(self, skip: int = 0, limit: int = 100) -> list[UserModel]:
         """
         获取用户列表
         Args:
@@ -191,7 +191,7 @@ class UserService:
 
     async def authenticate_user(
         self, username: str, password: str
-    ) -> Optional[UserModel]:
+    ) -> UserModel | None:
         """
         认证用户
         Args:
@@ -218,7 +218,7 @@ class UserService:
             self.logger.error("认证失败", username=username, error=str(e))
             raise AuthenticationError(f"认证失败: {str(e)}")
 
-    async def login_user(self, username: str, password: str, ip_address: str = None) -> Optional[dict]:
+    async def login_user(self, username: str, password: str, ip_address: str = None) -> dict | None:
         """
         用户登录
 
@@ -273,7 +273,7 @@ class UserService:
             self.logger.error("登录失败", username=username, error=str(e))
             raise AuthenticationError(f"登录失败: {str(e)}")
 
-    async def refresh_token(self, refresh_token: str) -> Optional[Dict[str, Any]]:
+    async def refresh_token(self, refresh_token: str) -> dict[str, Any] | None:
         """
         刷新访问令牌
 
@@ -333,7 +333,7 @@ class UserService:
 
     async def update_user(
         self, user_id: int, user_update: UserUpdate, *, allow_super_admin_reset: bool = False
-    ) -> Optional[UserModel]:
+    ) -> UserModel | None:
         """
         更新用户信息
         Args:
@@ -497,6 +497,7 @@ class UserService:
             UserNotFoundError: 用户不存在
         """
         import secrets
+
         from novamind.core.auth.hashing import get_password_hash_async
 
         user = await self.user_repository.get_user_by_id(user_id, use_cache=False)
@@ -551,7 +552,7 @@ class UserService:
             AuthenticationError: 当前密码错误
             UserNotFoundError: 用户不存在
         """
-        from novamind.core.auth.hashing import verify_password_async, get_password_hash_async
+        from novamind.core.auth.hashing import get_password_hash_async, verify_password_async
 
         user = await self.user_repository.get_user_by_id(user_id, use_cache=False)
         if not user:

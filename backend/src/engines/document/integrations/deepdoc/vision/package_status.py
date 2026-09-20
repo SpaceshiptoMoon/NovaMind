@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import get_model_status
 
 
-def get_vendored_vision_package_status() -> Dict[str, Any]:
+def get_vendored_vision_package_status() -> dict[str, Any]:
     package_dir = Path(__file__).resolve().parent
     expected_modules = [
         "__init__.py",

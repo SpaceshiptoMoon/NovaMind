@@ -14,15 +14,16 @@
 #  limitations under the License.
 #
 
-import logging
-import sys
 import ast
-import six
+import logging
+import math
+import sys
+
 import cv2
 import numpy as np
-import math
-from PIL import Image
+import six
 from novamind.engines.document.integrations.deepdoc.figure_support import ensure_pil_image
+from PIL import Image
 
 
 class DecodeImage:
@@ -160,7 +161,7 @@ class KeepKeys:
 class Pad:
     def __init__(self, size=None, size_div=32, **kwargs):
         if size is not None and not isinstance(size, (int, list, tuple)):
-            raise TypeError("Type of target_size is invalid. Now is {}".format(type(size)))
+            raise TypeError(f"Type of target_size is invalid. Now is {type(size)}")
         if isinstance(size, int):
             size = [size, size]
         self.size = size
@@ -273,7 +274,7 @@ class Resize:
 
 class DetResizeForTest:
     def __init__(self, **kwargs):
-        super(DetResizeForTest, self).__init__()
+        super().__init__()
         self.resize_type = 0
         self.keep_ratio = False
         if "image_shape" in kwargs:
@@ -371,7 +372,7 @@ class DetResizeForTest:
                 return None, (None, None)
             img = cv2.resize(img, (int(resize_w), int(resize_h)))
         except BaseException:
-            logging.exception("{} {} {}".format(img.shape, resize_w, resize_h))
+            logging.exception(f"{img.shape} {resize_w} {resize_h}")
             sys.exit(0)
         ratio_h = resize_h / float(h)
         ratio_w = resize_w / float(w)
@@ -403,7 +404,7 @@ class DetResizeForTest:
 
 class E2EResizeForTest:
     def __init__(self, **kwargs):
-        super(E2EResizeForTest, self).__init__()
+        super().__init__()
         self.max_side_len = kwargs["max_side_len"]
         self.valid_set = kwargs["valid_set"]
 
@@ -469,7 +470,7 @@ class E2EResizeForTest:
 
 class KieResize:
     def __init__(self, **kwargs):
-        super(KieResize, self).__init__()
+        super().__init__()
         self.max_side, self.min_side = kwargs["img_scale"][0], kwargs["img_scale"][1]
 
     def __call__(self, data):
@@ -586,7 +587,7 @@ class Permute:
     def __init__(
         self,
     ):
-        super(Permute, self).__init__()
+        super().__init__()
 
     def __call__(self, im, im_info):
         """
@@ -692,7 +693,9 @@ def nms(bboxes, scores, iou_thresh):
 
 
 def create_operators(op_param_list, global_config=None):
-    from novamind.engines.document.integrations.deepdoc.vision.ocr import create_operators as _create_operators
+    from novamind.engines.document.integrations.deepdoc.vision.ocr import (
+        create_operators as _create_operators,
+    )
 
     return _create_operators(op_param_list, global_config)
 

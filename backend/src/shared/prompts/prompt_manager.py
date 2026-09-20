@@ -3,8 +3,6 @@
 """
 from __future__ import annotations
 
-from __future__ import annotations
-
 
 class PromptManager:
     """提示词管理器（纯注册表）

@@ -3,7 +3,7 @@ LongTermMemoryStorePort / ContextSummaryStorePort / MemorySearchPort 宿主适�
 桥接记忆 ORM 与 ES 检索。
 """
 from datetime import datetime
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 from novamind.engines.agent.memory.interfaces import LongTermMemoryEntry
 from novamind.engines.agent.ports import (
@@ -48,11 +48,11 @@ class HostMemoryStorePort:
     不割裂）。"""
 
     def __init__(self, db: Any):
-        from novamind.features.agent.repository.memory_repository import (
-            MemoryRepository,
-        )
         from novamind.features.agent.repository.context_summary_repository import (
             ContextSummaryRepository,
+        )
+        from novamind.features.agent.repository.memory_repository import (
+            MemoryRepository,
         )
 
         self._db = db
@@ -65,7 +65,7 @@ class HostMemoryStorePort:
         user_id: int,
         category: str,
         content: str,
-        source_conversation_id: Optional[int] = None,
+        source_conversation_id: int | None = None,
         source_type: str = "consolidate",
     ) -> LongTermMemoryEntry:
         memory = await self._repo.create(
@@ -80,7 +80,7 @@ class HostMemoryStorePort:
 
     async def find_similar(
         self, agent_id: int, user_id: int, category: str, content: str
-    ) -> Optional[LongTermMemoryEntry]:
+    ) -> LongTermMemoryEntry | None:
         memory = await self._repo.find_similar(agent_id, user_id, category, content)
         return _to_entry(memory) if memory else None
 
@@ -90,14 +90,14 @@ class HostMemoryStorePort:
         user_id: int,
         limit: int = 50,
         offset: int = 0,
-        category: Optional[str] = None,
-    ) -> Tuple[List[LongTermMemoryEntry], int]:
+        category: str | None = None,
+    ) -> tuple[list[LongTermMemoryEntry], int]:
         memories, total = await self._repo.list_by_agent(
             agent_id, user_id, category=category, limit=limit, offset=offset
         )
         return [_to_entry(m) for m in memories], total
 
-    async def get_by_id(self, memory_id: int) -> Optional[LongTermMemoryEntry]:
+    async def get_by_id(self, memory_id: int) -> LongTermMemoryEntry | None:
         memory = await self._repo.get_by_id(memory_id)
         return _to_entry(memory) if memory else None
 
@@ -116,8 +116,8 @@ class HostMemoryStorePort:
         user_id: int,
         query: str,
         top_k: int = 5,
-        categories: Optional[List[str]] = None,
-    ) -> List[LongTermMemoryEntry]:
+        categories: list[str] | None = None,
+    ) -> list[LongTermMemoryEntry]:
         memories = await self._repo.search_by_keywords(
             agent_id, user_id, query, top_k=top_k, categories=categories
         )
@@ -125,10 +125,10 @@ class HostMemoryStorePort:
 
     async def find_by_content_contains(
         self, agent_id: int, user_id: int, old_content: str
-    ) -> Optional[LongTermMemoryEntry]:
+    ) -> LongTermMemoryEntry | None:
         """子串匹配查找（对齐旧 select(AgentMemory).content.contains(old_content)）。"""
-        from sqlalchemy import select
         from novamind.features.agent.models.memory import AgentMemory
+        from sqlalchemy import select
 
         stmt = select(AgentMemory).where(
             AgentMemory.agent_id == agent_id,
@@ -160,7 +160,7 @@ class HostMemoryStorePort:
 
     async def get_latest_summary(
         self, conversation_id: int
-    ) -> Optional[ContextSummaryEntry]:
+    ) -> ContextSummaryEntry | None:
         summary = await self._summary_repo.get_latest(conversation_id)
         return _to_summary(summary) if summary else None
 
@@ -171,7 +171,7 @@ class HostMemorySearchPort:
     可注入已有 MemorySearchRepository（复用宿主装配的实例）或经 es_client 构造。
     """
 
-    def __init__(self, repo: Optional[Any] = None, es_client: Optional[Any] = None):
+    def __init__(self, repo: Any | None = None, es_client: Any | None = None):
         if repo is not None:
             self._repo = repo
         else:
@@ -191,10 +191,10 @@ class HostMemorySearchPort:
         user_id: int,
         category: str,
         content: str,
-        embedding: List[float],
+        embedding: list[float],
         source_type: str = "consolidate",
-        source_conversation_id: Optional[int] = None,
-        created_at: Optional[datetime] = None,
+        source_conversation_id: int | None = None,
+        created_at: datetime | None = None,
     ) -> bool:
         return await self._repo.index_memory(
             agent_id=agent_id,
@@ -211,12 +211,12 @@ class HostMemorySearchPort:
     async def search(
         self,
         agent_id: int,
-        query_vector: List[float],
+        query_vector: list[float],
         query_text: str,
         top_k: int = 5,
-        user_id: Optional[int] = None,
-        categories: Optional[List[str]] = None,
-    ) -> List[dict]:
+        user_id: int | None = None,
+        categories: list[str] | None = None,
+    ) -> list[dict]:
         return await self._repo.search(
             agent_id=agent_id,
             query_vector=query_vector,
@@ -246,7 +246,7 @@ def as_context_summary_store_port(db: Any) -> ContextSummaryStorePort:
 
 
 def as_memory_search_port(
-    repo: Optional[Any] = None, es_client: Optional[Any] = None
+    repo: Any | None = None, es_client: Any | None = None
 ) -> MemorySearchPort:
     """构造 MemorySearchPort 实例。"""
     return HostMemorySearchPort(repo=repo, es_client=es_client)  # type: ignore[return-value]

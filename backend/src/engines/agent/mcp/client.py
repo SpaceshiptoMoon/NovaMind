@@ -6,10 +6,10 @@ MCP 客户端管理器
 """
 import asyncio
 from contextlib import AsyncExitStack
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from novamind.shared.logging import get_logger
 from novamind.engines.agent.mcp.config import McpConnectionConfig
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -18,16 +18,16 @@ class McpClientManager:
     """MCP 客户端管理器"""
 
     def __init__(self):
-        self._sessions: Dict[int, Any] = {}  # server_id -> ClientSession
-        self._exit_stacks: Dict[int, AsyncExitStack] = {}
-        self._tools_cache: Dict[int, List[Dict]] = {}
-        self._server_names: Dict[int, str] = {}  # server_id -> name
-        self._server_configs: Dict[int, McpConnectionConfig] = {}  # server_id -> config（用于重连）
+        self._sessions: dict[int, Any] = {}  # server_id -> ClientSession
+        self._exit_stacks: dict[int, AsyncExitStack] = {}
+        self._tools_cache: dict[int, list[dict]] = {}
+        self._server_names: dict[int, str] = {}  # server_id -> name
+        self._server_configs: dict[int, McpConnectionConfig] = {}  # server_id -> config（用于重连）
         self._lock = asyncio.Lock()
 
     async def connect_server(
         self, server_id: int, server_name: str, config: McpConnectionConfig
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         连接到 MCP 服务器
 
@@ -86,7 +86,7 @@ class McpClientManager:
     async def _connect_stdio(self, stdio_config):
         """通过 stdio 连接 MCP 服务器"""
         from mcp import ClientSession
-        from mcp.client.stdio import stdio_client, StdioServerParameters
+        from mcp.client.stdio import StdioServerParameters, stdio_client
 
         server_params = StdioServerParameters(
             command=stdio_config.command,
@@ -128,7 +128,7 @@ class McpClientManager:
 
     async def _discover_tools(
         self, server_id: int, server_name: str, session
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """从 MCP 服务器发现工具并转换为 OpenAI 格式"""
         result = await session.list_tools()
         tools = []
@@ -251,14 +251,14 @@ class McpClientManager:
         logger.info("MCP 自动重连中", server_id=server_id, server_name=server_name)
         await self.connect_server(server_id, server_name, config)
 
-    def get_server_id_by_name(self, server_name: str) -> Optional[int]:
+    def get_server_id_by_name(self, server_name: str) -> int | None:
         """根据服务器名称查找已连接的 server_id"""
         for sid, name in self._server_names.items():
             if name == server_name:
                 return sid
         return None
 
-    def get_tools_for_servers(self, server_ids: List[int]) -> List[Dict]:
+    def get_tools_for_servers(self, server_ids: list[int]) -> list[dict]:
         """获取指定服务器 ID 列表的工具"""
         tools = []
         for sid in server_ids:
@@ -269,7 +269,7 @@ class McpClientManager:
         """检查 MCP 服务器是否已连接"""
         return server_id in self._sessions
 
-    async def refresh_tools(self, server_id: int) -> List[Dict]:
+    async def refresh_tools(self, server_id: int) -> list[dict]:
         """重新获取 MCP 服务器的工具列表"""
         session = self._sessions.get(server_id)
         server_name = self._server_names.get(server_id, "unknown")

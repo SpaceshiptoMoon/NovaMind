@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import Any
 
 import requests
-
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.docling_parser import DoclingParser
+from novamind.engines.document.integrations.deepdoc.parsers.upstream.docling_parser import (
+    DoclingParser,
+)
 
 
 class RAGFlowDoclingParser(DoclingParser):

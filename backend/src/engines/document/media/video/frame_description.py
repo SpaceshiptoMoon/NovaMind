@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from novamind.engines.document.media.chunk_time_alignment import (
     extract_anchor_indices,
@@ -55,7 +56,7 @@ class AllFrameDescriptionsFailedError(Exception):
     def __init__(
         self,
         *,
-        first_error: Optional[BaseException] = None,
+        first_error: BaseException | None = None,
         quota_failures: int = 0,
         total_frames: int = 0,
     ):
@@ -67,7 +68,7 @@ class AllFrameDescriptionsFailedError(Exception):
 
 
 async def describe_single(
-    frames: List[Tuple[bytes, float, int]],
+    frames: list[tuple[bytes, float, int]],
     vlm_client: Any,
     prompt: str,
     *,
@@ -76,14 +77,14 @@ async def describe_single(
     max_tokens: int = _DEFAULT_SINGLE_MAX_TOKENS,
     temperature: float = _DEFAULT_TEMPERATURE,
     max_desc_len: int = _DEFAULT_MAX_DESC_LEN,
-    vlm_fallback_client: Optional[Any] = None,
-    vlm_fallback_model: Optional[str] = None,
-    is_quota_error: Optional[QuotaErrorPredicate] = None,
-    log_context: Optional[Dict[str, Any]] = None,
-    cancelled_check: Optional[CancelledCheck] = None,
+    vlm_fallback_client: Any | None = None,
+    vlm_fallback_model: str | None = None,
+    is_quota_error: QuotaErrorPredicate | None = None,
+    log_context: dict[str, Any] | None = None,
+    cancelled_check: CancelledCheck | None = None,
     cancel_every: int = 5,
     concurrency: int = 4,
-) -> List[Tuple[str, float, int]]:
+) -> list[tuple[str, float, int]]:
     """逐帧单图 VLM 描述（有界并发）。
 
     返回 ``[(desc, ts, frame_idx), ...]``，按帧顺序。单帧失败记录 warning 并跳过；主 client
@@ -92,7 +93,7 @@ async def describe_single(
     缓解长视频串行逼近 arq job_timeout；用 ``asyncio.Semaphore``+``gather`` 保序、保
     quota 累计、保 fallback、保取消检查。
     """
-    base_ctx: Dict[str, Any] = dict(log_context or {})
+    base_ctx: dict[str, Any] = dict(log_context or {})
     sem = asyncio.Semaphore(max(1, concurrency))
 
     async def _describe_one(i: int, frame_bytes: bytes, ts: float, frame_idx: int):
@@ -144,8 +145,8 @@ async def describe_single(
     ])
 
     # gather 保序；按帧顺序汇总描述、首个错误、配额失败计数
-    descriptions: List[Tuple[str, float, int]] = []
-    first_error: Optional[BaseException] = None
+    descriptions: list[tuple[str, float, int]] = []
+    first_error: BaseException | None = None
     quota_failures = 0
     for frame_idx, ts, desc, exc, was_quota in raw:
         if desc is not None:
@@ -164,7 +165,7 @@ async def describe_single(
 
 
 async def describe_grouped(
-    frames: List[Tuple[bytes, float, int]],
+    frames: list[tuple[bytes, float, int]],
     group_size: int,
     vlm_client: Any,
     prompt: str,
@@ -174,14 +175,14 @@ async def describe_grouped(
     max_tokens: int = _DEFAULT_GROUPED_MAX_TOKENS,
     temperature: float = _DEFAULT_TEMPERATURE,
     max_desc_len: int = _DEFAULT_MAX_DESC_LEN * 4,
-    vlm_fallback_client: Optional[Any] = None,
-    vlm_fallback_model: Optional[str] = None,
-    is_quota_error: Optional[QuotaErrorPredicate] = None,
-    log_context: Optional[Dict[str, Any]] = None,
-    cancelled_check: Optional[CancelledCheck] = None,
+    vlm_fallback_client: Any | None = None,
+    vlm_fallback_model: str | None = None,
+    is_quota_error: QuotaErrorPredicate | None = None,
+    log_context: dict[str, Any] | None = None,
+    cancelled_check: CancelledCheck | None = None,
     cancel_every: int = 1,
     concurrency: int = 4,
-) -> List[Tuple[str, float, float, List[int]]]:
+) -> list[tuple[str, float, float, list[int]]]:
     """多帧一组喂 VLM 多图消息生成连贯描述。
 
     返回 ``[(desc, start_ts, end_ts, frame_idx_list), ...]``，锚点用组首帧 idx。
@@ -189,7 +190,7 @@ async def describe_grouped(
     某组多图调用失败时该组降级为逐帧 single 描述，不阻塞整体；全部组失败抛
     ``AllFrameDescriptionsFailedError``。
     """
-    base_ctx: Dict[str, Any] = dict(log_context or {})
+    base_ctx: dict[str, Any] = dict(log_context or {})
 
     if group_size <= 1 or len(frames) <= 1:
         singles = await describe_single(
@@ -207,7 +208,7 @@ async def describe_grouped(
     groups = [frames[i:i + group_size] for i in range(0, len(frames), group_size)]
     sem = asyncio.Semaphore(max(1, concurrency))
 
-    async def _describe_group(gi: int, group: List[Tuple[bytes, float, int]]) -> Dict[str, Any]:
+    async def _describe_group(gi: int, group: list[tuple[bytes, float, int]]) -> dict[str, Any]:
         if cancelled_check is not None and gi > 0 and (cancel_every <= 1 or gi % cancel_every == 0):
             await cancelled_check()
         frames_bytes = [fb for fb, _, _ in group]
@@ -216,7 +217,7 @@ async def describe_grouped(
         end_ts = group[-1][1]
         group_ctx = {**base_ctx, "group_index": gi, "frame_indices": idx_list}
         messages = build_vlm_multi_image_messages(frames_bytes, "image/jpeg", prompt)
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "gi": gi, "ok": False, "desc": None, "start_ts": start_ts, "end_ts": end_ts,
             "idx_list": idx_list, "main_exc": None, "single_quota": 0,
             "single_first_error": None, "singles": None,
@@ -261,8 +262,8 @@ async def describe_grouped(
     ])
 
     # 按 gi 顺序合并（gather 保序，显式排序防语义漂移）
-    results: List[Tuple[str, float, float, List[int]]] = []
-    first_error: Optional[BaseException] = None
+    results: list[tuple[str, float, float, list[int]]] = []
+    first_error: BaseException | None = None
     any_group_succeeded = False
     quota_failures = 0
     for r in sorted(group_results, key=lambda x: x["gi"]):
@@ -290,7 +291,7 @@ async def describe_grouped(
 
 
 async def describe_rewrite(
-    frames: List[Tuple[bytes, float, int]],
+    frames: list[tuple[bytes, float, int]],
     vlm_client: Any,
     llm_client: Any,
     single_prompt: str,
@@ -303,14 +304,14 @@ async def describe_rewrite(
     rewrite_max_tokens: int = _DEFAULT_REWRITE_MAX_TOKENS,
     temperature: float = _DEFAULT_TEMPERATURE,
     max_desc_len: int = _DEFAULT_MAX_DESC_LEN,
-    vlm_fallback_client: Optional[Any] = None,
-    vlm_fallback_model: Optional[str] = None,
-    is_quota_error: Optional[QuotaErrorPredicate] = None,
-    log_context: Optional[Dict[str, Any]] = None,
-    cancelled_check: Optional[CancelledCheck] = None,
+    vlm_fallback_client: Any | None = None,
+    vlm_fallback_model: str | None = None,
+    is_quota_error: QuotaErrorPredicate | None = None,
+    log_context: dict[str, Any] | None = None,
+    cancelled_check: CancelledCheck | None = None,
     cancel_every: int = 5,
     concurrency: int = 4,
-) -> Tuple[str, List[Tuple[str, float, int]]]:
+) -> tuple[str, list[tuple[str, float, int]]]:
     """逐帧描述 + LLM 重写连贯，保留 ``[HH:MM:SS#idx]`` 锚点。
 
     流程：
@@ -322,7 +323,7 @@ async def describe_rewrite(
     返回 ``(full_text, descriptions)``：``full_text`` 为带锚点的最终 md（成功=LLM 重写输出，
     回退=原逐帧拼接），``descriptions`` 为原 single 列表（供 ``build_frame_timeline_map`` 构建时间线）。
     """
-    base_ctx: Dict[str, Any] = dict(log_context or {})
+    base_ctx: dict[str, Any] = dict(log_context or {})
 
     # 1. 逐帧 single 描述（带锚点反查所需的 ts/idx）
     descriptions = await describe_single(

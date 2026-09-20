@@ -7,10 +7,10 @@ QA 模块数据模型
 - SessionSummary: 会话摘要模型
 - ChatAttachment: 聊天附件模型
 """
+from .chat_attachment import ChatAttachment
 from .question_answer import QuestionAnswer
 from .session_config import SessionConfig
 from .session_summary import SessionSummary
-from .chat_attachment import ChatAttachment
 
 __all__ = [
     "QuestionAnswer",

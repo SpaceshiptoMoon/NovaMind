@@ -1,11 +1,13 @@
 """create_admin_user 启动初始化测试。"""
 from __future__ import annotations
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from novamind.features.user.models.user import User, UserStatus
 from novamind.features.user.schemas.user_schema import UserUpdate
+
+pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

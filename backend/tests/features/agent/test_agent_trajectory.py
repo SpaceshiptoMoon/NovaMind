@@ -9,7 +9,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
 from novamind.engines.agent.agent_engine import AgentEngine, AgentEvent
 from novamind.engines.agent.tool.result import ToolResult, ToolResultStatus
 from novamind.features.agent.schemas.agent_schema import SystemPromptResponse
@@ -19,6 +18,8 @@ from novamind.shared.ai_models.base_model import (
     LLMResponseWithTools,
     ToolCall,
 )
+
+pytestmark = pytest.mark.unit
 
 
 class _StubLLM(BaseLLM):

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 # Adapted from RAGFlow deepdoc/parser/txt_parser.py
-
 import re
 
 from novamind.engines.document.integrations.deepdoc.compat import num_tokens_from_string

@@ -6,8 +6,8 @@
 mark_completed 现在负责清空 error_message，保证成功态与错误信息不共存。
 """
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 

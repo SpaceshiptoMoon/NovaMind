@@ -4,7 +4,7 @@
 异常类放在模块顶层，供 API 层、服务层、仓储层共同使用，
 避免仓储层反向依赖 API 层（违反 DDD 分层原则）。
 """
-from typing import ClassVar, List
+from typing import ClassVar
 
 from novamind.core.middleware.base_exception_handler import BaseAPIError
 
@@ -19,7 +19,7 @@ class SkillError(BaseAPIError):
 class SkillNotFoundError(SkillError):
     """技能不存在"""
     
-    _serializable_attrs: ClassVar[List[str]] = ["skill_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["skill_id"]
 
     def __init__(self, skill_id: int):
         super().__init__(
@@ -31,7 +31,7 @@ class SkillNotFoundError(SkillError):
 
 class SkillAlreadyExistsError(SkillError):
     """技能名称已存在"""
-    _serializable_attrs: ClassVar[List[str]] = ["name"]
+    _serializable_attrs: ClassVar[list[str]] = ["name"]
 
     def __init__(self, name: str):
         super().__init__(
@@ -43,7 +43,7 @@ class SkillAlreadyExistsError(SkillError):
 
 class SkillNotPublishedError(SkillError):
     """技能未发布，无法安装"""
-    _serializable_attrs: ClassVar[List[str]] = ["skill_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["skill_id"]
 
     def __init__(self, skill_id: int):
         super().__init__(
@@ -55,7 +55,7 @@ class SkillNotPublishedError(SkillError):
 
 class SkillAccessDeniedError(SkillError):
     """技能访问被拒绝"""
-    _serializable_attrs: ClassVar[List[str]] = ["skill_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["skill_id"]
 
     def __init__(self, skill_id: int):
         super().__init__(
@@ -67,7 +67,7 @@ class SkillAccessDeniedError(SkillError):
 
 class SkillAlreadyInstalledError(SkillError):
     """技能已安装到该 Agent"""
-    _serializable_attrs: ClassVar[List[str]] = ["skill_id", "agent_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["skill_id", "agent_id"]
 
     def __init__(self, skill_id: int, agent_id: int):
         super().__init__(
@@ -80,7 +80,7 @@ class SkillAlreadyInstalledError(SkillError):
 
 class SkillNotInstalledError(SkillError):
     """技能未安装到该 Agent"""
-    _serializable_attrs: ClassVar[List[str]] = ["skill_id", "agent_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["skill_id", "agent_id"]
 
     def __init__(self, skill_id: int, agent_id: int):
         super().__init__(
@@ -100,7 +100,7 @@ class SkillTargetAgentNotFoundError(SkillError):
     原错误码与消息**（``AGENT_NOT_FOUND`` → 后缀匹配 404），前端契约不变。
     """
 
-    _serializable_attrs: ClassVar[List[str]] = ["agent_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["agent_id"]
 
     def __init__(self, agent_id: int):
         super().__init__(
@@ -112,7 +112,7 @@ class SkillTargetAgentNotFoundError(SkillError):
 
 class InvalidSkillFormatError(SkillError):
     """SKILL.md 格式无效"""
-    _serializable_attrs: ClassVar[List[str]] = ["reason"]
+    _serializable_attrs: ClassVar[list[str]] = ["reason"]
 
     def __init__(self, reason: str):
         super().__init__(
@@ -124,7 +124,7 @@ class InvalidSkillFormatError(SkillError):
 
 class SkillReviewRejectedError(SkillError):
     """技能安全审查未通过"""
-    _serializable_attrs: ClassVar[List[str]] = ["reason"]
+    _serializable_attrs: ClassVar[list[str]] = ["reason"]
 
     def __init__(self, reason: str):
         super().__init__(

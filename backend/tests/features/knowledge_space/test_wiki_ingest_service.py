@@ -9,29 +9,27 @@ from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import BigInteger
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.ext.compiler import compiles
-
 from novamind.core.database.base import Base
 from novamind.features.knowledge_space.models.wiki import (
     WikiEditSource,
     WikiIngestRecord,
     WikiPage,
     WikiPageRevision,
-    WikiIngestStatus,
 )
 from novamind.features.knowledge_space.repository.wiki_repository import (
     WikiPageRepository,
 )
 from novamind.features.knowledge_space.services.wiki_ingest_service import (
-    IngestOutcome,
     WikiIngestService,
     normalize_slug,
 )
+from sqlalchemy import BigInteger
 
 # 编译期把 BigInteger 降为 INTEGER，仅影响本测试的 SQLite 建表，不改模型。
-from sqlalchemy import BigInteger as _B
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.compiler import compiles
+
+pytestmark = pytest.mark.unit
 
 
 @compiles(BigInteger, "sqlite")

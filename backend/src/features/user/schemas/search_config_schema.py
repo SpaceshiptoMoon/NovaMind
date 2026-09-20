@@ -8,10 +8,10 @@
 - provider 白名单校验 ``{tavily, serpapi, duckduckgo}``
 - 更新时 api_key 留空（None）= 不改，与 model_config 约定一致
 """
-from pydantic import BaseModel, Field, field_validator, ConfigDict
-from typing import Optional, Dict, Any, List
 from datetime import datetime
+from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ========== 请求/响应模型 ==========
 
@@ -23,12 +23,12 @@ class SearchConfigBase(BaseModel):
         description="搜索服务商: tavily/serpapi/duckduckgo",
         examples=["tavily", "serpapi", "duckduckgo"],
     )
-    api_key: Optional[str] = Field(
+    api_key: str | None = Field(
         None,
         description="API Key（duckduckgo 可空）",
         examples=["tvly-xxxxxxxx"],
     )
-    extra_config: Optional[Dict[str, Any]] = Field(
+    extra_config: dict[str, Any] | None = Field(
         None,
         description="扩展配置（max_results/search_depth/timeout/include_domains 等）",
         examples=[{"max_results": 10, "search_depth": "basic"}],
@@ -55,9 +55,9 @@ class SearchConfigUpdate(BaseModel):
     api_key 留空（None）= 不修改（保留原密文）；显式传空串视为清空。
     """
 
-    api_key: Optional[str] = Field(None, description="API Key（留空表示不修改）")
-    extra_config: Optional[Dict[str, Any]] = Field(None, description="扩展配置")
-    is_primary: Optional[bool] = Field(None, description="是否设为首选 provider")
+    api_key: str | None = Field(None, description="API Key（留空表示不修改）")
+    extra_config: dict[str, Any] | None = Field(None, description="扩展配置")
+    is_primary: bool | None = Field(None, description="是否设为首选 provider")
 
 
 class SearchConfigResponse(BaseModel):
@@ -66,8 +66,8 @@ class SearchConfigResponse(BaseModel):
     id: int = Field(..., description="配置 ID")
     user_id: int = Field(..., description="用户 ID")
     provider: str = Field(..., description="搜索服务商")
-    api_key: Optional[str] = Field(None, description="API Key（已脱敏）")
-    extra_config: Optional[Dict[str, Any]] = Field(None, description="扩展配置")
+    api_key: str | None = Field(None, description="API Key（已脱敏）")
+    extra_config: dict[str, Any] | None = Field(None, description="扩展配置")
     is_primary: bool = Field(..., description="是否首选")
     created_at: datetime = Field(..., description="创建时间")
     updated_at: datetime = Field(..., description="更新时间")
@@ -79,7 +79,7 @@ class SearchConfigListResponse(BaseModel):
     """搜索配置列表响应"""
 
     total: int = Field(..., description="总数")
-    items: List[SearchConfigResponse] = Field(..., description="配置列表")
+    items: list[SearchConfigResponse] = Field(..., description="配置列表")
 
 
 # ========== 连接测试 ==========
@@ -91,11 +91,11 @@ class SearchTestRequest(BaseModel):
         ...,
         description="搜索服务商: tavily/serpapi/duckduckgo",
     )
-    api_key: Optional[str] = Field(
+    api_key: str | None = Field(
         None,
         description="API Key（duckduckgo 可空）",
     )
-    extra_config: Optional[Dict[str, Any]] = Field(
+    extra_config: dict[str, Any] | None = Field(
         None,
         description="扩展配置",
     )
@@ -114,5 +114,5 @@ class SearchTestResponse(BaseModel):
 
     success: bool = Field(..., description="测试是否成功")
     message: str = Field(..., description="测试结果消息")
-    latency_ms: Optional[float] = Field(None, description="响应延迟（毫秒）")
+    latency_ms: float | None = Field(None, description="响应延迟（毫秒）")
     results_count: int = Field(0, description="返回结果数")

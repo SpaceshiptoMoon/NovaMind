@@ -9,11 +9,11 @@
 """
 
 import asyncio
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
@@ -24,8 +24,13 @@ pytest.importorskip("aiosqlite")
 from novamind.core.database.base import Base
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
-from novamind.features.knowledge_space.models.document_task_batch import DocumentTaskBatch, BatchAction
+from novamind.features.knowledge_space.models.document_task_batch import (
+    BatchAction,
+    DocumentTaskBatch,
+)
 from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
+
+pytestmark = pytest.mark.unit
 
 # 只建本测试涉及的 3 张表，避免 Base.metadata.create_all 触发其它模型的既存元数据问题
 # （document_task_items.task_id 外键指向 document_tasks，必须连带建 batch 表）

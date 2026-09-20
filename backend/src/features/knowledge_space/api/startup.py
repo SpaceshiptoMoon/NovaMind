@@ -5,55 +5,53 @@
 """
 
 from fastapi import FastAPI
-
 from novamind.core.middleware.base_exception_handler import register_module_exceptions
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.exceptions import (
-    KnowledgeSpaceError,
-    # 空间相关
-    SpaceNotFoundError,
-    SpaceAlreadyExistsError,
-    SpaceAccessDeniedError,
-    SpaceLimitExceededError,
-    # 成员相关
-    MemberNotFoundError,
-    MemberAlreadyExistsError,
-    InviteExpiredError,
-    InviteInvalidError,
-    CannotRemoveLastAdminError,
     CannotModifySelfRoleError,
-    # 知识库相关
-    KnowledgeBaseNotFoundError,
-    KnowledgeBaseAlreadyExistsError,
-    KnowledgeBaseAccessDeniedError,
-    KnowledgeBaseArchivedError,
-    KnowledgeBaseLimitExceededError,
-    # 文档相关
-    DocumentNotFoundError,
+    CannotRemoveLastAdminError,
     DocumentAlreadyExistsError,
     DocumentAlreadyProcessingError,
-    DocumentProcessingError,
     DocumentConversionError,
-    DocumentInvalidTypeError,
-    DocumentSizeExceededError,
     DocumentCountExceededError,
-    # 检索相关
-    SearchError,
+    DocumentInvalidTypeError,
+    # 文档相关
+    DocumentNotFoundError,
+    DocumentProcessingError,
+    DocumentSizeExceededError,
     EmbeddingError,
+    InvalidDocumentStatusError,
+    InvalidParameterError,
     InvalidSearchModeError,
     InvalidSearchWeightError,
-    RerankError,
+    InviteExpiredError,
+    InviteInvalidError,
+    KnowledgeBaseAccessDeniedError,
+    KnowledgeBaseAlreadyExistsError,
+    KnowledgeBaseArchivedError,
+    KnowledgeBaseLimitExceededError,
+    # 知识库相关
+    KnowledgeBaseNotFoundError,
+    KnowledgeSpaceError,
+    MemberAlreadyExistsError,
+    # 成员相关
+    MemberNotFoundError,
     QuestionGenerationError,
+    RerankError,
+    # 检索相关
+    SearchError,
+    SpaceAccessDeniedError,
+    SpaceAlreadyExistsError,
+    SpaceLimitExceededError,
+    # 空间相关
+    SpaceNotFoundError,
+    # 通用
+    UserNotFoundError,
+    WikiGenerationError,
     # Wiki 相关
     WikiPageNotFoundError,
     WikiPageVersionConflictError,
-    WikiGenerationError,
-    # 通用
-    UserNotFoundError,
-    InvalidParameterError,
-    InvalidDocumentStatusError,
 )
-
 
 logger = get_logger(__name__)
 

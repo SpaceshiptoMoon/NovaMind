@@ -1,6 +1,6 @@
 import asyncio
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -12,8 +12,13 @@ pytest.importorskip("av")
 
 from novamind.engines.document.media.video import extract_video_frames
 
+pytestmark = pytest.mark.unit
+
 
 def _assert_video_frames(path: Path) -> None:
+    # test_data/ 是 repo 外本地样例约定目录（CLAUDE.md），不进 git；缺失即跳过
+    if not path.exists():
+        pytest.skip(f"本地样例缺失: {path.name}（test_data/ 约定目录，见 CLAUDE.md）")
     frames = asyncio.run(extract_video_frames(path.read_bytes(), interval=5, max_frames=60))
     assert frames, f"{path.name} 应至少提取出一帧"
     frame_bytes, timestamp, frame_index = frames[0]

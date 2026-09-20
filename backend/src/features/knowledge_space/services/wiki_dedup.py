@@ -19,7 +19,7 @@
 一个文档在生成），批内 dict 足够，不移植 Redis claim。
 """
 import re
-from typing import Dict, Iterable, List, Sequence, Set, Tuple
+from collections.abc import Iterable, Sequence
 
 # 每个 item 的候选上限（相似度预筛 top-K）
 DEDUP_CANDIDATE_TOP_K = 5
@@ -35,7 +35,7 @@ DEDUP_CORPUS_HARD_LIMIT = 5000
 _SLUG_BASE_SPLIT = re.compile(r"[-_.\s]+")
 
 
-def jaccard(a: Set[str], b: Set[str]) -> float:
+def jaccard(a: set[str], b: set[str]) -> float:
     """集合 Jaccard 相似度（移植 WeKnora searchutil.Jaccard）"""
     if not a and not b:
         return 0.0
@@ -48,7 +48,7 @@ def jaccard(a: Set[str], b: Set[str]) -> float:
     return inter / union
 
 
-def surface_grams(s: str) -> Set[str]:
+def surface_grams(s: str) -> set[str]:
     """char-bigram 集合：小写、剔除非字母数字后按字符二元组切分。
 
     CJK 下 bigram 近似词；Latin 下捕捉词干重叠（corporation ↔ corp）。
@@ -65,7 +65,7 @@ def surface_grams(s: str) -> Set[str]:
     return {cleaned[i:i + 2] for i in range(len(cleaned) - 1)}
 
 
-def slug_base_tokens(slug: str) -> Set[str]:
+def slug_base_tokens(slug: str) -> set[str]:
     """slug 基段（"/" 后）kebab token 集合。
 
     "entity/beijing-nongshang-yinxing" → {"beijing","nongshang","yinxing"}。
@@ -77,13 +77,13 @@ def slug_base_tokens(slug: str) -> Set[str]:
     return {t for t in _SLUG_BASE_SPLIT.split(base.lower()) if t}
 
 
-def grams_per_surface(surfaces: Iterable[str]) -> List[Set[str]]:
+def grams_per_surface(surfaces: Iterable[str]) -> list[set[str]]:
     return [g for g in (surface_grams(s) for s in surfaces) if g]
 
 
 def dedup_pair_score(
-    a_grams: List[Set[str]], a_tokens: Set[str],
-    b_grams: List[Set[str]], b_tokens: Set[str],
+    a_grams: list[set[str]], a_tokens: set[str],
+    b_grams: list[set[str]], b_tokens: set[str],
 ) -> float:
     """pair 相似度 = slug token Jaccard 与各 surface 对 Jaccard 的 max。
 
@@ -103,7 +103,7 @@ class DedupCandidate:
 
     __slots__ = ("slug", "title", "aliases", "page_type")
 
-    def __init__(self, slug: str, title: str, aliases: List[str], page_type: str):
+    def __init__(self, slug: str, title: str, aliases: list[str], page_type: str):
         self.slug = slug
         self.title = title
         self.aliases = aliases or []
@@ -113,7 +113,7 @@ class DedupCandidate:
 def select_dedup_candidate_pages(
     new_items: Sequence[dict],
     all_pages: Sequence[DedupCandidate],
-) -> List[DedupCandidate]:
+) -> list[DedupCandidate]:
     """预筛：返回与至少一个新条目可能相关的页面子集（保持输入顺序）。
 
     new_items 元素需含 name/slug/aliases。非 entity/concept 页无条件剔除；
@@ -130,7 +130,7 @@ def select_dedup_candidate_pages(
         surfaces = [p.title, *p.aliases]
         page_feats.append((slug_base_tokens(p.slug), grams_per_surface(surfaces)))
 
-    selected: Dict[int, bool] = {}
+    selected: dict[int, bool] = {}
     for it in new_items:
         name = it.get("name") or ""
         aliases = it.get("aliases") or []
@@ -171,8 +171,8 @@ def normalize_identity_title(title: str) -> str:
 def exact_identity_target(
     item_name: str,
     item_type: str,
-    candidate_slugs: Set[str],
-    pages_by_slug: Dict[str, DedupCandidate],
+    candidate_slugs: set[str],
+    pages_by_slug: dict[str, DedupCandidate],
     own_slug: str = "",
 ) -> str:
     """同类型候选中归一化标题完全一致者 → 确定性归并目标（空串=无）。
@@ -193,7 +193,7 @@ def exact_identity_target(
     return sorted(matches)[0] if matches else ""
 
 
-def merge_reject_reason(src_slug: str, dst_slug: str, src_candidates: Set[str]) -> str:
+def merge_reject_reason(src_slug: str, dst_slug: str, src_candidates: set[str]) -> str:
     """校验 LLM 提议的合并（src→dst），允许返回空串、拒绝返回原因。
 
     双守卫：目标必须在 src 自己的候选集内 + 类型前缀一致。
@@ -209,14 +209,14 @@ def merge_reject_reason(src_slug: str, dst_slug: str, src_candidates: Set[str]) 
     return ""
 
 
-def append_unique(values: List[str], value: str) -> List[str]:
+def append_unique(values: list[str], value: str) -> list[str]:
     value = (value or "").strip()
     if value and value not in values:
         values.append(value)
     return values
 
 
-def prefer_identity_display_name(dst: str, src: str) -> Tuple[str, str]:
+def prefer_identity_display_name(dst: str, src: str) -> tuple[str, str]:
     """同 identity 两个显示名取更紧凑者，落选者作为别名返回。
 
     "孔子" 优于 "孔 子"；落选形式记为 alias 不丢信号。
@@ -257,10 +257,10 @@ def merge_extracted_identity(dst: dict, src: dict) -> dict:
 
 
 def stabilize_extracted_items(
-    items: List[dict],
-    merge_targets: Dict[str, str],
-    exact_targets: Dict[str, str],
-) -> List[dict]:
+    items: list[dict],
+    merge_targets: dict[str, str],
+    exact_targets: dict[str, str],
+) -> list[dict]:
     """确定性归并结果应用 + 批内 identity 收敛 + 同结果合并。
 
     - exact_targets（同型同题，权威）与 merge_targets（LLM 语义，非权威）
@@ -269,9 +269,9 @@ def stabilize_extracted_items(
     - 未重定向的条目按批内 (type, identity) 收敛到首个 slug（NovaMind 有
       per-KB 锁，批内 dict 即可，无需 WeKnora 的跨批 Redis claim）。
     """
-    out: List[dict] = []
-    by_slug: Dict[str, int] = {}
-    claimed_by_identity: Dict[str, str] = {}
+    out: list[dict] = []
+    by_slug: dict[str, int] = {}
+    claimed_by_identity: dict[str, str] = {}
     for item in items:
         original_slug = item.get("slug") or ""
         authoritative = False

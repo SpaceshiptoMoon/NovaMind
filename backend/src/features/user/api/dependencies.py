@@ -1,15 +1,16 @@
-from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
+from novamind.core.authorization.ports import PermissionCheckerPort
+from novamind.core.database.database import get_db
+from novamind.features.user.repository import UserRepository
 from novamind.features.user.services import UserService
 from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.features.user.services.search_config_service import SearchConfigService
-from novamind.shared.model_config_ports import ModelConfigPort
-from novamind.features.user.repository import UserRepository
-from novamind.core.database.database import get_db
-from novamind.core.authorization.ports import PermissionCheckerPort
 from novamind.features.user.services.permission_service import RbacPermissionService
 from novamind.features.user.services.role_service import RoleService
+from novamind.features.user.services.search_config_service import SearchConfigService
+from novamind.shared.model_config_ports import ModelConfigPort
 from novamind.shared.storage.client_factory import ClientFactory
+from sqlalchemy.ext.asyncio import AsyncSession
+
 
 async def get_user_service(db: AsyncSession = Depends(get_db)):
     user_repository = UserRepository(db)

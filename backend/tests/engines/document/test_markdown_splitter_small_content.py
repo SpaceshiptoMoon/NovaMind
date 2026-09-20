@@ -1,7 +1,8 @@
 """MarkdownSplitter 回归测试：覆盖短文本不应切成 0 chunk 的兜底。"""
 import pytest
-
 from novamind.engines.document.splitters.markdown_splitter import MarkdownSplitter
+
+pytestmark = pytest.mark.unit
 
 
 @pytest.mark.asyncio

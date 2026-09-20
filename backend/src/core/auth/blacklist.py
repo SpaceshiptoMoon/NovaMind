@@ -7,8 +7,6 @@ get_current_user 认证链路需要这两个读操作；token 撤销等写操作
 """
 from __future__ import annotations
 
-from typing import Optional
-
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.cache.redis_client import get_redis_client
 
@@ -41,7 +39,7 @@ async def is_token_revoked(jti: str) -> bool:
         raise AuthBlacklistError(f"检查 Token 黑名单失败: {str(e)}") from e
 
 
-async def is_user_blacklisted(user_id: int, token_iat: Optional[int] = None) -> bool:
+async def is_user_blacklisted(user_id: int, token_iat: int | None = None) -> bool:
     """检查用户是否在用户级黑名单中（用户被软删除/停用时所有 Token 立即失效）。
 
     Args:

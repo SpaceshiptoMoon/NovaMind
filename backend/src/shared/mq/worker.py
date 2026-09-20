@@ -2,16 +2,16 @@
 arq 通用 Worker 运行时，提供嵌入式 Worker 的创建、启动与停止。
 """
 import asyncio
-from typing import Any, Callable, Optional, Sequence
+from collections.abc import Callable, Sequence
+from typing import Any
 
 from arq.worker import Worker
-
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
 # 全局 Worker 引用
-_worker_task: Optional[asyncio.Task] = None
+_worker_task: asyncio.Task | None = None
 
 
 async def create_embedded_worker(

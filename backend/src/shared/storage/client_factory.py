@@ -4,7 +4,6 @@
 
 
 import asyncio
-from typing import Optional
 
 from novamind.shared.logging import get_logger
 
@@ -20,7 +19,7 @@ class ClientFactory:
     """
 
     _instances = {}
-    _async_lock: Optional[asyncio.Lock] = None
+    _async_lock: asyncio.Lock | None = None
 
     # 宿主装配点注入（configure）。shared 层不得直接读 setting/features。
     _config = None

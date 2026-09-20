@@ -5,7 +5,7 @@
 避免在 BaseTool 上堆砌通用逻辑。
 """
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any
 
 from novamind.engines.agent.tool.definition import ToolDefinition
 from novamind.engines.agent.tool.result import ToolResult
@@ -26,9 +26,9 @@ class ToolHook(ABC):
     async def before_execute(
         self,
         tool: ToolDefinition,
-        arguments: Dict[str, Any],
-        context: Dict[str, Any],
-    ) -> Optional[Dict[str, Any]]:
+        arguments: dict[str, Any],
+        context: dict[str, Any],
+    ) -> dict[str, Any] | None:
         """
         执行前钩子
 
@@ -42,9 +42,9 @@ class ToolHook(ABC):
     async def after_execute(
         self,
         tool: ToolDefinition,
-        arguments: Dict[str, Any],
+        arguments: dict[str, Any],
         result: ToolResult,
-        context: Dict[str, Any],
+        context: dict[str, Any],
     ) -> ToolResult:
         """
         执行后钩子
@@ -61,9 +61,9 @@ class LoggingHook(ToolHook):
     async def before_execute(
         self,
         tool: ToolDefinition,
-        arguments: Dict[str, Any],
-        context: Dict[str, Any],
-    ) -> Optional[Dict[str, Any]]:
+        arguments: dict[str, Any],
+        context: dict[str, Any],
+    ) -> dict[str, Any] | None:
         logger.info(
             "工具调用开始",
             tool_name=tool.name,
@@ -74,9 +74,9 @@ class LoggingHook(ToolHook):
     async def after_execute(
         self,
         tool: ToolDefinition,
-        arguments: Dict[str, Any],
+        arguments: dict[str, Any],
         result: ToolResult,
-        context: Dict[str, Any],
+        context: dict[str, Any],
     ) -> ToolResult:
         logger.info(
             "工具调用完成",
@@ -100,17 +100,17 @@ class ResultTruncationHook(ToolHook):
     async def before_execute(
         self,
         tool: ToolDefinition,
-        arguments: Dict[str, Any],
-        context: Dict[str, Any],
-    ) -> Optional[Dict[str, Any]]:
+        arguments: dict[str, Any],
+        context: dict[str, Any],
+    ) -> dict[str, Any] | None:
         return None
 
     async def after_execute(
         self,
         tool: ToolDefinition,
-        arguments: Dict[str, Any],
+        arguments: dict[str, Any],
         result: ToolResult,
-        context: Dict[str, Any],
+        context: dict[str, Any],
     ) -> ToolResult:
         if len(result.content) > self._max_chars:
             original_length = len(result.content)
@@ -133,17 +133,17 @@ class ResultBudgetHook(ToolHook):
     async def before_execute(
         self,
         tool: ToolDefinition,
-        arguments: Dict[str, Any],
-        context: Dict[str, Any],
-    ) -> Optional[Dict[str, Any]]:
+        arguments: dict[str, Any],
+        context: dict[str, Any],
+    ) -> dict[str, Any] | None:
         return None
 
     async def after_execute(
         self,
         tool: ToolDefinition,
-        arguments: Dict[str, Any],
+        arguments: dict[str, Any],
         result: ToolResult,
-        context: Dict[str, Any],
+        context: dict[str, Any],
     ) -> ToolResult:
         if len(result.content) > self._preview_threshold:
             preview = result.content[:self._preview_chars]
@@ -183,17 +183,17 @@ class ToolOutputBudgetHook(ToolHook):
     async def before_execute(
         self,
         tool: ToolDefinition,
-        arguments: Dict[str, Any],
-        context: Dict[str, Any],
-    ) -> Optional[Dict[str, Any]]:
+        arguments: dict[str, Any],
+        context: dict[str, Any],
+    ) -> dict[str, Any] | None:
         return None
 
     async def after_execute(
         self,
         tool: ToolDefinition,
-        arguments: Dict[str, Any],
+        arguments: dict[str, Any],
         result: ToolResult,
-        context: Dict[str, Any],
+        context: dict[str, Any],
     ) -> ToolResult:
         if tool.name in self._exempt:
             return result

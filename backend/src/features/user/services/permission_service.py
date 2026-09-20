@@ -5,14 +5,11 @@
 如 user.manage/role.manage），后者查「空间成员角色」（空间资源面，
 VIEWER/EDITOR/ADMIN）。二者语义与数据源完全不同。
 """
-from typing import Optional
-
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.authorization.ports import PermissionCheckerPort
-from novamind.features.user.models.role import Role
 from novamind.features.user.models.user import User
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 ROLE_PERM_CACHE_PREFIX = "rbac:user_perms:"  # Redis key 前缀
 ROLE_PERM_TTL = 300  # 5 分钟

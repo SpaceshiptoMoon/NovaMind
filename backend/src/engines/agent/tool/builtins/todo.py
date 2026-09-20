@@ -5,7 +5,7 @@
 不注入 system prompt fragment。
 """
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
 from novamind.shared.logging import get_logger
@@ -27,7 +27,7 @@ class TodoTool(BaseTool):
     def description(self) -> str:
         return "任务清单管理工具"
 
-    def get_tools(self) -> List[Dict[str, Any]]:
+    def get_tools(self) -> list[dict[str, Any]]:
         return [
             {
                 "type": "function",
@@ -97,7 +97,7 @@ class TodoTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: Dict[str, Any], context: Dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
         conversation_id = context.get("conversation_id")
 

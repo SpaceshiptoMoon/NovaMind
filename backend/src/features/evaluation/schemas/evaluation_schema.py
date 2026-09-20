@@ -2,12 +2,10 @@
 测评模块 Schema 定义
 """
 from datetime import datetime
-from typing import Any, Dict, List, Optional
-
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from typing import Any
 
 from novamind.features.evaluation.models.evaluation_task import EvaluationStatus
-
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ========== 配置 Schema ==========
 
@@ -20,8 +18,8 @@ class EvaluationConfig(BaseModel):
 
     # 生成配置
     enable_generation: bool = Field(default=True, description="是否启用生成阶段")
-    llm_model: Optional[str] = Field(default=None, description="生成回答使用的模型")
-    embedding_model: Optional[str] = Field(default=None, description="Embedding 模型")
+    llm_model: str | None = Field(default=None, description="生成回答使用的模型")
+    embedding_model: str | None = Field(default=None, description="Embedding 模型")
 
     # 检索阶段评估
     retrieval_relevance_strategy: str = Field(default="llm", description="检索相关性判断策略: llm / embedding")
@@ -39,7 +37,7 @@ class EvaluationConfig(BaseModel):
     enable_answer_similarity: bool = Field(default=True, description="是否启用 Answer Similarity")
 
     # 评估维度开关
-    scoring_dimensions: List[str] = Field(
+    scoring_dimensions: list[str] = Field(
         default=["correctness", "faithfulness", "relevance", "quality"],
         description="启用的评分维度",
     )
@@ -55,8 +53,8 @@ class TestCase(BaseModel):
 
 class TestSet(BaseModel):
     """测试集"""
-    name: Optional[str] = Field(default=None, description="测试集名称")
-    test_cases: List[TestCase] = Field(..., min_length=1, description="测试用例列表")
+    name: str | None = Field(default=None, description="测试集名称")
+    test_cases: list[TestCase] = Field(..., min_length=1, description="测试用例列表")
 
 
 # ========== 人工评分 Schema ==========
@@ -65,12 +63,12 @@ class HumanScoreItem(BaseModel):
     """单条人工评分"""
     index: int = Field(..., ge=0, description="测试用例索引")
     score: int = Field(..., ge=1, le=10, description="人工评分（1-10）")
-    comment: Optional[str] = Field(default=None, max_length=1000, description="评语")
+    comment: str | None = Field(default=None, max_length=1000, description="评语")
 
 
 class HumanScoreRequest(BaseModel):
     """人工评分请求"""
-    scores: List[HumanScoreItem] = Field(..., min_length=1, max_length=500, description="评分列表")
+    scores: list[HumanScoreItem] = Field(..., min_length=1, max_length=500, description="评分列表")
 
 
 # ========== 测试集响应 Schema ==========
@@ -102,7 +100,7 @@ class TestSetListItem(BaseModel):
 
 class TestSetListResponse(BaseModel):
     """测试集列表响应"""
-    items: List[TestSetListItem] = Field(..., description="测试集列表")
+    items: list[TestSetListItem] = Field(..., description="测试集列表")
     total: int = Field(..., description="总数")
     skip: int = Field(..., description="跳过数")
     limit: int = Field(..., description="每页数量")
@@ -131,7 +129,7 @@ class TestSetCasesResponse(BaseModel):
     """测试集用例预览响应"""
     test_set_id: int = Field(..., description="测试集 ID")
     total_cases: int = Field(..., description="用例总数")
-    test_cases: List[TestCase] = Field(..., description="测试用例列表")
+    test_cases: list[TestCase] = Field(..., description="测试用例列表")
 
 
 # ========== 测评任务 Schema ==========
@@ -140,7 +138,7 @@ class TaskCreateRequest(BaseModel):
     """创建测评任务请求"""
     test_set_id: int = Field(..., gt=0, description="测试集 ID")
     name: str = Field(..., min_length=1, max_length=200, description="任务名称")
-    config: Optional[EvaluationConfig] = Field(default=None, description="测评配置")
+    config: EvaluationConfig | None = Field(default=None, description="测评配置")
 
 
 class EvaluationTaskCreateResponse(BaseModel):
@@ -181,7 +179,7 @@ class EvaluationTaskListItem(BaseModel):
 
 class EvaluationTaskListResponse(BaseModel):
     """测评任务列表响应"""
-    items: List[EvaluationTaskListItem] = Field(..., description="任务列表")
+    items: list[EvaluationTaskListItem] = Field(..., description="任务列表")
     total: int = Field(..., description="总数")
     skip: int = Field(..., description="跳过数")
     limit: int = Field(..., description="每页数量")
@@ -195,8 +193,8 @@ class EvaluationTaskDetailResponse(BaseModel):
     test_set_id: int = Field(..., description="关联测试集 ID")
     name: str = Field(..., description="任务名称")
     status: str = Field(..., description="任务状态")
-    config: Optional[Dict[str, Any]] = Field(default=None, description="测评配置")
-    error_message: Optional[str] = Field(default=None, description="错误信息")
+    config: dict[str, Any] | None = Field(default=None, description="测评配置")
+    error_message: str | None = Field(default=None, description="错误信息")
     created_at: datetime = Field(..., description="创建时间")
     updated_at: datetime = Field(..., description="更新时间")
 
@@ -213,8 +211,8 @@ class EvaluationReportResponse(BaseModel):
     status: str = Field(..., description="任务状态")
     total_cases: int = Field(..., description="测试用例总数")
     completed_cases: int = Field(default=0, description="已完成用例数")
-    summary: Optional[Dict[str, Any]] = Field(default=None, description="汇总指标")
-    details: Optional[List[Dict[str, Any]]] = Field(default=None, description="逐条详情")
+    summary: dict[str, Any] | None = Field(default=None, description="汇总指标")
+    details: list[dict[str, Any]] | None = Field(default=None, description="逐条详情")
 
     @field_validator("status", mode="before")
     @classmethod

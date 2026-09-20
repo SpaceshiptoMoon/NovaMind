@@ -23,8 +23,8 @@
 """
 
 import ast
-import inspect
 import importlib
+import inspect
 import sys
 from pathlib import Path
 
@@ -86,8 +86,8 @@ def test_resume_engine_no_forbidden_imports(mod_name: str):
 
 def test_resume_engines_require_port_injection():
     """三个 resume 引擎构造器均要求注入 PromptProvider + Logger。"""
-    from novamind.engines.resume.resume_parser import ResumeParser
     from novamind.engines.resume.resume_analyzer import ResumeAnalyzer
+    from novamind.engines.resume.resume_parser import ResumeParser
     from novamind.engines.resume.resume_probing import AutoProbingEngine
 
     for cls in (ResumeParser, ResumeAnalyzer, AutoProbingEngine):
@@ -128,8 +128,8 @@ def test_host_prompt_provider_satisfies_protocol():
 
 def test_structlog_logger_satisfies_protocol():
     """宿主侧 structlog BoundLogger（.bind() 后）满足 Logger 协议。"""
-    from novamind.shared.logging import Logger
     from novamind.core.middleware.structured_logging import get_logger
+    from novamind.shared.logging import Logger
 
     host_logger = get_logger("resume.engine").bind()
     assert isinstance(host_logger, Logger)
@@ -219,9 +219,9 @@ def test_resume_pipeline_service_assembles_ports():
 def test_resume_engines_exported_from_engines_resume():
     """三引擎从 engines.resume 公共面导出（消费方经包级 import）。"""
     from novamind.engines.resume import (
-        ResumeParser,
-        ResumeAnalyzer,
         AutoProbingEngine,
+        ResumeAnalyzer,
+        ResumeParser,
     )
 
     assert ResumeParser.__name__ == "ResumeParser"
@@ -253,10 +253,10 @@ def test_resume_schema_split_location():
     )
 
     # feature DTO 反向引用 engine Schema（同一性 + Optional 包装）
-    from typing import Optional as _Optional
+
     from novamind.engines.resume.schemas import StructuredResume
     field = feature_dto.ResumeSessionResponse.model_fields["structured_resume"]
-    assert field.annotation == _Optional[StructuredResume], (
+    assert field.annotation == (StructuredResume | None), (
         f"structured_resume 注解应为 Optional[StructuredResume]，实际: {field.annotation}"
     )
 

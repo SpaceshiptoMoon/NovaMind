@@ -2,11 +2,12 @@
 import base64
 import hashlib
 import json
-from typing import Optional, List, Dict, Any, AsyncIterator
-import redis.asyncio as redis
-from redis.exceptions import ConnectionError, RedisError
+from collections.abc import AsyncIterator
+from typing import Any
 
+import redis.asyncio as redis
 from novamind.shared.logging import get_logger
+from redis.exceptions import ConnectionError, RedisError
 
 logger = get_logger(__name__)
 
@@ -30,13 +31,13 @@ class RedisCache:
         host: str = "localhost",
         port: int = 6379,
         db: int = 0,
-        password: Optional[str] = None,
+        password: str | None = None,
         max_connections: int = 20,
         # 集群和哨兵支持
         mode: str = "standalone",  # standalone, sentinel, cluster
-        sentinel_hosts: Optional[List[str]] = None,
-        sentinel_master: Optional[str] = None,
-        cluster_hosts: Optional[List[str]] = None,
+        sentinel_hosts: list[str] | None = None,
+        sentinel_master: str | None = None,
+        cluster_hosts: list[str] | None = None,
     ):
         """
         初始化Redis客户端
@@ -84,7 +85,7 @@ class RedisCache:
                     db=self.db,
                 )
                 logger.info(
-                    f"成功连接到Redis哨兵集群",
+                    "成功连接到Redis哨兵集群",
                     sentinel_hosts=self.sentinel_hosts,
                     master=self.sentinel_master,
                 )
@@ -100,7 +101,7 @@ class RedisCache:
                     decode_responses=False,
                 )
                 logger.info(
-                    f"成功连接到Redis集群",
+                    "成功连接到Redis集群",
                     cluster_hosts=self.cluster_hosts,
                 )
 
@@ -146,7 +147,7 @@ class RedisCache:
     # 基础 String 操作
     # ============================================================
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         """
         获取缓存值（自动 JSON 反序列化）
         :param key: 缓存键
@@ -176,7 +177,7 @@ class RedisCache:
         self,
         key: str,
         value: Any,
-        expire: Optional[int] = None
+        expire: int | None = None
     ) -> bool:
         """
         设置缓存值（自动 JSON 序列化）
@@ -306,7 +307,7 @@ class RedisCache:
     # 批量操作
     # ============================================================
 
-    async def mget(self, *keys: str) -> List[Optional[Any]]:
+    async def mget(self, *keys: str) -> list[Any | None]:
         """
         批量获取多个键的值
         :param keys: 缓存键列表
@@ -334,7 +335,7 @@ class RedisCache:
             logger.warning(f"批量获取降级，键: {keys}, 错误: {e}")
             return [None] * len(keys)
 
-    async def mset(self, mapping: Dict[str, Any], expire: Optional[int] = None) -> bool:
+    async def mset(self, mapping: dict[str, Any], expire: int | None = None) -> bool:
         """
         批量设置多个键值对
         :param mapping: 键值对字典
@@ -452,7 +453,7 @@ class RedisCache:
     # Hash 操作
     # ============================================================
 
-    async def hgetall(self, key: str) -> Dict:
+    async def hgetall(self, key: str) -> dict:
         """
         获取Hash中的所有字段
         :param key: 键
@@ -480,7 +481,7 @@ class RedisCache:
             logger.warning(f"获取Hash降级，键: {key}, 错误: {e}")
             return {}
 
-    async def hset(self, key: str, mapping: Dict) -> bool:
+    async def hset(self, key: str, mapping: dict) -> bool:
         """
         设置Hash字段
         :param key: 键
@@ -504,8 +505,8 @@ class RedisCache:
         user_id: str,
         query: str,
         answer: str,
-        embedding: List[float],
-        retrieved_docs: List,
+        embedding: list[float],
+        retrieved_docs: list,
         expire_hours: int = 24,
     ) -> bool:
         """
@@ -544,7 +545,7 @@ class RedisCache:
             logger.warning(f"缓存查询向量降级，键: {key}, 错误: {e}")
             return False
 
-    async def get_cached_query_vector(self, user_id: str, query: str) -> Optional[Dict]:
+    async def get_cached_query_vector(self, user_id: str, query: str) -> dict | None:
         """
         获取缓存的查询向量数据（用于精确匹配）
         :param user_id: 用户ID
@@ -587,10 +588,10 @@ class RedisCache:
     async def find_similar_queries(
         self,
         user_id: str,
-        query_embedding: List[float],
+        query_embedding: list[float],
         threshold: float = 0.95,
         limit: int = 5,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         查找相似的历史查询（基于embedding的近似缓存）
         :param user_id: 用户ID
@@ -686,7 +687,7 @@ class RedisCache:
         :return: 是否创建成功
         """
         try:
-            from redis.commands.search.field import VectorField, TagField, TextField
+            from redis.commands.search.field import TagField, TextField, VectorField
 
             # 检查是否启用了RediSearch
             if not hasattr(self.redis_client, "ft"):

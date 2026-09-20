@@ -4,7 +4,7 @@
 异常类放在模块顶层，供 API 层、服务层、仓储层共同使用，
 避免仓储层反向依赖 API 层（违反 DDD 分层原则）。
 """
-from typing import ClassVar, List
+from typing import ClassVar
 
 from novamind.core.middleware.base_exception_handler import BaseAPIError
 
@@ -18,7 +18,7 @@ class EvaluationError(BaseAPIError):
 
 class EvaluationTestSetNotFoundError(EvaluationError):
     """测试集不存在"""
-    _serializable_attrs: ClassVar[List[str]] = ["test_set_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["test_set_id"]
 
     def __init__(self, test_set_id: int):
         super().__init__(
@@ -30,7 +30,7 @@ class EvaluationTestSetNotFoundError(EvaluationError):
 
 class EvaluationTaskNotFoundError(EvaluationError):
     """测评任务不存在"""
-    _serializable_attrs: ClassVar[List[str]] = ["task_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["task_id"]
 
     def __init__(self, task_id: int):
         super().__init__(
@@ -42,7 +42,7 @@ class EvaluationTaskNotFoundError(EvaluationError):
 
 class EvaluationTaskPendingError(EvaluationError):
     """测评任务正在执行中，无法操作"""
-    _serializable_attrs: ClassVar[List[str]] = ["task_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["task_id"]
 
     def __init__(self, task_id: int):
         super().__init__(
@@ -54,7 +54,7 @@ class EvaluationTaskPendingError(EvaluationError):
 
 class InvalidTestSetError(EvaluationError):
     """无效的测试集文件"""
-    _serializable_attrs: ClassVar[List[str]] = ["reason"]
+    _serializable_attrs: ClassVar[list[str]] = ["reason"]
 
     def __init__(self, reason: str):
         super().__init__(
@@ -66,7 +66,7 @@ class InvalidTestSetError(EvaluationError):
 
 class EvaluationAccessDeniedError(EvaluationError):
     """无权访问测评任务"""
-    _serializable_attrs: ClassVar[List[str]] = ["task_id", "user_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["task_id", "user_id"]
 
     def __init__(self, task_id: int, user_id: int):
         super().__init__(
@@ -79,7 +79,7 @@ class EvaluationAccessDeniedError(EvaluationError):
 
 class EvaluationConfigError(EvaluationError):
     """无效的测评配置"""
-    _serializable_attrs: ClassVar[List[str]] = ["reason"]
+    _serializable_attrs: ClassVar[list[str]] = ["reason"]
 
     def __init__(self, reason: str):
         super().__init__(
@@ -91,7 +91,7 @@ class EvaluationConfigError(EvaluationError):
 
 class EvaluationTaskNotCancellableError(EvaluationError):
     """任务不可取消"""
-    _serializable_attrs: ClassVar[List[str]] = ["task_id", "status"]
+    _serializable_attrs: ClassVar[list[str]] = ["task_id", "status"]
 
     def __init__(self, task_id: int, status: str):
         super().__init__(
@@ -104,7 +104,7 @@ class EvaluationTaskNotCancellableError(EvaluationError):
 
 class EvaluationTaskNotCompletedError(EvaluationError):
     """任务未完成，不允许操作"""
-    _serializable_attrs: ClassVar[List[str]] = ["task_id", "status"]
+    _serializable_attrs: ClassVar[list[str]] = ["task_id", "status"]
 
     def __init__(self, task_id: int, status: str):
         super().__init__(

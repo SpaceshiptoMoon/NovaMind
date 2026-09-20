@@ -2,7 +2,7 @@
 内置工具：知识库搜索，提供空间发现、知识库浏览、文档检索的完整工具链。
 """
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
 from novamind.shared.logging import get_logger
@@ -21,7 +21,7 @@ class KnowledgeSearchTool(BaseTool):
     def description(self) -> str:
         return "知识库检索工具集：发现空间、浏览知识库、搜索文档内容"
 
-    def get_tools(self) -> List[Dict[str, Any]]:
+    def get_tools(self) -> list[dict[str, Any]]:
         return [
             {
                 "type": "function",
@@ -160,7 +160,7 @@ class KnowledgeSearchTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: Dict[str, Any], context: Dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
         port = context.get("knowledge_search_port")
         if port is None:
@@ -183,7 +183,7 @@ class KnowledgeSearchTool(BaseTool):
 
     # ==================== 空间与知识库发现 ====================
 
-    async def _list_spaces(self, port, context: Dict[str, Any]) -> str:
+    async def _list_spaces(self, port, context: dict[str, Any]) -> str:
         """列出用户可访问的知识空间"""
         try:
             user_id = context["user_id"]
@@ -203,7 +203,7 @@ class KnowledgeSearchTool(BaseTool):
             return json.dumps({"error": f"获取空间列表失败：{str(e)}"}, ensure_ascii=False)
 
     async def _list_knowledge_bases(
-        self, port, args: Dict[str, Any], context: Dict[str, Any]
+        self, port, args: dict[str, Any], context: dict[str, Any]
     ) -> str:
         """列出指定空间下的知识库"""
         try:
@@ -236,7 +236,7 @@ class KnowledgeSearchTool(BaseTool):
             logger.error("获取知识库列表失败", error=str(e))
             return json.dumps({"error": f"获取知识库列表失败：{str(e)}"}, ensure_ascii=False)
 
-    async def _list_all_knowledge_bases(self, port, context: Dict[str, Any]) -> str:
+    async def _list_all_knowledge_bases(self, port, context: dict[str, Any]) -> str:
         """跨空间列出用户所有可访问的知识库"""
         try:
             user_id = context["user_id"]
@@ -263,7 +263,7 @@ class KnowledgeSearchTool(BaseTool):
 
     # ==================== 搜索与文档列表 ====================
 
-    async def _search(self, port, args: Dict[str, Any], context: Dict[str, Any]) -> str:
+    async def _search(self, port, args: dict[str, Any], context: dict[str, Any]) -> str:
         """执行知识库搜索"""
         try:
             user_id: int = context["user_id"]
@@ -312,7 +312,7 @@ class KnowledgeSearchTool(BaseTool):
             return json.dumps({"error": f"搜索失败：{str(e)}"}, ensure_ascii=False)
 
     async def _list_documents(
-        self, port, args: Dict[str, Any], context: Dict[str, Any]
+        self, port, args: dict[str, Any], context: dict[str, Any]
     ) -> str:
         """列出文档"""
         try:

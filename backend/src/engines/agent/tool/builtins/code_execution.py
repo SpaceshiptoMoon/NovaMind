@@ -4,7 +4,7 @@
 在 Docker 沙箱中执行代码，支持 Python、JavaScript、Shell
 """
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
 from novamind.shared.logging import get_logger
@@ -32,7 +32,7 @@ class CodeExecutionTool(BaseTool):
     def description(self) -> str:
         return "在隔离沙箱中执行代码，支持 Python、JavaScript、Shell"
 
-    def get_tools(self) -> List[Dict[str, Any]]:
+    def get_tools(self) -> list[dict[str, Any]]:
         return [
             {
                 "type": "function",
@@ -81,13 +81,13 @@ class CodeExecutionTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: Dict[str, Any], context: Dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
         if tool_name == "run_code":
             return await self._run_code(arguments)
         return json.dumps({"error": f"未知工具：{tool_name}"}, ensure_ascii=False)
 
-    async def _run_code(self, args: Dict[str, Any]) -> str:
+    async def _run_code(self, args: dict[str, Any]) -> str:
         """执行代码"""
         code = args.get("code", "")
         language = args.get("language", "")

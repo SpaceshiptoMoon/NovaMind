@@ -1,10 +1,10 @@
 """
 会话配置相关的 Pydantic 模型
 """
-from typing import Optional, Literal, List
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import Literal
 
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ========== 压缩配置结构 ==========
 
@@ -18,15 +18,15 @@ class CompressionConfig(BaseModel):
     threshold: int = Field(default=70000, ge=500, le=200000, description="触发压缩的 token 阈值")
     target_tokens: int = Field(default=2000, ge=100, le=2000, description="压缩后的目标 token 数")
     keep_recent: int = Field(default=6, ge=0, le=10, description="保留的最近消息数")
-    custom_prompt: Optional[str] = Field(default=None, max_length=2000, description="自定义摘要提示词")
+    custom_prompt: str | None = Field(default=None, max_length=2000, description="自定义摘要提示词")
 
 
 # ========== RAG 绑定配置结构（会话级自动 RAG） ==========
 
 class RagBindingConfig(BaseModel):
     """知识库绑定配置（会话级自动 RAG）"""
-    space_id: Optional[int] = Field(default=None, description="知识空间ID")
-    kb_ids: List[int] = Field(default_factory=list, description="绑定的知识库ID列表")
+    space_id: int | None = Field(default=None, description="知识空间ID")
+    kb_ids: list[int] = Field(default_factory=list, description="绑定的知识库ID列表")
     auto_rag: bool = Field(default=False, description="是否启用会话级自动 RAG")
     refusal_enabled: bool = Field(default=False, description="是否启用分级拒答（检索为空拒答、低分标记）")
     score_threshold: float = Field(default=0.3, ge=0.0, le=1.0, description="低置信度阈值（单库模式生效）")
@@ -55,10 +55,10 @@ class LlmConfig(BaseModel):
 
     注意：llm_model / enable_thinking 由前端请求传，不在此列。
     """
-    max_tokens: Optional[int] = Field(default=None, ge=1, le=8192, description="最大生成token数（None 用默认 2048）")
-    temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0, description="温度（None 用默认 0.7）")
-    top_p: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Top-P（None 用默认 0.8）")
-    system_prompt: Optional[str] = Field(default=None, max_length=4000, description="系统提示词（None 用后端 QA 模板）")
+    max_tokens: int | None = Field(default=None, ge=1, le=8192, description="最大生成token数（None 用默认 2048）")
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0, description="温度（None 用默认 0.7）")
+    top_p: float | None = Field(default=None, ge=0.0, le=1.0, description="Top-P（None 用默认 0.8）")
+    system_prompt: str | None = Field(default=None, max_length=4000, description="系统提示词（None 用后端 QA 模板）")
 
 
 # ========== 请求/响应模型 ==========
@@ -94,7 +94,7 @@ class WebSearchConfig(BaseModel):
     注意：是否启用联网搜索由请求级 enable_web_search（聊天 chip）控制，不在此列。
     provider=None 表示自动择优（用户首选 is_primary → YAML 兜底）。
     """
-    provider: Optional[Literal["tavily", "serpapi", "duckduckgo"]] = Field(
+    provider: Literal["tavily", "serpapi", "duckduckgo"] | None = Field(
         default=None, description="搜索引擎 provider（None=自动择优）"
     )
     max_results: int = Field(default=5, ge=1, le=20, description="联网搜索结果条数")
@@ -111,12 +111,12 @@ class SessionConfigResponse(BaseModel):
     session_id: str
     user_id: int
     compression_config: dict
-    kb_bindings: Optional[dict] = Field(default=None, description="知识库绑定配置（会话级自动 RAG）")
-    llm_config: Optional[dict] = Field(default=None, description="模型生成参数配置（会话级持久化）")
-    web_search_config: Optional[dict] = Field(default=None, description="联网搜索引擎配置（会话级持久化）")
+    kb_bindings: dict | None = Field(default=None, description="知识库绑定配置（会话级自动 RAG）")
+    llm_config: dict | None = Field(default=None, description="模型生成参数配置（会话级持久化）")
+    web_search_config: dict | None = Field(default=None, description="联网搜索引擎配置（会话级持久化）")
 
     # 时间戳
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)

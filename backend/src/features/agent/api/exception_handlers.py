@@ -2,24 +2,23 @@
 Agent 模块异常处理器
 """
 from fastapi import FastAPI
-
 from novamind.core.middleware.base_exception_handler import register_module_exceptions
 from novamind.features.agent.exceptions import (
     AgentError,
+    AgentMaxIterationsError,
     AgentNotFoundError,
-    SessionNotFoundError,
+    McpConnectionError,
     McpServerError,
     McpServerNotFoundError,
-    McpConnectionError,
+    MemoryNotFoundError,
     SandboxError,
+    SandboxExecutionError,
     SandboxNotAvailableError,
     SandboxTimeoutError,
-    SandboxExecutionError,
-    UnsupportedLanguageError,
+    SessionNotFoundError,
     ToolExecutionError,
     ToolNotFoundError,
-    AgentMaxIterationsError,
-    MemoryNotFoundError,
+    UnsupportedLanguageError,
 )
 
 

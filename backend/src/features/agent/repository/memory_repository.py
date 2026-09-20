@@ -1,13 +1,11 @@
 """
 长期记忆仓储
 """
-from typing import List, Optional, Tuple
 
-from sqlalchemy import select, func, update
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.features.agent.models.memory import AgentMemory
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.agent.models.memory import AgentMemory
+from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -28,9 +26,9 @@ class MemoryRepository:
         user_id: int,
         category: str,
         content: str,
-        source_conversation_id: Optional[int] = None,
-        source_type: Optional[str] = None,
-        extra_data: Optional[dict] = None,
+        source_conversation_id: int | None = None,
+        source_type: str | None = None,
+        extra_data: dict | None = None,
     ) -> AgentMemory:
         """创建长期记忆条目"""
         memory = AgentMemory(
@@ -47,7 +45,7 @@ class MemoryRepository:
         await self.session.refresh(memory)
         return memory
 
-    async def get_by_id(self, memory_id: int) -> Optional[AgentMemory]:
+    async def get_by_id(self, memory_id: int) -> AgentMemory | None:
         result = await self.session.execute(
             select(AgentMemory).where(AgentMemory.id == memory_id)
         )
@@ -59,8 +57,8 @@ class MemoryRepository:
         user_id: int,
         query: str,
         top_k: int = 5,
-        categories: Optional[List[str]] = None,
-    ) -> List[AgentMemory]:
+        categories: list[str] | None = None,
+    ) -> list[AgentMemory]:
         """
         关键词搜索长期记忆
 
@@ -87,7 +85,7 @@ class MemoryRepository:
         category: str,
         content: str,
         similarity_threshold: float = 0.85,
-    ) -> Optional[AgentMemory]:
+    ) -> AgentMemory | None:
         """查找相似的记忆条目（用于去重）"""
         result = await self.session.execute(
             select(AgentMemory).where(
@@ -112,10 +110,10 @@ class MemoryRepository:
         self,
         agent_id: int,
         user_id: int,
-        category: Optional[str] = None,
+        category: str | None = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> Tuple[List[AgentMemory], int]:
+    ) -> tuple[list[AgentMemory], int]:
         """列出 Agent 的所有记忆"""
         base = select(AgentMemory).where(
             AgentMemory.agent_id == agent_id,
@@ -133,7 +131,7 @@ class MemoryRepository:
         )
         return result.scalars().all(), total
 
-    async def update(self, memory_id: int, **kwargs) -> Optional[AgentMemory]:
+    async def update(self, memory_id: int, **kwargs) -> AgentMemory | None:
         """更新记忆字段"""
         allowed = {f for f in self._UPDATABLE_FIELDS if f in kwargs}
         if not allowed:

@@ -1,6 +1,7 @@
 import pytest
-
 from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
+
+pytestmark = pytest.mark.unit
 
 
 @pytest.mark.asyncio

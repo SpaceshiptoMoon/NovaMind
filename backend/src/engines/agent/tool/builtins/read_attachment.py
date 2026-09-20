@@ -5,7 +5,7 @@
 attachment_id/预览），模型通过本工具按 offset/limit 分片读取完整内容。
 """
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
 from novamind.shared.logging import get_logger
@@ -27,7 +27,7 @@ class ReadAttachmentTool(BaseTool):
     def description(self) -> str:
         return "会话附件按需读取：读取用户上传文档的完整提取文本"
 
-    def get_tools(self) -> List[Dict[str, Any]]:
+    def get_tools(self) -> list[dict[str, Any]]:
         return [
             {
                 "type": "function",
@@ -68,7 +68,7 @@ class ReadAttachmentTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: Dict[str, Any], context: Dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
         port = context.get("attachment_read_port")
         if port is None:

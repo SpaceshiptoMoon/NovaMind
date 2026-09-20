@@ -12,19 +12,17 @@ import asyncio
 import base64
 import hashlib
 import os
-from typing import Optional
 
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives import padding as crypto_padding
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
-
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import padding as crypto_padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 _CIPHER_VERSION = "v2:"
 
 # 宿主装配点注入（configure_encryption_key）。shared 层不得直接读 setting。
-_default_encryption_key: Optional[str] = None
+_default_encryption_key: str | None = None
 
 
 def configure_encryption_key(key: str) -> None:
@@ -66,7 +64,7 @@ def _get_encryption_key() -> bytes:
     return _hkdf_derive(raw_key.encode("utf-8"))
 
 
-def _get_aes_key(key: Optional[str] = None, v1_compat: bool = False) -> bytes:
+def _get_aes_key(key: str | None = None, v1_compat: bool = False) -> bytes:
     """
     获取 AES 密钥
 
@@ -82,7 +80,7 @@ def _get_aes_key(key: Optional[str] = None, v1_compat: bool = False) -> bytes:
 # ==================== 当前版本加解密（AES-256-GCM） ====================
 
 
-def encrypt_api_key(plain_text: str, key: Optional[str] = None) -> str:
+def encrypt_api_key(plain_text: str, key: str | None = None) -> str:
     """
     AES-256-GCM 加密（当前版本）
 
@@ -108,7 +106,7 @@ def encrypt_api_key(plain_text: str, key: Optional[str] = None) -> str:
     return _CIPHER_VERSION + base64.b64encode(iv + ciphertext + encryptor.tag).decode("utf-8")
 
 
-def decrypt_api_key(cipher_text: str, key: Optional[str] = None) -> str:
+def decrypt_api_key(cipher_text: str, key: str | None = None) -> str:
     """
     解密 API Key（自动检测版本：v2 走 GCM，无前缀走旧版 CBC）
 
@@ -171,11 +169,11 @@ def mask_api_key(api_key: str) -> str:
 # ==================== 异步包装器（接口不变） ====================
 
 
-async def encrypt_api_key_async(plain_text: str, key: Optional[str] = None) -> str:
+async def encrypt_api_key_async(plain_text: str, key: str | None = None) -> str:
     """异步加密 API Key，不阻塞事件循环"""
     return await asyncio.to_thread(encrypt_api_key, plain_text, key)
 
 
-async def decrypt_api_key_async(cipher_text: str, key: Optional[str] = None) -> str:
+async def decrypt_api_key_async(cipher_text: str, key: str | None = None) -> str:
     """异步解密 API Key，不阻塞事件循环"""
     return await asyncio.to_thread(decrypt_api_key, cipher_text, key)

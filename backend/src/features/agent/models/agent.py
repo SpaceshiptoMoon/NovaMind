@@ -1,9 +1,8 @@
 """
 Agent 定义模型
 """
-from sqlalchemy import Column, BigInteger, String, Text, Integer, Float, JSON, ForeignKey
-
 from novamind.core.database.base import BaseModel
+from sqlalchemy import JSON, BigInteger, Column, Float, ForeignKey, Integer, String, Text
 
 
 class AgentDefinition(BaseModel):

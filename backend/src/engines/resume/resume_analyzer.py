@@ -4,17 +4,21 @@ S5-S9 + S12: 简历分析报告生成 Pipeline。
 prompt/log/WebSearch/降级LLM 经注入端口获取。
 """
 import json
-from typing import Optional
 
-from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.logging import Logger
 from novamind.engines.ports import PromptProvider
-from novamind.engines.search_ports import WebSearchPort, WebSearchResult
-from novamind.shared.utils.llm_response import extract_json_str
 from novamind.engines.resume.schemas import (
-    StructuredResume, JDAnalysis, ProbingPlan, KnowledgePoint, ProjectPriority, PrefixKnowledge,
+    JDAnalysis,
+    KnowledgePoint,
+    PrefixKnowledge,
+    ProbingPlan,
+    ProjectPriority,
+    StructuredResume,
     WorkProjectUnit,
 )
+from novamind.engines.search_ports import WebSearchPort, WebSearchResult
+from novamind.shared.ai_models.llm import BaseLLM
+from novamind.shared.logging import Logger
+from novamind.shared.utils.llm_response import extract_json_str
 
 
 class ResumeAnalyzer:
@@ -26,7 +30,7 @@ class ResumeAnalyzer:
         *,
         prompt_provider: PromptProvider,
         logger: Logger,
-        web_search_port: Optional[WebSearchPort] = None,
+        web_search_port: WebSearchPort | None = None,
     ):
         self.llm = llm_client
         self._prompt_provider = prompt_provider
@@ -78,8 +82,8 @@ class ResumeAnalyzer:
     async def analyze(
         self,
         resume: StructuredResume,
-        jd_text: Optional[str] = None,
-        config: Optional[dict] = None,
+        jd_text: str | None = None,
+        config: dict | None = None,
     ) -> dict:
         """完整分析流程 S4.5 → S9"""
         cfg = config or {}
@@ -381,7 +385,7 @@ class ResumeAnalyzer:
         self,
         work_units: list[WorkProjectUnit],
         resume: StructuredResume,
-        jd_analysis: Optional[JDAnalysis],
+        jd_analysis: JDAnalysis | None,
     ) -> list[WorkProjectUnit]:
         """LLM 评估每个工作单元的复杂度，自动分配追问轮数"""
         for unit in work_units:
@@ -401,7 +405,7 @@ class ResumeAnalyzer:
         self,
         unit: WorkProjectUnit,
         resume: StructuredResume,
-        jd_analysis: Optional[JDAnalysis],
+        jd_analysis: JDAnalysis | None,
     ) -> None:
         """评估单个工作单元的复杂度"""
         # 构建工作单元信息摘要
@@ -459,7 +463,7 @@ class ResumeAnalyzer:
         self,
         work_units: list[WorkProjectUnit],
         resume: StructuredResume,
-        jd_analysis: Optional[JDAnalysis],
+        jd_analysis: JDAnalysis | None,
         breadth: int = 3,
     ) -> list[KnowledgePoint]:
         """以工作单元为核心构建知识点，取代原有 Tier 1/2/3 分类"""
@@ -652,7 +656,7 @@ class ResumeAnalyzer:
             parts.append("亮点: " + "；".join(proj.highlights))
         return "\n".join(parts)
 
-    def _calc_jd_relevance(self, tech: str, jd: Optional[JDAnalysis]) -> float:
+    def _calc_jd_relevance(self, tech: str, jd: JDAnalysis | None) -> float:
         if not jd:
             return 0.5
         tech_lower = tech.lower()
@@ -668,7 +672,7 @@ class ResumeAnalyzer:
                 return 0.5
         return 0.1
 
-    def _calc_project_jd_relevance(self, proj, jd: Optional[JDAnalysis]) -> float:
+    def _calc_project_jd_relevance(self, proj, jd: JDAnalysis | None) -> float:
         if not jd:
             return 0.5
         all_tech = []
@@ -708,7 +712,7 @@ class ResumeAnalyzer:
         knowledge_points: list[KnowledgePoint],
         work_units: list[WorkProjectUnit],
         resume: StructuredResume,
-        jd_analysis: Optional[JDAnalysis],
+        jd_analysis: JDAnalysis | None,
         breadth: int,
     ) -> ProbingPlan:
         sorted_points = sorted(knowledge_points, key=lambda p: p.probing_weight, reverse=True)
@@ -847,7 +851,7 @@ class ResumeAnalyzer:
     def _assemble_md_report(
         self,
         resume: StructuredResume,
-        jd_analysis: Optional[JDAnalysis],
+        jd_analysis: JDAnalysis | None,
         probing_plan: ProbingPlan,
         work_units: list[WorkProjectUnit],
         prefix_knowledge: list[PrefixKnowledge],
@@ -1003,7 +1007,7 @@ class ResumeAnalyzer:
     def _assemble_final_md_report(
         self,
         resume: StructuredResume,
-        jd_analysis: Optional[JDAnalysis],
+        jd_analysis: JDAnalysis | None,
         probing_plan: ProbingPlan,
         work_units: list[WorkProjectUnit],
         prefix_knowledge: list[PrefixKnowledge],

@@ -6,9 +6,9 @@
    在缓存生成后被移除导致缓存命中误报 EmbeddingError）。
 3. HostRetrievalPort 实现 RetrievalPort 协议（消费方依赖抽象，可注入）。
 """
-from pathlib import Path
 import asyncio
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -16,12 +16,15 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+import pytest
 from novamind.engines.rag import (
     RetrievalEngine,
     RetrievalQuery,
 )
 from novamind.features.knowledge_space.adapters.retrieval_adapter import HostRetrievalPort
 from novamind.shared.retrieval_port import RetrievalPort
+
+pytestmark = pytest.mark.unit
 
 
 def _make_query(search_mode: str = "content_hybrid") -> RetrievalQuery:

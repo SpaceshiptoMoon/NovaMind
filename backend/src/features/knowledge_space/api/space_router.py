@@ -4,28 +4,28 @@
 处理知识空间的 CRUD 操作
 """
 
-from typing import Annotated, Optional
-from fastapi import APIRouter, Depends, Request, Body, Query, Path
+from typing import Annotated
 
-from novamind.features.knowledge_space.schemas.space_schema import (
-    SpaceCreate,
-    SpaceUpdate,
-    SpaceResponse,
-    SpaceListResponse,
-    SpaceConfigUpdate,
-    SpaceConfigResponse,
-)
+from fastapi import APIRouter, Body, Depends, Path, Query, Request
 from novamind.features.knowledge_space.api.dependencies import (
-    get_space_service,
     get_audit_service,
     get_current_user_id,
     get_optional_current_user_id,
+    get_space_service,
     validate_space_access,
     validate_space_admin,
 )
-from novamind.features.knowledge_space.services.space_service import SpaceService
-from novamind.features.knowledge_space.services.audit_service import AuditService
 from novamind.features.knowledge_space.schemas.member_schema import MemberActionResponse
+from novamind.features.knowledge_space.schemas.space_schema import (
+    SpaceConfigResponse,
+    SpaceConfigUpdate,
+    SpaceCreate,
+    SpaceListResponse,
+    SpaceResponse,
+    SpaceUpdate,
+)
+from novamind.features.knowledge_space.services.audit_service import AuditService
+from novamind.features.knowledge_space.services.space_service import SpaceService
 
 router = APIRouter(tags=["知识空间"])
 
@@ -104,7 +104,7 @@ async def get_my_spaces(
 async def get_public_spaces(
     skip: Annotated[int, Query(ge=0, description="跳过的记录数")] = 0,
     limit: Annotated[int, Query(ge=1, le=1000, description="返回的最大记录数")] = 100,
-    user_id: Optional[int] = Depends(get_optional_current_user_id),
+    user_id: int | None = Depends(get_optional_current_user_id),
     space_service: SpaceService = Depends(get_space_service),
 ):
     """获取公开空间列表（允许匿名，携带 token 则识别用户以便审计/限流）"""

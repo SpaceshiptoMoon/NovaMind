@@ -5,15 +5,14 @@ Tavily 是专为 AI 优化的搜索引擎 API
 官网: https://tavily.com
 """
 
-from typing import List, Optional
-import httpx
 
-from novamind.shared.search.external_search_service import (
-    ExternalSearchService,
-    ExternalSearchResult,
-)
+import httpx
 from novamind.shared.config import TavilySearchConfig
 from novamind.shared.logging import get_logger
+from novamind.shared.search.external_search_service import (
+    ExternalSearchResult,
+    ExternalSearchService,
+)
 
 
 class TavilySearchService(ExternalSearchService):
@@ -29,7 +28,7 @@ class TavilySearchService(ExternalSearchService):
 
     def __init__(
         self,
-        config: Optional[TavilySearchConfig] = None,
+        config: TavilySearchConfig | None = None,
         logger=None,
     ):
         self.logger = logger or get_logger(__name__)
@@ -38,7 +37,7 @@ class TavilySearchService(ExternalSearchService):
         self.max_results = cfg.max_results
         self.search_depth = cfg.search_depth
         self.timeout = cfg.timeout
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     @property
     def provider_name(self) -> str:
@@ -52,13 +51,13 @@ class TavilySearchService(ExternalSearchService):
         self,
         query: str,
         max_results: int = 10,
-        search_depth: Optional[str] = None,
-        include_domains: Optional[List[str]] = None,
-        exclude_domains: Optional[List[str]] = None,
+        search_depth: str | None = None,
+        include_domains: list[str] | None = None,
+        exclude_domains: list[str] | None = None,
         include_answer: bool = True,
         include_raw_content: bool = False,
         **kwargs,
-    ) -> List[ExternalSearchResult]:
+    ) -> list[ExternalSearchResult]:
         """
         执行 Tavily 搜索
 

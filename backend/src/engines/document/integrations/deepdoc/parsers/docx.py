@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 # Adapted from RAGFlow deepdoc/parser/docx_parser.py
-
 import logging
 import re
+from collections.abc import Sequence
 from io import BytesIO
-from typing import Any, List, Sequence
+from typing import Any
 
 from docx import Document
 from docx.image.exceptions import (
@@ -14,8 +14,11 @@ from docx.image.exceptions import (
     UnexpectedEndOfFileError,
     UnrecognizedImageError,
 )
-
-from novamind.engines.document.integrations.deepdoc.compat import LazyImage, MAXIMUM_PAGE_NUMBER, rag_tokenizer
+from novamind.engines.document.integrations.deepdoc.compat import (
+    MAXIMUM_PAGE_NUMBER,
+    LazyImage,
+    rag_tokenizer,
+)
 
 
 class RAGFlowDocxParser:
@@ -24,7 +27,7 @@ class RAGFlowDocxParser:
         if not imgs:
             return None
 
-        image_blobs: List[bytes] = []
+        image_blobs: list[bytes] = []
         for img in imgs:
             embed = img.xpath(".//a:blip/@r:embed")
             if not embed:
@@ -60,11 +63,11 @@ class RAGFlowDocxParser:
             return None
         return LazyImage(image_blobs)
 
-    def _extract_table_content(self, table: Any) -> List[str]:
+    def _extract_table_content(self, table: Any) -> list[str]:
         rows = [[cell.text for cell in row.cells] for row in table.rows]
         return self._compose_table_content(rows)
 
-    def _compose_table_content(self, rows: Sequence[Sequence[str]]) -> List[str]:
+    def _compose_table_content(self, rows: Sequence[Sequence[str]]) -> list[str]:
         def block_type(block: str) -> str:
             patterns = [
                 (r"^(20|19)[0-9]{2}[年/-][0-9]{1,2}[月/-][0-9]{1,2}日*$", "Dt"),
@@ -116,7 +119,7 @@ class RAGFlowDocxParser:
                 if row_type != dominant_type:
                     header_rows.append(row_index)
 
-        lines: List[str] = []
+        lines: list[str] = []
         for row_index in range(1, len(normalized_rows)):
             if row_index in header_rows:
                 continue
@@ -131,9 +134,9 @@ class RAGFlowDocxParser:
                         break
                 related_headers = trimmed
 
-            headers: List[str] = []
+            headers: list[str] = []
             for column_index in range(column_count):
-                pieces: List[str] = []
+                pieces: list[str] = []
                 for header_index in related_headers:
                     value = str(normalized_rows[header_index][column_index]).strip()
                     if value and value not in pieces:
@@ -141,7 +144,7 @@ class RAGFlowDocxParser:
                 header = ",".join(pieces)
                 headers.append(f"{header}: " if header else "")
 
-            cells: List[str] = []
+            cells: list[str] = []
             for column_index in range(column_count):
                 value = str(normalized_rows[row_index][column_index]).strip()
                 if value:
@@ -165,7 +168,7 @@ class RAGFlowDocxParser:
             if parsed_page > to_page:
                 break
 
-            runs_within_single_paragraph: List[str] = []
+            runs_within_single_paragraph: list[str] = []
             for run in paragraph.runs:
                 if parsed_page > to_page:
                     break

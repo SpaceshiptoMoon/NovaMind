@@ -5,12 +5,11 @@ import asyncio
 import json
 import re
 from dataclasses import dataclass, field
-from typing import List, Optional
 
-from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.logging import Logger
 from novamind.engines.ports import PromptProvider
 from novamind.features.skill.ports import ReviewStatus
+from novamind.shared.ai_models.base_model import BaseLLM
+from novamind.shared.logging import Logger
 
 # 注入模式正则
 _INJECTION_PATTERNS = [
@@ -41,7 +40,7 @@ _LLM_REVIEW_TIMEOUT = 15
 class RuleCheckResult:
     """规则检查结果"""
     passed: bool
-    matches: List[dict] = field(default_factory=list)
+    matches: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -56,8 +55,8 @@ class LLMCheckResult:
 class SecurityCheckResult:
     """综合安全检查结果"""
     status: int = ReviewStatus.APPROVED
-    rule_result: Optional[RuleCheckResult] = None
-    llm_result: Optional[LLMCheckResult] = None
+    rule_result: RuleCheckResult | None = None
+    llm_result: LLMCheckResult | None = None
 
 
 class SkillSecurityChecker:
@@ -65,10 +64,10 @@ class SkillSecurityChecker:
 
     def __init__(
         self,
-        llm_client: Optional[BaseLLM] = None,
+        llm_client: BaseLLM | None = None,
         *,
-        prompt_provider: Optional[PromptProvider] = None,
-        logger: Optional[Logger] = None,
+        prompt_provider: PromptProvider | None = None,
+        logger: Logger | None = None,
     ):
         """
         Args:
@@ -108,7 +107,7 @@ class SkillSecurityChecker:
 
     async def check_llm(
         self, body_markdown: str, frontmatter_raw: str = "",
-    ) -> Optional[LLMCheckResult]:
+    ) -> LLMCheckResult | None:
         """
         LLM 审查 — 使用 BaseLLM 分析内容安全性
 
@@ -135,7 +134,7 @@ class SkillSecurityChecker:
                 timeout=_LLM_REVIEW_TIMEOUT,
             )
             return self._parse_llm_response(response)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             if self._logger:
                 self._logger.error(
                     "LLM 安全审查超时",

@@ -17,20 +17,30 @@
 对 ``media_processing`` 的调用（视频/音频/语义切分）保持延迟导入，避免顶层循环 import。
 """
 
-from typing import Optional, List, Dict, Any, Tuple, TYPE_CHECKING
-from dataclasses import dataclass
 import re
-import traceback
 import tempfile
-from novamind.shared.utils.time_utils import now_china
+import traceback
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, Optional
+
+from novamind.shared.utils.time_utils import now_china
 
 if TYPE_CHECKING:
     # 仅用于类型注解（``Optional["DocumentTask"]`` 前向引用），避免运行期循环 import。
     from novamind.features.knowledge_space.models.document_task import DocumentTask
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.engines.document.media.audio import upload_parsed_text_to_minio
+from novamind.engines.document.media.vlm import (
+    build_vlm_image_messages,
+    generate_vlm_text_with_fallback,
+)
+from novamind.engines.document.pipeline import DocumentProcessor
+from novamind.features.knowledge_space.exceptions import (
+    DocumentProcessingError,
+    EmbeddingError,
+)
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
 from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace
@@ -38,33 +48,22 @@ from novamind.features.knowledge_space.repository.document_repository import Doc
 from novamind.features.knowledge_space.repository.knowledge_base_repository import (
     KnowledgeBaseRepository,
 )
-from novamind.features.knowledge_space.exceptions import (
-    DocumentProcessingError,
-    EmbeddingError,
-)
-from novamind.shared.model_config_ports import ModelConfigPort
-from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
-from novamind.engines.document.pipeline import DocumentProcessor
-from novamind.engines.document.media.audio import upload_parsed_text_to_minio
-from novamind.engines.document.media.vlm import (
-    build_vlm_image_messages,
-    generate_vlm_text_with_fallback,
-)
-from novamind.shared.ai_models.embedding import OpenAICompatibleEmbedding as EmbeddingClient
-from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
-    build_runtime_parsing_config,
-    DEFAULT_CHUNK_SIZE,
-    DEFAULT_CHUNK_OVERLAP,
-    DEFAULT_EMBEDDING_BATCH_SIZE,
-)
 from novamind.features.knowledge_space.schemas.enums import ChunkType
-from novamind.core.middleware.structured_logging import get_logger
-
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+    DEFAULT_CHUNK_OVERLAP,
+    DEFAULT_CHUNK_SIZE,
+    DEFAULT_EMBEDDING_BATCH_SIZE,
+    build_runtime_parsing_config,
+)
 from novamind.features.knowledge_space.services.document_file_types import (
+    AUDIO_FILE_TYPES,
     IMAGE_FILE_TYPES,
     VIDEO_FILE_TYPES,
-    AUDIO_FILE_TYPES,
 )
+from novamind.shared.ai_models.embedding import OpenAICompatibleEmbedding as EmbeddingClient
+from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class DocumentCancelledError(Exception):
@@ -86,7 +85,7 @@ async def _check_document_cancelled(document_id: int) -> None:
 def _raise_on_empty_parse(
     full_text: str,
     parse_result: Any,
-    parsing_config: Dict[str, Any],
+    parsing_config: dict[str, Any],
     document_id: int,
 ) -> None:
     """解析跑完但 0 字符 → 抛 DocumentProcessingError，不静默当成功。
@@ -143,7 +142,7 @@ async def execute_document_pipeline(
     file_content: bytes,
     filename: str,
     task: Optional["DocumentTask"] = None,
-    model_config_port: Optional[ModelConfigPort] = None,
+    model_config_port: ModelConfigPort | None = None,
 ) -> None:
     """
     执行文档处理的核心 pipeline（独立函数，可被 arq worker 或直接调用）
@@ -248,7 +247,6 @@ async def execute_document_pipeline(
         SNAPSHOTS_ENABLED,
         build_parse_snapshot_payload,
         compute_parse_fingerprint,
-        invalidate_snapshots_from,
         load_parse_snapshot,
         refresh_figure_image_urls,
         restore_frame_paths,
@@ -271,7 +269,7 @@ async def execute_document_pipeline(
                 "解析指纹计算失败，本次按无快照处理", document_id=document_id, error=str(fp_exc),
             )
 
-    parse_snapshot_payload: Optional[Dict[str, Any]] = None
+    parse_snapshot_payload: dict[str, Any] | None = None
     if SNAPSHOTS_ENABLED and parse_fingerprint and resume_minio_client is not None:
         if snapshot_fingerprint(document, "parse") == parse_fingerprint:
             snap = await load_parse_snapshot(document, resume_minio_client, _logger)
@@ -289,7 +287,7 @@ async def execute_document_pipeline(
         resumed_frame_paths = restore_frame_paths(parse_snapshot_payload.get("frame_paths"))
 
         # figure 图片预签名 URL 已过期，按 minio_object_name 重签并替换残留占位符
-        image_url_map: Dict[str, str] = {}
+        image_url_map: dict[str, str] = {}
         try:
             image_url_map = await refresh_figure_image_urls(
                 document, parse_snapshot_payload, resume_minio_client, _logger,
@@ -413,7 +411,7 @@ async def execute_document_pipeline(
         # 仅 PDF full 模式会产出 figure_regions + image_blobs；上传在 persist 之前完成，
         # 保证最终落盘的完整 MD 与 ES chunk content 都已含可访问图片链接。
         figure_regions = list((parse_result.metadata or {}).get("figure_regions") or [])
-        image_url_map: Dict[str, str] = {}
+        image_url_map: dict[str, str] = {}
         if figure_regions and document.file_type.lower() == "pdf":
             from novamind.shared.storage.client_factory import ClientFactory
 
@@ -540,7 +538,7 @@ async def persist_parsed_text(
     return object_name
 
 
-def _replace_figure_placeholders(text: str, image_url_map: Dict[str, str]) -> str:
+def _replace_figure_placeholders(text: str, image_url_map: dict[str, str]) -> str:
     """把 full_text / chunk content 里的 __FIGURE_URL__{artifact_id}__ 替换为真实 URL。"""
     if not text or not image_url_map:
         return text
@@ -552,23 +550,24 @@ def _replace_figure_placeholders(text: str, image_url_map: Dict[str, str]) -> st
 
 async def _upload_figure_images_to_minio(
     document: Document,
-    figure_regions: List[Dict[str, Any]],
+    figure_regions: list[dict[str, Any]],
     logger,
     minio_client,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """上传 PDF figure 图片到 MinIO，返回 {artifact_id: image_url}。
 
     每个 figure region 必须有 ``image_blobs``（PNG bytes 列表），取首张
     （``_encode_crops`` 的合成图或单页图）上传。上传成功后在 region 字典
     里写入 ``minio_object_name`` 和 ``image_url``。
     """
-    image_url_map: Dict[str, str] = {}
+    image_url_map: dict[str, str] = {}
     storage = document.storage or {}
     base = storage.get("minio_object_name", "")
     if not base or not figure_regions:
         return image_url_map
 
     from io import BytesIO
+
     from PIL import Image as PILImage
 
     bucket_name = getattr(minio_client, "default_bucket", "knowledge-base")
@@ -652,21 +651,21 @@ class PipelineContext:
     规则在各分支各写一遍而漂移。
     """
 
-    space: Optional[KnowledgeSpace]
-    kb: Optional[KnowledgeBase]
-    pipeline_config: Dict[str, Any]
-    embedding_config: Dict[str, Any]
+    space: KnowledgeSpace | None
+    kb: KnowledgeBase | None
+    pipeline_config: dict[str, Any]
+    embedding_config: dict[str, Any]
 
     @property
-    def space_owner_id(self) -> Optional[int]:
+    def space_owner_id(self) -> int | None:
         return self.space.owner_id if self.space else None
 
     @property
-    def embedding_model_name(self) -> Optional[str]:
+    def embedding_model_name(self) -> str | None:
         return self.embedding_config.get("model") if self.embedding_config else None
 
     @property
-    def embedding_dim(self) -> Optional[int]:
+    def embedding_dim(self) -> int | None:
         return self.embedding_config.get("dimension") if self.embedding_config else None
 
 
@@ -703,7 +702,7 @@ async def _process_image_document_static(
     session,
     _logger,
     task=None,
-    model_config_port: Optional[ModelConfigPort] = None,
+    model_config_port: ModelConfigPort | None = None,
 ):
     """处理图片类型文档
 
@@ -790,8 +789,14 @@ async def _process_image_document_static(
     # 指纹入参注入策略名，区分 vlm 与 deepdoc_ocr 产出。
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
         SNAPSHOTS_ENABLED as _SNAP_ENABLED,
+    )
+    from novamind.features.knowledge_space.services.pipeline_snapshots import (
         build_parse_snapshot_payload as _build_snap_payload,
+    )
+    from novamind.features.knowledge_space.services.pipeline_snapshots import (
         compute_parse_fingerprint as _compute_parse_fp,
+    )
+    from novamind.features.knowledge_space.services.pipeline_snapshots import (
         save_parse_snapshot as _save_parse_snap,
     )
     from novamind.shared.storage.client_factory import ClientFactory as _SnapCF
@@ -944,12 +949,12 @@ async def _process_image_ocr_static(
 
 def _build_es_chunks(
     document: Document,
-    chunk_items: List[Tuple[str, Dict[str, Any]]],
+    chunk_items: list[tuple[str, dict[str, Any]]],
     chunk_type: ChunkType,
     *,
-    parse_metadata: Optional[Dict[str, Any]] = None,
-    frame_paths: Optional[Dict[int, str]] = None,
-) -> List[Dict[str, Any]]:
+    parse_metadata: dict[str, Any] | None = None,
+    frame_paths: dict[int, str] | None = None,
+) -> list[dict[str, Any]]:
     """统一构造 ES 索引格式的分块字典列表（文本/音频/视频共用）。
 
     - 文本：富 metadata（parser/parse_summary/chunk_structure 的 entry_kinds/pages/...），仅 media_url。
@@ -965,7 +970,7 @@ def _build_es_chunks(
     parse_summary = _extract_parse_metadata_summary(parse_metadata) if is_text else {}
     media_url = storage_info.get("minio_object_name", "")
     for i, (text, meta) in enumerate(chunk_items):
-        chunk_meta: Dict[str, Any] = {"content_hash": document.file_hash}
+        chunk_meta: dict[str, Any] = {"content_hash": document.file_hash}
         if is_text:
             chunk_meta.update({
                 "parser": parse_metadata.get("parser", ""),
@@ -980,7 +985,7 @@ def _build_es_chunks(
             # 便于检索时向 LLM/前端提供完整图文上下文，不局限于当前 chunk 包含的 figure。
             figure_regions = list(parse_metadata.get("figure_regions") or [])
             if figure_regions:
-                all_figure_links: List[Dict[str, Any]] = [
+                all_figure_links: list[dict[str, Any]] = [
                     {
                         "artifact_id": r["artifact_id"],
                         "minio_object_name": r.get("minio_object_name"),
@@ -1039,9 +1044,9 @@ def _build_es_chunks(
 
 def _prepare_es_chunks_static(
     document: Document,
-    chunks: List[str],
-    parse_metadata: Optional[Dict[str, Any]] = None,
-) -> List[Dict[str, Any]]:
+    chunks: list[str],
+    parse_metadata: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     """将文本分块列表转换为 ES 索引格式的字典列表（薄 shim，委托 _build_es_chunks）。
 
     保留旧签名以兼容现有调用与测试；行为与原实现一致。
@@ -1059,20 +1064,20 @@ async def _run_post_parse_tail(
     document: Document,
     session: AsyncSession,
     task: "DocumentTask",
-    model_config_port: Optional[ModelConfigPort],
+    model_config_port: ModelConfigPort | None,
     logger,
     chunk_type: ChunkType,
-    embedding_config: Dict[str, Any],
-    pipeline_config: Dict[str, Any],
-    splitting_config: Dict[str, Any],
+    embedding_config: dict[str, Any],
+    pipeline_config: dict[str, Any],
+    splitting_config: dict[str, Any],
     full_text: str = "",
-    prechunked_items: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
-    parse_metadata: Optional[Dict[str, Any]] = None,
-    frame_paths: Optional[Dict[int, str]] = None,
-    time_alignment: Optional[Dict[str, Any]] = None,
-    parse_fingerprint: Optional[str] = None,
-    user_id: Optional[int] = None,
-) -> Dict[str, Any]:
+    prechunked_items: list[tuple[str, dict[str, Any]]] | None = None,
+    parse_metadata: dict[str, Any] | None = None,
+    frame_paths: dict[int, str] | None = None,
+    time_alignment: dict[str, Any] | None = None,
+    parse_fingerprint: str | None = None,
+    user_id: int | None = None,
+) -> dict[str, Any]:
     """共享后置尾：切分 → 构造 ES chunks → 向量化 → 问题生成 → 索引。
 
     文本/音频/视频三模态共用此尾，统一节点名 split/embedded/question_generation/indexed。
@@ -1087,12 +1092,12 @@ async def _run_post_parse_tail(
     """
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
         SNAPSHOTS_ENABLED,
-        compute_split_fingerprint,
         compute_embed_fingerprint,
-        load_split_snapshot,
+        compute_split_fingerprint,
         load_embeddings_snapshot,
-        save_split_snapshot,
+        load_split_snapshot,
         save_embeddings_snapshot,
+        save_split_snapshot,
         snapshot_fingerprint,
     )
     from novamind.shared.storage.client_factory import ClientFactory
@@ -1118,7 +1123,7 @@ async def _run_post_parse_tail(
     # 1. 切分
     await _begin_step(session, task, "split")
     resumed_split = False
-    chunk_items: List[Tuple[str, Dict[str, Any]]] = []
+    chunk_items: list[tuple[str, dict[str, Any]]] = []
     if split_fingerprint and resume_minio is not None:
         if snapshot_fingerprint(document, "split") == split_fingerprint:
             snap = await load_split_snapshot(document, resume_minio, logger)
@@ -1193,7 +1198,7 @@ async def _run_post_parse_tail(
     # 3. 向量化
     await _begin_step(session, task, "embedded")
     resumed_embed = False
-    embeddings: List[Optional[List[float]]] = []
+    embeddings: list[list[float] | None] = []
     if embed_fingerprint and resume_minio is not None:
         if snapshot_fingerprint(document, "embed") == embed_fingerprint:
             snap = await load_embeddings_snapshot(document, resume_minio, logger)
@@ -1291,7 +1296,7 @@ async def _run_post_parse_tail(
 
 
 
-def _extract_parse_metadata_summary(parse_metadata: Dict[str, Any]) -> Dict[str, Any]:
+def _extract_parse_metadata_summary(parse_metadata: dict[str, Any]) -> dict[str, Any]:
     table_regions = list(parse_metadata.get("table_regions") or [])
     figure_regions = list(parse_metadata.get("figure_regions") or [])
     reading_order = list(parse_metadata.get("reading_order") or [])
@@ -1315,9 +1320,9 @@ async def _get_es_client_static() -> ElasticsearchClient:
 
 async def _get_document_processor_static(
     session: AsyncSession,
-    user_id: Optional[int] = None,
-    model_name: Optional[str] = None,
-    model_config_port: Optional[ModelConfigPort] = None,
+    user_id: int | None = None,
+    model_name: str | None = None,
+    model_config_port: ModelConfigPort | None = None,
 ) -> DocumentProcessor:
     """获取文档处理器（静态方法用）
 
@@ -1339,12 +1344,12 @@ async def _get_document_processor_static(
 
 
 async def _generate_embeddings_static(
-    texts: List[str],
-    embedding_config: Dict[str, Any],
-    session: Optional[AsyncSession] = None,
-    user_id: Optional[int] = None,
-    model_config_port: Optional[ModelConfigPort] = None,
-) -> List[List[float]]:
+    texts: list[str],
+    embedding_config: dict[str, Any],
+    session: AsyncSession | None = None,
+    user_id: int | None = None,
+    model_config_port: ModelConfigPort | None = None,
+) -> list[list[float]]:
     """生成文本向量（静态方法用）
 
     整文档一次性交给客户端内部分批：客户端批大小遇服务商上限 400 时自适应
@@ -1380,9 +1385,9 @@ async def _generate_embeddings_static(
 
 async def _get_embedding_client_static(
     session: AsyncSession,
-    user_id: Optional[int] = None,
-    model_name: Optional[str] = None,
-    model_config_port: Optional[ModelConfigPort] = None,
+    user_id: int | None = None,
+    model_name: str | None = None,
+    model_config_port: ModelConfigPort | None = None,
 ) -> EmbeddingClient:
     """获取 Embedding 客户端（静态方法用）
 
@@ -1404,11 +1409,11 @@ async def _get_embedding_client_static(
 
 async def _generate_single_embedding_static(
     text: str,
-    embedding_config: Dict[str, Any],
+    embedding_config: dict[str, Any],
     session: AsyncSession,
-    user_id: Optional[int] = None,
-    model_config_port: Optional[ModelConfigPort] = None,
-) -> Optional[List[float]]:
+    user_id: int | None = None,
+    model_config_port: ModelConfigPort | None = None,
+) -> list[float] | None:
     """生成单条文本的嵌入向量（用于 VLM 描述文本）
 
     Args:
@@ -1438,7 +1443,7 @@ async def _generate_image_description(
     document: Document,
     mcs,  # ModelConfigService
     _logger,
-    vlm_model_name: Optional[str] = None,
+    vlm_model_name: str | None = None,
 ) -> str:
     """调用 VLM 生成图片描述文本
 
@@ -1481,7 +1486,7 @@ async def _generate_image_description(
         max_tokens=1024,
         temperature=0.3,
         logger=_logger,
-        vlm_model=vlm_model,
+        vlm_model=vlm_model_name,
         log_context={
             "document_id": document.id,
             "file_type": document.file_type,
@@ -1489,7 +1494,7 @@ async def _generate_image_description(
     )
 
     if not description or not description.strip():
-        raise ValueError(f"VLM 返回空描述，模型: {vlm_model}")
+        raise ValueError(f"VLM 返回空描述，模型: {vlm_model_name}")
 
     # 6. 截断到 2000 字符
     description = description.strip()[:2000]
@@ -1498,13 +1503,13 @@ async def _generate_image_description(
 
 
 async def _generate_questions_for_chunks_static(
-    chunks: List[str],
+    chunks: list[str],
     document_title: str,
-    kb_config: Dict[str, Any],
-    embedding_config: Dict[str, Any],
-    user_id: Optional[int] = None,
-    session: Optional[AsyncSession] = None,
-    model_config_port: Optional[ModelConfigPort] = None,
+    kb_config: dict[str, Any],
+    embedding_config: dict[str, Any],
+    user_id: int | None = None,
+    session: AsyncSession | None = None,
+    model_config_port: ModelConfigPort | None = None,
 ) -> tuple:
     """
     为所有分块生成假设问题，并生成问题向量
@@ -1514,11 +1519,11 @@ async def _generate_questions_for_chunks_static(
         questions_list: List[List[str]] — 每个分块对应的问题文本列表
         question_embeddings_list: List[List[List[float]]] — 每个分块对应的问题向量列表
     """
-    from novamind.features.knowledge_space.services.question_generation_service import (
-        QuestionGenerationService,
-    )
     from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
         QuestionGenerationConfig,
+    )
+    from novamind.features.knowledge_space.services.question_generation_service import (
+        QuestionGenerationService,
     )
 
     _logger = get_logger(__name__)
@@ -1544,8 +1549,8 @@ async def _generate_questions_for_chunks_static(
     )
 
     # 提取问题文本
-    questions_list: List[List[str]] = []
-    all_questions_flat: List[str] = []
+    questions_list: list[list[str]] = []
+    all_questions_flat: list[str] = []
 
     for chunk_questions in batch_results:
         texts = [q.question for q in chunk_questions]
@@ -1553,7 +1558,7 @@ async def _generate_questions_for_chunks_static(
         all_questions_flat.extend(texts)
 
     # 生成问题向量
-    question_embeddings_list: List[List[List[float]]] = []
+    question_embeddings_list: list[list[list[float]]] = []
     if all_questions_flat:
         try:
             all_q_embeddings = await _generate_embeddings_static(

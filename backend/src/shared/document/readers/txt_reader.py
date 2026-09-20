@@ -1,6 +1,6 @@
 """纯文本文件读取器。"""
 import os
-from typing import List, Dict
+
 from novamind.shared.document.readers.base_reader import BaseReader
 from novamind.shared.document.readers.executor import run_in_executor
 from novamind.shared.logging import get_logger
@@ -22,17 +22,17 @@ class TxtReader(BaseReader):
 
         for encoding in encodings:
             try:
-                with open(file_path, 'r', encoding=encoding) as file:
+                with open(file_path, encoding=encoding) as file:
                     text = file.read()
                 return text
             except UnicodeDecodeError:
                 continue
 
         # 如果所有编码都失败，使用错误处理方式
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+        with open(file_path, encoding='utf-8', errors='ignore') as file:
             return file.read()
 
-    def _load_data_sync(self, file_path: str) -> List[Dict[str, str]]:
+    def _load_data_sync(self, file_path: str) -> list[dict[str, str]]:
         """
         同步读取 TXT 文件（在线程池中执行）
         :param file_path: TXT文件路径
@@ -56,7 +56,7 @@ class TxtReader(BaseReader):
 
         return documents
 
-    async def load_data(self, file_path: str) -> List[Dict[str, str]]:
+    async def load_data(self, file_path: str) -> list[dict[str, str]]:
         """
         从TXT文件加载数据（异步，在共享线程池中执行）
         :param file_path: TXT文件路径

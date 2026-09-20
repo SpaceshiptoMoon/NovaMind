@@ -32,8 +32,8 @@ def test_duckduckgo_no_key_constructs():
 
 def test_tavily_no_key_raises_not_configured():
     """tavily 无 api_key 应抛 WebSearchProviderNotConfiguredError。"""
-    from novamind.engines.search_ports import build_web_search_port_from_provider
     from novamind.engines.search_errors import WebSearchProviderNotConfiguredError
+    from novamind.engines.search_ports import build_web_search_port_from_provider
 
     with pytest.raises(WebSearchProviderNotConfiguredError) as exc:
         build_web_search_port_from_provider("tavily", None, None)
@@ -42,8 +42,8 @@ def test_tavily_no_key_raises_not_configured():
 
 def test_serpapi_no_key_raises_not_configured():
     """serpapi 无 api_key 应抛 WebSearchProviderNotConfiguredError。"""
-    from novamind.engines.search_ports import build_web_search_port_from_provider
     from novamind.engines.search_errors import WebSearchProviderNotConfiguredError
+    from novamind.engines.search_ports import build_web_search_port_from_provider
 
     with pytest.raises(WebSearchProviderNotConfiguredError):
         build_web_search_port_from_provider("serpapi", None, None)
@@ -51,8 +51,8 @@ def test_serpapi_no_key_raises_not_configured():
 
 def test_unknown_provider_raises_not_configured():
     """未知 provider 应抛 WebSearchProviderNotConfiguredError。"""
-    from novamind.engines.search_ports import build_web_search_port_from_provider
     from novamind.engines.search_errors import WebSearchProviderNotConfiguredError
+    from novamind.engines.search_ports import build_web_search_port_from_provider
 
     with pytest.raises(WebSearchProviderNotConfiguredError):
         build_web_search_port_from_provider("bogus", "k", None)
@@ -107,8 +107,8 @@ async def test_provider_port_search_normalizes_results():
 @pytest.mark.asyncio
 async def test_provider_port_no_service_raises():
     """ProviderWebSearchPort 无 service 时 search 应抛 WebSearchError。"""
-    from novamind.engines.search_ports import ProviderWebSearchPort
     from novamind.engines.search_errors import WebSearchError
+    from novamind.engines.search_ports import ProviderWebSearchPort
 
     port = ProviderWebSearchPort(service=None)
     with pytest.raises(WebSearchError):

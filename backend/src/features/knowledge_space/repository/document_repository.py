@@ -9,16 +9,16 @@
 状态统计通过 LEFT JOIN document_tasks 实现。
 """
 
-from typing import Optional, List, Dict, Any
-from sqlalchemy import select, update, func, cast, Integer, case
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import outerjoin
+from typing import Any
 
+from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
-from novamind.shared.utils.time_utils import now_china
 from novamind.shared.cache.redis_client import get_redis_client
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.shared.utils.time_utils import now_china
+from sqlalchemy import Integer, case, cast, func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import outerjoin
 
 logger = get_logger(__name__)
 
@@ -86,7 +86,7 @@ class DocumentRepository:
 
     # ========== CRUD ==========
 
-    async def create(self, data: Dict[str, Any]) -> Document:
+    async def create(self, data: dict[str, Any]) -> Document:
         """
         创建文档
 
@@ -108,7 +108,7 @@ class DocumentRepository:
     async def get_by_id(
         self,
         document_id: int,
-    ) -> Optional[Document]:
+    ) -> Document | None:
         """
         根据 ID 获取文档
 
@@ -132,7 +132,7 @@ class DocumentRepository:
             await self._attach_latest_tasks([document])
         return document
 
-    async def lock_active_document_by_id(self, document_id: int) -> Optional[Document]:
+    async def lock_active_document_by_id(self, document_id: int) -> Document | None:
         query = (
             select(Document).where(
                 Document.id == document_id,
@@ -142,7 +142,7 @@ class DocumentRepository:
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
-    async def get_by_ids(self, document_ids: List[int]) -> List[Document]:
+    async def get_by_ids(self, document_ids: list[int]) -> list[Document]:
         if not document_ids:
             return []
         query = select(Document).where(
@@ -157,7 +157,7 @@ class DocumentRepository:
             await self._attach_latest_tasks(ordered)
         return ordered
 
-    async def get_filename_map_by_ids(self, document_ids: List[int]) -> Dict[int, str]:
+    async def get_filename_map_by_ids(self, document_ids: list[int]) -> dict[int, str]:
         """批量获取 {文档ID: 文件名} 映射，用于任务列表展示文档名。
 
         仅查询 id 与 filename 两列，轻量且不附带任务信息；
@@ -172,7 +172,7 @@ class DocumentRepository:
         result = await self.session.execute(query)
         return {doc_id: filename for doc_id, filename in result.all() if filename}
 
-    async def lock_active_documents_by_ids(self, document_ids: List[int]) -> List[Document]:
+    async def lock_active_documents_by_ids(self, document_ids: list[int]) -> list[Document]:
         if not document_ids:
             return []
         query = (
@@ -189,9 +189,9 @@ class DocumentRepository:
         kb_id: int,
         skip: int = 0,
         limit: int = 100,
-        status: Optional[int] = None,
-        keyword: Optional[str] = None,
-    ) -> List[Document]:
+        status: int | None = None,
+        keyword: str | None = None,
+    ) -> list[Document]:
         """获取知识库内的文档列表（keyword 非空时按文件名子串模糊匹配）"""
         return await self._list_by_parent(Document.kb_id, kb_id, skip, limit, status=status, keyword=keyword)
 
@@ -200,7 +200,7 @@ class DocumentRepository:
         space_id: int,
         skip: int = 0,
         limit: int = 100,
-    ) -> List[Document]:
+    ) -> list[Document]:
         """获取空间内的文档列表"""
         return await self._list_by_parent(Document.space_id, space_id, skip, limit)
 
@@ -210,7 +210,7 @@ class DocumentRepository:
         uploader_id: int,
         file_hash: str,
         use_cache: bool = True,
-    ) -> Optional[Document]:
+    ) -> Document | None:
         """
         根据文件哈希获取文档（用于去重，带缓存）
 
@@ -290,7 +290,7 @@ class DocumentRepository:
 
     async def get_deleted_by_hash(
         self, kb_id: int, uploader_id: int, file_hash: str
-    ) -> Optional[Document]:
+    ) -> Document | None:
         """根据文件哈希获取已软删除的文档（用于复活，限同上传者）"""
         result = await self.session.execute(
             select(Document).where(
@@ -369,7 +369,7 @@ class DocumentRepository:
         )
         return result.rowcount
 
-    async def count_by_kb(self, kb_id: int, status: Optional[int] = None, keyword: Optional[str] = None) -> int:
+    async def count_by_kb(self, kb_id: int, status: int | None = None, keyword: str | None = None) -> int:
         """
         统计知识库内的文档数量
 
@@ -428,7 +428,7 @@ class DocumentRepository:
 
     # ========== 统计查询 ==========
 
-    async def get_kb_realtime_stats(self, kb_id: int) -> Dict[str, Any]:
+    async def get_kb_realtime_stats(self, kb_id: int) -> dict[str, Any]:
         """实时统计知识库信息（排除软删除文档），通过 LEFT JOIN document_tasks 获取状态"""
         stmt = self._build_stats_select().where(
             Document.kb_id == kb_id,
@@ -437,7 +437,7 @@ class DocumentRepository:
         row = (await self.session.execute(stmt)).one()
         return self._row_to_stats_dict(row)
 
-    async def batch_get_kb_stats(self, kb_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    async def batch_get_kb_stats(self, kb_ids: list[int]) -> dict[int, dict[str, Any]]:
         """批量统计多个知识库信息（单条 SQL，解决 N+1 问题）"""
         if not kb_ids:
             return {}
@@ -448,7 +448,7 @@ class DocumentRepository:
         result = await self.session.execute(stmt)
         return {row.kb_id: self._row_to_stats_dict(row) for row in result.all()}
 
-    async def get_space_realtime_stats(self, space_id: int) -> Dict[str, Any]:
+    async def get_space_realtime_stats(self, space_id: int) -> dict[str, Any]:
         """实时统计空间内文档信息（排除软删除文档）
 
         注意：chunk_count 从 document_tasks 的最新 COMPLETED 任务的 pipeline_result 聚合。
@@ -511,9 +511,9 @@ class DocumentRepository:
         parent_id: int,
         skip: int = 0,
         limit: int = 100,
-        status: Optional[int] = None,
-        keyword: Optional[str] = None,
-    ) -> List[Document]:
+        status: int | None = None,
+        keyword: str | None = None,
+    ) -> list[Document]:
         """按父级字段（kb_id 或 space_id）查询文档列表"""
         query = select(Document).where(
             column == parent_id,
@@ -561,7 +561,7 @@ class DocumentRepository:
             .subquery("latest_task")
         )
 
-    async def _attach_latest_tasks(self, documents: List[Document]) -> None:
+    async def _attach_latest_tasks(self, documents: list[Document]) -> None:
         """Attach each document's latest task item for document-page status reads."""
         if not documents:
             return
@@ -653,7 +653,7 @@ class DocumentRepository:
         )
 
     @staticmethod
-    def _row_to_stats_dict(row) -> Dict[str, Any]:
+    def _row_to_stats_dict(row) -> dict[str, Any]:
         """将统计查询结果行转为字典"""
         return {
             "document_count": row.document_count,

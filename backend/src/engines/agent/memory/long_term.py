@@ -1,7 +1,8 @@
 """
 长期记忆管理器，提取、去重、持久化对话中的关键信息，搜索相关记忆注入上下文。
 """
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from novamind.engines.agent.memory.interfaces import (
     ILongTermMemory,
@@ -36,8 +37,8 @@ class LongTermMemory(ILongTermMemory):
         memory_store: LongTermMemoryStorePort,
         llm_client_factory: Callable,
         prompt_provider: PromptProvider,
-        memory_search: Optional[MemorySearchPort] = None,
-        embedding_factory: Optional[Callable] = None,
+        memory_search: MemorySearchPort | None = None,
+        embedding_factory: Callable | None = None,
     ):
         self._store = memory_store
         self._llm_factory = llm_client_factory
@@ -51,7 +52,7 @@ class LongTermMemory(ILongTermMemory):
         user_id: int,
         category: str,
         content: str,
-        source_conversation_id: Optional[int] = None,
+        source_conversation_id: int | None = None,
         source_type: str = "consolidate",
     ) -> LongTermMemoryEntry:
         """存储一条长期记忆 → MySQL + ES"""
@@ -89,7 +90,7 @@ class LongTermMemory(ILongTermMemory):
         category: str,
         old_content: str,
         new_content: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """替换记忆内容（子串匹配）"""
         from novamind.engines.agent.memory.security import scan_memory_content
 
@@ -110,7 +111,7 @@ class LongTermMemory(ILongTermMemory):
         agent_id: int,
         user_id: int,
         old_content: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """移除记忆（子串匹配）"""
         entry = await self._store.find_by_content_contains(agent_id, user_id, old_content)
         if not entry:
@@ -133,8 +134,8 @@ class LongTermMemory(ILongTermMemory):
         user_id: int,
         query: str,
         top_k: int = 5,
-        categories: Optional[List[str]] = None,
-    ) -> List[LongTermMemoryEntry]:
+        categories: list[str] | None = None,
+    ) -> list[LongTermMemoryEntry]:
         """根据查询搜索相关的长期记忆：ES hybrid → MySQL LIKE"""
         # 优先 ES 搜索
         if self._search and self._embedding_factory:
@@ -152,7 +153,7 @@ class LongTermMemory(ILongTermMemory):
         agent_id: int,
         user_id: int,
         conversation_id: int,
-        messages: List[MemoryMessage],
+        messages: list[MemoryMessage],
         min_turns: int = 5,
         max_recent_turns: int = 10,
     ) -> int:
@@ -320,8 +321,8 @@ class LongTermMemory(ILongTermMemory):
         user_id: int,
         query: str,
         top_k: int,
-        categories: Optional[List[str]],
-    ) -> List[LongTermMemoryEntry]:
+        categories: list[str] | None,
+    ) -> list[LongTermMemoryEntry]:
         """ES hybrid 搜索 → 回填 MySQL 完整数据"""
         try:
             embedding_client = await self._embedding_factory()
@@ -341,7 +342,7 @@ class LongTermMemory(ILongTermMemory):
                 return []
 
             # 从 MySQL 回填完整数据 + 递增访问计数
-            entries: List[LongTermMemoryEntry] = []
+            entries: list[LongTermMemoryEntry] = []
             for r in results:
                 memory = await self._store.get_by_id(r["memory_id"])
                 if memory:
@@ -371,8 +372,8 @@ class LongTermMemory(ILongTermMemory):
         user_id: int,
         query: str,
         top_k: int,
-        categories: Optional[List[str]],
-    ) -> List[LongTermMemoryEntry]:
+        categories: list[str] | None,
+    ) -> list[LongTermMemoryEntry]:
         """MySQL LIKE fallback"""
         memories = await self._store.search_by_keywords(
             agent_id=agent_id,
@@ -404,7 +405,7 @@ class LongTermMemory(ILongTermMemory):
 
     def _build_extraction_prompt(
         self,
-        messages: List[MemoryMessage],
+        messages: list[MemoryMessage],
         max_recent_turns: int = 10,
         max_prompt_tokens: int = 3000,
     ) -> str:
@@ -435,7 +436,7 @@ class LongTermMemory(ILongTermMemory):
             conversation_text=conversation_text,
         )
 
-    def _parse_extraction_result(self, result: str) -> List[dict]:
+    def _parse_extraction_result(self, result: str) -> list[dict]:
         """解析 LLM 提取结果，兼容多种 JSON 格式"""
         import json
         import re

@@ -5,15 +5,15 @@
 管理 Token 预算，超限时自动触发压缩策略。
 """
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
+from novamind.engines.agent.memory.compress import ICompressionStrategy
 from novamind.engines.agent.memory.interfaces import (
     IShortTermMemory,
     MemoryMessage,
     MemorySnapshot,
 )
 from novamind.engines.agent.memory.token_budget import TokenBudget
-from novamind.engines.agent.memory.compress import ICompressionStrategy
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
@@ -53,7 +53,7 @@ class ShortTermMemory(IShortTermMemory):
         conversation_id: int,
         max_tokens: int,
         reserve_tokens: int = 1024,
-        tools: Optional[List[Dict[str, Any]]] = None,
+        tools: list[dict[str, Any]] | None = None,
         dry_run: bool = False,
     ) -> MemorySnapshot:
         """
@@ -196,8 +196,8 @@ class ShortTermMemory(IShortTermMemory):
         return self._token_budget.count_messages_tokens(memory_messages)
 
     def _convert_db_messages(
-        self, db_messages: List[Any], db_tool_calls: List[Any]
-    ) -> List[MemoryMessage]:
+        self, db_messages: list[Any], db_tool_calls: list[Any]
+    ) -> list[MemoryMessage]:
         """
         将数据库消息记录转换为 MemoryMessage 列表
 
@@ -212,14 +212,14 @@ class ShortTermMemory(IShortTermMemory):
            历史链路（用了 fallback）降级 warning 不中断
         """
         # message_id → [AgentToolCall]
-        tool_calls_map: Dict[int, List[Any]] = {}
+        tool_calls_map: dict[int, list[Any]] = {}
         for tc in db_tool_calls:
             tool_calls_map.setdefault(tc.message_id, []).append(tc)
 
-        messages: List[MemoryMessage] = []
+        messages: list[MemoryMessage] = []
         # 记录每条带 tool_calls 的 assistant 在 messages 中的索引 + 是否用了 fallback，
         # 供 _assert_tool_call_pairing 判定新链路（严格 raise）还是历史链路（降级 warning）
-        assistant_tc_meta: List[tuple] = []
+        assistant_tc_meta: list[tuple] = []
         for msg in db_messages:
             if msg.role == "user":
                 messages.append(
@@ -294,8 +294,8 @@ class ShortTermMemory(IShortTermMemory):
 
     def _assert_tool_call_pairing(
         self,
-        messages: List[MemoryMessage],
-        assistant_tc_meta: List[tuple],
+        messages: list[MemoryMessage],
+        assistant_tc_meta: list[tuple],
     ) -> None:
         """load-time 配对断言：每条带 tool_calls 的 assistant，其 tool_calls[].id 集合应与
         紧随其后的 tool 消息 tool_call_id 集合一致。
@@ -307,7 +307,7 @@ class ShortTermMemory(IShortTermMemory):
         for idx, used_fallback in assistant_tc_meta:
             assistant_ids = [tc["id"] for tc in messages[idx].tool_calls]
             # 收集紧随其后的 tool 消息 tool_call_id
-            tool_ids: List[str] = []
+            tool_ids: list[str] = []
             j = idx + 1
             while j < n and messages[j].role == "tool":
                 if messages[j].tool_call_id:
@@ -332,14 +332,14 @@ class ShortTermMemory(IShortTermMemory):
                 )
 
     def _build_openai_messages(
-        self, system_prompt: str, memory_messages: List[MemoryMessage]
-    ) -> List[Dict[str, Any]]:
+        self, system_prompt: str, memory_messages: list[MemoryMessage]
+    ) -> list[dict[str, Any]]:
         """
         将 MemoryMessage 列表组装为 OpenAI API 格式
 
         TODO: 完善工具调用消息的还原逻辑
         """
-        messages: List[Dict[str, Any]] = [
+        messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_prompt}
         ]
         for msg in memory_messages:

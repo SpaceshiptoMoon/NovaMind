@@ -2,13 +2,13 @@
 QuestionAnswer数据访问层
 """
 
-from typing import List, Optional, Dict, Tuple
-from sqlalchemy import select, and_, func, delete as sa_delete
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from novamind.features.qa.models.question_answer import QuestionAnswer
-from novamind.features.qa.exceptions import DatabaseOperationError
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.qa.exceptions import DatabaseOperationError
+from novamind.features.qa.models.question_answer import QuestionAnswer
+from sqlalchemy import and_, func, select
+from sqlalchemy import delete as sa_delete
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -25,9 +25,9 @@ class QuestionAnswerRepository:
         role: str,
         user_id: int,
         session_id: str,
-        kb_id: Optional[int] = None,
-        space_id: Optional[int] = None,
-        extra: Optional[dict] = None,
+        kb_id: int | None = None,
+        space_id: int | None = None,
+        extra: dict | None = None,
     ) -> QuestionAnswer:
         """
         创建新的消息记录
@@ -64,8 +64,8 @@ class QuestionAnswerRepository:
     async def get_by_id(
         self,
         message_id: int,
-        user_id: Optional[int] = None,
-    ) -> Optional[QuestionAnswer]:
+        user_id: int | None = None,
+    ) -> QuestionAnswer | None:
         """
         根据ID获取消息
 
@@ -83,8 +83,8 @@ class QuestionAnswerRepository:
     async def get_by_session(
         self,
         session_id: str,
-        user_id: Optional[int] = None,
-    ) -> List[QuestionAnswer]:
+        user_id: int | None = None,
+    ) -> list[QuestionAnswer]:
         """
         获取会话中的所有消息，按时间顺序
 
@@ -105,7 +105,7 @@ class QuestionAnswerRepository:
         self,
         session_id: str,
         user_id: int,
-    ) -> List[QuestionAnswer]:
+    ) -> list[QuestionAnswer]:
         """
         获取指定用户在会话中的所有消息，按时间顺序
 
@@ -123,7 +123,7 @@ class QuestionAnswerRepository:
     async def get_user_sessions(
         self,
         user_id: int,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         获取用户的所有会话ID
 
@@ -141,7 +141,7 @@ class QuestionAnswerRepository:
         user_id: int,
         limit: int = 20,
         offset: int = 0,
-    ) -> Tuple[List[Dict[str, str]], int]:
+    ) -> tuple[list[dict[str, str]], int]:
         """
         获取用户的所有会话ID及预览（含分页）
 
@@ -222,9 +222,9 @@ class QuestionAnswerRepository:
     async def update(
         self,
         message_id: int,
-        content: Optional[str] = None,
-        role: Optional[str] = None,
-    ) -> Optional[QuestionAnswer]:
+        content: str | None = None,
+        role: str | None = None,
+    ) -> QuestionAnswer | None:
         """
         更新消息内容
 

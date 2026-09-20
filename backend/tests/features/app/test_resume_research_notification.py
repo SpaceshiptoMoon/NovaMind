@@ -1,7 +1,8 @@
 """research_done / resume_completed / password_reset 通知接线回归测试。"""
+import novamind.features.app.tasks.resume_tasks as resume_tasks
 import pytest
 
-import novamind.features.app.tasks.resume_tasks as resume_tasks
+pytestmark = pytest.mark.unit
 
 
 class _RecordingPort:
@@ -30,6 +31,7 @@ def capture(monkeypatch):
 async def test_notify_research_done(capture):
     """DeepResearchService._notify_research_done：commit 后发通知，参数完整"""
     from types import SimpleNamespace
+
     from novamind.features.deep_research.services.deep_research_service import (
         DeepResearchService,
     )
@@ -61,6 +63,7 @@ async def test_notify_research_done(capture):
 async def test_notify_research_done_topic_fallback(capture):
     """research_topic 为空时回退 params.query"""
     from types import SimpleNamespace
+
     from novamind.features.deep_research.services.deep_research_service import (
         DeepResearchService,
     )
@@ -84,6 +87,7 @@ async def test_notify_research_done_topic_fallback(capture):
 async def test_notify_research_done_port_none_noop():
     """未注入 port 时不发通知不报错"""
     from types import SimpleNamespace
+
     from novamind.features.deep_research.services.deep_research_service import (
         DeepResearchService,
     )

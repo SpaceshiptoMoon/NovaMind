@@ -1,6 +1,6 @@
 import asyncio
-from pathlib import Path
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 from sqlalchemy import create_engine, select, text
@@ -10,8 +10,11 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.features.knowledge_space.models.document import Document
+import pytest
 from novamind.engines.document.media.audio.audio_utils import upload_parsed_text_to_minio
+from novamind.features.knowledge_space.models.document import Document
+
+pytestmark = pytest.mark.unit
 def test_parsed_text_object_persists_when_storage_is_reassigned():
     engine = create_engine("sqlite:///:memory:")
     with engine.begin() as conn:
@@ -88,13 +91,12 @@ def _make_parsed_text_client(parsed_text):
 
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
-
+    from novamind.core.database.database import get_db
     from novamind.features.knowledge_space.api import document_routes
     from novamind.features.knowledge_space.api.dependencies import (
         get_document_query_service,
         validate_space_member,
     )
-    from novamind.core.database.database import get_db
 
     calls = {"get_parsed_text": 0, "get_document": 0}
 

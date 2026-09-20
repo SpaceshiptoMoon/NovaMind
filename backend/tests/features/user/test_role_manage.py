@@ -1,16 +1,17 @@
 """角色管理 CRUD 测试。"""
-import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
 from novamind.features.user.services.role_service import RoleService
-from novamind.features.user.exceptions import UserNotFoundError
+
+pytestmark = pytest.mark.unit
 
 
 @pytest.mark.asyncio
 async def test_create_role_with_permissions(tmp_db):
-    from novamind.features.user.models.role import Permission
     from novamind.core.authorization.permission_codes import SystemPermission
+    from novamind.features.user.models.role import Permission
     # 预置权限项（SQLite 下 BigInteger 主键不会自增，显式指定 id）
     for idx, code in enumerate(SystemPermission.ALL, start=1):
         tmp_db.add(Permission(id=idx, code=code, name=code, module="x"))

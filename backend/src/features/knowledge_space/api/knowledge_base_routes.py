@@ -12,36 +12,37 @@
 - 删除知识库: ADMIN(2)
 """
 
-from typing import Annotated, Optional
-from fastapi import APIRouter, Depends, Request, Query, Path
+from typing import Annotated
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from fastapi import APIRouter, Depends, Path, Query, Request
 from novamind.core.database.database import get_db
-from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
-    KnowledgeBaseCreate,
-    KnowledgeBaseUpdate,
-    KnowledgeBaseResponse,
-    KnowledgeBaseListResponse,
-    KnowledgeBaseConfigUpdate,
-    KnowledgeBaseConfigResponse,
-)
-from novamind.features.knowledge_space.schemas.member_schema import MemberActionResponse
-from novamind.features.knowledge_space.models.space_member import SpaceMember
 from novamind.features.knowledge_space.api.dependencies import (
+    get_audit_service,
     get_current_user_id,
-    validate_space_member,
-    validate_space_editor,
-    validate_space_admin,
+    get_kb_repository,
+    get_knowledge_base_service,
     validate_kb_access,
     validate_kb_writable,
-    get_kb_repository,
-    get_audit_service,
-    get_knowledge_base_service,
+    validate_space_admin,
+    validate_space_editor,
+    validate_space_member,
 )
-from novamind.features.knowledge_space.repository.knowledge_base_repository import KnowledgeBaseRepository
-from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
+from novamind.features.knowledge_space.models.space_member import SpaceMember
+from novamind.features.knowledge_space.repository.knowledge_base_repository import (
+    KnowledgeBaseRepository,
+)
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+    KnowledgeBaseConfigResponse,
+    KnowledgeBaseConfigUpdate,
+    KnowledgeBaseCreate,
+    KnowledgeBaseListResponse,
+    KnowledgeBaseResponse,
+    KnowledgeBaseUpdate,
+)
+from novamind.features.knowledge_space.schemas.member_schema import MemberActionResponse
 from novamind.features.knowledge_space.services.audit_service import AuditService
+from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["知识库管理"])
 
@@ -55,7 +56,7 @@ router = APIRouter(tags=["知识库管理"])
 )
 async def list_knowledge_bases(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
-    status: Annotated[Optional[int], Query(description="状态过滤: 1-活跃, 2-已归档")] = None,
+    status: Annotated[int | None, Query(description="状态过滤: 1-活跃, 2-已归档")] = None,
     skip: Annotated[int, Query(ge=0, description="跳过的记录数")] = 0,
     limit: Annotated[int, Query(ge=1, le=1000, description="返回的最大记录数")] = 100,
     member: SpaceMember = Depends(validate_space_member),

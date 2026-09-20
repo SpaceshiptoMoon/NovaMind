@@ -5,10 +5,9 @@
 防止泄露到持久化的 agent_context_summaries 表。
 """
 import re
-from typing import List, Tuple
 
 # 敏感数据模式：(正则, 替换模板)
-_SENSITIVE_PATTERNS: List[Tuple[re.Pattern, str]] = [
+_SENSITIVE_PATTERNS: list[tuple[re.Pattern, str]] = [
     # API Key / Token / Secret 格式
     (re.compile(r'(api[_-]?key|apikey|access[_-]?token|secret[_-]?key|auth[_-]?token)\s*[:=]\s*["\']?[\w\-]{8,}["\']?', re.IGNORECASE), '[REDACTED]'),
     # Bearer Token

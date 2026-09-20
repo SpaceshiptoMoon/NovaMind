@@ -24,11 +24,12 @@ import time
 import traceback
 import types
 import zipfile
+from collections.abc import Callable
 from datetime import datetime
 from io import BytesIO
 from os import PathLike
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 import requests
 
@@ -55,7 +56,9 @@ except ImportError:
     TENCENTCLOUD_SDK_AVAILABLE = False
 
 from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import extract_pdf_outlines
+from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import (
+    extract_pdf_outlines,
+)
 
 
 class TencentCloudAPIClient:
@@ -247,7 +250,7 @@ class RAGFlowTCADPParser(RAGFlowPdfParser):
         file_bytes: bytes,
         *,
         file_name: str = "input.pdf",
-        parsing_config: Optional[dict[str, Any]] = None,
+        parsing_config: dict[str, Any] | None = None,
     ) -> tuple[str, list[str], dict[str, Any]]:
         if not TENCENTCLOUD_SDK_AVAILABLE:
             raise RuntimeError(
@@ -438,21 +441,21 @@ class RAGFlowTCADPParser(RAGFlowPdfParser):
         self,
         filepath: str | PathLike[str],
         binary: BytesIO | bytes,
-        callback: Optional[Callable] = None,
+        callback: Callable | None = None,
         *,
-        output_dir: Optional[str] = None,
+        output_dir: str | None = None,
         file_type: str = "PDF",
-        file_start_page: Optional[int] = 1,
-        file_end_page: Optional[int] = 1000,
-        delete_output: Optional[bool] = True,
-        max_retries: Optional[int] = 1,
+        file_start_page: int | None = 1,
+        file_end_page: int | None = 1000,
+        delete_output: bool | None = True,
+        max_retries: int | None = 1,
     ) -> tuple:
         """Parse PDF document"""
 
         self.outlines = extract_pdf_outlines(binary if binary else filepath)
         temp_file = None
         created_tmp_dir = False
-        out_dir: Optional[Path] = None
+        out_dir: Path | None = None
 
         try:
             # Handle input file

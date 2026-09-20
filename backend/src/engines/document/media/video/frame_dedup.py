@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import io
 import logging
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 from novamind.engines.document.media.video.frame_extraction import (
     _compute_gray_histogram,
@@ -26,17 +26,17 @@ _DEFAULT_SIMILARITY_THRESHOLD = 0.95
 
 
 def dedup_none(
-    frames: List[Tuple[bytes, float, int]],
-) -> List[Tuple[bytes, float, int]]:
+    frames: list[tuple[bytes, float, int]],
+) -> list[tuple[bytes, float, int]]:
     """不去重，原样返回（frame_idx 保持不变）。"""
     return list(frames)
 
 
 def dedup_frame_diff(
-    frames: List[Tuple[bytes, float, int]],
+    frames: list[tuple[bytes, float, int]],
     *,
     similarity_threshold: float = _DEFAULT_SIMILARITY_THRESHOLD,
-) -> List[Tuple[bytes, float, int]]:
+) -> list[tuple[bytes, float, int]]:
     """相邻帧直方图相似度去重，保留组首帧。
 
     遍历帧序列，每帧与「上一个已保留帧」算归一化卡方距离；距离 ``<= 1 - similarity_threshold``
@@ -44,14 +44,13 @@ def dedup_frame_diff(
 
     返回去重后的 ``[(jpeg_bytes, timestamp, new_frame_idx), ...]``。
     """
-    from PIL import Image
 
     if not frames:
         return []
 
     distance_cutoff = 1.0 - similarity_threshold
-    kept: List[Tuple[bytes, float, int]] = []
-    last_hist: Optional[Any] = None
+    kept: list[tuple[bytes, float, int]] = []
+    last_hist: Any | None = None
 
     for frame_bytes, ts, _orig_idx in frames:
         try:
@@ -81,11 +80,11 @@ def dedup_frame_diff(
 
 
 def dedup_embedding(
-    frames: List[Tuple[bytes, float, int]],
+    frames: list[tuple[bytes, float, int]],
     *,
     embedding_client: Any = None,
     similarity_threshold: float = _DEFAULT_SIMILARITY_THRESHOLD,
-) -> List[Tuple[bytes, float, int]]:
+) -> list[tuple[bytes, float, int]]:
     """图像 embedding 去重（预留，首批不实现）。
 
     待 IMAGE_EMBEDDING 模型类型单独引入后实现：对每帧算图像 embedding，

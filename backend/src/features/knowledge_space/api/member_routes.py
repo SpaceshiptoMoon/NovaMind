@@ -5,40 +5,40 @@
 """
 
 from typing import Annotated
-from fastapi import APIRouter, Depends, Request, Body, Path, Query
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from fastapi import APIRouter, Body, Depends, Path, Query, Request
 from novamind.core.database.database import get_db
-from novamind.features.knowledge_space.models.space_member import SpaceRole, SpaceMember
-from novamind.features.knowledge_space.schemas.member_schema import (
-    MemberInvite,
-    MemberJoin,
-    MemberDirectAdd,
-    MemberUpdate,
-    MemberPermissionsUpdate,
-    MemberResponse,
-    MemberListResponse,
-    InviteResponse,
-    MemberActionResponse,
-)
 from novamind.features.knowledge_space.api.dependencies import (
-    get_member_service,
     get_audit_service,
     get_current_user_id,
-    validate_space_member,
-    validate_space_admin,
+    get_member_service,
     get_user_repository,
+    validate_space_admin,
+    validate_space_member,
 )
 from novamind.features.knowledge_space.exceptions import (
-    UserNotFoundError,
     InvalidParameterError,
+    UserNotFoundError,
 )
-from novamind.features.knowledge_space.services.member_service import MemberService
-from novamind.features.knowledge_space.services.audit_service import AuditService
+from novamind.features.knowledge_space.models.space_member import SpaceMember, SpaceRole
 from novamind.features.knowledge_space.repository.space_repository import SpaceRepository
+from novamind.features.knowledge_space.schemas.member_schema import (
+    InviteResponse,
+    MemberActionResponse,
+    MemberDirectAdd,
+    MemberInvite,
+    MemberJoin,
+    MemberListResponse,
+    MemberPermissionsUpdate,
+    MemberResponse,
+    MemberUpdate,
+)
+from novamind.features.knowledge_space.services.audit_service import AuditService
+from novamind.features.knowledge_space.services.member_service import MemberService
 from novamind.features.notification.adapters.notification_port_adapter import as_notification_port
-from novamind.features.user.repository.user_repository import UserRepository
 from novamind.features.user.models.user import UserStatus
+from novamind.features.user.repository.user_repository import UserRepository
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["空间成员"])
 

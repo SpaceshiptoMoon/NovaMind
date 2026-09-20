@@ -3,9 +3,9 @@
 按照统一规范配置日志记录，所有日志输出为 JSON 格式
 """
 import logging
+import logging.handlers
 import sys
 from pathlib import Path
-import logging.handlers
 from typing import Any
 
 import structlog

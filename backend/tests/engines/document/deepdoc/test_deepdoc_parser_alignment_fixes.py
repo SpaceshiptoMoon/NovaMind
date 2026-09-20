@@ -7,6 +7,9 @@
 - markdown: 围栏代码块不被 # 注释行误判标题、不被空行切碎（vendored 上游）
 """
 import numpy as np
+import pytest
+
+pytestmark = pytest.mark.unit
 
 
 # ---------------- figure ----------------
@@ -14,9 +17,8 @@ import numpy as np
 def test_figure_ocr_receives_numpy_not_pil(monkeypatch):
     """figure._extract_text_with_ocr 必须把 PIL 转 numpy 再喂 OCR.detect/recognize，
     否则底层 TextDetector 的 ori_im.shape / cv2.warpPerspective 会 AttributeError。"""
-    from PIL import Image
-
     from novamind.engines.document.integrations.deepdoc.parsers import figure as figure_mod
+    from PIL import Image
 
     received = {}
 
@@ -44,9 +46,8 @@ def test_figure_ocr_receives_numpy_not_pil(monkeypatch):
 
 def test_figure_ocr_detect_failure_degrades_gracefully(monkeypatch):
     """OCR.detect 抛异常时不应炸掉整个图片解析，应降级返回 ([], [])。"""
-    from PIL import Image
-
     from novamind.engines.document.integrations.deepdoc.parsers import figure as figure_mod
+    from PIL import Image
 
     class _BadOCR:
         def __init__(self, *a, **kw):

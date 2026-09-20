@@ -4,12 +4,14 @@
 1. 邮箱存在 → 发 password_reset 站内通知（link=None）；
 2. 防枚举语义不变：邮箱不存在 / 内部异常时响应恒 200 成功。
 """
-import pytest
 from types import SimpleNamespace
+
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 from novamind.features.user.api import user_routes
+
+pytestmark = pytest.mark.unit
 
 
 def _make_app() -> FastAPI:

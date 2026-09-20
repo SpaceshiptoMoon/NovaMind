@@ -6,7 +6,7 @@
 """
 
 
-from typing import Optional, List, ClassVar
+from typing import ClassVar
 
 from novamind.core.middleware.base_exception_handler import BaseAPIError
 from novamind.shared.mq.exceptions import TransientBusyError
@@ -23,7 +23,7 @@ class KnowledgeSpaceError(BaseAPIError):
 
 class SpaceNotFoundError(KnowledgeSpaceError):
     """空间不存在"""
-    _serializable_attrs: ClassVar[List[str]] = ["space_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["space_id"]
 
     def __init__(self, space_id: int):
         super().__init__(
@@ -35,7 +35,7 @@ class SpaceNotFoundError(KnowledgeSpaceError):
 
 class SpaceAlreadyExistsError(KnowledgeSpaceError):
     """空间已存在"""
-    _serializable_attrs: ClassVar[List[str]] = ["name"]
+    _serializable_attrs: ClassVar[list[str]] = ["name"]
 
     def __init__(self, name: str):
         super().__init__(
@@ -47,7 +47,7 @@ class SpaceAlreadyExistsError(KnowledgeSpaceError):
 
 class SpaceAccessDeniedError(KnowledgeSpaceError):
     """空间访问被拒绝"""
-    _serializable_attrs: ClassVar[List[str]] = ["space_id", "reason"]
+    _serializable_attrs: ClassVar[list[str]] = ["space_id", "reason"]
 
     def __init__(self, space_id: int, user_id: int, reason: str = "无权访问"):
         super().__init__(
@@ -61,7 +61,7 @@ class SpaceAccessDeniedError(KnowledgeSpaceError):
 
 class SpaceLimitExceededError(KnowledgeSpaceError):
     """空间数量限制"""
-    _serializable_attrs: ClassVar[List[str]] = ["limit"]
+    _serializable_attrs: ClassVar[list[str]] = ["limit"]
 
     def __init__(self, limit: int):
         super().__init__(
@@ -75,7 +75,7 @@ class SpaceLimitExceededError(KnowledgeSpaceError):
 
 class MemberNotFoundError(KnowledgeSpaceError):
     """成员不存在"""
-    _serializable_attrs: ClassVar[List[str]] = ["space_id", "user_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["space_id", "user_id"]
 
     def __init__(self, space_id: int, user_id: int):
         super().__init__(
@@ -88,7 +88,7 @@ class MemberNotFoundError(KnowledgeSpaceError):
 
 class MemberAlreadyExistsError(KnowledgeSpaceError):
     """成员已存在"""
-    _serializable_attrs: ClassVar[List[str]] = ["space_id", "user_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["space_id", "user_id"]
 
     def __init__(self, space_id: int, user_id: int):
         super().__init__(
@@ -143,7 +143,7 @@ class CannotModifySelfRoleError(KnowledgeSpaceError):
 
 class KnowledgeBaseNotFoundError(KnowledgeSpaceError):
     """知识库不存在"""
-    _serializable_attrs: ClassVar[List[str]] = ["kb_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["kb_id"]
 
     def __init__(self, kb_id: int):
         super().__init__(
@@ -155,7 +155,7 @@ class KnowledgeBaseNotFoundError(KnowledgeSpaceError):
 
 class KnowledgeBaseAlreadyExistsError(KnowledgeSpaceError):
     """知识库已存在"""
-    _serializable_attrs: ClassVar[List[str]] = ["name"]
+    _serializable_attrs: ClassVar[list[str]] = ["name"]
 
     def __init__(self, name: str):
         super().__init__(
@@ -167,7 +167,7 @@ class KnowledgeBaseAlreadyExistsError(KnowledgeSpaceError):
 
 class KnowledgeBaseAccessDeniedError(KnowledgeSpaceError):
     """知识库访问被拒绝"""
-    _serializable_attrs: ClassVar[List[str]] = ["kb_id", "user_id", "reason"]
+    _serializable_attrs: ClassVar[list[str]] = ["kb_id", "user_id", "reason"]
 
     def __init__(self, kb_id: int, user_id: int, reason: str = "无权访问"):
         super().__init__(
@@ -182,7 +182,7 @@ class KnowledgeBaseAccessDeniedError(KnowledgeSpaceError):
 class KnowledgeBaseArchivedError(KnowledgeSpaceError):
     """知识库已归档，禁止写操作"""
     http_status_code: ClassVar[int] = 403
-    _serializable_attrs: ClassVar[List[str]] = ["kb_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["kb_id"]
 
     def __init__(self, kb_id: int):
         super().__init__(
@@ -194,7 +194,7 @@ class KnowledgeBaseArchivedError(KnowledgeSpaceError):
 
 class KnowledgeBaseLimitExceededError(KnowledgeSpaceError):
     """知识库数量限制"""
-    _serializable_attrs: ClassVar[List[str]] = ["limit"]
+    _serializable_attrs: ClassVar[list[str]] = ["limit"]
 
     def __init__(self, limit: int):
         super().__init__(
@@ -208,7 +208,7 @@ class KnowledgeBaseLimitExceededError(KnowledgeSpaceError):
 
 class DocumentNotFoundError(KnowledgeSpaceError):
     """文档不存在"""
-    _serializable_attrs: ClassVar[List[str]] = ["document_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["document_id"]
 
     def __init__(self, document_id: int):
         super().__init__(
@@ -225,13 +225,13 @@ class DocumentAlreadyExistsError(KnowledgeSpaceError):
     库中内容相同的已有文档，二者可能不同名（去重只看内容哈希）。existing_* 缺失时
     （如并发竞态下回查失败）退化为仅报本次文件名。
     """
-    _serializable_attrs: ClassVar[List[str]] = ["filename", "existing_document_id", "existing_filename"]
+    _serializable_attrs: ClassVar[list[str]] = ["filename", "existing_document_id", "existing_filename"]
 
     def __init__(
         self,
         filename: str,
-        existing_document_id: Optional[int] = None,
-        existing_filename: Optional[str] = None,
+        existing_document_id: int | None = None,
+        existing_filename: str | None = None,
     ):
         if existing_filename:
             message = (
@@ -250,7 +250,7 @@ class DocumentAlreadyExistsError(KnowledgeSpaceError):
 
 class DocumentProcessingError(KnowledgeSpaceError):
     """文档处理错误"""
-    _serializable_attrs: ClassVar[List[str]] = ["document_id", "error_message"]
+    _serializable_attrs: ClassVar[list[str]] = ["document_id", "error_message"]
 
     def __init__(self, document_id: int, error_message: str):
         super().__init__(
@@ -279,9 +279,9 @@ class LocalASRBusyError(TransientBusyError):
 
 class DocumentInvalidTypeError(KnowledgeSpaceError):
     """文档类型不支持"""
-    _serializable_attrs: ClassVar[List[str]] = ["file_type", "allowed"]
+    _serializable_attrs: ClassVar[list[str]] = ["file_type", "allowed"]
 
-    def __init__(self, file_type: str = "", allowed: Optional[List[str]] = None, ext: Optional[str] = None):
+    def __init__(self, file_type: str = "", allowed: list[str] | None = None, ext: str | None = None):
         normalized_type = (ext if ext is not None else file_type) or ""
         allowed = allowed or []
 
@@ -301,7 +301,7 @@ class DocumentInvalidTypeError(KnowledgeSpaceError):
 
 class DocumentConversionError(KnowledgeSpaceError):
     """文档转换失败"""
-    _serializable_attrs: ClassVar[List[str]] = ["file_type"]
+    _serializable_attrs: ClassVar[list[str]] = ["file_type"]
 
     def __init__(self, message: str, file_type: str = "doc"):
         super().__init__(
@@ -313,7 +313,7 @@ class DocumentConversionError(KnowledgeSpaceError):
 
 class DocumentSizeExceededError(KnowledgeSpaceError):
     """文档大小超限"""
-    _serializable_attrs: ClassVar[List[str]] = ["size", "limit"]
+    _serializable_attrs: ClassVar[list[str]] = ["size", "limit"]
 
     def __init__(self, size: int, limit: int):
         super().__init__(
@@ -326,7 +326,7 @@ class DocumentSizeExceededError(KnowledgeSpaceError):
 
 class DocumentCountExceededError(KnowledgeSpaceError):
     """文件数量超限"""
-    _serializable_attrs: ClassVar[List[str]] = ["count", "limit"]
+    _serializable_attrs: ClassVar[list[str]] = ["count", "limit"]
 
     def __init__(self, count: int, limit: int):
         super().__init__(
@@ -339,7 +339,7 @@ class DocumentCountExceededError(KnowledgeSpaceError):
 
 class DocumentAlreadyProcessingError(KnowledgeSpaceError):
     """文档正在处理中，不允许重复触发"""
-    _serializable_attrs: ClassVar[List[str]] = ["document_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["document_id"]
 
     def __init__(self, document_id: int):
         super().__init__(
@@ -373,12 +373,12 @@ class EmbeddingError(KnowledgeSpaceError):
 
 class InvalidSearchModeError(KnowledgeSpaceError):
     """检索模式不可用"""
-    _serializable_attrs: ClassVar[List[str]] = ["mode", "available_modes"]
+    _serializable_attrs: ClassVar[list[str]] = ["mode", "available_modes"]
 
     def __init__(
         self,
         mode: str,
-        available_modes: List[str],
+        available_modes: list[str],
         reason: str = ""
     ):
         self.mode = mode
@@ -395,7 +395,7 @@ class InvalidSearchModeError(KnowledgeSpaceError):
 
 class InvalidSearchWeightError(KnowledgeSpaceError):
     """检索权重校验失败"""
-    _serializable_attrs: ClassVar[List[str]] = ["weights"]
+    _serializable_attrs: ClassVar[list[str]] = ["weights"]
 
     def __init__(self, reason: str, **weights: float):
         self.weights = weights
@@ -429,7 +429,7 @@ class QuestionGenerationError(KnowledgeSpaceError):
 
 class WikiPageNotFoundError(KnowledgeSpaceError):
     """Wiki 页面不存在"""
-    _serializable_attrs: ClassVar[List[str]] = ["slug"]
+    _serializable_attrs: ClassVar[list[str]] = ["slug"]
 
     def __init__(self, slug: str):
         super().__init__(
@@ -441,7 +441,7 @@ class WikiPageNotFoundError(KnowledgeSpaceError):
 
 class WikiPageVersionConflictError(KnowledgeSpaceError):
     """Wiki 页面版本冲突（乐观锁）"""
-    _serializable_attrs: ClassVar[List[str]] = ["slug", "expected_version", "current_version"]
+    _serializable_attrs: ClassVar[list[str]] = ["slug", "expected_version", "current_version"]
     http_status_code: ClassVar[int] = 409
 
     def __init__(self, slug: str, expected_version: int, current_version: int):
@@ -468,7 +468,7 @@ class WikiGenerationError(KnowledgeSpaceError):
 
 class UserNotFoundError(KnowledgeSpaceError):
     """用户不存在"""
-    _serializable_attrs: ClassVar[List[str]] = ["email"]
+    _serializable_attrs: ClassVar[list[str]] = ["email"]
 
     def __init__(self, email: str):
         super().__init__(
@@ -480,10 +480,10 @@ class UserNotFoundError(KnowledgeSpaceError):
 
 class InvalidParameterError(KnowledgeSpaceError):
     """参数无效"""
-    _serializable_attrs: ClassVar[List[str]] = ["field"]
+    _serializable_attrs: ClassVar[list[str]] = ["field"]
     http_status_code: ClassVar[int] = 400
 
-    def __init__(self, message: str, field: Optional[str] = None):
+    def __init__(self, message: str, field: str | None = None):
         super().__init__(
             message=message,
             code="INVALID_PARAMETER",

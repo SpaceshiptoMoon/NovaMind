@@ -1,15 +1,17 @@
 """
 Document task parent repository.
 """
-from typing import Any, Dict, List, Optional
-
-from sqlalchemy import desc, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
-from novamind.features.knowledge_space.models.document_task_batch import BatchStatus, DocumentTaskBatch
+from novamind.features.knowledge_space.models.document_task_batch import (
+    BatchStatus,
+    DocumentTaskBatch,
+)
 from novamind.shared.utils.time_utils import now_china
+from sqlalchemy import desc, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -19,14 +21,14 @@ class DocumentTaskBatchRepository:
         self.session = session
         self.logger = logger
 
-    async def create(self, data: Dict[str, Any]) -> DocumentTaskBatch:
+    async def create(self, data: dict[str, Any]) -> DocumentTaskBatch:
         batch = DocumentTaskBatch(**data)
         self.session.add(batch)
         await self.session.flush()
         await self.session.refresh(batch)
         return batch
 
-    async def get_by_id(self, batch_id: int) -> Optional[DocumentTaskBatch]:
+    async def get_by_id(self, batch_id: int) -> DocumentTaskBatch | None:
         result = await self.session.execute(select(DocumentTaskBatch).where(DocumentTaskBatch.id == batch_id))
         return result.scalar_one_or_none()
 
@@ -38,7 +40,7 @@ class DocumentTaskBatchRepository:
         await self.session.flush()
         return True
 
-    async def list_by_kb(self, kb_id: int, skip: int = 0, limit: int = 50) -> List[DocumentTaskBatch]:
+    async def list_by_kb(self, kb_id: int, skip: int = 0, limit: int = 50) -> list[DocumentTaskBatch]:
         result = await self.session.execute(
             select(DocumentTaskBatch)
             .where(DocumentTaskBatch.kb_id == kb_id)
@@ -65,7 +67,7 @@ class DocumentTaskBatchRepository:
         )
         return result.scalar() or 0
 
-    async def refresh_summary(self, batch_id: int) -> Optional[DocumentTaskBatch]:
+    async def refresh_summary(self, batch_id: int) -> DocumentTaskBatch | None:
         batch = await self.get_by_id(batch_id)
         if not batch:
             return None

@@ -5,7 +5,7 @@ Transformers 本地推理 LLM 客户端
 """
 
 import asyncio
-from typing import AsyncGenerator, Optional
+from collections.abc import AsyncGenerator
 
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import get_logger
@@ -144,7 +144,7 @@ class TransformersLLM(BaseLLM):
         max_tokens: int = 2048,
         temperature: float = 0.7,
         top_p: float = 0.8,
-        response_format: Optional[dict] = None,
+        response_format: dict | None = None,
         enable_thinking: bool = False,
     ) -> str:
         """

@@ -4,18 +4,16 @@ Ollama 原生 Embedding 客户端
 使用 Ollama 原生 /api/embed 端点，支持单条和批量文本向量化。
 """
 
-from typing import Optional
 
 import httpx
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_exponential,
-    retry_if_exception_type,
-)
-
 from novamind.shared.ai_models.base_model import BaseEmbedding
 from novamind.shared.logging import get_logger
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 logger = get_logger(__name__)
 
@@ -60,7 +58,7 @@ class OllamaEmbedding(BaseEmbedding):
             max_retries=max_retries,
             max_concurrent=max_concurrent,
         )
-        self._http_client: Optional[httpx.AsyncClient] = None
+        self._http_client: httpx.AsyncClient | None = None
 
     async def _get_http_client(self) -> httpx.AsyncClient:
         """获取 HTTP 客户端（延迟初始化，带锁保护）"""

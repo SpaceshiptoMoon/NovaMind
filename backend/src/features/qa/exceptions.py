@@ -5,7 +5,7 @@ QA 模块异常定义
 避免仓储层反向依赖 API 层（违反 DDD 分层原则）。
 """
 
-from typing import ClassVar, List, Optional
+from typing import ClassVar
 
 from novamind.core.middleware.base_exception_handler import BaseAPIError
 
@@ -19,7 +19,7 @@ class QAError(BaseAPIError):
 
 class DatabaseOperationError(QAError):
     """数据库操作异常"""
-    _serializable_attrs: ClassVar[List[str]] = ["operation", "detail"]
+    _serializable_attrs: ClassVar[list[str]] = ["operation", "detail"]
 
     def __init__(self, operation: str, detail: str = ""):
         super().__init__(
@@ -32,7 +32,7 @@ class DatabaseOperationError(QAError):
 
 class SessionNotFoundError(QAError):
     """会话未找到异常"""
-    _serializable_attrs: ClassVar[List[str]] = ["session_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["session_id"]
 
     def __init__(self, session_id: str):
         super().__init__(f"会话 {session_id} 不存在", "SESSION_NOT_FOUND")
@@ -41,7 +41,7 @@ class SessionNotFoundError(QAError):
 
 class MessageNotFoundError(QAError):
     """消息未找到异常"""
-    _serializable_attrs: ClassVar[List[str]] = ["message_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["message_id"]
 
     def __init__(self, message_id: int):
         super().__init__(f"消息 {message_id} 不存在", "MESSAGE_NOT_FOUND")
@@ -51,7 +51,7 @@ class MessageNotFoundError(QAError):
 class LLMServiceError(QAError):
     """LLM服务错误"""
 
-    def __init__(self, message: str, original_error: Optional[Exception] = None):
+    def __init__(self, message: str, original_error: Exception | None = None):
         super().__init__(f"LLM 服务错误: {message}", "LLM_SERVICE_ERROR")
         self.original_error = original_error
 
@@ -79,7 +79,7 @@ class UnauthorizedAccessException(QAError):
 
 class SessionConfigNotFoundError(QAError):
     """会话配置未找到异常"""
-    _serializable_attrs: ClassVar[List[str]] = ["config_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["config_id"]
 
     def __init__(self, config_id: str):
         super().__init__(f"会话配置 {config_id} 不存在", "SESSION_CONFIG_NOT_FOUND")
@@ -88,7 +88,7 @@ class SessionConfigNotFoundError(QAError):
 
 class SessionConfigAlreadyExistsError(QAError):
     """会话配置已存在异常"""
-    _serializable_attrs: ClassVar[List[str]] = ["session_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["session_id"]
 
     def __init__(self, session_id: str):
         super().__init__(f"会话 {session_id} 的配置已存在", "SESSION_CONFIG_ALREADY_EXISTS")
@@ -97,7 +97,7 @@ class SessionConfigAlreadyExistsError(QAError):
 
 class ChatAttachmentNotFoundError(QAError):
     """聊天附件不存在"""
-    _serializable_attrs: ClassVar[List[str]] = ["attachment_id"]
+    _serializable_attrs: ClassVar[list[str]] = ["attachment_id"]
 
     def __init__(self, attachment_id: int):
         super().__init__(

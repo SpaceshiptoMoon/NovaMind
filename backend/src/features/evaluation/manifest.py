@@ -6,8 +6,8 @@ from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, Ro
 
 def _import_models() -> None:
     from novamind.features.evaluation.models.evaluation_task import (  # noqa: F401
-        EvaluationTestSet,
         EvaluationTask,
+        EvaluationTestSet,
     )
 
 

@@ -5,15 +5,17 @@ prompt/log/降级LLM 经注入端口获取。
 """
 import asyncio
 import json
-from typing import Optional
 
-from novamind.shared.ai_models.llm import BaseLLM
-from novamind.shared.logging import Logger
 from novamind.engines.ports import FallbackLLMProvider, PromptProvider
 from novamind.engines.resume.schemas import (
-    StructuredResume, ProbingPlan, KnowledgePoint, JDAnalysis,
+    JDAnalysis,
+    KnowledgePoint,
+    ProbingPlan,
+    StructuredResume,
     WorkProjectUnit,
 )
+from novamind.shared.ai_models.llm import BaseLLM
+from novamind.shared.logging import Logger
 from novamind.shared.utils.llm_response import extract_json_str
 
 # ==================== 常量 ====================
@@ -42,7 +44,7 @@ class AutoProbingEngine:
         prompt_provider: PromptProvider,
         logger: Logger,
         user_id: int = 0,
-        fallback_llm_provider: Optional[FallbackLLMProvider] = None,
+        fallback_llm_provider: FallbackLLMProvider | None = None,
         max_concurrent: int = 3,
     ):
         self.llm = llm_client
@@ -140,7 +142,7 @@ class AutoProbingEngine:
         resume_session_id: str,
         structured_resume: StructuredResume,
         probing_plan: ProbingPlan,
-        jd_analysis: Optional[JDAnalysis],
+        jd_analysis: JDAnalysis | None,
     ) -> list[dict]:
         """对所有 KP 并行执行自问自答"""
         kps = sorted(probing_plan.knowledge_points, key=lambda k: k.probing_weight, reverse=True)
@@ -176,8 +178,8 @@ class AutoProbingEngine:
         self,
         kp: KnowledgePoint,
         resume_summary: str,
-        jd_analysis: Optional[JDAnalysis],
-        work_unit: Optional[WorkProjectUnit] = None,
+        jd_analysis: JDAnalysis | None,
+        work_unit: WorkProjectUnit | None = None,
     ) -> dict:
         """单个 KP：逐轮追问，前几轮固定策略，后续自由追问"""
         # 构建工作上下文段落

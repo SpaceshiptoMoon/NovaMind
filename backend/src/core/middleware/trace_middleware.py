@@ -7,9 +7,9 @@ import hashlib
 import time
 import uuid
 
-from starlette.types import ASGIApp, Receive, Scope, Send, Message
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from .structured_logging import get_logger, LoggingMiddleware
+from .structured_logging import LoggingMiddleware, get_logger
 
 logger = get_logger(__name__)
 

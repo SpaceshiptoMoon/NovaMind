@@ -6,14 +6,14 @@
 """
 
 import traceback
-from typing import Callable, Dict, Any, ClassVar
-from fastapi import Request
-from fastapi import HTTPException
-from fastapi.responses import JSONResponse
-from starlette.exceptions import HTTPException as StarletteHTTPException
+from collections.abc import Callable
+from typing import Any, ClassVar
 
+from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.shared.utils.time_utils import now_china
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = get_logger(__name__)
 
@@ -29,13 +29,13 @@ class BaseAPIError(Exception):
     http_status_code: ClassVar[int] = 500
     _serializable_attrs: ClassVar[tuple[str, ...]] = ()
 
-    def __init__(self, message: str, code: str = "UNKNOWN_ERROR", details: Dict[str, Any] = None):
+    def __init__(self, message: str, code: str = "UNKNOWN_ERROR", details: dict[str, Any] = None):
         self.message = message
         self.code = code
         self.details = details or {}
         super().__init__(self.message)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """转换为字典，自动包含 _serializable_attrs 中声明的属性"""
         result = {
             "code": self.code,
@@ -119,7 +119,7 @@ def register_module_exceptions(
     app,
     exception_classes: list = None,
     status_code: int = 500,
-    status_map: Dict[type, int] = None,
+    status_map: dict[type, int] = None,
 ) -> None:
     """
     批量注册模块异常处理器

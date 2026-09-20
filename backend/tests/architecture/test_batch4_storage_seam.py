@@ -62,7 +62,7 @@ def test_engine_storage_no_forbidden_imports(mod_name: str):
 
 def test_default_index_schema_is_runtime_checkable():
     """IndexSchema 协议应为 runtime_checkable，可在不导入实例的情况下用于 isinstance。"""
-    from novamind.shared.storage.index_schema import IndexSchema, DefaultIndexSchema
+    from novamind.shared.storage.index_schema import DefaultIndexSchema, IndexSchema
 
     schema = DefaultIndexSchema()
     assert isinstance(schema, IndexSchema)
@@ -75,7 +75,7 @@ def test_default_index_schema_is_runtime_checkable():
 
 def test_default_path_strategy_is_runtime_checkable():
     """PathStrategy 协议应为 runtime_checkable，并在独立使用时能正确工作。"""
-    from novamind.shared.storage.path_strategy import PathStrategy, DefaultPathStrategy
+    from novamind.shared.storage.path_strategy import DefaultPathStrategy, PathStrategy
 
     strategy = DefaultPathStrategy()
     assert isinstance(strategy, PathStrategy)
@@ -98,10 +98,10 @@ def test_audio_config_defaults():
 
 def test_audio_utils_resolve_accepts_audio_config():
     """_resolve_local_whisper_model_dir 接受 AudioConfig 并遵循优先级。"""
-    from novamind.shared.config import AudioConfig
     from novamind.engines.document.media.audio.audio_utils import (
         _resolve_local_whisper_model_dir,
     )
+    from novamind.shared.config import AudioConfig
 
     # 不传 AudioConfig 时回退到环境变量 + 默认值
     result = _resolve_local_whisper_model_dir()

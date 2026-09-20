@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 from fastapi import Depends
-
 from novamind.core.auth.dependencies import get_current_user
 from novamind.core.authorization.exceptions import PermissionDeniedError
 from novamind.core.authorization.ports import PermissionCheckerPort

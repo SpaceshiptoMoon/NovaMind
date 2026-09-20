@@ -5,7 +5,6 @@ top-K 填充、exact-title 确定性归并、跨 item 错配拒绝、类型前�
 批内 identity 收敛；taxonomy 的路径清洗/树渲染/分配解析。
 """
 import pytest
-
 from novamind.features.knowledge_space.services.wiki_dedup import (
     DEDUP_CANDIDATE_TOP_K,
     DedupCandidate,
@@ -27,6 +26,8 @@ from novamind.features.knowledge_space.services.wiki_taxonomy import (
     format_existing_taxonomy,
     parse_taxonomy_assignments,
 )
+
+pytestmark = pytest.mark.unit
 
 
 @pytest.mark.unit

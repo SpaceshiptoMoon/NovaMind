@@ -217,8 +217,8 @@ def _do_run(document, task, session, *, parse_fp, minio,
 def test_first_run_writes_split_and_embed_snapshots():
     """parse_fp 启用时首跑：split 与 embed 快照均写入 storage，MinIO 有对象。"""
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        compute_split_fingerprint,
         compute_embed_fingerprint,
+        compute_split_fingerprint,
     )
 
     minio = FakeMinio()

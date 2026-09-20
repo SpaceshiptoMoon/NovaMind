@@ -2,7 +2,6 @@
 通知模块路由
 """
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
-
 from novamind.core.auth import UserStatusResolver, get_user_status_resolver
 from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
 from novamind.core.ws import envelope, send_event
@@ -10,14 +9,14 @@ from novamind.core.ws.connection_manager import manager as ws_manager
 from novamind.features.knowledge_space.api.dependencies import get_current_user_id
 from novamind.features.notification.api.dependencies import get_notification_service
 from novamind.features.notification.api.exceptions import NotificationNotFoundError
-from novamind.features.notification.services.notification_service import NotificationService
 from novamind.features.notification.schemas.notification_schema import (
-    NotificationListResponse,
-    UnreadCountResponse,
     MarkReadResponse,
+    NotificationListResponse,
     NotificationPreferenceResponse,
     NotificationPreferenceUpdate,
+    UnreadCountResponse,
 )
+from novamind.features.notification.services.notification_service import NotificationService
 
 router = APIRouter()
 

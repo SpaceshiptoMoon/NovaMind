@@ -1,7 +1,6 @@
 """
 简历挖掘 arq 任务函数与宿主编排。
 """
-from typing import Optional
 
 from novamind.shared.logging import get_logger
 
@@ -51,7 +50,7 @@ async def process_resume_task(
     session_id: str,
     user_id: int,
     llm_model: str,
-    jd_text: Optional[str],
+    jd_text: str | None,
     config: dict,
     file_bytes: bytes,
     filename: str,
@@ -65,7 +64,11 @@ async def process_resume_task(
     3. 成功时移除追踪映射
     4. 失败时 arq 自动重试，最终失败执行三层兜底
     """
-    from novamind.shared.mq.task_tracker import unbind_resume_job, is_resume_cancelled, clear_resume_cancel_flag
+    from novamind.shared.mq.task_tracker import (
+        clear_resume_cancel_flag,
+        is_resume_cancelled,
+        unbind_resume_job,
+    )
 
     job_id = ctx.get("job_id", "unknown")
 
@@ -152,8 +155,8 @@ async def _ensure_mark_resume_failed(session_id: str, error_message: str) -> Non
     # 第 1 层：ORM 独立 session
     try:
         from novamind.core.database.database import get_db_session
-        from novamind.features.app.repository.resume_repository import ResumeSessionRepository
         from novamind.features.app.models.resume import ResumeSessionStatus
+        from novamind.features.app.repository.resume_repository import ResumeSessionRepository
 
         async with get_db_session() as independent_session:
             repo = ResumeSessionRepository(independent_session)
@@ -200,9 +203,9 @@ async def recover_orphan_resume_sessions() -> int:
         恢复的会话数量
     """
     from novamind.core.database.database import get_db_session
-    from novamind.setting.yaml_config import get_config
     from novamind.features.app.models.resume import ResumeSession, ResumeSessionStatus
-    from sqlalchemy import select, or_
+    from novamind.setting.yaml_config import get_config
+    from sqlalchemy import or_, select
 
     recovered = 0
     max_tries = get_config().task_queue.max_tries
@@ -284,7 +287,7 @@ async def enqueue_process_resume(
     session_id: str,
     user_id: int,
     llm_model: str,
-    jd_text: Optional[str],
+    jd_text: str | None,
     config: dict,
     file_bytes: bytes,
     filename: str,

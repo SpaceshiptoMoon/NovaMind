@@ -1,6 +1,6 @@
 """Markdown 切分器：按标题层级 / 段落边界切分保留文档结构。"""
 import re
-from typing import List, Dict
+
 from novamind.engines.document.splitters.base_splitter import BaseSplitter
 
 
@@ -17,7 +17,7 @@ class MarkdownSplitter(BaseSplitter):
         self.max_chunk_size = max_chunk_size
         self.min_chunk_size = min_chunk_size
 
-    async def split(self, documents: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    async def split(self, documents: list[dict[str, str]]) -> list[dict[str, str]]:
         """
         按Markdown结构切分文档
         :param documents: 原始文档列表
@@ -48,7 +48,7 @@ class MarkdownSplitter(BaseSplitter):
 
         return split_docs
 
-    async def _split_markdown_by_structure(self, text: str, title: str = "") -> List[Dict[str, str]]:
+    async def _split_markdown_by_structure(self, text: str, title: str = "") -> list[dict[str, str]]:
         """
         根据Markdown结构切分文本
         :param text: 输入的Markdown文本
@@ -119,14 +119,14 @@ class MarkdownSplitter(BaseSplitter):
 
         return refined_chunks
 
-    def _merge_small_chunks(self, chunks: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    def _merge_small_chunks(self, chunks: list[dict[str, str]]) -> list[dict[str, str]]:
         """把 < min_chunk_size 的块合并到前一块，避免丢弃内容。
 
         首个块无论大小都保留（否则全是小块的文档会返回 0 chunk）。
         """
         if not chunks:
             return chunks
-        merged: List[Dict[str, str]] = []
+        merged: list[dict[str, str]] = []
         for chunk in chunks:
             content = chunk["content"].strip()
             if len(content) >= self.min_chunk_size or not merged:
@@ -135,7 +135,7 @@ class MarkdownSplitter(BaseSplitter):
                 merged[-1]["content"] = (merged[-1]["content"] + "\n\n" + content).strip()
         return merged
 
-    def _split_by_headers(self, text: str) -> List[Dict[str, str]]:
+    def _split_by_headers(self, text: str) -> list[dict[str, str]]:
         """
         按Markdown标题分割文本
         :param text: Markdown文本
@@ -193,7 +193,7 @@ class MarkdownSplitter(BaseSplitter):
         
         return parts
 
-    def _split_large_chunk(self, chunk: Dict[str, str]) -> List[Dict[str, str]]:
+    def _split_large_chunk(self, chunk: dict[str, str]) -> list[dict[str, str]]:
         """
         进一步分割过大的块
         :param chunk: 需要分割的块
@@ -258,7 +258,7 @@ class MarkdownSplitter(BaseSplitter):
         # 避免内容丢失。
         return chunks
 
-    def _split_by_sentences(self, text: str) -> List[str]:
+    def _split_by_sentences(self, text: str) -> list[str]:
         """
         按句子分割文本
         :param text: 输入文本
@@ -303,7 +303,7 @@ class MarkdownSplitter(BaseSplitter):
         
         return combined_sentences
 
-    def _split_by_fixed_size(self, text: str) -> List[str]:
+    def _split_by_fixed_size(self, text: str) -> list[str]:
         """
         按固定大小分割文本
         :param text: 输入文本

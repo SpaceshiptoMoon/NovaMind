@@ -4,7 +4,7 @@ TodoStore — 压缩后存活的任务跟踪器
 纯内存，key 为 conversation_id。
 压缩后 format_for_injection() 将 pending/in_progress 任务重新注入 messages。
 """
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from novamind.shared.logging import get_logger
 
@@ -17,14 +17,14 @@ class TodoStore:
     """压缩后存活的任务跟踪器"""
 
     def __init__(self) -> None:
-        self._store: Dict[int, List[Dict[str, str]]] = {}
+        self._store: dict[int, list[dict[str, str]]] = {}
 
     def write(
         self,
         conversation_id: int,
-        todos: List[Dict[str, Any]],
+        todos: list[dict[str, Any]],
         merge: bool = False,
-    ) -> List[Dict[str, str]]:
+    ) -> list[dict[str, str]]:
         """写入任务列表"""
         normalized = []
         for item in todos:
@@ -56,11 +56,11 @@ class TodoStore:
         )
         return self._store[conversation_id]
 
-    def read(self, conversation_id: int) -> List[Dict[str, str]]:
+    def read(self, conversation_id: int) -> list[dict[str, str]]:
         """读取任务列表"""
         return list(self._store.get(conversation_id, []))
 
-    def format_for_injection(self, conversation_id: int) -> Optional[str]:
+    def format_for_injection(self, conversation_id: int) -> str | None:
         """生成压缩后重新注入的文本（只含 pending/in_progress）"""
         todos = self._store.get(conversation_id, [])
         active = [t for t in todos if t["status"] in ("pending", "in_progress")]

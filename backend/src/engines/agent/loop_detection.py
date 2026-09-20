@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from collections import deque
 from dataclasses import dataclass
-from typing import Any, Deque, Dict, Optional, Set, Tuple
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -33,21 +33,21 @@ _SIG_FIELDS = ("query", "command", "path", "url", "content", "code", "pattern", 
 class LoopDetector:
     """单次 ReAct run 的循环检测器（per-run 状态，非线程共享）。"""
 
-    def __init__(self, config: Optional[LoopDetectionConfig] = None) -> None:
+    def __init__(self, config: LoopDetectionConfig | None = None) -> None:
         cfg = config or LoopDetectionConfig()
         self._warn = cfg.warn_threshold
         self._hard = cfg.hard_limit
-        self._history: Deque[str] = deque(maxlen=cfg.window)
-        self._warned: Set[str] = set()
+        self._history: deque[str] = deque(maxlen=cfg.window)
+        self._warned: set[str] = set()
 
-    def _stable_key(self, tool_name: str, args: Dict[str, Any]) -> str:
+    def _stable_key(self, tool_name: str, args: dict[str, Any]) -> str:
         """显著参数分桶 hash。"""
         sig = {k: args[k] for k in _SIG_FIELDS if k in args}
         return f"{tool_name}:{json.dumps(sig, sort_keys=True, default=str)}"
 
     def track(
-        self, tool_name: str, args: Dict[str, Any]
-    ) -> Tuple[Optional[str], bool]:
+        self, tool_name: str, args: dict[str, Any]
+    ) -> tuple[str | None, bool]:
         """记录一次工具调用，返回 (warning_message, should_hard_stop)。
 
         - ``warning_message`` 非 None 时，调用方应注入到 messages 提示模型

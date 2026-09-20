@@ -8,12 +8,11 @@ Wiki 生成 arq 任务
 并发模型：per-KB Redis 锁串行化同 KB 的 wiki 生成；拿不到锁抛
 TransientBusyError 延后重入队（复用文档任务已有的拥塞语义）。
 """
-from typing import Optional
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.services.wiki_ingest_service import WikiGenerationError
 from novamind.shared.mq.exceptions import TransientBusyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -23,7 +22,7 @@ WIKI_KB_LOCK_TTL = 1800  # 30 分钟，防 worker 崩溃后锁死；管道超时
 WIKI_INGEST_JOB_TIMEOUT = 1800
 
 
-async def acquire_kb_lock(kb_id: int) -> Optional[str]:
+async def acquire_kb_lock(kb_id: int) -> str | None:
     """拿 per-KB wiki 生成锁（Redis SET NX EX）。成功返回锁值，失败 None。"""
     import uuid
 
@@ -61,23 +60,22 @@ async def process_wiki_ingest_task(
     不影响文档任务状态。
     """
     from novamind.core.database.database import get_db_session
-    from novamind.features.knowledge_space.models.wiki import WikiIngestStatus
+    from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
     from novamind.features.knowledge_space.repository.knowledge_base_repository import (
         KnowledgeBaseRepository,
     )
-    from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
-    from novamind.features.knowledge_space.repository.wiki_repository import WikiIngestRecordRepository
-    from novamind.features.knowledge_space.repository.wiki_repository import WikiIngestRecordRepository
+    from novamind.features.knowledge_space.repository.wiki_repository import (
+        WikiIngestRecordRepository,
+    )
     from novamind.features.knowledge_space.services.wiki_ingest_service import (
         WikiGenerationError,
         WikiIngestService,
     )
     from novamind.features.user.services.model_config_service import ModelConfigService
     from novamind.shared.storage.client_factory import ClientFactory
-    from novamind.shared.utils.time_utils import now_china
 
-    record_id: Optional[int] = None
-    lock_token: Optional[str] = None
+    record_id: int | None = None
+    lock_token: str | None = None
 
     async with get_db_session() as session:
         try:
@@ -144,7 +142,7 @@ async def process_wiki_ingest_task(
 
             # 6.5 wiki 页 ES 同步（批5 检索对齐：published 页进向量库参与检索）。
             # best-effort：embedding 模型缺失/同步失败不影响管道结果。
-            es_synced = await _sync_wiki_pages_to_es(session, kb_id, space_id)
+            await _sync_wiki_pages_to_es(session, kb_id, space_id)
 
             record.mark_done(outcome.pages_created, outcome.pages_updated)
             await session.commit()
@@ -295,7 +293,7 @@ async def _load_parsed_text(document) -> str:
         return ""
 
 
-async def _resolve_llm_client(model_config_service, wiki_config: dict, fallback_user_id: Optional[int]):
+async def _resolve_llm_client(model_config_service, wiki_config: dict, fallback_user_id: int | None):
     """优先 wiki.llm.model，缺省回退 KB 创建者的默认 LLM"""
     llm_config = wiki_config.get("llm") or {}
     model_name = llm_config.get("model")
@@ -306,12 +304,14 @@ async def _resolve_llm_client(model_config_service, wiki_config: dict, fallback_
     return await model_config_service.get_llm_client_by_model(user_id=fallback_user_id or 0, model=model_name)
 
 
-async def _fail_record(session: AsyncSession, record_id: Optional[int], error: str) -> None:
+async def _fail_record(session: AsyncSession, record_id: int | None, error: str) -> None:
     """履历标记失败（独立容错：失败处理本身不能抛）"""
     try:
         if record_id is None:
             return
-        from novamind.features.knowledge_space.repository.wiki_repository import WikiIngestRecordRepository
+        from novamind.features.knowledge_space.repository.wiki_repository import (
+            WikiIngestRecordRepository,
+        )
 
         record_repo = WikiIngestRecordRepository(session)
         record = await record_repo.get_by_id(record_id)
@@ -325,7 +325,7 @@ async def _fail_record(session: AsyncSession, record_id: Optional[int], error: s
 async def _notify_wiki_terminal(
     status: str,
     *,
-    user_id: Optional[int],
+    user_id: int | None,
     kb_id: int,
     space_id: int,
     document_id: int,
@@ -368,7 +368,7 @@ async def enqueue_wiki_ingest(
     kb_id: int,
     space_id: int,
     document_id: int,
-) -> Optional[str]:
+) -> str | None:
     """入队 wiki 生成任务。
 
     WikiIngestRecord(PENDING) 行与 arq enqueue 原子提交（失败一起回滚），
@@ -376,7 +376,9 @@ async def enqueue_wiki_ingest(
     """
     from novamind.core.database.database import get_db_session
     from novamind.features.knowledge_space.models.wiki import WikiIngestStatus
-    from novamind.features.knowledge_space.repository.wiki_repository import WikiIngestRecordRepository
+    from novamind.features.knowledge_space.repository.wiki_repository import (
+        WikiIngestRecordRepository,
+    )
     from novamind.shared.mq import get_arq_pool
 
     pool = await get_arq_pool()
@@ -427,11 +429,10 @@ async def process_wiki_retract_task(
         # 被删页面的 ES 文档一并清理（best-effort）
         if result["deleted"]:
             try:
-                from novamind.shared.storage.client_factory import ClientFactory
                 from novamind.features.knowledge_space.services.wiki_es_sync import (
                     WikiEsSyncService,
-                    wiki_chunk_id,
                 )
+                from novamind.shared.storage.client_factory import ClientFactory
 
                 es_client = await ClientFactory.get_elasticsearch_client()
                 sync_svc = WikiEsSyncService(session, es_client)
@@ -456,7 +457,7 @@ async def enqueue_wiki_retract(
     kb_id: int,
     space_id: int,
     document_id: int,
-) -> Optional[str]:
+) -> str | None:
     """入队 wiki retract 任务（fire-and-forget：删除主流程不因入队失败阻断）"""
     from novamind.shared.mq import get_arq_pool
 

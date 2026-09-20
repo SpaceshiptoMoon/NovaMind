@@ -13,8 +13,8 @@ import ast
 import asyncio
 import inspect
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -22,22 +22,26 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.engines.agent.tool.builtins.web_search import WebSearchTool
-from novamind.engines.agent.tool.builtins.knowledge_search import (
-    KnowledgeSearchTool,
-)
-from novamind.engines.agent.tool.builtins.memory import MemoryTool
+import pytest
+
 # 仅为把引擎模块预加载进 sys.modules 供 _engine_module() 取源码，名字本身不使用。
 from novamind.engines.agent.memory import long_term as long_term_module  # noqa: F401
 from novamind.engines.agent.memory import memory_manager as memory_manager_module  # noqa: F401
 from novamind.engines.agent.memory.interfaces import LongTermMemoryEntry
 from novamind.engines.agent.ports import (
+    DocumentInfo,
+    DocumentListResult,
     KnowledgeSearchItem,
     SpaceInfo,
-    DocumentListResult,
-    DocumentInfo,
     WebSearchResult,
 )
+from novamind.engines.agent.tool.builtins.knowledge_search import (
+    KnowledgeSearchTool,
+)
+from novamind.engines.agent.tool.builtins.memory import MemoryTool
+from novamind.engines.agent.tool.builtins.web_search import WebSearchTool
+
+pytestmark = pytest.mark.unit
 
 
 # ==================== 不变式 1：引擎模块不再 import 被切割的宿主依赖 ====================
@@ -429,8 +433,8 @@ def test_long_term_replace_uses_find_by_content_contains():
 def test_long_term_consolidate_uses_prompt_provider():
     from unittest.mock import Mock
 
-    from novamind.engines.agent.memory.long_term import LongTermMemory
     from novamind.engines.agent.memory.interfaces import MemoryMessage
+    from novamind.engines.agent.memory.long_term import LongTermMemory
 
     entry = LongTermMemoryEntry(
         id=99, agent_id=1, user_id=2, category="fact", content="x",

@@ -8,13 +8,13 @@
 
 from novamind.features.deep_research.exceptions import (  # noqa: F401
     DeepResearchError,
-    ResearchNotFoundError,
-    ResearchFailedError,
     InvalidResearchQueryError,
+    ResearchAccessDeniedError,
+    ResearchFailedError,
+    ResearchModeNotSupportedError,
+    ResearchNotFoundError,
+    ResearchRunningError,
+    ResearchSpaceAccessDeniedError,
     SearchProviderNotConfiguredError,
     SearchProviderUnavailableError,
-    ResearchSpaceAccessDeniedError,
-    ResearchModeNotSupportedError,
-    ResearchRunningError,
-    ResearchAccessDeniedError,
 )

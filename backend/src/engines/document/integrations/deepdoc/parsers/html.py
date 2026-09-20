@@ -2,16 +2,13 @@
 from __future__ import annotations
 
 # Adapted from RAGFlow deepdoc/parser/html_parser.py
-
 import html
 import logging
 import re
 import uuid
 
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag
-
 from novamind.engines.document.integrations.deepdoc.compat import find_codec, rag_tokenizer
-
 
 BLOCK_TAGS = [
     "h1",
@@ -124,7 +121,7 @@ class RAGFlowHtmlParser:
         return block_content, table_info_list
 
     _SPACELESS = "぀-ヿ㐀-䶿一-鿿豈-﫿가-힯"
-    _ATOM_RE = re.compile(r"[{s}]|[^\s{s}]+|\s+".format(s=_SPACELESS))
+    _ATOM_RE = re.compile(rf"[{_SPACELESS}]|[^\s{_SPACELESS}]+|\s+")
 
     @classmethod
     def _token_count(cls, text: str):

@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import asdict
 from statistics import median
-from typing import Any, Sequence
+from typing import Any
 
 from novamind.engines.document.integrations.deepdoc.compat import rag_tokenizer
 from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger

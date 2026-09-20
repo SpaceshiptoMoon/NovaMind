@@ -113,8 +113,8 @@ _PORT_METHODS = [
 
 def test_model_config_port_covers_all_call_surfaces():
     """ModelConfigPort 协议覆盖 8 个调用面方法，与 ModelConfigService 同名方法逐一对应。"""
-    from novamind.shared.model_config_ports import ModelConfigPort
     from novamind.features.user.services.model_config_service import ModelConfigService
+    from novamind.shared.model_config_ports import ModelConfigPort
 
     port_methods = {
         name
@@ -171,11 +171,11 @@ def test_model_config_service_ctor_accepts_ks_info_port():
 
 def test_host_knowledge_space_info_port_satisfies_protocol():
     """HostKnowledgeSpaceInfoPort 满足 KnowledgeSpaceInfoPort 协议。"""
-    from novamind.features.user.ports import KnowledgeSpaceInfoPort
     from novamind.features.user.adapters.knowledge_space_info_adapter import (
         HostKnowledgeSpaceInfoPort,
         as_knowledge_space_info_port,
     )
+    from novamind.features.user.ports import KnowledgeSpaceInfoPort
 
     class _FakeDB:
         async def execute(self, stmt):

@@ -5,56 +5,66 @@
 """
 
 import asyncio
-from dataclasses import dataclass
-from typing import List, Dict, Any, Optional, AsyncGenerator
-from novamind.shared.model_config_ports import ModelConfigPort
-import re
 import time
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass
+from typing import Any, Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from novamind.core.middleware.structured_logging import get_logger
 from novamind.core.ws import envelope
-from novamind.shared.utils.time_utils import now_china
 
-from novamind.features.deep_research.models.research_session import (
-    ResearchSession,
-    ResearchStatus,
-    ResearchMode,
+# 纯检索辅助函数自 engines/deep_research 反向引用（feature -> engine 合法）。
+# A-3：迭代循环（去重/充分性/外部决策）已迁入 DeepResearchEngine.search；
+# feature 仅保留综合上下文/关键来源两个纯函数代理（synthesize 路径用）。
+from novamind.engines.deep_research.engine import (
+    extract_citations as _extract_citations_fn,
 )
-from novamind.engines.deep_research.types import SearchSource
+from novamind.engines.deep_research.engine import (
+    extract_key_sources as _extract_key_sources_fn,
+)
+from novamind.engines.deep_research.engine import (
+    format_search_context as _format_search_context_fn,
+)
+from novamind.engines.deep_research.errors import EngineInvalidResearchQueryError
 from novamind.engines.deep_research.types import (
     EngineResearchParams,
     IterationProgress,
     PlanStep,
     ResearchPlan,
     SearchComplete,
+    SearchSource,
+    StepType,
     TaskFailed,
     TaskFinding,
-    StepType,
 )
-from novamind.engines.deep_research.errors import EngineInvalidResearchQueryError
+from novamind.features.deep_research.exceptions import (
+    DeepResearchError,
+    InvalidResearchQueryError,
+    ResearchAccessDeniedError,
+    ResearchFailedError,
+    ResearchModeNotSupportedError,
+    ResearchNotFoundError,
+    ResearchRunningError,
+    ResearchSpaceAccessDeniedError,
+)
+from novamind.features.deep_research.models.research_session import (
+    ResearchMode,
+    ResearchSession,
+    ResearchStatus,
+)
 from novamind.features.deep_research.repository.research_repository import ResearchRepository
 from novamind.features.deep_research.schemas.research_schema import (
     ResearchRequest,
 )
-from novamind.features.knowledge_space.services.search_service import SearchService
-from novamind.shared.retrieval_port import RetrievalPort
-from novamind.features.knowledge_space.adapters.retrieval_adapter import HostRetrievalPort
-from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.deep_research.exceptions import (
-    DeepResearchError,
-    ResearchNotFoundError,
-    ResearchFailedError,
-    ResearchAccessDeniedError,
-    ResearchRunningError,
-    ResearchSpaceAccessDeniedError,
-    InvalidResearchQueryError,
-    ResearchModeNotSupportedError,
-)
 from novamind.features.deep_research.services.plan_feedback_registry import (
     DECISION_ACCEPTED,
 )
-
+from novamind.features.knowledge_space.adapters.retrieval_adapter import HostRetrievalPort
+from novamind.features.knowledge_space.services.search_service import SearchService
+from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.shared.retrieval_port import RetrievalPort
+from novamind.shared.utils.time_utils import now_china
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # 研究模式参数映射（业务配置，留 feature；与 setting/yaml_config/config.py 重复）
 RESEARCH_MODE_CONFIG = {
@@ -71,7 +81,7 @@ DEFAULT_MAX_PLAN_ITERATIONS = 1
 PLAN_FEEDBACK_TIMEOUT_SECONDS = 300
 
 
-def parse_plan_json(plan: dict) -> Optional[ResearchPlan]:
+def parse_plan_json(plan: dict) -> ResearchPlan | None:
     """DB plan JSON → ResearchPlan（v2 新形状 / v1 旧形状兼容读）。
 
     - v2：{"version": 2, "title", "thought", "has_enough_context", "steps": [...]}
@@ -79,7 +89,7 @@ def parse_plan_json(plan: dict) -> Optional[ResearchPlan]:
     """
     if not isinstance(plan, dict):
         return None
-    steps: List[PlanStep] = []
+    steps: list[PlanStep] = []
     if plan.get("version") == 2:
         for i, s in enumerate(plan.get("steps") or []):
             if not isinstance(s, dict):
@@ -115,7 +125,7 @@ def parse_plan_json(plan: dict) -> Optional[ResearchPlan]:
     return ResearchPlan(steps=steps) if steps else None
 
 
-def plan_to_json(plan: ResearchPlan, background_results: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+def plan_to_json(plan: ResearchPlan, background_results: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """ResearchPlan → DB plan JSON v2（execution_res 截 1000 字，background 复用/覆盖）。"""
     return {
         "version": 2,
@@ -141,7 +151,7 @@ def plan_to_json(plan: ResearchPlan, background_results: Optional[List[Dict[str,
     }
 
 
-def _plan_to_event_data(plan: ResearchPlan) -> Dict[str, Any]:
+def _plan_to_event_data(plan: ResearchPlan) -> dict[str, Any]:
     """ResearchPlan → plan_generated 事件 data 的 plan 部分（不回填执行结果）。"""
     return {
         "title": plan.title,
@@ -168,7 +178,7 @@ def plan_iteration_count(ctx: "ResearchContext") -> int:
 
 # 报告风格指令块（deer-flow report_style 对齐；feature 侧枚举知识，预格式化为
 # 指令文本注入引擎——str.format 无法条件分支，引擎只接纯字符串）
-_STYLE_INSTRUCTIONS: Dict[str, str] = {
+_STYLE_INSTRUCTIONS: dict[str, str] = {
     "default": "",
     "academic": (
         "Report style: ACADEMIC. Write with the rigor of a peer-reviewed journal "
@@ -193,7 +203,7 @@ def _get_style_block(report_style: str) -> str:
     return _STYLE_INSTRUCTIONS.get(report_style, "")
 
 
-def _format_findings_block(task_findings: Optional[List[Dict[str, str]]]) -> str:
+def _format_findings_block(task_findings: list[dict[str, str]] | None) -> str:
     """任务 findings 列表 → reporter prompt 的 findings 块。"""
     if not task_findings:
         return "（无）"
@@ -202,14 +212,6 @@ def _format_findings_block(task_findings: Optional[List[Dict[str, str]]]) -> str
     )
 
 
-# 纯检索辅助函数自 engines/deep_research 反向引用（feature -> engine 合法）。
-# A-3：迭代循环（去重/充分性/外部决策）已迁入 DeepResearchEngine.search；
-# feature 仅保留综合上下文/关键来源两个纯函数代理（synthesize 路径用）。
-from novamind.engines.deep_research.engine import (  # noqa: E402
-    extract_citations as _extract_citations_fn,
-    extract_key_sources as _extract_key_sources_fn,
-    format_search_context as _format_search_context_fn,
-)
 
 
 def _sanitize_user_input(text: str) -> str:
@@ -248,8 +250,8 @@ class ResearchParams:
     retrieval_top_k: int
     retrieval_weight: float
     # 可插拔数据源扩展（SourcesConfig 归并产物；默认与平铺路径等价）
-    enabled_sources: Optional[List[str]] = None
-    extra_source_configs: Optional[Dict[str, Dict[str, Any]]] = None
+    enabled_sources: list[str] | None = None
+    extra_source_configs: dict[str, dict[str, Any]] | None = None
 
 
 def _extract_research_params(request) -> ResearchParams:
@@ -307,8 +309,8 @@ class ResearchContext:
     session_id: str = ""
     space_id: int = 0
     user_id: int = 0
-    params: Optional[ResearchParams] = None
-    mode_config: Optional[Dict[str, Any]] = None
+    params: ResearchParams | None = None
+    mode_config: dict[str, Any] | None = None
 
     # 流程策略（deer-flow 对齐）
     auto_accepted_plan: bool = True
@@ -316,20 +318,20 @@ class ResearchContext:
     report_style: str = "default"
 
     # ORM 对象
-    research: Optional[Any] = None
+    research: Any | None = None
 
     # 管线逐步填充
-    research_topic: Optional[str] = None
-    plan: Optional[ResearchPlan] = None
-    background_results: Optional[List[Dict[str, Any]]] = None
-    tasks: Optional[List[Dict[str, Any]]] = None
-    search_results: Optional[Dict[str, Any]] = None
-    report: Optional[str] = None
-    stats: Optional[Dict[str, Any]] = None
+    research_topic: str | None = None
+    plan: ResearchPlan | None = None
+    background_results: list[dict[str, Any]] | None = None
+    tasks: list[dict[str, Any]] | None = None
+    search_results: dict[str, Any] | None = None
+    report: str | None = None
+    stats: dict[str, Any] | None = None
 
     # 流式检索统计（仅 research_stream 使用）
-    all_results: Optional[List[Dict[str, Any]]] = None
-    task_findings: Optional[List[Dict[str, str]]] = None
+    all_results: list[dict[str, Any]] | None = None
+    task_findings: list[dict[str, str]] | None = None
     internal_count: int = 0
     external_count: int = 0
 
@@ -355,22 +357,22 @@ class DeepResearchService:
     def __init__(
         self,
         session: AsyncSession,
-        model_config_service: Optional[ModelConfigPort] = None,
-        search_service: Optional[SearchService] = None,
-        es_client: Optional[Any] = None,
-        notification_port: Optional[Any] = None,
+        model_config_service: ModelConfigPort | None = None,
+        search_service: SearchService | None = None,
+        es_client: Any | None = None,
+        notification_port: Any | None = None,
     ):
         self.session = session
         self.research_repo = ResearchRepository(session)
         self._es_client = es_client
         self._model_config_service = model_config_service
         self._search_service = search_service
-        self._search_port: Optional[RetrievalPort] = None
+        self._search_port: RetrievalPort | None = None
         # A-3：web_search_port 按请求 provider 构造（build_web_search_port_for_provider），
         # 在 cleanup() 关闭。每请求一个 DeepResearchService 实例（见 api/dependencies）。
-        self._web_search_port: Optional[Any] = None
+        self._web_search_port: Any | None = None
         # 可插拂数据源：本次请求构造的外部源适配器（可能多个，cleanup 全部关闭）
-        self._web_source_adapters: List[Any] = []
+        self._web_source_adapters: list[Any] = []
         # 研究完成通知端口（独立会话版：流式可能取消回滚，不复用本 session）
         self._notification_port = notification_port
 
@@ -378,8 +380,8 @@ class DeepResearchService:
 
         # A-2/A-3：核心研究机制（查询分析/任务分解/迭代检索/综合）委托无状态 DeepResearchEngine；
         # prompt 经注入的 PromptProvider（HostPromptProvider 委托 PromptManager）取模板。
-        from novamind.engines.prompt_provider_adapter import as_prompt_provider
         from novamind.engines.deep_research import DeepResearchEngine
+        from novamind.engines.prompt_provider_adapter import as_prompt_provider
 
         self._prompt_provider = as_prompt_provider()
         self._engine = DeepResearchEngine(logger=self.logger)
@@ -433,7 +435,7 @@ class DeepResearchService:
     async def _get_llm_client(
         self,
         user_id: int,
-        llm_model: Optional[str]
+        llm_model: str | None
     ):
         """
         获取 LLM 客户端
@@ -465,7 +467,7 @@ class DeepResearchService:
     async def list_researches(
         self,
         space_id: int,
-        user_id: Optional[int] = None,
+        user_id: int | None = None,
         status: Optional["ResearchStatus"] = None,
         limit: int = 10,
         offset: int = 0,
@@ -604,7 +606,7 @@ class DeepResearchService:
             self.logger.warning("检索反思 LLM 解析失败，降级固定 query 模式", error=str(e))
             return None, None
 
-    def _enabled_source_types(self, ctx: ResearchContext) -> List[str]:
+    def _enabled_source_types(self, ctx: ResearchContext) -> list[str]:
         """解析启用的数据源类型列表。
 
         优先 ``request.sources.enabled``（显式指定，未来新源入口）；为空按
@@ -621,7 +623,7 @@ class DeepResearchService:
             return ["external"]
         return ["internal", "external"]
 
-    def _build_source_bindings(self, ctx: ResearchContext) -> List[Any]:
+    def _build_source_bindings(self, ctx: ResearchContext) -> list[Any]:
         """按启用的数据源类型经注册表构造 ``SearchSourceBinding`` 列表。
 
         每源一个 ``SearchSourceContext``（租户上下文 + 请求级配置段 + 宿主依赖容器），
@@ -668,7 +670,7 @@ class DeepResearchService:
         space_id: int,
         user_id: int,
         request: ResearchRequest,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         执行深度研究（非流式）
 
@@ -724,8 +726,8 @@ class DeepResearchService:
         space_id: int,
         user_id: int,
         request: ResearchRequest,
-        feedback_registry: Optional[Any] = None,
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+        feedback_registry: Any | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """
         执行深度研究（流式）
 
@@ -1053,8 +1055,8 @@ class DeepResearchService:
         self,
         ctx: ResearchContext,
         *,
-        feedback_registry: Optional[Any],
-        emit: Optional[Any],
+        feedback_registry: Any | None,
+        emit: Any | None,
     ) -> None:
         """规划阶段（deer-flow planner + human_feedback 对齐）。
 
@@ -1176,8 +1178,8 @@ class DeepResearchService:
         self,
         ctx: ResearchContext,
         *,
-        feedback_registry: Optional[Any],
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+        feedback_registry: Any | None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """流式版规划阶段：包装 _plan_phase，把 progress/plan_generated 事件透出。
 
         _plan_phase 的 emit 回调不能直接 yield（普通函数 vs 生成器），故用队列桥接：
@@ -1192,7 +1194,7 @@ class DeepResearchService:
         plan_task = loop.create_task(
             self._plan_phase(ctx, feedback_registry=feedback_registry, emit=emit)
         )
-        get_task: Optional[asyncio.Task] = None
+        get_task: asyncio.Task | None = None
         try:
             while True:
                 # done 回调尚未实现：轮询任务完成态 + 带超时取队列，避免死等
@@ -1331,7 +1333,7 @@ class DeepResearchService:
         except Exception as e:
             self.logger.warning("研究完成通知发送失败", session_id=ctx.session_id, error=str(e))
 
-    def _build_research_result(self, ctx: ResearchContext) -> Dict[str, Any]:
+    def _build_research_result(self, ctx: ResearchContext) -> dict[str, Any]:
         """构建返回字典（纯数据组装，无 IO）"""
         return {
             "session_id": ctx.session_id,
@@ -1392,11 +1394,11 @@ class DeepResearchService:
                 recovery_error=str(commit_err),
             )
 
-    def _extract_key_sources(self, results: List[Dict[str, Any]]) -> List[str]:
+    def _extract_key_sources(self, results: list[dict[str, Any]]) -> list[str]:
         """提取关键来源（委托 engines/deep_research 纯函数）。"""
         return _extract_key_sources_fn(results)
 
-    def _format_search_context(self, results: List[Dict[str, Any]]) -> str:
+    def _format_search_context(self, results: list[dict[str, Any]]) -> str:
         """格式化检索结果为上下文（委托 engines/deep_research 纯函数，内部清理防注入）。"""
         return _format_search_context_fn(results)
 
@@ -1404,14 +1406,14 @@ class DeepResearchService:
         self,
         query: str,
         research_topic: str,
-        search_results: Dict[str, Any],
+        search_results: dict[str, Any],
         max_tokens: int,
         temperature: float,
         top_p: float,
         user_id: int = None,
         llm_model: str = None,
         report_style: str = "default",
-        task_findings: Optional[List[Dict[str, str]]] = None,
+        task_findings: list[dict[str, str]] | None = None,
     ) -> tuple:
         """综合信息生成报告（非流式，薄委托 DeepResearchEngine.synthesize_report）。
 
@@ -1441,14 +1443,14 @@ class DeepResearchService:
         query: str,
         research_topic: str,
         context: str,
-        key_sources: List[str],
+        key_sources: list[str],
         max_tokens: int,
         temperature: float,
         top_p: float,
         user_id: int = None,
         llm_model: str = None,
         report_style: str = "default",
-        task_findings: Optional[List[Dict[str, str]]] = None,
+        task_findings: list[dict[str, str]] | None = None,
     ) -> AsyncGenerator[str, None]:
         """综合信息生成报告（流式，薄委托 DeepResearchEngine.synthesize_report_stream）。
 

@@ -19,7 +19,7 @@ builtin 注册在模块加载期执行（``register_builtin_sources``）：inter
 """
 from __future__ import annotations
 
-from typing import Callable, Dict, Optional, Tuple
+from collections.abc import Callable
 
 from novamind.engines.deep_research.sources import (
     SearchSourceContext,
@@ -40,8 +40,8 @@ class DataSearchSourceRegistry:
     """
 
     def __init__(self) -> None:
-        self._factories: Dict[str, SourceFactory] = {}
-        self._display_names: Dict[str, str] = {}
+        self._factories: dict[str, SourceFactory] = {}
+        self._display_names: dict[str, str] = {}
 
     def register(self, source_type: str, factory: SourceFactory, display_name: str = "") -> None:
         """注册源工厂（幂等：同 type 重复注册覆盖）。"""
@@ -49,10 +49,10 @@ class DataSearchSourceRegistry:
         if display_name:
             self._display_names[source_type] = display_name
 
-    def get_factory(self, source_type: str) -> Optional[SourceFactory]:
+    def get_factory(self, source_type: str) -> SourceFactory | None:
         return self._factories.get(source_type)
 
-    def known_types(self) -> Tuple[str, ...]:
+    def known_types(self) -> tuple[str, ...]:
         return tuple(sorted(self._factories))
 
     def display_name(self, source_type: str) -> str:

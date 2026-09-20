@@ -1,9 +1,8 @@
 """
 通知偏好模型
 """
-from sqlalchemy import Column, BigInteger, Boolean, JSON, ForeignKey
-
 from novamind.core.database.base import BaseModel
+from sqlalchemy import JSON, BigInteger, Boolean, Column, ForeignKey
 
 
 class NotificationPreference(BaseModel):

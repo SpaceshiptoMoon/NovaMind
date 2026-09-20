@@ -8,10 +8,10 @@ from novamind.shared.logging import get_logger
 logger = get_logger(__name__)
 
 # 全局 arq 连接池
-_arq_pool: Optional["arq.ArqRedis"] = None
+_arq_pool: Optional["arq.ArqRedis"] = None  # noqa: F821 arq 懒 import
 
 
-async def get_arq_pool() -> "arq.ArqRedis":
+async def get_arq_pool() -> "arq.ArqRedis":  # noqa: F821
     """
     获取 arq 连接池（延迟创建，复用现有 Redis 连接）
 

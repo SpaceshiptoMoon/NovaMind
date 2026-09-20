@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import pytest
 
@@ -27,8 +27,6 @@ from novamind.engines.deep_research.engine import DeepResearchEngine, parse_plan
 from novamind.engines.deep_research.sources import SearchSourceBinding
 from novamind.engines.deep_research.types import (
     EngineResearchParams,
-    PlanStep,
-    ResearchPlan,
     SearchComplete,
     SearchSource,
     SourceType,
@@ -73,7 +71,7 @@ class FakeSourcePort:
         self.source_type = source_type
         self.results = results or []
         self.raise_all = raise_all
-        self.calls: List[Tuple[str, int]] = []
+        self.calls: list[tuple[str, int]] = []
 
     async def search(self, query: str, *, top_k: int):
         self.calls.append((query, top_k))
@@ -82,7 +80,7 @@ class FakeSourcePort:
         return [dict(r) for r in self.results[:top_k]]
 
 
-def _internal_result(content: str, chunk_id: str, doc_name: str, score: float) -> Dict[str, Any]:
+def _internal_result(content: str, chunk_id: str, doc_name: str, score: float) -> dict[str, Any]:
     return {
         "source_type": SourceType.INTERNAL.value,
         "content": content,
@@ -95,7 +93,7 @@ def _internal_result(content: str, chunk_id: str, doc_name: str, score: float) -
     }
 
 
-def _external_result(title: str, url: str, content: str, score: float) -> Dict[str, Any]:
+def _external_result(title: str, url: str, content: str, score: float) -> dict[str, Any]:
     return {
         "source_type": SourceType.EXTERNAL.value,
         "content": content,
@@ -105,7 +103,7 @@ def _external_result(title: str, url: str, content: str, score: float) -> Dict[s
     }
 
 
-def _bindings(*ports: FakeSourcePort, top_k: int = 10) -> List[SearchSourceBinding]:
+def _bindings(*ports: FakeSourcePort, top_k: int = 10) -> list[SearchSourceBinding]:
     return [SearchSourceBinding(source_type=p.source_type, port=p, top_k=top_k) for p in ports]
 
 
@@ -123,7 +121,7 @@ def _params(search_source: SearchSource = SearchSource.HYBRID) -> EngineResearch
     )
 
 
-async def _collect(engine: DeepResearchEngine, **kwargs) -> List[Any]:
+async def _collect(engine: DeepResearchEngine, **kwargs) -> list[Any]:
     events = []
     async for ev in engine.search(**kwargs):
         events.append(ev)

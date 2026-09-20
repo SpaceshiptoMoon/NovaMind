@@ -9,59 +9,58 @@
 import mimetypes
 import os
 from pathlib import Path as FilePath
-from typing import Annotated, List, Optional, Union
+from typing import Annotated
 from urllib.parse import quote
-from fastapi import APIRouter, Depends, Request, UploadFile, File, Query, Path, Body
+
+from fastapi import APIRouter, Body, Depends, File, Path, Query, Request, UploadFile
 from fastapi.responses import Response
-
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from novamind.core.database.database import get_db
+from novamind.features.knowledge_space.api.dependencies import (
+    get_audit_service,
+    get_current_user_id,
+    get_document_query_service,
+    get_document_task_service,
+    get_document_upload_service,
+    validate_kb_access,
+    validate_kb_writable,
+    validate_space_editor,
+    validate_space_member,
+)
+from novamind.features.knowledge_space.exceptions import (
+    DocumentCountExceededError,
+    DocumentInvalidTypeError,
+    DocumentNotFoundError,
+    DocumentSizeExceededError,
+    SpaceAccessDeniedError,
+)
+from novamind.features.knowledge_space.models.space_member import SpaceMember
 from novamind.features.knowledge_space.schemas.document_schema import (
-    DocumentResponse,
-    DocumentListResponse,
-    DocumentDetailResponse,
-    DocumentUploadResponse,
-    DocumentBatchUploadResponse,
-    DocumentBatchProcessRequest,
-    DocumentProcessResponse,
-    DocumentCancelResponse,
-    DocumentBatchProcessResponse,
-    ChunkResponse,
     ChunkListResponse,
+    ChunkResponse,
+    DocumentBatchProcessRequest,
+    DocumentBatchProcessResponse,
+    DocumentBatchUploadResponse,
+    DocumentCancelResponse,
+    DocumentDetailResponse,
+    DocumentListResponse,
+    DocumentProcessResponse,
+    DocumentResponse,
+    DocumentUploadResponse,
     FailedFileItem,
 )
 from novamind.features.knowledge_space.schemas.document_task_schema import (
-    DocumentTaskResponse,
-    DocumentTaskListResponse,
-    DocumentTaskItemResponse,
     DocumentTaskItemListResponse,
+    DocumentTaskItemResponse,
+    DocumentTaskListResponse,
+    DocumentTaskResponse,
 )
 from novamind.features.knowledge_space.schemas.member_schema import MemberActionResponse
-from novamind.features.knowledge_space.models.space_member import SpaceMember
-from novamind.core.database.database import get_db
-from novamind.features.knowledge_space.api.dependencies import (
-    get_current_user_id,
-    validate_space_member,
-    validate_space_editor,
-    get_document_query_service,
-    get_document_upload_service,
-    get_document_task_service,
-    get_audit_service,
-    validate_kb_access,
-    validate_kb_writable,
-)
-from novamind.features.knowledge_space.exceptions import (
-    DocumentNotFoundError,
-    SpaceAccessDeniedError,
-    DocumentInvalidTypeError,
-    DocumentSizeExceededError,
-    DocumentCountExceededError,
-)
-from novamind.features.knowledge_space.services.document_query_service import DocumentQueryService
-from novamind.features.knowledge_space.services.document_file_types import SUPPORTED_FILE_TYPES
-from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
-from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
 from novamind.features.knowledge_space.services.audit_service import AuditService
+from novamind.features.knowledge_space.services.document_file_types import SUPPORTED_FILE_TYPES
+from novamind.features.knowledge_space.services.document_query_service import DocumentQueryService
+from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
+from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # 文件大小限制：默认最大 100MB
 MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB
@@ -134,13 +133,13 @@ async def upload_document(
     request: Request,
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
-    files: List[UploadFile] = File(..., description="文档文件（支持多文件）"),
+    files: list[UploadFile] = File(..., description="文档文件（支持多文件）"),
     user_id: int = Depends(get_current_user_id),
     member: SpaceMember = Depends(validate_space_editor),
     document_upload_service: DocumentUploadService = Depends(get_document_upload_service),
     audit_service: AuditService = Depends(get_audit_service),
     db: AsyncSession = Depends(get_db),
-) -> Union[DocumentUploadResponse, DocumentBatchUploadResponse]:
+) -> DocumentUploadResponse | DocumentBatchUploadResponse:
     """上传文档（支持单文件和多文件批量上传）"""
     # 验证知识库访问权限
     await validate_kb_writable(kb_id, space_id, db)
@@ -211,8 +210,8 @@ async def upload_document(
         )
 
     # 多文件：批量上传
-    file_data_list: List[tuple] = []
-    failed_list: List[dict] = []
+    file_data_list: list[tuple] = []
+    failed_list: list[dict] = []
     for file in files:
         # 校验文件类型
         if file.filename:
@@ -291,8 +290,8 @@ async def upload_document(
 async def get_documents(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
     kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
-    status: Annotated[Optional[int], Query(ge=0, description="状态过滤: 0-待处理 1-处理中 2-已完成 3-失败 4-已取消")] = None,
-    keyword: Annotated[Optional[str], Query(max_length=100, description="按文件名模糊搜索（子串匹配，不区分大小写）")] = None,
+    status: Annotated[int | None, Query(ge=0, description="状态过滤: 0-待处理 1-处理中 2-已完成 3-失败 4-已取消")] = None,
+    keyword: Annotated[str | None, Query(max_length=100, description="按文件名模糊搜索（子串匹配，不区分大小写）")] = None,
     skip: Annotated[int, Query(ge=0, description="跳过的记录数")] = 0,
     limit: Annotated[int, Query(ge=1, le=1000, description="返回的最大记录数")] = 100,
     member: SpaceMember = Depends(validate_space_member),
@@ -415,7 +414,7 @@ async def get_document_tasks_overview(
         kb_id=kb_id, skip=skip, limit=limit
     )
 
-    items: List[DocumentTaskResponse] = []
+    items: list[DocumentTaskResponse] = []
     for refreshed_batch, tasks in entries:
         item = DocumentTaskResponse.model_validate(refreshed_batch)
         item.items = [DocumentTaskItemResponse.model_validate(t) for t in tasks]

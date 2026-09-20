@@ -31,7 +31,7 @@ def get_text(fnm: str, binary=None) -> str:
         encoding = find_codec(binary)
         txt = binary.decode(encoding, errors="ignore")
     else:
-        with open(fnm, "r") as f:
+        with open(fnm) as f:
             while True:
                 line = f.readline()
                 if not line:

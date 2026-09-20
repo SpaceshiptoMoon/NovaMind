@@ -5,7 +5,6 @@ Token 预算管理器
 复用 src/shared/utils/text_utils/token_counter.py。
 """
 import json
-from typing import List
 
 from novamind.engines.agent.memory.interfaces import MemoryMessage
 
@@ -30,7 +29,7 @@ class TokenBudget:
         return self._counter.count_tokens(text)
 
     def count_messages_tokens(
-        self, messages: List[MemoryMessage]
+        self, messages: list[MemoryMessage]
     ) -> int:
         """
         计算消息列表的 token 数

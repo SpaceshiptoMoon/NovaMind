@@ -10,15 +10,18 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from PIL import Image
-
-from novamind.engines.document.integrations.deepdoc.core.capabilities import get_deepdoc_capabilities
+from novamind.engines.document.integrations.deepdoc.core.capabilities import (
+    get_deepdoc_capabilities,
+)
 from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
 from novamind.engines.document.integrations.deepdoc.pdf_artifacts import PdfArtifactExtractor
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
     ParsingConfig,
     build_runtime_parsing_config,
 )
+from PIL import Image
+
+pytestmark = pytest.mark.unit
 
 
 class _FakeOCR:
@@ -256,8 +259,9 @@ def test_zoom_retry_empty_page(monkeypatch):
     monkeypatch.setattr(parser, "_fuse_page", fake_fuse_page)
 
     # 生成一个最小 1 页 PDF bytes
-    import fitz
     from io import BytesIO
+
+    import fitz
 
     doc = fitz.open()
     page = doc.new_page()
@@ -390,6 +394,7 @@ def test_rotated_ocr_boxes_map_to_page():
 def test_artifact_extractor_rotated_table_html(monkeypatch):
     """端到端：旋转表格 crop 后，产物 HTML 包含旋转识别出的文本。"""
     from dataclasses import dataclass
+
     from novamind.engines.document.integrations.deepdoc.pdf_artifacts import PdfArtifactExtractor
 
     @dataclass

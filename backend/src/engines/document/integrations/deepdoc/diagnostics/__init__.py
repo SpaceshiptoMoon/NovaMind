@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from importlib import import_module
 
-
 _EXPORT_MAP = {
     "get_deepdoc_runtime_report": ("novamind.engines.document.integrations.deepdoc.diagnostics.dependencies", "get_deepdoc_runtime_report"),
     "get_missing_runtime_dependencies": ("novamind.engines.document.integrations.deepdoc.diagnostics.dependencies", "get_missing_runtime_dependencies"),

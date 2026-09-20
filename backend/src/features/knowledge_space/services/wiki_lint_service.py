@@ -21,12 +21,11 @@ AutoFix（对齐 WeKnora AutoFix）：
 - 修后重建全 KB 链接
 """
 import re
-from typing import Any, Dict, List, Optional, Set
-
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -86,9 +85,11 @@ class WikiLintService:
 
     # ---------- 检查 ----------
 
-    async def run_lint(self) -> Dict[str, Any]:
+    async def run_lint(self) -> dict[str, Any]:
         """全 KB 巡检，返回 {issues, health_score, stats, summary}"""
-        from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
+        from novamind.features.knowledge_space.repository.document_repository import (
+            DocumentRepository,
+        )
 
         pages = await self.page_repo.all_live_pages(self.kb_id)
         live_slugs = {p.slug for p in pages}
@@ -101,8 +102,8 @@ class WikiLintService:
         existing_docs = await doc_repo.get_by_ids(ref_doc_ids) if ref_doc_ids else []
         live_doc_ids = {d.id for d in existing_docs}
 
-        issues: List[WikiLintIssue] = []
-        seen_targets: Set[str] = set()
+        issues: list[WikiLintIssue] = []
+        seen_targets: set[str] = set()
 
         for page in pages:
             is_index = page.page_type == "index"
@@ -174,7 +175,7 @@ class WikiLintService:
         }
 
     @staticmethod
-    def _doc_id_of(ref: str) -> Optional[int]:
+    def _doc_id_of(ref: str) -> int | None:
         """source_ref "docid|filename" → docid"""
         try:
             return int(str(ref).split("|", 1)[0])
@@ -182,7 +183,7 @@ class WikiLintService:
             return None
 
     @staticmethod
-    def _health_score(pages: List[Any], issues: List[WikiLintIssue]) -> int:
+    def _health_score(pages: list[Any], issues: list[WikiLintIssue]) -> int:
         """HealthScore 0-100（对齐 WeKnora 扣分规则）"""
         score = 100
         n = len(pages)
@@ -203,7 +204,7 @@ class WikiLintService:
         return max(0, min(100, score))
 
     @staticmethod
-    def _summary(n_pages: int, issues: List[WikiLintIssue], score: int) -> str:
+    def _summary(n_pages: int, issues: list[WikiLintIssue], score: int) -> str:
         if not n_pages:
             return "知识库暂无 Wiki 页面"
         errors = sum(1 for i in issues if i.severity == "error")
@@ -212,11 +213,11 @@ class WikiLintService:
 
     # ---------- 自动修复 ----------
 
-    async def auto_fix(self) -> Dict[str, Any]:
+    async def auto_fix(self) -> dict[str, Any]:
         """修复所有 auto_fixable 问题（对齐 WeKnora AutoFix），返回明细"""
         report = await self.run_lint()
         fixed = 0
-        details: List[str] = []
+        details: list[str] = []
 
         for issue in report["issues"]:
             if not issue.auto_fixable:
@@ -281,7 +282,7 @@ class WikiLintService:
                 page.out_links = out_links
 
         slug_map = {p.slug: p for p in pages}
-        in_map: Dict[str, List[str]] = {p.slug: [] for p in pages}
+        in_map: dict[str, list[str]] = {p.slug: [] for p in pages}
         for page in pages:
             for target in page.out_links or []:
                 if target in slug_map and target != page.slug:

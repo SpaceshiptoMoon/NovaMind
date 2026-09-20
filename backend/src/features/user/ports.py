@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 
 @dataclass
@@ -23,7 +23,7 @@ class KnowledgeSpaceInfoPort(Protocol):
 
     async def find_spaces_using_embedding_model(
         self, model_name: str
-    ) -> List[SpaceEmbeddingUsage]:
+    ) -> list[SpaceEmbeddingUsage]:
         """返回所有未删除、且空间配置 ``embedding.model == model_name`` 的空间。
 
         Args:

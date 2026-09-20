@@ -3,17 +3,15 @@ Token 计数器
 
 使用 tiktoken 进行 token 计数，支持 OpenAI 风格模型的近似分词。
 """
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import tiktoken
-
 from novamind.shared.logging import get_logger
 
+_encoders: dict[str, tiktoken.Encoding] = {}
 
-_encoders: Dict[str, tiktoken.Encoding] = {}
 
-
-def _get_encoder(model_name: Optional[str] = None) -> tiktoken.Encoding:
+def _get_encoder(model_name: str | None = None) -> tiktoken.Encoding:
     prefix_map = [
         ("gpt-4o", "o200k_base"),
         ("o1", "o200k_base"),
@@ -55,7 +53,7 @@ class TokenCounter:
             return 0
         return len(self.encoder.encode(text))
 
-    def count_messages_tokens(self, messages: List[Dict[str, Any]]) -> int:
+    def count_messages_tokens(self, messages: list[dict[str, Any]]) -> int:
         total = 0
         for msg in messages:
             content = msg.get("content", "")

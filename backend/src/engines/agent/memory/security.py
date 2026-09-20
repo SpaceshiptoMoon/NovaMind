@@ -4,10 +4,9 @@
 在记忆写入前检测潜在的注入攻击和数据泄露模式。
 """
 import re
-from typing import List, Tuple
 
 # 注入攻击模式：(正则, 威胁 ID)
-_INJECTION_PATTERNS: List[Tuple[re.Pattern, str]] = [
+_INJECTION_PATTERNS: list[tuple[re.Pattern, str]] = [
     # 指令注入
     (re.compile(r'ignore\s+(all\s+)?previous\s+instructions?', re.IGNORECASE), 'instruction_injection'),
     (re.compile(r'forget\s+(all\s+)?(your\s+)?(previous|above|prior)\s+(instructions?|rules?|memory|context)', re.IGNORECASE), 'instruction_injection'),
@@ -36,7 +35,7 @@ _INVISIBLE_UNICODE_RANGES = [
 class MemorySecurityScanResult:
     """安全扫描结果"""
 
-    def __init__(self, is_safe: bool, threats: List[str] = None):
+    def __init__(self, is_safe: bool, threats: list[str] = None):
         self.is_safe = is_safe
         self.threats = threats or []
 

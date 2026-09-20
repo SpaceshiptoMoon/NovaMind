@@ -4,9 +4,10 @@
 定义文档的请求和响应模型
 """
 
-from typing import Optional, List, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict, field_serializer, computed_field
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_serializer
 
 
 # 延迟导入以避免循环依赖
@@ -33,11 +34,11 @@ class DocumentResponse(BaseModel):
     file_type: str = Field(..., description="文件类型")
     file_size: int = Field(..., description="文件大小(字节)")
     file_hash: str = Field(..., description="文件哈希")
-    doc_metadata: Optional[Dict[str, Any]] = Field(None, description="文档元数据")
+    doc_metadata: dict[str, Any] | None = Field(None, description="文档元数据")
     created_at: datetime = Field(..., description="上传时间")
-    updated_at: Optional[datetime] = Field(None, description="更新时间")
+    updated_at: datetime | None = Field(None, description="更新时间")
     # 可选：预加载的最近一次 DocumentTask（列表接口通常不加载，详情接口可手动填充）
-    task: Optional[Any] = Field(None, exclude=True, description="最近一次处理任务（用于计算 status/error_message）")
+    task: Any | None = Field(None, exclude=True, description="最近一次处理任务（用于计算 status/error_message）")
 
     @field_serializer('status')
     def serialize_status(self, value) -> int:
@@ -68,7 +69,7 @@ class DocumentResponse(BaseModel):
 
     @computed_field
     @property
-    def error_message(self) -> Optional[str]:
+    def error_message(self) -> str | None:
         """错误信息，从最近一次 DocumentTask 读取"""
         if self.task:
             return getattr(self.task, 'error_message', None)
@@ -93,7 +94,7 @@ class DocumentResponse(BaseModel):
 
 class DocumentListResponse(BaseModel):
     """文档列表响应"""
-    items: List[DocumentResponse] = Field(..., description="文档列表")
+    items: list[DocumentResponse] = Field(..., description="文档列表")
     total: int = Field(..., description="总数")
     skip: int = Field(..., description="跳过数量")
     limit: int = Field(..., description="返回数量")
@@ -105,20 +106,20 @@ class ChunkResponse(BaseModel):
     document_id: int = Field(..., description="所属文档ID")
     chunk_index: int = Field(0, description="分块索引")
     content: str = Field(..., description="分块内容")
-    score: Optional[float] = Field(None, description="检索得分")
+    score: float | None = Field(None, description="检索得分")
     has_embedding: bool = Field(False, description="是否已向量化")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="元数据")
-    file_info: Optional[Dict[str, Any]] = Field(None, description="文件信息")
-    questions: Optional[List[str]] = Field(None, description="假设性问题列表")
-    created_at: Optional[str] = Field(None, description="创建时间")
-    chunk_type: Optional[str] = Field(None, description="分块类型: text/image/video/audio")
-    image_url: Optional[str] = Field(None, description="图片预览 URL（已废弃，使用 media_url）")
-    media_url: Optional[str] = Field(None, description="媒体文件预览 URL（图片/视频/音频）")
+    metadata: dict[str, Any] | None = Field(None, description="元数据")
+    file_info: dict[str, Any] | None = Field(None, description="文件信息")
+    questions: list[str] | None = Field(None, description="假设性问题列表")
+    created_at: str | None = Field(None, description="创建时间")
+    chunk_type: str | None = Field(None, description="分块类型: text/image/video/audio")
+    image_url: str | None = Field(None, description="图片预览 URL（已废弃，使用 media_url）")
+    media_url: str | None = Field(None, description="媒体文件预览 URL（图片/视频/音频）")
 
 
 class ChunkListResponse(BaseModel):
     """分块列表分页响应"""
-    items: List[ChunkResponse] = Field(default_factory=list, description="当前页分块列表")
+    items: list[ChunkResponse] = Field(default_factory=list, description="当前页分块列表")
     total: int = Field(0, description="分块总数")
     page: int = Field(1, description="当前页码（1-based）")
     size: int = Field(10, description="每页大小")
@@ -126,7 +127,7 @@ class ChunkListResponse(BaseModel):
 
 class DocumentDetailResponse(DocumentResponse):
     """文档详情响应（包含分块）"""
-    chunks: List[ChunkResponse] = Field(default_factory=list, description="分块列表")
+    chunks: list[ChunkResponse] = Field(default_factory=list, description="分块列表")
 
 
 class UploadedDocumentResult(BaseModel):
@@ -164,8 +165,8 @@ class FailedFileItem(BaseModel):
 class DocumentBatchUploadResponse(BaseModel):
     """批量上传响应"""
     total: int = Field(..., description="上传文件总数")
-    success: List[DocumentUploadResponse] = Field(default_factory=list, description="上传成功的文档列表")
-    failed: List[FailedFileItem] = Field(default_factory=list, description="上传失败的文件列表")
+    success: list[DocumentUploadResponse] = Field(default_factory=list, description="上传成功的文档列表")
+    failed: list[FailedFileItem] = Field(default_factory=list, description="上传失败的文件列表")
 
 
 # ========== 拆分解析相关 Schema ==========
@@ -173,7 +174,7 @@ class DocumentBatchUploadResponse(BaseModel):
 
 class DocumentBatchProcessRequest(BaseModel):
     """批量拆分解析请求"""
-    document_ids: Optional[List[int]] = Field(
+    document_ids: list[int] | None = Field(
         default=None,
         max_length=100,
         description="文档ID列表（最多100个），为空则处理全部未处理文档",
@@ -183,8 +184,8 @@ class DocumentBatchProcessRequest(BaseModel):
 class DocumentProcessResponse(BaseModel):
     """单文档处理响应"""
     document_id: int
-    task_id: Optional[int] = None
-    task_item_id: Optional[int] = None
+    task_id: int | None = None
+    task_item_id: int | None = None
     status: str = "processing"
     message: str = "文档已开始处理"
 
@@ -198,9 +199,9 @@ class DocumentCancelResponse(BaseModel):
 
 class DocumentBatchProcessResponse(BaseModel):
     """批量处理响应"""
-    task_id: Optional[int] = None
+    task_id: int | None = None
     total: int
     success: int
     failed: int
     skipped: int
-    results: List[Dict[str, Any]]
+    results: list[dict[str, Any]]

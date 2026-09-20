@@ -5,15 +5,15 @@
 """
 
 from fastapi import FastAPI
-
-from novamind.core.middleware.structured_logging import get_logger
 from novamind.core.middleware.base_exception_handler import (
     setup_global_exception_handlers,
 )
-from novamind.features.user.api.startup import setup_user_exception_handlers
-from novamind.features.qa.api.startup import setup_qa_exception_handlers
-from novamind.features.knowledge_space.api.startup import (
-    setup_knowledge_space_exception_handlers,
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.agent.api.exception_handlers import (
+    setup_agent_exception_handlers,
+)
+from novamind.features.app.api.exception_handlers import (
+    setup_app_exception_handlers,
 )
 from novamind.features.deep_research.api.exception_handlers import (
     setup_deep_research_exception_handlers,
@@ -21,18 +21,17 @@ from novamind.features.deep_research.api.exception_handlers import (
 from novamind.features.evaluation.api.exception_handlers import (
     setup_evaluation_exception_handlers,
 )
-from novamind.features.skill.api.exception_handlers import (
-    setup_skill_exception_handlers,
-)
-from novamind.features.app.api.exception_handlers import (
-    setup_app_exception_handlers,
-)
-from novamind.features.agent.api.exception_handlers import (
-    setup_agent_exception_handlers,
+from novamind.features.knowledge_space.api.startup import (
+    setup_knowledge_space_exception_handlers,
 )
 from novamind.features.notification.api.exception_handlers import (
     setup_notification_exception_handlers,
 )
+from novamind.features.qa.api.startup import setup_qa_exception_handlers
+from novamind.features.skill.api.exception_handlers import (
+    setup_skill_exception_handlers,
+)
+from novamind.features.user.api.startup import setup_user_exception_handlers
 
 logger = get_logger(__name__)
 

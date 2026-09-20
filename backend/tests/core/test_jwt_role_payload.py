@@ -3,6 +3,8 @@ import pytest
 from novamind.core.auth.token import decode_access_token
 from novamind.features.user.services.auth_service import AuthService
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.mark.asyncio
 async def test_create_token_pair_payload_has_role_code():

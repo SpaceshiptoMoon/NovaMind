@@ -12,11 +12,9 @@ import io
 import os
 import sys
 import time
-import traceback
-from typing import Optional
 
-import requests
 import pytest
+import requests
 
 pytestmark = pytest.mark.integration
 
@@ -30,15 +28,15 @@ TIMEOUT = 30  # 请求超时秒数
 
 # ======================== 全局状态 ========================
 session = requests.Session()
-token: Optional[str] = None
+token: str | None = None
 headers: dict = {}
 
 # 测试过程中创建的资源 ID，用于后续测试和清理
-created_space_id: Optional[int] = None
-created_kb_id: Optional[int] = None
-created_document_id: Optional[int] = None
-created_member_id: Optional[int] = None
-invite_token_value: Optional[str] = None
+created_space_id: int | None = None
+created_kb_id: int | None = None
+created_document_id: int | None = None
+created_member_id: int | None = None
+invite_token_value: str | None = None
 
 # 统计（使用列表避免 global 声明问题）
 _stats = {"total": 0, "passed": 0, "failed": 0, "skipped": 0}
@@ -158,7 +156,7 @@ def assert_type(obj: dict, field: str, expected_type: type | tuple[type, ...], l
     return True
 
 
-def safe_json(resp: requests.Response) -> Optional[dict]:
+def safe_json(resp: requests.Response) -> dict | None:
     """安全解析 JSON"""
     try:
         return resp.json()
@@ -1148,9 +1146,9 @@ def test_4_2_invite_member():
             invite_token_value = data.get("invite_token")
     elif resp.status_code == 404:
         # 用户不存在也属于正常业务响应
-        print_pass(f"邀请成员返回 404 (用户不存在, 属于正常业务响应)")
+        print_pass("邀请成员返回 404 (用户不存在, 属于正常业务响应)")
     elif resp.status_code == 409:
-        print_pass(f"邀请成员返回 409 (用户已是成员, 属于正常业务响应)")
+        print_pass("邀请成员返回 409 (用户已是成员, 属于正常业务响应)")
     else:
         print_fail(f"邀请成员期望 200/404/409, 实际 {resp.status_code} | {resp.text[:300]}")
 
@@ -1463,7 +1461,7 @@ def cleanup():
                 timeout=TIMEOUT
             )
             if resp.status_code == 200:
-                print(f"    文档已删除")
+                print("    文档已删除")
             else:
                 print(f"    文档删除返回 {resp.status_code}")
         except Exception as e:
@@ -1478,7 +1476,7 @@ def cleanup():
                 timeout=TIMEOUT
             )
             if resp.status_code == 200:
-                print(f"    知识库已删除")
+                print("    知识库已删除")
             else:
                 print(f"    知识库删除返回 {resp.status_code}")
         except Exception as e:
@@ -1493,7 +1491,7 @@ def cleanup():
                 timeout=TIMEOUT
             )
             if resp.status_code == 200:
-                print(f"    空间已删除")
+                print("    空间已删除")
             else:
                 print(f"    空间删除返回 {resp.status_code}")
         except Exception as e:

@@ -12,6 +12,30 @@ Deep Research 引擎包：可复用的深度研究机制（查询分析/计划�
 - ``engine``：``DeepResearchEngine`` 无状态方法（analyze_query/analyze_plan/background_investigation/
   search/synthesize_report[_stream]）+ 纯模块函数
 """
+from novamind.engines.deep_research.engine import (
+    KEY_ANALYZE_QUERY,
+    KEY_GENERATE_QUERY,
+    KEY_PLAN,
+    KEY_PROCESSING_STEP,
+    KEY_SYNTHESIZE_REPORT,
+    KEY_SYNTHESIZE_REPORT_STREAM,
+    KEY_TASK_FINDING,
+    MAX_ITERATION_THRESHOLD,
+    SUFFICIENT_RESULT_COUNT,
+    DeepResearchEngine,
+    deduplicate_results,
+    extract_key_sources,
+    format_search_context,
+    is_sufficient_results,
+    parse_plan,
+)
+from novamind.engines.deep_research.errors import EngineInvalidResearchQueryError
+from novamind.engines.deep_research.ports import InternalSearchPort
+from novamind.engines.deep_research.sources import (
+    SearchSourceBinding,
+    SearchSourceContext,
+    SearchSourcePort,
+)
 from novamind.engines.deep_research.types import (
     EngineResearchParams,
     IterationProgress,
@@ -24,30 +48,6 @@ from novamind.engines.deep_research.types import (
     StepType,
     TaskFailed,
     TaskStarted,
-)
-from novamind.engines.deep_research.sources import (
-    SearchSourceBinding,
-    SearchSourceContext,
-    SearchSourcePort,
-)
-from novamind.engines.deep_research.errors import EngineInvalidResearchQueryError
-from novamind.engines.deep_research.ports import InternalSearchPort
-from novamind.engines.deep_research.engine import (
-    KEY_ANALYZE_QUERY,
-    KEY_GENERATE_QUERY,
-    KEY_PLAN,
-    KEY_PROCESSING_STEP,
-    KEY_SYNTHESIZE_REPORT,
-    KEY_SYNTHESIZE_REPORT_STREAM,
-    KEY_TASK_FINDING,
-    SUFFICIENT_RESULT_COUNT,
-    MAX_ITERATION_THRESHOLD,
-    DeepResearchEngine,
-    deduplicate_results,
-    extract_key_sources,
-    format_search_context,
-    is_sufficient_results,
-    parse_plan,
 )
 
 __all__ = [

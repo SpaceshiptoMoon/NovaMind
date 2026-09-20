@@ -1,11 +1,18 @@
 """
 长期记忆 ORM 模型
 """
-from sqlalchemy import (
-    Column, BigInteger, String, Text, Float, Integer, JSON, ForeignKey, Index,
-)
-
 from novamind.core.database.base import BaseModel
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Column,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+)
 
 
 class AgentMemory(BaseModel):

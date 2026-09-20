@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from importlib import import_module
 
-
 _EXPORT_MAP = {
     "LazyImage": ("novamind.engines.document.integrations.deepdoc.compat.compat", "LazyImage"),
     "SimpleTokenizer": ("novamind.engines.document.integrations.deepdoc.compat.compat", "SimpleTokenizer"),

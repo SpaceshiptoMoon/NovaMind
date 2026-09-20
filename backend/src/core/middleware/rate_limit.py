@@ -12,15 +12,13 @@ API 速率限制中间件
 
 import re
 import threading
-from typing import Optional
 
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
 from fastapi import Request
 from fastapi.responses import JSONResponse
-
 from novamind.core.middleware.structured_logging import get_logger
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 logger = get_logger(__name__)
 
@@ -74,7 +72,7 @@ def _get_rate_limit_key(request: Request) -> str:
 
 
 # 延迟创建限流器实例（避免模块导入时配置未加载）
-_limiter: Optional[Limiter] = None
+_limiter: Limiter | None = None
 _limiter_lock = threading.Lock()
 
 

@@ -15,8 +15,9 @@ Agent 专用 LLM 封装
 BaseLLM.generate_with_tools_stream，由具体后端实现；不支持流式的后端会抛
 NotImplementedError，本类降级为非流式。
 """
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any
 
 from novamind.shared.ai_models.base_model import BaseLLM, ToolStreamEvent
 
@@ -36,11 +37,11 @@ class StreamChunk:
 
     type: str  # content / tool_call_start / tool_call_args / tool_call_end / done
     content: str = ""
-    tool_call_id: Optional[str] = None
-    tool_name: Optional[str] = None
+    tool_call_id: str | None = None
+    tool_name: str | None = None
     tool_arguments_delta: str = ""
-    usage: Optional[Dict[str, int]] = None
-    finish_reason: Optional[str] = None
+    usage: dict[str, int] | None = None
+    finish_reason: str | None = None
 
 
 @dataclass
@@ -55,9 +56,9 @@ class CollectedToolCall:
 class AgentLLMResponse:
     """AgentLLM 的完整响应"""
     content: str = ""
-    tool_calls: List[CollectedToolCall] = field(default_factory=list)
+    tool_calls: list[CollectedToolCall] = field(default_factory=list)
     finish_reason: str = "stop"
-    usage: Optional[Dict[str, int]] = None
+    usage: dict[str, int] | None = None
 
 
 class AgentLLM:
@@ -84,8 +85,8 @@ class AgentLLM:
 
     async def generate(
         self,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.7,
         top_p: float = 0.8,
@@ -116,8 +117,8 @@ class AgentLLM:
 
     async def generate_stream(
         self,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
         max_tokens: int = 4096,
         temperature: float = 0.7,
         top_p: float = 0.8,
@@ -160,8 +161,8 @@ class AgentLLM:
 
     async def _stream_fallback(
         self,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]],
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
         max_tokens: int,
         temperature: float,
         top_p: float,

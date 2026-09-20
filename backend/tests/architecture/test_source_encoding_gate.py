@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.unit
+
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 # 扫描范围：src 与 tests 全部 Python 源码。

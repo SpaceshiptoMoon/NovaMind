@@ -12,7 +12,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
 from novamind.engines.agent.agent_engine import AgentEngine, AgentEvent
 from novamind.engines.agent.memory.short_term import ShortTermMemory
 from novamind.engines.agent.tool.result import ToolResult, ToolResultStatus
@@ -23,6 +22,8 @@ from novamind.shared.ai_models.base_model import (
     ToolCall,
     ToolStreamEvent,
 )
+
+pytestmark = pytest.mark.unit
 
 
 # ==================== 1. 引擎事件序列：assistant_tool_calls 先于 tool_call/tool_result ====================

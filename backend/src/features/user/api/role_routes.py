@@ -1,15 +1,14 @@
 """角色管理路由"""
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Body, Path
-
+from fastapi import APIRouter, Body, Depends, Path
 from novamind.core.authorization.dependencies import require_permission
 from novamind.features.user.api.dependencies import get_role_service
 from novamind.features.user.schemas.role_schema import (
-    RoleCreate,
-    RoleUpdate,
-    RoleResponse,
     PermissionResponse,
+    RoleCreate,
+    RoleResponse,
+    RoleUpdate,
     UserRoleAssignRequest,
 )
 from novamind.features.user.services.role_service import RoleService

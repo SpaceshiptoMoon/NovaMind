@@ -3,14 +3,19 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Optional
 
-from novamind.engines.document.integrations.deepdoc.core.capabilities import get_deepdoc_capabilities
-from novamind.engines.document.integrations.deepdoc.diagnostics.dependencies import get_deepdoc_runtime_report
+from novamind.engines.document.integrations.deepdoc.compat.upstream import (
+    get_upstream_deepdoc_snapshot,
+)
+from novamind.engines.document.integrations.deepdoc.core.capabilities import (
+    get_deepdoc_capabilities,
+)
 from novamind.engines.document.integrations.deepdoc.core.factory import DeepDocParserFactory
 from novamind.engines.document.integrations.deepdoc.core.models import DeepDocParseResult
 from novamind.engines.document.integrations.deepdoc.core.runtime_parser import DeepDocParser
-from novamind.engines.document.integrations.deepdoc.compat.upstream import get_upstream_deepdoc_snapshot
+from novamind.engines.document.integrations.deepdoc.diagnostics.dependencies import (
+    get_deepdoc_runtime_report,
+)
 from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import get_model_status
 from novamind.engines.document.integrations.deepdoc.vision_runtime import (
@@ -22,7 +27,7 @@ from novamind.engines.document.integrations.deepdoc.vision_runtime import (
 class DeepDocEngine:
     """Standalone facade for the vendored deepdoc module."""
 
-    def __init__(self, parser: Optional[DeepDocParser] = None):
+    def __init__(self, parser: DeepDocParser | None = None):
         self.parser = parser or DeepDocParser()
 
     @staticmethod
@@ -47,7 +52,9 @@ class DeepDocEngine:
 
     @staticmethod
     def text_concat_model_status():
-        from novamind.engines.document.integrations.deepdoc.text_concat_model import get_text_concat_model_status
+        from novamind.engines.document.integrations.deepdoc.text_concat_model import (
+            get_text_concat_model_status,
+        )
 
         return get_text_concat_model_status()
 
@@ -65,25 +72,33 @@ class DeepDocEngine:
 
     @staticmethod
     def ensure_vision_model_group(group: str):
-        from novamind.engines.document.integrations.deepdoc.vision.model_manager import ensure_model_group_available
+        from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
+            ensure_model_group_available,
+        )
 
         return ensure_model_group_available(group)
 
     @staticmethod
     def download_vision_models(group: str | None = None):
-        from novamind.engines.document.integrations.deepdoc.vision.model_manager import download_model_group
+        from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
+            download_model_group,
+        )
 
         return download_model_group(group)
 
     @staticmethod
     def download_text_concat_model():
-        from novamind.engines.document.integrations.deepdoc.text_concat_model import download_text_concat_model as download_text_concat_model_artifact
+        from novamind.engines.document.integrations.deepdoc.text_concat_model import (
+            download_text_concat_model as download_text_concat_model_artifact,
+        )
 
         return download_text_concat_model_artifact()
 
     @staticmethod
     def download_formula_model():
-        from novamind.engines.document.integrations.deepdoc.formula_recognition import download_formula_model as download_formula_model_artifact
+        from novamind.engines.document.integrations.deepdoc.formula_recognition import (
+            download_formula_model as download_formula_model_artifact,
+        )
 
         return download_formula_model_artifact()
 
@@ -109,8 +124,8 @@ class DeepDocEngine:
         parser_id: str | None = None,
         file_path: str | Path | None = None,
         file_bytes: bytes | None = None,
-        parsing_config: Optional[dict] = None,
-        splitting_config: Optional[dict] = None,
+        parsing_config: dict | None = None,
+        splitting_config: dict | None = None,
     ) -> DeepDocParseResult:
         parser_spec = DeepDocParserFactory.resolve_parser_id(file_type, parser_id)
         parser, parser_defaults = DeepDocParserFactory.build_configs(file_type, parser_spec.parser_id)

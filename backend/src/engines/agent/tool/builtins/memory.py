@@ -2,7 +2,7 @@
 内置工具：记忆管理，允许 Agent 主动添加、替换、移除长期记忆。
 """
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 from novamind.engines.agent.tool.base import BaseTool
 from novamind.shared.logging import get_logger
@@ -26,7 +26,7 @@ class MemoryTool(BaseTool):
     def description(self) -> str:
         return "长期记忆管理工具"
 
-    def get_tools(self) -> List[Dict[str, Any]]:
+    def get_tools(self) -> list[dict[str, Any]]:
         return [
             {
                 "type": "function",
@@ -83,7 +83,7 @@ class MemoryTool(BaseTool):
         ]
 
     async def execute_tool(
-        self, tool_name: str, arguments: Dict[str, Any], context: Dict[str, Any]
+        self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]
     ) -> str:
         if tool_name != "memory":
             return json.dumps({"error": f"未知工具：{tool_name}"}, ensure_ascii=False)
@@ -106,7 +106,7 @@ class MemoryTool(BaseTool):
             return await handler()
         return json.dumps({"error": f"未知操作：{action}"}, ensure_ascii=False)
 
-    async def _add(self, store, args: Dict[str, Any], context: Dict[str, Any]) -> str:
+    async def _add(self, store, args: dict[str, Any], context: dict[str, Any]) -> str:
         """添加记忆"""
         try:
             from novamind.engines.agent.memory.security import scan_memory_content
@@ -164,7 +164,7 @@ class MemoryTool(BaseTool):
             logger.error("添加记忆失败", error=str(e))
             return json.dumps({"error": f"添加记忆失败：{str(e)}"}, ensure_ascii=False)
 
-    async def _replace(self, store, args: Dict[str, Any], context: Dict[str, Any]) -> str:
+    async def _replace(self, store, args: dict[str, Any], context: dict[str, Any]) -> str:
         """替换记忆"""
         try:
             from novamind.engines.agent.memory.security import scan_memory_content
@@ -202,7 +202,7 @@ class MemoryTool(BaseTool):
             logger.error("替换记忆失败", error=str(e))
             return json.dumps({"error": f"替换记忆失败：{str(e)}"}, ensure_ascii=False)
 
-    async def _remove(self, store, args: Dict[str, Any], context: Dict[str, Any]) -> str:
+    async def _remove(self, store, args: dict[str, Any], context: dict[str, Any]) -> str:
         """移除记忆"""
         try:
             old_content = args.get("old_content", "")
@@ -234,7 +234,7 @@ class MemoryTool(BaseTool):
             logger.error("移除记忆失败", error=str(e))
             return json.dumps({"error": f"移除记忆失败：{str(e)}"}, ensure_ascii=False)
 
-    async def _index_to_es(self, memory, context: Dict[str, Any]) -> None:
+    async def _index_to_es(self, memory, context: dict[str, Any]) -> None:
         """将记忆索引到 ES（经端口 + embedding resolver）"""
         search_port = context.get("memory_search_port")
         embedding_resolver = context.get("embedding_client_resolver")

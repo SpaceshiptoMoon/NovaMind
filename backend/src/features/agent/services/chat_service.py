@@ -6,26 +6,19 @@ Agent 对话服务
 import asyncio
 import base64
 import json
-from datetime import datetime, timezone
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from time import monotonic
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
+from typing import Any
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from novamind.core.middleware.structured_logging import get_logger
 from novamind.core.ws import envelope
-from novamind.shared.model_config_ports import ModelConfigPort
-from novamind.features.agent.services.agent_service import AgentService
 from novamind.engines.agent.agent_engine import AgentEngine, AgentEvent
-from novamind.engines.agent.memory.memory_manager import MemoryManager
-from novamind.engines.agent.memory.interfaces import MemorySnapshot
-from novamind.features.agent.schemas.agent_schema import (
-    ContextUsageResponse,
-    SystemPromptResponse,
-)
 from novamind.engines.agent.memory.context_scrubber import StreamingContextScrubber
+from novamind.engines.agent.memory.interfaces import MemorySnapshot
+from novamind.engines.agent.memory.memory_manager import MemoryManager
 from novamind.engines.agent.prompt_builder import SystemPromptBuilder
-from novamind.features.agent.repository.agent_repository import MessageRepository, ToolCallRepository, SessionRepository
-from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
+from novamind.engines.agent.tool.base import ToolContext
 from novamind.features.agent.adapters import (
     HostKnowledgeSearchPort,
     HostMemorySearchPort,
@@ -33,14 +26,25 @@ from novamind.features.agent.adapters import (
     HostPromptProvider,
     HostWebSearchPort,
 )
-from novamind.features.agent.models.agent import AgentDefinition
-from novamind.features.agent.models.session import AgentSession
-from novamind.features.agent.models.message import AgentMessage
 from novamind.features.agent.exceptions import AgentError, AgentNotFoundError
-from novamind.engines.agent.tool.base import ToolContext
-from novamind.core.middleware.structured_logging import get_logger
-from novamind.shared.utils.time_utils import now_china
+from novamind.features.agent.models.agent import AgentDefinition
+from novamind.features.agent.models.message import AgentMessage
+from novamind.features.agent.models.session import AgentSession
+from novamind.features.agent.repository.agent_repository import (
+    MessageRepository,
+    SessionRepository,
+    ToolCallRepository,
+)
+from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
+from novamind.features.agent.schemas.agent_schema import (
+    ContextUsageResponse,
+    SystemPromptResponse,
+)
+from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
+from novamind.shared.model_config_ports import ModelConfigPort
+from novamind.shared.utils.time_utils import now_china
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -56,15 +60,15 @@ class AgentChatService:
         agent_service: AgentService,
         model_config_service: ModelConfigPort,
         agent_engine: AgentEngine,
-        todo_store: Optional[Any] = None,
-        memory_search_repo: Optional[MemorySearchRepository] = None,
-        minio_client: Optional[Any] = None,
-        memory_store_port: Optional[HostMemoryStorePort] = None,
-        memory_search_port: Optional[HostMemorySearchPort] = None,
-        knowledge_search_port: Optional[HostKnowledgeSearchPort] = None,
-        attachment_read_port: Optional[Any] = None,
-        web_search_port: Optional[HostWebSearchPort] = None,
-        prompt_provider: Optional[HostPromptProvider] = None,
+        todo_store: Any | None = None,
+        memory_search_repo: MemorySearchRepository | None = None,
+        minio_client: Any | None = None,
+        memory_store_port: HostMemoryStorePort | None = None,
+        memory_search_port: HostMemorySearchPort | None = None,
+        knowledge_search_port: HostKnowledgeSearchPort | None = None,
+        attachment_read_port: Any | None = None,
+        web_search_port: HostWebSearchPort | None = None,
+        prompt_provider: HostPromptProvider | None = None,
     ):
         self.db = db
         self.agent_service = agent_service
@@ -86,21 +90,21 @@ class AgentChatService:
         self._prompt_builder = SystemPromptBuilder(
             tool_registry=agent_engine.tool_executor.tool_registry,
         )
-        self._prompt_cache: Dict[str, Tuple[str, float]] = {}
+        self._prompt_cache: dict[str, tuple[str, float]] = {}
 
     async def chat_stream(
         self,
         user_id: int,
         agent_id: int,
         content: str,
-        session_id: Optional[str] = None,
-        llm_model: Optional[str] = None,
+        session_id: str | None = None,
+        llm_model: str | None = None,
         enable_thinking: bool = False,
         stream: bool = True,
-        attachment_ids: Optional[List[int]] = None,
-        approval_registry: Optional[Any] = None,
-        event_sink: Optional[Any] = None,
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+        attachment_ids: list[int] | None = None,
+        approval_registry: Any | None = None,
+        event_sink: Any | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """执行 Agent 对话，返回事件流（dict 事件，经 WS 推送）"""
         try:
             agent, conv, user_msg = await self._prepare(
@@ -149,7 +153,7 @@ class AgentChatService:
                     "summary": snapshot.compaction_summary,
                     "compression_ratio": snapshot.compression_ratio,
                     "tokens_after": snapshot.total_tokens,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "created_at": datetime.now(UTC).isoformat(),
                 })
 
             context = ToolContext(
@@ -198,7 +202,7 @@ class AgentChatService:
 
             full_response = ""
             full_reasoning = ""
-            collected_sources: List[Dict[str, Any]] = []
+            collected_sources: list[dict[str, Any]] = []
             scrubber = StreamingContextScrubber()
             reasoning_scrubber = StreamingContextScrubber()
             # 按迭代切分 AI 文本：full_response 仍作流级清洗累计（scrubber 行为不变），
@@ -386,7 +390,7 @@ class AgentChatService:
     # ==================== 模型 & MemoryManager ====================
 
     async def _resolve_model(
-        self, user_id: int, agent: AgentDefinition, llm_model: Optional[str]
+        self, user_id: int, agent: AgentDefinition, llm_model: str | None
     ) -> str:
         """解析可用的 LLM/VLM 模型名称"""
         model = llm_model or agent.llm_model
@@ -405,7 +409,7 @@ class AgentChatService:
         model: str,
         conversation_id: int,
         memory_store: HostMemoryStorePort,
-        memory_search: Optional[HostMemorySearchPort],
+        memory_search: HostMemorySearchPort | None,
         prompt_provider: HostPromptProvider,
     ) -> MemoryManager:
         """创建请求级 MemoryManager 实例（端口由 chat_stream 注入）"""
@@ -473,9 +477,9 @@ class AgentChatService:
         user_id: int,
         agent_id: int,
         content: str,
-        session_id: Optional[str],
-        llm_model: Optional[str],
-        attachment_ids: Optional[List[int]] = None,
+        session_id: str | None,
+        llm_model: str | None,
+        attachment_ids: list[int] | None = None,
     ) -> tuple[AgentDefinition, AgentSession, AgentMessage]:
         """准备阶段：获取 Agent、创建/恢复会话、保存用户消息（原始 content + extra）"""
         agent = await self.agent_service.get_agent_definition(user_id, agent_id)
@@ -512,7 +516,7 @@ class AgentChatService:
         user_content: str,
         memory_manager: MemoryManager,
         dry_run: bool = False,
-    ) -> tuple[Any, List[Dict], List[Dict], MemorySnapshot]:
+    ) -> tuple[Any, list[dict], list[dict], MemorySnapshot]:
         """构建阶段：获取 LLM 客户端、工具列表、上下文消息（三层记忆）。
 
         dry_run=True 时只算 token 不触发压缩、不写 summary、跳过 prefetch/附件注入
@@ -712,7 +716,7 @@ class AgentChatService:
             logger.warning("冻结快照加载失败", error=str(e))
             return ""
 
-    def _get_cached_prompt(self, cache_key: str) -> Optional[str]:
+    def _get_cached_prompt(self, cache_key: str) -> str | None:
         """查询系统提示缓存"""
         if cache_key in self._prompt_cache:
             prompt, ts = self._prompt_cache[cache_key]
@@ -729,8 +733,8 @@ class AgentChatService:
 
     def _apply_prefetch_to_messages(
         self,
-        relevant: List[Any],
-        messages: List[Dict],
+        relevant: list[Any],
+        messages: list[dict],
     ) -> None:
         """将预取的长期记忆注入到最后一条用户消息"""
         memory_text = "\n".join(
@@ -766,8 +770,8 @@ class AgentChatService:
         本轮图片附件仍实时注入（VLM base64 / 非 VLM 文本占位）；
         历史图片仅在清单中列出（工具结果只能回文本，历史图片不可重看）。
         """
-        from sqlalchemy import select
         from novamind.features.agent.models.message import AgentMessage
+        from sqlalchemy import select
 
         stmt = select(AgentMessage).where(
             AgentMessage.conversation_id == conversation_id,
@@ -780,7 +784,7 @@ class AgentChatService:
             return
 
         # 按消息顺序收集附件元数据（extra 已存 id/filename/file_type/file_size）
-        att_msgs: List[List[Dict]] = []
+        att_msgs: list[list[dict]] = []
         for msg in messages_with_extra:
             atts = (msg.extra or {}).get("attachments") or []
             if atts:
@@ -791,7 +795,7 @@ class AgentChatService:
         # 最后一条带附件的消息 = 本轮；其余 = 历史段（同一附件多轮引用去重）
         current_atts = att_msgs[-1]
         seen_ids = {a.get("id") for a in current_atts if a.get("id") is not None}
-        historical_atts: List[Dict] = []
+        historical_atts: list[dict] = []
         for atts in att_msgs[:-1]:
             for a in atts:
                 if a.get("id") in seen_ids or a.get("id") is None:
@@ -815,7 +819,7 @@ class AgentChatService:
 
         item = snapshot.messages[last_user_idx]
 
-        def _is_image(a: Dict) -> bool:
+        def _is_image(a: dict) -> bool:
             return (a.get("file_type") or "") in self.IMAGE_TYPES
 
         # 清单分段：本轮文档 / 历史文档（图片不进清单，本轮图片单独注入）
@@ -866,7 +870,7 @@ class AgentChatService:
         manifest = "\n".join(lines)
 
         # 本轮图片：保持实时注入（VLM base64 / 非 VLM 文本占位）
-        img_parts: List[Dict] = []
+        img_parts: list[dict] = []
         if current_imgs:
             if is_vlm and self._minio_client:
                 for a in current_imgs:
@@ -896,7 +900,7 @@ class AgentChatService:
         original_content = item.get("content", "")
         if isinstance(original_content, str):
             if img_parts:
-                parts: List[Dict] = [{"type": "text", "text": manifest}]
+                parts: list[dict] = [{"type": "text", "text": manifest}]
                 parts.extend(img_parts)
                 parts.append({"type": "text", "text": original_content})
                 item["content"] = parts
@@ -923,7 +927,7 @@ class AgentChatService:
         except Exception:
             return False
 
-    async def _download_attachment_as_base64(self, attachment) -> Optional[str]:
+    async def _download_attachment_as_base64(self, attachment) -> str | None:
         """从 MinIO 下载附件并转为 base64"""
         if not self._minio_client:
             return None
@@ -939,7 +943,7 @@ class AgentChatService:
 
     async def _collect_skill_fragments(self, enabled_tools: list) -> list:
         """收集技能广场中已安装技能的 Markdown 指令片段"""
-        from novamind.features.skill.models.skill import SkillStatus, ReviewStatus
+        from novamind.features.skill.models.skill import ReviewStatus, SkillStatus
 
         fragments = []
         for skill_ref in enabled_tools:
@@ -971,7 +975,7 @@ class AgentChatService:
     # ==================== 来源提取 ====================
 
     def _extract_sources(
-        self, event: AgentEvent, collected_sources: List[Dict[str, Any]]
+        self, event: AgentEvent, collected_sources: list[dict[str, Any]]
     ) -> None:
         """从 tool_result 事件中提取结构化来源引用（对齐 QA SourceRef）。"""
         tool_name = event.data.get("tool_name", "")
@@ -1040,7 +1044,7 @@ class AgentChatService:
         )
 
     async def _save_error_message(
-        self, conv: AgentSession, content: str, extra: Optional[Dict[str, Any]] = None
+        self, conv: AgentSession, content: str, extra: dict[str, Any] | None = None
     ) -> None:
         """落库错误/溢出消息（role='assistant' + extra.error），供历史回放还原失败对话。
         失败不阻断主流程（仅 warning 日志）。
@@ -1060,7 +1064,7 @@ class AgentChatService:
         self,
         event: AgentEvent,
         conv: AgentSession,
-        context: Dict[str, Any],
+        context: dict[str, Any],
         iteration_text: str = "",
         iteration_reasoning: str = "",
     ) -> None:
@@ -1073,7 +1077,7 @@ class AgentChatService:
         供历史回放还原完整 ReAct 链路：user → assistant(决策文本) → tool → assistant(最终)。
         """
         tool_calls = event.data.get("tool_calls", [])
-        extra: Dict[str, Any] = {"tool_calls": tool_calls}
+        extra: dict[str, Any] = {"tool_calls": tool_calls}
         # per-iteration usage + LLM 调用耗时（轨迹视图 per-message token/耗时展示）
         if event.data.get("usage"):
             extra["usage"] = event.data["usage"]
@@ -1094,7 +1098,7 @@ class AgentChatService:
         event: AgentEvent,
         user_msg: AgentMessage,
         conv: AgentSession,
-        context: Dict[str, Any],
+        context: dict[str, Any],
     ) -> None:
         """处理 tool_call 事件：保存工具调用记录"""
         call_id = event.data.get("call_id", "")
@@ -1117,7 +1121,7 @@ class AgentChatService:
         self,
         event: AgentEvent,
         conv: AgentSession,
-        context: Dict[str, Any],
+        context: dict[str, Any],
     ) -> None:
         """处理 tool_result 事件：双路持久化（完整结果 → tool_calls，预览/原文 → messages）"""
         call_id = event.data.get("call_id", "")
@@ -1161,15 +1165,15 @@ class AgentChatService:
         conv: AgentSession,
         user_content: str,
         full_response: str,
-        reasoning: Optional[str] = None,
-        sources: Optional[List[Dict[str, Any]]] = None,
-        iteration: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        reasoning: str | None = None,
+        sources: list[dict[str, Any]] | None = None,
+        iteration: int | None = None,
+    ) -> dict[str, Any]:
         """处理 done 事件：保存 assistant 消息、更新统计、设置标题"""
         total_tokens = event.data.get("total_tokens", 0)
 
         # 最后一轮 per-iteration usage + LLM 调用耗时（轨迹视图 per-message token/耗时）
-        done_extra: Dict[str, Any] = {}
+        done_extra: dict[str, Any] = {}
         if event.data.get("last_iteration_usage"):
             done_extra["usage"] = event.data["last_iteration_usage"]
         if event.data.get("last_iteration_duration_ms") is not None:
@@ -1202,12 +1206,12 @@ class AgentChatService:
 
     async def _record_usage(
         self,
-        done_data: Dict[str, Any],
+        done_data: dict[str, Any],
         user_id: int,
         conv: AgentSession,
         agent_id: int,
         model: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """E1 可观测性：done_data 加 cost_usd + 写 agent_usage 表。
 
         失败不阻断对话（仅 warning 日志）。
@@ -1216,10 +1220,10 @@ class AgentChatService:
         if not usage_breakdown:
             return done_data
         try:
-            from novamind.shared.ai_models.usage import CanonicalUsage, estimate_cost
             from novamind.features.agent.repository.agent_usage_repository import (
                 AgentUsageRepository,
             )
+            from novamind.shared.ai_models.usage import CanonicalUsage, estimate_cost
 
             usage = CanonicalUsage(
                 input_tokens=usage_breakdown.get("input_tokens", 0),
@@ -1256,12 +1260,12 @@ class AgentChatService:
 
     async def _compress_messages(
         self,
-        messages: List[Dict],
+        messages: list[dict],
         memory_manager: MemoryManager,
         model: str,
         context_window: int,
         conversation_id: int,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """将 OpenAI 格式消息压缩后返回（上下文溢出时调用）"""
         from novamind.engines.agent.memory.interfaces import MemoryMessage
         from novamind.engines.agent.memory.token_budget import TokenBudget
@@ -1292,7 +1296,7 @@ class AgentChatService:
         # MemoryMessage → OpenAI dicts
         result = []
         for mm in compressed:
-            d: Dict[str, Any] = {"role": mm.role}
+            d: dict[str, Any] = {"role": mm.role}
             if mm.content:
                 d["content"] = mm.content
             if mm.tool_calls:

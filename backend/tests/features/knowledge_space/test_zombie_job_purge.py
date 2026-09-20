@@ -29,30 +29,33 @@ if str(BACKEND_ROOT) not in sys.path:
 pytest.importorskip("aiosqlite")
 
 import arq.constants as arq_constants
-
 import novamind.shared.mq as mq_module
 import novamind.shared.mq.task_tracker as task_tracker_module
 from novamind.core.database import database as database_module
-from novamind.setting import yaml_config as yaml_config_module
+from novamind.core.database.base import Base
 from novamind.features.knowledge_space.exceptions import DocumentAlreadyProcessingError
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.document_task import DocumentTask, TaskStatus
+from novamind.features.knowledge_space.models.document_task_batch import (
+    DocumentTaskBatch,  # noqa: F401
+)
+from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase  # noqa: F401
+from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace  # noqa: F401
 from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
 from novamind.features.knowledge_space.tasks import document_tasks as document_tasks_module
 from novamind.features.knowledge_space.tasks.document_tasks import recover_orphan_documents
-from novamind.shared.mq.task_tracker import purge_document_jobs
-from novamind.core.database.base import Base
 
 # 定向建表所需的 FK 目标表（见 test_document_enqueue_batch_atomic.py 的全量建表陷阱注释）
 from novamind.features.user.models.user import User  # noqa: F401
-from novamind.features.knowledge_space.models.knowledge_space import KnowledgeSpace  # noqa: F401
-from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase  # noqa: F401
-from novamind.features.knowledge_space.models.document_task_batch import DocumentTaskBatch  # noqa: F401
+from novamind.setting import yaml_config as yaml_config_module
+from novamind.shared.mq.task_tracker import purge_document_jobs
 
 # SQLite 中 BIGINT PRIMARY KEY 不自增（见 test_document_enqueue_batch_atomic.py 注释），
 # 编译期把 BigInteger 降为 INTEGER，仅影响本测试的 SQLite 建表。
 from sqlalchemy import BigInteger
 from sqlalchemy.ext.compiler import compiles
+
+pytestmark = pytest.mark.unit
 
 
 @compiles(BigInteger, "sqlite")
@@ -466,7 +469,6 @@ def test_memory_error_cascade_still_raises_retry_and_marks_task(monkeypatch):
     标记为 PENDING + 自动重试信息，而不是留在 PROCESSING 成孤儿。
     """
     from arq import Retry
-
     from novamind.features.knowledge_space.services import document_pipeline as pipeline_module
     from novamind.features.knowledge_space.tasks.document_tasks import process_document_task
     from novamind.shared.storage.client_factory import ClientFactory
@@ -564,7 +566,6 @@ def test_memory_error_disposes_engine_pool_before_retry_marking(monkeypatch):
     上），且不阻断 raise Retry。
     """
     from arq import Retry
-
     from novamind.features.knowledge_space.services import document_pipeline as pipeline_module
     from novamind.features.knowledge_space.tasks.document_tasks import process_document_task
     from novamind.shared.storage.client_factory import ClientFactory
@@ -655,7 +656,6 @@ def test_memory_error_disposes_engine_pool_before_retry_marking(monkeypatch):
 def test_generic_error_keeps_engine_pool_alive(monkeypatch):
     """普通业务异常不是进程级不可信事件，不应误伤连接池。"""
     from arq import Retry
-
     from novamind.features.knowledge_space.services import document_pipeline as pipeline_module
     from novamind.features.knowledge_space.tasks.document_tasks import process_document_task
     from novamind.shared.storage.client_factory import ClientFactory

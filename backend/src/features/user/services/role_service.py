@@ -1,31 +1,28 @@
 """角色管理服务"""
-from typing import Optional
-
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.authorization.ports import PermissionCheckerPort
 from novamind.features.user.exceptions import (
     PermissionDeniedError,
     RoleNotFoundError,
-    UserOperationError,
     UserNotFoundError,
+    UserOperationError,
 )
-from sqlalchemy.orm import selectinload
-
-from novamind.features.user.models.role import Role, Permission
+from novamind.features.user.models.role import Permission, Role
 from novamind.features.user.models.user import User
 from novamind.features.user.repository.role_repository import RoleRepository
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 
 class RoleService:
-    def __init__(self, db: AsyncSession, permission_checker: Optional[PermissionCheckerPort]):
+    def __init__(self, db: AsyncSession, permission_checker: PermissionCheckerPort | None):
         self.db = db
         self.repo = RoleRepository(db)
         self.checker = permission_checker
 
 
-    async def _get_role_with_permissions(self, role_id: int) -> Optional[Role]:
+    async def _get_role_with_permissions(self, role_id: int) -> Role | None:
         # 若 identity map 中已有对象，先移除以强制重新加载 selectin 关系
         existing = await self.db.get(Role, role_id)
         if existing is not None:
@@ -42,8 +39,8 @@ class RoleService:
         self,
         code: str,
         name: str,
-        description: Optional[str] = None,
-        permission_codes: Optional[list[str]] = None,
+        description: str | None = None,
+        permission_codes: list[str] | None = None,
     ) -> Role:
         existing = await self.repo.get_role_by_code(code)
         if existing:
@@ -66,9 +63,9 @@ class RoleService:
     async def update_role(
         self,
         role_id: int,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        permission_codes: Optional[list[str]] = None,
+        name: str | None = None,
+        description: str | None = None,
+        permission_codes: list[str] | None = None,
     ) -> Role:
         role = await self.repo.get_role_by_id(role_id)
         if role is None:

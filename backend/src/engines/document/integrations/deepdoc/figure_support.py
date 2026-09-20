@@ -6,9 +6,8 @@ import time
 from functools import wraps
 from typing import Any
 
-from PIL import Image
-
 from novamind.engines.document.integrations.deepdoc.compat import LazyImage
+from PIL import Image
 
 
 class LLMType:

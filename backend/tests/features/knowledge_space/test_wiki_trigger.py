@@ -3,9 +3,10 @@
 验证文档任务成功分支：wiki.enabled 才入队、未启用不入队、入队异常被吞
 （不影响文档任务终态）、触发函数读 KB 配置的分支逻辑。
 """
+import novamind.features.knowledge_space.tasks.document_tasks as doc_tasks
 import pytest
 
-import novamind.features.knowledge_space.tasks.document_tasks as doc_tasks
+pytestmark = pytest.mark.unit
 
 
 @pytest.mark.unit

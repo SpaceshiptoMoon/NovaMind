@@ -7,10 +7,8 @@
 4. AgentService.get_messages 返回会话全部 tool_calls（历史回放入口契约）
 """
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
-
 from novamind.engines.agent.agent_engine import AgentEvent
 from novamind.features.agent.models.tool_call import AgentToolCall
 from novamind.features.agent.schemas.agent_schema import (
@@ -19,6 +17,8 @@ from novamind.features.agent.schemas.agent_schema import (
 )
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.agent.services.chat_service import AgentChatService
+
+pytestmark = pytest.mark.unit
 
 
 # ==================== 1. ORM 列契约 ====================
@@ -170,12 +170,11 @@ async def test_list_by_conversation_after_filters_cutoff() -> None:
     避免摘要 cutoff 前的 assistant 消息已被摘要替代后 tool_calls 成孤儿（批次 D）"""
     from datetime import datetime, timedelta
 
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
     from novamind.core.database.base import BaseModel
     from novamind.features.agent.models.message import AgentMessage
     from novamind.features.agent.models.session import AgentSession
     from novamind.features.agent.repository.agent_repository import ToolCallRepository
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
     async with engine.begin() as conn:

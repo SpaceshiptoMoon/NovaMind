@@ -9,10 +9,9 @@ Agent 长期记忆 ES 向量检索仓储
 MySQL 是 source of truth，ES 是检索加速层。ES 不可用时降级到 MySQL LIKE。
 """
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from elasticsearch import AsyncElasticsearch
-
 from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
@@ -31,12 +30,12 @@ class MemorySearchRepository:
         # 避免硬编码维度与实际 embedding 模型不一致（见 ES KNN 维度不匹配降级问题）
         self._embedding_dim = embedding_dim
         # 各索引实际 content_vector 维度缓存（避免每次搜索都查 mapping）
-        self._index_dims: Dict[str, int] = {}
+        self._index_dims: dict[str, int] = {}
 
     def _index_name(self, agent_id: int) -> str:
         return f"agent_memory_{agent_id}"
 
-    async def _get_index_dims(self, index_name: str) -> Optional[int]:
+    async def _get_index_dims(self, index_name: str) -> int | None:
         """读取并缓存索引 content_vector 的实际维度"""
         if index_name in self._index_dims:
             return self._index_dims[index_name]
@@ -56,7 +55,7 @@ class MemorySearchRepository:
     async def ensure_index(
         self,
         agent_id: int,
-        embedding_dim: Optional[int] = None,
+        embedding_dim: int | None = None,
     ) -> bool:
         """确保索引存在且维度匹配。
 
@@ -136,10 +135,10 @@ class MemorySearchRepository:
         user_id: int,
         category: str,
         content: str,
-        embedding: List[float],
+        embedding: list[float],
         source_type: str = "consolidate",
-        source_conversation_id: Optional[int] = None,
-        created_at: Optional[datetime] = None,
+        source_conversation_id: int | None = None,
+        created_at: datetime | None = None,
     ) -> bool:
         """索引单条记忆到 ES。
 
@@ -151,7 +150,7 @@ class MemorySearchRepository:
         """
         try:
             recreated = await self.ensure_index(agent_id, embedding_dim=len(embedding))
-            doc: Dict[str, Any] = {
+            doc: dict[str, Any] = {
                 "memory_id": memory_id,
                 "user_id": user_id,
                 "category": category,
@@ -180,14 +179,14 @@ class MemorySearchRepository:
     async def search(
         self,
         agent_id: int,
-        query_vector: List[float],
+        query_vector: list[float],
         query_text: str,
         top_k: int = 5,
-        user_id: Optional[int] = None,
-        categories: Optional[List[str]] = None,
+        user_id: int | None = None,
+        categories: list[str] | None = None,
         vector_weight: float = 0.7,
         text_weight: float = 0.3,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Hybrid 搜索：原生 KNN 向量检索 + BM25 文本检索，RRF 融合
 
@@ -209,7 +208,7 @@ class MemorySearchRepository:
         if not await self._es.indices.exists(index=index_name):
             return []
 
-        filter_clauses: List[Dict] = []
+        filter_clauses: list[dict] = []
         if user_id is not None:
             filter_clauses.append({"term": {"user_id": user_id}})
         if categories:
@@ -225,7 +224,7 @@ class MemorySearchRepository:
 
         if knn_available:
             # 构建 KNN 查询
-            knn_query: Dict[str, Any] = {
+            knn_query: dict[str, Any] = {
                 "field": "content_vector",
                 "query_vector": query_vector,
                 "k": top_k,
@@ -235,7 +234,7 @@ class MemorySearchRepository:
                 knn_query["filter"] = {"bool": {"filter": filter_clauses}}
 
             # 构建 BM25 文本查询
-            text_query: Dict[str, Any] = {
+            text_query: dict[str, Any] = {
                 "bool": {
                     "filter": filter_clauses if filter_clauses else [],
                     "should": [
@@ -244,7 +243,7 @@ class MemorySearchRepository:
                 }
             }
 
-            body: Dict[str, Any] = {
+            body: dict[str, Any] = {
                 "size": top_k,
                 "knn": knn_query,
                 "query": text_query,
@@ -280,10 +279,10 @@ class MemorySearchRepository:
         index_name: str,
         query_text: str,
         top_k: int,
-        filter_clauses: List[Dict],
-    ) -> List[Dict[str, Any]]:
+        filter_clauses: list[dict],
+    ) -> list[dict[str, Any]]:
         """KNN 失败时降级到纯 BM25 搜索"""
-        body: Dict[str, Any] = {
+        body: dict[str, Any] = {
             "size": top_k,
             "query": {
                 "bool": {

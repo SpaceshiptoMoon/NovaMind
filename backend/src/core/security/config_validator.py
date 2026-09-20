@@ -8,7 +8,6 @@
 import os
 import re
 from dataclasses import dataclass
-from typing import List, Tuple
 
 from novamind.core.middleware.structured_logging import get_logger
 
@@ -62,9 +61,9 @@ class SecurityConfigValidator:
 
     def __init__(self):
         self.logger = get_logger(__name__)
-        self.issues: List[SecurityIssue] = []
+        self.issues: list[SecurityIssue] = []
 
-    def validate(self, config) -> List[SecurityIssue]:
+    def validate(self, config) -> list[SecurityIssue]:
         """
         验证配置安全性
 
@@ -283,7 +282,7 @@ class SecurityConfigValidator:
 
 
 
-def validate_security_config(config) -> Tuple[bool, List[SecurityIssue]]:
+def validate_security_config(config) -> tuple[bool, list[SecurityIssue]]:
     """
     验证安全配置
 

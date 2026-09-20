@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 #  Copyright 2025 The InfiniFlow Authors. All Rights Reserved.
 #
@@ -15,12 +14,13 @@
 #  limitations under the License.
 #
 
-from novamind.engines.document.integrations.deepdoc.compat import find_codec, rag_tokenizer
+import html
 import logging
 import re
 import uuid
-from bs4 import BeautifulSoup, NavigableString, Tag, Comment
-import html
+
+from bs4 import BeautifulSoup, Comment, NavigableString, Tag
+from novamind.engines.document.integrations.deepdoc.compat import find_codec, rag_tokenizer
 
 try:
     import chardet
@@ -48,7 +48,7 @@ class RAGFlowHtmlParser:
             encoding = find_codec(binary)
             txt = binary.decode(encoding, errors="ignore")
         else:
-            with open(fnm, "r", encoding=get_encoding(fnm)) as f:
+            with open(fnm, encoding=get_encoding(fnm)) as f:
                 txt = f.read()
         return self.parser_txt(txt, chunk_token_num)
 
@@ -192,7 +192,7 @@ class RAGFlowHtmlParser:
         "豈-﫿"  # CJK Compatibility Ideographs
         "가-힯"  # Hangul syllables
     )
-    _ATOM_RE = re.compile(r"[{s}]|[^\s{s}]+|\s+".format(s=_SPACELESS))
+    _ATOM_RE = re.compile(rf"[{_SPACELESS}]|[^\s{_SPACELESS}]+|\s+")
 
     @classmethod
     def _token_count(cls, text):

@@ -4,11 +4,14 @@
 存储会话的压缩配置与知识库绑定配置（会话级自动 RAG）
 """
 
-from typing import Optional
-from sqlalchemy import Column, BigInteger, String, JSON
 
 from novamind.core.database.base import BaseModel
-from novamind.features.qa.api.constants import DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE, DEFAULT_TOP_P
+from novamind.features.qa.api.constants import (
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_TEMPERATURE,
+    DEFAULT_TOP_P,
+)
+from sqlalchemy import JSON, BigInteger, Column, String
 
 
 class SessionConfig(BaseModel):
@@ -101,7 +104,7 @@ class SessionConfig(BaseModel):
         return self.get_compression_config().get("keep_recent", 6)
 
     @property
-    def custom_summary_prompt(self) -> Optional[str]:
+    def custom_summary_prompt(self) -> str | None:
         return self.get_compression_config().get("custom_prompt")
 
     # ========== 知识库绑定访问方法（会话级自动 RAG） ==========
@@ -115,7 +118,7 @@ class SessionConfig(BaseModel):
         return self.get_kb_bindings().get("auto_rag", False)
 
     @property
-    def rag_space_id(self) -> Optional[int]:
+    def rag_space_id(self) -> int | None:
         return self.get_kb_bindings().get("space_id")
 
     @property
@@ -192,7 +195,7 @@ class SessionConfig(BaseModel):
         return val if val is not None else DEFAULT_TOP_P
 
     @property
-    def llm_system_prompt(self) -> Optional[str]:
+    def llm_system_prompt(self) -> str | None:
         # None 是合法值，表示「用后端 QA 模板」，不兜底
         return self.get_llm_config().get("system_prompt")
 
@@ -203,7 +206,7 @@ class SessionConfig(BaseModel):
         return self.web_search_config or {}
 
     @property
-    def web_search_provider(self) -> Optional[str]:
+    def web_search_provider(self) -> str | None:
         # None 是合法值，表示「自动择优」（用户首选 → YAML 兜底），不兜底
         return self.get_web_search_config().get("provider")
 

@@ -3,13 +3,11 @@
 
 处理会话配置的 CRUD 操作
 """
-from typing import Optional
+
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.qa.models.session_config import SessionConfig
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.features.qa.models.session_config import SessionConfig
-from novamind.core.middleware.structured_logging import get_logger
-
 
 # 默认压缩配置
 DEFAULT_COMPRESSION_CONFIG = {
@@ -29,7 +27,7 @@ class SessionConfigRepository:
         self.session = session
         self.logger = get_logger(__name__)
 
-    async def get_by_session_id(self, session_id: str) -> Optional[SessionConfig]:
+    async def get_by_session_id(self, session_id: str) -> SessionConfig | None:
         """
         根据会话 ID 获取配置
 

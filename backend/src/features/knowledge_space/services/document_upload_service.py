@@ -9,38 +9,37 @@
 文件类型常量与模态映射收敛到 ``document_file_types``（中立模块）。
 """
 
-from typing import Optional, List, Dict, Any
 import asyncio
 import hashlib
 from pathlib import Path
+from typing import Any
 
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.engines.document.converters.doc_converter import (
+    DocConversionError,
+    convert_doc_to_docx,
+)
+from novamind.features.knowledge_space.exceptions import (
+    DocumentAlreadyExistsError,
+    DocumentConversionError,
+    DocumentInvalidTypeError,
+    DocumentSizeExceededError,
+    InvalidParameterError,
+    KnowledgeBaseNotFoundError,
+    SpaceAccessDeniedError,
+)
 from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
 from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
 from novamind.features.knowledge_space.repository.knowledge_base_repository import (
     KnowledgeBaseRepository,
 )
 from novamind.features.knowledge_space.repository.member_repository import MemberRepository
-from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
-from novamind.features.knowledge_space.exceptions import (
-    KnowledgeBaseNotFoundError,
-    DocumentAlreadyExistsError,
-    DocumentConversionError,
-    DocumentInvalidTypeError,
-    DocumentSizeExceededError,
-    InvalidParameterError,
-    SpaceAccessDeniedError,
-)
-from novamind.shared.storage.minio_client import MinioClient
-from novamind.engines.document.converters.doc_converter import (
-    convert_doc_to_docx,
-    DocConversionError,
-)
-from novamind.shared.document.validation import validate_file
 from novamind.features.knowledge_space.schemas.document_schema import UploadedDocumentResult
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
+from novamind.shared.document.validation import validate_file
+from novamind.shared.storage.minio_client import MinioClient
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def _compute_sha256(content: bytes) -> str:
@@ -53,8 +52,8 @@ class DocumentUploadService:
 
     # 文件类型常量收敛到 document_file_types（upload 校验引用）
     from novamind.features.knowledge_space.services.document_file_types import (
-        SUPPORTED_FILE_TYPES,
         MODALITY_TO_FILE_TYPES,
+        SUPPORTED_FILE_TYPES,
     )
 
     # 各模态默认最大文件大小（MB）
@@ -75,7 +74,7 @@ class DocumentUploadService:
         uploader_id: int,
         file_content: bytes,
         filename: str,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> UploadedDocumentResult:
         """
         上传文档（仅存 MinIO，不触发解析）
@@ -297,7 +296,7 @@ class DocumentUploadService:
         self,
         kb_id: int,
         uploader_id: int,
-        files: List[tuple],
+        files: list[tuple],
     ) -> dict:
         """
         批量上传文档（仅存 MinIO，不触发解析）
@@ -312,8 +311,8 @@ class DocumentUploadService:
         Returns:
             {"success": [UploadedDocumentResult, ...], "failed": [{"filename": str, "error": str}, ...]}
         """
-        success: List[UploadedDocumentResult] = []
-        failed: List[dict] = []
+        success: list[UploadedDocumentResult] = []
+        failed: list[dict] = []
 
         for filename, file_content in files:
             try:
@@ -417,7 +416,7 @@ class DocumentUploadService:
                 return self._MODALITY_MAX_SIZE_MB.get(modality, 100) * 1024 * 1024
         return 100 * 1024 * 1024
 
-    def _get_allowed_file_types(self, kb: KnowledgeBase) -> List[str]:
+    def _get_allowed_file_types(self, kb: KnowledgeBase) -> list[str]:
         """获取允许的文件类型"""
         config = kb.get_config()
         limits = config.get("limits", {})

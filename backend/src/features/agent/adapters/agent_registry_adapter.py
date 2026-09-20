@@ -1,10 +1,9 @@
 """
 AgentRegistryPort 宿主适配器，桥接 AgentRepository 实现 Agent 查询与工具更新。
 """
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.features.agent.repository.agent_repository import AgentRepository
 from novamind.shared.registry_ports import AgentRegistryPort, AgentSummary
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class HostAgentRegistryPort:

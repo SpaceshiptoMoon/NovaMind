@@ -2,15 +2,14 @@
 应用中心异常处理器
 """
 from fastapi import FastAPI
-
 from novamind.core.middleware.base_exception_handler import register_module_exceptions
 from novamind.features.app.api.exceptions import (
     AppError,
-    ResumeSessionNotFoundError,
-    ResumeParseError,
-    InvalidFileTypeError,
-    InvalidConfigError,
     FileSizeExceededError,
+    InvalidConfigError,
+    InvalidFileTypeError,
+    ResumeParseError,
+    ResumeSessionNotFoundError,
 )
 
 

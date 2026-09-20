@@ -138,9 +138,8 @@ def _make_service():
 
 def test_provider_whitelist_rejects_unknown():
     """未知 provider 应在 schema 层被拒。"""
-    from pydantic import ValidationError
-
     from novamind.features.user.schemas.search_config_schema import SearchConfigCreate
+    from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
         SearchConfigCreate(provider="bogus", api_key="k")
@@ -176,8 +175,8 @@ async def test_create_config_encrypts_api_key():
 @pytest.mark.asyncio
 async def test_create_config_dedup_same_provider():
     """同 user 同 provider 重复创建应抛 SearchConfigAlreadyExistsError。"""
-    from novamind.features.user.schemas.search_config_schema import SearchConfigCreate
     from novamind.features.user.exceptions import SearchConfigAlreadyExistsError
+    from novamind.features.user.schemas.search_config_schema import SearchConfigCreate
 
     svc = _make_service()
     await svc.create_config(
@@ -230,8 +229,8 @@ async def test_create_config_multi_tenant_same_provider_allowed():
 @pytest.mark.asyncio
 async def test_get_config_isolation_other_user_not_found():
     """用户 A 不能读取用户 B 的配置（应抛 NotFound）。"""
-    from novamind.features.user.schemas.search_config_schema import SearchConfigCreate
     from novamind.features.user.exceptions import SearchConfigNotFoundError
+    from novamind.features.user.schemas.search_config_schema import SearchConfigCreate
 
     svc = _make_service()
     resp = await svc.create_config(
@@ -344,8 +343,8 @@ async def test_set_primary_atomic_switch():
 @pytest.mark.asyncio
 async def test_set_primary_other_user_not_found():
     """set_primary 跨用户应抛 NotFound（不能设别人的配置为 primary）。"""
-    from novamind.features.user.schemas.search_config_schema import SearchConfigCreate
     from novamind.features.user.exceptions import SearchConfigNotFoundError
+    from novamind.features.user.schemas.search_config_schema import SearchConfigCreate
 
     svc = _make_service()
     created = await svc.create_config(
@@ -360,8 +359,8 @@ async def test_set_primary_other_user_not_found():
 @pytest.mark.asyncio
 async def test_delete_config_ownership():
     """删除跨用户配置应抛 NotFound。"""
-    from novamind.features.user.schemas.search_config_schema import SearchConfigCreate
     from novamind.features.user.exceptions import SearchConfigNotFoundError
+    from novamind.features.user.schemas.search_config_schema import SearchConfigCreate
 
     svc = _make_service()
     created = await svc.create_config(
@@ -438,9 +437,9 @@ class _FakePort:
 @pytest.mark.asyncio
 async def test_test_connection_success(monkeypatch):
     """test_connection 成功应返回 success=True + 结果数。"""
+    import novamind.features.user.services.search_config_service as svc_mod
     from novamind.engines.search_ports import WebSearchResult
     from novamind.features.user.schemas.search_config_schema import SearchTestRequest
-    import novamind.features.user.services.search_config_service as svc_mod
 
     fake_port = _FakePort(results=[WebSearchResult(title="t", url="u", snippet="s")])
     monkeypatch.setattr(
@@ -461,10 +460,10 @@ async def test_test_connection_success(monkeypatch):
 @pytest.mark.asyncio
 async def test_test_connection_provider_not_configured(monkeypatch):
     """engines 抛 WebSearchProviderNotConfiguredError 应映射为 SearchConfigTestFailedError。"""
-    from novamind.engines.search_errors import WebSearchProviderNotConfiguredError
-    from novamind.features.user.schemas.search_config_schema import SearchTestRequest
-    from novamind.features.user.exceptions import SearchConfigTestFailedError
     import novamind.features.user.services.search_config_service as svc_mod
+    from novamind.engines.search_errors import WebSearchProviderNotConfiguredError
+    from novamind.features.user.exceptions import SearchConfigTestFailedError
+    from novamind.features.user.schemas.search_config_schema import SearchTestRequest
 
     def _raise(provider, api_key, extra_config):
         raise WebSearchProviderNotConfiguredError(provider)
@@ -482,10 +481,10 @@ async def test_test_connection_provider_not_configured(monkeypatch):
 @pytest.mark.asyncio
 async def test_test_connection_search_failure_mapped(monkeypatch):
     """port.search 抛中立 WebSearchError 应映射为 SearchConfigTestFailedError。"""
-    from novamind.engines.search_errors import WebSearchError
-    from novamind.features.user.schemas.search_config_schema import SearchTestRequest
-    from novamind.features.user.exceptions import SearchConfigTestFailedError
     import novamind.features.user.services.search_config_service as svc_mod
+    from novamind.engines.search_errors import WebSearchError
+    from novamind.features.user.exceptions import SearchConfigTestFailedError
+    from novamind.features.user.schemas.search_config_schema import SearchTestRequest
 
     fake_port = _FakePort(raise_exc=WebSearchError("boom"))
     monkeypatch.setattr(

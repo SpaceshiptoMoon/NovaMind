@@ -9,9 +9,8 @@
 技术债更大；搜索配置字段集（provider/api_key/extra_config/is_primary）独立且更简单，
 单建表更清晰。
 """
-from sqlalchemy import Column, BigInteger, String, Boolean, JSON, Index, ForeignKey
-
 from novamind.core.database.base import BaseModel
+from sqlalchemy import JSON, BigInteger, Boolean, Column, ForeignKey, Index, String
 
 
 class UserSearchConfig(BaseModel):

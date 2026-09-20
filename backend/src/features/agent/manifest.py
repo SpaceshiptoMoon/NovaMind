@@ -6,12 +6,12 @@ from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, Ro
 
 def _import_models() -> None:
     from novamind.features.agent.models.agent import AgentDefinition  # noqa: F401
-    from novamind.features.agent.models.session import AgentSession  # noqa: F401
-    from novamind.features.agent.models.message import AgentMessage  # noqa: F401
-    from novamind.features.agent.models.tool_call import AgentToolCall  # noqa: F401
+    from novamind.features.agent.models.context_summary import AgentContextSummary  # noqa: F401
     from novamind.features.agent.models.mcp_server import AgentMcpServer  # noqa: F401
     from novamind.features.agent.models.memory import AgentMemory  # noqa: F401
-    from novamind.features.agent.models.context_summary import AgentContextSummary  # noqa: F401
+    from novamind.features.agent.models.message import AgentMessage  # noqa: F401
+    from novamind.features.agent.models.session import AgentSession  # noqa: F401
+    from novamind.features.agent.models.tool_call import AgentToolCall  # noqa: F401
 
 
 async def _init(app) -> None:

@@ -6,9 +6,10 @@
 - 模型名称引用：前端传模型名称（如 llm_model="gpt-4o"），后端根据名称查找凭证
 - 扩展配置存储在 extra_config 中（如 dimension、timeout 等）
 """
-from pydantic import BaseModel, Field, field_validator, ConfigDict
-from typing import Optional, Dict, Any, List
 from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # ========== 请求/响应模型 ==========
 
@@ -32,17 +33,17 @@ class ModelConfigBase(BaseModel):
         description="模型名称",
         examples=["gpt-4o", "text-embedding-3-small"]
     )
-    base_url: Optional[str] = Field(
+    base_url: str | None = Field(
         None,
         description="API Base URL",
         examples=["https://api.openai.com/v1"]
     )
-    api_key: Optional[str] = Field(
+    api_key: str | None = Field(
         None,
         description="API Key",
         examples=["sk-xxxxxxxx"]
     )
-    extra_config: Optional[Dict[str, Any]] = Field(
+    extra_config: dict[str, Any] | None = Field(
         None,
         description="扩展配置（如 dimension、endpoint 等）",
         examples=[{"dimension": 1024, "endpoint": "https://custom.api"}]
@@ -65,16 +66,16 @@ class ModelConfigCreate(ModelConfigBase):
 class ModelConfigUpdate(BaseModel):
     """更新模型配置请求"""
 
-    protocol: Optional[str] = Field(
+    protocol: str | None = Field(
         None,
         description="通信协议",
         min_length=1,
         max_length=50
     )
-    model: Optional[str] = Field(None, description="模型名称")
-    base_url: Optional[str] = Field(None, description="API Base URL")
-    api_key: Optional[str] = Field(None, description="API Key")
-    extra_config: Optional[Dict[str, Any]] = Field(None, description="扩展配置")
+    model: str | None = Field(None, description="模型名称")
+    base_url: str | None = Field(None, description="API Base URL")
+    api_key: str | None = Field(None, description="API Key")
+    extra_config: dict[str, Any] | None = Field(None, description="扩展配置")
 
 
 class ModelConfigResponse(BaseModel):
@@ -85,9 +86,9 @@ class ModelConfigResponse(BaseModel):
     model_type: str = Field(..., description="模型类型")
     protocol: str = Field(..., description="通信协议")
     model: str = Field(..., description="模型名称")
-    base_url: Optional[str] = Field(None, description="API Base URL")
-    api_key: Optional[str] = Field(None, description="API Key（已脱敏）")
-    extra_config: Optional[Dict[str, Any]] = Field(None, description="扩展配置")
+    base_url: str | None = Field(None, description="API Base URL")
+    api_key: str | None = Field(None, description="API Key（已脱敏）")
+    extra_config: dict[str, Any] | None = Field(None, description="扩展配置")
     created_at: datetime = Field(..., description="创建时间")
     updated_at: datetime = Field(..., description="更新时间")
 
@@ -98,7 +99,7 @@ class ModelConfigListResponse(BaseModel):
     """模型配置列表响应"""
 
     total: int = Field(..., description="总数")
-    items: List[ModelConfigResponse] = Field(..., description="配置列表")
+    items: list[ModelConfigResponse] = Field(..., description="配置列表")
 
 
 # ========== 连接测试 ==========
@@ -118,7 +119,7 @@ class ModelTestRequest(BaseModel):
         ...,
         description="模型名称"
     )
-    base_url: Optional[str] = Field(
+    base_url: str | None = Field(
         None,
         description="API Base URL"
     )
@@ -141,8 +142,8 @@ class ModelTestResponse(BaseModel):
 
     success: bool = Field(..., description="测试是否成功")
     message: str = Field(..., description="测试结果消息")
-    latency_ms: Optional[float] = Field(None, description="响应延迟（毫秒）")
-    detected_dimension: Optional[int] = Field(None, description="自动检测的 Embedding 向量维度")
+    latency_ms: float | None = Field(None, description="响应延迟（毫秒）")
+    detected_dimension: int | None = Field(None, description="自动检测的 Embedding 向量维度")
 
 
 # ========== 可用模型列表 ==========
@@ -150,11 +151,11 @@ class ModelTestResponse(BaseModel):
 class ModelConfigAvailableModelsResponse(BaseModel):
     """可用模型列表响应（供前端下拉框）"""
 
-    llm: List[str] = Field(default_factory=list, description="可用的 LLM 模型名称")
-    embedding: List[str] = Field(default_factory=list, description="可用的 Embedding 模型名称")
-    rerank: List[str] = Field(default_factory=list, description="可用的 Rerank 模型名称")
-    vlm: List[str] = Field(default_factory=list, description="可用的 VLM 视觉模型名称")
-    asr: List[str] = Field(default_factory=list, description="可用的 ASR 语音识别模型名称")
+    llm: list[str] = Field(default_factory=list, description="可用的 LLM 模型名称")
+    embedding: list[str] = Field(default_factory=list, description="可用的 Embedding 模型名称")
+    rerank: list[str] = Field(default_factory=list, description="可用的 Rerank 模型名称")
+    vlm: list[str] = Field(default_factory=list, description="可用的 VLM 视觉模型名称")
+    asr: list[str] = Field(default_factory=list, description="可用的 ASR 语音识别模型名称")
 
 
 class ModelInfo(BaseModel):
@@ -167,8 +168,8 @@ class ModelInfo(BaseModel):
 class AvailableModelsWithInfoResponse(BaseModel):
     """可用模型详细信息响应"""
 
-    llm: List[ModelInfo] = Field(default_factory=list, description="LLM 模型列表")
-    embedding: List[ModelInfo] = Field(default_factory=list, description="Embedding 模型列表")
-    rerank: List[ModelInfo] = Field(default_factory=list, description="Rerank 模型列表")
-    vlm: List[ModelInfo] = Field(default_factory=list, description="VLM 视觉模型列表")
-    asr: List[ModelInfo] = Field(default_factory=list, description="ASR 语音识别模型列表")
+    llm: list[ModelInfo] = Field(default_factory=list, description="LLM 模型列表")
+    embedding: list[ModelInfo] = Field(default_factory=list, description="Embedding 模型列表")
+    rerank: list[ModelInfo] = Field(default_factory=list, description="Rerank 模型列表")
+    vlm: list[ModelInfo] = Field(default_factory=list, description="VLM 视觉模型列表")
+    asr: list[ModelInfo] = Field(default_factory=list, description="ASR 语音识别模型列表")

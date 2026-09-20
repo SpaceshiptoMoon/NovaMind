@@ -3,20 +3,18 @@
 
 从 YAML 配置加载沙箱参数
 """
-from typing import Dict
 
 from pydantic import BaseModel
 
-
 # 默认语言镜像映射
-DEFAULT_IMAGES: Dict[str, str] = {
+DEFAULT_IMAGES: dict[str, str] = {
     "python": "python:3.12-slim",
     "javascript": "node:20-slim",
     "shell": "bash:5",
 }
 
 # 语言对应的文件扩展名
-LANGUAGE_EXTENSIONS: Dict[str, str] = {
+LANGUAGE_EXTENSIONS: dict[str, str] = {
     "python": "py",
     "javascript": "js",
     "shell": "sh",
@@ -34,7 +32,7 @@ class SandboxConfig(BaseModel):
     network_disabled: bool = True
     rebuild_interval: int = 50
     container_prefix: str = "agent_sandbox"
-    images: Dict[str, str] = DEFAULT_IMAGES.copy()
+    images: dict[str, str] = DEFAULT_IMAGES.copy()
 
     @property
     def supported_languages(self) -> list[str]:

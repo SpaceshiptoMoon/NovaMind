@@ -5,7 +5,6 @@ P0 修复背景：``parse_skill_md``（上传链路实际调用方）原先不�
 且下划线 name 会加剧 ``skill__{id}_{name}`` 引用解析歧义。
 """
 import pytest
-
 from novamind.features.skill.services.skill_parser import parse_skill_md, validate_skill_md
 
 
@@ -46,6 +45,8 @@ import io
 import zipfile
 
 from novamind.features.skill.services.skill_parser import extract_skill_zip
+
+pytestmark = pytest.mark.unit
 
 
 def _zip_with_entry(filename: str, data: bytes) -> bytes:

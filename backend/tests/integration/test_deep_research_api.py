@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 深度研究模块 API 接口测试脚本
 
@@ -26,8 +25,8 @@ import os
 import sys
 import time
 
-import requests
 import pytest
+import requests
 
 pytestmark = pytest.mark.integration
 
@@ -121,9 +120,9 @@ def step_0_ensure_admin_user():
 
     if resp.status_code == 200 and data:
         access_token = data.get("access_token")
-        print(f"  [成功] 管理员 [admin] 登录成功")
+        print("  [成功] 管理员 [admin] 登录成功")
     else:
-        print(f"  [失败] 无法使用管理员登录，请确保后端服务正常运行")
+        print("  [失败] 无法使用管理员登录，请确保后端服务正常运行")
         sys.exit(1)
 
 
@@ -193,21 +192,21 @@ def test_1_execute_research():
 
     if resp.status_code != 200:
         print(f"  [跳过] 非流式研究请求失败，状态码：{resp.status_code}")
-        print(f"  原因：可能 LLM 服务或搜索服务不可用")
+        print("  原因：可能 LLM 服务或搜索服务不可用")
         return
 
     assert data is not None, "响应数据为空"
 
     # 断言关键字段
-    assert "session_id" in data, f"响应缺少 session_id 字段"
-    assert "query" in data, f"响应缺少 query 字段"
-    assert "status" in data, f"响应缺少 status 字段"
-    assert data["query"] == body["query"], f"响应 query 与请求不一致"
+    assert "session_id" in data, "响应缺少 session_id 字段"
+    assert "query" in data, "响应缺少 query 字段"
+    assert "status" in data, "响应缺少 status 字段"
+    assert data["query"] == body["query"], "响应 query 与请求不一致"
     assert len(data["session_id"]) == 32, f"session_id 长度异常：{len(data['session_id'])}"
 
     print(f"  [断言通过] session_id: {data['session_id']}")
     print(f"  [断言通过] status: {data['status']}")
-    print(f"  [断言通过] query 匹配")
+    print("  [断言通过] query 匹配")
 
     # 记录 session_id 用于后续测试和清理
     session_id = data["session_id"]
@@ -269,14 +268,14 @@ def test_2_execute_research_stream():
         if resp.status_code != 200:
             data = print_response_info(resp)
             print(f"  [跳过] 流式研究请求失败，状态码：{resp.status_code}")
-            print(f"  原因：可能 LLM 服务或搜索服务不可用")
+            print("  原因：可能 LLM 服务或搜索服务不可用")
             return
 
         assert "text/event-stream" in content_type, f"预期 Content-Type 包含 text/event-stream，实际为：{content_type}"
-        print(f"  [断言通过] Content-Type 包含 text/event-stream")
+        print("  [断言通过] Content-Type 包含 text/event-stream")
 
         # 逐行读取 SSE 数据
-        print(f"  开始接收 SSE 事件流...")
+        print("  开始接收 SSE 事件流...")
         line_count = 0
         max_lines = 5000  # 安全限制，防止无限读取
 
@@ -351,7 +350,7 @@ def test_2_execute_research_stream():
     if event_types_received:
         print(f"  [断言通过] 收到 SSE 事件类型：{list(set(event_types_received))}")
     else:
-        print(f"  [警告] 未收到任何 SSE 事件")
+        print("  [警告] 未收到任何 SSE 事件")
 
     # 如果收到了 done 事件，记录 session_id
     if stream_session_id:
@@ -377,10 +376,10 @@ def test_3_list_researches():
     assert data is not None, "响应数据为空"
 
     # 断言分页字段
-    assert "items" in data, f"响应缺少 items 字段"
-    assert "total" in data, f"响应缺少 total 字段"
-    assert "limit" in data, f"响应缺少 limit 字段"
-    assert "offset" in data, f"响应缺少 offset 字段"
+    assert "items" in data, "响应缺少 items 字段"
+    assert "total" in data, "响应缺少 total 字段"
+    assert "limit" in data, "响应缺少 limit 字段"
+    assert "offset" in data, "响应缺少 offset 字段"
     assert data["limit"] == 10, f"limit 值不一致：{data['limit']}"
     assert data["offset"] == 0, f"offset 值不一致：{data['offset']}"
 
@@ -393,7 +392,7 @@ def test_3_list_researches():
         required_fields = ["session_id", "query", "status", "research_mode", "created_at"]
         for field in required_fields:
             assert field in first_item, f"列表项缺少 {field} 字段"
-        print(f"  [断言通过] 列表项包含所有必要字段")
+        print("  [断言通过] 列表项包含所有必要字段")
         print(f"  首条记录：session_id={first_item['session_id']}, query={first_item['query'][:50]}..., status={first_item['status']}")
 
     return data
@@ -415,7 +414,7 @@ def test_3_2_list_researches_with_status_filter():
 
     assert resp.status_code == 200, f"按状态过滤失败，状态码：{resp.status_code}"
     assert data is not None, "响应数据为空"
-    assert "items" in data, f"响应缺少 items 字段"
+    assert "items" in data, "响应缺少 items 字段"
 
     # 验证所有返回记录的状态都是 completed
     for item in data["items"]:
@@ -457,7 +456,7 @@ def test_4_get_research_detail(session_id: str = None):
         session_id = created_session_ids[0]
 
     if not session_id:
-        print(f"  [跳过] 没有可用的 session_id，跳过详情测试")
+        print("  [跳过] 没有可用的 session_id，跳过详情测试")
         return
 
     url = f"{BASE_URL}/api/v1/spaces/{space_id}/deep-research/{session_id}"
@@ -476,7 +475,7 @@ def test_4_get_research_detail(session_id: str = None):
 
     assert data["session_id"] == session_id, f"session_id 不匹配：期望 {session_id}，实际 {data['session_id']}"
 
-    print(f"  [断言通过] 所有必要字段均存在")
+    print("  [断言通过] 所有必要字段均存在")
     print(f"  [断言通过] session_id 匹配：{session_id}")
 
     # 打印详情信息
@@ -515,7 +514,7 @@ def test_4_2_get_research_detail_not_found():
     data = print_response_info(resp)
 
     assert resp.status_code == 404, f"期望 404，实际状态码：{resp.status_code}"
-    print(f"  [断言通过] 不存在的研究详情正确返回 404")
+    print("  [断言通过] 不存在的研究详情正确返回 404")
 
 
 def test_5_delete_research():
@@ -526,7 +525,7 @@ def test_5_delete_research():
     print_test_header("测试 5 - 删除研究记录")
 
     if not created_session_ids:
-        print(f"  [跳过] 没有可删除的研究记录")
+        print("  [跳过] 没有可删除的研究记录")
         return
 
     session_id = created_session_ids[0]
@@ -537,12 +536,12 @@ def test_5_delete_research():
     data = print_response_info(resp)
 
     if resp.status_code == 409:
-        print(f"  [跳过] 研究正在运行中，无法删除（HTTP 409）")
+        print("  [跳过] 研究正在运行中，无法删除（HTTP 409）")
         return
 
     assert resp.status_code == 200, f"删除研究记录失败，状态码：{resp.status_code}"
     assert data is not None, "响应数据为空"
-    assert "message" in data, f"响应缺少 message 字段"
+    assert "message" in data, "响应缺少 message 字段"
 
     print(f"  [断言通过] 研究记录已删除，message：{data['message']}")
 
@@ -551,7 +550,7 @@ def test_5_delete_research():
     print_request_info("GET", verify_url)
     verify_resp = requests.get(verify_url, headers=get_headers(access_token), timeout=TIMEOUT_SHORT)
     assert verify_resp.status_code == 404, f"删除后应返回 404，实际状态码：{verify_resp.status_code}"
-    print(f"  [断言通过] 删除后再次获取返回 404")
+    print("  [断言通过] 删除后再次获取返回 404")
 
     # 从清理列表中移除已删除的记录
     created_session_ids.remove(session_id)
@@ -572,7 +571,7 @@ def test_5_2_delete_research_not_found():
     data = print_response_info(resp)
 
     assert resp.status_code == 404, f"期望 404，实际状态码：{resp.status_code}"
-    print(f"  [断言通过] 删除不存在的研究记录正确返回 404")
+    print("  [断言通过] 删除不存在的研究记录正确返回 404")
 
 
 def test_6_validation_error():
@@ -590,7 +589,7 @@ def test_6_validation_error():
     data = print_response_info(resp)
 
     assert resp.status_code == 422, f"期望 422 验证错误，实际状态码：{resp.status_code}"
-    print(f"  [断言通过] 缺少必填字段正确返回 422")
+    print("  [断言通过] 缺少必填字段正确返回 422")
 
 
 def test_7_query_too_short():
@@ -608,7 +607,7 @@ def test_7_query_too_short():
     data = print_response_info(resp)
 
     assert resp.status_code == 422, f"期望 422 验证错误，实际状态码：{resp.status_code}"
-    print(f"  [断言通过] query 过短正确返回 422")
+    print("  [断言通过] query 过短正确返回 422")
 
 
 # ==================== 清理函数 ====================
@@ -639,7 +638,7 @@ def cleanup_test_space():
     print_test_header("清理 - 删除测试知识空间")
 
     if not space_id:
-        print(f"  [跳过] space_id 为空，无需清理")
+        print("  [跳过] space_id 为空，无需清理")
         return
 
     url = f"{BASE_URL}/api/v1/spaces/{space_id}"

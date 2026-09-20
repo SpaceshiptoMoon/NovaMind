@@ -5,7 +5,6 @@ LLM 响应 JSON 提取工具，从 markdown 代码块或混入文字中提取 JS
 """
 import json
 import re
-from typing import Optional
 
 
 def extract_json_str(text: str) -> str:
@@ -46,7 +45,7 @@ def extract_json_str(text: str) -> str:
     raise ValueError(f"无法从 LLM 输出中提取 JSON: {text[:200]}")
 
 
-def extract_json_obj(text: Optional[str]) -> Optional[dict]:
+def extract_json_obj(text: str | None) -> dict | None:
     """从 LLM 输出提取并解析首个 JSON 对象，失败返回 ``None``。
 
     两级回退（精确保留原 ``grade_retrier`` 语义）：

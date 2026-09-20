@@ -1,10 +1,9 @@
 """
 角色与权限模型（RBAC）
 """
-from sqlalchemy import BigInteger, String, Boolean, ForeignKey, Column
-from sqlalchemy.orm import relationship
-
 from novamind.core.database.base import BaseModel
+from sqlalchemy import BigInteger, Boolean, Column, ForeignKey, String
+from sqlalchemy.orm import relationship
 
 
 class Permission(BaseModel):

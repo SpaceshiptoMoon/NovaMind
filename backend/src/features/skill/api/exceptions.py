@@ -3,15 +3,15 @@
 异常类定义在模块顶层 src/features/skill/exceptions.py
 """
 from novamind.features.skill.exceptions import (  # noqa: F401
-    SkillError,
-    SkillNotFoundError,
-    SkillAlreadyExistsError,
-    SkillNotPublishedError,
-    SkillAccessDeniedError,
-    SkillAlreadyInstalledError,
-    SkillNotInstalledError,
-    SkillTargetAgentNotFoundError,
     InvalidSkillFormatError,
-    SkillReviewRejectedError,
+    SkillAccessDeniedError,
+    SkillAlreadyExistsError,
+    SkillAlreadyInstalledError,
+    SkillError,
     SkillFileSizeExceededError,
+    SkillNotFoundError,
+    SkillNotInstalledError,
+    SkillNotPublishedError,
+    SkillReviewRejectedError,
+    SkillTargetAgentNotFoundError,
 )

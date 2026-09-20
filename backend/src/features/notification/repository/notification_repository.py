@@ -3,14 +3,12 @@
 
 处理通知和通知偏好的数据访问操作
 """
-from typing import Optional, Tuple, List
 
-from sqlalchemy import select, func, update
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.notification.models.notification import Notification
 from novamind.features.notification.models.notification_preference import NotificationPreference
-from novamind.core.middleware.structured_logging import get_logger
+from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -30,7 +28,7 @@ class NotificationRepository:
             await self.db.refresh(notification)
         return notification
 
-    async def get_by_id(self, notification_id: int) -> Optional[Notification]:
+    async def get_by_id(self, notification_id: int) -> Notification | None:
         """根据 ID 获取通知"""
         return await self.db.get(Notification, notification_id)
 
@@ -40,7 +38,7 @@ class NotificationRepository:
         limit: int = 20,
         offset: int = 0,
         unread_only: bool = False,
-    ) -> Tuple[List[Notification], int]:
+    ) -> tuple[list[Notification], int]:
         """
         获取用户的通知列表（分页）
 
@@ -49,7 +47,7 @@ class NotificationRepository:
         """
         conditions = [Notification.user_id == user_id]
         if unread_only:
-            conditions.append(Notification.is_read == False)
+            conditions.append(Notification.is_read.is_(False))
 
         # 总数查询
         count_stmt = select(func.count()).select_from(Notification).where(*conditions)
@@ -88,7 +86,7 @@ class NotificationRepository:
         async with self.db.begin_nested():
             stmt = (
                 update(Notification)
-                .where(Notification.user_id == user_id, Notification.is_read == False)
+                .where(Notification.user_id == user_id, Notification.is_read.is_(False))
                 .values(is_read=True, read_at=now_china())
             )
             result = await self.db.execute(stmt)
@@ -99,7 +97,7 @@ class NotificationRepository:
         stmt = (
             select(func.count())
             .select_from(Notification)
-            .where(Notification.user_id == user_id, Notification.is_read == False)
+            .where(Notification.user_id == user_id, Notification.is_read.is_(False))
         )
         return (await self.db.execute(stmt)).scalar() or 0
 
@@ -119,7 +117,7 @@ class NotificationPreferenceRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def get_by_user_id(self, user_id: int) -> Optional[NotificationPreference]:
+    async def get_by_user_id(self, user_id: int) -> NotificationPreference | None:
         """根据用户 ID 获取偏好"""
         stmt = select(NotificationPreference).where(NotificationPreference.user_id == user_id)
         result = await self.db.execute(stmt)
@@ -146,7 +144,7 @@ class NotificationPreferenceRepository:
             pref = await self.create_default(user_id)
         return pref
 
-    async def update(self, user_id: int, data: dict) -> Optional[NotificationPreference]:
+    async def update(self, user_id: int, data: dict) -> NotificationPreference | None:
         """更新用户偏好"""
         pref = await self.get_or_create(user_id)
         async with self.db.begin_nested():

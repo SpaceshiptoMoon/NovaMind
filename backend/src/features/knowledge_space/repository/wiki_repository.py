@@ -5,23 +5,20 @@ Wiki 页面仓储
 写操作遵循 begin_nested() SAVEPOINT 约定（见 docs/transaction-boundary-conventions.md）。
 """
 import re
-
-from typing import Optional, List, Dict, Any, Tuple
-
-from sqlalchemy import select, func, or_, String, update, delete as sa_delete
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.wiki import (
+    WIKI_MAX_REVISIONS_HARD_CAP,
+    WIKI_MAX_REVISIONS_PER_PAGE,
+    WIKI_PRUNABLE_EDIT_SOURCES,
+    WikiIngestRecord,
     WikiPage,
     WikiPageRevision,
-    WikiIngestRecord,
-    WikiIngestStatus,
-    WIKI_MAX_REVISIONS_PER_PAGE,
-    WIKI_MAX_REVISIONS_HARD_CAP,
-    WIKI_PRUNABLE_EDIT_SOURCES,
 )
+from sqlalchemy import String, func, or_, select, update
+from sqlalchemy import delete as sa_delete
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -43,7 +40,7 @@ class WikiPageRepository:
         kb_id: int,
         slug: str,
         include_deleted: bool = False,
-    ) -> Optional[WikiPage]:
+    ) -> WikiPage | None:
         """按 slug 取页面（默认只取存活）"""
         query = select(WikiPage).where(
             WikiPage.kb_id == kb_id,
@@ -54,7 +51,7 @@ class WikiPageRepository:
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
-    async def list_by_slugs(self, kb_id: int, slugs: List[str]) -> Dict[str, WikiPage]:
+    async def list_by_slugs(self, kb_id: int, slugs: list[str]) -> dict[str, WikiPage]:
         """批量按 slug 取页面，返回 slug -> WikiPage 映射（缺省的不在结果里）"""
         if not slugs:
             return {}
@@ -67,7 +64,7 @@ class WikiPageRepository:
         )
         return {p.slug: p for p in result.scalars().all()}
 
-    async def list_slugs_by_kb(self, kb_id: int) -> List[str]:
+    async def list_slugs_by_kb(self, kb_id: int) -> list[str]:
         """KB 内全部存活 slug（喂给抽取提示词保 slug 连续性）"""
         result = await self.session.execute(
             select(WikiPage.slug).where(
@@ -81,13 +78,13 @@ class WikiPageRepository:
         self,
         kb_id: int,
         *,
-        page_type: Optional[str] = None,
-        status: Optional[str] = None,
-        category_label: Optional[str] = None,
-        query: Optional[str] = None,
+        page_type: str | None = None,
+        status: str | None = None,
+        category_label: str | None = None,
+        query: str | None = None,
         page: int = 1,
         page_size: int = 20,
-    ) -> Tuple[List[WikiPage], int]:
+    ) -> tuple[list[WikiPage], int]:
         """分页列出页面，返回 (pages, total)。
 
         category_label 过滤命中 category_path JSON 数组中的任一标签。
@@ -130,7 +127,7 @@ class WikiPageRepository:
 
     async def search_pages_ranked(
         self, kb_id: int, query: str, limit: int = 10
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """排序搜索（对齐 WeKnora wiki_page.go Search 的 rank 语义）。
 
         MySQL LIKE 预筛（content 也参与命中）+ Python 侧分级排序：
@@ -204,7 +201,7 @@ class WikiPageRepository:
             "version": p.version,
         } for rank, _, p in scored]
 
-    async def list_by_source_document(self, kb_id: int, document_id: int) -> List[WikiPage]:
+    async def list_by_source_document(self, kb_id: int, document_id: int) -> list[WikiPage]:
         """按来源文档反查页面（source_refs 存 "docid|filename"，LIKE 前缀匹配）"""
         prefix = f"{document_id}|"
         result = await self.session.execute(
@@ -218,7 +215,7 @@ class WikiPageRepository:
         )
         return list(result.scalars().all())
 
-    async def list_entity_concept_lite(self, kb_id: int) -> List[Dict[str, Any]]:
+    async def list_entity_concept_lite(self, kb_id: int) -> list[dict[str, Any]]:
         """entity/concept 页轻量投影（dedup 预筛用，不拉 content/大字段）
 
         返回 [{slug, title, aliases, page_type}]，保持 page_type+title 排序
@@ -238,7 +235,7 @@ class WikiPageRepository:
             for s, t, a, pt in result.all()
         ]
 
-    async def list_distinct_category_paths(self, kb_id: int) -> List[List[str]]:
+    async def list_distinct_category_paths(self, kb_id: int) -> list[list[str]]:
         """KB 内 distinct category_path（taxonomy 目录池；空路径剔除）"""
         result = await self.session.execute(
             select(WikiPage.category_path).where(
@@ -247,14 +244,14 @@ class WikiPageRepository:
             ).distinct()
         )
         seen: set = set()
-        out: List[List[str]] = []
+        out: list[list[str]] = []
         for (path,) in result.all():
             if path and path not in seen:
                 seen.add(path)
                 out.append(list(path))
         return out
 
-    async def create_page(self, data: Dict[str, Any]) -> WikiPage:
+    async def create_page(self, data: dict[str, Any]) -> WikiPage:
         """新建页面"""
         page = WikiPage(**data)
         self.session.add(page)
@@ -266,20 +263,20 @@ class WikiPageRepository:
         kb_id: int,
         slug: str,
         *,
-        space_id: Optional[int] = None,
+        space_id: int | None = None,
         title: str,
         content: str,
         summary: str,
         page_type: str,
         status: str = "published",
-        aliases: Optional[List[str]] = None,
-        category_path: Optional[List[str]] = None,
-        source_refs: Optional[List[str]] = None,
-        chunk_refs: Optional[List[str]] = None,
+        aliases: list[str] | None = None,
+        category_path: list[str] | None = None,
+        source_refs: list[str] | None = None,
+        chunk_refs: list[str] | None = None,
         edit_source: str = "pipeline",
-        editor_id: Optional[int] = None,
-        link_slugs: Optional[List[str]] = None,
-    ) -> Tuple[WikiPage, bool]:
+        editor_id: int | None = None,
+        link_slugs: list[str] | None = None,
+    ) -> tuple[WikiPage, bool]:
         """先快照旧版本再更新/创建页面，返回 (page, created)。
 
         新建页面必须传 space_id。幂等性：快照 (page_id, version) 唯一约束
@@ -343,7 +340,7 @@ class WikiPageRepository:
         await self.session.flush()
         return page, False
 
-    async def publish_draft_pages(self, kb_id: int, slugs: List[str]) -> int:
+    async def publish_draft_pages(self, kb_id: int, slugs: list[str]) -> int:
         """批尾把本批 draft 页翻转为 published（对齐 WeKnora publishDraftPages）。
 
         簿记写：不快照、不递增 version（status 翻转不属用户可见内容变化——
@@ -392,11 +389,11 @@ class WikiPageRepository:
         await self.session.flush()
 
     @staticmethod
-    def _parse_out_links(content: str, self_slug: str) -> List[str]:
+    def _parse_out_links(content: str, self_slug: str) -> list[str]:
         """从正文解析 [[slug|title]] 出链（规范化、去自指、保序去重）"""
         from novamind.features.knowledge_space.services.wiki_ingest_service import normalize_slug
 
-        links: List[str] = []
+        links: list[str] = []
         for m in re.finditer(r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]", content):
             slug = normalize_slug(m.group(1))
             if slug and slug != self_slug and slug not in links:
@@ -440,15 +437,15 @@ class WikiPageRepository:
         self,
         page: WikiPage,
         *,
-        title: Optional[str] = None,
-        content: Optional[str] = None,
-        summary: Optional[str] = None,
-        page_type: Optional[str] = None,
-        status: Optional[str] = None,
-        aliases: Optional[List[str]] = None,
-        category_path: Optional[List[str]] = None,
+        title: str | None = None,
+        content: str | None = None,
+        summary: str | None = None,
+        page_type: str | None = None,
+        status: str | None = None,
+        aliases: list[str] | None = None,
+        category_path: list[str] | None = None,
         edit_source: str = "user",
-        editor_id: Optional[int] = None,
+        editor_id: int | None = None,
         expected_version: int = 0,
     ) -> None:
         """人工/Agent 编辑：乐观锁 + 写前快照。
@@ -493,14 +490,13 @@ class WikiPageRepository:
         page: WikiPage,
         revision: WikiPageRevision,
         *,
-        editor_id: Optional[int] = None,
+        editor_id: int | None = None,
     ) -> int:
         """回滚到指定快照：以该版本内容创建新版本（version 继续递增）。
 
         回滚到当前版本内容时（无变化）返回当前版本号且不递增。
         返回回滚后的版本号。
         """
-        from novamind.features.knowledge_space.exceptions import WikiPageVersionConflictError
 
         unchanged = (
             page.title == revision.title
@@ -538,7 +534,7 @@ class WikiPageRepository:
         if len(revisions) <= WIKI_MAX_REVISIONS_PER_PAGE:
             return 0
 
-        prune_ids: List[str] = []
+        prune_ids: list[str] = []
         # 软上限：超出部分只裁剪可裁剪来源（pipeline / 历史遗留空串）
         for row in revisions[WIKI_MAX_REVISIONS_PER_PAGE:]:
             if (row.edit_source or "") in WIKI_PRUNABLE_EDIT_SOURCES:
@@ -560,7 +556,7 @@ class WikiPageRepository:
         page_id: str,
         *,
         include_content: bool = True,
-    ) -> List[WikiPageRevision]:
+    ) -> list[WikiPageRevision]:
         """按版本倒序列快照。
 
         快照量受两级保留上限约束（50/200），直接整行返回；async 懒加载
@@ -574,7 +570,7 @@ class WikiPageRepository:
         )
         return list(result.scalars().all())
 
-    async def get_revision(self, page_id: str, version: int) -> Optional[WikiPageRevision]:
+    async def get_revision(self, page_id: str, version: int) -> WikiPageRevision | None:
         """取指定版本快照全文"""
         result = await self.session.execute(
             select(WikiPageRevision).where(
@@ -589,14 +585,14 @@ class WikiPageRepository:
         page.soft_delete()
         await self.session.flush()
 
-    async def all_live_pages(self, kb_id: int) -> List[WikiPage]:
+    async def all_live_pages(self, kb_id: int) -> list[WikiPage]:
         """KB 内全部存活页面（finalize 链接重建用；页面量可控）"""
         result = await self.session.execute(
             select(WikiPage).where(WikiPage.kb_id == kb_id, WikiPage.deleted_flag == 0)
         )
         return list(result.scalars().all())
 
-    async def get_stats(self, kb_id: int) -> Dict[str, Any]:
+    async def get_stats(self, kb_id: int) -> dict[str, Any]:
         """统计：页数/按类型分布/链接数/孤儿数"""
         total_result = await self.session.execute(
             select(func.count(WikiPage.id)).where(WikiPage.kb_id == kb_id, WikiPage.deleted_flag == 0)
@@ -635,19 +631,19 @@ class WikiIngestRecordRepository:
         self.session = session
         self.logger = logger
 
-    async def create(self, data: Dict[str, Any]) -> WikiIngestRecord:
+    async def create(self, data: dict[str, Any]) -> WikiIngestRecord:
         record = WikiIngestRecord(**data)
         self.session.add(record)
         await self.session.flush()
         return record
 
-    async def get_by_id(self, record_id: int) -> Optional[WikiIngestRecord]:
+    async def get_by_id(self, record_id: int) -> WikiIngestRecord | None:
         result = await self.session.execute(
             select(WikiIngestRecord).where(WikiIngestRecord.id == record_id)
         )
         return result.scalar_one_or_none()
 
-    async def get_latest_for_kb(self, kb_id: int) -> Optional[WikiIngestRecord]:
+    async def get_latest_for_kb(self, kb_id: int) -> WikiIngestRecord | None:
         """KB 最新一条履历（前端「生成中」轮询用）"""
         result = await self.session.execute(
             select(WikiIngestRecord)
@@ -657,7 +653,7 @@ class WikiIngestRecordRepository:
         )
         return result.scalar_one_or_none()
 
-    async def list_by_kb(self, kb_id: int, limit: int = 20) -> List[WikiIngestRecord]:
+    async def list_by_kb(self, kb_id: int, limit: int = 20) -> list[WikiIngestRecord]:
         result = await self.session.execute(
             select(WikiIngestRecord)
             .where(WikiIngestRecord.kb_id == kb_id)

@@ -9,12 +9,13 @@
 from __future__ import annotations
 
 import json
-from typing import Any, AsyncGenerator, Dict, Optional
+from collections.abc import AsyncGenerator
+from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 
 
-def envelope(event_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
+def envelope(event_type: str, data: dict[str, Any]) -> dict[str, Any]:
     """统一事件 envelope：``{"type": ..., "data": ...}``。
 
     取代 SSE 时代 4 端点三种不一致格式（``event:``+``data:`` / ``{type,data}`` /
@@ -23,7 +24,7 @@ def envelope(event_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
     return {"type": event_type, "data": data}
 
 
-def dumps_event(event: Dict[str, Any]) -> str:
+def dumps_event(event: dict[str, Any]) -> str:
     """WS 事件 JSON 序列化。
 
     正常事件走快路径（与 ``WebSocket.send_json`` 等价）；service 组装的事件
@@ -38,7 +39,7 @@ def dumps_event(event: Dict[str, Any]) -> str:
         )
 
 
-async def send_event(websocket: WebSocket, event: Dict[str, Any]) -> None:
+async def send_event(websocket: WebSocket, event: dict[str, Any]) -> None:
     """安全推送单个事件（``dumps_event`` + ``send_text``）。
 
     并发 send 场景（agent/deep_research 的 locked_send）也应经此函数，
@@ -49,8 +50,8 @@ async def send_event(websocket: WebSocket, event: Dict[str, Any]) -> None:
 
 async def run_stream_to_ws(
     websocket: WebSocket,
-    event_gen: AsyncGenerator[Dict[str, Any], None],
-    send_fn: Optional[Any] = None,
+    event_gen: AsyncGenerator[dict[str, Any], None],
+    send_fn: Any | None = None,
 ) -> None:
     """把 yield dict 的 async generator 推到 WS。
 

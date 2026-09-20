@@ -5,15 +5,19 @@ execute 阶段才抛，ILIKE 降级是永不触发的 dead code。现按连接�
 MySQL 走 FULLTEXT（ngram），其余（SQLite 测试环境）走 ILIKE。
 """
 import pytest
-from sqlalchemy import BigInteger
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-
-from novamind.core.database.base import BaseModel
 from novamind.features.skill.models.skill import (
-    SkillDefinition, SkillSource, SkillStatus, SkillVisibility, ReviewStatus,
+    ReviewStatus,
+    SkillDefinition,
+    SkillSource,
+    SkillStatus,
+    SkillVisibility,
 )
 from novamind.features.skill.repository.skill_repository import SkillRepository
+from sqlalchemy import BigInteger
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.compiler import compiles
+
+pytestmark = pytest.mark.unit
 
 # 模型的 BigInteger 自增主键在 SQLite 内存库不会自动生成 id（NOT NULL constraint failed）。
 # 编译期把 BigInteger 降为 INTEGER，仅影响本测试的 SQLite 建表，不改模型。

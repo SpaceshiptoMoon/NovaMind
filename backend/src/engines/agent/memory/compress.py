@@ -4,7 +4,6 @@
 当对话 token 数超出预算时，通过压缩策略裁剪上下文。
 """
 from abc import ABC, abstractmethod
-from typing import List, Optional, Tuple
 
 from novamind.engines.agent.memory.interfaces import MemoryMessage
 from novamind.engines.agent.memory.token_budget import TokenBudget
@@ -16,11 +15,11 @@ class ICompressionStrategy(ABC):
     @abstractmethod
     async def compress(
         self,
-        messages: List[MemoryMessage],
+        messages: list[MemoryMessage],
         available_tokens: int,
         token_budget: TokenBudget,
-        conversation_id: Optional[int] = None,
-    ) -> Tuple[List[MemoryMessage], bool, float]:
+        conversation_id: int | None = None,
+    ) -> tuple[list[MemoryMessage], bool, float]:
         """
         压缩消息列表以适应 token 预算
 

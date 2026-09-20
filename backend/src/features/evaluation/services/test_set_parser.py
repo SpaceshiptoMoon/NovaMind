@@ -7,8 +7,8 @@ import csv
 import io
 import json
 
-from novamind.features.evaluation.schemas.evaluation_schema import TestSet, TestCase
 from novamind.features.evaluation.exceptions import InvalidTestSetError
+from novamind.features.evaluation.schemas.evaluation_schema import TestCase, TestSet
 
 
 def parse_test_set(file_content: bytes, filename: str) -> TestSet:

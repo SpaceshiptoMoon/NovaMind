@@ -2,13 +2,11 @@
 ChatAttachment 数据访问层
 """
 
-from typing import List, Optional
 
+from novamind.core.middleware.structured_logging import get_logger
+from novamind.features.qa.models.chat_attachment import ChatAttachment
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.features.qa.models.chat_attachment import ChatAttachment
-from novamind.core.middleware.structured_logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -26,7 +24,7 @@ class ChatAttachmentRepository:
         file_type: str,
         file_size: int,
         storage_path: str,
-        extracted_text: Optional[str] = None,
+        extracted_text: str | None = None,
     ) -> ChatAttachment:
         """创建附件记录（只 flush，由调用方 commit）"""
         attachment = ChatAttachment(
@@ -43,9 +41,9 @@ class ChatAttachmentRepository:
 
     async def get_by_ids_and_user(
         self,
-        attachment_ids: List[int],
+        attachment_ids: list[int],
         user_id: int,
-    ) -> List[ChatAttachment]:
+    ) -> list[ChatAttachment]:
         """根据 ID 列表查询附件（校验用户归属，包含图片附件）"""
         stmt = select(ChatAttachment).where(
             ChatAttachment.id.in_(attachment_ids),
@@ -56,9 +54,9 @@ class ChatAttachmentRepository:
 
     async def get_by_ids(
         self,
-        attachment_ids: List[int],
-        user_id: Optional[int] = None,
-    ) -> List[ChatAttachment]:
+        attachment_ids: list[int],
+        user_id: int | None = None,
+    ) -> list[ChatAttachment]:
         """根据 ID 列表查询附件（包含图片附件，可选校验 user_id）"""
         conditions = [
             ChatAttachment.id.in_(attachment_ids),
@@ -69,7 +67,7 @@ class ChatAttachmentRepository:
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_by_id(self, attachment_id: int) -> Optional[ChatAttachment]:
+    async def get_by_id(self, attachment_id: int) -> ChatAttachment | None:
         """根据 ID 查询附件"""
         stmt = select(ChatAttachment).where(ChatAttachment.id == attachment_id)
         result = await self.session.execute(stmt)

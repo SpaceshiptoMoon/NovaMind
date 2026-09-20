@@ -1,5 +1,9 @@
-from pathlib import Path
 import sys
+from pathlib import Path
+
+import pytest
+
+pytestmark = pytest.mark.unit
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[4]
@@ -8,9 +12,11 @@ if str(BACKEND_ROOT) not in sys.path:
 
 
 def test_deepdoc_package_lazy_exports_do_not_force_optional_format_imports():
-    from novamind.engines.document.integrations.deepdoc import DeepDocParseResult
-    from novamind.engines.document.integrations.deepdoc import build_doctor_payload
-    from novamind.engines.document.integrations.deepdoc import TxtParser
+    from novamind.engines.document.integrations.deepdoc import (
+        DeepDocParseResult,
+        TxtParser,
+        build_doctor_payload,
+    )
 
     assert DeepDocParseResult.__name__ == "DeepDocParseResult"
     assert callable(build_doctor_payload)
@@ -18,8 +24,10 @@ def test_deepdoc_package_lazy_exports_do_not_force_optional_format_imports():
 
 
 def test_deepdoc_top_level_exports_include_service_helpers():
-    from novamind.engines.document.integrations.deepdoc import create_deepdoc_app
-    from novamind.engines.document.integrations.deepdoc import download_deepdoc_dependencies
+    from novamind.engines.document.integrations.deepdoc import (
+        create_deepdoc_app,
+        download_deepdoc_dependencies,
+    )
 
     assert callable(create_deepdoc_app)
     assert callable(download_deepdoc_dependencies)
@@ -48,7 +56,9 @@ def test_deepdoc_engine_can_be_constructed_without_optional_heavy_runtime_import
 
 
 def test_deepdoc_capabilities_load_without_remote_parser_or_vision_runtime_import_failures():
-    from novamind.engines.document.integrations.deepdoc.core.capabilities import get_deepdoc_capabilities
+    from novamind.engines.document.integrations.deepdoc.core.capabilities import (
+        get_deepdoc_capabilities,
+    )
 
     capabilities = get_deepdoc_capabilities()
     assert "pdf_modes" in capabilities

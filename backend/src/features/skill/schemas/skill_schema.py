@@ -2,10 +2,9 @@
 技能广场 Pydantic 数据模型
 """
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from pydantic import BaseModel, Field, ConfigDict
-
+from pydantic import BaseModel, ConfigDict, Field
 
 # ==================== 请求模型 ====================
 
@@ -17,7 +16,7 @@ class SkillInstallRequest(BaseModel):
 class SkillReviewCreate(BaseModel):
     """创建/更新评价"""
     rating: int = Field(..., ge=1, le=5, description="评分 1-5")
-    content: Optional[str] = Field(None, max_length=2000, description="评价内容")
+    content: str | None = Field(None, max_length=2000, description="评价内容")
 
 
 class SkillValidateRequest(BaseModel):
@@ -32,22 +31,22 @@ class SkillResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    user_id: Optional[int] = None
+    user_id: int | None = None
     name: str
     display_name: str
     description: str
-    license: Optional[str] = None
-    allowed_tools: Optional[List[str]] = None
+    license: str | None = None
+    allowed_tools: list[str] | None = None
 
-    frontmatter_raw: Optional[str] = None
+    frontmatter_raw: str | None = None
     body_markdown: str
 
-    category: Optional[str] = None
-    tags: Optional[List[str]] = None
-    icon: Optional[str] = None
+    category: str | None = None
+    tags: list[str] | None = None
+    icon: str | None = None
 
     version: int = 1
-    version_note: Optional[str] = None
+    version_note: str | None = None
 
     skill_source: str = "custom"
     visibility: int = 0
@@ -58,12 +57,12 @@ class SkillResponse(BaseModel):
     rating_count: int = 0
 
     review_status: int = 0
-    review_result: Optional[Dict[str, Any]] = None
-    reviewed_at: Optional[datetime] = None
+    review_result: dict[str, Any] | None = None
+    reviewed_at: datetime | None = None
 
-    author_name: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    author_name: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class SkillListItemResponse(BaseModel):
@@ -74,22 +73,22 @@ class SkillListItemResponse(BaseModel):
     name: str
     display_name: str
     description: str
-    category: Optional[str] = None
-    tags: Optional[List[str]] = None
-    icon: Optional[str] = None
+    category: str | None = None
+    tags: list[str] | None = None
+    icon: str | None = None
     version: int = 1
     skill_source: str = "custom"
     install_count: int = 0
     rating_avg: float = 0.0
     rating_count: int = 0
-    author_name: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    author_name: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class SkillMarketplaceListResponse(BaseModel):
     """广场列表响应"""
-    items: List[SkillListItemResponse]
+    items: list[SkillListItemResponse]
     total: int
     limit: int
     offset: int
@@ -103,15 +102,15 @@ class SkillReviewResponse(BaseModel):
     skill_id: int
     user_id: int
     rating: int
-    content: Optional[str] = None
-    user_name: Optional[str] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    content: str | None = None
+    user_name: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class SkillReviewListResponse(BaseModel):
     """评价列表响应"""
-    items: List[SkillReviewResponse]
+    items: list[SkillReviewResponse]
     total: int
 
 
@@ -122,14 +121,14 @@ class SkillInstallationResponse(BaseModel):
     id: int
     skill_id: int
     agent_id: int
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
 
 
 class SkillValidateResponse(BaseModel):
     """验证结果"""
     valid: bool
-    errors: List[str] = []
-    parsed: Optional[Dict[str, Any]] = None
+    errors: list[str] = []
+    parsed: dict[str, Any] | None = None
 
 
 # ==================== 管理员设置 ====================
@@ -137,18 +136,18 @@ class SkillValidateResponse(BaseModel):
 class SkillAdminSettingsUpdate(BaseModel):
     """管理员更新审查设置"""
     llm_review_enabled: bool
-    llm_review_model: Optional[str] = None
+    llm_review_model: str | None = None
 
 
 class SkillAdminSettingsResponse(BaseModel):
     """审查设置响应"""
     llm_review_enabled: bool
-    llm_review_model: Optional[str] = None
+    llm_review_model: str | None = None
 
 
 class SkillAdminReviewAction(BaseModel):
     """管理员审核操作"""
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 # ==================== 通用操作响应 ====================
@@ -167,7 +166,7 @@ class SkillReviewActionResultResponse(BaseModel):
 
 class SkillPendingReviewListResponse(BaseModel):
     """待审核列表响应"""
-    items: List[SkillListItemResponse]
+    items: list[SkillListItemResponse]
     total: int
 
 
@@ -175,12 +174,12 @@ class SkillPendingReviewListResponse(BaseModel):
 
 class SkillCategoriesResponse(BaseModel):
     """分类列表响应"""
-    categories: List[str]
+    categories: list[str]
 
 
 class SkillTagsResponse(BaseModel):
     """标签列表响应"""
-    tags: List[str]
+    tags: list[str]
 
 
 # ==================== AI 搜索 ====================
@@ -194,16 +193,16 @@ class SkillAISearchRequest(BaseModel):
 
 class SkillAISearchParsedQuery(BaseModel):
     """AI 解析出的结构化搜索参数"""
-    keywords: List[str]
-    category: Optional[str] = None
-    tags: Optional[List[str]] = None
+    keywords: list[str]
+    category: str | None = None
+    tags: list[str] | None = None
     sort: str = "newest"
     intent_summary: str = ""
 
 
 class SkillAISearchResponse(BaseModel):
     """AI 搜索响应"""
-    items: List[SkillListItemResponse]
+    items: list[SkillListItemResponse]
     total: int
     limit: int
     offset: int

@@ -3,9 +3,8 @@
 
 Append-only 表，每次压缩产生一条新记录，保留完整压缩历史。
 """
-from sqlalchemy import Column, BigInteger, Text, Integer, Float, Index
-
 from novamind.core.database.base import BaseModel
+from sqlalchemy import BigInteger, Column, Float, Index, Integer, Text
 
 
 class AgentContextSummary(BaseModel):

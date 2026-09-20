@@ -11,33 +11,31 @@
 ``decrypt_api_key_async``（AES-256-GCM + HKDF-SHA256），与模型配置同套机制。
 """
 import time
-from typing import Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.features.user.models.user_search_config import UserSearchConfig
-from novamind.features.user.repository.search_config_repository import SearchConfigRepository
-from novamind.features.user.schemas.search_config_schema import (
-    SearchConfigCreate,
-    SearchConfigUpdate,
-    SearchConfigResponse,
-    SearchConfigListResponse,
-    SearchTestRequest,
-    SearchTestResponse,
-)
-from novamind.shared.search_config_ports import SearchCredentials
-from novamind.shared.utils.crypto import encrypt_api_key_async, decrypt_api_key_async
-from novamind.engines.search_ports import build_web_search_port_from_provider
+from novamind.core.middleware.structured_logging import get_logger
 from novamind.engines.search_errors import (
     WebSearchError,
     WebSearchProviderNotConfiguredError,
 )
-from novamind.core.middleware.structured_logging import get_logger
+from novamind.engines.search_ports import build_web_search_port_from_provider
 from novamind.features.user.exceptions import (
-    SearchConfigNotFoundError,
     SearchConfigAlreadyExistsError,
+    SearchConfigNotFoundError,
     SearchConfigTestFailedError,
 )
+from novamind.features.user.models.user_search_config import UserSearchConfig
+from novamind.features.user.repository.search_config_repository import SearchConfigRepository
+from novamind.features.user.schemas.search_config_schema import (
+    SearchConfigCreate,
+    SearchConfigListResponse,
+    SearchConfigResponse,
+    SearchConfigUpdate,
+    SearchTestRequest,
+    SearchTestResponse,
+)
+from novamind.shared.search_config_ports import SearchCredentials
+from novamind.shared.utils.crypto import decrypt_api_key_async, encrypt_api_key_async
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -55,7 +53,7 @@ class SearchConfigService:
 
     # ========== SearchConfigPort 实现 ==========
 
-    async def get_primary_search_config(self, user_id: int) -> Optional[SearchCredentials]:
+    async def get_primary_search_config(self, user_id: int) -> SearchCredentials | None:
         """获取用户首选搜索凭证（解密后明文 api_key），供宿主构造 WebSearchPort。
 
         无首选配置返回 None（宿主降级到 YAML 全局配置，由 AIChatService 处理）。
@@ -65,7 +63,7 @@ class SearchConfigService:
 
     async def get_search_config_by_provider(
         self, user_id: int, provider: str
-    ) -> Optional[SearchCredentials]:
+    ) -> SearchCredentials | None:
         """按 (user_id, provider) 取该用户的指定 provider 凭证（解密后明文）。
 
         供聊天时显式选 provider：命中返回凭证，宿主构造 WebSearchPort；
@@ -74,7 +72,7 @@ class SearchConfigService:
         config = await self.repo.get_by_user_and_provider(user_id, provider)
         return await self._to_credentials(config)
 
-    async def _to_credentials(self, config: Optional[UserSearchConfig]) -> Optional[SearchCredentials]:
+    async def _to_credentials(self, config: UserSearchConfig | None) -> SearchCredentials | None:
         """ORM 行 → 解密后 SearchCredentials；config 为 None 返回 None。"""
         if not config:
             return None

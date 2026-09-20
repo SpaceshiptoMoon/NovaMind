@@ -5,8 +5,8 @@
 现已在 service 层强制归属校验，不匹配抛 DocumentNotFoundError。
 """
 import asyncio
-from pathlib import Path
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -14,8 +14,11 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
+import pytest
 from novamind.features.knowledge_space.api.exceptions import DocumentNotFoundError
+from novamind.features.knowledge_space.services.document_task_service import DocumentTaskService
+
+pytestmark = pytest.mark.unit
 
 
 def test_retry_document_rejects_cross_kb_document():

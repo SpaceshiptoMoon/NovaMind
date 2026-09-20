@@ -13,7 +13,6 @@ LLM 常常在复述高熵 ID 时打错一个字符（尤其 UUID 型 summary slu
 句柄表是纯内存 dict，生命周期 = 单次 ingest 任务，无需持久化。
 """
 import re
-from typing import Dict, Optional
 
 
 class HandleTable:
@@ -29,8 +28,8 @@ class HandleTable:
         self._prefix = prefix
         self._start = start
         self._width = width
-        self._by_handle: Dict[str, str] = {}
-        self._by_real: Dict[str, str] = {}
+        self._by_handle: dict[str, str] = {}
+        self._by_real: dict[str, str] = {}
 
     def register(self, real_id: str) -> str:
         """注册真实 ID，返回（已存在则复用）其句柄"""
@@ -42,7 +41,7 @@ class HandleTable:
         self._by_real[real_id] = handle
         return handle
 
-    def resolve(self, handle: str) -> Optional[str]:
+    def resolve(self, handle: str) -> str | None:
         """句柄 → 真实 ID；未知句柄返回 None"""
         return self._by_handle.get(str(handle or "").strip())
 

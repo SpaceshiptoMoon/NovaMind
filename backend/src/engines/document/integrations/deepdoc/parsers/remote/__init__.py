@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from importlib import import_module
 
-
 _EXPORT_MAP = {
     "RAGFlowDoclingParser": ("novamind.engines.document.integrations.deepdoc.parsers.remote.docling", "RAGFlowDoclingParser"),
     "RAGFlowMinerUParser": ("novamind.engines.document.integrations.deepdoc.parsers.remote.mineru", "RAGFlowMinerUParser"),

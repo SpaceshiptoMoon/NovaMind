@@ -7,7 +7,7 @@ adapter）负责偏好过滤、DB 写入、WS 推送与邮件；发送失败由�
 """
 from __future__ import annotations
 
-from typing import Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -20,8 +20,8 @@ class NotificationPort(Protocol):
         type: str,
         title: str,
         content: str,
-        link: Optional[str] = None,
-        extra_data: Optional[dict] = None,
+        link: str | None = None,
+        extra_data: dict | None = None,
     ) -> None:
         """发送单条通知给指定用户。
 

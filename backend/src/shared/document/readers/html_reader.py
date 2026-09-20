@@ -1,10 +1,10 @@
 """HTML 文档读取器。"""
 import os
-from typing import List, Dict
+
+from bs4 import BeautifulSoup
 from novamind.shared.document.readers.base_reader import BaseReader
 from novamind.shared.document.readers.executor import run_in_executor
 from novamind.shared.logging import get_logger
-from bs4 import BeautifulSoup
 
 logger = get_logger(__name__)
 
@@ -23,17 +23,17 @@ class HTMLReader(BaseReader):
 
         for encoding in encodings:
             try:
-                with open(file_path, 'r', encoding=encoding) as file:
+                with open(file_path, encoding=encoding) as file:
                     content = file.read()
                 return content
             except UnicodeDecodeError:
                 continue
 
         # 如果所有编码都失败，使用错误处理方式
-        with open(file_path, 'r', encoding='utf-8', errors='ignore') as file:
+        with open(file_path, encoding='utf-8', errors='ignore') as file:
             return file.read()
 
-    def _load_data_sync(self, file_path: str) -> List[Dict[str, str]]:
+    def _load_data_sync(self, file_path: str) -> list[dict[str, str]]:
         """
         同步读取 HTML 文件（在线程池中执行）
         :param file_path: HTML文件路径
@@ -63,7 +63,7 @@ class HTMLReader(BaseReader):
 
         return documents
 
-    async def load_data(self, file_path: str) -> List[Dict[str, str]]:
+    async def load_data(self, file_path: str) -> list[dict[str, str]]:
         """
         从HTML文件加载数据（异步，在共享线程池中执行）
         :param file_path: HTML文件路径

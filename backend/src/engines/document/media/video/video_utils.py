@@ -6,7 +6,6 @@ import io
 import logging
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from novamind.engines.document.media.video.video_normalizer import (
     normalize_video_for_frame_extraction,
@@ -23,7 +22,7 @@ async def extract_video_frames(
     file_content: bytes,
     interval: float = 5.0,
     max_frames: int = 60,
-) -> List[Tuple[bytes, float, int]]:
+) -> list[tuple[bytes, float, int]]:
     """
     Extract frames from a video.
 
@@ -34,7 +33,7 @@ async def extract_video_frames(
         tmp.write(file_content)
         tmp_path = tmp.name
 
-    normalized_path: Optional[str] = None
+    normalized_path: str | None = None
     try:
         try:
             return await asyncio.to_thread(_extract_frames_from_path, tmp_path, interval, max_frames)
@@ -55,7 +54,7 @@ async def extract_video_frames(
             Path(normalized_path).unlink(missing_ok=True)
 
 
-def _extract_frames_from_path(filepath: str, interval: float, max_frames: int) -> List[Tuple[bytes, float, int]]:
+def _extract_frames_from_path(filepath: str, interval: float, max_frames: int) -> list[tuple[bytes, float, int]]:
     metadata = _read_video_metadata(filepath)
     duration = metadata.get("duration", 0) or 0
     fps = metadata.get("fps", 30) or 30
@@ -77,7 +76,7 @@ def _extract_frames_from_path(filepath: str, interval: float, max_frames: int) -
     timestamps = [i * interval for i in range(frame_count)]
 
     frames = []
-    last_frame_error: Optional[Exception] = None
+    last_frame_error: Exception | None = None
     for frame_idx, ts in enumerate(timestamps):
         try:
             frame = _read_frame_at(filepath, ts, fps)
@@ -111,7 +110,7 @@ def _extract_frames_from_path(filepath: str, interval: float, max_frames: int) -
     return frames
 
 
-def _read_video_metadata(filepath: str) -> Dict:
+def _read_video_metadata(filepath: str) -> dict:
     import imageio.v3 as iio
 
     try:
@@ -128,8 +127,8 @@ def _read_video_metadata(filepath: str) -> Dict:
 
 def _read_frame_at(filepath: str, timestamp: float, fps: float):
     import imageio.v3 as iio
-    from PIL import Image
     import numpy as np
+    from PIL import Image
 
     frame_idx = int(timestamp * fps)
 

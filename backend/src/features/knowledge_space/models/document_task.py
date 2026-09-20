@@ -6,12 +6,20 @@ Compatibility note:
 - real table name is `document_task_items`
 """
 from enum import IntEnum
-from typing import Optional
-
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, JSON, SmallInteger, String, Text
 
 from novamind.core.database.base import BaseModel
 from novamind.shared.utils.time_utils import now_china
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    SmallInteger,
+    String,
+    Text,
+)
 
 
 class TaskStatus(IntEnum):
@@ -76,7 +84,7 @@ class DocumentTask(BaseModel):
         self.status = TaskStatus.PROCESSING
         self.started_at = now_china()
 
-    def mark_completed(self, result: Optional[dict] = None) -> None:
+    def mark_completed(self, result: dict | None = None) -> None:
         self.status = TaskStatus.COMPLETED
         self.completed_at = now_china()
         # 成功完成即清空先前残留的瞬时错误（如 ASR 忙碌延后、自动重试记录），
@@ -102,7 +110,7 @@ class DocumentTask(BaseModel):
         self.finish_step(step_name, metrics=None)
 
     @staticmethod
-    def _duration_ms_from(started_at_str, now_dt) -> Optional[int]:
+    def _duration_ms_from(started_at_str, now_dt) -> int | None:
         if not started_at_str:
             return None
         try:
@@ -133,7 +141,7 @@ class DocumentTask(BaseModel):
             finished_at=None, duration_ms=None, metrics={}, error=None,
         )
 
-    def finish_step(self, step_name: str, metrics: Optional[dict] = None) -> None:
+    def finish_step(self, step_name: str, metrics: dict | None = None) -> None:
         """记录节点完成：status=done + finished_at + duration_ms + metrics。"""
         now = now_china()
         prev = self.step_progress.get(step_name) if self.step_progress else None

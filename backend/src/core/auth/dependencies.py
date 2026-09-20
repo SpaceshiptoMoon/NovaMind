@@ -16,20 +16,16 @@ core/auth 定义 ``get_user_status_resolver`` 抽象依赖，user feature 在 st
 """
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from novamind.core.middleware.manifest import API_V1_PREFIX
-
 from novamind.core.auth.blacklist import is_token_revoked, is_user_blacklisted
 from novamind.core.auth.exceptions import PasswordChangeRequiredError
 from novamind.core.auth.ports import UserStatusResolver
 from novamind.core.auth.token import decode_access_token
 from novamind.core.authorization.exceptions import PermissionDeniedError
 from novamind.core.database.database import get_db
+from novamind.core.middleware.manifest import API_V1_PREFIX
+from sqlalchemy.ext.asyncio import AsyncSession
 
 security = HTTPBearer()
 # 可选认证 bearer：缺 token 不报错（由依赖自行决定匿名放行）
@@ -73,7 +69,7 @@ async def get_user_status_resolver(
 
 
 async def _resolve_user_from_token(
-    token: str, resolver: UserStatusResolver, *, enforce_password_change: bool = False, request: Optional[Request] = None
+    token: str, resolver: UserStatusResolver, *, enforce_password_change: bool = False, request: Request | None = None
 ) -> dict:
     """校验 token 并返回用户信息（共享核心，供必选/可选认证复用）。
 
@@ -172,9 +168,9 @@ async def get_current_user(
 
 
 async def get_current_user_optional(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_optional_security),
+    credentials: HTTPAuthorizationCredentials | None = Depends(_optional_security),
     resolver: UserStatusResolver = Depends(get_user_status_resolver),
-) -> Optional[dict]:
+) -> dict | None:
     """可选认证：匿名（无 token）返回 None；携带 token 则校验并返回用户。
 
     用于公开端点：允许匿名访问，同时识别已登录用户以便审计/限流/个性化。

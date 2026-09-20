@@ -1,15 +1,23 @@
 """Wiki retract（来源回收）测试：唯一来源删页/多来源剥引用/幂等/链接收尾"""
 import pytest
 import pytest_asyncio
+from novamind.core.database.base import Base
+from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
+from novamind.features.knowledge_space.models.wiki import (
+    WikiIngestRecord,
+    WikiPage,
+    WikiPageRevision,
+)
+from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
+from novamind.features.knowledge_space.services.wiki_retract_service import (
+    WikiRetractService,
+    tombstone_key,
+)
 from sqlalchemy import BigInteger
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 
-from novamind.core.database.base import Base
-from novamind.features.knowledge_space.models.wiki import WikiPage, WikiPageRevision, WikiIngestRecord
-from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
-from novamind.features.knowledge_space.repository.wiki_repository import WikiPageRepository
-from novamind.features.knowledge_space.services.wiki_retract_service import WikiRetractService, tombstone_key
+pytestmark = pytest.mark.unit
 
 
 @compiles(BigInteger, "sqlite")

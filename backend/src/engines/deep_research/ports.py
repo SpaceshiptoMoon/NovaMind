@@ -6,7 +6,7 @@ Deep Research 引擎端口。
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -20,7 +20,7 @@ class InternalSearchPort(Protocol):
     ``extract_key_sources`` 的 dict ``.get`` 访问及 feature 侧持久化一致）。
     """
 
-    async def search(self, query: str, *, top_k: int = 10) -> List[Dict[str, Any]]:
+    async def search(self, query: str, *, top_k: int = 10) -> list[dict[str, Any]]:
         """执行内部 RAG 检索，返回归一化结果字典列表。"""
         ...
 

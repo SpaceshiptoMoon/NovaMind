@@ -9,11 +9,12 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
 from novamind.engines.agent.agent_engine import AgentEvent
 from novamind.features.agent.models.message import AgentMessage
 from novamind.features.agent.schemas.agent_schema import AgentMessageResponse
 from novamind.features.agent.services.chat_service import AgentChatService
+
+pytestmark = pytest.mark.unit
 
 
 def test_agent_message_has_reasoning_column() -> None:

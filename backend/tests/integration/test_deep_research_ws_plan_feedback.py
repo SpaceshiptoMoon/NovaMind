@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """深度研究 WS 计划确认（human_feedback）集成测试——deer-flow 对齐流程验证。
 
 前置：后端已启动在 :8100。覆盖：

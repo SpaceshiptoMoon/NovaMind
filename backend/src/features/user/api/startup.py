@@ -1,36 +1,34 @@
 from fastapi import FastAPI
-
+from novamind.core.authorization.permission_codes import PRESET_ROLE_PERMISSIONS, SystemPermission
+from novamind.core.database.database import get_db_session
 from novamind.core.middleware.base_exception_handler import register_module_exceptions
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.user.exceptions import (
-    UserNotFoundError,
-    UserAlreadyExistsError,
-    UserCreationError,
-    UserOperationError,
     AuthenticationError,
-    PermissionDeniedError,
     InvalidCredentialsError,
+    ModelConfigDeleteConflictError,
+    PermissionDeniedError,
+    RoleError,
+    RoleNotFoundError,
+    SearchConfigAlreadyExistsError,
+    SearchConfigError,
+    SearchConfigNotFoundError,
+    SearchConfigTestFailedError,
     TokenExpiredError,
     TokenInvalidError,
+    UserAlreadyExistsError,
+    UserCreationError,
     UserError,
-    ModelConfigDeleteConflictError,
-    SearchConfigNotFoundError,
-    SearchConfigAlreadyExistsError,
-    SearchConfigTestFailedError,
-    SearchConfigError,
-    RoleNotFoundError,
-    RoleError,
+    UserNotFoundError,
+    UserOperationError,
 )
-from novamind.features.user.schemas.user_schema import UserUpdate
-from novamind.features.user.services.user_service import UserService
-from novamind.features.user.services.auth_service import AuthService
-from novamind.features.user.repository.user_repository import UserRepository
+from novamind.features.user.models.role import Permission, Role, RolePermission
 from novamind.features.user.models.user import UserStatus
-from novamind.features.user.models.role import Role, Permission, RolePermission
-from novamind.core.database.database import get_db_session
-from novamind.core.authorization.permission_codes import SystemPermission, PRESET_ROLE_PERMISSIONS
+from novamind.features.user.repository.user_repository import UserRepository
+from novamind.features.user.schemas.user_schema import UserUpdate
+from novamind.features.user.services.auth_service import AuthService
+from novamind.features.user.services.user_service import UserService
 from novamind.setting.yaml_config import get_config
-
 
 logger = get_logger(__name__)
 
@@ -79,8 +77,8 @@ async def create_admin_user() -> None:
                 else:
                     logger.info("管理员账户已存在", username=admin_config.username)
                 # 幂等置位最高管理员标记（三级模型：超管 = YAML 配置的初始账号）
-                from sqlalchemy import update as sa_update
                 from novamind.features.user.models.user import User as UserModel
+                from sqlalchemy import update as sa_update
                 async with db.begin_nested():
                     await db.execute(
                         sa_update(UserModel)
@@ -99,8 +97,8 @@ async def create_admin_user() -> None:
                 role_code="admin",
             )
             # 新建后置位最高管理员标记
-            from sqlalchemy import update as sa_update
             from novamind.features.user.models.user import User as UserModel
+            from sqlalchemy import update as sa_update
             async with db.begin_nested():
                 await db.execute(
                     sa_update(UserModel)
@@ -120,7 +118,7 @@ async def create_admin_user() -> None:
 
 async def _init_rbac_seed(db) -> None:
     """幂等创建预置角色/权限/映射。"""
-    from sqlalchemy import select, func
+    from sqlalchemy import func, select
 
     is_sqlite = db.bind.dialect.name == "sqlite"
 
@@ -184,9 +182,9 @@ async def _deprecate_editor_role(db) -> None:
     顺序：editor 用户重绑 viewer → 删 role_permissions 映射 → 删 editor 角色。
     editor 不存在则直接返回（新库或已迁移）。
     """
-    from sqlalchemy import select, delete, update as sa_update
-
     from novamind.features.user.models.user import User as UserModel
+    from sqlalchemy import delete, select
+    from sqlalchemy import update as sa_update
 
     editor = (await db.execute(select(Role).where(Role.code == "editor"))).scalar_one_or_none()
     if editor is None:
@@ -286,11 +284,11 @@ def setup_auth_port_wiring(app: FastAPI) -> None:
     """
     # 懒导入规避启动期循环依赖
     from novamind.core.auth.dependencies import get_user_status_resolver
+    from novamind.core.authorization.dependencies import get_permission_checker_dep
+    from novamind.core.authorization.ports import PermissionCheckerPort
     from novamind.features.user.adapters.auth_user_resolver_adapter import (
         as_user_status_resolver,
     )
-    from novamind.core.authorization.ports import PermissionCheckerPort
-    from novamind.core.authorization.dependencies import get_permission_checker_dep
     from novamind.features.user.api.dependencies import get_permission_checker
 
     app.dependency_overrides[get_user_status_resolver] = as_user_status_resolver

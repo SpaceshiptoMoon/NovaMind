@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Protocol, Tuple, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from novamind.engines.search_ports import WebSearchPort, WebSearchResult
 
@@ -43,9 +43,9 @@ class KnowledgeSearchItem:
 
     content: str
     score: float
-    document_id: Optional[int] = None
-    chunk_id: Optional[str] = None
-    file_info: Optional[Dict[str, Any]] = None
+    document_id: int | None = None
+    chunk_id: str | None = None
+    file_info: dict[str, Any] | None = None
 
 
 @dataclass
@@ -63,7 +63,7 @@ class DocumentListResult:
     """文档列表结果"""
 
     total: int
-    documents: List[DocumentInfo] = field(default_factory=list)
+    documents: list[DocumentInfo] = field(default_factory=list)
 
 
 @runtime_checkable
@@ -75,17 +75,17 @@ class KnowledgeSearchPort(Protocol):
         """校验用户是否有权访问指定空间（存在/ACTIVE/成员/公开/管理员）。"""
         ...
 
-    async def list_spaces(self, user_id: int) -> List[SpaceInfo]:
+    async def list_spaces(self, user_id: int) -> list[SpaceInfo]:
         """列出用户可访问的知识空间。"""
         ...
 
     async def list_knowledge_bases(
         self, space_id: int, user_id: int
-    ) -> List[KbInfo]:
+    ) -> list[KbInfo]:
         """列出指定空间下的知识库（含权限校验）。"""
         ...
 
-    async def list_all_knowledge_bases(self, user_id: int) -> List[KbInfo]:
+    async def list_all_knowledge_bases(self, user_id: int) -> list[KbInfo]:
         """跨空间列出用户所有可访问的知识库（含 space_name）。"""
         ...
 
@@ -96,9 +96,9 @@ class KnowledgeSearchPort(Protocol):
         query: str,
         top_k: int = 5,
         search_mode: str = "content_hybrid",
-        kb_id: Optional[int] = None,
-        score_threshold: Optional[float] = None,
-    ) -> List[KnowledgeSearchItem]:
+        kb_id: int | None = None,
+        score_threshold: float | None = None,
+    ) -> list[KnowledgeSearchItem]:
         """知识库检索；kb_id 为 None 时在该空间 Top N 知识库间跨库检索。
 
         score_threshold 非空时下推到 SearchRequest 在检索服务层预过滤低分块。
@@ -157,7 +157,7 @@ class ContextSummaryEntry:
     """上下文压缩摘要条目（对齐 AgentContextSummary ORM 读取面）。"""
 
     summary_text: str
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
     compressed_count: int = 0
     compression_ratio: float = 1.0
     token_count: int = 0
@@ -176,9 +176,9 @@ class LongTermMemoryEntry:
     source_type: str = "consolidate"
     relevance_score: float = 0.0
     access_count: int = 0
-    source_conversation_id: Optional[int] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    source_conversation_id: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 @runtime_checkable
@@ -197,7 +197,7 @@ class LongTermMemoryStorePort(Protocol):
         user_id: int,
         category: str,
         content: str,
-        source_conversation_id: Optional[int] = None,
+        source_conversation_id: int | None = None,
         source_type: str = "consolidate",
     ) -> LongTermMemoryEntry:
         """创建一条长期记忆并 flush，返回归一化条目。"""
@@ -205,7 +205,7 @@ class LongTermMemoryStorePort(Protocol):
 
     async def find_similar(
         self, agent_id: int, user_id: int, category: str, content: str
-    ) -> Optional[LongTermMemoryEntry]:
+    ) -> LongTermMemoryEntry | None:
         """精确匹配查找（用于去重）。"""
         ...
 
@@ -215,12 +215,12 @@ class LongTermMemoryStorePort(Protocol):
         user_id: int,
         limit: int = 50,
         offset: int = 0,
-        category: Optional[str] = None,
-    ) -> Tuple[List[LongTermMemoryEntry], int]:
+        category: str | None = None,
+    ) -> tuple[list[LongTermMemoryEntry], int]:
         """列出 Agent 的记忆，返回 (条目列表, 总数)。"""
         ...
 
-    async def get_by_id(self, memory_id: int) -> Optional[LongTermMemoryEntry]:
+    async def get_by_id(self, memory_id: int) -> LongTermMemoryEntry | None:
         """按 ID 取单条记忆。"""
         ...
 
@@ -242,14 +242,14 @@ class LongTermMemoryStorePort(Protocol):
         user_id: int,
         query: str,
         top_k: int = 5,
-        categories: Optional[List[str]] = None,
-    ) -> List[LongTermMemoryEntry]:
+        categories: list[str] | None = None,
+    ) -> list[LongTermMemoryEntry]:
         """MySQL LIKE 关键词检索（ES 不可用时的降级路径）。"""
         ...
 
     async def find_by_content_contains(
         self, agent_id: int, user_id: int, old_content: str
-    ) -> Optional[LongTermMemoryEntry]:
+    ) -> LongTermMemoryEntry | None:
         """子串匹配查找（replace/remove 工具操作定位条目）。"""
         ...
 
@@ -280,7 +280,7 @@ class ContextSummaryStorePort(Protocol):
 
     async def get_latest_summary(
         self, conversation_id: int
-    ) -> Optional[ContextSummaryEntry]:
+    ) -> ContextSummaryEntry | None:
         """获取会话最新摘要；无则 None。返回 ContextSummaryEntry（含 summary_text/
         created_at，供 ShortTermMemory/ContextCompressor 消费）。"""
         ...
@@ -306,10 +306,10 @@ class MemorySearchPort(Protocol):
         user_id: int,
         category: str,
         content: str,
-        embedding: List[float],
+        embedding: list[float],
         source_type: str = "consolidate",
-        source_conversation_id: Optional[int] = None,
-        created_at: Optional[datetime] = None,
+        source_conversation_id: int | None = None,
+        created_at: datetime | None = None,
     ) -> bool:
         """索引单条记忆到 ES。
 
@@ -321,12 +321,12 @@ class MemorySearchPort(Protocol):
     async def search(
         self,
         agent_id: int,
-        query_vector: List[float],
+        query_vector: list[float],
         query_text: str,
         top_k: int = 5,
-        user_id: Optional[int] = None,
-        categories: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
+        user_id: int | None = None,
+        categories: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         """Hybrid 检索（向量 + BM25，RRF 融合）；返回含 memory_id/score 的 dict 列表。"""
         ...
 

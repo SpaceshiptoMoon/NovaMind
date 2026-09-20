@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from typing import Any, Dict, List, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
-
 from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
 
 logger = get_logger(__name__)
@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 class PdfLayoutExtractor:
     """Structured PDF extractor adapted toward RAGFlow's column-aware reading order."""
 
-    def extract_page_lines(self, words: Sequence[Dict[str, Any]], page_number: int) -> List[Dict[str, Any]]:
+    def extract_page_lines(self, words: Sequence[dict[str, Any]], page_number: int) -> list[dict[str, Any]]:
         if not words:
             return []
 
@@ -34,8 +34,8 @@ class PdfLayoutExtractor:
             return []
 
         boxes.sort(key=lambda item: (float(item["top"]), float(item["x0"])))
-        lines: List[Dict[str, Any]] = []
-        current_line: Optional[Dict[str, Any]] = None
+        lines: list[dict[str, Any]] = []
+        current_line: dict[str, Any] | None = None
         heights = [float(word["bottom"]) - float(word["top"]) for word in boxes]
         char_widths = [
             (float(word["x1"]) - float(word["x0"])) / max(1, len(str(word.get("text", "")).strip()))
@@ -74,7 +74,7 @@ class PdfLayoutExtractor:
         lines = self.assign_columns(lines)
         return self.final_reading_order(lines)
 
-    def assign_columns(self, boxes: Sequence[Dict[str, Any]], *, force: bool = False) -> List[Dict[str, Any]]:
+    def assign_columns(self, boxes: Sequence[dict[str, Any]], *, force: bool = False) -> list[dict[str, Any]]:
         boxes = [dict(box) for box in boxes]
         if not boxes:
             return boxes
@@ -90,11 +90,11 @@ class PdfLayoutExtractor:
                 box["col_id"] = 0
             return boxes
 
-        by_page: Dict[int, List[Dict[str, Any]]] = defaultdict(list)
+        by_page: dict[int, list[dict[str, Any]]] = defaultdict(list)
         for box in boxes:
             by_page[int(box["page_number"])].append(box)
 
-        page_cols: Dict[int, int] = {}
+        page_cols: dict[int, int] = {}
         for page_number, page_boxes in by_page.items():
             if len(page_boxes) < 4:
                 page_cols[page_number] = 1
@@ -156,7 +156,7 @@ class PdfLayoutExtractor:
         return boxes
 
     @staticmethod
-    def final_reading_order(boxes: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def final_reading_order(boxes: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
         return sorted(
             boxes,
             key=lambda item: (

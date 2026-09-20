@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable, Mapping, Sequence
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any
 
 import PIL
-from PIL import Image, ImageDraw
-
 from novamind.engines.document.integrations.deepdoc.compat import LazyImage
+from PIL import Image, ImageDraw
 
 
 def _as_image(value: Image.Image | LazyImage | bytes) -> Image.Image:

@@ -1,50 +1,63 @@
-import sys
 import asyncio
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
+
 pytest.importorskip("pandas")  # docx_parser 惰性 import pandas；缺失则跳过本模块
+import zipfile
+from io import BytesIO
+
 from docx import Document as DocxDocument
 from fastapi.testclient import TestClient
 from PIL import Image
 from pypdf import PdfReader
-from io import BytesIO
-import zipfile
 
 BACKEND_ROOT = Path(__file__).resolve().parents[4]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
-from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
-from novamind.features.knowledge_space.services.document_pipeline import (
-    _extract_parse_metadata_summary,
-    _prepare_es_chunks_static,
-)
-from novamind.engines.document.integrations.deepdoc.core.capabilities import get_deepdoc_capabilities
 from novamind.engines.document.integrations.deepdoc.compat.compat import LazyImage
-from novamind.engines.document.integrations.deepdoc.diagnostics.dependencies import get_deepdoc_runtime_report
+from novamind.engines.document.integrations.deepdoc.compat.upstream import (
+    get_upstream_deepdoc_snapshot,
+)
+from novamind.engines.document.integrations.deepdoc.core.capabilities import (
+    get_deepdoc_capabilities,
+)
 from novamind.engines.document.integrations.deepdoc.core.engine import DeepDocEngine
 from novamind.engines.document.integrations.deepdoc.core.factory import DeepDocParserFactory
-from novamind.engines.document.integrations.deepdoc.page_filter import PageNoiseFilter
-from novamind.engines.document.integrations.deepdoc.parsers.upstream import DocxParser as UpstreamDocxParserAlias
-from novamind.engines.document.integrations.deepdoc.parsers.upstream import PdfParser as UpstreamPdfParserAlias
-from novamind.engines.document.integrations.deepdoc.pdf_artifacts import PdfArtifactExtractor
-from novamind.engines.document.integrations.deepdoc.parsers.pdf import DeepDocPdfBox, RAGFlowPdfParser
-from novamind.engines.document.integrations.deepdoc.core.runtime_parser import DeepDocParser
 from novamind.engines.document.integrations.deepdoc.core.models import DeepDocParseResult
+from novamind.engines.document.integrations.deepdoc.core.runtime_parser import DeepDocParser
+from novamind.engines.document.integrations.deepdoc.diagnostics.dependencies import (
+    get_deepdoc_runtime_report,
+)
+from novamind.engines.document.integrations.deepdoc.page_filter import PageNoiseFilter
+from novamind.engines.document.integrations.deepdoc.parsers.pdf import (
+    DeepDocPdfBox,
+    RAGFlowPdfParser,
+)
+from novamind.engines.document.integrations.deepdoc.parsers.upstream import (
+    DocxParser as UpstreamDocxParserAlias,
+)
+from novamind.engines.document.integrations.deepdoc.parsers.upstream import (
+    PdfParser as UpstreamPdfParserAlias,
+)
+from novamind.engines.document.integrations.deepdoc.pdf_artifacts import PdfArtifactExtractor
 from novamind.engines.document.integrations.deepdoc.server import create_deepdoc_app
-from novamind.engines.document.integrations.deepdoc.text_concat_model import get_text_concat_model_status
-from novamind.engines.document.integrations.deepdoc.compat.upstream import get_upstream_deepdoc_snapshot
+from novamind.engines.document.integrations.deepdoc.text_concat_model import (
+    get_text_concat_model_status,
+)
 from novamind.engines.document.integrations.deepdoc.updown_concat import UpDownConcatMerger
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
     ensure_model_group_available,
     expected_model_files,
     get_model_status,
 )
-from novamind.engines.document.integrations.deepdoc.vision.package_status import get_vendored_vision_package_status
+from novamind.engines.document.integrations.deepdoc.vision.package_status import (
+    get_vendored_vision_package_status,
+)
 from novamind.engines.document.integrations.deepdoc.vision_runtime import (
     DeepDocVisionParserUnavailable,
     DeepDocVisionRuntimeUnavailable,
@@ -55,6 +68,14 @@ from novamind.engines.document.integrations.deepdoc.vision_runtime import (
     run_vision_smoke_check,
 )
 from novamind.engines.document.pipeline import DocumentProcessor
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
+from novamind.features.knowledge_space.services.document_pipeline import (
+    _extract_parse_metadata_summary,
+    _prepare_es_chunks_static,
+)
+from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
+
+pytestmark = pytest.mark.unit
 
 
 def _run(coro):
@@ -572,7 +593,9 @@ def test_deepdoc_parser_supports_parse_bytes_for_figure():
 
 
 def test_upstream_figure_parser_uses_injected_vision_model():
-    from novamind.engines.document.integrations.deepdoc.parsers.upstream.figure_parser import vision_figure_parser_docx_wrapper
+    from novamind.engines.document.integrations.deepdoc.parsers.upstream.figure_parser import (
+        vision_figure_parser_docx_wrapper,
+    )
 
     image = Image.new("RGB", (32, 24), color="white")
 
@@ -592,7 +615,9 @@ def test_upstream_figure_parser_uses_injected_vision_model():
 
 
 def test_upstream_vision_parser_uses_injected_vision_model():
-    from novamind.engines.document.integrations.deepdoc.parsers.upstream.pdf_parser import VisionParser
+    from novamind.engines.document.integrations.deepdoc.parsers.upstream.pdf_parser import (
+        VisionParser,
+    )
 
     def fake_vision_model(binary, prompt):
         assert "PDF page 1" in prompt
@@ -1716,7 +1741,9 @@ def test_upstream_snapshot_matches_implemented_server_and_vision_modules():
 
 
 def test_vendored_docker_stubs_write_minimal_packages(tmp_path):
-    from novamind.engines.document.integrations.deepdoc.server.docker_stubs import write_docker_stubs
+    from novamind.engines.document.integrations.deepdoc.server.docker_stubs import (
+        write_docker_stubs,
+    )
 
     written = write_docker_stubs(tmp_path)
 
@@ -1754,7 +1781,9 @@ def test_vendored_ocr_diagnostic_entrypoint(tmp_path):
 
 def test_vendored_recognizer_diagnostic_entrypoints(tmp_path):
     _skip_if_vision_runtime_unavailable()
-    from novamind.engines.document.integrations.deepdoc.vision.t_recognizer import run_recognizer_diagnostics
+    from novamind.engines.document.integrations.deepdoc.vision.t_recognizer import (
+        run_recognizer_diagnostics,
+    )
 
     image_path = tmp_path / "layout.png"
     Image.new("RGB", (64, 48), color="white").save(image_path)
@@ -1815,7 +1844,9 @@ def test_vendored_vision_package_status_exposed():
 
 def test_vendored_vision_recognizer_geometry_helpers():
     _skip_if_vision_runtime_unavailable()
-    from novamind.engines.document.integrations.deepdoc.vision import Recognizer as DeepDocVisionRecognizer
+    from novamind.engines.document.integrations.deepdoc.vision import (
+        Recognizer as DeepDocVisionRecognizer,
+    )
 
     boxes = [
         {"x0": 50, "x1": 100, "top": 80, "bottom": 100},
@@ -1833,7 +1864,9 @@ def test_vendored_vision_recognizer_geometry_helpers():
 
 def test_vendored_vision_recognizer_load_raises_for_missing_model():
     _skip_if_vision_runtime_unavailable()
-    from novamind.engines.document.integrations.deepdoc.vision import Recognizer as DeepDocVisionRecognizer
+    from novamind.engines.document.integrations.deepdoc.vision import (
+        Recognizer as DeepDocVisionRecognizer,
+    )
 
     recognizer = DeepDocVisionRecognizer(labels=["Text"], domain="layout", model_dir=Path("C:/missing-model-dir"))
     with pytest.raises(FileNotFoundError):
@@ -1858,7 +1891,11 @@ def test_vendored_vision_model_manager_raises_for_missing_group(tmp_path):
 
 def test_vendored_vision_operator_helpers():
     _skip_if_vision_runtime_unavailable()
-    from novamind.engines.document.integrations.deepdoc.vision.operators import KeepKeys, create_operators, nms
+    from novamind.engines.document.integrations.deepdoc.vision.operators import (
+        KeepKeys,
+        create_operators,
+        nms,
+    )
 
     operators = create_operators([{"KeepKeys": {"keep_keys": ["a", "b"]}}])
     assert len(operators) == 1
@@ -1910,7 +1947,9 @@ def test_vendored_vision_ocr_helpers_without_model_load():
 
 def test_vendored_layout_recognizer_can_apply_layouts():
     _skip_if_vision_runtime_unavailable()
-    from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
+    from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import (
+        LayoutRecognizer,
+    )
 
     recognizer = LayoutRecognizer()
     image = np.zeros((300, 300, 3), dtype=np.uint8)
@@ -1935,7 +1974,9 @@ def test_vendored_layout_recognizer_keeps_unmatched_table_regions():
     """对齐上游：未访问区域只合成 figure 框（figure/equation），table 区域
     不再合成空 table 框——合成会造出上游不存在的幻影表组。"""
     _skip_if_vision_runtime_unavailable()
-    from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
+    from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import (
+        LayoutRecognizer,
+    )
 
     recognizer = LayoutRecognizer()
     image = np.zeros((300, 300, 3), dtype=np.uint8)
@@ -1958,7 +1999,9 @@ def test_vendored_layout_recognizer_suppresses_nested_phantom_figure_region():
     整页 figure 区域，无 OCR 框可挂，照上游语义合成空占位框后幻影组抢走
     表3 题注、把整页 crop 成重复图（同图出现 3 次）。"""
     _skip_if_vision_runtime_unavailable()
-    from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
+    from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import (
+        LayoutRecognizer,
+    )
 
     recognizer = LayoutRecognizer()
     image = np.zeros((600, 600, 3), dtype=np.uint8)
@@ -1985,7 +2028,9 @@ def test_vendored_layout_recognizer_keeps_independent_unmatched_figure_region():
     """对照：未访问 figure 区域与已访问区域无实质重叠时仍正常合成——收口
     只吞嵌套幻影，不伤上游「空图区域补占位」的本职行为。"""
     _skip_if_vision_runtime_unavailable()
-    from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
+    from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import (
+        LayoutRecognizer,
+    )
 
     recognizer = LayoutRecognizer()
     image = np.zeros((600, 600, 3), dtype=np.uint8)
@@ -2005,7 +2050,9 @@ def test_vendored_layout_recognizer_keeps_independent_unmatched_figure_region():
 
 def test_region_consumed_by_visited_coverage_math():
     """覆盖判据的纯几何语义：双向覆盖才吞（嵌套单向不吞）、跨页忽略、空区域不吞。"""
-    from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
+    from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import (
+        LayoutRecognizer,
+    )
 
     f = LayoutRecognizer._region_consumed_by_visited
     big = {"x0": 69, "x1": 527, "top": 137, "bottom": 523, "page_number": 11}
@@ -2027,7 +2074,9 @@ def test_region_consumed_by_visited_coverage_math():
 
 def test_vendored_layout_recognizer_can_decode_mock_forward(monkeypatch):
     _skip_if_vision_runtime_unavailable()
-    from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import LayoutRecognizer
+    from novamind.engines.document.integrations.deepdoc.vision.layout_recognizer import (
+        LayoutRecognizer,
+    )
 
     recognizer = LayoutRecognizer()
     # ensure_loaded 校验 loaded/ort_sess/input_name；preprocess 用 input_names[0]
@@ -2061,7 +2110,9 @@ def test_vendored_layout_recognizer_can_decode_mock_forward(monkeypatch):
 
 def test_vendored_table_structure_recognizer_can_normalize_predictions():
     _skip_if_vision_runtime_unavailable()
-    from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+    from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
+        TableStructureRecognizer,
+    )
 
     recognizer = TableStructureRecognizer()
     predictions = [[
@@ -2081,7 +2132,9 @@ def test_vendored_table_structure_recognizer_can_normalize_predictions():
 
 def test_vendored_table_structure_recognizer_can_decode_mock_forward(monkeypatch):
     _skip_if_vision_runtime_unavailable()
-    from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+    from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
+        TableStructureRecognizer,
+    )
 
     recognizer = TableStructureRecognizer()
     # ensure_loaded 校验 loaded/ort_sess/input_name；preprocess 用 input_names[0]
@@ -2111,7 +2164,9 @@ def test_vendored_table_structure_recognizer_can_decode_mock_forward(monkeypatch
 
 def test_vendored_table_structure_recognizer_can_construct_html_table():
     _skip_if_vision_runtime_unavailable()
-    from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+    from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
+        TableStructureRecognizer,
+    )
 
     boxes = [
         {"text": "Metric", "x0": 10, "x1": 50, "top": 10, "bottom": 20, "page_number": 0, "R": "0", "C": "0", "H": True},
@@ -2555,7 +2610,11 @@ def test_upstream_mineru_parser_class_is_vendored():
 
 
 def test_upstream_somark_parser_class_is_vendored():
-    from novamind.engines.document.integrations.deepdoc.parsers.upstream.somark_parser import SoMarkAPIError, SoMarkBlockType, SoMarkParser
+    from novamind.engines.document.integrations.deepdoc.parsers.upstream.somark_parser import (
+        SoMarkAPIError,
+        SoMarkBlockType,
+        SoMarkParser,
+    )
 
     parser = SoMarkParser()
     assert parser.__class__.__name__ == "SoMarkParser"
@@ -2566,7 +2625,10 @@ def test_upstream_somark_parser_class_is_vendored():
 
 
 def test_upstream_tcadp_parser_class_is_vendored():
-    from novamind.engines.document.integrations.deepdoc.parsers.upstream.tcadp_parser import TCADPParser, TencentCloudAPIClient
+    from novamind.engines.document.integrations.deepdoc.parsers.upstream.tcadp_parser import (
+        TCADPParser,
+        TencentCloudAPIClient,
+    )
 
     parser = TCADPParser()
     assert parser.__class__.__name__ == "TCADPParser"
@@ -2577,8 +2639,12 @@ def test_upstream_tcadp_parser_class_is_vendored():
 
 def test_upstream_resume_package_is_vendored():
     from novamind.engines.document.integrations.deepdoc.parsers.upstream import refactor_resume
-    from novamind.engines.document.integrations.deepdoc.parsers.upstream.resume.step_one import FIELDS
-    from novamind.engines.document.integrations.deepdoc.parsers.upstream.resume.step_two import highest_degree
+    from novamind.engines.document.integrations.deepdoc.parsers.upstream.resume.step_one import (
+        FIELDS,
+    )
+    from novamind.engines.document.integrations.deepdoc.parsers.upstream.resume.step_two import (
+        highest_degree,
+    )
 
     result = refactor_resume(
         {

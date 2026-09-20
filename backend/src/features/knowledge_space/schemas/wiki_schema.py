@@ -4,7 +4,7 @@ Wiki 页面 Pydantic schemas
 请求/响应模型，遵循 *Response 设 from_attributes 的项目约定。
 """
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -21,12 +21,12 @@ class WikiPageResponse(BaseModel):
     status: str
     content: str
     summary: str
-    aliases: List[str] = []
-    category_path: List[str] = []
-    source_refs: List[str] = []
-    chunk_refs: List[str] = []
-    in_links: List[str] = []
-    out_links: List[str] = []
+    aliases: list[str] = []
+    category_path: list[str] = []
+    source_refs: list[str] = []
+    chunk_refs: list[str] = []
+    in_links: list[str] = []
+    out_links: list[str] = []
     version: int
     last_edit_source: str = ""
     created_at: datetime
@@ -44,17 +44,17 @@ class WikiPageListItem(BaseModel):
     page_type: str
     status: str
     summary: str
-    aliases: List[str] = []
-    category_path: List[str] = []
-    in_links: List[str] = []
-    out_links: List[str] = []
+    aliases: list[str] = []
+    category_path: list[str] = []
+    in_links: list[str] = []
+    out_links: list[str] = []
     version: int
     last_edit_source: str = ""
     updated_at: datetime
 
 
 class WikiPageListResponse(BaseModel):
-    pages: List[WikiPageListItem]
+    pages: list[WikiPageListItem]
     total: int
     page: int
     page_size: int
@@ -65,13 +65,13 @@ class WikiIndexGroup(BaseModel):
 
     page_type: str
     total: int
-    items: List[WikiPageListItem]
+    items: list[WikiPageListItem]
 
 
 class WikiIndexResponse(BaseModel):
     """Wiki 首页索引（轻量列，40k 页 KB 也不传正文）"""
 
-    groups: List[WikiIndexGroup]
+    groups: list[WikiIndexGroup]
     is_active: bool = False
     # index 页 intro（KB 简介，管道维护；目录列表本体按需装配不持久化）
     intro: str = ""
@@ -79,7 +79,7 @@ class WikiIndexResponse(BaseModel):
 
 class WikiStatsResponse(BaseModel):
     total_pages: int
-    pages_by_type: Dict[str, int] = {}
+    pages_by_type: dict[str, int] = {}
     total_links: int
     orphan_count: int
     is_active: bool = False
@@ -89,12 +89,12 @@ class WikiIngestStatusResponse(BaseModel):
     """生成状态（前端「生成中」轮询）"""
 
     status: str
-    step_progress: Optional[Dict[str, Any]] = None
+    step_progress: dict[str, Any] | None = None
     pages_created: int = 0
     pages_updated: int = 0
-    error_message: Optional[str] = None
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    error_message: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
 
 class WikiPageSourcesResponse(BaseModel):
@@ -102,8 +102,8 @@ class WikiPageSourcesResponse(BaseModel):
 
     slug: str
     title: str
-    source_documents: List[Dict[str, Any]] = Field(default_factory=list)
-    chunk_refs: List[str] = []
+    source_documents: list[dict[str, Any]] = Field(default_factory=list)
+    chunk_refs: list[str] = []
 
 
 class WikiPageSearchItem(BaseModel):
@@ -114,13 +114,13 @@ class WikiPageSearchItem(BaseModel):
     page_type: str
     summary: str
     # 批5 排序搜索新增（对齐 WeKnora rank/snippet 语义）
-    aliases: List[str] = []
+    aliases: list[str] = []
     rank: int = 0  # title=4 / slug=3 / summary=2 / content=1
     snippet: str = ""  # 命中位置前后各 60 字符
 
 
 class WikiSearchResponse(BaseModel):
-    items: List[WikiPageSearchItem]
+    items: list[WikiPageSearchItem]
     total: int
     query: str
 
@@ -136,20 +136,20 @@ class WikiPageCreateRequest(BaseModel):
     content: str = Field(default="", max_length=500_000)
     summary: str = Field(default="", max_length=2000)
     page_type: str = Field(default="concept", description="entity/concept/synthesis/comparison（summary 由管道管理）")
-    aliases: List[str] = Field(default_factory=list, max_length=50)
-    category_path: List[str] = Field(default_factory=list, max_length=10)
+    aliases: list[str] = Field(default_factory=list, max_length=50)
+    category_path: list[str] = Field(default_factory=list, max_length=10)
 
 
 class WikiPageUpdateRequest(BaseModel):
     """部分更新：缺席字段保持原值；version>0 时乐观锁校验"""
 
-    title: Optional[str] = Field(default=None, min_length=1, max_length=512)
-    content: Optional[str] = Field(default=None, max_length=500_000)
-    summary: Optional[str] = Field(default=None, max_length=2000)
-    page_type: Optional[str] = Field(default=None)
-    status: Optional[str] = Field(default=None, description="draft/published/archived")
-    aliases: Optional[List[str]] = Field(default=None, max_length=50)
-    category_path: Optional[List[str]] = Field(default=None, max_length=10)
+    title: str | None = Field(default=None, min_length=1, max_length=512)
+    content: str | None = Field(default=None, max_length=500_000)
+    summary: str | None = Field(default=None, max_length=2000)
+    page_type: str | None = Field(default=None)
+    status: str | None = Field(default=None, description="draft/published/archived")
+    aliases: list[str] | None = Field(default=None, max_length=50)
+    category_path: list[str] | None = Field(default=None, max_length=10)
     version: int = Field(default=0, ge=0, description="乐观锁：>0 时版本不符返回 409")
 
 
@@ -167,7 +167,7 @@ class WikiRevertResponse(BaseModel):
 class WikiRebuildRequest(BaseModel):
     """存量文档补算：不传 document_ids 则遍历 KB 全部已完成文档"""
 
-    document_ids: Optional[List[int]] = Field(default=None, max_length=500)
+    document_ids: list[int] | None = Field(default=None, max_length=500)
 
 
 # ==================== 图谱 / lint 闭环（P3） ====================
@@ -190,13 +190,13 @@ class WikiGraphMeta(BaseModel):
     total: int
     returned: int
     truncated: bool
-    center: Optional[str] = None
-    depth: Optional[int] = None
+    center: str | None = None
+    depth: int | None = None
 
 
 class WikiGraphResponse(BaseModel):
-    nodes: List[WikiGraphNode]
-    edges: List[WikiGraphEdge]
+    nodes: list[WikiGraphNode]
+    edges: list[WikiGraphEdge]
     meta: WikiGraphMeta
 
 
@@ -216,7 +216,7 @@ class WikiLintIssueItem(BaseModel):
 
 
 class WikiLintResponse(BaseModel):
-    issues: List[WikiLintIssueItem]
+    issues: list[WikiLintIssueItem]
     checked_pages: int
     # 0-100 健康分（对齐 WeKnora HealthScore）
     health_score: int = 100
@@ -227,7 +227,7 @@ class WikiAutoFixResponse(BaseModel):
     """AutoFix 执行结果"""
 
     fixed: int
-    details: List[str] = []
+    details: list[str] = []
 
 
 class WikiIssueCreateRequest(BaseModel):

@@ -1,5 +1,8 @@
 """LRUCache.delete_pattern 回归测试（批量失效 L1 缺口修复，对齐 deer-flow 对照批次 2）。"""
+import pytest
 from novamind.shared.cache.lru_cache import LRUCache
+
+pytestmark = pytest.mark.unit
 
 
 def test_delete_pattern_removes_matching_keys_only():

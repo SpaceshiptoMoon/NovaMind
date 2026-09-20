@@ -2,13 +2,11 @@
 Wiki 问题仓储（wiki_page_issues 表访问）
 """
 
-from typing import Dict, List
-
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.wiki import WikiPageIssue
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -20,7 +18,7 @@ class WikiIssueRepository:
         self.session = session
         self.logger = logger
 
-    async def create(self, data: Dict) -> WikiPageIssue:
+    async def create(self, data: dict) -> WikiPageIssue:
         issue = WikiPageIssue(**data)
         self.session.add(issue)
         await self.session.flush()
@@ -38,7 +36,7 @@ class WikiIssueRepository:
         *,
         status: str | None = None,
         limit: int = 50,
-    ) -> List[WikiPageIssue]:
+    ) -> list[WikiPageIssue]:
         conditions = [WikiPageIssue.kb_id == kb_id]
         if status:
             conditions.append(WikiPageIssue.status == status)
@@ -50,7 +48,7 @@ class WikiIssueRepository:
         )
         return list(result.scalars().all())
 
-    async def count_by_status(self, kb_id: int) -> Dict[str, int]:
+    async def count_by_status(self, kb_id: int) -> dict[str, int]:
         """按状态聚合计数"""
         result = await self.session.execute(
             select(WikiPageIssue.status, func.count(WikiPageIssue.id))

@@ -11,47 +11,47 @@
 注意：异常类定义在 api/exceptions.py 中
 """
 
-from novamind.features.knowledge_space.schemas.space_schema import (
-    SpaceCreate,
-    SpaceUpdate,
-    SpaceResponse,
-    SpaceListResponse,
+from novamind.features.knowledge_space.schemas.document_schema import (
+    ChunkResponse,
+    DocumentBatchUploadResponse,
+    DocumentDetailResponse,
+    DocumentListResponse,
+    DocumentResponse,
+    DocumentUploadResponse,
 )
 from novamind.features.knowledge_space.schemas.enums import ChunkType
-from novamind.features.knowledge_space.schemas.document_schema import (
-    DocumentResponse,
-    DocumentListResponse,
-    DocumentDetailResponse,
-    DocumentUploadResponse,
-    DocumentBatchUploadResponse,
-    ChunkResponse,
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
+    KnowledgeBaseConfigResponse,
+    KnowledgeBaseConfigUpdate,
+    KnowledgeBaseCreate,
+    KnowledgeBaseListResponse,
+    KnowledgeBaseResponse,
+    KnowledgeBaseUpdate,
 )
 from novamind.features.knowledge_space.schemas.member_schema import (
+    InviteResponse,
+    MemberActionResponse,
     MemberInvite,
     MemberJoin,
-    MemberUpdate,
-    MemberResponse,
     MemberListResponse,
-    InviteResponse,
+    MemberResponse,
+    MemberUpdate,
 )
 from novamind.features.knowledge_space.schemas.search_schema import (
-    SearchRequest,
-    SearchResult,
-    SearchResponse,
-    SearchModesResponse,
-    WeightConfig,
-    RerankConfig,
     QueryRewriteConfig,
+    RerankConfig,
+    SearchModesResponse,
+    SearchRequest,
+    SearchResponse,
+    SearchResult,
+    WeightConfig,
 )
-from novamind.features.knowledge_space.schemas.knowledge_base_schema import (
-    KnowledgeBaseCreate,
-    KnowledgeBaseUpdate,
-    KnowledgeBaseResponse,
-    KnowledgeBaseListResponse,
-    KnowledgeBaseConfigUpdate,
-    KnowledgeBaseConfigResponse,
+from novamind.features.knowledge_space.schemas.space_schema import (
+    SpaceCreate,
+    SpaceListResponse,
+    SpaceResponse,
+    SpaceUpdate,
 )
-from novamind.features.knowledge_space.schemas.member_schema import MemberActionResponse
 
 __all__ = [
     # 空间

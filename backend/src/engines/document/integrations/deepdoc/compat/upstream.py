@@ -1,15 +1,14 @@
 """DeepDoc 上游引用：统一管理对上游 RAGFlow 模块的延迟导入与 fallback。"""
 from __future__ import annotations
 
-from typing import Any, Dict, List
-
+from typing import Any
 
 UPSTREAM_REPOSITORY = "https://github.com/infiniflow/ragflow"
 UPSTREAM_DEEPDOC_COMMIT = "4060cd144003602dd227d8aab2b1dc1b9d740cdc"
 # vendored pdf_parser 的上游快照 commit（2026-09 逐字 vendor，见 vendor/ragflow/）
 VENDORED_PDF_PARSER_COMMIT = "2a83ad6"
 
-UPSTREAM_PARSER_MODULES: List[str] = [
+UPSTREAM_PARSER_MODULES: list[str] = [
     "__init__",
     "docling_parser",
     "docx_parser",
@@ -31,7 +30,7 @@ UPSTREAM_PARSER_MODULES: List[str] = [
     "resume",
 ]
 
-IMPLEMENTED_PARSER_MODULES: List[str] = [
+IMPLEMENTED_PARSER_MODULES: list[str] = [
     "__init__",
     "docling_parser",
     "docx_parser",
@@ -53,9 +52,9 @@ IMPLEMENTED_PARSER_MODULES: List[str] = [
     "utils",
 ]
 
-STUBBED_PARSER_MODULES: List[str] = []
+STUBBED_PARSER_MODULES: list[str] = []
 
-UPSTREAM_VISION_MODULES: List[str] = [
+UPSTREAM_VISION_MODULES: list[str] = [
     "__init__",
     "layout_recognizer",
     "ocr",
@@ -68,7 +67,7 @@ UPSTREAM_VISION_MODULES: List[str] = [
     "table_structure_recognizer",
 ]
 
-IMPLEMENTED_VISION_MODULES: List[str] = [
+IMPLEMENTED_VISION_MODULES: list[str] = [
     "__init__",
     "layout_recognizer",
     "ocr",
@@ -81,7 +80,7 @@ IMPLEMENTED_VISION_MODULES: List[str] = [
     "table_structure_recognizer",
 ]
 
-UPSTREAM_SERVER_MODULES: List[str] = [
+UPSTREAM_SERVER_MODULES: list[str] = [
     "deepdoc_server",
     "docker_stubs",
     "download_deps",
@@ -89,7 +88,7 @@ UPSTREAM_SERVER_MODULES: List[str] = [
     "endpoints",
 ]
 
-IMPLEMENTED_SERVER_MODULES: List[str] = [
+IMPLEMENTED_SERVER_MODULES: list[str] = [
     "deepdoc_server",
     "docker_stubs",
     "download_deps",
@@ -97,7 +96,7 @@ IMPLEMENTED_SERVER_MODULES: List[str] = [
     "endpoints",
 ]
 
-LOCAL_ADAPTATION_MODULES: List[str] = [
+LOCAL_ADAPTATION_MODULES: list[str] = [
     "capabilities.py",
     "compat.py",
     "constants.py",
@@ -117,7 +116,7 @@ LOCAL_ADAPTATION_MODULES: List[str] = [
     "vision_runtime.py",
 ]
 
-UPSTREAM_SOURCE_MAP: Dict[str, str] = {
+UPSTREAM_SOURCE_MAP: dict[str, str] = {
     "parsers/upstream/__init__.py": "deepdoc/parser/__init__.py",
     "parsers/upstream/docling_parser.py": "deepdoc/parser/docling_parser.py",
     "parsers/upstream/docx_parser.py": "deepdoc/parser/docx_parser.py",
@@ -156,7 +155,7 @@ UPSTREAM_SOURCE_MAP: Dict[str, str] = {
     "vendor/ragflow/__init__.py": "deepdoc/server/docker_stubs.py",
 }
 
-LOCAL_ADAPTATION_SOURCE_MAP: Dict[str, str] = {
+LOCAL_ADAPTATION_SOURCE_MAP: dict[str, str] = {
     "parsers/upstream/docling_parser.py": "deepdoc/parser/docling_parser.py",
     "parsers/upstream/docx_parser.py": "deepdoc/parser/docx_parser.py",
     "parsers/upstream/epub_parser.py": "deepdoc/parser/epub_parser.py",
@@ -187,7 +186,7 @@ LOCAL_ADAPTATION_SOURCE_MAP: Dict[str, str] = {
 }
 
 
-def get_upstream_deepdoc_snapshot() -> Dict[str, Any]:
+def get_upstream_deepdoc_snapshot() -> dict[str, Any]:
     """Describe which upstream deepdoc areas are mirrored in this repo."""
     missing_parser_modules = [
         module

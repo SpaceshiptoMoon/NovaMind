@@ -10,7 +10,6 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
-
 from novamind.core.middleware.base_exception_handler import (
     BaseAPIError,
     global_exception_handler,

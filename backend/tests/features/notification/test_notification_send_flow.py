@@ -3,17 +3,15 @@
 批次 3 核心链路：偏好过滤 → 落库 → ConnectionManager 推送 notification.new
 完整对象；推送异常不影响落库结果。
 """
-import datetime
-from types import SimpleNamespace
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import BigInteger
-from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-
 from novamind.core.database.base import Base
+from sqlalchemy import BigInteger
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.compiler import compiles
+
 
 # SQLite 内存库 BigInteger 主键不自动生成 id，编译期降为 INTEGER（仅影响本测试建表）
 @compiles(BigInteger, "sqlite")
@@ -24,14 +22,11 @@ from novamind.features.notification.models.notification import Notification
 from novamind.features.notification.models.notification_preference import (
     NotificationPreference,
 )
-from novamind.features.notification.repository.notification_repository import (
-    NotificationRepository,
-    NotificationPreferenceRepository,
-)
 from novamind.features.notification.services.notification_service import NotificationService
-
 from novamind.features.user.models.role import Role
 from novamind.features.user.models.user import User
+
+pytestmark = pytest.mark.unit
 
 _TEST_TABLES = [
     Role.__table__,
@@ -45,10 +40,10 @@ class _RecordingManager:
     """记录 send_to_user 调用的桩 ConnectionManager"""
 
     def __init__(self):
-        self.calls: List[tuple] = []
+        self.calls: list[tuple] = []
         self.fail = False
 
-    async def send_to_user(self, user_id: int, event: Dict[str, Any]) -> bool:
+    async def send_to_user(self, user_id: int, event: dict[str, Any]) -> bool:
         if self.fail:
             raise RuntimeError("ws down")
         self.calls.append((user_id, event))

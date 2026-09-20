@@ -5,7 +5,7 @@
 import features/qa 的 ChatAttachmentRepository——features 层引用合法，
 引擎层经端口消费，满足单向依赖铁律（engines → 端口，不 import features）。
 """
-from typing import Any, Optional
+from typing import Any
 
 from novamind.engines.agent.ports import AttachmentReadPort, AttachmentTextChunk
 from novamind.shared.logging import get_logger
@@ -51,6 +51,6 @@ class HostAttachmentReadPort:
         )
 
 
-def as_attachment_read_port(db: Any) -> Optional[AttachmentReadPort]:
+def as_attachment_read_port(db: Any) -> AttachmentReadPort | None:
     """端口工厂：供 dependencies.py 装配"""
     return HostAttachmentReadPort(db)  # type: ignore[return-value]

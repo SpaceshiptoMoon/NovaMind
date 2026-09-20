@@ -1,22 +1,23 @@
 """
 检索引擎 RetrievalEngine，提供纯 ES 检索入口 retrieve_raw。
 """
-from typing import Any, Awaitable, Callable, Dict, List, Optional
 import asyncio
 import hashlib
+from collections.abc import Awaitable, Callable
+from typing import Any
 
+from novamind.engines.rag.cache_port import CachePort
+from novamind.engines.rag.errors import EmbeddingError, RagError, SearchError
 from novamind.shared.ai_models.embedding import BaseEmbedding
 from novamind.shared.ai_models.rerank import BaseRerank
-from novamind.engines.rag.cache_port import CachePort
 from novamind.shared.logging import get_logger
-from novamind.engines.rag.errors import RagError, EmbeddingError, SearchError
 
 # 默认配置常量（与 search_service 保持一致，批次 6 迁入引擎包）
 DEFAULT_SEARCH_CACHE_TTL = 3600  # 1 小时
 
 # 检索客户端 resolver 类型：宿主按需构造并返回客户端（懒解析）
-EmbeddingClientResolver = Callable[[], Awaitable[Optional[BaseEmbedding]]]
-RerankClientResolver = Callable[[], Awaitable[Optional[BaseRerank]]]
+EmbeddingClientResolver = Callable[[], Awaitable[BaseEmbedding | None]]
+RerankClientResolver = Callable[[], Awaitable[BaseRerank | None]]
 
 
 class RetrievalResult:
@@ -28,7 +29,7 @@ class RetrievalResult:
 
     __slots__ = ("results", "cached")
 
-    def __init__(self, results: List[Dict[str, Any]], cached: bool) -> None:
+    def __init__(self, results: list[dict[str, Any]], cached: bool) -> None:
         self.results = results
         self.cached = cached
 
@@ -69,7 +70,7 @@ class RetrievalQuery:
         kb_id: int,
         query: str,
         effective_query: str,
-        sub_queries: Optional[List[str]],
+        sub_queries: list[str] | None,
         sub_query_merge_mode: str,
         search_mode: str,
         top_k: int,
@@ -81,8 +82,8 @@ class RetrievalQuery:
         score_threshold: float,
         rerank_enabled: bool,
         rerank_top_k: int,
-        rerank_model: Optional[str],
-        user_id: Optional[int] = None,
+        rerank_model: str | None,
+        user_id: int | None = None,
         wiki_boost_factor: float = 1.0,
     ) -> None:
         self.space_id = space_id
@@ -120,8 +121,8 @@ class RetrievalEngine:
     def __init__(
         self,
         es_client: Any,
-        logger: Optional[Any] = None,
-        cache_port: Optional[CachePort] = None,
+        logger: Any | None = None,
+        cache_port: CachePort | None = None,
     ) -> None:
         self.es_client = es_client
         self.logger = logger or get_logger(__name__)
@@ -131,7 +132,7 @@ class RetrievalEngine:
         self._cache_port = cache_port
         self._cache = None
 
-    async def _get_cache(self) -> Optional[CachePort]:
+    async def _get_cache(self) -> CachePort | None:
         """惰性解析缓存端口实例。
 
         优先返回直接注入的 ``_cache``（接缝测试路径）；否则绑定构造器传入的
@@ -145,8 +146,8 @@ class RetrievalEngine:
         self,
         q: RetrievalQuery,
         *,
-        embedding_client_resolver: Optional[EmbeddingClientResolver] = None,
-        rerank_client_resolver: Optional[RerankClientResolver] = None,
+        embedding_client_resolver: EmbeddingClientResolver | None = None,
+        rerank_client_resolver: RerankClientResolver | None = None,
         use_cache: bool = True,
     ) -> RetrievalResult:
         """执行纯检索段，返回 ``RetrievalResult``。
@@ -355,8 +356,8 @@ class RetrievalEngine:
         space_id: int,
         kb_id: int,
         search_mode: str,
-        sub_queries: List[str],
-        query_vector: Optional[List[float]],
+        sub_queries: list[str],
+        query_vector: list[float] | None,
         top_k: int,
         vector_weight: float = 0.7,
         bm25_weight: float = 0.3,
@@ -364,8 +365,8 @@ class RetrievalEngine:
         question_weight: float = 0.4,
         rrf_k: int = 60,
         merge_mode: str = "rrf",
-        embedding_client: Optional[Any] = None,
-    ) -> List[Dict[str, Any]]:
+        embedding_client: Any | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Sub Query 多路检索并合并结果
 
@@ -389,7 +390,7 @@ class RetrievalEngine:
         needs_vector = "vector" in search_mode or "hybrid" in search_mode
 
         # 并行执行所有子问题的检索
-        async def search_one(sub_query: str) -> List[Dict[str, Any]]:
+        async def search_one(sub_query: str) -> list[dict[str, Any]]:
             # 为每个子问题独立生成向量，提升向量检索精度
             sub_vector = query_vector
             if needs_vector and embedding_client:
@@ -437,11 +438,11 @@ class RetrievalEngine:
             return []
 
         # 按 chunk_id 去重并合并分数
-        chunk_data: Dict[str, Dict[str, Any]] = {}
+        chunk_data: dict[str, dict[str, Any]] = {}
         # RRF 融合：记录每个文档在每个子查询结果中的排名
-        chunk_rrf_scores: Dict[str, float] = {}
+        chunk_rrf_scores: dict[str, float] = {}
         # score 模式：记录原始分数
-        chunk_scores: Dict[str, List[float]] = {}
+        chunk_scores: dict[str, list[float]] = {}
 
         # rrf_k 使用形参(来自用户 weights.rrf_k 配置)，不再硬编码覆盖
 
@@ -514,7 +515,7 @@ class RetrievalEngine:
         return hashlib.md5(key_content.encode('utf-8')).hexdigest()[:32]
 
     def _get_search_cache_key(
-        self, kb_id: int, search_type: str, query_hash: str, user_id: Optional[int] = None
+        self, kb_id: int, search_type: str, query_hash: str, user_id: int | None = None
     ) -> str:
         """生成检索缓存键。
 
@@ -525,7 +526,7 @@ class RetrievalEngine:
             return f"search:{kb_id}:{search_type}:u{user_id}:{query_hash}"
         return f"search:{kb_id}:{search_type}:{query_hash}"
 
-    async def _get_cached_search(self, cache_key: str) -> Optional[List[Dict[str, Any]]]:
+    async def _get_cached_search(self, cache_key: str) -> list[dict[str, Any]] | None:
         """获取缓存的检索结果"""
         try:
             cache = await self._get_cache()
@@ -541,7 +542,7 @@ class RetrievalEngine:
             self.logger.warning("读取检索缓存失败", cache_key=cache_key, error=str(e))
         return None
 
-    async def _cache_search_result(self, cache_key: str, results: List[Dict[str, Any]]) -> None:
+    async def _cache_search_result(self, cache_key: str, results: list[dict[str, Any]]) -> None:
         """缓存检索结果"""
         try:
             cache = await self._get_cache()
@@ -554,7 +555,7 @@ class RetrievalEngine:
         except Exception as e:
             self.logger.warning("缓存检索结果失败", cache_key=cache_key, error=str(e))
 
-    async def _enrich_results(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    async def _enrich_results(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         补充检索结果详情
 
@@ -594,7 +595,7 @@ class RetrievalEngine:
         return enriched_results
 
     @staticmethod
-    def _normalize_scores(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _normalize_scores(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         分数归一化，统一到 0~1 范围
 

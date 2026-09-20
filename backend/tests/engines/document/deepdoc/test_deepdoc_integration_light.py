@@ -1,23 +1,23 @@
-import sys
 import asyncio
-from io import BytesIO
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
-
 BACKEND_ROOT = Path(__file__).resolve().parents[4]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
-from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
 from novamind.engines.document.integrations.deepdoc.core.engine import DeepDocEngine
 from novamind.engines.document.integrations.deepdoc.core.models import DeepDocParseResult
 from novamind.engines.document.integrations.deepdoc.server import create_deepdoc_app
 from novamind.engines.document.pipeline import DocumentProcessor
+from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
+from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
+
+pytestmark = pytest.mark.unit
 
 
 def _build_minimal_pdf_bytes(text: str) -> bytes:

@@ -1,18 +1,20 @@
 """视觉运行时：OCR / 版面 / 表格识别模型的加载与调用入口。"""
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
-
 from novamind.engines.document.integrations.deepdoc.diagnostics.dependencies import (
     get_deepdoc_runtime_report,
     get_missing_runtime_dependencies,
 )
-from novamind.engines.document.integrations.deepdoc.formula_recognition import get_formula_model_status
+from novamind.engines.document.integrations.deepdoc.formula_recognition import (
+    get_formula_model_status,
+)
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import get_model_status
-from novamind.engines.document.integrations.deepdoc.vision.package_status import get_vendored_vision_package_status
-
+from novamind.engines.document.integrations.deepdoc.vision.package_status import (
+    get_vendored_vision_package_status,
+)
 
 VISION_RUNTIME_DEPENDENCIES = (
     "xgboost",
@@ -46,7 +48,7 @@ class DeepDocVisionParserUnavailable(RuntimeError):
     pass
 
 
-def get_vision_runtime_status() -> Dict[str, Any]:
+def get_vision_runtime_status() -> dict[str, Any]:
     runtime_report = get_deepdoc_runtime_report()
     required_missing = get_missing_runtime_dependencies(*VISION_RUNTIME_DEPENDENCIES)
     optional_missing = get_missing_runtime_dependencies(*VISION_OPTIONAL_DEPENDENCIES)
@@ -83,7 +85,7 @@ def get_vision_runtime_status() -> Dict[str, Any]:
     }
 
 
-def get_vision_health_status() -> Dict[str, Any]:
+def get_vision_health_status() -> dict[str, Any]:
     runtime_status = get_vision_runtime_status()
     return {
         "runtime_available": runtime_status["available"],
@@ -100,7 +102,7 @@ def get_vision_health_status() -> Dict[str, Any]:
     }
 
 
-def run_vision_smoke_check() -> Dict[str, Any]:
+def run_vision_smoke_check() -> dict[str, Any]:
     health = get_vision_health_status()
     load_checks = {
         "vendored_ocr_load": {"attempted": False, "ok": False, "error": None},
@@ -140,7 +142,7 @@ def run_vision_smoke_check() -> Dict[str, Any]:
     }
 
 
-def _attempt_component_load(component: str) -> Dict[str, Any]:
+def _attempt_component_load(component: str) -> dict[str, Any]:
     result = {"attempted": True, "ok": False, "error": None}
     try:
         if component == "ocr":
@@ -154,7 +156,9 @@ def _attempt_component_load(component: str) -> Dict[str, Any]:
 
             LayoutRecognizer(autoload=True)
         elif component == "tsr":
-            from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+            from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
+                TableStructureRecognizer,
+            )
 
             TableStructureRecognizer(autoload=True)
         else:
@@ -165,7 +169,7 @@ def _attempt_component_load(component: str) -> Dict[str, Any]:
     return result
 
 
-def _attempt_component_inference(component: str) -> Dict[str, Any]:
+def _attempt_component_inference(component: str) -> dict[str, Any]:
     result = {"attempted": True, "ok": False, "error": None}
     synthetic_image = np.zeros((64, 64, 3), dtype=np.uint8)
     try:
@@ -184,7 +188,9 @@ def _attempt_component_inference(component: str) -> Dict[str, Any]:
             predictions = recognizer.forward([synthetic_image], thr=0.0, batch_size=1)
             result["pages"] = len(predictions)
         elif component == "tsr":
-            from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import TableStructureRecognizer
+            from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
+                TableStructureRecognizer,
+            )
 
             recognizer = TableStructureRecognizer(autoload=True)
             predictions = recognizer.forward([synthetic_image], thr=0.0, batch_size=1)
@@ -197,14 +203,14 @@ def _attempt_component_inference(component: str) -> Dict[str, Any]:
     return result
 
 
-def ensure_vision_runtime_available() -> Dict[str, Any]:
+def ensure_vision_runtime_available() -> dict[str, Any]:
     status = get_vision_runtime_status()
     if not status["available"]:
         raise DeepDocVisionRuntimeUnavailable(missing=status["missing_required"])
     return status
 
 
-def ensure_vision_parser_available() -> Dict[str, Any]:
+def ensure_vision_parser_available() -> dict[str, Any]:
     status = ensure_vision_runtime_available()
     if not status["parser_available"]:
         raise DeepDocVisionParserUnavailable(

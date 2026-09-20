@@ -25,7 +25,7 @@ ORM 模型 / ``core.database``（分层铁律：engines 是纯逻辑层）。
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -37,7 +37,7 @@ class SearchSourcePort(Protocol):
     （WebSearchSourceAdapter）包装 ``WebSearchPort`` 抹平签名与归一化差异。
     """
 
-    async def search(self, query: str, *, top_k: int) -> List[Dict[str, Any]]:
+    async def search(self, query: str, *, top_k: int) -> list[dict[str, Any]]:
         """执行检索，返回统一 dict 形状结果列表（见模块 docstring 契约）。"""
         ...
 
@@ -59,8 +59,8 @@ class SearchSourceContext:
 
     space_id: int
     user_id: int
-    config: Dict[str, Any]
-    deps: Dict[str, Any]
+    config: dict[str, Any]
+    deps: dict[str, Any]
 
 
 @dataclass

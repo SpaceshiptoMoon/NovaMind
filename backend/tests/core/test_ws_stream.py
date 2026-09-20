@@ -6,19 +6,21 @@ datetime is not JSON serializable``，打崩整个 ASGI 连接（客户端仅看
 修复两层：service 层 datetime 显式 ``isoformat()``（精确）；传输层
 ``dumps_event`` 兜底 ``default=str``（防御）。
 """
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List
+from typing import Any
 
 import pytest
-
 from novamind.core.ws import dumps_event, envelope, run_stream_to_ws
+
+pytestmark = pytest.mark.unit
 
 
 class FakeWebSocket:
     """记录 send_text/send_json 调用的假 WS（不真正连 transport）。"""
 
     def __init__(self) -> None:
-        self.sent: List[Dict[str, Any]] = []
+        self.sent: list[dict[str, Any]] = []
         self.closed = False
 
     async def send_text(self, text: str) -> None:
@@ -26,7 +28,7 @@ class FakeWebSocket:
 
         self.sent.append(json.loads(text))
 
-    async def send_json(self, data: Dict[str, Any]) -> None:
+    async def send_json(self, data: dict[str, Any]) -> None:
         # 与 starlette 行为一致：裸 json.dumps，datetime 直接抛 TypeError
         import json
 
@@ -37,7 +39,7 @@ class FakeWebSocket:
         self.closed = True
 
 
-async def _gen_from(events: List[Dict[str, Any]]) -> AsyncGenerator[Dict[str, Any], None]:
+async def _gen_from(events: list[dict[str, Any]]) -> AsyncGenerator[dict[str, Any], None]:
     for e in events:
         yield e
 
@@ -97,9 +99,9 @@ class TestRunStreamToWs:
     @pytest.mark.asyncio
     async def test_custom_send_fn_still_respected(self) -> None:
         """传 send_fn（locked_send 场景）时优先用调用方实现。"""
-        received: List[Dict[str, Any]] = []
+        received: list[dict[str, Any]] = []
 
-        async def send_fn(event: Dict[str, Any]) -> None:
+        async def send_fn(event: dict[str, Any]) -> None:
             received.append(event)
 
         events = [envelope("heartbeat", {})]

@@ -3,44 +3,43 @@
 """
 
 import asyncio
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, WebSocket, WebSocketDisconnect
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from novamind.core.auth import UserStatusResolver, get_current_user, get_user_status_resolver
 from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
 from novamind.core.database.database import get_db
+from novamind.core.middleware.structured_logging import get_logger
 from novamind.core.ws import run_stream_to_ws, send_event
-from novamind.features.knowledge_space.api.dependencies import validate_space_access
-from novamind.features.knowledge_space.exceptions import SpaceAccessDeniedError, SpaceNotFoundError
+from novamind.features.deep_research.adapters.source_registry import source_registry
 from novamind.features.deep_research.api.dependencies import get_deep_research_service
+from novamind.features.deep_research.models.research_session import (
+    ResearchStatus as ModelResearchStatus,
+)
+from novamind.features.deep_research.schemas.research_schema import (
+    ExternalSearchProvider,
+    ResearchListItem,
+    ResearchListResponse,
+    ResearchMode,
+    ResearchRequest,
+    ResearchResponse,
+    ResearchStatus,
+    SearchSource,
+    SearchSourceInfo,
+    SearchSourceListResponse,
+)
 from novamind.features.deep_research.services.deep_research_service import (
     DeepResearchService,
-    parse_plan_json,
     _plan_to_event_data,
+    parse_plan_json,
 )
 from novamind.features.deep_research.services.plan_feedback_registry import (
     PlanFeedbackRegistry,
 )
-from novamind.features.deep_research.adapters.source_registry import source_registry
-from novamind.features.deep_research.schemas.research_schema import (
-    ResearchMode,
-    SearchSource,
-    ExternalSearchProvider,
-    ResearchRequest,
-    ResearchResponse,
-    ResearchListResponse,
-    ResearchListItem,
-    ResearchStatus,
-    SearchSourceInfo,
-    SearchSourceListResponse,
-)
-from novamind.features.deep_research.models.research_session import (
-    ResearchStatus as ModelResearchStatus,
-)
+from novamind.features.knowledge_space.api.dependencies import validate_space_access
+from novamind.features.knowledge_space.exceptions import SpaceAccessDeniedError, SpaceNotFoundError
 from novamind.features.user.schemas.user_schema import UserMessageResponse
-from novamind.core.middleware.structured_logging import get_logger
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -60,7 +59,7 @@ _STATUS_TO_MODEL = {
 _STATUS_TO_SCHEMA = {v: k for k, v in _STATUS_TO_MODEL.items()}
 
 
-def _map_status_to_model(status: Optional[ResearchStatus]) -> Optional[ModelResearchStatus]:
+def _map_status_to_model(status: ResearchStatus | None) -> ModelResearchStatus | None:
     """映射 Schema 状态到 Model 状态"""
     if status is None:
         return None
@@ -74,13 +73,13 @@ def _map_status_to_schema(status: ModelResearchStatus) -> ResearchStatus:
 
 # ==================== 辅助函数 ====================
 
-def _get_research_topic(research) -> Optional[str]:
+def _get_research_topic(research) -> str | None:
     """从 research 的 config 中获取研究主题"""
     config = research.config or {}
     return config.get("research_topic")
 
 
-def _get_research_tasks(research) -> Optional[list]:
+def _get_research_tasks(research) -> list | None:
     """从 research 的 plan 中获取研究任务（旧形状兼容：v2 steps 派生 / v1 tasks 原样）"""
     plan = research.plan or {}
     if plan.get("version") == 2:
@@ -96,7 +95,7 @@ def _get_research_tasks(research) -> Optional[list]:
     return plan.get("tasks")
 
 
-def _get_research_plan(research) -> Optional[dict]:
+def _get_research_plan(research) -> dict | None:
     """从 research 的 plan 中获取 v2 结构化计划（旧形状返回 None）。"""
     plan = research.plan or {}
     if plan.get("version") != 2:
@@ -107,13 +106,13 @@ def _get_research_plan(research) -> Optional[dict]:
     return _plan_to_event_data(parsed)
 
 
-def _get_final_report(research) -> Optional[str]:
+def _get_final_report(research) -> str | None:
     """从 research 的 result 中获取最终报告"""
     result = research.result or {}
     return result.get("answer")
 
 
-def _get_search_summary(research) -> Optional[dict]:
+def _get_search_summary(research) -> dict | None:
     """从 research 的 result 中获取搜索摘要（含全量引用 citations）"""
     result = research.result or {}
     if result:
@@ -335,7 +334,7 @@ async def list_researches(
     current_user: dict = Depends(get_current_user),
     limit: Annotated[int, Query(ge=1, le=100, description="返回数量")] = 10,
     offset: Annotated[int, Query(ge=0, description="偏移量")] = 0,
-    status: Annotated[Optional[ResearchStatus], Query(description="按状态过滤")] = None,
+    status: Annotated[ResearchStatus | None, Query(description="按状态过滤")] = None,
 ):
     """获取知识空间的研究历史列表"""
     space, member = validated

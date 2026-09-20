@@ -1,8 +1,9 @@
 """AI 模型基类定义：BaseLLM / BaseEmbedding / BaseRerank + 响应数据结构（StreamChunk / LLMResponse / ToolCall）。跨 LLM provider 统一抽象层。"""
-from abc import abstractmethod, ABC
-from dataclasses import dataclass
-from typing import List, Dict, Any, Optional, AsyncGenerator
 import asyncio
+from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
@@ -57,9 +58,9 @@ class ToolCall:
 class LLMResponseWithTools:
     """LLM 带工具调用的响应"""
     content: str | None
-    tool_calls: List[ToolCall] | None
+    tool_calls: list[ToolCall] | None
     finish_reason: str  # "stop" | "tool_calls"
-    usage: Dict[str, int] | None = None
+    usage: dict[str, int] | None = None
     reasoning: str | None = None
 
 
@@ -84,7 +85,7 @@ class ToolStreamEvent:
     tool_call_id: str | None = None
     tool_name: str | None = None
     tool_arguments_delta: str = ""
-    usage: Dict[str, int] | None = None
+    usage: dict[str, int] | None = None
     finish_reason: str | None = None
 
 
@@ -127,7 +128,7 @@ class BaseLLM(ABC):
         max_tokens: int = 2048,
         temperature: float = 0.7,
         top_p: float = 0.8,
-        response_format: Optional[Dict[str, Any]] = None,
+        response_format: dict[str, Any] | None = None,
         enable_thinking: bool = False,
     ) -> str:
         """
@@ -231,7 +232,7 @@ class BaseLLM(ABC):
         max_tokens: int = 2048,
         temperature: float = 0.7,
         top_p: float = 0.8,
-        response_format: Optional[Dict[str, Any]] = None,
+        response_format: dict[str, Any] | None = None,
         enable_thinking: bool = False,
     ) -> "LLMResponse":
         """非流式结构化生成——默认委托给 generate_text()
@@ -313,7 +314,7 @@ class BaseEmbedding(ABC):
         return self._semaphore
 
     @abstractmethod
-    async def generate_embedding(self, text: str) -> List[float]:
+    async def generate_embedding(self, text: str) -> list[float]:
         """
         生成单个文本的嵌入向量
 
@@ -391,7 +392,6 @@ class BaseRerank(ABC):
 
     async def _get_http_client(self):
         """获取 HTTP 客户端（延迟初始化，子类共享）"""
-        import httpx
         async with self._get_lock():
             if self._http_client is None:
                 self._http_client = build_openai_http_client(
@@ -404,9 +404,9 @@ class BaseRerank(ABC):
     async def rerank(
         self,
         query: str,
-        documents: List[str],
+        documents: list[str],
         top_k: int = 3,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         对文档列表进行重排序
 

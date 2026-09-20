@@ -3,11 +3,10 @@ Feature Manifest 数据模型，描述路由、依赖、初始化钩子、ORM �
 """
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable, List, Optional
 
 from fastapi import APIRouter
-
 
 # API 版本前缀（原 router_manager.API_V1_PREFIX，集中到 manifest 层供各 feature 共用）
 API_V1_PREFIX = "/api/v1"
@@ -50,12 +49,12 @@ class FeatureManifest:
     """
 
     name: str
-    routers: List[RouterSpec] = field(default_factory=list)
-    depends_on: List[str] = field(default_factory=list)
+    routers: list[RouterSpec] = field(default_factory=list)
+    depends_on: list[str] = field(default_factory=list)
     order: int = 100
-    route_order: Optional[int] = None
-    init_hook: Optional[Callable[[object], Awaitable[None]]] = None
-    models_loader: Optional[Callable[[], None]] = None
+    route_order: int | None = None
+    init_hook: Callable[[object], Awaitable[None]] | None = None
+    models_loader: Callable[[], None] | None = None
     enabled: bool = True
 
     def __post_init__(self) -> None:

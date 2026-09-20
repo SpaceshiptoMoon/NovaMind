@@ -5,10 +5,10 @@
 """
 import fnmatch
 import time
-from typing import Optional, Generic, TypeVar, Dict, Any
 from collections import OrderedDict
-from threading import RLock
 from dataclasses import dataclass
+from threading import RLock
+from typing import Any, TypeVar
 
 from novamind.shared.logging import get_logger
 
@@ -18,14 +18,14 @@ T = TypeVar("T")
 
 
 @dataclass
-class CacheEntry(Generic[T]):
+class CacheEntry[T]:
     """缓存条目"""
     value: T
     expires_at: float
     created_at: float
 
 
-class LRUCache(Generic[T]):
+class LRUCache[T]:
     """
     线程安全的 LRU 缓存
 
@@ -56,7 +56,7 @@ class LRUCache(Generic[T]):
         self._hits = 0
         self._misses = 0
 
-    def get(self, key: str) -> Optional[T]:
+    def get(self, key: str) -> T | None:
         """
         获取缓存值
 
@@ -89,7 +89,7 @@ class LRUCache(Generic[T]):
         self,
         key: str,
         value: T,
-        ttl: Optional[int] = None,
+        ttl: int | None = None,
     ) -> None:
         """
         设置缓存值
@@ -155,7 +155,7 @@ class LRUCache(Generic[T]):
             return len(matched)
 
     @property
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         """获取缓存统计信息"""
         with self._lock:
             total = self._hits + self._misses

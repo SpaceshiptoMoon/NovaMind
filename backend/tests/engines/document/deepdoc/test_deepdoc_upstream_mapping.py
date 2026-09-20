@@ -3,12 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from novamind.engines.document.integrations.deepdoc.compat.upstream import (
     LOCAL_ADAPTATION_SOURCE_MAP,
     UPSTREAM_SOURCE_MAP,
     get_upstream_deepdoc_snapshot,
 )
+
+pytestmark = pytest.mark.unit
 
 
 REPO_ROOT = Path(__file__).resolve().parents[5]

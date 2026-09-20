@@ -3,12 +3,12 @@
 LLM 对检索结果打分，低于阈值时自动切换模式/改写查询/降低阈值；
 prompt 经 PromptProvider 注入，日志经 Logger 注入。
 """
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Optional, Callable, Awaitable, List, Tuple
 
+from novamind.engines.ports import PromptProvider
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
-from novamind.engines.ports import PromptProvider
 from novamind.shared.utils.llm_response import extract_json_obj
 
 
@@ -37,7 +37,7 @@ class GradeRetrier:
     async def grade(
         self,
         query: str,
-        sources: List[dict],
+        sources: list[dict],
         passing_score: int = 5,
     ) -> GradeResult:
         """评估检索结果质量。
@@ -78,13 +78,13 @@ class GradeRetrier:
     async def search_with_retry(
         self,
         query: str,
-        search_fn: Callable[[str, str, Optional[float]], Awaitable[Tuple[List[dict], str]]],
-        search_modes: Optional[List[str]] = None,
-        score_threshold: Optional[float] = None,
+        search_fn: Callable[[str, str, float | None], Awaitable[tuple[list[dict], str]]],
+        search_modes: list[str] | None = None,
+        score_threshold: float | None = None,
         max_retries: int = 2,
         passing_score: int = 5,
-        initial_mode: Optional[str] = None,
-    ) -> Tuple[List[dict], str, List[dict]]:
+        initial_mode: str | None = None,
+    ) -> tuple[list[dict], str, list[dict]]:
         """带自评估重试的检索。
 
         - initial_mode：用户配置的 rag_search_mode，作为第一轮检索模式
@@ -113,8 +113,8 @@ class GradeRetrier:
         if initial_mode:
             modes = [initial_mode] + [m for m in modes if m != initial_mode]
 
-        last: Optional[Tuple[List[dict], str]] = None
-        grade_traces: List[dict] = []
+        last: tuple[list[dict], str] | None = None
+        grade_traces: list[dict] = []
 
         for attempt in range(max_retries + 1):
             mode = modes[min(attempt, len(modes) - 1)]

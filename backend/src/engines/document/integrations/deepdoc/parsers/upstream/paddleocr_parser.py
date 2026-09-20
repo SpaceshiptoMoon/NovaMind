@@ -20,29 +20,32 @@ import os
 import re
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field, fields
 from io import BytesIO
 from os import PathLike
 from pathlib import Path
-from typing import Any, Callable, ClassVar, Literal, Optional, Union, Tuple, List
+from typing import Any, ClassVar, Literal
 
 import numpy as np
 import pdfplumber
 import requests
+from novamind.engines.document.integrations.deepdoc.compat import MAXIMUM_PAGE_NUMBER
 from PIL import Image
 
-from novamind.engines.document.integrations.deepdoc.compat import MAXIMUM_PAGE_NUMBER
-
 try:
-    from novamind.engines.document.integrations.deepdoc.parsers.upstream.pdf_parser import RAGFlowPdfParser
+    from novamind.engines.document.integrations.deepdoc.parsers.upstream.pdf_parser import (
+        RAGFlowPdfParser,
+    )
 except Exception:
 
     class RAGFlowPdfParser:
         pass
 
 
-from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import extract_pdf_outlines
-
+from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import (
+    extract_pdf_outlines,
+)
 
 AlgorithmType = Literal["PaddleOCR-VL", "PaddleOCR-VL-1.6", "PP-OCRv5", "PP-OCRv6", "PP-StructureV3", "PaddleOCR-VL-1.5"]
 SectionTuple = tuple[str, ...]
@@ -90,31 +93,31 @@ def _normalize_bbox(bbox: list[Any] | tuple[Any, ...]) -> tuple[float, float, fl
 class PaddleOCRVLConfig:
     """Configuration for PaddleOCR-VL algorithm."""
 
-    use_doc_orientation_classify: Optional[bool] = False
-    use_doc_unwarping: Optional[bool] = False
-    use_layout_detection: Optional[bool] = None
-    use_chart_recognition: Optional[bool] = None
-    use_seal_recognition: Optional[bool] = None
-    use_ocr_for_image_block: Optional[bool] = None
-    layout_threshold: Optional[Union[float, dict]] = None
-    layout_nms: Optional[bool] = None
-    layout_unclip_ratio: Optional[Union[float, Tuple[float, float], dict]] = None
-    layout_merge_bboxes_mode: Optional[Union[str, dict]] = None
-    layout_shape_mode: Optional[str] = None
-    prompt_label: Optional[str] = None
-    format_block_content: Optional[bool] = True
-    repetition_penalty: Optional[float] = None
-    temperature: Optional[float] = None
-    top_p: Optional[float] = None
-    min_pixels: Optional[int] = None
-    max_pixels: Optional[int] = None
-    max_new_tokens: Optional[int] = None
-    merge_layout_blocks: Optional[bool] = False
-    markdown_ignore_labels: Optional[List[str]] = None
-    vlm_extra_args: Optional[dict] = None
-    restructure_pages: Optional[bool] = False
-    merge_tables: Optional[bool] = None
-    relevel_titles: Optional[bool] = None
+    use_doc_orientation_classify: bool | None = False
+    use_doc_unwarping: bool | None = False
+    use_layout_detection: bool | None = None
+    use_chart_recognition: bool | None = None
+    use_seal_recognition: bool | None = None
+    use_ocr_for_image_block: bool | None = None
+    layout_threshold: float | dict | None = None
+    layout_nms: bool | None = None
+    layout_unclip_ratio: float | tuple[float, float] | dict | None = None
+    layout_merge_bboxes_mode: str | dict | None = None
+    layout_shape_mode: str | None = None
+    prompt_label: str | None = None
+    format_block_content: bool | None = True
+    repetition_penalty: float | None = None
+    temperature: float | None = None
+    top_p: float | None = None
+    min_pixels: int | None = None
+    max_pixels: int | None = None
+    max_new_tokens: int | None = None
+    merge_layout_blocks: bool | None = False
+    markdown_ignore_labels: list[str] | None = None
+    vlm_extra_args: dict | None = None
+    restructure_pages: bool | None = False
+    merge_tables: bool | None = None
+    relevel_titles: bool | None = None
 
 
 @dataclass
@@ -122,7 +125,7 @@ class PaddleOCRConfig:
     """Main configuration for PaddleOCR parser."""
 
     base_url: str = "https://paddleocr.aistudio-app.com"
-    access_token: Optional[str] = None
+    access_token: str | None = None
     algorithm: AlgorithmType = "PaddleOCR-VL"
     request_timeout: int = 600
     prettify_markdown: bool = True
@@ -132,7 +135,7 @@ class PaddleOCRConfig:
     algorithm_config: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, config: Optional[dict[str, Any]]) -> "PaddleOCRConfig":
+    def from_dict(cls, config: dict[str, Any] | None) -> PaddleOCRConfig:
         """Create configuration from dictionary."""
         if not config:
             return cls()
@@ -168,7 +171,7 @@ class PaddleOCRConfig:
         return cls(**init_kwargs)
 
     @classmethod
-    def from_kwargs(cls, **kwargs: Any) -> "PaddleOCRConfig":
+    def from_kwargs(cls, **kwargs: Any) -> PaddleOCRConfig:
         """Create configuration from keyword arguments."""
         return cls.from_dict(kwargs)
 
@@ -224,8 +227,8 @@ class PaddleOCRParser(RAGFlowPdfParser):
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
-        access_token: Optional[str] = None,
+        base_url: str | None = None,
+        access_token: str | None = None,
         algorithm: AlgorithmType = "PaddleOCR-VL",
         *,
         request_timeout: int = 600,
@@ -257,18 +260,18 @@ class PaddleOCRParser(RAGFlowPdfParser):
         self,
         filepath: str | PathLike[str],
         binary: BytesIO | bytes | None = None,
-        callback: Optional[Callable[[float, str], None]] = None,
+        callback: Callable[[float, str], None] | None = None,
         *,
         parse_method: str = "raw",
-        base_url: Optional[str] = None,
-        access_token: Optional[str] = None,
-        algorithm: Optional[AlgorithmType] = None,
-        request_timeout: Optional[int] = None,
-        prettify_markdown: Optional[bool] = None,
-        show_formula_number: Optional[bool] = None,
-        visualize: Optional[bool] = None,
-        additional_params: Optional[dict[str, Any]] = None,
-        algorithm_config: Optional[dict[str, Any]] = None,
+        base_url: str | None = None,
+        access_token: str | None = None,
+        algorithm: AlgorithmType | None = None,
+        request_timeout: int | None = None,
+        prettify_markdown: bool | None = None,
+        show_formula_number: bool | None = None,
+        visualize: bool | None = None,
+        additional_params: dict[str, Any] | None = None,
+        algorithm_config: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> ParseResult:
         """Parse PDF document using PaddleOCR API."""
@@ -327,17 +330,17 @@ class PaddleOCRParser(RAGFlowPdfParser):
         self,
         filepath: str | PathLike[str],
         binary: BytesIO | bytes | None = None,
-        callback: Optional[Callable[[float, str], None]] = None,
+        callback: Callable[[float, str], None] | None = None,
         *,
-        base_url: Optional[str] = None,
-        access_token: Optional[str] = None,
-        algorithm: Optional[AlgorithmType] = None,
-        request_timeout: Optional[int] = None,
-        prettify_markdown: Optional[bool] = None,
-        show_formula_number: Optional[bool] = None,
-        visualize: Optional[bool] = None,
-        additional_params: Optional[dict[str, Any]] = None,
-        algorithm_config: Optional[dict[str, Any]] = None,
+        base_url: str | None = None,
+        access_token: str | None = None,
+        algorithm: AlgorithmType | None = None,
+        request_timeout: int | None = None,
+        prettify_markdown: bool | None = None,
+        show_formula_number: bool | None = None,
+        visualize: bool | None = None,
+        additional_params: dict[str, Any] | None = None,
+        algorithm_config: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> str:
         """Parse image using PaddleOCR API. Returns extracted text."""
@@ -435,7 +438,7 @@ class PaddleOCRParser(RAGFlowPdfParser):
 
         return payload
 
-    def _send_request(self, data: bytes, config: PaddleOCRConfig, callback: Optional[Callable[[float, str], None]]) -> dict[str, Any]:
+    def _send_request(self, data: bytes, config: PaddleOCRConfig, callback: Callable[[float, str], None] | None) -> dict[str, Any]:
         """Send request to PaddleOCR async Job API (submit → poll → fetch)."""
         optional_payload = self._build_payload(data, self.file_type, config)
 

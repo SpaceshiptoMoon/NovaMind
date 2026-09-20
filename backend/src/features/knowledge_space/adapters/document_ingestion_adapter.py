@@ -3,7 +3,7 @@ DocumentIngestionPort 宿主适配器，桥接 pipeline.DocumentProcessor 提供
 """
 from __future__ import annotations
 
-from typing import Any, List
+from typing import Any
 
 from novamind.engines.document.pipeline import DocumentProcessor
 from novamind.shared.document.ports import DocumentIngestionPort
@@ -23,7 +23,7 @@ class HostDocumentIngestionPort:
         strategy: str = "recursive",
         chunk_size: int = 10000,
         chunk_overlap: int = 0,
-    ) -> List[dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         return await self._processor.load_with_strategy(
             file_path,
             strategy=strategy,

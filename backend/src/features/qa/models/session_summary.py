@@ -4,9 +4,8 @@
 存储压缩后的对话摘要，支持摘要历史追溯
 """
 
-from sqlalchemy import Column, BigInteger, Integer, String, Text, JSON, ForeignKey
-
 from novamind.core.database.base import BaseModel
+from sqlalchemy import JSON, BigInteger, Column, ForeignKey, Integer, String, Text
 
 
 class SessionSummary(BaseModel):

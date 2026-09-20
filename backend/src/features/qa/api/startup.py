@@ -3,22 +3,21 @@ QA模块启动配置
 """
 
 from fastapi import FastAPI
-
 from novamind.core.middleware.base_exception_handler import register_module_exceptions
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.qa.api.exception_handlers import llm_service_exception_handler
 from novamind.features.qa.exceptions import (
-    SessionNotFoundError,
-    MessageNotFoundError,
-    UnauthorizedAccessException,
-    InvalidMessageContentError,
-    SessionManagementError,
-    SessionConfigNotFoundError,
-    SessionConfigAlreadyExistsError,
     ChatAttachmentNotFoundError,
+    DatabaseOperationError,
+    InvalidMessageContentError,
+    MessageNotFoundError,
     QAError,
+    SessionConfigAlreadyExistsError,
+    SessionConfigNotFoundError,
+    SessionManagementError,
+    SessionNotFoundError,
+    UnauthorizedAccessException,
 )
-from novamind.features.qa.exceptions import DatabaseOperationError
 
 logger = get_logger(__name__)
 
