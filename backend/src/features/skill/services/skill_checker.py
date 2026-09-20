@@ -6,10 +6,10 @@ import json
 import re
 from dataclasses import dataclass, field
 
-from novamind.engines.ports import PromptProvider
 from novamind.features.skill.ports import ReviewStatus
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
+from novamind.shared.prompts.prompt_manager import PromptManager
 
 # 注入模式正则
 _INJECTION_PATTERNS = [
@@ -66,14 +66,14 @@ class SkillSecurityChecker:
         self,
         llm_client: BaseLLM | None = None,
         *,
-        prompt_provider: PromptProvider | None = None,
+        prompt_provider: PromptManager | None = None,
         logger: Logger | None = None,
     ):
         """
         Args:
             llm_client: 可选的 BaseLLM 实例，用于 LLM 内容审查。
                         不传入则只做规则检查（默认行为保持不变）。
-            prompt_provider: 可选的 PromptProvider，用于取 ``skill_security_review``
+            prompt_provider: 可选的 PromptManager，用于取 ``skill_security_review``
                         模板。未注入或 ``llm_client`` 缺失时 ``check_llm`` 返回 None。
             logger: 可选的 Logger，用于记录 LLM 审查超时/失败。未注入时静默跳过日志。
         """

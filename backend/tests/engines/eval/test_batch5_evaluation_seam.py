@@ -75,11 +75,10 @@ def test_evaluator_no_forbidden_imports(mod_name: str):
 
 def test_host_prompt_provider_satisfies_protocol():
     """PromptManager 实例提供 get/format（批次 2.3 直用）。"""
-    from novamind.engines.ports import PromptProvider
     from novamind.shared.prompts.prompt_manager import PromptManager
 
     provider = PromptManager()
-    assert isinstance(provider, PromptProvider)  # 结构化满足（duck-typed .get/.format）
+    assert callable(provider.get) and callable(provider.format)  # 消费面行为断言
     # format 实际委托 PromptManager.format_prompt；用一个真实存在的 eval prompt 键验证
     formatted = provider.format(
         "eval_claim_decompose", generated_answer="测试回答"

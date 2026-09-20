@@ -37,7 +37,6 @@ pytestmark = pytest.mark.unit
 _ENGINE_DR_MODULES = [
     "novamind.engines.deep_research.types",
     "novamind.engines.deep_research.sources",
-    "novamind.engines.deep_research.ports",
     "novamind.engines.deep_research.errors",
     "novamind.engines.deep_research.engine",
 ]
@@ -133,17 +132,10 @@ def test_search_source_lives_in_engine_types():
 
 
 def test_internal_search_port_protocol_location():
-    """InternalSearchPort 协议位于 engines/deep_research/ports.py，不依赖 feature。"""
-    from novamind.engines.deep_research import ports as dr_ports
+    """批次 3.7：InternalSearchPort 协议已删，适配器为普通宿主类。"""
+    import novamind.features.deep_research.adapters.internal_search_port_adapter as ada
 
-    imported = _imported_modules(dr_ports)
-    for imp in imported:
-        assert not imp.startswith("novamind.features"), (
-            f"deep_research/ports.py 不应依赖 feature: {imp}"
-        )
-    assert hasattr(dr_ports, "InternalSearchPort")
-
-
+    assert hasattr(ada, "HostInternalSearchPort")
 def test_engine_invalid_research_query_error_location():
     """EngineInvalidResearchQueryError 位于 engines/deep_research/errors.py。"""
     from novamind.engines.deep_research.errors import EngineInvalidResearchQueryError
@@ -415,24 +407,12 @@ def test_host_internal_search_port_adapter_location():
 
 
 def test_host_internal_search_port_satisfies_protocol():
-    """HostInternalSearchPort 结构化实现 InternalSearchPort 协议。"""
-    from novamind.engines.deep_research.ports import InternalSearchPort
+    """批次 3.7：HostInternalSearchPort 行为断言（search 方法存在）。"""
     from novamind.features.deep_research.adapters.internal_search_port_adapter import (
         HostInternalSearchPort,
     )
 
-    assert hasattr(HostInternalSearchPort, "search"), (
-        "HostInternalSearchPort 应实现 search 方法"
-    )
-    # runtime_checkable 协议检查方法名存在性
-    class _Fake:
-        async def search(self, query, *, top_k=10):
-            return []
-    assert isinstance(_Fake(), InternalSearchPort), (
-        "InternalSearchPort 应为 runtime_checkable 且 _Fake 满足"
-    )
-
-
+    assert hasattr(HostInternalSearchPort, "search")
 def test_host_web_search_port_has_close_and_provider_factory():
     """HostWebSearchPort.close() 存在；构造收敛后共享工厂提供 builder（批次 2.1）。"""
     from novamind.features.deep_research.adapters.web_search_port_adapter import (

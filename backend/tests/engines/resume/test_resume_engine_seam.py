@@ -166,12 +166,13 @@ def test_agent_web_search_adapter_reexports():
 
 
 def test_agent_core_ports_reexports_web_search_port():
-    """engines/agent/ports.py 重导出 WebSearchPort（批次3 代码 import 路径不变）。"""
+    """批次 3.7：agent/ports.py 降级纯数据类型，WebSearch* 从定义处（search_ports）取。"""
     from novamind.engines.agent import ports as agent_ports
     from novamind.engines.search_ports import WebSearchPort, WebSearchResult
 
-    assert agent_ports.WebSearchPort is WebSearchPort
-    assert agent_ports.WebSearchResult is WebSearchResult
+    # dataclass 仍从 agent.ports 拿；WebSearch* 已不再 re-export
+    assert not hasattr(agent_ports, "WebSearchPort")
+    assert WebSearchResult.__name__ == "WebSearchResult"
 
 
 def test_fallback_llm_provider_replaced_by_direct_mcs():

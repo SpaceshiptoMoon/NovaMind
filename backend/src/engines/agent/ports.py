@@ -1,20 +1,15 @@
 """
-Agent 引擎端口协议，定义 LongTermMemoryStorePort、ContextSummaryStorePort、MemorySearchPort、KnowledgeSearchPort、AttachmentReadPort 等端口。
+Agent 引擎数据类型（批次 3.7：5 个 Port Protocol 已删，仅保留 dataclass 纯数据载体）。
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Protocol, runtime_checkable
-
-from novamind.engines.search_ports import WebSearchPort, WebSearchResult
+from typing import Any
 
 # ==================== 联网搜索 ====================
 # WebSearchPort / WebSearchResult 已在中立 engines/search_ports.py，此处经顶部 re-export
 # 提供统一导入面。
-
-
-# ==================== 知识库检索 ====================
 
 
 @dataclass
@@ -66,60 +61,6 @@ class DocumentListResult:
     documents: list[DocumentInfo] = field(default_factory=list)
 
 
-@runtime_checkable
-class KnowledgeSearchPort(Protocol):
-    """知识库检索端口：供 knowledge_search 工具调用，切断对 knowledge_space/user
-    feature 的直接 import。权限校验由实现负责（与旧 _check_space_access 等价）。"""
-
-    async def can_access_space(self, space_id: int, user_id: int) -> bool:
-        """校验用户是否有权访问指定空间（存在/ACTIVE/成员/公开/管理员）。"""
-        ...
-
-    async def list_spaces(self, user_id: int) -> list[SpaceInfo]:
-        """列出用户可访问的知识空间。"""
-        ...
-
-    async def list_knowledge_bases(
-        self, space_id: int, user_id: int
-    ) -> list[KbInfo]:
-        """列出指定空间下的知识库（含权限校验）。"""
-        ...
-
-    async def list_all_knowledge_bases(self, user_id: int) -> list[KbInfo]:
-        """跨空间列出用户所有可访问的知识库（含 space_name）。"""
-        ...
-
-    async def search(
-        self,
-        space_id: int,
-        user_id: int,
-        query: str,
-        top_k: int = 5,
-        search_mode: str = "content_hybrid",
-        kb_id: int | None = None,
-        score_threshold: float | None = None,
-    ) -> list[KnowledgeSearchItem]:
-        """知识库检索；kb_id 为 None 时在该空间 Top N 知识库间跨库检索。
-
-        score_threshold 非空时下推到 SearchRequest 在检索服务层预过滤低分块。
-        """
-        ...
-
-    async def list_documents(
-        self,
-        space_id: int,
-        kb_id: int,
-        user_id: int,
-        page: int = 1,
-        page_size: int = 20,
-    ) -> DocumentListResult:
-        """列出知识库下的文档（含权限校验）。"""
-        ...
-
-
-# ==================== 会话附件读取 ====================
-
-
 @dataclass
 class AttachmentTextChunk:
     """附件已提取文本的分片（read_attachment 工具返回体）"""
@@ -131,25 +72,6 @@ class AttachmentTextChunk:
     offset: int
     content: str
     has_more: bool
-
-
-@runtime_checkable
-class AttachmentReadPort(Protocol):
-    """会话附件文本读取端口：供 read_attachment 工具调用，切断引擎对
-    features/qa 附件仓储的直接 import。归属校验由实现负责（user_id 维度）。"""
-
-    async def get_attachment_text(
-        self, attachment_id: int, user_id: int, offset: int = 0, limit: int = 8000
-    ) -> AttachmentTextChunk:
-        """按 offset/limit 分片读取附件的已提取文本。
-
-        Raises:
-            KeyError: 附件不存在或不属于该用户。
-        """
-        ...
-
-
-# ==================== 长期记忆持久化 ====================
 
 
 @dataclass
@@ -181,174 +103,13 @@ class LongTermMemoryEntry:
     updated_at: datetime | None = None
 
 
-@runtime_checkable
-class LongTermMemoryStorePort(Protocol):
-    """长期记忆 MySQL 持久化端口。
-
-    替代 ``MemoryRepository`` 直接 import 与 ``AgentMemory`` ORM 的裸 SQL 查询。
-    子串匹配的 replace/remove 由 ``find_by_content_contains`` 承接（对齐旧
-    ``select(AgentMemory).contains()``）。消费方为 LongTermMemory / memory 工具 /
-    MemoryManager（CRUD + 检索组，不涉及摘要）。
-    """
-
-    async def create(
-        self,
-        agent_id: int,
-        user_id: int,
-        category: str,
-        content: str,
-        source_conversation_id: int | None = None,
-        source_type: str = "consolidate",
-    ) -> LongTermMemoryEntry:
-        """创建一条长期记忆并 flush，返回归一化条目。"""
-        ...
-
-    async def find_similar(
-        self, agent_id: int, user_id: int, category: str, content: str
-    ) -> LongTermMemoryEntry | None:
-        """精确匹配查找（用于去重）。"""
-        ...
-
-    async def list_by_agent(
-        self,
-        agent_id: int,
-        user_id: int,
-        limit: int = 50,
-        offset: int = 0,
-        category: str | None = None,
-    ) -> tuple[list[LongTermMemoryEntry], int]:
-        """列出 Agent 的记忆，返回 (条目列表, 总数)。"""
-        ...
-
-    async def get_by_id(self, memory_id: int) -> LongTermMemoryEntry | None:
-        """按 ID 取单条记忆。"""
-        ...
-
-    async def increment_access_count(self, memory_id: int) -> None:
-        """递增访问计数。"""
-        ...
-
-    async def update_content(self, memory_id: int, content: str) -> None:
-        """更新记忆内容。"""
-        ...
-
-    async def delete(self, memory_id: int) -> bool:
-        """删除记忆，返回是否实际删除。"""
-        ...
-
-    async def search_by_keywords(
-        self,
-        agent_id: int,
-        user_id: int,
-        query: str,
-        top_k: int = 5,
-        categories: list[str] | None = None,
-    ) -> list[LongTermMemoryEntry]:
-        """MySQL LIKE 关键词检索（ES 不可用时的降级路径）。"""
-        ...
-
-    async def find_by_content_contains(
-        self, agent_id: int, user_id: int, old_content: str
-    ) -> LongTermMemoryEntry | None:
-        """子串匹配查找（replace/remove 工具操作定位条目）。"""
-        ...
-
-    async def flush(self) -> None:
-        """刷写当前事务（对齐旧 repo.session.flush()/db.flush()）。"""
-        ...
-
-
-@runtime_checkable
-class ContextSummaryStorePort(Protocol):
-    """上下文压缩摘要持久化端口。
-
-    替代 ``ContextSummaryRepository`` 直接 import。消费方为 ContextCompressor /
-    ShortTermMemory（仅 save_summary / get_latest_summary 两个方法，依赖面从
-    合并端口的 12 方法降到 2）。
-    """
-
-    async def save_summary(
-        self,
-        conversation_id: int,
-        summary_text: str,
-        compressed_count: int = 0,
-        compression_ratio: float = 1.0,
-        token_count: int = 0,
-    ) -> None:
-        """追加一条上下文压缩摘要。"""
-        ...
-
-    async def get_latest_summary(
-        self, conversation_id: int
-    ) -> ContextSummaryEntry | None:
-        """获取会话最新摘要；无则 None。返回 ContextSummaryEntry（含 summary_text/
-        created_at，供 ShortTermMemory/ContextCompressor 消费）。"""
-        ...
-
-
-# ==================== 长期记忆 ES 检索 ====================
-
-
-@runtime_checkable
-class MemorySearchPort(Protocol):
-    """长期记忆 ES 向量检索端口：替代 ``MemorySearchRepository`` 直接 import 与
-    ``shared.clients.ClientFactory``。embedding 向量由引擎侧经 EmbeddingProvider
-    生成后传入，端口本身不依赖 embedding 客户端。"""
-
-    async def ensure_index(self, agent_id: int) -> None:
-        """确保 Agent 记忆索引存在（幂等）。"""
-        ...
-
-    async def index_memory(
-        self,
-        agent_id: int,
-        memory_id: int,
-        user_id: int,
-        category: str,
-        content: str,
-        embedding: list[float],
-        source_type: str = "consolidate",
-        source_conversation_id: int | None = None,
-        created_at: datetime | None = None,
-    ) -> bool:
-        """索引单条记忆到 ES。
-
-        Returns:
-            True 表示索引因维度不匹配被重建（调用方应重索引全部记忆）。
-        """
-        ...
-
-    async def search(
-        self,
-        agent_id: int,
-        query_vector: list[float],
-        query_text: str,
-        top_k: int = 5,
-        user_id: int | None = None,
-        categories: list[str] | None = None,
-    ) -> list[dict[str, Any]]:
-        """Hybrid 检索（向量 + BM25，RRF 融合）；返回含 memory_id/score 的 dict 列表。"""
-        ...
-
-    async def delete_memory(self, agent_id: int, memory_id: int) -> bool:
-        """从 ES 删除单条记忆。"""
-        ...
-
-
 __all__ = [
-    "WebSearchResult",
-    "WebSearchPort",
     "SpaceInfo",
     "KbInfo",
     "KnowledgeSearchItem",
     "DocumentInfo",
     "DocumentListResult",
-    "KnowledgeSearchPort",
     "AttachmentTextChunk",
-    "AttachmentReadPort",
     "ContextSummaryEntry",
     "LongTermMemoryEntry",
-    "LongTermMemoryStorePort",
-    "ContextSummaryStorePort",
-    "MemorySearchPort",
 ]

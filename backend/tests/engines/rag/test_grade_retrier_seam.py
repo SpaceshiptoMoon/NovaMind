@@ -78,11 +78,10 @@ def test_grade_retrier_exports_from_engines_rag():
 
 def test_qa_host_prompt_provider_satisfies_protocol():
     """qa 装配点直用的 PromptManager 满足 PromptProvider 消费面。"""
-    from novamind.engines.ports import PromptProvider
     from novamind.shared.prompts.prompt_manager import PromptManager
 
     provider = PromptManager()
-    assert isinstance(provider, PromptProvider)  # 结构化满足（duck-typed .get/.format）
+    assert callable(provider.get) and callable(provider.format)  # 消费面行为断言
     # 用真实注册的 qa_grade_retrieval 模板键验证 format 委托 PromptManager
     formatted = provider.format(
         "qa_grade_retrieval", query="测试查询", results="测试结果"
