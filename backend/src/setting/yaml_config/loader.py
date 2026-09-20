@@ -8,7 +8,9 @@ import yaml
 
 from .config import (
     AdminConfig,
+    AgentConfig,
     AppConfig,
+    ASRConfig,
     DatabaseConfig,
     DeepResearchConfig,
     DeepResearchModeConfig,
@@ -27,6 +29,7 @@ from .config import (
     RedisConfig,
     RerankSettings,
     RetrievalConfig,
+    SandboxConfigYaml,
     SecurityConfig,
     SerpAPIConfig,
     SmtpConfig,
@@ -285,6 +288,37 @@ def create_config_from_dict(data: dict[str, Any]) -> AppConfig:
             max_results=duckduckgo.get("max_results", 10),
             timeout=duckduckgo.get("timeout", 15),
         ),
+    )
+
+    asr = data.get("asr", {})
+    config.asr = ASRConfig(
+        openai_api_key=asr.get("openai_api_key", ""),
+        openai_base_url=asr.get("openai_base_url", "https://api.openai.com/v1"),
+        dashscope_api_key=asr.get("dashscope_api_key", ""),
+        local_whisper_model_dir=asr.get("local_whisper_model_dir", ""),
+    )
+
+    agent = data.get("agent", {})
+    sandbox = agent.get("sandbox", {})
+    config.agent = AgentConfig(
+        sandbox=SandboxConfigYaml(
+            enabled=sandbox.get("enabled", False),
+            max_memory_mb=sandbox.get("max_memory_mb", 256),
+            max_output_bytes=sandbox.get("max_output_bytes", 65536),
+            default_timeout=sandbox.get("default_timeout", 30),
+            max_timeout=sandbox.get("max_timeout", 120),
+            network_disabled=sandbox.get("network_disabled", True),
+            rebuild_interval=sandbox.get("rebuild_interval", 50),
+            container_prefix=sandbox.get("container_prefix", "agent_sandbox"),
+            images=sandbox.get(
+                "images",
+                {
+                    "python": "python:3.12-slim",
+                    "javascript": "node:20-slim",
+                    "shell": "bash:5",
+                },
+            ),
+        )
     )
 
     dr = data.get("deep_research", {})

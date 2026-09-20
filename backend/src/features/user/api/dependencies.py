@@ -31,20 +31,13 @@ async def get_role_service(db: AsyncSession = Depends(get_db)) -> RoleService:
 
 
 async def get_model_config_service(db: AsyncSession = Depends(get_db)) -> ModelConfigService:
-    """获取模型配置服务（装配点：构造具体 ModelConfigService 并注入 KnowledgeSpaceInfoPort，
+    """获取模型配置服务（路由装配点，返回具体 ModelConfigService）。
 
-    以解开 user → knowledge_space.models 的反向依赖；对消费方以 ModelConfigService 端口暴露）。
-
-    adapter 采用函数内懒导入：顶部 import 会触发
-    ``user.api.dependencies → user.adapters.knowledge_space_info_adapter →
-    knowledge_space.models → knowledge_space.__init__ → knowledge_space.api →
-    user.api.dependencies`` 的循环导入，故下沉到调用点。
+    历史上此处注入 ``knowledge_space_info_adapter`` 构造的 KnowledgeSpaceInfoPort
+    以解反向依赖；该端口随批次 3.x/4.5 删除后 ModelConfigService 只收 ``db``
+    （空间绑定查询已改为 models 直查，见服务内注释）。
     """
-    # 装配点允许跨 feature import；懒导入规避循环依赖
-    from novamind.features.user.adapters.knowledge_space_info_adapter import (
-        as_knowledge_space_info_port,
-    )
-    return ModelConfigService(db, knowledge_space_info_port=as_knowledge_space_info_port(db))
+    return ModelConfigService(db)
 
 
 async def get_search_config_service(db: AsyncSession = Depends(get_db)) -> SearchConfigService:

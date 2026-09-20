@@ -225,6 +225,32 @@ class ASRConfig:
 
 
 @dataclass
+class SandboxConfigYaml:
+    """agent 代码执行沙箱参数（features/agent/sandbox/config.py SandboxConfig 的 YAML 段）。"""
+
+    enabled: bool = False
+    max_memory_mb: int = 256
+    max_output_bytes: int = 65536
+    default_timeout: int = 30
+    max_timeout: int = 120
+    network_disabled: bool = True
+    rebuild_interval: int = 50
+    container_prefix: str = "agent_sandbox"
+    images: dict[str, str] = field(default_factory=lambda: {
+        "python": "python:3.12-slim",
+        "javascript": "node:20-slim",
+        "shell": "bash:5",
+    })
+
+
+@dataclass
+class AgentConfig:
+    """agent feature 的 YAML 配置段。"""
+
+    sandbox: SandboxConfigYaml = field(default_factory=SandboxConfigYaml)
+
+
+@dataclass
 class DeepResearchModeConfig:
     depth: int = 3
     iterations: int = 5
@@ -291,6 +317,7 @@ class AppConfig:
     security: SecurityConfig = field(default_factory=SecurityConfig)
     external_search: ExternalSearchConfig = field(default_factory=ExternalSearchConfig)
     asr: ASRConfig = field(default_factory=ASRConfig)
+    agent: AgentConfig = field(default_factory=AgentConfig)
     deep_research: DeepResearchConfig = field(default_factory=DeepResearchConfig)
     task_queue: TaskQueueConfig = field(default_factory=TaskQueueConfig)
     smtp: SmtpConfig = field(default_factory=SmtpConfig)

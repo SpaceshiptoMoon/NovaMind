@@ -41,31 +41,26 @@ class SandboxConfig(BaseModel):
 
     @classmethod
     def from_yaml(cls) -> "SandboxConfig":
-        """从 YAML 配置加载沙箱配置"""
+        """从 YAML 配置（agent.sandbox 段）加载沙箱配置。
+
+        历史上此处误 import 不存在的 ``config_manager`` 模块且 AppConfig 无 agent 段，
+        异常被吞导致 YAML 配置从未生效；现已接线（setting/yaml_config loader）。
+        配置读取失败（缺 YAML 文件等）仍回退默认值。
+        """
         try:
-            from novamind.setting.yaml_config.config_manager import get_config
+            from novamind.setting.yaml_config import get_config
 
-            config = get_config()
-            agent_config = getattr(config, "agent", None)
-
-            if agent_config is None:
-                return cls()
-
-            # agent_config 可能是 dict 或对象
-            if isinstance(agent_config, dict):
-                sandbox_dict = agent_config.get("sandbox", {})
-            else:
-                sandbox_dict = getattr(agent_config, "sandbox", None)
-                if sandbox_dict is None:
-                    return cls()
-                if isinstance(sandbox_dict, dict):
-                    pass
-                else:
-                    # 尝试转为 dict
-                    sandbox_dict = (
-                        vars(sandbox_dict) if hasattr(sandbox_dict, "__dict__") else {}
-                    )
-
-            return cls(**sandbox_dict)
+            sandbox = get_config().agent.sandbox
+            return cls(
+                enabled=sandbox.enabled,
+                max_memory_mb=sandbox.max_memory_mb,
+                max_output_bytes=sandbox.max_output_bytes,
+                default_timeout=sandbox.default_timeout,
+                max_timeout=sandbox.max_timeout,
+                network_disabled=sandbox.network_disabled,
+                rebuild_interval=sandbox.rebuild_interval,
+                container_prefix=sandbox.container_prefix,
+                images=dict(sandbox.images),
+            )
         except Exception:
             return cls()

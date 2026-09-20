@@ -108,3 +108,27 @@ smtp:
 skill_marketplace:
   llm_review_enabled: false
   llm_review_model: null
+
+asr:
+  # 云端 ASR 凭据；值可写 ${OPENAI_API_KEY} 等 .env 占位符
+  openai_api_key: ""
+  openai_base_url: "https://api.openai.com/v1"
+  dashscope_api_key: ""
+  # 本地 faster-whisper 模型目录（云端凭据之外的兜底路径）
+  local_whisper_model_dir:
+
+agent:
+  sandbox:
+    # 代码执行沙箱（agent code_execution 工具）；enabled=false 时工具不注册
+    enabled: false
+    max_memory_mb: 256
+    max_output_bytes: 65536
+    default_timeout: 30
+    max_timeout: 120
+    network_disabled: true
+    rebuild_interval: 50
+    container_prefix: "agent_sandbox"
+    images:
+      python: "python:3.12-slim"
+      javascript: "node:20-slim"
+      shell: "bash:5"

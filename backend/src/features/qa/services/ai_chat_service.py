@@ -21,8 +21,8 @@ from novamind.shared.utils.text_utils.token_counter import TokenCounter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
+    from novamind.features.knowledge_space.services.search_service import SearchService
     from novamind.shared.document.ports import DocumentIngestionPort
-    from novamind.shared.retrieval_port import RetrievalPort
     from novamind.shared.storage.minio_client import MinioClient
 from novamind.engines.search_ports import WebSearchPort
 from novamind.features.qa.exceptions import (
@@ -84,7 +84,7 @@ class AIChatService:
         model_config_service: ModelConfigService | None = None,
         db: AsyncSession | None = None,
         minio_client: Optional["MinioClient"] = None,
-        retrieval_port: Optional["RetrievalPort"] = None,
+        retrieval_port: Optional["SearchService"] = None,
         document_ingestion_port: Optional["DocumentIngestionPort"] = None,
         search_config_port: SearchConfigService | None = None,
     ):
@@ -96,8 +96,8 @@ class AIChatService:
             model_config_service: 模型配置服务（用于获取用户配置的模型）
             db: 数据库会话（用于附件存储）
             minio_client: MinIO 客户端（用于文件存储）
-            retrieval_port: 检索端口（批次 2 接缝；装配点注入 HostRetrievalPort
-                包 SearchService）
+            retrieval_port: 检索服务（R4 去端口后直收 SearchService；
+                装配点 features/qa/api/dependencies.py 构造注入）
             document_ingestion_port: 文档摄入端口（R3 接缝；装配点注入
                 HostDocumentIngestionPort 包 DocumentProcessor）
             search_config_port: 搜索配置端口（批2 接缝；装配点注入
