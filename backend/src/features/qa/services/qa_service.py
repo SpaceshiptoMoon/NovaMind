@@ -21,8 +21,8 @@ from novamind.features.qa.repository.session_config_repository import SessionCon
 from novamind.features.qa.repository.session_summary_repository import SessionSummaryRepository
 from novamind.features.qa.schemas.qa import QARequest, QAResponse, QAUpdateRequest
 from novamind.features.qa.services.qa_cache_service import QACacheService
+from novamind.features.qa.services.session_compressor import TextCompressor
 from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.shared.utils.text_utils import TextCompressor
 from novamind.shared.utils.text_utils.token_counter import TokenCounter
 from sqlalchemy.exc import SQLAlchemyError
 

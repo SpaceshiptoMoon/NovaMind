@@ -1,8 +1,6 @@
-"""
-文本压缩器
+"""qa 会话压缩器（批次 5.1 从 shared/utils/text_utils 迁入 qa 域）。
 
-使用 LLM 将旧消息压缩为摘要，保留上下文关键信息。
-支持摘要、滑动窗口、保留最近、截断四种策略。
+会话压缩是 qa 业务能力（消费 qa 的 LLM 客户端与配置），不属于通用工具层。
 """
 from dataclasses import dataclass
 from enum import Enum
@@ -12,7 +10,7 @@ from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import get_logger
 from novamind.shared.prompts.templates import PromptManager
 
-from .token_counter import TokenCounter
+from novamind.shared.utils.text_utils.token_counter import TokenCounter
 
 
 class CompressionStrategy(str, Enum):
