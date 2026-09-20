@@ -31,7 +31,7 @@ tests/
 
 ## 新测试放哪里（决策树）
 
-1. **全局结构门禁 / 契约 / 跨层接缝**（AST 扫描、openapi 快照、"X 层不得 import Y"）→ `architecture/`
+1. **全局结构门禁 / 契约 / 跨层接缝**（AST 扫描、openapi 快照；现行门禁：import 无环 test_import_acyclic_gate、禁跨模块私有 import test_no_cross_module_private_imports、禁直抛 HTTPException test_no_direct_httpexception——原单向依赖门禁已随 ragflow 风格迁移删除）→ `architecture/`
 2. **需运行中的 :8100 服务**（TestClient 打真实 HTTP、跨服务端到端）→ `integration/`，并标 `pytest.mark.integration`
 3. 被测模块在 `src/core/...` → `core/`
 4. 被测模块在 `src/shared/...` → `shared/`
