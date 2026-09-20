@@ -86,7 +86,7 @@ def test_check_delete_impact_uses_injected_port():
 
     from novamind.features.user.services.model_config_service import ModelConfigService
 
-    src = inspect.getsource(ModelConfigService.check_delete_impact)
+    src = inspect.getsource(ModelConfigService._check_delete_impact)
     assert "find_spaces_using_embedding" in src
 def test_model_config_service_ctor_accepts_ks_info_port():
     """批次 4.5：构造器不再接收 ks 信息端口（改为方法内直查）。"""
