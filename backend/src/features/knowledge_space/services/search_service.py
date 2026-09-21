@@ -91,9 +91,11 @@ class SearchService:
     def retrieval_engine(self) -> RetrievalEngine:
         """延迟获取检索引擎（构造函数中不强制要求）"""
         if self._retrieval_engine is None:
-            from novamind.features.knowledge_space.adapters.cache_adapter import HostCachePort
+            # 同步 property 不能 await：注入惰性缓存包装（首个缓存操作时才解析
+            # Redis 单例，Redis 不可用降级 no-op——原 HostCachePort 语义平移）
+            from novamind.features.knowledge_space.services.lazy_cache import LazyRedisCache
             self._retrieval_engine = RetrievalEngine(
-                self.es_client, self.logger, cache_port=HostCachePort()
+                self.es_client, self.logger, cache_port=LazyRedisCache()
             )
         return self._retrieval_engine
 

@@ -7,7 +7,6 @@
     - 零 ``novamind.shared.cache.redis_client`` import；
     - 零自身 feature ``novamind.features.knowledge_space.api.exceptions`` import；
     - 中立 ``rag_errors`` 异常树与宿主 ``KnowledgeSpaceError`` 树隔离（不继承 BaseAPIError）；
-    - ``HostCachePort`` 结构化满足 ``CachePort`` 协议。
   6a-3 RetrievalPort 去 schema 绑定：
     - 零 ``novamind.features.knowledge_space.schemas`` import；``search`` 入参去类型化为 ``Any``。
   6a-4 skill_checker 枚举下沉：
@@ -129,7 +128,7 @@ def test_6a1_engine_candidates_have_no_structured_logging_import():
 # ---------- 6a-2：RetrievalEngine 去 cache.redis_client + api.exceptions ----------
 
 def test_6a2_engine_candidates_have_no_shared_cache_redis_client_import():
-    """6a-2：引擎候选不得 import ``shared.cache.redis_client``（改走 CachePort 注入）。"""
+    """6a-2：引擎候选不得 import ``shared.cache.redis_client``（缓存经构造器注入）。"""
     offenders = [
         f"{p.relative_to(SRC)}: {mod}"
         for p in CANDIDATES
@@ -171,14 +170,6 @@ def test_6a2_rag_errors_are_neutral_and_isolated_from_host_tree():
     # 宿主异常码契约保留：宿主 EmbeddingError/SearchError 仍带 code
     assert HostEmbeddingError("x").code == "EMBEDDING_ERROR"
     assert HostSearchError("x").code == "SEARCH_ERROR"
-
-
-def test_6a2_host_cache_port_satisfies_cache_port_protocol():
-    """6a-2：HostCachePort 结构化满足中立 CachePort 协议（runtime_checkable）。"""
-    from novamind.engines.rag.cache_port import CachePort
-    from novamind.features.knowledge_space.adapters.cache_adapter import HostCachePort
-
-    assert isinstance(HostCachePort(), CachePort)
 
 
 def test_6a2_retrieval_engine_ctor_accepts_cache_port():

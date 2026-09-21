@@ -6,7 +6,6 @@ import hashlib
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from novamind.engines.rag.cache_port import CachePort
 from novamind.engines.rag.errors import EmbeddingError, RagError, SearchError
 from novamind.shared.ai_models.embedding import BaseEmbedding
 from novamind.shared.ai_models.rerank import BaseRerank
@@ -122,18 +121,18 @@ class RetrievalEngine:
         self,
         es_client: Any,
         logger: Any | None = None,
-        cache_port: CachePort | None = None,
+        cache_port: Any | None = None,
     ) -> None:
         self.es_client = es_client
         self.logger = logger or get_logger(__name__)
-        # 中立缓存端口：宿主装配点注入 HostCachePort（包 shared.cache.redis_client）。
+        # 检索缓存：装配点注入 RedisCache（R4 直收具体类，None 降级）。
         # 未注入（None）时缓存读写一律 no-op 降级。_cache 惰性解析为 cache_port 实例，
         # 保留旧接缝测试可直接注入 _cache 的能力。
         self._cache_port = cache_port
         self._cache = None
 
-    async def _get_cache(self) -> CachePort | None:
-        """惰性解析缓存端口实例。
+    async def _get_cache(self) -> Any | None:
+        """惰性解析缓存实例。
 
         优先返回直接注入的 ``_cache``（接缝测试路径）；否则绑定构造器传入的
         ``cache_port``；两者皆空返回 ``None``（无缓存，调用方负责 no-op 降级）。

@@ -12,7 +12,6 @@ from novamind.core.auth import get_current_user, get_current_user_optional
 from novamind.core.database.database import get_db
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.engines.rag import RetrievalEngine
-from novamind.features.knowledge_space.adapters.cache_adapter import HostCachePort
 from novamind.features.knowledge_space.exceptions import (
     KnowledgeBaseArchivedError,
     KnowledgeBaseNotFoundError,
@@ -141,15 +140,28 @@ async def get_knowledge_base_service(db: AsyncSession = Depends(get_db)) -> Know
     )
 
 
+async def get_redis_cache():
+    """获取检索缓存 RedisCache 实例（原 HostCachePort 惰性语义平移）。
+
+    Redis 未装配/初始化失败时返回 None——引擎侧缓存读写 no-op 降级。
+    """
+    from novamind.shared.storage.client_factory import get_redis_client
+
+    try:
+        return await get_redis_client()
+    except Exception:
+        return None
+
+
 async def get_search_service(db: AsyncSession = Depends(get_db)) -> SearchService:
     """获取检索服务（单例客户端，注入模型配置服务与检索引擎）"""
     es_client = await get_elasticsearch_client()
     model_config_service = ModelConfigService(db)
-    # 装配点构造 RetrievalEngine + HostCachePort 注入（端口在装配点构造，不散落服务内）
+    # 装配点构造 RetrievalEngine + RedisCache 注入（惰性单例，未装配时 None 降级）
     retrieval_engine = RetrievalEngine(
         es_client,
         get_logger("novamind.features.knowledge_space.services.search_service"),
-        cache_port=HostCachePort(),
+        cache_port=await get_redis_cache(),
     )
     return SearchService(
         session=db,
