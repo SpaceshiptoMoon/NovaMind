@@ -84,7 +84,7 @@ class ContextSummaryEntry:
 
 @dataclass
 class LongTermMemoryEntry:
-    """长期记忆条目（纯 dataclass，非 ORM；同时被 LongTermMemoryStorePort 与引擎
+    """长期记忆条目（纯 dataclass，非 ORM；同时被宿主记忆仓储实现与引擎
     ILongTermMemory 引用，故放本中立模块）。"""
 
     id: int
