@@ -1,5 +1,7 @@
 """角色管理服务"""
 
+from typing import TYPE_CHECKING
+
 from novamind.features.user.exceptions import (
     PermissionDeniedError,
     RoleNotFoundError,
@@ -11,11 +13,16 @@ from novamind.features.user.models.user import User
 from novamind.features.user.repository.role_repository import RoleRepository
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from novamind.features.user.services.permission_service import (
+        RbacPermissionService as PermissionService,
+    )
 from sqlalchemy.orm import selectinload
 
 
 class RoleService:
-    def __init__(self, db: AsyncSession, permission_checker: "RbacPermissionService | None"):
+    def __init__(self, db: AsyncSession, permission_checker: "PermissionService | None"):
         self.db = db
         self.repo = RoleRepository(db)
         self.checker = permission_checker

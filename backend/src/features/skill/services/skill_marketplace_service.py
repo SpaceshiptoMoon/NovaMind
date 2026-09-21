@@ -1,7 +1,7 @@
 """
 技能广场服务 — 上传、发布、安装、评价、搜索。
 
-对 Agent 的访问经 HostAgentRegistryPort 端口，与 agent repository 解耦。
+对 Agent 的访问经注入的 AgentService 公共面（get_agent_summary/update_agent_enabled_tools）。
 """
 import asyncio
 import io
@@ -10,7 +10,7 @@ import zipfile
 from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.agent.adapters.agent_registry_adapter import HostAgentRegistryPort
+from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.skill.exceptions import (
     InvalidSkillFormatError,
     SkillAccessDeniedError,
@@ -57,7 +57,7 @@ class SkillMarketplaceService:
         minio_client=None,
         security_checker: SkillSecurityChecker | None = None,
         model_config_service: ModelConfigService | None = None,
-        agent_registry_port: HostAgentRegistryPort | None = None,
+        agent_service: AgentService | None = None,
     ):
         self.db = db
         self.minio = minio_client
@@ -67,7 +67,7 @@ class SkillMarketplaceService:
         self.version_repo = SkillVersionRepository(db)
         self.review_repo = SkillReviewRepository(db)
         self.install_repo = SkillInstallationRepository(db)
-        self._agent_registry_port = agent_registry_port
+        self._agent_service = agent_service
 
     async def cleanup(self):
         pass
@@ -263,8 +263,7 @@ class SkillMarketplaceService:
     ) -> SkillInstallation:
         """安装技能到 Agent
 
-        Agent 归属校验与 enabled_tools 更新经注入的 ``HostAgentRegistryPort`` 完成
-        （批次 3.6 改注解宿主类），不再接收/直接构造 ``AgentRepository``。
+        Agent 归属校验与 enabled_tools 更新经注入的 ``AgentService`` 完成。
         """
         skill = await self.skill_repo.get_by_id(skill_id)
         if not skill:
@@ -274,8 +273,8 @@ class SkillMarketplaceService:
 
         # 校验 Agent 归属：user_id=None 为系统级预置 Agent，仅管理员可安装
         # （与 uninstall_skill 的管理口径一致），普通用户不得篡改其 enabled_tools
-        if self._agent_registry_port is not None:
-            agent = await self._agent_registry_port.get_agent(agent_id)
+        if self._agent_service is not None:
+            agent = await self._agent_service.get_agent_summary(agent_id)
             if not agent:
                 raise SkillTargetAgentNotFoundError(agent_id)
             if agent.user_id is None:
@@ -300,8 +299,8 @@ class SkillMarketplaceService:
         await self.skill_repo.increment_install_count(skill_id)
 
         # 更新 Agent 的 enabled_tools（如果有 agent_registry_port）
-        if self._agent_registry_port is not None:
-            agent = await self._agent_registry_port.get_agent(agent_id)
+        if self._agent_service is not None:
+            agent = await self._agent_service.get_agent_summary(agent_id)
             if agent:
                 enabled = list(agent.enabled_tools or [])
                 skill_ref = f"skill__{skill.id}_{skill.name}"
@@ -312,7 +311,7 @@ class SkillMarketplaceService:
                     for tool_name in skill.allowed_tools:
                         if tool_name not in enabled:
                             enabled.append(tool_name)
-                await self._agent_registry_port.update_enabled_tools(agent_id, enabled)
+                await self._agent_service.update_agent_enabled_tools(agent_id, enabled)
 
         await self.db.commit()
         return installation
@@ -323,13 +322,13 @@ class SkillMarketplaceService:
     ) -> bool:
         """从 Agent 卸载技能
 
-        Agent 归属校验与 enabled_tools 更新经注入的 ``HostAgentRegistryPort`` 完成。
+        Agent 归属校验与 enabled_tools 更新经注入的 ``AgentService`` 完成。
         """
         # 校验 Agent 归属，防止越权卸载/篡改他人 Agent（含系统级预置 Agent）
-        if self._agent_registry_port is None:
-            # 无 port 无法校验归属，保守拒绝（正常 HTTP 入口总会注入 agent_registry_port）
+        if self._agent_service is None:
+            # 无 agent_service 无法校验归属，保守拒绝（正常 HTTP 入口总会注入）
             raise SkillNotInstalledError(skill_id, agent_id)
-        agent = await self._agent_registry_port.get_agent(agent_id)
+        agent = await self._agent_service.get_agent_summary(agent_id)
         if not agent:
             raise SkillNotInstalledError(skill_id, agent_id)
         if agent.user_id is None:
@@ -348,7 +347,7 @@ class SkillMarketplaceService:
             await self.skill_repo.decrement_install_count(skill_id)
 
             # 更新 Agent 的 enabled_tools
-            agent = await self._agent_registry_port.get_agent(agent_id)
+            agent = await self._agent_service.get_agent_summary(agent_id)
             if agent:
                 skill = await self.skill_repo.get_by_id(skill_id)
                 enabled = list(agent.enabled_tools or [])
@@ -366,7 +365,7 @@ class SkillMarketplaceService:
                                     other_tool_refs.add(tool)
                     # 仅移除不属于其他已安装技能的工具
                     enabled = [s for s in enabled if s in other_tool_refs or s not in skill.allowed_tools]
-                await self._agent_registry_port.update_enabled_tools(agent_id, enabled)
+                await self._agent_service.update_agent_enabled_tools(agent_id, enabled)
 
         await self.db.commit()
         return deleted
@@ -520,10 +519,10 @@ class SkillMarketplaceService:
         }
 
     async def list_installed(self, agent_id: int, user_id: int) -> list[SkillInstallation]:
-        if self._agent_registry_port is None:
+        if self._agent_service is None:
             # 无 port 无法校验归属，保守返回空（正常 HTTP 入口总会注入 agent_registry_port）
             return []
-        agent = await self._agent_registry_port.get_agent(agent_id)
+        agent = await self._agent_service.get_agent_summary(agent_id)
         # 仅自己的 Agent 或系统级预置 Agent 可查；他人私有 Agent 返回空（不泄露存在性）
         if not agent or (agent.user_id is not None and agent.user_id != user_id):
             return []

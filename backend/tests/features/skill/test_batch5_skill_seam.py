@@ -11,8 +11,7 @@
     经端口访问 Agent，不再接收 ``agent_repository`` 参数。
   - ``skill_marketplace_service`` 模块级不再 import ``agent.repository.agent_repository`` 或
     ``agent.api.exceptions``（skill -> agent 服务层导入边已断）。
-  - 宿主适配器 ``HostAgentRegistryPort``（``features/agent/adapters/agent_registry_adapter.py``）
-    是 skill 消费的具体类。
+  - skill 消费走 ``AgentService`` 公共面（get_agent_summary/update_agent_enabled_tools）。
   - 前端契约保留：``SkillTargetAgentNotFoundError`` code=``AGENT_NOT_FOUND``，且在 skill
     异常处理器 ``status_map`` 中映射 404（否则落入 SkillError:500）。
 """
@@ -123,15 +122,15 @@ def test_skill_parser_extract_zip_logger_param():
     assert params["logger"].default is None
 
 
-def test_skill_marketplace_service_uses_agent_registry_port():
-    """SkillMarketplaceService 构造器接收 agent_registry_port，install/uninstall 不再接收 agent_repository。"""
+def test_skill_marketplace_service_uses_agent_service():
+    """SkillMarketplaceService 构造器接收 agent_service，install/uninstall 不再接收 agent_repository。"""
     from novamind.features.skill.services.skill_marketplace_service import SkillMarketplaceService
 
     ctor_params = inspect.signature(SkillMarketplaceService.__init__).parameters
-    assert "agent_registry_port" in ctor_params, "构造器应接收 agent_registry_port"
+    assert "agent_service" in ctor_params, "构造器应接收 agent_service"
 
     install_params = inspect.signature(SkillMarketplaceService.install_skill).parameters
-    assert "agent_registry_port" not in install_params
+    assert "agent_service" not in install_params
     assert "agent_repository" not in install_params, "install_skill 不应再接收 agent_repository"
 
     uninstall_params = inspect.signature(SkillMarketplaceService.uninstall_skill).parameters
@@ -153,22 +152,14 @@ def test_skill_marketplace_service_no_agent_imports():
         )
 
 
-def test_agent_summary_migrated_and_registry_host_class():
-    """批次 3.6：AgentRegistryPort 已删；AgentSummary 归 agent/schemas，宿主类直用。"""
-    from novamind.features.agent.adapters.agent_registry_adapter import HostAgentRegistryPort
+def test_agent_summary_migrated_and_public_face_on_agent_service():
+    """AgentSummary 归 agent/schemas；skill 消费走 AgentService 公共面。"""
     from novamind.features.agent.schemas.agent_schema import AgentSummary
+    from novamind.features.agent.services.agent_service import AgentService
 
     assert AgentSummary.__name__ == "AgentSummary"
-
-    class _FakeRepo:
-        async def get_by_id(self, agent_id):
-            return None
-
-        async def update(self, agent_id, **kwargs):
-            return None
-
-    port = HostAgentRegistryPort(_FakeRepo())
-    assert port is not None
+    assert hasattr(AgentService, "get_agent_summary")
+    assert hasattr(AgentService, "update_agent_enabled_tools")
 
 
 def test_skill_target_agent_not_found_preserves_contract():

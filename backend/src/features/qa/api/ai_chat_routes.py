@@ -41,8 +41,8 @@ from novamind.features.qa.schemas.ai_chat import (
 )
 from novamind.features.qa.services.ai_chat_service import AIChatService
 from novamind.features.qa.services.qa_service import QAService
-from novamind.features.user.services.user_service import UserService
 from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.features.user.services.user_service import UserService
 from novamind.shared.storage.attachment_presign import enrich_attachments_with_presigned_urls
 
 router = APIRouter()

@@ -32,6 +32,7 @@ from novamind.features.agent.schemas.agent_schema import (
     AgentMessageResponse,
     AgentResponse,
     AgentSessionListResponse,
+    AgentSummary,
     AgentUpdate,
     MemoryListResponse,
     MemoryResponse,
@@ -94,6 +95,23 @@ class AgentService:
         if not agent or (agent.user_id is not None and agent.user_id != user_id):
             raise AgentNotFoundError(agent_id)
         return agent
+
+    # ==================== 跨 feature 公共面（skill 消费，原 HostAgentRegistryPort 语义） ====================
+
+    async def get_agent_summary(self, agent_id: int) -> AgentSummary | None:
+        """按 id 取 Agent 摘要（不含归属校验，供技能广场安装/卸载侧查询）。"""
+        agent = await self.agent_repo.get_by_id(agent_id)
+        if agent is None:
+            return None
+        return AgentSummary(
+            id=agent.id,
+            user_id=agent.user_id,
+            enabled_tools=list(agent.enabled_tools or []),
+        )
+
+    async def update_agent_enabled_tools(self, agent_id: int, enabled_tools: list) -> None:
+        """更新 Agent 启用工具集（供技能广场安装/卸载后写回）。"""
+        await self.agent_repo.update(agent_id, enabled_tools=enabled_tools)
 
     async def list_agents(
         self, user_id: int, limit: int = 20, offset: int = 0

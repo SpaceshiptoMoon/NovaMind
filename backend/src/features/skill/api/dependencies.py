@@ -7,7 +7,7 @@ import pathlib
 from fastapi import Depends
 from novamind.core.database.database import get_db
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.agent.adapters.agent_registry_adapter import as_agent_registry_port
+from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.knowledge_space.api.dependencies import get_current_user_id
 from novamind.features.skill.services.skill_checker import SkillSecurityChecker
 from novamind.features.skill.services.skill_marketplace_service import SkillMarketplaceService
@@ -113,15 +113,14 @@ async def get_skill_service(
         logger=get_logger("skill.security_checker").bind(),
     )
 
-    # AgentRegistryPort：宿主装配点注入，解 skill -> agent 服务层导入边
-    agent_registry_port = as_agent_registry_port(db)
+    agent_service = AgentService(db)
 
     service = SkillMarketplaceService(
         db=db,
         minio_client=minio,
         security_checker=checker,
         model_config_service=model_config_service,
-        agent_registry_port=agent_registry_port,
+        agent_service=agent_service,
     )
     yield service
     await service.cleanup()

@@ -44,17 +44,17 @@ def _make_skill(**overrides) -> SimpleNamespace:
     return SimpleNamespace(**base)
 
 
-class _FakeAgentRegistryPort:
-    """按 agent_id 返回预置 Agent 摘要，记录 enabled_tools 更新"""
+class _FakeAgentService:
+    """按 agent_id 返回预置 Agent 摘要，记录 enabled_tools 更新（AgentService 公共面形状）"""
 
     def __init__(self, agents: dict):
         self._agents = agents
         self.updated_tools: dict = {}
 
-    async def get_agent(self, agent_id: int):
+    async def get_agent_summary(self, agent_id: int):
         return self._agents.get(agent_id)
 
-    async def update_enabled_tools(self, agent_id: int, tools: list) -> None:
+    async def update_agent_enabled_tools(self, agent_id: int, tools: list) -> None:
         self.updated_tools[agent_id] = tools
 
 
@@ -99,7 +99,7 @@ def _make_service(skill, port) -> SkillMarketplaceService:
     svc.review_repo = None
     svc.install_repo = _FakeInstallRepo()
     svc.db = _FakeDB()
-    svc._agent_registry_port = port
+    svc._agent_service = port
     svc.checker = None
     svc.minio = None
     svc.model_config_service = None
@@ -122,7 +122,7 @@ async def _fake_upload(skill_id, version, extracted):
 async def test_update_published_skill_resets_visibility_to_private():
     """已发布技能更新版本：status→DRAFT 且 visibility→PRIVATE（否则审查期内容可被公众下载）"""
     skill = _make_skill(status=SkillStatus.PUBLISHED, visibility=SkillVisibility.PUBLIC)
-    svc = _make_service(skill, _FakeAgentRegistryPort({}))
+    svc = _make_service(skill, _FakeAgentService({}))
 
     async def _vr_create(**kwargs):
         return None
@@ -143,7 +143,7 @@ async def test_update_published_skill_resets_visibility_to_private():
 async def test_update_draft_skill_keeps_visibility():
     """草稿技能更新版本：不触碰 status/visibility"""
     skill = _make_skill(status=SkillStatus.DRAFT, visibility=SkillVisibility.PRIVATE)
-    svc = _make_service(skill, _FakeAgentRegistryPort({}))
+    svc = _make_service(skill, _FakeAgentService({}))
 
     async def _vr_create(**kwargs):
         return None
@@ -164,7 +164,7 @@ async def test_update_draft_skill_keeps_visibility():
 async def test_install_to_system_agent_requires_admin():
     """普通用户向系统级 Agent（user_id=None）安装技能被拒"""
     skill = _make_skill()
-    port = _FakeAgentRegistryPort({7: SimpleNamespace(id=7, user_id=None, enabled_tools=[])})
+    port = _FakeAgentService({7: SimpleNamespace(id=7, user_id=None, enabled_tools=[])})
     svc = _make_service(skill, port)
 
     with pytest.raises(SkillAccessDeniedError):
@@ -177,7 +177,7 @@ async def test_install_to_system_agent_requires_admin():
 async def test_install_to_system_agent_admin_allowed():
     """管理员可向系统级 Agent 安装技能，enabled_tools 正确追加 skill ref"""
     skill = _make_skill()
-    port = _FakeAgentRegistryPort({7: SimpleNamespace(id=7, user_id=None, enabled_tools=[])})
+    port = _FakeAgentService({7: SimpleNamespace(id=7, user_id=None, enabled_tools=[])})
     svc = _make_service(skill, port)
 
     await svc.install_skill(user_id=1, skill_id=1, agent_id=7, is_admin=True)
@@ -189,7 +189,7 @@ async def test_install_to_system_agent_admin_allowed():
 async def test_install_to_other_users_agent_denied():
     """他人私有 Agent 安装被拒（回归原有语义）"""
     skill = _make_skill()
-    port = _FakeAgentRegistryPort({8: SimpleNamespace(id=8, user_id=200, enabled_tools=[])})
+    port = _FakeAgentService({8: SimpleNamespace(id=8, user_id=200, enabled_tools=[])})
     svc = _make_service(skill, port)
 
     with pytest.raises(SkillAccessDeniedError):
@@ -201,7 +201,7 @@ async def test_install_to_other_users_agent_denied():
 async def test_install_to_own_agent_appends_skill_ref():
     """自有 Agent 安装成功，enabled_tools 追加 skill ref（回归原有语义）"""
     skill = _make_skill()
-    port = _FakeAgentRegistryPort({9: SimpleNamespace(id=9, user_id=100, enabled_tools=[])})
+    port = _FakeAgentService({9: SimpleNamespace(id=9, user_id=100, enabled_tools=[])})
     svc = _make_service(skill, port)
 
     await svc.install_skill(user_id=100, skill_id=1, agent_id=9, is_admin=False)
@@ -213,7 +213,7 @@ async def test_install_to_own_agent_appends_skill_ref():
 async def test_reject_persists_admin_reason_without_review_result():
     """review_result 为 None 时管理员拒绝原因不丢失（原实现静默丢弃）"""
     skill = _make_skill(review_status=ReviewStatus.SUSPICIOUS, review_result=None)
-    svc = _make_service(skill, _FakeAgentRegistryPort({}))
+    svc = _make_service(skill, _FakeAgentService({}))
 
     await svc.reject_skill(skill_id=1, reason="包含可疑注入模式")
 
@@ -230,7 +230,7 @@ async def test_reject_merges_admin_reason_into_existing_result():
         review_status=ReviewStatus.SUSPICIOUS,
         review_result={"rules": {"passed": True, "matches": []}, "llm": {"level": "suspicious", "reason": "r"}},
     )
-    svc = _make_service(skill, _FakeAgentRegistryPort({}))
+    svc = _make_service(skill, _FakeAgentService({}))
 
     await svc.reject_skill(skill_id=1, reason="人工确认")
 
@@ -287,7 +287,7 @@ async def test_background_review_failure_marks_suspicious(monkeypatch):
         "novamind.core.database.database.get_session_factory", lambda: _SessionFactory(),
     )
 
-    svc = _make_service(_make_skill(), _FakeAgentRegistryPort({}))
+    svc = _make_service(_make_skill(), _FakeAgentService({}))
     svc.checker = _ExplodingChecker()
 
     svc._start_background_review(1, "body", "frontmatter")

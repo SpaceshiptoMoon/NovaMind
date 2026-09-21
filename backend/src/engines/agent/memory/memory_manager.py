@@ -7,8 +7,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    # 批次 3.6：宿主类仅注解用（防 adapters/__init__ ↔ memory 包 import 环）
-    from novamind.features.agent.adapters.memory_store_adapter import (
+    # 宿主类仅注解用（TYPE_CHECKING 防 import 环）
+    from novamind.features.agent.services.host_memory_store import (
         HostMemorySearchPort,
         HostMemoryStorePort,
     )

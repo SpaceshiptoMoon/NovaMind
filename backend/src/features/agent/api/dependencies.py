@@ -10,15 +10,16 @@ from novamind.engines.agent.agent_engine import AgentEngine
 from novamind.engines.agent.mcp.client import McpClientManager
 from novamind.engines.agent.memory.todo_store import TodoStore
 from novamind.engines.agent.tool.registry import ToolRegistry
-from novamind.features.agent.adapters import (
-    HostAttachmentReadPort,
-    HostKnowledgeSearchPort,
-    HostMemorySearchPort,
-    HostMemoryStorePort,
-)
 from novamind.features.agent.repository.memory_search_repository import MemorySearchRepository
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.agent.services.chat_service import AgentChatService
+from novamind.features.agent.services.host_knowledge_search import (
+    HostKnowledgeSearchPort,
+)
+from novamind.features.agent.services.host_memory_store import (
+    HostMemorySearchPort,
+    HostMemoryStorePort,
+)
 from novamind.features.agent.services.mcp_server_service import McpServerService
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.prompts.prompt_manager import PromptManager
@@ -118,7 +119,8 @@ async def build_agent_chat_service(
         HostMemorySearchPort(repo=memory_search_repo) if memory_search_repo else None
     )
     knowledge_search_port = HostKnowledgeSearchPort(db, model_config_service)
-    attachment_read_port = HostAttachmentReadPort(db)
+    from novamind.features.qa.services.attachment_text_reader import AttachmentTextReader
+    attachment_read_port = AttachmentTextReader(db)
     prompt_provider = PromptManager()
 
     # web_search_port：按数据库用户默认搜索引擎（is_primary）构造，首选失败回退 YAML 兜底

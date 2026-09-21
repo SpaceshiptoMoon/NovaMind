@@ -1,28 +1,22 @@
-"""
-会话附件读取端口宿主适配器。
+"""会话附件文本分片读取（原 agent HostAttachmentReadPort 语义归位 qa）。
 
-实现引擎侧 HostAttachmentReadPort 协议（engines/agent/context_types.py），内部延迟
-import features/qa 的 ChatAttachmentRepository——features 层引用合法，
-引擎层经端口消费，满足单向依赖铁律（engines → 端口，不 import features）。
+归属校验 + offset/limit 分片，供 agent 引擎 read_attachment 工具消费
+（跨 feature 走 qa 公共面，R2）。
 """
-from typing import Any
+from __future__ import annotations
 
 from novamind.engines.agent.context_types import AttachmentTextChunk
-from novamind.shared.logging import get_logger
-
-logger = get_logger(__name__)
 
 
-class HostAttachmentReadPort:
-    """HostAttachmentReadPort 宿主实现：按 offset/limit 分片读附件提取文本"""
+class AttachmentTextReader:
+    """按 offset/limit 分片读附件提取文本（只允许读本人附件）。"""
 
-    def __init__(self, db: Any):
+    def __init__(self, db):
         self._db = db
 
     async def get_attachment_text(
         self, attachment_id: int, user_id: int, offset: int = 0, limit: int = 8000
     ) -> AttachmentTextChunk:
-        # 延迟 import：避免模块加载期建立 features/qa 依赖
         from novamind.features.qa.repository.chat_attachment_repository import (
             ChatAttachmentRepository,
         )

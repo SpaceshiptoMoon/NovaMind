@@ -20,11 +20,6 @@ from novamind.engines.agent.memory.memory_manager import MemoryManager
 from novamind.engines.agent.prompt_builder import SystemPromptBuilder
 from novamind.engines.agent.tool.base import ToolContext
 from novamind.engines.search_ports import WebSearchPort
-from novamind.features.agent.adapters import (
-    HostKnowledgeSearchPort,
-    HostMemorySearchPort,
-    HostMemoryStorePort,
-)
 from novamind.features.agent.exceptions import AgentError, AgentNotFoundError
 from novamind.features.agent.models.agent import AgentDefinition
 from novamind.features.agent.models.message import AgentMessage
@@ -40,6 +35,13 @@ from novamind.features.agent.schemas.agent_schema import (
     SystemPromptResponse,
 )
 from novamind.features.agent.services.agent_service import AgentService
+from novamind.features.agent.services.host_knowledge_search import (
+    HostKnowledgeSearchPort,
+)
+from novamind.features.agent.services.host_memory_store import (
+    HostMemorySearchPort,
+    HostMemoryStorePort,
+)
 from novamind.features.qa.repository.chat_attachment_repository import ChatAttachmentRepository
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.prompts.prompt_manager import PromptManager

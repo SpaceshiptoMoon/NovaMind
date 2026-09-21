@@ -50,8 +50,8 @@ from novamind.features.agent.schemas.agent_schema import (
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.agent.services.chat_service import AgentChatService
 from novamind.features.agent.services.mcp_server_service import McpServerService
-from novamind.features.user.services.user_service import UserService
 from novamind.features.user.services.model_config_service import ModelConfigService
+from novamind.features.user.services.user_service import UserService
 from novamind.shared.storage.attachment_presign import enrich_attachments_with_presigned_urls
 from sqlalchemy.ext.asyncio import AsyncSession
 

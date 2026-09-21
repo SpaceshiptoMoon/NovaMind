@@ -38,8 +38,8 @@ from novamind.features.deep_research.services.plan_feedback_registry import (
 from novamind.features.deep_research.services.source_registry import source_registry
 from novamind.features.knowledge_space.api.dependencies import validate_space_access
 from novamind.features.knowledge_space.exceptions import SpaceAccessDeniedError, SpaceNotFoundError
-from novamind.features.user.services.user_service import UserService
 from novamind.features.user.schemas.user_schema import UserMessageResponse
+from novamind.features.user.services.user_service import UserService
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()

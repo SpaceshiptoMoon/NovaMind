@@ -62,7 +62,7 @@ def _password_change_exempt(request: Request) -> bool:
 
 async def get_user_status_resolver(
     db: AsyncSession = Depends(get_db),
-) -> "UserService":
+) -> UserService:
     """认证用户状态服务（R1 下 core→features 合法，懒 import 防启动链成环）。
 
     用户状态快照走 ``UserService.get_auth_status``（原 UserStatusResolverAdapter
@@ -75,7 +75,7 @@ async def get_user_status_resolver(
 
 
 async def _resolve_user_from_token(
-    token: str, resolver: "UserService", *, enforce_password_change: bool = False, request: Request | None = None
+    token: str, resolver: UserService, *, enforce_password_change: bool = False, request: Request | None = None
 ) -> dict:
     """校验 token 并返回用户信息（共享核心，供必选/可选认证复用）。
 
