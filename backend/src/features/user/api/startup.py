@@ -272,29 +272,12 @@ async def init_user_components() -> None:
     await create_admin_user()
 
 
-def setup_auth_port_wiring(app: FastAPI) -> None:
-    """装配 core/auth 认证端口与 RBAC 权限端口。
-
-    把 user 的 ``UserStatusResolver`` 实现注册为
-    ``core/auth/dependencies.get_user_status_resolver`` 的 dependency_overrides，
-    使 core/auth 的认证依赖能经端口取 DB 用户状态，无需 core 反向依赖 user。
-
-    同时把 ``RbacPermissionService`` 注册为 ``PermissionCheckerPort`` 的默认实现，
-    供各 feature 路由守卫注入使用。
-    """
-    # 懒导入规避启动期循环依赖
-    # （批次 3.6：UserStatusResolver 的 dependency_overrides 注册已删，
-    #  core/auth 直接构造 UserStatusResolverAdapter）
-    from novamind.core.authorization.dependencies import get_permission_checker_dep
-    from novamind.core.authorization.ports import PermissionCheckerPort
-    from novamind.features.user.api.dependencies import get_permission_checker
-
-    app.dependency_overrides[PermissionCheckerPort] = get_permission_checker
-    app.dependency_overrides[get_permission_checker_dep] = get_permission_checker
-
-
 def setup_user_exception_handlers(app: FastAPI) -> None:
-    """注册用户模块的异常处理器 + 装配 core/auth 认证端口"""
+    """注册用户模块的异常处理器。
+
+    （原 setup_auth_port_wiring 的 dependency_overrides 注册已删：
+    core/auth 与 core/authorization 均直接构造 user 侧具体类。）
+    """
     register_module_exceptions(app, status_map={
         UserNotFoundError: 404,
         UserAlreadyExistsError: 409,
@@ -315,4 +298,3 @@ def setup_user_exception_handlers(app: FastAPI) -> None:
         RoleNotFoundError: 404,
         RoleError: 400,
     })
-    setup_auth_port_wiring(app)

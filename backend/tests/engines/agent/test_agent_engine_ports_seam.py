@@ -23,24 +23,23 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 import pytest
-
-# 仅为把引擎模块预加载进 sys.modules 供 _engine_module() 取源码，名字本身不使用。
-from novamind.engines.agent.memory import long_term as long_term_module  # noqa: F401
-from novamind.engines.agent.memory import memory_manager as memory_manager_module  # noqa: F401
-from novamind.engines.agent.memory.interfaces import LongTermMemoryEntry
-from novamind.engines.search_ports import WebSearchResult
 from novamind.engines.agent.context_types import (  # 批次 3.7：仅 dataclass
-
     DocumentInfo,
     DocumentListResult,
     KnowledgeSearchItem,
     SpaceInfo,
 )
+
+# 仅为把引擎模块预加载进 sys.modules 供 _engine_module() 取源码，名字本身不使用。
+from novamind.engines.agent.memory import long_term as long_term_module  # noqa: F401
+from novamind.engines.agent.memory import memory_manager as memory_manager_module  # noqa: F401
+from novamind.engines.agent.memory.interfaces import LongTermMemoryEntry
 from novamind.engines.agent.tool.builtins.knowledge_search import (
     KnowledgeSearchTool,
 )
 from novamind.engines.agent.tool.builtins.memory import MemoryTool
 from novamind.engines.agent.tool.builtins.web_search import WebSearchTool
+from novamind.engines.search_ports import WebSearchResult
 
 pytestmark = pytest.mark.unit
 

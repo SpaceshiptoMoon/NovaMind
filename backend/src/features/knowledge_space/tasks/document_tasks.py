@@ -54,10 +54,6 @@ async def _notify_document_terminal(
 
     arq 任务侧调用：经独立会话版 NotificationPort，失败仅记日志不打断任务编排。
     """
-    from novamind.features.notification.adapters.notification_port_adapter import (
-        as_notification_port,
-    )
-
     if status == "completed":
         title = f"文档「{filename}」解析完成"
         content = "文档已解析完成并可检索问答。"
@@ -69,7 +65,8 @@ async def _notify_document_terminal(
         content = "文档解析已被用户取消。"
 
     try:
-        await as_notification_port(None).send(
+        from novamind.features.notification.services.notification_service import NotificationService
+        await NotificationService.notify(
             user_id=user_id,
             type="document_ready",
             title=title,

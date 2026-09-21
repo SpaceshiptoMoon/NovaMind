@@ -66,7 +66,7 @@ def capture(monkeypatch):
             state["email_calls"].append((to_email, reset_link))
 
     class _FakePort:
-        async def send(self, **kwargs):
+        async def notify(self, db=None, **kwargs):
             if state["port_boom"]:
                 raise RuntimeError("notify down")
             state["port_calls"].append(kwargs)
@@ -82,8 +82,8 @@ def capture(monkeypatch):
         "novamind.features.notification.services.email_service.EmailService", _FakeEmail,
     )
     monkeypatch.setattr(
-        "novamind.features.notification.adapters.notification_port_adapter.as_notification_port",
-        lambda db: _FakePort(),
+        "novamind.features.notification.services.notification_service.NotificationService.notify",
+        staticmethod(_FakePort().notify),
     )
     state["fake_user"] = fake_user
     return state

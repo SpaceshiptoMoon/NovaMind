@@ -11,10 +11,12 @@ pytestmark = pytest.mark.unit
 
 
 class _RecordingPort:
+    """记录 NotificationService.notify 的桩（staticmethod 形状）。"""
+
     def __init__(self):
         self.calls = []
 
-    async def send(self, **kwargs):
+    async def notify(self, db=None, **kwargs):
         self.calls.append(kwargs)
 
 
@@ -22,8 +24,8 @@ class _RecordingPort:
 def capture(monkeypatch):
     port = _RecordingPort()
     monkeypatch.setattr(
-        "novamind.features.notification.adapters.notification_port_adapter.as_notification_port",
-        lambda db: port,
+        "novamind.features.notification.services.notification_service.NotificationService.notify",
+        staticmethod(port.notify),
     )
     return port
 
@@ -84,9 +86,12 @@ async def test_notify_failure_swallowed(monkeypatch):
         async def send(self, **kwargs):
             raise RuntimeError("ws down")
 
+    async def _boom(db=None, **kwargs):
+        raise RuntimeError("notify down")
+
     monkeypatch.setattr(
-        "novamind.features.notification.adapters.notification_port_adapter.as_notification_port",
-        lambda db: _BoomPort(),
+        "novamind.features.notification.services.notification_service.NotificationService.notify",
+        staticmethod(_boom),
     )
 
     await tasks._notify_document_terminal("completed", **_DOC)  # 不抛

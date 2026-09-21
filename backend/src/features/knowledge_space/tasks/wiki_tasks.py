@@ -335,10 +335,6 @@ async def _notify_wiki_terminal(
     detail: str = "",
 ) -> None:
     """wiki 生成终态通知（仿 _notify_document_terminal，失败静默）"""
-    from novamind.features.notification.adapters.notification_port_adapter import (
-        as_notification_port,
-    )
-
     if not user_id:
         return
     if status == "completed":
@@ -349,7 +345,8 @@ async def _notify_wiki_terminal(
         content = detail or "Wiki 生成出现问题，请稍后重试或联系管理员。"
 
     try:
-        await as_notification_port(None).send(
+        from novamind.features.notification.services.notification_service import NotificationService
+        await NotificationService.notify(
             user_id=user_id,
             type="wiki_ready",
             title=title,

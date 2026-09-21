@@ -6,7 +6,6 @@
 VIEWER/EDITOR/ADMIN）。二者语义与数据源完全不同。
 """
 
-from novamind.core.authorization.ports import PermissionCheckerPort
 from novamind.features.user.models.user import User
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +14,7 @@ ROLE_PERM_CACHE_PREFIX = "rbac:user_perms:"  # Redis key 前缀
 ROLE_PERM_TTL = 300  # 5 分钟
 
 
-class RbacPermissionService(PermissionCheckerPort):
+class RbacPermissionService:
     """基于 ``User -> Role -> Permission`` 的权限查询服务。
 
     支持 Redis 缓存；未提供 Redis 客户端时直接查询数据库，便于测试与降级。

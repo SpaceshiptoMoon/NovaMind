@@ -29,8 +29,8 @@ if str(BACKEND_ROOT) not in sys.path:
 pytest.importorskip("aiosqlite")
 
 import arq.constants as arq_constants
-import novamind.shared.mq as mq_module
 import novamind.features.knowledge_space.services.document_task_tracking as task_tracker_module
+import novamind.shared.mq as mq_module
 from novamind.core.database import database as database_module
 from novamind.core.database.base import Base
 from novamind.features.knowledge_space.exceptions import DocumentAlreadyProcessingError

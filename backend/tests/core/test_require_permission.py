@@ -4,15 +4,14 @@ import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 from novamind.core.auth.dependencies import get_current_user
-from novamind.core.authorization.dependencies import get_permission_checker_dep, require_permission
+from novamind.core.authorization.dependencies import get_permission_checker, require_permission
 from novamind.core.authorization.exceptions import PermissionDeniedError
-from novamind.core.authorization.ports import PermissionCheckerPort
 from novamind.core.middleware.base_exception_handler import create_error_handler
 
 pytestmark = pytest.mark.unit
 
 
-class FakeChecker(PermissionCheckerPort):
+class FakeChecker:
     """测试用权限检查器，仅返回固定权限集合。"""
 
     def __init__(self, permissions: set[str]) -> None:
@@ -32,7 +31,7 @@ def _make_app(user: dict):
     # 注入假用户
     app.dependency_overrides[get_current_user] = lambda: user
     # 注入假权限检查器（按用户声明的 permissions 返回）
-    app.dependency_overrides[get_permission_checker_dep] = lambda: FakeChecker(
+    app.dependency_overrides[get_permission_checker] = lambda: FakeChecker(
         set(user.get("permissions", []))
     )
 
@@ -74,17 +73,3 @@ def test_user_without_permission_denied():
     body = resp.json()
     assert body["error"]["message"] == "缺少权限: user.manage"
     assert body["error"]["code"] == "PERMISSION_DENIED"
-
-
-def test_checker_dep_not_implemented_by_default():
-    """未装配 get_permission_checker_dep 时，依赖调用应抛出 NotImplementedError。"""
-    app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: {"id": 1, "role_code": "editor"}
-
-    @app.get("/secure", dependencies=[Depends(require_permission("user.manage"))])
-    def secure():
-        return {"ok": True}
-
-    client = TestClient(app)
-    with pytest.raises(NotImplementedError):
-        client.get("/secure")

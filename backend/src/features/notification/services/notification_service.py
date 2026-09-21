@@ -151,6 +151,46 @@ class NotificationService:
         pref = await self._pref_repo.update(user_id, data)
         return NotificationPreferenceResponse.model_validate(pref)
 
+    @staticmethod
+    async def notify(
+        db: AsyncSession | None = None,
+        *,
+        user_id: int,
+        type: str,
+        title: str,
+        content: str,
+        link: str | None = None,
+        extra_data: dict | None = None,
+    ) -> None:
+        """跨 feature 通知公共入口（原 NotificationPort 适配器语义上移）。
+
+        会话策略：
+        - ``db`` 传入：HTTP 请求上下文，复用调用方会话（通知与主业务同事务）。
+        - ``db=None``：后台任务场景，每次经 ``get_db_session()`` 开独立短会话
+          （调用方 session 可能已 commit/关闭）。
+
+        发送失败仅记日志——通知绝不打断调用方的主业务流程。
+        """
+        from novamind.core.database.database import get_db_session
+
+        try:
+            if db is not None:
+                await NotificationService(db).send_notification(
+                    user_id=user_id, type=type, title=title,
+                    content=content, link=link, extra_data=extra_data,
+                )
+            else:
+                async with get_db_session() as session:
+                    await NotificationService(session).send_notification(
+                        user_id=user_id, type=type, title=title,
+                        content=content, link=link, extra_data=extra_data,
+                    )
+        except Exception as e:
+            logger.warning(
+                "通知发送失败（已忽略）",
+                user_id=user_id, type=type, error=str(e),
+            )
+
     async def _get_user_email(self, user_id: int) -> str | None:
         """获取用户邮箱"""
         try:

@@ -11,10 +11,6 @@ async def _notify_resume_terminal(
     status: str, *, user_id: int, session_id: str, filename: str,
 ) -> None:
     """简历挖掘终态通知用户（成功/最终失败；重试中间态不发）。"""
-    from novamind.features.notification.adapters.notification_port_adapter import (
-        as_notification_port,
-    )
-
     if status == "completed":
         title = "简历挖掘已完成"
         content = f"「{filename}」的分析报告已生成，点击查看。"
@@ -29,7 +25,8 @@ async def _notify_resume_terminal(
         link = "/home/apps/resume/history"
 
     try:
-        await as_notification_port(None).send(
+        from novamind.features.notification.services.notification_service import NotificationService
+        await NotificationService.notify(
             user_id=user_id,
             type="resume_completed",
             title=title,

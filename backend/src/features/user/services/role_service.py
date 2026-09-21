@@ -1,6 +1,5 @@
 """角色管理服务"""
 
-from novamind.core.authorization.ports import PermissionCheckerPort
 from novamind.features.user.exceptions import (
     PermissionDeniedError,
     RoleNotFoundError,
@@ -16,7 +15,7 @@ from sqlalchemy.orm import selectinload
 
 
 class RoleService:
-    def __init__(self, db: AsyncSession, permission_checker: PermissionCheckerPort | None):
+    def __init__(self, db: AsyncSession, permission_checker: "RbacPermissionService | None"):
         self.db = db
         self.repo = RoleRepository(db)
         self.checker = permission_checker

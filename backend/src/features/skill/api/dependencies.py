@@ -9,7 +9,6 @@ from novamind.core.database.database import get_db
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.agent.adapters.agent_registry_adapter import as_agent_registry_port
 from novamind.features.knowledge_space.api.dependencies import get_current_user_id
-from novamind.features.notification.adapters.notification_port_adapter import as_notification_port
 from novamind.features.skill.services.skill_checker import SkillSecurityChecker
 from novamind.features.skill.services.skill_marketplace_service import SkillMarketplaceService
 from novamind.features.user.services.model_config_service import ModelConfigService
@@ -117,16 +116,12 @@ async def get_skill_service(
     # AgentRegistryPort：宿主装配点注入，解 skill -> agent 服务层导入边
     agent_registry_port = as_agent_registry_port(db)
 
-    # NotificationPort：审核结果通知技能作者
-    notification_port = as_notification_port(db)
-
     service = SkillMarketplaceService(
         db=db,
         minio_client=minio,
         security_checker=checker,
         model_config_service=model_config_service,
         agent_registry_port=agent_registry_port,
-        notification_port=notification_port,
     )
     yield service
     await service.cleanup()

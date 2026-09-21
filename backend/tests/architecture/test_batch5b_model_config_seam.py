@@ -206,7 +206,6 @@ def test_user_get_model_config_service_returns_port_with_ks_info():
 
 def test_model_credentials_backward_compat_reexport():
     """ModelCredentials 归属 user/schemas（批次 3.6 从 shared/model_config_ports 迁入），service 可导出。"""
-    from novamind.features.user.schemas.model_config_schema import ModelCredentials
     from novamind.features.user.services import model_config_service as mcs
 
     assert hasattr(mcs, "ModelCredentials")

@@ -12,10 +12,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from novamind.core.auth.dependencies import get_current_user
 from novamind.core.authorization.dependencies import (
-    get_permission_checker_dep,
+    get_permission_checker,
 )
 from novamind.core.authorization.exceptions import PermissionDeniedError
-from novamind.core.authorization.ports import PermissionCheckerPort
 from novamind.core.database.database import get_db
 from novamind.core.middleware.base_exception_handler import create_error_handler
 from novamind.core.middleware.manifest import API_V1_PREFIX
@@ -36,7 +35,7 @@ USER_PREFIX = f"{API_V1_PREFIX}/user"
 SKILL_PREFIX = f"{API_V1_PREFIX}/skills"
 
 
-class _FakeChecker(PermissionCheckerPort):
+class _FakeChecker:
     """测试用权限检查器：返回固定权限集合。"""
 
     def __init__(self, permissions: set[str]) -> None:
@@ -100,7 +99,7 @@ def _make_app(
         }
     # me/permissions 端点查应用禁用表需要 DB——用 SQLite 内存库，避免连真实 MySQL 挂起
     app.dependency_overrides[get_db] = _fake_get_db
-    app.dependency_overrides[get_permission_checker_dep] = lambda: _FakeChecker(
+    app.dependency_overrides[get_permission_checker] = lambda: _FakeChecker(
         permissions
     )
     app.dependency_overrides[get_user_service] = lambda: _FakeUserService()

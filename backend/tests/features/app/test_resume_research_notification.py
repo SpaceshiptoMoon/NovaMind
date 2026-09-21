@@ -5,22 +5,24 @@ import pytest
 pytestmark = pytest.mark.unit
 
 
-class _RecordingPort:
+class _RecordingNotifier:
+    """记录 NotificationService.notify 调用的桩。"""
+
     def __init__(self):
         self.calls = []
 
-    async def send(self, **kwargs):
+    async def notify(self, db=None, **kwargs):
         self.calls.append(kwargs)
 
 
 @pytest.fixture
 def capture(monkeypatch):
-    port = _RecordingPort()
+    notifier = _RecordingNotifier()
     monkeypatch.setattr(
-        "novamind.features.notification.adapters.notification_port_adapter.as_notification_port",
-        lambda db: port,
+        "novamind.features.notification.services.notification_service.NotificationService.notify",
+        staticmethod(notifier.notify),
     )
-    return port
+    return notifier
 
 
 # ==================== research_done ====================
@@ -37,7 +39,6 @@ async def test_notify_research_done(capture):
     )
 
     svc = DeepResearchService.__new__(DeepResearchService)
-    svc._notification_port = capture
     svc.logger = SimpleNamespace(warning=lambda *a, **k: None)
 
     ctx = SimpleNamespace(
@@ -69,7 +70,6 @@ async def test_notify_research_done_topic_fallback(capture):
     )
 
     svc = DeepResearchService.__new__(DeepResearchService)
-    svc._notification_port = capture
     svc.logger = SimpleNamespace(warning=lambda *a, **k: None)
 
     ctx = SimpleNamespace(
@@ -84,16 +84,23 @@ async def test_notify_research_done_topic_fallback(capture):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_notify_research_done_port_none_noop():
-    """未注入 port 时不发通知不报错"""
+async def test_notify_research_done_notify_failure_swallowed(monkeypatch):
+    """notify 抛异常时被吞（不打断主流程）"""
     from types import SimpleNamespace
 
     from novamind.features.deep_research.services.deep_research_service import (
         DeepResearchService,
     )
 
+    async def _boom(*a, **k):
+        raise RuntimeError("notify down")
+
+    monkeypatch.setattr(
+        "novamind.features.notification.services.notification_service.NotificationService.notify",
+        staticmethod(_boom),
+    )
     svc = DeepResearchService.__new__(DeepResearchService)
-    svc._notification_port = None
+    svc.logger = SimpleNamespace(warning=lambda *a, **k: None)
 
     ctx = SimpleNamespace(
         user_id=5, session_id="s", space_id=1, research_topic="t",

@@ -26,12 +26,12 @@ from novamind.engines.deep_research.sources import (
     SearchSourceContext,
     SearchSourcePort,
 )
+from novamind.features.deep_research.exceptions import (
+    SearchProviderNotConfiguredError,
+)
 from novamind.features.deep_research.services.source_registry import (
     DataSearchSourceRegistry,
     source_registry,
-)
-from novamind.features.deep_research.exceptions import (
-    SearchProviderNotConfiguredError,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]

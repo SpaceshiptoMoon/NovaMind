@@ -19,10 +19,6 @@ from novamind.features.knowledge_space.api.dependencies import (
     validate_kb_writable,
     validate_space_access,
 )
-from novamind.features.knowledge_space.exceptions import (
-    KnowledgeBaseNotFoundError,
-    WikiPageNotFoundError,
-)
 from novamind.features.knowledge_space.schemas.wiki_schema import (
     WikiAutoFixResponse,
     WikiGraphResponse,

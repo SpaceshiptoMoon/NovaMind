@@ -20,10 +20,10 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from novamind.engines.document.media.video.frame_extraction import (
-    compute_gray_histogram,
-    histogram_chi_square,
     _select_scene_keyframes,
     _uniform_sample_indices,
+    compute_gray_histogram,
+    histogram_chi_square,
 )
 
 pytestmark = pytest.mark.unit

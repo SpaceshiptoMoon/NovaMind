@@ -24,11 +24,13 @@ def _make_skill(**overrides) -> SimpleNamespace:
 
 
 class _RecordingPort:
+    """记录 NotificationService.notify 的桩（staticmethod 形状）。"""
+
     def __init__(self):
         self.calls: list = []
         self.fail = False
 
-    async def send(self, **kwargs):
+    async def notify(self, db=None, **kwargs):
         if self.fail:
             raise RuntimeError("notify down")
         self.calls.append(kwargs)
@@ -98,7 +100,9 @@ def _make_service(skill, port) -> SkillMarketplaceService:
     svc = SkillMarketplaceService.__new__(SkillMarketplaceService)
     db = _FakeDB()
     svc.db = db
-    svc._notification_port = port
+    from novamind.features.notification.services.notification_service import NotificationService
+
+    NotificationService.notify = staticmethod(port.notify)
     svc.checker = None
     # _do_review 的独立会话工厂直接复用桩 db
     svc._session_factory = _FakeSessionFactory(db)  # type: ignore[attr-defined]

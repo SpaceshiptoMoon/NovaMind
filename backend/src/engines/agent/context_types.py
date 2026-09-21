@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+
 @dataclass
 class SpaceInfo:
     """知识空间概要"""

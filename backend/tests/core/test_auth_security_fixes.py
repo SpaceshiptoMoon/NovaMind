@@ -17,7 +17,6 @@ from novamind.core.auth.dependencies import (
     get_user_status_resolver,
 )
 from novamind.core.auth.exceptions import PasswordChangeRequiredError
-from novamind.core.authorization.ports import PermissionCheckerPort
 from novamind.core.middleware.base_exception_handler import (
     BaseAPIError,
     create_error_handler,
@@ -265,7 +264,7 @@ async def test_must_change_password_not_enforced_for_optional_auth(monkeypatch):
 # ==================== 4. RBAC 缓存失效 ====================
 
 
-class _RecordingChecker(PermissionCheckerPort):
+class _RecordingChecker:
     def __init__(self):
         self.invalidated: list[int] = []
 

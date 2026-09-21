@@ -19,9 +19,9 @@ from novamind.engines.document.media.video.video_normalizer import (
 )
 from novamind.engines.document.media.video.video_utils import (
     VideoMetadataError,
+    extract_video_frames,
     read_frame_at,
     read_video_metadata,
-    extract_video_frames,
 )
 
 logger = logging.getLogger(__name__)

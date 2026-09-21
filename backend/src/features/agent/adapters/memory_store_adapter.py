@@ -5,11 +5,11 @@ HostMemoryStorePort / HostMemoryStorePort / HostMemorySearchPort 宿主适配器
 from datetime import datetime
 from typing import Any
 
-from novamind.engines.agent.memory.interfaces import (
-    LongTermMemoryEntry,  # 具体子模块，不触发 memory/__init__ 聚合
-)
 from novamind.engines.agent.context_types import (
     ContextSummaryEntry,
+)
+from novamind.engines.agent.memory.interfaces import (
+    LongTermMemoryEntry,  # 具体子模块，不触发 memory/__init__ 聚合
 )
 
 

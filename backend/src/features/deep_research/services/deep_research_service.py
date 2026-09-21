@@ -358,7 +358,6 @@ class DeepResearchService:
         model_config_service: ModelConfigService | None = None,
         search_service: SearchService | None = None,
         es_client: Any | None = None,
-        notification_port: Any | None = None,
     ):
         self.session = session
         self.research_repo = ResearchRepository(session)
@@ -371,8 +370,6 @@ class DeepResearchService:
         self._web_search_port: Any | None = None
         # 可插拂数据源：本次请求构造的外部源适配器（可能多个，cleanup 全部关闭）
         self._web_source_adapters: list[Any] = []
-        # 研究完成通知端口（独立会话版：流式可能取消回滚，不复用本 session）
-        self._notification_port = notification_port
 
         self.logger = get_logger(__name__)
 
@@ -1308,11 +1305,12 @@ class DeepResearchService:
 
     async def _notify_research_done(self, ctx: ResearchContext, elapsed_seconds: int) -> None:
         """研究完成通知发起用户（commit 后调用；失败静默不影响主流程）。"""
-        if self._notification_port is None:
-            return
         topic = ctx.research_topic or ctx.params.query
         try:
-            await self._notification_port.send(
+            from novamind.features.notification.services.notification_service import (
+                NotificationService,
+            )
+            await NotificationService.notify(None,
                 user_id=ctx.user_id,
                 type="research_done",
                 title=f"深度研究「{topic}」已完成",

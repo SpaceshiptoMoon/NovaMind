@@ -12,10 +12,12 @@ pytestmark = pytest.mark.unit
 
 
 class _RecordingPort:
+    """记录 NotificationService.notify 的桩（staticmethod 形状）。"""
+
     def __init__(self):
         self.calls = []
 
-    async def send(self, **kwargs):
+    async def notify(self, db=None, **kwargs):
         self.calls.append(kwargs)
 
 
@@ -29,9 +31,12 @@ class _FakeSpaceRepo:
 
 @pytest.fixture
 def capture(monkeypatch):
-    """捕获 as_notification_port 与 SpaceRepository 构造"""
+    """捕获 NotificationService.notify 与 SpaceRepository 构造"""
     port = _RecordingPort()
-    monkeypatch.setattr(routes, "as_notification_port", lambda db: port)
+    monkeypatch.setattr(
+        "novamind.features.notification.services.notification_service.NotificationService.notify",
+        staticmethod(port.notify),
+    )
     return port
 
 

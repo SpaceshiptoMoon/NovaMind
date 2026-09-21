@@ -1,5 +1,4 @@
 from fastapi import Depends
-from novamind.core.authorization.ports import PermissionCheckerPort
 from novamind.core.database.database import get_db
 from novamind.features.user.repository import UserRepository
 from novamind.features.user.services import UserService
@@ -19,7 +18,7 @@ async def get_user_service(db: AsyncSession = Depends(get_db)):
 async def get_role_service(db: AsyncSession = Depends(get_db)) -> RoleService:
     """获取角色管理服务（RBAC 路由装配点）。
 
-    注入 ``PermissionCheckerPort`` 实现，便于 ``assign_user_role`` 后失效用户权限缓存。
+    注入 ``RbacPermissionService``，便于 ``assign_user_role`` 后失效用户权限缓存。
     Redis 客户端未装配时降级为 ``redis_client=None``。
     """
     try:
@@ -49,10 +48,11 @@ async def get_search_config_service(db: AsyncSession = Depends(get_db)) -> Searc
     return SearchConfigService(db)
 
 
-async def get_permission_checker(db: AsyncSession = Depends(get_db)) -> PermissionCheckerPort:
+async def get_permission_checker(db: AsyncSession = Depends(get_db)) -> RbacPermissionService:
     """获取权限检查服务（RBAC 装配点）。
 
-    返回 ``RbacPermissionService`` 实例，供依赖注入框架以 ``PermissionCheckerPort`` 端口消费。
+    返回 ``RbacPermissionService`` 实例（core/authorization 的
+    ``get_permission_checker`` 为同款直构；此装配点供本 feature 内路由使用）。
     Redis 客户端未装配或初始化失败时，降级为 ``redis_client=None``，走 DB 直查。
     """
     try:

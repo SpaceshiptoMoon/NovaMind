@@ -84,7 +84,6 @@ def _make_chat_service(search_config_port=None):
 @pytest.mark.asyncio
 async def test_retrieve_web_user_config_hit(monkeypatch):
     """用户级配置命中 → 用对应 provider port 搜，结果含 score。"""
-    import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
     from novamind.features.user.schemas.search_config_schema import SearchCredentials
@@ -116,7 +115,6 @@ async def test_retrieve_web_user_config_hit(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_user_config_hit_uses_provider_and_key(monkeypatch):
     """构造端口时应透传用户级 provider / api_key / extra_config。"""
-    import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.features.user.schemas.search_config_schema import SearchCredentials
 
@@ -145,7 +143,6 @@ async def test_retrieve_web_user_config_hit_uses_provider_and_key(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_no_user_config_falls_back_yaml(monkeypatch):
     """用户级返回 None → 回退 YAML 兜底构造端口。"""
-    import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
 
@@ -166,7 +163,6 @@ async def test_retrieve_web_no_user_config_falls_back_yaml(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_no_search_config_port_falls_back_yaml(monkeypatch):
     """SearchConfigPort 未注入（None）→ 直接走 YAML 兜底。"""
-    import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
 
@@ -188,7 +184,6 @@ async def test_retrieve_web_no_search_config_port_falls_back_yaml(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_search_failure_returns_none(monkeypatch):
     """port.search 抛异常 → 降级返回 None，不向上抛。"""
-    import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.features.user.schemas.search_config_schema import SearchCredentials
 
@@ -211,7 +206,6 @@ async def test_retrieve_web_search_failure_returns_none(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_no_results_returns_none(monkeypatch):
     """port.search 返回空列表 → 返回 None。"""
-    import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.features.user.schemas.search_config_schema import SearchCredentials
 
@@ -234,7 +228,6 @@ async def test_retrieve_web_no_results_returns_none(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_user_build_fails_falls_back_yaml(monkeypatch):
     """用户级 build_web_search_port_from_provider 抛 WebSearchError → 回退 YAML 兜底。"""
-    import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_errors import WebSearchError
     from novamind.engines.search_ports import WebSearchResult
@@ -266,7 +259,6 @@ async def test_retrieve_web_user_build_fails_falls_back_yaml(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_search_config_port_exception_falls_back_yaml(monkeypatch):
     """SearchConfigPort.get_primary_search_config 抛异常 → 回退 YAML 兜底。"""
-    import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
 
@@ -289,7 +281,6 @@ async def test_retrieve_web_search_config_port_exception_falls_back_yaml(monkeyp
 @pytest.mark.asyncio
 async def test_retrieve_web_all_fail_returns_none(monkeypatch):
     """用户级 + YAML 兜底都失败 → 返回 None。"""
-    import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_errors import WebSearchError
     from novamind.features.user.schemas.search_config_schema import SearchCredentials
@@ -312,7 +303,6 @@ async def test_retrieve_web_all_fail_returns_none(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_score_defaults_to_zero(monkeypatch):
     """WebSearchResult 无 score 时，source score 默认 0.0。"""
-    import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
 
@@ -335,7 +325,6 @@ async def test_retrieve_web_score_defaults_to_zero(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_explicit_provider_hit(monkeypatch):
     """显式指定 provider 且用户已配 → 用该 provider 的配置构造端口（透传 provider+key）。"""
-    import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
     from novamind.features.user.schemas.search_config_schema import SearchCredentials
@@ -372,7 +361,6 @@ async def test_retrieve_web_explicit_provider_hit(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_explicit_provider_not_configured_falls_back(monkeypatch):
     """显式指定 provider 但用户未配该 provider → 回退自动择优（primary/YAML）。"""
-    import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
     from novamind.features.user.schemas.search_config_schema import SearchCredentials
@@ -402,7 +390,6 @@ async def test_retrieve_web_explicit_provider_not_configured_falls_back(monkeypa
 @pytest.mark.asyncio
 async def test_retrieve_web_explicit_provider_build_fails_falls_back(monkeypatch):
     """显式 provider 构造端口失败（WebSearchError）→ 回退自动择优。"""
-    import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_errors import WebSearchError
     from novamind.engines.search_ports import WebSearchResult
@@ -437,7 +424,6 @@ async def test_retrieve_web_explicit_provider_build_fails_falls_back(monkeypatch
 @pytest.mark.asyncio
 async def test_retrieve_web_explicit_provider_port_exception_falls_back(monkeypatch):
     """get_search_config_by_provider 抛异常 → 回退自动择优。"""
-    import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
     from novamind.features.user.schemas.search_config_schema import SearchCredentials
@@ -462,7 +448,6 @@ async def test_retrieve_web_explicit_provider_port_exception_falls_back(monkeypa
 @pytest.mark.asyncio
 async def test_retrieve_web_search_provider_none_uses_primary(monkeypatch):
     """search_provider=None → 走原自动择优（不调 get_search_config_by_provider）。"""
-    import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
     from novamind.features.user.schemas.search_config_schema import SearchCredentials
@@ -493,7 +478,6 @@ async def test_retrieve_web_search_provider_none_uses_primary(monkeypatch):
 @pytest.mark.asyncio
 async def test_retrieve_web_explicit_provider_no_port_falls_back_yaml(monkeypatch):
     """显式 provider 但 SearchConfigPort 未注入（None）→ 直接走 YAML 兜底（不抛）。"""
-    import novamind.features.qa.services.ai_chat_service as chat_mod
     import novamind.shared.search.web_search_factory as factory_mod
     from novamind.engines.search_ports import WebSearchResult
 

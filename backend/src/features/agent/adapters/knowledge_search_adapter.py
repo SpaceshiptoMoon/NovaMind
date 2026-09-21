@@ -154,9 +154,6 @@ class HostKnowledgeSearchPort:
         from novamind.features.knowledge_space.schemas.search_schema import (
             SearchRequest,
         )
-        from novamind.features.knowledge_space.services.knowledge_base_service import (
-            KnowledgeBaseService,
-        )
 
         search_request = SearchRequest(
             query=query,

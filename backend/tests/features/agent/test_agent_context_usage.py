@@ -10,10 +10,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from novamind.engines.agent.context_types import ContextSummaryEntry
 from novamind.engines.agent.memory.interfaces import MemoryMessage
 from novamind.engines.agent.memory.short_term import ShortTermMemory
 from novamind.engines.agent.memory.token_budget import TokenBudget
-from novamind.engines.agent.context_types import ContextSummaryEntry
 
 pytestmark = pytest.mark.unit
 

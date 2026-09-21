@@ -35,7 +35,7 @@ from novamind.features.knowledge_space.schemas.member_schema import (
 )
 from novamind.features.knowledge_space.services.audit_service import AuditService
 from novamind.features.knowledge_space.services.member_service import MemberService
-from novamind.features.notification.adapters.notification_port_adapter import as_notification_port
+from novamind.features.notification.services.notification_service import NotificationService
 from novamind.features.user.models.user import UserStatus
 from novamind.features.user.repository.user_repository import UserRepository
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,9 +51,9 @@ async def _notify_space_invite(
     try:
         space = await SpaceRepository(db).get_by_id(space_id)
         space_name = (space.name if space else None) or f"空间 {space_id}"
-        port = as_notification_port(db)
         if direct:
-            await port.send(
+            await NotificationService.notify(
+                db,
                 user_id=user_id,
                 type="space_invite",
                 title=f"你已被加入空间「{space_name}」",
@@ -62,7 +62,8 @@ async def _notify_space_invite(
                 extra_data={"space_id": space_id, "space_name": space_name, "role": role_value},
             )
         else:
-            await port.send(
+            await NotificationService.notify(
+                db,
                 user_id=user_id,
                 type="space_invite",
                 title=f"您被邀请加入空间「{space_name}」",

@@ -3,10 +3,9 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, Path, Query, Request
 from novamind.core.auth import require_active_user
 from novamind.core.authorization.dependencies import (
-    get_permission_checker_dep,
+    get_permission_checker,
     require_permission,
 )
-from novamind.core.authorization.ports import PermissionCheckerPort
 from novamind.core.database.database import get_db
 from novamind.core.middleware.rate_limit import RateLimits, get_limiter
 from novamind.features.user.api.dependencies import get_user_service
@@ -299,7 +298,7 @@ async def get_user(
 )
 async def get_my_permissions(
     current_user: dict = Depends(require_active_user),
-    checker: PermissionCheckerPort = Depends(get_permission_checker_dep),
+    checker=Depends(get_permission_checker),
     db: Annotated[AsyncSession, Depends(get_db)] = None,
 ):
     """获取当前用户权限列表与角色码（含被禁用应用，admin 恒为空集合）"""
@@ -572,10 +571,11 @@ async def forgot_password(
                 # 站内通知记录（用户此刻未登录无 WS 连接，纯审计记录；
                 # link=None：任何需登录页都会被 guard 截走）
                 try:
-                    from novamind.features.notification.adapters.notification_port_adapter import (
-                        as_notification_port,
+                    from novamind.features.notification.services.notification_service import (
+                        NotificationService,
                     )
-                    await as_notification_port(db).send(
+                    await NotificationService.notify(
+                        db,
                         user_id=user.id,
                         type="password_reset",
                         title="密码重置请求已发送",

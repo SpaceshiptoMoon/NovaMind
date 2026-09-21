@@ -21,7 +21,6 @@
 """
 
 import ast
-import importlib
 import inspect
 import sys
 from pathlib import Path
@@ -156,7 +155,7 @@ def test_web_search_port_construction_is_centralized():
 def test_agent_core_ports_reexports_web_search_port():
     """agent 数据类型（原 ports.py，批次 3.7 降级纯 dataclass 后本轮改名 context_types）。"""
     from novamind.engines.agent import context_types as agent_ports
-    from novamind.engines.search_ports import WebSearchPort, WebSearchResult
+    from novamind.engines.search_ports import WebSearchResult
 
     # dataclass 从 context_types 拿；WebSearch* 已不再 re-export
     assert not hasattr(agent_ports, "WebSearchPort")

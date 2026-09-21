@@ -11,7 +11,6 @@ from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
 from novamind.core.database.database import get_db
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.core.ws import run_stream_to_ws, send_event
-from novamind.features.deep_research.services.source_registry import source_registry
 from novamind.features.deep_research.api.dependencies import get_deep_research_service
 from novamind.features.deep_research.models.research_session import (
     ResearchStatus as ModelResearchStatus,
@@ -30,12 +29,13 @@ from novamind.features.deep_research.schemas.research_schema import (
 )
 from novamind.features.deep_research.services.deep_research_service import (
     DeepResearchService,
-    plan_to_event_data,
     parse_plan_json,
+    plan_to_event_data,
 )
 from novamind.features.deep_research.services.plan_feedback_registry import (
     PlanFeedbackRegistry,
 )
+from novamind.features.deep_research.services.source_registry import source_registry
 from novamind.features.knowledge_space.api.dependencies import validate_space_access
 from novamind.features.knowledge_space.exceptions import SpaceAccessDeniedError, SpaceNotFoundError
 from novamind.features.user.adapters.auth_user_resolver_adapter import UserStatusResolverAdapter

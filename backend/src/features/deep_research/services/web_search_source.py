@@ -16,12 +16,12 @@ from novamind.engines.deep_research.sources import (
     SearchSourcePort,
 )
 from novamind.engines.deep_research.types import SourceType
-from novamind.engines.search_ports import WebSearchPort
 from novamind.engines.search_errors import (
     WebSearchError,
     WebSearchProviderNotConfiguredError,
     WebSearchProviderUnavailableError,
 )
+from novamind.engines.search_ports import WebSearchPort
 from novamind.features.deep_research.exceptions import (
     SearchProviderNotConfiguredError,
     SearchProviderUnavailableError,

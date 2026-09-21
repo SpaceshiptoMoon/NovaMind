@@ -41,7 +41,6 @@ from novamind.features.skill.services.skill_checker import SkillSecurityChecker
 from novamind.features.skill.services.skill_parser import ExtractedSkill, extract_skill_zip
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.notification_ports import NotificationPort
 from novamind.shared.prompts import PromptManager
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,7 +58,6 @@ class SkillMarketplaceService:
         security_checker: SkillSecurityChecker | None = None,
         model_config_service: ModelConfigService | None = None,
         agent_registry_port: HostAgentRegistryPort | None = None,
-        notification_port: NotificationPort | None = None,
     ):
         self.db = db
         self.minio = minio_client
@@ -70,7 +68,6 @@ class SkillMarketplaceService:
         self.review_repo = SkillReviewRepository(db)
         self.install_repo = SkillInstallationRepository(db)
         self._agent_registry_port = agent_registry_port
-        self._notification_port = notification_port
 
     async def cleanup(self):
         pass
@@ -735,7 +732,7 @@ class SkillMarketplaceService:
         self, skill, review_status: int, admin_reason: str | None,
     ) -> None:
         """审核结果通知技能作者（commit 后调用；经独立会话 port，失败不影响审核流程）。"""
-        if skill.user_id is None or self._notification_port is None:
+        if skill.user_id is None:
             return
         display = getattr(skill, "display_name", None) or skill.name
         if review_status == ReviewStatus.APPROVED:
@@ -753,7 +750,10 @@ class SkillMarketplaceService:
         else:
             return
         try:
-            await self._notification_port.send(
+            from novamind.features.notification.services.notification_service import (
+                NotificationService,
+            )
+            await NotificationService.notify(None,
                 user_id=skill.user_id,
                 type="skill_review",
                 title=title,
