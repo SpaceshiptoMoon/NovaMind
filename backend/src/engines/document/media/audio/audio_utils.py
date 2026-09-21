@@ -633,30 +633,22 @@ async def transcribe_audio_with_dashscope(
         [{"text": "...", "start": 0.0, "end": 5.2}, ...]
     """
     import uuid
-    from http import HTTPStatus
 
     import dashscope
-    from dashscope.audio.asr import Transcription
+    from novamind.shared.ai_models.asr import (
+        await_transcription,
+        configure_dashscope,
+        extract_segments,
+        submit_transcription,
+    )
 
-    if api_key:
-        dashscope.api_key = api_key
-    else:
+    if not api_key:
         from novamind.setting.yaml_config import get_config
 
-        env_key = get_config().asr.dashscope_api_key
-        if not env_key:
+        api_key = get_config().asr.dashscope_api_key
+        if not api_key:
             raise RuntimeError("未配置 DASHSCOPE_API_KEY（asr.dashscope_api_key），无法使用 DashScope Paraformer API")
-        dashscope.api_key = env_key
-
-    # 百炼平台需要设置 workspace 级别的 base URL
-    if base_url:
-        url = base_url.rstrip("/")
-        # 去掉用户误填的兼容模式路径（/compatible-mode/v1 → OpenAI 协议用的）
-        if url.endswith("/compatible-mode/v1"):
-            url = url[:-len("/compatible-mode/v1")]
-        if not url.endswith("/api/v1"):
-            url += "/api/v1"
-        dashscope.base_http_api_url = url
+    configure_dashscope(api_key, base_url)
 
     # 通过 Magic Bytes 检测真实音频格式，不再依赖文件扩展名
     ext, _mime = _detect_audio_format(file_content)
@@ -680,108 +672,14 @@ async def transcribe_audio_with_dashscope(
         uploaded_url = await minio_client.get_public_file_url(bucket, temp_object_name, expires=3600)
         logger.info("音频已上传 MinIO 临时位置: %s, url=%s...", temp_object_name, uploaded_url[:80])
 
-        # 3. 提交转写任务（使用 HTTP URL，不是 fileid://）
-        call_kwargs: dict = {
-            "model": model,
-            "file_urls": [uploaded_url],
-        }
-        if language_hints:
-            call_kwargs["language_hints"] = language_hints
-
-        task_response = Transcription.async_call(**call_kwargs)
-
-        if task_response.output is None:
-            raise RuntimeError(
-                f"DashScope 转写任务提交失败: status={task_response.status_code}, "
-                f"message={getattr(task_response, 'message', 'unknown')}"
-            )
-
-        if task_response.status_code != HTTPStatus.OK:
-            raise RuntimeError(
-                f"DashScope 转写任务提交失败: status={task_response.status_code}, "
-                f"message={getattr(task_response, 'message', 'unknown')}"
-            )
-
-        # 4. 等待完成
-        transcribe_response = Transcription.wait(task=task_response.output.task_id)
-
-        if transcribe_response.status_code != HTTPStatus.OK:
-            raise RuntimeError(
-                f"DashScope 转写失败: status={transcribe_response.status_code}, "
-                f"message={getattr(transcribe_response, 'message', 'unknown')}"
-            )
-
-        # 5. 解析结果：句子级时间戳
-        output = transcribe_response.output
-        # 兼容 output 为 dict 或对象两种形式
-        if isinstance(output, dict):
-            output_dict = output
-        else:
-            output_dict = {k: v for k, v in output.__dict__.items() if not k.startswith("_")}
+        # 3-5. 提交 → 轮询 → 解析（协议胶水唯一实现：shared/ai_models/asr/dashscope_client）
+        task_response = submit_transcription(
+            model=model, file_urls=[uploaded_url], language_hints=language_hints
+        )
+        output_dict = await_transcription(task_response.output.task_id)
         logger.info("DashScope 转写原始结果: %s", str(output_dict)[:2000])
 
-        # 从 output 中提取 results（必须在 FAILED 检查之前）
-        results = output_dict.get("results", [])
-
-        # 检查任务状态
-        task_status = output_dict.get("task_status", "")
-        if task_status == "FAILED":
-            error_code = output_dict.get("code", "UNKNOWN")
-
-            # 从嵌套 results 中提取更详细的错误信息
-            detail_parts: list[str] = []
-            for item in results:
-                item_dict = item if isinstance(item, dict) else {k: v for k, v in item.__dict__.items() if not k.startswith("_")}
-                item_code = item_dict.get("code", "")
-                item_status = item_dict.get("subtask_status", "")
-                if item_code or item_status:
-                    detail_parts.append(f"subtask[{item_code or item_status}]")
-                # 再深入一层 output.results
-                output_data = item_dict.get("output", {})
-                if isinstance(output_data, dict):
-                    inner_results = output_data.get("results", [])
-                elif hasattr(output_data, "results"):
-                    inner_results = getattr(output_data, "results", [])
-                else:
-                    inner_results = []
-                for ir in inner_results:
-                    ir_dict = ir if isinstance(ir, dict) else {k: v for k, v in ir.__dict__.items() if not k.startswith("_")}
-                    ir_code = ir_dict.get("code", "")
-                    ir_status = ir_dict.get("subtask_status", "")
-                    if ir_code or ir_status:
-                        detail_parts.append(f"inner[{ir_code or ir_status}]")
-
-            detail = ", ".join(detail_parts) if detail_parts else "no details"
-            raise RuntimeError(
-                f"DashScope 转写任务失败: code={error_code}, "
-                f"task_id={output_dict.get('task_id', 'unknown')}, "
-                f"details={detail}"
-            )
-
-        segments = []
-        for item in results:
-            # 兼容 dict 和对象
-            item_dict = item if isinstance(item, dict) else {k: v for k, v in item.__dict__.items() if not k.startswith("_")}
-            sentences = item_dict.get("sentences", [])
-            if sentences:
-                for sent in sentences:
-                    sent_dict = sent if isinstance(sent, dict) else {k: v for k, v in sent.__dict__.items() if not k.startswith("_")}
-                    text = sent_dict.get("text", "").strip()
-                    if text:
-                        segments.append({
-                            "text": text,
-                            "start": sent_dict.get("begin_time", 0) / 1000.0,
-                            "end": sent_dict.get("end_time", 0) / 1000.0,
-                        })
-            else:
-                text = item_dict.get("transcription", "").strip()
-                if text:
-                    segments.append({
-                        "text": text,
-                        "start": 0.0,
-                        "end": 0.0,
-                    })
-
+        segments = extract_segments(output_dict)
         return segments
 
     finally:

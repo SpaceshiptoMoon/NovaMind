@@ -24,3 +24,26 @@ def normalize_slug(slug: str) -> str:
     slug = re.sub(r"-+/", "/", slug)   # 分隔符前不允许连字符
     slug = re.sub(r"/-+", "/", slug)   # 分隔符后不允许连字符
     return slug.strip("-/")
+
+
+_WIKI_LINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]")
+
+
+def extract_wiki_link_slugs(content: str, *, self_slug: str = "", valid_slugs: set[str] | None = None) -> list[str]:
+    """从正文提取 ``[[slug|title]]`` 形式的有效链接 slug（去重、去自指、剔无效）。
+
+    ``[[...]]`` 内文的解析规则与 wiki_linkify._extract_wiki_slug 一致
+    （``slug|display`` 取 slug 部分）；slug 清洗走 normalize_slug。
+    """
+    valid = valid_slugs if valid_slugs is not None else None
+    links: list[str] = []
+    for m in _WIKI_LINK_RE.finditer(content):
+        inner = m.group(1)
+        pipe = inner.find("|")
+        if pipe >= 0:
+            inner = inner[:pipe]
+        slug = normalize_slug(inner.strip())
+        if slug and slug != self_slug and slug not in links:
+            if valid is None or slug in valid:
+                links.append(slug)
+    return links

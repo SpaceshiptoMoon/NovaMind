@@ -39,7 +39,10 @@ from novamind.features.knowledge_space.services.wiki_dedup import (
 )
 from novamind.features.knowledge_space.services.wiki_handles import HandleTable
 from novamind.features.knowledge_space.services.wiki_retract_service import tombstone_exists
-from novamind.features.knowledge_space.services.wiki_slug import normalize_slug
+from novamind.features.knowledge_space.services.wiki_slug import (
+    extract_wiki_link_slugs,
+    normalize_slug,
+)
 from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.utils.llm_response import extract_json_obj
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -743,7 +746,7 @@ class WikiIngestService:
         content = slug_handles.decode_text(content, r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]")
 
         # 只保留指向有效 slug 且非自指的 [[slug|title]] 链接
-        out_links = self._extract_wiki_links(content, item.slug, set(valid_link_slugs))
+        out_links = extract_wiki_link_slugs(content, self_slug=item.slug, valid_slugs=set(valid_link_slugs))
         return summary, content, out_links
 
     async def _inject_cross_links(
@@ -819,7 +822,7 @@ class WikiIngestService:
             return
         # 句柄还原 + 白名单链接提取
         content = handles.decode_text(content, r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]")
-        out_links = self._extract_wiki_links(content, summary_slug, set(old_slugs))
+        out_links = extract_wiki_link_slugs(content, self_slug=summary_slug, valid_slugs=set(old_slugs))
 
         try:
             async with self.session.begin_nested():
@@ -974,16 +977,6 @@ class WikiIngestService:
         # 没有 SUMMARY 行：取第一段当摘要
         first_para = text.split("\n\n", 1)[0][:200]
         return first_para, text
-
-    @staticmethod
-    def _extract_wiki_links(content: str, self_slug: str, valid_slugs: set) -> list[str]:
-        """从正文中提取 [[slug|title]] 形式的有效链接（去重、去自指、剔无效）"""
-        links = []
-        for m in re.finditer(r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]", content):
-            slug = normalize_slug(m.group(1))
-            if slug and slug != self_slug and slug in valid_slugs and slug not in links:
-                links.append(slug)
-        return links
 
     @property
     def _record(self) -> Any:

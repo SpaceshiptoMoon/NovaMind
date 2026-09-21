@@ -111,50 +111,20 @@ class ASRConnectionTester:
             # 2xx 或 4xx（模型不存在等）均视为连接可达
 
     async def _test_dashscope(self, *, model: str, api_key: str, base_url: str | None) -> None:
-        """测试 ASR 连接（DashScope Paraformer API，HTTP URL → async_call → wait）"""
-        from http import HTTPStatus
+        """测试 ASR 连接（DashScope Paraformer；协议胶水走 shared/ai_models/asr 唯一实现）"""
+        from novamind.shared.ai_models.asr import (
+            await_transcription,
+            configure_dashscope,
+            submit_transcription,
+        )
 
-        import dashscope
-        from dashscope.audio.asr import Transcription
+        configure_dashscope(api_key, base_url)
 
-        if api_key:
-            dashscope.api_key = api_key
-
-        # 百炼平台需要设置 workspace 级别的 base URL
-        if base_url:
-            url = base_url.rstrip("/")
-            # 去掉用户误填的兼容模式路径（/compatible-mode/v1 → OpenAI 协议用的）
-            if url.endswith("/compatible-mode/v1"):
-                url = url[: -len("/compatible-mode/v1")]
-            if not url.endswith("/api/v1"):
-                url += "/api/v1"
-            dashscope.base_http_api_url = url
-
-        # 提交转写任务
-        task_response = Transcription.async_call(
+        # 提交官方示例音频 → 轮询到完成（验证真实可用性，而非仅提交成功）
+        task_response = submit_transcription(
             model=model,
             file_urls=[DASHSCOPE_ASR_SAMPLE_URL],
             language_hints=["zh", "en"],
         )
-
-        if task_response.output is None:
-            raise ValueError(
-                f"DashScope 转写任务提交失败: status={task_response.status_code}, "
-                f"message={getattr(task_response, 'message', 'unknown')}"
-            )
-
-        if task_response.status_code != HTTPStatus.OK:
-            raise ValueError(
-                f"DashScope 转写任务提交失败: status={task_response.status_code}, "
-                f"message={getattr(task_response, 'message', 'unknown')}"
-            )
-
-        # 等待转写完成（验证真实可用性，而非仅提交成功）
-        transcribe_response = Transcription.wait(task=task_response.output.task_id)
-
-        if transcribe_response.status_code != HTTPStatus.OK:
-            raise ValueError(
-                f"DashScope 转写失败: status={transcribe_response.status_code}, "
-                f"message={getattr(transcribe_response, 'message', 'unknown')}"
-            )
+        await_transcription(task_response.output.task_id)
         # 转写成功 = 连接可达
