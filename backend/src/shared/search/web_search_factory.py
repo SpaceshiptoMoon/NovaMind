@@ -1,10 +1,9 @@
 """web 搜索端口唯一构造工厂（批次 2.1 收敛）。
 
 此前同样的「按 provider 构造搜索客户端」逻辑有四份逐字级重复：
-engines/search_ports.build_web_search_port_from_provider、
-deep_research/adapters/web_search_port_adapter 的三个 build_*、
-qa/ai_chat_service 的 _resolve/_build_yaml_fallback。本模块成为唯一实现，
-消费方全部改调此处。
+engines/search_ports.build_web_search_port_from_provider（旧名）、
+deep_research 数据源适配器的三个 build_*、qa/ai_chat_service 的 _resolve/_build_yaml_fallback。
+本模块成为唯一实现，消费方全部改调此处。
 
 语义保持（择优链）：
 1. 用户显式指定 provider → 该 provider 的用户配置（SearchConfigService 解密凭据）

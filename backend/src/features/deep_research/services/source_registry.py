@@ -79,10 +79,10 @@ def register_source_factory(
 
 def register_builtin_sources() -> None:
     """注册 builtin 数据源（internal/external），模块加载期执行（幂等）。"""
-    from novamind.features.deep_research.adapters.internal_search_port_adapter import (
+    from novamind.features.deep_research.services.internal_search_source import (
         build_internal_source,
     )
-    from novamind.features.deep_research.adapters.web_search_port_adapter import (
+    from novamind.features.deep_research.services.web_search_source import (
         build_web_search_source,
     )
 

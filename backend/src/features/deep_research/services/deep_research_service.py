@@ -629,7 +629,7 @@ class DeepResearchService:
             SearchSourceBinding,
             SearchSourceContext,
         )
-        from novamind.features.deep_research.adapters.source_registry import source_registry
+        from novamind.features.deep_research.services.source_registry import source_registry
 
         deps = {"search_service": self.search_service_lazy, "session": self.session, "logger": self.logger}
         internal_cfg = ctx.params.internal_config

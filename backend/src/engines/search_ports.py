@@ -41,10 +41,7 @@ class ProviderWebSearchPort:
 
     纯 engines 实现，不读 YAML、不 import setting/features；底层 service 由
     ``build_web_search_port_from_provider`` 或宿主装配点显式注入。
-
-    与 ``features/deep_research/adapters/web_search_port_adapter.HostWebSearchPort``
-    的区别：后者保留无参 YAML DuckDuckGo 兜底语义（供 agent/resume 默认场景）；本类
-    无兜底，``service`` 为 ``None`` 时 ``search`` 抛 ``WebSearchError``。
+    ``service`` 为 ``None`` 时 ``search`` 抛 ``WebSearchError``。
     """
 
     def __init__(self, service: object | None = None):

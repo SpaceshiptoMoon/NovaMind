@@ -1,4 +1,4 @@
-"""数据源注册表（features/deep_research/adapters/source_registry.py）单元测试。
+"""数据源注册表（features/deep_research/services/source_registry.py）单元测试。
 
 工厂契约测试（照 engines/test_web_search_port_builder.py 模板）：
 
@@ -26,7 +26,7 @@ from novamind.engines.deep_research.sources import (
     SearchSourceContext,
     SearchSourcePort,
 )
-from novamind.features.deep_research.adapters.source_registry import (
+from novamind.features.deep_research.services.source_registry import (
     DataSearchSourceRegistry,
     source_registry,
 )
@@ -52,31 +52,6 @@ class _FakeKBRepo:
 
     async def get_by_space(self, space_id):
         return []
-
-
-class _StubService:
-    """最小 ExternalSearchService 桩（duckduckgo 形状）。"""
-
-    def __init__(self, depth=None):
-        self.depth = depth
-
-    def is_available(self):
-        return True
-
-    async def search(self, query, max_results=5, **kw):
-        class _R:
-            title = "t"
-            url = "u"
-            content = "c"
-            score = 0.5
-
-        return [_R() for _ in range(min(1, max_results))]
-
-
-class _StubTavilyService(_StubService):
-    """捕获 search_depth 构造参数的 Tavily 桩。"""
-
-    pass
 
 
 # ---- 注册表基础 ----
@@ -171,26 +146,55 @@ def _fake_es_config(tavily_key=None, serpapi_key=None):
 
 
 def test_external_source_duckduckgo_builds_and_normalizes():
-    """duckduckgo（无 key）可构造；search 归一化为统一 dict 形状。"""
+    """duckduckgo（无 key）经共享工厂可构造，产出满足 SearchSourcePort 的 adapter。"""
     ctx = _ctx({"provider": "duckduckgo", "max_results": 5, "search_depth": "basic"})
     with patch(
         "novamind.setting.yaml_config.get_config",
     ) as mock_cfg:
         mock_cfg.return_value.external_search = _fake_es_config()
-        with patch(
-            "novamind.features.deep_research.adapters.web_search_port_adapter.DuckDuckGoSearchService",
-            _StubService,
-            create=True,
-        ):
-            # 工厂内延迟 import shared.search 服务，patch 其构造点
-            import novamind.features.deep_research.adapters.web_search_port_adapter as wsa
-
-            with patch.object(wsa, "as_web_search_port"):
-                # 直接构造 stub service 注入路径较深，退而验证 build 不抛 + 协议满足
-                pass
-        # 简化：monkeypatch service 构造不可行时，验证真实 DDG 构造（无网络副作用）
         port = source_registry.build("external", ctx)
     assert isinstance(port, SearchSourcePort)
+
+
+def test_external_source_delegates_to_shared_factory():
+    """构造委托共享工厂 + 异常镜像：中立 NotConfigured → feature SearchProviderNotConfiguredError。"""
+    import novamind.features.deep_research.services.web_search_source as wsa
+    from novamind.engines.search_errors import (
+        WebSearchProviderNotConfiguredError as NeutralNotConfigured,
+    )
+    from novamind.engines.search_ports import ProviderWebSearchPort
+
+    class _FakePort:
+        async def search(self, query, max_results=5):
+            return []
+
+        async def close(self):
+            pass
+
+    calls = []
+
+    def _fake_build(provider, api_key, extra):
+        calls.append((provider, api_key, extra))
+        if provider == "locked":
+            raise NeutralNotConfigured("locked")
+        return _FakePort()
+
+    ctx = _ctx({"provider": "tavily", "max_results": 5, "search_depth": "advanced"})
+    with patch.object(wsa, "build_web_search_port_from_provider", _fake_build):
+        with patch("novamind.setting.yaml_config.get_config") as mock_cfg:
+            mock_cfg.return_value.external_search = _fake_es_config(tavily_key="sk-yaml")
+            port = wsa.build_web_search_source(ctx)
+    # 委托参数：provider + YAML key + 请求级 search_depth 合并进 extra
+    assert calls == [("tavily", "sk-yaml", {
+        "max_results": 5, "search_depth": "advanced", "timeout": 10,
+    })]
+    assert isinstance(port, wsa.WebSearchSourceAdapter)
+    assert isinstance(port._web_port, _FakePort) or isinstance(port._web_port, ProviderWebSearchPort)
+
+    # 镜像：中立异常转 feature 异常
+    with patch.object(wsa, "build_web_search_port_from_provider", _fake_build):
+        with pytest.raises(SearchProviderNotConfiguredError):
+            wsa.build_web_search_source(_ctx({"provider": "locked"}))
 
 
 def test_external_source_tavily_without_key_raises():
@@ -228,7 +232,7 @@ async def test_external_source_search_normalizes_to_dict():
         port = source_registry.build("external", ctx)
     # 注入 stub 底层 port 验证归一化（绕过真实网络）
     from novamind.engines.search_ports import WebSearchResult
-    from novamind.features.deep_research.adapters.web_search_port_adapter import (
+    from novamind.features.deep_research.services.web_search_source import (
         WebSearchSourceAdapter,
     )
 
@@ -254,7 +258,7 @@ async def test_external_source_search_normalizes_to_dict():
 
 async def test_external_source_adapter_close_delegates():
     """WebSearchSourceAdapter.close 委托底层 port（cleanup 链路）。"""
-    from novamind.features.deep_research.adapters.web_search_port_adapter import (
+    from novamind.features.deep_research.services.web_search_source import (
         WebSearchSourceAdapter,
     )
 
@@ -310,8 +314,8 @@ def test_build_source_bindings_extra_source_independent_top_k():
 
     # 用独立注册表不行——方法内部 import 全局 source_registry；
     # 改为 patch 全局注册表仅此一源（避免触碰真实 internal/external 工厂）
-    from novamind.features.deep_research.adapters import source_registry as sr_mod
-    from novamind.features.deep_research.adapters.source_registry import (
+    from novamind.features.deep_research.services import source_registry as sr_mod
+    from novamind.features.deep_research.services.source_registry import (
         DataSearchSourceRegistry as _Reg,
     )
 

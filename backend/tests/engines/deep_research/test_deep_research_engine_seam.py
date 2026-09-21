@@ -133,7 +133,7 @@ def test_search_source_lives_in_engine_types():
 
 def test_internal_search_port_protocol_location():
     """批次 3.7：InternalSearchPort 协议已删，适配器为普通宿主类。"""
-    import novamind.features.deep_research.adapters.internal_search_port_adapter as ada
+    import novamind.features.deep_research.services.internal_search_source as ada
 
     assert hasattr(ada, "HostInternalSearchPort")
 def test_engine_invalid_research_query_error_location():
@@ -394,13 +394,13 @@ def test_background_investigation_signature():
 
 
 def test_host_internal_search_port_adapter_location():
-    """HostInternalSearchPort 位于 features/deep_research/adapters，下沉 knowledge_space 跨 feature import。"""
-    adapter_path = BACKEND_ROOT / "src/features/deep_research/adapters/internal_search_port_adapter.py"
+    """HostInternalSearchPort 位于 features/deep_research/services，下沉 knowledge_space 跨 feature import。"""
+    adapter_path = BACKEND_ROOT / "src/features/deep_research/services/internal_search_source.py"
     src = adapter_path.read_text(encoding="utf-8")
 
-    # adapter 持有跨 feature import（knowledge_space）——证明跨 feature 边界下沉到 adapter，引擎层零依赖
+    # feature service 持有跨 feature import（knowledge_space）——证明跨 feature 边界下沉到 feature 侧，引擎层零依赖
     assert "novamind.features.knowledge_space" in src, (
-        "HostInternalSearchPort adapter 应持有 knowledge_space 跨 feature import"
+        "HostInternalSearchPort 源文件应持有 knowledge_space 跨 feature import"
     )
     assert "HostInternalSearchPort" in src
     assert "as_internal_search_port" in src
@@ -408,22 +408,22 @@ def test_host_internal_search_port_adapter_location():
 
 def test_host_internal_search_port_satisfies_protocol():
     """批次 3.7：HostInternalSearchPort 行为断言（search 方法存在）。"""
-    from novamind.features.deep_research.adapters.internal_search_port_adapter import (
+    from novamind.features.deep_research.services.internal_search_source import (
         HostInternalSearchPort,
     )
 
     assert hasattr(HostInternalSearchPort, "search")
-def test_host_web_search_port_has_close_and_provider_factory():
-    """HostWebSearchPort.close() 存在；构造收敛后共享工厂提供 builder（批次 2.1）。"""
-    from novamind.features.deep_research.adapters.web_search_port_adapter import (
-        HostWebSearchPort,
-    )
+
+
+def test_provider_web_search_port_has_close_and_factory():
+    """共享工厂是 web 搜索端口唯一构造点；ProviderWebSearchPort 提供 close。"""
+    from novamind.engines.search_ports import ProviderWebSearchPort
     from novamind.shared.search.web_search_factory import (
         build_web_search_port_from_yaml,
         resolve_web_search_port,
     )
 
-    assert hasattr(HostWebSearchPort, "close"), "HostWebSearchPort 应有 close() 方法"
+    assert hasattr(ProviderWebSearchPort, "close"), "ProviderWebSearchPort 应有 close() 方法"
     # 批次 2.1：build_web_search_port* 收敛到共享工厂（resume/agent/deep_research 共用）
     assert callable(build_web_search_port_from_yaml), "共享工厂应提供 YAML 择优构造"
     assert callable(resolve_web_search_port), "共享工厂应提供用户级择优构造"

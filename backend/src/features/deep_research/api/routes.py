@@ -11,7 +11,7 @@ from novamind.core.auth.ws_auth import ws_authenticate, ws_extract_token
 from novamind.core.database.database import get_db
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.core.ws import run_stream_to_ws, send_event
-from novamind.features.deep_research.adapters.source_registry import source_registry
+from novamind.features.deep_research.services.source_registry import source_registry
 from novamind.features.deep_research.api.dependencies import get_deep_research_service
 from novamind.features.deep_research.models.research_session import (
     ResearchStatus as ModelResearchStatus,

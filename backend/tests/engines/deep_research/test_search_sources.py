@@ -71,7 +71,7 @@ def test_search_source_port_runtime_checkable_and_shape():
     )
 
     # HostInternalSearchPort 与协议同形，天然满足
-    from novamind.features.deep_research.adapters.internal_search_port_adapter import (
+    from novamind.features.deep_research.services.internal_search_source import (
         HostInternalSearchPort,
     )
 
