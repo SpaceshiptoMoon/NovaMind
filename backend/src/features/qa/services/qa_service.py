@@ -438,6 +438,39 @@ class QAService:
         await self.invalidate_session_config_cache(session_id)
         return config
 
+    async def verify_session_owner(self, session_id: str, user_id: int) -> None:
+        """会话归属校验（create / PATCH 共用）：若该会话已有其他用户的消息，则拒绝。
+
+        用「消息归属」而非「config 归属」，因为 config 可能尚不存在（首次创建）。
+        """
+        from novamind.features.qa.exceptions import UnauthorizedAccessException
+
+        existing_messages = await self.repository.get_by_session(session_id)
+        if existing_messages and existing_messages[0].user_id != user_id:
+            raise UnauthorizedAccessException("无权操作此会话配置")
+
+    async def get_session_config(self, session_id: str, user_id: int):
+        """读会话配置；无记录返回 None（调用方回落默认值），归属不符抛 403。"""
+        from novamind.features.qa.exceptions import UnauthorizedAccessException
+
+        config = await self.session_config_repo.get_by_session_id(session_id)
+        if config and config.user_id != user_id:
+            raise UnauthorizedAccessException("无权访问此会话配置")
+        return config
+
+    async def delete_session_config(self, session_id: str, user_id: int) -> bool:
+        """删会话配置（归属校验 + 删 + 失效缓存）。Returns: 是否实际删除。"""
+        from novamind.features.qa.exceptions import UnauthorizedAccessException
+
+        existing = await self.session_config_repo.get_by_session_id(session_id)
+        if not existing:
+            return False
+        if existing.user_id != user_id:
+            raise UnauthorizedAccessException("无权操作此会话配置")
+        await self.session_config_repo.delete(session_id)
+        await self.invalidate_session_config_cache(session_id)
+        return True
+
     async def update_compression_config(
         self, session_id: str, user_id: int, compression_config: dict,
     ) -> Any:

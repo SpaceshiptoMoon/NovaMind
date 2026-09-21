@@ -278,10 +278,10 @@ async def list_review_models(
     _admin: dict = Depends(require_permission("skill.config")),
     db: AsyncSession = Depends(get_db),
 ):
-    from novamind.features.user.repository.model_config_repository import ModelConfigRepository
-    repo = ModelConfigRepository(db)
-    configs = await repo.list_by_user(admin_user_id, "llm")
-    return [c.model for c in configs]
+    from novamind.features.user.services.model_config_service import ModelConfigService
+
+    result = await ModelConfigService(db).list_configs(admin_user_id, "llm")
+    return [item.model for item in result.items]
 
 
 @router.get(

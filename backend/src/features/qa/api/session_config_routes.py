@@ -81,7 +81,7 @@ async def create_config(
     - **compression.custom_prompt**: 自定义摘要提示词（可选）
     """
     # 校验会话归属
-    await verify_session_owner(session_id, user_id, repo)
+    await qa_service.verify_session_owner(session_id, user_id)
 
     # 检查是否已存在（应用层快速失败）
     existing = await repo.get_by_session_id(session_id)
@@ -200,7 +200,7 @@ async def update_compression_config(
     - **compression.custom_prompt**: 自定义摘要提示词（可选）
     """
     # 校验会话归属
-    await verify_session_owner(session_id, user_id, repo)
+    await qa_service.verify_session_owner(session_id, user_id)
 
     config = await qa_service.update_compression_config(
         session_id=session_id,
@@ -239,7 +239,7 @@ async def update_llm_config(
     注意：llm_model / enable_thinking 由前端请求传，不在此接口。
     """
     # 校验会话归属
-    await verify_session_owner(session_id, user_id, repo)
+    await qa_service.verify_session_owner(session_id, user_id)
 
     config = await qa_service.update_llm_config(
         session_id=session_id,
@@ -279,7 +279,7 @@ async def update_rag_config(
     - **rag.top_k**: 检索返回条数（默认 5）
     """
     # 校验会话归属
-    await verify_session_owner(session_id, user_id, repo)
+    await qa_service.verify_session_owner(session_id, user_id)
 
     config = await qa_service.upsert_rag_binding(
         session_id=session_id,
@@ -317,7 +317,7 @@ async def update_web_search_config(
     注意：是否启用联网搜索由请求级 enable_web_search（聊天 chip）控制，不在此接口。
     """
     # 校验会话归属
-    await verify_session_owner(session_id, user_id, repo)
+    await qa_service.verify_session_owner(session_id, user_id)
 
     config = await qa_service.update_web_search_config(
         session_id=session_id,
