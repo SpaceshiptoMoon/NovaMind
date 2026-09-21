@@ -75,9 +75,11 @@ def capture(monkeypatch):
         "novamind.core.database.database.get_db_session", lambda: _FakeDBCtx(),
     )
     monkeypatch.setattr(
-        "novamind.features.user.repository.user_repository.UserRepository", _FakeRepo,
+        "novamind.features.user.services.user_service.UserRepository", _FakeRepo,
     )
-    monkeypatch.setattr(user_routes, "AuthService", _FakeAuthService)
+    monkeypatch.setattr(
+        "novamind.features.user.services.user_service.AuthService", _FakeAuthService,
+    )
     monkeypatch.setattr(
         "novamind.features.notification.services.email_service.EmailService", _FakeEmail,
     )

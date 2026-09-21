@@ -70,5 +70,60 @@ class ResumeSessionService:
         await self.repo.delete_by_id(session_id)
         await self.db.commit()
 
+    # ==================== 读侧（批次 4 自路由层下沉） ====================
+
+    async def list_user_sessions(
+        self, user_id: int, limit: int, offset: int, status: int | None = None,
+    ):
+        """用户会话分页列表。Returns: (sessions, total)。"""
+        return await self.repo.list_by_user(user_id, limit, offset, status=status)
+
+    async def get_owned_session(self, session_id: str, user_id: int):
+        """取会话并校验归属（不存在/非本人抛 ResumeSessionNotFoundError）。"""
+        from novamind.features.app.api.exceptions import ResumeSessionNotFoundError
+
+        session = await self.repo.get_by_id(session_id)
+        if not session or session.user_id != user_id:
+            raise ResumeSessionNotFoundError(session_id)
+        return session
+
+    async def get_cancellable_session(self, session_id: str, user_id: int):
+        """取会话并校验归属 + 可取消状态（PARSING/ANALYZING/PROBING）。
+
+        状态不允许取消时抛 ResumeParseError。
+        """
+        from novamind.features.app.api.exceptions import ResumeParseError
+
+        session = await self.get_owned_session(session_id, user_id)
+        if session.status not in (
+            ResumeSessionStatus.PARSING,
+            ResumeSessionStatus.ANALYZING,
+            ResumeSessionStatus.PROBING,
+        ):
+            raise ResumeParseError("当前会话状态不允许取消")
+        return session
+
+    async def read_report(self, session_id: str, user_id: int) -> tuple[bytes, str]:
+        """读报告 MD 内容。Returns: (content, report_filename)。
+
+        报告未生成/MinIO 读取失败抛 ResumeParseError。
+        """
+        from novamind.features.app.api.exceptions import ResumeParseError
+
+        session = await self.get_owned_session(session_id, user_id)
+        if not session.md_report_url:
+            raise ResumeParseError("报告尚未生成")
+
+        try:
+            minio_client = await get_minio_client()
+            content = await minio_client.download_document(
+                minio_client.default_bucket, session.md_report_url
+            )
+        except Exception as e:
+            logger.error("从 MinIO 读取报告失败", session_id=session_id, error=str(e))
+            raise ResumeParseError("报告读取失败")
+        filename = (session.resume_filename or "resume").rsplit(".", 1)[0] + "_report.md"
+        return content, filename
+
 
 __all__ = ["ResumeSessionService"]

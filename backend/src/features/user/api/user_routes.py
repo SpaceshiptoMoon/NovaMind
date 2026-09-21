@@ -306,16 +306,9 @@ async def get_my_permissions(
 
     disabled_apps: list[str] = []
     if current_user.get("role_code") != "admin":
-        redis_client = None
-        try:
-            from novamind.shared.storage.client_factory import ClientFactory
-
-            redis_client = await ClientFactory.get_redis_client()
-        except Exception:
-            redis_client = None
         from novamind.features.user.services.app_access_service import AppAccessService
 
-        svc = AppAccessService(db, redis_client)
+        svc = await AppAccessService.with_redis(db)
         disabled_apps = sorted(await svc.get_disabled_apps(current_user["id"]))
 
     return MyPermissionsResponse(
@@ -546,50 +539,12 @@ async def forgot_password(
     data: ForgotPasswordRequest,
 ):
     """
-    忘记密码 — 无论邮箱是否存在都返回成功（防止邮箱枚举）
+    忘记密码 — 无论邮箱是否存在都返回成功（防止邮箱枚举）；
+    流程编排（token/邮件/站内通知）在 UserService.request_password_reset。
     """
-    try:
-        from novamind.core.database.database import get_db_session
-        from novamind.features.user.repository.user_repository import UserRepository
+    from novamind.features.user.services.user_service import UserService
 
-        async with get_db_session() as db:
-            repo = UserRepository(db)
-            user = await repo.get_user_by_email(data.email, use_cache=False)
-
-            if user:
-                # 生成重置 Token
-                token = await AuthService.generate_reset_token(user.id)
-
-                # 发送重置邮件（异步，失败不影响响应）
-                try:
-                    from novamind.features.notification.services.email_service import EmailService
-                    reset_link = f"/reset-password?token={token}"
-                    await EmailService.send_reset_email(data.email, reset_link, user.username)
-                except Exception:
-                    pass  # 邮件发送失败不暴露给用户
-
-                # 站内通知记录（用户此刻未登录无 WS 连接，纯审计记录；
-                # link=None：任何需登录页都会被 guard 截走）
-                try:
-                    from novamind.features.notification.services.notification_service import (
-                        NotificationService,
-                    )
-                    await NotificationService.notify(
-                        db,
-                        user_id=user.id,
-                        type="password_reset",
-                        title="密码重置请求已发送",
-                        content=(
-                            "我们已向您的邮箱发送密码重置链接，链接有效期有限，请尽快处理。"
-                            "若非本人操作请忽略本通知。"
-                        ),
-                    )
-                except Exception:
-                    pass  # 通知失败不暴露给用户
-
-    except Exception:
-        pass  # 任何异常都不暴露给用户
-
+    await UserService.request_password_reset(data.email)
     return ForgotPasswordResponse()
 
 
@@ -627,7 +582,7 @@ async def get_user_app_access(
     await user_service.get_user_by_id(user_id)
     from novamind.features.user.services.app_access_service import AppAccessService
 
-    svc = AppAccessService(db, await _appgate_redis())
+    svc = await AppAccessService.with_redis(db)
     return UserAppAccessResponse(
         user_id=user_id, disabled_apps=sorted(await svc.get_disabled_apps(user_id))
     )
@@ -650,7 +605,7 @@ async def update_user_app_access(
     await user_service.get_user_by_id(user_id)
     from novamind.features.user.services.app_access_service import AppAccessService
 
-    svc = AppAccessService(db, await _appgate_redis())
+    svc = await AppAccessService.with_redis(db)
     await svc.set_disabled_apps(
         user_id, set(body.disabled_apps), operator_id=current_user.get("id")
     )
@@ -659,15 +614,3 @@ async def update_user_app_access(
     )
 
 
-async def _appgate_redis():
-    """取 Redis 客户端供应用禁用缓存（装配失败降级 None→DB 直查）。
-
-    与 dependencies.get_permission_checker 同款模式；PUT 后的 invalidate
-    必须能删到读侧（me/permissions、AppGateMiddleware）命中的同一缓存。
-    """
-    try:
-        from novamind.shared.storage.client_factory import ClientFactory
-
-        return await ClientFactory.get_redis_client()
-    except Exception:
-        return None

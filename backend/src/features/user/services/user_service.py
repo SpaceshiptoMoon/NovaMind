@@ -132,6 +132,61 @@ class UserService:
             role_code="viewer",
         )
 
+    async def ensure_not_super_admin(self, user_id: int) -> None:
+        """超管保护：目标为最高管理员时抛 PermissionDeniedError（强制下线前调用）。"""
+        from novamind.features.user.exceptions import PermissionDeniedError
+
+        target = await self.user_repository.get_user_by_id(user_id, use_cache=False)
+        if target is not None and getattr(target, "is_super_admin", False):
+            raise PermissionDeniedError(message="最高管理员账户不可强制下线")
+
+    @staticmethod
+    async def request_password_reset(email: str) -> None:
+        """忘记密码流程：生成重置 token → 发邮件 → 站内审计通知。
+
+        无论邮箱是否存在均静默成功（防邮箱枚举）；邮件/通知失败不暴露给用户。
+        独立短会话执行（路由无 db 依赖，本方法自开 session）。
+        """
+        from novamind.core.database.database import get_db_session
+
+        try:
+            async with get_db_session() as db:
+                repo = UserRepository(db)
+                user = await repo.get_user_by_email(email, use_cache=False)
+                if not user:
+                    return
+
+                token = await AuthService.generate_reset_token(user.id)
+
+                # 发送重置邮件（失败不影响响应）
+                try:
+                    from novamind.features.notification.services.email_service import EmailService
+
+                    reset_link = f"/reset-password?token={token}"
+                    await EmailService.send_reset_email(email, reset_link, user.username)
+                except Exception:
+                    pass  # 邮件发送失败不暴露给用户
+
+                # 站内通知记录（用户此刻未登录无 WS 连接，纯审计记录）
+                try:
+                    from novamind.features.notification.services.notification_service import (
+                        NotificationService,
+                    )
+                    await NotificationService.notify(
+                        db,
+                        user_id=user.id,
+                        type="password_reset",
+                        title="密码重置请求已发送",
+                        content=(
+                            "我们已向您的邮箱发送密码重置链接，链接有效期有限，请尽快处理。"
+                            "若非本人操作请忽略本通知。"
+                        ),
+                    )
+                except Exception:
+                    pass  # 通知失败不暴露给用户
+        except Exception:
+            pass  # 任何异常都不暴露给用户（防枚举）
+
     async def register_and_login(
         self,
         username: str,

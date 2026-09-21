@@ -26,6 +26,17 @@ class AppAccessService:
         self.redis = redis_client
         self.logger = get_logger(__name__)
 
+    @classmethod
+    async def with_redis(cls, db: AsyncSession) -> AppAccessService:
+        """装配点便捷构造：自取 Redis 单例（失败降级 None → DB 直查）。"""
+        try:
+            from novamind.shared.storage.client_factory import ClientFactory
+
+            redis_client = await ClientFactory.get_redis_client()
+        except Exception:
+            redis_client = None
+        return cls(db, redis_client)
+
     # ==================== 查询 ====================
 
     async def get_disabled_apps(self, user_id: int) -> set[str]:

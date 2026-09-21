@@ -16,17 +16,14 @@ from novamind.features.app.api.exceptions import (
     InvalidConfigError,
     InvalidFileTypeError,
     ResumeParseError,
-    ResumeSessionNotFoundError,
 )
-from novamind.features.app.models.resume import ResumeSessionStatus
-from novamind.features.app.repository.resume_repository import ResumeSessionRepository
 from novamind.features.app.schemas.resume_schema import (
     ResumeSessionListResponse,
     ResumeSessionResponse,
 )
+from novamind.features.app.services.resume_session_service import ResumeSessionService
 from novamind.features.knowledge_space.api.dependencies import get_current_user_id
 from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.shared.storage.client_factory import get_minio_client
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
@@ -120,8 +117,9 @@ async def list_resume_sessions(
     user_id: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    repo = ResumeSessionRepository(db)
-    sessions, total = await repo.list_by_user(user_id, limit, offset, status=status)
+    sessions, total = await ResumeSessionService(db).list_user_sessions(
+        user_id, limit, offset, status=status
+    )
     return ResumeSessionListResponse(
         sessions=[_to_session_response(s) for s in sessions],
         total=total,
@@ -134,10 +132,7 @@ async def get_resume_session(
     user_id: int = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    repo = ResumeSessionRepository(db)
-    session = await repo.get_by_id(session_id)
-    if not session or session.user_id != user_id:
-        raise ResumeSessionNotFoundError(session_id)
+    session = await ResumeSessionService(db).get_owned_session(session_id, user_id)
     return _to_session_response(session)
 
 
@@ -148,21 +143,8 @@ async def get_report_content(
     db: AsyncSession = Depends(get_db),
 ):
     """获取报告 MD 文本内容（从 MinIO 读取）"""
-    repo = ResumeSessionRepository(db)
-    session = await repo.get_by_id(session_id)
-    if not session or session.user_id != user_id:
-        raise ResumeSessionNotFoundError(session_id)
-
-    if not session.md_report_url:
-        raise ResumeParseError("报告尚未生成")
-
-    try:
-        minio_client = await get_minio_client()
-        content = await minio_client.download_document(minio_client.default_bucket, session.md_report_url)
-        return Response(content=content, media_type="text/markdown")
-    except Exception as e:
-        logger.error("从 MinIO 读取报告失败", session_id=session_id, error=str(e))
-        raise ResumeParseError("报告读取失败")
+    content, _ = await ResumeSessionService(db).read_report(session_id, user_id)
+    return Response(content=content, media_type="text/markdown")
 
 
 @router.get("/resume/sessions/{session_id}/download")
@@ -172,22 +154,7 @@ async def download_report(
     db: AsyncSession = Depends(get_db),
 ):
     """下载报告 MD 文件（从 MinIO 读取）"""
-    repo = ResumeSessionRepository(db)
-    session = await repo.get_by_id(session_id)
-    if not session or session.user_id != user_id:
-        raise ResumeSessionNotFoundError(session_id)
-
-    if not session.md_report_url:
-        raise ResumeParseError("报告尚未生成")
-
-    try:
-        minio_client = await get_minio_client()
-        content = await minio_client.download_document(minio_client.default_bucket, session.md_report_url)
-    except Exception as e:
-        logger.error("从 MinIO 读取报告失败", session_id=session_id, error=str(e))
-        raise ResumeParseError("报告读取失败")
-
-    filename = (session.resume_filename or "resume").rsplit(".", 1)[0] + "_report.md"
+    content, filename = await ResumeSessionService(db).read_report(session_id, user_id)
     encoded_filename = quote(filename)
     return Response(
         content=content,
@@ -203,15 +170,8 @@ async def delete_resume_session(
     db: AsyncSession = Depends(get_db),
 ):
     """删除简历会话及其 MinIO 文件"""
-    repo = ResumeSessionRepository(db)
-    session = await repo.get_by_id(session_id)
-    if not session or session.user_id != user_id:
-        raise ResumeSessionNotFoundError(session_id)
-
-    # 多步删除（MinIO + DB）由 service 编排并收口 commit
-    from novamind.features.app.services.resume_session_service import ResumeSessionService
-
     service = ResumeSessionService(db)
+    await service.get_owned_session(session_id, user_id)
     await service.delete_session(session_id)
     return {"message": "删除成功"}
 
@@ -225,20 +185,8 @@ async def cancel_resume_session(
     """取消正在处理的简历会话"""
     from novamind.features.app.tasks.resume_task_tracking import mark_resume_cancelled
 
-
-    repo = ResumeSessionRepository(db)
-    session = await repo.get_by_id(session_id)
-    if not session or session.user_id != user_id:
-        raise ResumeSessionNotFoundError(session_id)
-
-    # 只有正在处理中的会话才能取消
-    if session.status not in (
-        ResumeSessionStatus.PARSING,
-        ResumeSessionStatus.ANALYZING,
-        ResumeSessionStatus.PROBING,
-    ):
-        raise ResumeParseError("当前会话状态不允许取消")
-
+    # 归属 + 可取消状态校验（PARSING/ANALYZING/PROBING）在 service
+    await ResumeSessionService(db).get_cancellable_session(session_id, user_id)
     await mark_resume_cancelled(session_id)
     return {"message": "取消请求已发送"}
 
