@@ -266,9 +266,10 @@ class WikiLintService:
                     fixed += 1
                     details.append(f"{page.slug}: 剥除失效来源 {issue.target_slug}")
 
-        # 修后重建全 KB 链接（对齐 WeKnora RebuildLinks）
+        # 修后重建全 KB 链接（对齐 WeKnora RebuildLinks）；事务边界：service 内 commit
         if fixed:
             await self._rebuild_links()
+        await self.session.commit()
         return {"fixed": fixed, "details": details}
 
     async def _rebuild_links(self) -> None:

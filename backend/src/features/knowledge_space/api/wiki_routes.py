@@ -6,12 +6,14 @@ Wiki 路由（P1 只读 + P2 编辑/版本/回滚 + P3 图谱/lint 闭环）
 图谱与质量：链接图（overview/ego）、lint 检测、问题登记与状态流转。
 读操作走 validate_space_access + validate_kb_access；
 写操作走 validate_kb_writable（额外拒归档 KB）。
+
+路由层只做参数解析 + Depends 鉴权 + 调 service（批次 4 读侧下沉
+wiki_query_service，写侧此前已下沉 wiki_page_service/wiki_graph_service）。
 """
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query
 from novamind.core.database.database import get_db
-from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.api.dependencies import (
     get_current_user_id,
     validate_kb_writable,
@@ -21,21 +23,9 @@ from novamind.features.knowledge_space.exceptions import (
     KnowledgeBaseNotFoundError,
     WikiPageNotFoundError,
 )
-from novamind.features.knowledge_space.models.wiki import (
-    WikiIngestStatus,
-    WikiPage,
-    WikiPageStatus,
-    WikiPageType,
-)
-from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
-from novamind.features.knowledge_space.repository.wiki_repository import (
-    WikiIngestRecordRepository,
-    WikiPageRepository,
-)
 from novamind.features.knowledge_space.schemas.wiki_schema import (
     WikiAutoFixResponse,
     WikiGraphResponse,
-    WikiIndexGroup,
     WikiIndexResponse,
     WikiIngestStatusResponse,
     WikiIssueCreateRequest,
@@ -43,7 +33,6 @@ from novamind.features.knowledge_space.schemas.wiki_schema import (
     WikiIssueStatusUpdateRequest,
     WikiLintResponse,
     WikiPageCreateRequest,
-    WikiPageListItem,
     WikiPageListResponse,
     WikiPageResponse,
     WikiPageSearchItem,
@@ -55,42 +44,14 @@ from novamind.features.knowledge_space.schemas.wiki_schema import (
     WikiSearchResponse,
     WikiStatsResponse,
 )
+from novamind.features.knowledge_space.services.wiki_query_service import (
+    WikiQueryService,
+    get_kb_or_fail,
+    status_name,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
-logger = get_logger(__name__)
-
 router = APIRouter(tags=["知识库 Wiki"])
-
-_STATUS_NAMES = {
-    WikiIngestStatus.PENDING: "pending",
-    WikiIngestStatus.RUNNING: "running",
-    WikiIngestStatus.DONE: "done",
-    WikiIngestStatus.FAILED: "failed",
-}
-
-
-async def _get_kb_or_404(kb_id: int, space_id: int, db: AsyncSession):
-    """校验 KB 归属（validate_kb_access 为直接调用版）"""
-    from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBaseStatus
-    from novamind.features.knowledge_space.repository.knowledge_base_repository import (
-        KnowledgeBaseRepository,
-    )
-    kb = await KnowledgeBaseRepository(db).get_by_id(kb_id)
-    if not kb or kb.space_id != space_id or kb.status == KnowledgeBaseStatus.DELETED:
-        raise KnowledgeBaseNotFoundError(kb_id)
-    return kb
-
-
-def _to_list_item(page: WikiPage) -> WikiPageListItem:
-    return WikiPageListItem(
-        id=page.id, slug=page.slug, title=page.title,
-        page_type=page.page_type, status=page.status,
-        summary=page.summary or "", aliases=page.aliases or [],
-        category_path=page.category_path or [],
-        in_links=page.in_links or [], out_links=page.out_links or [],
-        version=page.version, last_edit_source=page.last_edit_source or "",
-        updated_at=page.updated_at,
-    )
 
 
 @router.get("/pages", response_model=WikiPageListResponse, summary="Wiki 页面列表")
@@ -107,15 +68,13 @@ async def list_pages(
     _access: tuple = Depends(validate_space_access),
     db: AsyncSession = Depends(get_db),
 ):
-    await _get_kb_or_404(kb_id, space_id, db)
-    repo = WikiPageRepository(db)
-    pages, total = await repo.list_pages(
-        kb_id, page_type=page_type, status=status, category_label=category,
-        query=q, page=page, page_size=page_size,
+    await get_kb_or_fail(db, kb_id, space_id)
+    pages, total = await WikiQueryService(db).list_pages(
+        kb_id=kb_id, page=page, page_size=page_size, page_type=page_type,
+        status=status, category=category, q=q,
     )
     return WikiPageListResponse(
-        pages=[_to_list_item(p) for p in pages],
-        total=total, page=page, page_size=page_size,
+        pages=pages, total=total, page=page, page_size=page_size,
     )
 
 
@@ -128,30 +87,14 @@ async def get_page_sources(
     _access: tuple = Depends(validate_space_access),
     db: AsyncSession = Depends(get_db),
 ):
-    await _get_kb_or_404(kb_id, space_id, db)
-    repo = WikiPageRepository(db)
-    page = await repo.get_by_slug(kb_id, slug)
-    if not page:
-        raise WikiPageNotFoundError(slug)
-
-    # 展开文档级来源为 {document_id, filename}
-    doc_repo = DocumentRepository(db)
-    source_documents = []
-    for ref in page.source_refs or []:
-        doc_id_str = str(ref).split("|", 1)[0].strip()
-        if not doc_id_str.isdigit():
-            continue
-        document = await doc_repo.get_by_id(int(doc_id_str))
-        source_documents.append({
-            "document_id": int(doc_id_str),
-            "filename": document.filename if document else (str(ref).split("|", 1)[1] if "|" in str(ref) else ""),
-            "deleted": document is None,
-        })
-
+    await get_kb_or_fail(db, kb_id, space_id)
+    page, source_documents, chunk_refs = await WikiQueryService(db).get_page_sources(
+        kb_id=kb_id, slug=slug
+    )
     return WikiPageSourcesResponse(
         slug=page.slug, title=page.title,
         source_documents=source_documents,
-        chunk_refs=page.chunk_refs or [],
+        chunk_refs=chunk_refs,
     )
 
 
@@ -164,11 +107,8 @@ async def get_page(
     _access: tuple = Depends(validate_space_access),
     db: AsyncSession = Depends(get_db),
 ):
-    await _get_kb_or_404(kb_id, space_id, db)
-    page = await WikiPageRepository(db).get_by_slug(kb_id, slug)
-    if not page:
-        raise WikiPageNotFoundError(slug)
-    return page
+    await get_kb_or_fail(db, kb_id, space_id)
+    return await WikiQueryService(db).get_page(kb_id=kb_id, slug=slug)
 
 
 @router.get("/index", response_model=WikiIndexResponse, summary="Wiki 索引（按类型分组）")
@@ -180,28 +120,10 @@ async def get_index(
     _access: tuple = Depends(validate_space_access),
     db: AsyncSession = Depends(get_db),
 ):
-    await _get_kb_or_404(kb_id, space_id, db)
-    repo = WikiPageRepository(db)
-    record_repo = WikiIngestRecordRepository(db)
-
-    groups: list[WikiIndexGroup] = []
-    for page_type in ("entity", "concept", "summary"):
-        items, total = await repo.list_pages(
-            kb_id, page_type=page_type, status=WikiPageStatus.PUBLISHED,
-            page=1, page_size=per_page,
-        )
-        groups.append(WikiIndexGroup(
-            page_type=page_type, total=total,
-            items=[_to_list_item(p) for p in items],
-        ))
-
-    latest = await record_repo.get_latest_for_kb(kb_id)
-    is_active = bool(latest and latest.status in (WikiIngestStatus.PENDING, WikiIngestStatus.RUNNING))
-
-    # index 页 intro（KB 简介；无页面或已删则为空）
-    index_page = await repo.get_by_slug(kb_id, "index")
-    intro = (index_page.content if index_page and not index_page.is_deleted else "") or ""
-
+    await get_kb_or_fail(db, kb_id, space_id)
+    groups, is_active, intro = await WikiQueryService(db).get_index(
+        kb_id=kb_id, per_page=per_page
+    )
     return WikiIndexResponse(groups=groups, is_active=is_active, intro=intro)
 
 
@@ -215,10 +137,8 @@ async def search_pages(
     _access: tuple = Depends(validate_space_access),
     db: AsyncSession = Depends(get_db),
 ):
-    await _get_kb_or_404(kb_id, space_id, db)
-    repo = WikiPageRepository(db)
-    # 排序搜索（对齐 WeKnora）：rank 分级 + snippet + aliases
-    ranked = await repo.search_pages_ranked(kb_id, q, limit=limit)
+    await get_kb_or_fail(db, kb_id, space_id)
+    ranked = await WikiQueryService(db).search_pages(kb_id=kb_id, q=q, limit=limit)
     return WikiSearchResponse(
         items=[WikiPageSearchItem(**r) for r in ranked],
         total=len(ranked),
@@ -234,10 +154,8 @@ async def get_stats(
     _access: tuple = Depends(validate_space_access),
     db: AsyncSession = Depends(get_db),
 ):
-    await _get_kb_or_404(kb_id, space_id, db)
-    stats = await WikiPageRepository(db).get_stats(kb_id)
-    latest = await WikiIngestRecordRepository(db).get_latest_for_kb(kb_id)
-    is_active = bool(latest and latest.status in (WikiIngestStatus.PENDING, WikiIngestStatus.RUNNING))
+    await get_kb_or_fail(db, kb_id, space_id)
+    stats, is_active = await WikiQueryService(db).get_stats(kb_id=kb_id)
     return WikiStatsResponse(is_active=is_active, **stats)
 
 
@@ -249,12 +167,12 @@ async def get_ingest_status(
     _access: tuple = Depends(validate_space_access),
     db: AsyncSession = Depends(get_db),
 ):
-    await _get_kb_or_404(kb_id, space_id, db)
-    record = await WikiIngestRecordRepository(db).get_latest_for_kb(kb_id)
+    await get_kb_or_fail(db, kb_id, space_id)
+    record = await WikiQueryService(db).get_ingest_status(kb_id=kb_id)
     if not record:
         return None
     return WikiIngestStatusResponse(
-        status=_STATUS_NAMES.get(record.status, "unknown"),
+        status=status_name(record.status),
         step_progress=record.step_progress,
         pages_created=record.pages_created,
         pages_updated=record.pages_updated,
@@ -265,9 +183,6 @@ async def get_ingest_status(
 
 
 # ==================== 写接口（P2：编辑 / 版本 / 回滚 / 重建） ====================
-
-_ALLOWED_CREATE_TYPES = {WikiPageType.ENTITY, WikiPageType.CONCEPT, WikiPageType.SYNTHESIS, WikiPageType.COMPARISON}
-_ALLOWED_STATUSES = {WikiPageStatus.DRAFT, WikiPageStatus.PUBLISHED, WikiPageStatus.ARCHIVED}
 
 
 @router.post("/pages", response_model=WikiPageResponse, status_code=201, summary="创建页面")
@@ -337,13 +252,7 @@ async def get_revision(
     _access: tuple = Depends(validate_space_access),
     db: AsyncSession = Depends(get_db),
 ):
-    repo = WikiPageRepository(db)
-    page = await repo.get_by_slug(kb_id, slug)
-    if not page:
-        raise WikiPageNotFoundError(slug)
-    revision = await repo.get_revision(page.id, version)
-    if not revision:
-        raise WikiPageNotFoundError(f"{slug}@v{version}")
+    revision = await WikiQueryService(db).get_revision(kb_id=kb_id, slug=slug, version=version)
     return {
         "version": revision.version,
         "slug": revision.slug,
@@ -368,11 +277,7 @@ async def list_revisions(
     _access: tuple = Depends(validate_space_access),
     db: AsyncSession = Depends(get_db),
 ):
-    repo = WikiPageRepository(db)
-    page = await repo.get_by_slug(kb_id, slug)
-    if not page:
-        raise WikiPageNotFoundError(slug)
-    revisions = await repo.list_revisions(page.id)
+    page, revisions = await WikiQueryService(db).list_revisions(kb_id=kb_id, slug=slug)
     return {
         "slug": slug,
         "current_version": page.version,
@@ -471,7 +376,7 @@ async def lint_wiki(
     from novamind.features.knowledge_space.schemas.wiki_schema import WikiLintIssueItem
     from novamind.features.knowledge_space.services.wiki_lint_service import WikiLintService
 
-    await _get_kb_or_404(kb_id, space_id, db)
+    await get_kb_or_fail(db, kb_id, space_id)
     report = await WikiLintService(db, kb_id=kb_id, space_id=space_id).run_lint()
     return WikiLintResponse(
         issues=[WikiLintIssueItem(
@@ -498,9 +403,8 @@ async def auto_fix_wiki(
 ):
     from novamind.features.knowledge_space.services.wiki_lint_service import WikiLintService
 
-    await _get_kb_or_404(kb_id, space_id, db)
+    await get_kb_or_fail(db, kb_id, space_id)
     result = await WikiLintService(db, kb_id=kb_id, space_id=space_id).auto_fix()
-    await db.commit()
     return WikiAutoFixResponse(fixed=result["fixed"], details=result["details"])
 
 
@@ -514,13 +418,8 @@ async def list_issues(
     _access: tuple = Depends(validate_space_access),
     db: AsyncSession = Depends(get_db),
 ):
-    from novamind.features.knowledge_space.repository.wiki_issue_repository import (
-        WikiIssueRepository,
-    )
-
-    await _get_kb_or_404(kb_id, space_id, db)
-    issues = await WikiIssueRepository(db).list_by_kb(kb_id, status=status, limit=limit)
-    return issues
+    await get_kb_or_fail(db, kb_id, space_id)
+    return await WikiQueryService(db).list_issues(kb_id=kb_id, status=status, limit=limit)
 
 
 @router.post("/issues", response_model=WikiIssueResponse, status_code=201, summary="报告页面问题")
@@ -534,7 +433,7 @@ async def create_issue(
 ):
     from novamind.features.knowledge_space.services.wiki_page_service import WikiPageService
 
-    kb = await _get_kb_or_404(kb_id, space_id, db)
+    kb = await get_kb_or_fail(db, kb_id, space_id)
     return await WikiPageService(db).create_issue(
         kb=kb, kb_id=kb_id, slug=body.slug, issue_type=body.issue_type,
         description=body.description, reported_by=body.reported_by, user_id=user_id,
@@ -554,7 +453,7 @@ async def update_issue_status(
 ):
     from novamind.features.knowledge_space.services.wiki_page_service import WikiPageService
 
-    await _get_kb_or_404(kb_id, space_id, db)
+    await get_kb_or_fail(db, kb_id, space_id)
     return await WikiPageService(db).update_issue_status(
         issue_id=issue_id, status=body.status
     )
