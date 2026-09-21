@@ -146,7 +146,7 @@ def as_internal_search_port(
     logger: object | None = None,
 ) -> HostInternalSearchPort:
     """构造内部检索宿主实例（供装配点注入引擎）。"""
-    return HostInternalSearchPort(  # type: ignore[return-value]
+    return HostInternalSearchPort(
         search_port=search_port,
         kb_repo=kb_repo,
         space_id=space_id,

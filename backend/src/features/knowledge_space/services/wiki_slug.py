@@ -34,8 +34,8 @@ def extract_wiki_link_slugs(content: str, *, self_slug: str = "", valid_slugs: s
 
     ``[[...]]`` 内文的解析规则与 wiki_linkify._extract_wiki_slug 一致
     （``slug|display`` 取 slug 部分）；slug 清洗走 normalize_slug。
+    ``valid_slugs`` 缺省时不过滤（全部提取）。
     """
-    valid = valid_slugs if valid_slugs is not None else None
     links: list[str] = []
     for m in _WIKI_LINK_RE.finditer(content):
         inner = m.group(1)
@@ -44,6 +44,6 @@ def extract_wiki_link_slugs(content: str, *, self_slug: str = "", valid_slugs: s
             inner = inner[:pipe]
         slug = normalize_slug(inner.strip())
         if slug and slug != self_slug and slug not in links:
-            if valid is None or slug in valid:
+            if valid_slugs is None or slug in valid_slugs:
                 links.append(slug)
     return links

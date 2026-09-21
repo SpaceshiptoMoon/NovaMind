@@ -28,4 +28,4 @@ class HostAgentRegistryPort:
 
 def as_agent_registry_port(db: AsyncSession) -> HostAgentRegistryPort:
     """构造 HostAgentRegistryPort 实例（供 skill 依赖装配点注入）。"""
-    return HostAgentRegistryPort(AgentRepository(db))  # type: ignore[return-value]
+    return HostAgentRegistryPort(AgentRepository(db))

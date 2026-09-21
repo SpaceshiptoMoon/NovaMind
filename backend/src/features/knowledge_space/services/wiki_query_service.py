@@ -91,7 +91,7 @@ class WikiQueryService:
             kb_id, page_type=page_type, status=status, category_label=category,
             query=q, page=page, page_size=page_size,
         )
-        return [ _to_list_item(p) for p in pages ], total
+        return [_to_list_item(p) for p in pages], total
 
     async def get_page(self, *, kb_id: int, slug: str):
         page = await self.repo.get_by_slug(kb_id, slug)

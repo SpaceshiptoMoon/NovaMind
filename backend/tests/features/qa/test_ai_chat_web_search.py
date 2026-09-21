@@ -75,7 +75,7 @@ def _make_chat_service(search_config_port=None):
     from novamind.core.middleware.structured_logging import get_logger
 
     svc.logger = get_logger("test.ai_chat_web_search")
-    svc._search_config_port = search_config_port
+    svc._search_config_service = search_config_port
     return svc
 
 
@@ -652,7 +652,7 @@ async def test_retrieve_knowledge_passes_session_weights_to_search_request():
             captured["weights"] = request.weights
             return {"results": []}
 
-    svc._retrieval_port = _FakeRetrievalPort()
+    svc._search_service = _FakeRetrievalPort()
     # kb_ids 非空跳过 kb_repo 分支；retrieval_port 返回空 → 函数 return None
     res = await svc._retrieve_knowledge(
         query="q", user_id=1, space_id=10, kb_ids=[1],
@@ -676,7 +676,7 @@ async def test_retrieve_knowledge_default_weights_when_unspecified():
             captured["weights"] = request.weights
             return {"results": []}
 
-    svc._retrieval_port = _FakeRetrievalPort()
+    svc._search_service = _FakeRetrievalPort()
     await svc._retrieve_knowledge(
         query="q", user_id=1, space_id=10, kb_ids=[1],
     )

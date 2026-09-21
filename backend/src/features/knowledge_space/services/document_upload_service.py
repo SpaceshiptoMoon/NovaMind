@@ -11,6 +11,7 @@
 
 import asyncio
 import hashlib
+import os
 from pathlib import Path
 from typing import Any
 
@@ -372,8 +373,6 @@ class DocumentUploadService:
         Returns:
             (valid_files, failed_list)：校验通过的 (filename, content) 列表与逐文件失败明细。
         """
-        import os as _os
-
         if len(files) > max_batch_count:
             from novamind.features.knowledge_space.exceptions import (
                 DocumentCountExceededError,
@@ -387,8 +386,8 @@ class DocumentUploadService:
             if not file.filename:
                 failed_list.append({"filename": "", "error": "文件名缺失"})
                 continue
-            safe_filename = _os.path.basename(file.filename)
-            _, ext = _os.path.splitext(safe_filename.lower())
+            safe_filename = os.path.basename(file.filename)
+            _, ext = os.path.splitext(safe_filename.lower())
             if ext not in allowed_extensions:
                 failed_list.append({
                     "filename": file.filename,

@@ -84,9 +84,9 @@ class AIChatService:
         model_config_service: ModelConfigService | None = None,
         db: AsyncSession | None = None,
         minio_client: Optional["MinioClient"] = None,
-        retrieval_port: Optional["SearchService"] = None,
-        document_ingestion_port: Optional["DocumentProcessor"] = None,
-        search_config_port: SearchConfigService | None = None,
+        search_service: Optional["SearchService"] = None,
+        document_processor: Optional["DocumentProcessor"] = None,
+        search_config_service: SearchConfigService | None = None,
     ):
         """
         初始化 AI Chat 服务
@@ -96,12 +96,10 @@ class AIChatService:
             model_config_service: 模型配置服务（用于获取用户配置的模型）
             db: 数据库会话（用于附件存储）
             minio_client: MinIO 客户端（用于文件存储）
-            retrieval_port: 检索服务（R4 去端口后直收 SearchService；
-                装配点 features/qa/api/dependencies.py 构造注入）
-            document_ingestion_port: 文档摄入处理器（R4 去端口后直收
-                DocumentProcessor 引擎实例，装配点构造注入）
-            search_config_port: 搜索配置端口（批2 接缝；装配点注入
-                as_search_config_port，按用户级搜索配置择优 provider，未命中回退 YAML）
+            search_service: 检索服务（SearchService，装配点构造注入）
+            document_processor: 文档摄入处理器（DocumentProcessor 引擎实例）
+            search_config_service: 用户搜索配置服务（web 搜索按用户级配置
+                择优 provider，未命中回退 YAML）
         """
         self.qa_service = qa_service
         self.model_config_service = model_config_service
@@ -110,9 +108,9 @@ class AIChatService:
         self.attachment_repo = ChatAttachmentRepository(db) if db else None
         self.logger = get_logger(__name__)
         self._token_counter = TokenCounter()
-        self._retrieval_port = retrieval_port
-        self._document_ingestion_port = document_ingestion_port
-        self._search_config_port = search_config_port
+        self._search_service = search_service
+        self._document_processor = document_processor
+        self._search_config_service = search_config_service
         self._prompt_provider = PromptManager()
 
     async def _get_llm_client(
@@ -715,7 +713,7 @@ class AIChatService:
         from novamind.shared.search.web_search_factory import resolve_web_search_port
 
         return await resolve_web_search_port(
-            self._search_config_port, user_id, search_provider=search_provider
+            self._search_config_service, user_id, search_provider=search_provider
         )
 
     async def _retrieve_knowledge(
@@ -753,7 +751,7 @@ class AIChatService:
             # 会话级融合权重透传到 RRF；content_weight/question_weight/rrf_k 用 WeightConfig 默认（0.6/0.4/60）
             weights=WeightConfig(vector_weight=vector_weight, bm25_weight=bm25_weight),
         )
-        retrieval_port = self._retrieval_port
+        search_service = self._search_service
 
         # 确定检索的知识库列表：kb_ids > 空间下全部（前 3 个）
         if kb_ids:
@@ -772,7 +770,7 @@ class AIChatService:
         all_results: list[dict[str, Any]] = []
         for tid in target_kb_ids:
             try:
-                r = await retrieval_port.search(
+                r = await search_service.search(
                     space_id=space_id, kb_id=tid, user_id=user_id, request=search_request
                 )
                 all_results.extend(r.get("results", []))
@@ -1296,7 +1294,7 @@ class AIChatService:
             return None
 
         # PDF / DOCX 经 DocumentProcessor 引擎处理（R1 下直接消费引擎，无需宿主包装）
-        ingestion_port = self._document_ingestion_port
+        ingestion_port = self._document_processor
 
         with tempfile.NamedTemporaryFile(suffix=f".{file_type}", delete=False) as tmp:
             tmp.write(file_data)

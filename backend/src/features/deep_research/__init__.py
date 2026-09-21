@@ -33,14 +33,7 @@ from novamind.features.deep_research.schemas import (
 )
 
 # 服务层
-from novamind.features.deep_research.services import (
-    DeepResearchService,
-    DuckDuckGoSearchService,
-    ExternalSearchResult,
-    ExternalSearchService,
-    SerpAPISearchService,
-    TavilySearchService,
-)
+from novamind.features.deep_research.services import DeepResearchService
 
 # API 层 - 使用延迟导入避免循环依赖
 # 请直接从以下路径导入：
@@ -65,11 +58,6 @@ __all__ = [
     "ResearchListItem",
     "ResearchListResponse",
     # 服务层
-    "ExternalSearchService",
-    "ExternalSearchResult",
-    "TavilySearchService",
-    "SerpAPISearchService",
-    "DuckDuckGoSearchService",
     "DeepResearchService",
     # 仓储层
     "ResearchRepository",

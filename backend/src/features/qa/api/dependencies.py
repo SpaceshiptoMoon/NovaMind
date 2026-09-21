@@ -79,15 +79,14 @@ async def get_aichat_service(
     minio_client = await get_minio_client()
     es_client = await get_elasticsearch_client()
     search_service = SearchService(db, es_client, model_config_service)
-    retrieval_port = search_service
     ingestion_port = DocumentProcessor()
-    search_config_port = SearchConfigService(db)
+    search_config_service = SearchConfigService(db)
     return AIChatService(
         qa_service=qa_service,
         model_config_service=model_config_service,
         db=db,
         minio_client=minio_client,
-        retrieval_port=retrieval_port,
-        document_ingestion_port=ingestion_port,
-        search_config_port=search_config_port,
+        search_service=search_service,
+        document_processor=ingestion_port,
+        search_config_service=search_config_service,
     )

@@ -57,7 +57,7 @@ class HostNotificationPort:
 
 def as_notification_port(db: object | None = None) -> NotificationPort:
     """构造 NotificationPort 实例（供各 feature 装配点注入）。"""
-    return HostNotificationPort(db)  # type: ignore[return-value]
+    return HostNotificationPort(db)
 
 
 __all__ = ["HostNotificationPort", "as_notification_port"]
