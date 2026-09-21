@@ -89,7 +89,7 @@ def _make_jwt(
 
 
 def _make_resolver(user: dict | None) -> SimpleNamespace:
-    return SimpleNamespace(get_user_for_auth=AsyncMock(return_value=user))
+    return SimpleNamespace(get_auth_status=AsyncMock(return_value=user))
 
 
 # ===== 用例 1：有效 token + 活跃用户 =====
@@ -122,7 +122,7 @@ async def test_valid_token_active_user(fake_config, no_blacklist):
     assert user["status"] == 1
     assert user["jti"] == "test-jti"
     ws.close.assert_not_called()  # 不在内部 close，由 handler close
-    resolver.get_user_for_auth.assert_awaited_once_with(1)
+    resolver.get_auth_status.assert_awaited_once_with(1)
 
 
 # ===== 用例 2：无 subprotocol token =====
@@ -138,7 +138,7 @@ async def test_no_subprotocol_token(fake_config, no_blacklist):
     assert user is None
     assert close_code == 4401
     ws.close.assert_not_called()  # 不在内部 close
-    resolver.get_user_for_auth.assert_not_called()
+    resolver.get_auth_status.assert_not_called()
 
 
 # ===== 用例 3：无效 token =====
@@ -154,7 +154,7 @@ async def test_invalid_token(fake_config, no_blacklist):
     assert user is None
     assert close_code == 4401
     ws.close.assert_not_called()
-    resolver.get_user_for_auth.assert_not_called()
+    resolver.get_auth_status.assert_not_called()
 
 
 # ===== 用例 4：用户已删除 =====

@@ -15,9 +15,7 @@ from __future__ import annotations
 from fastapi import WebSocket
 from novamind.core.auth.blacklist import is_token_revoked, is_user_blacklisted
 from novamind.core.auth.token import decode_access_token
-from novamind.features.user.adapters.auth_user_resolver_adapter import (
-    UserStatusResolverAdapter as UserStatusResolver,
-)
+from novamind.features.user.services.user_service import UserService
 
 _BEARER_PREFIX = "bearer."
 
@@ -40,7 +38,7 @@ def ws_extract_token(websocket: WebSocket) -> str | None:
 
 
 async def ws_authenticate(
-    websocket: WebSocket, resolver: UserStatusResolver
+    websocket: WebSocket, resolver: UserService
 ) -> tuple[dict | None, int | None]:
     """WS 握手认证：subprotocol JWT → 黑名单 → 用户状态。
 
@@ -65,7 +63,7 @@ async def ws_authenticate(
         return None, WS_CLOSE_UNAUTHENTICATED
 
     # 经端口取 DB 最新用户状态（core 不碰 user ORM）
-    user = await resolver.get_user_for_auth(claims.user_id)
+    user = await resolver.get_auth_status(claims.user_id)
     if not user:
         return None, WS_CLOSE_UNAUTHENTICATED
     if user.get("is_deleted"):

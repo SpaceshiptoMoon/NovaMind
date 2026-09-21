@@ -181,6 +181,30 @@ class UserService:
             raise UserNotFoundError(user_id=user_id)
         return user
 
+    async def get_auth_status(self, user_id: int) -> dict | None:
+        """认证状态快照（原 UserStatusResolverAdapter 语义上移，core/auth 消费）。
+
+        按 user_id 取最新用户状态并派生认证所需布尔（is_active/is_deleted/
+        is_admin/must_change_password），role_code 供 core/auth 派生权限守卫；
+        枚举语义留在 user 侧计算，core 只判布尔。
+        """
+        user = await self.user_repository.get_user_by_id(user_id, use_cache=False)
+        if not user:
+            return None
+        role_code = user.role.code if user.role else None
+        return {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "role_code": role_code,
+            # 用 role_code 派生布尔，避免 user.is_admin 方法对象被判真
+            "is_admin": role_code == "admin",
+            "status": user.status,
+            "is_active": user.status == UserStatus.ACTIVE,
+            "is_deleted": user.status == UserStatus.DELETED,
+            "must_change_password": bool(user.must_change_password),
+        }
+
     async def get_user_by_username(self, username: str) -> UserModel | None:
         """
         根据用户名获取用户信息

@@ -17,7 +17,7 @@ from novamind.features.notification.schemas.notification_schema import (
     UnreadCountResponse,
 )
 from novamind.features.notification.services.notification_service import NotificationService
-from novamind.features.user.adapters.auth_user_resolver_adapter import UserStatusResolverAdapter
+from novamind.features.user.services.user_service import UserService
 
 router = APIRouter()
 
@@ -109,7 +109,7 @@ async def update_preferences(
 @router.websocket("/ws")
 async def notification_ws(
     websocket: WebSocket,
-    resolver: UserStatusResolverAdapter = Depends(get_user_status_resolver),
+    resolver: UserService = Depends(get_user_status_resolver),
 ):
     """通知常驻订阅通道：``/api/v1/notifications/ws``。
 

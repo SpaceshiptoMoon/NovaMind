@@ -36,7 +36,7 @@ class _FakeResolver:
     def __init__(self, must_change_password: bool = False):
         self.must_change_password = must_change_password
 
-    async def get_user_for_auth(self, user_id: int):
+    async def get_auth_status(self, user_id: int):
         return {
             "id": user_id,
             "username": "u",

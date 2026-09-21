@@ -41,7 +41,7 @@ from novamind.features.qa.schemas.ai_chat import (
 )
 from novamind.features.qa.services.ai_chat_service import AIChatService
 from novamind.features.qa.services.qa_service import QAService
-from novamind.features.user.adapters.auth_user_resolver_adapter import UserStatusResolverAdapter
+from novamind.features.user.services.user_service import UserService
 from novamind.features.user.services.model_config_service import ModelConfigService
 from novamind.shared.storage.attachment_presign import enrich_attachments_with_presigned_urls
 
@@ -86,7 +86,7 @@ async def chat(
 async def chat_ws(
     websocket: WebSocket,
     ai_chat_service: AIChatService = Depends(get_aichat_service),
-    resolver: UserStatusResolverAdapter = Depends(get_user_status_resolver),
+    resolver: UserService = Depends(get_user_status_resolver),
 ):
     """AI 对话（WebSocket 流式）。
 

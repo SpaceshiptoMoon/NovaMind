@@ -38,7 +38,7 @@ from novamind.features.deep_research.services.plan_feedback_registry import (
 from novamind.features.deep_research.services.source_registry import source_registry
 from novamind.features.knowledge_space.api.dependencies import validate_space_access
 from novamind.features.knowledge_space.exceptions import SpaceAccessDeniedError, SpaceNotFoundError
-from novamind.features.user.adapters.auth_user_resolver_adapter import UserStatusResolverAdapter
+from novamind.features.user.services.user_service import UserService
 from novamind.features.user.schemas.user_schema import UserMessageResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -228,7 +228,7 @@ async def research_ws(
     websocket: WebSocket,
     space_id: Annotated[int, Path(gt=0, description="知识空间 ID")],
     db: AsyncSession = Depends(get_db),
-    resolver: UserStatusResolverAdapter = Depends(get_user_status_resolver),
+    resolver: UserService = Depends(get_user_status_resolver),
     research_service: DeepResearchService = Depends(get_deep_research_service),
 ):
     """深度研究（WebSocket 流式，支持计划确认双向交互）。

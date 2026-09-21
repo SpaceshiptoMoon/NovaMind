@@ -2,7 +2,7 @@
 """core/auth：认证基础设施（JWT 解码、黑名单、FastAPI 认证依赖）。
 
 认证是横切基础设施，归 core 层；import 方向遵守 R1 无环约束。
-批次 3.6 起直接使用 UserStatusResolverAdapter（别名导出兼容）
+用户状态经 UserService.get_auth_status（core/auth/dependencies 直构）
 DB 用户状态解析实现。
 """
 from novamind.core.auth.dependencies import (
