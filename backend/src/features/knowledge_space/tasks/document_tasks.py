@@ -52,7 +52,7 @@ async def _notify_document_terminal(
 ) -> None:
     """文档解析终态通知上传者（成功/失败/取消，重试中间态不发）。
 
-    arq 任务侧调用：经独立会话版 NotificationPort，失败仅记日志不打断任务编排。
+    arq 任务侧调用：经 NotificationService.notify（独立会话），失败仅记日志不打断任务编排。
     """
     if status == "completed":
         title = f"文档「{filename}」解析完成"
