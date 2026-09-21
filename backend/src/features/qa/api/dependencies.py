@@ -73,13 +73,13 @@ async def get_aichat_service(
     通过 ModelConfigService 动态获取模型客户端。
     llm_model 为 None 时使用用户默认模型。
 
-    装配点（批次 5-B2）：检索端口与文档摄入端口在此构造后注入，
+    装配点（批次 5-B2）：检索服务与文档处理器在此构造后注入，
     AIChatService 不再内部懒构造。
     """
     minio_client = await get_minio_client()
     es_client = await get_elasticsearch_client()
     search_service = SearchService(db, es_client, model_config_service)
-    ingestion_port = DocumentProcessor()
+    document_processor = DocumentProcessor()
     search_config_service = SearchConfigService(db)
     return AIChatService(
         qa_service=qa_service,
@@ -87,6 +87,6 @@ async def get_aichat_service(
         db=db,
         minio_client=minio_client,
         search_service=search_service,
-        document_processor=ingestion_port,
+        document_processor=document_processor,
         search_config_service=search_config_service,
     )

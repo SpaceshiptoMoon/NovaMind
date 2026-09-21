@@ -1294,14 +1294,14 @@ class AIChatService:
             return None
 
         # PDF / DOCX 经 DocumentProcessor 引擎处理（R1 下直接消费引擎，无需宿主包装）
-        ingestion_port = self._document_processor
+        document_processor = self._document_processor
 
         with tempfile.NamedTemporaryFile(suffix=f".{file_type}", delete=False) as tmp:
             tmp.write(file_data)
             tmp_path = tmp.name
 
         try:
-            docs = await ingestion_port.load_with_strategy(
+            docs = await document_processor.load_with_strategy(
                 tmp_path,
                 strategy="recursive",
                 chunk_size=10000,
