@@ -9,10 +9,10 @@ This document describes the current canonical backend knowledge-base structure.
 ### Feature Layer（业务编排）
 
 - `backend/src/features/knowledge_space/`
-  - 所有权：API、业务编排、持久化、schemas、权限、任务（tasks/）、适配器（adapters/）
+  - 所有权：API、业务编排、持久化、schemas、权限、任务（tasks/）
   - 管道入口与三模态共享后置尾都在 `services/document_pipeline.py` / `services/media_processing.py`
   - Wiki 生成管道在 `services/wiki_ingest_service.py`（解析完成后 LLM 整理互链页面，详见 `wiki-architecture.md`）
-  - 通过端口调用 engines/document 的解析、切分、媒体处理与 DeepDoc 实现
+  - 直接消费 engines/document 的解析、切分、媒体处理与 DeepDoc 实现
 
 ### Engine Layer（纯逻辑实现）
 
@@ -64,7 +64,6 @@ Wiki 页面不入 ES 检索。
 - `schemas/` — Pydantic schemas
 - `services/` — 业务编排（管道入口、任务编排、检索、向量化、QG、成员权限、审计）
 - `tasks/` — arq worker 任务定义与异常处理
-- `adapters/` — engines 端口的 feature 侧装配
 - `prompts/` — Feature 专属 prompt 模板
 
 ### `backend/src/engines/document/`

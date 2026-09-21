@@ -57,8 +57,8 @@ src/engines/agent/               # 引擎纯逻辑层（零 feature/setting/ORM 
 src/features/agent/
 ├── agent_prompts.py             # Prompt 模板常量
 ├── api/                         # 路由 + startup 装配点
-├── services/                    # chat_service 装配 AgentEngine + 注入端口适配器
-├── adapters/                    # 引擎端口的宿主实现（知识库/记忆/搜索/prompt）
+├── services/                    # chat_service 装配 AgentEngine + 宿主实现
+│   │                            # （host_memory_store/host_knowledge_search，附件读归 qa）
 ├── models/
 │   ├── memory.py                # AgentMemory ORM
 │   ├── context_summary.py       # AgentContextSummary ORM（追加写入压缩摘要）

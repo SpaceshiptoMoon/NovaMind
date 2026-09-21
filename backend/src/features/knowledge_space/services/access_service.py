@@ -84,4 +84,28 @@ async def check_kb_access(
     return kb, None
 
 
-__all__ = ["check_kb_access", "check_space_access", "is_admin_user"]
+async def get_kb_for_access(
+    db: AsyncSession, kb_id: int, space_id: int, *, writable: bool = False
+):
+    """KB 归属/状态守卫（api/dependencies validate_* 的业务规则下沉）。
+
+    校验 KB 存在、属于该空间、未删；writable 额外拒归档。
+    失败抛 KnowledgeBaseNotFoundError / KnowledgeBaseArchivedError。
+    """
+    from novamind.features.knowledge_space.exceptions import (
+        KnowledgeBaseArchivedError,
+        KnowledgeBaseNotFoundError,
+    )
+    from novamind.features.knowledge_space.models.knowledge_base import (
+        KnowledgeBaseStatus,
+    )
+
+    kb = await KnowledgeBaseRepository(db).get_by_id(kb_id)
+    if not kb or kb.space_id != space_id or kb.status == KnowledgeBaseStatus.DELETED:
+        raise KnowledgeBaseNotFoundError(kb_id)
+    if writable and kb.status == KnowledgeBaseStatus.ARCHIVED:
+        raise KnowledgeBaseArchivedError(kb_id)
+    return kb
+
+
+__all__ = ["check_kb_access", "check_space_access", "get_kb_for_access", "is_admin_user"]

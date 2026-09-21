@@ -52,8 +52,12 @@ class McpConnectionConfig(BaseModel):
     def from_db_config(cls, transport_type: str, connection_config: dict) -> "McpConnectionConfig":
         """从数据库配置创建"""
         config = cls(transport_type=transport_type)
-        if transport_type == "stdio":
-            config.stdio = StdioConfig(**connection_config)
-        elif transport_type == "streamable_http":
-            config.http = StreamableHttpConfig(**connection_config)
+        sub_configs = {
+            "stdio": (StdioConfig, "stdio"),
+            "streamable_http": (StreamableHttpConfig, "http"),
+        }
+        entry = sub_configs.get(transport_type)
+        if entry is not None:
+            sub_type, attr = entry
+            setattr(config, attr, sub_type(**connection_config))
         return config

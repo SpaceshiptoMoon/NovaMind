@@ -16,7 +16,6 @@ backend/src/features/knowledge_space/
 │   ├── member_routes.py          # 空间成员管理
 │   ├── dependencies.py           # DI 工厂 + 权限校验
 │   ├── wiki_routes.py            # Wiki 只读/编辑/版本/回滚/图谱/lint API
-│   ├── exceptions.py             # 37 种异常定义
 │   └── startup.py                # 模块初始化 + 异常注册
 ├── models/                       # ORM 模型
 │   ├── knowledge_space.py        # KnowledgeSpace（主模型）

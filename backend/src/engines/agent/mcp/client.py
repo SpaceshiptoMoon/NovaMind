@@ -45,12 +45,14 @@ class McpClientManager:
                 await self._disconnect_internal(server_id)
 
             try:
-                if config.transport_type == "stdio":
-                    session, exit_stack = await self._connect_stdio(config.stdio)
-                elif config.transport_type == "streamable_http":
-                    session, exit_stack = await self._connect_http(config.http)
-                else:
+                connectors = {
+                    "stdio": lambda: self._connect_stdio(config.stdio),
+                    "streamable_http": lambda: self._connect_http(config.http),
+                }
+                connector = connectors.get(config.transport_type)
+                if connector is None:
                     raise ValueError(f"不支持的传输类型：{config.transport_type}")
+                session, exit_stack = await connector()
 
                 self._sessions[server_id] = session
                 self._exit_stacks[server_id] = exit_stack

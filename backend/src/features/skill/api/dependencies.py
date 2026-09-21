@@ -1,18 +1,19 @@
 """
 技能广场依赖注入
 """
-import json
-import pathlib
 
 from fastapi import Depends
 from novamind.core.database.database import get_db
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.agent.services.agent_service import AgentService
 from novamind.features.knowledge_space.api.dependencies import get_current_user_id
+from novamind.features.skill.services.admin_settings_store import (
+    get_llm_review_enabled,
+    get_llm_review_model,
+)
 from novamind.features.skill.services.skill_checker import SkillSecurityChecker
 from novamind.features.skill.services.skill_marketplace_service import SkillMarketplaceService
 from novamind.features.user.services.model_config_service import ModelConfigService
-from novamind.setting.yaml_config.loader import get_config_value
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.prompts.prompt_manager import PromptManager
 from novamind.shared.storage.client_factory import get_minio_client
@@ -20,40 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
-# 设置文件路径
-_SETTINGS_FILE = pathlib.Path(__file__).resolve().parent.parent / "data" / "admin_settings.json"
-
-
-def _read_settings() -> dict:
-    """从 JSON 文件读取设置"""
-    if _SETTINGS_FILE.exists():
-        try:
-            return json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as e:
-            logger.warning("读取技能审查设置失败", error=str(e))
-    return {}
-
-
-def _write_settings(data: dict) -> None:
-    """写入 JSON 设置文件"""
-    _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _SETTINGS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-async def _get_llm_review_enabled() -> bool:
-    """读取 LLM 审查开关，优先从持久化文件读取"""
-    settings = _read_settings()
-    if "llm_review_enabled" in settings:
-        return bool(settings["llm_review_enabled"])
-    return bool(get_config_value("skill_marketplace.llm_review_enabled") or False)
-
-
-async def _get_llm_review_model() -> str | None:
-    """读取 LLM 审查模型名称，优先从持久化文件读取"""
-    settings = _read_settings()
-    if settings.get("llm_review_model"):
-        return settings["llm_review_model"]
-    return get_config_value("skill_marketplace.llm_review_model") or None
 
 
 async def _get_review_llm_client(
@@ -66,7 +33,7 @@ async def _get_review_llm_client(
     凭证构建 client —— ``admin/models`` 列出的就是该账号的模型配置；回退到
     用户默认模型时才使用传入的 ``user_id``。
     """
-    model_name = await _get_llm_review_model()
+    model_name = await get_llm_review_model()
     if model_name:
         owner_id = await _get_review_model_owner_id()
         if owner_id is None:
@@ -105,7 +72,7 @@ async def get_skill_service(
 
     # 条件注入 LLM 审查：端口 prompt_provider + logger 始终注入（默认无 LLM 时
     # check_llm 直接返回 None，行为不变；LLM 启用时经端口取 prompt 与记日志）
-    enabled = await _get_llm_review_enabled()
+    enabled = await get_llm_review_enabled()
     llm_client = await _get_review_llm_client(user_id, model_config_service) if enabled else None
     checker = SkillSecurityChecker(
         llm_client=llm_client,
@@ -127,17 +94,18 @@ async def get_skill_service(
 
 
 async def update_llm_review_settings(enabled: bool, model: str | None = None) -> None:
-    """管理员更新 LLM 审查设置"""
-    settings = _read_settings()
-    settings["llm_review_enabled"] = enabled
-    settings["llm_review_model"] = model
-    _write_settings(settings)
+    """管理员更新 LLM 审查设置（委托 service 层持久化）"""
+    from novamind.features.skill.services.admin_settings_store import (
+        update_llm_review_settings as _store_update,
+    )
+
+    await _store_update(enabled, model)
 
 
 async def get_llm_review_settings() -> dict:
     """获取当前审查设置"""
-    enabled = await _get_llm_review_enabled()
-    model_name = await _get_llm_review_model()
+    enabled = await get_llm_review_enabled()
+    model_name = await get_llm_review_model()
     return {
         "llm_review_enabled": enabled,
         "llm_review_model": model_name,

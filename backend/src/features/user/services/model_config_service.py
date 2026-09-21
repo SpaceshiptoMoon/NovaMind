@@ -570,14 +570,16 @@ class ModelConfigService:
         )
 
         try:
-            if data.model_type in ("llm", "vlm"):
-                await self._test_llm(request)
-            elif data.model_type == "embedding":
-                await self._test_embedding(request)
-            elif data.model_type == "rerank":
-                await self._test_rerank(request)
-            elif data.model_type == "asr":
-                await self._test_asr(request)
+            testers = {
+                "llm": self._test_llm,
+                "vlm": self._test_llm,
+                "embedding": self._test_embedding,
+                "rerank": self._test_rerank,
+                "asr": self._test_asr,
+            }
+            tester = testers.get(data.model_type)
+            if tester is not None:
+                await tester(request)
         except Exception as e:
             raise ModelConfigTestFailedError(data.model_type, str(e)) from e
 
@@ -612,16 +614,16 @@ class ModelConfigService:
 
         try:
             detected_dimension = None
-            if request.model_type == "llm":
-                await self._test_llm(request)
-            elif request.model_type == "embedding":
-                detected_dimension = await self._test_embedding(request)
-            elif request.model_type == "rerank":
-                await self._test_rerank(request)
-            elif request.model_type == "vlm":
-                await self._test_llm(request)
-            elif request.model_type == "asr":
-                await self._test_asr(request)
+            testers = {
+                "llm": self._test_llm,
+                "vlm": self._test_llm,
+                "embedding": self._test_embedding,
+                "rerank": self._test_rerank,
+                "asr": self._test_asr,
+            }
+            tester = testers.get(request.model_type)
+            if tester is not None:
+                detected_dimension = await tester(request)
 
             latency = (time.time() - start_time) * 1000
 

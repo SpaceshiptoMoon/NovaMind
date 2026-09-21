@@ -64,7 +64,8 @@ schemas/
 
 ### 引擎层（engines/）
 
-纯逻辑组件，不依赖 ORM / 配置 / feature 业务，由 features 经端口装配：
+R1/R4 下的可复用组件：可直接 import setting 配置与 feature 公共面，
+features 直接收具体类实例（不再经端口装配）：
 
 | 路径 | 内容 |
 | --- | --- |
