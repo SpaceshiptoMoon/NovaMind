@@ -42,7 +42,6 @@ from novamind.features.user.schemas.user_schema import (
 )
 from novamind.features.user.services import UserService
 from novamind.features.user.services.auth_service import AuthService
-from novamind.setting.yaml_config import get_config
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
@@ -151,29 +150,19 @@ async def register_user(
     Returns:
         Token: 包含 access_token、refresh_token 和过期时间
     """
-    user = await user_service.register_user(
+    result = await user_service.register_and_login(
         username=user_register.username,
         email=user_register.email,
         password=user_register.password,
         phone=user_register.phone,
     )
 
-    # 自动登录返回 token（register_user 失败时抛异常，不会返回 None）
-    config = get_config()
-    role_code = user.role.code if user.role else "viewer"
-    access_token, refresh_token = await AuthService.create_token_pair(
-        user_id=user.id,
-        username=user.username,
-        email=user.email,
-        role_code=role_code,
-        status=user.status,
-    )
     return Token(
-        access_token=access_token,
+        access_token=result["access_token"],
         token_type="bearer",
-        refresh_token=refresh_token,
-        expires_in=config.security.access_token_expire_minutes * 60,
-        must_change_password=user.must_change_password,
+        refresh_token=result["refresh_token"],
+        expires_in=result["expires_in"],
+        must_change_password=result.get("must_change_password", False),
     )
 
 
@@ -630,11 +619,12 @@ async def reset_password(
 )
 async def get_user_app_access(
     user_id: Annotated[int, Path(gt=0, description="用户ID")],
+    user_service: Annotated[UserService, Depends(get_user_service)],
     current_user: dict = Depends(require_permission("user.manage")),
     db: Annotated[AsyncSession, Depends(get_db)] = None,
 ):
     """获取用户被禁用的应用列表（空列表 = 全部可用）"""
-    await _ensure_user_exists(db, user_id)
+    await user_service.get_user_by_id(user_id)
     from novamind.features.user.services.app_access_service import AppAccessService
 
     svc = AppAccessService(db, await _appgate_redis())
@@ -652,11 +642,12 @@ async def get_user_app_access(
 async def update_user_app_access(
     user_id: Annotated[int, Path(gt=0, description="用户ID")],
     body: Annotated[UserAppAccessUpdateRequest, Body(...)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
     current_user: dict = Depends(require_permission("user.manage")),
     db: Annotated[AsyncSession, Depends(get_db)] = None,
 ):
     """全量替换用户被禁用的应用集合（管理页勾选式 UI 的后端）"""
-    await _ensure_user_exists(db, user_id)
+    await user_service.get_user_by_id(user_id)
     from novamind.features.user.services.app_access_service import AppAccessService
 
     svc = AppAccessService(db, await _appgate_redis())
@@ -666,13 +657,6 @@ async def update_user_app_access(
     return UserAppAccessResponse(
         user_id=user_id, disabled_apps=sorted(body.disabled_apps)
     )
-
-
-async def _ensure_user_exists(db: AsyncSession, user_id: int) -> None:
-    """目标用户存在性检查（404）。"""
-    user = await db.get(UserModel, user_id)
-    if user is None:
-        raise UserNotFoundError(user_id=user_id)
 
 
 async def _appgate_redis():

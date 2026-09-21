@@ -132,6 +132,39 @@ class UserService:
             role_code="viewer",
         )
 
+    async def register_and_login(
+        self,
+        username: str,
+        email: str,
+        password: str,
+        phone: str | None = None,
+    ) -> dict:
+        """注册并自动登录（批次 4 自路由层下沉；token 组装与 login_user 同模式）。
+
+        Returns:
+            dict: access_token / refresh_token / token_type / expires_in /
+            must_change_password / user（结构与 login_user 返回一致）
+        """
+        user = await self.register_user(
+            username=username, email=email, password=password, phone=phone
+        )
+        config = get_config()
+        role_code = user.role.code if user.role else "viewer"
+        access_token, refresh_token = await AuthService.create_token_pair(
+            user_id=user.id,
+            username=user.username,
+            email=user.email,
+            role_code=role_code,
+            status=user.status,
+        )
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "expires_in": config.security.access_token_expire_minutes * 60,
+            "must_change_password": user.must_change_password,
+        }
+
     async def get_user_by_id(self, user_id: int) -> UserModel | None:
         """
         根据用户ID获取用户信息
