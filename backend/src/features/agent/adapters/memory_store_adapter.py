@@ -8,7 +8,7 @@ from typing import Any
 from novamind.engines.agent.memory.interfaces import (
     LongTermMemoryEntry,  # 具体子模块，不触发 memory/__init__ 聚合
 )
-from novamind.engines.agent.ports import (
+from novamind.engines.agent.context_types import (
     ContextSummaryEntry,
 )
 

@@ -1,9 +1,7 @@
 from fastapi import Depends
 from novamind.core.database.database import get_db
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.features.knowledge_space.adapters.document_ingestion_adapter import (
-    as_document_ingestion_port,
-)
+from novamind.engines.document.pipeline import DocumentProcessor
 from novamind.features.knowledge_space.services.search_service import SearchService
 from novamind.features.qa.repository.question_answer_repository import QuestionAnswerRepository
 from novamind.features.qa.repository.session_config_repository import SessionConfigRepository
@@ -82,7 +80,7 @@ async def get_aichat_service(
     es_client = await get_elasticsearch_client()
     search_service = SearchService(db, es_client, model_config_service)
     retrieval_port = search_service
-    ingestion_port = as_document_ingestion_port()
+    ingestion_port = DocumentProcessor()
     search_config_port = SearchConfigService(db)
     return AIChatService(
         qa_service=qa_service,

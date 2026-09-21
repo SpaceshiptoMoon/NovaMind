@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-from novamind.engines.agent.ports import LongTermMemoryEntry  # noqa: F401
+from novamind.engines.agent.context_types import LongTermMemoryEntry  # noqa: F401
 
 # ==================== 数据模型 ====================
 

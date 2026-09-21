@@ -5,10 +5,10 @@ from enum import IntEnum, StrEnum
 
 from novamind.core.database.base import BaseModel
 
-# ReviewStatus 枚举自 features.skill.ports 引入并 re-export，保 ORM 列
+# ReviewStatus 枚举自 features.skill.review_status 引入并 re-export，保 ORM 列
 # default=ReviewStatus.PENDING 与既有 ``from skill.models.skill import ReviewStatus``
-# 导入方零改动（features.skill.models.skill.ReviewStatus IS features.skill.ports.ReviewStatus）。
-from novamind.features.skill.ports import ReviewStatus
+# 导入方零改动（features.skill.models.skill.ReviewStatus IS features.skill.review_status.ReviewStatus）。
+from novamind.features.skill.review_status import ReviewStatus
 from sqlalchemy import (
     JSON,
     BigInteger,

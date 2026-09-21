@@ -30,6 +30,32 @@ async def is_admin_user(db: AsyncSession, user_id: int) -> bool:
         return False
 
 
+async def check_space_access(db: AsyncSession, space_id: int, user_id: int) -> bool:
+    """空间级访问判定（agent 工具等消费方使用）。
+
+    规则：空间存在且未删且 ACTIVE；管理员直通；成员直通；PUBLIC 空间对所有人开放。
+    """
+    from novamind.features.knowledge_space.models.knowledge_space import (
+        SpaceStatus,
+        SpaceVisibility,
+    )
+    from novamind.features.knowledge_space.repository.member_repository import (
+        MemberRepository,
+    )
+    from novamind.features.knowledge_space.repository.space_repository import (
+        SpaceRepository,
+    )
+
+    space = await SpaceRepository(db).get_by_id(space_id)
+    if not space or space.is_deleted() or space.status != SpaceStatus.ACTIVE:
+        return False
+    if await is_admin_user(db, user_id):
+        return True
+    if await MemberRepository(db).is_member(space_id, user_id):
+        return True
+    return space.visibility == SpaceVisibility.PUBLIC
+
+
 async def check_kb_access(
     db: AsyncSession,
     kb_id: int,
@@ -58,4 +84,4 @@ async def check_kb_access(
     return kb, None
 
 
-__all__ = ["check_kb_access", "is_admin_user"]
+__all__ = ["check_kb_access", "check_space_access", "is_admin_user"]

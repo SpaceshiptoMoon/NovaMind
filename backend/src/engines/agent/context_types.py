@@ -1,16 +1,12 @@
 """
-Agent 引擎数据类型（批次 3.7：5 个 Port Protocol 已删，仅保留 dataclass 纯数据载体）。
+Agent 引擎上下文数据类型（纯 dataclass 载体，无 Protocol——原 ports.py，
+批次 3.7 去 Protocol 后本轮改名 context_types.py 以符名实）。
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
-
-# ==================== 联网搜索 ====================
-# WebSearchPort / WebSearchResult 已在中立 engines/search_ports.py，此处经顶部 re-export
-# 提供统一导入面。
-
 
 @dataclass
 class SpaceInfo:

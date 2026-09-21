@@ -1,13 +1,13 @@
 """
 会话附件读取端口宿主适配器。
 
-实现引擎侧 HostAttachmentReadPort 协议（engines/agent/ports.py），内部延迟
+实现引擎侧 HostAttachmentReadPort 协议（engines/agent/context_types.py），内部延迟
 import features/qa 的 ChatAttachmentRepository——features 层引用合法，
 引擎层经端口消费，满足单向依赖铁律（engines → 端口，不 import features）。
 """
 from typing import Any
 
-from novamind.engines.agent.ports import AttachmentTextChunk
+from novamind.engines.agent.context_types import AttachmentTextChunk
 from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)

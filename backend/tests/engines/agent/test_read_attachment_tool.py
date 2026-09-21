@@ -7,7 +7,7 @@ import json
 from unittest.mock import AsyncMock
 
 import pytest
-from novamind.engines.agent.ports import AttachmentTextChunk
+from novamind.engines.agent.context_types import AttachmentTextChunk
 from novamind.engines.agent.tool.builtins.read_attachment import (
     MAX_CHUNK_LIMIT,
     ReadAttachmentTool,

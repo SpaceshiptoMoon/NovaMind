@@ -154,11 +154,11 @@ def test_web_search_port_construction_is_centralized():
 
 
 def test_agent_core_ports_reexports_web_search_port():
-    """批次 3.7：agent/ports.py 降级纯数据类型，WebSearch* 从定义处（search_ports）取。"""
-    from novamind.engines.agent import ports as agent_ports
+    """agent 数据类型（原 ports.py，批次 3.7 降级纯 dataclass 后本轮改名 context_types）。"""
+    from novamind.engines.agent import context_types as agent_ports
     from novamind.engines.search_ports import WebSearchPort, WebSearchResult
 
-    # dataclass 仍从 agent.ports 拿；WebSearch* 已不再 re-export
+    # dataclass 从 context_types 拿；WebSearch* 已不再 re-export
     assert not hasattr(agent_ports, "WebSearchPort")
     assert WebSearchResult.__name__ == "WebSearchResult"
 

@@ -12,7 +12,7 @@
     - 零 ``novamind.features.knowledge_space.schemas`` import；``search`` 入参去类型化为 ``Any``。
   6a-4 skill_checker 枚举下沉：
     - 零 ``novamind.features.skill.models`` import；
-    - ``skill.models.skill.ReviewStatus`` 与中立 ``features.skill.ports.ReviewStatus`` 同一对象（ORM 兼容）。
+    - ``skill.models.skill.ReviewStatus`` 与中立 ``features.skill.review_status.ReviewStatus`` 同一对象（ORM 兼容）。
   6a-5 audio_utils 去 ClientFactory：
     - 零 ``novamind.shared.clients`` import；
     - ``upload_parsed_text_to_minio`` / ``transcribe_audio_with_dashscope`` 的 ``minio_client`` 为关键字必传注入。
@@ -200,16 +200,16 @@ def test_6a2_retrieval_engine_ctor_accepts_cache_port():
 # ---------- 6a-4：skill_checker ReviewStatus 枚举下沉 ----------
 
 def test_6a4_skill_checker_has_no_skill_models_import():
-    """6a-4：skill_checker 不得 import ``features.skill.models``（改用中立 features.skill.ports）。"""
+    """6a-4：skill_checker 不得 import ``features.skill.models``（改用中立 features.skill.review_status）。"""
     p = SRC / "features" / "skill" / "services" / "skill_checker.py"
     bad = [m for m in _imports_in(p) if m.startswith("novamind.features.skill.models")]
     assert not bad, f"skill_checker 残留 skill.models import: {bad}"
 
 
 def test_6a4_review_status_identity_between_neutral_and_orm():
-    """6a-4：中立 ``features.skill.ports.ReviewStatus`` 与 ORM ``skill.models.skill.ReviewStatus`` 同一对象。"""
+    """6a-4：中立 ``features.skill.review_status.ReviewStatus`` 与 ORM ``skill.models.skill.ReviewStatus`` 同一对象。"""
     from novamind.features.skill.models.skill import ReviewStatus as ORMReviewStatus
-    from novamind.features.skill.ports import ReviewStatus as NeutralReviewStatus
+    from novamind.features.skill.review_status import ReviewStatus as NeutralReviewStatus
 
     assert NeutralReviewStatus is ORMReviewStatus, "ReviewStatus 中立枚举与 ORM re-export 必须同一对象"
     # 值逐字对齐（DB 已存数据兼容）

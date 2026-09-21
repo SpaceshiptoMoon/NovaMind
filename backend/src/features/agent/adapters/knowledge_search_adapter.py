@@ -1,11 +1,14 @@
 """
-HostKnowledgeSearchPort 宿主适配器，包装 knowledge_space repository 与 SearchService。
+HostKnowledgeSearchPort 宿主适配器：为 agent 引擎提供空间/知识库发现与检索。
 
-权限校验、跨库合并等业务逻辑在此实现。
+跨 feature 消费走 knowledge_space 公共面（R2）：权限判定走
+``services/access_service.check_space_access``，空间/KB/文档发现走
+SpaceService/KnowledgeBaseService/DocumentQueryService 公共方法，
+检索委托 SearchService——不直接触碰对方 repository。
 """
 from typing import Any
 
-from novamind.engines.agent.ports import (
+from novamind.engines.agent.context_types import (
     DocumentInfo,
     DocumentListResult,
     KbInfo,
@@ -45,51 +48,42 @@ class HostKnowledgeSearchPort:
         es_client = await self._get_es_client()
         return SearchService(self._db, es_client, self._mcs)
 
+    def _space_service(self) -> Any:
+        from novamind.features.knowledge_space.services.space_service import (
+            SpaceService,
+        )
+
+        return SpaceService(self._db)
+
+    def _kb_service(self) -> Any:
+        from novamind.features.knowledge_space.services.knowledge_base_service import (
+            KnowledgeBaseService,
+        )
+
+        return KnowledgeBaseService(self._db, es_client=None, minio_client=None)
+
+    def _doc_query_service(self) -> Any:
+        from novamind.features.knowledge_space.services.document_query_service import (
+            DocumentQueryService,
+        )
+
+        # list_documents 只走 KB 文档查询面（doc repo），minio/es 未用到，传 None
+        return DocumentQueryService(self._db, minio_client=None, es_client=None)
+
     # ==================== 权限校验 ====================
 
     async def can_access_space(self, space_id: int, user_id: int) -> bool:
-        """对齐旧 _check_space_access。"""
-        from novamind.features.knowledge_space.models.knowledge_space import (
-            SpaceStatus,
-            SpaceVisibility,
+        """空间级访问判定，委托 knowledge_space 权限中心。"""
+        from novamind.features.knowledge_space.services.access_service import (
+            check_space_access,
         )
-        from novamind.features.knowledge_space.repository.member_repository import (
-            MemberRepository,
-        )
-        from novamind.features.knowledge_space.repository.space_repository import (
-            SpaceRepository,
-        )
-        from novamind.features.user.models.user import User
 
-        space_repo = SpaceRepository(self._db)
-        member_repo = MemberRepository(self._db)
-
-        space = await space_repo.get_by_id(space_id)
-        if not space:
-            return False
-        if space.is_deleted() or space.status != SpaceStatus.ACTIVE:
-            return False
-
-        user = await self._db.get(User, user_id)
-        if user and user.is_admin:
-            return True
-
-        if await member_repo.is_member(space_id, user_id):
-            return True
-
-        if space.visibility == SpaceVisibility.PUBLIC:
-            return True
-        return False
+        return await check_space_access(self._db, space_id, user_id)
 
     # ==================== 空间与知识库发现 ====================
 
     async def list_spaces(self, user_id: int) -> list[SpaceInfo]:
-        from novamind.features.knowledge_space.repository.space_repository import (
-            SpaceRepository,
-        )
-
-        repo = SpaceRepository(self._db)
-        spaces = await repo.get_user_spaces(user_id)
+        spaces = await self._space_service().get_user_spaces(user_id)
         return [
             SpaceInfo(
                 id=space.id,
@@ -102,13 +96,13 @@ class HostKnowledgeSearchPort:
     async def list_knowledge_bases(
         self, space_id: int, user_id: int
     ) -> list[KbInfo]:
-        from novamind.features.knowledge_space.repository.knowledge_base_repository import (
-            KnowledgeBaseRepository,
+        from novamind.features.knowledge_space.models.knowledge_base import (
             KnowledgeBaseStatus,
         )
 
-        repo = KnowledgeBaseRepository(self._db)
-        kbs = await repo.get_by_space(space_id, status=KnowledgeBaseStatus.ACTIVE)
+        kbs = await self._kb_service().get_space_knowledge_bases(
+            space_id, status=KnowledgeBaseStatus.ACTIVE
+        )
         return [
             KbInfo(
                 id=kb.id,
@@ -120,21 +114,19 @@ class HostKnowledgeSearchPort:
         ]
 
     async def list_all_knowledge_bases(self, user_id: int) -> list[KbInfo]:
-        from novamind.features.knowledge_space.repository.knowledge_base_repository import (
-            KnowledgeBaseRepository,
+        from novamind.features.knowledge_space.models.knowledge_base import (
             KnowledgeBaseStatus,
         )
-        from novamind.features.knowledge_space.repository.space_repository import (
-            SpaceRepository,
-        )
 
-        space_repo = SpaceRepository(self._db)
-        kb_repo = KnowledgeBaseRepository(self._db)
+        space_service = self._space_service()
+        kb_service = self._kb_service()
 
-        spaces = await space_repo.get_user_spaces(user_id)
+        spaces = await space_service.get_user_spaces(user_id)
         result: list[KbInfo] = []
         for space in spaces:
-            kbs = await kb_repo.get_by_space(space.id, status=KnowledgeBaseStatus.ACTIVE)
+            kbs = await kb_service.get_space_knowledge_bases(
+                space.id, status=KnowledgeBaseStatus.ACTIVE
+            )
             for kb in kbs:
                 result.append(
                     KbInfo(
@@ -159,11 +151,11 @@ class HostKnowledgeSearchPort:
         kb_id: int | None = None,
         score_threshold: float | None = None,
     ) -> list[KnowledgeSearchItem]:
-        from novamind.features.knowledge_space.repository.knowledge_base_repository import (
-            KnowledgeBaseRepository,
-        )
         from novamind.features.knowledge_space.schemas.search_schema import (
             SearchRequest,
+        )
+        from novamind.features.knowledge_space.services.knowledge_base_service import (
+            KnowledgeBaseService,
         )
 
         search_request = SearchRequest(
@@ -183,8 +175,8 @@ class HostKnowledgeSearchPort:
             )
             raw_results: list[dict[str, Any]] = result.get("results", [])
         else:
-            kb_repo = KnowledgeBaseRepository(self._db)
-            kbs = await kb_repo.get_by_space(space_id)
+            # kb_id 缺省：空间下全部 KB，跨库检索取前 3 个合并
+            kbs = await self._kb_service().get_space_knowledge_bases(space_id)
             if not kbs:
                 return []
 
@@ -224,14 +216,10 @@ class HostKnowledgeSearchPort:
         page: int = 1,
         page_size: int = 20,
     ) -> DocumentListResult:
-        from novamind.features.knowledge_space.repository.document_repository import (
-            DocumentRepository,
-        )
-
-        doc_repo = DocumentRepository(self._db)
+        doc_service = self._doc_query_service()
         skip = (page - 1) * page_size
-        documents = await doc_repo.get_by_kb(kb_id=kb_id, skip=skip, limit=page_size)
-        total = await doc_repo.count_by_kb(kb_id=kb_id)
+        documents = await doc_service.get_kb_documents(kb_id=kb_id, skip=skip, limit=page_size)
+        total = await doc_service.count_kb_documents(kb_id=kb_id)
 
         docs = [
             DocumentInfo(

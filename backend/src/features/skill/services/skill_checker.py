@@ -6,7 +6,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
-from novamind.features.skill.ports import ReviewStatus
+from novamind.features.skill.review_status import ReviewStatus
 from novamind.shared.ai_models.base_model import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.shared.prompts.prompt_manager import PromptManager

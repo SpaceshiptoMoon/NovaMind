@@ -21,8 +21,8 @@ from novamind.shared.utils.text_utils.token_counter import TokenCounter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
+    from novamind.engines.document.pipeline import DocumentProcessor
     from novamind.features.knowledge_space.services.search_service import SearchService
-    from novamind.shared.document.ports import DocumentIngestionPort
     from novamind.shared.storage.minio_client import MinioClient
 from novamind.engines.search_ports import WebSearchPort
 from novamind.features.qa.exceptions import (
@@ -85,7 +85,7 @@ class AIChatService:
         db: AsyncSession | None = None,
         minio_client: Optional["MinioClient"] = None,
         retrieval_port: Optional["SearchService"] = None,
-        document_ingestion_port: Optional["DocumentIngestionPort"] = None,
+        document_ingestion_port: Optional["DocumentProcessor"] = None,
         search_config_port: SearchConfigService | None = None,
     ):
         """
@@ -98,8 +98,8 @@ class AIChatService:
             minio_client: MinIO 客户端（用于文件存储）
             retrieval_port: 检索服务（R4 去端口后直收 SearchService；
                 装配点 features/qa/api/dependencies.py 构造注入）
-            document_ingestion_port: 文档摄入端口（R3 接缝；装配点注入
-                HostDocumentIngestionPort 包 DocumentProcessor）
+            document_ingestion_port: 文档摄入处理器（R4 去端口后直收
+                DocumentProcessor 引擎实例，装配点构造注入）
             search_config_port: 搜索配置端口（批2 接缝；装配点注入
                 as_search_config_port，按用户级搜索配置择优 provider，未命中回退 YAML）
         """
@@ -1295,7 +1295,7 @@ class AIChatService:
                     continue
             return None
 
-        # PDF / DOCX 经文档摄入端口处理（R3 接缝：不直接 import knowledge_space.pipeline）
+        # PDF / DOCX 经 DocumentProcessor 引擎处理（R1 下直接消费引擎，无需宿主包装）
         ingestion_port = self._document_ingestion_port
 
         with tempfile.NamedTemporaryFile(suffix=f".{file_type}", delete=False) as tmp:

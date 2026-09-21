@@ -29,7 +29,7 @@ from novamind.engines.agent.memory import long_term as long_term_module  # noqa:
 from novamind.engines.agent.memory import memory_manager as memory_manager_module  # noqa: F401
 from novamind.engines.agent.memory.interfaces import LongTermMemoryEntry
 from novamind.engines.search_ports import WebSearchResult
-from novamind.engines.agent.ports import (  # 批次 3.7：仅 dataclass
+from novamind.engines.agent.context_types import (  # 批次 3.7：仅 dataclass
 
     DocumentInfo,
     DocumentListResult,
