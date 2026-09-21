@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from novamind.shared.ai_models.base_model import BaseLLM
-from novamind.shared.prompts.templates import PromptManager
+from novamind.shared.prompts.prompt_manager import PromptManager
 
 
 class RewriteStrategy(str, Enum):
@@ -57,22 +57,25 @@ class QueryRewriter:
 
     def __init__(self, llm_client: BaseLLM):
         self._llm = llm_client
+        # 策略 → 处理方法查表（_completion 需 history 参数，调用处单独传参）
+        self._strategies = {
+            RewriteStrategy.COMPLETION: self._completion,
+            RewriteStrategy.SYNONYM: self._synonym,
+            RewriteStrategy.DECOMPOSE: self._decompose,
+            RewriteStrategy.HYDE: self._hyde,
+        }
 
     async def rewrite(
         self, query: str, strategy: RewriteStrategy,
         history: list[dict] | None = None,
     ) -> RewriteResult:
         """按指定策略改写查询"""
-        if strategy == RewriteStrategy.COMPLETION:
-            return await self._completion(query, history or [])
-        elif strategy == RewriteStrategy.SYNONYM:
-            return await self._synonym(query)
-        elif strategy == RewriteStrategy.DECOMPOSE:
-            return await self._decompose(query)
-        elif strategy == RewriteStrategy.HYDE:
-            return await self._hyde(query)
-        else:
+        handler = self._strategies.get(strategy)
+        if handler is None:
             return RewriteResult(queries=[query], strategy=strategy.value, original_query=query)
+        if strategy == RewriteStrategy.COMPLETION:
+            return await handler(query, history or [])
+        return await handler(query)
 
     async def _completion(self, query: str, history: list[dict]) -> RewriteResult:
         # 只取最近 3 轮对话作为上下文
