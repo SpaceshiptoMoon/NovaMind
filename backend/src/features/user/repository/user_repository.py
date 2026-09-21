@@ -232,6 +232,14 @@ class UserRepository:
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
+    async def get_usernames_by_ids(self, user_ids: list[int]) -> dict[int, str]:
+        """批量查询 user_id → username（不存在的 id 不在结果中）"""
+        if not self.db:
+            raise ValueError("数据库会话未设置")
+        stmt = select(User.id, User.username).where(User.id.in_(user_ids))
+        result = await self.db.execute(stmt)
+        return dict(result.all())
+
     async def update_user(
         self, user_id: int, user_update: UserUpdate
     ) -> User | None:

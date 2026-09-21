@@ -222,6 +222,16 @@ class UserService:
             self.logger.error("获取用户列表失败", error=str(e))
             raise UserOperationError(f"获取用户列表失败: {str(e)}")
 
+    async def get_usernames_by_ids(self, user_ids: list[int]) -> dict[int, str]:
+        """批量查询用户名（供跨 feature 展示层回填作者名；R2 公共面）。
+
+        Returns:
+            dict: user_id → username；不存在的 id 不出现在结果中
+        """
+        if not user_ids:
+            return {}
+        return await self.user_repository.get_usernames_by_ids(user_ids)
+
     async def authenticate_user(
         self, username: str, password: str
     ) -> UserModel | None:
