@@ -323,6 +323,24 @@ class DocumentQueryService:
             limit=limit,
         )
 
+    @staticmethod
+    async def presign_media_url(chunk_type: str | None, storage_path: str) -> str | None:
+        """媒体分块（image/video/audio）生成 MinIO 预签名 URL（批次 4 自路由层下沉）。
+
+        非媒体类型或空路径返回 None；MinIO 不可用降级 None（渲染层自行回退占位）。
+        """
+        if chunk_type not in ("image", "video", "audio") or not storage_path:
+            return None
+        try:
+            from novamind.shared.storage.client_factory import ClientFactory
+
+            minio_client = await ClientFactory.get_minio_client()
+            return await minio_client.get_file_url(
+                minio_client.default_bucket, storage_path, 3600
+            )
+        except Exception:
+            return None
+
     async def download_document(
         self,
         document_id: int,

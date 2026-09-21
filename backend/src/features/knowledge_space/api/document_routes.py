@@ -27,7 +27,6 @@ from novamind.features.knowledge_space.api.dependencies import (
     validate_space_member,
 )
 from novamind.features.knowledge_space.exceptions import (
-    DocumentCountExceededError,
     DocumentInvalidTypeError,
     DocumentNotFoundError,
     DocumentSizeExceededError,
@@ -74,39 +73,11 @@ MAX_BATCH_FILE_COUNT = 200
 router = APIRouter(tags=["文档管理"])
 
 
-async def _read_upload_file(file: UploadFile) -> bytes:
-    """分块读取单个上传文件内容，带大小限制"""
-    file_content = bytearray()
-    while True:
-        chunk = await file.read(10 * 1024 * 1024)  # 10MB 分块读取
-        if not chunk:
-            break
-        file_content.extend(chunk)
-        if len(file_content) > MAX_UPLOAD_SIZE:
-            raise DocumentSizeExceededError(
-                size=len(file_content),
-                limit=MAX_UPLOAD_SIZE,
-            )
-    return bytes(file_content)
-
-
 async def _build_chunk_response(c: dict) -> ChunkResponse:
-    """从 ES 分块字典构建 ChunkResponse（去掉 embedding 大向量）"""
-    # 媒体分块：生成 MinIO 预签名 URL（支持 image/video/audio）
-    media_url = None
-    chunk_type = c.get("chunk_type")
-    storage_path = c.get("media_url", "") or c.get("image_url", "")
-
-    if chunk_type in ("image", "video", "audio") and storage_path:
-        try:
-            from novamind.shared.storage.client_factory import ClientFactory
-            minio_client = await ClientFactory.get_minio_client()
-            media_url = await minio_client.get_file_url(
-                minio_client.default_bucket, storage_path, 3600
-            )
-        except Exception:
-            media_url = None
-
+    """从 ES 分块字典构建 ChunkResponse（媒体 presign 委托 query service）。"""
+    media_url = await DocumentQueryService.presign_media_url(
+        c.get("chunk_type"), c.get("media_url", "") or c.get("image_url", "")
+    )
     return ChunkResponse(
         chunk_id=c.get("chunk_id", ""),
         document_id=c.get("document_id", 0),
@@ -118,7 +89,7 @@ async def _build_chunk_response(c: dict) -> ChunkResponse:
         file_info=c.get("file_info"),
         questions=c.get("questions"),
         created_at=c.get("created_at"),
-        chunk_type=chunk_type,
+        chunk_type=c.get("chunk_type"),
         image_url=media_url,  # 向后兼容
         media_url=media_url,
     )
@@ -143,13 +114,6 @@ async def upload_document(
     """上传文档（支持单文件和多文件批量上传）"""
     # 验证知识库访问权限
     await validate_kb_writable(kb_id, space_id, db)
-
-    # 数量限制
-    if len(files) > MAX_BATCH_FILE_COUNT:
-        raise DocumentCountExceededError(
-            count=len(files),
-            limit=MAX_BATCH_FILE_COUNT,
-        )
 
     # 单文件：走原有逻辑，保持向后兼容
     if len(files) == 1:
@@ -182,7 +146,7 @@ async def upload_document(
                 limit=MAX_UPLOAD_SIZE,
             )
 
-        file_content = await _read_upload_file(file)
+        file_content = await DocumentUploadService.read_upload_file(file, max_size=MAX_UPLOAD_SIZE)
 
         # 上传文档（仅存 MinIO，不触发解析）
         uploaded = await document_upload_service.upload_document(
@@ -209,36 +173,13 @@ async def upload_document(
             message="文档上传成功，等待拆分解析",
         )
 
-    # 多文件：批量上传
-    file_data_list: list[tuple] = []
-    failed_list: list[dict] = []
-    for file in files:
-        # 校验文件类型
-        if file.filename:
-            safe_filename = os.path.basename(file.filename)
-            _, ext = os.path.splitext(safe_filename.lower())
-            if ext not in ALLOWED_FILE_EXTENSIONS:
-                failed_list.append({
-                    "filename": file.filename,
-                    "error": f"不支持的文件类型: {ext}。当前支持 .pdf/.doc/.docx/.txt/.md/.csv/.html/.json/.jpg/.jpeg/.png/.gif/.webp/.mp4/.mov/.avi/.mkv/.webm/.mp3/.wav/.flac/.aac/.ogg/.m4a",
-                })
-                continue
-        else:
-            failed_list.append({
-                "filename": file.filename or "",
-                "error": "文件名缺失",
-            })
-            continue
-
-        try:
-            file_content = await _read_upload_file(file)
-            file_data_list.append((file.filename, file_content))
-        except DocumentSizeExceededError as e:
-            failed_list.append({
-                "filename": file.filename,
-                "error": str(e),
-            })
-            continue
+    # 多文件：批量上传（校验预处理下沉 document_upload_service.read_and_validate_uploads）
+    file_data_list, failed_list = await DocumentUploadService.read_and_validate_uploads(
+        files,
+        allowed_extensions=ALLOWED_FILE_EXTENSIONS,
+        max_size=MAX_UPLOAD_SIZE,
+        max_batch_count=MAX_BATCH_FILE_COUNT,
+    )
 
     # 批量上传（如果所有文件都未通过校验则跳过服务调用）
     if file_data_list:

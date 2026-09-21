@@ -342,6 +342,67 @@ class DocumentUploadService:
 
         return {"success": success, "failed": failed}
 
+    @staticmethod
+    async def read_upload_file(file, *, max_size: int = 100 * 1024 * 1024) -> bytes:
+        """分块读取单个上传文件内容，带大小限制（批次 4 自路由层下沉）。"""
+        file_content = bytearray()
+        while True:
+            chunk = await file.read(10 * 1024 * 1024)  # 10MB 分块读取
+            if not chunk:
+                break
+            file_content.extend(chunk)
+            if len(file_content) > max_size:
+                raise DocumentSizeExceededError(
+                    size=len(file_content),
+                    limit=max_size,
+                )
+        return bytes(file_content)
+
+    @classmethod
+    async def read_and_validate_uploads(
+        cls,
+        files: list,
+        *,
+        allowed_extensions: set[str],
+        max_size: int = 100 * 1024 * 1024,
+        max_batch_count: int = 200,
+    ) -> tuple[list[tuple[str, bytes]], list[dict]]:
+        """批量上传预处理：类型白名单过滤 + 分块读取 + 大小限制（批次 4 自路由层下沉）。
+
+        Returns:
+            (valid_files, failed_list)：校验通过的 (filename, content) 列表与逐文件失败明细。
+        """
+        import os as _os
+
+        if len(files) > max_batch_count:
+            from novamind.features.knowledge_space.exceptions import (
+                DocumentCountExceededError,
+            )
+
+            raise DocumentCountExceededError(count=len(files), limit=max_batch_count)
+
+        valid_files: list[tuple[str, bytes]] = []
+        failed_list: list[dict] = []
+        for file in files:
+            if not file.filename:
+                failed_list.append({"filename": "", "error": "文件名缺失"})
+                continue
+            safe_filename = _os.path.basename(file.filename)
+            _, ext = _os.path.splitext(safe_filename.lower())
+            if ext not in allowed_extensions:
+                failed_list.append({
+                    "filename": file.filename,
+                    "error": f"不支持的文件类型: {ext}。当前支持 .pdf/.doc/.docx/.txt/.md/.csv/.html/.json/.jpg/.jpeg/.png/.gif/.webp/.mp4/.mov/.avi/.mkv/.webm/.mp3/.wav/.flac/.aac/.ogg/.m4a",
+                })
+                continue
+            try:
+                content = await cls.read_upload_file(file, max_size=max_size)
+            except DocumentSizeExceededError as e:
+                failed_list.append({"filename": file.filename, "error": str(e)})
+                continue
+            valid_files.append((file.filename, content))
+        return valid_files, failed_list
+
     async def _normalize_upload_file(self, filename: str, file_content: bytes) -> tuple[str, bytes]:
         ext = self._get_file_type(filename)
         if ext != "doc":
