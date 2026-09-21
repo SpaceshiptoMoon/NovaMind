@@ -39,7 +39,7 @@ from novamind.engines.agent.tool.builtins.knowledge_search import (
 )
 from novamind.engines.agent.tool.builtins.memory import MemoryTool
 from novamind.engines.agent.tool.builtins.web_search import WebSearchTool
-from novamind.engines.search_ports import WebSearchResult
+from novamind.engines.search.ports import WebSearchResult
 
 pytestmark = pytest.mark.unit
 

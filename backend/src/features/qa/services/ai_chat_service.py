@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from novamind.engines.document.pipeline import DocumentProcessor
     from novamind.features.knowledge_space.services.search_service import SearchService
     from novamind.shared.storage.minio_client import MinioClient
-from novamind.engines.search_ports import WebSearchPort
+from novamind.engines.search.ports import WebSearchPort
 from novamind.features.qa.exceptions import (
     InvalidMessageContentError,
     LLMServiceError,

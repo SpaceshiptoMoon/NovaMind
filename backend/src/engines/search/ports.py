@@ -52,7 +52,7 @@ class ProviderWebSearchPort:
         self, query: str, max_results: int = 5
     ) -> list[WebSearchResult]:
         if self._service is None:
-            from novamind.engines.search_errors import WebSearchError
+            from novamind.engines.search.errors import WebSearchError
 
             raise WebSearchError("WebSearchPort 未注入底层搜索 service")
         results = await self._service.search(query=query, max_results=max_results)  # type: ignore[attr-defined]

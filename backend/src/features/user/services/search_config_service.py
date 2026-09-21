@@ -13,7 +13,7 @@
 import time
 
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.engines.search_errors import (
+from novamind.engines.search.errors import (
     WebSearchError,
     WebSearchProviderNotConfiguredError,
 )

@@ -19,7 +19,7 @@ from novamind.engines.agent.memory.interfaces import MemorySnapshot
 from novamind.engines.agent.memory.memory_manager import MemoryManager
 from novamind.engines.agent.prompt_builder import SystemPromptBuilder
 from novamind.engines.agent.tool.base import ToolContext
-from novamind.engines.search_ports import WebSearchPort
+from novamind.engines.search.ports import WebSearchPort
 from novamind.features.agent.exceptions import AgentError, AgentNotFoundError
 from novamind.features.agent.models.agent import AgentDefinition
 from novamind.features.agent.models.message import AgentMessage

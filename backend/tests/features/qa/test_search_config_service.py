@@ -438,7 +438,7 @@ class _FakePort:
 async def test_test_connection_success(monkeypatch):
     """test_connection 成功应返回 success=True + 结果数。"""
     import novamind.features.user.services.search_config_service as svc_mod
-    from novamind.engines.search_ports import WebSearchResult
+    from novamind.engines.search.ports import WebSearchResult
     from novamind.features.user.schemas.search_config_schema import SearchTestRequest
 
     fake_port = _FakePort(results=[WebSearchResult(title="t", url="u", snippet="s")])
@@ -461,7 +461,7 @@ async def test_test_connection_success(monkeypatch):
 async def test_test_connection_provider_not_configured(monkeypatch):
     """engines 抛 WebSearchProviderNotConfiguredError 应映射为 SearchConfigTestFailedError。"""
     import novamind.features.user.services.search_config_service as svc_mod
-    from novamind.engines.search_errors import WebSearchProviderNotConfiguredError
+    from novamind.engines.search.errors import WebSearchProviderNotConfiguredError
     from novamind.features.user.exceptions import SearchConfigTestFailedError
     from novamind.features.user.schemas.search_config_schema import SearchTestRequest
 
@@ -482,7 +482,7 @@ async def test_test_connection_provider_not_configured(monkeypatch):
 async def test_test_connection_search_failure_mapped(monkeypatch):
     """port.search 抛中立 WebSearchError 应映射为 SearchConfigTestFailedError。"""
     import novamind.features.user.services.search_config_service as svc_mod
-    from novamind.engines.search_errors import WebSearchError
+    from novamind.engines.search.errors import WebSearchError
     from novamind.features.user.exceptions import SearchConfigTestFailedError
     from novamind.features.user.schemas.search_config_schema import SearchTestRequest
 

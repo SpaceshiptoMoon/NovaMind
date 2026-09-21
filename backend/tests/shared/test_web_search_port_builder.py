@@ -21,7 +21,7 @@ pytestmark = pytest.mark.unit
 
 def test_duckduckgo_no_key_constructs():
     """duckduckgo 无 api_key 应构造成功（免费、无需 key）。"""
-    from novamind.engines.search_ports import WebSearchPort
+    from novamind.engines.search.ports import WebSearchPort
     from novamind.shared.search.web_search_factory import (
         build_web_search_port_from_provider,
     )
@@ -32,7 +32,7 @@ def test_duckduckgo_no_key_constructs():
 
 def test_tavily_no_key_raises_not_configured():
     """tavily 无 api_key 应抛 WebSearchProviderNotConfiguredError。"""
-    from novamind.engines.search_errors import WebSearchProviderNotConfiguredError
+    from novamind.engines.search.errors import WebSearchProviderNotConfiguredError
     from novamind.shared.search.web_search_factory import build_web_search_port_from_provider
 
     with pytest.raises(WebSearchProviderNotConfiguredError) as exc:
@@ -42,7 +42,7 @@ def test_tavily_no_key_raises_not_configured():
 
 def test_serpapi_no_key_raises_not_configured():
     """serpapi 无 api_key 应抛 WebSearchProviderNotConfiguredError。"""
-    from novamind.engines.search_errors import WebSearchProviderNotConfiguredError
+    from novamind.engines.search.errors import WebSearchProviderNotConfiguredError
     from novamind.shared.search.web_search_factory import build_web_search_port_from_provider
 
     with pytest.raises(WebSearchProviderNotConfiguredError):
@@ -51,7 +51,7 @@ def test_serpapi_no_key_raises_not_configured():
 
 def test_unknown_provider_raises_not_configured():
     """未知 provider 应抛 WebSearchProviderNotConfiguredError。"""
-    from novamind.engines.search_errors import WebSearchProviderNotConfiguredError
+    from novamind.engines.search.errors import WebSearchProviderNotConfiguredError
     from novamind.shared.search.web_search_factory import build_web_search_port_from_provider
 
     with pytest.raises(WebSearchProviderNotConfiguredError):
@@ -60,7 +60,7 @@ def test_unknown_provider_raises_not_configured():
 
 def test_tavily_with_key_constructs():
     """tavily 带 api_key 应构造成功（service.is_available() 为 True）。"""
-    from novamind.engines.search_ports import WebSearchPort
+    from novamind.engines.search.ports import WebSearchPort
     from novamind.shared.search.web_search_factory import (
         build_web_search_port_from_provider,
     )
@@ -76,7 +76,7 @@ async def test_provider_port_search_normalizes_results():
     用 duckduckgo（实搜可能因沙箱网络失败返回 []），故直接用 ProviderWebSearchPort
     包一个桩 service 验证归一化逻辑。
     """
-    from novamind.engines.search_ports import ProviderWebSearchPort, WebSearchResult
+    from novamind.engines.search.ports import ProviderWebSearchPort, WebSearchResult
 
     class _StubService:
         async def search(self, query, max_results=5, **kwargs):
@@ -107,8 +107,8 @@ async def test_provider_port_search_normalizes_results():
 @pytest.mark.asyncio
 async def test_provider_port_no_service_raises():
     """ProviderWebSearchPort 无 service 时 search 应抛 WebSearchError。"""
-    from novamind.engines.search_errors import WebSearchError
-    from novamind.engines.search_ports import ProviderWebSearchPort
+    from novamind.engines.search.errors import WebSearchError
+    from novamind.engines.search.ports import ProviderWebSearchPort
 
     port = ProviderWebSearchPort(service=None)
     with pytest.raises(WebSearchError):

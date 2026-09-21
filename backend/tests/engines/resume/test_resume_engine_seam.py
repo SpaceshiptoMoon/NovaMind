@@ -14,7 +14,7 @@
   - 引擎产物 Schema（``StructuredResume`` 等）位于 ``engines/resume/schemas.py``；
     feature 侧 API DTO（``ResumeSessionResponse`` / ``ResumeSessionListResponse``）
     留 ``features/app/schemas/resume_schema.py`` 反向引用（feature -> engine 合法）。
-  - ``WebSearchPort`` / ``WebSearchResult`` 位于中立的 ``engines/search_ports.py``，
+  - ``WebSearchPort`` / ``WebSearchResult`` 位于中立的 ``engines/search/ports.py``，
     provider 构造唯一入口 ``shared/search/web_search_factory.py``（R3 中心清单）。
   - ``resume_pipeline_service`` 装配点构造并注入上述端口；``probe_all`` 不再接收
     ``bg_db`` 参数。
@@ -127,8 +127,8 @@ def test_structlog_logger_satisfies_protocol():
 
 
 def test_web_search_port_neutral_location():
-    """WebSearchPort / WebSearchResult 位于 engines/search_ports.py，不依赖 feature。"""
-    from novamind.engines import search_ports as sp_mod
+    """WebSearchPort / WebSearchResult 位于 engines/search/ports.py，不依赖 feature。"""
+    from novamind.engines.search import ports as sp_mod
 
     imported = _imported_modules(sp_mod)
     for imp in imported:
@@ -141,7 +141,7 @@ def test_web_search_port_neutral_location():
 
 def test_web_search_port_construction_is_centralized():
     """web 搜索端口构造唯一入口是 shared/search/web_search_factory（R3 中心清单）。"""
-    from novamind.engines.search_ports import ProviderWebSearchPort, WebSearchPort
+    from novamind.engines.search.ports import ProviderWebSearchPort, WebSearchPort
     from novamind.shared.search import web_search_factory
 
     # 工厂可调用 + 默认宿主实现满足 Protocol（无参语义由 from_yaml 路径覆盖）
@@ -155,7 +155,7 @@ def test_web_search_port_construction_is_centralized():
 def test_agent_core_ports_reexports_web_search_port():
     """agent 数据类型（原 ports.py，批次 3.7 降级纯 dataclass 后本轮改名 context_types）。"""
     from novamind.engines.agent import context_types as agent_ports
-    from novamind.engines.search_ports import WebSearchResult
+    from novamind.engines.search.ports import WebSearchResult
 
     # dataclass 从 context_types 拿；WebSearch* 已不再 re-export
     assert not hasattr(agent_ports, "WebSearchPort")

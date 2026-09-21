@@ -417,7 +417,7 @@ def test_host_internal_search_port_satisfies_protocol():
 
 def test_provider_web_search_port_has_close_and_factory():
     """共享工厂是 web 搜索端口唯一构造点；ProviderWebSearchPort 提供 close。"""
-    from novamind.engines.search_ports import ProviderWebSearchPort
+    from novamind.engines.search.ports import ProviderWebSearchPort
     from novamind.shared.search.web_search_factory import (
         build_web_search_port_from_yaml,
         resolve_web_search_port,
@@ -431,7 +431,7 @@ def test_provider_web_search_port_has_close_and_factory():
 
 def test_web_search_result_has_optional_content_and_score():
     """WebSearchResult 含 content/score 可选字段（向后兼容；deep_research 外部路径用）。"""
-    from novamind.engines.search_ports import WebSearchResult
+    from novamind.engines.search.ports import WebSearchResult
 
     r = WebSearchResult(title="t", url="u", snippet="s")
     # content/score 有默认值（向后兼容：resume/agent 不传仍可构造）

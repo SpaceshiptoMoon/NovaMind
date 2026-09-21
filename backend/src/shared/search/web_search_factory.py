@@ -1,7 +1,7 @@
 """web 搜索端口唯一构造工厂（批次 2.1 收敛）。
 
 此前同样的「按 provider 构造搜索客户端」逻辑有四份逐字级重复：
-engines/search_ports.build_web_search_port_from_provider（旧名）、
+engines 顶层散件 ports 的 build_web_search_port_from_provider（旧名，已收编 engines/search/）、
 deep_research 数据源适配器的三个 build_*、qa/ai_chat_service 的 _resolve/_build_yaml_fallback。
 本模块成为唯一实现，消费方全部改调此处。
 
@@ -20,12 +20,12 @@ from collections.abc import Callable
 from typing import Any
 
 from novamind.core.middleware.structured_logging import get_logger
-from novamind.engines.search_errors import (
+from novamind.engines.search.errors import (
     WebSearchError,
     WebSearchProviderNotConfiguredError,
     WebSearchProviderUnavailableError,
 )
-from novamind.engines.search_ports import (
+from novamind.engines.search.ports import (
     ProviderWebSearchPort,
     WebSearchPort,
     WebSearchResult,

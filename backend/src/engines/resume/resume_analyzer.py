@@ -14,7 +14,7 @@ from novamind.engines.resume.schemas import (
     StructuredResume,
     WorkProjectUnit,
 )
-from novamind.engines.search_ports import WebSearchPort, WebSearchResult
+from novamind.engines.search.ports import WebSearchPort, WebSearchResult
 from novamind.shared.ai_models.llm import BaseLLM
 from novamind.shared.logging import Logger
 from novamind.shared.prompts.prompt_manager import PromptManager

@@ -159,10 +159,10 @@ def test_external_source_duckduckgo_builds_and_normalizes():
 def test_external_source_delegates_to_shared_factory():
     """构造委托共享工厂 + 异常镜像：中立 NotConfigured → feature SearchProviderNotConfiguredError。"""
     import novamind.features.deep_research.services.web_search_source as wsa
-    from novamind.engines.search_errors import (
+    from novamind.engines.search.errors import (
         WebSearchProviderNotConfiguredError as NeutralNotConfigured,
     )
-    from novamind.engines.search_ports import ProviderWebSearchPort
+    from novamind.engines.search.ports import ProviderWebSearchPort
 
     class _FakePort:
         async def search(self, query, max_results=5):
@@ -231,7 +231,7 @@ async def test_external_source_search_normalizes_to_dict():
         mock_cfg.return_value.external_search = _fake_es_config()
         port = source_registry.build("external", ctx)
     # 注入 stub 底层 port 验证归一化（绕过真实网络）
-    from novamind.engines.search_ports import WebSearchResult
+    from novamind.engines.search.ports import WebSearchResult
     from novamind.features.deep_research.services.web_search_source import (
         WebSearchSourceAdapter,
     )
