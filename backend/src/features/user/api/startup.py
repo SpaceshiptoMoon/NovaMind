@@ -1,4 +1,10 @@
 from fastapi import FastAPI
+from novamind.core.auth.exceptions import (
+    AuthenticationError as CoreAuthAuthenticationError,
+    AuthenticationRevokedError,
+    AuthorizationError as CoreAuthAuthorizationError,
+    PasswordChangeRequiredError,
+)
 from novamind.core.authorization.permission_codes import PRESET_ROLE_PERMISSIONS, SystemPermission
 from novamind.core.database.database import get_db_session
 from novamind.core.middleware.base_exception_handler import register_module_exceptions
@@ -297,4 +303,11 @@ def setup_user_exception_handlers(app: FastAPI) -> None:
         SearchConfigError: 400,
         RoleNotFoundError: 404,
         RoleError: 400,
+        # core/auth 认证链异常（与上方 features.user.exceptions.AuthenticationError
+        # 是同名不同源的两个类——dependencies 抛 core 版、登录/会话抛 user 版，
+        # 两边都要以正确类注册；http_status_code ClassVar 已声明，此处注册日志标签）
+        CoreAuthAuthenticationError: 401,
+        AuthenticationRevokedError: 401,
+        CoreAuthAuthorizationError: 403,
+        PasswordChangeRequiredError: 403,
     })

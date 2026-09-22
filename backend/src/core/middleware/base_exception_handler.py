@@ -214,6 +214,50 @@ def get_status_code_for_error(error_code: str) -> int:
 
 # ========== 全局异常处理器 ==========
 
+async def base_api_error_handler(request: Request, exc: BaseAPIError) -> JSONResponse:
+    """``BaseAPIError`` 专属全局处理器（按 MRO 兜住全部业务异常）。
+
+    Starlette 异常处理器按异常类沿 MRO 精确匹配：模块级 status_map 注册的
+    专属类优先命中，未注册专属 handler 的 ``BaseAPIError`` 子类（含跨模块
+    同名不同源类，如 core/auth 与 features/user 各自的 ``AuthenticationError``）
+    在此兜底，读取类声明的 ``http_status_code``（未声明回落 500）。
+
+    注册位置必须在 ``app.add_exception_handler(Exception, ...)`` 之前语义
+    无关（Starlette 先查 MRO 精确类再查兜底），但依赖层抛出的业务异常穿越
+    BaseHTTPMiddleware（如 slowapi）时，若无本处理器会被兜底 handler 生成
+    响应后仍 re-raise 到 uvicorn（客户端收到 500 + 服务端 ASGI 堆栈）；
+    本处理器以精确类注册，响应可靠送达。
+    """
+    trace_id = getattr(request.state, "trace_id", "no-trace")
+
+    # 仅当异常类自身显式声明 http_status_code 时优先使用（不继承基类 500）；
+    # 未声明走 error_code 后缀映射，与 global_exception_handler 的鸭子分支一致
+    status_code = exc.__class__.__dict__.get("http_status_code")
+    if status_code is None:
+        status_code = get_status_code_for_error(exc.code)
+
+    logger.warning(
+        "业务异常",
+        trace_id=trace_id,
+        error_code=exc.code,
+        error_message=exc.message,
+        path=request.url.path,
+        method=request.method,
+    )
+
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "error": {
+                "code": exc.code,
+                "message": exc.message,
+                "request_id": trace_id,
+            },
+            "timestamp": now_china().isoformat(),
+        },
+    )
+
+
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """
     全局未捕获异常处理器
@@ -397,6 +441,10 @@ def setup_global_exception_handlers(app) -> None:
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(StarletteHTTPException, starlette_http_exception_handler)
+
+    # 业务异常兜底：BaseAPIError 专属处理器（MRO 匹配兜住所有未注册专属
+    # handler 的业务异常，含依赖层抛出穿越 BaseHTTPMiddleware 的场景）
+    app.add_exception_handler(BaseAPIError, base_api_error_handler)
 
     # 全局异常兜底
     app.add_exception_handler(Exception, global_exception_handler)
