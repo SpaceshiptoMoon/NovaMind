@@ -26,7 +26,7 @@
 
 - 双 token：access（30 分钟）+ refresh（7 天，轮换式，轮换后旧 refresh 立即失效）
 - 双层黑名单：token 级（jti，登出/轮换写）+ 用户级（`user_blacklist:{uid}` 与 iat 比较，停用/删除/改密全量拉黑）
-- 每个请求经 `get_current_user` 七步链：解码 → jti 黑名单 → 用户级黑名单 → 端口取 DB 状态 → 删除/禁用检查 → 强制改密门禁 → 返回用户 dict
+- 每个请求经 `get_current_user` 七步链：解码 → jti 黑名单 → 用户级黑名单 → 经 `UserService.get_auth_status` 取 DB 最新状态 → 删除/禁用检查 → 强制改密门禁 → 返回用户 dict
 - WS 认证等价：subprotocol `bearer.<jwt>`（`core/auth/ws_auth.py`），失败 close 4401/4403
 
 ## 全局层：三级身份（features/user）

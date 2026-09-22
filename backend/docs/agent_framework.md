@@ -4,17 +4,22 @@
 
 本文档描述 Agent 模块的核心框架实现，包含三个子系统：**记忆系统**、**工具系统**、**LLM 交互层**，以及 **ReAct 引擎**。
 
-核心代码位于 `src/engines/agent/`（引擎纯逻辑层），分为 `memory/`、`tool/`、`llm/`、`mcp/` 四个子目录和 `agent_engine.py` 引擎入口；宿主装配层在 `src/features/agent/`。
+核心代码位于 `src/engines/agent/`（引擎纯逻辑层），分为 `memory/`、`tool/`、`llm/`、`mcp/`、`flow/`（PlanningFlow）、`safety/`（危险操作检测 + 审批）、`subagent/`（子 agent 委派）七个子目录，顶层另有 `agent_engine.py`（引擎入口）、`prompt_builder.py`、`retry.py`、`loop_detection.py` 与 `context_types.py`（跨边界纯 dataclass，原 ports.py 改名）；宿主装配层在 `src/features/agent/`。
+
+依赖边界（R1 无环门禁）：engines 可按 R1/R4 引 feature 公共面或直收具体类实例
+（如 `subagent/runner.py` 运行时 import `ModelConfigService`），不持有 ORM session。
 
 ---
 
 ## 目录结构
 
 ```
-src/engines/agent/               # 引擎纯逻辑层（零 feature/setting/ORM 依赖）
+src/engines/agent/               # 引擎纯逻辑层
 ├── agent_engine.py             # AgentEngine — ReAct 循环引擎（原 engine.py）
 ├── prompt_builder.py            # SystemPromptBuilder — 分层 prompt 组装
 ├── retry.py                     # LLM 调用重试逻辑
+├── loop_detection.py            # 循环检测
+├── context_types.py             # 跨边界纯 dataclass（原 ports.py，去 Protocol 后改名）
 │
 ├── memory/                      # 记忆系统（两层：短期 + 长期）
 │   ├── __init__.py              # 仅导出 MemoryManager
@@ -40,10 +45,21 @@ src/engines/agent/               # 引擎纯逻辑层（零 feature/setting/ORM 
 │   ├── base.py                  # BaseTool — 工具基类
 │   └── builtins/                # 内置工具
 │       ├── knowledge_search.py  # 知识库搜索
-│       ├── web_search.py        # 网络搜索
+│       ├── web_search.py        # 网络搜索（DuckDuckGo；Tavily/SerpAPI 见 shared/search/）
 │       ├── code_execution.py    # Docker 沙盒代码执行
 │       ├── memory.py            # 记忆管理（add/replace/remove）
-│       └── todo.py              # 任务追踪（read_tool_result 已移至宿主侧 features/agent/tool/builtins/）
+│       ├── todo.py              # 任务追踪（跨压缩持久）
+│       ├── task.py              # 子 agent 委派（TaskTool → subagent/runner）
+│       └── read_attachment.py   # 附件读取（ReadAttachmentTool）
+│
+├── flow/                        # Plan-and-Execute 流（E7，双层循环）
+│   └── planning_flow.py         # PlanningFlow — 外层计划 + 逐步 ReAct
+├── safety/                      # 危险操作检测 + 异步审批（E4 + E5）
+│   ├── approval.py              # ApprovalHook / ApprovalRejectedError
+│   ├── approval_registry.py     # ApprovalRegistry
+│   └── patterns.py              # detect_dangerous_code
+├── subagent/                    # 子 agent 委派 runner（E6）
+│   └── runner.py                # SubAgentRunner（独立 ReAct 循环，裁剪工具集）
 │
 ├── mcp/                         # MCP 协议支持（从 features/agent/mcp 迁入）
 │   ├── client.py                # McpClientManager
@@ -68,7 +84,8 @@ src/features/agent/
 │   ├── memory_search_repository.py  # ES 混合搜索记忆
 │   └── context_summary_repository.py  # 压缩摘要仓储
 ├── tool/builtins/
-│   └── read_tool_result.py      # 依赖 AgentToolCall ORM 的宿主侧工具（不随引擎迁入）
+│   ├── read_tool_result.py      # 依赖 AgentToolCall ORM 的宿主侧工具（不随引擎迁入）
+│   └── wiki_tools.py            # WikiTool 四工具（依赖 wiki services，宿主侧装配）
 └── sandbox/                     # 代码沙盒（宿主资源）
     ├── docker_sandbox.py        # Docker 隔离执行
     └── config.py                # 沙盒配置
@@ -383,14 +400,24 @@ execute(tool_name, arguments, context) → ToolResult
 
 ### 2.5 内置工具
 
+引擎侧（`engines/agent/tool/builtins/`）：
+
 | 工具名 | 文件 | 功能 |
 |--------|------|------|
 | `knowledge_search` | `builtins/knowledge_search.py` | 知识库语义搜索 |
-| `web_search` | `builtins/web_search.py` | 网络搜索（Tavily/SerpAPI/DuckDuckGo） |
+| `web_search` | `builtins/web_search.py` | 网络搜索（DuckDuckGo；Tavily/SerpAPI 走 `shared/search/` 供宿主装配） |
 | `code_execution` | `builtins/code_execution.py` | Docker 沙盒代码执行 |
 | `memory` | `builtins/memory.py` | 记忆管理（add/replace/remove），限制 50 条/用户/Agent |
 | `todo` | `builtins/todo.py` | 任务追踪（跨压缩持久） |
-| `read_tool_result` | `builtins/read_tool_result.py` | 读取之前工具调用的完整结果 |
+| `task` | `builtins/task.py` | 子 agent 委派（TaskTool，经 `subagent/runner.py`） |
+| `read_attachment` | `builtins/read_attachment.py` | 附件读取 |
+
+宿主侧（`features/agent/tool/builtins/`，依赖 ORM/业务服务不随引擎迁入）：
+
+| 工具名 | 文件 | 功能 |
+|--------|------|------|
+| `read_tool_result` | `read_tool_result.py` | 读取之前工具调用的完整结果 |
+| `wiki_*` | `wiki_tools.py` | WikiTool 四工具（搜索/读页/写综合页/报问题） |
 
 ---
 
@@ -401,7 +428,7 @@ execute(tool_name, arguments, context) → ToolResult
 **组合优于继承**：`AgentLLM` 持有 `BaseLLM` 实例，不继承它。
 
 ```
-AgentLLM (feature 层)
+AgentLLM (engines/agent/llm/，引擎层)
   ├── 持有 BaseLLM 实例（shared 层）
   ├── 增加流式工具调用处理
   ├── 增加 token 统计聚合
@@ -552,7 +579,7 @@ class SystemPromptBuilder:
 | 工具执行器 (`executor.py`) | ✅ 完成 | 路由 + 钩子 + 超时 + LRU 缓存 |
 | 工具注册 (`registry.py`) | ✅ 完成 | ToolRegistry |
 | 工具基类 (`base.py`) | ✅ 完成 | BaseTool |
-| 6 个内置工具 (`builtins/`) | ✅ 完成 | knowledge/web/code/memory/todo/read |
+| 7 个引擎内置工具 (`builtins/`) | ✅ 完成 | knowledge/web/code/memory/todo/task/read_attachment；宿主侧另有 read_tool_result/wiki_tools |
 | AgentLLM (`agent_llm.py`) | ✅ 完成 | 流式 + 非流式 + 降级 |
 | AgentEngine (`agent_engine.py`) | ✅ 完成 | ReAct 循环 |
 | PromptBuilder (`prompt_builder.py`) | ✅ 完成 | 分层 prompt 组装 |

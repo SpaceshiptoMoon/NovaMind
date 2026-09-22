@@ -1,33 +1,34 @@
 # 通知系统架构
 
 > 2026-09-13 建成。骨架（表/服务/API/前端 UI）先行存在，本次补齐发送侧接线、
-> WS 实时推送与跨 feature 端口。本文是通知系统的权威参考。
+> WS 实时推送与跨 feature 通知入口。2026-09-21 ragflow 对齐第三轮拆除
+> NotificationPort 仪式层，公共入口上移 `NotificationService.notify` 静态方法。
+> 本文是通知系统的权威参考。
 
 ## 总览
 
 ```
-[业务 feature]                        [notification feature]                 [前端]
-skill / knowledge_space /             NotificationService                    stores/notification.ts
-deep_research / app / user  ──Port──▶  ├─ 偏好过滤 (NotificationPreference)   ├─ WS 实时 prepend
-                    NotificationPort   ├─ DB 落库 (notifications 表)  ◀──30s 轮询──┤ (兜底收敛)
-                                       ├─ WS 推送 (ConnectionManager) ───────▶├─ 铃铛徽标 (AppHeader)
-                                       └─ 邮件 (EmailService, 默认关)         └─ 通知中心页 (NotificationView)
+[业务 feature]                              [notification feature]                 [前端]
+skill / knowledge_space /                   NotificationService                    stores/notification.ts
+deep_research / app / user  ──notify()──▶   ├─ 偏好过滤 (NotificationPreference)   ├─ WS 实时 prepend
+              NotificationService.notify   ├─ DB 落库 (notifications 表)  ◀──30s 轮询──┤ (兜底收敛)
+              （静态方法）                  ├─ WS 推送 (ConnectionManager) ───────▶├─ 铃铛徽标 (AppHeader)
+                                            └─ 邮件 (EmailService, 默认关)         └─ 通知中心页 (NotificationView)
 ```
 
 设计原则：**DB 是事实源，WS 只是加速器**。推送失败静默，30s 轮询保证最终一致；
-通知发送失败被 adapter 吞掉，绝不打断调用方主业务流程。
+通知发送失败在 `notify` 内部吞掉（记 warning 日志），绝不打断调用方主业务流程。
 
 ## 三层基础设施
 
-### 1. NotificationPort（跨 feature 端口）
+### 1. NotificationService.notify（跨 feature 公共入口）
 
-- `backend/src/shared/notification_ports.py`：`NotificationPort` Protocol，仅 `send` 一个方法
-  （`user_id, type, title, content, link, extra_data`）。独立文件，对照 `model_config_ports.py` 先例。
-- `backend/src/features/notification/adapters/notification_port_adapter.py`：`HostNotificationPort`
-  实现 + `as_notification_port(db)` 工厂。**会话策略由调用点选择**：
+- `backend/src/features/notification/services/notification_service.py`：
+  `@staticmethod async notify(db=None, *, user_id, type, title, content, link, extra_data)`。
+  **会话策略由调用点选择**：
   - HTTP 请求上下文：传 `db`（通知与主业务同事务，主业务回滚则通知一起回滚）
-  - 后台任务/arq：传 `None`（每次 send 开独立短会话，调用方 session 可能已 commit/关闭）
-- adapter 内部吞掉一切异常（记 warning 日志）；服务层 helper 建议再兜一层（双保险，
+  - 后台任务/arq：传 `None`（每次 notify 开独立短会话，调用方 session 可能已 commit/关闭）
+- notify 内部吞掉一切异常（记 warning 日志）；服务层 helper 建议再兜一层（双保险，
   见 `skill_marketplace_service._notify_review_result`）。
 
 ### 2. ConnectionManager（WS 连接注册表）
@@ -58,10 +59,10 @@ deep_research / app / user  ──Port──▶  ├─ 偏好过滤 (Notificati
   → 邮件（email_enabled 且 SMTP 已启用；失败仅 warning）
 ```
 
-调用点铁律：**必须在业务 commit 之后调 port.send**——repo.create 只是 flush，
-推送早于可见性会造成「推送了却随后回滚」的幽灵通知。
+调用点铁律：**必须在业务 commit 之后调 `NotificationService.notify`**——repo.create 只是
+flush，推送早于可见性会造成「推送了却随后回滚」的幽灵通知。
 
-## 已接线事件（7 种 NotificationType 全部生效）
+## 已接线事件（8 种 NotificationType 全部生效）
 
 | type | 触发点 | 接收人 | link |
 |---|---|---|---|
@@ -71,10 +72,11 @@ deep_research / app / user  ──Port──▶  ├─ 偏好过滤 (Notificati
 | research_done | 深度研究流式 + 非流式两条路径 commit 后 | 发起用户 | `/home/workspace/research/{sid}/history` |
 | resume_completed | 简历成功 / 最终失败 / 前置取消 | 发起用户 | `/home/apps/resume/session/{id}` 或 `/home/apps/resume/history` |
 | password_reset | `forgot_password`（link=None，防枚举语义不变） | 请求重置者 | — |
+| wiki_ready | Wiki 生成任务完成/失败（`wiki_tasks`） | 文档上传者 | `/home/spaces/{sid}/knowledge-bases/{kid}/wiki` |
 | system | 预留 | — | — |
 
-新增事件的步骤：调 `as_notification_port(...).send(...)` 即可，link 对照
-`frontend/src/router/index.ts` 实际路由；测试 stub port 断言参数。
+新增事件的步骤：调 `NotificationService.notify(...)` 即可，link 对照
+`frontend/src/router/index.ts` 实际路由；测试 stub `NotificationService.notify` 断言参数。
 
 ## 前端
 
@@ -91,8 +93,8 @@ deep_research / app / user  ──Port──▶  ├─ 偏好过滤 (Notificati
 ## 测试
 
 - `backend/tests/core/test_ws_connection_manager.py`：注册表生命周期/多连接/异常摘除/datetime 兜底
-- `backend/tests/features/notification/`：端口协议、send 落库+推送流程、WS 端点（ping/pong、4401、多标签页）
-- 各 feature 下 `test_*_notification.py`：stub port 断言调用参数与时机
+- `backend/tests/features/notification/`：send 落库+推送流程、WS 端点（ping/pong、4401、多标签页）
+- 各 feature 下 `test_*_notification.py`：stub `NotificationService.notify` 断言调用参数与时机
 - 前端 `stores/__tests__/notification.test.ts`：init 幂等/WS 事件去重/截断/重连补拉/markRead/stop
 
 ## 明确不做 / 演进路径

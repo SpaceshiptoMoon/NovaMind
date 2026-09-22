@@ -128,7 +128,7 @@ features 直接收具体类实例（不再经端口装配）：
 - `docs/knowledge-space/`：知识空间文档，已区分 `current/` 和 `process/`
 - `docs/knowledge-space/current/wiki-architecture.md`：Wiki 自动生成与浏览架构
 - `docs/deepdoc/`：DeepDoc 集成说明
-- `docs/notification-architecture.md`：通知系统架构（NotificationPort / WS 推送 / 轮询兜底）
+- `docs/notification-architecture.md`：通知系统架构（NotificationService.notify / WS 推送 / 轮询兜底）
 - `docs/permission-architecture.md`：权限体系架构（认证 / 三级全局身份 / 应用门禁 / 空间角色）
 - `docs/handover/`：交接记录，均已归档至 `historical/`
 - `docs/plans/`：执行计划和重构方案，已区分 active / historical 阅读方式

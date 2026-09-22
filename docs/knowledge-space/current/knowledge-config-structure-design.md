@@ -418,7 +418,7 @@ Required changes:
 
 Relevant existing test files:
 
-- `backend/tests/features/knowledge_space/test_knowledge_space_api.py`
+- `backend/tests/integration/test_knowledge_space_api.py`
 - `backend/tests/features/knowledge_space/test_knowledge_config_runtime.py`
 - `backend/tests/engines/document/deepdoc/test_deepdoc_runtime.py`
 

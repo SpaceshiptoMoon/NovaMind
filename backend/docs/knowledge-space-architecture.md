@@ -112,31 +112,32 @@ backend/src/
 ### 2.2 文档处理管道
 
 ```
-arq Worker → process_document_task()
+arq Worker → process_document_task()（tasks/document_tasks.py）
   → document_pipeline.execute_document_pipeline()（按文件类型路由）
     │
     ├─ 文本分支（pdf/docx/txt/md/...）：
     │   → DocumentProcessor 解析（按文件类型选 Reader，DeepDoc 结构化切块在内）
     │   → persist_parsed_text（解析 MD 全文 → MinIO）
-    │   → _run_post_parse_tail（prechunked 优先，回退 _split_md_text）
+    │   → run_post_parse_tail（prechunked 优先，回退 split_md_text）
     │
     ├─ 视频分支（mp4/mov/avi/mkv/webm）：
     │   → process_video_document()：关键帧提取 → VLM 帧描述（转换器）
     │   → persist_parsed_text（帧描述拼接 MD → MinIO）
-    │   → _run_post_parse_tail（_split_md_text 切片，frame_paths 映射）
+    │   → run_post_parse_tail（split_md_text 切片，frame_paths 映射）
     │
     ├─ 音频分支（mp3/wav/flac/aac/ogg/m4a）：
     │   → process_audio_document()：ASR 转写（转换器）
     │   → persist_parsed_text（转写 MD → MinIO）
-    │   → _run_post_parse_tail（_split_md_text 切片）
+    │   → run_post_parse_tail（split_md_text 切片）
     │
     └─ 图片分支（jpg/png/gif/webp）：独立通路，不走共享后置尾
         → _process_image_document_static()
         → VLM 描述生成（可选，需开启 vlm_description_enabled）
         → 构建 image chunk → ES 索引
 
-  _run_post_parse_tail（文本/音频/视频共用，节点名统一 split/embedded/question_generation/indexed）：
-    split → _build_es_chunks → embedded（EmbeddingService，Redis 缓存 48h TTL）
+  run_post_parse_tail（后置尾 helper 已下沉 services/pipeline_steps.py；
+  文本/音频/视频共用，节点名统一 split/embedded/question_generation/indexed）：
+    split → build_es_chunks → embedded（pipeline_steps.generate_embeddings，模型客户端经 ModelConfigService）
             → question_generation（QuestionGenerationService，由 pipeline_config 控制）
             → indexed（ElasticsearchClient.bulk_index_chunks）
 
@@ -149,9 +150,9 @@ arq Worker → process_document_task()
 前端 POST /api/v1/spaces/{id}/knowledge-bases/{kb_id}/search
   → search_routes.py → SearchService.search()
     → 1. 权限校验 + 知识库验证
-    → 2. 检查缓存（Redis，key: search:{kb_id}:{mode}:{hash}）
+    → 2. 检查缓存（RetrievalEngine，Redis，key: search:{kb_id}:{search_type}[:u{uid}]:{query_hash}，TTL 1h）
     → 3. 查询改写（HyDE / Sub Query—可选）
-    → 4. 生成查询向量（EmbeddingService）
+    → 4. 生成查询向量（SearchService._get_embedding_client，经 ModelConfigService）
     → 5. es_client.search_by_mode() 路由到对应搜索模式
     → 6. _enrich_results() 补充结果详情
     → 7. _normalize_scores() Min-Max 归一化
@@ -165,7 +166,7 @@ arq Worker → process_document_task()
 
 ## 三、关键配置点
 
-### 3.1 空间级别配置（`SpaceConfig` / `space_schema.py:39`）
+### 3.1 空间级别配置（`SpaceConfig` / `space_schema.py:46`）
 
 | 字段 | 类型 | 说明 | 扩展备注 |
 |------|------|------|----------|
@@ -181,19 +182,13 @@ arq Worker → process_document_task()
 |--------|------|----------|
 | `splitting` | 切片策略（strategy/chunk_size/overlap） | 视频需新增场景切割 |
 | `parsing` | 解析配置（PDF策略、VLM策略、ASR参数等） | 音视频各有独立参数 |
-| `question_generation` | 假设问题生成（enabled/model/batch_size） | 文本/音频/视频统一复用（经 `_run_post_parse_tail`）；图片分支无 QG |
+| `question_generation` | 假设问题生成（enabled/model/batch_size） | 文本/音频/视频统一复用（经 `run_post_parse_tail`）；图片分支无 QG |
 
 ### 3.3 模型类型映射
 
-```python
-_MODEL_TYPE_STR = {
-    "embedding": "embedding",
-    "llm": "llm",
-    "rerank": "rerank",
-    "vlm": "vlm",
-    "asr": "asr",
-}
-```
+嵌入模型类型统一为 `embedding`：`space_service._resolve_model_type()` 恒返回
+`"embedding"`（多模态 embedding 预留，图片/视频帧描述后走文本 embedding）。
+早期的 `_MODEL_TYPE_STR` 按模态映射表已随该收口删除。
 
 ---
 

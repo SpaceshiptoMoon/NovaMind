@@ -2,7 +2,7 @@
 
 > 来源代码：
 > - Mapping 定义：`backend/src/shared/storage/elasticsearch_client.py` — `create_index()`
-> - 文本/音频/视频 chunk 写入：`backend/src/features/knowledge_space/services/document_pipeline.py` — `_build_es_chunks()`（统一构造器，三模态共用），`_prepare_es_chunks_static()`（旧 shim，保留兼容）
+> - 文本/音频/视频 chunk 写入：`backend/src/features/knowledge_space/services/pipeline_steps.py` — `build_es_chunks()`（统一构造器，三模态共用），`prepare_es_chunks()`（旧签名薄 shim，保留兼容）
 > - 图片 chunk 写入：`backend/src/features/knowledge_space/services/document_pipeline.py` — `_process_image_document_static()`
 > - 搜索模式：`backend/src/shared/storage/elasticsearch_client.py` — `search_by_mode()`
 
@@ -47,7 +47,7 @@ properties = {
 
 ### 文本 chunk — 最终写入 10 个字段
 
-构建于 `document_pipeline.py` `_build_es_chunks()`（文本分支），`questions`/`question_embeddings` 在 `_run_post_parse_tail` 问题生成步骤填充，`embedding` 在向量化步骤追加：
+构建于 `pipeline_steps.py` `build_es_chunks()`（文本分支），`questions`/`question_embeddings` 在 `run_post_parse_tail` 问题生成步骤填充，`embedding` 在向量化步骤追加（下述行号为迁移前 document_pipeline.py 的历史锚点，函数体逐字平移 pipeline_steps.py 后行号已漂移，以符号名为准）：
 
 ```
 space_id              ✅  第 1915 行
@@ -61,7 +61,7 @@ questions             ✅  第 1928 行（初始 []，问题生成后填充）
 question_embeddings   ✅  第 1929 行（初始 []，问题生成后填充）
 embedding             ✅  第 2025 行（向量化后写入）
 ──────────────────────────────────────────
-image_url             ❌ 不写入（文本分支仅在非文本时写 image_url，见 `_build_es_chunks:1932-1933`）
+image_url             ❌ 不写入（文本分支仅在非文本时写 image_url，见 build_es_chunks 媒体分支）
 metadata.*            ❌ 不写入（mapping 定义了 page_number/section_title 等但从未写）
 file_info.*           ❌ 不写入（mapping 定义了 filename/file_type 但从未写）
 created_at            ❌ 不写入
@@ -70,7 +70,7 @@ updated_at            ❌ 不写入
 
 ### 图片 chunk — 最终写入 9~11 个字段
 
-构建于 `document_pipeline.py` `_process_image_document_static()`：
+构建于 `document_pipeline.py` `_process_image_document_static()`（:592）：
 
 ```
 space_id              ✅  第 1768 行
@@ -94,7 +94,7 @@ updated_at            ❌ 不写入
 
 ### 音频/视频 chunk — 最终写入 13 个字段
 
-构建于 `document_pipeline.py` `_build_es_chunks()`（媒体分支，由 `_run_post_parse_tail` 调用）。音频与视频共用同一构造路径，仅 `chunk_type`（`AUDIO`/`VIDEO`）与是否带 `frame_paths` 不同：
+构建于 `pipeline_steps.py` `build_es_chunks()`（媒体分支，由 `run_post_parse_tail` 调用）。音频与视频共用同一构造路径，仅 `chunk_type`（`AUDIO`/`VIDEO`）与是否带 `frame_paths` 不同：
 
 ```
 space_id              ✅  第 1915 行
@@ -112,15 +112,15 @@ metadata.content_hash ✅  第 1894 行（document.file_hash）
 metadata.start_time   ✅  第 1906 行（音频分段时间戳 / 视频帧时间戳）
 metadata.end_time     ✅  第 1907 行
 metadata.frame_paths  ✅  第 1909 行（仅视频：按 chunk 的 frame_indices 映射 frame_paths）
-questions             ✅  第 1928 行（初始 []，QG 开启时由 _run_post_parse_tail 填充 :2050）
+questions             ✅  （初始 []，QG 开启时由 run_post_parse_tail 填充）
 question_embeddings   ✅  第 1929 行（初始 []，QG 开启时填充 :2051）
-embedding             ✅  第 2025 行（向量化后写入，_run_post_parse_tail embedded 步骤）
+embedding             ✅  （向量化后写入，run_post_parse_tail embedded 步骤）
 created_at            ✅  第 1930 行（now_china().isoformat()）
 ──────────────────────────────────────────
 updated_at            ❌ 不写入
 ```
 
-> QG 由 `pipeline_config["question_generation"]["enabled"]` 控制，三模态统一经 `_run_post_parse_tail` 生成（见 `knowledge-architecture-navigation.md`）。QG 关闭时 `questions`/`question_embeddings` 保持 `[]`。
+> QG 由 `pipeline_config["question_generation"]["enabled"]` 控制，三模态统一经 `run_post_parse_tail` 生成（见 `knowledge-architecture-navigation.md`）。QG 关闭时 `questions`/`question_embeddings` 保持 `[]`。
 
 ## 三、搜索模式与字段对应
 

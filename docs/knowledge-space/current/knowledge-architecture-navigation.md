@@ -21,7 +21,8 @@ This document describes the current canonical backend knowledge-base structure.
 - `backend/src/engines/document/converters/` — 文档格式转换器
 - `backend/src/engines/document/media/` — 音频（ASR）、视频（抽帧）、VLM、OCR 处理
 - `backend/src/engines/document/integrations/deepdoc/` — DeepDoc 集成（vendored，自包含）
-  - 依赖方向：`features → engines → shared` 单向，engines 不得反向 import features/setting/ORM
+  - 依赖方向：R1 全图 import 无环（机器门禁 Tarjan SCC）；engines 不持有 ORM session，
+    可按 R1/R4 引 feature 公共面或直收具体类实例（不再要求单向分层）
 
 ### Shared Layer（跨 feature 复用）
 
@@ -38,14 +39,14 @@ features/knowledge_space/services/
   ├── process_video_document  (视频入口)
   └── _process_image_document_static (图片入口，独立通路)
 
-三模态（文本/音频/视频）管道形态：
+三模态（文本/音频/视频）管道形态（后置尾 helper 已下沉 `services/pipeline_steps.py`）：
   解析(转换器/deepdoc) → persist_parsed_text(MD → MinIO)
-               → _run_post_parse_tail(切分 → 向量化 → QG → 索引)
-                   ├── _split_md_text / prechunked
-                   ├── _build_es_chunks（统一 ES chunk 构造器）
-                   ├── _generate_embeddings_static
-                   ├── _generate_questions_for_chunks_static（由 pipeline_config 控制）
-                   └── _get_es_client_static → bulk_index_chunks
+               → run_post_parse_tail(切分 → 向量化 → QG → 索引)
+                   ├── split_md_text / prechunked
+                   ├── build_es_chunks（统一 ES chunk 构造器）
+                   ├── generate_embeddings
+                   ├── generate_questions_for_chunks（由 pipeline_config 控制）
+                   └── get_es_client → bulk_index_chunks
 
 图片管道独立，不走共享后置尾（单 chunk、无 QG、es_chunk 形状不同）。
 
@@ -95,7 +96,7 @@ Wiki 页面不入 ES 检索。
 | 问题生成 | `question_generation` | `question_generation` | `question_generation` |
 | 索引 | `indexed` | `indexed` | `indexed` |
 
-后四个节点（split/embedded/question_generation/indexed）三模态统一由 `_run_post_parse_tail` 管理。
+后四个节点（split/embedded/question_generation/indexed）三模态统一由 `run_post_parse_tail`（`services/pipeline_steps.py`）管理。
 
 ## Import Guidance
 

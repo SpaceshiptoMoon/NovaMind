@@ -54,9 +54,9 @@ Finalize 收尾     in/out_links 双向对齐、死链剔除、revision 两级�
 前缀 `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki`：
 
 - 读：`GET /pages`、`GET /pages/{slug:path}`、`GET /pages/{slug:path}/sources`、`GET /index`、`GET /search`、`GET /stats`、`GET /ingest/status`、`GET /graph`、`GET /lint`、`GET /issues`
-- 写：`POST /pages`、`PUT /pages/{slug:path}`（version 乐观锁，冲突 409）、`DELETE /pages/{slug:path}`（软删）
+- 写：`POST /pages`、`PUT /pages/{slug:path}`（version 乐观锁，冲突 409）、`DELETE /pages/{slug:path}`（软删）、`POST /issues`（报告页面问题，Agent `wiki_flag_issue` 与人工共用）
 - 版本：`GET /revisions/{slug:path}`、`GET /revisions/{slug:path}/{version:int}`、`POST /revert`
-- 运维：`POST /rebuild`、`PUT /issues/{id}/status`
+- 运维：`POST /rebuild`、`POST /lint/autofix`（死链剥除/空页归档/失效来源回收）、`PUT /issues/{issue_id}/status`
 
 ⚠️ **路由注册顺序**：`/pages/{slug:path}/sources` 必须注册在 `/pages/{slug:path}` **之前**——`:path` 转换器贪婪吞掉后缀，顺序反了 sources 永远 404。`/revisions/{slug:path}/{version}` 还需 `:int` 转换器。
 
@@ -88,5 +88,5 @@ Finalize 收尾     in/out_links 双向对齐、死链剔除、revision 两级�
 - 路由：`backend/src/features/knowledge_space/api/wiki_routes.py`
 - 任务：`backend/src/features/knowledge_space/tasks/wiki_tasks.py`
 - Agent：`backend/src/features/agent/tool/builtins/wiki_tools.py`
-- 提示词：`backend/src/features/knowledge_space/prompts/templates.py`（`wiki_` 前缀四组）
+- 提示词：`backend/src/features/knowledge_space/prompts/templates.py`（`wiki_` 前缀 9 个模板键：candidate_slug / chunk_citation / page_modify_system+user / summary_page / dedup / taxonomy_plan / index_intro / index_intro_update）
 - 前端：`frontend/src/views/space/WikiBrowserView.vue`、`frontend/src/api/knowledge/wiki.ts`
