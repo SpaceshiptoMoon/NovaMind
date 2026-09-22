@@ -145,21 +145,55 @@ function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
 
   const nodes = data.nodes.map((node) => {
     const isCenter = node.slug === centerSlug.value
+    const typeColor = cssVar(TYPE_COLOR_VARS[node.page_type] ?? '--color-primary', '#3f3f46')
     // sqrt 压缩：link_count 悬殊时 hub 不再吞掉邻域（线性公式 22+4n 会到 64px）
     const size = Math.max(10, Math.min(30, 10 + Math.sqrt(node.link_count) * 4))
+    if (isCenter) {
+      // 选中节点强化区分：typeColor 描边 + 同色半透明 halo 外圈 + 加粗下划线标签
+      return {
+        id: node.slug,
+        name: node.title,
+        slug: node.slug,
+        category: categories.indexOf(node.page_type),
+        symbolSize: size * 1.4,
+        itemStyle: {
+          borderColor: typeColor,
+          borderWidth: 3,
+          shadowBlur: 12,
+          shadowColor: typeColor,
+        },
+        label: {
+          show: true,
+          position: 'bottom',
+          distance: 8,
+          fontSize: 12,
+          color: textColor,
+          fontWeight: 700,
+          backgroundColor: surfaceColor,
+          padding: [3, 8],
+          borderRadius: 4,
+          borderColor: typeColor,
+          borderWidth: 1,
+        },
+        tooltip: {
+          title: node.title,
+          pageType: TYPE_LABELS[node.page_type] ?? node.page_type,
+          linkCount: node.link_count,
+        },
+      }
+    }
     return {
       id: node.slug,
       name: node.title,
       slug: node.slug,
       category: categories.indexOf(node.page_type),
-      symbolSize: isCenter ? size * 1.25 : size,
+      symbolSize: size,
       // 底色表面环：节点重叠处保持可辨，随主题反转
       itemStyle: { borderColor: surfaceColor, borderWidth: 2 },
       label: {
-        show: isCenter || labelSlugs.has(node.slug),
+        show: labelSlugs.has(node.slug),
         fontSize: 11,
-        color: isCenter ? textColor : secondaryColor,
-        fontWeight: isCenter ? 600 : 400,
+        color: secondaryColor,
         // 底色晕圈：标签压在边线/节点上仍可读
         textBorderColor: surfaceColor,
         textBorderWidth: 2,
