@@ -73,6 +73,9 @@
                   v-for="(result, index) in searchResults"
                   :key="result.chunk_id"
                   class="result-card"
+                  :class="{ 'is-wiki': isWikiResult(result) }"
+                  :role="isWikiResult(result) ? 'button' : undefined"
+                  @click="isWikiResult(result) && openWikiResult(result)"
                 >
                   <div class="result-header">
                     <span class="result-index">{{ index + 1 }}</span>
@@ -82,7 +85,10 @@
                       size="small"
                       effect="plain"
                     >{{ chunkTypeLabels[result.chunk_type] || result.chunk_type }}</el-tag>
-                    <span class="result-doc">{{ (result.file_info as Record<string, string>)?.filename || `文档 #${result.document_id}` }}</span>
+                    <span v-if="isWikiResult(result)" class="wiki-hit-title">
+                      {{ (result.metadata as Record<string, unknown>)?.wiki_title || 'Wiki 条目' }}
+                    </span>
+                    <span v-else class="result-doc">{{ (result.file_info as Record<string, string>)?.filename || `文档 #${result.document_id}` }}</span>
                     <span class="result-score" :class="getScoreClass(result.score)">
                       {{ (result.score * 100).toFixed(1) }}%
                     </span>
@@ -91,18 +97,25 @@
                     {{ result.content }}
                   </div>
                   <div class="result-footer">
-                    <span v-if="(result.metadata as Record<string, unknown>)?.page">第 {{ (result.metadata as Record<string, unknown>).page }} 页</span>
-                    <span v-if="result.chunk_type === 'video' && (result.metadata as Record<string, unknown>)?.start_time != null">
-                      {{ formatDuration((result.metadata as Record<string, unknown>).start_time as number) }}
-                      -
-                      {{ formatDuration((result.metadata as Record<string, unknown>).end_time as number) }}
-                    </span>
-                    <span v-if="result.chunk_type === 'audio' && (result.metadata as Record<string, unknown>)?.start_time != null">
-                      {{ formatDuration((result.metadata as Record<string, unknown>).start_time as number) }}
-                      -
-                      {{ formatDuration((result.metadata as Record<string, unknown>).end_time as number) }}
-                    </span>
-                    <span>分块 #{{ result.chunk_index + 1 }}</span>
+                    <!-- wiki 命中：来源是 LLM 综合条目（带加权说明），非原文档分块 -->
+                    <template v-if="isWikiResult(result)">
+                      <span class="wiki-hit-badge">Wiki 综合条目 · 检索加权中</span>
+                      <span class="wiki-hit-open">点击查看页面 →</span>
+                    </template>
+                    <template v-else>
+                      <span v-if="(result.metadata as Record<string, unknown>)?.page">第 {{ (result.metadata as Record<string, unknown>).page }} 页</span>
+                      <span v-if="result.chunk_type === 'video' && (result.metadata as Record<string, unknown>)?.start_time != null">
+                        {{ formatDuration((result.metadata as Record<string, unknown>).start_time as number) }}
+                        -
+                        {{ formatDuration((result.metadata as Record<string, unknown>).end_time as number) }}
+                      </span>
+                      <span v-if="result.chunk_type === 'audio' && (result.metadata as Record<string, unknown>)?.start_time != null">
+                        {{ formatDuration((result.metadata as Record<string, unknown>).start_time as number) }}
+                        -
+                        {{ formatDuration((result.metadata as Record<string, unknown>).end_time as number) }}
+                      </span>
+                      <span>分块 #{{ result.chunk_index + 1 }}</span>
+                    </template>
                   </div>
                   <div v-if="result.questions?.length" class="result-questions">
                     <el-tag
@@ -327,7 +340,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import { knowledgeBaseApi, searchApi } from '@/api/knowledge'
@@ -339,6 +352,7 @@ import { chunkTypeLabels } from '@/components/knowledge'
 import { formatDuration } from '@/utils/format'
 
 const route = useRoute()
+const router = useRouter()
 
 const spaceId = computed(() => Number(route.params.id))
 const currentKbId = computed(() => {
@@ -353,6 +367,21 @@ const kbNavItems = computed(() =>
     currentRouteName: route.name,
   })
 )
+
+// wiki 命中判断与跳转：chunk_type="wiki_page" 由后端 wiki ES 同步写入，
+// slug 存在 metadata.wiki_slug（wiki_es_sync.py）；命中卡片可点击直达 wiki 页
+function isWikiResult(result: SearchResultItem): boolean {
+  return result.chunk_type === 'wiki_page'
+}
+
+function openWikiResult(result: SearchResultItem) {
+  const slug = (result.metadata as Record<string, unknown>)?.wiki_slug
+  if (typeof slug !== 'string' || !slug) return
+  void router.push({
+    path: `/home/spaces/${spaceId.value}/knowledge-bases/${result.kb_id}/wiki`,
+    query: { page: slug },
+  })
+}
 
 const searching = ref(false)
 const hasSearched = ref(false)
@@ -806,6 +835,40 @@ onMounted(() => {
 .result-card:hover {
   border-color: var(--color-primary);
   box-shadow: var(--shadow-sm);
+}
+
+/* wiki 命中卡片：主题色左边条 + 主题底色（区别于普通文档分块），可点击 */
+.result-card.is-wiki {
+  border-left: 3px solid var(--color-primary);
+  cursor: pointer;
+}
+
+.result-card.is-wiki:hover {
+  background: var(--color-primary-muted);
+}
+
+.wiki-hit-title {
+  flex: 1;
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wiki-hit-badge {
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
+  font-size: 11px;
+}
+
+.wiki-hit-open {
+  margin-left: auto;
+  color: var(--color-primary);
+  font-size: 11px;
 }
 
 .result-header {

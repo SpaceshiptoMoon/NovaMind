@@ -67,6 +67,8 @@ export const chunkTypeLabels: Record<string, string> = {
   image: '图片',
   video: '视频',
   audio: '音频',
+  // wiki 页 ES 同步（chunk_type="wiki_page"，wiki_es_sync.py）出现在检索结果中
+  wiki_page: 'Wiki',
 }
 
 export function getFileTypeStyle(filename: string): { bg: string; color: string } {

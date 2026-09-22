@@ -5,11 +5,12 @@
 
 ## 定位
 
-文档解析完成后，LLM 管道把知识库文档自动整理成**互相链接、带引用溯源、可编辑可回滚**的 Markdown 页面（实体页 / 概念页 / 摘要页）。Wiki 是知识库的**浏览层升级**：
+文档解析完成后，LLM 管道把知识库文档自动整理成**互相链接、带引用溯源、可编辑可回滚**的 Markdown 页面（实体页 / 概念页 / 摘要页）。Wiki 是知识库的**浏览层升级**，同时**深度参与 RAG 检索链路**：
 
-- **不入 ES 检索**：wiki 页面只存在于 MySQL，不参与 RAG 检索链路，是独立的阅读视图。
+- **入 ES 检索 + 加权**（批5 检索对齐）：published 页以 `chunk_type="wiki_page"` 同步进 ES 向量库（`services/wiki_es_sync.py`，任务侧 `_sync_wiki_pages_to_es`）；检索时 KB 启用 wiki 则命中项分数 ×1.3（`config.wiki.boost_factor` 可调）并稳定排前（`engines/rag/retrieval_engine.py` WikiBoost 阶段，rerank 之后执行，factor 入缓存键）——**LLM 预合成的互链知识优先于原始 chunk**。
 - **引用强制接地**：写作前先做 chunk 级引文标注，无 citation 的候选不写页（反幻觉）。
 - **slug 连续性**：文档重解析时提示词强制复用旧 slug，页面身份稳定。
+- **前端可辨识**：检索结果页对 wiki 命中显示「Wiki 综合条目 · 检索加权中」徽标，点击直达 wiki 页（`metadata.wiki_slug`）。
 
 ## 数据模型（`models/wiki.py`）
 
