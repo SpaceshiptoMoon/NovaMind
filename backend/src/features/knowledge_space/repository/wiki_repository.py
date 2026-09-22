@@ -331,12 +331,27 @@ class WikiPageRepository:
             page.last_editor_id = editor_id
         if category_path is not None:
             page.category_path = category_path
+        # refs 合并为「同文档替换再 union」（对齐 WeKnora re-annotate）：
+        # 本次调用携带的 doc id，其旧贡献（source_refs "{doc}|" 与 chunk_refs
+        # "{doc}_" 前缀）先剥除再并入新条目；其余文档的历史贡献不受影响。
+        # 修掉 append-union 的残留问题——reparse 后旧 chunk_refs（{doc}_{idx}，
+        # idx 随新切分漂移）指向已被清掉的 ES chunk 且永不修剪。
+        # doc 集合从 source_refs 派生（chunk_ref 的 doc 前缀不可靠反推——
+        # chunk_id 自身含下划线）；传 [] 的调用方（用户/Agent 编辑）doc 集合
+        # 为空集 → 原样保留，行为与旧实现一致。
         if source_refs is not None:
-            merged = list(dict.fromkeys((page.source_refs or []) + list(source_refs)))
-            page.source_refs = merged
+            doc_ids = {str(r).split("|", 1)[0] for r in source_refs if str(r).strip()}
+            kept = [
+                r for r in (page.source_refs or [])
+                if str(r).split("|", 1)[0] not in doc_ids
+            ]
+            page.source_refs = list(dict.fromkeys(kept + list(source_refs)))
         if chunk_refs is not None:
-            merged_chunks = list(dict.fromkeys((page.chunk_refs or []) + list(chunk_refs)))
-            page.chunk_refs = merged_chunks
+            kept_chunks = [
+                r for r in (page.chunk_refs or [])
+                if not any(str(r).startswith(f"{d}_") for d in doc_ids)
+            ]
+            page.chunk_refs = list(dict.fromkeys(kept_chunks + list(chunk_refs)))
         page.out_links = now_slugs
         await self.session.flush()
         return page, False
