@@ -118,11 +118,19 @@ class AppLifespanManager:
                 process_document_task,
                 recover_orphan_documents,
             )
-            from novamind.features.knowledge_space.tasks.wiki_tasks import process_wiki_ingest_task
+            from novamind.features.knowledge_space.tasks.wiki_tasks import (
+                process_wiki_ingest_task,
+                process_wiki_retract_task,
+            )
             from novamind.features.qa.tasks import cleanup_orphan_attachments
             from novamind.shared.mq.worker import start_embedded_worker
             await start_embedded_worker(
-                functions=[process_document_task, process_resume_task, process_wiki_ingest_task],
+                functions=[
+                    process_document_task,
+                    process_resume_task,
+                    process_wiki_ingest_task,
+                    process_wiki_retract_task,
+                ],
                 task_queue=config.task_queue,
                 cron_jobs=[
                     # 孤儿聊天附件清理：每天 03:17（上传超 7 天且无消息引用）

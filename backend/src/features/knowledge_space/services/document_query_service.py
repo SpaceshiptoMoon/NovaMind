@@ -169,6 +169,29 @@ class DocumentQueryService:
         except Exception as cache_err:
             self.logger.warning("搜索缓存失效失败", kb_id=kb_id, error=str(cache_err))
 
+        # 6.5 被软删 wiki 页的 ES 向量清理（best-effort，对齐 WeKnora
+        # deleteChunkForPage）：同步路径直接清，不依赖异步 retract 兜底。
+        # slug 在步骤 3.5 的对账结果里（include_deleted 才查得到软删页）。
+        try:
+            from novamind.features.knowledge_space.repository.wiki_repository import (
+                WikiPageRepository,
+            )
+            from novamind.features.knowledge_space.services.wiki_es_sync import (
+                WikiEsSyncService,
+            )
+
+            wiki_page_repo = WikiPageRepository(self.session)
+            wiki_sync = WikiEsSyncService(self.session, self.es_client)
+            for slug in result["deleted"]:
+                page = await wiki_page_repo.get_by_slug(kb_id, slug, include_deleted=True)
+                if page:
+                    await wiki_sync.delete_page(document.space_id, page.id)
+        except Exception as wiki_es_err:
+            self.logger.warning(
+                "wiki 页 ES 向量清理失败（异步 retract 兜底）",
+                kb_id=kb_id, document_id=document_id, error=str(wiki_es_err),
+            )
+
         # 7. 清理外部存储（DB 事务提交后再执行，失败不影响数据一致性）
         try:
             await self.es_client.delete_document_chunks(
