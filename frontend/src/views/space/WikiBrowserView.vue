@@ -338,12 +338,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, Loading, MoreFilled, Search, WarningFilled } from '@element-plus/icons-vue'
 import { wikiApi } from '@/api/knowledge'
-import { renderMarkdown } from '@/utils/markdown'
+import { renderMarkdownWithToc } from '@/utils/markdown'
 import { diffLines as computeDiff, diffStats as diffStatsOf } from '@/utils/wikiDiff'
 import { KbSidebar, buildKbNavItems } from '@/components/knowledge'
 import WikiGraphPanel from '@/components/knowledge/WikiGraphPanel.vue'
@@ -458,6 +458,7 @@ function onActiveViewChange(view: string | number) {
     issuesLoaded = true
     void loadIssues()
   }
+  respyOnBrowse()
 }
 
 // 图谱/问题视图里点 slug → 切回浏览视图并定位页面
@@ -550,28 +551,97 @@ async function runLint() {
   }
 }
 
-// ============ [[slug|title]] 链接预处理 ============
-const renderedContent = computed(() => {
-  if (!currentPage.value) return ''
+// ============ [[slug|title]] 链接预处理 + 本页目录 ============
+// html 与 toc 从同一产物派生，保证标题 id 与目录项一一对应
+const tocData = computed(() => {
+  if (!currentPage.value) return { html: '', toc: [] }
   const md = currentPage.value.content.replace(
     /\[\[([^\]|]+)\|([^\]]+)\]\]/g,
     '<a class="wiki-link" data-slug="$1">$2</a>',
   )
-  return renderMarkdown(md)
+  return renderMarkdownWithToc(md)
 })
+const renderedContent = computed(() => tocData.value.html)
+const tocItems = computed(() => tocData.value.toc)
 
-// ---- 本页目录（TOC）----
-// 批 3 接入真实数据；骨架期提供空目录 + no-op 滚动，保证模板先立起来
 const articleRef = ref<HTMLElement | null>(null)
-const tocItems = ref<Array<{ id: string; text: string; level: number }>>([])
 const activeHeadingId = ref('')
 
-function scrollToHeading(_id: string) {
-  // 实现在批 3：IntersectionObserver scroll-spy + 平滑滚动
+// ---- scroll-spy：IntersectionObserver 监听正文滚动容器 ----
+// root 必须指向 .wiki-article（.wiki-content）而非缺省 window；
+// suppressSpy 抑制点击目录后平滑滚动路过各小节时的闪烁高亮
+const visibleHeadings = new Set<string>()
+let spy: IntersectionObserver | null = null
+let suppressSpy = false
+let suppressTimer: number | null = null
+
+function setupTocSpy() {
+  spy?.disconnect()
+  const root = articleRef.value
+  if (!root || !tocItems.value.length) {
+    activeHeadingId.value = ''
+    return
+  }
+  spy = new IntersectionObserver(
+    (entries) => {
+      if (suppressSpy) return
+      for (const entry of entries) {
+        const id = (entry.target as HTMLElement).id
+        if (entry.isIntersecting) visibleHeadings.add(id)
+        else visibleHeadings.delete(id)
+      }
+      // 文档序最靠前的可见标题即当前小节
+      const first = tocItems.value.find((t) => visibleHeadings.has(t.id))
+      if (first) activeHeadingId.value = first.id
+    },
+    // 顶部 band（避开页头下沿到视口 70% 处）进出即触发
+    { root, rootMargin: '-56px 0px -70% 0px', threshold: 0 },
+  )
+  root
+    .querySelectorAll<HTMLElement>('.page-body h2[id], .page-body h3[id]')
+    .forEach((el) => spy!.observe(el))
+}
+
+watch(
+  renderedContent,
+  () => {
+    // v-html 整体替换后旧标题节点全部失效，必须等 nextTick 重建 observer
+    void nextTick(() => {
+      visibleHeadings.clear()
+      activeHeadingId.value = ''
+      setupTocSpy()
+    })
+  },
+  { flush: 'post' },
+)
+
+function scrollToHeading(id: string) {
+  const el = articleRef.value?.querySelector(`#${CSS.escape(id)}`)
+  if (!el) return
+  suppressSpy = true
+  activeHeadingId.value = id
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  if (suppressTimer !== null) window.clearTimeout(suppressTimer)
+  suppressTimer = window.setTimeout(() => {
+    suppressSpy = false
+    suppressTimer = null
+  }, 800)
+}
+
+// 图谱/问题页签切回浏览时 DOM 从 display:none 恢复，需重验可见性
+function respyOnBrowse() {
+  if (activeView.value === 'browse') void nextTick(setupTocSpy)
 }
 
 function onContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
+  // 标题 hover 的 # 锚点：拦截默认行为（避免 vue-router hash 入栈），走平滑滚动
+  if (target.closest('a.heading-anchor')) {
+    event.preventDefault()
+    const heading = target.closest('h2[id], h3[id]') as HTMLElement | null
+    if (heading?.id) scrollToHeading(heading.id)
+    return
+  }
   const link = target.closest('a.wiki-link') as HTMLElement | null
   if (link) {
     event.preventDefault()
@@ -806,7 +876,11 @@ onMounted(async () => {
   }
 })
 
-onBeforeUnmount(stopPolling)
+onBeforeUnmount(() => {
+  stopPolling()
+  spy?.disconnect()
+  if (suppressTimer !== null) window.clearTimeout(suppressTimer)
+})
 </script>
 
 <style scoped>
@@ -1201,11 +1275,26 @@ onBeforeUnmount(stopPolling)
   line-height: 1.8;
 }
 
-/* 标题锚点（批 3 注入 id 后启用）：hover 显示 # 链接 + 跳转不贴顶 */
+/* 标题锚点：hover 标题时显示 # 链接 + 跳转不贴顶 */
 .page-body :deep(h2),
 .page-body :deep(h3) {
   position: relative;
   scroll-margin-top: var(--space-4);
+}
+
+.page-body :deep(.heading-anchor) {
+  margin-left: var(--space-2);
+  color: var(--color-text-faint);
+  font-weight: var(--weight-normal);
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  cursor: pointer;
+}
+
+.page-body :deep(h2:hover .heading-anchor),
+.page-body :deep(h3:hover .heading-anchor) {
+  opacity: 1;
 }
 
 .page-body :deep(.wiki-link) {

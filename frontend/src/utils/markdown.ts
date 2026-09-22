@@ -67,3 +67,39 @@ export function renderMarkdown(text: string): string {
     (_m, n) => `<sup class="cite-marker" data-cite="${n}">[${n}]</sup>`,
   )
 }
+
+// ---- TOC 支持（Wiki 浏览页专用；renderMarkdown 签名与行为不变，其他消费方零影响） ----
+
+export interface TocItem {
+  id: string
+  text: string
+  level: 2 | 3
+}
+
+/**
+ * 在 renderMarkdown 产物基础上为 h2/h3 注入 id 与 hover 锚点链接，并返回目录。
+ *
+ * marked v12+ 已移除 headerIds，渲染出的标题默认无 id。此处用正则后处理而非
+ * DOMParser（为拿几个标题不值得整棵树 parse/serialize）：marked 输出的 h2/h3
+ * 无属性、格式可预测；fenced code 内的 `<h2>` 已被转义为 `&lt;h2&gt;`，正则天然
+ * 不误伤（有单测锁定）。slug 保留中文（`\p{L}`，HTML5 id 合法），同名标题追加序号。
+ */
+export function renderMarkdownWithToc(text: string): { html: string; toc: TocItem[] } {
+  const html = renderMarkdown(text)
+  const seen = new Map<string, number>()
+  const toc: TocItem[] = []
+  const out = html.replace(/<h([23])>([\s\S]*?)<\/h\1>/g, (_m, lvl: string, inner: string) => {
+    const plain = inner.replace(/<[^>]+>/g, '').trim()
+    let id =
+      plain
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}\s-]/gu, '')
+        .replace(/\s+/g, '-') || 'section'
+    const n = seen.get(id) ?? 0
+    seen.set(id, n + 1)
+    if (n) id = `${id}-${n}`
+    toc.push({ id, text: plain, level: Number(lvl) as 2 | 3 })
+    return `<h${lvl} id="${id}">${inner}<a class="heading-anchor" aria-hidden="true">#</a></h${lvl}>`
+  })
+  return { html: out, toc }
+}
