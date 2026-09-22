@@ -272,7 +272,9 @@ defineExpose({ reload: loadGraph })
 .graph-canvas {
   position: relative;
   flex: 1;
-  min-height: 420px;
+  /* pane 已通过高度链拿到确定高度，硬撑只在矮视口造成溢出；
+     320px 仅为极端矮视口兜底 */
+  min-height: 320px;
   overflow: hidden;
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-2xl);

@@ -14,211 +14,242 @@
           <span>最近一次 Wiki 生成失败：{{ ingestStatus.error_message || '未知原因' }}</span>
         </div>
 
-        <!-- 视图切换：浏览 / 图谱 / 问题 -->
+        <!-- 视图切换：浏览 / 图谱 / 问题。三个视图的内容直接放进对应 tab-pane，
+             显隐完全交给 el-tabs 内部管理（图谱 pane 用 lazy 惰性挂载）。不要改回
+             「tabs + 兄弟容器 v-show」写法——兄弟容器处于父级 dynamicChildren，
+             实测反复触发 comment 占位符锚点失配（insertBefore(null)），patch 中断
+             后 vdom 与 DOM 永久失同步：点左侧页面列表无反应、多视图同时可见 -->
         <el-tabs v-model="activeView" class="wiki-view-tabs" @tab-change="onActiveViewChange">
-          <el-tab-pane label="浏览" name="browse" />
-          <el-tab-pane label="图谱" name="graph" />
+          <el-tab-pane label="浏览" name="browse">
+            <!-- 浏览视图（原有布局） -->
+            <div class="wiki-layout">
+              <!-- 左侧：页面列表 -->
+              <aside class="wiki-sidebar">
+                <div class="sidebar-search">
+                  <el-input
+                    v-model="searchQuery"
+                    placeholder="搜索页面…"
+                    clearable
+                    :prefix-icon="Search"
+                    @input="onSearchInput"
+                  />
+                </div>
+
+                <div v-if="searchQuery" class="sidebar-group">
+                  <div class="group-header">
+                    <span>搜索结果（{{ searchResults.length }}）</span>
+                  </div>
+                  <button
+                    v-for="item in searchResults"
+                    :key="item.slug"
+                    type="button"
+                    class="page-item"
+                    :class="{ 'is-active': item.slug === selectedSlug }"
+                    @click="selectPage(item.slug)"
+                  >
+                    <span class="page-title">{{ item.title }}</span>
+                    <span class="page-type-badge" :data-type="item.page_type">{{
+                      typeLabel(item.page_type)
+                    }}</span>
+                  </button>
+                  <p v-if="!searchResults.length" class="empty-hint">无匹配页面</p>
+                </div>
+
+                <template v-else>
+                  <div v-for="group in indexGroups" :key="group.page_type" class="sidebar-group">
+                    <div class="group-header">
+                      <span>{{ typeLabel(group.page_type) }}</span>
+                      <small>{{ group.total }}</small>
+                    </div>
+                    <button
+                      v-for="item in group.items"
+                      :key="item.slug"
+                      type="button"
+                      class="page-item"
+                      :class="{ 'is-active': item.slug === selectedSlug }"
+                      @click="selectPage(item.slug)"
+                    >
+                      <span class="page-title">{{ item.title }}</span>
+                    </button>
+                  </div>
+                  <p v-if="!hasAnyPage" class="empty-hint">
+                    暂无 Wiki 页面。开启配置中的「Wiki 自动生成」并上传文档后自动创建。
+                  </p>
+                </template>
+              </aside>
+
+              <!-- 右侧：页面内容（唯一滚动列；内部限宽阅读列，宽屏两侧留白） -->
+              <main ref="articleRef" class="wiki-content">
+                <div class="article-column">
+                <template v-if="currentPage">
+                  <div class="page-header">
+                    <div class="page-header-main">
+                      <h2 class="page-title-main">{{ currentPage.title }}</h2>
+                      <div class="page-meta">
+                        <span class="page-type-badge" :data-type="currentPage.page_type">{{
+                          typeLabel(currentPage.page_type)
+                        }}</span>
+                        <span class="meta-item">v{{ currentPage.version }}</span>
+                        <span class="meta-item">{{
+                          sourceLabel(currentPage.last_edit_source)
+                        }}</span>
+                        <span class="meta-item">{{ formatDate(currentPage.updated_at) }}</span>
+                      </div>
+                    </div>
+                    <div class="page-actions">
+                      <el-button size="small" @click="openEditor">编辑</el-button>
+                      <el-button size="small" @click="openHistory">历史</el-button>
+                      <el-dropdown trigger="click" @command="onPageCommand">
+                        <el-button size="small" text>
+                          <el-icon><MoreFilled /></el-icon>
+                        </el-button>
+                        <template #dropdown>
+                          <el-dropdown-menu>
+                            <el-dropdown-item command="sources">查看来源</el-dropdown-item>
+                            <el-dropdown-item command="delete" divided>删除页面</el-dropdown-item>
+                          </el-dropdown-menu>
+                        </template>
+                      </el-dropdown>
+                    </div>
+                  </div>
+
+                  <!-- 正文：[[slug|title]] 链接预处理后渲染 -->
+                  <div
+                    class="page-body markdown-body"
+                    v-html="renderedContent"
+                    @click="onContentClick"
+                  ></div>
+
+                  <!-- 来源折叠面板 -->
+                  <el-collapse v-if="sources.length" class="sources-panel">
+                    <el-collapse-item title="来源文档">
+                      <div v-for="source in sources" :key="source.document_id" class="source-row">
+                        <el-icon><Document /></el-icon>
+                        <template v-if="!source.deleted">
+                          <RouterLink
+                            :to="`/home/spaces/${spaceId}/documents/${source.document_id}`"
+                            class="source-link"
+                          >
+                            {{ source.filename }}
+                          </RouterLink>
+                        </template>
+                        <span v-else class="source-deleted">{{ source.filename }}（已删除）</span>
+                      </div>
+                    </el-collapse-item>
+                  </el-collapse>
+                </template>
+
+                <template v-else>
+                  <div class="wiki-empty">
+                    <el-empty
+                      :description="
+                        hasAnyPage || searchQuery ? '选择左侧页面查看' : '此知识库还没有 Wiki 页面'
+                      "
+                    />
+                  </div>
+                </template>
+                </div>
+              </main>
+
+              <!-- 右侧：本页目录（批 3 接入数据，滚动高亮当前小节） -->
+              <aside v-if="tocItems.length" class="wiki-toc">
+                <div class="toc-header">本页目录</div>
+                <button
+                  v-for="item in tocItems"
+                  :key="item.id"
+                  type="button"
+                  class="toc-item"
+                  :class="[`is-l${item.level}`, { 'is-active': item.id === activeHeadingId }]"
+                  @click="scrollToHeading(item.id)"
+                >
+                  {{ item.text }}
+                </button>
+              </aside>
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="图谱" name="graph" lazy>
+            <div class="graph-wrap">
+              <WikiGraphPanel
+                :space-id="spaceId"
+                :kb-id="kbId"
+                :initial-center="selectedSlug || undefined"
+                @select="selectPageFromPanel"
+              />
+            </div>
+          </el-tab-pane>
+
           <el-tab-pane
             :label="`问题${pendingIssueCount ? `（${pendingIssueCount}）` : ''}`"
             name="issues"
-          />
-        </el-tabs>
-
-        <!-- 图谱视图：惰性挂载（首次切入才渲染）。避免面板在 v-show 隐藏（0×0 容器）
-             下初始化 ECharts——初始化/patch 期抛错会中止父组件更新循环，导致 vdom
-             与 DOM 永久失同步（表现：点了实体右侧内容区停留在空状态不再刷新） -->
-        <div v-if="graphMounted" v-show="activeView === 'graph'" class="graph-wrap">
-          <WikiGraphPanel
-            :space-id="spaceId"
-            :kb-id="kbId"
-            :initial-center="selectedSlug || undefined"
-            @select="selectPageFromPanel"
-          />
-        </div>
-
-        <!-- 问题视图 -->
-        <div v-show="activeView === 'issues'" class="issues-wrap">
-          <div class="issues-toolbar">
-            <el-radio-group v-model="issueFilter" size="small" :disabled="issuesLoading" @change="loadIssues">
-              <el-radio-button value="pending">待处理</el-radio-button>
-              <el-radio-button value="resolved">已解决</el-radio-button>
-              <el-radio-button value="ignored">已忽略</el-radio-button>
-            </el-radio-group>
-            <el-button size="small" :loading="lintRunning" :disabled="issuesLoading" @click="runLint">
-              运行质量检查
-            </el-button>
-          </div>
-
-          <!-- lint 检出问题（派生，非持久化） -->
-          <div v-if="lintIssues.length" class="lint-section">
-            <h4 class="lint-heading">质量检查（{{ lintIssues.length }} 项）</h4>
-            <div v-for="(issue, index) in lintIssues" :key="`l${index}`" class="issue-row">
-              <el-tag size="small" type="warning">{{ lintTypeLabel(issue.issue_type) }}</el-tag>
-              <span class="issue-slug" @click="selectPageFromPanel(issue.slug)">{{
-                issue.slug
-              }}</span>
-              <span class="issue-desc">{{ issue.description }}</span>
-            </div>
-          </div>
-
-          <!-- 持久化问题列表 -->
-          <h4 class="lint-heading">问题登记（{{ issues.length }} 项）</h4>
-          <div v-for="issue in issues" :key="issue.id" class="issue-row">
-            <el-tag size="small">{{ issueTypeLabel(issue.issue_type) }}</el-tag>
-            <span class="issue-slug" @click="selectPageFromPanel(issue.slug)">{{
-              issue.slug
-            }}</span>
-            <span class="issue-desc">{{ issue.description }}</span>
-            <span class="issue-meta">{{ issue.reported_by }}</span>
-            <el-button
-              v-if="issue.status === 'pending'"
-              size="small"
-              text
-              type="success"
-              :loading="updatingIssueId === issue.id"
-              @click="setIssueStatus(issue, 'resolved')"
-            >
-              解决
-            </el-button>
-            <el-button
-              v-if="issue.status === 'pending'"
-              size="small"
-              text
-              :loading="updatingIssueId === issue.id"
-              @click="setIssueStatus(issue, 'ignored')"
-            >
-              忽略
-            </el-button>
-          </div>
-          <el-empty v-if="!issues.length && !lintIssues.length" description="没有问题" />
-        </div>
-
-        <!-- 浏览视图（原有布局） -->
-        <div v-show="activeView === 'browse'" class="wiki-layout">
-          <!-- 左侧：页面列表 -->
-          <aside class="wiki-sidebar">
-            <div class="sidebar-search">
-              <el-input
-                v-model="searchQuery"
-                placeholder="搜索页面…"
-                clearable
-                :prefix-icon="Search"
-                @input="onSearchInput"
-              />
-            </div>
-
-            <div v-if="searchQuery" class="sidebar-group">
-              <div class="group-header">
-                <span>搜索结果（{{ searchResults.length }}）</span>
-              </div>
-              <button
-                v-for="item in searchResults"
-                :key="item.slug"
-                type="button"
-                class="page-item"
-                :class="{ 'is-active': item.slug === selectedSlug }"
-                @click="selectPage(item.slug)"
-              >
-                <span class="page-title">{{ item.title }}</span>
-                <span class="page-type-badge" :data-type="item.page_type">{{
-                  typeLabel(item.page_type)
-                }}</span>
-              </button>
-              <p v-if="!searchResults.length" class="empty-hint">无匹配页面</p>
-            </div>
-
-            <template v-else>
-              <div v-for="group in indexGroups" :key="group.page_type" class="sidebar-group">
-                <div class="group-header">
-                  <span>{{ typeLabel(group.page_type) }}</span>
-                  <small>{{ group.total }}</small>
-                </div>
-                <button
-                  v-for="item in group.items"
-                  :key="item.slug"
-                  type="button"
-                  class="page-item"
-                  :class="{ 'is-active': item.slug === selectedSlug }"
-                  @click="selectPage(item.slug)"
+          >
+            <div class="issues-wrap">
+              <div class="issues-toolbar">
+                <el-radio-group
+                  v-model="issueFilter"
+                  size="small"
+                  :disabled="issuesLoading"
+                  @change="loadIssues"
                 >
-                  <span class="page-title">{{ item.title }}</span>
-                </button>
+                  <el-radio-button value="pending">待处理</el-radio-button>
+                  <el-radio-button value="resolved">已解决</el-radio-button>
+                  <el-radio-button value="ignored">已忽略</el-radio-button>
+                </el-radio-group>
+                <el-button
+                  size="small"
+                  :loading="lintRunning"
+                  :disabled="issuesLoading"
+                  @click="runLint"
+                >
+                  运行质量检查
+                </el-button>
               </div>
-              <p v-if="!hasAnyPage" class="empty-hint">
-                暂无 Wiki 页面。开启配置中的「Wiki 自动生成」并上传文档后自动创建。
-              </p>
-            </template>
-          </aside>
 
-          <!-- 右侧：页面内容 -->
-          <main class="wiki-content">
-            <template v-if="currentPage">
-              <div class="page-header">
-                <div class="page-header-main">
-                  <h2 class="page-title-main">{{ currentPage.title }}</h2>
-                  <div class="page-meta">
-                    <span class="page-type-badge" :data-type="currentPage.page_type">{{
-                      typeLabel(currentPage.page_type)
-                    }}</span>
-                    <span class="meta-item">v{{ currentPage.version }}</span>
-                    <span class="meta-item">{{ sourceLabel(currentPage.last_edit_source) }}</span>
-                    <span class="meta-item">{{ formatDate(currentPage.updated_at) }}</span>
-                  </div>
-                </div>
-                <div class="page-actions">
-                  <el-button size="small" @click="openEditor">编辑</el-button>
-                  <el-button size="small" @click="openHistory">历史</el-button>
-                  <el-dropdown trigger="click" @command="onPageCommand">
-                    <el-button size="small" text>
-                      <el-icon><MoreFilled /></el-icon>
-                    </el-button>
-                    <template #dropdown>
-                      <el-dropdown-menu>
-                        <el-dropdown-item command="sources">查看来源</el-dropdown-item>
-                        <el-dropdown-item command="delete" divided>删除页面</el-dropdown-item>
-                      </el-dropdown-menu>
-                    </template>
-                  </el-dropdown>
+              <!-- lint 检出问题（派生，非持久化） -->
+              <div v-if="lintIssues.length" class="lint-section">
+                <h4 class="lint-heading">质量检查（{{ lintIssues.length }} 项）</h4>
+                <div v-for="(issue, index) in lintIssues" :key="`l${index}`" class="issue-row">
+                  <el-tag size="small" type="warning">{{ lintTypeLabel(issue.issue_type) }}</el-tag>
+                  <span class="issue-slug" @click="selectPageFromPanel(issue.slug)">{{
+                    issue.slug
+                  }}</span>
+                  <span class="issue-desc">{{ issue.description }}</span>
                 </div>
               </div>
 
-              <!-- 正文：[[slug|title]] 链接预处理后渲染 -->
-              <div
-                class="page-body markdown-body"
-                v-html="renderedContent"
-                @click="onContentClick"
-              ></div>
-
-              <!-- 来源折叠面板 -->
-              <el-collapse v-if="sources.length" class="sources-panel">
-                <el-collapse-item title="来源文档">
-                  <div v-for="source in sources" :key="source.document_id" class="source-row">
-                    <el-icon><Document /></el-icon>
-                    <template v-if="!source.deleted">
-                      <RouterLink
-                        :to="`/home/spaces/${spaceId}/documents/${source.document_id}`"
-                        class="source-link"
-                      >
-                        {{ source.filename }}
-                      </RouterLink>
-                    </template>
-                    <span v-else class="source-deleted">{{ source.filename }}（已删除）</span>
-                  </div>
-                </el-collapse-item>
-              </el-collapse>
-            </template>
-
-            <template v-else>
-              <div class="wiki-empty">
-                <el-empty
-                  :description="
-                    hasAnyPage || searchQuery ? '选择左侧页面查看' : '此知识库还没有 Wiki 页面'
-                  "
-                />
+              <!-- 持久化问题列表 -->
+              <h4 class="lint-heading">问题登记（{{ issues.length }} 项）</h4>
+              <div v-for="issue in issues" :key="issue.id" class="issue-row">
+                <el-tag size="small">{{ issueTypeLabel(issue.issue_type) }}</el-tag>
+                <span class="issue-slug" @click="selectPageFromPanel(issue.slug)">{{
+                  issue.slug
+                }}</span>
+                <span class="issue-desc">{{ issue.description }}</span>
+                <span class="issue-meta">{{ issue.reported_by }}</span>
+                <el-button
+                  v-if="issue.status === 'pending'"
+                  size="small"
+                  text
+                  type="success"
+                  :loading="updatingIssueId === issue.id"
+                  @click="setIssueStatus(issue, 'resolved')"
+                >
+                  解决
+                </el-button>
+                <el-button
+                  v-if="issue.status === 'pending'"
+                  size="small"
+                  text
+                  :loading="updatingIssueId === issue.id"
+                  @click="setIssueStatus(issue, 'ignored')"
+                >
+                  忽略
+                </el-button>
               </div>
-            </template>
-          </main>
-        </div>
+              <el-empty v-if="!issues.length && !lintIssues.length" description="没有问题" />
+            </div>
+          </el-tab-pane>
+        </el-tabs>
       </div>
     </div>
 
@@ -336,7 +367,7 @@ const kbNavItems = computed(() =>
     spaceId: spaceId.value,
     kbId: kbId.value,
     currentRouteName: route.name,
-  })
+  }),
 )
 
 // ============ 列表 / 索引 ============
@@ -419,16 +450,10 @@ function sourceLabel(source: string): string {
 // ============ 视图切换（浏览/图谱/问题） ============
 const activeView = ref<'browse' | 'graph' | 'issues'>('browse')
 
-// 图谱面板惰性挂载标记：首次切入图谱页签时置 true 并保留实例
-const graphMounted = ref(false)
-
 // 问题页签首次切入时拉取列表（角标计数依赖 pending 列表）
 let issuesLoaded = false
 
 function onActiveViewChange(view: string | number) {
-  if (view === 'graph') {
-    graphMounted.value = true
-  }
   if (view === 'issues' && !issuesLoaded) {
     issuesLoaded = true
     void loadIssues()
@@ -493,7 +518,7 @@ async function loadIssues() {
 const updatingIssueId = ref('')
 
 async function setIssueStatus(issue: WikiIssue, status: string) {
-  if (updatingIssueId.value) return  // 已有在途操作，防重复提交
+  if (updatingIssueId.value) return // 已有在途操作，防重复提交
   updatingIssueId.value = issue.id
   try {
     await wikiApi.updateIssueStatus(spaceId.value, kbId.value, issue.id, status)
@@ -510,7 +535,7 @@ const lintIssues = ref<WikiLintIssue[]>([])
 const lintRunning = ref(false)
 
 async function runLint() {
-  if (lintRunning.value) return  // 防重复点击
+  if (lintRunning.value) return // 防重复点击
   lintRunning.value = true
   try {
     const data = await wikiApi.lint(spaceId.value, kbId.value)
@@ -534,6 +559,16 @@ const renderedContent = computed(() => {
   )
   return renderMarkdown(md)
 })
+
+// ---- 本页目录（TOC）----
+// 批 3 接入真实数据；骨架期提供空目录 + no-op 滚动，保证模板先立起来
+const articleRef = ref<HTMLElement | null>(null)
+const tocItems = ref<Array<{ id: string; text: string; level: number }>>([])
+const activeHeadingId = ref('')
+
+function scrollToHeading(_id: string) {
+  // 实现在批 3：IntersectionObserver scroll-spy + 平滑滚动
+}
 
 function onContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement
@@ -776,7 +811,6 @@ onBeforeUnmount(stopPolling)
 
 <style scoped>
 .wiki-browser {
-  padding-top: var(--space-2);
   height: 100%;
 }
 
@@ -787,25 +821,82 @@ onBeforeUnmount(stopPolling)
   min-height: 0;
 }
 
+/* 内容区不再整体滚动——滚动权下放到各页签内部的列（正文列/问题列表/页面树），
+   这是三栏 sticky（页面树/TOC 不随正文滚走）与图谱页签高度的基础 */
 .kb-content {
   display: flex;
   flex: 1;
   min-width: 0;
   flex-direction: column;
+  gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
-  overflow-y: auto;
+  overflow: hidden;
 }
 
+/* 高度传递链：kb-content(flex col, overflow hidden)
+   → tabs(flex:1, min-height:0, flex col)
+   → header(flex-shrink:0) + content(flex:1, min-height:0)
+   → pane(height:100%) → 各视图容器(height:100%)。
+   任何一层漏掉 min-height:0 / height 链即塌陷回整页滚动 */
 .wiki-view-tabs {
-  margin-bottom: 12px;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.wiki-view-tabs :deep(.el-tabs__header) {
+  flex-shrink: 0;
+  margin: 0 0 var(--space-4);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.wiki-view-tabs :deep(.el-tabs__nav-wrap::after) {
+  display: none; /* EP 默认灰色底线，换成自绘发丝线 */
+}
+
+.wiki-view-tabs :deep(.el-tabs__item) {
+  height: 40px;
+  margin-right: var(--space-5);
+  padding: 0 var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  line-height: 40px;
+  transition: color var(--transition-fast);
+}
+
+.wiki-view-tabs :deep(.el-tabs__item:hover) {
+  color: var(--color-text);
+}
+
+.wiki-view-tabs :deep(.el-tabs__item.is-active) {
+  color: var(--color-text);
+  font-weight: var(--weight-semibold);
+}
+
+.wiki-view-tabs :deep(.el-tabs__active-bar) {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--color-btn-primary);
+}
+
+.wiki-view-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wiki-view-tabs :deep(.el-tab-pane) {
+  height: 100%;
 }
 
 .ingest-banner {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  margin-bottom: 12px;
   border-radius: var(--radius-xl);
   background: var(--color-bg-card-elevated, #f0f9eb);
   color: var(--el-color-primary);
@@ -819,24 +910,25 @@ onBeforeUnmount(stopPolling)
 
 .wiki-layout {
   display: flex;
-  flex: 1;
-  gap: 16px;
+  height: 100%;
+  gap: var(--space-4);
   min-height: 0;
 }
 
-/* 图谱 / 问题视图与浏览视图共用剩余高度；三视图互斥显示 */
+/* 图谱 / 问题视图撑满 pane 高度；内容各自滚动 */
 .graph-wrap,
 .issues-wrap {
   display: flex;
-  flex: 1;
+  height: 100%;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   min-height: 0;
 }
 
 /* 问题视图工具栏：radio 组与按钮垂直居中，检查按钮靠右 */
 .issues-toolbar {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -846,56 +938,85 @@ onBeforeUnmount(stopPolling)
   background: var(--color-bg-card);
 }
 
+/* 左侧页面树：扁平 Linear 风（去卡壳），自身独立滚动 = 天然 sticky */
 .wiki-sidebar {
-  width: 280px;
+  width: 256px;
   flex-shrink: 0;
   overflow-y: auto;
-  padding: 12px;
-  border: 1px solid var(--color-border-light);
-  border-radius: var(--radius-2xl);
-  background: var(--color-bg-card);
+  overscroll-behavior: contain;
+  padding: var(--space-2);
 }
 
 .sidebar-search {
-  margin-bottom: 12px;
+  padding: 0 var(--space-2) var(--space-3);
 }
 
 .sidebar-group {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .group-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   color: var(--color-text-muted);
   font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
+.group-header small {
+  color: var(--color-text-faint);
+  font-size: var(--text-xs);
+}
+
+/* KbSidebar 同款页面项：扁平 + hover 浅底 + active 左侧指示条 */
 .page-item {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 7px 10px;
   border: none;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: transparent;
+  color: var(--color-text-secondary);
   cursor: pointer;
   text-align: left;
-  transition: background 0.15s;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.page-item::before {
+  content: '';
+  position: absolute;
+  top: 20%;
+  bottom: 20%;
+  left: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--color-btn-primary);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
 }
 
 .page-item:hover {
-  background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+  background: var(--color-bg-hover);
+  color: var(--color-text);
 }
 
 .page-item.is-active {
-  background: var(--el-color-primary-light-9);
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+}
+
+.page-item.is-active::before {
+  opacity: 1;
 }
 
 .page-title {
@@ -909,41 +1030,134 @@ onBeforeUnmount(stopPolling)
   flex-shrink: 0;
   padding: 1px 8px;
   border-radius: 999px;
+  color: var(--color-text-muted);
   font-size: var(--text-xs);
-  background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+  background: var(--color-bg-hover);
 }
 
+/* 五种页面类型徽章（与 WikiGraphPanel 节点色系一致，light/dark 成对） */
 .page-type-badge[data-type='entity'] {
-  color: var(--el-color-primary);
-  background: var(--el-color-primary-light-9);
+  color: var(--color-primary);
+  background: var(--color-primary-subtle);
 }
 
 .page-type-badge[data-type='concept'] {
-  color: var(--el-color-success);
-  background: var(--el-color-success-light-9);
+  color: var(--color-success);
+  background: var(--color-success-subtle);
 }
 
 .page-type-badge[data-type='summary'] {
-  color: var(--el-color-warning);
-  background: var(--el-color-warning-light-9);
+  color: var(--color-warning);
+  background: var(--color-warning-subtle);
+}
+
+.page-type-badge[data-type='synthesis'] {
+  color: var(--color-danger);
+  background: var(--color-danger-subtle);
+}
+
+.page-type-badge[data-type='comparison'] {
+  color: var(--color-info);
+  background: var(--color-info-subtle);
 }
 
 .empty-hint {
-  padding: 12px;
+  padding: var(--space-3);
   color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 
+/* 中列：唯一滚动容器（正文独立滚动，左右两列因此天然固定） */
 .wiki-content {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-width: 0;
   overflow-y: auto;
-  padding: 24px;
+  overscroll-behavior: contain;
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-2xl);
   background: var(--color-bg-card);
+  scroll-behavior: smooth;
+}
+
+/* 限宽阅读列：宽屏居中留白，长行可读性（GitBook/Notion 惯例 ~760px） */
+.article-column {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-10);
+}
+
+/* 右侧本页目录：与页面树同款扁平语言 */
+.wiki-toc {
+  display: flex;
+  width: 224px;
+  flex-shrink: 0;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-2);
+}
+
+.toc-header {
+  padding: var(--space-1) var(--space-2) var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.toc-item {
+  position: relative;
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.toc-item.is-l3 {
+  padding-left: var(--space-5);
+}
+
+.toc-item:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.toc-item.is-active {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+}
+
+.toc-item.is-active::before {
+  content: '';
+  position: absolute;
+  top: 20%;
+  bottom: 20%;
+  left: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--color-btn-primary);
+}
+
+.wiki-empty {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 40vh;
 }
 
 .page-header {
@@ -951,12 +1165,16 @@ onBeforeUnmount(stopPolling)
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 20px;
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-5);
+  border-bottom: 1px solid var(--color-border-light);
 }
 
 .page-title-main {
-  margin: 0 0 8px;
-  font-size: var(--text-2xl, 24px);
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-3xl);
+  letter-spacing: var(--tracking-tight);
+  text-wrap: balance;
 }
 
 .page-meta {
@@ -967,6 +1185,11 @@ onBeforeUnmount(stopPolling)
   font-size: var(--text-sm);
 }
 
+.meta-item {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
 .page-actions {
   display: flex;
   align-items: center;
@@ -975,8 +1198,14 @@ onBeforeUnmount(stopPolling)
 }
 
 .page-body {
-  flex: 1;
   line-height: 1.8;
+}
+
+/* 标题锚点（批 3 注入 id 后启用）：hover 显示 # 链接 + 跳转不贴顶 */
+.page-body :deep(h2),
+.page-body :deep(h3) {
+  position: relative;
+  scroll-margin-top: var(--space-4);
 }
 
 .page-body :deep(.wiki-link) {
@@ -991,7 +1220,7 @@ onBeforeUnmount(stopPolling)
 }
 
 .sources-panel {
-  margin-top: 24px;
+  margin-top: var(--space-6);
 }
 
 .source-row {
@@ -1010,13 +1239,6 @@ onBeforeUnmount(stopPolling)
 .source-deleted {
   color: var(--color-text-muted);
   text-decoration: line-through;
-}
-
-.wiki-empty {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  justify-content: center;
 }
 
 .form-hint {
@@ -1045,7 +1267,7 @@ onBeforeUnmount(stopPolling)
   padding: 1px 8px;
   border-radius: 999px;
   font-size: var(--text-xs);
-  background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+  background: var(--color-bg-hover);
 }
 
 .revision-title {
@@ -1071,7 +1293,7 @@ onBeforeUnmount(stopPolling)
 }
 
 .diff-view {
-  max-height: 40vh;
+  max-height: 60vh;
   padding: 10px;
   overflow-y: auto;
   border: 1px solid var(--color-border-light);
@@ -1108,7 +1330,21 @@ onBeforeUnmount(stopPolling)
   word-break: break-all;
 }
 
-@media (max-width: 768px) {
+/* ≥1400px 三栏齐全；窄于此隐藏 TOC，正文列自动居中（GitBook 1430px 同思路） */
+@media (max-width: 1399px) {
+  .wiki-toc {
+    display: none;
+  }
+}
+
+@media (max-width: 1200px) {
+  .article-column {
+    padding: var(--space-6) var(--space-5);
+  }
+}
+
+/* 窄屏：树列改为顶部横块 */
+@media (max-width: 960px) {
   .wiki-layout {
     flex-direction: column;
   }
@@ -1116,6 +1352,11 @@ onBeforeUnmount(stopPolling)
   .wiki-sidebar {
     width: 100%;
     max-height: 40vh;
+    flex-shrink: 1;
+  }
+
+  .wiki-content {
+    min-height: 0;
   }
 }
 </style>
