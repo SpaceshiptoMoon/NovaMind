@@ -18,6 +18,7 @@ from typing import Any
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.models.wiki import (
     WikiEditSource,
+    WikiIngestStatus,
     WikiPageStatus,
     WikiPageType,
 )
@@ -254,6 +255,17 @@ class WikiIngestService:
         batch_slugs: list[str] = []
         # 删除竞态守卫（检查点 2）：落库前文档又被删了 → 本批全部放弃。
         # 重跑无害（幂等），继续写会留下幽灵 source_ref。
+        # 并列 reparse 守卫：履历已被 scrub 置 CANCELLED（文档重解析中）
+        # → 同样放弃，旧分块上的生成结果不应落库。
+        record_status = getattr(self._record, "status", None)
+        if record_status == WikiIngestStatus.CANCELLED:
+            logger.warning(
+                "wiki 生成：履历已被 reparse 清洗（CANCELLED），本批放弃",
+                document_id=self.document_id, kb_id=self.kb_id,
+            )
+            self._record.finish_step("reduce", {"aborted": "cancelled_by_reprocess"})
+            await self._commit()
+            return outcome
         if await tombstone_exists(self.kb_id, self.document_id):
             logger.warning(
                 "wiki 生成：落库前文档被删除（tombstone 命中），本批放弃",

@@ -221,6 +221,25 @@ async def process_document_task(
                     force_full_reset = True
 
             if force_full_reset:
+                # reparse 队列卫生（对齐 WeKnora scrubWikiPendingIngest）：
+                # 取消本文档 pending/running 的 wiki 生成（含 arq 层 job 键
+                # 手术），防旧分块触发的生成烧 LLM。不写墓碑不删页——页面
+                # 去留由解析成功后新一轮 ingest 的合并更新接管。
+                try:
+                    from novamind.features.knowledge_space.tasks.wiki_tasks import (
+                        scrub_pending_wiki_ingest,
+                    )
+
+                    await scrub_pending_wiki_ingest(
+                        session, document_id, "文档重新解析，取消本轮 wiki 生成",
+                    )
+                    await session.commit()
+                except Exception as wiki_scrub_err:
+                    logger.warning(
+                        "reparse 前清洗 pending wiki 生成失败（不阻断）",
+                        document_id=document_id, error=str(wiki_scrub_err),
+                    )
+
                 try:
                     from novamind.shared.storage.client_factory import ClientFactory
                     es_client = await ClientFactory.get_elasticsearch_client()

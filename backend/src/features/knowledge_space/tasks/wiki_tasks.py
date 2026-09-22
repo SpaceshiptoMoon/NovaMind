@@ -95,6 +95,23 @@ async def process_wiki_ingest_task(
             record_repo = WikiIngestRecordRepository(session)
             record = await _find_pending_record(record_repo, kb_id, document_id)
             if record is None:
+                # reparse 清洗的兜底：purge 没赶上、job 已被 worker pop。
+                # 本 job 对应的履历已是 CANCELLED → 直接放弃，不建新行
+                # （否则 reparse 语义被绕过，旧分块仍会触发生成）。
+                from novamind.features.knowledge_space.models.wiki import WikiIngestStatus
+
+                current_job_id = (ctx or {}).get("job_id")
+                for r in await record_repo.list_by_document(document_id):
+                    if (
+                        r.status == WikiIngestStatus.CANCELLED
+                        and current_job_id
+                        and r.job_id == current_job_id
+                    ):
+                        logger.info(
+                            "wiki 生成：job 已被 reparse 清洗，放弃",
+                            kb_id=kb_id, document_id=document_id, job_id=current_job_id,
+                        )
+                        return {"skipped": "cancelled_by_reprocess"}
                 record = await record_repo.create({
                     "space_id": space_id, "kb_id": kb_id, "document_id": document_id,
                 })
@@ -192,6 +209,79 @@ async def _find_pending_record(record_repo, kb_id: int, document_id: int):
         if r.document_id == document_id and r.status in (WikiIngestStatus.PENDING, WikiIngestStatus.RUNNING):
             return r
     return None
+
+
+async def purge_wiki_ingest_jobs(document_id: int) -> list:
+    """清理 arq 层指向该文档的 wiki 生成 job（reparse 队列卫生）。
+
+    镜像 document_task_tracking.purge_document_jobs 的 Redis 键手术
+    （doc574 已验证手法）：abort 信号 + zrem 队列 + 删 job/retry/
+    in-progress 三键。差异仅两点——函数名过滤 process_wiki_ingest_task、
+    kwargs 匹配 document_id。不依赖 worker 存活。
+    """
+    import pickle
+    import time
+
+    import arq.constants as arq_constants
+    from novamind.shared.mq import get_arq_pool
+
+    pool = await get_arq_pool()
+    queue_name = getattr(pool, "queue_name", "arq:queue")
+
+    purged: list = []
+    now_ms = int(time.time() * 1000)
+    for raw_id in await pool.zrange(queue_name, 0, -1):
+        job_id = raw_id.decode() if isinstance(raw_id, bytes) else str(raw_id)
+        job_def_raw = await pool.get(arq_constants.job_key_prefix + job_id)
+        if not job_def_raw:
+            continue
+        try:
+            job_def = pickle.loads(job_def_raw)
+        except Exception as e:
+            logger.warning("wiki job 定义反序列化失败，跳过", job_id=job_id, error=str(e))
+            continue
+        if job_def.get("f") != "process_wiki_ingest_task":
+            continue
+        if (job_def.get("k") or {}).get("document_id") != document_id:
+            continue
+
+        await pool.zadd(arq_constants.abort_jobs_ss, {job_id: now_ms})
+        await pool.zrem(queue_name, job_id)
+        await pool.delete(
+            arq_constants.job_key_prefix + job_id,
+            arq_constants.retry_key_prefix + job_id,
+            arq_constants.in_progress_key_prefix + job_id,
+        )
+        purged.append(job_id)
+
+    if purged:
+        logger.info("已清理文档 pending wiki 生成 job", document_id=document_id, purged=purged)
+    return purged
+
+
+async def scrub_pending_wiki_ingest(session: AsyncSession, document_id: int, reason: str) -> int:
+    """reparse 队列卫生：取消该文档 pending/running 的 wiki 生成。
+
+    对齐 WeKnora prepareWikiForReparse 的 scrubWikiPendingIngest——只清洗
+    队列与履历，不写墓碑、不删页（页面去留由新一轮 ingest 的合并更新
+    接管）。flush-only；调用方负责 commit。返回取消的履历数。
+    """
+    from novamind.features.knowledge_space.models.wiki import WikiIngestStatus
+    from novamind.features.knowledge_space.repository.wiki_repository import (
+        WikiIngestRecordRepository,
+    )
+
+    record_repo = WikiIngestRecordRepository(session)
+    cancelled = 0
+    for r in await record_repo.list_by_document(document_id):
+        if r.status in (WikiIngestStatus.PENDING, WikiIngestStatus.RUNNING):
+            r.mark_cancelled(reason)
+            cancelled += 1
+    if cancelled:
+        logger.info(
+            "已取消文档 pending wiki 生成履历", document_id=document_id, cancelled=cancelled,
+        )
+    return cancelled
 
 
 async def _sync_wiki_pages_to_es(session, kb_id: int, space_id: int) -> int:

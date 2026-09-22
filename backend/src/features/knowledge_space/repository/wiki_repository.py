@@ -660,3 +660,13 @@ class WikiIngestRecordRepository:
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def list_by_document(self, document_id: int, limit: int = 10) -> list[WikiIngestRecord]:
+        """该文档的生成履历（reparse 清洗 scrub_pending_wiki_ingest 用）"""
+        result = await self.session.execute(
+            select(WikiIngestRecord)
+            .where(WikiIngestRecord.document_id == document_id)
+            .order_by(WikiIngestRecord.id.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())

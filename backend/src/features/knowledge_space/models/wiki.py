@@ -73,6 +73,7 @@ class WikiIngestStatus(IntEnum):
     RUNNING = 1
     DONE = 2
     FAILED = 3
+    CANCELLED = 4  # reparse 前清洗（scrub_pending_wiki_ingest），终态
 
 
 # 版本快照两级保留：软上限只清理机器写的快照，硬上限一律裁剪
@@ -234,6 +235,12 @@ class WikiIngestRecord(BaseModel):
         self.status = WikiIngestStatus.FAILED
         self.completed_at = now_china()
         self.error_message = error_message
+
+    def mark_cancelled(self, reason: str) -> None:
+        """reparse 清洗取消（终态，区别于失败：非错误，是主动让位）"""
+        self.status = WikiIngestStatus.CANCELLED
+        self.completed_at = now_china()
+        self.error_message = reason
 
     def start_step(self, step_name: str) -> None:
         """记录阶段开始（调用方负责 commit，保证崩溃后节点日志可见）"""

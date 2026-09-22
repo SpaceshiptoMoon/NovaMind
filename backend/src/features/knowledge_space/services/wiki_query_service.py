@@ -36,6 +36,7 @@ _STATUS_NAMES = {
     WikiIngestStatus.RUNNING: "running",
     WikiIngestStatus.DONE: "done",
     WikiIngestStatus.FAILED: "failed",
+    WikiIngestStatus.CANCELLED: "cancelled",
 }
 
 
