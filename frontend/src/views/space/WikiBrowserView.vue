@@ -184,6 +184,39 @@
             name="issues"
           >
             <div class="issues-wrap">
+              <!-- 统计条：页面/链接/孤儿 + 五类型分布（lint 后同步刷新） -->
+              <div v-if="wikiStats" class="wiki-stats">
+                <div class="stats-item">
+                  <span class="stats-label">页面</span>
+                  <strong class="stats-value">{{ wikiStats.total_pages }}</strong>
+                </div>
+                <div class="stats-item">
+                  <span class="stats-label">链接</span>
+                  <strong class="stats-value">{{ wikiStats.total_links }}</strong>
+                </div>
+                <div class="stats-item">
+                  <span class="stats-label">孤儿页</span>
+                  <strong
+                    class="stats-value"
+                    :class="{ 'is-warning': wikiStats.orphan_count > 0 }"
+                    >{{ wikiStats.orphan_count }}</strong
+                  >
+                </div>
+                <template v-if="statsTypeEntries.length">
+                  <div class="stats-divider" />
+                  <div class="stats-types">
+                    <span
+                      v-for="t in statsTypeEntries"
+                      :key="t.type"
+                      class="type-chip"
+                      :data-type="t.type"
+                    >
+                      <i class="type-dot" />{{ typeLabel(t.type) }} {{ t.count }}
+                    </span>
+                  </div>
+                </template>
+              </div>
+
               <div class="issues-toolbar">
                 <el-radio-group
                   v-model="issueFilter"
@@ -197,6 +230,7 @@
                 </el-radio-group>
                 <el-button
                   size="small"
+                  :icon="Refresh"
                   :loading="lintRunning"
                   :disabled="issuesLoading"
                   @click="runLint"
@@ -208,11 +242,14 @@
               <!-- lint 检出问题（派生，非持久化）+ 持久化问题列表 -->
               <div class="issues-list">
               <div v-if="lintIssues.length" class="issues-card">
-                <h4 class="issues-heading">质量检查（{{ lintIssues.length }} 项）</h4>
+                <div class="issues-heading-row">
+                  <h4 class="issues-heading">质量检查（{{ lintIssues.length }} 项）</h4>
+                  <el-button text size="small" @click="lintIssues = []">清除</el-button>
+                </div>
                 <div v-for="(issue, index) in lintIssues" :key="`l${index}`" class="issue-card">
-                  <el-tag size="small" type="warning" class="issue-tag">
+                  <span class="issue-badge" data-status="pending">
                     {{ lintTypeLabel(issue.issue_type) }}
-                  </el-tag>
+                  </span>
                   <span class="issue-slug" @click="selectPageFromPanel(issue.slug)">{{
                     issue.slug
                   }}</span>
@@ -223,21 +260,26 @@
               <!-- 持久化问题列表 -->
               <div v-if="issues.length" class="issues-card">
                 <h4 class="issues-heading">问题登记（{{ issues.length }} 项）</h4>
-                <div v-for="issue in issues" :key="issue.id" class="issue-card">
-                  <el-tag
-                    size="small"
-                    :type="issueStatusTagType(issue.status)"
-                    class="issue-tag"
-                  >
+                <div
+                  v-for="issue in issues"
+                  :key="issue.id"
+                  class="issue-card"
+                  :class="{ 'is-inactive': issue.status !== 'pending' }"
+                >
+                  <span class="issue-badge" :data-status="issue.status">
                     {{ issueTypeLabel(issue.issue_type) }}
-                  </el-tag>
+                  </span>
                   <span class="issue-slug" @click="selectPageFromPanel(issue.slug)">{{
                     issue.slug
                   }}</span>
-                  <span class="issue-desc" :class="{ 'is-muted': issue.status !== 'pending' }">
+                  <span class="issue-desc">
                     {{ issue.description }}
                   </span>
-                  <span class="issue-meta">{{ issue.reported_by }}</span>
+                  <span class="issue-meta"
+                    >{{ issue.reported_by }}<template v-if="issue.created_at">
+                      · {{ formatDate(issue.created_at) }}</template
+                    ></span
+                  >
                   <div v-if="issue.status === 'pending'" class="issue-actions">
                     <el-button
                       size="small"
@@ -260,7 +302,10 @@
                 </div>
               </div>
               <div v-if="!issues.length && !lintIssues.length" class="issues-card issues-empty">
-                <el-empty description="没有问题" :image-size="72" />
+                <el-empty
+                  :description="issueFilter === 'pending' ? '没有待处理问题' : '暂无记录'"
+                  :image-size="72"
+                />
               </div>
               </div>
             </div>
@@ -359,7 +404,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, Loading, MoreFilled, Search, WarningFilled } from '@element-plus/icons-vue'
+import { Document, Loading, MoreFilled, Refresh, Search, WarningFilled } from '@element-plus/icons-vue'
 import { wikiApi } from '@/api/knowledge'
 import { renderMarkdownWithToc } from '@/utils/markdown'
 import { diffLines as computeDiff, diffStats as diffStatsOf } from '@/utils/wikiDiff'
@@ -373,6 +418,7 @@ import type {
   WikiPage,
   WikiPageSourceDocument,
   WikiRevisionSummary,
+  WikiStatsResponse,
 } from '@/api/types'
 
 const route = useRoute()
@@ -472,9 +518,12 @@ const activeView = ref<'browse' | 'graph' | 'issues'>('browse')
 let issuesLoaded = false
 
 function onActiveViewChange(view: string | number) {
-  if (view === 'issues' && !issuesLoaded) {
-    issuesLoaded = true
-    void loadIssues()
+  if (view === 'issues') {
+    if (!issuesLoaded) {
+      issuesLoaded = true
+      void loadIssues()
+    }
+    if (!wikiStats.value) void loadWikiStats()
   }
   respyOnBrowse()
 }
@@ -491,7 +540,30 @@ const issues = ref<WikiIssue[]>([])
 const issuesLoading = ref(false)
 let issuesLoadSeq = 0
 const issueFilter = ref('pending')
-const pendingIssueCount = computed(() => issues.value.filter((i) => i.status === 'pending').length)
+// tab 角标计数：不能用 computed(issues)——issues 只含当前过滤结果，
+// 切"已解决"页签后角标会失真；在 loadIssues 拉 pending 列表时回写
+const pendingIssueCount = ref(0)
+
+// ---- Wiki 统计条（问题页顶部总览） ----
+const wikiStats = ref<WikiStatsResponse | null>(null)
+
+// 类型分布按固定序展示（与浏览页分组/图谱图例一致）
+const STATS_TYPE_ORDER = ['entity', 'concept', 'summary', 'synthesis', 'comparison']
+const statsTypeEntries = computed(() => {
+  if (!wikiStats.value) return []
+  return STATS_TYPE_ORDER.filter((t) => (wikiStats.value!.pages_by_type[t] ?? 0) > 0).map((t) => ({
+    type: t,
+    count: wikiStats.value!.pages_by_type[t] ?? 0,
+  }))
+})
+
+async function loadWikiStats() {
+  try {
+    wikiStats.value = await wikiApi.getStats(spaceId.value, kbId.value)
+  } catch {
+    wikiStats.value = null
+  }
+}
 
 const ISSUE_TYPE_LABELS: Record<string, string> = {
   mixed_entities: '实体混淆',
@@ -503,11 +575,6 @@ const ISSUE_TYPE_LABELS: Record<string, string> = {
 }
 function issueTypeLabel(type: string): string {
   return ISSUE_TYPE_LABELS[type] ?? type
-}
-function issueStatusTagType(status: string): 'warning' | 'success' | 'info' {
-  if (status === 'resolved') return 'success'
-  if (status === 'ignored') return 'info'
-  return 'warning'
 }
 const LINT_TYPE_LABELS: Record<string, string> = {
   dead_link: '死链',
@@ -526,6 +593,8 @@ async function loadIssues() {
     const data = await wikiApi.listIssues(spaceId.value, kbId.value, issueFilter.value)
     if (seq === issuesLoadSeq) {
       issues.value = data
+      // pending 过滤的结果即角标的事实源；其它过滤不动角标
+      if (issueFilter.value === 'pending') pendingIssueCount.value = data.length
     }
   } catch {
     if (seq === issuesLoadSeq) {
@@ -564,6 +633,8 @@ async function runLint() {
   try {
     const data = await wikiApi.lint(spaceId.value, kbId.value)
     lintIssues.value = data.issues
+    // lint 可能检出新的孤儿/死链，统计条同步刷新
+    void loadWikiStats()
     if (!data.issues.length) {
       ElMessage.success(`检查完成（${data.checked_pages} 页），未发现问题`)
     }
@@ -1036,6 +1107,95 @@ onBeforeUnmount(() => {
   gap: var(--space-3);
 }
 
+/* 统计条：DocumentView kb-stat-card 的迷你版（发丝线 + 白底） */
+.wiki-stats {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-3) var(--space-5);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-xl);
+  background: var(--color-bg-card);
+}
+
+.stats-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stats-label {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+.stats-value {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  line-height: 1.2;
+}
+
+.stats-value.is-warning {
+  color: var(--color-warning);
+}
+
+.stats-divider {
+  align-self: stretch;
+  width: 1px;
+  background: var(--color-border-light);
+}
+
+.stats-types {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* 类型分布 chip：dot 色复用浏览页徽章五组语义色（light/dark 成对） */
+.type-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.type-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-text-faint);
+}
+
+.type-chip[data-type='entity'] .type-dot {
+  background: var(--color-primary);
+}
+
+.type-chip[data-type='concept'] .type-dot {
+  background: var(--color-success);
+}
+
+.type-chip[data-type='summary'] .type-dot {
+  background: var(--color-warning);
+}
+
+.type-chip[data-type='synthesis'] .type-dot {
+  background: var(--color-danger);
+}
+
+.type-chip[data-type='comparison'] .type-dot {
+  background: var(--color-info);
+}
+
 /* 问题分组卡：与浏览页正文卡同质感（发丝线 + 白底 + 大圆角） */
 .issues-card {
   padding: var(--space-4) var(--space-5);
@@ -1051,6 +1211,18 @@ onBeforeUnmount(() => {
   font-weight: var(--weight-medium);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+/* lint 卡 heading 行：标题 + 清除按钮两端对齐 */
+.issues-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.issues-heading-row .issues-heading {
+  margin: 0;
 }
 
 .issues-card + .issues-card {
@@ -1076,8 +1248,43 @@ onBeforeUnmount(() => {
   border-color: var(--color-border);
 }
 
-.issue-tag {
+/* 非 pending 行整行降权（替代描述文字删除线，保留可读性） */
+.issue-card.is-inactive {
+  opacity: 0.72;
+}
+
+/* 统一徽章 chip：状态点 + 文字（替代 el-tag，与统计条 type-chip 同语言） */
+.issue-badge {
+  display: inline-flex;
   flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.issue-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-text-faint);
+}
+
+.issue-badge[data-status='pending']::before {
+  background: var(--color-warning);
+}
+
+.issue-badge[data-status='resolved']::before {
+  background: var(--color-success);
+}
+
+.issue-badge[data-status='ignored']::before {
+  background: var(--color-text-faint);
 }
 
 .issue-slug {
@@ -1109,11 +1316,6 @@ onBeforeUnmount(() => {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-}
-
-.issue-desc.is-muted {
-  color: var(--color-text-faint);
-  text-decoration: line-through;
 }
 
 .issue-meta {
