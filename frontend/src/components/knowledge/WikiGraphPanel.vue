@@ -73,13 +73,14 @@ const TYPE_LABELS: Record<string, string> = {
   comparison: '对比',
 }
 
-// 类型 → Element Plus 语义色（读 CSS 变量，暗色主题自动适配）
+// 类型 → base.css 语义色（与浏览页类型徽章同一色系，light/dark 成对；
+// 不用 --el-color-info：EP 默认灰且其 light-9 系暗色未重定义）
 const TYPE_COLOR_VARS: Record<string, string> = {
-  entity: '--el-color-primary',
-  concept: '--el-color-success',
-  summary: '--el-color-warning',
-  synthesis: '--el-color-danger',
-  comparison: '--el-color-info',
+  entity: '--color-primary',
+  concept: '--color-success',
+  summary: '--color-warning',
+  synthesis: '--color-danger',
+  comparison: '--color-info',
 }
 
 function cssVar(name: string, fallback: string): string {
@@ -93,7 +94,7 @@ function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
   const edgeColor = cssVar('--color-border-light', '#dcdfe6')
 
   const nodes = data.nodes.map((node) => {
-    const color = cssVar(TYPE_COLOR_VARS[node.page_type] ?? '--el-color-primary', '#409eff')
+    const color = cssVar(TYPE_COLOR_VARS[node.page_type] ?? '--color-primary', '#3f3f46')
     return {
       id: node.slug,
       name: node.title,
@@ -152,7 +153,7 @@ function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
         links: edges,
         categories: categories.map((type) => ({
           name: TYPE_LABELS[type] ?? type,
-          itemStyle: { color: cssVar(TYPE_COLOR_VARS[type] ?? '--el-color-primary', '#409eff') },
+          itemStyle: { color: cssVar(TYPE_COLOR_VARS[type] ?? '--color-primary', '#3f3f46') },
         })),
         roam: true,
         draggable: true,

@@ -971,15 +971,18 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
+  border: 1px solid var(--color-border-light);
   border-radius: var(--radius-xl);
-  background: var(--color-bg-card-elevated, #f0f9eb);
-  color: var(--el-color-primary);
+  /* 生成中：info 语义（带进行感），原写法变量恒存在导致 fallback 死代码 */
+  background: var(--color-info-subtle);
+  color: var(--color-info);
   font-size: var(--text-sm);
 }
 
 .ingest-banner.is-failed {
-  color: var(--el-color-danger);
-  background: var(--el-color-danger-light-9);
+  color: var(--color-danger);
+  background: var(--color-danger-subtle);
+  border-color: var(--color-danger-subtle);
 }
 
 .wiki-layout {
