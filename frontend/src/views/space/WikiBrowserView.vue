@@ -1793,4 +1793,23 @@ onBeforeUnmount(() => {
     min-height: 0;
   }
 }
+
+/* 问题页窄屏：统计条类型分布整行下移；issue 卡允许换行 */
+@media (max-width: 760px) {
+  .stats-divider {
+    display: none;
+  }
+
+  .stats-types {
+    flex-basis: 100%;
+  }
+
+  .issue-card {
+    flex-wrap: wrap;
+  }
+
+  .issue-desc {
+    flex-basis: 100%;
+  }
+}
 </style>
