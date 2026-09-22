@@ -205,11 +205,14 @@
                 </el-button>
               </div>
 
-              <!-- lint 检出问题（派生，非持久化） -->
-              <div v-if="lintIssues.length" class="lint-section">
-                <h4 class="lint-heading">质量检查（{{ lintIssues.length }} 项）</h4>
-                <div v-for="(issue, index) in lintIssues" :key="`l${index}`" class="issue-row">
-                  <el-tag size="small" type="warning">{{ lintTypeLabel(issue.issue_type) }}</el-tag>
+              <!-- lint 检出问题（派生，非持久化）+ 持久化问题列表 -->
+              <div class="issues-list">
+              <div v-if="lintIssues.length" class="issues-card">
+                <h4 class="issues-heading">质量检查（{{ lintIssues.length }} 项）</h4>
+                <div v-for="(issue, index) in lintIssues" :key="`l${index}`" class="issue-card">
+                  <el-tag size="small" type="warning" class="issue-tag">
+                    {{ lintTypeLabel(issue.issue_type) }}
+                  </el-tag>
                   <span class="issue-slug" @click="selectPageFromPanel(issue.slug)">{{
                     issue.slug
                   }}</span>
@@ -218,35 +221,48 @@
               </div>
 
               <!-- 持久化问题列表 -->
-              <h4 class="lint-heading">问题登记（{{ issues.length }} 项）</h4>
-              <div v-for="issue in issues" :key="issue.id" class="issue-row">
-                <el-tag size="small">{{ issueTypeLabel(issue.issue_type) }}</el-tag>
-                <span class="issue-slug" @click="selectPageFromPanel(issue.slug)">{{
-                  issue.slug
-                }}</span>
-                <span class="issue-desc">{{ issue.description }}</span>
-                <span class="issue-meta">{{ issue.reported_by }}</span>
-                <el-button
-                  v-if="issue.status === 'pending'"
-                  size="small"
-                  text
-                  type="success"
-                  :loading="updatingIssueId === issue.id"
-                  @click="setIssueStatus(issue, 'resolved')"
-                >
-                  解决
-                </el-button>
-                <el-button
-                  v-if="issue.status === 'pending'"
-                  size="small"
-                  text
-                  :loading="updatingIssueId === issue.id"
-                  @click="setIssueStatus(issue, 'ignored')"
-                >
-                  忽略
-                </el-button>
+              <div v-if="issues.length" class="issues-card">
+                <h4 class="issues-heading">问题登记（{{ issues.length }} 项）</h4>
+                <div v-for="issue in issues" :key="issue.id" class="issue-card">
+                  <el-tag
+                    size="small"
+                    :type="issueStatusTagType(issue.status)"
+                    class="issue-tag"
+                  >
+                    {{ issueTypeLabel(issue.issue_type) }}
+                  </el-tag>
+                  <span class="issue-slug" @click="selectPageFromPanel(issue.slug)">{{
+                    issue.slug
+                  }}</span>
+                  <span class="issue-desc" :class="{ 'is-muted': issue.status !== 'pending' }">
+                    {{ issue.description }}
+                  </span>
+                  <span class="issue-meta">{{ issue.reported_by }}</span>
+                  <div v-if="issue.status === 'pending'" class="issue-actions">
+                    <el-button
+                      size="small"
+                      text
+                      type="success"
+                      :loading="updatingIssueId === issue.id"
+                      @click="setIssueStatus(issue, 'resolved')"
+                    >
+                      解决
+                    </el-button>
+                    <el-button
+                      size="small"
+                      text
+                      :loading="updatingIssueId === issue.id"
+                      @click="setIssueStatus(issue, 'ignored')"
+                    >
+                      忽略
+                    </el-button>
+                  </div>
+                </div>
               </div>
-              <el-empty v-if="!issues.length && !lintIssues.length" description="没有问题" />
+              <div v-if="!issues.length && !lintIssues.length" class="issues-card issues-empty">
+                <el-empty description="没有问题" :image-size="72" />
+              </div>
+              </div>
             </div>
           </el-tab-pane>
         </el-tabs>
@@ -269,10 +285,6 @@
             :rows="18"
             placeholder="Markdown；[[slug|名称]] 表示站内链接"
           />
-        </el-form-item>
-        <el-form-item label="版本乐观锁">
-          <el-input-number v-model="editorForm.version" :min="0" disabled />
-          <span class="form-hint">保存时校验，他人更新后返回 409</span>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -326,6 +338,12 @@
             class="diff-line"
             :class="`is-${line.type}`"
           >
+            <span class="diff-no" :class="{ 'is-empty': line.type === 'added' }">{{
+              line.oldLine ?? ''
+            }}</span>
+            <span class="diff-no" :class="{ 'is-empty': line.type === 'removed' }">{{
+              line.newLine ?? ''
+            }}</span>
             <span class="diff-marker">{{
               line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' '
             }}</span>
@@ -485,6 +503,11 @@ const ISSUE_TYPE_LABELS: Record<string, string> = {
 }
 function issueTypeLabel(type: string): string {
   return ISSUE_TYPE_LABELS[type] ?? type
+}
+function issueStatusTagType(status: string): 'warning' | 'success' | 'info' {
+  if (status === 'resolved') return 'success'
+  if (status === 'ignored') return 'info'
+  return 'warning'
 }
 const LINT_TYPE_LABELS: Record<string, string> = {
   dead_link: '死链',
@@ -1002,6 +1025,115 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
+/* 问题页签：工具栏固定，列表区独立滚动 */
+.issues-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* 问题分组卡：与浏览页正文卡同质感（发丝线 + 白底 + 大圆角） */
+.issues-card {
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-2xl);
+  background: var(--color-bg-card);
+}
+
+.issues-heading {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.issues-card + .issues-card {
+  margin-top: 0; /* 间距由 issues-list gap 提供 */
+}
+
+/* 单条问题：卡片行——状态 tag + slug chip + 描述 + 来源 + 行内操作 */
+.issue-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--transition-fast);
+}
+
+.issue-card + .issue-card {
+  margin-top: var(--space-2);
+}
+
+.issue-card:hover {
+  border-color: var(--color-border);
+}
+
+.issue-tag {
+  flex-shrink: 0;
+}
+
+.issue-slug {
+  flex-shrink: 0;
+  max-width: 200px;
+  overflow: hidden;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.issue-slug:hover {
+  color: var(--color-text);
+}
+
+.issue-desc {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.issue-desc.is-muted {
+  color: var(--color-text-faint);
+  text-decoration: line-through;
+}
+
+.issue-meta {
+  flex-shrink: 0;
+  color: var(--color-text-faint);
+  font-size: var(--text-xs);
+}
+
+.issue-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.issues-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* 问题视图工具栏：radio 组与按钮垂直居中，检查按钮靠右 */
 .issues-toolbar {
   display: flex;
@@ -1333,12 +1465,6 @@ onBeforeUnmount(() => {
   text-decoration: line-through;
 }
 
-.form-hint {
-  margin-left: 12px;
-  color: var(--color-text-muted);
-  font-size: var(--text-xs);
-}
-
 .revision-row {
   display: flex;
   align-items: center;
@@ -1415,6 +1541,20 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
   width: 14px;
   user-select: none;
+}
+
+/* 双列行号：等宽右对齐；增行空旧号、删行空新号但占位对齐 */
+.diff-no {
+  flex-shrink: 0;
+  width: 3em;
+  color: var(--color-text-faint);
+  font-family: var(--font-mono, monospace);
+  text-align: right;
+  user-select: none;
+}
+
+.diff-no.is-empty {
+  visibility: hidden;
 }
 
 .diff-text {
