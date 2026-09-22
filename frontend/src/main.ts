@@ -1,6 +1,8 @@
 import 'element-plus/dist/index.css'
 import './assets/main.css'
+import './assets/markdown.css'
 import 'highlight.js/styles/github.min.css'
+import './assets/hljs-dark.css'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
