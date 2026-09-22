@@ -1120,10 +1120,12 @@ onBeforeUnmount(() => {
   background: var(--color-bg-card);
 }
 
+/* 单行基线对齐：label 与数值同行，与右侧类型 chip 共用一条中轴，
+   不再是「标签在上数值在下」的双层结构（与 chip 混排时错位） */
 .stats-item {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: baseline;
+  gap: 6px;
 }
 
 .stats-label {
@@ -1133,7 +1135,7 @@ onBeforeUnmount(() => {
 
 .stats-value {
   font-family: var(--font-display);
-  font-size: 20px;
+  font-size: var(--text-xl);
   font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-tight);
   line-height: 1.2;
@@ -1165,7 +1167,8 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-full);
   background: var(--color-bg-hover);
   color: var(--color-text-secondary);
-  font-size: var(--text-xs);
+  /* 与左侧数值同为 --text-base，单行内所有文字共享一条视觉主线 */
+  font-size: var(--text-base);
   white-space: nowrap;
 }
 
