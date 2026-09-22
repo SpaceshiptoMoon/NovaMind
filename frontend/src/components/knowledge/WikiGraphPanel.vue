@@ -6,7 +6,7 @@
         size="small"
         filterable
         clearable
-        placeholder="搜索页面，仅显示与其相连的节点"
+        :placeholder="allNodes.length ? '搜索页面，仅显示与其相连的节点' : '暂无页面可作中心'"
         class="center-select"
         @change="loadGraph"
       >
@@ -17,22 +17,36 @@
           :value="node.slug"
         />
       </el-select>
-      <span v-if="graph?.meta.truncated" class="truncated-hint">
-        显示 {{ graph.meta.returned }}/{{ graph.meta.total }} 节点
+      <span class="graph-count">
+        {{ graphCountText }}
       </span>
+      <span class="toolbar-space" />
+      <el-tooltip content="重置布局" placement="top">
+        <el-button
+          text
+          size="small"
+          :icon="Refresh"
+          :disabled="!graph"
+          @click="resetLayout"
+        />
+      </el-tooltip>
+      <span class="graph-hint">拖拽平移 · 滚轮缩放 · 单击节点打开页面</span>
     </div>
 
-    <div ref="canvasRef" class="graph-canvas">
+    <div ref="canvasRef" class="graph-canvas" :class="{ 'is-loading': loading }">
       <div v-if="!graph && !loading" class="graph-empty">
         <el-empty description="暂无图数据" />
       </div>
-      <div v-else-if="loading" v-loading="true" class="graph-empty" />
+      <div v-else-if="loading" class="graph-loading">
+        <el-icon class="is-loading"><Loading /></el-icon>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Loading, Refresh } from '@element-plus/icons-vue'
 import * as echarts from 'echarts/core'
 import { GraphChart } from 'echarts/charts'
 import { LegendComponent, TooltipComponent } from 'echarts/components'
@@ -64,6 +78,15 @@ const { theme } = useTheme()
 
 // 全部节点（供 ego 中心下拉；overview 图不完整时回退索引接口）
 const allNodes = ref<Array<{ slug: string; title: string }>>([])
+
+// 工具栏统计 chip：概览「N 节点 · M 链接」，ego「N 个相关页面」；
+// 截断时并入提示（替代原独立 truncated hint）
+const graphCountText = computed(() => {
+  if (!graph.value) return ''
+  const { meta } = graph.value
+  const base = meta.truncated ? `已显示 ${meta.returned}/${meta.total} 节点` : `${meta.returned} 节点`
+  return centerSlug.value ? base : `${base} · ${graph.value.edges.length} 链接`
+})
 
 const canvasRef = ref<HTMLDivElement | null>(null)
 let chart: echarts.ECharts | null = null
@@ -106,24 +129,41 @@ function escapeHtml(s: string): string {
 function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
   const categories = [...new Set(data.nodes.map((n) => n.page_type))]
   const textColor = cssVar('--color-text', '#303133')
+  const secondaryColor = cssVar('--color-text-secondary', '#616161')
   // 边线不能用 --color-border-light（#efefef 画在 #ffffff 上对比度 ~1.07，完全隐形）；
   // --color-text-faint 是"离表面一步的灰"，light/dark 成对反转，发丝线仍可辨
   const edgeColor = cssVar('--color-text-faint', '#c9c9c9')
+  const surfaceColor = cssVar('--color-bg-card', '#ffffff')
 
+  // 标签分级（Obsidian 式）：只给 hub 节点 + ego 中心直标，其余 hover 浮现；
+  // 阈值随规模缩放，小图全标、大图只标头部 15%
   const slugs = new Set(data.nodes.map((n) => n.slug))
+  const labelQuota = Math.max(6, Math.ceil(data.nodes.length * 0.15))
+  const labelSlugs = new Set(
+    [...data.nodes].sort((a, b) => b.link_count - a.link_count).slice(0, labelQuota).map((n) => n.slug),
+  )
+
   const nodes = data.nodes.map((node) => {
     const isCenter = node.slug === centerSlug.value
+    // sqrt 压缩：link_count 悬殊时 hub 不再吞掉邻域（线性公式 22+4n 会到 64px）
+    const size = Math.max(10, Math.min(30, 10 + Math.sqrt(node.link_count) * 4))
     return {
       id: node.slug,
       name: node.title,
       slug: node.slug,
       category: categories.indexOf(node.page_type),
-      symbolSize: isCenter
-        ? Math.min(22 + node.link_count * 4, 64) * 1.25
-        : Math.min(22 + node.link_count * 4, 64),
-      label: isCenter
-        ? { show: true, fontSize: 11, color: textColor, fontWeight: 600 }
-        : { show: true, fontSize: 11, color: textColor },
+      symbolSize: isCenter ? size * 1.25 : size,
+      // 底色表面环：节点重叠处保持可辨，随主题反转
+      itemStyle: { borderColor: surfaceColor, borderWidth: 2 },
+      label: {
+        show: isCenter || labelSlugs.has(node.slug),
+        fontSize: 11,
+        color: isCenter ? textColor : secondaryColor,
+        fontWeight: isCenter ? 600 : 400,
+        // 底色晕圈：标签压在边线/节点上仍可读
+        textBorderColor: surfaceColor,
+        textBorderWidth: 2,
+      },
       tooltip: {
         title: node.title,
         pageType: TYPE_LABELS[node.page_type] ?? node.page_type,
@@ -143,6 +183,10 @@ function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
   return {
     tooltip: {
       confine: true,
+      backgroundColor: cssVar('--color-bg-card-elevated', '#fafafa'),
+      borderColor: cssVar('--color-border', '#e5e5e5'),
+      textStyle: { color: textColor, fontSize: 12 },
+      extraCssText: 'border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.07);',
       formatter: (params: {
         dataType: string
         data: { tooltip: { title: string; pageType: string; linkCount: number } }
@@ -156,12 +200,15 @@ function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
     },
     legend: [
       {
-        top: 8,
-        right: 12,
+        // 左上角：力导向易聚簇的是右上（中心下拉区），左上通常空
+        top: 10,
+        left: 12,
         data: categories.map((type) => ({ name: TYPE_LABELS[type] ?? type })),
-        textStyle: { color: textColor, fontSize: 11 },
-        itemWidth: 12,
-        itemHeight: 12,
+        icon: 'circle',
+        textStyle: { color: secondaryColor, fontSize: 12 },
+        itemWidth: 10,
+        itemHeight: 10,
+        itemGap: 14,
       },
     ],
     series: [
@@ -177,14 +224,21 @@ function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
         roam: true,
         draggable: true,
         force: {
-          repulsion: 320,
-          edgeLength: [70, 170],
-          gravity: 0.08,
+          repulsion: 800,
+          edgeLength: [50, 130],
+          gravity: 0.06,
+          friction: 0.2,
           layoutAnimation: true,
         },
         label: { position: 'bottom', distance: 6 },
-        emphasis: { focus: 'adjacency', lineStyle: { width: 2.5, opacity: 1 } },
-        scaleLimit: { min: 0.4, max: 4 },
+        // 剩余重叠兜底：直标集合之外的标签互相压盖时自动隐藏
+        labelLayout: { hideOverlap: true },
+        emphasis: {
+          focus: 'adjacency',
+          label: { show: true },
+          lineStyle: { width: 2.5, opacity: 1 },
+        },
+        scaleLimit: { min: 0.3, max: 3 },
       },
     ],
   }
@@ -212,6 +266,11 @@ function renderChart(data: WikiGraphResponse) {
     })
   }
   chart.setOption(buildOption(data), true)
+}
+
+// 重置布局：全量重跑力导向（notMerge），节点回到初始排布
+function resetLayout() {
+  if (graph.value) renderChart(graph.value)
 }
 
 async function loadGraph() {
@@ -289,15 +348,34 @@ defineExpose({ reload: loadGraph })
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .center-select {
-  width: 260px;
+  width: 280px;
 }
 
-.truncated-hint {
+.graph-count {
   color: var(--color-text-muted);
   font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+/* 弹性占位：把重置按钮与手势提示推到右端 */
+.toolbar-space {
+  flex: 1;
+}
+
+.graph-hint {
+  color: var(--color-text-faint);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .graph-hint {
+    display: none;
+  }
 }
 
 .graph-canvas {
@@ -310,6 +388,23 @@ defineExpose({ reload: loadGraph })
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-2xl);
   background: var(--color-bg-card);
+  transition: opacity var(--transition-base);
+}
+
+/* 加载态：EP v-loading 遮罩白底在 dark 下闪白，改降透明 + 居中旋转图标 */
+.graph-canvas.is-loading {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.graph-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: 24px;
 }
 
 .graph-empty {
