@@ -106,28 +106,6 @@ class WikiRetractService:
         await self.session.flush()
 
         if deleted or stripped:
-            await self._finalize_links()
+            await self.page_repo.rebuild_links(self.kb_id)
 
         return {"deleted": deleted, "stripped": stripped}
-
-    async def _finalize_links(self) -> None:
-        """死链清理 + in_links 双向对齐（与管道 Finalize 同语义）"""
-        pages = await self.page_repo.all_live_pages(self.kb_id)
-        live_slugs = {p.slug for p in pages}
-
-        for page in pages:
-            out_links = [s for s in (page.out_links or []) if s in live_slugs and s != page.slug]
-            if out_links != (page.out_links or []):
-                page.out_links = out_links
-
-        slug_map = {p.slug: p for p in pages}
-        in_map: dict = {p.slug: [] for p in pages}
-        for page in pages:
-            for target in page.out_links or []:
-                if target in slug_map and target != page.slug:
-                    in_map[target].append(page.slug)
-        for slug, page in slug_map.items():
-            aligned = sorted(set(in_map.get(slug, [])))
-            if aligned != (page.in_links or []):
-                page.in_links = aligned
-        await self.session.flush()

@@ -377,6 +377,32 @@ class WikiPageRepository:
         )
         return int(result.rowcount or 0)
 
+    async def rebuild_links(self, kb_id: int) -> None:
+        """全 KB 死链剔除 + in_links 双向对齐（对齐 WeKnora RebuildLinks）。
+
+        管道 Finalize / retract 收尾 / lint 修复三处共用；flush-only，
+        事务边界归调用方。
+        """
+        pages = await self.all_live_pages(kb_id)
+        live_slugs = {p.slug for p in pages}
+
+        for page in pages:
+            out_links = [s for s in (page.out_links or []) if s in live_slugs and s != page.slug]
+            if out_links != (page.out_links or []):
+                page.out_links = out_links
+
+        slug_map = {p.slug: p for p in pages}
+        in_map: dict[str, list[str]] = {p.slug: [] for p in pages}
+        for page in pages:
+            for target in page.out_links or []:
+                if target in slug_map and target != page.slug:
+                    in_map[target].append(page.slug)
+        for slug, page in slug_map.items():
+            aligned = sorted(set(in_map.get(slug, [])))
+            if aligned != (page.in_links or []):
+                page.in_links = aligned
+        await self.session.flush()
+
     async def update_auto_linked_content(self, page: WikiPage, new_content: str) -> None:
         """机器链接维护专写路径（对齐 WeKnora UpdateAutoLinkedContent）。
 

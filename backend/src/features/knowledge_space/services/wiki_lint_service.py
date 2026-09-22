@@ -218,6 +218,9 @@ class WikiLintService:
         report = await self.run_lint()
         fixed = 0
         details: list[str] = []
+        # 被软删页的 page_id：修完后 best-effort 清 ES 向量（与 retract 同根源：
+        # 只删 DB 不删 wp-{page_id} 向量会让检索继续命中已删页）
+        deleted_page_ids: list[str] = []
 
         for issue in report["issues"]:
             if not issue.auto_fixable:
@@ -252,6 +255,7 @@ class WikiLintService:
                     if self._doc_id_of(r) != doc_id
                 ]
                 if not remaining:
+                    deleted_page_ids.append(page.id)
                     await self.page_repo.soft_delete_page(page)
                     fixed += 1
                     details.append(f"{page.slug}: 无剩余来源，页面删除")
@@ -268,28 +272,14 @@ class WikiLintService:
 
         # 修后重建全 KB 链接（对齐 WeKnora RebuildLinks）；事务边界：service 内 commit
         if fixed:
-            await self._rebuild_links()
+            await self.page_repo.rebuild_links(self.kb_id)
         await self.session.commit()
+
+        # 被软删页的 ES 向量清理（best-effort，helper 内 warn 不抛）
+        if deleted_page_ids:
+            from novamind.features.knowledge_space.services.wiki_es_sync import (
+                delete_pages_vectors,
+            )
+
+            await delete_pages_vectors(self.space_id, deleted_page_ids)
         return {"fixed": fixed, "details": details}
-
-    async def _rebuild_links(self) -> None:
-        """全 KB 死链剔除 + in_links 双向对齐（复用管道 Finalize 语义）"""
-        pages = await self.page_repo.all_live_pages(self.kb_id)
-        live_slugs = {p.slug for p in pages}
-
-        for page in pages:
-            out_links = [s for s in (page.out_links or []) if s in live_slugs and s != page.slug]
-            if out_links != (page.out_links or []):
-                page.out_links = out_links
-
-        slug_map = {p.slug: p for p in pages}
-        in_map: dict[str, list[str]] = {p.slug: [] for p in pages}
-        for page in pages:
-            for target in page.out_links or []:
-                if target in slug_map and target != page.slug:
-                    in_map[target].append(page.slug)
-        for slug, page in slug_map.items():
-            aligned = sorted(set(in_map.get(slug, [])))
-            if aligned != (page.in_links or []):
-                page.in_links = aligned
-        await self.session.flush()

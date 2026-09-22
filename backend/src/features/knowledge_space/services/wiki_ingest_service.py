@@ -911,28 +911,10 @@ class WikiIngestService:
 
     async def _finalize(self) -> None:
         """链接双向对齐 + 死链清理 + 快照裁剪（纯代码，无 LLM）"""
-        pages = await self.page_repo.all_live_pages(self.kb_id)
-        live_slugs = {p.slug for p in pages}
-
-        for page in pages:
-            # 清死链（指向不存在/已删 slug 的 out_links 剔除）+ 去自指
-            out_links = [s for s in (page.out_links or []) if s in live_slugs and s != page.slug]
-            if out_links != (page.out_links or []):
-                page.out_links = out_links
-
-        # 双向对齐 in_links
-        slug_map = {p.slug: p for p in pages}
-        in_map: dict[str, list[str]] = {p.slug: [] for p in pages}
-        for page in pages:
-            for target in page.out_links or []:
-                if target in slug_map and target != page.slug:
-                    in_map[target].append(page.slug)
-        for slug, page in slug_map.items():
-            aligned = sorted(set(in_map.get(slug, [])))
-            if aligned != (page.in_links or []):
-                page.in_links = aligned
+        await self.page_repo.rebuild_links(self.kb_id)
 
         # 快照裁剪（两级保留）
+        pages = await self.page_repo.all_live_pages(self.kb_id)
         for page in pages:
             try:
                 await self.page_repo.prune_revisions(page.id)

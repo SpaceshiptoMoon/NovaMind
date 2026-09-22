@@ -513,23 +513,19 @@ async def process_wiki_retract_task(
         result = await svc.reconcile_document_removal(document_id)
         await session.commit()
 
-        # 被删页面的 ES 文档一并清理（best-effort）
+        # 被删页面的 ES 向量一并清理（best-effort，helper 内逐页 warn 不抛）
         if result["deleted"]:
-            try:
-                from novamind.features.knowledge_space.services.wiki_es_sync import (
-                    WikiEsSyncService,
-                )
-                from novamind.shared.storage.client_factory import ClientFactory
+            from novamind.features.knowledge_space.services.wiki_es_sync import (
+                delete_pages_vectors,
+            )
 
-                es_client = await ClientFactory.get_elasticsearch_client()
-                sync_svc = WikiEsSyncService(session, es_client)
-                for slug in result["deleted"]:
-                    # slug → page_id：软删页需 include_deleted 才查得到
-                    page = await svc.page_repo.get_by_slug(kb_id, slug, include_deleted=True)
-                    if page:
-                        await sync_svc.delete_page(space_id, page.id)
-            except Exception as e:
-                logger.warning("wiki retract ES 清理失败", kb_id=kb_id, error=str(e))
+            page_ids = []
+            for slug in result["deleted"]:
+                # slug → page_id：软删页需 include_deleted 才查得到
+                page = await svc.page_repo.get_by_slug(kb_id, slug, include_deleted=True)
+                if page:
+                    page_ids.append(page.id)
+            await delete_pages_vectors(space_id, page_ids)
 
         if result["deleted"] or result["stripped"]:
             logger.info(

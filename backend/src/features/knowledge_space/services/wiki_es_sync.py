@@ -98,3 +98,28 @@ class WikiEsSyncService:
         except Exception as e:
             logger.warning("wiki ES 文档删除失败", page_id=page_id, error=str(e))
             return False
+
+
+async def delete_pages_vectors(space_id: int, page_ids: list[str]) -> int:
+    """批量清理 wiki 页 ES 向量（best-effort：逐页删，失败 warn 不抛）。
+
+    收敛点：retract 异步任务与 lint autofix 软删页共用；ES 不可用时
+    调用方不受影响（页向量残留由 lint stale_ref 巡检兜底）。
+    返回成功删除的页数。
+    """
+    if not page_ids:
+        return 0
+    try:
+        from novamind.shared.storage.client_factory import ClientFactory
+
+        es_client = await ClientFactory.get_elasticsearch_client()
+    except Exception as e:
+        logger.warning("wiki ES 向量批量清理跳过（客户端获取失败）", error=str(e))
+        return 0
+
+    sync = WikiEsSyncService(None, es_client)
+    ok = 0
+    for page_id in page_ids:
+        if await sync.delete_page(space_id, page_id):
+            ok += 1
+    return ok
