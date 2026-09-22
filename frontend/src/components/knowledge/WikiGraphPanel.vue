@@ -38,6 +38,7 @@ import { GraphChart } from 'echarts/charts'
 import { LegendComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { wikiApi } from '@/api/knowledge'
+import { useTheme } from '@/composables/useTheme'
 import type { WikiGraphResponse } from '@/api/types'
 
 echarts.use([GraphChart, TooltipComponent, LegendComponent, CanvasRenderer])
@@ -55,6 +56,11 @@ const emit = defineEmits<{ select: [slug: string] }>()
 const centerSlug = ref(props.initialCenter ?? '')
 const graph = ref<WikiGraphResponse | null>(null)
 const loading = ref(false)
+
+// 主题切换联动：theme 是模块级共享 ref，AppHeader 切换后 watch 立即触发。
+// chart 颜色在 buildOption 时经 cssVar 固化进 canvas，必须重跑 setOption 才能跟随；
+// merge 模式下同 id 数据保留 force 布局位置，节点不会重洗
+const { theme } = useTheme()
 
 // 全部节点（供 ego 中心下拉；overview 图不完整时回退索引接口）
 const allNodes = ref<Array<{ slug: string; title: string }>>([])
@@ -88,22 +94,36 @@ function cssVar(name: string, fallback: string): string {
   return value || fallback
 }
 
+// tooltip formatter 拼接 HTML，页面标题用户可控（Markdown 来源），必须转义
+function escapeHtml(s: string): string {
+  return s.replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c,
+  )
+}
+
 function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
   const categories = [...new Set(data.nodes.map((n) => n.page_type))]
   const textColor = cssVar('--color-text', '#303133')
-  const edgeColor = cssVar('--color-border-light', '#dcdfe6')
+  // 边线不能用 --color-border-light（#efefef 画在 #ffffff 上对比度 ~1.07，完全隐形）；
+  // --color-text-faint 是"离表面一步的灰"，light/dark 成对反转，发丝线仍可辨
+  const edgeColor = cssVar('--color-text-faint', '#c9c9c9')
 
+  const slugs = new Set(data.nodes.map((n) => n.slug))
   const nodes = data.nodes.map((node) => {
-    const color = cssVar(TYPE_COLOR_VARS[node.page_type] ?? '--color-primary', '#3f3f46')
+    const isCenter = node.slug === centerSlug.value
     return {
       id: node.slug,
       name: node.title,
       slug: node.slug,
       category: categories.indexOf(node.page_type),
-      symbolSize: Math.min(22 + node.link_count * 4, 64),
-      itemStyle:
-        node.slug === centerSlug.value ? { borderWidth: 4, borderColor: color } : undefined,
-      label: { show: true, fontSize: 11, color: textColor },
+      symbolSize: isCenter
+        ? Math.min(22 + node.link_count * 4, 64) * 1.25
+        : Math.min(22 + node.link_count * 4, 64),
+      label: isCenter
+        ? { show: true, fontSize: 11, color: textColor, fontWeight: 600 }
+        : { show: true, fontSize: 11, color: textColor },
       tooltip: {
         title: node.title,
         pageType: TYPE_LABELS[node.page_type] ?? node.page_type,
@@ -113,14 +133,11 @@ function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
   })
 
   const edges = data.edges
-    .filter((e) => {
-      const slugs = new Set(data.nodes.map((n) => n.slug))
-      return slugs.has(e.source) && slugs.has(e.target)
-    })
+    .filter((e) => slugs.has(e.source) && slugs.has(e.target))
     .map((e) => ({
       source: e.source,
       target: e.target,
-      lineStyle: { color: edgeColor, width: 1, opacity: 0.55, curveness: 0.12 },
+      lineStyle: { color: edgeColor, width: 1, opacity: 0.45, curveness: 0.12 },
     }))
 
   return {
@@ -132,7 +149,9 @@ function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
       }) => {
         if (params.dataType !== 'node') return ''
         const info = params.data.tooltip
-        return `<strong>${info.title}</strong><br/>类型：${info.pageType}<br/>链接数：${info.linkCount}`
+        return `<strong>${escapeHtml(info.title)}</strong><br/>类型：${escapeHtml(
+          info.pageType,
+        )}<br/>链接数：${info.linkCount}`
       },
     },
     legend: [
@@ -170,6 +189,12 @@ function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
     ],
   }
 }
+
+watch(theme, () => {
+  if (!chart || !graph.value) return
+  // toggleTheme 先改 <html> data-theme 再触发 watcher，cssVar 读到的已是新值
+  chart.setOption(buildOption(graph.value))
+})
 
 function renderChart(data: WikiGraphResponse) {
   if (!canvasRef.value) return
@@ -218,8 +243,13 @@ watch(
 
 onMounted(async () => {
   resizeObserver = new ResizeObserver(() => {
+    // 0 尺寸（pane 隐藏 display:none 或尚未布局）时跳过：
+    // chart.resize() 会产生 "Can't get DOM width or height" 告警
+    if (!canvasRef.value || canvasRef.value.clientWidth === 0 || canvasRef.value.clientHeight === 0) {
+      return
+    }
     // 首次拿到非零尺寸时，补渲染此前被暂存的图数据
-    if (pendingRender && canvasRef.value && canvasRef.value.clientWidth > 0) {
+    if (pendingRender) {
       const data = pendingRender
       pendingRender = null
       renderChart(data)
