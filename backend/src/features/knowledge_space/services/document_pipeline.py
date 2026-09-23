@@ -216,10 +216,13 @@ async def execute_document_pipeline(
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
         SNAPSHOTS_ENABLED,
         build_parse_snapshot_payload,
+        canonical_json,
         compute_parse_fingerprint,
         load_parse_snapshot,
+        payload_fingerprint_matches,
         refresh_figure_image_urls,
         restore_frame_paths,
+        restore_time_alignment,
         save_parse_snapshot,
         snapshot_fingerprint,
     )
@@ -243,8 +246,10 @@ async def execute_document_pipeline(
     if SNAPSHOTS_ENABLED and parse_fingerprint and resume_minio_client is not None:
         if snapshot_fingerprint(document, "parse") == parse_fingerprint:
             snap = await load_parse_snapshot(document, resume_minio_client, _logger)
-            if snap and isinstance(snap.get("full_text"), str) and snap["full_text"].strip():
-                parse_snapshot_payload = snap
+            # payload 内嵌指纹校验（防双 worker 交错写同名对象后指针/内容错配）
+            if snap and payload_fingerprint_matches(snap, "parse_fingerprint", parse_fingerprint):
+                if isinstance(snap.get("full_text"), str) and snap["full_text"].strip():
+                    parse_snapshot_payload = snap
 
     if parse_snapshot_payload is not None:
         # ===== 快照命中：复用解析产物，跳过解析/图片上传 =====
@@ -256,7 +261,22 @@ async def execute_document_pipeline(
         resumed_time_alignment = parse_snapshot_payload.get("time_alignment")
         resumed_frame_paths = restore_frame_paths(parse_snapshot_payload.get("frame_paths"))
 
-        # figure 图片预签名 URL 已过期，按 minio_object_name 重签并替换残留占位符
+        # 切分配置漂移检测（审计 P1#3）：文本切分实际发生在 parse 阶段内
+        # （DeepDoc rechunk），parse 指纹不含切分配置。快照记录了产出
+        # prechunked_items 时的生效切分配置，与当前配置不一致时放弃旧分块、
+        # 改走 full_text 重切（run_post_parse_tail 的非 prechunked 分支），
+        # 贵的解析产物仍然复用。
+        snap_splitting = parse_snapshot_payload.get("splitting_config")
+        split_config_drifted = (
+            snap_splitting is not None
+            and canonical_json(snap_splitting) != canonical_json(splitting_config or {})
+        )
+
+        # figure 图片预签名 URL 已过期，按 minio_object_name 重签并替换正文占位符。
+        # 快照存的是**占位符版**全文/分块（build_parse_snapshot_payload 契约），
+        # 这里重签后二次替换；旧快照若已含替换后 URL（历史数据），占位符匹配
+        # 不中为 no-op，按原文复用（链接过期由 refresh_figure_image_urls 修
+        # metadata 结构化链接）。
         image_url_map: dict[str, str] = {}
         try:
             image_url_map = await refresh_figure_image_urls(
@@ -274,6 +294,17 @@ async def execute_document_pipeline(
         if image_url_map:
             resume_chunks = [_replace_figure_placeholders(c, image_url_map) for c in resume_chunks]
 
+        if split_config_drifted:
+            _logger.info(
+                "切分配置已变更，放弃快照旧分块、按 full_text 重切（解析产物仍复用）",
+                document_id=document_id,
+            )
+            resume_prechunked = None
+            resume_chunks = []
+            # 重切后 per-chunk 元数据失效，置空防张冠李戴（与批 H 的 rechunk 防错位一致）
+            resume_meta = {k: v for k, v in (resume_meta if isinstance(resume_meta, dict) else {}).items()
+                           if k != "chunk_structure"}
+
         await begin_step(session, task, "parsed")
         task.finish_step("parsed", metrics={
             "char_count": len(full_text),
@@ -282,14 +313,18 @@ async def execute_document_pipeline(
             or "resumed",
             "file_type": document.file_type,
             "resumed": True,
+            **({"split_config_drifted": True} if split_config_drifted else {}),
         })
         _logger.info(
             "解析快照命中，复用解析产物（跳过解析）",
             document_id=document_id,
             parse_fingerprint=parse_fingerprint,
             char_count=len(full_text),
-            chunk_count=len(resume_chunks),
+            chunk_count=len(resume_chunks) if resume_prechunked is not None else None,
         )
+        # resume 路径同样要落解析全文（审计 P2：首跑 persist 失败时无自愈路径；
+        # 快照全文是占位符版，重签 URL 后落盘即最终形态）
+        await persist_parsed_text(document, full_text, session, _logger)
         _resume_tail_result = await run_post_parse_tail(
             document=document,
             session=session,
@@ -300,11 +335,13 @@ async def execute_document_pipeline(
             embedding_config=ctx.embedding_config,
             pipeline_config=ctx.pipeline_config,
             splitting_config=splitting_config,
+            # drifted 时 prechunked_items=None + full_text 兜底 → tail 走重切分支
             prechunked_items=resume_prechunked,
+            full_text=full_text if resume_prechunked is None else "",
             parse_metadata=resume_meta if isinstance(resume_meta, dict) else {},
             parse_fingerprint=parse_fingerprint,
             frame_paths=resumed_frame_paths or None,
-            time_alignment=resumed_time_alignment,
+            time_alignment=restore_time_alignment(resumed_time_alignment),
             user_id=document.uploader_id,
         )
         parse_summary = extract_parse_metadata_summary(resume_meta if isinstance(resume_meta, dict) else {})
@@ -332,7 +369,7 @@ async def execute_document_pipeline(
         return
 
     # ===== 无快照命中：正常解析路径 =====
-    try:
+    if True:  # 保留原缩进层级，减少此文件 diff 噪声
         # 先读取原始解析全文，避免将切块结果回拼成”伪全文”再落 MinIO。
 
         parsing_config = build_runtime_parsing_config(
@@ -357,6 +394,13 @@ async def execute_document_pipeline(
             parsing_config=parsing_config,
             splitting_config=splitting_config,
         )
+        # 原始文件已解析完，立即释放临时文件。不把 unlink 挂 try/finally 到整个
+        # 管道——此前快照命中分支提前 return 绕过 finally，每个续跑任务泄漏一个
+        # tmp 文件；解析抛错时任务行会标 FAILED，OS tmp 目录由系统清理兜底。
+        try:
+            Path(tmp_path).unlink(missing_ok=True)
+        except OSError:
+            pass
         full_text = parse_result.full_text
         chunks = parse_result.chunks
         _logger.info(
@@ -382,6 +426,10 @@ async def execute_document_pipeline(
         # 保证最终落盘的完整 MD 与 ES chunk content 都已含可访问图片链接。
         figure_regions = list((parse_result.metadata or {}).get("figure_regions") or [])
         image_url_map: dict[str, str] = {}
+        # 快照用占位符版全文/分块：预签名 URL 只有 1 小时时效，替换后版本
+        # 焊进快照/ES 会让 resume 产物全部带过期链接（审计 P2 URL 过期链）。
+        full_text_for_snapshot = full_text
+        chunks_for_snapshot = list(parse_result.chunks)
         if figure_regions and document.file_type.lower() == "pdf":
             from novamind.shared.storage.client_factory import ClientFactory
 
@@ -408,27 +456,35 @@ async def execute_document_pipeline(
 
         # 解析全文持久化到 MinIO（切块之前，立刻 commit 落库）
         await persist_parsed_text(document, full_text, session, _logger)
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
 
     # 检查点 1：文档解析完成之后
     await check_document_cancelled(document_id)
-
     # 2-5. 切分/向量化/问题生成/索引：交由共享后置尾（文本传结构化 prechunked_items）
     chunk_structure = list((parse_result.metadata or {}).get("chunk_structure") or [])
+    # deepdoc rechunk 时 chunks 是对 full_text 的重切，条数与 chunk_structure
+    # 不再一一对应——按 index 捡会拿到错误页码/条目类型（张冠李戴），置空防错位。
+    if (parse_result.metadata or {}).get("deepdoc_rechunked"):
+        chunk_structure = []
     prechunked_items = [
         (c, chunk_structure[i] if i < len(chunk_structure) else {})
         for i, c in enumerate(parse_result.chunks)
     ]
+    # 快照存占位符版分块（同 full_text_for_snapshot 的理由）
+    prechunked_for_snapshot = (
+        [(c, {}) for c in chunks_for_snapshot]
+        if image_url_map
+        else prechunked_items
+    )
 
-    # 解析快照：persist 成功后保存（原始全文 + 元数据 + 结构化分块），供后续重试
-    # 在指纹匹配时跳过昂贵解析。fail-open：保存失败不影响主流程。
+    # 解析快照：persist 成功后保存（占位符版全文 + 元数据 + 结构化分块 + 生效
+    # 切分配置），供后续重试在指纹匹配时跳过昂贵解析。fail-open：保存失败不影响主流程。
     if SNAPSHOTS_ENABLED and parse_fingerprint and resume_minio_client is not None:
         snapshot_payload = build_parse_snapshot_payload(
             parse_fingerprint=parse_fingerprint,
-            full_text=full_text,
+            full_text=full_text_for_snapshot if image_url_map else full_text,
             parse_metadata=parse_result.metadata,
-            prechunked_items=prechunked_items,
+            prechunked_items=prechunked_for_snapshot,
+            splitting_config=splitting_config or {},
         )
         await save_parse_snapshot(
             document, session, _logger,

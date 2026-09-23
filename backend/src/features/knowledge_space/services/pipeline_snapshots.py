@@ -56,6 +56,13 @@ def canonical_sha256(payload: Any) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def canonical_json(payload: Any) -> str:
+    """与 canonical_sha256 同一套规范化的 JSON 串（用于配置漂移比对）。"""
+    return json.dumps(
+        payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str
+    )
+
+
 def compute_parse_fingerprint(document: Document, parsing_config: dict[str, Any]) -> str:
     """解析指纹：文件内容哈希/类型 + 解析配置任一变化即失效。"""
     return canonical_sha256({
@@ -208,12 +215,18 @@ def build_parse_snapshot_payload(
     prechunked_items: list[tuple[str, dict[str, Any]]] | None = None,
     time_alignment: dict[str, Any] | None = None,
     frame_paths: dict[int, str] | None = None,
+    splitting_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """构造 parse_meta.json payload，各模态分支共用同一结构。
 
-    - full_text：占位符未替换的解析全文（figure 占位符在 resume 时重签 URL 后再替换）
+    - full_text：**占位符未替换**的解析全文（figure 占位符在 resume 时重签 URL
+      后再替换；存已替换版会让 1 小时时效的预签名 URL 焊死在快照/ES 里）
     - prechunked_items：结构化分块 [[text, per_chunk_meta], ...]（DeepDoc 等）
     - time_alignment / frame_paths：音视频的时间对齐与帧路径
+    - splitting_config：产出 prechunked_items 时的生效切分配置。文本切分实际
+      发生在 parse 阶段内（DeepDoc rechunk），而 parse 指纹不含切分配置——
+      resume 时据此比对：切分配置变了就从 full_text 重切，不采纳旧分块
+      （审计 P1#3：否则改切分配置+RETRY 静默复用旧切分还白烧 embedding）。
     """
     payload: dict[str, Any] = {
         "version": SNAPSHOT_VERSION,
@@ -222,6 +235,8 @@ def build_parse_snapshot_payload(
         "parse_metadata": parse_metadata or {},
         "prechunked_items": [[text, dict(meta or {})] for text, meta in (prechunked_items or [])],
     }
+    if splitting_config is not None:
+        payload["splitting_config"] = splitting_config
     if time_alignment:
         payload["time_alignment"] = time_alignment
     if frame_paths:
@@ -330,6 +345,18 @@ async def save_embeddings_snapshot(
 
 
 # ========== 快照读取（fail-open） ==========
+
+
+def payload_fingerprint_matches(payload: dict[str, Any], fingerprint_key: str, expected: str) -> bool:
+    """校验快照 payload 内嵌指纹与重算指纹一致。
+
+    只比 DB 指针（storage 里的指纹）不比 payload 内嵌指纹时，同文档双 worker
+    交错写同名对象可能让指针 A 配上对象内容 B，静默采纳错位产物（审计 P2）。
+    """
+    if not expected:
+        return True  # 调用方未启用指纹比对时跳过（与历史行为一致）
+    actual = str(payload.get(fingerprint_key) or "")
+    return actual == expected
 
 
 async def load_parse_snapshot(

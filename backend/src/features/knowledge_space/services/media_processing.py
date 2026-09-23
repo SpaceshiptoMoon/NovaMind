@@ -38,7 +38,12 @@ from novamind.features.knowledge_space.services.pipeline_snapshots import (
     SNAPSHOTS_ENABLED,
     build_parse_snapshot_payload,
     compute_parse_fingerprint,
+    load_parse_snapshot,
+    payload_fingerprint_matches,
+    restore_frame_paths,
+    restore_time_alignment,
     save_parse_snapshot,
+    snapshot_fingerprint,
 )
 from novamind.features.knowledge_space.services.pipeline_steps import (
     begin_step,
@@ -91,6 +96,117 @@ def _is_vlm_quota_or_auth_error(exc: BaseException) -> bool:
     """判断 VLM 调用异常是否属于配额/鉴权类（可降级，无需重试）。"""
     text = str(exc).lower()
     return any(marker in text for marker in _VLM_QUOTA_OR_AUTH_MARKERS)
+
+
+async def _snap_minio():
+    """快照读写的 MinIO 客户端获取（懒加载，失败由调用方 fail-open）。"""
+    from novamind.shared.storage.client_factory import ClientFactory
+
+    return await ClientFactory.get_minio_client()
+
+
+async def _audio_resume_tail(
+    *,
+    document: Document,
+    session: AsyncSession,
+    task: DocumentTask | None,
+    logger,
+    model_config_port: ModelConfigService | None,
+    ctx,
+    splitting_config: dict,
+    full_text: str,
+    snap: dict,
+    parse_fingerprint: str,
+    pipeline_config: dict,
+) -> None:
+    """音频解析快照命中后的续跑尾：persist → 切分/向量化/问题生成/索引 → 完成。"""
+    resumed_time_alignment = restore_time_alignment(snap.get("time_alignment"))
+
+    await persist_parsed_text(document, full_text, session, logger)
+
+    tail_result = await run_post_parse_tail(
+        document=document,
+        session=session,
+        task=task,
+        model_config_port=model_config_port,
+        logger=logger,
+        chunk_type=ChunkType.AUDIO,
+        embedding_config=ctx.embedding_config,
+        pipeline_config=pipeline_config,
+        splitting_config=splitting_config,
+        full_text=full_text,
+        time_alignment=resumed_time_alignment,
+        parse_fingerprint=parse_fingerprint,
+        user_id=document.uploader_id,
+    )
+    if task:
+        task.mark_completed(result={
+            "chunk_count": tail_result["chunk_count"],
+            "chunk_type": ChunkType.AUDIO,
+            "resumed_from_snapshot": True,
+            "indexed_at": now_china().isoformat(),
+        })
+    await session.commit()
+    logger.info(
+        "音频文档处理完成（断点续跑）", document_id=document.id,
+        chunks=tail_result["chunk_count"],
+    )
+
+
+async def _video_resume_tail(
+    *,
+    document: Document,
+    session: AsyncSession,
+    task: DocumentTask | None,
+    logger,
+    model_config_port: ModelConfigService | None,
+    ctx,
+    splitting_config: dict,
+    full_text: str,
+    snap: dict,
+    parse_fingerprint: str,
+    pipeline_config: dict,
+) -> None:
+    """视频解析快照命中后的续跑尾：persist → 切分/向量化/问题生成/索引 → 完成。
+
+    时间线/帧路径从快照还原（restore_time_alignment 处理 JSON 序列化把 int 键
+    变 str 的问题——此前 resume 分支直接传 raw dict，int 键全 miss，对齐静默失效）。
+    """
+    resumed_time_alignment = restore_time_alignment(snap.get("time_alignment"))
+    resumed_frame_paths = restore_frame_paths(snap.get("frame_paths"))
+
+    await persist_parsed_text(document, full_text, session, logger)
+    if task:
+        task.finish_step("descriptions_generated", metrics={"resumed": True})
+
+    tail_result = await run_post_parse_tail(
+        document=document,
+        session=session,
+        task=task,
+        model_config_port=model_config_port,
+        logger=logger,
+        chunk_type=ChunkType.VIDEO,
+        embedding_config=ctx.embedding_config,
+        pipeline_config=pipeline_config,
+        splitting_config=splitting_config,
+        full_text=full_text,
+        frame_paths=resumed_frame_paths or None,
+        time_alignment=resumed_time_alignment,
+        parse_fingerprint=parse_fingerprint,
+        user_id=document.uploader_id,
+    )
+    if task:
+        task.mark_completed(result={
+            "chunk_count": tail_result["chunk_count"],
+            "chunk_type": ChunkType.VIDEO,
+            "resumed_from_snapshot": True,
+            "indexed_at": now_china().isoformat(),
+        })
+    await session.commit()
+    logger.info(
+        "视频文档处理完成（断点续跑）", document_id=document.id,
+        chunks=tail_result["chunk_count"],
+    )
 
 
 
@@ -146,6 +262,38 @@ async def process_video_document(
     )
     if task:
         await begin_step(session, task, "frames_extracted")
+
+    # ===== 解析快照命中检查（审计 P1#2：此前音视频快照只写不读，RETRY 时
+    # VLM 描述全量白烧）。指纹匹配即复用快照全文/时间线/帧路径，跳过抽帧+VLM。
+    video_parse_fp = ""
+    if SNAPSHOTS_ENABLED:
+        try:
+            video_parse_fp = compute_parse_fingerprint(document, parsing_config)
+        except Exception as fp_exc:
+            logger.warning("视频解析指纹计算失败，不启用快照", document_id=document.id, error=str(fp_exc))
+
+    if video_parse_fp and snapshot_fingerprint(document, "parse") == video_parse_fp:
+        snap = await load_parse_snapshot(document, await _snap_minio(), logger)
+        if snap and payload_fingerprint_matches(snap, "parse_fingerprint", video_parse_fp):
+            snap_text = str(snap.get("full_text") or "")
+            if snap_text.strip():
+                logger.info(
+                    "视频解析快照命中，复用帧描述（跳过抽帧+VLM）",
+                    document_id=document.id, char_count=len(snap_text),
+                )
+                if task:
+                    task.finish_step("frames_extracted", metrics={"resumed": True, "frame_count": None})
+                    await begin_step(session, task, "descriptions_generated")
+                return await _video_resume_tail(
+                    document=document, session=session, task=task, logger=logger,
+                    model_config_port=model_config_port, ctx=ctx,
+                    splitting_config=splitting_config,
+                    full_text=snap_text,
+                    snap=snap, parse_fingerprint=video_parse_fp,
+                    pipeline_config=pipeline_config,
+                )
+        logger.info("视频解析快照未命中/不可用，走全量抽帧+VLM", document_id=document.id)
+
     if strategy == "scene":
         scene_kwargs: dict[str, Any] = {}
         if scene_threshold is not None:
@@ -454,10 +602,11 @@ async def process_audio_document(
     # 检查点：ASR 调用前（转写可能耗时较长，允许用户在此处取消）
     await check_document_cancelled(document.id)
 
-    # 批次 5b：用注入的 ModelConfigService，不再内部自建 ModelConfigService
+    # ===== 批次 5b：用注入的 ModelConfigService，不再内部自建 ModelConfigService
     mcs = model_config_port
 
-    # 从模型配置系统查找 ASR 凭证（优先精确匹配，找不到用该用户任意 ASR 配置兜底）
+    # 先查 ASR 凭证（优先精确匹配）：快照指纹含实际生效的 protocol:model，
+    # 必须在命中检查前确定（与保存快照时的指纹形状一致，否则永远 miss）。
     asr_api_key: str | None = None
     asr_base_url: str | None = None
     asr_protocol = "openai"  # 默认
@@ -473,6 +622,41 @@ async def process_audio_document(
         asr_base_url = asr_creds.base_url
         asr_protocol = asr_creds.protocol or "openai"
         asr_model = asr_creds.model or asr_model  # 以实际凭证的模型名为准
+
+    # ===== 解析快照命中检查（审计 P1#2：音频快照此前只写不读，RETRY 时 ASR
+    # 全量白烧）。指纹形状与保存侧一致（audio:{protocol}:{model} 策略名），
+    # 匹配即复用转写全文与时间线，跳过 ASR。
+    audio_parse_fp = ""
+    if SNAPSHOTS_ENABLED:
+        audio_runtime_parsing = dict(pipeline_config.get("parsing", {}) or {})
+        audio_runtime_parsing["strategy"] = f"audio:{asr_protocol}:{asr_model}"
+        try:
+            audio_parse_fp = compute_parse_fingerprint(document, audio_runtime_parsing)
+        except Exception as fp_exc:
+            logger.warning("音频解析指纹计算失败，不启用快照", document_id=document.id, error=str(fp_exc))
+
+    if audio_parse_fp and snapshot_fingerprint(document, "parse") == audio_parse_fp:
+        snap = await load_parse_snapshot(document, await _snap_minio(), logger)
+        if snap and payload_fingerprint_matches(snap, "parse_fingerprint", audio_parse_fp):
+            snap_text = str(snap.get("full_text") or "")
+            if snap_text.strip():
+                logger.info(
+                    "音频解析快照命中，复用转写全文（跳过 ASR）",
+                    document_id=document.id, char_count=len(snap_text),
+                )
+                if task:
+                    await begin_step(session, task, "transcription_done")
+                    task.finish_step("transcription_done", metrics={"resumed": True})
+                return await _audio_resume_tail(
+                    document=document, session=session, task=task, logger=logger,
+                    model_config_port=model_config_port, ctx=ctx,
+                    splitting_config=dict(pipeline_config.get("splitting", {})),
+                    full_text=snap_text, snap=snap,
+                    parse_fingerprint=audio_parse_fp,
+                    pipeline_config=pipeline_config,
+                )
+        logger.info("音频解析快照未命中/不可用，走全量 ASR", document_id=document.id)
+        audio_parse_fp = ""  # 未命中置空：下方正常路径保存时按实际 protocol/model 重算
 
     logger.info(
         "音频转写开始", document_id=document.id,
