@@ -129,7 +129,7 @@
 
     <div v-if="hasAudio" class="sub-section">
       <h4 class="sub-title">音频解析</h4>
-      <p class="sub-desc">ASR 模型与语言参数互不冲突，空值时回退默认配置。</p>
+      <p class="sub-desc">ASR 模型与语言参数互不冲突；模型留空时使用本地 faster-whisper 转写（免费，无需配置）。</p>
 
       <el-form :model="configForm" label-width="120px" class="config-form">
         <el-form-item label="ASR 模型">
@@ -137,7 +137,7 @@
             v-model="configForm.audioAsrModel"
             clearable
             filterable
-            placeholder="默认 whisper-1"
+            placeholder="默认：本地 faster-whisper（免费）"
             style="width: 100%"
           >
             <el-option

@@ -169,6 +169,30 @@ function Invoke-PrepareDeepdocModels {
     }
 }
 
+function Invoke-PrepareLocalWhisperModel {
+    # 本地 ASR 默认模型（faster-whisper-tiny）部署期预装：音频文档未显式配置
+    # asr_model 时默认走本地 faster-whisper 转写，模型缺失会让音频解析直接失败。
+    # 落宿主机 ./backend/.cache/faster-whisper/tiny（compose 挂载为
+    # /app/.cache/faster-whisper，容器重建不丢；运行时默认解析路径已含此目录）。
+    Write-Step "Preparing local faster-whisper model (deploy-time download)"
+    New-Item -ItemType Directory -Force -Path "backend/.cache/faster-whisper" | Out-Null
+
+    $hfEndpoint = if ($env:HF_ENDPOINT) { $env:HF_ENDPOINT } else { "https://hf-mirror.com" }
+    docker compose run --rm --no-deps --user 0 `
+        -e PYTHONPATH=/app/src `
+        -e HF_ENDPOINT=$hfEndpoint `
+        -e NOVAMIND_LOCAL_WHISPER_MODEL_DIR=/app/.cache/faster-whisper/tiny `
+        app python scripts/download_faster_whisper_model.py
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn "faster-whisper model download failed — audio parsing without an explicit"
+        Write-Warn "asr_model will fail until the model is in place. Retry manually:"
+        Write-Warn "  HF_ENDPOINT=https://hf-mirror.com docker compose run --rm --no-deps --user 0 -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com -e NOVAMIND_LOCAL_WHISPER_MODEL_DIR=/app/.cache/faster-whisper/tiny app python scripts/download_faster_whisper_model.py"
+        Write-Warn "Or set knowledge_base.parsing.local_whisper_model_dir to an existing model path."
+    } else {
+        Write-Info "faster-whisper tiny model ready under ./backend/.cache/faster-whisper/tiny"
+    }
+}
+
 function Invoke-Deploy {
     Show-Banner
     Test-DockerEnvironment
@@ -176,6 +200,7 @@ function Invoke-Deploy {
     Ensure-ConfigFiles
     Invoke-ComposeStep -Description "Building and starting services" -ArgumentList @("compose", "up", "-d", "--build")
     Invoke-PrepareDeepdocModels
+    Invoke-PrepareLocalWhisperModel
     $healthy = Wait-AppHealth 180
     Show-Summary -Healthy $healthy
 }
@@ -185,6 +210,7 @@ function Invoke-Update {
     Test-DockerEnvironment
     Invoke-ComposeStep -Description "Rebuilding app service" -ArgumentList @("compose", "up", "-d", "--build", "app")
     Invoke-PrepareDeepdocModels
+    Invoke-PrepareLocalWhisperModel
     $healthy = Wait-AppHealth 120
     Show-Summary -Healthy $healthy
 }

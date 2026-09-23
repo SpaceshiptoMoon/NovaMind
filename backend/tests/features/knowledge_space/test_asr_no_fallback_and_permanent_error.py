@@ -49,15 +49,18 @@ def test_audio_path_has_no_first_config_fallback():
     )
 
 
-def test_audio_unconfigured_model_raises_permanent(monkeypatch):
-    """未配置 asr_model 时必须抛 PermanentProcessingError（no-fallback）。"""
+def test_audio_unconfigured_model_defaults_to_local(monkeypatch):
+    """未配置 asr_model 时默认本地 faster-whisper-tiny（用户裁定 2026-09-23）。
+
+    本地模型不查凭证、协议恒为 local（部署期预装模型，本地推理免费无未授权
+    费用风险）；显式配云端模型但凭证缺失仍抛错（test_…_below）。
+    这里验证：走到转写时 protocol=local、模型名为默认值。
+    """
     import asyncio
     from types import SimpleNamespace
 
     import novamind.features.knowledge_space.services.media_processing as mp
 
-    # no-fallback 抛错发生在 get_config 之前……不，之后（AudioConfig 构造）——
-    # 实际上抛错点在配置读取处之前，但保险起见 mock get_config 防 YAML 缺失
     monkeypatch.setattr(
         "novamind.setting.yaml_config.get_config",
         lambda: SimpleNamespace(
@@ -71,7 +74,7 @@ def test_audio_unconfigured_model_raises_permanent(monkeypatch):
 
     async def _fake_load_ctx(session, document, task=None):
         return SimpleNamespace(
-            pipeline_config={"parsing": {"audio": {}}},  # 未配 asr_model
+            pipeline_config={"parsing": {"audio": {}}},  # 未配 asr_model → 默认本地
             space=SimpleNamespace(config={}),
         )
 
@@ -82,16 +85,80 @@ def test_audio_unconfigured_model_raises_permanent(monkeypatch):
 
     monkeypatch.setattr(mp, "check_document_cancelled", _no_cancel)
 
+    # 记录实际路由到 _run_asr 的协议：local 协议走 transcribe_audio_local
+    captured: dict = {}
+
+    async def _fake_local(*a, **kw):
+        captured["called"] = "local"
+        from novamind.engines.document.media.audio import AudioFileInvalidError
+        raise AudioFileInvalidError("（测试探针）停止在转写入口")
+
+    monkeypatch.setattr(mp, "transcribe_audio_local", _fake_local)
+
+    # 凭证查找不应被触达（本地模型不查凭证）
+    async def _creds_should_not_be_called(*a, **kw):
+        raise AssertionError("本地默认模型不应查 ASR 凭证")
+
     def _noop(*a, **k):
         pass
 
     document = SimpleNamespace(id=1, space_id=1, kb_id=1, uploader_id=1,
                                filename="a.mp3", file_type="mp3")
-    mcs = SimpleNamespace()
+    mcs = SimpleNamespace(get_credentials_by_model=_creds_should_not_be_called)
 
-    with pytest.raises(PermanentProcessingError, match="需配置 ASR 模型"):
+    with pytest.raises(Exception, match="测试探针"):
         asyncio.run(mp.process_audio_document(
-            document=document, file_content=b"x", session=None,
+            document=document, file_content=b"x" * 2048, session=None,
+            logger=SimpleNamespace(info=_noop, warning=_noop, error=_noop, debug=_noop),
+            task=None, model_config_port=mcs,
+        ))
+    assert captured.get("called") == "local", "未配置时未走本地 ASR 协议"
+
+
+def test_cloud_model_missing_credentials_still_raises_permanent(monkeypatch):
+    """显式配云端模型但凭证缺失仍抛 PermanentProcessingError（不串用其它配置）。"""
+    import asyncio
+    from types import SimpleNamespace
+
+    import novamind.features.knowledge_space.services.media_processing as mp
+
+    monkeypatch.setattr(
+        "novamind.setting.yaml_config.get_config",
+        lambda: SimpleNamespace(
+            knowledge_base=SimpleNamespace(
+                parsing=SimpleNamespace(
+                    local_whisper_model_dir="", local_whisper_cpu_threads=1,
+                )
+            )
+        ),
+    )
+
+    async def _fake_load_ctx(session, document, task=None):
+        return SimpleNamespace(
+            pipeline_config={"parsing": {"audio": {"asr_model": "whisper-1-cloud"}}},
+            space=SimpleNamespace(config={}),
+        )
+
+    monkeypatch.setattr(mp, "load_pipeline_context", _fake_load_ctx)
+
+    async def _no_cancel(doc_id):
+        return None
+
+    monkeypatch.setattr(mp, "check_document_cancelled", _no_cancel)
+
+    async def _missing_creds(uploader_id, model_type, model):
+        return None
+
+    def _noop(*a, **k):
+        pass
+
+    document = SimpleNamespace(id=1, space_id=1, kb_id=1, uploader_id=1,
+                               filename="a.mp3", file_type="mp3")
+    mcs = SimpleNamespace(get_credentials_by_model=_missing_creds)
+
+    with pytest.raises(PermanentProcessingError, match="凭证"):
+        asyncio.run(mp.process_audio_document(
+            document=document, file_content=b"x" * 2048, session=None,
             logger=SimpleNamespace(info=_noop, warning=_noop, error=_noop, debug=_noop),
             task=None, model_config_port=mcs,
         ))

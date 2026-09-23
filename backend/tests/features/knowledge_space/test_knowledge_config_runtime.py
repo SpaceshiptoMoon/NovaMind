@@ -599,7 +599,7 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
     fake_mcs = SimpleNamespace(
         get_credentials_by_model=AsyncMock(
             return_value=SimpleNamespace(
-                protocol="openai", api_key="k", base_url="http://x", model="faster-whisper-tiny",
+                protocol="openai", api_key="k", base_url="http://x", model="cloud-whisper",
             )
         ),
         repo=SimpleNamespace(list_by_user=AsyncMock(return_value=[])),
@@ -623,7 +623,7 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
         {
             "parsing": {
                 "audio": {
-                    "asr_model": "faster-whisper-tiny",
+                    "asr_model": "cloud-whisper",  # 云端名：匹配下方 openai 协议转写 mock（本地默认名 faster-whisper-tiny 会走 local 不查凭证）
                     "language": "zh",
                 }
             },
@@ -640,7 +640,7 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
 
     await process_audio_document(document, b"fake-audio", session, SimpleNamespace(info=lambda *a, **k: None, debug=lambda *a, **k: None, warning=lambda *a, **k: None, error=lambda *a, **k: None), task=task, model_config_port=fake_mcs)
 
-    assert captured["audio_model"] == "faster-whisper-tiny"
+    assert captured["audio_model"] == "cloud-whisper"
     assert captured["audio_language"] == "zh"
     # 切分统一后无模态子键覆盖：顶层 strategy=recursive/chunk_size=1000 生效，
     # 残留的 audio 子键（fixed_size/900）被忽略（SplittingConfig extra=ignore）。
@@ -737,7 +737,7 @@ async def test_process_audio_document_loads_embedding_client_for_semantic_split(
     fake_mcs = SimpleNamespace(
         get_credentials_by_model=AsyncMock(
             return_value=SimpleNamespace(
-                protocol="openai", api_key="k", base_url="http://x", model="faster-whisper-tiny",
+                protocol="openai", api_key="k", base_url="http://x", model="cloud-whisper",
             )
         ),
         repo=SimpleNamespace(list_by_user=AsyncMock(return_value=[])),

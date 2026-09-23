@@ -572,18 +572,12 @@ async def process_audio_document(
     pipeline_config = ctx.pipeline_config
     audio_config = (pipeline_config.get("parsing", {}) or {}).get("audio", {})
     space_asr_cfg = (ctx.space.config or {}).get("asr", {}) if ctx.space else {}
-    # no-fallback（与图片/视频路径一致）：未显式选 ASR 模型即抛错，不静默
-    # 回退硬编码 whisper-1 或用户第一个 ASR 配置——兜底让解析路径不可追踪，
-    # 且 local 失败自动烧云端费用属用户未授权行为（审计 P1#8）。
-    asr_model = audio_config.get("asr_model") or space_asr_cfg.get("model")
-    if not asr_model:
-        raise PermanentProcessingError(
-            document_id=document.id,
-            error_message=(
-                f"音频 {document.filename} 解析需配置 ASR 模型，"
-                f"请在知识库音频解析配置中选择 ASR 模型"
-            ),
-        )
+    # 默认本地 ASR（用户裁定 2026-09-23）：未显式选 ASR 模型时默认走本地
+    # faster-whisper（本地推理免费，部署期预装模型，见 deploy.sh
+    # prepare_local_whisper_model）——这不是「串用别的云端配置」的静默兜底，
+    # 而是有明确默认语义的降级路径；转写日志会记录实际生效的 protocol:model。
+    # 显式配置了云端模型但凭证缺失时仍然抛错（不串用其它配置，审计 P1#8）。
+    asr_model = audio_config.get("asr_model") or space_asr_cfg.get("model") or "faster-whisper-tiny"
     language = audio_config.get("language")
 
     # 引擎侧 audio_utils 不再 import setting；宿主在此从 YAML 配置构造 AudioConfig
@@ -605,22 +599,26 @@ async def process_audio_document(
     mcs = model_config_port
 
     # 查 ASR 凭证（按显式配置的模型名精确匹配）：
-    # no-fallback——找不到凭证即抛错，不取「该用户第一个 ASR 配置」串用
-    # （审计 P1#8：用户选了 A 模型可能被静默换成 B 模型/他家凭证，不可追踪）。
+    # - 本地默认模型（faster-whisper-tiny）不查凭证——协议恒为 local，无需 API 配置；
+    # - 云端模型凭证按名字精确匹配，找不到即抛错，不取「该用户第一个 ASR 配置」
+    #   串用（审计 P1#8：用户选了 A 模型可能被静默换成 B 模型/他家凭证，不可追踪）。
     asr_api_key: str | None = None
     asr_base_url: str | None = None
     asr_protocol = "openai"  # 默认
 
-    asr_creds = await mcs.get_credentials_by_model(document.uploader_id, "asr", asr_model)
-    if not asr_creds:
-        raise PermanentProcessingError(
-            document_id=document.id,
-            error_message=(
-                f"未找到 ASR 模型「{asr_model}」的凭证，请在模型管理中添加该模型的 "
-                f"API 配置（知识库音频解析配置当前指定 asr_model={asr_model}）"
-            ),
-        )
-    if asr_creds:
+    if asr_model == "faster-whisper-tiny":
+        asr_protocol = "local"
+    else:
+        asr_creds = await mcs.get_credentials_by_model(document.uploader_id, "asr", asr_model)
+        if not asr_creds:
+            raise PermanentProcessingError(
+                document_id=document.id,
+                error_message=(
+                    f"未找到 ASR 模型「{asr_model}」的凭证，请在模型管理中添加该模型的 "
+                    f"API 配置，或将知识库音频解析配置切回本地默认"
+                    f"（asr_model 留空 = faster-whisper-tiny 本地转写）"
+                ),
+            )
         asr_api_key = asr_creds.api_key
         asr_base_url = asr_creds.base_url
         asr_protocol = asr_creds.protocol or "openai"
