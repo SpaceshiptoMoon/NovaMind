@@ -132,12 +132,19 @@ class DuckDuckGoSearchService(ExternalSearchService):
             return self._normalize_results(results)
 
         except httpx.HTTPStatusError as e:
+            status = e.response.status_code
             self.logger.error(
                 "DuckDuckGo 请求失败",
                 query=query,
-                status_code=e.response.status_code,
+                status_code=status,
                 error=str(e)
             )
+            if status in (401, 403):
+                # 凭证/访问被拒（DD 免费 HTML 端点偶发限流封禁）也传播，
+                # 保持与 tavily/serpapi 一致的语义
+                from novamind.engines.search.errors import WebSearchProviderAuthError
+                raise WebSearchProviderAuthError("duckduckgo", status) from e
+            # 5xx 等服务端问题：降级空结果，不中断搜索流
             return []
         except httpx.TimeoutException:
             self.logger.error("DuckDuckGo 请求超时", query=query)

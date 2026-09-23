@@ -10,6 +10,7 @@ from __future__ import annotations
 
 __all__ = [
     "WebSearchError",
+    "WebSearchProviderAuthError",
     "WebSearchProviderNotConfiguredError",
     "WebSearchProviderUnavailableError",
 ]
@@ -20,6 +21,20 @@ class WebSearchError(Exception):
 
     引擎内部一切预期错误继承此类。宿主装配点捕获后映射为对应宿主 ``BaseAPIError``。
     """
+
+
+class WebSearchProviderAuthError(WebSearchError):
+    """搜索服务商拒绝凭证（HTTP 401/403）——api_key 无效或权限不足。
+
+    与「未配置」「暂不可用」区分开：凭证错误是确定性的配置错误，必须
+    向上层传播（如搜索配置「测试连接」据此报失败），不得静默降级为空结果。
+    """
+
+    def __init__(self, provider: str, status_code: int | None = None):
+        detail = f" (HTTP {status_code})" if status_code else ""
+        super().__init__(f"外部搜索服务商 {provider} 凭证无效或被拒绝{detail}")
+        self.provider = provider
+        self.status_code = status_code
 
 
 class WebSearchProviderNotConfiguredError(WebSearchError):

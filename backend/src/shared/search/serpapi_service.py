@@ -134,12 +134,18 @@ class SerpAPISearchService(ExternalSearchService):
             return self._normalize_results(results)
 
         except httpx.HTTPStatusError as e:
+            status = e.response.status_code
             self.logger.error(
                 "SerpAPI API 请求失败",
                 query=query,
-                status_code=e.response.status_code,
+                status_code=status,
                 error=str(e)
             )
+            if status in (401, 403):
+                # 凭证错误必须传播（测试连接据此报失败），不得吞成空结果
+                from novamind.engines.search.errors import WebSearchProviderAuthError
+                raise WebSearchProviderAuthError("serpapi", status) from e
+            # 5xx 等服务端问题：降级空结果，不中断搜索流
             return []
         except httpx.TimeoutException:
             self.logger.error("SerpAPI API 请求超时", query=query)
