@@ -24,6 +24,10 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from novamind.shared.utils.time_utils import now_china
 
+# figure 占位符模式：__FIGURE_URL__{artifact_id}__，artifact_id 为非空白且
+# 不含 __ 连续下划线的标识串（解析器 artifact_id 形如 fig_1_3 / a1b2c3）
+_FIGURE_PLACEHOLDER_RE = re.compile(r"__FIGURE_URL__(?!__)[^\s_]*(?:_[^\s_]+)*__")
+
 if TYPE_CHECKING:
     # 仅用于类型注解（``Optional["DocumentTask"]`` 前向引用），避免运行期循环 import。
     from novamind.features.knowledge_space.models.document_task import DocumentTask
@@ -289,10 +293,15 @@ async def execute_document_pipeline(
         full_text = parse_snapshot_payload["full_text"]
         if image_url_map:
             full_text = _replace_figure_placeholders(full_text, image_url_map)
+        # 历史快照/上传失败残留的占位符剥除（不进 embedding/ES content）
+        full_text = _replace_figure_placeholders(full_text, {}, strip_unresolved=True)
 
         resume_chunks = [text for text, _meta in resume_prechunked]
         if image_url_map:
             resume_chunks = [_replace_figure_placeholders(c, image_url_map) for c in resume_chunks]
+        resume_chunks = [
+            _replace_figure_placeholders(c, {}, strip_unresolved=True) for c in resume_chunks
+        ]
 
         if split_config_drifted:
             _logger.info(
@@ -444,6 +453,23 @@ async def execute_document_pipeline(
                 for chunk in parse_result.chunks
             ]
             chunks = parse_result.chunks
+        # 上传失败的 figure 占位符必须剥除（审计 P1#7）：垃圾串进 embedding
+        # 污染向量、检索命中原样返回给用户/LLM。有 figure_regions 但 map 不含
+        # 的即失败项——全文与分块统一 strip_unresolved 兜底剥除。
+        if figure_regions:
+            full_text = _replace_figure_placeholders(full_text, {}, strip_unresolved=True)
+            parse_result.chunks = [
+                _replace_figure_placeholders(c, {}, strip_unresolved=True)
+                for c in parse_result.chunks
+            ]
+            chunks = parse_result.chunks
+            if len(image_url_map) < len(figure_regions):
+                _logger.warning(
+                    "部分 PDF figure 图片上传失败，残留占位符已剥除（figure 能力降级）",
+                    document_id=document_id,
+                    failed_count=len(figure_regions) - len(image_url_map),
+                )
+        if image_url_map:
             # 上传完成后清除原始 PNG bytes，降低大 PDF 多图场景的内存占用。
             for region in figure_regions:
                 region.pop("image_blobs", None)
@@ -539,13 +565,26 @@ async def execute_document_pipeline(
 
 
 
-def _replace_figure_placeholders(text: str, image_url_map: dict[str, str]) -> str:
-    """把 full_text / chunk content 里的 __FIGURE_URL__{artifact_id}__ 替换为真实 URL。"""
-    if not text or not image_url_map:
+def _replace_figure_placeholders(
+    text: str,
+    image_url_map: dict[str, str],
+    *,
+    strip_unresolved: bool = False,
+) -> str:
+    """把 full_text / chunk content 里的 __FIGURE_URL__{artifact_id}__ 替换为真实 URL。
+
+    strip_unresolved=True 时同时剥除 map 中不存在的占位符（上传失败的 figure），
+    防垃圾串进 embedding 与 ES content（审计 P1#7——检索命中会把
+    ``__FIGURE_URL__xxx__`` 原样返回给用户/LLM，且占位符污染向量）。
+    """
+    if not text:
         return text
-    for artifact_id, image_url in image_url_map.items():
-        placeholder = f"__FIGURE_URL__{artifact_id}__"
-        text = text.replace(placeholder, image_url)
+    if image_url_map:
+        for artifact_id, image_url in image_url_map.items():
+            placeholder = f"__FIGURE_URL__{artifact_id}__"
+            text = text.replace(placeholder, image_url)
+    if strip_unresolved:
+        text = _FIGURE_PLACEHOLDER_RE.sub("", text)
     return text
 
 

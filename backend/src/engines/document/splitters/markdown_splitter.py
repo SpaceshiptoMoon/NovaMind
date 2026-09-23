@@ -283,6 +283,11 @@ class MarkdownSplitter(BaseSplitter):
             remaining = text[start_idx:]
             if sentence_list and remaining.strip():
                 sentence_list[-1] += remaining
+            elif remaining.strip():
+                # 无任何句读标点的段（代码块/URL 清单/base64）——剩余部分
+                # 不能丢：此前 sentence_list 为空时这里静默丢弃整段内容
+                # （审计 P1#10，检索盲区且无日志）。
+                sentence_list.append(remaining)
         
         # 组合短句以达到最小长度
         combined_sentences = []
