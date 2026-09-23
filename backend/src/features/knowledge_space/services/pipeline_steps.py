@@ -846,11 +846,30 @@ async def run_post_parse_tail(
     # 5. 索引到 ES
     await begin_step(session, task, "indexed")
     es_client = await get_es_client()
+    # delete-before-write：bulk 是按 chunk_id 的 upsert，分块数变少时旧
+    # {doc}_{高序号} chunk 会永久残留进检索（审计 P1#4——指纹失效重建路径
+    # 只有 REPROCESS/删除/取消清 ES，RETRY 成功路径不清）。索引前按文档
+    # 清一次本份额度，幂等且与分块数无关。
+    try:
+        await es_client.delete_document_chunks(
+            space_id=document.space_id, document_id=document.id,
+        )
+    except Exception as pre_del_err:
+        logger.warning(
+            "索引前清理旧分块失败（继续按 upsert 索引，可能残留旧 chunk）",
+            document_id=document.id, error=str(pre_del_err),
+        )
     indexed_count = await es_client.bulk_index_chunks(
         space_id=document.space_id,
         chunks=es_chunks,
         embedding_dim=embedding_config.get("dimension"),
     )
+    # 部分失败不再静默（审计 P1#5）：bulk 内部失败只计成功数不抛错，此前
+    # indexed_count != 0 即 COMPLETED，缺失块永久无感知。要求全量写入。
+    if es_chunks and indexed_count < len(es_chunks):
+        raise RuntimeError(
+            f"ES 索引部分写入失败: {indexed_count}/{len(es_chunks)} 个分块成功写入"
+        )
     if indexed_count == 0 and es_chunks:
         raise RuntimeError(f"ES 索引写入失败: {len(es_chunks)} 个分块均未成功写入")
     task.finish_step("indexed", metrics={

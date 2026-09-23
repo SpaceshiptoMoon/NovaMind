@@ -74,7 +74,10 @@ def _patch_tail_deps(monkeypatch):
         async def _bulk(*, space_id, chunks, embedding_dim):
             return len(chunks)
 
-        return SimpleNamespace(bulk_index_chunks=_bulk)
+        async def _pre_delete(*, space_id, document_id):
+            return 0
+
+        return SimpleNamespace(bulk_index_chunks=_bulk, delete_document_chunks=_pre_delete)
 
     monkeypatch.setattr(pipeline_steps, "check_document_cancelled", _no_cancel)
     monkeypatch.setattr(pipeline_steps, "generate_embeddings", _fake_embed)
