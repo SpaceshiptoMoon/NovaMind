@@ -129,7 +129,9 @@
 
     <div v-if="hasAudio" class="sub-section">
       <h4 class="sub-title">音频解析</h4>
-      <p class="sub-desc">ASR 模型与语言参数互不冲突；模型留空时使用本地 faster-whisper 转写（免费，无需配置）。</p>
+      <p class="sub-desc">
+        ASR 模型可选本地 Whisper 或已配置的云端模型；默认使用本地 Whisper（免费，无需配置）。
+      </p>
 
       <el-form :model="configForm" label-width="120px" class="config-form">
         <el-form-item label="ASR 模型">
@@ -137,16 +139,29 @@
             v-model="configForm.audioAsrModel"
             clearable
             filterable
-            placeholder="默认：本地 faster-whisper（免费）"
+            placeholder="默认：本地 Whisper（免费）"
             style="width: 100%"
           >
-            <el-option
-              v-for="model in asrModels"
-              :key="model.model"
-              :label="model.model"
-              :value="model.model"
-            />
+            <el-option-group label="本地">
+              <el-option label="本地 Whisper（免费）" value="faster-whisper-tiny" />
+            </el-option-group>
+            <el-option-group
+              v-if="asrModels.length"
+              label="云端模型"
+            >
+              <el-option
+                v-for="model in asrModels"
+                :key="model.model"
+                :label="model.model"
+                :value="model.model"
+              />
+            </el-option-group>
           </el-select>
+          <div v-if="configForm.audioAsrModel" class="field-hint">
+            {{ configForm.audioAsrModel === 'faster-whisper-tiny'
+              ? '使用本地 Whisper 转写，无需 API 配置'
+              : '使用该云端模型的 API 凭证转写，请在模型管理中确认已配置' }}
+          </div>
         </el-form-item>
         <el-form-item label="语言">
           <el-select
