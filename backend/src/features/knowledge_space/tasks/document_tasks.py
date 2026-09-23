@@ -477,7 +477,7 @@ async def process_document_task(
                 await _rollback_session_safely(session, document_id=document_id, job_id=job_id)
 
                 # 强制标记 FAILED（优先用独立 session，兜底用 raw SQL；内部三层兜底不会抛出）
-                await _ensure_mark_failed(document_id, str(e), job_id=job_id, max_tries=max_tries, retry_count=task_retry_count)
+                await _ensure_mark_failed(document_id, f"[已重试最大次数] {e}", job_id=job_id, max_tries=max_tries, retry_count=task_retry_count)
                 # 批次摘要刷新走主会话，会话可能已不可用——失败只告警，不影响任务终态
                 try:
                     if task_batch_id:
@@ -636,15 +636,40 @@ async def _ensure_mark_failed(
     max_tries: int | None = None,
     retry_count: int | None = None,
 ) -> None:
+    """强制将文档标记为 FAILED（三层兜底），_ensure_mark_terminal 的 FAILED 特化。"""
+    from novamind.features.knowledge_space.models.document_task import TaskStatus
+
+    await _ensure_mark_terminal(
+        document_id, error_message,
+        job_id=job_id, max_tries=max_tries, retry_count=retry_count,
+        target_status=TaskStatus.FAILED,
+    )
+
+
+async def _ensure_mark_terminal(
+    document_id: int,
+    error_message: str,
+    *,
+    job_id: str | None = None,
+    max_tries: int | None = None,
+    retry_count: int | None = None,
+    target_status: int | None = None,
+) -> None:
     """
-    强制将文档标记为 FAILED，三层兜底确保状态一定更新
+    强制将文档任务标记为终态（FAILED 或 CANCELLED），三层兜底确保状态一定更新
 
     1. 尝试用 ORM 独立 session 更新
     2. ORM 失败则用 raw SQL 更新
     3. 都失败则记录严重告警（等待 recover_orphan_documents 在下次启动时处理）
-    """
 
-    failed_msg = f"[已重试最大次数] {error_message}"
+    target_status: 终态（TaskStatus.FAILED / TaskStatus.CANCELLED），默认 FAILED。
+    双 writer 统一：取消路径必须写 CANCELLED，否则 API 侧写的 CANCELLED 会被
+    worker 侧的 FAILED 覆盖（last-write-wins），终态随机且 CANCELLED 无法重试。
+    """
+    from novamind.features.knowledge_space.models.document_task import TaskStatus
+
+    status = target_status if target_status is not None else TaskStatus.FAILED
+    failed_msg = error_message
 
     # 第 1 层：ORM 独立 session
     try:
@@ -665,23 +690,26 @@ async def _ensure_mark_failed(
             if task:
                 # 先把最后一个 running 节点标记为 failed + error，让节点日志显示「卡在哪个节点」
                 task.mark_last_running_step_failed(error_message)
-                task.mark_failed(failed_msg)
+                task.status = status
+                task.error_message = failed_msg
+                task.completed_at = now_china()
                 if task.batch_id:
                     await batch_repo.refresh_summary(task.batch_id)
                 await independent_session.commit()
                 logger.error(
-                    "arq 任务最终失败",
+                    "arq 任务终态标记",
                     document_id=document_id,
                     job_id=job_id,
                     retry_count=retry_count,
                     max_tries=max_tries,
                     error=error_message,
+                    target_status=int(status),
                     failure_stage="orm",
                 )
-                logger.info("任务已标记 FAILED（ORM）", document_id=document_id)
+                logger.info("任务已标记终态 %s（ORM）", TaskStatus(status).name, document_id=document_id)
                 return
     except Exception as e:
-        logger.warning("ORM 标记 FAILED 失败，尝试 raw SQL", document_id=document_id, error=str(e))
+        logger.warning("ORM 标记终态失败，尝试 raw SQL", document_id=document_id, error=str(e))
 
     # 第 2 层：Raw SQL（下沉 DocumentTaskRepository.mark_failed_independent）
     try:
@@ -689,26 +717,28 @@ async def _ensure_mark_failed(
             DocumentTaskRepository,
         )
 
-        failed_at = now_china()
+        terminal_at = now_china()
         await DocumentTaskRepository.mark_failed_independent(
             document_id,
             failed_msg,
             job_id=job_id,
-            completed_at=failed_at,
+            completed_at=terminal_at,
+            failed_status=int(status),
         )
         logger.error(
-            "arq 任务最终失败",
+            "arq 任务终态标记",
             document_id=document_id,
             job_id=job_id,
             retry_count=retry_count,
             max_tries=max_tries,
             error=error_message,
+            target_status=int(status),
             failure_stage="raw_sql",
         )
-        logger.info("任务已标记 FAILED（raw SQL）", document_id=document_id)
+        logger.info("任务已标记终态 status=%s（raw SQL）", int(status), document_id=document_id)
         return
     except Exception as e:
-        logger.error("raw SQL 标记 FAILED 也失败", document_id=document_id, error=str(e))
+        logger.error("raw SQL 标记终态也失败", document_id=document_id, error=str(e))
 
     # 第 3 层：记录严重告警，等待启动时 recover_orphan_documents 处理
     logger.critical(
@@ -725,14 +755,17 @@ async def _handle_cancellation(document_id: int, space_id: int) -> None:
     """
     用户取消文档处理后的事务补偿
     """
+    from novamind.features.knowledge_space.models.document_task import TaskStatus
     from novamind.features.knowledge_space.services.document_task_tracking import clear_cancel_flag
-
 
     # 清除取消标记
     await clear_cancel_flag(document_id)
 
-    # 强制标记 FAILED
-    await _ensure_mark_failed(document_id, "[用户取消] 文档处理已被用户取消")
+    # 标记 CANCELLED（对齐 API 侧 cancel_processing 的终态语义）：
+    # 此前 worker 侧取消走 FAILED 标记——API（CANCELLED）与 worker（FAILED）
+    # 双 writer last-write-wins，终态随机；且 retry 原本只认 FAILED/COMPLETED，
+    # 落 CANCELLED 的行会被误清活 job 后锁死不可重试。这里三层兜底统一写 CANCELLED。
+    await _ensure_mark_terminal(document_id, "[用户取消] 文档处理已被用户取消", target_status=TaskStatus.CANCELLED)
 
     # 清理 ES 残留数据（非关键）
     try:
@@ -921,7 +954,9 @@ async def enqueue_process_document(
     document = await doc_repo.lock_active_document_by_id(document_id)
     if not document:
         raise DocumentNotFoundError(document_id)
-    active_task = await task_repo.get_active_by_document_id(document_id)
+    # 锁后复查必须用 FOR UPDATE 读：文档行锁（最新提交）+ 任务行普通读（RR 旧快照）
+    # 混用会让并发事务刚提交的 PENDING 任务行不可见，防重失效（双跑/误清活 job）。
+    active_task = await task_repo.lock_active_by_document_id(document_id)
     if active_task:
         raise DocumentAlreadyProcessingError(document_id)
 

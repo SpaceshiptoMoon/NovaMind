@@ -52,6 +52,43 @@ class DocumentTaskRepository:
         )
         return result.scalar_one_or_none()
 
+    async def lock_active_by_document_id(self, document_id: int) -> DocumentTask | None:
+        """活跃任务行的 FOR UPDATE 读（最新提交，不受会话 RR 快照限制）。
+
+        入队防重必须用本方法：调用方先 ``lock_active_document_by_id`` 拿文档行锁
+        （锁读走最新提交），再查任务行——若任务行走普通 SELECT，REPEATABLE READ
+        下读的是请求事务建立时的旧快照，看不到并发事务刚提交的 PENDING 任务行，
+        「锁后复查」的 check-then-act 承诺失效（双击重试 → 同一文档双 job 双跑；
+        更坏：误清活 job 后任务永久 PENDING）。FOR UPDATE 读绕过快照读最新提交，
+        且与文档行锁同事务，天然串行化同文档的入队竞争。
+        """
+        result = await self.session.execute(
+            select(DocumentTask)
+            .where(DocumentTask.document_id == document_id, DocumentTask.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]))
+            .order_by(desc(DocumentTask.id))
+            .limit(1)
+            .with_for_update()
+        )
+        return result.scalar_one_or_none()
+
+    async def lock_active_by_document_ids(self, document_ids: list[int]) -> dict[int, DocumentTask]:
+        """批量版 lock_active_by_document_id，返回 {document_id: 活跃任务}。"""
+        if not document_ids:
+            return {}
+        result = await self.session.execute(
+            select(DocumentTask)
+            .where(
+                DocumentTask.document_id.in_(document_ids),
+                DocumentTask.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]),
+            )
+            .order_by(DocumentTask.document_id.asc(), desc(DocumentTask.id))
+            .with_for_update()
+        )
+        active: dict[int, DocumentTask] = {}
+        for task in result.scalars().all():
+            active.setdefault(task.document_id, task)
+        return active
+
     async def get_latest_by_document_ids(self, document_ids: list[int]) -> dict[int, DocumentTask]:
         if not document_ids:
             return {}

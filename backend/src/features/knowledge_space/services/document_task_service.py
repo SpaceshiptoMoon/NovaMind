@@ -2,7 +2,7 @@
 
 集中承载文档处理的任务编排与批次管理：
 - ``process_kb_documents``：批量触发拆分解析
-- ``retry_document``：单文档重试（FAILED/COMPLETED）
+- ``retry_document``：单文档重试（FAILED/COMPLETED/CANCELLED）
 - ``cancel_processing``：取消处理（Redis 取消标记 + arq abort）
 - ``list_batch_overview`` / ``get_active_processing_count`` / ``get_processing_status``：状态查询
 - ``_enqueue_document_processing`` / ``_enqueue_precreated_tasks`` /
@@ -244,7 +244,9 @@ class DocumentTaskService:
         locked_documents = await self.doc_repo.lock_active_documents_by_ids(existing_doc_ids)
         document_map = {doc.id: doc for doc in locked_documents}
         task_repo = DocumentTaskRepository(self.session)
-        active_task_map = await task_repo.get_active_by_document_ids(existing_doc_ids)
+        # 锁后复查用 FOR UPDATE 读（原因同 lock_active_by_document_id：普通读在
+        # RR 下是旧快照，防重失效）。锁顺序恒为 document → task，与单文档入口一致，无死锁环。
+        active_task_map = await task_repo.lock_active_by_document_ids(existing_doc_ids)
         latest_task_map = await task_repo.get_latest_by_document_ids(existing_doc_ids)
 
         eligible_documents: list[Document] = []
@@ -392,16 +394,21 @@ class DocumentTaskService:
         batch_creator_id: int | None = None,
         batch_note: str | None = None,
     ) -> dict[str, Any]:
-        """重试文档处理，支持 FAILED 和 COMPLETED 状态。"""
+        """重试文档处理，支持 FAILED、COMPLETED 和 CANCELLED 状态。"""
         document = await self._validate_document_not_processing(document_id)
         if document.kb_id != kb_id or document.space_id != space_id:
             raise DocumentNotFoundError(document_id)
 
         _task_repo = DocumentTaskRepository(self.session)
         latest_task = await _task_repo.get_by_document_id(document_id)
-        if not latest_task or latest_task.status not in (TaskStatus.FAILED, TaskStatus.COMPLETED):
+        # CANCELLED 可重试：取消后用户改变主意点重试是常规诉求；此前只认
+        # FAILED/COMPLETED，而取消终态在 API/worker 双 writer 下可能落 CANCELLED，
+        # 用户会撞「只能重试失败或已完成的文档」死路（2026-09 链路审计 P1#6）。
+        if not latest_task or latest_task.status not in (
+            TaskStatus.FAILED, TaskStatus.COMPLETED, TaskStatus.CANCELLED,
+        ):
             raise InvalidParameterError(
-                "只能重试失败或已完成的文档",
+                "只能重试失败、已完成或已取消的文档",
                 field="document_id",
             )
 
@@ -432,7 +439,9 @@ class DocumentTaskService:
         if not document:
             raise DocumentNotFoundError(document_id)
         _task_repo = DocumentTaskRepository(self.session)
-        active_task = await _task_repo.get_active_by_document_id(document_id)
+        # FOR UPDATE 读活跃任务行：本查询之后的 enqueue_process_document 会再拿
+        # 文档行锁，锁序 document→task 与入队口一致；用锁读保证与本事务快照无关。
+        active_task = await _task_repo.lock_active_by_document_id(document_id)
         if active_task:
             raise DocumentAlreadyProcessingError(document_id)
         return document
@@ -463,7 +472,9 @@ class DocumentTaskService:
             # 1. 并发竞态/真实排队——此时 DB 已出现活跃任务行 → 仍按「正在处理」拒绝；
             # 2. job 所属任务行已终结、仅 arq 层残留僵尸 job（worker 崩溃/孤儿恢复未清理，
             #    doc 574 事故）→ 清理后放行，避免文档被永久锁死无法重试。
-            if await DocumentTaskRepository(self.session).get_active_by_document_id(document.id):
+            # 复核用 FOR UPDATE 读：普通读受本事务 RR 快照限制，看不到并发事务
+            # 刚提交的 PENDING 任务行 → 会误把活 job 当僵尸清掉，任务永久 PENDING。
+            if await DocumentTaskRepository(self.session).lock_active_by_document_id(document.id):
                 raise DocumentAlreadyProcessingError(document.id)
             purged_job_ids = await purge_document_jobs(document.id)
             self.logger.warning(
