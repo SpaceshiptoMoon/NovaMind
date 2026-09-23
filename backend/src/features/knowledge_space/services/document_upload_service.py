@@ -121,11 +121,21 @@ class DocumentUploadService:
         filename, file_content = await self._normalize_upload_file(filename, file_content)
         allowed_types = self._get_allowed_file_types(kb)
 
-        # 5. 验证文件（使用 python-magic 检测真实 MIME 类型）
+        # 预判文件模态（决定 validator 大小上限覆盖：video 500 / audio 200 MB，
+        # 修复模态上限被全局 100MB 闸提前拦死的死配置问题——审计 P2）
+        preview_ext = self._get_file_type(filename)
+        modality_limit = self._MODALITY_MAX_SIZE_MB.get("text", 100)
+        for _mod, _types in self.MODALITY_TO_FILE_TYPES.items():
+            if preview_ext in _types:
+                modality_limit = self._MODALITY_MAX_SIZE_MB.get(_mod, 100)
+                break
+
+        # 5. 验证文件（使用 python-magic 检测真实 MIME 类型），按模态传大小上限
         file_info = validate_file(
             content=file_content,
             filename=filename,
             allowed_extensions=allowed_types,
+            max_file_size=modality_limit * 1024 * 1024,
         )
 
         if not file_info.is_valid:
@@ -271,6 +281,29 @@ class DocumentUploadService:
                 existing_document_id=conflicting.id if conflicting else None,
                 existing_filename=conflicting.filename if conflicting else None,
             )
+        except Exception:
+            # commit 失败（连接断开等）：DB 行已回滚，但 MinIO 对象已上传——
+            # 不补偿会成为无 DB 引用的孤儿对象（审计 P2）。best-effort 删除。
+            storage = getattr(document, "storage", None) or {}
+            bucket = storage.get("minio_bucket")
+            object_name = storage.get("minio_object_name")
+            if bucket and object_name:
+                try:
+                    from novamind.shared.storage.minio_client import MinioClient
+
+                    deleted = await MinioClient.delete_document(
+                        self.minio_client, bucket_name=bucket, object_name=object_name,
+                    )
+                    self.logger.warning(
+                        "上传 commit 失败，已补偿删除 MinIO 孤儿对象",
+                        bucket=bucket, object_name=object_name, deleted=deleted,
+                    )
+                except Exception as cleanup_err:
+                    self.logger.error(
+                        "上传 commit 失败且 MinIO 孤儿补偿删除失败（对象残留）",
+                        bucket=bucket, object_name=object_name, error=str(cleanup_err),
+                    )
+            raise
 
         # 创建成功后同步哈希缓存为 exists=True。步骤 8 的 get_by_hash 在未命中时会
         # 缓存 exists=False，若创建后不更正，后续同哈希上传会因缓存命中而绕过去重
@@ -407,6 +440,15 @@ class DocumentUploadService:
         if ext != "doc":
             return filename, file_content
 
+        # CDFB（OLE2 Compound File）魔数前置校验（审计 P2）：.doc 会被交给
+        # LibreOffice/Word COM 解析（转换先于 validate_file），历史 CVE 集中在
+        # 文档解析器——魔数不对的字节不该喂给外部转换器。
+        if not file_content.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+            raise DocumentConversionError(
+                "文件扩展名为 .doc 但内容不是有效的 Word 97-2003 文档（OLE2 魔数缺失）",
+                file_type="doc",
+            )
+
         target_filename = f"{Path(filename).stem}.docx"
         try:
             converted_bytes = await convert_doc_to_docx(file_content, filename)
@@ -440,6 +482,13 @@ class DocumentUploadService:
         # 检查文件名是否为空
         if not filename or not filename.strip():
             raise InvalidParameterError("文件名不能为空", field="filename")
+
+        # 长度校验：DB 列 String(255)，超长文件名会一路穿过所有校验直到
+        # INSERT 抛 1406 DataError → 500（审计 P2）。入口处显式拦截。
+        if len(filename) > 255:
+            raise InvalidParameterError(
+                f"文件名过长（{len(filename)} 字符，上限 255）", field="filename"
+            )
 
         # 防止路径遍历攻击
         # 允许字母、数字、中文（含扩展 A 区与兼容表意字）、CJK 标点、全角字符、

@@ -61,8 +61,11 @@ from novamind.features.knowledge_space.services.document_task_service import Doc
 from novamind.features.knowledge_space.services.document_upload_service import DocumentUploadService
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# 文件大小限制：默认最大 100MB
-MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB
+# 文件大小限制：读取层上限取全部模态的最大值（text/image 100 / audio 200 /
+# video 500）。逐模态权威校验在 DocumentUploadService._get_max_file_size——
+# 此前读取层硬编码 100MB 先于模态闸生效，video 500MB 配置不可达（审计 P2）。
+MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100MB：文本/图片上限（保守默认，用于 Content-Length 预检）
+GLOBAL_UPLOAD_READ_LIMIT = 500 * 1024 * 1024  # 500MB：读取层硬上限（video 模态）
 
 # 允许上传的文件类型白名单（从 document_file_types.SUPPORTED_FILE_TYPES 派生，无需手动维护）
 ALLOWED_FILE_EXTENSIONS = {f".{t}" for t in SUPPORTED_FILE_TYPES}
@@ -134,19 +137,23 @@ async def upload_document(
                 allowed=sorted(ALLOWED_FILE_EXTENSIONS),
             )
 
-        # 检查文件大小（优先检查 Content-Length，再读取内容后检查实际大小）
+        # Content-Length 预检：超全局读取上限直接拒（防无谓的流式读取）
         content_length = request.headers.get("content-length")
         try:
             content_length_int = int(content_length) if content_length else 0
         except (ValueError, OverflowError):
             content_length_int = 0
-        if content_length_int > MAX_UPLOAD_SIZE:
+        if content_length_int > GLOBAL_UPLOAD_READ_LIMIT:
             raise DocumentSizeExceededError(
                 size=int(content_length),
-                limit=MAX_UPLOAD_SIZE,
+                limit=GLOBAL_UPLOAD_READ_LIMIT,
             )
 
-        file_content = await DocumentUploadService.read_upload_file(file, max_size=MAX_UPLOAD_SIZE)
+        # 读取层用全局上限兜底；逐模态权威校验在 service 层 _get_max_file_size
+        # （按 text/image 100 / audio 200 / video 500MB 分治）
+        file_content = await DocumentUploadService.read_upload_file(
+            file, max_size=GLOBAL_UPLOAD_READ_LIMIT
+        )
 
         # 上传文档（仅存 MinIO，不触发解析）
         uploaded = await document_upload_service.upload_document(
@@ -174,10 +181,11 @@ async def upload_document(
         )
 
     # 多文件：批量上传（校验预处理下沉 document_upload_service.read_and_validate_uploads）
+    # 读取层用全局上限；逐模态权威校验在 service 层
     file_data_list, failed_list = await DocumentUploadService.read_and_validate_uploads(
         files,
         allowed_extensions=ALLOWED_FILE_EXTENSIONS,
-        max_size=MAX_UPLOAD_SIZE,
+        max_size=GLOBAL_UPLOAD_READ_LIMIT,
         max_batch_count=MAX_BATCH_FILE_COUNT,
     )
 

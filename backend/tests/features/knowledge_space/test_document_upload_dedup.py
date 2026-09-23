@@ -113,7 +113,7 @@ def _patch_upload_helpers(monkeypatch, service):
     """Bypass file normalization/validation/modality checks with trivial stubs."""
     monkeypatch.setattr(
         "novamind.features.knowledge_space.services.document_upload_service.validate_file",
-        lambda content, filename, allowed_extensions: SimpleNamespace(
+        lambda content, filename, allowed_extensions, **_: SimpleNamespace(
             is_valid=True,
             extension="pdf",
             detected_mime="application/pdf",
