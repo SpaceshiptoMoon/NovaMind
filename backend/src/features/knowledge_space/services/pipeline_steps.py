@@ -9,6 +9,7 @@ from novamind.engines.document.media.audio import upload_parsed_text_to_minio
 from novamind.features.knowledge_space.exceptions import (
     DocumentProcessingError,
     EmbeddingError,
+    PermanentProcessingError,
 )
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.knowledge_base import KnowledgeBase
@@ -471,7 +472,7 @@ async def get_embedding_client(
     if not model_name and user_id:
         model_name = await model_config_service.get_user_default_model_name(user_id, "embedding")
     if not model_name:
-        raise DocumentProcessingError(
+        raise PermanentProcessingError(
             document_id=0,
             error_message="未配置 Embedding 模型，请在模型配置中添加",
         )

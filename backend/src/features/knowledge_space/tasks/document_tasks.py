@@ -470,6 +470,34 @@ async def process_document_task(
             max_tries = ctx.get("task_queue_max_tries", ctx.get("max_tries", _get_task_queue_max_tries()))
             retry_delay_seconds = ctx.get("retry_delay_seconds", _get_task_queue_retry_delay_seconds())
             retry_meta = _build_retry_observability(max_tries, task_retry_count)
+
+            # 永久性错误分流：配置缺失/文件损坏/模型输出无效等确定性失败，
+            # 重试不可能成功——直接终判，不再白烧 max_tries-1 次重试（每次
+            # 重下文件、重付 VLM/OCR/ASR 调用）。瞬时错误（网络/限流）不变，
+            # 仍走下方 job_try < max_tries 的 raise Retry 分支。
+            from novamind.features.knowledge_space.exceptions import PermanentProcessingError
+
+            if isinstance(e, PermanentProcessingError):
+                logger.warning(
+                    "永久性错误，跳过重试直接终判",
+                    document_id=document_id,
+                    job_id=job_id,
+                    error=str(e),
+                )
+                await _rollback_session_safely(session, document_id=document_id, job_id=job_id)
+                await _ensure_mark_failed(document_id, str(e), job_id=job_id, max_tries=max_tries, retry_count=task_retry_count)
+                await _unbind_job_safely(document_id, job_id=job_id)
+                await _notify_document_terminal(
+                    "failed",
+                    user_id=document.uploader_id,
+                    document_id=document_id,
+                    space_id=space_id,
+                    kb_id=kb_id,
+                    filename=document.filename,
+                    detail=str(e)[:200],
+                )
+                return
+
             if job_try >= max_tries:
                 # 最终失败：先回滚 pipeline 残留变更，再标记 FAILED。
                 # 回滚用安全版：内存耗尽时 rollback 自身可能 MemoryError，

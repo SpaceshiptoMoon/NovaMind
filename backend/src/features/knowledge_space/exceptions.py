@@ -261,6 +261,20 @@ class DocumentProcessingError(KnowledgeSpaceError):
         self.error_message = error_message
 
 
+class PermanentProcessingError(DocumentProcessingError):
+    """永久性文档处理错误：重试不可能成功，arq worker 不应再 Retry。
+
+    典型：配置缺失（未配嵌入模型/VLM/ASR 模型）、文件损坏（0 字符解析、无效
+    音频）、模型输出无效（VLM 空描述）等确定性失败。此前这类错误一律走
+    ``except Exception → raise Retry`` 白烧 3 次重试（每次重下文件、重付
+    VLM/OCR/ASR 调用），用户多等数分钟才见终态（审计 P2 永久错误无分流）。
+    worker 侧按 isinstance 分流：命中即直接终判 FAILED，不再 raise Retry。
+    """
+
+    def __init__(self, document_id: int, error_message: str):
+        super().__init__(document_id=document_id, error_message=error_message)
+
+
 class LocalASRBusyError(TransientBusyError):
     """本地 ASR 正在转写其它音频，当前任务需延后重试。
 

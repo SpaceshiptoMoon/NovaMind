@@ -595,8 +595,13 @@ async def test_process_audio_document_applies_runtime_config(monkeypatch):
         AsyncMock(return_value=SimpleNamespace(get_config=lambda: {})),
     )
 
+    # no-fallback（审计 P1#8）后凭证必须命中，不再走「第一个 ASR 配置」兜底
     fake_mcs = SimpleNamespace(
-        get_credentials_by_model=AsyncMock(return_value=None),
+        get_credentials_by_model=AsyncMock(
+            return_value=SimpleNamespace(
+                protocol="openai", api_key="k", base_url="http://x", model="faster-whisper-tiny",
+            )
+        ),
         repo=SimpleNamespace(list_by_user=AsyncMock(return_value=[])),
     )
     # 批次 5b：media_processing 不再内部自建 ModelConfigService，改为参数注入 model_config_port
@@ -728,8 +733,13 @@ async def test_process_audio_document_loads_embedding_client_for_semantic_split(
         AsyncMock(return_value=SimpleNamespace(get_config=lambda: {})),
     )
 
+    # no-fallback（审计 P1#8）后凭证必须命中，不再走「第一个 ASR 配置」兜底
     fake_mcs = SimpleNamespace(
-        get_credentials_by_model=AsyncMock(return_value=None),
+        get_credentials_by_model=AsyncMock(
+            return_value=SimpleNamespace(
+                protocol="openai", api_key="k", base_url="http://x", model="faster-whisper-tiny",
+            )
+        ),
         repo=SimpleNamespace(list_by_user=AsyncMock(return_value=[])),
     )
     # 批次 5b：media_processing 不再内部自建 ModelConfigService，改为参数注入 model_config_port

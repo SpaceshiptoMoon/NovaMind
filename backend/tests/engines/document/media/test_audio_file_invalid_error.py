@@ -73,10 +73,11 @@ async def test_process_audio_does_not_fallback_cloud_on_invalid_file(monkeypatch
     回归 document 60：损坏文件不应走到云端 DashScope 又报 FILE_DOWNLOAD_FAILED，
     而应第一时间抛「音频文件损坏，请重新上传」。
     """
-    # mock load_pipeline_context：绕过 DB，返回最小 ctx
+    # mock load_pipeline_context：绕过 DB，返回最小 ctx（asr_model 显式配置——
+    # no-fallback 后未配置 ASR 模型会在更早处抛错，审计 P1#8）
     async def _fake_load_ctx(session, document, task=None):
         return SimpleNamespace(
-            pipeline_config={"parsing": {"audio": {}}},
+            pipeline_config={"parsing": {"audio": {"asr_model": "faster-whisper-tiny"}}},
             space=SimpleNamespace(config={}),
         )
 
@@ -119,13 +120,21 @@ async def test_process_audio_does_not_fallback_cloud_on_invalid_file(monkeypatch
         raise AudioFileInvalidError("音频文件过小 (486 bytes)，本地 ASR 要求至少 1024 bytes")
     monkeypatch.setattr(media_processing, "transcribe_audio_local", _raise_invalid)
 
-    # mock _find_cloud_asr_credentials：若被调用则失败（证明不应回退云端）
+    # _find_cloud_asr_credentials 已随「本地失败回退云端」一并移除（no-fallback，
+    # 审计 P1#8）；文件损坏路径现在直接抛 DocumentProcessingError，云端不应被触碰。
+    # 这里 monkeypatch 引擎源模块的云端转写函数兜底验证：若被调用则失败。
+    # （transcribe_audio_with_dashscope 在 process_audio_document 内懒 import，
+    # 必须打在真实来源模块上。）
+    import novamind.engines.document.media.audio as audio_engine
+
     async def _cloud_should_not_be_called(*a, **kw):
         raise AssertionError("文件损坏是永久性错误，不应回退云端 ASR")
-    monkeypatch.setattr(media_processing, "_find_cloud_asr_credentials", _cloud_should_not_be_called)
+    monkeypatch.setattr(audio_engine, "transcribe_audio_with_dashscope", _cloud_should_not_be_called)
+    monkeypatch.setattr(audio_engine, "transcribe_audio_with_timestamps", _cloud_should_not_be_called)
 
     document = SimpleNamespace(
         id=60, space_id=1, kb_id=1, uploader_id=1, file_type="m4a",
+        filename="broken.m4a",
     )
 
     # structlog 风格 logger：info/warning/... 接受 (event, **kwargs)

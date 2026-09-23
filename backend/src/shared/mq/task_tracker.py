@@ -11,7 +11,9 @@ logger = get_logger(__name__)
 
 # TTL：最长 7 天（与 arq 重试周期一致）
 TRACKER_TTL = 7 * 24 * 60 * 60
-CANCEL_KEY_TTL = 3600  # 1 小时自动过期
+# 取消标记 TTL：须 ≥ job_timeout（默认 7200s），否则长任务（embedding 大文档
+# 可挂 1h+）处理途中标记过期，取消静默失效、任务继续跑完（审计 P2）。取 4h。
+CANCEL_KEY_TTL = 4 * 60 * 60
 
 
 class TaskTracker:

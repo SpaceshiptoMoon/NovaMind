@@ -40,6 +40,7 @@ from novamind.engines.document.media.vlm import (
 from novamind.engines.document.pipeline import DocumentProcessor
 from novamind.features.knowledge_space.exceptions import (
     DocumentProcessingError,
+    PermanentProcessingError,
 )
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.repository.document_repository import DocumentRepository
@@ -104,7 +105,7 @@ def _raise_on_empty_parse(
             f"文字层为空且 OCR 未识别到文字。请检查 OCR 模型是否就绪"
             f"（运行 scripts/download_deepdoc_models.py --check）或确认页面非纯无字图片。"
         )
-    raise DocumentProcessingError(document_id=document_id, error_message=hint)
+    raise PermanentProcessingError(document_id=document_id, error_message=hint)
 
 
 
@@ -709,7 +710,7 @@ async def _process_image_document_static(
     model_name = ctx.embedding_model_name
 
     if not model_name:
-        raise DocumentProcessingError(
+        raise PermanentProcessingError(
             document_id=document.id,
             error_message="该空间未配置嵌入模型，无法处理图片文件",
         )
@@ -744,7 +745,7 @@ async def _process_image_document_static(
         vlm_model_name = parsing_config.get("vlm_model")
 
         if not vlm_model_name:
-            raise DocumentProcessingError(
+            raise PermanentProcessingError(
                 document_id=document.id,
                 error_message="图片文档处理需要 VLM（视觉语言模型）来生成描述文本，请在知识库解析配置中启用 VLM 描述并选择模型",
             )
@@ -760,7 +761,7 @@ async def _process_image_document_static(
         )
 
         if not description_text:
-            raise DocumentProcessingError(
+            raise PermanentProcessingError(
                 document_id=document.id,
                 error_message=f"VLM 模型 {vlm_model_name} 未能生成图片描述文本",
             )
@@ -955,7 +956,7 @@ async def _get_document_processor_static(
     if not model_name and user_id:
         model_name = await model_config_service.get_user_default_model_name(user_id, "embedding")
     if not model_name:
-        raise DocumentProcessingError(
+        raise PermanentProcessingError(
             document_id=0,
             error_message="未配置 Embedding 模型，请在模型配置中添加",
         )

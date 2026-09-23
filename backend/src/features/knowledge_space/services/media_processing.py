@@ -27,7 +27,11 @@ from novamind.engines.document.media.video import (
     extract_frames_fixed,
     extract_frames_scene,
 )
-from novamind.features.knowledge_space.exceptions import DocumentProcessingError, LocalASRBusyError
+from novamind.features.knowledge_space.exceptions import (
+    DocumentProcessingError,
+    LocalASRBusyError,
+    PermanentProcessingError,
+)
 from novamind.features.knowledge_space.models.document import Document
 from novamind.features.knowledge_space.models.document_task import DocumentTask
 from novamind.features.knowledge_space.schemas.enums import ChunkType
@@ -56,23 +60,6 @@ from novamind.features.user.services.model_config_service import ModelConfigServ
 from novamind.shared.config import AudioConfig
 from novamind.shared.utils.time_utils import now_china
 from sqlalchemy.ext.asyncio import AsyncSession
-
-
-async def _find_cloud_asr_credentials(mcs, uploader_id: int, exclude_protocol: str = "local"):
-    """在该用户的 ASR 模型配置中找一个非 local（云端）的可用凭证，用于本地 ASR 失败时回退。"""
-    try:
-        configs = await mcs.repo.list_by_user(uploader_id, "asr")
-    except Exception:
-        return None
-    for cfg in configs:
-        protocol = getattr(cfg, "protocol", None) or "openai"
-        if protocol == exclude_protocol:
-            continue
-        creds = await mcs.get_credentials_by_model(uploader_id, "asr", cfg.model)
-        if creds:
-            return creds
-    return None
-
 
 
 # VLM 配额/鉴权类错误的特征串。这类错误通常不会因重试而恢复，应触发回退或跳过降级，
@@ -376,7 +363,7 @@ async def process_video_document(
     # 默认（守"没选不兜底"原则，与图片路径一致）。vlm_fallback_model 是用户显式配置的备用，保留。
     vlm_model_name = video_config.get("vlm_model")
     if not vlm_model_name:
-        raise DocumentProcessingError(
+        raise PermanentProcessingError(
             document_id=document.id,
             error_message=(
                 f"视频 {document.filename} 解析需配置 VLM 模型，请在知识库视频解析配置中选择 VLM 模型"
@@ -432,7 +419,7 @@ async def process_video_document(
             rewrite_prompt = PromptManager.get_template("video_frame_rewrite_prompt")
             llm_model_name = await mcs.get_user_default_model_name(document.uploader_id, "llm")
             if not llm_model_name:
-                raise DocumentProcessingError(
+                raise PermanentProcessingError(
                     document_id=document.id,
                     error_message=f"视频 {document.filename} rewrite 策略需配置 LLM 模型",
                 )
@@ -584,7 +571,18 @@ async def process_audio_document(
     pipeline_config = ctx.pipeline_config
     audio_config = (pipeline_config.get("parsing", {}) or {}).get("audio", {})
     space_asr_cfg = (ctx.space.config or {}).get("asr", {}) if ctx.space else {}
-    asr_model = audio_config.get("asr_model") or space_asr_cfg.get("model") or "whisper-1"
+    # no-fallback（与图片/视频路径一致）：未显式选 ASR 模型即抛错，不静默
+    # 回退硬编码 whisper-1 或用户第一个 ASR 配置——兜底让解析路径不可追踪，
+    # 且 local 失败自动烧云端费用属用户未授权行为（审计 P1#8）。
+    asr_model = audio_config.get("asr_model") or space_asr_cfg.get("model")
+    if not asr_model:
+        raise PermanentProcessingError(
+            document_id=document.id,
+            error_message=(
+                f"音频 {document.filename} 解析需配置 ASR 模型，"
+                f"请在知识库音频解析配置中选择 ASR 模型"
+            ),
+        )
     language = audio_config.get("language")
 
     # 引擎侧 audio_utils 不再 import setting；宿主在此从 YAML 配置构造 AudioConfig
@@ -605,18 +603,22 @@ async def process_audio_document(
     # ===== 批次 5b：用注入的 ModelConfigService，不再内部自建 ModelConfigService
     mcs = model_config_port
 
-    # 先查 ASR 凭证（优先精确匹配）：快照指纹含实际生效的 protocol:model，
-    # 必须在命中检查前确定（与保存快照时的指纹形状一致，否则永远 miss）。
+    # 查 ASR 凭证（按显式配置的模型名精确匹配）：
+    # no-fallback——找不到凭证即抛错，不取「该用户第一个 ASR 配置」串用
+    # （审计 P1#8：用户选了 A 模型可能被静默换成 B 模型/他家凭证，不可追踪）。
     asr_api_key: str | None = None
     asr_base_url: str | None = None
     asr_protocol = "openai"  # 默认
 
     asr_creds = await mcs.get_credentials_by_model(document.uploader_id, "asr", asr_model)
     if not asr_creds:
-        # 兜底：用户配的 ASR 模型名与 KB 默认名不一致，取该用户第一个 ASR 配置
-        asr_configs = await mcs.repo.list_by_user(document.uploader_id, "asr")
-        if asr_configs:
-            asr_creds = await mcs.get_credentials_by_model(document.uploader_id, "asr", asr_configs[0].model)
+        raise PermanentProcessingError(
+            document_id=document.id,
+            error_message=(
+                f"未找到 ASR 模型「{asr_model}」的凭证，请在模型管理中添加该模型的 "
+                f"API 配置（知识库音频解析配置当前指定 asr_model={asr_model}）"
+            ),
+        )
     if asr_creds:
         asr_api_key = asr_creds.api_key
         asr_base_url = asr_creds.base_url
@@ -706,7 +708,6 @@ async def process_audio_document(
         await begin_step(session, task, "transcription_done")
     if asr_protocol == "local":
         # 本地 faster-whisper 模型 — 无需 API Key，无需网络。
-        # 模型缺失/解码失败时，若用户配了云端 ASR，则回退云端，避免整任务硬失败。
         # 本地 ASR 忙碌时：直接抛 LocalASRBusyError，由 arq worker 延后重入队，
         # 不排队、不溢出云端，释放 Worker 槽位给其它文档处理任务。
         #
@@ -727,44 +728,31 @@ async def process_audio_document(
             # ASR 空闲，锁已获取。转写完成后在 finally 释放。
             try:
                 segments = await _run_asr("local", asr_model, asr_api_key, asr_base_url)
-            except Exception as local_exc:
+            except AudioFileInvalidError as local_exc:
                 # 文件本身损坏/过小/格式不支持是永久性错误——回退云端也救不了
                 # （云端要解码同一个损坏文件，或文件根本不是有效音频），且会把根因
                 # 藏到云端 FILE_DOWNLOAD_FAILED 之后让用户误以为是网络/MinIO 问题。
                 # 直接抛清晰错误引导用户重新上传。
-                if isinstance(local_exc, AudioFileInvalidError):
-                    raise DocumentProcessingError(
-                        document_id=document.id,
-                        error_message=(
-                            f"音频文件损坏或不完整，无法转写: {local_exc}。"
-                            f"请重新上传完整的音频文件。"
-                        ),
-                    ) from local_exc
-                logger.warning(
-                    "本地 ASR 失败，尝试回退云端 ASR",
-                    document_id=document.id, error=str(local_exc),
-                )
-                cloud_creds = await _find_cloud_asr_credentials(mcs, document.uploader_id)
-                if cloud_creds is None:
-                    raise DocumentProcessingError(
-                        document_id=document.id,
-                        error_message=(
-                            f"本地 ASR 不可用: {local_exc}。未找到可回退的云端 ASR 配置，"
-                            f"请在模型管理中配置 dashscope/openai ASR，或在配置 "
-                            f"knowledge_base.parsing.local_whisper_model_dir 中补齐本地模型路径。"
-                        ),
-                    ) from local_exc
-                cloud_protocol = cloud_creds.protocol or "openai"
-                logger.info(
-                    "回退云端 ASR", document_id=document.id,
-                    protocol=cloud_protocol, model=cloud_creds.model,
-                )
-                segments = await _run_asr(
-                    cloud_protocol,
-                    cloud_creds.model or asr_model,
-                    cloud_creds.api_key,
-                    cloud_creds.base_url,
-                )
+                raise PermanentProcessingError(
+                    document_id=document.id,
+                    error_message=(
+                        f"音频文件损坏或不完整，无法转写: {local_exc}。"
+                        f"请重新上传完整的音频文件。"
+                    ),
+                ) from local_exc
+            except Exception as local_exc:
+                # 本地 ASR 失败（模型缺失/加载失败等）：显式报错，不自动回退云端
+                # ——自动回退会烧用户未授权的云端费用且解析路径不可追踪（审计
+                # P1#8，与图片/视频路径的 no-fallback 决策对齐）。错误信息给出
+                # 可操作的修复指引。
+                raise PermanentProcessingError(
+                    document_id=document.id,
+                    error_message=(
+                        f"本地 ASR 不可用: {local_exc}。请在配置 "
+                        f"knowledge_base.parsing.local_whisper_model_dir 中补齐本地模型路径，"
+                        f"或将知识库音频解析配置切换为云端 ASR 模型（dashscope/openai）。"
+                    ),
+                ) from local_exc
             finally:
                 # 无论成功失败都释放 ASR 锁，让下一个任务可以进入
                 from novamind.engines.document.media.audio import force_release_asr_slot
