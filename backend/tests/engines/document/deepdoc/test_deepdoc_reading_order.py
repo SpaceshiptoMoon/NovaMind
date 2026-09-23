@@ -177,5 +177,77 @@ def test_updown_concat_preserves_layoutno():
     assert merged[0].layoutno == "L1"
 
 
+# ---------------------------------------------------------------------------
+# 分栏稳定化（doc568 完整性调查：双栏正文页被聚成 4 栏，左右栏行级交错）
+# ---------------------------------------------------------------------------
+
+
+def _dict_boxes(page: int, x0: float, top: float, text: str = "t") -> dict:
+    return {
+        "page_number": page,
+        "x0": x0,
+        "x1": x0 + 180.0,
+        "top": top,
+        "bottom": top + 12.0,
+        "text": text,
+    }
+
+
+def test_two_column_page_not_oversegmented():
+    """清晰双栏 + 居中标题/表格行两个孤立框 → 聚 2 栏，不再因孤立框聚 4 栏。"""
+    extractor = PdfLayoutExtractor()
+    boxes = []
+    for i in range(20):
+        boxes.append(_dict_boxes(1, 50.0 + (i % 3) * 0.5, 100.0 + i * 14.0, "L"))
+        boxes.append(_dict_boxes(1, 310.0 + (i % 3) * 0.5, 100.0 + i * 14.0, "R"))
+    # 孤立框：居中标题 + 跨栏表格行（旧代码聚 4 栏的元凶）
+    boxes.append(_dict_boxes(1, 150.0, 50.0, "Title"))
+    boxes.append(_dict_boxes(1, 200.0, 420.0, "TableRow"))
+
+    assigned = extractor.assign_columns(boxes, force=True)
+    n_cols = {b["col_id"] for b in assigned}
+    assert n_cols == {0, 1}, f"应聚 2 栏，got {sorted(n_cols)}"
+
+
+def test_clear_three_column_structure_still_detected():
+    """真实三栏结构 silhouette 提升显著 → 不被 margin 回退误伤。"""
+    extractor = PdfLayoutExtractor()
+    boxes = []
+    for i in range(20):
+        boxes.append(_dict_boxes(1, 40.0, 100.0 + i * 14.0, "c1"))
+        boxes.append(_dict_boxes(1, 220.0, 100.0 + i * 14.0, "c2"))
+        boxes.append(_dict_boxes(1, 400.0, 100.0 + i * 14.0, "c3"))
+
+    assigned = extractor.assign_columns(boxes, force=True)
+    n_cols = {b["col_id"] for b in assigned}
+    assert n_cols == {0, 1, 2}, f"三栏应保持 3 栏，got {sorted(n_cols)}"
+
+
+def test_per_page_fallback_to_global_when_divergent():
+    """单页聚 4、全局多数 2 → 分歧页（框数充足）固定 k=global_cols 重聚。"""
+    extractor = PdfLayoutExtractor()
+    boxes = []
+    # 页 1/2：清晰双栏
+    for pg in (1, 2):
+        for i in range(20):
+            boxes.append(_dict_boxes(pg, 50.0, 100.0 + i * 14.0))
+            boxes.append(_dict_boxes(pg, 310.0, 100.0 + i * 14.0))
+    # 页 3：双栏 + 大量居中散框（构造能聚出 >global+1 栏的分布）
+    for i in range(20):
+        boxes.append(_dict_boxes(3, 50.0, 100.0 + i * 14.0))
+        boxes.append(_dict_boxes(3, 310.0, 100.0 + i * 14.0))
+    for i in range(8):
+        boxes.append(_dict_boxes(3, 150.0 + (i % 4) * 40.0, 90.0 + i * 50.0, "iso"))
+
+    assigned = extractor.assign_columns(boxes, force=True)
+    by_page = {}
+    for b in assigned:
+        by_page.setdefault(b["page_number"], set()).add(b["col_id"])
+    for pg in (1, 2, 3):
+        assert len(by_page.get(pg, set())) <= 3, (
+            f"页{pg} 栏数 {sorted(by_page.get(pg, set()))} 不应显著偏离全局双栏"
+        )
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -10,6 +10,10 @@ from novamind.engines.document.integrations.deepdoc.logging_compat import get_lo
 
 logger = get_logger(__name__)
 
+# k 相对 k-1 的 silhouette 提升低于该值时判为非显著、回落到小 k（防孤立框
+# 把双栏页聚成 3/4 栏；清晰多栏结构的提升远高于此值）。
+SILHOUETTE_MARGIN = 0.05
+
 
 class PdfLayoutExtractor:
     """Structured PDF extractor adapted toward RAGFlow's column-aware reading order."""
@@ -112,8 +116,12 @@ class PdfLayoutExtractor:
 
             distinct_x0 = {round(float(value[0]), 1) for value in x0s}
             max_try = min(4, len(page_boxes), max(1, len(distinct_x0)))
-            best_k = 1
-            best_score = -1.0
+            # silhouette 显著性门槛：k 相对 k-1 的提升 < SILHOUETTE_MARGIN 时判为
+            # 非显著、回落到小 k——双栏正文页的孤立框（居中标题/表格行）常被
+            # KMeans 以极微弱优势聚成第 3/4 栏，左右栏行级交错（doc568 实测
+            # by_page 4 栏页 15 个）。清晰多栏结构 silhouette(k) 远高于 k-1，
+            # margin 不会误伤。
+            scores_by_k: dict[int, float] = {}
             for k in range(1, max_try + 1):
                 try:
                     model = KMeans(n_clusters=k, n_init="auto", random_state=0)
@@ -122,14 +130,36 @@ class PdfLayoutExtractor:
                     score = silhouette_score(x0s, labels) if len(centers) > 1 else 0.0
                 except Exception:
                     continue
-                if score > best_score:
-                    best_score = score
-                    best_k = k
+                scores_by_k[k] = score
+            best_k = 1
+            for k in sorted(scores_by_k):
+                if k == 1:
+                    best_k = 1
+                    continue
+                prev = scores_by_k.get(k - 1)
+                if prev is not None and scores_by_k[k] - prev < SILHOUETTE_MARGIN:
+                    break
+                best_k = k
 
             page_cols[page_number] = best_k
 
         global_cols = Counter(page_cols.values()).most_common(1)[0][0] if page_cols else 1
-        logger.info("DeepDoc detected PDF columns", global_columns=global_cols, by_page=page_cols)
+        # 全局一致性回退：文档主体 2 栏、单页聚出 4 栏属过切（孤立框作祟），
+        # 信息量充足（框数 >= global_cols*3）时该页固定 k=global_cols 重聚；
+        # 框数不足的页（首页标题跨栏等）保持 per-page 结论。
+        divergent_pages = [
+            pg
+            for pg, cols in page_cols.items()
+            if cols - global_cols > 1 and len(by_page.get(pg, [])) >= global_cols * 3
+        ]
+        for pg in divergent_pages:
+            page_cols[pg] = global_cols
+        logger.info(
+            "DeepDoc detected PDF columns",
+            global_columns=global_cols,
+            by_page=page_cols,
+            divergent_pages=divergent_pages,
+        )
 
         for page_number, page_boxes in by_page.items():
             k = page_cols.get(page_number, global_cols)

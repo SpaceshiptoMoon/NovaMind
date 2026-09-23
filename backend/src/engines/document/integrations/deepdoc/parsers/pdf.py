@@ -973,7 +973,16 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             return []
         try:
             ppage = plumber_pages[page_index]
-            chars = [c for c in ppage.dedupe_chars().chars if self._has_color(c)]
+            # 旋转文本字符（upright=False，如横排版面上的竖排表格页 doc568 p16，
+            # 实测占该页 99% 字符）的 x0/top 是旋转后坐标，与 fitz 正向渲染图错位：
+            # 按坐标匹配 OCR 检测框必然 miss，回收成合成框会拼出乱序文本（
+            # 'Segmentatio'→'oitatnemgeS'）。直接过滤，该页文字由 det+OCR 路径
+            # 从渲染图识别（渲染图视觉方向正确，OCR 认的是正向文字）。
+            chars = [
+                c
+                for c in ppage.dedupe_chars().chars
+                if c.get("upright", True) and self._has_color(c)
+            ]
         except Exception:
             return []
         sample_text = "".join(str(c.get("text", "") or "") for c in chars[:200])
@@ -1081,42 +1090,32 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         mean_h = float(np.median([b["bottom"] - b["top"] for b in boxes])) or 1.0
         boxes = Recognizer.sort_Y_firstly(boxes, mean_h / 3)
 
+        # 未落框字符先收页局部列表，回收后再把残余并入全局 self.lefted_chars
+        # （全局列表跨页累积，直接在里面挑本页字符会互相污染）。
+        page_lefted: list[dict[str, Any]] = []
+
         # 1) pdfplumber 字符按坐标匹配进 OCR 检测框
         for c in page_chars:
             ii = Recognizer.find_overlapped(c, boxes)
             if ii is None:
-                self.lefted_chars.append(c)
+                page_lefted.append(c)
                 continue
             ch = float(c["bottom"]) - float(c["top"])
             bh = boxes[ii]["bottom"] - boxes[ii]["top"]
             if abs(ch - bh) / max(ch, bh) >= 0.7 and str(c.get("text", "")) != " ":
-                self.lefted_chars.append(c)
+                page_lefted.append(c)
                 continue
             boxes[ii]["chars"].append(c)
 
-        # 2) 逐框裁决：文字层干净则用，乱码（PUA/CID 或子集字体编码）则清空回退 OCR
+        # 2) 逐框裁决：文字层干净则用，乱码（PUA/CID 或子集字体编码）则清空回退 OCR。
+        # chars 保留在框上不 pop：步骤 4 回收可能追加字符后需要从完整字符集重拼；
+        # 产出块构造显式选键，chars 不会外泄。
         for b in boxes:
             if not b["chars"]:
-                b.pop("chars", None)
                 continue
             m_ht = float(np.mean([float(c.get("height", 0.0)) for c in b["chars"]])) or 0.0
-            garbled = 0
-            total = 0
-            text_parts: list[str] = []
-            for c in Recognizer.sort_Y_firstly(b["chars"], m_ht):
-                t = str(c.get("text", "") or "")
-                if t == " " and text_parts:
-                    if re.match(r"[0-9a-zA-Z,.?;:!%]", text_parts[-1][-1]):
-                        text_parts.append(" ")
-                else:
-                    text_parts.append(t)
-                    for ch in t:
-                        if not ch.isspace():
-                            total += 1
-                            if self._is_garbled_char(ch):
-                                garbled += 1
-            box_chars = b.pop("chars", [])
-            b["text"] = "".join(text_parts)
+            text, box_chars, garbled, total = self._assemble_box_text(b["chars"], m_ht)
+            b["text"] = text
             # 框级回退 OCR 同样要求「字符级乱码」信号：单独的子集字体信号对
             # LaTeX 产出的 PDF（字体全带 XXXXXX+ 前缀、表格/参考文献纯 ASCII）
             # 几乎必然误报，会把干净的参考文献/表格框清空后交给 OCR 认成粘连串。
@@ -1152,7 +1151,18 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                 if b["text"]:
                     b["ocr_source"] = "vendored_ocr"
 
-        # 4) 产出块（过滤空文本）
+        # 4) 未落框文字层字符回收（上游 lefted_chars 只 append 不回收：满页表格
+        # det 检不出框时整页文字静默丢失——doc568 p16 实测 3858 字符只落框 232，
+        # 2658 个进 lefted 后被丢弃，且表格 TSR 双保险因成员框无文字同时失效）。
+        reclaimed_boxes = self._reclaim_lefted_chars(boxes, page_lefted, page_index, mean_h)
+        boxes.extend(reclaimed_boxes)
+        if page_lefted:
+            self.lefted_chars.extend(page_lefted)
+        # chars 桥接使命完成（步骤 2 保留供回收重拼），出 _fuse_page 前剥离
+        for b in boxes:
+            b.pop("chars", None)
+
+        # 5) 产出块（过滤空文本）
         blocks: list[dict[str, Any]] = []
         for b in boxes:
             text = b["text"].strip()
@@ -1171,6 +1181,150 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                 }
             )
         return blocks
+
+    def _assemble_box_text(
+        self, box_chars: list[dict[str, Any]], mean_height: float
+    ) -> tuple[str, list[dict[str, Any]], int, int]:
+        """按阅读顺序把字符拼成文本（含词间空格规则），并统计乱码计数。
+
+        返回 (text, box_chars, garbled, total)：garbled/total 供调用方做乱码
+        裁决；box_chars 原样返回供 _is_garbled_by_font_encoding 复查。
+        """
+        garbled = 0
+        total = 0
+        text_parts: list[str] = []
+        for c in Recognizer.sort_Y_firstly(box_chars, mean_height):
+            t = str(c.get("text", "") or "")
+            if t == " " and text_parts:
+                if re.match(r"[0-9a-zA-Z,.?;:!%]", text_parts[-1][-1]):
+                    text_parts.append(" ")
+            else:
+                text_parts.append(t)
+                for ch in t:
+                    if not ch.isspace():
+                        total += 1
+                        if self._is_garbled_char(ch):
+                            garbled += 1
+        return "".join(text_parts), box_chars, garbled, total
+
+    def _reclaim_lefted_chars(
+        self,
+        boxes: list[dict[str, Any]],
+        page_lefted: list[dict[str, Any]],
+        page_index: int,
+        mean_h: float,
+    ) -> list[dict[str, Any]]:
+        """回收该页未落进任何 OCR 检测框的文字层字符，绝不让干净字符静默丢失。
+
+        两步策略：
+        1. 邻近吸收——字符与某个文字层来源框垂直间距 <= mean_h 且 x 有交叠时，
+           追加进该框 chars（步骤 2 未消费的原始字符序列），全部吸收完成后从
+           完整字符集重拼文本（框内词间空格规则一致）。只在 ocr_source ==
+           "text_layer" 且有 chars 的框上做：OCR 回退框的文本来自识别模型，
+           拼文字层字符会混合两种来源。
+        2. 自合成行框——仍无家的字符按 top 聚行合成新框（ocr_source
+           "text_layer_reclaim"），无 layout_type，后续版面打标/表格成员收集
+           按「未匹配框」既有路径处理。
+
+        无家可回收的字符（空文本行等）从 page_lefted 移除后由调用方并入全局
+        lefted_chars 与原行为一致；乱码裁决沿用框的既有 ocr_source 结论——
+        被吸收进乱码框的字符会随该框走 OCR，不引入新裁决路径。
+        回收后仍有大量丢弃时告警，页级丢失不再静默。
+        """
+
+        def _char_weight(c: dict[str, Any]) -> int:
+            return sum(1 for ch in str(c.get("text", "") or "") if not ch.isspace())
+
+        if not page_lefted:
+            return []
+        total_lefted = sum(_char_weight(c) for c in page_lefted)
+        if total_lefted <= 0:
+            page_lefted[:] = [c for c in page_lefted if not str(c.get("text", "") or "").strip()]
+            return []
+
+        # 1) 邻近吸收
+        absorb_targets = [b for b in boxes if b.get("ocr_source") == "text_layer" and b.get("chars")]
+        still_lefted: list[dict[str, Any]] = []
+        for c in page_lefted:
+            c_top = float(c.get("top", 0.0))
+            c_bottom = float(c.get("bottom", 0.0))
+            c_x0 = float(c.get("x0", 0.0))
+            c_x1 = float(c.get("x1", 0.0))
+            for b in absorb_targets:
+                v_gap = max(b["top"] - c_bottom, c_top - b["bottom"], 0.0)
+                x_overlap = min(b["x1"], c_x1) - max(b["x0"], c_x0)
+                if v_gap <= mean_h and x_overlap > 0:
+                    b["chars"].append(c)
+                    break
+            else:
+                still_lefted.append(c)
+
+        # 吸收了的框从完整字符集重拼（词间空格规则与步骤 2 一致）
+        for b in absorb_targets:
+            m_ht = float(np.mean([float(c.get("height", 0.0)) for c in b["chars"]])) or mean_h
+            text, _chars, _garbled, _total = self._assemble_box_text(b["chars"], m_ht)
+            if text.strip():
+                b["text"] = text
+
+        # 2) 自合成行框：按 top 聚行（行高差 <= mean_h*0.7 视为同行）
+        synthetic: list[dict[str, Any]] = []
+        if still_lefted:
+            sorted_chars = sorted(
+                still_lefted, key=lambda c: (float(c.get("top", 0.0)), float(c.get("x0", 0.0)))
+            )
+            rows: list[list[dict[str, Any]]] = []
+            current_row: list[dict[str, Any]] = []
+            row_top: float | None = None
+            for c in sorted_chars:
+                top = float(c.get("top", 0.0))
+                if row_top is None or abs(top - row_top) <= mean_h * 0.7:
+                    current_row.append(c)
+                    if row_top is None:
+                        row_top = top
+                else:
+                    rows.append(current_row)
+                    current_row = [c]
+                    row_top = top
+            if current_row:
+                rows.append(current_row)
+
+            for row in rows:
+                row = sorted(row, key=lambda c: float(c.get("x0", 0.0)))
+                text = "".join(str(c.get("text", "") or "") for c in row)
+                if not text.strip():
+                    continue
+                synthetic.append(
+                    {
+                        "x0": min(float(c.get("x0", 0.0)) for c in row),
+                        "x1": max(float(c.get("x1", 0.0)) for c in row),
+                        "top": min(float(c.get("top", 0.0)) for c in row),
+                        "bottom": max(float(c.get("bottom", 0.0)) for c in row),
+                        "text": text.strip(),
+                        "ocr_source": "text_layer_reclaim",
+                        "page_number": page_index,
+                    }
+                )
+
+        absorbed_count = total_lefted - sum(_char_weight(c) for c in still_lefted)
+        synthetic_count = sum(
+            sum(1 for ch in s["text"] if not ch.isspace()) for s in synthetic
+        )
+        dropped = max(0, total_lefted - absorbed_count - synthetic_count)
+        # 已吸收/已合成行框的字符不再回流全局 lefted；只有真正丢弃的（纯空白
+        # 等两者都进不去的）保留观察口径，与原上游 append 行为兼容。
+        page_lefted[:] = [
+            c for c in still_lefted if not str(c.get("text", "") or "").strip()
+        ]
+        if dropped > 50 and dropped / total_lefted > 0.1:
+            logger.warning(
+                "DeepDoc 文字层字符回收后仍有丢弃",
+                page_index=page_index,
+                total_lefted=total_lefted,
+                absorbed=absorbed_count,
+                synthetic_rows=len(synthetic),
+                dropped_chars=dropped,
+            )
+        return synthetic
 
     def _resolve_layout_pages(
         self,
