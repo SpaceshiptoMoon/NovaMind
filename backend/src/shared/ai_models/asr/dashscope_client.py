@@ -10,6 +10,11 @@ output dict 兼容解析）。本模块成为唯一实现，两消费方改调�
 - ``submit_transcription(model, file_urls, language_hints)``：提交任务，失败抛
   ``DashScopeTranscriptionError``
 - ``await_transcription(task_id)``：轮询等待，返回统一 dict 化的 output
+  （同步阻塞——SDK ``Transcription.wait`` 是 ``while True + time.sleep`` 的
+  同步轮询且无总超时，**不得**在事件循环内直接调用）
+- ``await_transcription_async(task_id, timeout_seconds)``：async 包装——轮询经
+  ``asyncio.to_thread`` 下放线程池 + asyncio.timeout 总超时（防长音频转写冻结
+  worker/API 事件循环，2026-09 链路审计 P0）。所有 async 调用方必须用它。
 - ``extract_segments(output_dict)``：句子级时间戳解析（含无 sentences 的整段回退）
 
 转写的编排（临时文件/MinIO 上传/清理）仍留在 audio_utils——那是文档管道职责，
@@ -17,8 +22,13 @@ output dict 兼容解析）。本模块成为唯一实现，两消费方改调�
 """
 from __future__ import annotations
 
+import asyncio
 from http import HTTPStatus
 from typing import Any
+
+# 轮询总超时（秒）。SDK wait() 无任何超时，任务卡 RUNNING 会永远挂着；
+# 长音频（数小时录音）Paraformer 通常分钟级完成，30 分钟已是极宽松上界。
+TRANSCRIPTION_WAIT_TIMEOUT_SECONDS = 1800
 
 
 class DashScopeTranscriptionError(RuntimeError):
@@ -75,7 +85,11 @@ def submit_transcription(
 
 
 def await_transcription(task_id: str) -> dict[str, Any]:
-    """轮询等待转写完成，返回 dict 化 output（兼容 SDK 返回对象/字典两形态）。"""
+    """轮询等待转写完成，返回 dict 化 output（兼容 SDK 返回对象/字典两形态）。
+
+    同步阻塞（SDK wait 内部 time.sleep 轮询）——只允许在 to_thread/executor 内跑，
+    async 代码请用 ``await_transcription_async``。
+    """
     from dashscope.audio.asr import Transcription
 
     transcribe_response = Transcription.wait(task=task_id)
@@ -88,6 +102,28 @@ def await_transcription(task_id: str) -> dict[str, Any]:
     if isinstance(output, dict):
         return output
     return {k: v for k, v in output.__dict__.items() if not k.startswith("_")}
+
+
+async def await_transcription_async(
+    task_id: str,
+    *,
+    timeout_seconds: int = TRANSCRIPTION_WAIT_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    """await_transcription 的 async 包装：轮询下放线程池 + 总超时。
+
+    事件循环安全：同步轮询经 ``asyncio.to_thread`` 隔离，转写全程不再冻结
+    worker/API 的事件循环；asyncio.timeout 保证任务卡 RUNNING 时也不会永远挂住
+    （超时抛 ``TimeoutError``，由调用方转译为业务错误）。
+    """
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(await_transcription, task_id),
+            timeout=timeout_seconds,
+        )
+    except asyncio.TimeoutError as exc:
+        raise DashScopeTranscriptionError(
+            f"DashScope 转写轮询超时（>{timeout_seconds}s），task_id={task_id}"
+        ) from exc
 
 
 def _as_dict(obj: Any) -> dict[str, Any]:
@@ -163,8 +199,10 @@ def extract_segments(output_dict: dict[str, Any]) -> list[dict]:
 
 __all__ = [
     "DashScopeTranscriptionError",
+    "TRANSCRIPTION_WAIT_TIMEOUT_SECONDS",
     "configure_dashscope",
     "submit_transcription",
     "await_transcription",
+    "await_transcription_async",
     "extract_segments",
 ]

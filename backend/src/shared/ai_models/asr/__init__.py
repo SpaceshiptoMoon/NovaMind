@@ -9,8 +9,10 @@ dashscope）仍在 ``engines/document/media/audio/audio_utils``——其中 loca
 连通测试。
 """
 from novamind.shared.ai_models.asr.dashscope_client import (
+    TRANSCRIPTION_WAIT_TIMEOUT_SECONDS,
     DashScopeTranscriptionError,
     await_transcription,
+    await_transcription_async,
     configure_dashscope,
     extract_segments,
     submit_transcription,
@@ -18,8 +20,10 @@ from novamind.shared.ai_models.asr.dashscope_client import (
 
 __all__ = [
     "DashScopeTranscriptionError",
+    "TRANSCRIPTION_WAIT_TIMEOUT_SECONDS",
     "configure_dashscope",
     "submit_transcription",
     "await_transcription",
+    "await_transcription_async",
     "extract_segments",
 ]

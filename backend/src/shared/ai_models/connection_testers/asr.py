@@ -113,18 +113,20 @@ class ASRConnectionTester:
     async def _test_dashscope(self, *, model: str, api_key: str, base_url: str | None) -> None:
         """测试 ASR 连接（DashScope Paraformer；协议胶水走 shared/ai_models/asr 唯一实现）"""
         from novamind.shared.ai_models.asr import (
-            await_transcription,
+            await_transcription_async,
             configure_dashscope,
             submit_transcription,
         )
 
         configure_dashscope(api_key, base_url)
 
-        # 提交官方示例音频 → 轮询到完成（验证真实可用性，而非仅提交成功）
+        # 提交官方示例音频 → 轮询到完成（验证真实可用性，而非仅提交成功）。
+        # 轮询走 async 包装：SDK wait 是同步 sleep 循环，直接调用会冻结 API 服务
+        # 事件循环导致全部请求无响应（2026-09 链路审计 P0）。
         task_response = submit_transcription(
             model=model,
             file_urls=[DASHSCOPE_ASR_SAMPLE_URL],
             language_hints=["zh", "en"],
         )
-        await_transcription(task_response.output.task_id)
+        await await_transcription_async(task_response.output.task_id)
         # 转写成功 = 连接可达

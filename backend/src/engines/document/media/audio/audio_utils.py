@@ -636,7 +636,7 @@ async def transcribe_audio_with_dashscope(
 
     import dashscope
     from novamind.shared.ai_models.asr import (
-        await_transcription,
+        await_transcription_async,
         configure_dashscope,
         extract_segments,
         submit_transcription,
@@ -673,10 +673,12 @@ async def transcribe_audio_with_dashscope(
         logger.info("音频已上传 MinIO 临时位置: %s, url=%s...", temp_object_name, uploaded_url[:80])
 
         # 3-5. 提交 → 轮询 → 解析（协议胶水唯一实现：shared/ai_models/asr/dashscope_client）
+        # 轮询走 async 包装：to_thread 隔离 + 总超时，SDK wait 是同步 sleep 循环，
+        # 直接调用会冻结整个 worker 事件循环（2026-09 链路审计 P0）。
         task_response = submit_transcription(
             model=model, file_urls=[uploaded_url], language_hints=language_hints
         )
-        output_dict = await_transcription(task_response.output.task_id)
+        output_dict = await await_transcription_async(task_response.output.task_id)
         logger.info("DashScope 转写原始结果: %s", str(output_dict)[:2000])
 
         segments = extract_segments(output_dict)
