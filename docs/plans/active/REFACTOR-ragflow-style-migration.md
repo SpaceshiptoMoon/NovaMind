@@ -1,6 +1,9 @@
 # REFACTOR：NovaMind 迁移 ragflow 务实单体风格（详细版 v2）
 
-- **状态**：草案 v2，待确认后开工
+- **状态**：✅ 已完成（2026-09-21）——批次 0-6 全部执行并合并 main，R1-R6 已写入两份 CLAUDE.md；
+  三门禁（无环 / 禁私有 / 禁 HTTPException）已生效。后续演进见
+  [`REFACTOR-ragflow-style-alignment-round2.md`](./REFACTOR-ragflow-style-alignment-round2.md)
+  与第三轮仪式清除（commit f49558c..145f1b2）。本文仅作历史工作底稿保留。
 - **日期**：2026-09-20
 - **基线**：main @ 32c39ff
 - **上游参照**：`.tmp/ragflow`（风格样本，机制对照见 §0）

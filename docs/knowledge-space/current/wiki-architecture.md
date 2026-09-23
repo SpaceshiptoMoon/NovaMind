@@ -1,7 +1,8 @@
 # Wiki 生成与浏览架构
 
-> 最后更新：2026-09-18。Wiki 机制移植自腾讯 WeKnora，归属 `features/knowledge_space/` 内部（不建独立 feature）。
+> 最后更新：2026-09-23。Wiki 机制移植自腾讯 WeKnora，归属 `features/knowledge_space/` 内部（不建独立 feature）。
 > 端到端实测通过：16 页 / 72 互链 / 0 孤儿，编辑-版本-回滚-Agent 工具全链路可用。
+> 2026-09-22 对齐 WeKnora 补齐 reparse/retract 语义四批（retract worker / reparse scrub / refs 替换 / 清理收敛），见「重解析与删除语义」。
 
 ## 定位
 
@@ -19,7 +20,7 @@
 | `wiki_pages`（WikiPage） | 页面主表：slug/title/page_type(summary,entity,concept,synthesis,comparison)/content/summary/aliases/source_refs/chunk_refs/in_links/out_links/version/last_edit_source |
 | `wiki_page_revisions`（WikiPageRevision） | 版本快照，唯一约束 `(page_id, version)`，两级保留（软 50 只清 pipeline 来源 / 硬 200 全清） |
 | `wiki_page_issues`（WikiPageIssue） | 问题登记（实体混淆/事实矛盾/过期等），人工与 Agent 共用闭环 |
-| `wiki_ingest_records`（WikiIngestRecord） | 生成任务履历：status + step_progress JSON（崩溃可见） |
+| `wiki_ingest_records`（WikiIngestRecord） | 生成任务履历：status(PENDING/RUNNING/DONE/FAILED/CANCELLED) + step_progress JSON（崩溃可见） |
 
 **软删唯一约束**：`deleted_flag BIGINT`（0=存活，删除写时间戳）配唯一索引 `(kb_id, slug, deleted_flag)`。MySQL 无 partial index，不要改回 Postgres 方案。
 
@@ -47,8 +48,26 @@ Finalize 收尾     in/out_links 双向对齐、死链剔除、revision 两级�
 触发与重入：
 
 - 文档解析成功终态后 `_trigger_wiki_ingest_if_enabled` 自动入队（`tasks/document_tasks.py`，try/except 吞异常不影响文档任务）；REPROCESS 重解析天然复用。
+- **REPROCESS 开始时先清洗 pending wiki**（`scrub_pending_wiki_ingest`，见下节）。
 - 存量文档补算走 `POST .../wiki/rebuild`（逐文档入队）。
-- arq 任务 `process_wiki_ingest_task`（`tasks/wiki_tasks.py`，嵌入式 worker）。
+- arq 任务 `process_wiki_ingest_task`（`tasks/wiki_tasks.py`，嵌入式 worker，已注册进 `startup_manager.py` worker functions）。
+
+## 重解析与删除语义（2026-09-22 对齐 WeKnora 四批）
+
+文档 reparse / 删除与 wiki 生命周期的四条契约：
+
+1. **删除路径双保险清 ES 向量**（`702af0e`）：
+   - 同步路径：`document_query_service.delete_document` commit 后 best-effort 按 slug 反查页面 → `WikiEsSyncService.delete_page`，失败仅 warning 不阻断删除。
+   - 异步兜底：`process_wiki_retract_task` 已注册进 `startup_manager.py` worker functions——删除入队的 retract job 真正执行（此前未注册，已删页的 `wp-{page_id}` 向量永久残留且检索命中）。
+2. **REPROCESS 前清洗 pending ingest**（`25283e5`，对齐 WeKnora `scrubWikiPendingIngest`）：
+   - `WikiIngestStatus` 新增 `CANCELLED = 4` 终态（`/ingest/status` 返回 `"cancelled"`）。
+   - force_full_reset 分支开头 `scrub_pending_wiki_ingest(kb_id, document_id, reason)`：PENDING/RUNNING 履历 mark_cancelled + `purge_wiki_ingest_jobs`（Redis 键手术清 arq job/retry/in-progress 三键，手法同 `document_task_tracking.purge_document_jobs`）。
+   - 不写墓碑、不删页——页面去留由新一轮 ingest 的合并更新接管。
+   - 兜底：worker 步骤 2 发现本 job 对应履历已是 CANCELLED → 直接 `skipped: cancelled_by_reprocess`；长管道进行中遇 CANCELLED 提前返回。
+3. **refs 同文档替换**（`3463413`，对齐 WeKnora re-annotate）：`upsert` 的 source_refs/chunk_refs 合并从 append-union 改为「同文档替换再 union」——本次调用携带的 doc id 其旧贡献先剥除再并入；reparse 后旧 chunk_refs（`{doc}_{idx}`，idx 随新切分漂移）不再指向已清掉的 ES chunk 永久残留。doc 集合从 source_refs 派生；传 `[]` 的用户/Agent 编辑 doc 集合为空集，行为不变。
+4. **清理与链接重建收敛**（`cc6d8f0`）：
+   - ES 向量清理收敛 `wiki_es_sync.delete_pages_vectors(space_id, page_ids)`（best-effort warn 不抛）——retract 任务、lint autofix（软删页）共用。
+   - 链接重建收敛 `WikiPageRepository.rebuild_links(kb_id)`（flush-only）——管道 Finalize / retract 收尾 / lint 修复三处共用；`_finalize` 保留快照裁剪独有部分；`update_auto_linked_content` 差量语义不变。
 
 ## API（`api/wiki_routes.py`）
 

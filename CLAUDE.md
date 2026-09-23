@@ -174,7 +174,7 @@ These are non-negotiable. They override convenience and override anything softer
 
 ### Backend Coding Rules
 
-- **Exceptions:** all business exceptions extend `BaseAPIError` and are registered in the module `startup.py`. Never `raise HTTPException` directly.
+- **Exceptions:** all business exceptions extend `BaseAPIError` and are registered in the module `startup.py`. Never `raise HTTPException` directly. HTTP 状态码解析只认异常类**自身** `__dict__` 里显式声明的 `http_status_code`（`__dict__.get` 不沿 MRO 查找），未声明时按 `status_map` 注册值或 error_code 后缀映射兜底——不要依赖 getattr 继承链（会命中基类 500 遮蔽 status_map，历史三次同根因 bug：6a0bd00、fa794b8、cbba9f9；门禁 `tests/core/test_error_handler_status_map.py`）。
 - **Database writes:** repository write operations must use `begin_nested()` (SAVEPOINT). Never commit directly.
 - **API key storage:** use `encrypt_api_key_async` / `decrypt_api_key_async`. Never store plaintext.
 - **Password hashing:** use `verify_password_async` / `get_password_hash_async`. Never block the event loop with sync hashing.

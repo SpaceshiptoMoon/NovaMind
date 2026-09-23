@@ -75,7 +75,7 @@ features 直接收具体类实例（不再经端口装配）：
 | `backend/src/engines/eval/` | 评测引擎（retrieval / generation / embedding / claim 评估器） |
 | `backend/src/engines/rag/` | RAG 引擎（检索引擎、Grade→Retry） |
 | `backend/src/engines/resume/` | 简历解析引擎 |
-| `backend/src/engines/search/` | Web 搜索引擎组件（中立端口 WebSearchPort + 中立异常） |
+| `backend/src/engines/search/` | Web 搜索引擎组件（中立端口 WebSearchPort + 中立异常；401/403 凭证错误抛 `WebSearchProviderAuthError` 传播，5xx 降级空结果） |
 
 ### 知识处理运行时代码
 

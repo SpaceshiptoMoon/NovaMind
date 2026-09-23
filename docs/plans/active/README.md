@@ -10,6 +10,8 @@
 
 ## 当前文档
 
+- [`REFACTOR-ragflow-style-migration.md`](./REFACTOR-ragflow-style-migration.md)：ragflow 务实单体风格迁移详细方案（✅ 2026-09-21 已全部完成，R1-R6 生效，作历史工作底稿保留）
+- [`REFACTOR-ragflow-style-alignment-round2.md`](./REFACTOR-ragflow-style-alignment-round2.md)：第二轮 ragflow 对齐（✅ 2026-09-21 全部批次完成；第三轮仪式清除 f49558c..145f1b2 未单独成文）
 - [`engine-restructure-6x-revert-and-reorganize.md`](./engine-restructure-6x-revert-and-reorganize.md)：引擎抽库方案变更与 6x 批次执行记录（engines/ 目录分层已落地；agent/rag/eval/resume/deep_research 已迁入）
 - [`agent-capability-enhancement-plan.md`](./agent-capability-enhancement-plan.md)：Agent 能力增强（loop detection / 审批 / 观测 / planning flow）
 - [`REFACTOR-qa-rag-pipeline.md`](./REFACTOR-qa-rag-pipeline.md)：QA 检索增强问答管道重构（已实施，作架构记录保留）
