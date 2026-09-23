@@ -84,8 +84,10 @@ def create_error_handler(
         """通用异常处理器"""
         trace_id = getattr(request.state, "trace_id", "no-trace")
 
-        # 优先取异常类的 http_status_code，未声明则用默认值
-        status_code = getattr(type(exc), "http_status_code", default_status_code)
+        # 仅取异常类自身显式声明的 http_status_code（__dict__.get 不沿 MRO 查找）；
+        # getattr 会命中基类 BaseAPIError.http_status_code=500，令 status_map 注册
+        # 的 404/409/401 等映射全部失效（与 global_exception_handler 同根因，6a0bd00）
+        status_code = exc.__class__.__dict__.get("http_status_code") or default_status_code
 
         # 记录错误日志
         log_func = logger.warning if is_warning else logger.error

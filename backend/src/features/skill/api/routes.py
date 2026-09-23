@@ -523,11 +523,14 @@ async def delete_review(
 
 async def _batch_get_usernames(db, user_ids: list[int]) -> dict[int, str]:
     """批量查询用户名（走 user 公共面，批次 4 去路由层裸 SQL）"""
+    from novamind.features.user.repository.user_repository import UserRepository
     from novamind.features.user.services.user_service import UserService
 
     if not user_ids:
         return {}
-    return await UserService(db).get_usernames_by_ids(user_ids)
+    # UserService 构造参数是 repository（不是 session）——传错会在运行时
+    # 崩出 "'AsyncSession' object has no attribute 'get_usernames_by_ids'"
+    return await UserService(UserRepository(db)).get_usernames_by_ids(user_ids)
 
 
 def _skill_to_list_item(skill, author_name: str | None = None) -> SkillListItemResponse:

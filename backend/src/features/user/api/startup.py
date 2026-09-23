@@ -12,7 +12,10 @@ from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.user.exceptions import (
     AuthenticationError,
     InvalidCredentialsError,
+    ModelConfigAlreadyExistsError,
     ModelConfigDeleteConflictError,
+    ModelConfigNotFoundError,
+    ModelConfigTestFailedError,
     PermissionDeniedError,
     RoleError,
     RoleNotFoundError,
@@ -296,6 +299,10 @@ def setup_user_exception_handlers(app: FastAPI) -> None:
         TokenInvalidError: 401,
         UserError: 400,
         ModelConfigDeleteConflictError: 409,
+        # 模型配置其余异常（未注册时沿 MRO 命中 UserError:400，404/409 语义丢失）
+        ModelConfigNotFoundError: 404,
+        ModelConfigAlreadyExistsError: 409,
+        ModelConfigTestFailedError: 400,
         # 搜索配置异常（http_status_code ClassVar 已声明，status_map 注册日志标签 + 兜底）
         SearchConfigNotFoundError: 404,
         SearchConfigAlreadyExistsError: 409,
