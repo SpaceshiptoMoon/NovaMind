@@ -62,6 +62,7 @@ from novamind.features.knowledge_space.services.pipeline_steps import (
     begin_step,
     check_document_cancelled,
     extract_parse_metadata_summary,
+    finish_step_committed,
     load_pipeline_context,
     persist_parsed_text,
     run_post_parse_tail,
@@ -316,14 +317,14 @@ async def execute_document_pipeline(
                            if k != "chunk_structure"}
 
         await begin_step(session, task, "parsed")
-        task.finish_step("parsed", metrics={
-            "char_count": len(full_text),
-            "chunk_count": len(resume_chunks),
-            "parse_strategy": (resume_meta.get("strategy") if isinstance(resume_meta, dict) else None)
-            or "resumed",
-            "file_type": document.file_type,
-            "resumed": True,
-            **({"split_config_drifted": True} if split_config_drifted else {}),
+        await finish_step_committed(session, task, "parsed", metrics={
+                    "char_count": len(full_text),
+                    "chunk_count": len(resume_chunks),
+                    "parse_strategy": (resume_meta.get("strategy") if isinstance(resume_meta, dict) else None)
+                    or "resumed",
+                    "file_type": document.file_type,
+                    "resumed": True,
+                    **({"split_config_drifted": True} if split_config_drifted else {}),
         })
         _logger.info(
             "解析快照命中，复用解析产物（跳过解析）",
@@ -429,7 +430,7 @@ async def execute_document_pipeline(
         # 空文本检测：解析跑完但 0 字符——不静默当成功（否则前端看到"成功但无内容"的假成功）。
         # 守"没选就不兜底"原则：不自动回退到其它模式，抛错并给出可操作建议，让用户显式切换模式。
         _raise_on_empty_parse(full_text, parse_result, parsing_config, document_id)
-        task.finish_step("parsed", metrics={"char_count": len(full_text), "chunk_count": len(chunks), "parse_strategy": parsing_config.get("strategy", "default"), "file_type": document.file_type})
+        await finish_step_committed(session, task, "parsed", metrics={"char_count": len(full_text), "chunk_count": len(chunks), "parse_strategy": parsing_config.get("strategy", "default"), "file_type": document.file_type})
 
         # 上传 PDF figure 图片到 MinIO 并替换占位符为真实 URL。
         # 仅 PDF full 模式会产出 figure_regions + image_blobs；上传在 persist 之前完成，
@@ -769,10 +770,10 @@ async def _process_image_document_static(
     # 3. 图片文本持久化到 MinIO（立刻 commit 落库）
     await persist_parsed_text(document, description_text, session, _logger)
     if task:
-        task.finish_step("parsed", metrics={
-            "image_strategy": image_strategy,
-            "description_length": len(description_text),
-        })
+        await finish_step_committed(session, task, "parsed", metrics={
+                    "image_strategy": image_strategy,
+                    "description_length": len(description_text),
+                })
 
     # 断点续跑：图片解析指纹（VLM/OCR 描述昂贵，重试时指纹匹配即免重跑）。
     # 指纹入参注入策略名，区分 vlm 与 deepdoc_ocr 产出。

@@ -138,10 +138,7 @@ def read_frame_at(filepath: str, timestamp: float, fps: float):
             return Image.fromarray(frame)
         return None
     except (IndexError, OSError):
-        try:
-            frame = iio.imread(filepath, index=0, plugin="pyav")
-            if isinstance(frame, np.ndarray):
-                return Image.fromarray(frame)
-        except Exception:
-            pass
+        # 解码失败返回 None（跳帧）：不再兜底取第 0 帧——「时间戳 120s 实际是
+        # 第 0 帧画面」的重复帧会让 VLM 描述与锚点时间轴错位（审计 P2）。
+        # frame_paths 的 dict 映射天然容忍空洞 idx。
         return None

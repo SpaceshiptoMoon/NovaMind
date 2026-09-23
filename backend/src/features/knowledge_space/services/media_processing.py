@@ -52,6 +52,7 @@ from novamind.features.knowledge_space.services.pipeline_snapshots import (
 from novamind.features.knowledge_space.services.pipeline_steps import (
     begin_step,
     check_document_cancelled,
+    finish_step_committed,
     load_pipeline_context,
     persist_parsed_text,
     run_post_parse_tail,
@@ -164,7 +165,7 @@ async def _video_resume_tail(
 
     await persist_parsed_text(document, full_text, session, logger)
     if task:
-        task.finish_step("descriptions_generated", metrics={"resumed": True})
+        await finish_step_committed(session, task, "descriptions_generated", metrics={"resumed": True})
 
     tail_result = await run_post_parse_tail(
         document=document,
@@ -269,7 +270,7 @@ async def process_video_document(
                     document_id=document.id, char_count=len(snap_text),
                 )
                 if task:
-                    task.finish_step("frames_extracted", metrics={"resumed": True, "frame_count": None})
+                    await finish_step_committed(session, task, "frames_extracted", metrics={"resumed": True, "frame_count": None})
                     await begin_step(session, task, "descriptions_generated")
                 return await _video_resume_tail(
                     document=document, session=session, task=task, logger=logger,
@@ -351,7 +352,7 @@ async def process_video_document(
     await session.commit()
 
     if task:
-        task.finish_step("frames_extracted", metrics={"frame_count": len(frames)})
+        await finish_step_committed(session, task, "frames_extracted", metrics={"frame_count": len(frames)})
 
     if task:
         await begin_step(session, task, "descriptions_generated")
@@ -511,7 +512,7 @@ async def process_video_document(
                 logger.warning("视频解析快照保存失败（不影响主流程）", document_id=document.id, error=str(snap_exc))
 
     if task:
-        task.finish_step("descriptions_generated", metrics={"description_count": descriptions_count})
+        await finish_step_committed(session, task, "descriptions_generated", metrics={"description_count": descriptions_count})
 
     # 3-5. 切分/向量化/问题生成/索引：交由共享后置尾
     tail_result = await run_post_parse_tail(
@@ -648,7 +649,7 @@ async def process_audio_document(
                 )
                 if task:
                     await begin_step(session, task, "transcription_done")
-                    task.finish_step("transcription_done", metrics={"resumed": True})
+                    await finish_step_committed(session, task, "transcription_done", metrics={"resumed": True})
                 return await _audio_resume_tail(
                     document=document, session=session, task=task, logger=logger,
                     model_config_port=model_config_port, ctx=ctx,
@@ -775,7 +776,7 @@ async def process_audio_document(
         )
         await persist_parsed_text(document, "", session, logger)
         if task:
-            task.finish_step("transcription_done", metrics={"segment_count": 0, "asr_protocol": asr_protocol})
+            await finish_step_committed(session, task, "transcription_done", metrics={"segment_count": 0, "asr_protocol": asr_protocol})
         if task:
             task.mark_completed(result={
                 "chunk_count": 0,
@@ -802,7 +803,7 @@ async def process_audio_document(
         )
         await persist_parsed_text(document, "", session, logger)
         if task:
-            task.finish_step("transcription_done", metrics={"segment_count": len(segments), "asr_protocol": asr_protocol})
+            await finish_step_committed(session, task, "transcription_done", metrics={"segment_count": len(segments), "asr_protocol": asr_protocol})
         if task:
             task.mark_completed(result={
                 "chunk_count": 0,
@@ -845,7 +846,7 @@ async def process_audio_document(
                 logger.warning("音频解析快照保存失败（不影响主流程）", document_id=document.id, error=str(snap_exc))
 
     if task:
-        task.finish_step("transcription_done", metrics={"segment_count": len(segments), "asr_protocol": asr_protocol, "language": language})
+        await finish_step_committed(session, task, "transcription_done", metrics={"segment_count": len(segments), "asr_protocol": asr_protocol, "language": language})
 
     # 2-4. 切分/向量化/问题生成/索引：交由共享后置尾
     splitting_config = dict(pipeline_config.get("splitting", {}))

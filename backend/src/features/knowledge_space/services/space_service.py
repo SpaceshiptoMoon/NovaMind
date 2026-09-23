@@ -606,16 +606,23 @@ class SpaceService:
             )
 
     def _is_embedding_changed(self, config_updates: dict, current_config: dict) -> bool:
-        """检查配置更新是否涉及 embedding 模型变更（dimension 由后端自动管理，不算用户变更）"""
+        """检查配置更新是否涉及 embedding 变更（model 或 dimension 任一变化）。
+
+        dimension 曾被排除在变更判定外（注释称「后端自动管理」）——但若上游仅
+        改 dimension：门禁放行 → ES 索引维持旧维度 mapping → 新向量 bulk 全部
+        失败且被部分失败路径吞掉（审计 P2#13）。维度与模型同属向量语义，
+        变更都必须过「无已完成文档」门禁。
+        """
         embedding_update = config_updates.get("embedding")
         if not isinstance(embedding_update, dict) or not embedding_update:
             return False
 
         current_embedding = current_config.get("embedding") or {}
-        return (
-            embedding_update.get("model") is not None
-            and embedding_update.get("model") != current_embedding.get("model")
-        )
+        new_model = embedding_update.get("model")
+        new_dim = embedding_update.get("dimension")
+        model_changed = new_model is not None and new_model != current_embedding.get("model")
+        dim_changed = new_dim is not None and new_dim != current_embedding.get("dimension")
+        return model_changed or dim_changed
 
     async def get_config(self, space_id: int) -> dict[str, Any]:
         """

@@ -49,6 +49,22 @@ async def begin_step(session: AsyncSession, task: DocumentTask | None, name: str
     await session.commit()
 
 
+async def finish_step_committed(
+    session: AsyncSession, task: DocumentTask | None, name: str, metrics: dict | None = None
+) -> None:
+    """记录节点完成并立即落库（与 begin_step 对偶）。
+
+    finish_step 原本依赖下一个 begin_step 或 mark_completed 搭车 commit——崩溃
+    间隙里「已完成」的节点在 DB 仍是 running，孤儿恢复后 mark_last_running_step_failed
+    会把实际已完成的步骤标 failed（如帧已上传 MinIO 但节点显示「帧提取失败」），
+    前端节点日志失真（审计 P2 finish_step 搭车落库）。
+    """
+    if task is None:
+        return
+    task.finish_step(name, metrics=metrics)
+    await session.commit()
+
+
 
 async def check_document_cancelled(document_id: int) -> None:
     """
@@ -728,7 +744,7 @@ async def run_post_parse_tail(
             )
             split_strategy = strategy
     chunk_count = len(chunk_items)
-    task.finish_step("split", metrics={
+    await finish_step_committed(session, task, "split", metrics={
         "chunk_count": chunk_count,
         "split_strategy": split_strategy,
         "chunk_size": splitting_config.get("chunk_size"),
@@ -799,7 +815,7 @@ async def run_post_parse_tail(
     for i, emb in enumerate(embeddings):
         if emb:
             es_chunks[i]["embedding"] = emb
-    task.finish_step("embedded", metrics={
+    await finish_step_committed(session, task, "embedded", metrics={
         "embedding_count": len(embeddings),
         "dimension": embedding_config.get("dimension"),
         **({"resumed": True} if resumed_embed else {}),
@@ -839,7 +855,7 @@ async def run_post_parse_tail(
             chunk["questions"] = []
             chunk["question_embeddings"] = []
     total_questions = sum(len(c.get("questions") or []) for c in es_chunks)
-    task.finish_step("question_generation", metrics={
+    await finish_step_committed(session, task, "question_generation", metrics={
         "enabled": should_generate, "total_questions": total_questions,
     })
     await check_document_cancelled(document.id)
@@ -873,7 +889,7 @@ async def run_post_parse_tail(
         )
     if indexed_count == 0 and es_chunks:
         raise RuntimeError(f"ES 索引写入失败: {len(es_chunks)} 个分块均未成功写入")
-    task.finish_step("indexed", metrics={
+    await finish_step_committed(session, task, "indexed", metrics={
         "indexed_count": indexed_count, "chunk_count": len(es_chunks),
     })
 
