@@ -2,13 +2,19 @@
   <div class="wiki-graph-panel">
     <div class="graph-toolbar">
       <el-select
+        ref="centerSelectRef"
         v-model="centerSlug"
         size="small"
         filterable
         clearable
-        :placeholder="allNodes.length ? '搜索页面，仅显示与其相连的节点' : '暂无页面可作中心'"
+        :loading="nodesLoading"
+        :placeholder="
+          nodesLoading ? '加载页面列表…' : allNodes.length ? '搜索页面，仅显示与其相连的节点' : '暂无页面可作中心'
+        "
         class="center-select"
-        @change="loadGraph"
+        popper-class="center-select-popper"
+        @change="onCenterChange"
+        @visible-change="onSelectVisibleChange"
       >
         <el-option
           v-for="node in allNodes"
@@ -21,6 +27,12 @@
         {{ graphCountText }}
       </span>
       <span class="toolbar-space" />
+      <el-tooltip content="放大" placement="top">
+        <el-button text size="small" :icon="ZoomIn" :disabled="!graph" @click="zoomBy(1.25)" />
+      </el-tooltip>
+      <el-tooltip content="缩小" placement="top">
+        <el-button text size="small" :icon="ZoomOut" :disabled="!graph" @click="zoomBy(0.8)" />
+      </el-tooltip>
       <el-tooltip content="重置布局" placement="top">
         <el-button
           text
@@ -30,7 +42,7 @@
           @click="resetLayout"
         />
       </el-tooltip>
-      <span class="graph-hint">拖拽平移 · 滚轮缩放 · 单击节点打开页面</span>
+      <span class="graph-hint">拖空白平移 · 滚轮缩放 · 拖节点固定 · 单击节点打开页面</span>
     </div>
 
     <div ref="canvasRef" class="graph-canvas" :class="{ 'is-loading': loading }">
@@ -46,7 +58,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Loading, Refresh } from '@element-plus/icons-vue'
+import { Loading, Refresh, ZoomIn, ZoomOut } from '@element-plus/icons-vue'
 import * as echarts from 'echarts/core'
 import { GraphChart } from 'echarts/charts'
 import { LegendComponent, TooltipComponent } from 'echarts/components'
@@ -78,6 +90,34 @@ const { theme } = useTheme()
 
 // 全部节点（供 ego 中心下拉；overview 图不完整时回退索引接口）
 const allNodes = ref<Array<{ slug: string; title: string }>>([])
+const nodesLoading = ref(true)
+const centerSelectRef = ref<{ blur: () => void; focus: () => void } | null>(null)
+
+// EP filterable select 在 tab-pane/teleported popper 场景下选中后不收起的
+// 老问题（element-plus#5394）：选中后主动 blur 兜底收起
+function onCenterChange() {
+  centerSelectRef.value?.blur()
+  void loadGraph()
+}
+
+// 下拉展开时若列表为空且尚未成功加载过，补拉一次（首载失败/慢时点开不至于永远空）
+function onSelectVisibleChange(visible: boolean) {
+  if (visible && !allNodes.value.length) {
+    void loadAllNodes()
+  }
+}
+
+async function loadAllNodes() {
+  nodesLoading.value = true
+  try {
+    const data = await wikiApi.listPages(props.spaceId, props.kbId, { page_size: 100 })
+    allNodes.value = data.pages.map((p) => ({ slug: p.slug, title: p.title }))
+  } catch {
+    allNodes.value = []
+  } finally {
+    nodesLoading.value = false
+  }
+}
 
 // 工具栏统计 chip：概览「N 节点 · M 链接」，ego「N 个相关页面」；
 // 截断时并入提示（替代原独立 truncated hint）
@@ -247,6 +287,7 @@ function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
     ],
     series: [
       {
+        id: 'wiki-graph',
         type: 'graph',
         layout: 'force',
         data: nodes,
@@ -257,6 +298,8 @@ function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
         })),
         roam: true,
         draggable: true,
+        // 拖节点 = 固定该节点（松手留在原地，force 不再拉动），不是平移画布；
+        // 平移画布 = 拖空白区域，滚轮/按钮 = 缩放
         force: {
           repulsion: 800,
           edgeLength: [50, 130],
@@ -272,7 +315,7 @@ function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
           label: { show: true },
           lineStyle: { width: 2.5, opacity: 1 },
         },
-        scaleLimit: { min: 0.3, max: 3 },
+        scaleLimit: { min: 0.2, max: 8 },
       },
     ],
   }
@@ -305,6 +348,16 @@ function renderChart(data: WikiGraphResponse) {
 // 重置布局：全量重跑力导向（notMerge），节点回到初始排布
 function resetLayout() {
   if (graph.value) renderChart(graph.value)
+}
+
+// 工具栏按钮的程序化缩放（graphRoam 的 zoomOrigin 指定画布中心，
+// 等价于在中心滚轮；滚轮本身走 roam 原生交互）
+function zoomBy(factor: number) {
+  chart?.dispatchAction({
+    type: 'graphRoam',
+    seriesId: 'wiki-graph',
+    zoom: factor,
+  })
 }
 
 async function loadGraph() {
@@ -352,12 +405,7 @@ onMounted(async () => {
   if (canvasRef.value) resizeObserver.observe(canvasRef.value)
   await loadGraph()
   // ego 中心下拉数据源：全量页面轻量列表
-  try {
-    const data = await wikiApi.listPages(props.spaceId, props.kbId, { page_size: 100 })
-    allNodes.value = data.pages.map((p) => ({ slug: p.slug, title: p.title }))
-  } catch {
-    allNodes.value = []
-  }
+  void loadAllNodes()
 })
 
 onBeforeUnmount(() => {
