@@ -4,6 +4,10 @@
       <KbSidebar :nav-items="kbNavItems" />
 
       <div class="kb-content">
+        <!-- 非法 kbId（地址栏手改/坏链接）空态，替代打出 NaN 请求；
+             banner/tabs 包进 v-else，避免空态下渲染空壳 tabs -->
+        <el-empty v-if="kbInvalid" description="知识库不存在或链接无效，请从知识库列表重新进入" />
+        <template v-else>
         <!-- 顶部状态条 -->
         <div v-if="ingestActive" class="ingest-banner">
           <el-icon class="is-loading"><Loading /></el-icon>
@@ -311,6 +315,7 @@
             </div>
           </el-tab-pane>
         </el-tabs>
+        </template>
       </div>
     </div>
 
@@ -424,7 +429,9 @@ import type {
 const route = useRoute()
 const router = useRouter()
 const spaceId = computed(() => Number(route.params.id))
-const kbId = computed(() => Number(route.params.kbId))
+// 非法 kbId 兜 0 + 空态，不打 NaN 请求（对齐 DocumentView 模式）
+const kbId = computed(() => Number(route.params.kbId) || 0)
+const kbInvalid = computed(() => kbId.value === 0)
 
 const kbNavItems = computed(() =>
   buildKbNavItems({
@@ -745,6 +752,7 @@ function onContentClick(event: MouseEvent) {
 
 // ============ 数据加载 ============
 async function loadIndex() {
+  if (kbInvalid.value) return
   try {
     const data = await wikiApi.getIndex(spaceId.value, kbId.value, 100)
     indexGroups.value = data.groups

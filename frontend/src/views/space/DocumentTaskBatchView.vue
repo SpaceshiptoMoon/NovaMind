@@ -4,7 +4,10 @@
       <KbSidebar :nav-items="kbNavItems" />
 
       <div class="kb-content">
-        <section class="dashboard-panel">
+        <!-- 非法 kbId（地址栏手改/坏链接）空态，替代打出 NaN 请求 -->
+        <el-empty v-if="kbInvalid" description="知识库不存在或链接无效，请从知识库列表重新进入" />
+
+        <section v-else class="dashboard-panel">
           <div class="dashboard-panel__head">
             <div>
               <p class="dashboard-panel__eyebrow">Task Dashboard</p>
@@ -305,7 +308,9 @@ const total = ref(0)
 const errorPreviewLength = 80
 
 const spaceId = computed(() => Number(route.params.id))
-const kbId = computed(() => Number(route.params.kbId))
+// 非法 kbId 兜 0 + 空态，不打 NaN 请求（对齐 DocumentView 模式）
+const kbId = computed(() => Number(route.params.kbId) || 0)
+const kbInvalid = computed(() => kbId.value === 0)
 
 const kbNavItems = computed(() =>
   buildKbNavItems({
@@ -323,6 +328,7 @@ const currentPageFailedCount = computed(() =>
 )
 
 async function fetchTasks(silent = false) {
+  if (kbInvalid.value) return
   if (!silent) loading.value = true
   try {
     const data = await documentApi.getDocumentTasksOverview(spaceId.value, kbId.value, {

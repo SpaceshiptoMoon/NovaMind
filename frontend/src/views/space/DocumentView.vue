@@ -4,7 +4,10 @@
       <KbSidebar :nav-items="kbNavItems" />
 
       <div class="kb-content">
-        <section class="kb-overview">
+        <!-- 非法 kbId（地址栏手改/坏链接）空态，替代打出 NaN 请求 -->
+        <el-empty v-if="kbInvalid" description="知识库不存在或链接无效，请从知识库列表重新进入" />
+
+        <section v-else class="kb-overview">
           <div class="kb-overview__copy">
             <span class="kb-overview__eyebrow">知识库概览</span>
             <h1 class="kb-overview__title">{{ kbName || '文档管理' }}</h1>
@@ -330,7 +333,9 @@ const route = useRoute()
 const router = useRouter()
 
 const spaceId = computed(() => Number(route.params.id))
-const kbId = computed(() => Number(route.params.kbId))
+// 非法 kbId（手改地址栏/坏链接 → NaN）兜 0；onMounted 拦截后走空态，不打 NaN 请求
+const kbId = computed(() => Number(route.params.kbId) || 0)
+const kbInvalid = computed(() => kbId.value === 0)
 
 const kbNavItems = computed(() =>
   buildKbNavItems({
@@ -757,6 +762,8 @@ async function handleRetrySingle(doc: DocType) {
 }
 
 onMounted(async () => {
+  // 非法 kbId：不再发任何请求（文档列表/KB 配置都依赖 kbId），落到模板空态
+  if (kbInvalid.value) return
   // 从详情页返回时，恢复进入时的页码（由详情页 back 按钮通过 query.page 带回）
   const queryPage = Number(route.query.page)
   if (Number.isFinite(queryPage) && queryPage > 0) {
