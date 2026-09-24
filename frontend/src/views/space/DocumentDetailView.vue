@@ -8,7 +8,7 @@
             {{ (document?.file_type || 'FILE').toUpperCase().slice(0, 3) }}
           </div>
           <div class="info-title-text">
-            <h3 class="doc-filename">{{ document?.filename || '加载中...' }}</h3>
+            <h3 class="doc-filename">{{ document?.filename || (loadFailed ? '文档不存在或已删除' : '加载中...') }}</h3>
           </div>
         </div>
       </div>
@@ -212,9 +212,13 @@ const route = useRoute()
 
 const spaceId = computed(() => Number(route.params.id))
 const docId = computed(() => Number(route.params.docId))
-const kbId = computed(() => Number(route.query.kbId) || 0)
+// kbId 优先取 URL query；缺失（裸链接/收藏夹进入）时先反查归属知识库再加载，
+// 反查失败按 0 处理（各加载函数已有 0 短路，不再打出 /knowledge-bases/0/... 请求）
+const resolvedKbId = ref(Number(route.query.kbId) || 0)
+const kbId = computed(() => resolvedKbId.value)
 
 const loading = ref(false)
+const loadFailed = ref(false)
 const document = ref<DocumentDetail | null>(null)
 const latestTask = ref<DocumentTaskItem | null>(null)
 const chunks = ref<Chunk[]>([])
@@ -263,6 +267,7 @@ function truncateContent(content: string, maxLen = 80): string {
 }
 
 async function fetchDocument() {
+  if (kbId.value === 0) return
   loading.value = true
   try {
     const data = await documentApi.getDocument(spaceId.value, kbId.value, docId.value)
@@ -310,7 +315,17 @@ async function fetchLatestTask() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  if (resolvedKbId.value === 0) {
+    try {
+      const { kb_id } = await documentApi.getDocumentKbId(spaceId.value, docId.value)
+      resolvedKbId.value = kb_id
+    } catch {
+      // 反查失败（文档不存在/跨空间）落到明确的空态，不留「加载中」挂死
+      loadFailed.value = true
+      return
+    }
+  }
   fetchDocument()
   fetchLatestTask()
 })

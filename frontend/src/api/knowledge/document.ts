@@ -43,6 +43,13 @@ export const documentApi = {
     )
   },
 
+  /** 按 space + docId 反查归属知识库（文档详情页裸链接无 kbId query 时用） */
+  getDocumentKbId(spaceId: number, docId: number) {
+    return request.get<{ kb_id: number; document_id: number }>(
+      `/spaces/${spaceId}/documents/${docId}/kb-id`,
+    )
+  },
+
   getDocumentChunks(
     spaceId: number,
     kbId: number,

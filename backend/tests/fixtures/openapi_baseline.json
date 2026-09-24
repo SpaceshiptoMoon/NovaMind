@@ -18240,6 +18240,69 @@
         ]
       }
     },
+    "/api/v1/spaces/{space_id}/documents/{document_id}/kb-id": {
+      "get": {
+        "description": "按空间与文档 ID 反查文档归属的知识库 ID（用于无 kbId 上下文的入口，如外部链接直达详情页）",
+        "operationId": "get_document_kb_id_api_v1_spaces__space_id__documents__document_id__kb_id_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "文档ID",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "文档ID",
+              "exclusiveMinimum": 0,
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Document Kb Id Api V1 Spaces  Space Id  Documents  Document Id  Kb Id Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "查文档归属知识库 ID",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
     "/api/v1/spaces/{space_id}/knowledge-bases": {
       "get": {
         "description": "获取空间内的知识库列表（需要空间成员权限）",

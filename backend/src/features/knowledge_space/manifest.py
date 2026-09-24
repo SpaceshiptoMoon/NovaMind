@@ -27,6 +27,9 @@ async def _init(app) -> None:
 
 
 def manifest() -> FeatureManifest:
+    from novamind.features.knowledge_space.api.document_routes import (
+        flat_router as document_flat_router,
+    )
     from novamind.features.knowledge_space.api.document_routes import router as document_router
     from novamind.features.knowledge_space.api.knowledge_base_routes import (
         router as knowledge_base_router,
@@ -50,6 +53,12 @@ def manifest() -> FeatureManifest:
                 "space_document",
                 document_router,
                 f"{API_V1_PREFIX}/spaces/{{space_id}}/knowledge-bases",
+                "文档管理",
+            ),
+            RouterSpec(
+                "space_document_flat",
+                document_flat_router,
+                f"{API_V1_PREFIX}/spaces/{{space_id}}",
                 "文档管理",
             ),
             RouterSpec(

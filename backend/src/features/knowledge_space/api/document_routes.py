@@ -75,6 +75,28 @@ MAX_BATCH_FILE_COUNT = 200
 
 router = APIRouter(tags=["文档管理"])
 
+# 扁平路由（挂 spaces/{space_id} 前缀）：文档详情页裸链接（URL 无 kbId query）反查归属知识库用。
+# 文档路由主体仍挂 spaces/{space_id}/knowledge-bases 前缀，kb 级权限校验在对应路由内完成。
+flat_router = APIRouter(tags=["文档管理"])
+
+
+@flat_router.get(
+    "/documents/{document_id}/kb-id",
+    summary="查文档归属知识库 ID",
+    description="按空间与文档 ID 反查文档归属的知识库 ID（用于无 kbId 上下文的入口，如外部链接直达详情页）",
+)
+async def get_document_kb_id(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
+) -> dict:
+    """按 space_id + document_id 返回 kb_id；文档不存在或不属于该空间时 404。"""
+    document = await document_query_service.get_document(document_id)
+    if not document or document.space_id != space_id or document.deleted_at is not None:
+        raise DocumentNotFoundError(document_id)
+    return {"kb_id": document.kb_id, "document_id": document.id}
+
 
 async def _build_chunk_response(c: dict) -> ChunkResponse:
     """从 ES 分块字典构建 ChunkResponse（媒体 presign 委托 query service）。"""
