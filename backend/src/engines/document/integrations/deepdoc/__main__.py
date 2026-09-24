@@ -31,7 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     parse_parser = subparsers.add_parser("parse", help="Parse a local file through DeepDoc")
     parse_parser.add_argument("path", help="Path to the file to parse")
     parse_parser.add_argument("--parser-id", dest="parser_id", help="DeepDoc parser id, e.g. pdf_plain")
-    parse_parser.add_argument("--pdf-mode", dest="pdf_mode", help="PDF mode, e.g. plain/layout/vision")
+    parse_parser.add_argument("--pdf-mode", dest="pdf_mode", help="PDF mode: plain or full")
     parse_parser.add_argument("--chunk-size", dest="chunk_size", type=int, default=1000, help="Chunk size")
     parse_parser.add_argument(
         "--output",

@@ -59,42 +59,6 @@ class DeepDocParserFactory:
                 mode="full",
                 available=bool(pdf_modes["full"]["available"]),
             ),
-            "pdf_docling": DeepDocParserSpec(
-                parser_id="pdf_docling",
-                file_type="pdf",
-                mode="docling",
-                available=bool(pdf_modes["docling"]["available"]),
-            ),
-            "pdf_mineru": DeepDocParserSpec(
-                parser_id="pdf_mineru",
-                file_type="pdf",
-                mode="mineru",
-                available=bool(pdf_modes["mineru"]["available"]),
-            ),
-            "pdf_opendataloader": DeepDocParserSpec(
-                parser_id="pdf_opendataloader",
-                file_type="pdf",
-                mode="opendataloader",
-                available=bool(pdf_modes["opendataloader"]["available"]),
-            ),
-            "pdf_paddleocr": DeepDocParserSpec(
-                parser_id="pdf_paddleocr",
-                file_type="pdf",
-                mode="paddleocr",
-                available=bool(pdf_modes["paddleocr"]["available"]),
-            ),
-            "pdf_somark": DeepDocParserSpec(
-                parser_id="pdf_somark",
-                file_type="pdf",
-                mode="somark",
-                available=bool(pdf_modes["somark"]["available"]),
-            ),
-            "pdf_tcadp": DeepDocParserSpec(
-                parser_id="pdf_tcadp",
-                file_type="pdf",
-                mode="tcadp",
-                available=bool(pdf_modes["tcadp"]["available"]),
-            ),
             "docx": DeepDocParserSpec(
                 parser_id="docx",
                 file_type="docx",

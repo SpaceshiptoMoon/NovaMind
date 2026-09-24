@@ -1,7 +1,6 @@
-"""DeepDoc 能力查询：检测当前环境可用的解析特性（OCR / TSR / DLA / 远程解析器）。"""
+"""DeepDoc 能力查询：检测当前环境可用的解析特性（OCR / TSR / DLA）。"""
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from novamind.engines.document.integrations.deepdoc.compat.upstream import (
@@ -20,26 +19,10 @@ def get_deepdoc_capabilities() -> dict[str, Any]:
     runtime_report = get_deepdoc_runtime_report()
     vision_status = get_vision_runtime_status()
     vision_health = get_vision_health_status()
-    docling_configured = bool(os.getenv("DOCLING_SERVER_URL", "").rstrip("/"))
-    mineru_configured = bool(os.getenv("MINERU_APISERVER", "").rstrip("/"))
-    opendataloader_configured = bool(os.getenv("OPENDATALOADER_APISERVER", "").rstrip("/"))
-    paddleocr_configured = bool(os.getenv("PADDLEOCR_BASE_URL", "").rstrip("/"))
-    somark_configured = bool(os.getenv("SOMARK_BASE_URL", "").strip().rstrip("/"))
-    tcadp_credentials_configured = bool(
-        (os.getenv("TCADP_SECRET_ID") or os.getenv("TENCENTCLOUD_SECRET_ID"))
-        and (os.getenv("TCADP_SECRET_KEY") or os.getenv("TENCENTCLOUD_SECRET_KEY"))
-    )
-    try:
-        from novamind.engines.document.integrations.deepdoc.parsers.remote.tcadp import (
-            TENCENTCLOUD_SDK_AVAILABLE,
-        )
-    except Exception:
-        TENCENTCLOUD_SDK_AVAILABLE = False
-    tcadp_configured = bool(tcadp_credentials_configured and TENCENTCLOUD_SDK_AVAILABLE)
 
     return {
         "supported_extensions": ["pdf", "docx", "epub", "txt", "md", "markdown", "csv", "json", "html", "xls", "xlsx", "ppt", "pptx", "jpg", "jpeg", "png", "gif", "webp", "bmp"],
-        "mirrored_packages": ["parser", "vision", "server"],
+        "mirrored_packages": ["parser", "vision"],
         "specialized_modules": {
             "resume": {
                 "available": True,
@@ -50,12 +33,6 @@ def get_deepdoc_capabilities() -> dict[str, Any]:
         "parser_ids": [
             "pdf_full",
             "pdf_plain",
-            "pdf_docling",
-            "pdf_mineru",
-            "pdf_opendataloader",
-            "pdf_paddleocr",
-            "pdf_somark",
-            "pdf_tcadp",
             "docx",
             "epub",
             "excel",
@@ -79,44 +56,6 @@ def get_deepdoc_capabilities() -> dict[str, Any]:
                 "optional_missing": vision_status["missing_optional"],
                 "upstream_modules": vision_status["upstream_modules"],
                 "package_status": vision_status["package_status"],
-            },
-            "docling": {
-                "available": docling_configured,
-                "description": "Adapted PDF parser backed by a remote Docling service.",
-                "missing": [] if docling_configured else ["DOCLING_SERVER_URL is not configured"],
-            },
-            "mineru": {
-                "available": mineru_configured,
-                "description": "Adapted PDF parser backed by a remote MinerU service.",
-                "missing": [] if mineru_configured else ["MINERU_APISERVER is not configured"],
-            },
-            "opendataloader": {
-                "available": opendataloader_configured,
-                "description": "Adapted PDF parser backed by an external OpenDataLoader service.",
-                "missing": [] if opendataloader_configured else ["OPENDATALOADER_APISERVER is not configured"],
-            },
-            "paddleocr": {
-                "available": paddleocr_configured,
-                "description": "Adapted PDF parser backed by a remote PaddleOCR async job service.",
-                "missing": [] if paddleocr_configured else ["PADDLEOCR_BASE_URL is not configured"],
-            },
-            "somark": {
-                "available": somark_configured,
-                "description": "Adapted PDF parser backed by a remote SoMark service.",
-                "missing": [] if somark_configured else ["SOMARK_BASE_URL is not configured"],
-            },
-            "tcadp": {
-                "available": tcadp_configured,
-                "description": "Adapted PDF parser backed by Tencent Cloud Document Parsing.",
-                "missing": (
-                    []
-                    if tcadp_configured
-                    else (
-                        ["Tencent Cloud SDK is not installed"]
-                        if tcadp_credentials_configured and not TENCENTCLOUD_SDK_AVAILABLE
-                        else ["TCADP credentials are not configured"]
-                    )
-                ),
             },
         },
         "optional_dependencies": runtime_report,

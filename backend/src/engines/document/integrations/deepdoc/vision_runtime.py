@@ -31,8 +31,6 @@ VISION_RUNTIME_DEPENDENCIES = (
     "pyclipper",
 )
 
-VISION_OPTIONAL_DEPENDENCIES = ("paddleocr",)
-
 
 class DeepDocVisionRuntimeUnavailable(RuntimeError):
     def __init__(self, *, missing: list[str], message: str | None = None):
@@ -51,7 +49,6 @@ class DeepDocVisionParserUnavailable(RuntimeError):
 def get_vision_runtime_status() -> dict[str, Any]:
     runtime_report = get_deepdoc_runtime_report()
     required_missing = get_missing_runtime_dependencies(*VISION_RUNTIME_DEPENDENCIES)
-    optional_missing = get_missing_runtime_dependencies(*VISION_OPTIONAL_DEPENDENCIES)
     available = not required_missing
     package_status = get_vendored_vision_package_status()
     model_status = get_model_status()
@@ -61,12 +58,8 @@ def get_vision_runtime_status() -> dict[str, Any]:
             name: runtime_report[name]
             for name in VISION_RUNTIME_DEPENDENCIES
         },
-        "optional_dependencies": {
-            name: runtime_report[name]
-            for name in VISION_OPTIONAL_DEPENDENCIES
-        },
         "missing_required": required_missing,
-        "missing_optional": optional_missing,
+        "missing_optional": [],
         "package_status": package_status,
         "model_status": model_status,
         "parser_available": bool(available and package_status["implementation_ready"]),

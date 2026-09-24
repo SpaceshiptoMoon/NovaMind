@@ -10,7 +10,6 @@ VENDORED_PDF_PARSER_COMMIT = "2a83ad6"
 
 UPSTREAM_PARSER_MODULES: list[str] = [
     "__init__",
-    "docling_parser",
     "docx_parser",
     "epub_parser",
     "excel_parser",
@@ -18,11 +17,6 @@ UPSTREAM_PARSER_MODULES: list[str] = [
     "html_parser",
     "json_parser",
     "markdown_parser",
-    "mineru_parser",
-    "opendataloader_parser",
-    "paddleocr_parser",
-    "somark_parser",
-    "tcadp_parser",
     "pdf_parser",
     "ppt_parser",
     "txt_parser",
@@ -32,7 +26,6 @@ UPSTREAM_PARSER_MODULES: list[str] = [
 
 IMPLEMENTED_PARSER_MODULES: list[str] = [
     "__init__",
-    "docling_parser",
     "docx_parser",
     "epub_parser",
     "excel_parser",
@@ -40,11 +33,6 @@ IMPLEMENTED_PARSER_MODULES: list[str] = [
     "html_parser",
     "json_parser",
     "markdown_parser",
-    "mineru_parser",
-    "opendataloader_parser",
-    "paddleocr_parser",
-    "somark_parser",
-    "tcadp_parser",
     "pdf_parser",
     "ppt_parser",
     "resume",
@@ -102,7 +90,6 @@ LOCAL_ADAPTATION_MODULES: list[str] = [
 
 UPSTREAM_SOURCE_MAP: dict[str, str] = {
     "parsers/upstream/__init__.py": "deepdoc/parser/__init__.py",
-    "parsers/upstream/docling_parser.py": "deepdoc/parser/docling_parser.py",
     "parsers/upstream/docx_parser.py": "deepdoc/parser/docx_parser.py",
     "parsers/upstream/epub_parser.py": "deepdoc/parser/epub_parser.py",
     "parsers/upstream/excel_parser.py": "deepdoc/parser/excel_parser.py",
@@ -110,13 +97,8 @@ UPSTREAM_SOURCE_MAP: dict[str, str] = {
     "parsers/upstream/html_parser.py": "deepdoc/parser/html_parser.py",
     "parsers/upstream/json_parser.py": "deepdoc/parser/json_parser.py",
     "parsers/upstream/markdown_parser.py": "deepdoc/parser/markdown_parser.py",
-    "parsers/upstream/mineru_parser.py": "deepdoc/parser/mineru_parser.py",
-    "parsers/upstream/opendataloader_parser.py": "deepdoc/parser/opendataloader_parser.py",
-    "parsers/upstream/paddleocr_parser.py": "deepdoc/parser/paddleocr_parser.py",
     "parsers/upstream/pdf_parser.py": "deepdoc/parser/pdf_parser.py",
     "parsers/upstream/ppt_parser.py": "deepdoc/parser/ppt_parser.py",
-    "parsers/upstream/somark_parser.py": "deepdoc/parser/somark_parser.py",
-    "parsers/upstream/tcadp_parser.py": "deepdoc/parser/tcadp_parser.py",
     "parsers/upstream/txt_parser.py": "deepdoc/parser/txt_parser.py",
     "parsers/upstream/utils.py": "deepdoc/parser/utils.py",
     "parsers/upstream/resume/": "deepdoc/parser/resume/",
@@ -137,7 +119,6 @@ UPSTREAM_SOURCE_MAP: dict[str, str] = {
 }
 
 LOCAL_ADAPTATION_SOURCE_MAP: dict[str, str] = {
-    "parsers/upstream/docling_parser.py": "deepdoc/parser/docling_parser.py",
     "parsers/upstream/docx_parser.py": "deepdoc/parser/docx_parser.py",
     "parsers/upstream/epub_parser.py": "deepdoc/parser/epub_parser.py",
     "parsers/upstream/excel_parser.py": "deepdoc/parser/excel_parser.py",
@@ -145,14 +126,9 @@ LOCAL_ADAPTATION_SOURCE_MAP: dict[str, str] = {
     "parsers/upstream/html_parser.py": "deepdoc/parser/html_parser.py",
     "parsers/upstream/json_parser.py": "deepdoc/parser/json_parser.py",
     "parsers/upstream/markdown_parser.py": "deepdoc/parser/markdown_parser.py",
-    "parsers/upstream/mineru_parser.py": "deepdoc/parser/mineru_parser.py",
-    "parsers/upstream/opendataloader_parser.py": "deepdoc/parser/opendataloader_parser.py",
-    "parsers/upstream/paddleocr_parser.py": "deepdoc/parser/paddleocr_parser.py",
     "parsers/upstream/pdf_parser.py": "deepdoc/parser/pdf_parser.py",
     "parsers/upstream/txt_parser.py": "deepdoc/parser/txt_parser.py",
     "parsers/upstream/ppt_parser.py": "deepdoc/parser/ppt_parser.py",
-    "parsers/upstream/somark_parser.py": "deepdoc/parser/somark_parser.py",
-    "parsers/upstream/tcadp_parser.py": "deepdoc/parser/tcadp_parser.py",
     "parsers/upstream/utils.py": "deepdoc/parser/utils.py",
     "parsers/pdf_plain.py": "deepdoc/parser/pdf_parser.py",
     "pdf_layout.py": "deepdoc/parser/pdf_parser.py",

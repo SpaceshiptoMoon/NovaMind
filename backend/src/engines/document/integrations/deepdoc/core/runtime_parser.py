@@ -49,54 +49,6 @@ class DeepDocParser:
         return RAGFlowFigureParser()
 
     @cached_property
-    def _docling_parser(self):
-        from novamind.engines.document.integrations.deepdoc.parsers.remote.docling import (
-            RAGFlowDoclingParser,
-        )
-
-        return RAGFlowDoclingParser()
-
-    @cached_property
-    def _mineru_parser(self):
-        from novamind.engines.document.integrations.deepdoc.parsers.remote.mineru import (
-            RAGFlowMinerUParser,
-        )
-
-        return RAGFlowMinerUParser()
-
-    @cached_property
-    def _opendataloader_parser(self):
-        from novamind.engines.document.integrations.deepdoc.parsers.remote.opendataloader import (
-            RAGFlowOpenDataLoaderParser,
-        )
-
-        return RAGFlowOpenDataLoaderParser()
-
-    @cached_property
-    def _paddleocr_parser(self):
-        from novamind.engines.document.integrations.deepdoc.parsers.remote.paddleocr import (
-            RAGFlowPaddleOCRParser,
-        )
-
-        return RAGFlowPaddleOCRParser()
-
-    @cached_property
-    def _somark_parser(self):
-        from novamind.engines.document.integrations.deepdoc.parsers.remote.somark import (
-            RAGFlowSoMarkParser,
-        )
-
-        return RAGFlowSoMarkParser()
-
-    @cached_property
-    def _tcadp_parser(self):
-        from novamind.engines.document.integrations.deepdoc.parsers.remote.tcadp import (
-            RAGFlowTCADPParser,
-        )
-
-        return RAGFlowTCADPParser()
-
-    @cached_property
     def _pdf_parser(self):
         from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
 
@@ -188,76 +140,11 @@ class DeepDocParser:
         logger.info(
             "DeepDoc PDF 解析开始",
             parser_id=parser_id or "(auto)",
-            deepdoc_pdf_mode=parsing_config.get("deepdoc_pdf_mode", "layout"),
+            deepdoc_pdf_mode=parsing_config.get("deepdoc_pdf_mode", "full"),
             chunk_size=splitting_config.get("chunk_size", 1000),
             source_type="file" if isinstance(source, Path) else "bytes",
         )
-        if parser_id == "pdf_docling":
-            logger.info("DeepDoc PDF 使用远程解析器", parser_id="pdf_docling")
-            if isinstance(source, Path):
-                full_text, default_chunks, metadata = self._docling_parser.parse(source)
-            else:
-                full_text, default_chunks, metadata = self._docling_parser.parse_bytes(source)
-            chunks = self._chunk_blocks(default_chunks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
-            result = DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
-            logger.info("DeepDoc PDF 远程解析完成", parser_id="pdf_docling", char_count=len(full_text), chunk_count=len(chunks))
-            return result
-        if parser_id == "pdf_opendataloader":
-            logger.info("DeepDoc PDF 使用远程解析器", parser_id="pdf_opendataloader")
-            if isinstance(source, Path):
-                full_text, default_chunks, metadata = self._opendataloader_parser.parse(source)
-            else:
-                full_text, default_chunks, metadata = self._opendataloader_parser.parse_bytes(source)
-            chunks = self._chunk_blocks(default_chunks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
-            result = DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
-            logger.info("DeepDoc PDF 远程解析完成", parser_id="pdf_opendataloader", char_count=len(full_text), chunk_count=len(chunks))
-            return result
-        if parser_id == "pdf_mineru":
-            logger.info("DeepDoc PDF 使用远程解析器", parser_id="pdf_mineru")
-            if isinstance(source, Path):
-                full_text, default_chunks, metadata = self._mineru_parser.parse(source)
-            else:
-                full_text, default_chunks, metadata = self._mineru_parser.parse_bytes(source, parsing_config=parsing_config)
-            chunks = self._chunk_blocks(default_chunks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
-            result = DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
-            logger.info("DeepDoc PDF 远程解析完成", parser_id="pdf_mineru", char_count=len(full_text), chunk_count=len(chunks))
-            return result
-        if parser_id == "pdf_paddleocr":
-            logger.info("DeepDoc PDF 使用远程解析器", parser_id="pdf_paddleocr")
-            if isinstance(source, Path):
-                full_text, default_chunks, metadata = self._paddleocr_parser.parse(source)
-            else:
-                full_text, default_chunks, metadata = self._paddleocr_parser.parse_bytes(source)
-            chunks = self._chunk_blocks(default_chunks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
-            result = DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
-            logger.info("DeepDoc PDF 远程解析完成", parser_id="pdf_paddleocr", char_count=len(full_text), chunk_count=len(chunks))
-            return result
-        if parser_id == "pdf_somark":
-            logger.info("DeepDoc PDF 使用远程解析器", parser_id="pdf_somark")
-            if isinstance(source, Path):
-                full_text, default_chunks, metadata = self._somark_parser.parse(source)
-            else:
-                full_text, default_chunks, metadata = self._somark_parser.parse_bytes(source, parsing_config=parsing_config)
-            chunks = self._chunk_blocks(default_chunks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
-            result = DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
-            logger.info("DeepDoc PDF 远程解析完成", parser_id="pdf_somark", char_count=len(full_text), chunk_count=len(chunks))
-            return result
-        if parser_id == "pdf_tcadp":
-            logger.info("DeepDoc PDF 使用远程解析器", parser_id="pdf_tcadp")
-            if isinstance(source, Path):
-                full_text, default_chunks, metadata = self._tcadp_parser.parse(source)
-            else:
-                full_text, default_chunks, metadata = self._tcadp_parser.parse_bytes(source, parsing_config=parsing_config)
-            chunks = self._chunk_blocks(default_chunks, chunk_size=int(splitting_config.get("chunk_size", 1000)))
-            result = DeepDocParseResult(full_text=full_text, chunks=chunks, metadata=metadata)
-            logger.info("DeepDoc PDF 远程解析完成", parser_id="pdf_tcadp", char_count=len(full_text), chunk_count=len(chunks))
-            return result
-
         pdf_mode = str(parsing_config.get("deepdoc_pdf_mode", "full"))
-        if pdf_mode in ("layout", "vision"):
-            # 兼容旧配置：layout/vision 已并入 full（上游对齐的逐框融合流水线）
-            logger.info("DeepDoc PDF 模式别名映射到 full", alias=pdf_mode)
-            pdf_mode = "full"
         pdf_modes = self.supported_pdf_modes()
         if pdf_mode not in pdf_modes:
             raise ValueError(f"Unsupported DeepDoc PDF mode: {pdf_mode}")

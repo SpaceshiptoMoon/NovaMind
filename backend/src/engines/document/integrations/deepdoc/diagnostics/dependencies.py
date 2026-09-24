@@ -1,4 +1,4 @@
-"""DeepDoc 依赖扫描：检查 OCR / TSR / DLA / 远程解析所需的系统库与 Python 包。"""
+"""DeepDoc 依赖扫描：检查 OCR / TSR / DLA 所需的系统库与 Python 包。"""
 from __future__ import annotations
 
 from importlib import import_module
@@ -15,7 +15,6 @@ RUNTIME_MODULES = {
     "xgboost": "xgboost",
     "pypdf": "pypdf",
     "fitz": "fitz",
-    "paddleocr": "paddleocr",
     "shapely": "shapely",
     "pyclipper": "pyclipper",
     "pandas": "pandas",

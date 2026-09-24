@@ -235,7 +235,7 @@ def test_knowledge_base_service_accepts_all_deepdoc_full_options():
         {
             "parsing": {
                 "strategy": "deepdoc",
-                "deepdoc_parser_id": "pdf_paddleocr",
+                "deepdoc_parser_id": "pdf_full",
                 "deepdoc_pdf_mode": "full",
             }
         }
@@ -662,273 +662,12 @@ def test_deepdoc_parser_supports_plain_pdf_mode():
     assert "@@1\t" not in result.full_text
 
 
-def test_deepdoc_parser_supports_opendataloader_pdf_parser(monkeypatch):
-    class _FakeResponse:
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return {
-                "json_doc": {
-                    "children": [
-                        {"type": "title", "content": "OpenDataLoader Title"},
-                        {"type": "paragraph", "content": "OpenDataLoader Body"},
-                        {"type": "table", "html": "<table><tr><td>A</td></tr></table>"},
-                    ]
-                }
-            }
-
-    monkeypatch.setenv("OPENDATALOADER_APISERVER", "http://mock-opendataloader")
-    monkeypatch.setattr(
-        "novamind.engines.document.integrations.deepdoc.parsers.remote.opendataloader.requests.post",
-        lambda *args, **kwargs: _FakeResponse(),
-    )
-
-    parser = DeepDocParser()
-    result = _run(
-        parser.parse_bytes(
-            _build_minimal_pdf_bytes("OpenDataLoader PDF"),
-            file_type="pdf",
-            parsing_config={"deepdoc_parser_id": "pdf_opendataloader"},
-            splitting_config={"chunk_size": 500},
-        )
-    )
-
-    assert result.metadata["parser_class"] == "RAGFlowOpenDataLoaderParser"
-    assert "OpenDataLoader Title" in result.full_text
-    assert result.metadata["tables"]
-    assert "OpenDataLoader Body" in result.full_text
-
-
-def test_deepdoc_parser_supports_docling_pdf_parser(monkeypatch):
-    class _FakeResponse:
-        status_code = 200
-
-        def json(self):
-            return [
-                {"text": "Docling Chunk 1"},
-                {"chunk": {"text": "Docling Chunk 2"}},
-            ]
-
-    monkeypatch.setenv("DOCLING_SERVER_URL", "http://mock-docling")
-    monkeypatch.setattr(
-        "novamind.engines.document.integrations.deepdoc.parsers.remote.docling.requests.post",
-        lambda *args, **kwargs: _FakeResponse(),
-    )
-
-    parser = DeepDocParser()
-    result = _run(
-        parser.parse_bytes(
-            _build_minimal_pdf_bytes("Docling PDF"),
-            file_type="pdf",
-            parsing_config={"deepdoc_parser_id": "pdf_docling"},
-            splitting_config={"chunk_size": 500},
-        )
-    )
-
-    assert result.metadata["parser_class"] == "RAGFlowDoclingParser"
-    assert result.metadata["docling_chunked"] is True
-    assert "Docling Chunk 1" in result.full_text
-    assert "Docling Chunk 2" in result.full_text
-
-
-def test_deepdoc_parser_supports_mineru_pdf_parser(monkeypatch):
-    class _FakeMinerUParser:
-        def parse_bytes(self, file_bytes, *, parsing_config=None, file_name="input.pdf"):
-            assert parsing_config["deepdoc_parser_id"] == "pdf_mineru"
-            return (
-                "@@1\t10.0\t120.0\t20.0\t40.0##MinerU Heading\n\n@@1\t10.0\t220.0\t50.0\t90.0##MinerU Body",
-                [
-                    "@@1\t10.0\t120.0\t20.0\t40.0##MinerU Heading",
-                    "@@1\t10.0\t220.0\t50.0\t90.0##MinerU Body",
-                ],
-                {
-                    "parser": "deepdoc",
-                    "parser_class": "RAGFlowMinerUParser",
-                    "file_type": "pdf",
-                    "source": "ragflow-adapted",
-                    "service": {"api_url": "http://mock-mineru", "configured": True},
-                    "backend": "pipeline",
-                    "tables": [],
-                    "section_count": 2,
-                },
-            )
-
-    monkeypatch.setenv("MINERU_APISERVER", "http://mock-mineru")
-
-    parser = DeepDocParser()
-    parser._mineru_parser = _FakeMinerUParser()
-    result = _run(
-        parser.parse_bytes(
-            _build_minimal_pdf_bytes("MinerU PDF"),
-            file_type="pdf",
-            parsing_config={"deepdoc_parser_id": "pdf_mineru", "mineru_backend": "pipeline"},
-            splitting_config={"chunk_size": 500},
-        )
-    )
-
-    assert result.metadata["parser_class"] == "RAGFlowMinerUParser"
-    assert result.metadata["backend"] == "pipeline"
-    assert "MinerU Heading" in result.full_text
-    assert "MinerU Body" in result.full_text
-
-
-def test_deepdoc_parser_supports_somark_pdf_parser(monkeypatch):
-    class _FakeSoMarkParser:
-        def parse_bytes(self, file_bytes, *, parsing_config=None, file_name="input.pdf"):
-            assert parsing_config["deepdoc_parser_id"] == "pdf_somark"
-            return (
-                "@@1\t10.0\t180.0\t20.0\t60.0##SoMark Title\n\n@@1\t10.0\t220.0\t80.0\t120.0##SoMark Body",
-                [
-                    "@@1	10.0	180.0	20.0	60.0##SoMark Title",
-                    "@@1	10.0	220.0	80.0	120.0##SoMark Body",
-                ],
-                {
-                    "parser": "deepdoc",
-                    "parser_class": "RAGFlowSoMarkParser",
-                    "file_type": "pdf",
-                    "source": "ragflow-adapted",
-                    "service": {"base_url": "http://mock-somark", "configured": True},
-                    "element_formats": {"image": "url", "formula": "latex", "table": "html", "cs": "image"},
-                    "feature_config": {"enable_title_level_recognition": False},
-                    "tables": [],
-                    "section_count": 2,
-                },
-            )
-
-    monkeypatch.setenv("SOMARK_BASE_URL", "http://mock-somark")
-
-    parser = DeepDocParser()
-    parser._somark_parser = _FakeSoMarkParser()
-    result = _run(
-        parser.parse_bytes(
-            _build_minimal_pdf_bytes("SoMark PDF"),
-            file_type="pdf",
-            parsing_config={"deepdoc_parser_id": "pdf_somark"},
-            splitting_config={"chunk_size": 500},
-        )
-    )
-
-    assert result.metadata["parser_class"] == "RAGFlowSoMarkParser"
-    assert result.metadata["service"]["configured"] is True
-    assert "SoMark Title" in result.full_text
-    assert "SoMark Body" in result.full_text
-
-
-def test_deepdoc_parser_supports_tcadp_pdf_parser(monkeypatch):
-    class _FakeTCADPParser:
-        def parse_bytes(self, file_bytes, *, parsing_config=None, file_name="input.pdf"):
-            assert parsing_config["deepdoc_parser_id"] == "pdf_tcadp"
-            return (
-                "@@1\t0.0\t1000.0\t0.0\t100.0##TCADP Heading\n\n@@1\t0.0\t1000.0\t0.0\t100.0##TCADP Body",
-                [
-                    "@@1	0.0	1000.0	0.0	100.0##TCADP Heading",
-                    "@@1	0.0	1000.0	0.0	100.0##TCADP Body",
-                ],
-                {
-                    "parser": "deepdoc",
-                    "parser_class": "RAGFlowTCADPParser",
-                    "file_type": "pdf",
-                    "source": "ragflow-adapted",
-                    "service": {"region": "ap-guangzhou", "configured": True},
-                    "table_result_type": "1",
-                    "markdown_image_response_type": "1",
-                    "tables": [],
-                    "section_count": 2,
-                },
-            )
-
-    monkeypatch.setenv("TCADP_SECRET_ID", "secret-id")
-    monkeypatch.setenv("TCADP_SECRET_KEY", "secret-key")
-
-    parser = DeepDocParser()
-    parser._tcadp_parser = _FakeTCADPParser()
-    result = _run(
-        parser.parse_bytes(
-            _build_minimal_pdf_bytes("TCADP PDF"),
-            file_type="pdf",
-            parsing_config={"deepdoc_parser_id": "pdf_tcadp"},
-            splitting_config={"chunk_size": 500},
-        )
-    )
-
-    assert result.metadata["parser_class"] == "RAGFlowTCADPParser"
-    assert result.metadata["service"]["configured"] is True
-    assert "TCADP Heading" in result.full_text
-    assert "TCADP Body" in result.full_text
-
-
-def test_deepdoc_parser_supports_paddleocr_pdf_parser(monkeypatch):
-    class _SubmitResponse:
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return {"data": {"jobId": "job-123"}}
-
-    class _PollResponse:
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return {"data": {"state": "done", "resultJsonUrl": "http://mock-paddleocr/result.jsonl"}}
-
-    class _ResultResponse:
-        headers = {"content-type": "application/jsonl"}
-        text = '{"result":{"layoutParsingResults":[{"prunedResult":{"parsing_res_list":[{"block_content":"# PaddleOCR Title","block_bbox":[10,20,210,80]},{"block_content":"PaddleOCR Body","block_bbox":[12,100,220,160]}]}}],"ocrResults":[]}}'
-
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            raise AssertionError("json() should not be used for jsonl payloads")
-
-    monkeypatch.setenv("PADDLEOCR_BASE_URL", "http://mock-paddleocr")
-
-    def _fake_post(url, *args, **kwargs):
-        assert url.endswith("/api/v2/ocr/jobs")
-        assert kwargs["data"]["model"]
-        return _SubmitResponse()
-
-    def _fake_get(url, *args, **kwargs):
-        if url.endswith("/api/v2/ocr/jobs/job-123"):
-            return _PollResponse()
-        if url == "http://mock-paddleocr/result.jsonl":
-            return _ResultResponse()
-        raise AssertionError(f"unexpected url: {url}")
-
-    monkeypatch.setattr(
-        "novamind.engines.document.integrations.deepdoc.parsers.remote.paddleocr.requests.post",
-        _fake_post,
-    )
-    monkeypatch.setattr(
-        "novamind.engines.document.integrations.deepdoc.parsers.remote.paddleocr.requests.get",
-        _fake_get,
-    )
-
-    parser = DeepDocParser()
-    result = _run(
-        parser.parse_bytes(
-            _build_minimal_pdf_bytes("PaddleOCR PDF"),
-            file_type="pdf",
-            parsing_config={"deepdoc_parser_id": "pdf_paddleocr"},
-            splitting_config={"chunk_size": 500},
-        )
-    )
-
-    assert result.metadata["parser_class"] == "RAGFlowPaddleOCRParser"
-    assert result.metadata["algorithm"]
-    assert "PaddleOCR Title" in result.full_text
-    assert "PaddleOCR Body" in result.full_text
-    assert "@@1	" in result.full_text
-
-
-@pytest.mark.skip(reason="layout 模式已并入 full；parse_into_bboxes 仍由其直接测试覆盖")
-def test_ragflow_pdf_parser_parse_into_bboxes():
+def test_ragflow_pdf_parser_exposes_layout_bboxes():
     parser = RAGFlowPdfParser()
-    result = parser(_build_minimal_pdf_bytes("BBox PDF"), pdf_mode="layout", chunk_size=500)
+    result = parser(_build_minimal_pdf_bytes("BBox PDF"), pdf_mode="full", chunk_size=500)
     assert result.metadata["parser_class"] == "RAGFlowPdfParser"
-    assert result.metadata["bboxes"]
+    assert result.metadata["layout_bboxes"]
+    assert result.metadata["merged_bboxes"]
     assert "BBox PDF" in result.full_text
 
 
@@ -1387,12 +1126,6 @@ def test_deepdoc_factory_exposes_parser_ids():
     specs = DeepDocParserFactory.list_specs()
     assert "pdf_full" in specs
     assert "pdf_plain" in specs
-    assert "pdf_docling" in specs
-    assert "pdf_mineru" in specs
-    assert "pdf_opendataloader" in specs
-    assert "pdf_paddleocr" in specs
-    assert "pdf_somark" in specs
-    assert "pdf_tcadp" in specs
     assert "epub" in specs
     assert "excel" in specs
     assert "ppt" in specs
@@ -1412,66 +1145,6 @@ def test_knowledge_base_config_accepts_deepdoc_parser_id():
     )
 
     assert config.model_dump()["parsing"]["deepdoc_parser_id"] == "pdf_layout"
-
-
-def test_knowledge_base_config_accepts_mineru_parser_id():
-    config = KnowledgeBaseConfig.model_validate(
-        {
-            "parsing": {"strategy": "deepdoc", "deepdoc_parser_id": "pdf_mineru"},
-        }
-    )
-
-    assert config.model_dump()["parsing"]["deepdoc_parser_id"] == "pdf_mineru"
-
-
-def test_knowledge_base_config_accepts_opendataloader_parser_id():
-    config = KnowledgeBaseConfig.model_validate(
-        {
-            "parsing": {"strategy": "deepdoc", "deepdoc_parser_id": "pdf_opendataloader"},
-        }
-    )
-
-    assert config.model_dump()["parsing"]["deepdoc_parser_id"] == "pdf_opendataloader"
-
-
-def test_knowledge_base_config_accepts_docling_parser_id():
-    config = KnowledgeBaseConfig.model_validate(
-        {
-            "parsing": {"strategy": "deepdoc", "deepdoc_parser_id": "pdf_docling"},
-        }
-    )
-
-    assert config.model_dump()["parsing"]["deepdoc_parser_id"] == "pdf_docling"
-
-
-def test_knowledge_base_config_accepts_tcadp_parser_id():
-    config = KnowledgeBaseConfig.model_validate(
-        {
-            "parsing": {"strategy": "deepdoc", "deepdoc_parser_id": "pdf_tcadp"},
-        }
-    )
-
-    assert config.model_dump()["parsing"]["deepdoc_parser_id"] == "pdf_tcadp"
-
-
-def test_knowledge_base_config_accepts_somark_parser_id():
-    config = KnowledgeBaseConfig.model_validate(
-        {
-            "parsing": {"strategy": "deepdoc", "deepdoc_parser_id": "pdf_somark"},
-        }
-    )
-
-    assert config.model_dump()["parsing"]["deepdoc_parser_id"] == "pdf_somark"
-
-
-def test_knowledge_base_config_accepts_paddleocr_parser_id():
-    config = KnowledgeBaseConfig.model_validate(
-        {
-            "parsing": {"strategy": "deepdoc", "deepdoc_parser_id": "pdf_paddleocr"},
-        }
-    )
-
-    assert config.model_dump()["parsing"]["deepdoc_parser_id"] == "pdf_paddleocr"
 
 
 @pytest.mark.parametrize(
@@ -1525,13 +1198,13 @@ def test_deepdoc_runtime_report_surfaces_missing_heavy_dependencies():
     assert "pptx" in report
 
 
-def test_vision_runtime_status_tracks_required_and_optional_dependencies():
+def test_vision_runtime_status_tracks_required_dependencies():
     status = get_vision_runtime_status()
     assert status["available"] is (len(status["missing_required"]) == 0)
     assert status["parser_available"] is (status["available"] and status["package_status"]["implementation_ready"])
     assert "model_status" in status
     assert "required_dependencies" in status
-    assert "optional_dependencies" in status
+    assert status["missing_optional"] == []
 
 
 def test_vision_health_status_surfaces_model_groups():
@@ -2572,55 +2245,6 @@ def test_upstream_parser_package_exports_aliases():
     assert UpstreamDocxParserAlias.__name__ == "RAGFlowDocxParser"
 
 
-def test_upstream_mineru_parser_class_is_vendored():
-    from novamind.engines.document.integrations.deepdoc.parsers.upstream.mineru_parser import (
-        MinerUBackend,
-        MinerUContentType,
-        MinerULanguage,
-        MinerUParseMethod,
-        MinerUParseOptions,
-        MinerUParser,
-    )
-
-    parser = MinerUParser()
-    assert parser.__class__.__name__ == "MinerUParser"
-    assert hasattr(parser, "parse_pdf")
-    assert hasattr(parser, "check_installation")
-    assert MinerUBackend.__name__ == "MinerUBackend"
-    assert MinerUContentType.__name__ == "MinerUContentType"
-    assert MinerULanguage.__name__ == "MinerULanguage"
-    assert MinerUParseMethod.__name__ == "MinerUParseMethod"
-    assert MinerUParseOptions.__name__ == "MinerUParseOptions"
-
-
-def test_upstream_somark_parser_class_is_vendored():
-    from novamind.engines.document.integrations.deepdoc.parsers.upstream.somark_parser import (
-        SoMarkAPIError,
-        SoMarkBlockType,
-        SoMarkParser,
-    )
-
-    parser = SoMarkParser()
-    assert parser.__class__.__name__ == "SoMarkParser"
-    assert hasattr(parser, "parse_pdf")
-    assert hasattr(parser, "check_installation")
-    assert SoMarkAPIError.__name__ == "SoMarkAPIError"
-    assert SoMarkBlockType.__name__ == "SoMarkBlockType"
-
-
-def test_upstream_tcadp_parser_class_is_vendored():
-    from novamind.engines.document.integrations.deepdoc.parsers.upstream.tcadp_parser import (
-        TCADPParser,
-        TencentCloudAPIClient,
-    )
-
-    parser = TCADPParser()
-    assert parser.__class__.__name__ == "TCADPParser"
-    assert hasattr(parser, "parse_pdf")
-    assert hasattr(parser, "check_installation")
-    assert TencentCloudAPIClient.__name__ == "TencentCloudAPIClient"
-
-
 def test_upstream_resume_package_is_vendored():
     from novamind.engines.document.integrations.deepdoc.parsers.upstream import refactor_resume
     from novamind.engines.document.integrations.deepdoc.parsers.upstream.resume.step_one import (
@@ -2667,27 +2291,8 @@ def test_deepdoc_capabilities_include_upstream_snapshot():
 
     assert "upstream_snapshot" in capabilities
     assert capabilities["upstream_snapshot"]["commit"]
-    assert "pdf_docling" in capabilities["parser_ids"]
-    assert "pdf_mineru" in capabilities["parser_ids"]
-    assert "pdf_opendataloader" in capabilities["parser_ids"]
-    assert "pdf_paddleocr" in capabilities["parser_ids"]
-    assert "pdf_somark" in capabilities["parser_ids"]
-    assert "pdf_tcadp" in capabilities["parser_ids"]
-
-
-def test_deepdoc_capabilities_expose_tcadp_even_without_sdk(monkeypatch):
-    monkeypatch.setattr(
-        "novamind.engines.document.integrations.deepdoc.parsers.remote.tcadp.TENCENTCLOUD_SDK_AVAILABLE",
-        False,
-    )
-    monkeypatch.setenv("TCADP_SECRET_ID", "secret-id")
-    monkeypatch.setenv("TCADP_SECRET_KEY", "secret-key")
-
-    capabilities = get_deepdoc_capabilities()
-
-    assert "pdf_tcadp" in capabilities["parser_ids"]
-    assert capabilities["pdf_modes"]["tcadp"]["available"] is False
-    assert capabilities["pdf_modes"]["tcadp"]["missing"] == ["Tencent Cloud SDK is not installed"]
+    assert "pdf_full" in capabilities["parser_ids"]
+    assert "pdf_plain" in capabilities["parser_ids"]
 
 
 def test_deepdoc_engine_wraps_vision_model_download(monkeypatch, tmp_path):

@@ -76,8 +76,8 @@ def test_knowledge_base_service_accepts_all_deepdoc_vision_options():
         {
             "parsing": {
                 "strategy": "deepdoc",
-                "deepdoc_parser_id": "pdf_paddleocr",
-                "deepdoc_pdf_mode": "vision",
+                "deepdoc_parser_id": "pdf_full",
+                "deepdoc_pdf_mode": "full",
             }
         }
     )
