@@ -152,14 +152,6 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         self.tb_cpns: list[Any] = []
         self.table_rotations: dict[Any, Any] = {}
         self.rotated_table_imgs: dict[Any, Any] = {}
-        # vendored 全链（parse_into_bboxes_full / vendored __call__）才用的属性；
-        # 主链 _parse_full 不触达。_ensure_vendored_runtime() 惰性装配前保持 None。
-        self.ocr = None
-        self.layouter = None
-        self.tbl_det = None
-        self.updown_cnt_mdl = None
-        self.page_chars: list[list[dict[str, Any]]] = []
-        self.total_page = 0
 
     def _get_layout_recognizer(self):
         if self._layout_recognizer is None:
@@ -296,25 +288,6 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         )
         return result
 
-    def __images__(self, fnm, zoomin=3, page_from=0, page_to=MAXIMUM_PAGE_NUMBER, callback=None):
-        self.lefted_chars = []
-        self.mean_height = []
-        self.mean_width = []
-        self.boxes = []
-        self.garbages = {}
-        self.page_cum_height = [0]
-        self.page_layout = []
-        self.page_from = page_from
-        self.page_images = []
-        with pdfplumber.open(fnm) if isinstance(fnm, str) else pdfplumber.open(BytesIO(fnm)) as pdf:
-            self.pdf = pdf
-            for page in pdf.pages[page_from:page_to]:
-                rendered = page.to_image(resolution=72 * zoomin, antialias=True).annotated
-                self.page_images.append(rendered)
-                self.page_cum_height.append(self.page_cum_height[-1] + rendered.size[1] / zoomin)
-                self.page_layout.append([])
-        return self.page_images
-
     def parse_into_bboxes(
         self,
         filename: str | bytes | Path,
@@ -353,114 +326,6 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                         )
                     )
         return boxes
-
-    def parse_into_bboxes_full(self, filename, callback=None, zoomin=3, from_page=0, to_page=None):
-        """vendored 全链版 `parse_into_bboxes`（__images__+__ocr→layouts→merges→
-        _extract_table_figure），供对拍/调试；主链走 `_parse_full`（fork 融合+
-        artifact 流水线）。注意它会同步加载 OCR/layout/xgb 模型。
-        vendored 基类期望 ocr/layouter/tbl_det/updown_cnt_mdl 实例属性，此处惰性装配。"""
-        self._ensure_vendored_runtime()
-        if to_page is None:
-            from novamind.engines.document.integrations.deepdoc.compat import (
-                MAXIMUM_PAGE_NUMBER as _MPN,
-            )
-
-            to_page = _MPN
-        return super().parse_into_bboxes(filename, callback=callback, zoomin=zoomin, from_page=from_page, to_page=to_page)
-
-    def _ensure_vendored_runtime(self):
-        """按需补齐 vendored `__init__` 会同步装配、而适配层 `__init__` 有意跳过的
-        模型属性（ocr/layouter/tbl_det/updown_cnt_mdl）。仅在走 vendored 全链
-        （parse_into_bboxes_full / vendored __call__）时调用；主链 `_parse_full`
-        不触达这些属性。"""
-        if getattr(self, "ocr", None) is None:
-            from novamind.engines.document.integrations.deepdoc.vision.ocr import OCR
-
-            self.ocr = OCR(autoload=True)
-        if getattr(self, "layouter", None) is None:
-            self.layouter = self._get_layout_recognizer()
-        if getattr(self, "tbl_det", None) is None:
-            from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
-                TableStructureRecognizer,
-            )
-
-            self.tbl_det = TableStructureRecognizer(autoload=True)
-        if getattr(self, "updown_cnt_mdl", None) is None:
-            self.updown_cnt_mdl = self._updown_concat.load_model()
-
-    def crop(self, text: str, ZM: int = 3, need_position: bool = False):
-        poss = self.extract_positions(text)
-        if not poss:
-            if need_position:
-                return None, None
-            return self.remove_tag(text)
-
-        if not getattr(self, "page_images", None):
-            if need_position:
-                return None, None
-            return self.remove_tag(text)
-
-        imgs = []
-        page_count = len(self.page_images)
-        filtered_poss = []
-        for pns, left, right, top, bottom in poss:
-            valid_pns = [pn for pn in pns if 0 <= pn < page_count]
-            if valid_pns:
-                filtered_poss.append((valid_pns, left, right, top, bottom))
-        poss = filtered_poss
-        if not poss:
-            if need_position:
-                return None, None
-            return self.remove_tag(text)
-
-        GAP = 6
-        pos = poss[0]
-        poss.insert(0, ([pos[0][0]], pos[1], pos[2], max(0, pos[3] - 120), max(pos[3] - GAP, 0)))
-        pos = poss[-1]
-        last_page_idx = pos[0][-1]
-        last_page_height = self.page_images[last_page_idx].size[1]
-        poss.append(([last_page_idx], pos[1], pos[2], min(last_page_height, pos[4] + GAP), min(last_page_height, pos[4] + 120)))
-
-        positions = []
-        for ii, (pns, left, right, top, bottom) in enumerate(poss):
-            if bottom <= top:
-                bottom = top + 2
-            img0 = self.page_images[pns[0]]
-            x0, y0, x1, y1 = int(left), int(top), int(right), int(min(bottom, img0.size[1]))
-            if x1 <= x0 or y1 <= y0:
-                continue
-            crop0 = img0.crop((x0, y0, x1, y1))
-            imgs.append(crop0)
-            if 0 < ii < len(poss) - 1:
-                positions.append((pns[0] + self.page_from, x0, x1, y0, y1))
-            remain_bottom = bottom - img0.size[1]
-            for pn in pns[1:]:
-                if remain_bottom <= 0:
-                    break
-                page = self.page_images[pn]
-                x0, y0, x1, y1 = int(left), 0, int(right), int(min(remain_bottom, page.size[1]))
-                if x1 <= x0 or y1 <= y0:
-                    remain_bottom -= page.size[1]
-                    continue
-                cimgp = page.crop((x0, y0, x1, y1))
-                imgs.append(cimgp)
-                if 0 < ii < len(poss) - 1:
-                    positions.append((pn + self.page_from, x0, x1, y0, y1))
-                remain_bottom -= page.size[1]
-
-        if not imgs:
-            if need_position:
-                return None, None
-            return self.remove_tag(text)
-
-        total_height = sum(img.size[1] + GAP for img in imgs)
-        max_width = max(img.size[0] for img in imgs)
-        pic = Image.new("RGB", (int(max_width), int(total_height)), (245, 245, 245))
-        current_y = 0
-        for index, img in enumerate(imgs):
-            pic.paste(img, (0, int(current_y)))
-            current_y += img.size[1] + GAP
-        return (pic, positions) if need_position else pic
 
     def _assign_column_boxes(self, boxes: Sequence[DeepDocPdfBox]) -> list[DeepDocPdfBox]:
         """调用 PdfLayoutExtractor 的 assign_columns 给文本框标 col_id（box 域）。"""
@@ -524,24 +389,6 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             box.positions = [[float(page_number), box.x0, box.x1, box.top, box.bottom]]
             restored.append(box)
         return restored
-
-    def _layouts_rec(self, ZM, drop=True):
-        # fork 保留 override：`_parse_full` 主链在 _extract_fused_pages +
-        # _get_layout_recognizer 内完成版面识别（逐页 zoom、幻影 figure 抑制、
-        # 布局后释放 image_list），boxes 不落 self.boxes、不加累积 Y 偏移。
-        # 本方法仅供 vendored parse_into_bboxes_full 链路调用时兜底。
-        return self.page_layout
-
-    def _to_global_boxes(self, boxes):
-        global_boxes = []
-        for box in boxes:
-            copied = dict(box)
-            page_number = int(copied.get("page_number", 1))
-            offset = self.page_cum_height[page_number - 1] if 0 <= page_number - 1 < len(self.page_cum_height) else 0
-            copied["top"] = float(copied.get("top", 0.0)) + float(offset)
-            copied["bottom"] = float(copied.get("bottom", 0.0)) + float(offset)
-            global_boxes.append(copied)
-        return global_boxes
 
     @staticmethod
     def remove_tag(text: str) -> str:

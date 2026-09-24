@@ -45,9 +45,7 @@ def test_local_adaptation_source_map_points_to_existing_files_and_upstream_origi
 def test_upstream_snapshot_exposes_source_maps():
     snapshot = get_upstream_deepdoc_snapshot()
 
-    assert snapshot["upstream_source_map"]["parsers/upstream/pdf_parser.py"] == "deepdoc/parser/pdf_parser.py"
     assert snapshot["upstream_source_map"]["vendor/ragflow/pdf_parser.py"] == "deepdoc/parser/pdf_parser.py"
-    assert snapshot["local_adaptation_source_map"]["parsers/upstream/pdf_parser.py"] == "deepdoc/parser/pdf_parser.py"
     assert snapshot["local_adaptation_source_map"]["parsers/upstream/docx_parser.py"] == "deepdoc/parser/docx_parser.py"
     assert snapshot["local_adaptation_source_map"]["parsers/pdf.py"] == "deepdoc/parser/pdf_parser.py"
 

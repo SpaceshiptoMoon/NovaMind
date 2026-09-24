@@ -41,9 +41,6 @@ from novamind.engines.document.integrations.deepdoc.parsers.pdf import (
 from novamind.engines.document.integrations.deepdoc.parsers.upstream import (
     DocxParser as UpstreamDocxParserAlias,
 )
-from novamind.engines.document.integrations.deepdoc.parsers.upstream import (
-    PdfParser as UpstreamPdfParserAlias,
-)
 from novamind.engines.document.integrations.deepdoc.pdf_artifacts import PdfArtifactExtractor
 from novamind.engines.document.integrations.deepdoc.text_concat_model import (
     get_text_concat_model_status,
@@ -611,24 +608,6 @@ def test_upstream_figure_parser_uses_injected_vision_model():
 
     assert len(result) == 1
     assert "injected figure description" in str(result[0][0][1])
-
-
-def test_upstream_vision_parser_uses_injected_vision_model():
-    from novamind.engines.document.integrations.deepdoc.parsers.upstream.pdf_parser import (
-        VisionParser,
-    )
-
-    def fake_vision_model(binary, prompt):
-        assert "PDF page 1" in prompt
-        return "vision parser text"
-
-    parser = VisionParser(fake_vision_model)
-    docs, tables = parser(_build_minimal_pdf_bytes("Vision Parser Source"), zoomin=1)
-
-    assert tables == []
-    assert docs
-    assert docs[0][0] == "vision parser text"
-    assert docs[0][1].startswith("@@1\t")
 
 
 def test_deepdoc_parser_supports_parse_bytes_for_pdf():
@@ -2233,7 +2212,6 @@ def test_deepdoc_engine_exposes_vision_health_and_smoke_check():
 
 
 def test_upstream_parser_package_exports_aliases():
-    assert UpstreamPdfParserAlias is RAGFlowPdfParser
     assert UpstreamDocxParserAlias.__name__ == "RAGFlowDocxParser"
 
 

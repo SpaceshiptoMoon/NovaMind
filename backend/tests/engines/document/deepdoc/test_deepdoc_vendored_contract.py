@@ -60,29 +60,37 @@ def _vendored_self_attributes() -> set[str]:
 
 @pytest.mark.unit
 def test_adapter_init_covers_vendored_attribute_contract():
-    """适配层 __init__ 必须预置 vendored 全部 self 属性（防继承后运行期漂移）。"""
+    """适配层 __init__ 必须预置主链继承方法读的 vendored 实例属性（防运行期漂移）。
+
+    消费面 = 主链 `_parse_full` 调用的四个继承 merges 方法（_text_merge /
+    _concat_downward / _naive_vertical_merge / _filter_forpages）及其辅助方法
+    静态扫描出的 self 属性读。vendored `_concat_downward` 开头即 return
+    （updown_cnt_mdl 分支不可达），且 ocr/layouter/tbl_det/page_chars 等
+    仅 vendored 全链（__images__/__ocr/__call__）触达——那条链已随对拍
+    调试桥删除，适配层不再预置这些属性。
+    """
     from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
 
+    main_chain_attrs = {
+        "boxes",
+        "mean_height",
+        "mean_width",
+        "is_english",
+        "page_images",
+    }
     parser = RAGFlowPdfParser()
-    vendored_attrs = _vendored_self_attributes()
-    assert vendored_attrs, "vendored 属性扫描不应为空——若为空说明扫描失效了"
-    missing = sorted(attr for attr in vendored_attrs if not hasattr(parser, attr))
-    assert missing == [], (
-        f"vendored 实例属性未在适配层 __init__ 预置: {missing}；"
-        "请在 RAGFlowPdfParser.__init__ 落齐（vendored 新增状态时同步此契约）"
-    )
+    missing = sorted(attr for attr in main_chain_attrs if not hasattr(parser, attr))
+    assert missing == [], f"主链 vendored 属性未在适配层 __init__ 预置: {missing}"
 
 
 @pytest.mark.unit
 def test_adapter_lazy_models_stay_unloaded():
-    """构造适配层不得触发任何模型加载（ocr/layouter/tbl_det/updown_cnt_mdl 为 None）。"""
+    """构造适配层不得触发任何模型加载（懒加载句柄保持 None，模型按需才装配）。"""
     from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
 
     parser = RAGFlowPdfParser()
-    assert parser.ocr is None
-    assert parser.layouter is None
-    assert parser.tbl_det is None
-    assert parser.updown_cnt_mdl is None
+    assert parser._layout_recognizer is None
+    assert parser._ocr is None
 
 
 @pytest.mark.unit

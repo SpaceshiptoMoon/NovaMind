@@ -35,8 +35,6 @@ _EXPORT_MAP = {
     "HtmlParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.html_parser", "RAGFlowHtmlParser"),
     "JsonParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.json_parser", "RAGFlowJsonParser"),
     "MarkdownParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.markdown_parser", "RAGFlowMarkdownParser"),
-    "PlainParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.pdf_parser", "PlainParser"),
-    "PdfParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.pdf_parser", "RAGFlowPdfParser"),
     "PptParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.ppt_parser", "RAGFlowPptParser"),
     "TxtParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.txt_parser", "RAGFlowTxtParser"),
     "DeepDocVisionOCR": ("novamind.engines.document.integrations.deepdoc.vision", "OCR"),
