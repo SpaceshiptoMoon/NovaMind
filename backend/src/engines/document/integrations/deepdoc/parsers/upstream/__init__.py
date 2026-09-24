@@ -16,7 +16,6 @@ _EXPORT_MAP = {
     "PdfParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.pdf_parser", "RAGFlowPdfParser"),
     "PptParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.ppt_parser", "RAGFlowPptParser"),
     "TxtParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.txt_parser", "RAGFlowTxtParser"),
-    "refactor_resume": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.resume", "refactor"),
 }
 
 __all__ = [

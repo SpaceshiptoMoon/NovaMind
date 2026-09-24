@@ -23,13 +23,6 @@ def get_deepdoc_capabilities() -> dict[str, Any]:
     return {
         "supported_extensions": ["pdf", "docx", "epub", "txt", "md", "markdown", "csv", "json", "html", "xls", "xlsx", "ppt", "pptx", "jpg", "jpeg", "png", "gif", "webp", "bmp"],
         "mirrored_packages": ["parser", "vision"],
-        "specialized_modules": {
-            "resume": {
-                "available": True,
-                "description": "Vendored RAGFlow resume normalization package with local dependency fallbacks.",
-                "entrypoint": "novamind.engines.document.integrations.deepdoc.parsers.upstream.resume.refactor",
-            }
-        },
         "parser_ids": [
             "pdf_full",
             "pdf_plain",

@@ -1379,14 +1379,6 @@ def test_vision_runtime_guard_raises_clear_error():
             ensure_vision_parser_available()
 
 
-def test_resume_surname_compatibility_preserves_chinese_names():
-    from novamind.engines.document.integrations.deepdoc.compat.compat import surname
-
-    assert surname.isit("\u738b") is True
-    assert surname.isit("\u6b27\u9633") is True
-    assert surname.isit("Alice") is False
-
-
 def test_vendored_vision_seeit_draws_and_saves_results(tmp_path):
     from novamind.engines.document.integrations.deepdoc.vision.seeit import draw_box, save_results
 
@@ -2243,37 +2235,6 @@ def test_deepdoc_engine_exposes_vision_health_and_smoke_check():
 def test_upstream_parser_package_exports_aliases():
     assert UpstreamPdfParserAlias is RAGFlowPdfParser
     assert UpstreamDocxParserAlias.__name__ == "RAGFlowDocxParser"
-
-
-def test_upstream_resume_package_is_vendored():
-    from novamind.engines.document.integrations.deepdoc.parsers.upstream import refactor_resume
-    from novamind.engines.document.integrations.deepdoc.parsers.upstream.resume.step_one import (
-        FIELDS,
-    )
-    from novamind.engines.document.integrations.deepdoc.parsers.upstream.resume.step_two import (
-        highest_degree,
-    )
-
-    result = refactor_resume(
-        {
-            "basic": {"name": "Alice"},
-            "contact": {},
-            "work": [],
-            "education": [],
-        }
-    )
-
-    assert result["contact"]["name"] == "Alice"
-    assert result["is_deleted"] == 0
-    assert len(FIELDS) == 51
-    assert highest_degree(["MBA"]) == "MBA"
-
-
-def test_deepdoc_capabilities_expose_resume_module():
-    capabilities = get_deepdoc_capabilities()
-
-    assert capabilities["specialized_modules"]["resume"]["available"] is True
-    assert capabilities["specialized_modules"]["resume"]["entrypoint"].endswith("resume.refactor")
 
 
 def test_upstream_snapshot_is_exposed():

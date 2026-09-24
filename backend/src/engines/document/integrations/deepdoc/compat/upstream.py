@@ -21,7 +21,6 @@ UPSTREAM_PARSER_MODULES: list[str] = [
     "ppt_parser",
     "txt_parser",
     "utils",
-    "resume",
 ]
 
 IMPLEMENTED_PARSER_MODULES: list[str] = [
@@ -35,7 +34,6 @@ IMPLEMENTED_PARSER_MODULES: list[str] = [
     "markdown_parser",
     "pdf_parser",
     "ppt_parser",
-    "resume",
     "txt_parser",
     "utils",
 ]
@@ -101,7 +99,6 @@ UPSTREAM_SOURCE_MAP: dict[str, str] = {
     "parsers/upstream/ppt_parser.py": "deepdoc/parser/ppt_parser.py",
     "parsers/upstream/txt_parser.py": "deepdoc/parser/txt_parser.py",
     "parsers/upstream/utils.py": "deepdoc/parser/utils.py",
-    "parsers/upstream/resume/": "deepdoc/parser/resume/",
     "vision/__init__.py": "deepdoc/vision/__init__.py",
     "vision/layout_recognizer.py": "deepdoc/vision/layout_recognizer.py",
     "vision/ocr.py": "deepdoc/vision/ocr.py",

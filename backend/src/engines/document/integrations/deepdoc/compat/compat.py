@@ -74,30 +74,3 @@ class LazyImage:
 
     def __bool__(self) -> bool:
         return bool(self.blobs)
-
-
-
-class SimpleSurnameHelper:
-    """Small surname checker used by the vendored resume helpers."""
-
-    _common_surnames = {
-        "\u8d75", "\u94b1", "\u5b59", "\u674e", "\u5468", "\u5434", "\u90d1", "\u738b",
-        "\u51af", "\u9648", "\u848b", "\u6c88", "\u97e9", "\u6768", "\u6731", "\u79e6",
-        "\u8bb8", "\u4f55", "\u5415", "\u65bd", "\u5f20", "\u5b54", "\u66f9", "\u534e",
-        "\u91d1", "\u9b4f", "\u9676", "\u59dc", "\u8c22", "\u90b9", "\u82cf", "\u6f58",
-        "\u8303", "\u5f6d", "\u9c81", "\u9a6c", "\u65b9", "\u4efb", "\u8881", "\u5510",
-        "\u859b", "\u96f7", "\u8d3a", "\u7f57", "\u90dd", "\u5b89", "\u5e38", "\u4e8e",
-        "\u5085", "\u987e", "\u5b5f", "\u9ec4", "\u8427", "\u5c39", "\u59da", "\u6c6a",
-        "\u5b8b", "\u6881", "\u675c", "\u90ed", "\u6797", "\u949f", "\u5f90", "\u9ad8",
-        "\u590f", "\u8521", "\u7530", "\u80e1", "\u5362", "\u6234", "\u9093", "\u5d14",
-        "\u9646", "\u6bb5", "\u4faf", "\u5218", "\u53f6", "\u767d", "\u9ece", "\u8c2d",
-        "\u66fe", "\u5ed6", "\u95eb", "\u6b27\u9633", "\u53f8\u9a6c", "\u4e0a\u5b98",
-        "\u590f\u4faf", "\u8bf8\u845b", "\u4e1c\u65b9", "\u7687\u752b", "\u5c09\u8fdf",
-        "\u516c\u7f8a", "\u6de1\u53f0", "\u6fee\u9633",
-    }
-
-    def isit(self, text: str) -> bool:
-        return (text or "").strip() in self._common_surnames
-
-
-surname = SimpleSurnameHelper()

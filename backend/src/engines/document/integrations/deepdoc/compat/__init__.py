@@ -9,7 +9,6 @@ _EXPORT_MAP = {
     "find_codec": ("novamind.engines.document.integrations.deepdoc.compat.compat", "find_codec"),
     "num_tokens_from_string": ("novamind.engines.document.integrations.deepdoc.compat.compat", "num_tokens_from_string"),
     "rag_tokenizer": ("novamind.engines.document.integrations.deepdoc.compat.compat", "rag_tokenizer"),
-    "surname": ("novamind.engines.document.integrations.deepdoc.compat.compat", "surname"),
     "MAXIMUM_PAGE_NUMBER": ("novamind.engines.document.integrations.deepdoc.compat.constants", "MAXIMUM_PAGE_NUMBER"),
     "get_upstream_deepdoc_snapshot": ("novamind.engines.document.integrations.deepdoc.compat.upstream", "get_upstream_deepdoc_snapshot"),
 }

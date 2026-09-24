@@ -11,7 +11,7 @@ pytestmark = pytest.mark.unit
 BACKEND_ROOT = Path(__file__).resolve().parents[4]
 
 
-def test_deepdoc_packaging_includes_resume_resources_and_docs():
+def test_deepdoc_packaging_includes_docs():
     dist_dir = BACKEND_ROOT / "dist"
     wheels = sorted(dist_dir.glob("novamind-*.whl"))
     if not wheels:
@@ -24,8 +24,7 @@ def test_deepdoc_packaging_includes_resume_resources_and_docs():
 
     normalized_names = {name.replace("\\", "/") for name in names}
 
-    assert "engines/document/integrations/deepdoc/parsers/upstream/resume/entities/res/schools.csv" in normalized_names
-    assert "engines/document/integrations/deepdoc/parsers/upstream/resume/entities/res/good_sch.json" in normalized_names
+    assert "engines/document/integrations/deepdoc/README.md" in normalized_names
 
 
 def test_deepdoc_packaging_includes_vendored_ragflow_pdf_parser():
