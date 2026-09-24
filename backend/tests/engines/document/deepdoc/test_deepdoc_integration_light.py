@@ -4,7 +4,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
 
 BACKEND_ROOT = Path(__file__).resolve().parents[4]
 if str(BACKEND_ROOT) not in sys.path:
@@ -12,7 +11,6 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from novamind.engines.document.integrations.deepdoc.core.engine import DeepDocEngine
 from novamind.engines.document.integrations.deepdoc.core.models import DeepDocParseResult
-from novamind.engines.document.integrations.deepdoc.server import create_deepdoc_app
 from novamind.engines.document.pipeline import DocumentProcessor
 from novamind.features.knowledge_space.schemas.knowledge_base_schema import KnowledgeBaseConfig
 from novamind.features.knowledge_space.services.knowledge_base_service import KnowledgeBaseService
@@ -195,79 +193,6 @@ def test_document_processor_parse_document_result_preserves_deepdoc_metadata(mon
     assert result.full_text == "structured full text"
     assert result.metadata["parser"] == "deepdoc"
     assert result.metadata["chunk_structure"][0]["entry_kinds"] == ["text"]
-
-
-def test_deepdoc_server_parse_bytes_endpoint_works():
-    class _FakeEngine:
-        def describe_capabilities(self):
-            return {"ok": True}
-
-        async def aparse_with_parser_id(self, **kwargs):
-            return DeepDocParseResult(
-                full_text="hello",
-                chunks=["hello"],
-                metadata={"parser": "deepdoc", "file_type": kwargs["file_type"]},
-            )
-
-    app = create_deepdoc_app(engine=_FakeEngine())
-    client = TestClient(app)
-    response = client.post(
-        "/parse-bytes",
-        json={
-            "content_base64": "aGVsbG8=",
-            "file_type": "txt",
-        },
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["full_text"] == "hello"
-    assert payload["metadata"]["file_type"] == "txt"
-
-
-def test_deepdoc_server_doctor_endpoint_works():
-    class _FakeEngine:
-        def describe_capabilities(self):
-            return {"ok": True}
-
-        def supported_extensions(self):
-            return {"pdf", "txt"}
-
-        def available_pdf_modes(self):
-            return {"plain": {"available": True}}
-
-        def runtime_dependencies(self):
-            return {"pdfplumber": {"available": True}}
-
-        def vision_model_status(self):
-            return {"groups": {"ocr": {"available": False}}}
-
-        def vision_health_status(self):
-            return {"required_missing": ["cv2"], "optional_missing": ["xgboost"]}
-
-        def text_concat_model_status(self):
-            return {"available": False}
-
-        def upstream_snapshot(self):
-            return {"commit": "abc123"}
-
-        def vision_smoke_check(self):
-            return {"checks": [{"name": "vision", "ok": False}]}
-
-        async def aparse_with_parser_id(self, **kwargs):
-            return DeepDocParseResult(full_text="", chunks=[], metadata={})
-
-    app = create_deepdoc_app(engine=_FakeEngine())
-    client = TestClient(app)
-
-    response = client.get("/doctor", params={"smoke": "true"})
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["runtime_dependencies"]["pdfplumber"]["available"] is True
-    assert payload["remediation"]["missing_required_vision_dependencies"] == ["cv2"]
-    assert payload["remediation"]["text_concat_model_missing"] is True
-    assert payload["vision_smoke_check"]["checks"][0]["ok"] is False
 
 
 def test_deepdoc_engine_available_pdf_modes_exposed():

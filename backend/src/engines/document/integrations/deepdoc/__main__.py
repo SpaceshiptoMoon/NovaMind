@@ -1,4 +1,4 @@
-"""DeepDoc 独立入口：注册 parsers + 启动 FastAPI 服务（用于 HTTP 远程解析）。"""
+"""DeepDoc 独立入口：能力查询 / 部署诊断 / 本地解析 / 模型预下载 CLI。"""
 from __future__ import annotations
 
 import argparse
@@ -58,11 +58,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Also download the formula-recognition model (pix2text-mfr)",
     )
-
-    serve_parser = subparsers.add_parser("serve", help="Run the standalone DeepDoc FastAPI service")
-    serve_parser.add_argument("--host", default="127.0.0.1", help="Bind host")
-    serve_parser.add_argument("--port", type=int, default=8001, help="Bind port")
-    serve_parser.add_argument("--reload", action="store_true", help="Enable uvicorn reload")
 
     return parser
 
@@ -163,18 +158,6 @@ def main(argv: list[str] | None = None) -> int:
                 sys.stdout.buffer.flush()
         else:
             print(json.dumps(_serialize_result(result), ensure_ascii=False, indent=args.indent))
-        return 0
-
-    if args.command == "serve":
-        import uvicorn
-
-        uvicorn.run(
-            "novamind.engines.document.integrations.deepdoc.server.deepdoc_server:create_deepdoc_app",
-            host=args.host,
-            port=args.port,
-            reload=args.reload,
-            factory=True,
-        )
         return 0
 
     parser.error(f"Unsupported command: {args.command}")

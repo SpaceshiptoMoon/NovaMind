@@ -23,16 +23,6 @@ def test_deepdoc_package_lazy_exports_do_not_force_optional_format_imports():
     assert TxtParser.__name__ == "RAGFlowTxtParser"
 
 
-def test_deepdoc_top_level_exports_include_service_helpers():
-    from novamind.engines.document.integrations.deepdoc import (
-        create_deepdoc_app,
-        download_deepdoc_dependencies,
-    )
-
-    assert callable(create_deepdoc_app)
-    assert callable(download_deepdoc_dependencies)
-
-
 def test_deepdoc_runtime_parser_can_be_constructed_without_optional_format_imports():
     from novamind.engines.document.integrations.deepdoc.core.runtime_parser import DeepDocParser
 

@@ -51,8 +51,6 @@ _EXPORT_MAP = {
     "SoMarkParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.somark_parser", "SoMarkParser"),
     "TCADPParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.tcadp_parser", "TCADPParser"),
     "TxtParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.txt_parser", "RAGFlowTxtParser"),
-    "create_deepdoc_app": ("novamind.engines.document.integrations.deepdoc.server.deepdoc_server", "create_deepdoc_app"),
-    "download_deepdoc_dependencies": ("novamind.engines.document.integrations.deepdoc.server.download_deps", "download_deepdoc_dependencies"),
     "DeepDocVisionOCR": ("novamind.engines.document.integrations.deepdoc.vision", "OCR"),
     "DeepDocVisionLayoutRecognizer": ("novamind.engines.document.integrations.deepdoc.vision", "LayoutRecognizer"),
     "DeepDocVisionRecognizer": ("novamind.engines.document.integrations.deepdoc.vision", "Recognizer"),

@@ -80,22 +80,6 @@ IMPLEMENTED_VISION_MODULES: list[str] = [
     "table_structure_recognizer",
 ]
 
-UPSTREAM_SERVER_MODULES: list[str] = [
-    "deepdoc_server",
-    "docker_stubs",
-    "download_deps",
-    "adapters",
-    "endpoints",
-]
-
-IMPLEMENTED_SERVER_MODULES: list[str] = [
-    "deepdoc_server",
-    "docker_stubs",
-    "download_deps",
-    "adapters",
-    "endpoints",
-]
-
 LOCAL_ADAPTATION_MODULES: list[str] = [
     "capabilities.py",
     "compat.py",
@@ -146,9 +130,6 @@ UPSTREAM_SOURCE_MAP: dict[str, str] = {
     "vision/table_structure_recognizer.py": "deepdoc/vision/table_structure_recognizer.py",
     "vision/t_ocr.py": "deepdoc/vision/t_ocr.py",
     "vision/t_recognizer.py": "deepdoc/vision/t_recognizer.py",
-    "server/deepdoc_server.py": "deepdoc/server/deepdoc_server.py",
-    "server/docker_stubs.py": "deepdoc/server/docker_stubs.py",
-    "server/download_deps.py": "deepdoc/server/download_deps.py",
     # vendored 逐字拷贝（上游 commit 见 VENDORED_PDF_PARSER_COMMIT）
     "vendor/ragflow/pdf_parser.py": "deepdoc/parser/pdf_parser.py",
     # stub 装载层照上游 docker_stubs.py 先例（幂等 sys.modules 注册）
@@ -196,13 +177,11 @@ def get_upstream_deepdoc_snapshot() -> dict[str, Any]:
     missing_vision_modules = [
         module for module in UPSTREAM_VISION_MODULES if module not in IMPLEMENTED_VISION_MODULES
     ]
-    missing_server_modules = [
-        module for module in UPSTREAM_SERVER_MODULES if module not in IMPLEMENTED_SERVER_MODULES
-    ]
     return {
         "repository": UPSTREAM_REPOSITORY,
         "commit": UPSTREAM_DEEPDOC_COMMIT,
-        "mirrored_packages": ["parser", "vision", "server"],
+        # server/ 独立推理服务已裁撤（生产主链走进程内 DeepDocEngine）
+        "mirrored_packages": ["parser", "vision"],
         "parser_modules": {
             "upstream": list(UPSTREAM_PARSER_MODULES),
             "implemented": list(IMPLEMENTED_PARSER_MODULES),
@@ -213,11 +192,6 @@ def get_upstream_deepdoc_snapshot() -> dict[str, Any]:
             "upstream": list(UPSTREAM_VISION_MODULES),
             "implemented": list(IMPLEMENTED_VISION_MODULES),
             "missing": missing_vision_modules,
-        },
-        "server_modules": {
-            "upstream": list(UPSTREAM_SERVER_MODULES),
-            "implemented": list(IMPLEMENTED_SERVER_MODULES),
-            "missing": missing_server_modules,
         },
         "upstream_source_map": dict(UPSTREAM_SOURCE_MAP),
         "local_adaptation_source_map": dict(LOCAL_ADAPTATION_SOURCE_MAP),

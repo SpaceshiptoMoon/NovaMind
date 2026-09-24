@@ -45,7 +45,6 @@ from novamind.engines.document.integrations.deepdoc.parsers.upstream import (
     PdfParser as UpstreamPdfParserAlias,
 )
 from novamind.engines.document.integrations.deepdoc.pdf_artifacts import PdfArtifactExtractor
-from novamind.engines.document.integrations.deepdoc.server import create_deepdoc_app
 from novamind.engines.document.integrations.deepdoc.text_concat_model import (
     get_text_concat_model_status,
 )
@@ -1733,26 +1732,12 @@ def test_vendored_vision_seeit_draws_and_saves_results(tmp_path):
 def test_upstream_snapshot_matches_implemented_server_and_vision_modules():
     snapshot = get_upstream_deepdoc_snapshot()
 
-    assert snapshot["server_modules"]["missing"] == []
-    assert "docker_stubs" in snapshot["server_modules"]["implemented"]
+    # server/ 独立推理服务已裁撤，快照只镜像 parser+vision
+    assert snapshot["mirrored_packages"] == ["parser", "vision"]
+    assert "server_modules" not in snapshot
     assert "seeit" in snapshot["vision_modules"]["implemented"]
     assert "seeit" not in snapshot["vision_modules"]["missing"]
     assert snapshot["vision_modules"]["missing"] == []
-
-
-def test_vendored_docker_stubs_write_minimal_packages(tmp_path):
-    from novamind.engines.document.integrations.deepdoc.server.docker_stubs import (
-        write_docker_stubs,
-    )
-
-    written = write_docker_stubs(tmp_path)
-
-    assert tmp_path / "deepdoc" / "__init__.py" in written
-    assert tmp_path / "deepdoc" / "vision" / "__init__.py" in written
-    assert tmp_path / "common" / "file_utils.py" in written
-    assert tmp_path / "rag" / "nlp" / "__init__.py" in written
-    assert tmp_path / "rag" / "utils" / "lazy_image.py" in written
-    assert all(path.exists() for path in written)
 
 
 def test_vendored_ocr_diagnostic_entrypoint(tmp_path):
@@ -1826,7 +1811,6 @@ def test_upstream_snapshot_has_no_directory_level_gaps():
 
     assert snapshot["parser_modules"]["missing"] == []
     assert snapshot["vision_modules"]["missing"] == []
-    assert snapshot["server_modules"]["missing"] == []
 
 
 def test_vendored_vision_package_status_exposed():
@@ -2704,69 +2688,6 @@ def test_deepdoc_capabilities_expose_tcadp_even_without_sdk(monkeypatch):
     assert "pdf_tcadp" in capabilities["parser_ids"]
     assert capabilities["pdf_modes"]["tcadp"]["available"] is False
     assert capabilities["pdf_modes"]["tcadp"]["missing"] == ["Tencent Cloud SDK is not installed"]
-
-
-def test_create_deepdoc_app_exposes_routes():
-    app = create_deepdoc_app()
-    routes = {route.path for route in app.routes}
-
-    assert "/health" in routes
-    assert "/capabilities" in routes
-    assert "/parse-file" in routes
-    assert "/parse-bytes" in routes
-
-    health_client = TestClient(app)
-    health_payload = health_client.get("/health").json()
-
-    for route in ("/predict/dla", "/predict/ocr", "/predict/tsr"):
-        if route in routes:
-            assert route not in health_payload["vision_router_errors"]
-        else:
-            assert route in health_payload["vision_router_errors"]
-
-
-def test_deepdoc_server_parse_bytes_endpoint_works():
-    class _FakeEngine:
-        def describe_capabilities(self):
-            return {"ok": True}
-
-        async def aparse_with_parser_id(self, **kwargs):
-            return DeepDocParseResult(
-                full_text="hello",
-                chunks=["hello"],
-                metadata={"parser": "deepdoc", "file_type": kwargs["file_type"]},
-            )
-
-    app = create_deepdoc_app(engine=_FakeEngine())
-    client = TestClient(app)
-    response = client.post(
-        "/parse-bytes",
-        json={
-            "content_base64": "aGVsbG8=",
-            "file_type": "txt",
-        },
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["full_text"] == "hello"
-    assert payload["metadata"]["file_type"] == "txt"
-
-
-def test_deepdoc_server_ocr_endpoint_rejects_invalid_operator():
-    app = create_deepdoc_app()
-    client = TestClient(app)
-    routes = {route.path for route in app.routes}
-    if "/predict/ocr" not in routes:
-        pytest.skip("OCR endpoint is not mounted in the current runtime")
-    response = client.post(
-        "/predict/ocr",
-        files={"request": ("sample.png", b"123", "image/png")},
-        data={"operator": "bad"},
-    )
-
-    assert response.status_code == 400
-    assert "must be 'det' or 'rec'" in response.json()["detail"]
 
 
 def test_deepdoc_engine_wraps_vision_model_download(monkeypatch, tmp_path):

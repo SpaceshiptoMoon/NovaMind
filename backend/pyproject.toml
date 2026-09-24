@@ -114,17 +114,16 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-"engines.document.integrations.deepdoc" = ["README.md", "DEPLOYMENT.md"]
+"engines.document.integrations.deepdoc" = ["README.md"]
 "engines.document.integrations.deepdoc.parsers.upstream.resume.entities" = ["res/*"]
 "engines.document.integrations.deepdoc.vendor.ragflow" = ["*.py"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-# vendored DeepDoc 上游逐字镜像与独立子服务，禁止修改，整体豁免。
+# vendored DeepDoc 上游逐字镜像，禁止修改，整体豁免。
 exclude = [
     "src/engines/document/integrations/deepdoc/vendor",
-    "src/engines/document/integrations/deepdoc/server",
 ]
 
 [tool.ruff.lint]

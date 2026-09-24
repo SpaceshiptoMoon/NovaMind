@@ -171,12 +171,3 @@ def test_deepdoc_cli_parse_pdf(tmp_path):
     assert payload["metadata"]["parser"] == "deepdoc"
     assert payload["metadata"]["parser_id"] == "pdf_plain"
     assert "CLI DeepDoc" in payload["full_text"]
-
-
-def test_deepdoc_server_factory_importable():
-    from uvicorn.importer import import_from_string
-
-    factory = import_from_string("novamind.engines.document.integrations.deepdoc.server.deepdoc_server:create_deepdoc_app")
-    app = factory()
-
-    assert app.title == "DeepDoc Parser Service"
