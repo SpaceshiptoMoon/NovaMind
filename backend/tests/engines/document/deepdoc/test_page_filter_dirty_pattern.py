@@ -77,6 +77,34 @@ def test_toc_dot_leader_page_dropped():
     assert meta["dirty_pages"] == [1]
 
 
+def test_math_paper_inline_cid_pages_survive():
+    """数学论文正文行内 (cid:N)（LaTeX 的 −、≤ 等未映射符号）命中 >3 框但密度低，
+    不得整页删除（doc567 回归：三页正文全被误删）。"""
+    boxes = [
+        _box(1, "2: 计算初始搜索方向：η0 =(cid:0)gradf(X0)."),
+        _box(1, "5: 如果k gradf(xk )kF(cid:20)ϵ，则停止. 否则对于k=1,2,. . ."),
+        _box(1, "Z=Rx k (αk ηk ),gradf(z),yk =(cid:0)gradf("),
+        _box(1, "bk =(cid:0)αk h y k ,T x k→z (ηk)i"),
+        _box(1, "9:加速步骤：若bk ̸= 0，则计算γk =(cid:0)ak/bk"),
+        _box(1, "10:计算搜索方向：ηk+1 =(cid:0)gradf(xk+1)+βk"),
+        _box(1, "其中St(k,n)表示Stiefel流形，切空间的正交投影为正常正文内容若干字符"),
+    ]
+    filtered, meta = PageNoiseFilter().filter_boxes(boxes, total_pages=1)
+    assert meta["dirty_pages"] == []
+    assert len(filtered) == 7
+
+
+def test_fully_garbled_cid_page_still_dropped():
+    """整页 cid 串（真乱码页，doc566 场景）密度高，仍应整页删除。"""
+    boxes = [_box(1, f"(cid:{i % 90})(cid:{(i * 7) % 90})(cid:{(i * 13) % 90})") for i in range(6)]
+    boxes += [_box(2, "正常内容") for _ in range(5)]
+    filtered, meta = PageNoiseFilter().filter_boxes(boxes, total_pages=2)
+    pages = {int(b.page) for b in filtered}
+    assert 1 not in pages
+    assert 2 in pages
+    assert meta["dirty_pages"] == [1]
+
+
 def test_toc_heading_pattern_matches_chinese():
     """TOC_HEADING_PATTERN 的中文项曾是 GB18030 乱码（目录→鐩綍 等），永远匹配
     不到中文目录页。修复后应匹配「目录/目次/致谢」。"""

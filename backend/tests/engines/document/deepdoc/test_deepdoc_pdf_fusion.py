@@ -653,3 +653,72 @@ def test_cross_page_composite_disabled_falls_back_to_per_page(monkeypatch):
     rs = sorted(int(b["R"]) for b in struct["structured_boxes"])
     assert rs == [0, 1], "per-page row_offset 缝合仍应保证 R 连续"
     assert struct["crosspage_row_offset"] == [1, 2], "per-page 语义：累计 row_offset"
+
+
+@pytest.mark.unit
+def test_native_bitmap_zoom_caps_fullpage_screenshot(monkeypatch):
+    """整页原生位图页（如 doc565 聊天截图 PDF）：无文字层页起始 zoom 应收敛到
+    内嵌图原生分辨率（zoom=1），不再 3 倍上采样（242MB/页 × 24 页 = 5.8GB OOM）。
+    矢量文本页不受影响（维持 zoom=3 起检）。"""
+    parser = RAGFlowPdfParser()
+
+    from io import BytesIO
+
+    import fitz
+    import numpy as np
+    from PIL import Image
+
+    # 构造：单页 PDF，页面尺寸 300×400，整页贴一张 300×400 位图（无文字层）
+    img = Image.new("RGB", (300, 400), color=(240, 240, 240))
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    doc = fitz.open()
+    page = doc.new_page(width=300, height=400)
+    page.insert_image(fitz.Rect(0, 0, 300, 400), stream=buf.getvalue())
+    out = BytesIO()
+    doc.save(out)
+    doc.close()
+    pdf_bytes = out.getvalue()
+
+    zoom_log = []
+
+    def fake_fuse_page(img_arg, chars, page_index, zoom):
+        zoom_log.append(zoom)
+        return [{"text": "shot", "x0": 0, "x1": 10, "top": 0, "bottom": 10, "page_number": page_index}]
+
+    monkeypatch.setattr(parser, "_fuse_page", fake_fuse_page)
+    monkeypatch.setattr(parser, "_extract_page_chars", lambda pages, idx: [])  # 无文字层
+
+    image_list, fused_pages, layout_pages, fusion_meta = parser._extract_fused_pages(pdf_bytes)
+
+    assert zoom_log == [1.0] or zoom_log == [1], f"位图页应 zoom=1 起检，got {zoom_log}"
+    assert float(fusion_meta["effective_zooms"][0]) == 1.0
+
+
+@pytest.mark.unit
+def test_native_bitmap_zoom_ignored_for_vector_pages(monkeypatch):
+    """矢量文本页（无近全页位图）：无文字层时保持 zoom=3 起检语义不变。"""
+    parser = RAGFlowPdfParser()
+
+    from io import BytesIO
+
+    import fitz
+
+    doc = fitz.open()
+    page = doc.new_page()
+    page.draw_rect(fitz.Rect(10, 10, 50, 50))  # 矢量图形，无位图
+    out = BytesIO()
+    doc.save(out)
+    doc.close()
+
+    zoom_log = []
+
+    def fake_fuse_page(img_arg, chars, page_index, zoom):
+        zoom_log.append(zoom)
+        return [{"text": "v", "x0": 0, "x1": 10, "top": 0, "bottom": 10, "page_number": page_index}]
+
+    monkeypatch.setattr(parser, "_fuse_page", fake_fuse_page)
+    monkeypatch.setattr(parser, "_extract_page_chars", lambda pages, idx: [])
+
+    parser._extract_fused_pages(out.getvalue())
+    assert zoom_log == [3], f"矢量页应保持 zoom=3，got {zoom_log}"

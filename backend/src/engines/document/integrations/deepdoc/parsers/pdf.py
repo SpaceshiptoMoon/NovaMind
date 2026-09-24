@@ -89,6 +89,10 @@ class DeepDocPdfBox:
         return f"@@{self.page}\t{self.x0:.1f}\t{self.x1:.1f}\t{self.top:.1f}\t{self.bottom:.1f}##"
 
 
+# pdfminer 未映射 CID 的占位形态（上游 pdf_parser._CID_PATTERN 同款）。
+_CID_PATTERN = re.compile(r"\(cid\s*:\s*\d+\s*\)")
+
+
 class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
     """上游 RAGFlow PDF 解析器的适配层。
 
@@ -884,6 +888,22 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                 # buffer 是内存大头）。
                 page_chars = self._extract_page_chars(plumber_pages, page_index)
                 page_zoom = 3 if not page_chars else base_zoom
+                # 原生位图页 zoom cap：整页被单张内嵌位图覆盖的页（如 565 的
+                # 24 页聊天截图拼接，每页一张 1824×4913 位图、无文字层），渲染
+                # 像素超过位图原生分辨率后是纯上采样——无 OCR 信息增益，却把
+                # 渲染 buffer 放大 9 倍（zoom=3 → 5472×14739×3B = 242MB/页，
+                # 24 页 image_list 累计 5.8GB，8GB 开发机直接 OOM）。内嵌图
+                # 近全页（>=90% 面积）覆盖时把起始 zoom 压到原生分辨率比例。
+                if not page_chars:
+                    native_zoom = self._native_bitmap_zoom(page, page_index)
+                    if native_zoom and page_zoom > native_zoom:
+                        logger.info(
+                            "DeepDoc 原生位图页渲染 zoom 收敛到内嵌图分辨率",
+                            page_index=page_index,
+                            requested_zoom=page_zoom,
+                            native_zoom=native_zoom,
+                        )
+                        page_zoom = native_zoom
                 img: np.ndarray | None = None
                 fused: list[dict[str, Any]] = []
                 while page_zoom <= 9:
@@ -957,6 +977,34 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         layout_meta["is_english"] = page_text_samples and english_pages > len(page_text_samples) / 2
         return image_list, fused_pages, layout_pages, layout_meta
 
+    @staticmethod
+    def _native_bitmap_zoom(page: Any, page_index: int) -> float | None:
+        """整页原生位图页的渲染 zoom 上限：内嵌位图近全页（>=90% 面积）覆盖时，
+        返回 位图像素宽/页面宽（zoom=1 渲染即原生分辨率）。超过该值的渲染是
+        上采样——无 OCR 信息增益，只放大内存（doc565：1824×4913 截图页
+        zoom=3 → 242MB/页 × 24 页 = 5.8GB，8GB 机器 OOM）。非位图页返回 None。
+        """
+        try:
+            page_area = float(page.rect.width) * float(page.rect.height)
+            if page_area <= 0:
+                return None
+            for info in page.get_image_info():
+                if info.get("width", 0) < 32 or info.get("height", 0) < 32:
+                    continue
+                x0, y0, x1, y1 = info["bbox"]
+                bbox_area = max(0.0, float(x1) - float(x0)) * max(0.0, float(y1) - float(y0))
+                if bbox_area / page_area < 0.9:
+                    continue
+                # bbox 覆盖近全页：渲染到原生像素的比例。取 min(宽/高比例) 收敛
+                # 到保守侧（宽或高任一方向贴满即视为原生）。
+                zoom_w = float(info["width"]) / max(float(x1) - float(x0), 1.0)
+                zoom_h = float(info["height"]) / max(float(y1) - float(y0), 1.0)
+                if zoom_w >= 0.5:
+                    return min(zoom_w, zoom_h)
+        except Exception:
+            return None
+        return None
+
     def _extract_page_chars(self, plumber_pages: Sequence[Any], page_index: int) -> list[dict[str, Any]]:
         """抽该页 pdfplumber 文字层字符；乱码页（CID/PUA 字符或子集字体编码错乱）
         直接清空，强制该页全走 OCR。接线上游 __images__ 的乱码预清洗。
@@ -998,6 +1046,16 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         """对英文 PDF 字符层，按同行字符间隙补空格，恢复单词边界。
 
         仅对非 CJK、非空格字符生效；避免中文文档被误插空格。
+
+        间隙阈值双条件（min 锚 + 高度锚）而非全页平均字符宽：中英混排版面
+        （如中文简历，doc39 实测）全页平均被全宽 CJK 字符拉高到 9.7pt，词间
+        gap 4.3pt 永远触不到阈值，英文单词全部粘连成 "AnAcceleratedRiemannian…"
+        ——ES 分词后整串是单 token，检索必 miss。
+        min 锚（min(两侧字符宽, 左字符高) × 0.35）解决「窄字母→宽大写」邻对
+        阈值虚高（max 锚下 doc39 标题 n→A gap 4.3 vs 阈值 5.1 漏判）；
+        高度锚（左字符高 × 0.3）兜底窄字符（i/l 宽 2-4pt 时 min 锚过低，
+        宽松字距的词内 gap 2pt 会误拆——doc568 正文词内 kerning ≈ 0、
+        doc39 词内 -0.6~0，高度锚不误伤正常排版）。
         """
         if not chars:
             return chars
@@ -1024,9 +1082,13 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                 continue
             if not re.match(r"[a-zA-Z0-9,.!?;:%]", text[-1]) or not re.match(r"[a-zA-Z0-9,.!?;:%]", next_text[0]):
                 continue
+            width_a = max(1.0, float(char.get("width", 0.0)) or float(char.get("x1", 0.0)) - float(char.get("x0", 0.0)))
+            width_b = max(1.0, float(next_char.get("width", 0.0)) or float(next_char.get("x1", 0.0)) - float(next_char.get("x0", 0.0)))
+            height_a = max(1.0, float(char.get("height", 0.0)) or 0.0)
+            pair_width = min(width_a, width_b, height_a)
             gap = float(next_char.get("x0", 0.0)) - float(char.get("x1", 0.0))
             same_line = abs(float(next_char.get("top", 0.0)) - float(char.get("top", 0.0))) < mean_width * 0.8
-            if same_line and gap > mean_width * 0.6:
+            if same_line and gap > pair_width * 0.35 and gap > height_a * 0.3:
                 space_char = dict(char)
                 space_char["text"] = " "
                 space_char["x0"] = float(char.get("x1", 0.0))
@@ -1116,11 +1178,19 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             m_ht = float(np.mean([float(c.get("height", 0.0)) for c in b["chars"]])) or 0.0
             text, box_chars, garbled, total = self._assemble_box_text(b["chars"], m_ht)
             b["text"] = text
+            # CID 占位（上游 _is_garbled_text 的 CID_PATTERN 一票判定，fork 此前
+            # 漏抄）："(cid:N)" 是 ASCII 字面量，逐字符 PUA 统计不命中；但布局阶段
+            # apply_layouts 的 is_garbage 对含 (cid:N) 框直接 pop。两处不对称导致
+            # 数学论文的行内公式行（LaTeX 把 −、≤ 排成未映射 CID，doc567 实测
+            # 18 框）活着穿过 fuse 又在 layout 被静默删除。此处与上游对齐：含
+            # (cid:N) 即清空回退 OCR——OCR 从渲染图识别，视觉符号可正常认出。
+            has_cid = bool(_CID_PATTERN.search(text))
             # 框级回退 OCR 同样要求「字符级乱码」信号：单独的子集字体信号对
             # LaTeX 产出的 PDF（字体全带 XXXXXX+ 前缀、表格/参考文献纯 ASCII）
             # 几乎必然误报，会把干净的参考文献/表格框清空后交给 OCR 认成粘连串。
             if total > 0 and (
-                garbled / total >= 0.5
+                has_cid
+                or garbled / total >= 0.5
                 or (self._is_garbled_by_font_encoding(box_chars) and garbled > 0)
             ):
                 b["text"] = ""

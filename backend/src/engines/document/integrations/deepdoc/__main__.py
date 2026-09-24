@@ -164,7 +164,17 @@ def main(argv: list[str] | None = None) -> int:
                     splitting_config={"chunk_size": args.chunk_size},
                 )
         if args.output == "text":
-            print(result.full_text)
+            # Windows GBK 控制台无法编码数学 PDF 文字层的 PUA 构造线字形（U+F8xx），
+            # print 直接 UnicodeEncodeError 且部分写出（空文件假象）。errors=replace
+            # 保住可打印主体，不可编码字形以 � 呈现。
+            sys.stdout.write(result.full_text)
+            sys.stdout.write("\n")
+            try:
+                sys.stdout.flush()
+            except UnicodeEncodeError:
+                encoded = (result.full_text + "\n").encode(sys.stdout.encoding or "utf-8", errors="replace")
+                sys.stdout.buffer.write(encoded)
+                sys.stdout.buffer.flush()
         else:
             print(json.dumps(_serialize_result(result), ensure_ascii=False, indent=args.indent))
         return 0
