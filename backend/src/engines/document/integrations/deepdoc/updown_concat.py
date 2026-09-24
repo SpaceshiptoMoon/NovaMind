@@ -246,6 +246,22 @@ class UpDownConcatMerger:
                         cursor += 1
                         continue
 
+                    # 上游 VEN L1092-1098 守卫（此前漏抄）：同页近邻（i-dp<5）的
+                    # text 块只并同 layoutno 的框——layoutno 不同直接跳过、不进
+                    # 模型判定。漏抄后果（doc568 p3 实测）：text-5 块跳过中间被
+                    # 拒并的同区域行，跨 layoutno 吞并 text-7 的行（xgb 对块尾
+                    # 特征给 0.49+ 误判），被跳过的行遗留在巨块 bbox 区间内，
+                    # 段落中间被插入下一节句子（"performing fusion at the" 后接
+                    # 右栏 "Figure 1 shows"）。版面区域身份是比模型分数更强的
+                    # 段落边界信号，恢复上游优先级。
+                    if cursor - dp < 5 and up.get("layout_type") == "text":
+                        if up.get("layoutno", "1") == down.get("layoutno", "2"):
+                            dfs(down, cursor + 1)
+                            remaining.pop(cursor)
+                            return
+                        cursor += 1
+                        continue
+
                     features = self._updown_concat_features(up, down)
                     score = float(model.predict(xgb.DMatrix([features]))[0])
                     if score <= 0.5:
