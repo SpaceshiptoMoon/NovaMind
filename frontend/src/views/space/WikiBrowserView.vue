@@ -766,6 +766,13 @@ async function selectPage(slug: string) {
   if (!slug) return
   selectedSlug.value = slug
   sources.value = []
+  // 切页即失效历史抽屉的旧数据：revisions/diff 属于上一页面，留着会在
+  // 重开抽屉时展示上一个实体的版本与对比结果
+  revisions.value = []
+  diffBaseVersion.value = undefined
+  diffTargetVersion.value = undefined
+  diffLinesList.value = []
+  historyVisible.value = false
   try {
     currentPage.value = await wikiApi.getPage(spaceId.value, kbId.value, slug)
     // 来源异步加载，不阻塞正文渲染
@@ -860,6 +867,10 @@ const diffStats = computed(() => diffStatsOf(diffLines.value))
 
 function openHistory() {
   if (!currentPage.value) return
+  // 换页面后重开抽屉：清掉上一页遗留的 diff，避免展示上一个实体的对比结果
+  diffBaseVersion.value = undefined
+  diffTargetVersion.value = undefined
+  diffLinesList.value = []
   historyVisible.value = true
   wikiApi
     .listRevisions(spaceId.value, kbId.value, currentPage.value.slug)
