@@ -1,24 +1,20 @@
-"""DeepDoc 视觉模块：OCR 识别 / 版面分析 / 表格结构识别 / 模型管理。"""
+"""DeepDoc 视觉模块：OCR 识别 / 版面分析 / 表格结构识别 / 模型管理。
+
+包级导出面只保留 vendor stub 装载层
+（`vendor/ragflow/__init__.py` 的 `local_vision.<attr>` 属性读取）与
+Recognizer（几何工具测试）。模型管理/状态查询走深路径
+（`vision.model_manager` / `vision.package_status`）。
+"""
 from __future__ import annotations
 
 from importlib import import_module
 
 _EXPORT_MAP = {
-    "get_vendored_vision_package_status": ("novamind.engines.document.integrations.deepdoc.vision.package_status", "get_vendored_vision_package_status"),
     "OCR": ("novamind.engines.document.integrations.deepdoc.vision.ocr", "OCR"),
     "AscendLayoutRecognizer": ("novamind.engines.document.integrations.deepdoc.vision.layout_recognizer", "AscendLayoutRecognizer"),
     "LayoutRecognizer": ("novamind.engines.document.integrations.deepdoc.vision.layout_recognizer", "LayoutRecognizer"),
     "LayoutRecognizer4YOLOv10": ("novamind.engines.document.integrations.deepdoc.vision.layout_recognizer", "LayoutRecognizer4YOLOv10"),
-    "default_model_dir": ("novamind.engines.document.integrations.deepdoc.vision.model_manager", "default_model_dir"),
-    "download_hf_files": ("novamind.engines.document.integrations.deepdoc.vision.model_manager", "download_hf_files"),
-    "download_model_group": ("novamind.engines.document.integrations.deepdoc.vision.model_manager", "download_model_group"),
-    "ensure_model_group_available": ("novamind.engines.document.integrations.deepdoc.vision.model_manager", "ensure_model_group_available"),
-    "expected_model_files": ("novamind.engines.document.integrations.deepdoc.vision.model_manager", "expected_model_files"),
-    "get_model_status": ("novamind.engines.document.integrations.deepdoc.vision.model_manager", "get_model_status"),
     "Recognizer": ("novamind.engines.document.integrations.deepdoc.vision.recognizer", "Recognizer"),
-    "draw_box": ("novamind.engines.document.integrations.deepdoc.vision.seeit", "draw_box"),
-    "get_color_map_list": ("novamind.engines.document.integrations.deepdoc.vision.seeit", "get_color_map_list"),
-    "save_results": ("novamind.engines.document.integrations.deepdoc.vision.seeit", "save_results"),
     "TableStructureRecognizer": ("novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer", "TableStructureRecognizer"),
 }
 

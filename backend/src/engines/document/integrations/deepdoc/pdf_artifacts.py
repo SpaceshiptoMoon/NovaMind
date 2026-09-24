@@ -11,7 +11,7 @@ from typing import Any
 
 import numpy as np
 from novamind.engines.document.integrations.deepdoc.compat import LazyImage
-from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
+from novamind.shared.logging import get_logger
 from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
     TableStructureRecognizer,
 )

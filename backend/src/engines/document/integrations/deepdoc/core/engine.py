@@ -16,7 +16,7 @@ from novamind.engines.document.integrations.deepdoc.core.runtime_parser import D
 from novamind.engines.document.integrations.deepdoc.diagnostics.dependencies import (
     get_deepdoc_runtime_report,
 )
-from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
+from novamind.shared.logging import get_logger
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import get_model_status
 from novamind.engines.document.integrations.deepdoc.vision_runtime import (
     get_vision_health_status,
@@ -33,10 +33,6 @@ class DeepDocEngine:
     @staticmethod
     def supported_extensions() -> set[str]:
         return DeepDocParser.supported_extensions()
-
-    @classmethod
-    def can_parse(cls, file_type: str) -> bool:
-        return file_type.lower().lstrip(".") in cls.supported_extensions()
 
     @staticmethod
     def describe_capabilities():
@@ -71,14 +67,6 @@ class DeepDocEngine:
         return get_upstream_deepdoc_snapshot()
 
     @staticmethod
-    def ensure_vision_model_group(group: str):
-        from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
-            ensure_model_group_available,
-        )
-
-        return ensure_model_group_available(group)
-
-    @staticmethod
     def download_vision_models(group: str | None = None):
         from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
             download_model_group,
@@ -105,14 +93,6 @@ class DeepDocEngine:
     @classmethod
     def available_pdf_modes(cls) -> dict:
         return dict(get_deepdoc_capabilities()["pdf_modes"])
-
-    @classmethod
-    def supports_pdf_mode(cls, mode: str) -> bool:
-        info = cls.available_pdf_modes().get(mode)
-        return bool(info and info.get("available"))
-
-    async def aparse_file(self, file_path: str | Path, **kwargs) -> DeepDocParseResult:
-        return await self.parser.parse(file_path, **kwargs)
 
     async def aparse_with_parser_id(
         self,
@@ -162,7 +142,7 @@ class DeepDocEngine:
         return result
 
     def parse_file(self, file_path: str | Path, **kwargs) -> DeepDocParseResult:
-        return self._run_async(self.aparse_file(file_path, **kwargs))
+        return self._run_async(self.parser.parse(file_path, **kwargs))
 
     def parse_with_parser_id(self, **kwargs) -> DeepDocParseResult:
         return self._run_async(self.aparse_with_parser_id(**kwargs))

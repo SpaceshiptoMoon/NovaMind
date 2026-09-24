@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 

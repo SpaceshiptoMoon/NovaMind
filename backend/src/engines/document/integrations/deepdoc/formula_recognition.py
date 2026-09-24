@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
+from novamind.shared.logging import get_logger
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
     default_model_dir,
     download_hf_files,

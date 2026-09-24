@@ -11,7 +11,7 @@ from novamind.engines.document.integrations.deepdoc.core.capabilities import (
     get_deepdoc_capabilities,
 )
 from novamind.engines.document.integrations.deepdoc.core.models import DeepDocParseResult
-from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
+from novamind.shared.logging import get_logger
 from novamind.engines.document.integrations.deepdoc.vision_runtime import (
     ensure_vision_parser_available,
 )

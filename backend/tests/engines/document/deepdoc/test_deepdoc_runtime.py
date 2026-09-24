@@ -1091,14 +1091,11 @@ def test_ragflow_pdf_parser_position_helpers():
 
 def test_deepdoc_engine_standalone_facade():
     engine = DeepDocEngine()
-    assert engine.can_parse("pdf") is True
-    assert engine.can_parse(".docx") is True
-    assert engine.can_parse("epub") is True
-    assert engine.can_parse("xlsx") is True
-    assert engine.can_parse("pptx") is True
-    assert engine.can_parse("png") is True
-    assert engine.supports_pdf_mode("plain") is True
-    assert engine.supports_pdf_mode("full") is get_vision_runtime_status()["parser_available"]
+    exts = engine.supported_extensions()
+    assert {"pdf", "docx", "epub", "xlsx", "pptx", "png"} <= exts
+    modes = engine.available_pdf_modes()
+    assert modes["plain"]["available"] is True
+    assert modes["full"]["available"] is get_vision_runtime_status()["parser_available"]
 
 
 def test_deepdoc_factory_exposes_parser_ids():
@@ -2242,26 +2239,3 @@ def test_deepdoc_engine_wraps_vision_model_download(monkeypatch, tmp_path):
     )
     engine = DeepDocEngine()
     assert engine.download_vision_models("ocr") == expected_path
-
-
-def test_deepdoc_engine_wraps_vision_model_group_check(monkeypatch, tmp_path):
-    monkeypatch.setattr(
-        "novamind.engines.document.integrations.deepdoc.vision.model_manager.ensure_model_group_available",
-        lambda group: tmp_path,
-    )
-    engine = DeepDocEngine()
-    assert engine.ensure_vision_model_group("layout") == tmp_path
-
-
-def test_deepdoc_result_to_documents():
-    result = DeepDocParseResult(
-        full_text="alpha\nbeta",
-        chunks=["alpha", "beta"],
-        metadata={"parser": "deepdoc"},
-    )
-
-    docs = result.to_documents(source="demo")
-    assert len(docs) == 2
-    assert docs[0]["chunk_index"] == 0
-    assert docs[0]["source"] == "demo"
-    assert docs[1]["content"] == "beta"

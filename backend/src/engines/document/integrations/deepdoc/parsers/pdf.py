@@ -25,7 +25,7 @@ from novamind.engines.document.integrations.deepdoc.formula_recognition import (
     get_formula_model_status,
     load_formula_recognizer,
 )
-from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
+from novamind.shared.logging import get_logger
 from novamind.engines.document.integrations.deepdoc.page_filter import PageNoiseFilter
 from novamind.engines.document.integrations.deepdoc.parsers.pdf_plain import RAGFlowPlainPdfParser
 from novamind.engines.document.integrations.deepdoc.pdf_artifacts import PdfArtifactExtractor

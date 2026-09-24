@@ -1,55 +1,18 @@
-"""DeepDoc 文档解析引擎（vendored，自包含）——多格式文档解析、OCR、版面分析、表格识别。"""
+"""DeepDoc 文档解析引擎（vendored，自包含）——多格式文档解析、OCR、版面分析、表格识别。
+
+门面只暴露外部生产消费面（document_loader / document_pipeline）：
+引擎、运行时解析器、结果模型、位置标记清洗。诊断与各格式解析器走深路径
+import（`core.capabilities` / `diagnostics.*` / `parsers.<format>`）。
+"""
 from __future__ import annotations
 
 from importlib import import_module
 
 _EXPORT_MAP = {
-    "get_deepdoc_capabilities": ("novamind.engines.document.integrations.deepdoc.core.capabilities", "get_deepdoc_capabilities"),
-    "get_deepdoc_runtime_report": ("novamind.engines.document.integrations.deepdoc.diagnostics.dependencies", "get_deepdoc_runtime_report"),
-    "build_doctor_payload": ("novamind.engines.document.integrations.deepdoc.diagnostics.doctor", "build_doctor_payload"),
-    "build_remediation": ("novamind.engines.document.integrations.deepdoc.diagnostics.doctor", "build_remediation"),
     "DeepDocEngine": ("novamind.engines.document.integrations.deepdoc.core.engine", "DeepDocEngine"),
-    "DeepDocParserFactory": ("novamind.engines.document.integrations.deepdoc.core.factory", "DeepDocParserFactory"),
-    "DeepDocParserSpec": ("novamind.engines.document.integrations.deepdoc.core.factory", "DeepDocParserSpec"),
+    "DeepDocParser": ("novamind.engines.document.integrations.deepdoc.core.runtime_parser", "DeepDocParser"),
     "DeepDocParseResult": ("novamind.engines.document.integrations.deepdoc.core.models", "DeepDocParseResult"),
     "strip_position_tags": ("novamind.engines.document.integrations.deepdoc.core.models", "strip_position_tags"),
-    "DeepDocParser": ("novamind.engines.document.integrations.deepdoc.core.runtime_parser", "DeepDocParser"),
-    "DeepDocPdfBox": ("novamind.engines.document.integrations.deepdoc.parsers.pdf", "DeepDocPdfBox"),
-    "RAGFlowPdfParser": ("novamind.engines.document.integrations.deepdoc.parsers.pdf", "RAGFlowPdfParser"),
-    "RAGFlowDocxParser": ("novamind.engines.document.integrations.deepdoc.parsers.docx", "RAGFlowDocxParser"),
-    "RAGFlowEpubParser": ("novamind.engines.document.integrations.deepdoc.parsers.epub", "RAGFlowEpubParser"),
-    "RAGFlowExcelParser": ("novamind.engines.document.integrations.deepdoc.parsers.excel", "RAGFlowExcelParser"),
-    "RAGFlowFigureParser": ("novamind.engines.document.integrations.deepdoc.parsers.figure", "RAGFlowFigureParser"),
-    "RAGFlowHtmlParser": ("novamind.engines.document.integrations.deepdoc.parsers.html", "RAGFlowHtmlParser"),
-    "RAGFlowJsonParser": ("novamind.engines.document.integrations.deepdoc.parsers.json", "RAGFlowJsonParser"),
-    "MarkdownElementExtractor": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.markdown_parser", "MarkdownElementExtractor"),
-    "RAGFlowMarkdownParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.markdown_parser", "RAGFlowMarkdownParser"),
-    "RAGFlowPlainPdfParser": ("novamind.engines.document.integrations.deepdoc.parsers.pdf_plain", "RAGFlowPlainPdfParser"),
-    "RAGFlowPptParser": ("novamind.engines.document.integrations.deepdoc.parsers.ppt", "RAGFlowPptParser"),
-    "RAGFlowTextParser": ("novamind.engines.document.integrations.deepdoc.parsers.text", "RAGFlowTextParser"),
-    "RAGFlowTxtParser": ("novamind.engines.document.integrations.deepdoc.parsers.txt", "RAGFlowTxtParser"),
-    "DocxParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.docx_parser", "RAGFlowDocxParser"),
-    "EpubParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.epub_parser", "RAGFlowEpubParser"),
-    "ExcelParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.excel_parser", "RAGFlowExcelParser"),
-    "FigureParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.figure_parser", "FigureParser"),
-    "HtmlParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.html_parser", "RAGFlowHtmlParser"),
-    "JsonParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.json_parser", "RAGFlowJsonParser"),
-    "MarkdownParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.markdown_parser", "RAGFlowMarkdownParser"),
-    "PptParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.ppt_parser", "RAGFlowPptParser"),
-    "TxtParser": ("novamind.engines.document.integrations.deepdoc.parsers.upstream.txt_parser", "RAGFlowTxtParser"),
-    "DeepDocVisionOCR": ("novamind.engines.document.integrations.deepdoc.vision", "OCR"),
-    "DeepDocVisionLayoutRecognizer": ("novamind.engines.document.integrations.deepdoc.vision", "LayoutRecognizer"),
-    "DeepDocVisionRecognizer": ("novamind.engines.document.integrations.deepdoc.vision", "Recognizer"),
-    "DeepDocVisionTableStructureRecognizer": ("novamind.engines.document.integrations.deepdoc.vision", "TableStructureRecognizer"),
-    "deepdoc_default_model_dir": ("novamind.engines.document.integrations.deepdoc.vision", "default_model_dir"),
-    "deepdoc_download_model_group": ("novamind.engines.document.integrations.deepdoc.vision", "download_model_group"),
-    "deepdoc_ensure_model_group_available": ("novamind.engines.document.integrations.deepdoc.vision", "ensure_model_group_available"),
-    "deepdoc_expected_model_files": ("novamind.engines.document.integrations.deepdoc.vision", "expected_model_files"),
-    "deepdoc_get_model_status": ("novamind.engines.document.integrations.deepdoc.vision", "get_model_status"),
-    "deepdoc_get_formula_model_status": ("novamind.engines.document.integrations.deepdoc.formula_recognition", "get_formula_model_status"),
-    "deepdoc_download_formula_model": ("novamind.engines.document.integrations.deepdoc.formula_recognition", "download_formula_model"),
-    "get_vendored_vision_package_status": ("novamind.engines.document.integrations.deepdoc.vision", "get_vendored_vision_package_status"),
-    "get_upstream_deepdoc_snapshot": ("novamind.engines.document.integrations.deepdoc.compat.upstream", "get_upstream_deepdoc_snapshot"),
 }
 
 __all__ = list(_EXPORT_MAP.keys())

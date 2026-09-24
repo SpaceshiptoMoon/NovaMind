@@ -26,17 +26,3 @@ class DeepDocParseResult:
     full_text: str
     chunks: list[str]
     metadata: dict[str, Any] = field(default_factory=dict)
-
-    def to_documents(self, source: str = "") -> list[dict[str, Any]]:
-        documents: list[dict[str, Any]] = []
-        for index, chunk in enumerate(self.chunks):
-            documents.append(
-                {
-                    "text": chunk,
-                    "content": chunk,
-                    "chunk_index": index,
-                    "source": source,
-                    "metadata": dict(self.metadata),
-                }
-            )
-        return documents

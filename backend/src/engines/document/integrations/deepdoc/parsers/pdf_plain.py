@@ -6,7 +6,7 @@ from io import BytesIO
 from pathlib import Path
 
 import pdfplumber
-from novamind.engines.document.integrations.deepdoc.logging_compat import get_logger
+from novamind.shared.logging import get_logger
 from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import (
     extract_pdf_outlines,
 )
