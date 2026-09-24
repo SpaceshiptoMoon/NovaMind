@@ -168,6 +168,19 @@
   font-weight: var(--weight-semibold);
 }
 
+/* TSR 表格 HTML 内容可能超出容器（列多），横向滚动防撑破布局 */
+.markdown-body table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.markdown-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+}
+
 .markdown-body a {
   color: var(--color-primary);
   text-decoration: none;

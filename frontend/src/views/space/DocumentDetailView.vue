@@ -121,7 +121,7 @@
                 <template v-if="chunk.chunk_type === 'image'">🖼 图片分块</template>
                 <template v-else>{{ truncateContent(chunk.content) }}</template>
               </div>
-              <!-- 展开态：完整内容 -->
+              <!-- 展开态：完整内容（Markdown 渲染：figure 图片 + TSR 表格 HTML 可视化） -->
               <template v-else>
                 <div class="chunk-content">
                   <template v-if="chunk.chunk_type === 'image'">
@@ -135,6 +135,10 @@
                     />
                     <div class="chunk-image-desc">{{ chunk.content }}</div>
                   </template>
+                  <MarkdownRenderer
+                    v-else-if="document"
+                    :content="resolveFigureLinks(chunk.content, spaceId, kbId, document.id)"
+                  />
                   <template v-else>{{ chunk.content }}</template>
                 </div>
                 <div v-if="chunk.questions?.length > 0" class="chunk-questions">
@@ -202,11 +206,13 @@ import { ElMessage } from 'element-plus'
 import { Close, ArrowRight } from '@element-plus/icons-vue'
 import { documentApi } from '@/api/knowledge'
 import Pagination from '@/components/common/Pagination.vue'
+import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import DocumentOriginalPreview from '@/components/knowledge/DocumentOriginalPreview.vue'
 import { TaskNodeLogTable } from '@/components/knowledge'
 import type { DocumentDetail, Chunk, DocumentTaskItem } from '@/api/types'
 import { chunkTypeLabels, getFileTypeStyle, taskStatusMap } from '@/components/knowledge'
 import { formatFileSize, formatDate, formatDuration } from '@/utils/format'
+import { resolveFigureLinks } from '@/utils/figureLinks'
 
 const route = useRoute()
 
