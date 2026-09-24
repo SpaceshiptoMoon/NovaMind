@@ -400,7 +400,7 @@ function scrollToFeatures() {
 
 .feature-cards {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--space-4);
 }
 
@@ -533,6 +533,12 @@ function scrollToFeatures() {
 /* ========================================
    Responsive
    ======================================== */
+@media (max-width: 900px) {
+  .feature-cards {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 @media (max-width: 700px) {
   .hero-title {
     font-size: 36px;

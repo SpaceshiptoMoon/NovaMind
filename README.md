@@ -11,20 +11,28 @@
 [![Vue 3](https://img.shields.io/badge/Vue%203-4FC08D?logo=vuedotjs&logoColor=white)](./frontend)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](./frontend)
 [![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](./docker-compose.yml)
-[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blueviolet)](https://deepwiki.com)
+
+**文档（PDF / 扫描件 / 图片 / 音频 / 视频）进来，带引用的答案、结构化 Wiki 和研究报告出去。**
 
 [English](./README.en.md) | 简体中文
 
 </div>
 
-NovaMind 是一个面向团队与个人的智能知识平台，围绕**知识库构建、多模态文档解析、检索增强问答、深度研究、Agent 工具调用、技能扩展和效果评测**提供一体化能力。项目采用 `FastAPI + Vue 3` 构建，支持 Docker 一键部署，也支持前后端分离的本地开发模式。
+<p align="center">
+  <img src="./assets/home.png" alt="NovaMind 首页" width="800">
+</p>
 
-<p align="center">
-  <img src="./assets/home.png" alt="NovaMind Home" width="720">
-</p>
-<p align="center">
-  <img src="./assets/features.png" alt="NovaMind Features" width="720">
-</p>
+---
+
+<div align="center">
+
+| RAG 问答 · 答案带引用溯源 | 知识检索 · 9 种模式 |
+| :---: | :---: |
+| <img src="./assets/rag-chat.png" width="420"> | <img src="./assets/search.png" width="420"> |
+| **知识库 Wiki · 知识图谱** | **文档解析 · 任务追踪** |
+| <img src="./assets/wiki-graph.png" width="420"> | <img src="./assets/tasks.png" width="420"> |
+
+</div>
 
 <details open>
 <summary><b>📕 目录</b></summary>
@@ -78,6 +86,10 @@ NovaMind 是一个面向团队与个人的智能知识平台，围绕**知识库
 - **假设问题增强**：可为分块自动生成假设问题并建立问题向量，提升问答召回
 - **知识库评测**：测试集管理、自动评测、人工打分、报告导出，验证知识库真实效果
 
+<p align="center">
+  <img src="./assets/documents.png" alt="文档管理 · 演示知识库「AI 知识手册」" width="760">
+</p>
+
 ### 📄 多模态文档解析
 
 - **文本文档**：PDF（DeepDoc 逐框文字层 + OCR 融合的 full 模式 / 轻量 plain 模式）、DOCX、TXT、MD、CSV、HTML、JSON
@@ -87,22 +99,21 @@ NovaMind 是一个面向团队与个人的智能知识平台，围绕**知识库
 - **公式与表格**：PDF 公式识别（pix2text-mfr INT8）、表格结构还原与 HTML 内联
 - **断点续跑**：解析 → 切分 → 向量化三级内容指纹，重试时指纹匹配即复用已付费的解析产物，配置变更自动级联失效
 
+<p align="center">
+  <img src="./assets/document-detail.png" alt="文档详情 · 解析结果与分块预览" width="760">
+</p>
+
 ### 🤖 智能应用
 
-- **RAG 问答**：基于知识库的多轮问答，支持会话配置与上下文压缩，答案带引用溯源
+- **RAG 问答**：基于知识库的多轮问答，支持会话配置与上下文压缩，答案带引用溯源（右侧引用面板点击可定位原文分块）
 - **深度研究**：联合内部知识库与外部搜索（数据源可插拔：Tavily / SerpAPI / DuckDuckGo），分步骤生成研究报告
 - **Agent**：工具调用、MCP Server 接入、执行轨迹回放
 - **技能广场**：技能上传、审核、安装与市场化分发
 - **应用中心**：面向具体业务场景封装 AI 能力（如简历挖掘）
 
-### 🕸 知识库 Wiki
-
-基于知识库内容自动生成结构化 Wiki（对齐 WeKnora 设计）：
-
-- 自动生成索引页 / 主题页 / 摘要页，条目间自动建立 `[[链接]]` 并生成**知识图谱**（可交互浏览）
-- 生成结果同步写入 ES 检索索引并参与加权排序，问答可直接命中 Wiki 条目
-- 文档更新 / 删除时自动对账（reparse 合并更新、来源删除 retract 回收）
-- **质量巡检**：孤儿页 / 死链 / 失效引用 / 空内容等六类问题检查，健康分 0-100 评分，支持一键自动修复
+<p align="center">
+  <img src="./assets/agents.png" alt="智能体对话 · 知识检索助手" width="760">
+</p>
 
 ### 🛡 平台能力
 
@@ -119,7 +130,7 @@ NovaMind 是一个面向团队与个人的智能知识平台，围绕**知识库
   └▶ arq 异步任务
        ├─ 文本分支   DeepDoc 解析 / 通用 Reader ─┐
        ├─ 图片分支   VLM 描述 / OCR ──────────────┤
-       ├─ 视频分支   抽帧 → VLM 逐帧描述 ─────────┼─▶ 统一切分 → Embedding
+       ├─ 视频分支   抽帧 → VLM 逐帧描述 ──────────┼─▶ 统一切分 → Embedding
        └─ 音频分支   本地 faster-whisper / 云端 ASR ┘   → 假设问题（可选）
                                                        → ES 向量+全文索引
                                                        → Wiki 生成（KB 开启时）
@@ -134,7 +145,7 @@ NovaMind 是一个面向团队与个人的智能知识平台，围绕**知识库
 
 ## 知识库 Wiki
 
-传统知识库回答“这段内容在哪”，Wiki 回答“这个主题的全貌是什么”。NovaMind 的 Wiki 子系统：
+传统知识库回答“这段内容在哪”，Wiki 回答“这个主题的全貌是什么”。NovaMind 的 Wiki 子系统基于知识库内容自动生成结构化 Wiki（对齐 WeKnora 设计）：
 
 ```text
 知识库文档 ──解析完成──▶ Wiki 生成任务（LLM 规划 + 生成）
@@ -147,9 +158,18 @@ NovaMind 是一个面向团队与个人的智能知识平台，围绕**知识库
                                  └─▶ 质量巡检（六类 lint + 健康分）
 ```
 
-- **前端可视化**：Wiki 浏览器（页面渲染 + 反向链接）、力导向图谱（主题联动、节点高亮）、问题面板（逐条修复 / 忽略）
+<p align="center">
+  <img src="./assets/wiki-browse.png" alt="Wiki 浏览器 · 页面渲染与反链" width="760">
+</p>
+
+- **前端可视化**：Wiki 浏览器（页面渲染 + 反向链接）、力导向图谱（主题联动、节点高亮）、问题面板（孤儿页 / 死链 / 失效引用 / 空内容等六类问题，逐条修复 / 忽略，健康分 0-100）
+- **生成结果同步写入 ES 检索索引**并参与加权排序，问答可直接命中 Wiki 条目
 - **Agent 联动**：问答 Agent 可将 Wiki 页面作为工具读取，实现“先查全貌再钻细节”
-- **生命周期管理**：文档重新解析时旧生成任务自动取消、新结果合并更新；文档删除时页面自动回收，不留悬空引用
+- **生命周期管理**：文档更新 / 删除时自动对账（reparse 合并更新、来源删除 retract 回收），不留悬空引用
+
+<p align="center">
+  <img src="./assets/wiki-graph.png" alt="Wiki 知识图谱 · 力导向布局" width="760">
+</p>
 
 ## 适合什么场景
 
@@ -374,31 +394,15 @@ Docker 部署模式：
 
 ## 架构概览
 
+<p align="center">
+  <img src="./assets/architecture.svg" alt="NovaMind 系统架构" width="880">
+</p>
+
 默认 Docker 形态为“单应用容器 + 多基础设施容器”：
 
 - `app` 容器内运行 `Nginx + 前端静态资源 + FastAPI + 嵌入式 ARQ Worker`
 - `mysql`、`redis`、`minio`、`elasticsearch` 以独立服务编排，基础设施端口绑定到 `127.0.0.1`，不对公网暴露
-- `Nginx` 对外暴露 `80` 端口，按路径分发到静态资源或 FastAPI
-- FastAPI 在容器内部监听 `8100`，仅 Nginx 可达
-
-```text
-Browser
-  │  :80
-  ▼
-┌──────────────────────────────────────────────────────┐
-│ app 容器（单容器）                                      │
-│   Nginx ── /         ─▶ Vue 静态资源                    │
-│        ── /api/*     ─▶ FastAPI (:8100)                │
-│        ── /health    ─▶ FastAPI health endpoint         │
-│   FastAPI + 嵌入式 ARQ Worker（同进程异步任务）           │
-└──────┬───────────────────────────────────────────────┘
-       │  仅 Nginx 对外暴露 80；FastAPI 仅容器内可达
-       │
-       ├──▶ MySQL 8.4         ORM 持久化：用户 / 空间 / 知识库 / 文档任务 / Wiki 页面
-       ├──▶ Redis 7           缓存 / ARQ 异步任务队列 / 任务追踪与取消标记 / JWT 黑名单
-       ├──▶ MinIO             文档原件、解析全文、视频帧、Wiki 快照对象存储
-       └──▶ Elasticsearch 9.3 向量召回 + BM25 全文混合检索索引（含 Wiki 条目）
-```
+- `Nginx` 对外暴露 `80` 端口，按路径分发到静态资源或 FastAPI；FastAPI 在容器内部监听 `8100`，仅 Nginx 可达
 
 后端采用按领域拆分的目录结构，`features/` 为业务模块、`engines/` 为可复用引擎、`shared/` 为跨模块基础设施：
 

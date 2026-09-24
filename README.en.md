@@ -1,89 +1,194 @@
-# NovaMind
+<div align="center">
+
+# 🧠 NovaMind
+
+**An all-in-one intelligent knowledge platform: knowledge bases · multimodal parsing · RAG QA · deep research · agents**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![CI](https://github.com/SpaceshiptoMoon/NovaMind/actions/workflows/ci.yml/badge.svg)](https://github.com/SpaceshiptoMoon/NovaMind/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](./backend/pyproject.toml)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](./backend)
+[![Vue 3](https://img.shields.io/badge/Vue%203-4FC08D?logo=vuedotjs&logoColor=white)](./frontend)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](./frontend)
 [![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](./docker-compose.yml)
+
+**Documents in (PDF / scans / images / audio / video) — cited answers, structured wikis, and research reports out.**
 
 English | [简体中文](./README.md)
 
-NovaMind is an intelligent knowledge platform for teams and individuals, built around knowledge-base construction, retrieval-augmented QA, deep research, agent tool-calling, skill extensions, and effect evaluation. It is built with `FastAPI + Vue 3`, supports one-command Docker deployment, and also works as a decoupled local development setup.
+</div>
 
 <p align="center">
-  <img src="./assets/home.png" alt="NovaMind Home" width="720">
+  <img src="./assets/home.png" alt="NovaMind landing page" width="800">
 </p>
-<p align="center">
-  <img src="./assets/features.png" alt="NovaMind Features" width="720">
-</p>
+
+---
+
+<div align="center">
+
+| RAG QA with citations | Hybrid retrieval · 9 modes |
+| :---: | :---: |
+| <img src="./assets/rag-chat.png" width="420"> | <img src="./assets/search.png" width="420"> |
+| **KB Wiki · knowledge graph** | **Document pipeline · task tracking** |
+| <img src="./assets/wiki-graph.png" width="420"> | <img src="./assets/tasks.png" width="420"> |
+
+</div>
 
 <details open>
 <summary><b>📕 Table of Contents</b></summary>
 
 - [What it is](#what-it-is)
 - [Core capabilities](#core-capabilities)
+- [Document processing pipeline](#document-processing-pipeline)
+- [Knowledge-base Wiki](#knowledge-base-wiki)
 - [Who it's for](#whos-it-for)
 - [Tech stack](#tech-stack)
 - [Quick start](#quick-start)
 - [Access points](#access-points)
-- [Repository layout](#repository-layout)
 - [Architecture overview](#architecture-overview)
-- [Project status](#project-status)
+- [Repository layout](#repository-layout)
 - [Modules](#modules)
 - [Configuration](#configuration)
 - [Model integration](#model-integration)
+- [Security](#security)
 - [Testing & quality checks](#testing--quality-checks)
+- [Project status](#project-status)
 - [Documentation](#documentation)
-- [Resources & collaboration](#resources--collaboration)
 - [Open-source collaboration](#open-source-collaboration)
 - [License](#license)
 
 </details>
 
+---
+
 ## What it is
 
-Many knowledge-base projects only cover the "upload a document and chat" segment of the workflow. NovaMind tries to cover a more complete pipeline:
+Many knowledge-base projects only cover the "upload a document and chat" segment. NovaMind covers a more complete workflow:
 
-- From spaces, knowledge bases, and document upload to parsing, splitting, vectorization, and indexing
+- From spaces, knowledge bases, and document upload to **multimodal parsing** (text / image / video / audio), splitting, vectorization, and indexing
 - From retrieval to RAG QA, and on to deep-research report generation
 - From plain chat to agents with tool-calling, MCP extensions, and a skill marketplace
 - From building capabilities to evaluation test sets, manual review, and result export
+- From raw documents to auto-generated structured wikis, knowledge graphs, and quality linting
 
 If you want to build more than a chat window — a system that can organize knowledge, execute tasks, and evaluate results — NovaMind is closer to a full workbench.
 
 ## Core capabilities
 
-- `Knowledge spaces & knowledge bases`: multi-space isolation, member collaboration, access control, KB configuration, full document lifecycle
-- `Knowledge-base Wiki`: auto-generated structured Wiki from KB content, with navigation browsing and agent tool integration
-- `Hybrid retrieval`: vector search, BM25, hybrid search, rerank, query rewriting, and fallback strategies
-- `RAG QA`: multi-turn QA over knowledge bases, with session config and context compression
-- `Deep research`: combines internal KBs with external search, generates step-by-step research reports
-- `Agent`: supports MCP servers, tool calling, and skill extensions
-- `Skill marketplace`: skill upload, review, install, and distribution
-- `KB evaluation`: test sets, automated evaluation, manual scoring, and result export
-- `App center`: scenario-packaged AI capabilities
+### 📚 Knowledge-base engine
+
+- **Spaces & knowledge bases**: multi-space isolation, member collaboration (OWNER / ADMIN / EDITOR / VIEWER roles), per-KB parsing config, full document lifecycle
+- **Hybrid retrieval**: vector, BM25, hybrid, rerank, query rewriting, and multi-level fallbacks — 9 retrieval modes
+- **Hypothetical-question augmentation**: optionally generate hypothetical questions per chunk and index them as question vectors to improve recall
+- **KB evaluation**: test-set management, automated evaluation, manual scoring, report export
+
+<p align="center">
+  <img src="./assets/documents.png" alt="Document management — demo KB “AI Knowledge Handbook”" width="760">
+</p>
+
+### 📄 Multimodal document parsing
+
+- **Text documents**: PDF (DeepDoc full mode with per-span text layer + OCR fusion, or lightweight plain mode), DOCX, TXT, MD, CSV, HTML, JSON
+- **Image understanding**: VLM-generated descriptions, or DeepDoc OCR for in-image text
+- **Video parsing**: fixed-interval / scene-change / deduplicated frame sampling, per-frame (or grouped) VLM description, dual-anchor timeline alignment
+- **Audio transcription**: local **faster-whisper** by default (free, no API key, model pre-downloaded at deploy time); switchable to cloud ASR (OpenAI Whisper / DashScope Paraformer)
+- **Formulas & tables**: PDF formula recognition (pix2text-mfr INT8), table structure restoration with inline HTML
+- **Resumable pipeline**: three-level content fingerprints (parse / split / embed) — retries reuse already-paid artifacts on fingerprint match; config changes cascade-invalidate downstream
+
+<p align="center">
+  <img src="./assets/document-detail.png" alt="Document detail — parse result and chunk preview" width="760">
+</p>
+
+### 🤖 Intelligent apps
+
+- **RAG QA**: multi-turn QA over knowledge bases, session config, context compression, answers with citation tracing (click a citation to jump to the source chunk)
+- **Deep research**: combines internal KBs with external search (pluggable sources: Tavily / SerpAPI / DuckDuckGo), staged research-report generation
+- **Agents**: tool calling, MCP server integration, execution-trace replay
+- **Skill marketplace**: skill upload, review, install, and distribution
+- **App center**: scenario-packaged AI capabilities (e.g. resume mining)
+
+<p align="center">
+  <img src="./assets/agents.png" alt="Agent chat — knowledge retrieval assistant" width="760">
+</p>
+
+### 🛡 Platform
+
+- **Task system**: ARQ-based async task orchestration — batch processing, per-step progress, cancel / retry, zombie-task cleanup, crash recovery for orphaned tasks
+- **Realtime notifications**: WebSocket push with polling fallback; parse completion / failure / cancel events
+- **Multi-model access**: LLM / Embedding / Rerank / VLM / ASR — anything OpenAI-compatible plugs in; connection testing and encrypted key storage
+
+## Document processing pipeline
+
+Every document flows through one unified pipeline; the four modality branches share the tail (split → embed → hypothetical questions → ES indexing):
+
+```text
+Upload (MinIO original + hash dedup)
+  └▶ ARQ async task
+       ├─ text     DeepDoc / generic readers ────────┐
+       ├─ image    VLM description / OCR ────────────┤
+       ├─ video    frame sampling → VLM per frame ───┼─▶ split → Embedding
+       └─ audio    local faster-whisper / cloud ASR ─┘     → hypothetical questions (optional)
+                                                             → ES vector + full-text index
+                                                             → Wiki generation (when KB enabled)
+```
+
+Pipeline reliability design:
+
+- **Three-level content fingerprints** (parse / split / embed): retries reuse snapshots on fingerprint match, skipping expensive VLM / OCR / ASR / embedding calls; parsing or splitting config changes cascade-invalidate downstream
+- **Per-step progress**: every step (parsed / split / embedded / indexed…) is persisted in real time; the task list visualizes execution traces, failures pin-point to the exact step
+- **Transaction safety**: DB writes use SAVEPOINTs; queue jobs bind atomically to task rows; orphaned tasks are recovered automatically at startup after a crash
+- **Full-text retention**: parsed text lands in MinIO immediately — chunking or embedding failures never lose parse results
+
+## Knowledge-base Wiki
+
+A traditional KB answers "where is this passage"; the Wiki answers "what is the full picture of this topic". NovaMind auto-generates a structured wiki from KB content (WeKnora-aligned design):
+
+```text
+KB documents ──parsed──▶ Wiki generation task (LLM planning + generation)
+                            ├─ index pages: global navigation
+                            ├─ topic pages: topic aggregation (multi-source merge)
+                            └─ summary pages: per-document summaries
+                                 │
+                                 ├─▶ [[link]] resolution + knowledge-graph construction
+                                 ├─▶ ES sync (wp-* chunks, retrieval boost 1.3x)
+                                 └─▶ quality linting (six issue classes + health score)
+```
+
+<p align="center">
+  <img src="./assets/wiki-browse.png" alt="Wiki browser — page rendering and backlinks" width="760">
+</p>
+
+- **Frontend visualization**: wiki browser (page rendering + backlinks), force-directed knowledge graph (topic linking, node highlighting), issues panel (orphan pages / dead links / stale references / empty content and more — fix or ignore one by one, health score 0-100)
+- **Generated pages sync into the ES retrieval index** with boosted ranking — QA can hit wiki entries directly
+- **Agent integration**: QA agents can read wiki pages as a tool — "overview first, details second"
+- **Lifecycle management**: document updates / deletions reconcile automatically (reparse merges updates, source deletion retracts pages) — no dangling references
+
+<p align="center">
+  <img src="./assets/wiki-graph.png" alt="Wiki knowledge graph — force-directed layout" width="760">
+</p>
 
 ## Who it's for
 
-NovaMind is a better fit for teams or individuals who:
-
-- Need to manage multiple spaces and KBs, not just maintain a single QA bot
-- Want to chain document processing, retrieval, QA, research, agents, and evaluation into one workflow
-- Need traceability of config, processing, and effect verification
-- Want both Docker self-hosting and local secondary development
-
-If your goal is just a minimal chat demo, this repo will feel heavy; if you want a long-evolvable knowledge workbench, it fits.
+- Teams or organizations that need an internal knowledge base with multi-space isolation and member permissions
+- Mixed document formats: scanned PDFs, images, meeting recordings, training videos — all in one retrieval system
+- A complete, observable, recoverable document pipeline: upload → parse → split → embed → retrieve → QA
+- Chaining RAG QA, deep research, and agent tool-calling into one workflow instead of scattered tools
+- An evaluation system (test sets, auto eval, manual scoring) to verify KB effectiveness
+- Willing to run some infrastructure (MySQL, Redis, Elasticsearch, MinIO) in exchange for completeness and freedom
 
 ## Tech stack
 
 | Category | Tech |
 | --- | --- |
 | Backend | FastAPI, Python 3.12, SQLAlchemy, Pydantic |
-| Frontend | Vue 3, TypeScript, Vite, Pinia, Vue Router, Element Plus |
+| Frontend | Vue 3, TypeScript, Vite, Pinia, Vue Router, Element Plus, ECharts |
 | Database | MySQL 8.4 |
-| Cache / Queue | Redis 7, ARQ |
-| Search engine | Elasticsearch 9.3 |
+| Cache / Queue | Redis 7, ARQ (async tasks) |
+| Search engine | Elasticsearch 9.3 (vector + BM25 hybrid retrieval) |
 | Object storage | MinIO |
-| Extension protocol | MCP |
+| Document parsing | DeepDoc (OCR / layout analysis / table restoration / formula recognition), pypdf, python-docx, … |
+| Multimodal models | VLM (image / video-frame understanding), faster-whisper (local ASR), cloud ASR |
+| Extension protocol | MCP (Model Context Protocol) |
 | Deployment | Docker Compose, Nginx, Supervisord |
 
 ## Quick start
@@ -120,6 +225,7 @@ The deploy script will automatically:
 - Create `backend/src/setting/yaml_config/yaml/default.yaml`
 - Build and start the full stack
 - Download DeepDoc models at deploy time (OCR / layout / table / paragraph-merge XGBoost / formula recognition pix2text-mfr, several hundred MB total) into `backend/.cache/deepdoc`, mounted into the container via a compose volume (`/app/.cache/deepdoc`) so they survive container recreation; defaults to the `hf-mirror.com` mirror (`HF_ENDPOINT` overridable). **A failure here does not abort the deploy** — parsing degrades gracefully (formula recognition skipped, DeepDoc full mode unavailable) and you can retry later per the script's warning
+- Download the local speech model (faster-whisper-tiny, ~75MB) into `backend/.cache/faster-whisper` (mounted as `/app/.cache/faster-whisper`) — audio documents transcribe locally by default; if the model is missing, audio parsing fails; retry per the script's hint
 - Poll `http://localhost/health` for a health check
 
 After deploy, the initial admin password is in `ADMIN_PASSWORD` in the root `.env`; **the default username is `admin`**.
@@ -130,6 +236,7 @@ Requirements:
 - Docker Compose V2+
 - One-command deploy via `deploy.sh` needs a working `python` command on the host (to generate random secrets; the script probes for it and offers an alternative when missing). `deploy.ps1` has no such dependency
 - At least 2 CPU cores / 4 GB RAM / 20 GB disk (Elasticsearch uses a 512MB JVM heap by default; tune via `ES_JAVA_OPTS` in `.env`. The `--build` phase peaks higher — close other memory-heavy apps on small machines)
+- For video parsing, local speech transcription, or DeepDoc full mode, 4 cores / 8 GB+ recommended
 
 Common commands:
 
@@ -177,12 +284,20 @@ Notes:
 - `.env` holds infrastructure passwords and backend secrets
 - `docker/configs/docker.yaml` is the Docker runtime mount config
 - `default.yaml` holds base backend config, mounted read-only into the container; `*.yaml` files are not baked into the image (only `*.example` templates are), so local real secrets never leak into image layers — sensitive values are usually overridden by environment variables
-- Option 2 skips the deploy script's model download step: after first boot, DeepDoc models are missing and parsing degrades (formula recognition skipped, full mode unavailable, `/health/detailed` shows degraded). For full parsing capability, run the download manually:
-  ```bash
-  docker compose run --rm --no-deps --user 0 \
-    -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com \
-    app python -m novamind.engines.document.integrations.deepdoc prepare --include-text-concat --include-formula
-  ```
+- Option 2 skips the deploy script's model download step, so two model groups are missing after first boot:
+  - **DeepDoc models missing**: parsing degrades (formula recognition skipped, full mode unavailable, `/health/detailed` shows degraded). Download manually:
+    ```bash
+    docker compose run --rm --no-deps --user 0 \
+      -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com \
+      app python -m novamind.engines.document.integrations.deepdoc prepare --include-text-concat --include-formula
+    ```
+  - **Local speech model missing**: audio parsing fails (unless a cloud ASR is explicitly selected). Download manually:
+    ```bash
+    docker compose run --rm --no-deps --user 0 \
+      -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com \
+      -e NOVAMIND_LOCAL_WHISPER_MODEL_DIR=/app/.cache/faster-whisper/tiny \
+      app python scripts/download_faster_whisper_model.py
+    ```
 
 ### Option 3: local development
 
@@ -232,6 +347,17 @@ uv run python main.py --config development --reload
 
 Default backend address: `http://localhost:8100`
 
+> [!NOTE]
+> **Audio / video parsing in local development**: the local speech model loads from `~/.cache/faster-whisper/tiny` by default; download it before first use:
+> ```bash
+> cd backend
+> uv run python scripts/download_faster_whisper_model.py
+> ```
+> DeepDoc vision models (PDF full mode / formula recognition) likewise:
+> ```bash
+> uv run python scripts/download_deepdoc_models.py
+> ```
+
 4. Start the frontend
 
 ```bash
@@ -262,6 +388,33 @@ Local dev:
 | Backend API docs | `http://localhost:8100/docs` |
 | Backend health check | `http://localhost:8100/health` |
 
+## Architecture overview
+
+<p align="center">
+  <img src="./assets/architecture.en.svg" alt="NovaMind architecture" width="880">
+</p>
+
+The default Docker form is "single app container + multiple infra containers":
+
+- The `app` container runs `Nginx + frontend static assets + FastAPI + embedded ARQ worker`
+- `mysql`, `redis`, `minio`, `elasticsearch` run as separate services; infra ports are bound to `127.0.0.1`, not exposed publicly
+- Nginx exposes port `80` and routes by path to static assets or FastAPI; FastAPI listens on `8100` inside the container, reachable only by Nginx
+
+The backend uses a domain-oriented directory layout — `features/` for business modules, `engines/` for reusable engines, `shared/` for cross-module infrastructure:
+
+```text
+src/features/{module}/           business modules (domain layer)
+|- api/                          thin route layer (registered in router_manager)
+|- services/                     business orchestration
+|- repository/                   data access (writes use SAVEPOINTs)
+|- models/                       ORM models
+`- schemas/                      Pydantic request/response models
+
+src/engines/{engine}/            reusable engines (document/rag/agent/eval/search/…)
+src/shared/                      model client factories / storage / MQ / prompt registry
+src/core/                        app factory / middleware / auth / lifecycle
+```
+
 ## Repository layout
 
 ```text
@@ -269,86 +422,38 @@ NovaMind/
 |- backend/                         # FastAPI backend
 |  |- main.py
 |  |- pyproject.toml
+|  |- scripts/                      # model download scripts (DeepDoc / faster-whisper)
 |  |- src/
 |  |  |- core/                     # app factory, middleware, lifecycle, security
-|  |  |- engines/                  # engine layer: pure-logic components (agent/document/rag/eval/…)
-|  |  |- features/                 # domain modules
+|  |  |- engines/                  # engine layer: document / rag / agent / eval / search / deep_research / resume
+|  |  |- features/                 # domain modules (user / knowledge_space / qa / agent / …)
 |  |  |- setting/                  # YAML config loading
-|  |  `- shared/                   # shared infrastructure (storage/ai_models/mq/…)
-|  `- tests/
+|  |  `- shared/                   # shared infrastructure (storage/ai_models/mq/document/…)
+|  `- tests/                       # layered by test target (architecture/core/shared/engines/features)
 |- frontend/                       # Vue 3 + TypeScript frontend
 |  |- src/
-|  |  |- api/
-|  |  |- components/
+|  |  |- api/                      # typed API clients grouped by domain
+|  |  |- components/               # domain components (knowledge/agent/chat/…)
 |  |  |- router/
-|  |  |- stores/
-|  |  `- views/
+|  |  |- stores/                   # Pinia
+|  |  `- views/                    # route-level pages (space/agent/research/skill/…)
 |- docker/                         # Dockerfile, Nginx, Supervisord, config templates
 |- docs/                           # design docs and navigation docs
-|- test_data/                      # sample data and upload fixtures
 |- docker-compose.yml
 |- deploy.ps1
 |- deploy.sh
 `- README.md
 ```
 
-## Architecture overview
-
-The default Docker form is "single app container + multiple infra containers":
-
-- The `app` container runs `Nginx + frontend static assets + FastAPI`
-- `mysql`, `redis`, `minio`, `elasticsearch` run as separate services; infra ports are bound to `127.0.0.1`, not exposed publicly
-- Nginx exposes port `80` and routes by path to static assets or FastAPI
-- FastAPI listens on `8100` inside the container, reachable only by Nginx
-
-```text
-Browser
-  │  :80
-  ▼
-┌──────────────────────────────────────────────────────┐
-│ app container (single container)                     │
-│   Nginx ── /         ─▶ Vue static assets              │
-│        ── /api/*     ─▶ FastAPI (:8100)               │
-│        ── /health    ─▶ FastAPI health endpoint        │
-└──────┬───────────────────────────────────────────────┘
-       │  only Nginx exposes 80; FastAPI is in-container only
-       │
-       ├──▶ MySQL 8.4         ORM persistence: users / spaces / KBs / doc tasks
-       ├──▶ Redis 7           cache / ARQ async task queue
-       ├──▶ MinIO             document originals, parse results, attachment objects
-       └──▶ Elasticsearch 9.3 vector recall + BM25 full-text hybrid retrieval index
-```
-
-The backend uses a domain-oriented directory layout. A typical module:
-
-```text
-src/features/{module}/
-|- api/
-|- services/
-|- repository/
-|- models/
-`- schemas/
-```
-
-## Project status
-
-The repo has completed the baseline entry-point work needed for a public release. The focus going forward is:
-
-- Continue stabilizing the KB main pipeline and task model
-- Add real business tests for the frontend, beyond a minimal baseline
-- Keep the boundary between formal design docs and historical process docs clear
-
-See [`ROADMAP.md`](./ROADMAP.md) for concrete phase goals.
-
 ## Modules
 
 | Module | Route prefix | Notes |
 | --- | --- | --- |
-| User & model config | `/api/v1/user` | auth, user management, model config, model testing |
+| User & model config | `/api/v1/user` | auth, user management, five model types with connection testing |
 | Knowledge spaces | `/api/v1/spaces` | space management, members, permission isolation |
 | Knowledge bases | `/api/v1/spaces/{space_id}/knowledge-bases` | KB create, config, document management |
 | Knowledge retrieval | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/search` | search modes, retrieval, rerank |
-| Knowledge-base Wiki | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki` | structured Wiki generation and browsing over a KB |
+| Knowledge-base Wiki | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki` | Wiki generation / browsing / graph / quality linting |
 | QA | `/api/v1/qa` | multi-turn QA over KBs |
 | AI chat | `/api/v1/ai-chat` | streaming chat and attachments |
 | Deep research | `/api/v1/spaces/{space_id}/deep-research` | multi-source search and research reports |
@@ -360,62 +465,101 @@ See [`ROADMAP.md`](./ROADMAP.md) for concrete phase goals.
 
 ## Configuration
 
-### `.env`
+The config system has two layers: **YAML files** (structure and environment differences) and the **`.env` file** (the single source of secrets).
 
-The single source of truth for secrets: Docker Compose interpolates container
-environment variables from it and injects it into the `app` container; in local
-development the backend `ConfigLoader` auto-loads it at startup to resolve
-`${VAR_NAME}` placeholders in YAML (no manual export needed).
+### YAML config (what actually applies)
 
-| Variable | Description |
+The backend reads YAML files from `backend/src/setting/yaml_config/yaml/` at startup:
+
+| File | Purpose |
 | --- | --- |
-| `MYSQL_ROOT_PASSWORD` | MySQL root password |
-| `MYSQL_DATABASE` | Default database name; consumed by the `mysql` container and `docker.yaml` `database.database`. Note: local-dev `default.yaml` hard-codes `novamind_db` and does not read this variable — keep the default name in local development |
-| `MINIO_ROOT_USER` | MinIO access account |
-| `MINIO_ROOT_PASSWORD` | MinIO access password |
-| `ES_JAVA_OPTS` | Elasticsearch JVM args |
-| `ES_PASSWORD` | Elasticsearch password (consumed by local-dev YAML; Docker deploy runs ES with security features disabled, no actual auth) |
-| `SECRET_KEY` | JWT signing key |
-| `ENCRYPTION_KEY` | Encryption key |
-| `ADMIN_PASSWORD` | Initial admin password |
-| `HF_ENDPOINT` | Primary download source for DeepDoc models (defaults to hf-mirror.com) |
-| `DEEPDOC_MIRRORS` | Fallback mirror list for model downloads (optional, JSON array; tried in order after the primary source fails, see `.env.example`) |
-| `DEEPDOC_DISABLE_MIRRORS` | Set `1` to disable fallback mirroring |
-
-### YAML config
-
-Config files live in `backend/src/setting/yaml_config/yaml/`:
-
-- `default.yaml`: base config
-- `development.yaml`: dev overrides
-- `production.yaml`: prod overrides
-- `docker.yaml`: Docker runtime config, mounted from `docker/configs/docker.yaml`
+| `default.yaml` | base config shared by all environments (mounted into the container in Docker deploy) |
+| `development.yaml` | dev overrides (`--config development`) |
+| `production.yaml` | prod overrides (`--config production`) |
+| `docker.yaml` | Docker runtime additions (mounted from `docker/configs/docker.yaml`) |
 
 Loading logic:
 
-- `default.yaml` is the baseline
-- Pick an environment via `python main.py --config development` or `--config production`
-- The loader deep-merges configs
-- An optional third layer **`local.yaml`** (same directory as `default.yaml`) is merged
-  last, on top of the environment config — useful for overriding individual settings
-  locally without touching any template files; skipped when absent
-- `${VAR_NAME}` placeholders are resolved from environment variables; the backend
-  auto-loads the repo-root `.env` at startup (process environment variables take
-  precedence), so in local development placeholders resolve straight from `.env`
+- `default.yaml` is the baseline; the selected environment YAML is deep-merged on top
+- An optional third layer **`local.yaml`** (same directory as `default.yaml`) is merged last — useful for overriding individual settings locally without touching any template files; skipped when absent
+- `${VAR_NAME}` placeholders in YAML are resolved from **OS environment variables** (`os.getenv`)
+- The backend **auto-loads the repo-root `.env`** at startup (process environment variables take precedence; `.env` does not override already-exported variables), so in local development placeholders resolve straight from `.env`
+
+### `.env` (single source of secrets)
+
+The root `.env` has two consumers:
+
+1. `docker compose`: interpolates container environment variables (`${MYSQL_ROOT_PASSWORD}` etc.) and injects them into the `app` container via `env_file: .env`
+2. The backend `ConfigLoader`: auto-loaded at startup in local development, resolving `${VAR_NAME}` placeholders in YAML
+
+| Variable | Description | Consumed by |
+| --- | --- | --- |
+| `MYSQL_ROOT_PASSWORD` | MySQL root password | `mysql` container + YAML `database.password` |
+| `MYSQL_DATABASE` | Default database name | `mysql` container + `docker.yaml` `database.database`. Note: local-dev `default.yaml` hard-codes `novamind_db` and does not read this variable — keep the default name in local development |
+| `MINIO_ROOT_USER` | MinIO access account | `minio` container + YAML `minio.access_key` |
+| `MINIO_ROOT_PASSWORD` | MinIO access password | `minio` container + YAML `minio.secret_key` |
+| `ES_JAVA_OPTS` | Elasticsearch JVM args | `elasticsearch` container |
+| `ES_PASSWORD` | Elasticsearch password (consumed by local-dev YAML; Docker deploy runs ES with security features disabled, no actual auth) | `default.yaml` `elasticsearch.password` |
+| `SECRET_KEY` | JWT signing key | YAML `security.secret_key` |
+| `ENCRYPTION_KEY` | Encryption key | YAML `security.encryption_key` |
+| `ADMIN_PASSWORD` | Initial admin password | YAML `admin.password` |
+| `HF_ENDPOINT` | Primary download source for models (defaults to hf-mirror.com; switch to the official source overseas) | DeepDoc / faster-whisper model downloads |
+| `DEEPDOC_MIRRORS` | Fallback mirror list for model downloads (optional, JSON array; tried in order after the primary source fails, see `.env.example`) | model download fallback |
+| `DEEPDOC_DISABLE_MIRRORS` | Set `1` to disable fallback mirroring | model download fallback |
+
+### Local development setup
+
+Without Docker, the config flow is:
+
+1. Copy the YAML files and `.env` from templates (once):
+   ```bash
+   cp .env.example .env                      # repo root, fill in real secrets
+   cd backend/src/setting/yaml_config/yaml
+   cp default.example default.yaml
+   cp development.example development.yaml
+   ```
+
+2. Edit `.env` and fill in real database / MinIO / Elasticsearch passwords (at minimum, replace every `your-*` placeholder). Sensitive fields in the YAML templates are already `${VAR_NAME}` placeholders resolved from `.env` at startup — no YAML edits needed. You can still write values directly into YAML (overriding placeholders) or `export VAR_NAME=value` before starting (highest precedence: process env > `.env` file).
+
+3. If you start the infrastructure via Docker Compose (`docker compose up -d mysql redis minio elasticsearch`), container services and `.env` passwords stay consistent automatically — `.env` is the single source of secrets; change passwords only there.
 
 ## Model integration
 
-NovaMind is not hard-bound to any model provider — anything that speaks an OpenAI-compatible API can plug into most of the capability chain.
+NovaMind is not hard-bound to any model provider — anything that speaks an OpenAI-compatible API can plug into most of the capability chain. Add a config on the "Model Management" page and it becomes selectable across all features, with connection testing.
 
-Plan for at least three model types:
+Plan for at least these model types:
 
-- `LLM`: QA, agent chat, research summarization
-- `Embedding`: vectorization and recall
-- `Rerank`: result re-ranking for retrieval quality
+| Model type | Purpose | Necessity |
+| --- | --- | --- |
+| **LLM** | QA, agent chat, wiki generation, research summarization | required |
+| **Embedding** | vectorization and recall (dimension auto-fills the space config) | required |
+| **Rerank** | result re-ranking for retrieval quality | recommended |
+| **VLM** | image description, per-frame video understanding | as needed (required for image / video modalities) |
+| **ASR** | audio transcription | optional (local faster-whisper by default) |
+
+<details>
+<summary><b>About local speech transcription (ASR)</b></summary>
+
+Audio documents have two ASR paths, selectable in the KB parsing config's audio section:
+
+- **Local Whisper (default, free)**: local CPU inference via faster-whisper (INT8 quantized, dedicated single-process isolation, never blocks other tasks); the `faster-whisper-tiny` model is pre-downloaded at deploy time, no API key needed. Good for privacy-sensitive or zero-cost scenarios; Chinese quality is usable — swap in a larger local model (`small` / `base`) for better accuracy (download it and point `knowledge_base.parsing.local_whisper_model_dir` at the path)
+- **Cloud ASR (optional)**: OpenAI Whisper or DashScope Paraformer configured on the "Model Management" page — usually better quality, billed per use; run a connection test before selecting a cloud model
+
+</details>
 
 If your use case is Chinese-heavy, multi-tool, or long-context, prioritize models that are stable on those dimensions.
 
+## Security
+
+- **Secrets never at rest in plaintext**: all model API keys are encrypted with `ENCRYPTION_KEY`; config files contain only `${VAR}` placeholders; `*.yaml` and `.env` are excluded from Git
+- **Auth & permissions**: JWT + Redis blacklist (logout / disable / delete purges all tokens immediately); four-tier space roles plus per-KB fine-grained operation checks
+- **Upload protection**: dual file-type validation (python-magic magic-number detection with a built-in signature-table fallback; probe failure rejects rather than allows); path-traversal-safe filename checks; per-modality size limits
+- **Injection protection**: fully parameterized SQLAlchemy ORM queries; Pydantic validation on every request; templated prompt registry
+- **Password policy**: async hashing (never blocks the event loop); admin password strength checks (8–30 chars, four character classes)
+
 ## Testing & quality checks
+
+Backend tests are layered by test target (`architecture / core / shared / engines / features / integration`); the `architecture` layer contains structural gates: **module import-graph acyclicity (Tarjan SCC)** and **cross-module private-member reference checks**, mechanically preventing architectural decay.
 
 Backend (in `backend/`, with dependencies installed via `uv sync`):
 
@@ -423,6 +567,8 @@ Backend (in `backend/`, with dependencies installed via `uv sync`):
 uv run pytest
 uv run pytest -m unit
 uv run pytest -m "not slow"
+uv run pytest tests/architecture        # structural gates only
+uv run pytest tests/features/knowledge_space   # one domain
 ```
 
 Frontend:
@@ -435,27 +581,29 @@ npm run lint
 npm run format
 ```
 
+## Project status
+
+The repo has completed the baseline entry-point work needed for a public release. The focus going forward is:
+
+- Continue stabilizing the KB main pipeline and task model
+- Add real business tests for the frontend, beyond a minimal baseline
+- Keep the boundary between formal design docs and historical process docs clear
+
+See [`ROADMAP.md`](./ROADMAP.md) for concrete phase goals.
+
 ## Documentation
 
 - Docs entry: [`docs/README.md`](./docs/README.md)
 - Public roadmap: [`ROADMAP.md`](./ROADMAP.md)
 - Repo structure navigation: [`docs/project-structure-navigation.md`](./docs/project-structure-navigation.md)
-- Backend notes: [`backend/README.md`](./backend/README.md)
+- Document processing flow: [`docs/knowledge-space/current/document-processing-flow.md`](./docs/knowledge-space/current/document-processing-flow.md)
+- Wiki architecture: [`docs/knowledge-space/current/wiki-architecture.md`](./docs/knowledge-space/current/wiki-architecture.md)
+- KB config structure: [`docs/knowledge-space/current/knowledge-config-structure-design.md`](./docs/knowledge-space/current/knowledge-config-structure-design.md)
+- Backend notes: [`backend/README.md`](./backend/README.md) (API reference in [`backend/docs/api/`](./backend/docs/api/))
 - Frontend notes: [`frontend/README.md`](./frontend/README.md)
 - Contributing: [`CONTRIBUTING.md`](./CONTRIBUTING.md)
 - Security policy: [`SECURITY.md`](./SECURITY.md)
 - Support: [`SUPPORT.md`](./SUPPORT.md)
-
-## Resources & collaboration
-
-- Docs entry: [`docs/README.md`](./docs/README.md)
-- Current KB formal design: [`docs/knowledge-space/current/README.md`](./docs/knowledge-space/current/README.md)
-- Historical plans & migration material: [`docs/plans/README.md`](./docs/plans/README.md)
-- Handover & historical context: [`docs/handover/README.md`](./docs/handover/README.md)
-- Contributing: [`CONTRIBUTING.md`](./CONTRIBUTING.md)
-- Code of conduct: [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md)
-- Security reports: [`SECURITY.md`](./SECURITY.md)
-- Support channels: [`SUPPORT.md`](./SUPPORT.md)
 
 ## Open-source collaboration
 
@@ -471,3 +619,9 @@ As a public repo, start from:
 ## License
 
 This repository is released under the [MIT License](./LICENSE).
+
+<div align="center">
+
+**If NovaMind helps you, consider giving it a Star ⭐**
+
+</div>
