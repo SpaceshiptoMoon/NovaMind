@@ -135,9 +135,10 @@
                     />
                     <div class="chunk-image-desc">{{ chunk.content }}</div>
                   </template>
+                  <!-- content 里的 figure 短文件名已由后端 chunks 端点换成即时预签名 URL -->
                   <MarkdownRenderer
                     v-else-if="document"
-                    :content="resolveFigureLinks(chunk.content, spaceId, kbId, document.id)"
+                    :content="chunk.content"
                   />
                   <template v-else>{{ chunk.content }}</template>
                 </div>
@@ -212,7 +213,6 @@ import { TaskNodeLogTable } from '@/components/knowledge'
 import type { DocumentDetail, Chunk, DocumentTaskItem } from '@/api/types'
 import { chunkTypeLabels, getFileTypeStyle, taskStatusMap } from '@/components/knowledge'
 import { formatFileSize, formatDate, formatDuration } from '@/utils/format'
-import { resolveFigureLinks } from '@/utils/figureLinks'
 
 const route = useRoute()
 

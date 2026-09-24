@@ -166,7 +166,6 @@ import {
 import { documentApi } from '@/api/knowledge'
 import { getFileTypeCategory } from './document'
 import { formatFileSize } from '@/utils/format'
-import { resolveFigureLinks } from '@/utils/figureLinks'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import type { Document as DocType } from '@/api/types'
 
@@ -275,8 +274,8 @@ async function handleViewOriginal() {
       props.kbId,
       props.document!.id,
     )
-    // figure 短文件名（figure_xxx.png）→ 带鉴权代理端点 URL（302 到预签名）
-    parsedText.value = resolveFigureLinks(raw, props.spaceId, props.kbId, props.document!.id)
+    // 后端已在返回前把 figure 短文件名替换为即时预签名 URL（<img> 直连 MinIO）
+    parsedText.value = raw
   } catch (err: unknown) {
     const status = (err as { response?: { status?: number } })?.response?.status
     if (status === 404) {

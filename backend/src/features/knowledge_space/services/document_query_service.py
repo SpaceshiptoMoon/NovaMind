@@ -39,6 +39,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 _FIGURE_FILE_NAME_RE = re.compile(r"figure_[A-Za-z0-9_.-]+\.png")
 
 
+# MD 全文/chunk content 里 figure 链接的捕获组（短文件名 figure_xxx.png）。
+# 读取端点用它在返回前把短文件名替换为即时预签名 URL（存储侧始终是短路径）。
+_FIGURE_LINK_RE = re.compile(r"\]\((figure_[A-Za-z0-9_.-]+\.png)\)")
+
+
 def resolve_figure_object_name(storage: dict, figure_file: str) -> str | None:
     """把 figure 短文件名还原成完整 MinIO object name（纯函数）。
 
@@ -370,32 +375,47 @@ class DocumentQueryService:
             limit=limit,
         )
 
-    async def presign_figure_url(self, document_id: int, figure_file: str) -> str | None:
-        """为 PDF 解析 figure 图片签发临时访问 URL（短路径 → 完整 object → 预签名）。
+    async def presign_figure_links(
+        self, document: Document, content: str, expires: int = 21600
+    ) -> str:
+        """把 content 中 figure 短文件名（figure_xxx.png）替换为即时预签名 URL。
 
-        MD/ES 里的 figure 链接是短文件名（figure_xxx.png，不可变无时效），
-        渲染方经代理端点调用本方法换即时 URL。文件名不在白名单、文档无
-        figures_object_dir 锚点（未重解析的旧文档）或签名失败返回 None，
-        调用方统一按 404 处理。
+        MD/ES 存储侧始终是短路径（不可变无时效）；``<img>`` 无法携带
+        Authorization 头，故在已鉴权的读取端点（parsed-text 视图 / chunks
+        列表）返回前换取新鲜签名（默认 6 小时，覆盖浏览器缓存窗口），
+        下载与 embedding 路径不经过本方法、保持短路径干净。
+
+        文档无 figures_object_dir 锚点（未重解析的旧文档）、文件名不在
+        白名单或单个签名失败时该链接原样保留（渲染层按裂图处理）。
         """
-        document = await self.doc_repo.get_by_id(document_id)
-        if not document:
-            return None
-        object_name = resolve_figure_object_name(document.get_storage_info(), figure_file)
-        if not object_name:
-            return None
-        try:
-            return await self.minio_client.get_file_url(
-                self.minio_client.default_bucket, object_name, 3600
+        if not content or "](figure_" not in content:
+            return content
+
+        figure_files = set(_FIGURE_LINK_RE.findall(content))
+        url_map: dict[str, str] = {}
+        for figure_file in figure_files:
+            object_name = resolve_figure_object_name(
+                document.get_storage_info(), figure_file
             )
-        except Exception as exc:
-            self.logger.warning(
-                "figure 图片预签名失败",
-                document_id=document_id,
-                object_name=object_name,
-                error=str(exc),
-            )
-            return None
+            if not object_name:
+                continue
+            try:
+                url_map[figure_file] = await self.minio_client.get_file_url(
+                    self.minio_client.default_bucket, object_name, expires
+                )
+            except Exception as exc:
+                self.logger.warning(
+                    "figure 图片预签名失败（该链接保持短路径）",
+                    document_id=document.id,
+                    object_name=object_name,
+                    error=str(exc),
+                )
+
+        if not url_map:
+            return content
+        return _FIGURE_LINK_RE.sub(
+            lambda m: f"]({url_map.get(m.group(1), m.group(1))})", content
+        )
 
     @staticmethod
     async def presign_media_url(chunk_type: str | None, storage_path: str) -> str | None:

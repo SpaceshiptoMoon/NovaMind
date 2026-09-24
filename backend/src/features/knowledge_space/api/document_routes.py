@@ -13,7 +13,7 @@ from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, File, Path, Query, Request, UploadFile
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import Response
 from novamind.core.database.database import get_db
 from novamind.features.knowledge_space.api.dependencies import (
     get_audit_service,
@@ -351,6 +351,13 @@ async def get_document_chunks(
         space_id, document_id, skip=skip, limit=limit
     )
     items = [await _build_chunk_response(c) for c in data.get("items", [])]
+    # chunk content 里的 figure 短文件名 → 即时预签名（与 parsed-text 视图同一策略；
+    # <img> 无法带 Authorization 头，必须在已鉴权端点内换好签名）
+    for item in items:
+        if item.content:
+            item.content = await document_query_service.presign_figure_links(
+                document, item.content
+            )
     size = limit if limit > 0 else 1
     page = skip // size + 1
     return ChunkListResponse(
@@ -682,7 +689,12 @@ async def get_document_image(
 @router.get(
     "/{kb_id}/documents/{document_id}/parsed-text",
     summary="获取文档解析全文",
-    description="返回文档解析后的 Markdown 全文（从 MinIO 读取 parsed_text_object）。文档未解析完成时返回 404。",
+    description=(
+        "返回文档解析后的 Markdown 全文（从 MinIO 读取 parsed_text_object）。"
+        "正文中的 figure 短文件名会被替换为即时预签名 URL（6 小时时效），"
+        "可直接用于 <img> 渲染；下载接口（parsed-text/download）保持短路径。"
+        "文档未解析完成时返回 404。"
+    ),
 )
 async def get_document_parsed_text(
     space_id: Annotated[int, Path(gt=0, description="空间ID")],
@@ -692,7 +704,7 @@ async def get_document_parsed_text(
     document_query_service: DocumentQueryService = Depends(get_document_query_service),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取文档解析后的 Markdown 全文"""
+    """获取文档解析后的 Markdown 全文（figure 短路径 → 即时预签名）"""
     await validate_kb_access(kb_id, space_id, db)
 
     document = await document_query_service.get_document(document_id)
@@ -703,47 +715,19 @@ async def get_document_parsed_text(
     if parsed_text is None:
         raise DocumentNotFoundError(document_id)
 
-    return Response(
-        content=parsed_text,
-        media_type="text/markdown; charset=utf-8",
-        headers={
-            "Cache-Control": "private, max-age=3600",
-        },
+    # <img> 无法携带 Authorization 头——在已鉴权的本端点内换好新鲜签名再返回
+    content = await document_query_service.presign_figure_links(
+        document, parsed_text.decode("utf-8", errors="replace")
     )
 
-
-@router.get(
-    "/{kb_id}/documents/{document_id}/figures/{figure_file}",
-    summary="获取 PDF 解析 figure 图片",
-    description=(
-        "把解析产物中的 figure 短文件名（figure_xxx.png）302 重定向到即时签发的"
-        " MinIO 预签名 URL。短路径存储不可变无时效，每次渲染换取新鲜签名。"
-    ),
-)
-async def get_document_figure_image(
-    space_id: Annotated[int, Path(gt=0, description="空间ID")],
-    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
-    document_id: Annotated[int, Path(gt=0, description="文档ID")],
-    figure_file: Annotated[str, Path(description="figure 短文件名")],
-    member: SpaceMember = Depends(validate_space_member),
-    document_query_service: DocumentQueryService = Depends(get_document_query_service),
-    db: AsyncSession = Depends(get_db),
-):
-    """PDF figure 图片代理：短文件名 → 预签名 URL 的 302 重定向"""
-    await validate_kb_access(kb_id, space_id, db)
-
-    document = await document_query_service.get_document(document_id)
-    if not document or document.kb_id != kb_id:
-        raise DocumentNotFoundError(document_id)
-
-    image_url = await document_query_service.presign_figure_url(document_id, figure_file)
-    if not image_url:
-        # 文件名非白名单（路径穿越）/旧文档无锚点/签名失败——统一 404，
-        # 不泄露图片是否存在
-        raise DocumentNotFoundError(document_id)
-
-    # 重定向本身不缓存（签名 1 小时时效）；图片内容缓存由 MinIO 响应头控制
-    return RedirectResponse(url=image_url, status_code=302, headers={"Cache-Control": "no-store"})
+    return Response(
+        content=content.encode("utf-8"),
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            # 内容含时效性签名串，禁止缓存过期 URL
+            "Cache-Control": "private, no-store",
+        },
+    )
 
 
 @router.get(
