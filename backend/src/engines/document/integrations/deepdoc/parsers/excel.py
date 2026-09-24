@@ -6,7 +6,6 @@ import re
 from io import BytesIO
 
 import pandas as pd
-from novamind.engines.document.integrations.deepdoc.compat import LazyImage, find_codec
 
 # Adapted from RAGFlow deepdoc/parser/excel_parser.py
 
@@ -93,42 +92,6 @@ class RAGFlowExcelParser:
         return wb
 
     @staticmethod
-    def _extract_images_from_worksheet(ws, sheetname=None):
-        images = getattr(ws, "_images", [])
-        if not images:
-            return []
-
-        raw_items = []
-        for img in images:
-            try:
-                img_bytes = img._data()
-                lazy_img = LazyImage([img_bytes])
-                anchor = img.anchor
-                if hasattr(anchor, "_from") and hasattr(anchor, "_to"):
-                    r1, c1 = anchor._from.row + 1, anchor._from.col + 1
-                    r2, c2 = anchor._to.row + 1, anchor._to.col + 1
-                    span = "single_cell" if (r1 == r2 and c1 == c2) else "multi_cell"
-                else:
-                    r1, c1 = anchor._from.row + 1, anchor._from.col + 1
-                    r2, c2 = r1, c1
-                    span = "single_cell"
-                raw_items.append(
-                    {
-                        "sheet": sheetname or ws.title,
-                        "image": lazy_img,
-                        "image_description": "",
-                        "row_from": r1,
-                        "col_from": c1,
-                        "row_to": r2,
-                        "col_to": c2,
-                        "span_type": span,
-                    }
-                )
-            except Exception:
-                continue
-        return raw_items
-
-    @staticmethod
     def _get_actual_row_count(ws):
         max_row = ws.max_row
         if not max_row:
@@ -210,24 +173,6 @@ class RAGFlowExcelParser:
                 tb_chunks.append(table_html)
         return tb_chunks
 
-    def markdown(self, fnm):
-        file_like_object = BytesIO(fnm) if not isinstance(fnm, str) else fnm
-        try:
-            if not isinstance(file_like_object, str):
-                file_like_object.seek(0)
-            df = pd.read_excel(file_like_object)
-        except Exception:
-            if isinstance(file_like_object, str):
-                with open(file_like_object, "rb") as handle:
-                    binary = handle.read()
-            else:
-                file_like_object.seek(0)
-                binary = file_like_object.read()
-            text = binary.decode(find_codec(binary), errors="ignore")
-            df = pd.read_csv(BytesIO(text.encode("utf-8")), on_bad_lines="skip")
-        df = df.replace(r"^\s*$", "", regex=True)
-        return df.to_markdown(index=False)
-
     def __call__(self, fnm):
         file_like_object = BytesIO(fnm) if not isinstance(fnm, str) else fnm
         wb = RAGFlowExcelParser._load_excel_to_workbook(file_like_object)
@@ -258,22 +203,3 @@ class RAGFlowExcelParser:
                     line += f" —— {sheetname}"
                 rows_out.append(line)
         return rows_out
-
-    @staticmethod
-    def row_number(fnm, binary):
-        if fnm.split(".")[-1].lower().find("xls") >= 0:
-            wb = RAGFlowExcelParser._load_excel_to_workbook(BytesIO(binary))
-            total = 0
-            for sheetname in wb.sheetnames:
-                ws = wb[sheetname]
-                try:
-                    total += RAGFlowExcelParser._get_actual_row_count(ws)
-                except Exception:
-                    logger.warning("Skip sheet '%s' due to row count access error", sheetname, exc_info=True)
-                    continue
-            return total
-
-        if fnm.split(".")[-1].lower() in {"csv", "txt"}:
-            encoding = find_codec(binary)
-            return len(binary.decode(encoding, errors="ignore").split("\n"))
-        return 0

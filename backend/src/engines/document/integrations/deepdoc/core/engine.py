@@ -114,9 +114,6 @@ class DeepDocEngine:
     async def aparse_file(self, file_path: str | Path, **kwargs) -> DeepDocParseResult:
         return await self.parser.parse(file_path, **kwargs)
 
-    async def aparse_bytes(self, file_bytes: bytes, *, file_type: str, **kwargs) -> DeepDocParseResult:
-        return await self.parser.parse_bytes(file_bytes, file_type=file_type, **kwargs)
-
     async def aparse_with_parser_id(
         self,
         *,
@@ -166,9 +163,6 @@ class DeepDocEngine:
 
     def parse_file(self, file_path: str | Path, **kwargs) -> DeepDocParseResult:
         return self._run_async(self.aparse_file(file_path, **kwargs))
-
-    def parse_bytes(self, file_bytes: bytes, *, file_type: str, **kwargs) -> DeepDocParseResult:
-        return self._run_async(self.aparse_bytes(file_bytes, file_type=file_type, **kwargs))
 
     def parse_with_parser_id(self, **kwargs) -> DeepDocParseResult:
         return self._run_async(self.aparse_with_parser_id(**kwargs))

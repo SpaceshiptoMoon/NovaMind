@@ -41,14 +41,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parse_parser.add_argument("--indent", type=int, default=2, help="JSON indentation")
 
-    download_parser = subparsers.add_parser("download-models", help="Download DeepDoc vision model groups")
-    download_parser.add_argument(
-        "--group",
-        choices=("ocr", "layout", "tsr"),
-        default=None,
-        help="Optional single model group to download",
-    )
-
     prepare_parser = subparsers.add_parser("prepare", help="Prepare DeepDoc local model artifacts")
     prepare_parser.add_argument(
         "--vision-group",
@@ -103,12 +95,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "doctor":
         payload = build_doctor_payload(engine, include_smoke=args.smoke)
         print(json.dumps(payload, ensure_ascii=False, indent=args.indent))
-        return 0
-
-    if args.command == "download-models":
-        with contextlib.redirect_stdout(sys.stderr):
-            target = engine.download_vision_models(args.group)
-        print(str(target))
         return 0
 
     if args.command == "prepare":

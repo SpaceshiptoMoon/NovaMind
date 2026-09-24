@@ -38,7 +38,6 @@ class LayoutRecognizer(Recognizer):
     def __init__(self, domain: str = "layout", *, autoload: bool = False):
         super().__init__(self.labels, domain=domain, model_dir=_default_model_dir(), autoload=False)
         self.garbage_layouts = ["footer", "header", "reference"]
-        self.client = None
         self.input_shape = (640, 640)
         if autoload:
             self.load()
@@ -201,10 +200,6 @@ class LayoutRecognizer4YOLOv10(LayoutRecognizer):
 
     def __init__(self, domain="layout", *, autoload: bool = False):
         super().__init__(domain="layout", autoload=autoload)
-        self.auto = False
-        self.scaleFill = False
-        self.scaleup = True
-        self.stride = 32
         self.center = True
 
     @staticmethod

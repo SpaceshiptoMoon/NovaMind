@@ -82,9 +82,6 @@ class DeepDocPdfBox:
             layoutno=str(data.get("layoutno", "")),
         )
 
-    def as_tagged_text(self) -> str:
-        return f"{self.position_tag or self.line_tag()}{self.text}"
-
     def line_tag(self) -> str:
         return f"@@{self.page}\t{self.x0:.1f}\t{self.x1:.1f}\t{self.top:.1f}\t{self.bottom:.1f}##"
 
@@ -100,7 +97,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
     （`vendor/ragflow/pdf_parser.py`，stub 装载见该包 `__init__`）：
     `_text_merge` / `_concat_downward` / `_naive_vertical_merge` /
     `_filter_forpages` / `_merge_with_same_bullet` / `__filterout_scraps` /
-    `crop` / `get_position` 等直接继承上游真实现。
+    `crop` / `get_position` 等直接继承上游真实现（fork 不再重写）。
 
     本适配层保留 fork 特有能力并组装 `_parse_full` 流水线：
     文字层融合（`_extract_fused_pages`，逐页 zoom + 内存释放）、公式识别
@@ -192,23 +189,6 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         except Exception:
             logging.exception("total_page_number")
             return 0
-
-    @staticmethod
-    def sort_x_by_page(boxes: Sequence[DeepDocPdfBox], threshold: float) -> list[DeepDocPdfBox]:
-        ordered = sorted(boxes, key=lambda item: (item.page, item.x0, item.top))
-        for index in range(len(ordered) - 1):
-            for cursor in range(index, -1, -1):
-                if (
-                    abs(ordered[cursor + 1].x0 - ordered[cursor].x0) < threshold
-                    and ordered[cursor + 1].top < ordered[cursor].top
-                    and ordered[cursor + 1].page == ordered[cursor].page
-                ):
-                    ordered[cursor], ordered[cursor + 1] = ordered[cursor + 1], ordered[cursor]
-        return ordered
-
-    @staticmethod
-    def sort_X_by_page(arr, threshold):
-        return RAGFlowPdfParser.sort_x_by_page(arr, threshold)
 
     def _has_color(self, obj):
         if obj.get("ncs", "") == "DeviceGray":
@@ -482,19 +462,6 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             current_y += img.size[1] + GAP
         return (pic, positions) if need_position else pic
 
-    def get_position(self, bx, ZM):
-        poss = []
-        pn = bx["page_number"]
-        top = bx["top"] - self.page_cum_height[pn - 1]
-        bott = bx["bottom"] - self.page_cum_height[pn - 1]
-        poss.append((pn, bx["x0"], bx["x1"], top, min(bott, self.page_images[pn - 1].size[1] / ZM)))
-        while bott * ZM > self.page_images[pn - 1].size[1]:
-            bott -= self.page_images[pn - 1].size[1] / ZM
-            top = 0
-            pn += 1
-            poss.append((pn, bx["x0"], bx["x1"], top, min(bott, self.page_images[pn - 1].size[1] / ZM)))
-        return poss
-
     def _assign_column_boxes(self, boxes: Sequence[DeepDocPdfBox]) -> list[DeepDocPdfBox]:
         """调用 PdfLayoutExtractor 的 assign_columns 给文本框标 col_id（box 域）。"""
         if not boxes:
@@ -575,16 +542,6 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             copied["bottom"] = float(copied.get("bottom", 0.0)) + float(offset)
             global_boxes.append(copied)
         return global_boxes
-
-    def _final_reading_order_merge(self, entries):
-        return sorted(
-            entries,
-            key=lambda item: (
-                int(item.get("page", item.get("page_number", 0))),
-                float(item.get("top", item.get("bbox", {}).get("top", 0.0))),
-                float(item.get("x0", item.get("bbox", {}).get("x0", 0.0))),
-            ),
-        )
 
     @staticmethod
     def remove_tag(text: str) -> str:
@@ -1554,10 +1511,6 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         if current_parts:
             chunks.append("\n\n".join(current_parts))
         return chunks
-
-    def _merge_vertical_boxes(self, boxes: Sequence[DeepDocPdfBox]) -> list[DeepDocPdfBox]:
-        merged, _ = self._merge_vertical_boxes_with_strategy(boxes)
-        return merged
 
     def _merge_vertical_boxes_with_strategy(
         self,

@@ -25,7 +25,7 @@ DIRTY_TEXT_PATTERN = re.compile(
 # 每页 >3 框即被整页删除）。因此 cid/PUA 命中必须叠加密度条件：占该页
 # 有效字符 >= 30% 才判脏页；真乱码页（doc566）文字层整页是 cid 串，占比
 # 接近 100%，不受影响。
-CID_PUA_PATTERN = re.compile(r"\(cid\s*:\s*\d+\s*\)|[-]|锟斤苟|锟")
+CID_PUA_PATTERN = re.compile(r"\(cid\s*:\s*\d+\s*\)|[\uE000-\uF8FF]|锟斤苟|锟")
 CID_PUA_DENSITY_THRESHOLD = 0.3
 
 
@@ -48,18 +48,12 @@ class PageNoiseFilter:
             }
 
         filtered, dirty_meta = self._filter_dirty_pages(filtered, total_pages=total_pages)
-        return {
-            "boxes": filtered,
-            "meta": {
-                "toc_detected": False,
-                **dirty_meta,
-                "removed_boxes": original_count - len(filtered),
-            },
-        }["boxes"], {
+        meta = {
             "toc_detected": False,
             **dirty_meta,
             "removed_boxes": original_count - len(filtered),
         }
+        return filtered, meta
 
     def _filter_toc_like_section(self, boxes: list[Any]) -> tuple[list[Any], dict[str, Any]]:
         findit = False

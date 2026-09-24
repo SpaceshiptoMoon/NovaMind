@@ -240,7 +240,6 @@ class Recognizer:
         return [{"type": self.label_list[class_ids[index]].lower(), "bbox": [float(value) for value in boxes[index].tolist()], "score": float(scores[index])} for index in indices]
 
     @staticmethod
-    @staticmethod
     def sort_Y_firstly(arr, threshold):
         def cmp(c1, c2):
             diff = c1["top"] - c2["top"]

@@ -23,7 +23,6 @@ from novamind.engines.document.integrations.deepdoc.logging_compat import get_lo
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
     default_model_dir,
     download_hf_files,
-    hf_model_endpoint,
 )
 
 logger = get_logger(__name__)
@@ -117,11 +116,6 @@ def _quantize_to_int8(model_dir: Path) -> bool:
         )
         return False
     return True
-
-
-def formula_model_endpoint() -> str:
-    """公式模型下载源：与 vision 模型共用 hf_model_endpoint()（默认国内镜像）。"""
-    return hf_model_endpoint()
 
 
 def download_formula_model(model_dir: str | os.PathLike[str] | None = None) -> Path:
