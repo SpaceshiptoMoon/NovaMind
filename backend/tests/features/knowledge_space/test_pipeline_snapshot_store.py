@@ -435,15 +435,15 @@ def test_invalidate_delete_failure_is_fail_open():
     assert "embed_fingerprint" not in doc.storage[SNAPSHOT_STORAGE_KEY]
 
 
-# ---- figure URL 重签 ----
+# ---- figure 短路径兜底 ----
 
-def test_refresh_figure_image_urls_resigns_and_updates_regions():
-    """按 minio_object_name 重签 URL：region 原地更新 + 返回映射。"""
+def test_resolve_figure_short_paths_updates_regions():
+    """按 minio_object_name 的 basename 补算短文件名：region 原地更新 + 返回映射。
+    旧存量快照（image_url 是过期预签名 URL）的 resume 兜底路径。"""
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        refresh_figure_image_urls,
+        resolve_figure_short_paths,
     )
 
-    doc = _make_document()
     payload = {
         "parse_metadata": {
             "figure_regions": [
@@ -454,62 +454,68 @@ def test_refresh_figure_image_urls_resigns_and_updates_regions():
             ]
         }
     }
-    minio = FakeMinioClient()
 
-    url_map = asyncio.run(refresh_figure_image_urls(doc, payload, minio, _logger()))
+    url_map = resolve_figure_short_paths(payload, _logger())
 
     assert url_map == {
-        "fig-1": "https://minio.test/knowledge-base/x_figures/figure_fig_1_3.png?sig=fresh",
-        "fig-2": "https://minio.test/knowledge-base/x_figures/figure_fig_2_5.png?sig=fresh",
+        "fig-1": "figure_fig_1_3.png",
+        "fig-2": "figure_fig_2_5.png",
     }
     regions = payload["parse_metadata"]["figure_regions"]
-    assert regions[0]["image_url"].startswith("https://minio.test/")
-    assert regions[1]["image_url"].startswith("https://minio.test/")
+    assert regions[0]["image_url"] == "figure_fig_1_3.png"
+    assert regions[1]["image_url"] == "figure_fig_2_5.png"
 
 
-def test_refresh_figure_image_urls_no_regions_returns_empty():
-    """无 figure_regions → 空映射，不调用 get_file_url。"""
+def test_resolve_figure_short_paths_new_snapshot_noop():
+    """新快照 image_url 已是短文件名 → 映射仍返回（幂等），region 不变。"""
     from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        refresh_figure_image_urls,
+        resolve_figure_short_paths,
     )
 
-    doc = _make_document()
-    minio = FakeMinioClient()
-
-    url_map = asyncio.run(refresh_figure_image_urls(
-        doc, {"parse_metadata": {}}, minio, _logger(),
-    ))
-
-    assert url_map == {}
-
-
-def test_refresh_figure_image_urls_partial_failure_keeps_old():
-    """单张图重签失败 → 该图保留旧 URL，其它照常重签。"""
-    from novamind.features.knowledge_space.services.pipeline_snapshots import (
-        refresh_figure_image_urls,
-    )
-
-    doc = _make_document()
     payload = {
         "parse_metadata": {
             "figure_regions": [
-                {"artifact_id": "bad", "minio_object_name": "broken", "image_url": "https://old/bad"},
-                {"artifact_id": "good", "minio_object_name": "ok.png", "image_url": "https://old/good"},
+                {"artifact_id": "fig-1", "minio_object_name": "x_figures/figure_fig_1_3.png",
+                 "image_url": "figure_fig_1_3.png"},
             ]
         }
     }
 
-    class FlakyMinio(FakeMinioClient):
-        async def get_file_url(self, bucket_name, object_name, expires=3600):
-            if object_name == "broken":
-                raise RuntimeError("sign failed")
-            return f"https://minio.test/{object_name}"
+    url_map = resolve_figure_short_paths(payload, _logger())
 
-    url_map = asyncio.run(refresh_figure_image_urls(doc, payload, FlakyMinio(), _logger()))
+    assert url_map == {"fig-1": "figure_fig_1_3.png"}
+    assert payload["parse_metadata"]["figure_regions"][0]["image_url"] == "figure_fig_1_3.png"
 
-    assert "bad" not in url_map
-    assert "good" in url_map
-    assert payload["parse_metadata"]["figure_regions"][0]["image_url"] == "https://old/bad"
+
+def test_resolve_figure_short_paths_no_regions_returns_empty():
+    """无 figure_regions → 空映射。"""
+    from novamind.features.knowledge_space.services.pipeline_snapshots import (
+        resolve_figure_short_paths,
+    )
+
+    assert resolve_figure_short_paths({"parse_metadata": {}}, _logger()) == {}
+
+
+def test_resolve_figure_short_paths_skips_regions_without_object_name():
+    """缺 minio_object_name 或 artifact_id 的 region 跳过（更旧的快照形态）。"""
+    from novamind.features.knowledge_space.services.pipeline_snapshots import (
+        resolve_figure_short_paths,
+    )
+
+    payload = {
+        "parse_metadata": {
+            "figure_regions": [
+                {"artifact_id": "no-obj", "image_url": "https://old/expired"},
+                {"minio_object_name": "x_figures/figure_ok_1.png"},
+                {"artifact_id": "ok", "minio_object_name": "x_figures/figure_ok_1.png",
+                 "image_url": "https://old/ok"},
+            ]
+        }
+    }
+
+    url_map = resolve_figure_short_paths(payload, _logger())
+
+    assert url_map == {"ok": "figure_ok_1.png"}
 
 
 # ---- restore_frame_paths ----

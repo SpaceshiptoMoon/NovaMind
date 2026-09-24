@@ -212,6 +212,8 @@ def build_es_chunks(
             })
             # 文档级 PDF figure 图片链接：每个文本 chunk 的 metadata 都保存该文档全部图片，
             # 便于检索时向 LLM/前端提供完整图文上下文，不局限于当前 chunk 包含的 figure。
+            # image_url 为相对文档 figure 目录的短文件名（figure_xxx.png），渲染方经
+            # figure 代理端点（/documents/{id}/figures/{file}）拼接完整 URL。
             figure_regions = list(parse_metadata.get("figure_regions") or [])
             if figure_regions:
                 all_figure_links: list[dict[str, Any]] = [

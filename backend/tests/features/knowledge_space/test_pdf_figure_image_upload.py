@@ -103,7 +103,7 @@ def test_replace_figure_placeholders_preserves_unknown():
 
 @pytest.mark.asyncio
 async def test_upload_figure_images_to_minio_success():
-    """上传成功时返回 {artifact_id: image_url} 并在 region 中写入字段。"""
+    """上传成功时返回 {artifact_id: 短文件名} 并在 region/storage 中写入字段。"""
     document = SimpleNamespace(
         id=42,
         storage={"minio_object_name": "spaces/1/kbs/2/documents/42/abc.pdf"},
@@ -120,8 +120,6 @@ async def test_upload_figure_images_to_minio_success():
 
     minio_client = AsyncMock()
     minio_client.default_bucket = "knowledge-base"
-    minio_client.upload_file = AsyncMock(return_value="spaces/1/kbs/2/documents/42/abc.pdf_figures/figure_1_page_0_10_1.png")
-    minio_client.get_file_url = AsyncMock(return_value="https://minio.example.com/fig.png")
 
     _warning_messages = []
     logger = SimpleNamespace(
@@ -134,11 +132,42 @@ async def test_upload_figure_images_to_minio_success():
     )
 
     assert not _warning_messages, f"unexpected warnings: {_warning_messages}"
-    assert url_map == {"1:page:0:10": "https://minio.example.com/fig.png"}
-    assert figure_regions[0]["minio_object_name"] == "spaces/1/kbs/2/documents/42/abc.pdf_figures/figure_1_page_0_10_1.png"
-    assert figure_regions[0]["image_url"] == "https://minio.example.com/fig.png"
+    # 短文件名（不是预签名 URL）：artifact_id 的非白名单字符被 safe 化 + 页码
+    assert url_map == {"1:page:0:10": "figure_1_page_0_10_1.png"}
+    assert figure_regions[0]["minio_object_name"] == (
+        "spaces/1/kbs/2/documents/42/abc.pdf_figures/figure_1_page_0_10_1.png"
+    )
+    assert figure_regions[0]["image_url"] == "figure_1_page_0_10_1.png"
     assert "image_blobs" not in figure_regions[0], "上传成功后应清除原始 bytes"
+    # MySQL 目录锚点：figure 代理端点据此还原完整 object name
+    assert document.storage["figures_object_dir"] == "spaces/1/kbs/2/documents/42/abc.pdf_figures"
+    # 不再签发预签名 URL
     minio_client.upload_file.assert_awaited_once()
+    minio_client.get_file_url.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_upload_figure_images_storage_keeps_existing_keys():
+    """figures_object_dir 写入不得覆盖 storage 里已有的其它键（幂等重跑同值）。"""
+    document = SimpleNamespace(
+        id=42,
+        storage={
+            "minio_object_name": "spaces/1/kbs/2/documents/42/abc.pdf",
+            "parsed_text_object": "spaces/1/kbs/2/documents/42/abc.pdf_parsed/full_text.md",
+        },
+    )
+    figure_regions = [
+        {"artifact_id": "fig1", "page_start": 1, "caption": "", "image_blobs": [_make_png_bytes()]},
+    ]
+    minio_client = AsyncMock()
+    logger = SimpleNamespace(info=lambda *args, **kwargs: None, warning=lambda *args, **kwargs: None)
+    await _upload_figure_images_to_minio(document, figure_regions, logger=logger, minio_client=minio_client)
+
+    assert document.storage["figures_object_dir"] == "spaces/1/kbs/2/documents/42/abc.pdf_figures"
+    assert document.storage["parsed_text_object"] == (
+        "spaces/1/kbs/2/documents/42/abc.pdf_parsed/full_text.md"
+    )
+    assert document.storage["minio_object_name"] == "spaces/1/kbs/2/documents/42/abc.pdf"
 
 
 @pytest.mark.asyncio

@@ -226,7 +226,7 @@ async def execute_document_pipeline(
         compute_parse_fingerprint,
         load_parse_snapshot,
         payload_fingerprint_matches,
-        refresh_figure_image_urls,
+        resolve_figure_short_paths,
         restore_frame_paths,
         restore_time_alignment,
         save_parse_snapshot,
@@ -278,24 +278,24 @@ async def execute_document_pipeline(
             and canonical_json(snap_splitting) != canonical_json(splitting_config or {})
         )
 
-        # figure 图片预签名 URL 已过期，按 minio_object_name 重签并替换正文占位符。
-        # 快照存的是**占位符版**全文/分块（build_parse_snapshot_payload 契约），
-        # 这里重签后二次替换；旧快照若已含替换后 URL（历史数据），占位符匹配
-        # 不中为 no-op，按原文复用（链接过期由 refresh_figure_image_urls 修
-        # metadata 结构化链接）。
+        # figure 链接短路径化（新快照已在首跑写入短文件名，此处对旧存量快照兜底）：
+        # 按 region 的 minio_object_name 补算 image_url = basename。旧快照若存的
+        # 是历史预签名 URL（无 minio_object_name 的更旧版本），map 为空按原文复用。
         image_url_map: dict[str, str] = {}
         try:
-            image_url_map = await refresh_figure_image_urls(
-                document, parse_snapshot_payload, resume_minio_client, _logger,
+            image_url_map = resolve_figure_short_paths(
+                parse_snapshot_payload, _logger,
             )
         except Exception as url_exc:
             _logger.warning(
-                "figure 图片 URL 重签失败（保留占位符）", document_id=document_id, error=str(url_exc),
+                "figure 短路径补算失败（保留原文）", document_id=document_id, error=str(url_exc),
             )
         full_text = parse_snapshot_payload["full_text"]
         if image_url_map:
             full_text = _replace_figure_placeholders(full_text, image_url_map)
-        # 历史快照/上传失败残留的占位符剥除（不进 embedding/ES content）
+        # 历史快照/上传失败残留的占位符剥除（不进 embedding/ES content）。
+        # 旧快照正文里已替换的历史预签名 URL 不在占位符形态，无法回收——按原文
+        # 复用（过期链接由重解析刷新）。
         full_text = _replace_figure_placeholders(full_text, {}, strip_unresolved=True)
 
         resume_chunks = [text for text, _meta in resume_prechunked]
@@ -432,15 +432,12 @@ async def execute_document_pipeline(
         _raise_on_empty_parse(full_text, parse_result, parsing_config, document_id)
         await finish_step_committed(session, task, "parsed", metrics={"char_count": len(full_text), "chunk_count": len(chunks), "parse_strategy": parsing_config.get("strategy", "default"), "file_type": document.file_type})
 
-        # 上传 PDF figure 图片到 MinIO 并替换占位符为真实 URL。
+        # 上传 PDF figure 图片到 MinIO 并把占位符替换为短文件名（figure_xxx.png）。
         # 仅 PDF full 模式会产出 figure_regions + image_blobs；上传在 persist 之前完成，
-        # 保证最终落盘的完整 MD 与 ES chunk content 都已含可访问图片链接。
+        # 保证最终落盘的完整 MD 与 ES chunk content 都已含图片短路径。
+        # 短文件名不可变、无时效，快照与最终产物同版，无需再区分「占位符版」。
         figure_regions = list((parse_result.metadata or {}).get("figure_regions") or [])
         image_url_map: dict[str, str] = {}
-        # 快照用占位符版全文/分块：预签名 URL 只有 1 小时时效，替换后版本
-        # 焊进快照/ES 会让 resume 产物全部带过期链接（审计 P2 URL 过期链）。
-        full_text_for_snapshot = full_text
-        chunks_for_snapshot = list(parse_result.chunks)
         if figure_regions and document.file_type.lower() == "pdf":
             from novamind.shared.storage.client_factory import ClientFactory
 
@@ -497,21 +494,16 @@ async def execute_document_pipeline(
         (c, chunk_structure[i] if i < len(chunk_structure) else {})
         for i, c in enumerate(parse_result.chunks)
     ]
-    # 快照存占位符版分块（同 full_text_for_snapshot 的理由）
-    prechunked_for_snapshot = (
-        [(c, {}) for c in chunks_for_snapshot]
-        if image_url_map
-        else prechunked_items
-    )
 
-    # 解析快照：persist 成功后保存（占位符版全文 + 元数据 + 结构化分块 + 生效
-    # 切分配置），供后续重试在指纹匹配时跳过昂贵解析。fail-open：保存失败不影响主流程。
+    # 解析快照：persist 成功后保存（最终版全文 + 元数据 + 结构化分块 + 生效
+    # 切分配置），供后续重试在指纹匹配时跳过昂贵解析。figure 短文件名不可变
+    # 无时效，快照与最终产物同版。fail-open：保存失败不影响主流程。
     if SNAPSHOTS_ENABLED and parse_fingerprint and resume_minio_client is not None:
         snapshot_payload = build_parse_snapshot_payload(
             parse_fingerprint=parse_fingerprint,
-            full_text=full_text_for_snapshot if image_url_map else full_text,
+            full_text=full_text,
             parse_metadata=parse_result.metadata,
-            prechunked_items=prechunked_for_snapshot,
+            prechunked_items=prechunked_items,
             splitting_config=splitting_config or {},
         )
         await save_parse_snapshot(
@@ -596,11 +588,14 @@ async def _upload_figure_images_to_minio(
     logger,
     minio_client,
 ) -> dict[str, str]:
-    """上传 PDF figure 图片到 MinIO，返回 {artifact_id: image_url}。
+    """上传 PDF figure 图片到 MinIO，返回 {artifact_id: figure 短文件名}。
 
     每个 figure region 必须有 ``image_blobs``（PNG bytes 列表），取首张
     （``_encode_crops`` 的合成图或单页图）上传。上传成功后在 region 字典
-    里写入 ``minio_object_name`` 和 ``image_url``。
+    里写入 ``minio_object_name``（完整对象路径）和 ``image_url``（短文件名，
+    相对 ``{base}_figures/`` 目录）；首个成功上传同时把目录锚点
+    ``figures_object_dir`` 写进 ``document.storage``，figure 代理端点据此
+    把短文件名还原成完整 object name。
     """
     image_url_map: dict[str, str] = {}
     storage = document.storage or {}
@@ -612,7 +607,7 @@ async def _upload_figure_images_to_minio(
 
     from PIL import Image as PILImage
 
-    bucket_name = getattr(minio_client, "default_bucket", "knowledge-base")
+    figures_dir = f"{base}_figures"
 
     for region in figure_regions:
         artifact_id = str(region.get("artifact_id") or "")
@@ -653,18 +648,23 @@ async def _upload_figure_images_to_minio(
 
         safe_id = re.sub(r"[^a-zA-Z0-9_-]", "_", artifact_id)
         page = int(region.get("page_start") or 0)
-        object_name = f"{base}_figures/figure_{safe_id}_{page}.png"
+        figure_file = f"figure_{safe_id}_{page}.png"
+        object_name = f"{figures_dir}/{figure_file}"
         try:
             await minio_client.upload_file(object_name, image_bytes, "image/png")
-            image_url = await minio_client.get_file_url(
-                bucket_name=bucket_name,
-                object_name=object_name,
-                expires=3600,
-            )
+            # image_url 存短文件名（相对文档 figure 目录），不再存预签名 URL：
+            # 签名串 ~300 字符且 1 小时过期，进 MD/ES/embedding 既污染检索与
+            # 向量又必然失效。原始完整路径在 minio_object_name / figures_object_dir，
+            # 渲染方经 figure 代理端点拼接。上传失败剥占位符语义不变。
             region["minio_object_name"] = object_name
-            region["image_url"] = image_url
-            image_url_map[artifact_id] = image_url
+            region["image_url"] = figure_file
+            image_url_map[artifact_id] = figure_file
             region.pop("image_blobs", None)
+            # MySQL 目录锚点（幂等写入）：figure 代理端点按它把短文件名还原成
+            # 完整 object name；persist_parsed_text 随后的 commit 一并落库。
+            if storage.get("figures_object_dir") != figures_dir:
+                document.storage = {**storage, "figures_object_dir": figures_dir}
+                storage = document.storage
             logger.info(
                 "PDF figure 图片上传成功",
                 document_id=document.id,

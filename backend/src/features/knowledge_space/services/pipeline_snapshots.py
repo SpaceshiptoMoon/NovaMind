@@ -16,6 +16,7 @@
 
 import hashlib
 import json
+import re
 from typing import Any
 
 from novamind.features.knowledge_space.models.document import Document
@@ -219,8 +220,9 @@ def build_parse_snapshot_payload(
 ) -> dict[str, Any]:
     """构造 parse_meta.json payload，各模态分支共用同一结构。
 
-    - full_text：**占位符未替换**的解析全文（figure 占位符在 resume 时重签 URL
-      后再替换；存已替换版会让 1 小时时效的预签名 URL 焊死在快照/ES 里）
+    - full_text：解析全文（figure 占位符已替换为短文件名 figure_xxx.png——
+      短路径不可变无时效，快照与最终产物同版；旧「占位符版 + resume 重签」
+      契约已随预签名 URL 一并退役，resume 只做残留占位符的 strip 兜底）
     - prechunked_items：结构化分块 [[text, per_chunk_meta], ...]（DeepDoc 等）
     - time_alignment / frame_paths：音视频的时间对齐与帧路径
     - splitting_config：产出 prechunked_items 时的生效切分配置。文本切分实际
@@ -533,23 +535,21 @@ async def invalidate_snapshots_from(
         )
 
 
-# ========== figure 图片 URL 重签 ==========
+# ========== figure 链接短路径兜底 ==========
+
+_FIGURE_BASENAME_RE = re.compile(r"[^/\\]+$")
 
 
-async def refresh_figure_image_urls(
-    document: Document,
+def resolve_figure_short_paths(
     parse_meta_payload: dict[str, Any],
-    minio_client,
     logger,
-    *,
-    expires: int = 3600,
 ) -> dict[str, str]:
-    """按 minio_object_name 重新签发 figure 图片的预签名 URL。
+    """按 minio_object_name 补算 figure 的短文件名链接。
 
-    快照保存的 parse_metadata.figure_regions 带有各图片的 minio_object_name 与
-    当时的预签名 URL；预签名 URL 有时效，resume 复用快照时必须重签。
-    原地更新 payload 中 figure_regions 的 image_url，返回 {artifact_id: new_url}，
-    供调用方对全文/分块里的残留占位符做二次替换。
+    新快照（短路径化后）的 figure_regions.image_url 已是短文件名，本函数
+    对其是 no-op；旧存量快照（image_url 是过期预签名 URL 或残留占位符）由
+    这里按 ``minio_object_name`` 的 basename 补算，返回 {artifact_id: 短文件名}
+    供调用方对正文里的残留占位符做二次替换。纯计算，不访问 MinIO。
     """
     url_map: dict[str, str] = {}
     metadata = parse_meta_payload.get("parse_metadata")
@@ -557,29 +557,25 @@ async def refresh_figure_image_urls(
     if not isinstance(regions, list):
         return url_map
 
-    bucket = document.get_minio_bucket() or getattr(
-        minio_client, "default_bucket", "knowledge-base"
-    )
     for region in regions:
         if not isinstance(region, dict):
             continue
-        object_name = region.get("minio_object_name")
         artifact_id = str(region.get("artifact_id") or "")
-        if not object_name or not artifact_id:
+        object_name = str(region.get("minio_object_name") or "")
+        if not artifact_id or not object_name:
             continue
-        try:
-            new_url = await minio_client.get_file_url(
-                bucket_name=bucket, object_name=str(object_name), expires=expires,
-            )
-            region["image_url"] = new_url
-            url_map[artifact_id] = new_url
-        except Exception as exc:
+        match = _FIGURE_BASENAME_RE.search(object_name)
+        if not match:
             logger.warning(
-                "figure 图片预签名 URL 重签失败（保留旧值）",
-                document_id=document.id,
+                "figure 短路径补算失败（object name 无文件名段）",
                 artifact_id=artifact_id,
-                error=str(exc),
+                object_name=object_name,
             )
+            continue
+        short_path = match.group(0)
+        if region.get("image_url") != short_path:
+            region["image_url"] = short_path
+        url_map[artifact_id] = short_path
     return url_map
 
 
