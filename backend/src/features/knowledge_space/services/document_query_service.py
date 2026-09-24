@@ -12,6 +12,7 @@
 """
 
 from typing import Any
+import re
 
 from novamind.core.middleware.structured_logging import get_logger
 from novamind.features.knowledge_space.exceptions import (
@@ -30,6 +31,29 @@ from novamind.features.knowledge_space.services.permission_service import SpaceA
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.storage.minio_client import MinioClient
 from sqlalchemy.ext.asyncio import AsyncSession
+
+# figure 文件名白名单：上传侧 _upload_figure_images_to_minio 产出
+# figure_{safe_id}_{page}.png（safe_id 已把非 [a-zA-Z0-9_-] 归一为 _）。
+# 代理端点据此拒绝路径穿越（../、反斜杠、%2e 等编码形态在路由参数解码后
+# 不匹配本模式即 404）。
+_FIGURE_FILE_NAME_RE = re.compile(r"figure_[A-Za-z0-9_.-]+\.png")
+
+
+def resolve_figure_object_name(storage: dict, figure_file: str) -> str | None:
+    """把 figure 短文件名还原成完整 MinIO object name（纯函数）。
+
+    ``storage`` 是 document.storage JSON；锚点 ``figures_object_dir`` 由解析
+    管道在上传 figure 时写入。文件名不在白名单或锚点缺失返回 None
+    （含旧文档未重解析、路径穿越攻击两种情况，调用方统一按 404 处理）。
+    """
+    if not isinstance(storage, dict):
+        return None
+    if not figure_file or not _FIGURE_FILE_NAME_RE.fullmatch(figure_file):
+        return None
+    figures_dir = str(storage.get("figures_object_dir") or "")
+    if not figures_dir:
+        return None
+    return f"{figures_dir}/{figure_file}"
 
 
 class DocumentQueryService:
@@ -345,6 +369,33 @@ class DocumentQueryService:
             skip=skip,
             limit=limit,
         )
+
+    async def presign_figure_url(self, document_id: int, figure_file: str) -> str | None:
+        """为 PDF 解析 figure 图片签发临时访问 URL（短路径 → 完整 object → 预签名）。
+
+        MD/ES 里的 figure 链接是短文件名（figure_xxx.png，不可变无时效），
+        渲染方经代理端点调用本方法换即时 URL。文件名不在白名单、文档无
+        figures_object_dir 锚点（未重解析的旧文档）或签名失败返回 None，
+        调用方统一按 404 处理。
+        """
+        document = await self.doc_repo.get_by_id(document_id)
+        if not document:
+            return None
+        object_name = resolve_figure_object_name(document.get_storage_info(), figure_file)
+        if not object_name:
+            return None
+        try:
+            return await self.minio_client.get_file_url(
+                self.minio_client.default_bucket, object_name, 3600
+            )
+        except Exception as exc:
+            self.logger.warning(
+                "figure 图片预签名失败",
+                document_id=document_id,
+                object_name=object_name,
+                error=str(exc),
+            )
+            return None
 
     @staticmethod
     async def presign_media_url(chunk_type: str | None, storage_path: str) -> str | None:

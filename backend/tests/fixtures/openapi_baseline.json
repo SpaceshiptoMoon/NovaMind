@@ -19523,6 +19523,88 @@
         ]
       }
     },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/figures/{figure_file}": {
+      "get": {
+        "description": "把解析产物中的 figure 短文件名（figure_xxx.png）302 重定向到即时签发的 MinIO 预签名 URL。短路径存储不可变无时效，每次渲染换取新鲜签名。",
+        "operationId": "get_document_figure_image_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__figures__figure_file__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "文档ID",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "文档ID",
+              "exclusiveMinimum": 0,
+              "title": "Document Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "figure 短文件名",
+            "in": "path",
+            "name": "figure_file",
+            "required": true,
+            "schema": {
+              "description": "figure 短文件名",
+              "title": "Figure File",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "获取 PDF 解析 figure 图片",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
     "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/frames": {
       "get": {
         "description": "返回文档的视频帧预签名 URL 列表。仅视频文档有效，其他类型返回空列表。",

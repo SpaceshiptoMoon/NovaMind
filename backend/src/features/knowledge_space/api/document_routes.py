@@ -13,7 +13,7 @@ from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, File, Path, Query, Request, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import RedirectResponse, Response
 from novamind.core.database.database import get_db
 from novamind.features.knowledge_space.api.dependencies import (
     get_audit_service,
@@ -710,6 +710,40 @@ async def get_document_parsed_text(
             "Cache-Control": "private, max-age=3600",
         },
     )
+
+
+@router.get(
+    "/{kb_id}/documents/{document_id}/figures/{figure_file}",
+    summary="获取 PDF 解析 figure 图片",
+    description=(
+        "把解析产物中的 figure 短文件名（figure_xxx.png）302 重定向到即时签发的"
+        " MinIO 预签名 URL。短路径存储不可变无时效，每次渲染换取新鲜签名。"
+    ),
+)
+async def get_document_figure_image(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    figure_file: Annotated[str, Path(description="figure 短文件名")],
+    member: SpaceMember = Depends(validate_space_member),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
+    db: AsyncSession = Depends(get_db),
+):
+    """PDF figure 图片代理：短文件名 → 预签名 URL 的 302 重定向"""
+    await validate_kb_access(kb_id, space_id, db)
+
+    document = await document_query_service.get_document(document_id)
+    if not document or document.kb_id != kb_id:
+        raise DocumentNotFoundError(document_id)
+
+    image_url = await document_query_service.presign_figure_url(document_id, figure_file)
+    if not image_url:
+        # 文件名非白名单（路径穿越）/旧文档无锚点/签名失败——统一 404，
+        # 不泄露图片是否存在
+        raise DocumentNotFoundError(document_id)
+
+    # 重定向本身不缓存（签名 1 小时时效）；图片内容缓存由 MinIO 响应头控制
+    return RedirectResponse(url=image_url, status_code=302, headers={"Cache-Control": "no-store"})
 
 
 @router.get(
