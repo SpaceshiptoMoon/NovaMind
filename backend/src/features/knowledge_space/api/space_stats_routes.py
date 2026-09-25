@@ -72,7 +72,7 @@ async def get_space_action_stats(
     end: Annotated[datetime | None, Query(description="结束时间（ISO8601，非含）")] = None,
     member: SpaceMember = Depends(validate_space_member),
     current_user: dict = Depends(get_current_user),
-    audit_service: AuditService = Depends(get_audit_service_for_space),
+    audit_service: AuditService = Depends(get_audit_service),
 ):
     """空间操作审计统计"""
     stats = await audit_service.get_action_stats(
