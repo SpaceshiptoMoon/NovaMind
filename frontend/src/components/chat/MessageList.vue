@@ -1,6 +1,13 @@
 <template>
-  <div v-for="msg in messages" :key="msg.id || msg._id" class="message-row" :class="msg.role">
-    <div class="message-body">
+  <!-- 居中容器：与输入卡同宽对齐（--container-width-md = 816px），消息列不再贴屏铺开 -->
+  <div class="messages-inner">
+    <div
+      v-for="msg in messages"
+      :key="msg.id || msg._id"
+      class="message-row"
+      :class="msg.role"
+    >
+      <div class="message-body">
       <!-- 思考阶段：无内容无推理时不渲染空白气泡 -->
       <div
         v-if="msg.role === 'assistant' && !msg.content && !msg.reasoning && isStreaming"
@@ -52,6 +59,7 @@
           :active-index="hoverCiteIndex"
           @hover="onSourceHover"
           @select="onSourceSelect"
+          @locate="onSourceLocate"
         />
         <RetrievalTrace :traces="getTraces(msg)" />
       </template>
@@ -99,8 +107,8 @@
           <span>复制</span>
         </button>
       </div>
+      </div>
     </div>
-  </div>
 
   <!-- 加载指示器 -->
   <div v-if="loading && !isStreaming" class="typing-row">
@@ -111,6 +119,7 @@
         <span class="typing-dot"></span>
       </div>
     </div>
+  </div>
   </div>
 
   <!-- 引用角标悬浮卡 -->
@@ -134,6 +143,9 @@
       </div>
     </div>
   </el-popover>
+
+  <!-- PDF 原文定位弹窗（批次 1b：bbox 高亮） -->
+  <PdfAnnotateDialog ref="pdfAnnotateRef" />
 </template>
 
 <script setup lang="ts">
@@ -142,6 +154,7 @@ import { ArrowDown, WarningFilled, Download, DocumentCopy } from '@element-plus/
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import SourceList from '@/components/chat/SourceList.vue'
 import RetrievalTrace from '@/components/chat/RetrievalTrace.vue'
+import PdfAnnotateDialog from '@/components/pdf/PdfAnnotateDialog.vue'
 import type { ChatMessage, ChatSource } from '@/api/types'
 import { useChatAttachments } from '@/composables/useChatAttachments'
 
@@ -297,6 +310,21 @@ function onSourceSelect() {
   // 来源选择处理
 }
 
+// PDF 原文定位（批次 1b）：source 携带 space_id/kb_id/document_id/page 时可定位
+const pdfAnnotateRef = ref<InstanceType<typeof PdfAnnotateDialog>>()
+
+function onSourceLocate(source: ChatSource) {
+  if (!source.document_id || !source.kb_id || !source.space_id) return
+  pdfAnnotateRef.value?.open({
+    spaceId: source.space_id,
+    kbId: source.kb_id,
+    documentId: source.document_id,
+    documentName: source.document_name || source.filename,
+    chunkId: source.chunk_id,
+    page: source.page,
+  })
+}
+
 function handleCopyMessage(content: string, e: MouseEvent) {
   e.stopPropagation()
   emit('copy-message', content, e)
@@ -307,16 +335,17 @@ function handleCopyMessage(content: string, e: MouseEvent) {
 /* ========================================
    Messages
    ======================================== */
+/* 居中列：与 ChatInput 输入卡同宽对齐（--container-width-md = 816px），智能体页 .messages-inner 同构 */
 .messages-inner {
-  padding: 24px 48px var(--space-4);
+  max-width: var(--container-width-md);
+  margin: 0 auto;
   padding: var(--space-6) var(--space-6) var(--space-4);
 }
 
 .message-row {
   display: flex;
   gap: var(--space-4);
-  margin-bottom: 32px;
-  padding: 0 var(--space-2);
+  margin-bottom: 28px;
   animation: messageIn 0.3s ease forwards;
 }
 
@@ -350,12 +379,12 @@ function handleCopyMessage(content: string, e: MouseEvent) {
   word-break: break-word;
 }
 
-/* User message */
+/* User message：与智能体页同 token（--color-user-bubble 随暗色模式反转） */
 .message-row.user .message-text {
   padding: var(--space-3) var(--space-4);
   border-radius: 18px 18px 4px 18px;
-  background: var(--color-primary-subtle);
-  color: var(--color-primary-hover);
+  background: var(--color-user-bubble);
+  color: var(--color-user-bubble-text);
   white-space: pre-wrap;
 }
 
@@ -364,7 +393,7 @@ function handleCopyMessage(content: string, e: MouseEvent) {
   padding: var(--space-3) var(--space-4);
   border-radius: 18px 18px 18px 4px;
   background: var(--color-bg-card);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-light);
 }
 
 /* Reasoning */

@@ -76,6 +76,13 @@
                   >相关度 {{ formatScore(s.score) }}</span
                 >
                 <span v-if="s.page != null" class="source-page">第 {{ s.page }} 页</span>
+                <a
+                  v-if="canLocate(s)"
+                  class="source-link source-locate-btn"
+                  title="在 PDF 原文中高亮此片段"
+                  @click.stop="emit('locate', s)"
+                  >原文定位</a
+                >
               </div>
               <div
                 v-if="s.snippet"
@@ -105,11 +112,17 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'hover', index: number | null): void
   (e: 'select', source: ChatSource): void
+  (e: 'locate', source: ChatSource): void
 }>()
 
 const collapsed = ref(true)
 // 展开的来源卡 index 集合（点击卡片切换 snippet 全文/3 行截断）
 const expandedSet = ref(new Set<number>())
+
+/** PDF 且具备定位要素（document_id + 页码）的 kb 来源才显示「原文定位」 */
+function canLocate(s: ChatSource): boolean {
+  return s.kind !== 'web' && (s.file_type || '').toLowerCase() === 'pdf' && !!s.document_id && !!s.page
+}
 
 const webItems = computed(() => props.sources.filter((s) => s.kind === 'web'))
 const kbItems = computed(() => props.sources.filter((s) => s.kind !== 'web'))

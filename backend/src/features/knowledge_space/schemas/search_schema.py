@@ -265,6 +265,7 @@ class SearchResult(BaseModel):
     chunk_id: str = Field(..., description="分块 ID")
     document_id: int = Field(..., description="文档 ID")
     kb_id: int = Field(..., description="知识库 ID")
+    space_id: int | None = Field(None, description="空间 ID（QA 引用回跳原文定位用）")
 
     # 内容
     content: str = Field(..., description="检索到的内容")

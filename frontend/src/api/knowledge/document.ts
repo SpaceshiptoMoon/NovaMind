@@ -10,6 +10,7 @@ import type {
   DocumentTaskListResponse,
   DocumentTaskItemListResponse,
   DocumentFramesResponse,
+  ChunkPositionResponse,
 } from '../types'
 
 export const documentApi = {
@@ -163,5 +164,13 @@ export const documentApi = {
       `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/preview`,
     )
     return window.URL.createObjectURL(blob)
+  },
+
+  /** 查询 chunk 在 PDF 原文中的位置（页码 + bbox 矩形，引用溯源高亮） */
+  getChunkPosition(spaceId: number, kbId: number, docId: number, chunkId: string) {
+    return request.get<ChunkPositionResponse>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/documents/${docId}/chunk-position`,
+      { params: { chunk_id: chunkId } },
+    )
   },
 }

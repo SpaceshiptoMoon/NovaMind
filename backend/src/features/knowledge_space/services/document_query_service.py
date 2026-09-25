@@ -30,6 +30,7 @@ from novamind.features.knowledge_space.repository.member_repository import Membe
 from novamind.features.knowledge_space.services.permission_service import SpaceAccessChecker
 from novamind.shared.storage.elasticsearch_client import ElasticsearchClient
 from novamind.shared.storage.minio_client import MinioClient
+from novamind.engines.document.pipeline.tagged_rechunk import parse_position_tag
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # figure 文件名白名单：上传侧 _upload_figure_images_to_minio 产出
@@ -374,6 +375,86 @@ class DocumentQueryService:
             skip=skip,
             limit=limit,
         )
+
+    # bbox 高亮矩形上限：整页截图式 PDF 的 chunk 可能聚合几十个行框，
+    # 不设上限会撑爆前端 overlay DOM；超出按阅读序截断（引用定位看首段足够）。
+    CHUNK_POSITION_MAX_RECTS = 50
+
+    async def get_chunk_position(
+        self,
+        space_id: int,
+        document_id: int,
+        chunk_id: str,
+    ) -> dict[str, Any]:
+        """查询 chunk 的 PDF 原文位置（引用溯源 bbox 高亮，批次 1b）。
+
+        ES 按 chunk_id 取分块 → metadata.chunk_entry_source_ids 逐个
+        parse_position_tag 解析 → 同页相邻行合并（阅读序行列表 → 页面矩形）、
+        跨页按页分组，cap 50 矩形。
+
+        Returns:
+            ``{"page": int, "bboxes": [{"page","x0","x1","top","bottom"}],
+            "file_type": str}``；chunk 不存在抛 DocumentNotFoundError，
+            无坐标（老文档/非 PDF/结构置空）返回 page=None + 空 bboxes。
+        """
+        document = await self.doc_repo.get_by_id(document_id)
+        if not document or document.space_id != space_id:
+            raise DocumentNotFoundError(document_id)
+
+        chunk = await self.es_client.get_chunk(space_id, chunk_id)
+        if not chunk or int(chunk.get("document_id", 0)) != document_id:
+            raise DocumentNotFoundError(document_id)
+
+        metadata = chunk.get("metadata") or {}
+        source_ids = list(metadata.get("chunk_entry_source_ids") or [])
+
+        rects: list[dict[str, Any]] = []
+        for sid in source_ids:
+            parsed = parse_position_tag(str(sid or ""))
+            if parsed:
+                rects.append({"page": parsed["page"], **parsed["bbox"]})
+
+        merged = self._merge_adjacent_line_rects(rects)
+        if len(merged) > self.CHUNK_POSITION_MAX_RECTS:
+            merged = merged[: self.CHUNK_POSITION_MAX_RECTS]
+
+        return {
+            # 代表页：首个矩形的页码（前端先跳首页）；无坐标时兜底 page_number
+            "page": merged[0]["page"] if merged else metadata.get("page_number"),
+            "bboxes": merged,
+            "file_type": metadata.get("file_type") or document.file_type,
+        }
+
+    @staticmethod
+    def _merge_adjacent_line_rects(
+        rects: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """阅读序行矩形 → 同页纵向相邻行合并为大矩形（纯函数）。
+
+        DeepDoc 行框密集（每行一个），逐行高亮视觉碎片；同页 top 相邻
+        （gap ≤ 1.5 倍行高容差）且横向有交集的行合并为一个矩形。输入顺序
+        即阅读序（reading_order），输出保持首现顺序。
+        """
+        merged: list[dict[str, Any]] = []
+        for rect in rects:
+            if not merged:
+                merged.append(dict(rect))
+                continue
+            last = merged[-1]
+            same_page = last["page"] == rect["page"]
+            # 横向有交集（列宽不同的双栏行不会误并）
+            x_overlap = min(last["x1"], rect["x1"]) - max(last["x0"], rect["x0"]) > 0
+            # 纵向相邻：下一行 top 距上一行 bottom 不超过 1.5 倍行高
+            gap = rect["top"] - last["bottom"]
+            line_height = max(last["bottom"] - last["top"], rect["bottom"] - rect["top"], 1.0)
+            if same_page and x_overlap and -line_height <= gap <= line_height * 1.5:
+                last["x0"] = min(last["x0"], rect["x0"])
+                last["x1"] = max(last["x1"], rect["x1"])
+                last["top"] = min(last["top"], rect["top"])
+                last["bottom"] = max(last["bottom"], rect["bottom"])
+            else:
+                merged.append(dict(rect))
+        return merged
 
     async def presign_figure_links(
         self, document: Document, content: str, expires: int = 21600

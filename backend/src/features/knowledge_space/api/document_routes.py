@@ -799,6 +799,32 @@ async def get_document_frames(
 
 
 @router.get(
+    "/{kb_id}/documents/{document_id}/chunk-position",
+    summary="查询 chunk 的 PDF 原文位置",
+    description=(
+        "按 chunk_id 返回该分块在 PDF 原文中的页码与 bbox 矩形列表"
+        "（引用溯源高亮用）。无坐标数据（旧文档/非 PDF）时 page 为 null、"
+        "bboxes 为空。坐标为 PDF pt（72dpi，原点左上），与 pdf.js scale=1 "
+        "viewport 线性对齐。"
+    ),
+)
+async def get_document_chunk_position(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    document_id: Annotated[int, Path(gt=0, description="文档ID")],
+    chunk_id: Annotated[str, Query(min_length=1, description="分块ID（{document_id}_{index}）")],
+    member: SpaceMember = Depends(validate_space_member),
+    document_query_service: DocumentQueryService = Depends(get_document_query_service),
+    db: AsyncSession = Depends(get_db),
+):
+    """查询 chunk 在 PDF 原文中的位置（页码 + bbox 矩形）"""
+    await validate_kb_access(kb_id, space_id, db)
+
+    # service 内校验：文档存在且属于该空间、chunk 存在且归属该文档
+    return await document_query_service.get_chunk_position(space_id, document_id, chunk_id)
+
+
+@router.get(
     "/{kb_id}/documents/{document_id}/preview",
     summary="预览文档原始文件",
     description="内联返回文档原始文件字节流，用于浏览器预览（图片、音频、PDF 等）。对不可预览的文件类型以 application/octet-stream 返回。",

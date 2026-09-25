@@ -883,12 +883,16 @@ export interface ChatSource {
   document_id?: number | null
   document_name?: string | null
   kb_id?: number | null
+  /** 来源所属空间 ID（原文定位拼 chunk-position URL 用） */
+  space_id?: number | null
   chunk_id?: string | null
   /** 检索得分（0~1） */
   score?: number | null
   /** 命中片段预览 */
   snippet?: string | null
   page?: number | null
+  /** 文件类型（pdf 等前端可判断能否打开原文定位） */
+  file_type?: string | null
   /** 网址（联网来源） */
   url?: string | null
   /** 兼容字段：来源标题（部分来源形状带 title 而非 document_name） */
@@ -897,6 +901,21 @@ export interface ChatSource {
   filename?: string | null
   /** 兼容字段：来源正文片段（与 snippet 同义，部分来源形状使用 content） */
   content?: string | null
+}
+
+/** chunk 在 PDF 原文中的位置（引用溯源 bbox 高亮） */
+export interface ChunkPositionResponse {
+  /** 代表页码（首个高亮矩形所在页）；无坐标数据时为 null */
+  page: number | null
+  /** 高亮矩形列表（PDF pt 坐标，原点左上，与 pdf.js scale=1 viewport 对齐） */
+  bboxes: Array<{
+    page: number
+    x0: number
+    x1: number
+    top: number
+    bottom: number
+  }>
+  file_type: string | null
 }
 
 export interface ChatAttachment {

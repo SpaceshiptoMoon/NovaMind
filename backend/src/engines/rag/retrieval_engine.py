@@ -582,6 +582,8 @@ class RetrievalEngine:
                 "document_id": source.get("document_id"),
                 "chunk_index": source.get("chunk_index"),
                 "kb_id": source.get("kb_id"),
+                # QA 引用回跳原文定位（chunk-position 端点）需要 space_id 拼 URL
+                "space_id": source.get("space_id"),
                 "metadata": source.get("metadata", {}),
                 "file_info": file_info,
                 "questions": source.get("questions"),

@@ -796,6 +796,7 @@ class AIChatService:
                 "document_id": r.get("document_id"),
                 "document_name": filename or None,
                 "kb_id": r.get("kb_id"),
+                "space_id": r.get("space_id"),
                 "chunk_id": r.get("chunk_id"),
                 "score": r.get("score"),
                 "snippet": snippet,
