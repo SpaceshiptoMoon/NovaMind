@@ -18,6 +18,7 @@ from novamind.engines.eval import (
 )
 from novamind.features.evaluation.exceptions import (
     EvaluationTaskNotCancellableError,
+    EvaluationTaskNotComparableError,
     EvaluationTaskNotCompletedError,
     EvaluationTaskNotFoundError,
     EvaluationTaskPendingError,
@@ -466,6 +467,154 @@ class EvaluationService:
             "completed_cases": summary.get("processed_cases", 0),
             "summary": summary,
             "details": details,
+        }
+
+    async def get_report_comparison(
+        self, task_id: int, baseline_task_id: int, space_id: int, kb_id: int
+    ) -> dict[str, Any]:
+        """两次任务报告对比（批次 3b 回归对比）。
+
+        - 校验：两任务同测试集且均 completed（不同集不可比，未完成无完整报告）
+        - summary 逐项 delta
+        - cases 按**归一化 question 文本 join**（不用 index——测试集可被追加，
+          index 会漂移；归一化 = strip + 全部空白折叠为单空格，小写化）
+        - cases 按 delta 降序（退化最明显的排前面）
+        """
+        current = await self.task_repo.get_by_id(task_id)
+        baseline = await self.task_repo.get_by_id(baseline_task_id)
+        if not current:
+            raise EvaluationTaskNotFoundError(task_id)
+        if not baseline:
+            raise EvaluationTaskNotFoundError(baseline_task_id)
+        # 归属校验：两任务都必须属于该 KB
+        for t in (current, baseline):
+            if t.test_set and (t.test_set.space_id != space_id or t.test_set.kb_id != kb_id):
+                raise EvaluationTaskNotFoundError(t.id)
+        if current.test_set_id != baseline.test_set_id:
+            raise EvaluationTaskNotComparableError(task_id, baseline_task_id, "两次任务不在同一测试集上")
+        for t in (current, baseline):
+            if t.status != EvaluationStatus.COMPLETED:
+                raise EvaluationTaskNotCompletedError(t.id, EvaluationStatus(t.status).name.lower())
+
+        current_data = await self._download_task_result(current) or {}
+        baseline_data = await self._download_task_result(baseline) or {}
+        current_summary = current_data.get("summary", {})
+        baseline_summary = baseline_data.get("summary", {})
+
+        def _flatten_summary(s: dict[str, Any], prefix: str = "") -> dict[str, float | None]:
+            flat: dict[str, float | None] = {}
+            for key, value in s.items():
+                if isinstance(value, dict):
+                    flat.update(_flatten_summary(value, f"{prefix}{key}."))
+                elif isinstance(value, (int, float)) and not isinstance(value, bool):
+                    flat[f"{prefix}{key}"] = float(value)
+                # 非 None 标量（如 human_scores=None）不进对比
+            return flat
+
+        current_flat = _flatten_summary(current_summary)
+        baseline_flat = _flatten_summary(baseline_summary)
+        metric_keys = sorted(set(current_flat) | set(baseline_flat))
+        metrics = [
+            {
+                "key": key,
+                "baseline": baseline_flat.get(key),
+                "current": current_flat.get(key),
+                "delta": (
+                    round(current_flat[key] - baseline_flat[key], 4)
+                    if key in current_flat and key in baseline_flat
+                    else None
+                ),
+            }
+            for key in metric_keys
+        ]
+
+        # cases join：归一化 question → (baseline_case, current_case)
+        def _norm_question(q: str) -> str:
+            import re as _re
+
+            return _re.sub(r"\s+", " ", (q or "").strip()).lower()
+
+        baseline_by_q = {
+            _norm_question(d.get("question", "")): d
+            for d in baseline_data.get("details", [])
+            if isinstance(d, dict)
+        }
+        current_by_q = {
+            _norm_question(d.get("question", "")): d
+            for d in current_data.get("details", [])
+            if isinstance(d, dict)
+        }
+
+        def _case_overall_score(d: dict[str, Any]) -> float | None:
+            """单用例综合分：generation_scores.overall 优先，缺失取各 generation 均值"""
+            gs = d.get("generation_scores") or {}
+            overall = gs.get("overall")
+            if isinstance(overall, (int, float)):
+                return round(float(overall), 2)
+            vals = [
+                float(v[0]) if isinstance(v, tuple) else float(v)
+                for v in gs.values()
+                if isinstance(v, (int, float))
+                or (isinstance(v, tuple) and len(v) >= 1 and isinstance(v[0], (int, float)))
+            ]
+            return round(sum(vals) / len(vals), 2) if vals else None
+
+        def _case_retrieval_score(d: dict[str, Any]) -> float | None:
+            r = d.get("retrieval") or {}
+            pr = r.get("precision_at_k")
+            return float(pr) if isinstance(pr, (int, float)) else None
+
+        case_items: list[dict[str, Any]] = []
+        seen_questions: set[str] = set()
+        for q, cur in current_by_q.items():
+            base = baseline_by_q.get(q)
+            cur_score = _case_overall_score(cur)
+            base_score = _case_overall_score(base) if base else None
+            cur_ret = _case_retrieval_score(cur)
+            base_ret = _case_retrieval_score(base) if base else None
+            delta = (
+                round(cur_score - base_score, 2)
+                if cur_score is not None and base_score is not None
+                else None
+            )
+            seen_questions.add(q)
+            case_items.append({
+                "question": cur.get("question", ""),
+                "status": ("error" if "error" in cur else "ok"),
+                "baseline_score": base_score,
+                "current_score": cur_score,
+                "delta": delta,
+                "baseline_retrieval": base_ret,
+                "current_retrieval": cur_ret,
+            })
+        # 仅基线有的用例（被删除/解析失败）：标记 removed
+        for q, base in baseline_by_q.items():
+            if q in seen_questions:
+                continue
+            case_items.append({
+                "question": base.get("question", ""),
+                "status": "removed",
+                "baseline_score": _case_overall_score(base),
+                "current_score": None,
+                "delta": None,
+                "baseline_retrieval": _case_retrieval_score(base),
+                "current_retrieval": None,
+            })
+
+        case_items.sort(key=lambda c: (c["delta"] is None, c["delta"]))
+
+        return {
+            "task_id": task_id,
+            "baseline_task_id": baseline_task_id,
+            "same_test_set": True,
+            "metrics": metrics,
+            "cases": case_items,
+            "summary": {
+                "improved": sum(1 for c in case_items if (c["delta"] or 0) > 0),
+                "degraded": sum(1 for c in case_items if (c["delta"] or 0) < 0),
+                "unchanged": sum(1 for c in case_items if c["delta"] == 0),
+                "baseline_only": sum(1 for c in case_items if c["status"] == "removed"),
+            },
         }
 
     async def export_result(self, task_id: int, format: str = "json") -> tuple[bytes, str] | None:

@@ -10,6 +10,7 @@ import type {
   CreateEvaluationTaskRequest,
   CreateEvaluationTaskResponse,
   EvaluationReport,
+  EvaluationComparisonResponse,
   SubmitHumanScoresRequest,
   SubmitHumanScoresResponse,
   TaskCancelResponse,
@@ -92,6 +93,19 @@ export const evaluationApi = {
 
   getTask(spaceId: number, kbId: number, taskId: number): Promise<EvaluationTask> {
     return request.get(`${BASE(spaceId, kbId)}/tasks/${taskId}`)
+  },
+
+  /** 两次报告对比（批次 3b：同测试集且均 completed） */
+  getReportComparison(
+    spaceId: number,
+    kbId: number,
+    taskId: number,
+    baselineTaskId: number,
+  ): Promise<EvaluationComparisonResponse> {
+    return request.get(
+      `${BASE(spaceId, kbId)}/tasks/${taskId}/report/compare`,
+      { baseline_task_id: baselineTaskId } as Record<string, unknown>,
+    )
   },
 
   createTask(

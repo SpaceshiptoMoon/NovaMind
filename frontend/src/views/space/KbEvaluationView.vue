@@ -348,6 +348,92 @@
 
             <!-- 任务完成 -->
             <template v-else-if="reportData.status === 'completed'">
+              <!-- 基线对比选择 -->
+              <div v-if="comparisonCandidates.length" class="compare-bar">
+                <span class="compare-label">回归对比：</span>
+                <el-select
+                  v-model="baselineTaskId"
+                  placeholder="选择基线任务"
+                  size="small"
+                  style="width: 260px"
+                  clearable
+                >
+                  <el-option
+                    v-for="t in comparisonCandidates"
+                    :key="t.id"
+                    :label="`#${t.id} ${t.name || ''} (${(t.created_at || '').slice(0, 10)})`"
+                    :value="t.id"
+                  />
+                </el-select>
+                <el-button
+                  size="small"
+                  type="primary"
+                  :disabled="!baselineTaskId"
+                  :loading="comparisonLoading"
+                  @click="loadComparison"
+                >
+                  对比
+                </el-button>
+              </div>
+              <el-alert
+                v-if="comparisonError"
+                :title="comparisonError"
+                type="warning"
+                :closable="true"
+                show-icon
+                class="compare-error"
+              />
+
+              <!-- 对比结果 -->
+              <div v-if="comparisonData" class="compare-section">
+                <div class="compare-summary">
+                  <el-tag type="success" effect="plain">提升 {{ comparisonData.summary.improved }}</el-tag>
+                  <el-tag type="danger" effect="plain">退化 {{ comparisonData.summary.degraded }}</el-tag>
+                  <el-tag type="info" effect="plain">持平 {{ comparisonData.summary.unchanged }}</el-tag>
+                  <el-tag v-if="comparisonData.summary.baseline_only" type="warning" effect="plain">
+                    仅基线 {{ comparisonData.summary.baseline_only }}
+                  </el-tag>
+                </div>
+
+                <div class="compare-metrics">
+                  <div
+                    v-for="m in comparisonData.metrics"
+                    :key="m.key"
+                    class="compare-metric"
+                  >
+                    <span class="metric-key">{{ metricLabel(m.key) }}</span>
+                    <span class="metric-vals">
+                      <span class="metric-baseline">{{ fmtMetric(m.baseline) }}</span>
+                      <span :class="deltaClass(m.delta)" class="metric-current">
+                        {{ fmtMetric(m.current) }}
+                        <template v-if="m.delta !== null"> ({{ m.delta > 0 ? '+' : '' }}{{ m.delta.toFixed(4) }})</template>
+                      </span>
+                    </span>
+                  </div>
+                </div>
+
+                <el-table :data="comparisonData.cases" size="small" max-height="320">
+                  <el-table-column prop="question" label="问题" min-width="220" show-overflow-tooltip />
+                  <el-table-column label="基线" width="90" align="right">
+                    <template #default="{ row }">{{ fmtCase(row.baseline_score) }}</template>
+                  </el-table-column>
+                  <el-table-column label="当前" width="90" align="right">
+                    <template #default="{ row }">{{ fmtCase(row.current_score) }}</template>
+                  </el-table-column>
+                  <el-table-column label="Δ" width="100" align="right">
+                    <template #default="{ row }">
+                      <span :class="deltaClass(row.delta)">{{ fmtDelta(row.delta) }}</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="状态" width="80" align="center">
+                    <template #default="{ row }">
+                      <el-tag v-if="row.status === 'error'" type="danger" size="small">出错</el-tag>
+                      <el-tag v-else-if="row.status === 'removed'" type="warning" size="small">仅基线</el-tag>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </div>
+
               <!-- 汇总卡片 -->
               <div class="report-summary">
                 <div class="summary-header">
@@ -693,6 +779,7 @@ import type {
   TestSetCasesResponse,
   EvaluationTask,
   EvaluationReport,
+  EvaluationComparisonResponse,
   HumanScoreItem,
 } from '@/api/types'
 import type { FormInstance, FormRules, UploadFile } from 'element-plus'
@@ -1038,14 +1125,101 @@ const reportData = ref<EvaluationReport | null>(null)
 const humanScores = reactive<HumanScoreItem[]>([])
 const scoreLoading = ref(false)
 
+// ===== 回归对比（批次 3b） =====
+
+const baselineTaskId = ref<number | undefined>(undefined)
+const comparisonLoading = ref(false)
+const comparisonData = ref<EvaluationComparisonResponse | null>(null)
+const comparisonError = ref('')
+// 同测试集的已完成任务均可作基线（排除当前任务本身）
+const comparisonCandidates = ref<EvaluationTask[]>([])
+
+function metricLabel(key: string): string {
+  const labels: Record<string, string> = {
+    'retrieval.precision_at_k': 'Precision@K',
+    'retrieval.hit_rate': 'Hit Rate',
+    'retrieval.mrr': 'MRR',
+    'generation.faithfulness': '忠实度',
+    'generation.answer_relevance': '相关性',
+    'generation.correctness': '正确性',
+    'generation.quality': '质量',
+    'generation.overall': '综合',
+    'end_to_end.context_precision': 'Ctx Precision',
+    'end_to_end.answer_similarity': 'Ans Similarity',
+    elapsed_seconds: '耗时(s)',
+    total_cases: '用例数',
+    processed_cases: '完成数',
+    successful_cases: '成功数',
+  }
+  return labels[key] ?? key
+}
+
+function fmtMetric(v: number | null): string {
+  if (v === null || v === undefined) return '—'
+  return Number.isInteger(v) ? String(v) : v.toFixed(4)
+}
+
+function fmtCase(v: number | null): string {
+  return v === null || v === undefined ? '—' : v.toFixed(1)
+}
+
+function fmtDelta(v: number | null): string {
+  if (v === null || v === undefined) return '—'
+  return (v > 0 ? '+' : '') + v.toFixed(2)
+}
+
+function deltaClass(delta: number | null): string {
+  if (delta === null || delta === undefined || delta === 0) return 'delta-flat'
+  return delta > 0 ? 'delta-up' : 'delta-down'
+}
+
+async function loadComparison() {
+  if (!reportData.value || !baselineTaskId.value) return
+  comparisonLoading.value = true
+  comparisonError.value = ''
+  comparisonData.value = null
+  try {
+    const data = await evaluationApi.getReportComparison(
+      spaceId.value, kbId.value, reportData.value.task_id, baselineTaskId.value,
+    )
+    comparisonData.value = data
+  } catch (e: unknown) {
+    const message = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
+    comparisonError.value = message || '对比失败（要求同测试集且均已完成）'
+  } finally {
+    comparisonLoading.value = false
+  }
+}
+
+async function loadComparisonCandidates(testSetId: number, currentTaskId: number) {
+  try {
+    const data = await evaluationApi.getTasks(spaceId.value, kbId.value, { limit: 100 })
+    comparisonCandidates.value = (data.items || []).filter(
+      (t) =>
+        t.id !== currentTaskId &&
+        t.test_set_id === testSetId &&
+        t.status === 'completed',
+    )
+  } catch {
+    comparisonCandidates.value = []
+  }
+}
+
 async function viewReport(task: EvaluationTask) {
   reportDialogVisible.value = true
   reportLoading.value = true
   reportData.value = null
+  // 重置对比状态
+  baselineTaskId.value = undefined
+  comparisonData.value = null
+  comparisonError.value = ''
 
   try {
     const data = await evaluationApi.getReport(spaceId.value, kbId.value, task.id)
     reportData.value = data
+    if (data.status === 'completed' && task.test_set_id) {
+      void loadComparisonCandidates(task.test_set_id, task.id)
+    }
 
     // 初始化人工评分
     humanScores.length = 0
@@ -1181,6 +1355,87 @@ onUnmounted(() => {
 
 .tab-toolbar {
   margin-bottom: var(--space-4);
+}
+
+/* ===== 回归对比（批次 3b） ===== */
+.compare-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  margin-bottom: var(--space-4);
+  background: var(--color-bg-card-elevated);
+}
+
+.compare-label {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.compare-error {
+  margin-bottom: var(--space-4);
+}
+
+.compare-section {
+  margin-bottom: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: var(--space-4);
+}
+
+.compare-summary {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.compare-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+
+.compare-metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--color-bg-card-elevated);
+}
+
+.metric-key {
+  color: var(--color-text-secondary);
+}
+
+.metric-vals {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-baseline {
+  color: var(--color-text-muted);
+}
+
+.delta-up {
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.delta-down {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.delta-flat {
+  color: var(--color-text-muted);
 }
 
 /* 汇总指标 */

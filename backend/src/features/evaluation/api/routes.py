@@ -501,6 +501,39 @@ async def get_evaluation_report(
 
 
 @router.get(
+    "/tasks/{task_id}/report/compare",
+    summary="对比两次测评报告",
+    description=(
+        "与基线任务对比：summary 逐项 delta + 按归一化 question join 的逐用例"
+        "差异（delta 降序）。要求两任务同测试集且均已完成（批次 3b）。"
+    ),
+)
+async def get_evaluation_report_comparison(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    task_id: Annotated[int, Path(gt=0, description="任务ID（当前）")],
+    baseline_task_id: Annotated[int, Query(gt=0, description="基线任务ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    evaluation_service: EvaluationService = Depends(get_evaluation_service),
+    db: AsyncSession = Depends(get_db),
+):
+    await validate_kb_access(kb_id, space_id, db)
+    # 两个任务都做归属校验（作者或空间管理员）
+    for tid in (task_id, baseline_task_id):
+        t = await evaluation_service.get_task_by_kb(tid, space_id, kb_id)
+        if not t:
+            raise EvaluationTaskNotFoundError(tid)
+        _check_task_owner(t, member)
+
+    return await evaluation_service.get_report_comparison(
+        task_id=task_id,
+        baseline_task_id=baseline_task_id,
+        space_id=space_id,
+        kb_id=kb_id,
+    )
+
+
+@router.get(
     "/tasks/{task_id}/export",
     summary="导出测评结果",
     description="导出测评结果（JSON 或 CSV 格式）",

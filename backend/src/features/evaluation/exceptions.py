@@ -113,3 +113,17 @@ class EvaluationTaskNotCompletedError(EvaluationError):
         )
         self.task_id = task_id
         self.status = status
+
+
+class EvaluationTaskNotComparableError(EvaluationError):
+    """两次任务不可对比（批次 3b：非同测试集等）"""
+    _serializable_attrs: ClassVar[list[str]] = ["task_id", "baseline_task_id", "reason"]
+
+    def __init__(self, task_id: int, baseline_task_id: int, reason: str):
+        super().__init__(
+            message=f"任务 {task_id} 与基线 {baseline_task_id} 不可对比: {reason}",
+            code="EVALUATION_TASK_NOT_COMPARABLE",
+        )
+        self.task_id = task_id
+        self.baseline_task_id = baseline_task_id
+        self.reason = reason

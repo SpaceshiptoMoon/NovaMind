@@ -990,6 +990,36 @@ export interface ActionStatsResponse {
   total: number
 }
 
+/** 两次测评报告对比（批次 3b） */
+export interface EvaluationComparisonResponse {
+  task_id: number
+  baseline_task_id: number
+  same_test_set: boolean
+  /** summary 逐项 delta（key 形如 retrieval.hit_rate / generation.overall） */
+  metrics: Array<{
+    key: string
+    baseline: number | null
+    current: number | null
+    delta: number | null
+  }>
+  /** 按 delta 降序；status: ok/error/removed（仅基线有） */
+  cases: Array<{
+    question: string
+    status: 'ok' | 'error' | 'removed'
+    baseline_score: number | null
+    current_score: number | null
+    delta: number | null
+    baseline_retrieval: number | null
+    current_retrieval: number | null
+  }>
+  summary: {
+    improved: number
+    degraded: number
+    unchanged: number
+    baseline_only: number
+  }
+}
+
 export interface ChatAttachment {
   id: number
   filename: string
