@@ -4,6 +4,7 @@ from __future__ import annotations
 import gc
 import logging
 import re
+import unicodedata
 from collections.abc import Sequence
 
 # Adapted around RAGFlow deepdoc/parser/pdf_parser.py class layout.
@@ -204,6 +205,10 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         if cp < 0x20 and ch not in ("\t", "\n", "\r"):
             return True
         if 0x80 <= cp <= 0x9F:
+            return True
+        # 未分配（Cn）/代理对（Cs）码位：字体映射失败的另一形态（vendor 同款）。
+        cat = unicodedata.category(ch)
+        if cat in ("Cn", "Cs"):
             return True
         return False
 
@@ -1136,7 +1141,20 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         for b in absorb_targets:
             m_ht = float(np.mean([float(c.get("height", 0.0)) for c in b["chars"]])) or mean_h
             text, _chars, _garbled, _total = self._assemble_box_text(b["chars"], m_ht)
-            if text.strip():
+            if not text.strip():
+                continue
+            if _CID_PATTERN.search(text):
+                # 重拼文本混入 (cid:N)：该框若保持 text_layer 来源，cid 字符会在
+                # layout 层被 is_garbage 静默 pop——与 fuse 层「cid 一票回退 OCR」
+                # 同口径，改为标记 OCR 回退（OCR 从渲染图识别视觉符号，信息不丢）。
+                b["text"] = ""
+                b["ocr_source"] = "ocr_fallback_cid_after_reclaim"
+                logger.info(
+                    "DeepDoc 回收重拼引入 cid 字符，框改走 OCR 回退",
+                    page_index=page_index,
+                    box_top=float(b.get("top", 0.0)),
+                )
+            else:
                 b["text"] = text
 
         # 2) 自合成行框：按 top 聚行（行高差 <= mean_h*0.7 视为同行）
@@ -1166,13 +1184,18 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                 text = "".join(str(c.get("text", "") or "") for c in row)
                 if not text.strip():
                     continue
+                clean_text = text.strip()
+                if _CID_PATTERN.search(clean_text):
+                    # 合成行含 (cid:N)：置空文本防 layout 层 is_garbage 静默 pop
+                    # 掉整框后内容不可解释；空文本框会被下游自然过滤。
+                    clean_text = ""
                 synthetic.append(
                     {
                         "x0": min(float(c.get("x0", 0.0)) for c in row),
                         "x1": max(float(c.get("x1", 0.0)) for c in row),
                         "top": min(float(c.get("top", 0.0)) for c in row),
                         "bottom": max(float(c.get("bottom", 0.0)) for c in row),
-                        "text": text.strip(),
+                        "text": clean_text,
                         "ocr_source": "text_layer_reclaim",
                         "page_number": page_index,
                     }
@@ -1877,9 +1900,17 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                 for member in member_bboxes:
                     member_bboxes_by_page.setdefault(int(member.get("page", 0)), []).append(member)
                 continue
+            # 联合 bbox 回退口径只对旧构造方兼容：它把误检组的联合框应用到全部
+            # 页——正是成员制语义要消灭的「几何误判整章删文」路径。触发即告警，
+            # 出现说明有新 region 构造方漏带 member_bboxes，需修构造方而非放任。
             bbox = region.get("bbox") or {}
             if not bbox:
                 continue
+            logger.warning(
+                "DeepDoc artifact region 缺 member_bboxes，正文剔除退回联合 bbox 口径",
+                region_keys=sorted(region.keys()),
+                region_pages=region.get("pages") or region.get("page_start"),
+            )
             for page in region.get("pages") or [region.get("page_start")]:
                 if page is None:
                     continue

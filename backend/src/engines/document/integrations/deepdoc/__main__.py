@@ -145,17 +145,16 @@ def main(argv: list[str] | None = None) -> int:
                     splitting_config={"chunk_size": args.chunk_size},
                 )
         if args.output == "text":
-            # Windows GBK 控制台无法编码数学 PDF 文字层的 PUA 构造线字形（U+F8xx），
-            # print 直接 UnicodeEncodeError 且部分写出（空文件假象）。errors=replace
-            # 保住可打印主体，不可编码字形以 � 呈现。
+            # stdout 无法编码全文档字符时（Windows GBK 控制台遇到数学 PDF 文字层
+            # 的 PUA 构造线字形 U+F8xx 等），把错误策略切到 replace：可编码主体
+            # 原样输出，不可编码字形以 � 呈现。必须在 write 前设置——
+            # TextIOWrapper.write 是即时编码的，长文本下 UnicodeEncodeError 从
+            # write 抛出而非 flush，事后兜底拦不住也不完整。Linux UTF-8 stdout
+            # 下 errors=replace 无任何行为差异，此调用幂等无害。
+            if sys.stdout.encoding:
+                sys.stdout.reconfigure(errors="replace")
             sys.stdout.write(result.full_text)
             sys.stdout.write("\n")
-            try:
-                sys.stdout.flush()
-            except UnicodeEncodeError:
-                encoded = (result.full_text + "\n").encode(sys.stdout.encoding or "utf-8", errors="replace")
-                sys.stdout.buffer.write(encoded)
-                sys.stdout.buffer.flush()
         else:
             print(json.dumps(_serialize_result(result), ensure_ascii=False, indent=args.indent))
         return 0
