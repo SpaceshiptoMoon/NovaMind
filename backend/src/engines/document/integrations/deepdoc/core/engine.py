@@ -16,12 +16,12 @@ from novamind.engines.document.integrations.deepdoc.core.runtime_parser import D
 from novamind.engines.document.integrations.deepdoc.diagnostics.dependencies import (
     get_deepdoc_runtime_report,
 )
-from novamind.shared.logging import get_logger
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import get_model_status
 from novamind.engines.document.integrations.deepdoc.vision_runtime import (
     get_vision_health_status,
     run_vision_smoke_check,
 )
+from novamind.shared.logging import get_logger
 
 
 class DeepDocEngine:

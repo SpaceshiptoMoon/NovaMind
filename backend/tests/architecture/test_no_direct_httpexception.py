@@ -2,7 +2,9 @@
 
 业务异常必须经 BaseAPIError 体系（feature exceptions.py 注册 handler）。
 当前白名单：空（任务 4.9 已收敛 core/auth 认证链 6 处为 BaseAPIError 子类）。
-vendored DeepDoc server 端点：独立子服务，上游结构原样保留，永久豁免。
+vendored DeepDoc 上游镜像（vendor/）保留豁免：逐字拷贝禁改。
+（原豁免覆盖整个 deepdoc 是为 server/ 独立子服务的端点；该子服务已随
+2026-09 清理删除，且 deepdoc 活代码零 raise HTTPException，豁免收窄到 vendor/。）
 
 实现复用 test_unidirectional_dependency_gate.py 的 AST 扫描框架。
 """
@@ -22,9 +24,8 @@ SRC = BACKEND_ROOT / "src"
 # core/auth/dependencies.py 6 处收敛后（任务 4.9）从白名单删除。
 KNOWN_VIOLATIONS: dict[str, int] = {}
 
-# 永久豁免：vendored DeepDoc 独立子服务（dla/ocr/parse/tsr endpoints），
-# 上游逐字镜像禁止修改。
-EXEMPT_PREFIX = "src/engines/document/integrations/deepdoc/"
+# 永久豁免：vendored DeepDoc 上游逐字镜像（禁改原则的防御性保留）。
+EXEMPT_PREFIX = "src/engines/document/integrations/deepdoc/vendor/"
 
 
 def _count_direct_httpexception_raises(path: Path) -> int:

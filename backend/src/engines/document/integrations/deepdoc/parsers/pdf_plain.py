@@ -6,10 +6,10 @@ from io import BytesIO
 from pathlib import Path
 
 import pdfplumber
-from novamind.shared.logging import get_logger
 from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import (
     extract_pdf_outlines,
 )
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 

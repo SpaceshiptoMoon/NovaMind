@@ -17,7 +17,6 @@ import logging
 
 import numpy as np
 import pytest
-
 from novamind.engines.document.integrations.deepdoc.parsers.pdf import RAGFlowPdfParser
 
 pytestmark = pytest.mark.unit

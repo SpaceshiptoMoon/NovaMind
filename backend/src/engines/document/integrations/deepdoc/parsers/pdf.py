@@ -16,7 +16,6 @@ from typing import Any
 
 import numpy as np
 import pdfplumber
-from novamind.engines.document.integrations.deepdoc.compat import MAXIMUM_PAGE_NUMBER
 from novamind.engines.document.integrations.deepdoc.core.models import (
     DeepDocParseResult,
     strip_position_tags,
@@ -25,7 +24,6 @@ from novamind.engines.document.integrations.deepdoc.formula_recognition import (
     get_formula_model_status,
     load_formula_recognizer,
 )
-from novamind.shared.logging import get_logger
 from novamind.engines.document.integrations.deepdoc.page_filter import PageNoiseFilter
 from novamind.engines.document.integrations.deepdoc.parsers.pdf_plain import RAGFlowPlainPdfParser
 from novamind.engines.document.integrations.deepdoc.pdf_artifacts import PdfArtifactExtractor
@@ -36,6 +34,7 @@ from novamind.engines.document.integrations.deepdoc.vendor.ragflow.pdf_parser im
 )
 from novamind.engines.document.integrations.deepdoc.vision.recognizer import Recognizer
 from novamind.engines.document.integrations.deepdoc.vision_runtime import get_vision_health_status
+from novamind.shared.logging import get_logger
 from PIL import Image
 
 # Structured logger (structlog BoundLogger) — accepts key=value context kwargs

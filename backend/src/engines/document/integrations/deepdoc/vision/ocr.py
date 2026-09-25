@@ -19,11 +19,11 @@ import logging
 import os
 import time
 
-from novamind.shared.logging import get_logger
 from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
     default_model_dir,
     download_model_group,
 )
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -44,13 +44,6 @@ import numpy as np
 import onnxruntime as ort
 
 from . import operators
-from .operators import (
-    DetResizeForTest,
-    KeepKeys,
-    NormalizeImage,
-    ToCHWImage,
-    create_operators,
-)
 from .postprocess import build_post_process
 
 loaded_models = {}

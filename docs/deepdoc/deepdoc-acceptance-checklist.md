@@ -11,6 +11,10 @@ It is intended to answer one question precisely:
 - Has the RAGFlow-derived `deepdoc` module been turned into a standalone module
   and wired into this project?
 
+> Updated 2026-09-25 after the A–G redundancy cleanup: the `server/`
+> sub-service, the six remote PDF parsers, the vendored resume package, and the
+> vendored debug bridge are removed. Sections below reflect the current tree.
+
 ## Proven In This Repository
 
 ### 1. Standalone module structure exists
@@ -18,10 +22,11 @@ It is intended to answer one question precisely:
 Evidence:
 
 - `backend/src/engines/document/integrations/deepdoc/`
-- upstream-aligned subpackages:
-  - `parser/`
+- subpackages:
+  - `parsers/` (+ retained `parsers/upstream/` mirrors: figure/html/markdown/utils)
   - `vision/`
-  - `server/`
+  - `core/` / `compat/` / `diagnostics/`
+  - `vendor/ragflow/` (verbatim vendored pdf_parser)
 
 Interpretation:
 
@@ -38,14 +43,16 @@ Evidence:
 
 - `novamind.engines.document.integrations.deepdoc.DeepDocParser`
 - `novamind.engines.document.integrations.deepdoc.DeepDocEngine`
-- `novamind.engines.document.integrations.deepdoc.create_deepdoc_app`
+- `novamind.engines.document.integrations.deepdoc.DeepDocParseResult`
+- `novamind.engines.document.integrations.deepdoc.strip_position_tags`
 - `novamind.engines.document.integrations.deepdoc.build_doctor_payload`
+  (deep path: `diagnostics.doctor`)
 
-Primary references:
+The facade exports exactly these four production symbols; diagnostics are
+imported by deep path. Primary references:
 
 - `backend/src/engines/document/integrations/deepdoc/__init__.py`
 - `backend/src/engines/document/integrations/deepdoc/core/engine.py`
-- `backend/src/engines/document/integrations/deepdoc/server/deepdoc_server.py`
 - `backend/tests/engines/document/deepdoc/test_deepdoc_imports.py`
 
 ### 3. Standalone CLI exists
@@ -58,6 +65,8 @@ Evidence:
 - `python -m novamind.engines.document.integrations.deepdoc parse`
 - installed console script: `deepdoc`
 
+(The `serve` subcommand was removed together with the `server/` package.)
+
 Primary references:
 
 - `backend/src/engines/document/integrations/deepdoc/__main__.py`
@@ -66,28 +75,7 @@ Primary references:
 - `backend/tests/engines/document/deepdoc/test_deepdoc_entrypoint.py`
 - `backend/tests/engines/document/deepdoc/test_deepdoc_installed_cli.py`
 
-### 4. Standalone HTTP service exists
-
-Evidence:
-
-- `GET /health`
-- `GET /doctor`
-- `GET /capabilities`
-- `POST /parse-file`
-- `POST /parse-bytes`
-- optional vision endpoints:
-  - `POST /predict/dla`
-  - `POST /predict/ocr`
-  - `POST /predict/tsr`
-
-Primary references:
-
-- `backend/src/engines/document/integrations/deepdoc/server/deepdoc_server.py`
-- `backend/src/engines/document/integrations/deepdoc/server/endpoints/`
-- `backend/tests/engines/document/deepdoc/test_deepdoc_integration_light.py`
-- `backend/tests/engines/document/deepdoc/test_deepdoc_serve_smoke.py`
-
-### 5. Knowledge-base pipeline wiring exists
+### 4. Knowledge-base pipeline wiring exists
 
 Evidence:
 
@@ -105,12 +93,12 @@ Primary references:
 - `backend/tests/engines/document/deepdoc/test_deepdoc_runtime.py`
 - `backend/tests/engines/document/deepdoc/test_deepdoc_integration_light.py`
 
-### 6. Packaging evidence exists
+### 5. Packaging evidence exists
 
 Evidence:
 
 - `project.scripts.deepdoc = "novamind.engines.document.integrations.deepdoc.__main__:main"`
-- wheel includes `README.md`, `DEPLOYMENT.md`, and resume resources
+- wheel includes `README.md` and the vendored ragflow sources
 
 Primary references:
 
@@ -122,12 +110,6 @@ Primary references:
 
 - `pdf_full`
 - `pdf_plain`
-- `pdf_docling`
-- `pdf_mineru`
-- `pdf_opendataloader`
-- `pdf_paddleocr`
-- `pdf_somark`
-- `pdf_tcadp`
 - `docx`
 - `epub`
 - `excel`
@@ -140,7 +122,11 @@ Primary references:
 - `json`
 
 The historical `pdf_layout` / `pdf_vision` ids are legacy aliases of `pdf_full`
-(migrated at the KB config layer and inside the runtime parser).
+(migrated at the KB config layer and inside the runtime parser). The six
+remote parser ids (`pdf_docling` / `pdf_mineru` / `pdf_opendataloader` /
+`pdf_paddleocr` / `pdf_somark` / `pdf_tcadp`) survive only as
+`LegacyDeepDocParserId` literals in the KB schema and are migrated to `full`
+when loading legacy persisted configs.
 
 Primary references:
 
@@ -155,12 +141,6 @@ environment-dependent:
 - full end-to-end `full`-mode PDF runtime (with the folded-in vision path)
   against real local model files
 - full OCR/layout/TSR inference against real ONNX assets in this environment
-- complete deployment proof for every optional external parser backend:
-  - Docling
-  - OpenDataLoader
-  - PaddleOCR service
-  - SoMark
-  - Tencent Cloud document parsing
 
 Reason:
 
@@ -186,15 +166,6 @@ cd backend
 python -m novamind.engines.document.integrations.deepdoc capabilities
 python -m novamind.engines.document.integrations.deepdoc doctor
 python -m novamind.engines.document.integrations.deepdoc prepare
-python -m novamind.engines.document.integrations.deepdoc serve --host 127.0.0.1 --port 8001
-```
-
-Optional HTTP checks:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8001/health
-Invoke-RestMethod http://127.0.0.1:8001/capabilities
-Invoke-RestMethod http://127.0.0.1:8001/doctor
 ```
 
 ## Recommended Test Commands
@@ -206,6 +177,5 @@ backend\.venv\Scripts\python.exe -m pytest `
   backend/tests/engines/document/deepdoc/test_deepdoc_entrypoint.py `
   backend/tests/engines/document/deepdoc/test_deepdoc_packaging.py `
   backend/tests/engines/document/deepdoc/test_deepdoc_installed_cli.py `
-  backend/tests/engines/document/deepdoc/test_deepdoc_integration_light.py `
-  backend/tests/engines/document/deepdoc/test_deepdoc_serve_smoke.py -q
+  backend/tests/engines/document/deepdoc/test_deepdoc_integration_light.py -q
 ```

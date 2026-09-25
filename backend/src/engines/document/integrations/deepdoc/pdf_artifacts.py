@@ -11,11 +11,11 @@ from typing import Any
 
 import numpy as np
 from novamind.engines.document.integrations.deepdoc.compat import LazyImage
-from novamind.shared.logging import get_logger
 from novamind.engines.document.integrations.deepdoc.vision.table_structure_recognizer import (
     TableStructureRecognizer,
 )
 from novamind.engines.document.integrations.deepdoc.vision_runtime import get_vision_health_status
+from novamind.shared.logging import get_logger
 from PIL import Image
 
 logger = get_logger(__name__)

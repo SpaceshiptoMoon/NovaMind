@@ -28,8 +28,9 @@ vendor + thin adaptation architecture:
   `_filter_forpages`, ...) were deleted. A cumulative Y-domain bridge
   (`page_cum_height` + infinite-page image proxy) handles box<->dict
   round-trips; `__init__` still skips the vendored `super()` so model loading
-  stays lazy. The full vendored chain is also exposed under
-  `parse_into_bboxes_full` for A/B comparison.
+  stays lazy. The vendored full-chain debug bridge (`parse_into_bboxes_full`)
+  was removed in the 2026-09 cleanup — the main chain runs `_parse_full`
+  exclusively.
 - `pdf_layout.assign_columns` takes a `force` flag: after the bridge, dicts
   carrying `col_id` override the vendored KMeans skip-guard in favor of the
   stronger local column assignment.
@@ -41,88 +42,22 @@ vendor + thin adaptation architecture:
 
 ## Current Structure
 
-- upstream-aligned package layout
-  - `parser/`
-    - mirrored subpackage so code can be imported through
-      `novamind.engines.document.integrations.deepdoc.parsers.upstream.*` in an upstream-like way
-    - implemented parser modules re-export the adapted runtime parsers already
-      used by this project
-    - unsupported upstream parser modules are mirrored as explicit stubs so the
-      package layout stays close to RAGFlow while signaling missing heavy deps
-- `server/`
-  - standalone FastAPI wrapper around `DeepDocEngine`
-  - now split into upstream-style `adapters/` and `endpoints/` packages
-  - exposes `/health`, `/doctor`, `/capabilities`, `/parse-file`, `/parse-bytes`
-  - also exposes upstream-style model-serving endpoints:
-    - `/predict/dla`
-    - `/predict/ocr`
-    - `/predict/tsr`
-  - keeps the vendored module independently runnable outside the KB pipeline
-- `parser.py`
-  - Unified entrypoint used by our project
-- `ragflow_docx_parser.py`
-  - Adapted from RAGFlow `deepdoc/parser/docx_parser.py`
-- `ragflow_pdf_plain_parser.py`
-  - Adapted from RAGFlow `deepdoc/parser/pdf_parser.py:PlainParser`
-- `ragflow_txt_parser.py`
-  - Adapted from RAGFlow `deepdoc/parser/txt_parser.py`
-- `ragflow_markdown_parser.py`
-  - Adapted from RAGFlow `deepdoc/parser/markdown_parser.py`
-- `ragflow_html_parser.py`
-  - Adapted from RAGFlow `deepdoc/parser/html_parser.py`
-- `ragflow_json_parser.py`
-  - Adapted from RAGFlow `deepdoc/parser/json_parser.py`
-- `ragflow_text_parser.py`
-  - Text-family router over vendored RAGFlow text parsers
-- `ragflow_epub_parser.py`
-  - Adapted from RAGFlow `deepdoc/parser/epub_parser.py`
-- `ragflow_excel_parser.py`
-  - Adapted from RAGFlow `deepdoc/parser/excel_parser.py`
-- `ragflow_figure_parser.py`
-  - Adapted image parser inspired by RAGFlow `deepdoc/parser/figure_parser.py`
-- `ragflow_docling_parser.py`
-  - Adapted remote PDF parser inspired by RAGFlow `deepdoc/parser/docling_parser.py`
-- `ragflow_opendataloader_parser.py`
-  - Adapted PDF parser inspired by RAGFlow `deepdoc/parser/opendataloader_parser.py`
-- `ragflow_paddleocr_parser.py`
-  - Adapted PDF parser inspired by RAGFlow `deepdoc/parser/paddleocr_parser.py`
-- `ragflow_somark_parser.py`
-  - Adapted PDF parser inspired by RAGFlow `deepdoc/parser/somark_parser.py`
-- `ragflow_tcadp_parser.py`
-  - Adapted PDF parser inspired by RAGFlow `deepdoc/parser/tcadp_parser.py`
-- `ragflow_ppt_parser.py`
-  - Adapted from RAGFlow `deepdoc/parser/ppt_parser.py`
-- `ragflow_utils.py`
-  - Adapted from RAGFlow `deepdoc/parser/utils.py`
-- `parser/resume/`
-  - Vendored from RAGFlow `deepdoc/parser/resume/`
-  - Includes upstream normalization steps, entity dictionaries, and bundled
-    school/company/region/industry resources
-  - Replaces RAGFlow-internal tokenizer imports with the local deepdoc
-    compatibility layer and supplies fallbacks for optional `demjson3` and
-    `xpinyin` dependencies
-- `pdf_layout.py` (in the standalone module source; superseded by the `full`
-  mode selection at runtime)
-  - Local structured PDF enhancement layer
-- `compat.py`
-  - Compatibility shims replacing RAGFlow-internal dependencies
-- `text_concat_model.py`
-  - Vendored/adapted support for RAGFlow `updown_concat_xgb.model`
-- `formula_recognition.py`
-  - Formula recognition (`pix2text-mfr`, ONNX INT8): equation layout regions are cropped from the rendered page, recognized to LaTeX, and emitted as `$$...$$` (block) / `$...$` (inline) boxes; model download supports `HF_ENDPOINT` mirrors with a direct-download fallback
-- `updown_concat.py`
-  - Adapted paragraph concat logic from RAGFlow PDF parser
-- `page_filter.py`
-  - Adapted TOC/noise-page filtering from RAGFlow PDF parser
-- `pdf_artifacts.py`
-  - Adapted table/figure grouping and caption attachment from RAGFlow PDF parser
-- `vision/`
-  - Vendored package scaffold for RAGFlow-style OCR/layout helpers
-  - `vision/seeit.py` adapts the upstream bounding-box visualization utility
-    and accepts PIL images, raw image bytes, or deepdoc `LazyImage` values
-  - Includes adapted `recognizer.py`, `operators.py`, `postprocess.py`,
-    `ocr.py`, `layout_recognizer.py`, `table_structure_recognizer.py`, and
-    `model_manager.py`
+- `core/` — runtime entrypoints (`engine.py`, `runtime_parser.py`,
+  `factory.py`, `capabilities.py`, `models.py`)
+- `parsers/` — format parsers (`pdf.py`, `docx.py`, `epub.py`, `excel.py`,
+  `ppt.py`, `figure.py`, `text.py`, `txt.py`, `html.py`, `json.py`,
+  `pdf_plain.py`)
+  - `parsers/upstream/` — retained upstream mirrors only (figure_parser,
+    html_parser, markdown_parser, utils); the docx/epub/excel/json/ppt/txt
+    mirrors were removed in the 2026-09 cleanup because the fork versions
+    under `parsers/` are the live implementations
+- `vendor/ragflow/` — verbatim vendored `pdf_parser.py` + idempotent stub layer
+- `diagnostics/`, `compat/`, `vision/` — diagnostics, upstream compat, vision
+  runtime
+- 2026-09 cleanup also removed: `server/` (standalone inference sub-service),
+  `parsers/remote/` + six remote parser specs (docling/mineru/opendataloader/
+  paddleocr/somark/tcadp), `parsers/upstream/resume/`, and
+  `logging_compat.py` (imports go straight to `novamind.shared.logging`)
 
 ## Supported Formats
 
@@ -162,8 +97,10 @@ Vendored/adapted from RAGFlow:
 - `RAGFlowPdfParser`-style class facade
 - Encoding/outline helper ideas
 - upstream package layout ideas from `deepdoc/parser/__init__.py`
-- upstream `deepdoc/server/` structure, adapted into a lightweight standalone
-  FastAPI parsing service shell for this repository
+- upstream `deepdoc/server/` structure was adopted only as a stub-loading
+  precedent (`vendor/ragflow/__init__.py` mirrors upstream `docker_stubs.py`);
+  the standalone FastAPI service itself was removed in the 2026-09 cleanup —
+  the production main chain runs in-process through `DeepDocEngine`
 
 Local compatibility/adaptation:
 
@@ -269,19 +206,13 @@ Current PDF mode selection:
 - `deepdoc_pdf_mode = "plain"`: closer to RAGFlow `PlainParser`
 - legacy aliases `layout` / `vision` are mapped to `full` inside the runtime
   parser for old persisted configs
-- `deepdoc_parser_id = "pdf_docling"`: optional remote-service parser path
-  backed by a Docling deployment
-- `deepdoc_parser_id = "pdf_opendataloader"`: optional external-service parser
-  path backed by an OpenDataLoader deployment
-- `deepdoc_parser_id = "pdf_paddleocr"`: optional external-service parser
-  path backed by a PaddleOCR async job deployment
-- `deepdoc_parser_id = "pdf_somark"`: optional external-service parser
-  path backed by a SoMark async job deployment
-- `deepdoc_parser_id = "pdf_tcadp"`: optional external-service parser
-  path backed by Tencent Cloud Document Parsing
+- legacy remote parser ids (`pdf_docling` / `pdf_opendataloader` /
+  `pdf_paddleocr` / `pdf_somark` / `pdf_tcadp`) are accepted by
+  `LegacyDeepDocParserId` in the KB schema and migrated to `full` — the
+  remote parser implementations themselves were removed in the 2026-09
+  cleanup (schema-level verdict: production was unreachable)
 - the previously listed `pdf_vision` standalone parser id has been folded into
-  the `full` mode; remote parser specs (`pdf_docling` etc.) remain in the
-  factory but are not exposed in the KB config frontend-facing parser values
+  the `full` mode
 
 Current vision-mode behavior:
 
@@ -305,55 +236,6 @@ Current vision-mode behavior:
   can distinguish `onnx` layout execution from heuristic fallback
 - does not yet run the full upstream OCR/layout/table orchestration logic page
   by page in the same way as RAGFlow
-
-Current OpenDataLoader behavior:
-
-- parser id: `pdf_opendataloader`
-- reads `OPENDATALOADER_APISERVER`, optional `OPENDATALOADER_API_KEY`, and
-  optional `OPENDATALOADER_TIMEOUT`
-- posts PDF bytes to `/file_parse`
-- consumes `json_doc` when available and falls back to `md_text`
-- promotes text/table/figure/equation content into the normal standalone
-  `DeepDocParseResult`
-
-Current Docling behavior:
-
-- parser id: `pdf_docling`
-- reads `DOCLING_SERVER_URL` and optional `DOCLING_REQUEST_TIMEOUT`
-- tries chunk-capable Docling convert endpoints first, then falls back to
-  standard convert endpoints
-- promotes remote markdown/text chunks into the normal standalone
-  `DeepDocParseResult`
-
-Current PaddleOCR behavior:
-
-- parser id: `pdf_paddleocr`
-- reads `PADDLEOCR_BASE_URL`, optional `PADDLEOCR_ACCESS_TOKEN`, optional
-  `PADDLEOCR_ALGORITHM`, and optional `PADDLEOCR_REQUEST_TIMEOUT`
-- submits PDF bytes to `/api/v2/ocr/jobs`, polls job status, then fetches
-  the result payload
-- consumes `layoutParsingResults` first and falls back to `ocrResults`
-- preserves upstream-style bbox tags like `@@page	left	right	top	bottom##`
-  in emitted chunks when block positions are available
-
-Current SoMark behavior:
-
-- parser id: `pdf_somark`
-- reads `SOMARK_BASE_URL` and optional `SOMARK_API_KEY`
-- submits PDF bytes to SoMark `/parse/async`, polls `/parse/async_check`, and
-  converts page/block JSON into standalone deepdoc chunks
-- preserves SoMark page bbox metadata through upstream-style line tags so crop
-  and reading-position behavior stays compatible with other deepdoc parsers
-
-Current TCADP behavior:
-
-- parser id: `pdf_tcadp`
-- reads `TCADP_SECRET_ID` / `TCADP_SECRET_KEY` or compatible Tencent credential
-  environment variables
-- submits PDF bytes to Tencent Cloud document parsing, downloads the ZIP result,
-  and converts extracted JSON/Markdown payloads into standalone deepdoc chunks
-- exposes `tcadp_table_result_type`, `tcadp_markdown_image_response_type`, and
-  page-range options through `parsing_config`
 
 Current artifact behavior:
 
@@ -418,9 +300,9 @@ Current import/packaging behavior:
 
 - `DeepDocParser()` can now be constructed without eagerly importing Excel,
   PPT, or vision parser modules
-- `novamind.engines.document.integrations.deepdoc.TxtParser` and
-  `novamind.engines.document.integrations.deepdoc.DeepDocParseResult` can be imported without
-  forcing `openpyxl`, `python-pptx`, or `cv2`
+- the package facade exports exactly four production symbols
+  (`DeepDocEngine` / `DeepDocParser` / `DeepDocParseResult` /
+  `strip_position_tags`); all other capabilities are imported by deep path
 - missing optional format dependencies now block only their own parser path
   instead of failing the entire vendored module at import time
 - vision runtime imports still require actual vision dependencies such as
@@ -451,11 +333,8 @@ The vendored module is no longer tied only to the knowledge-base pipeline.
 - `python -m novamind.engines.document.integrations.deepdoc capabilities`
 - `python -m novamind.engines.document.integrations.deepdoc doctor`
 - `python -m novamind.engines.document.integrations.deepdoc prepare`
-- `python -m novamind.engines.document.integrations.deepdoc serve`
 - `build_doctor_payload(engine, include_smoke=False)`
-  - shared diagnostic payload builder reused by CLI and HTTP service
-- `create_deepdoc_app()`
-  - standalone FastAPI app for direct parse-service usage
+  - shared diagnostic payload builder reused by CLI and health endpoints
 
 ### Server Endpoints
 
@@ -595,30 +474,24 @@ factory selection. The KB config frontend-facing `parser` value for PDF is
 currently `full` only (see
 `docs/knowledge-space/current/knowledge-config-structure-design.md`).
 
-## Resume Subpackage
+## Resume Subpackage (removed)
 
-The standalone module now also mirrors RAGFlow's specialized
-`deepdoc/parser/resume/` package.
-
-- public entrypoint: `novamind.engines.document.integrations.deepdoc.parsers.upstream.resume.refactor`
-- convenience export: `novamind.engines.document.integrations.deepdoc.parsers.upstream.refactor_resume`
-- preserves upstream `step_one.py`, `step_two.py`, and entity dictionaries
-- bundles the upstream school, company, region, and industry resource files
-- uses local tokenizer compatibility helpers instead of RAGFlow's `rag.nlp`
-- keeps `demjson3` and `xpinyin` optional through local fallback adapters
-
-This package is intentionally exposed as a specialized normalization utility,
-not as a generic document `parser_id`; the existing project resume pipeline can
-adopt it independently without changing knowledge-base parser selection.
+The vendored `deepdoc/parser/resume/` mirror was removed in the 2026-09
+cleanup. Production resume parsing runs through `engines/resume/`
+(LLM + shared document readers), which never consumed the mirror; the
+`refactor` entrypoint and its entity resource files are gone. Existing
+`SimpleSurnameHelper` compat helpers were removed alongside it.
 
 
-## Server Snapshot Accuracy
+## Snapshot Accuracy
 
-The upstream snapshot now reflects the server code that is actually present in
-this standalone module. `deepdoc_server`, `download_deps`, `adapters`, and
-`endpoints` are all marked implemented. The parser, vision, and server package snapshots now have no directory-level
-missing modules. Runtime OCR, layout, TSR, visualization, diagnostic commands,
-adapters, and HTTP endpoints are represented by reusable module APIs and tests.
+The upstream snapshot (`compat/upstream.py`) reflects the modules actually
+present in this package. The 2026-09 cleanup converged the formerly duplicated
+upstream/implemented lists into `MIRRORED_PARSER_MODULES` /
+`MIRRORED_VISION_MODULES` (all listed modules implemented, `missing` always
+empty) and pruned `parsers/upstream/` to the four mirrors that still have
+downstream consumers. Runtime OCR, layout, TSR, visualization, and diagnostic
+commands are represented by reusable module APIs and tests.
 
 
 ### Vision Diagnostic Commands

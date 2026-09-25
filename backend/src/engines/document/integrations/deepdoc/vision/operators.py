@@ -85,7 +85,6 @@ class NormalizeImage:
 
     def __call__(self, data):
         img = data["image"]
-        from PIL import Image
 
         pil = ensure_pil_image(img)
         if isinstance(pil, Image.Image):
@@ -103,7 +102,6 @@ class ToCHWImage:
 
     def __call__(self, data):
         img = data["image"]
-        from PIL import Image
 
         pil = ensure_pil_image(img)
         if isinstance(pil, Image.Image):

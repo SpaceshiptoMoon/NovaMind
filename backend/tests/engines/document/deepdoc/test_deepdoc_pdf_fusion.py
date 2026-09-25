@@ -665,7 +665,6 @@ def test_native_bitmap_zoom_caps_fullpage_screenshot(monkeypatch):
     from io import BytesIO
 
     import fitz
-    import numpy as np
     from PIL import Image
 
     # 构造：单页 PDF，页面尺寸 300×400，整页贴一张 300×400 位图（无文字层）

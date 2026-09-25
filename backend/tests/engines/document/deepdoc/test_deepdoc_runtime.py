@@ -11,7 +11,6 @@ import zipfile
 from io import BytesIO
 
 from docx import Document as DocxDocument
-from fastapi.testclient import TestClient
 from PIL import Image
 from pypdf import PdfReader
 

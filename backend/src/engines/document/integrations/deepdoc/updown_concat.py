@@ -8,12 +8,12 @@ from statistics import median
 from typing import Any
 
 from novamind.engines.document.integrations.deepdoc.compat import rag_tokenizer
-from novamind.shared.logging import get_logger
 from novamind.engines.document.integrations.deepdoc.text_concat_model import (
     _import_xgboost,
     get_text_concat_model_status,
     load_text_concat_model,
 )
+from novamind.shared.logging import get_logger
 
 logger = get_logger(__name__)
 
