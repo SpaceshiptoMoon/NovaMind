@@ -41,7 +41,10 @@ RUN pip install --no-cache-dir ".[deepdoc-vision]"
 # ---- Stage 3: runtime (no gcc, non-root) ----
 FROM python:3.12.13-slim
 
-ENV TZ=Asia/Shanghai
+# 时区可构建期覆盖：docker build --build-arg TZ=... 或 compose build args。
+# 默认 Asia/Shanghai 保持既有行为；海外部署建议改回 UTC。
+ARG TZ=Asia/Shanghai
+ENV TZ=${TZ}
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
@@ -69,6 +72,10 @@ WORKDIR /app
 COPY backend/pyproject.toml backend/README.md ./
 COPY backend/src/ ./src/
 COPY backend/main.py ./
+# 运维脚本（模型下载等）：deploy 期 faster-whisper 模型预装与 README 手动补救
+# 命令都在容器内执行 scripts/download_faster_whisper_model.py，缺了会以
+# "can't open file" 失败且 WARN-不阻断，模型静默缺失。
+COPY backend/scripts/ ./scripts/
 
 # Frontend static assets served by Nginx.
 COPY --from=frontend-build /build/dist /usr/share/nginx/html

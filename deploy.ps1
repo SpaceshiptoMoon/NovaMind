@@ -142,6 +142,21 @@ function Show-Summary {
     Write-Host ""
 }
 
+function Read-EnvHfEndpoint {
+    # 从 .env 读 HF_ENDPOINT（部署期下载与运行期同源）。
+    # 优先级：进程环境变量 > .env 文件值 > 默认值。
+    # 不用进程默认值直接兜底的原因：docker compose run -e 的优先级高于服务的
+    # env_file，兜底会把用户在 .env 里配置的官方源覆盖回默认镜像。
+    $value = ""
+    if (Test-Path ".env") {
+        $line = Get-Content ".env" | Where-Object { $_ -match '^HF_ENDPOINT=' } | Select-Object -Last 1
+        if ($line) { $value = ($line -replace '^HF_ENDPOINT=', '') -replace '"', '' }
+    }
+    if ($env:HF_ENDPOINT) { return $env:HF_ENDPOINT }
+    if ($value) { return $value }
+    return "https://huggingface.co"
+}
+
 function Invoke-PrepareDeepdocModels {
     # 模型必须在部署期就绪（运行期下载仅是兜底）：deepdoc prepare 下载 OCR/版面/表格
     # 视觉模型 + 段落合并 XGBoost + 公式识别 pix2text-mfr（含 INT8 量化），落宿主机
@@ -149,11 +164,11 @@ function Invoke-PrepareDeepdocModels {
     Write-Step "Preparing DeepDoc models (deploy-time download)"
     New-Item -ItemType Directory -Force -Path "backend/.cache/deepdoc" | Out-Null
 
-    # 国内默认走 hf-mirror.com（HF_ENDPOINT 可覆盖为官方源/其它镜像）。
+    # 下载源从 .env 的 HF_ENDPOINT 读取（默认官方源，国内环境在 .env 里配 hf-mirror.com）。
     # 主源失败后的降级换源清单由 .env 的 DEEPDOC_MIRRORS 配置（见 .env.example）。
     # --user 0：宿主机目录属主 uid 与容器 appuser 不同也能写入；文件默认 644，
     # 运行容器 appuser 只读即可。--no-deps：模型下载不依赖 mysql/redis 等基础设施。
-    $hfEndpoint = if ($env:HF_ENDPOINT) { $env:HF_ENDPOINT } else { "https://hf-mirror.com" }
+    $hfEndpoint = Read-EnvHfEndpoint
     docker compose run --rm --no-deps --user 0 `
         -e PYTHONPATH=/app/src `
         -e HF_ENDPOINT=$hfEndpoint `
@@ -162,7 +177,7 @@ function Invoke-PrepareDeepdocModels {
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "DeepDoc model download failed — parsing will degrade (formula recognition skipped,"
         Write-Warn "deepdoc full mode unavailable). Retry manually after fixing the network:"
-        Write-Warn "  HF_ENDPOINT=https://hf-mirror.com docker compose run --rm --no-deps --user 0 -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com app python -m novamind.engines.document.integrations.deepdoc prepare --include-text-concat --include-formula"
+        Write-Warn "  HF_ENDPOINT=<from .env> docker compose run --rm --no-deps --user 0 -e PYTHONPATH=/app/src -e HF_ENDPOINT=<from .env> app python -m novamind.engines.document.integrations.deepdoc prepare --include-text-concat --include-formula"
         Write-Warn "After the app is up, verify via: curl -s http://localhost/health/detailed (see deepdoc_models)"
     } else {
         Write-Info "DeepDoc models ready under ./backend/.cache/deepdoc"
@@ -177,7 +192,7 @@ function Invoke-PrepareLocalWhisperModel {
     Write-Step "Preparing local faster-whisper model (deploy-time download)"
     New-Item -ItemType Directory -Force -Path "backend/.cache/faster-whisper" | Out-Null
 
-    $hfEndpoint = if ($env:HF_ENDPOINT) { $env:HF_ENDPOINT } else { "https://hf-mirror.com" }
+    $hfEndpoint = Read-EnvHfEndpoint
     docker compose run --rm --no-deps --user 0 `
         -e PYTHONPATH=/app/src `
         -e HF_ENDPOINT=$hfEndpoint `
@@ -186,7 +201,7 @@ function Invoke-PrepareLocalWhisperModel {
     if ($LASTEXITCODE -ne 0) {
         Write-Warn "faster-whisper model download failed — audio parsing without an explicit"
         Write-Warn "asr_model will fail until the model is in place. Retry manually:"
-        Write-Warn "  HF_ENDPOINT=https://hf-mirror.com docker compose run --rm --no-deps --user 0 -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com -e NOVAMIND_LOCAL_WHISPER_MODEL_DIR=/app/.cache/faster-whisper/tiny app python scripts/download_faster_whisper_model.py"
+        Write-Warn "  HF_ENDPOINT=<from .env> docker compose run --rm --no-deps --user 0 -e PYTHONPATH=/app/src -e HF_ENDPOINT=<from .env> -e NOVAMIND_LOCAL_WHISPER_MODEL_DIR=/app/.cache/faster-whisper/tiny app python scripts/download_faster_whisper_model.py"
         Write-Warn "Or set knowledge_base.parsing.local_whisper_model_dir to an existing model path."
     } else {
         Write-Info "faster-whisper tiny model ready under ./backend/.cache/faster-whisper/tiny"

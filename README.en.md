@@ -289,15 +289,20 @@ Notes:
   - **DeepDoc models missing**: parsing degrades (formula recognition skipped, full mode unavailable, `/health/detailed` shows degraded). Download manually:
     ```bash
     docker compose run --rm --no-deps --user 0 \
-      -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com \
+      -e PYTHONPATH=/app/src \
       app python -m novamind.engines.document.integrations.deepdoc prepare --include-text-concat --include-formula
     ```
   - **Local speech model missing**: audio parsing fails (unless a cloud ASR is explicitly selected). Download manually:
     ```bash
     docker compose run --rm --no-deps --user 0 \
-      -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com \
+      -e PYTHONPATH=/app/src \
       -e NOVAMIND_LOCAL_WHISPER_MODEL_DIR=/app/.cache/faster-whisper/tiny \
       app python scripts/download_faster_whisper_model.py
+    ```
+  - **Download source**: model downloads read `HF_ENDPOINT` from `.env` (the default template ships the hf-mirror.com mirror; overseas users should switch to the official source). Commands above without an explicit `-e HF_ENDPOINT` stay consistent with `.env`.
+  - **Linux host permission note**: the model cache dirs (`backend/.cache/deepdoc`, `backend/.cache/faster-whisper`) are written by `--user 0` (root) inside a host-created directory owned by the invoking user. The container's `appuser` (uid 1001) only needs **read** access normally; to enable runtime fallback downloads (auto-fetch of missing OCR models), pre-chown the dirs to the container user:
+    ```bash
+    sudo chown -R 1001:1001 backend/.cache
     ```
 
 ### Option 3: local development

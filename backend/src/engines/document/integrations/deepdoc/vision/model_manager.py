@@ -72,13 +72,14 @@ def ensure_model_group_available(group: str, model_dir: str | os.PathLike[str] |
 
 
 def hf_model_endpoint() -> str:
-    """HF 下载源：**默认国内镜像 hf-mirror.com**。
+    """HF 下载源：**默认官方源 huggingface.co**（通用环境优先，CLAUDE.md
+    通用补丁原则：国内网络便利不得成为功能代码默认值）。
 
-    huggingface.co 直连在国内不可达，且 huggingface_hub 1.x 的元数据校验
-    （x-repo-commit 头）拒绝镜像响应，snapshot_download 走镜像必败——镜像场景
-    统一改走直链下载。HF_ENDPOINT 环境变量可覆盖为官方源或其它镜像。
+    国内环境由部署配置注入 HF_ENDPOINT=https://hf-mirror.com（.env.example
+    默认模板已配）。huggingface_hub 1.x 的元数据校验（x-repo-commit 头）拒绝
+    镜像响应，snapshot_download 走镜像必败——非官方端点统一改走直链下载。
     """
-    return (os.getenv("HF_ENDPOINT") or "https://hf-mirror.com").rstrip("/")
+    return (os.getenv("HF_ENDPOINT") or "https://huggingface.co").rstrip("/")
 
 
 # ── 降级换源机制（地址全部来自部署配置，代码不含任何具体镜像地址）──
@@ -157,9 +158,17 @@ def _direct_download_from_url(url: str, target: Path, attempts: int = 3) -> None
             tmp = target.with_suffix(target.suffix + ".part")
             with requests.get(url, stream=True, timeout=60) as resp:
                 resp.raise_for_status()
+                # Content-Length 完整性校验：服务端干净地提前关流（HTTP 200 但
+                # 截断）时不校验会把半截文件当完整文件落盘，此后每次下载按
+                # 「文件已存在」永久跳过，模型静默损坏、运行期兜底自愈失效。
+                expected_size = resp.headers.get("Content-Length")
                 with open(tmp, "wb") as fh:
                     for chunk in resp.iter_content(chunk_size=1 << 20):
                         fh.write(chunk)
+                if expected_size is not None and fh.tell() != int(expected_size):
+                    raise IOError(
+                        f"truncated download: got {fh.tell()} bytes, expected {expected_size}"
+                    )
             tmp.replace(target)
             logger.info(
                 "DeepDoc 模型文件直链下载完成",
@@ -168,7 +177,7 @@ def _direct_download_from_url(url: str, target: Path, attempts: int = 3) -> None
                 attempt=attempt,
             )
             return
-        except requests.RequestException as exc:
+        except (requests.RequestException, IOError, OSError) as exc:
             last_exc = exc
             logger.warning(
                 "DeepDoc 模型文件直链下载重试",

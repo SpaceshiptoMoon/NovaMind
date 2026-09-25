@@ -293,15 +293,20 @@ docker compose up -d --build
   - **DeepDoc 模型缺失**：解析能力降级（公式识别跳过、full 模式不可用，`/health/detailed` 显示 degraded）。手动补齐：
     ```bash
     docker compose run --rm --no-deps --user 0 \
-      -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com \
+      -e PYTHONPATH=/app/src \
       app python -m novamind.engines.document.integrations.deepdoc prepare --include-text-concat --include-formula
     ```
   - **本地语音模型缺失**：音频解析（未显式选云端 ASR 时）会失败。手动补齐：
     ```bash
     docker compose run --rm --no-deps --user 0 \
-      -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com \
+      -e PYTHONPATH=/app/src \
       -e NOVAMIND_LOCAL_WHISPER_MODEL_DIR=/app/.cache/faster-whisper/tiny \
       app python scripts/download_faster_whisper_model.py
+    ```
+  - **下载源说明**：模型下载源读 `.env` 的 `HF_ENDPOINT`（默认模板为国内镜像 hf-mirror.com，海外改官方源）。以上命令不加 `-e HF_ENDPOINT` 时与 `.env` 同源。
+  - **Linux 宿主机权限注意**：模型缓存目录（`backend/.cache/deepdoc`、`backend/.cache/faster-whisper`）由 `--user 0`（root）写入、宿主机 `mkdir` 创建的目录默认属主是当前用户。容器内 `appuser`（uid 1001）运行期只需**读取**即正常；但若期望运行期兜底下载可用（OCR 模型缺失时自动补下），需提前把目录属主改为容器用户：
+    ```bash
+    sudo chown -R 1001:1001 backend/.cache
     ```
 
 ### 方式三：本地开发

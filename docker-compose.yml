@@ -34,11 +34,12 @@ services:
     env_file:
       - .env
     environment:
-      # 运行期模型兜底下载源（部署期下载失败时才触达）；默认镜像 hf-mirror.com，
-      # 海外部署可设 HF_ENDPOINT=https://huggingface.co 切官方源。
+      # 运行期模型兜底下载源（部署期下载失败时才触达）。值透传自 .env 的
+      # HF_ENDPOINT（.env.example 默认国内镜像 hf-mirror.com；海外删除该行或
+      # 设为官方源）。功能代码默认官方源，国内便利只进部署配置。
       # 主源失败后的降级换源清单由 .env 的 DEEPDOC_MIRRORS（JSON 数组）注入，
       # 地址全部在部署配置里，代码只含换源机制（格式见 .env.example）。
-      HF_ENDPOINT: "${HF_ENDPOINT:-https://hf-mirror.com}"
+      HF_ENDPOINT: "${HF_ENDPOINT:-https://huggingface.co}"
     volumes:
       - ./backend/src/setting/yaml_config/yaml/default.yaml:/app/src/setting/yaml_config/yaml/default.yaml:ro
       - ./docker/configs/docker.yaml:/app/src/setting/yaml_config/yaml/docker.yaml:ro

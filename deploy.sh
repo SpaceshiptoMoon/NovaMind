@@ -40,9 +40,15 @@ check_docker() {
 # 密码/密钥生成直接内联在 ensure_env 的 python heredoc 中（无独立函数）
 
 ensure_env() {
-  # Windows Git Bash 的 `python` 可能是 WindowsApps 存根（退出码 49、不执行代码），
-  # 且本脚本用 python heredoc 生成密码——先做可用性预检，避免半途死掉留下未替换的 .env。
-  # Linux 新装机常常只有 python3 没有 python，按 python → python3 顺序探测。
+  if [[ -f .env ]]; then
+    info ".env already exists"
+    return
+  fi
+
+  # python 只在首次生成 .env 时需要（密码/密钥随机段）。
+  # 探测放在 .env 不存在分支内：无 python 的 Linux 宿主机二次部署/update
+  # 不再被无谓阻断。Windows Git Bash 的 `python` 可能是 WindowsApps 存根
+  # （退出码 49、不执行代码），实跑检查可筛掉；Linux 新装机常常只有 python3，按 python → python3 顺序探测。
   PYTHON_BIN=""
   for candidate in python python3; do
     if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c "import secrets" >/dev/null 2>&1; then
@@ -56,11 +62,6 @@ ensure_env() {
     error "  powershell -ExecutionPolicy Bypass -File deploy.ps1"
     error "On Linux/Debian/Ubuntu, install it with: sudo apt-get install python3"
     exit 1
-  fi
-
-  if [[ -f .env ]]; then
-    info ".env already exists"
-    return
   fi
 
   if [[ ! -f .env.example ]]; then
@@ -157,6 +158,24 @@ print_summary() {
   fi
 }
 
+# 从 .env 读 HF_ENDPOINT（部署期下载与运行期同源）。
+# 优先级：进程环境变量 > .env 文件值 > 默认值。
+# 不用 shell 默认值兜底（${HF_ENDPOINT:-...}）的原因：docker compose run -e 的优先级高于服务的 env_file，
+# 兜底会把用户在 .env 里配置的官方源覆盖回默认镜像。
+read_env_hf_endpoint() {
+  local value=""
+  if [[ -f .env ]]; then
+    value="$(grep -E '^HF_ENDPOINT=' .env | tail -n 1 | cut -d '=' -f 2- | tr -d '' | sed 's/^"//; s/"$//')"
+  fi
+  if [[ -n "${HF_ENDPOINT:-}" ]]; then
+    echo "$HF_ENDPOINT"
+  elif [[ -n "$value" ]]; then
+    echo "$value"
+  else
+    echo "https://huggingface.co"
+  fi
+}
+
 prepare_deepdoc_models() {
   # 模型必须在部署期就绪（运行期下载仅是兜底）：deepdoc prepare 下载 OCR/版面/表格
   # 视觉模型 + 段落合并 XGBoost + 公式识别 pix2text-mfr（含 INT8 量化），落宿主机
@@ -164,21 +183,21 @@ prepare_deepdoc_models() {
   step "Preparing DeepDoc models (deploy-time download)"
   mkdir -p backend/.cache/deepdoc
 
-  # 国内默认走 hf-mirror.com（HF_ENDPOINT 可覆盖为官方源/其它镜像）。
+  # 下载源从 .env 的 HF_ENDPOINT 读取（默认官方源，国内环境在 .env 里配 hf-mirror.com）。
   # 主源失败后的降级换源清单由 .env 的 DEEPDOC_MIRRORS 配置（见 .env.example）。
   # --user 0：宿主机目录属主 uid 与容器 appuser 不同也能写入；文件默认 644，
   # 运行容器 appuser 只读即可。--no-deps：模型下载不依赖 mysql/redis 等基础设施。
   if docker compose run --rm --no-deps --user 0 \
       -e PYTHONPATH=/app/src \
-      -e HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}" \
+      -e HF_ENDPOINT="$(read_env_hf_endpoint)" \
       app python -m novamind.engines.document.integrations.deepdoc \
       prepare --include-text-concat --include-formula; then
     info "DeepDoc models ready under ./backend/.cache/deepdoc"
   else
     warn "DeepDoc model download failed — parsing will degrade (formula recognition skipped,"
     warn "deepdoc full mode unavailable). Retry manually after fixing the network:"
-    warn "  HF_ENDPOINT=https://hf-mirror.com docker compose run --rm --no-deps --user 0 \\"
-    warn "    -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com \\"
+    warn "  HF_ENDPOINT from .env docker compose run --rm --no-deps --user 0 \\"
+    warn "    -e PYTHONPATH=/app/src -e HF_ENDPOINT=\"$(bash -c 'source .env 2>/dev/null; echo ${HF_ENDPOINT:-https://huggingface.co}')\" \\"
     warn "    app python -m novamind.engines.document.integrations.deepdoc prepare --include-text-concat --include-formula"
     warn "After the app is up, verify via: curl -s http://localhost/health/detailed | grep -A3 deepdoc_models"
   fi
@@ -194,15 +213,15 @@ prepare_local_whisper_model() {
 
   if docker compose run --rm --no-deps --user 0 \
       -e PYTHONPATH=/app/src \
-      -e HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}" \
+      -e HF_ENDPOINT="$(read_env_hf_endpoint)" \
       -e NOVAMIND_LOCAL_WHISPER_MODEL_DIR=/app/.cache/faster-whisper/tiny \
       app python scripts/download_faster_whisper_model.py; then
     info "faster-whisper tiny model ready under ./backend/.cache/faster-whisper/tiny"
   else
     warn "faster-whisper model download failed — audio parsing without an explicit"
     warn "asr_model will fail until the model is in place. Retry manually:"
-    warn "  HF_ENDPOINT=https://hf-mirror.com docker compose run --rm --no-deps --user 0 \\"
-    warn "    -e PYTHONPATH=/app/src -e HF_ENDPOINT=https://hf-mirror.com \\"
+    warn "  HF_ENDPOINT from .env docker compose run --rm --no-deps --user 0 \\"
+    warn "    -e PYTHONPATH=/app/src -e HF_ENDPOINT=\"$(bash -c 'source .env 2>/dev/null; echo ${HF_ENDPOINT:-https://huggingface.co}')\" \\"
     warn "    -e NOVAMIND_LOCAL_WHISPER_MODEL_DIR=/app/.cache/faster-whisper/tiny \\"
     warn "    app python scripts/download_faster_whisper_model.py"
     warn "Or set knowledge_base.parsing.local_whisper_model_dir to an existing model path."
