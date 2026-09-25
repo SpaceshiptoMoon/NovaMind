@@ -72,10 +72,10 @@ async function open(payload: {
 
   // 并行：原始文件 blob（渲染必需）+ 坐标（可选，失败降级无高亮）
   const blobPromise = documentApi.getDocumentPreviewBlobUrl(spaceId, kbId, payload.documentId)
-  const positionPromise = payload.chunkId
+  const positionPromise: Promise<ChunkPositionResponse | null> = payload.chunkId
     ? documentApi
         .getChunkPosition(spaceId, kbId, payload.documentId, payload.chunkId)
-        .then((res) => res.data as ChunkPositionResponse)
+        .then((position: ChunkPositionResponse) => position)
         .catch((err) => {
           console.warn('[PdfAnnotateDialog] chunk 坐标获取失败，降级为无高亮浏览', err)
           return null
@@ -87,12 +87,14 @@ async function open(payload: {
     blobUrl.value = url
     if (position) {
       // 有坐标时以首矩形页码为准（可能与 QA sources 的代表页不同——跨页 chunk）
-      if (position.bboxes.length > 0 && position.page) {
-        targetPage.value = position.bboxes[0].page
+      const rects = position.bboxes ?? []
+      const firstRect = rects[0]
+      if (firstRect && position.page) {
+        targetPage.value = firstRect.page
       } else if (position.page) {
         targetPage.value = position.page
       }
-      bboxes.value = position.bboxes
+      bboxes.value = rects
     }
   } catch (err: any) {
     // blob 是硬依赖：拿不到就无法渲染
