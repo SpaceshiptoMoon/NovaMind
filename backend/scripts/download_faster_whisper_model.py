@@ -82,16 +82,26 @@ def check_status(model_dir: Path) -> dict:
 
 
 def download(model_dir: Path) -> bool:
-    """经 huggingface_hub 下载模型（支持 HF_ENDPOINT 换源），幂等。"""
+    """经 huggingface_hub 下载模型（支持 HF_ENDPOINT 换源），幂等。
+
+    下载/存量文件均按 model_manager.MODEL_CHECKSUMS 校验（单一事实源）：
+    Content-Length 之外的「内容损坏但长度对」由 checksum 兜底，失败重下。
+    """
     from huggingface_hub import hf_hub_download
+    from novamind.engines.document.integrations.deepdoc.vision.model_manager import (
+        verify_model_checksum,
+    )
 
     model_dir.mkdir(parents=True, exist_ok=True)
     ok = True
     for filename in REQUIRED_FILES:
         target = model_dir / filename
         if target.is_file() and target.stat().st_size > 0:
-            print(f"  [skip] {filename}（已存在，{target.stat().st_size} bytes）", flush=True)
-            continue
+            if verify_model_checksum("Systran/faster-whisper-tiny", filename, target):
+                print(f"  [skip] {filename}（已存在，{target.stat().st_size} bytes）", flush=True)
+                continue
+            print(f"  [bad ] {filename}（checksum 不符，重新下载）", flush=True)
+            target.unlink(missing_ok=True)
         try:
             print(f"  [down] {filename} ...", flush=True)
             hf_hub_download(
@@ -99,6 +109,9 @@ def download(model_dir: Path) -> bool:
                 filename=filename,
                 local_dir=model_dir,
             )
+            if not verify_model_checksum("Systran/faster-whisper-tiny", filename, target):
+                target.unlink(missing_ok=True)
+                raise OSError(f"checksum mismatch after download: {filename}")
         except Exception as exc:
             print(f"  [fail] {filename}: {exc}", flush=True)
             ok = False
@@ -115,7 +128,7 @@ def main() -> int:
     status = check_status(model_dir)
 
     print(f"模型目录: {model_dir}")
-    print(f"HuggingFace 仓库: Systran/faster-whisper-tiny")
+    print("HuggingFace 仓库: Systran/faster-whisper-tiny")
     for f in REQUIRED_FILES:
         flag = "✅" if f in status["present"] else "❌"
         print(f"  [{flag}] {f}")

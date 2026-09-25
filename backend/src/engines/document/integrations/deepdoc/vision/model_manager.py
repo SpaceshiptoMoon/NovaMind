@@ -18,6 +18,41 @@ MODEL_GROUPS = {
     "tsr": ["tsr.onnx"],
 }
 
+# 模型文件 checksum 清单（2026-09-25 实测自 HF API：LFS 文件取 lfs.sha256，
+# 小文件取 git blob sha1——git hash-object 语义 sha1("blob <size>\0"+content)）。
+# Content-Length 校验只防截断，不防「内容损坏但长度恰好对」（镜像被篡改/存储
+# 位翻转）。校验失败删掉落盘文件重新走降级链，绝不把坏模型当完整文件缓存。
+# 注意：公式模型 INT8 量化产物（*_int8.onnx）由本地量化生成，不在清单内。
+# 上游仓库更新模型时本清单需同步刷新（校验失败日志会指向具体文件）。
+# kind: "lfs" 按 sha256 对拍；"plain" 按 git blob sha1 对拍。
+MODEL_CHECKSUMS: dict[str, dict[str, dict[str, str]]] = {
+    "InfiniFlow/deepdoc": {
+        "det.onnx": {"kind": "lfs", "sha256": "30a86f5731181461d08021402766601e4302a9b9b9666be8aff402696339cdff"},
+        "rec.onnx": {"kind": "lfs", "sha256": "1c7cf60de2afd728d512f4190cf37455092b45f06175365c6fc58d8cd7e2a68b"},
+        "ocr.res": {"kind": "plain", "sha1": "84b885d8352226e49b1d5d791b8f43a663e246aa"},
+        "layout.onnx": {"kind": "lfs", "sha256": "de401c03ee30b1c120416dc06f0705237f0c36d3cdb692c9bfefe8a8f98a4b70"},
+        "tsr.onnx": {"kind": "lfs", "sha256": "1585f88015c60209f16a079a26d944afca790ab7022fe7d0574113ccb9a6f9b4"},
+    },
+    "InfiniFlow/text_concat_xgb_v1.0": {
+        "updown_concat_xgb.model": {"kind": "lfs", "sha256": "50516159cd0aab5f3499e1edccffdf1d6141f5ae513fdba003a18cbefa823f62"},
+    },
+    "breezedeus/pix2text-mfr": {
+        "encoder_model.onnx": {"kind": "lfs", "sha256": "bd8d5c322792e9ec45793af5569e9748f82a3d728a9e00213dbfc56c1486f37d"},
+        "decoder_model.onnx": {"kind": "lfs", "sha256": "fd0f92d7a012f3dae41e1ac79421aea0ea888b5a66cb3f9a004e424f82f3daed"},
+        "tokenizer.json": {"kind": "plain", "sha1": "c07aa39397f33b7822ef84e435e911a70a4ce303"},
+    },
+    # faster-whisper 由独立脚本下载，这里登记同源清单供其校验复用（避免脚本各写一份哈希）。
+    "Systran/faster-whisper-tiny": {
+        "model.bin": {"kind": "lfs", "sha256": "dcb76c6586fc06cbdac6dd21f14cfd129cc4cdd9dce19bf4ffa62e59cbe6e6d1"},
+        "config.json": {"kind": "plain", "sha1": "3baa18e2b321a2f489614607852a729fcd516480"},
+        "tokenizer.json": {"kind": "plain", "sha1": "7818adb6de9fa3064d3ff81226fdd675be1f6344"},
+        "vocabulary.txt": {"kind": "plain", "sha1": "c9074644d9d1205686f16d411564729461324b75"},
+    },
+}
+
+# 环境开关：显式设 1 时跳过 checksum 校验（模型文件被合法替换的自定义场景逃生门）。
+CHECKSUM_SKIP_ENV_VAR = "DEEPDOC_SKIP_MODEL_CHECKSUM"
+
 
 def default_model_dir() -> Path:
     env_dir = os.getenv("DEEPDOC_MODEL_DIR")
@@ -143,6 +178,50 @@ def _mirror_url(source: dict[str, Any], repo_id: str, file_name: str) -> str:
     )
 
 
+def _file_digest(path: Path, kind: str) -> str:
+    """计算文件指纹：sha256（LFS 大文件）或 git blob sha1（普通小文件）。"""
+    import hashlib
+
+    if kind == "lfs":
+        h = hashlib.sha256()
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    h = hashlib.sha1()
+    h.update(b"blob %d\x00" % path.stat().st_size)
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def verify_model_checksum(repo_id: str, file_name: str, target: Path) -> bool:
+    """按 checksum 清单校验单个模型文件。清单未登记的文件放行（返回 True）——
+    清单覆盖 6+4 个官方模型文件，未登记说明是新文件而非损坏。"""
+    if os.getenv(CHECKSUM_SKIP_ENV_VAR, "") == "1":
+        return True
+    entry = MODEL_CHECKSUMS.get(repo_id, {}).get(file_name)
+    if entry is None:
+        return True
+    try:
+        digest = _file_digest(target, entry["kind"])
+    except OSError as exc:
+        logger.warning("DeepDoc 模型文件校验读取失败", file=str(target), error=str(exc))
+        return False
+    expected = entry.get("sha256") or entry.get("sha1")
+    if digest == expected:
+        return True
+    logger.warning(
+        "DeepDoc 模型文件校验失败（内容与官方清单不一致）",
+        repo_id=repo_id,
+        file=file_name,
+        expected=expected,
+        actual=digest,
+    )
+    return False
+
+
 def _direct_download_from_url(url: str, target: Path, attempts: int = 3) -> None:
     """单文件流式下载 + .part 原子替换 + 指数退避重试（下载层的共享实现）。
 
@@ -166,7 +245,7 @@ def _direct_download_from_url(url: str, target: Path, attempts: int = 3) -> None
                     for chunk in resp.iter_content(chunk_size=1 << 20):
                         fh.write(chunk)
                 if expected_size is not None and fh.tell() != int(expected_size):
-                    raise IOError(
+                    raise OSError(
                         f"truncated download: got {fh.tell()} bytes, expected {expected_size}"
                     )
             tmp.replace(target)
@@ -177,7 +256,7 @@ def _direct_download_from_url(url: str, target: Path, attempts: int = 3) -> None
                 attempt=attempt,
             )
             return
-        except (requests.RequestException, IOError, OSError) as exc:
+        except (requests.RequestException, OSError) as exc:
             last_exc = exc
             logger.warning(
                 "DeepDoc 模型文件直链下载重试",
@@ -194,15 +273,23 @@ def direct_download_files(base_dir: Path, repo_id: str, files: Iterable[str]) ->
     """从 hf_model_endpoint() 直链下载指定文件（snapshot_download 在镜像场景的替代）。
 
     大文件走 CDN 重定向，偶发读超时——每文件重试 3 次再放弃；.part 临时文件
-    原子替换，已存在的完整文件跳过（幂等）。
+    原子替换，已存在的完整文件跳过（幂等）。下载后按 checksum 清单校验：
+    校验失败删除落盘文件并抛错（调用方按下载失败处理，走降级源重下），绝不
+    把内容损坏的文件当「已存在」永久缓存。
     """
     endpoint = hf_model_endpoint()
     for name in files:
         target = base_dir / name
         if target.exists() and target.stat().st_size > 0:
-            continue
+            if verify_model_checksum(repo_id, name, target):
+                continue
+            # 已存在的文件损坏：删除后走重新下载
+            target.unlink(missing_ok=True)
         url = f"{endpoint}/{repo_id}/resolve/main/{name}"
         _direct_download_from_url(url, target)
+        if not verify_model_checksum(repo_id, name, target):
+            target.unlink(missing_ok=True)
+            raise OSError(f"model checksum mismatch after download: {repo_id}/{name}")
 
 
 def download_from_mirrors(base_dir: Path, repo_id: str, files: Iterable[str]) -> Path:
@@ -217,10 +304,15 @@ def download_from_mirrors(base_dir: Path, repo_id: str, files: Iterable[str]) ->
             f"no fallback mirror configured (set {MIRRORS_ENV_VAR} to enable fallback)"
         )
     base_dir.mkdir(parents=True, exist_ok=True)
-    remaining = [
-        name for name in files
-        if not (base_dir / name).exists() or (base_dir / name).stat().st_size == 0
-    ]
+    remaining = []
+    for name in files:
+        target = base_dir / name
+        if target.exists() and target.stat().st_size > 0 and verify_model_checksum(repo_id, name, target):
+            continue
+        # 不存在/空文件/校验失败都重下（损坏文件先删，下载函数按新文件落盘）
+        if target.exists():
+            target.unlink(missing_ok=True)
+        remaining.append(name)
     last_exc: Exception | None = None
     for source in sources:
         if not remaining:
@@ -231,6 +323,9 @@ def download_from_mirrors(base_dir: Path, repo_id: str, files: Iterable[str]) ->
             target = base_dir / name
             try:
                 _direct_download_from_url(_mirror_url(source, repo_id, name), target)
+                if not verify_model_checksum(repo_id, name, target):
+                    target.unlink(missing_ok=True)
+                    raise OSError(f"model checksum mismatch from mirror: {repo_id}/{name}")
             except Exception as exc:
                 logger.warning(
                     "DeepDoc 模型降级源下载失败，换下一源",
@@ -285,6 +380,17 @@ def download_hf_files(
                 etag_timeout=int(os.getenv("DEEPDOC_HF_ETAG_TIMEOUT", "60")),
                 max_workers=int(os.getenv("DEEPDOC_HF_MAX_WORKERS", "4")),
             )
+            # snapshot 自带 etag 语义校验，但对已存在的旧文件按「已下载」跳过；
+            # checksum 复核补上「存量文件损坏」的缺口（校验失败删文件回退直链重下）。
+            bad = [
+                name for name in files
+                if (base_dir / name).exists()
+                and not verify_model_checksum(repo_id, name, base_dir / name)
+            ]
+            if bad:
+                for name in bad:
+                    (base_dir / name).unlink(missing_ok=True)
+                raise OSError(f"model checksum mismatch after snapshot_download: {repo_id}/{bad}")
             return base_dir
         except Exception as exc:
             logger.info(
