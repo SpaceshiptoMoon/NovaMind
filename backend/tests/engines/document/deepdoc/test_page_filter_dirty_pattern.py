@@ -105,6 +105,36 @@ def test_fully_garbled_cid_page_still_dropped():
     assert meta["dirty_pages"] == [1]
 
 
+def test_dialogue_ellipsis_page_survives():
+    """对话体/小说正文页含省略号（U+2026 中文高频标点）>3 框但密度低 → 不删。
+
+    修复前「省略号命中 >3 框即整页删」会误删一页 4 行含省略号的对话体正文
+    （规范省略号「……」即两个 U+2026，一页几行对话即可过框数阈值）。修复后
+    省略号降级为密度条件（占页字符 ≥30% 才判脏），本用例锁死该守卫。
+    """
+    boxes = [_box(1, f"甲说：今天的工作真多……忙到晚上{i}点才结束。") for i in range(1, 6)]
+    boxes += [_box(2, "正常内容无特殊标点") for _ in range(3)]
+    filtered, meta = PageNoiseFilter().filter_boxes(boxes, total_pages=2)
+    pages = {int(b.page) for b in filtered}
+    assert 1 in pages, f"对话体省略号页被误删: {meta}"
+    assert meta["dirty_pages"] == []
+
+
+def test_ocr_toc_ellipsis_page_dropped():
+    """OCR 路径目录引导行变体：整页都是短引导行（省略号占页字符 ≥30%）→ 删。
+
+    与 test_dialogue_ellipsis_page_survives 构成同判据正反两用例：判定不在
+    「是否出现省略号」而在「省略号是否是该页的主体内容」（密度条件）。"""
+    toc_lines = [f"{i}……{i * 3}" for i in range(1, 6)]  # 4 字符短行，省略号占 2/4
+    boxes = [_box(1, text) for text in toc_lines]
+    boxes += [_box(2, "正常内容") for _ in range(3)]
+    filtered, meta = PageNoiseFilter().filter_boxes(boxes, total_pages=2)
+    pages = {int(b.page) for b in filtered}
+    assert 1 not in pages
+    assert 2 in pages
+    assert meta["dirty_pages"] == [1]
+
+
 def test_toc_heading_pattern_matches_chinese():
     """TOC_HEADING_PATTERN 的中文项曾是 GB18030 乱码（目录→鐩綍 等），永远匹配
     不到中文目录页。修复后应匹配「目录/目次/致谢」。"""
