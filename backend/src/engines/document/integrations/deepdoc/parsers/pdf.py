@@ -17,14 +17,16 @@ from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
-import threading
 import pdfplumber
 
 # pdfplumber/pdfminer 非线程安全：上游在 sys.modules 里挂全局 Lock 串行化所有
 # pdfplumber 访问（vendor L53-55）。fork 的解析在 asyncio.to_thread 线程池里跑，
 # max_jobs>1 时多任务并发 open/抽字符，无锁会触发 pdfminer 并发崩溃/数据错乱。
 # 语义与上游一致：只串行化 pdfplumber 进入段，解析主体（渲染/OCR）不在锁内。
-_pdfplumber_lock = threading.Lock()
+# 锁实例在 _pdfplumber_sync（独立微模块防循环 import），pdf_plain 共用同一把。
+from novamind.engines.document.integrations.deepdoc.parsers._pdfplumber_sync import (
+    _pdfplumber_lock,
+)
 from novamind.engines.document.integrations.deepdoc.core.models import (
     DeepDocParseResult,
     strip_position_tags,

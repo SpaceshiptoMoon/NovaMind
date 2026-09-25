@@ -5,11 +5,12 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 
-import threading
 import pdfplumber
 
-# 与 pdf.py 的 _pdfplumber_lock 同语义：pdfminer 非线程安全，并发解析需串行化 open/抽字符段。
-_pdfplumber_lock = threading.Lock()
+# 与 pdf.py 共用同一把锁（见 _pdfplumber_sync 模块注释）
+from novamind.engines.document.integrations.deepdoc.parsers._pdfplumber_sync import (
+    _pdfplumber_lock,
+)
 from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import (
     extract_pdf_outlines,
 )
