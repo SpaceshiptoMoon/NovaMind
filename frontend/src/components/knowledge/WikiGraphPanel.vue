@@ -94,7 +94,8 @@ const nodesLoading = ref(true)
 const centerSelectRef = ref<{ blur: () => void; focus: () => void } | null>(null)
 
 // EP filterable select 在 tab-pane/teleported popper 场景下选中后不收起的
-// 老问题（element-plus#5394）：选中后主动 blur 兜底收起
+// 老问题（element-plus#5394）：选中后主动 blur 兜底收起（blur 在 expanded 时
+// 置 expanded=false 再失焦，双保险）
 function onCenterChange() {
   centerSelectRef.value?.blur()
   void loadGraph()
@@ -298,6 +299,10 @@ function buildOption(data: WikiGraphResponse): echarts.EChartsCoreOption {
         })),
         roam: true,
         draggable: true,
+        // ECharts 6.1 的 graph 系列没像 sankey/tree/treemap 那样默认 roamTrigger:'global'，
+        // roam 手势（拖空白平移/滚轮缩放）被 containPoint 限制在节点群外接矩形内——
+        // 稀疏图大部分画布在矩形外，拖拽/滚轮全部无响应。显式声明全局触发。
+        roamTrigger: 'global',
         // 拖节点 = 固定该节点（松手留在原地，force 不再拉动），不是平移画布；
         // 平移画布 = 拖空白区域，滚轮/按钮 = 缩放
         force: {
@@ -495,5 +500,14 @@ defineExpose({ reload: loadGraph })
   display: flex;
   align-items: center;
   justify-content: center;
+}
+</style>
+
+<style>
+/* 中心下拉的 teleported popper 挂在 body 下，scoped 样式够不到，须用全局块。
+   EP 默认 .el-select-dropdown__wrap 固定 max-height:274px，矮视口（如 F12 停靠后）
+   flip 四个候选位置都放不下时会选「溢出最小」处顶出屏幕；改视口扣减让弹层始终放得下 */
+.center-select-popper .el-select-dropdown__wrap {
+  max-height: min(274px, 45vh);
 }
 </style>
