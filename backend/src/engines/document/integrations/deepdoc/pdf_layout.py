@@ -99,6 +99,7 @@ class PdfLayoutExtractor:
             by_page[int(box["page_number"])].append(box)
 
         page_cols: dict[int, int] = {}
+        page_scores: dict[int, dict[int, float]] = {}
         for page_number, page_boxes in by_page.items():
             if len(page_boxes) < 4:
                 page_cols[page_number] = 1
@@ -142,6 +143,7 @@ class PdfLayoutExtractor:
                 best_k = k
 
             page_cols[page_number] = best_k
+            page_scores[page_number] = scores_by_k
 
         global_cols = Counter(page_cols.values()).most_common(1)[0][0] if page_cols else 1
         # 全局一致性回退：文档主体 2 栏、单页聚出 4 栏属过切（孤立框作祟），
@@ -152,7 +154,27 @@ class PdfLayoutExtractor:
             for pg, cols in page_cols.items()
             if cols - global_cols > 1 and len(by_page.get(pg, [])) >= global_cols * 3
         ]
-        for pg in divergent_pages:
+        for pg in list(divergent_pages):
+            # silhouette 显著性豁免：该页单页结论的 silhouette 显著高于强制
+            # global_cols 时（差 > margin），说明多出的栏是真实版面结构（如
+            # 主体双栏文档里真四栏的附录页），尊重单页结论，不强砍——强砍
+            # 恰好制造本回退要修的行级交错，只是换了一页。
+            page_score = page_scores.get(pg, {}).get(cols_pg := page_cols[pg])
+            global_score = page_scores.get(pg, {}).get(global_cols)
+            if (
+                page_score is not None
+                and global_score is not None
+                and page_score - global_score > SILHOUETTE_MARGIN
+            ):
+                divergent_pages.remove(pg)
+                logger.info(
+                    "DeepDoc 分栏全局回退豁免：单页 silhouette 显著更高",
+                    page=pg,
+                    page_cols=page_cols[pg],
+                    page_score=page_score,
+                    global_score=global_score,
+                )
+                continue
             page_cols[pg] = global_cols
         logger.info(
             "DeepDoc detected PDF columns",

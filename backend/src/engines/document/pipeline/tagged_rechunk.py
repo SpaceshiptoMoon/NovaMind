@@ -134,7 +134,7 @@ def _entry_position(entry: dict[str, Any]) -> dict[str, Any] | None:
 
 def build_tagged_text(
     reading_order: list[dict[str, Any]],
-) -> tuple[str, dict[int, dict[str, Any]], int]:
+) -> tuple[str, dict[int, dict[str, Any]], int, int]:
     """把 reading_order 编码为哨兵标记全文。
 
     Returns:
@@ -145,6 +145,9 @@ def build_tagged_text(
         - sentinel_map: ``{entry_index: entry}``，仅含**成功编码**的 entry
           （ord(char) - SENTINEL_BASE 即 entry_index）
         - encoded_count: 成功编码的 entry 数（用于 WARNING 判断）
+
+        - degraded_count: 超容量降级（无坐标）的 entry 数——写入 metadata
+          暴露给文档详情/运维，避免「后半本无页码」只有日志可见。
 
     超过 SENTINEL_CAPACITY 的 entry 不编码（无哨兵 → 切分后无法归属坐标），
     整体降级为部分 chunk 无页码，不中断。
@@ -172,7 +175,7 @@ def build_tagged_text(
             capacity=SENTINEL_CAPACITY,
             degraded_count=degraded,
         )
-    return "\n\n".join(parts), sentinel_map, len(sentinel_map)
+    return "\n\n".join(parts), sentinel_map, len(sentinel_map), degraded
 
 
 def strip_sentinels(text: str) -> str:

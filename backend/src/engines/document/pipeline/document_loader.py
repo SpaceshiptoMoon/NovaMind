@@ -460,7 +460,7 @@ class DocumentProcessor:
             # 切完按 ord() 找回哨兵聚合出 chunk 的页码坐标，再剥哨兵得干净正文
             #（tagged_rechunk，引用溯源数据链基础）。
             reading_order = list((parse_result.metadata or {}).get("reading_order") or [])
-            tagged_text, sentinel_map, encoded_count = build_tagged_text(reading_order)
+            tagged_text, sentinel_map, encoded_count, degraded_count = build_tagged_text(reading_order)
             if tagged_text:
                 rechunk_source_text = tagged_text
             else:
@@ -504,6 +504,7 @@ class DocumentProcessor:
                     "chunk_structure": chunk_structure,
                     "chunk_structure_source": structure_source,
                     "tagged_rechunk_encoded_entries": encoded_count,
+                    "tagged_rechunk_degraded_entries": degraded_count,
                 },
             )
             logger.info(

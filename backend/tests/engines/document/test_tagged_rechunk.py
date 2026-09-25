@@ -145,7 +145,7 @@ class TestReadingOrderEntryTextAlignment:
 class TestBuildTaggedText:
     def test_sentinel_count_matches_entries(self):
         entries = _sample_reading_order()
-        tagged, sentinel_map, encoded = build_tagged_text(entries)
+        tagged, sentinel_map, encoded, degraded = build_tagged_text(entries)
         assert encoded == len(entries)
         assert len(sentinel_map) == len(entries)
         # 哨兵字符合法：PUA 区单字符
@@ -154,14 +154,14 @@ class TestBuildTaggedText:
 
     def test_empty_entries_skipped(self):
         entries = [_text_entry(0, 1, "有内容"), _text_entry(1, 1, "   "), _text_entry(2, 1, "也有内容")]
-        tagged, sentinel_map, encoded = build_tagged_text(entries)
+        tagged, sentinel_map, encoded, degraded = build_tagged_text(entries)
         assert encoded == 2
         assert 1 not in sentinel_map
 
     def test_over_capacity_degrades_without_crash(self):
         # 6500 > 6400：最后 100 个不编码，不抛异常
         entries = [_text_entry(i, 1, f"内容{i}") for i in range(SENTINEL_CAPACITY + 100)]
-        tagged, sentinel_map, encoded = build_tagged_text(entries)
+        tagged, sentinel_map, encoded, degraded = build_tagged_text(entries)
         assert encoded == SENTINEL_CAPACITY
         assert len(sentinel_map) == SENTINEL_CAPACITY
         # 超容量 entry 的文本仍在正文里（降级但不丢内容）
@@ -195,7 +195,7 @@ class TestExtractChunkStructure:
 
     def test_kinds_and_source_ids_ordered(self):
         entries = [_text_entry(0, 1, "正文"), _table_entry(1, "表"), _figure_entry(2, "fig1")]
-        tagged, sentinel_map, _ = build_tagged_text(entries)
+        tagged, sentinel_map, _, _ = build_tagged_text(entries)
         structure = extract_chunk_structure(tagged, sentinel_map)
         assert structure["entry_kinds"] == ["text", "table", "figure"]
         assert structure["entry_source_ids"][1] == "table:1:0:0"
@@ -243,7 +243,7 @@ class TestRechunkEndToEnd:
         """recursive 切分后：结构对齐、无哨兵残留、无 @@ 泄漏、覆盖无遗漏。"""
         entries = _sample_reading_order()
         full_text = "\n\n".join(str(e["text"]) for e in entries).strip()  # 与 full_text 同构
-        tagged, sentinel_map, encoded = build_tagged_text(entries)
+        tagged, sentinel_map, encoded, degraded = build_tagged_text(entries)
         assert encoded == len(entries)
 
         tagged_chunks = _split(tagged, strategy="recursive", chunk_size=800, chunk_overlap=100, min_chunk_size=200)
@@ -292,7 +292,7 @@ class TestRechunkEndToEnd:
 
     def test_fixed_size_split_structure_alignment(self):
         entries = _sample_reading_order()
-        tagged, sentinel_map, _ = build_tagged_text(entries)
+        tagged, sentinel_map, _, _ = build_tagged_text(entries)
         tagged_chunks = _split(tagged, strategy="fixed_size", chunk_size=600, chunk_overlap=100)
         clean_chunks, chunk_structure, _ = rechunk_with_structure(tagged_chunks, sentinel_map)
         assert len(clean_chunks) == len(chunk_structure)
@@ -307,7 +307,7 @@ class TestRechunkEndToEnd:
     def test_splitter_cannot_break_sentinel_chars(self):
         """哨兵是单字符：无论切分参数多极端， ord() 找回的 entry 必然完整。"""
         entries = [_text_entry(i, 1, "字" * 50) for i in range(30)]
-        tagged, sentinel_map, _ = build_tagged_text(entries)
+        tagged, sentinel_map, _, _ = build_tagged_text(entries)
         # 极小 chunk_size + 空分隔符兜底（逐字符切）也不该丢 entry
         tagged_chunks = _split(tagged, strategy="recursive", chunk_size=10, chunk_overlap=0, min_chunk_size=0)
         clean_chunks, chunk_structure, _ = rechunk_with_structure(tagged_chunks, sentinel_map)

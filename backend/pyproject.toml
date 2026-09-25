@@ -10,7 +10,6 @@ dependencies = [
     "argon2-cffi>=25.1.0",
     "bs4>=0.0.2",
     "fastapi>=0.128.0",
-    "modelscope>=1.33.0",
     "openai>=2.14.0",
     "pdfplumber>=0.11.9",
     "pydantic[email]>=2.12.5",
@@ -20,6 +19,9 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pyjwt>=2.10.1",
     "redis[asyncio]>=5.2.0",
+    # DeepDoc 模型直链下载（model_manager）运行时必需；此前仅经 test
+    # extra / 传递依赖间接可用，显式声明防漂移
+    "requests>=2.31.0",
     "pypdf>=4.0.0",
     "python-docx>=1.2.0",
     # DeepDoc Office 格式解析：Excel（pandas + openpyxl）/ PPT（python-pptx）。
@@ -86,7 +88,6 @@ test = [
     "pytest>=9.0.2",
     "pytest-asyncio>=0.24.0",
     "httpx>=0.28.0",
-    "requests>=2.31.0",
     "aiosqlite>=0.20.0",
 ]
 # DeepDoc vision 运行时：OCR / 版面识别 / 表格结构识别所需的额外重型依赖。
