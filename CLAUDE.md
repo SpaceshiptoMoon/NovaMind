@@ -34,6 +34,17 @@ docker-compose.yml
 - Avoid creating duplicate utility layers. If a capability already has a canonical home, extend that home instead of adding a second implementation elsewhere.
 - When changing API contracts, update backend schema, frontend types, and docs together.
 
+## 通用补丁原则（用户硬性要求）
+
+补丁必须是**通用性修复**，不得针对特定错误样例做特例化改动，也不得隐含当前 Windows 开发机（8GB 内存）的资源假设：
+
+- **生产目标是 Linux + 资源充足的服务器**。开发机的低内存只是临时约束，禁止把它焊进代码：内存上限、zoom/DPI/尺寸降档、批大小、线程数等资源类决策不得为"省开发机内存"而硬编码降质。确需保守默认值时必须环境变量/YAML 配置化，并在 `.env.example` 或 YAML 模板中暴露。
+- **判据从第一性原理出发**（几何/统计/语义通用规则：面积比、密度阈值、坐标系不变量、排版常识），实测案例（doc5xx 等）只能当**验证**，不能当判据来源。magic number 要么有上游同款依据，要么在注释里写明推导或量级依据。
+- **失败方向必须安全**：修复路径的退化行为优先选择"能力缺失"（无坐标、不挂载、不合成、告警跳过）而非"错误结果"（误删、错挂、内容丢失）。
+- **平台通用**：不为 Windows 特有行为（GBK 控制台、路径分隔符、Docker Desktop 挂载权限）写无兜底的平台分支；涉及编码、路径、权限的代码在 Linux 生产语义下必须正确，开发机行为不得反向污染生产路径。
+- **国内网络便利不得变默认耦合**：镜像源、时区等只允许出现在部署配置（`.env.example`/deploy 脚本/compose 注入），功能代码零硬编码；默认值面向通用环境。
+- 每次修复优先补一条**正反两用例**的回归测试（触发场景 + 相邻正常场景不误伤），防止案例特例化漂移。
+
 ## Parallel Multi-Agent Development
 
 When running multiple agent windows (or developers) on this repo concurrently, isolate each in its own git worktree on its own branch. Never let multiple agents edit the same working directory — overlapping edits get silently overwritten at the filesystem level before git can intervene, and cannot be recovered or attributed.
