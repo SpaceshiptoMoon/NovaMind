@@ -15,6 +15,8 @@ from novamind.features.qa.exceptions import MessageNotFoundError
 from novamind.features.qa.schemas.qa import (
     ChatSessionListResponse,
     ConversationContextResponse,
+    MessageFeedbackRequest,
+    MessageFeedbackResponse,
     QARequest,
     QAResponse,
     QAUpdateRequest,
@@ -134,6 +136,25 @@ async def delete_message(
     if not success:
         raise MessageNotFoundError(message_id)
     return Response(status_code=204)
+
+
+@router.put(
+    "/message/{message_id}/feedback",
+    response_model=MessageFeedbackResponse,
+    summary="设置消息反馈",
+    description=(
+        "对 AI 回答点赞/点踩（rating=up/down）；rating=null 撤销反馈。"
+        "幂等：重复提交同值无副作用；仅 assistant 消息且仅消息归属人可反馈。"
+    ),
+)
+async def set_message_feedback(
+    message_id: Annotated[int, Path(gt=0, description="消息ID")],
+    request: MessageFeedbackRequest,
+    qa_service: QAService = Depends(get_qa_service),
+    current_user: dict = Depends(get_current_user),
+):
+    """设置/撤销消息反馈（批次 2a；看板聚合数据源）"""
+    return await qa_service.set_message_feedback(message_id, request, current_user["id"])
 
 
 @router.delete(

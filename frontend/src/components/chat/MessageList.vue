@@ -106,6 +106,25 @@
           <el-icon :size="13"><DocumentCopy /></el-icon>
           <span>复制</span>
         </button>
+        <!-- 反馈操作栏：仅 assistant 消息显示（乐观更新，失败回滚） -->
+        <template v-if="msg.role === 'assistant'">
+          <button
+            class="msg-copy-btn"
+            :class="{ 'msg-feedback-active': getFeedback(msg) === 'up' }"
+            :disabled="feedbackPending.has(msg.id)"
+            @click="handleFeedback(msg, getFeedback(msg) === 'up' ? null : 'up')"
+          >
+            <el-icon :size="13"><Top /></el-icon>
+          </button>
+          <button
+            class="msg-copy-btn"
+            :class="{ 'msg-feedback-active msg-feedback-down': getFeedback(msg) === 'down' }"
+            :disabled="feedbackPending.has(msg.id)"
+            @click="handleFeedback(msg, getFeedback(msg) === 'down' ? null : 'down')"
+          >
+            <el-icon :size="13"><Bottom /></el-icon>
+          </button>
+        </template>
       </div>
       </div>
     </div>
@@ -150,12 +169,14 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ArrowDown, WarningFilled, Download, DocumentCopy } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { ArrowDown, WarningFilled, Download, DocumentCopy, Top, Bottom } from '@element-plus/icons-vue'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import SourceList from '@/components/chat/SourceList.vue'
 import RetrievalTrace from '@/components/chat/RetrievalTrace.vue'
 import PdfAnnotateDialog from '@/components/pdf/PdfAnnotateDialog.vue'
 import type { ChatMessage, ChatSource } from '@/api/types'
+import { sessionApi } from '@/api/session'
 import { useChatAttachments } from '@/composables/useChatAttachments'
 
 const props = defineProps<{
@@ -308,6 +329,38 @@ function onSourceHover(index: number | null) {
 
 function onSourceSelect() {
   // 来源选择处理
+}
+
+// ===== 消息反馈（批次 2a：点赞/点踩，乐观更新失败回滚） =====
+
+const feedbackPending = ref(new Set<number>())
+
+function getFeedback(msg: ChatMessage): 'up' | 'down' | null {
+  return msg.feedback?.rating ?? null
+}
+
+async function handleFeedback(msg: ChatMessage, rating: 'up' | 'down' | null) {
+  if (feedbackPending.value.has(msg.id)) return
+  const prev = msg.feedback ?? null
+  // 乐观更新
+  msg.feedback = rating ? { message_id: msg.id, rating, comment: prev?.comment ?? null } : null
+  feedbackPending.value.add(msg.id)
+  try {
+    await sessionApi.setMessageFeedback(msg.id, { rating })
+  } catch (e: unknown) {
+    // 失败回滚
+    msg.feedback = prev
+    const status = (e as { response?: { status?: number } })?.response?.status
+    if (status === 403 || status === 404) {
+      ElMessage.warning('该消息不可反馈或已删除')
+    } else {
+      ElMessage.error('反馈提交失败，请重试')
+    }
+  } finally {
+    const next = new Set(feedbackPending.value)
+    next.delete(msg.id)
+    feedbackPending.value = next
+  }
 }
 
 // PDF 原文定位（批次 1b）：source 携带 space_id/kb_id/document_id/page 时可定位
@@ -473,6 +526,18 @@ function handleCopyMessage(content: string, e: MouseEvent) {
 }
 .msg-copy-btn.copied {
   color: var(--color-success);
+}
+/* 反馈按钮激活态（批次 2a） */
+.msg-feedback-active {
+  color: var(--color-primary);
+  background: var(--color-primary-muted);
+}
+.msg-feedback-down.msg-feedback-active {
+  color: var(--color-danger, #dc2626);
+}
+.msg-copy-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Typing indicator */

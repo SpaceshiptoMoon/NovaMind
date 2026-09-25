@@ -3,6 +3,8 @@ import type {
   ChatMessage,
   AddMessageRequest,
   UpdateMessageRequest,
+  MessageFeedbackRequest,
+  MessageFeedbackResponse,
   QAContextResponse,
   SessionListResponse,
   CreateSessionConfigRequest,
@@ -26,6 +28,14 @@ export const sessionApi = {
 
   deleteMessage(messageId: number) {
     return request.delete<void>(`${BASE_URL}/message/${messageId}`)
+  },
+
+  /** 设置/撤销消息反馈（rating: up/down/null=撤销） */
+  setMessageFeedback(messageId: number, data: MessageFeedbackRequest) {
+    return request.put<MessageFeedbackResponse>(
+      `${BASE_URL}/message/${messageId}/feedback`,
+      data,
+    )
   },
 
   getContext(sessionId: string, limit?: number) {

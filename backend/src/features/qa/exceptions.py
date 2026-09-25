@@ -105,3 +105,10 @@ class ChatAttachmentNotFoundError(QAError):
             "CHAT_ATTACHMENT_NOT_FOUND",
         )
         self.attachment_id = attachment_id
+
+
+class InvalidFeedbackRatingError(QAError):
+    """无效的反馈类型（仅 up/down/null）"""
+
+    def __init__(self, rating: str):
+        super().__init__(f"无效的反馈类型: {rating}", "INVALID_FEEDBACK_RATING")

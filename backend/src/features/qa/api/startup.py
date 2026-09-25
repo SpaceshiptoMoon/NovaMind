@@ -9,6 +9,7 @@ from novamind.features.qa.api.exception_handlers import llm_service_exception_ha
 from novamind.features.qa.exceptions import (
     ChatAttachmentNotFoundError,
     DatabaseOperationError,
+    InvalidFeedbackRatingError,
     InvalidMessageContentError,
     MessageNotFoundError,
     QAError,
@@ -30,6 +31,7 @@ def setup_qa_exception_handlers(app: FastAPI) -> None:
         MessageNotFoundError: 404,
         UnauthorizedAccessException: 403,
         InvalidMessageContentError: 400,
+        InvalidFeedbackRatingError: 400,
         SessionManagementError: 400,
         SessionConfigNotFoundError: 404,
         SessionConfigAlreadyExistsError: 409,

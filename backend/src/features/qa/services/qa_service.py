@@ -15,11 +15,19 @@ from novamind.features.qa.exceptions import (
     MessageNotFoundError,
     QAError,
     SessionNotFoundError,
+    UnauthorizedAccessException,
 )
+from novamind.features.qa.repository.qa_feedback_repository import MessageFeedbackRepository
 from novamind.features.qa.repository.question_answer_repository import QuestionAnswerRepository
 from novamind.features.qa.repository.session_config_repository import SessionConfigRepository
 from novamind.features.qa.repository.session_summary_repository import SessionSummaryRepository
-from novamind.features.qa.schemas.qa import QARequest, QAResponse, QAUpdateRequest
+from novamind.features.qa.schemas.qa import (
+    MessageFeedbackRequest,
+    MessageFeedbackResponse,
+    QARequest,
+    QAResponse,
+    QAUpdateRequest,
+)
 from novamind.features.qa.services.qa_cache_service import QACacheService
 from novamind.features.qa.services.session_compressor import TextCompressor
 from novamind.features.user.services.model_config_service import ModelConfigService
@@ -100,7 +108,8 @@ class QAService:
     async def get_session_messages(
         self, session_id: str, user_id: int
     ) -> list[QAResponse]:
-        """获取用户特定会话的所有消息（带缓存）"""
+        """获取用户特定会话的所有消息（带缓存，附当前用户反馈回显）"""
+        feedback_repo = MessageFeedbackRepository(self.repository.session)
         try:
             if not session_id:
                 raise SessionNotFoundError(session_id)
@@ -116,7 +125,9 @@ class QAService:
                 if cached is not None:
                     self.logger.debug("从缓存获取消息列表", session_id=session_id)
                     try:
-                        return [QAResponse.model_validate(msg) for msg in cached]
+                        result = [QAResponse.model_validate(msg) for msg in cached]
+                        # 反馈不在缓存（投反馈即失效缓存，此处兜底补齐）
+                        return await self._attach_feedback(result, feedback_repo, user_id)
                     except Exception as cache_err:
                         self.logger.warning("缓存数据反序列化失败，降级到数据库查询", error=str(cache_err))
 
@@ -143,7 +154,9 @@ class QAService:
                 for msg in messages
             ]
 
-            # 写入缓存
+            result = await self._attach_feedback(result, feedback_repo, user_id)
+
+            # 写入缓存（feedback 已附）——模型 dump 含嵌套 feedback 序列化正常
             if self.cache_service and result:
                 cache_data = [msg.model_dump() for msg in result]
                 await self.cache_service.set_session_messages(session_id, user_id, cache_data)
@@ -156,6 +169,29 @@ class QAService:
         except Exception as e:
             self.logger.error("获取会话消息失败", session_id=session_id, error=str(e))
             raise QAError(f"获取会话消息失败: {str(e)}") from e
+
+    async def _attach_feedback(
+        self,
+        result: list[QAResponse],
+        feedback_repo: MessageFeedbackRepository,
+        user_id: int,
+    ) -> list[QAResponse]:
+        """批量回显当前用户对 assistant 消息的反馈（单查询，不改缓存行为）"""
+        try:
+            feedback_map = await feedback_repo.get_by_messages(
+                [m.id for m in result if m.role == "assistant"], user_id
+            )
+        except Exception as fb_err:
+            # 反馈回显失败不阻塞消息列表
+            self.logger.warning("反馈回显失败（忽略）", session_error=str(fb_err))
+            return result
+        for m in result:
+            fb = feedback_map.get(m.id)
+            if fb:
+                m.feedback = MessageFeedbackResponse(
+                    message_id=fb.message_id, rating=fb.rating, comment=fb.comment,
+                )
+        return result
 
     async def get_user_sessions(
         self, user_id: int, limit: int = 20, offset: int = 0
@@ -170,6 +206,55 @@ class QAService:
         except Exception as e:
             self.logger.error("获取用户会话失败", user_id=user_id, error=str(e))
             raise QAError(f"获取用户会话失败: {str(e)}") from e
+
+    async def set_message_feedback(
+        self,
+        message_id: int,
+        request: MessageFeedbackRequest,
+        user_id: int,
+    ) -> MessageFeedbackResponse:
+        """设置/撤销消息反馈（批次 2a：点赞点踩）。
+
+        - rating=null 撤销（幂等：无反馈也返回成功）
+        - 仅 assistant 消息可反馈，且消息必须属于当前用户
+        - 写走独立 feedback repository（SAVEPOINT），事务由调用方（路由 get_db）提交
+        """
+        feedback_repo = MessageFeedbackRepository(self.repository.session)
+        try:
+            message = await self.repository.get_by_id(message_id)
+            if not message or message.user_id != user_id:
+                raise MessageNotFoundError(message_id)
+            if message.role != "assistant":
+                raise UnauthorizedAccessException("只能对 AI 回答反馈")
+
+            if request.rating is None:
+                await feedback_repo.delete(message_id, user_id)
+                # 失效会话消息缓存（feedback 回显随消息列表下发）
+                if self.cache_service:
+                    await self.cache_service.invalidate_session_messages(message.session_id, user_id)
+                return MessageFeedbackResponse(message_id=message_id, rating=None, comment=None)
+
+            await feedback_repo.upsert(
+                message_id=message_id,
+                user_id=user_id,
+                session_id=message.session_id,
+                rating=request.rating,
+                comment=request.comment,
+                space_id=message.space_id,
+                kb_id=message.kb_id,
+            )
+            if self.cache_service:
+                await self.cache_service.invalidate_session_messages(message.session_id, user_id)
+            return MessageFeedbackResponse(
+                message_id=message_id, rating=request.rating, comment=request.comment,
+            )
+        except SQLAlchemyError as e:
+            raise DatabaseOperationError("保存消息反馈失败", str(e)) from e
+        except QAError:
+            raise
+        except Exception as e:
+            self.logger.error("保存消息反馈失败", message_id=message_id, user_id=user_id, error=str(e))
+            raise QAError(f"保存消息反馈失败: {str(e)}") from e
 
     async def update_message(
         self,

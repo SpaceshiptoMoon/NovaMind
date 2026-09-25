@@ -858,6 +858,19 @@ export interface QAContextResponse {
   context: Array<{ role: string; content: string }>
 }
 
+/** 消息反馈（点赞/点踩，批次 2a） */
+export interface MessageFeedbackRequest {
+  /** up=赞 / down=踩 / null=撤销 */
+  rating: 'up' | 'down' | null
+  comment?: string | null
+}
+
+export interface MessageFeedbackResponse {
+  message_id: number
+  rating: 'up' | 'down' | null
+  comment?: string | null
+}
+
 export interface ChatMessage {
   id: number
   content: string
@@ -870,6 +883,8 @@ export interface ChatMessage {
   created_at: string
   reasoning?: string
   attachments?: ChatAttachment[]
+  /** 当前用户对此消息的反馈（assistant 消息回显） */
+  feedback?: MessageFeedbackResponse | null
   /** 兼容字段：旧版本本地生成的消息以 _id 标识，保留可选以兼容历史消息形状 */
   _id?: string | number
 }

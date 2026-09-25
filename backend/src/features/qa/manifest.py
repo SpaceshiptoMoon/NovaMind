@@ -5,6 +5,7 @@ from novamind.core.middleware.manifest import API_V1_PREFIX, FeatureManifest, Ro
 
 
 def _import_models() -> None:
+    from novamind.features.qa.models.qa_feedback import MessageFeedback  # noqa: F401
     from novamind.features.qa.models.question_answer import QuestionAnswer  # noqa: F401
     from novamind.features.qa.models.session_config import SessionConfig  # noqa: F401
     from novamind.features.qa.models.session_summary import SessionSummary  # noqa: F401

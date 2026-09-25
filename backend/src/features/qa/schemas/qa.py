@@ -31,6 +31,13 @@ class QARequest(BaseModel):
     extra: dict[str, Any] | None = Field(default=None, description="扩展信息（附件等）")
 
 
+class MessageFeedbackResponse(BaseModel):
+    """消息反馈响应（回显当前状态）"""
+    message_id: int
+    rating: str | None = Field(default=None, description="当前反馈状态：up/down/null")
+    comment: str | None = None
+
+
 class QAResponse(BaseModel):
     """消息响应模式"""
     id: int
@@ -42,6 +49,8 @@ class QAResponse(BaseModel):
     kb_id: int | None = None
     extra: dict[str, Any] | None = None
     created_at: datetime
+    # 当前用户对此消息的反馈（assistant 消息回显；批次 2a）
+    feedback: MessageFeedbackResponse | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -69,6 +78,19 @@ class QAUpdateRequest(BaseModel):
     """消息更新请求模式"""
     content: str | None = Field(default=None, min_length=1, description="消息内容（非空）")
     role: Literal["user", "assistant"] | None = Field(default=None, description="消息角色")
+
+
+class MessageFeedbackRequest(BaseModel):
+    """消息反馈请求（批次 2a：点赞/点踩）
+
+    rating=null 表示撤销反馈（幂等：无论是否曾投过，撤销后均无反馈记录）。
+    """
+    rating: Literal["up", "down"] | None = Field(
+        default=None, description="反馈类型：up=赞 / down=踩 / null=撤销",
+    )
+    comment: str | None = Field(
+        default=None, max_length=2000, description="反馈补充说明（可选）",
+    )
 
 
 class ConversationContextResponse(BaseModel):
