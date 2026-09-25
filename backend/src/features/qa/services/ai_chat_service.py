@@ -799,7 +799,10 @@ class AIChatService:
                 "chunk_id": r.get("chunk_id"),
                 "score": r.get("score"),
                 "snippet": snippet,
-                "page": metadata.get("page"),
+                # ES 写入端是 metadata.page_number（历史读 "page" 键不存在恒 None）；
+                # file_type 供前端判断引用能否打开 PDF 原文定位
+                "page": metadata.get("page_number"),
+                "file_type": metadata.get("file_type") or file_info.get("file_type"),
             })
             header = f"[{i}]" + (f" {filename}" if filename else "")
             lines.append(f"{header}\n{snippet}")

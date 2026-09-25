@@ -30,7 +30,10 @@ logger = get_logger(__name__)
 SNAPSHOTS_ENABLED = True
 
 SNAPSHOT_VERSION = 1
-FINGERPRINT_VERSION = 1
+# v2 (2026-09-24)：DeepDoc rechunk 引入哨兵标记重切（tagged_rechunk），parse
+# 产物新增 chunk_structure/chunk_structure_source。旧快照无结构产物，必须
+# bump 使存量解析快照失效、强制重解析才能拿到页码坐标链。
+FINGERPRINT_VERSION = 2
 
 # Embedding 客户端实现签名：进入 embed 指纹。凡影响向量取值的客户端改动
 # （预处理/归一化等）必须 bump 使已有向量快照失效、强制重算；

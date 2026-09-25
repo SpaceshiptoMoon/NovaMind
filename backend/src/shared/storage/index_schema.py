@@ -125,6 +125,13 @@ class DefaultIndexSchema:
                     # 子字段（无法直接按 path 过滤）、frame_indices 推断为 long。
                     "frame_paths": {"type": "keyword"},
                     "frame_indices": {"type": "integer"},
+                    # 引用溯源链（tagged_rechunk 产物）：页码列表/source_id 列表/
+                    # 条目类型列表/条目数。显式声明避免动态映射把整型页码列表推断为
+                    # text（range/term 查询失效）；存量索引由 dynamic mapping 兜底。
+                    "chunk_pages": {"type": "integer"},
+                    "chunk_entry_source_ids": {"type": "keyword"},
+                    "chunk_entry_kinds": {"type": "keyword"},
+                    "chunk_entry_count": {"type": "integer"},
                     # PDF figure 图片链接：nested 保存 artifact_id / MinIO path / 预签名 URL
                     "figure_image_links": {
                         "type": "nested",

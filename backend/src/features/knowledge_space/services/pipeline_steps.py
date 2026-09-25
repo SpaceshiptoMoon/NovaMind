@@ -210,6 +210,13 @@ def build_es_chunks(
                 "chunk_pages": list(meta.get("pages") or []),
                 "chunk_entry_count": int(meta.get("entry_count") or 0),
             })
+            # QA 引用溯源主键：代表页 = chunk 首页（chunk_pages 升序首元素）。
+            # ES mapping 已声明 metadata.page_number（integer），历史写入端从未
+            # 落值导致 QA sources page 恒 None——此处补齐。无页码 chunk（老路径）
+            # 不写，保持 None 语义。
+            chunk_pages = list(meta.get("pages") or [])
+            if chunk_pages:
+                chunk_meta["page_number"] = int(chunk_pages[0])
             # 文档级 PDF figure 图片链接：每个文本 chunk 的 metadata 都保存该文档全部图片，
             # 便于检索时向 LLM/前端提供完整图文上下文，不局限于当前 chunk 包含的 figure。
             # image_url 为相对文档 figure 目录的短文件名（figure_xxx.png），渲染方经

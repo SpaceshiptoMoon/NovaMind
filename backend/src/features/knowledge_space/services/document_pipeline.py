@@ -486,9 +486,17 @@ async def execute_document_pipeline(
     await check_document_cancelled(document_id)
     # 2-5. 切分/向量化/问题生成/索引：交由共享后置尾（文本传结构化 prechunked_items）
     chunk_structure = list((parse_result.metadata or {}).get("chunk_structure") or [])
-    # deepdoc rechunk 时 chunks 是对 full_text 的重切，条数与 chunk_structure
-    # 不再一一对应——按 index 捡会拿到错误页码/条目类型（张冠李戴），置空防错位。
-    if (parse_result.metadata or {}).get("deepdoc_rechunked"):
+    # deepdoc rechunk 后 chunk_structure 由 tagged_rechunk 重建（哨兵编码），与
+    # chunks 条数一一对应，直接采用。仅当条数与 chunks 不齐（历史快照/旧路径
+    # 残留的错位结构）才置空防张冠李戴——按 index 捡错位结构会拿到错误页码。
+    if len(chunk_structure) != len(parse_result.chunks):
+        if chunk_structure:
+            _logger.info(
+                "chunk_structure 条数与 chunks 不齐，置空防错位",
+                document_id=document_id,
+                structure_count=len(chunk_structure),
+                chunk_count=len(parse_result.chunks),
+            )
         chunk_structure = []
     prechunked_items = [
         (c, chunk_structure[i] if i < len(chunk_structure) else {})

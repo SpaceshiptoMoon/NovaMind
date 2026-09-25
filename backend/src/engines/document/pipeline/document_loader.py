@@ -8,6 +8,10 @@ from novamind.engines.document.integrations.deepdoc import (
     DeepDocParseResult,
     strip_position_tags,
 )
+from novamind.engines.document.pipeline.tagged_rechunk import (
+    build_tagged_text,
+    rechunk_with_structure,
+)
 from novamind.engines.document.splitters.base_splitter import BaseSplitter
 from novamind.engines.document.splitters.fixed_size_splitter import FixedSizeSplitter
 from novamind.engines.document.splitters.markdown_splitter import MarkdownSplitter
@@ -449,11 +453,24 @@ class DocumentProcessor:
             # splitting strategy/overlap/min_chunk_size/max_chunk_size。
             # 对 full_text 按用户配置的 splitting 参数重新切分，以尊重配置。
             #
-            # full_text 在 layout/vision 模式下带有 ``@@<page>\t<x0>\t<x1>\t<top>\t<bottom>##``
-            # 版面坐标标记，重新切分前必须剥离，否则坐标会泄漏进 chunk 正文 / embedding。
-            # 位置信息已由 parser 单独写入结构化 chunk 的 metadata（position_tag/source_id），
-            # 剥离 full_text 中的标记不影响位置溯源。
-            clean_full_text = strip_position_tags(parse_result.full_text)
+            # full_text 本身干净（无坐标标记）；版面坐标只存在于
+            # metadata.reading_order[] 的 position_tag/bbox。原始 @@...## 标记
+            # 过不了切分器（recursive 的分隔符含 "." 且 text.split() 丢分隔符），
+            # 因此把每个 reading_order entry 编码为 PUA 哨兵单字符喂给切分器，
+            # 切完按 ord() 找回哨兵聚合出 chunk 的页码坐标，再剥哨兵得干净正文
+            #（tagged_rechunk，引用溯源数据链基础）。
+            reading_order = list((parse_result.metadata or {}).get("reading_order") or [])
+            tagged_text, sentinel_map, encoded_count = build_tagged_text(reading_order)
+            if tagged_text:
+                rechunk_source_text = tagged_text
+            else:
+                # reading_order 缺失/全空（如 plain 模式、老快照）——退化为纯文本切分
+                rechunk_source_text = strip_position_tags(parse_result.full_text)
+                sentinel_map = {}
+                logger.info(
+                    "DeepDoc reading_order 缺失，哨兵重切降级为纯文本切分",
+                    filename=Path(file_path).name,
+                )
             split_strategy = str(splitting_config.get("strategy", "recursive"))
             # "semantic" 策略需要 embedding_client，DeepDoc 路径暂不支持，回退到 recursive
             if split_strategy == "semantic" and self.embedding_client is None:
@@ -464,8 +481,8 @@ class DocumentProcessor:
                 split_strategy = "recursive"
             if split_strategy not in ("recursive", "fixed_size", "markdown"):
                 split_strategy = "recursive"
-            rechunked = await self.split_text(
-                clean_full_text,
+            tagged_rechunked = await self.split_text(
+                rechunk_source_text,
                 strategy=split_strategy,
                 chunk_size=splitting_config.get("chunk_size", 1000),
                 chunk_overlap=splitting_config.get("chunk_overlap", 100),
@@ -474,14 +491,28 @@ class DocumentProcessor:
                 similarity_threshold=splitting_config.get("similarity_threshold", 0.7),
                 batch_size=splitting_config.get("batch_size", 20),
             )
+            clean_chunks, chunk_structure, structure_source = rechunk_with_structure(
+                tagged_rechunked, sentinel_map
+            )
             parse_result = DeepDocParseResult(
-                full_text=clean_full_text,
-                chunks=rechunked,
+                full_text=strip_position_tags(parse_result.full_text),
+                chunks=clean_chunks,
                 metadata={
                     **parse_result.metadata,
                     "split_strategy": split_strategy,
                     "deepdoc_rechunked": True,
+                    "chunk_structure": chunk_structure,
+                    "chunk_structure_source": structure_source,
+                    "tagged_rechunk_encoded_entries": encoded_count,
                 },
+            )
+            logger.info(
+                "DeepDoc 哨兵重切完成",
+                filename=Path(file_path).name,
+                chunk_count=len(clean_chunks),
+                structure_count=len(chunk_structure),
+                encoded_entries=encoded_count,
+                reading_order_count=len(reading_order),
             )
             return parse_result
 
