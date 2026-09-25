@@ -38,9 +38,6 @@ from novamind.engines.document.integrations.deepdoc.parsers.pdf import (
     DeepDocPdfBox,
     RAGFlowPdfParser,
 )
-from novamind.engines.document.integrations.deepdoc.parsers.upstream import (
-    DocxParser as UpstreamDocxParserAlias,
-)
 from novamind.engines.document.integrations.deepdoc.pdf_artifacts import PdfArtifactExtractor
 from novamind.engines.document.integrations.deepdoc.text_concat_model import (
     get_text_concat_model_status,
@@ -247,10 +244,10 @@ def test_deepdoc_runtime_parser_can_be_constructed_without_optional_format_impor
 
 def test_deepdoc_package_lazy_exports_do_not_force_excel_or_ppt_imports():
     from novamind.engines.document.integrations.deepdoc import DeepDocParseResult
-    from novamind.engines.document.integrations.deepdoc.parsers.upstream import TxtParser
+    from novamind.engines.document.integrations.deepdoc.parsers.upstream import MarkdownParser
 
     assert DeepDocParseResult.__name__ == "DeepDocParseResult"
-    assert TxtParser.__name__ == "RAGFlowTxtParser"
+    assert MarkdownParser.__name__ == "RAGFlowMarkdownParser"
 
 
 def test_deepdoc_pdf_parser_can_be_imported_without_vision_or_xgboost_runtime():
@@ -2209,7 +2206,9 @@ def test_deepdoc_engine_exposes_vision_health_and_smoke_check():
 
 
 def test_upstream_parser_package_exports_aliases():
-    assert UpstreamDocxParserAlias.__name__ == "RAGFlowDocxParser"
+    from novamind.engines.document.integrations.deepdoc.parsers.docx import RAGFlowDocxParser
+
+    assert RAGFlowDocxParser.__name__ == "RAGFlowDocxParser"
 
 
 def test_upstream_snapshot_is_exposed():

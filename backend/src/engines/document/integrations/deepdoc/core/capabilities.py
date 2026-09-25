@@ -19,9 +19,14 @@ def get_deepdoc_capabilities() -> dict[str, Any]:
     runtime_report = get_deepdoc_runtime_report()
     vision_status = get_vision_runtime_status()
     vision_health = get_vision_health_status()
+    # 懒 import 防环：runtime_parser.supported_pdf_modes 反向依赖本模块
+    from novamind.engines.document.integrations.deepdoc.core.runtime_parser import (
+        DeepDocParser,
+    )
 
     return {
-        "supported_extensions": ["pdf", "docx", "epub", "txt", "md", "markdown", "csv", "json", "html", "xls", "xlsx", "ppt", "pptx", "jpg", "jpeg", "png", "gif", "webp", "bmp"],
+        # 单一事实源：扩展名清单与路由一致（runtime_parser._parse_source 按此路由）
+        "supported_extensions": sorted(DeepDocParser.supported_extensions()),
         "mirrored_packages": ["parser", "vision"],
         "parser_ids": [
             "pdf_full",
