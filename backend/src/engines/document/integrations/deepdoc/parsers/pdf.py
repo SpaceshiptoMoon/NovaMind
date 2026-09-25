@@ -18,15 +18,6 @@ from typing import Any
 
 import numpy as np
 import pdfplumber
-
-# pdfplumber/pdfminer 非线程安全：上游在 sys.modules 里挂全局 Lock 串行化所有
-# pdfplumber 访问（vendor L53-55）。fork 的解析在 asyncio.to_thread 线程池里跑，
-# max_jobs>1 时多任务并发 open/抽字符，无锁会触发 pdfminer 并发崩溃/数据错乱。
-# 语义与上游一致：只串行化 pdfplumber 进入段，解析主体（渲染/OCR）不在锁内。
-# 锁实例在 _pdfplumber_sync（独立微模块防循环 import），pdf_plain 共用同一把。
-from novamind.engines.document.integrations.deepdoc.parsers._pdfplumber_sync import (
-    _pdfplumber_lock,
-)
 from novamind.engines.document.integrations.deepdoc.core.models import (
     DeepDocParseResult,
     strip_position_tags,
@@ -36,6 +27,15 @@ from novamind.engines.document.integrations.deepdoc.formula_recognition import (
     load_formula_recognizer,
 )
 from novamind.engines.document.integrations.deepdoc.page_filter import PageNoiseFilter
+
+# pdfplumber/pdfminer 非线程安全：上游在 sys.modules 里挂全局 Lock 串行化所有
+# pdfplumber 访问（vendor L53-55）。fork 的解析在 asyncio.to_thread 线程池里跑，
+# max_jobs>1 时多任务并发 open/抽字符，无锁会触发 pdfminer 并发崩溃/数据错乱。
+# 语义与上游一致：只串行化 pdfplumber 进入段，解析主体（渲染/OCR）不在锁内。
+# 锁实例在 _pdfplumber_sync（独立微模块防循环 import），pdf_plain 共用同一把。
+from novamind.engines.document.integrations.deepdoc.parsers._pdfplumber_sync import (
+    _pdfplumber_lock,
+)
 from novamind.engines.document.integrations.deepdoc.parsers.pdf_plain import RAGFlowPlainPdfParser
 from novamind.engines.document.integrations.deepdoc.pdf_artifacts import PdfArtifactExtractor
 from novamind.engines.document.integrations.deepdoc.pdf_layout import PdfLayoutExtractor
@@ -120,6 +120,29 @@ def _text_page_zoom() -> int:
         return value
     logger.warning("DeepDoc %s=%d 超出合法范围 2-4，回退默认 2", TEXT_PAGE_ZOOM_ENV, value)
     return 2
+
+
+# 分窗批处理的窗大小（页/窗）：渲染→OCR→layout→释放按窗滚动，内存驻留上限
+# = 单窗 buffer（默认 16 页 @zoom=3 A4 ≈ 220MB），与文档总页数无关。设 1 即
+# 逐页处理（内存最省、每窗一次 layout 推理调用开销最大）；设超大值等价旧的全量
+# 驻留行为。16 与 layout 推理的 batch_size=16 对齐，窗即一个推理 batch。
+RENDER_WINDOW_SIZE_ENV = "DEEPDOC_RENDER_WINDOW_SIZE"
+_RENDER_WINDOW_DEFAULT = 16
+
+
+def _render_window_size() -> int:
+    raw = os.getenv(RENDER_WINDOW_SIZE_ENV, "").strip()
+    if not raw:
+        return _RENDER_WINDOW_DEFAULT
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("DeepDoc %s 非法值 %r，回退默认 %d", RENDER_WINDOW_SIZE_ENV, raw, _RENDER_WINDOW_DEFAULT)
+        return _RENDER_WINDOW_DEFAULT
+    if value >= 1:
+        return value
+    logger.warning("DeepDoc %s=%d 非法（须 >=1），回退默认 %d", RENDER_WINDOW_SIZE_ENV, value, _RENDER_WINDOW_DEFAULT)
+    return _RENDER_WINDOW_DEFAULT
 
 
 class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
@@ -499,11 +522,9 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             # 不在页顶 10% 上方时保留）。
             drop=True,
         )
-        # 布局分类已消费 image_list，立即释放整份渲染 buffer：大 PDF 逐页 OCR 检测
-        # 用的 numpy 页 + 后续 artifact 的 PIL 页若同时存活会双倍内存（doc 565 实测 OOM）。
-        image_list.clear()
-        del image_list
-        gc.collect()
+        # image_list 已是轻量 shape 占位（真实渲染 buffer 在 _extract_fused_pages
+        # 内按窗释放），此处无需再释放；artifact 页渲染走按需 _render_pages，与
+        # numpy 阶段不重叠（doc 565 双倍内存教训）。
 
         all_boxes = [
             DeepDocPdfBox(
@@ -681,6 +702,18 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         乱码回退 OCR / 无字符走 OCR）→ 空框 recognize_batch。产出 fused_pages 与原
         ocr_pages 同形状，供 _get_layout_recognizer() 贴 layout_type。
 
+        分窗批处理（内存主防线）：按 DEEPDOC_RENDER_WINDOW_SIZE 页一窗滚动
+        「渲染窗内页 → OCR 融合 → layout 推理 → 释放窗内渲染 buffer」。整本渲染
+        驻留时 300 页扫描件 ≈4GB、2000 页 ≈27GB（arq max_jobs=3 并发相乘直接撞顶），
+        分窗后驻留上限恒为单窗（默认 16 页 ≈220MB@zoom=3），与文档总页数无关。
+        合并段消费的是 OCR 文本框（页局部坐标 + 页号），不消费像素，无需改动；
+        page_layout/fused_pages 仍按全书页序返回，对外契约不变。
+
+        返回的 image_list 为轻量占位（每页仅 shape 元组），仅满足 apply_layouts 的
+        shape 读取与页数统计——真实 buffer 已释放，后续 artifact 渲染走按需
+        _render_pages。逐窗 layout 推理失败时同样整窗回退启发式，与原单次推理的
+        失败语义一致（该窗页面 heuristic，其余窗不受影响）。
+
         对无文字层的页（扫描页）直接以 zoom=3（216 DPI，对齐上游 zoomin=3）起检，
         OCR 是其唯一文本来源，低清渲染会直接伤识别精度；有文字层的页维持 zoom=2。
         仍未检出文字框的页面按上游 zoom *= 3 递进重试（上限 9）；每页 effective_zoom
@@ -688,8 +721,9 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         """
         fitz = self._import_fitz()
         pdf_source = str(filename) if not isinstance(filename, bytes) else BytesIO(filename)
-        image_list: list[np.ndarray] = []
+        image_shapes: list[tuple[int, int]] = []  # 每页 (h, w) 占位，替代存活的渲染 buffer
         fused_pages: list[list[dict[str, Any]]] = []
+        layout_pages: list[list[dict[str, Any]]] = []
         effective_zooms: list[int] = []
         raster_images_by_page: dict[int, list[dict[str, Any]]] = {}
         # 上游 __ocr_preprocess（VEN L1618-1623）每页填 mean_height/mean_width：
@@ -698,6 +732,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         mean_height_by_page: dict[int, float] = {}
         mean_width_by_page: dict[int, float] = {}
         base_zoom = _text_page_zoom()
+        window_size = _render_window_size()
         doc = fitz.open(stream=filename, filetype="pdf") if isinstance(filename, bytes) else fitz.open(str(filename))
         plumber_pdf = None
         try:
@@ -709,96 +744,174 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                 logger.warning("DeepDoc pdfplumber 打开失败，文字层融合退化为纯 OCR", error=str(exc))
                 plumber_pdf = None
             plumber_pages = plumber_pdf.pages if plumber_pdf is not None else []
-            for page_index in range(doc.page_count):
-                page = doc.load_page(page_index)
-                # 记录该页内嵌栅格图 bbox（页面坐标），供 figure 判真使用：
-                # 真实图表是内嵌位图对象，公式区是矢量绘制、无内嵌图。
+            # layout 识别器只加载一次（分窗推理共用同一 session）；
+            # 窗内推理失败按窗回退启发式，不再整本降级。
+            layout_recognizer = None
+            layout_model_error: str | None = None
+            window_heuristic_used = False
+            health = get_vision_health_status()
+            logger.info(
+                "DeepDoc 布局识别开始（分窗批处理）",
+                can_run_layout_inference=health.get("can_run_layout_inference", False),
+                can_run_vendored_ocr=health.get("can_run_vendored_ocr", False),
+                layout_models_available=health.get("layout_models_available", False),
+                page_count=doc.page_count,
+                window_size=window_size,
+            )
+            if health.get("can_run_layout_inference", False):
                 try:
-                    raster_images_by_page[page_index + 1] = [
-                        {"x0": float(info["bbox"][0]), "top": float(info["bbox"][1]),
-                         "x1": float(info["bbox"][2]), "bottom": float(info["bbox"][3])}
-                        for info in page.get_image_info()
-                        if info.get("width", 0) >= 32 and info.get("height", 0) >= 32
-                    ]
-                except Exception:
-                    raster_images_by_page[page_index + 1] = []
-                # 无文字层的页（扫描页/乱码清空页）OCR 是唯一文本来源，按上游
-                # zoomin=3（216 DPI）渲染：144 DPI 下五号字仅 ~21px 高，rec 模型
-                # 要拉到 48px 需 2 倍上采样糊化笔画，中文形近字错误率高（扫描版
-                # 错字的主因）。有文字层的页文本来自 pdfplumber 字符，像素仅供
-                # det 检测，维持 zoom=2 控内存（doc 565 OOM 教训：全量 numpy 渲染
-                # buffer 是内存大头）。
-                with _pdfplumber_lock:
-                    page_chars = self._extract_page_chars(plumber_pages, page_index)
-                page_zoom = 3 if not page_chars else base_zoom
-                # 原生位图页 zoom cap：整页被单张内嵌位图覆盖的页（如 565 的
-                # 24 页聊天截图拼接，每页一张 1824×4913 位图、无文字层），渲染
-                # 像素超过位图原生分辨率后是纯上采样——无 OCR 信息增益，却把
-                # 渲染 buffer 放大 9 倍（zoom=3 → 5472×14739×3B = 242MB/页，
-                # 24 页 image_list 累计 5.8GB，8GB 开发机直接 OOM）。内嵌图
-                # 近全页（>=90% 面积）覆盖时把起始 zoom 压到原生分辨率比例。
-                if not page_chars:
-                    native_zoom = self._native_bitmap_zoom(page, page_index)
-                    if native_zoom and page_zoom > native_zoom:
-                        logger.info(
-                            "DeepDoc 原生位图页渲染 zoom 收敛到内嵌图分辨率",
-                            page_index=page_index,
-                            requested_zoom=page_zoom,
-                            native_zoom=native_zoom,
+                    layout_recognizer = self._get_layout_recognizer()
+                    if not layout_recognizer.loaded:
+                        logging.info("DeepDoc 布局识别器首次加载模型")
+                        layout_recognizer.load()
+                except Exception as exc:
+                    # 模型加载失败 → 全部窗走启发式（与原单次加载失败语义一致）
+                    logger.warning("DeepDoc 布局识别 ONNX 推理失败，回退到启发式", error=str(exc))
+                    layout_model_error = str(exc)
+                    layout_recognizer = None
+                    window_heuristic_used = True
+
+            def _heuristic_for_window(window_fused: list[list[dict[str, Any]]], window_zooms: list[int], window_shapes: list[tuple[int, int]]) -> list[list[dict[str, Any]]]:
+                pages = []
+                for fused, zoom, (h, w) in zip(window_fused, window_zooms, window_shapes):
+                    pages.append(
+                        self._build_heuristic_layouts(
+                            fused,
+                            page_width=float(w / zoom),
+                            page_height=float(h / zoom),
+                            zoom=zoom,
                         )
-                        page_zoom = native_zoom
-                img: np.ndarray | None = None
-                fused: list[dict[str, Any]] = []
-                while page_zoom <= 9:
-                    pix = page.get_pixmap(matrix=fitz.Matrix(page_zoom, page_zoom), alpha=False)
-                    img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
-                    if pix.n == 4:
-                        img = img[:, :, :3]
-                    fused = self._fuse_page(img, page_chars, page_index, page_zoom)
-                    if fused:
-                        break
-                    page_zoom = min(page_zoom * 3, 9)
-                    logger.info("DeepDoc 页面在 zoom=%s 未检出文字，递进重试", page_zoom, page_index=page_index)
-                image_list.append(img if img is not None else np.zeros((1, 1, 3), dtype=np.uint8))
-                fused_pages.append(fused)
-                effective_zooms.append(page_zoom)
-                # 上游 __ocr_preprocess：有字符页用字符高/宽中位数；无字符页（纯
-                # OCR）先记 0，__ocr 兜底用 OCR 框高中位数回填（VEN L796-797）。
-                if page_chars:
-                    mean_height_by_page[page_index + 1] = float(
-                        np.median([float(c.get("height", 0.0)) for c in page_chars]) or 0.0
                     )
-                    mean_width_by_page[page_index + 1] = float(
-                        np.median(
-                            [
-                                max(
-                                    1.0,
-                                    float(c.get("width", 0.0))
-                                    or float(c.get("x1", 0.0)) - float(c.get("x0", 0.0)),
-                                )
-                                for c in page_chars
-                            ]
+                return pages
+
+            for window_start in range(0, doc.page_count, window_size):
+                window_end = min(window_start + window_size, doc.page_count)
+                window_images: list[np.ndarray] = []
+                window_fused: list[list[dict[str, Any]]] = []
+                window_zooms: list[int] = []
+                for page_index in range(window_start, window_end):
+                    page = doc.load_page(page_index)
+                    # 记录该页内嵌栅格图 bbox（页面坐标），供 figure 判真使用：
+                    # 真实图表是内嵌位图对象，公式区是矢量绘制、无内嵌图。
+                    # （小元数据，无需随窗释放）
+                    try:
+                        raster_images_by_page[page_index + 1] = [
+                            {"x0": float(info["bbox"][0]), "top": float(info["bbox"][1]),
+                             "x1": float(info["bbox"][2]), "bottom": float(info["bbox"][3])}
+                            for info in page.get_image_info()
+                            if info.get("width", 0) >= 32 and info.get("height", 0) >= 32
+                        ]
+                    except Exception:
+                        raster_images_by_page[page_index + 1] = []
+                    # 无文字层的页（扫描页/乱码清空页）OCR 是唯一文本来源，按上游
+                    # zoomin=3（216 DPI）渲染：144 DPI 下五号字仅 ~21px 高，rec 模型
+                    # 要拉到 48px 需 2 倍上采样糊化笔画，中文形近字错误率高（扫描版
+                    # 错字的主因）。有文字层的页文本来自 pdfplumber 字符，像素仅供
+                    # det 检测，维持 zoom=2 控内存（doc 565 OOM 教训：全量 numpy 渲染
+                    # buffer 是内存大头）。
+                    with _pdfplumber_lock:
+                        page_chars = self._extract_page_chars(plumber_pages, page_index)
+                    page_zoom = 3 if not page_chars else base_zoom
+                    # 原生位图页 zoom cap：整页被单张内嵌位图覆盖的页（如 565 的
+                    # 24 页聊天截图拼接，每页一张 1824×4913 位图、无文字层），渲染
+                    # 像素超过位图原生分辨率后是纯上采样——无 OCR 信息增益，却把
+                    # 渲染 buffer 放大 9 倍（zoom=3 → 5472×14739×3B = 242MB/页，
+                    # 24 页 image_list 累计 5.8GB，8GB 开发机直接 OOM）。内嵌图
+                    # 近全页（>=90% 面积）覆盖时把起始 zoom 压到原生分辨率比例。
+                    if not page_chars:
+                        native_zoom = self._native_bitmap_zoom(page, page_index)
+                        if native_zoom and page_zoom > native_zoom:
+                            logger.info(
+                                "DeepDoc 原生位图页渲染 zoom 收敛到内嵌图分辨率",
+                                page_index=page_index,
+                                requested_zoom=page_zoom,
+                                native_zoom=native_zoom,
+                            )
+                            page_zoom = native_zoom
+                    img: np.ndarray | None = None
+                    fused: list[dict[str, Any]] = []
+                    while page_zoom <= 9:
+                        pix = page.get_pixmap(matrix=fitz.Matrix(page_zoom, page_zoom), alpha=False)
+                        img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+                        if pix.n == 4:
+                            img = img[:, :, :3]
+                        fused = self._fuse_page(img, page_chars, page_index, page_zoom)
+                        if fused:
+                            break
+                        page_zoom = min(page_zoom * 3, 9)
+                        logger.info("DeepDoc 页面在 zoom=%s 未检出文字，递进重试", page_zoom, page_index=page_index)
+                    window_images.append(img if img is not None else np.zeros((1, 1, 3), dtype=np.uint8))
+                    window_fused.append(fused)
+                    window_zooms.append(page_zoom)
+                    image_shapes.append((int(img.shape[0]) if img is not None else 1, int(img.shape[1]) if img is not None else 1))
+                    effective_zooms.append(page_zoom)
+                    fused_pages.append(fused)
+                    # 上游 __ocr_preprocess：有字符页用字符高/宽中位数；无字符页（纯
+                    # OCR）先记 0，__ocr 兜底用 OCR 框高中位数回填（VEN L796-797）。
+                    if page_chars:
+                        mean_height_by_page[page_index + 1] = float(
+                            np.median([float(c.get("height", 0.0)) for c in page_chars]) or 0.0
                         )
-                        or 8.0
-                    )
-                elif fused:
-                    mean_height_by_page[page_index + 1] = float(
-                        np.median([float(b["bottom"]) - float(b["top"]) for b in fused]) or 0.0
-                    )
-                    mean_width_by_page[page_index + 1] = 8.0
+                        mean_width_by_page[page_index + 1] = float(
+                            np.median(
+                                [
+                                    max(
+                                        1.0,
+                                        float(c.get("width", 0.0))
+                                        or float(c.get("x1", 0.0)) - float(c.get("x0", 0.0)),
+                                    )
+                                    for c in page_chars
+                                ]
+                            )
+                            or 8.0
+                        )
+                    elif fused:
+                        mean_height_by_page[page_index + 1] = float(
+                            np.median([float(b["bottom"]) - float(b["top"]) for b in fused]) or 0.0
+                        )
+                        mean_width_by_page[page_index + 1] = 8.0
+                    else:
+                        mean_height_by_page[page_index + 1] = 0.0
+                        mean_width_by_page[page_index + 1] = 8.0
+                # 窗内页渲染/融合完成 → layout 推理 → 释放窗内渲染 buffer。
+                # 驻留上限 = 单窗 buffer（默认 16 页），与总页数无关。
+                if layout_recognizer is not None:
+                    try:
+                        window_layout = layout_recognizer.forward(window_images, thr=0.2, batch_size=16)
+                        layout_pages.extend(list(window_layout))
+                    except Exception as exc:
+                        logger.warning(
+                            "DeepDoc 布局识别 ONNX 推理失败，该窗回退到启发式",
+                            error=str(exc),
+                            window_start=window_start,
+                            window_end=window_end,
+                        )
+                        layout_model_error = str(exc)
+                        window_heuristic_used = True
+                        layout_pages.extend(
+                            _heuristic_for_window(window_fused, window_zooms, image_shapes[window_start:window_end])
+                        )
                 else:
-                    mean_height_by_page[page_index + 1] = 0.0
-                    mean_width_by_page[page_index + 1] = 8.0
+                    window_heuristic_used = True
+                    layout_pages.extend(
+                        _heuristic_for_window(window_fused, window_zooms, image_shapes[window_start:window_end])
+                    )
+                window_images.clear()
+                del window_images
+                gc.collect()
         finally:
             if plumber_pdf is not None:
                 plumber_pdf.close()
             doc.close()
 
-        layout_pages, layout_meta = self._resolve_layout_pages(
-            image_list=image_list,
-            ocr_pages=fused_pages,
-            zooms=effective_zooms,
-        )
+        layout_meta: dict[str, Any] = {}
+        if window_heuristic_used:
+            # 任一窗走了启发式（模型不可用 / 加载失败 / 窗内推理失败）
+            layout_meta["layout_source"] = "heuristic"
+            layout_meta["layout_model_error"] = layout_model_error
+        else:
+            layout_meta["layout_source"] = "onnx" if layout_pages else "heuristic"
+            layout_meta["layout_model_error"] = None
         layout_meta["vision_strategy"] = self._build_vision_strategy(
             self._collect_ocr_sources(fused_pages),
             layout_meta["layout_source"],
@@ -817,7 +930,12 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             for sample in page_text_samples
             if sample and re.search(r"[ a-zA-Z0-9,;:'\[\]\(\)!@#$%^&*\"?<>._-]{30,}", sample)
         )
-        layout_meta["is_english"] = page_text_samples and english_pages > len(page_text_samples) / 2
+        layout_meta["is_english"] = bool(page_text_samples) and english_pages > len(page_text_samples) / 2
+        # 轻量 image_list：仅保留每页 shape 的哑对象（apply_layouts 只读 shape，
+        # 页数统计只读 len），真实渲染 buffer 已随窗释放。
+        image_list = [
+            SimpleNamespace(shape=(h, w), size=(w, h)) for h, w in image_shapes
+        ]
         return image_list, fused_pages, layout_pages, layout_meta
 
     @staticmethod
@@ -1256,71 +1374,6 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                 dropped_chars=dropped,
             )
         return synthetic
-
-    def _resolve_layout_pages(
-        self,
-        *,
-        image_list: list[np.ndarray],
-        ocr_pages: list[list[dict[str, Any]]],
-        zooms: list[int],
-    ) -> tuple[list[list[dict[str, Any]]], dict[str, Any]]:
-        health = get_vision_health_status()
-        logger.info(
-            "DeepDoc 布局识别开始",
-            can_run_layout_inference=health.get("can_run_layout_inference", False),
-            can_run_vendored_ocr=health.get("can_run_vendored_ocr", False),
-            layout_models_available=health.get("layout_models_available", False),
-            page_count=len(image_list),
-            effective_zooms=zooms,
-        )
-        if health.get("can_run_layout_inference"):
-            try:
-                # _get_layout_recognizer() is built lazily (autoload=False) because the
-                # same instance is reused at the apply-layouts step (pdf.py ~619),
-                # which only needs pre-computed layouts, not the model. Load explicitly
-                # only here, right before detection. Any failure (model missing/corrupt,
-                # onnxruntime unavailable, etc.) falls through to the heuristic fallback.
-                recognizer = self._get_layout_recognizer()
-                if not recognizer.loaded:
-                    logging.info("DeepDoc 布局识别器首次加载模型")
-                    recognizer.load()
-                layout_pages = recognizer.forward(image_list, thr=0.2, batch_size=16)
-                logger.info(
-                    "DeepDoc 布局识别完成（ONNX 模型）",
-                    page_count=len(layout_pages),
-                )
-                return list(layout_pages), {"layout_source": "onnx", "layout_model_error": None}
-            except Exception as exc:
-                logger.warning(
-                    "DeepDoc 布局识别 ONNX 推理失败，回退到启发式",
-                    error=str(exc),
-                )
-                heuristic_pages = self._build_heuristic_layout_pages(image_list, ocr_pages, zooms=zooms)
-                return heuristic_pages, {"layout_source": "heuristic", "layout_model_error": str(exc)}
-
-        logging.info("DeepDoc 布局识别不可用，使用启发式布局")
-        heuristic_pages = self._build_heuristic_layout_pages(image_list, ocr_pages, zooms=zooms)
-        return heuristic_pages, {"layout_source": "heuristic", "layout_model_error": None}
-
-    def _build_heuristic_layout_pages(
-        self,
-        image_list: list[np.ndarray],
-        ocr_pages: list[list[dict[str, Any]]],
-        *,
-        zooms: list[int],
-    ) -> list[list[dict[str, Any]]]:
-        layout_pages: list[list[dict[str, Any]]] = []
-        for image, blocks, zoom in zip(image_list, ocr_pages, zooms):
-            height, width = image.shape[:2]
-            layout_pages.append(
-                self._build_heuristic_layouts(
-                    blocks,
-                    page_width=float(width / zoom),
-                    page_height=float(height / zoom),
-                    zoom=zoom,
-                )
-            )
-        return layout_pages
 
     @staticmethod
     def _build_heuristic_layouts(

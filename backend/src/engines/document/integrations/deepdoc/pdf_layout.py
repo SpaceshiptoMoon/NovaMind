@@ -159,7 +159,7 @@ class PdfLayoutExtractor:
             # global_cols 时（差 > margin），说明多出的栏是真实版面结构（如
             # 主体双栏文档里真四栏的附录页），尊重单页结论，不强砍——强砍
             # 恰好制造本回退要修的行级交错，只是换了一页。
-            page_score = page_scores.get(pg, {}).get(cols_pg := page_cols[pg])
+            page_score = page_scores.get(pg, {}).get(page_cols[pg])
             global_score = page_scores.get(pg, {}).get(global_cols)
             if (
                 page_score is not None
