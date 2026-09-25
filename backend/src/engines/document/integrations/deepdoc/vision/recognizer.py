@@ -18,6 +18,13 @@ from novamind.shared.logging import get_logger
 
 _logger = get_logger(__name__)
 
+# 模块级 onnx session 缓存（对齐 ocr.load_model 的 loaded_models 口径）：
+# key = 模型文件绝对路径。arq max_jobs 并发下每个解析任务各自 new Recognizer
+# 实例，无缓存时 layout/tsr session 每任务各一份、内存线性翻倍；session 线程
+# 安全可共享，共享同一份即可。包装实例状态（labels/input_shape 等）仍是
+# per-instance 的，只有底层 session 复用。
+_SESSION_CACHE: dict[str, tuple[Any, Any]] = {}  # path -> (InferenceSession, RunOptions)
+
 
 class Recognizer:
     @staticmethod
@@ -66,13 +73,20 @@ class Recognizer:
         if model_path is None or not model_path.exists():
             raise FileNotFoundError(f"DeepDoc recognizer model not found for domain '{self.domain}': {model_path}")
 
-        options = ort.SessionOptions()
-        options.enable_cpu_mem_arena = False
-        options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         providers = ["CPUExecutionProvider"]
-        self.ort_sess = ort.InferenceSession(str(model_path), sess_options=options, providers=providers)
+        cache_key = str(model_path.resolve())
+        cached = _SESSION_CACHE.get(cache_key)
+        if cached is not None:
+            self.ort_sess, self.run_options = cached
+            _logger.info("DeepDoc 识别器模型复用已加载 session", domain=self.domain, model_path=str(model_path))
+        else:
+            options = ort.SessionOptions()
+            options.enable_cpu_mem_arena = False
+            options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            self.ort_sess = ort.InferenceSession(str(model_path), sess_options=options, providers=providers)
+            self.run_options = ort.RunOptions()
+            _SESSION_CACHE[cache_key] = (self.ort_sess, self.run_options)
         self.session = self.ort_sess
-        self.run_options = ort.RunOptions()
         self.input_name = self.ort_sess.get_inputs()[0].name
         self.input_names = [node.name for node in self.ort_sess.get_inputs()]
         self.output_names = [node.name for node in self.ort_sess.get_outputs()]

@@ -5,7 +5,11 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 
+import threading
 import pdfplumber
+
+# 与 pdf.py 的 _pdfplumber_lock 同语义：pdfminer 非线程安全，并发解析需串行化 open/抽字符段。
+_pdfplumber_lock = threading.Lock()
 from novamind.engines.document.integrations.deepdoc.parsers.upstream.utils import (
     extract_pdf_outlines,
 )
@@ -25,7 +29,7 @@ class RAGFlowPlainPdfParser:
         outlines = extract_pdf_outlines(filename)
         try:
             pdf_source = str(filename) if not isinstance(filename, bytes) else BytesIO(filename)
-            with pdfplumber.open(pdf_source) as pdf:
+            with _pdfplumber_lock, pdfplumber.open(pdf_source) as pdf:
                 end_page = len(pdf.pages) if to_page is None else min(len(pdf.pages), to_page)
                 for page in pdf.pages[from_page:end_page]:
                     text = page.extract_text() or ""

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import gc
 import logging
+import os
 import re
 import unicodedata
 from collections.abc import Sequence
@@ -16,7 +17,14 @@ from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
+import threading
 import pdfplumber
+
+# pdfplumber/pdfminer 非线程安全：上游在 sys.modules 里挂全局 Lock 串行化所有
+# pdfplumber 访问（vendor L53-55）。fork 的解析在 asyncio.to_thread 线程池里跑，
+# max_jobs>1 时多任务并发 open/抽字符，无锁会触发 pdfminer 并发崩溃/数据错乱。
+# 语义与上游一致：只串行化 pdfplumber 进入段，解析主体（渲染/OCR）不在锁内。
+_pdfplumber_lock = threading.Lock()
 from novamind.engines.document.integrations.deepdoc.core.models import (
     DeepDocParseResult,
     strip_position_tags,
@@ -88,6 +96,28 @@ class DeepDocPdfBox:
 
 # pdfminer 未映射 CID 的占位形态（上游 pdf_parser._CID_PATTERN 同款）。
 _CID_PATTERN = re.compile(r"\(cid\s*:\s*\d+\s*\)")
+
+# 有文字层页的渲染 zoom（上游统一 zoomin=3；fork 默认 2 是低内存开发机的
+# 历史印记——文本来自 pdfplumber、像素仅供 det 检测，但 CID 乱码框的回退
+# OCR 恰恰从该渲染图 crop 识别，zoom=2 压低 33% DPI 影响其精度）。生产
+# 环境可设 DEEPDOC_TEXT_PAGE_ZOOM=3 对齐上游精度（内存代价：每页渲染
+# buffer ×2.25）。合法范围 2-4，越界回退默认。
+TEXT_PAGE_ZOOM_ENV = "DEEPDOC_TEXT_PAGE_ZOOM"
+
+
+def _text_page_zoom() -> int:
+    raw = os.getenv(TEXT_PAGE_ZOOM_ENV, "").strip()
+    if not raw:
+        return 2
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("DeepDoc %s 非法值 %r，回退默认 2", TEXT_PAGE_ZOOM_ENV, raw)
+        return 2
+    if 2 <= value <= 4:
+        return value
+    logger.warning("DeepDoc %s=%d 超出合法范围 2-4，回退默认 2", TEXT_PAGE_ZOOM_ENV, value)
+    return 2
 
 
 class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
@@ -175,7 +205,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
     @staticmethod
     def total_page_number(fnm, binary=None):
         try:
-            with pdfplumber.open(fnm) if binary is None else pdfplumber.open(BytesIO(binary)) as pdf:
+            with _pdfplumber_lock, pdfplumber.open(fnm) if binary is None else pdfplumber.open(BytesIO(binary)) as pdf:
                 total_page = len(pdf.pages)
             return total_page
         except Exception:
@@ -298,7 +328,7 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
     ) -> list[DeepDocPdfBox]:
         pdf_source = str(filename) if not isinstance(filename, bytes) else BytesIO(filename)
         boxes: list[DeepDocPdfBox] = []
-        with pdfplumber.open(pdf_source) as pdf:
+        with _pdfplumber_lock, pdfplumber.open(pdf_source) as pdf:
             for page_index, page in enumerate(pdf.pages, start=1):
                 words = page.extract_words(
                     keep_blank_chars=False,
@@ -665,12 +695,14 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
         # fork 无 page_chars 常驻，这里在逐页循环里同口径累计。
         mean_height_by_page: dict[int, float] = {}
         mean_width_by_page: dict[int, float] = {}
-        base_zoom = 2
+        base_zoom = _text_page_zoom()
         doc = fitz.open(stream=filename, filetype="pdf") if isinstance(filename, bytes) else fitz.open(str(filename))
         plumber_pdf = None
         try:
             try:
-                plumber_pdf = pdfplumber.open(pdf_source)
+                # 锁内只做 open（懒抽字符在 _extract_page_chars 逐页进行时也持锁）
+                with _pdfplumber_lock:
+                    plumber_pdf = pdfplumber.open(pdf_source)
             except Exception as exc:
                 logger.warning("DeepDoc pdfplumber 打开失败，文字层融合退化为纯 OCR", error=str(exc))
                 plumber_pdf = None
@@ -694,7 +726,8 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                 # 错字的主因）。有文字层的页文本来自 pdfplumber 字符，像素仅供
                 # det 检测，维持 zoom=2 控内存（doc 565 OOM 教训：全量 numpy 渲染
                 # buffer 是内存大头）。
-                page_chars = self._extract_page_chars(plumber_pages, page_index)
+                with _pdfplumber_lock:
+                    page_chars = self._extract_page_chars(plumber_pages, page_index)
                 page_zoom = 3 if not page_chars else base_zoom
                 # 原生位图页 zoom cap：整页被单张内嵌位图覆盖的页（如 565 的
                 # 24 页聊天截图拼接，每页一张 1824×4913 位图、无文字层），渲染
@@ -1571,44 +1604,51 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
             }
         recognizer = load_formula_recognizer()
 
-        page_images = self._render_pages(
-            filename, sorted({region["page"] for region in regions}), zoom_map=zoom_map
-        )
+        # 按页批处理：渲染一页 → 识别该页全部 region → 释放该页 PIL。
+        # 一次性渲染全部含公式页时，数学专著（每页有公式）500 页 × zoom=2
+        # （约 6MB/页）≈ 3GB PIL 同时驻留，与 arq 并发相乘直接撞顶内存。
         results: list[dict[str, Any]] = []
         failed = 0
+        page_widths: dict[int, int] = {}
+        regions_by_page: dict[int, list[dict[str, Any]]] = {}
         for region in regions:
-            page_image = page_images.get(region["page"])
+            regions_by_page.setdefault(int(region["page"]), []).append(region)
+        for page_num in sorted(regions_by_page):
+            page_images = self._render_pages(filename, [page_num], zoom_map=zoom_map)
+            page_image = page_images.get(page_num)
             if page_image is None:
-                failed += 1
+                failed += len(regions_by_page[page_num])
                 continue
-            zoom = float(zoom_map.get(region["page"], 2.0) if zoom_map else 2.0)
-            crop = self._crop_formula_image(page_image, region, zoom)
-            if crop is None:
-                failed += 1
-                continue
-            try:
-                latex = recognizer.recognize(crop)
-            except Exception as exc:
-                # 单个公式失败不阻断整篇解析；该区域保留 OCR 碎片。
-                logger.warning(
-                    "DeepDoc 公式识别失败（该区域保留 OCR 文本）",
-                    error=str(exc),
-                    page=region["page"],
+            page_widths[page_num] = page_image.size[0]
+            zoom = float(zoom_map.get(page_num, 2.0) if zoom_map else 2.0)
+            for region in regions_by_page[page_num]:
+                crop = self._crop_formula_image(page_image, region, zoom)
+                if crop is None:
+                    failed += 1
+                    continue
+                try:
+                    latex = recognizer.recognize(crop)
+                except Exception as exc:
+                    # 单个公式失败不阻断整篇解析；该区域保留 OCR 碎片。
+                    logger.warning(
+                        "DeepDoc 公式识别失败（该区域保留 OCR 文本）",
+                        error=str(exc),
+                        page=region["page"],
+                    )
+                    failed += 1
+                    continue
+                if not latex:
+                    failed += 1
+                    continue
+                inline = (region["x1"] - region["x0"]) < self.FORMULA_INLINE_WIDTH_RATIO * page_widths[page_num] / zoom
+                results.append(
+                    {
+                        **region,
+                        "latex": latex,
+                        "inline": inline,
+                        "text": f"${latex}$" if inline else f"$$\n{latex}\n$$",
+                    }
                 )
-                failed += 1
-                continue
-            if not latex:
-                failed += 1
-                continue
-            inline = (region["x1"] - region["x0"]) < self.FORMULA_INLINE_WIDTH_RATIO * page_image.size[0] / zoom
-            results.append(
-                {
-                    **region,
-                    "latex": latex,
-                    "inline": inline,
-                    "text": f"${latex}$" if inline else f"$$\n{latex}\n$$",
-                }
-            )
         meta = {
             "source": "pix2text_mfr",
             "precision": recognizer.precision,

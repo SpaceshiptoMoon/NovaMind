@@ -227,7 +227,6 @@ def vision_figure_parser_docx_wrapper_naive(chunks, idx_lst, callback=None, **kw
                 chunks[idx]["text"] += description
 
 
-shared_executor = ThreadPoolExecutor(max_workers=10)
 
 
 class VisionFigureParser:
@@ -311,8 +310,11 @@ class VisionFigureParser:
             return figure_idx, description_text
 
         futures = []
-        for idx, img_binary in enumerate(self.figures or []):
-            futures.append(shared_executor.submit(process, idx, img_binary))
+        # __call__ 是上游兼容入口（生产 figure 链走 RAGFlowFigureParser.parse_bytes
+        # 覆写），按需建池用完即关，不留常驻 10 线程。
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            for idx, img_binary in enumerate(self.figures or []):
+                futures.append(executor.submit(process, idx, img_binary))
 
         for future in as_completed(futures):
             figure_num, txt = future.result()
