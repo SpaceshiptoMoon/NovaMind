@@ -68,6 +68,9 @@ class ChatPreparation:
     answer_status: str = "answered"  # answered / refused / low_confidence
     confidence: float | None = None
     refused: bool = False  # 检索为空时短路跳过 LLM
+    # 检索埋点（批次 2b 知识缺口看板口径）：RAG 启用时恒写。
+    # raw_count=过滤前数量（区分"真无结果"与"被阈值过滤"）、result_count/max_score=过滤后。
+    retrieval_meta: dict | None = None
     # 生效的生成参数（请求 > 会话表 llm_config > 默认，由 _prepare_chat 合并）
     max_tokens: int = 2048
     temperature: float = 0.7
@@ -455,6 +458,18 @@ class AIChatService:
             session_id=session_id,
         )
 
+        # 检索埋点（批次 2b）：RAG 启用时恒记录，看板据此识别零命中/低分
+        retrieval_meta = None
+        if do_rag:
+            kb_scores = [s.get("score") for s in prep_sources if s.get("kind") == "kb" and s.get("score") is not None]
+            retrieval_meta = {
+                "kb_ids": list(rag_kb_ids or []),
+                "search_mode": search_mode,
+                "raw_count": prep_raw_count,
+                "result_count": len(prep_sources),
+                "max_score": max(kb_scores) if kb_scores else None,
+            }
+
         return ChatPreparation(
             session_id=session_id,
             user_message=user_message,
@@ -468,6 +483,7 @@ class AIChatService:
             answer_status=prep_status,
             confidence=prep_confidence,
             refused=prep_refused,
+            retrieval_meta=retrieval_meta,
             max_tokens=eff_max_tokens,
             temperature=eff_temperature,
             top_p=eff_top_p,
@@ -1165,17 +1181,23 @@ class AIChatService:
             yield self._emit("error", {"content": error_msg})
 
     def _build_ai_extra(self, prep: ChatPreparation) -> dict | None:
-        """构造 AI 消息 extra（sources/answer_status/confidence）。
+        """构造 AI 消息 extra（sources/answer_status/confidence/retrieval）。
 
-        拒答/低置信/有检索来源时落库；正常回答且无来源时返回 None（不写 extra）。
-        chat() 与 chat_stream() 的拒答/正常分支共用，避免 4 处重复构造。
+        批次 2b 口径：RAG 启用时**恒返回** dict（retrieval_meta 非 None），
+        零命中且 answered 的回答此前返回 None 完全无痕——看板无法统计零命中率，
+        现由 ``retrieval.result_count == 0`` 识别。历史数据无 retrieval 键时
+        看板按 sources/answer_status 判读（兼容降级）。
+        非 RAG 对话（retrieval_meta=None）维持原行为：仅拒答/低置信/有来源落库。
         """
-        if prep.sources or prep.answer_status != "answered":
-            return {
+        if prep.retrieval_meta is not None or prep.sources or prep.answer_status != "answered":
+            extra: dict = {
                 "sources": prep.sources,
                 "answer_status": prep.answer_status,
                 "confidence": prep.confidence,
             }
+            if prep.retrieval_meta is not None:
+                extra["retrieval"] = prep.retrieval_meta
+            return extra
         return None
 
     async def _cleanup_user_message(self, user_message) -> None:

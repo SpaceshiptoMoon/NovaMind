@@ -933,6 +933,63 @@ export interface ChunkPositionResponse {
   file_type: string | null
 }
 
+/** 知识缺口看板 KPI（批次 2b） */
+export interface KnowledgeGapKpi {
+  qa_total: number
+  down_rate: number
+  up_count: number
+  zero_hit_rate: number
+  low_score_rate: number
+  refused_rate: number
+  low_score_threshold: number
+}
+
+export interface KnowledgeGapTrendItem {
+  date: string
+  qa_count: number
+  zero_hit: number
+  refused: number
+}
+
+export interface ZeroHitQueryItem {
+  query: string
+  hit_count: number
+  kb_id?: number | null
+  last_seen?: string | null
+}
+
+export interface LowScoreMessageItem {
+  message_id: number
+  session_id: string
+  kb_id?: number | null
+  answer_snippet: string
+  max_score?: number | null
+  rating?: 'up' | 'down' | null
+  created_at?: string | null
+}
+
+export interface KbGapStatItem {
+  kb_id: number | null
+  kb_name: string
+  qa_count: number
+  down_count: number
+  zero_hit_count: number
+}
+
+export interface KnowledgeGapStatsResponse {
+  kpi: KnowledgeGapKpi
+  trend: KnowledgeGapTrendItem[]
+  zero_hit_queries: ZeroHitQueryItem[]
+  low_score_messages: LowScoreMessageItem[]
+  by_kb: KbGapStatItem[]
+  window: { start: string; end: string }
+}
+
+export interface ActionStatsResponse {
+  items: Array<{ action: string; count: number }>
+  total: number
+}
+
 export interface ChatAttachment {
   id: number
   filename: string

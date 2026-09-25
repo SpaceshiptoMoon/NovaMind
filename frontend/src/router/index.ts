@@ -175,6 +175,12 @@ const router = createRouter({
               component: () => import('@/views/space/SpaceSettingsView.vue'),
               meta: { title: '空间设置' },
             },
+            {
+              path: ':id/insights',
+              name: 'SpaceInsights',
+              component: () => import('@/views/space/SpaceInsightView.vue'),
+              meta: { title: '空间洞察' },
+            },
           ],
         },
         {
