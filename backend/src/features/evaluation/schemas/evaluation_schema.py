@@ -74,6 +74,23 @@ class HumanScoreRequest(BaseModel):
 
 # ========== 测试集响应 Schema ==========
 
+class CaseItem(BaseModel):
+    """单条用例（QA 消息导入桥接，批次 3a）"""
+    question: str = Field(..., min_length=1, description="问题")
+    expected_answer: str = Field(..., min_length=1, description="期望答案")
+
+
+class TestSetFromCasesRequest(BaseModel):
+    """用用例列表直接建测试集（前端手头就有 QA 消息全文，后端只收双字段）"""
+    name: str = Field(..., min_length=1, max_length=200, description="测试集名称")
+    cases: list[CaseItem] = Field(..., min_length=1, max_length=500, description="用例列表")
+
+
+class TestSetAppendCasesRequest(BaseModel):
+    """追加用例进已有测试集"""
+    cases: list[CaseItem] = Field(..., min_length=1, max_length=500, description="用例列表")
+
+
 class TestSetCreateResponse(BaseModel):
     """创建测试集响应"""
     test_set_id: int = Field(..., description="测试集 ID")

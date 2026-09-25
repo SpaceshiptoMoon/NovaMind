@@ -31,9 +31,11 @@ from novamind.features.evaluation.schemas.evaluation_schema import (
     HumanScoreResponse,
     TaskCreateRequest,
     TestCase,
+    TestSetAppendCasesRequest,
     TestSetCasesResponse,
     TestSetCreateResponse,
     TestSetDetailResponse,
+    TestSetFromCasesRequest,
     TestSetListItem,
     TestSetListResponse,
     TestSetUpdateRequest,
@@ -114,6 +116,67 @@ async def create_test_set(
         test_set_id=test_set_obj.id, name=test_set_obj.name,
         filename=test_set_obj.filename, file_type=test_set_obj.file_type,
         file_size=test_set_obj.file_size, total_cases=test_set_obj.total_cases,
+    )
+
+
+@router.post(
+    "/test-sets/from-cases",
+    status_code=201,
+    response_model=TestSetCreateResponse,
+    summary="用用例列表直接建测试集",
+    description=(
+        "从 QA 消息沉淀用例：前端送 {question, expected_answer} 列表，"
+        "后端生成 JSON 文件走同一持久化路径（批次 3a QA → 测试集桥接）。"
+    ),
+)
+async def create_test_set_from_cases(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    request: TestSetFromCasesRequest,
+    user_id: int = Depends(get_current_user_id),
+    member: SpaceMember = Depends(validate_space_editor),
+    evaluation_service: EvaluationService = Depends(get_evaluation_service),
+    db: AsyncSession = Depends(get_db),
+):
+    await validate_kb_access(kb_id, space_id, db)
+    cases = [{"question": c.question, "expected_answer": c.expected_answer} for c in request.cases]
+    test_set_obj = await evaluation_service.create_test_set_from_cases(
+        space_id=space_id, kb_id=kb_id, user_id=user_id,
+        name=request.name, cases=cases,
+    )
+    return TestSetCreateResponse(
+        test_set_id=test_set_obj.id, name=test_set_obj.name,
+        filename=test_set_obj.filename, file_type=test_set_obj.file_type,
+        file_size=test_set_obj.file_size, total_cases=test_set_obj.total_cases,
+        message="测试集已创建",
+    )
+
+
+@router.post(
+    "/test-sets/{test_set_id}/cases",
+    response_model=TestSetCreateResponse,
+    summary="追加用例进已有测试集",
+    description="下载现有测试集 → 追加用例 → 重上传 → 刷新 total_cases（批次 3a）",
+)
+async def append_cases_to_test_set(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    kb_id: Annotated[int, Path(gt=0, description="知识库ID")],
+    test_set_id: Annotated[int, Path(gt=0, description="测试集ID")],
+    request: TestSetAppendCasesRequest,
+    member: SpaceMember = Depends(validate_space_editor),
+    evaluation_service: EvaluationService = Depends(get_evaluation_service),
+    db: AsyncSession = Depends(get_db),
+):
+    await validate_kb_access(kb_id, space_id, db)
+    cases = [{"question": c.question, "expected_answer": c.expected_answer} for c in request.cases]
+    test_set_obj = await evaluation_service.append_cases_to_test_set(
+        test_set_id=test_set_id, space_id=space_id, kb_id=kb_id, cases=cases,
+    )
+    return TestSetCreateResponse(
+        test_set_id=test_set_obj.id, name=test_set_obj.name,
+        filename=test_set_obj.filename, file_type=test_set_obj.file_type,
+        file_size=test_set_obj.file_size, total_cases=test_set_obj.total_cases,
+        message="用例已追加",
     )
 
 

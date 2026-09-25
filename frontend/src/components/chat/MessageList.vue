@@ -124,6 +124,10 @@
           >
             <el-icon :size="13"><Bottom /></el-icon>
           </button>
+          <button class="msg-copy-btn" @click="openAddToTestSet(msg)">
+            <el-icon :size="13"><Collection /></el-icon>
+            <span>加入评测集</span>
+          </button>
         </template>
       </div>
       </div>
@@ -165,16 +169,19 @@
 
   <!-- PDF 原文定位弹窗（批次 1b：bbox 高亮） -->
   <PdfAnnotateDialog ref="pdfAnnotateRef" />
+  <!-- QA 消息加入评测集弹窗（批次 3a） -->
+  <AddToTestSetDialog ref="addToTestSetRef" :space-id="testSetSpaceId" />
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { ArrowDown, WarningFilled, Download, DocumentCopy, Top, Bottom } from '@element-plus/icons-vue'
+import { ArrowDown, WarningFilled, Download, DocumentCopy, Top, Bottom, Collection } from '@element-plus/icons-vue'
 import MarkdownRenderer from '@/components/common/MarkdownRenderer.vue'
 import SourceList from '@/components/chat/SourceList.vue'
 import RetrievalTrace from '@/components/chat/RetrievalTrace.vue'
 import PdfAnnotateDialog from '@/components/pdf/PdfAnnotateDialog.vue'
+import AddToTestSetDialog from '@/components/qa/AddToTestSetDialog.vue'
 import type { ChatMessage, ChatSource } from '@/api/types'
 import { sessionApi } from '@/api/session'
 import { useChatAttachments } from '@/composables/useChatAttachments'
@@ -365,6 +372,23 @@ async function handleFeedback(msg: ChatMessage, rating: 'up' | 'down' | null) {
 
 // PDF 原文定位（批次 1b）：source 携带 space_id/kb_id/document_id/page 时可定位
 const pdfAnnotateRef = ref<InstanceType<typeof PdfAnnotateDialog>>()
+
+// ===== 加入评测集（批次 3a）：用第一处 kb 来源的 space_id 上下文 =====
+
+const addToTestSetRef = ref<InstanceType<typeof AddToTestSetDialog>>()
+const testSetSpaceId = ref(0)
+
+function openAddToTestSet(msg: ChatMessage) {
+  // 评测集挂在 KB 上，需要空间上下文：取该消息任一 kb 来源的 space_id
+  const sources = getSources(msg)
+  const kbSource = sources.find((s) => s.kind !== 'web' && s.space_id)
+  if (!kbSource?.space_id) {
+    ElMessage.warning('该回答无知识库来源，无法加入评测集')
+    return
+  }
+  testSetSpaceId.value = kbSource.space_id
+  addToTestSetRef.value?.open({ question: '', answer: msg.content })
+}
 
 function onSourceLocate(source: ChatSource) {
   if (!source.document_id || !source.kb_id || !source.space_id) return

@@ -63,6 +63,25 @@ export const evaluationApi = {
     return request.get(`${BASE(spaceId, kbId)}/test-sets/${testSetId}/cases`)
   },
 
+  /** 用用例列表直接建测试集（QA 消息沉淀，批次 3a） */
+  createTestSetFromCases(
+    spaceId: number,
+    kbId: number,
+    data: { name: string; cases: Array<{ question: string; expected_answer: string }> },
+  ): Promise<UploadTestSetResponse> {
+    return request.post(`${BASE(spaceId, kbId)}/test-sets/from-cases`, data)
+  },
+
+  /** 追加用例进已有测试集（批次 3a） */
+  appendCasesToTestSet(
+    spaceId: number,
+    kbId: number,
+    testSetId: number,
+    data: { cases: Array<{ question: string; expected_answer: string }> },
+  ): Promise<UploadTestSetResponse> {
+    return request.post(`${BASE(spaceId, kbId)}/test-sets/${testSetId}/cases`, data)
+  },
+
   getTasks(
     spaceId: number,
     kbId: number,

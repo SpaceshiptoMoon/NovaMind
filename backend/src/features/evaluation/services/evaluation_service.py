@@ -22,6 +22,7 @@ from novamind.features.evaluation.exceptions import (
     EvaluationTaskNotFoundError,
     EvaluationTaskPendingError,
     EvaluationTestSetNotFoundError,
+    InvalidTestSetError,
 )
 from novamind.features.evaluation.models.evaluation_task import (
     EvaluationStatus,
@@ -30,7 +31,11 @@ from novamind.features.evaluation.repository.evaluation_repository import (
     EvaluationTaskRepository,
     EvaluationTestSetRepository,
 )
-from novamind.features.evaluation.schemas.evaluation_schema import EvaluationConfig
+from novamind.features.evaluation.schemas.evaluation_schema import (
+    EvaluationConfig,
+    TestCase,
+    TestSet,
+)
 from novamind.features.evaluation.services.result_exporter import (
     result_to_csv,
     result_to_json_bytes,
@@ -160,6 +165,101 @@ class EvaluationService:
         test_set = parse_test_set(file_content, test_set_obj.filename)
         cases = [{"question": c.question, "expected_answer": c.expected_answer} for c in test_set.test_cases]
         return test_set_obj, cases
+
+    # ========== QA → 测试集桥接（批次 3a） ==========
+
+    async def create_test_set_from_cases(
+        self,
+        space_id: int,
+        kb_id: int,
+        user_id: int,
+        name: str,
+        cases: list[dict],
+    ) -> Any:
+        """用前端送来的 {question, expected_answer} 列表直接建测试集。
+
+        生成 JSON 文件走同一 upload/持久化路径（与 create_test_set 产物同构，
+        解析器/CSV 导出/前端零波及）；cases 校验复用 parse_test_set。
+        """
+        import json as _json
+
+        if not cases:
+            raise InvalidTestSetError("cases 不能为空")
+        payload = {"test_cases": cases}
+        content = _json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        # 先过解析器校验（question/expected_answer 非空等），不合规直接 422 语义
+        parse_test_set(content, "cases.json")
+        return await self.create_test_set(
+            space_id=space_id, kb_id=kb_id, user_id=user_id,
+            name=name, file_content=content, filename="cases.json",
+        )
+
+    async def append_cases_to_test_set(
+        self,
+        test_set_id: int,
+        space_id: int,
+        kb_id: int,
+        cases: list[dict],
+    ) -> Any:
+        """追加用例进已有测试集（下载 → 追加 → 重上传 → 更新 total_cases）。
+
+        并发 append 存在读改写竞态（低频管理操作，v1 接受）；追加后
+        file_hash/file_size 同步刷新。
+        """
+        import hashlib as _hashlib
+        import json as _json
+
+        if not cases:
+            raise InvalidTestSetError("cases 不能为空")
+
+        test_set_obj = await self.test_set_repo.get_by_id_and_kb(test_set_id, space_id, kb_id)
+        if not test_set_obj:
+            raise EvaluationTestSetNotFoundError(test_set_id)
+
+        file_content = await self.minio_client.download_document(
+            test_set_obj.get_minio_bucket(),
+            test_set_obj.get_minio_object_name(),
+        )
+        existing = parse_test_set(file_content, test_set_obj.filename)
+        # 空字段显式校验（TestCase min_length=1 会抛 Pydantic ValidationError，
+        # 转成 InvalidTestSetError 保持 422 语义一致）
+        for i, c in enumerate(cases):
+            if not str(c.get("question", "")).strip() or not str(c.get("expected_answer", "")).strip():
+                raise InvalidTestSetError(f"第 {i + 1} 条用例缺少 question 或 expected_answer")
+        new_cases = existing.test_cases + [
+            TestCase(
+                question=str(c.get("question", "")).strip(),
+                expected_answer=str(c.get("expected_answer", "")).strip(),
+            )
+            for c in cases
+        ]
+        # 追加后整体再过一次解析校验（防空 question 混入）
+        merged = TestSet(test_cases=new_cases)
+        payload = {
+            "test_cases": [
+                {"question": c.question, "expected_answer": c.expected_answer}
+                for c in merged.test_cases
+            ]
+        }
+        content = _json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+
+        file_hash = _hashlib.sha256(content).hexdigest()
+        upload_result = await self.minio_client.upload_document(
+            space_id=space_id, kb_id=kb_id,
+            document_id=test_set_obj.id,
+            file_data=content, filename=test_set_obj.filename, file_hash=file_hash,
+        )
+        test_set_obj.set_minio_info(
+            bucket=upload_result["bucket"],
+            object_name=upload_result["object_name"],
+            etag=upload_result.get("etag"),
+        )
+        test_set_obj.total_cases = len(new_cases)
+        test_set_obj.file_size = len(content)
+        test_set_obj.file_hash = file_hash
+        await self.db.commit()
+        await self.db.refresh(test_set_obj)
+        return test_set_obj
 
     async def delete_test_set(self, test_set_id: int) -> bool:
         test_set_obj = await self.test_set_repo.get_by_id(test_set_id)
