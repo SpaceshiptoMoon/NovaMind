@@ -80,7 +80,7 @@ If you want to build more than a chat window — a system that can organize know
 - **Spaces & knowledge bases**: multi-space isolation, member collaboration (OWNER / ADMIN / EDITOR / VIEWER roles), per-KB parsing config, full document lifecycle
 - **Hybrid retrieval**: vector, BM25, hybrid, rerank, query rewriting, and multi-level fallbacks — 9 retrieval modes
 - **Hypothetical-question augmentation**: optionally generate hypothetical questions per chunk and index them as question vectors to improve recall
-- **KB evaluation**: test-set management, automated evaluation, manual scoring, report export
+- **KB evaluation**: test-set management, automated evaluation, manual scoring, report export; distill QA messages into test sets in one click, and compare two reports to spot per-case regressions
 
 <p align="center">
   <img src="./assets/documents.png" alt="Document management — demo KB “AI Knowledge Handbook”" width="760">
@@ -101,7 +101,7 @@ If you want to build more than a chat window — a system that can organize know
 
 ### 🤖 Intelligent apps
 
-- **RAG QA**: multi-turn QA over knowledge bases, session config, context compression, answers with citation tracing (click a citation to jump to the source chunk)
+- **RAG QA**: multi-turn QA over knowledge bases, session config, context compression, answers with citation tracing — click "locate source" on a PDF citation to jump to the exact page with bbox-level highlighting of the cited region
 - **Deep research**: combines internal KBs with external search (pluggable sources: Tavily / SerpAPI / DuckDuckGo), staged research-report generation
 - **Agents**: tool calling, MCP server integration, execution-trace replay
 - **Skill marketplace**: skill upload, review, install, and distribution
@@ -115,6 +115,7 @@ If you want to build more than a chat window — a system that can organize know
 
 - **Task system**: ARQ-based async task orchestration — batch processing, per-step progress, cancel / retry, zombie-task cleanup, crash recovery for orphaned tasks
 - **Realtime notifications**: WebSocket push with polling fallback; parse completion / failure / cancel events
+- **Space insights**: aggregated dashboard of QA thumbs-up/down, zero-hit and low-score queries — pinpoint knowledge gaps to guide document coverage
 - **Multi-model access**: LLM / Embedding / Rerank / VLM / ASR — anything OpenAI-compatible plugs in; connection testing and encrypted key storage
 
 ## Document processing pipeline
@@ -454,7 +455,8 @@ NovaMind/
 | Knowledge bases | `/api/v1/spaces/{space_id}/knowledge-bases` | KB create, config, document management |
 | Knowledge retrieval | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/search` | search modes, retrieval, rerank |
 | Knowledge-base Wiki | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/wiki` | Wiki generation / browsing / graph / quality linting |
-| QA | `/api/v1/qa` | multi-turn QA over KBs |
+| QA | `/api/v1/qa` | multi-turn QA over KBs, per-message feedback (thumbs up/down) |
+| Space insights | `/api/v1/spaces/{space_id}/stats` | QA volume / down-rate / zero-hit / low-score aggregation, knowledge-gap dashboard |
 | AI chat | `/api/v1/ai-chat` | streaming chat and attachments |
 | Deep research | `/api/v1/spaces/{space_id}/deep-research` | multi-source search and research reports |
 | KB evaluation | `/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation` | test sets, eval tasks, export |
