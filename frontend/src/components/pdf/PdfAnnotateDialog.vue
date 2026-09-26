@@ -96,9 +96,10 @@ async function open(payload: {
       }
       bboxes.value = rects
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     // blob 是硬依赖：拿不到就无法渲染
-    loadError.value = err?.response?.status === 404 ? '文档文件不存在或已被删除' : '文档加载失败'
+    const status = (err as { response?: { status?: number } })?.response?.status
+    loadError.value = status === 404 ? '文档文件不存在或已被删除' : '文档加载失败'
   } finally {
     loading.value = false
   }

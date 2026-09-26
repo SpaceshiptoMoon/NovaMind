@@ -37,6 +37,24 @@ export default defineConfigWithVueTs(
   },
 
   {
+    name: 'kb-config-form-model-pass-through',
+    // KB 配置页「父持有表单模型、子组件分节编辑」模式：子组件 v-model 绑定
+    // prop 对象的属性（configForm.xxx）。Vue 官方允许（对象引用共享，非替换
+    // prop 本身），vue/no-mutating-props 按模板表达式字面量误报。五个
+    // Kb*Section 组件成组出现，豁免限于此清单防止扩散到真正的违规。
+    files: [
+      'src/components/knowledge/KbMultimodalParsingSection.vue',
+      'src/components/knowledge/KbQuestionGenerationSection.vue',
+      'src/components/knowledge/KbSplittingSection.vue',
+      'src/components/knowledge/KbTextParsingSection.vue',
+      'src/components/knowledge/KbWikiSection.vue',
+    ],
+    rules: {
+      'vue/no-mutating-props': 'off',
+    },
+  },
+
+  {
     name: 'allow-underscore-unused-vars',
     // 下划线前缀 = 有意不用（如解构排除字段），不视为死代码
     files: ['**/*.{vue,ts,mts,tsx}'],

@@ -40,6 +40,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import type { ChunkPositionResponse } from '@/api/types'
+import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 
 const props = defineProps<{
   /** 文件 Blob URL（经认证端点获取） */
@@ -66,7 +67,7 @@ const canvasRef = ref<HTMLCanvasElement>()
 const error = ref('')
 const totalPages = ref(0)
 const currentPage = ref(props.page || 1)
-const pdfDoc = ref<any>(null)
+const pdfDoc = ref<PDFDocumentProxy | null>(null)
 
 // 当前页 viewport（scale=1）尺寸，用于 CSS 布局与坐标映射
 const viewportWidth = ref(0)
@@ -87,7 +88,7 @@ function rectStyle(rect: { x0: number; x1: number; top: number; bottom: number }
   }
 }
 
-let renderTask: any = null
+let renderTask: RenderTask | null = null
 
 async function renderPage(pageNum: number) {
   const doc = pdfDoc.value
@@ -113,8 +114,14 @@ async function renderPage(pageNum: number) {
     canvas.style.width = `${cssWidth.value}px`
     canvas.style.height = `${cssHeight.value}px`
 
+    const context = canvas.getContext('2d')
+    if (!context) {
+      error.value = 'PDF 页面渲染失败'
+      return
+    }
     renderTask = page.render({
-      canvasContext: canvas.getContext('2d'),
+      canvasContext: context,
+      viewport,
       transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined,
     })
     await renderTask.promise
@@ -123,9 +130,11 @@ async function renderPage(pageNum: number) {
     requestAnimationFrame(() => {
       scrollRef.value?.scrollTo({ top: Math.max(0, (overlayRects.value[0]?.top ?? 0) * cssScale - 80), behavior: 'smooth' })
     })
-  } catch (e: any) {
+  } catch (e: unknown) {
     // RenderingCancelledException 是切页竞态，非错误
-    if (e?.name !== 'RenderingCancelledException' && !String(e?.message ?? '').includes('cancelled')) {
+    const name = (e as { name?: string })?.name ?? ''
+    const message = e instanceof Error ? e.message : String(e ?? '')
+    if (name !== 'RenderingCancelledException' && !message.includes('cancelled')) {
       error.value = 'PDF 页面渲染失败'
     }
   }
@@ -151,8 +160,9 @@ onBeforeUnmount(() => {
     totalPages.value = pdfDoc.value.numPages
     currentPage.value = Math.min(Math.max(1, props.page || 1), totalPages.value)
     await renderPage(currentPage.value)
-  } catch (e: any) {
-    error.value = e?.name === 'PasswordException' ? 'PDF 已加密，无法预览' : 'PDF 加载失败'
+  } catch (e: unknown) {
+    const name = (e as { name?: string })?.name ?? ''
+    error.value = name === 'PasswordException' ? 'PDF 已加密，无法预览' : 'PDF 加载失败'
   }
 })()
 </script>
