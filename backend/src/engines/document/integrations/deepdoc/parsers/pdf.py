@@ -99,6 +99,14 @@ class DeepDocPdfBox:
 # pdfminer 未映射 CID 的占位形态（上游 pdf_parser._CID_PATTERN 同款）。
 _CID_PATTERN = re.compile(r"\(cid\s*:\s*\d+\s*\)")
 
+# 文字层残留的低密度 PUA（Private Use Area，私用区）字形——嵌入字体 CMap 把
+# 空格/分隔符/句读占位字形映射到私用区码点，密度远低于框级乱码阈值
+# （garbled/total >= 0.5）时文字层仍被采用，这些字符就原样透传进 MD/chunks
+# （doc583 实测 4 个码点 4298 个、密度 5.22%，全为空格/填空栏占位）。PUA 对
+# embedding/检索/LLM 均为不可恢复噪声，出口统一归一为空格（不删除，防
+# 词粘连）；数学符号类 PUA 保留同样是噪声，替换是安全退化方向。
+_PUA_CHAR_PATTERN = re.compile("[\ue000-\uf8ff]")
+
 # 有文字层页的渲染 zoom（上游统一 zoomin=3；fork 默认 2 是低内存开发机的
 # 历史印记——文本来自 pdfplumber、像素仅供 det 检测，但 CID 乱码框的回退
 # OCR 恰恰从该渲染图 crop 识别，zoom=2 压低 33% DPI 影响其精度）。生产
@@ -1236,7 +1244,13 @@ class RAGFlowPdfParser(_VendoredRAGFlowPdfParser):
                         total += 1
                         if self._is_garbled_char(ch):
                             garbled += 1
-        return "".join(text_parts), box_chars, garbled, total
+        # 乱码计数已在上面的原始字符上完成，此处出口归一不影响阈值裁决；
+        # 替换为空格而非删除，防 PUA 原为词间分隔时产生词粘连。紧接的
+        # 全角文字邻接不需要空格，收紧连续空格交给下游空白规整。
+        text = _PUA_CHAR_PATTERN.sub(" ", "".join(text_parts))
+        if "  " in text:
+            text = re.sub(r" {2,}", " ", text)
+        return text, box_chars, garbled, total
 
     def _reclaim_lefted_chars(
         self,

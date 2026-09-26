@@ -142,6 +142,49 @@ def test_empty_text_after_ocr_filtered_out():
 
 
 @pytest.mark.unit
+def test_low_density_pua_normalized_to_space():
+    """低密度 PUA（嵌入字体 CMap 空白占位字形）出口归一为空格，不触发框级
+    乱码回退（密度 < 0.5），且不产生词粘连。doc583 实测形态：
+    'Ｔｗｏ<U+E5E5>Ｃｌａｓｓ' / '分类号<U+E5CE>密级'。"""
+    parser = RAGFlowPdfParser()
+    parser._ocr = _FakeOCR(
+        detect_boxes=[[[0, 0], [200, 0], [200, 40], [0, 40]]],
+        recognize_texts=["SHOULD NOT USE"],
+    )
+    # PUA 密度 2/12 ≈ 17%，远低于 0.5 框级阈值 → 文字层被采用
+    chars = [_char("ＴｗｏＣｌａｓｓｏｆＲ", 5, 95, 4, 18)]
+    img = np.zeros((200, 200, 3), dtype=np.uint8)
+
+    blocks = parser._fuse_page(img, chars, page_index=0, zoom=2)
+
+    assert len(blocks) == 1
+    b = blocks[0]
+    assert b["ocr_source"] == "text_layer", f"低密度 PUA 不应触发 OCR 回退: {b}"
+    assert "" not in b["text"] and "" not in b["text"]
+    # 替换为空格而非删除：全角词间保留单空格
+    assert "Ｔｗｏ Ｃｌａｓｓｏｆ Ｒ" == b["text"]
+    assert parser._ocr.recognize_calls == 0
+
+
+@pytest.mark.unit
+def test_clean_text_unaffected_by_pua_normalization():
+    """正常文字层（无 PUA）经归一化后输出逐字不变（反例保障）。"""
+    parser = RAGFlowPdfParser()
+    parser._ocr = _FakeOCR(
+        detect_boxes=[[[0, 0], [200, 0], [200, 40], [0, 40]]],
+        recognize_texts=["SHOULD NOT USE"],
+    )
+    chars = [_char("分类号１０３８４密级", 5, 95, 4, 18)]
+    img = np.zeros((200, 200, 3), dtype=np.uint8)
+
+    blocks = parser._fuse_page(img, chars, page_index=0, zoom=2)
+
+    assert len(blocks) == 1
+    assert blocks[0]["text"] == "分类号１０３８４密级"
+    assert blocks[0]["ocr_source"] == "text_layer"
+
+
+@pytest.mark.unit
 def test_build_vision_strategy_text_layer_and_fused():
     """_build_vision_strategy 识别 text_layer / fused / vendored-ocr 来源。"""
     s = RAGFlowPdfParser._build_vision_strategy(["text_layer"], "onnx")
