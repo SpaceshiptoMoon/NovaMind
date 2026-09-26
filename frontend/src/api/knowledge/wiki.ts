@@ -14,6 +14,7 @@ import type {
   WikiRevertResponse,
   WikiGraphResponse,
   WikiLintResponse,
+  WikiAutoFixResponse,
   WikiIssue,
   WikiIssueCreateRequest,
 } from '../types'
@@ -128,6 +129,13 @@ export const wikiApi = {
 
   lint(spaceId: number, kbId: number) {
     return request.get<WikiLintResponse>(`/spaces/${spaceId}/knowledge-bases/${kbId}/wiki/lint`)
+  },
+
+  autoFix(spaceId: number, kbId: number) {
+    return request.post<WikiAutoFixResponse>(
+      `/spaces/${spaceId}/knowledge-bases/${kbId}/wiki/lint/autofix`,
+      {},
+    )
   },
 
   listIssues(spaceId: number, kbId: number, status?: string) {

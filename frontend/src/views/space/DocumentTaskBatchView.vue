@@ -640,8 +640,9 @@ onMounted(fetchTasks)
 </script>
 
 <style scoped>
+/* 与其余 KB 子页面同款满高根容器（不带根级 padding），保证 KbSidebar 跨模块切换高度一致；
+   顶部呼吸感由 .kb-content 自身 padding 提供 */
 .document-task-view {
-  padding-top: var(--space-2);
   height: 100%;
 }
 

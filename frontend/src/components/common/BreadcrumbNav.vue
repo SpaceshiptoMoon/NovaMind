@@ -1,5 +1,6 @@
 <template>
-  <!-- 分段面包屑：返回键（圆形 hover 位）+ 实体名链段 + 当前段灰底强调 -->
+  <!-- 分段面包屑：返回键（圆形 hover 位）+ 实体名链段 + 当前段灰底强调。
+       末段若带 to 也渲染为可点链接（如文档详情页的「文档管理」= 返回文档列表） -->
   <nav class="crumb-nav" aria-label="面包屑">
     <button
       v-if="backLabel"
@@ -14,11 +15,10 @@
     <template v-for="(item, i) in items" :key="`${item.label}-${i}`">
       <el-icon v-if="i > 0" :size="12" class="crumb-sep"><ArrowRight /></el-icon>
       <component
-        :is="i < items.length - 1 && item.to ? 'button' : 'span'"
+        :is="item.to ? 'button' : 'span'"
         class="crumb-item"
-        :class="i < items.length - 1 && item.to ? 'crumb-item--link' : 'crumb-item--current'"
-        :aria-current="i === items.length - 1 ? 'page' : undefined"
-        @click="i < items.length - 1 && item.to && $emit('navigate', item.to)"
+        :class="item.to ? 'crumb-item--link' : 'crumb-item--current'"
+        @click="item.to && $emit('navigate', item.to)"
       >
         {{ item.label }}
       </component>

@@ -2137,13 +2137,25 @@ export interface WikiGraphResponse {
 
 export interface WikiLintIssue {
   slug: string
-  issue_type: string // dead_link / orphan / empty_content
+  // 对齐后端六类：orphan_page / broken_link / stale_ref / missing_cross_ref /
+  // empty_content / duplicate_slug
+  issue_type: string
+  severity: string // info / warning / error
   description: string
+  target_slug: string // broken_link 目标页 / stale_ref 文档标识
+  auto_fixable: boolean
 }
 
 export interface WikiLintResponse {
   issues: WikiLintIssue[]
   checked_pages: number
+  health_score: number // 0-100
+  summary: string
+}
+
+export interface WikiAutoFixResponse {
+  fixed: number
+  details: string[]
 }
 
 export interface WikiIssue {

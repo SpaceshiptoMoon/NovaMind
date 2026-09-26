@@ -421,7 +421,14 @@ const crumbItems = computed(() => {
   }
 
   if (route.name === 'Documents') items.push({ label: '文档管理' })
-  if (route.name === 'DocumentDetail') items.push({ label: currentDocName.value || '文档详情' })
+  if (route.name === 'DocumentDetail') {
+    // 末段带 to 即可点（BreadcrumbNav 约定）；从详情返回文档列表时恢复进入时的页码
+    const fromPage = route.query.fromPage
+    items.push({
+      label: '文档管理',
+      to: `${kbBase}/${kbIdParam}/documents${fromPage ? `?page=${fromPage}` : ''}`,
+    })
+  }
   if (route.name === 'Search') items.push({ label: '知识检索' })
   if (route.name === 'SpaceSettings') items.push({ label: '空间设置' })
   if (route.name === 'KbEvaluation') items.push({ label: '评估' })
@@ -435,7 +442,6 @@ const crumbItems = computed(() => {
 // KB 名映射（直跳子页面时异步拉取；DocumentView/KbConfigView 自行取名不受影响）
 const kbNameMap = ref<Record<number, string>>({})
 const currentKbName = ref('')
-const currentDocName = ref('')
 
 async function ensureKbName(kbId: number) {
   if (kbNameMap.value[kbId]) return

@@ -80,6 +80,13 @@
                     暂无 Wiki 页面。开启配置中的「Wiki 自动生成」并上传文档后自动创建。
                   </p>
                 </template>
+
+                <div class="sidebar-footer">
+                  <el-button size="small" class="new-page-btn" @click="openCreate">
+                    <el-icon><Plus /></el-icon>
+                    新建页面
+                  </el-button>
+                </div>
               </aside>
 
               <!-- 右侧：页面内容（唯一滚动列；内部限宽阅读列，宽屏两侧留白） -->
@@ -110,6 +117,7 @@
                         <template #dropdown>
                           <el-dropdown-menu>
                             <el-dropdown-item command="sources">查看来源</el-dropdown-item>
+                            <el-dropdown-item command="report">报告问题</el-dropdown-item>
                             <el-dropdown-item command="delete" divided>删除页面</el-dropdown-item>
                           </el-dropdown-menu>
                         </template>
@@ -155,19 +163,23 @@
                 </div>
               </main>
 
-              <!-- 右侧：本页目录（批 3 接入数据，滚动高亮当前小节） -->
-              <aside v-if="tocItems.length" class="wiki-toc">
-                <div class="toc-header">本页目录</div>
-                <button
-                  v-for="item in tocItems"
-                  :key="item.id"
-                  type="button"
-                  class="toc-item"
-                  :class="[`is-l${item.level}`, { 'is-active': item.id === activeHeadingId }]"
-                  @click="scrollToHeading(item.id)"
-                >
-                  {{ item.text }}
-                </button>
+              <!-- 右侧：本页目录（批 3 接入数据，滚动高亮当前小节）。
+                   列本身常驻占位（224px 固定宽），无标题的页面只清空内容——
+                   否则中列 flex:1 会在有/无目录的页面间跳宽 -->
+              <aside class="wiki-toc">
+                <template v-if="tocItems.length">
+                  <div class="toc-header">本页目录</div>
+                  <button
+                    v-for="item in tocItems"
+                    :key="item.id"
+                    type="button"
+                    class="toc-item"
+                    :class="[`is-l${item.level}`, { 'is-active': item.id === activeHeadingId }]"
+                    @click="scrollToHeading(item.id)"
+                  >
+                    {{ item.text }}
+                  </button>
+                </template>
               </aside>
             </div>
           </el-tab-pane>
@@ -232,25 +244,48 @@
                   <el-radio-button value="resolved">已解决</el-radio-button>
                   <el-radio-button value="ignored">已忽略</el-radio-button>
                 </el-radio-group>
-                <el-button
-                  size="small"
-                  :icon="Refresh"
-                  :loading="lintRunning"
-                  :disabled="issuesLoading"
-                  @click="runLint"
-                >
-                  运行质量检查
-                </el-button>
+                <div class="toolbar-right">
+                  <el-button
+                    v-if="lintFixableCount"
+                    size="small"
+                    type="warning"
+                    plain
+                    :loading="autofixRunning"
+                    @click="runAutoFix"
+                  >
+                    自动修复（{{ lintFixableCount }}）
+                  </el-button>
+                  <el-button
+                    size="small"
+                    :icon="Refresh"
+                    :loading="lintRunning"
+                    :disabled="issuesLoading"
+                    @click="runLint"
+                  >
+                    运行质量检查
+                  </el-button>
+                </div>
               </div>
 
               <!-- lint 检出问题（派生，非持久化）+ 持久化问题列表 -->
               <div class="issues-list">
               <div v-if="lintIssues.length" class="issues-card">
                 <div class="issues-heading-row">
-                  <h4 class="issues-heading">质量检查（{{ lintIssues.length }} 项）</h4>
-                  <el-button text size="small" @click="lintIssues = []">清除</el-button>
+                  <h4 class="issues-heading">
+                    质量检查（{{ lintIssues.length }} 项）
+                    <span
+                      v-if="lintHealth !== null"
+                      class="health-chip"
+                      :data-grade="healthGrade"
+                      >健康分 {{ lintHealth }}</span
+                    >
+                  </h4>
+                  <el-button text size="small" @click="clearLint">清除</el-button>
                 </div>
                 <div v-for="(issue, index) in lintIssues" :key="`l${index}`" class="issue-card">
+                  <span class="issue-severity" :data-severity="issue.severity">{{
+                    severityLabel(issue.severity)
+                  }}</span>
                   <span class="issue-badge" data-status="pending">
                     {{ lintTypeLabel(issue.issue_type) }}
                   </span>
@@ -258,6 +293,7 @@
                     issue.slug
                   }}</span>
                   <span class="issue-desc">{{ issue.description }}</span>
+                  <span v-if="issue.auto_fixable" class="fixable-tag">可自动修复</span>
                 </div>
               </div>
 
@@ -272,6 +308,8 @@
                 >
                   <span class="issue-badge" :data-status="issue.status">
                     {{ issueTypeLabel(issue.issue_type) }}
+                    <template v-if="issue.status === 'resolved'">· 已解决</template>
+                    <template v-else-if="issue.status === 'ignored'">· 已忽略</template>
                   </span>
                   <span class="issue-slug" @click="selectPageFromPanel(issue.slug)">{{
                     issue.slug
@@ -284,23 +322,35 @@
                       · {{ formatDate(issue.created_at) }}</template
                     ></span
                   >
-                  <div v-if="issue.status === 'pending'" class="issue-actions">
+                  <div class="issue-actions">
+                    <template v-if="issue.status === 'pending'">
+                      <el-button
+                        size="small"
+                        text
+                        type="success"
+                        :loading="updatingIssueId === issue.id"
+                        @click="setIssueStatus(issue, 'resolved')"
+                      >
+                        解决
+                      </el-button>
+                      <el-button
+                        size="small"
+                        text
+                        :loading="updatingIssueId === issue.id"
+                        @click="setIssueStatus(issue, 'ignored')"
+                      >
+                        忽略
+                      </el-button>
+                    </template>
                     <el-button
+                      v-else
                       size="small"
                       text
-                      type="success"
+                      type="primary"
                       :loading="updatingIssueId === issue.id"
-                      @click="setIssueStatus(issue, 'resolved')"
+                      @click="setIssueStatus(issue, 'pending')"
                     >
-                      解决
-                    </el-button>
-                    <el-button
-                      size="small"
-                      text
-                      :loading="updatingIssueId === issue.id"
-                      @click="setIssueStatus(issue, 'ignored')"
-                    >
-                      忽略
+                      重新打开
                     </el-button>
                   </div>
                 </div>
@@ -402,6 +452,94 @@
         </div>
       </template>
     </el-drawer>
+
+    <!-- 新建页面对话框：人工创建（与管道生成共存；slug 需 KB 内唯一） -->
+    <el-dialog v-model="createVisible" title="新建页面" width="520px">
+      <el-form label-width="90px">
+        <el-form-item label="slug">
+          <el-input
+            v-model="createForm.slug"
+            placeholder="KB 内唯一，如 concept/my-topic（英文/数字/连字符）"
+            maxlength="255"
+          />
+        </el-form-item>
+        <el-form-item label="标题">
+          <el-input v-model="createForm.title" maxlength="512" />
+        </el-form-item>
+        <el-form-item label="类型">
+          <el-select v-model="createForm.page_type" style="width: 100%">
+            <el-option
+              v-for="(label, value) in creatableTypes"
+              :key="value"
+              :label="label"
+              :value="value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="摘要">
+          <el-input v-model="createForm.summary" type="textarea" :rows="2" maxlength="2000" />
+        </el-form-item>
+        <el-form-item label="正文">
+          <el-input
+            v-model="createForm.content"
+            type="textarea"
+            :rows="10"
+            placeholder="Markdown；[[slug|名称]] 表示站内链接"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="creating"
+          :disabled="!createForm.slug.trim() || !createForm.title.trim()"
+          @click="submitCreate"
+        >
+          创建
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 报告问题对话框：人工登记（与 Agent 的 wiki_flag_issue 同一存储） -->
+    <el-dialog v-model="reportVisible" title="报告页面问题" width="480px">
+      <el-form label-width="72px">
+        <el-form-item label="页面">
+          <span class="report-slug">{{ currentPage?.slug }}</span>
+        </el-form-item>
+        <el-form-item label="问题类型">
+          <el-select v-model="reportForm.issue_type" style="width: 100%">
+            <el-option
+              v-for="(label, value) in reportableTypes"
+              :key="value"
+              :label="label"
+              :value="value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input
+            v-model="reportForm.description"
+            type="textarea"
+            :rows="4"
+            maxlength="2000"
+            show-word-limit
+            placeholder="描述发现的问题，如：此页与「XX」页描述的实体实为同一事物"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="reportVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="reportSubmitting"
+          :disabled="!reportForm.description.trim()"
+          @click="submitReport"
+        >
+          提交
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -409,7 +547,15 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, Loading, MoreFilled, Refresh, Search, WarningFilled } from '@element-plus/icons-vue'
+import {
+  Document,
+  Loading,
+  MoreFilled,
+  Plus,
+  Refresh,
+  Search,
+  WarningFilled,
+} from '@element-plus/icons-vue'
 import { wikiApi } from '@/api/knowledge'
 import { renderMarkdownWithToc } from '@/utils/markdown'
 import { diffLines as computeDiff, diffStats as diffStatsOf } from '@/utils/wikiDiff'
@@ -584,12 +730,24 @@ function issueTypeLabel(type: string): string {
   return ISSUE_TYPE_LABELS[type] ?? type
 }
 const LINT_TYPE_LABELS: Record<string, string> = {
-  dead_link: '死链',
-  orphan: '孤儿页',
+  orphan_page: '孤儿页',
+  broken_link: '死链',
+  stale_ref: '失效来源',
+  missing_cross_ref: '缺交叉引用',
   empty_content: '空页面',
+  duplicate_slug: '重复 slug',
 }
 function lintTypeLabel(type: string): string {
   return LINT_TYPE_LABELS[type] ?? type
+}
+
+const SEVERITY_LABELS: Record<string, string> = {
+  info: '提示',
+  warning: '警告',
+  error: '错误',
+}
+function severityLabel(severity: string): string {
+  return SEVERITY_LABELS[severity] ?? severity
 }
 
 async function loadIssues() {
@@ -617,11 +775,17 @@ async function loadIssues() {
 // 行级在途标记：解决/忽略按钮的 loading（仅该行转圈，不锁整列表）
 const updatingIssueId = ref('')
 
-async function setIssueStatus(issue: WikiIssue, status: string) {
+async function setIssueStatus(issue: WikiIssue, status: 'resolved' | 'ignored' | 'pending') {
   if (updatingIssueId.value) return // 已有在途操作，防重复提交
   updatingIssueId.value = issue.id
   try {
     await wikiApi.updateIssueStatus(spaceId.value, kbId.value, issue.id, status)
+    // 反馈去向：解决/忽略 → 移出待处理；重新打开 → 回待处理（角标同步）
+    if (status === 'pending') {
+      ElMessage.success('已重新打开')
+    } else {
+      ElMessage.success(status === 'resolved' ? '已解决，可在「已解决」页签查看' : '已忽略，可在「已忽略」页签查看')
+    }
     await loadIssues()
   } catch {
     ElMessage.error('状态更新失败')
@@ -633,6 +797,23 @@ async function setIssueStatus(issue: WikiIssue, status: string) {
 // ---- lint 检查 ----
 const lintIssues = ref<WikiLintIssue[]>([])
 const lintRunning = ref(false)
+const lintHealth = ref<number | null>(null)
+
+// 可自动修复项数（broken_link/stale_ref/empty_content）——决定修复按钮显隐
+const lintFixableCount = computed(() => lintIssues.value.filter((i) => i.auto_fixable).length)
+
+// 健康分档位：≥90 良好 / ≥60 一般 / 其余较差（仅样式语义）
+const healthGrade = computed(() => {
+  if (lintHealth.value === null) return ''
+  if (lintHealth.value >= 90) return 'good'
+  if (lintHealth.value >= 60) return 'fair'
+  return 'poor'
+})
+
+function clearLint() {
+  lintIssues.value = []
+  lintHealth.value = null
+}
 
 async function runLint() {
   if (lintRunning.value) return // 防重复点击
@@ -640,15 +821,55 @@ async function runLint() {
   try {
     const data = await wikiApi.lint(spaceId.value, kbId.value)
     lintIssues.value = data.issues
+    lintHealth.value = data.health_score
     // lint 可能检出新的孤儿/死链，统计条同步刷新
     void loadWikiStats()
     if (!data.issues.length) {
-      ElMessage.success(`检查完成（${data.checked_pages} 页），未发现问题`)
+      ElMessage.success(
+        `检查完成（${data.checked_pages} 页，健康分 ${data.health_score}），未发现问题`,
+      )
     }
   } catch {
     ElMessage.error('质量检查失败')
   } finally {
     lintRunning.value = false
+  }
+}
+
+// ---- 自动修复（死链剥除/空页归档/失效来源回收）----
+const autofixRunning = ref(false)
+
+async function runAutoFix() {
+  if (autofixRunning.value) return
+  const count = lintFixableCount.value
+  if (!count) return
+  try {
+    await ElMessageBox.confirm(
+      `将自动修复 ${count} 项：死链转为纯文本、空页面归档、失效来源回收。页面内容会被修改（产生新版本）。继续？`,
+      '自动修复确认',
+      { confirmButtonText: '修复', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  autofixRunning.value = true
+  try {
+    const result = await wikiApi.autoFix(spaceId.value, kbId.value)
+    if (result.fixed > 0) {
+      ElMessage.success(`已修复 ${result.fixed} 项`)
+    } else {
+      ElMessage.info('无可修复项（可能已被处理）')
+    }
+    // 修复后复检 + 刷新统计与索引（页面内容/软删可能已变化）
+    await runLint()
+    await loadWikiStats()
+    await loadIndex()
+    // 当前浏览页可能被归档/编辑，重拉
+    if (selectedSlug.value) void selectPage(selectedSlug.value)
+  } catch {
+    ElMessage.error('自动修复失败')
+  } finally {
+    autofixRunning.value = false
   }
 }
 
@@ -933,8 +1154,101 @@ async function onPageCommand(command: string | number | object) {
         .join('\n')
       ElMessageBox.alert(detail || '无来源文档', '来源文档', { confirmButtonText: '关闭' })
     }
+  } else if (command === 'report') {
+    openReport()
   } else if (command === 'delete') {
     await confirmDelete()
+  }
+}
+
+// ---- 新建页面（人工创建；summary 类型由管道管理，不开放人工选）----
+const createVisible = ref(false)
+const creating = ref(false)
+const createForm = reactive({
+  slug: '',
+  title: '',
+  page_type: 'concept',
+  summary: '',
+  content: '',
+})
+
+const creatableTypes: Record<string, string> = {
+  entity: TYPE_LABELS.entity!,
+  concept: TYPE_LABELS.concept!,
+  synthesis: TYPE_LABELS.synthesis!,
+  comparison: TYPE_LABELS.comparison!,
+}
+
+function openCreate() {
+  createForm.slug = ''
+  createForm.title = ''
+  createForm.page_type = 'concept'
+  createForm.summary = ''
+  createForm.content = ''
+  createVisible.value = true
+}
+
+async function submitCreate() {
+  const slug = createForm.slug.trim()
+  if (!slug || !createForm.title.trim()) return
+  creating.value = true
+  try {
+    const page = await wikiApi.createPage(spaceId.value, kbId.value, {
+      slug,
+      title: createForm.title.trim(),
+      page_type: createForm.page_type,
+      summary: createForm.summary.trim(),
+      content: createForm.content,
+    })
+    ElMessage.success('页面已创建')
+    createVisible.value = false
+    await loadIndex()
+    await selectPage(page.slug)
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { error?: { message?: string } } } }
+    ElMessage.error(err.response?.data?.error?.message || '创建失败')
+  } finally {
+    creating.value = false
+  }
+}
+
+// ---- 人工报告问题（对齐后端 create_issue 白名单：四人工类型 + lint 六类）----
+const reportVisible = ref(false)
+const reportSubmitting = ref(false)
+const reportForm = reactive({ issue_type: 'other', description: '' })
+
+// 后端允许上报的完整类型集（人工四类 + lint 六类的并集）
+const reportableTypes: Record<string, string> = {
+  ...ISSUE_TYPE_LABELS,
+  ...LINT_TYPE_LABELS,
+}
+
+function openReport() {
+  if (!currentPage.value) return
+  reportForm.issue_type = 'other'
+  reportForm.description = ''
+  reportVisible.value = true
+}
+
+async function submitReport() {
+  if (!currentPage.value || !reportForm.description.trim()) return
+  reportSubmitting.value = true
+  try {
+    await wikiApi.createIssue(spaceId.value, kbId.value, {
+      slug: currentPage.value.slug,
+      issue_type: reportForm.issue_type,
+      description: reportForm.description.trim(),
+    })
+    ElMessage.success('已登记，可在「问题」页签查看')
+    reportVisible.value = false
+    // 待处理计数 +1（问题页签可能未加载过，标记需重拉）
+    pendingIssueCount.value += 1
+    issuesLoaded = false
+  } catch (error: unknown) {
+    const err = error as { response?: { data?: { error?: { message?: string } } } }
+    ElMessage.error(err.response?.data?.error?.message || '报告失败')
+  } finally {
+    reportSubmitting.value = false
   }
 }
 
@@ -1358,7 +1672,7 @@ onBeforeUnmount(() => {
   justify-content: center;
 }
 
-/* 问题视图工具栏：radio 组与按钮垂直居中，检查按钮靠右 */
+/* 问题视图工具栏：radio 组与按钮垂直居中，检查/修复按钮靠右 */
 .issues-toolbar {
   display: flex;
   flex-shrink: 0;
@@ -1371,10 +1685,79 @@ onBeforeUnmount(() => {
   background: var(--color-bg-card);
 }
 
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 健康分徽章：三档语义色（良好/一般/较差） */
+.health-chip {
+  margin-left: 10px;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+.health-chip[data-grade='good'] {
+  color: var(--color-success);
+  background: var(--color-success-subtle, rgba(16, 185, 129, 0.12));
+}
+
+.health-chip[data-grade='fair'] {
+  color: var(--color-warning);
+  background: var(--color-warning-subtle, rgba(245, 158, 11, 0.12));
+}
+
+.health-chip[data-grade='poor'] {
+  color: var(--color-danger);
+  background: var(--color-danger-subtle, rgba(239, 68, 68, 0.12));
+}
+
+/* 严重度标签：lint 六类问题分级（info/warning/error） */
+.issue-severity {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.issue-severity[data-severity='info'] {
+  color: var(--color-info);
+  background: var(--color-info-subtle, rgba(59, 130, 246, 0.12));
+}
+
+.issue-severity[data-severity='warning'] {
+  color: var(--color-warning);
+  background: var(--color-warning-subtle, rgba(245, 158, 11, 0.12));
+}
+
+.issue-severity[data-severity='error'] {
+  color: var(--color-danger);
+  background: var(--color-danger-subtle, rgba(239, 68, 68, 0.12));
+}
+
+.fixable-tag {
+  flex-shrink: 0;
+  color: var(--color-text-faint);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.report-slug {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
 /* 左侧页面树：扁平 Linear 风（去卡壳），自身独立滚动 = 天然 sticky */
 .wiki-sidebar {
+  display: flex;
   width: 256px;
   flex-shrink: 0;
+  flex-direction: column;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: var(--space-2);
@@ -1386,6 +1769,17 @@ onBeforeUnmount(() => {
 
 .sidebar-group {
   margin-bottom: var(--space-4);
+}
+
+/* 侧栏底部新建按钮：贴列表底，sticky 不随列表滚走 */
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-light);
+}
+
+.new-page-btn {
+  width: 100%;
 }
 
 .group-header {
@@ -1786,7 +2180,8 @@ onBeforeUnmount(() => {
   word-break: break-all;
 }
 
-/* ≥1400px 三栏齐全；窄于此隐藏 TOC，正文列自动居中（GitBook 1430px 同思路） */
+/* ≥1400px 三栏齐全；窄于此隐藏 TOC 列（此时占位也随之消失，但两条路径都恒定——
+   同一视口宽度下不会因页面有无标题而变化，正文宽度仍稳定） */
 @media (max-width: 1399px) {
   .wiki-toc {
     display: none;
