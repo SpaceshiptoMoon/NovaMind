@@ -27,6 +27,9 @@
         {{ graphCountText }}
       </span>
       <span class="toolbar-space" />
+      <span v-if="graph" class="zoom-indicator" :class="{ 'is-zoomed': zoomPercent !== 100 }">
+        {{ zoomPercent }}%
+      </span>
       <el-tooltip content="放大" placement="top">
         <el-button text size="small" :icon="ZoomIn" :disabled="!graph" @click="zoomBy(1.25)" />
       </el-tooltip>
@@ -42,14 +45,22 @@
           @click="resetLayout"
         />
       </el-tooltip>
-      <span class="graph-hint">拖空白平移 · 滚轮缩放 · 拖节点固定 · 单击节点打开页面</span>
+      <span class="graph-hint">拖空白平移 · 滚轮缩放 · 双击节点聚焦邻域 · 双击空白复位</span>
     </div>
 
-    <div ref="canvasRef" class="graph-canvas" :class="{ 'is-loading': loading }">
-      <div v-if="!graph && !loading" class="graph-empty">
+    <!-- echarts.init 会向容器注入内部 DOM，与 Vue patch 的 DOM 管理冲突：
+         若 Vue 管的节点（v-if 分支）与 echarts 容器同处一个 block，
+         分支切换时 patchBlockChildren 按 dynamicChildren 索引对齐，
+         会拿未挂载的 placeholder（el=null）当旧节点 patchElement，
+         抛 "Cannot set properties of null (setting '__vnode')"。
+         解法：覆盖层始终渲染（v-if → class 控制 visibility），
+         Vue patch 只改 class 不增删节点，与 echarts 注入的 DOM 零冲突 -->
+    <div class="graph-canvas-holder" :class="{ 'is-loading': loading, 'is-empty': !graph && !loading }">
+      <div ref="canvasRef" class="graph-canvas"></div>
+      <div class="graph-overlay graph-empty">
         <el-empty description="暂无图数据" />
       </div>
-      <div v-else-if="loading" class="graph-loading">
+      <div class="graph-overlay graph-loading">
         <el-icon class="is-loading"><Loading /></el-icon>
       </div>
     </div>
@@ -134,6 +145,9 @@ let chart: echarts.ECharts | null = null
 let resizeObserver: ResizeObserver | null = null
 // 容器尚无尺寸时暂存的待渲染数据（ResizeObserver 首次回调消费）
 let pendingRender: WikiGraphResponse | null = null
+
+// 当前缩放百分比（graphRoam 事件跟踪，含滚轮/按钮/双击复位）
+const zoomPercent = ref(100)
 
 const TYPE_LABELS: Record<string, string> = {
   entity: '实体',
@@ -346,13 +360,44 @@ function renderChart(data: WikiGraphResponse) {
       const slug = (params.data as { slug?: string } | undefined)?.slug
       if (params.dataType === 'node' && slug) emit('select', slug)
     })
+    // 双击节点 = 以该节点为 ego 中心聚焦邻域（Obsidian local graph 式探索）；
+    // 双击空白 = 视图复位（缩放/平移回初始，不改数据）。dblclick 事件参数里
+    // dataType 为空即空白区域
+    chart.on('dblclick', (params) => {
+      const slug = (params.data as { slug?: string } | undefined)?.slug
+      if (params.dataType === 'node' && slug) {
+        if (centerSlug.value === slug) return
+        centerSlug.value = slug
+        void loadGraph()
+      } else {
+        resetView()
+      }
+    })
+    // 跟踪缩放：滚轮/按钮/pinch 都会发 graphRoam 事件
+    chart.on('graphRoam', () => {
+      zoomPercent.value = Math.round(seriesView().zoom * 100)
+    })
   }
   chart.setOption(buildOption(data), true)
 }
 
+// 从当前 option 安全取 series 的 zoom（getOption 类型过宽，收敛到这里）
+function seriesView(): { zoom: number } {
+  const raw = (chart?.getOption()?.series as { zoom?: number }[] | undefined)?.[0]
+  return { zoom: Number(raw?.zoom ?? 1) }
+}
+
 // 重置布局：全量重跑力导向（notMerge），节点回到初始排布
 function resetLayout() {
+  zoomPercent.value = 100
   if (graph.value) renderChart(graph.value)
+}
+
+// 视图复位：graph 的 roam transform（pan/zoom）存在 View 坐标系内部，
+// dispatchAction 无法整体归零；notMerge 全量重渲染是唯一可靠复位
+// （force 布局重跑，节点回到初始排布——与「重置布局」按钮同语义）
+function resetView() {
+  resetLayout()
 }
 
 // 工具栏按钮的程序化缩放（graphRoam 的 zoomOrigin 指定画布中心，
@@ -424,6 +469,7 @@ defineExpose({ reload: loadGraph })
 
 <style scoped>
 .wiki-graph-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -453,6 +499,22 @@ defineExpose({ reload: loadGraph })
   flex: 1;
 }
 
+/* 缩放指示器：等宽字体避免数字跳动；非 100% 时轻微强调 */
+.zoom-indicator {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 38px;
+  text-align: right;
+}
+
+.zoom-indicator.is-zoomed {
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
 .graph-hint {
   color: var(--color-text-faint);
   font-size: var(--text-xs);
@@ -465,41 +527,51 @@ defineExpose({ reload: loadGraph })
   }
 }
 
-.graph-canvas {
+.graph-canvas-holder {
   position: relative;
   flex: 1;
   /* pane 已通过高度链拿到确定高度，硬撑只在矮视口造成溢出；
      320px 仅为极端矮视口兜底 */
   min-height: 320px;
-  overflow: hidden;
   border: 1px solid var(--color-border-light);
   border-radius: var(--radius-2xl);
   background: var(--color-bg-card);
   transition: opacity var(--transition-base);
 }
 
+/* ECharts 专属容器：充满 holder，不参与 Vue patch 的兄弟排序 */
+.graph-canvas {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
 /* 加载态：EP v-loading 遮罩白底在 dark 下闪白，改降透明 + 居中旋转图标 */
-.graph-canvas.is-loading {
+.graph-canvas-holder.is-loading .graph-canvas {
   opacity: 0.55;
   pointer-events: none;
 }
 
-.graph-loading {
+/* 空态/加载覆盖层：常驻 DOM，visibility 切换（不增删节点） */
+.graph-overlay {
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-text-muted);
-  font-size: 24px;
+  pointer-events: none;
+  visibility: hidden;
+  z-index: 1;
 }
 
-.graph-empty {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.graph-canvas-holder.is-empty .graph-empty {
+  visibility: visible;
+}
+
+.graph-canvas-holder.is-loading .graph-loading {
+  visibility: visible;
+  color: var(--color-text-muted);
+  font-size: 24px;
 }
 </style>
 
