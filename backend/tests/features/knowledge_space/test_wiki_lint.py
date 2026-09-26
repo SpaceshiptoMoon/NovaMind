@@ -108,6 +108,30 @@ async def test_lint_orphan_and_empty(db):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_lint_excludes_archived_pages(db):
+    """归档页不进 lint 检查范围（修复 autofix 归档后复检死循环）。
+
+    反向用例：正常 published 短页仍要报 empty_content——排除逻辑不能误伤。
+    """
+    await _page(db, "entity/archived-short", content="短", status="archived")
+    await _page(db, "entity/live-short", content="短")
+    svc = WikiLintService(db, kb_id=1, space_id=1)
+
+    report = await svc.run_lint()
+    empty_slugs = {i.slug for i in report["issues"] if i.issue_type == LINT_EMPTY_CONTENT}
+    assert "entity/live-short" in empty_slugs  # 正常页照常检出
+    assert "entity/archived-short" not in empty_slugs  # 归档页不再报
+
+    # auto_fix 后复检收敛：修完不会再报 archived 页的问题
+    result = await svc.auto_fix()
+    report2 = await svc.run_lint()
+    empty_slugs2 = {i.slug for i in report2["issues"] if i.issue_type == LINT_EMPTY_CONTENT}
+    assert result["fixed"] >= 1
+    assert "entity/archived-short" not in empty_slugs2
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_lint_stale_ref_autofix(db):
     """stale_ref：来源文档已删 → 剥引用；无剩余来源整页删"""
     # 文档 100/200 都不存在（Document 表为空）

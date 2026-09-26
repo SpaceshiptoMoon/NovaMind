@@ -91,7 +91,13 @@ class WikiLintService:
             DocumentRepository,
         )
 
-        pages = await self.page_repo.all_live_pages(self.kb_id)
+        # archived 页已由 auto_fix 归档（空页修复路径），不再是可检对象——
+        # 不排除会导致"归档→复检→又报空页"的死循环。all_live_pages 的语义是
+        # "未软删"（finalize/graph 共用），archived 过滤放此处局部做。
+        pages = [
+            p for p in await self.page_repo.all_live_pages(self.kb_id)
+            if p.status != "archived"
+        ]
         live_slugs = {p.slug for p in pages}
 
         # 已删文档检查（stale_ref 用）：一次批量查存活文档 id 集合
