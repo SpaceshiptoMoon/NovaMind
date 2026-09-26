@@ -814,6 +814,7 @@ class AIChatService:
                 "kb_id": r.get("kb_id"),
                 "space_id": r.get("space_id"),
                 "chunk_id": r.get("chunk_id"),
+                "chunk_type": r.get("chunk_type"),
                 "score": r.get("score"),
                 "snippet": snippet,
                 # ES 写入端是 metadata.page_number（历史读 "page" 键不存在恒 None）；

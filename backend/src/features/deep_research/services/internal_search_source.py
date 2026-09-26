@@ -122,6 +122,7 @@ class HostInternalSearchPort:
                         "content": r.get("content", ""),
                         "document_id": r.get("document_id"),
                         "chunk_id": r.get("chunk_id"),
+                        "chunk_type": r.get("chunk_type"),
                         "document_name": r.get("file_info", {}).get("filename") or r.get("document_name"),
                         "kb_id": kb.id,
                         "kb_name": kb.name,

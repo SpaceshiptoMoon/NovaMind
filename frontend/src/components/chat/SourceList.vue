@@ -70,6 +70,7 @@
               <div class="source-name-row">
                 <span class="source-name" :title="displayName(s)">{{ displayName(s) }}</span>
                 <span class="source-kind kb">知识库</span>
+                <span v-if="s.chunk_type === 'wiki_page'" class="source-kind wiki">Wiki</span>
               </div>
               <div class="source-sub">
                 <span v-if="s.score != null" class="source-score"
@@ -288,6 +289,12 @@ function formatScore(score: number): string {
 .source-kind.kb {
   background: rgba(17, 24, 39, 0.08);
   color: var(--color-text-secondary);
+}
+
+/* wiki 页命中：与知识检索页 .wiki-hit-badge 同语义色（primary 系），区分于普通 chunk */
+.source-kind.wiki {
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
 }
 
 .source-kind.web {

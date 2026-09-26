@@ -474,6 +474,7 @@ function toSourceRef(s: ChatSource): SourceRef {
     document_name: s.document_name ?? null,
     kb_id: s.kb_id ?? null,
     chunk_id: s.chunk_id ?? null,
+    chunk_type: s.chunk_type ?? null,
     score: s.score ?? null,
     snippet: s.snippet ?? null,
     page: s.page ?? null,

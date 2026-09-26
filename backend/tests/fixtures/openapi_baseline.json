@@ -22,6 +22,31 @@
         "title": "Achievement",
         "type": "object"
       },
+      "ActionStatsResponse": {
+        "description": "操作审计统计响应（顺带暴露既有 AuditService.get_action_stats）",
+        "properties": {
+          "items": {
+            "description": "按操作类型聚合 [{action, count}]",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "description": "总操作数",
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ActionStatsResponse",
+        "type": "object"
+      },
       "AdminResetPasswordResponse": {
         "description": "管理员重置密码响应",
         "properties": {
@@ -992,6 +1017,29 @@
           "file"
         ],
         "title": "Body_upload_skill_api_v1_skills_upload_post",
+        "type": "object"
+      },
+      "CaseItem": {
+        "description": "单条用例（QA 消息导入桥接，批次 3a）",
+        "properties": {
+          "expected_answer": {
+            "description": "期望答案",
+            "minLength": 1,
+            "title": "Expected Answer",
+            "type": "string"
+          },
+          "question": {
+            "description": "问题",
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question",
+          "expected_answer"
+        ],
+        "title": "CaseItem",
         "type": "object"
       },
       "Certification": {
@@ -3461,6 +3509,47 @@
         "title": "InviteResponse",
         "type": "object"
       },
+      "KbGapStatItem": {
+        "description": "KB 维度聚合项",
+        "properties": {
+          "down_count": {
+            "title": "Down Count",
+            "type": "integer"
+          },
+          "kb_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kb Id"
+          },
+          "kb_name": {
+            "title": "Kb Name",
+            "type": "string"
+          },
+          "qa_count": {
+            "title": "Qa Count",
+            "type": "integer"
+          },
+          "zero_hit_count": {
+            "title": "Zero Hit Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kb_id",
+          "kb_name",
+          "qa_count",
+          "down_count",
+          "zero_hit_count"
+        ],
+        "title": "KbGapStatItem",
+        "type": "object"
+      },
       "KnowledgeBaseConfig-Input": {
         "description": "Full knowledge-base config.",
         "properties": {
@@ -3874,6 +3963,139 @@
         "title": "KnowledgeBaseUpdate",
         "type": "object"
       },
+      "KnowledgeGapKpi": {
+        "description": "KPI 四卡 + 附加比率",
+        "properties": {
+          "down_rate": {
+            "description": "点踩率（0~1）",
+            "title": "Down Rate",
+            "type": "number"
+          },
+          "low_score_rate": {
+            "description": "低分率（0~1，明细命中近似）",
+            "title": "Low Score Rate",
+            "type": "number"
+          },
+          "low_score_threshold": {
+            "description": "低分阈值（本次查询生效值）",
+            "title": "Low Score Threshold",
+            "type": "number"
+          },
+          "qa_total": {
+            "description": "时间窗内 assistant 回答总数",
+            "title": "Qa Total",
+            "type": "integer"
+          },
+          "refused_rate": {
+            "default": 0.0,
+            "description": "拒答率（0~1）",
+            "title": "Refused Rate",
+            "type": "number"
+          },
+          "up_count": {
+            "default": 0,
+            "description": "点赞数",
+            "title": "Up Count",
+            "type": "integer"
+          },
+          "zero_hit_rate": {
+            "description": "零命中率（0~1）",
+            "title": "Zero Hit Rate",
+            "type": "number"
+          }
+        },
+        "required": [
+          "qa_total",
+          "down_rate",
+          "zero_hit_rate",
+          "low_score_rate",
+          "low_score_threshold"
+        ],
+        "title": "KnowledgeGapKpi",
+        "type": "object"
+      },
+      "KnowledgeGapStatsResponse": {
+        "description": "知识缺口看板响应",
+        "properties": {
+          "by_kb": {
+            "items": {
+              "$ref": "#/components/schemas/KbGapStatItem"
+            },
+            "title": "By Kb",
+            "type": "array"
+          },
+          "kpi": {
+            "$ref": "#/components/schemas/KnowledgeGapKpi"
+          },
+          "low_score_messages": {
+            "items": {
+              "$ref": "#/components/schemas/LowScoreMessageItem"
+            },
+            "title": "Low Score Messages",
+            "type": "array"
+          },
+          "trend": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeGapTrendItem"
+            },
+            "title": "Trend",
+            "type": "array"
+          },
+          "window": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Window",
+            "type": "object"
+          },
+          "zero_hit_queries": {
+            "items": {
+              "$ref": "#/components/schemas/ZeroHitQueryItem"
+            },
+            "title": "Zero Hit Queries",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kpi",
+          "trend",
+          "zero_hit_queries",
+          "low_score_messages",
+          "by_kb",
+          "window"
+        ],
+        "title": "KnowledgeGapStatsResponse",
+        "type": "object"
+      },
+      "KnowledgeGapTrendItem": {
+        "description": "趋势单日数据",
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "qa_count": {
+            "title": "Qa Count",
+            "type": "integer"
+          },
+          "refused": {
+            "title": "Refused",
+            "type": "integer"
+          },
+          "zero_hit": {
+            "title": "Zero Hit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date",
+          "qa_count",
+          "zero_hit",
+          "refused"
+        ],
+        "title": "KnowledgeGapTrendItem",
+        "type": "object"
+      },
       "LanguageSkill": {
         "properties": {
           "certificate": {
@@ -4010,6 +4232,74 @@
           "message"
         ],
         "title": "LogoutResponse",
+        "type": "object"
+      },
+      "LowScoreMessageItem": {
+        "description": "点踩/低分消息项",
+        "properties": {
+          "answer_snippet": {
+            "title": "Answer Snippet",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "kb_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kb Id"
+          },
+          "max_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Score"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "integer"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id",
+          "session_id",
+          "answer_snippet"
+        ],
+        "title": "LowScoreMessageItem",
         "type": "object"
       },
       "MarkReadResponse": {
@@ -4675,6 +4965,79 @@
           "by_category"
         ],
         "title": "MemoryStatsResponse",
+        "type": "object"
+      },
+      "MessageFeedbackRequest": {
+        "description": "消息反馈请求（批次 2a：点赞/点踩）\n\nrating=null 表示撤销反馈（幂等：无论是否曾投过，撤销后均无反馈记录）。",
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "反馈补充说明（可选）",
+            "title": "Comment"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "enum": [
+                  "up",
+                  "down"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "反馈类型：up=赞 / down=踩 / null=撤销",
+            "title": "Rating"
+          }
+        },
+        "title": "MessageFeedbackRequest",
+        "type": "object"
+      },
+      "MessageFeedbackResponse": {
+        "description": "消息反馈响应（回显当前状态）",
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "integer"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前反馈状态：up/down/null",
+            "title": "Rating"
+          }
+        },
+        "required": [
+          "message_id"
+        ],
+        "title": "MessageFeedbackResponse",
         "type": "object"
       },
       "MessageListResponse": {
@@ -6242,6 +6605,16 @@
               }
             ],
             "title": "Extra"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MessageFeedbackResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "id": {
             "title": "Id",
@@ -8107,6 +8480,18 @@
             "description": "融合分数",
             "title": "Score",
             "type": "number"
+          },
+          "space_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "空间 ID（QA 引用回跳原文定位用）",
+            "title": "Space Id"
           }
         },
         "required": [
@@ -10489,6 +10874,26 @@
         "title": "TestCase",
         "type": "object"
       },
+      "TestSetAppendCasesRequest": {
+        "description": "追加用例进已有测试集",
+        "properties": {
+          "cases": {
+            "description": "用例列表",
+            "items": {
+              "$ref": "#/components/schemas/CaseItem"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Cases",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cases"
+        ],
+        "title": "TestSetAppendCasesRequest",
+        "type": "object"
+      },
       "TestSetCasesResponse": {
         "description": "测试集用例预览响应",
         "properties": {
@@ -10626,6 +11031,34 @@
           "updated_at"
         ],
         "title": "TestSetDetailResponse",
+        "type": "object"
+      },
+      "TestSetFromCasesRequest": {
+        "description": "用用例列表直接建测试集（前端手头就有 QA 消息全文，后端只收双字段）",
+        "properties": {
+          "cases": {
+            "description": "用例列表",
+            "items": {
+              "$ref": "#/components/schemas/CaseItem"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Cases",
+            "type": "array"
+          },
+          "name": {
+            "description": "测试集名称",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "cases"
+        ],
+        "title": "TestSetFromCasesRequest",
         "type": "object"
       },
       "TestSetListItem": {
@@ -12991,6 +13424,47 @@
           }
         },
         "title": "WorkProjectRef",
+        "type": "object"
+      },
+      "ZeroHitQueryItem": {
+        "description": "零命中问题 Top N 项",
+        "properties": {
+          "hit_count": {
+            "title": "Hit Count",
+            "type": "integer"
+          },
+          "kb_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kb Id"
+          },
+          "last_seen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "hit_count"
+        ],
+        "title": "ZeroHitQueryItem",
         "type": "object"
       }
     },
@@ -15464,6 +15938,67 @@
           }
         ],
         "summary": "更新消息",
+        "tags": [
+          "智能问答"
+        ]
+      }
+    },
+    "/api/v1/qa/message/{message_id}/feedback": {
+      "put": {
+        "description": "对 AI 回答点赞/点踩（rating=up/down）；rating=null 撤销反馈。幂等：重复提交同值无副作用；仅 assistant 消息且仅消息归属人可反馈。",
+        "operationId": "set_message_feedback_api_v1_qa_message__message_id__feedback_put",
+        "parameters": [
+          {
+            "description": "消息ID",
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "description": "消息ID",
+              "exclusiveMinimum": 0,
+              "title": "Message Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageFeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageFeedbackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "设置消息反馈",
         "tags": [
           "智能问答"
         ]
@@ -19352,6 +19887,89 @@
         ]
       }
     },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/chunk-position": {
+      "get": {
+        "description": "按 chunk_id 返回该分块在 PDF 原文中的页码与 bbox 矩形列表（引用溯源高亮用）。无坐标数据（旧文档/非 PDF）时 page 为 null、bboxes 为空。坐标为 PDF pt（72dpi，原点左上），与 pdf.js scale=1 viewport 线性对齐。",
+        "operationId": "get_document_chunk_position_api_v1_spaces__space_id__knowledge_bases__kb_id__documents__document_id__chunk_position_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "文档ID",
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "description": "文档ID",
+              "exclusiveMinimum": 0,
+              "title": "Document Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "分块ID（{document_id}_{index}）",
+            "in": "query",
+            "name": "chunk_id",
+            "required": true,
+            "schema": {
+              "description": "分块ID（{document_id}_{index}）",
+              "minLength": 1,
+              "title": "Chunk Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "查询 chunk 的 PDF 原文位置",
+        "tags": [
+          "文档管理",
+          "文档管理"
+        ]
+      }
+    },
     "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/documents/{document_id}/chunks": {
       "get": {
         "description": "分页获取文档的分块列表（返回 total/page/size）",
@@ -20641,6 +21259,89 @@
         ]
       }
     },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation/tasks/{task_id}/report/compare": {
+      "get": {
+        "description": "与基线任务对比：summary 逐项 delta + 按归一化 question join 的逐用例差异（delta 降序）。要求两任务同测试集且均已完成（批次 3b）。",
+        "operationId": "get_evaluation_report_comparison_api_v1_spaces__space_id__knowledge_bases__kb_id__evaluation_tasks__task_id__report_compare_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "任务ID（当前）",
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "description": "任务ID（当前）",
+              "exclusiveMinimum": 0,
+              "title": "Task Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "基线任务ID",
+            "in": "query",
+            "name": "baseline_task_id",
+            "required": true,
+            "schema": {
+              "description": "基线任务ID",
+              "exclusiveMinimum": 0,
+              "title": "Baseline Task Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "对比两次测评报告",
+        "tags": [
+          "知识库测评",
+          "知识库测评"
+        ]
+      }
+    },
     "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation/tasks/{task_id}/scores": {
       "post": {
         "operationId": "submit_human_scores_api_v1_spaces__space_id__knowledge_bases__kb_id__evaluation_tasks__task_id__scores_post",
@@ -20869,6 +21570,77 @@
           }
         ],
         "summary": "上传测试集",
+        "tags": [
+          "知识库测评",
+          "知识库测评"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/knowledge-bases/{kb_id}/evaluation/test-sets/from-cases": {
+      "post": {
+        "description": "从 QA 消息沉淀用例：前端送 {question, expected_answer} 列表，后端生成 JSON 文件走同一持久化路径（批次 3a QA → 测试集桥接）。",
+        "operationId": "create_test_set_from_cases_api_v1_spaces__space_id__knowledge_bases__kb_id__evaluation_test_sets_from_cases_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestSetFromCasesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestSetCreateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "用用例列表直接建测试集",
         "tags": [
           "知识库测评",
           "知识库测评"
@@ -21166,6 +21938,87 @@
           }
         ],
         "summary": "预览测试集用例",
+        "tags": [
+          "知识库测评",
+          "知识库测评"
+        ]
+      },
+      "post": {
+        "description": "下载现有测试集 → 追加用例 → 重上传 → 刷新 total_cases（批次 3a）",
+        "operationId": "append_cases_to_test_set_api_v1_spaces__space_id__knowledge_bases__kb_id__evaluation_test_sets__test_set_id__cases_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "知识库ID",
+            "in": "path",
+            "name": "kb_id",
+            "required": true,
+            "schema": {
+              "description": "知识库ID",
+              "exclusiveMinimum": 0,
+              "title": "Kb Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "测试集ID",
+            "in": "path",
+            "name": "test_set_id",
+            "required": true,
+            "schema": {
+              "description": "测试集ID",
+              "exclusiveMinimum": 0,
+              "title": "Test Set Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestSetAppendCasesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestSetCreateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "追加用例进已有测试集",
         "tags": [
           "知识库测评",
           "知识库测评"
@@ -23405,6 +24258,211 @@
         "tags": [
           "空间成员",
           "空间成员"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/stats/actions": {
+      "get": {
+        "description": "按操作类型聚合时间窗内的审计日志（顺带暴露既有 AuditService 能力）",
+        "operationId": "get_space_action_stats_api_v1_spaces__space_id__stats_actions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "开始时间（ISO8601，默认近30天）",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "开始时间（ISO8601，默认近30天）",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "结束时间（ISO8601，非含）",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "结束时间（ISO8601，非含）",
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionStatsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "空间操作统计",
+        "tags": [
+          "空间统计",
+          "空间统计"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/stats/knowledge-gap": {
+      "get": {
+        "description": "聚合时间窗内 QA 回答的零命中/低分/点踩信号：KPI + 按日趋势 + 零命中问题 Top N + 点踩/低分明细 + KB 维度。低分阈值默认 0.35，可经 low_score_threshold 参数调整。",
+        "operationId": "get_knowledge_gap_stats_api_v1_spaces__space_id__stats_knowledge_gap_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "开始时间（ISO8601，默认近30天）",
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "开始时间（ISO8601，默认近30天）",
+              "title": "Start"
+            }
+          },
+          {
+            "description": "结束时间（ISO8601，非含）",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "结束时间（ISO8601，非含）",
+              "title": "End"
+            }
+          },
+          {
+            "description": "知识库过滤",
+            "in": "query",
+            "name": "kb_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "知识库过滤",
+              "title": "Kb Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "low_score_threshold",
+            "required": false,
+            "schema": {
+              "default": 0.35,
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Low Score Threshold",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeGapStatsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "知识缺口看板",
+        "tags": [
+          "空间统计",
+          "空间统计"
         ]
       }
     },

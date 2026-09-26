@@ -901,6 +901,8 @@ export interface ChatSource {
   /** 来源所属空间 ID（原文定位拼 chunk-position URL 用） */
   space_id?: number | null
   chunk_id?: string | null
+  /** 命中片段类型：wiki_page=知识空间 Wiki 页（检索加权命中）/ chunk=普通文档片段 */
+  chunk_type?: 'wiki_page' | 'chunk' | null
   /** 检索得分（0~1） */
   score?: number | null
   /** 命中片段预览 */
@@ -1676,6 +1678,7 @@ export interface SourceRef {
   document_name?: string | null
   kb_id?: number | null
   chunk_id?: string | null
+  chunk_type?: 'wiki_page' | 'chunk' | null
   score?: number | null
   snippet?: string | null
   page?: number | null
