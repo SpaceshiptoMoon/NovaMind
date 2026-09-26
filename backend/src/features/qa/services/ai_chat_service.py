@@ -502,6 +502,10 @@ class AIChatService:
             return ""
         web_items = [s for s in sources if s.get("kind") == "web"]
         kb_items = [s for s in sources if s.get("kind") == "kb"]
+        # wiki 页单列一组：预合成的结构化骨架（术语表/综述/对比），置于普通 chunk 前，
+        # 引导模型用 wiki 组织答案结构、以 chunk 支撑事实细节
+        wiki_items = [s for s in kb_items if s.get("chunk_type") == "wiki_page"]
+        plain_kb_items = [s for s in kb_items if s.get("chunk_type") != "wiki_page"]
         ref_lines: list[str] = []
         if web_items:
             ref_lines.append("<web-search-results>")
@@ -511,19 +515,32 @@ class AIChatService:
                     f"URL: {s.get('url', '')}\n{s.get('snippet', '')}"
                 )
             ref_lines.append("</web-search-results>")
-        if kb_items:
+        if wiki_items:
+            ref_lines.append("<wiki-pages>")
+            for s in wiki_items:
+                header = f"[{s['index']}]" + (f" {s.get('document_name')}" if s.get("document_name") else "")
+                ref_lines.append(f"{header}\n{s.get('snippet', '')}")
+            ref_lines.append("</wiki-pages>")
+        if plain_kb_items:
             ref_lines.append("<knowledge-base-context>")
-            for s in kb_items:
+            for s in plain_kb_items:
                 header = f"[{s['index']}]" + (f" {s.get('document_name')}" if s.get("document_name") else "")
                 ref_lines.append(f"{header}\n{s.get('snippet', '')}")
             ref_lines.append("</knowledge-base-context>")
 
         reference = "\n".join(ref_lines)
+        skeleton_rule = (
+            "4. <wiki-pages> 是该知识空间的整理性 Wiki 页面，可用于组织答案结构与术语对齐；"
+            "事实细节以普通资料为准。\n"
+            if wiki_items
+            else ""
+        )
         return (
             "以下是为回答用户问题检索到的参考资料，请严格基于这些资料作答：\n"
             "1. 使用参考资料中的信息时，在对应句子末尾标注来源序号，如 [1]、[2]，序号与下方参考资料列表一致；\n"
             "2. 优先使用参考资料，资料不足时可结合自身知识补充，但不要编造资料中不存在的事实；\n"
-            "3. 若参考资料完全不足以回答，请直接说明无法从现有资料中找到答案。\n\n"
+            "3. 若参考资料完全不足以回答，请直接说明无法从现有资料中找到答案。\n"
+            f"{skeleton_rule}\n"
             f"{reference}"
         )
 
@@ -805,7 +822,10 @@ class AIChatService:
             file_info = r.get("file_info") or {}
             metadata = r.get("metadata") or {}
             filename = file_info.get("filename", "")
-            snippet = _sanitize_input(r.get("content", ""))[:800]
+            # wiki 页是预合成结构化内容（术语/综述/对比），信息密度高于原始 chunk，
+            # 截断放宽到 1500 保住骨架结构；普通 chunk 维持 800
+            is_wiki = r.get("chunk_type") == "wiki_page"
+            snippet = _sanitize_input(r.get("content", ""))[: 1500 if is_wiki else 800]
             sources.append({
                 "index": i,
                 "kind": "kb",
