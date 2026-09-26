@@ -2,27 +2,27 @@
   <div class="traj-split">
     <!-- ===== 左：平铺记录时间线 ===== -->
     <div class="traj-table-pane" :style="{ flex: '1 1 auto', minWidth: '280px' }">
-      <!-- toolbar：搜索 + Turns/Calls 折叠 -->
+      <!-- toolbar：搜索 + Sessions/Steps 折叠 -->
       <div class="traj-toolbar">
         <button
           class="traj-tb-btn"
-          :class="{ active: allTurnsCollapsed }"
+          :class="{ active: allSessionsCollapsed }"
           :disabled="!records.length"
-          title="折叠/展开所有 Turn"
-          @click="toggleAllTurns"
+          title="折叠/展开所有 Session"
+          @click="toggleAllSessions"
         >
-          <span class="traj-tb-glyph">{{ allTurnsCollapsed ? '⊞' : '⊟' }}</span>
-          <span>Turns</span>
+          <span class="traj-tb-glyph">{{ allSessionsCollapsed ? '⊞' : '⊟' }}</span>
+          <span>Sessions</span>
         </button>
         <button
           class="traj-tb-btn"
-          :class="{ active: allCallsCollapsed }"
+          :class="{ active: allStepsCollapsed }"
           :disabled="!hasAssistantDecisions"
-          title="折叠/展开所有工具调用"
-          @click="toggleAllCalls"
+          title="折叠/展开所有工具步骤（Step）"
+          @click="toggleAllSteps"
         >
-          <span class="traj-tb-glyph">{{ allCallsCollapsed ? '⊞' : '⊟' }}</span>
-          <span>Calls</span>
+          <span class="traj-tb-glyph">{{ allStepsCollapsed ? '⊞' : '⊟' }}</span>
+          <span>Steps</span>
         </button>
         <input v-model="searchQuery" class="traj-search" placeholder="搜索消息…" type="search" />
       </div>
@@ -45,24 +45,28 @@
           </div>
         </div>
 
-        <!-- 平铺记录（Session → Turn 分节 → trace span 树） -->
+        <!-- 平铺记录（Session → Turn → Step 层级） -->
         <template v-for="rec in visibleRecords" :key="rec.recordId">
-          <!-- Turn 分节头：每轮首条记录上方，承担该轮折叠 -->
+          <!-- Session 分节头：每个 Session（一条 user 消息开启的完整 Agent Loop）首条记录上方，承担该 Session 折叠 -->
           <div
-            v-if="rec.turnIndex > 0 && isFirstInTurn(rec)"
-            class="traj-turn-header"
-            :title="`Turn ${rec.turnIndex}（点击折叠/展开）`"
-            @click="toggleTurn(rec.turnIndex)"
+            v-if="rec.sessionIndex > 0 && isFirstInSession(rec)"
+            class="traj-session-header"
+            :title="`Session ${rec.sessionIndex}（点击折叠/展开）`"
+            @click="toggleSession(rec.sessionIndex)"
           >
-            <span class="turn-chevron" :class="{ collapsed: collapsedTurns.has(rec.turnIndex) }"
+            <span
+              class="session-chevron"
+              :class="{ collapsed: collapsedSessions.has(rec.sessionIndex) }"
               >▾</span
             >
-            <span class="turn-label">Turn {{ rec.turnIndex }}</span>
-            <span class="turn-stats">
-              <span>{{ turnSpanCount(rec.turnIndex) }} spans</span>
-              <span v-if="turnTokens(rec.turnIndex)">· {{ turnTokens(rec.turnIndex) }} tok</span>
-              <span v-if="turnDuration(rec.turnIndex)"
-                >· {{ formatDurationMs(turnDuration(rec.turnIndex)) }}</span
+            <span class="session-label">Session {{ rec.sessionIndex }}</span>
+            <span class="session-stats">
+              <span>{{ sessionStepCount(rec.sessionIndex) }} steps</span>
+              <span v-if="sessionTokens(rec.sessionIndex)"
+                >· {{ sessionTokens(rec.sessionIndex) }} tok</span
+              >
+              <span v-if="sessionDuration(rec.sessionIndex)"
+                >· {{ formatDurationMs(sessionDuration(rec.sessionIndex)) }}</span
               >
             </span>
           </div>
@@ -94,7 +98,7 @@
             <MarkdownRenderer :content="compactionSummary(rec)" />
           </div>
 
-          <!-- 普通记录行（tool 行若挂靠 assistant 决策则缩进，呈 span 树） -->
+          <!-- 普通记录行（tool 行若挂靠 assistant 决策则缩进，呈 Step 层级） -->
           <div
             v-else
             class="traj-row"
@@ -103,7 +107,7 @@
               {
                 selected: selectedRecordId === rec.recordId,
                 error: isToolFailed(rec),
-                'child-span': !!rec.parentAssistantRecordId,
+                'child-step': !!rec.parentAssistantRecordId,
               },
             ]"
             :data-record-id="rec.recordId"
@@ -111,7 +115,12 @@
           >
             <span class="traj-index">#{{ rec.seq }}</span>
             <span class="traj-role" :class="rec.kind">{{ roleLabel(rec.kind) }}</span>
-            <span v-if="rec.msg.iteration != null" class="traj-iter">L{{ rec.msg.iteration }}</span>
+            <span
+              v-if="rec.msg.iteration != null"
+              class="traj-iter"
+              :title="`Turn ${rec.msg.iteration}（ReAct 轮号）`"
+              >T{{ rec.msg.iteration }}</span
+            >
 
             <div class="traj-content">
               <!-- user -->
@@ -166,14 +175,14 @@
                 <span class="traj-preview">{{ rec.summary }}</span>
               </template>
 
-              <!-- 折叠徽章（Turn 折叠已由分节头承担，这里只留 calls 折叠） -->
+              <!-- 折叠徽章（Session 折叠已由分节头承担，这里只留 Steps 折叠） -->
               <span
-                v-if="isAssistantDecision(rec) && isCallsFolded(rec)"
+                v-if="isAssistantDecision(rec) && isStepsFolded(rec)"
                 class="traj-fold-badge"
-                @click.stop="toggleCalls(rec.recordId)"
-                title="展开工具调用"
+                @click.stop="toggleSteps(rec.recordId)"
+                title="展开工具步骤"
               >
-                ⊞ {{ rec.childToolRecordIds?.length || 0 }} calls
+                ⊞ {{ rec.childToolRecordIds?.length || 0 }} steps
               </span>
 
               <span v-if="rec.durationMs != null" class="traj-duration">{{
@@ -269,10 +278,9 @@ const systemRecord = computed<TrajectoryRecord>(() => ({
     token_count: null,
     created_at: '',
   },
-  turnIndex: 0,
+  sessionIndex: 0,
   summary: 'Initial System Prompt',
 }))
-
 // ===== 选中态 =====
 const selectedRecordId = ref<string | null>(null)
 const selectedRecord = computed<TrajectoryRecord | null>(() => {
@@ -282,18 +290,18 @@ const selectedRecord = computed<TrajectoryRecord | null>(() => {
 })
 
 // ===== 折叠态 =====
-const collapsedTurns = ref(new Set<number>())
+const collapsedSessions = ref(new Set<number>())
 const collapsedAssistants = ref(new Set<string>())
 const expandedCompactions = ref(new Set<string>())
 const expandedPlans = ref(new Set<string>())
 
-function toggleTurn(turnIndex: number) {
-  const next = new Set(collapsedTurns.value)
-  if (next.has(turnIndex)) next.delete(turnIndex)
-  else next.add(turnIndex)
-  collapsedTurns.value = next
+function toggleSession(sessionIndex: number) {
+  const next = new Set(collapsedSessions.value)
+  if (next.has(sessionIndex)) next.delete(sessionIndex)
+  else next.add(sessionIndex)
+  collapsedSessions.value = next
 }
-function toggleCalls(recordId: string) {
+function toggleSteps(recordId: string) {
   const next = new Set(collapsedAssistants.value)
   if (next.has(recordId)) next.delete(recordId)
   else next.add(recordId)
@@ -312,62 +320,62 @@ function togglePlan(recordId: string) {
   expandedPlans.value = next
 }
 
-const turnKeys = computed(() => {
+const sessionKeys = computed(() => {
   const map = new Map<number, { first: boolean; count: number }>()
   for (const r of records.value) {
-    const entry = map.get(r.turnIndex) ?? { first: false, count: 0 }
+    const entry = map.get(r.sessionIndex) ?? { first: false, count: 0 }
     entry.count += 1
-    map.set(r.turnIndex, entry)
+    map.set(r.sessionIndex, entry)
   }
-  // 标记每 turn 首条
+  // 标记每 Session 首条
   const seen = new Set<number>()
   for (const r of records.value) {
-    if (!seen.has(r.turnIndex)) {
-      seen.add(r.turnIndex)
-      const entry = map.get(r.turnIndex)!
+    if (!seen.has(r.sessionIndex)) {
+      seen.add(r.sessionIndex)
+      const entry = map.get(r.sessionIndex)!
       entry.first = true
     }
   }
   return map
 })
 
-// Turn 分节头聚合统计：span 数（非 user 记录）、token 总量、耗时总量（LLM + 工具执行）
-const turnStats = computed(() => {
-  const map = new Map<number, { spans: number; tokens: number; durationMs: number }>()
+// Session 分节头聚合统计：Step 数（非 user 记录）、token 总量、耗时总量（LLM + 工具执行）
+const sessionStats = computed(() => {
+  const map = new Map<number, { steps: number; tokens: number; durationMs: number }>()
   for (const r of records.value) {
-    const entry = map.get(r.turnIndex) ?? { spans: 0, tokens: 0, durationMs: 0 }
-    if (r.kind !== 'user') entry.spans += 1
+    const entry = map.get(r.sessionIndex) ?? { steps: 0, tokens: 0, durationMs: 0 }
+    if (r.kind !== 'user') entry.steps += 1
     entry.tokens += r.usage?.total_tokens ?? 0
     entry.durationMs += r.durationMs ?? 0
     entry.durationMs += r.toolCall?.durationMs ?? 0
-    map.set(r.turnIndex, entry)
+    map.set(r.sessionIndex, entry)
   }
   return map
 })
 
-function turnSpanCount(turnIndex: number): number {
-  return turnStats.value.get(turnIndex)?.spans ?? 0
+function sessionStepCount(sessionIndex: number): number {
+  return sessionStats.value.get(sessionIndex)?.steps ?? 0
 }
-function turnTokens(turnIndex: number): number | null {
-  const t = turnStats.value.get(turnIndex)?.tokens ?? 0
+function sessionTokens(sessionIndex: number): number | null {
+  const t = sessionStats.value.get(sessionIndex)?.tokens ?? 0
   return t > 0 ? t : null
 }
-function turnDuration(turnIndex: number): number | null {
-  const d = turnStats.value.get(turnIndex)?.durationMs ?? 0
+function sessionDuration(sessionIndex: number): number | null {
+  const d = sessionStats.value.get(sessionIndex)?.durationMs ?? 0
   return d > 0 ? d : null
 }
 
-function isFirstInTurn(rec: TrajectoryRecord): boolean {
+function isFirstInSession(rec: TrajectoryRecord): boolean {
   return (
-    turnKeys.value.get(rec.turnIndex)?.first === true &&
-    firstRecordOfTurn(rec.turnIndex) === rec.recordId
+    sessionKeys.value.get(rec.sessionIndex)?.first === true &&
+    firstRecordOfSession(rec.sessionIndex) === rec.recordId
   )
 }
-function firstRecordOfTurn(turnIndex: number): string | null {
-  const r = records.value.find((x) => x.turnIndex === turnIndex)
+function firstRecordOfSession(sessionIndex: number): string | null {
+  const r = records.value.find((x) => x.sessionIndex === sessionIndex)
   return r?.recordId ?? null
 }
-function isCallsFolded(rec: TrajectoryRecord): boolean {
+function isStepsFolded(rec: TrajectoryRecord): boolean {
   return (
     isAssistantDecision(rec) &&
     collapsedAssistants.value.has(rec.recordId) &&
@@ -379,27 +387,27 @@ function isAssistantDecision(rec: TrajectoryRecord): boolean {
 }
 
 // 一键折叠/展开
-const allTurnsCollapsed = computed(
-  () => records.value.length > 0 && collapsedTurns.value.size >= turnKeys.value.size,
+const allSessionsCollapsed = computed(
+  () => records.value.length > 0 && collapsedSessions.value.size >= sessionKeys.value.size,
 )
 const hasAssistantDecisions = computed(() => records.value.some(isAssistantDecision))
 const allAssistantDecisionIds = computed(() =>
   records.value.filter(isAssistantDecision).map((r) => r.recordId),
 )
-const allCallsCollapsed = computed(
+const allStepsCollapsed = computed(
   () =>
     hasAssistantDecisions.value &&
     allAssistantDecisionIds.value.every((id) => collapsedAssistants.value.has(id)),
 )
-function toggleAllTurns() {
-  if (allTurnsCollapsed.value) {
-    collapsedTurns.value = new Set()
+function toggleAllSessions() {
+  if (allSessionsCollapsed.value) {
+    collapsedSessions.value = new Set()
   } else {
-    collapsedTurns.value = new Set(turnKeys.value.keys())
+    collapsedSessions.value = new Set(sessionKeys.value.keys())
   }
 }
-function toggleAllCalls() {
-  if (allCallsCollapsed.value) {
+function toggleAllSteps() {
+  if (allStepsCollapsed.value) {
     collapsedAssistants.value = new Set()
   } else {
     collapsedAssistants.value = new Set(allAssistantDecisionIds.value)
@@ -423,18 +431,18 @@ function matchesSearch(rec: TrajectoryRecord): boolean {
   return q.split(/\s+/).every((term) => hay.includes(term))
 }
 
-// 搜索时自动展开命中记录所在 turn / calls
+// 搜索时自动展开命中记录所在 session / steps
 watch(searchQuery, (q) => {
   if (!q.trim()) return
-  const next1 = new Set(collapsedTurns.value)
+  const next1 = new Set(collapsedSessions.value)
   const next2 = new Set(collapsedAssistants.value)
   for (const rec of records.value) {
     if (matchesSearch(rec)) {
-      next1.delete(rec.turnIndex)
+      next1.delete(rec.sessionIndex)
       if (rec.parentAssistantRecordId) next2.delete(rec.parentAssistantRecordId)
     }
   }
-  collapsedTurns.value = next1
+  collapsedSessions.value = next1
   collapsedAssistants.value = next2
 })
 
@@ -444,9 +452,9 @@ const filteredRecords = computed(() => records.value.filter(matchesSearch))
 const visibleRecords = computed<TrajectoryRecord[]>(() => {
   const out: TrajectoryRecord[] = []
   for (const rec of filteredRecords.value) {
-    // turn 折叠：隐藏 turn 内非首条
-    if (collapsedTurns.value.has(rec.turnIndex) && !isFirstInTurn(rec)) continue
-    // calls 折叠：隐藏 assistant 决策下的 tool 记录
+    // session 折叠：隐藏 session 内非首条
+    if (collapsedSessions.value.has(rec.sessionIndex) && !isFirstInSession(rec)) continue
+    // steps 折叠：隐藏 assistant 决策下的 tool 记录
     if (
       rec.kind === 'tool' &&
       rec.parentAssistantRecordId &&
@@ -461,14 +469,14 @@ const visibleRecords = computed<TrajectoryRecord[]>(() => {
 
 // ===== hierarchy 跳转 =====
 function selectRecord(recordId: string) {
-  // auto un-fold：目标所在 turn / 父 assistant calls 折叠则先展开
+  // auto un-fold：目标所在 session / 父 assistant steps 折叠则先展开
   const target =
     recordId === 'system' ? systemRecord.value : records.value.find((r) => r.recordId === recordId)
   if (target && target.kind !== 'system') {
-    if (collapsedTurns.value.has(target.turnIndex)) {
-      const next = new Set(collapsedTurns.value)
-      next.delete(target.turnIndex)
-      collapsedTurns.value = next
+    if (collapsedSessions.value.has(target.sessionIndex)) {
+      const next = new Set(collapsedSessions.value)
+      next.delete(target.sessionIndex)
+      collapsedSessions.value = next
     }
     if (
       target.parentAssistantRecordId &&
@@ -703,8 +711,8 @@ function cssEscape(s: string): string {
   color: var(--color-text-faint, var(--color-text-muted));
 }
 
-/* ===== Turn 分节头（Session → Turn → trace span 树） ===== */
-.traj-turn-header {
+/* ===== Session 分节头（Session → Turn → Step 层级） ===== */
+.traj-session-header {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -719,29 +727,29 @@ function cssEscape(s: string): string {
     background var(--transition-fast),
     color var(--transition-fast);
 }
-.traj-turn-header:first-child {
+.traj-session-header:first-child {
   margin-top: 0;
 }
-.traj-turn-header:hover {
+.traj-session-header:hover {
   background: var(--color-bg-hover);
   color: var(--color-text);
 }
 
-.turn-chevron {
+.session-chevron {
   font-size: 10px;
   transition: transform var(--transition-fast);
 }
-.turn-chevron.collapsed {
+.session-chevron.collapsed {
   transform: rotate(-90deg);
 }
 
-.turn-label {
+.session-label {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-weight: 600;
   color: var(--color-text-secondary);
 }
 
-.turn-stats {
+.session-stats {
   color: var(--color-text-faint, var(--color-text-muted));
   font-variant-numeric: tabular-nums;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -780,11 +788,11 @@ function cssEscape(s: string): string {
   background: var(--color-bg-hover);
 }
 
-/* span 树：tool 行缩进挂靠父 assistant 决策，左侧竖轨示意层级 */
-.traj-row.child-span {
+/* step 层级：tool 行缩进挂靠父 assistant 决策（同 Turn 内的 Step），左侧竖轨示意层级 */
+.traj-row.child-step {
   padding-left: 26px;
 }
-.traj-row.child-span::before {
+.traj-row.child-step::before {
   content: '';
   position: absolute;
   left: 13px;

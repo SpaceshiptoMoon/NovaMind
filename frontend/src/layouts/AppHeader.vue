@@ -15,7 +15,7 @@
           <NavIcon :name="item.icon" />
           {{ item.label }}
         </span>
-        <el-dropdown trigger="hover" @command="handleNavCommand">
+        <el-dropdown ref="systemDropdownRef" trigger="hover" @command="handleNavCommand">
           <span :class="['nav-item', { active: isSystemActive }]">
             <NavIcon name="settings" />
             系统
@@ -145,7 +145,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import {
@@ -173,15 +173,12 @@ const userStore = useUserStore()
 const permStore = usePermissionStore()
 const { theme, toggleTheme } = useTheme()
 
-// 工作台频道分段与侧栏折叠（父级 WorkspaceLayout 传入；channels 空 = 非工作台路由）
+// 侧栏折叠（父级 WorkspaceLayout 传入；仅工作台路由）
 defineProps<{
-  workspaceChannels?: Array<{ key: string; label: string; icon: string }>
-  activeChannel?: string
   sidebarCollapsed?: boolean
 }>()
 
 const emit = defineEmits<{
-  'channel-select': [key: string]
   'toggle-sidebar': []
 }>()
 
@@ -211,7 +208,12 @@ const isSystemActive = computed(() => {
   return path.startsWith('/home/settings') || path.startsWith('/home/admin')
 })
 
+// hover 触发的下拉：菜单项 hover 期间 mouseleave 不触发，路由跳转后弹层不收起；
+// command 回调里显式关闭（el-dropdown 暴露 handleClose）
+const systemDropdownRef = ref<{ handleClose: () => void } | null>(null)
+
 function handleNavCommand(path: string) {
+  systemDropdownRef.value?.handleClose()
   router.push(`/home/${path}`)
 }
 

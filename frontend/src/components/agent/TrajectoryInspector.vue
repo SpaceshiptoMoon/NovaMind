@@ -2,12 +2,12 @@
   <aside class="traj-inspector" role="complementary" aria-label="轨迹记录详情">
     <div v-if="!record" class="traj-inspector-empty">点击左侧记录查看详情</div>
     <div v-else class="traj-inspector-body">
-      <!-- header：kind tag + Turn/序号 + 关闭 -->
+      <!-- header：kind tag + Session/序号 + 关闭 -->
       <header class="inspector-header">
         <span class="inspector-kind" :class="record.kind">{{ kindLabel(record.kind) }}</span>
         <span class="inspector-loc">
-          <template v-if="record.kind === 'compaction'">Turn {{ record.turnIndex }}</template>
-          <template v-else>Turn {{ record.turnIndex }} · #{{ record.seq }}</template>
+          <template v-if="record.kind === 'compaction'">Session {{ record.sessionIndex }}</template>
+          <template v-else>Session {{ record.sessionIndex }} · #{{ record.seq }}</template>
         </span>
         <button class="inspector-close" title="关闭" @click="$emit('close')">
           <el-icon :size="14"><Close /></el-icon>
@@ -54,8 +54,8 @@
                 <dd class="ov-muted">（tool call only，无 reasoning/content）</dd>
               </div>
               <div v-if="record.msg.iteration != null" class="ov-row">
-                <dt>轮次</dt>
-                <dd>L{{ record.msg.iteration }}</dd>
+                <dt>Turn</dt>
+                <dd>T{{ record.msg.iteration }}（ReAct 轮号）</dd>
               </div>
               <div v-if="record.durationMs != null" class="ov-row">
                 <dt>耗时</dt>
@@ -84,8 +84,8 @@
                 <dd>最终回答</dd>
               </div>
               <div v-if="record.msg.iteration != null" class="ov-row">
-                <dt>轮次</dt>
-                <dd>L{{ record.msg.iteration }}</dd>
+                <dt>Turn</dt>
+                <dd>T{{ record.msg.iteration }}（ReAct 轮号）</dd>
               </div>
               <div v-if="record.durationMs != null" class="ov-row">
                 <dt>耗时</dt>

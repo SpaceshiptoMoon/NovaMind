@@ -2,12 +2,9 @@
   <div class="workspace-layout">
     <a href="#workspace-main" class="skip-link">跳到主内容</a>
 
-    <!-- 顶栏：全宽置顶（全局导航 + 工作台频道分段 + 全局项） -->
+    <!-- 顶栏：全宽置顶（全局导航 + 全局项；频道分段在侧栏，折叠切换经 prop 传入） -->
     <AppHeader
-      :workspace-channels="isWorkspaceRoute ? channels : []"
-      :active-channel="activeChannelKey"
       :sidebar-collapsed="isWorkspaceRoute ? sidebarCollapsed : undefined"
-      @channel-select="activateChannel"
       @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
     />
 
@@ -58,6 +55,10 @@
                   >
                     <ArrowDown />
                   </el-icon>
+                </button>
+                <button class="section-new-btn" @click="handleNewChatSession">
+                  <el-icon :size="14"><Plus /></el-icon>
+                  <span>新对话</span>
                 </button>
                 <div v-show="!sectionCollapsed.chat" class="list-area">
                   <div
@@ -526,8 +527,7 @@ function syncChannelFromRoute() {
 function handleNew(key: string = activeChannelKey.value) {
   switch (key) {
     case 'chat':
-      chatStore.clearMessages()
-      router.push('/home/workspace/chat')
+      startNewChatSession()
       break
     case 'agents':
       router.push('/home/workspace/agents')
@@ -542,6 +542,18 @@ function handleNew(key: string = activeChannelKey.value) {
 }
 
 // ===================== Chat =====================
+
+// 开新对话：流式中先取消 SSE（否则回调会写入新会话的消息造成污染），再清空当前上下文
+function startNewChatSession() {
+  if (chatStore.isStreaming) chatStore.cancelStream()
+  chatStore.clearMessages()
+  router.push('/home/workspace/chat')
+}
+
+// 侧栏「新对话」按钮（+）：与点 chat 频道 tab 同一动作
+function handleNewChatSession() {
+  startNewChatSession()
+}
 
 async function handleSelectChatSession(sessionId: string) {
   await chatStore.fetchMessages(sessionId)
@@ -811,30 +823,6 @@ onMounted(async () => {
   border-right-color: transparent;
 }
 
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--color-border-light);
-  flex-shrink: 0;
-}
-
-.channel-select {
-  flex: 1;
-}
-
-.channel-select :deep(.el-input__wrapper) {
-  border-radius: var(--radius-lg);
-}
-
-.channel-option {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--color-text);
-}
-
 /* ========================================
    Channel Segments — 侧栏纵排胶囊分段
    ======================================== */
@@ -851,7 +839,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 7px var(--space-2);
+  padding: 7px var(--space-3);
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
@@ -871,15 +859,17 @@ onMounted(async () => {
   color: var(--color-text);
 }
 
+/* 选中态：实底主色 + 白字（与 ChatInput mode-chip.active 同款选中语言，
+   未选中仅 hover 浅灰底，选中/未选中一眼可分） */
 .channel-seg.active {
-  background: var(--color-bg-card);
-  color: var(--color-text);
+  background: var(--color-btn-primary);
+  color: #ffffff;
   font-weight: var(--weight-medium, 500);
-  box-shadow: var(--shadow-xs);
+  box-shadow: var(--shadow-sm);
 }
 
 .channel-seg.active :deep(svg) {
-  color: var(--color-primary);
+  color: #ffffff;
 }
 
 .channel-seg-label {
@@ -1004,8 +994,9 @@ onMounted(async () => {
 }
 
 .channel-icon-btn.active {
-  background: var(--color-bg-hover);
-  color: var(--color-primary);
+  background: var(--color-btn-primary);
+  color: #ffffff;
+  box-shadow: var(--shadow-sm);
 }
 
 /* Sidebar body */
@@ -1285,14 +1276,6 @@ onMounted(async () => {
 
   .workspace-sidebar.collapsed {
     box-shadow: none;
-  }
-
-  .sidebar-toggle {
-    left: 0;
-  }
-
-  .sidebar-toggle.is-collapsed {
-    left: 0;
   }
 }
 </style>

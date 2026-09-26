@@ -1,15 +1,17 @@
 /**
  * 轨迹视图 record 派生：把 agentStore.messages 平铺成 TrajectoryRecord[]。
  *
- * 概念模型（对齐 OTel GenAI / agent 评测术语）：
- * - Session 会话 → Turn 轮（一次 user 发言 + agent 处理 + 回答）→ Trace 执行迹（轮内 span 树）
- * - Trajectory 轨迹 = 全会话有序执行记录（本视图的对象）
+ * 概念模型（对齐 Agent Loop 术语，层级 Session > Turn > Step）：
+ * - Session 会话：一条用户消息开启，到 agent 停止调用工具、输出最终回答为止（按 user 消息切分）
+ * - Turn 回合：Session 内一次完整的「模型决策 → 工具执行 → 结果回传」闭环，即后端 iteration（ReAct 轮号，1-based）
+ * - Step 步骤：Turn 内的原子操作——一次 LLM 调用（assistant 决策行）或一个工具执行（tool 行）
+ * - Trajectory 轨迹 = 全部 Session 的有序执行记录（本视图的对象）
  *
  * 对齐 dsh TrajectoryView 的可追溯性：
  * - 稳定 seq：基于全量 messages 顺序分配 1-based 序号，过滤/搜索后不变
  * - 稳定 recordId：msg.id > tool_call_id > seq，用于选中态/折叠集合/hierarchy 跳转
  * - parentAssistantRecordId：tool 行回溯父 assistant 决策（按 tool_call_id 匹配 extra.tool_calls[].id）
- * - turnIndex：按 user 消息切分（首条 user 前的 orphan 归 turn 0，分节头跳过），供 Turns/Calls 折叠
+ * - sessionIndex：按 user 消息切分（首条 user 前的 orphan 归 0，分节头跳过），供 Sessions/Steps 折叠
  */
 import { computed, type ComputedRef } from 'vue'
 import type { AgentMessage, OpenAICompatToolCall, ToolCallRecord } from '@/api/types'
@@ -35,8 +37,8 @@ export interface TrajectoryRecord {
   toolCall?: ToolCallRecord
   /** tool 行的父 assistant 决策 recordId（hierarchy 跳转） */
   parentAssistantRecordId?: string
-  /** 所属 turn（按 user 消息切分，orphan 归 turn 0） */
-  turnIndex: number
+  /** 所属 Session（按 user 消息切分，orphan 归 0） */
+  sessionIndex: number
   /** 行预览文本 */
   summary: string
   /** 该 assistant 决策携带的 tool_calls（决策行用） */
@@ -47,7 +49,7 @@ export interface TrajectoryRecord {
   durationMs?: number
   /** assistant 决策但无 content/reasoning（tool call only） */
   isToolCallOnly?: boolean
-  /** 该 assistant 决策下挂的 tool recordIds（Calls 折叠用） */
+  /** 该 assistant 决策下挂的 tool recordIds（Steps 折叠用） */
   childToolRecordIds?: string[]
 }
 
@@ -106,7 +108,7 @@ export function useTrajectoryRecords(
     const callList = calls.value
     const result: TrajectoryRecord[] = []
     let seq = 0
-    let turnIndex = 0
+    let sessionIndex = 0
     // 最近一条 assistant 决策的 recordId + 其 tool_call id 集合，供 tool 行回溯 parent
     let lastAssistantDecisionId: string | null = null
     let lastAssistantDecisionCallIds: Set<string> = new Set()
@@ -122,9 +124,9 @@ export function useTrajectoryRecords(
       const durationMs = typeof durationMsRaw === 'number' ? durationMsRaw : undefined
       const extraToolCalls = extra?.tool_calls as OpenAICompatToolCall[] | undefined
 
-      // turn 切分：user 开新 turn（第一轮 turn=1，orphan 归 turn 0）
+      // Session 切分：user 开新 Session（第一条 user 起 1，orphan 归 0）
       if (msg.role === 'user') {
-        turnIndex += 1
+        sessionIndex += 1
       }
 
       // assistant 决策判定：role=assistant 且带 tool_calls
@@ -194,7 +196,7 @@ export function useTrajectoryRecords(
         msg,
         toolCall,
         parentAssistantRecordId,
-        turnIndex,
+        sessionIndex,
         summary,
         toolCalls: isAssistantDecision ? extraToolCalls : undefined,
         usage,

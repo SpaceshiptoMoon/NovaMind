@@ -487,7 +487,8 @@ onBeforeUnmount(() => {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: var(--color-bg-elevated);
+  /* 与智能体页同画布（白底），用户气泡 --color-user-bubble（#fafafa）在其上可辨 */
+  background: var(--color-bg-card);
 }
 
 /* ========================================
