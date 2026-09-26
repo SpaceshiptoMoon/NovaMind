@@ -57,6 +57,15 @@ class SpaceStatsService:
         resolved_start = start or (resolved_end - timedelta(days=DEFAULT_LOOKBACK_DAYS))
         return resolved_start, resolved_end
 
+    async def get_wiki_overview(self, space_id: int) -> dict[str, Any]:
+        """空间级 Wiki 概览（跨 KB 聚合）。repo 函数内实例化，
+        规避依赖工厂引用不存在符号导致路由静默丢失（a4c7381 教训）。"""
+        from novamind.features.knowledge_space.repository.wiki_repository import (
+            WikiPageRepository,
+        )
+
+        return await WikiPageRepository(self.session).get_space_stats(space_id)
+
     async def get_knowledge_gap_stats(
         self,
         space_id: int,

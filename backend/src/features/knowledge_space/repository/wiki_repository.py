@@ -14,6 +14,7 @@ from novamind.features.knowledge_space.models.wiki import (
     WIKI_PRUNABLE_EDIT_SOURCES,
     WikiIngestRecord,
     WikiPage,
+    WikiPageIssue,
     WikiPageRevision,
 )
 from novamind.features.knowledge_space.services.wiki_slug import normalize_slug
@@ -661,6 +662,66 @@ class WikiPageRepository:
             "pages_by_type": by_type,
             "total_links": total_links,
             "orphan_count": orphan_count,
+        }
+
+    async def get_space_stats(self, space_id: int) -> dict[str, Any]:
+        """空间级聚合统计（跨 KB，工作台首页概览用）。
+
+        WikiPage/WikiPageIssue 均自带 space_id 列，页数/类型分布/待处理问题
+        走纯 SQL 聚合；链接与孤儿沿用 KB 级 get_stats 的 Python 侧口径
+        （JSON 列不宜 SQL 聚合），保证两级数字一致。
+        健康分为近似启发式，不跑全页 lint（首页高频调用，开销不可接受）。
+        """
+        type_result = await self.session.execute(
+            select(WikiPage.page_type, func.count(WikiPage.id))
+            .where(WikiPage.space_id == space_id, WikiPage.deleted_flag == 0)
+            .group_by(WikiPage.page_type)
+        )
+        by_type = {row[0]: row[1] for row in type_result.all()}
+        total_pages = sum(by_type.values())
+
+        issue_result = await self.session.execute(
+            select(func.count(WikiPageIssue.id)).where(
+                WikiPageIssue.space_id == space_id,
+                WikiPageIssue.status == "pending",
+            )
+        )
+        pending_issues = issue_result.scalar() or 0
+
+        if total_pages == 0:
+            return {
+                "total_pages": 0,
+                "pages_by_type": {},
+                "total_links": 0,
+                "orphan_count": 0,
+                "pending_issues": pending_issues,
+                "health_score": None,
+            }
+
+        pages_result = await self.session.execute(
+            select(WikiPage).where(
+                WikiPage.space_id == space_id, WikiPage.deleted_flag == 0
+            )
+        )
+        pages = list(pages_result.scalars().all())
+        total_links = 0
+        orphan_count = 0
+        for p in pages:
+            out_count = len(p.out_links or [])
+            total_links += out_count
+            if out_count == 0 and len(p.in_links or []) == 0:
+                orphan_count += 1
+
+        # 健康分启发式：待处理问题每个扣 2（上限 50），孤儿每页扣 1（上限 20）
+        health_score = max(0, 100 - min(pending_issues * 2, 50) - min(orphan_count, 20))
+
+        return {
+            "total_pages": total_pages,
+            "pages_by_type": by_type,
+            "total_links": total_links,
+            "orphan_count": orphan_count,
+            "pending_issues": pending_issues,
+            "health_score": health_score,
         }
 
 

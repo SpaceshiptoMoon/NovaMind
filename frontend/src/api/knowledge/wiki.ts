@@ -17,6 +17,7 @@ import type {
   WikiAutoFixResponse,
   WikiIssue,
   WikiIssueCreateRequest,
+  WikiOverview,
 } from '../types'
 
 /** Wiki API — 前缀 /spaces/{spaceId}/knowledge-bases/{kbId}/wiki */
@@ -154,5 +155,11 @@ export const wikiApi = {
       `/spaces/${spaceId}/knowledge-bases/${kbId}/wiki/issues/${issueId}/status`,
       { status },
     )
+  },
+
+  // ==================== 空间级概览（工作台首页） ====================
+
+  getSpaceWikiOverview(spaceId: number) {
+    return request.get<WikiOverview>(`/spaces/${spaceId}/stats/wiki-overview`)
   },
 }

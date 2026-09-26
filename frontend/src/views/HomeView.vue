@@ -48,13 +48,19 @@
         <span class="stat-item"
           ><strong>{{ agentStore.agents.length }}</strong> 个智能体</span
         >
+        <template v-if="wikiPagesLabel">
+          <span class="stat-divider" />
+          <span class="stat-item"
+            ><strong>{{ wikiPagesLabel }}</strong> 篇 Wiki 页</span
+          >
+        </template>
       </section>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Promotion, ArrowRight } from '@element-plus/icons-vue'
@@ -62,6 +68,7 @@ import { useSpaceStore } from '@/stores/space'
 import { useChatStore } from '@/stores/chat'
 import { useAgentStore } from '@/stores/agent'
 import { usePermissionStore } from '@/stores/permission'
+import { wikiApi } from '@/api/knowledge'
 import NavIcon from '@/components/common/NavIcon.vue'
 
 const router = useRouter()
@@ -69,6 +76,30 @@ const spaceStore = useSpaceStore()
 const chatStore = useChatStore()
 const agentStore = useAgentStore()
 const permStore = usePermissionStore()
+
+// 当前空间的 Wiki 资产概览（跨 KB 聚合）；零页/无空间时不占位
+const wikiPagesLabel = ref('')
+let wikiOverviewLoadedFor = 0
+
+async function loadWikiOverview() {
+  const spaceId = spaceStore.currentSpace?.id || spaceStore.spaces[0]?.id
+  if (!spaceId || wikiOverviewLoadedFor === spaceId) return
+  wikiOverviewLoadedFor = spaceId
+  try {
+    const overview = await wikiApi.getSpaceWikiOverview(spaceId)
+    wikiPagesLabel.value = overview.total_pages > 0 ? String(overview.total_pages) : ''
+  } catch {
+    wikiPagesLabel.value = ''
+  }
+}
+
+watch(
+  () => spaceStore.currentSpace?.id ?? spaceStore.spaces[0]?.id,
+  () => {
+    wikiOverviewLoadedFor = 0
+    void loadWikiOverview()
+  },
+)
 
 // 功能卡片（应用门禁过滤；emoji 全部换 NavIcon 统一语言）
 const featureCards = [
@@ -124,6 +155,7 @@ onMounted(() => {
   // 数据条数据源（已有会话/智能体缓存时静默跳过）
   if (chatStore.sessions.length === 0) chatStore.fetchSessions().catch(() => {})
   if (agentStore.agents.length === 0) agentStore.fetchAgents().catch(() => {})
+  void loadWikiOverview()
 })
 </script>
 

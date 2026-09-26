@@ -72,3 +72,15 @@ class ActionStatsResponse(BaseModel):
     total: int = Field(..., description="总操作数")
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class WikiOverviewResponse(BaseModel):
+    """空间级 Wiki 概览响应（跨 KB 聚合，工作台首页展示）"""
+    total_pages: int = Field(..., description="存活 Wiki 页总数")
+    pages_by_type: dict[str, int] = Field(..., description="按页面类型分布 {entity/concept/summary/...: count}")
+    total_links: int = Field(..., description="页间链接总数")
+    orphan_count: int = Field(..., description="孤儿页数（无入链也无出链）")
+    pending_issues: int = Field(..., description="待处理问题数（status=pending）")
+    health_score: int | None = Field(None, description="健康分 0-100 启发式（pending×2 上限 50 + 孤儿×1 上限 20）；零页时为 None")
+
+    model_config = ConfigDict(from_attributes=True)

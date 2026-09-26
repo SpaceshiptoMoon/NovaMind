@@ -18,6 +18,7 @@ from novamind.features.knowledge_space.models.space_member import SpaceMember
 from novamind.features.knowledge_space.schemas.space_stats_schema import (
     ActionStatsResponse,
     KnowledgeGapStatsResponse,
+    WikiOverviewResponse,
 )
 from novamind.features.knowledge_space.services.audit_service import AuditService
 from novamind.features.knowledge_space.services.space_stats_service import (
@@ -83,3 +84,24 @@ async def get_space_action_stats(
         items=items,
         total=sum(item["count"] for item in items),
     )
+
+
+@router.get(
+    "/wiki-overview",
+    response_model=WikiOverviewResponse,
+    summary="空间 Wiki 概览",
+    description=(
+        "跨知识库聚合 Wiki 资产：页数/类型分布/链接数/孤儿数/待处理问题，"
+        "附健康分启发式（不跑全页 lint，高频调用开销可控）。零页空间 "
+        "health_score 为 null。"
+    ),
+)
+async def get_space_wiki_overview(
+    space_id: Annotated[int, Path(gt=0, description="空间ID")],
+    member: SpaceMember = Depends(validate_space_member),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """空间 Wiki 概览（空间成员可读）"""
+    service = SpaceStatsService(db)
+    return await service.get_wiki_overview(space_id)

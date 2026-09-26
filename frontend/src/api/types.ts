@@ -2018,6 +2018,17 @@ export interface WikiStatsResponse {
   is_active: boolean
 }
 
+/** 空间级 Wiki 概览（跨 KB 聚合，工作台首页展示） */
+export interface WikiOverview {
+  total_pages: number
+  pages_by_type: Record<string, number>
+  total_links: number
+  orphan_count: number
+  pending_issues: number
+  /** 健康分 0-100 启发式；零页空间为 null */
+  health_score: number | null
+}
+
 export interface WikiIngestStatusResponse {
   status: string // pending/running/done/failed
   step_progress: Record<

@@ -12696,6 +12696,60 @@
         "title": "WikiLintResponse",
         "type": "object"
       },
+      "WikiOverviewResponse": {
+        "description": "空间级 Wiki 概览响应（跨 KB 聚合，工作台首页展示）",
+        "properties": {
+          "health_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "健康分 0-100 启发式（pending×2 上限 50 + 孤儿×1 上限 20）；零页时为 None",
+            "title": "Health Score"
+          },
+          "orphan_count": {
+            "description": "孤儿页数（无入链也无出链）",
+            "title": "Orphan Count",
+            "type": "integer"
+          },
+          "pages_by_type": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "按页面类型分布 {entity/concept/summary/...: count}",
+            "title": "Pages By Type",
+            "type": "object"
+          },
+          "pending_issues": {
+            "description": "待处理问题数（status=pending）",
+            "title": "Pending Issues",
+            "type": "integer"
+          },
+          "total_links": {
+            "description": "页间链接总数",
+            "title": "Total Links",
+            "type": "integer"
+          },
+          "total_pages": {
+            "description": "存活 Wiki 页总数",
+            "title": "Total Pages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_pages",
+          "pages_by_type",
+          "total_links",
+          "orphan_count",
+          "pending_issues"
+        ],
+        "title": "WikiOverviewResponse",
+        "type": "object"
+      },
       "WikiPageCreateRequest": {
         "description": "人工/Agent 创建页面",
         "properties": {
@@ -24460,6 +24514,55 @@
           }
         ],
         "summary": "知识缺口看板",
+        "tags": [
+          "空间统计",
+          "空间统计"
+        ]
+      }
+    },
+    "/api/v1/spaces/{space_id}/stats/wiki-overview": {
+      "get": {
+        "description": "跨知识库聚合 Wiki 资产：页数/类型分布/链接数/孤儿数/待处理问题，附健康分启发式（不跑全页 lint，高频调用开销可控）。零页空间 health_score 为 null。",
+        "operationId": "get_space_wiki_overview_api_v1_spaces__space_id__stats_wiki_overview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "space_id",
+            "required": true,
+            "schema": {
+              "title": "Space Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiOverviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "空间 Wiki 概览",
         "tags": [
           "空间统计",
           "空间统计"
