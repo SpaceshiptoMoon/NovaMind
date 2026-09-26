@@ -24,6 +24,53 @@ describe('renderMarkdown', () => {
   })
 })
 
+describe('renderMarkdown math (KaTeX)', () => {
+  it('renders inline math with $...$', () => {
+    const html = renderMarkdown('矩阵 $M \\in \\mathbb{R}^{n \\times n}$ 是正定的')
+
+    expect(html).toContain('katex')
+    expect(html).not.toContain('$M')
+  })
+
+  it('renders display math with $$...$$', () => {
+    const html = renderMarkdown('公式：\n\n$$\\sum_{i=1}^{n} a_i$$\n\n结束')
+
+    expect(html).toContain('katex-display')
+  })
+
+  it('does not treat currency-like dollars as math', () => {
+    const html = renderMarkdown('价格是 $ 5 和 $ 10，共 $15。')
+
+    // 无紧贴内容配对 → 不进 KaTeX，$ 原样保留
+    expect(html).not.toContain('katex')
+    expect(html).toContain('$')
+  })
+
+  it('keeps dollars inside code blocks untouched', () => {
+    const html = renderMarkdown('```bash\necho $PATH and $HOME\n```')
+
+    expect(html).not.toContain('katex')
+    expect(html).toContain('$PATH')
+  })
+
+  it('falls back to raw text when KaTeX fails to parse', () => {
+    const html = renderMarkdown('$\\unknowncmd{x}$')
+
+    // 解析失败回退：原文保留，不产生红色报错块
+    expect(html).toContain('$\\unknowncmd{x}$')
+    expect(html).not.toContain('katex-error')
+  })
+
+  it('strips math HTML in toc text but keeps it in the heading', () => {
+    const { html, toc } = renderMarkdownWithToc('## 复杂度 $O(n^2)$ 分析\n\n正文')
+
+    // 正文标题保留 KaTeX 排版；目录纯文本（正则剥 HTML 标签）
+    expect(html).toContain('katex')
+    expect(toc[0]!.text).toContain('O(n')
+    expect(toc[0]!.text).not.toContain('<span')
+  })
+})
+
 describe('renderMarkdownWithToc', () => {
   it('injects ids into h2/h3 and returns toc entries', () => {
     const { html, toc } = renderMarkdownWithToc('## 架构\n\n正文\n\n### 部署方式\n\n正文')

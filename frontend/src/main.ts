@@ -1,4 +1,5 @@
 import 'element-plus/dist/index.css'
+import 'katex/dist/katex.min.css'
 import './assets/main.css'
 import './assets/markdown.css'
 import 'highlight.js/styles/github.min.css'
