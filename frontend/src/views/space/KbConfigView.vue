@@ -16,19 +16,19 @@
         </div>
 
         <el-checkbox-group v-model="configForm.kbSpaceTypes" class="modality-grid">
-          <el-checkbox label="text">
+          <el-checkbox value="text">
             <span class="modality-title">文本</span>
             <span class="modality-desc">PDF、DOCX、Excel、PPT、Markdown、HTML、TXT、JSON</span>
           </el-checkbox>
-          <el-checkbox label="image">
+          <el-checkbox value="image">
             <span class="modality-title">图片</span>
             <span class="modality-desc">OCR 或 VLM 识图，支持图像语义检索。</span>
           </el-checkbox>
-          <el-checkbox label="video">
+          <el-checkbox value="video">
             <span class="modality-title">视频</span>
             <span class="modality-desc">抽帧、视觉描述与视频文本切分。</span>
           </el-checkbox>
-          <el-checkbox label="audio">
+          <el-checkbox value="audio">
             <span class="modality-title">音频</span>
             <span class="modality-desc">ASR 转写、语言指定与音频专属切分。</span>
           </el-checkbox>

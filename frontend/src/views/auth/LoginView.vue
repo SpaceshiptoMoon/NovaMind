@@ -31,7 +31,7 @@
 
       <div class="form-options">
         <el-checkbox v-model="rememberMe">记住我</el-checkbox>
-        <el-button type="text" size="small" @click="handleForgotPassword">忘记密码？</el-button>
+        <el-button link size="small" @click="handleForgotPassword">忘记密码？</el-button>
       </div>
 
       <el-button
@@ -46,7 +46,7 @@
     </el-form>
 
     <div class="register-link">
-      没有账号？<el-button type="text" size="small" @click="goRegister">去注册</el-button>
+      没有账号？<el-button link size="small" @click="goRegister">去注册</el-button>
     </div>
   </div>
 </template>

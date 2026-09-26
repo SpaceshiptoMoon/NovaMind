@@ -70,7 +70,7 @@
     </el-form>
 
     <div class="login-link">
-      已有账号？<el-button type="text" size="small" @click="goLogin">去登录</el-button>
+      已有账号？<el-button link size="small" @click="goLogin">去登录</el-button>
     </div>
   </div>
 </template>
